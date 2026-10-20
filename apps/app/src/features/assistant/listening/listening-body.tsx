@@ -9,6 +9,7 @@ import { useAreaWidth } from '../../../design/size-class';
 import { useIsOwner } from '../../../store/selectors';
 import { useAssistantName } from '../data/assistant-data';
 import { ContestCard } from './contest-card';
+import { EarHostCard } from './ear-host-card';
 import { ListeningHero } from './listening-hero';
 import { groupsOf, rowsOf, type ListeningRow } from './listening-model';
 import { PauseCard } from './pause-card';
@@ -55,9 +56,11 @@ function Sources({
 }
 
 function Rules({
+  view,
   call,
   offline,
 }: {
+  readonly view: ListeningView;
   readonly call: boolean;
   readonly offline: boolean;
 }): ReactNode {
@@ -69,6 +72,7 @@ function Rules({
       </View>
       {owner ? (
         <View className="gap-5 medium:flex-1">
+          <EarHostCard view={view} offline={offline} />
           <PauseCard offline={offline} />
           <DefaultsCard />
         </View>
@@ -92,6 +96,7 @@ function SideColumn({
     <View className="w-90 gap-5">
       <ContestCard last={view.last} sources={view.sources} name={name} offline={offline} />
       <PrecedenceCard call={call} />
+      {owner ? <EarHostCard view={view} offline={offline} /> : null}
       {owner ? <PauseCard offline={offline} /> : null}
       {owner ? <DefaultsCard /> : null}
     </View>
@@ -125,7 +130,7 @@ function Layout({
     <>
       <ContestCard last={view.last} sources={view.sources} name={name} offline={offline} />
       <Sources rows={rows} actions={actions} />
-      <Rules call={call} offline={offline} />
+      <Rules view={view} call={call} offline={offline} />
     </>
   );
 }

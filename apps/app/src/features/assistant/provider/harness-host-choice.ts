@@ -7,7 +7,7 @@ import {
   type AiHarnessTarget,
 } from '@smarteverything/domain';
 import type { SelectOption } from '../../../components/select';
-import { harnessHostReason } from '../model/harness-context';
+import { harnessHostNote, harnessHostReason } from '../model/harness-context';
 import { usePickerSession } from '../picker/model-search-session';
 import { draftHostChoice } from '../data/draft-engine';
 
@@ -61,7 +61,7 @@ function harnessHostOptions(
       return {
         value: harnessTargetKey(host.target),
         label: host.name,
-        description: reason ?? host.platform,
+        description: reason ?? harnessHostNote(host) ?? host.platform,
         disabled: reason !== null,
       };
     }) ?? []

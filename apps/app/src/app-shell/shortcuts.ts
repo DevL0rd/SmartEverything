@@ -61,7 +61,9 @@ export const SHORTCUTS: readonly Shortcut[] = [
     id: 'space',
     label: 'Go to a space',
     scope: 'Anywhere',
-    chords: [{ key: '1', alsoKeys: ['2', '3', '4', '5', '6'], label: '1–6', ...mod }],
+    chords: [
+      { key: '1', alsoKeys: ['2', '3', '4', '5', '6', '7', '8', '9'], label: '1–9', ...mod },
+    ],
   },
   {
     id: 'sidebar',

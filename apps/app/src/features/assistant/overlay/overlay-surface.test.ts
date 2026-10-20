@@ -5,7 +5,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
   default: { getItem: vi.fn(), setItem: vi.fn().mockResolvedValue(undefined) },
 }));
 
-const { CALL_PATH, desktopOverlayOn, inShareOf, surfaceOf } = await import('./overlay-surface');
+const { CALL_PATH, inShareOf, surfaceOf } = await import('./overlay-surface');
 const { IDLE_CALL } = await import('../call/call-state');
 
 const FACTS = { focused: true, visible: true, foreground: true, pathname: '/home' };
@@ -39,11 +39,24 @@ describe('the desktop surface', () => {
 });
 
 describe('the phone surface', () => {
-  it('follows the app being in the foreground and ignores the route', () => {
-    expect(surfaceOf('phone', FACTS, false)).toEqual({ platform: 'phone', foreground: true });
-    expect(surfaceOf('phone', { ...FACTS, foreground: false }, false)).toEqual({
+  it('is the call page only while the app is in front on the call route', () => {
+    const call = surfaceOf('phone', { ...FACTS, pathname: CALL_PATH }, false);
+    expect(call).toEqual({ platform: 'phone', main: 'call' });
+  });
+
+  it('is another page while the app is in front anywhere else', () => {
+    expect(surfaceOf('phone', FACTS, false)).toEqual({ platform: 'phone', main: 'other' });
+  });
+
+  it('is away when the app is in the background, even on the call route', () => {
+    const background = { ...FACTS, foreground: false, pathname: CALL_PATH };
+    expect(surfaceOf('phone', background, true)).toEqual({ platform: 'phone', main: 'away' });
+  });
+
+  it('ignores the window focus that only the desktop tracks', () => {
+    expect(surfaceOf('phone', { ...FACTS, focused: false, visible: false }, false)).toEqual({
       platform: 'phone',
-      foreground: false,
+      main: 'other',
     });
   });
 });
@@ -59,15 +72,5 @@ describe('sharing the whole screen', () => {
       false,
     );
     expect(inShareOf(live)).toBe(false);
-  });
-});
-
-describe('the in-app call pill on desktop', () => {
-  it('gives way only when the overlay is on and the desktop app can show it', () => {
-    const bridge = { setOverlay: (): Promise<void> => Promise.resolve() };
-    expect(desktopOverlayOn(true, bridge)).toBe(true);
-    expect(desktopOverlayOn(false, bridge)).toBe(false);
-    expect(desktopOverlayOn(true, {})).toBe(false);
-    expect(desktopOverlayOn(true, null)).toBe(false);
   });
 });

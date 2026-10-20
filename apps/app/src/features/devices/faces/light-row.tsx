@@ -11,6 +11,7 @@ import { colourAccessOf } from '../model/light-state';
 import { cn } from '../../../design/cn';
 import { entering, useMotion } from '../../../design/motion';
 import { useIdiom } from '../../../design/platform';
+import { useSizeClass } from '../../../design/size-class';
 import type { Device } from '../../../store/state';
 import { LevelControl } from './level-control';
 import { LightName } from './light-name';
@@ -103,7 +104,8 @@ function RowColour({
   readonly expanded: boolean;
   readonly onToggle: (() => void) | undefined;
 }): ReactNode {
-  if (!light.state.online || colourAccessOf(light.parts) === null || expanded) {
+  const compact = useSizeClass().width === 'compact';
+  if (!light.state.online || colourAccessOf(light.parts) === null || expanded || compact) {
     return null;
   }
   if (onToggle === undefined) {

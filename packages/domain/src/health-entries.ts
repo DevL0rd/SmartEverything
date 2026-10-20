@@ -53,6 +53,21 @@ export function isLoggable(type: HealthRecordType): type is LoggableType {
 
 export const ENTRIES_SOURCE_APP = 'smarteverything.entries';
 
+export const ENTRY_SOURCE_APPS = { larq: 'smarteverything.larq' } as const;
+
+export type EntrySource = keyof typeof ENTRY_SOURCE_APPS;
+
+export const ENTRY_SOURCE = z.enum(['larq']);
+
+export interface EntrySourceRef {
+  readonly source: EntrySource;
+  readonly key: string;
+}
+
+export function sourceAppOf(source: EntrySource | null): string {
+  return source === null ? ENTRIES_SOURCE_APP : ENTRY_SOURCE_APPS[source];
+}
+
 export const OWN_SOURCE_PREFIX = 'smarteverything.';
 
 export function isOwnSource(sourceApp: string): boolean {
@@ -113,6 +128,7 @@ interface EntryShape {
   readonly zoneOffsetSeconds: number | null;
   readonly data: Readonly<Record<string, unknown>>;
   readonly food: FoodPortion | null;
+  readonly source: EntrySource | null;
   readonly updatedAt: string;
 }
 
@@ -123,7 +139,7 @@ function recordOf(entry: EntryShape, type: HealthRecordType, data: unknown): unk
     startTime: entry.startTime,
     endTime: entry.endTime,
     zoneOffsetSeconds: entry.zoneOffsetSeconds,
-    sourceApp: ENTRIES_SOURCE_APP,
+    sourceApp: sourceAppOf(entry.source),
     lastModified: entry.updatedAt,
     data,
   };
@@ -140,7 +156,11 @@ export const HEALTH_ENTRY_INPUT = z.strictObject(ENTRY_FIELDS).transform((input,
     });
   }
   const probe = HEALTH_RECORD.safeParse(
-    recordOf({ ...input, id: PROBE_ID, updatedAt: input.startTime }, input.type, input.data),
+    recordOf(
+      { ...input, id: PROBE_ID, source: null, updatedAt: input.startTime },
+      input.type,
+      input.data,
+    ),
   );
   if (!probe.success) {
     for (const issue of probe.error.issues) {
@@ -166,6 +186,7 @@ export const HEALTH_ENTRY_ROW = z.strictObject({
   zone_offset_seconds: ZONE_OFFSET,
   data: ENTRY_DATA,
   food: FOOD_PORTION.nullable(),
+  source: ENTRY_SOURCE.nullable().default(null),
   version: z.int().min(1),
   save_error: z.string().nullable().default(null),
   created_at: MOMENT,
@@ -183,6 +204,7 @@ function shapeOf(row: HealthEntryRow): EntryShape {
     zoneOffsetSeconds: row.zone_offset_seconds,
     data: row.data,
     food: row.food,
+    source: row.source,
     updatedAt: row.updated_at,
   };
 }

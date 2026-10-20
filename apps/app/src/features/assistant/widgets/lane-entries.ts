@@ -1,7 +1,8 @@
 import { chatWidgetKey } from '@smarteverything/domain';
+import { useExtensionWidgets } from '../../../plugins/declared/use-extension-widgets';
 import { useStoreSelector } from '../../../store/store-context';
 import type { StoreState } from '../../../store/state';
-import { MissingWidgetError } from './board-sources';
+import { BOARD_CATALOGUE, MissingWidgetError } from './board-sources';
 import { useRemoteDevice } from './remote-device';
 import { WidgetUnavailableError } from './unavailable';
 import { resolveWidget, type BoardChatWidget, type ResolvedWidget } from './widget-sources';
@@ -72,6 +73,7 @@ function failure(widget: BoardChatWidget, cause: unknown): UnavailableEntry {
 
 export function useLaneEntries(widgets: readonly BoardChatWidget[]): readonly LaneEntry[] {
   const remoteDevice = useRemoteDevice();
+  const extensions = useExtensionWidgets(BOARD_CATALOGUE);
   const missing = useStoreSelector(
     (state) => widgets.map((widget) => missingReason(state, widget)),
     sameReasons,
@@ -85,7 +87,7 @@ export function useLaneEntries(widgets: readonly BoardChatWidget[]): readonly La
     try {
       return {
         status: 'ready',
-        widget: resolveWidget(chatWidgetKey(widget), widget, remoteDevice),
+        widget: resolveWidget(chatWidgetKey(widget), widget, remoteDevice, extensions),
       };
     } catch (cause) {
       return failure(widget, cause);

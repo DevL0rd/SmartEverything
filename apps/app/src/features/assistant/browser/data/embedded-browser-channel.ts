@@ -9,7 +9,9 @@ import {
   EMBEDDED_BROWSER_RESPONSE,
   EMBEDDED_BROWSER_RESULT,
   EMBEDDED_BROWSER_ACTION_NAMES,
+  type BrowserPage,
   type EmbeddedBrowserAction,
+  type EmbeddedBrowserSnapshot,
   type EmbeddedBrowserScope,
   type EmbeddedBrowserRequest,
   type EmbeddedBrowserResult,
@@ -19,6 +21,12 @@ import { routeFor } from '../../../../api/connection/active-route';
 import type { ServerConnection } from '../../../../api/connection/storage';
 import { DiagnosticsRecovery } from '../browser-diagnostics-recovery';
 import { embeddedBrowserSnapshot } from '../browser-embedded-snapshot';
+import {
+  browserPageSupported,
+  isBrowserPageAction,
+  isBrowserPageActionName,
+  readBrowserPage,
+} from '../browser-page-control';
 import { jsonText } from '../../../../format/json-text';
 import { BrowserTabError } from '../browser-tab-errors';
 import type { BrowserTabs } from '../browser-tabs';
@@ -142,15 +150,28 @@ export class EmbeddedBrowserChannel {
     const tabId =
       request.operation.kind === 'edit' ? await this.edit(request.operation.action, signal) : null;
     assertBrowserCommandActive(signal);
+    const page =
+      request.operation.kind === 'read' && request.operation.view === 'page'
+        ? await this.page(request.operation.tabId)
+        : undefined;
+    assertBrowserCommandActive(signal);
     const snapshot = {
       ...request.scope,
       ...embeddedBrowserSnapshot(this.tabs),
-      capabilities: [...EMBEDDED_BROWSER_ACTION_NAMES],
+      capabilities: advertisedActions(),
+      ...(page === undefined ? {} : { page }),
     };
-    return EMBEDDED_BROWSER_RESULT.parse({ snapshot, tabId });
+    return EMBEDDED_BROWSER_RESULT.parse({ snapshot, tabId: page?.tabId ?? tabId });
+  }
+  private async page(tabId: string | undefined): Promise<BrowserPage> {
+    const { selectedId } = this.tabs.read();
+    const id = tabId ?? selectedId;
+    if (id === null) throw new BrowserTabError('No tab is open.');
+    this.reveal();
+    return readBrowserPage(this.tabs.tab(id), selectedId);
   }
   private async edit(action: EmbeddedBrowserAction, signal: AbortSignal): Promise<string | null> {
-    if (action.kind === 'open' || action.kind === 'select') this.reveal();
+    if (showsPane(action)) this.reveal();
     const performed = this.tabs.perform(action, signal);
     const tabId =
       action.kind === 'reorder'
@@ -234,6 +255,13 @@ function parseResponse(data: unknown): BrowserResponse | null {
   if (parsed?.success === true) return parsed.data;
   log.warn('browser.protocol_ignored', { reason: 'not a browser response' });
   return null;
+}
+function advertisedActions(): EmbeddedBrowserSnapshot['capabilities'] {
+  const page = browserPageSupported();
+  return EMBEDDED_BROWSER_ACTION_NAMES.filter((name) => page || !isBrowserPageActionName(name));
+}
+function showsPane(action: EmbeddedBrowserAction): boolean {
+  return action.kind === 'open' || action.kind === 'select' || isBrowserPageAction(action);
 }
 function assertBrowserCommandActive(signal: AbortSignal): void {
   if (signal.aborted) throw new BrowserTabError('The browser command was cancelled.');

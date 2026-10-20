@@ -1,20 +1,26 @@
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
+import { VOICE_THINKING_COPY } from '@smarteverything/domain';
 import { href } from '../../../../app-shell/hrefs';
 import { Button } from '../../../../components/button';
 import { IconButton } from '../../../../components/icon-button';
 import { List } from '../../../../components/section';
 import { Text } from '../../../../components/text';
+import { useValue } from '../../../../design/external-store';
 import { appPlatform, type AppPlatform } from '../../../../design/platform';
 import { SettingsRow } from '../../../../settings/settings-row';
 import type { SettingDefinition } from '../../../../settings/types';
+import { useIsOwner } from '../../../../store/selectors';
+import { useStoreSelector } from '../../../../store/store-context';
 import { useAssistantName } from '../../data/assistant-data';
+import { thinkingSave } from '../../overlay/overlay-voice';
 import {
   CALL_AUDIO_SECTIONS,
   CALL_AUDIO_SETTINGS,
   CALL_PANEL_SECTIONS,
 } from '../../settings/call-audio-settings';
+import { THINKING_SETTING } from '../../settings/voice-thinking';
 import { useAppliedNote } from '../applied-note';
 import type { CallView } from '../call-state';
 import { useCallAudio } from './call-audio-pref';
@@ -68,6 +74,31 @@ function Masthead({ call, onClose }: CallSettingsBodyProps): ReactNode {
   );
 }
 
+function ThinkingSection({ call }: { readonly call: CallView }): ReactNode {
+  const owner = useIsOwner();
+  const known = useStoreSelector((state) => state.assistant !== null);
+  const save = useValue(thinkingSave);
+  if (!owner || !known) {
+    return null;
+  }
+  const changed = call.callId !== null && save.changedCall === call.callId;
+  return (
+    <List title={VOICE_THINKING_COPY.section}>
+      <SettingsRow setting={THINKING_SETTING} />
+      {changed ? (
+        <Text
+          variant="footnote"
+          tone="variant"
+          accessibilityLiveRegion="polite"
+          className="px-4 py-2"
+        >
+          {VOICE_THINKING_COPY.reconnect}
+        </Text>
+      ) : null}
+    </List>
+  );
+}
+
 function Sections({ call }: { readonly call: CallView }): ReactNode {
   const name = useAssistantName();
   const { reset, pref } = useCallAudio();
@@ -87,6 +118,7 @@ function Sections({ call }: { readonly call: CallView }): ReactNode {
           ) : null}
         </List>
       ))}
+      <ThinkingSection call={call} />
       <View className="gap-2">
         <Button label="Reset to defaults" variant="text" onPress={reset} />
         <Button

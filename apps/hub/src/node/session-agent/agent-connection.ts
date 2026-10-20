@@ -3,6 +3,7 @@ import { createConnection, type Socket } from 'node:net';
 import {
   SESSION_AGENT_MESSAGE,
   type ComputerCapture,
+  type MachinePermissionState,
   type SessionAgentAddress,
   type SessionAgentOperation,
   type SessionAgentMessage,
@@ -17,6 +18,7 @@ export const AGENT_GONE = 'The SmartEverything app is not running on this comput
 
 export interface AgentAnswer {
   readonly capture: ComputerCapture | null;
+  readonly permissions: readonly MachinePermissionState[] | null;
 }
 
 type Failed = Extract<SessionAgentReply, { ok: false }>;
@@ -111,7 +113,7 @@ export class AgentConnection {
       return;
     }
     this.settled = true;
-    this.handlers.answered({ capture: value.capture });
+    this.handlers.answered({ capture: value.capture, permissions: value.permissions });
     if (!(this.operation.op === 'ring' && this.operation.on)) this.socket.end();
   }
 

@@ -1,7 +1,6 @@
 import { deviceValuesOf, type DeviceValues, type StoreState } from '../../../store/state';
 import { deviceValuesRecord } from '../../../store/subscriptions';
 import type { DeviceModel } from '../../devices';
-import { homeDeviceModels } from './devices';
 
 const NO_VALUES: DeviceValues = {};
 
@@ -17,6 +16,7 @@ export interface Fold<C> {
 }
 
 export interface FoldOptions<C> {
+  readonly models: (state: StoreState) => readonly DeviceModel[];
   readonly includes: (model: DeviceModel) => boolean;
   readonly usesValues: (model: DeviceModel) => boolean;
   readonly projected: boolean;
@@ -39,7 +39,7 @@ export class DeviceFold<C> {
   }
 
   read = (state: StoreState): Fold<C> => {
-    const all = homeDeviceModels(state);
+    const all = this.options.models(state);
     if (all !== this.source) {
       this.restructure(all, state);
       return this.publish(null);

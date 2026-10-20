@@ -178,9 +178,7 @@ function advanceChoice(
     content.overflow === 'wrap'
       ? (index + delta + count) % count
       : Math.max(0, Math.min(count - 1, index + delta));
-  const entry = content.choices[next];
-  if (entry === undefined) throw new AutomationValueError('the selected choice does not exist');
-  return { ...content, value: entry.id };
+  return AUTOMATION_VALUE_CONTENT.parse({ ...content, value: content.choices[next]?.id });
 }
 
 function numericOperation(

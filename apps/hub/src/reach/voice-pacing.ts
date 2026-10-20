@@ -1,12 +1,13 @@
 import { TALK_FRAME_MS } from '@smarteverything/domain';
 import { opusCodec, toSpeech, type OpusCodec } from '../assistant-voice/audio';
 import type { Cancel, Clock } from '../clock';
+import { openLoopLagWindow, type LoopLag, type LoopLagWindow } from '../metrics/loop-delay';
 
 export const OPUS_SILENCE = Uint8Array.of(0xf8, 0xff, 0xfe);
 
 export const SPEAKER_LEAD_MS = 600;
 
-export interface TurnStats {
+export interface TurnStats extends LoopLag {
   readonly lateMs: number;
   readonly underrunMs: number;
 }
@@ -17,6 +18,7 @@ export interface PacerOptions {
   readonly leadMs?: number;
 }
 
+const NO_LAG: LoopLag = { loopLagMaxMs: 0, loopLagP99Ms: 0 };
 const NO_FILL: PacerOptions = { idle: null, spoke: () => undefined };
 const RESYNC_AFTER_MS = 1000;
 
@@ -30,6 +32,7 @@ export class SpeakerPacer {
   private plannedAt = 0;
   private lateMs = 0;
   private underrunMs = 0;
+  private loopLag: LoopLagWindow | null = null;
   private readonly leadMs: number;
 
   constructor(
@@ -66,6 +69,8 @@ export class SpeakerPacer {
 
   stop(): void {
     this.cut();
+    this.loopLag?.abandon();
+    this.loopLag = null;
     this.active = false;
     this.timer?.();
     this.timer = null;
@@ -105,6 +110,7 @@ export class SpeakerPacer {
       if (packet === undefined) {
         return;
       }
+      this.loopLag ??= openLoopLagWindow();
       this.frames += 1;
       this.play(packet);
       this.horizon += TALK_FRAME_MS;
@@ -137,7 +143,13 @@ export class SpeakerPacer {
 
   private finishTurn(): void {
     if (this.frames > 0) {
-      this.options.spoke(this.frames, { lateMs: this.lateMs, underrunMs: this.underrunMs });
+      const lag = this.loopLag?.finish() ?? NO_LAG;
+      this.loopLag = null;
+      this.options.spoke(this.frames, {
+        lateMs: this.lateMs,
+        underrunMs: this.underrunMs,
+        ...lag,
+      });
       this.frames = 0;
       this.lateMs = 0;
       this.underrunMs = 0;

@@ -99,6 +99,7 @@ describe('overlay settings', () => {
       'assistant.overlay-captions',
       'assistant.overlay-position',
       'assistant.overlay-permission',
+      'assistant.overlay-reset-position',
     ]);
     expect(idsFor('web')).toEqual([]);
   });

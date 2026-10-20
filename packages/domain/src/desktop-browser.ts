@@ -4,6 +4,9 @@ import { NATIVE_HTML_PROJECTION, NATIVE_PAGE_DESCRIPTOR } from './native-html-pr
 export * from './native-html-preview';
 export * from './browser-diagnostics';
 export * from './embedded-browser';
+export * from './browser-page';
+export * from './browser-page-script';
+export * from './browser-page-driver';
 
 export const BROWSER_RETIRED_PROBLEM =
   'The browser page ownership was withdrawn. Reload to request current access.';

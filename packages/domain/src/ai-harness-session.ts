@@ -12,6 +12,7 @@ import {
 import { DSH_SESSION_ID, DSH_SESSION_METADATA } from './dsh-sessions';
 import { AI_MODEL_ROUTE_SELECTION, AI_MODEL_ROUTE_SELECTION_WRITE } from './ai-model-route';
 import { JSON_VALUE } from './values';
+import { HARNESS_SANDBOX_ENFORCEMENT } from './harness-platform';
 import { AI_AGENT_RUN, AI_AGENT_USAGE } from './ai-agent-runs';
 
 export * from './dsh-sessions';
@@ -92,6 +93,7 @@ export const AI_MACHINE = z.object({
   id: z.string().min(1).max(100),
   name: z.string().min(1).max(200),
   os: z.enum(['Linux', 'Windows', 'macOS']),
+  sandbox: HARNESS_SANDBOX_ENFORCEMENT.optional(),
   online: z.boolean(),
   current: z.boolean(),
 });

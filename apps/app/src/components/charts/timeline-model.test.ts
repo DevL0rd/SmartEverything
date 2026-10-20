@@ -6,13 +6,12 @@ import {
   windowOf,
   type TimelineFrame,
 } from './timeline-model';
-import { SLEEP_LANES } from './stage-timeline';
-
 const FRAME: TimelineFrame = { from: 1000, span: 400, width: 200, height: 112 };
+const SLEEP_LANES = ['awake', 'rem', 'light', 'deep'] as const;
 
 describe('timeline placement', () => {
   it('puts a sleep segment where the old stage chart did', () => {
-    expect(placeSegment({ start: 1100, end: 1300, state: 'core' }, SLEEP_LANES, FRAME)).toEqual({
+    expect(placeSegment({ start: 1100, end: 1300, state: 'light' }, SLEEP_LANES, FRAME)).toEqual({
       left: 50,
       width: 100,
       top: 56,
@@ -20,7 +19,7 @@ describe('timeline placement', () => {
     });
   });
 
-  it('stacks the four sleep stages awake, rem, core, deep from the top', () => {
+  it('stacks the four sleep stages awake, rem, light, deep from the top', () => {
     const tops = SLEEP_LANES.map(
       (state) => placeSegment({ start: 1000, end: 1100, state }, SLEEP_LANES, FRAME).top,
     );

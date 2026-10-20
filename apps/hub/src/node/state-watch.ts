@@ -61,6 +61,10 @@ function sourcesOf(controls: ComputerControls): Readonly<Record<StateTopic, Stat
       controls.windows.watch((windows) => {
         emit({ windows });
       }),
+    tiling: (emit) =>
+      controls.tiling.watch((tiling) => {
+        emit({ tiling });
+      }),
     system: readOnce(
       () => controls.system.settings.state(),
       (system) => ({ system }),

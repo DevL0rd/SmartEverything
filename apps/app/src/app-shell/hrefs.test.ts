@@ -54,3 +54,29 @@ describe('home href', () => {
     });
   });
 });
+
+describe('automation hrefs', () => {
+  it('opens the detail page, the editor and the new automation page', () => {
+    expect(href.automation('a1')).toStrictEqual({
+      pathname: '/automations/[automationId]',
+      params: { automationId: 'a1' },
+    });
+    expect(href.automationEdit('a1', 'node:n1')).toStrictEqual({
+      pathname: '/automations/[automationId]/edit',
+      params: { automationId: 'a1', focus: 'node:n1' },
+    });
+    expect(href.automationNew()).toBe('/automations/new');
+    expect(href.automationNew('morning')).toStrictEqual({
+      pathname: '/automations/new',
+      params: { template: 'morning' },
+    });
+  });
+
+  it('opens the variables pages', () => {
+    expect(href.automationValues()).toBe('/automations/variables');
+    expect(href.automationValue('v1', 'name')).toStrictEqual({
+      pathname: '/automations/variables/[variableId]',
+      params: { variableId: 'v1', focus: 'name' },
+    });
+  });
+});

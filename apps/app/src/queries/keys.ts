@@ -66,6 +66,8 @@ export function recordingLinksKey(
 
 export const PUSH_STATUS_KEY = ['window', 'push-status'] as const;
 
+export const WATCH_CAPTURES_KEY = ['window', 'watch-captures'] as const;
+
 export const DEVICE_EFFECTS_KEY = ['window', 'device-effects'] as const;
 
 export const DEVICE_LOG_PREFIX = ['window', 'device-log'] as const;
@@ -168,4 +170,12 @@ export function targetHistoryKey(
   window: string,
 ): readonly ['window', 'history', 'target', string, string] {
   return [...HISTORY_PREFIX, 'target', deviceIds.join(','), window];
+}
+
+export function computerAiKey(deviceId: string): readonly string[] {
+  return ['window', 'computer-ai', deviceId];
+}
+
+export function nativeSessionsKey(deviceId: string, archived: boolean): readonly string[] {
+  return [...computerAiKey(deviceId), 'sessions', String(archived)];
 }

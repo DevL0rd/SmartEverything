@@ -5,6 +5,7 @@ import type { HubConnections } from '../network/connections';
 import type { PreviewGatewayConfig } from '../preview/gateway';
 import type { Server } from 'node:http';
 import { startHubHarness } from './harness-wiring';
+import { imageSpendCheck } from './image-authority';
 import { harnessTransportRoutes } from '../harness/transport';
 import { bindMeteredBudget } from '../harness/metered-accounting';
 import type { Logger } from '@smarteverything/logging';
@@ -30,6 +31,8 @@ import { createToolHub } from '../ai-tools/create';
 import { startSchedules, type Schedules } from '../schedules/start';
 import { aiTurnsOf, attachAssistant } from './assistant-wiring';
 import { attachAutomationAi } from './automation-ai-wiring';
+import { attachAutomationIntegration } from './automation-integration-wiring';
+import { attachAutomationTrace } from './automation-trace-attach';
 import { startClaude } from './claude-wiring';
 import { codexLocalFactory } from './codex-wiring';
 import { startReach, type StartedReach } from './reach-wiring';
@@ -39,11 +42,13 @@ import { PluginSpeakers } from '../plugins/plugin-speakers';
 import { startTranscribing, type Transcribing } from './transcribing';
 import { wirePlugins, type Plugins } from './plugin-wiring';
 import type { ToolHub } from '../ai-tools/tool-hub';
+import { webhookRoutes } from './handlers/automation-webhooks';
 import { computerMcpGrantRoute, computerMcpPolicyRoute } from './handlers/computer-mcp-grant';
 import { createHttpServer, type RawRoute } from './http-server';
 import { LiveHub } from './live';
 import { Operations } from './operations';
 import { Router } from './router';
+import { startWatchDriver } from './watch-driver-wiring';
 
 export interface BuildOptions {
   readonly connections?: HubConnections;
@@ -52,7 +57,6 @@ export interface BuildOptions {
   readonly secrets: SecretStore;
   readonly core: Core;
   readonly dataDirectory: string;
-  readonly wakeDiagnostics?: boolean;
   readonly codex?: {
     readonly executable?: string;
     readonly controlSocket?: string;
@@ -107,6 +111,7 @@ interface Serving {
   readonly reach: StartedReach;
   readonly claude: ClaudeService;
   readonly transcribing: Transcribing;
+  readonly detachTrace: () => void;
 }
 
 interface StartedServing extends Omit<Serving, 'http' | 'secure'> {
@@ -153,6 +158,8 @@ function servingParts(
   const reconciler = reconcilerOf(options, context);
   const schedules = startSchedules({ ...options, tools, ai: aiTurnsOf(context) });
   attachAutomationAi(context, tools, options);
+  attachAutomationIntegration(context, tools, options);
+  const detachTrace = attachAutomationTrace(context, options.clock.now);
   const reach = startReach(context, voice, options, { speakers, transcribing });
   const started = startClaude(context, options);
   registerCodexLocal(options, context);
@@ -167,6 +174,7 @@ function servingParts(
     schedules,
     reach,
     claude: started.service,
+    detachTrace,
     rawRoutes: started.routes,
   };
 }
@@ -246,6 +254,7 @@ function startClocks(context: ServerContext): void {
 }
 
 function stopServing(served: Serving): void {
+  served.detachTrace();
   served.reconciler.stop();
   served.budget.stop();
   served.reach.stop();
@@ -261,6 +270,7 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
     log: options.log.forArea('hub.live'),
   });
   const context = contextOf(options, live, status);
+  const stopWatches = startWatchDriver(context);
   await context.preview.gateway.start();
   await context.talk.start();
   context.assistant.start();
@@ -285,7 +295,7 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
       unsubscribe();
       unfollowLive();
       live.stop();
-      context.watchActions.stop();
+      stopWatches();
       context.talk.stop();
       context.weather.stop();
       context.exchangeRates.stop();
@@ -328,6 +338,7 @@ function rawRoutesOf(
     computerMcpGrantRoute(context),
     computerMcpGrantRoute(context, true),
     computerMcpPolicyRoute(context),
+    ...webhookRoutes(context.hub.automationWebhooks),
     nodeConnectionRoute(context),
     ...harnessTransportRoutes(context, context.harness, fetcher),
   ];
@@ -344,12 +355,7 @@ function stopComputersAndServing(context: ServerContext, served: Serving): void 
 function attachBudget(context: ServerContext, budget: Budget): void {
   bindMeteredBudget(context.store, budget.gate);
   context.assistant.coordination.attachGate(budget.gate);
-  context.imageRuntime.bindSpend((spend): void => {
-    budget.gate.check('image', {
-      profileId: spend.profileId,
-      ...(spend.background ? { background: true as const } : {}),
-    });
-  });
+  context.imageRuntime.bindSpend(imageSpendCheck(budget.gate));
 }
 
 interface ListenerParts {

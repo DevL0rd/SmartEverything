@@ -38,12 +38,14 @@ export function PurifierGraph({
   pm25,
   filter,
   cls,
+  live,
 }: {
   readonly device: Device;
   readonly pm: PresentedCapability;
   readonly pm25: number | null;
   readonly filter: number | null;
   readonly cls: WideClass;
+  readonly live: boolean;
 }): ReactNode {
   return (
     <View className={cn('flex-row items-center gap-3', !device.online && 'opacity-60')}>
@@ -52,6 +54,7 @@ export function PurifierGraph({
         <LiveSpark
           device={device}
           capability={pm.key}
+          live={live}
           colour={airBandColour(pm25)}
           height={SPARK_PX[cls]}
         />

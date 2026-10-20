@@ -26,7 +26,7 @@ export interface TalkWiring {
 }
 
 export interface TalkLinks {
-  readonly transcribing: Pick<Transcribing, 'ears' | 'transcriber' | 'transcripts'>;
+  readonly transcribing: Pick<Transcribing, 'remoteEars' | 'transcriber' | 'transcripts'>;
   readonly service: Pick<ReachService, 'speak'>;
   readonly voice: Pick<AssistantVoice, 'keys'>;
 }
@@ -144,7 +144,7 @@ export function startTalkListening(
   context.talk.attachListening(
     new TalkListening({
       store,
-      ears: links.transcribing.ears,
+      ears: links.transcribing.remoteEars,
       transcriber: links.transcribing.transcriber,
       budget: new ListeningBudget({
         store,

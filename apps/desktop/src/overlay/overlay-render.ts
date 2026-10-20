@@ -3,6 +3,7 @@ import {
   overlayDuration,
   type OverlayControl,
   type OverlayHostView,
+  type OverlaySetup,
   type OverlayTile,
 } from '@smarteverything/domain/voice-overlay';
 import type { IconName } from './overlay-icons';
@@ -46,6 +47,14 @@ export interface PillModel {
   readonly meterStop: boolean;
   readonly text: TextModel;
   readonly controls: readonly ControlModel[];
+  readonly chip: ChipModel | null;
+}
+
+export interface ChipModel {
+  readonly icon: IconName;
+  readonly label: string;
+  readonly description: string;
+  readonly warm: boolean;
 }
 
 export interface TileModel {
@@ -73,6 +82,7 @@ export interface TrayModel {
   readonly mics: readonly MicOption[];
   readonly micId: string;
   readonly volume: number;
+  readonly setup: OverlaySetup;
 }
 
 export interface CardModel {
@@ -205,6 +215,19 @@ export function textOf(view: OverlayHostView): TextModel {
   };
 }
 
+function chipOf(view: OverlayHostView): ChipModel | null {
+  const { chip } = view;
+  if (chip === null || !barModeOf(view)) {
+    return null;
+  }
+  return {
+    icon: chip.level === 'off' ? 'brainOff' : 'brain',
+    label: chip.label,
+    description: chip.description,
+    warm: chip.warm,
+  };
+}
+
 export function pillModel(view: OverlayHostView, trayOpen: boolean): PillModel {
   const controls = controlsOf(view, trayOpen);
   const stoppable = view.controls.includes('interrupt');
@@ -223,6 +246,7 @@ export function pillModel(view: OverlayHostView, trayOpen: boolean): PillModel {
     meterStop: stoppable && bar,
     text: textOf(view),
     controls,
+    chip: chipOf(view),
   };
 }
 
@@ -259,6 +283,7 @@ export function trayModel(view: OverlayHostView, now: number): TrayModel | null 
     mics: [{ id: '', label: AUTOMATIC_MICROPHONE }, ...tray.mics],
     micId: tray.micId ?? '',
     volume: Math.round(tray.volume * 100),
+    setup: tray.setup,
   };
 }
 

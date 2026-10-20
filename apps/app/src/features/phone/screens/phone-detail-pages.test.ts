@@ -77,6 +77,8 @@ const WEEK = [150, 210, 95, 180, 240, 130, 192];
 const DETAIL: PhoneDetail = {
   sound: {
     streams: { media: 40, ring: 70, alarm: 90, notification: 55, call: 60 },
+    hapticFeedback: true,
+    touchSounds: false,
     output: { kind: 'bluetooth', name: 'Galaxy Buds3 Pro' },
     media: {
       title: 'Everything In Its Right Place',
@@ -92,6 +94,7 @@ const DETAIL: PhoneDetail = {
   screen: {
     brightness: 64,
     auto: true,
+    autoRotate: true,
     timeoutSeconds: 60,
     fold: 'open',
     writable: true,
@@ -111,6 +114,8 @@ const DETAIL: PhoneDetail = {
     vpn: false,
     metered: false,
     airplane: false,
+    wifiOn: true,
+    locationOn: true,
     data: {
       today: { wifiBytes: Math.round(1.4 * GB), mobileBytes: 220 * MB },
       month: { wifiBytes: 38 * GB, mobileBytes: Math.round(4.2 * GB) },
@@ -118,6 +123,7 @@ const DETAIL: PhoneDetail = {
     at: AT,
   },
   connections: {
+    bluetoothOn: true,
     bluetooth: [
       { name: 'Galaxy Buds3 Pro', kind: 'headset', batteryPercent: 64 },
       { name: 'Galaxy Watch7', kind: 'watch', batteryPercent: 18 },
@@ -227,6 +233,16 @@ function screenWith(change: Partial<NonNullable<PhoneDetail['screen']>>): PhoneD
     : { ...DETAIL, screen: { ...DETAIL.screen, ...change } };
 }
 
+const SYSTEM_READINGS: PhoneReadingsInput = {
+  auto_rotate: true,
+  haptic_feedback: false,
+  touch_sounds: true,
+  wifi_on: true,
+  bluetooth_on: false,
+  location_on: true,
+  airplane_mode: false,
+};
+
 const NO_DND = [
   {
     feature: 'dnd',
@@ -332,6 +348,69 @@ describe('the screen page', () => {
   });
 });
 
+describe('the system switches on the screen page', () => {
+  it('lists the three switches and the four radios with their state', () => {
+    const page = text('screen', { readings: SYSTEM_READINGS });
+    for (const word of [
+      'System',
+      'Auto-rotate',
+      'Touch vibration',
+      'Touch sounds',
+      'Wi-Fi',
+      'Bluetooth',
+      'Location',
+      'Airplane mode',
+    ]) {
+      expect(page).toContain(word);
+    }
+    expect(page.split(' On ').length - 1).toBe(2);
+    expect(page.split(' Off ').length - 1).toBe(2);
+  });
+
+  it('offers to open the matching phone settings page only to the phone’s own person', () => {
+    const own = text('screen', { readings: SYSTEM_READINGS });
+    expect(own.split('Settings').length - 1).toBe(4);
+    expect(text('screen', { tier: 'owner', readings: SYSTEM_READINGS })).not.toContain('Settings');
+    expect(text('screen', { tier: 'member', readings: SYSTEM_READINGS })).not.toContain('Settings');
+  });
+
+  it('shows the radios of another person without any name and locks the switches', () => {
+    const page = text('screen', { tier: 'owner', readings: SYSTEM_READINGS });
+    expect(page).toContain('Wi-Fi');
+    expect(page).toContain('Airplane mode');
+    expect(page).not.toContain('Home 5G');
+  });
+
+  it('tells a member that only the person and the owner can change the switches', () => {
+    expect(text('screen', { tier: 'member', readings: SYSTEM_READINGS })).toContain(
+      'Only Sam and the owner can change these',
+    );
+  });
+
+  it('asks for Modify system settings and offers its page to the person', () => {
+    const page = text('screen', {
+      detail: screenWith({ writable: false }),
+      readings: SYSTEM_READINGS,
+    });
+    expect(page).toContain('Allow Modify system settings on the phone to change these here');
+    expect(page).toContain('Open settings');
+    const other = text('screen', {
+      tier: 'owner',
+      detail: screenWith({ writable: false }),
+      readings: SYSTEM_READINGS,
+    });
+    expect(other).toContain('Allow Modify system settings on the phone to change these here');
+    expect(other).not.toContain('Open settings');
+  });
+
+  it('shows a radio the phone has not reported without a state', () => {
+    const page = text('screen', { readings: { wifi_on: true } });
+    expect(page).toContain('Wi-Fi');
+    expect(page.split(' On ').length - 1).toBe(1);
+    expect(page).not.toContain(' Off ');
+  });
+});
+
 describe('the network page', () => {
   it('shows the connection, mobile, data use, Bluetooth and where the switches live', () => {
     const page = text('network');
@@ -386,7 +465,7 @@ describe('the network page', () => {
       detail: {
         ...DETAIL,
         network: { ...base, cellular: null, data: null },
-        connections: { bluetooth: [], at: AT },
+        connections: { bluetoothOn: true, bluetooth: [], at: AT },
       },
     });
     expect(page).not.toContain('Telstra');

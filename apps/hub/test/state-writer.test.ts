@@ -5,6 +5,7 @@ import { Inventory } from '../src/state/inventory';
 import { StateWriter } from '../src/state/state-writer';
 import type { StateRecord } from '../src/database/port';
 import { testDatabase, type TestDatabase } from './support/database';
+import { FakeClock } from './support/fake-clock';
 import { LAMP } from './support/fake-provider';
 import { captureLogs, testLogger } from './support/logs';
 
@@ -19,6 +20,8 @@ async function setup(): Promise<{
   stateWrites: (readonly StateRecord[])[];
   writer: StateWriter;
   changes: StateChange[];
+  moves: StateChange[];
+  clock: FakeClock;
   lampId: string;
   inventory: Inventory;
 }> {
@@ -28,9 +31,12 @@ async function setup(): Promise<{
   const inventory = new Inventory(db.database, {
     onlineChanged: (): void => undefined,
     devicesChanged: (): void => undefined,
+    lifecycle: (): void => undefined,
   });
   await inventory.apply('xiaomi', [LAMP]);
   const changes: StateChange[] = [];
+  const moves: StateChange[] = [];
+  const clock = new FakeClock(at);
   const writer = new StateWriter({
     store: {
       ...db.database,
@@ -40,9 +46,13 @@ async function setup(): Promise<{
       },
     },
     inventory,
+    clock,
     log: testLogger(),
     changed: (change): void => {
       changes.push(change);
+    },
+    moved: (change): void => {
+      moves.push(change);
     },
   });
   return {
@@ -50,6 +60,8 @@ async function setup(): Promise<{
     stateWrites,
     writer,
     changes,
+    moves,
+    clock,
     lampId: inventory.deviceOf('xiaomi', 'lamp-1')?.id ?? '',
     inventory,
   };
@@ -129,10 +141,12 @@ describe('StateWriter', () => {
         },
       },
       inventory,
+      clock: new FakeClock(at),
       log: testLogger(),
       changed: (change): void => {
         changes.push(change);
       },
+      moved: (): void => undefined,
     });
     const push = (
       capability: StateUpdate['capability'],
@@ -158,6 +172,58 @@ describe('StateWriter', () => {
       stateWrites.flat().map((row) => `${row.capability}=${JSON.stringify(row.value)}`),
     ).toStrictEqual(['brightness=30', 'power=true']);
     expect(logs.events().filter((event) => event === 'state.write_failed')).toHaveLength(1);
+  });
+
+  it('keeps the first value of a device silent for signals and announces every later change, including a value turning unknown', async () => {
+    const { writer, changes, moves, lampId } = await setup();
+    const push = (value: boolean | null, observedAt: string): void => {
+      writer.push('xiaomi', { externalId: 'lamp-1', capability: 'power', value, observedAt });
+    };
+    push(true, at);
+    expect(changes).toHaveLength(1);
+    expect(moves).toStrictEqual([]);
+    push(null, '2026-10-08T10:00:01.000Z');
+    push(false, '2026-10-08T10:00:02.000Z');
+    expect(moves).toStrictEqual([
+      { deviceId: lampId, capability: 'power', value: null, previous: true },
+      { deviceId: lampId, capability: 'power', value: false, previous: null },
+    ]);
+  });
+
+  it('announces a number once it moved by the capability step and at most every 2 seconds, while the stored value stays exact', async () => {
+    const { writer, changes, moves, clock, lampId } = await setup();
+    const push = (value: number, observedAt: string): void => {
+      writer.push('xiaomi', { externalId: 'lamp-1', capability: 'temperature', value, observedAt });
+    };
+    push(20, at);
+    push(20.05, '2026-10-08T10:00:00.100Z');
+    expect(moves).toStrictEqual([]);
+    push(20.3, '2026-10-08T10:00:00.200Z');
+    expect(moves.map((change) => [change.previous, change.value])).toStrictEqual([[20, 20.3]]);
+    clock.advanceTo('2026-10-08T10:00:00.500Z');
+    push(20.6, '2026-10-08T10:00:00.500Z');
+    push(20.9, '2026-10-08T10:00:01.000Z');
+    expect(writer.valueOf(lampId, 'temperature')).toBe(20.9);
+    expect(changes.map((change) => change.value)).toStrictEqual([20, 20.05, 20.3, 20.6, 20.9]);
+    expect(moves).toHaveLength(1);
+    clock.advanceTo('2026-10-08T10:00:02.000Z');
+    expect(moves.map((change) => [change.previous, change.value])).toStrictEqual([
+      [20, 20.3],
+      [20.3, 20.9],
+    ]);
+  });
+
+  it('stops announcing when it is closed while a number is still waiting', async () => {
+    const { writer, moves, clock } = await setup();
+    const push = (value: number, observedAt: string): void => {
+      writer.push('xiaomi', { externalId: 'lamp-1', capability: 'brightness', value, observedAt });
+    };
+    push(10, at);
+    push(30, '2026-10-08T10:00:00.500Z');
+    push(60, '2026-10-08T10:00:01.000Z');
+    await writer.close();
+    clock.advanceTo('2026-10-08T10:00:10.000Z');
+    expect(moves.map((change) => change.value)).toStrictEqual([30]);
   });
 
   it('reports a change as soon as it is remembered, before the database write finishes', async () => {

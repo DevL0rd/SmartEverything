@@ -1,8 +1,11 @@
 import {
   DEFAULT_COMPUTER_SCOPES,
+  type AdapterSink,
   type ComputerScopes,
   type HistoryPolicy,
+  type DeviceEvent,
   type DiscoveredDevice,
+  type SignalInput,
   type HubFrame,
   type NodeHello,
   type ProcessWindow,
@@ -42,6 +45,25 @@ export interface SessionRigOptions {
   readonly appTime?: (time: AppTime) => void;
   readonly devices?: (devices: readonly DiscoveredDevice[]) => void;
   readonly hubComputerResolved?: (deviceId: string) => void;
+  readonly scopes?: ComputerScopes;
+  readonly event?: (event: DeviceEvent) => void;
+  readonly signal?: (signal: SignalInput) => void;
+  readonly personId?: string;
+  readonly now?: () => Date;
+}
+
+function sinkOf(options: SessionRigOptions): AdapterSink {
+  return {
+    state: (): void => undefined,
+    event: (event): void => {
+      options.event?.(event);
+    },
+    devices: (devices): void => {
+      options.devices?.(devices);
+    },
+    failure: (): void => undefined,
+    online: (): void => undefined,
+  };
 }
 
 export function sessionRig(deviceId: string, options: SessionRigOptions = {}): SessionRig {
@@ -60,25 +82,19 @@ export function sessionRig(deviceId: string, options: SessionRigOptions = {}): S
         };
       },
     },
-    sink: {
-      state: (): void => undefined,
-      event: (): void => undefined,
-      devices: (devices): void => {
-        options.devices?.(devices);
-      },
-      failure: (): void => undefined,
-      online: (): void => undefined,
-    },
+    sink: sinkOf(options),
     history: { push: (): void => undefined },
     viewers,
     policyOf: (): HistoryPolicy => ({ window_ms: 3_600_000, interval_ms: 1_000 }),
     publish: (): void => undefined,
     deviceIdOf: (): string => deviceId,
-    scopesOf: (): ComputerScopes => DEFAULT_COMPUTER_SCOPES,
+    scopesOf: (): ComputerScopes => options.scopes ?? DEFAULT_COMPUTER_SCOPES,
     directory: options.directory ?? new ComputerDirectory(),
     hubComputerResolved: options.hubComputerResolved ?? ((): void => undefined),
     recordAppTime: options.appTime ?? ((): void => undefined),
-    now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
+    signals: { emit: (signal): void => options.signal?.(signal) },
+    personOf: (): string | null => options.personId ?? null,
+    now: options.now ?? ((): Date => new Date('2026-10-08T10:00:00.000Z')),
     log: testLogger(),
   });
   const deliver = (frame: unknown): void => {

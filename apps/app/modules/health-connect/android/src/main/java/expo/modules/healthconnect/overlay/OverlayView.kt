@@ -2,12 +2,14 @@ package expo.modules.healthconnect.overlay
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Rect
 import android.graphics.Region
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import androidx.core.view.WindowInsetsCompat
@@ -30,7 +32,7 @@ class OverlayView(
   private val palette = OverlayTokens.of(style.theme)
   private val glow = if (parts == OverlayParts.Pill) null else OverlayGlowView(context, style.reducedMotion, palette)
   private val pill = if (parts == OverlayParts.Glow) null else OverlayPillView(context, palette, style.reducedMotion, ViewActions())
-  private val tray = if (parts == OverlayParts.Glow) null else OverlayTrayView(context, palette, { actions.onTile(it) }, { actions.onOpen() })
+  private val tray = if (parts == OverlayParts.Glow) null else OverlayTrayView(context, palette, { actions.onTile(it) }, { actions.onThinking(it) }, { actions.onOpen() })
   private val presence = OverlayPresence(style.reducedMotion)
   private val follower = OverlayLevelFollower()
   private val rest = OverlayRest()
@@ -44,8 +46,15 @@ class OverlayView(
   private var lastNanos = 0L
   private var screenOn = true
   private var trayOpen = false
+  private var menuAt = MenuPlacement.Closed
+  private var armed = false
+  private var dragging = false
+  private var downX = 0f
+  private var downY = 0f
+  private val slop = ViewConfiguration.get(context).scaledTouchSlop
 
   var onHidden: Runnable? = null
+  var drag: OverlayDragSink? = null
 
   init {
     clipChildren = false
@@ -69,8 +78,16 @@ class OverlayView(
 
   fun setInsets(next: OverlayInsets) {
     if (next == insets) return
+    if (drag?.insetsAccepted() == false) return
     insets = next
     applyInsets()
+    drag?.insetsChanged(next)
+  }
+
+  fun pillFrame(): PixelBox? {
+    val target = pill ?: return null
+    if (target.width == 0) return null
+    return PixelBox(target.left, target.top, target.right, target.bottom)
   }
 
   fun setLevelSources(inputSource: OverlayLevelSource?, outputSource: OverlayLevelSource?) {
@@ -90,6 +107,8 @@ class OverlayView(
     return true
   }
 
+  fun closeMenu() = closeTray()
+
   fun toggleTray() {
     if (trayOpen) closeTray() else openTray()
   }
@@ -100,11 +119,20 @@ class OverlayView(
     val menu = tray ?: return
     val data = last?.tray ?: return
     menu.bind(data, System.currentTimeMillis())
+    menu.measure(
+      MeasureSpec.makeMeasureSpec(trayWidth(), MeasureSpec.EXACTLY),
+      MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+    )
+    val gap = Math.round(OverlayDims.TRAY_GAP * density)
+    menuAt = drag?.menuFor(PillSize(menu.measuredWidth, menu.measuredHeight), gap) ?: MenuPlacement.Closed
+    drag?.menuShown(menuAt)
+    applyInsets()
     trayOpen = true
     pill?.setTrayOpen(true)
     menu.visibility = VISIBLE
     menu.alpha = 0f
-    menu.translationY = if (style.reducedMotion) 0f else OverlayMotion.TRAY_RISE_DP * density
+    val rise = if (menuAt.side == MenuSide.Above) OverlayMotion.TRAY_RISE_DP else -OverlayMotion.TRAY_RISE_DP
+    menu.translationY = if (style.reducedMotion) 0f else rise * density
     val duration = if (style.reducedMotion) OverlayMotion.REDUCED_FADE_MS else OverlayMotion.TRAY_MS
     menu.animate().alpha(1f).translationY(0f).setDuration(duration).setInterpolator(DecelerateInterpolator()).start()
   }
@@ -115,6 +143,9 @@ class OverlayView(
     tray?.animate()?.cancel()
     tray?.visibility = GONE
     pill?.setTrayOpen(false)
+    menuAt = MenuPlacement.Closed
+    drag?.menuShown(null)
+    applyInsets()
   }
 
   private fun syncTray(next: OverlayViewState, previous: OverlayViewState?) {
@@ -126,13 +157,51 @@ class OverlayView(
     }
   }
 
+  override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+    val sink = drag ?: return false
+    when (event.actionMasked) {
+      MotionEvent.ACTION_DOWN -> {
+        armed = onPill(event)
+        downX = event.rawX
+        downY = event.rawY
+      }
+      MotionEvent.ACTION_MOVE -> if (armed && !dragging && movedPastSlop(event)) {
+        dragging = true
+        closeTray()
+        sink.begin(event.rawX, event.rawY)
+      }
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> armed = false
+    }
+    return dragging
+  }
+
   override fun onTouchEvent(event: MotionEvent): Boolean {
     if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) closeTray()
-    return super.onTouchEvent(event)
+    val sink = drag
+    if (!dragging || sink == null) return super.onTouchEvent(event)
+    when (event.actionMasked) {
+      MotionEvent.ACTION_MOVE -> sink.move(event.rawX, event.rawY)
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+        if (event.actionMasked == MotionEvent.ACTION_UP) sink.move(event.rawX, event.rawY)
+        dragging = false
+        armed = false
+        sink.end()
+      }
+    }
+    return true
   }
+
+  private fun onPill(event: MotionEvent): Boolean {
+    val frame = pillFrame() ?: return false
+    return event.x >= frame.left && event.x < frame.right && event.y >= frame.top && event.y < frame.bottom
+  }
+
+  private fun movedPastSlop(event: MotionEvent): Boolean =
+    Math.abs(event.rawX - downX) > slop || Math.abs(event.rawY - downY) > slop
 
   fun render(next: OverlayViewState) {
     val previous = last
+    if (next == previous && visibility == VISIBLE) return
     last = next
     if (next.state == OverlayState.Hidden) {
       closeTray()
@@ -197,8 +266,11 @@ class OverlayView(
   private fun applyInsets() {
     val target = pill ?: return
     val params = target.layoutParams as? FrameLayout.LayoutParams ?: return
-    params.bottomMargin = insets.bottom
-    params.leftMargin = insets.left
+    val menu = tray
+    val below = menuAt.side == MenuSide.Below
+    val reach = if (trayOpen && menu != null && below) menu.measuredHeight + trayGap() else 0
+    params.bottomMargin = insets.bottom + reach
+    params.leftMargin = insets.left + maxOf(0, -menuAt.shift)
     params.rightMargin = insets.right
     target.layoutParams = params
     applyTrayInsets()
@@ -207,11 +279,16 @@ class OverlayView(
   private fun applyTrayInsets() {
     val menu = tray ?: return
     val params = menu.layoutParams as? FrameLayout.LayoutParams ?: return
-    params.bottomMargin = insets.bottom + Math.round((OverlayDims.PILL_HEIGHT + OverlayDims.TRAY_GAP) * density)
-    params.leftMargin = insets.left
+    val above = menuAt.side == MenuSide.Above
+    params.bottomMargin = insets.bottom + if (above) pillHeight() + trayGap() else 0
+    params.leftMargin = insets.left + maxOf(0, menuAt.shift)
     params.rightMargin = insets.right
     menu.layoutParams = params
   }
+
+  private fun trayGap(): Int = Math.round(OverlayDims.TRAY_GAP * density)
+
+  private fun pillHeight(): Int = pill?.height?.takeIf { it > 0 } ?: Math.round(OverlayDims.PILL_HEIGHT * density)
 
   private inner class ViewActions : OverlayActions {
     override fun onControl(control: OverlayControl) {
@@ -221,6 +298,8 @@ class OverlayView(
     override fun onOpen() = actions.onOpen()
 
     override fun onTile(tile: OverlayTile) = actions.onTile(tile)
+
+    override fun onThinking(level: VoiceLevel) = actions.onThinking(level)
   }
 
   private fun applyPresence() {
@@ -297,6 +376,11 @@ class OverlayView(
     if (visibility == VISIBLE) ensureFrames() else stopFrames()
   }
 
+  override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
+    drag?.reconfigured()
+  }
+
   override fun onScreenStateChanged(screenState: Int) {
     super.onScreenStateChanged(screenState)
     screenOn = screenState == SCREEN_STATE_ON
@@ -304,7 +388,7 @@ class OverlayView(
   }
 
   companion object {
-    private const val PILL_GRAVITY = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+    private const val PILL_GRAVITY = Gravity.BOTTOM or Gravity.START
     private const val FIRST_FRAME_MS = 16.0
     private const val NANOS_PER_MS = 1_000_000.0
   }

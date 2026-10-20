@@ -59,7 +59,7 @@ interface PageEntry {
   readonly detail: string;
   readonly keywords: readonly string[];
   readonly page: SearchTarget;
-  readonly runLabel: string | null;
+  readonly runLabel: string;
 }
 
 function entryOf(entry: PageEntry): SearchEntry {
@@ -70,7 +70,7 @@ function entryOf(entry: PageEntry): SearchEntry {
     detail: entry.detail,
     keywords: entry.keywords,
     state: null,
-    run: entry.runLabel === null ? null : entry.page,
+    run: entry.page,
     runLabel: entry.runLabel,
     open: entry.page,
     openLabel: 'Open',

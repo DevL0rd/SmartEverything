@@ -10,7 +10,7 @@ import {
   type NavigationLayout,
 } from '@smarteverything/domain';
 
-export type NavItems = readonly NavNode[];
+export type NavItems = NavNode[];
 
 export function itemsOf(layout: NavigationLayout): NavItems {
   return layout.items ?? defaultNavigationItems();
@@ -36,7 +36,7 @@ function entryOfKey(items: NavItems, key: string): NavEntry | null {
 }
 
 function withoutEntry(items: NavItems, key: string): NavItems {
-  return items.flatMap((node): readonly NavNode[] => {
+  return items.flatMap((node): NavNode[] => {
     if (node.kind === 'folder') {
       return [{ ...node, items: node.items.filter((entry) => navNodeKey(entry) !== key) }];
     }
@@ -56,7 +56,7 @@ function reordered<T>(
   list: readonly T[],
   keyOf: (item: T) => string,
   visible: readonly string[],
-): readonly T[] {
+): T[] {
   const shown = new Set(visible);
   const byKey = new Map(list.map((item) => [keyOf(item), item]));
   const order = visible.flatMap((key) => byKey.get(key) ?? []);
@@ -68,37 +68,34 @@ export function reorder(items: NavItems, visible: readonly string[]): NavItems {
   return reordered(items, navNodeKey, visible);
 }
 
-export function reorderMembers(
-  items: NavItems,
-  folderId: string,
-  visible: readonly string[],
-): NavItems {
-  return items.map((node) =>
-    node.kind === 'folder' && node.id === folderId
-      ? { ...node, items: reordered(node.items, navNodeKey, visible) }
-      : node,
-  );
+export interface PlaceTarget {
+  readonly parent: string | null;
+  readonly before: string | null;
 }
 
-export function moveIntoFolder(items: NavItems, key: string, folderId: string): NavItems {
-  const entry = entryOfKey(items, key);
-  if (entry === null) return items;
-  return withoutEntry(items, key).map((node) =>
-    node.kind === 'folder' && node.id === folderId
-      ? { ...node, items: [...node.items, entry] }
-      : node,
-  );
+function insertedBefore<T extends NavNode>(
+  list: readonly T[],
+  item: T,
+  before: string | null,
+): T[] {
+  const at = before === null ? -1 : list.findIndex((candidate) => navNodeKey(candidate) === before);
+  return at < 0 ? [...list, item] : [...list.slice(0, at), item, ...list.slice(at)];
 }
 
-export function moveOutOfFolder(items: NavItems, key: string): NavItems {
-  const folder = items.find(
-    (node): node is NavFolder =>
-      node.kind === 'folder' && node.items.some((entry) => navNodeKey(entry) === key),
-  );
-  const entry = entryOfKey(items, key);
-  if (folder === undefined || entry === null) return items;
-  return withoutEntry(items, key).flatMap((node) =>
-    node.kind === 'folder' && node.id === folder.id ? [node, entry] : [node],
+function nodeOfKey(items: NavItems, key: string): NavNode | null {
+  return items.find((node) => navNodeKey(node) === key) ?? entryOfKey(items, key);
+}
+
+export function placeNode(items: NavItems, key: string, target: PlaceTarget): NavItems {
+  const node = nodeOfKey(items, key);
+  if (node === null || target.before === key) return items;
+  const rest = removeNode(items, key);
+  if (target.parent === null) return insertedBefore(rest, node, target.before);
+  if (node.kind === 'folder') return items;
+  return rest.map((candidate) =>
+    candidate.kind === 'folder' && candidate.id === target.parent
+      ? { ...candidate, items: insertedBefore(candidate.items, node, target.before) }
+      : candidate,
   );
 }
 
@@ -122,20 +119,37 @@ export function createFolder(
   return placed ? result : [...result, created];
 }
 
+export function foldTogether(
+  items: NavItems,
+  folder: Pick<NavFolder, 'id' | 'title' | 'icon'>,
+  dragged: string,
+  target: string,
+): NavItems {
+  const moving = entryOfKey(items, dragged);
+  const staying = items.find((node) => navNodeKey(node) === target);
+  if (dragged === target || moving === null || staying === undefined || staying.kind === 'folder') {
+    return items;
+  }
+  const created = createFolder(items, folder, [target]);
+  return placeNode(created, dragged, { parent: folder.id, before: null });
+}
+
 function stripped(folder: NavFolder, members: readonly string[]): NavFolder {
   return { ...folder, items: folder.items.filter((entry) => !members.includes(navNodeKey(entry))) };
 }
 
-export function renameNode(items: NavItems, key: string, title: string): NavItems {
+export function renameNode(items: NavItems, key: string, title: string | null): NavItems {
   return items.map((node) => {
-    if (node.kind === 'folder' && node.id === key) return { ...node, title };
+    if (node.kind === 'folder' && node.id === key) {
+      return title === null ? node : { ...node, title };
+    }
     if (node.kind === 'pin' && node.id === key) return { ...node, title };
     if (node.kind !== 'folder') return node;
     return { ...node, items: node.items.map((entry) => renamedEntry(entry, key, title)) };
   });
 }
 
-function renamedEntry(entry: NavEntry, key: string, title: string): NavEntry {
+function renamedEntry(entry: NavEntry, key: string, title: string | null): NavEntry {
   return entry.kind === 'pin' && entry.id === key ? { ...entry, title } : entry;
 }
 
@@ -154,7 +168,7 @@ export function setNodeIcon(items: NavItems, key: string, icon: NavIcon): NavIte
 }
 
 export function ungroupFolder(items: NavItems, folderId: string, keepPins: boolean): NavItems {
-  return items.flatMap((node): readonly NavNode[] => {
+  return items.flatMap((node): NavNode[] => {
     if (node.kind !== 'folder' || node.id !== folderId) return [node];
     return node.items.filter((entry) => keepPins || entry.kind === 'section');
   });

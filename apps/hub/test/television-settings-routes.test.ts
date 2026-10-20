@@ -61,7 +61,14 @@ describe('naming the inputs of a television over HTTP', () => {
     expect(reply.status).toBe(200);
     expect(reply.body).toMatchObject({ id, kind: 'television' });
     expect(await snapshotSettings()).toEqual([
-      { device_id: id, direct_link: false, input_names: { HDMI1: 'Console', HDMI2: 'Laptop' } },
+      {
+        device_id: id,
+        direct_host: null,
+        direct_mac: null,
+        input_names: { HDMI1: 'Console', HDMI2: 'Laptop' },
+        wake_macs: [],
+        wake_worked_at: null,
+      },
     ]);
   });
 
@@ -106,5 +113,23 @@ describe('naming the inputs of a television over HTTP', () => {
     const id = await deviceIdOf('tv-1');
     expect((await patch(id, { input_names: { HDMI1: '' } })).status).toBe(400);
     expect((await patch(id, { input_names: { HDMI1: 'x'.repeat(41) } })).status).toBe(400);
+  });
+});
+
+describe('setting the wake address of a television over HTTP', () => {
+  it('stores the address, normalises it, puts it in the snapshot and clears it with null', async () => {
+    const id = await deviceIdOf('tv-1');
+    expect((await patch(id, { wake_address: 'A1-B2-C3-D4-E5-F6' })).status).toBe(200);
+    expect(await snapshotSettings()).toMatchObject([{ wake_macs: ['a1:b2:c3:d4:e5:f6'] }]);
+    await patch(id, { wake_address: null });
+    expect(await snapshotSettings()).toMatchObject([{ wake_macs: [] }]);
+  });
+
+  it('refuses an address that is not a MAC and a device that is not a television', async () => {
+    expect((await patch(await deviceIdOf('tv-1'), { wake_address: '192.168.1.40' })).status).toBe(
+      400,
+    );
+    const lamp = await patch(await deviceIdOf('lamp-1'), { wake_address: 'a1:b2:c3:d4:e5:f6' });
+    expect(lamp).toMatchObject({ status: 400, body: { error: { code: 'invalid_request' } } });
   });
 });

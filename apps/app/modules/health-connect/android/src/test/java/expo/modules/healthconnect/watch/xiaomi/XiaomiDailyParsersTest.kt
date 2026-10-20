@@ -95,6 +95,23 @@ class XiaomiDailyParsersTest {
   }
 
   @Test
+  fun `summary v5 of 69 bytes as the Watch S5 sends it reads its 30 fields instead of ending early`() {
+    val id = fileId(version = 5, subtype = XiaomiFileId.DAILY, detail = XiaomiFileId.SUMMARY)
+    val file = activityFile(summaryBody(hex("10 00 00 10"), 30, resting = 61, vitality = 48))
+    assertEquals(69, file.size)
+    val summary = XiaomiDailyParsers.summary(id, file)
+    assertEquals(61, summary.resting.single().bpm)
+    assertEquals(48, summary.vitality.single().value)
+  }
+
+  @Test
+  fun `summary refuses a layout that ends inside a field`() {
+    val id = fileId(version = 5, subtype = XiaomiFileId.DAILY, detail = XiaomiFileId.SUMMARY)
+    val cut = summaryBody(hex("10 00 00 10"), 29, resting = 61, vitality = 48) + ByteArray(1)
+    assertThrows(IllegalArgumentException::class.java) { XiaomiDailyParsers.summary(id, activityFile(cut + ByteArray(1))) }
+  }
+
+  @Test
   fun `summary v4 has no vitality slot`() {
     val id = fileId(version = 4, subtype = XiaomiFileId.DAILY, detail = XiaomiFileId.SUMMARY)
     val summary = XiaomiDailyParsers.summary(id, activityFile(summaryBody(hex("10 00 00"), 21, resting = 58, vitality = 0)))

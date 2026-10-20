@@ -20,7 +20,8 @@ import { usePendingKeys } from '../../../components/deferred-action';
 import { InlineTool } from './inline-tool';
 import { Disclosure } from '../../../components/disclosure';
 import { TypingDots } from './typing-dots';
-import { inlineImageItem, renderInlineImageMessage } from './inline-image-message';
+import { inlineMessageItem, renderInlineImageMessage } from './inline-image-message';
+import { InlineSteer } from './inline-steer';
 import { WebSources } from './web-sources';
 import { timelineSources, webSourcesOf, type NumberedSource } from '../model/web-sources';
 
@@ -68,7 +69,7 @@ function InlineImage({
         type: 'image-operation',
         key: `image-operation-${receipt.id}`,
         receipt,
-        message: saved === undefined ? null : inlineImageItem(saved),
+        message: saved === undefined ? null : inlineMessageItem(saved),
       }}
       flash={false}
       renderMessage={renderInlineImageMessage}
@@ -76,14 +77,12 @@ function InlineImage({
   );
 }
 function ToolPart({
-  chatId,
   part,
   live,
   active,
   showSteps,
   sources,
 }: {
-  readonly chatId: string;
   readonly part: Extract<InlineTimelinePart, { readonly kind: 'tools' }>;
   readonly live: boolean;
   readonly active: boolean;
@@ -93,7 +92,6 @@ function ToolPart({
   if (showSteps)
     return (
       <InlineTool
-        chatId={chatId}
         tools={part.tools}
         activities={part.activities}
         sources={sources}
@@ -192,7 +190,6 @@ const ReplyPart = memo(function ReplyPart({
     case 'tools':
       return (
         <ToolPart
-          chatId={chatId}
           part={part}
           live={live}
           active={streaming}
@@ -202,6 +199,8 @@ const ReplyPart = memo(function ReplyPart({
       );
     case 'image':
       return <InlineImage chatId={chatId} operationId={part.operationId} />;
+    case 'steer':
+      return <InlineSteer chatId={chatId} messageId={part.message_id} />;
   }
 });
 

@@ -1,4 +1,3 @@
-import type { AutomationRow } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import {
   diffuserStatus,
@@ -11,6 +10,12 @@ import {
   paused,
   strengthLine,
 } from './diffuser-model';
+import {
+  rowId,
+  setPower,
+  storedAutomationRow,
+  timeTrigger,
+} from '../../../test-support/automation-rows';
 import type { DiffuserRead } from './diffuser-read';
 import { DIFFUSER_ID } from './fixture';
 
@@ -112,43 +117,33 @@ describe('refill line', () => {
 });
 
 function automation(
-  id: string,
+  index: number,
   at: string,
   to: boolean,
   patch: { readonly enabled?: boolean; readonly device?: string } = {},
-): AutomationRow {
-  return {
-    id,
-    name: id,
+): unknown {
+  return storedAutomationRow({
+    index,
+    name: `Schedule ${String(index)}`,
+    triggers: [timeTrigger(at)],
+    nodes: [setPower(patch.device ?? DIFFUSER_ID, to)],
     enabled: patch.enabled ?? true,
-    revision: 1,
-    definition: {
-      when: [{ on: 'time', at }],
-      steps: [{ do: 'set', target: { device: patch.device ?? DIFFUSER_ID }, control: 'power', to }],
-    },
-    origin: null,
-    author: null,
-    last_run_at: null,
-    last_error: null,
-    run_count: 0,
-    created_at: '2026-10-01T00:00:00.000Z',
-    updated_at: '2026-10-01T00:00:00.000Z',
-  };
+  });
 }
 
 describe('schedule line from automations', () => {
   it('reads on and off times of enabled automations that set this diffuser power', () => {
     const line = scheduleOf(
-      [automation('b', '00:00', false), automation('a', '15:00', true)],
+      [automation(2, '00:00', false), automation(1, '15:00', true)],
       DIFFUSER_ID,
     );
-    expect(line).toEqual({ text: 'On 15:00 · off 00:00', automationId: 'a' });
+    expect(line).toEqual({ text: 'On 15:00 · off 00:00', automationId: rowId(1) });
   });
 
   it('ignores disabled automations and other devices', () => {
     const rows = [
-      automation('a', '15:00', true, { enabled: false }),
-      automation('b', '16:00', true, { device: '00000000-0000-4000-8000-0000000000aa' }),
+      automation(1, '15:00', true, { enabled: false }),
+      automation(2, '16:00', true, { device: '00000000-0000-4000-8000-0000000000aa' }),
     ];
     expect(scheduleOf(rows, DIFFUSER_ID)).toBeNull();
   });

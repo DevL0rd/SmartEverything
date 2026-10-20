@@ -24,10 +24,8 @@ private const val SECONDS_PER_MINUTE = 60L
 
 private fun modeOf(input: OverlayInput, call: OverlayCall): OverlayMode {
   val surface = input.surface
-  if (surface is OverlaySurface.Phone) return OverlayMode.Full
-  if (call.sharing != null) return OverlayMode.Share
-  val other = surface is OverlaySurface.Desktop && surface.main == MainWindow.Other
-  return if (other) OverlayMode.Compact else OverlayMode.Full
+  if (surface is OverlaySurface.Desktop && call.sharing != null) return OverlayMode.Share
+  return if (surface.main == MainWindow.Other) OverlayMode.Compact else OverlayMode.Full
 }
 
 private fun cameraOn(call: OverlayCall): Boolean =
@@ -113,6 +111,7 @@ private fun trayOf(input: OverlayInput, call: OverlayCall, state: OverlayState):
     chat = call.chat,
     elapsedFrom = call.startedAt,
     tiles = (if (input.surface is OverlaySurface.Phone) ::phoneTilesOf else ::tilesOf)(call, state, input.prefs.captions),
+    setup = setupOf(input.voice),
     mics = input.audio.mics,
     micId = input.audio.micId,
     volume = input.audio.volume,
@@ -141,6 +140,7 @@ fun withCall(base: OverlayViewState, input: OverlayInput, call: OverlayCall): Ov
     speaker = call.speaker,
     camera = call.camera,
     tray = trayOf(input, call, base.state),
+    chip = chipOf(input.voice),
     request = requestOf(call),
   )
 }

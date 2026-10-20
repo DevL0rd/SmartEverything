@@ -23,7 +23,6 @@ describe('cloud response envelopes', () => {
       'credentials',
       'token',
       'permission',
-      'subscription',
       'device_offline',
       'refused',
       'unsupported_device',
@@ -37,18 +36,14 @@ describe('cloud response envelopes', () => {
   });
 
   it('classifies every documented error code and nothing else', () => {
-    expect(
-      [1004, 1010, 1106, 28841101, 28841105, 28841002, 2001, 2008, 2009, 500].map(errorKindOf),
-    ).toStrictEqual([
+    expect([1004, 1010, 1106, 2001, 2008, 2009, 500, 28841002].map(errorKindOf)).toStrictEqual([
       'credentials',
       'token',
       'permission',
-      'permission',
-      'permission',
-      'subscription',
       'device_offline',
       'refused',
       'unsupported_device',
+      'other',
       'other',
     ]);
   });

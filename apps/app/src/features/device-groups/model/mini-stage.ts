@@ -22,7 +22,7 @@ export function miniStageOf(
   const levels = new Map((view.state.level?.perMember ?? []).map((m) => [m.deviceId, m.value]));
   const dots = memberIds.slice(0, MINI_STAGE_DOTS).map((id) => ({
     id,
-    power: view.powers[id] ?? 'off',
+    power: view.powers[id] ?? 'unknown',
     colour: view.colours[id] ?? null,
     opacity: haloOf(levels.get(id) ?? null, false).opacity,
   }));

@@ -84,7 +84,7 @@ export function moveUploads(from: string, to: string): void {
   );
 }
 
-function base64Of(buffer: ArrayBuffer, start: number, end: number): string {
+export function base64Of(buffer: ArrayBuffer, start: number, end: number): string {
   const view = new Uint8Array(buffer, start, end - start);
   let binary = '';
   for (let index = 0; index < view.length; index += 0x8000) {

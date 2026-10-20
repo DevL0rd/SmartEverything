@@ -257,6 +257,7 @@ function clientOf(
     blocked: slow?.blockedMacs.has(entry.mac) === true,
     trafficBytesPerSecond: station?.trafficBytesPerSecond ?? null,
     profileId: null,
+    personId: null,
     firstSeen: null,
     lastSeen: null,
   };

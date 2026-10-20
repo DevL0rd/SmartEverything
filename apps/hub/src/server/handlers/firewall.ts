@@ -6,4 +6,7 @@ export const firewallRoutes = (context: ServerContext) =>
   ({
     readFirewall: bound(E.readFirewall, () => context.firewall.current()),
     checkFirewall: bound(E.checkFirewall, () => context.firewall.check()),
+    applyFirewall: bound(E.applyFirewall, ({ body }) =>
+      context.firewallApplier.apply(body.revision),
+    ),
   }) as const;

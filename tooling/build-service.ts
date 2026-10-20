@@ -83,6 +83,11 @@ const BUNDLES: readonly Bundle[] = [
     banner: SERVICE_BANNER,
   },
   { entry: join(hub, 'src', 'claude', 'hook-helper.ts'), file: 'hook-helper.mjs', external: [] },
+  {
+    entry: join(hub, 'src', 'plugins', 'builtin', 'printer', 'raster-worker.ts'),
+    file: 'raster-worker.mjs',
+    external: [],
+  },
 ];
 
 function isBareExternal(path: string, patterns: readonly string[]): boolean {

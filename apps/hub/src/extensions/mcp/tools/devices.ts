@@ -9,17 +9,19 @@ import {
   type JsonValue,
   type PresentedCapability,
   type StateRow,
+  type TelevisionSettingsRow,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import { OFFSET, moreOf, paged, type Paged } from '../../../ai-tools/paging';
 import type { PhoneViewer } from '../../../phones/phone-detail';
 import { visibleRows } from '../../../phones/phone-visibility';
 import type { Store } from '../../../store/store';
-import { deviceScopeOfActor, phoneViewerOfActor } from './person-reach';
+import { deviceScopeOfActor, phoneViewerOfActor, type Limited } from './person-reach';
 import { READS, defineTool, matches, type Tool } from './registry';
 import { formatOf } from './value-format';
 import { inRooms, placedDevice, placedDevices, findCapability, type Placed } from './targets';
 
-const DEVICE_FILTER = z.strictObject({
+export const DEVICE_FILTER = z.strictObject({
   rooms: z.array(z.string().min(1)).min(1).optional().describe('Room ids or names'),
   families: z
     .array(z.enum(DEVICE_FAMILIES))
@@ -43,10 +45,8 @@ const DEVICE_FILTER = z.strictObject({
   search: z.string().min(1).max(100).optional().describe('Words in the name, model or room'),
   includeHidden: z.boolean().default(false).describe('Also list devices hidden in the app'),
   limit: z.number().int().min(1).max(500).default(200),
-  detail: z
-    .boolean()
-    .default(false)
-    .describe('Give each device in full, as get_device does, when at most 5 match'),
+  offset: OFFSET,
+  detail: z.boolean().default(false).describe('Each device in full, as get_device gives it'),
 });
 
 const DETAIL_MAX = 5;
@@ -56,7 +56,7 @@ const NOTHING_MATCHES =
 
 export type DeviceFind = z.infer<typeof DEVICE_FILTER>;
 
-type DeviceFilter = Omit<DeviceFind, 'detail'>;
+type DeviceFilter = Omit<DeviceFind, 'detail' | 'offset'> & { readonly offset?: number };
 
 function deviceSummary({ name, device, room, family }: Placed): Record<string, unknown> {
   return {
@@ -108,10 +108,16 @@ function deviceMatches(search: string, { name, device, room, family }: Placed): 
   );
 }
 
-function listedPlaced(store: Store, scope: DeviceScope | null, filter: DeviceFilter): Placed[] {
-  return placedDevices(store, scope)
-    .filter((placed) => wanted(filter, placed))
-    .slice(0, filter.limit);
+function listedPlaced(
+  store: Store,
+  scope: DeviceScope | null,
+  filter: DeviceFilter,
+): Paged<Placed> {
+  return paged(
+    placedDevices(store, scope).filter((placed) => wanted(filter, placed)),
+    filter.offset ?? 0,
+    filter.limit,
+  );
 }
 
 export function listedDevices(
@@ -119,20 +125,31 @@ export function listedDevices(
   scope: DeviceScope | null,
   filter: DeviceFilter,
 ): Record<string, unknown>[] {
-  return listedPlaced(store, scope, filter).map(deviceSummary);
+  return listedPlaced(store, scope, filter).rows.map(deviceSummary);
+}
+
+type FoundFilter = DeviceFilter & Pick<DeviceFind, 'detail'>;
+
+function foundPage(
+  store: Store,
+  scope: DeviceScope | null,
+  viewer: PhoneViewer,
+  filter: FoundFilter,
+): Paged<Record<string, unknown>> {
+  const { rows, more } = listedPlaced(store, scope, filter);
+  if (!filter.detail || rows.length > DETAIL_MAX) {
+    return { rows: rows.map(deviceSummary), more };
+  }
+  return { rows: rows.map((placed) => deviceDetails(store, scope, viewer, placed)), more };
 }
 
 export function foundDevices(
   store: Store,
   scope: DeviceScope | null,
   viewer: PhoneViewer,
-  filter: DeviceFind,
+  filter: FoundFilter,
 ): Record<string, unknown>[] {
-  const found = listedPlaced(store, scope, filter);
-  if (!filter.detail || found.length > DETAIL_MAX) {
-    return found.map(deviceSummary);
-  }
-  return found.map((placed) => deviceDetails(store, scope, viewer, placed));
+  return foundPage(store, scope, viewer, filter).rows;
 }
 
 function described(
@@ -158,10 +175,20 @@ function described(
   };
 }
 
+function directLinkOf(
+  settings: TelevisionSettingsRow | undefined,
+): { readonly address: string; readonly mac: string } | null {
+  const host = settings?.direct_host ?? null;
+  const mac = settings?.direct_mac ?? null;
+  return host === null || mac === null ? null : { address: host, mac };
+}
+
 function televisionOf(store: Store, { device }: Placed): Record<string, unknown> {
   const settings = store.televisionSettings.find(device.id);
   return {
-    direct_link: settings?.direct_link ?? false,
+    direct_link: directLinkOf(settings),
+    wake_address: settings?.wake_macs[0] ?? null,
+    last_wake_worked_at: settings?.wake_worked_at ?? null,
     input_names: settings?.input_names ?? {},
   };
 }
@@ -178,7 +205,7 @@ function infraredOf(
   if (device.kind === 'ir_remote') {
     return { assumed: assumedState(store, device.id) };
   }
-  const library = placedDevices(store, scope)
+  const deviceRemotes = placedDevices(store, scope)
     .filter((placed) => placed.device.kind === 'ir_remote' && placed.device.parent_id === device.id)
     .map((placed) => ({ id: placed.device.id, name: placed.name }));
   const learned = store.infrared
@@ -186,7 +213,7 @@ function infraredOf(
     .filter((remote) => remote.blaster_id === device.id)
     .map((remote) => ({ id: remote.id, name: remote.name }));
   return {
-    remotes: [...library, ...learned].map((remote) => ({
+    remotes: [...deviceRemotes, ...learned].map((remote) => ({
       ...remote,
       assumed: assumedState(store, remote.id),
     })),
@@ -249,9 +276,9 @@ function foundOrNothing(
   viewer: PhoneViewer,
   filter: DeviceFind,
 ): Record<string, unknown> {
-  const devices = foundDevices(store, scope, viewer, filter);
-  if (devices.length > 0 || !hasCriteria(filter)) {
-    return { devices };
+  const { rows: devices, more } = foundPage(store, scope, viewer, filter);
+  if (devices.length > 0 || filter.offset > 0 || !hasCriteria(filter)) {
+    return { devices, ...moreOf(more) };
   }
   return {
     devices,
@@ -260,19 +287,21 @@ function foundOrNothing(
   };
 }
 
+export function listDevices(context: Limited, input: DeviceFind): Record<string, unknown> {
+  return foundOrNothing(
+    context.store,
+    deviceScopeOfActor(context),
+    phoneViewerOfActor(context),
+    input,
+  );
+}
+
 export const DEVICE_TOOLS: readonly Tool[] = [
   defineTool({
     name: 'list_devices',
     input: DEVICE_FILTER,
     annotations: READS,
-    run: (context, input) => ({
-      structured: foundOrNothing(
-        context.store,
-        deviceScopeOfActor(context),
-        phoneViewerOfActor(context),
-        input,
-      ),
-    }),
+    run: (context, input) => ({ structured: listDevices(context, input) }),
   }),
   defineTool({
     name: 'get_device',

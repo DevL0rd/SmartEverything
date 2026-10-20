@@ -1,7 +1,7 @@
-import { TEST_AUTHOR } from '../support/automation-author';
-import type { AutomationV2 } from '@smarteverything/domain';
+import type { TriggerNode } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readDeviceLog } from '../../src/devices/device-log/read';
+import { saveAutomation, startRun, trigger } from '../support/automation-fixture';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 import { addDevice, addPerson, clockAt, POWER } from './log-fixture';
@@ -28,14 +28,8 @@ function log(deviceId: string, limit = 20, to?: string): ReturnType<typeof readD
   return readDeviceLog(opened.store, { device, to, limit, tier: null });
 }
 
-function automationOn(name: string, when: AutomationV2['when']): string {
-  return opened.store.automations.create({
-    name,
-    enabled: true,
-    definition: { when, steps: [{ do: 'wait', ms: 1000 }] },
-    origin: null,
-    author: TEST_AUTHOR,
-  }).id;
+function automationOn(name: string, triggers: readonly TriggerNode[]): string {
+  return saveAutomation(opened.store, { name, triggers }).id;
 }
 
 describe('the cause of a state change', () => {
@@ -86,9 +80,9 @@ describe('the cause of a state change', () => {
   it('names the automation behind an automation command and calls a clock-only one a schedule', () => {
     const { store } = opened;
     const plug = addDevice(store);
-    const nightly = automationOn('Lights out', [{ on: 'time', at: '23:00' }]);
+    const nightly = automationOn('Lights out', [trigger('trigger.time', { at: '23:00' })]);
     const hallway = automationOn('Hallway motion', [
-      { on: 'signal', source: 'event', kind: 'motion', subject: plug.id },
+      trigger('trigger.signal', { source: 'event', kind: 'motion', subject: plug.id }),
     ]);
     setState(plug.id, 'power', true, '2026-10-17T10:00:00.000Z');
     for (const [automationId, at, value] of [
@@ -99,7 +93,7 @@ describe('the cause of a state change', () => {
       const [command] = store.commands.insert([
         { deviceId: plug.id, capability: 'power', value, source: 'automation', requestedBy: null },
       ]);
-      const run = store.automationRuns.create({ automationId, revision: 1, ownerProfileId: null });
+      const run = startRun(store, automationId);
       if (command === undefined) throw new Error('No command was stored.');
       store.automationRuns.retainCommands(run.id, [command]);
       setState(plug.id, 'power', value, new Date(Date.parse(at) + 1000).toISOString());
@@ -121,13 +115,7 @@ describe('the cause of a state change', () => {
       capabilities: [],
     });
     const brighter = automationOn('Kitchen brighter', [
-      {
-        on: 'signal',
-        source: 'event',
-        kind: 'button',
-        subject: button.id,
-        match: { action: 'single_press' },
-      },
+      trigger('trigger.button', { device: button.id, press: 'single_press' }),
     ]);
     setState(plug.id, 'power', false, '2026-10-17T10:00:00.000Z');
     store.events.insert([
@@ -148,11 +136,7 @@ describe('the cause of a state change', () => {
         requestedBy: null,
       },
     ]);
-    const run = store.automationRuns.create({
-      automationId: brighter,
-      revision: 1,
-      ownerProfileId: null,
-    });
+    const run = startRun(store, brighter);
     if (command === undefined) throw new Error('No command was stored.');
     store.automationRuns.retainCommands(run.id, [command]);
     setState(plug.id, 'power', true, '2026-10-17T10:30:02.000Z');
@@ -194,28 +178,6 @@ describe('the cause of a state change', () => {
     const plug = addDevice(store);
     setState(plug.id, 'power', true, '2026-10-17T10:00:00.000Z');
     expect(log(plug.id)).toEqual([]);
-  });
-});
-
-describe('the log of sensors', () => {
-  it('words a presence phone as home and away and says the device reported it', () => {
-    const { store } = opened;
-    const phone = addDevice(store, {
-      externalId: 'presence-1',
-      kind: 'other',
-      name: 'Dana phone',
-      model: 'SmartThings-smartthings-Mobile_Presence',
-      capabilities: [
-        { key: 'occupancy', label: 'Presence', access: 'read', value: { kind: 'boolean' } },
-      ],
-    });
-    setState(phone.id, 'occupancy', true, '2026-10-17T10:00:00.000Z');
-    setState(phone.id, 'occupancy', false, '2026-10-17T12:00:00.000Z');
-    setState(phone.id, 'occupancy', true, '2026-10-17T17:40:00.000Z');
-    expect(log(phone.id).map((entry) => [entry.at, entry.title, entry.cause.kind])).toEqual([
-      ['2026-10-17T17:40:00.000Z', 'Home', 'device'],
-      ['2026-10-17T12:00:00.000Z', 'Away', 'device'],
-    ]);
   });
 });
 

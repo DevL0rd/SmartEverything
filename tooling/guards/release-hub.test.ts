@@ -115,7 +115,7 @@ describe('swapping the service', () => {
     const built = join(scratch, 'partial');
     mkdirSync(built);
     writeFileSync(join(built, 'service.mjs'), '');
-    expect(builtServiceProblems(built)).toHaveLength(2);
+    expect(builtServiceProblems(built)).toHaveLength(3);
   });
 });
 

@@ -9,7 +9,7 @@ import { visualStateOf } from '../device-visuals';
 import { RESTING_COLOUR } from './white-colour';
 import { membersSelector } from './use-target-members';
 
-export type MemberPower = 'on' | 'off' | 'offline';
+export type MemberPower = 'on' | 'off' | 'offline' | 'unknown';
 
 export interface TargetView {
   readonly state: TargetState;
@@ -39,7 +39,9 @@ const SELECTORS = new Map<string, (state: StoreState) => TargetView>();
 function powerOf(device: Device, values: DeviceValues | undefined): MemberPower {
   if (!device.online) return 'offline';
   const power = deviceModelOf(device).power;
-  return power !== null && values?.[power.key]?.value === true ? 'on' : 'off';
+  const reported = power === null ? undefined : values?.[power.key]?.value;
+  if (typeof reported !== 'boolean') return 'unknown';
+  return reported ? 'on' : 'off';
 }
 
 function viewOf(

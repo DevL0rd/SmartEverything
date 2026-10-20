@@ -35,6 +35,7 @@ interface Rig {
   readonly chat: AiChatRow;
   readonly state: ProviderState;
   readonly requests: unknown[];
+  readonly recorded: ReturnType<typeof vi.fn>;
   readonly stateOf: ReturnType<typeof vi.fn>;
   readonly finished: ReturnType<typeof vi.fn>;
   readonly failedMessage: ReturnType<typeof vi.fn>;
@@ -49,6 +50,7 @@ function rig(
   } = {},
 ): Rig {
   const requests: unknown[] = [];
+  const recorded = vi.fn();
   const stateOf = vi.fn();
   const finished = vi.fn();
   const failedMessage = vi.fn();
@@ -84,14 +86,15 @@ function rig(
       state: options.working === false ? 'completed' : 'working',
     }),
   });
-  const turn = loose<Turn>({ jobId: JOB, steered: [] });
-  return { deps, turn, event, chat, state, requests, stateOf, finished, failedMessage };
+  const turn = loose<Turn>({ jobId: JOB, steered: [], stream: { steer: recorded } });
+  return { deps, turn, event, chat, state, requests, recorded, stateOf, finished, failedMessage };
 }
 
 describe('steering a running Claude turn', () => {
   it('hands the message to the running job as a mid-work message and remembers it', async () => {
-    const { deps, turn, event, chat, state, requests, stateOf } = rig();
+    const { deps, turn, event, chat, state, requests, recorded, stateOf } = rig();
     expect(await steerTurn(deps, { state, turn, current: () => true, chat }, event)).toBe(true);
+    expect(recorded).toHaveBeenCalledWith('message-2');
     expect(requests).toEqual([
       {
         device: DEVICE,
@@ -109,9 +112,10 @@ describe('steering a running Claude turn', () => {
   });
 
   it('leaves the message to the next turn when the computer cannot take it into the running reply', async () => {
-    const { deps, turn, event, chat, state } = rig({ steered: false });
+    const { deps, turn, event, chat, state, recorded } = rig({ steered: false });
     expect(await steerTurn(deps, { state, turn, current: () => true, chat }, event)).toBe(false);
     expect(turn.steered).toEqual([]);
+    expect(recorded).not.toHaveBeenCalled();
   });
 
   it('hands attachments to the running job together with the message', async () => {

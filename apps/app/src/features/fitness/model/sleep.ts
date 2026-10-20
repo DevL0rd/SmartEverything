@@ -2,10 +2,12 @@ import {
   appendTo,
   asleepMinutes,
   SLEEP_STAGE_KINDS,
+  sleepSpansOf,
   type SleepStageKind,
 } from '@smarteverything/domain';
+import type { HypnogramSegment, HypnogramStage } from '../../../components/charts';
 import { endOf, startOf, type RecordOf } from './records';
-import { HOUR_MS, MINUTE_MS, dayKeyOf, minutesOfDay, startOfDayKey } from '../../../format/time';
+import { MINUTE_MS, dayKeyOf, minutesOfDay } from '../../../format/time';
 import { compareText } from '../../../format/text';
 
 export type StageKind = SleepStageKind;
@@ -51,14 +53,7 @@ function emptyTotals(): Record<StageKind, number> {
 }
 
 function spansOf(record: SleepRecord): StageSpan[] {
-  const spans = record.data.stages
-    .map((stage) => ({
-      kind: stageKindOf(stage.stage),
-      start: Date.parse(stage.startTime),
-      end: Date.parse(stage.endTime),
-    }))
-    .filter((span) => span.end > span.start)
-    .sort((left, right) => left.start - right.start);
+  const spans = sleepSpansOf(record);
   return spans.length > 0
     ? spans
     : [{ kind: 'asleep', start: startOf(record), end: endOf(record) }];
@@ -113,7 +108,7 @@ export function sleepDaysOf(records: readonly SleepRecord[]): SleepDay[] {
   return days.sort((left, right) => compareText(left.day, right.day));
 }
 
-function eveningMinutes(moment: number): number {
+export function eveningMinutes(moment: number): number {
   const minutes = minutesOfDay(moment);
   return minutes < 12 * 60 ? minutes + 24 * 60 : minutes;
 }
@@ -136,7 +131,7 @@ export function median(values: readonly number[]): number {
   return (lower + upper) / 2;
 }
 
-function deviation(values: readonly number[]): number {
+export function deviation(values: readonly number[]): number {
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
   return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length);
 }
@@ -149,6 +144,7 @@ export interface SleepPattern {
   readonly bedtimeSpread: number;
   readonly wakeSpread: number;
   readonly regularity: number;
+  readonly regularNights: number;
 }
 
 const REGULAR_WITHIN_MINUTES = 30;
@@ -178,42 +174,50 @@ export function patternOf(days: readonly SleepDay[]): SleepPattern | null {
     bedtimeSpread: deviation(beds),
     wakeSpread: deviation(wakes),
     regularity: regular / days.length,
+    regularNights: regular,
   };
 }
 
-const SCHEDULE_START_HOURS_BEFORE = 6;
-const SCHEDULE_SPAN_HOURS = 20;
+const NAP_FROM_MINUTE = 10 * 60;
+const NAP_TO_MINUTE = 20 * 60;
+const NAP_LONGEST_MINUTES = 3 * 60;
 
-export function scheduleShare(day: string, moment: number): number {
-  const origin = startOfDayKey(day) - SCHEDULE_START_HOURS_BEFORE * HOUR_MS;
-  return Math.min(1, Math.max(0, (moment - origin) / (SCHEDULE_SPAN_HOURS * HOUR_MS)));
+export function isNap(night: SleepNight): boolean {
+  const start = minutesOfDay(night.bedtime);
+  return (
+    start >= NAP_FROM_MINUTE && start < NAP_TO_MINUTE && night.inBedMinutes < NAP_LONGEST_MINUTES
+  );
 }
 
-export function scheduleMarks(): string[] {
-  return [18, 22, 2, 6, 10, 14].map((hour) => `${String(hour).padStart(2, '0')}:00`);
+export interface DayNights {
+  readonly night: SleepNight | null;
+  readonly naps: readonly SleepNight[];
 }
 
-type TimelineStage = 'deep' | 'core' | 'rem' | 'awake';
+export function splitNights(nights: readonly SleepNight[], day: string): DayNights {
+  const night =
+    nights
+      .filter((candidate) => !isNap(candidate))
+      .sort((left, right) => right.asleepMinutes - left.asleepMinutes)[0] ?? null;
+  const naps = nights
+    .filter((candidate) => isNap(candidate) && candidate.day === day)
+    .sort((left, right) => left.bedtime - right.bedtime);
+  return { night, naps };
+}
 
-const TIMELINE_STAGE: Readonly<Record<StageKind, TimelineStage>> = {
+const HYPNOGRAM_STAGE: Readonly<Record<StageKind, HypnogramStage>> = {
   awake: 'awake',
   rem: 'rem',
-  light: 'core',
+  light: 'light',
   deep: 'deep',
-  asleep: 'core',
-  unknown: 'core',
+  asleep: 'asleep',
+  unknown: 'light',
 };
 
-export interface TimelineSegment {
-  readonly start: number;
-  readonly end: number;
-  readonly stage: TimelineStage;
-}
-
-export function timelineOf(night: SleepNight): readonly TimelineSegment[] {
+export function timelineOf(night: SleepNight): readonly HypnogramSegment[] {
   return night.stages.map((span) => ({
     start: span.start,
     end: span.end,
-    stage: TIMELINE_STAGE[span.kind],
+    stage: HYPNOGRAM_STAGE[span.kind],
   }));
 }

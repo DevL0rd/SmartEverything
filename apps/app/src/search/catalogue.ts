@@ -255,10 +255,19 @@ function searchTablesOf(state: StoreState): SearchTables {
     scheduled: t.scheduled_actions,
     plugins: t.plugins,
     pluginStreams: t.plugin_streams,
+    pluginUi: t.plugin_ui,
     extensions: undefined,
     configuration: undefined,
     inventory: undefined,
   };
+}
+
+function samePlugins(left: SearchTables, right: SearchTables): boolean {
+  return (
+    left.plugins === right.plugins &&
+    left.pluginUi === right.pluginUi &&
+    sameSearchStreams(right.devices, left.pluginStreams, right.pluginStreams)
+  );
 }
 
 function sameTables(left: SearchTables, right: SearchTables): boolean {
@@ -270,8 +279,7 @@ function sameTables(left: SearchTables, right: SearchTables): boolean {
     left.automations === right.automations &&
     left.automationValues === right.automationValues &&
     left.scheduled === right.scheduled &&
-    left.plugins === right.plugins &&
-    sameSearchStreams(right.devices, left.pluginStreams, right.pluginStreams) &&
+    samePlugins(left, right) &&
     sameChats(left.chats, right.chats)
   );
 }

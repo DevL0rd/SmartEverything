@@ -8,6 +8,8 @@ import {
 import { CLIPBOARD_NOTICE } from '../features/clipboard';
 import { COMPUTER_NOTICES } from '../features/computers';
 import { PHONE_DETAIL_NOTICES } from '../features/phone';
+import { BRUSH_LIVE_NOTICES } from '../plugins/toothbrush/data/brush-live';
+import { TREADMILL_LIVE_NOTICES } from '../plugins/treadmill/data/treadmill-live';
 import { CODEX_PROVIDER_NOTICES } from '../queries/codex-provider-notices';
 import { HARNESS_NOTICES } from '../queries/harness-notices';
 import { receivePreviewNotice } from '../queries/preview-notices';
@@ -37,4 +39,6 @@ export const FEATURE_NOTICES: readonly NoticeHandler[] = [
   COMPUTER_NOTICES,
   COMPUTER_LIVE_NOTICES,
   PHONE_DETAIL_NOTICES,
+  TREADMILL_LIVE_NOTICES,
+  BRUSH_LIVE_NOTICES,
 ];

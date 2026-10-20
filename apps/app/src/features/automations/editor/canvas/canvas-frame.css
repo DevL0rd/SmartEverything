@@ -1,0 +1,111 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overscroll-behavior: none;
+  background: transparent;
+}
+
+.se-flow {
+  --se-zoom: 1;
+  --se-handle-size: 12px;
+  --se-handle-pad: 40px;
+  --xy-edge-stroke: var(--se-outline);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: var(--se-primary);
+  --xy-connectionline-stroke: var(--se-primary);
+  --xy-connectionline-stroke-width: 2;
+  --xy-selection-background-color: color-mix(in srgb, var(--se-primary) 14%, transparent);
+  --xy-selection-border: 1px solid var(--se-primary);
+  --xy-background-color: var(--se-bg);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  font-family: 'SeCanvasGeist-Regular', sans-serif;
+  color: var(--se-on-surface);
+  background: var(--se-bg);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+
+.se-flow[data-idiom='pointer'] {
+  --se-handle-pad: 24px;
+}
+
+.se-flow .react-flow__attribution {
+  margin: 0 4px 4px 0;
+  padding: 1px 4px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--se-on-surface-faint);
+  background: transparent;
+}
+
+.se-flow .react-flow__attribution a {
+  color: inherit;
+}
+
+.se-flow .react-flow__node:focus-visible {
+  outline: 2px solid var(--se-focus);
+  outline-offset: 3px;
+}
+
+.se-flow .react-flow__handle {
+  width: var(--se-handle-size);
+  height: var(--se-handle-size);
+  min-width: 0;
+  min-height: 0;
+  border: 2px solid var(--se-surface-2);
+  border-radius: 50%;
+  background: var(--se-on-surface-variant);
+}
+
+.se-flow .react-flow__handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--se-handle-pad);
+  height: var(--se-handle-pad);
+  transform: translate(-50%, -50%);
+}
+
+.se-flow .react-flow__handle[data-handleid='in'],
+.se-flow .react-flow__handle[data-handleid='next'],
+.se-flow .react-flow__handle[data-handleid='start'] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.se-flow[data-ports='off'] .react-flow__handle {
+  pointer-events: none;
+}
+
+.se-flow .react-flow__handle.connectingfrom,
+.se-flow .react-flow__handle.clickconnecting {
+  background: var(--se-primary);
+}
+
+.se-flow[data-lod='mid'] .react-flow__handle,
+.se-flow[data-lod='far'] .react-flow__handle {
+  opacity: 0;
+}
+
+.se-flow.paused *,
+.se-flow.paused *::before,
+.se-flow.paused *::after {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .se-flow *,
+  .se-flow *::before,
+  .se-flow *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

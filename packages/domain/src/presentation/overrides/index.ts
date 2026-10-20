@@ -6,7 +6,7 @@ import type {
   PresentableDevice,
 } from '../types';
 import { COMPUTER } from './computer';
-import { SMARTTHINGS_PHONE_PRESENCE } from './smartthings-presence';
+import { PRINTER_MATCH } from './printer';
 import { SMARTTHINGS_MICROWAVE_MATCH } from './smartthings-microwave';
 import { SMARTTHINGS_TV } from './smartthings-tv';
 import { CAMERA_083AE2 } from './xiaomi-camera';
@@ -24,10 +24,12 @@ export const MODEL_OVERRIDES: Readonly<Record<string, ModelOverride>> = {
   'xiaomi.scales.400pgj': SCALE_S400_PRO,
   'miwear.watch.p62g': WATCH_S5,
   'mibx5.washer.f29gl': WASHER_F29GL,
-  'SmartThings-smartthings-Mobile_Presence': SMARTTHINGS_PHONE_PRESENCE,
 };
 
-const CAPABILITY_OVERRIDES: readonly CapabilityMatch[] = [SMARTTHINGS_MICROWAVE_MATCH];
+const CAPABILITY_OVERRIDES: readonly CapabilityMatch[] = [
+  SMARTTHINGS_MICROWAVE_MATCH,
+  PRINTER_MATCH,
+];
 
 export function modelOverrideOf(device: PresentableDevice): ModelOverride | undefined {
   const byModel = MODEL_OVERRIDES[device.model];

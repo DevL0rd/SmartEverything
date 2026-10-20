@@ -2,7 +2,6 @@ import type { StateUpdate } from '@smarteverything/domain';
 import {
   buildDeviceModel,
   convertDataPoints,
-  reportFromDps,
   decodeReport,
   type CloudDevice,
   type DataPoint,
@@ -13,7 +12,7 @@ import {
   type SmartLifeFacts,
 } from '@smarteverything/tuya';
 import type { Logger } from '@smarteverything/logging';
-import type { LoadedDevice } from './cloud-inventory';
+import type { LoadedDevice } from './smart-life-inventory';
 import { messageOf } from '@smarteverything/logging';
 
 export interface DeviceRecord {
@@ -24,7 +23,7 @@ export interface DeviceRecord {
   readonly specificationPublished: boolean;
   readonly room: string | null;
   readonly observed: ReadonlySet<number>;
-  readonly smartLife: SmartLifeFacts | null;
+  readonly smartLife: SmartLifeFacts;
 }
 
 export class TuyaDeviceUnknownError extends Error {
@@ -98,9 +97,6 @@ export function reportOf(
   dps: Readonly<Record<string, unknown>>,
   log: Logger,
 ): { readonly report: readonly ReportedValue[]; readonly unknownDpIds: readonly number[] } {
-  if (record.smartLife === null) {
-    return reportFromDps(record.model, dps);
-  }
   const converted = convertDataPoints(record.smartLife.conversions, dps);
   for (const problem of converted.problems) {
     log.warn('tuya.value_unconverted', {

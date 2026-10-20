@@ -54,7 +54,7 @@ export function stageMembers(
     id: member.id,
     name: member.label,
     light: member.light,
-    power: view.powers[member.id] ?? 'off',
+    power: view.powers[member.id] ?? 'unknown',
     level: levels.get(member.id) ?? null,
     colour: view.colours[member.id] ?? null,
     mark: marks.get(member.id) ?? null,
@@ -64,6 +64,7 @@ export function stageMembers(
 export function bulbLabel(member: StageMember): string {
   const word = (): string => {
     if (member.power === 'offline') return 'offline';
+    if (member.power === 'unknown') return 'state not reported';
     if (member.mark === 'failed') return 'did not respond';
     if (member.mark === 'pending') return 'waiting for the light';
     if (member.power === 'off') return 'off';
@@ -75,6 +76,7 @@ export function bulbLabel(member: StageMember): string {
 export function bulbCaption(member: StageMember): string {
   if (member.power === 'offline') return 'Offline';
   if (member.power === 'off') return 'Off';
+  if (member.power === 'unknown') return 'Unknown';
   return member.level === null ? 'On' : `${String(member.level)} %`;
 }
 

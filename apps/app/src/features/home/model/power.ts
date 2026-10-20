@@ -3,6 +3,7 @@ import { memoOnInputs } from '../../../store/memo-selector';
 import type { Device, DeviceValues } from '../../../store/state';
 import type { DeviceModel } from '../../devices';
 import { DeviceFold } from './device-fold';
+import { homeDeviceModels } from './devices';
 
 export interface PowerUse {
   readonly watts: number;
@@ -33,6 +34,7 @@ function drawOf(model: DeviceModel, values: DeviceValues): Draw | null {
 }
 
 const draws = new DeviceFold<Draw>({
+  models: (state): readonly DeviceModel[] => homeDeviceModels(state),
   includes: (model): boolean => withRole(model.presentation, 'power_draw') !== undefined,
   usesValues: (): boolean => true,
   projected: false,

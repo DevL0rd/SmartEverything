@@ -28,14 +28,14 @@ interface Sent {
 
 const LEARNED_CODE = z.strictObject({ format: z.enum(IR_CODE_FORMATS), code: z.string().min(1) });
 
-function libraryKeysOf(device: DeviceRow): readonly string[] {
+function deviceRemoteKeysOf(device: DeviceRow): readonly string[] {
   const capability = device.capabilities.find((candidate) => candidate.key === 'remote_key');
   return capability?.value.kind === 'enum' ? capability.value.options : [];
 }
 
-function libraryPress(device: DeviceRow, command: CommandRow): Sent | null {
+function deviceRemotePress(device: DeviceRow, command: CommandRow): Sent | null {
   return typeof command.value === 'string'
-    ? { remoteId: device.id, key: command.value, keys: libraryKeysOf(device) }
+    ? { remoteId: device.id, key: command.value, keys: deviceRemoteKeysOf(device) }
     : null;
 }
 
@@ -90,7 +90,7 @@ export class IrAssumedState {
 
   private sentBy(device: DeviceRow, command: CommandRow): Sent | null {
     if (device.kind === 'ir_remote' && command.capability === 'remote_key') {
-      return libraryPress(device, command);
+      return deviceRemotePress(device, command);
     }
     if (device.kind !== 'ir_blaster' || command.capability !== 'ir_send') {
       return null;

@@ -32,6 +32,7 @@ export interface ShownPrompt {
 export interface LinkContext {
   readonly log: Logger;
   readonly dataDirectory: string;
+  readonly stored?: StoredAccount;
   readonly ask: (prompt: ProviderPrompt) => Promise<string>;
   readonly show: (prompt: ProviderPrompt) => Promise<ShownPrompt>;
 }

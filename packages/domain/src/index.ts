@@ -9,6 +9,43 @@ export * from './devices';
 export * from './commands';
 export * from './events';
 export * from './search-triggers';
+export * from './health-source-rank';
+export * from './treadmill';
+export * from './treadmill-reading';
+export * from './treadmill-incline';
+export * from './treadmill-calories';
+export * from './treadmill-sessions';
+export * from './treadmill-machine';
+export * from './treadmill-settings';
+export * from './treadmill-days';
+export * from './treadmill-stats';
+export * from './treadmill-views';
+export * from './toothbrush';
+export * from './brushing-zones';
+export * from './brushing-session';
+export * from './brushing-stats-schema';
+export * from './brushing-stats';
+export * from './toothbrush-settings';
+export * from './toothbrush-care';
+export * from './toothbrush-views';
+export * from './printer';
+export * from './printer-forecast';
+export * from './printer-periods';
+export * from './printer-reasons';
+export * from './printer-state';
+export * from './printer-stats';
+export * from './printer-supplies';
+export * from './printer-views';
+export * from './bottle';
+export * from './bottle-capabilities';
+export * from './bottle-days';
+export * from './bottle-rows';
+export * from './bottle-settings';
+export * from './bottle-stats-types';
+export * from './bottle-stats';
+export * from './bottle-views';
+export * from './bottle-views-care';
+export * from './bottle-actions';
 
 export type { AdapterFailure, AdapterSink, ProviderAdapter, Unsubscribe } from './adapter';
 
@@ -19,10 +56,6 @@ export {
   SAMSUNG_TV_CREDENTIALS,
   SMARTTHINGS_CREDENTIALS,
   TUYA_CREDENTIALS,
-  TUYA_LINK_METHODS,
-  TUYA_PROJECT_CREDENTIALS,
-  TUYA_REGIONS,
-  TUYA_SMART_LIFE_CREDENTIALS,
   XIAOMI_CREDENTIALS,
   XIAOMI_REGIONS,
   isHubCapability,
@@ -32,52 +65,20 @@ export type {
   ProviderCredentials,
   ProviderHubCommand,
   ProviderPrompt,
-  TuyaLinkMethod,
 } from './hub-commands';
 
-export { GEO_POINT, SUN_EVENTS, nextSunEvent, sunEventOn } from './sun';
-export type { CalendarDate, GeoPoint, SunEvent, SunSchedule } from './sun';
+export * from './sun';
 
-export {
-  ACTION,
-  AUTOMATION_DEFINITION,
-  LEGACY_AUTOMATION_DEFINITION,
-  CLOCK_TIME,
-  COMMAND_ACTION,
-  CONDITION,
-  CONDITIONS,
-  MissingLocationError,
-  SCENE_ACTIONS,
-  TIME_ZONE,
-  TRIGGER,
-  WEEKDAYS,
-  automationSignalError,
-  conditionsHold,
-  eventTriggerFires,
-  isTimedTrigger,
-  nextOccurrence,
-  stateTriggerFires,
-  weatherChangeFires,
-} from './automations';
-export type {
-  Action,
-  AutomationDefinition,
-  LegacyAutomationDefinition,
-  LegacyCondition,
-  CommandAction,
-  Condition,
-  ConditionContext,
-  Conditions,
-  OccurredEvent,
-  Place,
-  StateChange,
-  TimedTrigger,
-  Trigger,
-} from './automations';
+export { MissingLocationError, TIME_ZONE, nextOccurrence } from './automations';
+export type { Place, TimedTrigger } from './automations';
+export { COMMAND_ACTION, LEGACY_ACTION, SCENE_ACTIONS } from './scene-actions';
+export type { CommandAction, LegacyAction } from './scene-actions';
 
 export * from './comparison';
 
 export {
+  CLOCK_TIME,
+  WEEKDAYS,
   insideClockWindow,
   localClock,
   minuteOfClock,
@@ -116,6 +117,7 @@ export { hydrationAmounts } from './hydration';
 export {
   CLIENT_RECORD_ID,
   ENTRIES_SOURCE_APP,
+  ENTRY_SOURCE_APPS,
   FOOD_PORTION,
   HEALTH_ENTRY_INPUT,
   HEALTH_ENTRY_ROW,
@@ -138,6 +140,8 @@ export {
 } from './health-entries';
 export type {
   EntryRecordRef,
+  EntrySource,
+  EntrySourceRef,
   FoodPortion,
   HealthEntryInput,
   HealthEntryRow,
@@ -280,7 +284,8 @@ export * from './api/index';
 export * from './vocabulary';
 export * from './vocabulary-people';
 
-export { SOCKETFILTERFW, firewallScript, powershellQuoted } from './firewall-commands';
+export * from './firewall-commands';
+export * from './firewall-apply';
 
 export { encodedPowerShell } from './firewall-plan';
 
@@ -306,12 +311,19 @@ export * from './schedules';
 export * from './plugins';
 export { BLUETOOTH_MAC, MAC_ADDRESS, macBytes } from './mac-address';
 export * from './router';
+export * from './router-people';
 export * from './syncthing';
 export * from './adguard';
 export * from './discord';
 export * from './plugin-powers';
 export * from './node/index';
 export * from './history-settings';
+export * from './trigger-settings';
+export * from './trigger-groups';
+export * from './trigger-catalogue';
+export * from './trigger-timing';
+export * from './trigger-sentence';
+export { plainAmount, testWords, type AmountText } from './trigger-words';
 export * from './history-backfill';
 export * from './signals';
 export * from './signal-sources/index';
@@ -319,6 +331,7 @@ export * from './automation-ai';
 export * from './push-commands';
 export * from './live-notification';
 export * from './watch-data';
+export * from './watch-captures';
 export * from './phone-detail';
 export * from './phone-enums';
 export * from './phone-privacy';
@@ -333,6 +346,7 @@ export * from './ai-provider';
 export * from './computer-runtime-contracts';
 export * from './ai-subscription-usage';
 export * from './ai-harness-contracts';
+export * from './harness-platform';
 export * from './harness-native-frame';
 export * from './image-operations';
 export * from './desktop-browser';
@@ -353,6 +367,7 @@ export * from './ir-remote-state';
 export * from './body-outliers';
 export * from './laundry';
 export * from './laundry-plan';
+export * from './laundry-notices';
 export * from './hub-connections';
 export * from './hub-native';
 export * from './hub-native-resources';
@@ -361,18 +376,7 @@ export * from './ai-references';
 export * from './ai-reference-runtime';
 export * from './automation-values';
 export * from './automation-runs';
-export * from './automation-actions';
 export * from './automation-bindings';
-export * from './automation-tree';
-export * from './automation-sequences';
-export * from './automation-references';
-export * from './automation-v2-schema';
-export * from './automation-v2-convert';
-export * from './automation-v2-eval';
-export * from './automation-v2-values';
-export * from './automation-v2-identify';
-export * from './automation-v2-watch';
-export * from './automation-v2-device';
 export * from './health-codes';
 export * from './sleep';
 export * from './rates';
@@ -381,10 +385,26 @@ export * from './target-state';
 export * from './target-catalogue';
 export * from './target-result';
 export * from './chunk';
+export * from './assistant-voice-copy';
 export * from './voice-overlay';
+export * from './voice-overlay-setup';
 export * from './voice-overlay-view';
 export * from './person-access';
+export * from './access-grant';
 export * from './table-areas';
 export * from './claude-billing-notice';
 export * from './navigation-layout';
 export * from './app-view';
+export * from './automation-v3';
+export * from './automation-nodes';
+export {
+  SIGNAL_MATCHER,
+  signalMatches as signalMatchesMatcher,
+  type SignalMatcher,
+} from './signal-matcher';
+export * from './signal-timing';
+export * from './automation-nodes/triggers';
+export * from './automation-nodes/triggers-device';
+export * from './automation-nodes/triggers-v11';
+export * from './automation-nodes/triggers-v11-signals';
+export * from './automation-secrets';

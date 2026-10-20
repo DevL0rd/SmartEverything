@@ -4,12 +4,16 @@ import {
   type ClientRow,
   type LiveChange,
   type LiveTable,
+  type TalkFloorsNotice,
 } from '@smarteverything/domain';
 import type { Store } from '../store/store';
-import { channelHidden, deviceIdReachable, scopesOfClient } from './person-scope';
+import { channelHidden, deviceIdReachable, presenceInScope, scopesOfClient } from './person-scope';
 import { sceneDeviceIds } from './snapshot-reach';
 
-export type ReachStore = Pick<Store, 'devices' | 'personAccess' | 'profiles' | 'infrared'>;
+export type ReachStore = Pick<
+  Store,
+  'devices' | 'personAccess' | 'profiles' | 'infrared' | 'localDevices'
+>;
 
 interface Hearer {
   readonly client: Pick<ClientRow, 'id' | 'role'>;
@@ -94,4 +98,13 @@ export function hiddenByAccess(hearer: Hearer, change: LiveChange, store: ReachS
   }
   const channel = boundChannel(change);
   return channel !== null && channelHidden(scopes.channels, channel);
+}
+
+export function floorsSeenBy(
+  hearer: Pick<Hearer, 'client'>,
+  notice: TalkFloorsNotice,
+  store: ReachStore,
+): TalkFloorsNotice {
+  const scopes = scopesOfClient(store, hearer.client);
+  return scopes === null ? notice : { ...notice, ...presenceInScope(scopes.channels, notice) };
 }

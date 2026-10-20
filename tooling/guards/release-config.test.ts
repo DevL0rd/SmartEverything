@@ -13,7 +13,7 @@ import {
 } from '../release-version.ts';
 
 const IDENTITY = z
-  .object({ storeIdentity: z.string().min(1) })
+  .object({ applicationId: z.string().min(1) })
   .parse(
     JSON.parse(
       readFileSync(
@@ -21,7 +21,7 @@ const IDENTITY = z
         'utf8',
       ),
     ),
-  ).storeIdentity;
+  ).applicationId;
 
 const SERVER = 'https://hub.example.test';
 
@@ -31,7 +31,6 @@ afterEach(() => {
 
 function build(environment: Readonly<Record<string, string>>): ReturnType<typeof appConfig> {
   vi.stubEnv('EXPO_PUBLIC_SERVER_URL', SERVER);
-  vi.stubEnv('APP_VARIANT', undefined);
   vi.stubEnv('ANDROID_VERSION_CODE', undefined);
   for (const [name, value] of Object.entries(environment)) vi.stubEnv(name, value);
   return appConfig();
@@ -62,8 +61,8 @@ describe('the release number', () => {
   });
 });
 
-describe('the build variants', () => {
-  it('gives the release build the store identity, its own scheme and the shared version', () => {
+describe('the app identity', () => {
+  it('gives every build the one id, name, scheme and the shared version', () => {
     const config = build({});
     expect(config.android?.package).toBe(IDENTITY);
     expect(config.scheme).toBe('smarteverything');
@@ -71,13 +70,12 @@ describe('the build variants', () => {
     expect(config.version).toBe(agreedVersion(readVersions()));
   });
 
-  it('gives the development build a separate package, scheme and name so both install together', () => {
-    const release = build({});
-    const development = build({ APP_VARIANT: 'development' });
-    expect(development.android?.package).toBe(`${IDENTITY}.dev`);
-    expect(development.scheme).toBe('smarteverything-dev');
-    expect(development.name).toBe('SmartEverything Dev');
-    expect(development.android?.package).not.toBe(release.android?.package);
+  it('keeps the id of the installed app and never names it Dev', () => {
+    const development = build({ NODE_ENV: 'development', APP_VARIANT: 'development' });
+    expect(IDENTITY).toBe('com.devl0rd.smarteverything.dev');
+    expect(development.android?.package).toBe(IDENTITY);
+    expect(development.name).toBe('SmartEverything');
+    expect(development.scheme).toBe('smarteverything');
   });
 
   it('numbers builds by the minute so a later build always installs over an earlier one', () => {
@@ -124,8 +122,8 @@ describe('the build variants', () => {
     );
   });
 
-  it('signs the release build with the release key plugin', () => {
-    expect(build({}).plugins).toContain('./plugins/release-signing/app.plugin.js');
+  it('leaves every build type on the one signing key the generated project uses', () => {
+    expect(JSON.stringify(build({}).plugins)).not.toContain('signing');
   });
 });
 

@@ -1,7 +1,7 @@
 import type { ClientRow, SightSource } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 
-export type MachineKind = 'phone' | 'computer' | 'web browser' | 'camera';
+export type MachineKind = 'phone' | 'tablet' | 'computer' | 'web browser' | 'camera';
 
 export interface Machine {
   readonly name: string;
@@ -9,14 +9,16 @@ export interface Machine {
   readonly room: string | null;
 }
 
-const KINDS: Readonly<Record<ClientRow['platform'], MachineKind>> = {
-  desktop: 'computer',
-  android: 'phone',
-  web: 'web browser',
+const KINDS: Readonly<Record<ClientRow['kind'], MachineKind>> = {
+  computer: 'computer',
+  phone: 'phone',
+  tablet: 'tablet',
+  browser: 'web browser',
 };
 
 const OWN_SCREENS: Readonly<Record<MachineKind, SightSource | null>> = {
   phone: 'phone_screen',
+  tablet: 'phone_screen',
   computer: 'desktop_screen',
   'web browser': 'desktop_screen',
   camera: null,
@@ -25,7 +27,7 @@ const OWN_SCREENS: Readonly<Record<MachineKind, SightSource | null>> = {
 export function machineOfClient(store: Store, client: ClientRow): Machine {
   return {
     name: client.name,
-    kind: KINDS[client.platform],
+    kind: KINDS[client.kind],
     room: client.platform === 'desktop' ? store.computerNodes.roomOfWindow(client.id) : null,
   };
 }

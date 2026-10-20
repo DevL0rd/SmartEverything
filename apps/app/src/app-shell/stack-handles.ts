@@ -1,18 +1,41 @@
 import { useSyncExternalStore } from 'react';
 import { ValueStore } from '../design/external-store';
 
+export type RouteParams = Readonly<Record<string, string>>;
+
+export interface HeldRoute {
+  readonly key: string;
+  readonly name: string;
+  readonly params: RouteParams;
+}
+
 export interface StackHandle {
   readonly key: string;
   readonly routeNames: () => readonly string[];
-  readonly preload: (name: string, params: Readonly<Record<string, string>>) => void;
+  readonly declares: (name: string) => boolean;
+  readonly opened: () => readonly HeldRoute[];
+  readonly preloaded: () => readonly HeldRoute[];
+  readonly preload: (name: string, params: RouteParams) => void;
+  readonly drop: (routeKey: string) => void;
 }
 
-interface Registered {
+export interface HostedStack {
   readonly group: string;
   readonly handle: StackHandle;
 }
 
-const registered = new ValueStore<ReadonlyMap<string, Registered>>(new Map());
+const registered = new ValueStore<ReadonlyMap<string, HostedStack>>(new Map());
+const changes = new ValueStore(0);
+let changePending = false;
+
+export function noteStackChanged(): void {
+  if (changePending) return;
+  changePending = true;
+  queueMicrotask(() => {
+    changePending = false;
+    changes.update((count) => count + 1);
+  });
+}
 
 export function registerStack(routeKey: string, group: string, handle: StackHandle): () => void {
   registered.update((current) => new Map(current).set(routeKey, { group, handle }));
@@ -40,4 +63,21 @@ export function useStackOfGroup(group: string): StackHandle | null {
     () => stackOfGroup(group),
     () => stackOfGroup(group),
   );
+}
+
+export function hostedStacks(entries: ReadonlyMap<string, HostedStack>): readonly HostedStack[] {
+  const seen = new Set<string>();
+  return [...entries.values()].filter((entry) => {
+    if (seen.has(entry.handle.key)) return false;
+    seen.add(entry.handle.key);
+    return true;
+  });
+}
+
+export function useStackChanges(): number {
+  return useSyncExternalStore(changes.subscribe, changes.get, changes.get);
+}
+
+export function useRegisteredStacks(): ReadonlyMap<string, HostedStack> {
+  return useSyncExternalStore(registered.subscribe, registered.get, registered.get);
 }

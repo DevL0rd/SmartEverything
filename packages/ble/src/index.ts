@@ -21,3 +21,7 @@ export {
   XIAOMI_MAGNET_PRODUCT,
 } from './xiaomi-magnet';
 export type { MagnetObservation } from './xiaomi-magnet';
+export * from './kingsmith';
+export * from './larq';
+export * from './sonicare';
+export * from './oralb';

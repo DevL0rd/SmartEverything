@@ -132,7 +132,16 @@ describe('the endpoint that lists them', () => {
       await list(deviceOf('smartthings', 'television')),
     );
     expect(reply).toHaveLength(1);
-    expect(reply[0]).toMatchObject({ host: '10.0.0.5', likely: true });
+    expect(reply[0]).toMatchObject({ host: '10.0.0.5', likely: true, linkedTo: null });
+  });
+
+  it('says which device a found screen is already linked to', async () => {
+    const tv = deviceOf('smartthings', 'television');
+    test.store.televisionSettings.setDirectLinks([
+      { deviceId: tv, host: '10.0.0.5', macAddress: 'aa:bb:cc:dd:ee:01' },
+    ]);
+    const reply = API_ENDPOINTS.listTelevisionCandidates.response.parse(await list(tv));
+    expect(reply[0]).toMatchObject({ host: '10.0.0.5', linkedTo: tv });
   });
 
   it('refuses a device that is not a SmartThings television', async () => {

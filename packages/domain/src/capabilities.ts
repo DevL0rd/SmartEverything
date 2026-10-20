@@ -2,6 +2,10 @@ import { z } from 'zod';
 import type { ValueDescriptor } from './values';
 import { COMPUTER_CAPABILITY_CATALOGUE } from './computer-capabilities';
 import { PHONE_CAPABILITY_CATALOGUE } from './phone-capabilities';
+import { TREADMILL_CAPABILITY_CATALOGUE } from './treadmill-capabilities';
+import { BOTTLE_CAPABILITY_CATALOGUE } from './bottle-capabilities';
+import { TOOTHBRUSH_CAPABILITY_CATALOGUE } from './toothbrush-capabilities';
+import { WATCH_CAPABILITY_CATALOGUE } from './watch-capabilities';
 export const CAPABILITY_GROUPS = [
   'power',
   'lighting',
@@ -17,6 +21,8 @@ export const CAPABILITY_GROUPS = [
   'cover',
   'energy',
   'infrared',
+  'fitness',
+  'care',
   'system',
 ] as const;
 
@@ -308,6 +314,10 @@ export const CAPABILITY_CATALOGUE = {
     keywords: ['wake screen', 'unlock screen', 'pin', 'wake'],
   },
   ...PHONE_CAPABILITY_CATALOGUE,
+  ...TREADMILL_CAPABILITY_CATALOGUE,
+  ...BOTTLE_CAPABILITY_CATALOGUE,
+  ...TOOTHBRUSH_CAPABILITY_CATALOGUE,
+  ...WATCH_CAPABILITY_CATALOGUE,
 } as const satisfies Record<string, CatalogueEntry>;
 
 export type StandardCapability = keyof typeof CAPABILITY_CATALOGUE;

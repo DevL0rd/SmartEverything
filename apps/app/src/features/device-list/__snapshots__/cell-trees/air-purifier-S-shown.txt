@@ -1,38 +1,34 @@
-View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
-  View className="flex-1 p-card-pad" pointerEvents="box-none"
-    View className="flex-1 gap-2" pointerEvents="box-none"
-      View className="flex-row items-start justify-between" pointerEvents="box-none"
-        View className="items-center justify-center overflow-hidden bg-surface-3 rounded-md" pointerEvents="none"
-          View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(186, 168, 150, 0.3) 0%, rgba(186, 168, 150, 0.09999999999999999) 60%, rgba(186, 168, 150, 0) 100%)"}]
-          View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
-            Svg.default height=48 viewBox="0 0 100 100" width=48
-              Svg.Defs 
-              Svg.Ellipse cx=50 cy=88 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=34 ry=6
-              Svg.Path d="M26 24 V84 A24 7 0 0 0 74 84 V24 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) stroke="#3d444b" strokeWidth=0.6
-              Svg.Path d="M26 24 V84 A24 7 0 0 0 74 84 V24 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#ceb8a2" stopOpacity=0.12; ); Svg.Stop(offset="0.22" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.34" stopColor="#FFFFFF" stopOpacity=0.85; ); Svg.Stop(offset="0.56" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
-              Svg.Path d="M45.5 34 H54.5 A1.5 1.5 0 0 1 56 35.5 V35.5 A1.5 1.5 0 0 1 54.5 37 H45.5 A1.5 1.5 0 0 1 44 35.5 V35.5 A1.5 1.5 0 0 1 45.5 34 Z" fill="#baa896"
-              Svg.Ellipse cx=50 cy=24 fill="#1f2c39" rx=24 ry=7 stroke="#3d444b" strokeWidth=0.6
-              Svg.Ellipse cx=50 cy=24 fill="#474c51" fillOpacity=0.6 rx=20 ry=5.8
-            Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:0,top:0,width:48,height:48},null]
-              Svg.default height=48 viewBox="0 0 100 100" width=48
-                Svg.Ellipse cx=50 cy=24 fill="none" rx=28 ry=9.5 stroke="#baa896" strokeOpacity=0.85 strokeWidth=1.4
-            Anim.View pointerEvents="none" style={position:"absolute",left:14.4,top:1.92,width:19.2,height:19.2,transform:[{scaleY:0.2916666666666667}]}
-              Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:0,top:0,width:19.2,height:19.2},{animationName:{cssRules_:{from:{transform:[{rotate:"0deg"}]},to:{transform:[{rotate:"360deg"}]}},cssText_:"{\"from\":{\"transform\":[{\"rotate\":\"0deg\"}]},\"to\":{\"transform\":[{\"rotate\":\"360deg\"}]}}",length_:2,name_:"REA-CSS-0",processedKeyframes_:"from { transform: rotate(0deg) } to { transform: rotate(360deg) }"},animationDuration:1344,animationTimingFunction:"linear",animationDelay:0,animationIterationCount:"infinite",animationDirection:"normal",animationFillMode:"none",animationPlayState:"running"}]
-                Svg.default height=19.2 viewBox="0 0 100 100" width=19.2
-                  Svg.Path d="M47.33 38.30 Q47.28 24.85 57.28 4.58 Q64.52 20.23 52.67 38.30 Z M57.48 40.62 Q67.97 32.19 90.05 27.37 Q82.33 42.79 60.81 44.79 Z M62.00 50.00 Q75.13 52.95 92.66 67.20 Q75.79 70.78 60.81 55.21 Z M57.48 59.38 Q63.36 71.48 63.15 94.08 Q49.83 83.12 52.67 61.70 Z M47.33 61.70 Q41.54 73.84 23.74 87.77 Q24.00 70.52 42.52 59.38 Z M39.19 55.21 Q26.08 58.25 4.10 53.01 Q17.75 42.47 38.00 50.00 Z M39.19 44.79 Q28.64 36.44 19.02 15.99 Q35.78 20.09 42.52 40.62 Z" fill="#333c45" fillOpacity=0.85
-                  Svg.Circle cx=50 cy=50 fill="#1f2c39" r=11 stroke="#3d444b" strokeWidth=1.5
-        View className="flex-row items-center"
-          Pressable accessibilityHint=undefined accessibilityLabel="Turn off Device 0" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#515457",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 size-touch-min items-center justify-center rounded-full bg-primary" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn
-      View className="min-w-0 gap-0.5" pointerEvents="none"
-        Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
-        Text className="font-sans text-callout text-primary text-left" numberOfLines=1 selectable=false
-      View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
-        View className="gap-3" pointerEvents="box-none"
-          View className="flex-row gap-3"
-            View className="min-w-0 flex-1"
-              View className="gap-1.5"
-                View className="flex-row items-center justify-between gap-3"
-                  Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
-                View className="gap-1"
-                  View collapsable=false ref={current:null}
-                    Pressable accessibilityHint=undefined accessibilityLabel="Purifier mode: Auto" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#2e3842",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 h-control-h flex-row items-center gap-2 rounded-md border border-outline bg-surface-2 pl-3 pr-2" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1 p-card-pad" pointerEvents="box-none"
+  View className="flex-1 gap-2" pointerEvents="box-none"
+    View className="flex-row items-start justify-between" pointerEvents="box-none"
+      View className="items-center justify-center overflow-hidden bg-surface-3 rounded-md" pointerEvents="none"
+        View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(123, 15, 119, 0.3) 0%, rgba(123, 15, 119, 0.09999999999999999) 60%, rgba(123, 15, 119, 0) 100%)"}]
+        View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
+          View pointerEvents="none" style=[{position:"absolute",left:0,top:0,width:48,height:48},{experimental_backgroundImage:"radial-gradient(ellipse 34% 6% at 50% 88%, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.09000000000000001) 60%, rgba(0, 0, 0, 0) 100%)"}]
+          Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
+            Svg.Path d="M26 24 V84 A24 7 0 0 0 74 84 V24 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#07b623"; ); Svg.Stop(offset="0.45" stopColor="#07b490"; ); Svg.Stop(offset="1" stopColor="#07b623"; ))) stroke="#1ad8bd" strokeWidth=0.6
+            Svg.Path d="M26 24 V84 A24 7 0 0 0 74 84 V24 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#fa7c8b" stopOpacity=0.12; ); Svg.Stop(offset="0.22" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.34" stopColor="#FFFFFF" stopOpacity=0.85; ); Svg.Stop(offset="0.56" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
+            Svg.Path d="M45.5 34 H54.5 A1.5 1.5 0 0 1 56 35.5 V35.5 A1.5 1.5 0 0 1 54.5 37 H45.5 A1.5 1.5 0 0 1 44 35.5 V35.5 A1.5 1.5 0 0 1 45.5 34 Z" fill="#7b0f77"
+            Svg.Ellipse cx=50 cy=24 fill="#07b490" rx=24 ry=7 stroke="#1ad8bd" strokeWidth=0.6
+            Svg.Ellipse cx=50 cy=24 fill="#0e9919" fillOpacity=0.6 rx=20 ry=5.8
+          Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:10.224,top:6.6240000000000006,width:27.552,height:9.792},{borderRadius:"50%",borderWidth:0.6719999999999999,borderColor:"rgba(123, 15, 119, 0.85)"},null]
+          Anim.View pointerEvents="none" style={position:"absolute",left:14.4,top:1.92,width:19.2,height:19.2,transform:[{scaleY:0.2916666666666667}]}
+            Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:0,top:0,width:19.2,height:19.2},undefined,{animationName:{cssRules_:{from:{transform:[{rotate:"0deg"}]},to:{transform:[{rotate:"360deg"}]}},cssText_:"{\"from\":{\"transform\":[{\"rotate\":\"0deg\"}]},\"to\":{\"transform\":[{\"rotate\":\"360deg\"}]}}",length_:2,name_:"REA-CSS-0",processedKeyframes_:"from { transform: rotate(0deg) } to { transform: rotate(360deg) }"},animationDuration:1344,animationTimingFunction:"linear",animationDelay:0,animationIterationCount:"infinite",animationDirection:"normal",animationFillMode:"none",animationPlayState:"running"}]
+              Svg.default height=19.2 viewBox="0 0 100 100" width=19.2
+                Svg.Path d="M47.33 38.30 Q47.28 24.85 57.28 4.58 Q64.52 20.23 52.67 38.30 Z M57.48 40.62 Q67.97 32.19 90.05 27.37 Q82.33 42.79 60.81 44.79 Z M62.00 50.00 Q75.13 52.95 92.66 67.20 Q75.79 70.78 60.81 55.21 Z M57.48 59.38 Q63.36 71.48 63.15 94.08 Q49.83 83.12 52.67 61.70 Z M47.33 61.70 Q41.54 73.84 23.74 87.77 Q24.00 70.52 42.52 59.38 Z M39.19 55.21 Q26.08 58.25 4.10 53.01 Q17.75 42.47 38.00 50.00 Z M39.19 44.79 Q28.64 36.44 19.02 15.99 Q35.78 20.09 42.52 40.62 Z" fill="#edd1be" fillOpacity=0.85
+                Svg.Circle cx=50 cy=50 fill="#07b490" r=11 stroke="#1ad8bd" strokeWidth=1.5
+      View className="flex-row items-center"
+        Pressable accessibilityHint=undefined accessibilityLabel="Turn off Device 0" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#33d8e7",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 size-touch-min items-center justify-center rounded-full bg-primary" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn
+    View className="min-w-0 gap-0.5" pointerEvents="none"
+      Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
+      Text className="font-sans text-callout text-primary text-left" numberOfLines=1 selectable=false
+    View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
+      View className="gap-3" pointerEvents="box-none"
+        View className="flex-row gap-3"
+          View className="min-w-0 flex-1"
+            View className="gap-1.5"
+              View className="flex-row items-center justify-between gap-3"
+                Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+              View className="gap-1"
+                View collapsable=false ref={current:null}
+                  Pressable accessibilityHint=undefined accessibilityLabel="Purifier mode: Auto" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#ce9792",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 h-control-h flex-row items-center gap-2 rounded-md border border-outline bg-surface-2 pl-3 pr-2" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn

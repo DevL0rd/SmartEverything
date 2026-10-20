@@ -10,6 +10,9 @@ import expo.modules.healthconnect.diagnostics.NativeLog
 import expo.modules.healthconnect.phone.PhoneActionPush
 import expo.modules.healthconnect.phone.PhoneApprovalCancelPush
 import expo.modules.healthconnect.phone.PhoneApprovalPush
+import expo.modules.healthconnect.larq.BottleActionPush
+import expo.modules.healthconnect.toothbrush.BrushActionPush
+import expo.modules.healthconnect.treadmill.TreadmillActionPush
 import expo.modules.healthconnect.watch.WatchActionPush
 import expo.modules.healthconnect.speech.AiSpeechPush
 
@@ -19,6 +22,9 @@ object PushCommands {
     DomainConstants.PUSH_COMMAND_MACHINE_APPROVAL to PhoneApprovalPush,
     DomainConstants.PUSH_COMMAND_MACHINE_APPROVAL_CANCEL to PhoneApprovalCancelPush,
     DomainConstants.PUSH_COMMAND_WATCH_ACTION to WatchActionPush,
+    DomainConstants.PUSH_COMMAND_TREADMILL_ACTION to TreadmillActionPush,
+    DomainConstants.PUSH_COMMAND_BOTTLE_ACTION to BottleActionPush,
+    DomainConstants.PUSH_COMMAND_TOOTHBRUSH_ACTION to BrushActionPush,
     DomainConstants.PUSH_COMMAND_AI_SPEECH to AiSpeechPush,
     DomainConstants.PUSH_COMMAND_AI_RING to IncomingCallPush,
     DomainConstants.PUSH_COMMAND_AI_RING_CANCEL to IncomingCallCancelPush,

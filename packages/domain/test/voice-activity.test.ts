@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AUTOMATIC_HANGOVER_MS,
+  AUTOMATIC_PAUSE_MS,
   BARGE_IN,
   BARGE_IN_LEVEL,
   DEFAULT_PAUSE_MS,
@@ -7,6 +9,8 @@ import {
   Preroll,
   TalkGate,
   levelOf,
+  redemptionOf,
+  speechDetectionOf,
 } from '../src';
 
 const LEVEL = 0.04;
@@ -100,9 +104,17 @@ describe('the default turn taking', () => {
     return { talk, log };
   }
 
-  it('keeps the shortest pause as the default so the AI decides the turn without added latency', () => {
+  it('defaults to Automatic, which waits longer than a natural pause before the gate lets go', () => {
     expect(PAUSE_CHOICES_MS).toContain(DEFAULT_PAUSE_MS);
-    expect(DEFAULT_PAUSE_MS).toBe(PAUSE_CHOICES_MS[0]);
+    expect(DEFAULT_PAUSE_MS).toBe(AUTOMATIC_PAUSE_MS);
+    expect(redemptionOf(DEFAULT_PAUSE_MS)).toBeGreaterThan(350);
+    expect(speechDetectionOf('more', AUTOMATIC_PAUSE_MS).redemptionMs).toBe(AUTOMATIC_HANGOVER_MS);
+  });
+
+  it('keeps every explicit pause as the gate pause', () => {
+    for (const choice of PAUSE_CHOICES_MS.filter((ms) => ms !== AUTOMATIC_PAUSE_MS)) {
+      expect(redemptionOf(choice)).toBe(choice);
+    }
   });
 
   it('lets a soft voice barge in over the assistant after the default sustain time', () => {

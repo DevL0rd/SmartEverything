@@ -115,6 +115,7 @@ export async function setup(
   const inventory = new Inventory(db.database, {
     onlineChanged: (): void => undefined,
     devicesChanged: (): void => undefined,
+    lifecycle: (): void => undefined,
   });
   await inventory.apply('xiaomi', [BUTTON_LAMP]);
   const adapter = new GatedAdapter();

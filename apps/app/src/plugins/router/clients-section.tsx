@@ -27,6 +27,7 @@ import {
 import { ClientSheet } from './client-sheet';
 import { ClientControls } from './clients/client-controls';
 import { ClientRow } from './clients/client-row';
+import { PeopleManager } from './clients/people-manager';
 import { routerNotice, useRouterSnapshot } from './router-data';
 
 function OfflineToggle({
@@ -53,11 +54,15 @@ function OfflineToggle({
   );
 }
 
-function useOwners(): ReadonlyMap<string, string> {
+function useOwners(snapshot: RouterSnapshot): ReadonlyMap<string, string> {
   const profiles = useProfiles();
   return useMemo(
-    () => new Map(profiles.map((profile) => [profile.id, profile.name] as const)),
-    [profiles],
+    () =>
+      new Map([
+        ...profiles.map((profile) => [profile.id, profile.name] as const),
+        ...snapshot.people.map((person) => [person.id, person.name] as const),
+      ]),
+    [profiles, snapshot.people],
   );
 }
 
@@ -139,7 +144,7 @@ function NoMatch({ state }: { readonly state: ClientListState }): ReactNode {
 function ClientList({ snapshot }: { readonly snapshot: RouterSnapshot }): ReactNode {
   const [mac, openMac, closeMac] = useSectionParam('mac');
   const state = useClientListState(snapshot, mac);
-  const owners = useOwners();
+  const owners = useOwners(snapshot);
   const now = useMinute();
   const entries = useMemo(() => clientEntries(snapshot, owners, now), [snapshot, owners, now]);
   const { view } = state;
@@ -151,17 +156,20 @@ function ClientList({ snapshot }: { readonly snapshot: RouterSnapshot }): ReactN
         sameItem={sameItem}
         renderItem={(item) => renderItem(item, openMac, state.setOfflineOpen)}
         header={
-          <ClientControls
-            query={view.query}
-            onQuery={state.setQuery}
-            sort={view.sort}
-            onSort={state.setSort}
-            filter={view.filter}
-            onFilter={state.setFilter}
-            counts={filterCounts(entries, view.band)}
-            band={view.band}
-            onClearBand={state.clearBand}
-          />
+          <>
+            {view.filter === 'people' ? <PeopleManager snapshot={snapshot} /> : null}
+            <ClientControls
+              query={view.query}
+              onQuery={state.setQuery}
+              sort={view.sort}
+              onSort={state.setSort}
+              filter={view.filter}
+              onFilter={state.setFilter}
+              counts={filterCounts(entries, view.band)}
+              band={view.band}
+              onClearBand={state.clearBand}
+            />
+          </>
         }
         empty={<NoMatch state={state} />}
       />

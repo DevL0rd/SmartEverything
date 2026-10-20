@@ -65,13 +65,18 @@ function declination(gamma: number): number {
   );
 }
 
-export function sunEventOn(event: SunEvent, date: CalendarDate, point: GeoPoint): Date | null {
+export function sunEventAt(
+  event: SunEvent,
+  date: CalendarDate,
+  point: GeoPoint,
+  zenithDegrees: number,
+): Date | null {
   const gamma = fractionalYear(date);
   const sunDeclination = declination(gamma);
   const latitude = radians(point.latitude);
   const hourAngle = degrees(
     Math.acos(
-      Math.cos(radians(ZENITH_DEGREES)) / (Math.cos(latitude) * Math.cos(sunDeclination)) -
+      Math.cos(radians(zenithDegrees)) / (Math.cos(latitude) * Math.cos(sunDeclination)) -
         Math.tan(latitude) * Math.tan(sunDeclination),
     ),
   );
@@ -80,6 +85,15 @@ export function sunEventOn(event: SunEvent, date: CalendarDate, point: GeoPoint)
   }
   const signedAngle = event === 'sunrise' ? hourAngle : -hourAngle;
   const minutes = 720 - 4 * (point.longitude + signedAngle) - equationOfTime(gamma);
+  return new Date(midnightOf(date) + minutes * MINUTE_MS);
+}
+
+export function sunEventOn(event: SunEvent, date: CalendarDate, point: GeoPoint): Date | null {
+  return sunEventAt(event, date, point, ZENITH_DEGREES);
+}
+
+export function solarNoonOn(date: CalendarDate, point: GeoPoint): Date {
+  const minutes = 720 - 4 * point.longitude - equationOfTime(fractionalYear(date));
   return new Date(midnightOf(date) + minutes * MINUTE_MS);
 }
 
@@ -94,15 +108,63 @@ function utcDateAfter(instant: Date, days: number): CalendarDate {
   };
 }
 
+export const SUN_MOMENTS = [
+  'sunrise',
+  'sunset',
+  'dawn',
+  'dusk',
+  'solar_noon',
+  'golden_hour_morning',
+  'golden_hour_evening',
+  'elevation_rising',
+  'elevation_falling',
+] as const;
+
+export type SunMoment = (typeof SUN_MOMENTS)[number];
+
+const CIVIL_TWILIGHT_ZENITH = 96;
+const GOLDEN_HOUR_ELEVATION = 6;
+
+type Locate = (date: CalendarDate, point: GeoPoint, elevation: number) => Date | null;
+
+const SUN_LOCATORS: Readonly<Record<SunMoment, Locate>> = {
+  sunrise: (date, point) => sunEventOn('sunrise', date, point),
+  sunset: (date, point) => sunEventOn('sunset', date, point),
+  dawn: (date, point) => sunEventAt('sunrise', date, point, CIVIL_TWILIGHT_ZENITH),
+  dusk: (date, point) => sunEventAt('sunset', date, point, CIVIL_TWILIGHT_ZENITH),
+  solar_noon: (date, point) => solarNoonOn(date, point),
+  golden_hour_morning: (date, point) =>
+    sunEventAt('sunrise', date, point, 90 - GOLDEN_HOUR_ELEVATION),
+  golden_hour_evening: (date, point) =>
+    sunEventAt('sunset', date, point, 90 - GOLDEN_HOUR_ELEVATION),
+  elevation_rising: (date, point, elevation) => sunEventAt('sunrise', date, point, 90 - elevation),
+  elevation_falling: (date, point, elevation) => sunEventAt('sunset', date, point, 90 - elevation),
+};
+
+export function sunMomentOn(
+  moment: SunMoment,
+  date: CalendarDate,
+  point: GeoPoint,
+  elevation = 0,
+): Date | null {
+  return SUN_LOCATORS[moment](date, point, elevation);
+}
+
 export interface SunSchedule {
-  readonly event: SunEvent;
+  readonly event: SunMoment;
   readonly offsetMinutes: number;
   readonly point: GeoPoint;
+  readonly elevation?: number;
 }
 
 export function nextSunEvent(schedule: SunSchedule, after: Date): Date | null {
   for (let day = FIRST_SEARCH_DAY; day < SEARCH_DAYS + FIRST_SEARCH_DAY; day += 1) {
-    const event = sunEventOn(schedule.event, utcDateAfter(after, day), schedule.point);
+    const event = sunMomentOn(
+      schedule.event,
+      utcDateAfter(after, day),
+      schedule.point,
+      schedule.elevation,
+    );
     if (event === null) {
       continue;
     }

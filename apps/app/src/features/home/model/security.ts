@@ -3,6 +3,7 @@ import { memoOnInputs } from '../../../store/memo-selector';
 import type { DeviceValues } from '../../../store/state';
 import type { DeviceModel } from '../../devices';
 import { DeviceFold } from './device-fold';
+import { homeDeviceModels } from './devices';
 
 type SecurityRole = 'lock' | 'contact' | 'leak' | 'smoke' | 'gas';
 
@@ -55,6 +56,7 @@ function lineOf(model: DeviceModel, values: DeviceValues): SecurityLine | null {
 }
 
 const lines = new DeviceFold<SecurityLine>({
+  models: (state): readonly DeviceModel[] => homeDeviceModels(state),
   includes: (model): boolean => roleOf(model) !== undefined,
   usesValues: (): boolean => true,
   projected: false,

@@ -145,31 +145,30 @@ function ReadyCard({
   const line = lineOf(sensor, zone, lease.support, lease.failed !== null);
   const panel = cls === 'l' || cls === 'xl';
   return (
-    <View ref={frame} onLayout={onLayout} collapsable={false} className="flex-1">
-      <WideCard
-        cls={cls}
-        summary={summaryOf(device.label, chip, line)}
-        title={device.label}
-        chip={<Badge label={chip.label} tone={chip.tone} />}
-        state={
-          <Text variant="footnote" tone={line.tone} numberOfLines={1}>
-            {line.text}
-          </Text>
-        }
-        visual={<MapVisual presence={presence} px={WIDE_VISUAL_PX[cls]} />}
-        figures={figuresOf(sensor, cls)}
-        graph={
-          <OccupancyGraph
-            device={device}
-            live={live}
-            wide={panel}
-            offline={lease.support === 'offline'}
-          />
-        }
-        actions={actionsOf(device, lease)}
-        log={panel ? <ZoneLegend sensor={sensor} /> : undefined}
-      />
-    </View>
+    <WideCard
+      frame={{ ref: frame, onLayout }}
+      cls={cls}
+      summary={summaryOf(device.label, chip, line)}
+      title={device.label}
+      chip={<Badge label={chip.label} tone={chip.tone} />}
+      state={
+        <Text variant="footnote" tone={line.tone} numberOfLines={1}>
+          {line.text}
+        </Text>
+      }
+      visual={<MapVisual presence={presence} px={WIDE_VISUAL_PX[cls]} />}
+      figures={figuresOf(sensor, cls)}
+      graph={
+        <OccupancyGraph
+          device={device}
+          live={live}
+          wide={panel}
+          offline={lease.support === 'offline'}
+        />
+      }
+      actions={actionsOf(device, lease)}
+      log={panel ? <ZoneLegend sensor={sensor} /> : undefined}
+    />
   );
 }
 

@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { EmbeddedBrowserScope, EmbeddedBrowserResult } from '@smarteverything/domain';
+import type {
+  EmbeddedBrowserRequest,
+  EmbeddedBrowserResult,
+  EmbeddedBrowserScope,
+} from '@smarteverything/domain';
 import type { Caller } from '../../src/server/auth';
 import { EmbeddedBrowserAuthority } from '../../src/preview/embedded-browser-authority';
 import { EmbeddedBrowserControllers } from '../../src/preview/embedded-browser-controllers';
@@ -58,14 +62,17 @@ describe('the AI drives the browser of the most recently focused device', () => 
   it('reads the newest viewer even when another device sent the message', async () => {
     viewer(rig.clientId);
     const desktop = viewer('desktop-client');
-    const snapshot = await controllers.read(caller(), chat, {});
+    const snapshot = await controllers.read(caller(), chat, { view: 'tabs' });
     expect(snapshot.viewerId).toBe(desktop.viewerId);
   });
 
   it('reads a chosen viewer when asked for one', async () => {
     const phone = viewer(rig.clientId);
     viewer('desktop-client');
-    const snapshot = await controllers.read(caller(), chat, { viewerId: phone.viewerId });
+    const snapshot = await controllers.read(caller(), chat, {
+      view: 'tabs',
+      viewerId: phone.viewerId,
+    });
     expect(snapshot.viewerId).toBe(phone.viewerId);
   });
 
@@ -99,7 +106,7 @@ describe('the AI drives the browser of the most recently focused device', () => 
     register(stale);
     const current = { ...first, generation: randomUUID() };
     register(current);
-    const snapshot = await controllers.read(caller(), chat, {});
+    const snapshot = await controllers.read(caller(), chat, { view: 'tabs' });
     expect(snapshot.viewerId).toBe(first.viewerId);
     expect(snapshot.generation).toBe(current.generation);
     expect(closed).toEqual([stale.generation]);
@@ -117,8 +124,42 @@ describe('the AI drives the browser of the most recently focused device', () => 
   });
 
   it('names the problem in words when no browser is open', async () => {
-    await expect(controllers.read(caller(), chat, {})).rejects.toThrow(
+    await expect(controllers.read(caller(), chat, { view: 'tabs' })).rejects.toThrow(
       'No matching browser is open on a connected device.',
     );
+  });
+
+  it('passes a page read and a page action on to the viewer unchanged', async () => {
+    const seen: EmbeddedBrowserRequest['operation'][] = [];
+    const scope: EmbeddedBrowserScope = {
+      viewerId: randomUUID(),
+      generation: randomUUID(),
+      clientId: rig.clientId,
+      profileId: rig.owner.profileId,
+      chatId: chat,
+    };
+    controllers.register({
+      scope,
+      close: (): void => undefined,
+      perform: (request): Promise<EmbeddedBrowserResult> => {
+        seen.push(request.operation);
+        return Promise.resolve({
+          snapshot: { ...request.scope, selectedTabId: null, tabs: [] },
+          tabId: null,
+        });
+      },
+    });
+    const tabId = randomUUID();
+    await controllers.read(caller(), chat, { view: 'page', tabId });
+    await controllers.read(caller(), chat, { view: 'page' });
+    await controllers.edit(caller(), chat, {
+      requestId: randomUUID(),
+      action: { kind: 'type', tabId, ref: 'e3', text: 'shoes', submit: true },
+    });
+    expect(seen).toEqual([
+      { kind: 'read', view: 'page', tabId },
+      { kind: 'read', view: 'page' },
+      { kind: 'edit', action: { kind: 'type', tabId, ref: 'e3', text: 'shoes', submit: true } },
+    ]);
   });
 });

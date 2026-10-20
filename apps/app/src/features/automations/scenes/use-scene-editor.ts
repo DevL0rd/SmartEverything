@@ -4,18 +4,20 @@ import { useRouter } from 'expo-router';
 import { saveScene } from '../../../api/scenes';
 import { confirm } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
-import { attempt, removeScene, runSceneNow } from '../data/actions';
-import { useClose, useDiscardPrompt, type EditorStatus } from '../editor/use-editor';
-import type { DeviceLike } from '../model/capability-choices';
+import { attempt, removeScene, runSceneNow } from '../shared/actions';
+import { useClose, useDiscardPrompt } from '../shared/editor-navigation';
+import type { DeviceLike } from '../shared/capability-choices';
 import {
   changeScene,
   validateScene,
   type SceneChange,
   type SceneDraft,
   type SceneProblems,
-} from '../model/scene-state';
+} from './scene-state';
 
 const log = new Logger('app.automations');
+type EditorStatus = 'New' | 'Unsaved changes' | 'Saved';
+
 export interface SceneEditor {
   readonly sceneId: string | null;
   readonly draft: SceneDraft;

@@ -1,9 +1,11 @@
 import { ACCESS_GLYPHS } from './icon-glyphs-access';
 import { CALL_GLYPHS } from './icon-glyphs-call';
+import { CARE_GLYPHS } from './icon-glyphs-care';
 import { CHAT_GLYPHS } from './icon-glyphs-chat';
 import { COMPUTER_GLYPHS } from './icon-glyphs-computer';
 import { LIGHT_GLYPHS } from './icon-glyphs-light';
 import { TV_GLYPHS } from './icon-glyphs-tv';
+import { EDITOR_GLYPHS } from './icon-glyphs-editor';
 import ArrowUpGlyph from 'lucide-react-native/icons/arrow-up';
 import PaperclipGlyph from 'lucide-react-native/icons/paperclip';
 import ImageGlyph from 'lucide-react-native/icons/image';
@@ -195,6 +197,7 @@ import BanGlyph from 'lucide-react-native/icons/ban';
 import UploadGlyph from 'lucide-react-native/icons/upload';
 
 export const GLYPHS = {
+  ...EDITOR_GLYPHS,
   home: HouseGlyph,
   climate: WindGlyph,
   cameras: VideoGlyph,
@@ -389,6 +392,7 @@ export const GLYPHS = {
   upload: UploadGlyph,
   ...ACCESS_GLYPHS,
   ...CALL_GLYPHS,
+  ...CARE_GLYPHS,
   ...CHAT_GLYPHS,
   ...COMPUTER_GLYPHS,
   ...LIGHT_GLYPHS,

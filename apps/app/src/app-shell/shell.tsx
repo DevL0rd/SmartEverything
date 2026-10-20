@@ -11,24 +11,15 @@ import { AdaptiveNav } from './adaptive-nav';
 import { screenPause } from './screen-pause';
 import { GlobalHosts } from './global-hosts';
 import { useNaturalTabForColdLinks } from './natural-tab';
-import { useNavOrder } from './nav-layout';
+import { useNavOrder, usePinLeaves } from './nav-layout';
 import { NavSheetHost } from './nav-sheet';
+import { PagePinHost } from './page-pin-host';
 import { ShellGate } from './shell-gate';
 import { SyncIndicator } from './sync-indicator';
+import { TAB_NAMES } from './tab-names';
 import { useTabPrewarm } from './tab-prewarm';
 import { anchorTabRoots } from './tab-router';
 import { useTabReplacement } from './tab-replacement-host';
-
-const TABS = [
-  '(home)',
-  '(devices)',
-  '(cameras)',
-  '(fitness)',
-  '(z-assistant)',
-  '(automations)',
-  '(talk)',
-  '(settings)',
-] as const;
 
 const log = new Logger('app.nav');
 
@@ -39,7 +30,12 @@ function openHeaderSearch(): void {
 }
 
 function TabPrewarm(props: BottomTabBarProps): ReactNode {
-  useTabPrewarm({ ...props, chatOf: usePrewarmChat(), order: useNavOrder() });
+  useTabPrewarm({
+    ...props,
+    chatOf: usePrewarmChat(),
+    order: useNavOrder(),
+    pins: usePinLeaves(),
+  });
   return null;
 }
 
@@ -61,7 +57,7 @@ function NavigationEffects(): ReactNode {
 function ShellTabs(): ReactNode {
   const { nav } = useSizeClass();
   useEffect(() => {
-    log.info('shell.mounted', { tabs: TABS.length });
+    log.info('shell.mounted', { tabs: TAB_NAMES.length });
     return (): void => {
       log.info('shell.unmounted');
     };
@@ -70,23 +66,25 @@ function ShellTabs(): ReactNode {
   return (
     <HeaderSearchProvider value={openHeaderSearch}>
       <HeaderStatusProvider value={SYNC_INDICATOR}>
-        <Tabs
-          tabBar={renderTabBar}
-          backBehavior="none"
-          screenLayout={screenPause}
-          UNSTABLE_router={anchorTabRoots}
-          screenOptions={{
-            headerShown: false,
-            tabBarPosition: nav === 'bar' ? 'bottom' : 'left',
-            lazy: true,
-            freezeOnBlur: false,
-            sceneStyle: scene,
-          }}
-        >
-          {TABS.map((name) => (
-            <Tabs.Screen key={name} name={name} />
-          ))}
-        </Tabs>
+        <PagePinHost>
+          <Tabs
+            tabBar={renderTabBar}
+            backBehavior="none"
+            screenLayout={screenPause}
+            UNSTABLE_router={anchorTabRoots}
+            screenOptions={{
+              headerShown: false,
+              tabBarPosition: nav === 'bar' ? 'bottom' : 'left',
+              lazy: true,
+              freezeOnBlur: false,
+              sceneStyle: scene,
+            }}
+          >
+            {TAB_NAMES.map((name) => (
+              <Tabs.Screen key={name} name={name} />
+            ))}
+          </Tabs>
+        </PagePinHost>
         <NavigationEffects />
         {nav === 'bar' ? <NavSheetHost /> : null}
         <GlobalHosts />

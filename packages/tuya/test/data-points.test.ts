@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { SPECIFICATION, TUYA_JSON_MAX_LENGTH, TUYA_TEXT_MAX_LENGTH, dataPointsOf } from '../src';
+import { z } from 'zod';
+import { TUYA_JSON_MAX_LENGTH, TUYA_TEXT_MAX_LENGTH, dataPointsOf } from '../src';
+
+const POINT = z.object({
+  code: z.string().min(1),
+  dp_id: z.number().int().nonnegative(),
+  type: z.string(),
+  values: z.string(),
+  name: z.string().nullish().default(null),
+});
+
+const SPECIFICATION = z.object({
+  functions: z.array(POINT).default([]),
+  status: z.array(POINT).default([]),
+});
 
 function item(code: string, dpId: number, type: string, values: string): object {
   return { code, dp_id: dpId, type, values };

@@ -6,6 +6,7 @@ import { usePhoneSection } from '../data/phone-detail';
 import { PhoneFrame } from '../frame/phone-frame';
 import { BrightnessCard } from '../screen/brightness-card';
 import { ScreenTimeCard } from '../screen/screen-time-card';
+import { SystemTogglesCard } from '../screen/system-toggles-card';
 import { TimeoutCard } from '../screen/timeout-card';
 import { UnlocksCard } from '../screen/unlocks-card';
 import { PageCards, PendingCards, usePersonName } from './detail-parts';
@@ -44,6 +45,18 @@ export function ScreenBody({ device }: { readonly device: Device }): ReactNode {
           ),
         },
         { key: 'timeout', node: <TimeoutCard device={device} screen={screen} canAct={canAct} /> },
+        {
+          key: 'system',
+          node: (
+            <SystemTogglesCard
+              device={device}
+              writable={screen.writable}
+              canAct={canAct}
+              own={own}
+              person={person}
+            />
+          ),
+        },
       ]}
     />
   );

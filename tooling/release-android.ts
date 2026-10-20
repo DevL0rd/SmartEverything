@@ -1,11 +1,16 @@
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import { androidHome, apkProblems, readApk, type ApkVariant } from './release-apk.ts';
+import {
+  androidHome,
+  apkProblems,
+  readApk,
+  readAppIdentity,
+  type ApkVariant,
+} from './release-apk.ts';
 import { agreedVersion, readVersions } from './release-version.ts';
 
 const log = new Logger('tool.release-android');
@@ -15,24 +20,16 @@ const APP = join(ROOT, 'apps', 'app');
 const ANDROID = join(APP, 'android');
 const JAVA_HOME = '/usr/lib/jvm/java-21-openjdk';
 const GRADLE_LOCK_SECONDS = 1800;
-const ARCHITECTURE = 'arm64-v8a';
-
-const SIGNING_PROPERTIES = [
-  'SMARTEVERYTHING_RELEASE_STORE_FILE',
-  'SMARTEVERYTHING_RELEASE_STORE_PASSWORD',
-  'SMARTEVERYTHING_RELEASE_KEY_ALIAS',
-  'SMARTEVERYTHING_RELEASE_KEY_PASSWORD',
-] as const;
 
 const OPTIONS = z.object({
   variant: z.enum(['release', 'development']),
   server: z.url({ protocol: /^https$/u }),
   out: z.string().min(1),
+  abi: z.enum(['arm64-v8a', 'x86_64']),
   bundle: z.boolean(),
   versionCode: z.coerce.number().int().min(3).max(2100000000).optional(),
 });
 
-const IDENTITY = z.object({ storeIdentity: z.string().min(1) });
 const GOOGLE_SERVICES = z.object({
   client: z.array(
     z.object({
@@ -72,7 +69,7 @@ export function buildEnvironment(options: BuildOptions): Readonly<Record<string,
     EXPO_PUBLIC_SERVER_URL: options.server,
     CI: '1',
     NODE_ENV: options.variant === 'release' ? 'production' : 'development',
-    ...(options.variant === 'development' ? { APP_VARIANT: 'development' } : {}),
+    ANDROID_VARIANT: options.variant,
     ...(options.versionCode === undefined
       ? {}
       : { ANDROID_VERSION_CODE: String(options.versionCode) }),
@@ -113,7 +110,7 @@ export function prebuildCommand(options: BuildOptions): Command {
 
 export function gradleCommand(options: BuildOptions): Command {
   return {
-    title: `build ${gradleTask(options)} for ${ARCHITECTURE}`,
+    title: `build ${gradleTask(options)} for ${options.abi}`,
     program: 'flock',
     args: [
       '-w',
@@ -122,54 +119,23 @@ export function gradleCommand(options: BuildOptions): Command {
       './gradlew',
       gradleTask(options),
       '--offline',
-      `-PreactNativeArchitectures=${ARCHITECTURE}`,
+      `-PreactNativeArchitectures=${options.abi}`,
     ],
     cwd: ANDROID,
     environment: buildEnvironment(options),
   };
 }
 
-function definedGradleProperties(): ReadonlySet<string> {
-  const file = join(homedir(), '.gradle', 'gradle.properties');
-  if (!existsSync(file)) return new Set();
-  return new Set(
-    readFileSync(file, 'utf8')
-      .split('\n')
-      .flatMap((line) => /^\s*([A-Za-z0-9_.]+)\s*=\s*\S/u.exec(line)?.[1] ?? []),
-  );
-}
-
-export function missingSigning(
-  environment: NodeJS.ProcessEnv,
-  properties: ReadonlySet<string>,
-): readonly string[] {
-  return SIGNING_PROPERTIES.filter(
-    (name) => (environment[name] ?? '') === '' && !properties.has(name),
-  );
-}
-
-function googleServicesProblems(storeIdentity: string): readonly string[] {
+export function preflightProblems(applicationId: string): readonly string[] {
   const file = join(APP, 'google-services.json');
   if (!existsSync(file))
-    return [`${file} is missing; download it from the Firebase console for both packages`];
+    return [`${file} is missing; download it from the Firebase console for ${applicationId}`];
   const packages = GOOGLE_SERVICES.parse(JSON.parse(readFileSync(file, 'utf8'))).client.map(
     (client) => client.client_info.android_client_info.package_name,
   );
-  return [storeIdentity, `${storeIdentity}.dev`]
-    .filter((name) => !packages.includes(name))
-    .map((name) => `google-services.json has no client for ${name}`);
-}
-
-export function preflightProblems(options: BuildOptions, storeIdentity: string): readonly string[] {
-  return [
-    ...googleServicesProblems(storeIdentity),
-    ...(options.variant === 'release'
-      ? missingSigning(process.env, definedGradleProperties()).map(
-          (name) =>
-            `${name} is not set; put it in ~/.gradle/gradle.properties or the environment (the release keystore stays outside the repository)`,
-        )
-      : []),
-  ];
+  return packages.includes(applicationId)
+    ? []
+    : [`google-services.json has no client for ${applicationId}`];
 }
 
 function run(command: Command): void {
@@ -192,10 +158,11 @@ function builtApk(options: BuildOptions): string {
 }
 
 async function verified(file: string, variant: ApkVariant): Promise<void> {
-  const identity = IDENTITY.parse(JSON.parse(readFileSync(join(APP, 'app-identity.json'), 'utf8')));
+  const identity = readAppIdentity();
   const problems = await apkProblems(readApk(file), {
     variant,
-    storeIdentity: identity.storeIdentity,
+    applicationId: identity.applicationId,
+    signingCertificateSha256: identity.signingCertificateSha256,
     versionName: agreedVersion(readVersions()),
     versionCodeAbove: 2,
   });
@@ -212,6 +179,7 @@ function parsedOptions(): BuildOptions {
       variant: { type: 'string' },
       server: { type: 'string' },
       out: { type: 'string' },
+      abi: { type: 'string' },
       bundle: { type: 'boolean' },
       'version-code': { type: 'string' },
     },
@@ -220,6 +188,7 @@ function parsedOptions(): BuildOptions {
     variant: values.variant ?? 'release',
     server: values.server ?? process.env['EXPO_PUBLIC_SERVER_URL'],
     out: values.out ?? join(ROOT, 'tmp', 'apk'),
+    abi: values.abi ?? 'arm64-v8a',
     bundle: values.bundle === true,
     versionCode: values['version-code'],
   });
@@ -231,7 +200,7 @@ function collect(options: BuildOptions): string {
   const stamp = new Date().toISOString().slice(0, 16).replaceAll(/[-:T]/gu, '');
   const target = join(
     options.out,
-    `SmartEverything-${options.variant}-${agreedVersion(readVersions())}-${stamp}.apk`,
+    `SmartEverything-${options.variant}-${options.abi}-${agreedVersion(readVersions())}-${stamp}.apk`,
   );
   copyFileSync(apk, target);
   return target;
@@ -239,12 +208,12 @@ function collect(options: BuildOptions): string {
 
 async function main(): Promise<void> {
   const options = parsedOptions();
-  const identity = IDENTITY.parse(JSON.parse(readFileSync(join(APP, 'app-identity.json'), 'utf8')));
-  const problems = preflightProblems(options, identity.storeIdentity);
+  const problems = preflightProblems(readAppIdentity().applicationId);
   if (problems.length > 0) throw new ReleasePreflightError(problems);
   const building = log.operation('android.build', {
     variant: options.variant,
     task: gradleTask(options),
+    abi: options.abi,
   });
   try {
     run(licenceCommand());

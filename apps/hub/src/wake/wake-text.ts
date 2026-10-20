@@ -78,7 +78,7 @@ export class WakeText {
   }
 
   private fieldLabel(signal: SignalInput, spec: SignalKindSpec | undefined): string | null {
-    if (signal.field === null || spec === undefined || spec.fields === 'capabilities') {
+    if (signal.field === null || spec === undefined || typeof spec.fields === 'string') {
       return signal.field;
     }
     return spec.fields.find((entry) => entry.field === signal.field)?.label ?? signal.field;
@@ -99,7 +99,7 @@ export class WakeText {
 
   private unitOf(signal: SignalInput): string | null {
     const spec = this.specOf(signal);
-    if (spec === undefined || spec.fields === 'capabilities') {
+    if (spec === undefined || typeof spec.fields === 'string') {
       return null;
     }
     return spec.fields.find((entry) => entry.field === signal.field)?.unit ?? null;

@@ -74,6 +74,10 @@ function modelCore(model: string): string {
   return model.slice(MODEL_REGION_PREFIX, MODEL_REGION_SUFFIX).toLowerCase();
 }
 
+export function sameTvModel(left: string, right: string): boolean {
+  return modelCore(left) === modelCore(right);
+}
+
 export function candidateOf(host: string, info: TvInfo, deviceModel: string): TvCandidate {
   const mac = info.wifiMac === null ? null : MAC_ADDRESS.safeParse(info.wifiMac);
   return {
@@ -81,6 +85,6 @@ export function candidateOf(host: string, info: TvInfo, deviceModel: string): Tv
     name: info.name ?? info.model ?? host,
     model: info.model,
     macAddress: mac?.success === true ? mac.data : null,
-    likely: info.model !== null && modelCore(info.model) === modelCore(deviceModel),
+    likely: info.model !== null && sameTvModel(info.model, deviceModel),
   };
 }

@@ -19,6 +19,7 @@ import type { SecretStore } from '../secrets/store';
 import type { Store } from '../store/store';
 import { CallDesk } from './call-desk';
 import type { VoiceEndpoint } from './call-link';
+import type { CallMomentListener } from './call-moments';
 import type { SightBudget } from './call-parts';
 import { isSightMessage } from './call-sight-desk';
 import type { HomeCameras } from './home-cameras';
@@ -135,6 +136,10 @@ export class AssistantVoice {
 
   attachOutreach(desk: OutreachDesk): void {
     this.desk.attachOutreach(desk);
+  }
+
+  onCall(listener: CallMomentListener): () => void {
+    return this.desk.onCall(listener);
   }
 
   attachBudget(budget: SightBudget): void {

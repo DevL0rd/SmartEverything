@@ -6,12 +6,14 @@ import {
   type PluginRow,
   type PluginSource,
   type PluginStatus,
+  type PluginUiRow,
 } from '@smarteverything/domain';
 import type { SQLInputValue } from 'node:sqlite';
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { SQL_JSON, flag, jsonText, whenDefined } from '../sql';
+import { pluginUiChange, pluginUiOf } from './plugin-ui';
 
 const STORED_PLUGIN = storedRow(PLUGIN_ROW, {
   flags: ['enabled', 'trusted'],
@@ -72,6 +74,16 @@ export class PluginsRepository {
     return this.context.sql.all(STORED_PLUGIN, `select ${COLUMNS} from plugins order by id`);
   }
 
+  ui(): PluginUiRow[] {
+    return this.list().flatMap((row) => pluginUiOf(row) ?? []);
+  }
+
+  private changedUi(before: PluginRow | null, after: PluginRow | null): void {
+    const change = pluginUiChange(before, after);
+    if (change === null) return;
+    this.context.changed('plugin_ui', change.operation, change.record, change.oldRecord);
+  }
+
   find(id: string): PluginRow | undefined {
     return this.context.sql.get(STORED_PLUGIN, `select ${COLUMNS} from plugins where id = $id`, {
       id,
@@ -116,6 +128,7 @@ export class PluginsRepository {
       });
       const after = this.byId(id);
       this.context.changed('plugins', 'UPDATE', after, before);
+      this.changedUi(before, after);
       return after;
     });
   }
@@ -125,6 +138,7 @@ export class PluginsRepository {
       const before = this.byId(id);
       this.context.sql.run('remove the plugin', 'delete from plugins where id = $id', { id });
       this.context.changed('plugins', 'DELETE', null, before);
+      this.changedUi(before, null);
     });
   }
 

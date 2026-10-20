@@ -13,6 +13,7 @@ import {
   type LiveTable,
   type PersonBudget,
   type ProfileRow,
+  type TalkFloorsNotice,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { checkedCommands } from '../../src/server/commands';
@@ -20,6 +21,8 @@ import { visibleDevices, visibleState } from '../../src/computers/computer-acces
 import { OwnerAlerts, type OwnerAlert } from '../../src/extensions/owner-alerts';
 import { Budget } from '../../src/ledger/budget';
 import { CreditsWatch } from '../../src/ledger/budget-credits';
+import { floorsSeenBy } from '../../src/server/live-access';
+import { imageSpendCheck } from '../../src/server/image-authority';
 import { visible, type Hearing } from '../../src/server/live-visibility';
 import { assertModelAllowed, scopesOf } from '../../src/server/person-scope';
 import { TalkMembership } from '../../src/talk/membership';
@@ -119,16 +122,18 @@ function refusal(work: () => unknown): ApiError {
 describe('reading the stored limits', () => {
   it('gives a person with an unreadable or missing row no access at all', () => {
     const kid = member('Kid', {});
-    expect(scopesOf(opened.store, kid.profile.id)).toStrictEqual(TEMPLATE_SCOPES.adult);
+    expect(scopesOf(opened.store, kid.profile.id)).toStrictEqual({
+      ...TEMPLATE_SCOPES.adult,
+      devices: { ...TEMPLATE_SCOPES.adult.devices, hidden: [] },
+    });
     raw((database) => {
       database.exec(
         `update person_access set scopes = '{}' where profile_id = '${kid.profile.id}'`,
       );
     });
-    expect(scopesOf(opened.store, kid.profile.id)).toStrictEqual(NOTHING_IN_SCOPE);
-    expect(scopesOf(opened.store, '00000000-0000-4000-8000-000000000000')).toStrictEqual(
-      NOTHING_IN_SCOPE,
-    );
+    const nothing = { ...NOTHING_IN_SCOPE, devices: { ...NOTHING_IN_SCOPE.devices, hidden: [] } };
+    expect(scopesOf(opened.store, kid.profile.id)).toStrictEqual(nothing);
+    expect(scopesOf(opened.store, '00000000-0000-4000-8000-000000000000')).toStrictEqual(nothing);
   });
 });
 
@@ -261,6 +266,47 @@ describe('the walkie-talkie channels a person hears', () => {
   });
 });
 
+describe('the walkie-talkie floors a person is told about', () => {
+  function floor(channelId: string): TalkFloorsNotice['floors'][number] {
+    return {
+      channelId,
+      messageId: `message-${channelId}`,
+      kind: 'talk',
+      speaker: { kind: 'client', id: 'speaker', label: 'Speaker', detail: null },
+      startedAt: NOW.toISOString(),
+    };
+  }
+
+  const notice = (channels: readonly string[]): TalkFloorsNotice => ({
+    type: 'talk_floors',
+    floors: channels.map(floor),
+    online: ['speaker'],
+  });
+
+  it('keeps only the floors of the listed channels for a limited person', () => {
+    const [house, garage] = ['House', 'Garage'].map((name) =>
+      opened.store.talk.createChannel({
+        name,
+        icon: 'radio',
+        priority: 'normal',
+        keep_hours: 24,
+        ai_listens: true,
+      }),
+    );
+    if (house === undefined || garage === undefined) throw new Error('both channels were made');
+    const kid = member('Kid', { channels: { mode: 'only', ids: [house.id] } });
+    const seen = floorsSeenBy(kid, notice([house.id, garage.id]), opened.store);
+    expect(seen.floors.map((one) => one.channelId)).toStrictEqual([house.id]);
+    expect(seen.online).toStrictEqual(['speaker']);
+  });
+
+  it('tells an owner about every floor', () => {
+    const boss = owner();
+    const seen = floorsSeenBy(boss, notice(['house', 'garage']), opened.store);
+    expect(seen.floors).toHaveLength(2);
+  });
+});
+
 describe('the AI budget of a person', () => {
   function budget(): { budget: Budget; alerts: OwnerAlert[] } {
     const alerts = new OwnerAlerts();
@@ -321,6 +367,24 @@ describe('the AI budget of a person', () => {
     expect(stopped.message).toContain('Your AI budget is used up');
     running.gate.check('chat', { profileId: other.profile.id });
     running.gate.check('chat');
+    running.stop();
+  });
+
+  it('stops the metered image spend of that person once the daily limit is used up', () => {
+    const kid = member('Kid', {});
+    const other = member('Other', {});
+    opened.store.personAccess.change(kid.profile.id, {
+      budget: { daily_usd: 1, monthly_usd: null, warn_at_percent: 80, hard_stop: true },
+    });
+    const { budget: running } = budget();
+    const imageSpend = imageSpendCheck(running.gate);
+    imageSpend({ background: false, profileId: kid.profile.id });
+    spend(kid.profile.id, 1_000_000);
+    const stopped = refusal(() => {
+      imageSpend({ background: false, profileId: kid.profile.id });
+    });
+    expect(stopped.message).toContain('Your AI budget is used up');
+    imageSpend({ background: false, profileId: other.profile.id });
     running.stop();
   });
 

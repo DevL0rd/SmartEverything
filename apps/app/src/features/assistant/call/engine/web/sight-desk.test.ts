@@ -130,6 +130,7 @@ beforeEach(() => {
     note: nothing,
     tune: nothing,
     record: nothing,
+    own: (): { source: null; computerId: null } => ({ source: null, computerId: null }),
     delegate: (): Promise<HubToolResult> =>
       Promise.resolve({ response: {}, line: '', pictures: [] }),
     cameras: { name: (): string => 'camera', watch: (): (() => void) => nothing },

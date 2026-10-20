@@ -41,6 +41,31 @@ export const PHONE_FLASHLIGHT_MODES = ['on', 'off', 'toggle'] as const;
 
 export const PHONE_MEDIA_KEYS = ['play', 'pause', 'next', 'previous'] as const;
 
+export const PHONE_SYSTEM_TOGGLES = ['auto_rotate', 'haptic_feedback', 'touch_sounds'] as const;
+
+export type PhoneSystemToggle = (typeof PHONE_SYSTEM_TOGGLES)[number];
+
+export const PHONE_SETTINGS_PAGES = [
+  'wifi',
+  'bluetooth',
+  'internet',
+  'location',
+  'airplane',
+  'nfc',
+  'battery_saver',
+  'display',
+  'sound',
+  'dnd_access',
+  'write_settings',
+  'app_details',
+] as const;
+
+export type PhoneSettingsPage = (typeof PHONE_SETTINGS_PAGES)[number];
+
+export const PHONE_SCREEN_TIMEOUTS = [15, 30, 60, 120, 300, 600, 1800] as const;
+
+export const PHONE_SCREEN_TIMEOUT_OPTIONS: readonly string[] = PHONE_SCREEN_TIMEOUTS.map(String);
+
 export const PHONE_CONTEXT_STATE = z.enum(PHONE_CONTEXT_STATES);
 
 export const PHONE_PLACE_NAME = z.string().trim().min(1).max(120);
@@ -82,6 +107,16 @@ export const PHONE_VALUES = z
     notification_count: z.int().min(0),
     next_alarm: MOMENT.nullable(),
     signal_strength: z.int().min(0).max(PHONE_SIGNAL_BARS_MOST),
+    screen_timeout: z.string().refine((seconds) => PHONE_SCREEN_TIMEOUT_OPTIONS.includes(seconds), {
+      message: 'not one of the screen timeouts a phone can be set to',
+    }),
+    auto_rotate: z.boolean(),
+    haptic_feedback: z.boolean(),
+    touch_sounds: z.boolean(),
+    wifi_on: z.boolean(),
+    bluetooth_on: z.boolean(),
+    location_on: z.boolean(),
+    airplane_mode: z.boolean(),
   })
   .partial();
 
@@ -128,8 +163,6 @@ export const PHONE_REPORT = NODE_REPORT.omit({ metrics: true }).extend({
 
 export type PhoneReport = z.infer<typeof PHONE_REPORT>;
 
-export const PHONE_SCREEN_TIMEOUTS = [15, 30, 60, 120, 300, 600, 1800] as const;
-
 export const PHONE_DISMISS_TARGET = z.discriminatedUnion('by', [
   z.strictObject({ by: z.literal('key'), key: z.string().trim().min(1) }),
   z.strictObject({ by: z.literal('app'), app: z.string().trim().min(1).max(200) }),
@@ -163,6 +196,12 @@ const PHONE_ASKED_ACTIONS = [
     type: z.literal('set_timeout'),
     seconds: z.union(PHONE_SCREEN_TIMEOUTS.map((seconds) => z.literal(seconds))),
   }),
+  z.strictObject({
+    type: z.literal('set_system_toggle'),
+    setting: z.enum(PHONE_SYSTEM_TOGGLES),
+    on: z.boolean(),
+  }),
+  z.strictObject({ type: z.literal('open_settings'), page: z.enum(PHONE_SETTINGS_PAGES) }),
   z.strictObject({ type: z.literal('dismiss_notification'), target: PHONE_DISMISS_TARGET }),
   z.strictObject({ type: z.literal('lock') }),
   z.strictObject({ type: z.literal('show_unlock') }),

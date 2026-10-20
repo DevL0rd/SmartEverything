@@ -10,12 +10,14 @@ import { WINDOW_STATE_FILE } from './window-state.js';
 
 const WEB_EXPORT_DIRECTORY = 'dist';
 const ICON_FILE = 'icon.png';
+const TRAY_DIRECTORY = 'tray';
 const SERVICE_RESOURCE_DIRECTORY = 'service';
 const SERVICE_ENTRY_FILE = 'service.mjs';
 
 export interface DesktopPaths {
   readonly webRoot: string;
   readonly icon: string;
+  readonly trayIcons: string;
   readonly preload: string;
   readonly windowState: string;
   readonly dataDirectory: string;
@@ -23,12 +25,16 @@ export interface DesktopPaths {
   readonly go2rtcBinary: string;
 }
 
-type Resources = Pick<DesktopPaths, 'webRoot' | 'icon' | 'serviceEntry' | 'go2rtcBinary'>;
+type Resources = Pick<
+  DesktopPaths,
+  'webRoot' | 'icon' | 'trayIcons' | 'serviceEntry' | 'go2rtcBinary'
+>;
 
 function packagedResources(): Resources {
   return {
     webRoot: path.join(process.resourcesPath, WEB_EXPORT_DIRECTORY),
     icon: path.join(process.resourcesPath, ICON_FILE),
+    trayIcons: path.join(process.resourcesPath, TRAY_DIRECTORY),
     serviceEntry: path.join(process.resourcesPath, SERVICE_RESOURCE_DIRECTORY, SERVICE_ENTRY_FILE),
     go2rtcBinary: path.join(
       process.resourcesPath,
@@ -44,6 +50,7 @@ function workspaceResources(): Resources {
   return {
     webRoot: path.join(appWorkspace, WEB_EXPORT_DIRECTORY),
     icon: path.join(appWorkspace, 'assets', ICON_FILE),
+    trayIcons: path.join(desktopWorkspace, 'assets', TRAY_DIRECTORY),
     serviceEntry: path.join(
       desktopWorkspace,
       'dist',

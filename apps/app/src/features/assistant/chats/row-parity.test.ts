@@ -1,4 +1,4 @@
-import { AI_CHAT_ROW, type AiChatRow, type ClaudeSession } from '@smarteverything/domain';
+import { AI_CHAT_ROW, type AiChatRow, type ClaudeListedSession } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
 import * as desktop from './desktop-sessions';
 import * as entries from './entries';
@@ -41,8 +41,9 @@ function chat(engine: object, change: Partial<AiChatRow> = {}): AiChatRow {
 const CLAUDE_ENGINE = { kind: 'claude', device_id: DEVICE, model: 'opus' } as const;
 const PLAIN_ENGINE = { kind: 'openrouter', model: 'x', effort: null } as const;
 
-function session(change: Partial<ClaudeSession> = {}): ClaudeSession {
+function session(change: Partial<ClaudeListedSession> = {}): ClaudeListedSession {
   return {
+    app_chat_id: null,
     id: 's1',
     desktop_id: null,
     title: 'Fix build',

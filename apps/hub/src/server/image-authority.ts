@@ -8,6 +8,7 @@ import { currentExecutionAuthority } from '../assistant/turn-authority';
 import { effectiveTools } from '../assistant/coordination/grants';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import type { ImageActor, ImageEffect } from '../assistant/image/contract';
+import type { Budget } from '../ledger/budget';
 import type { Store } from '../store/store';
 import { profileIdOf, type Caller } from './auth';
 import { ImageAdmissionError } from './image-admission';
@@ -17,6 +18,14 @@ const IMAGE_SPEND_TOOL = 'start_image_operation';
 export interface ImageSpend {
   readonly background: boolean;
   readonly profileId: string;
+}
+export function imageSpendCheck(gate: Budget['gate']): (spend: ImageSpend) => void {
+  return (spend): void => {
+    gate.check('image', {
+      profileId: spend.profileId,
+      ...(spend.background ? { background: true as const } : {}),
+    });
+  };
 }
 export interface ImageAuthorityOptions {
   readonly store: Store;

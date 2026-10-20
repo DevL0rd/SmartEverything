@@ -10,6 +10,7 @@ const ACTIONS: AgentActions = {
   open: () => Promise.resolve(),
   ring: () => Promise.resolve(),
   capture: () => Promise.reject(new Error('unused')),
+  permissions: () => [],
 };
 
 let directory: string;

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { isAbsolute } from 'node:path';
 import { HARNESS_AUTHORITY } from './server-policy';
 import {
+  HARNESS_PLATFORM,
   AI_HARNESS_TARGET,
   AI_HARNESS_PERMISSION,
   AI_HARNESS_STORAGE_BINDING,
@@ -12,7 +13,7 @@ import { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 export const HARNESS_HOST = z.strictObject({
   target: AI_HARNESS_TARGET,
   name: z.string().min(1).max(200),
-  platform: z.enum(['linux', 'windows', 'macos']),
+  platform: HARNESS_PLATFORM,
   homeDirectory: z.string().min(1).refine(isAbsolute, 'Host home directory must be absolute.'),
   stateDirectory: z.string().min(1).refine(isAbsolute, 'Host state directory must be absolute.'),
 });

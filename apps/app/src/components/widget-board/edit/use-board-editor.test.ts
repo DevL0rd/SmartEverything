@@ -77,6 +77,27 @@ describe('useBoardEditor', () => {
     expect(shown.arrangement('medium').map((widget) => widget.key)).toEqual(['m']);
   });
 
+  it('shows the followed size until the board is customised, which stops following', () => {
+    const stored: BoardLayoutState = {
+      status: 'ready',
+      layout: {
+        version: BOARD_LAYOUT_VERSION,
+        classes: { compact: { widgets: [{ key: 'z', type: 'z', size: 'XL' }] } },
+        follow: { medium: 'compact' },
+      },
+    };
+    expect(
+      useEditor(stored)
+        .arrangement('medium')
+        .map((widget) => widget.key),
+    ).toEqual(['z']);
+    useEditor(stored).begin();
+    useEditor(stored).change('medium', add('b'), 'step');
+    useEditor(stored).done();
+    expect(saved[0]?.classes.medium?.widgets.map((widget) => widget.key)).toEqual(['z', 'b']);
+    expect(saved[0]?.follow).toBeUndefined();
+  });
+
   it('starts editing only once the layout is ready', () => {
     useEditor({ status: 'loading' }).begin();
     expect(useEditor().editing).toBe(false);

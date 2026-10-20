@@ -29,6 +29,7 @@ const FILE_CHANGES: ReadonlySet<string> = new Set([
 ]);
 const REASONING = 30;
 const IMAGE = 40;
+const STEER = 30;
 
 function textWeight(text: string): number {
   const lines = text.match(STRUCTURED_LINE)?.length ?? 0;
@@ -59,6 +60,8 @@ export function partWeight(part: InlineTimelinePart): number {
       return REASONING;
     case 'image':
       return IMAGE;
+    case 'steer':
+      return STEER;
   }
 }
 

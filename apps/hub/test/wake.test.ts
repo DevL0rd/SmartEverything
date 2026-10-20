@@ -1,13 +1,12 @@
-import { TEST_AUTHOR } from './support/automation-author';
 import { DEFAULT_ENGINE, type RowChange, type SignalInput } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ActionOrigin } from '../src/automations/actions';
+import type { ActionOrigin } from '../src/automations/automation-ai';
 import { SignalBus } from '../src/signals/bus';
 import { feedSignals } from '../src/signals/sources/feed';
 import { feedContextOf } from '../src/signals/sources/feed-context';
 import { WAKE_GATHER_MS, WakeRunner, type WakeTurnInput } from '../src/wake/wake-runner';
 import { FakeClock } from './support/fake-clock';
-import { legacyAutomation } from './support/legacy-automation';
+import { node, saveAutomation, trigger } from './support/automation-fixture';
 import { testLogger } from './support/logs';
 import { testStore, type TestStore } from './support/store';
 
@@ -55,16 +54,10 @@ async function bench(): Promise<Bench> {
     sourceKey: null,
     engine: DEFAULT_ENGINE,
   });
-  const automation = opened.store.automations.create({
+  const automation = saveAutomation(opened.store, {
     name: 'Baby monitor',
-    enabled: true,
-    definition: legacyAutomation({
-      triggers: [{ type: 'interval', everyMinutes: 5 }],
-      conditions: { mode: 'all', items: [] },
-      actions: [{ type: 'delay', seconds: 1 }],
-    }),
-    origin: null,
-    author: TEST_AUTHOR,
+    triggers: [trigger('trigger.interval', { every: 300_000 })],
+    body: [node('flow.wait', { duration: 1000 })],
   });
   const turns: WakeTurnInput[] = [];
   const state: Bench = {

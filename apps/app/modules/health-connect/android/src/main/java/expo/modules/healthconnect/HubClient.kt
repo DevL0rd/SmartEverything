@@ -30,6 +30,9 @@ class HubClient(private val target: IngestTarget) {
   suspend inline fun <reified B, reified R> post(path: String, body: B): R =
     decode(fetch("POST", path, HubJson.encode(body)))
 
+  suspend inline fun <reified B, reified R> patch(path: String, body: B): R =
+    decode(fetch("PATCH", path, HubJson.encode(body)))
+
   suspend inline fun <reified B> submit(path: String, body: B, replace: Boolean = false) {
     fetch(if (replace) "PUT" else "POST", path, HubJson.encode(body))
   }

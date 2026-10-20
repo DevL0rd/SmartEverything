@@ -2,9 +2,16 @@ import { PERSON_ACCESS_STATEMENTS, backfillPersonAccess } from './person-access'
 import { PHONE_DETAIL_STATEMENTS } from './phone-details';
 import { IR_REMOTE_STATES_COLUMNS } from './ir-remote-states';
 import { EAR_HOST_STATEMENTS } from './ear-host';
-import { TELEVISION_SETTINGS_STATEMENTS } from './television-settings';
+import { ACCESS_REQUEST_LAPSE_STATEMENTS } from './access-request-lapse';
+import {
+  TELEVISION_DIRECT_ADDRESS_COLUMNS,
+  TELEVISION_SETTINGS_STATEMENTS,
+  TELEVISION_WAKE_COLUMNS,
+  TELEVISION_WAKE_RESULT_COLUMNS,
+} from './television-settings';
 import { COMPUTER_NODE_WINDOW_STATEMENTS } from './computer-node-window';
 import { recomputeSleepFigures } from './sleep-asleep-minutes';
+import { dedupeSleepStages } from './sleep-stage-duplicates';
 import { AI_CHAT_PENDING_MACHINE_COLUMNS } from './ai-chat-pending-machine';
 import { AUTOMATION_AUTHOR_STATEMENTS } from './automation-author';
 import { AUTOMATION_SPEECH_TABLES } from './automation-speech';
@@ -46,8 +53,6 @@ import { HARNESS_STREAM_MEMORY_STATEMENTS } from './harness-stream-memory';
 import { HARNESS_EXTENSION_TABLES, moveConfigurationToExtensions } from './harness-extensions';
 import { IMAGE_OPERATION_TABLES } from './image-operations';
 import { COMPUTER_RUNTIME_TABLES } from './computer-runtimes';
-import type { LogPayload } from '@smarteverything/logging';
-import type { Sql } from '../sql';
 import { CAMERA_WAKE_SENSITIVITY_COLUMNS } from './camera-wake-sensitivity';
 import { CHAT_ACTIVITY_REPAIR } from './chat-activity';
 import { ATTACHMENT_TRANSCRIPT_COLUMNS } from './attachment-transcripts';
@@ -56,6 +61,18 @@ import { CHAT_WEB_SEARCH_COLUMNS } from './chat-web-search';
 import { CORE_TABLES } from './core-tables';
 import { FITNESS_SETTINGS_COLUMNS, moveLegacyFitnessSettings } from './fitness-settings';
 import { DEVICE_REFILLS_COLUMNS } from './device-refills';
+import { AUTOMATIC_PAUSE_STATEMENTS } from './automatic-pause';
+import { TRIGGER_SETTINGS_COLUMNS } from './trigger-settings';
+import { CLIENT_KIND_STATEMENTS } from './client-kinds';
+import { TREADMILL_INCLINE_COLUMNS } from './treadmill-incline';
+import { DROP_INCLINE_CONTROL } from './drop-incline-control';
+import { TREADMILL_TABLES } from './treadmills';
+import { BOTTLE_TABLES } from './bottles';
+import { TOOTHBRUSH_TABLES } from './toothbrushes';
+import { removeSmartThingsMobilePresence } from './smartthings-mobile-presence';
+import { TOOTHBRUSH_DETAILS_STATEMENTS } from './toothbrush-details';
+import { TUYA_IR_LIBRARY_STATEMENTS } from './tuya-ir-library';
+import { SIGNAL_WATCH_STATE_TABLES } from './signal-watch-state';
 import { END_OF_SPEECH_PAUSE_STATEMENTS } from './end-of-speech-pause';
 import { HISTORY_SETTINGS_COLUMNS } from './history-settings';
 import { HOME_TIME_ZONE_COLUMNS } from './home-time-zone';
@@ -109,15 +126,11 @@ import { APP_SESSION_TABLES } from './app-sessions';
 import { TRANSCRIPT_SOURCES_STATEMENTS } from './transcript-sources';
 import { mergeComputerRoleRows } from './computer-identity';
 import { placeDevicesInProviderRooms } from './provider-rooms';
+import { LATEST_MIGRATIONS } from './latest';
+import type { Migration } from './migration';
 import { RESERVED_MIGRATION_VERSIONS, inOrder } from './order';
 
-export interface Migration {
-  readonly version: number;
-  readonly name: string;
-  readonly statements: readonly string[];
-  readonly backfill?: (sql: Sql, now: string) => LogPayload;
-  readonly foreignKeys?: 'off';
-}
+export type { Migration } from './migration';
 
 export const MIGRATIONS: readonly Migration[] = inOrder(
   [
@@ -351,6 +364,33 @@ export const MIGRATIONS: readonly Migration[] = inOrder(
     { version: 110, name: 'device_refills', statements: DEVICE_REFILLS_COLUMNS },
     { version: 111, name: 'ir_remote_states', statements: IR_REMOTE_STATES_COLUMNS },
     { version: 112, name: 'ear_host', statements: EAR_HOST_STATEMENTS },
+    { version: 113, name: 'access_request_lapse', statements: ACCESS_REQUEST_LAPSE_STATEMENTS },
+    { version: 114, name: 'automatic_pause', statements: AUTOMATIC_PAUSE_STATEMENTS },
+    { version: 115, name: 'signal_watch_state', statements: SIGNAL_WATCH_STATE_TABLES },
+    { version: 116, name: 'trigger_settings', statements: TRIGGER_SETTINGS_COLUMNS },
+    { version: 117, name: 'treadmills', statements: TREADMILL_TABLES },
+    { version: 118, name: 'bottles', statements: BOTTLE_TABLES },
+    { version: 119, name: 'toothbrushes', statements: TOOTHBRUSH_TABLES },
+    {
+      version: 120,
+      name: 'smartthings_mobile_presence',
+      statements: [],
+      backfill: removeSmartThingsMobilePresence,
+    },
+    { version: 121, name: 'tuya_ir_library', statements: TUYA_IR_LIBRARY_STATEMENTS },
+    { version: 122, name: 'toothbrush_details', statements: TOOTHBRUSH_DETAILS_STATEMENTS },
+    { version: 123, name: 'television_wake', statements: TELEVISION_WAKE_COLUMNS },
+    { version: 124, name: 'television_wake_result', statements: TELEVISION_WAKE_RESULT_COLUMNS },
+    {
+      version: 125,
+      name: 'television_direct_address',
+      statements: TELEVISION_DIRECT_ADDRESS_COLUMNS,
+    },
+    { version: 126, name: 'treadmill_incline', statements: TREADMILL_INCLINE_COLUMNS },
+    { version: 127, name: 'client_kinds', statements: CLIENT_KIND_STATEMENTS },
+    { version: 128, name: 'sleep_stage_duplicates', statements: [], backfill: dedupeSleepStages },
+    { version: 129, name: 'drop_incline_control', statements: DROP_INCLINE_CONTROL },
+    ...LATEST_MIGRATIONS,
   ],
   RESERVED_MIGRATION_VERSIONS,
 );

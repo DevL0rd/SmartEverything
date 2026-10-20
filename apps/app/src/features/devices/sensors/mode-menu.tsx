@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
 import { background } from '@smarteverything/logging';
 import type { PresentedCapability } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
@@ -29,9 +28,10 @@ export function ModeMenuButton({
   const { ref, open, menu } = useAnchoredMenu(items, presented.label);
   const shown = presented.options.find((option) => option.value === current)?.label;
   return (
-    <View ref={ref} collapsable={false}>
+    <>
       <Guard reason={reason}>
         <Button
+          ref={ref}
           label={shown ?? presented.label}
           hint={presented.label}
           variant="tonal"
@@ -41,6 +41,6 @@ export function ModeMenuButton({
         />
       </Guard>
       {menu}
-    </View>
+    </>
   );
 }

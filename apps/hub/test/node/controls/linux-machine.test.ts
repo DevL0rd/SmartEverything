@@ -58,6 +58,7 @@ function fakeAgent(reachable = true): AgentCalls {
       calls.push(`capture ${target}`);
       return Promise.reject(new Error('no picture in this fake'));
     },
+    permissions: () => Promise.resolve([]),
   };
   return { agent, calls, ended };
 }
@@ -312,9 +313,9 @@ describe('Linux screenshots', () => {
   it('uses Plasma’s own tool on Plasma and the app everywhere else', async () => {
     const agent = fakeAgent();
     const plasma = { capture: (): Promise<ComputerCapture> => Promise.resolve(picture) };
-    await expect(new LinuxCapture(plasma, agent.agent, () => true).capture('screen')).resolves.toBe(
-      picture,
-    );
+    await expect(
+      new LinuxCapture(plasma, agent.agent, () => true).capture('screen'),
+    ).resolves.toEqual(picture);
     expect(agent.calls).toEqual([]);
     await expect(
       new LinuxCapture(plasma, agent.agent, () => false).capture('screen'),

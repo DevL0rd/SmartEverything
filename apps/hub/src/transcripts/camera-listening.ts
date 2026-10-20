@@ -13,7 +13,7 @@ import {
 } from '../cameras/camera-service';
 import type { Clock } from '../clock';
 import type { Store } from '../store/store';
-import type { SpeechSegment } from '../wake-name/ear';
+import type { SpeechSegment } from '../listening/speech-segment';
 import { sameWords, silenceHallucination } from './heard-text';
 import { dbfsOfPcm } from './line-levels';
 import { ListeningBudget } from './listening-budget';

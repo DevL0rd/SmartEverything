@@ -15,7 +15,7 @@ import type { HostedCaller } from '../assistant-voice/persona';
 import type { Clock } from '../clock';
 import { FEED_TAIL_MS } from './announcing';
 import { endTonePackets, startTonePackets } from './end-tone';
-import { OPUS_SILENCE, SpeakerPacer } from './voice-pacing';
+import { OPUS_SILENCE, SpeakerPacer, type TurnStats } from './voice-pacing';
 
 export type HostVoice = (request: HostedCallRequest) => Promise<HostedCall>;
 
@@ -56,16 +56,22 @@ export interface HostedLine {
   readonly pacer: SpeakerPacer;
 }
 
+function logSpoke(deps: HostedVoiceDeps, key: string, frames: number, stats: TurnStats): void {
+  deps.log.info('reach.spoke', {
+    key,
+    ms: frames * TALK_FRAME_MS,
+    lateMs: stats.lateMs,
+    underrunMs: stats.underrunMs,
+    loopLagMaxMs: stats.loopLagMaxMs,
+    loopLagP99Ms: stats.loopLagP99Ms,
+  });
+}
+
 export async function hostLine(deps: HostedVoiceDeps, spec: HostedSpec): Promise<HostedLine> {
   const pacer = new SpeakerPacer(deps.clock, spec.play, {
     idle: spec.continuous === true ? OPUS_SILENCE : null,
     spoke: (frames, stats): void => {
-      deps.log.info('reach.spoke', {
-        key: spec.key,
-        ms: frames * TALK_FRAME_MS,
-        lateMs: stats.lateMs,
-        underrunMs: stats.underrunMs,
-      });
+      logSpoke(deps, spec.key, frames, stats);
     },
   });
   if (spec.heard !== undefined) {

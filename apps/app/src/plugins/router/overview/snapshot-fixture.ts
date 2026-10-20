@@ -40,6 +40,7 @@ function clientsFixture(online: number, total: number): RouterSnapshot['clients'
     blocked: false,
     trafficBytesPerSecond: null,
     profileId: null,
+    personId: null,
     firstSeen: null,
     lastSeen: null,
   }));
@@ -60,6 +61,7 @@ export function routerSnapshot(
     radios: [],
     stations: [],
     clients: clientsFixture(2, 3),
+    people: [],
     ...patch,
   };
 }

@@ -1,5 +1,12 @@
 import { TEST_AUTHOR } from '../support/automation-author';
-import { AUTOMATION_V2, type AutomationV2, type RowChange } from '@smarteverything/domain';
+import {
+  EMPTY_LAYOUT,
+  PLACEHOLDER_HASH,
+  programOf,
+  saveAutomation,
+  trigger,
+} from '../support/automation-fixture';
+import type { RowChange } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
@@ -16,11 +23,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await opened.close();
 });
-
-const DEFINITION: AutomationV2 = {
-  when: [{ on: 'every', minutes: 5 }],
-  steps: [{ do: 'notify', message: 'tick' }],
-};
 
 function plug(): string {
   const [device] = opened.store.devices.upsert([
@@ -252,34 +254,26 @@ describe('scenes, automations, remotes and personal settings', () => {
     expect(store.scenes.list().map((scene) => scene.id)).toStrictEqual([b.id]);
   });
 
-  it('clears the last error of an automation only when its definition changes', () => {
+  it('clears the last error of an automation only when a new revision is published', () => {
     const { store } = opened;
-    const rule = store.automations.create({
-      name: 'Rule',
-      enabled: true,
-      definition: DEFINITION,
-      origin: null,
-      author: TEST_AUTHOR,
-    });
+    const rule = saveAutomation(store, { name: 'Rule' });
     store.automations.recordRun(rule.id, {
       lastError: 'boom',
       lastRunAt: '2026-10-08T10:00:00.000Z',
-      runCount: 1,
     });
-    expect(store.automations.update(rule.id, { enabled: false })).toMatchObject({
+    expect(store.automations.setEnabled(rule.id, false)).toMatchObject({
       enabled: false,
       last_error: 'boom',
       run_count: 1,
     });
-    expect(
-      store.automations.update(rule.id, {
-        definition: AUTOMATION_V2.parse(rule.definition),
-      }).last_error,
-    ).toBe('boom');
-    const redefined: AutomationV2 = { ...DEFINITION, steps: [{ do: 'notify', message: 'tock' }] };
-    expect(
-      store.automations.update(rule.id, { definition: redefined, name: 'Rule 2' }),
-    ).toMatchObject({ last_error: null, name: 'Rule 2' });
+    const replaced = store.automations.replace(rule.id, {
+      program: programOf([trigger('trigger.interval', { every: 300_000 })]),
+      layout: EMPTY_LAYOUT,
+      expectedRevision: rule.revision,
+      planHash: PLACEHOLDER_HASH,
+      author: TEST_AUTHOR,
+    });
+    expect(replaced).toMatchObject({ last_error: null, revision: 2 });
     store.automations.remove(rule.id);
     expect(store.automations.list()).toStrictEqual([]);
   });

@@ -1,5 +1,4 @@
 import { notifyFailure } from '../../../components/toast-store';
-export { createRelayLink, relaySupported } from './mse-relay.web';
 import { createPeer } from './camera-peer';
 import {
   PeerError,

@@ -10,6 +10,7 @@ import { Segmented } from '../../../components/segmented';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
+import { useActiveProfile } from '../../../store/people';
 import { readMinute, useMinute } from '../../../store/clock';
 import { useIsOwner, useRow, useSettings } from '../../../store/selectors';
 import { PersonDevices } from '../../settings';
@@ -24,6 +25,8 @@ import {
 } from '../model/standing';
 import { EndsRow, HomeOnlyRow, PausedRow, RevokeRow } from './access-rows';
 import { AuditList } from './audit-list';
+import { AreasRow, BudgetRow, ChannelsRow, DevicesRow, ModelsRow, TemplateRow } from './scope-rows';
+import { MemberAccess } from './member-access';
 import { StandingCard } from './standing-card';
 
 const ROLE_OPTIONS = PERSON_ROLE_ORDER.map((role) => ({
@@ -76,6 +79,25 @@ function Limits({
   );
 }
 
+function Reach({
+  access,
+  actions,
+}: {
+  readonly access: PersonAccess;
+  readonly actions: AccessActions;
+}): ReactNode {
+  return (
+    <List title="What they can reach" footer="Owners can always reach everything.">
+      <TemplateRow access={access} actions={actions} />
+      <AreasRow access={access} actions={actions} />
+      <DevicesRow access={access} actions={actions} />
+      <ModelsRow access={access} actions={actions} />
+      <ChannelsRow access={access} actions={actions} />
+      <BudgetRow access={access} actions={actions} />
+    </List>
+  );
+}
+
 function Loaded({
   profile,
   access,
@@ -93,6 +115,7 @@ function Loaded({
         <StandingCard access={access} />
         <RoleChoice access={access} actions={actions} />
       </List>
+      {limited ? <Reach access={access} actions={actions} /> : null}
       {limited ? <Limits access={access} actions={actions} /> : null}
       <PersonDevices profileId={profile.id} />
       {endable ? (
@@ -112,7 +135,11 @@ export function PersonAccessSection({ profileId }: { readonly profileId: string 
   const owner = useIsOwner();
   const profile = useRow('profiles', profileId);
   const access = usePersonAccess(profileId);
-  if (!owner || profile === null) {
+  const mine = useActiveProfile()?.id === profileId;
+  if (!owner) {
+    return mine ? <MemberAccess /> : null;
+  }
+  if (profile === null) {
     return null;
   }
   if (access.isError) {

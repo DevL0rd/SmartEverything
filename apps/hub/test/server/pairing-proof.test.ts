@@ -1,6 +1,7 @@
 import { ApiError, hashPairingCode, pairingProof, type HubIdentity } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { HubConnections } from '../../src/network/connections';
+import { OwnerAlerts } from '../../src/extensions/owner-alerts';
 import { AccessService } from '../../src/server/access';
 import { testStore, type TestStore } from '../support/store';
 
@@ -36,6 +37,8 @@ beforeEach(async () => {
     now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
     clientWithdrawn: (): void => undefined,
     clientPaused: (): void => undefined,
+    alerts: new OwnerAlerts(),
+    scopesChanged: (): void => undefined,
   });
 });
 

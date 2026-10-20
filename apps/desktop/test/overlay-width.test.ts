@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  fitChip,
   pillWidth,
   pillWindowSize,
   SizeReporter,
@@ -37,6 +38,23 @@ describe('pill width', () => {
     expect(long.width).toBe(520);
     expect(long.clipStatus).toBe(true);
     expect(long.overCaption).toBe(false);
+  });
+});
+
+describe('thinking chip fit', () => {
+  const layout = (statusWidth: number) => (iconOnly: boolean) =>
+    pillWidth({ mode: 'compact', fixed: iconOnly ? 200 : 300, statusWidth, captionWidth: 0 });
+
+  it('keeps the chip label while the status fits next to it', () => {
+    const fit = fitChip(layout(150));
+    expect(fit.iconOnly).toBe(false);
+    expect(fit.result.width).toBe(452);
+  });
+
+  it('drops the chip label before the status text would be clipped', () => {
+    const fit = fitChip(layout(300));
+    expect(fit.iconOnly).toBe(true);
+    expect(fit.result).toMatchObject({ width: 502, clipStatus: false });
   });
 });
 

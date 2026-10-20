@@ -49,6 +49,7 @@ function row(id: string, start = SPAN.startTime): HealthEntryRow {
     food: null,
     version: 1,
     save_error: null,
+    source: null,
     created_at: start,
     updated_at: start,
   };

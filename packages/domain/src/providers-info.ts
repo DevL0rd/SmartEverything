@@ -1,9 +1,7 @@
 import { PROVIDERS, type Provider } from './devices';
-import type { TUYA_REGIONS, XIAOMI_REGIONS } from './hub-commands';
+import type { XIAOMI_REGIONS } from './hub-commands';
 
 export type XiaomiRegion = (typeof XIAOMI_REGIONS)[number];
-
-export type TuyaRegion = (typeof TUYA_REGIONS)[number];
 
 export const XIAOMI_REGION_LABELS: Readonly<Record<XiaomiRegion, string>> = {
   cn: 'Mainland China',
@@ -12,16 +10,6 @@ export const XIAOMI_REGION_LABELS: Readonly<Record<XiaomiRegion, string>> = {
   ru: 'Russia',
   sg: 'Singapore and other regions',
   us: 'United States',
-};
-
-export const TUYA_REGION_LABELS: Readonly<Record<TuyaRegion, string>> = {
-  cn: 'China',
-  us: 'Western America',
-  'us-e': 'Eastern America',
-  eu: 'Central Europe',
-  'eu-w': 'Western Europe',
-  in: 'India',
-  sg: 'Singapore',
 };
 
 const CHINA_ZONES: ReadonlySet<string> = new Set([

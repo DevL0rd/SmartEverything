@@ -149,10 +149,18 @@ export const { StoreProvider } = await import('../../store/store-context');
 export const { deviceFixture, stateFixture } = await import('../../store/device-fixture');
 export const { COLOUR_VARIABLE, PaletteContext } = await import('../../design/colour-roles');
 export const { LIGHTING, LightingContext } = await import('../device-visuals/parts/material');
-const ROLES = Object.keys(COLOUR_VARIABLE);
+const FNV_OFFSET = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
+const COLOUR_BITS = 0xffffff;
+
+function roleColour(role: string): string {
+  let hash = FNV_OFFSET;
+  for (const char of role) hash = Math.imul(hash ^ char.charCodeAt(0), FNV_PRIME);
+  return `#${((hash >>> 0) & COLOUR_BITS).toString(16).padStart(6, '0')}`;
+}
+
 export const PALETTE: Palette = new Proxy(COLOUR_VARIABLE, {
-  get: (_target, role): string =>
-    `#${(0x102030 + ROLES.indexOf(String(role)) * 0x050403).toString(16).padStart(6, '0')}`,
+  get: (_target, role): string => roleColour(String(role)),
 });
 export const { DeviceSpotlightWidget } = await import('../devices');
 export const { DeviceVisual } = await import('../device-visuals');

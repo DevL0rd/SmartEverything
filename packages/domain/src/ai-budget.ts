@@ -16,21 +16,32 @@ export const AI_BURN_RULE = z.strictObject({
 
 export type AiBurnRule = z.output<typeof AI_BURN_RULE>;
 
+const BUDGET_FIELDS = {
+  daily_usd: USD.nullable(),
+  monthly_usd: USD.nullable(),
+  warn_at_percent: z.int().min(10).max(99),
+  burn: AI_BURN_RULE.nullable(),
+  low_credits_usd: USD.nullable(),
+  hard_stop: z.boolean(),
+};
+
 export const AI_BUDGET_SETTINGS = z.strictObject({
-  daily_usd: USD.nullable().default(null),
-  monthly_usd: USD.nullable().default(null),
-  warn_at_percent: z.int().min(10).max(99).default(80),
-  burn: AI_BURN_RULE.nullable().default(null),
-  low_credits_usd: USD.nullable().default(null),
-  hard_stop: z.boolean().default(false),
+  daily_usd: BUDGET_FIELDS.daily_usd.default(null),
+  monthly_usd: BUDGET_FIELDS.monthly_usd.default(null),
+  warn_at_percent: BUDGET_FIELDS.warn_at_percent.default(80),
+  burn: BUDGET_FIELDS.burn.default(null),
+  low_credits_usd: BUDGET_FIELDS.low_credits_usd.default(null),
+  hard_stop: BUDGET_FIELDS.hard_stop.default(false),
 });
 
 export type AiBudgetSettings = z.output<typeof AI_BUDGET_SETTINGS>;
 
-export const AI_BUDGET_CHANGE = AI_BUDGET_SETTINGS.partial().refine(
-  (patch) => Object.keys(patch).length > 0,
-  { message: 'name at least one field to change' },
-);
+export const AI_BUDGET_CHANGE = z
+  .strictObject(BUDGET_FIELDS)
+  .partial()
+  .refine((patch) => Object.keys(patch).length > 0, {
+    message: 'name at least one field to change',
+  });
 
 export type AiBudgetChange = z.output<typeof AI_BUDGET_CHANGE>;
 

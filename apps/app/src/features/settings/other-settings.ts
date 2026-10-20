@@ -1,8 +1,9 @@
 import { createElement } from 'react';
+import { href } from '../../app-shell/hrefs';
 import type { SettingDefinition } from '../../settings/types';
 import { PrivacyContent } from '../privacy';
 import { AppVersionRow, ServerVersionRow } from './about/about-rows';
-import { AddDeviceBlock } from './devices/add-device-block';
+import { PairComputerRow } from './devices/pair-computer-row';
 import { DevicesBlock } from './devices/devices-block';
 import { MembersBlock } from './members/members-block';
 
@@ -20,21 +21,38 @@ export const OTHER_SETTINGS: readonly SettingDefinition[] = [
   {
     id: 'devices.list',
     page: 'devices',
-    title: 'Hidden devices',
-    keywords: ['hidden devices', 'show on home', 'visibility', 'unhide'],
+    title: 'Devices',
+    keywords: ['all devices', 'hidden devices', 'show on home', 'visibility', 'unhide'],
     scope: 'server',
     control: 'custom',
     render: () => createElement(DevicesBlock),
   },
   {
-    id: 'devices.add',
+    id: 'devices.add.computer',
     page: 'devices/add',
-    title: 'Add a device',
-    keywords: ['add device', 'new device', 'tv', 'link account'],
+    section: 'Computers',
+    title: 'Pair a computer',
+    description: 'Use Claude and Codex on a computer',
+    icon: 'monitor',
+    keywords: ['computer', 'pair', 'claude', 'codex', 'desktop'],
     scope: 'server',
     control: 'custom',
+    row: true,
     visible: (env) => env.owner,
-    render: () => createElement(AddDeviceBlock),
+    render: () => createElement(PairComputerRow),
+  },
+  {
+    id: 'devices.add.address',
+    page: 'devices/add',
+    section: 'On your network',
+    title: 'Add by address',
+    description: 'TVs and other devices no account brings in',
+    icon: 'router',
+    keywords: ['address', 'ip', 'tv', 'network', 'manual'],
+    scope: 'server',
+    control: 'link',
+    visible: (env) => env.owner,
+    href: href.addByAddress(),
   },
   {
     id: 'about.app',

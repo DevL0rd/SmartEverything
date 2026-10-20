@@ -225,6 +225,7 @@ describe('media paths', () => {
       assistantAttachment: '/media/assistant/:attachmentId',
       talkMessage: '/media/talk/:messageId',
       computerDownload: '/media/computers/:deviceId/downloads/:ticketId',
+      machineUpdate: '/media/machine-updates/:file',
     });
   });
 });

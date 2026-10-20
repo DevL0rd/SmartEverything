@@ -11,10 +11,13 @@ import type { Logger } from '@smarteverything/logging';
 import { messageOf } from '@smarteverything/logging';
 import { sileroModel } from '../../assistant-voice/silero-vad';
 import type { Cancel, Clock } from '../../clock';
-import { Ear, type SpeechSegment } from '../../wake-name/ear';
+import type { SpeechSegment } from '../../listening/speech-segment';
 import type { MicHandlers, StopMic } from '../controls/linux/mic-capture';
 import { NodeFailureError } from '../node-failure';
-import { ConfiguredSpotter } from './configured-spotter';
+import { Ear } from './ear';
+import { KeywordSpotter } from './keyword-spotter';
+import type { EarRuntimeLost } from './runtime-lost';
+import { RelayedSpotter } from './relayed-spotter';
 import { CallSpeaker, type EarSpeaker } from './call-speaker';
 import { encodePcm, GrantedClaims, LevelMeter, listeningSegmentOf } from './ear-audio';
 
@@ -50,12 +53,13 @@ export interface ComputerEarOptions {
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
   readonly model?: () => Promise<Model>;
+  readonly lost?: EarRuntimeLost;
 }
 
 interface Running {
   readonly config: ListeningConfig;
   readonly ear: Ear;
-  readonly spotter: ConfiguredSpotter;
+  readonly engine: KeywordSpotter;
 }
 
 const round = (value: number): number => Math.round(value * 10) / 10;
@@ -63,7 +67,7 @@ const round = (value: number): number => Math.round(value * 10) / 10;
 async function release(running: Running | null): Promise<void> {
   if (running !== null) {
     await running.ear.close();
-    running.spotter.free();
+    running.engine.free();
   }
 }
 
@@ -210,16 +214,16 @@ export class ComputerEar {
   }
 
   private async build(config: ListeningConfig): Promise<Running> {
-    const spotter = new ConfiguredSpotter(config);
+    const engine = new KeywordSpotter();
     const ear = new Ear(
       {
         claims: this.grants.claims,
-        spotter,
+        spotter: new RelayedSpotter(engine, config, false),
         model: this.options.model ?? sileroModel,
-        names: (): readonly string[] => [],
         pauseMs: (): PauseChoiceMs => config.pause_ms,
         clock: this.options.clock,
         log: this.options.log,
+        ...(this.options.lost === undefined ? {} : { lost: this.options.lost }),
       },
       {
         claim: CLAIMANT,
@@ -241,10 +245,10 @@ export class ComputerEar {
       await ear.open();
     } catch (cause) {
       await ear.close();
-      spotter.free();
+      engine.free();
       throw cause;
     }
-    return { config, ear, spotter };
+    return { config, ear, engine };
   }
 
   private async openMic(): Promise<void> {

@@ -40,68 +40,29 @@ describe('hub commands', () => {
     for (const credentials of [
       { provider: 'xiaomi', username: 'person@example.com', password: 'hunter22', region: 'de' },
       { provider: 'tuya', method: 'smart_life', userCode: 'EU1234' },
-      {
-        provider: 'tuya',
-        method: 'developer_project',
-        accessId: 'access-id',
-        accessSecret: 'access-secret',
-        region: 'eu',
-        appUserId: 'eu1666',
-      },
+      { provider: 'tuya', method: 'smart_life' },
       { provider: 'smartthings', code: 'code-123', redirectUri: 'https://example.com/cb' },
-      { provider: 'samsung_tv', host: '10.0.0.5', macAddress: 'aa:bb:cc:00:11:22', name: 'TV' },
+      { provider: 'samsung_tv', host: '10.0.0.5', name: 'TV' },
+      {
+        provider: 'samsung_tv',
+        host: '10.0.0.5',
+        attachTo: '11111111-1111-4111-8111-111111111111',
+      },
     ]) {
       expect(PROVIDER_CREDENTIALS.parse(credentials)).toStrictEqual(credentials);
     }
     for (const empty of [
       { provider: 'xiaomi', username: '', password: 'p', region: 'de' },
       { provider: 'xiaomi', username: 'u', password: '', region: 'de' },
-      {
-        provider: 'tuya',
-        method: 'developer_project',
-        accessId: '',
-        accessSecret: 's',
-        region: 'eu',
-        appUserId: 'u',
-      },
-      {
-        provider: 'tuya',
-        method: 'developer_project',
-        accessId: 'a',
-        accessSecret: '',
-        region: 'eu',
-        appUserId: 'u',
-      },
-      {
-        provider: 'tuya',
-        method: 'developer_project',
-        accessId: 'a',
-        accessSecret: 's',
-        region: 'eu',
-        appUserId: '',
-      },
+      { provider: 'tuya', method: 'smart_life', userCode: '   ' },
+      { provider: 'tuya', method: 'developer_project', userCode: 'EU1234' },
       { provider: 'smartthings', code: '', redirectUri: 'https://example.com/cb' },
-      { provider: 'samsung_tv', host: '', macAddress: 'aa:bb:cc:dd:ee:ff', name: 'TV' },
-      { provider: 'samsung_tv', host: 'h', macAddress: 'aa:bb:cc:dd:ee:ff', name: '' },
+      { provider: 'samsung_tv', host: '', name: 'TV' },
+      { provider: 'samsung_tv', host: 'h', name: '' },
+      { provider: 'samsung_tv', host: 'h', attachTo: 'not-a-device' },
     ]) {
       expect(PROVIDER_CREDENTIALS.safeParse(empty).success).toBe(false);
     }
-    expect(
-      PROVIDER_CREDENTIALS.safeParse({
-        provider: 'samsung_tv',
-        host: 'h',
-        macAddress: 'aa:bb:cc:dd:ee',
-        name: 'TV',
-      }).success,
-    ).toBe(false);
-    expect(
-      PROVIDER_CREDENTIALS.safeParse({
-        provider: 'samsung_tv',
-        host: 'h',
-        macAddress: 'aa:bb:cc:dd:ee:ff:00',
-        name: 'TV',
-      }).success,
-    ).toBe(false);
   });
 
   it('parses every prompt', () => {

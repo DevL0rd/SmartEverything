@@ -11,6 +11,7 @@ import type { CameraEntry } from '../logic/cameras';
 import { canSharePictures, enterPictureInPicture, pictureInPictureSupported } from './rtc';
 import { takeSnapshot } from './snapshot';
 import { TalkButton } from './talk-button';
+import { talkOffered } from './talk-wish';
 import type { LiveSession } from './use-live-session';
 import type { PadSize } from './ptz-pad';
 import { SideControls } from './side-controls';
@@ -71,9 +72,13 @@ function SoundControls({ entry, live }: Pick<PlayerControlsProps, 'entry' | 'liv
   const { session } = live;
   return (
     <View className="flex-row items-center gap-2">
-      {entry.camera?.two_way_audio === true &&
-      !live.relay &&
-      (live.state.kind === 'live' || session.talking || session.talkPending) ? (
+      {talkOffered({
+        twoWayAudio: entry.camera?.two_way_audio === true,
+        relay: live.relay,
+        live: live.state.kind === 'live',
+        talking: session.talking,
+        talkPending: session.talkPending,
+      }) ? (
         <TalkButton
           talking={session.talking}
           pending={session.talkPending}

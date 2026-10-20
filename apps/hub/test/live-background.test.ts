@@ -110,12 +110,27 @@ describe('a connection from an app in the background', () => {
       type: 'notification',
       id: 'eventId=1',
       requestId: '3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b73',
-      requestId: '3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b73',
       title: 'Doorbell',
       body: 'Someone is at the door',
       data: {},
     });
     expect(reached).toBe(1);
     await until(() => back.notices.includes('notification'), 'the notification to arrive');
+  });
+
+  it('is not reached by a notice only the open app can act on, so the hub wakes the phone by push instead', async () => {
+    const back = await phone(true);
+    const front = await phone(false);
+    const speech = {
+      type: 'ai_speech',
+      id: 's1',
+      from: 'Ai',
+      text: 'Hello',
+      audio: 'AA==',
+    } as const;
+    expect(await hub.deliver(back.clientId, speech, 'foreground')).toBe(0);
+    expect(await hub.deliver(front.clientId, speech, 'foreground')).toBe(1);
+    await until(() => front.notices.includes('ai_speech'), 'the speech to reach the open app');
+    expect(back.notices).not.toContain('ai_speech');
   });
 });

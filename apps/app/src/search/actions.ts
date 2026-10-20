@@ -1,5 +1,6 @@
 import { router, type Href } from 'expo-router';
 import type { SearchEntry } from '@smarteverything/domain';
+import type { NavPinTarget } from '@smarteverything/domain';
 import { href } from '../app-shell/hrefs';
 import { notify } from '../components/toast-store';
 import { runSceneNow, toggleAutomation } from '../features/automations';
@@ -7,6 +8,7 @@ import { useEntityStore, useLedger } from '../store/store-context';
 import type { Device } from '../store/state';
 import type { SearchCatalogue } from './catalogue';
 import type { ResultNode } from './nodes';
+import { pickNode, useNodePin } from './node-pin';
 import { useRecentSearches } from './recent';
 import { background } from '@smarteverything/logging';
 
@@ -61,6 +63,7 @@ function linkOf(node: ResultNode, catalogue: SearchCatalogue): Href | undefined 
 export interface SearchActions {
   readonly open: (node: ResultNode) => void;
   readonly inline: (node: ResultNode) => void;
+  readonly pin: (node: ResultNode) => boolean;
 }
 
 function useCommand(catalogue: SearchCatalogue): (entry: SearchEntry) => void {
@@ -86,6 +89,7 @@ export function useSearchActions(
   catalogue: SearchCatalogue,
   query: string,
   onDone: () => void,
+  pick: ((target: NavPinTarget) => void) | null,
 ): SearchActions {
   const ledger = useLedger();
   const store = useEntityStore();
@@ -112,7 +116,12 @@ export function useSearchActions(
         return;
     }
   };
+  const pin = useNodePin();
   const open = (node: ResultNode): void => {
+    if (pick !== null) {
+      pickNode(node, pick);
+      return;
+    }
     note(query);
     const link = linkOf(node, catalogue);
     if (link === undefined) {
@@ -122,5 +131,5 @@ export function useSearchActions(
     onDone();
     router.navigate(link);
   };
-  return { open, inline };
+  return { open, inline, pin };
 }

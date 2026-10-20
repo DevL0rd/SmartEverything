@@ -11,36 +11,30 @@ function source(relativePath: string): string {
   return readFileSync(repositoryFile(relativePath), 'utf8');
 }
 
-function constructorOf(java: string): string {
-  const start = java.indexOf('public WebRTCModule(ReactApplicationContext reactContext)');
-  const end = java.indexOf('public String getName()', start);
-  expect(start).toBeGreaterThan(-1);
-  return java.slice(start, end);
-}
-
 describe('react-native-webrtc contract', () => {
-  it('builds a new audio device module from the configured factory for every module instance, because each JS reload creates a new peer connection factory', () => {
-    const body = constructorOf(source(`${MODULE_SOURCES}/WebRTCModule.java`));
+  it('builds every audio device module with the playback attributes the app configured, so camera audio is not routed as a voice call', () => {
+    const provider = source(`${MODULE_SOURCES}/PeerConnectionFactoryProvider.java`);
 
-    expect(body).toContain('options.audioDeviceModuleFactory.create(reactContext)');
-    expect(body).not.toMatch(/=\s*options\.audioDeviceModule\s*;/u);
+    expect(provider).toContain(
+      'AudioAttributes audioAttributes = WebRTCModuleOptions.getInstance().audioAttributes;',
+    );
+    expect(provider).toMatch(
+      /if \(audioAttributes != null\) \{\s+builder\.setAudioAttributes\(audioAttributes\);/u,
+    );
   });
 
-  it('offers no shared audio device module that a reloaded instance would reuse after the first factory released it', () => {
+  it('offers the playback attributes as a public option', () => {
     const options = source(`${MODULE_SOURCES}/WebRTCModuleOptions.java`);
 
-    expect(options).toContain('public AudioDeviceModuleFactory audioDeviceModuleFactory;');
-    expect(options).not.toMatch(/public\s+AudioDeviceModule\s+audioDeviceModule\s*;/u);
+    expect(options).toContain('public AudioAttributes audioAttributes;');
   });
 
-  it('receives a media playback factory from the app instead of one prebuilt module', () => {
+  it('receives media playback attributes from the app instead of an audio device module', () => {
     const media = source(MEDIA_AUDIO);
 
-    expect(media).toMatch(
-      /audioDeviceModuleFactory = WebRTCModuleOptions\.AudioDeviceModuleFactory \{ context ->\s+JavaAudioDeviceModule\.builder\(context\)/u,
-    );
-    expect(media).toContain('.setAudioAttributes(playback)');
-    expect(media).not.toMatch(/\.audioDeviceModule\s*=/u);
+    expect(media).toMatch(/WebRTCModuleOptions\.getInstance\(\)\.audioAttributes = playback/u);
+    expect(media).toContain('.setUsage(AudioAttributes.USAGE_MEDIA)');
+    expect(media).not.toContain('JavaAudioDeviceModule');
   });
 
   it('turns its own debug logger on only in development, so a release build prints no per-call peer connection lines', () => {

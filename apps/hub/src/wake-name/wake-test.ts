@@ -3,7 +3,7 @@ import type { Logger } from '@smarteverything/logging';
 import { background } from '@smarteverything/logging';
 import type { Clock } from '../clock';
 import { silenceHallucination } from '../transcripts/heard-text';
-import type { SpeechSegment } from './ear';
+import type { SpeechSegment } from '../listening/speech-segment';
 
 const MARK_SLACK_MS = 1000;
 

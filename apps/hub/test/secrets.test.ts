@@ -80,7 +80,7 @@ describe('secret store', () => {
       plugins: {},
     });
     await store.update((secrets) => ({ ...secrets, pushServiceAccount }));
-    await store.saveAccount('tuya', { label: 'Tuya', secrets: { accessSecret: 'very-secret' } });
+    await store.saveAccount('tuya', { label: 'Tuya', secrets: { refreshToken: 'very-secret' } });
     const text = await readFile(path, 'utf8');
     expect(text).not.toContain('very-secret');
     expect(text).not.toContain('home-push');
@@ -89,7 +89,7 @@ describe('secret store', () => {
     expect(reopened.read().pushServiceAccount).toStrictEqual(pushServiceAccount);
     expect(reopened.read().accounts.tuya).toStrictEqual({
       label: 'Tuya',
-      secrets: { accessSecret: 'very-secret' },
+      secrets: { refreshToken: 'very-secret' },
     });
   });
 

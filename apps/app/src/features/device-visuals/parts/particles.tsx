@@ -3,7 +3,9 @@ import { StyleSheet, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 import { loopStyle, rise, type LoopStyle } from '../../../design/loops';
+import { isNative } from '../../../design/platform';
 import { scaled, useSvgId } from './frame';
+import { DISC, hazeFill } from './haze';
 import { GlowGradient } from './ink';
 
 export interface Emitter {
@@ -75,11 +77,13 @@ export function Dots({
   });
 }
 
-function Puff({ colour }: { readonly colour: string }): ReactNode {
+const PUFF_STRENGTH = 0.6;
+
+function SvgPuff({ colour }: { readonly colour: string }): ReactNode {
   const id = useSvgId('puff');
   return (
     <Svg width="100%" height="100%" viewBox="0 0 10 10">
-      <GlowGradient id={id} colour={colour} strength={0.6} />
+      <GlowGradient id={id} colour={colour} strength={PUFF_STRENGTH} />
       <Circle cx={5} cy={5} r={5} fill={`url(#${id})`} />
     </Svg>
   );
@@ -94,13 +98,18 @@ export function Puffs({
   readonly px: number;
   readonly colour: string;
 }): ReactNode {
+  const native = isNative();
   return indexes(emitter.count).map((index) => (
     <Animated.View
       key={index}
       pointerEvents="none"
-      style={[slotOf(emitter, index, px), motionOf(emitter, index, px)]}
+      style={[
+        slotOf(emitter, index, px),
+        native ? hazeFill(DISC, colour, PUFF_STRENGTH) : null,
+        motionOf(emitter, index, px),
+      ]}
     >
-      <Puff colour={colour} />
+      {native ? null : <SvgPuff colour={colour} />}
     </Animated.View>
   ));
 }

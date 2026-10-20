@@ -55,7 +55,7 @@ describe('running Xiaomi devices', () => {
       eventType: 'PeopleMotion:ObjectMotion:Mystery',
       fileId: 'f1',
     });
-    await waitFor(() => recorded.events.length >= 3);
+    await waitFor(() => recorded.events.length >= 4);
     expect(recorded.events.find((event) => event.kind === 'call')).toMatchObject({
       externalId: '100003',
       details: { miotEvent: 'key-call-start', source: 'key-call-status' },
@@ -66,10 +66,14 @@ describe('running Xiaomi devices', () => {
     expect(listed.map((event) => [event.kind, event.details['fileId']])).toStrictEqual([
       ['person', 'f1'],
       ['motion', 'f1'],
+      ['activity', 'f1'],
     ]);
-    expect(world.harness.logs.map((record) => record.event)).toContain(
-      'xiaomi_camera.event_type_unknown',
-    );
+    expect(listed.find((event) => event.kind === 'activity')?.details).toMatchObject({
+      eventType: 'PeopleMotion:ObjectMotion:Mystery',
+      event: 'Mystery',
+      summary: 'Mystery',
+      hasClip: true,
+    });
   });
 
   it('renews an expired cloud session with the passToken and saves the new session', async () => {

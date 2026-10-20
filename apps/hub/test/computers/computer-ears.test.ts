@@ -9,7 +9,7 @@ import { ListeningLevels } from '../../src/listening/listening-levels';
 import { opusCodec } from '../../src/assistant-voice/audio';
 import { base64OfPcm } from '../../src/computers/ear-pcm';
 import { ComputerEars, type ComputerEarsOptions } from '../../src/computers/computer-ears';
-import type { SpeechSegment } from '../../src/wake-name/ear';
+import type { SpeechSegment } from '../../src/listening/speech-segment';
 import { WakeClaims, type OnSuperseded } from '../../src/wake-name/wake-claims';
 import { FakeClock } from '../support/fake-clock';
 import { testLogger } from '../support/logs';

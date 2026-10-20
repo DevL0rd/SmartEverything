@@ -5,6 +5,7 @@ import {
   type AssistantSettings,
   type SightMode,
   type SightResolution,
+  voiceModelFor,
 } from '@smarteverything/domain';
 import { AUDIO_TOKENS_PER_SECOND } from '../ledger/gemini-live';
 import type { LiveWindow } from './gemini';
@@ -58,13 +59,23 @@ export function liveWindow(settings: AssistantSettings): LiveWindow {
   const target =
     INSTRUCTION_TOKENS + liveMinutes(settings) * SECONDS_PER_MINUTE * AUDIO_TOKENS_PER_SECOND;
   const length = GOOGLE_MODELS.find(
-    (model) => model.id === `google:${settings.voice.model}`,
+    (model) => model.id === `google:${voiceModelFor(settings.voice.thinking_level)}`,
   )?.contextLength;
   const cap = length ?? Infinity;
   return {
     triggerTokens: Math.min(cap, Math.ceil(target * LIVE_TRIGGER_SHARE)),
     targetTokens: Math.min(cap, target),
   };
+}
+
+const CATCH_UP_CHARS_PER_TOKEN = 3;
+
+export function catchUpCharacters(window: LiveWindow | null): number {
+  const history =
+    window === null
+      ? LIVE_CONTEXT_MINUTES.fallback * SECONDS_PER_MINUTE * AUDIO_TOKENS_PER_SECOND
+      : Math.max(0, window.targetTokens - INSTRUCTION_TOKENS);
+  return history * CATCH_UP_CHARS_PER_TOKEN;
 }
 
 export function newest(lines: readonly string[], budget: number): string[] {

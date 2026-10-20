@@ -13,6 +13,7 @@ import {
   useWatchVisualState,
 } from './model/use-visual-state';
 import { useOnScreenGate } from '../../design/visibility';
+import { usePrinterFacts } from './model/use-printer-live';
 import { VISUALS } from './registry';
 import type { VisualSize, VisualState, VisualTone } from './types';
 import { FIXED_PX, SIZE_CLASS, useVisualPx, type VisualPx } from './visual-size';
@@ -111,6 +112,14 @@ function ButtonHost({ device, size }: HostProps): ReactNode {
   return <VisualView family="button" state={useButtonVisualState(device)} size={size} />;
 }
 
+function PrinterHost({ device, size }: HostProps): ReactNode {
+  const base = useDeviceVisualState(device);
+  const printer = usePrinterFacts(device);
+  const state: VisualState =
+    printer === null ? base : { ...base, online: device.online, power: 'on', printer };
+  return <VisualView family="printer" state={state} size={size} />;
+}
+
 function HubHost({ device, size }: HostProps): ReactNode {
   return <VisualView family="gateway" state={useHubVisualState(device)} size={size} />;
 }
@@ -120,6 +129,7 @@ const HOSTS: Partial<Readonly<Record<DeviceFamily, (props: HostProps) => ReactNo
   wearable: WatchVisual,
   button: ButtonHost,
   gateway: HubHost,
+  printer: PrinterHost,
   camera: CameraMedia,
 };
 

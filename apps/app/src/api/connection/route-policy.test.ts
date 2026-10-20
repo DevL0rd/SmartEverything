@@ -68,8 +68,13 @@ describe('first contact from outside the home', () => {
   });
 
   it('trusts loopback only inside the desktop app', () => {
+    expect(trustedBootstrap('https://localhost:7880')).toBe(false);
+    expect(trustedBootstrap('http://127.0.0.1:7880')).toBe(false);
+    platform = 'web';
+    expect(trustedBootstrap('https://localhost:7880')).toBe(false);
     platform = 'desktop';
     expect(trustedBootstrap('https://localhost:7880')).toBe(true);
+    expect(trustedBootstrap('http://localhost:7880')).toBe(true);
   });
 
   it('refuses a LAN bootstrap with a pairing instruction and allows a remote one', () => {

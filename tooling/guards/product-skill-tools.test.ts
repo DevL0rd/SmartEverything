@@ -55,7 +55,7 @@ const OUTSIDE_NAMES = {
     'revoke_preview',
   ],
   liveCall: ['end_conversation', 'stop_looking'],
-  settingKey: ['claude_skills_enabled', 'call_audio'],
+  settingKey: ['claude_skills_enabled', 'call_audio', 'camera_notifications'],
   fieldName: [
     'refresh_token',
     'read_at',
@@ -65,7 +65,18 @@ const OUTSIDE_NAMES = {
     'ai_defaults',
     'claude_link_auto',
   ],
-  actionValue: ['set_member', 'remove_member', 'delete_message', 'show_camera'],
+  actionValue: [
+    'set_member',
+    'set_mode_order',
+    'remove_member',
+    'delete_message',
+    'show_camera',
+    'set_system_toggle',
+    'set_secret',
+    'remove_secret',
+    'open_settings',
+  ],
+  settingsPage: ['write_settings'],
 } as const;
 const TOOL_LOOKING = /(?<![\w-])[a-z]+(?:_[a-z]+)+(?![\w-])/g;
 const PROSE_ROOTS: readonly string[] = [
@@ -76,6 +87,7 @@ const PROSE_ROOTS: readonly string[] = [
   'apps/hub/src/plugins/builtin/adguard',
   'apps/hub/src/plugins/builtin/aibi',
   'apps/hub/src/plugins/builtin/discord',
+  'apps/hub/src/plugins/builtin/openrgb',
   'apps/hub/src/plugins/builtin/shelly-presence',
   'apps/hub/src/plugins/builtin/wiz',
 ];

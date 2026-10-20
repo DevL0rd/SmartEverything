@@ -1,15 +1,17 @@
 import {
-  MAC_ADDRESS,
   ROUTER_CLIENT_CUTOFF,
   ROUTER_CLIENT_UPDATE,
-  type KnownClient,
+  type NetworkClient,
   type RouterCommand,
   type RouterSnapshot,
   type SpeedTestResult,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { failure, type HubToolResult } from '../../../ai-tools/hub-tool';
+import type { HubToolResult } from '../../../ai-tools/hub-tool';
+import { OFFSET, moreOf, paged } from '../../../ai-tools/paging';
 import type { PluginTool } from '../contract';
+import type { PeopleControls } from './people-controls';
+import { peopleTools } from './people-tools';
 import { definePluginTool } from '../define';
 import {
   attemptTool,
@@ -23,8 +25,7 @@ import {
 
 interface RouterToolPorts {
   readonly snapshot: () => RouterSnapshot;
-  readonly knownClients: () => readonly KnownClient[];
-  readonly assignClient: (mac: string, profileId: string | null) => KnownClient | null;
+  readonly people: PeopleControls;
   readonly command: (command: RouterCommand) => Promise<string>;
   readonly speedTest: () => Promise<SpeedTestResult>;
   readonly speedTests: () => readonly SpeedTestResult[];
@@ -34,12 +35,28 @@ interface RouterToolPorts {
 
 const OWNER_ONLY = 'Only the home owner can change the router setup';
 
+const CLIENT_FILTER = z.strictObject({
+  onlineOnly: z.boolean().default(false),
+  search: z.string().min(1).max(100).optional().describe('Words in the name, IP or MAC'),
+  limit: z.number().int().min(1).max(500).default(300),
+  offset: OFFSET,
+});
+
+function clientMatches(search: string, client: NetworkClient): boolean {
+  const fields = [client.name, client.ip ?? '', client.mac].map((field) => field.toLowerCase());
+  return search
+    .toLowerCase()
+    .split(/\s+/u)
+    .filter((word) => word !== '')
+    .every((word) => fields.some((field) => field.includes(word)));
+}
+
 export function routerTools(ports: RouterToolPorts): PluginTool[] {
   return [
     ...readTools(ports),
     ...controlTools(ports),
     ...powerTools(ports),
-    ...peopleTools(ports),
+    ...peopleTools(ports.people),
     ...setupTools(ports),
   ];
 }
@@ -62,15 +79,20 @@ function readTools(ports: RouterToolPorts): PluginTool[] {
       name: 'list_clients',
       title: 'Devices on the network',
       description:
-        'Every device the router knows: name, IP, MAC, Wi-Fi or wired, signal, traffic, who it belongs to, last seen.',
-      input: z.strictObject({ onlineOnly: z.boolean().default(false) }),
+        'Devices the router knows, filtered by words or online state: name, IP, MAC, Wi-Fi or wired, signal, traffic, who it belongs to, last seen. A partial list has more with the total and next_offset.',
+      input: CLIENT_FILTER,
       annotations: READ_HINTS,
       humanOnly: false,
-      run: ({ onlineOnly }) => {
+      run: ({ onlineOnly, search, limit, offset }) => {
         const clients = ports
           .snapshot()
-          .clients.filter((client) => !onlineOnly || client.connected);
-        return Promise.resolve(toolResult({ clients }));
+          .clients.filter(
+            (client) =>
+              (!onlineOnly || client.connected) &&
+              (search === undefined || clientMatches(search, client)),
+          );
+        const { rows, more } = paged(clients, offset, limit);
+        return Promise.resolve(toolResult({ clients: rows, ...moreOf(more) }));
       },
     }),
     definePluginTool({
@@ -83,19 +105,6 @@ function readTools(ports: RouterToolPorts): PluginTool[] {
       run: () => Promise.resolve(toolResult({ tests: ports.speedTests() })),
     }),
   ];
-}
-
-function presenceOf(
-  known: readonly KnownClient[],
-  who: { readonly profileId: string | null; readonly mac: string | null },
-): Readonly<Record<string, unknown>> {
-  const matches = known.filter((client) =>
-    who.mac === null ? client.profileId === who.profileId : client.mac === who.mac,
-  );
-  return {
-    onNetwork: matches.some((client) => client.present),
-    devices: matches.map(({ mac, name, present, lastSeen }) => ({ mac, name, present, lastSeen })),
-  };
 }
 
 function controlTools(ports: RouterToolPorts): PluginTool[] {
@@ -156,46 +165,6 @@ function powerTools(ports: RouterToolPorts): PluginTool[] {
       annotations: DANGER_HINTS,
       humanOnly: false,
       run: () => command({ command: 'reboot' }),
-    }),
-  ];
-}
-
-function peopleTools(ports: RouterToolPorts): PluginTool[] {
-  return [
-    definePluginTool({
-      name: 'is_on_network',
-      title: 'Is someone home',
-      description:
-        'Whether a person (by profileId, through the devices assigned to them) or a MAC address is on the home network now.',
-      input: z
-        .strictObject({
-          profileId: z.uuid().nullable().default(null),
-          mac: MAC_ADDRESS.nullable().default(null),
-        })
-        .refine(
-          (who) => (who.profileId === null) !== (who.mac === null),
-          'Give either profileId or mac',
-        ),
-      annotations: READ_HINTS,
-      humanOnly: false,
-      run: (input) => Promise.resolve(toolResult(presenceOf(ports.knownClients(), input))),
-    }),
-    definePluginTool({
-      name: 'assign_client',
-      title: 'Say whose device this is',
-      description:
-        'Links a network device to a person (or clears it) so "is someone home" works for them.',
-      input: z.strictObject({ mac: MAC_ADDRESS, profileId: z.uuid().nullable() }),
-      annotations: WRITE_HINTS,
-      humanOnly: false,
-      run: ({ mac, profileId }) => {
-        const client = ports.assignClient(mac, profileId);
-        return Promise.resolve(
-          client === null
-            ? failure('The router has never seen that device')
-            : toolResult({ client }),
-        );
-      },
     }),
   ];
 }

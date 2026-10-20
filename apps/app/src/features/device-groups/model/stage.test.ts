@@ -81,6 +81,7 @@ describe('bulb words', () => {
   it('captions the state under the bulb', () => {
     expect(bulbCaption({ ...base, power: 'on', level: 60 })).toBe('60 %');
     expect(bulbCaption({ ...base, power: 'on', level: null })).toBe('On');
+    expect(bulbCaption({ ...base, power: 'unknown', level: null })).toBe('Unknown');
     expect(bulbCaption({ ...base, power: 'off', level: null })).toBe('Off');
     expect(bulbCaption({ ...base, power: 'offline', level: null })).toBe('Offline');
   });

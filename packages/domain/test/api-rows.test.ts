@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
+import { AUTOMATION_ROW_V3 } from '../src/automation-v3/rows';
 import { DEFAULT_HISTORY_SETTINGS } from '../src/history-settings';
+import { DEFAULT_TRIGGER_SETTINGS } from '../src/trigger-settings';
 import {
-  AUTOMATION_ROW,
   CAMERA_ROW,
   CLIENT_ROW,
   COMMAND_ROW,
@@ -40,6 +41,7 @@ import {
   ROW_OPERATIONS,
   TABLE_ROWS,
   splitLiveTables,
+  OWNER_SNAPSHOT_TABLES,
 } from '../src';
 import { HEALTH_SOURCE_NAME, TOKEN_NAME } from '../src/api/rows-access';
 import {
@@ -111,8 +113,10 @@ const settings = {
   },
   max_heart_rate: 190,
   device_refills: {},
+  laundry_notices: {},
   ir_remotes: {},
   history_settings: DEFAULT_HISTORY_SETTINGS,
+  trigger_settings: DEFAULT_TRIGGER_SETTINGS,
   end_of_speech_pause_ms: 200,
   ear_host_device_id: null,
   updated_at: AT,
@@ -122,6 +126,7 @@ const client = {
   id: FIRST,
   name: 'Pixel 9',
   platform: 'android',
+  kind: 'phone',
   role: 'member',
   built_in: false,
   profile_id: SECOND,
@@ -204,6 +209,7 @@ const camera = {
   physical_ptz: true,
   two_way_audio: false,
   record_events: true,
+  keep_days: 15,
   wake_sensitivity: 'standard',
   transcribe: false,
 };
@@ -249,8 +255,11 @@ const scene = {
 
 const television = {
   device_id: FIRST,
-  direct_link: true,
+  direct_host: '192.168.1.40',
+  direct_mac: 'a1:b2:c3:d4:e5:f6',
   input_names: { HDMI1: 'Console' },
+  wake_macs: ['a1:b2:c3:d4:e5:f6'],
+  wake_worked_at: AT,
 };
 
 const automation = {
@@ -266,6 +275,22 @@ const automation = {
   run_count: 5,
   created_at: AT,
   updated_at: LATER,
+};
+
+const automationV3 = {
+  ...automation,
+  definition: {
+    version: 3,
+    kind: 'automation',
+    triggers: [],
+    inputs: [],
+    outputs: [],
+    variables: [],
+    body: { nodes: [] },
+    policy: { mode: 'single' },
+  },
+  draft: null,
+  layout: { nodes: {}, frames: [], comments: [] },
 };
 
 const layout = {
@@ -370,9 +395,20 @@ describe('home rows', () => {
 
   it('CLIENT_ROW keeps a client and refuses unknown platforms and roles', () => {
     expectRoundTrip(CLIENT_ROW, client);
-    expectRoundTrip(CLIENT_ROW, { ...client, platform: 'desktop', role: 'owner', built_in: true });
+    expectRoundTrip(CLIENT_ROW, {
+      ...client,
+      platform: 'desktop',
+      kind: 'computer',
+      role: 'owner',
+      built_in: true,
+    });
     expectRoundTrip(CLIENT_ROW, { ...client, last_seen_at: null });
-    expectRefused(CLIENT_ROW, client, [{ platform: 'ios' }, { role: 'admin' }, { name: ' ' }]);
+    expectRefused(CLIENT_ROW, client, [
+      { platform: 'ios' },
+      { kind: 'watch' },
+      { role: 'admin' },
+      { name: ' ' },
+    ]);
   });
 
   it('PROVIDER_LINK_ROW keeps a link and lists every link status', () => {
@@ -425,13 +461,18 @@ describe('home rows', () => {
     expectRoundTrip(TELEVISION_SETTINGS_ROW, television);
     expectRoundTrip(TELEVISION_SETTINGS_ROW, {
       ...television,
-      direct_link: false,
+      direct_host: null,
+      direct_mac: null,
       input_names: {},
     });
     expectRefused(TELEVISION_SETTINGS_ROW, television, [
       { device_id: 'x' },
       { input_names: { HDMI1: 'x'.repeat(41) } },
       { input_names: { '': 'Console' } },
+      { wake_worked_at: 'yesterday' },
+      { wake_macs: ['not-a-mac'] },
+      { direct_mac: 'not-a-mac' },
+      { direct_host: '' },
     ]);
   });
 
@@ -478,6 +519,8 @@ describe('media rows', () => {
       { stream_name: '' },
       { source_url_kind: '' },
       { wake_sensitivity: 'loud' },
+      { keep_days: 0 },
+      { keep_days: 1.5 },
     ]);
   });
 
@@ -506,7 +549,7 @@ describe('media rows', () => {
   });
 
   it('IR_REMOTE_ROW and IR_CODE_ROW keep remotes and codes of every format', () => {
-    expect(IR_CODE_FORMATS).toStrictEqual(['pulses', 'head_key', 'library']);
+    expect(IR_CODE_FORMATS).toStrictEqual(['pulses', 'head_key']);
     expectRoundTrip(IR_REMOTE_ROW, irRemote);
     expectRoundTrip(IR_REMOTE_ROW, { ...irRemote, brand: null });
     expectRefused(IR_REMOTE_ROW, irRemote, [{ category: '' }, { brand: '' }]);
@@ -517,20 +560,9 @@ describe('media rows', () => {
     expectRefused(IR_CODE_ROW, irCode, [{ format: 'hex' }, { code: '' }]);
   });
 
-  it('SCENE_ROW and AUTOMATION_ROW keep their stored definitions', () => {
+  it('SCENE_ROW keeps its stored actions', () => {
     expectRoundTrip(SCENE_ROW, scene);
     expectRefused(SCENE_ROW, scene, [{ icon: '' }, { actions: {} }]);
-    expectRoundTrip(AUTOMATION_ROW, automation);
-    expectRoundTrip(AUTOMATION_ROW, { ...automation, last_run_at: null, last_error: null });
-    expectRoundTrip(AUTOMATION_ROW, {
-      ...automation,
-      origin: { plugin_id: 'shelly-presence', requester: 'owner' },
-    });
-    expectRefused(AUTOMATION_ROW, automation, [
-      { definition: [] },
-      { run_count: -1 },
-      { revision: 0 },
-    ]);
   });
 
   it('LAYOUT_ROW keeps a layout of a page', () => {
@@ -695,7 +727,7 @@ const ROW_SAMPLES = {
   ir_remotes: irRemote,
   ir_codes: irCode,
   scenes: scene,
-  automations: automation,
+  automations: automationV3,
   layouts: layout,
   push_targets: pushTarget,
   health_sources: healthSource,
@@ -755,6 +787,7 @@ describe('live tables', () => {
       'ai_usage',
       'plugins',
       'plugin_streams',
+      'plugin_ui',
       'ai_outreach',
     ]);
     expect(Object.keys(TABLE_ROWS)).toStrictEqual(LIVE_TABLES);
@@ -777,7 +810,7 @@ describe('live tables', () => {
       ['ir_remotes', IR_REMOTE_ROW],
       ['ir_codes', IR_CODE_ROW],
       ['scenes', SCENE_ROW],
-      ['automations', AUTOMATION_ROW],
+      ['automations', AUTOMATION_ROW_V3],
       ['layouts', LAYOUT_ROW],
       ['push_targets', PUSH_TARGET_ROW],
       ['health_sources', HEALTH_SOURCE_ROW],
@@ -908,5 +941,25 @@ describe('live messages', () => {
     ).toBe(false);
     expect(accepts(LIVE_CLIENT_MESSAGE, { type: 'unsubscribe', tables: [] })).toBe(false);
     expect(accepts(LIVE_CLIENT_MESSAGE, { ...message, extra: 1 })).toBe(false);
+  });
+});
+
+describe('clients from a hub older than the client kind', () => {
+  const older = Object.fromEntries(Object.entries(client).filter(([key]) => key !== 'kind'));
+
+  it('reads the kind an older hub treated the platform as', () => {
+    expect(CLIENT_ROW.parse(older).kind).toBe('phone');
+    expect(CLIENT_ROW.parse({ ...older, platform: 'desktop' }).kind).toBe('computer');
+    expect(CLIENT_ROW.parse({ ...older, platform: 'web' }).kind).toBe('browser');
+  });
+
+  it('parses an owner snapshot and a session whose clients carry no kind', () => {
+    const empty = { push_targets: [], mcp_tokens: [], oauth_clients: [] };
+    const snapshot = OWNER_SNAPSHOT_TABLES.parse({ ...empty, clients: [older] });
+    expect(snapshot.clients[0]?.kind).toBe('phone');
+  });
+
+  it('keeps a kind the hub sends', () => {
+    expect(CLIENT_ROW.parse({ ...older, kind: 'tablet' }).kind).toBe('tablet');
   });
 });

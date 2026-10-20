@@ -1,8 +1,9 @@
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, type InvalidateQueryFilters } from '@tanstack/react-query';
 import {
-  CLAUDE_SESSION,
+  CLAUDE_LISTED_SESSION,
   COMPUTER_AI_STATUS,
   DEFAULT_COMPUTER_AI_SETTINGS,
+  type ClaudeListedSession,
   type ClaudeSession,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
@@ -49,9 +50,10 @@ describe('computer AI status notices', () => {
   });
 });
 
-function session(id: string, change: Partial<ClaudeSession> = {}): ClaudeSession {
+function session(id: string, change: Partial<ClaudeSession> = {}): ClaudeListedSession {
   const none = null;
-  return CLAUDE_SESSION.parse({
+  return CLAUDE_LISTED_SESSION.parse({
+    app_chat_id: none,
     id,
     desktop_id: none,
     title: id,
@@ -136,10 +138,26 @@ describe('Claude session notices', () => {
       notice: { type: 'claude_session', session: session('a', { state: 'busy' }) },
     });
     expect(invalidated).toEqual([]);
-    expect(client.getQueryData<ClaudeSession[]>(listKey)?.map((row) => row.state)).toEqual([
+    expect(client.getQueryData<ClaudeListedSession[]>(listKey)?.map((row) => row.state)).toEqual([
       'busy',
       'idle',
     ]);
+  });
+
+  it('keeps the app chat a listed session belongs to when it is patched', () => {
+    const { client, receive } = rig();
+    const chatId = '11111111-1111-4111-8111-111111111111';
+    client.setQueryData(listKey, [{ ...session('a'), app_chat_id: chatId }]);
+    receive({
+      type: 'computer_claude',
+      device_id: DEVICE,
+      notice: { type: 'claude_session', session: session('a', { state: 'busy' }) },
+    });
+    expect(
+      client
+        .getQueryData<ClaudeListedSession[]>(listKey)
+        ?.map((row) => [row.state, row.app_chat_id]),
+    ).toEqual([['busy', chatId]]);
   });
 
   it('refetches the list when a session it does not hold appears and drops a gone one', () => {
@@ -156,6 +174,37 @@ describe('Claude session notices', () => {
       device_id: DEVICE,
       notice: { type: 'claude_session_gone', id: 'a' },
     });
-    expect(client.getQueryData<ClaudeSession[]>(listKey)).toEqual([]);
+    expect(client.getQueryData<ClaudeListedSession[]>(listKey)).toEqual([]);
+  });
+
+  it('does not refetch the session list when an operation finishes, because session notices keep it current', () => {
+    const { client, receive } = rig();
+    const other = [...listKey.slice(0, 3), 'models'];
+    client.setQueryData(listKey, [session('a')]);
+    client.setQueryData(other, []);
+    const predicates: (InvalidateQueryFilters['predicate'] | undefined)[] = [];
+    client.invalidateQueries = (given): Promise<void> => {
+      predicates.push(given?.predicate);
+      return Promise.resolve();
+    };
+    receive({
+      type: 'computer_claude',
+      device_id: DEVICE,
+      notice: {
+        type: 'claude_operation',
+        operation: {
+          id: '22222222-2222-4222-8222-222222222222',
+          operation: 'native_tools_call',
+          state: 'completed',
+          value: null,
+          error: null,
+        },
+      },
+    });
+    const predicate = predicates[0];
+    const listQuery = client.getQueryCache().find({ queryKey: listKey });
+    const otherQuery = client.getQueryCache().find({ queryKey: other });
+    expect(listQuery === undefined ? undefined : predicate?.(listQuery)).toBe(false);
+    expect(otherQuery === undefined ? undefined : predicate?.(otherQuery)).toBe(true);
   });
 });

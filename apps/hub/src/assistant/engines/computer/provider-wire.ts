@@ -2,12 +2,13 @@ import { z } from 'zod';
 import { CODEX_PROVIDER_EVENT, PROVIDER_EVENT, type AiChatRow } from '@smarteverything/domain';
 import type { ComputerRunnerDeps } from './ports';
 import type { ComputerEvent } from './provider-state';
+import { noticeEvent } from './provider-notice-event';
 import { runtimeValue } from './request';
 
 const INTERRUPT_REPLY = z.strictObject({ interrupted: z.boolean() });
 
 export function publishProviderEvent(
-  deps: ComputerRunnerDeps,
+  deps: Pick<ComputerRunnerDeps, 'runtime' | 'providerNotice' | 'runtimeNotice'>,
   chat: Pick<AiChatRow, 'id' | 'profile_id'>,
   deviceId: string,
   event: ComputerEvent,
@@ -19,7 +20,7 @@ export function publishProviderEvent(
         chat_id: chat.id,
         device_id: deviceId,
         job_id: event.job_id,
-        event: PROVIDER_EVENT.parse(event),
+        event: PROVIDER_EVENT.parse(noticeEvent(event)),
       },
       chat.profile_id,
     );

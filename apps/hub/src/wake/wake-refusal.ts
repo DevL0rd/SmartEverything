@@ -1,5 +1,5 @@
 import type { WakeAiAction } from '@smarteverything/domain';
-import type { ActionOrigin } from '../automations/actions';
+import type { ActionOrigin } from '../automations/automation-ai';
 import type { Store } from '../store/store';
 import { unlessGone } from './unless-gone';
 

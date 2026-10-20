@@ -59,6 +59,12 @@ describe('the served MCP tools', () => {
       name: 'set_power',
       args: { on: true },
     });
+    expect(
+      partCallOf('read_signals', { view: 'catalogue', query: 'lamp', group: 'devices' }),
+    ).toEqual({
+      name: 'list_trigger_catalogue',
+      args: { query: 'lamp', group: 'devices' },
+    });
     expect(() => partCallOf('edit_room', { action: 'paint' })).toThrow(
       'action must be one of: create, update, remove',
     );

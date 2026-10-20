@@ -20,7 +20,7 @@ import { Transmissions } from './transmissions';
 
 export interface TalkServiceOptions {
   readonly store: Store;
-  readonly go2rtc: Pick<Go2rtcClient, 'play'>;
+  readonly go2rtc: Pick<Go2rtcClient, 'play' | 'backchannel'>;
   readonly streamReady: (deviceId: string) => Promise<void>;
   readonly rtspPort: number;
   readonly dataDirectory: string;

@@ -59,7 +59,7 @@ const ENTRIES: readonly Entry[] = [
     'devices',
     'read',
     'Describe a device',
-    'One device in full: every capability with label, role, tier, access, allowed values (options with labels, range, step, unit), danger level and its current value with when it was seen; a television also shows whether a direct link is attached and its input names, an IR blaster or remote the assumed state of its remotes.',
+    'One device in full: every capability with label, role, tier, access, allowed values (options with labels, range, step, unit), danger level and its current value with when it was seen; a television also shows its direct link (address and wake MAC, or null) and its input names, an IR blaster or remote the assumed state of its remotes.',
   ],
   [
     'search_everything',
@@ -115,7 +115,7 @@ const ENTRIES: readonly Entry[] = [
     'automations',
     'read',
     'List automations',
-    'Automations with revision, when, onlyIf and steps, whether enabled, last run, run count and last error. Run history is read_automation_runs.',
+    'Automations and Custom Nodes. The default view lists revision, trigger summary, node count, whether enabled, last run and last error; full, outline, functions, catalog and secrets read the rest. Run history is read_automation_runs.',
   ],
   [
     'get_history',
@@ -129,7 +129,7 @@ const ENTRIES: readonly Entry[] = [
     'history',
     'read',
     'List events',
-    'Events newest first (motion, people, pets, crying, calls, doorbell, alarms, leaks, automation runs…) with device, room and the snapshot or clip saved with them. Filter by devices, kinds and time.',
+    'Events newest first (motion, people, pets, crying, calls, doorbell, alarms, leaks, automation runs, apps opening, closing or coming to the front on a computer…) with device, room and the snapshot or clip saved with them. Kind signal rows are other home events that appear in the activity feed (plugin events, hub notices, anything the signal catalogue marks as feed). Filter by devices, kinds, signal source, signal kind and time.',
   ],
   [
     'get_health_summary',
@@ -178,7 +178,7 @@ const ENTRIES: readonly Entry[] = [
     'nutrition',
     'control',
     'Log water',
-    'Log a drink of water in millilitres (or a number of glasses) for one person, now or at a past time.',
+    'Log a drink of water in millilitres (or a number of glasses) for one person, now or at a past time. A water bottle linked to that person logs its own drinks; use this for other drinks.',
   ],
   [
     'find_food',
@@ -206,7 +206,7 @@ const ENTRIES: readonly Entry[] = [
     'cameras',
     'read',
     'Look at one thing',
-    'Takes one still picture now of a home camera (by name or id), a computer’s whole screen, the window in front on a computer, or a paired phone’s screen (source phone_screenshot, by name or id), and returns it as an image. A phone needs the SmartEverything accessibility service turned on and shows secure windows black; its camera, and any other window, can only be looked at inside a voice call from the app. A computer needs its screenshots permission.',
+    'Takes one still picture now of a home camera (by name or id), a computer’s whole screen, the window in front on a computer, or a paired phone’s screen (source phone_screenshot, by name or id), and returns it as an image. A phone needs the SmartEverything accessibility service turned on and shows secure windows black; its camera, and any other window, can only be looked at inside a voice call from the app. A computer needs its screenshots permission. A computer screen picture is scaled so its long edge is at most 1568 pixels; the answer states pictureSize, the width x height that use_computer coordinates use.',
   ],
   [
     'record_camera_clip',
@@ -227,7 +227,7 @@ const ENTRIES: readonly Entry[] = [
     'settings',
     'control',
     'Change a preference',
-    'Change an app preference (appearance, call ring, cameras, health sync, nutrition goals, region for currency) for one person or one paired app. Only the fields given change.',
+    'Change an app preference (appearance, call ring, cameras, health sync, nutrition goals, region for currency, and the automations editor: automations_editor, automations_palette, automations_breakpoints) for one person or one paired app. Only the fields given change. The navigation layout (items and hidden) is written whole; items null resets it.',
   ],
   [
     'list_people',

@@ -224,6 +224,7 @@ describe('guests', () => {
         withdrawn.push(id);
       },
       clientPaused: (): void => undefined,
+      lapseGrants: (): void => undefined,
     });
     const guest = person('Guest', {
       role: 'guest',
@@ -251,6 +252,7 @@ describe('guests', () => {
       now: (): Date => moment,
       clientRemoved: (): void => undefined,
       clientPaused: (): void => undefined,
+      lapseGrants: (): void => undefined,
     });
     person('Guest', { role: 'guest', template: 'guest', expires_at: '2026-10-18T09:00:00.000Z' });
     lifecycle.start();
@@ -269,6 +271,7 @@ describe('revoking a person', () => {
       now: (): Date => moment,
       clientRemoved: (): void => undefined,
       clientPaused: (): void => undefined,
+      lapseGrants: (): void => undefined,
     });
     const owner = desktop();
     expect(lifecycle.revoke(kid.id, owner.id)).toBe(2);
@@ -345,6 +348,7 @@ describe('a schedule that starts', () => {
       clientPaused: (id): void => {
         paused.push(id);
       },
+      lapseGrants: (): void => undefined,
     });
     const kid = person('Kid', {
       role: 'member',

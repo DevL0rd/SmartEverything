@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { Platform } from 'react-native';
+import { Dimensions, Platform } from 'react-native';
 import type { Idiom } from './tokens';
 
 export type AppPlatform = 'android' | 'desktop' | 'web';
@@ -18,6 +18,13 @@ export function appPlatform(): AppPlatform {
     return 'android';
   }
   return desktopBridge() === null ? 'web' : 'desktop';
+}
+
+const TABLET_SHORTEST_SIDE_DP = 600;
+
+export function handheldKind(): 'phone' | 'tablet' {
+  const { width, height } = Dimensions.get('window');
+  return Math.min(width, height) >= TABLET_SHORTEST_SIDE_DP ? 'tablet' : 'phone';
 }
 
 export function isNative(): boolean {

@@ -27,8 +27,8 @@ import {
   connectionDiagnosticFetch,
 } from '@smarteverything/harness/process';
 import type { HarnessDispatcher } from '@smarteverything/harness/process';
-import { ApiError } from '@smarteverything/domain';
-import type { AiModelRoute } from '@smarteverything/domain';
+import { ApiError, harnessPlatform } from '@smarteverything/domain';
+import type { AiModelRoute, HarnessPlatform } from '@smarteverything/domain';
 import { HarnessHubTools } from '../harness/tools';
 import { LocalHarnessPersistence } from '../harness/local-persistence';
 import type { ServerContext } from './context';
@@ -49,7 +49,7 @@ export async function startHubHarness(
   const access = new HarnessHubTools(service, tools);
   bindCentralHarness(service, access, () => options.clock.now());
   bindPluginAgents(service, { assistant: context.assistant });
-  const platform = process.platform === 'darwin' ? 'macos' : 'linux';
+  const platform = harnessPlatform(process.platform);
   const runtimeInstance = randomUUID();
   const generation = randomUUID();
   const host: HarnessHost = {
@@ -142,7 +142,7 @@ function registerHub(
   context: ServerContext,
   dispatcher: HarnessDispatcher,
   identity: {
-    readonly platform: 'linux' | 'macos' | 'windows';
+    readonly platform: HarnessPlatform;
     readonly runtimeInstance: string;
     readonly generation: string;
   },

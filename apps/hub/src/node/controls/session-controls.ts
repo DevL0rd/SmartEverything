@@ -4,6 +4,7 @@ import type {
   CaptureTarget,
   ComputerFeature,
   ComputerCapture,
+  ComputerInput,
   ComputerSessionState,
   DisplayChange,
   DisplayState,
@@ -15,6 +16,8 @@ import type {
   MachineOpenTarget,
   MachinePermissionState,
   MediaStatus,
+  TilingChange,
+  TilingState,
   WindowChange,
   WindowsState,
 } from '@smarteverything/domain';
@@ -41,6 +44,11 @@ export interface FileControl {
 
 export interface CaptureControl {
   readonly capture: (target: CaptureTarget) => Promise<ComputerCapture>;
+}
+
+export interface InputControl {
+  readonly features: () => Promise<readonly ComputerFeature[]>;
+  readonly send: (input: ComputerInput) => Promise<void>;
 }
 
 export interface MachineReport {
@@ -77,4 +85,10 @@ export interface DisplayControl extends StateControl<DisplayState> {
 
 export interface WindowControl extends StateControl<WindowsState> {
   readonly change: (change: WindowChange) => Promise<WindowsState>;
+}
+
+export interface TilingControl extends StateControl<TilingState> {
+  readonly change: (change: TilingChange) => Promise<TilingState>;
+  readonly watchPresence: (onChange: () => void) => StopWatching;
+  readonly stop: () => Promise<void>;
 }

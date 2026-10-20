@@ -1,5 +1,5 @@
 import type { AddressInfo } from 'node:net';
-import type { ConnectionPortNeed } from '../firewall/openings';
+import { networkOf, type ConnectionPortNeed } from '../firewall/openings';
 import { lanEndpoints } from './addresses';
 import { interfaceEntries } from './lan';
 
@@ -17,7 +17,7 @@ export function connectionPortNeeds(
   const networks = [
     ...new Set(
       interfaceEntries().flatMap((entry) =>
-        addresses.has(entry.address) && entry.cidr !== null ? [entry.cidr] : [],
+        addresses.has(entry.address) && entry.cidr !== null ? [networkOf(entry.cidr)] : [],
       ),
     ),
   ];

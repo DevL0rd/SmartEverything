@@ -35,6 +35,7 @@ describe('manual scale setup', () => {
       secrets: await SecretStore.open(join(directory, 'secrets'), Buffer.alloc(32, 3)),
       identities: () => Promise.reject(new Error('no account is involved')),
       wearables: () => Promise.reject(new Error('no account is involved')),
+      now: () => new Date('2026-10-18T10:00:00.000Z'),
     });
     expect(resolved.key).toBe('00112233445566778899aabbccddeeff');
     expect(resolved.entry).toMatchObject({

@@ -31,13 +31,36 @@ export interface SignalMatchSpec {
   readonly valueLabels?: Readonly<Record<string, string>>;
 }
 
+export interface SignalStatesSpec {
+  readonly on: string;
+  readonly off: string;
+}
+
+export interface SignalSpanSpec {
+  readonly quietSeconds: number;
+}
+
+export interface SignalFeedWhen {
+  readonly key: string;
+  readonly values: readonly string[];
+}
+
 export interface SignalKindSpec {
   readonly kind: string;
   readonly label: string;
   readonly subject: SignalSubject;
-  readonly fields: 'capabilities' | readonly SignalFieldSpec[];
+  readonly fields: 'capabilities' | 'free' | readonly SignalFieldSpec[];
   readonly match: readonly SignalMatchSpec[];
   readonly pulse: boolean;
+  readonly states?: SignalStatesSpec;
+  readonly feed?: boolean;
+  readonly feedWhen?: SignalFeedWhen;
+  readonly span?: SignalSpanSpec;
+  readonly icon?: string;
+  readonly urgent?: boolean;
+  readonly ownerOnly?: boolean;
+  readonly transient?: boolean;
+  readonly optIn?: boolean;
 }
 
 export interface SignalSourceSpec {
@@ -53,6 +76,21 @@ export function kindSpecOf(
   return sources
     .find((spec) => spec.source === signal.source)
     ?.kinds.find((kind) => kind.kind === signal.kind);
+}
+
+export function signalFeeds(
+  spec: Pick<SignalKindSpec, 'feed' | 'feedWhen'>,
+  signal: Pick<SignalInput, 'data'>,
+): boolean {
+  if (spec.feed !== true) {
+    return false;
+  }
+  const { feedWhen } = spec;
+  if (feedWhen === undefined) {
+    return true;
+  }
+  const actual = signal.data[feedWhen.key];
+  return typeof actual === 'string' && feedWhen.values.includes(actual);
 }
 
 export function compatibleSignalMatch(
@@ -77,6 +115,9 @@ export function compatibleSignalMatch(
 function fieldAllowed(spec: SignalKindSpec, field: string | null): boolean {
   if (spec.fields === 'capabilities') {
     return CAPABILITY_KEY.safeParse(field).success;
+  }
+  if (spec.fields === 'free') {
+    return field !== null;
   }
   return field === null
     ? spec.fields.length === 0

@@ -34,6 +34,7 @@ function rig(options: {
   readonly supports: readonly MachineActionSupport[];
   readonly scopes?: ComputerScopes;
   readonly approve?: () => Promise<void>;
+  readonly callFails?: boolean;
 }): Rig {
   const requests: NodeRequest[] = [];
   const events: DeviceEvent[] = [];
@@ -49,7 +50,9 @@ function rig(options: {
           machineActions: () => options.supports,
           call: (request): Promise<null> => {
             requests.push(request);
-            return Promise.resolve(null);
+            return options.callFails === true
+              ? Promise.reject(new Error('the machine did not answer'))
+              : Promise.resolve(null);
           },
         }),
       },
@@ -100,6 +103,19 @@ describe('machine actions on a computer (fake node, nothing is ever unlocked)', 
       { action: 'ring', source: 'app', client: 'Phone' },
       { action: 'stop_ring', source: 'app', client: 'Phone' },
     ]);
+  });
+
+  it('records no machine action when the machine fails to carry it out', async () => {
+    const { context, requests, events } = rig({
+      origin: FROM_APP,
+      supports: [READY('ring')],
+      callFails: true,
+    });
+    await expect(runComputerCommand(command('ring'), context)).rejects.toThrow(
+      'the machine did not answer',
+    );
+    expect(requests).toHaveLength(1);
+    expect(events).toEqual([]);
   });
 
   it('opens a link or a file path and starts an app by its id', async () => {

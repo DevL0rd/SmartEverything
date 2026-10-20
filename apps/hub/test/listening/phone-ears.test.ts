@@ -1,4 +1,4 @@
-import { ApiError, type ListeningEarNotice } from '@smarteverything/domain';
+import { ApiError, DEFAULT_PAUSE_MS, type ListeningEarNotice } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EndOfSpeechPause } from '../../src/listening/end-of-speech-pause';
 import { ListeningRegistry } from '../../src/listening/listening-registry';
@@ -6,10 +6,10 @@ import { PhoneEars } from '../../src/listening/phone-ears';
 import { DeviceListeningSwitches } from '../../src/listening/listening-switches';
 import { phoneExternalId } from '../../src/phones/phone-device';
 import { ReachRules } from '../../src/reach/reach-rules';
-import type { SpeechSegment } from '../../src/wake-name/ear';
-import type { EarKeywords, KeywordSpotter } from '../../src/wake-name/keyword-spotter';
+import type { SpeechSegment } from '../../src/listening/speech-segment';
+import { dbfsOfPcm } from '../../src/transcripts/line-levels';
+import type { EarKeywords } from '../../src/wake-name/keyword-lines';
 import { WakeClaims } from '../../src/wake-name/wake-claims';
-import { dbfsOf } from '../../src/wake-name/wake-handoff';
 import { FakeClock } from '../support/fake-clock';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
@@ -97,12 +97,10 @@ beforeEach(async () => {
     registry,
     claims,
     pause,
-    spotter: (): Pick<KeywordSpotter, 'earConfig'> => ({
-      earConfig: (spoken, sensitivity): EarKeywords => ({
-        keywords: spoken.map((name) => `${name}:${sensitivity}`),
-        threshold: 0.15,
-        nearMissThreshold: 0.06,
-      }),
+    keywords: (spoken, sensitivity): EarKeywords => ({
+      keywords: spoken.map((name) => `${name}:${sensitivity}`),
+      threshold: 0.15,
+      nearMissThreshold: 0.06,
     }),
     speech: {
       segment: (deviceId, segment): void => {
@@ -143,13 +141,13 @@ describe('the ear configuration', () => {
       keywords: ['Friday:standard'],
       threshold: 0.15,
       nearMissThreshold: 0.06,
-      pause_ms: 200,
+      pause_ms: DEFAULT_PAUSE_MS,
       power_mode: 'always',
     });
   });
 
   it('gives the phone the home end-of-speech pause and pushes it when it changes', () => {
-    expect(ears.config(CLIENT)).toMatchObject({ pause_ms: 200 });
+    expect(ears.config(CLIENT)).toMatchObject({ pause_ms: DEFAULT_PAUSE_MS });
     opened.store.settings.setEndOfSpeechPause(640);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.notice.message).toMatchObject({ kind: 'config', config: { pause_ms: 640 } });
@@ -226,7 +224,7 @@ describe('wake claims', () => {
   it('measures the loudness from the preroll with the hub formula', () => {
     const preroll = tone(2, 8000);
     ears.claim(CLIENT, { phrase: 'hey friday', snippetDbfs: -3, preroll: base64(preroll) });
-    expect(dbfsOf(preroll.subarray(-SAMPLES_PER_SECOND))).toBeCloseTo(-12.2, 1);
+    expect(dbfsOfPcm(preroll.subarray(-SAMPLES_PER_SECOND))).toBeCloseTo(-12.2, 1);
     const louder = claims.request({ source: 'camera', key: 'porch', snippetDbfs: -12 });
     expect(louder.granted).toBe(true);
     const quieter = claims.request({ source: 'camera', key: 'door', snippetDbfs: -13 });

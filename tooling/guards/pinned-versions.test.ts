@@ -18,11 +18,12 @@ describe('pinned dependency versions', () => {
     );
   });
 
-  it('accepts exact versions, prereleases, and workspace links', () => {
+  it('accepts exact versions, prereleases, workspace links, and exact npm aliases', () => {
     expect(
       unpinnedDependencies('packages/a/package.json', {
         dependencies: { a: '1.2.3', b: '0.2.1-alpha.2', c: '1.0.0+build.5', d: 'workspace:*' },
-        optionalDependencies: { f: '4.5.6' },
+        devDependencies: { e: 'npm:left-pad@1.3.0', f: 'npm:@scope/left-pad@1.3.0-rc.1' },
+        optionalDependencies: { g: '4.5.6' },
       }),
     ).toStrictEqual([]);
   });
@@ -41,7 +42,7 @@ describe('pinned dependency versions', () => {
         link: 'workspace:^',
         vendored: 'file:vendor/e',
       },
-      optionalDependencies: { tagged: 'next', alias: 'npm:left-pad@1.3.0' },
+      optionalDependencies: { tagged: 'next', alias: 'npm:left-pad@^1.3.0' },
     };
     expect(unpinnedDependencies('packages/a/package.json', planted)).toStrictEqual([
       'packages/a/package.json dependencies.caret@^1.2.3',
@@ -55,7 +56,7 @@ describe('pinned dependency versions', () => {
       'packages/a/package.json devDependencies.link@workspace:^',
       'packages/a/package.json devDependencies.vendored@file:vendor/e',
       'packages/a/package.json optionalDependencies.tagged@next',
-      'packages/a/package.json optionalDependencies.alias@npm:left-pad@1.3.0',
+      'packages/a/package.json optionalDependencies.alias@npm:left-pad@^1.3.0',
     ]);
   });
 

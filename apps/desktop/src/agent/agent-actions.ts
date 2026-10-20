@@ -3,6 +3,7 @@ import type {
   ComputerCapture,
   DesktopStill,
   MachineOpenTarget,
+  MachinePermissionState,
 } from '@smarteverything/domain';
 
 export type AgentFailureCode = 'not_supported' | 'failed';
@@ -22,6 +23,7 @@ export interface AgentActions {
   readonly open: (target: MachineOpenTarget) => Promise<void>;
   readonly ring: (on: boolean, ended: () => void) => Promise<void>;
   readonly capture: (target: CaptureTarget) => Promise<ComputerCapture>;
+  readonly permissions: () => readonly MachinePermissionState[];
 }
 
 interface ShellPort {
@@ -34,6 +36,10 @@ export interface RingPort {
   readonly stop: () => void;
 }
 
+export interface AccessPort {
+  readonly screenRecording: () => boolean | null;
+}
+
 interface StillPort {
   readonly still: (sourceId: string | null) => Promise<DesktopStill>;
 }
@@ -42,6 +48,7 @@ export interface ElectronActionsOptions {
   readonly shell: ShellPort;
   readonly ring: RingPort;
   readonly screen: StillPort;
+  readonly access: AccessPort;
   readonly now: () => Date;
 }
 
@@ -72,6 +79,12 @@ export function electronAgentActions(options: ElectronActionsOptions): AgentActi
         height: still.height,
         at: options.now().toISOString(),
       };
+    },
+    permissions: (): readonly MachinePermissionState[] => {
+      const screenRecording = options.access.screenRecording();
+      return screenRecording === null
+        ? []
+        : [{ permission: 'mac_screen_recording', granted: screenRecording }];
     },
   };
 }

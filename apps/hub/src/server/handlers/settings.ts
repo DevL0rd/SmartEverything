@@ -1,4 +1,9 @@
-import { API_ENDPOINTS as E, ApiError, applyHistorySettingsChange } from '@smarteverything/domain';
+import {
+  API_ENDPOINTS as E,
+  ApiError,
+  applyHistorySettingsChange,
+  applyTriggerSettingsChange,
+} from '@smarteverything/domain';
 import type { ServerContext } from '../context';
 import { bound } from '../router';
 import { clipboardRoutes } from './clipboard';
@@ -41,5 +46,10 @@ export const settingsRoutes = (context: ServerContext, now: () => Date) =>
       const { settings } = context.store;
       const current = settings.read().history_settings;
       return settings.setHistorySettings(applyHistorySettingsChange(current, body));
+    }),
+    updateTriggerSettings: bound(E.updateTriggerSettings, ({ body }) => {
+      const { settings } = context.store;
+      const current = settings.read().trigger_settings;
+      return settings.setTriggerSettings(applyTriggerSettingsChange(current, body));
     }),
   }) as const;

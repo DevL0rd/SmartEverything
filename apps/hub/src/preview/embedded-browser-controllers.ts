@@ -5,6 +5,7 @@ import {
   type EmbeddedBrowserSnapshot,
   type EmbeddedBrowserResult,
   type EmbeddedBrowserRequest,
+  type EMBEDDED_BROWSER_READ,
   type EMBEDDED_BROWSER_SELECTOR,
   type EMBEDDED_BROWSER_EDIT,
 } from '@smarteverything/domain';
@@ -67,13 +68,17 @@ export class EmbeddedBrowserControllers {
   async read(
     caller: Caller,
     chat: string,
-    selector: z.infer<typeof EMBEDDED_BROWSER_SELECTOR>,
+    input: z.infer<typeof EMBEDDED_BROWSER_READ>,
   ): Promise<EmbeddedBrowserSnapshot> {
-    const viewer = this.select(caller, chat, selector);
+    const viewer = this.select(caller, chat, input);
     const result = await viewer.perform({
       requestId: randomUUID(),
       scope: viewer.scope,
-      operation: { kind: 'read' },
+      operation: {
+        kind: 'read',
+        view: input.view,
+        ...(input.tabId === undefined ? {} : { tabId: input.tabId }),
+      },
     });
     this.fence(viewer);
     return result.snapshot;

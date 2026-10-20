@@ -68,7 +68,7 @@ export interface PluginDeviceSearchItem {
 export interface AppPlugin {
   readonly id: PluginId;
   readonly widgets: readonly WidgetDefinition[];
-  readonly home?: (devices: readonly Device[]) => readonly string[];
+  readonly home?: (devices: readonly Device[], profileId: string | null) => readonly string[];
   readonly widgetAliases?: Readonly<Record<string, string>>;
   readonly deviceCards?: readonly PluginDeviceCard[];
   readonly devicePages?: PluginDevicePages;

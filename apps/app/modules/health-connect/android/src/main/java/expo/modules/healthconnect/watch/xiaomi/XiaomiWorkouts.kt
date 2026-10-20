@@ -18,10 +18,14 @@ class XiaomiWorkoutHooks(
   val finished: () -> Unit
 )
 
-class XiaomiWorkouts(private val hooks: XiaomiWorkoutHooks, private val declared: SportList?) {
+class XiaomiWorkouts(
+  private val hooks: XiaomiWorkoutHooks,
+  private val declared: SportList?,
+  remembered: WorkoutInfo? = null
+) {
   private var reported: List<Int>? = null
   private var declaredNoted = false
-  private var current: WorkoutInfo? = null
+  private var current: WorkoutInfo? = remembered?.takeIf { it.active }
   private var probing: Int? = null
 
   private val codes: List<Int>?

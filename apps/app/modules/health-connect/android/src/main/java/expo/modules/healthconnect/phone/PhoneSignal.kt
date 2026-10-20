@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -16,6 +17,7 @@ import android.telephony.TelephonyCallback
 import android.telephony.TelephonyDisplayInfo
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
+import androidx.core.location.LocationManagerCompat
 import java.time.LocalDate
 import java.time.ZoneId
 import org.json.JSONObject
@@ -52,10 +54,18 @@ object PhoneSignal : PhoneDetailSource {
 
   fun bandGhz(megahertz: Int): Double = Math.round(megahertz / MHZ_PER_GHZ * BAND_STEP) / BAND_STEP
 
-  override fun values(context: Context, request: PhoneReadRequest): Map<String, Any?> {
-    val bars = activeBars(context) ?: return emptyMap()
-    return mapOf("signal_strength" to bars)
+  override fun values(context: Context, request: PhoneReadRequest): Map<String, Any?> = buildMap {
+    activeBars(context)?.let { put("signal_strength", it) }
+    put("wifi_on", wifiOn(context))
+    put("airplane_mode", airplane(context))
+    put("location_on", locationOn(context))
   }
+
+  fun wifiOn(context: Context): Boolean = context.getSystemService(WifiManager::class.java).isWifiEnabled
+
+  fun airplane(context: Context): Boolean = Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0) == 1
+
+  fun locationOn(context: Context): Boolean = LocationManagerCompat.isLocationEnabled(context.getSystemService(LocationManager::class.java))
 
   override fun section(context: Context, section: PhoneSection, request: PhoneReadRequest): JSONObject {
     val connectivity = context.getSystemService(ConnectivityManager::class.java)
@@ -66,18 +76,32 @@ object PhoneSignal : PhoneDetailSource {
       cellular(context),
       capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) == false,
       capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false,
-      Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0) == 1,
+      airplane(context),
+      wifiOn(context),
+      locationOn(context),
       dataUse.read(request.slow || request.live) { data(context) }
     )
   }
 
-  fun body(kind: String, wifi: JSONObject?, cellular: JSONObject?, vpn: Boolean, metered: Boolean, airplane: Boolean, data: Any): JSONObject = JSONObject()
+  fun body(
+    kind: String,
+    wifi: JSONObject?,
+    cellular: JSONObject?,
+    vpn: Boolean,
+    metered: Boolean,
+    airplane: Boolean,
+    wifiOn: Boolean,
+    locationOn: Boolean,
+    data: Any
+  ): JSONObject = JSONObject()
     .put("kind", kind)
     .put("wifi", wifi ?: JSONObject.NULL)
     .put("cellular", cellular ?: JSONObject.NULL)
     .put("vpn", vpn)
     .put("metered", metered)
     .put("airplane", airplane)
+    .put("wifiOn", wifiOn)
+    .put("locationOn", locationOn)
     .put("data", data)
 
   fun wifiBody(ssid: String?, rssiDbm: Int, bars: Int, linkMbps: Int, bandGhz: Double): JSONObject = JSONObject()

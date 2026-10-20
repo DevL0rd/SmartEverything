@@ -1,4 +1,4 @@
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { background } from '@smarteverything/logging';
 import {
   API_ENDPOINTS as E,
@@ -9,6 +9,7 @@ import {
 import { api } from '../../../api/transport';
 import type { ChartPoint } from '../../../components/charts';
 import { useScreenPaused } from '../../../design/screen-pause';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 
 type Lists = readonly (readonly ChartPoint[])[];
 
@@ -71,12 +72,10 @@ export function useMetricHistory(
   range: MetricRange,
   enabled: boolean,
 ): MetricHistory {
-  const paused = useScreenPaused();
-  const query = useQuery({
+  const query = useScreenQuery({
     queryKey: metricKey(deviceId, metric, range),
     queryFn: () => readMetric(deviceId, metric, range),
     enabled,
-    subscribed: !paused,
   });
   return {
     points: query.data,

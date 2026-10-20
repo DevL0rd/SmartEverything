@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { fit, readJson } from './json';
 
-export const IR_CODE_FORMATS = ['pulses', 'head_key', 'library'] as const;
+export const IR_CODE_FORMATS = ['pulses', 'head_key'] as const;
 
 export type IrCodeFormat = (typeof IR_CODE_FORMATS)[number];
 
@@ -15,15 +15,6 @@ export const HEAD_KEY = z.object({
 });
 
 export type HeadKey = z.output<typeof HEAD_KEY>;
-
-export const LIBRARY_KEY = z.object({
-  remoteId: z.string().min(1),
-  categoryId: z.number().int(),
-  keyId: z.number().int(),
-  key: z.string().min(1),
-});
-
-export type LibraryKey = z.output<typeof LIBRARY_KEY>;
 
 export const MAX_PULSE_MICROSECONDS = 0xffff;
 
@@ -239,10 +230,6 @@ export function parseHeadKey(text: string): HeadKey {
   return parsedJson('head_key', HEAD_KEY, text);
 }
 
-export function parseLibraryKey(text: string): LibraryKey {
-  return parsedJson('library', LIBRARY_KEY, text);
-}
-
 export function canonicalIrCode(code: IrCode): IrCode {
   switch (code.format) {
     case 'pulses':
@@ -252,8 +239,6 @@ export function canonicalIrCode(code: IrCode): IrCode {
       headKeyToPulses(headKey);
       return { format: 'head_key', code: JSON.stringify({ head: headKey.head, key: headKey.key }) };
     }
-    case 'library':
-      return { format: 'library', code: JSON.stringify(parseLibraryKey(code.code)) };
   }
 }
 

@@ -1,7 +1,11 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { background } from '@smarteverything/logging';
 import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { highlights } from '../components/highlight-anchors';
+import { anchorKey } from '../components/highlight-keys';
 import { List } from '../components/section';
+import { useHighlightAnchor } from '../components/use-highlight-anchor';
 import { NavRow } from '../components/rows';
 import { shallowEqual, useStoreSelector } from '../store/store-context';
 import { useSettingEnv } from './env';
@@ -38,15 +42,16 @@ function blocksOf(settings: readonly SettingDefinition[]): readonly Block[] {
   return blocks;
 }
 
-function FocusFrame({
-  focused,
+function SettingFrame({
+  setting,
   children,
 }: {
-  readonly focused: boolean;
+  readonly setting: SettingDefinition;
   readonly children: ReactNode;
 }): ReactNode {
+  const anchor = useHighlightAnchor(anchorKey.setting(setting.id), setting.title);
   return (
-    <View className={focused ? 'gap-section-gap bg-primary-container' : 'gap-section-gap'}>
+    <View {...anchor} className="gap-section-gap">
       {children}
     </View>
   );
@@ -80,29 +85,39 @@ function SubPages({ page, env }: { readonly page: string; readonly env: SettingE
   );
 }
 
-function BlockView({
-  block,
-  focus,
-}: {
-  readonly block: Block;
-  readonly focus: string | undefined;
-}): ReactNode {
+function BlockView({ block }: { readonly block: Block }): ReactNode {
   if (block.kind === 'custom') {
     return (
-      <FocusFrame focused={focus === block.setting.id}>
+      <SettingFrame setting={block.setting}>
         <SettingsRow setting={block.setting} />
-      </FocusFrame>
+      </SettingFrame>
     );
   }
   return (
     <List inset {...(block.section === '' ? {} : { title: block.section })}>
       {block.rows.map((setting) => (
-        <FocusFrame key={setting.id} focused={focus === setting.id}>
+        <SettingFrame key={setting.id} setting={setting}>
           <SettingsRow setting={setting} />
-        </FocusFrame>
+        </SettingFrame>
       ))}
     </List>
   );
+}
+
+function useUrlHighlight(settingId: string | undefined): void {
+  useEffect(() => {
+    if (settingId === undefined) {
+      return undefined;
+    }
+    const leaving = new AbortController();
+    background(
+      highlights.request([anchorKey.setting(settingId)], leaving.signal),
+      'settings.highlight_failed',
+    );
+    return (): void => {
+      leaving.abort();
+    };
+  }, [settingId]);
 }
 
 export function SettingsPageBody({ page }: { readonly page: string }): ReactNode {
@@ -116,10 +131,10 @@ export function SettingsPageBody({ page }: { readonly page: string }): ReactNode
   );
   const allVisible = settings.filter((setting) => shown.includes(setting.id));
   const listed = allVisible.find((setting) => setting.id === focus);
-  const focusId = listed?.control === 'listed' ? listed.in : focus;
+  useUrlHighlight(listed?.control === 'listed' ? listed.in : focus);
   const render = (list: readonly SettingDefinition[]): ReactNode =>
     blocksOf(list.filter((setting) => setting.control !== 'listed')).map((block) => (
-      <BlockView key={block.key} block={block} focus={focusId} />
+      <BlockView key={block.key} block={block} />
     ));
   const definition = settingsPage(page);
   const subPages = definition?.childrenInline === false ? null : <SubPages page={page} env={env} />;

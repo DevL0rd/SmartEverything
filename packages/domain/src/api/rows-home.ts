@@ -6,11 +6,15 @@ import { EVENT_KINDS } from '../events';
 import { FITNESS_GOALS, MAX_HEART_RATE, UNSET_FITNESS_GOALS } from '../fitness-settings';
 import { PROVIDER_PROMPT } from '../hub-commands';
 import { DEVICE_REFILLS } from '../diffuser';
+import { LAUNDRY_NOTICES } from '../laundry-notices';
 import { DEFAULT_HISTORY_SETTINGS, HISTORY_SETTINGS } from '../history-settings';
+import { DEFAULT_TRIGGER_SETTINGS, TRIGGER_SETTINGS } from '../trigger-settings';
 import { IR_REMOTE_STATES } from '../ir-remote-state';
 import { JSON_VALUE } from '../values';
+import { MAC_ADDRESS } from '../mac-address';
 import { DEFAULT_PAUSE_MS, PAUSE_MS } from '../voice-activity';
 import {
+  CLIENT_KIND,
   CLIENT_PLATFORM,
   COUNT,
   FLAG,
@@ -26,6 +30,8 @@ import {
 } from './primitives';
 
 export const HOME_NAME = boundedText(80);
+
+export const DEFAULT_HOME_NAME = 'Home';
 
 export const LATITUDE = z.number().min(-90).max(90);
 
@@ -48,12 +54,14 @@ export const SETTINGS_ROW = z.object({
   fitness_goals: FITNESS_GOALS.default(UNSET_FITNESS_GOALS),
   max_heart_rate: MAX_HEART_RATE.nullable().default(null),
   history_settings: HISTORY_SETTINGS.default(DEFAULT_HISTORY_SETTINGS),
+  trigger_settings: TRIGGER_SETTINGS.default(DEFAULT_TRIGGER_SETTINGS),
   device_refills: DEVICE_REFILLS.default({}),
+  laundry_notices: LAUNDRY_NOTICES.default({}),
   ir_remotes: IR_REMOTE_STATES.default({}).describe(
-    'What each IR remote is assumed to be doing, by remote id (a library remote’s device id or a learned remote’s id): on, temperature, mode, speed, mute, the last key sent, the 24 hour send times and the device that confirms its power. IR cannot report back, so these are the keys sent or what a person corrected, never a reading',
+    'What each IR remote is assumed to be doing, by remote id (an IR remote device’s id or a learned remote’s id): on, temperature, mode, speed, mute, the last key sent, the 24 hour send times and the device that confirms its power. IR cannot report back, so these are the keys sent or what a person corrected, never a reading',
   ),
   end_of_speech_pause_ms: PAUSE_MS.default(DEFAULT_PAUSE_MS).describe(
-    'How long to wait after someone stops talking before a sentence counts as finished, in milliseconds: 200, 320, 640, 1000 or 2500. One gate for calls and for every listening ear (cameras, computers, phones)',
+    'How long to wait after someone stops talking before a sentence counts as finished, in milliseconds: 0 (Automatic, the default: Gemini decides when you are done in calls, so the pause adds no delay, and listening ears use a short fixed pause), 200, 320, 640, 1000 or 2500. One gate for calls and for every listening ear (cameras, computers, phones)',
   ),
   ear_host_device_id: ID.nullable()
     .default(null)
@@ -67,16 +75,28 @@ export type SettingsRow = z.infer<typeof SETTINGS_ROW>;
 
 export const CLIENT_NAME = boundedText(80);
 
-export const CLIENT_ROW = z.object({
+export const CLIENT_KIND_OF_PLATFORM = {
+  desktop: 'computer',
+  android: 'phone',
+  web: 'browser',
+} as const;
+
+const CLIENT_FIELDS = z.object({
   id: ID,
   name: CLIENT_NAME,
   platform: CLIENT_PLATFORM,
+  kind: CLIENT_KIND.optional(),
   role: ROLE,
   built_in: FLAG,
   profile_id: ID.nullable().default(null),
   created_at: MOMENT,
   last_seen_at: MOMENT.nullable(),
 });
+
+export const CLIENT_ROW = CLIENT_FIELDS.transform((row) => ({
+  ...row,
+  kind: row.kind ?? CLIENT_KIND_OF_PLATFORM[row.platform],
+}));
 
 export type ClientRow = z.infer<typeof CLIENT_ROW>;
 
@@ -158,8 +178,11 @@ export type TelevisionInputNames = z.infer<typeof TELEVISION_INPUT_NAMES>;
 
 export const TELEVISION_SETTINGS_ROW = z.object({
   device_id: ID,
-  direct_link: FLAG,
+  direct_host: z.string().min(1).nullable(),
+  direct_mac: MAC_ADDRESS.nullable(),
   input_names: TELEVISION_INPUT_NAMES,
+  wake_macs: z.array(MAC_ADDRESS),
+  wake_worked_at: MOMENT.nullable(),
 });
 
 export type TelevisionSettingsRow = z.infer<typeof TELEVISION_SETTINGS_ROW>;

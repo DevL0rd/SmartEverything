@@ -6,15 +6,17 @@ import {
   FunctionResponseScheduling,
   GoogleGenAI,
   Modality,
+  ThinkingLevel,
   type AutomaticActivityDetection,
   type FunctionDeclaration,
+  type FunctionResponse,
   type LiveConnectConfig,
   type LiveConnectParameters,
   type LiveServerMessage,
   type Session,
   type UsageMetadata,
 } from '@google/genai';
-import { DEFAULT_PAUSE_MS, type SightResolution } from '@smarteverything/domain';
+import type { SightResolution, VoiceActiveThinking } from '@smarteverything/domain';
 import { LIVE_WEB_SEARCH_TOOL } from '../assistant/web-search';
 import { LiveTrace } from './gemini-trace';
 import { pingOf, type Ping } from './live-ping';
@@ -31,6 +33,7 @@ export interface LiveOptions {
   readonly automatic: boolean;
   readonly resolution?: SightResolution;
   readonly pauseMs?: number;
+  readonly thinking?: VoiceActiveThinking;
 }
 
 export interface LiveWindow {
@@ -86,19 +89,18 @@ export interface VoiceProvider {
 const QUICK_TURNS = {
   disabled: false,
   startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
-  endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
   prefixPaddingMs: 200,
-  silenceDurationMs: DEFAULT_PAUSE_MS,
 };
 
 function turnTakingOf(options: LiveOptions): AutomaticActivityDetection {
   if (!options.automatic) {
     return { disabled: true };
   }
-  if (options.pauseMs === undefined) {
-    return QUICK_TURNS;
+  const quick = { ...QUICK_TURNS, endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH };
+  if (options.pauseMs === undefined || options.pauseMs === 0) {
+    return quick;
   }
-  return options.pauseMs === 0 ? {} : { ...QUICK_TURNS, silenceDurationMs: options.pauseMs };
+  return { ...quick, silenceDurationMs: options.pauseMs };
 }
 
 function resolutionOf(options: LiveOptions): MediaResolution | null {
@@ -118,6 +120,12 @@ export class MissingGeminiKeyError extends Error {
   }
 }
 
+const THINKING_LEVELS: Readonly<Record<VoiceActiveThinking, ThinkingLevel>> = {
+  low: ThinkingLevel.LOW,
+  medium: ThinkingLevel.MEDIUM,
+  high: ThinkingLevel.HIGH,
+};
+
 const SCHEDULES: Readonly<Record<ToolScheduling, FunctionResponseScheduling>> = {
   silent: FunctionResponseScheduling.SILENT,
   idle: FunctionResponseScheduling.WHEN_IDLE,
@@ -134,6 +142,14 @@ function decode(base64: string): Int16Array {
 function pcmBase64(pcm: Int16Array): string {
   return Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength).toString('base64');
 }
+
+const MIC_RATE = 16_000;
+
+export const TRAILING_SILENCE_MS = 500;
+
+const TRAILING_SILENCE = pcmBase64(new Int16Array((MIC_RATE * TRAILING_SILENCE_MS) / 1000));
+
+const PCM_MIME = 'audio/pcm;rate=16000';
 
 function play(content: Content, events: LiveEvents): void {
   for (const part of content.modelTurn?.parts ?? []) {
@@ -177,13 +193,41 @@ function resumption(message: LiveServerMessage, events: LiveEvents): void {
   events.resumable(update.resumable === true && handle !== '' ? handle : null);
 }
 
-function route(message: LiveServerMessage, events: LiveEvents): void {
+type InteractionStatus = 'IN_PROGRESS' | 'IDLE';
+
+function statusOf(value: unknown): InteractionStatus | null {
+  if (typeof value !== 'object' || value === null || !('interactionStatus' in value)) {
+    return null;
+  }
+  const status = value.interactionStatus;
+  return status === 'IN_PROGRESS' || status === 'IDLE' ? status : null;
+}
+
+class Interaction {
+  private held = false;
+
+  finished(message: LiveServerMessage): boolean {
+    const status = statusOf(message) ?? statusOf(message.serverContent);
+    const complete = message.serverContent?.turnComplete === true;
+    if (complete && status === 'IN_PROGRESS') {
+      this.held = true;
+      return false;
+    }
+    if (complete || (status === 'IDLE' && this.held)) {
+      this.held = false;
+      return true;
+    }
+    return false;
+  }
+}
+
+function route(message: LiveServerMessage, events: LiveEvents, interaction: Interaction): void {
   const content = message.serverContent;
   if (content !== undefined) {
     routeContent(content, events);
   }
   calls(message, events);
-  if (content?.turnComplete === true) {
+  if (interaction.finished(message)) {
     events.turnComplete();
   }
   resumption(message, events);
@@ -200,15 +244,38 @@ export type LiveWire = Pick<
   'sendRealtimeInput' | 'sendClientContent' | 'sendToolResponse' | 'close'
 >;
 
-export function liveSessionOf(session: LiveWire): LiveSession {
+function toolResponseOf(
+  call: { readonly id: string; readonly name: string },
+  response: Readonly<Record<string, unknown>>,
+  delivery: ToolDelivery,
+  scheduled: boolean,
+): FunctionResponse {
+  return {
+    ...call,
+    response: { ...response },
+    ...(scheduled ? { scheduling: SCHEDULES[delivery.scheduling] } : {}),
+    willContinue: delivery.more,
+  };
+}
+
+export function liveSessionOf(
+  session: LiveWire,
+  automatic: boolean,
+  scheduled = true,
+): LiveSession {
   return {
     audio: (pcm): void => {
       session.sendRealtimeInput({
-        audio: { data: pcmBase64(pcm), mimeType: 'audio/pcm;rate=16000' },
+        audio: { data: pcmBase64(pcm), mimeType: PCM_MIME },
       });
     },
     speaking: (speaking): void => {
-      session.sendRealtimeInput(speaking ? { activityStart: {} } : { activityEnd: {} });
+      if (!automatic) {
+        session.sendRealtimeInput(speaking ? { activityStart: {} } : { activityEnd: {} });
+      } else if (!speaking) {
+        session.sendRealtimeInput({ audio: { data: TRAILING_SILENCE, mimeType: PCM_MIME } });
+        session.sendRealtimeInput({ audioStreamEnd: true });
+      }
     },
     text: (text, respond): void => {
       session.sendClientContent({
@@ -223,15 +290,7 @@ export function liveSessionOf(session: LiveWire): LiveSession {
     },
     toolResult: (id, name, response, delivery): void => {
       session.sendToolResponse({
-        functionResponses: [
-          {
-            id,
-            name,
-            response: { ...response },
-            scheduling: SCHEDULES[delivery.scheduling],
-            willContinue: delivery.more,
-          },
-        ],
+        functionResponses: [toolResponseOf({ id, name }, response, delivery, scheduled)],
       });
     },
     video: (frame): void => {
@@ -252,6 +311,14 @@ export function liveConfigOf(options: LiveOptions): LiveConnectConfig {
     responseModalities: [Modality.AUDIO],
     systemInstruction: options.system,
     speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: options.voice } } },
+    ...(options.thinking === undefined
+      ? {}
+      : {
+          thinkingConfig: {
+            thinkingLevel: THINKING_LEVELS[options.thinking],
+            includeThoughts: false,
+          },
+        }),
     ...(resolution === null ? {} : { mediaResolution: resolution }),
     inputAudioTranscription: {},
     outputAudioTranscription: {},
@@ -293,6 +360,7 @@ export class Gemini implements VoiceProvider {
     }
     const trace = new LiveTrace(options);
     const counted = trace.counting(events);
+    const interaction = new Interaction();
     trace.connecting();
     try {
       const session = await this.connect(apiKey, {
@@ -301,7 +369,7 @@ export class Gemini implements VoiceProvider {
         callbacks: {
           onmessage: (message): void => {
             trace.message();
-            route(message, counted);
+            route(message, counted, interaction);
           },
           onerror: (event): void => {
             trace.socketError(event.message);
@@ -313,7 +381,7 @@ export class Gemini implements VoiceProvider {
         },
       });
       trace.connected();
-      return liveSessionOf(session);
+      return liveSessionOf(session, options.automatic, options.thinking === undefined);
     } catch (cause) {
       trace.connectFailed(cause);
       throw cause;

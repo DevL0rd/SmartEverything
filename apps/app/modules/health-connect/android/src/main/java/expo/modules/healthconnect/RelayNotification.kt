@@ -23,7 +23,7 @@ object RelayNotification {
       NotificationChannel(CHANNEL, "Background sending", NotificationManager.IMPORTANCE_MIN)
     )
     val notification = Notification.Builder(context, CHANNEL)
-      .setSmallIcon(context.applicationInfo.icon)
+      .setSmallIcon(R.drawable.ic_stat_smarteverything)
       .setContentTitle(title)
       .build()
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

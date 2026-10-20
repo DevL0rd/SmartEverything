@@ -8,6 +8,7 @@ const log = new Logger('app.store');
 
 interface MutationRun<T> {
   readonly failure: string;
+  readonly label?: string;
   readonly inline?: boolean;
   readonly onDone?: (value: T) => void;
 }
@@ -18,13 +19,17 @@ export interface MutationState {
   readonly run: <T>(work: () => Promise<T>, options: MutationRun<T>) => void;
 }
 
+function labelled(options: { readonly label?: string }): { readonly label?: string } {
+  return options.label === undefined ? {} : { label: options.label };
+}
+
 export function useMutationState(): MutationState {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const running = useRef(false);
   const run = <T>(work: () => Promise<T>, options: MutationRun<T>): void => {
     if (running.current) {
-      log.debug('mutation.skipped', { label: options.failure, reason: 'already running' });
+      log.debug('mutation.skipped', () => ({ ...labelled(options), reason: 'already running' }));
       return;
     }
     running.current = true;
@@ -35,14 +40,14 @@ export function useMutationState(): MutationState {
       .then(
         (value) => {
           log.debug('mutation.succeeded', () => ({
-            label: options.failure,
+            ...labelled(options),
             durationMs: Date.now() - begun,
           }));
           options.onDone?.(value);
         },
         (error: unknown) => {
           log.warn('mutation.failed', {
-            label: options.failure,
+            failureText: options.failure,
             inline: options.inline === true,
             durationMs: Date.now() - begun,
             ...errorFields(error),

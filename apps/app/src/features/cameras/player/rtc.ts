@@ -9,7 +9,6 @@ import {
   type CaptureMode,
   type FrameCapture,
   type MediaHandle,
-  type MediaLink,
   type PeerOptions,
   type ScreenFill,
 } from './peer-types';
@@ -41,14 +40,6 @@ export async function saveServerPicture(
 ): Promise<FrameCapture> {
   await WebBrowser.openBrowserAsync(url);
   return { kind: 'opened', name };
-}
-
-export function relaySupported(): boolean {
-  return false;
-}
-
-export function createRelayLink(_url: string): MediaLink {
-  throw new PeerError('playing the relayed stream', 'Android has no Media Source Extensions');
 }
 
 export function canSharePictures(): boolean {

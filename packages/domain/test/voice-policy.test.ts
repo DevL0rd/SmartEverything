@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BARGE_IN,
+  DEFAULT_PAUSE_MS,
   ECHO_MODES,
   ECHO_POLICY,
   SPEECH_DETECTION,
@@ -53,8 +54,8 @@ describe('voice detection presets', () => {
     });
   });
 
-  it('defaults to the most eager sensitivity with the shortest pause', () => {
-    expect(SPEECH_DETECTION).toStrictEqual(speechDetectionOf('more', 200));
+  it('defaults to the most eager sensitivity with the automatic pause', () => {
+    expect(SPEECH_DETECTION).toStrictEqual(speechDetectionOf('more', DEFAULT_PAUSE_MS));
   });
 });
 

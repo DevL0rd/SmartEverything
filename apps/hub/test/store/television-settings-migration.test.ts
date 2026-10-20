@@ -12,6 +12,12 @@ import { captureLogs, testLogger } from '../support/logs';
 const NOW = '2026-10-18T09:00:00.000Z';
 const VERSION =
   MIGRATIONS.find((migration) => migration.name === 'television_settings')?.version ?? 0;
+const WAKE_VERSION =
+  MIGRATIONS.find((migration) => migration.name === 'television_wake')?.version ?? 0;
+const RESULT_VERSION =
+  MIGRATIONS.find((migration) => migration.name === 'television_wake_result')?.version ?? 0;
+const ADDRESS_VERSION =
+  MIGRATIONS.find((migration) => migration.name === 'television_direct_address')?.version ?? 0;
 const ROWS = z.array(z.record(z.string(), z.unknown()));
 
 let directory: string;
@@ -80,5 +86,67 @@ describe('television settings migration', () => {
     database.prepare('insert into television_settings (device_id) values (?)').run('tv-1');
     database.prepare('delete from devices where id = ?').run('tv-1');
     expect(ROWS.parse(database.prepare('select * from television_settings').all())).toEqual([]);
+  });
+
+  it('keeps existing settings and starts them without a wake address', () => {
+    upTo(WAKE_VERSION - 1);
+    television('tv-1');
+    database.prepare('insert into television_settings (device_id) values (?)').run('tv-1');
+    upTo(WAKE_VERSION);
+    expect(ROWS.parse(database.prepare('select * from television_settings').all())).toEqual([
+      { device_id: 'tv-1', direct_link: 0, input_names: '{}', wake_macs: '[]', wake_host: null },
+    ]);
+    const update = database.prepare('update television_settings set wake_macs = ?, wake_host = ?');
+    expect(() => update.run('{}', null)).toThrow();
+    expect(() => update.run('[]', '')).toThrow();
+  });
+
+  it('adds when a wake last worked after the wake columns without touching them', () => {
+    upTo(WAKE_VERSION);
+    television('tv-1');
+    database
+      .prepare('insert into television_settings (device_id, wake_macs) values (?, ?)')
+      .run('tv-1', '["a1:b2:c3:d4:e5:f6"]');
+    upTo(RESULT_VERSION);
+    expect(ROWS.parse(database.prepare('select * from television_settings').all())).toEqual([
+      {
+        device_id: 'tv-1',
+        direct_link: 0,
+        input_names: '{}',
+        wake_macs: '["a1:b2:c3:d4:e5:f6"]',
+        wake_host: null,
+        wake_worked_at: null,
+      },
+    ]);
+    expect(() =>
+      database.prepare('update television_settings set wake_worked_at = ?').run(''),
+    ).toThrow();
+  });
+
+  it('replaces the direct link flag and the unused wake host with the direct address of the screen', () => {
+    upTo(ADDRESS_VERSION - 1);
+    television('tv-1');
+    database
+      .prepare(
+        'insert into television_settings (device_id, direct_link, wake_macs) values (?, 1, ?)',
+      )
+      .run('tv-1', '["a1:b2:c3:d4:e5:f6"]');
+    upTo(ADDRESS_VERSION);
+    expect(ROWS.parse(database.prepare('select * from television_settings').all())).toEqual([
+      {
+        device_id: 'tv-1',
+        input_names: '{}',
+        wake_macs: '["a1:b2:c3:d4:e5:f6"]',
+        wake_worked_at: null,
+        direct_host: null,
+        direct_mac: null,
+      },
+    ]);
+    const update = database.prepare(
+      'update television_settings set direct_host = ?, direct_mac = ?',
+    );
+    expect(() => update.run('', null)).toThrow();
+    expect(() => update.run('192.168.1.40', 'a1:b2')).toThrow();
+    update.run('192.168.1.40', 'a1:b2:c3:d4:e5:f6');
   });
 });

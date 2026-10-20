@@ -1,5 +1,7 @@
 import type {
   CapabilityKey,
+  PresencePerson,
+  RawCapability,
   DeviceCapability,
   DiscoveredDevice,
   JsonValue,
@@ -41,6 +43,30 @@ const ROUTER_CAPABILITIES: readonly DeviceCapability[] = [
   },
 ];
 
+export const PEOPLE_HOME_KEY: RawCapability = 'raw:people_home';
+
+export function personHomeKey(person: Pick<PresencePerson, 'id'>): RawCapability {
+  return `raw:home_${person.id}`;
+}
+
+function peopleCapabilities(people: readonly PresencePerson[]): DeviceCapability[] {
+  const tracked = people.filter((person) => person.tracked);
+  return [
+    {
+      key: PEOPLE_HOME_KEY,
+      label: 'People home',
+      access: 'read',
+      value: { kind: 'number', min: 0, max: 100, step: 1 },
+    },
+    ...tracked.map((person): DeviceCapability => ({
+      key: personHomeKey(person),
+      label: `${person.name} home`,
+      access: 'read',
+      value: { kind: 'boolean' },
+    })),
+  ];
+}
+
 function describeRouter(snapshot: RouterSnapshot): DiscoveredDevice {
   return {
     provider: 'local',
@@ -52,7 +78,7 @@ function describeRouter(snapshot: RouterSnapshot): DiscoveredDevice {
     manufacturer: 'ASUS',
     room: null,
     online: snapshot.connection.state === 'online',
-    capabilities: [...ROUTER_CAPABILITIES],
+    capabilities: [...ROUTER_CAPABILITIES, ...peopleCapabilities(snapshot.people)],
     details: { firmware: snapshot.info?.firmware ?? null, lanIp: snapshot.info?.lanIp ?? null },
   };
 }
@@ -64,12 +90,21 @@ function routerReadings(snapshot: RouterSnapshot): ReadonlyMap<CapabilityKey, Js
     ...networkReadings(snapshot.network),
     ...systemReadings(snapshot.system),
     ['network_clients', snapshot.clients.filter((client) => client.connected).length],
+    ...peopleReadings(snapshot.people),
   ];
   return new Map(
     entries.flatMap(([key, value]): [CapabilityKey, JsonValue][] =>
       value === undefined || value === null ? [] : [[key, value]],
     ),
   );
+}
+
+function peopleReadings(people: readonly PresencePerson[]): Reading[] {
+  const tracked = people.filter((person) => person.tracked);
+  return [
+    [PEOPLE_HOME_KEY, tracked.filter((person) => person.home).length],
+    ...tracked.map((person): Reading => [personHomeKey(person), person.home]),
+  ];
 }
 
 function networkReadings(network: RouterSnapshot['network']): Reading[] {

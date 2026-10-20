@@ -1,5 +1,5 @@
 import { SILENCE_DBFS, levelOf, type ListeningSegment } from '@smarteverything/domain';
-import type { SpeechSegment } from '../../wake-name/ear';
+import type { SpeechSegment } from '../../listening/speech-segment';
 import type { WakeClaim, WakeGrant } from '../../wake-name/wake-claims';
 
 const FULL_SCALE = 32_768;
@@ -15,7 +15,7 @@ export function pcmOf(base64: string): Int16Array {
   return new Int16Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + even));
 }
 
-export function dbfsOf(pcm: Int16Array): number {
+function dbfsOf(pcm: Int16Array): number {
   return Math.min(0, Math.max(SILENCE_DBFS, 20 * Math.log10(levelOf(pcm, FULL_SCALE))));
 }
 

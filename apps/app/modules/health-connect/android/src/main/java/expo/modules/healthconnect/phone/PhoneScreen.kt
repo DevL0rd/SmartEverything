@@ -10,8 +10,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.util.Log
 import android.view.Display
+import expo.modules.healthconnect.DomainConstants
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -21,7 +21,6 @@ import org.json.JSONObject
 class UsageBucket(val startMs: Long, val visibleMs: Long)
 
 object PhoneScreen : PhoneDetailSource {
-  private const val TAG = "SmartEverythingPhone"
   private const val PERCENT = 100
   private const val BRIGHTNESS_REST_STEP = 10
   private const val MINUTE_MS = 60_000L
@@ -48,18 +47,25 @@ object PhoneScreen : PhoneDetailSource {
     return (DAYS - 1 downTo 0).map { back -> today.minusDays(back.toLong()).let { it to (perDay[it] ?: 0) } }
   }
 
+  fun timeoutOption(millis: Int): String? =
+    (millis / SECOND_MS).takeIf { millis % SECOND_MS == 0 && it in DomainConstants.PHONE_SCREEN_TIMEOUTS }?.toString()
+
   override fun values(context: Context, request: PhoneReadRequest): Map<String, Any?> = buildMap {
     brightness(context)?.let { put("brightness", brightnessPercent(it, PhoneBrightnessScale.maximum(), request.live)) }
     automatic(context)?.let { put("auto_brightness", it) }
+    setting(context, Settings.System.SCREEN_OFF_TIMEOUT)?.let(::timeoutOption)?.let { put("screen_timeout", it) }
+    PhoneSystemSettings.on(context, SystemToggle.AUTO_ROTATE)?.let { put("auto_rotate", it) }
   }
 
   override fun section(context: Context, section: PhoneSection, request: PhoneReadRequest): JSONObject? {
     val brightness = brightness(context) ?: return null
     val automatic = automatic(context) ?: return null
     val timeout = setting(context, Settings.System.SCREEN_OFF_TIMEOUT) ?: return null
+    val rotate = PhoneSystemSettings.on(context, SystemToggle.AUTO_ROTATE) ?: return null
     return body(
       brightnessPercent(brightness, PhoneBrightnessScale.maximum(), request.live),
       automatic,
+      rotate,
       timeout / SECOND_MS,
       fold(context),
       Settings.System.canWrite(context),
@@ -67,9 +73,10 @@ object PhoneScreen : PhoneDetailSource {
     )
   }
 
-  fun body(brightness: Int, auto: Boolean, timeoutSeconds: Int, fold: String?, writable: Boolean, usage: Any): JSONObject = JSONObject()
+  fun body(brightness: Int, auto: Boolean, autoRotate: Boolean, timeoutSeconds: Int, fold: String?, writable: Boolean, usage: Any): JSONObject = JSONObject()
     .put("brightness", brightness)
     .put("auto", auto)
+    .put("autoRotate", autoRotate)
     .put("timeoutSeconds", timeoutSeconds)
     .put("fold", fold ?: JSONObject.NULL)
     .put("writable", writable)
@@ -84,7 +91,7 @@ object PhoneScreen : PhoneDetailSource {
     val watch = object : ContentObserver(handler) {
       override fun onChange(selfChange: Boolean) = changed()
     }
-    listOf(Settings.System.SCREEN_BRIGHTNESS, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_OFF_TIMEOUT).forEach {
+    listOf(Settings.System.SCREEN_BRIGHTNESS, Settings.System.SCREEN_BRIGHTNESS_MODE).forEach {
       context.contentResolver.registerContentObserver(Settings.System.getUriFor(it), false, watch)
       observer = watch
     }
@@ -106,12 +113,7 @@ object PhoneScreen : PhoneDetailSource {
     displays = null
   }
 
-  private fun setting(context: Context, name: String): Int? = try {
-    Settings.System.getInt(context.contentResolver, name)
-  } catch (failure: Settings.SettingNotFoundException) {
-    Log.w(TAG, "The screen setting $name is not present on this phone: ${failure.message}")
-    null
-  }
+  private fun setting(context: Context, name: String): Int? = PhoneSystemSettings.int(context, name)
 
   private fun brightness(context: Context): Int? = setting(context, Settings.System.SCREEN_BRIGHTNESS)
 

@@ -6,9 +6,21 @@ import {
   profilingOnCount,
   profilingState,
 } from '../../../developer/profiling-master';
-import { resolveFlags, toggleOf, type DeveloperFlagId } from '../../../developer/toggles';
+import {
+  resolveFlags,
+  toggleOf,
+  type DeveloperFlagId,
+  type DeveloperToggle,
+} from '../../../developer/toggles';
+import type { IconName } from '../../../components/icon-glyphs';
 import { reloadApp } from '../../../platform/reload';
 import { useLocalPref } from '../../../store/local-prefs';
+
+const SECTION_ICONS = {
+  Performance: 'gauge',
+  Logging: 'list',
+  Watch: 'watch',
+} as const satisfies Record<DeveloperToggle['section'], IconName>;
 
 export function DeveloperToggleRow({ id }: { readonly id: DeveloperFlagId }): ReactNode {
   const stored = useLocalPref('developerFlags');
@@ -20,7 +32,7 @@ export function DeveloperToggleRow({ id }: { readonly id: DeveloperFlagId }): Re
       title={toggle.label}
       subtitle={`${toggle.description} Cost: ${toggle.cost}${note}`}
       wrapSubtitle
-      icon={toggle.section === 'Logging' ? 'list' : 'gauge'}
+      icon={SECTION_ICONS[toggle.section]}
       value={resolveFlags(stored, __DEV__)[id]}
       disabled={parentOff}
       onChange={(value) => {

@@ -38,8 +38,6 @@ const PROBES: Readonly<Record<FirewallPlatform, Prober>> = {
   win32: probeWindows,
 };
 
-const UDP_TIMEOUT = /read udp .*i\/o timeout/;
-
 export interface FirewallMonitorOptions {
   readonly system: FirewallSystem;
   readonly webrtcPort: number;
@@ -143,8 +141,6 @@ export class FirewallMonitor {
   private warnedNoLan = false;
   private checked: Checked | null = null;
   private readonly failures = new Map<string, string>();
-  private readonly opening = new Map<string, number>();
-  private readonly suspects = new Set<string>();
   private readonly listeners = new Set<FirewallListener>();
   private readonly watchers = new Map<string, () => void>();
   private connectionNeeds: readonly ConnectionPortNeed[] = [];
@@ -218,42 +214,15 @@ export class FirewallMonitor {
     });
   }
 
-  streamOpening(deviceId: string): void {
-    this.opening.set(deviceId, (this.opening.get(deviceId) ?? 0) + 1);
+  cameraFailed(deviceId: string): void {
+    this.failures.set(deviceId, this.options.now().toISOString());
+    this.republish();
   }
 
-  streamSettled(deviceId: string, succeeded: boolean): void {
-    const remaining = (this.opening.get(deviceId) ?? 1) - 1;
-    if (remaining > 0) {
-      this.opening.set(deviceId, remaining);
-    } else {
-      this.opening.delete(deviceId);
-    }
-    if (!succeeded) {
-      this.suspects.add(deviceId);
-      return;
-    }
-    this.suspects.delete(deviceId);
+  cameraRecovered(deviceId: string): void {
     if (this.failures.delete(deviceId)) {
       this.republish();
     }
-  }
-
-  reported(text: string): void {
-    if (!UDP_TIMEOUT.test(text)) {
-      return;
-    }
-    const devices = new Set([...this.opening.keys(), ...this.suspects]);
-    this.suspects.clear();
-    if (devices.size === 0) {
-      return;
-    }
-    const at = this.options.now().toISOString();
-    for (const deviceId of devices) {
-      this.failures.set(deviceId, at);
-    }
-    this.options.log.warn('firewall.camera_timed_out', { deviceIds: [...devices].join(',') });
-    this.republish();
   }
 
   blockingAddress(deviceId: string): string | null {

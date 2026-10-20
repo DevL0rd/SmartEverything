@@ -1,17 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { createSocket, type Socket } from 'node:dgram';
 import TuyaDevice from 'tuyapi';
-import { WebSocket } from 'ws';
 import { backoffDelay } from '../../plugins/backoff';
 import type { FetchLike } from '../../plugins/builtin/fetch-like';
-import type { MessageSocket } from './message-socket';
 import type { LocalClient, LocalClientOptions } from './local-client';
 import { nodeMqttConnect, type MqttConnect } from './mqtt-connection';
 
 interface TuyaTiming {
   readonly irLearnTimeoutMs: number;
-  readonly cloudLearnQueryMs: number;
-  readonly messagePingMs: number;
   readonly qrScanQueryMs: number;
   readonly qrScanTimeoutMs: number;
   readonly messagingRenewMarginMs: number;
@@ -29,7 +25,6 @@ export interface TuyaDependencies {
   readonly localClient: (options: LocalClientOptions) => LocalClient;
   readonly udpSocket: () => Socket;
   readonly discoveryPorts: readonly number[];
-  readonly messageSocket: (url: string, headers: Readonly<Record<string, string>>) => MessageSocket;
   readonly mqtt: MqttConnect;
 }
 
@@ -37,8 +32,6 @@ const RECONNECT = { firstMs: 1000, longestMs: 60_000 } as const;
 
 const DEFAULT_TIMING: TuyaTiming = {
   irLearnTimeoutMs: 30_000,
-  cloudLearnQueryMs: 2_000,
-  messagePingMs: 30_000,
   qrScanQueryMs: 2_000,
   qrScanTimeoutMs: 300_000,
   messagingRenewMarginMs: 60_000,
@@ -68,7 +61,6 @@ export function nodeDependencies(discoveryPorts: readonly number[]): TuyaDepende
       }),
     udpSocket: () => createSocket({ type: 'udp4', reuseAddr: true }),
     discoveryPorts,
-    messageSocket: (url, headers) => new WebSocket(url, { headers: { ...headers } }),
     mqtt: nodeMqttConnect,
   };
 }

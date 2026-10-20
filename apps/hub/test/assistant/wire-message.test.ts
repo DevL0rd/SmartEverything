@@ -73,9 +73,10 @@ describe('wireMessage', () => {
     expect(JSON.parse(shown.text ?? '')).toMatchObject({ exit_code: 0 });
   });
 
-  it('sends a message that is still being written untouched', () => {
-    const row = rowWith('working', output);
+  it('sends a message that is still being written with compact tool results too', () => {
+    const shown = outputOf(wireMessage(rowWith('working', output)));
 
-    expect(wireMessage(row)).toBe(row);
+    expect(shown.text?.length).toBeLessThan(output.length);
+    expect(shown.chars).toBe(output.length);
   });
 });

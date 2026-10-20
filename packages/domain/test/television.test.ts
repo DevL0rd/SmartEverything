@@ -20,6 +20,7 @@ import {
   deviceFamily,
   inputLabel,
   irButtonFor,
+  powerOnPath,
   presentDevice,
   presentValue,
   tvKeyMap,
@@ -54,11 +55,14 @@ const FIXTURE = z
 const CLOUD_ONLY: TvPaths = {
   smartthings: true,
   direct: { attached: false },
+  wake: false,
   irRemoteId: null,
   irButtons: [],
 };
 
 const WITH_DIRECT: TvPaths = { ...CLOUD_ONLY, direct: { attached: true } };
+
+const WITH_WAKE: TvPaths = { ...CLOUD_ONLY, wake: true };
 
 const IR_REMOTE = 'ir-remote-1';
 
@@ -308,9 +312,15 @@ describe('reading a television by role', () => {
 
 describe('the mode of a television', () => {
   it('reads a sleeping television with a wake path as standby, not as lost', () => {
-    expect(modeOf('bedroom', false, CLOUD_ONLY)).toBe('standby');
-    expect(modeOf('monitor', false, CLOUD_ONLY)).toBe('standby');
+    expect(modeOf('bedroom', false, WITH_WAKE)).toBe('standby');
+    expect(modeOf('monitor', false, WITH_WAKE)).toBe('standby');
+    expect(modeOf('livingRoom', false, WITH_WAKE)).toBe('standby');
     expect(modeOf('bedroom', true, CLOUD_ONLY, { power: false })).toBe('standby');
+  });
+
+  it('does not count on SmartThings to wake a television it cannot reach', () => {
+    expect(modeOf('bedroom', false, CLOUD_ONLY)).toBe('off_unreachable');
+    expect(modeOf('monitor', false, CLOUD_ONLY)).toBe('unreachable');
   });
 
   it('reads the living room television as off and unable to wake until a path exists', () => {
@@ -424,9 +434,17 @@ describe('the keys of a television', () => {
   });
 
   it('chooses the power path by what can wake the television', () => {
-    const cloud = keysOf('bedroom', false, CLOUD_ONLY);
+    const cloud = keysOf('bedroom', true, CLOUD_ONLY, { power: false });
     expect(cloud('power_on')).toMatchObject({ path: 'smartthings', send: { value: true } });
     expect(cloud('power')).toMatchObject({ path: 'smartthings', send: { value: true } });
+    expect(keysOf('bedroom', false, CLOUD_ONLY)('power_on')).toEqual({
+      path: null,
+      reason: 'cannot_wake',
+    });
+    expect(keysOf('livingRoom', false, WITH_WAKE)('power_on')).toMatchObject({
+      path: 'smartthings',
+      send: { capability: 'power', value: true },
+    });
     expect(keysOf('livingRoom', false, CLOUD_ONLY)('power_on')).toEqual({
       path: null,
       reason: 'cannot_wake',
@@ -442,6 +460,18 @@ describe('the keys of a television', () => {
       send: { deviceId: IR_REMOTE, capability: 'remote_key', value: 'Power' },
       fallbacks: [],
     });
+  });
+
+  it('wakes a linked screen through the direct link first, even when SmartThings could wake it', () => {
+    const both = keysOf('bedroom', true, { ...WITH_DIRECT, wake: true }, { power: false });
+    expect(both('power_on')).toMatchObject({
+      path: 'direct',
+      send: { capability: 'power', value: true },
+      fallbacks: [{ path: 'smartthings', send: { capability: 'power', value: true } }],
+    });
+    const device = tv('bedroom', true);
+    const values = valuesOf('bedroom', device, { power: false });
+    expect(powerOnPath(values, { ...WITH_DIRECT, wake: true }, true)).toBe('direct');
   });
 
   it('turns an awake television off through the direct link first', () => {
@@ -633,8 +663,8 @@ describe('the state of a television', () => {
   it('shows turning on only for a standby television and keeps the stronger modes', () => {
     const standby = tv('bedroom', false);
     const values = valuesOf('bedroom', standby);
-    expect(tvState(values, standby, CLOUD_ONLY, { turningOn: true }).mode).toBe('turning_on');
-    expect(tvState(values, standby, CLOUD_ONLY, { turningOn: false }).mode).toBe('standby');
+    expect(tvState(values, standby, WITH_WAKE, { turningOn: true }).mode).toBe('turning_on');
+    expect(tvState(values, standby, WITH_WAKE, { turningOn: false }).mode).toBe('standby');
     const lost = tv('livingRoom', false);
     const lostValues = valuesOf('livingRoom', lost, ON);
     expect(tvState(lostValues, lost, CLOUD_ONLY, { turningOn: true }).mode).toBe('unreachable');

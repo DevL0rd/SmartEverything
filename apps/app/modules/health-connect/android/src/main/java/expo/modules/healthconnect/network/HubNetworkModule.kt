@@ -201,6 +201,8 @@ class HubNetworkModule : Module() {
     AsyncFunction("browserObserve") Coroutine { -> withContext(Dispatchers.Main) { HubBrowserDiagnostics.replayAll(1) } }
     AsyncFunction("browserObserveRaw") Coroutine { -> withContext(Dispatchers.Main) { HubBrowserDiagnostics.replayAll(2) } }
     AsyncFunction("browserPerform") Coroutine { json: String -> withContext(Dispatchers.Main) { HubBrowserDiagnostics.perform(json) } }
+    AsyncFunction("browserEvaluate") Coroutine { id: String, code: String -> withContext(Dispatchers.Main) { HubBrowserDiagnostics.evaluate(id, code) } }
+    AsyncFunction("browserPress") Coroutine { id: String, json: String -> withContext(Dispatchers.Main) { HubBrowserDiagnostics.press(id, json) } }
     View(HubHtmlView::class) {
       Events("onStatus", "onDiagnostic")
       Prop("target") { view: HubHtmlView, json: String -> view.bindBrowser(json) }

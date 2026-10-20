@@ -1,6 +1,7 @@
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { Logger, type LogRecord } from '@smarteverything/logging';
 
 vi.mock('../components/toast-store', () => ({ notify: vi.fn() }));
 
@@ -56,5 +57,24 @@ describe('useMutationState', () => {
     await Promise.resolve();
     run(work, { failure: 'Could not save' });
     expect(work).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs a success under its own label and never under the failure text', async () => {
+    const records: LogRecord[] = [];
+    Logger.configure({ level: 'debug', sink: (record) => records.push(record) });
+    const { run } = rendered();
+    const done = vi.fn();
+    run(() => Promise.resolve(1), {
+      failure: 'The treadmill could not be added',
+      label: 'Add treadmill',
+      onDone: done,
+    });
+    await vi.waitFor(() => {
+      expect(done).toHaveBeenCalled();
+    });
+    Logger.reset();
+    const succeeded = records.find((record) => record.event === 'mutation.succeeded');
+    expect(succeeded?.payload).toMatchObject({ label: 'Add treadmill' });
+    expect(JSON.stringify(succeeded?.payload)).not.toContain('could not be added');
   });
 });

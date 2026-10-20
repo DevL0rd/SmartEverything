@@ -1,11 +1,8 @@
 import { z } from 'zod';
 import { MOMENT } from './api/primitives';
 import { PROVIDER } from './devices';
-import { MAC_ADDRESS } from './mac-address';
 
 export const XIAOMI_REGIONS = ['cn', 'de', 'i2', 'ru', 'sg', 'us'] as const;
-
-export const TUYA_REGIONS = ['cn', 'us', 'us-e', 'eu', 'eu-w', 'in', 'sg'] as const;
 
 export const XIAOMI_CREDENTIALS = z.object({
   provider: z.literal('xiaomi'),
@@ -14,29 +11,11 @@ export const XIAOMI_CREDENTIALS = z.object({
   region: z.enum(XIAOMI_REGIONS),
 });
 
-export const TUYA_LINK_METHODS = ['smart_life', 'developer_project'] as const;
-
-export type TuyaLinkMethod = (typeof TUYA_LINK_METHODS)[number];
-
-export const TUYA_SMART_LIFE_CREDENTIALS = z.object({
+export const TUYA_CREDENTIALS = z.object({
   provider: z.literal('tuya'),
   method: z.literal('smart_life'),
-  userCode: z.string().trim().min(1),
+  userCode: z.string().trim().min(1).optional(),
 });
-
-export const TUYA_PROJECT_CREDENTIALS = z.object({
-  provider: z.literal('tuya'),
-  method: z.literal('developer_project'),
-  accessId: z.string().min(1),
-  accessSecret: z.string().min(1),
-  region: z.enum(TUYA_REGIONS),
-  appUserId: z.string().min(1),
-});
-
-export const TUYA_CREDENTIALS = z.discriminatedUnion('method', [
-  TUYA_SMART_LIFE_CREDENTIALS,
-  TUYA_PROJECT_CREDENTIALS,
-]);
 
 export const SMARTTHINGS_CREDENTIALS = z.object({
   provider: z.literal('smartthings'),
@@ -47,8 +26,7 @@ export const SMARTTHINGS_CREDENTIALS = z.object({
 export const SAMSUNG_TV_CREDENTIALS = z.object({
   provider: z.literal('samsung_tv'),
   host: z.string().min(1),
-  macAddress: MAC_ADDRESS,
-  name: z.string().min(1),
+  name: z.string().min(1).optional(),
   attachTo: z.uuid().optional(),
 });
 
@@ -93,6 +71,7 @@ export const PROVIDER_PROMPT = z.discriminatedUnion('kind', [
     kind: z.literal('scan_qr'),
     app: z.string().min(1),
     content: z.string().min(1),
+    issuedAt: MOMENT.optional(),
     expiresAt: MOMENT,
   }),
 ]);

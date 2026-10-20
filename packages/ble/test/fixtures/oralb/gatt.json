@@ -1,0 +1,163 @@
+{
+  "deviceInfo": {
+    "hex": "360852",
+    "modelId": 54,
+    "protocol": 8,
+    "firmware": 82
+  },
+  "mac": {
+    "hex": "be48c22fdb78",
+    "mac": "78:DB:2F:C2:48:BE"
+  },
+  "battery": [
+    {
+      "name": "protocol 6 capture",
+      "hex": "5b000000",
+      "protocol": 6,
+      "expect": {
+        "battery": 91,
+        "runtimeLeftS": null
+      }
+    },
+    {
+      "name": "protocol 6 runtime present",
+      "hex": "3b100e00",
+      "protocol": 6,
+      "expect": {
+        "battery": 59,
+        "runtimeLeftS": 3600
+      }
+    },
+    {
+      "name": "protocol 8 zero runtime is real",
+      "hex": "000000",
+      "protocol": 8,
+      "expect": {
+        "battery": 0,
+        "runtimeLeftS": 0
+      }
+    },
+    {
+      "name": "unknown runtime",
+      "hex": "50ffff",
+      "protocol": 8,
+      "expect": {
+        "battery": 80,
+        "runtimeLeftS": null
+      }
+    },
+    {
+      "name": "protocol 8 full form",
+      "hex": "5f100ea00f7b0019",
+      "protocol": 8,
+      "expect": {
+        "battery": 95,
+        "runtimeLeftS": 3600,
+        "millivolts": 4000,
+        "milliamps": 123,
+        "temperatureC": 25
+      }
+    },
+    {
+      "name": "negative current",
+      "hex": "610000000042fd23",
+      "protocol": 8,
+      "expect": {
+        "battery": 97,
+        "runtimeLeftS": 0,
+        "millivolts": 0,
+        "milliamps": -702,
+        "temperatureC": 35
+      }
+    },
+    {
+      "name": "old brush battery only",
+      "hex": "50",
+      "protocol": null,
+      "expect": {
+        "battery": 80
+      }
+    }
+  ],
+  "pacerConfig": [
+    {
+      "hex": "1e1e1e1e00000000",
+      "sectors": 4,
+      "targetS": 120
+    },
+    {
+      "hex": "0000000000000000",
+      "sectors": 0,
+      "targetS": 0
+    }
+  ],
+  "modeSlots": [
+    {
+      "hex": "0b00010302040607",
+      "slots": [11, 0, 1, 3, 2, 4, 6, 7]
+    }
+  ],
+  "pressure": [
+    {
+      "hex": "01",
+      "expect": {
+        "pressure": 1
+      }
+    },
+    {
+      "hex": "0234127856bc9af0deaa",
+      "expect": {
+        "pressure": 2,
+        "pressureStamp": 4660,
+        "forceRaw": 22136,
+        "angleCentidegrees": 39612,
+        "driveTarget": 57072,
+        "pressureId": 170
+      }
+    }
+  ],
+  "head": {
+    "hex": "001e005802",
+    "headState": 0,
+    "headDaysLeft": 30,
+    "headSecondsLeft": 600
+  },
+  "ring": [
+    {
+      "name": "white",
+      "hex": "44cf6300",
+      "colour": "white",
+      "display": [255, 255, 255]
+    },
+    {
+      "name": "yellow",
+      "hex": "80ff0000",
+      "colour": "yellow",
+      "display": [255, 255, 0]
+    },
+    {
+      "name": "orange",
+      "hex": "fc700000",
+      "colour": "orange",
+      "display": [255, 138, 0]
+    },
+    {
+      "name": "blue",
+      "hex": "0f5bcc00",
+      "colour": "blue",
+      "display": [56, 112, 255]
+    },
+    {
+      "name": "turquoise",
+      "hex": "00ff3d00",
+      "colour": "turquoise",
+      "display": [0, 255, 157]
+    },
+    {
+      "name": "pink",
+      "hex": "b2091a00",
+      "colour": "pink",
+      "display": [255, 11, 67]
+    }
+  ]
+}

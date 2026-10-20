@@ -7,6 +7,7 @@ export const SIGNAL_LIMITS = {
   holdSeconds: 86_400,
   debounceSeconds: 3600,
   cooldownSeconds: 86_400,
+  silentSeconds: 604_800,
   windowSamples: 2000,
 } as const;
 

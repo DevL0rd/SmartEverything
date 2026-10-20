@@ -32,7 +32,15 @@
       "storage_free": 41000000000,
       "notification_count": 4,
       "next_alarm": "2026-10-19T06:30:00Z",
-      "signal_strength": 3
+      "signal_strength": 3,
+      "screen_timeout": "60",
+      "auto_rotate": true,
+      "haptic_feedback": true,
+      "touch_sounds": false,
+      "wifi_on": true,
+      "bluetooth_on": true,
+      "location_on": true,
+      "airplane_mode": false
     },
     "events": [
       {
@@ -95,6 +103,8 @@
           "notification": 50,
           "call": 60
         },
+        "hapticFeedback": true,
+        "touchSounds": false,
         "output": {
           "kind": "bluetooth",
           "name": "Galaxy Buds3"
@@ -112,6 +122,7 @@
       "screen": {
         "brightness": 60,
         "auto": true,
+        "autoRotate": true,
         "timeoutSeconds": 60,
         "fold": "open",
         "writable": true,
@@ -166,6 +177,8 @@
         "vpn": false,
         "metered": false,
         "airplane": false,
+        "wifiOn": true,
+        "locationOn": true,
         "data": {
           "today": {
             "wifiBytes": 1000000000,
@@ -178,6 +191,7 @@
         }
       },
       "connections": {
+        "bluetoothOn": true,
         "bluetooth": [
           {
             "name": "Galaxy Buds3",
@@ -291,6 +305,8 @@
           "notification": 50,
           "call": 60
         },
+        "hapticFeedback": true,
+        "touchSounds": false,
         "output": {
           "kind": "speaker",
           "name": null
@@ -300,6 +316,7 @@
       "screen": {
         "brightness": 60,
         "auto": true,
+        "autoRotate": true,
         "timeoutSeconds": 60,
         "fold": null,
         "writable": true,
@@ -312,9 +329,12 @@
         "vpn": false,
         "metered": false,
         "airplane": false,
+        "wifiOn": true,
+        "locationOn": true,
         "data": null
       },
       "connections": {
+        "bluetoothOn": true,
         "bluetooth": [
           {
             "name": null,

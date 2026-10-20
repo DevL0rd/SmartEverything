@@ -41,7 +41,7 @@ function verdictOf(settings: SettingsRow, now: number): Verdict {
   };
 }
 
-function normalised(value: string): string {
+export function normalised(value: string): string {
   return value.trim().replace(/\/+$/, '');
 }
 

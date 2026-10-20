@@ -45,6 +45,10 @@ export async function setWatchLive(on: boolean): Promise<void> {
   await nativeFor('setWatchLive').setWatchLive(on);
 }
 
+export async function setWatchCapture(on: boolean): Promise<void> {
+  await nativeFor('setWatchCapture').setWatchCapture(on);
+}
+
 export async function refreshWatches(): Promise<void> {
   await nativeFor('refreshWatches').refreshWatches();
 }

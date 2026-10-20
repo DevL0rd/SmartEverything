@@ -5,7 +5,7 @@ import { Logger } from '@smarteverything/logging';
 import {
   CLIENT_TOKEN,
   OVERLAY_HOST_VIEW,
-  type DesktopFirewallResult,
+  type FirewallApplyResult,
   type DesktopInvokeChannel,
   type DesktopInvokeChannels,
 } from '@smarteverything/domain';
@@ -45,7 +45,7 @@ export interface IpcServices {
   readonly takeDeepLinks: (sender: WebContents) => readonly string[];
   readonly onNotificationClick: () => void;
   readonly service: ServiceController;
-  readonly applyFirewall: (revision: string) => Promise<DesktopFirewallResult>;
+  readonly applyFirewall: (revision: string) => Promise<FirewallApplyResult>;
   readonly talk: TalkDesktop;
   readonly overlay: OverlayDesktop;
   readonly capture: DisplayCapture;

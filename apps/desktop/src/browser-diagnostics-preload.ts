@@ -1,12 +1,23 @@
 import electron from 'electron';
 import {
   NATIVE_BROWSER_DIAGNOSTIC,
+  NATIVE_BROWSER_PAGE_REQUEST,
+  NATIVE_BROWSER_PAGE_RESPONSE,
   NATIVE_BROWSER_OPERATION,
   PREVIEW_PIXELS,
   type PreviewPixels,
   type NativeBrowserDiagnostics,
 } from '@smarteverything/domain';
 export const browserDiagnostics: NativeBrowserDiagnostics = {
+  page: {
+    perform: async (request) =>
+      NATIVE_BROWSER_PAGE_RESPONSE.parse(
+        await electron.ipcRenderer.invoke(
+          'desktop:browser-page',
+          NATIVE_BROWSER_PAGE_REQUEST.parse(request),
+        ),
+      ),
+  },
   perform: async (input): Promise<PreviewPixels | null> => {
     const result: unknown = await electron.ipcRenderer.invoke(
       'desktop:browser-diagnostics',

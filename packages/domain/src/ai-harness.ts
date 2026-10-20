@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { HARNESS_PLATFORM, HARNESS_SANDBOX_ENFORCEMENT } from './harness-platform';
 
 export const AI_HARNESS_CAPABILITY = 'ai-harness-v1';
 export const AI_HARNESS_PROTOCOL_VERSION = 1;
@@ -122,7 +123,8 @@ const HOST_FIELDS = {
 };
 export const AI_HARNESS_HOST = z.object({
   ...HOST_FIELDS,
-  platform: z.enum(['linux', 'windows', 'macos']),
+  platform: HARNESS_PLATFORM,
+  sandbox: HARNESS_SANDBOX_ENFORCEMENT.optional(),
 });
 export type AiHarnessHost = z.infer<typeof AI_HARNESS_HOST>;
 

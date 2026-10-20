@@ -61,6 +61,7 @@ export type {
   AttributionInput,
   AttributionResult,
   BleAdvert,
+  BleContentFilter,
   BleWatch,
   BodyReadingPush,
   BodyReadingPushData,
@@ -134,6 +135,13 @@ export {
   WATCH_WORKOUT_STATES,
 } from './watch-workouts';
 export type { WatchSport, WatchWorkout, WatchWorkoutReport } from './watch-workouts';
+export {
+  WATCH_CAPABILITY_CATALOGUE,
+  WATCH_WORKOUT_CONTROLS,
+  WATCH_WORKOUT_STATUSES,
+  watchWorkoutStatusOf,
+} from './watch-capabilities';
+export type { WatchWorkoutControl, WatchWorkoutStatus } from './watch-capabilities';
 export type {
   WatchActionPush,
   WatchActionRequest,

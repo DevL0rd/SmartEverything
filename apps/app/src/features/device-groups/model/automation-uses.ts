@@ -1,27 +1,19 @@
+import { NODE_REGISTRY, type DeviceTarget, type ReferenceContext } from '@smarteverything/domain';
 import {
-  automationReferences,
-  type AutomationRow,
-  type AutomationV2,
-  type DeviceTarget,
-} from '@smarteverything/domain';
+  automationRowsOf,
+  automationsUsing as automationsUsingRows,
+  type AutomationUse,
+} from '../../automations';
 
-export interface AutomationUse {
-  readonly id: string;
-  readonly name: string;
-  readonly enabled: boolean;
-}
+export type { AutomationUse };
+
+const CONTEXT: ReferenceContext = { kinds: NODE_REGISTRY.get, functions: () => undefined };
 
 export function automationsUsing(
-  rows: readonly AutomationRow[],
+  rows: readonly unknown[],
   referenceId: string,
-  parse: (row: AutomationRow) => AutomationV2 | null,
 ): readonly AutomationUse[] {
-  return rows.flatMap((row) => {
-    const automation = parse(row);
-    return automation !== null && automationReferences(automation, referenceId)
-      ? [{ id: row.id, name: row.name, enabled: row.enabled }]
-      : [];
-  });
+  return automationsUsingRows(automationRowsOf(rows).rows, referenceId, CONTEXT);
 }
 
 export function referenceIdOf(target: DeviceTarget): string | null {

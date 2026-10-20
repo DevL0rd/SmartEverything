@@ -25,7 +25,9 @@ declare class AssistantOverlayNative extends NativeModule<{
   openOverlaySettings(): Promise<void>;
   openAssistantSettings(): Promise<void>;
   setOverlayPrefs(json: string): Promise<void>;
+  resetOverlayPosition(): Promise<void>;
   showAssistantSession(): Promise<boolean>;
+  setOverlayCallPage(onCallPage: boolean): Promise<void>;
 }
 
 type OverlayName =
@@ -33,7 +35,9 @@ type OverlayName =
   | 'openOverlaySettings'
   | 'openAssistantSettings'
   | 'setOverlayPrefs'
+  | 'resetOverlayPosition'
   | 'showAssistantSession'
+  | 'setOverlayCallPage'
   | 'addListener';
 
 const native = requireOptionalNativeModule<AssistantOverlayNative>('AssistantCall');
@@ -65,8 +69,16 @@ export async function setOverlayPrefs(prefs: OverlayPhonePrefs): Promise<void> {
   await overlayFor('setOverlayPrefs').setOverlayPrefs(JSON.stringify(prefs));
 }
 
+export async function resetOverlayPosition(): Promise<void> {
+  await overlayFor('resetOverlayPosition').resetOverlayPosition();
+}
+
 export async function showAssistantSession(): Promise<boolean> {
   return overlayFor('showAssistantSession').showAssistantSession();
+}
+
+export async function setOverlayCallPage(onCallPage: boolean): Promise<void> {
+  await overlayFor('setOverlayCallPage').setOverlayCallPage(onCallPage);
 }
 
 export function addOverlayActionListener(listener: (action: OverlayAction) => void): {

@@ -19,6 +19,7 @@ import type { SecretStore } from '../secrets/store';
 import type { Store } from '../store/store';
 import type { LocalDeviceEntry } from '../store/repositories/local-devices';
 import { LOCAL_DRIVER_REGISTRY } from './drivers';
+import { brushContentFilters } from './toothbrush/brands';
 import type { Observed } from './driver-types';
 import { resolveSetup } from './setup';
 import type { BluetoothIdentitySource, WearableSource } from './setup-types';
@@ -90,8 +91,13 @@ export class LocalDevices {
         ? []
         : [adverts.watch(entry)];
     });
-    this.options.log.info('local.watch_served', { requestedBy, devices: devices.length });
-    return { devices };
+    const contentFilters = brushContentFilters(this.options.store.localDevices.list());
+    this.options.log.info('local.watch_served', {
+      requestedBy,
+      devices: devices.length,
+      contentFilters: contentFilters.length,
+    });
+    return contentFilters.length === 0 ? { devices } : { devices, contentFilters };
   }
 
   async add(setup: LocalDeviceSetup): Promise<DeviceRow> {
@@ -101,6 +107,7 @@ export class LocalDevices {
       secrets,
       identities: this.options.identities,
       wearables: this.options.wearables,
+      now: this.options.now,
     });
     if (store.localDevices.list().some((entry) => entry.address === resolved.entry.address)) {
       throw new ApiError(
@@ -108,7 +115,9 @@ export class LocalDevices {
         `A built-in device at ${resolved.entry.address} already exists.`,
       );
     }
-    await secrets.saveDeviceKey(resolved.entry.externalId, resolved.key);
+    if (resolved.key !== null) {
+      await secrets.saveDeviceKey(resolved.entry.externalId, resolved.key);
+    }
     store.localDevices.add(resolved.entry);
     if (LOCAL_DRIVER_REGISTRY[resolved.entry.driver].provider !== 'local') {
       this.passive.restoreEntry({ ...resolved.entry, createdAt: this.options.now().toISOString() });

@@ -9,7 +9,7 @@ import type { Clock } from '../clock';
 import type { AppSpeech } from './app-speech';
 import type { Saying, SpeechRequest, SpeechSink } from '../speech/one-shot-speech';
 import { OggOpusWriter } from '../talk/ogg';
-import type { PacketSink } from '../talk/transmission';
+import type { SpeakerSink, SpeakerWatch } from '../talk/speaker-output';
 import type { CameraParts } from './camera-conversation';
 import type { OpenLive } from './channel-conversation';
 import { ReachRefusedError } from './reach-errors';
@@ -23,7 +23,7 @@ type Say = (request: SpeechRequest) => Promise<Saying>;
 
 export interface AnnouncingDeps {
   readonly say: Say;
-  readonly camera: CameraParts;
+  readonly camera: Pick<CameraParts, 'speakers'>;
   readonly openLive: OpenLive;
   readonly app: Pick<AppSpeech, 'play'>;
   readonly aiName: () => string;
@@ -44,9 +44,14 @@ interface Output {
   readonly packet: (packet: Uint8Array) => void;
   readonly finish: (done: (failure: string | null) => void) => void;
   readonly close: () => void;
+  readonly watch: (watch: SpeakerWatch) => void;
 }
 
-function sinkOf(deps: AnnouncingDeps, job: SpeakJob): PacketSink {
+function refusalOf(label: string, reason: string): string {
+  return `Could not play on ${label}: its camera stream is not working, probably the firewall blocking the camera or the camera being offline, so nothing was said. Try another speaker. (${reason})`;
+}
+
+function sinkOf(deps: AnnouncingDeps, job: SpeakJob): SpeakerSink {
   const { target } = job;
   if (target.kind === 'camera') {
     return deps.camera.speakers.open(target.device.id, job.id, 'speech');
@@ -61,7 +66,13 @@ function sinkOf(deps: AnnouncingDeps, job: SpeakJob): PacketSink {
         `Someone is talking on ${target.label} right now; try again shortly.`,
       );
     }
-    return { packet: opened.live.speak, end: opened.live.end };
+    return {
+      packet: opened.live.speak,
+      end: opened.live.end,
+      watch: (watch): void => {
+        watch.playing();
+      },
+    };
   }
   throw new ReachRefusedError('An app plays speech itself.');
 }
@@ -84,6 +95,7 @@ function speakerOutput(deps: AnnouncingDeps, job: SpeakJob): Output {
       pacer.stop();
       sink.end();
     },
+    watch: sink.watch,
   };
 }
 
@@ -116,6 +128,9 @@ function appOutput(deps: AnnouncingDeps, job: SpeakJob, client: ClientRow): Outp
       });
     },
     close: (): void => undefined,
+    watch: (watch): void => {
+      watch.playing();
+    },
   };
 }
 
@@ -148,6 +163,21 @@ function anchorOf(target: SpeakJob['target']): Pick<SpeechRequest, 'at'> {
   return target.kind === 'app' ? { at: { deviceId: null, clientId: target.client.id } } : {};
 }
 
+function playingOf(
+  output: Output,
+  job: SpeakJob,
+  settle: (failure: string | null) => void,
+): Promise<void> {
+  return new Promise<void>((resolve) => {
+    output.watch({
+      playing: resolve,
+      refused: (reason): void => {
+        settle(refusalOf(job.target.label, reason));
+      },
+    });
+  });
+}
+
 export async function speakOnce(deps: AnnouncingDeps, job: SpeakJob): Promise<void> {
   const output = outputOf(deps, job);
   const holder: { current: Saying | null; finished: boolean } = {
@@ -169,6 +199,7 @@ export async function speakOnce(deps: AnnouncingDeps, job: SpeakJob): Promise<vo
     settled();
   };
   const sink = sinkFor(output, settle);
+  const playing = playingOf(output, job, settle);
   const started = deps
     .say({
       id: job.id,
@@ -189,5 +220,5 @@ export async function speakOnce(deps: AnnouncingDeps, job: SpeakJob): Promise<vo
         settle(messageOf(cause));
       },
     );
-  await Promise.race([started, ended]);
+  await Promise.race([Promise.all([started, playing]), ended]);
 }

@@ -1,7 +1,7 @@
 import { buildPath, type EndpointShape } from '@smarteverything/domain';
 import { z } from 'zod';
 
-interface Input<E extends EndpointShape> {
+export interface Input<E extends EndpointShape> {
   readonly params?: z.input<E['params']>;
   readonly query?: Readonly<Record<string, string>>;
   readonly body?: z.input<E['body']>;

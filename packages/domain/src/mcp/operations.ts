@@ -105,6 +105,25 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'The phone connected to a watch answers an action; use run_watch_action to act.',
   saveWatchRecords:
     'The phone connected to a watch uploads what it read; use log_health to add data.',
+  readPhoneTreadmills:
+    'Hands a phone the Bluetooth plan for the treadmills it may hold; the link stays on phones.',
+  reportTreadmillFrames: 'The phone holding a treadmill reports the frames it received.',
+  answerTreadmillAction:
+    'The phone holding a treadmill answers a belt command; use control_devices to command the belt.',
+  readPhoneBrushes:
+    'Hands a phone the Bluetooth plan for the toothbrushes it may hold; the link stays on phones.',
+  reportBrushFrames: 'The phone holding a toothbrush reports the frames it received.',
+  answerBrushAction:
+    'The phone holding a toothbrush answers a command; use control_devices to change the mode or feedback switches.',
+  readPhoneBottles:
+    'Hands a phone the Bluetooth plan for the water bottles it syncs; the link stays on phones.',
+  uploadBottleSync:
+    'The phone that syncs a water bottle uploads what the cap answered; readBottle returns the data.',
+  answerBottleAction:
+    'The phone that syncs a water bottle answers an action; actBottle starts the action.',
+  addBottle: 'A bottle is found by a phone scanning Bluetooth; the person adds it in the app.',
+  startBottleUv:
+    'UV-C needs a person at the bottle holding the Clean button; an assistant may stop a clean with actBottle uv_stop.',
   savePushTarget: 'A phone registers its own Firebase token.',
   removePushTarget: 'A phone forgets its own Firebase token.',
   offerCamera: 'Live video needs a WebRTC peer; use camera_pictures to see a camera.',
@@ -135,6 +154,15 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'Decides who may act through a plugin; only the person decides it in Settings.',
   readPluginOptions:
     'Fills the pickers of a plugin’s settings in the app; the AI reads the same things through the plugin’s own tools.',
+  readDeveloperDevice:
+    'Developer debug standing of a paired device; read in the app’s Developer page.',
+  setDeveloperDevice:
+    'Makes a paired device a developer device; only the developer turns it on in the app’s Developer page.',
+  saveWatchCaptures: 'Raw watch file bytes are sent by the developer phone during a watch sync.',
+  readWatchCaptures:
+    'Lists raw watch debug files for parser development; shown in the app’s Developer page.',
+  clearWatchCaptures:
+    'Deletes the raw watch debug files; only the developer clears them in the app’s Developer page.',
 };
 
 const MCP_ADMIN_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
@@ -162,6 +190,7 @@ const MCP_ADMIN_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
     'Changes what a person may do and until when; only a person in the app manages access.',
   revokePerson:
     'Ends a person’s access now and unpairs every device; only a person in the app manages access.',
+  decideAccessRequest: 'Widens what a person may do; only a person in the app manages access.',
   revokeMcpToken: 'Cuts an assistant’s access; only a person in the app manages access.',
   revokeOAuthGrant: 'Cuts an assistant’s access; only a person in the app manages access.',
   revokeHealthSource: 'Cuts a phone’s health sync; only a person in the app manages access.',
@@ -180,6 +209,8 @@ const MCP_ADMIN_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
   addLocalDevice:
     'Adds a device or attaches Bluetooth observation with its account key; credential access stays with the owner in the app.',
   removeLocalDevice: 'Removes a device on the local network; only a person in the app does that.',
+  forgetBottle:
+    'Removes a water bottle with its whole reading, cleaning and battery history; only a person in the app does that.',
   sendAssistantMessage:
     'Writes a message in the person’s own words and starts a turn as them; a plugin’s request uses chat_send.',
   sendAiChatMessage:
@@ -213,6 +244,9 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/ble', 'devices'],
   ['/api/watches/days', 'health'],
   ['/api/watches', 'devices'],
+  ['/api/treadmills', 'devices'],
+  ['/api/toothbrushes', 'devices'],
+  ['/api/bottles', 'devices'],
   ['/api/phones', 'devices'],
   ['/api/phone-icons', 'devices'],
   ['/api/nodes', 'devices'],
@@ -248,8 +282,10 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/ai/budget', 'assistant'],
   ['/api/ai/engines', 'assistant'],
   ['/api/ai', 'assistant'],
+  ['/api/app-view', 'assistant'],
   ['/api/scenes', 'automations'],
   ['/api/automations', 'automations'],
+  ['/api/automation-', 'automations'],
   ['/api/scheduled', 'automations'],
   ['/api/signals', 'automations'],
   ['/api/reach', 'assistant'],
@@ -275,6 +311,7 @@ const MCP_CORE_OPERATIONS: Readonly<Partial<Record<McpCoreToolName, EndpointName
   get_computer_system: 'readComputerSystem',
   get_computer_usb: 'readComputerSystem',
   get_computer_windows: 'readComputerWindows',
+  get_computer_tiling: 'readComputerTiling',
   get_computer_services: 'readComputerServices',
   get_computer_startup: 'readComputerStartup',
   list_processes: 'listComputerProcesses',
@@ -282,6 +319,7 @@ const MCP_CORE_OPERATIONS: Readonly<Partial<Record<McpCoreToolName, EndpointName
   set_computer_audio: 'changeComputerAudio',
   set_computer_display: 'changeComputerDisplay',
   set_computer_system: 'changeComputerSystem',
+  use_computer: 'inputComputer',
   focus_window: 'changeComputerWindow',
   minimise_window: 'changeComputerWindow',
   close_window: 'changeComputerWindow',
@@ -345,6 +383,7 @@ const MCP_OPERATION_TRAITS: Readonly<Partial<Record<EndpointName, McpOperationTr
   startImageOperation: { hints: { openWorldHint: true } },
   cancelImageOperation: { hints: { idempotentHint: true, openWorldHint: true } },
   listImageEndpoints: { hints: { openWorldHint: true } },
+  showInApp: { answers: true, hints: { idempotentHint: true } },
   askAiChat: ANSWERS,
   runAiSubagent: ANSWERS,
   callPluginTool: ANSWERS,
@@ -358,6 +397,5 @@ export function mcpOperationTraits(name: EndpointName): McpOperationTraits {
 }
 
 export function mcpToolLine(description: string): string {
-  const sentence = description.split(/(?<=\.)\s/u)[0] ?? description;
-  return sentence.replace(/\.$/u, '');
+  return description.replace(/(?<=\.)\s[\s\S]*$/u, '').replace(/\.$/u, '');
 }

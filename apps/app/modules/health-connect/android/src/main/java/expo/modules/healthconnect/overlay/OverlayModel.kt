@@ -153,6 +153,22 @@ enum class ProblemFix {
 }
 
 @Serializable
+enum class VoiceLevel {
+  @SerialName("off") Off,
+  @SerialName("low") Low,
+  @SerialName("medium") Medium,
+  @SerialName("high") High,
+}
+
+@Serializable
+enum class SetupState {
+  @SerialName("loading") Loading,
+  @SerialName("ready") Ready,
+  @SerialName("saving") Saving,
+  @SerialName("failed") Failed,
+}
+
+@Serializable
 data class OverlayPrefsData(
   val enabled: Boolean = true,
   val position: OverlayPosition = OverlayPosition.Centre,
@@ -166,13 +182,15 @@ data class OverlayPrefsData(
 @Serializable
 @JsonClassDiscriminator("platform")
 sealed interface OverlaySurface {
+  val main: MainWindow
+
   @Serializable
   @SerialName("desktop")
-  data class Desktop(val main: MainWindow, val inShare: Boolean) : OverlaySurface
+  data class Desktop(override val main: MainWindow, val inShare: Boolean) : OverlaySurface
 
   @Serializable
   @SerialName("phone")
-  data class Phone(val foreground: Boolean) : OverlaySurface
+  data class Phone(override val main: MainWindow) : OverlaySurface
 }
 
 @Serializable
@@ -222,6 +240,14 @@ data class OverlayAudio(val mics: List<OverlayMic>, val micId: String?, val volu
 data class OverlayHold(val active: Boolean, val endedAt: Long?)
 
 @Serializable
+data class OverlayVoice(
+  @SerialName("thinking_level") val thinkingLevel: VoiceLevel?,
+  val saving: Boolean,
+  val failed: Boolean,
+  val changedInCall: Boolean,
+)
+
+@Serializable
 data class OverlayInput(
   val prefs: OverlayPrefsData,
   val surface: OverlaySurface,
@@ -230,6 +256,7 @@ data class OverlayInput(
   val superseded: OverlaySuperseded?,
   val audio: OverlayAudio,
   val hold: OverlayHold,
+  val voice: OverlayVoice?,
   val now: Long,
 )
 
@@ -243,11 +270,18 @@ data class OverlayTile(
 )
 
 @Serializable
+data class OverlaySetup(val level: VoiceLevel?, val state: SetupState, val note: String)
+
+@Serializable
+data class OverlayChip(val level: VoiceLevel, val label: String, val description: String, val warm: Boolean)
+
+@Serializable
 data class OverlayTray(
   val assistant: String,
   val chat: String?,
   val elapsedFrom: Long?,
   val tiles: List<OverlayTile>,
+  val setup: OverlaySetup,
   val mics: List<OverlayMic>,
   val micId: String?,
   val volume: Double,
@@ -271,6 +305,7 @@ data class OverlayViewState(
   val speaker: Boolean?,
   val camera: CameraPhase,
   val tray: OverlayTray?,
+  val chip: OverlayChip?,
   val request: OverlayRequest?,
   val changesAt: Long?,
 ) {

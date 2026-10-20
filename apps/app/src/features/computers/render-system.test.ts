@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Palette } from '../../design/colour-roles';
 import type { Device } from '../../store/state';
+import type * as Devices from '../devices';
 
 interface Counters {
   count: number;
@@ -188,7 +189,10 @@ vi.mock('../../components/use-measured-width', () => ({
 
 vi.mock('../../components/highlighted', () => ({ Highlighted: (): null => null }));
 
-vi.mock('../devices', () => ({ useLastSeen: (): null => null }));
+vi.mock('../devices', async (importOriginal) => ({
+  ...(await importOriginal<typeof Devices>()),
+  useLastSeen: (): null => null,
+}));
 
 vi.mock('./files/screenshot', () => ({
   useScreenshotToChat: (): { run: () => undefined; pending: boolean; reason: null } => ({

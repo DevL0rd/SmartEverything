@@ -3,6 +3,7 @@ package expo.modules.healthconnect.assistant
 import android.app.Activity
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.os.Build
@@ -16,6 +17,7 @@ object CallPip {
   private const val TAG = "SmartEverythingCalls"
   private const val WIDTH = 3
   private const val HEIGHT = 4
+  private const val SUPPORTS_PICTURE_IN_PICTURE_FLAG = 0x400000
 
   @Volatile
   private var wanted = false
@@ -26,7 +28,14 @@ object CallPip {
   }
 
   fun refresh(activity: Activity) {
-    if (supported(activity)) activity.runOnUiThread { activity.setPictureInPictureParams(params(activity)) }
+    if (!supported(activity)) return
+    activity.runOnUiThread {
+      try {
+        activity.setPictureInPictureParams(params(activity))
+      } catch (failure: IllegalStateException) {
+        Log.e(TAG, "The system refused picture in picture params: ${failure.message}; ${describe(activity)}")
+      }
+    }
   }
 
   fun enterIfWanted(activity: Activity) {
@@ -34,14 +43,23 @@ object CallPip {
     try {
       activity.enterPictureInPictureMode(params(activity))
     } catch (failure: IllegalStateException) {
-      Log.e(TAG, "The app could not enter picture in picture: ${failure.message}")
+      Log.e(TAG, "The app could not enter picture in picture: ${failure.message}; ${describe(activity)}")
     }
   }
 
+  private fun describe(activity: Activity): String =
+    "activity=${activity.componentName.flattenToShortString()} display=${activity.display?.displayId} " +
+      "multiWindow=${activity.isInMultiWindowMode} inPip=${activity.isInPictureInPictureMode}"
+
   private fun autoEnter(): Boolean = OverlayHostRule.pipAutoEnter(wanted, OverlayStage.barAvailable())
 
-  private fun supported(activity: Activity): Boolean =
-    activity.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+  private fun supported(activity: Activity): Boolean {
+    if (!activity.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
+    val info = activity.packageManager.getActivityInfo(activity.componentName, 0)
+    val declared = info.flags and SUPPORTS_PICTURE_IN_PICTURE_FLAG != 0
+    if (!declared) Log.d(TAG, "Picture in picture skipped: ${activity.componentName.flattenToShortString()} does not declare supportsPictureInPicture")
+    return declared
+  }
 
   private fun params(activity: Activity): PictureInPictureParams {
     val builder = PictureInPictureParams.Builder()

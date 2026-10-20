@@ -6,7 +6,6 @@ import {
   type TuyaCloudError,
 } from '@smarteverything/tuya';
 import { statusesInBatches, type MessageStream, type TuyaBackend } from './backend';
-import type { LoadedInventory } from './cloud-inventory';
 import type { TuyaDependencies } from './dependencies';
 import { SmartLifeCloud } from './smart-life-cloud';
 import { LoadOnce } from './bounded';
@@ -14,6 +13,7 @@ import {
   deviceDetails,
   loadSmartLifeInventory,
   type DescribedDevice,
+  type LoadedDevice,
 } from './smart-life-inventory';
 import { SmartLifeMessages, type Subscriptions } from './smart-life-messages';
 
@@ -30,13 +30,11 @@ export function smartLifeBackend(options: SmartLifeBackendOptions): TuyaBackend 
   let subscriptions: Subscriptions = { owners: [], devices: new Map() };
   let stream: SmartLifeMessages | null = null;
   return {
-    method: 'smart_life',
-    project: null,
-    loadInventory: async (log): Promise<LoadedInventory> => {
+    loadInventory: async (log): Promise<readonly LoadedDevice[]> => {
       const loaded = await loadSmartLifeInventory(cloud, log, descriptions);
       subscriptions = { owners: loaded.owners, devices: loaded.reportsDataPoints };
       stream?.follow();
-      return loaded.inventory;
+      return loaded.devices;
     },
     devicesById: (deviceIds) => deviceDetails(cloud, deviceIds),
     statuses: (deviceIds) =>

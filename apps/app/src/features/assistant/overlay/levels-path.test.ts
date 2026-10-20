@@ -70,6 +70,7 @@ function shownView(): OverlayHostView {
       },
       hosted: hostedVoice.get(),
       problemAt: null,
+      voice: null,
       requestAt: null,
     }),
     theme: 'dark',

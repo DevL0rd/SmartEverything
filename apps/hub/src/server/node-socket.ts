@@ -58,13 +58,18 @@ class NodeSocketConnection extends ComputerConnection {
   }
 }
 
+export interface NodeSocketServices {
+  readonly directory: ComputerAiDirectory;
+  readonly setOnline: (deviceId: string, online: boolean) => Promise<void>;
+}
+
 export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
   private readonly attachers = new Set<ComputerAttach>();
 
   constructor(
     private readonly store: Store,
     access: ComputerNodeAccess,
-    private readonly directory: ComputerAiDirectory,
+    private readonly services: NodeSocketServices,
     log: Logger,
   ) {
     super(NODE_AI_PROTOCOL, access, log);
@@ -79,7 +84,13 @@ export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
 
   protected open(socket: WebSocket, identity: ComputerNodeRow): NodeSocketConnection {
     return new NodeSocketConnection(socket, identity, () => {
-      this.store.devices.setOnline([identity.device_id], false);
+      this.markOnline(identity.device_id, false);
+    });
+  }
+
+  private markOnline(deviceId: string, online: boolean): void {
+    this.services.setOnline(deviceId, online).catch((cause: unknown) => {
+      this.log.error('computer.online_not_applied', cause, { deviceId, online });
     });
   }
 
@@ -118,11 +129,11 @@ export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
       });
       connection.attach(
         host,
-        this.directory.attachRuntime({ device_id: deviceId, runtime }, host, false),
+        this.services.directory.attachRuntime({ device_id: deviceId, runtime }, host, false),
       );
     }
     this.openComputer(connection);
-    this.store.devices.setOnline([deviceId], true);
+    this.markOnline(deviceId, true);
     const welcome: HubRuntimeControl = {
       type: 'welcome',
       device_id: deviceId,

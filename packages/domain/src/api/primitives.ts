@@ -33,6 +33,10 @@ export const CLIENT_PLATFORMS = ['desktop', 'android', 'web'] as const;
 
 export const CLIENT_PLATFORM = z.enum(CLIENT_PLATFORMS);
 
+export const CLIENT_KINDS = ['phone', 'tablet', 'computer', 'browser'] as const;
+
+export const CLIENT_KIND = z.enum(CLIENT_KINDS);
+
 export const ICE_SERVER = z.strictObject({
   urls: z.array(z.string().regex(/^(stun|turns?):\S+$/, 'a stun:, turn: or turns: URL')).min(1),
   username: z.string().min(1).optional(),

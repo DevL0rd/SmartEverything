@@ -4,7 +4,7 @@ import { useIrCodes } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
 import { remoteKeysOf } from '../model/remote-layout';
-import { categoryOfLearned, categoryOfLibrary, type RemoteCategory } from './remote-category';
+import { categoryOfLearned, categoryOfDeviceRemote, type RemoteCategory } from './remote-category';
 
 export interface RemoteSource {
   readonly id: string;
@@ -39,14 +39,14 @@ function useBlaster(blasterId: string | null): Device | null {
   );
 }
 
-export function useLibrarySource(device: Device): RemoteSource {
+export function useDeviceRemoteSource(device: Device): RemoteSource {
   const control = useControl(device.id, 'remote_key');
   const blaster = useBlaster(device.parent_id);
   const keys = remoteKeysOf(device.capabilities);
   return {
     id: device.id,
     name: device.label,
-    category: categoryOfLibrary(device.label, keys),
+    category: categoryOfDeviceRemote(device.label, keys),
     keys,
     host: device,
     blaster,

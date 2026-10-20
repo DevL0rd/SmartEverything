@@ -8,7 +8,7 @@ import { ownerProfileOf } from '../transcripts/owner';
 import type { Transcriber } from '../transcripts/transcriber';
 import type { Transcripts } from '../transcripts/transcript-service';
 import { Utterances } from '../transcripts/utterances';
-import type { SpeechSegment } from '../wake-name/ear';
+import type { SpeechSegment } from './speech-segment';
 import { personOfDevice } from './listening-rows';
 
 const CONTEXT_LINES = 3;

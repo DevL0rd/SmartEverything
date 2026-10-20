@@ -257,7 +257,7 @@ describe('needing a computer to listen', () => {
 
   it('keeps a camera that is switched off showing off', async () => {
     const porch = camera('Porch');
-    await registry.change(owner, porch, { transcribe: false });
+    await registry.change(owner, porch, { wake: false, transcribe: false });
     registry.setState(porch, 'no_host');
     expect((await registry.source(owner, porch)).state).toBe('off');
   });

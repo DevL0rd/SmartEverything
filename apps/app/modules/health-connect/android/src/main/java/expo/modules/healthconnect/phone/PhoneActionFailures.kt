@@ -56,3 +56,9 @@ class PhoneUnlockPromptNeedsOverlay : PhoneFailure(
 class PhoneFileNotReceived(name: String, detail: String) : PhoneFailure("Could not save $name on this phone: $detail")
 
 class PhoneFilesUnsupported : PhoneFailure("Receiving files needs Android 10 or newer")
+
+class PhoneSettingUnknown(kind: String, value: String, expected: List<String>) : PhoneFailure(
+  "Unknown $kind \"$value\"; expected one of $expected"
+)
+
+class PhoneSettingsPageMissing(label: String, cause: Throwable) : PhoneFailure("This phone has no screen for $label", cause)

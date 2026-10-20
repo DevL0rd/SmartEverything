@@ -16,12 +16,15 @@
     "!packages/xiaomi/src/index.ts",
     "packages/ble/src/**/*.ts",
     "!packages/ble/src/index.ts",
+    "packages/ipp/src/**/*.ts",
+    "!packages/ipp/src/index.ts",
     "packages/tuya/src/**/*.ts",
     "!packages/tuya/src/index.ts",
     "packages/smartthings/src/**/*.ts",
     "!packages/smartthings/src/index.ts",
     "packages/shelly/src/**/*.ts",
-    "!packages/shelly/src/index.ts"
+    "!packages/shelly/src/index.ts",
+    "packages/flow/src/**/*.ts"
   ],
   "thresholds": {
     "high": 100,

@@ -20,6 +20,8 @@ import {
 import { Logger } from '@smarteverything/logging';
 import { remoteKind } from './request-trace';
 import { AccessLifecycle } from './access-lifecycle';
+import { AccessRequests } from './access-requests';
+import type { OwnerAlerts } from '../extensions/owner-alerts';
 import { assertMemberPerson, refusal } from './person-access';
 import { OWNER_CLIENT_NAME } from '../store/repositories/clients';
 import type { Store } from '../store/store';
@@ -44,19 +46,33 @@ export interface AccessOptions {
   readonly now: () => Date;
   readonly clientWithdrawn: (clientId: string) => void;
   readonly clientPaused: (clientId: string) => void;
+  readonly alerts: OwnerAlerts;
+  readonly scopesChanged: (profileId: string) => void;
 }
 
 export interface Claim {
   readonly code: string;
   readonly name: string;
   readonly platform: ClientRow['platform'];
+  readonly kind?: 'phone' | 'tablet' | undefined;
   readonly remote: string;
+}
+
+function kindOfClaim(claim: Claim): ClientRow['kind'] {
+  if (claim.platform === 'web') {
+    if (claim.kind !== undefined) {
+      throw new ApiError('invalid_request', 'Only an Android client can be a phone or a tablet.');
+    }
+    return 'browser';
+  }
+  return claim.kind ?? 'phone';
 }
 
 export class AccessService {
   private readonly attempts = new Map<string, number[]>();
 
   readonly lifecycle: AccessLifecycle;
+  readonly requests: AccessRequests;
 
   constructor(private readonly options: AccessOptions) {
     this.lifecycle = new AccessLifecycle({
@@ -64,6 +80,18 @@ export class AccessService {
       now: options.now,
       clientRemoved: options.clientWithdrawn,
       clientPaused: options.clientPaused,
+      lapseGrants: (): void => {
+        this.requests.lapse();
+      },
+    });
+    this.requests = new AccessRequests({
+      store: options.store,
+      alerts: options.alerts,
+      now: options.now,
+      scopesChanged: (profileId): void => {
+        this.lifecycle.arm();
+        options.scopesChanged(profileId);
+      },
     });
   }
 
@@ -233,6 +261,7 @@ export class AccessService {
 
   claim(claim: Claim): { token: string; client: ClientRow } {
     this.limit(claim.remote);
+    const kind = kindOfClaim(claim);
     const outcome = this.options.store.clients.claimPairing(hashPairingCode(claim.code));
     if (!outcome.claimed) {
       log.warn('pairing.claim_rejected', {
@@ -254,6 +283,7 @@ export class AccessService {
       this.options.store.clients.create({
         name: claim.name,
         platform: claim.platform,
+        kind,
         role: outcome.role,
         tokenHash: hashClientToken(token),
         profileId: this.personOfClaim(outcome.role, outcome.profileId, claim.name),

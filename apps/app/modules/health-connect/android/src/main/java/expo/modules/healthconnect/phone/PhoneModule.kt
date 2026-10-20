@@ -12,7 +12,6 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 
 class PhoneModule : Module() {
   private var forwarding: Job? = null
@@ -73,13 +72,6 @@ class PhoneModule : Module() {
     AsyncFunction("removePhonePlace") { id: String -> PhonePlaces(context).remove(id) }
 
     AsyncFunction("parkedSpot") { PhoneParking.read(context)?.toMap() }
-
-    AsyncFunction("runPhoneActionHere") { requestId: String, actionJson: String ->
-      val result = PhoneActionPush.runSafely(context, JSONObject(actionJson))
-      PhoneActionPush.answer(context, requestId, result)
-      mapOf("ok" to result.ok, "detail" to result.detail)
-    }
-
 
     AsyncFunction("openUsageAccess") { open(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
 

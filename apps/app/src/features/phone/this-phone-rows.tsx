@@ -20,6 +20,7 @@ import {
   allowSoundControl,
   allowWriteSettings,
   keepRunning,
+  openAppInfo,
 } from './phone-permissions';
 import { SensorRows } from './phone-sensor-rows';
 import { HomeWifiRow } from './home-wifi-row';
@@ -141,7 +142,8 @@ function grants(status: PhoneNodeStatus): readonly ControlGrant[] {
     },
     {
       title: 'Lock and screenshots',
-      subtitle: 'Turn on the SmartEverything accessibility service. It does not read your screen.',
+      subtitle:
+        'Turn on the SmartEverything accessibility service. It does not read your screen. If Android greys the switch out, allow restricted settings first.',
       allowed: permissions.accessibility,
       icon: 'lock',
       allow: allowAccessibility,
@@ -156,6 +158,20 @@ function grants(status: PhoneNodeStatus): readonly ControlGrant[] {
       failure: 'overlay.allow_failed',
     },
   ];
+}
+
+function RestrictedSettingsRow(): ReactNode {
+  return (
+    <ListRow
+      title="Allow restricted settings"
+      subtitle="Open App info, tap the three dots, then Allow restricted settings"
+      icon="lock"
+      chevron
+      onPress={() => {
+        background(openAppInfo(), 'app_info.open_failed');
+      }}
+    />
+  );
 }
 
 function ControlRows({ status }: { readonly status: PhoneNodeStatus }): ReactNode {
@@ -177,6 +193,7 @@ function ControlRows({ status }: { readonly status: PhoneNodeStatus }): ReactNod
           />
         ),
       )}
+      {status.permissions.accessibility ? null : <RestrictedSettingsRow />}
     </List>
   );
 }

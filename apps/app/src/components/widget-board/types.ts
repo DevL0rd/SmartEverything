@@ -72,6 +72,9 @@ export interface WidgetDefinition {
   readonly icon: IconName;
   readonly group?: string;
   readonly aspect?: number;
+  readonly rows?: Readonly<
+    Partial<Record<BoardClass, Readonly<Partial<Record<WidgetSize, number>>>>>
+  >;
   readonly sizes: Readonly<Record<BoardClass, readonly WidgetSize[]>>;
   readonly defaultSize: WidgetSize;
   readonly instanceOptions?: InstanceOptions<unknown>;

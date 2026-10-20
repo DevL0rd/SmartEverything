@@ -8,6 +8,7 @@ import {
   type TvKeyReason,
 } from './television-keys';
 import {
+  cloudCanWake,
   irButtonFor,
   tvMode,
   type TvDevice,
@@ -83,7 +84,8 @@ function smartthingsPower(key: TvKey, context: KeyContext): CommandRequest | nul
   if (on === null || !context.capabilities.has('power')) {
     return null;
   }
-  return on && !context.values.powerOnRemote ? null : request(context, 'power', on);
+  const wakes = cloudCanWake(context.values, context.paths, context.device.online);
+  return on && !wakes ? null : request(context, 'power', on);
 }
 
 function smartthingsPlayback(key: TvKey, context: KeyContext): CommandRequest | null {
@@ -141,17 +143,10 @@ const SENDERS: Readonly<
   ir: irSend,
 };
 
-const KEY_ORDER: readonly TvPath[] = ['direct', 'smartthings', 'ir'];
-
-const POWER_ON_ORDER: readonly TvPath[] = ['smartthings', 'direct', 'ir'];
-
-function orderFor(key: TvKey, context: KeyContext): readonly TvPath[] {
-  const waking = key === 'power_on' || (key === 'power' && context.mode !== 'on');
-  return waking ? POWER_ON_ORDER : KEY_ORDER;
-}
+const PATH_ORDER: readonly TvPath[] = ['direct', 'smartthings', 'ir'];
 
 function routesFor(key: TvKey, context: KeyContext): readonly TvRoute[] {
-  return orderFor(key, context).flatMap((path): readonly TvRoute[] => {
+  return PATH_ORDER.flatMap((path): readonly TvRoute[] => {
     if (path === 'smartthings' && !context.paths.smartthings) {
       return [];
     }

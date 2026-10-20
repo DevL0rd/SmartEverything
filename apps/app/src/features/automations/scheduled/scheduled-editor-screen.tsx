@@ -15,9 +15,9 @@ import { useIdiom } from '../../../design/platform';
 import { useSizeClass } from '../../../design/size-class';
 import { useMinute } from '../../../store/clock';
 import { useDeviceValue } from '../../../store/selectors';
-import { useCatalog } from '../data/use-automations';
-import { ActionSteps } from '../editor/action-steps';
-import { NotFound } from '../screens/not-found';
+import { useCatalog } from '../shared/catalog';
+import { ActionSteps } from '../shared/action-steps';
+import { NotFound } from '../shared/not-found';
 import { powerActions, STEP_ACTION_TYPES } from './steps';
 import { useHomeZone, useScheduleRow } from './use-scheduled';
 import {

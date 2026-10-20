@@ -8,6 +8,7 @@ import type {
   OverlaySurface,
   OverlayTheme,
   OverlayView,
+  OverlayVoice,
 } from '@smarteverything/domain';
 import { overlayView } from '@smarteverything/domain';
 import type { CallView } from '../call/call-state';
@@ -25,6 +26,7 @@ export interface OverlaySources {
   readonly audio: OverlayAudio;
   readonly extras: OverlayExtras;
   readonly hosted: HostedVoice | null;
+  readonly voice: OverlayVoice | null;
   readonly problemAt: number | null;
   readonly requestAt: number | null;
 }
@@ -148,6 +150,7 @@ export function overlayInputOf(sources: OverlaySources): Omit<OverlayInput, 'now
     superseded: extras.superseded,
     audio: sources.audio,
     hold: extras.hold,
+    voice: sources.voice,
   };
 }
 

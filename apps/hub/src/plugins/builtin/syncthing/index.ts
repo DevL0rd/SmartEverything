@@ -7,6 +7,11 @@ import { SYNCTHING_SETTINGS, SYNCTHING_SETTINGS_FORM } from './settings';
 
 const FOLDER_FIELDS = { folder_id: 'string' } as const;
 
+const summaryOf = (field: string): { stream: string; field: string } => ({
+  stream: SNAPSHOT_STREAM,
+  field: `summary.${field}`,
+});
+
 const SYNCTHING_MANIFEST: PluginManifestInput = {
   id: 'syncthing',
   name: 'Syncthing',
@@ -57,7 +62,49 @@ const SYNCTHING_MANIFEST: PluginManifestInput = {
         fields: { message: 'string' },
       },
     ],
-    widgets: [figureWidget('syncthing-sync', 'Sync', 'folderSync', SNAPSHOT_STREAM)],
+    widgets: [
+      figureWidget('syncthing-sync', 'Sync', 'folderSync', SNAPSHOT_STREAM),
+      {
+        id: 'syncthing-peers',
+        title: 'Sync peers online',
+        icon: 'users',
+        sizes: ['W'],
+        body: { type: 'figure', value: summaryOf('peersOnline'), caption: 'Peers online' },
+      },
+    ],
+    pages: [
+      {
+        id: 'overview',
+        title: 'Sync overview',
+        icon: 'folderSync',
+        sections: [
+          {
+            title: 'Peers online',
+            body: {
+              type: 'figure',
+              value: summaryOf('peersOnline'),
+              caption: 'Devices connected now',
+            },
+          },
+          {
+            title: 'Folders behind',
+            body: {
+              type: 'figure',
+              value: summaryOf('foldersBehind'),
+              caption: 'Folders still syncing',
+            },
+          },
+          {
+            title: 'Download (bytes per second)',
+            body: { type: 'sparkline', value: summaryOf('downloadBytesPerSecond'), minutes: 30 },
+          },
+          {
+            title: 'Upload (bytes per second)',
+            body: { type: 'sparkline', value: summaryOf('uploadBytesPerSecond'), minutes: 30 },
+          },
+        ],
+      },
+    ],
     settings: SYNCTHING_SETTINGS_FORM,
     search: 'push',
     deviceFamilies: ['file_sync'],

@@ -1,43 +1,38 @@
-import { speechTriggerArmer } from './automations/speech-trigger';
 import { DeviceEffects } from './commands/effects';
 import { IrAssumedState } from './infrared/assumed-state';
-import { TemporaryChanges } from './automations/temporary-effect';
-import { CommandIssuer } from './automations/issue-commands';
-import { ProgramSteps } from './automations/program-steps';
-import { SetSteps } from './automations/set-step';
-import { AutomationWorld } from './automations/world';
-import { OwnedAutomationRuns } from './automations/owned-runs';
-import { AutomationRunner, type AutomationRun } from './automations/run-task';
 import { preparePassiveAdapter } from './local/passive-adapter';
-import {
-  isPrivate,
-  privacySwitchOf,
-  type JsonValue,
-  type Provider,
-  type SignalSourceSpec,
-} from '@smarteverything/domain';
+import { isPrivate, privacySwitchOf, type JsonValue, type Provider } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { StoredAccount } from './adapters/contract';
-import { ActionRunner } from './automations/actions';
-import { AutomationAiSlot } from './automations/automation-ai';
-import { AutomationComputersSlot } from './automations/automation-computers';
-import { ComputerSteps } from './automations/computer-steps';
-import { AutomationEngine } from './automations/engine';
+import type { AutomationAiSlot } from './automations/automation-ai';
+import type { AutomationComputersSlot } from './automations/automation-computers';
+import type { AutomationIntegrationSlot } from './automations/automation-integration';
+import type { AutomationTraceSlot } from './automations/automation-trace';
+import type { EngineV3 } from './automations/engine-v3';
+import { assembleHubEngine } from './automations/hub-engine';
+import type { QuestionDesk } from './automations/questions/desk';
+import type { TimerWakes } from './automations/timers/timer-wakes';
+import type { WebhookGateway } from './automations/webhooks/gateway';
+import type { AutomationSecrets } from './automations/secrets-v3';
+import type { Rehearsals } from './server/handlers/automation-runs';
+import type { CameraRefusals } from './cameras/camera-health';
 import { CameraService, type CameraConditions } from './cameras/camera-service';
 import type { Go2rtcClient } from './cameras/go2rtc-client';
 import type { Clock } from './clock';
-import { attachedDeviceOf } from './adapters/samsung-tv/link';
-import { mirrorDirectLink } from './commands/television-direct-link';
+import { applyDirectLinks } from './commands/television-direct-link';
 import { CommandExecutor } from './commands/executor';
-import { TelevisionRouting } from './commands/television-routing';
+import { televisionRouting } from './commands/television-assembly';
 import type { DeviceRecord, HubDatabase } from './database/port';
 import { DeviceDriverRegistry } from './local/device-driver';
 import { ProviderManager } from './providers/manager';
+import { ProviderOutages } from './providers/outages';
 import type { ModuleRegistry } from './providers/registry-types';
 import type { SecretStore } from './secrets/store';
 import { SignalBus } from './signals/bus';
-import { eventSignal, isTransition, stateSignal } from './signals/sources/device';
-import { installedSignalSources } from './signals/sources/installed';
+import { recordFeedSignals } from './signals/feed-recorder';
+import { eventSignal } from './signals/sources/device';
+import { DeviceSignals } from './signals/sources/device-signals';
+import { TriggerSwitches } from './signals/trigger-switches';
 import { cycleTrackerOf } from './laundry/assemble';
 import type { CycleTracker } from './laundry/cycle-tracker';
 import { EventRouter } from './state/event-router';
@@ -52,6 +47,7 @@ export interface HubParts {
   readonly registry: ModuleRegistry;
   readonly secrets: SecretStore;
   readonly go2rtc: Go2rtcClient;
+  readonly cameraRefusal: CameraRefusals;
   readonly devicesChanged: (devices: readonly DeviceRecord[]) => void;
   readonly dataDirectory: string;
   readonly clock: Clock;
@@ -63,15 +59,21 @@ export interface Core {
   readonly state: StateWriter;
   readonly events: EventRouter;
   readonly providers: ProviderManager;
+  readonly outages: ProviderOutages;
   readonly executor: CommandExecutor;
   readonly effects: DeviceEffects;
-  readonly engine: AutomationEngine;
-  readonly runs: OwnedAutomationRuns;
-  readonly runner: AutomationRunner;
+  readonly engine: EngineV3;
+  readonly automationSecrets: AutomationSecrets;
+  readonly automationRehearsals: Rehearsals;
   readonly cameras: CameraService;
   readonly signals: SignalBus;
   readonly automationAi: AutomationAiSlot;
   readonly automationComputers: AutomationComputersSlot;
+  readonly automationIntegration: AutomationIntegrationSlot;
+  readonly automationTrace: AutomationTraceSlot;
+  readonly automationWebhooks: WebhookGateway;
+  readonly automationTimers: TimerWakes;
+  readonly automationQuestions: QuestionDesk;
   readonly drivers: DeviceDriverRegistry;
   readonly irAssumed: IrAssumedState;
 }
@@ -86,12 +88,32 @@ export function areaOf(parts: HubParts, name: string): Logger {
   return parts.logFor(name);
 }
 
+function stateWriterOf(
+  parts: HubParts,
+  inventory: Inventory,
+  laundry: CycleTracker,
+  deviceSignals: DeviceSignals,
+): StateWriter {
+  return new StateWriter({
+    store: parts.database,
+    inventory,
+    clock: parts.clock,
+    log: areaOf(parts, 'state'),
+    changed: (change): void => {
+      laundry.observe(change);
+    },
+    moved: (change): void => {
+      deviceSignals.moved(change);
+    },
+  });
+}
+
 function assembleWriters(
   parts: HubParts,
   cameras: CameraService,
   signals: SignalBus,
   laundry: CycleTracker,
-): Pick<Core, 'inventory' | 'state' | 'events'> {
+): Pick<Core, 'inventory' | 'state' | 'events' | 'outages'> {
   const camerasLog = areaOf(parts, 'cameras');
   const events: EventRouter = new EventRouter({
     store: parts.database,
@@ -103,8 +125,14 @@ function assembleWriters(
       cameras.record(event).catch(reportFailure(camerasLog, 'recording.crashed'));
     },
   });
+  const outages = new ProviderOutages({ events, now: parts.clock.now });
+  const deviceSignals = new DeviceSignals({ store: parts.store, signals, now: parts.clock.now });
   const inventory = new Inventory(parts.database, {
     onlineChanged: ({ device, online }): void => {
+      deviceSignals.online(device, online);
+      if (outages.covers(device.provider)) {
+        return;
+      }
       events.record({
         deviceId: device.id,
         kind: online ? 'device_online' : 'device_offline',
@@ -116,33 +144,13 @@ function assembleWriters(
       cameras.sync(devices).catch(reportFailure(camerasLog, 'stream.sync_failed'));
       parts.devicesChanged(inventory.all());
     },
-  });
-  const state = new StateWriter({
-    store: parts.database,
-    inventory,
-    log: areaOf(parts, 'state'),
-    changed: (change): void => {
-      if (!isTransition(change)) return;
-      signals.emit(stateSignal(change, parts.clock.now().toISOString()));
-      laundry.observe(change);
+    lifecycle: (change): void => {
+      deviceSignals.lifecycle(change);
     },
   });
-  return { inventory, state, events };
-}
-
-function recordAutomationRun(events: EventRouter, run: AutomationRun): void {
-  events.record({
-    deviceId: null,
-    kind: 'automation_run',
-    occurredAt: run.startedAt,
-    details: {
-      automationId: run.automationId,
-      name: run.name,
-      outcome: run.error === null ? 'succeeded' : 'failed',
-      durationMs: run.durationMs,
-      error: run.error,
-    },
-  });
+  const state = stateWriterOf(parts, inventory, laundry, deviceSignals);
+  recordFeedSignals({ signals, events });
+  return { inventory, state, events, outages };
 }
 
 function cameraConditions(
@@ -163,19 +171,6 @@ function cameraConditions(
   };
 }
 
-function televisionRouting(
-  parts: HubParts,
-  adapters: ProviderManager,
-  state: Pick<StateWriter, 'valueOf'>,
-): TelevisionRouting {
-  return new TelevisionRouting({
-    adapters,
-    valueOf: (deviceId, capability): JsonValue | undefined => state.valueOf(deviceId, capability),
-    attachedTo: (): string | null => attachedDeviceOf(parts.secrets.read().accounts.samsung_tv),
-    log: areaOf(parts, 'television'),
-  });
-}
-
 function providerManager(
   parts: HubParts,
   writers: Pick<Core, 'inventory' | 'state' | 'events'>,
@@ -192,7 +187,7 @@ function providerManager(
     dataDirectory: parts.dataDirectory,
     accountChanged: async (provider, account): Promise<void> => {
       if (provider === 'samsung_tv') {
-        mirrorDirectLink(parts.store, account);
+        await applyDirectLinks(parts.store, writers.inventory, account);
       }
       if (await parts.accountChanged(provider, account)) {
         await cameras.resync(writers.inventory.all());
@@ -202,15 +197,33 @@ function providerManager(
   });
 }
 
-export function assemble(parts: HubParts): Core {
-  const cameras = new CameraService({
+function signalBusOf(parts: HubParts): SignalBus {
+  const triggers = new TriggerSwitches(parts.store);
+  return new SignalBus({
+    log: areaOf(parts, 'signals'),
+    now: parts.clock.now,
+    at: parts.clock.at,
+    triggers: triggers.current,
+  });
+}
+
+function cameraServiceOf(
+  parts: HubParts,
+  writers: () => Pick<Core, 'inventory' | 'state'>,
+): CameraService {
+  return new CameraService({
     client: parts.go2rtc,
-    conditions: cameraConditions(parts, () => writers),
+    conditions: cameraConditions(parts, writers),
+    refusal: parts.cameraRefusal,
     store: parts.database,
     now: parts.clock.now,
     log: areaOf(parts, 'cameras'),
   });
-  const signals = new SignalBus({ log: areaOf(parts, 'signals') });
+}
+
+export function assemble(parts: HubParts): Core {
+  const cameras = cameraServiceOf(parts, () => writers);
+  const signals = signalBusOf(parts);
   const laundry = cycleTrackerOf(
     { store: parts.store, now: parts.clock.now, log: areaOf(parts, 'laundry') },
     () => writers,
@@ -221,7 +234,7 @@ export function assemble(parts: HubParts): Core {
   const effects = new DeviceEffects(parts.store, areaOf(parts, 'effects'));
   const executor = new CommandExecutor({
     effects,
-    television: televisionRouting(parts, providers, writers.state),
+    television: televisionRouting({ ...parts, ...writers, adapters: providers, signals }),
     store: parts.database,
     drivers,
     inventory: writers.inventory,
@@ -253,99 +266,48 @@ export function assemble(parts: HubParts): Core {
   };
 }
 
-interface StepRuntime {
-  readonly executor: CommandExecutor;
-  readonly effects: DeviceEffects;
-  readonly runs: OwnedAutomationRuns;
-  readonly ai: AutomationAiSlot;
-  readonly computers: AutomationComputersSlot;
-  readonly world: AutomationWorld;
-  readonly call: ProgramSteps['call'];
-}
-
-function assembleActions(parts: HubParts, events: EventRouter, runtime: StepRuntime): ActionRunner {
-  const { store, clock } = parts;
-  const { executor, effects, runs, ai, computers, world, call } = runtime;
-  const issuer = new CommandIssuer({ store, database: parts.database, executor, clock });
-  const changes = new TemporaryChanges(store, clock, effects, world);
-  return new ActionRunner({
-    sets: new SetSteps({ store, executor, world, issuer, changes }),
-    program: new ProgramSteps(store, world, runs, call),
-    computers: new ComputerSteps(computers),
-    issuer,
-    clock,
-    ai,
-    world,
-    notify: (origin, message): void => {
-      events.record({
-        deviceId: null,
-        kind: 'automation_run',
-        occurredAt: clock.now().toISOString(),
-        details: { automationId: origin.automationId, name: origin.name, message },
-      });
-    },
-  });
-}
-
-function assembleEngine(
-  parts: HubParts,
-  signals: SignalBus,
-  links: Pick<Core, 'runs' | 'runner'> & { readonly world: AutomationWorld },
-): AutomationEngine {
-  const { store, clock } = parts;
-  const engine = new AutomationEngine({
-    store,
-    runner: links.runner,
-    world: links.world,
-    armers: [speechTriggerArmer(store)],
-    sources: (): readonly SignalSourceSpec[] => installedSignalSources(store),
-    stopRuns: (): void => {
-      links.runs.shutdown();
-    },
-    clock,
-    log: areaOf(parts, 'automations'),
-  });
-  signals.subscribe((signal) => {
-    engine.signal(signal);
-  });
-  return engine;
-}
-
 function assembleAutomationCore(
   parts: HubParts,
   writers: Pick<Core, 'state' | 'events'>,
   signals: SignalBus,
   commands: { readonly executor: CommandExecutor; readonly effects: DeviceEffects },
-): Pick<Core, 'engine' | 'runs' | 'runner' | 'automationAi' | 'automationComputers'> {
-  const { store, clock } = parts;
-  const automationAi = new AutomationAiSlot();
-  const automationComputers = new AutomationComputersSlot();
-  const runs = new OwnedAutomationRuns(store.automationRuns, clock);
-  const world = new AutomationWorld({
-    store,
-    executor: commands.executor,
-    clock,
-    observed: (deviceId, capability): JsonValue | undefined =>
-      writers.state.valueOf(deviceId, capability),
-  });
-  const actions = assembleActions(parts, writers.events, {
-    ...commands,
-    runs,
-    world,
-    ai: automationAi,
-    computers: automationComputers,
-    call: (request) => runner.call(request),
-  });
-  const runner: AutomationRunner = new AutomationRunner({
-    store,
-    runs,
-    actions: () => actions,
-    clock,
+): Pick<
+  Core,
+  | 'engine'
+  | 'automationSecrets'
+  | 'automationRehearsals'
+  | 'automationAi'
+  | 'automationComputers'
+  | 'automationIntegration'
+  | 'automationTrace'
+  | 'automationWebhooks'
+  | 'automationTimers'
+  | 'automationQuestions'
+> {
+  const hubEngine = assembleHubEngine({
+    store: parts.store,
+    database: parts.database,
+    secrets: parts.secrets,
+    clock: parts.clock,
     log: areaOf(parts, 'automations'),
-    recordRun: (run): void => {
-      recordAutomationRun(writers.events, run);
-    },
+    state: writers.state,
+    events: writers.events,
+    signals,
+    ...commands,
   });
-  const engine = assembleEngine(parts, signals, { runs, runner, world });
-  return { engine, runs, runner, automationAi, automationComputers };
+  signals.subscribe((signal) => {
+    hubEngine.engine.observe(signal);
+  });
+  return {
+    engine: hubEngine.engine,
+    automationSecrets: hubEngine.secrets,
+    automationRehearsals: hubEngine.rehearsals,
+    automationAi: hubEngine.ai,
+    automationComputers: hubEngine.computers,
+    automationIntegration: hubEngine.integration,
+    automationTrace: hubEngine.trace,
+    automationWebhooks: hubEngine.webhooks,
+    automationTimers: hubEngine.timers,
+    automationQuestions: hubEngine.questions,
+  };
 }

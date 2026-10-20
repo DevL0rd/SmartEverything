@@ -44,7 +44,7 @@ function useLanes(
   return useMemo(
     () =>
       members.map((member) => {
-        const power = powers[member.id] ?? 'off';
+        const power = powers[member.id] ?? 'unknown';
         return {
           member,
           power,

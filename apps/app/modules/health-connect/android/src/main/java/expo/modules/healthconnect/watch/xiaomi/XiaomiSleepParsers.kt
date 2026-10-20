@@ -6,19 +6,26 @@ import expo.modules.healthconnect.watch.SleepStages
 import java.nio.BufferUnderflowException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.time.Duration
 import java.time.Instant
 
 object XiaomiSleepParsers {
   private const val STAGE_MAGIC = 0xfffcfafb.toInt()
   private const val STAGE_PACKET = 17
   private const val STAGES = 17
-  private val FLAG_ONLY = setOf(0x2, 0x3, 0x9, 0xc, 0xd, 0xe, 0xf)
+  private const val TOTALS = 16
+  private const val TOTALS_BYTES = 11
+  private const val LAST_STAGED_VERSION = 5
+  private const val V5_EXTRA_BYTES = 17
+  private const val V6_EXTRA_BYTES = 24
+  private val FLAG_ONLY = setOf(0x2, 0x3, 0x9, 0xc, 0xd, 0xe, 0xf, 0x12, 0x13)
 
   fun details(id: XiaomiFileId, file: ByteArray): List<SleepNight> {
     val headerSize = when (id.version) {
       1, 2, 3, 4 -> 1
       5 -> 2
-      else -> throw UnsupportedFile(id, "sleep version ${id.version} is not known (this app reads 1 to 5)")
+      6 -> 3
+      else -> throw UnsupportedFile(id, "sleep version ${id.version} is not known (this app reads 1 to 6)")
     }
     val buffer = ByteBuffer.wrap(file).order(ByteOrder.LITTLE_ENDIAN).apply { position(8) }
     val header = ByteArray(headerSize).also { buffer.get(it) }
@@ -28,14 +35,35 @@ object XiaomiSleepParsers {
     if (!wake.isAfter(bed)) {
       return emptyList()
     }
-    val stages = try {
+    val packets = try {
       skipSeries(id, header, buffer)
-      stages(buffer)
+      packets(buffer)
     } catch (underflow: BufferUnderflowException) {
-      emptyList()
+      StagePackets(emptyList(), null)
     }
+    val stages = if (id.version <= LAST_STAGED_VERSION || verified(bed, wake, packets)) packets.stages else emptyList()
     return listOf(SleepNight(bed, wake, stages))
   }
+
+  private fun verified(bed: Instant, wake: Instant, packets: StagePackets): Boolean {
+    val stages = packets.stages
+    val totals = packets.totals ?: return false
+    val tiles = stages.isNotEmpty() && stages.first().start == bed && stages.last().end == wake &&
+      stages.zipWithNext().all { (a, b) -> a.end == b.start }
+    val minutes = stages.groupBy { it.stage }
+      .mapValues { (_, list) -> list.sumOf { Duration.between(it.start, it.end).toMinutes() }.toInt() }
+    val expected = mapOf(
+      SleepStages.AWAKE to totals.awake,
+      SleepStages.LIGHT to totals.light,
+      SleepStages.REM to totals.rem,
+      SleepStages.DEEP to totals.deep
+    )
+    val asleep = totals.light + totals.rem + totals.deep == totals.asleep
+    return tiles && asleep && expected.filterValues { it > 0 } == minutes
+  }
+
+  fun awaitsStages(id: XiaomiFileId, nights: List<SleepNight>): Boolean =
+    id.subtype == XiaomiFileId.SLEEP && id.version > LAST_STAGED_VERSION && nights.any { it.stages.isEmpty() }
 
   private fun skipSeries(id: XiaomiFileId, header: ByteArray, buffer: ByteBuffer) {
     var index = 3
@@ -44,10 +72,14 @@ object XiaomiSleepParsers {
       index += 1
     }
     if (id.version >= 5) {
-      buffer.position(buffer.position() + 17)
+      buffer.position(buffer.position() + V5_EXTRA_BYTES + if (id.version >= 6) V6_EXTRA_BYTES else 0)
       index += 5
     }
-    val series = if (id.version >= 3) listOf(1, 1, 4) else listOf(1, 1)
+    val series = when {
+      id.version >= 6 -> listOf(1, 1, 2)
+      id.version >= 3 -> listOf(1, 1, 4)
+      else -> listOf(1, 1)
+    }
     for (width in series) {
       if (FileAssembler.valid(header, index)) skipOne(id, buffer, width)
       index += 1
@@ -59,12 +91,18 @@ object XiaomiSleepParsers {
     val count = buffer.getShort().toInt()
     if (count > 0) {
       if (id.version >= 2) buffer.getInt()
+      if (count * width > buffer.remaining()) throw BufferUnderflowException()
       buffer.position(buffer.position() + count * width)
     }
   }
 
-  private fun stages(buffer: ByteBuffer): List<SleepStage> {
-    val stages = mutableListOf<SleepStage>()
+  private class SleepTotals(val asleep: Int, val awake: Int, val light: Int, val rem: Int, val deep: Int)
+
+  private class StagePackets(val stages: List<SleepStage>, val totals: SleepTotals?)
+
+  private fun packets(buffer: ByteBuffer): StagePackets {
+    var stages = emptyList<SleepStage>()
+    var totals: SleepTotals? = null
     while (buffer.remaining() >= STAGE_PACKET && seekPacket(buffer)) {
       buffer.get()
       val time = buffer.getLong()
@@ -73,9 +111,25 @@ object XiaomiSleepParsers {
       val length = ((buffer.get().toInt() and 0xff) shl 8) or (buffer.get().toInt() and 0xff)
       if (type in FLAG_ONLY) continue
       val data = ByteArray(length).also { buffer.get(it) }
-      if (type == STAGES) stages.addAll(stagePacket(time, data))
+      if (type == STAGES) stages = superseded(stages, stagePacket(time, data))
+      if (type == TOTALS && length >= TOTALS_BYTES) totals = totals(data)
     }
-    return stages
+    return StagePackets(stages, totals)
+  }
+
+  private fun superseded(earlier: List<SleepStage>, packet: List<SleepStage>): List<SleepStage> {
+    val from = packet.firstOrNull()?.start ?: return earlier
+    return earlier.filter { !it.end.isAfter(from) } + packet
+  }
+
+  private fun totals(data: ByteArray): SleepTotals {
+    val big = ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN).apply { position(1) }
+    val asleep = big.short.toInt() and 0xffff
+    val awake = big.short.toInt() and 0xffff
+    val light = big.short.toInt() and 0xffff
+    val rem = big.short.toInt() and 0xffff
+    val deep = big.short.toInt() and 0xffff
+    return SleepTotals(asleep, awake, light, rem, deep)
   }
 
   private fun seekPacket(buffer: ByteBuffer): Boolean {

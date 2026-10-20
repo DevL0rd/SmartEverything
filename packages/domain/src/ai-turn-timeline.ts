@@ -15,6 +15,7 @@ export const CHAT_TIMELINE_PART = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('text'), key: z.string(), text: z.string() }),
   z.object({ kind: z.literal('reasoning'), key: z.string(), text: z.string() }),
   z.object({ kind: z.literal('tool'), key: z.string(), tool: CHAT_TIMELINE_TOOL }),
+  z.object({ kind: z.literal('steer'), key: z.string(), message_id: z.uuid() }),
 ]);
 export type ChatTimelinePart = z.infer<typeof CHAT_TIMELINE_PART>;
 export const CHAT_TIMELINE_EMBED = z.object({
@@ -158,7 +159,8 @@ function compactField(
 ): string | null {
   if (value === null || value.length <= COMPACT_FIELD_CHARS) return value;
   const record = parsedRecord(value);
-  if (record === undefined || (field === 'output' && carriesFileEvidence(record))) return value;
+  if (record === undefined) return clipped(value, COMPACT_FIELD_CHARS);
+  if (field === 'output' && carriesFileEvidence(record)) return value;
   const text = JSON.stringify(clippedLeaves(record));
   return text.length < value.length ? text : value;
 }

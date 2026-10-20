@@ -117,7 +117,7 @@ export class ProviderJob {
     await this.query.applyFlagSettings(flagSettings(this.options.turn.options.flag_settings ?? {}));
     await this.refreshMcpServers();
     await this.commands.refresh(this.query);
-    await requireNativeSubscriptionBilling(this.query);
+    await requireNativeSubscriptionBilling(this.query, this.options.log);
     this.trace.turnStarted(startedAt, this.commands.revision, initialized.models.length);
     this.input.push(userMessageOf(this.options.turn));
     await this.consume();
@@ -141,7 +141,7 @@ export class ProviderJob {
     await this.query.applyFlagSettings({ effortLevel: chosen.effort ?? null });
     await this.query.applyFlagSettings(flagSettings(turn.options.flag_settings ?? {}));
     await this.refreshMcpServers();
-    await requireNativeSubscriptionBilling(this.query);
+    await requireNativeSubscriptionBilling(this.query, this.options.log);
     this.options = { ...this.options, turn };
     this.seq = 0;
     this.interrupted = false;
@@ -165,7 +165,7 @@ export class ProviderJob {
         'The owned Claude Query must remain idle and open before a native command.',
       );
     assertManagedCommand(this.options.turn);
-    await requireNativeSubscriptionBilling(this.query);
+    await requireNativeSubscriptionBilling(this.query, this.options.log);
     this.options = {
       ...this.options,
       turn: { ...this.options.turn, job_id: jobId, session_id: this.sessionId },

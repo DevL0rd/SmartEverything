@@ -8,6 +8,7 @@ import type { Logger } from '@smarteverything/logging';
 import {
   validateRawWrite,
   deviceEventsFor,
+  reportsAttribute,
   DEVICE,
   DEVICE_LIST,
   DEVICE_STATUS,
@@ -28,6 +29,8 @@ import type { DefinitionCache } from './definitions';
 import type { SmartThingsApi } from './http';
 
 const DEVICE_LIST_ACCEPT = 'application/vnd.smartthings+json;v=20170916';
+
+const MOBILE_PRESENCE_TYPE = 'MOBILE';
 
 const DEVICE_LIST_PATH = '/v1/devices?includeStatus=true&includeHealth=true';
 
@@ -155,8 +158,13 @@ export class Inventory {
   }
 
   eventsFor(event: SmartThingsDeviceEvent, occurredAt: string): readonly DeviceEvent[] {
-    const previous = this.entries.get(event.deviceId)?.status[event.componentId];
-    return deviceEventsFor(event, occurredAt, previous);
+    const entry = this.entries.get(event.deviceId);
+    return deviceEventsFor(
+      event,
+      occurredAt,
+      entry?.status[event.componentId],
+      entry !== undefined && !reportsAttribute(entry, event),
+    );
   }
 
   applyEvent(event: SmartThingsDeviceEvent, observedAt: string): readonly StateUpdate[] {
@@ -188,7 +196,9 @@ export class Inventory {
       for (const item of page.items) {
         const parsed = DEVICE.safeParse(item);
         if (parsed.success) {
-          devices.push(parsed.data);
+          if (parsed.data.type !== MOBILE_PRESENCE_TYPE) {
+            devices.push(parsed.data);
+          }
         } else {
           rejected.push({ externalId: null, cause: parsed.error });
         }

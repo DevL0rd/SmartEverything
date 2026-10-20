@@ -13,6 +13,7 @@ import type { DeviceDriver } from '../local/device-driver';
 import type { MetricHistory } from '../metrics/history';
 import type { Viewers } from '../metrics/viewers';
 import type { HubLink } from '../node/link';
+import type { SignalBus } from '../signals/bus';
 import type { AppTime } from './app-focus';
 import type { SessionEars } from './computer-ears';
 import type { SessionEarHosts } from '../listening/ear-hosts';
@@ -32,6 +33,8 @@ export interface ComputerDriverOptions {
   readonly directory: ComputerDirectory;
   readonly records: ComputerCommandRecords;
   readonly recordAppTime: (time: AppTime) => void;
+  readonly signals: Pick<SignalBus, 'emit'>;
+  readonly personOf: (deviceId: string) => string | null;
   readonly hubComputerResolved: (deviceId: string) => void;
   readonly ears?: SessionEars;
   readonly earHosts?: SessionEarHosts;

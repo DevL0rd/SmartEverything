@@ -27,6 +27,12 @@ export const DEVICE_SCOPE = z.strictObject({
 
 export type DeviceScope = z.output<typeof DEVICE_SCOPE>;
 
+export interface PrivateDevices {
+  readonly hidden: readonly string[];
+}
+
+export type DeviceReach = DeviceScope & PrivateDevices;
+
 export const MODEL_SCOPE = z.strictObject({
   mode: z.enum(['default', 'only']),
   ids: z.array(AI_MODEL_ID).max(200),
@@ -49,6 +55,8 @@ export const ACCESS_SCOPES = z.strictObject({
 });
 
 export type AccessScopes = z.output<typeof ACCESS_SCOPES>;
+
+export type ReachScopes = Omit<AccessScopes, 'devices'> & { readonly devices: DeviceReach };
 
 export const PERSON_BUDGET = AI_BUDGET_SETTINGS.omit({ burn: true, low_credits_usd: true });
 
@@ -124,9 +132,10 @@ export function areaInScope(scopes: Pick<AccessScopes, 'areas'>, area: McpToolAr
 }
 
 export function deviceInScope(
-  scope: DeviceScope,
+  scope: DeviceScope & Partial<PrivateDevices>,
   device: { readonly id: string; readonly room_id: string | null },
 ): boolean {
+  if (scope.hidden?.includes(device.id) === true) return false;
   if (scope.mode === 'all') return true;
   const named =
     scope.devices.includes(device.id) ||
@@ -208,6 +217,7 @@ export type NewAccessRequest = z.output<typeof NEW_ACCESS_REQUEST>;
 export const ACCESS_REQUEST_DECISION = z.strictObject({
   approve: z.boolean(),
   until: MOMENT.nullable(),
+  target: NEW_ACCESS_REQUEST.shape.target.default(null),
 });
 
 export type AccessRequestDecision = z.output<typeof ACCESS_REQUEST_DECISION>;
@@ -219,6 +229,7 @@ export const ACCESS_REQUEST_ROW = NEW_ACCESS_REQUEST.extend({
   until: MOMENT.nullable(),
   requested_at: MOMENT,
   decided_at: MOMENT.nullable(),
+  lapsed_at: MOMENT.nullable(),
   decided_by: ID.nullable(),
 });
 

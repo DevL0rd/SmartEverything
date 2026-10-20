@@ -8,7 +8,7 @@ import { localPref, setLocalPref, useLocalPref } from '../../../store/local-pref
 import { ASSISTANT_GROUPS } from '../settings/settings-groups';
 import { desktopBridge } from '../../../design/platform';
 import { OverlayHelperRow } from './overlay-helper-row';
-import { OverlayPermissionRow } from './overlay-permission-row';
+import { OverlayPermissionRow, OverlayResetPositionRow } from './overlay-permission-row';
 import { MuteShortcutRow, TalkShortcutRow } from './overlay-shortcut-row';
 
 export function useOverlayPrefs(): OverlayPrefs {
@@ -184,6 +184,14 @@ export const OVERLAY_SETTINGS: readonly SettingDefinition[] = [
     keywords: ['overlay', 'permission', 'display over other apps', 'floating', 'call controls'],
     visible: ANDROID,
     render: () => createElement(OverlayPermissionRow),
+  },
+  {
+    ...BASE,
+    id: 'assistant.overlay-reset-position',
+    title: 'Reset overlay position',
+    keywords: ['overlay', 'position', 'reset', 'move', 'drag', 'bottom', 'home'],
+    visible: ANDROID,
+    render: () => createElement(OverlayResetPositionRow),
   },
   {
     ...BASE,

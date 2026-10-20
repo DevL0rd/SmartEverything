@@ -14,6 +14,7 @@ import android.os.Build
 import android.util.Log
 import androidx.work.WorkManager
 import expo.modules.healthconnect.NativeGuard
+import expo.modules.healthconnect.R
 import expo.modules.healthconnect.phone.PhonePostWorker
 import expo.modules.healthconnect.push.PushCommandHandler
 import expo.modules.healthconnect.DomainConstants
@@ -76,7 +77,7 @@ object IncomingCalls {
 
   private fun notification(context: Context, call: IncomingCall): Notification {
     val builder = Notification.Builder(context, CHANNEL)
-      .setSmallIcon(context.applicationInfo.icon)
+      .setSmallIcon(R.drawable.ic_stat_smarteverything)
       .setContentTitle("${call.caller} is calling")
       .setContentText(call.reason)
       .setCategory(Notification.CATEGORY_CALL)

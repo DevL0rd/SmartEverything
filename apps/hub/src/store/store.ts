@@ -17,6 +17,7 @@ import { peopleRepositories } from './repositories/areas/people';
 import { platformRepositories } from './repositories/areas/platform';
 import { durableSessionWrite } from './repositories/dsh-session-durability';
 import { SettingsRepository } from './repositories/settings';
+import { automationStorageMetrics } from './automation-storage-metrics';
 import { sweepRetention } from './retention';
 import { reportedSql } from './sql-report';
 import type { Sql } from './sql';
@@ -109,6 +110,20 @@ function migrated(sql: Sql, options: StoreOptions): number {
   return version;
 }
 
+function startRetention(sql: Sql, options: StoreOptions): NodeJS.Timeout {
+  const sweep = (): void => {
+    const removed = sweepRetention(sql, options.now());
+    options.log.debug('store.retention_swept', removed);
+    options.log.debug('store.automation_storage', () => ({
+      tables: automationStorageMetrics(sql),
+    }));
+  };
+  sweep();
+  const timer = setInterval(sweep, RETENTION_SWEEP_MS);
+  timer.unref();
+  return timer;
+}
+
 export function openStore(options: StoreOptions): Store {
   options.log.debug('store.opening', () => ({ file: basename(options.path) }));
   const database = openDatabase(options.path);
@@ -125,13 +140,7 @@ export function openStore(options: StoreOptions): Store {
     options.log.debug('change.summary', () => ({ ...feed.drain(), windowMs: FEED_SUMMARY_MS }));
   }, FEED_SUMMARY_MS);
   feedSummary.unref();
-  const sweep = (): void => {
-    const removed = sweepRetention(sql, options.now());
-    options.log.debug('store.retention_swept', removed);
-  };
-  sweep();
-  const retention = setInterval(sweep, RETENTION_SWEEP_MS);
-  retention.unref();
+  const retention = startRetention(sql, options);
   options.log.info('store.opened', { version });
   options.log.debug('store.open_timed', () => ({
     file: basename(options.path),

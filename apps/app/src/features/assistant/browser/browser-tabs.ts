@@ -356,7 +356,7 @@ export class BrowserTabs {
     this.handles.clear();
     this.state.set({ tabs: [], selectedId: null, problem: null });
   }
-  private handle(id: BrowserTabId): BrowserHandle {
+  handle(id: BrowserTabId): BrowserHandle {
     const handle = this.handles.get(id);
     if (handle === undefined)
       throw new BrowserTabError('Wait for this browser page to finish opening.');

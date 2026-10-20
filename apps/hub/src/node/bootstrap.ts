@@ -15,6 +15,7 @@ import { ComputerNode } from './computer-node';
 import { controlsFor } from './controls/controls';
 import { earHostFor, type EarHostFactory } from './ear/ear-host';
 import { computerEarFor } from './ear/linux-ear';
+import { EarRuntimeAbortedError, type EarRuntimeLost } from './ear/runtime-lost';
 import type { NodeLink } from './link';
 import { NodeFailureError } from './node-failure';
 
@@ -22,6 +23,7 @@ interface NodeBootstrapOptions {
   readonly dataDirectory: string;
   readonly config: NodeServiceConfig;
   readonly log: Logger;
+  readonly restart: () => void;
 }
 export interface RunningNode {
   readonly role: 'node';
@@ -58,6 +60,15 @@ class NodeReadyWriter {
   }
 }
 
+function restartOnLostEar(options: NodeBootstrapOptions): EarRuntimeLost {
+  return (reason): void => {
+    options.log.error('ear.runtime_aborted', new EarRuntimeAbortedError(reason), {
+      consequence: 'the speech runtime of this process cannot recover, so the service restarts',
+    });
+    options.restart();
+  };
+}
+
 export async function startNode(options: NodeBootstrapOptions): Promise<RunningNode> {
   const { node } = options.config;
 
@@ -80,7 +91,18 @@ export async function startNode(options: NodeBootstrapOptions): Promise<RunningN
     log: options.log.forArea('hub.node-harness'),
     transport,
   });
-  const runtime = createRuntime(options, ready, identity, transport);
+  const lost = restartOnLostEar(options);
+  const hosting = earHostFor({
+    now: (): Date => new Date(),
+    dataDirectory: options.config.wakeDiagnostics ? options.dataDirectory : null,
+    log: options.log,
+    lost,
+  });
+  const runtime = createRuntime(options, ready, identity, {
+    transport,
+    earHost: hosting.factory,
+    lost,
+  });
   ready.changed(false);
   runtime.start();
   harness.start();
@@ -89,6 +111,7 @@ export async function startNode(options: NodeBootstrapOptions): Promise<RunningN
     url: node.hub_url,
     stop: async (): Promise<void> => {
       runtime.stop();
+      hosting.stop();
       broker.close();
       await harness.stop();
       await authority.stop();
@@ -101,10 +124,17 @@ function createRuntime(
   options: NodeBootstrapOptions,
   ready: NodeReadyWriter,
   identity: Awaited<ReturnType<typeof nodeIdentity>>,
-  transport: NodeHubTransport,
+  {
+    transport,
+    earHost,
+    lost,
+  }: {
+    readonly transport: NodeHubTransport;
+    readonly earHost: EarHostFactory;
+    readonly lost: EarRuntimeLost;
+  },
 ): NodeAiRuntime {
   const { node } = options.config;
-  const earHost = earHostFor({ now: (): Date => new Date(), log: options.log });
   return new NodeAiRuntime({
     hubUrl: node.hub_url,
     transport,
@@ -115,7 +145,8 @@ function createRuntime(
     runtimes: ['claude', 'codex'],
     createRuntimeHosts: (): ReturnType<typeof nodeRuntimeHosts> =>
       nodeRuntimeHosts({ dataDirectory: options.dataDirectory, node, log: options.log, transport }),
-    createComputer: (link) => createComputerNode(options.log, link, earHost, identity.machineId),
+    createComputer: (link) =>
+      createComputerNode(options.log, link, { earHost, lost }, identity.machineId),
     changed: (connected): void => {
       ready.changed(connected);
     },
@@ -125,7 +156,7 @@ function createRuntime(
 function createComputerNode(
   log: Logger,
   link: NodeLink,
-  earHost: EarHostFactory,
+  ears: { readonly earHost: EarHostFactory; readonly lost: EarRuntimeLost },
   machineId: string,
 ): ComputerNode | null {
   const now = (): Date => new Date();
@@ -136,8 +167,8 @@ function createComputerNode(
       link,
       now,
       log,
-      ear: computerEarFor(process.platform, { now, log }),
-      earHost,
+      ear: computerEarFor(process.platform, { now, log, lost: ears.lost }),
+      earHost: ears.earHost,
     });
   } catch (cause) {
     if (!(cause instanceof UnsupportedPlatformError || cause instanceof NodeFailureError))

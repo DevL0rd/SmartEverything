@@ -2,7 +2,10 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../design/colour', () => ({ useColour: (role: string): string => role }));
+vi.mock('../../design/colour', () => ({
+  useColour: (role: string): string => role,
+  useColourResolver: (): ((role: string) => string) => (role) => role,
+}));
 
 const { Gauge } = await import('./gauge');
 
@@ -33,5 +36,19 @@ describe('Gauge', () => {
     );
     expect(html).toContain('aria-label="Empty"');
     expect(html).not.toContain('<path');
+  });
+
+  it('draws one filled arc however many bands there are', () => {
+    const html = renderToStaticMarkup(
+      createElement(Gauge, {
+        value: 60,
+        min: 0,
+        max: 100,
+        size: 120,
+        label: 'Load',
+        bands: SHORT_BANDS,
+      }),
+    );
+    expect(html.match(/stroke-dasharray/g)).toHaveLength(1);
   });
 });

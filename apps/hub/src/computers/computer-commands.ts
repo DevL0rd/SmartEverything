@@ -124,13 +124,13 @@ async function runMachineAction(
   if (MACHINE_ACTION_RISK[action] === 'confirm' && origin.source !== 'app') {
     await context.approve(deviceId, action, origin.source);
   }
+  await session.call(request);
   context.sink.event({
     externalId: command.externalId,
     kind: 'machine_action',
     occurredAt: context.now().toISOString(),
     details: { action, source: origin.source, client: origin.client },
   });
-  await session.call(request);
 }
 
 async function perform(

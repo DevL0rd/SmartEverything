@@ -28,6 +28,8 @@ const MEDIA: PhoneMedia = {
 function sound(overrides: Partial<Sound> = {}): Sound {
   return {
     streams: { media: 40, ring: 70, alarm: 90, notification: 55, call: 60 },
+    hapticFeedback: true,
+    touchSounds: true,
     output: { kind: 'bluetooth', name: 'Galaxy Buds3' },
     media: MEDIA,
     at: '2026-10-18T10:00:00.000Z',

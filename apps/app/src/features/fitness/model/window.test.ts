@@ -17,7 +17,7 @@ vi.mock('../../../format/locale', async (importOriginal) => {
 });
 
 import { clock, dayKeyOf, dayLabel, shiftDay, startOfDayKey } from '../../../format/time';
-import { daysIn, previousWindow, shiftAnchor, windowLabel, windowOf } from './window';
+import { daysIn, elapsedPart, previousWindow, shiftAnchor, windowLabel, windowOf } from './window';
 
 describe('fitness time windows', () => {
   it('day keys round-trip through local midnight', () => {
@@ -104,5 +104,26 @@ describe('fitness time windows', () => {
     expect(dayLabel(moment, startOfDayKey('2026-10-08'))).toBe('Today');
     expect(dayLabel(moment, startOfDayKey('2026-10-09'))).toBe('Yesterday');
     expect(dayLabel(moment, startOfDayKey('2026-10-20'))).toBe('Thu 8 Oct');
+  });
+});
+
+describe('elapsed part of a window', () => {
+  it('stops at the end of today inside a running week and month', () => {
+    const week = windowOf('week', '2026-10-14');
+    const part = elapsedPart(week, '2026-10-14');
+    expect(daysIn(part)).toBe(3);
+    expect(part.lastDay).toBe('2026-10-14');
+    expect(part.firstDay).toBe(week.firstDay);
+    expect(daysIn(elapsedPart(windowOf('month', '2026-10-18'), '2026-10-18'))).toBe(18);
+  });
+
+  it('drops the months that have not started in a running year', () => {
+    const part = elapsedPart(windowOf('year', '2026-10-18'), '2026-10-18');
+    expect(part.buckets).toHaveLength(10);
+  });
+
+  it('leaves a finished window as it is', () => {
+    const week = windowOf('week', '2026-10-05');
+    expect(elapsedPart(week, '2026-10-18')).toBe(week);
   });
 });

@@ -14,7 +14,6 @@ import type { InlineToolActivity } from '../model/inline-timeline';
 import type { NumberedSource } from '../model/web-sources';
 import { WebSources } from './web-sources';
 import { ToolFileDiffs } from './tool-file-diffs';
-import { ToolResultAccess } from './tool-result-access';
 import { useProgressiveCount } from '../../../design/progressive-count';
 
 interface ActionStatus {
@@ -53,19 +52,17 @@ const StatusIcon = memo(function StatusIcon({
 });
 
 const ToolAction = memo(function ToolAction({
-  chatId,
   tool,
   title,
   live,
 }: {
-  readonly chatId: string;
   readonly tool: ChatTimelineTool;
   readonly title: string;
   readonly live: boolean;
 }): ReactNode {
   const outcome = toolOutcome(tool, live);
   const status = outcome === 'done' && tool.image_operation_id !== null ? STARTED : STATUS[outcome];
-  const result = toolResultLine(tool, live);
+  const result = outcome === 'done' ? null : toolResultLine(tool, live);
   return (
     <View className="gap-1 py-1.5" accessibilityLabel={`${title}. ${status.label}`}>
       <View className="flex-row items-start gap-2">
@@ -83,18 +80,15 @@ const ToolAction = memo(function ToolAction({
         </Text>
       )}
       <ToolFileDiffs tool={tool} state={outcome} />
-      {tool.output === null ? null : <ToolResultAccess chatId={chatId} tool={tool} title={title} />}
     </View>
   );
 });
 
 const GroupBody = memo(function GroupBody({
-  chatId,
   activities,
   live,
   pluginName,
 }: {
-  readonly chatId: string;
   readonly activities: readonly InlineToolActivity[];
   readonly live: boolean;
   readonly pluginName: (id: string) => string | null;
@@ -106,7 +100,6 @@ const GroupBody = memo(function GroupBody({
         activity.kind === 'tool' ? (
           <ToolAction
             key={activity.key}
-            chatId={chatId}
             tool={activity.tool}
             title={toolActionTitle(activity.tool, pluginName)}
             live={live}
@@ -140,7 +133,6 @@ function ThinkingMark(): ReactNode {
 }
 
 interface GroupProps {
-  readonly chatId: string;
   readonly activities: readonly InlineToolActivity[];
   readonly tools: readonly ChatTimelineTool[];
   readonly live: boolean;
@@ -149,7 +141,6 @@ interface GroupProps {
 }
 
 const GroupDisclosure = memo(function GroupDisclosure({
-  chatId,
   tools,
   live,
   active,
@@ -157,9 +148,7 @@ const GroupDisclosure = memo(function GroupDisclosure({
   pluginName,
 }: GroupProps): ReactNode {
   const [chosen, setChosen] = useState<boolean | null>(null);
-  const body = (
-    <GroupBody chatId={chatId} activities={activities} live={live} pluginName={pluginName} />
-  );
+  const body = <GroupBody activities={activities} live={live} pluginName={pluginName} />;
   const open = chosen ?? active;
   const thinking = useMemo(
     () => activities.some((activity) => activity.kind === 'reasoning'),
@@ -188,7 +177,6 @@ const GroupDisclosure = memo(function GroupDisclosure({
 const ToolGroup = memo(function ToolGroup(props: GroupProps): ReactNode {
   return props.tools.length === 1 ? (
     <GroupBody
-      chatId={props.chatId}
       activities={props.activities}
       live={props.live}
       pluginName={props.pluginName}
@@ -202,7 +190,6 @@ export function InlineTool({
   sources,
   ...group
 }: {
-  readonly chatId: string;
   readonly activities: readonly InlineToolActivity[];
   readonly sources: readonly NumberedSource[];
   readonly tools: readonly ChatTimelineTool[];

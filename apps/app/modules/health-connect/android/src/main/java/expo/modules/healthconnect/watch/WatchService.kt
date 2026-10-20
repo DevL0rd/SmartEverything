@@ -2,6 +2,7 @@ package expo.modules.healthconnect.watch
 
 import expo.modules.healthconnect.BluetoothConnectNotAllowed
 import expo.modules.healthconnect.CompanionScreenUnavailable
+import expo.modules.healthconnect.R
 import expo.modules.healthconnect.UnsupportedWatchFamily
 import expo.modules.healthconnect.WatchNotConfigured
 import android.app.Notification
@@ -250,7 +251,7 @@ class WatchService : Service() {
       PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE)
     }
     val notification = Notification.Builder(this, CHANNEL)
-      .setSmallIcon(applicationInfo.icon)
+      .setSmallIcon(R.drawable.ic_stat_smarteverything)
       .setContentTitle("Watch")
       .setContentText(text)
       .setOngoing(true)

@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  BROWSER_PAGE,
+  BROWSER_PAGE_ACTION_NAMES,
+  BROWSER_PAGE_CLICK,
+  BROWSER_PAGE_KEYS,
+  BROWSER_PAGE_SCROLL,
+  BROWSER_PAGE_TYPE,
+} from './browser-page';
 
 export const EMBEDDED_BROWSER_PROTOCOL = 'smarteverything.embedded-browser.v1';
 export const EMBEDDED_BROWSER_PATH = '/api/embedded-browser';
@@ -10,6 +18,7 @@ export const EMBEDDED_BROWSER_ACTION_NAMES = [
   'reload',
   'close',
   'reorder',
+  ...BROWSER_PAGE_ACTION_NAMES,
 ] as const;
 const TAB_ID = z.uuid();
 export const EMBEDDED_BROWSER_ACTION = z.discriminatedUnion('kind', [
@@ -32,6 +41,12 @@ export const EMBEDDED_BROWSER_ACTION = z.discriminatedUnion('kind', [
     kind: z.literal('reorder'),
     tabIds: z.array(TAB_ID).max(EMBEDDED_BROWSER_MAX_TABS),
   }),
+  z.strictObject({ kind: z.literal('back'), tabId: TAB_ID }),
+  z.strictObject({ kind: z.literal('forward'), tabId: TAB_ID }),
+  BROWSER_PAGE_CLICK.extend({ tabId: TAB_ID }),
+  BROWSER_PAGE_TYPE.extend({ tabId: TAB_ID }),
+  BROWSER_PAGE_KEYS.extend({ tabId: TAB_ID }),
+  BROWSER_PAGE_SCROLL.extend({ tabId: TAB_ID }),
 ]);
 export type EmbeddedBrowserAction = z.infer<typeof EMBEDDED_BROWSER_ACTION>;
 export const EMBEDDED_BROWSER_SCOPE = z.strictObject({
@@ -62,19 +77,32 @@ export const EMBEDDED_BROWSER_CONTENT = z.strictObject({
 });
 export const EMBEDDED_BROWSER_SNAPSHOT = EMBEDDED_BROWSER_SCOPE.extend({
   ...EMBEDDED_BROWSER_CONTENT.shape,
-  capabilities: z.array(z.enum(EMBEDDED_BROWSER_ACTION_NAMES)).max(6).optional(),
+  capabilities: z
+    .array(z.enum(EMBEDDED_BROWSER_ACTION_NAMES))
+    .max(EMBEDDED_BROWSER_ACTION_NAMES.length)
+    .optional(),
+  page: BROWSER_PAGE.optional(),
 });
 export type EmbeddedBrowserSnapshot = z.infer<typeof EMBEDDED_BROWSER_SNAPSHOT>;
 export const EMBEDDED_BROWSER_SELECTOR = z.strictObject({
   viewerId: z.uuid().optional(),
   clientId: z.string().min(1).max(512).optional(),
 });
+export const EMBEDDED_BROWSER_VIEWS = ['tabs', 'page'] as const;
+export const EMBEDDED_BROWSER_READ = EMBEDDED_BROWSER_SELECTOR.extend({
+  view: z.enum(EMBEDDED_BROWSER_VIEWS).default('tabs'),
+  tabId: TAB_ID.optional(),
+});
 export const EMBEDDED_BROWSER_EDIT = EMBEDDED_BROWSER_SELECTOR.extend({
   requestId: z.uuid(),
   action: EMBEDDED_BROWSER_ACTION,
 });
 export const EMBEDDED_BROWSER_OPERATION = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('read') }),
+  z.strictObject({
+    kind: z.literal('read'),
+    view: z.enum(EMBEDDED_BROWSER_VIEWS).default('tabs'),
+    tabId: TAB_ID.optional(),
+  }),
   z.strictObject({ kind: z.literal('edit'), action: EMBEDDED_BROWSER_ACTION }),
 ]);
 export const EMBEDDED_BROWSER_REQUEST = z.strictObject({

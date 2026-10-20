@@ -1,11 +1,16 @@
 import { createContext, use, type ReactNode } from 'react';
+import { View } from 'react-native';
 import { Ellipse, LinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
 import { useUniwind } from 'uniwind';
 import { useColour } from '../../../design/colour';
-import { useSvgId } from './frame';
+import { faded } from '../../../design/faded';
+import { isNative } from '../../../design/platform';
+import { Canvas, FULL, boxStyle, useSvgId } from './frame';
+import type { Blob } from './haze';
 
 export const LIGHT = '#FFFFFF';
 const SHADE = '#000000';
+const FLOOR_MID = 0.45;
 
 export interface Lighting {
   readonly warmth: number;
@@ -134,10 +139,39 @@ export function ContactShadow({
     <>
       <RadialGradient id={id} cx="50%" cy="50%" r="50%">
         <Stop offset="0" stopColor={SHADE} stopOpacity={lighting.floor} />
-        <Stop offset="0.6" stopColor={SHADE} stopOpacity={lighting.floor * 0.45} />
+        <Stop offset="0.6" stopColor={SHADE} stopOpacity={lighting.floor * FLOOR_MID} />
         <Stop offset="1" stopColor={SHADE} stopOpacity={0} />
       </RadialGradient>
       <Ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={`url(#${id})`} />
     </>
+  );
+}
+
+export function ContactFloor({
+  px,
+  blob,
+}: {
+  readonly px: number;
+  readonly blob: Blob;
+}): ReactNode {
+  const lighting = useLighting();
+  if (!isNative()) {
+    return (
+      <Canvas px={px}>
+        <ContactShadow cx={blob.cx} cy={blob.cy} rx={blob.rx} ry={blob.ry} />
+      </Canvas>
+    );
+  }
+  const stops = [
+    `${faded(SHADE, lighting.floor)} 0%`,
+    `${faded(SHADE, lighting.floor * FLOOR_MID)} 60%`,
+    `${faded(SHADE, 0)} 100%`,
+  ].join(', ');
+  const gradient = `radial-gradient(ellipse ${String(blob.rx)}% ${String(blob.ry)}% at ${String(blob.cx)}% ${String(blob.cy)}%, ${stops})`;
+  return (
+    <View
+      pointerEvents="none"
+      style={[boxStyle(FULL, px), { experimental_backgroundImage: gradient }]}
+    />
   );
 }

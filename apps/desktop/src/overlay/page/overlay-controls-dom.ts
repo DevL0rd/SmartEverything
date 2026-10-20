@@ -1,4 +1,4 @@
-import type { ControlModel } from '../overlay-render';
+import type { ChipModel, ControlModel } from '../overlay-render';
 import { METER_WEIGHTS, RIBBON_WEIGHTS } from '../overlay-motion';
 import { element, iconNode, textButton } from './overlay-nodes';
 
@@ -66,6 +66,29 @@ function chipButton(model: ControlModel): HTMLButtonElement {
   label.textContent = model.label;
   button.append(iconNode('stopShare', 16), label);
   return button;
+}
+
+export function buildThinkChip(): HTMLButtonElement {
+  const button = element('button', 'think swap');
+  button.type = 'button';
+  button.dataset['act'] = 'thinking';
+  button.append(element('span', 'think-ic'), element('span', 'think-tx'));
+  return button;
+}
+
+export function updateThinkChip(button: HTMLButtonElement, model: ChipModel): void {
+  button.setAttribute('aria-label', model.description);
+  button.setAttribute('title', model.description);
+  button.classList.toggle('warm', model.warm);
+  const mark = button.querySelector<HTMLElement>('.think-ic');
+  if (mark !== null && mark.dataset['icon'] !== model.icon) {
+    mark.dataset['icon'] = model.icon;
+    mark.replaceChildren(iconNode(model.icon, 16));
+  }
+  const text = button.querySelector<HTMLElement>('.think-tx');
+  if (text !== null && text.textContent !== model.label) {
+    text.textContent = model.label;
+  }
 }
 
 export function buildControl(model: ControlModel): HTMLButtonElement {

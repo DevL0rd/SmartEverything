@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { WIDGET_SIZE } from './board-layout';
 import { MCP_TOOL_AREAS } from './mcp/areas';
+import { PLUGIN_SOURCE_PREFIX } from './signal-sources/rates';
 import type { SignalSourceSpec } from './signal-sources/spec';
 import {
   PLUGIN_ID,
@@ -83,11 +84,23 @@ export const PLUGIN_EVENT_KIND = z.strictObject({
   kind: KEY,
   title: TITLE,
   fields: z.record(KEY, z.enum(PLUGIN_EVENT_FIELD_TYPES)).default({}),
+  feed: z.boolean().default(true),
 });
 
 export type PluginEventKind = z.output<typeof PLUGIN_EVENT_KIND>;
 
-const STREAM_REF = z.strictObject({ stream: KEY, field: KEY.nullable().default(null) });
+const STREAM_FIELD_PATH = z
+  .string()
+  .max(80)
+  .regex(
+    /^[A-Za-z_][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)*$/,
+    'a field of the reading, or a dotted path such as summary.peersOnline',
+  );
+
+const STREAM_REF = z.strictObject({
+  stream: KEY,
+  field: STREAM_FIELD_PATH.nullable().default(null),
+});
 
 const CONTROL_BASE = { label: TITLE, tool: TOOL, args: JSON_OBJECT.default({}) };
 
@@ -120,8 +133,13 @@ export const WIDGET_BODY = z.discriminatedUnion('type', [
   }),
   z.strictObject({ type: z.literal('list'), value: STREAM_REF, limit: z.int().min(1).max(20) }),
   z.strictObject({ type: z.literal('controls'), items: z.array(WIDGET_CONTROL).min(1).max(6) }),
-  z.strictObject({ type: z.literal('map'), value: STREAM_REF }),
 ]);
+
+export type WidgetBody = z.output<typeof WIDGET_BODY>;
+
+export type WidgetControl = z.output<typeof WIDGET_CONTROL>;
+
+export type WidgetStreamRef = z.output<typeof STREAM_REF>;
 
 export const WIDGET_SPEC = z.strictObject({
   id: KEY,
@@ -136,6 +154,44 @@ export const WIDGET_SPEC = z.strictObject({
 
 export type WidgetSpec = z.output<typeof WIDGET_SPEC>;
 
+export const PLUGIN_PAGE_SECTION = z.strictObject({ title: TITLE, body: WIDGET_BODY });
+
+export const PLUGIN_PAGE_SECTIONS_MAX = 12;
+
+export const PLUGIN_PAGE = z.strictObject({
+  id: KEY,
+  title: TITLE,
+  icon: z.string().min(1).max(40),
+  sections: z.array(PLUGIN_PAGE_SECTION).min(1).max(PLUGIN_PAGE_SECTIONS_MAX),
+});
+
+export type PluginPage = z.output<typeof PLUGIN_PAGE>;
+
+export function pluginWidgetType(pluginId: PluginId, widgetId: string): string {
+  const own = widgetId.startsWith(`${pluginId}-`) || widgetId.startsWith(`${pluginId}.`);
+  return own ? widgetId : `${pluginId}.${widgetId}`;
+}
+
+const PLUGIN_PAGE_ROUTE_PREFIX = 'plugin.';
+
+export function pluginPageRoute(pluginId: PluginId, pageId: string): string {
+  return `${PLUGIN_PAGE_ROUTE_PREFIX}${pluginId}.${pageId}`;
+}
+
+export function parsePluginPageRoute(
+  route: string,
+): { readonly pluginId: PluginId; readonly pageId: string } | null {
+  if (!route.startsWith(PLUGIN_PAGE_ROUTE_PREFIX)) return null;
+  const rest = route.slice(PLUGIN_PAGE_ROUTE_PREFIX.length);
+  const split = rest.indexOf('.');
+  if (split < 0) return null;
+  const pluginId = PLUGIN_ID.safeParse(rest.slice(0, split));
+  const pageId = KEY.safeParse(rest.slice(split + 1));
+  return pluginId.success && pageId.success
+    ? { pluginId: pluginId.data, pageId: pageId.data }
+    : null;
+}
+
 export const PLUGIN_COMMAND = z.strictObject({ name: KEY, title: TITLE, tool: TOOL });
 
 export const PLUGIN_SEARCH_MODES = ['push', 'query'] as const;
@@ -143,6 +199,7 @@ export const PLUGIN_SEARCH_MODES = ['push', 'query'] as const;
 export const PLUGIN_CONTRIBUTIONS = z.strictObject({
   directTools: z.array(TOOL).max(40).default([]),
   widgets: z.array(WIDGET_SPEC).max(30).default([]),
+  pages: z.array(PLUGIN_PAGE).max(10).default([]),
   data: z.array(PLUGIN_DATA_STREAM).max(50).default([]),
   events: z.array(PLUGIN_EVENT_KIND).max(50).default([]),
   search: z.enum(PLUGIN_SEARCH_MODES).nullable().default(null),
@@ -207,6 +264,17 @@ export const PLUGIN_ROW = z.object({
 });
 
 export type PluginRow = z.infer<typeof PLUGIN_ROW>;
+
+export const PLUGIN_UI_ROW = z.object({
+  id: PLUGIN_ID,
+  name: PLUGIN_MANIFEST.shape.name,
+  icon_url: z.string().min(1).nullable(),
+  widgets: z.array(WIDGET_SPEC),
+  pages: z.array(PLUGIN_PAGE),
+  tools_off: z.array(TOOL),
+});
+
+export type PluginUiRow = z.infer<typeof PLUGIN_UI_ROW>;
 
 export const INBOUND_PRIORITIES = ['normal', 'urgent'] as const;
 
@@ -314,7 +382,7 @@ export const PLUGIN_MANIFEST_RESOURCE = 'se://manifest';
 export const PLUGIN_MANIFEST_FILE = 'smarteverything-plugin.json';
 
 export function pluginSignalSource(pluginId: PluginId): string {
-  return `plugin_${pluginId.replaceAll('-', '_')}`;
+  return `${PLUGIN_SOURCE_PREFIX}${pluginId.replaceAll('-', '_')}`;
 }
 
 export function pluginSignalSpec(manifest: PluginManifest): SignalSourceSpec {
@@ -328,6 +396,7 @@ export function pluginSignalSpec(manifest: PluginManifest): SignalSourceSpec {
       fields: [],
       match: Object.keys(event.fields).map((key) => ({ key, label: key, values: null })),
       pulse: true,
+      feed: event.feed,
     })),
   };
 }

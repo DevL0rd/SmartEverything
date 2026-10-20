@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ClaudeSession } from '@smarteverything/domain';
+import type { ClaudeListedSession } from '@smarteverything/domain';
 import type { DesktopHistoryComputer } from '../../computers';
 import { sectionsOf, type ChatEntry } from './chat-entry';
 import { partitionChats } from './chat-groups';
@@ -12,8 +12,9 @@ import {
 } from './desktop-sessions';
 import { APP_SOURCE } from '../model/chat-source';
 
-function session(id: string, change: Partial<ClaudeSession> = {}): ClaudeSession {
+function session(id: string, change: Partial<ClaudeListedSession> = {}): ClaudeListedSession {
   return {
+    app_chat_id: null,
     id,
     desktop_id: null,
     title: id,
@@ -41,7 +42,7 @@ function session(id: string, change: Partial<ClaudeSession> = {}): ClaudeSession
   };
 }
 
-function ready(deviceId: string, sessions: readonly ClaudeSession[]): DesktopHistoryComputer {
+function ready(deviceId: string, sessions: readonly ClaudeListedSession[]): DesktopHistoryComputer {
   return { deviceId, name: `pc-${deviceId}`, history: 'ready', sessions };
 }
 

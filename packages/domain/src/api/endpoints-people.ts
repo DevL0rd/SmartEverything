@@ -8,12 +8,24 @@ import {
   HEALTH_OUTBOX_ACK,
 } from '../body-readings';
 import { NEW_PROFILE, PROFILE_CHANGE, PROFILE_ROW } from '../profiles';
+import { BOTTLE_BODY, BOTTLE_DEVICE_INFORMATION, BOTTLE_SERIAL } from '../bottle';
+import { TREADMILL_GATT_DUMP } from '../treadmill';
+import { ORALB_IDENTITY } from '../toothbrush-oralb';
+import { BRUSH_GATT_DUMP } from '../toothbrush-link';
 import { NO_BODY, endpoint } from './endpoint';
 import { SESSION } from './endpoints-access';
 import { DONE, ID, NOTHING } from './primitives';
 import { DEVICE_NAME, DEVICE_ROW } from './rows-home';
 
-export const LOCAL_DRIVERS = ['xiaomi_scale', 'xiaomi_watch', 'xiaomi_magnet'] as const;
+export const LOCAL_DRIVERS = [
+  'xiaomi_scale',
+  'xiaomi_watch',
+  'xiaomi_magnet',
+  'kingsmith_treadmill',
+  'larq_bottle',
+  'philips_sonicare',
+  'oralb_io',
+] as const;
 
 export type LocalDriver = (typeof LOCAL_DRIVERS)[number];
 
@@ -52,6 +64,44 @@ export const LOCAL_DEVICE_SETUP = z.union([
     source: z.literal('xiaomi'),
     address: BLUETOOTH_ADDRESS,
     profileId: ID,
+  }),
+  z.strictObject({
+    driver: z.literal('kingsmith_treadmill'),
+    source: z.literal('bluetooth'),
+    name: DEVICE_NAME,
+    address: BLUETOOTH_ADDRESS,
+    room: z.string().min(1).nullable(),
+    gatt: TREADMILL_GATT_DUMP,
+  }),
+  z.strictObject({
+    driver: z.literal('larq_bottle'),
+    source: z.literal('bluetooth'),
+    name: DEVICE_NAME,
+    serial: BOTTLE_SERIAL,
+    room: z.string().min(1).nullable(),
+    profileId: ID.nullable(),
+    body: BOTTLE_BODY,
+    filter: z.boolean(),
+    dis: BOTTLE_DEVICE_INFORMATION.nullable(),
+  }),
+  z.strictObject({
+    driver: z.literal('philips_sonicare'),
+    source: z.literal('bluetooth'),
+    name: DEVICE_NAME,
+    address: BLUETOOTH_ADDRESS,
+    room: z.string().min(1).nullable(),
+    profileId: ID.nullable(),
+    modelKey: z.string().min(1).nullable(),
+    bonded: z.boolean(),
+    gatt: BRUSH_GATT_DUMP,
+  }),
+  z.strictObject({
+    driver: z.literal('oralb_io'),
+    source: z.literal('bluetooth'),
+    name: DEVICE_NAME,
+    room: z.string().min(1).nullable(),
+    profileId: ID.nullable(),
+    identity: ORALB_IDENTITY,
   }),
 ]);
 

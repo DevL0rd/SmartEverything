@@ -1,6 +1,7 @@
 package expo.modules.healthconnect.watch
 
 import android.content.Context
+import android.content.SharedPreferences
 import expo.modules.healthconnect.KeystoreBox
 import expo.modules.healthconnect.HubJson
 import kotlinx.serialization.Serializable
@@ -40,11 +41,13 @@ class WatchStore(context: Context) {
     preferences.edit().putBoolean(PAUSED + deviceId, paused).apply()
   }
 
-  fun skipped(deviceId: String): Set<String> = preferences.getStringSet(SKIPPED + deviceId, emptySet()).orEmpty().toSet()
+  fun capturing(): Boolean = preferences.getBoolean(CAPTURE_RAW, false)
 
-  fun setSkipped(deviceId: String, keys: Set<String>) {
-    preferences.edit().putStringSet(SKIPPED + deviceId, keys).apply()
+  fun setCapturing(on: Boolean) {
+    preferences.edit().putBoolean(CAPTURE_RAW, on).apply()
   }
+
+  fun skippedFiles(deviceId: String, build: Long): MutableSet<String> = SkippedFiles(preferences, deviceId, build)
 
   fun active(): List<WatchConfig> = watches().filter { !paused(it.deviceId) }
 
@@ -57,17 +60,39 @@ class WatchStore(context: Context) {
     const val KEY_ALIAS = "expo.modules.healthconnect.watch-keys"
     const val WATCHES = "watches"
     const val PAUSED = "paused:"
-    const val SKIPPED = "skipped-2b:"
+    const val CAPTURE_RAW = "capture-raw-files"
   }
 }
 
-class SkippedFiles(context: Context, private val deviceId: String) : AbstractMutableSet<String>() {
-  private val store = WatchStore(context)
-  private val keys = store.skipped(deviceId).toMutableSet()
+class SkippedFiles(
+  private val preferences: SharedPreferences,
+  deviceId: String,
+  private val build: Long
+) : AbstractMutableSet<String>() {
+  private val keysName = SKIPPED + deviceId
+  private val buildName = SKIPPED_BUILD + deviceId
+  private val keys = load()
 
   override val size: Int get() = keys.size
 
   override fun iterator(): MutableIterator<String> = keys.iterator()
 
-  override fun add(element: String): Boolean = keys.add(element).also { if (it) store.setSkipped(deviceId, keys.toSet()) }
+  override fun add(element: String): Boolean = keys.add(element).also { if (it) save() }
+
+  private fun load(): MutableSet<String> {
+    if (preferences.getLong(buildName, NO_BUILD) == build) {
+      return preferences.getStringSet(keysName, emptySet()).orEmpty().toMutableSet()
+    }
+    return mutableSetOf<String>().also { save(it) }
+  }
+
+  private fun save(current: Set<String> = keys) {
+    preferences.edit().putStringSet(keysName, current.toSet()).putLong(buildName, build).apply()
+  }
+
+  private companion object {
+    const val SKIPPED = "skipped-2b:"
+    const val SKIPPED_BUILD = "skipped-build:"
+    const val NO_BUILD = -1L
+  }
 }

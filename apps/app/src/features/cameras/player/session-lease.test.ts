@@ -15,12 +15,9 @@ vi.mock('./session-start', () => ({
   startDirect: (_target: unknown, hooks: SessionHooks): void => {
     started.hooks.push(hooks);
   },
-  startRelay: (_target: unknown, hooks: SessionHooks): void => {
-    started.hooks.push(hooks);
-  },
 }));
 vi.mock('./video-surface', () => ({ surfaceReportsFrames: (): boolean => true }));
-vi.mock('./rtc', () => ({ relaySupported: (): boolean => false }));
+vi.mock('./relay', () => ({ relayStarter: (): null => null }));
 
 const { SessionLease, startPausesOf } = await import('./session-lease');
 

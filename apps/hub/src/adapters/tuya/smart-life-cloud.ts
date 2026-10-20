@@ -12,7 +12,6 @@ import {
   type SmartLifeSession,
 } from '@smarteverything/tuya';
 import type { z } from 'zod';
-import { readJson } from './cloud-client';
 import type { TuyaDependencies } from './dependencies';
 
 type SmartLifeDependencies = Pick<TuyaDependencies, 'fetch' | 'now' | 'nonce' | 'requestId'>;
@@ -22,6 +21,29 @@ export interface SmartLifeCloudOptions {
   readonly dependencies: SmartLifeDependencies;
   readonly renewed: (session: SmartLifeSession) => Promise<void>;
   readonly lost?: (cause: TuyaCloudError) => Promise<void>;
+}
+
+export class TuyaHttpError extends Error {
+  override readonly name = 'TuyaHttpError';
+
+  constructor(
+    readonly operation: string,
+    readonly status: number,
+    override readonly cause: unknown,
+  ) {
+    super(
+      `Tuya cloud answered ${operation} with HTTP ${String(status)} and a body that is not JSON.`,
+    );
+  }
+}
+
+export async function readJson(operation: string, response: Response): Promise<unknown> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch (cause) {
+    throw new TuyaHttpError(operation, response.status, cause);
+  }
 }
 
 const SESSION_PROBLEMS: ReadonlySet<string> = new Set(['credentials', 'token']);

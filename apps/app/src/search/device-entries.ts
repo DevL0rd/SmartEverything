@@ -153,6 +153,11 @@ const CAMERA_OPTIONS: readonly {
     keywords: ['recording', 'record', 'clips', 'events', 'snapshot', 'motion'],
   },
   {
+    key: 'keep-days',
+    title: 'Keep clips and pictures',
+    keywords: ['retention', 'delete', 'old', 'days', 'how long', 'keep recordings', 'storage'],
+  },
+  {
     key: 'wake-sensitivity',
     title: 'Wake sensitivity',
     keywords: ['wake word', 'hey', 'listen', 'hear', 'microphone', 'mic', 'quiet', 'far', 'name'],

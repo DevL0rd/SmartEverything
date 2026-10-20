@@ -130,6 +130,8 @@ function start(
     directory: new ComputerDirectory(options.hubMachine === true ? HELLO.machineId : null),
     hubComputerResolved: (): void => undefined,
     recordAppTime: (): void => undefined,
+    signals: { emit: (): void => undefined },
+    personOf: (): null => null,
     now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
     log: testLogger(),
   });
@@ -248,6 +250,28 @@ describe('computer session', () => {
     expect(hubDevice?.model).toBe('smarteverything.computer.hub');
     expect(pcDevice?.model).toBe('smarteverything.computer');
     expect(hubDevice?.externalId).toBe(pcDevice?.externalId);
+  });
+
+  it('takes the features a computer announces later and keeps the greeting and the live view', () => {
+    const { session, send } = start(new Viewers());
+    send({ type: 'hello', hello: HELLO });
+    send({
+      type: 'state',
+      at: new Date(AT).toISOString(),
+      parts: { windows: { windows: [] } },
+    });
+    send({ type: 'features', features: ['cpu', 'memory', 'tiling'] });
+    expect(session.view()?.hello.features).toEqual(['cpu', 'memory', 'tiling']);
+    expect(session.view()?.hello.hostname).toBe('desk');
+    expect(Object.keys(session.view()?.parts ?? {})).toEqual(['windows']);
+    send({ type: 'features', features: ['cpu', 'memory'] });
+    expect(session.view()?.hello.features).toEqual(['cpu', 'memory']);
+  });
+
+  it('ignores a features frame that arrives before any greeting', () => {
+    const { session, send } = start(new Viewers());
+    send({ type: 'features', features: ['tiling'] });
+    expect(session.view()).toBeNull();
   });
 
   it('ignores frames that do not match the contract', () => {

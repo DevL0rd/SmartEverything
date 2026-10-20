@@ -151,11 +151,13 @@ class OverlayTrayView(
   context: Context,
   private val palette: OverlayPalette,
   private val onTile: (OverlayTile) -> Unit,
+  onThinking: (VoiceLevel) -> Unit,
   onOpen: () -> Unit,
 ) : ViewGroup(context) {
   private val density = resources.displayMetrics.density
   private val tiles = ArrayList<OverlayTileView>()
   private val open = OverlayOpenChip(context, palette, onOpen)
+  private val thinking = OverlayThinkingView(context, palette, onThinking)
   private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = palette.pill }
   private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     style = Paint.Style.STROKE
@@ -193,6 +195,7 @@ class OverlayTrayView(
     importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
     contentDescription = OverlayTrayModel.DESCRIPTION
     addView(open)
+    addView(thinking)
   }
 
   fun bind(tray: OverlayTray, now: Long) {
@@ -205,6 +208,7 @@ class OverlayTrayView(
       next?.let(view::bind)
     }
     shown = tray.tiles.size
+    thinking.bind(tray.setup)
     requestLayout()
     invalidate()
   }
@@ -216,8 +220,12 @@ class OverlayTrayView(
     val gap = OverlayDims.TILE_GAP * density
     val tileHeight = OverlayDims.TILE_HEIGHT * density
     val grid = if (rows == 0) 0f else rows * tileHeight + (rows - 1) * gap
-    val height = pad + OverlayDims.TRAY_HEAD * density + grid + pad
     open.measure(MeasureSpec.UNSPECIFIED, MeasureSpec.UNSPECIFIED)
+    thinking.measure(
+      MeasureSpec.makeMeasureSpec(Math.round(width - 2 * pad), MeasureSpec.EXACTLY),
+      MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+    )
+    val height = pad + OverlayDims.TRAY_HEAD * density + grid + gap + thinking.measuredHeight + pad
     val tileWidth = Math.round(OverlayTrayModel.tileWidth(width - 2 * pad, gap))
     tiles.filter { it.visibility == VISIBLE }.forEach {
       it.measure(
@@ -242,6 +250,10 @@ class OverlayTrayView(
       val y = gridTop + row * (view.measuredHeight + gap)
       view.layout(Math.round(x), Math.round(y), Math.round(x) + view.measuredWidth, Math.round(y) + view.measuredHeight)
     }
+    val rows = OverlayTrayModel.rows(shown)
+    val grid = if (rows == 0) 0f else rows * OverlayDims.TILE_HEIGHT * density + (rows - 1) * gap
+    val thinkTop = Math.round(gridTop + grid + gap)
+    thinking.layout(Math.round(pad), thinkTop, Math.round(pad) + thinking.measuredWidth, thinkTop + thinking.measuredHeight)
   }
 
   override fun onDraw(canvas: Canvas) {

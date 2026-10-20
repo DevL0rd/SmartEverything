@@ -160,11 +160,13 @@ function DevicesBody(): ReactNode {
           settings={mainPageSettings('devices')}
           back={false}
           search={false}
+          actions={[{ icon: 'plus', label: 'Add a device', href: ADD_DEVICE, primary: true }]}
         />
       }
     >
       <DeviceGrid
         groups={sections}
+        status={!isFiltering(query)}
         header={
           <ListTop room={room} allOffline={devices.every(isOffline)} filtering={isFiltering(query)}>
             <DeviceFilters

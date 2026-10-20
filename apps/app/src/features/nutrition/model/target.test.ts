@@ -49,6 +49,7 @@ function loggedRow(foodId: string | null): HealthEntryRow {
     food: input.food,
     version: 1,
     save_error: null,
+    source: null,
     created_at: input.startTime,
     updated_at: input.startTime,
   };

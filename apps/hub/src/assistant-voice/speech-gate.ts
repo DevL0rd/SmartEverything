@@ -11,6 +11,7 @@ import {
   SPEECH_PREROLL_MS,
   TalkGate,
   levelOf,
+  redemptionOf,
   speechDetectionOf,
 } from '@smarteverything/domain';
 import { concat } from './audio';
@@ -106,7 +107,19 @@ export class SpeechGate {
 
   pause(pauseMs: number): void {
     this.queue = this.queue.then(() => {
-      this.processor.setOptions({ redemptionMs: pauseMs });
+      this.processor.setOptions({ redemptionMs: redemptionOf(pauseMs) });
+    });
+  }
+
+  flush(): void {
+    this.queue = this.queue.then(() => {
+      const seen: FrameProcessorEvent[] = [];
+      this.processor.endSegment((event) => {
+        seen.push(event);
+      });
+      if (outcomeOf(seen).ended) {
+        this.talk.speechEnded();
+      }
     });
   }
 

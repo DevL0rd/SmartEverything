@@ -1,10 +1,24 @@
 import { Logger } from '@smarteverything/logging';
 import type { DiscoveredDevice, Provider } from '@smarteverything/domain';
-import type { CameraUpsert, DeviceRecord, DeviceUpsert, HubDatabase } from '../database/port';
+import type {
+  CameraUpsert,
+  DeviceIdentity,
+  DeviceRecord,
+  DeviceUpsert,
+  HubDatabase,
+} from '../database/port';
+import {
+  identityOfDiscovered,
+  lifecycleOf,
+  removalOf,
+  type DeviceLifecycle,
+  type KnownDevice,
+} from './device-lifecycle';
 
 export type InventoryStore = Pick<
   HubDatabase,
   | 'loadDevices'
+  | 'loadDeviceIdentities'
   | 'upsertDevices'
   | 'setDevicesOnline'
   | 'removeDevices'
@@ -20,6 +34,15 @@ export interface OnlineChange {
 export interface InventoryListener {
   readonly onlineChanged: (change: OnlineChange) => void;
   readonly devicesChanged: (devices: readonly DeviceRecord[]) => void;
+  readonly lifecycle: (change: DeviceLifecycle) => void;
+}
+
+class MissingIdentityError extends Error {
+  override readonly name = 'MissingIdentityError';
+
+  constructor(deviceId: string) {
+    super(`Device ${deviceId} is in the inventory without the identity it was stored with.`);
+  }
 }
 
 class ProviderMismatchError extends Error {
@@ -79,6 +102,7 @@ const log = new Logger('hub.inventory');
 export class Inventory {
   private readonly byId = new Map<string, DeviceRecord>();
   private readonly byKey = new Map<string, DeviceRecord>();
+  private readonly identities = new Map<string, DeviceIdentity>();
 
   constructor(
     private readonly store: InventoryStore,
@@ -87,6 +111,9 @@ export class Inventory {
 
   async load(): Promise<void> {
     this.remember(await this.store.loadDevices());
+    for (const identity of await this.store.loadDeviceIdentities()) {
+      this.identities.set(identity.id, identity);
+    }
   }
 
   deviceById(id: string): DeviceRecord | undefined {
@@ -130,6 +157,7 @@ export class Inventory {
     );
     await this.store.upsertCameras(records.flatMap((device) => cameraRow(device) ?? []));
     this.announce(records, before);
+    this.announceLifecycle(records, discovered, before);
     log.debug('inventory.applied', () => ({
       provider,
       discovered: discovered.length,
@@ -149,12 +177,21 @@ export class Inventory {
       requested: externalIds.length,
       found: devices.length,
     });
+    const removed = devices.map((device) => removalOf(this.knownOf(device)));
     await this.store.removeDevices(devices.map((device) => device.id));
     for (const device of devices) {
       this.byId.delete(device.id);
       this.byKey.delete(keyOf(provider, device.externalId));
+      this.identities.delete(device.id);
     }
     this.listener.devicesChanged([]);
+    for (const change of removed) this.listener.lifecycle(change);
+  }
+
+  async setOnlineById(deviceId: string, online: boolean): Promise<void> {
+    const device = this.byId.get(deviceId);
+    if (device === undefined) return;
+    await this.setOnline(device.provider, device.externalId, online);
   }
 
   async setOnline(provider: Provider, externalId: string, online: boolean): Promise<void> {
@@ -197,6 +234,30 @@ export class Inventory {
       }
     }
     this.listener.devicesChanged(records);
+  }
+
+  private announceLifecycle(
+    records: readonly DeviceRecord[],
+    discovered: readonly DiscoveredDevice[],
+    before: ReadonlyMap<string, DeviceRecord | undefined>,
+  ): void {
+    const reported = new Map(discovered.map((entry) => [entry.externalId, entry]));
+    const changes = records.flatMap((device) => {
+      const found = reported.get(device.externalId);
+      if (found === undefined) return [];
+      const previous = before.get(device.externalId);
+      const previousKnown = previous === undefined ? undefined : this.knownOf(previous);
+      const identity = identityOfDiscovered(device, found);
+      this.identities.set(device.id, identity);
+      return lifecycleOf(previousKnown, { device, identity });
+    });
+    for (const change of changes) this.listener.lifecycle(change);
+  }
+
+  private knownOf(device: DeviceRecord): KnownDevice {
+    const identity = this.identities.get(device.id);
+    if (identity === undefined) throw new MissingIdentityError(device.id);
+    return { device, identity };
   }
 
   private unplacedRoomNames(provider: Provider, discovered: readonly DiscoveredDevice[]): string[] {

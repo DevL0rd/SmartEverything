@@ -33,6 +33,6 @@ export {
   type WideClass,
 } from './card/wide-card';
 export { maintenanceOf, type MaintenanceItem } from './model/maintenance';
-export { remotePageOf } from './model/ir-links';
 export { isOffline } from './model/offline';
 export { useLastSeen } from './model/last-seen';
+export { SETTINGS as DEVICE_SETTINGS } from './settings';

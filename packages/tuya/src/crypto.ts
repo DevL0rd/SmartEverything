@@ -21,10 +21,6 @@ export function md5(data: string | Uint8Array): Uint8Array {
   return Uint8Array.from(createHash('md5').update(data).digest());
 }
 
-export function sha256Hex(text: string): string {
-  return createHash('sha256').update(text).digest('hex');
-}
-
 export function hmacSha256Hex(key: string, message: string): string {
   return createHmac('sha256', key).update(message).digest('hex');
 }

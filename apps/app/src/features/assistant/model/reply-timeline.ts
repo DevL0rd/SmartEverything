@@ -65,6 +65,17 @@ export function imageTimelineIds(rows: readonly AssistantMessageRow[]): Readonly
   );
 }
 
+export function steeredMessageIds(rows: readonly AssistantMessageRow[]): ReadonlySet<string> {
+  return new Set(
+    rows.flatMap(
+      (row) =>
+        replyTimeline(row)?.parts.flatMap((part) =>
+          part.kind === 'steer' ? [part.message_id] : [],
+        ) ?? [],
+    ),
+  );
+}
+
 export function hasReplyTimeline(row: AssistantMessageRow): boolean {
   return row.embeds.some((embed) => embed.kind === 'chat_timeline');
 }

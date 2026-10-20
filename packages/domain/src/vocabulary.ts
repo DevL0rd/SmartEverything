@@ -67,17 +67,10 @@ export {
 export {
   ADDABLE_PROVIDERS,
   PROVIDER_INFO,
-  TUYA_REGION_LABELS,
   XIAOMI_REGION_LABELS,
   xiaomiRegionFor,
 } from './providers-info';
-export type {
-  ProviderInfo,
-  ProviderInfos,
-  TuyaRegion,
-  XiaomiInfo,
-  XiaomiRegion,
-} from './providers-info';
+export type { ProviderInfo, ProviderInfos, XiaomiInfo, XiaomiRegion } from './providers-info';
 
 export {
   ACCENTS,
@@ -103,6 +96,32 @@ export {
   callAudioWith,
   layoutScopeOf,
 } from './client-prefs';
+export {
+  CAMERA_COOLDOWN_CHOICES,
+  CAMERA_COOLDOWN_DEFAULT_MINUTES,
+  CAMERA_NOTIFICATIONS_PREF,
+  CAMERA_NOTIFICATION_DEFAULTS,
+  CAMERA_NOTIFICATION_HINTS,
+  CAMERA_NOTIFICATION_KINDS,
+  CAMERA_NOTIFICATION_LABELS,
+  CAMERA_OFFLINE_REPEAT_MINUTES,
+  CAMERA_QUIET_HOURS,
+  DEFAULT_CAMERA_NOTIFICATIONS,
+  cameraCooldownMinutes,
+  cameraNotificationOverride,
+  cameraNotificationOn,
+  cameraQuietHours,
+  inQuietHours,
+  withCameraCooldown,
+  withCameraNotification,
+  withCameraQuiet,
+} from './camera-notifications';
+export type {
+  CameraNotificationKind,
+  CameraNotificationOverride,
+  CameraNotificationsPref,
+  CameraQuietHours,
+} from './camera-notifications';
 export { DEVICE_ALERTS_PREF, deviceAlertsOn, withDeviceAlerts } from './device-alerts';
 export type { DeviceAlertsPref } from './device-alerts';
 export { CLIPBOARD_CLIP, CLIPBOARD_NOTICE, SHARED_CLIPBOARD_PREF } from './shared-clipboard';
@@ -136,9 +155,20 @@ export {
   WIDGET_SIZES,
   WIDGET_TYPE,
   readBoardLayout,
-  withArrangementFor,
   withKnownWidgets,
 } from './board-layout';
+export {
+  arrangementOf,
+  withWidgetOverlaid,
+  arrangementSourceOf,
+  withArrangementFor,
+  withCopiedArrangement,
+  withDefaultArrangement,
+  withFollowing,
+  withoutArrangementFor,
+  withUndone,
+} from './board-layout-actions';
+export type { ArrangementSource, BoardDefaultWidgets } from './board-layout-actions';
 export type {
   BoardArrangement,
   BoardClass,

@@ -45,6 +45,17 @@ export function MachineRow({
   );
 }
 
+interface ChoiceSubtitle {
+  readonly subtitle?: string;
+  readonly subtitleTone?: 'warning' | 'variant';
+}
+
+function choiceSubtitle(choice: MachineChoice): ChoiceSubtitle {
+  if (choice.reason !== null) return { subtitle: choice.reason, subtitleTone: 'warning' };
+  if (choice.note !== null) return { subtitle: choice.note, subtitleTone: 'variant' };
+  return {};
+}
+
 function ChoiceRow({
   choice,
   onPicked,
@@ -55,9 +66,7 @@ function ChoiceRow({
   return (
     <ListRow
       title={choice.label}
-      {...(choice.reason === null
-        ? {}
-        : { subtitle: choice.reason, subtitleTone: 'warning' as const })}
+      {...choiceSubtitle(choice)}
       icon="monitor"
       disabled={choice.disabled}
       selected={choice.selected}

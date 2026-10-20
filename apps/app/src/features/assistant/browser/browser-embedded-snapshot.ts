@@ -31,7 +31,7 @@ function embeddedTab(tab: BrowserTab): EmbeddedBrowserTab {
   };
 }
 
-function embeddedAddress(tab: BrowserTab): string {
+export function embeddedAddress(tab: BrowserTab): string {
   if (tab.selection !== null)
     return statusAddress(
       tab.selection,

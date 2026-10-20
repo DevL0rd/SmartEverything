@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEVICE_ROW, groupControlChoices, sharedControls, type DeviceRow } from '../src';
+import {
+  DEVICE_ROW,
+  groupControlChoices,
+  planGroupCommands,
+  sharedControls,
+  type DeviceRow,
+} from '../src';
 
 let counter = 0;
 
@@ -207,5 +213,33 @@ describe('groupControlChoices', () => {
       kind: 'enum',
       options: ['low', 'high', 'turbo'],
     });
+  });
+});
+
+describe('planGroupCommands with a colour', () => {
+  it('sends a colour to a member with a colour control as the control writes it', () => {
+    const lamp = device({});
+    const plan = planGroupCommands([lamp], {
+      capability: 'color',
+      value: { hue: 120, saturation: 100, value: 100 },
+    });
+    expect(plan.skipped).toStrictEqual([]);
+    expect(plan.commands).toStrictEqual([
+      {
+        device_id: lamp.id,
+        capability: 'color',
+        value: { hue: 120, saturation: 100, value: 100 },
+      },
+    ]);
+  });
+
+  it('skips a member that has no colour control', () => {
+    const plain = device({ capabilities: [POWER] });
+    const plan = planGroupCommands([plain], {
+      capability: 'color',
+      value: { hue: 120, saturation: 100, value: 100 },
+    });
+    expect(plan.commands).toStrictEqual([]);
+    expect(plan.skipped).toStrictEqual([{ deviceId: plain.id, reason: 'unsupported' }]);
   });
 });

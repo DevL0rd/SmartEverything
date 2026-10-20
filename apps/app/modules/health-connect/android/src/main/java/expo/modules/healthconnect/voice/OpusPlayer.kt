@@ -37,7 +37,11 @@ class OpusPlayer(
     .setAudioAttributes(attributes)
     .build()
   private var decoder: MediaCodec? = null
-  private var track: AudioTrack? = null
+  @Volatile
+  private var shared: SharedTrack<AudioTrackPort>? = null
+
+  private val track: AudioTrack?
+    get() = shared?.port?.track
   private var input: DecoderInput? = null
 
   @Volatile
@@ -66,14 +70,14 @@ class OpusPlayer(
     audio.requestAudioFocus(focus)
     input = DecoderInput(::queueInput)
     decoder = openDecoder()
-    track = openTrack().apply { play() }
+    shared = SharedTrack(AudioTrackPort(openTrack().apply { play() }))
     seenUnderruns = 0
     written = 0L
   }
 
   fun audible(): Boolean {
-    val playing = track ?: return false
-    return written > playing.playbackHeadPosition.toLong()
+    val head = shared?.head() ?: return false
+    return written > head
   }
 
   fun push(packet: ByteArray) = enqueue { input?.offer(packet) }
@@ -137,9 +141,8 @@ class OpusPlayer(
   }
 
   private fun closeNow() {
-    track?.stop()
-    track?.release()
-    track = null
+    shared?.close()
+    shared = null
     input = null
     decoder?.stop()
     decoder?.release()
@@ -200,10 +203,18 @@ class OpusPlayer(
     override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) = Unit
   }
 
+  private class AudioTrackPort(val track: AudioTrack) : TrackPort {
+    override fun playbackHead(): Long = track.playbackHeadPosition.toLong()
+
+    override fun stop() = track.stop()
+
+    override fun release() = track.release()
+  }
+
   private companion object {
     const val TAG = "SmartEverythingVoice"
     const val CAPACITY_BYTES = VoiceCapture.SAMPLE_RATE * 2
-    const val START_FRAMES = VoiceCapture.SAMPLE_RATE * 3 / 10
+    const val START_FRAMES = VoiceCapture.SAMPLE_RATE / 10
     const val PRE_SKIP = 312
     const val PRE_SKIP_NS = 6_500_000L
     const val SEEK_PREROLL_NS = 80_000_000L

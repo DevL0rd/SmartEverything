@@ -3,6 +3,7 @@ import { memoOnInputs } from '../../../store/memo-selector';
 import type { DeviceValues } from '../../../store/state';
 import type { DeviceModel } from '../../devices';
 import { DeviceFold } from './device-fold';
+import { homeDeviceModels } from './devices';
 import { CONSUMERS_SHOWN } from './widget-fit';
 
 export interface Consumer {
@@ -23,6 +24,7 @@ function consumerOf(model: DeviceModel, values: DeviceValues): Consumer | null {
 }
 
 const consumers = new DeviceFold<Consumer>({
+  models: (state): readonly DeviceModel[] => homeDeviceModels(state),
   includes: (model): boolean => withRole(model.presentation, 'power_draw') !== undefined,
   usesValues: (): boolean => true,
   projected: false,

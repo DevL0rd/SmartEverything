@@ -46,7 +46,14 @@ export const SERVED_HOME = [
     'read',
     'Weather',
     'Weather at the home now, or the hourly and daily forecast.',
-    { key: 'view', parts: { now: 'get_weather', forecast: 'get_forecast' } },
+    {
+      key: 'view',
+      parts: { now: 'get_weather', forecast: 'get_forecast' },
+      says: {
+        now: 'Conditions, air quality, sun times and today’s range at the home now',
+        forecast: 'Hourly (up to 48 hours) and daily (up to 10 days) forecast',
+      },
+    },
   ],
   [
     'search_everything',
@@ -61,7 +68,7 @@ export const SERVED_HOME = [
     'devices',
     'read',
     'Find devices',
-    'Lists devices by rooms, families, kinds, capability or words, with id, name, room, provider, online state and capability keys; detail gives each device in full when at most 5 match. Words must all appear in a name, model, kind, family or room; families are exact (a tower fan is tower_fan, a lamp light) while kinds are coarser (fan covers both). An empty result lists the families in the home: retry with one filter, and if nothing fits ask the person rather than guessing. Its ids are what the other device tools take.',
+    'Lists devices by rooms, families, kinds, capability or words, with id, name, room, provider, online state and capability keys; detail gives each device in full when at most 5 match. Words must all appear in a name, model, kind, family or room. An empty result lists the families in the home: retry with one filter, and if nothing fits ask the person. Its ids are what the other device tools take.',
     { part: 'list_devices' },
   ],
   [
@@ -69,7 +76,7 @@ export const SERVED_HOME = [
     'devices',
     'read',
     'Read a device',
-    'One device in full: every capability with key, label, role, allowed values, unit, danger level and current value; an IR blaster or remote also shows its remotes’ assumed state, and a television whether a direct link is attached and the names of its inputs. Call it before control_devices or an automation or scene action when you need the exact capability keys and values.',
+    'One device in full: every capability with key, label, role, allowed values, unit, danger level and current value; an IR blaster or remote also its remotes’ assumed state, a television its direct link (address and the MAC that wakes it, or null) and input names, a treadmill its Bluetooth link, holder phone and walker, a toothbrush its brushing state, battery, brush head wear and link (readToothbrush through call_operation reads sessions, stats, head and battery history), a water bottle its level, cap state, sync link and holder phone. Call it before control_devices or an automation or scene action when you need the exact capability keys and values.',
     { part: 'get_device' },
   ],
   [
@@ -77,7 +84,7 @@ export const SERVED_HOME = [
     'devices',
     'control',
     'Edit a device',
-    'Changes how a device is shown (name, room, hidden, favourite, order, or a television’s input_names: input id to name), or for a camera whether it records events, how readily it hears the AI’s name (wake sensitivity) and whether it transcribes what it hears.',
+    'Changes how a device is shown (name, room, hidden, favourite, order, a television’s input_names: input id to name, or a television’s wake_address: its network MAC for Wake-on-LAN when it has no direct link, null clears it), or for a camera whether it records events, how many days (keep_days, default 15) its saved clips and pictures are kept before the hub deletes them, how readily it hears the AI’s name (wake sensitivity) and whether it transcribes what it hears.',
     { key: 'action', parts: { device: 'update_device', camera: 'update_camera' } },
   ],
   [
@@ -85,7 +92,7 @@ export const SERVED_HOME = [
     'devices',
     'read',
     'List remotes',
-    'Infrared remotes with their blaster, room, button names and what each is assumed to be doing (on, temperature, mode, speed, mute, last key); the state is what was sent, never a reading.',
+    'Infrared remotes (their buttons are codes learned on a blaster) with their blaster, room, button names and what each is assumed to be doing (on, temperature, mode, speed, mute, last key); the state is what was sent, never a reading.',
     { part: 'list_remotes' },
   ],
   [
@@ -93,7 +100,7 @@ export const SERVED_HOME = [
     'control',
     'control',
     'Press a remote button',
-    'Sends one button of an infrared remote through its blaster; remote and button names come from list_remotes.',
+    'Sends one learned button of an infrared remote through its blaster; remote and button names come from list_remotes.',
     { part: 'press_remote_button' },
   ],
   [
@@ -101,7 +108,7 @@ export const SERVED_HOME = [
     'devices',
     'read',
     'Read a phone',
-    'What a person is doing according to their phone (view context: still, walking, driving, at home and more; the place only to that person), or one phone’s battery and charging, sound and now playing, screen, signal and data use, storage, apps, notifications and next alarm (view detail: by deviceId from find_devices, sections picks the parts); what belongs to a phone’s own person (apps, notification titles, Wi-Fi name, what is playing) is left out for anyone else.',
+    'What a person is doing according to their phone (view context: still, walking, driving, at home and more; the place only to that person), or one phone’s battery and charging, sound and now playing, screen, signal, radio switches, data use, storage, apps, notifications and next alarm (view detail: by deviceId from find_devices, sections picks the parts); what belongs to a phone’s own person (apps, notification titles, Wi-Fi name, what is playing) is left out for anyone else.',
     { key: 'view', parts: { context: 'read_phone_context', detail: 'read_phone_detail' } },
   ],
   [
@@ -109,7 +116,7 @@ export const SERVED_HOME = [
     'devices',
     'control',
     'Use a phone',
-    'Makes a phone ring until stopped at maximum volume even on silent (find my phone; on:false stops it), turns its flashlight on, off or toggle (with a strength where the phone has one), changes a volume, the ringer or Do Not Disturb, sets the screen brightness, automatic brightness or screen timeout, controls or seeks what it plays, dismisses a notification, or saves a chat attachment on it (receive_file with the attachment id, kept in Downloads/SmartEverything); locking it, opening an app or link, stopping a ring or showing its unlock prompt are device capabilities for control_devices, and a picture of its screen comes from see.',
+    'Makes a phone ring until stopped at maximum volume even on silent (find my phone; on:false stops it), turns its flashlight on, off or toggle (with a strength where the phone has one), changes a volume, the ringer or Do Not Disturb, sets the screen brightness, automatic brightness or screen timeout, switches auto-rotate, touch vibration or touch sounds (set_system_toggle), opens a Settings page on the person’s own phone (open_settings; no app can switch Wi-Fi, Bluetooth, location or airplane mode), controls or seeks what it plays, dismisses a notification, or saves a chat attachment on it (receive_file with the attachment id, kept in Downloads/SmartEverything); locking it, opening an app or link, stopping a ring or showing its unlock prompt are device capabilities for control_devices, and a picture of its screen comes from see.',
     { part: 'run_phone_action' },
   ],
   [
@@ -133,7 +140,7 @@ export const SERVED_HOME = [
     'control',
     'control',
     'Control devices',
-    'Changes capabilities or runs actions (value null) on devices chosen by deviceIds, rooms, families or words, one change list for any number of devices; capability keys and each value_format come from get_device. Colour takes a name, hex, RGB 0 to 255 or hue, saturation and value, for example {"target":{"deviceIds":["…"]},"capability":"color","value":"#ff0000"}; brightness is its own number capability and a white tone is color_temperature in kelvin ("2700K") or mireds ("370 mireds"). Raw controls (raw:…) need deviceIds and only exist where get_device lists them. Returns each command’s result and the new value.',
+    'Changes capabilities or runs actions (value null) on devices chosen by deviceIds, rooms, families or words, one change list for any number of devices; capability keys and each value_format come from get_device. Raw controls (raw:…) need deviceIds and only exist where get_device lists them. Returns each command’s result and the new value.',
     { part: 'control_devices' },
   ],
   [
@@ -157,7 +164,7 @@ export const SERVED_HOME = [
     'history',
     'read',
     'List events',
-    'Events newest first (motion, people, doorbell, alarms, leaks, automations and more) with snapshots.',
+    'Events newest first (motion, people, doorbell, alarms, leaks, automations, apps opening, closing or coming to the front on a computer, and more) with snapshots. Kind signal rows are the other home events that reach the activity feed (plugin events, hub notices); narrow them with source and signalKind, the names read_signals lists.',
     { part: 'list_events' },
   ],
   [
@@ -244,7 +251,7 @@ export const SERVED_HOME = [
     'automations',
     'read',
     'List scenes',
-    'Scenes in order with their actions.',
+    'Scenes in order with their actions, filtered by words in the name; a partial list has more with the total and next_offset.',
     { part: 'list_scenes' },
   ],
   [
@@ -296,7 +303,14 @@ export const SERVED_HOME = [
     'automations',
     'read',
     'Read signals',
-    'Lists the kinds of signal an automation can trigger on, with their match keys, or reads the newest signal values. A match key whose values are null takes any value you have seen; an empty latest value does not mean the trigger is unsupported.',
-    { key: 'view', parts: { kinds: 'list_signal_kinds', values: 'read_signal' } },
+    'Lists the kinds of signal an automation can trigger on, with their match keys (and whether each is in the activity feed, urgent or opt-in), or reads the newest signal values. View catalogue searches every trigger by words (a device, a room, a plugin or what it does) or group and gives each with the ways to use it (how), its field and match keys and a plain-language sentence; start there when you do not know the signal name. A match key whose values are null takes any value you have seen; an empty latest value does not mean the trigger is unsupported. Signals that repeat faster than a source’s rate cap are dropped, and the owner can switch a source or kind off with call_operation updateTriggerSettings (see trigger_settings in get_settings).',
+    {
+      key: 'view',
+      parts: {
+        kinds: 'list_signal_kinds',
+        values: 'read_signal',
+        catalogue: 'list_trigger_catalogue',
+      },
+    },
   ],
 ] as const satisfies readonly Served[];

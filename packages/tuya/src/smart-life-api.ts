@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { CLOUD_DEVICE, IDENTIFIER, STATUS_ITEM, absentWhenEmpty } from './cloud-api';
 import { TuyaResponseError, readFailure, readResult } from './envelope';
 import { JSON_TEXT } from './json-text';
-import type { HttpMethod } from './signing';
 import {
   openPayload,
   requestHashKey,
@@ -12,6 +11,10 @@ import {
   type SmartLifeHeaders,
 } from './smart-life-crypto';
 import { SMART_LIFE_CLIENT_ID, type SmartLifeSession } from './smart-life-login';
+
+export type HttpMethod = 'GET' | 'POST';
+
+export const TOKEN_REFRESH_MARGIN_MS = 60_000;
 
 export const SMART_LIFE_PATHS = {
   homes: '/v1.0/m/life/users/homes',

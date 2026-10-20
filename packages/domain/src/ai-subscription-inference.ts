@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { JSON_VALUE } from './values';
 import { AI_MODEL_ROUTE } from './ai-model-route';
 import { DSH_WRITER_CLAIM_WRITE } from './dsh-sessions';
+import { HARNESS_PLATFORM } from './harness-platform';
 
 export const HARNESS_SUBSCRIPTION_INFERENCE_CAPABILITY = 'harness-subscription-inference-v1';
 export const SUBSCRIPTION_INFERENCE_MAX_BYTES = 32 * 1024 * 1024;
@@ -193,7 +194,7 @@ export const SUBSCRIPTION_INFERENCE_REQUEST = z.discriminatedUnion('kind', [
     claim: DSH_WRITER_CLAIM_WRITE,
     execution: z
       .strictObject({
-        platform: z.enum(['linux', 'macos']),
+        platform: HARNESS_PLATFORM,
         device_id: z.uuid(),
         generation: z.uuid(),
         runtime_instance: z.uuid(),

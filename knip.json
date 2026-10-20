@@ -36,6 +36,10 @@
     "packages/ble": {
       "project": ["src/**/*.ts"]
     },
+    "packages/ipp": {
+      "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
     "packages/tuya": {
       "entry": ["test/**/*.test.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]
@@ -46,6 +50,10 @@
     },
     "packages/shelly": {
       "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "packages/flow": {
+      "entry": ["test/**/*.test.ts", "src/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },
     "apps/hub": {
@@ -62,5 +70,10 @@
     }
   },
   "ignoreBinaries": ["gitleaks"],
-  "ignoreDependencies": ["babel-plugin-react-compiler"]
+  "ignoreDependencies": [
+    "babel-plugin-react-compiler",
+    "opusscript",
+    "sherpa-onnx",
+    "@img/sharp-wasm32"
+  ]
 }

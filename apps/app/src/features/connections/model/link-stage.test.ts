@@ -66,6 +66,15 @@ describe('stageOf', () => {
       detail: null,
     });
   });
+
+  it('fails a new link that went wrong while the provider stays linked with its other accounts', () => {
+    const failed = row({ status: 'linked', problem: 'bad_credentials', last_error: 'declined' });
+    expect(stageOf(failed, { baseline: null })).toEqual({
+      kind: 'failed',
+      problem: 'bad_credentials',
+      detail: 'declined',
+    });
+  });
 });
 
 describe('inProgress and stepIndexOf', () => {

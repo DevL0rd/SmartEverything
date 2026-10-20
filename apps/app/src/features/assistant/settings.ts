@@ -15,6 +15,7 @@ import { PRIVACY_SETTINGS } from './settings/privacy-settings';
 import { OPENROUTER_SETTINGS } from './settings/openrouter-settings';
 import { RESPONSE_STYLE_SETTINGS } from './settings/response-style-settings';
 import { ASSISTANT_GROUPS, assistantPageLink } from './settings/settings-groups';
+import { EarHostSetting } from './listening/ear-host-setting';
 import { WakeTestCard } from './settings/wake-test/wake-test-card';
 import { GEMINI_KEY_SETTING, VOICE_SETTINGS } from './settings/voice-settings';
 
@@ -67,6 +68,18 @@ const IDENTITY_SETTINGS: readonly SettingDefinition[] = [
     visible: owner,
     when: known,
     render: () => createElement(WakeTestCard),
+  },
+  {
+    id: 'assistant.ear-host',
+    page: 'assistant/listening',
+    title: 'Computer that listens for cameras, walkie and Discord',
+    description: 'Which computer hears the wake word for cameras, walkie channels and Discord.',
+    keywords: ['ear host', 'listening', 'wake word', 'camera', 'walkie', 'discord', 'headless'],
+    scope: 'server',
+    control: 'custom',
+    visible: owner,
+    when: known,
+    render: () => createElement(EarHostSetting),
   },
 ];
 

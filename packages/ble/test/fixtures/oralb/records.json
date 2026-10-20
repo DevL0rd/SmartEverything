@@ -1,0 +1,44 @@
+{
+  "protocol8": {
+    "hex": "26e4ff3161017800800064000a001321280201045e",
+    "startClock": 838853670,
+    "sessionId": 353,
+    "userId": 0,
+    "targetS": 120,
+    "sectorCount": 0,
+    "durationS": 128,
+    "highPressureMs": 10000,
+    "lowPressureMs": 1000,
+    "modeId": 4,
+    "batteryEnd": 94,
+    "clockRead": 838854030
+  },
+  "protocol8UnknownBattery": "26e4ff3161017800800064000a00132128020104ff",
+  "protocol6": [
+    {
+      "name": "A",
+      "hex": "ae4a3a32ff037880a100c400030013358203010253",
+      "sessionId": 1023,
+      "userId": 0,
+      "targetS": 120,
+      "sectorCount": 4,
+      "startClock": 842681006
+    },
+    {
+      "name": "B",
+      "hex": "13193b320004788078000000bd0404040001010253",
+      "sessionId": 1024,
+      "userId": 0,
+      "targetS": 120,
+      "sectorCount": 4,
+      "startClock": 842733843
+    }
+  ],
+  "metadata": {
+    "hex": "ff02020000010302040507070601000000000000",
+    "model": 2,
+    "colour": 2,
+    "language": 0,
+    "modeSlots": [0, 1, 3, 2, 4, 5, 7, 7]
+  }
+}

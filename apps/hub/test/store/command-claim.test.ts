@@ -1,4 +1,4 @@
-import { TEST_AUTHOR } from '../support/automation-author';
+import { saveAutomation, startRun, trigger } from '../support/automation-fixture';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDatabase } from '../../src/store/hub-database';
 import { testStore, type TestStore } from '../support/store';
@@ -52,22 +52,11 @@ describe('claiming a command', () => {
 
   it('fails a command whose automation run was cancelled before it was dispatched', async () => {
     const { store } = opened;
-    const automation = store.automations.create({
+    const automation = saveAutomation(store, {
       name: 'Ordered',
-      origin: null,
-      author: TEST_AUTHOR,
-      enabled: true,
-      definition: {
-        when: [{ on: 'every', minutes: 5 }],
-        steps: [{ do: 'notify', message: 'x' }],
-      },
+      triggers: [trigger('trigger.interval', { every: 300_000 })],
     });
-    const run = store.automationRuns.create({
-      automationId: automation.id,
-      revision: 1,
-      ownerProfileId: null,
-    });
-    store.automationRuns.update(run.id, { status: 'cancelled' });
+    const run = startRun(store, automation.id, 'cancelled');
     const [row] = store.commands.insert(powerOn(lamp()));
     if (row === undefined) throw new Error('No command was stored.');
     store.automationRuns.retainCommands(run.id, [row]);

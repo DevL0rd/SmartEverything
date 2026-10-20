@@ -34,6 +34,8 @@ import type { ServerContext } from './context';
 import type { LiveHub } from './live';
 import { MediaLinks } from './media-links';
 import { PublicUrlVerifier } from './public-url';
+import { WatchCaptureStore } from '../watch-captures/capture-store';
+import { DeveloperDevices } from '../watch-captures/developer-devices';
 
 export function statusOf(options: BuildOptions): {
   status: () => HubStatus;
@@ -63,11 +65,18 @@ export function statusOf(options: BuildOptions): {
 
 export type Statuses = ReturnType<typeof statusOf>;
 
+function cameraPartsOf(options: BuildOptions): {
+  readonly recordingPath: ServerContext['recordingPath'];
+  readonly cameraHealth: ServerContext['cameraHealth'];
+} {
+  return { recordingPath: options.core.recordingPath, cameraHealth: options.core.cameraHealth };
+}
+
 function talkOf(options: BuildOptions, live: LiveHub): TalkService {
-  return new TalkService({
+  const talk = new TalkService({
     store: options.store,
     go2rtc: options.core.go2rtc,
-    streamReady: (deviceId) => options.core.hub.streamReady(deviceId),
+    streamReady: (deviceId): Promise<void> => options.core.hub.streamReady(deviceId),
     rtspPort: options.core.rtspPort,
     dataDirectory: options.dataDirectory,
     presence: (presence): void => {
@@ -76,9 +85,15 @@ function talkOf(options: BuildOptions, live: LiveHub): TalkService {
     now: options.clock.now,
     log: options.log.forArea('hub.talk'),
   });
+  options.core.cameraHealth.onChange((deviceId, down) => {
+    if (down === null) {
+      talk.camera.speakers.reprime(deviceId);
+    }
+  });
+  return talk;
 }
 
-function accessOf(options: BuildOptions, live: LiveHub): AccessService {
+function accessOf(options: BuildOptions, live: LiveHub, talk: TalkService): AccessService {
   return new AccessService({
     store: options.store,
     dataDirectory: options.dataDirectory,
@@ -89,6 +104,13 @@ function accessOf(options: BuildOptions, live: LiveHub): AccessService {
     },
     clientPaused: (clientId): void => {
       live.reconnectClient(clientId);
+    },
+    alerts: options.alerts,
+    scopesChanged: (profileId): void => {
+      talk.accessChanged();
+      for (const client of options.store.clients.list()) {
+        if (client.profile_id === profileId) live.reconnectClient(client.id);
+      }
     },
   });
 }
@@ -151,6 +173,7 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
   const assistant = assistantOf(options, live, computers.computerAi);
   assistant.attachLedger(options.store.ledger);
   assistant.attachMediaNotes(outbound.mediaNotes);
+  const talk = talkOf(options, live);
   const pushCommands = new PushCommandChannel();
   pushCommands.attachLive((clientId, notice) => live.deliver(clientId, notice));
   const preview = previewOf(options, live, { harness, access: computers.computerNodes, assistant });
@@ -167,15 +190,16 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
     ...computers,
     hub: options.core.hub,
     firewall: options.core.firewall,
+    firewallApplier: options.core.firewallApplier,
     secrets: options.secrets,
-    access: accessOf(options, live),
+    access: accessOf(options, live, talk),
     links: new MediaLinks(options.clock.now),
     publicUrl: new PublicUrlVerifier({ store: options.store, fetch: options.fetch, log }),
     foodLookup: foodLookupOf(options, log),
     live,
     pushCommands,
     openCalls: new OpenCalls(),
-    talk: talkOf(options, live),
+    talk,
     assistant,
     machineApprovals: machineApprovalsOf(options, pushCommands),
     watchActions: new WatchActionBroker(
@@ -186,8 +210,24 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
     watchData: new WatchDataService({ store: options.store, now: options.clock.now }),
     ...outbound,
     ...statuses,
-    recordingPath: options.core.recordingPath,
+    ...cameraPartsOf(options),
+    ...developerOf(options),
     log,
+  };
+}
+
+const WATCH_CAPTURES_DIRECTORY = 'watch-captures';
+
+function developerOf(
+  options: BuildOptions,
+): Pick<ServerContext, 'developerDevices' | 'watchCaptures'> {
+  return {
+    developerDevices: new DeveloperDevices(options.store.settingsKv),
+    watchCaptures: new WatchCaptureStore(
+      join(options.dataDirectory, WATCH_CAPTURES_DIRECTORY),
+      options.clock.now,
+      options.log.forArea('hub.watch-captures'),
+    ),
   };
 }
 
@@ -249,7 +289,12 @@ function computerServicesOf(
     else live.announce(notice, 'owners');
   });
   const computerNodes = new ComputerNodeAccess(options.store, options.clock.now);
-  const nodeSockets = new ComputerNodeSockets(options.store, computerNodes, computerAi, log);
+  const nodeSockets = new ComputerNodeSockets(
+    options.store,
+    computerNodes,
+    { directory: computerAi, setOnline: options.core.hub.setDeviceOnline },
+    log,
+  );
   return { computerAi, computerNodes, nodeSockets, computerEars: new EarsRelay() };
 }
 

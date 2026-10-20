@@ -131,7 +131,7 @@ export class EventRouter {
   }
   private async commitOccurrence(event: EventInsert, key: string): Promise<string> {
     const result = await this.options.store.recordEventOccurrence(event, key);
-    if (result.inserted) this.options.recorded({ id: result.id, ...event });
+    if (result.inserted) this.report({ id: result.id, ...event });
     return result.id;
   }
 
@@ -147,7 +147,7 @@ export class EventRouter {
     const written = this.queue.push(event);
     written.then(
       (id) => {
-        this.options.recorded({ id, ...event });
+        this.report({ id, ...event });
       },
       (cause: unknown) => {
         this.options.log.debug('event.not_recorded', {
@@ -157,6 +157,10 @@ export class EventRouter {
       },
     );
     return written;
+  }
+
+  private report(event: RecordedEvent): void {
+    if (event.kind !== 'signal') this.options.recorded(event);
   }
 
   private remember(key: string, written: Promise<string>): void {

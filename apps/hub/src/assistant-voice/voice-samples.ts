@@ -5,6 +5,7 @@ import type { UsageMetadata } from '@google/genai';
 import {
   ApiError,
   VOICE_PREVIEW_TEXT,
+  voiceModelFor,
   type CallVoice,
   type VoiceSample,
 } from '@smarteverything/domain';
@@ -41,7 +42,7 @@ export class VoiceSamples {
   }
 
   async sample(listener: Listener, voice: CallVoice, signal?: AbortSignal): Promise<VoiceSample> {
-    const model = this.options.store.assistantChat.settings().voice.model;
+    const model = voiceModelFor(this.options.store.assistantChat.settings().voice.thinking_level);
     const file = this.pathOf(model, voice);
     const cached = await readFile(file).catch((error: unknown) => {
       if (isMissing(error)) return null;

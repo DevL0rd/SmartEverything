@@ -295,30 +295,3 @@ export function encodeCommand(
     },
   ];
 }
-
-export function reportFromDps(
-  model: DeviceModel,
-  dps: Readonly<Record<string, unknown>>,
-): { readonly report: readonly ReportedValue[]; readonly unknownDpIds: readonly number[] } {
-  const refs = new Map<number, string>(
-    model.points.flatMap((point): [number, string][] =>
-      point.dpId === null ? [] : [[point.dpId, point.code]],
-    ),
-  );
-  if (model.ir !== null) {
-    for (const ref of irRefs(model.ir)) {
-      refs.set(ref.dpId, ref.code);
-    }
-  }
-  const report: ReportedValue[] = [];
-  const unknownDpIds: number[] = [];
-  for (const [field, value] of Object.entries(dps)) {
-    const code = refs.get(Number(field));
-    if (code === undefined) {
-      unknownDpIds.push(Number(field));
-    } else {
-      report.push({ code, value });
-    }
-  }
-  return { report, unknownDpIds };
-}

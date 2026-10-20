@@ -3,6 +3,7 @@ import {
   type AudioState,
   type DisplayState,
   type NodeHello,
+  type TilingState,
   type WindowsState,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
@@ -34,6 +35,7 @@ const DISPLAYS: DisplayState = {
   pendingRevert: null,
 };
 const WINDOWS: WindowsState = { windows: [] };
+const TILING: TilingState = { overviewOpen: false, outputs: [], workspaces: [], windows: [] };
 
 function baseControls(): ComputerControls {
   const unused = unusedControls();
@@ -102,6 +104,14 @@ function handler(seen: string[]): NodeRequestHandler {
         return Promise.resolve(WINDOWS);
       },
     },
+    tiling: {
+      ...unused.tiling,
+      read: () => Promise.resolve(TILING),
+      change: (change) => {
+        seen.push(`tiling ${change.action}`);
+        return Promise.resolve(TILING);
+      },
+    },
     system: {
       ...unused.system,
       settings: {
@@ -165,6 +175,27 @@ describe('request routing for audio, displays and windows', () => {
   });
 });
 
+describe('request routing for tiling', () => {
+  it('sends the layout read and the change to the tiling control', async () => {
+    const seen: string[] = [];
+    const node = handler(seen);
+    await expect(node.handle({ verb: 'tiling' }, HELLO)).resolves.toEqual(TILING);
+    await node.handle({ verb: 'tiling_set', change: { action: 'toggle-overview' } }, HELLO);
+    expect(seen).toEqual(['tiling toggle-overview']);
+  });
+
+  it('refuses both while the apps permission is off', async () => {
+    const node = handler([]);
+    node.allow({ ...DEFAULT_COMPUTER_SCOPES, apps: false });
+    await expect(node.handle({ verb: 'tiling' }, HELLO)).rejects.toMatchObject({
+      code: 'scope_off',
+    });
+    await expect(
+      node.handle({ verb: 'tiling_set', change: { action: 'center-column' } }, HELLO),
+    ).rejects.toMatchObject({ code: 'scope_off' });
+  });
+});
+
 describe('features from the controls', () => {
   it('joins what each control offers and survives one that fails', async () => {
     const unused = baseControls();
@@ -174,12 +205,16 @@ describe('features from the controls', () => {
       audio: { ...unused.audio, features: () => Promise.resolve(['audio']) },
       displays: { ...unused.displays, features: () => Promise.reject(new Error('kscreen died')) },
       windows: { ...unused.windows, features: () => Promise.resolve(['windows']) },
+      tiling: { ...unused.tiling, features: () => Promise.resolve(['tiling']) },
       system: { ...unused.system, features: () => Promise.resolve(['dnd']) },
+      input: { ...unused.input, features: () => Promise.resolve(['input']) },
     };
     await expect(controlFeatures(controls, testLogger('node'))).resolves.toEqual([
       'audio',
       'windows',
+      'tiling',
       'dnd',
+      'input',
     ]);
     expect(logs.events()).toEqual(['node.features_failed']);
   });

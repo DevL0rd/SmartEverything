@@ -1,6 +1,7 @@
 import type { AiPreviewCatalogue, EmbeddedBrowserAction } from '@smarteverything/domain';
 import { browserCapability } from '../../../platform/browser-surface';
 import { browserAddress } from './browser-address';
+import { isBrowserPageAction, type BrowserPageAction } from './browser-page-control';
 import { browserTabAddress } from './browser-tab-address';
 import { BrowserTabError } from './browser-tab-errors';
 import type { BrowserTab } from './browser-tab-state';
@@ -12,10 +13,17 @@ export function assertEmbeddedBrowserAction(
   action: EmbeddedBrowserAction,
   context: EmbeddedActionContext,
 ): void {
-  if (!browserCapability().publicBrowsing && targetsPublicPage(action, context))
+  if (
+    !browserCapability().publicBrowsing &&
+    !isBrowserPageAction(action) &&
+    targetsPublicPage(action, context)
+  )
     throw new BrowserTabError('Public websites open in your browser, not here.');
 }
-function targetsPublicPage(action: EmbeddedBrowserAction, context: EmbeddedActionContext): boolean {
+function targetsPublicPage(
+  action: Exclude<EmbeddedBrowserAction, BrowserPageAction>,
+  context: EmbeddedActionContext,
+): boolean {
   const publications = context.catalogue?.publications ?? [];
   switch (action.kind) {
     case 'open':

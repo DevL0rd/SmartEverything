@@ -31,6 +31,11 @@ export const EVENT_KINDS = [
   'phone_unlocked',
   'zone_enter',
   'zone_leave',
+  'app_opened',
+  'app_closed',
+  'app_focused',
+  'app_unfocused',
+  'signal',
 ] as const;
 
 export type EventKind = (typeof EVENT_KINDS)[number];
@@ -105,7 +110,7 @@ export const LAUNDRY_MIOT_EVENTS = {
 } as const;
 
 export function miotDeviceEventKind(name: string): EventKind | null {
-  return Object.hasOwn(MIOT_DEVICE_EVENTS, name) ? (MIOT_DEVICE_EVENTS[name] ?? null) : null;
+  return Object.entries(MIOT_DEVICE_EVENTS).find(([event]) => event === name)?.[1] ?? null;
 }
 
 export function miotDeviceEventsOf(kind: EventKind): readonly string[] {

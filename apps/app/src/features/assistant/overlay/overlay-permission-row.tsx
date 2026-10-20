@@ -7,6 +7,7 @@ import {
   openAssistantSettings,
   openOverlaySettings,
   overlayStatus,
+  resetOverlayPosition,
   type OverlayStatus,
 } from './overlay-native';
 
@@ -71,5 +72,19 @@ export function OverlayPermissionRow(): ReactNode {
         }}
       />
     </>
+  );
+}
+
+export function OverlayResetPositionRow(): ReactNode {
+  return (
+    <ActionRow
+      title="Reset overlay position"
+      subtitle="Puts the call bar back at the bottom of the screen with its glow."
+      wrapSubtitle
+      icon="grid"
+      onPress={() => {
+        resetOverlayPosition().catch(notifyFailure('The overlay position was not reset'));
+      }}
+    />
   );
 }

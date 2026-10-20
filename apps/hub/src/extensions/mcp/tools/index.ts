@@ -12,6 +12,7 @@ import { ASSISTANT_TOOLS } from './assistant';
 import { CAMERA_TOOLS } from './camera';
 import { CLAUDE_TOOLS } from './claude';
 import { COMPUTER_CONTROL_TOOLS } from './computer-controls';
+import { COMPUTER_INPUT_TOOLS } from './computer-input';
 import { EDIT_FILES_TOOL } from './computer-files-tool';
 import { COMPUTER_PROGRAM_TOOLS } from './computer-programs';
 import { COMPUTER_READ_TOOLS } from './computer-reads';
@@ -58,6 +59,7 @@ const PARTS: readonly Tool[] = [
   ...COMPUTER_READ_TOOLS,
   ...COMPUTER_PROGRAM_TOOLS,
   ...COMPUTER_CONTROL_TOOLS,
+  ...COMPUTER_INPUT_TOOLS,
   EDIT_FILES_TOOL,
   ...OPERATION_TOOLS,
   ...CLAUDE_TOOLS,

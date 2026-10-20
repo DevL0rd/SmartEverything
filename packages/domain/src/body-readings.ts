@@ -107,7 +107,19 @@ export const BLE_RELAY_RESULT = z.object({
   readings: z.array(ID),
 });
 
+const HEX_BYTES = z.string().regex(/^([0-9a-f]{2})*$/);
+
+export const BLE_CONTENT_FILTER = z.object({
+  serviceUuid: z.string().min(1).optional(),
+  companyId: z.int().min(0).max(0xffff).optional(),
+  dataPrefix: HEX_BYTES.optional(),
+  dataMask: HEX_BYTES.optional(),
+});
+
+export type BleContentFilter = z.infer<typeof BLE_CONTENT_FILTER>;
+
 export const BLE_WATCH = z.object({
+  contentFilters: z.array(BLE_CONTENT_FILTER).optional(),
   devices: z.array(
     z.object({
       address: BLE_ADVERT.shape.address,

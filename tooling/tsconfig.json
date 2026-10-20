@@ -7,5 +7,5 @@
     "rewriteRelativeImportExtensions": true
   },
   "include": ["*.ts", "claude-hook/*.ts"],
-  "references": [{ "path": "../packages/logging" }]
+  "references": [{ "path": "../packages/logging" }, { "path": "../packages/domain" }]
 }

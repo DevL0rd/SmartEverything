@@ -5,7 +5,7 @@ import type {
 } from '@smarteverything/domain';
 import { serviceUrl, type ServiceConfig } from '@smarteverything/hub/service/configuration';
 import { Logger, setBackgroundScope } from '@smarteverything/logging';
-import { app, dialog, session, shell, type BrowserWindow } from 'electron';
+import { app, dialog, session, shell, systemPreferences, type BrowserWindow } from 'electron';
 import { sessionAgentDirectory } from '@smarteverything/hub/node/session-agent/location';
 import { electronAgentActions } from './agent/agent-actions.js';
 import { startSessionAgent, type RunningAgent } from './agent/agent-host.js';
@@ -227,6 +227,12 @@ class DesktopShell {
           shell,
           ring: new RingWindow(),
           screen: this.#capture,
+          access: {
+            screenRecording: () =>
+              process.platform === 'darwin'
+                ? systemPreferences.getMediaAccessStatus('screen') === 'granted'
+                : null,
+          },
           now: () => new Date(),
         }),
       });
@@ -294,7 +300,7 @@ class DesktopShell {
       showMetroUnreachable(window, this.#variant.startUrl);
     }
     this.#tray = createTray({
-      icon: paths.icon,
+      iconDirectory: paths.trayIcons,
       window,
       managedBy: this.#variant.managedBy,
       talk: (command) => {

@@ -84,7 +84,7 @@ function BulbArt({
       />
       <Icon
         name={member.light ? 'bulb' : 'plug'}
-        size={pointer ? 28 : 24}
+        size={pointer ? 32 : 24}
         colour={member.power === 'on' ? 'on-surface' : 'on-surface-variant'}
       />
       <BulbMark member={member} />
@@ -102,29 +102,30 @@ const Bulb = memo(function Bulb({
   readonly onPick: (deviceId: string) => void;
 }): ReactNode {
   return (
-    <Interactive
-      label={bulbLabel(member)}
-      onPress={() => {
-        onPick(member.id);
-      }}
-      className="items-center gap-0.5 rounded-md py-1"
-      style={bulbBox(pointer)}
-      layerClassName="rounded-md"
-    >
-      <BulbArt member={member} pointer={pointer} />
-      <Text
-        variant="caption"
-        align="center"
-        numberOfLines={2}
-        className="min-h-8"
-        tone={member.power === 'on' ? 'default' : 'variant'}
+    <View style={bulbBox(pointer)}>
+      <Interactive
+        label={bulbLabel(member)}
+        onPress={() => {
+          onPick(member.id);
+        }}
+        className="w-full items-center gap-0.5 rounded-md py-1"
+        layerClassName="rounded-md"
       >
-        {member.name}
-      </Text>
-      <Text variant="caption" tone="variant" className="tabular">
-        {bulbCaption(member)}
-      </Text>
-    </Interactive>
+        <BulbArt member={member} pointer={pointer} />
+        <Text
+          variant="caption"
+          align="center"
+          numberOfLines={2}
+          className="min-h-8"
+          tone={member.power === 'on' ? 'default' : 'variant'}
+        >
+          {member.name}
+        </Text>
+        <Text variant="caption" tone="variant" className="tabular">
+          {bulbCaption(member)}
+        </Text>
+      </Interactive>
+    </View>
   );
 });
 

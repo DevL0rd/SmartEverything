@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { recordsOfType } from './records';
 import { readiness, readinessWord, sleepScore } from './scores';
 import {
+  isNap,
   median,
   nightOf,
   patternOf,
-  scheduleMarks,
-  scheduleShare,
+  type SleepNight,
   sleepDaysOf,
+  splitNights,
   stageKindOf,
+  timelineOf,
 } from './sleep';
 import { at, seedRecord } from './test-support';
 
@@ -105,19 +107,9 @@ describe('sleep nights', () => {
     expect(pattern?.usualBedtime).toBe(23 * 60);
     expect(pattern?.usualWake).toBe(7 * 60);
     expect(pattern?.regularity).toBeCloseTo(2 / 3);
+    expect(pattern?.regularNights).toBe(2);
     expect(pattern?.averageAsleep).toBe(480);
     expect(patternOf([])).toBeNull();
-  });
-});
-
-describe('the sleep schedule axis', () => {
-  it('runs from 18:00 the evening before to 14:00 on the day', () => {
-    expect(scheduleShare('2026-10-08', at(7, 18).getTime())).toBe(0);
-    expect(scheduleShare('2026-10-08', at(8, 4).getTime())).toBe(0.5);
-    expect(scheduleShare('2026-10-08', at(8, 14).getTime())).toBe(1);
-    expect(scheduleShare('2026-10-08', at(8, 20).getTime())).toBe(1);
-    expect(scheduleShare('2026-10-08', at(7, 12).getTime())).toBe(0);
-    expect(scheduleMarks()).toEqual(['18:00', '22:00', '02:00', '06:00', '10:00', '14:00']);
   });
 });
 
@@ -173,5 +165,90 @@ describe('sleep and readiness scores', () => {
     expect(readinessWord(85)).toBe('Ready');
     expect(readinessWord(65)).toBe('Steady');
     expect(readinessWord(40)).toBe('Take it easy');
+  });
+});
+
+describe('naps and day nights', () => {
+  const nap = seedRecord({
+    type: 'SleepSession',
+    start: at(8, 14),
+    end: at(8, 14, 29),
+    data: { title: null, notes: null, stages: [] },
+  });
+  const twoHourEvening = seedRecord({
+    type: 'SleepSession',
+    start: at(8, 21),
+    end: at(8, 23),
+    data: { title: null, notes: null, stages: [] },
+  });
+  const nights = (records: readonly ReturnType<typeof seedRecord>[]): SleepNight[] =>
+    recordsOfType([...records], 'SleepSession').map(nightOf);
+
+  it('a nap starts between 10:00 and 20:00 and lasts under 3 hours', () => {
+    const [napNight, evening, staged] = nights([nap, twoHourEvening, STAGED]);
+    expect([napNight, evening, staged].map((night) => isNap(night!))).toEqual([true, false, false]);
+    const longDay = nightOf(
+      recordsOfType(
+        [
+          seedRecord({
+            type: 'SleepSession',
+            start: at(8, 12),
+            end: at(8, 15),
+            data: { title: null, notes: null, stages: [] },
+          }),
+        ],
+        'SleepSession',
+      )[0]!,
+    );
+    expect(isNap(longDay)).toBe(false);
+  });
+
+  it('the night is the longest non-nap session and naps are listed by start', () => {
+    const all = nights([nap, STAGED, twoHourEvening]);
+    const split = splitNights(all, '2026-10-08');
+    expect(split.night?.asleepMinutes).toBe(450);
+    expect(split.naps.map((night) => night.inBedMinutes)).toEqual([29]);
+    expect(splitNights(nights([nap]), '2026-10-08').night).toBeNull();
+    expect(splitNights(nights([nap]), '2026-10-09').naps).toEqual([]);
+  });
+
+  it('the timeline keeps light and asleep as their own stages', () => {
+    const [staged] = nights([STAGED]);
+    expect(timelineOf(staged!).map((segment) => segment.stage)).toEqual([
+      'light',
+      'deep',
+      'awake',
+      'rem',
+      'light',
+    ]);
+    const [unstaged] = nights([session(8, [])]);
+    expect(timelineOf(unstaged!).map((segment) => segment.stage)).toEqual(['asleep']);
+  });
+});
+
+describe('sleep night with repeated or overlapping stages', () => {
+  const repeated = session(8, [
+    stage(at(7, 23), at(8, 1), 4),
+    stage(at(7, 23), at(8, 1), 4),
+    stage(at(8, 1), at(8, 2), 5),
+    stage(at(8, 1), at(8, 2), 5),
+    stage(at(8, 1, 30), at(8, 3), 6),
+  ]);
+
+  it('keeps each moment in exactly one stage', () => {
+    const [record] = recordsOfType([repeated], 'SleepSession');
+    const night = nightOf(record!);
+    expect(night.stages.map((span) => [span.kind, span.start, span.end])).toEqual([
+      ['light', at(7, 23).getTime(), at(8, 1).getTime()],
+      ['deep', at(8, 1).getTime(), at(8, 2).getTime()],
+      ['rem', at(8, 2).getTime(), at(8, 3).getTime()],
+    ]);
+  });
+
+  it('counts the time of the repeated stages once', () => {
+    const [record] = recordsOfType([repeated], 'SleepSession');
+    const night = nightOf(record!);
+    expect(night.totals.light).toBe(120);
+    expect(night.asleepMinutes).toBe(240);
   });
 });

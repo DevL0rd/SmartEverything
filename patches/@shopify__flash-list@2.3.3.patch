@@ -1,0 +1,116 @@
+diff --git a/dist/recyclerview/RecyclerViewManager.d.ts b/dist/recyclerview/RecyclerViewManager.d.ts
+index b5c9fae..bb1c11b 100644
+--- a/dist/recyclerview/RecyclerViewManager.d.ts
++++ b/dist/recyclerview/RecyclerViewManager.d.ts
+@@ -11,6 +11,7 @@ export declare class RecyclerViewManager<T> {
+     private hasRenderedProgressively;
+     private progressiveRenderCount;
+     private propsRef;
++    private processedData;
+     private itemViewabilityManager;
+     private _isDisposed;
+     private _isLayoutManagerDirty;
+diff --git a/dist/recyclerview/RecyclerViewManager.js b/dist/recyclerview/RecyclerViewManager.js
+index 1aa651d..fa7dee9 100644
+--- a/dist/recyclerview/RecyclerViewManager.js
++++ b/dist/recyclerview/RecyclerViewManager.js
+@@ -223,6 +223,10 @@ export class RecyclerViewManager {
+     }
+     processDataUpdate() {
+         var _a, _b;
++        if (this.processedData === this.propsRef.data) {
++            return;
++        }
++        this.processedData = this.propsRef.data;
+         if (this.hasLayout()) {
+             this.modifyChildrenLayout([], (_b = (_a = this.propsRef.data) === null || _a === void 0 ? void 0 : _a.length) !== null && _b !== void 0 ? _b : 0);
+             if (this.hasRenderedProgressively && !this.recomputeEngagedIndices()) {
+diff --git a/dist/recyclerview/hooks/useRecyclerViewManager.js b/dist/recyclerview/hooks/useRecyclerViewManager.js
+index 9c3f94f..de2df9b 100644
+--- a/dist/recyclerview/hooks/useRecyclerViewManager.js
++++ b/dist/recyclerview/hooks/useRecyclerViewManager.js
+@@ -1,23 +1,11 @@
+-import { useEffect, useMemo, useState } from "react";
++import { useEffect, useState } from "react";
+ import { RecyclerViewManager } from "../RecyclerViewManager";
+ import { VelocityTracker } from "../helpers/VelocityTracker";
+ export const useRecyclerViewManager = (props) => {
+     const [recyclerViewManager] = useState(() => new RecyclerViewManager(props));
+     const [velocityTracker] = useState(() => new VelocityTracker());
+-    const { data } = props;
+-    useMemo(() => {
+-        recyclerViewManager.updateProps(props);
+-        // used to update props so rule can be disabled
+-        // eslint-disable-next-line react-hooks/exhaustive-deps
+-    }, [props]);
+-    /**
+-     * When data changes, we need to process the data update before the render happens
+-     */
+-    useMemo(() => {
+-        recyclerViewManager.processDataUpdate();
+-        // used to process data update so rule can be disabled
+-        // eslint-disable-next-line react-hooks/exhaustive-deps
+-    }, [data]);
++    recyclerViewManager.updateProps(props);
++    recyclerViewManager.processDataUpdate();
+     useEffect(() => {
+         recyclerViewManager.restoreIfNeeded();
+         return () => {
+diff --git a/src/recyclerview/RecyclerViewManager.ts b/src/recyclerview/RecyclerViewManager.ts
+index 41704d0..5619e90 100644
+--- a/src/recyclerview/RecyclerViewManager.ts
++++ b/src/recyclerview/RecyclerViewManager.ts
+@@ -31,6 +31,7 @@ export class RecyclerViewManager<T> {
+   private hasRenderedProgressively = false;
+   private progressiveRenderCount = 0;
+   private propsRef: RecyclerViewProps<T>;
++  private processedData: RecyclerViewProps<T>["data"];
+   private itemViewabilityManager: ViewabilityManager<T>;
+   private _isDisposed = false;
+   private _isLayoutManagerDirty = false;
+@@ -300,6 +301,10 @@ export class RecyclerViewManager<T> {
+   }
+ 
+   processDataUpdate() {
++    if (this.processedData === this.propsRef.data) {
++      return;
++    }
++    this.processedData = this.propsRef.data;
+     if (this.hasLayout()) {
+       this.modifyChildrenLayout([], this.propsRef.data?.length ?? 0);
+       if (this.hasRenderedProgressively && !this.recomputeEngagedIndices()) {
+diff --git a/src/recyclerview/hooks/useRecyclerViewManager.ts b/src/recyclerview/hooks/useRecyclerViewManager.ts
+index 5439a7b..3eb8de7 100644
+--- a/src/recyclerview/hooks/useRecyclerViewManager.ts
++++ b/src/recyclerview/hooks/useRecyclerViewManager.ts
+@@ -1,4 +1,4 @@
+-import { useEffect, useMemo, useState } from "react";
++import { useEffect, useState } from "react";
+ 
+ import { RecyclerViewProps } from "../RecyclerViewProps";
+ import { RecyclerViewManager } from "../RecyclerViewManager";
+@@ -10,22 +10,8 @@ export const useRecyclerViewManager = <T>(props: RecyclerViewProps<T>) => {
+   );
+   const [velocityTracker] = useState(() => new VelocityTracker());
+ 
+-  const { data } = props;
+-
+-  useMemo(() => {
+-    recyclerViewManager.updateProps(props);
+-    // used to update props so rule can be disabled
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [props]);
+-
+-  /**
+-   * When data changes, we need to process the data update before the render happens
+-   */
+-  useMemo(() => {
+-    recyclerViewManager.processDataUpdate();
+-    // used to process data update so rule can be disabled
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [data]);
++  recyclerViewManager.updateProps(props);
++  recyclerViewManager.processDataUpdate();
+ 
+   useEffect(() => {
+     recyclerViewManager.restoreIfNeeded();

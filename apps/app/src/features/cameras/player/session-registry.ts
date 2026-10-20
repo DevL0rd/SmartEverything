@@ -21,14 +21,15 @@ import {
   videoMissing,
   type SessionTrace,
 } from './session-log';
-import { guarded, logFailure, startDirect, startRelay, type SessionHooks } from './session-start';
+import { guarded, logFailure, startDirect, type SessionHooks } from './session-start';
 import { sampleOf, type StreamSample } from './stats';
 import { surfaceReportsFrames } from './video-surface';
-import { relaySupported } from './rtc';
+import { relayStarter, type RelayStarter } from './relay';
 
 const log = new Logger('app.camera-sessions');
 
-const MEDIA_CONNECTION_LIMIT_MS = 10_000;
+const DIRECT_CONNECTION_LIMIT_MS = 10_000;
+const RELAY_CONNECTION_LIMIT_MS = 30_000;
 
 const RETRY_BASE_MS = 500;
 const RETRY_MAX_MS = 8000;
@@ -130,10 +131,10 @@ export class SharedSession {
 
   start(): void {
     this.directRetried = false;
-    this.begin('webrtc');
+    this.begin('webrtc', startDirect);
   }
 
-  private begin(transport: Transport): void {
+  private begin(transport: Transport, start: RelayStarter): void {
     this.stop();
     this.beganAt = Date.now();
     log.info('camera.transport_begun', {
@@ -150,10 +151,7 @@ export class SharedSession {
     };
     const hooks = guarded(this.hooks(), () => stopped);
     const { deviceId, iceServers, client, quality } = this.key;
-    (transport === 'mse' ? startRelay : startDirect)(
-      { deviceId, iceServers, client, quality },
-      hooks,
-    );
+    start({ deviceId, iceServers, client, quality }, hooks);
   }
 
   private hooks(): SessionHooks {
@@ -199,11 +197,15 @@ export class SharedSession {
       this.watchVideo();
     } else if (phase.kind === 'starting' || phase.kind === 'interrupted') {
       this.clearWatch();
+      const limit =
+        this.state.get().transport === 'webrtc'
+          ? DIRECT_CONNECTION_LIMIT_MS
+          : RELAY_CONNECTION_LIMIT_MS;
       this.watch = setTimeout(() => {
         this.watch = null;
-        connectionTimedOut(this.trace(), phase.kind, MEDIA_CONNECTION_LIMIT_MS);
+        connectionTimedOut(this.trace(), phase.kind, limit);
         this.report({ kind: 'failed', error: { kind: 'noPath' } });
-      }, MEDIA_CONNECTION_LIMIT_MS);
+      }, limit);
     }
   }
 
@@ -217,9 +219,10 @@ export class SharedSession {
       recoverSkipped(this.key.deviceId, 'already_on_relay', error.kind);
       return false;
     }
-    if (relaySupported()) {
+    const relay = relayStarter();
+    if (relay !== null) {
       log.info('camera.transport_fallback', { deviceId: this.key.deviceId, transport: 'mse' });
-      this.begin('mse');
+      this.begin('mse', relay);
       return true;
     }
     if (this.directRetried) {
@@ -228,7 +231,7 @@ export class SharedSession {
     }
     log.info('camera.direct_retried', { deviceId: this.key.deviceId, error: error.kind });
     this.directRetried = true;
-    this.begin('webrtc');
+    this.begin('webrtc', startDirect);
     return true;
   }
 

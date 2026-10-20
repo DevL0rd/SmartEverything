@@ -8,6 +8,8 @@ import { cn } from '../../../design/cn';
 import { NumberStepper } from '../../../components/number-stepper';
 import { SelectRow, SwitchRow, ValueRow } from '../../../components/rows';
 import { Slider } from '../../../components/slider';
+import { anchorKey } from '../../../components/highlight-keys';
+import { useHighlightAnchor } from '../../../components/use-highlight-anchor';
 import { Text } from '../../../components/text';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 import type { Control } from '../../../store/control';
@@ -207,16 +209,16 @@ function CapabilityBody(props: RowProps): ReactNode {
   );
 }
 
-export function CapabilityRow({
+function RowFor({
   device,
   presented,
   reason,
-  highlight = null,
+  highlight,
 }: {
   readonly device: Device;
   readonly presented: PresentedCapability;
   readonly reason: string | null;
-  readonly highlight?: TextRange | null;
+  readonly highlight: TextRange | null;
 }): ReactNode {
   const control = useDeviceControl(device, presented);
   const Custom = FAMILY_CONTROLS[deviceFamily(device)]?.rows[presented.key];
@@ -242,5 +244,27 @@ export function CapabilityRow({
         highlight={highlight}
       />
     </Guard>
+  );
+}
+
+export function CapabilityRow({
+  device,
+  presented,
+  reason,
+  highlight = null,
+}: {
+  readonly device: Device;
+  readonly presented: PresentedCapability;
+  readonly reason: string | null;
+  readonly highlight?: TextRange | null;
+}): ReactNode {
+  const anchor = useHighlightAnchor(
+    anchorKey.capability(device.id, presented.key),
+    presented.label,
+  );
+  return (
+    <View {...anchor}>
+      <RowFor device={device} presented={presented} reason={reason} highlight={highlight} />
+    </View>
   );
 }

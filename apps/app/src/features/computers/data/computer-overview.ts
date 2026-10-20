@@ -13,7 +13,7 @@ import { useStoreSelector } from '../../../store/store-context';
 import { workingTurns } from '../../../store/subscriptions';
 import { harnessHostReason } from '../../assistant';
 import { chatCounts, type ChatCounts } from '../model/chat-machine';
-import { computerAiKey } from './computer-ai';
+import { computerAiKey } from '../../../queries/keys';
 import { background } from '@smarteverything/logging';
 
 function sameCounts(left: ChatCounts, right: ChatCounts): boolean {

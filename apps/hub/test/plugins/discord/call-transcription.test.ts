@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Opus } from '../../../src/assistant-voice/opus';
+import { OPUS_SILENCE } from '../../../src/reach/voice-pacing';
 import { person } from '../../../src/plugins/builtin/discord/person';
 import { CallSession } from '../../../src/plugins/builtin/discord/voice/call-session';
 import type { VoiceLink } from '../../../src/plugins/builtin/discord/voice/link';
 import type { PluginVoice } from '../../../src/plugins/plugin-voice';
-import type { SpeechSegment } from '../../../src/wake-name/ear';
+import type { SpeechSegment } from '../../../src/listening/speech-segment';
 import { FakeClock } from '../../support/fake-clock';
 
 type EarRequest = Parameters<PluginVoice['ear']>[0];
@@ -43,7 +44,7 @@ interface Rig {
   readonly clock: FakeClock;
   readonly session: CallSession;
   readonly requests: EarRequest[];
-  readonly heard: Int16Array[];
+  readonly heard: Uint8Array[];
   readonly mixed: string[];
   readonly transcribed: { at: number; samples: number }[];
   readonly lines: string[];
@@ -63,7 +64,7 @@ interface RigOptions {
 function rig(options: RigOptions): Rig {
   const clock = new FakeClock(START);
   const requests: EarRequest[] = [];
-  const heard: Int16Array[] = [];
+  const heard: Uint8Array[] = [];
   const mixed: string[] = [];
   const transcribed: { at: number; samples: number }[] = [];
   const lines: string[] = [];
@@ -107,11 +108,13 @@ function rig(options: RigOptions): Rig {
       close: nothing,
     },
     voice: {
-      ear: (request): Promise<{ hear: (pcm: Int16Array) => void; close: () => Promise<void> }> => {
+      ear: (
+        request,
+      ): Promise<{ packet: (opus: Uint8Array) => void; close: () => Promise<void> }> => {
         requests.push(request);
         return Promise.resolve({
-          hear: (pcm): void => {
-            heard.push(pcm);
+          packet: (opus): void => {
+            heard.push(opus);
           },
           close: (): Promise<void> => {
             if (options.closingMs !== undefined) {
@@ -199,12 +202,26 @@ describe('Discord transcription through the shared gate', () => {
     expect(ann?.wakes?.()).toBe(false);
   });
 
-  it('pads silence into the ear when the stream ends so the gate closes at once', async () => {
+  it('hands the ear the received Opus packets as they came, in stereo', async () => {
+    const harness = rig({});
+    await harness.speak('ann', 3);
+    expect(harness.requests.map((request) => request.codec)).toEqual(['opus_48k_stereo']);
+    expect(harness.heard.slice(0, 3)).toEqual(packets(3));
+  });
+
+  it('pads a second of Opus silence into the ear when the stream ends so the gate closes at once', async () => {
     const harness = rig({});
     await harness.speak('ann', 2);
-    const last = harness.heard.at(-1);
-    expect(last?.length).toBe(16_000);
-    expect(last?.every((sample) => sample === 0)).toBe(true);
+    const padding = harness.heard.slice(2);
+    expect(padding).toHaveLength(50);
+    expect(padding.every((packet) => packet === OPUS_SILENCE)).toBe(true);
+  });
+
+  it('decodes only the approved speakers for the mix', async () => {
+    const harness = rig({ approved: (userId) => userId === 'ann' });
+    await harness.speak('bob', 3);
+    expect(harness.mixed).toEqual([]);
+    expect(harness.heard.slice(0, 3)).toHaveLength(3);
   });
 
   it('hands the utterance to transcription 2.5 s after the segment ends', async () => {

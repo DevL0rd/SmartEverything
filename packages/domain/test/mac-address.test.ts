@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { BLE_ADVERT, BLUETOOTH_MAC, MAC_ADDRESS, PROVIDER_CREDENTIALS, macBytes } from '../src';
+import { BLE_ADVERT, BLUETOOTH_MAC, MAC_ADDRESS, TELEVISION_SETTINGS_ROW, macBytes } from '../src';
 import { NODE_INTERFACE } from '../src/node/frames';
 
 const CANONICAL = 'a1:b2:c3:d4:e5:f6';
@@ -71,18 +71,20 @@ describe('macBytes', () => {
 });
 
 describe('the places that carry a MAC address share the rule', () => {
-  it('parses a node interface, a Samsung TV credential and a Bluetooth advert through it', () => {
+  it('parses a node interface, a television settings row and a Bluetooth advert through it', () => {
     expect(
       NODE_INTERFACE.parse({ name: 'eth0', mac: 'A1:B2:C3:D4:E5:F6', addresses: [] }).mac,
     ).toBe(CANONICAL);
     expect(
-      PROVIDER_CREDENTIALS.parse({
-        provider: 'samsung_tv',
-        host: '10.0.0.5',
-        macAddress: 'A1-B2-C3-D4-E5-F6',
-        name: 'TV',
-      }),
-    ).toMatchObject({ macAddress: CANONICAL });
+      TELEVISION_SETTINGS_ROW.parse({
+        device_id: '11111111-1111-4111-8111-111111111111',
+        direct_host: '10.0.0.5',
+        direct_mac: 'A1-B2-C3-D4-E5-F6',
+        input_names: {},
+        wake_macs: [],
+        wake_worked_at: null,
+      }).direct_mac,
+    ).toBe(CANONICAL);
     expect(
       BLE_ADVERT.parse({
         address: ' a1:b2:c3:d4:e5:f6',

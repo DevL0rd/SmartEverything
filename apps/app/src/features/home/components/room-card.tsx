@@ -1,6 +1,7 @@
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
+import { usePinContextMenu } from '../../../app-shell/pin-context-menu';
 import { Badge } from '../../../components/badge';
 import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
@@ -86,10 +87,13 @@ function LightsButton({ toggle }: { readonly toggle: LightsToggle }): ReactNode 
 function Card({ room, dense }: RoomCardProps): ReactNode {
   const climate = useRoomClimate(room.id);
   const toggle = lightsToggleOf(room);
+  const menu = usePinContextMenu({ kind: 'room', roomId: room.id }, room.name);
   return (
     <View className="relative h-full">
       <Interactive
         href={href.room(room.id)}
+        onLongPress={menu.onLongPress}
+        onContextMenu={menu.onContextMenu}
         label={`${room.name}, ${plural(room.devices, 'device')}`}
         className="h-full justify-between gap-1.5 rounded-md bg-surface-2 p-2.5"
         layerClassName="rounded-md"
@@ -113,6 +117,7 @@ function Card({ room, dense }: RoomCardProps): ReactNode {
           </View>
         )}
       </Interactive>
+      {menu.host}
       {toggle === null ? null : <LightsButton toggle={toggle} />}
     </View>
   );

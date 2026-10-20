@@ -1,6 +1,14 @@
 import { SESSION } from '@smarteverything/domain';
 import { makeTable, type StoreState } from '../../store/state';
-import { ALEX, DANA, COMPOSITION, daysAgo, profileOf, readingOf } from '../../store/body-fixture';
+import {
+  ALEX,
+  DANA,
+  COMPOSITION,
+  NOW,
+  daysAgo,
+  profileOf,
+  readingOf,
+} from '../../store/body-fixture';
 import { budgetCase, type Budget, type Face } from './cell-budget';
 
 function seeded(state: StoreState): StoreState {
@@ -80,4 +88,4 @@ const MAX: Readonly<Record<'S' | 'M', Budget>> = {
   M: { nodes: 62, hooks: 90, subscriptions: 11 },
 };
 
-budgetCase('scale', SCALE, MAX);
+budgetCase('scale', SCALE, MAX, NOW);

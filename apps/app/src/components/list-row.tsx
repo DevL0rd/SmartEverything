@@ -67,7 +67,7 @@ function Trailing({
   readonly trailing: ReactNode;
 }): ReactNode {
   return (
-    <View className="shrink-0 flex-row items-center gap-1">
+    <View className="ml-auto shrink-0 flex-row items-center gap-1">
       {value === undefined ? null : (
         <View className="min-w-0 max-w-48 shrink">
           <Text variant="callout" tone="variant" numberOfLines={1}>
@@ -100,7 +100,7 @@ function Body({
   | 'destructive'
 >): ReactNode {
   return (
-    <View className="min-w-0 flex-1 gap-0.5">
+    <View className="min-w-40 flex-1 gap-0.5">
       <Text variant="body" tone={destructive === true ? 'critical' : 'default'} numberOfLines={2}>
         <Highlighted text={title} range={titleHighlight ?? null} />
       </Text>
@@ -143,7 +143,7 @@ function LeadingSlot({
 
 function frameOf(props: ListRowProps): string {
   return cn(
-    'flex-row items-center gap-4 px-4 py-2',
+    'flex-row flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2',
     props.subtitle === undefined ? 'min-h-row-h' : 'min-h-row-h-2',
     props.selected === true && 'bg-primary-container',
   );

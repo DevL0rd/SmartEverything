@@ -24,6 +24,13 @@ const IDLE: ScreenValue = {
 
 export const ScreenContext = createContext<ScreenValue>(IDLE);
 
+export interface ScreenScroll {
+  readonly scrollRef: AnimatedRef<Animated.ScrollView>;
+  readonly scrollY: SharedValue<number>;
+}
+
+export const ScreenScrollContext = createContext<ScreenScroll | null>(null);
+
 export const HeaderSlotContext = createContext<HeaderSlot>('bar');
 
 export function useScreen(): ScreenValue {

@@ -1,6 +1,7 @@
 import {
   ApiError,
   DEFAULT_LISTENING_POWER_MODE,
+  redemptionOf,
   type ListeningClaimAnswer,
   type ListeningConfig,
   type ListeningHubMessage,
@@ -78,7 +79,7 @@ function nativeConfigOf(config: ListeningConfig): ListeningNativeConfig {
     transcribe: config.transcribe,
     keywords: config.keywords.join('\n'),
     threshold: config.threshold,
-    pause_ms: config.pause_ms,
+    pause_ms: redemptionOf(config.pause_ms),
     power_mode: config.power_mode ?? DEFAULT_LISTENING_POWER_MODE,
   };
 }

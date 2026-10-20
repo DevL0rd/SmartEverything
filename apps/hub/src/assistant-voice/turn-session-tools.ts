@@ -16,6 +16,7 @@ import type { TurnSessionTrace } from './turn-session-trace';
 import type { TurnText } from './turn-text';
 import { declarationOf, stringsOf } from './turn-tool';
 import { voiceResponseOf } from './voice-results';
+import { voiceArgumentsOf } from './voice-shapes';
 import { VOICE_TOOL_NAMES } from './voice-tools';
 import type { VoiceKit, VoiceWho } from './voice-kit';
 
@@ -134,8 +135,9 @@ export class TurnTools {
     if (this.ports.bare) {
       return Promise.resolve(failedAnswer(new Error(`There is no turn tool named ${name}`)));
     }
-    return this.ports.hub.call(name, args, this.toolCaller()).then((result) => ({
-      response: voiceResponseOf(name, args, result.response),
+    const asked = voiceArgumentsOf(name, args);
+    return this.ports.hub.call(name, asked, this.toolCaller()).then((result) => ({
+      response: voiceResponseOf(name, asked, result.response),
       line: result.line,
       pictures: result.pictures,
     }));

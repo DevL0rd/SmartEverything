@@ -154,6 +154,7 @@ describe('the MCP endpoint', () => {
       'clear_preview_data',
       'end_process',
       'set_computer_system',
+      'use_computer',
       'edit_computer_files',
       'edit_claude_session',
     ]);

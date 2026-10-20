@@ -56,6 +56,8 @@ export const CLAUDE_CAPABILITIES = z.strictObject({
 
 export type ClaudeCapabilities = z.infer<typeof CLAUDE_CAPABILITIES>;
 
+export const CLAUDE_SESSION_LIST_MAX = 5000;
+
 export const CLAUDE_SESSION = z.strictObject({
   id: CLAUDE_SESSION_ID,
   desktop_id: z.string().min(1).max(200).nullable(),
@@ -76,6 +78,12 @@ export const CLAUDE_SESSION = z.strictObject({
 });
 
 export type ClaudeSession = z.infer<typeof CLAUDE_SESSION>;
+
+export const CLAUDE_LISTED_SESSION = CLAUDE_SESSION.extend({
+  app_chat_id: z.uuid().nullable(),
+});
+
+export type ClaudeListedSession = z.infer<typeof CLAUDE_LISTED_SESSION>;
 
 const THREAD_BASE = {
   id: z.string().regex(/^\d+\.\d+$/),

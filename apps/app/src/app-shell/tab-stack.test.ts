@@ -45,7 +45,7 @@ let root: Root;
 
 function render(): void {
   act(() => {
-    root.render(createElement(TabStack));
+    root.render(createElement(TabStack, { initialRouteName: 'devices/index' }));
   });
 }
 

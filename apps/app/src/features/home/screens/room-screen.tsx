@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
+import { usePinAction } from '../../../app-shell/pin-menu';
 import { renameRoom } from '../../../api/settings';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { Grid } from '../../../components/grid';
 import type { MenuItem } from '../../../components/menu';
 import { PageHeader } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
@@ -13,9 +13,8 @@ import { Section } from '../../../components/section';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 import { useDevices, useRoom } from '../../../store/selectors';
 import { roomLightsTarget, type TableRow } from '@smarteverything/domain';
-import { DeviceTile } from '../../devices';
 import { LightGroupCard } from '../../device-groups';
-import { splitRoomLights } from '../../device-list';
+import { RoomDeviceGrid, splitRoomLights } from '../../device-list';
 import { useRoomClimate } from '../components/room-card';
 import { RoomScenes } from '../components/room-scenes';
 import { useTurnOff } from '../data/turn-off';
@@ -81,6 +80,7 @@ function RoomBody({ room }: { readonly room: Room }): ReactNode {
     setRenaming(renameRequest(room));
   });
   const climate = useClimateLine(room.id);
+  const pin = usePinAction(useMemo(() => ({ kind: 'room' as const, roomId: room.id }), [room.id]));
   const split = useMemo(() => splitRoomLights(devices), [devices]);
   const tiles = split === null ? devices : split.rest;
   return (
@@ -89,6 +89,7 @@ function RoomBody({ room }: { readonly room: Room }): ReactNode {
         <PageHeader
           title={room.name}
           {...(climate === undefined ? {} : { subtitle: climate })}
+          actions={[pin]}
           overflow={overflow}
         />
       }
@@ -105,11 +106,7 @@ function RoomBody({ room }: { readonly room: Room }): ReactNode {
           {split === null ? null : <RoomLightsCard room={room} count={split.lights.length} />}
           {tiles.length === 0 ? null : (
             <Section title="Devices">
-              <Grid minItemWidth={156} maxColumns={6}>
-                {tiles.map((device) => (
-                  <DeviceTile key={device.id} device={device} showRoom={false} />
-                ))}
-              </Grid>
+              <RoomDeviceGrid devices={tiles} />
             </Section>
           )}
         </>

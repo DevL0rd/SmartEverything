@@ -9,6 +9,8 @@ describe('the ears relay as a path to the ear hosts', () => {
     expect(() => {
       relay.join('desk', ['ear_host'], () => undefined);
       relay.relayed('desk', 'cam', { kind: 'near', phrase: 'Sam' });
+      relay.scored('desk', 'one', true);
+      relay.scoreFailed('desk', 'one', 'broke');
       relay.leave('desk');
     }).not.toThrow();
   });
@@ -29,12 +31,26 @@ describe('the ears relay as a path to the ear hosts', () => {
       relayed: (computerId: string, key: string, message: RemoteEarNodeMessage): void => {
         seen.push(`relayed ${computerId} ${key} ${message.kind}`);
       },
+      scored: (computerId: string, id: string, heard: boolean): void => {
+        seen.push(`scored ${computerId} ${id} ${String(heard)}`);
+      },
+      scoreFailed: (computerId: string, id: string, reason: string): void => {
+        seen.push(`failed ${computerId} ${id} ${reason}`);
+      },
     };
     const relay = new EarsRelay();
     relay.bindHosts(hosts);
     relay.join('desk', ['cpu', 'ear_host'], () => undefined);
     relay.relayed('desk', 'cam', { kind: 'near', phrase: 'Sam' });
+    relay.scored('desk', 'one', true);
+    relay.scoreFailed('desk', 'one', 'broke');
     relay.leave('desk');
-    expect(seen).toEqual(['join desk cpu,ear_host', 'relayed desk cam near', 'leave desk']);
+    expect(seen).toEqual([
+      'join desk cpu,ear_host',
+      'relayed desk cam near',
+      'scored desk one true',
+      'failed desk one broke',
+      'leave desk',
+    ]);
   });
 });

@@ -1,9 +1,19 @@
 import { useQueryClient, type UseQueryResult } from '@tanstack/react-query';
-import type { AccessAuditRow, PersonAccess, PersonAccessChange } from '@smarteverything/domain';
+import type {
+  AccessAuditRow,
+  AccessRequestDecision,
+  AccessRequestRow,
+  NewAccessRequest,
+  PersonAccess,
+  PersonAccessChange,
+} from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import {
   changePersonAccess,
+  createAccessRequest,
+  decideAccessRequest,
   listAccessAudit,
+  listAccessRequests,
   listPersonAccess,
   revokePerson,
 } from '../../../api/person-access';
@@ -60,6 +70,37 @@ export function useAccessAudit(
   profileId: string | null,
 ): UseQueryResult<AccessAuditRow[]> {
   return useScreenQuery(accessAuditQuery(useIsOwner(), limit, profileId));
+}
+
+const REQUESTS_KEY = [...ACCESS_PREFIX, 'requests'] as const;
+
+export function useAccessRequests(): UseQueryResult<AccessRequestRow[]> {
+  return useScreenQuery({
+    queryKey: REQUESTS_KEY,
+    queryFn: () => listAccessRequests(null),
+  });
+}
+
+export interface RequestActions {
+  readonly ask: (request: NewAccessRequest) => Promise<void>;
+  readonly decide: (requestId: string, decision: AccessRequestDecision) => Promise<void>;
+}
+
+export function useRequestActions(): RequestActions {
+  const client = useQueryClient();
+  const refresh = (): void => {
+    background(client.invalidateQueries({ queryKey: ACCESS_PREFIX }), 'queries.invalidate_failed');
+  };
+  return {
+    ask: async (request): Promise<void> => {
+      await createAccessRequest(request);
+      refresh();
+    },
+    decide: async (requestId, decision): Promise<void> => {
+      await decideAccessRequest(requestId, decision);
+      refresh();
+    },
+  };
 }
 
 export interface AccessActions {

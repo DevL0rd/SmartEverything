@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { CallAudioPref } from '@smarteverything/domain';
+import { voiceModelFor, type CallAudioPref } from '@smarteverything/domain';
 import { Icon, type IconName } from '../../../../components/icon';
 import { Text } from '../../../../components/text';
 import { useStoreSelector } from '../../../../store/store-context';
@@ -20,8 +20,8 @@ function Chip({ icon, text }: { readonly icon: IconName; readonly text: string }
 }
 
 function useVideoPrice(): number | null {
-  const model = useStoreSelector((state) => state.assistant?.settings.voice.model ?? null);
-  return model === null ? null : videoPriceOf(model);
+  const level = useStoreSelector((state) => state.assistant?.settings.voice.thinking_level ?? null);
+  return level === null ? null : videoPriceOf(voiceModelFor(level));
 }
 
 function costText(pref: CallAudioPref, looks: number, cost: CallCost | null): string {

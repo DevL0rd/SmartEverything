@@ -34,7 +34,7 @@ export function renderInlineImageMessage(item: MessageItem, _flash: boolean): Re
   return <InlineImageMessage item={item} />;
 }
 
-export function inlineImageItem(row: AssistantMessageRow): MessageItem {
+export function inlineMessageItem(row: AssistantMessageRow): MessageItem {
   return {
     type: 'message',
     key: row.id,

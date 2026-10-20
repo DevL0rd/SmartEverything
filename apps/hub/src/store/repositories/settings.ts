@@ -1,15 +1,21 @@
 import {
+  DEFAULT_HOME_NAME,
   EMPTY_IR_REMOTE_STATE,
   SETTINGS_ROW,
+  laundryNoticeOf,
   withIrChange,
+  withLaundryNoticeChange,
   withRefill,
   type HistorySettings,
   type IceServer,
   type IrRemoteChange,
   type IrRemoteState,
+  type LaundryNoticeChange,
+  type LaundryNoticeSetting,
   type McpToolName,
   type PauseChoiceMs,
   type SettingsRow,
+  type TriggerSettings,
 } from '@smarteverything/domain';
 import type { SQLInputValue } from 'node:sqlite';
 import { storedRow } from '../codec';
@@ -23,13 +29,15 @@ const STORED_SETTINGS = storedRow(SETTINGS_ROW, {
     'fitness_goals',
     'mcp_disabled_tools',
     'history_settings',
+    'trigger_settings',
     'device_refills',
+    'laundry_notices',
     'ir_remotes',
   ],
 });
 
 const COLUMNS =
-  'home_name, time_zone, latitude, longitude, location_name, public_url, public_url_checked_at, public_url_verified_at, public_url_error, ice_servers, webrtc_candidates, push_project_id, fitness_goals, max_heart_rate, mcp_disabled_tools, history_settings, device_refills, ir_remotes, end_of_speech_pause_ms, ear_host_device_id, updated_at';
+  'home_name, time_zone, latitude, longitude, location_name, public_url, public_url_checked_at, public_url_verified_at, public_url_error, ice_servers, webrtc_candidates, push_project_id, fitness_goals, max_heart_rate, mcp_disabled_tools, history_settings, trigger_settings, device_refills, laundry_notices, ir_remotes, end_of_speech_pause_ms, ear_host_device_id, updated_at';
 
 export interface HomeChange {
   readonly home_name?: string | undefined;
@@ -46,8 +54,6 @@ export interface NetworkChange {
 
 export type PublicUrlOutcome =
   { readonly verified: true } | { readonly verified: false; readonly reason: string };
-
-const DEFAULT_HOME_NAME = 'Home';
 
 export interface TimeZoneStart {
   readonly initialised: boolean;
@@ -136,6 +142,10 @@ export class SettingsRepository {
     return this.update({ history_settings: jsonText(history) });
   }
 
+  setTriggerSettings(triggers: TriggerSettings): SettingsRow {
+    return this.update({ trigger_settings: jsonText(triggers) });
+  }
+
   setEndOfSpeechPause(pauseMs: PauseChoiceMs): SettingsRow {
     return this.update({ end_of_speech_pause_ms: pauseMs });
   }
@@ -152,6 +162,15 @@ export class SettingsRepository {
         ),
       }),
     );
+  }
+
+  changeLaundryNotice(deviceId: string, change: LaundryNoticeChange): LaundryNoticeSetting {
+    return this.context.write(() => {
+      const current = this.read().laundry_notices;
+      const next = withLaundryNoticeChange(laundryNoticeOf(current, deviceId), change);
+      this.update({ laundry_notices: jsonText({ ...current, [deviceId]: next }) });
+      return next;
+    });
   }
 
   irRemote(remoteId: string): IrRemoteState {

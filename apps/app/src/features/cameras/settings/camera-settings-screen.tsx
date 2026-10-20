@@ -4,6 +4,7 @@ import {
   WAKE_SENSITIVITY_HINTS,
   WAKE_SENSITIVITY_LABELS,
   type CameraChange,
+  type CameraRow,
   type WakeSensitivity,
 } from '@smarteverything/domain';
 import { changeCamera } from '../../../api/media';
@@ -20,6 +21,8 @@ import { useCameraEntry } from '../data/use-cameras';
 import { TranscribeRow } from '../transcripts/transcribe-row';
 import type { CameraEntry } from '../logic/cameras';
 import { cameraSections } from './camera-groups';
+import { keepDaysOptions } from './keep-days';
+import { CameraNotificationsSection } from './camera-notifications-section';
 
 const SENSITIVITY_OPTIONS: readonly SelectOption<WakeSensitivity>[] = WAKE_SENSITIVITIES.map(
   (sensitivity) => ({
@@ -33,6 +36,25 @@ function change(deviceId: string, update: CameraChange, failure: string): void {
   changeCamera(deviceId, update).catch(notifyFailure(failure));
 }
 
+function KeepDaysRow({ camera }: { readonly camera: CameraRow }): ReactNode {
+  return (
+    <SelectRow
+      title="Keep clips and pictures"
+      subtitle="Older ones are deleted"
+      icon="clock"
+      options={keepDaysOptions(camera.keep_days)}
+      value={String(camera.keep_days)}
+      onChange={(days) => {
+        change(
+          camera.device_id,
+          { keep_days: Number(days) },
+          'Keep clips and pictures wasn’t changed',
+        );
+      }}
+    />
+  );
+}
+
 function CameraRows({ entry }: { readonly entry: CameraEntry }): ReactNode {
   const camera = entry.camera;
   if (camera === null) {
@@ -40,7 +62,7 @@ function CameraRows({ entry }: { readonly entry: CameraEntry }): ReactNode {
   }
   return (
     <>
-      <List footer="A snapshot and a short clip of each ring, person, pet, motion, sound and alarm are kept on your server.">
+      <List footer="A snapshot and a short clip of each ring, person, pet, motion, sound and alarm are kept on your server until they are older than the days you choose. Choosing fewer days deletes the older ones at once.">
         <SwitchRow
           title="Save event clips"
           icon="film"
@@ -49,8 +71,10 @@ function CameraRows({ entry }: { readonly entry: CameraEntry }): ReactNode {
             change(camera.device_id, { record_events: record }, 'Save event clips wasn’t changed');
           }}
         />
+        <KeepDaysRow camera={camera} />
         <DeviceAlertsRow deviceId={camera.device_id} />
       </List>
+      <CameraNotificationsSection deviceId={camera.device_id} />
       <List footer="Raise it if this camera’s microphone is quiet or far from where people talk. Higher hears fainter calls but may wake on similar words.">
         <SelectRow
           title="Wake sensitivity"

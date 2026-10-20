@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { AUTOMATION_V2, SCHEDULE_ROW, type Place, type ScheduleRow } from '@smarteverything/domain';
-import type { Scheduled } from '../model/schedule';
+import { SCHEDULE_ROW, type Place, type ScheduleRow } from '@smarteverything/domain';
+import { lit, program, trigger } from '../model/consumers/consumer-fixtures';
+import type { ScheduledV3 } from '../model/consumers/week-schedule';
 import { weekOf, type TimedRule } from './week';
 
 const PLACE: Place = { timeZone: 'UTC', location: null };
@@ -8,16 +9,13 @@ const WEDNESDAY = new Date('2026-10-14T12:00:00.000Z');
 const NEXT_WEEK = new Date('2026-10-21T12:00:00.000Z');
 const ID = '20000000-0000-4000-8000-000000000001';
 
-const MORNING: Scheduled = {
-  automation: AUTOMATION_V2.parse({
-    when: [{ on: 'time', at: '07:30', days: [1, 3] }],
-    steps: [{ do: 'notify', message: 'Good morning' }],
-  }),
+const MORNING: ScheduledV3 = {
+  program: program([trigger(1, 'trigger.time', { at: lit('07:30'), days: lit([1, 3]) })], []),
   enabled: true,
   lastRunAt: null,
 };
 
-function rule(name: string, scheduled: Scheduled | null): TimedRule {
+function rule(name: string, scheduled: ScheduledV3 | null): TimedRule {
   return { id: ID, name, scheduled };
 }
 

@@ -377,6 +377,29 @@ describe('ears hosted for the hub', () => {
     expect(HUB_FRAME.safeParse({ type: 'ears_close', key: '' }).success).toBe(false);
   });
 
+  it('asks a host to score a stretch of speech against the keyword lines and hears the answer', () => {
+    const score = {
+      type: 'ears_score',
+      id: 'one',
+      keywords: ['▁A @a'],
+      threshold: 0.06,
+      pcm: PCM,
+    };
+    expect(HUB_FRAME.parse(score)).toEqual(score);
+    const scored = { type: 'ears_scored', id: 'one', heard: true };
+    expect(NODE_FRAME.parse(scored)).toEqual(scored);
+    expect(HUB_FRAME.safeParse({ ...score, id: '' }).success).toBe(false);
+    expect(HUB_FRAME.safeParse({ ...score, keywords: [] }).success).toBe(false);
+    expect(HUB_FRAME.safeParse({ ...score, threshold: 0 }).success).toBe(false);
+    expect(HUB_FRAME.safeParse({ ...score, pcm: 'not base64!' }).success).toBe(false);
+    expect(NODE_FRAME.safeParse({ ...scored, heard: 'yes' }).success).toBe(false);
+    expect(NODE_FRAME.safeParse({ ...scored, id: '' }).success).toBe(false);
+    const failed = { type: 'ears_score_failed', id: 'one', reason: 'engine not loaded' };
+    expect(NODE_FRAME.parse(failed)).toEqual(failed);
+    expect(NODE_FRAME.safeParse({ ...failed, reason: '' }).success).toBe(false);
+    expect(NODE_FRAME.safeParse({ ...failed, id: '' }).success).toBe(false);
+  });
+
   it('sends a hosted ear only its config, rest and takeover', () => {
     const configure = { kind: 'config', config };
     const superseded = {
@@ -398,7 +421,8 @@ describe('ears hosted for the hub', () => {
     const near = { kind: 'near', phrase: 'hey aibi' };
     const segment = { kind: 'segment', segment: { at: AT, endedAt: AT, levelDbfs: -30, pcm: PCM } };
     const state = { kind: 'state', state: null };
-    [claim, near, segment, state].forEach((ear) => {
+    const closed = { kind: 'closed' };
+    [claim, near, segment, state, closed].forEach((ear) => {
       expect(REMOTE_EAR_NODE_MESSAGE.parse(ear)).toEqual(ear);
       expect(NODE_FRAME.parse({ type: 'ears', key: 'c', ear })).toEqual({
         type: 'ears',
@@ -408,6 +432,7 @@ describe('ears hosted for the hub', () => {
     });
     expect(REMOTE_EAR_NODE_MESSAGE.safeParse({ kind: 'mic', pcm: PCM }).success).toBe(false);
     expect(REMOTE_EAR_NODE_MESSAGE.safeParse({ kind: 'level', dbfs: -30 }).success).toBe(false);
+    expect(REMOTE_EAR_NODE_MESSAGE.safeParse({ kind: 'closed', extra: 1 }).success).toBe(false);
     expect(NODE_FRAME.safeParse({ type: 'ears', key: '', ear: near }).success).toBe(false);
   });
 

@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval';
 import type { ApprovalRequestEvent } from '@deepseek-ai/dsh-user-approval/types';
+import type { HarnessPlatform } from '@smarteverything/domain';
 import type { HarnessHost } from '../../src/host/contracts';
 import type { HarnessRuntime } from '../../src/host/runtime';
 import type { HarnessRuntimeEvent } from '../../src/host/events';
@@ -44,6 +45,7 @@ export const EMPTY_CONFIGURATION: HarnessDesiredConfiguration = {
 
 export interface BootOptions {
   readonly target?: HarnessHost['target'];
+  readonly platform?: HarnessPlatform;
   readonly approval?: ApprovalOutcome;
   readonly interactions?: HarnessInteractionPort;
   readonly serverToolAccess?: HarnessServerToolAccess;
@@ -59,7 +61,7 @@ interface Scratch {
   readonly host: HarnessHost;
 }
 
-async function scratch(target: HarnessHost['target']): Promise<Scratch> {
+async function scratch(boot: BootOptions): Promise<Scratch> {
   const directory = await mkdtemp(join(tmpdir(), 'harness-test-'));
   const workspace = join(directory, 'home');
   await mkdir(workspace);
@@ -67,9 +69,9 @@ async function scratch(target: HarnessHost['target']): Promise<Scratch> {
     directory,
     workspace,
     host: {
-      target,
+      target: boot.target ?? { kind: 'device', device_id: randomUUID() },
       name: 'Test machine',
-      platform: 'linux',
+      platform: boot.platform ?? 'linux',
       homeDirectory: workspace,
       stateDirectory: join(directory, 'state'),
     },
@@ -103,9 +105,7 @@ function installRoutes(
 }
 
 export async function bootRuntime(boot: BootOptions = {}): Promise<RuntimeFixture> {
-  const { directory, workspace, host } = await scratch(
-    boot.target ?? { kind: 'device', device_id: randomUUID() },
-  );
+  const { directory, workspace, host } = await scratch(boot);
   const persistence = new MemoryPersistence();
   const model = new ScriptedModel();
   const events: HarnessRuntimeEvent[] = [];

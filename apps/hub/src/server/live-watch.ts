@@ -3,23 +3,42 @@ import {
   type ClientRow,
   type ComputerLiveNotice,
   type ComputerPartsUpdate,
+  type BrushLiveNotice,
   type PhoneDetailNotice,
+  type TreadmillLiveNotice,
   type ProcessWindow,
   mergeProcessUpdates,
+  type AutomationTraceNotice,
+  type AutomationWatchMessage,
+  type TraceNodeStateNotice,
   type WatchDemand,
   type WatchMessage,
+  TRACE_TOPIC,
+  demandSubject,
+  traceSubject,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { pickParts } from '../computers/computer-view';
 import { deviceTarget, type ViewLease, type Viewers } from '../metrics/viewers';
 import type { WebSocket } from 'ws';
 
-export type WatchNotice = ComputerLiveNotice | PhoneDetailNotice;
+export type DeviceNotice =
+  ComputerLiveNotice | PhoneDetailNotice | TreadmillLiveNotice | BrushLiveNotice;
+
+export type WatchNotice = DeviceNotice;
+
+type AnyNotice = DeviceNotice | AutomationTraceNotice;
+
+export interface TraceSource {
+  readonly viewers: Pick<Viewers<ProcessWindow>, 'hold' | 'release'>;
+  readonly allowed: (client: ClientRow, subject: string) => boolean;
+  readonly keyframe: (subject: string, client: ClientRow) => AutomationTraceNotice | null;
+}
 
 export interface WatchSource {
   readonly viewers: Pick<Viewers<ProcessWindow>, 'hold' | 'release'>;
   readonly allowed: (client: ClientRow, deviceId: string) => boolean;
-  readonly keyframe: (deviceId: string, client: ClientRow) => WatchNotice | null;
+  readonly keyframe: (deviceId: string, client: ClientRow) => DeviceNotice | null;
 }
 
 export interface WatchConnection {
@@ -30,15 +49,69 @@ export interface WatchConnection {
 
 export interface LiveWatchOptions<Subscriber extends WatchConnection> {
   readonly send: (connection: Subscriber, notice: WatchNotice) => void;
+  readonly sendTrace?: (connection: Subscriber, notice: AutomationTraceNotice) => void;
   readonly log: Logger;
 }
 
-interface Watching {
-  readonly topics: ReadonlyMap<string, ReadonlySet<string>>;
-  readonly pending: Map<string, WatchNotice>;
+type Topics = ReadonlyMap<string, ReadonlySet<string>>;
+
+interface Family {
+  readonly topics: Topics;
+  readonly leases: readonly ViewLease<ProcessWindow>[];
 }
 
-const NO_TOPICS: ReadonlyMap<string, ReadonlySet<string>> = new Map();
+type FamilyName = 'devices' | 'traces';
+
+interface Watching {
+  readonly devices: Family;
+  readonly traces: Family;
+  readonly topics: Topics;
+  readonly pending: Map<string, WatchNotice>;
+  readonly traceNodes: Map<string, TraceNodeStateNotice>;
+}
+
+const NO_TOPICS: Topics = new Map();
+const NO_FAMILY: Family = { topics: NO_TOPICS, leases: [] };
+
+function isTrace(notice: AnyNotice): notice is AutomationTraceNotice {
+  return notice.type.startsWith('trace_');
+}
+
+function subjectsOf(notice: AnyNotice): string[] {
+  if (!isTrace(notice)) return [deviceTarget(notice.deviceId)];
+  return 'runId' in notice
+    ? [traceSubject('automation', notice.automationId), traceSubject('run', notice.runId)]
+    : [traceSubject('automation', notice.automationId)];
+}
+
+function topicsFor(known: Topics, subjects: readonly string[]): ReadonlySet<string> | undefined {
+  for (const subject of subjects) {
+    const topics = known.get(subject);
+    if (topics !== undefined) return topics;
+  }
+  return undefined;
+}
+
+function traceNodeKey(notice: TraceNodeStateNotice): string {
+  return `${notice.runId}\u0000${notice.path}`;
+}
+
+function withFamily(known: Watching | undefined, name: FamilyName, family: Family): Watching {
+  const base: Watching = known ?? {
+    devices: NO_FAMILY,
+    traces: NO_FAMILY,
+    topics: NO_TOPICS,
+    pending: new Map<string, WatchNotice>(),
+    traceNodes: new Map<string, TraceNodeStateNotice>(),
+  };
+  const devices = name === 'devices' ? family : base.devices;
+  const traces = name === 'traces' ? family : base.traces;
+  return { ...base, devices, traces, topics: allTopics(devices.topics, traces.topics) };
+}
+
+function allTopics(devices: Topics, traces: Topics): Topics {
+  return new Map([...devices, ...traces]);
+}
 
 function holderOf(connection: WatchConnection): string {
   return `live:${String(connection.id)}`;
@@ -47,11 +120,16 @@ function holderOf(connection: WatchConnection): string {
 function topicsOf(demands: readonly WatchDemand[]): Map<string, Set<string>> {
   const topics = new Map<string, Set<string>>();
   for (const demand of demands) {
-    const known = topics.get(demand.deviceId) ?? new Set<string>();
+    const subject = deviceTarget(demand.deviceId);
+    const known = topics.get(subject) ?? new Set<string>();
     demand.topics.forEach((topic) => known.add(topic));
-    topics.set(demand.deviceId, known);
+    topics.set(subject, known);
   }
   return topics;
+}
+
+function traceLeasesOf(subjects: Iterable<string>): ViewLease<ProcessWindow>[] {
+  return [...subjects].map((subject) => ({ target: subject, topic: TRACE_TOPIC }));
 }
 
 function leasesOf(demands: readonly WatchDemand[]): ViewLease<ProcessWindow>[] {
@@ -75,8 +153,15 @@ function coveredParts(
   return pickParts(parts, (name) => name === 'session' || topics.has(name));
 }
 
-function covered(notice: WatchNotice, topics: ReadonlySet<string>): WatchNotice | null {
-  if (notice.type === 'phone_detail') return topics.has(PHONE_DETAIL_TOPIC) ? notice : null;
+function covered(notice: AnyNotice, topics: ReadonlySet<string>): AnyNotice | null {
+  if (isTrace(notice)) return topics.has(TRACE_TOPIC) ? notice : null;
+  if (
+    notice.type === 'phone_detail' ||
+    notice.type === 'treadmill_live' ||
+    notice.type === 'toothbrush_live'
+  ) {
+    return topics.has(PHONE_DETAIL_TOPIC) ? notice : null;
+  }
   const parts = coveredParts(notice.parts, topics);
   return Object.keys(parts).length === 0 ? null : { ...notice, parts };
 }
@@ -92,7 +177,7 @@ function mergedComputer(older: ComputerLiveNotice, newer: ComputerLiveNotice): C
   };
 }
 
-function merged(older: WatchNotice | undefined, newer: WatchNotice): WatchNotice {
+function merged(older: WatchNotice | undefined, newer: DeviceNotice): WatchNotice {
   if (older?.type === 'computer_live' && newer.type === 'computer_live') {
     return mergedComputer(older, newer);
   }
@@ -104,6 +189,7 @@ function merged(older: WatchNotice | undefined, newer: WatchNotice): WatchNotice
 
 export class LiveWatch<Subscriber extends WatchConnection> {
   private readonly sources = new Set<WatchSource>();
+  private readonly traceSources = new Set<TraceSource>();
   private readonly watching = new Map<Subscriber, Watching>();
 
   constructor(private readonly options: LiveWatchOptions<Subscriber>) {}
@@ -112,6 +198,13 @@ export class LiveWatch<Subscriber extends WatchConnection> {
     this.sources.add(source);
     return (): void => {
       this.sources.delete(source);
+    };
+  }
+
+  attachTrace(source: TraceSource): () => void {
+    this.traceSources.add(source);
+    return (): void => {
+      this.traceSources.delete(source);
     };
   }
 
@@ -124,13 +217,8 @@ export class LiveWatch<Subscriber extends WatchConnection> {
     const demands = message.demands.filter((demand) =>
       sources.some((source) => source.allowed(connection.client, demand.deviceId)),
     );
-    const before = this.watching.get(connection)?.topics ?? NO_TOPICS;
     const topics = topicsOf(demands);
-    new Set(sources.map((source) => source.viewers)).forEach((viewers) => {
-      viewers.hold(holderOf(connection), leasesOf(demands));
-    });
-    const pending = this.watching.get(connection)?.pending ?? new Map<string, WatchNotice>();
-    this.watching.set(connection, { topics, pending });
+    this.replace(connection, 'devices', { topics, leases: leasesOf(demands) });
     this.options.log.debug('live.watch_changed', () => ({
       socketId: connection.id,
       clientId: connection.client.id,
@@ -138,23 +226,54 @@ export class LiveWatch<Subscriber extends WatchConnection> {
       topics: demands.reduce((count, demand) => count + demand.topics.length, 0),
       denied: message.demands.length - demands.length,
     }));
-    this.sendKeyframes(connection, before, topics);
+  }
+
+  receiveTrace(connection: Subscriber, message: AutomationWatchMessage): void {
+    const sources = [...this.traceSources];
+    if (sources.length === 0 || this.options.sendTrace === undefined) {
+      this.options.log.warn('live.trace_unwired', {
+        socketId: connection.id,
+        sources: sources.length,
+        sender: this.options.sendTrace !== undefined,
+      });
+      return;
+    }
+    const subjects = new Set(
+      message.demands
+        .map(demandSubject)
+        .filter((subject) => sources.some((source) => source.allowed(connection.client, subject))),
+    );
+    this.replace(connection, 'traces', {
+      topics: new Map([...subjects].map((subject) => [subject, new Set([TRACE_TOPIC])])),
+      leases: traceLeasesOf(subjects),
+    });
+    this.options.log.debug('live.trace_watch_changed', () => ({
+      socketId: connection.id,
+      clientId: connection.client.id,
+      subjects: subjects.size,
+      denied: message.demands.length - subjects.size,
+    }));
   }
 
   close(connection: Subscriber): void {
     if (!this.watching.delete(connection)) return;
-    new Set([...this.sources].map((source) => source.viewers)).forEach((viewers) => {
+    this.viewersOf().forEach((viewers) => {
       viewers.release(holderOf(connection));
     });
   }
 
-  publish(notice: WatchNotice): void {
-    this.publishEach(notice.deviceId, () => notice);
+  publish(notice: AnyNotice): void {
+    const subjects = subjectsOf(notice);
+    for (const [connection, watching] of this.watching) {
+      const topics = topicsFor(watching.topics, subjects);
+      const wanted = topics === undefined ? null : covered(notice, topics);
+      if (wanted !== null) this.deliver(connection, watching, wanted);
+    }
   }
 
-  publishEach(deviceId: string, noticeFor: (client: ClientRow) => WatchNotice | null): void {
+  publishEach(deviceId: string, noticeFor: (client: ClientRow) => DeviceNotice | null): void {
     for (const [connection, watching] of this.watching) {
-      const topics = watching.topics.get(deviceId);
+      const topics = watching.topics.get(deviceTarget(deviceId));
       if (topics === undefined) continue;
       const notice = noticeFor(connection.client);
       const wanted = notice === null ? null : covered(notice, topics);
@@ -162,23 +281,50 @@ export class LiveWatch<Subscriber extends WatchConnection> {
     }
   }
 
-  private sendKeyframes(
-    connection: Subscriber,
-    before: ReadonlyMap<string, ReadonlySet<string>>,
-    topics: ReadonlyMap<string, ReadonlySet<string>>,
-  ): void {
-    for (const [deviceId, wanted] of topics) {
-      const fresh = new Set(
-        [...wanted].filter((topic) => before.get(deviceId)?.has(topic) !== true),
-      );
-      if (fresh.size === 0) continue;
-      const keyframe = this.keyframeOf(deviceId, connection.client);
-      const cut = keyframe === null ? null : covered(keyframe, fresh);
-      if (cut !== null) this.options.send(connection, cut);
+  private viewersOf(): Set<Pick<Viewers<ProcessWindow>, 'hold' | 'release'>> {
+    return new Set([
+      ...[...this.sources].map((source) => source.viewers),
+      ...[...this.traceSources].map((source) => source.viewers),
+    ]);
+  }
+
+  private replace(connection: Subscriber, name: FamilyName, family: Family): void {
+    const known = this.watching.get(connection);
+    const before = known?.topics ?? NO_TOPICS;
+    const next = withFamily(known, name, family);
+    this.watching.set(connection, next);
+    this.hold(connection, next);
+    this.sendKeyframes(connection, before, next.topics);
+  }
+
+  private hold(connection: Subscriber, watching: Watching): void {
+    const holder = holderOf(connection);
+    const deviceViewers = new Set([...this.sources].map((source) => source.viewers));
+    const traceViewers = new Set([...this.traceSources].map((source) => source.viewers));
+    for (const viewers of new Set([...deviceViewers, ...traceViewers])) {
+      const leases: ViewLease<ProcessWindow>[] = [
+        ...(deviceViewers.has(viewers) ? watching.devices.leases : []),
+        ...(traceViewers.has(viewers) ? watching.traces.leases : []),
+      ];
+      viewers.hold(holder, leases);
     }
   }
 
-  private keyframeOf(deviceId: string, client: ClientRow): WatchNotice | null {
+  private sendKeyframes(connection: Subscriber, before: Topics, topics: Topics): void {
+    for (const [subject, wanted] of topics) {
+      const fresh = new Set(
+        [...wanted].filter((topic) => before.get(subject)?.has(topic) !== true),
+      );
+      if (fresh.size === 0) continue;
+      const keyframe = this.keyframeOf(subject, connection.client);
+      const cut = keyframe === null ? null : covered(keyframe, fresh);
+      if (cut !== null) this.emit(connection, cut);
+    }
+  }
+
+  private keyframeOf(subject: string, client: ClientRow): AnyNotice | null {
+    if (!subject.startsWith('device:')) return this.traceKeyframeOf(subject, client);
+    const deviceId = subject.slice('device:'.length);
     for (const source of this.sources) {
       const keyframe = source.keyframe(deviceId, client);
       if (keyframe !== null) return keyframe;
@@ -186,13 +332,55 @@ export class LiveWatch<Subscriber extends WatchConnection> {
     return null;
   }
 
-  private deliver(connection: Subscriber, watching: Watching, notice: WatchNotice): void {
-    const waiting = merged(watching.pending.get(notice.deviceId), notice);
-    if (connection.socket.bufferedAmount > SOCKET_BACK_PRESSURE_BYTES) {
-      watching.pending.set(notice.deviceId, waiting);
+  private traceKeyframeOf(subject: string, client: ClientRow): AutomationTraceNotice | null {
+    for (const source of this.traceSources) {
+      const keyframe = source.keyframe(subject, client);
+      if (keyframe !== null) return keyframe;
+    }
+    return null;
+  }
+
+  private deliver(connection: Subscriber, watching: Watching, notice: AnyNotice): void {
+    if (isTrace(notice)) {
+      this.deliverTrace(connection, watching, notice);
       return;
     }
-    watching.pending.delete(notice.deviceId);
+    const key = notice.deviceId;
+    const waiting = merged(watching.pending.get(key), notice);
+    if (connection.socket.bufferedAmount > SOCKET_BACK_PRESSURE_BYTES) {
+      watching.pending.set(key, waiting);
+      return;
+    }
+    watching.pending.delete(key);
     this.options.send(connection, waiting);
+  }
+
+  private deliverTrace(
+    connection: Subscriber,
+    watching: Watching,
+    notice: AutomationTraceNotice,
+  ): void {
+    if (notice.type === 'trace_node_state') {
+      watching.traceNodes.set(traceNodeKey(notice), notice);
+      if (connection.socket.bufferedAmount <= SOCKET_BACK_PRESSURE_BYTES) {
+        this.flushTrace(connection, watching);
+      }
+      return;
+    }
+    this.flushTrace(connection, watching);
+    this.emit(connection, notice);
+  }
+
+  private emit(connection: Subscriber, notice: AnyNotice): void {
+    if (isTrace(notice)) this.options.sendTrace?.(connection, notice);
+    else this.options.send(connection, notice);
+  }
+
+  private flushTrace(connection: Subscriber, watching: Watching): void {
+    const waiting = [...watching.traceNodes.values()];
+    watching.traceNodes.clear();
+    waiting.forEach((notice) => {
+      this.emit(connection, notice);
+    });
   }
 }

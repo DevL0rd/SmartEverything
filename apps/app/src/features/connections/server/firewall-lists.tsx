@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
-import type { FirewallStatus, LowPorts } from '@smarteverything/domain';
+import { ruleText, type FirewallStatus, type LowPorts } from '@smarteverything/domain';
 import { Badge } from '../../../components/badge';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { useStoreSelector } from '../../../store/store-context';
-import { OPENING_LOOK, REACH_LOOK, openingTitle, ruleText } from '../model/firewall';
+import { OPENING_LOOK, REACH_LOOK, openingTitle } from '../model/firewall';
 
 const PURPOSE_ICON = {
   webrtc: 'film',

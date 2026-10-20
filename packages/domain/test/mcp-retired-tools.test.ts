@@ -108,11 +108,11 @@ describe('retired tool names', () => {
     });
     expect(currentToolCall('read_automation_sequence', { sequenceId: 's1' })).toStrictEqual({
       name: 'list_automations',
-      arguments: {},
+      arguments: { automationId: 's1', view: 'full' },
     });
     expect(currentToolCall('list_automation_sequences', {})).toStrictEqual({
       name: 'list_automations',
-      arguments: {},
+      arguments: { view: 'summary' },
     });
     expect(currentToolCall('update_device', { what: 'camera', deviceId: 'd1' })).toStrictEqual({
       name: 'edit_device',

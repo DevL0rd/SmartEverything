@@ -1,6 +1,10 @@
 import { memo, type ReactNode } from 'react';
 import { isCamera } from '@smarteverything/domain';
-import type { WidgetDefinition, WidgetFrameBox } from '../../../components/widget-board';
+import {
+  renderWidget,
+  type WidgetDefinition,
+  type WidgetFrameBox,
+} from '../../../components/widget-board';
 import type { Device } from '../../../store/state';
 import { CAMERA_WIDGETS } from '../../cameras';
 import { DeviceSpotlightWidget } from '../../devices';
@@ -17,7 +21,11 @@ function Cell({
   readonly frame: WidgetFrameBox;
 }): ReactNode {
   if (isCamera(device) && CAMERA !== undefined) {
-    return CAMERA.render({ size: 'M', options: { deviceId: device.id }, editing: false, frame });
+    return renderWidget(
+      CAMERA,
+      { size: 'M', options: { deviceId: device.id }, editing: false, frame },
+      null,
+    );
   }
   return <DeviceSpotlightWidget deviceId={device.id} size="M" editing={false} frame={frame} />;
 }

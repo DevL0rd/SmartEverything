@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { PREFS, savePref } from '../../../store/prefs';
 import type { SettingContext, SettingDefinition, SettingEnv } from '../../../settings/types';
+import { CAMERA_NOTIFICATION_SETTINGS } from './camera-notification-settings';
 import {
   MuteRingsRow,
   PhonePushRow,
@@ -91,6 +92,7 @@ export const NOTIFICATION_SETTINGS: readonly SettingDefinition[] = [
     row: true,
     render: () => createElement(MuteRingsRow),
   },
+  ...CAMERA_NOTIFICATION_SETTINGS,
   {
     id: 'push_service.purpose',
     page: SERVICE,

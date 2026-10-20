@@ -1,3 +1,4 @@
+import { DEFAULT_PAUSE_MS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EndOfSpeechPause } from '../../src/listening/end-of-speech-pause';
 import { testStore, type TestStore } from '../support/store';
@@ -17,7 +18,7 @@ afterEach(async () => {
 
 describe('the end-of-speech pause', () => {
   it('starts at the default and follows the saved setting', () => {
-    expect(pause.ms()).toBe(200);
+    expect(pause.ms()).toBe(DEFAULT_PAUSE_MS);
     opened.store.settings.setEndOfSpeechPause(1000);
     expect(pause.ms()).toBe(1000);
   });
@@ -25,10 +26,10 @@ describe('the end-of-speech pause', () => {
   it('tells listeners once per real change', () => {
     const told: number[] = [];
     pause.onChange((ms) => told.push(ms));
-    opened.store.settings.setEndOfSpeechPause(640);
-    opened.store.settings.setEndOfSpeechPause(640);
+    opened.store.settings.setEndOfSpeechPause(1000);
+    opened.store.settings.setEndOfSpeechPause(1000);
     opened.store.settings.updateHome({ home_name: 'Flat' });
-    expect(told).toEqual([640]);
+    expect(told).toEqual([1000]);
   });
 
   it('stops telling a listener that left', () => {

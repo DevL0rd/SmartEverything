@@ -4,11 +4,14 @@ import {
   type AccessRequestRow,
   type NewAccessRequest,
 } from '@smarteverything/domain';
+import { z } from 'zod';
 import { found, type StoreContext } from '../context';
 import { StoreConflictError } from '../sql';
 
+const NEXT_LAPSE = z.object({ until: z.string().nullable() });
+
 const COLUMNS =
-  'id, profile_id, kind, target, note, status, until, requested_at, decided_at, decided_by';
+  'id, profile_id, kind, target, note, status, until, requested_at, decided_at, lapsed_at, decided_by';
 
 export class AccessRequestsRepository {
   constructor(private readonly context: StoreContext) {}
@@ -61,13 +64,17 @@ export class AccessRequestsRepository {
       if (before.status !== 'pending') {
         throw new StoreConflictError('decide the request', `it was already ${before.status}`);
       }
+      if (before.target !== null && decision.target !== null && decision.target !== before.target) {
+        throw new StoreConflictError('decide the request', 'it already names what was asked for');
+      }
       this.context.sql.run(
         'decide the access request',
         `update access_requests set status = $status, until = $until, decided_at = $now,
-           decided_by = $decidedBy where id = $id`,
+           decided_by = $decidedBy, target = coalesce(target, $target) where id = $id`,
         {
           id,
           status: decision.approve ? 'approved' : 'denied',
+          target: decision.target,
           until: decision.approve ? decision.until : null,
           now: this.context.now(),
           decidedBy,
@@ -75,5 +82,42 @@ export class AccessRequestsRepository {
       );
       return this.byId(id);
     });
+  }
+
+  lapsing(now: string): AccessRequestRow[] {
+    return this.context.sql.all(
+      ACCESS_REQUEST_ROW,
+      `select ${COLUMNS} from access_requests
+       where status = 'approved' and until is not null and lapsed_at is null and until <= $now
+       order by until, rowid`,
+      { now },
+    );
+  }
+
+  nextLapse(now: string): string | undefined {
+    return (
+      this.context.sql.get(
+        NEXT_LAPSE,
+        `select min(until) as until from access_requests
+       where status = 'approved' and until is not null and lapsed_at is null and until > $now`,
+        { now },
+      )?.until ?? undefined
+    );
+  }
+
+  keepForGood(id: string): void {
+    this.context.sql.run(
+      'make the access grant permanent',
+      'update access_requests set until = null where id = $id and lapsed_at is null',
+      { id },
+    );
+  }
+
+  markLapsed(id: string): void {
+    this.context.sql.run(
+      'mark the access grant as ended',
+      'update access_requests set lapsed_at = $now where id = $id and lapsed_at is null',
+      { id, now: this.context.now() },
+    );
   }
 }

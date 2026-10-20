@@ -120,13 +120,47 @@ describe('person access repositories', () => {
     const decided = store.accessRequests.decide(request.id, ownerPerson, {
       approve: true,
       until: '2026-10-19T10:00:00.000Z',
+      target: null,
     });
     expect(decided).toMatchObject({ status: 'approved', until: '2026-10-19T10:00:00.000Z' });
     expect(() =>
-      store.accessRequests.decide(request.id, ownerPerson, { approve: false, until: null }),
+      store.accessRequests.decide(request.id, ownerPerson, {
+        approve: false,
+        until: null,
+        target: null,
+      }),
     ).toThrow(StoreConflictError);
     expect(store.accessRequests.list('pending')).toHaveLength(0);
     expect(store.accessRequests.list(undefined, sam.id)).toHaveLength(1);
+  });
+
+  it('names the target on approval and finds the grants whose end time has come once', () => {
+    const { store } = opened;
+    const sam = store.profiles.create({ name: 'Sam' });
+    const open = store.accessRequests.create(sam.id, { kind: 'area', target: null, note: '' });
+    const timed = store.accessRequests.decide(open.id, ownerPerson, {
+      approve: true,
+      until: '2026-10-19T10:00:00.000Z',
+      target: 'health',
+    });
+    expect(timed.target).toBe('health');
+    const forever = store.accessRequests.create(sam.id, { kind: 'area', target: 'home', note: '' });
+    store.accessRequests.decide(forever.id, ownerPerson, {
+      approve: true,
+      until: null,
+      target: null,
+    });
+    expect(store.accessRequests.nextLapse('2026-10-18T10:00:00.000Z')).toBe(
+      '2026-10-19T10:00:00.000Z',
+    );
+    expect(store.accessRequests.lapsing('2026-10-19T09:59:59.000Z')).toStrictEqual([]);
+    expect(
+      store.accessRequests.lapsing('2026-10-19T10:00:00.000Z').map((row) => row.id),
+    ).toStrictEqual([timed.id]);
+    store.accessRequests.markLapsed(timed.id);
+    expect(store.accessRequests.lapsing('2026-10-20T10:00:00.000Z')).toStrictEqual([]);
+    expect(store.accessRequests.nextLapse('2026-10-18T10:00:00.000Z')).toBeUndefined();
+    expect(store.accessRequests.byId(timed.id).lapsed_at).not.toBeNull();
   });
 
   it('binds a pairing to a person and gives the claimed device that person', () => {

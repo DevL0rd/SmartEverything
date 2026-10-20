@@ -15,6 +15,9 @@ import android.webkit.ConsoleMessage
 import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.util.UUID
+import android.os.SystemClock
+import android.view.KeyEvent
+import org.json.JSONArray
 import org.json.JSONObject
 
 class HubBrowserDiagnostics(private val view: WebView, private val owner: () -> Boolean, private val activity: () -> Activity?, private val profile: () -> Any?, private val restore: suspend () -> Unit, private val deliver: (Map<String, Any?>) -> Unit, private val refusal: (String) -> Unit) {
@@ -209,12 +212,29 @@ class HubBrowserDiagnostics(private val view: WebView, private val owner: () -> 
     val visible = Rect()
     check(view.width == bitmap.width && view.height == bitmap.height && location[0] == bounds.left && location[1] == bounds.top && view.getGlobalVisibleRect(visible) && visible.width() == bitmap.width && visible.height() == bitmap.height) { "The preview viewport layout changed during capture" }
   }
+  private suspend fun evaluate(code: String): String = suspendCoroutine { continuation ->
+    view.evaluateJavascript(code) { result -> continuation.resume(result ?: "null") }
+  }
+  private fun press(key: String, modifiers: JSONArray) {
+    val code = HubBrowserKeys.keyCode(key) ?: error("The key $key cannot be pressed in this browser")
+    val meta = HubBrowserKeys.metaState(List(modifiers.length()) { modifiers.getString(it) })
+    val now = SystemClock.uptimeMillis()
+    view.requestFocus()
+    view.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0, meta))
+    view.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0, meta))
+  }
   @Synchronized fun close() { view.removeCallbacks(flush); synchronized(views) { if (views[id] === this) views.remove(id) }; pending.clear(); records.clear(); requested = false; epochPending = false }
   companion object {
     private fun storageSupported(): Boolean = Class.forName("androidx.webkit.WebViewFeature").getMethod("isFeatureSupported", String::class.java).invoke(null, "DELETE_BROWSING_DATA") == true
     @Volatile private var rawVersion = 1
     private val views = mutableMapOf<String, HubBrowserDiagnostics>()
     fun replayAll(version: Int) { require(version == 1 || version == 2); rawVersion = version; synchronized(views) { views.values.toList() }.forEach { it.replay() } }
+    private fun viewOf(id: String): HubBrowserDiagnostics = synchronized(views) { views[id] } ?: error("This browser was closed")
+    suspend fun evaluate(id: String, code: String): String = viewOf(id).evaluate(code)
+    fun press(id: String, json: String) {
+      val input = JSONObject(json)
+      viewOf(id).press(input.getString("key"), input.getJSONArray("modifiers"))
+    }
     suspend fun perform(json: String): Map<String, Any>? {
       val input = JSONObject(json); require(input.length() == 3)
       val value = synchronized(views) { views[input.getString("id")] } ?: error("This preview was closed")

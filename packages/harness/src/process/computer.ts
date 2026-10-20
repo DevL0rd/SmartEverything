@@ -9,11 +9,8 @@ import { ProcessSubscriptions } from './subscriptions';
 import { ComputerModelRoutes } from './computer-models';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { Logger } from '@smarteverything/logging';
 import {
-  HARNESS_CONFIGURATION_CAPABILITY,
-  HARNESS_SUBSCRIPTION_CAPABILITY,
-  AI_PREVIEW_CAPABILITY,
-  AI_PREVIEW_FILE_CAPABILITY,
   NODE_HARNESS_FRAME,
   HARNESS_PUBLICATION,
   HARNESS_PLUGIN_AGENT_RESULT,
@@ -29,6 +26,7 @@ import type {
   NodeHarnessFrame,
 } from '@smarteverything/domain';
 import { HarnessRuntimeError } from '../host/errors';
+import { HOST_PLATFORM, hostCapabilities } from '../host/host-platforms';
 import { HARNESS_BOOT, processHarnessHost } from './boot';
 import type { HarnessBoot } from './boot';
 import { HarnessHub, type HarnessCallPort } from './http';
@@ -44,6 +42,11 @@ import { transferAttachments } from './attachments';
 import { createHarnessDispatcher, type HarnessDispatcher } from './dispatcher';
 
 const DONE = z.object({ ok: z.literal(true) });
+const log = new Logger('hub.harness');
+interface SubscriptionSupply {
+  readonly subscriptions: ProcessSubscriptions;
+  readonly supplier: SubscriptionInferenceSupplier;
+}
 export class ComputerHarness {
   private stopped = false;
   private readonly sessions = new Map<string, number>();
@@ -54,8 +57,7 @@ export class ComputerHarness {
     private readonly ports: {
       readonly abort: AbortController;
       readonly models: ComputerModelRoutes;
-      readonly subscriptions: ProcessSubscriptions;
-      readonly supplier: SubscriptionInferenceSupplier;
+      readonly supply: SubscriptionSupply | null;
       readonly configuration: ProcessHarnessConfiguration;
     },
   ) {}
@@ -100,26 +102,34 @@ export class ComputerHarness {
         'Computer execution channel was lost during admission.',
       );
   }
-  subscription(request: HarnessSubscriptionRequest): Promise<AiSubscriptionHostStatus> {
-    this.assertConnected();
-    return this.ports.subscriptions.control(request);
+  private supplying(): SubscriptionSupply {
+    if (this.ports.supply === null)
+      throw new HarnessRuntimeError(
+        'capability_unsupported',
+        'This computer does not supply subscription accounts.',
+      );
+    return this.ports.supply;
   }
-  inference(
+  async subscription(request: HarnessSubscriptionRequest): Promise<AiSubscriptionHostStatus> {
+    this.assertConnected();
+    return await this.supplying().subscriptions.control(request);
+  }
+  async inference(
     id: string,
     request: SubscriptionInferenceRequest,
     send: (result: SubscriptionInferenceResult) => Promise<void>,
   ): Promise<void> {
     this.assertConnected();
-    return this.ports.supplier.start(id, request, send);
+    await this.supplying().supplier.start(id, request, send);
   }
   inferenceCredit(id: string, sequence: number): void {
-    this.ports.supplier.credit(id, sequence);
+    this.supplying().supplier.credit(id, sequence);
   }
   inferenceCancel(id: string): void {
-    this.ports.supplier.cancel(id);
+    this.supplying().supplier.cancel(id);
   }
-  reconnectSubscriptions(): Promise<void> {
-    return this.ports.subscriptions.reconnect();
+  async reconnectSubscriptions(): Promise<void> {
+    await this.ports.supply?.subscriptions.reconnect();
   }
   async configure(configuration: HarnessDesiredConfiguration): Promise<void> {
     this.assertConnected();
@@ -136,10 +146,10 @@ export class ComputerHarness {
     if (this.stopped) return;
     this.stopped = true;
     this.ports.configuration.stop();
-    this.ports.supplier.stop();
+    this.ports.supply?.supplier.stop();
     this.ports.abort.abort('Computer execution channel lost; effects may be unknown.');
     for (const id of this.sessions.keys()) this.persistence.lose(id);
-    await this.ports.subscriptions.stop();
+    await this.ports.supply?.subscriptions.stop();
     await this.dispatcher.dispose();
   }
 }
@@ -167,12 +177,12 @@ export async function createComputerHarness(
     });
   const http = new HarnessHub(boot, port, fetcher);
   const persistence = new HubSessionLog(http);
-  const subscriptions = await ProcessSubscriptions.open(
+  const supply = await openSupply(
     boot,
     publishSubscription ?? subscriptionPublisher(http),
     fetcher,
   );
-  const models = new ComputerModelRoutes(boot, persistence, fetcher, subscriptions);
+  const models = new ComputerModelRoutes(boot, persistence, fetcher, supply?.subscriptions ?? null);
   const configuration = new ProcessHarnessConfiguration(http);
   const dispatcher = await composeComputer({
     boot,
@@ -183,14 +193,33 @@ export async function createComputerHarness(
     ...(preview === undefined ? {} : { preview }),
   });
   configuration.bind(dispatcher.runtime);
-  const hello = computerHello(boot, dispatcher, preview !== undefined);
+  const hello = computerHello(boot, dispatcher, preview !== undefined, supply !== null);
+  if (HOST_PLATFORM[boot.platform].sandbox === 'partial')
+    log.warn('harness.sandbox_partial', { platform: boot.platform });
   return new ComputerHarness(hello, dispatcher, persistence, {
     abort,
     models,
     configuration,
+    supply,
+  });
+}
+async function openSupply(
+  boot: HarnessBoot,
+  publish: (status: AiSubscriptionHostStatus) => Promise<void>,
+  fetcher: typeof fetch,
+): Promise<SubscriptionSupply | null> {
+  const storage = HOST_PLATFORM[boot.platform].subscriptionStorage;
+  if (storage === null) return null;
+  const subscriptions = await ProcessSubscriptions.open(
+    boot,
+    storage(join(boot.state_directory, 'subscriptions')),
+    publish,
+    fetcher,
+  );
+  return {
     subscriptions,
     supplier: new SubscriptionInferenceSupplier(boot.device_id, subscriptions),
-  });
+  };
 }
 function composeComputer(input: {
   readonly preview?: NativePreviewAdapter;
@@ -244,26 +273,25 @@ function computerHello(
   boot: HarnessBoot,
   dispatcher: HarnessDispatcher,
   preview: boolean,
+  supplies: boolean,
 ): Extract<NodeHarnessFrame, { type: 'harness_hello' }> {
+  const { sandbox } = HOST_PLATFORM[boot.platform];
   return NODE_HARNESS_FRAME.options[0].parse({
     device_id: boot.device_id,
     generation: boot.generation,
     runtime_instance: boot.runtime_instance,
     type: 'harness_hello',
     protocol: 1,
-    capabilities: [
-      HARNESS_CONFIGURATION_CAPABILITY,
-      HARNESS_SUBSCRIPTION_CAPABILITY,
-      ...(preview ? [AI_PREVIEW_CAPABILITY, AI_PREVIEW_FILE_CAPABILITY] : []),
-    ],
+    capabilities: hostCapabilities(boot.platform, preview),
     manifest: {
       ...dispatcher.runtime.manifest(),
-      subscription_inference: { protocol: 1 },
+      ...(supplies ? { subscription_inference: { protocol: 1 } } : {}),
       subscription_consumer: { protocol: 1 },
     },
     host: {
       name: boot.name,
       platform: boot.platform,
+      ...(sandbox === null ? {} : { sandbox }),
       home_directory: boot.home_directory,
     },
   });

@@ -92,15 +92,23 @@ object CallOverlayState {
     )
   }
 
-  fun inputOf(facts: CallFacts?, wake: OverlayWake?, prefs: OverlayPrefsData, foreground: Boolean, now: Long): OverlayInput =
+  fun inputOf(
+    facts: CallFacts?,
+    wake: OverlayWake?,
+    prefs: OverlayPrefsData,
+    main: MainWindow,
+    now: Long,
+    voice: OverlayVoice? = null,
+  ): OverlayInput =
     OverlayInput(
       prefs = prefs,
-      surface = OverlaySurface.Phone(foreground),
+      surface = OverlaySurface.Phone(main),
       call = facts?.let(::callOf),
       wake = wake,
       superseded = null,
       audio = NO_AUDIO,
       hold = NO_HOLD,
+      voice = voice,
       now = now,
     )
 

@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import {
-  CLIP_SECONDS,
-  CameraService,
-  UnknownStreamError,
-  tileStreamOf,
-} from '../src/cameras/camera-service';
+import { CLIP_SECONDS, CameraService, UnknownStreamError } from '../src/cameras/camera-service';
 import { go2rtcConfig } from '../src/cameras/go2rtc-config';
 import { Go2rtcError, go2rtcClient, type Go2rtcClient } from '../src/cameras/go2rtc-client';
 import type { DeviceRecord } from '../src/database/port';
@@ -91,6 +86,50 @@ describe('go2rtc config', () => {
 describe('go2rtc client', () => {
   const base = { baseUrl: 'http://127.0.0.1:1984', username: 'hub', password: 'secret' };
   const authorization = `Basic ${Buffer.from('hub:secret').toString('base64')}`;
+
+  it('keeps a camera connected by preloading its stream with video and audio', async () => {
+    const requests: Request[] = [];
+    const client = go2rtcClient({
+      ...base,
+      fetch: recordingFetch(requests, () => new Response('{}')),
+    });
+    await client.preload(CAMERA_ID);
+    await client.unpreload(CAMERA_ID);
+    expect(requests).toStrictEqual([
+      {
+        method: 'PUT',
+        url: `/api/preload?src=${CAMERA_ID}&query=video%26audio`,
+        authorization,
+        contentType: null,
+        body: null,
+      },
+      {
+        method: 'DELETE',
+        url: `/api/preload?src=${CAMERA_ID}`,
+        authorization,
+        contentType: null,
+        body: null,
+      },
+    ]);
+  });
+
+  it('treats dropping a preload that is not there as done and still fails on any other refusal', async () => {
+    const absent = go2rtcClient({
+      ...base,
+      fetch: recordingFetch(
+        [],
+        () => new Response('streams: preload not found: x', { status: 500 }),
+      ),
+    });
+    await expect(absent.unpreload(CAMERA_ID)).resolves.toBeUndefined();
+    const broken = go2rtcClient({
+      ...base,
+      fetch: recordingFetch([], () => new Response('boom', { status: 500 })),
+    });
+    await expect(broken.unpreload(CAMERA_ID)).rejects.toMatchObject({
+      operation: 'preload.delete',
+    });
+  });
 
   it('manages streams, exchanges SDP and fetches frames and clips with basic auth', async () => {
     const requests: Request[] = [];
@@ -204,11 +243,14 @@ function fakeGo2rtc(failing: ReadonlySet<string> = new Set()): FakeGo2rtc {
     calls,
     putStream: (name, sources) => act(`put ${name} ${sources.join(' ')}`, undefined),
     deleteStream: (name) => act(`delete ${name}`, undefined),
+    preload: (name) => act(`preload ${name}`, undefined),
+    unpreload: (name) => act(`unpreload ${name}`, undefined),
     answer: (stream, offer) => act(`answer ${stream} ${offer}`, `answer-to-${offer}`),
     frame: (stream) => act(`frame ${stream}`, new Uint8Array([9])),
     consumers: () => Promise.resolve([]),
     closeConsumer: () => Promise.resolve(),
     play: () => Promise.resolve(),
+    backchannel: () => Promise.resolve(true),
     clip: (stream, seconds) => act(`clip ${stream} ${String(seconds)}`, new Uint8Array([1, 2])),
     socketOf: (stream) => ({ url: `ws://go2rtc/api/ws?src=${stream}`, authorization: 'Basic x' }),
   };
@@ -293,6 +335,7 @@ async function service(failing: ReadonlySet<string> = new Set()): Promise<Servic
     service: new CameraService({
       client: go2rtc,
       conditions: { online: () => true, privacyOn: () => false, twoWayAudio: () => false },
+      refusal: () => null,
       store: {
         ...db.database,
         storeRecording: (file, row): Promise<void> => {
@@ -316,7 +359,10 @@ describe('CameraService', () => {
     await cameras.sync([camera({})]);
     expect(go2rtc.calls).toStrictEqual([
       `put ${cameraId} rtsp://a ffmpeg:${cameraId}#video=h264`,
+      `preload ${cameraId}`,
       `put ${cameraId} rtsp://b ffmpeg:${cameraId}#video=h264`,
+      `preload ${cameraId}`,
+      `unpreload ${cameraId}`,
       `delete ${cameraId}`,
     ]);
   });
@@ -327,7 +373,9 @@ describe('CameraService', () => {
     await cameras.resync([camera({ go2rtcSource: 'rtsp://a' })]);
     expect(go2rtc.calls).toStrictEqual([
       `put ${cameraId} rtsp://a ffmpeg:${cameraId}#video=h264`,
+      `preload ${cameraId}`,
       `put ${cameraId} rtsp://a ffmpeg:${cameraId}#video=h264`,
+      `preload ${cameraId}`,
     ]);
   });
 
@@ -342,32 +390,18 @@ describe('CameraService', () => {
     expect(logs.events()).toContain('webrtc.answered');
   });
 
-  it('serves picture tiles a small second stream of a Xiaomi camera, and the full stream otherwise', async () => {
+  it('registers one stream per Xiaomi camera and serves tiles the full stream', async () => {
     const { go2rtc, service: cameras, cameraId, camera } = await service();
     const source = 'xiaomi://1:de@10.0.0.9?did=7&model=m.c.1';
     await cameras.sync([camera({ go2rtcSource: source })]);
     expect(go2rtc.calls).toStrictEqual([
       `put ${cameraId} ${source} ffmpeg:${cameraId}#video=h264`,
-      `put ${tileStreamOf(cameraId)} ${source}&subtype=sd ${source} ffmpeg:${tileStreamOf(cameraId)}#video=h264`,
+      `preload ${cameraId}`,
     ]);
     await cameras.answer(cameraId, 'offer', 'client-1', 'tile');
-    await cameras.answer(cameraId, 'offer', 'client-1', 'full');
-    expect(go2rtc.calls.slice(-2)).toStrictEqual([
-      `answer ${tileStreamOf(cameraId)} offer`,
-      `answer ${cameraId} offer`,
-    ]);
+    expect(go2rtc.calls.slice(-1)).toStrictEqual([`answer ${cameraId} offer`]);
     await cameras.sync([camera({})]);
-    expect(go2rtc.calls.slice(-2)).toStrictEqual([
-      `delete ${cameraId}`,
-      `delete ${tileStreamOf(cameraId)}`,
-    ]);
-  });
-
-  it('gives a camera without a smaller stream the full one for tiles', async () => {
-    const { go2rtc, service: cameras, cameraId, camera } = await service();
-    await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
-    await cameras.answer(cameraId, 'offer', 'client-1', 'tile');
-    expect(go2rtc.calls).toContain(`answer ${cameraId} offer`);
+    expect(go2rtc.calls.slice(-1)).toStrictEqual([`delete ${cameraId}`]);
   });
 
   it('refuses an offer for an unknown stream and lets a go2rtc failure surface', async () => {

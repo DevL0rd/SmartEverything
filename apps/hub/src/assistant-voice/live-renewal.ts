@@ -1,6 +1,10 @@
+import { Logger } from '@smarteverything/logging';
 import type { RecordedTurn } from './call-record';
-import type { LiveSession, Picture } from './gemini';
+import type { LiveSession, LiveWindow, Picture } from './gemini';
+import { catchUpCharacters } from './live-window';
 import type { ToolAnswer } from './tool-answer';
+
+const log = new Logger('hub.voice-renewal');
 
 export type RenewReason = 'tuning' | 'go_away' | 'dropped' | 'silent' | 'stalled';
 
@@ -22,8 +26,49 @@ export interface RenewalAnswer {
 
 interface Entry {
   readonly line: string;
-  readonly answer: boolean;
+  readonly tool: string | null;
   readonly pictures: readonly Picture[];
+}
+
+interface Chosen {
+  readonly lines: string[];
+  readonly left: number;
+  readonly leftChars: number;
+  readonly tooLarge: number;
+}
+
+const BROKEN_SESSION_CODES: ReadonlySet<number> = new Set([1007, 1008, 1011]);
+
+function tooLargeLine(tool: string): string {
+  return `${tool} returned a result too large to repeat here; call it again if you need it.`;
+}
+
+function leftOutLine(left: number): string {
+  return `[${String(left)} earlier ${left === 1 ? 'line' : 'lines'} of this call do not fit in your memory and are left out; ask them if you need something from before.]`;
+}
+
+function chosen(entries: readonly Entry[], budget: number): Chosen {
+  const lines: string[] = [];
+  let used = 0;
+  let tooLarge = 0;
+  let index = entries.length - 1;
+  for (; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry === undefined) break;
+    const line =
+      entry.tool !== null && entry.line.length > budget ? tooLargeLine(entry.tool) : entry.line;
+    if (used + line.length > budget) break;
+    if (line !== entry.line) tooLarge += 1;
+    used += line.length;
+    lines.unshift(line);
+  }
+  const left = entries.slice(0, index + 1);
+  return {
+    lines,
+    left: left.length,
+    leftChars: left.reduce((sum, entry) => sum + entry.line.length, 0),
+    tooLarge,
+  };
 }
 
 const SPEAKER: Readonly<Record<RecordedTurn['who'], string>> = {
@@ -48,6 +93,8 @@ export class LiveRenewal {
   private wanted: RenewReason | null = null;
   private entries: Entry[] = [];
   private saved = 0;
+
+  constructor(private readonly window: () => LiveWindow | null) {}
 
   get unanswered(): boolean {
     return this.renewed !== null;
@@ -83,13 +130,13 @@ export class LiveRenewal {
   }
 
   recorded(turn: RecordedTurn): void {
-    this.entries.push({ line: `${SPEAKER[turn.who]}: ${turn.text}`, answer: false, pictures: [] });
+    this.entries.push({ line: `${SPEAKER[turn.who]}: ${turn.text}`, tool: null, pictures: [] });
   }
 
   delivered(name: string, answer: ToolAnswer): void {
     this.entries.push({
       line: `${name} returned ${JSON.stringify(answer.response)}`,
-      answer: true,
+      tool: name,
       pictures: answer.pictures,
     });
   }
@@ -103,14 +150,15 @@ export class LiveRenewal {
     return this.current ? reason : null;
   }
 
-  plan(reason: RenewReason): RenewPlan | null {
+  plan(reason: RenewReason, closeCode?: number): RenewPlan | null {
     if (reason === 'stalled') {
       return { resume: null };
     }
     if (!this.proven || reason === 'silent') {
       return this.resumed ? { resume: null } : null;
     }
-    return { resume: this.handle };
+    const broken = closeCode !== undefined && BROKEN_SESSION_CODES.has(closeCode);
+    return { resume: broken ? null : this.handle };
   }
 
   forget(): void {
@@ -129,14 +177,27 @@ export class LiveRenewal {
     if (resumed && this.current) {
       return null;
     }
-    const lines = this.entries
-      .filter((entry, index) => index >= this.saved || (!resumed && !entry.answer))
-      .map((entry) => entry.line);
+    const budget = catchUpCharacters(this.window());
+    const { lines, left, leftChars, tooLarge } = chosen(
+      this.entries.filter(
+        (entry, index) => index >= this.saved || (!resumed && entry.tool === null),
+      ),
+      budget,
+    );
     if (lines.length === 0) {
       return null;
     }
+    if (left > 0 || tooLarge > 0) {
+      log.warn('voice.catch_up_left_out', {
+        left,
+        leftChars,
+        tooLarge,
+        kept: lines.length,
+        budgetChars: budget,
+      });
+    }
     return {
-      text: [RENEWED, ...lines].join('\n'),
+      text: [RENEWED, ...(left > 0 ? [leftOutLine(left)] : []), ...lines].join('\n'),
       lines: lines.length,
       pictures: this.entries.slice(this.saved).flatMap((entry) => entry.pictures),
     };

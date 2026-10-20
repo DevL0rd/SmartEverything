@@ -9,8 +9,20 @@ const NOT_TURNING = { turningOn: false, settings: null };
 
 const DIRECT: TelevisionSettingsRow = {
   device_id: 'livingRoom-id',
-  direct_link: true,
+  direct_host: '192.168.1.40',
+  direct_mac: 'a1:b2:c3:d4:e5:f6',
   input_names: { HDMI1: 'Console' },
+  wake_macs: [],
+  wake_worked_at: null,
+};
+
+const WAKES: TelevisionSettingsRow = {
+  device_id: 'bedroom-id',
+  direct_host: null,
+  direct_mac: null,
+  input_names: {},
+  wake_macs: ['a1:b2:c3:d4:e5:f6'],
+  wake_worked_at: null,
 };
 
 function view(
@@ -28,10 +40,24 @@ function view(
 
 describe('television view', () => {
   it('shows a sleeping TV that can be woken as standby, not offline', () => {
-    const asleep = view('bedroom', false);
+    const asleep = view('bedroom', true, { power: false });
     expect(asleep.mode).toBe('standby');
     expect(televisionLine(asleep)).toBe('Off');
     expect(asleep.locks.power).toBeUndefined();
+  });
+
+  it('shows an offline TV as wakeable only once it has a Wake-on-LAN address', () => {
+    expect(view('bedroom', false).mode).toBe('off_unreachable');
+    const known = view('bedroom', false, {}, { settings: WAKES });
+    expect(known.mode).toBe('standby');
+    expect(known.wakesOverNetwork).toBe(true);
+    expect(known.locks.power).toBeUndefined();
+    const waking = view('livingRoom', false, {}, { settings: WAKES, turningOn: true });
+    expect(waking.mode).toBe('turning_on');
+    expect(stageText(waking)).toStrictEqual({
+      title: 'Waking…',
+      meta: 'Waiting for it to come online',
+    });
   });
 
   it('shows a TV that cannot be woken as off with Power disabled and the reason', () => {
@@ -41,7 +67,7 @@ describe('television view', () => {
   });
 
   it('shows Turning on while a power-on command is pending', () => {
-    const waking = view('bedroom', false, {}, { turningOn: true });
+    const waking = view('bedroom', true, { power: false }, { turningOn: true });
     expect(waking.mode).toBe('turning_on');
     expect(televisionLine(waking)).toBe('Turning on…');
   });
@@ -125,8 +151,10 @@ describe('television view', () => {
 
   it('describes the stage for each mode', () => {
     expect(stageText(view('bedroom', false)).title).toBe('Off');
-    expect(stageText(view('livingRoom', false)).meta).toBe("Can't be turned on from here");
-    expect(stageText(view('bedroom', false, {}, { turningOn: true })).title).toBe('Turning on…');
+    expect(stageText(view('livingRoom', false)).meta).toBe('Link it directly in its settings');
+    expect(stageText(view('bedroom', true, { power: false }, { turningOn: true })).title).toBe(
+      'Turning on…',
+    );
   });
 });
 
@@ -177,6 +205,7 @@ describe('television number pad over a direct link', () => {
     const asleep = view('livingRoom', false, {}, { settings: DIRECT });
     expect(asleep.mode).toBe('standby');
     expect(asleep.locks.power).toBeUndefined();
+    expect(asleep.wakesOverNetwork).toBe(true);
   });
 
   it('shows the names given to inputs and keeps the default for the others', () => {

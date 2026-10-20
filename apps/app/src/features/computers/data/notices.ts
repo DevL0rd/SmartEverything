@@ -1,7 +1,9 @@
 import { replaceEqualDeep, type QueryClient } from '@tanstack/react-query';
 import { noticeHandler, type NoticeOf } from '../../../store/notice-registry';
 import { background } from '@smarteverything/logging';
-import type { ClaudeNotice, ClaudeSession } from '@smarteverything/domain';
+import type { ClaudeListedSession, ClaudeNotice, ClaudeSession } from '@smarteverything/domain';
+
+const SESSION_LIST_SEGMENT = 3;
 
 type ComputerNotice = NoticeOf<
   'computer_ai_status' | 'computer_claude' | 'computer_runtime_status' | 'computer_runtime_native'
@@ -49,7 +51,15 @@ function receiveAiNotice(
     receiveClaudeNotice(client, key, message.notice);
     return;
   }
-  background(client.invalidateQueries({ queryKey: key }), 'queries.invalidate_failed');
+  const keepSessionLists = message.type === 'computer_claude';
+  background(
+    client.invalidateQueries({
+      queryKey: key,
+      predicate: (query) =>
+        !(keepSessionLists && query.queryKey[SESSION_LIST_SEGMENT] === 'sessions'),
+    }),
+    'queries.invalidate_failed',
+  );
 }
 
 function patchSessionLists(
@@ -60,7 +70,7 @@ function patchSessionLists(
   const { id, session } = change;
   for (const archived of [false, true]) {
     const listKey = [...key, 'sessions', String(archived)];
-    const list = client.getQueryData<ClaudeSession[]>(listKey);
+    const list = client.getQueryData<ClaudeListedSession[]>(listKey);
     if (list === undefined) continue;
     const listed = list.some((row) => row.id === id);
     if (session?.archived !== archived) {
@@ -72,7 +82,7 @@ function patchSessionLists(
     } else if (listed)
       client.setQueryData(
         listKey,
-        list.map((row) => (row.id === id ? session : row)),
+        list.map((row) => (row.id === id ? { ...session, app_chat_id: row.app_chat_id } : row)),
       );
     else background(client.invalidateQueries({ queryKey: listKey }), 'queries.invalidate_failed');
   }

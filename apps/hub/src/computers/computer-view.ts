@@ -27,6 +27,7 @@ const PART_SCOPES: Readonly<Record<ComputerPartName, ComputerScope | null>> = {
   system: 'system',
   services: 'system',
   windows: 'apps',
+  tiling: 'apps',
   session: null,
 };
 

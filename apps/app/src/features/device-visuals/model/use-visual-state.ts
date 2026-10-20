@@ -86,7 +86,7 @@ export function useDeviceColour(device: Device): string | null {
   );
 }
 
-const SENSING_FAMILIES: ReadonlySet<DeviceFamily> = new Set(['sensor', 'presence_phone']);
+const SENSING_FAMILIES: ReadonlySet<DeviceFamily> = new Set(['sensor']);
 
 export function useDeviceVisualState(device: Device): VisualState {
   return useDeviceDerived(

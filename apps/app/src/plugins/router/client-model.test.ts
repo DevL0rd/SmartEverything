@@ -7,6 +7,8 @@ import {
   connectionText,
   filterCounts,
   initialFilter,
+  ownerIdOf,
+  personNameProblem,
   renameProblem,
   sameEntry,
   signalOf,
@@ -28,6 +30,7 @@ function client(change: Partial<NetworkClient>): NetworkClient {
     blocked: false,
     trafficBytesPerSecond: null,
     profileId: null,
+    personId: null,
     firstSeen: null,
     lastSeen: null,
     ...change,
@@ -310,5 +313,26 @@ describe('airtimeOf', () => {
     expect(airtimeOf(60)).toEqual({ tone: 'info', word: 'Clear' });
     expect(airtimeOf(61)).toEqual({ tone: 'warning', word: 'Busy' });
     expect(airtimeOf(86)).toEqual({ tone: 'critical', word: 'Very busy' });
+  });
+});
+
+describe('devices that belong to a person without an account', () => {
+  const GUEST = '30000000-0000-4000-8000-000000000001';
+  const phone = client({ mac: 'aa:bb:cc:00:00:07', name: 'Guest phone', personId: GUEST });
+  const owners = new Map([[GUEST, 'Guest']]);
+
+  it('names the person as the owner, shows the device under the people filter and groups by them', () => {
+    const [entry] = clientEntries(snapshotOf([phone]), owners, NOW);
+    expect(entry?.owner).toBe('Guest');
+    expect(ownerIdOf(phone)).toBe(GUEST);
+    expect(
+      filterCounts(clientEntries(snapshotOf([phone, client({})]), owners, NOW), null).people,
+    ).toBe(1);
+  });
+
+  it('rejects an empty or too long person name', () => {
+    expect(personNameProblem('Anna')).toBeNull();
+    expect(personNameProblem('   ')).not.toBeNull();
+    expect(personNameProblem('x'.repeat(41))).not.toBeNull();
   });
 });

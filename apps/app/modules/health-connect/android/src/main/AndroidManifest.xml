@@ -43,6 +43,8 @@
   <queries>
     <package android:name="com.xiaomi.wearable" />
     <package android:name="com.mi.health" />
+    <package android:name="com.philips.cdp.ohc.tuscany" />
+    <package android:name="com.pg.oralb.oralbapp" />
     <intent>
       <action android:name="android.intent.action.MAIN" />
       <category android:name="android.intent.category.LAUNCHER" />
@@ -61,6 +63,13 @@
       android:foregroundServiceType="dataSync"
       tools:node="merge" />
     <receiver android:name="expo.modules.healthconnect.ScaleAdvertReceiver" android:exported="false" />
+    <receiver android:name="expo.modules.healthconnect.larq.LarqScanReceiver" android:exported="false" />
+    <receiver android:name="expo.modules.healthconnect.larq.LarqRestart" android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
     <receiver android:name="expo.modules.healthconnect.ScaleRelayRestart" android:exported="false">
       <intent-filter>
         <action android:name="android.intent.action.BOOT_COMPLETED" />
@@ -69,6 +78,14 @@
     </receiver>
     <service
       android:name="expo.modules.healthconnect.watch.WatchService"
+      android:exported="false"
+      android:foregroundServiceType="connectedDevice" />
+    <service
+      android:name="expo.modules.healthconnect.treadmill.TreadmillService"
+      android:exported="false"
+      android:foregroundServiceType="connectedDevice" />
+    <service
+      android:name="expo.modules.healthconnect.toothbrush.BrushService"
       android:exported="false"
       android:foregroundServiceType="connectedDevice" />
     <service
@@ -168,6 +185,13 @@
       android:excludeFromRecents="true"
       android:showWhenLocked="true"
       android:turnScreenOn="true"
+      android:taskAffinity=""
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    <activity
+      android:name="expo.modules.healthconnect.phone.PhoneApprovalUnlockActivity"
+      android:exported="false"
+      android:excludeFromRecents="true"
+      android:showWhenLocked="true"
       android:taskAffinity=""
       android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     <receiver android:name="expo.modules.healthconnect.phone.PhoneNetworkReceiver" android:exported="false" />

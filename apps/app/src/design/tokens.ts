@@ -31,6 +31,7 @@ export type ColourRole =
   | 'viz-blue'
   | 'viz-magenta'
   | 'viz-violet'
+  | 'viz-green'
   | 'air-good'
   | 'air-fair'
   | 'air-moderate'
@@ -51,6 +52,9 @@ export type ColourRole =
   | 'sleep-core'
   | 'sleep-rem'
   | 'sleep-awake'
+  | 'sleep-asleep'
+  | 'sleep-on-asleep'
+  | 'sleep-band'
   | 'track'
   | 'temp-neutral';
 

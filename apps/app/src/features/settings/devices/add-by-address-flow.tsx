@@ -14,27 +14,21 @@ import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { useMutationState } from '../../../store/mutation';
 import { useProviderLink } from '../../../store/selectors';
+import { stageOf } from '../../connections';
 
 type Outcome =
   | { readonly kind: 'working' }
   | { readonly kind: 'done' }
   | { readonly kind: 'failed'; readonly reason: string };
 
-function linkOutcome(link: TableRow<'provider_links'> | null): Outcome {
-  if (link?.status === 'linked') {
+function outcomeOf(link: TableRow<'provider_links'> | null, baseline: string | null): Outcome {
+  const stage = stageOf(link, { baseline });
+  if (stage.kind === 'done') {
     return { kind: 'done' };
   }
-  if (link?.status === 'linking') {
-    return { kind: 'working' };
-  }
-  return { kind: 'failed', reason: link?.last_error ?? 'The TV did not answer' };
-}
-
-function outcomeOf(link: TableRow<'provider_links'> | null, baseline: string | null): Outcome {
-  if (link === null || link.updated_at === baseline) {
-    return { kind: 'working' };
-  }
-  return linkOutcome(link);
+  return stage.kind === 'failed'
+    ? { kind: 'failed', reason: stage.detail ?? 'The TV did not answer' }
+    : { kind: 'working' };
 }
 
 function stepsOf(outcome: Outcome): readonly ProgressStep[] {
@@ -49,10 +43,9 @@ function stepsOf(outcome: Outcome): readonly ProgressStep[] {
 interface Form {
   readonly name: string;
   readonly host: string;
-  readonly macAddress: string;
 }
 
-const EMPTY: Form = { name: '', host: '', macAddress: '' };
+const EMPTY: Form = { name: '', host: '' };
 
 function Fields({
   form,
@@ -85,16 +78,7 @@ function Fields({
           onForm({ ...form, host });
         }}
         placeholder="From its network settings"
-      />
-      <TextField
-        label="MAC address"
-        kind="text"
-        value={form.macAddress}
-        onChange={(macAddress) => {
-          onForm({ ...form, macAddress });
-        }}
-        placeholder="Six pairs like 00:11:22:33:44:55"
-        helper="Lets your server turn it on"
+        helper="Keep it on: it asks you to allow the link, then tells the hub how to turn it on"
         error={problem}
       />
       <Text variant="footnote" tone="variant">
@@ -132,10 +116,9 @@ function useAddTv(): {
       provider: 'samsung_tv',
       name: form.name.trim(),
       host: form.host.trim(),
-      macAddress: form.macAddress.trim(),
     });
     if (!parsed.success) {
-      setInvalid('Fill in all three; the MAC address looks like 00:11:22:33:44:55');
+      setInvalid('Fill in the name and the IP address');
       return;
     }
     setInvalid(null);

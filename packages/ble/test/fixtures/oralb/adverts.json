@@ -1,0 +1,215 @@
+{
+  "decoded": [
+    {
+      "name": "iO series 6 idle",
+      "hex": "06326b0272000001010004",
+      "protocol": 6,
+      "modelId": 50,
+      "firmware": 107,
+      "state": 2,
+      "status": 114,
+      "pressure": "normal",
+      "powerButton": false,
+      "modeButton": false,
+      "timerS": 0,
+      "modeId": 1,
+      "sector": {
+        "position": 1,
+        "last": false
+      },
+      "face": 0,
+      "secondsInSector": 0,
+      "sectorCount": 4
+    },
+    {
+      "name": "iO series 7 idle with one second",
+      "hex": "06326b0220000101010304",
+      "protocol": 6,
+      "modelId": 50,
+      "firmware": 107,
+      "state": 2,
+      "status": 32,
+      "pressure": "normal",
+      "powerButton": false,
+      "modeButton": false,
+      "timerS": 1,
+      "modeId": 1,
+      "sector": {
+        "position": 1,
+        "last": false
+      },
+      "face": 0,
+      "secondsInSector": 3,
+      "sectorCount": 4
+    },
+    {
+      "name": "iO series 8 last sector",
+      "hex": "0631190872000000070000",
+      "protocol": 6,
+      "modelId": 49,
+      "firmware": 25,
+      "state": 8,
+      "status": 114,
+      "pressure": "normal",
+      "powerButton": false,
+      "modeButton": false,
+      "timerS": 0,
+      "modeId": 0,
+      "sector": {
+        "position": null,
+        "last": true
+      },
+      "face": 0,
+      "secondsInSector": 0,
+      "sectorCount": 0
+    },
+    {
+      "name": "iO9 with mode 3 sector 2",
+      "hex": "0631160872000003020004",
+      "protocol": 6,
+      "modelId": 49,
+      "firmware": 22,
+      "state": 8,
+      "status": 114,
+      "pressure": "normal",
+      "powerButton": false,
+      "modeButton": false,
+      "timerS": 0,
+      "modeId": 3,
+      "sector": {
+        "position": 2,
+        "last": false
+      },
+      "face": 0,
+      "secondsInSector": 0,
+      "sectorCount": 4
+    },
+    {
+      "name": "iO9 model 0x32 selection menu",
+      "hex": "06326b0852000000010004",
+      "protocol": 6,
+      "modelId": 50,
+      "firmware": 107,
+      "state": 8,
+      "status": 82,
+      "pressure": "normal",
+      "powerButton": false,
+      "modeButton": false,
+      "timerS": 0,
+      "modeId": 0,
+      "sector": {
+        "position": 1,
+        "last": false
+      },
+      "face": 0,
+      "secondsInSector": 0,
+      "sectorCount": 4
+    },
+    {
+      "name": "iO9 model 0x32 power button",
+      "hex": "06326b087a000000010004",
+      "protocol": 6,
+      "modelId": 50,
+      "firmware": 107,
+      "state": 8,
+      "status": 122,
+      "pressure": "normal",
+      "powerButton": true,
+      "modeButton": false,
+      "timerS": 0,
+      "modeId": 0,
+      "sector": {
+        "position": 1,
+        "last": false
+      },
+      "face": 0,
+      "secondsInSector": 0,
+      "sectorCount": 4
+    },
+    {
+      "name": "iO protocol 8 model 0x36",
+      "hex": "0836520832000005000100",
+      "protocol": 8,
+      "modelId": 54,
+      "firmware": 82,
+      "state": 8,
+      "status": 50,
+      "pressure": "normal",
+      "powerButton": false,
+      "modeButton": false,
+      "timerS": 0,
+      "modeId": 5,
+      "sector": {
+        "position": null,
+        "last": false
+      },
+      "face": 0,
+      "secondsInSector": 1,
+      "sectorCount": 0
+    },
+    {
+      "name": "S4 capture advert",
+      "hex": "0836520832000004001000",
+      "protocol": 8,
+      "modelId": 54,
+      "firmware": 82,
+      "state": 8,
+      "status": 50,
+      "pressure": "normal",
+      "powerButton": false,
+      "modeButton": false,
+      "timerS": 0,
+      "modeId": 4,
+      "sector": {
+        "position": null,
+        "last": false
+      },
+      "face": 0,
+      "secondsInSector": 16,
+      "sectorCount": 0
+    },
+    {
+      "name": "iO4 protocol 7",
+      "hex": "07340c0338000002010004",
+      "protocol": 7,
+      "modelId": 52,
+      "firmware": 12,
+      "state": 3,
+      "status": 56,
+      "pressure": "normal",
+      "powerButton": true,
+      "modeButton": false,
+      "timerS": 0,
+      "modeId": 2,
+      "sector": {
+        "position": 1,
+        "last": false
+      },
+      "face": 0,
+      "secondsInSector": 0,
+      "sectorCount": 4
+    }
+  ],
+  "refused": [
+    {
+      "name": "protocol 2 handle",
+      "hex": "0201080220000001010004",
+      "protocol": 2
+    },
+    {
+      "name": "protocol 3 genius",
+      "hex": "03210c0230000601011404",
+      "protocol": 3
+    },
+    {
+      "name": "protocol 4 smart series",
+      "hex": "04270d0332000601011404",
+      "protocol": 4
+    },
+    {
+      "name": "protocol 3 trizone",
+      "hex": "0356040330000001010004",
+      "protocol": 3
+    }
+  ]
+}

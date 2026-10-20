@@ -156,14 +156,27 @@ object XiaomiDailyParsers {
       return DailySummary(emptyList(), emptyList())
     }
     val header = ByteArray(headerSize).also { buffer.get(it) }
-    val present = (0 until slots).takeWhile { slot -> buffer.remaining() >= SUMMARY_SLOT_BYTES[slot] }
-    val values = present.map { slot -> readSlot(buffer, SUMMARY_SLOT_BYTES[slot]).takeIf { FileAssembler.valid(header, slot) } }
+    val values = readSlots(id, header, buffer, slots)
     val resting = values.getOrNull(SLOT_RESTING)?.takeIf { it in 25..200 }
     val vitality = values.getOrNull(SLOT_VITALITY)
     return DailySummary(
       listOfNotNull(resting?.let { RestingHeartRate(id.timestamp, it) }),
       listOfNotNull(vitality?.let { KindSample(SampleKind.VITALITY, id.timestamp, it) })
     )
+  }
+
+  private fun readSlots(id: XiaomiFileId, header: ByteArray, buffer: ByteBuffer, slots: Int): List<Int?> {
+    val values = mutableListOf<Int?>()
+    while (values.size < slots && buffer.remaining() >= SUMMARY_SLOT_BYTES[values.size]) {
+      val slot = values.size
+      values.add(readSlot(buffer, SUMMARY_SLOT_BYTES[slot]).takeIf { FileAssembler.valid(header, slot) })
+    }
+    if (buffer.hasRemaining()) {
+      throw IllegalArgumentException(
+        "${id.label}: ${buffer.remaining()} byte(s) left after ${values.size} whole summary fields; the layout differs from the known one"
+      )
+    }
+    return values
   }
 
   private fun readSlot(buffer: ByteBuffer, bytes: Int): Int = when (bytes) {

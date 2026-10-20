@@ -1,43 +1,31 @@
-import type { NetworkClient } from '@smarteverything/domain';
+import type { PresencePerson } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { presenceLine, presenceOf } from './people-model';
+import { presenceLabel, presenceLine, trackedPeople } from './people-model';
 
-function client(mac: string, profileId: string | null, connected: boolean): NetworkClient {
+function person(name: string, home: boolean, tracked = true): PresencePerson {
   return {
-    mac,
-    name: mac,
-    ip: null,
-    connection: 'wifi',
-    band: null,
-    connected,
-    blocked: false,
-    trafficBytesPerSecond: null,
-    profileId,
-    firstSeen: null,
-    lastSeen: null,
+    id: `00000000-0000-4000-8000-${name.length.toString().padStart(12, '0')}`,
+    name,
+    profile: false,
+    tracked,
+    home,
+    since: null,
+    viaPhone: false,
+    devices: [],
   };
 }
 
-const PEOPLE = [
-  { id: 'sam', name: 'Sam' },
-  { id: 'dana', name: 'Dana' },
-  { id: 'kai', name: 'Kai' },
-];
-
-describe('presenceOf', () => {
-  it('puts people with a connected device first and skips people with no device', () => {
-    const presence = presenceOf(
-      [client('a', 'sam', false), client('b', 'dana', true), client('c', 'dana', false)],
-      PEOPLE,
-    );
-    expect(presence.map((person) => [person.name, person.home])).toEqual([
-      ['Dana', true],
-      ['Sam', false],
-    ]);
-    expect(presenceLine(presence)).toBe('Dana home · Sam away');
+describe('trackedPeople', () => {
+  it('leaves out people whose presence is switched off', () => {
+    const shown = trackedPeople([person('Sam', true), person('Dana', false, false)]);
+    expect(shown.map((entry) => entry.name)).toEqual(['Sam']);
   });
+});
 
-  it('is empty when no device is assigned to anyone', () => {
-    expect(presenceOf([client('a', null, true)], PEOPLE)).toEqual([]);
+describe('presence text', () => {
+  it('lists each person as home or away and counts who is home', () => {
+    const presence = [person('Dana', true), person('Sam', false)];
+    expect(presenceLine(presence)).toBe('Dana home · Sam away');
+    expect(presenceLabel(presence)).toBe('People home: 1 person of 2. Dana home · Sam away');
   });
 });

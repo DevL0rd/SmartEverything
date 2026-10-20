@@ -185,6 +185,37 @@ function nameOf(entity: Fields | null, payload: Fields): string | null {
   return firstText(entity ?? payload, ['name', 'title', 'label']);
 }
 
+function rehearsalFacts(rehearsal: Fields): Fields {
+  const commands = Array.isArray(rehearsal['commands']) ? rehearsal['commands'] : [];
+  const nodes = Array.isArray(rehearsal['nodes']) ? rehearsal['nodes'] : [];
+  const sent = commands.filter(isRecord).map((command) => ({
+    node: command['node'],
+    kind: command['kind'],
+    targets: command['targets'],
+    params: command['params'],
+    outcome: command['outcome'],
+  }));
+  return {
+    outcome: rehearsal['outcome'],
+    error: rehearsal['error'],
+    steps: rehearsal['steps'],
+    nodes: nodes.length,
+    commands: sent.slice(0, SHOWN_ITEMS),
+    ...(sent.length > SHOWN_ITEMS ? { moreCommands: sent.length - SHOWN_ITEMS } : {}),
+    ...(rehearsal['outputs'] === null ? {} : { outputs: rehearsal['outputs'] }),
+  };
+}
+
+function programFacts(payload: Fields): Fields {
+  const { problems, rehearsal } = payload;
+  return {
+    ...(Array.isArray(problems) && problems.length > 0
+      ? { problems: problems.slice(0, SHOWN_ITEMS) }
+      : {}),
+    ...(isRecord(rehearsal) ? { rehearsal: rehearsalFacts(rehearsal) } : {}),
+  };
+}
+
 function recordOutcome(phrase: Phrase, payload: Fields): Fields {
   const commands = payload['commands'];
   const entity = entityOf(payload);
@@ -199,6 +230,7 @@ function recordOutcome(phrase: Phrase, payload: Fields): Fields {
     ...scalarFacts(payload, entity),
     ...(failure === null ? {} : { error: failure }),
     ...(problems.length === 0 ? {} : { skipped: problems }),
+    ...programFacts(payload),
   };
 }
 

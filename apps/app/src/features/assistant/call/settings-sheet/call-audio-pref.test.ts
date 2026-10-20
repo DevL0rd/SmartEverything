@@ -1,4 +1,4 @@
-import { CLIENT_PREFS, SETTINGS_ROW } from '@smarteverything/domain';
+import { CLIENT_PREFS, DEFAULT_PAUSE_MS, SETTINGS_ROW } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { emptyState, type StoreState } from '../../../../store/state';
 import { callAudioOf, pauseOf, storedCallAudioOf } from './call-audio-pref';
@@ -28,11 +28,11 @@ function stateOf(pause: number | null): StoreState {
 describe('the call audio the engines read', () => {
   it('takes the pause from the home setting, shared with every listening ear', () => {
     expect(pauseOf(stateOf(1000))).toBe(1000);
-    expect(callAudioOf(stateOf(640)).pause_ms).toBe(640);
+    expect(callAudioOf(stateOf(1000)).pause_ms).toBe(1000);
   });
 
   it('uses the default pause until the home settings arrive', () => {
-    expect(pauseOf(stateOf(null))).toBe(200);
+    expect(pauseOf(stateOf(null))).toBe(DEFAULT_PAUSE_MS);
   });
 
   it('keeps the pause out of what the device stores', () => {

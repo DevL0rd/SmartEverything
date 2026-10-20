@@ -1,11 +1,6 @@
 import type { ProcessRow } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import {
-  arrange,
-  defaultOrder,
-  differs,
-  WindowDiff,
-} from '../../src/node/controls/process-window';
+import { arrange, defaultOrder, differs, WindowDiff } from '../../src/node/controls/process-window';
 
 function row(pid: number, over: Partial<ProcessRow> = {}): ProcessRow {
   return {

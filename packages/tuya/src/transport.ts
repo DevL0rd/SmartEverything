@@ -10,7 +10,6 @@ export const TRANSPORT_REASONS = [
   'gateway_not_on_lan',
   'no_node_id',
   'no_gateway_id',
-  'cloud_library',
 ] as const;
 
 export type TransportReason = (typeof TRANSPORT_REASONS)[number];

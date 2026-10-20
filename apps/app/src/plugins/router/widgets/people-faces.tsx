@@ -84,11 +84,18 @@ function Stack({ people, stale }: PeopleFaceProps): ReactNode {
   );
 }
 
-function Chip({ person }: { readonly person: WidgetPerson }): ReactNode {
+function Chip({
+  person,
+  ready,
+}: {
+  readonly person: WidgetPerson;
+  readonly ready: RouterReady;
+}): ReactNode {
+  const line = personLine(person, ready.now);
   return (
     <View
       accessible
-      accessibilityLabel={`${person.name}, ${person.home ? 'home' : 'away'}`}
+      accessibilityLabel={`${person.name}, ${line}`}
       className="min-h-12 flex-none flex-row items-center gap-2"
     >
       <ProfileAvatar profile={person.profile} />
@@ -104,8 +111,8 @@ function Chip({ person }: { readonly person: WidgetPerson }): ReactNode {
               person.home ? 'bg-positive' : 'border-2 border-on-surface-variant',
             )}
           />
-          <Text variant="caption" tone="variant">
-            {person.home ? 'Home' : 'Away'}
+          <Text variant="caption" tone="variant" numberOfLines={1}>
+            {line}
           </Text>
         </View>
       </View>
@@ -113,13 +120,13 @@ function Chip({ person }: { readonly person: WidgetPerson }): ReactNode {
   );
 }
 
-function Chips({ people, stale }: PeopleFaceProps): ReactNode {
+function Chips({ people, ready, stale }: PeopleFaceProps): ReactNode {
   return (
     <View className="gap-1">
       <View className={cn(stale !== null && 'opacity-60')}>
         <HScroller label="People">
           {people.map((person) => (
-            <Chip key={person.id} person={person} />
+            <Chip key={person.id} person={person} ready={ready} />
           ))}
         </HScroller>
       </View>

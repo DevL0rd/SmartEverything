@@ -1,6 +1,6 @@
 import { leastTrustedOrigin, type PluginOrigin, type WakeAiAction } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { ActionOrigin } from '../automations/actions';
+import type { ActionOrigin } from '../automations/automation-ai';
 import type { Cancel, Clock } from '../clock';
 import type { Store } from '../store/store';
 import { wakeRefusal, type WakeRefusalStore } from './wake-refusal';

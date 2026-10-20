@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { COLOUR_VARIABLE, PaletteContext } from '../../design/colour-roles';
 import { StateTimeline } from './state-timeline';
 
@@ -39,5 +39,13 @@ describe('StateTimeline', () => {
     });
     expect(shown).toContain('aria-label="Home or away"');
     expect(shown).toContain('24:00');
+  });
+
+  it('renders identical segments without a duplicate key warning', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const segment = { start: 0, end: 60, state: 'home' } as const;
+    markup({ segments: [segment, segment], from: 0, to: 120 });
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
   });
 });

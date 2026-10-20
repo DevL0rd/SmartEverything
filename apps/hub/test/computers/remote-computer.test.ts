@@ -119,6 +119,23 @@ describe('a paired computer', () => {
     }, 'the computer readings');
   });
 
+  it('tells the signals it went offline when its connection closed and online when it came back', async () => {
+    const paired = await hub.pair();
+    const online = async (): Promise<unknown> => {
+      const reply = await call(hub.booted().base, hub.booted().owner, {
+        method: 'GET',
+        path: `/api/signals/latest?source=device&kind=online&subject=${paired.deviceId}`,
+      });
+      return API_ENDPOINTS.readSignal.response.parse(reply.body)[0]?.value;
+    };
+    const first = runComputer(paired, []);
+    await until(async () => (await appsOf(paired.deviceId)) === 200, 'the computer to answer');
+    first.stop();
+    await until(async () => (await online()) === false, 'the computer to go offline');
+    runComputer(paired, []);
+    await until(async () => (await online()) === true, 'the computer to come back online');
+  });
+
   it('gives its desktop window an owner credential with the same pairing', async () => {
     const paired = await hub.pair();
     const session = await call(hub.booted().base, paired.windowToken, {

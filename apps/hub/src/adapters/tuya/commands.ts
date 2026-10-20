@@ -1,56 +1,15 @@
-import {
-  CommandRefusedError,
-  type DeviceCommand,
-  type JsonValue,
-  type StateUpdate,
-} from '@smarteverything/domain';
-import {
-  CLOUD_PATHS,
-  COMMAND_ACCEPTED,
-  encodeCommand,
-  libraryCommandBody,
-  libraryKeyOf,
-} from '@smarteverything/tuya';
-import { projectOf } from './backend';
-import type { LoadedRemote } from './cloud-inventory';
+import type { DeviceCommand, JsonValue, StateUpdate } from '@smarteverything/domain';
+import { encodeCommand } from '@smarteverything/tuya';
 import { learnIr, sendIr } from './ir-control';
 import { writeTo } from './writes';
 import { TuyaDeviceUnknownError, reportOf, stateUpdates, type DeviceRecord } from './records';
 import type { TuyaRuntime } from './runtime';
 import { messageOf } from '@smarteverything/logging';
 
-async function pressRemoteKey(
-  runtime: TuyaRuntime,
-  remote: LoadedRemote,
-  command: DeviceCommand,
-): Promise<JsonValue> {
-  if (command.capability !== 'remote_key' || typeof command.value !== 'string') {
-    throw new CommandRefusedError(
-      command.capability,
-      'an IR library remote only presses its buttons',
-    );
-  }
-  const key = libraryKeyOf(remote.remote.remote_id, remote.keys, command.value);
-  await projectOf(runtime.backend, 'Pressing an IR library remote button').call(
-    `pressing ${key.key} on IR remote ${key.remoteId}`,
-    {
-      method: 'POST',
-      path: CLOUD_PATHS.irKeyCommand(remote.blaster.id, key.remoteId),
-      body: libraryCommandBody(key),
-    },
-    COMMAND_ACCEPTED,
-  );
-  return null;
-}
-
 export async function executeCommand(
   runtime: TuyaRuntime,
   command: DeviceCommand,
 ): Promise<JsonValue> {
-  const remote = runtime.remote(command.externalId);
-  if (remote !== undefined) {
-    return pressRemoteKey(runtime, remote, command);
-  }
   const record = runtime.record(command.externalId);
   if (record === undefined) {
     throw new TuyaDeviceUnknownError(command.externalId);

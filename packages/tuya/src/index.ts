@@ -1,17 +1,3 @@
-export { TUYA_ENDPOINTS } from './regions';
-export type { RegionEndpoints, TuyaRegion } from './regions';
-
-export {
-  HTTP_METHODS,
-  SIGN_METHOD,
-  canonicalUrl,
-  contentSha256,
-  sign,
-  signedHeaders,
-  stringToSign,
-} from './signing';
-export type { CloudRequest, HttpMethod, SigningInput } from './signing';
-
 export {
   TUYA_ERROR_KINDS,
   TuyaCloudError,
@@ -21,37 +7,8 @@ export {
 } from './envelope';
 export type { TuyaErrorCode, TuyaErrorKind } from './envelope';
 
-export {
-  TOKEN_PATH,
-  TOKEN_QUERY,
-  TOKEN_REFRESH_MARGIN_MS,
-  TOKEN_RESULT,
-  needsRefresh,
-  refreshPath,
-  tokenFrom,
-} from './token';
-export type { CloudToken } from './token';
-
-export {
-  CLOUD_DEVICE,
-  CLOUD_PATHS,
-  COMMAND_ACCEPTED,
-  DEVICE_PAGE,
-  DEVICE_PAGE_SIZE,
-  DEVICE_STATUSES,
-  HOMES,
-  IR_LEARNED,
-  IR_REMOTES,
-  IR_REMOTE_KEYS,
-  ROOMS,
-  ROOM_DEVICES,
-  SPECIFICATION,
-  STATUS_BATCH_SIZE,
-  commandBody,
-  commandsOf,
-  deviceListQuery,
-} from './cloud-api';
-export type { CloudDevice, IrRemote, IrRemoteKeys, Specification, StatusItem } from './cloud-api';
+export { CLOUD_DEVICE, STATUS_BATCH_SIZE, commandsOf } from './cloud-api';
+export type { CloudDevice, StatusItem } from './cloud-api';
 
 export { TUYA_JSON_MAX_LENGTH, TUYA_TEXT_MAX_LENGTH, dataPointsOf } from './data-points';
 export type {
@@ -86,7 +43,6 @@ export {
   buildDeviceModel,
   decodeReport,
   encodeCommand,
-  reportFromDps,
 } from './model';
 export type {
   CapabilityBinding,
@@ -102,19 +58,17 @@ export {
   IR_CODE,
   IR_CODE_FORMATS,
   IrCodeError,
-  LIBRARY_KEY,
   MAX_PULSE_MICROSECONDS,
   canonicalIrCode,
   headKeyToPulses,
   learnedCodeFromHex,
   parseHeadKey,
-  parseLibraryKey,
   pulsesFromBase64,
   pulsesFromHex,
   pulsesToBase64,
   pulsesToHex,
 } from './ir-codes';
-export type { HeadKey, IrCode, IrCodeFormat, LibraryKey } from './ir-codes';
+export type { HeadKey, IrCode, IrCodeFormat } from './ir-codes';
 
 export { irSchemeOf, irWrites, learnedCode } from './ir-scheme';
 export type { DataPointRef, DataPointWrite, IrAction, IrScheme } from './ir-scheme';
@@ -129,17 +83,8 @@ export {
 } from './lan-discovery';
 export type { LanAnnouncement } from './lan-discovery';
 
-export {
-  CloudMessageError,
-  INVENTORY_BIZ_CODES,
-  MESSAGE_ACK_TIMEOUT_MS,
-  MESSAGE_TOPIC,
-  acknowledgement,
-  messageConsumerUrl,
-  messagePassword,
-  readMessageFrame,
-} from './messages';
-export type { CloudMessage, MessageFrame } from './messages';
+export { CloudMessageError, INVENTORY_BIZ_CODES } from './messages';
+export type { CloudMessage } from './messages';
 
 export {
   LOCAL_KEY_LENGTH,
@@ -158,16 +103,7 @@ export {
 } from './transport';
 export type { TransportChoice, TransportFacts, TransportReason } from './transport';
 
-export {
-  MANUFACTURER,
-  RemoteKeyError,
-  discoveredDevice,
-  isSleepingSensor,
-  libraryCommandBody,
-  libraryKeyOf,
-  remoteDevice,
-  remoteKeyCapability,
-} from './inventory';
+export { MANUFACTURER, discoveredDevice, isSleepingSensor } from './inventory';
 export type { InventoryEntry } from './inventory';
 
 export {
@@ -197,10 +133,12 @@ export {
   SMART_LIFE_ROOM,
   SMART_LIFE_SPECIFICATION,
   SMART_LIFE_TOKEN,
+  TOKEN_REFRESH_MARGIN_MS,
   readSealedReply,
   sealRequest,
 } from './smart-life-api';
 export type {
+  HttpMethod,
   SealedReply,
   SealedRequest,
   SmartLifeCall,

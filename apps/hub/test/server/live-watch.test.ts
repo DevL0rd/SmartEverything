@@ -19,6 +19,7 @@ const CLIENT: ClientRow = {
   id: 'client-1',
   name: 'Phone',
   platform: 'android',
+  kind: 'phone',
   role: 'member',
   built_in: false,
   profile_id: null,

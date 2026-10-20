@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import expo.modules.healthconnect.NativeGuard
+import expo.modules.healthconnect.R
 import expo.modules.healthconnect.phone.PhoneReporter
 import android.media.AudioAttributes
 import android.media.AudioManager
@@ -98,7 +99,7 @@ object FindPhone {
       PendingIntent.FLAG_IMMUTABLE
     )
     return Notification.Builder(context, CHANNEL)
-      .setSmallIcon(context.applicationInfo.icon)
+      .setSmallIcon(R.drawable.ic_stat_smarteverything)
       .setContentTitle("Find my phone")
       .setContentText("This phone is ringing. Tap to stop.")
       .setContentIntent(found)

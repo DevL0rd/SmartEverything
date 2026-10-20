@@ -6,6 +6,7 @@ import type { ContextMenu } from '../../../components/menu';
 import { Interactive } from '../../../components/interactive';
 import type { Device } from '../../../store/state';
 import { DeviceScheduleChip } from '../../automations';
+import { cn } from '../../../design/cn';
 import { VisualVisibility } from '../../../design/visibility';
 import { useDeviceContextMenu } from '../controls/device-context-menu';
 
@@ -67,14 +68,15 @@ export function StandaloneShell({
   const [scheduleInFace, claimSchedule] = useState(false);
   return (
     <ShellContext value={{ device, editing, menu, claimSchedule }}>
-      <View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1">
+      <View
+        className={cn(
+          'h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1',
+          padded && 'p-card-pad',
+        )}
+        pointerEvents={editing ? 'none' : 'box-none'}
+      >
         {padded ? <OpenLink /> : null}
-        <View
-          className={padded ? 'flex-1 p-card-pad' : 'flex-1'}
-          pointerEvents={editing ? 'none' : 'box-none'}
-        >
-          <VisualVisibility visible={!editing}>{children}</VisualVisibility>
-        </View>
+        <VisualVisibility visible={!editing}>{children}</VisualVisibility>
         {editing || scheduleInFace ? null : (
           <DeviceScheduleChip
             deviceId={device.id}

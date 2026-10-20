@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { useId, useRef } from 'react';
-import { StyleSheet, View, processColor } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import Svg, { RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useAnimationGate } from '../design/animation-gate';
 import { useColour } from '../design/colour';
+import { faded } from '../design/faded';
 import { isNative } from '../design/platform';
 import { BREATHE, EASE_IN_OUT, loopStyle, type Loop } from '../design/loops';
 import type { ColourRole } from '../design/tokens';
@@ -22,24 +23,6 @@ export interface GlowProps {
 const BREATH: Loop = { name: BREATHE, ms: 3200, easing: EASE_IN_OUT, alternate: true };
 
 type GlowArtProps = Required<Omit<GlowProps, 'breathing'>> & { readonly pinned: boolean };
-
-class UnreadableColourError extends Error {
-  override readonly name = 'UnreadableColourError';
-
-  constructor(readonly colour: string) {
-    super(`The glow colour ${colour} is not a colour React Native can read.`);
-  }
-}
-
-function faded(colour: string, alpha: number): string {
-  const packed = processColor(colour);
-  if (typeof packed !== 'number') {
-    throw new UnreadableColourError(colour);
-  }
-  const channel = (shift: number): number => (packed >>> shift) & 0xff;
-  const opacity = (channel(24) / 0xff) * alpha;
-  return `rgba(${String(channel(16))}, ${String(channel(8))}, ${String(channel(0))}, ${String(opacity)})`;
-}
 
 function NativeGlow({ colour, x, y, radius, strength }: GlowArtProps): ReactNode {
   const fill = useColour(colour);

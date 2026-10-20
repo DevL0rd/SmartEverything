@@ -1,16 +1,22 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { useColour } from '../../design/colour';
+import { useColour, useColourResolver } from '../../design/colour';
 import { useMotion } from '../../design/motion';
 import { useDraw } from '../use-draw';
 import type { ColourRole } from '../../design/tokens';
 import { DrawnStroke } from './arc';
+import type { DrawnShades } from './draw-shades';
 import { arcLength, arcPath } from './geometry';
+import {
+  GAUGE_START as START,
+  GAUGE_SWEEP as SWEEP,
+  GaugeMarker,
+  GaugeTickMarks,
+  type GaugeTicks,
+} from './gauge-scale';
 import { clamp } from './scale';
 
-const START = -135;
-const SWEEP = 270;
 const BAND_OPACITY = 0.28;
 
 export interface GaugeBand {
@@ -26,6 +32,8 @@ export interface GaugeProps {
   readonly size: number;
   readonly label: string;
   readonly thickness?: number;
+  readonly ticks?: GaugeTicks;
+  readonly marker?: number;
   readonly children?: ReactNode;
 }
 
@@ -74,6 +82,21 @@ function bandArcs(props: GaugeProps): BandArc[] {
   });
 }
 
+function shadesOf(
+  arcs: readonly BandArc[],
+  colour: (role: ColourRole) => string,
+): DrawnShades | null {
+  const shades = arcs.map((band, index) => ({
+    through:
+      index === arcs.length - 1
+        ? Number.POSITIVE_INFINITY
+        : (band.from - START + band.sweep) / SWEEP,
+    colour: colour(band.colour),
+  }));
+  const [first, ...rest] = shades;
+  return first === undefined ? null : [first, ...rest];
+}
+
 function GaugeArcs(props: GaugeProps & { readonly thickness: number }): ReactNode {
   const { value, min, max, size, thickness } = props;
   const centre = size / 2;
@@ -84,39 +107,28 @@ function GaugeArcs(props: GaugeProps & { readonly thickness: number }): ReactNod
   const ring = { cx: centre, cy: centre, r: radius };
   const full = arcPath(ring, START, START + SWEEP);
   const length = arcLength(radius, SWEEP);
+  const frame = { size, thickness, min, max };
   const arcs = bandArcs(props);
+  const shades = shadesOf(arcs, useColourResolver());
   return (
-    <View pointerEvents="none" className="absolute inset-0">
-      <Svg width={size} height={size}>
-        {arcs.map((band) =>
-          band.sweep > 0 ? (
-            <GaugeStroke
-              key={band.key}
-              d={arcPath(ring, band.from, band.from + band.sweep)}
-              colour={band.colour}
-              thickness={thickness}
-              opacity={BAND_OPACITY}
-            />
-          ) : null,
-        )}
-        {arcs.map((band, index) => (
-          <DrawnStroke
+    <Svg width={size} height={size} style={StyleSheet.absoluteFill} pointerEvents="none">
+      {arcs.map((band) =>
+        band.sweep > 0 ? (
+          <GaugeStroke
             key={band.key}
-            d={full}
-            length={length}
+            d={arcPath(ring, band.from, band.from + band.sweep)}
             colour={band.colour}
             thickness={thickness}
-            drawn={drawn}
-            after={index === 0 ? 0 : (band.from - START) / SWEEP}
-            through={
-              index === arcs.length - 1
-                ? Number.POSITIVE_INFINITY
-                : (band.from - START + band.sweep) / SWEEP
-            }
+            opacity={BAND_OPACITY}
           />
-        ))}
-      </Svg>
-    </View>
+        ) : null,
+      )}
+      {shades === null ? null : (
+        <DrawnStroke d={full} length={length} shades={shades} thickness={thickness} drawn={drawn} />
+      )}
+      {props.ticks === undefined ? null : <GaugeTickMarks frame={frame} ticks={props.ticks} />}
+      {props.marker === undefined ? null : <GaugeMarker frame={frame} value={props.marker} />}
+    </Svg>
   );
 }
 

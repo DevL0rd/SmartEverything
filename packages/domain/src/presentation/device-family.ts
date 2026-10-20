@@ -28,6 +28,7 @@ const KIND_FAMILIES: Readonly<Record<DeviceKind, DeviceFamily>> = {
   file_sync: 'file_sync',
   dns_filter: 'dns_filter',
   robot: 'robot',
+  printer: 'printer',
   computer: 'computer',
   phone: 'phone',
   appliance: 'generic',
@@ -38,6 +39,9 @@ const MODEL_FAMILIES: readonly (readonly [RegExp, DeviceFamily])[] = [
   [/\.scales?\./, 'scale'],
   [/^miwear\.|\.watch\.|\.band\./, 'wearable'],
   [/\.washer\.|\.dryer\./, 'laundry'],
+  [/\.treadmill\./, 'treadmill'],
+  [/\.bottle\./, 'bottle'],
+  [/\.toothbrush\./, 'toothbrush'],
   [/\.sensor_switch\.|\.remote\.|\.button\./, 'button'],
 ];
 
@@ -62,7 +66,12 @@ function familyOf(device: PresentableDevice): DeviceFamily {
   return byModel === undefined ? KIND_FAMILIES[device.kind] : byModel[1];
 }
 
-const SLEEPY_FAMILIES: ReadonlySet<DeviceFamily> = new Set(['scale', 'wearable']);
+const SLEEPY_FAMILIES: ReadonlySet<DeviceFamily> = new Set([
+  'scale',
+  'wearable',
+  'bottle',
+  'toothbrush',
+]);
 
 export function sleepsBetweenUse(device: PresentableDevice): boolean {
   return SLEEPY_FAMILIES.has(deviceFamily(device));

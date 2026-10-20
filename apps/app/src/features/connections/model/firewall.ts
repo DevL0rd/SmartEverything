@@ -1,8 +1,10 @@
 import type {
   CameraReach,
+  FirewallApplyOutcome,
   FirewallBackend,
   FirewallOpening,
   FirewallStatus,
+  FirewallStepResult,
   PortRule,
 } from '@smarteverything/domain';
 import type { BadgeTone } from '../../../components/badge';
@@ -39,21 +41,25 @@ export const REACH_LOOK: Readonly<Record<CameraReach['state'], StateLook>> = {
   unknown: { label: 'Not checked yet', tone: 'neutral' },
 };
 
-export function ruleText(rule: PortRule): string {
-  const protocol = rule.protocol.toUpperCase();
-  switch (rule.purpose) {
-    case 'webrtc':
-      return `${protocol} port ${String(rule.port)}`;
-    case 'hub':
-    case 'discovery':
-    case 'announcement':
-    case 'plugin':
-      return `${protocol} port ${String(rule.port)} from ${rule.source}`;
-    case 'camera':
-    case 'device':
-      return `${protocol} from ${rule.source}`;
-  }
-}
+export const STEP_LOOK: Readonly<Record<FirewallStepResult['outcome'], StateLook>> = {
+  applied: { label: 'Added', tone: 'positive' },
+  already_present: { label: 'Already there', tone: 'neutral' },
+  failed: { label: 'Failed', tone: 'critical' },
+};
+
+export const APPLY_NOTICE: Readonly<
+  Record<
+    FirewallApplyOutcome,
+    { readonly tone: 'warning' | 'critical' | 'info' | 'positive'; readonly title: string }
+  >
+> = {
+  applied: { tone: 'positive', title: 'Firewall fixed' },
+  partial: { tone: 'warning', title: 'Some rules weren’t added' },
+  failed: { tone: 'critical', title: 'The rules weren’t added' },
+  declined: { tone: 'warning', title: 'You cancelled the system prompt' },
+  stale: { tone: 'info', title: 'The rules changed. Review them again.' },
+  unavailable: { tone: 'warning', title: 'The server can’t change its firewall by itself' },
+};
 
 export function openingTitle(opening: FirewallOpening, names: readonly string[]): string {
   switch (opening.rule.purpose) {

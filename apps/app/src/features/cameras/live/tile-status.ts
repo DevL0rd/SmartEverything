@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
+import { usePinMenuItems } from '../../../app-shell/pin-menu';
 import type { MenuItem } from '../../../components/menu';
 import type { Status } from '../../../components/status-chip';
 import type { CameraEntry } from '../logic/cameras';
@@ -25,6 +26,7 @@ export function cameraStatusOf(
 
 export function useCardMenu(entry: CameraEntry): readonly MenuItem[] {
   const router = useRouter();
+  const pin = usePinMenuItems({ kind: 'camera', deviceId: entry.device.id });
   return [
     {
       label: 'Open',
@@ -40,5 +42,6 @@ export function useCardMenu(entry: CameraEntry): readonly MenuItem[] {
         router.navigate(href.settings.camera(entry.device.id));
       },
     },
+    ...pin,
   ];
 }

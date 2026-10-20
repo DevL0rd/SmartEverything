@@ -5,7 +5,7 @@ import {
   type ComputerAiNativeTool,
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
-import { computerAiKey } from './computer-ai';
+import { computerAiKey } from '../../../queries/keys';
 
 export function useNativeThread(
   deviceId: string,

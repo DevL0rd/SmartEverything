@@ -22,6 +22,7 @@ minimumReleaseAgeExclude:
   - babel-preset-expo
   - babel-plugin-react-compiler
   - electron@44.7.0
+  - re2js@2.8.8
 
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
@@ -50,6 +51,8 @@ overrides:
 patchedDependencies:
   '@deepseek-ai/dsh-session@0.2.1-alpha.2': patches/@deepseek-ai__dsh-session@0.2.1-alpha.2.patch
   '@deepseek-ai/dsh-working-directory@0.2.1-alpha.2': patches/@deepseek-ai__dsh-working-directory@0.2.1-alpha.2.patch
+  '@shopify/flash-list@2.3.3': patches/@shopify__flash-list@2.3.3.patch
+  '@stream-io/react-native-webrtc@145.4.1': patches/@stream-io__react-native-webrtc@145.4.1.patch
   braces@3.0.3: patches/braces@3.0.3.patch
   decode-uri-component@0.5.0: patches/decode-uri-component@0.5.0.patch
   dsh-plugin-codegraph-service@0.1.6: patches/dsh-plugin-codegraph-service@0.1.6.patch
@@ -57,7 +60,7 @@ patchedDependencies:
   dsh-plugin-codegraph-tool@0.1.6: patches/dsh-plugin-codegraph-tool@0.1.6.patch
   dsh-plugin-codegraph-tree-sitter@0.1.6: patches/dsh-plugin-codegraph-tree-sitter@0.1.6.patch
   node-forge@1.4.0: patches/node-forge@1.4.0.patch
-  react-native-webrtc@124.0.8: patches/react-native-webrtc@124.0.8.patch
+  openrgb-sdk@0.6.0: patches/openrgb-sdk@0.6.0.patch
   react-native@0.86.3: patches/react-native@0.86.3.patch
 
 packageExtensions:

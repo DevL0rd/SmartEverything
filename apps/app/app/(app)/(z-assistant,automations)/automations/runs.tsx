@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { AllRunsScreen } from '../../../../src/features/automations/screens/runs-screen';
+import { AllRunsHost } from '../../../../src/features/automations/hosts/detail-hosts';
 
 export default function AllRunsRoute(): ReactNode {
-  return <AllRunsScreen />;
+  return <AllRunsHost />;
 }

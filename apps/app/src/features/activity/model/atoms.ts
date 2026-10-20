@@ -10,6 +10,7 @@ import {
 import type { IconName } from '../../../components/icon';
 import type { Tone } from '../../../components/tone';
 import type { Device } from '../../../store/state';
+import { automationRunAtom } from '../../automations';
 import { eventLook } from './event-look';
 import { deviceIcon } from '../../device-visuals';
 
@@ -51,38 +52,13 @@ const FAILED: ReadonlySet<CommandRow['status']> = new Set(['failed', 'expired'])
 
 const EVENT_SUMMARY = z.object({ summary: z.string().min(1), topic: z.string().min(1) });
 
-const AUTOMATION_RUN = z.object({
-  name: z.string().min(1),
-  outcome: z.enum(['succeeded', 'failed']).optional(),
-});
-
 function deviceCategory(device: Device | undefined): ActivityCategory {
   return device !== undefined && isCamera(device) ? 'cameras' : 'devices';
 }
 
-function automationAtom(event: EventRow): ActivityAtom {
-  const details = AUTOMATION_RUN.safeParse(event.details);
-  const failed = details.success && details.data.outcome === 'failed';
-  return {
-    id: `event:${event.id}`,
-    kind: 'event',
-    group: `automation:${details.success ? details.data.name : event.id}`,
-    at: event.occurred_at,
-    deviceId: null,
-    name: details.success ? details.data.name : 'An automation',
-    what: failed ? 'Didn’t finish' : 'Ran',
-    topic: 'Ran',
-    by: null,
-    icon: failed ? 'alert' : 'automations',
-    tone: failed ? 'critical' : 'variant',
-    category: 'automations',
-    failed,
-  };
-}
-
 export function eventAtom(event: EventRow, devices: DeviceLookup): ActivityAtom | null {
   if (event.kind === 'automation_run') {
-    return automationAtom(event);
+    return automationRunAtom(event);
   }
   const device = event.device_id === null ? undefined : devices.get(event.device_id);
   if (device === undefined) {

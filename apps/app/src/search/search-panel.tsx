@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import type { NavPinTarget } from '@smarteverything/domain';
 import { keyPressOf, type KeyPress } from '../design/keyboard';
 import { isNative, useIdiom } from '../design/platform';
 import { useDebouncedValue } from '../design/use-debounced-value';
@@ -22,6 +23,7 @@ interface SearchPanelProps {
   readonly onDone: () => void;
   readonly onEscape: () => void;
   readonly onSeeAll?: () => void;
+  readonly pick?: (target: NavPinTarget) => void;
 }
 
 interface Keys {
@@ -66,7 +68,7 @@ function tab(keys: Keys): boolean {
   return true;
 }
 
-function handle(press: KeyPress, keys: Keys): boolean {
+function move(press: KeyPress, keys: Keys): boolean {
   switch (press.key) {
     case 'ArrowDown':
       keys.navigation.move(1);
@@ -78,6 +80,18 @@ function handle(press: KeyPress, keys: Keys): boolean {
       return keys.navigation.navigating && keys.navigation.right();
     case 'ArrowLeft':
       return keys.navigation.navigating && keys.navigation.left();
+    default:
+      return false;
+  }
+}
+
+function pinSelected(keys: Keys): boolean {
+  const row = keys.navigation.selected;
+  return row?.kind === 'node' && keys.actions.pin(row.node);
+}
+
+function handle(press: KeyPress, keys: Keys): boolean {
+  switch (press.key) {
     case 'Enter':
       return enter(press, keys);
     case 'Tab':
@@ -85,8 +99,10 @@ function handle(press: KeyPress, keys: Keys): boolean {
     case 'Escape':
       keys.props.onEscape();
       return true;
+    case 'p':
+      return press.command && pinSelected(keys);
     default:
-      return false;
+      return move(press, keys);
   }
 }
 
@@ -148,7 +164,7 @@ export function useSettledSearchPanel(
   const catalogue = useSearchCatalogue();
   const { recent, clear } = useRecentSearches();
   const navigation = useResultNavigation(query, useRowBuilder(catalogue, query, recent));
-  const actions = useSearchActions(catalogue, query, props.onDone);
+  const actions = useSearchActions(catalogue, query, props.onDone, props.pick ?? null);
   const keys: Keys = { navigation, actions, catalogue, props };
   useCapturedKeys(pointer, (press) => handle(press, keys));
   const onOpen = useStableCallback(actions.open);
@@ -163,6 +179,7 @@ export function useSettledSearchPanel(
     selectedKey: navigation.selected?.key ?? null,
     keyboard: pointer,
     navigating: navigation.navigating,
+    picking: props.pick !== undefined,
     onOpen,
     onToggle,
     onShowAll,

@@ -1,6 +1,5 @@
 import type { Logger } from '@smarteverything/logging';
 import type { ToolHub } from '../ai-tools/tool-hub';
-import { runToolAction } from '../automations/tool-action';
 import type { Clock } from '../clock';
 import { WakeRunner } from '../wake/wake-runner';
 import type { ServerContext } from './context';
@@ -38,7 +37,7 @@ export function attachAutomationAi(
   });
   context.hub.automationAi.attach({
     wake: (action, origin) => wakes.wake(action, origin),
-    tool: (action, origin) => runToolAction(tools, action, origin),
+    tools,
     stop: (): void => {
       wakes.stop();
     },

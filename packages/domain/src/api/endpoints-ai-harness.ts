@@ -123,7 +123,8 @@ export const AI_HARNESS_ENDPOINTS = {
     method: 'GET',
     path: '/api/ai/chats/:chatId/machines',
     access: 'member',
-    summary: 'List the machines this chat can run on: name, operating system, online, current',
+    summary:
+      'List the machines this chat can run on: name, operating system, sandbox, online, current',
     params: CHAT,
     query: NOTHING,
     body: NO_BODY,

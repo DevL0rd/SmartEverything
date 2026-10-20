@@ -31,6 +31,7 @@ const PART_NAMES = [
   'displays',
   'system',
   'windows',
+  'tiling',
   'services',
   'session',
 ] as const satisfies readonly ComputerPartName[];

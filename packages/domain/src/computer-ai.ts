@@ -135,13 +135,18 @@ export const CLAUDE_PROVIDER_OPTIONS = z.strictObject({
 });
 export type ClaudeProviderOptions = z.infer<typeof CLAUDE_PROVIDER_OPTIONS>;
 
+const COMPUTER_CONTROL_FIELDS = {
+  enabled: z.boolean(),
+  auto_link: z.boolean(),
+  mcp_areas: z.array(z.enum(MCP_TOOL_AREAS)).nullable(),
+};
+const COMPUTER_PROVIDER_FIELDS = { enabled: z.boolean(), options: CLAUDE_PROVIDER_OPTIONS };
 export const COMPUTER_AI_SETTINGS = z.strictObject({
   control: z.strictObject({
-    enabled: z.boolean(),
-    auto_link: z.boolean(),
-    mcp_areas: z.array(z.enum(MCP_TOOL_AREAS)).nullable().default(null),
+    ...COMPUTER_CONTROL_FIELDS,
+    mcp_areas: COMPUTER_CONTROL_FIELDS.mcp_areas.default(null),
   }),
-  provider: z.strictObject({ enabled: z.boolean(), options: CLAUDE_PROVIDER_OPTIONS }),
+  provider: z.strictObject(COMPUTER_PROVIDER_FIELDS),
 });
 export type ComputerAiSettings = z.infer<typeof COMPUTER_AI_SETTINGS>;
 export const DEFAULT_COMPUTER_AI_SETTINGS: ComputerAiSettings = {
@@ -150,8 +155,8 @@ export const DEFAULT_COMPUTER_AI_SETTINGS: ComputerAiSettings = {
 };
 export const COMPUTER_AI_SETTINGS_PATCH = z
   .strictObject({
-    control: COMPUTER_AI_SETTINGS.shape.control.partial().optional(),
-    provider: COMPUTER_AI_SETTINGS.shape.provider.partial().optional(),
+    control: z.strictObject(COMPUTER_CONTROL_FIELDS).partial().optional(),
+    provider: z.strictObject(COMPUTER_PROVIDER_FIELDS).partial().optional(),
   })
   .refine(
     (value) => value.control !== undefined || value.provider !== undefined,

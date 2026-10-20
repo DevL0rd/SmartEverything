@@ -81,7 +81,10 @@ function idleCamera(): CameraParts {
   const ready = (): Promise<void> => Promise.resolve();
   return {
     speakers: new CameraSpeakers({
-      go2rtc: { play: (): Promise<void> => Promise.resolve() },
+      go2rtc: {
+        play: (): Promise<void> => Promise.resolve(),
+        backchannel: (): Promise<boolean> => Promise.resolve(true),
+      },
       feeds: new TalkFeeds(log),
       ready,
       clock: systemClock,

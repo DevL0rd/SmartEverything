@@ -6,5 +6,5 @@ export { RouteErrorBoundary as ErrorBoundary } from '../../../src/app-shell/rout
 export const unstable_settings = { initialRouteName: 'settings' };
 
 export default function GroupLayout(): ReactNode {
-  return <TabStack />;
+  return <TabStack initialRouteName={unstable_settings.initialRouteName} />;
 }

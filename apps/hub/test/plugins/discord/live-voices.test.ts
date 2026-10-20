@@ -94,7 +94,7 @@ function sessionOf(): CallSession {
     },
     transcript: { id: 'transcript', add: nothing, recent: () => [], close: nothing },
     voice: {
-      ear: () => Promise.resolve({ hear: nothing, close: () => Promise.resolve() }),
+      ear: () => Promise.resolve({ packet: nothing, close: () => Promise.resolve() }),
       transcribe: () => Promise.resolve(null),
     },
     language: 'en',

@@ -1,16 +1,23 @@
-import { PAUSE_CHOICES_MS, type PauseChoiceMs } from '@smarteverything/domain';
+import { AUTOMATIC_PAUSE_MS, PAUSE_CHOICES_MS, type PauseChoiceMs } from '@smarteverything/domain';
 
 export interface PauseOption {
   readonly value: string;
   readonly label: string;
 }
 
+function pauseLabel(ms: PauseChoiceMs): string {
+  if (ms === AUTOMATIC_PAUSE_MS) return 'Automatic';
+  return ms < 1000 ? `${String(ms)} ms` : `${String(ms / 1000)} s`;
+}
+
 export const PAUSE_OPTIONS: readonly PauseOption[] = PAUSE_CHOICES_MS.map((ms) => ({
   value: String(ms),
-  label: ms < 1000 ? `${String(ms)} ms` : `${String(ms / 1000)} s`,
+  label: pauseLabel(ms),
 }));
 
 export function pauseHint(pauseMs: PauseChoiceMs): string {
+  if (pauseMs === AUTOMATIC_PAUSE_MS)
+    return 'Automatic: the AI decides when you are done, so there is no extra wait.';
   if (pauseMs <= 320)
     return 'Quick: a sentence ends at the first short break. Best for fast answers.';
   if (pauseMs <= 640) return 'Balanced: short thinking breaks stay inside one sentence.';

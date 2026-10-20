@@ -22,12 +22,9 @@ export class StaleHubRouteError extends Error {
 
 export function trustedBootstrap(url: string): boolean {
   const parsed = new URL(url);
-  return (
-    bootstrapEndpoint(url).kind !== 'lan' &&
-    (parsed.protocol === 'https:' ||
-      (appPlatform() === 'desktop' &&
-        ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)))
-  );
+  const endpoint = bootstrapEndpoint(url);
+  if (endpoint.kind === 'loopback') return appPlatform() === 'desktop';
+  return endpoint.kind !== 'lan' && parsed.protocol === 'https:';
 }
 
 export function bootstrapEndpoint(url: string, kind?: HubEndpoint['kind']): HubEndpoint {

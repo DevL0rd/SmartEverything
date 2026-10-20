@@ -15,7 +15,7 @@ export function startLogging(): void {
   Logger.configure({
     level: 'info',
     style: __DEV__ && isNative() ? 'pretty' : __DEV__ ? 'plain' : 'json',
-    consoleRouting: __DEV__ ? 'log-only' : 'by-level',
+    consoleRouting: __DEV__ ? 'log-only' : 'warnings-only',
     tap: recordLog,
     context: { platform: isNative() ? 'android' : 'web', release: releaseOfBuild() },
   });

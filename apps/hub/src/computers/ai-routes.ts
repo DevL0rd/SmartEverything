@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   API_ENDPOINTS as E,
+  CLAUDE_SESSION,
   CLAUDE_STATUS,
   CLAUDE_PROVIDER_OPTIONS,
   COMPUTER_AI_CAPABILITIES,
@@ -8,12 +9,15 @@ import {
   type COMPUTER_AI_ENDPOINTS,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import type { Store } from '../store/store';
+import { withContinuingChats } from './session-chats';
 import type { ComputerAiDirectory } from './ai-directory';
 import { bound, type Routes } from '../server/router';
 import { roleOfCaller } from '../server/auth';
 
 export function computerAiRoutes(
   directory: ComputerAiDirectory,
+  store: Store,
 ): Routes<
   Exclude<
     keyof typeof COMPUTER_AI_ENDPOINTS,
@@ -31,7 +35,7 @@ export function computerAiRoutes(
     ),
     ...settingsRoutes(directory),
     ...providerDiscoveryRoutes(directory),
-    ...sessionReadRoutes(directory),
+    ...sessionReadRoutes(directory, store),
     ...promptReadRoutes(directory),
     ...sessionActionRoutes(directory),
     ...linkRoutes(directory),
@@ -91,13 +95,17 @@ function providerDiscoveryRoutes(
 
 function sessionReadRoutes(
   directory: ComputerAiDirectory,
+  store: Store,
 ): Routes<'listComputerClaudeSessions' | 'readComputerClaudeSession' | 'listComputerClaudeThread'> {
   return {
-    listComputerClaudeSessions: bound(E.listComputerClaudeSessions, ({ params, query }) =>
-      directory.request(
-        params.deviceId,
-        { operation: 'sessions', query },
-        E.listComputerClaudeSessions.response,
+    listComputerClaudeSessions: bound(E.listComputerClaudeSessions, async ({ params, query }) =>
+      withContinuingChats(
+        await directory.request(
+          params.deviceId,
+          { operation: 'sessions', query },
+          z.array(CLAUDE_SESSION),
+        ),
+        store.aiChats.continuingSessions(params.deviceId),
       ),
     ),
     readComputerClaudeSession: bound(E.readComputerClaudeSession, ({ params }) =>

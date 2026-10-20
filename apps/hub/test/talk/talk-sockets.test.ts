@@ -52,7 +52,10 @@ beforeEach(async () => {
   join(kitchen, alice, true);
   service = new TalkService({
     store: test.store,
-    go2rtc: { play: (): Promise<void> => Promise.resolve() },
+    go2rtc: {
+      play: (): Promise<void> => Promise.resolve(),
+      backchannel: (): Promise<boolean> => Promise.resolve(true),
+    },
     streamReady: (): Promise<void> => Promise.resolve(),
     rtspPort: 8554,
     dataDirectory: test.directory,

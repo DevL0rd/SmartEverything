@@ -1,4 +1,4 @@
-import type { SpeechSegment } from '../../src/wake-name/ear';
+import type { SpeechSegment } from '../../src/listening/speech-segment';
 import { describe, expect, it } from 'vitest';
 import { peakLevel, Utterances, type Skipped } from '../../src/transcripts/utterances';
 import { FakeClock } from '../support/fake-clock';

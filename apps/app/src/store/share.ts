@@ -65,6 +65,7 @@ export function shareTables(previous: Tables, next: Tables): Tables {
     ai_usage: shareTable(previous.ai_usage, next.ai_usage),
     plugins: shareTable(previous.plugins, next.plugins),
     plugin_streams: shareTable(previous.plugin_streams, next.plugin_streams),
+    plugin_ui: shareTable(previous.plugin_ui, next.plugin_ui),
   };
   return Object.keys(shared).every(
     (name) => Reflect.get(shared, name) === Reflect.get(previous, name),

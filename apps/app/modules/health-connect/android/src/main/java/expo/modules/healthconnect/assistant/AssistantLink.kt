@@ -5,7 +5,7 @@ import android.content.Intent
 import android.net.Uri
 
 object AssistantLink {
-  private val SCHEMES = listOf("smarteverything-dev", "smarteverything")
+  private const val SCHEME = "smarteverything"
 
   fun call(context: Context, source: String, action: String? = null): Intent =
     open(context, "assistant/call?source=$source" + (action?.let { "&action=${Uri.encode(it)}" } ?: ""))
@@ -16,9 +16,8 @@ object AssistantLink {
   )
 
   private fun open(context: Context, path: String): Intent {
-    val intent = SCHEMES.asSequence()
-      .map { scheme -> viewIntent(context, "$scheme://$path") }
-      .firstOrNull { intent -> intent.resolveActivity(context.packageManager) != null }
+    val intent = viewIntent(context, "$SCHEME://$path")
+      .takeIf { intent -> intent.resolveActivity(context.packageManager) != null }
       ?: throw IllegalStateException(
         "No activity of ${context.packageName} opens the assistant link; the app scheme is missing"
       )

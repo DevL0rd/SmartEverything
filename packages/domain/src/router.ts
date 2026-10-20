@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MAC_ADDRESS } from './mac-address';
+import { PRESENCE_PERSON } from './router-people';
 
 const IPV4 = z.ipv4();
 
@@ -75,6 +76,7 @@ const NETWORK_CLIENT = z.strictObject({
   blocked: z.boolean(),
   trafficBytesPerSecond: z.number().nonnegative().nullable(),
   profileId: z.uuid().nullable().default(null),
+  personId: z.uuid().nullable().default(null),
   firstSeen: z.iso.datetime({ offset: true }).nullable().default(null),
   lastSeen: z.iso.datetime({ offset: true }).nullable().default(null),
 });
@@ -83,6 +85,7 @@ export const KNOWN_CLIENT = z.strictObject({
   mac: MAC_ADDRESS,
   name: z.string(),
   profileId: z.uuid().nullable(),
+  personId: z.uuid().nullable().default(null),
   firstSeen: z.iso.datetime({ offset: true }),
   lastSeen: z.iso.datetime({ offset: true }),
   present: z.boolean(),
@@ -117,6 +120,7 @@ export const ROUTER_SNAPSHOT = z.strictObject({
   radios: z.array(WIFI_RADIO),
   stations: z.array(WIFI_STATION),
   clients: z.array(NETWORK_CLIENT),
+  people: z.array(PRESENCE_PERSON).default([]),
 });
 
 export type RouterSnapshot = z.output<typeof ROUTER_SNAPSHOT>;

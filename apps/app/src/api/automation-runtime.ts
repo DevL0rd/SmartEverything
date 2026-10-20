@@ -3,7 +3,6 @@ import {
   type AutomationValueContent,
   type AutomationValueRow,
   type AutomationValueOperation,
-  type AutomationRunRow,
 } from '@smarteverything/domain';
 import { api } from './transport';
 
@@ -28,12 +27,4 @@ export async function operateValue(
 
 export async function removeValue(valueId: string): Promise<void> {
   await api().call(E.removeAutomationValue, { params: { valueId } });
-}
-
-export async function readOwnedRun(runId: string): Promise<AutomationRunRow> {
-  return api().call(E.readAutomationRun, { params: { runId } });
-}
-
-export async function stopOwnedRun(runId: string): Promise<AutomationRunRow> {
-  return api().call(E.stopAutomationRun, { params: { runId } });
 }

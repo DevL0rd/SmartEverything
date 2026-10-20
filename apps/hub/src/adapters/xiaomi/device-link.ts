@@ -85,7 +85,11 @@ export class DeviceLink {
     this.reach = new Reachability({
       did,
       online,
-      lookup: context.lookup,
+      lookup: async (id): Promise<CloudLookup> => {
+        const found = await context.lookup(id);
+        this.adoptListedHost(found.host);
+        return found;
+      },
       publish: (id, now): void => {
         context.online(id, now);
         if (now) {
@@ -199,6 +203,13 @@ export class DeviceLink {
   private watchLan(): void {
     if (this.running && this.lan === null && this.retryHost !== null) {
       this.reconnect.arm();
+    }
+  }
+
+  private adoptListedHost(host: string | null): void {
+    if (host !== null && this.lan === null && this.retryHost === null) {
+      this.retryHost = host;
+      this.watchLan();
     }
   }
 

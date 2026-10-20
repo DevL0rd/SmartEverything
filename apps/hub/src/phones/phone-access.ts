@@ -15,14 +15,11 @@ export interface PhoneCommandViewer {
   readonly profileId: string;
 }
 
-export function assertPhoneActionAllowed(
-  action: { readonly type: PhoneActionType },
-  tier: PhoneTier,
-): void {
-  if (phoneActionAllowed(action, tier)) return;
+export function assertPhoneActionAllowed(type: PhoneActionType, tier: PhoneTier): void {
+  if (phoneActionAllowed(type, tier)) return;
   throw new ApiError(
     'forbidden',
-    phoneActionPersonOnly(action.type)
+    phoneActionPersonOnly(type)
       ? 'Only the person who owns this phone can do this.'
       : 'Only an owner can do this for another person.',
   );
@@ -41,5 +38,5 @@ export function assertPhoneCommandAllowed(
     viewerRole: viewer.role,
   });
   const type = phoneActionTypeOf(capability);
-  if (type !== undefined) assertPhoneActionAllowed({ type }, tier);
+  if (type !== undefined) assertPhoneActionAllowed(type, tier);
 }

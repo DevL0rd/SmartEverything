@@ -1,66 +1,19 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 import { View } from 'react-native';
-import { TUYA_SMART_LIFE_CREDENTIALS } from '@smarteverything/domain';
-import { href } from '../../../app-shell/hrefs';
-import { Button } from '../../../components/button';
+import type { ProviderLinkRow } from '@smarteverything/domain';
+import { Banner } from '../../../components/banner';
+import { Card } from '../../../components/card';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { TextField } from '../../../components/text-field';
+import { useProviderLink } from '../../../store/selectors';
+import { failureOf } from '../model/tuya-link';
 import { FlowButton } from './flow-button';
 import { LinkFlowView } from './link-flow-view';
-import { useLinkFlow } from './use-link-flow';
+import { TuyaCodeCard } from './tuya-code-card';
+import { TuyaQr } from './tuya-qr';
+import { useTuyaLink, type TuyaLink } from './use-tuya-link';
 
 const STEPS = ['Your User Code', 'Scan with Smart Life', 'Finding devices'] as const;
-
-const PATH = ['Smart Life', 'Me', 'Settings', 'Account and Security', 'User Code'] as const;
-
-function PathChips(): ReactNode {
-  return (
-    <View className="flex-row flex-wrap items-center gap-1">
-      {PATH.map((step, index) => (
-        <View
-          key={step}
-          className="flex-row items-center gap-1 rounded-full bg-surface-2 px-3 py-1"
-        >
-          {index === 0 ? null : <Icon name="chevronRight" size={16} tone="faint" />}
-          <Text variant="caption">{step}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function CodeForm({
-  code,
-  onChange,
-  onSubmit,
-}: {
-  readonly code: string;
-  readonly onChange: (code: string) => void;
-  readonly onSubmit: () => void;
-}): ReactNode {
-  return (
-    <View className="gap-5">
-      <Text variant="body" tone="variant">
-        Uses your Smart Life app. No developer account.
-      </Text>
-      <View className="gap-2">
-        <Text variant="body-strong">Find your User Code</Text>
-        <PathChips />
-      </View>
-      <TextField
-        label="User Code"
-        kind="code"
-        value={code}
-        onChange={onChange}
-        onSubmit={onSubmit}
-        helper="Paste it exactly. Capitals matter."
-        focusOnMount
-      />
-    </View>
-  );
-}
 
 function Included(): ReactNode {
   return (
@@ -74,42 +27,81 @@ function Included(): ReactNode {
       <View className="flex-row items-center gap-2">
         <Icon name="remote" size={20} tone="variant" />
         <Text variant="callout" tone="variant" className="flex-1">
-          IR remotes need a developer project
+          IR blasters learn and send codes
         </Text>
       </View>
-      <Button label="Set up IR remotes" variant="text" href={href.connect('tuya-developer')} />
     </View>
   );
 }
 
-export function TuyaFlow(): ReactNode {
-  const flow = useLinkFlow('tuya');
-  const [code, setCode] = useState('');
-  const parsed = TUYA_SMART_LIFE_CREDENTIALS.safeParse({
-    provider: 'tuya',
-    method: 'smart_life',
-    userCode: code,
-  });
-  const submit = (): void => {
-    if (parsed.success) {
-      flow.start(parsed.data);
-    }
+function Preparing({ sending }: { readonly sending: boolean }): ReactNode {
+  return (
+    <Card title="Sign in again" icon="qr">
+      <Text variant="body" tone="variant">
+        {sending
+          ? 'Getting your sign-in code…'
+          : 'Get a new code, then scan it with Smart Life. Your devices return as soon as you do.'}
+      </Text>
+    </Card>
+  );
+}
+
+function failedView(
+  link: TuyaLink,
+  row: ProviderLinkRow | null,
+): { body: ReactNode; footer: ReactNode } {
+  const failure = failureOf(row?.problem ?? 'unknown', row?.last_error ?? null);
+  return {
+    body: <Banner tone="critical" title={failure.title} body={failure.body} wrapBody />,
+    footer: (
+      <FlowButton
+        label={failure.actionLabel}
+        onPress={() => {
+          link.act(failure.action);
+        }}
+      />
+    ),
   };
+}
+
+export function TuyaFlow(): ReactNode {
+  const link = useTuyaLink();
+  const row = useProviderLink('tuya');
+  const { flow } = link;
   return (
     <LinkFlowView
       provider="tuya"
       title="Connect Smart Life"
       labels={STEPS}
       flow={flow}
-      form={<CodeForm code={code} onChange={setCode} onSubmit={submit} />}
-      formFooter={
-        <FlowButton
-          label="Continue"
-          disabled={!parsed.success}
-          loading={flow.sending}
-          onPress={submit}
-        />
+      wide
+      form={
+        link.scanOnly ? (
+          <Preparing sending={flow.sending} />
+        ) : (
+          <TuyaCodeCard code={link.code} onChange={link.setCode} onSubmit={link.submitCode} />
+        )
       }
+      formFooter={
+        link.scanOnly ? (
+          <FlowButton label="Get a code" loading={flow.sending} onPress={link.requestScan} />
+        ) : (
+          <FlowButton
+            label="Continue"
+            disabled={!link.codeReady}
+            loading={flow.sending}
+            onPress={link.submitCode}
+          />
+        )
+      }
+      renderScan={(prompt) => (
+        <TuyaQr
+          app={prompt.app}
+          content={prompt.content}
+          onDifferentAccount={link.differentAccount}
+        />
+      )}
+      failed={failedView(link, row)}
       doneExtra={<Included />}
     />
   );

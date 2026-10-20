@@ -154,7 +154,7 @@ export function flipsOf(
   const next = new Map(known);
   const flips: PowerFlip[] = [];
   for (const [deviceId, power] of Object.entries(powers)) {
-    if (power === 'offline') continue;
+    if (power === 'offline' || power === 'unknown') continue;
     const on = power === 'on';
     const before = known.get(deviceId);
     if (before !== undefined && before !== on) flips.push({ deviceId, at, on });

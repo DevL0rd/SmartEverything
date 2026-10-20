@@ -48,7 +48,6 @@ const READY = [
 function launch(
   binary: string,
   exited: (cause: Error) => void = () => undefined,
-  reported: (text: string) => void = () => undefined,
 ): Parameters<typeof startGo2rtc>[0] {
   return {
     binary,
@@ -62,18 +61,12 @@ function launch(
     xiaomi: { '1234567': 'pass-token' },
     log: testLogger(),
     exited,
-    reported,
   };
 }
 
 describe('startGo2rtc', () => {
   it('writes a private config, starts go2rtc with it, relays its log and resolves once the API listens', async () => {
-    const reports: string[] = [];
-    const running = await startGo2rtc(
-      launch(await fakeBinary(`${READY}\nexec sleep 30`), undefined, (text) => {
-        reports.push(text);
-      }),
-    );
+    const running = await startGo2rtc(launch(await fakeBinary(`${READY}\nexec sleep 30`)));
     const configPath = join(directory, 'go2rtc', 'go2rtc.yaml');
     expect(await readFile(join(directory, 'go2rtc', 'arguments'), 'utf8')).toBe(
       `-config\n${configPath}\n`,
@@ -88,7 +81,6 @@ describe('startGo2rtc', () => {
     expect(running.username).toBe(GO2RTC_USERNAME);
     await running.stop();
     await running.stop();
-    expect(reports.some((text) => text.includes('[webrtc] no candidates'))).toBe(true);
     expect(logs.events()).toEqual(
       expect.arrayContaining([
         'go2rtc.output',

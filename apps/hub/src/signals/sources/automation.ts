@@ -24,13 +24,9 @@ function valueSignals(change: RowChange, context: FeedContext): readonly SignalI
   return [];
 }
 function runSignals(change: RowChange, context: FeedContext): readonly SignalInput[] {
-  if (
-    change.table !== 'automation_runs' ||
-    change.record === null ||
-    change.record.status === change.oldRecord?.status
-  )
-    return [];
-  const record = change.record;
+  if (change.table !== 'automation_runs') return [];
+  const { record, oldRecord } = change;
+  if (record?.mode !== 'live' || record.status === oldRecord?.status) return [];
   return [
     signalAt(context, {
       source: 'automation_run',

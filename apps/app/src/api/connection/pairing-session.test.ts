@@ -28,6 +28,7 @@ const CLIENT = {
   id: 'client-1',
   name: 'Pixel',
   platform: 'android',
+  kind: 'phone',
   role: 'member',
   built_in: 0,
   profile_id: null,
@@ -49,6 +50,7 @@ const OBSERVATION: HubPairingObservation = {
 const script: {
   identity: HubIdentity;
   posts: string[];
+  claims: unknown[];
   proofStatus: number;
   hubCertificate: string;
   stored: unknown[];
@@ -56,6 +58,7 @@ const script: {
 } = {
   identity: IDENTITY,
   posts: [],
+  claims: [],
   proofStatus: 200,
   hubCertificate: TLS.certificateSha256,
   stored: [],
@@ -65,7 +68,10 @@ const script: {
 vi.mock('expo-crypto', () => ({
   randomUUID: (): string => '01234567-89ab-cdef-0123-456789abcdef',
 }));
-vi.mock('../../design/platform', () => ({ appPlatform: (): string => 'android' }));
+vi.mock('../../design/platform', () => ({
+  appPlatform: (): string => 'android',
+  handheldKind: (): string => 'tablet',
+}));
 vi.mock('./route-platform', () => ({
   hubNetwork: (): { capabilities: { http: boolean } } => ({ capabilities: { http: true } }),
   pinnedFetch: vi.fn(),
@@ -131,7 +137,7 @@ vi.mock('./pairing-transport', () => ({
         discovery: { state: 'disabled', detail: '' },
       });
     }
-    post(path: string, body: { nonce?: string }): Promise<unknown> {
+    post(path: string, body: { nonce?: string; kind?: string }): Promise<unknown> {
       script.posts.push(path);
       if (path === API_ENDPOINTS.proveHub.path) {
         if (script.proofStatus !== 200) throw new PairingResponseError(script.proofStatus);
@@ -144,6 +150,7 @@ vi.mock('./pairing-transport', () => ({
           ),
         });
       }
+      script.claims.push(body);
       return Promise.resolve({ token: TOKEN, client: CLIENT });
     }
     close(): Promise<void> {
@@ -174,6 +181,7 @@ function session(): InstanceType<typeof PairingSession> {
 beforeEach(() => {
   script.identity = IDENTITY;
   script.posts = [];
+  script.claims = [];
   script.proofStatus = 200;
   script.hubCertificate = TLS.certificateSha256;
   script.stored = [];
@@ -188,6 +196,9 @@ describe('pairing with a home found nearby', () => {
     expect(pairing.state.get()).toMatchObject({ status: 'ready', home: 'Home' });
     await pairing.submit(CODE, 'Pixel');
     expect(script.posts).toEqual(['/api/pair/proof', '/api/pair/claim', 'GET /api/connection']);
+    expect(script.claims).toEqual([
+      expect.objectContaining({ platform: 'android', kind: 'tablet' }),
+    ]);
     expect(pairing.state.get()).toMatchObject({ status: 'complete' });
     expect(script.stored).toHaveLength(1);
     expect(run.publish).toHaveBeenCalledOnce();

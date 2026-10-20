@@ -1,8 +1,24 @@
-import { createHash, createHmac } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac } from 'node:crypto';
+import {
+  ENDPOINT,
+  HOMES_RESULT,
+  QR_TOKEN_REPLY,
+  READ_ONLY_CODES,
+  SCAN_PENDING_REPLY,
+  SESSION_ENDED_REPLY,
+  SIGNED_IN_RESULT,
+  TOKEN_LIFETIME_SECONDS,
+  USER_CODE,
+  USER_CODE_REFUSED_REPLY,
+  WRITE_ONLY_CODES,
+  type RecordedPoint,
+} from './recorded';
 
-export const ACCESS_ID = 'test-access-id';
-export const ACCESS_SECRET = '0123456789abcdefFEDCBA9876543210';
-export const APP_USER = 'app-user-1';
+export { ENDPOINT, USER_CODE } from './recorded';
+
+const LOGIN_HOST = 'https://apigw.iotbing.com';
+const NONCE_LENGTH = 12;
+const SIGNED_HEADERS = ['X-appKey', 'X-requestId', 'X-sid', 'X-time', 'X-token'] as const;
 
 export interface FakeDevice {
   readonly id: string;
@@ -14,18 +30,8 @@ export interface FakeDevice {
   readonly online: boolean;
   readonly gateway_id?: string;
   readonly node_id?: string;
-}
-
-export interface SpecItem {
-  readonly code: string;
-  readonly dp_id: number;
-  readonly type: string;
-  readonly values: string;
-}
-
-export interface FakeSpec {
-  readonly functions: readonly SpecItem[];
-  readonly status: readonly SpecItem[];
+  readonly room?: string;
+  status: { code: string; value: unknown }[];
 }
 
 export interface RecordedRequest {
@@ -35,220 +41,358 @@ export interface RecordedRequest {
   readonly body: unknown;
 }
 
+export interface FakeSession {
+  readonly userCode: string;
+  readonly terminalId: string;
+  readonly endpoint: string;
+  readonly uid: string;
+  readonly username: string | null;
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  readonly expiresAt: number;
+}
+
 interface Failure {
   readonly code: number;
   readonly msg: string;
 }
 
+interface OpenedRequest {
+  readonly secret: string;
+  readonly signed: boolean;
+  readonly query: URLSearchParams;
+  readonly body: unknown;
+}
+
 type Handler = (request: RecordedRequest, match: RegExpExecArray) => unknown;
 
-function envelope(result: unknown): Response {
-  return new Response(JSON.stringify({ success: true, result, t: 1, tid: 'x' }), { status: 200 });
+function md5Hex(text: string): string {
+  return createHash('md5').update(text).digest('hex');
 }
 
-function refusal(failure: Failure): Response {
-  return new Response(JSON.stringify({ success: false, ...failure, t: 1, tid: 'x' }), {
-    status: 200,
-  });
+function hmacHex(key: string, message: string): string {
+  return createHmac('sha256', key).update(message).digest('hex');
 }
 
-function sortedUrl(url: URL): string {
-  const pairs = [...url.searchParams.keys()]
-    .sort()
-    .map((key) => `${key}=${url.searchParams.get(key) ?? ''}`);
-  return pairs.length === 0 ? url.pathname : `${url.pathname}?${pairs.join('&')}`;
+function reply(body: unknown): Response {
+  return new Response(JSON.stringify(body), { status: 200 });
 }
 
-export class FakeTuyaCloud {
+function seal(plain: string, secret: string, nonce: string): string {
+  const cipher = createCipheriv('aes-128-gcm', Buffer.from(secret), Buffer.from(nonce));
+  const body = Buffer.concat([cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
+  return `${Buffer.from(nonce).toString('base64')}${body.toString('base64')}`;
+}
+
+function open(sealed: string, secret: string): string {
+  const bytes = Buffer.from(sealed, 'base64');
+  const decipher = createDecipheriv(
+    'aes-128-gcm',
+    Buffer.from(secret),
+    bytes.subarray(0, NONCE_LENGTH),
+  );
+  const tail = bytes.subarray(NONCE_LENGTH);
+  decipher.setAuthTag(tail.subarray(tail.length - 16));
+  return Buffer.concat([
+    decipher.update(tail.subarray(0, tail.length - 16)),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+function plainObject(text: string): Record<string, string> {
+  const parsed: unknown = JSON.parse(text);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`expected a JSON object, received ${text}`);
+  }
+  return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value)]));
+}
+
+function specificationItem(point: RecordedPoint): object {
+  return { code: point.code, type: point.type, values: JSON.stringify(point.values) };
+}
+
+export function wnykqDevice(
+  id: string,
+  localKey: string,
+  extra: Partial<FakeDevice> = {},
+): FakeDevice {
+  return {
+    id,
+    name: `Blaster ${id}`,
+    category: 'wnykq',
+    product_id: 'p-wnykq',
+    local_key: localKey,
+    sub: false,
+    online: true,
+    status: [],
+    ...extra,
+  };
+}
+
+export class FakeSmartLife {
   readonly requests: RecordedRequest[] = [];
+  readonly logins: URL[] = [];
   readonly devices: FakeDevice[] = [];
-  readonly specs = new Map<string, FakeSpec>();
-  readonly statuses = new Map<string, { code: string; value: unknown }[]>();
+  readonly points = new Map<string, readonly RecordedPoint[]>();
   readonly failures = new Map<string, Failure>();
-  readonly homes: {
-    home_id: number;
-    name: string;
-    rooms: { room_id: number; name: string; devices: string[] }[];
-  }[] = [];
-  readonly remotes = new Map<
-    string,
-    {
-      remote_id: string;
-      remote_name: string;
-      category_id: number;
-      keys: { key: string; key_id: number }[];
-    }[]
-  >();
-  learnedCode: string | null = null;
-  tokens = 0;
-  tokenLifetimeSeconds = 7200;
-  private validToken: string | null = null;
+  readonly commands: { readonly deviceId: string; readonly commands: unknown }[] = [];
+  readonly validUserCodes = new Set<string>([USER_CODE]);
+  pendingPolls = 2;
+  signedIn = 0;
+  refreshes = 0;
+  terminalsExpired = 0;
+  private issued = 0;
+  private accessToken = 'access-0';
+  private refreshToken = 'refresh-0';
+  private ended = false;
   private readonly routes: readonly (readonly [string, RegExp, Handler])[] = [
-    ['GET', /^\/v1\.0\/token$/, (): unknown => this.issueToken()],
-    ['GET', /^\/v1\.0\/token\/refresh-\d+$/, (): unknown => this.issueToken()],
-    ['GET', /^\/v1\.3\/iot-03\/devices$/, (request): unknown => this.devicePage(request.query)],
+    ['GET', /^\/v1\.0\/m\/life\/users\/homes$/, (): unknown => HOMES_RESULT],
+    ['GET', /^\/v1\.0\/m\/life\/ha\/home\/devices$/, (): unknown => this.devices.map(listed)],
     [
       'GET',
-      /^\/v1\.1\/devices\/([^/]+)\/specifications$/,
-      (_, match): unknown => this.specs.get(match[1] ?? '') ?? { functions: [], status: [] },
+      /^\/v1\.0\/m\/life\/ha\/devices\/detail$/,
+      (request): unknown => this.details(request.query.get('devIds')),
     ],
     [
       'GET',
-      /^\/v1\.0\/iot-03\/devices\/status$/,
-      (request): unknown => this.statusesOf(request.query),
-    ],
-    ['POST', /^\/v1\.0\/iot-03\/devices\/[^/]+\/commands$/, (): unknown => true],
-    [
-      'GET',
-      /^\/v1\.0\/users\/[^/]+\/homes$/,
-      (): unknown => this.homes.map((home) => ({ home_id: home.home_id, name: home.name })),
+      /^\/v1\.1\/m\/life\/([^/]+)\/specifications$/,
+      (_, match): unknown => this.specification(match[1]),
     ],
     [
       'GET',
-      /^\/v1\.0\/homes\/(\d+)\/rooms$/,
-      (_, match): unknown => ({ rooms: this.home(match[1]).rooms }),
+      /^\/v1\.0\/m\/life\/devices\/([^/]+)\/status$/,
+      (_, match): unknown => this.relations(match[1]),
     ],
+    ['GET', /^\/v1\.0\/m\/life\/ha\/[^/]+\/code\/custom-type$/, (): unknown => false],
+    ['GET', /^\/v1\.0\/m\/thing\/ha\/([^/]+)\/room$/, (_, match): unknown => this.room(match[1])],
     [
-      'GET',
-      /^\/v1\.0\/homes\/(\d+)\/rooms\/(\d+)\/devices$/,
-      (_, match): unknown => this.roomDevices(match[1], match[2]),
+      'POST',
+      /^\/v1\.1\/m\/thing\/([^/]+)\/commands$/,
+      (request, match): unknown => this.command(match[1], request),
     ],
-    [
-      'GET',
-      /^\/v2\.0\/infrareds\/([^/]+)\/remotes$/,
-      (_, match): unknown => this.remotes.get(match[1] ?? '') ?? [],
-    ],
-    [
-      'GET',
-      /^\/v2\.0\/infrareds\/([^/]+)\/remotes\/([^/]+)\/keys$/,
-      (_, match): unknown => this.keysOf(match[1], match[2]),
-    ],
-    ['POST', /^\/v2\.0\/infrareds\/[^/]+\/remotes\/[^/]+\/raw\/command$/, (): unknown => true],
-    ['PUT', /^\/v2\.0\/infrareds\/[^/]+\/learning-state$/, (): unknown => true],
-    [
-      'GET',
-      /^\/v2\.0\/infrareds\/[^/]+\/learning-codes$/,
-      (): unknown => ({ success: this.learnedCode !== null, code: this.learnedCode }),
-    ],
+    ['POST', /^\/v1\.0\/m\/life\/ha\/access\/config$/, (): unknown => MESSAGING],
+    ['POST', /^\/v1\.0\/m\/token\/terminal\/expire$/, (): unknown => this.expireTerminal()],
+    ['GET', /^\/v1\.0\/m\/token\/([^/]+)$/, (_, match): unknown => this.refresh(match[1])],
   ];
 
-  readonly fetch = (url: string, init: RequestInit): Promise<Response> =>
-    Promise.resolve(this.answer(new URL(url), init));
+  constructor(private readonly now: () => number) {}
 
-  expireToken(): void {
-    this.validToken = null;
+  readonly fetch = (url: string, init: RequestInit): Promise<Response> =>
+    Promise.resolve(
+      url.startsWith(LOGIN_HOST) ? this.login(new URL(url), init) : this.api(new URL(url), init),
+    );
+
+  session(userCode: string = USER_CODE): FakeSession {
+    return {
+      userCode,
+      terminalId: SIGNED_IN_RESULT.terminal_id,
+      endpoint: ENDPOINT,
+      uid: SIGNED_IN_RESULT.uid,
+      username: null,
+      accessToken: this.accessToken,
+      refreshToken: this.refreshToken,
+      expiresAt: this.now() + TOKEN_LIFETIME_SECONDS * 1000,
+    };
+  }
+
+  endSession(): void {
+    this.ended = true;
   }
 
   calls(method: string, path: string): RecordedRequest[] {
     return this.requests.filter((request) => request.method === method && request.path === path);
   }
 
-  private answer(url: URL, init: RequestInit): Response {
+  commandsFor(deviceId: string): unknown[] {
+    return this.commands
+      .filter((entry) => entry.deviceId === deviceId)
+      .map((entry) => entry.commands);
+  }
+
+  private login(url: URL, init: RequestInit): Response {
+    this.logins.push(url);
+    const userCode = url.searchParams.get('usercode') ?? '';
+    if (!this.validUserCodes.has(userCode)) {
+      return reply(USER_CODE_REFUSED_REPLY);
+    }
+    if (init.method === 'POST') {
+      return reply(QR_TOKEN_REPLY);
+    }
+    if (this.pendingPolls > 0) {
+      this.pendingPolls -= 1;
+      return reply(SCAN_PENDING_REPLY);
+    }
+    this.signedIn += 1;
+    this.ended = false;
+    this.issueTokens();
+    return reply({
+      success: true,
+      t: this.now(),
+      result: {
+        access_token: this.accessToken,
+        refresh_token: this.refreshToken,
+        expire_time: TOKEN_LIFETIME_SECONDS,
+        ...SIGNED_IN_RESULT,
+      },
+    });
+  }
+
+  private issueTokens(): void {
+    this.issued += 1;
+    this.accessToken = `access-${String(this.issued)}`;
+    this.refreshToken = `refresh-${String(this.issued)}`;
+  }
+
+  private api(url: URL, init: RequestInit): Response {
     const method = init.method ?? 'GET';
-    const body = typeof init.body === 'string' ? init.body : '';
     const headers = new Headers(init.headers);
-    const parsedBody: unknown = body === '' ? null : JSON.parse(body);
-    const request = { method, path: url.pathname, query: url.searchParams, body: parsedBody };
-    this.requests.push(request);
-    const signError = this.checkSignature(url, method, body, headers);
-    if (signError !== null) {
-      return refusal(signError);
+    const opened = this.open(url, init, headers);
+    this.requests.push({ method, path: url.pathname, query: opened.query, body: opened.body });
+    const refusal = this.refusal(method, url.pathname, opened.signed, headers.get('X-token') ?? '');
+    if (refusal !== null) {
+      return reply({ success: false, ...refusal, t: this.now() });
     }
-    const failure = this.failures.get(`${method} ${url.pathname}`);
-    if (failure !== undefined) {
-      return refusal(failure);
-    }
-    for (const [routeMethod, pattern, handler] of this.routes) {
-      const match = pattern.exec(url.pathname);
-      if (routeMethod === method && match !== null) {
-        return envelope(handler(request, match));
-      }
-    }
-    return new Response('not found', { status: 404 });
-  }
-
-  private checkSignature(url: URL, method: string, body: string, headers: Headers): Failure | null {
-    const isToken = url.pathname.startsWith('/v1.0/token');
-    const token = headers.get('access_token');
-    if (!isToken && (token === null || token !== this.validToken)) {
-      return { code: 1010, msg: 'token invalid' };
-    }
-    const contentHash = createHash('sha256').update(body).digest('hex');
-    const toSign = `${method}\n${contentHash}\n\n${sortedUrl(url)}`;
-    const message = [
-      ACCESS_ID,
-      isToken ? '' : token,
-      headers.get('t'),
-      headers.get('nonce'),
-      toSign,
-    ].join('');
-    const expected = createHmac('sha256', ACCESS_SECRET)
-      .update(message)
-      .digest('hex')
-      .toUpperCase();
-    const valid =
-      headers.get('client_id') === ACCESS_ID &&
-      headers.get('sign_method') === 'HMAC-SHA256' &&
-      headers.get('sign') === expected;
-    return valid ? null : { code: 1004, msg: 'sign invalid' };
-  }
-
-  private issueToken(): unknown {
-    this.tokens += 1;
-    this.validToken = `token-${String(this.tokens)}`;
-    return {
-      access_token: this.validToken,
-      refresh_token: `refresh-${String(this.tokens)}`,
-      expire_time: this.tokenLifetimeSeconds,
-      uid: 'u',
-    };
-  }
-
-  private devicePage(query: URLSearchParams): unknown {
-    const filter = query.get('device_ids');
-    const selected =
-      filter === null
-        ? this.devices
-        : this.devices.filter((device) => filter.split(',').includes(device.id));
-    const start = Number(query.get('last_row_key') ?? '0');
-    const list = selected.slice(start, start + 2);
-    const more = start + 2 < selected.length;
-    return {
-      list,
-      has_more: more,
-      ...(more ? { last_row_key: String(start + 2) } : {}),
-      total: selected.length,
-    };
-  }
-
-  private statusesOf(query: URLSearchParams): unknown {
-    return (query.get('device_ids') ?? '')
-      .split(',')
-      .filter((id) => this.statuses.has(id))
-      .map((id) => ({ id, status: this.statuses.get(id) }));
-  }
-
-  private home(homeId: string | undefined): FakeTuyaCloud['homes'][number] {
-    const home = this.homes.find((candidate) => String(candidate.home_id) === homeId);
-    if (home === undefined) {
-      throw new Error(`no home ${String(homeId)}`);
-    }
-    return home;
-  }
-
-  private roomDevices(homeId: string | undefined, roomId: string | undefined): unknown {
-    const room = this.home(homeId).rooms.find((candidate) => String(candidate.room_id) === roomId);
-    return (room?.devices ?? []).map((id) => ({ id }));
-  }
-
-  private keysOf(blasterId: string | undefined, remoteId: string | undefined): unknown {
-    const remote = (this.remotes.get(blasterId ?? '') ?? []).find(
-      (candidate) => candidate.remote_id === remoteId,
+    const request = this.requests[this.requests.length - 1];
+    const found = this.routes.find(
+      ([routeMethod, pattern]) => routeMethod === method && pattern.test(url.pathname),
     );
-    return { category_id: remote?.category_id ?? 0, key_list: remote?.keys ?? [] };
+    if (found === undefined || request === undefined) {
+      return new Response('not found', { status: 404 });
+    }
+    const match = found[1].exec(url.pathname);
+    if (match === null) {
+      return new Response('not found', { status: 404 });
+    }
+    const nonce = `n${String(this.requests.length).padStart(NONCE_LENGTH - 1, '0')}`;
+    return reply({
+      success: true,
+      t: this.now(),
+      result: seal(JSON.stringify(found[2](request, match)), opened.secret, nonce),
+    });
+  }
+
+  private open(url: URL, init: RequestInit, headers: Headers): OpenedRequest {
+    const requestId = headers.get('X-requestId') ?? '';
+    const sealedQuery = url.searchParams.get('encdata') ?? '';
+    const sealedBody = typeof init.body === 'string' ? this.sealedBodyOf(init.body) : '';
+    const hashKey = md5Hex(`${requestId}${this.refreshToken}`);
+    const secret = hmacHex(requestId, hashKey).slice(0, 16);
+    const signedHeaders = SIGNED_HEADERS.map((name) => [name, headers.get(name) ?? ''] as const)
+      .filter(([, value]) => value !== '')
+      .map(([name, value]) => `${name}=${value}`)
+      .join('||');
+    const expectedSign = hmacHex(hashKey, `${signedHeaders}${sealedQuery}${sealedBody}`);
+    return {
+      secret,
+      signed: headers.get('X-sign') === expectedSign,
+      query: new URLSearchParams(sealedQuery === '' ? {} : plainObject(open(sealedQuery, secret))),
+      body: sealedBody === '' ? null : JSON.parse(open(sealedBody, secret)),
+    };
+  }
+
+  private sealedBodyOf(body: string): string {
+    const parsed: unknown = JSON.parse(body);
+    if (typeof parsed !== 'object' || parsed === null || !('encdata' in parsed)) {
+      throw new Error(`the request body is not sealed: ${body}`);
+    }
+    return String(parsed.encdata);
+  }
+
+  private refusal(method: string, path: string, signed: boolean, token: string): Failure | null {
+    const failure = this.failures.get(`${method} ${path}`);
+    if (failure !== undefined) {
+      return failure;
+    }
+    if (this.ended) {
+      return SESSION_ENDED_REPLY;
+    }
+    if (!signed) {
+      return { code: 1004, msg: 'sign invalid' };
+    }
+    const isRefresh = path.startsWith('/v1.0/m/token/refresh-');
+    return isRefresh || token === this.accessToken ? null : SESSION_ENDED_REPLY;
+  }
+
+  private refresh(presented: string | undefined): unknown {
+    if (presented !== this.refreshToken) {
+      throw new Error(`refresh token ${String(presented)} is not the current one`);
+    }
+    this.refreshes += 1;
+    this.issueTokens();
+    return {
+      accessToken: this.accessToken,
+      refreshToken: this.refreshToken,
+      expireTime: TOKEN_LIFETIME_SECONDS,
+      uid: SIGNED_IN_RESULT.uid,
+    };
+  }
+
+  private expireTerminal(): unknown {
+    this.terminalsExpired += 1;
+    return true;
+  }
+
+  private details(devIds: string | null): unknown {
+    const wanted = (devIds ?? '').split(',');
+    return this.devices.filter((device) => wanted.includes(device.id)).map(listed);
+  }
+
+  private specification(deviceId: string | undefined): unknown {
+    const points = this.points.get(deviceId ?? '') ?? [];
+    return {
+      functions: points.filter((point) => !READ_ONLY_CODES.has(point.code)).map(specificationItem),
+      status: points.filter((point) => !WRITE_ONLY_CODES.has(point.code)).map(specificationItem),
+    };
+  }
+
+  private relations(deviceId: string | undefined): unknown {
+    return {
+      dpStatusRelationDTOS: (this.points.get(deviceId ?? '') ?? []).map((point) => ({
+        dpId: point.dpId,
+        statusFormat: JSON.stringify({ [point.code]: '$' }),
+        valueConvert: 'default',
+        valueType: point.type.toLowerCase(),
+        valueDesc: JSON.stringify(point.values),
+        enumMappingMap: null,
+        supportLocal: true,
+      })),
+    };
+  }
+
+  private room(deviceId: string | undefined): unknown {
+    const name = this.devices.find((device) => device.id === deviceId)?.room;
+    return name === undefined ? null : { id: 1, name };
+  }
+
+  private command(deviceId: string | undefined, request: RecordedRequest): unknown {
+    this.commands.push({ deviceId: deviceId ?? '', commands: request.body });
+    return true;
   }
 }
 
-export function item(code: string, dpId: number, type: string, values: object = {}): SpecItem {
-  return { code, dp_id: dpId, type, values: JSON.stringify(values) };
+function listed(device: FakeDevice): object {
+  const { room: _room, ...rest } = device;
+  return rest;
+}
+
+const MESSAGING = {
+  url: 'ssl://broker.example.test:8883',
+  clientId: 'client-0001',
+  username: 'broker-user',
+  password: 'broker-password',
+  expireTime: 7200,
+  topic: {
+    ownerId: { sub: 'smart/in/owner/{ownerId}' },
+    devId: { sub: 'smart/in/device/{devId}' },
+  },
+} as const;
+
+export const MESSAGING_TOPICS = {
+  owner: (ownerId: string): string => `smart/in/owner/${ownerId}`,
+  device: (deviceId: string, suffix: 'pen' | 'sta'): string =>
+    `smart/in/device/${deviceId}/${suffix}`,
+} as const;
+
+export function item(code: string, dpId: number, type: string, values: object = {}): RecordedPoint {
+  return { code, dpId, type, values };
 }

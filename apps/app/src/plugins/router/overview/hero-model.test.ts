@@ -32,6 +32,7 @@ function snapshot(
     radios: [],
     stations: [],
     clients: [],
+    people: [],
   };
 }
 

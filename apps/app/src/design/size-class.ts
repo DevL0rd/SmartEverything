@@ -31,7 +31,7 @@ export interface SizeClass {
   readonly sheet: SheetKind;
 }
 
-const WIDTH_BREAKPOINTS = { medium: 600, expanded: 840, large: 1200, xlarge: 1600 } as const;
+export const WIDTH_BREAKPOINTS = { medium: 600, expanded: 840, large: 1200, xlarge: 1600 } as const;
 
 const HEIGHT_BREAKPOINTS = { medium: 480, expanded: 900 } as const;
 

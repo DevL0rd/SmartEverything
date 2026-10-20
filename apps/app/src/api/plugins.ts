@@ -1,4 +1,9 @@
-import { API_ENDPOINTS as E, type PluginId, type PluginToolOutcome } from '@smarteverything/domain';
+import {
+  API_ENDPOINTS as E,
+  type PluginDataPoint,
+  type PluginId,
+  type PluginToolOutcome,
+} from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { api } from './transport';
 
@@ -15,4 +20,12 @@ export async function callPluginTool(
   });
   log.info('plugin.tool_called', { pluginId, tool, outcome: outcome.outcome });
   return outcome;
+}
+
+export function readPluginStreamHistory(
+  pluginId: PluginId,
+  stream: string,
+  limit: number,
+): Promise<PluginDataPoint[]> {
+  return api().call(E.readPluginData, { params: { pluginId }, query: { stream, limit } });
 }

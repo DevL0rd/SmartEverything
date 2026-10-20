@@ -146,6 +146,7 @@ export interface PluginFiles {
   readonly folder: string;
   readonly outbox: string;
   readonly attachmentsOf: (chatId: string) => readonly string[];
+  readonly fromUpload: (caller: ToolCaller, uploadId: string) => Promise<MachineFile | null>;
   readonly fromMachine: (
     caller: ToolCaller,
     input: { readonly machine: string; readonly path: string },
@@ -191,6 +192,14 @@ export interface PluginContext<S> {
   readonly voice: PluginVoice;
   readonly assistant: PluginAssistant;
   readonly files: PluginFiles;
+  readonly home: {
+    readonly timeZone: () => string;
+    readonly profiles: () => readonly { readonly id: string; readonly name: string }[];
+    readonly phone: (profileId: string) => {
+      readonly paired: boolean;
+      readonly place: string | null;
+    };
+  };
 }
 
 export interface BuiltinPluginDefinition<S> {

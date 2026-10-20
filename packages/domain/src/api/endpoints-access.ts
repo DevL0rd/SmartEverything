@@ -35,6 +35,8 @@ export type Pairing = z.infer<typeof PAIRING>;
 
 export const PAIRED_PLATFORMS = ['android', 'web'] as const;
 
+export const HANDHELD_KINDS = ['phone', 'tablet'] as const;
+
 export const ISSUED_TOKEN = z.strictObject({ token: z.string().min(1) });
 
 const CLIENT_PARAMS = z.strictObject({ clientId: ID });
@@ -92,6 +94,7 @@ export const ACCESS_ENDPOINTS = {
       code: PAIRING_CODE,
       name: CLIENT_NAME,
       platform: z.enum(PAIRED_PLATFORMS),
+      kind: z.enum(HANDHELD_KINDS).optional(),
     }),
     response: ISSUED_TOKEN.extend({ client: CLIENT_ROW }),
   }),

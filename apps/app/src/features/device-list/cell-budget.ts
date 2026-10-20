@@ -25,6 +25,7 @@ import {
 } from './cell-mocks';
 import type { VisualState } from '../device-visuals';
 import type { StoreState } from '../../store/state';
+import { startClock } from '../../store/clock';
 import type { WidgetFrameBox } from '../../components/widget-board';
 import { treeOf } from './cell-tree';
 
@@ -224,10 +225,16 @@ interface Row {
   readonly hooks: Readonly<Record<string, number>>;
 }
 
-export function useCellEnvironment(): void {
+let stopClock = (): void => undefined;
+
+export function useCellEnvironment(at?: number): void {
   beforeEach(() => {
     frames = [];
     vi.useFakeTimers();
+    if (at !== undefined) {
+      vi.setSystemTime(at);
+      stopClock = startClock();
+    }
     vi.stubGlobal('requestAnimationFrame', (callback: () => void): number => {
       frames.push(callback);
       return frames.length;
@@ -242,6 +249,8 @@ export function useCellEnvironment(): void {
   });
 
   afterEach(() => {
+    stopClock();
+    stopClock = (): void => undefined;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -297,9 +306,10 @@ export function budgetCase(
   kind: string,
   face: Face,
   max: Readonly<Record<'S' | 'M', Budget>>,
+  at?: number,
 ): void {
   describe(`${kind} cell render counts`, () => {
-    useCellEnvironment();
+    useCellEnvironment(at);
     for (const size of ['S', 'M'] as const) {
       it(`${face.name} ${size}`, async () => {
         const row = await measureCase(face, size);

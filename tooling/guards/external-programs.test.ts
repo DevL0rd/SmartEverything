@@ -19,7 +19,7 @@ const SPAWNERS = new Set([
   'runProgram',
 ]);
 const PROCESS_FILE =
-  /from '(?:node:)?child_process'|\b(?:RunProgram|RunCommand|CommandResult|CommandFailedError|ServiceSystem|FirewallSystem)\b/u;
+  /from '(?:node:)?child_process'|\b(?:RunProgram|runProgram|RunCommand|CommandResult|CommandFailedError|ServiceSystem|FirewallSystem)\b/u;
 const SHELL_EXEC_IMPORT =
   /import\s*\{[^}]*\bexec(?:Sync)?\b[^}]*\}\s*from\s*'(?:node:)?child_process'/u;
 const SOURCE_FILE = /\.tsx?$/u;
@@ -31,7 +31,7 @@ function shippedRoots(): readonly string[] {
   return [
     join(repositoryRoot, 'apps', 'hub', 'src'),
     join(repositoryRoot, 'apps', 'desktop', 'src'),
-    ...['domain', 'harness', 'ble', 'tuya', 'xiaomi', 'smartthings', 'logging'].map((name) =>
+    ...['domain', 'harness', 'ble', 'ipp', 'tuya', 'xiaomi', 'smartthings', 'logging'].map((name) =>
       join(repositoryRoot, 'packages', name, 'src'),
     ),
   ];
@@ -60,6 +60,15 @@ function calleeName(call: ts.CallExpression): string | null {
   return ts.isPropertyAccessExpression(callee) ? callee.name.text : null;
 }
 
+function runsScriptInShell(call: ts.CallExpression): boolean {
+  const callee = call.expression;
+  return (
+    ts.isPropertyAccessExpression(callee) &&
+    callee.name.text === 'run' &&
+    /shell$/iu.test(callee.expression.getText())
+  );
+}
+
 function programOf(argument: ts.Expression, constants: ReadonlyMap<string, string>): string {
   if (ts.isStringLiteralLike(argument)) return argument.text;
   if (ts.isIdentifier(argument)) return constants.get(argument.text) ?? DYNAMIC;
@@ -78,7 +87,7 @@ function programsIn(fileName: string, source: string): readonly string[] {
     if (spawnsProcesses && ts.isCallExpression(node)) {
       const name = calleeName(node);
       const first = node.arguments[0];
-      if (name !== null && SPAWNERS.has(name) && first !== undefined) {
+      if (name !== null && SPAWNERS.has(name) && first !== undefined && !runsScriptInShell(node)) {
         found.push(programOf(first, constants));
       }
     }

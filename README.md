@@ -51,7 +51,7 @@ debugging any styled component.
 │   ├── domain/                 the shared contract: capabilities, commands, automations, health, search
 │   ├── logging/                the logger; no dependencies, runs in every runtime
 │   ├── xiaomi/                 miIO, MIoT and Xiaomi cloud protocol logic
-│   ├── tuya/                   Tuya cloud signing, data points, IR codes, messages
+│   ├── tuya/                   Tuya Smart Life sign-in, data points, IR codes, messages
 │   ├── smartthings/            SmartThings mapping, webhook signatures and subscriptions, Samsung TV helpers
 │   └── ble/                    Bluetooth advert decoding (the Xiaomi S400 scale)
 ├── tooling/

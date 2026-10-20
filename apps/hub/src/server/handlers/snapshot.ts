@@ -18,7 +18,7 @@ import { otherPhoneTiers, visibleEvents, visiblePhoneValues } from '../../phones
 import { clientOf, profileIdOf } from '../auth';
 import type { ServerContext } from '../context';
 import { bound } from '../router';
-import { channelHidden, scopesOfClient } from '../person-scope';
+import { channelHidden, presenceInScope, scopesOfClient } from '../person-scope';
 import { bodyTables } from '../person-privacy';
 import { reachableSnapshot } from '../snapshot-reach';
 import { wireMessages } from '../../assistant/wire-message';
@@ -88,7 +88,7 @@ function unfilteredTablesOf(
     scenes: store.scenes.list(),
     automations: store.automations.list(),
     automation_values: store.automationValues.list(),
-    automation_runs: store.automationRuns.list(),
+    automation_runs: store.automationRunRecords.summaries(null, SNAPSHOT_WINDOWS.automationRuns),
     provider_links: store.providers.list(),
     ir_remotes: store.infrared.remotes(),
     ir_codes: store.infrared.codes(),
@@ -110,6 +110,7 @@ function unfilteredTablesOf(
     ...bodyTables(store, { role: client.role, profileId }),
     scheduled_actions: store.schedules.list(),
     plugin_streams: store.pluginData.streams(),
+    plugin_ui: store.plugins.ui(),
     exchange_rates: store.exchangeRates.read(),
     ...(extras.weather ? { weather: store.weather.read() } : {}),
   };
@@ -136,7 +137,7 @@ function talkTablesOf(
     talk_messages: talk
       .messages({ limit: TALK_MESSAGES_SNAPSHOT })
       .filter((row) => !channelHidden(scope, row.channel_id)),
-    talk_presence: context.talk.presence(),
+    talk_presence: presenceInScope(scope, context.talk.presence()),
   };
 }
 

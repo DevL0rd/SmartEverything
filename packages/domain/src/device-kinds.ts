@@ -29,6 +29,7 @@ export const DEVICE_KIND_LABELS: Readonly<Record<DeviceKind, string>> = {
   file_sync: 'File sync',
   dns_filter: 'Ad blocker',
   robot: 'Robot',
+  printer: 'Printer',
   appliance: 'Appliance',
   computer: 'Computer',
   phone: 'Phone',

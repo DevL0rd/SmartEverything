@@ -1,6 +1,9 @@
 import type { Logger } from '@smarteverything/logging';
 import type { StoreContext } from '../../context';
 import { BleObservationsRepository } from '../ble-observations';
+import { BottleLogsRepository } from '../bottle-logs';
+import { BrushingSessionsRepository } from '../brushing-sessions';
+import { BottleReadingsRepository } from '../bottle-readings';
 import { CamerasRepository } from '../cameras';
 import { CommandsRepository } from '../commands';
 import { DeviceEffectsRepository } from '../device-effects';
@@ -17,6 +20,7 @@ import { RoomsRepository } from '../rooms';
 import { ScenesRepository } from '../scenes';
 import { StateRepository } from '../state';
 import { TelevisionSettingsRepository } from '../television-settings';
+import { TreadmillSessionsRepository } from '../treadmill-sessions';
 
 export const homeRepositories = (context: StoreContext, log: Logger) =>
   ({
@@ -37,4 +41,8 @@ export const homeRepositories = (context: StoreContext, log: Logger) =>
     phoneDetails: new PhoneDetailsRepository(context, log),
     phoneIcons: new PhoneIconsRepository(context),
     televisionSettings: new TelevisionSettingsRepository(context),
+    treadmillSessions: new TreadmillSessionsRepository(context),
+    bottleReadings: new BottleReadingsRepository(context),
+    bottleLogs: new BottleLogsRepository(context),
+    brushingSessions: new BrushingSessionsRepository(context),
   }) as const;

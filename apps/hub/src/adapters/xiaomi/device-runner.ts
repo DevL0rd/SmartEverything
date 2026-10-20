@@ -23,6 +23,7 @@ import {
   propertyKeyOf,
   toDevice,
   supportsLegacyButton,
+  unspecifiedMiotEvent,
   XiaomiCloudError,
   type PropertyBinding,
   type PropertyReading,
@@ -50,7 +51,6 @@ export interface RunnerContext extends LinkContext {
 
 const CALL_STATUS = 'key-call-status';
 const CALL_START = 'key-call-start';
-const UNMAPPED_REPEAT_MS = 3_600_000;
 
 export class DeviceRunner {
   private readonly values = new Map<CapabilityKey, JsonValue>();
@@ -62,7 +62,6 @@ export class DeviceRunner {
   private readonly ptz: CameraPtz | null;
   private readonly link: DeviceLink;
   private readonly repeat: RepeatLog;
-  private readonly unmapped: RepeatLog;
 
   constructor(
     readonly entry: InventoryEntry,
@@ -70,7 +69,6 @@ export class DeviceRunner {
     private readonly context: RunnerContext,
   ) {
     this.repeat = new RepeatLog(context.log);
-    this.unmapped = new RepeatLog(context.log, UNMAPPED_REPEAT_MS);
     this.ptz =
       entry.ptz === null
         ? null
@@ -375,29 +373,31 @@ export class DeviceRunner {
       return;
     }
     const shape =
-      this.entry.spec === null ? null : miotEventOf(this.entry.spec, uplink.siid, uplink.eiid);
-    if (shape === null) {
-      this.context.log.warn('xiaomi_device.event_unknown', {
-        did: this.did,
-        siid: uplink.siid,
-        eiid: uplink.eiid,
-      });
-      return;
-    }
+      (this.entry.spec === null ? null : miotEventOf(this.entry.spec, uplink.siid, uplink.eiid)) ??
+      unspecifiedMiotEvent(uplink.siid, uplink.eiid);
     if (shape.name === CALL_START && this.watchesCallStatus()) {
       return;
     }
     const occurredAt = new Date(this.context.now()).toISOString();
-    const details = { source: 'lan-push', ...miotEventDetails(shape, uplink.arguments) };
-    this.emit(shape.name, occurredAt, details);
+    this.emit(
+      shape.name,
+      occurredAt,
+      { source: 'lan-push' },
+      miotEventDetails(shape, uplink.arguments),
+    );
   }
 
-  private emit(name: string, occurredAt: string, details: Record<string, JsonValue>): void {
-    const event = deviceEventFromMiot(name, { externalId: this.did, occurredAt, details });
-    if (event === null) {
-      this.unmapped.warn('xiaomi_device.event_unmapped', name, { did: this.did, event: name });
-      return;
-    }
+  private emit(
+    name: string,
+    occurredAt: string,
+    details: Record<string, JsonValue>,
+    miotArguments: Record<string, JsonValue> = {},
+  ): void {
+    const event = deviceEventFromMiot(
+      name,
+      { externalId: this.did, occurredAt, details },
+      miotArguments,
+    );
     const detection = isCameraModel(this.entry.cloud.model) ? miotDetection(name) : null;
     if (detection === null) {
       this.context.sink()?.event(event);

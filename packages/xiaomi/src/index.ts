@@ -154,6 +154,7 @@ export {
   miotEventKind,
   miotEventOf,
   parseCameraEventPage,
+  unspecifiedMiotEvent,
 } from './events';
 export type {
   CameraEvent,
@@ -175,7 +176,8 @@ export {
 } from './inventory';
 export type { CloudDevice, DeviceListPage, Transport, TransportChoice } from './inventory';
 
-export { cameraFeatures, go2rtcSource, isCameraModel } from './camera';
+export { cameraFeatures, DEFAULT_CAMERA_TRANSPORT, go2rtcSource, isCameraModel } from './camera';
+export type { CameraTransport } from './camera';
 export type { CameraFeatures, Go2rtcCamera } from './camera';
 
 export {

@@ -1,15 +1,9 @@
 import { WIDGET_TYPE } from '@smarteverything/domain';
-import type {
-  BoardDefaults,
-  BoardWidget,
-  WidgetDefinition,
-  WidgetSize,
-} from '../../components/widget-board';
-import { DEVICE_GROUP_WIDGET, lightGroupWidgets, type LightGroupDefault } from '../device-groups';
+import type { WidgetDefinition } from '../../components/widget-board';
+import { DEVICE_GROUP_WIDGET } from '../device-groups';
 import { APP_PLUGINS } from '../../plugins/registry';
-import { CAMERA_WIDGETS, type CameraEntry } from '../cameras';
+import { CAMERA_WIDGETS } from '../cameras';
 import { CLIMATE_WIDGETS } from '../climate';
-import type { DeviceDigest } from './model/spotlight';
 import { HOME_WIDGET_SIZES, type HomeSizedType } from './model/widget-sizes';
 import { nutritionWidgets, useTodayKey } from '../nutrition';
 import { BODY_WIDGET } from '../fitness';
@@ -29,8 +23,6 @@ import {
   ScenesWidget,
   SecurityWidget,
 } from './widgets/summary-widgets';
-
-export const HOME_PAGE = 'home';
 
 function layoutOf(type: HomeSizedType): Pick<WidgetDefinition, 'sizes' | 'defaultSize'> {
   const { sizes, defaultSize } = HOME_WIDGET_SIZES[type];
@@ -173,81 +165,4 @@ const HOME_CATALOGUE: readonly WidgetDefinition[] = [
   ...APP_PLUGINS.filter((plugin) => plugin.home !== undefined).flatMap((plugin) => plugin.widgets),
 ];
 
-export const HOME_RETIRED: ReadonlySet<string> = new Set(['devices-all']);
-
 export const HOME_WIDGETS: readonly WidgetDefinition[] = HOME_CATALOGUE.map(checked);
-
-function spotlights(digest: DeviceDigest, first: WidgetSize): readonly BoardWidget[] {
-  return digest.featured.map((deviceId, index) => ({
-    key: `spotlight:${deviceId}`,
-    type: 'spotlight',
-    size: index === 0 ? first : 'M',
-    options: { deviceId },
-  }));
-}
-
-function cameraTiles(cameras: readonly CameraEntry[], size: WidgetSize): readonly BoardWidget[] {
-  return cameras.map((entry) => ({
-    key: `camera:${entry.device.id}`,
-    type: 'camera',
-    size,
-    options: { deviceId: entry.device.id },
-  }));
-}
-
-function widget(type: string, size: WidgetSize): BoardWidget {
-  return { key: type, type, size };
-}
-
-const TAIL: readonly BoardWidget[] = [
-  widget('fitness-today', 'M'),
-  widget('body', 'M'),
-  widget('watch', 'M'),
-  widget('energy', 'M'),
-  widget('security', 'M'),
-];
-
-export function homeDefaults(
-  digest: DeviceDigest,
-  cameras: readonly CameraEntry[],
-  lightGroups: readonly LightGroupDefault[] = [],
-): BoardDefaults {
-  return {
-    compact: [
-      widget('glance', 'W'),
-      widget('weather', 'W'),
-      widget('scenes', 'W'),
-      ...spotlights(digest, 'XL'),
-      ...lightGroupWidgets(lightGroups),
-      widget('favourites', 'XL'),
-      ...cameraTiles(cameras, 'M'),
-      widget('rooms', 'M'),
-      widget('activity', 'XL'),
-      ...TAIL,
-    ],
-    medium: [
-      widget('glance', 'M'),
-      widget('weather', 'M'),
-      widget('scenes', 'M'),
-      ...spotlights(digest, 'XL'),
-      ...lightGroupWidgets(lightGroups),
-      widget('favourites', 'XL'),
-      ...cameraTiles(cameras, 'M'),
-      widget('rooms', 'M'),
-      widget('activity', 'XL'),
-      ...TAIL,
-    ],
-    expanded: [
-      widget('glance', 'M'),
-      widget('weather', 'M'),
-      widget('scenes', 'M'),
-      ...spotlights(digest, 'XL'),
-      ...lightGroupWidgets(lightGroups),
-      widget('favourites', 'XL'),
-      widget('activity', 'XL'),
-      ...cameraTiles(cameras, 'M'),
-      widget('rooms', 'M'),
-      ...TAIL,
-    ],
-  };
-}

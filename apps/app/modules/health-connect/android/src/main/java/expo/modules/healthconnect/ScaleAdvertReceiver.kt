@@ -16,6 +16,7 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import expo.modules.healthconnect.diagnostics.NativeLog
+import expo.modules.healthconnect.toothbrush.BrushWake
 import java.time.Instant
 
 class BleAcknowledgmentInvalid(detail: String) : SyncFailure(
@@ -28,6 +29,7 @@ object ScaleAdverts {
 
   @Synchronized
   fun relay(context: Context, results: List<ScanResult>) {
+    BrushWake.heard(context, results)
     val watched = ScaleRelay(context).watched().map { it.address }.toSet()
     val adverts = results.filter { it.device.address.uppercase() in watched }
       .sortedBy { it.timestampNanos }

@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import expo.modules.healthconnect.R
 import expo.modules.healthconnect.voice.VoiceService
 
 object TalkNotice {
@@ -13,7 +14,7 @@ object TalkNotice {
     val channel = store.channelName(state.live?.channelId ?: state.talkChannel.ifEmpty { null })
     val talking = state.transmit.status != "idle" || state.live != null
     return Notification.Builder(context, VoiceService.CHANNEL)
-      .setSmallIcon(context.applicationInfo.icon)
+      .setSmallIcon(R.drawable.ic_stat_smarteverything)
       .setContentTitle(titleOf(state, channel))
       .setContentText(if (state.link == "ready") channel else state.problem ?: "Connecting…")
       .setOngoing(true)
@@ -33,7 +34,7 @@ object TalkNotice {
     manager.notify(
       VoiceService.NOTIFICATION_ID,
       Notification.Builder(context, VoiceService.CHANNEL)
-        .setSmallIcon(context.applicationInfo.icon)
+        .setSmallIcon(R.drawable.ic_stat_smarteverything)
         .setContentTitle("Walkie-talkie is paused")
         .setContentText("Open SmartEverything to turn it back on")
         .setContentIntent(openApp(context))

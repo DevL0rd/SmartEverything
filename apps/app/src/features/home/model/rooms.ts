@@ -59,6 +59,7 @@ const roomLayout = memoOnInputs(
 );
 
 const powers = new DeviceFold<PowerState>({
+  models: (state): readonly DeviceModel[] => homeDeviceModels(state),
   includes: (): boolean => true,
   usesValues: (model): boolean => model.power !== null,
   projected: true,

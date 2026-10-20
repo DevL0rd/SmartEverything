@@ -19,6 +19,7 @@ import {
   type SearchSources,
 } from '@smarteverything/domain';
 import { extensionPages, type ExtensionSearchData } from './extension-pages';
+import { pluginUiPages } from './plugin-ui-pages';
 import { chatProviderPages } from './chat-provider-pages';
 import { href } from '../app-shell/hrefs';
 import { ROUTES, type RouteDefinition } from '../app-shell/routes';
@@ -38,6 +39,7 @@ export interface SearchTables extends ExtensionSearchData {
   readonly scheduled: StoreState['tables']['scheduled_actions'];
   readonly plugins: StoreState['tables']['plugins'];
   readonly pluginStreams: StoreState['tables']['plugin_streams'];
+  readonly pluginUi: StoreState['tables']['plugin_ui'];
   readonly chats: readonly SearchChat[];
 }
 
@@ -360,6 +362,7 @@ export function sourcesOf(
       ...extensionPages(tables, env.owner, out),
       ...scheduledPages(tables, out),
       ...pluginPages(tables, env, out),
+      ...pluginUiPages(tables.pluginUi, out),
       ...chatPages(tables, out),
       ...tables.chats.flatMap((chat) => chatProviderPages(chat, out, env.owner)),
     ],

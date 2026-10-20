@@ -12,11 +12,19 @@ export type VoiceDetection = (typeof VOICE_DETECTIONS)[number];
 
 export const DEFAULT_VOICE_DETECTION: VoiceDetection = 'more';
 
-export const PAUSE_CHOICES_MS = [200, 320, 640, 1000, 2500] as const;
+export const PAUSE_CHOICES_MS = [0, 200, 320, 640, 1000, 2500] as const;
 
 export type PauseChoiceMs = (typeof PAUSE_CHOICES_MS)[number];
 
-export const DEFAULT_PAUSE_MS: PauseChoiceMs = 200;
+export const AUTOMATIC_PAUSE_MS = 0;
+
+export const AUTOMATIC_HANGOVER_MS = 800;
+
+export const DEFAULT_PAUSE_MS: PauseChoiceMs = AUTOMATIC_PAUSE_MS;
+
+export function redemptionOf(pauseMs: number): number {
+  return pauseMs === AUTOMATIC_PAUSE_MS ? AUTOMATIC_HANGOVER_MS : pauseMs;
+}
 
 export const PAUSE_MS = z.union([
   z.literal(PAUSE_CHOICES_MS[0]),
@@ -24,6 +32,7 @@ export const PAUSE_MS = z.union([
   z.literal(PAUSE_CHOICES_MS[2]),
   z.literal(PAUSE_CHOICES_MS[3]),
   z.literal(PAUSE_CHOICES_MS[4]),
+  z.literal(PAUSE_CHOICES_MS[5]),
 ]);
 
 export interface VoiceDetectionPreset {
@@ -48,7 +57,7 @@ export function speechDetectionOf(detection: VoiceDetection, pauseMs: number): S
   return {
     ...VOICE_DETECTION[detection],
     preSpeechPadMs: 320,
-    redemptionMs: pauseMs,
+    redemptionMs: redemptionOf(pauseMs),
     submitUserSpeechOnPause: false,
   };
 }

@@ -4,7 +4,7 @@ import { Logger } from '@smarteverything/logging';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { wakeEarEngine } from '../../../src/node/ear/ear-engine';
 import { EarHost } from '../../../src/node/ear/ear-host';
-import { KeywordSpotter } from '../../../src/wake-name/keyword-spotter';
+import { WakeKeywords } from '../../../src/wake-name/keyword-lines';
 import { FakeClock } from '../../support/fake-clock';
 import { captureLogs, type CapturedLogs } from '../../support/logs';
 import { until } from '../../support/wait';
@@ -45,9 +45,10 @@ function atCameraRate(pcm16k: Int16Array, channels: number): Int16Array {
 }
 
 function keywordConfig(name: string): ReturnType<typeof configOf> {
-  const spotter = new KeywordSpotter();
-  const { keywords, threshold, nearMissThreshold } = spotter.earConfig([name], 'standard');
-  spotter.free();
+  const { keywords, threshold, nearMissThreshold } = new WakeKeywords().earConfig(
+    [name],
+    'standard',
+  );
   return configOf({ keywords: [...keywords], threshold, nearMissThreshold });
 }
 
@@ -64,6 +65,8 @@ async function hear(fixtureName: string, channels: 1 | 2, name: string): Promise
     (_key, message) => {
       sent.push(message);
     },
+    () => undefined,
+    () => undefined,
   );
   host.receive({
     type: 'ears_open',

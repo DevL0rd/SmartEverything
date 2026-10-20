@@ -3,10 +3,12 @@ import { View } from 'react-native';
 import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Segmented } from '../../../components/segmented';
+import { anchorKey } from '../../../components/highlight-keys';
 import { Select } from '../../../components/select';
 import { Slider } from '../../../components/slider';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
+import { useHighlightAnchor } from '../../../components/use-highlight-anchor';
 import type { Control } from '../../../store/control';
 import type { Device } from '../../../store/state';
 import { shownValue } from '../model/device-model';
@@ -190,14 +192,20 @@ export function ControlBlock({
   readonly reason: string | null;
 }): ReactNode {
   const control = useDeviceControl(device, presented);
+  const anchor = useHighlightAnchor(
+    anchorKey.capability(device.id, presented.key),
+    presented.label,
+  );
   return (
-    <Guard reason={reason}>
-      <CapabilityControl
-        device={device}
-        presented={presented}
-        control={control}
-        disabled={reason !== null}
-      />
-    </Guard>
+    <View {...anchor}>
+      <Guard reason={reason}>
+        <CapabilityControl
+          device={device}
+          presented={presented}
+          control={control}
+          disabled={reason !== null}
+        />
+      </Guard>
+    </View>
   );
 }

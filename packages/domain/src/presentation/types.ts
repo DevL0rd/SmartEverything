@@ -72,7 +72,6 @@ export const DEVICE_FAMILIES = [
   'switch',
   'plug',
   'sensor',
-  'presence_phone',
   'button',
   'camera',
   'doorbell',
@@ -92,6 +91,10 @@ export const DEVICE_FAMILIES = [
   'file_sync',
   'dns_filter',
   'robot',
+  'treadmill',
+  'printer',
+  'bottle',
+  'toothbrush',
   'generic',
 ] as const;
 

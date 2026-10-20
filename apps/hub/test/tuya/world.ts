@@ -1,19 +1,13 @@
 import type { ProviderAdapter, Unsubscribe } from '@smarteverything/domain';
+import { smartLifeAccount } from '../../src/adapters/tuya/account';
 import { createTuyaModule } from '../../src/adapters/tuya/module';
-import { ACCESS_ID, ACCESS_SECRET, APP_USER, item, type FakeDevice } from './fake-cloud';
+import { item, wnykqDevice, type FakeDevice } from './fake-cloud';
+import { S06_POINTS } from './recorded';
 import { FakeTuyaDevice } from './fake-device';
 import { RecordingSink, announce, announcementFrame, harness, type Harness } from './harness';
 
 const KEY = 'abcdefghijklmnop';
 export const NEW_KEY = 'qrstuvwxyzabcdef';
-const SECRETS = {
-  method: 'developer_project',
-  accessId: ACCESS_ID,
-  accessSecret: ACCESS_SECRET,
-  region: 'eu',
-  appUserId: APP_USER,
-} as const;
-
 export interface World {
   readonly h: Harness;
   readonly plug: FakeTuyaDevice;
@@ -35,6 +29,7 @@ function cloudDevice(id: string, category: string, extra: Partial<FakeDevice> = 
     local_key: KEY,
     sub: false,
     online: true,
+    status: [],
     ...extra,
   };
 }
@@ -61,64 +56,40 @@ function stockDevices(h: Harness): void {
     cloudDevice('gw1', 'wg2'),
     cloudDevice('pir1', 'pir', { sub: true, gateway_id: 'gw1', node_id: 'node-pir' }),
     cloudDevice('th1', 'wsdcg'),
-    cloudDevice('cz2', 'cz'),
-    cloudDevice('ir1', 'wnykq'),
-    cloudDevice('ir2', 'wnykq'),
-  );
-  h.cloud.remotes.set('ir1', [
-    {
-      remote_id: 'tv-1',
-      remote_name: 'Lounge TV',
-      category_id: 2,
-      keys: [
-        { key: 'power', key_id: 1 },
-        { key: 'volume_up', key_id: 5 },
+    cloudDevice('cz2', 'cz', {
+      status: [
+        { code: 'switch_1', value: true },
+        { code: 'cur_power', value: 30 },
       ],
-    },
-  ]);
-  h.cloud.failures.set('GET /v1.1/devices/ir2/specifications', {
-    code: 2009,
-    msg: 'not support this device',
-  });
+    }),
+    wnykqDevice('ir1', KEY),
+    wnykqDevice('ir2', KEY),
+  );
 }
 
 function stock(h: Harness): void {
   stockDevices(h);
-  const plugSpec = {
-    functions: [item('switch_1', 1, 'Boolean')],
-    status: [
-      item('switch_1', 1, 'Boolean'),
-      item('cur_power', 19, 'Integer', { min: 0, max: 50000, scale: 1, step: 1, unit: 'W' }),
-    ],
-  };
-  h.cloud.specs.set('plug1', plugSpec);
-  h.cloud.specs.set('cz2', plugSpec);
-  h.cloud.specs.set('pir1', {
-    functions: [],
-    status: [
-      item('pir', 1, 'Enum', { range: ['pir', 'none'] }),
-      item('battery_percentage', 4, 'Integer', { min: 0, max: 100, scale: 0, step: 1 }),
-    ],
-  });
-  h.cloud.specs.set('th1', {
-    functions: [],
-    status: [
-      item('va_temperature', 1, 'Integer', { min: -200, max: 600, scale: 1, step: 1, unit: '℃' }),
-      item('battery_percentage', 4, 'Integer', { min: 0, max: 100, scale: 0, step: 1 }),
-    ],
-  });
-  h.cloud.failures.set('GET /v1.1/devices/ir1/specifications', {
-    code: 2009,
-    msg: 'not support this device',
-  });
-  h.cloud.failures.set('GET /v1.1/devices/gw1/specifications', {
-    code: 2009,
-    msg: 'not support this device',
-  });
-  h.cloud.statuses.set('cz2', [
-    { code: 'switch_1', value: true },
-    { code: 'cur_power', value: 30 },
+  const plugPoints = [
+    item('switch_1', 1, 'Boolean'),
+    item('cur_power', 19, 'Integer', { min: 0, max: 50000, scale: 1, step: 1, unit: 'W' }),
+  ];
+  h.cloud.points.set('plug1', plugPoints);
+  h.cloud.points.set('cz2', plugPoints);
+  h.cloud.points.set('pir1', [
+    item('pir', 1, 'Enum', { range: ['pir', 'none'] }),
+    item('battery_percentage', 4, 'Integer', { min: 0, max: 100, scale: 0, step: 1 }),
   ]);
+  h.cloud.points.set('th1', [
+    item('va_temperature', 1, 'Integer', { min: -200, max: 600, scale: 1, step: 1, unit: '℃' }),
+    item('battery_percentage', 4, 'Integer', { min: 0, max: 100, scale: 0, step: 1 }),
+  ]);
+  h.cloud.points.set('ir1', S06_POINTS);
+  for (const unpublished of ['gw1', 'ir2']) {
+    h.cloud.failures.set(`GET /v1.1/m/life/${unpublished}/specifications`, {
+      code: 2009,
+      msg: 'not support this device',
+    });
+  }
 }
 
 export async function world(): Promise<World> {
@@ -133,16 +104,15 @@ export async function world(): Promise<World> {
   gateway.dps.set('node-pir', { '1': 'none', '4': 80 });
   blaster.dps.set(null, { '1': 'study_exit', '13': 0 });
   const h = harness(port);
-  await h.messages.ready;
   stock(h);
   const adapter = await createTuyaModule(h.dependencies).start(
-    { label: 'x', secrets: { ...SECRETS } },
+    smartLifeAccount(h.cloud.session()),
     h.context,
   );
   await adapter.discover();
   const sink = new RecordingSink();
   const unsubscribe = await adapter.subscribe(sink);
-  await waitFor(() => h.messages.connected === 1, 'the message service connection');
+  await waitFor(() => h.broker.live.length === 1, 'the message broker connection');
   return {
     h,
     plug,
@@ -154,7 +124,7 @@ export async function world(): Promise<World> {
     announce: (deviceId, ip) => announce(h.udpSockets, announcementFrame(deviceId, ip)),
     close: async (): Promise<void> => {
       await unsubscribe();
-      await Promise.all([plug.close(), gateway.close(), blaster.close(), h.messages.close()]);
+      await Promise.all([plug.close(), gateway.close(), blaster.close()]);
     },
   };
 }

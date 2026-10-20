@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -8,7 +8,6 @@ import { z } from 'zod';
 const ROOT = join(import.meta.dirname, '..');
 
 const BUILD_TOOLS_TIMEOUT_MS = 120_000;
-const DEBUG_CERTIFICATE = 'CN=Android Debug';
 const DEV_LAUNCHER_CLASS = 'Lexpo/modules/devlauncher/';
 const OWN_PERMISSION_SUFFIX = '.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION';
 
@@ -21,8 +20,13 @@ const HEALTH_PLUGIN = join(
   'plugin',
   'with-health-connect.ts',
 );
+const APP_IDENTITY_FILE = join(ROOT, 'apps', 'app', 'app-identity.json');
 const PRIVACY_SECTIONS = join(ROOT, 'apps', 'hub', 'src', 'extensions', 'privacy', 'sections.ts');
 
+const APP_IDENTITY = z.object({
+  applicationId: z.string().min(1),
+  signingCertificateSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+});
 const HEALTH_PERMISSIONS = z.object({ HEALTH_CONNECT_PERMISSIONS: z.array(z.string().min(1)) });
 const PRIVACY_TOPICS = z.object({
   PRIVACY_PERMISSION_TOPICS: z.record(z.string(), z.string()),
@@ -32,6 +36,12 @@ const PRIVACY_TOPICS = z.object({
 
 export type ApkVariant = 'release' | 'development';
 
+export type AppIdentity = z.infer<typeof APP_IDENTITY>;
+
+export function readAppIdentity(): AppIdentity {
+  return APP_IDENTITY.parse(JSON.parse(readFileSync(APP_IDENTITY_FILE, 'utf8')));
+}
+
 export interface ApkFacts {
   readonly file: string;
   readonly packageName: string;
@@ -39,14 +49,15 @@ export interface ApkFacts {
   readonly versionName: string;
   readonly debuggable: boolean;
   readonly permissions: readonly string[];
-  readonly signerDistinguishedName: string | null;
+  readonly signerSha256: string | null;
   readonly signatureVerifies: boolean;
   readonly includesDevLauncher: boolean;
 }
 
 export interface ApkExpectation {
   readonly variant: ApkVariant;
-  readonly storeIdentity: string;
+  readonly applicationId: string;
+  readonly signingCertificateSha256: string;
   readonly versionName: string;
   readonly versionCodeAbove: number;
 }
@@ -119,7 +130,7 @@ export function parseBadging(
 }
 
 export function parseSigner(text: string): string | null {
-  return /^Signer #1 certificate DN: (.+)$/mu.exec(text)?.[1]?.trim() ?? null;
+  return /^Signer #1 certificate SHA-256 digest: ([0-9a-f]{64})$/mu.exec(text)?.[1] ?? null;
 }
 
 function dexFiles(apk: string): readonly string[] {
@@ -143,7 +154,7 @@ export function readApk(file: string): ApkFacts {
   return {
     file,
     ...parseBadging(badging.text),
-    signerDistinguishedName: parseSigner(signature.text),
+    signerSha256: parseSigner(signature.text),
     signatureVerifies: signature.status === 0,
     includesDevLauncher: containsDevLauncher(file),
   };
@@ -177,21 +188,16 @@ function problem(step: ApkProblem['step'], message: string): ApkProblem {
   return { step, message };
 }
 
-function signedWithOwnKey(facts: ApkFacts): boolean {
-  return (
-    facts.signatureVerifies &&
-    facts.signerDistinguishedName !== null &&
-    !facts.signerDistinguishedName.includes(DEBUG_CERTIFICATE)
-  );
-}
-
 export function identityProblems(facts: ApkFacts, expected: ApkExpectation): readonly ApkProblem[] {
-  const suffix = expected.variant === 'release' ? '' : '.dev';
-  const packageName = `${expected.storeIdentity}${suffix}`;
   return [
-    ...(facts.packageName === packageName
+    ...(facts.packageName === expected.applicationId
       ? []
-      : [problem('apk-identity', `package is ${facts.packageName}, expected ${packageName}`)]),
+      : [
+          problem(
+            'apk-identity',
+            `package is ${facts.packageName}, expected ${expected.applicationId}`,
+          ),
+        ]),
     ...(facts.versionName === expected.versionName
       ? []
       : [
@@ -211,6 +217,20 @@ export function identityProblems(facts: ApkFacts, expected: ApkExpectation): rea
   ];
 }
 
+export function signingProblems(facts: ApkFacts, expected: ApkExpectation): readonly ApkProblem[] {
+  if (!facts.signatureVerifies || facts.signerSha256 === null) {
+    return [problem('apk-signed', 'the APK is unsigned or its signature does not verify')];
+  }
+  return facts.signerSha256 === expected.signingCertificateSha256
+    ? []
+    : [
+        problem(
+          'apk-signed',
+          `the APK is signed with certificate ${facts.signerSha256}, not the app's ${expected.signingCertificateSha256}, so it cannot install over the app`,
+        ),
+      ];
+}
+
 export function releaseProblems(facts: ApkFacts, expected: ApkExpectation): readonly ApkProblem[] {
   if (expected.variant !== 'release') return [];
   return [
@@ -218,14 +238,6 @@ export function releaseProblems(facts: ApkFacts, expected: ApkExpectation): read
     ...(facts.includesDevLauncher
       ? [problem('apk-not-debuggable', 'the release APK contains the Expo dev launcher')]
       : []),
-    ...(signedWithOwnKey(facts)
-      ? []
-      : [
-          problem(
-            'apk-signed',
-            'the release APK is signed with the debug key, unsigned or does not verify',
-          ),
-        ]),
   ];
 }
 
@@ -238,6 +250,7 @@ export async function apkProblems(
   const unexplained = await unexplainedPermissions(facts);
   return [
     ...identityProblems(facts, expected),
+    ...signingProblems(facts, expected),
     ...releaseProblems(facts, expected),
     ...(missingHealth.length === 0
       ? []

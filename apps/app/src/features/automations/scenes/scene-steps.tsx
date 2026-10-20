@@ -6,15 +6,15 @@ import { Section } from '../../../components/section';
 import { Select } from '../../../components/select';
 import { Text } from '../../../components/text';
 import type { DeviceValues } from '../../../store/state';
-import { CommandFields } from '../editor/action-fields';
-import { actionIcon } from '../editor/action-kinds';
-import { BlockProblems, StepCard, movesOf } from '../editor/step-card';
-import { deviceOptions } from '../editor/target-fields';
-import { commandAction } from '../model/action-blanks';
-import { writableCapabilities, type DeviceLike } from '../model/capability-choices';
-import { describeAction } from '../model/describe-action';
-import type { Names } from '../model/describe';
-import { capturedActions, type SceneChange, type SceneDraft } from '../model/scene-state';
+import { CommandFields } from '../shared/action-fields';
+import { actionIcon } from '../shared/action-kinds';
+import { BlockProblems, StepCard, movesOf } from '../shared/step-card';
+import { deviceOptions } from '../shared/target-fields';
+import { commandAction } from '../shared/action-blanks';
+import { writableCapabilities, type DeviceLike } from '../shared/capability-choices';
+import { describeAction } from '../shared/describe-action';
+import type { Names } from '../shared/describe-names';
+import { capturedActions, type SceneChange, type SceneDraft } from './scene-state';
 
 export interface StepsProps {
   readonly draft: SceneDraft;

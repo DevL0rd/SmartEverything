@@ -13,7 +13,7 @@ import { quickActionsOf } from './remote-actions';
 import { CATEGORY_LOOKS } from './remote-category';
 import { RemoteExtras } from './remote-extras';
 import { LearnButton } from './remote-face';
-import { useLearnedSource, useLibrarySource, type RemoteSource } from './remote-source';
+import { useLearnedSource, useDeviceRemoteSource, type RemoteSource } from './remote-source';
 import { useRemoteView } from './use-remote-view';
 
 function Controls({ source }: { readonly source: RemoteSource }): ReactNode {
@@ -51,7 +51,7 @@ function Controls({ source }: { readonly source: RemoteSource }): ReactNode {
 }
 
 export function RemoteQuick({ device }: { readonly device: Device }): ReactNode {
-  return <Controls source={useLibrarySource(device)} />;
+  return <Controls source={useDeviceRemoteSource(device)} />;
 }
 
 function Titled({ source }: { readonly source: RemoteSource }): ReactNode {
@@ -68,10 +68,6 @@ function Titled({ source }: { readonly source: RemoteSource }): ReactNode {
   );
 }
 
-function LibraryTitled({ device }: { readonly device: Device }): ReactNode {
-  return <Titled source={useLibrarySource(device)} />;
-}
-
 function LearnedTitled({
   blaster,
   remote,
@@ -83,8 +79,8 @@ function LearnedTitled({
 }
 
 export function BlasterQuick({ device }: { readonly device: Device }): ReactNode {
-  const { library, remotes } = useRemotes(device);
-  if (library.length === 0 && remotes.length === 0) {
+  const { remotes } = useRemotes(device);
+  if (remotes.length === 0) {
     return (
       <View className="flex-row">
         <Button
@@ -97,9 +93,6 @@ export function BlasterQuick({ device }: { readonly device: Device }): ReactNode
   }
   return (
     <View className="gap-5">
-      {library.map((remote) => (
-        <LibraryTitled key={remote.id} device={remote} />
-      ))}
       {remotes.map((remote) => (
         <LearnedTitled key={remote.id} blaster={device} remote={remote} />
       ))}

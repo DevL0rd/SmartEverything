@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { useId } from 'react';
 import type { ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -55,23 +55,27 @@ export function Canvas({
   );
 }
 
+export type LayerLook = ComponentProps<typeof Animated.View>['style'];
+
 export function Layer({
   box,
   px,
   motion,
+  look,
   children,
 }: {
   readonly box: Box;
   readonly px: number;
   readonly motion?: LoopStyle | null;
-  readonly children: ReactNode;
+  readonly look?: LayerLook;
+  readonly children?: ReactNode;
 }): ReactNode {
   const frame = boxStyle(box, px);
   return (
     <Animated.View
       pointerEvents="none"
       renderToHardwareTextureAndroid={opacityOnly(motion)}
-      style={[frame, motion]}
+      style={[frame, look, motion]}
     >
       {children}
     </Animated.View>

@@ -5,6 +5,7 @@ import { DEVICE } from '../src/rest-schemas';
 import {
   deviceEventsFor,
   isOnlineHealth,
+  reportsAttribute,
   statesForEvent,
   statesOf,
   withEvent,
@@ -149,9 +150,6 @@ describe('device events', () => {
         AT,
       ),
     ).toEqual([]);
-    expect(
-      deviceEventsFor(eventOf({ capability: 'other', attribute: 'button', value: 'held' }), AT),
-    ).toEqual([]);
   });
 
   it('reports motion, leaks and smoke when they are detected', () => {
@@ -168,22 +166,10 @@ describe('device events', () => {
     }
   });
 
-  it('reports nothing when the alarm clears, for other attributes, or for non-text values', () => {
+  it('reports nothing when the alarm clears or for non-text values', () => {
     expect(
       deviceEventsFor(
         eventOf({ capability: 'motionSensor', attribute: 'motion', value: 'inactive' }),
-        AT,
-      ),
-    ).toEqual([]);
-    expect(
-      deviceEventsFor(
-        eventOf({ capability: 'motionSensor', attribute: 'other', value: 'active' }),
-        AT,
-      ),
-    ).toEqual([]);
-    expect(
-      deviceEventsFor(
-        eventOf({ capability: 'waterSensor', attribute: 'motion', value: 'active' }),
         AT,
       ),
     ).toEqual([]);
@@ -240,6 +226,98 @@ describe('device events', () => {
     const previous = { 'samsungce.doorState': { doorState: { value: 'open' } } };
     expect(deviceEventsFor(eventOf({ ...door, value: 'open' }), AT, previous)).toEqual([]);
     expect(deviceEventsFor(eventOf({ ...door, value: 'closed' }), AT, previous)).toHaveLength(1);
+  });
+
+  it('passes an attribute outside the registry through as an activity event with its name', () => {
+    expect(
+      deviceEventsFor(
+        eventOf({
+          capability: 'airConditionerMode',
+          attribute: 'airConditionerMode',
+          value: 'cool',
+        }),
+        AT,
+        undefined,
+        true,
+      ),
+    ).toEqual([
+      {
+        externalId: 'light-1',
+        kind: 'activity',
+        occurredAt: AT,
+        details: {
+          component: 'main',
+          value: 'cool',
+          attribute: 'airConditionerMode',
+          capability: 'raw:air_conditioner_mode.air_conditioner_mode',
+          topic: 'Air conditioner mode',
+          summary: 'Air conditioner mode: cool',
+        },
+      },
+    ]);
+  });
+
+  it('carries the event data and the component of a passed-through attribute', () => {
+    const [event] = deviceEventsFor(
+      eventOf({
+        componentId: 'night',
+        capability: 'lock',
+        attribute: 'lock',
+        value: 'unlocked',
+        data: { method: 'keypad', codeId: '3' },
+      }),
+      AT,
+      undefined,
+      true,
+    );
+    expect(event?.details).toMatchObject({
+      component: 'night',
+      attribute: 'lock',
+      value: 'unlocked',
+      arguments: { method: 'keypad', codeId: '3' },
+    });
+  });
+
+  it('passes a boolean attribute through and skips repeats, readings and structures', () => {
+    const mute = { capability: 'audioMute', attribute: 'mute' } as const;
+    expect(
+      deviceEventsFor(eventOf({ ...mute, value: true }), AT, undefined, true)[0]?.details,
+    ).toMatchObject({
+      value: true,
+      summary: 'Mute: true',
+    });
+    const previous = { audioMute: { mute: { value: true } } };
+    expect(deviceEventsFor(eventOf({ ...mute, value: true }), AT, previous, true)).toEqual([]);
+    expect(deviceEventsFor(eventOf({ ...mute, value: false }), AT, previous, true)).toHaveLength(1);
+    expect(
+      deviceEventsFor(
+        eventOf({ capability: 'powerMeter', attribute: 'power', value: 41 }),
+        AT,
+        undefined,
+        true,
+      ),
+    ).toEqual([]);
+    expect(
+      deviceEventsFor(
+        eventOf({ capability: 'ocf', attribute: 'supportedModes', value: ['a', 'b'] }),
+        AT,
+        undefined,
+        true,
+      ),
+    ).toEqual([]);
+    expect(
+      deviceEventsFor(eventOf({ ...mute, value: true, stateChange: false }), AT, undefined, true),
+    ).toEqual([]);
+  });
+
+  it('passes nothing through for an attribute a binding already reports as state', () => {
+    const state = lightState();
+    const switched = eventOf({ capability: 'switch', attribute: 'switch', value: 'off' });
+    expect(reportsAttribute(state, switched)).toBe(true);
+    expect(reportsAttribute(state, eventOf({ capability: 'lock', attribute: 'lock' }))).toBe(false);
+    expect(deviceEventsFor(switched, AT, undefined, !reportsAttribute(state, switched))).toEqual(
+      [],
+    );
   });
 
   it('reports a button event whose value is structured', () => {

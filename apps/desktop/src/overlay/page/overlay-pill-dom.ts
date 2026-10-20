@@ -4,18 +4,20 @@ import {
   buildControl,
   buildMeter,
   buildRibbon,
+  buildThinkChip,
   paintMeter,
   paintRibbon,
   RIBBON_REST,
   syncChildren,
   THINKING_REST,
   updateControl,
+  updateThinkChip,
 } from './overlay-controls-dom';
 import { element } from './overlay-nodes';
 import { buildOrb, type OrbNodes } from './overlay-orb-dom';
 import { type ControlId, type PillModel } from '../overlay-render';
 import { canvasMeasure, TextColumn, textWidths, type Measure } from './overlay-text-dom';
-import { pillWidth, type WidthResult } from '../overlay-width';
+import { fitChip, pillWidth, type WidthResult } from '../overlay-width';
 
 const STOP_LABEL = 'Stop the assistant talking';
 const ACTIONS: Readonly<Record<ControlId, OverlayAction | null>> = {
@@ -51,6 +53,7 @@ export class PillDom {
   #meter: HTMLElement | null = null;
   #meterKey = '';
   #ribbon: HTMLElement | null = null;
+  #think: HTMLButtonElement | null = null;
   #model: PillModel | null = null;
   #positions: readonly number[] = [];
   #step = 0;
@@ -88,7 +91,10 @@ export class PillDom {
     const nodes = this.#nodes(model);
     this.#text.update(model.text, model.mode !== 'full', !model.reducedMotion);
     syncChildren(this.pill, nodes);
-    const result = this.#layout(model);
+    const { result } = fitChip((iconOnly) => {
+      this.#think?.classList.toggle('icon', iconOnly);
+      return this.#layout(model);
+    });
     this.pill.style.setProperty('--pw', `${String(result.width)}px`);
     this.#text.flags(result.overCaption, result.clipStatus);
     this.pill.classList.toggle('noctl', model.controls.length === 0);
@@ -191,7 +197,20 @@ export class PillDom {
     const before = model.mode !== 'full' && this.#meter !== null ? [this.#meter] : [];
     const after = model.mode === 'full' && this.#ribbon !== null ? [this.#ribbon] : [];
     const buttons = model.controls.flatMap((control) => this.#controls.get(control.id) ?? []);
-    return [this.#edge, this.#orb.root, ...before, this.#text.node, ...after, ...buttons];
+    const right = this.#withThink(buttons, model);
+    return [this.#edge, this.#orb.root, ...before, this.#text.node, ...after, ...right];
+  }
+
+  #withThink(buttons: readonly HTMLButtonElement[], model: PillModel): HTMLButtonElement[] {
+    if (model.chip === null) {
+      this.#think = null;
+      return [...buttons];
+    }
+    this.#think ??= buildThinkChip();
+    updateThinkChip(this.#think, model.chip);
+    const end = model.controls.findIndex((control) => control.id === 'end');
+    const at = end < 0 ? buttons.length : end;
+    return [...buttons.slice(0, at), this.#think, ...buttons.slice(at)];
   }
 
   #syncMeter(model: PillModel): void {
@@ -255,7 +274,7 @@ export class PillDom {
   #activate(name: string | undefined): void {
     if (name === 'interrupt') {
       this.ports.act({ kind: 'interrupt' });
-    } else if (name === 'more') {
+    } else if (name === 'more' || name === 'thinking') {
       this.ports.toggleTray();
     } else if (isControl(name)) {
       const action = ACTIONS[name];

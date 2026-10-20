@@ -8,7 +8,12 @@ import type { Store } from '../../store/store';
 import { memberLabel } from '../../talk/labels';
 import { recentTalkMessages } from '../../talk/recent-messages';
 import { clientOf, ownerOrSelf, type Caller } from '../auth';
-import { assertChannelReach, channelHidden, scopesOfCaller } from '../person-scope';
+import {
+  assertChannelReach,
+  channelHidden,
+  presenceInScope,
+  scopesOfCaller,
+} from '../person-scope';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound } from '../router';
 
@@ -49,7 +54,7 @@ const channelRoutes = ({ store, talk }: ServerContext) =>
         channels,
         members: store.talk.members().filter((row) => !channelHidden(scope, row.channel_id)),
         messages: recentTalkMessages(store.talk, channels, query.messages),
-        ...talk.presence(),
+        ...presenceInScope(scope, talk.presence()),
       };
     }),
     createTalkChannel: bound(E.createTalkChannel, ({ body }) =>

@@ -2,10 +2,10 @@ import {
   COMMAND_CAUSE_WINDOW_MS,
   respondsToSignal,
   runsOnClock,
+  type AutomationRowV3,
   type CommandRow,
   type DeviceLogCause,
 } from '@smarteverything/domain';
-import { readableAutomation, type ReadableAutomation } from './automations';
 import { signalOfEvent } from './event-signal';
 import type { LogStore } from './types';
 
@@ -45,7 +45,7 @@ export function peopleByClient(store: LogStore): ReadonlyMap<string, string> {
 
 function buttonCause(
   store: LogStore,
-  automation: ReadableAutomation,
+  automation: AutomationRowV3,
   startedAt: string,
 ): DeviceLogCause | undefined {
   const at = Date.parse(startedAt);
@@ -68,7 +68,7 @@ function buttonCause(
 
 function automationCause(
   store: LogStore,
-  automation: ReadableAutomation,
+  automation: AutomationRowV3,
   startedAt: string,
 ): DeviceLogCause {
   return (
@@ -87,8 +87,7 @@ export function causesFor(store: LogStore, commands: readonly CommandRow[]): Cau
     clientId === null ? undefined : people.get(clientId);
   const ofAutomation = (command: CommandRow): DeviceLogCause => {
     const run = runs.get(command.id);
-    const row = run === undefined ? undefined : store.automations.find(run.automation_id);
-    const automation = row === undefined ? undefined : readableAutomation(row);
+    const automation = run === undefined ? undefined : store.automations.find(run.automation_id);
     return run === undefined || automation === undefined
       ? { kind: 'automation' }
       : automationCause(store, automation, run.created_at);

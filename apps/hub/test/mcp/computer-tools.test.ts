@@ -14,6 +14,7 @@ import {
   type EndpointName,
   type ProfileRow,
   type SystemState,
+  type TilingState,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OperatingContext } from '../../src/extensions/mcp/tools/acting';
@@ -24,7 +25,11 @@ import {
   changeSystem,
   changeWindow,
 } from '../../src/extensions/mcp/tools/computer-controls';
-import { compactDisplays, compactNow } from '../../src/extensions/mcp/tools/computer-compact';
+import {
+  compactDisplays,
+  compactNow,
+  compactTiling,
+} from '../../src/extensions/mcp/tools/computer-compact';
 import { endProgram, listPrograms } from '../../src/extensions/mcp/tools/computer-programs';
 import { computerNow, readState } from '../../src/extensions/mcp/tools/computer-reads';
 import { toolNamed } from '../../src/extensions/mcp/tools';
@@ -145,7 +150,60 @@ const SYSTEM: SystemState = {
   usb: [{ id: 'usb1', name: 'Keyboard', vendor: 'Acme', speedMbps: 480 }],
 };
 
+const TILING: TilingState = {
+  overviewOpen: false,
+  outputs: [{ name: 'DP-1', width: 2560, height: 1440 }],
+  workspaces: [
+    {
+      id: 4,
+      index: 1,
+      name: 'code',
+      output: 'DP-1',
+      active: true,
+      focused: true,
+      urgent: false,
+      activeWindowId: 7,
+      columns: [
+        { display: 'normal', windowIds: [7, 9] },
+        { display: 'tabbed', windowIds: [11] },
+      ],
+    },
+    {
+      id: 5,
+      index: 2,
+      name: null,
+      output: 'DP-1',
+      active: false,
+      focused: false,
+      urgent: true,
+      activeWindowId: null,
+      columns: [],
+    },
+  ],
+  windows: [
+    {
+      id: 7,
+      title: 'main.ts',
+      appId: 'org.kde.kate',
+      workspaceId: 4,
+      focused: true,
+      floating: false,
+      urgent: false,
+    },
+    {
+      id: 9,
+      title: 'Terminal',
+      appId: 'org.example.terminal',
+      workspaceId: 5,
+      focused: false,
+      floating: true,
+      urgent: true,
+    },
+  ],
+};
+
 const ANSWERS: Partial<Record<EndpointName, unknown>> = {
+  readComputerTiling: TILING,
   changeComputerAudio: AUDIO,
   readComputerAudio: AUDIO,
   changeComputerDisplay: DISPLAYS,
@@ -469,6 +527,50 @@ describe('the served tools', () => {
     });
     expect(MCP_ROUTES.get('run_computer_app')).toMatchObject({
       parts: { window_focus: 'focus_window', window_close: 'close_window' },
+    });
+  });
+});
+
+describe('the tiling view', () => {
+  it('reads the layout from its endpoint and lists screens, workspaces, columns and windows compactly', async () => {
+    const state = await readState(
+      context,
+      'readComputerTiling',
+      DEVICE,
+      API_ENDPOINTS.readComputerTiling.response,
+    );
+    expect(calls[0]?.name).toBe('readComputerTiling');
+    expect(compactTiling(state)).toEqual({
+      overviewOpen: false,
+      screens: [{ name: 'DP-1', width: 2560, height: 1440 }],
+      workspaces: [
+        {
+          index: 1,
+          name: 'code',
+          screen: 'DP-1',
+          shown: true,
+          focused: true,
+          columns: [{ windows: [7, 9] }, { windows: [11], tabbed: true }],
+        },
+        { index: 2, name: null, screen: 'DP-1', urgent: true, columns: [] },
+      ],
+      windows: [
+        { windowId: 7, title: 'main.ts', app: 'org.kde.kate', workspace: 'code', focused: true },
+        {
+          windowId: 9,
+          title: 'Terminal',
+          app: 'org.example.terminal',
+          workspace: 2,
+          floating: true,
+          urgent: true,
+        },
+      ],
+    });
+  });
+
+  it('is a view of get_computer', () => {
+    expect(MCP_ROUTES.get('get_computer')).toMatchObject({
+      parts: { windows: 'get_computer_windows', tiling: 'get_computer_tiling' },
     });
   });
 });

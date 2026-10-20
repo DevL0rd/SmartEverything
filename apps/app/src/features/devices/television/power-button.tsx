@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { TV_KEY_REASON_TEXT } from '@smarteverything/domain';
 import { IconButton } from '../../../components/icon-button';
 import type { Television } from './use-television';
 
@@ -13,7 +14,7 @@ function powerLabel(tv: Television): string {
   if (mode === 'updating') {
     return 'Power, the TV is updating';
   }
-  return locks.power === undefined ? 'Turn on' : "Turn on, can't turn on from here";
+  return locks.power === undefined ? 'Turn on' : `Turn on, ${TV_KEY_REASON_TEXT[locks.power]}`;
 }
 
 export function PowerButton({ tv }: { readonly tv: Television }): ReactNode {

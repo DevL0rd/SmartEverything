@@ -1,6 +1,5 @@
 import {
   API_ENDPOINTS as E,
-  ApiError,
   machineActionOfPhoneAction,
   type DeviceRow,
   type PhoneAction,
@@ -15,6 +14,7 @@ import type { Store } from '../store/store';
 import type { MachineApprovals } from '../machines/approval';
 import type { LiveNotifications } from '../server/live-notifications';
 import { assertPhoneActionAllowed } from './phone-access';
+import { androidOnly, phoneIdentityOf } from './phone-identity';
 import type { PhoneActionBroker } from './phone-actions';
 import { readPhoneDetail, tierOfViewer, phoneViewerOfCaller } from './phone-detail';
 import { readPhoneIcon, savePhoneIcon } from './phone-icons';
@@ -47,16 +47,10 @@ function allowedTarget(
 ): PhoneTarget {
   const target = context.hub.phones.target(device);
   assertPhoneActionAllowed(
-    action,
+    action.type,
     tierOfViewer(target, phoneViewerOfCaller(context.store, caller)),
   );
   return target;
-}
-
-function androidOnly(caller: Caller, what: string): void {
-  if (clientOf(caller).platform !== 'android') {
-    throw new ApiError('invalid_request', `Only the Android app ${what}.`);
-  }
 }
 
 function originOf(caller: Caller): PhoneActionOrigin {
@@ -96,12 +90,7 @@ export function phoneRoutes(context: PhoneRouteContext): Routes<PhoneEndpointNam
   const { store, hub, actions, files } = context;
   return {
     reportPhone: bound(E.reportPhone, async ({ body, caller }) => {
-      const client = clientOf(caller);
-      androidOnly(caller, 'reports as a phone');
-      await hub.phones.report(
-        { clientId: client.id, name: client.name, profileId: profileIdOf(store, caller) },
-        body,
-      );
+      await hub.phones.report(phoneIdentityOf(store, caller, 'reports as a phone'), body);
       return DONE_REPLY;
     }),
     runPhoneAction: bound(E.runPhoneAction, async ({ params, body, caller }) => {

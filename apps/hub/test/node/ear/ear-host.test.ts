@@ -6,6 +6,7 @@ import type {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { EarEngine } from '../../../src/node/ear/ear-engine';
 import { EarHost } from '../../../src/node/ear/ear-host';
 import { pcmOf } from '../../../src/node/ear/ear-audio';
 import { FakeClock } from '../../support/fake-clock';
@@ -35,10 +36,18 @@ class Bench {
   readonly rig: EarRig = earRig();
   readonly clock = new FakeClock(START);
   readonly sent: Sent[] = [];
+  readonly scored: { readonly id: string; readonly heard: boolean }[] = [];
+  readonly scoreFailures: { readonly id: string; readonly reason: string }[] = [];
   readonly host = new EarHost(
     { engine: this.rig.engine, clock: this.clock, log: new Logger('hub.node-ear') },
     (key, message) => {
       this.sent.push({ key, message });
+    },
+    (id, heard) => {
+      this.scored.push({ id, heard });
+    },
+    (id, reason) => {
+      this.scoreFailures.push({ id, reason });
     },
   );
 
@@ -245,8 +254,9 @@ describe('ear host close', () => {
       () => bench.rig.models.filter((model) => model.released === 1).length === 1,
       'the close',
     );
+    await until(() => bench.messagesOf('living', 'closed').length === 1, 'the closed message');
     bench.feed('living', speech(700));
-    expect(bench.sent).toEqual([]);
+    expect(bench.sent).toEqual([{ key: 'living', message: { kind: 'closed' } }]);
     bench.feed('kitchen', speech(700));
     expect(bench.messagesOf('kitchen', 'claim')).toHaveLength(1);
     await bench.host.stop();
@@ -292,6 +302,7 @@ describe('ear host close', () => {
       ear: { kind: 'rest', reason: 'switched_off' },
     });
     bench.host.receive({ type: 'ears_close', key: 'ghost' });
+    expect(bench.messagesOf('ghost', 'closed')).toHaveLength(1);
     expect(logs.events()).toEqual(
       expect.arrayContaining([
         'ear_host.audio_without_ear',
@@ -300,6 +311,126 @@ describe('ear host close', () => {
       ]),
     );
     await bench.host.stop();
+  });
+});
+
+describe('ear host closing', () => {
+  it('finishes the sentence in progress before it says it is closed', async () => {
+    const bench = new Bench();
+    bench.open('talk', 'message-1', configOf({ wake: false, transcribe: true }));
+    await bench.listening(1);
+    const model = bench.rig.models[0];
+    if (model === undefined) throw new Error('no speech model');
+    model.speech = true;
+    bench.feed('message-1', speech(1500));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    model.speech = false;
+    expect(bench.messagesOf('message-1', 'segment')).toEqual([]);
+    bench.host.receive({ type: 'ears_close', key: 'message-1' });
+    await until(() => bench.messagesOf('message-1', 'closed').length === 1, 'the closed message');
+    const kinds = bench.sent.map((one) => one.message.kind);
+    expect(kinds.indexOf('segment')).toBeGreaterThanOrEqual(0);
+    expect(kinds.indexOf('segment')).toBeLessThan(kinds.indexOf('closed'));
+    await bench.host.stop();
+  });
+
+  it('hands over a sentence still being spoken when the source closes, with no silence fed', async () => {
+    const bench = new Bench();
+    bench.open('talk', 'message-1', configOf({ wake: false, transcribe: true }));
+    await bench.listening(1);
+    const model = bench.rig.models[0];
+    if (model === undefined) throw new Error('no speech model');
+    model.speech = true;
+    bench.feed('message-1', speech(1500));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(bench.messagesOf('message-1', 'segment')).toEqual([]);
+    bench.host.receive({ type: 'ears_close', key: 'message-1' });
+    await until(() => bench.messagesOf('message-1', 'closed').length === 1, 'the closed message');
+    expect(bench.messagesOf('message-1', 'segment')).toHaveLength(1);
+    await bench.host.stop();
+  });
+
+  it('says closed once the ear is freed even when closing fails', async () => {
+    const bench = new Bench();
+    bench.open('camera', 'living');
+    await bench.listening(1);
+    const model = bench.rig.models[0];
+    if (model === undefined) throw new Error('no speech model');
+    model.release = (): Promise<void> => Promise.reject(new Error('release failed'));
+    bench.host.receive({ type: 'ears_close', key: 'living' });
+    await until(() => bench.messagesOf('living', 'closed').length === 1, 'the closed message');
+    expect(logs.events()).toContain('ear_host.reconcile_failed');
+    await bench.host.stop();
+  });
+});
+
+describe('ear host scoring', () => {
+  it.each([true, false])(
+    'answers a score request with whether the spotter heard it (%s)',
+    async (heard) => {
+      const bench = new Bench();
+      bench.rig.keywords.hearsAnything = heard;
+      const pcm = new Int16Array([1, 2, 3, 4]);
+      bench.host.receive({
+        type: 'ears_score',
+        id: 'one',
+        keywords: ['a b @one', 'c d @two'],
+        threshold: 0.06,
+        pcm: Buffer.from(pcm.buffer).toString('base64'),
+      });
+      await until(() => bench.scored.length === 1, 'the score');
+      expect(bench.scored).toEqual([{ id: 'one', heard }]);
+      expect(bench.rig.keywords.scored).toEqual([
+        { keywords: 'a b @one\nc d @two', threshold: 0.06, label: '4' },
+      ]);
+      await bench.host.stop();
+    },
+  );
+});
+
+describe('ear host scoring failures', () => {
+  const request = (id: string): Parameters<EarHost['receive']>[0] => ({
+    type: 'ears_score',
+    id,
+    keywords: ['a b @one'],
+    threshold: 0.06,
+    pcm: Buffer.from(new Int16Array([1, 2]).buffer).toString('base64'),
+  });
+
+  it('answers with the failure when the spotter rejects the speech', async () => {
+    const bench = new Bench();
+    bench.rig.keywords.hearsFailure = new Error('sherpa blew up');
+    bench.host.receive(request('one'));
+    await until(() => bench.scoreFailures.length === 1, 'the failure answer');
+    expect(bench.scoreFailures).toEqual([{ id: 'one', reason: 'sherpa blew up' }]);
+    expect(bench.scored).toEqual([]);
+    expect(logs.events()).toContain('ear_host.score_failed');
+    await bench.host.stop();
+  });
+
+  it('answers with the failure when the engine has no spotter to build', async () => {
+    const bench = new Bench();
+    const failing = new EarEngine({
+      spotter: (): never => {
+        throw new Error('engine not loaded');
+      },
+      model: bench.rig.engine.model,
+    });
+    const host = new EarHost(
+      { engine: failing, clock: bench.clock, log: new Logger('hub.node-ear') },
+      () => undefined,
+      (id, heard) => {
+        bench.scored.push({ id, heard });
+      },
+      (id, reason) => {
+        bench.scoreFailures.push({ id, reason });
+      },
+    );
+    host.receive(request('two'));
+    await until(() => bench.scoreFailures.length === 1, 'the failure answer');
+    expect(bench.scoreFailures).toEqual([{ id: 'two', reason: 'engine not loaded' }]);
+    expect(bench.scored).toEqual([]);
+    await host.stop();
   });
 });
 

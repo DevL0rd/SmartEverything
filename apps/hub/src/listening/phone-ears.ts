@@ -8,16 +8,17 @@ import {
   type ListeningPhoneReport,
   type ListeningSegment,
   type ListeningWakeClaim,
+  type WakeSensitivity,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { phoneExternalId } from '../phones/phone-device';
 import type { Store } from '../store/store';
-import type { SpeechSegment } from '../wake-name/ear';
-import type { EarKeywords, KeywordSpotter } from '../wake-name/keyword-spotter';
+import type { EarKeywords } from '../wake-name/keyword-lines';
 import type { WakeClaims } from '../wake-name/wake-claims';
 import type { WakeTest } from '../wake-name/wake-test';
-import { dbfsOf } from '../wake-name/wake-handoff';
+import { dbfsOfPcm } from '../transcripts/line-levels';
 import type { DeviceSpeech } from './device-speech';
+import type { SpeechSegment } from './speech-segment';
 import type { EndOfSpeechPause } from './end-of-speech-pause';
 import type { ListeningRegistry } from './listening-registry';
 
@@ -32,7 +33,7 @@ export interface PhoneEarsOptions {
   >;
   readonly claims: Pick<WakeClaims, 'request'>;
   readonly pause: Pick<EndOfSpeechPause, 'ms' | 'onChange'>;
-  readonly spotter: () => Pick<KeywordSpotter, 'earConfig'>;
+  readonly keywords: (names: readonly string[], sensitivity: WakeSensitivity) => EarKeywords;
   readonly speech: Pick<DeviceSpeech, 'segment'>;
   readonly test: Pick<WakeTest, 'active' | 'onActive' | 'matched' | 'segment'>;
   readonly names: () => readonly string[];
@@ -117,7 +118,7 @@ export class PhoneEars {
     this.options.test.matched({ kind: 'phone', key: device.id }, claim.phrase);
     const preroll = pcmOf(claim.preroll);
     const snippetDbfs =
-      preroll.length === 0 ? claim.snippetDbfs : dbfsOf(preroll.subarray(-SNIPPET_SAMPLES));
+      preroll.length === 0 ? claim.snippetDbfs : dbfsOfPcm(preroll.subarray(-SNIPPET_SAMPLES));
     const grant = claims.request({ source: 'phone', key: device.id, snippetDbfs });
     log.info('wake.spotted', {
       source: 'phone',
@@ -170,10 +171,10 @@ export class PhoneEars {
   }
 
   private configOf(deviceId: string): ListeningConfig {
-    const { registry, spotter, names } = this.options;
+    const { registry, keywords: keywordsOf, names } = this.options;
     const { wake, transcribe } = registry.wanted(deviceId);
     const sensitivity = registry.sensitivityOf(deviceId);
-    const keywords: EarKeywords = spotter().earConfig(names(), sensitivity);
+    const keywords = keywordsOf(names(), sensitivity);
     return {
       wake,
       transcribe: transcribe || this.options.test.active(),

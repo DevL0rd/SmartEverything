@@ -17,6 +17,7 @@ import {
   type OverlayTray,
   type OverlayView,
 } from './voice-overlay';
+import { chipOf, setupOf } from './voice-overlay-setup';
 
 type OverlayMode = OverlayView['mode'];
 
@@ -34,6 +35,7 @@ export const OVERLAY_HIDDEN: OverlayView = {
   speaker: null,
   camera: 'off',
   tray: null,
+  chip: null,
   request: null,
   changesAt: null,
 };
@@ -68,8 +70,8 @@ function view(state: OverlayState, fields: Partial<OverlayView>): OverlayView {
 function shown(input: OverlayInput): boolean {
   if (!input.prefs.enabled) return false;
   const { surface } = input;
-  if (surface.platform === 'phone') return !surface.foreground;
   if (surface.main === 'call') return false;
+  if (surface.platform === 'phone') return true;
   const screenShared = surface.inShare && input.call?.sharing?.kind === 'screen';
   return !(screenShared && input.prefs.whileSharing === 'hide');
 }
@@ -212,8 +214,7 @@ function stateView(input: OverlayInput): OverlayView {
 
 function modeOf(input: OverlayInput, call: OverlayCall): OverlayMode {
   const { surface } = input;
-  if (surface.platform === 'phone') return 'full';
-  if (call.sharing !== null) return 'share';
+  if (surface.platform === 'desktop' && call.sharing !== null) return 'share';
   return surface.main === 'other' ? 'compact' : 'full';
 }
 
@@ -329,6 +330,7 @@ function trayOf(input: OverlayInput, call: OverlayCall, state: OverlayState): Ov
     chat: call.chat,
     elapsedFrom: call.startedAt,
     tiles: tiles(call, state, input.prefs.captions),
+    setup: setupOf(input.voice),
     mics: audio.mics,
     micId: audio.micId,
     volume: audio.volume,
@@ -361,13 +363,13 @@ function withCall(base: OverlayView, input: OverlayInput, call: OverlayCall): Ov
     speaker: call.speaker,
     camera: call.camera,
     tray: hosted ? null : trayOf(input, call, base.state),
+    chip: hosted ? null : chipOf(input.voice),
     request: hosted ? null : requestOf(call),
   };
 }
 
 function compactOf(base: OverlayView, input: OverlayInput): OverlayView {
-  const { surface } = input;
-  const compact = surface.platform === 'desktop' && surface.main === 'other';
+  const compact = input.surface.main === 'other';
   return compact ? { ...base, mode: 'compact', glow: 'off' } : base;
 }
 

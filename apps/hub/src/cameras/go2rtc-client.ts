@@ -4,6 +4,8 @@ import { THUMBNAIL_WIDTH, type MediaSize } from '@smarteverything/domain';
 
 const log = new Logger('hub.cameras');
 
+const PRELOAD_ABSENT = 'preload not found';
+
 const HOT_OPERATIONS: ReadonlySet<string> = new Set(['frame.jpeg', 'streams.get']);
 
 export interface Go2rtcAccess {
@@ -28,12 +30,15 @@ export class Go2rtcError extends Error {
 export interface Go2rtcClient {
   readonly putStream: (name: string, sources: readonly string[]) => Promise<void>;
   readonly deleteStream: (name: string) => Promise<void>;
+  readonly preload: (name: string) => Promise<void>;
+  readonly unpreload: (name: string) => Promise<void>;
   readonly answer: (stream: string, offer: string) => Promise<string>;
   readonly frame: (stream: string, size: MediaSize, signal: AbortSignal) => Promise<Uint8Array>;
   readonly consumers: (stream: string) => Promise<readonly StreamConsumer[]>;
   readonly closeConsumer: (stream: string, id: number) => Promise<void>;
   readonly clip: (stream: string, seconds: number) => Promise<Uint8Array>;
   readonly play: (stream: string, source: string) => Promise<void>;
+  readonly backchannel: (stream: string, input: string) => Promise<boolean>;
   readonly socketOf: (stream: string) => Go2rtcSocket;
 }
 
@@ -137,6 +142,44 @@ function requester(access: Go2rtcAccess): Request {
   };
 }
 
+const STREAM_PRODUCERS = z.object({
+  producers: z
+    .array(
+      z.object({
+        url: z.string().default(''),
+        receivers: z
+          .array(z.object({ id: z.number().int() }))
+          .nullable()
+          .default([]),
+        senders: z
+          .array(z.object({ parent: z.number().int().default(0) }))
+          .nullable()
+          .default([]),
+      }),
+    )
+    .nullable()
+    .default([]),
+});
+
+function backchannelOf(request: Request): Go2rtcClient['backchannel'] {
+  return async (stream, input) => {
+    const response = await request('streams.get', {
+      method: 'GET',
+      path: '/api/streams',
+      query: { src: stream },
+    });
+    const producers = STREAM_PRODUCERS.parse(await response.json()).producers ?? [];
+    const fed = new Set(
+      producers
+        .filter((producer) => producer.url === input)
+        .flatMap((producer) => (producer.receivers ?? []).map((receiver) => receiver.id)),
+    );
+    return producers.some((producer) =>
+      (producer.senders ?? []).some((sender) => fed.has(sender.parent)),
+    );
+  };
+}
+
 function answerOf(request: Request): Go2rtcClient['answer'] {
   return async (stream, offer) =>
     (
@@ -195,6 +238,29 @@ function socketOf(access: Go2rtcAccess): Go2rtcClient['socketOf'] {
   };
 }
 
+function preloadOf(request: Request): Pick<Go2rtcClient, 'preload' | 'unpreload'> {
+  return {
+    preload: async (name): Promise<void> => {
+      await request('preload.put', {
+        method: 'PUT',
+        path: '/api/preload',
+        query: { src: name, query: 'video&audio' },
+      });
+    },
+    unpreload: async (name): Promise<void> => {
+      await request('preload.delete', {
+        method: 'DELETE',
+        path: '/api/preload',
+        query: { src: name },
+      }).catch((cause: unknown) => {
+        if (!(cause instanceof Go2rtcError && cause.message.includes(PRELOAD_ABSENT))) {
+          throw cause;
+        }
+      });
+    },
+  };
+}
+
 export function go2rtcClient(access: Go2rtcAccess): Go2rtcClient & Go2rtcMotor {
   const request = requester(access);
   const bytes = async (operation: string, call: Call): Promise<Uint8Array> =>
@@ -207,6 +273,7 @@ export function go2rtcClient(access: Go2rtcAccess): Go2rtcClient & Go2rtcMotor {
         query: { name, src: sources },
       });
     },
+    ...preloadOf(request),
     deleteStream: async (name): Promise<void> => {
       await request('streams.delete', {
         method: 'DELETE',
@@ -237,6 +304,7 @@ export function go2rtcClient(access: Go2rtcAccess): Go2rtcClient & Go2rtcMotor {
         query: { src: stream, duration: String(seconds) },
       }),
     play: playOf(request),
+    backchannel: backchannelOf(request),
     motor: motorOf(request),
     socketOf: socketOf(access),
   };

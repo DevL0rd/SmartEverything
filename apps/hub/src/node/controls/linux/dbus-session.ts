@@ -1,4 +1,5 @@
 import dbus, { type Message as BusMessage, type MessageBus } from 'dbus-next';
+import { messageOf } from '@smarteverything/logging';
 import { z } from 'zod';
 import { NodeFailureError } from '../../node-failure';
 import { sessionEnvironment } from './session-environment';
@@ -65,8 +66,27 @@ export class SessionBus {
     return new SessionBus(dbus.sessionBus());
   }
 
+  static async open(onError: (cause: unknown) => void): Promise<SessionBus> {
+    const bus = SessionBus.connect();
+    try {
+      await bus.connected();
+    } catch (cause) {
+      bus.close();
+      throw new NodeFailureError(
+        'no_session',
+        `The desktop session bus is not reachable: ${messageOf(cause)}`,
+      );
+    }
+    bus.onError(onError);
+    return bus;
+  }
+
   static system(): SessionBus {
     return new SessionBus(dbus.systemBus());
+  }
+
+  uniqueName(): string {
+    return z.string().min(2).parse(Reflect.get(this.bus, 'name'));
   }
 
   onError(listener: (cause: unknown) => void): void {

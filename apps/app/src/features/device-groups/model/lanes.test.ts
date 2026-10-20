@@ -147,6 +147,11 @@ describe('live flips', () => {
     expect(flipsOf(offline.known, { a: 'on' }, NOW + 2000).flips).toStrictEqual([]);
   });
 
+  it('does not turn an unreported power into a flip', () => {
+    const first = flipsOf(new Map(), { a: 'on' }, NOW);
+    expect(flipsOf(first.known, { a: 'unknown' }, NOW + 1000).flips).toStrictEqual([]);
+  });
+
   it('adds flips to the history lanes already hold', () => {
     const base = new Map([['a', [{ at: at(5), on: true }]]]);
     const merged = withFlips(base, [{ deviceId: 'a', at: NOW, on: false }]);

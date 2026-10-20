@@ -40,7 +40,7 @@ object PhoneBluetooth : PhoneDetailSource {
     else -> "other"
   }
 
-  fun body(connected: Collection<BluetoothPeer>): JSONObject = JSONObject().put(
+  fun body(on: Boolean, connected: Collection<BluetoothPeer>): JSONObject = JSONObject().put("bluetoothOn", on).put(
     "bluetooth",
     JSONArray(
       connected.sortedWith(compareBy({ it.name == null }, { it.name?.lowercase() }, { it.address })).map { peer ->
@@ -52,11 +52,16 @@ object PhoneBluetooth : PhoneDetailSource {
     )
   )
 
+  override fun values(context: Context, request: PhoneReadRequest): Map<String, Any?> =
+    adapter(context)?.let { mapOf("bluetooth_on" to it.isEnabled) } ?: emptyMap()
+
   override fun section(context: Context, section: PhoneSection, request: PhoneReadRequest): JSONObject? {
     if (!PhonePermissions.bluetooth(context)) return null
     observe(context)
-    return body(peers.values)
+    return body(adapter(context)?.isEnabled == true, peers.values)
   }
+
+  fun stateReports(state: Int): Boolean = state == BluetoothAdapter.STATE_ON || state == BluetoothAdapter.STATE_OFF
 
   fun reportsOn(action: String?, live: Boolean): Boolean = action != BATTERY_ACTION || live
 
@@ -89,10 +94,9 @@ object PhoneBluetooth : PhoneDetailSource {
 
   private fun apply(intent: Intent): Boolean {
     if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
-      val off = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.STATE_ON) == BluetoothAdapter.STATE_OFF
-      val had = peers.isNotEmpty()
-      if (off) peers.clear()
-      return off && had
+      val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+      if (state == BluetoothAdapter.STATE_OFF) peers.clear()
+      return stateReports(state)
     }
     val device = deviceOf(intent) ?: return false
     return when (intent.action) {
@@ -123,6 +127,8 @@ object PhoneBluetooth : PhoneDetailSource {
       @Suppress("DEPRECATION")
       intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
     }
+
+  private fun adapter(context: Context): BluetoothAdapter? = context.getSystemService(BluetoothManager::class.java).adapter
 
   private fun seed(context: Context) {
     val manager = context.getSystemService(BluetoothManager::class.java)

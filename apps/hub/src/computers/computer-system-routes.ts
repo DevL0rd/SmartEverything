@@ -13,6 +13,7 @@ import {
   SERVICES_STATE,
   STARTUP_STATE,
   SYSTEM_STATE,
+  TILING_STATE,
   WINDOWS_STATE,
   displayChangeNeedsRevert,
   type HistoryBackfillRequest,
@@ -39,6 +40,8 @@ export type ComputerSystemEndpointName =
   | 'changeComputerSystem'
   | 'readComputerWindows'
   | 'changeComputerWindow'
+  | 'readComputerTiling'
+  | 'changeComputerTiling'
   | 'readComputerStartup'
   | 'changeComputerStartup'
   | 'readComputerServices'
@@ -155,6 +158,12 @@ function settingRoutes(options: ComputerSystemRouteOptions, ask: Ask): Routes<Se
     ),
     changeComputerWindow: bound(E.changeComputerWindow, ({ params, body, caller }) =>
       ask(caller, params.deviceId, { verb: 'window_set', change: body }, WINDOWS_STATE),
+    ),
+    readComputerTiling: bound(E.readComputerTiling, ({ params, caller }) =>
+      ask(caller, params.deviceId, { verb: 'tiling' }, TILING_STATE),
+    ),
+    changeComputerTiling: bound(E.changeComputerTiling, ({ params, body, caller }) =>
+      ask(caller, params.deviceId, { verb: 'tiling_set', change: body }, TILING_STATE),
     ),
     readComputerStartup: bound(E.readComputerStartup, ({ params, caller }) =>
       ask(caller, params.deviceId, { verb: 'startup' }, STARTUP_STATE),

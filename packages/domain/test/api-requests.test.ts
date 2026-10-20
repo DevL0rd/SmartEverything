@@ -13,11 +13,6 @@ const NAMES = Object.keys(API_ENDPOINTS).filter((name): name is Name => name in 
 
 const ACTION = { type: 'command', deviceId: SECOND, capability: 'power', value: true };
 
-const DEFINITION = {
-  when: [{ on: 'every', minutes: 5 }],
-  steps: [{ do: 'notify', message: 'Ran.' }],
-};
-
 const SERVICE_ACCOUNT = {
   type: 'service_account',
   project_id: 'home-push',
@@ -273,12 +268,17 @@ describe('media request bodies', () => {
     expectKept('updateCamera', { record_events: true });
     expectKept('updateCamera', { record_events: false });
     expectKept('updateCamera', { wake_sensitivity: 'high' });
+    expectKept('updateCamera', { keep_days: 15 });
+    expectKept('updateCamera', { keep_days: 1, record_events: true });
     expectKept('updateCamera', { record_events: false, wake_sensitivity: 'highest' });
     expectRefused('updateCamera', [
       {},
       { record_events: 'on' },
       { record_events: true, x: 1 },
       { wake_sensitivity: 'loud' },
+      { keep_days: 0 },
+      { keep_days: 2.5 },
+      { keep_days: '15' },
     ]);
   });
 
@@ -326,7 +326,7 @@ describe('media request bodies', () => {
   it('saveIrCode takes a button code of up to 20,000 characters in a known format', () => {
     const code = { remote_id: FIRST, button: 'Power', format: 'pulses', code: '9000,4500' };
     expectKept('saveIrCode', code);
-    expectKept('saveIrCode', { ...code, format: 'library', code: 'c'.repeat(20_000) });
+    expectKept('saveIrCode', { ...code, format: 'head_key', code: 'c'.repeat(20_000) });
     expectRefused('saveIrCode', [
       { ...code, code: '' },
       { ...code, code: 'c'.repeat(20_001) },
@@ -365,28 +365,6 @@ describe('scene and automation request bodies', () => {
     expectKept('orderScenes', { ids: [FIRST] });
     expectKept('orderScenes', { ids: [FIRST, SECOND] });
     expectRefused('orderScenes', [{ ids: [] }, { ids: ['s1'] }, { ids: [FIRST], extra: 1 }]);
-  });
-
-  it('createAutomation takes a name and a definition and enables it by default', () => {
-    expect(
-      bodyOf('createAutomation').parse({ name: 'Porch light', definition: DEFINITION }),
-    ).toStrictEqual({ name: 'Porch light', enabled: true, definition: DEFINITION });
-    expectKept('createAutomation', { name: 'Porch light', enabled: false, definition: DEFINITION });
-    expectRefused('createAutomation', [
-      { name: 'Porch light', definition: { ...DEFINITION, steps: [] } },
-      { name: '', definition: DEFINITION },
-      { name: 'Porch light', definition: DEFINITION, extra: 1 },
-    ]);
-  });
-
-  it('updateAutomation changes the name, enabled state or definition and may require the revision it read', () => {
-    expectPatch('updateAutomation', {
-      name: 'Porch',
-      enabled: false,
-      definition: DEFINITION,
-      expectedRevision: 2,
-    });
-    expectRefused('updateAutomation', [{ enabled: 'no' }, { expectedRevision: 0 }]);
   });
 });
 

@@ -28,8 +28,6 @@ describe('Smart Life QR prompt', () => {
         now: () => NOW + polls * 1000,
         timing: {
           irLearnTimeoutMs: 1,
-          cloudLearnQueryMs: 1,
-          messagePingMs: 1,
           qrScanQueryMs: 1,
           qrScanTimeoutMs: TIMEOUT_MS,
           messagingRenewMarginMs: 1,
@@ -63,6 +61,7 @@ describe('Smart Life QR prompt', () => {
         kind: 'scan_qr',
         app: 'Smart Life or Tuya Smart',
         content: 'tuyaSmart--qrLogin?token=token-1',
+        issuedAt: new Date(NOW).toISOString(),
         expiresAt: new Date(NOW + TIMEOUT_MS).toISOString(),
       },
     ]);

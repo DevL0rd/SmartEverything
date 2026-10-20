@@ -11,8 +11,7 @@ import { noticeTo } from './live-notices';
 import { platformStreams } from './live-streams';
 import type { EntityStore } from './entity-store';
 import { loadOwnerConsents } from './live-consents';
-import { liveVoiceWatch } from './live-voice-watch';
-import { liveWatch } from './live-watch';
+import { attachWatches, detachWatches } from './live-watches';
 import { rejectedTables } from './live-subscription';
 import { UnreadableChangeError } from './live-reducers';
 import { TOKEN_WITHDRAWN, backoffOf, openLiveSocket, type Received } from './live-socket';
@@ -130,8 +129,7 @@ export class LiveSync {
     this.snapshotRun += 1;
     this.stopSocket?.();
     this.stopSocket = null;
-    liveWatch.detach();
-    liveVoiceWatch.detach();
+    detachWatches();
   }
 
   suspend(): void {
@@ -191,8 +189,7 @@ export class LiveSync {
         onOpen: (send) => {
           log.debug('live.opened', { attempt: this.attempt });
           if (socketRun === this.socketRun) {
-            liveWatch.attach(send);
-            liveVoiceWatch.attach(send);
+            attachWatches(send);
           }
         },
         onMessage: (received) => {
@@ -403,8 +400,7 @@ export class LiveSync {
       this.retry = null;
     }
     this.stopSocket = null;
-    liveWatch.detach();
-    liveVoiceWatch.detach();
+    detachWatches();
     this.enter('closed');
     this.snapshotRun += 1;
     this.store.setSync({ status: 'interrupted' });

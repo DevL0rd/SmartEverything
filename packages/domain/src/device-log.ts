@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { signalMatchesV2 } from './automation-v2-watch';
-import type { AutomationV2 } from './automation-v2-schema';
+import { signalViewOf } from './automation-v3/signal-view';
+import type { AutomationV3 } from './automation-v3/program';
+import type { TriggerNode } from './automation-v3/node';
 import { humanizeEnum } from './presentation/humanize';
 import type { DeviceFamily } from './presentation/types';
+import { SIGNAL_MATCHER, signalMatches, type SignalMatcher } from './signal-matcher';
 import type { SignalInput } from './signals';
 import { JSON_VALUE } from './values';
 
@@ -104,19 +106,30 @@ export const PHYSICAL_CONTROL_FAMILIES: ReadonlySet<DeviceFamily> = new Set([
   'phone',
 ]);
 
-export function respondsToSignal(
-  definition: Pick<AutomationV2, 'when'>,
-  signal: SignalInput,
-): boolean {
-  return definition.when.some(
-    (trigger) => trigger.on === 'signal' && signalMatchesV2(trigger, signal),
-  );
+type Triggered = Pick<AutomationV3, 'triggers'>;
+
+function matcherOf(trigger: TriggerNode): SignalMatcher | undefined {
+  const view = trigger.enabled === false ? undefined : signalViewOf(trigger);
+  const parsed = view === undefined ? undefined : SIGNAL_MATCHER.safeParse(view);
+  return parsed?.success === true ? parsed.data : undefined;
 }
 
-const CLOCK_TRIGGERS: ReadonlySet<string> = new Set(['time', 'every', 'sun']);
+export function respondsToSignal(program: Triggered, signal: SignalInput): boolean {
+  return program.triggers.some((trigger) => {
+    const matcher = matcherOf(trigger);
+    return matcher !== undefined && signalMatches(matcher, signal);
+  });
+}
 
-export function runsOnClock(definition: Pick<AutomationV2, 'when'>): boolean {
+const CLOCK_TRIGGERS: ReadonlySet<string> = new Set([
+  'trigger.time',
+  'trigger.interval',
+  'trigger.sun',
+]);
+
+export function runsOnClock(program: Triggered): boolean {
   return (
-    definition.when.length > 0 && definition.when.every((trigger) => CLOCK_TRIGGERS.has(trigger.on))
+    program.triggers.length > 0 &&
+    program.triggers.every((trigger) => CLOCK_TRIGGERS.has(trigger.kind))
   );
 }

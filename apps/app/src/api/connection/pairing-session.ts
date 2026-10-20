@@ -10,6 +10,7 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { ValueStore } from '../../design/external-store';
+import { handheldKind } from '../../design/platform';
 import { activateNativeServerEnrollment } from '../../../modules/health-connect/src/hub-network';
 import type { PairingTarget } from '../pairing-input';
 import {
@@ -217,11 +218,11 @@ export class PairingSession {
     }
   }
   private async claim(attempt: Attempt, code: string, name: string): Promise<Claim> {
-    const body = CLAIM.body.parse({
-      code,
-      name,
-      platform: attempt.run.kind === 'phone' ? 'android' : 'web',
-    });
+    const body = CLAIM.body.parse(
+      attempt.run.kind === 'phone'
+        ? { code, name, platform: 'android', kind: handheldKind() }
+        : { code, name, platform: 'web' },
+    );
     try {
       return await attempt.transport.post(CLAIM.path, body, CLAIM.response);
     } catch (error) {

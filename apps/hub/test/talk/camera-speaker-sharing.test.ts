@@ -25,6 +25,7 @@ interface Rig {
   readonly settle: () => Promise<void>;
   readonly advance: (ms: number) => Promise<void>;
   failing: boolean;
+  linked: boolean;
 }
 
 function rig(): Rig {
@@ -42,6 +43,7 @@ function rig(): Rig {
     played,
     settle,
     failing: false,
+    linked: true,
     advance: async (ms: number): Promise<void> => {
       clock.advanceTo(new Date(clock.now().getTime() + ms).toISOString());
       await settle();
@@ -52,6 +54,7 @@ function rig(): Rig {
           played.push(`${cameraId} ${source.replace(/#.*$/, '')}`);
           return state.failing ? Promise.reject(new Error('refused')) : Promise.resolve();
         },
+        backchannel: (): Promise<boolean> => Promise.resolve(state.linked),
       },
       feeds: {
         open: (left: () => void): OggFeed => {
@@ -163,6 +166,64 @@ describe('camera speaker standby', () => {
     expect(test.feeds[0]?.ended).toBe(true);
     await test.advance(KEEPALIVE_MS + 20);
     expect(test.feeds[1]?.packets.length).toBeGreaterThan(0);
+  });
+
+  it('reports speech on a linked standby output as playing without a new play', async () => {
+    test.speakers.standby('cam-1');
+    await test.settle();
+    const heard: string[] = [];
+    test.speakers.open('cam-1', 'speech-1', 'speech').watch({
+      playing: () => heard.push('playing'),
+      refused: (reason) => heard.push(reason),
+    });
+    await test.settle();
+    expect(heard).toEqual(['playing']);
+    expect(test.played).toHaveLength(1);
+  });
+
+  it('plays the channel again on a stale line before reporting speech as playing', async () => {
+    test.speakers.standby('cam-1');
+    await test.settle();
+    test.linked = false;
+    const heard: string[] = [];
+    test.speakers.open('cam-1', 'speech-1', 'speech').watch({
+      playing: () => heard.push('playing'),
+      refused: (reason) => heard.push(reason),
+    });
+    await test.settle();
+    expect(test.played).toEqual(['cam-1 ffmpeg:feed-0', 'cam-1 ffmpeg:feed-1']);
+    expect(test.feeds[0]?.ended).toBe(true);
+    expect(heard).toEqual(['playing']);
+    expect(fields('talk.camera_speaker_unlinked')).toEqual([
+      { cameraId: 'cam-1', reason: 'go2rtc no longer sends the channel to the camera' },
+    ]);
+  });
+
+  it('refuses speech on a stale line that go2rtc will not play again', async () => {
+    test.speakers.standby('cam-1');
+    await test.settle();
+    test.linked = false;
+    test.failing = true;
+    const heard: string[] = [];
+    test.speakers.open('cam-1', 'speech-1', 'speech').watch({
+      playing: () => heard.push('playing'),
+      refused: (reason) => heard.push(reason),
+    });
+    await test.settle();
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toContain('refused');
+  });
+
+  it('plays a fresh line when the camera recovers and leaves cameras without a line alone', async () => {
+    test.speakers.standby('cam-1');
+    await test.settle();
+    test.speakers.reprime('cam-1');
+    test.speakers.reprime('cam-2');
+    await test.settle();
+    expect(test.played).toEqual(['cam-1 ffmpeg:feed-0', 'cam-1 ffmpeg:feed-1']);
+    expect(test.feeds[0]?.ended).toBe(true);
+    expect(test.feeds[1]?.ended).toBe(false);
+    expect(fields('talk.camera_speaker_reprimed')).toEqual([{ cameraId: 'cam-1' }]);
   });
 
   it('retries a refused output after a pause instead of giving up', async () => {

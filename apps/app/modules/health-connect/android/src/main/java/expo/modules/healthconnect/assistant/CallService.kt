@@ -11,6 +11,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import expo.modules.healthconnect.R
 import expo.modules.healthconnect.ServiceStartRefused
 import expo.modules.healthconnect.overlay.OverlayControl
 
@@ -77,7 +78,7 @@ class CallService : Service() {
 
   private fun notification(state: CallNoticeState): Notification {
     val builder = Notification.Builder(this, CHANNEL)
-      .setSmallIcon(applicationInfo.icon)
+      .setSmallIcon(R.drawable.ic_stat_smarteverything)
       .setContentTitle(if (state.screen) "Sharing your screen with the assistant" else "Call with the assistant")
       .setContentText(subtitle(state))
       .setCategory(Notification.CATEGORY_CALL)

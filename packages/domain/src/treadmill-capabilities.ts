@@ -1,0 +1,135 @@
+import type { CatalogueEntry } from './capabilities';
+
+const TREADMILL_WORDS = ['treadmill', 'walking pad', 'walkingpad', 'kingsmith', 'belt'] as const;
+
+export const TREADMILL_CAPABILITY_CATALOGUE = {
+  belt_state: {
+    label: 'Belt',
+    group: 'fitness',
+    kind: 'enum',
+    keywords: [...TREADMILL_WORDS, 'running', 'paused', 'walking', 'state'],
+  },
+  belt_command: {
+    label: 'Belt control',
+    group: 'fitness',
+    kind: 'enum',
+    keywords: [...TREADMILL_WORDS, 'start', 'stop', 'pause', 'resume'],
+  },
+  belt_speed: {
+    label: 'Belt speed',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [...TREADMILL_WORDS, 'speed', 'km/h', 'pace'],
+    sampled: true,
+  },
+  belt_target_speed: {
+    label: 'Target speed',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [...TREADMILL_WORDS, 'speed', 'target'],
+  },
+  belt_mode: {
+    label: 'Belt mode',
+    group: 'fitness',
+    kind: 'enum',
+    keywords: [...TREADMILL_WORDS, 'manual', 'auto', 'standby', 'hiit', 'fat burn', 'walk'],
+  },
+  belt_incline: {
+    label: 'Incline',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [
+      ...TREADMILL_WORDS,
+      'slope',
+      'grade',
+      'incline',
+      'gradient',
+      'hill',
+      'level',
+      'climb',
+    ],
+  },
+  belt_light: {
+    label: 'Light strip',
+    group: 'fitness',
+    kind: 'boolean',
+    keywords: [...TREADMILL_WORDS, 'light', 'led', 'strip'],
+  },
+  belt_link: {
+    label: 'Bluetooth link',
+    group: 'fitness',
+    kind: 'enum',
+    keywords: [...TREADMILL_WORDS, 'bluetooth', 'connected', 'ks fit'],
+  },
+  belt_goal: {
+    label: 'Belt goal',
+    group: 'fitness',
+    kind: 'enum',
+    keywords: [...TREADMILL_WORDS, 'goal', 'target', 'distance', 'calories', 'time'],
+  },
+  belt_goal_value: {
+    label: 'Belt goal value',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [...TREADMILL_WORDS, 'goal', 'target'],
+  },
+  belt_max_speed: {
+    label: 'Maximum speed',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [...TREADMILL_WORDS, 'limit', 'cap', 'speed limit'],
+  },
+  belt_start_speed: {
+    label: 'Start speed',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [...TREADMILL_WORDS, 'initial speed'],
+  },
+  belt_auto_start: {
+    label: 'Auto start',
+    group: 'fitness',
+    kind: 'boolean',
+    keywords: [...TREADMILL_WORDS, 'intelligent start', 'step on'],
+  },
+  belt_sensitivity: {
+    label: 'Auto sensitivity',
+    group: 'fitness',
+    kind: 'enum',
+    keywords: [...TREADMILL_WORDS, 'sensor', 'auto mode'],
+  },
+  session_time: {
+    label: 'Session time',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [...TREADMILL_WORDS, 'duration', 'elapsed', 'minutes'],
+    sampled: true,
+  },
+  session_distance: {
+    label: 'Session distance',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [...TREADMILL_WORDS, 'distance', 'metres', 'km'],
+    sampled: true,
+  },
+  session_steps: {
+    label: 'Session steps',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [...TREADMILL_WORDS, 'steps', 'step count'],
+    sampled: true,
+  },
+  session_pace: {
+    label: 'Pace',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [...TREADMILL_WORDS, 'pace', 'min per km'],
+    sampled: true,
+  },
+  session_cadence: {
+    label: 'Cadence',
+    group: 'fitness',
+    kind: 'number',
+    keywords: [...TREADMILL_WORDS, 'cadence', 'steps per minute'],
+    sampled: true,
+  },
+} as const satisfies Record<string, CatalogueEntry>;

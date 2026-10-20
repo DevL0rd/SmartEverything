@@ -1,5 +1,6 @@
 import {
   jsonEquals,
+  type DeviceCapability,
   type JsonValue,
   type Provider,
   type StateChange,
@@ -7,6 +8,8 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { HubDatabase, StateRecord } from '../database/port';
+import type { Clock } from '../clock';
+import { ChangeThreshold } from './change-threshold';
 import type { Inventory } from './inventory';
 import { RepeatLog } from '../providers/repeat-log';
 import { IngestTally } from './ingest-tally';
@@ -14,9 +17,18 @@ import { WriteQueue, logQueueNotice } from './write-queue';
 
 export interface StateWriterOptions {
   readonly store: Pick<HubDatabase, 'loadState' | 'upsertState'>;
-  readonly inventory: Pick<Inventory, 'deviceOf'>;
+  readonly inventory: Pick<Inventory, 'deviceOf' | 'deviceById'>;
+  readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
   readonly changed: (change: StateChange) => void;
+  readonly moved: (change: StateChange) => void;
+}
+
+function capabilityOf(
+  device: { readonly capabilities: readonly DeviceCapability[] } | undefined,
+  key: string,
+): DeviceCapability | undefined {
+  return device?.capabilities.find((capability) => capability.key === key);
 }
 
 function keyOf(deviceId: string, capability: string): string {
@@ -37,8 +49,10 @@ export class StateWriter {
   private readonly queue: WriteQueue<StateRecord, true>;
   private readonly tally: IngestTally;
   private readonly repeat: RepeatLog;
+  private readonly threshold: ChangeThreshold;
 
   constructor(private readonly options: StateWriterOptions) {
+    this.threshold = new ChangeThreshold(options.clock, options.moved);
     this.tally = new IngestTally(options.log, 'state.ingest_summary');
     this.repeat = new RepeatLog(options.log);
     this.queue = new WriteQueue<StateRecord, true>({
@@ -108,12 +122,15 @@ export class StateWriter {
     this.values.set(key, update.value);
     this.tally.count(provider, unchanged ? 'refreshed' : 'changed');
     if (!unchanged) {
-      this.options.changed({
-        deviceId: device.id,
-        capability: update.capability,
-        value: update.value,
-        previous: previous?.value,
-      });
+      this.announce(
+        {
+          deviceId: device.id,
+          capability: update.capability,
+          value: update.value,
+          previous: previous?.value,
+        },
+        capabilityOf(device, update.capability),
+      );
     }
   }
 
@@ -133,9 +150,17 @@ export class StateWriter {
     this.values.set(key, row.value);
     this.observed.set(key, record);
     if (previous === undefined || !jsonEquals(previous, row.value)) {
-      this.options.changed({ ...row, previous });
+      this.announce(
+        { deviceId: row.deviceId, capability: row.capability, value: row.value, previous },
+        capabilityOf(this.options.inventory.deviceById(row.deviceId), row.capability),
+      );
     }
     return true;
+  }
+
+  private announce(change: StateChange, capability: DeviceCapability | undefined): void {
+    this.options.changed(change);
+    this.threshold.offer(change, capability);
   }
 
   settled(): Promise<void> {
@@ -143,6 +168,7 @@ export class StateWriter {
   }
 
   close(): Promise<void> {
+    this.threshold.close();
     return this.queue.close();
   }
 }

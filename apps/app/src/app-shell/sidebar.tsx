@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from 'react';
-import { ScrollView, View, type TextInput } from 'react-native';
+import { View, type TextInput } from 'react-native';
 import { router } from 'expo-router';
 import { IconButton } from '../components/icon-button';
 import { OverflowButton } from '../components/menu';
@@ -11,6 +11,7 @@ import { useSettings } from '../store/selectors';
 import type { NavViewProps } from './bottom-bar';
 import { HOME_ACTIONS } from './home-actions';
 import { NavItems } from './nav-groups';
+import { SidebarList } from './sidebar-list';
 
 const HOME_MENU = HOME_ACTIONS.map((action) => ({
   label: action.label,
@@ -55,9 +56,7 @@ export function Sidebar({ model, go, intent, searchRef, onCollapse }: SidebarPro
     >
       <HomeHeader onCollapse={onCollapse} />
       <SidebarSearch inputRef={searchRef} />
-      <ScrollView className="flex-1" contentContainerClassName="gap-0.5">
-        <NavItems entries={model.pages} go={go} intent={intent} />
-      </ScrollView>
+      <SidebarList model={model} go={go} intent={intent} />
       <View className="gap-1">
         <NavItems entries={model.system} go={go} intent={intent} />
       </View>

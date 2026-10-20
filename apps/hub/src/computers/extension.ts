@@ -57,6 +57,8 @@ function driverOptions({ context, directory, service, now }: Wiring): ComputerDr
     recordAppTime: ({ deviceId, app, startedAt, endedAt }): void => {
       store.appSessions.add({ deviceId, appId: app.id, appName: app.name, startedAt, endedAt });
     },
+    signals: context.hub.signals,
+    personOf: (deviceId) => store.computerNodes.personOf(deviceId),
     ears: context.computerEars,
     earHosts: context.computerEars,
     hubComputerResolved: (deviceId): void => {

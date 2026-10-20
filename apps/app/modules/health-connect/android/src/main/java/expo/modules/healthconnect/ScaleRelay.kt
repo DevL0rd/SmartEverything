@@ -36,21 +36,24 @@ class ScaleRelay(private val context: Context) {
   private val status = ScaleStatus(context)
 
   suspend fun start(): Int {
-    val devices = HubClient(relayTarget(context)).get<BleWatch>(WATCH_PATH).devices
-    preferences.edit().putString(WATCHED, HubJson.encode(devices)).apply()
+    val watch = HubClient(relayTarget(context)).get<BleWatch>(WATCH_PATH)
+    preferences.edit()
+      .putString(WATCHED, HubJson.encode(watch.devices))
+      .putString(CONTENT, HubJson.encode(watch.contentFilters))
+      .apply()
     ScaleAdverts.resume(context)
-    register(devices)
-    return devices.size
+    register(watch.devices, watch.contentFilters)
+    return watch.devices.size
   }
 
   fun resume() {
     ScaleAdverts.resume(context)
-    register(watched())
+    register(watched(), contentFilters())
   }
 
   @SuppressLint("MissingPermission")
   fun stop() {
-    preferences.edit().remove(WATCHED).apply()
+    preferences.edit().remove(WATCHED).remove(CONTENT).apply()
     scanner()?.stopScan(pendingIntent(context))
     stopLive()
   }
@@ -60,18 +63,24 @@ class ScaleRelay(private val context: Context) {
     return HubJson.decode(stored)
   }
 
+  fun contentFilters(): List<WatchedContent> {
+    val stored = preferences.getString(CONTENT, null) ?: return emptyList()
+    return HubJson.decode(stored)
+  }
+
   @SuppressLint("MissingPermission")
   fun startLive() {
     val devices = watched()
+    val contents = contentFilters()
     val scanner = ready()
-    if (devices.isEmpty()) {
+    if (devices.isEmpty() && contents.isEmpty()) {
       return
     }
     live?.let { scanner.stopScan(it) }
     val callback = LiveCallback(context.applicationContext)
     live = callback
-    scanner.startScan(devices.map { it.filter() }, settings(ScanSettings.SCAN_MODE_LOW_LATENCY), callback)
-    status.note("live_started", "${devices.size} Bluetooth device(s)")
+    scanner.startScan(devices.map { it.filter() } + contents.map { it.filter() }, settings(ScanSettings.SCAN_MODE_LOW_LATENCY), callback)
+    status.note("live_started", "${devices.size + contents.size} Bluetooth filter(s)")
   }
 
   @SuppressLint("MissingPermission")
@@ -83,19 +92,20 @@ class ScaleRelay(private val context: Context) {
   }
 
   @SuppressLint("MissingPermission")
-  private fun register(devices: List<WatchedDevice>) {
+  private fun register(devices: List<WatchedDevice>, contents: List<WatchedContent>) {
     val scanner = ready()
     scanner.stopScan(pendingIntent(context))
-    if (devices.isEmpty()) {
+    if (devices.isEmpty() && contents.isEmpty()) {
       status.note("registered", "no Bluetooth devices to listen for")
       return
     }
-    val code = scanner.startScan(devices.map { it.filter() }, settings(ScanSettings.SCAN_MODE_BALANCED), pendingIntent(context))
+    val filters = devices.map { it.filter() } + contents.map { it.filter() }
+    val code = scanner.startScan(filters, settings(ScanSettings.SCAN_MODE_BALANCED), pendingIntent(context))
     if (code != 0) {
       status.note("failed", "Android refused the background scan with code $code")
       return
     }
-    status.note("registered", "${devices.size} Bluetooth device(s) in the background")
+    status.note("registered", "${filters.size} Bluetooth filter(s) in the background")
   }
 
   private fun ready(): BluetoothLeScanner {
@@ -139,6 +149,7 @@ class ScaleRelay(private val context: Context) {
     const val ADVERTS_PATH = "/api/ble/adverts"
     private const val PREFERENCES = "expo.modules.healthconnect.scale"
     private const val WATCHED = "watched"
+    private const val CONTENT = "content"
     private const val REQUEST_CODE = 7400
     private var live: ScanCallback? = null
 

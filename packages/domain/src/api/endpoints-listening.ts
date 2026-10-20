@@ -10,6 +10,7 @@ import {
   LISTENING_WAKE_CLAIM,
   WAKE_TEST_WATCH,
 } from '../listening';
+import { SPEECH_SOURCES } from '../speech-triggers';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, NOTHING } from './primitives';
 
@@ -90,5 +91,16 @@ export const LISTENING_ENDPOINTS = {
     query: NOTHING,
     body: LISTENING_PHONE_REPORT,
     response: DONE,
+  }),
+  listSpeechSources: endpoint({
+    method: 'GET',
+    path: '/api/automations/speech-sources',
+    access: 'member',
+    summary:
+      'Readable finalized-speech sources for literal word or contiguous phrase automation triggers; global means these authorized sources, images and mixed video notes are unavailable',
+    params: NOTHING,
+    query: NOTHING,
+    body: NO_BODY,
+    response: SPEECH_SOURCES,
   }),
 } as const;

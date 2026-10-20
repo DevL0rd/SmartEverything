@@ -9,7 +9,7 @@ import { useScreenQuery } from '../../../queries/use-screen-query';
 import { randomUUID } from 'expo-crypto';
 import { ApiError, type ClaudeOperation } from '@smarteverything/domain';
 import { rawErrorText } from '../../../format/errors';
-import { computerAiKey } from './computer-ai';
+import { computerAiKey } from '../../../queries/keys';
 import { nativeReceipt, useNativeOperation, type NativeOperationState } from './native-operation';
 
 const log = new Logger('app.computers');

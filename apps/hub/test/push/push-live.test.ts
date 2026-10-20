@@ -48,7 +48,7 @@ describe('alerts over the live connection', () => {
     expect(notice).toMatchObject({
       type: 'notification',
       title: 'Doorbell',
-      body: 'Someone is at the door (Front door in Home)',
+      body: 'Someone is at the door (Front door)',
       data: { kind: 'doorbell' },
     });
     expect(bench.logs.events()).toContain('push.delivered_live');

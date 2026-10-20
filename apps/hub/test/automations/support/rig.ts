@@ -5,7 +5,8 @@ import {
   type EventKind,
   type JsonValue,
 } from '@smarteverything/domain';
-import { TestClock } from './test-clock';
+import { SIGNAL_MIN_INTERVAL_MS } from '../../../src/state/change-threshold';
+import { SimulatedClock as TestClock } from '../../../src/clock/simulated';
 import { skyControls, skyFetch, type FakeSky, type Sky } from './weather';
 import {
   bootServer,
@@ -34,6 +35,11 @@ export interface Rig extends Client {
   readonly mcp: () => Promise<string>;
   readonly roomIds: Readonly<Record<string, string>>;
   readonly state: (
+    externalId: string,
+    capability: CapabilityKey,
+    value: JsonValue,
+  ) => Promise<void>;
+  readonly spacedState: (
     externalId: string,
     capability: CapabilityKey,
     value: JsonValue,
@@ -67,7 +73,7 @@ async function settle(turns = 8): Promise<void> {
   }
 }
 
-export async function until(condition: () => boolean | Promise<boolean>): Promise<void> {
+async function until(condition: () => boolean | Promise<boolean>): Promise<void> {
   for (let attempt = 0; attempt < 1000; attempt += 1) {
     if (await condition()) return;
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -123,17 +129,22 @@ function mcpToken(booted: Booted, client: Client): () => Promise<string> {
   };
 }
 
-function feeders(fake: FakeModule, clock: TestClock): Pick<Rig, 'state' | 'event'> {
+function feeders(fake: FakeModule, clock: TestClock): Pick<Rig, 'state' | 'spacedState' | 'event'> {
   const observation = new Observations();
+  const state: Rig['state'] = async (externalId, capability, value): Promise<void> => {
+    fake.adapter.sink?.state({
+      externalId,
+      capability,
+      value,
+      observedAt: observation.next(externalId, capability, clock.latest()),
+    });
+    await settle();
+  };
   return {
-    state: async (externalId, capability, value): Promise<void> => {
-      fake.adapter.sink?.state({
-        externalId,
-        capability,
-        value,
-        observedAt: observation.next(externalId, capability, clock.latest()),
-      });
-      await settle();
+    state,
+    spacedState: async (externalId, capability, value): Promise<void> => {
+      clock.advanceTo(new Date(clock.now().getTime() + SIGNAL_MIN_INTERVAL_MS).toISOString());
+      await state(externalId, capability, value);
     },
     event: async (externalId, kind, details = {}): Promise<void> => {
       fake.adapter.sink?.event({
@@ -160,8 +171,10 @@ export async function openRig(start: string = START): Promise<Rig> {
   base = booted.base;
   const { fake } = booted;
   fake.adapter.devices = ALL_DEVICES;
-  await linkFakeProvider(booted);
   const client = clientOf(booted.base, booted.owner);
+  await client.request(API_ENDPOINTS.createRoom, { body: { name: 'Study' } });
+  await client.request(API_ENDPOINTS.createRoom, { body: { name: 'Hall' } });
+  await linkFakeProvider(booted);
   await client.request(API_ENDPOINTS.updateHome, {
     body: { time_zone: 'UTC', latitude: 52.52, longitude: 13.405 },
   });

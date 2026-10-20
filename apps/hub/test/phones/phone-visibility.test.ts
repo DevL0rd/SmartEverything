@@ -1,4 +1,5 @@
 import type { LiveChange, LiveTable, StateRow } from '@smarteverything/domain';
+import type { EventInsert } from '../../src/database/port';
 import { readDeviceLog } from '../../src/devices/device-log/read';
 import { deviceDetails } from '../../src/extensions/mcp/tools/devices';
 import { eventsOf, historyOf } from '../../src/extensions/mcp/tools/history';
@@ -283,5 +284,85 @@ describe('place names in events and the AI tools', () => {
       );
     expect(read(null).length).toBeGreaterThan(read('member').length);
     expect(read('member').join(' ')).not.toContain('walking');
+  });
+});
+
+describe('activity feed rows from signals', () => {
+  function addFeedRows(): void {
+    const feedRow = (kind: string, details: Record<string, string | boolean>): EventInsert => ({
+      deviceId: null,
+      kind: 'signal',
+      occurredAt: AT,
+      details: { source: 'test', kind, ...details },
+    });
+    test.store.events.insert([
+      feedRow('call_of_dana', { profileId: dana.profileId }),
+      feedRow('wake_heard', { ownerOnly: true }),
+      feedRow('home_wide', {}),
+    ]);
+  }
+
+  function connection(person: TestPerson): Hearing {
+    return { client: person.client, tables: new Set<LiveTable>(['events']) };
+  }
+
+  function kindsFor(person: TestPerson): unknown[] {
+    return visibleEvents(
+      test.store,
+      phoneViewerOfClient(test.store, person.client),
+      test.store.events.list({ kinds: ['signal'], limit: 50 }),
+    )
+      .map((event) => event.details['kind'])
+      .sort();
+  }
+
+  function heardBy(person: TestPerson): unknown[] {
+    return test.store.events
+      .list({ kinds: ['signal'], limit: 50 })
+      .flatMap((record) => {
+        const shown = projected(
+          connection(person),
+          { type: 'change', seq: 1, table: 'events', operation: 'INSERT', record, oldRecord: null },
+          test.store,
+        );
+        return shown?.table === 'events' && shown.record !== null
+          ? [shown.record.details['kind']]
+          : [];
+      })
+      .sort();
+  }
+
+  it('shows the owner every row', () => {
+    addFeedRows();
+    expect(kindsFor(owner)).toEqual(['call_of_dana', 'home_wide', 'wake_heard']);
+    expect(heardBy(owner)).toEqual(['call_of_dana', 'home_wide', 'wake_heard']);
+  });
+
+  it('shows a member their own rows and the home-wide ones, never the owner-only ones', () => {
+    addFeedRows();
+    expect(kindsFor(dana)).toEqual(['call_of_dana', 'home_wide']);
+    expect(heardBy(dana)).toEqual(['call_of_dana', 'home_wide']);
+  });
+
+  it('hides another person’s rows and the owner-only ones from a member', () => {
+    addFeedRows();
+    expect(kindsFor(sam)).toEqual(['home_wide']);
+    expect(heardBy(sam)).toEqual(['home_wide']);
+  });
+
+  it('cuts what the AI of a member lists the same way', () => {
+    addFeedRows();
+    const actor = {
+      clientId: sam.client.id,
+      profileId: sam.profileId,
+      chatId: null,
+      role: 'member',
+    } as const;
+    const listed = JSON.stringify(
+      eventsOf(test.store, null, phoneViewerOfActor({ actor }), { kinds: ['signal'], limit: 50 }),
+    );
+    expect(listed).toContain('home_wide');
+    expect(listed).not.toContain('call_of_dana');
+    expect(listed).not.toContain('wake_heard');
   });
 });

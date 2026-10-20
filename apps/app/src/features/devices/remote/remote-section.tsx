@@ -7,55 +7,39 @@ import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { href } from '../../../app-shell/hrefs';
 import { useControl } from '../../../store/control';
-import { devicesIn } from '../../../store/selectors';
 import { rowsOf, type Device } from '../../../store/state';
 import { shallowEqual, useStoreSelector } from '../../../store/store-context';
 import { ControlBlock } from '../controls/control-block';
 import { Guard, offlineReason } from '../controls/guard';
 import { useDeviceModel } from '../model/device-model';
 import { useDisplayName } from '../model/display-name';
-import { blasterOf, remotesShownOn } from '../model/ir-links';
 import { remoteKeysOf } from '../model/remote-layout';
 import { KeyGrid } from './key-grid';
 import { RemoteExtras } from './remote-extras';
 import { RemoteFace } from './remote-face';
 import { RemotePad } from './remote-pad';
-import { useLearnedSource, useLibrarySource, type RemoteSource } from './remote-source';
+import { useLearnedSource, useDeviceRemoteSource, type RemoteSource } from './remote-source';
 import { SceneSheet } from './scene-sheet';
 import { useRemoteSend } from './use-remote-send';
 
 interface Remotes {
   readonly blaster: Device | null;
-  readonly library: readonly Device[];
   readonly remotes: readonly IrRemoteRow[];
 }
 
-const EVERY_DEVICE = { includeHidden: true } as const;
-
 function sameRemotes(left: Remotes, right: Remotes): boolean {
-  return (
-    left.blaster === right.blaster &&
-    shallowEqual(left.library, right.library) &&
-    shallowEqual(left.remotes, right.remotes)
-  );
+  return left.blaster === right.blaster && shallowEqual(left.remotes, right.remotes);
 }
 
 export function useRemotes(device: Device): Remotes {
   return useStoreSelector(
-    (state): Remotes => {
-      const devices = devicesIn(state, EVERY_DEVICE);
-      const linked = blasterOf(device, devices);
-      return {
-        blaster: devices.find((candidate) => candidate.id === linked?.id) ?? null,
-        library:
-          device.kind === 'ir_blaster'
-            ? devices.filter(
-                (candidate) => candidate.kind === 'ir_remote' && candidate.parent_id === device.id,
-              )
-            : [],
-        remotes: remotesShownOn(device, rowsOf(state.tables.ir_remotes), devices),
-      };
-    },
+    (state): Remotes => ({
+      blaster: device.kind === 'ir_blaster' ? device : null,
+      remotes:
+        device.kind === 'ir_blaster'
+          ? rowsOf(state.tables.ir_remotes).filter((remote) => remote.blaster_id === device.id)
+          : [],
+    }),
     sameRemotes,
     [device],
   );
@@ -143,8 +127,8 @@ function PlainPad({
   );
 }
 
-function LibraryRemote({ device }: { readonly device: Device }): ReactNode {
-  const source = useLibrarySource(device);
+function DeviceRemote({ device }: { readonly device: Device }): ReactNode {
+  const source = useDeviceRemoteSource(device);
   const send = useRemoteSend(source);
   const name = useDisplayName(device.id);
   const reason = device.online ? null : offlineReason(name);
@@ -159,24 +143,19 @@ function LibraryRemote({ device }: { readonly device: Device }): ReactNode {
 
 function BlasterRemotes({
   blaster,
-  library,
   remotes,
 }: {
   readonly blaster: Device;
-  readonly library: readonly Device[];
   readonly remotes: readonly IrRemoteRow[];
 }): ReactNode {
   const [scene, setScene] = useState(false);
   const settings = href.settings.device(blaster.id, 'remotes');
   return (
     <>
-      {library.map((device) => (
-        <LibraryRemote key={device.id} device={device} />
-      ))}
       {remotes.map((remote) => (
         <LearnedRemote key={remote.id} blaster={blaster} remote={remote} />
       ))}
-      {library.length === 0 && remotes.length === 0 ? (
+      {remotes.length === 0 ? (
         <EmptyState
           icon="remote"
           title="No remotes yet"
@@ -209,21 +188,17 @@ function BlasterRemotes({
 }
 
 export function RemoteSection({ device }: { readonly device: Device }): ReactNode {
-  const { blaster, library, remotes } = useRemotes(device);
+  const { blaster, remotes } = useRemotes(device);
   const name = useDisplayName(device.id);
   const reason = device.online ? null : offlineReason(name);
   const own = device.kind === 'ir_remote';
   return (
     <View className="gap-section-gap">
-      {own ? <LibraryRemote device={device} /> : null}
+      {own ? <DeviceRemote device={device} /> : null}
       {!own && remoteKeysOf(device.capabilities).length > 0 ? (
         <PlainPad device={device} reason={reason} />
       ) : null}
-      {blaster === null ? null : own ? (
-        remotes.map((remote) => <LearnedRemote key={remote.id} blaster={blaster} remote={remote} />)
-      ) : (
-        <BlasterRemotes blaster={blaster} library={library} remotes={remotes} />
-      )}
+      {blaster === null ? null : <BlasterRemotes blaster={blaster} remotes={remotes} />}
     </View>
   );
 }

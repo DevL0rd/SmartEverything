@@ -22,6 +22,7 @@ import {
   SYSTEM_CHANGE,
   SYSTEM_STATE,
 } from '../node/computer-system';
+import { TILING_CHANGE, TILING_STATE } from '../node/computer-tiling';
 import { WINDOW_CHANGE, WINDOWS_STATE } from '../node/computer-windows';
 import { HISTORY_BACKFILL_REQUEST, HISTORY_BACKFILL_RESPONSE } from '../history-backfill';
 import { NO_BODY, endpoint } from './endpoint';
@@ -128,6 +129,28 @@ export const COMPUTER_SYSTEM_ENDPOINTS = {
     query: NOTHING,
     body: WINDOW_CHANGE,
     response: WINDOWS_STATE,
+  }),
+  readComputerTiling: endpoint({
+    method: 'GET',
+    path: '/api/computers/:deviceId/tiling',
+    access: 'member',
+    summary:
+      'Konveyor tiling layout of a computer: screens, workspaces with their columns of windows, the window in front and whether the overview is open',
+    params: COMPUTER_PARAMS,
+    query: NOTHING,
+    body: NO_BODY,
+    response: TILING_STATE,
+  }),
+  changeComputerTiling: endpoint({
+    method: 'POST',
+    path: '/api/computers/:deviceId/tiling',
+    access: 'member',
+    summary:
+      'Arrange windows with Konveyor: focus a window or workspace, move a window or the focused column to another workspace or screen, cycle or center the focused column, toggle the overview or name a workspace',
+    params: COMPUTER_PARAMS,
+    query: NOTHING,
+    body: TILING_CHANGE,
+    response: TILING_STATE,
   }),
   readComputerStartup: endpoint({
     method: 'GET',

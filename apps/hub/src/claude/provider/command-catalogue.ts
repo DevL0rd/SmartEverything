@@ -6,24 +6,12 @@ import { ProviderInputError } from './input';
 import { canonicalRuntimeInput } from '../../computers/runtime-receipts';
 
 export const CLAUDE_COMMAND_CAPABILITY_REVISION = 'claude-sdk-0.3.296-commands-r2';
+const SLASH_NAME = /^[^\s/]+$/;
 const COMMAND = z.object({
-  name: z
-    .string()
-    .min(1)
-    .max(200)
-    .regex(/^[^\s/]+$/),
+  name: z.string().min(1).max(200),
   description: z.string().max(4000),
   argumentHint: z.string().max(2000),
-  aliases: z
-    .array(
-      z
-        .string()
-        .min(1)
-        .max(200)
-        .regex(/^[^\s/]+$/),
-    )
-    .max(100)
-    .optional(),
+  aliases: z.array(z.string().min(1).max(200)).max(100).optional(),
   builtin: z.boolean().optional(),
 });
 type NativeCommand = z.infer<typeof COMMAND>;
@@ -116,7 +104,9 @@ export class ProviderCommandCatalogue {
       definition_id: `claude:slash:${digest(command)}`,
       name: command.name,
       description: command.description || `Run /${command.name} in this owned native session.`,
-      aliases: (command.aliases ?? []).filter((alias) => this.aliasResolves(alias, command)),
+      aliases: (command.aliases ?? []).filter(
+        (alias) => SLASH_NAME.test(alias) && this.aliasResolves(alias, command),
+      ),
       builtin: command.builtin === true,
       source: command.builtin === true ? 'builtin' : 'native',
       native_name: command.name,
@@ -134,6 +124,9 @@ export class ProviderCommandCatalogue {
     const winners = builtins.length === 0 ? named : builtins;
     let reason: string | null = null;
     if (!this.initialized) reason = 'The native session has not published initialization.';
+    else if (!SLASH_NAME.test(command.name))
+      reason =
+        'This command name contains spaces or slashes, so it cannot be typed as a slash command.';
     else if (winners.length !== 1 || winners[0] !== command)
       reason = 'Native name precedence selects another or ambiguous definition.';
     else if (command.builtin === true && CHANGES_SESSION.has(command.name))

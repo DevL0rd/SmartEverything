@@ -27,4 +27,10 @@ describe('device grid columns', () => {
     expect(contentWidth(2600, 40)).toBe(1440);
     expect(contentWidth(390, 16)).toBe(358);
   });
+
+  it('keeps one wide tile per row for the narrow content of a room page on a phone', () => {
+    expect(columnsFor(326, 12)).toBe(1);
+    expect(columnsFor(358, 12)).toBe(1);
+    expect(columnsFor(680, 12)).toBe(2);
+  });
 });

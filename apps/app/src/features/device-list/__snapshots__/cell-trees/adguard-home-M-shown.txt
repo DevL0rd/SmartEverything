@@ -1,39 +1,38 @@
-View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
-  View className="flex-1 p-card-pad" pointerEvents="box-none"
-    View className="flex-1" collapsable=false onLayout=undefined pointerEvents="box-none" ref={current:null}
-      View className="flex-1 gap-1.5" pointerEvents="box-none"
-        View className="flex-1 flex-row gap-3" pointerEvents="box-none"
-          View className="items-center justify-center self-center" pointerEvents="none" style={width:96}
-            View accessibilityLabel="AdGuard Home, protecting, 18 % blocked · 30,604 lookups" accessibilityRole="image" className="shrink-0" style={width:96,height:96}
-              View className="absolute" pointerEvents="none" style={left:-28.799999999999997,top:-28.799999999999997,width:153.60000000000002,height:153.60000000000002}
-                View className="absolute inset-0" onLayout=undefined pointerEvents="none" ref={current:null}
-                  Anim.View className="absolute inset-0" renderToHardwareTextureAndroid=true style={animationName:{cssRules_:{from:{opacity:0.45},to:{opacity:0.95}},cssText_:"{\"from\":{\"opacity\":0.45},\"to\":{\"opacity\":0.95}}",length_:2,name_:"REA-CSS-1",processedKeyframes_:"from { opacity: 0.45 } to { opacity: 0.95 }"},animationDuration:3200,animationTimingFunction:"ease-in-out",animationDelay:0,animationIterationCount:"infinite",animationDirection:"alternate",animationFillMode:"none",animationPlayState:"running"}
-                    View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(96, 96, 96, 0.35) 0%, rgba(96, 96, 96, 0.11666666666666665) 60%, rgba(96, 96, 96, 0) 100%)"}]
-              View aria-hidden=true className="absolute items-center justify-center rounded-full border-hairline border-outline-variant bg-surface-1 elevation-1" style={left:6.720000000000001,top:6.720000000000001,width:82.56,height:82.56}
-                Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=40 ref=null stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75 viewBox="0 0 24 24" width=40 xmlns="http://www.w3.org/2000/svg"
-                  Svg.Path aria-hidden=true d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
-              View aria-hidden=true className="absolute inset-0"
-                Svg.default aria-hidden=true height=96 width=96
-                  Svg.Path d="M48.00 2.00 A46 46 0 1 1 48.00 94.00 A46 46 0 1 1 48.00 2.00" fill="none" stroke="#42484e" strokeLinecap="round" strokeOpacity=1 strokeWidth=4
-                  Anim.created animatedProps={} d="M48.00 2.00 A46 46 0 1 1 48.00 94.00 A46 46 0 1 1 48.00 2.00" fill="none" stroke="#606060" strokeDasharray="289.02652413026095 289.02652413026095" strokeLinecap="round" strokeWidth=4
-              View aria-hidden=true className="absolute rounded-full border-2 border-surface-1 bg-positive" style={left:74.888,top:7.112000000000002,width:14,height:14}
-          View className="min-w-0 flex-1 gap-1" pointerEvents="box-none"
-            View accessibilityLabel="AdGuard Home, protecting, 18 % blocked · 30,604 lookups" accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
-              View className="flex-row flex-wrap items-center justify-between gap-x-2"
-                Text className="font-sans-medium text-body text-on-surface text-left max-w-full shrink" numberOfLines=1 selectable=false
-                View className="flex-row items-center gap-1 self-start rounded-full px-2 py-0.5 bg-positive/12"
-                  Text className="font-sans-medium text-caption text-positive text-left" numberOfLines=1 selectable=false
-              Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
-              View className="flex-row items-end gap-3 overflow-hidden pt-0.5"
-                View className="min-w-0 shrink-0"
-                  View className="flex-row items-baseline gap-1" onLayout=undefined ref=undefined
-                    Text className="font-sans text-body text-on-surface text-left font-sans-medium tabular text-figure-m tracking-tight text-on-surface" selectable=false
-                    Text className="font-sans text-callout text-on-surface-variant text-left" selectable=false
-                  Text className="font-sans-medium text-caption text-on-surface-faint text-left" numberOfLines=1 selectable=false
-            View aria-hidden=true className="min-h-0 min-w-0 justify-end flex-1" pointerEvents="none"
-              View aria-hidden=true className="w-full" onLayout=fn style={height:40}
-        View className="flex-row items-center gap-2" pointerEvents="box-none"
-          View collapsable=false ref={current:null}
-            Pressable accessibilityHint=undefined accessibilityLabel="Pause" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#2e3842",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 max-w-full shrink flex-row items-center justify-center gap-2 px-4 h-control-h rounded-full bg-primary-container" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn
-          View className="min-w-0 flex-1 items-end" pointerEvents="none"
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1 p-card-pad" pointerEvents="box-none"
+  View className="flex-1" collapsable=false onLayout=undefined pointerEvents="box-none" ref={current:null}
+    View className="flex-1 gap-1.5" onLayout=undefined pointerEvents="box-none" ref=undefined
+      View className="flex-1 flex-row gap-3" pointerEvents="box-none"
+        View className="items-center justify-center self-center" pointerEvents="none" style={width:96}
+          View accessibilityLabel="AdGuard Home, protecting, 18 % blocked · 30,604 lookups" accessibilityRole="image" className="shrink-0" style={width:96,height:96}
+            View className="absolute" pointerEvents="none" style={left:-28.799999999999997,top:-28.799999999999997,width:153.60000000000002,height:153.60000000000002}
+              View className="absolute inset-0" onLayout=undefined pointerEvents="none" ref={current:null}
+                Anim.View className="absolute inset-0" renderToHardwareTextureAndroid=true style={animationName:{cssRules_:{from:{opacity:0.45},to:{opacity:0.95}},cssText_:"{\"from\":{\"opacity\":0.45},\"to\":{\"opacity\":0.95}}",length_:2,name_:"REA-CSS-1",processedKeyframes_:"from { opacity: 0.45 } to { opacity: 0.95 }"},animationDuration:3200,animationTimingFunction:"ease-in-out",animationDelay:0,animationIterationCount:"infinite",animationDirection:"alternate",animationFillMode:"none",animationPlayState:"running"}
+                  View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(141, 250, 122, 0.35) 0%, rgba(141, 250, 122, 0.11666666666666665) 60%, rgba(141, 250, 122, 0) 100%)"}]
+            View aria-hidden=true className="absolute items-center justify-center rounded-full border-hairline border-outline-variant bg-surface-1 elevation-1" style={left:6.720000000000001,top:6.720000000000001,width:82.56,height:82.56}
+              Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=40 ref=null stroke="#2e5fd9" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75 viewBox="0 0 24 24" width=40 xmlns="http://www.w3.org/2000/svg"
+                Svg.Path aria-hidden=true d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" fill="none" stroke="#2e5fd9" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+            View aria-hidden=true className="absolute inset-0"
+              Svg.default aria-hidden=true height=96 width=96
+                Svg.Path d="M48.00 2.00 A46 46 0 1 1 48.00 94.00 A46 46 0 1 1 48.00 2.00" fill="none" stroke="#2cf201" strokeLinecap="round" strokeOpacity=1 strokeWidth=4
+                Anim.created animatedProps={} d="M48.00 2.00 A46 46 0 1 1 48.00 94.00 A46 46 0 1 1 48.00 2.00" fill="none" stroke="#8dfa7a" strokeDasharray="289.02652413026095 289.02652413026095" strokeLinecap="round" strokeWidth=4
+            View aria-hidden=true className="absolute rounded-full border-2 border-surface-1 bg-positive" style={left:74.888,top:7.112000000000002,width:14,height:14}
+        View className="min-w-0 flex-1 gap-1" pointerEvents="box-none"
+          View accessibilityLabel="AdGuard Home, protecting, 18 % blocked · 30,604 lookups" accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
+            View className="flex-row items-center justify-between gap-2"
+              Text className="font-sans-medium text-body text-on-surface text-left min-w-0 flex-1" numberOfLines=1 selectable=false
+              View className="flex-row items-center gap-1 self-start rounded-full px-2 py-0.5 bg-positive/12"
+                Text className="font-sans-medium text-caption text-positive text-left" numberOfLines=1 selectable=false
             Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+            View className="flex-row items-end gap-3 overflow-hidden pt-0.5"
+              View className="min-w-0 shrink-0"
+                View className="flex-row items-baseline gap-1" onLayout=undefined ref=undefined
+                  Text className="font-sans text-body text-on-surface text-left font-sans-medium tabular text-figure-m tracking-tight text-on-surface" selectable=false
+                  Text className="font-sans text-callout text-on-surface-variant text-left" selectable=false
+                Text className="font-sans-medium text-caption text-on-surface-faint text-left" numberOfLines=1 selectable=false
+          View aria-hidden=true className="min-h-0 min-w-0 justify-end flex-1" pointerEvents="none"
+            View aria-hidden=true className="w-full" onLayout=fn style={height:40}
+      View className="flex-row items-center gap-2" pointerEvents="box-none"
+        View collapsable=false ref={current:null}
+          Pressable accessibilityHint=undefined accessibilityLabel="Pause" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#ce9792",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 max-w-full shrink flex-row items-center justify-center gap-2 px-4 h-control-h rounded-full bg-primary-container" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn ref=undefined
+        View className="min-w-0 flex-1 items-end" pointerEvents="none"
+          Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false

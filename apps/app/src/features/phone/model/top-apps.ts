@@ -1,6 +1,6 @@
 import type { PhoneDetail } from '@smarteverything/domain';
 
-export const MOST_TOP_APPS = 3;
+export const MOST_TOP_APPS = 5;
 
 export interface TopApp {
   readonly package: string;

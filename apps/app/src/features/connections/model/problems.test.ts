@@ -24,6 +24,11 @@ describe('problemTitle', () => {
     expect(problemTitle('tuya', 'session_expired')).toBe('Tuya signed you out');
   });
 
+  it('names the app, not the account, when Tuya is not supported', () => {
+    expect(problemTitle('tuya', 'not_supported')).toBe('This app isn’t supported');
+    expect(problemTitle('xiaomi', 'not_supported')).toBe('This account isn’t supported');
+  });
+
   it('asks about the code for Tuya and the password for the other providers', () => {
     expect(problemTitle('tuya', 'bad_credentials')).toBe('That code didn’t work');
     expect(problemTitle('xiaomi', 'bad_credentials')).toBe('Wrong account or password');

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CLOCK_TIME } from './automations';
+import { CLOCK_TIME } from './zoned-clock';
 import { PLUGIN_ORIGIN } from './plugin-people';
 import { JSON_VALUE } from './values';
 

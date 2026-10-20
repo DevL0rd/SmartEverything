@@ -16,6 +16,9 @@ import type { Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
 import type { ComputerEndpointName } from '../computers/computer-routes';
 import type { PhoneEndpointName } from '../phones/phone-routes';
+import type { TreadmillEndpointName } from '../local/treadmill/routes';
+import type { BrushEndpointName } from '../local/toothbrush/routes';
+import type { BottleEndpointName } from '../local/bottle/routes';
 import type { Store } from '../store/store';
 import { beginHandler, type HandlerRun } from './handlers/handler-log';
 import { memberEngineProjection } from './member-engine';
@@ -143,6 +146,9 @@ type ExtensionEndpointName =
   | 'listMcpConsents'
   | 'decideMcpConsent'
   | PhoneEndpointName
+  | TreadmillEndpointName
+  | BrushEndpointName
+  | BottleEndpointName
   | 'reportClientFailures'
   | 'readMachineUpdate'
   | ComputerEndpointName;

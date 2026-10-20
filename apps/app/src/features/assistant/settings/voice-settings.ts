@@ -1,11 +1,14 @@
 import { createElement } from 'react';
-import { LIVE_CONTEXT_MINUTES } from '@smarteverything/domain';
+import { DEFAULT_VOICE_THINKING, LIVE_CONTEXT_MINUTES } from '@smarteverything/domain';
 import type { SettingDefinition } from '../../../settings/types';
 import { known, owner, writeVoice } from './assistant-write';
 import { CallVoiceSettingRow } from './call-voice-setting-row';
 import { GeminiKeySection } from './gemini-key';
 import { ASSISTANT_GROUPS } from './settings-groups';
 import { SPEECH_SETTINGS } from './speech-settings';
+import { voiceModelIsDefault } from './voice-model';
+import { THINKING_SETTING } from './voice-thinking';
+import { VoiceModelSummaryRow } from './voice-model-rows';
 
 const IDLE_CHOICES = [
   { value: '5', label: '5 seconds' },
@@ -44,8 +47,34 @@ const base = {
   when: known,
 } as const;
 
+const modelBase = { ...base, section: ASSISTANT_GROUPS.voiceModel } as const;
+
+const MODEL_SETTINGS: readonly SettingDefinition[] = [
+  {
+    ...modelBase,
+    id: 'assistant.voice.model-summary',
+    title: 'Current setup',
+    keywords: ['voice model', 'call model', 'Gemini Live', 'summary', 'setup'],
+    control: 'custom',
+    row: true,
+    render: () => createElement(VoiceModelSummaryRow),
+  },
+  THINKING_SETTING,
+];
+
+const MODEL_RESET: SettingDefinition = {
+  ...modelBase,
+  id: 'assistant.voice.model-reset',
+  icon: 'reset',
+  title: 'Reset thinking to default',
+  keywords: ['reset', 'default', 'voice model', 'thinking'],
+  control: 'action',
+  when: (state) => state.assistant !== null && !voiceModelIsDefault(state.assistant.settings.voice),
+  run: (context) => writeVoice({ thinking_level: DEFAULT_VOICE_THINKING }, context),
+};
+
 const CALL_VOICE: SettingDefinition = {
-  ...base,
+  ...modelBase,
   id: 'assistant.voice.call-voice',
   icon: 'mic',
   title: 'Call voice',
@@ -155,7 +184,9 @@ const CALL_RULES: readonly SettingDefinition[] = [
 ];
 
 export const VOICE_SETTINGS: readonly SettingDefinition[] = [
+  ...MODEL_SETTINGS,
   CALL_VOICE,
+  MODEL_RESET,
   ...SPEECH_SETTINGS,
   ...CALL_RULES,
 ];

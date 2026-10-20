@@ -14,7 +14,7 @@ import { deviceModelOf } from '../model/device-model';
 import { OFFLINE_REASON } from '../model/offline';
 import { contactStateText, openingsText, openingsToday, openSince } from './contact-model';
 import { levelPercent, numberAt } from './reading';
-import { SensorFrame, VisibleRoot } from './sensor-frame';
+import { SensorFrame, useVisibleFrame } from './sensor-frame';
 import { levelPill } from './state-line';
 
 const STRIP_HEIGHT = 28;
@@ -87,16 +87,15 @@ function factsOf(line: string, count: number, battery: number | null): readonly 
 function WideContact({
   device,
   cls,
-  live,
   contactKey,
 }: {
   readonly device: Device;
   readonly cls: WideClass;
-  readonly live: boolean;
   readonly contactKey: string;
 }): ReactNode {
+  const visible = useVisibleFrame();
   const read = useContactRead(device);
-  const timeline = usePowerTimeline(device.id, contactKey, live);
+  const timeline = usePowerTimeline(device.id, contactKey, visible.live);
   const offline = !device.online;
   const count = openingsToday(timeline.segments, timeline);
   const line = contactStateText(read.open, openSince(timeline.segments, timeline, read.open));
@@ -110,7 +109,7 @@ function WideContact({
     <SensorFrame
       device={device}
       cls={cls}
-      live={live}
+      visible={visible}
       line={line}
       tone={read.open === true && !offline ? 'warning' : 'variant'}
       offline={offline}
@@ -126,9 +125,7 @@ export function ContactSensorCard(props: CardFaceProps): ReactNode {
   const contact = withRole(deviceModelOf(props.device).presentation, 'contact');
   const { device, cls } = props;
   return isWideClass(cls) && contact !== undefined ? (
-    <VisibleRoot>
-      {(live) => <WideContact device={device} cls={cls} live={live} contactKey={contact.key} />}
-    </VisibleRoot>
+    <WideContact device={device} cls={cls} contactKey={contact.key} />
   ) : (
     <GenericCardFace {...props} />
   );

@@ -59,6 +59,14 @@ export interface PhoneReadings {
   readonly screenOn: boolean | null;
   readonly brightness: number | null;
   readonly autoBrightness: boolean | null;
+  readonly screenTimeout: Reported<'screen_timeout'>;
+  readonly autoRotate: boolean | null;
+  readonly hapticFeedback: boolean | null;
+  readonly touchSounds: boolean | null;
+  readonly wifiOn: boolean | null;
+  readonly bluetoothOn: boolean | null;
+  readonly locationOn: boolean | null;
+  readonly airplaneMode: boolean | null;
   readonly flashlight: Reported<'flashlight'>;
   readonly storageFree: number | null;
   readonly notificationCount: number | null;
@@ -161,6 +169,31 @@ function screenOf(
   };
 }
 
+function systemOf(
+  values: DeviceValues,
+): Pick<
+  PhoneReadings,
+  | 'airplaneMode'
+  | 'autoRotate'
+  | 'bluetoothOn'
+  | 'hapticFeedback'
+  | 'locationOn'
+  | 'screenTimeout'
+  | 'touchSounds'
+  | 'wifiOn'
+> {
+  return {
+    screenTimeout: read(SHAPE.screen_timeout, values, 'screen_timeout'),
+    autoRotate: read(SHAPE.auto_rotate, values, 'auto_rotate'),
+    hapticFeedback: read(SHAPE.haptic_feedback, values, 'haptic_feedback'),
+    touchSounds: read(SHAPE.touch_sounds, values, 'touch_sounds'),
+    wifiOn: read(SHAPE.wifi_on, values, 'wifi_on'),
+    bluetoothOn: read(SHAPE.bluetooth_on, values, 'bluetooth_on'),
+    locationOn: read(SHAPE.location_on, values, 'location_on'),
+    airplaneMode: read(SHAPE.airplane_mode, values, 'airplane_mode'),
+  };
+}
+
 function connectionOf(
   values: DeviceValues,
 ): Pick<PhoneReadings, 'network' | 'networkKind' | 'signalBars'> {
@@ -177,6 +210,7 @@ export function phoneReadingsOf(values: DeviceValues): PhoneReadings {
     ...powerOf(values),
     ...soundOf(values),
     ...screenOf(values),
+    ...systemOf(values),
     ...connectionOf(values),
     doing: doingOf(values),
     reportedAt: reportedAtOf(values),

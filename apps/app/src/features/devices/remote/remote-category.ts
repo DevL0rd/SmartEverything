@@ -40,7 +40,7 @@ const NAME_WORDS: readonly (readonly [RemoteCategory, RegExp])[] = [
   ['tv', /\b(tv|television)\b/i],
 ];
 
-export function categoryOfLibrary(name: string, keys: readonly string[]): RemoteCategory {
+export function categoryOfDeviceRemote(name: string, keys: readonly string[]): RemoteCategory {
   const named = NAME_WORDS.find(([, words]) => words.test(name));
   if (named !== undefined) {
     return named[0];

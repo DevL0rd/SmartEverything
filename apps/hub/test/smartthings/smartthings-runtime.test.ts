@@ -309,6 +309,7 @@ describe('SmartThings webhook events', () => {
         eventsFor([
           deviceEvent('lamp-1', 'switch', 'switch', 'off'),
           deviceEvent('sensor-1', 'motionSensor', 'motion', 'active'),
+          deviceEvent('lamp-1', 'lock', 'lock', 'locked'),
           deviceEvent('stranger', 'switch', 'switch', 'on'),
           {
             eventTime: '2025-10-08T12:00:00.000Z',
@@ -346,7 +347,13 @@ describe('SmartThings webhook events', () => {
     ]);
     expect(recorded.events.map((event) => [event.externalId, event.kind])).toEqual([
       ['sensor-1', 'motion'],
+      ['lamp-1', 'activity'],
     ]);
+    expect(recorded.events[1]?.details).toMatchObject({
+      attribute: 'lock',
+      value: 'locked',
+      summary: 'Lock: locked',
+    });
     expect(recorded.onlines).toEqual([['lamp-1', false]]);
     expect(recorded.failures.map((failure) => failure.operation)).toEqual(['events.read']);
     expect(record.logs.find((line) => line.event === 'events.ignored')?.payload).toEqual({
@@ -545,5 +552,35 @@ describe('SmartThings edge cases', () => {
     await expect(adapter.discover()).rejects.toThrow(
       /^SmartThings answered READ .* with HTTP 200: not JSON: SyntaxError/,
     );
+  });
+});
+
+describe('the phone presence SmartThings keeps for the mobile app', () => {
+  it('is left out because the paired phone is the phone', async () => {
+    const phone = {
+      deviceId: 'phone-1',
+      label: 'Dana phone',
+      manufacturerName: 'SmartThings',
+      presentationId: 'SmartThings-smartthings-Mobile_Presence',
+      locationId: 'loc-1',
+      type: 'MOBILE',
+      components: [
+        {
+          id: 'main',
+          categories: [{ name: 'MobilePresence', categoryType: 'manufacturer' }],
+          capabilities: [
+            { id: 'presenceSensor', version: 1, status: { presence: { value: 'present' } } },
+          ],
+        },
+      ],
+    };
+    const cloud = cloudWithDevices().always('GET', DEVICE_LIST_URL, () =>
+      json({ items: [LAMP, phone, SENSOR] }),
+    );
+    const adapter = await start(cloud);
+    expect((await adapter.discover()).map((device) => device.externalId)).toEqual([
+      'lamp-1',
+      'sensor-1',
+    ]);
   });
 });

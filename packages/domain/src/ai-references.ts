@@ -85,12 +85,12 @@ export const AI_MESSAGE_REFERENCES = z.array(AI_MESSAGE_REFERENCE).max(AI_REFERE
 export type AiMessageReference = z.output<typeof AI_MESSAGE_REFERENCE>;
 
 export function referencesMatchText(text: string, refs: readonly AiMessageReference[]): boolean {
-  const ordered = [...refs].sort((left, right) => left.start - right.start);
-  return ordered.every(
-    (item, index) =>
-      text.slice(item.start, item.end) === item.token &&
-      (index === 0 || (ordered[index - 1]?.end ?? 0) <= item.start),
-  );
+  let cursor = 0;
+  for (const item of [...refs].sort((left, right) => left.start - right.start)) {
+    if (text.slice(item.start, item.end) !== item.token || item.start < cursor) return false;
+    cursor = item.end;
+  }
+  return true;
 }
 
 export const AI_REFERENCE_SEARCH = z

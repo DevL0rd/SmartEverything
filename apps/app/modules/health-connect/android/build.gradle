@@ -24,7 +24,7 @@ android {
 }
 
 def wakeModel = tasks.register('syncWakeModel', Sync) {
-  from "${projectDir}/../../../../hub/src/wake-name/wake-name-model"
+  from "${projectDir}/../../../../hub/src/node/ear/wake-name-model"
   include 'encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt'
   into layout.buildDirectory.dir('generated/wakeModel/wake-name-model')
 }

@@ -1,6 +1,6 @@
 import type { AiHarnessHost } from '@smarteverything/domain';
 
-const OS_NAMES = { linux: 'Linux', windows: 'Windows', macos: 'macOS' } as const;
+export const OS_NAMES = { linux: 'Linux', windows: 'Windows', macos: 'macOS' } as const;
 
 export function machineLabel(host: AiHarnessHost): string {
   return `${host.name} (${OS_NAMES[host.platform]})`;
@@ -11,7 +11,11 @@ export function machineChangedNote(input: {
   readonly to: AiHarnessHost;
   readonly cwd: string;
 }): string {
-  return `Machine changed: you are now running on ${machineLabel(input.to)}, folder ${input.cwd}. Previous machine: ${input.from.name}.`;
+  const confinement =
+    input.to.sandbox === 'partial'
+      ? ' Its sandbox confines writes only; reads are not confined.'
+      : '';
+  return `Machine changed: you are now running on ${machineLabel(input.to)}, folder ${input.cwd}.${confinement} Previous machine: ${input.from.name}.`;
 }
 
 export function machineChangeFailedNote(input: {

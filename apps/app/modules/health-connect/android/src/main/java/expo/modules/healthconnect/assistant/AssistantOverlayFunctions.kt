@@ -24,7 +24,16 @@ fun ModuleDefinitionBuilder.overlayFunctions(context: () -> Context) {
     OverlayStage.prefs(OverlayPrefs.save(context(), json))
   }
 
+  AsyncFunction("resetOverlayPosition") {
+    OverlayStage.ensure(context())
+    OverlayStage.resetPosition()
+  }
+
   AsyncFunction("showAssistantSession") {
     AssistantInteractionService.showForWake(context())
   }.runOnQueue(Queues.MAIN)
+
+  AsyncFunction("setOverlayCallPage") { onCallPage: Boolean ->
+    OverlayStage.callPage(onCallPage)
+  }
 }

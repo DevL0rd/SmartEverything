@@ -8,11 +8,16 @@ import type { StoreContext } from '../context';
 import { jsonText } from '../sql';
 
 const STORED_SETTINGS = storedRow(TELEVISION_SETTINGS_ROW, {
-  flags: ['direct_link'],
-  json: ['input_names'],
+  json: ['input_names', 'wake_macs'],
 });
 
-const COLUMNS = 'device_id, direct_link, input_names';
+const COLUMNS = 'device_id, direct_host, direct_mac, input_names, wake_macs, wake_worked_at';
+
+export interface DirectAddress {
+  readonly deviceId: string;
+  readonly host: string;
+  readonly macAddress: string;
+}
 
 export class TelevisionSettingsRepository {
   constructor(private readonly context: StoreContext) {}
@@ -45,36 +50,63 @@ export class TelevisionSettingsRepository {
     });
   }
 
-  setDirectLink(deviceId: string | null): void {
+  setWakeAddress(deviceId: string, mac: string | null): TelevisionSettingsRow {
+    return this.context.write(() => {
+      const before = this.find(deviceId);
+      this.context.sql.run(
+        'save the television wake address',
+        `insert into television_settings (device_id, wake_macs, wake_worked_at) values ($deviceId, $macs, null)
+         on conflict (device_id) do update set wake_macs = excluded.wake_macs, wake_worked_at = null`,
+        { deviceId, macs: jsonText(mac === null ? [] : [mac]) },
+      );
+      return this.announce(deviceId, before);
+    });
+  }
+
+  recordWakeWorked(deviceId: string, at: string): TelevisionSettingsRow {
+    return this.context.write(() => {
+      const before = this.find(deviceId);
+      this.context.sql.run(
+        'record that the television woke',
+        'update television_settings set wake_worked_at = $at where device_id = $deviceId',
+        { deviceId, at },
+      );
+      return this.announce(deviceId, before);
+    });
+  }
+
+  setDirectLinks(links: readonly DirectAddress[]): void {
     this.context.write(() => {
+      const linked = new Set(links.map((link) => link.deviceId));
       for (const row of this.list()) {
-        if (row.direct_link && row.device_id !== deviceId) {
-          this.context.sql.run(
-            'detach the television direct link',
-            'update television_settings set direct_link = 0 where device_id = $deviceId',
-            { deviceId: row.device_id },
-          );
-          this.announce(row.device_id, row);
+        if (row.direct_mac !== null && !linked.has(row.device_id)) {
+          this.storeDirect(row.device_id, null, row);
         }
       }
-      if (deviceId === null) {
-        return;
-      }
-      const before = this.find(deviceId);
-      if (before?.direct_link === true) {
-        return;
-      }
-      this.context.sql.run(
-        'attach the television direct link',
-        `insert into television_settings (device_id, direct_link)
-         select id, 1 from devices where id = $deviceId
-         on conflict (device_id) do update set direct_link = 1`,
-        { deviceId },
-      );
-      if (this.find(deviceId) !== undefined) {
-        this.announce(deviceId, before);
+      for (const link of links) {
+        const before = this.find(link.deviceId);
+        if (before?.direct_host !== link.host || before.direct_mac !== link.macAddress) {
+          this.storeDirect(link.deviceId, link, before);
+        }
       }
     });
+  }
+
+  private storeDirect(
+    deviceId: string,
+    link: DirectAddress | null,
+    before: TelevisionSettingsRow | undefined,
+  ): void {
+    this.context.sql.run(
+      'save the television direct link',
+      `insert into television_settings (device_id, direct_host, direct_mac)
+       select id, $host, $mac from devices where id = $deviceId
+       on conflict (device_id) do update set direct_host = excluded.direct_host, direct_mac = excluded.direct_mac`,
+      { deviceId, host: link?.host ?? null, mac: link?.macAddress ?? null },
+    );
+    if (this.find(deviceId) !== undefined) {
+      this.announce(deviceId, before);
+    }
   }
 
   private announce(

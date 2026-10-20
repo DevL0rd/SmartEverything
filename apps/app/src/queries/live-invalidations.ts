@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import type { HistoryRow, LiveChange, LiveTable } from '@smarteverything/domain';
+import type { AiChatRow, HistoryRow, LiveChange, LiveTable } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
 import { LogTally } from '../design/log-tally';
 import { patchCameraDays, refreshSnapshots } from './camera-day';
@@ -14,6 +14,7 @@ import {
   DEVICE_EFFECTS_KEY,
   HEALTH_PREFIX,
   HISTORY_PREFIX,
+  nativeSessionsKey,
   OPENROUTER_ACCOUNT_KEY,
   PLUGIN_PREFIX,
   REACH_PREFIX,
@@ -50,6 +51,34 @@ const HEALTH_TABLES: ReadonlySet<LiveTable> = new Set([
   'foods',
   'watch_days',
 ]);
+
+function continuedDevice(chat: AiChatRow | null): string | null {
+  return chat?.engine.kind === 'claude' && chat.engine.continued_from !== undefined
+    ? chat.engine.device_id
+    : null;
+}
+
+function invalidateContinuedSessions(client: QueryClient, changes: readonly LiveChange[]): void {
+  const devices = new Set<string>();
+  for (const change of changes) {
+    if (change.table !== 'ai_chats') continue;
+    const before = change.oldRecord;
+    const after = change.record;
+    const removed = after === null;
+    const archivedChanged =
+      before !== null &&
+      after !== null &&
+      (before.archived_at === null) !== (after.archived_at === null);
+    if (!removed && !archivedChanged) continue;
+    const device = continuedDevice(before ?? after);
+    if (device !== null) devices.add(device);
+  }
+  for (const device of devices)
+    background(
+      client.invalidateQueries({ queryKey: nativeSessionsKey(device, false) }),
+      'queries.invalidate_failed',
+    );
+}
 
 function invalidateAi(client: QueryClient, tables: ReadonlySet<LiveTable>): void {
   if (tables.has('ai_usage')) {
@@ -118,6 +147,7 @@ export function applyToWindows(client: QueryClient, changes: readonly LiveChange
     background(client.invalidateQueries({ queryKey: HEALTH_PREFIX }), 'queries.invalidate_failed');
   }
   invalidateAi(client, tables);
+  invalidateContinuedSessions(client, changes);
   if (tables.has('device_effect_targets')) {
     refreshDeviceEffects(client);
   }

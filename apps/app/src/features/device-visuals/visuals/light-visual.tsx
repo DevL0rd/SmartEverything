@@ -1,14 +1,16 @@
 import type { ReactNode } from 'react';
-import type { ViewStyle } from 'react-native';
-import Animated from 'react-native-reanimated';
 import { Circle, Path } from 'react-native-svg';
 import { useColour } from '../../../design/colour';
 import { eased } from '../../../design/loops';
-import { Canvas, FULL, boxStyle, useSvgId } from '../parts/frame';
-import { BodyGradient, GlowGradient, useInk, WELL, type VisualInk } from '../parts/ink';
+import { Canvas, useSvgId } from '../parts/frame';
+import { Haze, type Blob } from '../parts/haze';
+import { BodyGradient, useInk, WELL, type VisualInk } from '../parts/ink';
 import { circlePath, rounded } from '../parts/shapes';
 import { ShineGradients, ShinePath, useShineIds, type ShineIds } from '../parts/material';
 import type { VisualProps } from '../types';
+
+const HALO: Blob = { cx: 50, cy: 46, rx: 46, ry: 46 };
+const HALO_STRENGTH = 0.75;
 
 function Halo({
   px,
@@ -21,15 +23,14 @@ function Halo({
   readonly strength: number;
   readonly reduced: boolean;
 }): ReactNode {
-  const id = useSvgId('light');
-  const frame: ViewStyle = { ...boxStyle(FULL, px), opacity: strength };
   return (
-    <Animated.View pointerEvents="none" style={[frame, eased('opacity', reduced)]}>
-      <Canvas px={px}>
-        <GlowGradient id={id} colour={colour} strength={0.75} />
-        <Circle cx={50} cy={46} r={46} fill={`url(#${id})`} />
-      </Canvas>
-    </Animated.View>
+    <Haze
+      px={px}
+      blob={HALO}
+      colour={colour}
+      strength={HALO_STRENGTH}
+      style={[{ opacity: strength }, eased('opacity', reduced)]}
+    />
   );
 }
 

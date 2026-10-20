@@ -3,7 +3,12 @@ import {
   CLIENT_PREF_KEYS,
   HEALTH_METRICS,
   HEALTH_RECORD_TYPES,
+  NODE_REGISTRY,
+  programKeywords,
+  searchTitles,
+  type AutomationRowV3,
   type DeviceScope,
+  type NavTarget,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { deviceHidden, deviceIdReachable } from '../../../server/person-scope';
@@ -19,6 +24,46 @@ const SEARCH = z.strictObject({
 });
 
 type Search = z.infer<typeof SEARCH>;
+
+const kinds = (id: string): ReturnType<typeof NODE_REGISTRY.get> => NODE_REGISTRY.get(id);
+
+function automationTarget(id: string, focus: string | null): NavTarget {
+  return { kind: 'automation', automationId: id, focus };
+}
+
+function nodeHits(
+  row: AutomationRowV3,
+  query: string,
+): { id: string; title: string; target: NavTarget }[] {
+  return searchTitles(row.definition, kinds)
+    .filter((entry) => matches(query, entry.title, entry.key, ...entry.keywords))
+    .map((entry) => ({
+      id: entry.nodeId,
+      title: entry.title,
+      target: automationTarget(row.id, `node:${entry.nodeId}`),
+    }));
+}
+
+export function automationHits(store: Store, { query, limit }: Search): Record<string, unknown>[] {
+  return store.automations
+    .list()
+    .flatMap((row) => {
+      const nodes = nodeHits(row, query);
+      const named = matches(query, row.name, ...programKeywords(row.definition, kinds));
+      return named || nodes.length > 0
+        ? [
+            {
+              id: row.id,
+              name: row.name,
+              enabled: row.enabled,
+              target: automationTarget(row.id, null),
+              ...(nodes.length === 0 ? {} : { nodes: nodes.slice(0, limit) }),
+            },
+          ]
+        : [];
+    })
+    .slice(0, limit);
+}
 
 function homeHits(
   store: Store,
@@ -41,15 +86,7 @@ function homeHits(
       )
       .slice(0, limit)
       .map((scene) => ({ id: scene.id, name: scene.name })),
-    automations: store.automations
-      .list()
-      .filter((automation) => matches(query, automation.name))
-      .slice(0, limit)
-      .map((automation) => ({
-        id: automation.id,
-        name: automation.name,
-        enabled: automation.enabled,
-      })),
+    automations: automationHits(store, { query, limit }),
     values: store.automationValues
       .list()
       .filter((value) => matches(query, value.content.name, value.content.kind, 'value'))

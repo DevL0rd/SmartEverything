@@ -1,16 +1,16 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { WakeSensitivity } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { sileroModel } from '../../src/assistant-voice/silero-vad';
 import { opusCodec } from '../../src/assistant-voice/audio';
 import type { Cancel } from '../../src/clock';
 import type { MicrophoneHandlers, OpenMicrophone } from '../../src/talk/camera-microphone';
-import type { WakeGrant } from '../../src/wake-name/wake-claims';
 import { CameraEar } from '../../src/wake-name/camera-ear';
-import { KeywordSpotter, modelDirectory, wakePhrases } from '../../src/wake-name/keyword-spotter';
+import { WakeKeywords, wakePhrases } from '../../src/wake-name/keyword-lines';
 import { pieceVocabulary, wordPieces } from '../../src/wake-name/word-pieces';
+import { earLoopback, type Loopback } from '../listening/ear-loopback';
 import { until } from '../support/wait';
+import { captureLogs, type CapturedLogs } from '../support/logs';
 
 const FRAME_48K = 960;
 
@@ -23,25 +23,6 @@ function padded(pcm: Int16Array): Int16Array {
   const out = new Int16Array(pcm.length + 16_000 * 3);
   out.set(pcm, 16_000);
   return out;
-}
-
-function spotted(
-  spotter: KeywordSpotter,
-  names: readonly string[],
-  name: string,
-  sensitivity: WakeSensitivity = 'standard',
-): string | null {
-  const listening = spotter.listen(names, sensitivity);
-  if (listening === null) {
-    return null;
-  }
-  const pcm = padded(fixture(name));
-  let heard: string | null = null;
-  for (let offset = 0; offset < pcm.length; offset += 320) {
-    heard ??= listening.hear(pcm.slice(offset, offset + 320));
-  }
-  listening.free();
-  return heard;
 }
 
 function opusPackets(pcm16k: Int16Array): Uint8Array[] {
@@ -75,7 +56,9 @@ describe('wake phrases', () => {
 });
 
 describe('word pieces', () => {
-  const vocabulary = pieceVocabulary(readFileSync(`${modelDirectory()}bpe.vocab`, 'utf8'));
+  const vocabulary = pieceVocabulary(
+    readFileSync(new URL('../../src/wake-name/wake-name-model/bpe.vocab', import.meta.url), 'utf8'),
+  );
   it.each([
     ['hey Coordinator', '▁HE Y ▁CO OR D IN AT OR'],
     ['hey Aibi', '▁HE Y ▁A I B I'],
@@ -91,11 +74,11 @@ describe('word pieces', () => {
   });
 });
 
-describe('keyword spotter on recorded fixtures', () => {
-  const spotter = new KeywordSpotter();
+describe('keyword lines', () => {
+  const lines = new WakeKeywords();
 
-  it('hands a phone the same keyword lines and thresholds the hub ears use', () => {
-    const config = spotter.earConfig(['Coordinator', 'Aibi'], 'high');
+  it('hands a phone the same keyword lines and thresholds the ears use', () => {
+    const config = lines.earConfig(['Coordinator', 'Aibi'], 'high');
     expect(config.keywords).toHaveLength(4);
     expect(config.keywords[0]).toMatch(/ @Coordinator$/);
     expect(config.keywords[1]).toMatch(/ @hey_Coordinator$/);
@@ -103,86 +86,55 @@ describe('keyword spotter on recorded fixtures', () => {
     expect(config.keywords[3]).toMatch(/ @hey_Aibi$/);
     expect(config.threshold).toBe(0.1);
     expect(config.nearMissThreshold).toBe(0.04);
-    expect(spotter.earConfig([], 'standard').keywords).toEqual([]);
+    expect(lines.earConfig([], 'standard').keywords).toEqual([]);
   });
-
-  it('hears "hey <name>" in two voices', () => {
-    expect(spotted(spotter, ['Coordinator'], 'hw_us1')).toBe('hey Coordinator');
-    expect(spotted(spotter, ['Coordinator'], 'hw_gb2')).toBe('hey Coordinator');
-  }, 30_000);
-
-  it('hears the bare name inside ordinary talk, with no greeting', () => {
-    expect(spotted(spotter, ['Coordinator'], 'nm_talk')).toBe('Coordinator');
-    expect(spotted(spotter, ['Coordinator'], 'far_nm_coord')).toBe('Coordinator');
-  }, 30_000);
-
-  it('ignores speech that does not contain the name', () => {
-    expect(spotted(spotter, ['Coordinator'], 'person')).toBeNull();
-    expect(spotted(spotter, ['Coordinator'], 'ai')).toBeNull();
-    expect(spotted(spotter, ['Coordinator'], 'nm_coord')).toBeNull();
-    expect(spotted(spotter, ['Jarvis'], 'hw_us1')).toBeNull();
-  }, 30_000);
-
-  it('hears a far, quiet call at the standard sensitivity', () => {
-    expect(spotted(spotter, ['Coordinator'], 'far_quiet_hw_us')).toBe('hey Coordinator');
-  }, 30_000);
-
-  it('hears the name in the middle of a sentence without a pause around it', () => {
-    const pcm = fixture('hw_gb2');
-    const sentence = new Int16Array(pcm.length * 3);
-    sentence.set(fixture('nm_talk').slice(0, pcm.length), 0);
-    sentence.set(pcm, pcm.length);
-    sentence.set(fixture('nm_talk').slice(0, pcm.length), pcm.length * 2);
-    const listening = spotter.listen(['Coordinator'], 'standard');
-    let heardAt: number | null = null;
-    for (let offset = 0; offset < sentence.length && heardAt === null; offset += 320) {
-      if (listening?.hear(sentence.slice(offset, offset + 320)) === 'hey Coordinator') {
-        heardAt = offset;
-      }
-    }
-    listening?.free();
-    expect(heardAt).not.toBeNull();
-    expect(heardAt ?? Infinity).toBeLessThan(pcm.length * 2);
-  }, 30_000);
-
-  it('follows a rename without retraining', () => {
-    expect(spotted(spotter, ['Jarvis'], 'hw_jarvis')).toBe('hey Jarvis');
-    expect(spotted(spotter, ['Jarvis'], 'hw_us1')).toBeNull();
-  }, 30_000);
 });
 
 function fakeMicrophones(
   packets: readonly Uint8Array[],
+  ready: () => boolean,
   delivered: () => void,
 ): {
   readonly open: (cameraId: string, handlers: MicrophoneHandlers) => Promise<OpenMicrophone>;
 } {
   return {
-    open: (_cameraId, handlers): Promise<OpenMicrophone> => {
+    open: async (_cameraId, handlers): Promise<OpenMicrophone> => {
+      await until(ready, 'the hosted ear to listen', 20_000);
       setImmediate(() => {
         packets.forEach((packet) => {
           handlers.packet(packet);
         });
         delivered();
       });
-      return Promise.resolve({ stop: () => undefined });
+      return { stop: () => undefined };
     },
   };
 }
 
+let logs: CapturedLogs;
+let loopback: Loopback | null = null;
+
+afterEach(async () => {
+  await loopback?.stop();
+  loopback = null;
+});
+
 async function earHears(name: string, busy: boolean): Promise<string[]> {
+  logs = captureLogs();
   const heard: string[] = [];
   const timers: Cancel[] = [];
   let delivered = false;
+  const hosted = earLoopback(['Coordinator']);
+  loopback = hosted;
   const ear = new CameraEar('camera-1', {
-    claims: { request: (): WakeGrant => ({ granted: true, onSuperseded: (): void => undefined }) },
-    microphones: fakeMicrophones(opusPackets(padded(fixture(name))), () => {
-      delivered = true;
-    }),
-    spotter: new KeywordSpotter(),
-    model: sileroModel,
-    names: (): string[] => ['Coordinator'],
-    pauseMs: (): 200 => 200,
+    ears: hosted.ears,
+    microphones: fakeMicrophones(
+      opusPackets(padded(fixture(name))),
+      () => logs.events().includes('ear_host.listening') || busy,
+      () => {
+        delivered = true;
+      },
+    ),
     sensitivity: (): WakeSensitivity => 'standard',
     busy: (): boolean => busy,
     heard: (cameraId, phrase): void => {

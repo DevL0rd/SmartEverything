@@ -6,20 +6,22 @@ import { useSizeClass } from '../design/size-class';
 import type { NavViewProps } from './bottom-bar';
 import { NavItem } from './nav-item';
 import type { NavEntry } from './nav-model';
+import { RailFolder } from './rail-folder';
+import { RailList, type RailLook } from './rail-list';
 
-export function Rail({
-  model,
+function RailEntry({
+  entry,
+  look,
   go,
   intent,
-  collapsed = false,
-  header,
-}: NavViewProps & { readonly collapsed?: boolean; readonly header?: ReactNode }): ReactNode {
-  const dense = useSizeClass().height === 'compact';
-  const { attach, onLayout } = useToastObstacle('start');
-  const look = collapsed ? 'collapsed' : dense ? 'rail-dense' : 'rail';
-  const item = (entry: NavEntry): ReactNode => (
+}: {
+  readonly entry: NavEntry;
+  readonly look: RailLook;
+  readonly go: NavViewProps['go'];
+  readonly intent: NavViewProps['intent'];
+}): ReactNode {
+  return (
     <NavItem
-      key={entry.route.key}
       entry={entry}
       look={look}
       onPress={() => {
@@ -30,6 +32,43 @@ export function Rail({
       }}
     />
   );
+}
+
+function StaticRailList({
+  model,
+  go,
+  intent,
+  look,
+}: NavViewProps & { readonly look: RailLook }): ReactNode {
+  return (
+    <ScrollView contentContainerClassName={look === 'rail-dense' ? 'gap-0' : 'gap-1 pt-2'}>
+      {model.nodes.map((view) =>
+        view.kind === 'folder' ? (
+          <RailFolder key={view.key} folder={view} look={look} go={go} intent={intent} />
+        ) : (
+          <RailEntry key={view.key} entry={view} look={look} go={go} intent={intent} />
+        ),
+      )}
+    </ScrollView>
+  );
+}
+
+export function Rail({
+  model,
+  go,
+  intent,
+  collapsed = false,
+  editable = false,
+  header,
+}: NavViewProps & {
+  readonly collapsed?: boolean;
+  readonly editable?: boolean;
+  readonly header?: ReactNode;
+}): ReactNode {
+  const dense = useSizeClass().height === 'compact';
+  const { attach, onLayout } = useToastObstacle('start');
+  const look = collapsed ? 'collapsed' : dense ? 'rail-dense' : 'rail';
+  const List = editable ? RailList : StaticRailList;
   return (
     <View
       ref={attach}
@@ -45,10 +84,12 @@ export function Rail({
         )}
       >
         {header}
-        <ScrollView contentContainerClassName={dense ? 'gap-0' : 'gap-1 pt-2'}>
-          {model.pages.map(item)}
-        </ScrollView>
-        <View>{model.system.map(item)}</View>
+        <List model={model} go={go} intent={intent} look={look} />
+        <View>
+          {model.system.map((item) => (
+            <RailEntry key={item.key} entry={item} look={look} go={go} intent={intent} />
+          ))}
+        </View>
       </View>
     </View>
   );

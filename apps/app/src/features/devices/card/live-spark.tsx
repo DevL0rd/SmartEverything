@@ -32,6 +32,7 @@ export interface LiveSparkProps extends SparkLook {
   readonly device: Device;
   readonly capability: string;
   readonly ring?: LiveRing;
+  readonly live?: boolean;
 }
 
 interface SeriesInput {
@@ -39,6 +40,10 @@ interface SeriesInput {
   readonly capability: string;
   readonly live: boolean;
   readonly look: SparkLook;
+}
+
+interface SparkInput extends SeriesInput {
+  readonly ring?: LiveRing;
 }
 
 function Drawn({
@@ -84,17 +89,26 @@ function HistoryBody({ device, capability, live, look }: SeriesInput): ReactNode
   return <Drawn look={look} ring={NO_RING} history={history} />;
 }
 
-export function LiveSpark({ device, capability, ring, ...look }: LiveSparkProps): ReactNode {
+function SparkBody({ device, capability, ring, live, look }: SparkInput): ReactNode {
+  const input = { device, capability, live, look };
+  return live && ring !== undefined ? (
+    <RingBody {...input} ring={ring} />
+  ) : (
+    <HistoryBody {...input} />
+  );
+}
+
+function MeasuredSpark(props: Omit<SparkInput, 'live'>): ReactNode {
   const frame = useRef<View>(null);
   const { live, onLayout } = useVisibleLive(frame);
-  const input = { device, capability, live, look };
   return (
     <View ref={frame} onLayout={onLayout} collapsable={false} pointerEvents="none" aria-hidden>
-      {live && ring !== undefined ? (
-        <RingBody {...input} ring={ring} />
-      ) : (
-        <HistoryBody {...input} />
-      )}
+      <SparkBody {...props} live={live} />
     </View>
   );
+}
+
+export function LiveSpark({ device, capability, ring, live, ...look }: LiveSparkProps): ReactNode {
+  const input = { device, capability, look, ...(ring === undefined ? {} : { ring }) };
+  return live === undefined ? <MeasuredSpark {...input} /> : <SparkBody {...input} live={live} />;
 }

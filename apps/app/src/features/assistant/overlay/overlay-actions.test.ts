@@ -38,6 +38,7 @@ function ports(change: Partial<CallView> = {}): { readonly set: Ports; readonly 
     captions: note('captions'),
     microphone: note('mic'),
     volume: note('volume'),
+    thinking: note('thinking'),
     answer: note('answer'),
   };
   return { set, calls };
@@ -107,6 +108,11 @@ describe('overlay actions', () => {
     expect(run({ kind: 'mic', id: 'usb-1' })).toEqual(['mic:usb-1']);
     expect(run({ kind: 'mic', id: null })).toEqual(['mic:null']);
     expect(run({ kind: 'volume', value: 0.4 })).toEqual(['volume:0.4']);
+  });
+
+  it('passes the chosen thinking level', () => {
+    expect(run({ kind: 'voice_thinking', level: 'high' })).toEqual(['thinking:high']);
+    expect(run({ kind: 'voice_thinking', level: 'off' })).toEqual(['thinking:off']);
   });
 
   it('handles every plain action kind the contract defines', () => {

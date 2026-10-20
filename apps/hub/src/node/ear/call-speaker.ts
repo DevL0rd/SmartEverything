@@ -1,5 +1,6 @@
 import { background, messageOf, type Logger } from '@smarteverything/logging';
 import type { SpeakerStream } from '../controls/linux/speaker-playback';
+import { openLoopLagWindow, type LoopLagWindow } from '../../metrics/loop-delay';
 import { pcmOf } from './ear-audio';
 
 export interface EarSpeaker {
@@ -8,6 +9,7 @@ export interface EarSpeaker {
 
 export class CallSpeaker {
   private speaking: Promise<SpeakerStream | null> | null = null;
+  private loopLag: LoopLagWindow | null = null;
 
   constructor(
     private readonly speaker: EarSpeaker,
@@ -16,6 +18,7 @@ export class CallSpeaker {
 
   open(): void {
     this.close();
+    this.loopLag = openLoopLagWindow();
     this.speaking = this.speaker.open().catch((cause: unknown) => {
       this.log.warn('computer_ear.speaker_unavailable', {
         reason: messageOf(cause),
@@ -38,6 +41,9 @@ export class CallSpeaker {
   close(): void {
     const speaking = this.speaking;
     this.speaking = null;
+    const lag = this.loopLag;
+    this.loopLag = null;
+    if (lag !== null) this.log.info('computer_ear.spoke', { ...lag.finish() });
     background(
       speaking?.then((speaker) => {
         speaker?.end();

@@ -272,23 +272,6 @@ describe('device families', () => {
   });
 });
 
-describe('boolean state words', () => {
-  it('uses the words an override gives and falls back for non-booleans', () => {
-    const phone = {
-      kind: 'phone',
-      model: 'SmartThings-smartthings-Mobile_Presence',
-      capabilities: [capability('occupancy', 'Presence', { kind: 'boolean' })],
-    } as const;
-    const [presented] = presentDevice(phone).capabilities;
-    if (presented === undefined) {
-      throw new Error('missing');
-    }
-    expect(presentValue(presented, true)).toBe('Home');
-    expect(presentValue(presented, false)).toBe('Away');
-    expect(presentValue(presented, 'x')).toBe('x');
-  });
-});
-
 describe('presenting the washer-dryer', () => {
   const WASHER_CAPABILITIES = z
     .array(DEVICE_CAPABILITY)

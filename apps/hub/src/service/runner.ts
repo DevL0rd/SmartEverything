@@ -86,7 +86,6 @@ function serverOptions(
     },
     go2rtcApiPort: config.go2rtcApiPort,
     webrtcPort: config.webrtcPort,
-    wakeDiagnostics: config.wakeDiagnostics,
     ...(config.allowedOrigins === undefined ? {} : { allowedOrigins: config.allowedOrigins }),
     log,
     fatal: (cause): void => {
@@ -127,7 +126,14 @@ async function startRole(
 ): Promise<RunningService['server']> {
   if (config.role === 'node') {
     const { startNode } = await import('../node/bootstrap');
-    return startNode({ dataDirectory: host.dataDirectory, config, log });
+    return startNode({
+      dataDirectory: host.dataDirectory,
+      config,
+      log,
+      restart: (): void => {
+        background(lifecycle.shutdown(RESTART_EXIT_CODE), 'lifecycle.shutdown_failed');
+      },
+    });
   }
   const { startServer } = await import('../start');
   return startServer(serverOptions(host, config, log, lifecycle));

@@ -39,15 +39,14 @@ function HumidityRing({
       style={box}
       className="items-center justify-center"
     >
-      <View className="absolute inset-0">
-        <Arc
-          value={humidity === null ? 0 : humidityShare(humidity)}
-          size={size}
-          thickness={RING_THICKNESS}
-          colour="humidity"
-          ticks={ticksOf(target)}
-        />
-      </View>
+      <Arc
+        value={humidity === null ? 0 : humidityShare(humidity)}
+        size={size}
+        thickness={RING_THICKNESS}
+        colour="humidity"
+        ticks={ticksOf(target)}
+        overlay
+      />
       <Text variant={size <= RING_PX.m ? 'label' : 'body-strong'}>
         {humidity === null ? '–' : `${String(Math.round(humidity))} %`}
       </Text>
@@ -62,6 +61,7 @@ export function HumidifierGraph({
   target,
   water,
   cls,
+  live,
 }: {
   readonly device: Device;
   readonly capability: string;
@@ -69,6 +69,7 @@ export function HumidifierGraph({
   readonly target: number | null;
   readonly water: number | null;
   readonly cls: WideClass;
+  readonly live: boolean;
 }): ReactNode {
   return (
     <View className={cn('flex-row items-center gap-3', !device.online && 'opacity-60')}>
@@ -77,6 +78,7 @@ export function HumidifierGraph({
         <LiveSpark
           device={device}
           capability={capability}
+          live={live}
           colour="humidity"
           height={SPARK_PX[cls]}
         />

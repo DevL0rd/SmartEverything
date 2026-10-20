@@ -3,14 +3,12 @@ import type { Logger } from '@smarteverything/logging';
 import {
   discoveredDevice,
   eventsOf,
-  remoteDevice,
   type LanAnnouncement,
   type ReportedValue,
   type TransportChoice,
 } from '@smarteverything/tuya';
 import type { RunContext } from '../contract';
 import type { MessageStream, TuyaBackend } from './backend';
-import type { LoadedRemote } from './cloud-inventory';
 import type { TuyaDependencies } from './dependencies';
 import { Learners, type LearnWait } from './learners';
 import { LanListener } from './lan-listener';
@@ -49,7 +47,6 @@ export class TuyaRuntime {
   readonly log: Logger;
   readonly learners = new Learners();
   private readonly records = new Map<string, DeviceRecord>();
-  private readonly remotes = new Map<string, LoadedRemote>();
   private readonly lan = new Map<string, LanAnnouncement>();
   private readonly links = new Map<string, LocalLink>();
   private readonly choices = new Map<string, TransportChoice>();
@@ -70,30 +67,19 @@ export class TuyaRuntime {
   }
 
   async load(): Promise<void> {
-    const inventory = await this.backend.loadInventory(this.log);
+    const devices = await this.backend.loadInventory(this.log);
     const previous = new Map(this.records);
     this.records.clear();
-    this.remotes.clear();
-    for (const loaded of inventory.devices) {
+    for (const loaded of devices) {
       const observed = [...(previous.get(loaded.cloud.id)?.observed ?? [])];
       this.records.set(loaded.cloud.id, withObserved(recordOf(loaded), observed));
     }
-    for (const loaded of inventory.remotes) {
-      this.remotes.set(loaded.remote.remote_id, loaded);
-    }
-    this.log.info('tuya.inventory_loaded', {
-      devices: this.records.size,
-      remotes: this.remotes.size,
-    });
+    this.log.info('tuya.inventory_loaded', { devices: this.records.size });
     this.reconcile();
   }
 
   record(externalId: string): DeviceRecord | undefined {
     return this.records.get(externalId);
-  }
-
-  remote(externalId: string): LoadedRemote | undefined {
-    return this.remotes.get(externalId);
   }
 
   choiceOf(deviceId: string): TransportChoice {
@@ -122,17 +108,13 @@ export class TuyaRuntime {
   }
 
   devices(): readonly DiscoveredDevice[] {
-    const devices = [...this.records.values()].map((record) =>
+    return [...this.records.values()].map((record) =>
       discoveredDevice(
         entryOf(record),
         this.choiceOf(record.cloud.id),
         this.lan.get(record.cloud.id)?.version ?? null,
       ),
     );
-    const remotes = [...this.remotes.values()].map((loaded) =>
-      remoteDevice(loaded.blaster, loaded.remote, loaded.keys, loaded.room),
-    );
-    return [...devices, ...remotes];
   }
 
   async subscribe(sink: AdapterSink): Promise<Unsubscribe> {
@@ -381,7 +363,9 @@ export class TuyaRuntime {
       for (const update of stateUpdates(record, report, at, this.log)) {
         sink.state(update);
       }
-      for (const event of pushed ? eventsOf(record.cloud.id, report, at) : []) {
+      for (const event of pushed
+        ? eventsOf(record.cloud.id, report, at, record.model.points)
+        : []) {
         sink.event(event);
       }
     }

@@ -17,6 +17,7 @@ import {
   CLAUDE_THREAD_CURSOR,
   CLAUDE_THREAD_LIMIT,
   CLAUDE_THREAD_PAGE,
+  CLAUDE_SESSION_LIST_MAX,
   CLAUDE_USAGE,
 } from '../claude';
 import { NO_BODY, endpoint } from './endpoint';
@@ -25,8 +26,6 @@ import { NOTHING, QUERY_FLAG, queryLimit } from './primitives';
 const SESSION_PARAMS = z.strictObject({ sessionId: CLAUDE_SESSION_ID });
 
 const PROMPT_PARAMS = z.strictObject({ promptId: CLAUDE_PROMPT_ID });
-
-const SESSION_LIMIT = 200;
 
 export const CLAUDE_ENDPOINTS = {
   readClaudeStatus: endpoint({
@@ -50,7 +49,7 @@ export const CLAUDE_ENDPOINTS = {
     query: z.strictObject({
       state: CLAUDE_SESSION_STATE.optional(),
       archived: QUERY_FLAG.default(false),
-      limit: queryLimit(100, SESSION_LIMIT),
+      limit: queryLimit(100, CLAUDE_SESSION_LIST_MAX),
     }),
     body: NO_BODY,
     response: z.array(CLAUDE_SESSION),

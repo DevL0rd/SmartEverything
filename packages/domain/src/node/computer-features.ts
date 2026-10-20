@@ -27,6 +27,7 @@ export const COMPUTER_FEATURES = [
   'wifi',
   'bluetooth',
   'windows',
+  'tiling',
   'startup_apps',
   'services',
   'usb',
@@ -35,6 +36,7 @@ export const COMPUTER_FEATURES = [
   'files',
   'files_write',
   'capture',
+  'input',
   'ear_host',
 ] as const;
 

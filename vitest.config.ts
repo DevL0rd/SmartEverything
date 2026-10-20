@@ -128,6 +128,14 @@ export default defineConfig({
       },
       {
         test: {
+          name: 'ipp',
+          root: './packages/ipp',
+          environment: 'node',
+          include: ['test/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
           name: 'tuya',
           root: './packages/tuya',
           environment: 'node',
@@ -146,6 +154,14 @@ export default defineConfig({
         test: {
           name: 'shelly',
           root: './packages/shelly',
+          environment: 'node',
+          include: ['test/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
+          name: 'flow',
+          root: './packages/flow',
           environment: 'node',
           include: ['test/**/*.test.ts'],
         },
@@ -257,7 +273,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
       reportsDirectory: './coverage',
-      include: ['packages/{logging,domain,xiaomi,ble,tuya,smartthings,shelly}/src/**/*.ts'],
+      include: ['packages/{logging,domain,xiaomi,ble,ipp,tuya,smartthings,shelly,flow}/src/**/*.ts'],
       exclude: ['**/*.d.ts', '**/index.ts'],
       thresholds: {
         branches: 100,

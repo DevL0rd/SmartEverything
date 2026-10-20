@@ -18,6 +18,7 @@ export interface Placement {
 export interface Sizing {
   readonly cell: Cell;
   readonly aspectOf: (type: string) => number | undefined;
+  readonly footprintOf?: (type: string, board: BoardClass, size: BoardWidget['size']) => Size;
 }
 
 interface Size {
@@ -54,7 +55,8 @@ function sizeOf(
   widget: BoardWidget,
   sizing: Sizing | undefined,
 ): Size & { readonly height?: number } {
-  const footprint = WIDGET_FOOTPRINTS[board][widget.size];
+  const footprint =
+    sizing?.footprintOf?.(widget.type, board, widget.size) ?? WIDGET_FOOTPRINTS[board][widget.size];
   const aspect = sizing?.aspectOf(widget.type);
   if (sizing === undefined || aspect === undefined) {
     return footprint;

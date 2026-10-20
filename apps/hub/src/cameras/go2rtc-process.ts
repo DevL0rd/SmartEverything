@@ -23,7 +23,6 @@ export interface Go2rtcLaunch {
   readonly xiaomi: Readonly<Record<string, string>>;
   readonly log: Logger;
   readonly exited: (cause: Error) => void;
-  readonly reported: (text: string) => void;
 }
 
 export interface RunningGo2rtc {
@@ -91,7 +90,6 @@ function relay(launch: Go2rtcLaunch, text: string): boolean {
     return false;
   }
   const details = detailsOf(line);
-  launch.reported(`${line.message ?? ''} ${line.error ?? ''}`);
   if (line.level === 'error' || line.level === 'fatal' || line.level === 'panic') {
     log.error('go2rtc.reported', undefined, { level: line.level, ...details });
   } else if (line.level === 'warn') {

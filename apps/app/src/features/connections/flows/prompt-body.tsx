@@ -10,7 +10,6 @@ import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { notify } from '../../../components/toast-store';
 import { CODE_DIGITS, codeComplete } from '../model/verification-code';
-import { TuyaQr } from './tuya-qr';
 import { useMutationState } from '../../../store/mutation';
 
 import { connectionsLog } from '../connections-log';
@@ -139,12 +138,14 @@ function CodePrompt({
   );
 }
 
+export type ScanPrompt = Extract<ProviderPrompt, { kind: 'scan_qr' }>;
+
 export function PromptBody({
   provider,
   prompt,
 }: {
   readonly provider: Provider;
-  readonly prompt: ProviderPrompt;
+  readonly prompt: Exclude<ProviderPrompt, ScanPrompt>;
 }): ReactNode {
   switch (prompt.kind) {
     case 'captcha':
@@ -163,7 +164,5 @@ export function PromptBody({
           }}
         />
       );
-    case 'scan_qr':
-      return <TuyaQr app={prompt.app} content={prompt.content} />;
   }
 }

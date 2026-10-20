@@ -1,26 +1,35 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { CountPill, Dot } from '../components/badge';
+import { anchorKey } from '../components/highlight-keys';
 import { Icon } from '../components/icon';
-import { Interactive } from '../components/interactive';
+import { Interactive, type Point } from '../components/interactive';
 import { Text } from '../components/text';
+import { useHighlightAnchor } from '../components/use-highlight-anchor';
 import { cn } from '../design/cn';
 import type { NavEntry } from './nav-model';
 
-type NavLook = 'bar' | 'tile' | 'rail' | 'rail-dense' | 'sidebar' | 'collapsed';
+type NavFace = Pick<
+  NavEntry,
+  'key' | 'title' | 'shortTitle' | 'icon' | 'active' | 'badge' | 'count' | 'missing'
+>;
+
+type NavLook = 'bar' | 'rail' | 'rail-dense' | 'sidebar' | 'collapsed';
 
 export interface NavItemProps {
-  readonly entry: NavEntry;
+  readonly entry: NavFace;
   readonly look: NavLook;
   readonly onPress: () => void;
-  readonly onIntent: () => void;
+  readonly onLongPress?: (() => void) | undefined;
+  readonly onIntent?: (() => void) | undefined;
+  readonly onContextMenu?: ((point: Point) => void) | undefined;
 }
 
 function Indicator({
   entry,
   dense,
 }: {
-  readonly entry: NavEntry;
+  readonly entry: NavFace;
   readonly dense: boolean;
 }): ReactNode {
   return (
@@ -31,7 +40,7 @@ function Indicator({
         entry.active && 'bg-primary-container',
       )}
     >
-      <Icon name={entry.route.icon} size={24} tone={entry.active ? 'primary' : 'variant'} />
+      <Icon name={entry.icon} size={24} tone={entry.active ? 'primary' : 'variant'} />
       {entry.count > 0 ? (
         <View className="absolute -top-1 right-1">
           <CountPill count={entry.count} />
@@ -45,31 +54,36 @@ function Indicator({
   );
 }
 
-function Stacked({ entry, look }: { readonly entry: NavEntry; readonly look: NavLook }): ReactNode {
+function Stacked({ entry, look }: { readonly entry: NavFace; readonly look: NavLook }): ReactNode {
   return (
     <View className={look === 'rail-dense' ? 'items-center' : 'items-center gap-1'}>
       <Indicator entry={entry} dense={look === 'rail-dense'} />
       {look === 'collapsed' ? null : (
         <Text variant="caption" tone={entry.active ? 'default' : 'variant'} numberOfLines={1}>
-          {entry.route.shortTitle ?? entry.route.title}
+          {entry.shortTitle}
         </Text>
       )}
     </View>
   );
 }
 
-function Row({ entry }: { readonly entry: NavEntry }): ReactNode {
+function Row({ entry }: { readonly entry: NavFace }): ReactNode {
   return (
-    <View className="flex-row items-center gap-3">
-      <Icon name={entry.route.icon} size={20} tone={entry.active ? 'primary' : 'variant'} />
+    <View className={cn('flex-row items-center gap-3', entry.missing && 'opacity-60')}>
+      <Icon name={entry.icon} size={20} tone={entry.active ? 'primary' : 'variant'} />
       <Text
         variant="label"
         tone={entry.active ? 'primary' : 'default'}
         className="flex-1"
         numberOfLines={1}
       >
-        {entry.route.title}
+        {entry.title}
       </Text>
+      {entry.missing ? (
+        <Text variant="caption" tone="faint">
+          Not found
+        </Text>
+      ) : null}
       {entry.count > 0 ? (
         <CountPill count={entry.count} />
       ) : entry.badge === null ? null : (
@@ -81,30 +95,35 @@ function Row({ entry }: { readonly entry: NavEntry }): ReactNode {
 
 const FRAME: Readonly<Record<NavLook, string>> = {
   bar: 'h-16 w-full items-center justify-center',
-  tile: 'h-16 w-full items-center justify-center',
   rail: 'h-16 w-full items-center justify-center',
   'rail-dense': 'h-12 w-full items-center justify-center',
   collapsed: 'h-14 w-full items-center justify-center',
   sidebar: 'h-10 min-h-touch-min justify-center rounded-full px-4',
 };
 
-export function navLabelOf(entry: NavEntry): string {
-  return entry.count > 0
-    ? `${entry.route.title}, ${String(entry.count)} unread`
-    : entry.route.title;
+export function navLabelOf(entry: NavFace): string {
+  if (entry.missing) return `${entry.title}, not found`;
+  return entry.count > 0 ? `${entry.title}, ${String(entry.count)} unread` : entry.title;
 }
 
-export function NavItem({ entry, look, onPress, onIntent }: NavItemProps): ReactNode {
+export function NavItem({
+  entry,
+  look,
+  onPress,
+  onLongPress,
+  onIntent,
+  onContextMenu,
+}: NavItemProps): ReactNode {
+  const anchor = useHighlightAnchor(anchorKey.nav(entry.key), entry.title);
   return (
-    <View
-      onPointerEnter={onIntent}
-      className={look === 'bar' ? 'flex-1' : look === 'tile' ? 'w-1/4' : 'w-full'}
-    >
+    <View {...anchor} onPointerEnter={onIntent} className={look === 'bar' ? 'flex-1' : 'w-full'}>
       <Interactive
         role={look === 'bar' ? 'tab' : 'link'}
         label={navLabelOf(entry)}
         selected={entry.active}
         onPress={onPress}
+        onLongPress={onLongPress}
+        onContextMenu={onContextMenu}
         className={cn(FRAME[look], look === 'sidebar' && entry.active && 'bg-primary-container')}
         layerClassName="rounded-full"
       >

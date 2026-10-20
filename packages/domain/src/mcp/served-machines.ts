@@ -6,7 +6,7 @@ export const SERVED_MACHINES = [
     'assistant',
     'read',
     'List machines',
-    'The machines your chat can run on: name, operating system, online and which one is current (chatId from your context).',
+    'The machines your chat can run on: name, operating system, sandbox (partial when its file reads are not confined), online and which one is current (chatId from your context).',
     { part: 'list_machines' },
   ],
   [

@@ -1,11 +1,11 @@
 import {
-  WIDGET_FOOTPRINTS,
   WIDGET_SIZES,
   type BoardClass,
   type BoardWidget,
   type WidgetSize,
 } from '@smarteverything/domain';
 import { aspectRows, type Cell } from '../board-geometry';
+import { footprintOf } from '../footprint';
 import type { WidgetDefinition } from '../types';
 
 export const SIZE_LABELS: Readonly<Record<WidgetSize, string>> = {
@@ -43,7 +43,7 @@ export function sizeOptions(
   const allowed = definition.sizes[board];
   const unique = new Map<string, SizeOption>();
   for (const size of WIDGET_SIZES) {
-    const footprint = WIDGET_FOOTPRINTS[board][size];
+    const footprint = footprintOf(board, size, definition);
     const rows = rowsFor(definition, footprint.columns, footprint.rows, cell);
     const shape = `${String(footprint.columns)}x${String(rows)}`;
     if (allowed.includes(size) && !unique.has(shape)) {
@@ -60,7 +60,7 @@ export function steppedSize(
   step: 1 | -1,
 ): WidgetSize | null {
   const options = sizeOptions(definition, board);
-  const footprint = WIDGET_FOOTPRINTS[board][current];
+  const footprint = footprintOf(board, current, definition);
   const index = options.findIndex(
     (option) => option.columns === footprint.columns && option.rows === footprint.rows,
   );

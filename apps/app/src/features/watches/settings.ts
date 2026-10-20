@@ -8,7 +8,7 @@ export const SETTINGS: readonly SettingDefinition[] = [
   {
     id: 'devices.add.watch',
     page: 'devices/add',
-    section: 'Bluetooth',
+    section: 'Device plugins',
     title: 'Watch',
     description: 'Steps, heart rate and battery straight from your watch',
     icon: 'watch',

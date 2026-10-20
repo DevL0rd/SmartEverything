@@ -143,6 +143,11 @@ export class TurnStream {
     this.push({ kind: 'reasoning', delta });
   }
 
+  steer(messageId: string): void {
+    this.timeline.steer(messageId);
+    this.snapshot(this.state, null, null);
+  }
+
   tool(item: ChatToolItem, details: ToolTimelineDetails = {}): void {
     this.timeline.tool(item, details);
     this.tools.set(item.callId, item);

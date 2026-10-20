@@ -176,15 +176,11 @@ export function reported(
   at: number,
   details: Record<string, JsonValue>,
 ): DeviceEvent {
-  const event = deviceEventFromMiot(name, {
+  return deviceEventFromMiot(name, {
     externalId: WASHER.external_id,
     occurredAt: new Date(at).toISOString(),
     details,
   });
-  if (event === null) {
-    throw new Error(`The ${name} event is not mapped.`);
-  }
-  return event;
 }
 
 function externalIdOf(deviceId: string): string {

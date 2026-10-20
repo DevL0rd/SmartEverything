@@ -9,6 +9,7 @@ import {
 } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TelevisionRouting } from '../src/commands/television-routing';
+import { TelevisionWake } from '../src/commands/television-wake';
 import type { DeviceRecord } from '../src/database/port';
 import { captureLogs, testLogger } from './support/logs';
 
@@ -46,6 +47,10 @@ function commandOf(capability: CapabilityKey, value: JsonValue): DeviceCommand {
     capability,
     value,
   };
+}
+
+function directOf(capability: CapabilityKey, value: JsonValue): DeviceCommand {
+  return { ...commandOf(capability, value), externalId: DEVICE_ID };
 }
 
 interface Rig {
@@ -100,7 +105,26 @@ beforeEach(() => {
             : undefined,
       },
       valueOf: (_device, capability) => state.get(capability),
-      attachedTo: () => current.attached,
+      settingsOf: (deviceId) =>
+        current.attached === deviceId
+          ? {
+              device_id: deviceId,
+              direct_host: '192.168.1.40',
+              direct_mac: 'a1:b2:c3:d4:e5:f6',
+              input_names: {},
+              wake_macs: [],
+              wake_worked_at: null,
+            }
+          : undefined,
+      wake: new TelevisionWake({
+        wake: () => Promise.resolve(),
+        settingsOf: () => undefined,
+        woke: () => undefined,
+        online: () => true,
+        subscribe: () => () => undefined,
+        clock: { now: () => new Date(), at: () => () => undefined, sleep: () => Promise.resolve() },
+        log: testLogger('television'),
+      }),
       log: testLogger('television'),
     }),
   };
@@ -112,17 +136,28 @@ describe('which commands the television routing takes', () => {
     expect(rig.routing.handles(TV, commandOf('remote_key', 'up'))).toBe(true);
   });
 
-  it('takes power and apps only when a direct link is attached to that television', () => {
-    expect(rig.routing.handles(TV, commandOf('power', true))).toBe(false);
+  it('takes every power on, so a sleeping screen can be woken', () => {
+    expect(rig.routing.handles(TV, commandOf('power', true))).toBe(true);
+  });
+
+  it('takes power off and apps only when that television has its own direct link', () => {
+    expect(rig.routing.handles(TV, commandOf('power', false))).toBe(false);
     expect(rig.routing.handles(TV, commandOf('app_launch', 'YouTube'))).toBe(false);
     rig.attached = DEVICE_ID;
-    expect(rig.routing.handles(TV, commandOf('power', true))).toBe(true);
+    expect(rig.routing.handles(TV, commandOf('power', false))).toBe(true);
     expect(rig.routing.handles(TV, commandOf('app_launch', 'YouTube'))).toBe(true);
     rig.running.delete('samsung_tv');
-    expect(rig.routing.handles(TV, commandOf('power', true))).toBe(false);
+    expect(rig.routing.handles(TV, commandOf('power', false))).toBe(false);
     rig.running.add('samsung_tv');
     rig.attached = '33333333-3333-4333-8333-333333333333';
-    expect(rig.routing.handles(TV, commandOf('power', true))).toBe(false);
+    expect(rig.routing.handles(TV, commandOf('power', false))).toBe(false);
+  });
+
+  it('turns on a screen SmartThings can reach through SmartThings when no link is attached', async () => {
+    rig.state.set('power', false);
+    await rig.routing.execute(TV, commandOf('power', true));
+    expect(rig.smartthings).toHaveBeenCalledWith(commandOf('power', true));
+    expect(rig.direct).not.toHaveBeenCalled();
   });
 
   it('leaves other capabilities and other devices alone', () => {
@@ -176,10 +211,10 @@ describe('pressing a remote key', () => {
   it('sends a key over the direct link first, with the television protocol name', async () => {
     rig.attached = DEVICE_ID;
     await rig.routing.execute(TV, commandOf('remote_key', 'vol_up'));
-    expect(rig.direct).toHaveBeenCalledWith(commandOf('remote_key', 'KEY_VOLUP'));
+    expect(rig.direct).toHaveBeenCalledWith(directOf('remote_key', 'KEY_VOLUP'));
     expect(rig.smartthings).not.toHaveBeenCalled();
     await rig.routing.execute(TV, commandOf('remote_key', 'n7'));
-    expect(rig.direct).toHaveBeenLastCalledWith(commandOf('remote_key', 'KEY_7'));
+    expect(rig.direct).toHaveBeenLastCalledWith(directOf('remote_key', 'KEY_7'));
   });
 
   it('falls back to SmartThings once when the direct link fails, and says so in the log', async () => {
@@ -216,24 +251,25 @@ describe('powering a television with a direct link', () => {
 
   it('wakes a television SmartThings cannot wake through the direct link', async () => {
     rig.state.set('power', false);
+    rig.state.set(OCF, 'true');
     const off = { ...TV, online: false };
     await rig.routing.execute(off, commandOf('power', true));
-    expect(rig.direct).toHaveBeenCalledWith(commandOf('power', true));
+    expect(rig.direct).toHaveBeenCalledWith(directOf('power', true));
     expect(rig.smartthings).not.toHaveBeenCalled();
   });
 
-  it('wakes through SmartThings when the television supports it, and keeps the link as backup', async () => {
+  it('wakes through the direct link even when SmartThings could, and keeps SmartThings as backup', async () => {
     rig.state.set('power', false);
     rig.state.set(OCF, 'true');
-    rig.smartthings.mockRejectedValueOnce(new Error('cloud down'));
-    await rig.routing.execute({ ...TV, online: false }, commandOf('power', true));
+    rig.direct.mockRejectedValueOnce(new Error('the screen did not turn on'));
+    await rig.routing.execute(TV, commandOf('power', true));
+    expect(rig.direct).toHaveBeenCalledWith(directOf('power', true));
     expect(rig.smartthings).toHaveBeenCalledWith(commandOf('power', true));
-    expect(rig.direct).toHaveBeenCalledWith(commandOf('power', true));
   });
 
   it('turns the television off through the direct link', async () => {
     await rig.routing.execute(TV, commandOf('power', false));
-    expect(rig.direct).toHaveBeenCalledWith(commandOf('power', false));
+    expect(rig.direct).toHaveBeenCalledWith(directOf('power', false));
   });
 });
 
@@ -244,7 +280,7 @@ describe('opening an app on a television with a direct link', () => {
 
   it('asks the direct link first', async () => {
     await rig.routing.execute(TV, commandOf('app_launch', 'YouTube'));
-    expect(rig.direct).toHaveBeenCalledWith(commandOf('app_launch', 'YouTube'));
+    expect(rig.direct).toHaveBeenCalledWith(directOf('app_launch', 'YouTube'));
     expect(rig.smartthings).not.toHaveBeenCalled();
   });
 

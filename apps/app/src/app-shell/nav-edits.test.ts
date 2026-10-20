@@ -10,14 +10,13 @@ import {
 import {
   appendPin,
   createFolder,
+  foldTogether,
   hideSection,
   itemsOf,
-  moveIntoFolder,
-  moveOutOfFolder,
+  placeNode,
   removeNode,
   renameNode,
   reorder,
-  reorderMembers,
   setNodeIcon,
   showSection,
   ungroupFolder,
@@ -90,34 +89,35 @@ describe('editing the navigation', () => {
     expect(next[1]).toMatchObject({ kind: 'folder', items: [{ id: 'b' }, { id: 'd' }] });
   });
 
+  it('folds two items into a new folder at the target position', () => {
+    const items = [pin('a'), pin('b'), pin('c'), pin('d')];
+    const forward = foldTogether(items, folder('f'), 'a', 'c');
+    expect(keys(forward)).toEqual(['b', 'f', 'd']);
+    expect(forward[1]).toMatchObject({ kind: 'folder', items: [{ id: 'c' }, { id: 'a' }] });
+    const backward = foldTogether(items, folder('f'), 'd', 'b');
+    expect(keys(backward)).toEqual(['a', 'f', 'c']);
+    expect(backward[1]).toMatchObject({ items: [{ id: 'b' }, { id: 'd' }] });
+  });
+
+  it('folds an item that sits inside another folder', () => {
+    const items = [pin('a'), pin('b'), pin('c')];
+    const grouped = createFolder(items, folder('g'), ['b', 'c']);
+    const next = foldTogether(grouped, folder('f'), 'c', 'a');
+    expect(keys(next)).toEqual(['f', 'g']);
+    expect(next[0]).toMatchObject({ items: [{ id: 'a' }, { id: 'c' }] });
+    expect(next[1]).toMatchObject({ items: [{ id: 'b' }] });
+  });
+
+  it('leaves the items alone for a folder, a missing key or the same item', () => {
+    const grouped = createFolder([pin('a'), pin('b')], folder('g'), ['b']);
+    expect(foldTogether(grouped, folder('f'), 'a', 'g')).toBe(grouped);
+    expect(foldTogether(grouped, folder('f'), 'g', 'a')).toBe(grouped);
+    expect(foldTogether(grouped, folder('f'), 'a', 'zzz')).toBe(grouped);
+    expect(foldTogether(grouped, folder('f'), 'a', 'a')).toBe(grouped);
+  });
+
   it('creates an empty folder at the end', () => {
     expect(keys(createFolder([pin('a')], folder('f'), []))).toEqual(['a', 'f']);
-  });
-
-  it('moves an item into a folder and out again, right after the folder', () => {
-    const items = createFolder([pin('a'), pin('b'), pin('c')], folder('f'), ['a']);
-    const into = moveIntoFolder(items, 'c', 'f');
-    expect(keys(into)).toEqual(['f', 'b']);
-    const out = moveOutOfFolder(into, 'a');
-    expect(keys(out)).toEqual(['f', 'a', 'b']);
-    expect(out[0]).toMatchObject({ items: [{ id: 'c' }] });
-  });
-
-  it('moves an item from one folder to another', () => {
-    const items = createFolder(
-      createFolder([pin('a'), pin('b')], folder('f'), ['a']),
-      folder('g'),
-      ['b'],
-    );
-    const next = moveIntoFolder(items, 'a', 'g');
-    expect(next[0]).toMatchObject({ id: 'f', items: [] });
-    expect(next[1]).toMatchObject({ id: 'g', items: [{ id: 'b' }, { id: 'a' }] });
-  });
-
-  it('reorders inside a folder', () => {
-    const items = createFolder([pin('a'), pin('b'), pin('c')], folder('f'), ['a', 'b', 'c']);
-    const next = reorderMembers(items, 'f', ['c', 'a', 'b']);
-    expect(next[0]).toMatchObject({ items: [{ id: 'c' }, { id: 'a' }, { id: 'b' }] });
   });
 
   it('renames a pin or a folder and changes their icon', () => {
@@ -150,6 +150,56 @@ describe('editing the navigation', () => {
     expect(hidden.hidden).toEqual(['talk']);
     expect(hideSection(hidden, 'talk')).toBe(hidden);
     expect(showSection(hidden, 'talk').hidden).toEqual([]);
+  });
+
+  describe('placing a node', () => {
+    const base = (): NavNode[] =>
+      createFolder([pin('a'), pin('b'), pin('c'), pin('d')], folder('f'), ['b', 'c']);
+
+    it('moves a top-level node before another or to the end', () => {
+      expect(keys(placeNode(base(), 'd', { parent: null, before: 'a' }))).toEqual(['d', 'a', 'f']);
+      expect(keys(placeNode(base(), 'a', { parent: null, before: null }))).toEqual(['f', 'd', 'a']);
+    });
+
+    it('moves a top-level node into a folder at a position', () => {
+      const moved = placeNode(base(), 'a', { parent: 'f', before: 'c' });
+      expect(keys(moved)).toEqual(['f', 'd']);
+      expect(keys(moved.flatMap((node) => (node.kind === 'folder' ? node.items : [])))).toEqual([
+        'b',
+        'a',
+        'c',
+      ]);
+    });
+
+    it('moves a member out of its folder to a top-level position', () => {
+      const moved = placeNode(base(), 'b', { parent: null, before: 'a' });
+      expect(keys(moved)).toEqual(['b', 'a', 'f', 'd']);
+      expect(moved.flatMap((node) => (node.kind === 'folder' ? keys(node.items) : []))).toEqual([
+        'c',
+      ]);
+    });
+
+    it('reorders members inside their folder', () => {
+      const moved = placeNode(base(), 'c', { parent: 'f', before: 'b' });
+      expect(moved.flatMap((node) => (node.kind === 'folder' ? keys(node.items) : []))).toEqual([
+        'c',
+        'b',
+      ]);
+    });
+
+    it('never puts a folder inside a folder and ignores unknown keys', () => {
+      const items = createFolder(base(), folder('g'), ['a']);
+      expect(placeNode(items, 'g', { parent: 'f', before: null })).toBe(items);
+      expect(placeNode(items, 'nothing', { parent: null, before: null })).toBe(items);
+    });
+  });
+
+  it('gives a pin back its live name when renamed to null and keeps a folder name', () => {
+    const items = createFolder([pin('a'), pin('b')], folder('f'), ['b']);
+    const named = renameNode(items, 'a', 'Lamp');
+    expect(named[0]).toMatchObject({ title: 'Lamp' });
+    expect(renameNode(named, 'a', null)[0]).toMatchObject({ title: null });
+    expect(renameNode(items, 'f', null)).toEqual(items);
   });
 
   it('only builds layouts the schema accepts', () => {

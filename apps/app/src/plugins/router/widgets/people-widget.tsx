@@ -9,7 +9,7 @@ export function PeopleWidget(): ReactNode {
   return (
     <RouterWidgetFrame title="Who’s home" icon="users" accent="viz-1">
       {(ready) => {
-        const people = widgetPeople(ready.snapshot.clients, profiles);
+        const people = widgetPeople(ready.snapshot.people, profiles);
         return people.length === 0 ? (
           <PeopleEmpty ready={ready} />
         ) : (

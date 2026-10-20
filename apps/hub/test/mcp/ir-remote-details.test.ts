@@ -61,16 +61,16 @@ function deviceOf(id: string): z.infer<typeof DETAILS>['device'] {
 }
 
 describe('what the AI reads about IR remotes', () => {
-  it('shows a library remote’s assumed state, empty until something was sent', () => {
+  it('shows an IR remote device’s assumed state, empty until something was sent', () => {
     const remote = add('ir_remote', 'ac');
     expect(deviceOf(remote)).toMatchObject({ infrared: { assumed: EMPTY_IR_REMOTE_STATE } });
     opened.store.settings.setIrRemote(remote, { on: true, temp: 22 });
     expect(deviceOf(remote)).toMatchObject({ infrared: { assumed: { on: true, temp: 22 } } });
   });
 
-  it('shows a blaster every remote under it, library and learned, with their state', () => {
+  it('shows a blaster every remote under it, device and learned, with their state', () => {
     const blaster = add('ir_blaster', 'ir');
-    const library = add('ir_remote', 'ac', blaster);
+    const deviceRemote = add('ir_remote', 'ac', blaster);
     const learned = opened.store.infrared.addRemote({
       blaster_id: blaster,
       name: 'Fan',
@@ -79,7 +79,7 @@ describe('what the AI reads about IR remotes', () => {
     });
     opened.store.settings.setIrRemote(learned.id, { on: false });
     expect(deviceOf(blaster).infrared?.remotes).toEqual([
-      { id: library, name: 'ac', assumed: EMPTY_IR_REMOTE_STATE },
+      { id: deviceRemote, name: 'ac', assumed: EMPTY_IR_REMOTE_STATE },
       { id: learned.id, name: 'Fan', assumed: { ...EMPTY_IR_REMOTE_STATE, on: false } },
     ]);
   });

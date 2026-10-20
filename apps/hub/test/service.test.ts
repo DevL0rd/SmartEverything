@@ -120,11 +120,33 @@ describe('service configuration', () => {
       go2rtcApiPort: 1984,
       webrtcPort: 8555,
       logLevel: 'info',
-      wakeDiagnostics: false,
     });
     expect(serviceUrl({ host: '0.0.0.0', port: 7880 })).toBe('http://127.0.0.1:7880');
     expect(serviceUrl({ host: '::', port: 7880 })).toBe('http://127.0.0.1:7880');
     expect(serviceUrl({ host: '192.168.1.5', port: 81 })).toBe('http://192.168.1.5:81');
+  });
+
+  it('keeps the wake diagnostics switch on the computer that hosts ears, not on the hub', async () => {
+    const node = {
+      role: 'node',
+      node: {
+        hub_url: 'http://127.0.0.1:7880',
+        node_token: `sen_${'a'.repeat(43)}`,
+        device_id: crypto.randomUUID(),
+      },
+    };
+    await writeFile(join(directory.path, SERVICE_CONFIG_FILE), JSON.stringify(node));
+    expect(await readServiceConfig(directory.path)).toMatchObject({ wakeDiagnostics: false });
+    await writeFile(
+      join(directory.path, SERVICE_CONFIG_FILE),
+      JSON.stringify({ ...node, wakeDiagnostics: true }),
+    );
+    expect(await readServiceConfig(directory.path)).toMatchObject({ wakeDiagnostics: true });
+    await writeFile(
+      join(directory.path, SERVICE_CONFIG_FILE),
+      JSON.stringify({ go2rtcBinary: '/opt/go2rtc', wakeDiagnostics: true }),
+    );
+    await expect(readServiceConfig(directory.path)).rejects.toThrow(/Unrecognized key/);
   });
 });
 

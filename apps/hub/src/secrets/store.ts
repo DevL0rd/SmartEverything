@@ -21,6 +21,15 @@ const SMARTTHINGS_APP = z.object({
   clientSecret: z.string().min(1),
 });
 
+const AUTOMATION_SECRET_RECORD = z.object({
+  name: z.string().min(1),
+  value: z.string().min(1),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+});
+
+export type AutomationSecretRecord = z.infer<typeof AUTOMATION_SECRET_RECORD>;
+
 const HUB_SECRETS = z.object({
   accounts: z.partialRecord(PROVIDER, STORED_ACCOUNT),
   pushServiceAccount: PUSH_SERVICE_ACCOUNT.nullable(),
@@ -29,6 +38,7 @@ const HUB_SECRETS = z.object({
   geminiKey: z.string().min(1).nullable().default(null),
   openrouterKey: z.string().min(1).nullable().default(null),
   plugins: z.record(z.string(), z.record(z.string(), z.string())).default({}),
+  automationSecrets: z.record(z.uuid(), AUTOMATION_SECRET_RECORD).optional(),
 });
 
 export type HubSecrets = z.infer<typeof HUB_SECRETS>;
@@ -174,6 +184,22 @@ export class SecretStore {
       ...secrets,
       deviceKeys: Object.fromEntries(
         Object.entries(secrets.deviceKeys).filter(([name]) => name !== externalId),
+      ),
+    }));
+  }
+
+  async saveAutomationSecret(id: string, record: AutomationSecretRecord): Promise<void> {
+    await this.update((secrets) => ({
+      ...secrets,
+      automationSecrets: { ...secrets.automationSecrets, [id]: record },
+    }));
+  }
+
+  async removeAutomationSecret(id: string): Promise<void> {
+    await this.update((secrets) => ({
+      ...secrets,
+      automationSecrets: Object.fromEntries(
+        Object.entries(secrets.automationSecrets ?? {}).filter(([name]) => name !== id),
       ),
     }));
   }

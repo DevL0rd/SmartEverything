@@ -14,7 +14,7 @@ import { SightIndicator } from './sight-indicator';
 export interface CallHeaderProps {
   readonly call: CallView;
   readonly mode: SightMode;
-  readonly onMinimise: () => void;
+  readonly onMinimise: (() => void) | null;
   readonly onStopSight: () => void;
 }
 
@@ -36,7 +36,7 @@ export function CallHeader({ call, mode, onMinimise, onStopSight }: CallHeaderPr
   return (
     <View className="h-app-bar flex-row items-center gap-2 px-2">
       <View className="size-touch-min">
-        {callActive(call) ? (
+        {callActive(call) && onMinimise !== null ? (
           <IconButton
             icon="chevronDown"
             label="Keep talking in the background"

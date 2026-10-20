@@ -11,6 +11,10 @@ const SCOPE_TEXT: Readonly<
 > = {
   files: { title: 'Files', description: 'Browse and download files' },
   apps: { title: 'Apps', description: 'Open and close apps' },
+  app_events: {
+    title: 'App events',
+    description: 'Tell the home when apps open, close, come to the front or leave it',
+  },
   processes: {
     title: 'Programs',
     description: 'See what is running and end your own programs',
@@ -22,6 +26,10 @@ const SCOPE_TEXT: Readonly<
   screenshots: {
     title: 'Screenshots',
     description: 'Take screenshots to attach to a chat',
+  },
+  input: {
+    title: 'Pointer and keyboard',
+    description: 'Click, type and scroll as a person would; this computer asks once to allow it',
   },
   system: {
     title: 'System settings',
@@ -40,10 +48,12 @@ const SCOPE_TEXT: Readonly<
 const SCOPE_ORDER = [
   'files',
   'apps',
+  'app_events',
   'system',
   'processes',
   'metrics',
   'screenshots',
+  'input',
   'power',
   'ai_power',
 ] as const satisfies readonly ComputerScope[];

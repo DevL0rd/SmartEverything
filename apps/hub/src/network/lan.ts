@@ -43,6 +43,10 @@ export function addressesOf(snapshot: InterfaceSnapshot, name: string): string[]
   return (snapshot[name] ?? []).map((entry) => entry.address);
 }
 
+export function isVirtualInterface(name: string): boolean {
+  return VIRTUAL_NAME.test(name);
+}
+
 export function isPrivateIPv4(address: string): boolean {
   return PRIVATE_IPV4.check(address, 'ipv4');
 }

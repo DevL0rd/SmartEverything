@@ -10,7 +10,7 @@ const HOST_TAGS = new Set([5, 6]);
 
 export interface ScreenNavigation {
   readonly isFocused: () => boolean;
-  readonly addListener: (type: 'focus' | 'blur', listener: () => void) => () => void;
+  readonly addListener: (type: 'focus' | 'blur' | 'state', listener: () => void) => () => void;
 }
 
 let mounted = 0;

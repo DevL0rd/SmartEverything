@@ -14,6 +14,7 @@ import { Sheet } from '../../../components/sheet';
 import { TextField } from '../../../components/text-field';
 import { useMutationState } from '../../../store/mutation';
 import type { PluginPeopleActions } from '../data/plugin-people-actions';
+import { HomePersonRow } from './home-person-row';
 import { PersonPick } from '../picker/person-pick';
 import { background } from '@smarteverything/logging';
 
@@ -28,6 +29,14 @@ function idProblem(id: string): string | null {
     : 'Use letters, digits and . _ : @ -';
 }
 
+function linkedProfileOf(person: PluginPerson | null): string | null {
+  return person?.status === 'approved' ? person.profile_id : null;
+}
+
+function changeOf(name: string, owner: boolean, profileId: string | null): PluginPersonChange {
+  return owner ? { name, status: 'owner' } : { name, status: 'approved', profile_id: profileId };
+}
+
 interface PersonForm {
   readonly id: string;
   readonly setId: (id: string) => void;
@@ -37,6 +46,8 @@ interface PersonForm {
   readonly setName: (name: string) => void;
   readonly owner: boolean;
   readonly setOwner: (owner: boolean) => void;
+  readonly profileId: string | null;
+  readonly setProfileId: (profileId: string | null) => void;
   readonly problem: string | null;
   readonly busy: boolean;
   readonly ready: boolean;
@@ -52,11 +63,12 @@ function usePersonForm(
   const [name, setName] = useState(person?.name ?? '');
   const [owner, setOwner] = useState(person?.status === 'owner');
   const [picked, setPicked] = useState<PluginOption | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(linkedProfileOf(person));
   const mutation = useMutationState();
   const trimmedId = id.trim();
   const trimmedName = name.trim();
   const ready = trimmedId !== '' && trimmedName !== '' && idProblem(trimmedId) === null;
-  const change: PluginPersonChange = { name: trimmedName, status: owner ? 'owner' : 'approved' };
+  const change = changeOf(trimmedName, owner, profileId);
   const submit = (): void => {
     if (ready) {
       mutation.run(() => actions.save(trimmedId, change), {
@@ -80,6 +92,8 @@ function usePersonForm(
     setName,
     owner,
     setOwner,
+    profileId,
+    setProfileId,
     problem: idProblem(trimmedId) ?? mutation.problem,
     busy: mutation.busy,
     ready,
@@ -175,6 +189,7 @@ function Editor({
           value={form.owner}
           onChange={form.setOwner}
         />
+        {form.owner ? null : <HomePersonRow value={form.profileId} onChange={form.setProfileId} />}
       </View>
     </Sheet>
   );

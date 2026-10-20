@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { View } from 'react-native';
 import { Logger, background } from '@smarteverything/logging';
-import { saveAutomation, setAutomationEnabled } from '../../../api/automations';
+import { createAutomation, setAutomationEnabled } from '../../../api/automations';
 import { Card } from '../../../components/card';
 import { IconWell } from '../../../components/icon-well';
 import { Switch } from '../../../components/switch';
@@ -13,7 +13,6 @@ import { sameJson } from '../../../store/same-json';
 import { useStoreSelector } from '../../../store/store-context';
 import { templatesFor, type Template } from '../../automations';
 import type { Device } from '../../../store/state';
-import type { Laundry } from './use-laundry';
 
 const log = new Logger('app.devices');
 
@@ -32,6 +31,10 @@ export function templateStates(
   });
 }
 
+export function notifyTemplates(device: Parameters<typeof templatesFor>[0][number]): Template[] {
+  return templatesFor([device]).filter((template) => template.deviceId === device.id);
+}
+
 export async function setTemplate(
   template: Template,
   existing: Existing | null,
@@ -40,12 +43,7 @@ export async function setTemplate(
   if (existing !== null) {
     await setAutomationEnabled(existing.id, on);
   } else if (on) {
-    await saveAutomation({
-      automationId: null,
-      name: template.draft.name,
-      enabled: true,
-      definition: template.draft.automation,
-    });
+    await createAutomation({ name: template.name, enabled: true, definition: template.build() });
   }
 }
 
@@ -73,7 +71,7 @@ function Row({
               () => {
                 notify({
                   message: next ? 'Automation turned on' : 'Automation turned off',
-                  detail: template.draft.name,
+                  detail: template.name,
                   tone: 'positive',
                 });
               },
@@ -90,13 +88,9 @@ function Row({
   );
 }
 
-export function NotifyCard({ laundry }: { readonly laundry: Laundry }): ReactNode {
-  return <DeviceNotifyCard device={laundry.device} />;
-}
-
 export function DeviceNotifyCard({ device }: { readonly device: Device }): ReactNode {
-  const templates = useMemo(() => templatesFor([device]), [device]);
-  const names = useMemo(() => templates.map((template) => template.draft.name), [templates]);
+  const templates = useMemo(() => notifyTemplates(device), [device]);
+  const names = useMemo(() => templates.map((template) => template.name), [templates]);
   const states = useStoreSelector(
     (state) => templateStates(names, rowsOf(state.tables.automations)),
     sameJson,

@@ -1,6 +1,7 @@
 export { ProfileAvatar } from './profile-avatar';
 export { ProfileEditorScreen } from './profile-editor';
 export { ProfileSwitcher } from './profile-switcher';
+export { useMayChoosePerson } from './may-choose-person';
 export {
   ScaleListenerHost,
   retryHealthConnectWrites,

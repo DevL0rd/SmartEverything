@@ -13,9 +13,11 @@ import {
   type WatchCandidate,
   type WatchCandidates,
   type WatchState,
+  watchWorkoutStatusOf,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { SecretStore } from '../secrets/store';
+import type { StateWriter } from '../state/state-writer';
 import type { LocalDeviceEntry } from '../store/repositories/local-devices';
 import type { Store } from '../store/store';
 import type { LocalDevices } from './local-devices';
@@ -31,6 +33,7 @@ export interface LocalWatchesOptions {
   readonly secrets: Pick<SecretStore, 'deviceKey'>;
   readonly local: Pick<LocalDevices, 'observe' | 'deviceOf'>;
   readonly wearables: WearableSource;
+  readonly state: Pick<StateWriter, 'push'>;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -108,6 +111,14 @@ export class LocalWatches {
       reportedAt: at,
       reportedBy: client.id,
     });
+    if (workout !== undefined) {
+      this.options.state.push('local', {
+        externalId: entry.externalId,
+        capability: 'watch_workout',
+        value: watchWorkoutStatusOf(workout),
+        observedAt: at,
+      });
+    }
     const payload = {
       device: device.id,
       by: client.id,

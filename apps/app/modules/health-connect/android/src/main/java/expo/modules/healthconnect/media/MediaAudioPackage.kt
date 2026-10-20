@@ -6,7 +6,6 @@ import android.media.AudioAttributes
 import com.oney.WebRTCModule.WebRTCModuleOptions
 import expo.modules.core.interfaces.ApplicationLifecycleListener
 import expo.modules.core.interfaces.Package
-import org.webrtc.audio.JavaAudioDeviceModule
 
 class MediaAudioPackage : Package {
   override fun createApplicationLifecycleListeners(context: Context): List<ApplicationLifecycleListener> =
@@ -19,11 +18,6 @@ private class MediaAudioListener : ApplicationLifecycleListener {
       .setUsage(AudioAttributes.USAGE_MEDIA)
       .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
       .build()
-    WebRTCModuleOptions.getInstance().audioDeviceModuleFactory = WebRTCModuleOptions.AudioDeviceModuleFactory { context ->
-      JavaAudioDeviceModule.builder(context)
-        .setEnableVolumeLogger(false)
-        .setAudioAttributes(playback)
-        .createAudioDeviceModule()
-    }
+    WebRTCModuleOptions.getInstance().audioAttributes = playback
   }
 }

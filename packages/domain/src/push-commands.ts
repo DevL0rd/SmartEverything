@@ -6,6 +6,9 @@ export const PUSH_COMMANDS = [
   'machine_approval',
   'machine_approval_cancel',
   'watch_action',
+  'treadmill_action',
+  'bottle_action',
+  'toothbrush_action',
   'ai_speech',
   'ai_ring',
   'ai_ring_cancel',
@@ -30,6 +33,9 @@ export const PUSH_COMMAND_TTL_SECONDS: Readonly<Record<PushCommand, number>> = {
   machine_approval: MACHINE_APPROVAL_SECONDS,
   machine_approval_cancel: PUSH_CANCEL_TTL_SECONDS,
   watch_action: PUSH_ACTION_ANSWER_SECONDS,
+  treadmill_action: PUSH_ACTION_ANSWER_SECONDS,
+  bottle_action: PUSH_ACTION_ANSWER_SECONDS,
+  toothbrush_action: PUSH_ACTION_ANSWER_SECONDS,
   ai_speech: AI_SPEECH_FETCH_SECONDS,
   ai_ring: OUTREACH_RING_SECONDS,
   ai_ring_cancel: PUSH_CANCEL_TTL_SECONDS,
@@ -40,5 +46,7 @@ export const PUSH_COMMANDS_OVER_LIVE: readonly PushCommand[] = [
   'machine_approval',
   'machine_approval_cancel',
   'watch_action',
+  'treadmill_action',
+  'bottle_action',
+  'toothbrush_action',
 ];
-

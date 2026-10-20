@@ -24,7 +24,14 @@ import { AI_MODEL_ENDPOINTS } from './endpoints-ai-models';
 import { ACCESS_ENDPOINTS } from './endpoints-access';
 import { PERSON_ACCESS_ENDPOINTS } from './endpoints-person-access';
 import { CONNECTION_ENDPOINTS } from './endpoints-connections';
-import { AUTOMATION_AREA_ENDPOINTS } from './endpoints-automation';
+import { AUTOMATION_VALUE_ENDPOINTS } from './endpoints-automation-values';
+import { AUTOMATION_FUNCTION_ENDPOINTS } from './endpoints-automation-functions';
+import { AUTOMATION_PROGRAM_ENDPOINTS } from './endpoints-automation-programs';
+import { AUTOMATION_QUESTION_ENDPOINTS } from './endpoints-automation-questions';
+import { AUTOMATION_RUN_ENDPOINTS } from './endpoints-automation-runs';
+import { AUTOMATION_SECRET_ENDPOINTS } from './endpoints-automation-secrets';
+import { CLIENT_ENDPOINTS } from './endpoints-client';
+import { SCENE_ENDPOINTS } from './endpoints-scenes';
 import { CALL_ENDPOINTS } from './endpoints-calls';
 import { CLAUDE_CLI_ENDPOINTS } from './endpoints-claude-cli';
 import { CLAUDE_ENDPOINTS } from './endpoints-claude';
@@ -46,6 +53,10 @@ import { SETTINGS_AREA_ENDPOINTS } from './endpoints-settings';
 import { SNAPSHOT_ENDPOINTS } from './snapshot';
 import { TALK_AREA_ENDPOINTS } from './endpoints-talk';
 import { WATCH_AREA_ENDPOINTS } from './endpoints-watches';
+import { DEVELOPER_ENDPOINTS } from './endpoints-developer';
+import { TREADMILL_AREA_ENDPOINTS } from './endpoints-treadmills';
+import { BOTTLE_AREA_ENDPOINTS } from './endpoints-bottles';
+import { TOOTHBRUSH_AREA_ENDPOINTS } from './endpoints-toothbrushes';
 import { WEATHER_AREA_ENDPOINTS } from './endpoints-weather';
 import { EXCHANGE_RATES_AREA_ENDPOINTS } from './endpoints-exchange-rates';
 import { PLACE_AREA_ENDPOINTS } from './endpoints-places';
@@ -100,7 +111,14 @@ const HOME_ENDPOINTS = {
   ...DEVICE_AREA_ENDPOINTS,
   ...TELEVISION_ENDPOINTS,
   ...MEDIA_ENDPOINTS,
-  ...AUTOMATION_AREA_ENDPOINTS,
+  ...AUTOMATION_VALUE_ENDPOINTS,
+  ...AUTOMATION_PROGRAM_ENDPOINTS,
+  ...AUTOMATION_FUNCTION_ENDPOINTS,
+  ...AUTOMATION_RUN_ENDPOINTS,
+  ...AUTOMATION_QUESTION_ENDPOINTS,
+  ...AUTOMATION_SECRET_ENDPOINTS,
+  ...SCENE_ENDPOINTS,
+  ...CLIENT_ENDPOINTS,
   ...SCHEDULE_ENDPOINTS,
   ...SIGNAL_ENDPOINTS,
   ...REACH_ENDPOINTS,
@@ -111,6 +129,10 @@ const HOME_ENDPOINTS = {
   ...TRANSCRIPT_ENDPOINTS,
   ...LISTENING_ENDPOINTS,
   ...WATCH_AREA_ENDPOINTS,
+  ...DEVELOPER_ENDPOINTS,
+  ...TREADMILL_AREA_ENDPOINTS,
+  ...BOTTLE_AREA_ENDPOINTS,
+  ...TOOTHBRUSH_AREA_ENDPOINTS,
   ...TALK_AREA_ENDPOINTS,
 } satisfies Readonly<Record<string, EndpointShape>>;
 

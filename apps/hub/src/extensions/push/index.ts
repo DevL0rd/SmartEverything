@@ -3,8 +3,10 @@ import {
   assistantLabel,
   CLIENT_PREFS,
   isPushed,
+  type CameraNotificationsPref,
+  type ClientPrefRead,
+  type RecordingRow,
   type AssistantMessageRow,
-  type RowChange,
   type EventRow,
   type PushStatus,
   type PushTargetRow,
@@ -12,12 +14,22 @@ import {
 import { effectiveClientById } from '../../server/person-access';
 import type { Logger } from '@smarteverything/logging';
 import type { ExtensionContext, ServerExtension } from '../../extensions';
+import type { DeviceNotice, DeviceNotices } from '../device-notices';
 import type { OwnerAlert, OwnerAlerts } from '../owner-alerts';
 import { bound } from '../../server/router';
 import type { PushCommandOutcome, PushDelivery } from './commands';
 import { FcmClient, type Delivery, type PushNotification } from './fcm';
 import { notificationFor, urgentEventOf } from './messages';
+import { assistantBody, finishedReply } from './assistant-reply';
+import { added, NOTHING, type Tally } from './tally';
 import { deviceAudience } from './device-audience';
+import {
+  cameraNoticeOfEvent,
+  cameraNoticeOfRecording,
+  cameraPushOf,
+  type CameraNotice,
+} from './camera-notice';
+import { CameraGate } from './camera-gate';
 import { clientsReachedLive, liveNotificationOf } from './live-delivery';
 import { replyAudience, type Audience } from './reply-audience';
 import { background, failureLine } from '@smarteverything/logging';
@@ -26,66 +38,15 @@ export interface PushOptions {
   readonly fetch: typeof fetch;
   readonly now: () => Date;
   readonly alerts: OwnerAlerts;
+  readonly notices: DeviceNotices;
 }
 
 type Subject = Readonly<Record<string, string>>;
 
-interface Tally {
-  readonly sent: number;
-  readonly failed: number;
-  readonly removed: number;
-  readonly reasons: readonly string[];
-}
-
-const NOTHING: Tally = { sent: 0, failed: 0, removed: 0, reasons: [] };
-
-function added(tally: Tally, more: Tally): Tally {
-  return {
-    sent: tally.sent + more.sent,
-    failed: tally.failed + more.failed,
-    removed: tally.removed + more.removed,
-    reasons: [...tally.reasons, ...more.reasons],
-  };
-}
-
-const ASSISTANT_BODY_MAX = 180;
-
-function assistantBody(row: AssistantMessageRow): string {
-  if (row.text !== '') {
-    return row.text.length > ASSISTANT_BODY_MAX
-      ? `${row.text.slice(0, ASSISTANT_BODY_MAX - 1)}…`
-      : row.text;
-  }
-  return row.attachments.some((file) => file.mime.startsWith('image/'))
-    ? 'Sent a photo'
-    : 'Sent a file';
-}
-
-function finishedReply(change: RowChange): AssistantMessageRow | null {
-  if (change.table !== 'assistant_messages' || change.record === null) {
-    return null;
-  }
-  const row: AssistantMessageRow = change.record;
-  if (row.role !== 'responder' || (row.kind !== 'text' && row.kind !== 'update')) {
-    return null;
-  }
-  return justFinished(change.operation, row, change.oldRecord) ? row : null;
-}
-
-function justFinished(
-  operation: RowChange['operation'],
-  row: AssistantMessageRow,
-  old: AssistantMessageRow | null,
-): boolean {
-  if (operation === 'INSERT') {
-    return row.state === null;
-  }
-  return operation === 'UPDATE' && row.state === 'answered' && old?.state !== 'answered';
-}
-
 class PushSender {
   private readonly fcm: FcmClient;
   private readonly inflight = new Set<Promise<void>>();
+  private readonly cameraGate: CameraGate;
   status: PushStatus = {
     lastAttemptAt: null,
     lastSentAt: null,
@@ -101,21 +62,72 @@ class PushSender {
     private readonly log: Logger,
   ) {
     this.fcm = new FcmClient(options.fetch);
+    const { store } = context;
+    this.cameraGate = new CameraGate({
+      prefOf: (clientId): ClientPrefRead<CameraNotificationsPref> =>
+        store.personal.pref(CLIENT_PREFS.camera_notifications, {
+          clientId,
+          profileId: store.profiles.activeOf(clientId).id,
+        }),
+      now: options.now,
+      timeZone: (): string => store.settings.read().time_zone,
+      log,
+    });
   }
 
   eventWritten(row: EventRow): void {
-    if (isPushed(row.kind, row.details)) {
-      const { store } = this.context;
-      const audience = deviceAudience(row.device_id, {
-        alertsOf: (clientId) =>
-          store.personal.pref(CLIENT_PREFS.device_alerts, {
-            clientId,
-            profileId: store.profiles.activeOf(clientId).id,
-          }),
-        log: this.log,
-      });
-      this.track({ eventId: row.id, kind: row.kind }, () => this.notificationOf(row), audience);
+    const notice = cameraNoticeOfEvent(
+      row,
+      (deviceId) => this.context.store.cameras.find(deviceId) !== undefined,
+    );
+    if (notice !== null) {
+      this.cameraNoticed(notice);
+      return;
     }
+    if (isPushed(row.kind, row.details)) {
+      this.track(
+        { eventId: row.id, kind: row.kind },
+        () => this.notificationOf(row),
+        this.deviceAudienceOf(row.device_id),
+      );
+    }
+  }
+
+  recordingWritten(row: RecordingRow): void {
+    const notice = cameraNoticeOfRecording(row);
+    if (notice !== null) {
+      this.cameraNoticed(notice);
+    }
+  }
+
+  private cameraNameOf(deviceId: string): string {
+    const device = this.context.store.devices.find(deviceId);
+    return device === undefined ? 'A camera' : (device.display_name ?? device.name);
+  }
+
+  private deviceAudienceOf(deviceId: string | null): Audience {
+    const { store } = this.context;
+    return deviceAudience(deviceId, {
+      alertsOf: (clientId) =>
+        store.personal.pref(CLIENT_PREFS.device_alerts, {
+          clientId,
+          profileId: store.profiles.activeOf(clientId).id,
+        }),
+      log: this.log,
+    });
+  }
+
+  private cameraNoticed(notice: CameraNotice): void {
+    const reachable = this.deviceAudienceOf(notice.deviceId);
+    this.track(
+      { eventId: notice.eventId, kind: notice.eventKind },
+      () => cameraPushOf(notice, this.cameraNameOf(notice.deviceId)),
+      (clientId) => reachable(clientId) && this.cameraGate.admit(clientId, notice),
+    );
+  }
+
+  deviceNoticed(notice: DeviceNotice): void {
+    this.track(notice.data, () => notice, this.deviceAudienceOf(notice.data.deviceId));
   }
 
   alertRaised(alert: OwnerAlert): void {
@@ -264,6 +276,23 @@ class PushSender {
       titleChars: notification.title.length,
       bodyChars: notification.body.length,
     }));
+    const tally = await this.sendAll(account, targets, notification);
+    this.log.info('push.delivered', {
+      ...subject,
+      sent: tally.sent,
+      failed: tally.failed,
+      removed: tally.removed,
+    });
+    if (tally.reasons.length > 0) {
+      this.log.warn('push.not_delivered', { ...subject, reasons: tally.reasons });
+    }
+  }
+
+  private async sendAll(
+    account: Parameters<FcmClient['send']>[0],
+    targets: readonly PushTargetRow[],
+    notification: PushNotification,
+  ): Promise<Tally> {
     const deliveries = await Promise.all(
       targets.map(async (target) => ({
         target,
@@ -274,15 +303,7 @@ class PushSender {
       .map(({ target, delivery }) => this.count(target, delivery))
       .reduce(added, NOTHING);
     this.record(tally);
-    this.log.info('push.delivered', {
-      ...subject,
-      sent: tally.sent,
-      failed: tally.failed,
-      removed: tally.removed,
-    });
-    if (tally.reasons.length > 0) {
-      this.log.warn('push.not_delivered', { ...subject, reasons: tally.reasons });
-    }
+    return tally;
   }
 
   private async reachedLive(
@@ -361,6 +382,13 @@ export function pushExtension(options: PushOptions): ServerExtension {
       if (change.table === 'events' && change.operation === 'INSERT' && change.record !== null) {
         sender.eventWritten(change.record);
       }
+      if (
+        change.table === 'recordings' &&
+        change.operation === 'INSERT' &&
+        change.record !== null
+      ) {
+        sender.recordingWritten(change.record);
+      }
       const reply = finishedReply(change);
       if (reply !== null) {
         sender.assistantReplied(reply);
@@ -368,6 +396,9 @@ export function pushExtension(options: PushOptions): ServerExtension {
     });
     const stopAlerts = options.alerts.listen((alert) => {
       sender.alertRaised(alert);
+    });
+    const stopNotices = options.notices.listen((notice) => {
+      sender.deviceNoticed(notice);
     });
     const detachCommands = context.pushCommands.attach((clientId, data, delivery) =>
       sender.command(clientId, data, delivery),
@@ -378,6 +409,7 @@ export function pushExtension(options: PushOptions): ServerExtension {
       stop: async (): Promise<void> => {
         unsubscribe();
         stopAlerts();
+        stopNotices();
         detachCommands();
         await sender.settled();
       },

@@ -15,7 +15,7 @@ import { useIdiom } from '../../../design/platform';
 import { joinParts } from '../../../format/text';
 import { moment } from '../../../format/time';
 import { useSecondOf } from '../../../store/clock';
-import { NotFound } from '../screens/not-found';
+import { NotFound } from '../shared/not-found';
 import { cancelScheduled, removeScheduled, runScheduledNow } from './actions';
 import { StepRows } from './step-rows';
 import { useHomeZone, useScheduleRow } from './use-scheduled';

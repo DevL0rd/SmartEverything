@@ -12,6 +12,7 @@ import {
   type MachineOpenTarget,
   type PhoneActionOrigin,
   type PhoneDirectAction,
+  type PhoneSystemToggle,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { DeviceDriver } from '../local/device-driver';
@@ -47,6 +48,10 @@ interface PhoneCommand {
 
 const NO_FIELDS = (): Readonly<Record<string, unknown>> => ({});
 
+function toggleOf(setting: PhoneSystemToggle): PhoneCommand {
+  return { type: 'set_system_toggle', fields: (value) => ({ setting, on: value }) };
+}
+
 const COMMANDS: Readonly<Record<string, PhoneCommand>> = {
   volume: { type: 'set_volume', fields: (value) => ({ stream: 'media', percent: value }) },
   ring_volume: { type: 'set_volume', fields: (value) => ({ stream: 'ring', percent: value }) },
@@ -57,6 +62,11 @@ const COMMANDS: Readonly<Record<string, PhoneCommand>> = {
   },
   brightness: { type: 'set_brightness', fields: (value) => ({ percent: value }) },
   auto_brightness: { type: 'set_auto_brightness', fields: (value) => ({ on: value }) },
+  screen_timeout: { type: 'set_timeout', fields: (value) => ({ seconds: Number(value) }) },
+  auto_rotate: toggleOf('auto_rotate'),
+  haptic_feedback: toggleOf('haptic_feedback'),
+  touch_sounds: toggleOf('touch_sounds'),
+  open_settings: { type: 'open_settings', fields: (value) => ({ page: value }) },
   ringer_mode: { type: 'set_ringer', fields: (value) => ({ mode: value }) },
   dnd: { type: 'set_dnd', fields: (value) => ({ on: value }) },
   playback: {

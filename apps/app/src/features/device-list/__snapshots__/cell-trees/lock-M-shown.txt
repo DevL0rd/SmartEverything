@@ -1,31 +1,30 @@
-View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
-  View className="flex-1 p-card-pad" pointerEvents="box-none"
-    View className="flex-1 flex-row gap-4" pointerEvents="box-none"
-      View className="self-start"
-        View className="items-center justify-center overflow-hidden bg-surface-3 rounded-lg" pointerEvents="none"
-          View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(76, 80, 84, 0.3) 0%, rgba(76, 80, 84, 0.09999999999999999) 60%, rgba(76, 80, 84, 0) 100%)"}]
-          View aria-hidden=true className="relative shrink-0 size-24" onLayout=undefined pointerEvents="none" ref={current:null}
-            Anim.View pointerEvents="none" style=[{position:"absolute",left:59.52,top:44.16,width:23.04,height:9.6,borderRadius:2.4,backgroundColor:"#333c45",transform:[{translateX:-15.36}]},{transitionProperty:"transform",transitionDuration:250,transitionTimingFunction:"ease-out"}]
-            Svg.default height=96 pointerEvents="none" style={position:"absolute",left:0,top:0,width:96,height:96} viewBox="0 0 100 100" width=96
-              Svg.Ellipse cx=50 cy=90 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=22 ry=3.5
-              Svg.Path d="M44 12 H56 A14 14 0 0 1 70 26 V74 A14 14 0 0 1 56 88 H44 A14 14 0 0 1 30 74 V26 A14 14 0 0 1 44 12 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) stroke="#3d444b" strokeWidth=0.6
-              Svg.Path d="M44 12 H56 A14 14 0 0 1 70 26 V74 A14 14 0 0 1 56 88 H44 A14 14 0 0 1 30 74 V26 A14 14 0 0 1 44 12 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#c9b49f" stopOpacity=0.12; ); Svg.Stop(offset="0.22" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.34" stopColor="#FFFFFF" stopOpacity=0.85; ); Svg.Stop(offset="0.56" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
-              Svg.Circle cx=50 cy=32 fill="#474c51" fillOpacity=0.6 r=8 stroke="#656463" strokeWidth=1.6
-              Svg.Path d="M50 56 V72" stroke="#474c51" strokeLinecap="round" strokeOpacity=0.6 strokeWidth=5
-              Svg.Circle cx=50 cy=53 fill="#474c51" fillOpacity=0.6 r=4.5
-      View className="min-w-0 flex-1 gap-3" pointerEvents="box-none"
-        View className="flex-row items-start gap-2" pointerEvents="box-none"
-          View className="min-w-0 flex-1" pointerEvents="none"
-            View className="min-w-0 gap-0.5" pointerEvents="none"
-              Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=2 selectable=false
-              Text className="font-sans text-callout text-on-surface-variant text-left" numberOfLines=1 selectable=false
-          View className="flex-row items-center"
-        View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
-          View className="gap-3" pointerEvents="box-none"
-            View className="flex-row gap-3"
-              View className="min-w-0 flex-1"
-                View className="min-h-touch-min flex-row items-center justify-between gap-3"
-                  Text className="font-sans text-callout text-on-surface text-left min-w-0 flex-1" numberOfLines=1 selectable=false
-                  Pressable accessibilityLabel="Lock" accessibilityRole="switch" accessibilityState={checked:false,disabled:false} className="min-h-touch-min justify-center" disabled=false onPress=fn
-                    View aria-hidden=true className="h-8 w-13 justify-center rounded-full border-2 px-0.5 border-outline bg-surface-3"
-                      Anim.View className="size-6 items-center justify-center rounded-full bg-on-surface-variant" style={}
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1 p-card-pad" pointerEvents="box-none"
+  View className="flex-1 flex-row gap-4" pointerEvents="box-none"
+    View className="self-start"
+      View className="items-center justify-center overflow-hidden bg-surface-3 rounded-lg" pointerEvents="none"
+        View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(46, 95, 217, 0.3) 0%, rgba(46, 95, 217, 0.09999999999999999) 60%, rgba(46, 95, 217, 0) 100%)"}]
+        View aria-hidden=true className="relative shrink-0 size-24" onLayout=undefined pointerEvents="none" ref={current:null}
+          Anim.View pointerEvents="none" style=[{position:"absolute",left:59.52,top:44.16,width:23.04,height:9.6,borderRadius:2.4,backgroundColor:"#edd1be",transform:[{translateX:-15.36}]},{transitionProperty:"transform",transitionDuration:250,transitionTimingFunction:"ease-out"}]
+          Svg.default height=96 pointerEvents="none" style={position:"absolute",left:0,top:0,width:96,height:96} viewBox="0 0 100 100" width=96
+            Svg.Ellipse cx=50 cy=90 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=22 ry=3.5
+            Svg.Path d="M44 12 H56 A14 14 0 0 1 70 26 V74 A14 14 0 0 1 56 88 H44 A14 14 0 0 1 30 74 V26 A14 14 0 0 1 44 12 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#07b623"; ); Svg.Stop(offset="0.45" stopColor="#07b490"; ); Svg.Stop(offset="1" stopColor="#07b623"; ))) stroke="#1ad8bd" strokeWidth=0.6
+            Svg.Path d="M44 12 H56 A14 14 0 0 1 70 26 V74 A14 14 0 0 1 56 88 H44 A14 14 0 0 1 30 74 V26 A14 14 0 0 1 44 12 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#fa7c8b" stopOpacity=0.12; ); Svg.Stop(offset="0.22" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.34" stopColor="#FFFFFF" stopOpacity=0.85; ); Svg.Stop(offset="0.56" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
+            Svg.Circle cx=50 cy=32 fill="#0e9919" fillOpacity=0.6 r=8 stroke="#2112ef" strokeWidth=1.6
+            Svg.Path d="M50 56 V72" stroke="#0e9919" strokeLinecap="round" strokeOpacity=0.6 strokeWidth=5
+            Svg.Circle cx=50 cy=53 fill="#0e9919" fillOpacity=0.6 r=4.5
+    View className="min-w-0 flex-1 gap-3" pointerEvents="box-none"
+      View className="flex-row items-start gap-2" pointerEvents="box-none"
+        View className="min-w-0 flex-1" pointerEvents="none"
+          View className="min-w-0 gap-0.5" pointerEvents="none"
+            Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=2 selectable=false
+            Text className="font-sans text-callout text-on-surface-variant text-left" numberOfLines=1 selectable=false
+        View className="flex-row items-center"
+      View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
+        View className="gap-3" pointerEvents="box-none"
+          View className="flex-row gap-3"
+            View className="min-w-0 flex-1"
+              View className="min-h-touch-min flex-row items-center justify-between gap-3"
+                Text className="font-sans text-callout text-on-surface text-left min-w-0 flex-1" numberOfLines=1 selectable=false
+                Pressable accessibilityLabel="Lock" accessibilityRole="switch" accessibilityState={checked:false,disabled:false} className="min-h-touch-min justify-center" disabled=false onPress=fn
+                  View aria-hidden=true className="h-8 w-13 justify-center rounded-full border-2 px-0.5 border-outline bg-surface-3"
+                    Anim.View className="size-6 items-center justify-center rounded-full bg-on-surface-variant" style={}

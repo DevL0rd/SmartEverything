@@ -24,6 +24,7 @@ export function pluginAdds(manifest: PluginManifest): string[] {
     count === 0 ? [] : [`${String(count)} ${count === 1 ? one : many}`];
   return [
     ...counted(contributes.widgets.length, 'widget', 'widgets'),
+    ...counted(contributes.pages.length, 'page', 'pages'),
     ...counted(contributes.data.length, 'live value', 'live values'),
     ...counted(contributes.events.length, 'automation trigger', 'automation triggers'),
     ...counted(contributes.deviceFamilies.length, 'kind of device', 'kinds of device'),

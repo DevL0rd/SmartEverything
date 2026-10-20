@@ -1,21 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IceServer } from '@smarteverything/domain';
 import { ApiClient } from '../../../api/connection/client';
+import type { SessionHooks } from './session-start';
 
-const started = vi.hoisted(() => ({ calls: 0 }));
+const started: { calls: number; hooks: SessionHooks | null; direct: SessionHooks | null } =
+  vi.hoisted(() => ({
+    calls: 0,
+    hooks: null,
+    direct: null,
+  }));
 
 vi.mock('./session-start', () => ({
   guarded: (hooks: unknown): unknown => hooks,
   logFailure: (): void => undefined,
-  startDirect: (): void => {
+  startDirect: (_target: unknown, hooks: SessionHooks): void => {
     started.calls += 1;
-  },
-  startRelay: (): void => {
-    started.calls += 1;
+    started.direct = hooks;
   },
 }));
 vi.mock('./video-surface', () => ({ surfaceReportsFrames: (): boolean => true }));
-vi.mock('./rtc', () => ({ relaySupported: (): boolean => false }));
+vi.mock('./relay', () => ({
+  relayStarter:
+    () =>
+    (_target: unknown, hooks: SessionHooks): void => {
+      started.calls += 1;
+      started.hooks = hooks;
+    },
+}));
 
 const { acquireSession, releaseSession } = await import('./session-registry');
 
@@ -33,6 +44,8 @@ const NO_ICE: readonly IceServer[] = [];
 beforeEach(() => {
   vi.useFakeTimers();
   started.calls = 0;
+  started.hooks = null;
+  started.direct = null;
 });
 
 afterEach(() => {
@@ -122,6 +135,37 @@ describe('shared camera sessions', () => {
     expect(started.calls).toBe(2);
     expect(again.key.iceServers).toBe(changed);
     releaseSession(again);
+    vi.advanceTimersByTime(10_000);
+  });
+
+  it('gives the relay fallback 30 seconds to open before it gives up', () => {
+    const session = acquireSession({
+      deviceId: 'slow',
+      client: client('https://hub'),
+      iceServers: NO_ICE,
+      quality: 'full' as const,
+    });
+    started.direct?.report({ kind: 'failed', error: { kind: 'noPath' } });
+    const hooks = started.hooks;
+    if (hooks === null) throw new Error('the relay was not started');
+    hooks.onLink(
+      {
+        onMedia: (): void => undefined,
+        onState: (): void => undefined,
+        onVideoFlow: (): void => undefined,
+        setListening: (): void => undefined,
+        setTalking: (): Promise<void> => Promise.resolve(),
+        stats: (): Promise<unknown> => Promise.resolve(null),
+        close: (): void => undefined,
+      },
+      'mse',
+    );
+    hooks.report({ kind: 'starting' });
+    vi.advanceTimersByTime(29_000);
+    expect(session.state.get().phase.kind).toBe('starting');
+    vi.advanceTimersByTime(1_000);
+    expect(session.state.get().phase.kind).toBe('failed');
+    releaseSession(session);
     vi.advanceTimersByTime(10_000);
   });
 });

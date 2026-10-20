@@ -39,7 +39,6 @@ async function start(): Promise<RunningGo2rtc> {
     xiaomi: {},
     log: testLogger(),
     exited: () => undefined,
-    reported: () => undefined,
   });
 }
 

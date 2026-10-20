@@ -104,6 +104,12 @@
           "active": false,
           "endedAt": null
         },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
         "now": 100000
       },
       "view": {
@@ -120,6 +126,7 @@
         "speaker": null,
         "camera": "off",
         "tray": null,
+        "chip": null,
         "request": null,
         "changesAt": 115000
       }
@@ -165,6 +172,12 @@
           "active": false,
           "endedAt": null
         },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
         "now": 100000
       },
       "view": {
@@ -181,6 +194,7 @@
         "speaker": null,
         "camera": "off",
         "tray": null,
+        "chip": null,
         "request": null,
         "changesAt": 115000
       }
@@ -226,6 +240,12 @@
           "active": false,
           "endedAt": null
         },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
         "now": 100000
       },
       "view": {
@@ -242,6 +262,7 @@
         "speaker": null,
         "camera": "off",
         "tray": null,
+        "chip": null,
         "request": null,
         "changesAt": 108000
       }
@@ -301,6 +322,12 @@
         "hold": {
           "active": false,
           "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
         },
         "now": 100000
       },
@@ -386,6 +413,11 @@
               "critical": false
             }
           ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
           "mics": [
             {
               "id": "yeti",
@@ -398,6 +430,12 @@
           ],
           "micId": null,
           "volume": 0.8
+        },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
         },
         "request": null,
         "changesAt": null
@@ -458,6 +496,12 @@
         "hold": {
           "active": false,
           "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
         },
         "now": 100000
       },
@@ -543,6 +587,11 @@
               "critical": false
             }
           ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
           "mics": [
             {
               "id": "yeti",
@@ -555,6 +604,12 @@
           ],
           "micId": null,
           "volume": 0.8
+        },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
         },
         "request": null,
         "changesAt": null
@@ -615,6 +670,12 @@
         "hold": {
           "active": false,
           "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
         },
         "now": 100000
       },
@@ -700,6 +761,11 @@
               "critical": false
             }
           ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
           "mics": [
             {
               "id": "yeti",
@@ -712,6 +778,12 @@
           ],
           "micId": null,
           "volume": 0.8
+        },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
         },
         "request": null,
         "changesAt": null
@@ -772,6 +844,12 @@
         "hold": {
           "active": false,
           "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
         },
         "now": 100000
       },
@@ -857,6 +935,11 @@
               "critical": false
             }
           ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
           "mics": [
             {
               "id": "yeti",
@@ -869,6 +952,12 @@
           ],
           "micId": null,
           "volume": 0.8
+        },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
         },
         "request": null,
         "changesAt": null
@@ -929,6 +1018,12 @@
         "hold": {
           "active": false,
           "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
         },
         "now": 100000
       },
@@ -1014,6 +1109,11 @@
               "critical": false
             }
           ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
           "mics": [
             {
               "id": "yeti",
@@ -1026,6 +1126,12 @@
           ],
           "micId": null,
           "volume": 0.8
+        },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
         },
         "request": null,
         "changesAt": null
@@ -1091,6 +1197,12 @@
           "active": false,
           "endedAt": null
         },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
         "now": 100000
       },
       "view": {
@@ -1107,6 +1219,7 @@
         "speaker": null,
         "camera": "off",
         "tray": null,
+        "chip": null,
         "request": null,
         "changesAt": 107000
       }
@@ -1171,6 +1284,12 @@
           "active": false,
           "endedAt": null
         },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
         "now": 100000
       },
       "view": {
@@ -1187,6 +1306,7 @@
         "speaker": null,
         "camera": "off",
         "tray": null,
+        "chip": null,
         "request": null,
         "changesAt": null
       }
@@ -1250,6 +1370,12 @@
           "active": false,
           "endedAt": null
         },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
         "now": 100000
       },
       "view": {
@@ -1266,6 +1392,7 @@
         "speaker": null,
         "camera": "off",
         "tray": null,
+        "chip": null,
         "request": null,
         "changesAt": 101500
       }
@@ -1326,6 +1453,12 @@
           "active": false,
           "endedAt": null
         },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
         "now": 100000
       },
       "view": {
@@ -1342,6 +1475,7 @@
         "speaker": null,
         "camera": "off",
         "tray": null,
+        "chip": null,
         "request": null,
         "changesAt": 101100
       }
@@ -1402,6 +1536,12 @@
           "active": false,
           "endedAt": null
         },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
         "now": 100000
       },
       "view": {
@@ -1418,6 +1558,7 @@
         "speaker": null,
         "camera": "off",
         "tray": null,
+        "chip": null,
         "request": null,
         "changesAt": null
       }
@@ -1478,6 +1619,12 @@
           "active": false,
           "endedAt": null
         },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
         "now": 100000
       },
       "view": {
@@ -1494,6 +1641,7 @@
         "speaker": null,
         "camera": "off",
         "tray": null,
+        "chip": null,
         "request": null,
         "changesAt": null
       }
@@ -1553,6 +1701,12 @@
         "hold": {
           "active": false,
           "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
         },
         "now": 100000
       },
@@ -1638,6 +1792,11 @@
               "critical": false
             }
           ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
           "mics": [
             {
               "id": "yeti",
@@ -1650,6 +1809,12 @@
           ],
           "micId": null,
           "volume": 0.8
+        },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
         },
         "request": null,
         "changesAt": null
@@ -1713,6 +1878,12 @@
         "hold": {
           "active": false,
           "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
         },
         "now": 100000
       },
@@ -1798,6 +1969,11 @@
               "critical": false
             }
           ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
           "mics": [
             {
               "id": "yeti",
@@ -1810,6 +1986,12 @@
           ],
           "micId": null,
           "volume": 0.8
+        },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
         },
         "request": null,
         "changesAt": null
@@ -1828,7 +2010,7 @@
         },
         "surface": {
           "platform": "phone",
-          "foreground": false
+          "main": "away"
         },
         "call": {
           "phase": "speaking",
@@ -1869,6 +2051,12 @@
         "hold": {
           "active": false,
           "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
         },
         "now": 100000
       },
@@ -1940,6 +2128,11 @@
               "critical": false
             }
           ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
           "mics": [
             {
               "id": "yeti",
@@ -1953,12 +2146,18 @@
           "micId": null,
           "volume": 0.8
         },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
+        },
         "request": null,
         "changesAt": null
       }
     },
     {
-      "name": "phone-foreground",
+      "name": "phone-call-page",
       "input": {
         "prefs": {
           "enabled": true,
@@ -1970,7 +2169,7 @@
         },
         "surface": {
           "platform": "phone",
-          "foreground": true
+          "main": "call"
         },
         "call": {
           "phase": "listening",
@@ -2012,6 +2211,12 @@
           "active": false,
           "endedAt": null
         },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
         "now": 100000
       },
       "view": {
@@ -2028,6 +2233,166 @@
         "speaker": null,
         "camera": "off",
         "tray": null,
+        "chip": null,
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "phone-other-page-compact",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "phone",
+          "main": "other"
+        },
+        "call": {
+          "phase": "speaking",
+          "muted": false,
+          "heard": "",
+          "said": "Done",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "speaking",
+        "mode": "compact",
+        "status": "Speaking",
+        "detail": null,
+        "caption": "Done",
+        "orb": "speaking",
+        "level": "output",
+        "glow": "off",
+        "controls": ["mute", "interrupt", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
+        },
         "request": null,
         "changesAt": null
       }
@@ -2045,7 +2410,7 @@
         },
         "surface": {
           "platform": "phone",
-          "foreground": false
+          "main": "away"
         },
         "call": {
           "phase": "reconnecting",
@@ -2086,6 +2451,12 @@
         "hold": {
           "active": false,
           "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
         },
         "now": 100000
       },
@@ -2164,6 +2535,11 @@
               "critical": false
             }
           ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
           "mics": [
             {
               "id": "yeti",
@@ -2176,6 +2552,852 @@
           ],
           "micId": null,
           "volume": 0.8
+        },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "voice-loading",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "voice": null,
+        "now": 100000
+      },
+      "view": {
+        "state": "listening",
+        "mode": "full",
+        "status": "Listening",
+        "detail": null,
+        "caption": null,
+        "orb": "listening",
+        "level": "input",
+        "glow": "listening",
+        "controls": ["mute", "camera", "share", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_window",
+              "label": "Share a window",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "setup": {
+            "level": null,
+            "state": "loading",
+            "note": "Loading thinking setting…"
+          },
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "chip": null,
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "voice-load-failed",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "voice": {
+          "thinking_level": null,
+          "saving": false,
+          "failed": true,
+          "changedInCall": false
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "listening",
+        "mode": "full",
+        "status": "Listening",
+        "detail": null,
+        "caption": null,
+        "orb": "listening",
+        "level": "input",
+        "glow": "listening",
+        "controls": ["mute", "camera", "share", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_window",
+              "label": "Share a window",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "setup": {
+            "level": null,
+            "state": "failed",
+            "note": "Could not load the thinking setting. Check the connection and try again."
+          },
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "chip": null,
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "voice-saving-high",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "high",
+          "saving": true,
+          "failed": false,
+          "changedInCall": false
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "listening",
+        "mode": "full",
+        "status": "Listening",
+        "detail": null,
+        "caption": null,
+        "orb": "listening",
+        "level": "input",
+        "glow": "listening",
+        "controls": ["mute", "camera", "share", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_window",
+              "label": "Share a window",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "setup": {
+            "level": "high",
+            "state": "saving",
+            "note": "Smartest and slowest."
+          },
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "chip": {
+          "level": "high",
+          "label": "Thinking: High",
+          "description": "Thinking: High. Open thinking settings.",
+          "warm": true
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "voice-failed-low",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "low",
+          "saving": false,
+          "failed": true,
+          "changedInCall": false
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "listening",
+        "mode": "full",
+        "status": "Listening",
+        "detail": null,
+        "caption": null,
+        "orb": "listening",
+        "level": "input",
+        "glow": "listening",
+        "controls": ["mute", "camera", "share", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_window",
+              "label": "Share a window",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "setup": {
+            "level": "low",
+            "state": "failed",
+            "note": "Could not save. Check the connection and try again."
+          },
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "chip": {
+          "level": "low",
+          "label": "Thinking: Low",
+          "description": "Thinking: Low. Open thinking settings.",
+          "warm": true
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "phone-voice-changed-medium",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "phone",
+          "main": "away"
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "medium",
+          "saving": false,
+          "failed": false,
+          "changedInCall": true
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "listening",
+        "mode": "full",
+        "status": "Listening",
+        "detail": null,
+        "caption": null,
+        "orb": "listening",
+        "level": "input",
+        "glow": "listening",
+        "controls": ["mute", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "setup": {
+            "level": "medium",
+            "state": "ready",
+            "note": "Applies after the call reconnects. To use it now, start a new call."
+          },
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "chip": {
+          "level": "medium",
+          "label": "Thinking: Medium",
+          "description": "Thinking: Medium. Open thinking settings.",
+          "warm": false
         },
         "request": null,
         "changesAt": null
@@ -2194,7 +3416,7 @@
         },
         "surface": {
           "platform": "phone",
-          "foreground": false
+          "main": "away"
         },
         "call": {
           "phase": "listening",
@@ -2238,6 +3460,12 @@
         "hold": {
           "active": false,
           "endedAt": null
+        },
+        "voice": {
+          "thinking_level": "off",
+          "saving": false,
+          "failed": false,
+          "changedInCall": false
         },
         "now": 100000
       },
@@ -2316,6 +3544,11 @@
               "critical": false
             }
           ],
+          "setup": {
+            "level": "off",
+            "state": "ready",
+            "note": "Fastest. Answers right away."
+          },
           "mics": [
             {
               "id": "yeti",
@@ -2328,6 +3561,12 @@
           ],
           "micId": null,
           "volume": 0.8
+        },
+        "chip": {
+          "level": "off",
+          "label": "Thinking off",
+          "description": "Thinking off. Open thinking settings.",
+          "warm": false
         },
         "request": null,
         "changesAt": null

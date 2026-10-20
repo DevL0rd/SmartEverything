@@ -1,13 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import {
-  ApiError,
-  type AutomationV2,
-  type CapabilityKey,
-  type DeviceRow,
-  type JsonValue,
-} from '@smarteverything/domain';
+import { ApiError, type DeviceRow, type JsonValue } from '@smarteverything/domain';
+import { MANIFEST, MANIFEST_SLOTS } from '@smarteverything/flow/compile/manifest';
+import type { Manifest } from '@smarteverything/flow/compile/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { requirePhoneAccess, requireReachableTargets } from '../../src/automations/target-reach';
+import { requireReachableTargets } from '../../src/automations/service-reach';
+import { requirePhoneAccess } from '../../src/server/handlers/scenes';
 import type { Caller } from '../../src/server/auth';
 import { checkedCommands, commandPrincipal, type CheckedInput } from '../../src/server/commands';
 import { captureLogs } from '../support/logs';
@@ -72,6 +69,10 @@ describe('commanding a phone through device commands', () => {
     ['flashlight', 'on'],
     ['dnd', true],
     ['ringer_mode', 'silent'],
+    ['screen_timeout', '60'],
+    ['auto_rotate', false],
+    ['haptic_feedback', false],
+    ['touch_sounds', false],
   ])('refuses another member %s on someone else’s phone', (capability, value) => {
     const refused = refusal(() => send(sam, capability, value));
     expect(refused.code).toBe('forbidden');
@@ -86,6 +87,24 @@ describe('commanding a phone through device commands', () => {
   it('lets the phone’s own person and the owner change its sound and screen', () => {
     expect(send(dana, 'ring_volume', 40)).toHaveLength(1);
     expect(send(owner, 'brightness', 40)).toHaveLength(1);
+  });
+
+  it('lets the phone’s person and the owner change the screen timeout and the system toggles', () => {
+    for (const person of [dana, owner]) {
+      expect(send(person, 'screen_timeout', '300')).toHaveLength(1);
+      expect(send(person, 'auto_rotate', false)).toHaveLength(1);
+      expect(send(person, 'haptic_feedback', true)).toHaveLength(1);
+      expect(send(person, 'touch_sounds', false)).toHaveLength(1);
+    }
+  });
+
+  it('lets only the phone’s person open a settings page, not even the owner', () => {
+    expect(send(dana, 'open_settings', 'write_settings')).toHaveLength(1);
+    const byOwner = refusal(() => send(owner, 'open_settings', 'wifi'));
+    expect(byOwner.code).toBe('forbidden');
+    expect(byOwner.message).toBe('Only the person who owns this phone can do this.');
+    const byMember = refusal(() => send(sam, 'open_settings', 'wifi'));
+    expect(byMember.message).toBe('Only the person who owns this phone can do this.');
   });
 
   it('lets only the phone’s person launch an app, not even the owner', () => {
@@ -144,9 +163,20 @@ describe('commanding a phone through device commands', () => {
 });
 
 describe('saving work that commands a phone', () => {
-  const steps = (control: CapabilityKey): Pick<AutomationV2, 'steps'> => ({
-    steps: [{ id: randomUUID(), do: 'set', target: { device: phone.id }, control, to: 40 }],
-  });
+  const steps = (control: string): Manifest =>
+    MANIFEST.parse({
+      uses: Object.fromEntries(
+        MANIFEST_SLOTS.map((slot) => [
+          slot,
+          slot === 'device' ? [phone.id] : slot === 'control' ? [control] : [],
+        ]),
+      ),
+      dynamic: [],
+      budgets: [],
+      ai: false,
+      owner: false,
+      missing: [],
+    });
 
   it('refuses a member automation that sets sound on someone else’s phone', () => {
     expect(
@@ -162,6 +192,18 @@ describe('saving work that commands a phone', () => {
     }).not.toThrow();
     expect(() => {
       requireReachableTargets(test.store, caller(owner), steps('ring_volume'));
+    }).not.toThrow();
+  });
+
+  it('refuses an owner automation that opens a settings page on someone else’s phone', () => {
+    const actions = [{ deviceId: phone.id, capability: 'open_settings', value: 'wifi' }];
+    expect(
+      refusal(() => {
+        requirePhoneAccess(test.store, caller(owner), actions);
+      }).message,
+    ).toBe('Only the person who owns this phone can do this.');
+    expect(() => {
+      requirePhoneAccess(test.store, caller(dana), actions);
     }).not.toThrow();
   });
 

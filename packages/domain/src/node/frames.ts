@@ -4,6 +4,9 @@ import {
   EAR_CODEC,
   EAR_KEY,
   EAR_PACKET,
+  EAR_SCORE,
+  EAR_SCORE_FAILED,
+  EAR_SCORED,
   EAR_SOURCE,
   LISTENING_CONFIG,
   LISTENING_HUB_MESSAGE,
@@ -11,6 +14,7 @@ import {
   REMOTE_EAR_HUB_MESSAGE,
   REMOTE_EAR_NODE_MESSAGE,
 } from '../listening';
+import { APP_EVENTS_FRAME } from './computer-app-events';
 import { COMPUTER_SCOPES } from './computer-scopes';
 import { COMPUTER_FEATURE_LIST } from './computer-features';
 import { COMPUTER_ROLE } from './computer-role';
@@ -85,11 +89,15 @@ export const NODE_FRAME = z.discriminatedUnion('type', [
     actions: MACHINE_ACTION_SUPPORTS,
     permissions: MACHINE_PERMISSION_STATES,
   }),
+  z.object({ type: z.literal('features'), features: COMPUTER_FEATURE_LIST }),
   NODE_SAMPLE_FRAME,
   NODE_STATE_FRAME,
+  APP_EVENTS_FRAME,
   z.object({ type: z.literal('reply'), id: REQUEST_ID, result: NODE_RESULT }),
   z.object({ type: z.literal('ear'), ear: LISTENING_NODE_MESSAGE }),
   z.object({ type: z.literal('ears'), key: EAR_KEY, ear: REMOTE_EAR_NODE_MESSAGE }),
+  z.object({ type: z.literal('ears_scored'), ...EAR_SCORED.shape }),
+  z.object({ type: z.literal('ears_score_failed'), ...EAR_SCORE_FAILED.shape }),
 ]);
 
 export type NodeFrame = z.infer<typeof NODE_FRAME>;
@@ -108,6 +116,7 @@ export const HUB_FRAME = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ears_audio'), key: EAR_KEY, packets: z.array(EAR_PACKET).min(1) }),
   z.object({ type: z.literal('ears_close'), key: EAR_KEY }),
   z.object({ type: z.literal('ears'), key: EAR_KEY, ear: REMOTE_EAR_HUB_MESSAGE }),
+  z.object({ type: z.literal('ears_score'), ...EAR_SCORE.shape }),
 ]);
 
 export type HubFrame = z.infer<typeof HUB_FRAME>;

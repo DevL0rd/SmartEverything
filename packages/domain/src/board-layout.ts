@@ -50,9 +50,11 @@ export const WIDGET_FOOTPRINTS: Readonly<
   },
 };
 
-export const WIDGET_KEY = z.string().regex(/^[a-z][a-z0-9_:-]{0,79}$/, 'a lower-case widget key');
+export const WIDGET_KEY = z.string().regex(/^[a-z][a-z0-9_.:-]{0,119}$/, 'a lower-case widget key');
 
-export const WIDGET_TYPE = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/, 'a lower-case widget type');
+export const WIDGET_TYPE = z
+  .string()
+  .regex(/^[a-z][a-z0-9_.-]{0,112}$/, 'a lower-case widget type');
 
 export const BOARD_WIDGET = z.strictObject({
   key: WIDGET_KEY,
@@ -75,13 +77,38 @@ export type BoardArrangement = z.infer<typeof BOARD_ARRANGEMENT>;
 
 export const BOARD_LAYOUT_VERSION = 2;
 
+const BOARD_ARRANGEMENTS = z.strictObject({
+  compact: BOARD_ARRANGEMENT.optional(),
+  medium: BOARD_ARRANGEMENT.optional(),
+  expanded: BOARD_ARRANGEMENT.optional(),
+});
+
+const BOARD_CLASS = z.enum(BOARD_CLASSES);
+
+const BOARD_FOLLOW = z
+  .strictObject({
+    compact: BOARD_CLASS.optional(),
+    medium: BOARD_CLASS.optional(),
+    expanded: BOARD_CLASS.optional(),
+  })
+  .refine((follow) => BOARD_CLASSES.every((board) => follow[board] !== board), {
+    message: 'a size cannot follow itself',
+  });
+
+export const BOARD_SNAPSHOT = z.strictObject({
+  classes: BOARD_ARRANGEMENTS,
+  follow: BOARD_FOLLOW.optional(),
+  added: BOARD_ARRANGEMENTS.optional(),
+});
+
+export type BoardSnapshot = z.infer<typeof BOARD_SNAPSHOT>;
+
 export const BOARD_LAYOUT = z.strictObject({
   version: z.literal(BOARD_LAYOUT_VERSION),
-  classes: z.strictObject({
-    compact: BOARD_ARRANGEMENT.optional(),
-    medium: BOARD_ARRANGEMENT.optional(),
-    expanded: BOARD_ARRANGEMENT.optional(),
-  }),
+  classes: BOARD_ARRANGEMENTS,
+  follow: BOARD_FOLLOW.optional(),
+  added: BOARD_ARRANGEMENTS.optional(),
+  previous: BOARD_SNAPSHOT.optional(),
 });
 
 export type BoardLayout = z.infer<typeof BOARD_LAYOUT>;
@@ -125,19 +152,20 @@ export function withKnownWidgets(layout: BoardLayout, known: ReadonlySet<string>
     return { widgets };
   };
   const classes: BoardLayout['classes'] = {};
+  const added: BoardLayout['classes'] = {};
   for (const board of BOARD_CLASSES) {
     const arrangement = keep(layout.classes[board]);
     if (arrangement !== undefined) {
       classes[board] = arrangement;
     }
+    const extra = keep(layout.added?.[board]);
+    if (extra !== undefined) {
+      added[board] = extra;
+    }
   }
-  return { layout: { version: BOARD_LAYOUT_VERSION, classes }, dropped: [...new Set(dropped)] };
-}
-
-export function withArrangementFor(
-  layout: BoardLayout,
-  board: BoardClass,
-  arrangement: BoardArrangement,
-): BoardLayout {
-  return { version: BOARD_LAYOUT_VERSION, classes: { ...layout.classes, [board]: arrangement } };
+  const kept = { ...layout, classes };
+  return {
+    layout: layout.added === undefined ? kept : { ...kept, added },
+    dropped: [...new Set(dropped)],
+  };
 }

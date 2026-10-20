@@ -168,7 +168,7 @@ describe('the control tools', () => {
     });
   });
 
-  it('run a scene, list scenes and switch an automation off', async () => {
+  it('run a scene and list scenes', async () => {
     const scene = API_ENDPOINTS.createScene.response.parse(
       await owner('POST', '/api/scenes', {
         name: 'Evening',
@@ -202,43 +202,6 @@ describe('the control tools', () => {
           { type: 'command', capability: 'power', value: true, device: 'Desk lamp' },
         ],
       },
-    ]);
-    const automation = API_ENDPOINTS.createAutomation.response.parse(
-      await owner('POST', '/api/automations', {
-        name: 'Night check',
-        definition: {
-          when: [{ on: 'signal', source: 'event', kind: 'motion' }],
-          steps: [{ do: 'notify', message: 'Motion' }],
-        },
-      }),
-    );
-    expect(structured(await tool('list_automations'))['automations']).toMatchObject([
-      { id: automation.id, name: 'Night check', enabled: true, run_count: 0 },
-    ]);
-    expect(
-      structured(
-        await tool('edit_automation', {
-          action: 'update',
-          automationId: automation.id,
-          enabled: false,
-        }),
-      ),
-    ).toMatchObject({
-      ok: true,
-      id: automation.id,
-      enabled: false,
-      summary: 'Updated automation “Night check”',
-    });
-    expect(
-      await refusal('edit_automation', {
-        action: 'update',
-        automationId: NOT_FOUND_ID,
-        enabled: true,
-      }),
-    ).toContain('There is no automation');
-    const night = structured(await tool('search_everything', { query: 'night' }));
-    expect(NAMED.parse(night['automations']).map((entry) => entry.name)).toStrictEqual([
-      'Night check',
     ]);
   });
 });
@@ -336,7 +299,7 @@ describe('the history, event, health and camera tools', () => {
     live.socket.close();
     const motion = structured(await tool('list_events', { kinds: ['motion'] }));
     expect(motion['events']).toMatchObject([{ kind: 'motion', device: 'Desk lamp' }]);
-    const all = structured(await tool('list_events', { deviceIds: [camera] }));
+    const all = structured(await tool('list_events', { deviceIds: [camera], kinds: ['doorbell'] }));
     expect(all['events']).toMatchObject([{ kind: 'doorbell', device: 'Front door' }]);
     const snapshot = await tool('camera_pictures', { view: 'saved', deviceId: camera });
     expect(snapshot.isError).toBe(false);

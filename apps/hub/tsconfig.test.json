@@ -14,12 +14,13 @@
       "@smarteverything/xiaomi": ["packages/xiaomi/src/index.ts"],
       "@smarteverything/tuya": ["packages/tuya/src/index.ts"],
       "@smarteverything/ble": ["packages/ble/src/index.ts"],
+      "@smarteverything/ipp": ["packages/ipp/src/index.ts"],
       "@smarteverything/harness": ["packages/harness/src/index.ts"],
       "@smarteverything/shelly": ["packages/shelly/src/index.ts"],
       "@smarteverything/shelly/rpc": ["packages/shelly/src/rpc-entry.ts"]
     },
     "lib": ["ES2023", "ESNext.TypedArrays"]
   },
-  "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts", "package.json"],
+  "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts", "bench/**/*.ts", "package.json"],
   "references": []
 }

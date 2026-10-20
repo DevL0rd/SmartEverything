@@ -27,7 +27,7 @@ const duplication = z.object({ threshold: z.number(), minLines: z.number() });
 const compiler = z.object({ compilerOptions: z.record(z.string(), z.unknown()) });
 const resolved = z.object({ rules: z.record(z.string(), z.unknown()).default({}) });
 
-const MEASURED_PACKAGES = ['logging', 'domain', 'xiaomi', 'ble', 'tuya', 'smartthings', 'shelly'];
+const MEASURED_PACKAGES = ['logging', 'domain', 'xiaomi', 'ble', 'ipp', 'tuya', 'smartthings', 'shelly'];
 
 const UNMEASURED_PACKAGES: Readonly<Record<string, string>> = {
   harness:

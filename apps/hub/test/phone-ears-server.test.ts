@@ -45,12 +45,16 @@ async function switchWakeOn(): Promise<void> {
 }
 
 describe('the phone ear over HTTP', () => {
-  it('refuses a phone that has not reported yet', async () => {
+  it('gives a paired phone that has not reported yet its config and a phone device row', async () => {
+    const before = await call(booted.base, booted.owner, { method: 'GET', path: '/api/devices' });
+    expect(JSON.stringify(before.body)).not.toContain('"kind":"phone"');
     const reply = await call(booted.base, phone.token, {
       method: 'GET',
       path: '/api/listening/phone/config',
     });
-    expect(reply.status).toBe(404);
+    expect(reply.status).toBe(200);
+    const after = await call(booted.base, booted.owner, { method: 'GET', path: '/api/devices' });
+    expect(JSON.stringify(after.body)).toContain('"kind":"phone"');
   });
 
   it('gives a reporting phone its config, grants its first claim and accepts its reports', async () => {

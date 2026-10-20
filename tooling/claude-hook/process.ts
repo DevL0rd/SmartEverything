@@ -16,6 +16,7 @@ export const HEAP_MB = 6144;
 export const VITEST_WORKERS = 4;
 export const INSTALL_LOCK = '/tmp/smarteverything-install.lock';
 export const INSTALL_TURNSTILE = '/tmp/smarteverything-install.turnstile';
+const LOW_PRIORITY = ['-n', '19', 'ionice', '-c3'] as const;
 const BUSY_EXIT = 200;
 const COALESCED_EXIT = 201;
 const KILL_GRACE_MS = 3000;
@@ -111,6 +112,15 @@ export function run(
   });
 }
 
+function lowPriority(
+  file: string,
+  args: readonly string[],
+  timeoutMs: number,
+  env: NodeJS.ProcessEnv,
+): Promise<Run> {
+  return run('nice', [...LOW_PRIORITY, file, ...args], timeoutMs, env);
+}
+
 function toolEnv(name: string): NodeJS.ProcessEnv {
   if (!HEAP_CAPPED.has(name)) return processEnv;
   const heap = `--max-old-space-size=${String(HEAP_MB)}`;
@@ -157,7 +167,8 @@ function skip(name: string, result: Run, waitMs: number): Run {
 export async function runGated(spec: Gated): Promise<Run> {
   const waitMs = spec.waitMs ?? GATE_WAIT_MS;
   const command = gatedCommand(spec, waitMs);
-  return skip(spec.name, await run('flock', command, spec.backstopMs, toolEnv(spec.name)), waitMs);
+  const result = await lowPriority('flock', command, spec.backstopMs, toolEnv(spec.name));
+  return skip(spec.name, result, waitMs);
 }
 
 export async function runTool(
@@ -174,7 +185,8 @@ export async function runTool(
   if (left <= 0) return { ...turnstile, code: null, timedOut: true, detail: 'install lock wait' };
   if (gated) return runGated({ name, binary: bin(name), args, timeoutMs, backstopMs: left });
   const limit = ['-k', '3', String(Math.ceil(left / 1000))];
-  return run('flock', ['-s', INSTALL_LOCK, 'timeout', ...limit, bin(name), ...args], left + 5000);
+  const command = ['-s', INSTALL_LOCK, 'timeout', ...limit, bin(name), ...args];
+  return lowPriority('flock', command, left + 5000, processEnv);
 }
 
 export function projectsTsc(projects: readonly string[]): Promise<Run> {

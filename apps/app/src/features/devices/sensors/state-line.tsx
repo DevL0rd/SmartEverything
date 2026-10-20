@@ -26,7 +26,7 @@ export function roomOnCard(cls: WideClass, room: string | null): string | null {
   return cls === 'm' ? null : room;
 }
 
-export function OfflineChip({ offline }: { readonly offline: boolean }): ReactNode {
+export function offlineChip(offline: boolean): ReactNode {
   return offline ? <Badge label="Offline" /> : undefined;
 }
 

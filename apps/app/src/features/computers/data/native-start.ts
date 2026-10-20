@@ -9,7 +9,7 @@ import {
   type ClaudeCliStart,
 } from '@smarteverything/domain';
 import { rawErrorText } from '../../../format/errors';
-import { computerAiKey } from './computer-ai';
+import { computerAiKey } from '../../../queries/keys';
 import {
   useClaudeCliOrigin,
   ClaudeCliOriginChangedError,

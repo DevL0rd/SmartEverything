@@ -1,6 +1,7 @@
 import type { DeviceEvent, JsonValue, StateUpdate } from '@smarteverything/domain';
 import type { Binding } from './bindings';
 import type { SmartThingsDeviceEvent } from './webhook-messages';
+import { passedThroughEvent } from './event-passthrough';
 import { SMARTTHINGS_EVENT_MAPPINGS, type SmartThingsEventMapping } from './event-registry';
 import { attributeValue } from './mapper-kit';
 import { rawAttributeKey } from './keys';
@@ -55,50 +56,62 @@ export function withEvent(
   };
 }
 
-export function statesForEvent(
-  state: DeviceState,
-  event: SmartThingsDeviceEvent,
-  observedAt: string,
-): readonly StateUpdate[] {
-  const touched = state.bindings.filter(
+function bindingsTouched(state: DeviceState, event: SmartThingsDeviceEvent): readonly Binding[] {
+  return state.bindings.filter(
     (binding) =>
       binding.component === event.componentId &&
       binding.sources.some(
         (source) => source.capability === event.capability && source.attribute === event.attribute,
       ),
   );
-  return updatesFor(state, touched, observedAt);
+}
+
+export function reportsAttribute(state: DeviceState, event: SmartThingsDeviceEvent): boolean {
+  return bindingsTouched(state, event).length > 0;
+}
+
+export function statesForEvent(
+  state: DeviceState,
+  event: SmartThingsDeviceEvent,
+  observedAt: string,
+): readonly StateUpdate[] {
+  return updatesFor(state, bindingsTouched(state, event), observedAt);
 }
 
 export function deviceEventsFor(
   event: SmartThingsDeviceEvent,
   occurredAt: string,
   previous?: ComponentStatus,
+  unreported = false,
 ): readonly DeviceEvent[] {
   if (event.stateChange === false) {
     return [];
   }
   const mapping = SMARTTHINGS_EVENT_MAPPINGS[`${event.capability}.${event.attribute}`];
-  if (mapping === undefined) {
-    return [];
-  }
-  if (
+  const mapped =
+    mapping === undefined
+      ? unreported
+        ? passedThroughEvent(event, occurredAt, previous)
+        : null
+      : registeredEvent(mapping, event, occurredAt, previous);
+  return mapped === null ? [] : [mapped];
+}
+
+function registeredEvent(
+  mapping: SmartThingsEventMapping,
+  event: SmartThingsDeviceEvent,
+  occurredAt: string,
+  previous: ComponentStatus | undefined,
+): DeviceEvent | null {
+  const repeated =
     mapping.changesOnly === true &&
     previous !== undefined &&
-    attributeValue(previous, event.capability, event.attribute) === event.value
-  ) {
-    return [];
-  }
-  if (mapping.values !== undefined && !mapping.values.includes(event.value)) {
-    return [];
-  }
-  const details = eventDetails(event, mapping);
-  if (details === null) {
-    return [];
-  }
-  return [
-    { externalId: event.deviceId, kind: mappedKind(mapping, event.value), occurredAt, details },
-  ];
+    attributeValue(previous, event.capability, event.attribute) === event.value;
+  const wanted = mapping.values === undefined || mapping.values.includes(event.value);
+  const details = repeated || !wanted ? null : eventDetails(event, mapping);
+  return details === null
+    ? null
+    : { externalId: event.deviceId, kind: mappedKind(mapping, event.value), occurredAt, details };
 }
 
 function eventDetails(

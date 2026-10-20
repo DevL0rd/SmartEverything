@@ -5,7 +5,7 @@
     "outDir": "./dist",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts", "package.json"],
+  "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts", "bench/**/*.ts", "package.json"],
   "references": [
     {
       "path": "../../packages/logging"
@@ -21,6 +21,9 @@
     },
     {
       "path": "../../packages/ble"
+    },
+    {
+      "path": "../../packages/ipp"
     },
     {
       "path": "../../packages/tuya"

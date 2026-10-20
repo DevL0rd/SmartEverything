@@ -31,6 +31,8 @@ const LOCAL_PREFS = z.strictObject({
   overlay: OVERLAY_PREFS,
   overlayBannerSeen: z.boolean(),
   sideKeyAssistant: z.boolean(),
+  setupSkipped: z.array(z.string()),
+  setupReach: z.enum(['home', 'away']).nullable(),
 });
 
 type Values = z.infer<typeof LOCAL_PREFS>;
@@ -64,6 +66,8 @@ const defaults: Values = {
   overlay: DEFAULT_OVERLAY_PREFS,
   overlayBannerSeen: false,
   sideKeyAssistant: false,
+  setupSkipped: [],
+  setupReach: null,
 };
 
 const values = new ValueStore<Values>(defaults);

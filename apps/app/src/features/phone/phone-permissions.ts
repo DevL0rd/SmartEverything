@@ -96,6 +96,10 @@ export async function allowAccessibility(): Promise<void> {
   await changePhoneNode(openAccessibilitySettings);
 }
 
+export async function openAppInfo(): Promise<void> {
+  await Linking.openSettings();
+}
+
 export async function allowOverlay(): Promise<void> {
   await changePhoneNode(openOverlaySettings);
 }

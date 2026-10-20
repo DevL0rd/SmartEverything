@@ -24,7 +24,7 @@ export interface PluginSpeechReader {
   ) => readonly { readonly source: SpeechSource; readonly label: string }[];
   readonly validate: (caller: ToolCaller, session?: TranscriptSession, sourceId?: string) => void;
 }
-export class DuplicateSpeechOccurrenceError extends Error {
+class DuplicateSpeechOccurrenceError extends Error {
   override readonly name = 'DuplicateSpeechOccurrenceError';
   constructor() {
     super('This committed speech occurrence was already admitted.');

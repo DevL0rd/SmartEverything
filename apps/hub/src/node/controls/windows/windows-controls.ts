@@ -6,13 +6,16 @@ import { SocketSessionAgent } from '../../session-agent/session-agent';
 import type { ComputerControls, ControlOptions } from '../controls';
 import { HomeFiles } from '../home-files';
 import { MachineRing } from '../machine-ring';
+import { modelSized } from '../model-picture';
 import { PortableMachine } from '../portable/portable-machine';
 import { PortableProcesses } from '../portable/portable-processes';
 import {
   unsupportedAudio,
   unsupportedDisplays,
+  unsupportedInput,
   unsupportedSession,
   unsupportedSystem,
+  unsupportedTiling,
   unsupportedWindows,
 } from '../portable/unsupported';
 import { WindowsApps } from './windows-apps';
@@ -50,10 +53,12 @@ export function windowsControls(options: ControlOptions): ComputerControls {
     audio: unsupportedAudio('Windows'),
     displays: unsupportedDisplays('Windows'),
     windows: unsupportedWindows('Windows'),
+    tiling: unsupportedTiling('Windows'),
     system: unsupportedSystem('Windows', windowsPlaces),
     apps: new WindowsApps(windowsShell, runProgram),
     files: new HomeFiles(),
-    capture: { capture: (target) => agent.capture(target) },
+    capture: { capture: async (target) => modelSized(await agent.capture(target)) },
+    input: unsupportedInput('Windows'),
     machine: new PortableMachine({
       machine: 'Windows',
       agent,

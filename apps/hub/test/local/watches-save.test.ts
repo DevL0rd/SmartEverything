@@ -5,6 +5,7 @@ import {
   type ClientRow,
   type DeviceRow,
   type HealthRecord,
+  type StateUpdate,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LocalWatches } from '../../src/local/watches';
@@ -20,6 +21,7 @@ let watches: LocalWatches;
 let device: DeviceRow;
 let profileId: string;
 let client: ClientRow;
+let pushed: StateUpdate[];
 
 function deviceKey(): null {
   return null;
@@ -78,11 +80,17 @@ beforeEach(async () => {
     created_at: NOW,
     last_seen_at: null,
   });
+  pushed = [];
   watches = new LocalWatches({
     store: test.store,
     secrets: { deviceKey },
     local: { observe, deviceOf },
     wearables,
+    state: {
+      push: (_provider, update): void => {
+        pushed.push(update);
+      },
+    },
     now: new FakeClock(NOW).now,
     log: testLogger('watch'),
   });
@@ -163,5 +171,53 @@ describe('saving a watch upload', () => {
     });
     await watches.save(device, profileId, { records: [ahead], samples: [], routes: [] }, client);
     expect(stored('Steps')).toHaveLength(1);
+  });
+});
+
+describe('reporting a watch workout', () => {
+  const state = {
+    phase: 'connected',
+    battery: 80,
+    charging: false,
+    worn: true,
+    firmware: null,
+    steps: null,
+    heartRate: null,
+    lastSyncAt: null,
+    error: null,
+    at: NOW,
+  } as const;
+
+  it('publishes the workout state as the watch_workout value', async () => {
+    await watches.report(
+      device,
+      profileId,
+      {
+        ...state,
+        workout: {
+          sport: 'treadmill',
+          state: 'paused',
+          startedAt: NOW,
+          endedAt: null,
+          pausedAt: NOW,
+          pausedSeconds: 0,
+          startedFrom: 'phone',
+          heartRate: null,
+          kcal: null,
+          steps: null,
+          distanceM: null,
+          updatedAt: NOW,
+        },
+      },
+      client,
+    );
+    expect(pushed).toEqual([
+      { externalId: EXTERNAL_ID, capability: 'watch_workout', value: 'paused', observedAt: NOW },
+    ]);
+  });
+
+  it('publishes nothing when the report carries no workout', async () => {
+    await watches.report(device, profileId, state, client);
+    expect(pushed).toEqual([]);
   });
 });

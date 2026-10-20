@@ -48,6 +48,11 @@ export const EVENT_KIND_LABELS: Readonly<Record<EventKind, string>> = {
   phone_unlocked: 'Phone unlocked',
   zone_enter: 'Entered zone',
   zone_leave: 'Left zone',
+  app_opened: 'App opened',
+  app_closed: 'App closed',
+  app_focused: 'App in front',
+  app_unfocused: 'App sent to the back',
+  signal: 'Home event',
 };
 
 export const LAUNDRY_EVENT_FAMILY = 'laundry';
@@ -56,16 +61,39 @@ export function eventLabel(kind: EventKind, details: Readonly<Record<string, unk
   if (kind === 'cycle_finished' && details['family'] === LAUNDRY_EVENT_FAMILY) {
     return details['outcome'] === 'stopped' ? 'Laundry stopped' : 'Laundry done';
   }
+  if (kind === 'signal' && typeof details['label'] === 'string' && details['label'] !== '') {
+    return details['label'];
+  }
   const detection = cameraDetectionOf(kind, details);
   return detection === null
     ? EVENT_KIND_LABELS[kind]
     : CAMERA_DETECTION_PRESENTATIONS[detection].label;
 }
 
+const APP_EVENT_KEYWORDS: readonly string[] = [
+  'app',
+  'application',
+  'program',
+  'window',
+  'software',
+];
+
+const EVENT_KIND_KEYWORDS: Readonly<Partial<Record<EventKind, readonly string[]>>> = {
+  app_opened: [...APP_EVENT_KEYWORDS, 'launched', 'started'],
+  app_closed: [...APP_EVENT_KEYWORDS, 'quit', 'exited'],
+  app_focused: [...APP_EVENT_KEYWORDS, 'front', 'active', 'switched to'],
+  app_unfocused: [...APP_EVENT_KEYWORDS, 'back', 'inactive', 'switched away'],
+};
+
 export function eventKeywords(
   kind: EventKind,
   details: Readonly<Record<string, unknown>>,
 ): readonly string[] {
+  if (kind === 'signal') {
+    return [details['source'], details['kind']].filter((part) => typeof part === 'string');
+  }
   const detection = cameraDetectionOf(kind, details);
-  return detection === null ? [] : CAMERA_DETECTION_PRESENTATIONS[detection].keywords;
+  return detection === null
+    ? (EVENT_KIND_KEYWORDS[kind] ?? [])
+    : CAMERA_DETECTION_PRESENTATIONS[detection].keywords;
 }

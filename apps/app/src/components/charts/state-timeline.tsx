@@ -102,9 +102,9 @@ function Track<S extends string>({
       className={cn('relative overflow-hidden rounded-sm', TRACK[track ?? 'surface-3'])}
       onLayout={onLayout}
     >
-      {segments.map((segment) => (
+      {segments.map((segment, index) => (
         <Block
-          key={`${String(segment.start)}-${segment.state}`}
+          key={`${String(index)}-${String(segment.start)}-${String(segment.end)}`}
           place={placeSegment(segment, lanes, frame)}
           colour={colours[segment.state]}
         />

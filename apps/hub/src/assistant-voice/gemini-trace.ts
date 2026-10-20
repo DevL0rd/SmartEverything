@@ -23,6 +23,7 @@ export class LiveTrace {
       automatic: options.automatic,
       windowed: options.window !== null,
       systemChars: options.system.length,
+      thinking: options.thinking ?? 'built_in',
     };
   }
 

@@ -6,18 +6,20 @@ const BOOT_TIMEOUT_MS = 60_000;
 
 async function removeAutomations(rig: Rig): Promise<void> {
   for (let pass = 0; pass < 10; pass += 1) {
-    const rows = await rig.request(API_ENDPOINTS.listAutomations);
-    if (rows.length === 0) return;
-    for (const row of rows)
-      await rig.refused(API_ENDPOINTS.removeAutomation, { params: { automationId: row.id } });
+    const { tables } = await rig.request(API_ENDPOINTS.readSnapshot);
+    if (tables.automations.length === 0) return;
+    for (const row of tables.automations)
+      await rig.refused(API_ENDPOINTS.removeAutomationProgram, {
+        params: { automationId: row.id },
+      });
   }
   throw new Error('The automations could not be removed.');
 }
 
 async function clearHome(rig: Rig): Promise<void> {
-  for (const run of await rig.request(API_ENDPOINTS.listAutomationRuns)) {
-    if (['queued', 'running', 'cancelling'].includes(run.status)) {
-      await rig.request(API_ENDPOINTS.stopAutomationRun, { params: { runId: run.id } });
+  for (const run of await rig.request(API_ENDPOINTS.listProgramRuns)) {
+    if (['queued', 'running', 'waiting', 'paused', 'cancelling'].includes(run.status)) {
+      await rig.request(API_ENDPOINTS.stopProgramRun, { params: { runId: run.id } });
     }
   }
   for (const schedule of await rig.request(API_ENDPOINTS.listSchedules)) {

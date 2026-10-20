@@ -15,7 +15,7 @@ import { airStateText, airStateTone } from './air-model';
 import { CardActions } from './card-actions';
 import { PurifierGraph } from './purifier-parts';
 import { levelPercent, numberAt } from './reading';
-import { SensorFrame, VisibleRoot } from './sensor-frame';
+import { SensorFrame, useVisibleFrame } from './sensor-frame';
 import { levelPill } from './state-line';
 
 interface PurifierRead {
@@ -53,16 +53,15 @@ function factsOf(line: string, read: PurifierRead): readonly string[] {
 function WidePurifier({
   device,
   cls,
-  live,
   pm,
   filter,
 }: {
   readonly device: Device;
   readonly cls: WideClass;
-  readonly live: boolean;
   readonly pm: PresentedCapability;
   readonly filter: PresentedCapability | undefined;
 }): ReactNode {
+  const visible = useVisibleFrame();
   const read = usePurifierRead(device, pm, filter);
   const label = read.pm25 === null ? '' : AIR_BAND_LABELS[airBand(read.pm25)];
   const pill = levelPill('Filter', read.filter);
@@ -71,14 +70,21 @@ function WidePurifier({
     <SensorFrame
       device={device}
       cls={cls}
-      live={live}
+      visible={visible}
       line={line}
       tone={airStateTone(read.pm25, read.power)}
       offline={read.power === 'offline'}
       facts={factsOf(line, read)}
       figures={cls === 'm' || pill === null ? [] : [pill]}
       graph={
-        <PurifierGraph device={device} pm={pm} pm25={read.pm25} filter={read.filter} cls={cls} />
+        <PurifierGraph
+          device={device}
+          pm={pm}
+          pm25={read.pm25}
+          filter={read.filter}
+          cls={cls}
+          live={visible.live}
+        />
       }
       actions={[<CardActions key="actions" device={device} cls={cls} />]}
     />
@@ -90,17 +96,12 @@ export function PurifierCard(props: CardFaceProps): ReactNode {
   const pm = withRole(presentation, 'pm25');
   const { device, cls } = props;
   return isWideClass(cls) && pm !== undefined ? (
-    <VisibleRoot>
-      {(live) => (
-        <WidePurifier
-          device={device}
-          cls={cls}
-          live={live}
-          pm={pm}
-          filter={withRole(presentation, 'filter_life')}
-        />
-      )}
-    </VisibleRoot>
+    <WidePurifier
+      device={device}
+      cls={cls}
+      pm={pm}
+      filter={withRole(presentation, 'filter_life')}
+    />
   ) : (
     <GenericCardFace {...props} />
   );

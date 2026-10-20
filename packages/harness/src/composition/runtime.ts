@@ -25,9 +25,9 @@ export function bootComposition(
         server: host.target.kind === 'server',
         catalogDescriptionMaxLength: skillCatalogueLength(options.desiredConfiguration),
       }),
-      mountLocalServices(ctx, host.homeDirectory, host.stateDirectory),
+      mountLocalServices(ctx, host.homeDirectory, host.stateDirectory, host.platform),
     ]);
-    await mountLocalTools(ctx, host.target.kind === 'server');
+    await mountLocalTools(ctx, host.target.kind === 'server', host.platform);
     await options.installModelRoutes(ctx);
   });
 }

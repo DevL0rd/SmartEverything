@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { API_ENDPOINTS, buildPath, matchPath } from '../src';
+import type { z } from 'zod';
 
 const FIRST = '00000000-0000-4000-8000-000000000001';
 const AT = '2026-10-08T07:00:00Z';
@@ -69,10 +70,6 @@ const CORE_ROUTES = {
   orderScenes: { method: 'PUT', path: '/api/scenes/order', access: 'member' },
   removeScene: { method: 'DELETE', path: '/api/scenes/:sceneId', access: 'member' },
   runScene: { method: 'POST', path: '/api/scenes/:sceneId/run', access: 'member' },
-  listAutomations: { method: 'GET', path: '/api/automations', access: 'member' },
-  createAutomation: { method: 'POST', path: '/api/automations', access: 'member' },
-  updateAutomation: { method: 'PATCH', path: '/api/automations/:automationId', access: 'member' },
-  removeAutomation: { method: 'DELETE', path: '/api/automations/:automationId', access: 'member' },
   readLayout: { method: 'GET', path: '/api/layouts/:page', access: 'member' },
   saveLayout: { method: 'PUT', path: '/api/layouts/:page', access: 'member' },
   listPushTargets: { method: 'GET', path: '/api/push-targets', access: 'owner' },
@@ -123,6 +120,8 @@ const SAMPLE_PARAMS: Readonly<Record<string, string>> = {
   source: 'sample',
   voice: 'Sadachbia',
   pid: '4242',
+  revision: '1',
+  hash: 'a'.repeat(64),
 };
 
 function sampleParam(name: string): string {
@@ -134,7 +133,8 @@ function paramsOf(path: string): Record<string, string> {
 }
 
 function accepts(name: Name, part: 'params' | 'query' | 'body', value: unknown): boolean {
-  return API_ENDPOINTS[name][part].safeParse(value).success;
+  const schema: z.ZodType = API_ENDPOINTS[name][part];
+  return schema.safeParse(value).success;
 }
 
 describe('the endpoint table', () => {
@@ -167,7 +167,10 @@ describe('endpoint parameters', () => {
   it.each(NAMES)('%s accepts exactly the parameters its path names', (name) => {
     const { path, params } = API_ENDPOINTS[name];
     const sample = paramsOf(path);
-    expect(params.parse(sample)).toStrictEqual(sample);
+    const parsed: Record<string, unknown> = params.parse(sample);
+    expect(
+      Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value)])),
+    ).toStrictEqual(sample);
     expect(matchPath(path, buildPath(path, sample))).toStrictEqual(sample);
     expect(accepts(name, 'params', { ...sample, extra: FIRST })).toBe(false);
   });
@@ -202,8 +205,6 @@ describe('endpoint parameters', () => {
       'updateScene',
       'removeScene',
       'runScene',
-      'updateAutomation',
-      'removeAutomation',
       'revokeHealthSource',
       'revokeMcpToken',
     ] as const) {

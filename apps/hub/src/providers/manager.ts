@@ -133,9 +133,11 @@ export class ProviderManager implements AdapterDirectory {
   }
 
   private linkContext(provider: Provider): LinkContext {
+    const stored = this.options.secrets.read().accounts[provider];
     return {
       log: this.options.log.child({ actorId: provider }),
       dataDirectory: join(this.options.dataDirectory, 'providers', provider),
+      ...(stored === undefined ? {} : { stored }),
       ask: (prompt) => this.prompts.ask(provider, prompt),
       show: (prompt) => this.prompts.show(provider, prompt),
     };

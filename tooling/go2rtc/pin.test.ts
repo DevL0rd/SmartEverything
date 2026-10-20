@@ -23,4 +23,11 @@ describe('go2rtc pin', () => {
     expect(patch).toContain('case stateInternal:');
     expect(patch).toContain('TestStopProducersKeepsInternalProducer');
   });
+
+  it('keeps a played backchannel linked when the camera connection reconnects', () => {
+    const patch = readFileSync(join(HERE, 'patches', 'play-backchannel-reconnect.patch'), 'utf8');
+    expect(patch).toContain('matchTrack(src, producer)');
+    expect(patch).toContain('producer.removeSender(track)');
+    expect(patch).toContain('TestPlayKeepsBackchannelAcrossCameraReconnect');
+  });
 });

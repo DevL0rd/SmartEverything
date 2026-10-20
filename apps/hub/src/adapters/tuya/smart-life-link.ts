@@ -10,7 +10,7 @@ import {
   type SmartLifeSession,
 } from '@smarteverything/tuya';
 import { ProviderProblemError, type LinkContext } from '../contract';
-import { readJson } from './cloud-client';
+import { readJson } from './smart-life-cloud';
 import type { TuyaDependencies } from './dependencies';
 
 const SMART_LIFE_APP = 'Smart Life or Tuya Smart';
@@ -37,6 +37,16 @@ class QrSignInWithdrawnError extends Error {
   }
 }
 
+class UserCodeRejectedError extends Error {
+  override readonly name = 'UserCodeRejectedError';
+
+  constructor(override readonly cause: TuyaCloudError) {
+    super(
+      'That User Code did not work. Copy it again from Smart Life: Me > Settings > Account and Security > User Code. Capital letters matter.',
+    );
+  }
+}
+
 async function requestQrCode(dependencies: LoginDependencies, userCode: string): Promise<string> {
   const operation = 'requesting a Smart Life QR code';
   const response = await dependencies.fetch(qrTokenUrl(userCode), { method: 'POST' });
@@ -44,7 +54,7 @@ async function requestQrCode(dependencies: LoginDependencies, userCode: string):
     return readQrToken(await readJson(operation, response));
   } catch (cause) {
     if (cause instanceof TuyaCloudError) {
-      throw new ProviderProblemError('bad_credentials', cause);
+      throw new ProviderProblemError('bad_credentials', new UserCodeRejectedError(cause));
     }
     throw cause;
   }
@@ -95,11 +105,13 @@ export async function signInWithUserCode(
   context: LinkContext,
 ): Promise<SmartLifeSession> {
   const qrToken = await requestQrCode(dependencies, userCode);
+  const issuedAt = dependencies.now();
   const shown = await context.show({
     kind: 'scan_qr',
     app: SMART_LIFE_APP,
     content: qrContent(qrToken),
-    expiresAt: new Date(dependencies.now() + dependencies.timing.qrScanTimeoutMs).toISOString(),
+    issuedAt: new Date(issuedAt).toISOString(),
+    expiresAt: new Date(issuedAt + dependencies.timing.qrScanTimeoutMs).toISOString(),
   });
   const withdrawn = new AbortController();
   shown.answer.then(

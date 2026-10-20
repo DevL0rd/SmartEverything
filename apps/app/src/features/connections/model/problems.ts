@@ -17,7 +17,8 @@ function problemTitles(provider: Provider): Readonly<Record<ProviderProblem, str
     qr_expired: 'The code expired. Start again.',
     cancelled: 'Sign-in was cancelled',
     rate_limited: 'Too many tries. Wait a bit.',
-    not_supported: 'This account isn’t supported',
+    not_supported:
+      provider === 'tuya' ? 'This app isn’t supported' : 'This account isn’t supported',
     unknown: 'That didn’t work',
   };
 }

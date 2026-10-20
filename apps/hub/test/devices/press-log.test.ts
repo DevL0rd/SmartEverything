@@ -1,10 +1,10 @@
-import { TEST_AUTHOR } from '../support/automation-author';
-import type { AutomationV2, DeviceRow, EventKind, EventRow } from '@smarteverything/domain';
+import type { DeviceRow, EventKind, EventRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readDeviceLog } from '../../src/devices/device-log/read';
 import { pressDeviceButton, recordRefill } from '../../src/devices/press';
 import type { RunningHub } from '../../src/hub';
 import type { Caller } from '../../src/server/auth';
+import { saveAutomation, startRun, trigger } from '../support/automation-fixture';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 import { addDevice, addPerson, clockAt } from './log-fixture';
@@ -46,17 +46,11 @@ function pressAt(deviceId: string, at: string, details: Record<string, string> =
 }
 
 function reacting(name: string, button: DeviceRow, action: string, enabled = true): string {
-  const when: AutomationV2['when'] = [
-    { on: 'signal', source: 'event', kind: 'button', subject: button.id, match: { action } },
-  ];
-  const created = opened.store.automations.create({
+  return saveAutomation(opened.store, {
     name,
     enabled,
-    definition: { when, steps: [{ do: 'wait', ms: 1000 }] },
-    origin: null,
-    author: TEST_AUTHOR,
-  });
-  return created.id;
+    triggers: [trigger('trigger.button', { device: button.id, press: action })],
+  }).id;
 }
 
 function runOf(
@@ -65,12 +59,7 @@ function runOf(
   status: 'succeeded' | 'failed' | 'ignored' | 'running',
 ): void {
   clock.set(at);
-  const run = opened.store.automationRuns.create({
-    automationId,
-    revision: 1,
-    ownerProfileId: null,
-  });
-  opened.store.automationRuns.update(run.id, { status });
+  startRun(opened.store, automationId, status);
 }
 
 type RecordedEvent = Parameters<RunningHub['recordEvent']>[0];

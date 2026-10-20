@@ -10,6 +10,7 @@ const BACKSTOP_MS = 20_000;
 const dir = mkdtempSync(join(tmpdir(), 'hook-gate-'));
 const slow = join(dir, 'slow.sh');
 const spawner = join(dir, 'spawner.sh');
+const niceness = join(dir, 'niceness.sh');
 const previous = env['HOOK_GATE_DIR'];
 
 function alive(pid: number): boolean {
@@ -32,6 +33,8 @@ beforeAll(() => {
   env['HOOK_GATE_DIR'] = dir;
   writeFileSync(slow, '#!/bin/sh\nsleep "$1"\necho done\n');
   writeFileSync(spawner, '#!/bin/sh\nsleep 300 &\necho $! > "$1"\nwait\n');
+  writeFileSync(niceness, '#!/bin/sh\nnice\n');
+  chmodSync(niceness, 0o755);
   chmodSync(slow, 0o755);
   chmodSync(spawner, 0o755);
 });
@@ -127,6 +130,19 @@ describe('machine-wide gate', () => {
     const skipped = { ...result, code: null, skipped: 'another tsc check is running' };
     expect(skippedNotice('tsc -b', skipped)).toBe(true);
     expect(skippedNotice('tsc -b', result)).toBe(false);
+  });
+});
+
+describe('machine priority', () => {
+  it('runs a gated check at the lowest CPU priority so the hub and audio win', async () => {
+    const result = await runGated({
+      name: 'eslint',
+      binary: niceness,
+      args: [],
+      timeoutMs: 20_000,
+      backstopMs: BACKSTOP_MS,
+    });
+    expect(result.stdout.trim()).toBe('19');
   });
 });
 

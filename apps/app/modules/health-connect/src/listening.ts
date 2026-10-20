@@ -1,6 +1,6 @@
 import { withNativeEnrollment } from './hub-network';
 import { NativeModule, requireOptionalNativeModule } from 'expo';
-import type { ListeningPowerMode, PauseChoiceMs } from '@smarteverything/domain';
+import type { ListeningPowerMode } from '@smarteverything/domain';
 import { z } from 'zod';
 import { AppUpdateNeededError } from './health-connect';
 
@@ -26,7 +26,7 @@ export interface ListeningNativeConfig {
   readonly transcribe: boolean;
   readonly keywords: string;
   readonly threshold: number;
-  readonly pause_ms: PauseChoiceMs;
+  readonly pause_ms: number;
   readonly power_mode: ListeningPowerMode;
 }
 

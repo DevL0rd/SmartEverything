@@ -21,6 +21,12 @@ const sections: readonly VirtualSection<Entry>[] = [
 const keyOf = (item: Entry): string => item.key;
 
 describe('flattened list rows', () => {
+  it('gives a section without a title no header row and so nothing to stick', () => {
+    const rows = flattenSections([{ key: 'bare', title: null, data: [entry('r1')] }], keyOf);
+    expect(rows.map((row) => row.kind)).toEqual(['item']);
+    expect(headerIndices(rows)).toEqual([]);
+  });
+
   it('gives every item row its own item and never a section in its place', () => {
     const rows = flattenSections(sections, keyOf);
     const items = rows.flatMap((row) => (row.kind === 'item' ? [row.item] : []));

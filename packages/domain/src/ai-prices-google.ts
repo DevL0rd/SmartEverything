@@ -84,6 +84,18 @@ export const GOOGLE_MODELS: readonly GoogleModel[] = [
     pricing: LIVE_PRICES,
   },
   {
+    id: 'google:gemini-3.8-live-extended-thinking',
+    name: 'Gemini 3.8 Live Extended Thinking',
+    family: 'gemini-live',
+    description: 'Real-time voice conversations that reason in the background.',
+    kinds: ['live'],
+    input: MEDIA_IN,
+    output: ['text', 'audio'],
+    contextLength: 128_000,
+    reasoning: 'optional',
+    pricing: LIVE_PRICES,
+  },
+  {
     id: 'google:gemini-3.8-flash-lite-tts',
     name: 'Gemini 3.8 Flash-Lite TTS',
     family: 'gemini-tts',

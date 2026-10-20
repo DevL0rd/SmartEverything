@@ -1,6 +1,6 @@
 import { API_ENDPOINTS } from '@smarteverything/domain';
 import type { Client } from './client';
-import type { TestClock } from './test-clock';
+import type { SimulatedClock as TestClock } from '../../../src/clock/simulated';
 
 export interface FakeSky {
   temperature: number;

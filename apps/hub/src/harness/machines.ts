@@ -7,10 +7,8 @@ import type {
   AiMachineSwitchResult,
 } from '@smarteverything/domain';
 import type { ChatOwner } from '../assistant/chat-directory';
-import { machineLabel } from './machine-note';
+import { OS_NAMES, machineLabel } from './machine-note';
 import type { HarnessService } from './service';
-
-const OS_NAMES = { linux: 'Linux', windows: 'Windows', macos: 'macOS' } as const;
 
 function machineId(target: AiHarnessTarget): string {
   return target.kind === 'server' ? 'hub' : target.device_id;
@@ -31,6 +29,7 @@ export function listMachines(
       id: machineId(host.target),
       name: host.name,
       os: OS_NAMES[host.platform],
+      ...(host.sandbox === undefined ? {} : { sandbox: host.sandbox }),
       online: host.online,
       current: harnessTargetKey(host.target) === current,
     })),

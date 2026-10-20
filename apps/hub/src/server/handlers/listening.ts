@@ -4,6 +4,7 @@ import { speechPrincipal } from '../../transcripts/speech-principal';
 import type { WakeTest } from '../../wake-name/wake-test';
 import type { PhoneEars } from '../../listening/phone-ears';
 import type { ListeningRegistry, ListeningViewer } from '../../listening/listening-registry';
+import { phoneIdentityOf } from '../../phones/phone-identity';
 import { clientOf, profileIdOf, roleOfCaller, type Caller } from '../auth';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound } from '../router';
@@ -13,6 +14,10 @@ function viewerOf(context: ServerContext, caller: Caller): ListeningViewer {
     owner: roleOfCaller(caller) === 'owner',
     profileId: profileIdOf(context.store, caller),
   };
+}
+
+function enrollPhone(context: ServerContext, caller: Caller): Promise<void> {
+  return context.hub.phones.enroll(phoneIdentityOf(context.store, caller, 'listens as a phone'));
 }
 
 export const listeningRoutes = (
@@ -40,13 +45,16 @@ export const listeningRoutes = (
       wakeTest.watch(clientOf(caller).id, body.on);
       return DONE_REPLY;
     }),
-    readPhoneListeningConfig: bound(E.readPhoneListeningConfig, ({ caller }) =>
-      phones.config(clientOf(caller).id),
-    ),
-    claimPhoneWake: bound(E.claimPhoneWake, ({ body, caller }) =>
-      phones.claim(clientOf(caller).id, body),
-    ),
-    reportPhoneListening: bound(E.reportPhoneListening, ({ body, caller }) => {
+    readPhoneListeningConfig: bound(E.readPhoneListeningConfig, async ({ caller }) => {
+      await enrollPhone(context, caller);
+      return phones.config(clientOf(caller).id);
+    }),
+    claimPhoneWake: bound(E.claimPhoneWake, async ({ body, caller }) => {
+      await enrollPhone(context, caller);
+      return phones.claim(clientOf(caller).id, body);
+    }),
+    reportPhoneListening: bound(E.reportPhoneListening, async ({ body, caller }) => {
+      await enrollPhone(context, caller);
       phones.report(clientOf(caller).id, body);
       return DONE_REPLY;
     }),

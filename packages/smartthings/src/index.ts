@@ -53,6 +53,7 @@ export { resolveTvCommand, tvDevice } from './samsung-tv/device';
 export type { TvAction, TvIdentity } from './samsung-tv/device';
 export {
   BROADCAST_ADDRESS,
+  REST_PORT,
   WAKE_ON_LAN_PORT,
   deviceInfoUrl,
   magicPacket,
@@ -76,6 +77,7 @@ export {
   candidateOf,
   readSsdpAnswer,
   readSsdpAnnouncement,
+  sameTvModel,
   ssdpSearchMessage,
 } from './samsung-tv/discovery';
 export type { TvCandidate } from './samsung-tv/discovery';
@@ -93,7 +95,15 @@ export type {
   SubscriptionPlan,
   SubscriptionRequest,
 } from './subscriptions';
-export { deviceEventsFor, isOnlineHealth, statesForEvent, statesOf, withEvent } from './state';
+export { SMARTTHINGS_EVENT_MAPPINGS } from './event-registry';
+export {
+  deviceEventsFor,
+  isOnlineHealth,
+  reportsAttribute,
+  statesForEvent,
+  statesOf,
+  withEvent,
+} from './state';
 export type { DeviceState } from './state';
 export {
   WEBHOOK_EVENT_ANSWER,

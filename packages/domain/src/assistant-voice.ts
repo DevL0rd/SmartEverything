@@ -30,8 +30,34 @@ export const VOICE_RESULT_TIMINGS = ['pause', 'immediately'] as const;
 
 export const LIVE_CONTEXT_MINUTES = { min: 1, max: 60, fallback: 2 } as const;
 
+export const VOICE_LIVE_MODEL = 'gemini-3.8-live';
+
+export const VOICE_THINKING_MODEL = 'gemini-3.8-live-extended-thinking';
+
+export const VOICE_ACTIVE_THINKING_LEVELS = ['low', 'medium', 'high'] as const;
+
+export const VOICE_THINKING_LEVELS = ['off', ...VOICE_ACTIVE_THINKING_LEVELS] as const;
+
+export type VoiceThinkingLevel = (typeof VOICE_THINKING_LEVELS)[number];
+
+export type VoiceActiveThinking = (typeof VOICE_ACTIVE_THINKING_LEVELS)[number];
+
+export const DEFAULT_VOICE_THINKING: VoiceThinkingLevel = 'off';
+
+export function voiceModelFor(level: VoiceThinkingLevel): string {
+  return level === 'off' ? VOICE_LIVE_MODEL : VOICE_THINKING_MODEL;
+}
+
+export function voiceThinkingOf(level: VoiceThinkingLevel): VoiceActiveThinking | null {
+  return level === 'off' ? null : level;
+}
+
 const VOICE_SHAPE = {
-  model: z.string().trim().min(1).max(120),
+  thinking_level: z
+    .enum(VOICE_THINKING_LEVELS)
+    .describe(
+      `How hard the call model thinks before it answers. off uses ${VOICE_LIVE_MODEL}: it answers at once with light built-in reasoning (about 3 seconds for a reasoning question). low, medium and high use ${VOICE_THINKING_MODEL}: it reasons in the background and says a short filler while it works, smarter but slower (about 5 seconds at low, about 7 at high), and thinking is billed as output. The model follows from the level`,
+    ),
   voice: SPEECH_VOICE,
   speech_model: z
     .enum(SPEECH_MODELS)
@@ -78,9 +104,9 @@ const VOICE_SHAPE = {
   memory_lines: z.int().min(0).max(200).optional(),
 };
 
-export const ASSISTANT_VOICE_SETTINGS = z.strictObject({
+const VOICE_SETTINGS_OBJECT = z.strictObject({
   ...VOICE_SHAPE,
-  model: VOICE_SHAPE.model.default('gemini-3.8-live'),
+  thinking_level: VOICE_SHAPE.thinking_level.default(DEFAULT_VOICE_THINKING),
   voice: VOICE_SHAPE.voice.default('Sadachbia'),
   speech_model: VOICE_SHAPE.speech_model.default(CHEAPEST_SPEECH_MODEL),
   speech_voice: VOICE_SHAPE.speech_voice.default(null),
@@ -92,6 +118,20 @@ export const ASSISTANT_VOICE_SETTINGS = z.strictObject({
   live_warm_enabled: VOICE_SHAPE.live_warm_enabled.default(true),
   speech_context_minutes: VOICE_SHAPE.speech_context_minutes.default(5),
 });
+
+const LEGACY_VOICE_MODEL = z
+  .looseObject({ model: z.string(), thinking_level: z.string().optional() })
+  .transform(({ model, thinking_level: level, ...rest }) => ({
+    ...rest,
+    thinking_level: model === VOICE_THINKING_MODEL ? (level ?? 'low') : 'off',
+  }));
+
+function migrateVoiceSettings(stored: unknown): unknown {
+  const legacy = LEGACY_VOICE_MODEL.safeParse(stored);
+  return legacy.success ? legacy.data : stored;
+}
+
+export const ASSISTANT_VOICE_SETTINGS = z.preprocess(migrateVoiceSettings, VOICE_SETTINGS_OBJECT);
 
 export const ASSISTANT_VOICE_CHANGE = z.strictObject(VOICE_SHAPE).partial();
 

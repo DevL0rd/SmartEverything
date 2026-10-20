@@ -36,6 +36,11 @@ describe('sensorLabel', () => {
     expect(sensorLabel('amdgpu', 'mem')).toBe('GPU memory');
   });
 
+  it('treats a graphics reading named like an object property as an ordinary label', () => {
+    expect(sensorLabel('amdgpu', 'constructor')).toBe('Constructor');
+    expect(sensorLabel('amdgpu', 'toString')).toBe('To string');
+  });
+
   it('keeps the readings a processor, drive or board already names well', () => {
     expect(sensorLabel('coretemp', 'Package id 0')).toBe('Package id 0');
     expect(sensorLabel('coretemp', 'Core 3')).toBe('Core 3');

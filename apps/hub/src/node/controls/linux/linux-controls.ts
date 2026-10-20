@@ -6,7 +6,9 @@ import type { ComputerControls, ControlOptions } from '../controls';
 import { DesktopEntries } from './desktop-entries';
 import { DisplayRevert, systemRevertOptions, systemSchedule } from './display-revert';
 import { HomeFiles } from '../home-files';
+import { LinuxInput } from './input-control';
 import { KdeWindows } from './kde-windows';
+import { KonveyorTiling } from './konveyor';
 import { LinuxApps } from './linux-apps';
 import { LinuxCapture } from './linux-capture';
 import { LinuxMachine } from './linux-machine';
@@ -21,8 +23,12 @@ import { LogindPower } from './logind-power';
 import { spawnLines } from './line-stream';
 import { KwinNightLight } from './night-light';
 import { cachedProbe, programAvailable, type ProgramProbe } from './program-probe';
+import { availableDeviceTypes } from './portal-devices';
+import { PortalGrant } from './portal-grant';
+import { FileRestoreToken, restoreTokenFile } from './portal-token';
 import { PulseAudio } from './pulse-audio';
 import { DesktopRevertNotice } from './revert-notice';
+import { SessionBus } from './dbus-session';
 import { isKdePlasma, sessionEnvironment } from './session-environment';
 import { SpectacleCapture } from './spectacle-capture';
 import { WmctrlWindows } from './wmctrl-windows';
@@ -73,6 +79,38 @@ function linuxWindows(
   });
 }
 
+function linuxTiling(options: ControlOptions): KonveyorTiling {
+  const failed = partFailure(options, 'tiling');
+  return new KonveyorTiling({ open: () => SessionBus.open(failed), failed });
+}
+
+function linuxAgent(): SocketSessionAgent {
+  return new SocketSessionAgent(
+    sessionAgentDirectory('linux', {
+      runtimeDirectory: sessionEnvironment().XDG_RUNTIME_DIR,
+      localAppData: null,
+      home: homedir(),
+    }),
+  );
+}
+
+function linuxInput(
+  options: ControlOptions,
+  session: LinuxSession,
+  capture: LinuxCapture,
+): LinuxInput {
+  return new LinuxInput({
+    grant: new PortalGrant({
+      bus: () => session.bus(),
+      tokens: new FileRestoreToken(restoreTokenFile()),
+      log: options.log,
+    }),
+    deviceTypes: () => availableDeviceTypes(() => SessionBus.connect()),
+    picture: () => capture.picture(),
+    locked: () => session.locked(),
+  });
+}
+
 export function linuxControls(options: ControlOptions): ComputerControls {
   const entries = new DesktopEntries();
   const probe = cachedProbe(programAvailable);
@@ -82,13 +120,7 @@ export function linuxControls(options: ControlOptions): ComputerControls {
     lines: spawnLines,
     failed: partFailure(options, 'audio'),
   });
-  const agent = new SocketSessionAgent(
-    sessionAgentDirectory('linux', {
-      runtimeDirectory: sessionEnvironment().XDG_RUNTIME_DIR,
-      localAppData: null,
-      home: homedir(),
-    }),
-  );
+  const agent = linuxAgent();
   const session = new LinuxSession({
     entries,
     audio,
@@ -97,6 +129,11 @@ export function linuxControls(options: ControlOptions): ComputerControls {
       partFailure(options, part)(cause);
     },
   });
+  const capture = new LinuxCapture(
+    new SpectacleCapture(runProgram, options.now),
+    agent,
+    isKdePlasma,
+  );
   return {
     power: new LogindPower(runProgram),
     processes: new LinuxProcesses(),
@@ -105,10 +142,12 @@ export function linuxControls(options: ControlOptions): ComputerControls {
     audio,
     displays: linuxDisplays(options, probe, session),
     windows: linuxWindows(options, probe, session, entries),
+    tiling: linuxTiling(options),
     system: linuxSystemControls({ log: options.log }),
     apps: new LinuxApps(entries, () => session.bridge(), runProgram),
     files: new HomeFiles(),
-    capture: new LinuxCapture(new SpectacleCapture(runProgram, options.now), agent, isKdePlasma),
+    capture,
+    input: linuxInput(options, session, capture),
     machine: new LinuxMachine({
       run: runProgram,
       probe,

@@ -19,6 +19,7 @@ import {
   type WatchEvent,
 } from '../../../modules/health-connect';
 import { takeOverWatchBridge } from '../../api/watches';
+import { startWatchCapture } from '../../developer/watch-capture';
 import { ValueStore, useValue } from '../../design/external-store';
 import { rawErrorText } from '../../format/errors';
 import { sameJson } from '../../store/same-json';
@@ -128,6 +129,7 @@ async function bringUp(server: RelayServer): Promise<void> {
     const watches = await syncWatches(server.url, server.token);
     log.info('watch.synced', { watches: watches.length });
     if (watches.length > 0 && (await permitted())) {
+      await startWatchCapture();
       await startWatches();
       await setWatchLive(AppState.currentState === 'active');
     }
@@ -142,7 +144,7 @@ const NOTABLE = new Set([
   'failed',
   'sync_failed',
   'sync_file_unsupported',
-  'sync_file_capture',
+  'sync_list_window_full',
   'sync_file_unreadable',
   'sync_file_implausible',
   'sync_sleep_empty',

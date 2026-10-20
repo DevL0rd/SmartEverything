@@ -39,6 +39,12 @@ const LOST_BUTTON: TvNote = {
   wake: false,
 };
 
+const NOT_ON: TvNote = {
+  text: "It didn't turn on",
+  tone: 'critical',
+  wake: false,
+};
+
 function lockNote(key: TvKey, view: TvView): TvNote | null {
   const reason = view.locks[key];
   if (reason === undefined) {
@@ -152,6 +158,7 @@ function useNotes(device: Device, view: TvView, send: Send): Notes {
 interface Snapshot {
   readonly view: TvView;
   readonly lost: boolean;
+  readonly notOn: boolean;
 }
 
 function snapshotOf(state: StoreState, device: Device): Snapshot {
@@ -161,18 +168,22 @@ function snapshotOf(state: StoreState, device: Device): Snapshot {
     power.entry !== null &&
     power.entry.failure === null &&
     (power.entry.value ?? power.reported) === true;
+  const view = televisionView(device, deviceValuesOf(state, device.id), {
+    turningOn,
+    settings: state.tables.television_settings.byId[device.id] ?? null,
+  });
   return {
-    view: televisionView(device, deviceValuesOf(state, device.id), {
-      turningOn,
-      settings: state.tables.television_settings.byId[device.id] ?? null,
-    }),
+    view,
     lost: (remote.entry?.failure ?? null) !== null,
+    notOn: (power.entry?.failure ?? null) !== null && view.mode !== 'on',
   };
 }
 
 export function useTelevision(device: Device): Television {
   const ledger = useLedger();
-  const { view, lost } = useStoreSelector((state) => snapshotOf(state, device), sameJson, [device]);
+  const { view, lost, notOn } = useStoreSelector((state) => snapshotOf(state, device), sameJson, [
+    device,
+  ]);
   const notes = useNotes(device, view, async (capability, value) => {
     return (await ledger.send(device, capability, value)).sent;
   });
@@ -181,7 +192,7 @@ export function useTelevision(device: Device): Television {
     name: device.label,
     view,
     line: televisionLine(view),
-    note: notes.raised ?? (lost ? LOST_BUTTON : null),
+    note: notes.raised ?? (lost ? LOST_BUTTON : notOn ? NOT_ON : null),
     flash: notes.flash,
     press: notes.press,
     pressAll: notes.pressAll,

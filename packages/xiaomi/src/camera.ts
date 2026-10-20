@@ -10,7 +10,12 @@ export interface Go2rtcCamera {
   readonly ip: string;
   readonly did: string;
   readonly model: string;
+  readonly transport?: CameraTransport;
 }
+
+export type CameraTransport = 'udp' | 'tcp';
+
+export const DEFAULT_CAMERA_TRANSPORT: CameraTransport = 'udp';
 
 export interface CameraFeatures {
   readonly twoWayAudio: boolean;
@@ -23,7 +28,11 @@ export function isCameraModel(model: string): boolean {
 }
 
 export function go2rtcSource(camera: Go2rtcCamera): string {
-  const query = new URLSearchParams({ did: camera.did, model: camera.model });
+  const query = new URLSearchParams({
+    did: camera.did,
+    model: camera.model,
+    transport: camera.transport ?? DEFAULT_CAMERA_TRANSPORT,
+  });
   return `xiaomi://${encodeURIComponent(camera.userId)}:${camera.region}@${camera.ip}?${query.toString()}`;
 }
 

@@ -1,0 +1,192 @@
+diff --git a/internal/streams/play.go b/internal/streams/play.go
+--- a/internal/streams/play.go
++++ b/internal/streams/play.go
+@@ -33,8 +33,7 @@ func (s *Stream) Play(urlOrProd any) error {
+ 			continue
+ 		}
+ 
+-		cons, ok := producer.conn.(core.Consumer)
+-		if !ok {
++		if _, ok := producer.conn.(core.Consumer); !ok {
+ 			continue
+ 		}
+ 
+@@ -45,7 +44,8 @@ func (s *Stream) Play(urlOrProd any) error {
+ 			}
+ 		}
+ 
+-		if !matchMedia(src, cons) {
++		track := matchTrack(src, producer)
++		if track == nil {
+ 			continue
+ 		}
+ 
+@@ -53,6 +53,7 @@ func (s *Stream) Play(urlOrProd any) error {
+ 
+ 		go func() {
+ 			_ = src.Start()
++			producer.removeSender(track)
+ 			s.RemoveProducer(src)
+ 		}()
+ 
+@@ -132,7 +133,16 @@ func (s *Stream) RemoveInternalConsumer(conn core.Consumer) {
+ 	s.mu.Unlock()
+ }
+ 
++type trackTarget interface {
++	GetMedias() []*core.Media
++	AddTrack(media *core.Media, codec *core.Codec, track *core.Receiver) error
++}
++
+ func matchMedia(prod core.Producer, cons core.Consumer) bool {
++	return matchTrack(prod, cons) != nil
++}
++
++func matchTrack(prod core.Producer, cons trackTarget) *core.Receiver {
+ 	for _, consMedia := range cons.GetMedias() {
+ 		for _, prodMedia := range prod.GetMedias() {
+ 			if prodMedia.Direction != core.DirectionRecvonly {
+@@ -155,9 +165,9 @@ func matchMedia(prod core.Producer, cons core.Consumer) bool {
+ 				continue
+ 			}
+ 
+-			return true
++			return track
+ 		}
+ 	}
+ 
+-	return false
++	return nil
+ }
+diff --git a/internal/streams/play_backchannel_test.go b/internal/streams/play_backchannel_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/streams/play_backchannel_test.go
+@@ -0,0 +1,105 @@
++package streams
++
++import (
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/AlexxIT/go2rtc/pkg/core"
++	"github.com/stretchr/testify/require"
++)
++
++func opusMedia(direction string) *core.Media {
++	return &core.Media{
++		Kind:      core.KindAudio,
++		Direction: direction,
++		Codecs:    []*core.Codec{{Name: core.CodecOpus, ClockRate: 48000, Channels: 2}},
++	}
++}
++
++type backchannelCamera struct {
++	core.Connection
++	mu      sync.Mutex
++	added   []*core.Receiver
++	stopped chan struct{}
++}
++
++func newBackchannelCamera() *backchannelCamera {
++	camera := &backchannelCamera{stopped: make(chan struct{})}
++	camera.Medias = []*core.Media{opusMedia(core.DirectionSendonly)}
++	return camera
++}
++
++func (c *backchannelCamera) AddTrack(_ *core.Media, _ *core.Codec, track *core.Receiver) error {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.added = append(c.added, track)
++	return nil
++}
++
++func (c *backchannelCamera) tracks() []*core.Receiver {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	return append([]*core.Receiver(nil), c.added...)
++}
++
++func (c *backchannelCamera) Start() error {
++	<-c.stopped
++	return nil
++}
++
++func (c *backchannelCamera) Stop() error {
++	select {
++	case <-c.stopped:
++	default:
++		close(c.stopped)
++	}
++	return nil
++}
++
++type talkSource struct {
++	core.Connection
++	done chan struct{}
++}
++
++func newTalkSource() *talkSource {
++	source := &talkSource{done: make(chan struct{})}
++	source.Medias = []*core.Media{opusMedia(core.DirectionRecvonly)}
++	return source
++}
++
++func (s *talkSource) Start() error {
++	<-s.done
++	return nil
++}
++
++func (s *talkSource) Stop() error {
++	return nil
++}
++
++func TestPlayKeepsBackchannelAcrossCameraReconnect(t *testing.T) {
++	first := newBackchannelCamera()
++	second := newBackchannelCamera()
++	source := newTalkSource()
++	HandleFunc("bccam", func(string) (core.Producer, error) { return second, nil })
++	HandleFunc("bctalk", func(string) (core.Producer, error) { return source, nil })
++
++	camera := &Producer{url: "bccam://living", conn: first, state: stateStart, workerID: 1}
++	stream := &Stream{producers: []*Producer{camera}}
++
++	require.NoError(t, stream.Play("bctalk://feed"))
++	require.Len(t, first.tracks(), 1)
++	track := first.tracks()[0]
++
++	camera.reconnect(1, 0)
++
++	require.Equal(t, []*core.Receiver{track}, second.tracks())
++
++	close(source.done)
++	require.Eventually(t, func() bool {
++		camera.mu.Lock()
++		defer camera.mu.Unlock()
++		return len(camera.senders) == 0
++	}, time.Second, 10*time.Millisecond)
++	_ = second.Stop()
++}
+diff --git a/internal/streams/producer.go b/internal/streams/producer.go
+--- a/internal/streams/producer.go
++++ b/internal/streams/producer.go
+@@ -131,6 +131,18 @@ func (p *Producer) AddTrack(media *core.Media, codec *core.Codec, track *core.Re
+ 	return nil
+ }
+ 
++func (p *Producer) removeSender(track *core.Receiver) {
++	p.mu.Lock()
++	defer p.mu.Unlock()
++
++	for i, sender := range p.senders {
++		if sender == track {
++			p.senders = append(p.senders[:i], p.senders[i+1:]...)
++			return
++		}
++	}
++}
++
+ func (p *Producer) MarshalJSON() ([]byte, error) {
+ 	if conn := p.conn; conn != nil {
+ 		return json.Marshal(conn)

@@ -1,8 +1,13 @@
 import { currentExecutionAuthority } from '../assistant/turn-authority';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { CAPABILITY_KEY } from '@smarteverything/domain';
-import { DEVICE_RECORD, type DeviceRecord, type HubDatabase } from '../database/port';
+import { CAPABILITY_KEY, type DeviceRow } from '@smarteverything/domain';
+import {
+  DEVICE_RECORD,
+  type DeviceIdentity,
+  type DeviceRecord,
+  type HubDatabase,
+} from '../database/port';
 import type { Store } from './store';
 
 function settle<T>(work: () => T): Promise<T> {
@@ -17,9 +22,21 @@ function recordsOf(rows: readonly unknown[]): DeviceRecord[] {
   return rows.map((row) => DEVICE_RECORD.parse(row));
 }
 
+function identityOf(row: DeviceRow): DeviceIdentity {
+  return {
+    id: row.id,
+    kind: row.kind,
+    name: row.name,
+    model: row.model,
+    manufacturer: row.manufacturer,
+    providerRoom: row.provider_room,
+  };
+}
+
 type InventoryPart = Pick<
   HubDatabase,
   | 'loadDevices'
+  | 'loadDeviceIdentities'
   | 'upsertDevices'
   | 'setDevicesOnline'
   | 'removeDevices'
@@ -36,6 +53,7 @@ type InventoryPart = Pick<
 function inventoryPart(store: Store): InventoryPart {
   return {
     loadDevices: () => settle(() => recordsOf(store.devices.list())),
+    loadDeviceIdentities: () => settle(() => store.devices.list().map(identityOf)),
     upsertDevices: (rows) => settle(() => recordsOf(store.devices.upsert(rows))),
     setDevicesOnline: (ids, online) =>
       settle(() => recordsOf(store.devices.setOnline(ids, online))),

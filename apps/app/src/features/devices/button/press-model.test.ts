@@ -1,7 +1,11 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
-import { AUTOMATION_ROW, type AutomationRow, type EventRow } from '@smarteverything/domain';
+import type { EventRow } from '@smarteverything/domain';
+import {
+  buttonTrigger,
+  rowId,
+  setPower,
+  storedAutomationRow,
+} from '../../../test-support/automation-rows';
 import {
   STRIP_PRESS_MS,
   meaningFor,
@@ -12,45 +16,19 @@ import {
   weekCounts,
 } from './press-model';
 
-const STORED = z.array(
-  z.object({ name: AUTOMATION_ROW.shape.name, definition: AUTOMATION_ROW.shape.definition }),
-);
-const LIVE = STORED.parse(
-  JSON.parse(
-    readFileSync(
-      new URL('../../automations/model/live-automations.fixture.json', import.meta.url),
-      'utf8',
-    ),
-  ),
-);
-
 const KITCHEN = '00000000-0000-4000-8000-000000000129';
 const LIVING = '00000000-0000-4000-8000-000000000030';
-const STAMP = '2026-10-16T08:00:00.000Z';
 const NOW = Date.parse('2026-10-18T12:00:00.000Z');
 
-function rowOf(
-  index: number,
-  stored: { readonly name: string; readonly definition: AutomationRow['definition'] },
-  enabled = true,
-): AutomationRow {
-  return {
-    id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
-    name: stored.name,
+function pressRow(index: number, name: string, press: string | undefined, enabled = true): unknown {
+  return storedAutomationRow({
+    index,
+    name,
+    triggers: [buttonTrigger(KITCHEN, press)],
+    nodes: [setPower(LIVING, true)],
     enabled,
-    revision: 1,
-    definition: stored.definition,
-    origin: null,
-    author: null,
-    last_run_at: null,
-    last_error: null,
-    run_count: 0,
-    created_at: STAMP,
-    updated_at: STAMP,
-  };
+  });
 }
-
-const ROWS = LIVE.map((stored, index) => rowOf(index + 1, stored));
 
 function eventOf(deviceId: string, action: string, at: string): EventRow {
   return {
@@ -65,73 +43,44 @@ function eventOf(deviceId: string, action: string, at: string): EventRow {
 }
 
 describe('what a button does', () => {
-  it('reads press and hold from the live automations of the kitchen switch', () => {
+  const ROWS = [
+    pressRow(1, 'Kitchen switch - press cycles brightness', 'single_press'),
+    pressRow(2, 'Kitchen switch - long press off', 'long_press'),
+  ];
+
+  it('reads press and hold of the kitchen switch from stored rows', () => {
     const meaning = meaningOf(ROWS, KITCHEN);
     expect(meaning.map((entry) => entry.gestures)).toEqual([['single'], ['long']]);
+    expect(meaning.map((entry) => entry.automationId)).toEqual([rowId(1), rowId(2)]);
     expect(meaningLine(meaning)).toBe('Press: cycles brightness · Hold: off');
   });
 
   it('keeps one button apart from another', () => {
-    expect(meaningOf(ROWS, LIVING).map((entry) => entry.name)).toEqual([
-      'Living room switch - press cycles brightness',
-      'Living room switch - long press off',
-    ]);
-    expect(meaningOf(ROWS, '00000000-0000-4000-8000-999999999999')).toEqual([]);
-  });
-
-  it('leaves out automations that only react to a press by keeping notes', () => {
-    const reactive = rowOf(500, {
-      name: 'Presence - hands off after manual change',
-      definition: {
-        when: [
-          {
-            on: 'signal',
-            source: 'event',
-            kind: 'button',
-            subject: KITCHEN,
-            match: { action: 'single_press' },
-          },
-        ],
-        steps: [
-          { do: 'value', value: '00000000-0000-4000-8000-000000000131', op: 'set', amount: 1 },
-        ],
-        mode: 'single',
-      },
-    });
-    expect(meaningOf([reactive], KITCHEN)).toEqual([]);
+    expect(meaningOf(ROWS, LIVING)).toEqual([]);
   });
 
   it('leaves out switched-off automations', () => {
-    const first = LIVE[0];
-    if (first === undefined) throw new Error('Expected a live automation');
-    expect(meaningOf([rowOf(1, first, false)], LIVING)).toEqual([]);
+    expect(meaningOf([pressRow(1, 'Kitchen - press', 'single_press', false)], KITCHEN)).toEqual([]);
+  });
+
+  it('leaves out a stored row that no longer reads as a program', () => {
+    expect(meaningOf([{ id: 'old', name: 'Old', enabled: true, definition: {} }], KITCHEN)).toEqual(
+      [],
+    );
   });
 
   it('counts every gesture when a trigger names no action', () => {
-    const any = rowOf(501, {
-      name: 'Kitchen - any press',
-      definition: {
-        when: [{ on: 'signal', source: 'event', kind: 'button', subject: KITCHEN }],
-        steps: [{ do: 'notify', message: 'Pressed' }],
-        mode: 'single',
-      },
-    });
-    expect(meaningOf([any], KITCHEN)[0]?.gestures).toEqual(['single', 'double', 'long']);
+    expect(
+      meaningOf([pressRow(1, 'Kitchen - any press', undefined)], KITCHEN)[0]?.gestures,
+    ).toEqual(['single', 'double', 'long']);
   });
 
   it('says how many more there are after two', () => {
-    const many = ['single_press', 'double_press', 'long_press'].map((action, index) =>
-      rowOf(600 + index, {
-        name: `Kitchen - ${action === 'single_press' ? 'press' : action === 'double_press' ? 'double press' : 'long press'} lights`,
-        definition: {
-          when: [
-            { on: 'signal', source: 'event', kind: 'button', subject: KITCHEN, match: { action } },
-          ],
-          steps: [{ do: 'notify', message: 'x' }],
-          mode: 'single',
-        },
-      }),
-    );
+    const many = [
+      pressRow(1, 'Kitchen - press lights', 'single_press'),
+      pressRow(2, 'Kitchen - double press lights', 'double_press'),
+      pressRow(3, 'Kitchen - long press lights', 'long_press'),
+    ];
     expect(meaningLine(meaningOf(many, KITCHEN))).toBe(
       'Press: lights · Double-press: lights · +1 more',
     );

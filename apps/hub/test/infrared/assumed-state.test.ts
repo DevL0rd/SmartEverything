@@ -83,7 +83,7 @@ afterEach(async () => {
 });
 
 describe('what an IR remote is assumed to be doing', () => {
-  it('follows the keys a library remote sent', () => {
+  it('follows the keys an IR remote device sent', () => {
     const blaster = stored(device({ externalId: 'b' }));
     const remote = stored(
       device({

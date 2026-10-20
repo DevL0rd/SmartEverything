@@ -10,7 +10,7 @@ import { selectCameraEntries } from '../../cameras';
 import { selectLightGroupDefaults } from '../../device-groups';
 import { withWidgetAdded } from '../model/add-widget';
 import { deviceDigest } from '../model/spotlight';
-import { HOME_PAGE, homeDefaults } from '../widgets';
+import { HOME_PAGE, homeDefaults } from '../model/defaults';
 
 const log = new Logger('app.home');
 

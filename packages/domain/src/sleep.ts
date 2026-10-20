@@ -11,18 +11,40 @@ function minutesBetween(start: string, end: string): number {
   return (Date.parse(end) - Date.parse(start)) / MINUTE_MS;
 }
 
-export function asleepMinutes(session: SleepSession): number {
-  const spans = session.data.stages
+export interface SleepSpan {
+  readonly kind: SleepStageKind;
+  readonly start: number;
+  readonly end: number;
+}
+
+export function sleepSpansOf(session: SleepSession): SleepSpan[] {
+  const sorted = session.data.stages
     .map((stage) => ({
       kind: SLEEP_STAGE_KINDS[stage.stage] ?? 'unknown',
-      minutes: minutesBetween(stage.startTime, stage.endTime),
+      start: Date.parse(stage.startTime),
+      end: Date.parse(stage.endTime),
     }))
-    .filter((span) => span.minutes > 0);
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  const spans: SleepSpan[] = [];
+  let covered = Number.NEGATIVE_INFINITY;
+  for (const span of sorted) {
+    const start = Math.max(span.start, covered);
+    if (span.end > start) {
+      spans.push({ ...span, start });
+      covered = span.end;
+    }
+  }
+  return spans;
+}
+
+export function asleepMinutes(session: SleepSession): number {
+  const spans = sleepSpansOf(session);
   if (spans.length === 0) {
     return minutesBetween(session.startTime, session.endTime);
   }
   return spans.reduce(
-    (total, span) => (NOT_ASLEEP.has(span.kind) ? total : total + span.minutes),
+    (total, span) =>
+      NOT_ASLEEP.has(span.kind) ? total : total + (span.end - span.start) / MINUTE_MS,
     0,
   );
 }

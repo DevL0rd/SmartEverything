@@ -282,3 +282,11 @@ describe('targetState support', () => {
     expect(state([twice], {}).support).toEqual({ power: 1, brightness: 1 });
   });
 });
+
+describe('targetState of a member with no brightness control', () => {
+  it('counts it as on and reports no level', () => {
+    const plain = device({ capabilities: [POWER] });
+    const result = state([plain], { [plain.id]: { power: { value: true } } });
+    expect(result).toMatchObject({ on: 1, power: 'on', level: null });
+  });
+});

@@ -54,7 +54,7 @@ export function NavOrb({
           ) : null}
         </View>
         <Text variant="caption" tone={entry.active ? 'default' : 'variant'} numberOfLines={1}>
-          {entry.route.shortTitle ?? entry.route.title}
+          {entry.shortTitle}
         </Text>
       </Interactive>
     </View>

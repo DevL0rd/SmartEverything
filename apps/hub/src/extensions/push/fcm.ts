@@ -32,6 +32,8 @@ export interface PushNotification {
   readonly body: string;
   readonly data: Readonly<Record<string, string>>;
   readonly dataOnly?: boolean;
+  readonly tag?: string;
+  readonly silent?: boolean;
 }
 
 type FcmMessage = Readonly<Record<string, unknown>>;
@@ -48,8 +50,15 @@ function fcmMessageOf(token: string, notification: PushNotification): FcmMessage
     token,
     notification: { title: notification.title, body: notification.body },
     data: notification.data,
-    android: { priority: 'HIGH', notification: { sound: 'default' } },
+    android: { priority: 'HIGH', notification: androidNotificationOf(notification) },
   };
+}
+
+function androidNotificationOf(notification: PushNotification): Readonly<Record<string, string>> {
+  const tag = notification.tag === undefined ? {} : { tag: notification.tag };
+  return notification.silent === true
+    ? { ...tag, notification_priority: 'PRIORITY_LOW' }
+    : { ...tag, sound: 'default' };
 }
 
 export type Delivery =

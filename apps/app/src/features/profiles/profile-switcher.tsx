@@ -8,12 +8,14 @@ import { selectProfile } from '../../api/people';
 import { SelectRow } from '../../components/rows';
 import { notifyFailure } from '../../components/toast-store';
 import { useActiveProfile, useProfiles } from '../../store/people';
+import { useMayChoosePerson } from './may-choose-person';
 
 const failed = notifyFailure('The profile was not changed');
 
 export function ProfileSwitcher({ compact = false }: { readonly compact?: boolean }): ReactNode {
   const profiles = useProfiles();
   const active = useActiveProfile();
+  if (!useMayChoosePerson()) return null;
   if (compact) return <CompactProfileSwitcher />;
   return (
     <SelectRow

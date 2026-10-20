@@ -12,7 +12,7 @@ const CONTROL_DEVICES: McpToolName = 'control_devices';
 const RUN_SCENE: McpToolName = 'run_scene';
 const LONGEST_DELAY = 86_400;
 
-export const STEP_ACTION_TYPES = ['command', 'scene', 'delay', 'wake_ai', 'tool'] as const;
+export const STEP_ACTION_TYPES = ['command', 'scene', 'delay', 'wake_ai'] as const;
 
 const CONTROL_ARGS = z.strictObject({
   changes: z.tuple([

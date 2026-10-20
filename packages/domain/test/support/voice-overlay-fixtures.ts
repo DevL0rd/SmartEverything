@@ -46,12 +46,20 @@ export function input(patch: Partial<OverlayInput> = {}): OverlayInput {
       volume: 0.8,
     },
     hold: { active: false, endedAt: null },
+    voice: VOICE,
     now: NOW,
     ...patch,
   };
 }
 
-export const PHONE: OverlayInput['surface'] = { platform: 'phone', foreground: false };
+export const VOICE: NonNullable<OverlayInput['voice']> = {
+  thinking_level: 'off',
+  saving: false,
+  failed: false,
+  changedInCall: false,
+};
+
+export const PHONE: OverlayInput['surface'] = { platform: 'phone', main: 'away' };
 
 const LEVEL_STEPS = [
   { sample: 0, dtMs: 16 },
@@ -104,12 +112,30 @@ const NAMED: readonly (readonly [string, OverlayInput])[] = [
   ],
   ['share-window', input({ call: call({ sharing: { kind: 'window', label: 'Firefox' } }) })],
   ['phone-speaking', input({ surface: PHONE, call: call({ phase: 'speaking', said: 'Done' }) })],
-  ['phone-foreground', input({ surface: { platform: 'phone', foreground: true } })],
+  ['phone-call-page', input({ surface: { platform: 'phone', main: 'call' } })],
+  [
+    'phone-other-page-compact',
+    input({
+      surface: { platform: 'phone', main: 'other' },
+      call: call({ phase: 'speaking', said: 'Done' }),
+    }),
+  ],
   [
     'phone-camera-paused-reconnecting',
     input({
       surface: PHONE,
       call: call({ phase: 'reconnecting', camera: 'paused', speaker: false }),
+    }),
+  ],
+  ['voice-loading', input({ voice: null })],
+  ['voice-load-failed', input({ voice: { ...VOICE, thinking_level: null, failed: true } })],
+  ['voice-saving-high', input({ voice: { ...VOICE, thinking_level: 'high', saving: true } })],
+  ['voice-failed-low', input({ voice: { ...VOICE, thinking_level: 'low', failed: true } })],
+  [
+    'phone-voice-changed-medium',
+    input({
+      surface: PHONE,
+      voice: { ...VOICE, thinking_level: 'medium', changedInCall: true },
     }),
   ],
   [

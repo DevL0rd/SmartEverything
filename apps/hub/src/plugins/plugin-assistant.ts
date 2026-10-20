@@ -44,9 +44,10 @@ export function pluginFiles(
   pluginId: string,
   attachmentsOf: PluginFiles['attachmentsOf'],
   fromMachine: PluginFiles['fromMachine'],
+  fromUpload: PluginFiles['fromUpload'],
 ): PluginFiles {
   const folder = join(dataDirectory, 'plugins', pluginId);
-  return { folder, outbox: join(folder, PLUGIN_OUTBOX), attachmentsOf, fromMachine };
+  return { folder, outbox: join(folder, PLUGIN_OUTBOX), attachmentsOf, fromMachine, fromUpload };
 }
 
 export function chatAttachmentPaths(

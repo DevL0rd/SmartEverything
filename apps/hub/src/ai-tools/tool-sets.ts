@@ -36,7 +36,7 @@ export const META_TOOLS: readonly ToolSpec[] = [
   {
     name: META_TOOL_NAMES.search,
     description:
-      'Find enabled tools by describing what you want to do; best matches first with count, hasMore and a nextCursor for the next page, and app operations reached through call_operation.',
+      'Find enabled tools and app operations (reached through call_operation) by what you want to do, best matches first; a nextCursor pages on.',
     inputSchema: z.toJSONSchema(SEARCH_TOOLS_INPUT, { io: 'input' }),
   },
   {

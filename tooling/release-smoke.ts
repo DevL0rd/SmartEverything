@@ -1,8 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { z } from 'zod';
-import { apkProblems, readApk, type ApkVariant } from './release-apk.ts';
+import { apkProblems, readApk, readAppIdentity, type ApkVariant } from './release-apk.ts';
 import { hubLayout } from './release-hub-files.ts';
 import { systemdUnits, verifyHub } from './release-hub-verify.ts';
 import { agreedVersion, readVersions } from './release-version.ts';
@@ -22,14 +20,14 @@ export const SMOKE_STEPS: readonly SmokeStep[] = [
     id: 'apk-identity',
     area: 'phone',
     coverage: 'apk',
-    check:
-      'The APK has the release package, the release number and a version code above the last one.',
+    check: 'The APK has the one app id, the release number and a version code above the last one.',
   },
   {
     id: 'apk-signed',
     area: 'phone',
     coverage: 'apk',
-    check: 'The APK is signed with the release key, not the debug key, and the signature verifies.',
+    check:
+      'The APK is signed with the app certificate in app-identity.json, so it installs over the app, and the signature verifies.',
   },
   {
     id: 'apk-not-debuggable',
@@ -158,7 +156,6 @@ export const SMOKE_STEPS: readonly SmokeStep[] = [
 ];
 
 const VARIANT = z.enum(['release', 'development']);
-const IDENTITY = z.object({ storeIdentity: z.string().min(1) });
 const DEFAULT_ABOVE = 2;
 
 export function stepsCovered(coverage: SmokeCoverage): readonly SmokeStep[] {
@@ -179,14 +176,11 @@ function printManual(area: SmokeArea): void {
 }
 
 async function checkApk(file: string, variant: ApkVariant, above: number): Promise<void> {
-  const identity = IDENTITY.parse(
-    JSON.parse(
-      readFileSync(join(import.meta.dirname, '..', 'apps', 'app', 'app-identity.json'), 'utf8'),
-    ),
-  );
+  const identity = readAppIdentity();
   const problems = await apkProblems(readApk(file), {
     variant,
-    storeIdentity: identity.storeIdentity,
+    applicationId: identity.applicationId,
+    signingCertificateSha256: identity.signingCertificateSha256,
     versionName: agreedVersion(readVersions()),
     versionCodeAbove: above,
   });

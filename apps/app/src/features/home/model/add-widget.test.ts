@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_LAYOUT_VERSION, type BoardLayout, type BoardWidget } from '@smarteverything/domain';
+import {
+  BOARD_LAYOUT_VERSION,
+  arrangementOf,
+  type BoardLayout,
+  type BoardWidget,
+} from '@smarteverything/domain';
 import { withWidgetAdded } from './add-widget';
 
 const glance: BoardWidget = { key: 'glance', type: 'glance', size: 'W' };
@@ -18,11 +23,22 @@ const defaults = {
 const empty: BoardLayout = { version: BOARD_LAYOUT_VERSION, classes: {} };
 
 describe('adding a widget to the Home layout', () => {
-  it('starts from the default arrangement of every board that was never edited', () => {
+  it('overlays the widget on the defaults of every board that was never edited', () => {
     const layout = withWidgetAdded(empty, defaults, added);
-    expect(layout?.classes.compact?.widgets).toStrictEqual([glance, added]);
-    expect(layout?.classes.medium?.widgets).toStrictEqual([glance, weather, added]);
-    expect(layout?.classes.expanded?.widgets).toStrictEqual([weather, added]);
+    expect(layout?.classes).toStrictEqual({});
+    expect(arrangementOf(layout ?? null, 'compact', defaults)).toStrictEqual([glance, added]);
+    expect(arrangementOf(layout ?? null, 'medium', defaults)).toStrictEqual([
+      glance,
+      weather,
+      added,
+    ]);
+    expect(arrangementOf(layout ?? null, 'expanded', defaults)).toStrictEqual([weather, added]);
+  });
+
+  it('lets later default changes still reach the boards the person did not customise', () => {
+    const layout = withWidgetAdded(empty, defaults, added) ?? empty;
+    const changed = { ...defaults, medium: [weather, glance] };
+    expect(arrangementOf(layout, 'medium', changed)).toStrictEqual([weather, glance, added]);
   });
 
   it('keeps an edited board as the person left it and appends at the end', () => {
@@ -32,7 +48,11 @@ describe('adding a widget to the Home layout', () => {
     };
     const layout = withWidgetAdded(stored, defaults, added);
     expect(layout?.classes.compact?.widgets).toStrictEqual([weather, added]);
-    expect(layout?.classes.medium?.widgets).toStrictEqual([glance, weather, added]);
+    expect(arrangementOf(layout ?? null, 'medium', defaults)).toStrictEqual([
+      glance,
+      weather,
+      added,
+    ]);
   });
 
   it('adds nothing to a board that already shows the widget, and says so when none needs it', () => {

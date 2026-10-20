@@ -3,7 +3,7 @@ import { finalView } from './stream-view';
 
 export const TEXT_CHUNK_CHARS = 1400;
 
-export type InlineToolActivity = Exclude<ChatTimelinePart, { readonly kind: 'text' }>;
+export type InlineToolActivity = Exclude<ChatTimelinePart, { readonly kind: 'text' | 'steer' }>;
 export type InlineTimelinePart =
   | Exclude<ChatTimelinePart, { readonly kind: 'tool' }>
   | {

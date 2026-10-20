@@ -1,4 +1,9 @@
-import { CLIENT_ROW, type ClientRow, type Role } from '@smarteverything/domain';
+import {
+  CLIENT_KIND_OF_PLATFORM,
+  CLIENT_ROW,
+  type ClientRow,
+  type Role,
+} from '@smarteverything/domain';
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
@@ -6,13 +11,14 @@ import { StoreConflictError } from '../sql';
 
 const STORED_CLIENT = storedRow(CLIENT_ROW, { flags: ['built_in'] });
 
-const COLUMNS = 'id, name, platform, role, built_in, profile_id, created_at, last_seen_at';
+const COLUMNS = 'id, name, platform, kind, role, built_in, profile_id, created_at, last_seen_at';
 
 const SEEN_EVERY_MS = 60_000;
 
 export interface NewClient {
   readonly name: string;
   readonly platform: ClientRow['platform'];
+  readonly kind?: ClientRow['kind'] | undefined;
   readonly role: Role;
   readonly tokenHash: string;
   readonly profileId?: string | undefined;
@@ -83,14 +89,15 @@ export class ClientsRepository {
       const id = this.context.newId();
       this.context.sql.run(
         'add the client',
-        `insert into clients (id, name, platform, role, built_in, token_hash, profile_id, created_at)
-         values ($id, $name, $platform, $role, $builtIn, $tokenHash,
+        `insert into clients (id, name, platform, kind, role, built_in, token_hash, profile_id, created_at)
+         values ($id, $name, $platform, $kind, $role, $builtIn, $tokenHash,
            coalesce($profileId, (select p.id from profiles p join person_access a on a.profile_id = p.id
              order by a.role = 'owner' desc, p.position, p.created_at limit 1)), $now)`,
         {
           id,
           name: client.name,
           platform: client.platform,
+          kind: client.kind ?? CLIENT_KIND_OF_PLATFORM[client.platform],
           role: client.role,
           builtIn: builtIn ? 1 : 0,
           tokenHash: client.tokenHash,

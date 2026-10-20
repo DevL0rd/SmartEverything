@@ -99,10 +99,10 @@ describe('matching a key press', () => {
 
 describe('the spaces and the browser-reserved keys', () => {
   it('matches every space number with the command key', () => {
-    for (const digit of ['1', '2', '3', '4', '5', '6']) {
+    for (const digit of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) {
       expect(shortcutOf(press({ key: digit, command: true }))?.id, digit).toBe('space');
     }
-    expect(shortcutOf(press({ key: '7', command: true }))).toBeUndefined();
+    expect(shortcutOf(press({ key: '0', command: true }))).toBeUndefined();
   });
 
   it('names the reserved keys of each layout', () => {

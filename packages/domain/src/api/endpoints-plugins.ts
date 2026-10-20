@@ -90,7 +90,8 @@ export const PLUGIN_ENDPOINTS = {
     method: 'GET',
     path: '/api/plugins',
     access: 'owner',
-    summary: 'Installed plugins with their status, powers and settings',
+    summary:
+      'Installed plugins with their status, powers, settings and the widgets and pages they add',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,

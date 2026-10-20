@@ -46,8 +46,8 @@ const PERSON_ID = z.uuid().optional();
 
 function inputOf(shape: OperationShape, args: Readonly<Record<string, unknown>>): OperationInput {
   const input = operationInput(shape, args);
-  const { [ACTING_FIELD]: acting, ...rest } = args;
-  validArguments(shape.input, shape.acting ? { ...rest, [ACTING_FIELD]: acting } : rest);
+  const { [ACTING_FIELD]: _acting, ...rest } = args;
+  validArguments(shape.input, Object.hasOwn(shape.input.shape, ACTING_FIELD) ? args : rest);
   return input;
 }
 

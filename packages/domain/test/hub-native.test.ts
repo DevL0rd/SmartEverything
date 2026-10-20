@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   NATIVE_HUB_REQUEST,
+  NATIVE_HUB_ROUTE_CONFIGURATION,
   NATIVE_HUB_RESPONSE,
   NATIVE_HUB_SOCKET_EVENT,
   NATIVE_HUB_SOCKET_SEND,
@@ -90,5 +91,44 @@ describe('native hub transport contract', () => {
     expect(nativeHubResourceIdentity({ ...open(1), purpose: 'audio' })).not.toBe(
       nativeHubResourceIdentity(open(1)),
     );
+  });
+});
+
+describe('native hub route configuration', () => {
+  const trust = {
+    scopeId: 'scope',
+    identity: IDENTITY,
+    endpoints: [{ kind: 'lan' as const, url: 'https://192.168.1.5:8443' }],
+    lanAddresses: ['192.168.1.5'],
+  };
+  const configuration = {
+    trust,
+    canonicalOrigin: 'https://hub.example',
+    bindings: [BINDING],
+  };
+
+  it('accepts credentials bound to this scope, origin and hub', () => {
+    expect(NATIVE_HUB_ROUTE_CONFIGURATION.safeParse(configuration).success).toBe(true);
+  });
+
+  it.each([
+    { scopeId: 'other' },
+    { canonicalOrigin: 'https://other.example' },
+    { hubId: 'b'.repeat(64) },
+  ])('refuses a credential bound to something else: %j', (change) => {
+    const parsed = NATIVE_HUB_ROUTE_CONFIGURATION.safeParse({
+      ...configuration,
+      bindings: [BINDING, { ...BINDING, ...change }],
+    });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toBe(
+      'Credential bindings must match the configured scope, canonical origin and hub identity',
+    );
+  });
+
+  it('needs at least one credential', () => {
+    expect(
+      NATIVE_HUB_ROUTE_CONFIGURATION.safeParse({ ...configuration, bindings: [] }).success,
+    ).toBe(false);
   });
 });

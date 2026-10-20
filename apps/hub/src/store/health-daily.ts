@@ -4,6 +4,7 @@ import {
   NUTRITION_METRICS,
   asleepMinutes,
   hydrationAmounts,
+  preferredShares,
   type Nutrient,
   type HealthMetric,
   type HealthRecord,
@@ -33,10 +34,28 @@ function preferred<T extends HealthRecordType>(
   return fromPreferredSource(ofType(records, type));
 }
 
-function minutesOf(record: HealthRecord): number {
-  return record.endTime === null
-    ? 0
-    : (Date.parse(record.endTime) - Date.parse(record.startTime)) / 60_000;
+function counted<T extends HealthRecordType>(
+  records: readonly HealthRecord[],
+  type: T,
+  amount: (record: RecordOf<T>) => number,
+): number[] {
+  return preferredShares(ofType(records, type)).map(({ record, share }) => amount(record) * share);
+}
+
+function unionMinutes(sessions: readonly RecordOf<'ExerciseSession'>[]): number[] {
+  const spans = sessions
+    .map((record) => ({ from: Date.parse(record.startTime), to: Date.parse(record.endTime) }))
+    .sort((left, right) => left.from - right.from);
+  const merged: { from: number; to: number }[] = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && span.from <= last.to) {
+      last.to = Math.max(last.to, span.to);
+    } else {
+      merged.push({ ...span });
+    }
+  }
+  return merged.map((span) => (span.to - span.from) / 60_000);
 }
 
 const NUTRIENT_OF_METRIC: readonly (readonly [HealthMetric, Nutrient])[] = [
@@ -63,18 +82,14 @@ function nutrition(records: readonly HealthRecord[]): Partial<Record<HealthMetri
 
 function amounts(records: readonly HealthRecord[]): Partial<Record<HealthMetric, number[]>> {
   return {
-    steps: preferred(records, 'Steps').map((record) => record.data.count),
-    distance: preferred(records, 'Distance').map((record) => record.data.meters),
-    active_energy: preferred(records, 'ActiveCaloriesBurned').map(
-      (record) => record.data.kilocalories,
-    ),
-    total_energy: preferred(records, 'TotalCaloriesBurned').map(
-      (record) => record.data.kilocalories,
-    ),
+    steps: counted(records, 'Steps', (record) => record.data.count),
+    distance: counted(records, 'Distance', (record) => record.data.meters),
+    active_energy: counted(records, 'ActiveCaloriesBurned', (record) => record.data.kilocalories),
+    total_energy: counted(records, 'TotalCaloriesBurned', (record) => record.data.kilocalories),
     floors: preferred(records, 'FloorsClimbed').map((record) => record.data.floors),
     hydration: hydrationAmounts(records),
     sleep: preferred(records, 'SleepSession').map(asleepMinutes),
-    exercise: preferred(records, 'ExerciseSession').map(minutesOf),
+    exercise: unionMinutes(ofType(records, 'ExerciseSession')),
   };
 }
 

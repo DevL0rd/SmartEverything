@@ -10,7 +10,7 @@ import type { Logger } from '@smarteverything/logging';
 import type { ListeningRegistry } from '../listening/listening-registry';
 import type { DeviceSpeech } from '../listening/device-speech';
 import type { EndOfSpeechPause } from '../listening/end-of-speech-pause';
-import type { EarKeywords } from '../wake-name/keyword-spotter';
+import type { EarKeywords } from '../wake-name/keyword-lines';
 import type { OnSuperseded, WakeClaims } from '../wake-name/wake-claims';
 import type { WakeTest } from '../wake-name/wake-test';
 import { ComputerCallAudio, type ComputerAudio, type EarSend } from './computer-call-audio';

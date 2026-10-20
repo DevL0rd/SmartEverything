@@ -1,47 +1,53 @@
-const ACRONYMS: Readonly<Record<string, string>> = {
-  cpu: 'CPU',
-  gpu: 'GPU',
-  ssd: 'SSD',
-  hdd: 'HDD',
-  nvme: 'NVMe',
-  ram: 'RAM',
-  usb: 'USB',
-  acpi: 'ACPI',
-  pch: 'PCH',
-  vrm: 'VRM',
-  soc: 'SoC',
-  wifi: 'Wi-Fi',
-  ac: 'AC',
-  psu: 'PSU',
-  rpm: 'RPM',
-};
+const ACRONYMS: ReadonlyMap<string, string> = new Map(
+  Object.entries({
+    cpu: 'CPU',
+    gpu: 'GPU',
+    ssd: 'SSD',
+    hdd: 'HDD',
+    nvme: 'NVMe',
+    ram: 'RAM',
+    usb: 'USB',
+    acpi: 'ACPI',
+    pch: 'PCH',
+    vrm: 'VRM',
+    soc: 'SoC',
+    wifi: 'Wi-Fi',
+    ac: 'AC',
+    psu: 'PSU',
+    rpm: 'RPM',
+  }),
+);
 
-const WORDS: Readonly<Record<string, string>> = {
-  mid: 'middle',
-  mem: 'memory',
-  temp: 'temperature',
-  pwr: 'power',
-  junction: 'hotspot',
-  acpitz: 'ACPI thermal zone',
-  cannonlake: 'Cannon Lake',
-  skylake: 'Skylake',
-  kabylake: 'Kaby Lake',
-  coffeelake: 'Coffee Lake',
-  cometlake: 'Comet Lake',
-  icelake: 'Ice Lake',
-  tigerlake: 'Tiger Lake',
-  alderlake: 'Alder Lake',
-  raptorlake: 'Raptor Lake',
-  lunarlake: 'Lunar Lake',
-};
+const WORDS: ReadonlyMap<string, string> = new Map(
+  Object.entries({
+    mid: 'middle',
+    mem: 'memory',
+    temp: 'temperature',
+    pwr: 'power',
+    junction: 'hotspot',
+    acpitz: 'ACPI thermal zone',
+    cannonlake: 'Cannon Lake',
+    skylake: 'Skylake',
+    kabylake: 'Kaby Lake',
+    coffeelake: 'Coffee Lake',
+    cometlake: 'Comet Lake',
+    icelake: 'Ice Lake',
+    tigerlake: 'Tiger Lake',
+    alderlake: 'Alder Lake',
+    raptorlake: 'Raptor Lake',
+    lunarlake: 'Lunar Lake',
+  }),
+);
 
 const GPU_CHIP = /^(amdgpu|nouveau|radeon|nvidia|i915|xe)/i;
 
-const GPU_LABELS: Readonly<Record<string, string>> = {
-  edge: 'GPU edge',
-  junction: 'GPU hotspot',
-  mem: 'GPU memory',
-};
+const GPU_LABELS: ReadonlyMap<string, string> = new Map(
+  Object.entries({
+    edge: 'GPU edge',
+    junction: 'GPU hotspot',
+    mem: 'GPU memory',
+  }),
+);
 
 const CHIPS: readonly (readonly [RegExp, string])[] = [
   [/^pch(_|$)/i, 'Chipset'],
@@ -60,7 +66,7 @@ function wordsOf(raw: string): string[] {
 
 function wordOf(word: string, keepCase: boolean): string {
   const lower = word.toLowerCase();
-  const known = ACRONYMS[lower] ?? WORDS[lower];
+  const known = ACRONYMS.get(lower) ?? WORDS.get(lower);
   if (known !== undefined) return known;
   return keepCase || /\d/.test(word) ? word : lower;
 }
@@ -94,7 +100,7 @@ function chipLabel(chip: string): string {
 
 export function sensorLabel(chip: string, label: string): string {
   if (GPU_CHIP.test(chip)) {
-    const gpu = GPU_LABELS[label.trim().toLowerCase()];
+    const gpu = GPU_LABELS.get(label.trim().toLowerCase());
     if (gpu !== undefined) return gpu;
   }
   if (label.trim().toLowerCase() === chip.trim().toLowerCase()) return chipLabel(chip);

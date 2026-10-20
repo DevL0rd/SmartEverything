@@ -1,5 +1,6 @@
 import { FAMILY_ICONS } from './family-icon';
 import type { VisualRegistry } from './types';
+import { BottleVisual } from './visuals/bottle-visual';
 import { ButtonVisual } from './visuals/button-visual';
 import { CameraVisual } from './visuals/camera-visual';
 import { CoverVisual } from './visuals/cover-visual';
@@ -14,6 +15,7 @@ import { LockVisual } from './visuals/lock-visual';
 import { IrBlasterVisual, IrRemoteVisual } from './visuals/ir-visual';
 import { SpeakerVisual } from './visuals/media-visual';
 import { PhoneVisual } from './visuals/phone-visual';
+import { PrinterVisual } from './visuals/printer-visual';
 import { PurifierVisual } from './visuals/purifier-visual';
 import { RobotVisual } from './visuals/robot-visual';
 import { RotorFanVisual } from './visuals/rotor-fan-visual';
@@ -22,6 +24,8 @@ import { SensorVisual } from './visuals/sensor-visual';
 import { PlugVisual, SwitchVisual } from './visuals/socket-visual';
 import { AirConditionerVisual, HeaterVisual, ThermostatVisual } from './visuals/thermal-visual';
 import { TelevisionVisual } from './visuals/television-visual';
+import { ToothbrushVisual } from './visuals/toothbrush-visual';
+import { TreadmillVisual } from './visuals/treadmill-visual';
 import { TowerFanVisual } from './visuals/tower-fan-visual';
 import { VacuumVisual } from './visuals/vacuum-visual';
 import { WatchVisual } from './visuals/watch-visual';
@@ -42,7 +46,6 @@ export const VISUALS: VisualRegistry = {
   switch: SwitchVisual,
   plug: PlugVisual,
   sensor: SensorVisual,
-  presence_phone: SensorVisual,
   button: ButtonVisual,
   camera: CameraVisual,
   doorbell: glyphVisual(FAMILY_ICONS.doorbell),
@@ -60,6 +63,10 @@ export const VISUALS: VisualRegistry = {
   file_sync: glyphVisual(FAMILY_ICONS.file_sync),
   dns_filter: glyphVisual(FAMILY_ICONS.dns_filter),
   robot: RobotVisual,
+  treadmill: TreadmillVisual,
+  printer: PrinterVisual,
+  bottle: BottleVisual,
+  toothbrush: ToothbrushVisual,
   computer: glyphVisual(FAMILY_ICONS.computer),
   phone: PhoneVisual,
   generic: glyphVisual(FAMILY_ICONS.generic),

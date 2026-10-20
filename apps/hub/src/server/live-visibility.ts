@@ -1,5 +1,7 @@
 import {
   NUTRITION_METRICS,
+  traceSubjectOf,
+  type AutomationAuthor,
   WATCH_METRICS,
   OWNER_TABLES,
   type BodyReadingRow,
@@ -9,6 +11,7 @@ import {
   type HistoryRow,
   type HealthMetric,
   type LiveChange,
+  type LiveMessage,
   type LiveStream,
   type LiveTable,
   type StateRow,
@@ -16,9 +19,14 @@ import {
 import type { WebSocket } from 'ws';
 import { hiddenComputer, viewerOfClient } from '../computers/computer-access';
 import { phoneViewerOfClient } from '../phones/phone-detail';
-import { otherPhoneTiers, phoneEventOf, valueHiddenByTier } from '../phones/phone-visibility';
+import {
+  eventVisibleTo,
+  otherPhoneTiers,
+  phoneEventOf,
+  valueHiddenByTier,
+} from '../phones/phone-visibility';
 import type { Store } from '../store/store';
-import { hiddenByAccess } from './live-access';
+import { floorsSeenBy, hiddenByAccess } from './live-access';
 import { profileSeenBy, readingVisibleTo, type Viewer } from './person-privacy';
 
 const OWNER_STREAMS: ReadonlySet<LiveStream> = new Set(['service_log', 'claude']);
@@ -140,12 +148,12 @@ function hiddenValue(connection: Hearing, row: StateRow | HistoryRow, store: Liv
 }
 
 function eventShown(connection: Hearing, row: EventRow | null, store: LiveStore): EventRow | null {
-  const deviceId = row?.device_id ?? null;
-  if (row === null || deviceId === null) return row;
-  const device = store.devices.find(deviceId);
+  if (row === null) return row;
+  const viewer = phoneViewerOfClient(store, connection.client);
+  if (!eventVisibleTo(viewer, row)) return null;
+  const device = row.device_id === null ? undefined : store.devices.find(row.device_id);
   if (device === undefined) return row;
-  const tiers = otherPhoneTiers([device], phoneViewerOfClient(store, connection.client));
-  return phoneEventOf(tiers, row);
+  return phoneEventOf(otherPhoneTiers([device], viewer), row);
 }
 
 function hiddenEvent(
@@ -217,7 +225,7 @@ function hiddenChange(connection: Hearing, change: LiveChange, store: LiveStore)
 
 export type LiveStore = Pick<
   Store,
-  'devices' | 'computerNodes' | 'profiles' | 'personAccess' | 'infrared'
+  'devices' | 'computerNodes' | 'profiles' | 'personAccess' | 'infrared' | 'localDevices'
 >;
 
 export function visible(connection: Hearing, change: LiveChange, store: LiveStore): boolean {
@@ -242,3 +250,40 @@ export function visible(connection: Hearing, change: LiveChange, store: LiveStor
 }
 
 type ProfileLookup = (clientId: string) => string;
+
+export function seenBy(connection: Hearing, message: LiveMessage, store: LiveStore): LiveMessage {
+  return message.type === 'talk_floors' ? floorsSeenBy(connection, message, store) : message;
+}
+
+export interface TraceOwners {
+  readonly authorOf: (automationId: string) => AutomationAuthor | null;
+  readonly automationOfRun: (runId: string) => string | null;
+}
+
+export interface TraceProfiles {
+  readonly profiles: { readonly activeOf: (clientId: string) => { readonly id: string } };
+}
+
+export function traceVisible(
+  client: ClientRow,
+  author: AutomationAuthor | null,
+  store: TraceProfiles,
+): boolean {
+  return (
+    client.role === 'owner' ||
+    (author !== null && author.profile_id === store.profiles.activeOf(client.id).id)
+  );
+}
+
+export function traceAllowed(
+  client: ClientRow,
+  subject: string,
+  owners: TraceOwners,
+  store: TraceProfiles,
+): boolean {
+  const parsed = traceSubjectOf(subject);
+  if (parsed === null) return false;
+  if (client.role === 'owner') return true;
+  const automationId = parsed.kind === 'run' ? owners.automationOfRun(parsed.id) : parsed.id;
+  return automationId !== null && traceVisible(client, owners.authorOf(automationId), store);
+}

@@ -1,5 +1,5 @@
 import { appendTo } from '@smarteverything/domain';
-import type { AiChatKind, ClaudeSession, ComputerAiRuntime } from '@smarteverything/domain';
+import type { AiChatKind, ClaudeListedSession, ComputerAiRuntime } from '@smarteverything/domain';
 import { DAY_MS, dayRelationOf } from '../../../format/time';
 import { sameSource, type ChatSource } from '../model/chat-source';
 import { compareText } from '../../../format/text';
@@ -26,7 +26,7 @@ export type ChatLine =
 export interface DesktopRef {
   readonly deviceId: string;
   readonly deviceName: string;
-  readonly session: ClaudeSession;
+  readonly session: ClaudeListedSession;
 }
 
 export interface ChatEntry {

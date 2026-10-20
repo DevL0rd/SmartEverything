@@ -83,6 +83,7 @@ export const FITNESS_WIDGETS: readonly WidgetDefinition[] = [
     title: 'Last night’s sleep',
     icon: 'moon',
     sizes: allSizes('M', 'W'),
+    rows: { compact: { W: 3 } },
     defaultSize: 'M',
     render: () => <SleepWidget />,
   },

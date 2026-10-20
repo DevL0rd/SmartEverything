@@ -26,7 +26,9 @@ export const CHANGED_BY = {
   end_of_speech_pause_ms: 'call_operation updateListeningSettings',
   ear_host_device_id: 'call_operation updateListeningSettings',
   device_refills: 'call_operation recordDeviceRefill',
+  laundry_notices: 'call_operation updateLaundryNotices',
   history_settings: 'call_operation updateHistorySettings',
+  trigger_settings: 'call_operation updateTriggerSettings',
   location_name: 'update_settings action location',
   fitness_goals: 'edit_person action goals',
   max_heart_rate: 'edit_person action goals',
@@ -37,7 +39,7 @@ export const CHANGED_BY = {
   rooms: 'edit_room',
   people: 'edit_person',
   devices:
-    'edit_device action device (name, room, hidden, favourite, position, a television’s input_names); device options with control_devices',
+    'edit_device action device (name, room, hidden, favourite, position, a television’s input_names and wake_address); device options with control_devices',
   cameras: 'edit_device action camera (save event clips); camera options with control_devices',
 } as const;
 

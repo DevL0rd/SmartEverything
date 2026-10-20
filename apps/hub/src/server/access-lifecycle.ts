@@ -24,6 +24,7 @@ export interface LifecycleOptions {
   readonly now: () => Date;
   readonly clientRemoved: (clientId: string) => void;
   readonly clientPaused: (clientId: string) => void;
+  readonly lapseGrants: () => void;
 }
 
 export class AccessLifecycle {
@@ -61,6 +62,7 @@ export class AccessLifecycle {
       if (members.length > 0) this.unpair(members, profileId, 'the access ended');
       else store.clients.forgetOpenPairingsOf(profileId);
     }
+    this.options.lapseGrants();
     this.pauseStarted();
     this.arm();
   }
@@ -104,7 +106,11 @@ export class AccessLifecycle {
     const starts = store.personAccess
       .schedules()
       .map(({ schedule }) => this.nextStart(schedule).getTime());
-    const edges = [...starts, ...(expiry === undefined ? [] : [Date.parse(expiry)])];
+    const lapse = store.accessRequests.nextLapse(now().toISOString());
+    const edges = [
+      ...starts,
+      ...[expiry, lapse].flatMap((moment) => (moment === undefined ? [] : [Date.parse(moment)])),
+    ];
     return edges.length === 0 ? undefined : Math.min(...edges);
   }
 

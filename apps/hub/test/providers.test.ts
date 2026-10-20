@@ -16,6 +16,7 @@ import { EventRouter } from '../src/state/event-router';
 import { Inventory } from '../src/state/inventory';
 import { StateWriter } from '../src/state/state-writer';
 import { testDatabase, type TestDatabase } from './support/database';
+import { FakeClock } from './support/fake-clock';
 import { LAMP, fakeModule, type FakeModule } from './support/fake-provider';
 import { captureLogs, testLogger } from './support/logs';
 
@@ -57,12 +58,15 @@ async function setup(): Promise<Setup> {
   const inventory = new Inventory(db.database, {
     onlineChanged: (): void => undefined,
     devicesChanged: (): void => undefined,
+    lifecycle: (): void => undefined,
   });
   const state = new StateWriter({
     store: db.database,
     inventory,
+    clock: new FakeClock('2026-10-08T10:00:00.000Z'),
     log: testLogger(),
     changed: (): void => undefined,
+    moved: (): void => undefined,
   });
   const events = new EventRouter({
     store: db.database,
@@ -126,6 +130,14 @@ describe('ProviderManager', () => {
     });
     expect((await stat(join(directory, 'providers', 'xiaomi'))).isDirectory()).toBe(true);
     expect(fake.started[0]?.context.dataDirectory).toBe(join(directory, 'providers', 'xiaomi'));
+  });
+
+  it('hands the account already stored to a later link so it can reuse what it holds', async () => {
+    const { fake, secrets, manager } = await setup();
+    await manager.link(CREDENTIALS);
+    await manager.link(CREDENTIALS);
+    expect(fake.linked[0]?.context.stored).toBeUndefined();
+    expect(fake.linked[1]?.context.stored).toStrictEqual(secrets.read().accounts.xiaomi);
   });
 
   it('asks the person through provider_links and continues with the answer', async () => {
@@ -249,14 +261,7 @@ describe('ProviderManager', () => {
   it('refuses a provider this hub has no module for', async () => {
     const { manager, db } = await setup();
     await expect(
-      manager.link({
-        provider: 'tuya',
-        method: 'developer_project',
-        accessId: 'a',
-        accessSecret: 's',
-        region: 'eu',
-        appUserId: 'u',
-      }),
+      manager.link({ provider: 'tuya', method: 'smart_life', userCode: 'EU1234' }),
     ).rejects.toThrow('The tuya provider is not configured on this hub.');
     expect(linkOf(db, 'tuya')?.status).toBe('unlinked');
   });
@@ -412,18 +417,7 @@ describe('ProviderManager', () => {
       samsung_tv: { ...module, provider: 'samsung_tv' as const },
     };
     await expect(
-      linkAccount(
-        registry,
-        {
-          provider: 'tuya',
-          method: 'developer_project',
-          accessId: 'a',
-          accessSecret: 'b',
-          region: 'eu',
-          appUserId: 'c',
-        },
-        context,
-      ),
+      linkAccount(registry, { provider: 'tuya', method: 'smart_life' }, context),
     ).resolves.toBe(account);
     await expect(
       linkAccount(
@@ -433,18 +427,10 @@ describe('ProviderManager', () => {
       ),
     ).resolves.toBe(account);
     await expect(
-      linkAccount(
-        registry,
-        { provider: 'samsung_tv', host: '10.0.0.2', macAddress: '00:11:22:33:44:55', name: 'TV' },
-        context,
-      ),
+      linkAccount(registry, { provider: 'samsung_tv', host: '10.0.0.2', name: 'TV' }, context),
     ).resolves.toBe(account);
     expect(() =>
-      linkAccount(
-        {},
-        { provider: 'samsung_tv', host: '10.0.0.2', macAddress: '00:11:22:33:44:55', name: 'TV' },
-        context,
-      ),
+      linkAccount({}, { provider: 'samsung_tv', host: '10.0.0.2', name: 'TV' }, context),
     ).toThrow('The samsung_tv provider is not configured on this hub.');
   });
 });

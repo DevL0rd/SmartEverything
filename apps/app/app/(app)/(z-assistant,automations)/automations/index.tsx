@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { AutomationsIndex } from '../../../../src/features/automations/screens/automations-index';
+import { AutomationsIndexHost } from '../../../../src/features/automations/hosts/list-hosts';
 
 export default function AutomationsRoute(): ReactNode {
-  return <AutomationsIndex />;
+  return <AutomationsIndexHost />;
 }

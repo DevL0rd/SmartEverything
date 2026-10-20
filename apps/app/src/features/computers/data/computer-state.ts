@@ -27,6 +27,9 @@ const READS: Readonly<Record<StateTopic, (deviceId: string) => Promise<ComputerP
   windows: async (deviceId) => ({
     windows: await api().call(E.readComputerWindows, { params: { deviceId } }),
   }),
+  tiling: async (deviceId) => ({
+    tiling: await api().call(E.readComputerTiling, { params: { deviceId } }),
+  }),
 };
 
 export function feedState(deviceId: string, parts: ComputerParts): void {

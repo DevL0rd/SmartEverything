@@ -4,6 +4,7 @@ import {
   DEFAULT_PAUSE_MS,
   callAudioWith,
   ECHO_POLICY,
+  redemptionOf,
   VOICE_DETECTION,
   type CallAudio,
 } from '@smarteverything/domain';
@@ -26,7 +27,7 @@ export function nativeAudioOf(pref: CallAudio): NativeAudioSettings {
     interruptible: policy.interruptible,
     speechThreshold: detection.positiveSpeechThreshold,
     minSpeechMs: detection.minSpeechMs,
-    pauseMs: pref.pause_ms,
+    pauseMs: redemptionOf(pref.pause_ms),
     noiseSuppression: pref.noise_suppression,
     autoGain: pref.auto_gain,
     input: pref.input,

@@ -1,10 +1,13 @@
 import {
   ApiError,
   listeningKeyOf,
+  listeningSignalState,
+  sameListeningSignalState,
   type ListeningClaimRecord,
   type ListeningPowerMode,
   type ListeningRuntimeState,
   type ListeningSource,
+  type ListeningSignalState,
   type ListeningSourceChange,
   type ListeningView,
   type RowChange,
@@ -28,6 +31,16 @@ import {
 import { DeviceListeningSwitches } from './listening-switches';
 
 const CLAIMS_KEPT = 5;
+
+export interface ListeningStateChange {
+  readonly source: ListeningSource;
+  readonly state: ListeningSignalState;
+  readonly previous: ListeningSignalState | null;
+}
+
+function signalStatesOf(sources: readonly ListeningSource[]): Map<string, ListeningSignalState> {
+  return new Map(sources.map((source) => [source.key, listeningSignalState(source)]));
+}
 
 export interface ListeningViewer {
   readonly owner: boolean;
@@ -71,6 +84,8 @@ export class ListeningRegistry {
   private readonly external = new Map<string, BareSource>();
   private readonly claims = new Map<string, ListeningClaimRecord[]>();
   private readonly changed = new Set<(key: string) => void>();
+  private readonly stateListeners = new Set<(change: ListeningStateChange) => void>();
+  private states = new Map<string, ListeningSignalState>();
   private last: WakeArbitrated | null = null;
   private signature = '';
   private unsubscribe: (() => void)[] = [];
@@ -84,7 +99,9 @@ export class ListeningRegistry {
   }
 
   start(): void {
-    this.signature = JSON.stringify(this.everything());
+    const sources = this.everything();
+    this.signature = JSON.stringify(sources);
+    this.states = signalStatesOf(sources);
     this.unsubscribe = [
       this.options.store.feed.subscribe((change) => {
         if (change.table === 'devices' && change.operation === 'DELETE') {
@@ -158,6 +175,13 @@ export class ListeningRegistry {
     this.changed.add(listener);
     return (): void => {
       this.changed.delete(listener);
+    };
+  }
+
+  onStateChanged(listener: (change: ListeningStateChange) => void): () => void {
+    this.stateListeners.add(listener);
+    return (): void => {
+      this.stateListeners.delete(listener);
     };
   }
 
@@ -263,10 +287,27 @@ export class ListeningRegistry {
         listener(switched);
       });
     }
-    const signature = JSON.stringify(this.everything());
+    const sources = this.everything();
+    const signature = JSON.stringify(sources);
     if (signature === this.signature) return;
     this.signature = signature;
     this.options.log.debug('listening.changed', {});
     this.options.announce();
+    this.announceStates(sources);
+  }
+
+  private announceStates(sources: readonly ListeningSource[]): void {
+    const before = this.states;
+    this.states = signalStatesOf(sources);
+    for (const source of sources) {
+      const state = this.states.get(source.key);
+      const previous = before.get(source.key) ?? null;
+      if (state === undefined || (previous !== null && sameListeningSignalState(previous, state))) {
+        continue;
+      }
+      this.stateListeners.forEach((listener) => {
+        listener({ source, state, previous });
+      });
+    }
   }
 }

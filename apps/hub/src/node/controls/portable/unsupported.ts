@@ -3,7 +3,9 @@ import { NodeFailureError } from '../../node-failure';
 import type {
   AudioControl,
   DisplayControl,
+  InputControl,
   SessionControl,
+  TilingControl,
   WindowControl,
 } from '../session-controls';
 import type { FileWriteControl, SystemControls } from '../system-controls';
@@ -46,6 +48,24 @@ export function unsupportedWindows(machine: MachineName): WindowControl {
     read: () => notSupported('Window control', machine),
     watch: NO_WATCH,
     change: () => notSupported('Window control', machine),
+  };
+}
+
+export function unsupportedTiling(machine: MachineName): TilingControl {
+  return {
+    features: NO_FEATURES,
+    read: () => notSupported('Tiling control', machine),
+    watch: NO_WATCH,
+    change: () => notSupported('Tiling control', machine),
+    watchPresence: NO_WATCH,
+    stop: () => Promise.resolve(),
+  };
+}
+
+export function unsupportedInput(machine: MachineName): InputControl {
+  return {
+    features: NO_FEATURES,
+    send: () => notSupported('Pointer and keyboard control', machine),
   };
 }
 

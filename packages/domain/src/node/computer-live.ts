@@ -14,6 +14,7 @@ import {
   COMPUTER_SUMMARY,
 } from './computer-snapshot';
 import { SERVICES_STATE, SYSTEM_STATE } from './computer-system';
+import { TILING_STATE } from './computer-tiling';
 import { WINDOWS_STATE } from './computer-windows';
 import { HISTORY_POLICY } from '../history-settings';
 
@@ -31,7 +32,14 @@ export const SAMPLE_TOPICS = [
   'processes',
 ] as const;
 
-export const STATE_TOPICS = ['audio', 'displays', 'system', 'windows', 'services'] as const;
+export const STATE_TOPICS = [
+  'audio',
+  'displays',
+  'system',
+  'windows',
+  'tiling',
+  'services',
+] as const;
 
 export const COMPUTER_TOPICS = [...SAMPLE_TOPICS, ...STATE_TOPICS] as const;
 
@@ -105,6 +113,7 @@ export const STATE_PARTS = z.strictObject({
   displays: DISPLAY_STATE.optional(),
   system: SYSTEM_STATE.optional(),
   windows: WINDOWS_STATE.optional(),
+  tiling: TILING_STATE.optional(),
   services: SERVICES_STATE.optional(),
   session: COMPUTER_SESSION.optional(),
 });

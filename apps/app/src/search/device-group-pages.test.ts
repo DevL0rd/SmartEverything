@@ -57,6 +57,7 @@ function tablesOf(devices: readonly Device[], groups: readonly DeviceGroupRow[])
     scheduled: tables.scheduled_actions,
     plugins: tables.plugins,
     pluginStreams: tables.plugin_streams,
+    pluginUi: tables.plugin_ui,
     extensions: undefined,
     configuration: undefined,
     inventory: undefined,

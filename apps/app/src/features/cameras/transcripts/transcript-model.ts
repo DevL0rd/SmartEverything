@@ -11,7 +11,7 @@ const RETENTION_DAYS: readonly number[] = [1, 3, 7, 14, 30, 90, 180, 365];
 
 const DAILY_CAPS_USD: readonly number[] = [0.1, 0.25, 0.5, 1, 2, 5, 10, 25];
 
-function optionsOf(
+export function optionsOf(
   values: readonly number[],
   current: number,
   label: (value: number) => string,

@@ -44,6 +44,7 @@ function actions(calls: string[], rings: (() => void)[], fail: Error | null): Ag
       calls.push(`capture ${target}`);
       return fail === null ? Promise.resolve(PICTURE) : Promise.reject(fail);
     },
+    permissions: () => [{ permission: 'mac_screen_recording', granted: false }],
   };
 }
 
@@ -99,7 +100,7 @@ describe('the session agent server', () => {
   it('answers a ping and does nothing else', async () => {
     const test = await rig();
     expect(await test.send(request({ op: 'ping' }))).toEqual([
-      { type: 'reply', id: 'r1', ok: true, capture: null },
+      { type: 'reply', id: 'r1', ok: true, capture: null, permissions: null },
     ]);
     expect(test.calls).toEqual([]);
   });
@@ -134,8 +135,23 @@ describe('the session agent server', () => {
     const test = await rig();
     await test.send(request({ op: 'open', target: { kind: 'url', url: 'https://example.com/a' } }));
     const captured = await test.send(request({ op: 'capture', target: 'screen' }));
-    expect(captured).toEqual([{ type: 'reply', id: 'r1', ok: true, capture: PICTURE }]);
+    expect(captured).toEqual([
+      { type: 'reply', id: 'r1', ok: true, capture: PICTURE, permissions: null },
+    ]);
     expect(test.calls).toEqual(['open url', 'capture screen']);
+  });
+
+  it('reports the permissions the app holds', async () => {
+    const test = await rig();
+    expect(await test.send(request({ op: 'permissions' }))).toEqual([
+      {
+        type: 'reply',
+        id: 'r1',
+        ok: true,
+        capture: null,
+        permissions: [{ permission: 'mac_screen_recording', granted: false }],
+      },
+    ]);
   });
 
   it('turns an action failure into a failure reply with its code', async () => {
@@ -160,7 +176,7 @@ describe('the session agent server', () => {
     expect(later[0]).toMatchObject({ id: 'r2', ok: true });
     const lines = await ringing;
     expect(lines).toEqual([
-      { type: 'reply', id: 'r1', ok: true, capture: null },
+      { type: 'reply', id: 'r1', ok: true, capture: null, permissions: null },
       { type: 'event', event: 'ring_ended' },
     ]);
     expect(test.calls).toEqual(['ring true', 'ring false']);

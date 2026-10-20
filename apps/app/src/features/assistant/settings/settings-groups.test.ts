@@ -79,6 +79,7 @@ describe('the Assistant settings root page', () => {
       'Models',
       'OpenRouter',
       'Conversation',
+      'Voice AI model',
       'Voice and calls',
       'Gemini key',
       'Reaching you',
@@ -120,10 +121,19 @@ describe('the Assistant settings root page', () => {
     ]);
   });
 
-  it('puts the call voice, spoken lines, call rules and the audio page in Voice and calls', () => {
+  it('puts the setup, thinking, call voice and reset in Voice AI model', () => {
+    const model = rootRows.filter((setting) => setting.section === 'Voice AI model');
+    expect(model.map((setting) => setting.id)).toEqual([
+      'assistant.voice.model-summary',
+      'assistant.voice.thinking',
+      'assistant.voice.call-voice',
+      'assistant.voice.model-reset',
+    ]);
+  });
+
+  it('puts the spoken lines, call rules and the audio page in Voice and calls', () => {
     const voice = rootRows.filter((setting) => setting.section === 'Voice and calls');
     expect(voice.map((setting) => setting.title)).toEqual([
-      'Call voice',
       'Spoken lines',
       'Voice for spoken lines',
       'End after silence',

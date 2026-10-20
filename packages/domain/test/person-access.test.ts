@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACCESS_AUDIT_ENTRY,
+  ACCESS_REQUEST_DECISION,
   ACCESS_REQUEST_ROW,
   ACCESS_SCOPES,
   MCP_TOOL_AREAS,
@@ -16,6 +17,8 @@ import {
   deviceInScope,
   effectiveRoleOf,
   isExpired,
+  type DeviceScope,
+  type PrivateDevices,
   modelInScope,
 } from '../src';
 
@@ -98,9 +101,15 @@ describe('person access contract', () => {
       until: null,
       requested_at: NOW,
       decided_at: null,
+      lapsed_at: null,
       decided_by: null,
     };
     expect(ACCESS_REQUEST_ROW.parse(row)).toStrictEqual(row);
+    expect(ACCESS_REQUEST_DECISION.parse({ approve: true, until: null })).toStrictEqual({
+      approve: true,
+      until: null,
+      target: null,
+    });
   });
 
   it('keeps a person to the areas they hold', () => {
@@ -113,9 +122,9 @@ describe('person access contract', () => {
     const lamp = { id: 'lamp', room_id: 'study' };
     const fan = { id: 'fan', room_id: 'hall' };
     const loose = { id: 'loose', room_id: null };
-    const everything = { mode: 'all', rooms: ['study'], devices: ['fan'] } as const;
-    const only = { mode: 'only', rooms: ['study'], devices: ['fan'] } as const;
-    const except = { mode: 'except', rooms: ['study'], devices: ['fan'] } as const;
+    const everything: DeviceScope = { mode: 'all', rooms: ['study'], devices: ['fan'] };
+    const only: DeviceScope = { mode: 'only', rooms: ['study'], devices: ['fan'] };
+    const except: DeviceScope = { mode: 'except', rooms: ['study'], devices: ['fan'] };
     expect([lamp, fan, loose].map((device) => deviceInScope(everything, device))).toStrictEqual([
       true,
       true,
@@ -132,6 +141,29 @@ describe('person access contract', () => {
       true,
     ]);
     expect(deviceInScope(NOTHING_IN_SCOPE.devices, lamp)).toBe(false);
+  });
+
+  it('hides the devices private to someone else even when the list would show them', () => {
+    const lamp = { id: 'lamp', room_id: 'study' };
+    const bottle = { id: 'bottle', room_id: 'study' };
+    const hidden = ['bottle'];
+    const all: DeviceScope & PrivateDevices = { mode: 'all', rooms: [], devices: [], hidden };
+    const only: DeviceScope & PrivateDevices = {
+      mode: 'only',
+      rooms: ['study'],
+      devices: [],
+      hidden,
+    };
+    const except: DeviceScope & PrivateDevices = {
+      mode: 'except',
+      rooms: ['hall'],
+      devices: [],
+      hidden,
+    };
+    for (const scope of [all, only, except]) {
+      expect(deviceInScope(scope, lamp)).toBe(true);
+      expect(deviceInScope(scope, bottle)).toBe(false);
+    }
   });
 
   it('applies the model and channel lists', () => {

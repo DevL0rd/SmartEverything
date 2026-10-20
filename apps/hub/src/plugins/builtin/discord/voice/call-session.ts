@@ -1,7 +1,8 @@
-import type { WakeSensitivity } from '@smarteverything/domain';
+import { TALK_FRAME_MS, type WakeSensitivity } from '@smarteverything/domain';
 import { displayName, type Person } from '../person';
 import type { PluginVoice } from '../../../plugin-voice';
 import type { Clock } from '../../../../clock';
+import { OPUS_SILENCE } from '../../../../reach/voice-pacing';
 import { Utterances as Joiner } from '../../../../transcripts/utterances';
 import type { OnSuperseded } from '../../../../wake-name/wake-claims';
 import { Capture, type CaptureCounts } from './capture';
@@ -12,7 +13,7 @@ type Ear = Awaited<ReturnType<PluginVoice['ear']>>;
 
 type Transcript = ReturnType<PluginVoice['transcript']>;
 
-const SILENCE_PAD_SAMPLES = 16_000;
+const SILENCE_PAD_PACKETS = Math.ceil(1000 / TALK_FRAME_MS);
 const CONTEXT_LINES = 5;
 const CONTEXT_WINDOW_MS = 24 * 60 * 60_000;
 
@@ -81,9 +82,11 @@ export class CallSession {
     this.capture = new Capture({
       link: parts.link,
       shouldCapture: parts.hooks.captures,
-      heard: (userId, pcm): void => {
-        this.audio(userId, pcm);
+      mixed: parts.hooks.approved,
+      packet: (userId, packet): void => {
+        this.feed(userId, packet);
       },
+      heard: parts.hooks.mixes,
       ended: (userId): void => {
         this.flushEar(userId);
       },
@@ -171,24 +174,23 @@ export class CallSession {
     }
   }
 
-  private audio(userId: string, pcm: Int16Array): void {
-    const { hooks } = this.parts;
-    if (hooks.approved(userId)) {
-      hooks.mixes(userId, pcm);
-    }
-    this.feed(userId, pcm);
-  }
-
   private flushEar(userId: string): void {
-    if (this.ears.has(userId)) {
-      this.feed(userId, new Int16Array(SILENCE_PAD_SAMPLES));
+    if (!this.ears.has(userId)) {
+      return;
     }
-  }
-
-  private feed(userId: string, pcm: Int16Array): void {
     this.earOf(userId)
       .then((ear) => {
-        ear.hear(pcm);
+        for (let packet = 0; packet < SILENCE_PAD_PACKETS; packet++) {
+          ear.packet(OPUS_SILENCE);
+        }
+      })
+      .catch(this.parts.hooks.report);
+  }
+
+  private feed(userId: string, packet: Uint8Array): void {
+    this.earOf(userId)
+      .then((ear) => {
+        ear.packet(packet);
       })
       .catch(this.parts.hooks.report);
   }
@@ -200,6 +202,7 @@ export class CallSession {
     }
     const opening = this.parts.voice.ear({
       speaker: userId,
+      codec: 'opus_48k_stereo',
       sensitivity: this.parts.hooks.wakeSensitivity,
       names: this.parts.hooks.wakeNames,
       wakes: (): boolean => this.parts.hooks.approved(userId) && this.parts.hooks.wakeable(userId),

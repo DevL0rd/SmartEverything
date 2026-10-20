@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { HarnessHost } from '../host/contracts';
 import {
+  HARNESS_PLATFORM,
   AI_HARNESS_PERMISSION_WRITE,
   HARNESS_DESIRED_CONFIGURATION,
 } from '@smarteverything/domain';
@@ -16,7 +17,7 @@ export const HARNESS_BOOT = z.strictObject({
   token: z.string().min(1).max(1000),
   home_directory: z.string().min(1).max(4096),
   state_directory: z.string().min(1).max(4096),
-  platform: z.enum(['linux', 'macos', 'windows']),
+  platform: HARNESS_PLATFORM,
   permission: AI_HARNESS_PERMISSION_WRITE,
   configuration_sync: z.boolean().optional(),
   configuration: HARNESS_DESIRED_CONFIGURATION.optional(),

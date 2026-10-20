@@ -8,7 +8,7 @@ import { SERVED_PROJECTS } from './served-projects';
 import { SERVED_AI } from './served-ai';
 import { SERVED_MACHINES } from './served-machines';
 import { SERVED_TOOL_RESULTS } from './served-tool-results';
-import { SERVED_AUTOMATIONS } from './served-automations';
+import { SERVED_AUTOMATION_PROGRAMS } from './served-automation-programs';
 import { SERVED_HOME } from './served-home';
 import { SERVED_LIFE } from './served-life';
 import type { McpRoute } from './served-types';
@@ -17,7 +17,7 @@ export type { McpRoute } from './served-types';
 
 const SERVED = [
   ...SERVED_HOME,
-  ...SERVED_AUTOMATIONS,
+  ...SERVED_AUTOMATION_PROGRAMS,
   ...SERVED_LIFE,
   ...SERVED_PROJECTS,
   ...SERVED_PREVIEWS,

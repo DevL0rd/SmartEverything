@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class OverlayTrayModelTest {
-  private fun tray(chat: String?, from: Long?) = OverlayTray("The assistant", chat, from, emptyList(), emptyList(), null, 1.0)
+  private fun tray(chat: String?, from: Long?) = OverlayTray("The assistant", chat, from, emptyList(), OverlaySetup(null, SetupState.Loading, ThinkingCopy.LOADING), emptyList(), null, 1.0)
 
   @Test
   fun `the subtitle joins the chat title and the time in the call`() {

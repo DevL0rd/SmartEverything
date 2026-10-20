@@ -166,6 +166,7 @@ export const RULES: Rules = {
     order: alphabetical((row) => pluginStreamKey(row.plugin_id, row.stream)),
     keep: ALL,
   },
+  plugin_ui: { idOf: (row) => row.id, order: alphabetical((row) => row.name), keep: ALL },
   body_readings: {
     idOf: (row) => row.id,
     order: newest((row) => row.measured_at),

@@ -77,9 +77,10 @@ function boardWidget(
   key: string,
   type: string,
   options: Readonly<Record<string, string>> | undefined,
+  extensions: readonly WidgetDefinition[],
 ): ResolvedWidget {
   return {
-    ...plain(key, definitionIn(BOARD_CATALOGUE, type), options),
+    ...plain(key, definitionIn([...BOARD_CATALOGUE, ...extensions], type), options),
     wide: true,
     scope: isFitnessBoard(type) ? scopeOf(undefined) : null,
   };
@@ -89,6 +90,7 @@ export function resolveWidget(
   key: string,
   widget: BoardChatWidget,
   remoteDevice: (remoteId: string) => string | null,
+  extensions: readonly WidgetDefinition[],
 ): ResolvedWidget {
   switch (widget.kind) {
     case 'device':
@@ -114,7 +116,7 @@ export function resolveWidget(
         undefined,
       );
     case 'board':
-      return boardWidget(key, widget.type, widget.options);
+      return boardWidget(key, widget.type, widget.options, extensions);
     case 'weather':
       return { ...plain(key, definitionIn(HOME_WIDGETS, 'weather'), undefined), wide: true };
     case 'scenes':

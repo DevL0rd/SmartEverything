@@ -5,10 +5,11 @@ import type {
   JsonValue,
   MediaSize,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import type { LogPayload, Logger } from '@smarteverything/logging';
 import type { DeviceRecord, HubDatabase } from '../database/port';
 import type { RecordedEvent } from '../state/event-router';
 import { cameraSourceOf } from '../state/inventory';
+import type { CameraRefusals } from './camera-health';
 import { FrameCache } from './frame-cache';
 import type { Go2rtcClient } from './go2rtc-client';
 import { CameraTalkUnsupportedError, CameraViewers, listenOnly } from './viewers';
@@ -34,6 +35,7 @@ export interface CameraConditions {
 export interface CameraServiceOptions {
   readonly client: Go2rtcClient;
   readonly conditions: CameraConditions;
+  readonly refusal: CameraRefusals;
   readonly store: Pick<HubDatabase, 'loadCameras' | 'storeRecording'>;
   readonly now: () => Date;
   readonly log: Logger;
@@ -43,19 +45,23 @@ function h264Transcode(stream: string): string {
   return `ffmpeg:${stream}#video=h264`;
 }
 
-const TILE_SUFFIX = '~tile';
-
-export function tileStreamOf(deviceId: string): string {
-  return `${deviceId}${TILE_SUFFIX}`;
+export async function registerStream(
+  client: Pick<Go2rtcClient, 'putStream' | 'preload'>,
+  deviceId: string,
+  source: string,
+): Promise<void> {
+  await client.putStream(deviceId, [source, h264Transcode(deviceId)]);
+  await client.preload(deviceId);
 }
 
-function tileSourceOf(source: string): string | null {
-  if (!source.startsWith('xiaomi:')) {
-    return null;
-  }
-  const url = new URL(source);
-  url.searchParams.set('subtype', 'sd');
-  return url.toString();
+export async function reconnectStream(
+  client: Pick<Go2rtcClient, 'putStream' | 'preload' | 'unpreload' | 'deleteStream'>,
+  deviceId: string,
+  source: string,
+): Promise<void> {
+  await client.unpreload(deviceId);
+  await client.deleteStream(deviceId);
+  await registerStream(client, deviceId, source);
 }
 
 export class UnknownStreamError extends Error {
@@ -67,10 +73,13 @@ export class UnknownStreamError extends Error {
 }
 
 export class CameraOfflineError extends Error {
-  override readonly name = 'CameraOfflineError';
+  override readonly name: string = 'CameraOfflineError';
 
-  constructor(deviceId: string) {
-    super(`The camera ${deviceId} is offline, so it has no stream, snapshot or clip.`);
+  constructor(
+    deviceId: string,
+    message = `The camera ${deviceId} is offline, so it has no stream, snapshot or clip.`,
+  ) {
+    super(message);
   }
 }
 
@@ -88,7 +97,6 @@ function compactTime(iso: string): string {
 
 export class CameraService {
   private readonly streams = new Map<string, string>();
-  private readonly tiles = new Set<string>();
   private readonly recordEvents = new Map<string, boolean>();
   private syncing: Promise<void> = Promise.resolve();
   private readonly frames: FrameCache;
@@ -120,57 +128,46 @@ export class CameraService {
 
   private async syncNow(devices: readonly DeviceRecord[]): Promise<void> {
     const startedAt = this.options.now().getTime();
-    try {
-      await this.syncStreams(devices);
-    } catch (cause) {
-      this.options.log.error('stream.sync_failed', cause, {
-        devices: devices.length,
-        registered: this.streams.size,
-        durationMs: this.options.now().getTime() - startedAt,
-      });
-      throw cause;
-    }
+    const failed = await this.syncStreams(devices);
     this.options.log.debug('stream.synced', () => ({
       devices: devices.length,
       registered: this.streams.size,
-      tiles: this.tiles.size,
+      failed,
       durationMs: this.options.now().getTime() - startedAt,
     }));
   }
 
-  private async syncStreams(devices: readonly DeviceRecord[]): Promise<void> {
+  private async syncStreams(devices: readonly DeviceRecord[]): Promise<number> {
+    let failed = 0;
     for (const device of devices) {
-      const source = cameraSourceOf(device);
-      const registered = this.streams.get(device.id);
-      if (source !== null && source !== registered) {
-        await this.options.client.putStream(device.id, [source, h264Transcode(device.id)]);
-        await this.putTile(device.id, source);
-        this.streams.set(device.id, source);
-        this.options.log.info('stream.added', { deviceId: device.id });
-      } else if (source === null && registered !== undefined) {
-        await this.options.client.deleteStream(device.id);
-        await this.putTile(device.id, null);
-        this.streams.delete(device.id);
-        this.options.log.info('stream.removed', { deviceId: device.id });
+      try {
+        await this.syncStream(device);
+      } catch (cause) {
+        failed += 1;
+        this.options.log.error('stream.sync_failed', cause, { deviceId: device.id });
       }
     }
+    return failed;
   }
 
-  private async putTile(deviceId: string, source: string | null): Promise<void> {
-    const name = tileStreamOf(deviceId);
-    const tile = source === null ? null : tileSourceOf(source);
-    if (source !== null && tile !== null) {
-      await this.options.client.putStream(name, [tile, source, h264Transcode(name)]);
-      this.tiles.add(deviceId);
-    } else if (this.tiles.delete(deviceId)) {
-      await this.options.client.deleteStream(name);
+  private async syncStream(device: DeviceRecord): Promise<void> {
+    const source = cameraSourceOf(device);
+    const registered = this.streams.get(device.id);
+    if (source !== null && source !== registered) {
+      await registerStream(this.options.client, device.id, source);
+      this.streams.set(device.id, source);
+      this.options.log.info('stream.added', { deviceId: device.id });
+    } else if (source === null && registered !== undefined) {
+      await this.options.client.unpreload(device.id);
+      await this.options.client.deleteStream(device.id);
+      this.streams.delete(device.id);
+      this.options.log.info('stream.removed', { deviceId: device.id });
     }
   }
 
   async resync(devices: readonly DeviceRecord[]): Promise<void> {
     await this.syncing;
     this.streams.clear();
-    this.tiles.clear();
     await this.sync(devices);
   }
 
@@ -190,8 +187,7 @@ export class CameraService {
   ): Promise<string> {
     const startedAt = this.options.now().getTime();
     await this.streamReady(deviceId);
-    const stream =
-      quality === 'tile' && this.tiles.has(deviceId) ? tileStreamOf(deviceId) : deviceId;
+    const stream = deviceId;
     try {
       const answer = await this.viewers.open({
         deviceId: stream,
@@ -211,7 +207,7 @@ export class CameraService {
       });
       return answer;
     } catch (cause) {
-      this.options.log.error('webrtc.answer_failed', cause, {
+      this.failedWith('webrtc.answer_failed', cause, {
         deviceId,
         stream,
         talk: false,
@@ -221,6 +217,14 @@ export class CameraService {
       });
       throw cause;
     }
+  }
+
+  private failedWith(event: string, cause: unknown, fields: LogPayload): void {
+    if (cause instanceof CameraOfflineError) {
+      this.options.log.debug('camera.stream_refused', () => ({ ...fields, reason: 'down' }));
+      return;
+    }
+    this.options.log.error(event, cause, fields);
   }
 
   async talk(deviceId: string, sdp: string, clientId: string): Promise<string> {
@@ -247,7 +251,7 @@ export class CameraService {
       });
       return answer;
     } catch (cause) {
-      this.options.log.error('webrtc.answer_failed', cause, {
+      this.failedWith('webrtc.answer_failed', cause, {
         deviceId,
         talk: true,
         clientId,
@@ -284,6 +288,11 @@ export class CameraService {
     if (privacyOn(deviceId)) {
       this.options.log.debug('camera.stream_refused', { deviceId, reason: 'privacy_on' });
       throw new CameraPrivacyError(deviceId);
+    }
+    const refusal = this.options.refusal(deviceId);
+    if (refusal !== null) {
+      this.options.log.debug('camera.stream_refused', { deviceId, reason: 'down' });
+      throw refusal;
     }
   }
 
@@ -329,6 +338,14 @@ export class CameraService {
     ) {
       return;
     }
+    if (this.options.refusal(deviceId) !== null) {
+      this.options.log.debug('recording.skipped', () => ({
+        deviceId,
+        eventId: event.id,
+        reason: 'down',
+      }));
+      return;
+    }
     await Promise.all([
       this.capture(event, deviceId, 'snapshot'),
       this.capture(event, deviceId, 'clip'),
@@ -368,7 +385,7 @@ export class CameraService {
         durationMs: this.options.now().getTime() - startedAt.getTime(),
       });
     } catch (cause) {
-      this.options.log.error('recording.failed', cause, {
+      this.failedWith('recording.failed', cause, {
         deviceId,
         kind,
         eventId: event.id,

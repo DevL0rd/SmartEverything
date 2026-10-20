@@ -27,11 +27,6 @@ const FAILURES: Readonly<Record<FailureReason, Omit<StateCopy, 'critical'>>> = {
     icon: 'server',
   },
   dropped: { title: 'The video stopped', body: 'Try again to reconnect.', icon: 'cameraOff' },
-  relayUnsupported: {
-    title: 'Watching through your server isn’t available here',
-    body: 'Try again to reconnect.',
-    icon: 'cameraOff',
-  },
   noStream: { title: 'This camera has no live view', body: null, icon: 'cameraOff' },
   network: {
     title: 'This device couldn’t set up the video',

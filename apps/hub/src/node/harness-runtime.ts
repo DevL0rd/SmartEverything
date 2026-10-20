@@ -15,18 +15,20 @@ import {
   NODE_HARNESS_FRAME,
   NODE_HARNESS_PATH,
   NODE_HARNESS_PROTOCOL,
-  HARNESS_CONFIGURATION_CAPABILITY,
-  HARNESS_SUBSCRIPTION_CAPABILITY,
-  AI_PREVIEW_CAPABILITY,
-  AI_PREVIEW_FILE_CAPABILITY,
+  harnessPlatform,
   isPreviewControl,
 } from '@smarteverything/domain';
 import type {
   AiSubscriptionHostStatus,
+  HarnessPlatform,
   HubHarnessControl,
   NodeHarnessFrame,
 } from '@smarteverything/domain';
-import { createComputerHarness, type ComputerHarness } from '@smarteverything/harness/process';
+import {
+  createComputerHarness,
+  hostCapabilities,
+  type ComputerHarness,
+} from '@smarteverything/harness/process';
 import { harnessFailure } from './harness-failure';
 import type { Logger } from '@smarteverything/logging';
 import type { NodeServiceConfig } from '../service/configuration';
@@ -48,6 +50,7 @@ export class NodeHarnessRuntime {
   private readonly unsent: string[] = [];
   private readonly calls = new HarnessCalls();
   private readonly connection: NodeConnection;
+  private readonly os: HarnessPlatform;
   constructor(
     private readonly options: {
       readonly node: NodeServiceConfig['node'];
@@ -56,8 +59,10 @@ export class NodeHarnessRuntime {
       readonly name: string;
       readonly log: Logger;
       readonly transport?: NodeHubTransport;
+      readonly platform?: NodeJS.Platform;
     },
   ) {
+    this.os = harnessPlatform(options.platform ?? platform());
     this.connection = new NodeConnection({
       hubUrl: options.node.hub_url,
       path: NODE_HARNESS_PATH,
@@ -84,20 +89,10 @@ export class NodeHarnessRuntime {
     });
   }
   start(): void {
-    const os = platform();
-    if (os !== 'linux' && os !== 'darwin') {
-      this.options.log.warn('harness.unavailable', {
-        reason: 'Computer DSH supports Linux/macOS; Windows runtime is unavailable.',
-      });
-      return;
-    }
     this.connection.start();
   }
   private connect(socket: WebSocket): void {
-    this.binding = new NodeHarnessBinding(
-      this.instance,
-      platform() === 'darwin' ? 'macos' : 'linux',
-    );
+    this.binding = new NodeHarnessBinding(this.instance, this.os);
     socket.send(
       JSON.stringify(
         NODE_HARNESS_CONNECT.parse({
@@ -106,12 +101,7 @@ export class NodeHarnessRuntime {
           device_id: this.options.node.device_id,
           runtime_instance: this.instance,
           machine_id: this.options.machineId,
-          capabilities: [
-            HARNESS_CONFIGURATION_CAPABILITY,
-            HARNESS_SUBSCRIPTION_CAPABILITY,
-            AI_PREVIEW_CAPABILITY,
-            AI_PREVIEW_FILE_CAPABILITY,
-          ],
+          capabilities: hostCapabilities(this.os, true),
         }),
       ),
     );
@@ -151,7 +141,7 @@ export class NodeHarnessRuntime {
     await this.queue;
     await this.dispose();
   }
-  private async welcomed(socket: WebSocket, frame: Welcome, os: 'linux' | 'macos'): Promise<void> {
+  private async welcomed(socket: WebSocket, frame: Welcome, os: HarnessPlatform): Promise<void> {
     if (this.stopped || this.connection.socket !== socket) return;
     const runtime =
       this.runtime?.generation === frame.generation ? this.runtime : await this.replace(frame, os);
@@ -170,7 +160,7 @@ export class NodeHarnessRuntime {
       socket.terminate();
     });
   }
-  private async replace(frame: Welcome, os: 'linux' | 'macos'): Promise<Composed> {
+  private async replace(frame: Welcome, os: HarnessPlatform): Promise<Composed> {
     await this.dispose();
     const preview = new NativePreviewRelay(
       this.options.node.hub_url,

@@ -10,13 +10,12 @@ import {
   type ComputerSessionState,
   type HistoryPolicy,
   type JsonValue,
-  type ListeningNodeMessage,
   type MachineActionSupport,
+  type NodeFrame,
   type NodeHello,
   type NodeRequest,
   type NodeResult,
   type NodeSampleFrame,
-  type RemoteEarNodeMessage,
   type ProcessWindow,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
@@ -24,10 +23,12 @@ import type { MetricHistory } from '../metrics/history';
 import { deviceTarget, type ViewDemand, type Viewers } from '../metrics/viewers';
 import type { HubLink } from '../node/link';
 import { AppFocusTracker, type AppTime } from './app-focus';
+import { AppPresence, type AppPresenceOptions } from './app-presence';
 import { demandedTopics, nodeDemandOf } from './computer-demand';
 import { FrameCounter } from './frame-counter';
 import { FreshRead, type FreshViewers } from './fresh-read';
 import type { SessionEars } from './computer-ears';
+import { isEarFrame, routeEarFrame } from './ear-frames';
 import type { SessionEarHosts } from '../listening/ear-hosts';
 import { computerExternalId, describeComputer } from './computer-device';
 import { offeredMachineActions } from './machine-requests';
@@ -38,7 +39,13 @@ import { HeadlineRecorder, headlineCapabilities } from './headlines';
 import { NodeCalls } from './node-calls';
 import { sessionCapabilities, sessionReadings } from './session-readings';
 
-export interface ComputerSessionOptions {
+type DescriptionFrame = Extract<NodeFrame, { readonly type: 'machine' | 'features' }>;
+
+function isDescription(frame: NodeFrame): frame is DescriptionFrame {
+  return frame.type === 'machine' || frame.type === 'features';
+}
+
+export interface ComputerSessionOptions extends Pick<AppPresenceOptions, 'signals' | 'personOf'> {
   readonly link: HubLink;
   readonly sink: AdapterSink;
   readonly history: Pick<MetricHistory, 'push'>;
@@ -75,6 +82,7 @@ export class ComputerSession {
   private readonly merged = new MergedParts();
   private readonly headlines: HeadlineRecorder;
   private readonly focus: AppFocusTracker;
+  private readonly presence: AppPresence;
   private capabilities = '';
   private deviceId: string | null = null;
   private scopes: ComputerScopes | null = null;
@@ -88,6 +96,7 @@ export class ComputerSession {
     this.calls = new NodeCalls(options.link.send);
     this.fresh = new FreshRead(options.viewers);
     this.focus = new AppFocusTracker(options.recordAppTime);
+    this.presence = new AppPresence(options, { view: (): ComputerView | null => this.view() });
     this.counter = new FrameCounter(options.log);
     this.headlines = new HeadlineRecorder(options.history, options.sink);
     this.stops.push(
@@ -115,6 +124,7 @@ export class ComputerSession {
       role: this.role,
     });
     this.focus.end(this.options.now());
+    this.presence.end();
     this.calls.close();
     this.known = null;
     this.unfollow?.();
@@ -164,6 +174,7 @@ export class ComputerSession {
       system: scopes.system,
     });
     this.scopes = scopes;
+    this.presence.revalidate();
     this.options.link.send({ type: 'scopes', scopes });
     const { known, deviceId } = this;
     if (known !== null) {
@@ -187,6 +198,14 @@ export class ComputerSession {
       return;
     }
     const { data } = frame;
+    if (isEarFrame(data)) {
+      routeEarFrame(this.options, this.deviceId, data);
+      return;
+    }
+    if (isDescription(data)) {
+      this.described(data);
+      return;
+    }
     switch (data.type) {
       case 'hello':
         this.greeted(data.hello);
@@ -197,20 +216,22 @@ export class ComputerSession {
       case 'state':
         this.measured(data.at, data.parts);
         return;
+      case 'app_events':
+        this.presence.receive(data);
+        return;
       case 'reply':
         this.replied(data.id, data.result);
         return;
-      case 'ear':
-        this.heardEar(data.ear);
-        return;
-      case 'ears':
-        this.relayedEar(data.key, data.ear);
-        return;
-      case 'machine':
-        this.machineReported(data.actions, data.permissions);
-        return;
       case 'report':
         return;
+    }
+  }
+
+  private described(frame: DescriptionFrame): void {
+    if (frame.type === 'machine') {
+      this.machineReported(frame.actions, frame.permissions);
+    } else {
+      this.featuresReported(frame.features);
     }
   }
 
@@ -238,6 +259,17 @@ export class ComputerSession {
     this.describeIfChanged(this.known);
   }
 
+  private featuresReported(features: NodeHello['features']): void {
+    const { known } = this;
+    if (known === null) {
+      this.options.log.warn('computer.frame_before_hello', {});
+      return;
+    }
+    this.options.log.info('computer.features_reported', { features: features.length });
+    this.known = { ...known, hello: { ...known.hello, features } };
+    this.describeIfChanged(this.known);
+  }
+
   private greeted(hello: NodeHello): void {
     const externalId = computerExternalId(hello.machineId);
     this.options.log.info('computer.hello_received', {
@@ -258,14 +290,6 @@ export class ComputerSession {
     }
     this.allow(this.options.scopesOf(this.deviceId));
     this.earsOnline(this.deviceId);
-  }
-
-  private heardEar(message: ListeningNodeMessage): void {
-    if (this.deviceId !== null) this.options.ears?.heard(this.deviceId, message);
-  }
-
-  private relayedEar(key: string, ear: RemoteEarNodeMessage): void {
-    if (this.deviceId !== null) this.options.earHosts?.relayed(this.deviceId, key, ear);
   }
 
   private earsOffline(): void {

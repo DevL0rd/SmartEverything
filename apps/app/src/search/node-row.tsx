@@ -7,6 +7,7 @@ import { IconButton } from '../components/icon-button';
 import { ListRow } from '../components/list-row';
 import { Switch } from '../components/switch';
 import { joinParts } from '../format/text';
+import { usePinMenuItems } from '../app-shell/pin-menu';
 import { runSceneNow, toggleAutomation } from '../features/automations';
 import {
   CapabilityRow,
@@ -19,6 +20,7 @@ import { useDeviceValues } from '../store/selectors';
 import { inlineOf, type InlineAction } from './actions';
 import { deviceIdOf, type SearchCatalogue } from './catalogue';
 import { titleOf, type NodeItem, type ResultNode } from './nodes';
+import { pinTargetOfNode } from './pin-target';
 import type { NamedDevice } from './sources';
 
 interface NodeRowProps {
@@ -27,6 +29,7 @@ interface NodeRowProps {
   readonly parent: string | null;
   readonly expandable: boolean;
   readonly expanded: boolean;
+  readonly picking: boolean;
   readonly catalogue: SearchCatalogue;
   readonly onOpen: (node: ResultNode) => void;
   readonly onToggle: (key: string, expanded: boolean) => void;
@@ -97,7 +100,7 @@ function Split({
 function Trailing(props: NodeRowProps): ReactNode {
   return (
     <>
-      <InlineControl action={inlineOf(props.node, props.catalogue)} />
+      {props.picking ? null : <InlineControl action={inlineOf(props.node, props.catalogue)} />}
       <ExpandButton {...props} />
     </>
   );
@@ -111,6 +114,7 @@ function useDeviceLine(named: NamedDevice): string {
 
 function DeviceNode(props: NodeRowProps & { readonly named: NamedDevice }): ReactNode {
   const subtitle = useDeviceLine(props.named);
+  const pin = usePinMenuItems(pinTargetOfNode(props.node));
   return (
     <Split
       row={
@@ -119,6 +123,7 @@ function DeviceNode(props: NodeRowProps & { readonly named: NamedDevice }): Reac
           titleHighlight={props.node.range}
           subtitle={subtitle}
           icon={props.catalogue.icons.get(props.node.key) ?? 'cpu'}
+          contextMenu={pin}
           onPress={() => {
             props.onOpen(props.node);
           }}
@@ -143,6 +148,7 @@ function EntryNode(
 ): ReactNode {
   const detail = props.depth === 0 && props.entry.detail !== '' ? props.entry.detail : undefined;
   const icon = ownIcon(props);
+  const pin = usePinMenuItems(pinTargetOfNode(props.node));
   return (
     <Split
       row={
@@ -151,6 +157,7 @@ function EntryNode(
           titleHighlight={props.node.range}
           {...(detail === undefined ? {} : { subtitle: detail })}
           {...(icon === null ? {} : { icon })}
+          contextMenu={pin}
           onPress={() => {
             props.onOpen(props.node);
           }}

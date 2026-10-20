@@ -49,7 +49,7 @@ export class HubRemoteEars implements RemoteEars {
     this.stops = [
       hosts.onMove(({ to }) => {
         this.ears.forEach((ear) => {
-          ear.attach(to);
+          this.attached(ear, to);
         });
       }),
       hosts.onRelayed(({ computerId, key, message }) => {
@@ -100,6 +100,17 @@ export class HubRemoteEars implements RemoteEars {
     ear.attach(this.deps.hosts.host());
     this.publish(ear.listeningKey);
     return ear;
+  }
+
+  private attached(ear: RemoteEarSession, to: string | null): void {
+    try {
+      ear.attach(to);
+    } catch (cause) {
+      this.deps.log.error('ears.attach_failed', cause, {
+        key: ear.key,
+        consequence: 'this source is not listened to until it is opened again',
+      });
+    }
   }
 
   private publish(listeningKey: string): void {

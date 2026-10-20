@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import { DEFAULT_HISTORY_SETTINGS } from '../src/history-settings';
+import { DEFAULT_TRIGGER_SETTINGS } from '../src/trigger-settings';
 import {
   API_ENDPOINTS,
   HISTORY_BUCKET,
@@ -13,7 +14,7 @@ import {
   SESSION_DESCRIPTION,
 } from '../src';
 import { CAMERA_SERVICE_STATES, ISSUED_TOKEN } from '../src/api/endpoints-access';
-import { STORED_LAYOUT } from '../src/api/endpoints-automation';
+import { STORED_LAYOUT } from '../src/api/endpoints-client';
 import { BEST_DAY, HEALTH_SIGHTING } from '../src/api/endpoints-health';
 import { RECORDING_LINK } from '../src/api/endpoints-media';
 import { PUSH_STATUS } from '../src/api/endpoints-settings';
@@ -29,6 +30,7 @@ const CLIENT = {
   id: FIRST,
   name: 'Pixel 9',
   platform: 'android',
+  kind: 'phone',
   role: 'member',
   built_in: false,
   profile_id: null,
@@ -52,9 +54,11 @@ const SETTINGS = {
   },
   mcp_disabled_tools: [],
   history_settings: DEFAULT_HISTORY_SETTINGS,
+  trigger_settings: DEFAULT_TRIGGER_SETTINGS,
   end_of_speech_pause_ms: 200,
   ear_host_device_id: null,
   device_refills: {},
+  laundry_notices: {},
   ir_remotes: {},
   public_url: 'https://home.example.com',
   public_url_checked_at: AT,
@@ -122,6 +126,11 @@ describe('access responses', () => {
       hub: { ...HUB, cameras: 'stopped' },
     });
     expectRefused(SESSION, [{ client: CLIENT }, { client: CLIENT, hub: HUB, extra: 1 }]);
+  });
+
+  it('SESSION accepts a client row from a hub that sends no kind', () => {
+    const older = Object.fromEntries(Object.entries(CLIENT).filter(([key]) => key !== 'kind'));
+    expect(SESSION.parse({ client: older, hub: HUB }).client.kind).toBe('phone');
   });
 
   it('PAIRING reports the code, its expiry and the QR payload', () => {

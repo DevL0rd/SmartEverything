@@ -21,6 +21,26 @@ describe('overlay pill page', () => {
   });
 });
 
+describe('overlay thinking controls', () => {
+  it('never truncates the chip label and hides it only in the icon-only chip', () => {
+    const pill = read('overlay-pill.css');
+    expect(pill).not.toMatch(/\.think(-tx)? \{[^}]*(max-width|text-overflow)/);
+    expect(pill).toMatch(/\.think\.icon \.think-tx \{[^}]*display: none;/);
+  });
+
+  it('outlines the checked thinking level so the choice does not rest on a faint fill', () => {
+    expect(read('overlay-tray.css')).toMatch(
+      /\.tk-opt\[aria-checked='true'\] \{[^}]*box-shadow: inset 0 0 0 1px var\(--color-primary\)/,
+    );
+  });
+
+  it('spins beside Saving only when motion is allowed', () => {
+    const tray = read('overlay-tray.css');
+    expect(tray).toMatch(/\.tk-save::before \{[^}]*animation: tk-spin/);
+    expect(tray).toMatch(/\.ov\.rm \.tk-save::before \{[^}]*animation: none;/);
+  });
+});
+
 describe('overlay windows fit their content', () => {
   it('leaves no transparent margin around the pill, the tray or the card that could take clicks', () => {
     const pill = read('overlay-pill.css');

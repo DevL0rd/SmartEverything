@@ -4,6 +4,7 @@ import { MACHINE_OPEN_TARGET } from '../machine-actions';
 import { JSON_VALUE } from '../values';
 import { AUDIO_CHANGE } from './computer-audio';
 import { CAPTURE_TARGETS } from './computer-capture';
+import { COMPUTER_INPUT } from './computer-input';
 import { DISPLAY_CHANGE } from './computer-displays';
 import {
   DOWNLOAD_PATHS,
@@ -15,6 +16,7 @@ import {
 } from './computer-files';
 import { PROCESS_QUERY, PROCESS_SIGNALS } from './computer-processes';
 import { SERVICE_CHANGE, STARTUP_CHANGE, SYSTEM_CHANGE } from './computer-system';
+import { TILING_CHANGE } from './computer-tiling';
 import { WINDOW_CHANGE } from './computer-windows';
 import type { ComputerScope } from './computer-scopes';
 import { MEDIA_STATUSES } from './computer-session-state';
@@ -64,6 +66,7 @@ export const NODE_REQUEST = z.discriminatedUnion('verb', [
     length: z.int().min(1).max(FILE_CHUNK_BYTES),
   }),
   z.strictObject({ verb: z.literal('capture'), target: z.enum(CAPTURE_TARGETS) }),
+  z.strictObject({ verb: z.literal('input'), input: COMPUTER_INPUT }),
   z.strictObject({ verb: z.literal('audio') }),
   z.strictObject({ verb: z.literal('audio_set'), change: AUDIO_CHANGE }),
   z.strictObject({ verb: z.literal('displays') }),
@@ -77,6 +80,8 @@ export const NODE_REQUEST = z.discriminatedUnion('verb', [
   z.strictObject({ verb: z.literal('system_set'), change: SYSTEM_CHANGE }),
   z.strictObject({ verb: z.literal('windows') }),
   z.strictObject({ verb: z.literal('window_set'), change: WINDOW_CHANGE }),
+  z.strictObject({ verb: z.literal('tiling') }),
+  z.strictObject({ verb: z.literal('tiling_set'), change: TILING_CHANGE }),
   z.strictObject({ verb: z.literal('startup') }),
   z.strictObject({ verb: z.literal('startup_set'), change: STARTUP_CHANGE }),
   z.strictObject({ verb: z.literal('services') }),
@@ -152,6 +157,7 @@ export const NODE_VERB_SCOPES: Readonly<Record<NodeVerb, ComputerScope | null>> 
   file: 'files',
   file_range: 'files',
   capture: 'screenshots',
+  input: 'input',
   audio: 'system',
   audio_set: 'system',
   displays: 'system',
@@ -161,6 +167,8 @@ export const NODE_VERB_SCOPES: Readonly<Record<NodeVerb, ComputerScope | null>> 
   system_set: 'system',
   windows: 'apps',
   window_set: 'apps',
+  tiling: 'apps',
+  tiling_set: 'apps',
   startup: 'apps',
   startup_set: 'apps',
   services: 'system',

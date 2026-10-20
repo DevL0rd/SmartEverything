@@ -28,6 +28,13 @@ export function harnessHostReason(host: AiHarnessHost): string | null {
     return host.workspace.reason ?? 'This machine’s workspace is unavailable.';
   return host.unavailable_reason;
 }
+const WINDOWS_NOTE = 'Not verified on Windows';
+const PARTIAL_SANDBOX_NOTE = 'writes are confined, reads are not';
+
+export function harnessHostNote(host: AiHarnessHost): string | null {
+  if (host.platform !== 'windows') return null;
+  return host.sandbox === 'partial' ? `${WINDOWS_NOTE} · ${PARTIAL_SANDBOX_NOTE}` : WINDOWS_NOTE;
+}
 export function harnessEngineReason(
   engine: DshEngine,
   catalogue: AiHarnessCatalogue | undefined,

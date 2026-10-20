@@ -33,9 +33,15 @@ const RETIRED: ReadonlyMap<string, Retired> = new Map<string, Retired>([
   ['stop_automation_sequence', { ...ACTIONS('stop_automation', 'automation'), rename: SEQUENCE }],
   ['stop_automation_run', ACTIONS('stop_automation', 'run')],
   ['stop_automation_runs', { ...ACTIONS('stop_automation', 'automation'), rename: KEY }],
-  ['read_automation_revision', { tool: 'list_automations', drop: ['automationId'] }],
-  ['list_automation_sequences', { tool: 'list_automations' }],
-  ['read_automation_sequence', { tool: 'list_automations', drop: ['sequenceId'] }],
+  [
+    'read_automation_revision',
+    { tool: 'list_automations', select: { view: 'full' }, drop: ['revision'] },
+  ],
+  ['list_automation_sequences', { tool: 'list_automations', select: { view: 'summary' } }],
+  [
+    'read_automation_sequence',
+    { tool: 'list_automations', select: { view: 'full' }, rename: SEQUENCE },
+  ],
   [
     'remove_automation_sequence',
     { ...ACTIONS('edit_automation', 'remove'), rename: SEQUENCE, drop: ['expectedRevision'] },

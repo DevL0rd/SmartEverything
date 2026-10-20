@@ -1,13 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Cancel } from '../src/clock';
-import { KeywordSpotter } from '../src/wake-name/keyword-spotter';
+import type { RemoteEars } from '../src/listening/remote-ears-port';
 import type { OpenMicrophone } from '../src/talk/camera-microphone';
 import { WakeListeners } from '../src/wake-name/wake-listeners';
-import type { WakeGrant } from '../src/wake-name/wake-claims';
 import { testStore, type TestStore } from './support/store';
 import { captureLogs, type CapturedLogs } from './support/logs';
 import { Logger } from '@smarteverything/logging';
 import { idleWakeTest } from './wake-test-idle';
+
+const inertEars: RemoteEars = {
+  open: () =>
+    Promise.resolve({
+      packet: (): void => undefined,
+      close: (): Promise<void> => Promise.resolve(),
+    }),
+};
 
 let opened: TestStore;
 let listeners: WakeListeners;
@@ -63,6 +70,7 @@ beforeEach(async () => {
       wakeOff: (): string[] => [],
       standbyOff: (): string[] => standbyOff,
     },
+    health: { onChange: (): (() => void) => (): void => undefined },
     microphones: {
       open: (): Promise<OpenMicrophone> => Promise.resolve({ stop: () => undefined }),
     },
@@ -74,13 +82,7 @@ beforeEach(async () => {
         };
       },
     },
-    ears: {
-      spotter: (): KeywordSpotter => new KeywordSpotter(),
-      diagnostics: null,
-      pause: { ms: (): 200 => 200 },
-    },
-    claims: { request: (): WakeGrant => ({ granted: true, onSuperseded: (): void => undefined }) },
-    names: (): string[] => ['Aibi'],
+    ears: inertEars,
     wake: (): Promise<void> => Promise.resolve(),
     speech: (): void => undefined,
     clock: { now: (): Date => new Date(), at: (): Cancel => (): void => undefined },

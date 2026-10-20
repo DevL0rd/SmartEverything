@@ -217,8 +217,4 @@ describe('which data points the LAN may write', () => {
     expect(isLanWritable(new Map(), 1)).toBe(false);
     expect(isLanWritable(new Map(), null)).toBe(false);
   });
-
-  it('allows any data point when no conversions are known', () => {
-    expect(isLanWritable(null, 7)).toBe(true);
-  });
 });

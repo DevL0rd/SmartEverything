@@ -1,4 +1,5 @@
 import { href } from '../../../app-shell/hrefs';
+import { usePinMenuItems } from '../../../app-shell/pin-menu';
 import type { MenuItem } from '../../../components/menu';
 import type { Device } from '../../../store/state';
 import { openQuickControls } from '../../../store/ui-state';
@@ -27,6 +28,7 @@ export function useDeviceMenu(
   const powerAction = usePowerAction(device);
   const power = powerItems(powerAction);
   const schedule = useScheduleItems(device.id, powerAction.state);
+  const pin = usePinMenuItems({ kind: 'device', deviceId: device.id, focus: null });
   const toggleFavourite = (): void => {
     changeDevice(device, device.label, { favourite: !device.favourite });
   };
@@ -50,6 +52,7 @@ export function useDeviceMenu(
       icon: 'star',
       onPress: toggleFavourite,
     },
+    ...pin,
     settingsItem(href.settings.device(device.id)),
   ];
 }

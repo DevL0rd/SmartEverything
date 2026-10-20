@@ -7,10 +7,13 @@ import {
 } from '@smarteverything/domain';
 import type { DetectionFacts, Illumination, LaundryFacts, VisualState } from '../types';
 import type { Decorate } from './facts/decorate';
+import { bottleState } from './facts/bottle';
 import { diffuserState } from './facts/diffuser';
 import { microwaveState } from './facts/microwave';
 import { phoneState } from './facts/phone';
 import { robotState } from './facts/robot';
+import { toothbrushState } from './facts/toothbrush';
+import { treadmillState } from './facts/treadmill';
 import { LAUNDRY_UNKNOWN, laundryFacts } from './laundry-facts';
 import { numberOf, textOf, type Lookup } from './lookup';
 
@@ -58,6 +61,9 @@ const FAMILY_STATES: Readonly<Partial<Record<DeviceFamily, Decorate>>> = {
   diffuser: diffuserState,
   robot: robotState,
   phone: phoneState,
+  treadmill: treadmillState,
+  bottle: bottleState,
+  toothbrush: toothbrushState,
   sensor: sensorState,
 };
 

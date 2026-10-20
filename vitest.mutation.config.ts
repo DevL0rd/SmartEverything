@@ -37,6 +37,14 @@ export default defineConfig({
       },
       {
         test: {
+          name: 'ipp',
+          root: './packages/ipp',
+          environment: 'node',
+          include: ['test/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
           name: 'tuya',
           root: './packages/tuya',
           environment: 'node',
@@ -55,6 +63,14 @@ export default defineConfig({
         test: {
           name: 'shelly',
           root: './packages/shelly',
+          environment: 'node',
+          include: ['test/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
+          name: 'flow',
+          root: './packages/flow',
           environment: 'node',
           include: ['test/**/*.test.ts'],
         },

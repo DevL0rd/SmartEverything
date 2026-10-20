@@ -34,6 +34,10 @@ class OverlayWindows(context: Context, private val actions: OverlayActions, priv
   private var pill: OverlayView? = null
   private var glow: OverlayView? = null
   private var look: OverlayLook? = null
+  private var shown: OverlayViewState = OVERLAY_HIDDEN
+  private val placer = OverlayPlacer(this.context) { glow?.render(glowState(shown)) }
+
+  fun resetPlacement() = placer.reset()
 
   fun render(view: OverlayViewState, prefs: OverlayPhonePrefs): Boolean {
     if (view.state == OverlayState.Hidden) {
@@ -45,12 +49,16 @@ class OverlayWindows(context: Context, private val actions: OverlayActions, priv
       removeNow()
       if (!add(wanted)) return false
     }
-    glow?.render(view)
+    shown = view
+    glow?.render(glowState(view))
     pill?.render(view)
     return true
   }
 
+  private fun glowState(view: OverlayViewState): OverlayViewState = view.copy(glow = placer.glowMode(view.glow))
+
   fun hide() {
+    shown = OVERLAY_HIDDEN
     glow?.render(OVERLAY_HIDDEN)
     pill?.render(OVERLAY_HIDDEN)
   }
@@ -66,7 +74,9 @@ class OverlayWindows(context: Context, private val actions: OverlayActions, priv
     val pillView = viewOf(OverlayParts.Pill, wanted)
     try {
       glowView?.let { manager.addView(it, glowParams()) }
-      manager.addView(pillView, pillParams(wanted.position))
+      val params = pillParams()
+      placer.attach(pillView, params, wanted.position)
+      manager.addView(pillView, params)
     } catch (failure: WindowManager.BadTokenException) {
       return refused(failure, glowView)
     } catch (failure: SecurityException) {
@@ -80,6 +90,7 @@ class OverlayWindows(context: Context, private val actions: OverlayActions, priv
 
   private fun refused(failure: Exception, added: OverlayView?): Boolean {
     NativeLog.warn(SCOPE, "window.refused", failure)
+    placer.detach()
     added?.takeIf { it.isAttachedToWindow }?.let { manager.removeViewImmediate(it) }
     return false
   }
@@ -93,16 +104,16 @@ class OverlayWindows(context: Context, private val actions: OverlayActions, priv
   private fun remove(view: OverlayView) {
     view.release()
     if (view.isAttachedToWindow) manager.removeViewImmediate(view)
-    if (view === pill) pill = null
+    if (view === pill) {
+      placer.detach()
+      pill = null
+    }
     if (view === glow) glow = null
     if (pill == null && glow == null) look = null
   }
 
-  private fun pillParams(position: OverlayPosition): WindowManager.LayoutParams =
-    base(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, PILL_FLAGS).apply {
-      gravity = Gravity.BOTTOM or horizontal(position)
-      x = if (position == OverlayPosition.Centre) 0 else Math.round(OverlayDims.PILL_SCREEN_MARGIN * density)
-    }
+  private fun pillParams(): WindowManager.LayoutParams =
+    base(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, PILL_FLAGS)
 
   private fun glowParams(): WindowManager.LayoutParams =
     base(WindowManager.LayoutParams.MATCH_PARENT, Math.round(OverlayDims.GLOW_HEIGHT * density), GLOW_FLAGS).apply {
@@ -118,12 +129,6 @@ class OverlayWindows(context: Context, private val actions: OverlayActions, priv
         layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
       }
     }
-
-  private fun horizontal(position: OverlayPosition): Int = when (position) {
-    OverlayPosition.Centre -> Gravity.CENTER_HORIZONTAL
-    OverlayPosition.Left -> Gravity.START
-    OverlayPosition.Right -> Gravity.END
-  }
 
   private companion object {
     const val SCOPE = "overlay"

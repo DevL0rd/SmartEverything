@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DeviceRecord } from '../src/database/port';
+import type { DeviceLifecycle } from '../src/state/device-lifecycle';
 import { Inventory, cameraSourceOf, type OnlineChange } from '../src/state/inventory';
 import { testDatabase, type TestDatabase } from './support/database';
 import { CAMERA, GATEWAY, LAMP } from './support/fake-provider';
@@ -15,9 +16,11 @@ async function subject(db?: TestDatabase): Promise<{
   inventory: Inventory;
   online: OnlineChange[];
   changed: (readonly DeviceRecord[])[];
+  lifecycle: DeviceLifecycle[];
 }> {
   const online: OnlineChange[] = [];
   const changed: (readonly DeviceRecord[])[] = [];
+  const lifecycle: DeviceLifecycle[] = [];
   const used = db ?? (await testDatabase());
   if (db === undefined) open.push(used);
   const inventory = new Inventory(used.database, {
@@ -27,8 +30,11 @@ async function subject(db?: TestDatabase): Promise<{
     devicesChanged: (devices): void => {
       changed.push(devices);
     },
+    lifecycle: (change): void => {
+      lifecycle.push(change);
+    },
   });
-  return { db: used, inventory, online, changed };
+  return { db: used, inventory, online, changed, lifecycle };
 }
 
 const roomId = (db: TestDatabase, name: string): string | undefined =>
@@ -147,5 +153,79 @@ describe('Inventory', () => {
     expect(inventory.deviceById(inventory.deviceOf('xiaomi', 'lamp-1')?.id ?? '')?.externalId).toBe(
       'lamp-1',
     );
+  });
+
+  it('flips a known device online by its id through the same announcement', async () => {
+    const { inventory, online } = await subject();
+    await inventory.apply('xiaomi', [LAMP]);
+    const id = inventory.deviceOf('xiaomi', 'lamp-1')?.id ?? '';
+    await inventory.setOnlineById(id, false);
+    await inventory.setOnlineById(id, false);
+    await inventory.setOnlineById('unknown-device', true);
+    expect(online.map((change) => change.online)).toStrictEqual([false]);
+  });
+});
+
+describe('Inventory lifecycle', () => {
+  const changes = (lifecycle: readonly DeviceLifecycle[]): string[] =>
+    lifecycle.map((entry) => entry.change);
+
+  it('announces a device once when it first appears and nothing while it stays the same', async () => {
+    const { inventory, lifecycle } = await subject();
+    await inventory.apply('xiaomi', [LAMP]);
+    await inventory.apply('xiaomi', [LAMP]);
+    expect(changes(lifecycle)).toStrictEqual(['added']);
+    expect(lifecycle[0]?.device.externalId).toBe('lamp-1');
+    expect(lifecycle[0]?.identity.name).toBe('Desk lamp');
+  });
+
+  it('names a rename, a replacement of the hardware and a gained or lost capability with what changed', async () => {
+    const { inventory, lifecycle } = await subject();
+    await inventory.apply('xiaomi', [LAMP]);
+    lifecycle.length = 0;
+    await inventory.apply('xiaomi', [{ ...LAMP, name: 'Reading lamp' }]);
+    await inventory.apply('xiaomi', [
+      { ...LAMP, name: 'Reading lamp', model: 'yeelink.light.new' },
+    ]);
+    await inventory.apply('xiaomi', [
+      { ...LAMP, name: 'Reading lamp', model: 'yeelink.light.new', capabilities: [] },
+    ]);
+    expect(lifecycle.map((entry) => [entry.change, entry.detail])).toStrictEqual([
+      ['renamed', { from: 'Desk lamp', to: 'Reading lamp' }],
+      ['replaced', { from: 'yeelink.light.lamp1', to: 'yeelink.light.new' }],
+      ['capabilities_changed', { added: [], removed: ['brightness', 'power', 'temperature'] }],
+    ]);
+  });
+
+  it('announces a move when a provider room places a device and a firmware change only between two known versions', async () => {
+    const { db, inventory, lifecycle } = await subject();
+    const study = db.store.rooms.create('Study', 0);
+    await inventory.apply('xiaomi', [{ ...LAMP, room: null, details: { firmware: null } }]);
+    lifecycle.length = 0;
+    await inventory.apply('xiaomi', [{ ...LAMP, details: { firmware: '1.0' } }]);
+    await inventory.apply('xiaomi', [{ ...LAMP, details: { firmware: '1.1' } }]);
+    expect(lifecycle.map((entry) => [entry.change, entry.detail])).toStrictEqual([
+      ['moved', { from: null, to: study.id }],
+      ['firmware_changed', { from: '1.0', to: '1.1' }],
+    ]);
+  });
+
+  it('remembers what a device was across a restart so a rename while the hub was down is seen', async () => {
+    const db = await testDatabase();
+    open.push(db);
+    await (await subject(db)).inventory.apply('xiaomi', [LAMP]);
+    const { inventory, lifecycle } = await subject(db);
+    await inventory.load();
+    await inventory.apply('xiaomi', [{ ...LAMP, name: 'Renamed' }]);
+    expect(changes(lifecycle)).toStrictEqual(['renamed']);
+  });
+
+  it('announces a removal with the identity the device had', async () => {
+    const { inventory, lifecycle } = await subject();
+    await inventory.apply('xiaomi', [LAMP]);
+    lifecycle.length = 0;
+    await inventory.remove('xiaomi', ['lamp-1']);
+    expect(changes(lifecycle)).toStrictEqual(['removed']);
+    expect(lifecycle[0]?.identity.name).toBe('Desk lamp');
   });
 });

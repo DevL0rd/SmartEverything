@@ -1,7 +1,7 @@
 import { levelOf } from '@smarteverything/domain';
 import { concat } from '../assistant-voice/audio';
 import type { Cancel, Clock } from '../clock';
-import type { SpeechSegment } from '../wake-name/ear';
+import type { SpeechSegment } from '../listening/speech-segment';
 
 const SAMPLES_PER_MS = 16;
 const FRAME_SAMPLES = 512;

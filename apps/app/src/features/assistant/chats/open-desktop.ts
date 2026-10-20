@@ -17,6 +17,28 @@ export interface DesktopOpenDeps {
   readonly busy: (entryId: string | null) => void;
 }
 
+interface LinkingChat {
+  readonly id: string;
+  readonly engine: {
+    readonly kind: string;
+    readonly device_id?: string | undefined;
+    readonly continued_from?: string | undefined;
+  };
+}
+
+export function linkedChatOf(
+  chats: readonly LinkingChat[],
+  desktop: DesktopRef,
+): string | undefined {
+  const live = chats.find(
+    (chat) =>
+      chat.engine.kind === 'claude' &&
+      chat.engine.device_id === desktop.deviceId &&
+      chat.engine.continued_from === desktop.session.id,
+  );
+  return live?.id ?? desktop.session.app_chat_id ?? undefined;
+}
+
 export async function openDesktopEntry(deps: DesktopOpenDeps, entry: ChatEntry): Promise<void> {
   const desktop = entry.desktop;
   if (desktop === undefined) return;
@@ -78,13 +100,7 @@ export function useOpenDesktop(onOpen: (chatId: string) => void): {
     (entry: ChatEntry): void => {
       if (busyId !== null) return;
       const deps: DesktopOpenDeps = {
-        linkedChat: (desktop) =>
-          chats.find(
-            (chat) =>
-              chat.engine.kind === 'claude' &&
-              chat.engine.device_id === desktop.deviceId &&
-              chat.engine.continued_from === desktop.session.id,
-          )?.id,
+        linkedChat: (desktop) => linkedChatOf(chats, desktop),
         confirm,
         fork: (desktop) =>
           forkDesktopSession({

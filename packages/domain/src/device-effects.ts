@@ -61,9 +61,7 @@ export function resolveDeviceEffects(
     validateDeviceEffect(descriptor, effect.operation);
     if (effect.operation.type === 'set') value = effect.operation.value;
     else {
-      if (typeof value !== 'number')
-        throw new DeviceEffectValueError('Add requires a numeric base.');
-      value += effect.operation.value;
+      value = Number(value) + effect.operation.value;
       if (!Number.isFinite(value))
         throw new DeviceEffectValueError('Temporary numeric change exceeds finite range.');
     }

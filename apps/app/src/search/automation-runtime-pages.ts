@@ -1,10 +1,14 @@
 import type { Href } from 'expo-router';
-import type { AutomationRow, AutomationValueRow, SearchSources } from '@smarteverything/domain';
 import {
-  storedFocusTargets,
+  NODE_REGISTRY,
+  type AutomationValueRow,
+  type SearchSources,
+} from '@smarteverything/domain';
+import {
+  automationRowsOf,
+  automationSearchPages,
   valueFocusTargets,
   type AutomationFocusTarget,
-  type AutomationNames,
 } from '../features/automations';
 import { href } from '../app-shell/hrefs';
 import { rowsOf } from '../store/state';
@@ -34,18 +38,6 @@ function focusPages({ base, parent, targets, link }: FocusPages): readonly Runti
     icon: 'customize',
     keywords: target.keywords,
   }));
-}
-function namesOf(tables: SearchTables): AutomationNames {
-  return {
-    devices: rowsOf(tables.devices),
-    scenes: rowsOf(tables.scenes),
-    people: [],
-    chats: tables.chats,
-    values: tables.automationValues === undefined ? [] : rowsOf(tables.automationValues),
-    automations: rowsOf(tables.automations),
-    groups: rowsOf(tables.deviceGroups),
-    rooms: rowsOf(tables.rooms),
-  };
 }
 function valuePages(row: AutomationValueRow): readonly RuntimePage[] {
   const base = `automation-value:${row.id}`;
@@ -80,26 +72,20 @@ function valuePages(row: AutomationValueRow): readonly RuntimePage[] {
     }),
   ];
 }
-function automationPages(row: AutomationRow, names: AutomationNames): readonly RuntimePage[] {
-  const stored = storedFocusTargets(row, names);
-  if (stored === null) return [];
-  return focusPages({
-    base: `automation-editor:${row.id}`,
-    parent: `automation:${row.id}`,
-    targets: stored.targets,
-    link: (focus) =>
-      stored.reusable
-        ? href.automationSequence(row.id, focus)
-        : href.automation(row.id, undefined, focus),
+function automationPages(tables: SearchTables): readonly RuntimePage[] {
+  return automationSearchPages({
+    automations: automationRowsOf(rowsOf(tables.automations)).rows,
+    functions: [],
+    secrets: [],
+    kinds: NODE_REGISTRY.get,
   });
 }
 function runtimePages(tables: SearchTables): readonly RuntimePage[] {
-  const names = namesOf(tables);
   return [
     ...(tables.automationValues === undefined
       ? []
       : rowsOf(tables.automationValues).flatMap(valuePages)),
-    ...rowsOf(tables.automations).flatMap((row) => automationPages(row, names)),
+    ...automationPages(tables),
   ];
 }
 export function automationRuntimePages(

@@ -1,6 +1,7 @@
 import {
   appendTo,
   formatByteRate,
+  PROFILE_NAME_MAX,
   type NetworkClient,
   type RouterSnapshot,
 } from '@smarteverything/domain';
@@ -44,11 +45,20 @@ export interface ClientEntry {
   readonly subtitle: string;
 }
 
+export function ownerIdOf(client: NetworkClient): string | null {
+  return client.profileId ?? client.personId;
+}
+
+function ownerOf(client: NetworkClient, owners: ReadonlyMap<string, string>): string | null {
+  const id = ownerIdOf(client);
+  return id === null ? null : (owners.get(id) ?? null);
+}
+
 const MATCHES: Readonly<Record<ClientFilter, (client: NetworkClient) => boolean>> = {
   online: (client) => client.connected,
   wifi: (client) => client.connected && client.connection === 'wifi',
   wired: (client) => client.connected && client.connection === 'wired',
-  people: (client) => client.profileId !== null,
+  people: (client) => ownerIdOf(client) !== null,
   blocked: (client) => client.blocked,
   all: () => true,
 };
@@ -91,7 +101,7 @@ export function clientEntries(
     const bytes = client.trafficBytesPerSecond ?? 0;
     return {
       client,
-      owner: client.profileId === null ? null : (owners.get(client.profileId) ?? null),
+      owner: ownerOf(client, owners),
       dbm: live && client.connected ? (signals.get(client.mac) ?? null) : null,
       rate: live && client.connected && bytes > 0 ? formatByteRate(bytes) : null,
       subtitle: subtitleOf(client, now),
@@ -279,6 +289,13 @@ export function initialFilter(
 }
 
 const NAME_LIMIT = 32;
+
+export function personNameProblem(name: string): string | null {
+  const trimmed = name.trim();
+  return trimmed.length === 0 || trimmed.length > PROFILE_NAME_MAX
+    ? `Use 1 to ${String(PROFILE_NAME_MAX)} characters.`
+    : null;
+}
 
 export function renameProblem(name: string): string | null {
   const trimmed = name.trim();

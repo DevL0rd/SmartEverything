@@ -1,47 +1,52 @@
-import type { NetworkClient, ProfileRow } from '@smarteverything/domain';
+import { ACCENTS, type PresencePerson, type ProfileRow } from '@smarteverything/domain';
 import { moment } from '../../../format/time';
-import { presenceOf } from '../overview/people-model';
 
 export type WidgetProfile = Pick<ProfileRow, 'id' | 'name' | 'colour'>;
 
 export interface WidgetPerson {
   readonly id: string;
   readonly name: string;
-  readonly profile: WidgetProfile;
+  readonly profile: Pick<ProfileRow, 'name' | 'colour'>;
   readonly home: boolean;
-  readonly leftAt: string | null;
+  readonly since: string | null;
 }
 
 const STACK_MAX = 3;
 const NAMED_MAX = 2;
 
-function latestSeen(clients: readonly NetworkClient[], profileId: string): string | null {
-  return clients
-    .filter((client) => client.profileId === profileId)
-    .flatMap((client) => (client.lastSeen === null ? [] : [client.lastSeen]))
-    .reduce<string | null>(
-      (latest, seen) => (latest === null || Date.parse(seen) > Date.parse(latest) ? seen : latest),
-      null,
-    );
+export function accentOfPerson(id: string): ProfileRow['colour'] {
+  const sum = Array.from(id, (character) => character.charCodeAt(0)).reduce(
+    (total, code) => total + code,
+    0,
+  );
+  return ACCENTS[sum % ACCENTS.length] ?? 'aqua';
 }
 
 export function widgetPeople(
-  clients: readonly NetworkClient[],
+  people: readonly PresencePerson[],
   profiles: readonly WidgetProfile[],
 ): readonly WidgetPerson[] {
-  return presenceOf(clients, profiles).flatMap((person) => {
-    const profile = profiles.find((candidate) => candidate.id === person.id);
-    return profile === undefined
-      ? []
-      : [{ ...person, profile, leftAt: person.home ? null : latestSeen(clients, person.id) }];
-  });
+  return people
+    .filter((person) => person.tracked)
+    .map((person) => ({
+      id: person.id,
+      name: person.name,
+      profile: {
+        name: person.name,
+        colour:
+          profiles.find((profile) => profile.id === person.id)?.colour ?? accentOfPerson(person.id),
+      },
+      home: person.home,
+      since: person.since,
+    }));
 }
 
 export function personLine(person: WidgetPerson, now: number): string {
-  if (person.home) {
-    return 'Home';
+  if (person.since === null) {
+    return person.home ? 'Home' : 'Away';
   }
-  return person.leftAt === null ? 'Away' : `Away · left ${moment(person.leftAt, now)}`;
+  const when = moment(person.since, now);
+  return person.home ? `Home · arrived ${when}` : `Away · left ${when}`;
 }
 
 export function homeLine(people: readonly WidgetPerson[]): string {

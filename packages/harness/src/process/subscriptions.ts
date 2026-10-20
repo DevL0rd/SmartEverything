@@ -1,11 +1,9 @@
 import { Logger, background } from '@smarteverything/logging';
-import type { SubscriptionCredential } from '../credentials/contracts';
+import type { SubscriptionCredential, SubscriptionStorage } from '../credentials/contracts';
 import type { SubscriptionModelCatalog } from '../providers/catalog';
 import type { SubscriptionBillingSnapshot } from '../providers/billing';
-import { join } from 'node:path';
 import type { AiSubscriptionHostStatus, HarnessSubscriptionRequest } from '@smarteverything/domain';
 import { HARNESS_SUBSCRIPTION_REQUEST } from '@smarteverything/domain';
-import { LocalSubscriptionStorage } from '../credentials/local-storage';
 import { SubscriptionCredentials } from '../credentials/service';
 import { SubscriptionAuthorization } from '../authorization/service';
 import { authorizeChatgptOnHost } from '../authorization/loopback';
@@ -35,10 +33,10 @@ export class ProcessSubscriptions {
   ) {}
   static async open(
     boot: HarnessBoot,
+    storage: SubscriptionStorage,
     publish: (status: AiSubscriptionHostStatus) => Promise<void>,
     fetcher: typeof fetch = fetch,
   ): Promise<ProcessSubscriptions> {
-    const storage = new LocalSubscriptionStorage(join(boot.state_directory, 'subscriptions'));
     await storage.exclusive(() => Promise.resolve());
     const credentials = new SubscriptionCredentials(storage, boot.device_id);
     const authorization = new SubscriptionAuthorization(credentials, fetcher);

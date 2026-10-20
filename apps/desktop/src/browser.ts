@@ -1,17 +1,24 @@
 import { registerHtmlPreviewIpc } from './html-preview/ipc.js';
 import { Logger } from '@smarteverything/logging';
-import { ipcMain, type BrowserWindow, type WebContentsView } from 'electron';
+import {
+  ipcMain,
+  type BrowserWindow,
+  type IpcMainInvokeEvent,
+  type WebContentsView,
+} from 'electron';
 import {
   BROWSER_COMMAND,
   BROWSER_RETIRED_PROBLEM,
   BrowserPolicyError,
   browserAllows,
   type BrowserCommand,
+  type BrowserPageDriver,
   type BrowserTarget,
 } from '@smarteverything/domain';
 import { BrowserDiagnostics } from './browser-diagnostics.js';
 import { ElectronDiagnosticsHost } from './browser-diagnostics-host.js';
-import { NATIVE_BROWSER_OPERATION } from '@smarteverything/domain';
+import { NATIVE_BROWSER_OPERATION, NATIVE_BROWSER_PAGE_REQUEST } from '@smarteverything/domain';
+import { electronPageDriver, performPageOperation } from './browser-page.js';
 import { confineBrowserView, createBrowserView } from './browser-session.js';
 import { isAppOrigin } from './origin.js';
 
@@ -22,34 +29,33 @@ interface Page {
   readonly view: WebContentsView;
   readonly target: BrowserTarget;
   readonly diagnostics: BrowserDiagnostics;
+  readonly driver: BrowserPageDriver;
 }
 export function registerBrowser(window: BrowserWindow, startUrl: string): void {
   registerHtmlPreviewIpc(window, startUrl);
   const pages = new Map<string, Page>();
   ipcMain.handle('desktop:browser', (event, value: unknown) => {
-    if (
-      event.sender !== window.webContents ||
-      event.senderFrame !== window.webContents.mainFrame ||
-      !isAppOrigin(event.senderFrame.url, startUrl)
-    )
-      throw new BrowserPolicyError('Browser commands require the main app frame.');
+    assertMainFrame(event, window, startUrl, 'Browser commands');
     apply(window, pages, BROWSER_COMMAND.parse(value));
   });
   ipcMain.handle('desktop:browser-diagnostics', async (event, value: unknown) => {
-    if (
-      event.sender !== window.webContents ||
-      event.senderFrame !== window.webContents.mainFrame ||
-      !isAppOrigin(event.senderFrame.url, startUrl)
-    )
-      throw new BrowserPolicyError('Diagnostics require the app main frame.');
+    assertMainFrame(event, window, startUrl, 'Diagnostics');
     const input = NATIVE_BROWSER_OPERATION.parse(value);
     const page = pages.get(input.id);
     if (page === undefined) throw new BrowserPolicyError('This browser was closed.');
     return page.diagnostics.perform(input.epoch, input.action);
   });
+  ipcMain.handle('desktop:browser-page', async (event, value: unknown) => {
+    assertMainFrame(event, window, startUrl, 'Page actions');
+    const request = NATIVE_BROWSER_PAGE_REQUEST.parse(value);
+    const page = pages.get(request.id);
+    if (page === undefined) throw new BrowserPolicyError('This browser was closed.');
+    return performPageOperation(page.driver, request.operation);
+  });
   observeDiagnostics(window, startUrl, pages);
   window.on('closed', () => {
     ipcMain.removeHandler('desktop:browser-diagnostics');
+    ipcMain.removeHandler('desktop:browser-page');
     ipcMain.removeAllListeners('desktop:browser-observe');
     ipcMain.removeHandler('desktop:browser');
     for (const page of pages.values()) page.view.webContents.close();
@@ -63,6 +69,19 @@ export function registerBrowser(window: BrowserWindow, startUrl: string): void {
     }
     pages.clear();
   });
+}
+function assertMainFrame(
+  event: IpcMainInvokeEvent,
+  window: BrowserWindow,
+  startUrl: string,
+  what: string,
+): void {
+  if (
+    event.sender !== window.webContents ||
+    event.senderFrame !== window.webContents.mainFrame ||
+    !isAppOrigin(event.senderFrame.url, startUrl)
+  )
+    throw new BrowserPolicyError(`${what} require the app main frame.`);
 }
 function observeDiagnostics(
   window: BrowserWindow,
@@ -101,6 +120,7 @@ function create(window: BrowserWindow, target: BrowserTarget): Page {
     target,
     view,
     diagnostics: new BrowserDiagnostics(new ElectronDiagnosticsHost(window, view), target.id),
+    driver: electronPageDriver(view.webContents),
   };
   page.view.setVisible(false);
   window.contentView.addChildView(page.view);

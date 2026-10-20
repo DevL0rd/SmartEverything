@@ -6,7 +6,7 @@ import { Text } from './text';
 export interface Dot {
   readonly key: string;
   readonly colour: string | null;
-  readonly state: 'on' | 'off' | 'offline';
+  readonly state: 'on' | 'off' | 'offline' | 'unknown';
 }
 
 export interface DotStripProps {
@@ -20,6 +20,7 @@ const RING: Readonly<Record<Dot['state'], string>> = {
   on: 'bg-primary',
   off: 'border-2 border-on-surface-variant',
   offline: 'border-2 border-dashed border-on-surface-variant',
+  unknown: 'border-2 border-outline-variant',
 };
 
 export function DotStrip({ dots, max = DEFAULT_MAX }: DotStripProps): ReactNode {

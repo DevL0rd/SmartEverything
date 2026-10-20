@@ -9,7 +9,7 @@ export interface NavActions {
 }
 
 export function navIntent(entry: NavEntry): void {
-  preloader.boost(entry.route.href);
+  if (entry.href !== null) preloader.boost(entry.href);
 }
 
 export function NavItems({
@@ -19,11 +19,11 @@ export function NavItems({
   look = 'sidebar',
 }: {
   readonly entries: readonly NavEntry[];
-  readonly look?: 'sidebar' | 'tile';
+  readonly look?: 'sidebar';
 } & NavActions): ReactNode {
   return entries.map((entry) => (
     <NavItem
-      key={entry.route.key}
+      key={entry.key}
       entry={entry}
       look={look}
       onPress={() => {

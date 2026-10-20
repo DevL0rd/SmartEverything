@@ -61,7 +61,7 @@ function Preset({
   );
 }
 
-function White({ state, master, name }: Body): ReactNode {
+function White({ state, master, name }: Omit<Body, 'noun'>): ReactNode {
   const spread = state.whiteTemperature;
   const mixed = whiteMix(state, useColour('on-surface'));
   return (
@@ -92,7 +92,7 @@ function White({ state, master, name }: Body): ReactNode {
   );
 }
 
-function Colour({ state, master, name }: Body): ReactNode {
+function Colour({ state, master, name }: Omit<Body, 'noun'>): ReactNode {
   const only = state.colours.length === 1 ? (state.colours[0] ?? null) : null;
   const [draft, setDraft] = useState<HsvColor | null>(null);
   return (

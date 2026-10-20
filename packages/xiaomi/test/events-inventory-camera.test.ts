@@ -16,10 +16,12 @@ import {
   go2rtcSource,
   homeListData,
   isCameraModel,
+  miotEventDetails,
   miotEventKind,
   parseCameraEventPage,
   parseDeviceList,
   parseRoomNames,
+  unspecifiedMiotEvent,
   type CloudDevice,
   type MiotSpec,
 } from '../src';
@@ -56,11 +58,11 @@ describe('MIoT events', () => {
     expect(miotEventKind('auto-light')).toBe('activity');
     expect(miotEventKind('click')).toBe('button');
     expect(miotEventKind('low-battery')).toBe('maintenance');
-    expect(deviceEventFromMiot('double-click', observed)?.details).toMatchObject({
+    expect(deviceEventFromMiot('double-click', observed).details).toMatchObject({
       action: 'double_press',
       miotEvent: 'double-click',
     });
-    expect(deviceEventFromMiot('low-battery', observed)?.details).toMatchObject({
+    expect(deviceEventFromMiot('low-battery', observed).details).toMatchObject({
       item: 'battery',
       state: 'low',
     });
@@ -81,7 +83,43 @@ describe('MIoT events', () => {
       kind: 'activity',
       details: { a: 1, miotEvent: 'cruise-ended' },
     });
-    expect(deviceEventFromMiot('camera-hang-up', observed)).toBeNull();
+  });
+
+  it('pass an event with no mapping through as activity with its name and arguments', () => {
+    expect(deviceEventFromMiot('camera-hang-up', observed)).toStrictEqual({
+      externalId: '42',
+      occurredAt: '2026-10-08T10:00:00.000Z',
+      kind: 'activity',
+      details: {
+        a: 1,
+        event: 'camera-hang-up',
+        miotEvent: 'camera-hang-up',
+        summary: 'Camera hang up',
+      },
+    });
+    expect(
+      deviceEventFromMiot('cup-lifted', observed, { height: 12, 'last-seen': 'sink' }).details,
+    ).toStrictEqual({
+      a: 1,
+      event: 'cup-lifted',
+      miotEvent: 'cup-lifted',
+      summary: 'Cup lifted',
+      arguments: { height: 12, 'last-seen': 'sink' },
+    });
+  });
+
+  it('keep the flat arguments of a mapped event and name an event the spec does not list', () => {
+    expect(deviceEventFromMiot('click', observed, { count: 2 }).details).toMatchObject({
+      a: 1,
+      count: 2,
+      miotEvent: 'click',
+    });
+    const shape = unspecifiedMiotEvent(3, 7);
+    expect(shape.name).toBe('event-3-7');
+    expect(miotEventDetails(shape, [{ piid: 2, value: 'x' }])).toStrictEqual({
+      'argument-2': 'x',
+    });
+    expect(deviceEventFromMiot(shape.name, observed).kind).toBe('activity');
   });
 
   it('turn the washer events into laundry cycle and dispenser events', () => {
@@ -91,7 +129,7 @@ describe('MIoT events', () => {
       kind: 'cycle_finished',
       details: { a: 1, family: 'laundry', miotEvent: 'wash-end' },
     });
-    expect(deviceEventFromMiot('wash-end-log', observed)?.kind).toBe('cycle_finished');
+    expect(deviceEventFromMiot('wash-end-log', observed).kind).toBe('cycle_finished');
     expect(deviceEventFromMiot('clean-completed', observed)).toStrictEqual({
       ...shared,
       kind: 'maintenance',
@@ -362,10 +400,26 @@ describe('cameras', () => {
         did: '9876543210',
         model: 'isa.camera.hlc7',
       }),
-    ).toBe('xiaomi://1234567890:cn@192.168.1.123?did=9876543210&model=isa.camera.hlc7');
-    expect(go2rtcSource({ userId: 'a b', region: 'de', ip: 'h', did: 'd&x', model: 'm' })).toBe(
-      'xiaomi://a%20b:de@h?did=d%26x&model=m',
+    ).toBe(
+      'xiaomi://1234567890:cn@192.168.1.123?did=9876543210&model=isa.camera.hlc7&transport=udp',
     );
+    expect(go2rtcSource({ userId: 'a b', region: 'de', ip: 'h', did: 'd&x', model: 'm' })).toBe(
+      'xiaomi://a%20b:de@h?did=d%26x&model=m&transport=udp',
+    );
+  });
+
+  it('always ask go2rtc for the UDP transport and keep the other parameters', () => {
+    const camera = { userId: '1', region: 'de', ip: '10.0.0.9', did: '7', model: 'm.c.1' } as const;
+    const url = new URL(go2rtcSource(camera));
+    expect(Object.fromEntries(url.searchParams)).toStrictEqual({
+      did: '7',
+      model: 'm.c.1',
+      transport: 'udp',
+    });
+    expect(url.hostname).toBe('10.0.0.9');
+    expect(
+      new URL(go2rtcSource({ ...camera, transport: 'tcp' })).searchParams.get('transport'),
+    ).toBe('tcp');
   });
 
   it('read talk, pan and tilt and doorbell support from the spec', () => {

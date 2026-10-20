@@ -116,8 +116,11 @@ class NativeWireTest {
     val push = mapOf(DomainConstants.PUSH_PAYLOAD_KEY to WireFixture.response("phoneActionPush").toString()).pushPayload<PhoneActionPayload>()
     assertEquals("3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b73", push.requestId)
     assertEquals("set_volume", (push.action.getValue("type") as JsonPrimitive).content)
+    assertEquals("assistant", push.origin.source)
+    assertEquals("Desk assistant", push.origin.client)
     refuses<PhoneActionPayload>("phoneActionPush", "action")
     refuses<PhoneActionPayload>("phoneActionPush", "requestId")
+    refuses<PhoneActionPayload>("phoneActionPush", "origin")
   }
 
   @Test

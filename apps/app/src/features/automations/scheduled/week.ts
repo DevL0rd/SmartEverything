@@ -2,12 +2,12 @@ import { appendTo, localClock, type Place, type ScheduleRow } from '@smarteveryt
 import { localDayKey } from '../../../format/time';
 import { sameJson } from '../../../store/same-json';
 import {
-  dayWindow,
   upcomingRuns,
-  type Scheduled,
+  type ScheduledV3,
   type Upcoming,
   type Window,
-} from '../model/schedule';
+} from '../model/consumers/week-schedule';
+import { dayWindow } from './place';
 import { titleOf, upcomingOf } from './view';
 
 const WEEK = 7;
@@ -43,7 +43,7 @@ function oneOffRuns(rows: readonly ScheduleRow[], window: Window): OneOff[] {
 export interface TimedRule {
   readonly id: string;
   readonly name: string;
-  readonly scheduled: Scheduled | null;
+  readonly scheduled: ScheduledV3 | null;
 }
 
 export interface Day {

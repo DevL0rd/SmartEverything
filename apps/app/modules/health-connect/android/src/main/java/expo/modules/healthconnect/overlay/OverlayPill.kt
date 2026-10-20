@@ -11,6 +11,7 @@ import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import expo.modules.healthconnect.diagnostics.NativeLog
 
 interface OverlayActions {
   fun onControl(control: OverlayControl)
@@ -18,6 +19,8 @@ interface OverlayActions {
   fun onOpen()
 
   fun onTile(tile: OverlayTile)
+
+  fun onThinking(level: VoiceLevel)
 }
 
 private val SHOWN_CONTROLS = listOf(
@@ -81,6 +84,7 @@ object OverlayPillMath {
     when {
       previous == null -> OverlayDims.PILL_GAP
       previous is OverlayRibbonView -> RIBBON_TO_BUTTON
+      item is OverlayThinkChip -> CHIP_GAP
       previous is OverlayButtonView && previous.isText -> TEXT_TO_BUTTON
       item is OverlayButtonView -> 0f
       else -> OverlayDims.PILL_GAP
@@ -97,6 +101,7 @@ object OverlayPillMath {
   const val EDGE_LISTENING = 0.85f
   const val EDGE_THINKING = 0.9f
   const val RIBBON_TO_BUTTON = 4f
+  const val CHIP_GAP = 4f
   const val TEXT_TO_BUTTON = 6f
   const val QUIET_PADDING_END = 20f
   const val TEXT_COLUMN = 40f
@@ -114,6 +119,8 @@ class OverlayPillView(
   private val text = OverlayTextView(context, palette, reduced)
   private val ribbon = OverlayRibbonView(context, palette, reduced)
   private val buttons = LinkedHashMap<OverlayControl, OverlayButtonView>()
+  private var lastWidth = 0
+  private val chip = OverlayThinkChip(context, palette) { actions.onControl(OverlayControl.More) }
   private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
   private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
   private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -154,6 +161,8 @@ class OverlayPillView(
     addView(orb)
     addView(text)
     addView(ribbon)
+    addView(chip)
+    chip.visibility = GONE
   }
 
   fun bind(view: OverlayViewState, animate: Boolean) {
@@ -178,6 +187,7 @@ class OverlayPillView(
     ribbon.bind(if (narrowNow) RibbonKind.Meter else RibbonKind.Ribbon, view.orb, view.muted, view.level)
     ribbon.visibility = if (OverlayPillMath.ribbonShown(view)) VISIBLE else GONE
     bindButtons(view)
+    bindChip(view)
     contentDescription = listOfNotNull(view.status, view.detail, view.caption).joinToString(". ")
     if (changed) OverlayPillMath.announcement(view)?.let { announceForAccessibility(it) }
     requestLayout()
@@ -198,6 +208,16 @@ class OverlayPillView(
       button.bind(specFor(control, view))
       button.visibility = VISIBLE
     }
+  }
+
+  private fun bindChip(view: OverlayViewState) {
+    val data = view.chip
+    if (data == null || !OverlayChipMath.shown(view)) {
+      chip.visibility = GONE
+      return
+    }
+    chip.bind(data, OverlayChipMath.iconOnly(resources.displayMetrics.widthPixels / density))
+    chip.visibility = VISIBLE
   }
 
   private fun newButton(): OverlayButtonView =
@@ -248,9 +268,9 @@ class OverlayPillView(
   fun ignite() = orb.ignite()
 
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-    val available = MeasureSpec.getSize(widthMeasureSpec).takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
-    val screenDp = available / density
-    val narrow = OverlayWidth.narrow(screenDp)
+    val available = resources.displayMetrics.widthPixels
+    val narrow = OverlayWidth.narrow(available / density)
+    val roomDp = (available - gutter()) / density
     if (narrow != narrowNow) {
       narrowNow = narrow
       current?.let { ribbon.bind(if (narrow) RibbonKind.Meter else RibbonKind.Ribbon, it.orb, it.muted, it.level) }
@@ -260,11 +280,24 @@ class OverlayPillView(
     val view = current
     val wanted = if (view == null) 0f else text.wantedWidth(contentOf(view))
     val floor = (if (narrow) OverlayDims.TEXT_MIN_WIDTH else MIN_TEXT_WIDE) * density
-    val width = OverlayWidth.pill((fixed + maxOf(wanted, floor)) / density, screenDp) * density
+    val width = OverlayWidth.pill((fixed + maxOf(wanted, floor)) / density, roomDp) * density
     shown = items
     textWidth = maxOf(0f, width - fixed)
-    setMeasuredDimension(Math.round(width), Math.round(OverlayDims.PILL_HEIGHT * density))
+    val measured = Math.round(width)
+    if (measured != lastWidth) {
+      NativeLog.debug("overlay", "pill.width_changed") {
+        mapOf("from" to lastWidth, "to" to measured, "available" to available, "narrow" to narrow, "items" to items.size, "headline" to (view?.status?.length ?: 0))
+      }
+      lastWidth = measured
+    }
+    setMeasuredDimension(measured, Math.round(OverlayDims.PILL_HEIGHT * density))
     measureChildren()
+  }
+
+  private fun gutter(): Int {
+    val frame = parent as? ViewGroup ?: return 0
+    val margins = layoutParams as? ViewGroup.MarginLayoutParams ?: return frame.paddingLeft + frame.paddingRight
+    return frame.paddingLeft + frame.paddingRight + margins.leftMargin + margins.rightMargin
   }
 
   private fun contentOf(view: OverlayViewState): TextContent =
@@ -280,7 +313,14 @@ class OverlayPillView(
   private fun rightItems(): List<View> {
     val items = ArrayList<View>()
     if (ribbon.visibility == VISIBLE) items.add(ribbon)
-    buttons.values.filter { it.visibility == VISIBLE }.sortedBy { SHOWN_CONTROLS.indexOf(it.control) }.forEach { items.add(it) }
+    val shownButtons = buttons.values.filter { it.visibility == VISIBLE }.sortedBy { SHOWN_CONTROLS.indexOf(it.control) }
+    val end = shownButtons.indexOfFirst { it.control == OverlayControl.End }
+    val at = if (end < 0) shownButtons.size else end
+    shownButtons.forEachIndexed { index, button ->
+      if (index == at && chip.visibility == VISIBLE) items.add(chip)
+      items.add(button)
+    }
+    if (at == shownButtons.size && chip.visibility == VISIBLE) items.add(chip)
     return items
   }
 
@@ -299,6 +339,7 @@ class OverlayPillView(
     when (item) {
       is OverlayRibbonView -> item.widthDp * density
       is OverlayButtonView -> item.wantedWidth
+      is OverlayThinkChip -> item.wantedWidth
       else -> 0f
     }
 

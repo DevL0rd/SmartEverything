@@ -50,6 +50,7 @@ interface Attaching {
 
 export class SessionRenewer {
   private renewing = false;
+  private lastBuffer: SessionBuffer | null = null;
 
   constructor(private readonly ports: RenewPorts) {}
 
@@ -82,19 +83,24 @@ export class SessionRenewer {
     readonly buffer: SessionBuffer;
     readonly respond: boolean;
   } {
+    const { renewal, watchdog } = this.ports;
     const talking = this.ports.talking();
     const buffer = new SessionBuffer();
+    if (this.lastBuffer !== null && renewal.unanswered) {
+      buffer.replay(this.lastBuffer);
+    }
     if (talking) {
       buffer.speaking(true);
     }
     this.ports.hold(buffer);
     previous.close();
-    return { buffer, respond: this.ports.watchdog.owed() && !talking };
+    const owed = watchdog.owed() || watchdog.heardUnanswered;
+    return { buffer, respond: owed && !talking };
   }
 
   private planned(reason: RenewReason, closing: Closing | undefined): RenewPlan | null {
     const { renewal, watchdog } = this.ports;
-    const plan = renewal.plan(reason);
+    const plan = renewal.plan(reason, closing?.code);
     this.ports.trace.renewing({
       reason,
       resumed: plan !== null && plan.resume !== null,
@@ -135,7 +141,9 @@ export class SessionRenewer {
       sendCatchUp(session, catchUp, respond);
     }
     buffer.drain(session);
+    this.lastBuffer = buffer;
     this.ports.attach(session);
+    this.ports.watchdog.talking(this.ports.now());
     this.ports.trace.renewed({
       reason,
       resumed: renewed.resumed,

@@ -1,15 +1,12 @@
 import {
-  TRIGGER_V2,
+  SIGNAL_MATCHER,
   windowValue,
   type SignalInput,
-  type StateChange,
-  type SignalTriggerV2,
-  type TriggerV2,
+  type SignalMatcher,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { SignalBus } from '../src/signals/bus';
 import { SignalWatch } from '../src/signals/signal-watch';
-import { isTransition, stateSignal } from '../src/signals/sources/device';
 import { FakeClock } from './support/fake-clock';
 import { captureLogs, testLogger } from './support/logs';
 
@@ -30,17 +27,14 @@ function reading(value: number, at: string): SignalInput {
   };
 }
 
-function signalTrigger(extra: Record<string, unknown>): SignalTriggerV2 {
-  const parsed: TriggerV2 = TRIGGER_V2.parse({
-    on: 'signal',
+function signalMatcher(extra: Record<string, unknown>): SignalMatcher {
+  return SIGNAL_MATCHER.parse({
     source: 'device',
     kind: 'state',
     subject: SENSOR,
     field: 'temperature',
     ...extra,
   });
-  if (parsed.on !== 'signal') throw new Error('Expected a signal trigger.');
-  return parsed;
 }
 
 function watching(
@@ -50,9 +44,11 @@ function watching(
   const clock = new FakeClock(START);
   const fired: SignalInput[] = [];
   const watch = new SignalWatch({
-    trigger: signalTrigger(trigger),
+    matcher: signalMatcher(trigger),
     pulse,
     clock,
+    timeZone: (): string => 'UTC',
+    persistence: null,
     fire: (signal): void => {
       fired.push(signal);
     },
@@ -178,25 +174,5 @@ describe('signal bus', () => {
     bus.emit(reading(1, START));
     expect(heard).toHaveLength(1);
     expect(logs.events()).toContain('signals.unregistered');
-  });
-});
-
-describe('device state transitions', () => {
-  it('fires only on real changes, never when a reading returns from unknown after a reconnect', () => {
-    const setup = watching({ field: 'occupancy', test: { is: 'eq', to: true } });
-    const changes = [
-      { value: null, previous: true },
-      { value: true, previous: null },
-      { value: false, previous: undefined },
-      { value: false, previous: true },
-      { value: true, previous: false },
-    ];
-    for (const { value, previous } of changes) {
-      const change: StateChange = { deviceId: SENSOR, capability: 'occupancy', value, previous };
-      if (isTransition(change)) setup.watch.observe(stateSignal(change, START));
-    }
-    expect(setup.fired.map((signal) => [signal.previous, signal.value])).toStrictEqual([
-      [false, true],
-    ]);
   });
 });

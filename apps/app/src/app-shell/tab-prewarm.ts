@@ -3,8 +3,22 @@ import { Logger } from '@smarteverything/logging';
 import { ValueStore } from '../design/external-store';
 import { touchQuietIn } from '../design/touch-activity';
 import { preloadInstantly } from './instant-open';
+import type { PinLeaf } from './pin-leaves';
+import {
+  nextPinStep,
+  readRecentLeaves,
+  subscribeRecentLeaves,
+  type PinSource,
+  type PinStep,
+} from './pin-prewarm';
 import { remountsOnVisit } from './settings-navigation';
-import { useStackOfGroup, type StackHandle } from './stack-handles';
+import {
+  hostedStacks,
+  useRegisteredStacks,
+  useStackChanges,
+  useStackOfGroup,
+  type StackHandle,
+} from './stack-handles';
 
 const log = new Logger('app.nav');
 
@@ -18,6 +32,16 @@ const chatsPreloaded = new Set<string>();
 
 export function wakeTab(key: string): void {
   awake.update((keys) => (keys.has(key) ? keys : new Set([...keys, key])));
+}
+
+export function forgetAwake(key: string | undefined): void {
+  if (key === undefined) return;
+  awake.update((keys) => {
+    if (!keys.has(key)) return keys;
+    const next = new Set(keys);
+    next.delete(key);
+    return next;
+  });
 }
 
 export function useTabAwake(key: string): boolean {
@@ -50,7 +74,8 @@ export interface PrewarmTabs {
 
 export type PrewarmStep =
   | { readonly kind: 'tab'; readonly key: string; readonly name: string; readonly mounted: boolean }
-  | { readonly kind: 'chat'; readonly stack: StackHandle; readonly chatId: string };
+  | { readonly kind: 'chat'; readonly stack: StackHandle; readonly chatId: string }
+  | PinStep;
 
 function whenQuiet(run: () => void): () => void {
   let cancelled = false;
@@ -123,16 +148,33 @@ export function nextChatLeaf(
   return { stack, chatId };
 }
 
+function hostsOf(
+  state: PrewarmTabs['state'],
+  isAwake: (key: string) => boolean,
+): ReadonlySet<string> {
+  return new Set(
+    state.routes.flatMap((route, position) =>
+      position === state.index || isAwake(route.key) ? [route.name] : [],
+    ),
+  );
+}
+
+export interface PrewarmSources {
+  readonly chat: ChatLeafSource;
+  readonly pins: PinSource;
+}
+
 export function nextStep(
   state: PrewarmTabs['state'],
   isAwake: (key: string) => boolean,
-  source: ChatLeafSource,
+  sources: PrewarmSources,
   order?: readonly string[],
 ): PrewarmStep | null {
   const tab = nextColdTab(state, isAwake, order);
   if (tab !== null) return { kind: 'tab', ...tab };
-  const leaf = nextChatLeaf(state, isAwake, source);
-  return leaf === null ? null : { kind: 'chat', ...leaf };
+  const leaf = nextChatLeaf(state, isAwake, sources.chat);
+  if (leaf !== null) return { kind: 'chat', ...leaf };
+  return nextPinStep(hostsOf(state, isAwake), isAwake, sources.pins);
 }
 
 interface Running {
@@ -190,7 +232,29 @@ function begin(label: string, finished: Running['finished']): void {
   log.debug('tab.prewarm_stage_started', { stage: label });
 }
 
+function runPin(step: PinStep): void {
+  if (step.kind === 'wake') {
+    begin(`wake ${step.label}`, () => true);
+    wakeTab(step.routeKey);
+    return;
+  }
+  if (step.kind === 'drop') {
+    begin(`drop ${step.label}`, () => true);
+    forgetAwake(step.routeKey);
+    step.stack.drop(step.routeKey);
+    return;
+  }
+  begin(`pin ${step.leaf.id}`, () => true);
+  preloadInstantly({ name: step.leaf.route, params: step.leaf.params }, () => {
+    step.stack.preload(step.leaf.route, step.leaf.params);
+  });
+}
+
 function run(step: PrewarmStep, navigation: PrewarmTabs['navigation']): void {
+  if (step.kind === 'wake' || step.kind === 'drop' || step.kind === 'pin') {
+    runPin(step);
+    return;
+  }
   if (step.kind === 'chat') {
     chatsPreloaded.add(`${step.stack.key}:${step.chatId}`);
     begin(`chat ${step.chatId}`, () => true);
@@ -208,25 +272,42 @@ function run(step: PrewarmStep, navigation: PrewarmTabs['navigation']): void {
   navigation.preload(step.name);
 }
 
+function withHosts(order: readonly string[], leaves: readonly PinLeaf[]): readonly string[] {
+  const missing = leaves.map((leaf) => leaf.group).filter((group) => !order.includes(group));
+  return missing.length === 0 ? order : [...order, ...new Set(missing)];
+}
+
+function usePinSource(leaves: readonly PinLeaf[]): PinSource {
+  const recent = useSyncExternalStore(subscribeRecentLeaves, readRecentLeaves, readRecentLeaves);
+  const registered = useRegisteredStacks();
+  const stacks = useMemo(() => hostedStacks(registered), [registered]);
+  return useMemo(() => ({ leaves, recent, stacks }), [leaves, recent, stacks]);
+}
+
 export function useTabPrewarm({
   state,
   navigation,
   chatOf,
   order,
+  pins,
 }: PrewarmTabs & {
   readonly chatOf: () => string | null;
   readonly order: readonly string[];
+  readonly pins: readonly PinLeaf[];
 }): void {
   const keys = useAwakeTabs();
   const stack = useStackOfGroup(CHAT_TAB);
+  const pinSource = usePinSource(pins);
+  const stackChanges = useStackChanges();
+  const hostOrder = useMemo(() => withHosts(order, pins), [order, pins]);
   useEffect(() => {
     stageDone(state, keys);
     const chatId = chatOf();
     const step = nextStep(
       state,
       (key) => keys.has(key),
-      { chatId, preloaded: chatsPreloaded, stack },
-      order,
+      { chat: { chatId, preloaded: chatsPreloaded, stack }, pins: pinSource },
+      hostOrder,
     );
     if (step === null) {
       if (sessionStart !== null && running.get() === null) {
@@ -243,7 +324,7 @@ export function useTabPrewarm({
     return whenFree(() => {
       run(step, navigation);
     });
-  }, [state, navigation, keys, chatOf, stack, order]);
+  }, [state, navigation, keys, chatOf, stack, hostOrder, pinSource, stackChanges]);
 }
 
 function useAwakeAmong(routeKeys: readonly string[]): ReadonlySet<string> {

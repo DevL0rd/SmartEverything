@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { AutomationEditorScreen } from '../../../../../src/features/automations/screens/automation-editor-screen';
+import { DetailHost } from '../../../../../src/features/automations/hosts/detail-hosts';
 
-export default function AutomationEditorRoute(): ReactNode {
-  return <AutomationEditorScreen />;
+export default function AutomationDetailRoute(): ReactNode {
+  return <DetailHost />;
 }

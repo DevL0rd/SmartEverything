@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import type { Href } from 'expo-router';
 import type { Idiom } from '../../../design/tokens';
+import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import type { WidgetFrameBox } from '../../../components/widget-board';
@@ -85,7 +86,10 @@ function Header({
           className="min-w-0 flex-1 rounded-xs"
           layerClassName="rounded-xs"
         >
-          {title}
+          <View className="flex-row items-center gap-1">
+            {title}
+            <Icon name="chevronRight" size={16} tone="faint" />
+          </View>
         </Interactive>
       )}
       {controls.colour}

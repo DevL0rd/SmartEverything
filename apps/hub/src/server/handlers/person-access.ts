@@ -1,5 +1,5 @@
 import { ApiError, API_ENDPOINTS as E, type PersonAccessChange } from '@smarteverything/domain';
-import { clientOf } from '../auth';
+import { clientOf, profileIdOf, roleOfCaller } from '../auth';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound } from '../router';
 
@@ -48,7 +48,7 @@ export const personAccessRoutes = (context: ServerContext) =>
           'Unpair or move the member devices of this person before making them an owner.',
         );
       }
-      const after = store.personAccess.change(params.profileId, body);
+      const after = context.access.requests.changeByOwner(params.profileId, body);
       for (const kind of auditedKinds(body)) {
         store.accessAudit.record({
           profile_id: params.profileId,
@@ -69,5 +69,17 @@ export const personAccessRoutes = (context: ServerContext) =>
     }),
     listAccessAudit: bound(E.listAccessAudit, ({ query }) =>
       context.store.accessAudit.list(query.limit, query.profileId),
+    ),
+    createAccessRequest: bound(E.createAccessRequest, ({ body, caller }) =>
+      context.access.requests.create(profileIdOf(context.store, caller), body),
+    ),
+    listAccessRequests: bound(E.listAccessRequests, ({ query, caller }) =>
+      context.access.requests.list(
+        roleOfCaller(caller) === 'owner' ? null : profileIdOf(context.store, caller),
+        query.status,
+      ),
+    ),
+    decideAccessRequest: bound(E.decideAccessRequest, ({ params, body, caller }) =>
+      context.access.requests.decide(params.requestId, clientOf(caller).id, body),
     ),
   }) as const;

@@ -134,6 +134,8 @@ export {
   openOverlaySettings,
   overlayLinked,
   overlayStatus,
+  resetOverlayPosition,
+  setOverlayCallPage,
   setOverlayPrefs,
   showAssistantSession,
 } from './src/assistant-overlay';
@@ -177,3 +179,50 @@ export type {
   ListeningNativeState,
   ListeningNativeWake,
 } from './src/listening';
+export {
+  addTreadmillCandidateListener,
+  associateTreadmill,
+  dumpTreadmill,
+  isTreadmillLinked,
+  refreshTreadmills,
+  startTreadmillScan,
+  startTreadmills,
+  stopTreadmillScan,
+  syncTreadmills,
+  treadmillPermissions,
+  treadmillStatus,
+} from './src/treadmill';
+export type { TreadmillCandidate, TreadmillPermissions, TreadmillStatus } from './src/treadmill';
+export {
+  addBrushCandidateListener,
+  associateBrush,
+  bondBrush,
+  brushBonded,
+  brushPermissions,
+  brushStatus,
+  dumpBrush,
+  isBrushLinked,
+  refreshBrushes,
+  startBrushes,
+  startBrushScan,
+  stopBrushScan,
+  syncBrushes,
+} from './src/toothbrush';
+export type {
+  BrushCandidate,
+  BrushDump,
+  BrushLinkStatus,
+  BrushPermissions,
+} from './src/toothbrush';
+export {
+  addBottleCandidateListener,
+  bottlePermissions,
+  bottleStatus,
+  isBottleLinked,
+  readBottle,
+  refreshBottles,
+  startBottleScan,
+  stopBottleScan,
+  syncBottles,
+} from './src/bottle';
+export type { BottleCandidate, BottlePermissions, BottleReadout, BottleStatus } from './src/bottle';

@@ -39,6 +39,18 @@ export type History = z.infer<typeof HISTORY>;
 const EVENTS = z.strictObject({
   deviceIds: z.array(z.uuid()).min(1).optional().describe('Only events of these devices'),
   kinds: z.array(z.enum(EVENT_KINDS)).min(1).optional(),
+  source: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'Only home events (kind "signal") from this signal source, e.g. hub or plugin_router',
+    ),
+  signalKind: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Only home events (kind "signal") of this signal kind, e.g. client_joined'),
   since: MOMENT_ARGUMENT.optional().describe('Only events at or after this moment'),
   until: MOMENT_ARGUMENT.optional().describe('Only events before this moment, to page back'),
   limit: z.number().int().min(1).max(200).default(50),
@@ -143,6 +155,7 @@ export function eventsOf(
     to: input.until,
     deviceIds: input.deviceIds,
     kinds: input.kinds,
+    signal: { source: input.source, kind: input.signalKind },
     limit: input.limit,
   });
   const listed = visibleEvents(

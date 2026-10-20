@@ -18,14 +18,13 @@ function learned(id: string, name: string, category: string): IrRemoteRow {
 }
 
 describe('remotesOfBlaster', () => {
-  it('lists the library remotes under the blaster and its learned remotes with their category', () => {
-    const devices = [
-      deviceFixture(0, { id: BLASTER, kind: 'ir_blaster' }),
-      deviceFixture(1, { id: 'ac', kind: 'ir_remote', name: 'Living room AC', parent_id: BLASTER }),
-      deviceFixture(2, { id: 'far', kind: 'ir_remote', name: 'Far TV', parent_id: 'elsewhere' }),
-    ];
+  it('lists the learned remotes of the blaster with their category', () => {
+    const devices = [deviceFixture(0, { id: BLASTER, kind: 'ir_blaster' })];
     const base = stateFixture(devices, {});
-    const rows = [learned('fan', 'Bedroom fan', 'fan')];
+    const rows = [
+      learned('ac', 'Living room AC', 'air conditioner'),
+      learned('fan', 'Bedroom fan', 'fan'),
+    ];
     const state = {
       ...base,
       tables: {

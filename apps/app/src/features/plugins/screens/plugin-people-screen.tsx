@@ -11,6 +11,7 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
 import { plural } from '../../../format/text';
+import { useProfiles } from '../../../store/people';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { usePluginPeopleActions } from '../data/plugin-people-actions';
 import { usePluginPeople } from '../data/plugin-queries';
@@ -25,10 +26,11 @@ function PersonRow({
   readonly person: PluginPerson;
   readonly onEdit: () => void;
 }): ReactNode {
+  const home = useProfiles().find((profile) => profile.id === person.profile_id);
   return (
     <ListRow
       title={person.name}
-      subtitle={person.external_id}
+      subtitle={home === undefined ? person.external_id : `${person.external_id}, ${home.name}`}
       onPress={onEdit}
       chevron
       trailing={

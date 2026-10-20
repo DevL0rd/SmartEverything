@@ -64,8 +64,8 @@ function sendResult(
     );
   return new Promise((resolve, reject) => {
     socket.send(text, (error) => {
-      if (error === undefined) resolve();
-      else reject(error);
+      if (error instanceof Error) reject(error);
+      else resolve();
     });
   });
 }

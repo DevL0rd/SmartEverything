@@ -32,6 +32,14 @@ object PhoneSettingsWrite {
     return PhoneActionResult(true, "Screen timeout $seconds seconds")
   }
 
+  fun systemToggle(context: Context, setting: String, on: Boolean): PhoneActionResult {
+    val toggle = SystemToggle.of(setting)
+    val value = if (on) 1 else 0
+    write(context, toggle.key, value, toggle.label.lowercase())
+    if (PhoneSystemSettings.int(context, toggle.key) != value) throw PhoneSettingNotSaved(toggle.label.lowercase())
+    return PhoneActionResult(true, "${toggle.label} ${if (on) "on" else "off"}")
+  }
+
   private fun write(context: Context, name: String, value: Int, label: String) {
     if (!PhonePermissions.writeSettings(context)) throw PhonePermissionMissing("Modify system settings")
     if (!Settings.System.putInt(context.contentResolver, name, value)) throw PhoneSettingNotSaved(label)

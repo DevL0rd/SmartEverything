@@ -36,6 +36,11 @@ export function animatesPlacement(placed: Frame, reduced: boolean): boolean {
   return !reduced && placed.height > 0;
 }
 
+export function placedHeight(height: number): number | undefined {
+  'worklet';
+  return height > 0 ? height : undefined;
+}
+
 function settle(value: SharedValue<number>, to: number, animate: boolean): void {
   value.set(animate ? withSpring(to, SPRING) : to);
 }
@@ -92,7 +97,7 @@ export function useWidgetStyle(
       left: at.left,
       top: at.top,
       width: motion.width.get(),
-      height: motion.height.get(),
+      height: placedHeight(motion.height.get()),
       zIndex: lifted ? 10 : 1,
       transform: [
         { scale: motion.lift.get() },

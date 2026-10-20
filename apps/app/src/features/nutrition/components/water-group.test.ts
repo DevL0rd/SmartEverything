@@ -33,6 +33,7 @@ function glass(id: string, ml: number): HealthEntryRow {
     food: input.food,
     version: 1,
     save_error: null,
+    source: null,
     created_at: input.startTime,
     updated_at: input.startTime,
   };

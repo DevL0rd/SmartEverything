@@ -1,5 +1,6 @@
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { liveWatch } from '../../../store/live-watch';
 import { PHONE_LIVE_TOPICS, usePhoneLiveHeld } from './phone-live';
@@ -67,5 +68,12 @@ describe('usePhoneLiveHeld', () => {
     });
     expect(seen.at(-1)).toBe(false);
     act(release);
+  });
+
+  it('renders on the server without a lease held', () => {
+    const html = renderToStaticMarkup(
+      createElement(() => createElement('span', null, String(usePhoneLiveHeld(PHONE)))),
+    );
+    expect(html).toContain('false');
   });
 });

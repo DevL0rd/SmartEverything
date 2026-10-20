@@ -13,8 +13,9 @@ import { useProfiles } from '../../../store/people';
 import type { Device } from '../../../store/state';
 import { SectionPreview } from '../../shared/section-preview';
 import { connectionText, signalOf } from '../client-model';
+import { widgetPeople } from '../widgets/people-model';
 import { routerSectionHref } from './links';
-import { presenceLabel, presenceLine, presenceOf } from './people-model';
+import { presenceLabel, presenceLine, trackedPeople } from './people-model';
 
 const PREVIEW_CLIENTS = 5;
 const BUSY_WARNING = 60;
@@ -82,14 +83,11 @@ export function PeoplePreview({
   readonly snapshot: RouterSnapshot;
 }): ReactNode {
   const profiles = useProfiles();
-  const presence = presenceOf(snapshot.clients, profiles);
+  const presence = trackedPeople(snapshot.people);
   if (presence.length === 0) {
     return null;
   }
-  const people = presence.flatMap((person) => {
-    const profile = profiles.find((candidate) => candidate.id === person.id);
-    return profile === undefined ? [] : [profile];
-  });
+  const people = widgetPeople(presence, profiles);
   return (
     <Card
       href={routerSectionHref(device.id, 'clients', { filter: 'people' })}
@@ -97,14 +95,14 @@ export function PeoplePreview({
     >
       <View className="flex-row items-center gap-3">
         <View aria-hidden className="flex-row">
-          {people.map((profile, index) => (
+          {people.map((person, index) => (
             <View
-              key={profile.id}
+              key={person.id}
               className={
                 index === 0 ? 'rounded-full' : '-ml-2 rounded-full border-2 border-surface-1'
               }
             >
-              <ProfileAvatar profile={profile} />
+              <ProfileAvatar profile={person.profile} />
             </View>
           ))}
         </View>

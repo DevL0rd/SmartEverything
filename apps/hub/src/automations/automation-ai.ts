@@ -1,9 +1,16 @@
-import type { ToolAction, WakeAiAction } from '@smarteverything/domain';
-import type { ActionOrigin } from './actions';
+import type { PluginOrigin, SignalInput, WakeAiAction } from '@smarteverything/domain';
+import type { ToolHub } from '../ai-tools/tool-hub';
+
+export interface ActionOrigin {
+  readonly automationId: string;
+  readonly name: string;
+  readonly signal: SignalInput | null;
+  readonly plugin: PluginOrigin | null;
+}
 
 interface AutomationAi {
   readonly wake: (action: WakeAiAction, origin: ActionOrigin) => Promise<void>;
-  readonly tool: (action: ToolAction, origin: ActionOrigin) => Promise<void>;
+  readonly tools: Pick<ToolHub, 'check' | 'call'>;
   readonly stop: () => void;
 }
 

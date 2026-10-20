@@ -8,7 +8,7 @@ import android.graphics.Typeface
 import android.util.Log
 import androidx.core.graphics.PathParser
 
-enum class OverlayIcon { Mic, MicOff, End, Close, Camera, CameraOff, Speaker, StopShare, More, Less, Pause, Share, House, StopTalk, Captions, Tune, Open }
+enum class OverlayIcon { Mic, MicOff, End, Close, Camera, CameraOff, Speaker, StopShare, More, Less, Pause, Share, House, StopTalk, Captions, Tune, Open, Brain, BrainOff, Alert }
 
 object OverlayFonts {
   private const val TAG = "SmartEverythingOverlay"
@@ -73,6 +73,10 @@ object OverlayIcons {
   private const val OPEN =
     "M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.8" +
       "3 9.83 1.41 1.41L19 6.41V10h2V3h-7z"
+  private const val BRAIN =
+    "M13 8.57c-.79 0-1.43.64-1.43 1.43s.64 1.43 1.43 1.43 1.43-.64 1.43-1.43S13.79 8.57 13 8.57zM13 3C9.25 3 6.2 5.94" +
+      " 6.01 9.64L4.1 12.2c-.25.33-.01.8.4.8H6v3c0 1.1.9 2 2 2h1v3h7v-4.68c2.36-1.12 4-3.53 4-6.32 0-3.87-3.13-7-7-7z"
+  private const val ALERT = "M12 2L1 21h22L12 2zm1 15h-2v-2h2v2zm0-4h-2V9h2v4z"
   private const val SLASH_CUT = 4.4f
   private const val SLASH_STROKE = 2f
 
@@ -98,6 +102,9 @@ object OverlayIcons {
         OverlayIcon.Captions -> plain(CAPTIONS)
         OverlayIcon.Tune -> plain(TUNE)
         OverlayIcon.Open -> plain(OPEN)
+        OverlayIcon.Brain -> plain(BRAIN)
+        OverlayIcon.Alert -> plain(ALERT)
+        OverlayIcon.BrainOff -> struck(BRAIN, 4f, 3.5f, 20f, 20.5f)
         OverlayIcon.MicOff -> struck(MIC, 4.5f, 3.5f, 20.5f, 20.5f)
         OverlayIcon.CameraOff -> struck(CAMERA, 3f, 3.5f, 20f, 20.5f)
       }

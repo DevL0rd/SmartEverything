@@ -191,6 +191,7 @@ describe('the expiry sweep', () => {
       now: (): Date => moment,
       clientRemoved: (): void => undefined,
       clientPaused: (): void => undefined,
+      lapseGrants: (): void => undefined,
     }).sweep();
     expect(opened.store.clients.list().map((client) => client.id)).not.toContain(phone.client.id);
   });
@@ -314,6 +315,7 @@ describe('revoking and expiring', () => {
       now: (): Date => moment,
       clientRemoved: (): void => undefined,
       clientPaused: (): void => undefined,
+      lapseGrants: (): void => undefined,
     }).revoke(kid.id, owner.id);
     expect(closed).toStrictEqual([4001]);
     expect(

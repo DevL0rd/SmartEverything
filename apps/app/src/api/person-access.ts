@@ -1,6 +1,10 @@
 import {
   API_ENDPOINTS as E,
   type AccessAuditRow,
+  type AccessRequestDecision,
+  type AccessRequestRow,
+  type AccessRequestStatus,
+  type NewAccessRequest,
   type PersonAccess,
   type PersonAccessChange,
 } from '@smarteverything/domain';
@@ -34,4 +38,30 @@ export async function listAccessAudit(
   return api().call(E.listAccessAudit, {
     query: { limit, ...(profileId === null ? {} : { profileId }) },
   });
+}
+
+export async function listAccessRequests(
+  status: AccessRequestStatus | null,
+): Promise<AccessRequestRow[]> {
+  return api().call(E.listAccessRequests, {
+    query: status === null ? {} : { status },
+  });
+}
+
+export async function createAccessRequest(request: NewAccessRequest): Promise<AccessRequestRow> {
+  const row = await api().call(E.createAccessRequest, { body: request });
+  log.info('access_request.created', { kind: request.kind });
+  return row;
+}
+
+export async function decideAccessRequest(
+  requestId: string,
+  decision: AccessRequestDecision,
+): Promise<AccessRequestRow> {
+  const row = await api().call(E.decideAccessRequest, {
+    params: { requestId },
+    body: decision,
+  });
+  log.info('access_request.decided', { requestId, approve: decision.approve });
+  return row;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   categoryOfLearned,
-  categoryOfLibrary,
+  categoryOfDeviceRemote,
   CATEGORY_LOOKS,
   missingSuggestions,
   REMOTE_CATEGORIES,
@@ -22,22 +22,22 @@ describe('categoryOfLearned', () => {
   });
 });
 
-describe('categoryOfLibrary', () => {
+describe('categoryOfDeviceRemote', () => {
   it('reads the category from the remote name first', () => {
-    expect(categoryOfLibrary('Living room AC', [])).toBe('ac');
-    expect(categoryOfLibrary('Bedroom fan', [])).toBe('fan');
-    expect(categoryOfLibrary('Desk lamp', [])).toBe('light');
-    expect(categoryOfLibrary('Soundbar', [])).toBe('speaker');
-    expect(categoryOfLibrary('Projector', [])).toBe('projector');
-    expect(categoryOfLibrary('Cable box', [])).toBe('settop');
-    expect(categoryOfLibrary('Hall TV', [])).toBe('tv');
+    expect(categoryOfDeviceRemote('Living room AC', [])).toBe('ac');
+    expect(categoryOfDeviceRemote('Bedroom fan', [])).toBe('fan');
+    expect(categoryOfDeviceRemote('Desk lamp', [])).toBe('light');
+    expect(categoryOfDeviceRemote('Soundbar', [])).toBe('speaker');
+    expect(categoryOfDeviceRemote('Projector', [])).toBe('projector');
+    expect(categoryOfDeviceRemote('Cable box', [])).toBe('settop');
+    expect(categoryOfDeviceRemote('Hall TV', [])).toBe('tv');
   });
 
   it('falls back to the keys the remote has', () => {
-    expect(categoryOfLibrary('Remote', ['Power', 'Temp up'])).toBe('ac');
-    expect(categoryOfLibrary('Remote', ['Power', 'Vol up'])).toBe('tv');
-    expect(categoryOfLibrary('Remote', ['Power', 'Speed up'])).toBe('fan');
-    expect(categoryOfLibrary('Remote', ['Power', 'Netflix'])).toBe('other');
+    expect(categoryOfDeviceRemote('Remote', ['Power', 'Temp up'])).toBe('ac');
+    expect(categoryOfDeviceRemote('Remote', ['Power', 'Vol up'])).toBe('tv');
+    expect(categoryOfDeviceRemote('Remote', ['Power', 'Speed up'])).toBe('fan');
+    expect(categoryOfDeviceRemote('Remote', ['Power', 'Netflix'])).toBe('other');
   });
 });
 

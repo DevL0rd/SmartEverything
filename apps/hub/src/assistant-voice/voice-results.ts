@@ -1,4 +1,9 @@
+import { Logger } from '@smarteverything/logging';
+import { reachedCall, voiceListOf } from './voice-shapes';
+
 type Json = Readonly<Record<string, unknown>>;
+
+const log = new Logger('hub.voice-results');
 
 interface Projection {
   readonly drop: ReadonlySet<string>;
@@ -14,7 +19,18 @@ const PROJECTIONS: ReadonlyMap<string, Projection> = new Map([
   [
     'find_devices',
     {
-      drop: new Set(['provider', 'model', 'manufacturer', 'room_id', 'updated_at', 'observed_at']),
+      drop: new Set([
+        'provider',
+        'model',
+        'manufacturer',
+        'room_id',
+        'updated_at',
+        'observed_at',
+        'details',
+        'group',
+        'tier',
+        'access',
+      ]),
     },
   ],
   [
@@ -57,9 +73,31 @@ function pruned(value: unknown, projection: Projection): unknown {
   );
 }
 
-function reachedName(name: string, args: Readonly<Record<string, unknown>>): string {
-  const forwarded = args['name'];
-  return name === 'call_tool' && typeof forwarded === 'string' ? forwarded : name;
+export const VOICE_RESULT_GUARD_CHARS = 16_000;
+
+const OVER_GUARD =
+  'This result was larger than a voice call can take, so only its start is here. Say that the list was too long and ask the tool again with a narrower request.';
+
+function lastResortGuard(tool: string, response: Json): Json {
+  const text = JSON.stringify(response);
+  if (text.length <= VOICE_RESULT_GUARD_CHARS) {
+    return response;
+  }
+  log.warn('voice.result_over_guard', {
+    tool,
+    chars: text.length,
+    guardChars: VOICE_RESULT_GUARD_CHARS,
+  });
+  return { over_guard: OVER_GUARD, start: text.slice(0, VOICE_RESULT_GUARD_CHARS) };
+}
+
+function projected(tool: string, response: Json): Json {
+  const projection = PROJECTIONS.get(tool);
+  if (projection === undefined || 'error' in response) {
+    return response;
+  }
+  const result = pruned(response, projection);
+  return isRecord(result) ? result : response;
 }
 
 export function voiceResponseOf(
@@ -67,10 +105,7 @@ export function voiceResponseOf(
   args: Readonly<Record<string, unknown>>,
   response: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
-  const projection = PROJECTIONS.get(reachedName(name, args));
-  if (projection === undefined || 'error' in response) {
-    return response;
-  }
-  const result = pruned(response, projection);
-  return isRecord(result) ? result : response;
+  const tool = reachedCall(name, args).name;
+  const shaped = voiceListOf(name, args, response) ?? response;
+  return lastResortGuard(tool, projected(tool, shaped));
 }

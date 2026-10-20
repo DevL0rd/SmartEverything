@@ -1,6 +1,7 @@
 import type { OverlayAction } from '@smarteverything/domain/voice-overlay';
 import { syncChildren } from './overlay-controls-dom';
 import { element, iconNode, textButton } from './overlay-nodes';
+import { ThinkDom } from './overlay-think-dom';
 import {
   SYSTEM_SPEAKER_NOTE,
   type CardModel,
@@ -104,12 +105,16 @@ export class TrayDom {
   readonly #sub = element('span');
   readonly #mic = micSelect();
   readonly #volume = volumeRange();
+  readonly #think: ThinkDom;
   #mics = '';
 
   constructor(private readonly ports: TrayPorts) {
     this.tray.setAttribute('role', 'group');
     this.tray.setAttribute('aria-label', TRAY_LABEL);
-    this.tray.append(this.#head(), this.#grid, this.#rows());
+    this.#think = new ThinkDom((action) => {
+      this.ports.act(action);
+    });
+    this.tray.append(this.#head(), this.#grid, this.#think.section, this.#rows());
     this.tray.addEventListener('click', (event) => {
       this.#clicked(event);
     });
@@ -144,6 +149,7 @@ export class TrayDom {
       return button;
     });
     syncChildren(this.#grid, wanted);
+    this.#think.render(model.setup);
     this.#micOptions(model.mics, model.micId);
     if (document.activeElement !== this.#volume.input) {
       this.#volume.input.value = String(model.volume);
@@ -156,7 +162,9 @@ export class TrayDom {
   }
 
   controls(): HTMLElement[] {
-    return [...this.tray.querySelectorAll<HTMLElement>('button:not([disabled]),select,input')];
+    return [
+      ...this.tray.querySelectorAll<HTMLElement>('button:not([disabled]),select,input'),
+    ].filter((control) => control.tabIndex >= 0);
   }
 
   #head(): HTMLElement {

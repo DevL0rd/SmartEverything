@@ -6,13 +6,14 @@ import { matchesQuickAskShortcut, openQuickAsk } from '../features/assistant';
 import { openSearch } from '../search/open-search';
 import { closeSearchOverlay } from '../search/overlay-state';
 import { href } from './hrefs';
-import type { NavEntry } from './nav-model';
+import { toggleNavFolder } from './nav-edit-actions';
+import type { NavEntry, NavModel, NavNodeView } from './nav-model';
 import { QUICK_ASK_ID, ShortcutHelp } from './shortcut-help';
 import { shortcutOf, shortcutPressed, useKeyboard, type KeyPress } from './shortcuts';
 
 export interface ShellShortcutTargets {
   readonly searchRef: RefObject<TextInput | null>;
-  readonly entries: readonly NavEntry[];
+  readonly model: NavModel;
   readonly go: (entry: NavEntry) => void;
   readonly toggleSidebar: () => void;
 }
@@ -45,18 +46,23 @@ function anywhereKey(press: KeyPress, targets: ShellShortcutTargets): boolean {
   return false;
 }
 
-function commandKey(press: KeyPress, targets: ShellShortcutTargets): boolean {
+function numbered(model: NavModel, press: KeyPress): NavNodeView | undefined {
   const index = Number.parseInt(press.key, 10);
+  return Number.isNaN(index) ? undefined : [...model.nodes, ...model.system][index - 1];
+}
+
+function commandKey(press: KeyPress, targets: ShellShortcutTargets): boolean {
   if (shortcutPressed(press, 'sidebar')) {
     targets.toggleSidebar();
     return true;
   }
-  const entry = Number.isNaN(index) ? undefined : targets.entries[index - 1];
-  if (entry !== undefined) {
-    targets.go(entry);
-    return true;
+  const node = numbered(targets.model, press);
+  if (node === undefined) {
+    return false;
   }
-  return false;
+  if (node.kind === 'folder') toggleNavFolder(node.key);
+  else targets.go(node);
+  return true;
 }
 
 function plainKey(press: KeyPress, targets: ShellShortcutTargets, showHelp: () => void): boolean {

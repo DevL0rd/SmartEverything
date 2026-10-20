@@ -19,10 +19,14 @@ const STORED_CAMERA = storedRow(CAMERA_ROW, {
 const STORED_RECORDING = storedRow(RECORDING_ROW, {});
 
 const CAMERA_COLUMNS =
-  'device_id, stream_name, source_url_kind, physical_ptz, two_way_audio, record_events, wake_sensitivity, transcribe';
+  'device_id, stream_name, source_url_kind, physical_ptz, two_way_audio, record_events, keep_days, wake_sensitivity, transcribe';
 
 const RECORDING_COLUMNS =
   'id, device_id, event_id, kind, storage_path, started_at, duration_ms, bytes, created_at';
+
+const EXPIRED_RECORDING_IDS = `select recordings.id from recordings
+  join cameras on cameras.device_id = recordings.device_id
+  where recordings.created_at < strftime('%Y-%m-%dT%H:%M:%fZ', $now, '-' || cameras.keep_days || ' days')`;
 
 export interface NewRecording {
   readonly deviceId: string;
@@ -98,11 +102,12 @@ export class CamerasRepository {
       const before = this.byDevice(deviceId);
       this.context.sql.run(
         'change the camera',
-        `update cameras set record_events = $record, wake_sensitivity = $sensitivity,
-           transcribe = $transcribe where device_id = $deviceId`,
+        `update cameras set record_events = $record, keep_days = $keepDays,
+           wake_sensitivity = $sensitivity, transcribe = $transcribe where device_id = $deviceId`,
         {
           deviceId,
           record: flag(change.record_events ?? before.record_events),
+          keepDays: change.keep_days ?? before.keep_days,
           sensitivity: change.wake_sensitivity ?? before.wake_sensitivity,
           transcribe: flag(change.transcribe ?? before.transcribe),
         },
@@ -174,6 +179,27 @@ export class CamerasRepository {
       const row = this.recording(id);
       this.context.changed('recordings', 'INSERT', row, null);
       return row;
+    });
+  }
+
+  removeExpiredRecordings(now: Date): RecordingRow[] {
+    return this.context.write(() => {
+      const parameters = { now: now.toISOString() };
+      const expired = this.context.sql.all(
+        STORED_RECORDING,
+        `select ${RECORDING_COLUMNS} from recordings where id in (${EXPIRED_RECORDING_IDS})
+         order by created_at, rowid`,
+        parameters,
+      );
+      this.context.sql.run(
+        'remove the expired recordings',
+        `delete from recordings where id in (${EXPIRED_RECORDING_IDS})`,
+        parameters,
+      );
+      for (const recording of expired) {
+        this.context.changed('recordings', 'DELETE', null, recording);
+      }
+      return expired;
     });
   }
 

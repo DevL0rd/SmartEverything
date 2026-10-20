@@ -17,8 +17,14 @@ import { bodyAlertsExtension } from './extensions/body-alerts';
 import { computersExtension } from './computers/extension';
 import { machineUpdatesExtension } from './updates/extension';
 import { phonesExtension } from './phones/extension';
+import { treadmillsExtension } from './local/treadmill/extension';
+import { recordingRetentionExtension } from './cameras/recording-retention-extension';
+import { toothbrushesExtension } from './local/toothbrush/extension';
+import { bottlesExtension } from './local/bottle/extension';
 import { mcpExtension } from './extensions/mcp';
+import { DeviceNotices } from './extensions/device-notices';
 import { OwnerAlerts } from './extensions/owner-alerts';
+import { laundryNoticesExtension } from './laundry/notices-extension';
 import { privacyExtension } from './extensions/privacy';
 import { nodeFirewallSystem, type FirewallSystem } from './firewall/system';
 import { pushExtension } from './extensions/push';
@@ -50,7 +56,6 @@ export interface ServerOptions {
   readonly go2rtcApiPort?: number;
   readonly go2rtcRtspPort?: number;
   readonly webrtcPort?: number;
-  readonly wakeDiagnostics?: boolean;
   readonly log: Logger;
   readonly logLines: LogLines;
   readonly fatal: (cause: Error) => void;
@@ -86,15 +91,21 @@ function serverExtensions(
   alerts: OwnerAlerts,
   smartthings: ReturnType<typeof smartThingsWiring>,
 ): readonly ServerExtension[] {
+  const notices = new DeviceNotices();
   return [
     mcpExtension({ clock, alerts }),
-    pushExtension({ fetch: options.fetch ?? fetch, now: clock.now, alerts }),
+    pushExtension({ fetch: options.fetch ?? fetch, now: clock.now, alerts, notices }),
+    laundryNoticesExtension({ notices, clock }),
     smartthings.extension,
     privacyExtension(),
     bodyAlertsExtension({ alerts }),
     computersExtension(clock.now),
     phonesExtension(clock.now),
+    treadmillsExtension(clock.now),
+    bottlesExtension(clock.now),
+    toothbrushesExtension(clock),
     machineUpdatesExtension(),
+    recordingRetentionExtension(clock),
     ...(options.extensions ?? []),
   ];
 }
@@ -130,6 +141,7 @@ async function stopAll(started: Started, withdraw: () => Promise<void>): Promise
   await Promise.all(started.extensions.map((extension) => extension.stop()));
   await started.core.hub.stop();
   started.core.firewall.stop();
+  started.core.cameraHealth.stop();
   await started.core.supervisor.stop();
   started.store.close();
   await started.lock.release();
@@ -187,6 +199,7 @@ async function boot(options: ServerOptions, clock: Clock, undo: Undo[]): Promise
     () => core.supervisor.stop(),
     () => {
       core.firewall.stop();
+      core.cameraHealth.stop();
     },
     () => core.hub.stop(),
   );
@@ -198,7 +211,6 @@ async function boot(options: ServerOptions, clock: Clock, undo: Undo[]): Promise
     secrets,
     core,
     dataDirectory: options.dataDirectory,
-    wakeDiagnostics: options.wakeDiagnostics ?? false,
     ...(options.preview === undefined ? {} : { preview: options.preview }),
     ...(options.codex === undefined ? {} : { codex: options.codex }),
     allowedOrigins: allowedOriginsOf(options),

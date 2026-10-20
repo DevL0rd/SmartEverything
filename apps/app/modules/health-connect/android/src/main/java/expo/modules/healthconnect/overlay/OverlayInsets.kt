@@ -10,9 +10,13 @@ class OverlayInsetsSource(
   val cutoutRight: Int,
   val barsLeft: Int,
   val barsRight: Int,
+  val barsTop: Int = 0,
+  val cutoutTop: Int = 0,
 )
 
-data class OverlayInsets(val left: Int, val right: Int, val bottom: Int) {
+data class OverlayInsets(val left: Int, val right: Int, val bottom: Int, val top: Int = 0) {
+  fun withTopOf(system: OverlayInsets): OverlayInsets = copy(top = system.top)
+
   companion object {
     fun of(source: OverlayInsetsSource, density: Float): OverlayInsets {
       val bottom = maxOf(source.navigationBottom, source.tappableBottom, source.gesturesBottom)
@@ -20,6 +24,7 @@ data class OverlayInsets(val left: Int, val right: Int, val bottom: Int) {
         left = maxOf(source.cutoutLeft, source.barsLeft),
         right = maxOf(source.cutoutRight, source.barsRight),
         bottom = bottom + Math.round(OverlayDims.PILL_BOTTOM_GAP * density),
+        top = maxOf(source.cutoutTop, source.barsTop),
       )
     }
 
@@ -37,6 +42,8 @@ data class OverlayInsets(val left: Int, val right: Int, val bottom: Int) {
         cutoutRight = cutout.right,
         barsLeft = bars.left,
         barsRight = bars.right,
+        barsTop = bars.top,
+        cutoutTop = cutout.top,
       )
       return of(source, density)
     }

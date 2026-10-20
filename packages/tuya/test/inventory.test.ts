@@ -2,16 +2,11 @@ import { DISCOVERED_DEVICE } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import {
   CLOUD_DEVICE,
-  IR_REMOTE_KEYS,
   MANUFACTURER,
-  RemoteKeyError,
   buildDeviceModel,
   discoveredDevice,
   isSleepingSensor,
-  libraryCommandBody,
-  libraryKeyOf,
-  remoteDevice,
-  remoteKeyCapability,
+  type SmartLifeFacts,
 } from '../src';
 import { BOOL, int, options, point } from './fixtures';
 
@@ -48,14 +43,13 @@ const sensorModel = buildDeviceModel(
   new Set(),
 );
 
-const keys = IR_REMOTE_KEYS.parse({
-  category_id: 2,
-  key_list: [
-    { key: 'power', key_id: 1, key_name: 'Power' },
-    { key: 'volume_up', key_id: 5 },
-    { key: 'power', key_id: 1 },
-  ],
-});
+const FACTS: SmartLifeFacts = {
+  conversions: new Map(),
+  cloudReports: 'codes',
+  cloudReportReason: 'specification_unpublished',
+  gatewayFrom: 'device_list',
+  nodeIdFrom: 'device_list',
+};
 
 describe('inventory', () => {
   it('describes a sub-device with its gateway, transport and rejected data points', () => {
@@ -65,7 +59,7 @@ describe('inventory', () => {
         model: sensorModel,
         rejected: [{ code: 'x', reason: 'bad' }],
         specificationPublished: true,
-        smartLife: null,
+        smartLife: FACTS,
         room: 'Bedroom',
       },
       { transport: 'local', reason: 'via_gateway' },
@@ -92,7 +86,12 @@ describe('inventory', () => {
         subDevice: true,
         nodeId: 'a4c1',
         specificationPublished: true,
-        link: 'developer_project',
+        link: 'smart_life',
+        cloudReports: 'codes',
+        cloudReportReason: 'specification_unpublished',
+        gatewayFrom: 'device_list',
+        nodeIdFrom: 'device_list',
+        convertedDataPoints: 0,
         rejectedDataPoints: [{ code: 'x', reason: 'bad' }],
       },
     });
@@ -105,7 +104,7 @@ describe('inventory', () => {
         model: buildDeviceModel('wg2', [], new Set()),
         rejected: [],
         specificationPublished: false,
-        smartLife: null,
+        smartLife: FACTS,
         room: null,
       },
       { transport: 'local', reason: 'on_lan' },
@@ -130,7 +129,7 @@ describe('inventory', () => {
           model: buildDeviceModel('wg2', [], new Set()),
           rejected: [],
           specificationPublished: true,
-          smartLife: null,
+          smartLife: FACTS,
           room: null,
         },
         { transport: 'cloud', reason: 'not_on_lan' },
@@ -155,59 +154,5 @@ describe('inventory', () => {
     expect(isSleepingSensor(buildDeviceModel('pir', [point('pir', 1, BOOL)], new Set()))).toBe(
       false,
     );
-  });
-});
-
-describe('infrared library remotes', () => {
-  it('offers each distinct key of a remote as a button', () => {
-    expect(remoteKeyCapability(keys)).toStrictEqual({
-      key: 'remote_key',
-      label: 'Remote button',
-      access: 'write',
-      value: { kind: 'enum', options: ['power', 'volume_up'] },
-    });
-    expect(remoteKeyCapability({ category_id: 2, key_list: [] })).toBeNull();
-  });
-
-  it('describes a remote as a cloud device under its blaster', () => {
-    const device = remoteDevice(
-      gateway,
-      { remote_id: 'r1', remote_name: 'TV', category_id: 2, brand_name: 'Acme' },
-      keys,
-      'Lounge',
-    );
-    expect(DISCOVERED_DEVICE.parse(device)).toStrictEqual(device);
-    expect(device).toStrictEqual({
-      provider: 'tuya',
-      externalId: 'r1',
-      parentExternalId: 'gw1',
-      kind: 'ir_remote',
-      name: 'TV',
-      model: 'ir-category-2',
-      manufacturer: 'Acme',
-      room: 'Lounge',
-      online: true,
-      capabilities: [remoteKeyCapability(keys)],
-      details: { categoryId: 2, transport: 'cloud', transportReason: 'cloud_library' },
-    });
-    expect(
-      remoteDevice(
-        gateway,
-        { remote_id: 'r2', remote_name: 'Fan', category_id: 8, brand_name: null },
-        { category_id: 8, key_list: [] },
-        null,
-      ),
-    ).toMatchObject({ manufacturer: 'Tuya', capabilities: [] });
-  });
-
-  it('turns a button into a library key and its cloud command', () => {
-    const key = libraryKeyOf('r1', keys, 'volume_up');
-    expect(key).toStrictEqual({ remoteId: 'r1', categoryId: 2, keyId: 5, key: 'volume_up' });
-    expect(libraryCommandBody(key)).toBe('{"category_id":2,"key_id":5,"key":"volume_up"}');
-    expect(() => libraryKeyOf('r1', keys, 'mute')).toThrow(new RemoteKeyError('r1', 'mute'));
-    expect(new RemoteKeyError('r1', 'mute')).toMatchObject({
-      name: 'RemoteKeyError',
-      message: 'The IR remote r1 has no button "mute".',
-    });
   });
 });

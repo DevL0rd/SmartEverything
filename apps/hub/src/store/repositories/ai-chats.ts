@@ -23,6 +23,7 @@ import { AFTER_CHAT_SQL, CHAT_MOMENT_SQL, pageParams } from './ai-chat-paging';
 import { PENDING_REQUESTS_SQL } from './ai-chat-requests';
 import { removeStoredChat } from './ai-chat-removal';
 import { subagentChatIds } from './ai-chat-descendants';
+import { continuingChats, type ContinuingChat } from './ai-chat-continuations';
 import { modelKey, type NewChat } from './ai-chat-input';
 import { assertSubagentCreation, holdChatTree, assertChatWork } from './ai-chat-removal-hold';
 
@@ -175,6 +176,10 @@ export class AiChatsRepository {
        where archived_at is null and coalesce(last_message_at, created_at) >= $since`,
       { since },
     );
+  }
+
+  continuingSessions(deviceId: string): readonly ContinuingChat[] {
+    return continuingChats(this.context, deviceId);
   }
 
   usingEngine(kind: Engine['kind']): AiChatRow[] {

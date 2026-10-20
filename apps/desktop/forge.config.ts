@@ -26,6 +26,7 @@ const icon = isRelease
   ? path.join(appDirectory, 'assets', 'icon.png')
   : path.join(desktopDirectory, 'packaging', variant.name, 'icon.png');
 const iconDirectory = path.join(desktopDirectory, 'dist', 'icons');
+const trayIcons = path.join(desktopDirectory, 'assets', 'tray');
 const icons = iconPaths(iconDirectory);
 const serviceDirectory = path.join(desktopDirectory, 'dist', 'service');
 const go2rtcBuilds = path.resolve(desktopDirectory, '..', '..', 'tooling', 'go2rtc', 'out');
@@ -98,7 +99,9 @@ const config: ForgeConfig = {
     appBundleId: variant.appBundleId,
     asar: true,
     icon: icons.base,
-    extraResource: isRelease ? [webExport, icon, serviceDirectory, go2rtcStage] : [icon],
+    extraResource: isRelease
+      ? [webExport, icon, trayIcons, serviceDirectory, go2rtcStage]
+      : [icon, trayIcons],
     ignore: isLeftOut,
     protocols: [{ name: variant.productName, schemes: [variant.scheme] }],
   },

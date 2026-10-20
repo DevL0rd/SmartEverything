@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { z } from 'zod';
 import { Logger } from '@smarteverything/logging';
@@ -17,11 +17,13 @@ import {
   type BoardEditor,
   type BoardReveal,
   type BoardWidget,
+  type WidgetDefinition,
 } from '../../../components/widget-board';
 import { useStableValue } from '../../../components/use-stable-value';
 import { useSizeClass } from '../../../design/size-class';
 import { usePageLayout, useSavePageLayout } from '../../../store/layouts';
 import { useSettings } from '../../../store/selectors';
+import { useExtensionWidgets } from '../../../plugins/declared/use-extension-widgets';
 import { usePluginHomeTypes } from '../../../plugins/home-widgets';
 import { cameraInstanceAvailable } from '../../cameras';
 import { useNutritionWidgets, useTodayKey } from '../../nutrition';
@@ -40,7 +42,8 @@ import {
   type HomeView,
 } from '../data/home-data';
 import { spotlightOf } from '../widgets/spotlight';
-import { HOME_PAGE, HOME_RETIRED, HOME_WIDGETS, homeDefaults } from '../widgets';
+import { HOME_PAGE, HOME_RETIRED, homeDefaults } from '../model/defaults';
+import { HOME_WIDGETS } from '../widgets';
 
 const log = new Logger('app.home');
 
@@ -123,13 +126,24 @@ function instanceCheck(
   };
 }
 
-function useAvailableTypes(view: HomeView): ReadonlySet<string> {
+function useAvailableTypes(
+  view: HomeView,
+  extensions: readonly WidgetDefinition[],
+): ReadonlySet<string> {
   const nutrition = useNutritionWidgets(useTodayKey().day);
   const weather = weatherShown(useWeather()) ? ['weather'] : [];
   const climate = useClimateWidgets().types;
   const plugins = usePluginHomeTypes();
+  const declared = extensions.map((definition) => definition.type);
   return useStableValue(
-    new Set([...availableWidgets(view), ...nutrition, ...weather, ...climate, ...plugins]),
+    new Set([
+      ...availableWidgets(view),
+      ...nutrition,
+      ...weather,
+      ...climate,
+      ...plugins,
+      ...declared,
+    ]),
     sameIds,
   );
 }
@@ -144,7 +158,9 @@ function HomeBoard({
   const data = useHomeData();
   const view = useView(data, editor);
   const viewStore = useHomeViewStore(view);
-  const available = useAvailableTypes(view);
+  const extensions = useExtensionWidgets(HOME_WIDGETS);
+  const catalogue = useMemo(() => [...HOME_WIDGETS, ...extensions], [extensions]);
+  const available = useAvailableTypes(view, extensions);
   const widgetCount = available.size;
   useEffect(() => {
     log.debug('board.available_changed', { widgets: widgetCount });
@@ -160,7 +176,7 @@ function HomeBoard({
     <HomeDataContext value={viewStore}>
       <WidgetBoard
         editor={editor}
-        catalogue={HOME_WIDGETS}
+        catalogue={catalogue}
         available={available}
         instanceAvailable={instanceCheck(data.cameras, data.digest.spotlightable)}
         {...(reveal === undefined ? {} : { reveal })}

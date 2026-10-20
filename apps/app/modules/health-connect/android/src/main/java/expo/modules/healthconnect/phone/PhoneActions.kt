@@ -4,6 +4,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioManager
 import android.os.Build
+import expo.modules.healthconnect.push.PhoneActionOrigin
 import expo.modules.healthconnect.watch.FindPhone
 import expo.modules.healthconnect.watch.WatchNotificationListener
 import org.json.JSONObject
@@ -21,6 +22,8 @@ enum class PhoneActionType(val wire: String) {
   SET_AUTO_BRIGHTNESS("set_auto_brightness"),
   SET_TIMEOUT("set_timeout"),
   SET_FLASHLIGHT_LEVEL("set_flashlight_level"),
+  SET_SYSTEM_TOGGLE("set_system_toggle"),
+  OPEN_SETTINGS("open_settings"),
   SEEK("seek"),
   LAUNCH_APP("launch_app"),
   DISMISS_NOTIFICATION("dismiss_notification"),
@@ -52,32 +55,34 @@ object PhoneActions {
     "silent" to AudioManager.RINGER_MODE_SILENT
   )
 
-  internal val handlers: Map<PhoneActionType, (Context, JSONObject) -> PhoneActionResult> = mapOf(
-    PhoneActionType.RING to { context, action -> ring(context, action.getBoolean("on")) },
-    PhoneActionType.SET_VOLUME to { context, action -> volume(context, action.getString("stream"), action.getInt("percent")) },
-    PhoneActionType.SET_RINGER to { context, action -> ringer(context, action.getString("mode")) },
-    PhoneActionType.SET_DND to { context, action -> dnd(context, action.getBoolean("on")) },
-    PhoneActionType.FLASHLIGHT to { context, action -> PhoneFlashlight.set(context, action.getString("mode")) },
-    PhoneActionType.MEDIA to { _, action -> media(action.getString("key")) },
-    PhoneActionType.OPEN_URL to { context, action -> PhoneNotices.openUrl(context, action.getString("url"), action.getString("label")) },
-    PhoneActionType.REFRESH to { _, _ -> PhoneActionResult(true, "Sent a fresh report") },
-    PhoneActionType.SET_BRIGHTNESS to { context, action -> PhoneSettingsWrite.brightness(context, action.getInt("percent")) },
-    PhoneActionType.SET_AUTO_BRIGHTNESS to { context, action -> PhoneSettingsWrite.autoBrightness(context, action.getBoolean("on")) },
-    PhoneActionType.SET_TIMEOUT to { context, action -> PhoneSettingsWrite.timeout(context, action.getInt("seconds")) },
-    PhoneActionType.SET_FLASHLIGHT_LEVEL to { context, action -> PhoneFlashlight.setLevel(context, action.getInt("percent")) },
-    PhoneActionType.SEEK to { _, action -> seek(action.getLong("positionMs")) },
-    PhoneActionType.LAUNCH_APP to { context, action -> PhoneLaunch.run(context, action.getString("app")) },
-    PhoneActionType.DISMISS_NOTIFICATION to { context, action -> PhoneNotificationsDetail.dismiss(context, action.getJSONObject("target")) },
-    PhoneActionType.LOCK to { context, _ -> lock(context) },
-    PhoneActionType.SHOW_UNLOCK to { context, _ -> PhoneShowUnlock.show(context) },
-    PhoneActionType.SCREENSHOT to { context, _ -> screenshot(context) },
-    PhoneActionType.RECEIVE_FILE to { context, action -> PhoneFiles.receive(context, action) },
-    PhoneActionType.LIVE to { context, action -> live(context, action.getBoolean("on")) }
+  internal val handlers: Map<PhoneActionType, (Context, JSONObject, PhoneActionOrigin) -> PhoneActionResult> = mapOf(
+    PhoneActionType.RING to { context, action, _ -> ring(context, action.getBoolean("on")) },
+    PhoneActionType.SET_VOLUME to { context, action, _ -> volume(context, action.getString("stream"), action.getInt("percent")) },
+    PhoneActionType.SET_RINGER to { context, action, _ -> ringer(context, action.getString("mode")) },
+    PhoneActionType.SET_DND to { context, action, _ -> dnd(context, action.getBoolean("on")) },
+    PhoneActionType.FLASHLIGHT to { context, action, _ -> PhoneFlashlight.set(context, action.getString("mode")) },
+    PhoneActionType.MEDIA to { _, action, _ -> media(action.getString("key")) },
+    PhoneActionType.OPEN_URL to { context, action, origin -> PhoneNotices.openUrl(context, action.getString("url"), action.getString("label"), origin) },
+    PhoneActionType.REFRESH to { _, _, _ -> PhoneActionResult(true, "Sent a fresh report") },
+    PhoneActionType.SET_BRIGHTNESS to { context, action, _ -> PhoneSettingsWrite.brightness(context, action.getInt("percent")) },
+    PhoneActionType.SET_AUTO_BRIGHTNESS to { context, action, _ -> PhoneSettingsWrite.autoBrightness(context, action.getBoolean("on")) },
+    PhoneActionType.SET_TIMEOUT to { context, action, _ -> PhoneSettingsWrite.timeout(context, action.getInt("seconds")) },
+    PhoneActionType.SET_FLASHLIGHT_LEVEL to { context, action, _ -> PhoneFlashlight.setLevel(context, action.getInt("percent")) },
+    PhoneActionType.SET_SYSTEM_TOGGLE to { context, action, _ -> PhoneSettingsWrite.systemToggle(context, action.getString("setting"), action.getBoolean("on")) },
+    PhoneActionType.OPEN_SETTINGS to { context, action, _ -> PhoneSettingsPages.open(context, action.getString("page")) },
+    PhoneActionType.SEEK to { _, action, _ -> seek(action.getLong("positionMs")) },
+    PhoneActionType.LAUNCH_APP to { context, action, _ -> PhoneLaunch.run(context, action.getString("app")) },
+    PhoneActionType.DISMISS_NOTIFICATION to { context, action, _ -> PhoneNotificationsDetail.dismiss(context, action.getJSONObject("target")) },
+    PhoneActionType.LOCK to { context, _, _ -> lock(context) },
+    PhoneActionType.SHOW_UNLOCK to { context, _, _ -> PhoneShowUnlock.show(context) },
+    PhoneActionType.SCREENSHOT to { context, _, origin -> screenshot(context, origin) },
+    PhoneActionType.RECEIVE_FILE to { context, action, _ -> PhoneFiles.receive(context, action) },
+    PhoneActionType.LIVE to { context, action, _ -> live(context, action.getBoolean("on")) }
   )
 
-  fun run(context: Context, action: JSONObject): PhoneActionResult {
+  fun run(context: Context, action: JSONObject, origin: PhoneActionOrigin): PhoneActionResult {
     val type = PhoneActionType.of(action.getString("type"))
-    val result = handlers.getValue(type)(context, action)
+    val result = handlers.getValue(type)(context, action, origin)
     PhoneReporter.report(context, full = type == PhoneActionType.REFRESH)
     return result
   }
@@ -87,9 +92,11 @@ object PhoneActions {
     return PhoneAccessibility.lock(context)
   }
 
-  private fun screenshot(context: Context): PhoneActionResult {
+  private fun screenshot(context: Context, origin: PhoneActionOrigin): PhoneActionResult {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) throw PhoneScreenshotUnsupported()
-    return PhoneAccessibility.screenshot(context)
+    val result = PhoneAccessibility.screenshot(context)
+    PhoneNotices.screenCaptured(context, origin)
+    return result
   }
 
   private fun live(context: Context, on: Boolean): PhoneActionResult {

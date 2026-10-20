@@ -1,9 +1,11 @@
 import { deviceCardOf } from '../../../plugins/device-contributions';
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { anchorKey } from '../../../components/highlight-keys';
 import { Interactive } from '../../../components/interactive';
 import { StatusChip } from '../../../components/status-chip';
 import { Text } from '../../../components/text';
+import { useHighlightAnchor } from '../../../components/use-highlight-anchor';
 import { href } from '../../../app-shell/hrefs';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
@@ -111,8 +113,9 @@ function DeviceTileBase({ device, showRoom = true, inset = false }: DeviceTilePr
   const model = useDeviceModel(device);
   const offline = !device.online && !model.sleepy;
   const menu = useDeviceContextMenu(device, { quickControls: true, label: name });
+  const anchor = useHighlightAnchor(anchorKey.tile(device.id), name);
   return (
-    <View className={inset ? 'relative flex-1' : 'relative'}>
+    <View {...anchor} className={inset ? 'relative flex-1' : 'relative'}>
       <Interactive
         href={href.device(device)}
         label={name}

@@ -1,4 +1,24 @@
-import type { AirBand, DeviceFamily, LaundryPhase, LaundryStage } from '@smarteverything/domain';
+import type {
+  AirBand,
+  BrushActivity,
+  BrushBrand,
+  BrushHead,
+  BrushHeadType,
+  BrushIntensity,
+  BrushPressure,
+  BrushLinkPhase,
+  BrushMode,
+  BeltLinkPhase,
+  BeltState,
+  BottleOrientation,
+  DeviceFamily,
+  LaundryPhase,
+  LaundryStage,
+  ORALB_HANDLE_COLOURS,
+  PrinterPart,
+  PrinterVariant,
+  SpeedZone,
+} from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import type { IrCategory } from './model/ir-category';
 
@@ -130,6 +150,89 @@ export interface PhoneFacts {
   readonly fold: PhoneFold | null;
 }
 
+export interface TreadmillFacts {
+  readonly belt: BeltState;
+  readonly link: BeltLinkPhase;
+  readonly speedKmh: number;
+  readonly zone: SpeedZone;
+  readonly timeS: number;
+  readonly distanceM: number;
+  readonly fault: string | null;
+  readonly childLock: boolean;
+  readonly cadence: number | null;
+  readonly inclineGrade: number;
+  readonly inclineLabel: string | null;
+  readonly inclineMoving: 'up' | 'down' | null;
+  readonly heartZone: number | null;
+}
+
+export interface ToothbrushFacts {
+  readonly brand: BrushBrand;
+  readonly activity: BrushActivity;
+  readonly link: BrushLinkPhase;
+  readonly mode: BrushMode | null;
+  readonly intensity: BrushIntensity | null;
+  readonly pressure: BrushPressure | null;
+  readonly head: BrushHead | null;
+  readonly headType: BrushHeadType | null;
+  readonly wear: number | null;
+  readonly battery: number | null;
+  readonly fault: boolean;
+  readonly ring: string | null;
+  readonly face: number | null;
+  readonly sector: number | null;
+  readonly daysLeftRatio: number | null;
+  readonly elapsedS: number | null;
+  readonly display: boolean;
+  readonly handle: (typeof ORALB_HANDLE_COLOURS)[number] | null;
+}
+
+export type BottleLight =
+  | 'off'
+  | 'uv'
+  | 'reminder'
+  | 'charging'
+  | 'charged'
+  | 'interlock'
+  | 'fault'
+  | 'locked'
+  | 'low_battery';
+
+export type BottleUvMode = 'normal' | 'adventure' | 'maintenance';
+
+export interface BottleFacts {
+  readonly fill: number | null;
+  readonly reliable: boolean;
+  readonly light: BottleLight;
+  readonly uvMode: BottleUvMode | null;
+  readonly battery: number | null;
+  readonly filter: boolean;
+  readonly searching: boolean;
+  readonly syncing: boolean;
+  readonly tilt: BottleOrientation;
+}
+
+export type PrinterPhase = 'idle' | 'printing' | 'stopped' | 'asleep' | 'offline';
+
+export interface PrinterInk {
+  readonly colour: string;
+  readonly share: number | null;
+  readonly warn: boolean;
+}
+
+export interface PrinterFacts {
+  readonly variant: PrinterVariant;
+  readonly mfp: boolean;
+  readonly phase: PrinterPhase;
+  readonly progress: number;
+  readonly part: PrinterPart | null;
+  readonly inks: readonly PrinterInk[];
+  readonly waste: number | null;
+  readonly paper: number | null;
+  readonly output: number;
+  readonly identify: boolean;
+}
+
 export interface VisualState {
   readonly power: VisualPower;
   readonly online: boolean;
@@ -165,6 +268,10 @@ export interface VisualState {
   readonly hub?: HubFacts;
   readonly ir?: IrFacts;
   readonly phone?: PhoneFacts;
+  readonly printer?: PrinterFacts;
+  readonly treadmill?: TreadmillFacts;
+  readonly bottle?: BottleFacts;
+  readonly toothbrush?: ToothbrushFacts;
 }
 
 export type VisualTone = 'active' | 'idle' | 'offline';

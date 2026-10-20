@@ -29,6 +29,7 @@ export interface CallRoomProps {
   readonly action: string | null;
   readonly onAgain: () => void;
   readonly onLeave: () => void;
+  readonly onMinimise: (() => void) | null;
 }
 
 function useInitialAction(
@@ -205,7 +206,7 @@ function Overlays({ model }: { readonly model: CallRoomModel }): ReactNode {
   );
 }
 
-export function CallRoom({ action, onAgain, onLeave }: CallRoomProps): ReactNode {
+export function CallRoom({ action, onAgain, onLeave, onMinimise }: CallRoomProps): ReactNode {
   const model = useCallRoom();
   const { call, layout, layers } = model;
   useInitialAction(action, call, model.runAction);
@@ -230,7 +231,7 @@ export function CallRoom({ action, onAgain, onLeave }: CallRoomProps): ReactNode
         <CallHeader
           call={call}
           mode={model.pref.video_mode}
-          onMinimise={onLeave}
+          onMinimise={onMinimise}
           onStopSight={stopSharing}
         />
         <Body model={model} tight={tight} onAgain={onAgain} onLeave={onLeave} />

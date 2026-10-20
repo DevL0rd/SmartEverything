@@ -20,6 +20,14 @@ describe('a tapped push notification', () => {
     });
   });
 
+  it('opens the machine from a washing machine notice', () => {
+    expect(pushTapOf({ kind: 'device_notice', notice: 'unload', deviceId: DEVICE })).toEqual({
+      kind: 'device_notice',
+      notice: 'unload',
+      deviceId: DEVICE,
+    });
+  });
+
   it('is nothing for a notification SmartEverything did not send', () => {
     expect(pushTapOf({ eventId: 'x', kind: 'doorbell' })).toBeNull();
     expect(pushTapOf({ eventId: EVENT, kind: 'party' })).toBeNull();

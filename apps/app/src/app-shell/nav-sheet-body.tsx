@@ -71,9 +71,34 @@ function SheetContent({ query, settled, search, onScroll, spacer }: SheetContent
       keyboardDismissMode="on-drag"
       contentContainerClassName="px-4 pb-safe-offset-6"
     >
-      <NavDirectory compact />
+      <NavDirectory />
       {spacer}
     </Animated.ScrollView>
+  );
+}
+
+interface SearchRowProps {
+  readonly input: RefObject<TextInput | null>;
+  readonly search: RefObject<NavSheetSearchHandle | null>;
+  readonly query: string;
+}
+
+function SearchRow({ input, search, query }: SearchRowProps): ReactNode {
+  const pointer = useIdiom() === 'pointer';
+  return (
+    <View className="flex-row items-center gap-2">
+      <View className="flex-1">
+        <SearchField
+          inputRef={input}
+          value={query}
+          onChange={navSheetQuery.set}
+          onFocus={expandNavSheet}
+          {...(pointer ? {} : { onSubmit: () => search.current?.submit?.() })}
+          placeholder="Search your home"
+          variant="bar"
+        />
+      </View>
+    </View>
   );
 }
 
@@ -83,7 +108,6 @@ export function NavSheetBody({ stops }: { readonly stops: NavSheetStops }): Reac
   const phase = useValue(navSheetPhase);
   const input = useRef<TextInput>(null);
   const search = useRef<NavSheetSearchHandle>(null);
-  const pointer = useIdiom() === 'pointer';
   const pan = useNavSheetPan('sheet');
   const list = useListDismiss();
   const hidden = { height: phase === 'open' ? stops.full - stops.half : 0 };
@@ -93,15 +117,7 @@ export function NavSheetBody({ stops }: { readonly stops: NavSheetStops }): Reac
       <GestureDetector gesture={pan}>
         <View className="px-4 pb-3">
           <Grabber />
-          <SearchField
-            inputRef={input}
-            value={query}
-            onChange={navSheetQuery.set}
-            onFocus={expandNavSheet}
-            {...(pointer ? {} : { onSubmit: () => search.current?.submit?.() })}
-            placeholder="Search your home"
-            variant="bar"
-          />
+          <SearchRow input={input} search={search} query={query} />
         </View>
       </GestureDetector>
       <GestureDetector gesture={list.gesture}>

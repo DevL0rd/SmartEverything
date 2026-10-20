@@ -17,6 +17,7 @@ import { notify } from '../toast-store';
 import { useMeasuredWidth } from '../use-measured-width';
 import { useStableValue } from '../use-stable-value';
 import { boardClassOf, cellOf, frameOf, type Cell } from './board-geometry';
+import { footprintOf, type Footprint } from './footprint';
 import { frameBoxOf } from './frame-class';
 import { RevealedMember, renderWidget } from './widget-scope';
 import { RevealRing } from './edit/reveal-ring';
@@ -31,7 +32,7 @@ import { fittedWidgets } from './fit-sizes';
 import { fittedCell, pack, rowsOf, type Placement } from './packer';
 import { mountOrder, useBoardStagger } from './stagger';
 import { SkeletonBoard } from './skeleton-board';
-import type { BoardWidget, WidgetDefinition } from './types';
+import type { BoardWidget, WidgetDefinition, WidgetSize } from './types';
 
 const log = new Logger('app.widget-board');
 
@@ -76,6 +77,17 @@ function aspectLookup(
   catalogue: readonly WidgetDefinition[],
 ): (type: string) => number | undefined {
   return (type) => catalogue.find((entry) => entry.type === type)?.aspect;
+}
+
+function footprintLookup(
+  catalogue: readonly WidgetDefinition[],
+): (type: string, board: BoardClass, size: WidgetSize) => Footprint {
+  return (type, board, size) =>
+    footprintOf(
+      board,
+      size,
+      catalogue.find((entry) => entry.type === type),
+    );
 }
 
 interface StaticTileProps {
@@ -290,7 +302,7 @@ function Arranged(
     cell: cellOf(width, BOARD_COLUMNS[board], idiom, density),
     aspectOf,
   });
-  const sizing = { cell, aspectOf };
+  const sizing = { cell, aspectOf, footprintOf: footprintLookup(catalogue) };
   const reveal = useBoardReveal(visible, props.reveal);
   if (!editor.editing) {
     return (

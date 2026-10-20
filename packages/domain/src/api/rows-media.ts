@@ -10,7 +10,14 @@ import {
   boundedText,
 } from './primitives';
 import { DEFAULT_WAKE_SENSITIVITY, WAKE_SENSITIVITY } from '../wake-sensitivity';
-import { PLUGIN_ORIGIN } from '../plugin-people';
+
+export const DEFAULT_CAMERA_KEEP_DAYS = 15;
+
+export const CAMERA_KEEP_DAYS = z
+  .number()
+  .int()
+  .min(1)
+  .describe('How many whole days the camera’s saved clips and pictures are kept before deletion');
 
 export const CAMERA_ROW = z.object({
   device_id: ID,
@@ -19,6 +26,7 @@ export const CAMERA_ROW = z.object({
   physical_ptz: FLAG,
   two_way_audio: FLAG,
   record_events: FLAG,
+  keep_days: CAMERA_KEEP_DAYS,
   wake_sensitivity: WAKE_SENSITIVITY.default(DEFAULT_WAKE_SENSITIVITY),
   transcribe: FLAG.default(false),
 });
@@ -45,7 +53,7 @@ export const RECORDING_ROW = z.object({
 
 export type RecordingRow = z.infer<typeof RECORDING_ROW>;
 
-export const IR_CODE_FORMATS = ['pulses', 'head_key', 'library'] as const;
+export const IR_CODE_FORMATS = ['pulses', 'head_key'] as const;
 
 export const IR_CODE_FORMAT = z.enum(IR_CODE_FORMATS);
 
@@ -96,23 +104,6 @@ export const AUTOMATION_AUTHOR = z.strictObject({
 });
 
 export type AutomationAuthor = z.infer<typeof AUTOMATION_AUTHOR>;
-
-export const AUTOMATION_ROW = z.object({
-  id: ID,
-  name: AUTOMATION_NAME,
-  enabled: FLAG,
-  revision: z.int().positive(),
-  definition: JSON_OBJECT,
-  origin: PLUGIN_ORIGIN.nullable(),
-  author: AUTOMATION_AUTHOR.nullable(),
-  last_run_at: MOMENT.nullable(),
-  last_error: z.string().nullable(),
-  run_count: COUNT,
-  created_at: MOMENT,
-  updated_at: MOMENT,
-});
-
-export type AutomationRow = z.infer<typeof AUTOMATION_ROW>;
 
 export const LAYOUT_PAGE_NAME = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/);
 

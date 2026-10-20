@@ -47,6 +47,8 @@ const FULL: PhoneDetailUpdate = {
   },
   sound: {
     streams: { media: 40, ring: 70, alarm: 80, notification: 50, call: 60 },
+    hapticFeedback: true,
+    touchSounds: false,
     output: { kind: 'bluetooth', name: 'Galaxy Buds3' },
     media: {
       title: 'Song',
@@ -61,6 +63,7 @@ const FULL: PhoneDetailUpdate = {
   screen: {
     brightness: 64,
     auto: true,
+    autoRotate: true,
     timeoutSeconds: 60,
     fold: 'open',
     writable: true,
@@ -79,12 +82,15 @@ const FULL: PhoneDetailUpdate = {
     vpn: false,
     metered: false,
     airplane: false,
+    wifiOn: true,
+    locationOn: true,
     data: {
       today: { wifiBytes: 1e9, mobileBytes: 2e8 },
       month: { wifiBytes: 3e10, mobileBytes: 4e9 },
     },
   },
   connections: {
+    bluetoothOn: true,
     bluetooth: [{ name: 'Galaxy Buds3', kind: 'headset', batteryPercent: 80 }],
   },
   storage: {
@@ -187,6 +193,14 @@ describe('phone report contract', () => {
       notification_count: 3,
       next_alarm: null,
       signal_strength: 4,
+      screen_timeout: '120',
+      auto_rotate: true,
+      haptic_feedback: false,
+      touch_sounds: false,
+      wifi_on: true,
+      bluetooth_on: false,
+      location_on: true,
+      airplane_mode: false,
     };
     expect(PHONE_VALUES.parse(values)).toEqual(values);
     expect(PHONE_VALUES.safeParse({ signal_strength: 5 }).success).toBe(false);
@@ -350,21 +364,19 @@ describe('who sees what of a phone', () => {
   });
 
   it('lets a member look only and only the phone person dismiss notifications', () => {
-    const dismiss = { type: 'dismiss_notification', target: { by: 'app', app: 'com.a' } } as const;
-    expect(phoneActionAllowed({ type: 'ring', on: true }, 'member')).toBe(false);
-    expect(phoneActionAllowed({ type: 'ring', on: true }, 'owner')).toBe(true);
-    expect(phoneActionAllowed({ type: 'launch_app', app: 'com.a' }, 'owner')).toBe(false);
-    expect(phoneActionAllowed({ type: 'launch_app', app: 'com.a' }, 'person')).toBe(true);
-    expect(phoneActionAllowed({ type: 'launch_app', app: 'com.a' }, 'member')).toBe(false);
-    expect(phoneActionAllowed(dismiss, 'owner')).toBe(false);
-    expect(phoneActionAllowed(dismiss, 'person')).toBe(true);
+    expect(phoneActionAllowed('ring', 'member')).toBe(false);
+    expect(phoneActionAllowed('ring', 'owner')).toBe(true);
+    expect(phoneActionAllowed('launch_app', 'owner')).toBe(false);
+    expect(phoneActionAllowed('launch_app', 'person')).toBe(true);
+    expect(phoneActionAllowed('launch_app', 'member')).toBe(false);
+    expect(phoneActionAllowed('dismiss_notification', 'owner')).toBe(false);
+    expect(phoneActionAllowed('dismiss_notification', 'person')).toBe(true);
   });
 
   it('lets only the phone person see the screen of a phone', () => {
-    const shot = { type: 'screenshot' } as const;
-    expect(phoneActionAllowed(shot, 'person')).toBe(true);
-    expect(phoneActionAllowed(shot, 'owner')).toBe(false);
-    expect(phoneActionAllowed(shot, 'member')).toBe(false);
+    expect(phoneActionAllowed('screenshot', 'person')).toBe(true);
+    expect(phoneActionAllowed('screenshot', 'owner')).toBe(false);
+    expect(phoneActionAllowed('screenshot', 'member')).toBe(false);
   });
 
   it('hides personal values by tier and never touches the original', () => {
@@ -451,6 +463,19 @@ describe('who sees what of a phone', () => {
     expect(phoneDetailPartsFor(parts(['notifications']), 'member')).toBeNull();
     expect(phoneDetailPartsFor(parts(['storage', 'apps']), 'member')).toBeNull();
     expect(phoneDetailPartsFor(parts(['power']), 'member')).toEqual(parts(['power']));
+  });
+
+  it('cuts a phone with no Wi-Fi and no media playing without inventing either', () => {
+    const quiet = stampPhoneDetail(
+      {
+        sound: { ...section('sound'), media: null },
+        network: { ...section('network'), kind: 'cellular', wifi: null },
+      },
+      AT,
+    );
+    const owner = phoneDetailFor(quiet, 'owner');
+    expect(owner.sound?.media).toBeNull();
+    expect(owner.network?.wifi).toBeNull();
   });
 
   it('keeps each section its own time when a live update is cut', () => {

@@ -47,7 +47,6 @@ const HUB_SERVICE_CONFIG = z.strictObject({
   go2rtcApiPort: PORT.default(1984),
   webrtcPort: PORT.default(8555),
   logLevel: z.enum(LOG_LEVELS).default('info'),
-  wakeDiagnostics: z.boolean().default(false),
   allowedOrigins: z.array(z.url()).min(1).optional(),
   codex_executable: ABSOLUTE_PATH.optional(),
   codex_control_socket: ABSOLUTE_PATH.optional(),
@@ -56,6 +55,7 @@ const HUB_SERVICE_CONFIG = z.strictObject({
 export const NODE_SERVICE_CONFIG = z.strictObject({
   role: z.literal('node'),
   logLevel: z.enum(LOG_LEVELS).default('info'),
+  wakeDiagnostics: z.boolean().default(false),
   node: z.strictObject({
     hub_url: z.url({ protocol: /^https?$/ }),
     node_token: NODE_AI_TOKEN,

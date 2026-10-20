@@ -9,6 +9,8 @@ const GATE = /from '[./]*design\/animation-gate'/;
 const GATED_BY_CALLER: Readonly<Record<string, string>> = {
   'src/features/device-visuals/': 'device-visual.tsx gates every visual and passes moving',
   'src/features/weather/visual/': 'weather-visual.tsx gates every layer and passes moving',
+  'src/plugins/printer/components/supply-tank.tsx':
+    'supply-band.tsx gates every tank row and passes running',
   'src/components/widget-board/edit/use-widget-motion.ts': 'editable-widget.tsx gates the jiggle',
   'src/components/widget-board/edit/drag-state.ts':
     'the auto-scroll frame callback runs only while dragging',

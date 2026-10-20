@@ -37,4 +37,23 @@ describe('liveConfigOf', () => {
     expect(config.systemInstruction).toBe('be brief');
     expect(config.speechConfig?.voiceConfig?.prebuiltVoiceConfig?.voiceName).toBe('Puck');
   });
+
+  it('lets Gemini decide when the person is done, quickly, unless a pause was chosen', () => {
+    for (const pauseMs of [undefined, 0]) {
+      const detection = liveConfigOf({
+        ...options,
+        ...(pauseMs === undefined ? {} : { pauseMs }),
+      }).realtimeInputConfig?.automaticActivityDetection;
+      expect(detection).not.toHaveProperty('silenceDurationMs');
+      expect(detection?.endOfSpeechSensitivity).toBe('END_SENSITIVITY_HIGH');
+      expect(detection?.disabled).toBe(false);
+    }
+  });
+
+  it('forces the end of speech only when a pause was chosen', () => {
+    const detection = liveConfigOf({ ...options, pauseMs: 1000 }).realtimeInputConfig
+      ?.automaticActivityDetection;
+    expect(detection?.silenceDurationMs).toBe(1000);
+    expect(detection?.endOfSpeechSensitivity).toBe('END_SENSITIVITY_HIGH');
+  });
 });

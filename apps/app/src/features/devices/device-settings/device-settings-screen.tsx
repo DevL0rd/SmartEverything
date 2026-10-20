@@ -18,6 +18,8 @@ import { DeviceSettingsFrame } from './settings-frame';
 import { GeneralSection } from './general-section';
 import { RemoveSection } from './remove-section';
 import { ScaleStatus } from '../../profiles';
+import { DirectLinkSection } from '../television/direct-link-section';
+import { LaundryNoticesSection } from '../laundry/notices-section';
 
 const IR_KINDS: ReadonlySet<Device['kind']> = new Set(['ir_blaster']);
 
@@ -68,6 +70,22 @@ function MaintenanceSection({
   );
 }
 
+function DeviceSections({
+  device,
+  reason,
+}: {
+  readonly device: Device;
+  readonly reason: string | null;
+}): ReactNode {
+  return (
+    <>
+      <OptionsSection device={device} reason={reason} />
+      <MaintenanceSection device={device} reason={reason} />
+      <LaundryNoticesSection device={device} />
+    </>
+  );
+}
+
 function BluetoothSection({ device }: { readonly device: Device }): ReactNode {
   return isBleObservable(device) ? <BluetoothObservation device={device} /> : null;
 }
@@ -95,10 +113,7 @@ function Body({
           />
         </List>
       ) : (
-        <>
-          <OptionsSection device={device} reason={reason} />
-          <MaintenanceSection device={device} reason={reason} />
-        </>
+        <DeviceSections device={device} reason={reason} />
       )}
       {IR_KINDS.has(device.kind) ? (
         <List title="Remotes">
@@ -110,6 +125,7 @@ function Body({
           />
         </List>
       ) : null}
+      <DirectLinkSection device={device} name={name} />
       <BluetoothSection device={device} />
       {scale ? <ScaleStatus scale={device} /> : null}
       {pluginSettingsBlocksOf(device).map((block) => (

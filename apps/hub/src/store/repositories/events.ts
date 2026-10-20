@@ -2,7 +2,7 @@ import type { EventAcknowledgment } from '../../database/port';
 import { EVENT_ROW, type EventKind, type EventRow, type JsonValue } from '@smarteverything/domain';
 import { storedRow } from '../codec';
 import { found, moment, type StoreContext } from '../context';
-import { jsonText } from '../sql';
+import { allOf, jsonText, type SqlFilter } from '../sql';
 import { windowFilter, type TimeWindow } from './window';
 
 const STORED_EVENT = storedRow(EVENT_ROW, { json: ['details'] });
@@ -16,10 +16,44 @@ export interface NewEvent {
   readonly details: Readonly<Record<string, JsonValue>>;
 }
 
+interface SignalRowFilter {
+  readonly source?: string | undefined;
+  readonly kind?: string | undefined;
+}
+
+export interface EventListWindow extends TimeWindow {
+  readonly kinds?: readonly EventKind[] | undefined;
+  readonly signal?: SignalRowFilter | undefined;
+}
+
+function signalFilterOf(signal: SignalRowFilter | undefined): SqlFilter | undefined {
+  const parts: SqlFilter[] = [
+    ...(signal?.source === undefined
+      ? []
+      : [
+          {
+            text: "json_extract(details, '$.source') = $signalSource",
+            parameters: { signalSource: signal.source },
+          },
+        ]),
+    ...(signal?.kind === undefined
+      ? []
+      : [
+          {
+            text: "json_extract(details, '$.kind') = $signalKind",
+            parameters: { signalKind: signal.kind },
+          },
+        ]),
+  ];
+  return parts.length === 0
+    ? undefined
+    : allOf([{ text: "kind = 'signal'", parameters: {} }, ...parts]);
+}
+
 export class EventsRepository {
   constructor(private readonly context: StoreContext) {}
 
-  list(window: TimeWindow & { readonly kinds?: readonly EventKind[] | undefined }): EventRow[] {
+  list(window: EventListWindow): EventRow[] {
     const filter = windowFilter('occurred_at', window);
     const kinds = window.kinds ?? [];
     const names = kinds.map((kind, index) => {
@@ -27,9 +61,12 @@ export class EventsRepository {
       return `$kind${String(index)}`;
     });
     const kindClause = names.length === 0 ? '' : ` and kind in (${names.join(', ')})`;
+    const signal = signalFilterOf(window.signal);
+    const signalClause = signal === undefined ? '' : ` and ${signal.text}`;
+    Object.assign(filter.parameters, signal?.parameters);
     return this.context.sql.all(
       STORED_EVENT,
-      `select ${COLUMNS} from events where ${filter.text}${kindClause} order by occurred_at desc, rowid desc limit $limit`,
+      `select ${COLUMNS} from events where ${filter.text}${kindClause}${signalClause} order by occurred_at desc, rowid desc limit $limit`,
       filter.parameters,
     );
   }

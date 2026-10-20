@@ -5,6 +5,8 @@ import type { LiveNotice } from './notice-registry';
 import { withFrame, withSnapshot } from './chat-turns';
 import { runPushCommandNotice } from './push-command-notice';
 import { deliverAiSpeech } from './ai-speech-requests';
+import { deliverAppView } from './app-view-requests';
+import { automationTrace } from '../features/automations/data/trace-channel';
 const log = new Logger('app.live');
 const applied = new LogTally(log, 'notices.applied', 5000);
 type NoticeMap = { readonly [K in LiveNotice['type']]: Extract<LiveNotice, { readonly type: K }> };
@@ -79,6 +81,12 @@ const NOTICES: { readonly [K in LiveNotice['type']]: NoticeHandler<K> } = {
   ai_speech: (_store, message) => {
     log.info('live.ai_speech', { listeners: deliverAiSpeech(message) });
   },
+  app_view: (_store, message) => {
+    log.info('live.app_view', {
+      action: message.request.action,
+      listeners: deliverAppView(message.request),
+    });
+  },
   push_command: (_store, message) => {
     runPushCommandNotice(message);
   },
@@ -96,8 +104,18 @@ const NOTICES: { readonly [K in LiveNotice['type']]: NoticeHandler<K> } = {
   computer_runtime_native: ignoreNotice,
   computer_live: ignoreNotice,
   phone_detail: ignoreNotice,
+  treadmill_live: ignoreNotice,
+  toothbrush_live: ignoreNotice,
   clipboard: ignoreNotice,
+  trace_keyframe: deliverTrace,
+  trace_node_state: deliverTrace,
+  trace_run_parked: deliverTrace,
+  trace_run_finished: deliverTrace,
 };
+
+function deliverTrace(_store: EntityStore, message: unknown): void {
+  automationTrace.deliver(message);
+}
 
 function ignoreNotice(): void {
   return undefined;

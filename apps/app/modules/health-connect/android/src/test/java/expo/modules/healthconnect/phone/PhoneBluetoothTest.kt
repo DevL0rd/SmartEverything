@@ -1,6 +1,8 @@
 package expo.modules.healthconnect.phone
 
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothClass
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import io.mockk.every
 import io.mockk.mockk
@@ -35,7 +37,7 @@ class PhoneBluetoothTest {
 
   @Test
   fun `the connections section has the shape the hub contract fixture names`() {
-    val body = PhoneBluetooth.body(listOf(BluetoothPeer("01", "Galaxy Buds3", "headset", 80)))
+    val body = PhoneBluetooth.body(true, listOf(BluetoothPeer("01", "Galaxy Buds3", "headset", 80)))
     PhoneWireFixture.sameShape(PhoneWireFixture.section("live", "connections"), body)
   }
 
@@ -49,6 +51,7 @@ class PhoneBluetoothTest {
   @Test
   fun `connections are listed by name with unnamed devices last`() {
     val body = PhoneBluetooth.body(
+      true,
       listOf(
         BluetoothPeer("03", null, "other", null),
         BluetoothPeer("02", "Watch", "watch", 64),
@@ -69,7 +72,49 @@ class PhoneBluetoothTest {
     assertNull(PhoneBluetooth.section(context, PhoneSection.CONNECTIONS, PhoneReadRequest(live = false, slow = false)))
     verify(exactly = 0) { PhoneBluetooth.observe(any()) }
     every { PhonePermissions.bluetooth(context) } returns true
+    every { context.getSystemService(BluetoothManager::class.java) } returns managerWith(enabled = true)
     PhoneBluetooth.section(context, PhoneSection.CONNECTIONS, PhoneReadRequest(live = false, slow = false))
     verify(exactly = 1) { PhoneBluetooth.observe(context) }
+  }
+
+  private fun managerWith(enabled: Boolean): BluetoothManager {
+    val adapter = mockk<BluetoothAdapter>()
+    every { adapter.isEnabled } returns enabled
+    val manager = mockk<BluetoothManager>()
+    every { manager.adapter } returns adapter
+    return manager
+  }
+
+  @Test
+  fun `the bluetooth switch is reported from the adapter and the section carries it`() {
+    mockkObject(PhonePermissions, PhoneBluetooth)
+    val context = mockk<Context>()
+    every { PhoneBluetooth.observe(any()) } returns Unit
+    every { PhonePermissions.bluetooth(context) } returns true
+    val request = PhoneReadRequest(live = false, slow = false)
+    every { context.getSystemService(BluetoothManager::class.java) } returns managerWith(enabled = false)
+    assertEquals(mapOf<String, Any?>("bluetooth_on" to false), PhoneBluetooth.values(context, request))
+    assertEquals(false, PhoneBluetooth.section(context, PhoneSection.CONNECTIONS, request)?.getBoolean("bluetoothOn"))
+    every { context.getSystemService(BluetoothManager::class.java) } returns managerWith(enabled = true)
+    assertEquals(mapOf<String, Any?>("bluetooth_on" to true), PhoneBluetooth.values(context, request))
+    assertEquals(true, PhoneBluetooth.section(context, PhoneSection.CONNECTIONS, request)?.getBoolean("bluetoothOn"))
+  }
+
+  @Test
+  fun `a phone without a Bluetooth adapter reports no bluetooth switch`() {
+    val context = mockk<Context>()
+    val manager = mockk<BluetoothManager>()
+    every { manager.adapter } returns null
+    every { context.getSystemService(BluetoothManager::class.java) } returns manager
+    assertEquals(emptyMap<String, Any?>(), PhoneBluetooth.values(context, PhoneReadRequest(live = false, slow = false)))
+  }
+
+  @Test
+  fun `turning Bluetooth on or off reports and the steps in between do not`() {
+    assertEquals(true, PhoneBluetooth.stateReports(BluetoothAdapter.STATE_ON))
+    assertEquals(true, PhoneBluetooth.stateReports(BluetoothAdapter.STATE_OFF))
+    assertEquals(false, PhoneBluetooth.stateReports(BluetoothAdapter.STATE_TURNING_ON))
+    assertEquals(false, PhoneBluetooth.stateReports(BluetoothAdapter.STATE_TURNING_OFF))
+    assertEquals(false, PhoneBluetooth.stateReports(BluetoothAdapter.ERROR))
   }
 }

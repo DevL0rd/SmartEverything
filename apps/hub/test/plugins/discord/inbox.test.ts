@@ -49,7 +49,7 @@ async function hostOf(opened: TestStore): Promise<PluginHost> {
         turn: unused,
         chat: unused,
         keys: { changes: (): (() => void) => nothing },
-        ears: { make: unused },
+        ears: { open: unused },
         transcripts: new Transcripts({
           store,
           clock: { now, at: (): (() => void) => nothing },
@@ -64,6 +64,7 @@ async function hostOf(opened: TestStore): Promise<PluginHost> {
       conversations: { forPlugin: unused },
       attachments: (): string[] => [],
       machineFile: unused,
+      uploadFile: unused,
       dataDirectory: directory,
       submit: (): [] => [],
       now,

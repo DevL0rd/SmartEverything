@@ -50,9 +50,9 @@ export function useDesktopListing(filter: ChatFilter, query: string): DesktopLis
   );
   const active = filter !== 'archived' && owner;
   const browsing = filter === 'all' && query.trim() === '';
-  const history = useDesktopHistory(targets, active);
   const chats = useAiChats();
   const continuedKey = continuedKeyOf(chats);
+  const history = useDesktopHistory(targets, active, continuedKey);
   const continued = useMemo(() => new Set(continuedKey.split(KEY_SEPARATOR)), [continuedKey]);
   return useMemo(
     () =>

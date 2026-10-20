@@ -1,16 +1,20 @@
 import {
   API_ENDPOINTS,
   FIREWALL_STATUS,
+  allFailed,
   apiErrorOf,
-  type DesktopFirewallResult,
+  appliedDetailOf,
+  appliedOutcomeOf,
+  manualScript,
   type DesktopPlatform,
   type DesktopServer,
+  type FirewallApplyResult,
   type FirewallPlan,
   type FirewallStatus,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { CommandFailedError, type CommandResult } from '../service/system.js';
-import { elevatedRunOf } from './elevation.js';
+import { elevatedRunOf, type ElevatedRun } from './elevation.js';
 
 const log = new Logger('desktop.firewall');
 
@@ -64,10 +68,20 @@ async function callFirewall(
   return parsed.data;
 }
 
-async function runApproved(
-  options: FirewallApplierOptions,
-  plan: FirewallPlan,
-): Promise<DesktopFirewallResult> {
+type Attempt = Pick<FirewallApplyResult, 'outcome' | 'steps' | 'detail'>;
+
+const DECLINED: Attempt = {
+  outcome: 'declined',
+  steps: [],
+  detail: 'Nothing changed: the permission prompt was declined.',
+};
+
+function failedAttempt(elevated: ElevatedRun, error: CommandFailedError): Attempt {
+  const reason = error.output === '' ? error.message : error.output;
+  return { outcome: 'failed', steps: allFailed(elevated.steps, reason), detail: reason };
+}
+
+async function runApproved(options: FirewallApplierOptions, plan: FirewallPlan): Promise<Attempt> {
   const elevated = elevatedRunOf(plan, options.platform);
   log.info('firewall.applying', {
     backend: plan.backend,
@@ -75,9 +89,10 @@ async function runApproved(
     program: elevated.program,
   });
   try {
-    await options.run(elevated.program, elevated.args);
-    log.info('firewall.applied', { backend: plan.backend });
-    return { outcome: 'applied', detail: 'The firewall now lets the cameras and live video in.' };
+    const { stdout } = await options.run(elevated.program, elevated.args);
+    const steps = elevated.resultsOf(stdout);
+    log.info('firewall.applied', { backend: plan.backend, steps: steps.length });
+    return { outcome: appliedOutcomeOf(steps), steps, detail: appliedDetailOf(steps) };
   } catch (error: unknown) {
     if (!(error instanceof CommandFailedError)) {
       throw error;
@@ -89,21 +104,16 @@ async function runApproved(
       declined,
       outputBytes: error.output.length,
     });
-    if (declined) {
-      return {
-        outcome: 'declined',
-        detail: 'Nothing changed: the permission prompt was declined.',
-      };
-    }
-    return { outcome: 'failed', detail: error.output === '' ? error.message : error.output };
+    return declined ? DECLINED : failedAttempt(elevated, error);
   }
 }
 
 export async function applyFirewall(
   options: FirewallApplierOptions,
   revision: string,
-): Promise<DesktopFirewallResult> {
-  const { plan } = await callFirewall(options, 'readFirewall');
+): Promise<FirewallApplyResult> {
+  const read = await callFirewall(options, 'readFirewall');
+  const { plan } = read;
   log.debug('firewall.apply_requested', {
     hasPlan: plan !== null,
     matches: plan?.revision === revision,
@@ -112,11 +122,15 @@ export async function applyFirewall(
     log.info('firewall.stale', { hasPlan: plan !== null });
     return {
       outcome: 'stale',
+      via: null,
+      steps: [],
       detail:
         'The firewall or the cameras changed since these changes were shown; review them again.',
+      commands: '',
+      status: read,
     };
   }
-  const result = await runApproved(options, plan);
-  await callFirewall(options, 'checkFirewall');
-  return result;
+  const attempt = await runApproved(options, plan);
+  const status = await callFirewall(options, 'checkFirewall');
+  return { ...attempt, via: 'desktop', commands: manualScript(plan), status };
 }

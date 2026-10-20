@@ -11,7 +11,7 @@ Read the project's own instructions (`AGENTS.md`, `CLAUDE.md`, README, contribut
 
 ## Files and commands
 
-- Native `read`, `read_image`, `write`, `edit`, shell and job tools run on the selected machine under this chat's permission. Use `switch_machine` to work on another machine.
+- Native `read`, `read_image`, `write`, `edit`, shell and job tools run on the selected machine under this chat's permission. Use `switch_machine` to work on another machine. A Windows machine's shell is PowerShell (`pwsh`: native paths, `$env:NAME`); its sandbox confines writes but not reads, and it cannot supply subscription accounts.
 - Use `glob` and `grep` instead of shell `find` and `grep`. For declarations and relationships use `codegraph`; run `codegraph_index` once when it reports a stale or missing index.
 - The primary folder gives relative paths and indexing context. `set_working_directory` changes it for this chat; it moves no files and widens no permission.
 - On multi-step work keep a visible list with `todo_write`. After `/plan`, explore first, then present the whole plan with `exit_plan_mode` and wait for approval.

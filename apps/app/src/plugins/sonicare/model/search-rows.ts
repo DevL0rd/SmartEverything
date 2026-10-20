@@ -1,0 +1,88 @@
+import type { SettingRow } from '../../toothbrush/model/search-rows';
+
+export const SONICARE_ROWS: readonly SettingRow[] = [
+  {
+    id: 'handle-consent',
+    title: 'Let SmartEverything change brush settings',
+    icon: 'lock',
+    group: 'setting',
+    keywords: ['consent', 'allow', 'writes', 'mode', 'intensity'],
+  },
+  {
+    id: 'handle-pressure',
+    title: 'Pressure feedback',
+    icon: 'gauge',
+    group: 'setting',
+    keywords: ['vibration', 'too hard', 'sensor'],
+  },
+  {
+    id: 'handle-scrubbing',
+    title: 'Scrubbing feedback',
+    icon: 'activity',
+    group: 'setting',
+    keywords: ['scrub', 'ring', 'light'],
+  },
+  {
+    id: 'handle-adaptive',
+    title: 'Adaptive intensity',
+    icon: 'sparkles',
+    group: 'setting',
+    keywords: ['senseiq', 'ease off', 'automatic'],
+  },
+  {
+    id: 'handle-mode',
+    title: 'Mode when the brush wakes',
+    icon: 'settings',
+    group: 'setting',
+    keywords: ['default', 'clean', 'white', 'gum', 'deep clean', 'sensitive'],
+  },
+  {
+    id: 'handle-intensity',
+    title: 'Intensity when the brush wakes',
+    icon: 'settings',
+    group: 'setting',
+    keywords: ['default', 'low', 'medium', 'high'],
+  },
+  {
+    id: 'sensor-pressure',
+    title: 'Read the pressure sensor',
+    icon: 'gauge',
+    group: 'setting',
+    keywords: ['sensor', 'pressure', 'stream'],
+  },
+  {
+    id: 'sensor-temperature',
+    title: 'Read the handle temperature',
+    icon: 'thermometer',
+    group: 'setting',
+    keywords: ['sensor', 'temperature'],
+  },
+  {
+    id: 'sensor-motion',
+    title: 'Read the motion sensor',
+    icon: 'move',
+    group: 'setting',
+    keywords: ['sensor', 'gyroscope', 'accelerometer', 'not decoded'],
+  },
+  {
+    id: 'model',
+    title: 'Toothbrush model',
+    icon: 'toothbrush',
+    group: 'setting',
+    keywords: ['pick model', 'hx', 'kids smart', 'series 7100'],
+  },
+  {
+    id: 'philips-app',
+    title: 'Philips Sonicare app',
+    icon: 'smartphone',
+    group: 'setting',
+    keywords: ['conflict', 'busy', 'close the app'],
+  },
+  {
+    id: 'rerun-setup',
+    title: 'Pair the toothbrush again',
+    icon: 'bluetooth',
+    group: 'action',
+    keywords: ['setup', 'forget', 'pairing', 'needs pairing'],
+  },
+];

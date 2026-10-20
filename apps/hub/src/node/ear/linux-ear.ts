@@ -6,11 +6,13 @@ import { MicCapture } from '../controls/linux/mic-capture';
 import { cachedProbe, programAvailable } from '../controls/linux/program-probe';
 import { SpeakerPlayback } from '../controls/linux/speaker-playback';
 import { runProgram } from '../run-program';
+import type { EarRuntimeLost } from './runtime-lost';
 import { ComputerEar, type EarFactory } from './computer-ear';
 
 export interface ComputerEarForOptions {
   readonly now: () => Date;
   readonly log: Logger;
+  readonly lost: EarRuntimeLost;
 }
 
 export function computerEarFor(
@@ -36,5 +38,6 @@ export function computerEarFor(
       send,
       clock: { now: options.now, at: systemClock.at },
       log: options.log,
+      lost: options.lost,
     });
 }

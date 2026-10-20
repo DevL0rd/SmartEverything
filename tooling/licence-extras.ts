@@ -33,13 +33,13 @@ const ANDROID_GRADLE = join(
   'build.gradle',
 );
 
-const WEBRTC_BINARY = 'org.jitsi:webrtc';
+const WEBRTC_BINARY = 'io.getstream:stream-video-webrtc-android';
 
 const ELECTRON_MANIFEST = z.object({ version: z.string().min(1) });
 
 const DEPENDENCY_LINE = /^\s*(?:implementation|compileOnly)\s+"([^":]+):([^":]+):([^":]+)"/gmu;
 
-const WEBRTC_VERSION = /api\s+'org\.jitsi:webrtc:([^']+)'/u;
+const WEBRTC_VERSION = /api\s+'io\.getstream:stream-video-webrtc-android:([^']+)'/u;
 
 export class AndroidLibraryUnlistedError extends Error {
   override readonly name = 'AndroidLibraryUnlistedError';

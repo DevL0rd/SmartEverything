@@ -71,7 +71,13 @@ const PREFERENCE_OPERATIONS: Readonly<Record<ClientPrefKey, PreferenceOperations
   ai_speech: operations(CLIENT_PREFS.ai_speech),
   region: operations(CLIENT_PREFS.region),
   device_alerts: operations(CLIENT_PREFS.device_alerts),
+  camera_notifications: operations(CLIENT_PREFS.camera_notifications),
   shared_clipboard: operations(CLIENT_PREFS.shared_clipboard),
+  navigation: operations(CLIENT_PREFS.navigation),
+  navigation_device: operations(CLIENT_PREFS.navigation_device),
+  automations_editor: operations(CLIENT_PREFS.automations_editor),
+  automations_palette: operations(CLIENT_PREFS.automations_palette),
+  automations_breakpoints: operations(CLIENT_PREFS.automations_breakpoints),
 };
 export function readPref(context: ToolContext, key: ClientPrefKey, as: ActingAs): Promise<unknown> {
   return PREFERENCE_OPERATIONS[key].read(context, as);

@@ -1,6 +1,6 @@
 import { ApiError, type CameraQuality, type IceServer } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { answerCameraOffer, cameraRelayUrl } from '../../../api/media';
+import { answerCameraOffer } from '../../../api/media';
 import { ServerUnreachableError } from '../../../api/transport';
 import type { ApiClient } from '../../../api/connection/client';
 import {
@@ -12,7 +12,7 @@ import {
   type Transport,
 } from './peer-types';
 import type { SessionError, SessionPhase } from './player-state';
-import { createCameraPeer, createRelayLink, relaySupported } from './rtc';
+import { createCameraPeer } from './rtc';
 import { rawErrorText } from '../../../format/errors';
 
 const log = new Logger('app.camera-session');
@@ -63,7 +63,7 @@ function phaseOfPeer(state: PeerState): SessionPhase | null {
   }
 }
 
-function wire(link: MediaLink, transport: Transport, hooks: SessionHooks): void {
+export function wire(link: MediaLink, transport: Transport, hooks: SessionHooks): void {
   hooks.onLink(link, transport);
   link.onMedia(hooks.onMedia);
   link.onVideoFlow(hooks.onFlow);
@@ -76,7 +76,7 @@ function wire(link: MediaLink, transport: Transport, hooks: SessionHooks): void 
   });
 }
 
-function failed(hooks: SessionHooks, deviceId: string, error: unknown): void {
+export function failed(hooks: SessionHooks, deviceId: string, error: unknown): void {
   log.warn('camera.start_failed', {
     deviceId,
     error: error instanceof Error ? error.name : typeof error,
@@ -133,28 +133,6 @@ export function startDirect(target: SessionTarget, hooks: SessionHooks): void {
           elapsedMs: Date.now() - startedAt,
         }));
       }
-    })
-    .catch((error: unknown) => {
-      failed(hooks, target.deviceId, error);
-    });
-}
-
-export function startRelay(target: SessionTarget, hooks: SessionHooks): void {
-  if (!relaySupported()) {
-    log.warn('camera.relay_unsupported', { deviceId: target.deviceId });
-    hooks.report({ kind: 'failed', error: { kind: 'relayUnsupported' } });
-    return;
-  }
-  hooks.report({ kind: 'reaching' });
-  cameraRelayUrl(target.deviceId, target.client)
-    .then((url) => {
-      if (!hooks.active()) {
-        log.debug('camera.relay_skipped', { deviceId: target.deviceId, reason: 'inactive' });
-        return;
-      }
-      log.info('camera.relay_started', { deviceId: target.deviceId });
-      wire(createRelayLink(url), 'mse', hooks);
-      hooks.report({ kind: 'starting' });
     })
     .catch((error: unknown) => {
       failed(hooks, target.deviceId, error);

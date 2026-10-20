@@ -10,7 +10,8 @@ export type DeveloperFlagId =
   | 'perf.nav'
   | 'perf.upload'
   | ProfilingFlagId
-  | 'log.debug';
+  | 'log.debug'
+  | 'watch.capture';
 
 export type ProfilingFlagId =
   | 'perf.frames'
@@ -29,7 +30,7 @@ export type ProfilingFlagId =
 
 export interface DeveloperToggle {
   readonly id: DeveloperFlagId;
-  readonly section: 'Performance' | 'Logging';
+  readonly section: 'Performance' | 'Logging' | 'Watch';
   readonly label: string;
   readonly description: string;
   readonly cost: string;
@@ -264,6 +265,19 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
     parent: null,
     keywords: ['log', 'logging', 'debug', 'verbose', 'console', 'log level'],
   },
+  {
+    id: 'watch.capture',
+    section: 'Watch',
+    label: 'Save raw watch files',
+    description:
+      'Saves every file the watch sends during a sync, unchanged, on the hub for parser testing. The same file is kept once. Turning it off stops saving; the saved files stay until Clear.',
+    cost: 'One extra upload per sync with the raw bytes of each new file, kept on the hub disk.',
+    reload: false,
+    release: false,
+    parent: null,
+    keywords: ['watch', 'raw', 'capture', 'files', 'sleep', 'parser', 'bytes', 'xiaomi'],
+    initial: true,
+  },
 ];
 
 export function toggleOf(id: DeveloperFlagId): DeveloperToggle {
@@ -298,6 +312,7 @@ const OFF: DeveloperFlags = {
   'perf.cpu': false,
   'perf.heap': false,
   'log.debug': false,
+  'watch.capture': false,
 };
 
 export function allOff(): Record<DeveloperFlagId, boolean> {

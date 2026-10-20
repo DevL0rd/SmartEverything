@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import {
   CAMERA_DETECTION_KINDS,
   type AdapterSink,
+  humanizeKey,
   type CameraDetection,
   type DeviceEvent,
+  type JsonValue,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import {
@@ -22,6 +24,16 @@ const SAME_DETECTION_WITHIN_MS = 120_000;
 const ANNOUNCED_KEPT_MS = 3_600_000;
 const SAME_PUSH_GAP_MS = 30_000;
 const SAME_PUSH_LONGEST_MS = 60_000;
+
+function listedDetails(event: CameraEvent): Record<string, JsonValue> {
+  return {
+    source: 'camera-event-list',
+    eventType: event.eventType,
+    hasClip: event.fileId !== undefined,
+    ...(event.fileId === undefined ? {} : { fileId: event.fileId }),
+    ...(event.imgStoreId === undefined ? {} : { imgStoreId: event.imgStoreId }),
+  };
+}
 
 export interface CameraEventSource {
   readonly did: string;
@@ -196,27 +208,23 @@ export class CameraEventPoller {
 
   private emit(sink: AdapterSink, event: CameraEvent): void {
     const { detections, unrecognized } = cameraEventDetections(event.eventType);
-    if (unrecognized.length > 0) {
-      this.log.warn('xiaomi_camera.event_type_unknown', {
-        did: this.camera.did,
-        eventType: event.eventType,
-        unrecognized,
-      });
-    }
+    const occurredAt = new Date(event.createTime).toISOString();
     for (const detection of detections) {
       const announced = this.claim(detection, event.createTime);
       sink.event({
         externalId: this.camera.did,
         kind: CAMERA_DETECTION_KINDS[detection],
-        occurredAt: new Date(event.createTime).toISOString(),
-        details: {
-          source: 'camera-event-list',
-          eventType: event.eventType,
-          detection,
-          ...(event.fileId === undefined ? {} : { fileId: event.fileId }),
-          ...(event.imgStoreId === undefined ? {} : { imgStoreId: event.imgStoreId }),
-        },
+        occurredAt,
+        details: { ...listedDetails(event), detection },
         ...(announced === null ? {} : { occurrence: announced.occurrence }),
+      });
+    }
+    for (const token of unrecognized) {
+      sink.event({
+        externalId: this.camera.did,
+        kind: 'activity',
+        occurredAt,
+        details: { ...listedDetails(event), event: token, summary: humanizeKey(token) },
       });
     }
   }

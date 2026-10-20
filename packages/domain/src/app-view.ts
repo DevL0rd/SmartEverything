@@ -31,7 +31,7 @@ export const SHOW_IN_APP_INPUT = z.strictObject({
 export type ShowInAppInput = z.infer<typeof SHOW_IN_APP_INPUT>;
 
 export const SHOW_IN_APP_TEXT =
-  'Show the person something in their app: open a page, point at one thing on it, or clear it. Only when they ask to see, open, find or be shown something. Say what you opened afterwards.';
+  'Show the person something in their app: open a page, point at one thing on it, or clear the pointer. Only when they ask to see, open, find or be shown something, never on your own. Targets use ids from reads. It works only while the app is open in front; the result says what the app opened or why it could not. Say what you opened afterwards.';
 
 export const APP_VIEW_REQUEST = z.strictObject({
   requestId: ID,
@@ -45,6 +45,8 @@ export type AppViewRequest = z.infer<typeof APP_VIEW_REQUEST>;
 export const APP_VIEW_HIGHLIGHT_REASONS = ['not_on_screen', 'unknown_focus'] as const;
 
 export const APP_VIEW_REFUSALS = ['app_not_in_front', 'target_not_found'] as const;
+
+export const SHOW_IN_APP_FAILURES = [...APP_VIEW_REFUSALS, 'not_connected', 'no_answer'] as const;
 
 export const APP_VIEW_RESULT = z.discriminatedUnion('ok', [
   z.strictObject({
@@ -71,3 +73,21 @@ export const APP_VIEW_NOTICE = z.strictObject({
 });
 
 export type AppViewNotice = z.infer<typeof APP_VIEW_NOTICE>;
+
+export const SHOW_IN_APP_RESULT = z.discriminatedUnion('ok', [
+  z.strictObject({
+    ok: z.literal(true),
+    app: z.string().min(1),
+    opened: z.string().min(1).nullable(),
+    highlighted: z.boolean(),
+    reason: z.enum(APP_VIEW_HIGHLIGHT_REASONS).nullable(),
+  }),
+  z.strictObject({
+    ok: z.literal(false),
+    app: z.string().min(1),
+    reason: z.enum(SHOW_IN_APP_FAILURES),
+    detail: z.string().min(1),
+  }),
+]);
+
+export type ShowInAppResult = z.infer<typeof SHOW_IN_APP_RESULT>;

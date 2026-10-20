@@ -35,6 +35,8 @@ type DisplayRequest = OwnedBy<'displays' | 'display_set' | 'display_confirm'>;
 
 type WindowRequest = OwnedBy<'windows' | 'window_set'>;
 
+type TilingRequest = OwnedBy<'tiling' | 'tiling_set'>;
+
 type MachineRequest = OwnedBy<'ring' | 'open' | 'unlock' | 'show_unlock'>;
 
 type DesktopRequest = Exclude<
@@ -44,6 +46,7 @@ type DesktopRequest = Exclude<
   | AudioRequest
   | DisplayRequest
   | WindowRequest
+  | TilingRequest
   | MachineRequest
   | SystemGroupRequest
 >;
@@ -66,6 +69,10 @@ function isDisplay(request: HandledRequest): request is DisplayRequest {
 
 function isWindow(request: HandledRequest): request is WindowRequest {
   return ['windows', 'window_set'].includes(request.verb);
+}
+
+function isTiling(request: HandledRequest): request is TilingRequest {
+  return ['tiling', 'tiling_set'].includes(request.verb);
 }
 
 function isMachine(request: HandledRequest): request is MachineRequest {
@@ -128,6 +135,9 @@ export class NodeRequestHandler {
     }
     if (isWindow(request)) {
       return this.windows(request);
+    }
+    if (isTiling(request)) {
+      return this.tiling(request);
     }
     if (isMachine(request)) {
       return this.machine(request);
@@ -193,6 +203,15 @@ export class NodeRequestHandler {
     }
   }
 
+  private tiling(request: TilingRequest): Promise<JsonValue> {
+    switch (request.verb) {
+      case 'tiling':
+        return this.controls.tiling.read();
+      case 'tiling_set':
+        return this.controls.tiling.change(request.change);
+    }
+  }
+
   private async machine(request: MachineRequest): Promise<JsonValue> {
     const { machine } = this.controls;
     switch (request.verb) {
@@ -228,6 +247,9 @@ export class NodeRequestHandler {
         return this.controls.files.range(request.path, request.start, request.length);
       case 'capture':
         return this.controls.capture.capture(request.target);
+      case 'input':
+        await this.controls.input.send(request.input);
+        return null;
     }
   }
 }

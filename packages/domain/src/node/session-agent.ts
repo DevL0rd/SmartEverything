@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MACHINE_OPEN_TARGET } from '../machine-actions';
+import { MACHINE_OPEN_TARGET, MACHINE_PERMISSION_STATES } from '../machine-actions';
 import { CAPTURE_TARGETS, COMPUTER_CAPTURE } from './computer-capture';
 
 export const SESSION_AGENT_FILE = 'session-agent.json';
@@ -19,6 +19,7 @@ export const SESSION_AGENT_OPERATION = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('open'), target: MACHINE_OPEN_TARGET }),
   z.strictObject({ op: z.literal('ring'), on: z.boolean() }),
   z.strictObject({ op: z.literal('capture'), target: z.enum(CAPTURE_TARGETS) }),
+  z.strictObject({ op: z.literal('permissions') }),
 ]);
 
 export type SessionAgentOperation = z.infer<typeof SESSION_AGENT_OPERATION>;
@@ -44,6 +45,7 @@ export const SESSION_AGENT_REPLY = z.discriminatedUnion('ok', [
     id: REQUEST_ID,
     ok: z.literal(true),
     capture: COMPUTER_CAPTURE.nullable(),
+    permissions: MACHINE_PERMISSION_STATES.nullable(),
   }),
   z.strictObject({
     type: z.literal('reply'),

@@ -28,6 +28,13 @@ describe('zoneOffsetSeconds', () => {
     expect(zoneOffsetSeconds('America/St_Johns', WINTER)).toBe(-(3 * 3600 + 30 * 60));
   });
 
+  it('reads a plain GMT from the formatter as no offset', () => {
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts').mockReturnValue([
+      { type: 'timeZoneName', value: 'GMT' },
+    ]);
+    expect(zoneOffsetSeconds('Europe/London', WINTER)).toBe(0);
+  });
+
   it('names the zone and what Intl gave when the offset cannot be read', () => {
     vi.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts').mockReturnValue([
       { type: 'timeZoneName', value: 'Mars time' },

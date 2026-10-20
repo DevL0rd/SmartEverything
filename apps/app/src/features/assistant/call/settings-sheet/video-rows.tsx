@@ -7,6 +7,7 @@ import {
   SIGHT_SOURCES,
   type SightMode,
   type SightSource,
+  voiceModelFor,
 } from '@smarteverything/domain';
 import { Icon } from '../../../../components/icon';
 import { Interactive } from '../../../../components/interactive';
@@ -121,12 +122,12 @@ export function CostEstimateRow(): ReactNode {
   const { pref } = useCallAudio();
   const call = useCall();
   const money = useMoney();
-  const model = useStoreSelector((state) => state.assistant?.settings.voice.model ?? null);
+  const level = useStoreSelector((state) => state.assistant?.settings.voice.thinking_level ?? null);
   const cost = callCostOf({
     mode: pref.video_mode,
     memorySeconds: pref.memory_seconds,
     source: call.sight?.source ?? 'phone_camera',
-    dollarsPerMtok: model === null ? null : videoPriceOf(model),
+    dollarsPerMtok: level === null ? null : videoPriceOf(voiceModelFor(level)),
     money,
   });
   return (

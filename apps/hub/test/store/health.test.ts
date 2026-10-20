@@ -102,6 +102,45 @@ describe('dailyFigures', () => {
     ]);
   });
 
+  it('counts the watch energy and distance for the hours it covers and the treadmill only outside them', () => {
+    const watch = { sourceApp: 'smarteverything.watch' };
+    const belt = { sourceApp: 'smarteverything.treadmill' };
+    const figures = dailyFigures([
+      record('we', {
+        ...watch,
+        type: 'ActiveCaloriesBurned',
+        startTime: '2026-10-08T12:00:00Z',
+        endTime: '2026-10-08T12:50:00Z',
+        data: { kilocalories: 120 },
+      }),
+      record('wd', {
+        ...watch,
+        type: 'Distance',
+        startTime: '2026-10-08T12:00:00Z',
+        endTime: '2026-10-08T12:50:00Z',
+        data: { meters: 2000 },
+      }),
+      record('te', {
+        ...belt,
+        type: 'ActiveCaloriesBurned',
+        startTime: '2026-10-08T12:30:00Z',
+        endTime: '2026-10-08T13:30:00Z',
+        data: { kilocalories: 80 },
+      }),
+      record('td', {
+        ...belt,
+        type: 'Distance',
+        startTime: '2026-10-08T12:30:00Z',
+        endTime: '2026-10-08T13:30:00Z',
+        data: { meters: 3000 },
+      }),
+    ]);
+    expect(figures).toStrictEqual([
+      { metric: 'distance', value: 3500, unit: 'm' },
+      { metric: 'active_energy', value: 160, unit: 'kcal' },
+    ]);
+  });
+
   it('reads the heart-rate extremes of a very large day without exceeding the argument limit', () => {
     const samples = Array.from({ length: 300_000 }, (_, index) => ({
       time: '2026-10-08T08:00:00Z',
@@ -129,6 +168,81 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await opened.close();
+});
+
+describe('exercise minutes of a day', () => {
+  function session(recordId: string, sourceApp: string, start: string, end: string): HealthRecord {
+    return record(recordId, {
+      type: 'ExerciseSession',
+      sourceApp,
+      startTime: start,
+      endTime: end,
+      data: {
+        exerciseType: 57,
+        title: null,
+        notes: null,
+        plannedExerciseSessionId: null,
+        segments: [],
+        laps: [],
+        route: { status: 'absent' },
+      },
+    });
+  }
+
+  function exerciseOf(records: readonly HealthRecord[]): number | undefined {
+    return dailyFigures(records).find((figure) => figure.metric === 'exercise')?.value;
+  }
+
+  it('counts the minutes two sources share once', () => {
+    const belt = session(
+      'e1',
+      'smarteverything.treadmill',
+      '2026-10-08T07:02:00Z',
+      '2026-10-08T07:30:00Z',
+    );
+    const watch = session('e2', 'com.mi.health', '2026-10-08T07:00:00Z', '2026-10-08T07:30:00Z');
+    expect(exerciseOf([belt, watch])).toBe(30);
+    expect(exerciseOf([watch, belt])).toBe(30);
+  });
+
+  it('adds a session only one source saw, and sessions that touch', () => {
+    const belt = session(
+      'e1',
+      'smarteverything.treadmill',
+      '2026-10-08T07:00:00Z',
+      '2026-10-08T07:30:00Z',
+    );
+    const watchOverlap = session(
+      'e2',
+      'com.mi.health',
+      '2026-10-08T07:00:00Z',
+      '2026-10-08T07:30:00Z',
+    );
+    const watchRun = session('e3', 'com.mi.health', '2026-10-08T18:00:00Z', '2026-10-08T18:45:00Z');
+    const touching = session(
+      'e4',
+      'com.fitbit.FitbitMobile',
+      '2026-10-08T07:30:00Z',
+      '2026-10-08T07:40:00Z',
+    );
+    expect(exerciseOf([belt, watchOverlap, watchRun])).toBe(75);
+    expect(exerciseOf([belt, touching])).toBe(40);
+  });
+
+  it('counts a session inside a longer one as part of it', () => {
+    const long = session('e1', 'com.mi.health', '2026-10-08T07:00:00Z', '2026-10-08T08:00:00Z');
+    const inside = session(
+      'e2',
+      'smarteverything.treadmill',
+      '2026-10-08T07:10:00Z',
+      '2026-10-08T07:20:00Z',
+    );
+    expect(exerciseOf([long, inside])).toBe(60);
+  });
+
+  it('has no exercise figure without a session', () => {
+    expect(exerciseOf([STEPS_MORNING])).toBeUndefined();
+  });
 });
 
 describe('health ingest', () => {

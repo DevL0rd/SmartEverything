@@ -4,9 +4,9 @@ import {
   DEFAULT_NAVIGATION_LAYOUT,
   NAVIGATION_LAYOUT,
   NAV_BAR_SLOTS,
+  NAV_PIN_TARGET,
   NAV_SECTIONS,
   NAV_TARGET,
-  navTargetOfLink,
   navTargetOfSearch,
   resolveNavigation,
   type NavAvailability,
@@ -186,6 +186,15 @@ describe('a saved layout', () => {
     expect(keys(resolved.nodes)).toContain('section:assistant');
   });
 
+  it('leaves a section out of a folder when the section is not available', () => {
+    const resolved = resolveNavigation(
+      layoutOf([folder('mixed', [{ kind: 'section', section: 'cameras' }, pin('lamp')])]),
+      without('cameras'),
+    );
+    const mixed = resolved.nodes[0];
+    expect(mixed?.kind === 'folder' ? keys(mixed.items) : null).toEqual(['lamp']);
+  });
+
   it('keeps an empty folder', () => {
     const resolved = resolveNavigation(layoutOf([folder('empty', [])]), EVERYTHING);
     expect(resolved.nodes[0]).toMatchObject({ kind: 'folder', items: [] });
@@ -225,6 +234,36 @@ describe('the navigation schema', () => {
     expect(
       NAVIGATION_LAYOUT.safeParse({ items: [{ ...pin('a'), icon: 'rocket' }], hidden: [] }).success,
     ).toBe(false);
+  });
+
+  it('lets the assistant open a settings page or a chat but never pins one', () => {
+    const setting = { kind: 'setting', page: 'appearance/navigation', setting: null } as const;
+    const chat = { kind: 'chat', chatId: ROOM } as const;
+    expect(NAV_TARGET.safeParse(setting).success).toBe(true);
+    expect(NAV_TARGET.safeParse(chat).success).toBe(true);
+    for (const target of [setting, chat]) {
+      expect(NAV_PIN_TARGET.safeParse(target).success).toBe(false);
+      expect(
+        NAVIGATION_LAYOUT.safeParse({ items: [{ ...pin('a'), target }], hidden: [] }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('pins every kind of thing the person can pin', () => {
+    const targets = [
+      { kind: 'section', section: 'fitness' },
+      { kind: 'page', path: 'fitness-sleep' },
+      { kind: 'device', deviceId: DEVICE, focus: null },
+      { kind: 'camera', deviceId: DEVICE },
+      { kind: 'room', roomId: ROOM },
+      { kind: 'group', groupId: ROOM },
+      { kind: 'scene', sceneId: ROOM },
+      { kind: 'automation', automationId: ROOM, focus: null },
+    ] as const;
+    for (const target of targets) expect(NAV_PIN_TARGET.safeParse(target).success).toBe(true);
+    expect(NAV_PIN_TARGET.options.map((option) => option.shape.kind.value)).toEqual(
+      targets.map((target) => target.kind),
+    );
   });
 
   it('never lets a pin point at a navigation item', () => {
@@ -288,40 +327,5 @@ describe('pins made from search results and chat links', () => {
       navTargetOfSearch({ kind: 'command', deviceId: DEVICE, capability: 'power', value: true }),
     ).toBeNull();
     expect(navTargetOfSearch({ kind: 'setting', settingId: 'time_zone', value: null })).toBeNull();
-  });
-
-  it.each([
-    [
-      { kind: 'room_link', id: ROOM, value: null },
-      { kind: 'room', roomId: ROOM },
-    ],
-    [
-      { kind: 'scene_link', id: ROOM, value: null },
-      { kind: 'scene', sceneId: ROOM },
-    ],
-    [
-      { kind: 'automation_link', id: ROOM, value: null },
-      { kind: 'automation', automationId: ROOM, focus: null },
-    ],
-    [
-      { kind: 'device_settings_link', id: DEVICE, value: null },
-      { kind: 'device', deviceId: DEVICE, focus: null },
-    ],
-    [
-      { kind: 'setting_link', setting: 'time_zone', value: null },
-      { kind: 'setting', page: 'time_zone', setting: null },
-    ],
-    [
-      { kind: 'page_link', page: 'chat', id: ROOM, value: null },
-      { kind: 'chat', chatId: ROOM },
-    ],
-  ] as const)('maps the chat link %j', (link, expected) => {
-    expect(navTargetOfLink(link)).toEqual(expected);
-  });
-
-  it('has no pin for a link to nothing stable', () => {
-    expect(navTargetOfLink({ kind: 'scheduled_link', id: ROOM, value: null })).toBeNull();
-    expect(navTargetOfLink({ kind: 'page_link', page: 'chat', id: null, value: null })).toBeNull();
-    expect(navTargetOfLink({ kind: 'page_link', page: 'costs', id: null, value: null })).toBeNull();
   });
 });

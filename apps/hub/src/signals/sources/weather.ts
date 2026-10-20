@@ -1,4 +1,4 @@
-import type { RowChange, SignalInput } from '@smarteverything/domain';
+import { weatherSignalsBetween, type RowChange, type SignalInput } from '@smarteverything/domain';
 import { signalAt, type FeedContext } from './feed-context';
 
 export function weatherSignals(change: RowChange, context: FeedContext): readonly SignalInput[] {
@@ -12,6 +12,8 @@ export function weatherSignals(change: RowChange, context: FeedContext): readonl
   if (record.forecast === null || record.fetched_at === oldRecord?.fetched_at) {
     return [];
   }
+  const previous = oldRecord?.forecast ?? null;
+  const changes = previous === null ? [] : weatherSignalsBetween(previous, record.forecast);
   return [
     signalAt(context, {
       source: 'weather',
@@ -19,8 +21,11 @@ export function weatherSignals(change: RowChange, context: FeedContext): readonl
       subject: null,
       field: null,
       value: record.forecast,
-      previous: oldRecord?.forecast ?? null,
+      previous,
       profileId: null,
     }),
+    ...changes.map((signal) =>
+      signalAt(context, { source: 'weather', subject: null, profileId: null, ...signal }),
+    ),
   ];
 }

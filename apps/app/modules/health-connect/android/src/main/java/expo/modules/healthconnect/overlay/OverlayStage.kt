@@ -5,7 +5,11 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import expo.modules.healthconnect.Credentials
 import expo.modules.healthconnect.assistant.AssistantCalls
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.json.JSONObject
 
 interface OverlaySessionHost {
@@ -28,7 +32,9 @@ object OverlayStage {
   private var prefs = OverlayPhonePrefs()
   private var facts: CallFacts? = null
   private var wake: OverlayWake? = null
+  private var onCallPage = false
   private var session: OverlaySessionHost? = null
+  private var thinking: OverlayThinking? = null
 
   @Volatile
   var host = OverlayHostKind.None
@@ -43,6 +49,11 @@ object OverlayStage {
     this.context = app
     prefs = OverlayPrefs.load(app)
     windows = OverlayWindows(app, actions, levels)
+    thinking = OverlayThinking(
+      HubThinking { Credentials(app).load() },
+      CoroutineScope(SupervisorJob() + Dispatchers.IO),
+      { block -> onMain(block) },
+    ) { refresh() }
     surface = OverlaySurfaceFacts(app) { refresh() }
     refresh()
   }
@@ -56,13 +67,20 @@ object OverlayStage {
     refresh()
   }
 
+  fun callPage(on: Boolean) = onMain {
+    onCallPage = on
+    refresh()
+  }
+
   fun wake(muted: Boolean) = onMain {
     wake = OverlayWake(System.currentTimeMillis(), null, muted)
     refresh()
   }
 
   fun call(change: (CallFacts?) -> CallFacts?) = onMain {
-    facts = change(facts)
+    val before = facts
+    facts = change(before)
+    followThinking(before, facts)
     refresh()
   }
 
@@ -97,17 +115,27 @@ object OverlayStage {
     if (current != null) current.openApp(action) else context?.let { AssistantCalls.openCallPage(it, action) }
   }
 
+  fun resetPosition() = onMain {
+    windows?.resetPlacement()
+  }
+
   fun toggleCaptions() = onMain {
     val app = context ?: return@onMain
     prefs = OverlayPrefs.store(app, prefs.copy(captions = !prefs.captions))
     refresh()
   }
 
+  private fun followThinking(before: CallFacts?, after: CallFacts?) {
+    if (after == null || after.over) return
+    if (after.callId != before?.callId) thinking?.load()
+    if (after.phase == CallPhase.Reconnecting && before?.phase != CallPhase.Reconnecting) thinking?.reconnected()
+  }
+
   private fun refresh() {
     val seen = surface ?: return
     main.removeCallbacks(recompute)
     val now = System.currentTimeMillis()
-    val view = overlayView(CallOverlayState.inputOf(facts, wake, prefs.data, seen.foreground, now))
+    val view = overlayView(CallOverlayState.inputOf(facts, wake, prefs.data, mainOf(seen.foreground), now, thinking?.voice(facts?.callId)))
     val canDraw = canDraw()
     barOn = OverlayHostRule.barAvailable(prefs.enabled, canDraw)
     host = OverlayHostRule.hostFor(OverlayHostFacts(view.state != OverlayState.Hidden, seen.locked, seen.screenOn, canDraw, session != null))
@@ -136,6 +164,12 @@ object OverlayStage {
     main.postAtTime(recompute, SystemClock.uptimeMillis() + maxOf(0L, at - now))
   }
 
+  private fun mainOf(foreground: Boolean): MainWindow = when {
+    !foreground -> MainWindow.Away
+    onCallPage -> MainWindow.Call
+    else -> MainWindow.Other
+  }
+
   private fun canDraw(): Boolean = context?.let(Settings::canDrawOverlays) == true
 
   private fun onMain(block: () -> Unit) {
@@ -151,6 +185,10 @@ object OverlayStage {
 
     override fun onTile(tile: OverlayTile) {
       context?.let { AssistantCalls.tile(it, tile) }
+    }
+
+    override fun onThinking(level: VoiceLevel) {
+      thinking?.choose(level, facts?.callId)
     }
   }
 }

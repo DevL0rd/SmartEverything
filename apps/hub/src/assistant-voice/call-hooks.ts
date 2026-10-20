@@ -1,5 +1,6 @@
 import type { CallEnding } from '@smarteverything/domain';
 import type { ToolHub } from '../ai-tools/tool-hub';
+import { EndOfSpeechPause } from '../listening/end-of-speech-pause';
 import type { ToolAnswer } from './tool-answer';
 import { meter, toolCallerOf, type Call, type CallDeskOptions } from './call-parts';
 import type { RecordedTurn } from './call-record';
@@ -20,6 +21,7 @@ import {
   type VoiceWho,
 } from './voice-kit';
 import { voiceResponseOf } from './voice-results';
+import { voiceArgumentsOf } from './voice-shapes';
 import { VOICE_TOOL_NAMES } from './voice-tools';
 
 export interface CallHooksDeps {
@@ -146,6 +148,22 @@ function promptHooks(options: CallDeskOptions, call: () => Call, hub: () => Tool
   };
 }
 
+function endedOf(
+  deps: CallHooksDeps,
+  call: () => Call,
+  pause: EndOfSpeechPause | null,
+): ConversationHooks['ended'] {
+  return (reason, detail): void => {
+    deps.options.log.info('voice.conversation_ended', {
+      callId: call().id,
+      reason,
+      detail: detail === null ? undefined : detail.slice(0, 200),
+    });
+    pause?.close();
+    deps.ended(call(), reason, detail);
+  };
+}
+
 export function conversationHooks(
   deps: CallHooksDeps,
   call: () => Call,
@@ -156,10 +174,13 @@ export function conversationHooks(
   const { store } = options;
   const kit = kitOf(options);
   const who = (): VoiceWho => whoOf(call());
+  const pause =
+    speech === 'echo-cancelled' || speech === 'gated-client' ? new EndOfSpeechPause(store) : null;
   let built: ToolHub | null = null;
   const hub = (): ToolHub => (built ??= voiceHub(kit, who));
   return {
     speech,
+    ...(pause === null ? {} : { pause }),
     ...(listening === null ? {} : { listening }),
     settings: () => store.assistantChat.settings().voice,
     ...promptHooks(options, call, hub),
@@ -173,17 +194,11 @@ export function conversationHooks(
       if (sight !== null) {
         return sight;
       }
-      const result = await hub().call(name, args, toolCallerOf(current));
-      return { ...result, response: voiceResponseOf(name, args, result.response) };
+      const asked = voiceArgumentsOf(name, args);
+      const result = await hub().call(name, asked, toolCallerOf(current));
+      return { ...result, response: voiceResponseOf(name, asked, result.response) };
     },
-    ended: (reason, detail): void => {
-      options.log.info('voice.conversation_ended', {
-        callId: call().id,
-        reason,
-        detail: detail === null ? undefined : detail.slice(0, 200),
-      });
-      deps.ended(call(), reason, detail);
-    },
+    ended: endedOf(deps, call, pause),
     usage: (usage, model): void => {
       meter(options, call(), usage, model);
     },

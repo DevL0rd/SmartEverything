@@ -15,6 +15,7 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { background } from '@smarteverything/logging';
+import { appEventsOf, type AppEventsWatch } from './app-events-watch';
 import type { ComputerCollector } from './collectors/collector';
 import { Sampler } from './collectors/sampler';
 import { controlFeatures, type ComputerControls } from './controls/controls';
@@ -50,6 +51,7 @@ export class ComputerNode {
   private sampling = false;
   private unsubscribe: (() => void) | null = null;
   private stopMachine: (() => void) | null = null;
+  private stopTiling: (() => void) | null = null;
   private hello: NodeHello | null = null;
   private session: ComputerSessionState | null = null;
   private window = '';
@@ -57,6 +59,7 @@ export class ComputerNode {
   private readonly handler: NodeRequestHandler;
   private readonly sampler: Sampler;
   private readonly states: StateWatch;
+  private readonly apps: AppEventsWatch;
   private readonly ear: EarPort | null;
   private readonly earHost: EarHostPort | null;
 
@@ -80,9 +83,18 @@ export class ComputerNode {
         options.link.send({ type: 'ear', ear: message });
       }) ?? null;
     this.earHost =
-      options.earHost?.((key, ear) => {
-        options.link.send({ type: 'ears', key, ear });
-      }) ?? null;
+      options.earHost?.(
+        (key, ear) => {
+          options.link.send({ type: 'ears', key, ear });
+        },
+        (id, heard) => {
+          options.link.send({ type: 'ears_scored', id, heard });
+        },
+        (id, reason) => {
+          options.link.send({ type: 'ears_score_failed', id, reason });
+        },
+      ) ?? null;
+    this.apps = appEventsOf(options);
     this.states = new StateWatch({
       controls: options.controls,
       allows: (scope): boolean => this.handler.allows(scope),
@@ -113,6 +125,10 @@ export class ComputerNode {
     this.unsubscribe = null;
     this.stopMachine?.();
     this.stopMachine = null;
+    this.stopTiling?.();
+    this.stopTiling = null;
+    this.apps.stop();
+    background(this.options.controls.tiling.stop(), 'computer_node.tiling_stop_failed');
     this.hello = null;
     this.halt();
     if (this.ear !== null) {
@@ -166,6 +182,7 @@ export class ComputerNode {
     link.send({ type: 'hello', hello: complete });
     this.sync();
     this.watchMachine();
+    this.watchTiling();
     await this.watchSession();
   }
 
@@ -201,6 +218,24 @@ export class ComputerNode {
     });
   }
 
+  private watchTiling(): void {
+    this.stopTiling?.();
+    this.stopTiling = this.options.controls.tiling.watchPresence(() => {
+      background(this.reportTiling(), 'computer_node.tiling_report_failed');
+    });
+  }
+
+  private async reportTiling(): Promise<void> {
+    const hello = this.hello;
+    if (hello === null) return;
+    const tiling = await this.options.controls.tiling.features();
+    if (this.hello !== hello || hello.features.includes('tiling') === tiling.length > 0) return;
+    const features = [...hello.features.filter((feature) => feature !== 'tiling'), ...tiling];
+    this.hello = { ...hello, features };
+    this.options.log.info('node.features_reported', { tiling: tiling.length > 0 });
+    this.options.link.send({ type: 'features', features });
+  }
+
   private async reportMachine(): Promise<void> {
     const hello = this.hello;
     if (hello === null) return;
@@ -222,6 +257,7 @@ export class ComputerNode {
         this.session = session;
         this.options.log.debug('node.session_changed', {});
         this.sendSession();
+        this.apps.lockChanged(session.locked);
       });
       this.options.log.debug('node.session_watching', {});
     } catch (cause) {
@@ -266,6 +302,7 @@ export class ComputerNode {
     this.options.log.trace('node.frame_received', { type: frame.type });
     if (frame.type === 'scopes') {
       this.handler.allow(frame.scopes);
+      this.apps.watch(this.handler.allows('apps') && this.handler.allows('app_events'));
       this.sync();
       this.sendSession();
       return;

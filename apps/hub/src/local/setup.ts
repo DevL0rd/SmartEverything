@@ -11,6 +11,10 @@ import type { Store } from '../store/store';
 import { MANUAL_SCALE_MODEL } from './xiaomi-scale';
 import type { ResolvedSetup, SetupContext } from './setup-types';
 import { watchSetup } from './watch-setup';
+import { treadmillSetup } from './treadmill/setup';
+import { homeClock } from './bottle/clock';
+import { bottleSetup } from './bottle/setup';
+import { brushSetupFor } from './toothbrush/brands';
 
 function scaleOf(store: Store, deviceId: string): DeviceRow {
   const device = store.devices.byId(deviceId);
@@ -67,6 +71,16 @@ export async function resolveSetup(
   }
   if (setup.driver === 'xiaomi_watch') {
     return watchSetup(setup, context);
+  }
+  if (setup.driver === 'kingsmith_treadmill') {
+    return treadmillSetup(setup);
+  }
+  if (setup.driver === 'philips_sonicare' || setup.driver === 'oralb_io') {
+    return brushSetupFor(setup);
+  }
+  if (setup.driver === 'larq_bottle') {
+    const now = context.now();
+    return Promise.resolve(bottleSetup(setup, { now, today: homeClock(context.store).dayOf(now) }));
   }
   return setup.source === 'xiaomi' ? fromXiaomi(setup, context) : fromManual(setup);
 }

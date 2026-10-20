@@ -33,6 +33,7 @@ export interface BuiltinContextOptions {
   readonly conversations: Pick<PluginConversations, 'forPlugin'>;
   readonly attachments: (chatId: string) => readonly string[];
   readonly machineFile: PluginFiles['fromMachine'];
+  readonly uploadFile: PluginFiles['fromUpload'];
   readonly dataDirectory: string;
   readonly configure: (
     pluginId: string,
@@ -143,6 +144,17 @@ function devicesOf(
   };
 }
 
+function homeOf(store: Store): PluginHostContext['home'] {
+  return {
+    timeZone: (): string => store.settings.read().time_zone,
+    profiles: () => store.profiles.list().map(({ id, name }) => ({ id, name })),
+    phone: (profileId): { readonly paired: boolean; readonly place: string | null } => {
+      const entry = store.phoneContexts.latestOf(profileId);
+      return { paired: entry !== undefined, place: entry?.place ?? null };
+    },
+  };
+}
+
 export function builtinContext(
   options: BuiltinContextOptions,
   session: BuiltinSession,
@@ -181,6 +193,13 @@ export function builtinContext(
     network: networkOf(track),
     voice: voiceOf(options.voice, { pluginId: id, track }, session.manifest.permissions.voice),
     assistant: options.conversations.forPlugin(id),
-    files: pluginFiles(options.dataDirectory, id, options.attachments, options.machineFile),
+    files: pluginFiles(
+      options.dataDirectory,
+      id,
+      options.attachments,
+      options.machineFile,
+      options.uploadFile,
+    ),
+    home: homeOf(options.store),
   };
 }

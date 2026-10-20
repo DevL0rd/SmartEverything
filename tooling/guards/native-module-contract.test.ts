@@ -22,6 +22,9 @@ const KOTLIN_SCOPE: Readonly<Record<string, readonly string[]>> = {
   AssistantCall: ['assistant'],
   Diagnostics: ['diagnostics'],
   Listening: ['listening'],
+  Treadmill: ['treadmill'],
+  Larq: ['larq'],
+  Sonicare: ['sonicare'],
   HealthConnect: [''],
 };
 

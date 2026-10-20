@@ -1,6 +1,10 @@
 import { router } from 'expo-router';
 import { background } from '@smarteverything/logging';
-import type { OVERLAY_SIMPLE_ACTIONS, OverlayAction } from '@smarteverything/domain';
+import type {
+  OVERLAY_SIMPLE_ACTIONS,
+  OverlayAction,
+  VoiceThinkingLevel,
+} from '@smarteverything/domain';
 import { desktopBridge } from '../../../design/platform';
 import {
   answerRequest,
@@ -39,6 +43,7 @@ export interface OverlayActionPorts {
   readonly captions: () => void;
   readonly microphone: (id: string | null) => void;
   readonly volume: (value: number) => void;
+  readonly thinking: (level: VoiceThinkingLevel) => void;
   readonly answer: (accepted: boolean) => void;
 }
 
@@ -126,6 +131,8 @@ export function runOverlayAction(action: OverlayAction, ports: OverlayActionPort
     ports.microphone(action.id);
   } else if (action.kind === 'volume') {
     ports.volume(action.value);
+  } else if (action.kind === 'voice_thinking') {
+    ports.thinking(action.level);
   } else {
     HANDLERS[action.kind](ports);
   }

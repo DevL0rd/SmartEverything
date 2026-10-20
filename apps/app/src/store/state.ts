@@ -156,6 +156,7 @@ function emptyTables(): Tables {
     ai_usage: emptyTable(),
     plugins: emptyTable(),
     plugin_streams: emptyTable(),
+    plugin_ui: emptyTable(),
   };
 }
 

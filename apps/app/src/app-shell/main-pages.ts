@@ -1,7 +1,6 @@
 import type { PageSettingsLink } from '../components/page-settings-button';
 import { settingsPage } from '../settings/tree';
 import { href } from './hrefs';
-import type { TabKey } from './route-types';
 
 export const MAIN_PAGES = [
   { tab: 'home', settings: 'home', title: 'Home', settingsIndex: true },
@@ -14,8 +13,6 @@ export const MAIN_PAGES = [
 ] as const;
 
 export type MainPageKey = (typeof MAIN_PAGES)[number]['tab'];
-
-export const PAGE_ORDER: readonly TabKey[] = MAIN_PAGES.map((page) => page.tab);
 
 function pageOf(tab: MainPageKey): (typeof MAIN_PAGES)[number] {
   const page = MAIN_PAGES.find((entry) => entry.tab === tab);

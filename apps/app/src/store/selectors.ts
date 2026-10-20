@@ -267,7 +267,7 @@ const availabilityInputs = (state: StoreState): readonly unknown[] => [
   state.tables.provider_links,
 ];
 
-const availabilityOf = memoOnInputs(availabilityInputs, (state): Availability => {
+export const availabilityOf = memoOnInputs(availabilityInputs, (state): Availability => {
   const devices = rowsOf(state.tables.devices).filter((device) => !device.hidden);
   return {
     hasDevices: devices.length > 0,

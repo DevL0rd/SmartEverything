@@ -9,6 +9,9 @@ const ONE_INSTANCE: Readonly<Record<string, string>> = {
   'app/+not-found.tsx': 'rendered only for an unknown route',
   'src/app-shell/natural-tab.ts': 'the shell tab bar, mounted once',
   'src/app-shell/root-presentation.ts': 'the shell layout, mounted once',
+  'src/app-shell/use-nav-model.ts': 'the shell tab bar, mounted once',
+  'src/app-shell/pin-menu.ts':
+    'the shell page-pin tracker, mounted once; headers read a store and build the pin item only when their menu opens',
   'src/app-shell/settings-navigation.ts':
     'settings page frames read whether Settings was opened from another tab; settings remounts on every visit',
   'src/features/root/crash-trail-host.tsx': 'a root host, mounted once',
@@ -16,10 +19,6 @@ const ONE_INSTANCE: Readonly<Record<string, string>> = {
   'src/features/connections/flows/tuya-handoff.tsx': 'inside the consent host, mounted once',
   'src/features/assistant/browser/browser-runtime-host.tsx': 'a global host, mounted once',
   'src/features/assistant/overlay/overlay-surface.ts': 'used by the overlay host, mounted once',
-  'src/features/assistant/call/call-pill.tsx':
-    'one small pill per mounted chat header; it renders a boolean',
-  'src/features/automations/components/automations-master.tsx':
-    'the automations master pane highlights the open page; its children are compiler-memoised',
   'src/settings/settings-nav.tsx':
     'the settings master pane highlights the open page; settings remounts on every visit',
   'src/perf/perf-host.tsx': 'the dev profiler host, mounted once',

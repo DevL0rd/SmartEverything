@@ -67,9 +67,9 @@ describe('the Live context window', () => {
     expect(long.targetTokens - middle.targetTokens).toBe(middle.targetTokens - short.targetTokens);
   });
 
-  it('still limits a model without a known length', () => {
-    const unknown = windowFor({ voice: { model: 'gemini-unknown-live' } });
-    expect(unknown).toEqual(windowFor({}));
-    expect(Number.isFinite(unknown.triggerTokens)).toBe(true);
+  it('limits the window of the model the thinking level selects', () => {
+    const thinking = windowFor({ voice: { thinking_level: 'high' } });
+    expect(Number.isFinite(thinking.triggerTokens)).toBe(true);
+    expect(Number.isFinite(windowFor({}).triggerTokens)).toBe(true);
   });
 });

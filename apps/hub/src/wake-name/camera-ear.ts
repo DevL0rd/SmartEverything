@@ -1,25 +1,19 @@
-import type { Model } from '@ricky0123/vad-web/dist/models/common.js';
-import type { PauseChoiceMs, WakeSensitivity } from '@smarteverything/domain';
+import type { WakeSensitivity } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import { CameraOfflineError } from '../cameras/camera-service';
 import type { Cancel, Clock } from '../clock';
+import type { RemoteEar, RemoteEars } from '../listening/remote-ears-port';
 import type { CameraMicrophones, OpenMicrophone } from '../talk/camera-microphone';
-import { OpusSpeech } from '../reach/voice-pacing';
-import { Ear, type SpeechSegment } from './ear';
-import type { KeywordSpotter } from './keyword-spotter';
-import type { OnSuperseded, WakeClaims } from './wake-claims';
-import type { WakeDiagnostics } from './wake-diagnostics';
+import type { SpeechSegment } from '../listening/speech-segment';
+import type { OnSuperseded } from './wake-claims';
 import { background, messageOf } from '@smarteverything/logging';
 
 const NO_AUDIO_MS = 15_000;
 const REOPEN_AFTER_MS = [5_000, 30_000, 120_000] as const;
 
 export interface EarDeps {
-  readonly claims: Pick<WakeClaims, 'request'>;
+  readonly ears: Pick<RemoteEars, 'open'>;
   readonly microphones: Pick<CameraMicrophones, 'open'>;
-  readonly spotter: KeywordSpotter;
-  readonly model: () => Promise<Model>;
-  readonly names: () => readonly string[];
-  readonly pauseMs: () => PauseChoiceMs;
   readonly sensitivity: (cameraId: string) => WakeSensitivity;
   readonly busy: (cameraId: string) => boolean;
   readonly heard?: (
@@ -29,21 +23,20 @@ export interface EarDeps {
     onSuperseded: OnSuperseded,
   ) => void;
   readonly speech?: (cameraId: string, segment: SpeechSegment) => void;
-  readonly diagnostics?: WakeDiagnostics | null;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
 }
 
 export class CameraEar {
-  private ear: Ear | null = null;
+  private ear: RemoteEar | null = null;
   private microphone: OpenMicrophone | null = null;
-  private speech: OpusSpeech | null = null;
   private failures = 0;
   private timer: Cancel | null = null;
   private flowing = false;
   private arrivedAt = 0;
   private watchedAt = Number.NEGATIVE_INFINITY;
   private closed = false;
+  private waiting = false;
 
   constructor(
     readonly cameraId: string,
@@ -53,7 +46,9 @@ export class CameraEar {
   async open(): Promise<void> {
     const { deps, cameraId } = this;
     const { heard, speech } = deps;
-    this.ear ??= new Ear(deps, {
+    this.ear ??= await deps.ears.open({
+      source: { kind: 'camera', key: cameraId },
+      codec: 'opus_48k_mono',
       claim: { source: 'camera', key: cameraId },
       fields: { cameraId },
       sensitivity: (): WakeSensitivity => deps.sensitivity(cameraId),
@@ -71,7 +66,6 @@ export class CameraEar {
               speech(cameraId, segment);
             },
     });
-    await this.ear.open();
     await this.listen();
   }
 
@@ -83,10 +77,6 @@ export class CameraEar {
   }
 
   private async listen(): Promise<void> {
-    const speech = new OpusSpeech((pcm) => {
-      this.ear?.hear(pcm);
-    });
-    this.speech = speech;
     this.flowing = false;
     this.watchedAt = Number.NEGATIVE_INFINITY;
     this.watchAudio();
@@ -94,7 +84,7 @@ export class CameraEar {
       .open(this.cameraId, {
         packet: (packet): void => {
           this.arrived();
-          speech.packet(packet);
+          this.ear?.packet(packet);
         },
         ended: (failure): void => {
           this.release();
@@ -103,9 +93,33 @@ export class CameraEar {
       })
       .catch((cause: unknown) => {
         this.release();
-        this.retry(messageOf(cause));
+        if (cause instanceof CameraOfflineError) {
+          this.waitForCamera(cause.message);
+        } else {
+          this.retry(messageOf(cause));
+        }
         return null;
       });
+  }
+
+  resume(): void {
+    if (!this.waiting || this.closed) {
+      return;
+    }
+    this.waiting = false;
+    this.failures = 0;
+    this.deps.log.info('wake.resumed', { cameraId: this.cameraId });
+    background(this.listen(), 'camera_ear.listen_failed');
+  }
+
+  private waitForCamera(reason: string): void {
+    if (this.closed) {
+      return;
+    }
+    this.timer?.();
+    this.timer = null;
+    this.waiting = true;
+    this.deps.log.warn('wake.waiting_for_camera', { cameraId: this.cameraId, reason });
   }
 
   private arrived(): void {
@@ -141,8 +155,6 @@ export class CameraEar {
   private release(): void {
     this.microphone?.stop();
     this.microphone = null;
-    this.speech?.free();
-    this.speech = null;
   }
 
   private retry(reason: string): void {

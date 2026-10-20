@@ -25,8 +25,14 @@ import { EntryDeliveryHost } from '../features/health-log';
 import { ScaleListenerHost, WhoWasThisHost } from '../features/profiles';
 import { TalkHost } from '../features/talk';
 import { WatchLinkHost } from '../features/watches';
+import { BottleLinkHost } from '../plugins/larq/data/link-host';
+import { BrushLinkHost } from '../plugins/toothbrush/data/link-host';
+import { TreadmillLinkHost } from '../plugins/treadmill/data/link-host';
+import { PinPickerHost } from '../search/pin-picker';
 import { SearchPopover } from '../search/search-popover';
 import { useSyncStatus } from '../store/selectors';
+import { HighlightHost } from '../components/highlight-host';
+import { AppViewHost } from './app-view-host';
 import { NotificationTaps } from './notification-taps';
 import { preloader } from './preloader';
 import { ROUTES } from './routes';
@@ -70,6 +76,7 @@ export function GlobalHosts(): ReactNode {
     <>
       <BrowserRuntimeHost />
       <SearchPopover />
+      <PinPickerHost />
       <QuickControlsHost />
       <ScheduleSheetHost />
       <CallHost />
@@ -82,6 +89,8 @@ export function GlobalHosts(): ReactNode {
       <AiCallHost />
       <CallAudioSync />
       <AiSpeechHost />
+      <AppViewHost />
+      <HighlightHost />
       <OverlayHost />
       <OutboxHost />
       <PhoneAlertHosts />
@@ -89,6 +98,9 @@ export function GlobalHosts(): ReactNode {
       {appPlatform() === 'android' ? <EntryDeliveryHost /> : null}
       {appPlatform() === 'android' ? <HealthSyncHost /> : null}
       {appPlatform() === 'android' ? <WatchLinkHost /> : null}
+      {appPlatform() === 'android' ? <TreadmillLinkHost /> : null}
+      {appPlatform() === 'android' ? <BrushLinkHost /> : null}
+      {appPlatform() === 'android' ? <BottleLinkHost /> : null}
     </>
   );
 }

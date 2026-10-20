@@ -3,8 +3,7 @@ import { AppState } from 'react-native';
 import { usePathname } from 'expo-router';
 import type { OverlaySurface } from '@smarteverything/domain';
 import { ValueStore } from '../../../design/external-store';
-import { appPlatform, desktopBridge, isNative } from '../../../design/platform';
-import { useLocalPref } from '../../../store/local-prefs';
+import { appPlatform, isNative } from '../../../design/platform';
 import { callActive, type CallView } from '../call/call-state';
 
 export const CALL_PATH = '/assistant/call';
@@ -24,8 +23,9 @@ export function inShareOf(call: CallView): boolean {
   return callActive(call) && call.sight?.source === 'desktop_screen';
 }
 
-function mainOf(facts: SurfaceFacts): 'call' | 'other' | 'away' {
-  if (!facts.focused || !facts.visible) {
+function mainOf(platform: 'desktop' | 'phone', facts: SurfaceFacts): 'call' | 'other' | 'away' {
+  const present = platform === 'phone' ? facts.foreground : facts.focused && facts.visible;
+  if (!present) {
     return 'away';
   }
   return facts.pathname === CALL_PATH ? 'call' : 'other';
@@ -36,9 +36,8 @@ export function surfaceOf(
   facts: SurfaceFacts,
   inShare: boolean,
 ): OverlaySurface {
-  return platform === 'phone'
-    ? { platform, foreground: facts.foreground }
-    : { platform, main: mainOf(facts), inShare };
+  const main = mainOf(platform, facts);
+  return platform === 'phone' ? { platform, main } : { platform, main, inShare };
 }
 
 function changeFacts(change: Partial<SurfaceFacts>): void {
@@ -88,15 +87,4 @@ export function overlayPlatform(): 'desktop' | 'phone' | null {
     return 'phone';
   }
   return platform === 'desktop' ? 'desktop' : null;
-}
-
-export function desktopOverlayOn(
-  enabled: boolean,
-  bridge: { readonly setOverlay?: unknown } | null,
-): boolean {
-  return enabled && bridge?.setOverlay !== undefined;
-}
-
-export function useDesktopOverlayOn(): boolean {
-  return desktopOverlayOn(useLocalPref('overlay').enabled, desktopBridge());
 }

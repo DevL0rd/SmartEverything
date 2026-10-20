@@ -3,6 +3,7 @@ import {
   DEFAULT_WAKE_SENSITIVITY,
   turnRoleOf,
   type AssistantVoiceServerMessage,
+  type EarCodec,
   type WakeSensitivity,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
@@ -17,7 +18,8 @@ import type { CallText } from '../store/repositories/assistant-chat';
 import type { Store } from '../store/store';
 import type { Transcriber } from '../transcripts/transcriber';
 import type { Transcripts } from '../transcripts/transcript-service';
-import type { Ears, SpeechSegment } from '../wake-name/ear';
+import type { RemoteEars } from '../listening/remote-ears-port';
+import type { SpeechSegment } from '../listening/speech-segment';
 import type { OnSuperseded } from '../wake-name/wake-claims';
 import type { Unsubscribe } from './builtin/contract';
 import { FIRST_CONVERSATION, earlierBlock } from './earlier-lines';
@@ -99,6 +101,7 @@ interface PluginTurn {
 
 interface PluginEarRequest {
   readonly speaker: string;
+  readonly codec: EarCodec;
   readonly sensitivity?: () => WakeSensitivity;
   readonly names?: () => readonly string[];
   readonly wakes?: () => boolean;
@@ -107,7 +110,7 @@ interface PluginEarRequest {
 }
 
 interface PluginEar {
-  readonly hear: (pcm16k: Int16Array) => void;
+  readonly packet: (opus: Uint8Array) => void;
   readonly close: () => Promise<void>;
 }
 
@@ -138,7 +141,7 @@ export interface PluginVoiceServices {
   readonly turn: (request: TurnRequest) => Promise<TurnSession>;
   readonly chat: (profileId: string, title: string, source: string | null) => string;
   readonly keys: { readonly changes: (listener: () => void) => Unsubscribe };
-  readonly ears: Pick<Ears, 'make'>;
+  readonly ears: Pick<RemoteEars, 'open'>;
   readonly transcripts: Transcripts;
   readonly transcriber: Pick<Transcriber, 'transcribe'>;
   readonly names: () => readonly string[];
@@ -314,7 +317,9 @@ async function openEar(
   scope: Scope,
   request: PluginEarRequest,
 ): Promise<PluginEar> {
-  const ear = await services.ears.make({
+  const ear = await services.ears.open({
+    source: { kind: 'voice_call', key: `${scope.pluginId}:${request.speaker}` },
+    codec: request.codec,
     claim: { source: 'voice_call', key: `${scope.pluginId}:${request.speaker}` },
     fields: { pluginId: scope.pluginId, speaker: request.speaker },
     sensitivity: request.sensitivity ?? ((): WakeSensitivity => DEFAULT_WAKE_SENSITIVITY),
@@ -328,8 +333,8 @@ async function openEar(
     background(ear.close(), 'ear.close_failed');
   });
   return {
-    hear: (pcm16k): void => {
-      ear.hear(pcm16k);
+    packet: (opus): void => {
+      ear.packet(opus);
     },
     close: async (): Promise<void> => {
       stop();

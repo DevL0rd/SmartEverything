@@ -1,28 +1,27 @@
-View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
-  View className="flex-1 p-card-pad" pointerEvents="box-none"
-    View className="flex-1 gap-2" pointerEvents="box-none"
-      View className="flex-row items-start justify-between" pointerEvents="box-none"
-        View className="items-center justify-center overflow-hidden bg-surface-3 rounded-md" pointerEvents="none"
-          View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(201, 180, 159, 0.3) 0%, rgba(201, 180, 159, 0.09999999999999999) 60%, rgba(201, 180, 159, 0) 100%)"}]
-          View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
-            Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:0,top:0,width:48,height:48},{animationName:{cssRules_:{from:{opacity:0.55,transform:[{scale:0.94}]},to:{opacity:1,transform:[{scale:1.04}]}},cssText_:"{\"from\":{\"opacity\":0.55,\"transform\":[{\"scale\":0.94}]},\"to\":{\"opacity\":1,\"transform\":[{\"scale\":1.04}]}}",length_:2,name_:"REA-CSS-2",processedKeyframes_:"from { opacity: 0.55; transform: scale(0.94) } to { opacity: 1; transform: scale(1.04) }"},animationDuration:2800,animationTimingFunction:"ease-in-out",animationDelay:0,animationIterationCount:"infinite",animationDirection:"alternate",animationFillMode:"none",animationPlayState:"running"}]
-              Svg.default height=48 viewBox="0 0 100 100" width=48
-                Svg.Circle cx=50 cy=50 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#c9b49f" stopOpacity=0.5; ); Svg.Stop(offset="1" stopColor="#c9b49f" stopOpacity=0; ))) r=50
-            Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
-              Svg.Circle cx=50 cy=50 fill="#1f2c39" r=40 stroke="#3d444b" strokeWidth=0.6
-              Svg.Path d="M26.67 73.33 A33 33 0 1 1 73.33 73.33" fill="none" stroke="#474c51" strokeLinecap="round" strokeOpacity=0.6 strokeWidth=4
-              Svg.Path d="M26.67 73.33 A33 33 0 1 1 79.40 35.02" fill="none" stroke="#c9b49f" strokeLinecap="round" strokeWidth=4
-        View className="flex-row items-center"
-      View className="min-w-0 gap-0.5" pointerEvents="none"
-        Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
-        Text className="font-sans text-callout text-on-surface-variant text-left" numberOfLines=1 selectable=false
-      View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
-        View className="gap-3" pointerEvents="box-none"
-          View className="flex-row gap-3"
-            View className="min-w-0 flex-1"
-              View className="gap-1.5"
-                View className="flex-row items-center justify-between gap-3"
-                  Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
-                View className="gap-1"
-                  View collapsable=false ref={current:null}
-                    Pressable accessibilityHint=undefined accessibilityLabel="Mode: Heat" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#2e3842",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 h-control-h flex-row items-center gap-2 rounded-md border border-outline bg-surface-2 pl-3 pr-2" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1 p-card-pad" pointerEvents="box-none"
+  View className="flex-1 gap-2" pointerEvents="box-none"
+    View className="flex-row items-start justify-between" pointerEvents="box-none"
+      View className="items-center justify-center overflow-hidden bg-surface-3 rounded-md" pointerEvents="none"
+        View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(250, 124, 139, 0.3) 0%, rgba(250, 124, 139, 0.09999999999999999) 60%, rgba(250, 124, 139, 0) 100%)"}]
+        View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
+          Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:0,top:0,width:48,height:48},undefined,{animationName:{cssRules_:{from:{opacity:0.55,transform:[{scale:0.94}]},to:{opacity:1,transform:[{scale:1.04}]}},cssText_:"{\"from\":{\"opacity\":0.55,\"transform\":[{\"scale\":0.94}]},\"to\":{\"opacity\":1,\"transform\":[{\"scale\":1.04}]}}",length_:2,name_:"REA-CSS-2",processedKeyframes_:"from { opacity: 0.55; transform: scale(0.94) } to { opacity: 1; transform: scale(1.04) }"},animationDuration:2800,animationTimingFunction:"ease-in-out",animationDelay:0,animationIterationCount:"infinite",animationDirection:"alternate",animationFillMode:"none",animationPlayState:"running"}]
+            Svg.default height=48 viewBox="0 0 100 100" width=48
+              Svg.Circle cx=50 cy=50 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#fa7c8b" stopOpacity=0.5; ); Svg.Stop(offset="1" stopColor="#fa7c8b" stopOpacity=0; ))) r=50
+          Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
+            Svg.Circle cx=50 cy=50 fill="#07b490" r=40 stroke="#1ad8bd" strokeWidth=0.6
+            Svg.Path d="M26.67 73.33 A33 33 0 1 1 73.33 73.33" fill="none" stroke="#0e9919" strokeLinecap="round" strokeOpacity=0.6 strokeWidth=4
+            Svg.Path d="M26.67 73.33 A33 33 0 1 1 79.40 35.02" fill="none" stroke="#fa7c8b" strokeLinecap="round" strokeWidth=4
+      View className="flex-row items-center"
+    View className="min-w-0 gap-0.5" pointerEvents="none"
+      Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
+      Text className="font-sans text-callout text-on-surface-variant text-left" numberOfLines=1 selectable=false
+    View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
+      View className="gap-3" pointerEvents="box-none"
+        View className="flex-row gap-3"
+          View className="min-w-0 flex-1"
+            View className="gap-1.5"
+              View className="flex-row items-center justify-between gap-3"
+                Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+              View className="gap-1"
+                View collapsable=false ref={current:null}
+                  Pressable accessibilityHint=undefined accessibilityLabel="Mode: Heat" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#ce9792",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 h-control-h flex-row items-center gap-2 rounded-md border border-outline bg-surface-2 pl-3 pr-2" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn

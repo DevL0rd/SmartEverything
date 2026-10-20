@@ -1,17 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import {
-  AUTOMATION_DEFINITION,
-  AUTOMATION_RUNS_KEPT,
-  AUTOMATION_SEQUENCE_DEFINITION,
-  automationV2Of,
-  identifiedAutomationV2,
-  sequenceV2Of,
-  type AutomationConversion,
-  type PluginOrigin,
-} from '@smarteverything/domain';
+import { AUTOMATION_RUNS_KEPT, type PluginOrigin } from '@smarteverything/domain';
 import type { LogPayload } from '@smarteverything/logging';
 import { z } from 'zod';
 import { SQL_JSON, flag, jsonText, type Sql } from '../sql';
+import { AUTOMATION_DEFINITION } from './legacy/v1-definition';
+import { AUTOMATION_SEQUENCE_DEFINITION } from './legacy/v1-sequences';
+import { automationV2Of, sequenceV2Of, type AutomationConversion } from './legacy/v2-convert';
+import { identifiedAutomationV2 } from './legacy/v2-identify';
 
 export const AUTOMATION_V2_STATEMENTS: readonly string[] = [
   'alter table automations add column revision integer not null default 1 check (revision >= 1)',

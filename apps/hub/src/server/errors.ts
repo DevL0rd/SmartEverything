@@ -12,6 +12,7 @@ import {
   CameraPrivacyError,
   UnknownStreamError,
 } from '../cameras/camera-service';
+import { CameraFirewallDownError } from '../cameras/camera-health';
 import { FrameTimeoutError } from '../cameras/frame-cache';
 import { Go2rtcError } from '../cameras/go2rtc-client';
 import { CameraBusyError, CameraTalkUnsupportedError } from '../cameras/viewers';
@@ -50,6 +51,7 @@ const KNOWN_ERRORS: readonly (readonly [ErrorClass, ApiErrorCode])[] = [
   [CommandRefusedError, 'command_refused'],
   [InvalidValueError, 'command_refused'],
   [UnknownStreamError, 'camera_unavailable'],
+  [CameraFirewallDownError, 'firewall_blocked'],
   [CameraOfflineError, 'camera_offline'],
   [CameraPrivacyError, 'camera_privacy_on'],
   [CameraBlockedByFirewallError, 'firewall_blocked'],

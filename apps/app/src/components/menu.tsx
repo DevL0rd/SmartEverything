@@ -158,26 +158,36 @@ interface AnchoredMenu {
   readonly menu: ReactNode;
 }
 
+interface OpenedMenu {
+  readonly rect: Rect;
+  readonly late: readonly MenuItem[];
+}
+
+const NO_ITEMS: readonly MenuItem[] = [];
+
 export function useAnchoredMenu(
   items: readonly MenuItem[],
   label: string,
   options: MenuOptions = {},
+  late: (() => readonly MenuItem[]) | null = null,
 ): AnchoredMenu {
   const ref = useRef<View>(null);
-  const [anchor, setAnchor] = useState<Rect | null>(null);
+  const [opened, setOpened] = useState<OpenedMenu | null>(null);
   return {
     ref,
     open: (): void => {
-      measureAnchor(ref, setAnchor);
+      measureAnchor(ref, (rect) => {
+        setOpened({ rect, late: late === null ? NO_ITEMS : late() });
+      });
     },
     menu: (
       <Menu
-        items={items}
+        items={opened === null || opened.late.length === 0 ? items : [...items, ...opened.late]}
         options={options}
-        anchor={anchor}
+        anchor={opened === null ? null : opened.rect}
         label={label}
         onClose={() => {
-          setAnchor(null);
+          setOpened(null);
         }}
       />
     ),
@@ -187,12 +197,14 @@ export function useAnchoredMenu(
 export function OverflowButton({
   items,
   label = 'More options',
+  late = null,
 }: {
   readonly items: readonly MenuItem[];
   readonly label?: string;
+  readonly late?: (() => readonly MenuItem[]) | null;
 }): ReactNode {
   const touch = useIdiom() === 'touch';
-  const { ref, open, menu } = useAnchoredMenu(items, label);
+  const { ref, open, menu } = useAnchoredMenu(items, label, {}, late);
   return (
     <View ref={ref} collapsable={false}>
       <IconButton icon={touch ? 'ellipsisVertical' : 'ellipsis'} label={label} onPress={open} />

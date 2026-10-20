@@ -6,6 +6,7 @@ export const ASSISTANT_GROUPS = {
   assistant: 'Assistant',
   models: 'Models',
   conversation: 'Conversation',
+  voiceModel: 'Voice AI model',
   voice: 'Voice and calls',
   budget: 'Budget and costs',
   addOns: 'Add-ons',

@@ -38,14 +38,19 @@ export const CODEX_PROVIDER_OPTIONS = z.strictObject({
   output_schema: z.record(z.string(), JSON_VALUE).optional(),
 });
 export type CodexProviderOptions = z.infer<typeof CODEX_PROVIDER_OPTIONS>;
+const CODEX_CONTROL_FIELDS = {
+  enabled: z.boolean(),
+  mcp_areas: z.array(z.enum(MCP_TOOL_AREAS)).nullable(),
+};
+const CODEX_PROVIDER_FIELDS = { enabled: z.boolean(), options: CODEX_PROVIDER_OPTIONS };
 export const CODEX_AI_SETTINGS = z.strictObject({
   control: z.strictObject({
-    enabled: z.boolean().default(false),
-    mcp_areas: z.array(z.enum(MCP_TOOL_AREAS)).nullable().default(null),
+    enabled: CODEX_CONTROL_FIELDS.enabled.default(false),
+    mcp_areas: CODEX_CONTROL_FIELDS.mcp_areas.default(null),
   }),
   provider: z.strictObject({
-    enabled: z.boolean().default(false),
-    options: CODEX_PROVIDER_OPTIONS,
+    enabled: CODEX_PROVIDER_FIELDS.enabled.default(false),
+    options: CODEX_PROVIDER_FIELDS.options,
   }),
 });
 export type CodexAiSettings = z.infer<typeof CODEX_AI_SETTINGS>;
@@ -55,8 +60,8 @@ export const DEFAULT_CODEX_AI_SETTINGS: CodexAiSettings = {
 };
 export const CODEX_AI_SETTINGS_PATCH = z
   .strictObject({
-    control: CODEX_AI_SETTINGS.shape.control.partial().optional(),
-    provider: CODEX_AI_SETTINGS.shape.provider.partial().optional(),
+    control: z.strictObject(CODEX_CONTROL_FIELDS).partial().optional(),
+    provider: z.strictObject(CODEX_PROVIDER_FIELDS).partial().optional(),
   })
   .refine(
     (value) => value.control !== undefined || value.provider !== undefined,

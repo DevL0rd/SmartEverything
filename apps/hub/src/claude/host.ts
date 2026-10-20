@@ -15,7 +15,7 @@ import type { ClaudeService } from './service';
 import type { LinkPlane } from './link-plane';
 import type { NativeTools } from './native-tools';
 import { ClaudeProviderRuntime } from './provider/runtime';
-import { searchProjectFiles } from './provider/file-search';
+import { ProjectFileSearch } from './provider/file-search';
 import { providerDiscoveryReason } from './provider/runtime-reads';
 import { CLAUDE_COMMAND_CAPABILITY_REVISION } from './provider/command-catalogue';
 import { isProviderCommand, executeProviderCommand } from './provider/host-commands';
@@ -43,6 +43,7 @@ class ClaudeHost implements ComputerAiHost {
   private readonly operations = new NativeOperations((operation): void => {
     this.publish({ kind: 'native', notice: { type: 'claude_operation', operation } });
   });
+  private readonly files = new ProjectFileSearch();
   private readonly unsubscribe: () => void;
   private readonly trace: HostLog;
   private settings: ComputerAiSettings;
@@ -103,7 +104,7 @@ class ClaudeHost implements ComputerAiHost {
       case 'provider_commands':
         return { operation: request.operation, value: await this.provider.commands(request.scope) };
       case 'provider_files':
-        return { operation: request.operation, value: await searchProjectFiles(request) };
+        return { operation: request.operation, value: await this.files.search(request) };
       case 'provider_command_receipt':
         return {
           operation: request.operation,

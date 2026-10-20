@@ -10,7 +10,7 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
 import { pcmOfBase64 } from '../computers/ear-pcm';
-import type { EarKeywords } from '../wake-name/keyword-spotter';
+import type { EarKeywords } from '../wake-name/keyword-lines';
 import type {
   OnSuperseded,
   Superseded,
@@ -68,6 +68,8 @@ export class RemoteEarSession implements RemoteEar {
   private nodeState: ListeningRuntimeState | null = null;
   private checkedAt = Number.NEGATIVE_INFINITY;
   private closed = false;
+  private closing: Promise<void> | null = null;
+  private settle: (() => void) | null = null;
 
   constructor(
     private readonly options: RemoteEarOptions,
@@ -95,7 +97,11 @@ export class RemoteEarSession implements RemoteEar {
   }
 
   attach(hostId: string | null): void {
-    if (this.closed || hostId === this.hostId) return;
+    if (this.closed) {
+      if (hostId !== this.hostId) this.finish();
+      return;
+    }
+    if (hostId === this.hostId) return;
     this.leave();
     this.hostId = hostId;
     this.nodeState = null;
@@ -120,12 +126,17 @@ export class RemoteEarSession implements RemoteEar {
   }
 
   close(): Promise<void> {
-    if (this.closed) return Promise.resolve();
+    if (this.closed) return this.closing ?? Promise.resolve();
     this.closed = true;
-    this.leave();
-    this.hostId = null;
-    this.deps.released(this);
-    return Promise.resolve();
+    const hostId = this.hostId;
+    if (hostId === null || !this.deps.hosts.sendTo(hostId, { type: 'ears_close', key: this.key })) {
+      this.finish();
+      return Promise.resolve();
+    }
+    this.closing = new Promise((resolve) => {
+      this.settle = resolve;
+    });
+    return this.closing;
   }
 
   heard(message: RemoteEarNodeMessage): void {
@@ -147,7 +158,19 @@ export class RemoteEarSession implements RemoteEar {
         this.nodeState = message.state;
         this.deps.stated();
         return;
+      case 'closed':
+        this.finish();
+        return;
     }
+  }
+
+  private finish(): void {
+    this.hostId = null;
+    this.said = null;
+    this.restSaid = false;
+    this.deps.released(this);
+    this.settle?.();
+    this.settle = null;
   }
 
   private open(hostId: string): void {

@@ -25,6 +25,7 @@ const DECIDED_AS_SYSTEM = [
   'changePersonAccess',
   'revokePerson',
   'listAccessAudit',
+  'decideAccessRequest',
   'hubIdentity',
   'listMcpTokens',
   'createMcpToken',
@@ -36,6 +37,13 @@ const DECIDED_AS_SYSTEM = [
   'listMcpConsents',
   'decideMcpConsent',
   'checkFirewall',
+  'applyFirewall',
+  'readMachineUpdate',
+  'readDeveloperDevice',
+  'setDeveloperDevice',
+  'saveWatchCaptures',
+  'readWatchCaptures',
+  'clearWatchCaptures',
 ];
 
 describe('the area every app call belongs to', () => {

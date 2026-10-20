@@ -71,18 +71,24 @@ object PhoneSound : PhoneDetailSource {
       put("alarm_volume", PhoneReadings.percentOf(audio, AudioManager.STREAM_ALARM))
       put("notification_volume", PhoneReadings.percentOf(audio, AudioManager.STREAM_NOTIFICATION))
       put("audio_output", route(context).kind)
+      PhoneSystemSettings.on(context, SystemToggle.HAPTIC_FEEDBACK)?.let { put("haptic_feedback", it) }
+      PhoneSystemSettings.on(context, SystemToggle.TOUCH_SOUNDS)?.let { put("touch_sounds", it) }
       if (PhoneFeatures.phoneStateAllowed(context)) put("in_call", inCall(context))
     }
   }
 
-  override fun section(context: Context, section: PhoneSection, request: PhoneReadRequest): JSONObject {
+  override fun section(context: Context, section: PhoneSection, request: PhoneReadRequest): JSONObject? {
     val audio = context.getSystemService(AudioManager::class.java)
     val route = route(context)
-    return body(streams(audio), route, mediaSection(WatchNotificationListener.active?.nowPlaying(), request.live))
+    val haptic = PhoneSystemSettings.on(context, SystemToggle.HAPTIC_FEEDBACK) ?: return null
+    val touch = PhoneSystemSettings.on(context, SystemToggle.TOUCH_SOUNDS) ?: return null
+    return body(streams(audio), haptic, touch, route, mediaSection(WatchNotificationListener.active?.nowPlaying(), request.live))
   }
 
-  fun body(streams: JSONObject, route: AudioRoute, media: Any): JSONObject = JSONObject()
+  fun body(streams: JSONObject, hapticFeedback: Boolean, touchSounds: Boolean, route: AudioRoute, media: Any): JSONObject = JSONObject()
     .put("streams", streams)
+    .put("hapticFeedback", hapticFeedback)
+    .put("touchSounds", touchSounds)
     .put("output", JSONObject().put("kind", route.kind).put("name", route.name ?: JSONObject.NULL))
     .put("media", media)
 

@@ -13,11 +13,11 @@ import { OverflowButton, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { orderScenes } from '../../../api/scenes';
 import { plural } from '../../../format/text';
-import { attempt, removeScene, runSceneNow } from '../data/actions';
-import type { Names } from '../model/describe';
-import { describeAction } from '../model/describe-action';
-import { readScene, reordered } from '../model/scene-state';
-import { sentenceStart } from '../model/time-text';
+import { attempt, removeScene, runSceneNow } from '../shared/actions';
+import type { Names } from '../shared/describe-names';
+import { describeAction } from '../shared/describe-action';
+import { readScene, reordered } from './scene-state';
+import { sentenceStart } from '../shared/time-text';
 import { sceneIcon } from './icon-sheet';
 import { background } from '@smarteverything/logging';
 

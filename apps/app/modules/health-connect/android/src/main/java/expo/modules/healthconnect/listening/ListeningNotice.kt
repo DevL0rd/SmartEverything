@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import expo.modules.healthconnect.R
 
 object ListeningNotice {
   const val CHANNEL = "smarteverything.listening"
@@ -17,7 +18,7 @@ object ListeningNotice {
 
   fun build(context: Context, state: ListeningState): Notification =
     Notification.Builder(context, CHANNEL)
-      .setSmallIcon(context.applicationInfo.icon)
+      .setSmallIcon(R.drawable.ic_stat_smarteverything)
       .setContentTitle(titleOf(state))
       .setContentText(state.detail ?: "Say the assistant's name to wake it")
       .setOngoing(true)
@@ -34,7 +35,7 @@ object ListeningNotice {
     context.getSystemService(NotificationManager::class.java).notify(
       NOTIFICATION_ID,
       Notification.Builder(context, CHANNEL)
-        .setSmallIcon(context.applicationInfo.icon)
+        .setSmallIcon(R.drawable.ic_stat_smarteverything)
         .setContentTitle("Listening is paused")
         .setContentText("Open SmartEverything to turn it back on")
         .setContentIntent(openApp(context))

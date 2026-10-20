@@ -5,6 +5,7 @@ import { PLACE_NAME } from '../places';
 import { TIME_ZONE } from '../automations';
 import { FITNESS_SETTINGS_CHANGE } from '../fitness-settings';
 import { HISTORY_SETTINGS_CHANGE } from '../history-settings';
+import { TRIGGER_SETTINGS_CHANGE } from '../trigger-settings';
 import { PAUSE_MS } from '../voice-activity';
 import { PROVIDER_LINK_ROW, HOME_NAME, LATITUDE, LONGITUDE, SETTINGS_ROW } from './rows-home';
 import { NO_BODY, endpoint } from './endpoint';
@@ -118,12 +119,23 @@ const SETTINGS_ENDPOINTS = {
     body: HISTORY_SETTINGS_CHANGE,
     response: SETTINGS_ROW,
   }),
+  updateTriggerSettings: endpoint({
+    method: 'PATCH',
+    path: '/api/settings/triggers',
+    access: 'owner',
+    summary:
+      'Switch a whole source of signals (device, computer, camera, a plugin…) or one kind (source/kind) on or off for automations, the activity feed and AI; off signals are dropped without a trace; null puts one back to its default',
+    params: NOTHING,
+    query: NOTHING,
+    body: TRIGGER_SETTINGS_CHANGE,
+    response: SETTINGS_ROW,
+  }),
   updateListeningSettings: endpoint({
     method: 'PATCH',
     path: '/api/settings/listening',
     access: 'owner',
     summary:
-      'Change the end-of-speech pause (how long the shared speech gate waits after someone stops talking, for calls and every listening ear) or the computer that listens on behalf of cameras, walkie channels and Discord (null picks the first online computer that can)',
+      'Change the end-of-speech pause (0 is Automatic, the default: Gemini decides when someone is done in calls; otherwise 200, 320, 640, 1000 or 2500 ms the shared speech gate waits after someone stops talking, for calls and every listening ear) or the computer that listens on behalf of cameras, walkie channels and Discord (null picks the first online computer that can)',
     params: NOTHING,
     query: NOTHING,
     body: somethingToChange({

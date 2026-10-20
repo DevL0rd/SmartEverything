@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { View } from 'react-native';
 import type { FrameClass } from '../../../components/widget-board';
 import { FigureText } from '../../../components/figure';
@@ -33,7 +33,13 @@ export const WIDE_MAX_FIGURES = 3;
 
 const PANEL_CHART_HEIGHT = 120;
 
+export interface WideFrame {
+  readonly ref: RefObject<View | null>;
+  readonly onLayout: (() => void) | undefined;
+}
+
 export interface WideCardProps {
+  readonly frame?: WideFrame;
   readonly cls: WideClass;
   readonly summary: string;
   readonly visual: ReactNode;
@@ -75,6 +81,13 @@ export function WideFigure({
 }
 
 function Head({ title, chip }: { readonly title: string; readonly chip: ReactNode }): ReactNode {
+  if (chip === undefined) {
+    return (
+      <Text variant="body-strong" numberOfLines={1} className="min-w-0">
+        {title}
+      </Text>
+    );
+  }
   return (
     <View className="flex-row items-center justify-between gap-2">
       <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
@@ -166,7 +179,12 @@ function Actions({
 
 function RowCard(props: WideCardProps): ReactNode {
   return (
-    <View className="flex-1 gap-1.5" pointerEvents="box-none">
+    <View
+      ref={props.frame?.ref}
+      onLayout={props.frame?.onLayout}
+      className="flex-1 gap-1.5"
+      pointerEvents="box-none"
+    >
       <View className="flex-1 flex-row gap-3" pointerEvents="box-none">
         <VisualSlot cls={props.cls} visual={props.visual} />
         <View className="min-w-0 flex-1 gap-1" pointerEvents="box-none">
@@ -181,7 +199,12 @@ function RowCard(props: WideCardProps): ReactNode {
 
 function SplitCard(props: WideCardProps): ReactNode {
   return (
-    <View className="flex-1 gap-1.5" pointerEvents="box-none">
+    <View
+      ref={props.frame?.ref}
+      onLayout={props.frame?.onLayout}
+      className="flex-1 gap-1.5"
+      pointerEvents="box-none"
+    >
       <View className="flex-1 flex-row gap-4" pointerEvents="box-none">
         <VisualSlot cls={props.cls} visual={props.visual} />
         <View className="min-w-0 flex-1 justify-center" pointerEvents="box-none">
@@ -198,7 +221,12 @@ function PanelCard(props: WideCardProps): ReactNode {
   const { cls, actions, ticker, log, graph } = props;
   const height = { height: PANEL_CHART_HEIGHT };
   return (
-    <View className="flex-1 gap-3" pointerEvents="box-none">
+    <View
+      ref={props.frame?.ref}
+      onLayout={props.frame?.onLayout}
+      className="flex-1 gap-3"
+      pointerEvents="box-none"
+    >
       <View className="flex-row items-center gap-4" pointerEvents="box-none">
         <VisualSlot cls={cls} visual={props.visual} />
         <View className="min-w-0 flex-1" pointerEvents="box-none">

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WeatherService } from '../../src/weather/weather-service';
 import { skyFetch } from '../automations/support/weather';
-import { TestClock } from '../automations/support/test-clock';
+import { SimulatedClock as TestClock } from '../../src/clock/simulated';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 

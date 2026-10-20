@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { View, type ViewStyle } from 'react-native';
-import { WIDGET_FOOTPRINTS, type BoardClass, type WidgetSize } from '@smarteverything/domain';
+import type { BoardClass, WidgetSize } from '@smarteverything/domain';
 import { useIdiom } from '../../../design/platform';
 import { frameOf, spanWidth, type Cell } from '../board-geometry';
+import { footprintOf } from '../footprint';
 import { frameBoxOf } from '../frame-class';
 import type { WidgetDefinition } from '../types';
 import { renderPreview } from '../widget-scope';
@@ -33,7 +34,7 @@ export function GalleryPreview({
   maxWidth,
 }: GalleryPreviewProps): ReactNode {
   const idiom = useIdiom();
-  const footprint = WIDGET_FOOTPRINTS[board][size];
+  const footprint = footprintOf(board, size, definition);
   const frame = frameOf(cell, {
     col: 0,
     row: 0,

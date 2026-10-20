@@ -5,6 +5,7 @@ import { useComputerReach } from '../data/computer-scopes';
 import { SectionGate } from '../processes/section-gate';
 import { AppsSection } from './apps-section';
 import { OpenSection } from './open-section';
+import { TilingSection } from './tiling-section';
 import { WindowsSection } from './windows-section';
 
 export function ComputerAppsScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
@@ -21,6 +22,7 @@ export function ComputerAppsScreen({ deviceId }: { readonly deviceId: string }):
         )}
         <OpenSection deviceId={deviceId} machine={reach.name} online={reach.online} />
         <WindowsSection deviceId={deviceId} online={reach.online} />
+        <TilingSection deviceId={deviceId} online={reach.online} />
         <AppsSection deviceId={deviceId} machine={reach.name} online={reach.online} />
       </SectionGate>
     </ComputerFrame>

@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import type { CalendarDate } from './sun';
 
+export const CLOCK_TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'a time written as HH:MM');
+
+export const WEEKDAYS = z
+  .array(z.number().int().min(0).max(6))
+  .min(1)
+  .refine((days) => new Set(days).size === days.length, { message: 'weekdays must not repeat' });
+
 export interface LocalClock extends CalendarDate {
   readonly weekday: number;
   readonly minuteOfDay: number;

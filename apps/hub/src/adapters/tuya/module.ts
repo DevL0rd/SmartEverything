@@ -10,23 +10,11 @@ import {
   ProviderProblemError,
   type LinkContext,
   type ProviderModule,
-  type RunContext,
   type StoredAccount,
 } from '../contract';
-import {
-  labelOf,
-  projectAccount,
-  projectSecretsFrom,
-  secretsOf,
-  smartLifeAccount,
-  type TuyaSecrets,
-} from './account';
-import type { TuyaBackend } from './backend';
-import { TuyaCloud } from './cloud-client';
-import { listDevices } from './cloud-inventory';
+import { labelOf, secretsOf, smartLifeAccount, storedUserCode } from './account';
 import { executeCommand, refreshStates } from './commands';
 import type { TuyaDependencies } from './dependencies';
-import { developerBackend } from './developer-backend';
 import { TuyaRuntime } from './runtime';
 import { expireTerminal, smartLifeBackend } from './smart-life-backend';
 import { homeDevices } from './smart-life-inventory';
@@ -40,7 +28,6 @@ const ACCOUNT_PROBLEMS: ReadonlyMap<TuyaErrorKind, ProviderProblem> = new Map<
   ['credentials', 'bad_credentials'],
   ['token', 'session_expired'],
   ['permission', 'permission_denied'],
-  ['subscription', 'not_supported'],
 ]);
 
 function accountProblem(cause: unknown): ProviderProblemError | null {
@@ -49,14 +36,6 @@ function accountProblem(cause: unknown): ProviderProblemError | null {
   }
   const problem = ACCOUNT_PROBLEMS.get(cause.kind);
   return problem === undefined ? null : new ProviderProblemError(problem, cause);
-}
-
-async function classified<T>(work: () => Promise<T>): Promise<T> {
-  try {
-    return await work();
-  } catch (cause) {
-    throw accountProblem(cause) ?? cause;
-  }
 }
 
 function adapterOf(runtime: TuyaRuntime): ProviderAdapter {
@@ -77,11 +56,25 @@ function adapterOf(runtime: TuyaRuntime): ProviderAdapter {
   };
 }
 
-async function linkSmartLife(
-  userCode: string,
+class UserCodeRequiredError extends Error {
+  override readonly name = 'UserCodeRequiredError';
+
+  constructor() {
+    super(
+      'Enter the User Code from the Smart Life app: Me > Settings > Account and Security > User Code.',
+    );
+  }
+}
+
+async function linkAccount(
+  credentials: z.output<typeof TUYA_CREDENTIALS>,
   dependencies: TuyaDependencies,
   context: LinkContext,
 ): Promise<StoredAccount> {
+  const userCode = credentials.userCode ?? storedUserCode(context.stored);
+  if (userCode === null) {
+    throw new ProviderProblemError('bad_credentials', new UserCodeRequiredError());
+  }
   let session = await signInWithUserCode(userCode, dependencies, context);
   const cloud = new SmartLifeCloud({
     session,
@@ -92,40 +85,11 @@ async function linkSmartLife(
     },
   });
   const { devices } = await homeDevices(cloud);
-  context.log.info('tuya.linked', { method: 'smart_life', devices: devices.length });
-  return smartLifeAccount(session);
-}
-
-function backendOf(
-  secrets: TuyaSecrets,
-  dependencies: TuyaDependencies,
-  context: RunContext,
-): TuyaBackend {
-  if (secrets.method === 'developer_project') {
-    return developerBackend(secrets, dependencies);
-  }
-  return smartLifeBackend({
-    session: secrets,
-    dependencies,
-    renewed: (session: SmartLifeSession) => context.saveAccount(smartLifeAccount(session)),
-    lost: (cause) => context.needsAttention(new ProviderProblemError('session_expired', cause)),
+  context.log.info('tuya.linked', {
+    devices: devices.length,
+    reusedUserCode: credentials.userCode === undefined,
   });
-}
-
-async function linkAccount(
-  credentials: z.output<typeof TUYA_CREDENTIALS>,
-  dependencies: TuyaDependencies,
-  context: LinkContext,
-): Promise<StoredAccount> {
-  if (credentials.method === 'smart_life') {
-    return linkSmartLife(credentials.userCode, dependencies, context);
-  }
-  const secrets = projectSecretsFrom(credentials);
-  const devices = await classified(() =>
-    listDevices(new TuyaCloud(secrets, dependencies), secrets.appUserId),
-  );
-  context.log.info('tuya.linked', { method: 'developer_project', devices: devices.length });
-  return projectAccount(secrets, devices.length);
+  return smartLifeAccount(session);
 }
 
 export function createTuyaModule(dependencies: TuyaDependencies): ProviderModule<'tuya'> {
@@ -134,7 +98,12 @@ export function createTuyaModule(dependencies: TuyaDependencies): ProviderModule
     link: (credentials, context) => linkAccount(credentials, dependencies, context),
     labelOf: (account): string => labelOf(secretsOf(account)),
     start: async (account, context): Promise<ProviderAdapter> => {
-      const backend = backendOf(secretsOf(account), dependencies, context);
+      const backend = smartLifeBackend({
+        session: secretsOf(account),
+        dependencies,
+        renewed: (session: SmartLifeSession) => context.saveAccount(smartLifeAccount(session)),
+        lost: (cause) => context.needsAttention(new ProviderProblemError('session_expired', cause)),
+      });
       const runtime = new TuyaRuntime({ backend, dependencies, context });
       try {
         await runtime.load();
@@ -148,10 +117,11 @@ export function createTuyaModule(dependencies: TuyaDependencies): ProviderModule
       return adapterOf(runtime);
     },
     forget: async (account): Promise<void> => {
-      const secrets = secretsOf(account);
-      if (secrets.method === 'smart_life') {
-        await expireTerminal({ session: secrets, dependencies, renewed: () => Promise.resolve() });
-      }
+      await expireTerminal({
+        session: secretsOf(account),
+        dependencies,
+        renewed: () => Promise.resolve(),
+      });
     },
   };
 }

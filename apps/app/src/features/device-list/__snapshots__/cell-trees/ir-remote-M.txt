@@ -1,32 +1,30 @@
-View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
-  View className="flex-1 p-card-pad" pointerEvents="box-none"
-    View className="flex-1 gap-1.5" pointerEvents="box-none"
-      View className="flex-1 flex-row gap-3" pointerEvents="box-none"
-        View className="items-center justify-center self-center" pointerEvents="none" style={width:96}
-          View aria-hidden=true className="relative shrink-0 size-24 opacity-60" onLayout=undefined pointerEvents="none" ref={current:null}
-            Svg.default height=96 pointerEvents="none" style={position:"absolute",left:0,top:0,width:96,height:96} viewBox="0 0 100 100" width=96
-              Svg.Ellipse cx=50 cy=92 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=32 ry=4
-              Svg.Path d="M17 22 H83 A11 11 0 0 1 94 33 V45 A11 11 0 0 1 83 56 H17 A11 11 0 0 1 6 45 V33 A11 11 0 0 1 17 22 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) stroke="#3d444b" strokeDasharray="4 3" strokeWidth=0.9
-              Svg.Path d="M16.5 42 H83.5 A2.5 2.5 0 0 1 86 44.5 V44.5 A2.5 2.5 0 0 1 83.5 47 H16.5 A2.5 2.5 0 0 1 14 44.5 V44.5 A2.5 2.5 0 0 1 16.5 42 Z" fill="#474c51" fillOpacity=0.7
-              Svg.Circle cx=80 cy=32 fill="#384048" r=2.2
-        View className="min-w-0 flex-1 gap-1" pointerEvents="box-none"
-          View accessibilityLabel="Device 0. Offline. IR can’t report back" accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
-            View className="flex-row items-center justify-between gap-2"
-              Text className="font-sans-medium text-body text-on-surface text-left min-w-0 flex-1" numberOfLines=1 selectable=false
-              View className="flex-row items-center gap-1 self-start rounded-full px-2 py-0.5 bg-surface-3"
-                Text className="font-sans-medium text-caption text-on-surface-variant text-left" numberOfLines=1 selectable=false
-            Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
-          View aria-hidden=true className="min-h-0 min-w-0 justify-end flex-1" pointerEvents="none"
-            View aria-hidden=true className="w-full items-center justify-center" style={height:28}
-              View className="absolute inset-x-0 bottom-3 border-t border-dashed border-outline"
-              View className="rounded-xs bg-surface-1 px-2"
-                Text className="font-sans-medium text-caption text-on-surface-variant text-left" numberOfLines=1 selectable=false
-      View className="flex-row items-center gap-2" pointerEvents="box-none"
-        View accessibilityRole="summary" className="flex-row items-start gap-2"
-          View className="pt-px"
-            Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=16 ref=null stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2 viewBox="0 0 24 24" width=16 xmlns="http://www.w3.org/2000/svg"
-              Svg.Circle aria-hidden=true cx="12" cy="12" fill="none" r="10" stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
-              Svg.Path aria-hidden=true d="M12 16v-4" fill="none" stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
-              Svg.Path aria-hidden=true d="M12 8h.01" fill="none" stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
-          View className="min-w-0 flex-1 items-start gap-1"
-            Text className="font-sans text-footnote text-on-surface-variant text-left" selectable=false
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1 p-card-pad" pointerEvents="box-none"
+  View className="flex-1 gap-1.5" onLayout=undefined pointerEvents="box-none" ref=undefined
+    View className="flex-1 flex-row gap-3" pointerEvents="box-none"
+      View className="items-center justify-center self-center" pointerEvents="none" style={width:96}
+        View aria-hidden=true className="relative shrink-0 size-24 opacity-60" onLayout=undefined pointerEvents="none" ref={current:null}
+          Svg.default height=96 pointerEvents="none" style={position:"absolute",left:0,top:0,width:96,height:96} viewBox="0 0 100 100" width=96
+            Svg.Ellipse cx=50 cy=92 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=32 ry=4
+            Svg.Path d="M17 22 H83 A11 11 0 0 1 94 33 V45 A11 11 0 0 1 83 56 H17 A11 11 0 0 1 6 45 V33 A11 11 0 0 1 17 22 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#07b623"; ); Svg.Stop(offset="0.45" stopColor="#07b490"; ); Svg.Stop(offset="1" stopColor="#07b623"; ))) stroke="#1ad8bd" strokeDasharray="4 3" strokeWidth=0.9
+            Svg.Path d="M16.5 42 H83.5 A2.5 2.5 0 0 1 86 44.5 V44.5 A2.5 2.5 0 0 1 83.5 47 H16.5 A2.5 2.5 0 0 1 14 44.5 V44.5 A2.5 2.5 0 0 1 16.5 42 Z" fill="#0e9919" fillOpacity=0.7
+            Svg.Circle cx=80 cy=32 fill="#51e561" r=2.2
+      View className="min-w-0 flex-1 gap-1" pointerEvents="box-none"
+        View accessibilityLabel="Device 0. Offline. IR can’t report back" accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
+          View className="flex-row items-center justify-between gap-2"
+            Text className="font-sans-medium text-body text-on-surface text-left min-w-0 flex-1" numberOfLines=1 selectable=false
+            View className="flex-row items-center gap-1 self-start rounded-full px-2 py-0.5 bg-surface-3"
+              Text className="font-sans-medium text-caption text-on-surface-variant text-left" numberOfLines=1 selectable=false
+          Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+        View aria-hidden=true className="min-h-0 min-w-0 justify-end flex-1" pointerEvents="none"
+          View aria-hidden=true className="w-full items-center justify-center" style={height:28}
+            View className="absolute inset-x-0 bottom-3 border-t border-dashed border-outline"
+            Text className="font-sans-medium text-caption text-on-surface-variant text-left rounded-xs bg-surface-1 px-2" numberOfLines=1 selectable=false
+    View className="flex-row items-center gap-2" pointerEvents="box-none"
+      View accessibilityRole="summary" className="flex-row items-start gap-2"
+        View className="pt-px"
+          Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=16 ref=null stroke="#edd1be" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2 viewBox="0 0 24 24" width=16 xmlns="http://www.w3.org/2000/svg"
+            Svg.Circle aria-hidden=true cx="12" cy="12" fill="none" r="10" stroke="#edd1be" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
+            Svg.Path aria-hidden=true d="M12 16v-4" fill="none" stroke="#edd1be" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
+            Svg.Path aria-hidden=true d="M12 8h.01" fill="none" stroke="#edd1be" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
+        View className="min-w-0 flex-1 items-start gap-1"
+          Text className="font-sans text-footnote text-on-surface-variant text-left" selectable=false

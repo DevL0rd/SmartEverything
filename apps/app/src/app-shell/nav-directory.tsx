@@ -3,16 +3,13 @@ import { View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { ListRow } from '../components/list-row';
 import { List } from '../components/section';
-import { useValue } from '../design/external-store';
-import { useUnreadChatCount } from '../features/assistant';
 import { ProfileAvatar, ProfileSwitcher } from '../features/profiles';
 import { useActiveProfile, useProfiles } from '../store/people';
-import { useAvailability, useIsOwner, useSettings } from '../store/selectors';
+import { useIsOwner, useSettings } from '../store/selectors';
 import { CONNECTIONS_ACTION, HOME_ACTIONS } from './home-actions';
 import { href } from './hrefs';
-import { NavItems, navIntent } from './nav-groups';
-import { directoryModel, navEntries } from './nav-model';
-import { closeNavSheet, goFromDirectory, navCurrent } from './nav-sheet-state';
+import { SheetPages } from './nav-sheet-pages';
+import { closeNavSheet } from './nav-sheet-state';
 
 function leaveTo(target: Href): void {
   closeNavSheet();
@@ -41,25 +38,6 @@ function ProfileBlock(): ReactNode {
   );
 }
 
-function Destinations({ compact }: { readonly compact: boolean }): ReactNode {
-  const current = useValue(navCurrent);
-  const availability = useAvailability();
-  const unread = useUnreadChatCount();
-  const entries = navEntries(directoryModel(current, availability, unread));
-  if (compact) {
-    return (
-      <View className="flex-row flex-wrap">
-        <NavItems entries={entries} go={goFromDirectory} intent={navIntent} look="tile" />
-      </View>
-    );
-  }
-  return (
-    <View className="gap-0.5">
-      <NavItems entries={entries} go={goFromDirectory} intent={navIntent} />
-    </View>
-  );
-}
-
 function QuickActions(): ReactNode {
   const owner = useIsOwner();
   const settings = useSettings();
@@ -81,11 +59,11 @@ function QuickActions(): ReactNode {
   );
 }
 
-export function NavDirectory({ compact = false }: { readonly compact?: boolean }): ReactNode {
+export function NavDirectory(): ReactNode {
   return (
     <View className="gap-section-gap">
       <ProfileBlock />
-      <Destinations compact={compact} />
+      <SheetPages />
       <QuickActions />
     </View>
   );

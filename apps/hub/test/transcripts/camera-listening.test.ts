@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CameraListening } from '../../src/transcripts/camera-listening';
 import type { TranscribeRequest } from '../../src/transcripts/transcriber';
 import { Transcripts } from '../../src/transcripts/transcript-service';
-import type { SpeechSegment } from '../../src/wake-name/ear';
+import type { SpeechSegment } from '../../src/listening/speech-segment';
 import { FakeClock } from '../support/fake-clock';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';

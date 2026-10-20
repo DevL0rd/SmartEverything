@@ -27,7 +27,7 @@ export const CHANGE = z.strictObject({
     .max(120)
     .describe('Capability key, role (such as power or target_temperature) or label'),
   value: JSON_VALUE.describe(
-    `New value in the capability’s value_format from get_device: true or false; a number in its unit; an enum option or its label; a colour as ${COLOR_INPUT_FORMS}; null runs an action. Brightness is its own number capability, not the colour’s value; a white tone is the colour temperature capability: kelvin as a number, "2700K" or "370 mireds"`,
+    `New value in the capability’s value_format from get_device: true or false; a number in its unit; an enum option or its label; a colour as ${COLOR_INPUT_FORMS}; null runs an action. Brightness and white tone are their own capabilities (white tone: kelvin as a number, "2700K" or "370 mireds")`,
   ),
   unit: VALUE_UNIT,
 });

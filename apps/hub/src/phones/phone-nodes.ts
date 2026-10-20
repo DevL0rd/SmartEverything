@@ -61,7 +61,10 @@ function reportedOrStored<T>(
   return kept.success ? kept.data : [];
 }
 
-function machineOf(report: PhoneReport, known: DeviceRow | undefined): PhoneMachine {
+function machineOf(
+  report: Pick<PhoneReport, 'actions' | 'permissions' | 'features'>,
+  known: DeviceRow | undefined,
+): PhoneMachine {
   return {
     actions: reportedOrStored(
       report.actions,
@@ -127,6 +130,10 @@ export class PhoneNodes {
     return (): void => {
       this.listeners.delete(listener);
     };
+  }
+
+  async enroll(phone: PhoneIdentity): Promise<void> {
+    await this.ensure(phone, {});
   }
 
   async report(phone: PhoneIdentity, report: PhoneReport): Promise<void> {
@@ -229,7 +236,10 @@ export class PhoneNodes {
     return { deviceId: device.id, clientId, profileId, name: device.display_name ?? device.name };
   }
 
-  private async ensure(phone: PhoneIdentity, report: PhoneReport): Promise<DeviceRow> {
+  private async ensure(
+    phone: PhoneIdentity,
+    report: Pick<PhoneReport, 'actions' | 'permissions' | 'features'>,
+  ): Promise<DeviceRow> {
     const externalId = phoneExternalId(phone.clientId);
     const known = this.deviceOf(externalId);
     const wanted = describePhone(phone, machineOf(report, known));

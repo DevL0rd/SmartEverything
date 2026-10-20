@@ -68,8 +68,9 @@ describe('receivePhoneDetail', () => {
   it('adds a section the stored detail did not have yet', () => {
     const client = new QueryClient();
     client.setQueryData(phoneDetailKey(PHONE), detail());
-    receivePhoneDetail(client, notice({ connections: { bluetooth: [] } }));
+    receivePhoneDetail(client, notice({ connections: { bluetoothOn: true, bluetooth: [] } }));
     expect(client.getQueryData<PhoneDetail>(phoneDetailKey(PHONE))?.connections).toEqual({
+      bluetoothOn: true,
       bluetooth: [],
       at: LATER,
     });

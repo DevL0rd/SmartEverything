@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { OverlayVoice } from '@smarteverything/domain';
 import {
   barModeOf,
   type ControlModel,
@@ -246,5 +247,37 @@ describe('rest timing', () => {
   it('rests after 8 s of silence and 3 s into thinking', () => {
     expect(restMs('listening')).toBe(8000);
     expect(restMs('thinking')).toBe(3000);
+  });
+});
+
+describe('thinking on the overlay', () => {
+  const voice = (thinking_level: 'off' | 'high'): OverlayVoice => ({
+    thinking_level,
+    saving: false,
+    failed: false,
+    changedInCall: false,
+  });
+
+  it('shows the chip only on the calm bars, with the slashed brain for off', () => {
+    expect(pillModel(host(), false).chip).toBeNull();
+    const compact = host(input({ surface: OTHER_PAGE }));
+    expect(pillModel(compact, false).chip).toMatchObject({
+      icon: 'brainOff',
+      label: 'Thinking off',
+      warm: false,
+    });
+    const high = host(input({ surface: OTHER_PAGE, voice: voice('high') }));
+    expect(pillModel(high, false).chip).toMatchObject({ icon: 'brain', label: 'Thinking: High' });
+  });
+
+  it('carries the picker state in the tray and loads without a value', () => {
+    expect(trayModel(host(input({ voice: voice('high') })), NOW)?.setup).toMatchObject({
+      level: 'high',
+      state: 'ready',
+    });
+    expect(trayModel(host(input({ voice: null })), NOW)?.setup).toMatchObject({
+      level: null,
+      state: 'loading',
+    });
   });
 });

@@ -8,6 +8,8 @@ import { bandLabel, bandScope, whiteScope, type MemberNoun } from '../group-summ
 import { mixedOf, sharedTint } from '../master-marks';
 import type { Master } from '../use-master';
 
+const OFFLINE_TEXT = 'Offline';
+
 interface BandProps {
   readonly state: TargetState;
   readonly colours: Readonly<Record<string, string>>;
@@ -103,6 +105,7 @@ function LightWhite({
       label={`${name} white temperature, ${whiteScope(state, noun)}`}
       value={state.whiteTemperature === null ? null : state.whiteTemperature.mean}
       disabled={state.power === 'none' || state.whiteTemperature === null}
+      valueText={state.power === 'none' ? OFFLINE_TEXT : undefined}
       focusRef={focusRef}
       {...(mixed === undefined ? {} : { mixed })}
       onChange={master.setWhite}

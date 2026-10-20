@@ -556,3 +556,44 @@
   -webkit-app-region: drag;
   cursor: grab;
 }
+.think {
+  flex: none;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--color-surface-2);
+  color: var(--color-on-surface-variant);
+  font:
+    500 12px/16px Geist-Medium,
+    system-ui;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.think:hover {
+  background: var(--color-surface-3);
+}
+.think.warm {
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+}
+.think-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.think.icon {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+.think.icon .think-tx {
+  display: none;
+}
+.think:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

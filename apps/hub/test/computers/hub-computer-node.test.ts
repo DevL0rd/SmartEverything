@@ -4,7 +4,7 @@ import {
   COMPUTER_RUNTIME_REPLY,
   type ComputerRuntimeReply,
 } from '@smarteverything/domain';
-import { Logger } from '@smarteverything/logging';
+import { Logger, type LogRecord } from '@smarteverything/logging';
 import { describe, expect, it } from 'vitest';
 import type { ComputerRuntimeHost } from '../../src/computers/runtime-host';
 import type { MicHandlers } from '../../src/node/controls/linux/mic-capture';
@@ -126,12 +126,13 @@ describe.skipIf(process.platform !== 'linux')('the hub computer as its own node 
     await until(() => resolved(paired.deviceId), 'the computer to answer');
     await until(() => mic.opened() === 1, 'the node ear to open the microphone');
     mic.speak(wakeAudio());
-    await until(
-      () => logs.records.some((record) => record.event === 'wake.spotted'),
-      'the hub to hear the wake claim',
-    );
+    const hubSpotted = (): LogRecord | undefined =>
+      logs.records.find(
+        (record) => record.event === 'wake.spotted' && record.payload['computerId'] !== undefined,
+      );
+    await until(() => hubSpotted() !== undefined, 'the hub to hear the wake claim');
 
-    const spotted = logs.records.find((record) => record.event === 'wake.spotted');
+    const spotted = hubSpotted();
     expect(spotted?.payload).toMatchObject({ computerId: paired.deviceId, granted: true });
     const rows = await computers();
     expect(rows.map((row) => row.id)).toEqual([paired.deviceId]);

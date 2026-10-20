@@ -102,7 +102,7 @@ describe('the session agent client', () => {
 
   it('answers a ping with the token from the address file', async () => {
     await listen((_operation, socket, id) => {
-      reply(socket, id, { ok: true, capture: null });
+      reply(socket, id, { ok: true, capture: null, permissions: null });
     });
     await expect(new SocketSessionAgent(directory).reachable()).resolves.toBe(true);
   });
@@ -121,14 +121,35 @@ describe('the session agent client', () => {
 
   it('returns the picture the app captured', async () => {
     await listen((operation, socket, id) => {
-      reply(socket, id, { ok: true, capture: operation.op === 'capture' ? CAPTURE : null });
+      reply(socket, id, {
+        ok: true,
+        capture: operation.op === 'capture' ? CAPTURE : null,
+        permissions: null,
+      });
     });
     await expect(new SocketSessionAgent(directory).capture('screen')).resolves.toEqual(CAPTURE);
   });
 
+  it('returns the permissions the app reports', async () => {
+    const held = [{ permission: 'mac_screen_recording', granted: true }];
+    await listen((_operation, socket, id) => {
+      reply(socket, id, { ok: true, capture: null, permissions: held });
+    });
+    await expect(new SocketSessionAgent(directory).permissions()).resolves.toEqual(held);
+  });
+
+  it('fails a permissions question the app answered with nothing', async () => {
+    await listen((_operation, socket, id) => {
+      reply(socket, id, { ok: true, capture: null, permissions: null });
+    });
+    await expect(new SocketSessionAgent(directory).permissions()).rejects.toMatchObject({
+      code: 'failed',
+    });
+  });
+
   it('fails a capture the app answered without a picture', async () => {
     await listen((_operation, socket, id) => {
-      reply(socket, id, { ok: true, capture: null });
+      reply(socket, id, { ok: true, capture: null, permissions: null });
     });
     await expect(new SocketSessionAgent(directory).capture('screen')).rejects.toMatchObject({
       code: 'failed',
@@ -139,7 +160,7 @@ describe('the session agent client', () => {
     const ringing: Socket[] = [];
     await listen((operation, socket, id) => {
       if (operation.op === 'ring' && operation.on) ringing.push(socket);
-      reply(socket, id, { ok: true, capture: null });
+      reply(socket, id, { ok: true, capture: null, permissions: null });
     });
     const agent = new SocketSessionAgent(directory);
     let ended = 0;
@@ -157,7 +178,7 @@ describe('the session agent client', () => {
     const ringing: Socket[] = [];
     await listen((operation, socket, id) => {
       if (operation.op === 'ring' && operation.on) ringing.push(socket);
-      reply(socket, id, { ok: true, capture: null });
+      reply(socket, id, { ok: true, capture: null, permissions: null });
     });
     let ended = 0;
     await new SocketSessionAgent(directory).ring(true, () => {

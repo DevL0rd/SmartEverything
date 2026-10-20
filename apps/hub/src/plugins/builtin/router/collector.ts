@@ -129,6 +129,7 @@ export class RouterCollector {
       cadence: this.#loop.cadence,
       intervalSeconds: this.#loop.intervalSeconds,
       ...this.#parts,
+      people: [],
     };
   }
 }

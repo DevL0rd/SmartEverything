@@ -2,20 +2,18 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   API_ENDPOINTS as E,
+  CLAUDE_SESSION_LIST_MAX,
   type ComputerAiSettingsPatch,
   type ComputerAiStatus,
   type ClaudeStatus,
-  type ClaudeSession,
+  type ClaudeListedSession,
   type ComputerAiModel,
   type ProviderMetadata,
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
+import { computerAiKey, nativeSessionsKey } from '../../../queries/keys';
 import { notify } from '../../../components/toast-store';
 import { background } from '@smarteverything/logging';
-
-export function computerAiKey(deviceId: string): readonly string[] {
-  return ['window', 'computer-ai', deviceId];
-}
 
 export function useComputerAi(
   deviceId: string,
@@ -64,7 +62,7 @@ export function useNativeSessions(
   deviceId: string,
   archived: boolean,
   enabled: boolean,
-): ReturnType<typeof useScreenQuery<ClaudeSession[]>> {
+): ReturnType<typeof useScreenQuery<ClaudeListedSession[]>> {
   return useScreenQuery({
     queryKey: nativeSessionsKey(deviceId, archived),
     queryFn: () => readNativeSessions(deviceId, archived),
@@ -72,16 +70,13 @@ export function useNativeSessions(
   });
 }
 
-export function nativeSessionsKey(deviceId: string, archived: boolean): readonly string[] {
-  return [...computerAiKey(deviceId), 'sessions', String(archived)];
-}
-
-const NATIVE_SESSION_LIMIT = 200;
-
-export function readNativeSessions(deviceId: string, archived: boolean): Promise<ClaudeSession[]> {
+export function readNativeSessions(
+  deviceId: string,
+  archived: boolean,
+): Promise<ClaudeListedSession[]> {
   return api().call(E.listComputerClaudeSessions, {
     params: { deviceId },
-    query: { archived, limit: NATIVE_SESSION_LIMIT },
+    query: { archived, limit: CLAUDE_SESSION_LIST_MAX },
   });
 }
 

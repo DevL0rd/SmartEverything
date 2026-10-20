@@ -77,25 +77,25 @@ describe('workouts', () => {
     heart(8, [120, 150, 160]),
   ];
 
-  it('takes the distance recorded inside the session, attributes energy and reads the heart rate inside', () => {
+  it('attributes the session share of distance and energy recorded in its hours and reads the heart rate inside', () => {
     const [today, earlier] = workoutsOf(records);
     expect(today).toMatchObject({
       name: 'Running',
       minutes: 30,
-      meters: 5000,
+      meters: 5500,
       kilocalories: 320,
       maxBpm: 160,
       route: { status: 'recorded' },
     });
     expect(today!.averageBpm).toBeCloseTo(430 / 3);
-    expect(today!.secondsPerKm).toBeCloseTo(1800 / 5);
+    expect(today!.secondsPerKm).toBeCloseTo(1800 / 5.5);
     expect(earlier).toMatchObject({ kilocalories: null, heart: [] });
   });
 
   it('personal records pick the best session per activity', () => {
     const found = personalRecords(workoutsOf(records));
     expect(found.map((entry) => `${entry.label}:${String(Math.round(entry.value))}`)).toEqual([
-      'Longest distance:5000',
+      'Longest distance:5500',
       'Longest session:30',
       'Fastest pace:300',
       'Most energy:320',
@@ -253,5 +253,182 @@ describe('heart rate zones', () => {
     expect(latestSample([])).toBeNull();
     expect(sampleStats(samples)).toEqual({ min: 120, mean: 145.5, max: 171 });
     expect(sampleStats([])).toBeNull();
+  });
+});
+
+describe('one workout for the same walk seen by two sources', () => {
+  const OWN = 'smarteverything.treadmill';
+
+  function treadmillWalk(day: number, minutes: number): ReturnType<typeof seedRecord> {
+    return seedRecord({
+      type: 'ExerciseSession',
+      start: at(day, 7, 2),
+      end: at(day, 7, 2 + minutes),
+      source: OWN,
+      data: {
+        exerciseType: 57,
+        title: 'Treadmill walk',
+        notes: null,
+        plannedExerciseSessionId: null,
+        segments: [],
+        laps: [],
+        route: { status: 'absent' },
+      },
+    });
+  }
+
+  function watchWalk(day: number, minutes: number): ReturnType<typeof seedRecord> {
+    return seedRecord({
+      type: 'ExerciseSession',
+      start: at(day, 7),
+      end: at(day, 7, minutes),
+      data: {
+        exerciseType: 79,
+        title: null,
+        notes: null,
+        plannedExerciseSessionId: null,
+        segments: [],
+        laps: [],
+        route: { status: 'absent' },
+      },
+    });
+  }
+
+  function speeds(
+    day: number,
+    minutes: number,
+    metersPerSecond: number,
+  ): ReturnType<typeof seedRecord> {
+    const count = (minutes * 60) / 10;
+    return seedRecord({
+      type: 'Speed',
+      start: at(day, 7, 2),
+      end: at(day, 7, 2 + minutes),
+      source: OWN,
+      data: {
+        samples: Array.from({ length: count + 1 }, (_, index) => ({
+          time: new Date(at(day, 7, 2).getTime() + index * 10_000).toISOString(),
+          metersPerSecond,
+        })),
+      },
+    });
+  }
+
+  it('shows the treadmill and the watch once, with the belt as the workout and the watch heart rate and energy', () => {
+    const rows = workoutsOf([
+      watchWalk(8, 30),
+      treadmillWalk(8, 28),
+      speeds(8, 28, 1.25),
+      heart(8, [100, 110, 120]),
+      seedRecord({
+        type: 'ActiveCaloriesBurned',
+        start: at(8, 7),
+        end: at(8, 7, 30),
+        data: { kilocalories: 150 },
+      }),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      source: OWN,
+      name: 'Treadmill',
+      minutes: 28,
+      maxBpm: 120,
+    });
+    expect(rows[0]?.kilocalories).toBeGreaterThan(130);
+    expect(rows[0]?.meters).toBeCloseTo(1.25 * 28 * 60, 0);
+  });
+
+  it('takes the watch distance and energy for its hours over the belt and does not add the phone on top', () => {
+    const watch = 'smarteverything.watch';
+    const phone = 'com.android.healthconnect.phone.j1';
+    const rows = workoutsOf([
+      treadmillWalk(8, 28),
+      speeds(8, 28, 1.25),
+      seedRecord({
+        type: 'Distance',
+        start: at(8, 7),
+        end: at(8, 7, 40),
+        source: watch,
+        data: { meters: 2000 },
+      }),
+      seedRecord({
+        type: 'ActiveCaloriesBurned',
+        start: at(8, 7),
+        end: at(8, 7, 40),
+        source: watch,
+        data: { kilocalories: 200 },
+      }),
+      seedRecord({
+        type: 'Distance',
+        start: at(8, 7, 5),
+        end: at(8, 7, 25),
+        source: phone,
+        data: { meters: 900 },
+      }),
+      seedRecord({
+        type: 'ActiveCaloriesBurned',
+        start: at(8, 7, 5),
+        end: at(8, 7, 25),
+        source: phone,
+        data: { kilocalories: 50 },
+      }),
+    ]);
+    expect(rows[0]?.meters).toBeCloseTo((2000 * 28) / 40);
+    expect(rows[0]?.kilocalories).toBeCloseTo((200 * 28) / 40);
+  });
+
+  it('keeps two sessions apart when they do not overlap', () => {
+    const rows = workoutsOf([watchWalk(8, 20), treadmillWalk(9, 20)]);
+    expect(rows.map((row) => row.source).sort()).toEqual(['com.mi.health', OWN]);
+  });
+
+  it('keeps a short session that only touches the end of a long one', () => {
+    const long = watchWalk(8, 60);
+    const touching = seedRecord({
+      type: 'ExerciseSession',
+      start: at(8, 7, 58),
+      end: at(8, 8, 10),
+      source: OWN,
+      data: {
+        exerciseType: 57,
+        title: null,
+        notes: null,
+        plannedExerciseSessionId: null,
+        segments: [],
+        laps: [],
+        route: { status: 'absent' },
+      },
+    });
+    expect(workoutsOf([long, touching])).toHaveLength(2);
+  });
+
+  it('prefers the longer of two sessions from other apps and keeps the distance of either', () => {
+    const phone = seedRecord({
+      type: 'ExerciseSession',
+      start: at(8, 7, 5),
+      end: at(8, 7, 25),
+      source: 'com.android.healthconnect.phone',
+      data: {
+        exerciseType: 79,
+        title: null,
+        notes: null,
+        plannedExerciseSessionId: null,
+        segments: [],
+        laps: [],
+        route: { status: 'absent' },
+      },
+    });
+    const rows = workoutsOf([
+      watchWalk(8, 30),
+      phone,
+      seedRecord({
+        type: 'Distance',
+        start: at(8, 7, 5),
+        end: at(8, 7, 25),
+        data: { meters: 2000 },
+      }),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ source: 'com.mi.health', minutes: 30, meters: 2000 });
   });
 });

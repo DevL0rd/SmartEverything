@@ -6,6 +6,7 @@ import { BUILTIN_PLUGINS } from '../plugins/builtin';
 import type { Catalogue } from '../openrouter/catalogue';
 import { PluginHost } from '../plugins/host';
 import { machineFileReader } from '../plugins/machine-file';
+import { uploadFileReader } from '../plugins/upload-file';
 import type { PluginFiles } from '../plugins/builtin/contract';
 import { PluginConversations, chatAttachmentPaths } from '../plugins/plugin-assistant';
 import type { PluginVoiceServices } from '../plugins/plugin-voice';
@@ -37,6 +38,7 @@ interface HostLinks {
   readonly conversations: PluginConversations;
   readonly attachments: (chatId: string) => readonly string[];
   readonly machineFile: PluginFiles['fromMachine'];
+  readonly uploadFile: PluginFiles['fromUpload'];
 }
 
 function hostOf(options: BuildOptions, links: HostLinks): PluginHost {
@@ -52,6 +54,7 @@ function hostOf(options: BuildOptions, links: HostLinks): PluginHost {
       conversations: links.conversations,
       attachments: links.attachments,
       machineFile: links.machineFile,
+      uploadFile: links.uploadFile,
       dataDirectory: options.dataDirectory,
       submit: options.core.hub.submit,
       now: options.clock.now,
@@ -146,6 +149,7 @@ export function wirePlugins(
     conversations,
     attachments: (chatId) => chatAttachmentPaths(options.store, context.assistant.files, chatId),
     machineFile: machineFileReader({ tools, harness: context.harness }),
+    uploadFile: uploadFileReader({ store: options.store, files: context.assistant.files }),
   });
   const inbox = inboxOf(options, context, host);
   const admin = adminOf(options, { host, inbox, secrets, people });

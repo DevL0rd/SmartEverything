@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
+  CHAT_TIMELINE_EMBED,
   TIMELINE_BUDGET_CHARS,
   TIMELINE_FIELD_CHARS,
   boundedTimeline,
   compactTimeline,
+  COMPACT_FIELD_CHARS,
   COMPACT_TEXT_CHARS,
   COMPACT_LINK_CHARS,
   toolResultPage,
@@ -178,11 +180,10 @@ describe('compactTimeline', () => {
     expect(parsed.body).toContain('https://example.com/page');
   });
 
-  it('leaves short fields, plain text, running tools and file evidence as they are', () => {
+  it('leaves short fields, running tools and file evidence as they are', () => {
     const files = JSON.stringify({ meta: { diffs: [{ newText: long }] } });
     const embed = embedOf(
       tool('a', 'in', JSON.stringify({ ok: true })),
-      tool('b', null, long),
       { ...tool('c', null, JSON.stringify({ text: long })), state: 'running' },
       tool('d', null, files),
     );
@@ -190,9 +191,71 @@ describe('compactTimeline', () => {
     expect(compactTimeline(embed)).toBe(embed);
   });
 
+  it('clips a long plain text field to the compact length and says how long it was', () => {
+    const shown = toolAt(compactTimeline(embedOf(tool('b', null, long))), 1);
+
+    expect(shown.output).toHaveLength(COMPACT_FIELD_CHARS);
+    expect(shown.output_chars).toBe(long.length);
+  });
+
   it('is idempotent', () => {
     const once = compactTimeline(embedOf(tool('a', null, JSON.stringify({ text: long }))));
 
     expect(compactTimeline(once)).toBe(once);
+  });
+});
+
+describe('compactTimeline on both fields', () => {
+  const long = 'x'.repeat(5_000);
+  const wide = JSON.stringify({ text: long });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('says how long the whole input and output were when both are clipped', () => {
+    const shown = toolAt(compactTimeline(embedOf(tool('a', wide, wide))), 1);
+    expect(shown.input_chars).toBe(wide.length);
+    expect(shown.output_chars).toBe(wide.length);
+  });
+
+  it('says it only for the input when only the input is clipped', () => {
+    const shown = toolAt(compactTimeline(embedOf(tool('a', wide, 'done'))), 1);
+    expect(shown.input_chars).toBe(wide.length);
+    expect(shown.output).toBe('done');
+    expect(shown.output_chars).toBeUndefined();
+  });
+
+  it('keeps a long JSON field that compacting would not make shorter', () => {
+    const already = JSON.stringify(Array.from({ length: 400 }, (_, index) => String(index)));
+    const embed = embedOf(tool('a', null, already));
+    expect(already.length).toBeGreaterThan(1_000);
+    expect(compactTimeline(embed)).toBe(embed);
+  });
+
+  it('does not hide a failure that is not a JSON syntax error', () => {
+    vi.spyOn(JSON, 'parse').mockImplementation(() => {
+      throw new TypeError('unexpected');
+    });
+    expect(() => compactTimeline(embedOf(tool('a', null, wide)))).toThrow('unexpected');
+  });
+});
+
+describe('steer parts', () => {
+  const steer = {
+    kind: 'steer' as const,
+    key: 'steer:6d0f4e0a-3b8c-4b61-9d5e-8c7a2f1b9e44',
+    message_id: '6d0f4e0a-3b8c-4b61-9d5e-8c7a2f1b9e44',
+  };
+
+  it('parses a steer part and keeps it through bounding and compaction', () => {
+    const embed = CHAT_TIMELINE_EMBED.parse({
+      kind: 'chat_timeline',
+      version: 1,
+      parts: [steer],
+    });
+
+    expect(boundedTimeline(embed)).toBe(embed);
+    expect(compactTimeline(embed)).toBe(embed);
   });
 });

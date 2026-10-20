@@ -5,6 +5,7 @@ import {
   DAY_MS,
   dayKeyOf,
   dayLabel,
+  endOfDayKey,
   monthShort,
   shiftDay,
   shortDate,
@@ -106,6 +107,19 @@ export function windowOf(range: Range, day: string): Window {
     end,
     buckets: bucketsOf(range, new Date(start)),
     firstDay: dayKeyOf(start),
+    lastDay: dayKeyOf(end - 1),
+  };
+}
+
+export function elapsedPart(window: Window, today: string): Window {
+  const end = Math.min(window.end, endOfDayKey(today));
+  if (end === window.end) {
+    return window;
+  }
+  return {
+    ...window,
+    end,
+    buckets: window.buckets.filter((bucket) => bucket.start < end),
     lastDay: dayKeyOf(end - 1),
   };
 }

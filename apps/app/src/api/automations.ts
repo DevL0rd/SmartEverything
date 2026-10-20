@@ -1,70 +1,44 @@
-import {
-  API_ENDPOINTS as E,
-  type AutomationRow,
-  type AutomationRunRow,
-  type AutomationV2,
-  type JsonValue,
+import type {
+  AutomationProgramProblem,
+  AutomationProgramReply,
+  AutomationV3,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { api } from './transport';
+import { createProgram, setProgramEnabled } from '../features/automations/data/api';
 
 const log = new Logger('app.automations');
 
+export class AutomationRefusedError extends Error {
+  override readonly name = 'AutomationRefusedError';
+
+  constructor(
+    readonly problems: readonly AutomationProgramProblem[],
+    summary: string,
+  ) {
+    super(summary);
+  }
+}
+
+function accepted(reply: AutomationProgramReply): AutomationProgramReply {
+  if (!reply.ok) {
+    throw new AutomationRefusedError(reply.problems, reply.summary);
+  }
+  return reply;
+}
+
 export async function setAutomationEnabled(automationId: string, enabled: boolean): Promise<void> {
-  await api().call(E.updateAutomation, { params: { automationId }, body: { enabled } });
+  accepted(await setProgramEnabled(automationId, enabled));
   log.info('automation.toggled', { automationId, enabled });
 }
 
-export interface AutomationSave {
-  readonly automationId: string | null;
+export interface AutomationCreate {
   readonly name: string;
   readonly enabled: boolean;
-  readonly definition: AutomationV2;
-  readonly expectedRevision?: number;
+  readonly definition: AutomationV3;
 }
 
-export async function saveAutomation(save: AutomationSave): Promise<AutomationRow> {
-  const fields = { name: save.name, enabled: save.enabled, definition: save.definition };
-  const saved =
-    save.automationId === null
-      ? await api().call(E.createAutomation, { body: fields })
-      : await api().call(E.updateAutomation, {
-          params: { automationId: save.automationId },
-          body: {
-            ...fields,
-            ...(save.expectedRevision === undefined
-              ? {}
-              : { expectedRevision: save.expectedRevision }),
-          },
-        });
-  log.info('automation.saved', { automationId: saved.id, created: save.automationId === null });
-  return saved;
-}
-
-export async function deleteAutomation(automationId: string): Promise<void> {
-  await api().call(E.removeAutomation, { params: { automationId } });
-  log.info('automation.deleted', { automationId });
-}
-
-export type RunInputs = Readonly<Record<string, JsonValue>>;
-
-export async function runAutomation(
-  automationId: string,
-  inputs: RunInputs = {},
-): Promise<AutomationRunRow> {
-  const run = await api().call(E.runAutomation, { params: { automationId }, body: { inputs } });
-  log.info('automation.run_started', { automationId, runId: run.id });
-  return run;
-}
-
-export async function testAutomation(
-  automationId: string | null,
-  definition: AutomationV2,
-  inputs: RunInputs = {},
-): Promise<AutomationRunRow> {
-  const run = await api().call(E.testAutomation, {
-    body: { definition, inputs, ...(automationId === null ? {} : { automationId }) },
-  });
-  log.info('automation.test_started', { runId: run.id });
-  return run;
+export async function createAutomation(create: AutomationCreate): Promise<AutomationProgramReply> {
+  const reply = accepted(await createProgram(create));
+  log.info('automation.created', { automationId: reply.id });
+  return reply;
 }

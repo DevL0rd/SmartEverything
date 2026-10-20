@@ -15,17 +15,24 @@ import {
   type TvKey,
   type TvPaths,
   type TvRoute,
+  type TelevisionSettingsRow,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { failureLine } from '@smarteverything/logging';
 import type { DeviceRecord } from '../database/port';
 import type { AdapterDirectory } from './executor';
+import type { TelevisionWake } from './television-wake';
 
 export interface TelevisionRoutingOptions {
   readonly adapters: AdapterDirectory;
   readonly valueOf: (deviceId: string, capability: string) => JsonValue | undefined;
-  readonly attachedTo: () => string | null;
+  readonly settingsOf: (deviceId: string) => TelevisionSettingsRow | undefined;
+  readonly wake: TelevisionWake;
   readonly log: Logger;
+}
+
+function wakesFromHub(command: DeviceCommand): boolean {
+  return command.capability === 'power' && command.value === true;
 }
 
 function adapterOf(adapters: AdapterDirectory, provider: Provider): ProviderAdapter {
@@ -45,16 +52,20 @@ export class TelevisionRouting {
     if (device.provider !== 'smartthings' || device.kind !== 'television') {
       return false;
     }
-    if (command.capability === 'remote_key') {
+    if (command.capability === 'remote_key' || wakesFromHub(command)) {
       return true;
     }
     return (
-      (command.capability === 'power' || command.capability === 'app_launch') &&
-      this.attachedTo(device) !== null
+      (command.capability === 'power' || command.capability === 'app_launch') && this.linked(device)
     );
   }
 
   async execute(device: DeviceRecord, command: DeviceCommand): Promise<JsonValue> {
+    if (wakesFromHub(command) && !this.linked(device)) {
+      return this.options.wake.powerOn(device.id, () =>
+        this.send(device, command, { path: 'smartthings', send: this.requestOf(device, command) }),
+      );
+    }
     if (command.capability === 'app_launch') {
       return this.attempt(device, command, [
         { path: 'direct', send: this.requestOf(device, command) },
@@ -72,11 +83,9 @@ export class TelevisionRouting {
     ]);
   }
 
-  private attachedTo(device: DeviceRecord): string | null {
-    const attached = this.options.attachedTo();
-    return attached === device.id && this.options.adapters.adapterFor('samsung_tv') !== undefined
-      ? attached
-      : null;
+  private linked(device: DeviceRecord): boolean {
+    const mac = this.options.settingsOf(device.id)?.direct_mac ?? null;
+    return mac !== null && this.options.adapters.adapterFor('samsung_tv') !== undefined;
   }
 
   private tvOf(device: DeviceRecord): TvDevice {
@@ -96,7 +105,8 @@ export class TelevisionRouting {
   }
 
   private pathsOf(device: DeviceRecord): TvPaths {
-    return tvPathsFor(this.attachedTo(device) !== null);
+    const wake = this.options.settingsOf(device.id)?.wake_macs ?? [];
+    return tvPathsFor(this.linked(device), wake.length > 0);
   }
 
   private keyOf(command: DeviceCommand): TvKey {
@@ -152,7 +162,7 @@ export class TelevisionRouting {
     }
     return adapterOf(this.options.adapters, 'samsung_tv').execute({
       commandId: command.commandId,
-      externalId: device.externalId,
+      externalId: device.id,
       capability,
       value: capability === 'remote_key' ? this.directCode(value) : value,
     });

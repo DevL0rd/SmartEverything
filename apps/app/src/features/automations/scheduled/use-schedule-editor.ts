@@ -7,7 +7,7 @@ import type {
 } from '@smarteverything/domain';
 import { notify } from '../../../components/toast-store';
 import { useMutationState } from '../../../store/mutation';
-import { changeList, type ListChange } from '../model/editor-state';
+import { changeList, type ListChange } from '../shared/list-change';
 import { saveScheduled, type ScheduleSave } from './actions';
 import { actionsOf, stepsOf } from './steps';
 import { DEFAULT_WHEN, timingOf, whenLabel, whenOf, type When } from './when';

@@ -1,0 +1,13 @@
+{
+  "name": "@smarteverything/flow",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@smarteverything/domain": "workspace:*",
+    "zod": "4.4.3"
+  }
+}

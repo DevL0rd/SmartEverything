@@ -1,5 +1,11 @@
-import { eventLabel, type EventKind } from '@smarteverything/domain';
-import type { IconName } from '../../../components/icon';
+import {
+  PLUGIN_SOURCE_PREFIX,
+  SIGNAL_SOURCES,
+  eventLabel,
+  kindSpecOf,
+  type EventKind,
+} from '@smarteverything/domain';
+import { isIconName, type IconName } from '../../../components/icon';
 import type { Tone } from '../../../components/tone';
 
 export type EventLookKind = EventKind | 'recording';
@@ -40,13 +46,43 @@ const LOOKS: Readonly<Record<EventLookKind, Omit<EventLook, 'label'>>> = {
   zone_leave: { icon: 'motion', tone: 'variant' },
   parked: { icon: 'car', tone: 'variant' },
   phone_unlocked: { icon: 'lockOpen', tone: 'faint' },
+  app_opened: { icon: 'appWindow', tone: 'positive' },
+  app_closed: { icon: 'appWindow', tone: 'faint' },
+  app_focused: { icon: 'appWindow', tone: 'primary' },
+  app_unfocused: { icon: 'appWindow', tone: 'faint' },
+  signal: { icon: 'activity', tone: 'variant' },
   recording: { icon: 'film', tone: 'variant' },
 };
+
+const SOURCE_ICONS: Readonly<Record<string, IconName>> = {
+  device: 'plug',
+  computer: 'monitor',
+  weather: 'weather',
+  health: 'heartPulse',
+  assistant: 'bot',
+  schedule: 'calendar',
+  automation_run: 'automations',
+  automation_value: 'automations',
+  hub: 'cpu',
+};
+
+function signalLook(details: Readonly<Record<string, unknown>>): Omit<EventLook, 'label'> {
+  const source = typeof details['source'] === 'string' ? details['source'] : '';
+  const kind = typeof details['kind'] === 'string' ? details['kind'] : '';
+  const spec = kindSpecOf(SIGNAL_SOURCES, { source, kind });
+  const named = spec?.icon;
+  const icon =
+    named !== undefined && isIconName(named)
+      ? named
+      : (SOURCE_ICONS[source] ??
+        (source.startsWith(PLUGIN_SOURCE_PREFIX) ? 'plug' : LOOKS.signal.icon));
+  return { icon, tone: spec?.urgent === true ? 'critical' : LOOKS.signal.tone };
+}
 
 export function eventLook(
   kind: EventLookKind,
   details: Readonly<Record<string, unknown>> = {},
 ): EventLook {
-  const look = LOOKS[kind];
+  const look = kind === 'signal' ? signalLook(details) : LOOKS[kind];
   return { ...look, label: kind === 'recording' ? 'Recording' : eventLabel(kind, details) };
 }

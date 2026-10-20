@@ -10,6 +10,7 @@ import {
   type ServicesState,
   type StartupState,
   type SystemState,
+  type TilingState,
   type WindowsState,
 } from '@smarteverything/domain';
 
@@ -147,6 +148,41 @@ export function compactWindows(state: WindowsState): Fields {
       desktop: window.desktop,
       minimised: window.minimised,
       focused: window.focused,
+    })),
+  };
+}
+
+export function compactTiling(state: TilingState): Fields {
+  const placeOf = new Map(
+    state.workspaces.map((workspace) => [workspace.id, workspace.name ?? workspace.index]),
+  );
+  return {
+    overviewOpen: state.overviewOpen,
+    screens: state.outputs.map((output) => ({
+      name: output.name,
+      width: output.width,
+      height: output.height,
+    })),
+    workspaces: state.workspaces.map((workspace) => ({
+      index: workspace.index,
+      name: workspace.name,
+      screen: workspace.output,
+      ...(workspace.active ? { shown: true } : {}),
+      ...(workspace.focused ? { focused: true } : {}),
+      ...(workspace.urgent ? { urgent: true } : {}),
+      columns: workspace.columns.map((column) => ({
+        windows: column.windowIds,
+        ...(column.display === 'tabbed' ? { tabbed: true } : {}),
+      })),
+    })),
+    windows: state.windows.map((window) => ({
+      windowId: window.id,
+      title: window.title,
+      app: window.appId,
+      workspace: placeOf.get(window.workspaceId) ?? null,
+      ...(window.focused ? { focused: true } : {}),
+      ...(window.floating ? { floating: true } : {}),
+      ...(window.urgent ? { urgent: true } : {}),
     })),
   };
 }

@@ -1,6 +1,6 @@
 import type { ListeningHubMessage } from '@smarteverything/domain';
 import { concat, opusCodec } from '../assistant-voice/audio';
-import { HANDOFF_LIMIT_MS } from '../wake-name/wake-handoff';
+import { HANDOFF_LIMIT_MS } from '../wake-name/handoff-limit';
 import type { OpenMicrophone } from '../talk/camera-microphone';
 import { base64OfPcm } from './ear-pcm';
 

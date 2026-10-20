@@ -31,10 +31,10 @@ describe('ear engine loading', () => {
 
   it('names a spotter that builds no keywords and probes again next time', async () => {
     const fakes = earRig();
-    fakes.keywords.failEarConfig = true;
+    fakes.keywords.buildsNoKeywords = true;
     await expect(fakes.engine.load()).rejects.toBeInstanceOf(EarEngineError);
     expect(fakes.models).toEqual([]);
-    fakes.keywords.failEarConfig = false;
+    fakes.keywords.buildsNoKeywords = false;
     await expect(fakes.engine.load()).resolves.toBeUndefined();
   });
 

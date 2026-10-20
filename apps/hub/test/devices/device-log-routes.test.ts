@@ -53,9 +53,11 @@ describe('the device log over HTTP', () => {
       observedAt: new Date().toISOString(),
     });
     const entries = async (): Promise<DeviceLogEntry[]> =>
-      API_ENDPOINTS.readDeviceLog.response.parse(
-        (await call(base, phone.token, { method: 'GET', path: `/api/devices/${id}/log` })).body,
-      );
+      API_ENDPOINTS.readDeviceLog.response
+        .parse(
+          (await call(base, phone.token, { method: 'GET', path: `/api/devices/${id}/log` })).body,
+        )
+        .filter((entry) => entry.kind === 'change');
     await until(async () => (await entries()).length === 1, 'the lamp change in the log');
     expect(await entries()).toMatchObject([
       { kind: 'change', title: 'Turned on', cause: { kind: 'app', name: 'Dana' } },

@@ -79,4 +79,58 @@ export const PHONE_CAPABILITY_CATALOGUE = {
     kind: 'text',
     keywords: ['wake up', 'clock'],
   },
+  screen_timeout: {
+    label: 'Screen timeout',
+    group: 'system',
+    kind: 'enum',
+    keywords: ['sleep', 'screen off', 'display off', 'lock after', 'seconds', 'minutes'],
+  },
+  auto_rotate: {
+    label: 'Auto-rotate',
+    group: 'system',
+    kind: 'boolean',
+    keywords: ['rotate', 'rotation', 'orientation', 'landscape', 'portrait', 'screen rotation'],
+  },
+  haptic_feedback: {
+    label: 'Touch vibration',
+    group: 'system',
+    kind: 'boolean',
+    keywords: ['vibration', 'haptics', 'haptic', 'vibrate on touch', 'feedback'],
+  },
+  touch_sounds: {
+    label: 'Touch sounds',
+    group: 'system',
+    kind: 'boolean',
+    keywords: ['click sounds', 'tap sounds', 'screen sounds', 'sound effects'],
+  },
+  wifi_on: {
+    label: 'Wi-Fi',
+    group: 'system',
+    kind: 'boolean',
+    keywords: ['wifi', 'wireless', 'wlan', 'internet'],
+  },
+  bluetooth_on: {
+    label: 'Bluetooth',
+    group: 'system',
+    kind: 'boolean',
+    keywords: ['pairing', 'wireless', 'headphones'],
+  },
+  location_on: {
+    label: 'Location',
+    group: 'system',
+    kind: 'boolean',
+    keywords: ['gps', 'positioning', 'location services'],
+  },
+  airplane_mode: {
+    label: 'Airplane mode',
+    group: 'system',
+    kind: 'boolean',
+    keywords: ['flight mode', 'aeroplane', 'offline', 'radios'],
+  },
+  open_settings: {
+    label: 'Open phone settings',
+    group: 'system',
+    kind: 'enum',
+    keywords: ['settings panel', 'system settings', 'open wifi settings', 'permissions page'],
+  },
 } as const satisfies Record<string, CatalogueEntry>;

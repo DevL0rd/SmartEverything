@@ -211,16 +211,18 @@ class WatchMonitor(
     copy(syncing = true, syncDetail = detail)
   }
 
-  override fun synced(files: List<WatchFile>, done: (Set<String>?) -> Unit) {
+  override fun synced(files: List<WatchFile>, captures: List<WatchCapture>, done: (Set<String>?) -> Unit) {
     scope.launch {
       val started = System.nanoTime()
       val keep = try {
+        val captured = captured(captures)
         val outcome = WatchUpload.upload(context, watch.deviceId, files)
-        NativeLog.info(SCOPE, "upload.finished", NativeLog.elapsedMs(started)) { mapOf("device" to watch.deviceId, "files" to files.size, "kept" to outcome.keep?.size) }
-        update("sync_finished", outcome.text, report = true) {
-          copy(syncing = false, syncDetail = outcome.text, syncError = null, lastSyncAt = Instant.now().toString())
+        NativeLog.info(SCOPE, "upload.finished", NativeLog.elapsedMs(started)) { mapOf("device" to watch.deviceId, "files" to files.size, "kept" to outcome.keep.size) }
+        val text = listOfNotNull(outcome.text, captured.text).joinToString("; ")
+        update("sync_finished", text, report = true) {
+          copy(syncing = false, syncDetail = text, syncError = null, lastSyncAt = Instant.now().toString())
         }
-        outcome.keep
+        if (captured.saved) outcome.keep else files.map { it.key }.toSet()
       } catch (failure: SyncFailure) {
         NativeLog.warn(SCOPE, "upload.failed", failure, NativeLog.elapsedMs(started)) { mapOf("device" to watch.deviceId, "files" to files.size, "retryable" to failure.retryable) }
         val reason = "Saving the watch data failed: ${failure.message}; it stays on the watch for the next sync"
@@ -228,6 +230,18 @@ class WatchMonitor(
         null
       }
       done(keep)
+    }
+  }
+
+  private class Captured(val text: String?, val saved: Boolean)
+
+  private suspend fun captured(captures: List<WatchCapture>): Captured {
+    if (captures.isEmpty()) return Captured(null, true)
+    return try {
+      Captured(WatchCaptureUpload.upload(context, watch.deviceId, captures), true)
+    } catch (failure: SyncFailure) {
+      NativeLog.warn(SCOPE, "captures.failed", failure) { mapOf("device" to watch.deviceId, "files" to captures.size) }
+      Captured("saving the raw files for developers failed (${failure.message}); every file stays on the watch so the next sync saves them", false)
     }
   }
 
@@ -292,8 +306,8 @@ class WatchMonitor(
     const val TAG = "SmartEverythingWatch"
     const val SCOPE = "watch-sync"
     val WARN_EVENTS = Regex("unreadable|failed|timeout|implausible|unsupported|not_sent|dropped|worn_ignored|command_ignored|not_recognised")
-    val INFO_EVENTS = setOf("sync_files", "sync_skipped", "sync_waiting", "sync_sleep_empty", "link_opened", "watch_identified", "action_sent", "action_waiting", "spp_session", "spp_version")
-    val PRIVATE_EVENTS = setOf("sync_file_capture", "live", "workout_stats", "weather_sent")
+    val INFO_EVENTS = setOf("sync_files", "sync_list_raw", "sync_list_window_full", "sync_skipped", "sync_waiting", "sync_sleep_empty", "link_opened", "watch_identified", "action_sent", "action_waiting", "spp_session", "spp_version")
+    val PRIVATE_EVENTS = setOf("live", "workout_stats", "weather_sent")
     const val HEART_RATE_PROVES_WORN_MS = 120_000L
     const val PAUSED_TEXT = "Paused so Mi Fitness can use the watch"
     const val LIVE_REPORT_MS = 5 * 60_000L

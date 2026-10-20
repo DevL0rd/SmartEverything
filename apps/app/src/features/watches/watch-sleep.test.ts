@@ -32,7 +32,7 @@ describe('last night on the watch page', () => {
   it('maps each stage to a sleep lane and drops unknown spans', () => {
     const found = lastNightOf([night('2026-10-16T06:20:00Z', STAGES)], WAKE + 3_600_000);
     expect(found?.segments.map((segment) => segment.stage)).toEqual([
-      'core',
+      'light',
       'deep',
       'awake',
       'rem',
@@ -44,10 +44,10 @@ describe('last night on the watch page', () => {
     expect(found?.asleepMinutes).toBe(110 + 60 + 50);
   });
 
-  it('draws one light span when the session has no stages', () => {
+  it('draws one asleep span when the session has no stages', () => {
     const found = lastNightOf([night('2026-10-16T06:20:00Z', [])], WAKE);
     expect(found?.segments).toEqual([
-      { start: Date.parse('2026-10-01T00:00:00Z'), end: WAKE, stage: 'core' },
+      { start: Date.parse('2026-10-01T00:00:00Z'), end: WAKE, stage: 'asleep' },
     ]);
   });
 

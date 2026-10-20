@@ -70,6 +70,8 @@ class PhonePostWorker(context: Context, parameters: WorkerParameters) : Coroutin
     const val ANSWER_PATH = "/api/phones/actions/answer"
     const val PUSH_TARGET_PATH = "/api/push-targets"
     const val WATCH_ANSWER_PATH = "/api/watches/action-results"
+    const val TREADMILL_ANSWER_PATH = "/api/treadmills/action-results"
+    const val SONICARE_ANSWER_PATH = "/api/toothbrushes/action-results"
     private const val PATH = "path"
     private const val METHOD = "method"
     private const val PUT = "PUT"

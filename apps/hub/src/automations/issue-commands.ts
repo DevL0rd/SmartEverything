@@ -3,7 +3,14 @@ import type { Clock } from '../clock';
 import { type CommandExecutor } from '../commands/executor';
 import type { CommandInsert, HubDatabase } from '../database/port';
 import { finishAutomationCommands } from './command-submission';
-import { admitRun, type RunHooks } from './run-context';
+import {
+  commandMetadata,
+  metadataOf,
+  stampOf,
+  type CommandStamp,
+} from './effects/command-metadata';
+import type { EffectRun } from './effects/effect-run';
+import { admitRun } from './effects/run-abort';
 import type { Store } from '../store/store';
 import { failureLine } from '@smarteverything/logging';
 
@@ -20,17 +27,23 @@ interface CommandIssuerOptions {
   readonly clock: Clock;
 }
 
+interface IssueOptions {
+  readonly admitted?: boolean;
+  readonly at?: CommandStamp;
+}
+
 export class CommandIssuer {
   constructor(private readonly options: CommandIssuerOptions) {}
 
   async issue(
     commands: readonly IssuedCommand[],
     source: CommandInsert['source'],
-    hooks: Pick<RunHooks, 'runId' | 'signal' | 'commands'>,
-    admitted = false,
+    run: EffectRun,
+    { admitted = false, at = stampOf(null) }: IssueOptions = {},
   ): Promise<readonly CommandRow[]> {
     const { store, database, executor, clock } = this.options;
-    admitRun(hooks);
+    admitRun(run);
+    const metadata = metadataOf(run, at);
     const rows = await database.insertCommands(
       commands.map((command) => ({
         deviceId: command.deviceId,
@@ -39,11 +52,12 @@ export class CommandIssuer {
         source,
       })),
       (inserted) => {
-        hooks.commands(inserted);
+        run.commands(inserted);
+        commandMetadata(store).stamp(inserted, metadata, clock.now().getTime());
       },
     );
     try {
-      admitRun(hooks);
+      admitRun(run);
     } catch (cause) {
       await Promise.all(
         rows.map((row) =>
@@ -56,7 +70,7 @@ export class CommandIssuer {
       rows,
       admitted,
       authorize: () => {
-        admitRun(hooks);
+        admitRun(run);
       },
     });
     return rows;

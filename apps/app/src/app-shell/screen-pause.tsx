@@ -3,15 +3,23 @@ import { z } from 'zod';
 import { ScreenPause, ScreenPausedContext } from '../design/screen-pause';
 import { probedScreen } from '../perf/screen-probe';
 import { ScreenLifecycleLog, type ScreenNavigation } from './screen-log';
-import { registerStack } from './stack-handles';
+import { noteStackChanged, registerStack, type HeldRoute } from './stack-handles';
 import { TabGroupContext } from './tab-group';
 import { useTabAwake, wakeTab } from './tab-prewarm';
+
+interface LayerRoute {
+  readonly key: string;
+  readonly name: string;
+  readonly params?: unknown;
+}
 
 interface LayerState {
   readonly key: string;
   readonly type: string;
   readonly index: number;
-  readonly routes: readonly { readonly key: string; readonly name: string }[];
+  readonly routeNames: readonly string[];
+  readonly routes: readonly LayerRoute[];
+  readonly preloadedRoutes?: readonly LayerRoute[];
 }
 
 interface ScreenPauseArgs {
@@ -20,6 +28,7 @@ interface ScreenPauseArgs {
   readonly navigation: {
     readonly getState: () => LayerState;
     readonly preload: (name: string, params: Readonly<Record<string, string>>) => void;
+    readonly dispatch: (action: { readonly type: string; readonly payload: LayerState }) => void;
   } & ScreenNavigation;
   readonly children: ReactElement;
 }
@@ -63,10 +72,24 @@ function coverIn(state: LayerState, routeKey: string, awake: boolean): Cover {
     if (position === state.index) return 'shown';
     return awake ? 'paused' : 'frozen';
   }
-  if (state.type !== 'stack' || position >= state.index) {
-    return 'shown';
-  }
+  if (state.type !== 'stack') return 'shown';
+  if (position < 0) return awake ? 'paused' : 'frozen';
+  if (position >= state.index) return 'shown';
   return position === state.index - 1 ? 'paused' : 'frozen';
+}
+
+function paramsOf(route: LayerRoute): HeldRoute['params'] {
+  const params: unknown = route.params;
+  if (typeof params !== 'object' || params === null) return {};
+  return Object.fromEntries(
+    Object.entries(params).flatMap(([name, value]) =>
+      typeof value === 'string' ? [[name, value]] : [],
+    ),
+  );
+}
+
+function heldOf(route: LayerRoute): HeldRoute {
+  return { key: route.key, name: route.name, params: paramsOf(route) };
 }
 
 function useStackHandle(args: ScreenPauseArgs, stackKey: string | null): void {
@@ -74,13 +97,31 @@ function useStackHandle(args: ScreenPauseArgs, stackKey: string | null): void {
   const { navigation, route } = args;
   useLayoutEffect(() => {
     if (group === null || stackKey === null) return undefined;
-    return registerStack(route.key, group, {
+    const unregister = registerStack(route.key, group, {
       key: stackKey,
       routeNames: () => navigation.getState().routes.map((entry) => entry.name),
+      declares: (name) => navigation.getState().routeNames.includes(name),
+      opened: () => navigation.getState().routes.map(heldOf),
+      preloaded: () => (navigation.getState().preloadedRoutes ?? []).map(heldOf),
       preload: (name, params) => {
         navigation.preload(name, params);
       },
+      drop: (routeKey) => {
+        const state = navigation.getState();
+        navigation.dispatch({
+          type: 'RESET',
+          payload: {
+            ...state,
+            preloadedRoutes: (state.preloadedRoutes ?? []).filter((held) => held.key !== routeKey),
+          },
+        });
+      },
     });
+    const unlisten = navigation.addListener('state', noteStackChanged);
+    return (): void => {
+      unlisten();
+      unregister();
+    };
   }, [group, stackKey, route.key, navigation]);
 }
 

@@ -12,6 +12,10 @@ const log = new Logger('desktop.agent');
 const UNKNOWN_ID = 'unknown';
 const MAX_LINE = 4096;
 
+type Answer = Pick<Extract<SessionAgentReply, { ok: true }>, 'capture' | 'permissions'>;
+
+const NOTHING: Answer = { capture: null, permissions: null };
+
 function sameToken(given: string, expected: string): boolean {
   const left = Buffer.from(given);
   const right = Buffer.from(expected);
@@ -119,9 +123,9 @@ export class AgentServer {
   private async perform(socket: Socket, request: SessionAgentRequest): Promise<void> {
     const { id, operation } = request;
     try {
-      const capture = await this.run(socket, operation);
+      const answer = await this.run(socket, operation);
       log.info('agent.performed', { operation: operation.op });
-      send(socket, { type: 'reply', id, ok: true, capture });
+      send(socket, { type: 'reply', id, ok: true, ...answer });
       if (!(operation.op === 'ring' && operation.on)) socket.end();
     } catch (cause) {
       log.warn('agent.failed', { operation: operation.op, reason: messageOf(cause) });
@@ -134,24 +138,23 @@ export class AgentServer {
     }
   }
 
-  private async run(
-    socket: Socket,
-    operation: SessionAgentRequest['operation'],
-  ): Promise<Awaited<ReturnType<AgentActions['capture']>> | null> {
+  private async run(socket: Socket, operation: SessionAgentRequest['operation']): Promise<Answer> {
     switch (operation.op) {
       case 'ping':
-        return null;
+        return NOTHING;
       case 'open':
         await this.actions.open(operation.target);
-        return null;
+        return NOTHING;
       case 'ring':
         await this.actions.ring(operation.on, () => {
           send(socket, { type: 'event', event: 'ring_ended' });
           socket.end();
         });
-        return null;
+        return NOTHING;
       case 'capture':
-        return this.actions.capture(operation.target);
+        return { ...NOTHING, capture: await this.actions.capture(operation.target) };
+      case 'permissions':
+        return { ...NOTHING, permissions: [...this.actions.permissions()] };
     }
   }
 }

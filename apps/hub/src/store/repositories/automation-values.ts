@@ -1,20 +1,25 @@
 import {
   AUTOMATION_VALUE_ROW,
-  AUTOMATION_V2,
   ApiError,
+  NODE_REGISTRY,
   applyAutomationValueOperation,
+  programReferences,
   validateAutomationValue,
   type AutomationValueContent,
   type AutomationValueOperation,
   type AutomationValueRow,
-  automationReferences,
+  type AutomationV3,
+  type FunctionV3,
+  type ReferenceContext,
 } from '@smarteverything/domain';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
-import { AutomationsRepository } from './automations';
+import { AutomationFunctionsRepository } from './automation-functions';
+import { AutomationProgramsRepository } from './automation-programs';
 
 const STORED_VALUE = storedRow(AUTOMATION_VALUE_ROW, { json: ['content'] });
+const COLUMNS = Object.keys(AUTOMATION_VALUE_ROW.shape).join(',');
 
 export class AutomationValuesRepository {
   constructor(private readonly context: StoreContext) {}
@@ -22,13 +27,17 @@ export class AutomationValuesRepository {
   list(): AutomationValueRow[] {
     return this.context.sql.all(
       STORED_VALUE,
-      'select * from automation_values order by created_at, id',
+      `select ${COLUMNS} from automation_values where owner_automation_id is null order by created_at, id`,
     );
   }
 
   byId(id: string): AutomationValueRow {
     return found(
-      this.context.sql.get(STORED_VALUE, 'select * from automation_values where id=$id', { id }),
+      this.context.sql.get(
+        STORED_VALUE,
+        `select ${COLUMNS} from automation_values where id=$id and owner_automation_id is null`,
+        { id },
+      ),
       'automation Value',
       id,
     );
@@ -93,11 +102,27 @@ export class AutomationValuesRepository {
     });
   }
 
+  private referenceContext(): ReferenceContext {
+    const functions = new AutomationFunctionsRepository(this.context);
+    return {
+      kinds: (kind) => NODE_REGISTRY.get(kind),
+      functions: (id, pin): FunctionV3 | undefined => {
+        if (pin !== undefined) return functions.findRevision(id, pin)?.definition;
+        return functions.find(id) === undefined ? undefined : functions.latest(id).definition;
+      },
+    };
+  }
+
   private requireUnreferenced(id: string): void {
-    const automation = new AutomationsRepository(this.context).list().find((row) => {
-      const parsed = AUTOMATION_V2.safeParse(row.definition);
-      return parsed.success && automationReferences(parsed.data, id);
-    });
+    const context = this.referenceContext();
+    const programsOf = (row: {
+      definition: AutomationV3;
+      draft: { program: AutomationV3 } | null;
+    }): readonly AutomationV3[] =>
+      row.draft === null ? [row.definition] : [row.definition, row.draft.program];
+    const automation = new AutomationProgramsRepository(this.context)
+      .list()
+      .find((row) => programsOf(row).some((program) => programReferences(program, id, context)));
     if (automation !== undefined)
       throw new ApiError(
         'conflict',

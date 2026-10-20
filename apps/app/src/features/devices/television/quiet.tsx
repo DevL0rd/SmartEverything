@@ -5,6 +5,15 @@ import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import type { Television } from './use-television';
 
+function wakeCaption(tv: Television): string {
+  if (tv.view.mode === 'turning_on') {
+    return tv.view.wakesOverNetwork
+      ? 'Waking it over the home network, this can take a minute'
+      : 'Waiting for the TV to answer';
+  }
+  return tv.view.wakesOverNetwork ? 'Wakes over the home network' : 'Wakes through SmartThings';
+}
+
 function Wake({ tv }: { readonly tv: Television }): ReactNode {
   const waiting = tv.view.mode === 'turning_on';
   return (
@@ -20,7 +29,7 @@ function Wake({ tv }: { readonly tv: Television }): ReactNode {
         />
       </View>
       <Text variant="caption" tone="variant" align="center">
-        {waiting ? 'Waiting for the TV to answer' : 'Wakes through SmartThings'}
+        {wakeCaption(tv)}
       </Text>
     </View>
   );
@@ -45,8 +54,8 @@ export function Quiet({ tv }: { readonly tv: Television }): ReactNode {
         <QuietNote
           icon="info"
           tone="variant"
-          text="Can't turn on from here"
-          hint="Needs a direct connection or an IR remote"
+          text="Can't turn on from here yet"
+          hint="Link it directly in its settings"
         />
       );
     case 'unreachable':

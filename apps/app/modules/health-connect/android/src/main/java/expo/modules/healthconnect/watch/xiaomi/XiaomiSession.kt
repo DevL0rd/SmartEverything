@@ -9,6 +9,7 @@ import expo.modules.healthconnect.watch.WatchWeather
 import expo.modules.healthconnect.watch.WatchCalendar
 import expo.modules.healthconnect.watch.WatchContext
 import expo.modules.healthconnect.watch.WatchPhase
+import expo.modules.healthconnect.watch.WatchSnapshots
 import java.security.MessageDigest
 import java.security.SecureRandom
 
@@ -32,14 +33,15 @@ class XiaomiSession(
       sportsRead = { config.publish() },
       finished = { sync("workout finished") }
     ),
-    XiaomiSports.declared(watch.watch.model, watch.watch.name)
+    XiaomiSports.declared(watch.watch.model, watch.watch.name),
+    WatchSnapshots.of(watch.watch).workout
   )
   private val config: XiaomiConfig = XiaomiConfig(
     { send(XiaomiChannel.COMMAND, it) },
     XiaomiGoals { event, detail -> sink.note(event, detail) },
     { workouts.sports() }
   ) { sink.config(it) }
-  private val sync = XiaomiSync(watch.sink, watch.handler, watch.skippedFiles) { send(XiaomiChannel.COMMAND, it) }
+  private val sync = XiaomiSync(watch.sink, watch.handler, watch.skippedFiles, watch.capturing) { send(XiaomiChannel.COMMAND, it) }
 
   private val authTimeout = Runnable {
     sink.failed("The watch did not finish signing in within ${AUTH_TIMEOUT_MS / 1000} s", true)

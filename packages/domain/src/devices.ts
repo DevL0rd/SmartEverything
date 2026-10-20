@@ -6,7 +6,14 @@ import {
   isStandardCapability,
   type CapabilityKey,
 } from './capabilities';
-import { JSON_VALUE, VALUE_DESCRIPTOR } from './values';
+import { JSON_VALUE, VALUE_DESCRIPTOR, type JsonValue } from './values';
+
+export interface StateChange {
+  readonly deviceId: string;
+  readonly capability: CapabilityKey;
+  readonly value: JsonValue;
+  readonly previous: JsonValue | undefined;
+}
 
 export const PROVIDERS = ['xiaomi', 'tuya', 'smartthings', 'samsung_tv', 'local'] as const;
 
@@ -40,6 +47,7 @@ export const DEVICE_KINDS = [
   'file_sync',
   'dns_filter',
   'robot',
+  'printer',
   'appliance',
   'computer',
   'phone',

@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { registerStack, stackOfGroup, type StackHandle } from './stack-handles';
 
 function handle(key: string): StackHandle {
-  return { key, routeNames: () => [], preload: () => undefined };
+  return {
+    key,
+    routeNames: () => [],
+    declares: () => false,
+    opened: () => [],
+    preloaded: () => [],
+    preload: () => undefined,
+    drop: () => undefined,
+  };
 }
 
 describe('the stack handles of tab groups', () => {

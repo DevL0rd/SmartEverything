@@ -55,10 +55,13 @@ class OverlayPhaseCoverageTest {
   }
 
   @Test
-  fun `a phone call is hidden while the app is in front and offers mute, stop, the menu and end otherwise`() {
+  fun `a phone call is hidden on the call page, compact elsewhere in the app and offers mute, stop, the menu and end otherwise`() {
     val base = vector("phone-speaking")
-    val hidden = overlayView(base.copy(surface = OverlaySurface.Phone(foreground = true)))
+    val hidden = overlayView(base.copy(surface = OverlaySurface.Phone(MainWindow.Call)))
     assertEquals(OverlayState.Hidden, hidden.state)
+    val inApp = overlayView(base.copy(surface = OverlaySurface.Phone(MainWindow.Other)))
+    assertEquals(OverlayMode.Compact, inApp.mode)
+    assertEquals(GlowMode.Off, inApp.glow)
     val shown = overlayView(base)
     assertEquals(listOf(OverlayControl.Mute, OverlayControl.Interrupt, OverlayControl.More, OverlayControl.End), shown.controls)
     assertEquals(
@@ -69,7 +72,7 @@ class OverlayPhaseCoverageTest {
 
   @Test
   fun `a wake heard while the app is not in front shows mute and end only`() {
-    val view = overlayView(vector("wake").copy(surface = OverlaySurface.Phone(foreground = false)))
+    val view = overlayView(vector("wake").copy(surface = OverlaySurface.Phone(MainWindow.Away)))
     assertEquals(OverlayState.Wake, view.state)
     assertEquals(listOf(OverlayControl.Mute, OverlayControl.End), view.controls)
   }

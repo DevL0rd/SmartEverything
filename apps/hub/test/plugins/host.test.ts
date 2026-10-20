@@ -119,7 +119,7 @@ async function rigged(): Promise<Rig> {
         turn: unused,
         chat: unused,
         keys: { changes: (): (() => void) => nothing },
-        ears: { make: unused },
+        ears: { open: unused },
         transcripts: new Transcripts({
           store,
           clock: { now, at: (): (() => void) => nothing },
@@ -134,6 +134,7 @@ async function rigged(): Promise<Rig> {
       conversations: { forPlugin: unused },
       attachments: (): string[] => [],
       machineFile: (): Promise<null> => Promise.resolve(null),
+      uploadFile: (): Promise<null> => Promise.resolve(null),
       dataDirectory: directory,
       submit: (): [] => [],
       now,

@@ -79,7 +79,7 @@ function clamp(value: number, min: number, max: number): number {
 
 function nextMode(current: string | null): string {
   const at = AC_MODES.findIndex((mode) => mode === current);
-  return AC_MODES[(at + 1) % AC_MODES.length] ?? AC_MODES[0];
+  return AC_MODES[at + 1] ?? AC_MODES[0];
 }
 
 function warmer(state: IrRemoteState, step: number): Partial<IrRemoteState> {

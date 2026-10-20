@@ -6,6 +6,7 @@ import { CALL_SOURCE, type CallSource } from '@smarteverything/domain';
 import { z } from 'zod';
 import { useConnection } from '../../../../api/transport';
 import { appPlatform } from '../../../../design/platform';
+import { canMinimizeCall, minimizeCall } from '../../overlay/overlay-minimize';
 import { callActive, callState } from '../call-state';
 import { callEngine } from '../engine/engine';
 import { CallRoom } from './call-room';
@@ -97,5 +98,12 @@ function useOpening(): Opening {
 export function CallScreen(): ReactNode {
   const opening = useOpening();
   const again = useStartOnOpen(opening);
-  return <CallRoom action={opening.action} onAgain={again} onLeave={leave} />;
+  return (
+    <CallRoom
+      action={opening.action}
+      onAgain={again}
+      onLeave={leave}
+      onMinimise={canMinimizeCall() ? minimizeCall : null}
+    />
+  );
 }

@@ -17,7 +17,8 @@ export type WarmPart =
   | 'automatic'
   | 'window'
   | 'resolution'
-  | 'pauseMs';
+  | 'pauseMs'
+  | 'thinking';
 
 export type WarmParts = Readonly<Record<WarmPart, string>>;
 
@@ -51,6 +52,7 @@ export function partsOf(options: LiveOptions): WarmParts {
     window: digest(options.window),
     resolution: options.resolution ?? 'none',
     pauseMs: String(options.pauseMs ?? 'default'),
+    thinking: options.thinking ?? 'none',
   };
 }
 
@@ -65,6 +67,7 @@ export function changedParts(held: WarmParts, wanted: WarmParts): WarmPart[] {
     'window',
     'resolution',
     'pauseMs',
+    'thinking',
   ];
   return names.filter((name) => held[name] !== wanted[name]);
 }

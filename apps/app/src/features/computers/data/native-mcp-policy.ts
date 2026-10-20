@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { API_ENDPOINTS as E, type ComputerNativeMcpPolicy } from '@smarteverything/domain';
 import { notify } from '../../../components/toast-store';
-import { computerAiKey } from './computer-ai';
+import { computerAiKey } from '../../../queries/keys';
 import { useClaudeCliOrigin } from './claude-cli-origin';
 
 export function useNativeMcpPolicy(

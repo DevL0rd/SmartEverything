@@ -11,6 +11,7 @@ export type { HarnessControlPersistence } from './contracts';
 export { MeteredRouteAdapter } from './model-route';
 export type { MeteredRouteTransport } from './model-route';
 export { HARNESS_BOOT } from './boot';
+export { hostCapabilities } from '../host/host-platforms';
 export { connectionDiagnosticFetch } from './connection-diagnostics';
 
 export { DurablePluginAgents } from './plugin-agents';

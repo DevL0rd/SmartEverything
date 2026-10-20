@@ -1,6 +1,5 @@
 import { deviceEffectRoutes } from './handlers/device-effects';
 import { deviceGroupRoutes } from './handlers/device-groups';
-import { automationRuntimeRoutes } from './handlers/automation-runtime';
 import { aiReferenceRoutes } from './handlers/ai-references';
 import { aiProjectRoutes } from './handlers/ai-projects';
 import { aiPreviewRoutes } from './handlers/ai-previews';
@@ -20,6 +19,7 @@ import type { Schedules } from '../schedules/start';
 import type { BuildOptions } from './build';
 import type { ServerContext } from './context';
 import { accessRoutes } from './handlers/access';
+import { appViewRoutes } from './handlers/app-view';
 import { aiBudgetRoutes } from './handlers/ai-budget';
 import { nativeCommandRoutes } from './handlers/ai-native-commands';
 import { aiProviderRoutes } from './handlers/ai-provider';
@@ -30,7 +30,8 @@ import { claudeRoutes } from './handlers/claude';
 import { aiUsageRoutes } from './handlers/ai-usage';
 import { assistantChatRoutes } from './handlers/assistant';
 import { assistantVoiceRoutes } from './handlers/assistant-voice';
-import { automationRoutes, sceneRoutes } from './handlers/automation';
+import { automationRoutes } from './automation-wiring';
+import { sceneRoutes } from './handlers/scenes';
 import { callRoutes } from './handlers/calls';
 import { deviceLogRoutes } from './handlers/device-log';
 import { deviceRoutes } from './handlers/devices';
@@ -44,11 +45,13 @@ import { pluginRoutes } from './handlers/plugins';
 import { scheduleRoutes } from './handlers/schedules';
 import { settingsRoutes } from './handlers/settings';
 import { televisionRoutes } from './handlers/television';
+import { televisionFindRoutes } from './handlers/television-find';
 import { transcriptRoutes } from './handlers/transcripts';
 import { signalRoutes } from './handlers/signals';
 import { snapshotRoutes } from './handlers/snapshot';
 import { talkRoutes } from './handlers/talk';
 import { watchRoutes } from './handlers/watches';
+import { developerRoutes } from './handlers/developer';
 import { weatherRoutes } from './handlers/weather';
 import { exchangeRatesRoutes } from './handlers/exchange-rates';
 import type { Operations } from './operations';
@@ -79,9 +82,9 @@ export function routeTable(
     ...aiHarnessRoutes(context.harness),
     ...assistantVoiceRoutes(services.voice),
     ...callRoutes(context, services.voice),
-    ...services.reach,
+    ...liveLinkRoutes(context, services.reach),
     ...claudeSessionRoutes(context, services.claude),
-    ...computerAiRoutes(context.computerAi),
+    ...computerAiRoutes(context.computerAi, context.store),
     ...computerRuntimeRoutes(context.computerAi, context.store),
     ...computerNodeRoutes(context),
     ...transcriptRoutes(
@@ -97,12 +100,13 @@ export function routeTable(
     ...mediaRoutes(context),
     ...firewallRoutes(context),
     ...sceneRoutes(context),
-    ...allAutomationRoutes(context, services.tools),
+    ...automationRoutes(context, services.tools),
     ...healthRoutes(context),
     ...assistantRoutes(context),
     ...peopleRoutes(context),
     ...nutritionRoutes(context),
     ...watchRoutes(context),
+    ...developerRoutes(context),
     ...weatherRoutes(context, now),
     ...exchangeRatesRoutes(context, now),
     ...placeRoutes(context),
@@ -120,6 +124,20 @@ export function routeTable(
   };
 }
 
+function liveLinkRoutes(
+  context: ServerContext,
+  reach: RouteServices['reach'],
+): RouteServices['reach'] & ReturnType<typeof appViewRoutes> {
+  return {
+    ...reach,
+    ...appViewRoutes({
+      broker: context.live.appViews,
+      store: context.store,
+      foreground: () => context.live.connectedClients(),
+    }),
+  };
+}
+
 function allDeviceRoutes(
   context: ServerContext,
 ): Pick<
@@ -129,26 +147,15 @@ function allDeviceRoutes(
   | keyof ReturnType<typeof deviceGroupRoutes>
   | keyof ReturnType<typeof deviceEffectRoutes>
   | keyof ReturnType<typeof televisionRoutes>
+  | keyof ReturnType<typeof televisionFindRoutes>
 > {
   return {
     ...deviceRoutes(context),
     ...televisionRoutes(context),
+    ...televisionFindRoutes(context),
     ...deviceLogRoutes(context),
     ...deviceGroupRoutes(context),
     ...deviceEffectRoutes(context),
-  };
-}
-
-function allAutomationRoutes(
-  context: ServerContext,
-  tools: ToolHub,
-): Pick<
-  RouteTable,
-  keyof ReturnType<typeof automationRoutes> | keyof ReturnType<typeof automationRuntimeRoutes>
-> {
-  return {
-    ...automationRoutes(context, tools),
-    ...automationRuntimeRoutes(context),
   };
 }
 

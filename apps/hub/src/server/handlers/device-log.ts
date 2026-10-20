@@ -3,7 +3,7 @@ import { hiddenComputer, viewerOf } from '../../computers/computer-access';
 import { readDeviceLog } from '../../devices/device-log/read';
 import { phoneViewerOfCaller } from '../../phones/phone-detail';
 import { otherPhoneTiers } from '../../phones/phone-visibility';
-import { pressDeviceButton, recordRefill } from '../../devices/press';
+import { changeLaundryNotices, pressDeviceButton, recordRefill } from '../../devices/press';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound } from '../router';
 
@@ -29,4 +29,7 @@ export const deviceLogRoutes = ({ store, hub }: ServerContext) =>
       await recordRefill({ store, hub }, store.devices.byId(params.deviceId), caller);
       return DONE_REPLY;
     }),
+    updateLaundryNotices: bound(E.updateLaundryNotices, ({ params, body }) =>
+      changeLaundryNotices(store, store.devices.byId(params.deviceId), body),
+    ),
   }) as const;

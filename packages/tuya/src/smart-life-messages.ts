@@ -32,7 +32,7 @@ const BUSINESS = z.object({
 });
 
 function reject(reason: string): CloudMessageError {
-  return new CloudMessageError(reason, null);
+  return new CloudMessageError(reason);
 }
 
 const ENVELOPE = z.object({ protocol: z.number().int() });

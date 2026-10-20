@@ -1,101 +1,172 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
-import { ProgressBar, StageTimeline } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
 import { WidgetEmpty, WidgetFrame } from '../../../components/widget-board';
 import { rowLayoutOf, type RowLayout } from '../../../components/widget-board/all-sizes';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
-import { cn } from '../../../design/cn';
-import { clock, hoursMinutes } from '../../../format/time';
 import { useLastNight } from '../data/nights';
 import { useTodayContext } from '../data/today';
-import { STAGE_LABELS, timelineOf, type SleepNight, type StageKind } from '../model/sleep';
+import type { SleepNight } from '../model/sleep';
+import { napFaceOf, type NapFace } from '../model/sleep-widget';
+import {
+  GhostChart,
+  Goal,
+  Headline,
+  LegendColumn,
+  LegendRow,
+  NapBar,
+  NightChart,
+  Ring,
+  TimesLine,
+} from './sleep-widget-parts';
 
-const SHOWN_STAGES: readonly StageKind[] = ['deep', 'light', 'rem', 'awake'];
+const RING_SPLIT_PX = 44;
+const RING_STACKED_PX = 48;
+const RING_WIDE_PX = 56;
+const STACKED_CHART_PX = 56;
 
-const STAGE_DOT: Readonly<Partial<Record<StageKind, string>>> = {
-  deep: 'bg-sleep-deep',
-  light: 'bg-sleep-core',
-  rem: 'bg-sleep-rem',
-  awake: 'bg-sleep-awake',
-};
-
-function Summary({
-  night,
-  goal,
-  big,
-}: {
+interface NightProps {
   readonly night: SleepNight;
-  readonly goal: number;
-  readonly big: boolean;
-}): ReactNode {
+  readonly goalMinutes: number;
+}
+
+function TileFace({ night, goalMinutes }: NightProps): ReactNode {
   return (
     <View className="gap-1.5">
-      <Figure value={hoursMinutes(night.asleepMinutes)} size={big ? 'l' : 'm'} />
-      <ProgressBar progress={night.asleepMinutes / goal} colour="sleep-core" label="Sleep goal" />
+      <Headline night={night} scale="s" />
+      <Goal night={night} goalMinutes={goalMinutes} long={false} />
+    </View>
+  );
+}
+
+function SplitFace({ night, goalMinutes }: NightProps): ReactNode {
+  return (
+    <View className="flex-1 flex-row items-center gap-4">
+      <View className="w-2/5 gap-1.5">
+        <View className="flex-row items-center gap-2">
+          <Ring night={night} goalMinutes={goalMinutes} size={RING_SPLIT_PX} />
+          <Headline night={night} scale="s" />
+        </View>
+        <Goal night={night} goalMinutes={goalMinutes} long={false} />
+      </View>
+      <View className="min-w-0 flex-1">
+        <NightChart night={night} />
+      </View>
+    </View>
+  );
+}
+
+function WideFace({ night, goalMinutes }: NightProps): ReactNode {
+  return (
+    <View className="flex-1 flex-row items-center gap-5">
+      <View className="w-1/3 gap-1.5">
+        <View className="flex-row items-center gap-3">
+          <Ring night={night} goalMinutes={goalMinutes} size={RING_WIDE_PX} />
+          <Headline night={night} scale="m" />
+        </View>
+        <TimesLine night={night} />
+        <Goal night={night} goalMinutes={goalMinutes} long />
+      </View>
+      <View className="min-w-0 flex-1">
+        <NightChart night={night} />
+      </View>
+      <View className="w-1/4">
+        <LegendColumn night={night} />
+      </View>
+    </View>
+  );
+}
+
+function StackedFace({ night, goalMinutes }: NightProps): ReactNode {
+  return (
+    <View className="flex-1 justify-between gap-2">
+      <View className="flex-row items-center gap-3">
+        <Ring night={night} goalMinutes={goalMinutes} size={RING_STACKED_PX} />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Headline night={night} scale="m" />
+          <TimesLine night={night} />
+        </View>
+        <View className="w-2/5">
+          <Goal night={night} goalMinutes={goalMinutes} long />
+        </View>
+      </View>
+      <NightChart night={night} height={STACKED_CHART_PX} />
+      <LegendRow night={night} />
+    </View>
+  );
+}
+
+function NightFace({ layout, ...props }: NightProps & { readonly layout: RowLayout }): ReactNode {
+  switch (layout) {
+    case 'tile':
+      return <TileFace {...props} />;
+    case 'split':
+      return <SplitFace {...props} />;
+    case 'wide':
+      return <WideFace {...props} />;
+    case 'tall':
+      return <StackedFace {...props} />;
+  }
+}
+
+function NapFaceView({
+  face,
+  layout,
+}: {
+  readonly face: NapFace;
+  readonly layout: RowLayout;
+}): ReactNode {
+  const headline = (
+    <View className="min-w-0 gap-0.5">
+      <Figure value={face.headline} size={layout === 'tile' ? 's' : 'm'} />
       <Text variant="footnote" tone="variant" className="tabular" numberOfLines={1}>
-        {big
-          ? `${clock(night.bedtime)} – ${clock(night.wake)} · goal ${hoursMinutes(goal)}`
-          : `Goal ${hoursMinutes(goal)}`}
+        {face.times}
       </Text>
     </View>
   );
-}
-
-function Stages({ night }: { readonly night: SleepNight }): ReactNode {
+  if (layout === 'tile') {
+    return headline;
+  }
   return (
-    <View className="gap-1.5">
-      {SHOWN_STAGES.map((kind) => (
-        <View key={kind} className="flex-row items-center gap-2">
-          <View className={cn('size-2.5 rounded-full', STAGE_DOT[kind])} />
-          <Text variant="footnote" tone="variant" className="flex-1" numberOfLines={1}>
-            {STAGE_LABELS[kind]}
-          </Text>
-          <Text variant="footnote" className="tabular" numberOfLines={1}>
-            {hoursMinutes(night.totals[kind])}
-          </Text>
-        </View>
-      ))}
+    <View className={layout === 'tall' ? 'flex-1 justify-between gap-3' : 'flex-1 flex-row gap-5'}>
+      <View className={layout === 'tall' ? '' : 'w-2/5 justify-center'}>{headline}</View>
+      <View className={layout === 'tall' ? '' : 'min-w-0 flex-1 justify-center'}>
+        <NapBar face={face} />
+      </View>
     </View>
   );
 }
 
-function Body({
-  night,
-  goal,
-  layout,
-}: {
-  readonly night: SleepNight;
-  readonly goal: number;
-  readonly layout: RowLayout;
-}): ReactNode {
-  if (layout === 'tile') {
-    return <Summary night={night} goal={goal} big={false} />;
-  }
-  const wide = layout === 'wide';
+function EmptyFace({ layout }: { readonly layout: RowLayout }): ReactNode {
   return (
-    <View className="flex-1 flex-row items-center gap-5">
-      <View className={wide ? 'w-1/3' : 'w-2/5'}>
-        <Summary night={night} goal={goal} big={wide} />
-      </View>
-      <View className="min-w-0 flex-1">
-        <StageTimeline segments={timelineOf(night)} label="Sleep stages" compact />
-      </View>
-      {wide && night.hasStages ? (
-        <View className="w-1/5">
-          <Stages night={night} />
-        </View>
-      ) : null}
+    <View className="flex-1 justify-between gap-2">
+      <WidgetEmpty
+        icon="moon"
+        colour="sleep-core"
+        title="No sleep recorded"
+        body="Wear your watch to bed to see last night here."
+      />
+      {layout === 'tile' ? null : <GhostChart />}
     </View>
   );
 }
 
 export function SleepWidget(): ReactNode {
   const { day, goals } = useTodayContext();
-  const { night } = useLastNight(day);
+  const { night, naps } = useLastNight(day);
   const { cls } = useWidgetFace();
+  const layout = rowLayoutOf(cls);
+  const nap = night === null ? napFaceOf(naps) : null;
+  const face =
+    night !== null ? (
+      <NightFace night={night} goalMinutes={goals.sleep_minutes} layout={layout} />
+    ) : nap !== null ? (
+      <NapFaceView face={nap} layout={layout} />
+    ) : (
+      <EmptyFace layout={layout} />
+    );
   return (
     <WidgetFrame
       title="Sleep"
@@ -103,16 +174,7 @@ export function SleepWidget(): ReactNode {
       accent="sleep-core"
       href={href.fitnessPage('sleep', { day })}
     >
-      {night === null ? (
-        <WidgetEmpty
-          icon="moon"
-          colour="sleep-core"
-          title="No sleep recorded"
-          body="Wear your watch to bed to see last night here."
-        />
-      ) : (
-        <Body night={night} goal={goals.sleep_minutes} layout={rowLayoutOf(cls)} />
-      )}
+      {face}
     </WidgetFrame>
   );
 }

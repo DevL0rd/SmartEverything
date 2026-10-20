@@ -5,7 +5,13 @@ import { isCodexPermissionOnlyChange } from '../src/codex-permission-change';
 
 const DEVICE = '11111111-1111-4111-8111-111111111111';
 
-function codex(settings: CodexProviderOptions, model = 'gpt-test'): Engine {
+type CodexEngine = Extract<Engine, { kind: 'codex' }>;
+type WorkspaceSandbox = Extract<
+  NonNullable<CodexProviderOptions['sandbox_policy']>,
+  { type: 'workspaceWrite' }
+>;
+
+function codex(settings: CodexProviderOptions, model = 'gpt-test'): CodexEngine {
   return { kind: 'codex', device_id: DEVICE, model, effort: null, settings };
 }
 
@@ -14,13 +20,13 @@ const OPENROUTER: Engine = { kind: 'openrouter', model: null, effort: null };
 const READ_ONLY = { type: 'readOnly', networkAccess: false } as const;
 const READ_ONLY_ONLINE = { type: 'readOnly', networkAccess: true } as const;
 const FULL = { type: 'dangerFullAccess' } as const;
-const WORKSPACE = {
+const WORKSPACE: WorkspaceSandbox = {
   type: 'workspaceWrite',
   writableRoots: [],
   networkAccess: false,
   excludeTmpdirEnvVar: true,
   excludeSlashTmp: true,
-} as const;
+};
 
 function permissionOnly(before: CodexProviderOptions, after: CodexProviderOptions): boolean {
   return isCodexPermissionOnlyChange(codex(before), codex(after));

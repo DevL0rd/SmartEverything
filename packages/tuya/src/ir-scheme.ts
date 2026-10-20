@@ -1,7 +1,6 @@
 import type { JsonValue } from '@smarteverything/domain';
 import type { DataPoint } from './data-points';
 import {
-  IrCodeError,
   parseHeadKey,
   pulsesFromBase64,
   pulsesToBase64,
@@ -133,12 +132,6 @@ function modernWrites(
 }
 
 export function irWrites(scheme: IrScheme, action: IrAction): readonly DataPointWrite[] {
-  if (action.kind === 'send' && action.code.format === 'library') {
-    throw new IrCodeError(
-      'library',
-      'a library key is sent through the Tuya cloud, not as data points',
-    );
-  }
   return scheme.kind === 'dp201' ? legacyWrites(scheme, action) : modernWrites(scheme, action);
 }
 

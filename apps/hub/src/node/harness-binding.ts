@@ -1,4 +1,4 @@
-import type { HubHarnessControl } from '@smarteverything/domain';
+import type { HarnessPlatform, HubHarnessControl } from '@smarteverything/domain';
 
 export class NodeHarnessError extends Error {
   override readonly name = 'NodeHarnessError';
@@ -8,7 +8,7 @@ export class NodeHarnessBinding {
   private generation: string | null = null;
   constructor(
     readonly instance: string,
-    readonly os: 'linux' | 'macos',
+    readonly os: HarnessPlatform,
   ) {}
   validate(frame: HubHarnessControl, device: string): void {
     if (frame.device_id !== device || frame.runtime_instance !== this.instance)

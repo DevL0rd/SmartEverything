@@ -50,16 +50,21 @@ describe('push notifications', () => {
       'Bearer ya29.1',
     ]);
     const first = JSON.stringify(bench.google.sent[0]?.body);
-    expect(JSON.parse(first.replace(/"(eventId|deviceId)":"[0-9a-f-]{36}"/g, '"$1":"ID"'))).toEqual(
-      {
-        message: {
-          token: 'fcm-a',
-          notification: { title: 'Doorbell', body: 'Someone is at the door (Front door in Home)' },
-          data: { eventId: 'ID', kind: 'doorbell', deviceId: 'ID' },
-          android: { priority: 'HIGH', notification: { sound: 'default' } },
+    expect(
+      JSON.parse(
+        first.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, 'ID'),
+      ),
+    ).toEqual({
+      message: {
+        token: 'fcm-a',
+        notification: { title: 'Doorbell', body: 'Someone is at the door (Front door)' },
+        data: { eventId: 'ID', kind: 'doorbell', deviceId: 'ID' },
+        android: {
+          priority: 'HIGH',
+          notification: { tag: 'camera=ID&kind=doorbell', sound: 'default' },
         },
       },
-    );
+    });
     expect(JSON.stringify(bench.google.sent[2]?.body)).toContain(
       'Front door in Home detected smoke',
     );

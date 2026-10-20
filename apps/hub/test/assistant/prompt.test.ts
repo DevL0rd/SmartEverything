@@ -125,7 +125,7 @@ describe('the text chat personality', () => {
     expect(personality).toBeGreaterThan(0);
     expect(personality).toBeLessThan(text.indexOf(PLAY));
     expect(text.indexOf(PLAY)).toBeLessThan(text.indexOf('Tools are how you see'));
-    expect(text.indexOf(PLAY)).toBeLessThan(text.indexOf('Tool guide'));
+    expect(text.indexOf(PLAY)).toBeLessThan(text.indexOf('Ids and keys come from reads'));
     expect(text.indexOf('Owner instructions')).toBeLessThan(text.indexOf('Tools are how you see'));
   });
 

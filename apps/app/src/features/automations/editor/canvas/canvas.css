@@ -1,0 +1,138 @@
+.se-flow {
+  --se-dur-fast: 100ms;
+  --se-dur-short: 150ms;
+  --se-dur-medium: 250ms;
+  --se-ease: cubic-bezier(0.2, 0, 0, 1);
+  --se-wire-exec-colour: var(--se-wire-exec, var(--se-outline));
+  --se-wire-taken-colour: var(--se-wire-taken, var(--se-primary));
+  --se-select-colour: var(--se-select, var(--se-focus));
+  --xy-edge-stroke: var(--se-wire-exec-colour);
+  --xy-edge-stroke-selected: var(--se-select-colour);
+}
+
+.se-edge {
+  fill: none;
+  stroke: var(--se-wire-exec-colour);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.se-edge-exec {
+  stroke-width: 2.5;
+}
+
+.se-edge-value {
+  stroke: var(--se-wire-type, var(--se-outline));
+  stroke-width: 1.75;
+}
+
+.se-edge-value[data-optional='true'] {
+  stroke-dasharray: 6 4;
+}
+
+.se-edge[data-state='skipped'] {
+  stroke-dasharray: 4 6;
+  opacity: 0.55;
+}
+
+.se-edge-exec[data-state='taken'],
+.se-edge-exec[data-state='flowing'] {
+  stroke: var(--se-wire-taken-colour);
+}
+
+.se-edge-value[data-state='taken'],
+.se-edge-value[data-state='flowing'] {
+  stroke-width: 2.5;
+}
+
+.se-edge[data-state='flowing'] {
+  stroke-dasharray: 8 6;
+  animation: se-wire-flow 1.2s linear infinite;
+}
+
+.react-flow__edge.selected .se-edge,
+.react-flow__edge:focus-visible .se-edge {
+  stroke: var(--se-select-colour);
+}
+
+.react-flow__edge.selected .se-edge-exec {
+  filter: drop-shadow(0 0 4px var(--se-select-colour));
+}
+
+.se-insert {
+  position: absolute;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--se-wire-exec-colour);
+  border-radius: 999px;
+  font-family: 'SeCanvasGeist-SemiBold', sans-serif;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--se-on-surface-variant);
+  background: var(--se-surface-1);
+  pointer-events: none;
+  opacity: 0;
+  transform-origin: center;
+  transition:
+    opacity var(--se-dur-short) var(--se-ease),
+    border-color var(--se-dur-short) var(--se-ease);
+}
+
+.se-flow:hover .se-insert,
+.se-flow[data-idiom='touch'] .se-insert {
+  opacity: 1;
+}
+
+.se-flow[data-lod='mid'] .se-insert,
+.se-flow[data-lod='far'] .se-insert {
+  display: none;
+}
+
+.se-loop-return {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.se-loop-path {
+  fill: none;
+  stroke: var(--se-wire-exec-colour);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+  stroke-linecap: round;
+}
+
+.se-loop-arrow {
+  fill: var(--se-wire-exec-colour);
+}
+
+.se-loop-label {
+  font-family: 'SeCanvasGeist-Medium', sans-serif;
+  font-size: 13px;
+  fill: var(--se-on-surface-variant);
+}
+
+.se-flow[data-lod='mid'] .se-loop-label,
+.se-flow[data-lod='far'] .se-loop-label {
+  display: none;
+}
+
+@keyframes se-wire-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .se-edge[data-state='flowing'] {
+    stroke-dasharray: none;
+  }
+
+  .se-insert {
+    transition: none;
+  }
+}

@@ -36,6 +36,7 @@ export const TABLE_AREAS: Readonly<Partial<Record<LiveTable, McpToolArea>>> = {
   ai_usage: 'assistant',
   ai_outreach: 'assistant',
   plugin_streams: 'plugins',
+  plugin_ui: 'plugins',
 };
 
 export const SNAPSHOT_ONLY_AREAS: Readonly<Record<string, McpToolArea>> = {

@@ -110,6 +110,8 @@ const SOUND_SECTION = z.object({
     notification: PERCENT,
     call: PERCENT,
   }),
+  hapticFeedback: z.boolean(),
+  touchSounds: z.boolean(),
   output: z.object({ kind: z.enum(PHONE_AUDIO_OUTPUTS), name: z.string().nullable() }),
   media: z
     .object({
@@ -127,6 +129,7 @@ const SOUND_SECTION = z.object({
 const SCREEN_SECTION = z.object({
   brightness: PERCENT,
   auto: z.boolean(),
+  autoRotate: z.boolean(),
   timeoutSeconds: z.int().min(1),
   fold: z.enum(PHONE_FOLD_STATES).nullable(),
   writable: z.boolean(),
@@ -163,10 +166,13 @@ const NETWORK_SECTION = z.object({
   vpn: z.boolean(),
   metered: z.boolean(),
   airplane: z.boolean(),
+  wifiOn: z.boolean(),
+  locationOn: z.boolean(),
   data: z.object({ today: DATA_USE, month: DATA_USE }).nullable(),
 });
 
 const CONNECTIONS_SECTION = z.object({
+  bluetoothOn: z.boolean(),
   bluetooth: z.array(
     z.object({
       name: z.string().nullable(),

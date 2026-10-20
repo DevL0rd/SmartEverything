@@ -35,7 +35,6 @@ object PhoneNotificationObserver : NotificationObserver {
       addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
       addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
       addAction(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)
-      addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
       addAction(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
     }
     context.registerReceiver(changes, filter, Context.RECEIVER_NOT_EXPORTED)

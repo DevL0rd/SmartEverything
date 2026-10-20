@@ -44,10 +44,12 @@ function noteText(caller: ReturnType<typeof callerOf>): string {
 function clientOf(
   name: string,
   platform: 'android' | 'desktop' | 'web',
+  kind?: 'tablet',
 ): ReturnType<typeof callerOf> {
   const client = opened.store.clients.create({
     name,
     platform,
+    kind,
     role: 'owner',
     tokenHash: `${name}-hash`,
   });
@@ -60,6 +62,12 @@ describe('which machine a call comes from', () => {
     expect(text).toContain('talking through Pixel 9 (phone).');
     expect(text).toContain('they mean the screen of Pixel 9: look at phone_screen');
     expect(text).toContain('only when they name that device');
+  });
+
+  it('tells a tablet call that it is a tablet and that my screen is its screen', () => {
+    const text = noteText(clientOf('Tab S9', 'android', 'tablet'));
+    expect(text).toContain('talking through Tab S9 (tablet).');
+    expect(text).toContain('they mean the screen of Tab S9: look at phone_screen');
   });
 
   it('tells a computer call that my screen is the computer screen', () => {

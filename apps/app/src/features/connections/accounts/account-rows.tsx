@@ -65,16 +65,6 @@ function ScaleRow(): ReactNode {
 }
 
 function providerRow(provider: Provider): ReactNode {
-  if (provider === 'tuya') {
-    return (
-      <NavRow
-        icon="remote"
-        title="IR remotes"
-        subtitle="Need a developer project"
-        href={href.connect('tuya-developer')}
-      />
-    );
-  }
   if (provider === 'smartthings') {
     return <WebhookRow />;
   }

@@ -52,6 +52,7 @@ export const COLOUR_VARIABLE = {
   'viz-blue': '--color-viz-blue',
   'viz-magenta': '--color-viz-magenta',
   'viz-violet': '--color-viz-violet',
+  'viz-green': '--color-viz-green',
   'air-good': '--color-air-good',
   'air-fair': '--color-air-fair',
   'air-moderate': '--color-air-moderate',
@@ -72,6 +73,9 @@ export const COLOUR_VARIABLE = {
   'sleep-core': '--color-sleep-core',
   'sleep-rem': '--color-sleep-rem',
   'sleep-awake': '--color-sleep-awake',
+  'sleep-asleep': '--color-sleep-asleep',
+  'sleep-on-asleep': '--color-sleep-on-asleep',
+  'sleep-band': '--color-sleep-band',
   track: '--color-track',
   'temp-neutral': '--color-temp-neutral',
 } as const satisfies Readonly<Record<ColourRole, string>>;

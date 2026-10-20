@@ -8,6 +8,8 @@ import type { ComputerHarnessSockets } from './harness-socket';
 import type { ComputerNodeSockets } from './node-socket';
 import type { HubStatus, PublicStatus } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import type { CameraHealth } from '../cameras/camera-health';
+import type { FirewallApplier } from '../firewall/apply';
 import type { FirewallMonitor } from '../firewall/monitor';
 import type { FoodLookup } from '../foods/food-lookup';
 import type { RunningHub } from '../hub';
@@ -30,6 +32,8 @@ import type { TalkService } from '../talk/talk-service';
 import type { AssistantService } from '../assistant/service';
 import type { OpenRouterPlatform } from '../openrouter/platform';
 import type { MediaNotes } from '../transcripts/media-notes';
+import type { WatchCaptureStore } from '../watch-captures/capture-store';
+import type { DeveloperDevices } from '../watch-captures/developer-devices';
 
 export interface ServerContext {
   readonly connections?: HubConnections;
@@ -44,6 +48,8 @@ export interface ServerContext {
   readonly nodeSockets: ComputerNodeSockets;
   readonly hub: RunningHub;
   readonly firewall: FirewallMonitor;
+  readonly cameraHealth: Pick<CameraHealth, 'onChange'>;
+  readonly firewallApplier: FirewallApplier;
   readonly secrets: SecretStore;
   readonly access: AccessService;
   readonly links: MediaLinks;
@@ -65,5 +71,7 @@ export interface ServerContext {
   readonly status: () => HubStatus;
   readonly publicStatus: () => PublicStatus;
   readonly recordingPath: (storagePath: string) => string;
+  readonly developerDevices: DeveloperDevices;
+  readonly watchCaptures: WatchCaptureStore;
   readonly log: Logger;
 }

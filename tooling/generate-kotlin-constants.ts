@@ -30,6 +30,9 @@ const DOMAIN = z.object({
   PUSH_PAYLOAD_KEY: NAME,
   PUSH_COMMANDS: z.array(NAME).min(1),
   WATCH_SPORTS: z.array(NAME).min(1),
+  PHONE_SETTINGS_PAGES: z.array(NAME).min(1),
+  PHONE_SYSTEM_TOGGLES: z.array(NAME).min(1),
+  PHONE_SCREEN_TIMEOUTS: z.array(z.int().positive()).min(1),
 });
 
 type DomainValues = z.infer<typeof DOMAIN>;
@@ -59,6 +62,16 @@ function render(domain: DomainValues): string {
     '  val WATCH_SPORTS: List<String> = listOf(',
     stringList(domain.WATCH_SPORTS),
     '  )',
+    '',
+    '  val PHONE_SETTINGS_PAGES: List<String> = listOf(',
+    stringList(domain.PHONE_SETTINGS_PAGES),
+    '  )',
+    '',
+    '  val PHONE_SYSTEM_TOGGLES: List<String> = listOf(',
+    stringList(domain.PHONE_SYSTEM_TOGGLES),
+    '  )',
+    '',
+    `  val PHONE_SCREEN_TIMEOUTS: List<Int> = listOf(${domain.PHONE_SCREEN_TIMEOUTS.map(String).join(', ')})`,
     '}',
     '',
   ].join('\n');

@@ -19,6 +19,11 @@ export const VOICE_ASSET_PACKAGE_NAMES: readonly string[] = Object.values(VOICE_
 
 export const WAKE_MODEL_DIRECTORY = 'wake-name-model';
 
+const WAKE_MODEL_SOURCES: readonly string[] = [
+  join(root, 'apps', 'hub', 'src', 'wake-name', WAKE_MODEL_DIRECTORY),
+  join(root, 'apps', 'hub', 'src', 'node', 'ear', WAKE_MODEL_DIRECTORY),
+];
+
 const DAVEY_SCOPE = '@snazzah';
 const DAVEY_PREFIX = 'davey-';
 export const VOICE_ASSET_PREFIX = `${DAVEY_SCOPE}/${DAVEY_PREFIX}`;
@@ -94,9 +99,10 @@ export function copyServiceAssets(
     );
     copyPackage(`${DAVEY_SCOPE}/${name}`, directory, files, service);
   }
-  const wakeModel = join(root, 'apps', 'hub', 'src', 'wake-name', 'wake-name-model');
-  for (const file of readdirSync(wakeModel)) {
-    copy(join(wakeModel, file), join(service, WAKE_MODEL_DIRECTORY, file));
+  for (const wakeModel of WAKE_MODEL_SOURCES) {
+    for (const file of readdirSync(wakeModel)) {
+      copy(join(wakeModel, file), join(service, WAKE_MODEL_DIRECTORY, file));
+    }
   }
 }
 

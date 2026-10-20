@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { APP_CLOSED, COMPUTER_APPS } from '../node/computer-apps';
 import { CAPTURE_TARGETS, COMPUTER_CAPTURE } from '../node/computer-capture';
+import { COMPUTER_INPUT } from '../node/computer-input';
 import { FILE_CONTENT, FILE_LIST, FILE_PATH, LIST_CURSOR } from '../node/computer-files';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, ID, NOTHING } from './primitives';
@@ -73,5 +74,16 @@ export const COMPUTER_SESSION_ENDPOINTS = {
     query: NOTHING,
     body: z.strictObject({ target: z.enum(CAPTURE_TARGETS).default('screen') }),
     response: COMPUTER_CAPTURE,
+  }),
+  inputComputer: endpoint({
+    method: 'POST',
+    path: '/api/computers/:deviceId/input',
+    access: 'member',
+    summary:
+      'Click, double click, right click, move, drag, scroll, type text or press keys on a computer like a person at its keyboard; coordinates are pixels of the screen picture last taken, in the width x height that see and look report. Needs the pointer and keyboard permission and a one-time approval on that computer',
+    params: COMPUTER_PARAMS,
+    query: NOTHING,
+    body: COMPUTER_INPUT,
+    response: DONE,
   }),
 };

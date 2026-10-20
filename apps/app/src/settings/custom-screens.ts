@@ -1,6 +1,8 @@
 import type { ComponentType } from 'react';
 import { AiExtensionsRoute } from '../features/assistant';
 import { CamerasSettingsScreen, RemoteViewingScreen } from '../features/cameras';
+import { DevicesSettingsScreen } from '../features/settings/devices/devices-settings-screen';
+import { SetupScreen } from '../features/setup';
 import { ChannelEditorScreen } from '../features/talk';
 
 export const CUSTOM_SETTINGS_SCREENS: Readonly<Record<string, ComponentType>> = {
@@ -12,6 +14,8 @@ export const CUSTOM_SETTINGS_SCREENS: Readonly<Record<string, ComponentType>> = 
   'assistant/skills/detail': AiExtensionsRoute,
   'assistant/skills/updates': AiExtensionsRoute,
   cameras: CamerasSettingsScreen,
+  devices: DevicesSettingsScreen,
+  setup: SetupScreen,
   'cameras/remote-viewing': RemoteViewingScreen,
   'talk/channels/[channelId]': ChannelEditorScreen,
 };

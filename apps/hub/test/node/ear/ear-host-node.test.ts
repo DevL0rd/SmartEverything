@@ -74,8 +74,13 @@ function rig(host: 'hosting' | 'none' = 'hosting', fakes: EarRig = earRig()): Ri
     sent.push(NODE_FRAME.parse(frame));
   });
   const clock = new FakeClock('2026-10-18T10:00:00.000Z');
-  const earHost: EarHostFactory = (send) =>
-    new EarHost({ engine: fakes.engine, clock, log: testLogger('node-ear') }, send);
+  const earHost: EarHostFactory = (send, scored, scoreFailed) =>
+    new EarHost(
+      { engine: fakes.engine, clock, log: testLogger('node-ear') },
+      send,
+      scored,
+      scoreFailed,
+    );
   const node = new ComputerNode({
     collector: COLLECTOR,
     controls: inertControls(),
@@ -111,7 +116,7 @@ describe('computer node as an ear host', () => {
 
   it('does not advertise ear_host and says why when the spotter cannot load', async () => {
     const fakes = earRig();
-    fakes.keywords.failEarConfig = true;
+    fakes.keywords.buildsNoKeywords = true;
     const { node, sent } = rig('hosting', fakes);
     await until(() => featuresOf(sent) !== null, 'the hello');
     expect(featuresOf(sent)).not.toContain('ear_host');

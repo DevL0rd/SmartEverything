@@ -1,7 +1,15 @@
-import { DEVICE_CAPABILITY, type DiscoveredDevice, type JsonValue } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  DEVICE_CAPABILITY,
+  type DiscoveredDevice,
+  type JsonValue,
+  type SignalInput,
+  type TelevisionSettingsRow,
+} from '@smarteverything/domain';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandExecutor } from '../src/commands/executor';
 import { TelevisionRouting } from '../src/commands/television-routing';
+import { NO_WAKE_ADDRESS, TelevisionWake } from '../src/commands/television-wake';
+import type { SignalListener } from '../src/signals/bus';
 import { DeviceDriverRegistry } from '../src/local/device-driver';
 import { Inventory } from '../src/state/inventory';
 import { testDatabase, type TestDatabase } from './support/database';
@@ -33,17 +41,37 @@ const TELEVISION: DiscoveredDevice = {
   details: {},
 };
 
+function onlineSignal(subject: string): SignalInput {
+  return {
+    source: 'device',
+    kind: 'online',
+    subject,
+    field: null,
+    value: true,
+    previous: null,
+    at: NOW.toISOString(),
+    profileId: null,
+    data: {},
+  };
+}
+
 let db: TestDatabase;
 let smartthings: FakeAdapter;
 let executor: CommandExecutor;
 let deviceId: string;
+let inventory: Inventory;
+let woken: string[];
+let listeners: Set<SignalListener>;
 
 beforeEach(async () => {
   captureLogs();
   db = await testDatabase(NOW);
-  const inventory = new Inventory(db.database, {
+  woken = [];
+  listeners = new Set();
+  inventory = new Inventory(db.database, {
     onlineChanged: (): void => undefined,
     devicesChanged: (): void => undefined,
+    lifecycle: (): void => undefined,
   });
   await inventory.apply('smartthings', [TELEVISION]);
   deviceId = inventory.deviceOf('smartthings', 'st-tv')?.id ?? '';
@@ -59,7 +87,28 @@ beforeEach(async () => {
     television: new TelevisionRouting({
       adapters,
       valueOf: (_device, capability): JsonValue | undefined => state.get(capability),
-      attachedTo: (): null => null,
+      settingsOf: (id): TelevisionSettingsRow | undefined => db.store.televisionSettings.find(id),
+      wake: new TelevisionWake({
+        wake: (mac): Promise<void> => {
+          woken.push(mac);
+          return Promise.resolve();
+        },
+        settingsOf: (id): TelevisionSettingsRow | undefined => db.store.televisionSettings.find(id),
+        woke: (id): void => {
+          db.store.televisionSettings.recordWakeWorked(id, NOW.toISOString());
+        },
+        online: (id): boolean => inventory.deviceById(id)?.online === true,
+        subscribe: (listener): (() => void) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+        clock: {
+          now: (): Date => NOW,
+          at: (): (() => void) => () => undefined,
+          sleep: (): Promise<void> => Promise.resolve(),
+        },
+        log: testLogger('television'),
+      }),
       log: testLogger('television'),
     }),
     log: testLogger(),
@@ -114,5 +163,38 @@ describe('television commands through the executor', () => {
     expect(smartthings.executed).toStrictEqual([
       { commandId: command.id, externalId: 'st-tv', capability: 'power', value: false },
     ]);
+  });
+
+  it('wakes an offline screen over the network and turns it on once it is back online', async () => {
+    await inventory.setOnline('smartthings', 'st-tv', false);
+    db.store.televisionSettings.setWakeAddress(deviceId, 'a1:b2:c3:d4:e5:f6');
+    const command = add('power', true);
+    const running = executor.run(command);
+    await vi.waitFor(() => {
+      expect(woken).toStrictEqual(['a1:b2:c3:d4:e5:f6']);
+    });
+    expect(smartthings.executed).toStrictEqual([]);
+    await inventory.setOnline('smartthings', 'st-tv', true);
+    for (const listener of listeners) {
+      listener(onlineSignal(deviceId));
+    }
+    await running;
+    expect(smartthings.executed).toStrictEqual([
+      { commandId: command.id, externalId: 'st-tv', capability: 'power', value: true },
+    ]);
+    expect(db.store.commands.byId(command.id).status).toBe('succeeded');
+    expect(db.store.televisionSettings.find(deviceId)?.wake_worked_at).toBe(NOW.toISOString());
+  });
+
+  it('refuses to turn on an offline screen that has no wake address, saying what to do', async () => {
+    await inventory.setOnline('smartthings', 'st-tv', false);
+    const command = add('power', true);
+    await executor.run(command);
+    expect(woken).toStrictEqual([]);
+    expect(smartthings.executed).toStrictEqual([]);
+    expect(db.store.commands.byId(command.id)).toMatchObject({
+      status: 'failed',
+      error: `CommandRefusedError: The command for power was refused: ${NO_WAKE_ADDRESS}.`,
+    });
   });
 });

@@ -1,10 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { eventsOf } from '../src';
+import type { DataPoint } from '../src/data-points';
 
 const AT = '2026-10-08T10:00:00.000Z';
 
+function point(code: string, writable: boolean): DataPoint {
+  return {
+    code,
+    dpId: null,
+    name: null,
+    readable: true,
+    writable,
+    shape: { type: 'Raw', maxLength: 255 },
+  };
+}
+
+const POINTS: readonly DataPoint[] = [
+  point('temper_alarm', false),
+  point('fault', false),
+  point('alarm_switch', true),
+  point('siren_state', false),
+  point('temp_current', false),
+  point('pir', false),
+  point('sos_state', false),
+  point('watersensor_state', false),
+];
+
 function kinds(code: string, value: unknown): unknown {
-  return eventsOf('d1', [{ code, value }], AT).map((event) => [event.kind, event.details]);
+  return eventsOf('d1', [{ code, value }], AT, POINTS).map((event) => [event.kind, event.details]);
 }
 
 describe('events from reported data points', () => {
@@ -81,6 +104,7 @@ describe('events from reported data points', () => {
           { code: 'switch_1', value: true },
         ],
         AT,
+        POINTS,
       ),
     ).toStrictEqual([
       { externalId: 'd1', kind: 'motion', occurredAt: AT, details: { code: 'pir', value: 'pir' } },
@@ -89,9 +113,35 @@ describe('events from reported data points', () => {
 
   it('keeps a structured value as JSON text', () => {
     expect(kinds('doorbell_pic', 'x')).toHaveLength(1);
-    expect(eventsOf('d1', [{ code: 'sos_state', value: true }], AT)[0]?.details['value']).toBe(
-      true,
+    expect(
+      eventsOf('d1', [{ code: 'sos_state', value: true }], AT, POINTS)[0]?.details['value'],
+    ).toBe(true);
+    expect(eventsOf('d1', [{ code: 'pir', value: 'pir' }], AT, POINTS)[0]?.details['value']).toBe(
+      'pir',
     );
-    expect(eventsOf('d1', [{ code: 'pir', value: 'pir' }], AT)[0]?.details['value']).toBe('pir');
+  });
+
+  it('passes a read-only alert data point through as an activity event named by its code', () => {
+    expect(kinds('temper_alarm', 'alarm')).toStrictEqual([
+      ['activity', { code: 'temper_alarm', value: 'alarm', summary: 'Temper alarm' }],
+    ]);
+    expect(kinds('fault', 4)).toStrictEqual([
+      ['activity', { code: 'fault', value: 4, summary: 'Fault' }],
+    ]);
+    expect(kinds('siren_state', true)).toStrictEqual([
+      ['activity', { code: 'siren_state', value: true, summary: 'Siren state' }],
+    ]);
+  });
+
+  it('stays quiet for cleared alerts, settings, readings and codes with their own event', () => {
+    expect(kinds('temper_alarm', 'normal')).toStrictEqual([]);
+    expect(kinds('fault', 0)).toStrictEqual([]);
+    expect(kinds('siren_state', false)).toStrictEqual([]);
+    expect(kinds('alarm_switch', true)).toStrictEqual([]);
+    expect(kinds('temp_current', 21)).toStrictEqual([]);
+    expect(kinds('sos_state', false)).toStrictEqual([]);
+    expect(kinds('unknown_alarm', 'alarm')).toStrictEqual([]);
+    expect(kinds('fault', { nested: 1 })).toStrictEqual([]);
+    expect(kinds('watersensor_state', 'alarm')).toHaveLength(1);
   });
 });

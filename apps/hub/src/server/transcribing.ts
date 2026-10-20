@@ -4,6 +4,7 @@ import type { HostedCall } from '../assistant-voice/outreach';
 import type { TurnSession } from '../assistant-voice/turn-session';
 import { EarHosts } from '../listening/ear-hosts';
 import { EndOfSpeechPause } from '../listening/end-of-speech-pause';
+import { nearHeardBy } from '../listening/near-score';
 import { HubRemoteEars } from '../listening/remote-ears';
 import { DeviceListeningSwitches } from '../listening/listening-switches';
 import { assistantNames } from '../assistant-voice/persona';
@@ -12,10 +13,8 @@ import { CameraListening } from '../transcripts/camera-listening';
 import { Transcriber } from '../transcripts/transcriber';
 import { OpenRouterTranscription } from '../openrouter/transcription';
 import { Transcripts } from '../transcripts/transcript-service';
-import { Ears } from '../wake-name/ear';
-import type { EarKeywords, KeywordSpotter } from '../wake-name/keyword-spotter';
+import { WakeKeywords, type EarKeywords } from '../wake-name/keyword-lines';
 import { WakeClaims } from '../wake-name/wake-claims';
-import { WakeDiagnostics } from '../wake-name/wake-diagnostics';
 import { WakeTest, type WakeTestSource } from '../wake-name/wake-test';
 import type { BuildOptions } from './build';
 import type { ServerContext } from './context';
@@ -23,7 +22,8 @@ import type { ServerContext } from './context';
 export interface Transcribing {
   readonly transcripts: Transcripts;
   readonly listening: CameraListening;
-  readonly ears: Ears;
+  readonly pause: EndOfSpeechPause;
+  readonly keywords: WakeKeywords;
   readonly earHosts: EarHosts;
   readonly remoteEars: HubRemoteEars;
   readonly claims: WakeClaims;
@@ -32,100 +32,43 @@ export interface Transcribing {
   readonly plugins: PluginVoiceServices;
 }
 
-interface DiagnosticsParts {
-  readonly transcriber: Transcriber;
-  readonly names: () => readonly string[];
-  readonly spotter: () => KeywordSpotter;
-  readonly log: BuildOptions['log'];
-}
-
-function diagnosticsOf(
-  options: BuildOptions,
-  context: ServerContext,
-  parts: DiagnosticsParts,
-): WakeDiagnostics {
-  const { store, clock } = options;
-  const diagnostics = new WakeDiagnostics({
-    dataDirectory: options.dataDirectory,
-    spotter: parts.spotter,
-    names: parts.names,
-    transcribe: (pcm16k): Promise<string | null> =>
-      context.openRouter.keys.current() === null
-        ? Promise.resolve(null)
-        : parts.transcriber.transcribe({
-            pcm16k,
-            profileId: store.profiles.first().id,
-            pluginId: null,
-            names: parts.names(),
-            recent: [],
-            meta: { source: 'wake_diagnostics' },
-          }),
-    clock,
-    log: parts.log,
-  });
-  diagnostics.start().catch((cause: unknown) => {
-    parts.log.error('wake.diagnostic_watch_failed', cause);
-  });
-  return diagnostics;
-}
-
-function earsOf(
-  options: BuildOptions,
-  context: ServerContext,
-  transcriber: Transcriber,
-): { readonly claims: WakeClaims; readonly ears: Ears } {
-  const { clock } = options;
-  const log = options.log.forArea('hub.wake-name');
-  const names = (): string[] => assistantNames(options.store);
-  const claims = new WakeClaims({ clock, log });
-  const ears = new Ears({
-    claims,
-    names,
-    pause: new EndOfSpeechPause(options.store),
-    clock,
-    log,
-    ...(options.wakeDiagnostics === true
-      ? {
-          diagnostics: (spotter: () => KeywordSpotter): WakeDiagnostics =>
-            diagnosticsOf(options, context, { transcriber, names, spotter, log }),
-        }
-      : {}),
-  });
-  return { claims, ears };
-}
-
 function remoteEarsOf(
   options: BuildOptions,
   context: ServerContext,
   parts: {
     readonly claims: WakeClaims;
-    readonly ears: Ears;
+    readonly pause: EndOfSpeechPause;
+    readonly keywords: WakeKeywords;
     readonly wakeTest: WakeTest;
+    readonly earHosts: EarHosts;
   },
-): { readonly earHosts: EarHosts; readonly remoteEars: HubRemoteEars } {
+): HubRemoteEars {
   const log = options.log.forArea('hub.listening');
-  const earHosts = new EarHosts({ store: options.store, log });
+  const { earHosts } = parts;
   const remoteEars = new HubRemoteEars({
     hosts: earHosts,
     claims: parts.claims,
     test: parts.wakeTest,
-    pause: parts.ears.pause,
+    pause: parts.pause,
     names: (): string[] => assistantNames(options.store),
-    keywords: (names, sensitivity): EarKeywords =>
-      parts.ears.spotter().earConfig(names, sensitivity),
+    keywords: (names, sensitivity): EarKeywords => parts.keywords.earConfig(names, sensitivity),
     clock: options.clock,
     log,
   });
   earHosts.start();
   remoteEars.start();
   context.computerEars.bindHosts(earHosts);
-  return { earHosts, remoteEars };
+  return remoteEars;
 }
 
 function wakeTestOf(
   options: BuildOptions,
   context: ServerContext,
-  parts: { readonly transcriber: Transcriber; readonly ears: Ears },
+  parts: {
+    readonly transcriber: Transcriber;
+    readonly earHosts: EarHosts;
+    readonly keywords: WakeKeywords;
+  },
 ): WakeTest {
   const { store } = options;
   const switches = new DeviceListeningSwitches(store);
@@ -145,8 +88,12 @@ function wakeTestOf(
             recent: [],
             meta: { source: 'wake_test' },
           }),
-    nearHears: (pcm, sensitivity): Promise<boolean> =>
-      parts.ears.spotter().nearHears(assistantNames(store), sensitivity, pcm),
+    nearHears: nearHeardBy({
+      keywords: parts.keywords,
+      names: (): string[] => assistantNames(store),
+      hosts: parts.earHosts,
+      log: options.log.forArea('hub.wake-name'),
+    }),
     sensitivity: (source: WakeTestSource) =>
       source.kind === 'camera'
         ? store.cameras.byDevice(source.key).wake_sensitivity
@@ -166,7 +113,7 @@ function pluginVoiceOf(
   context: ServerContext,
   voice: AssistantVoice,
   parts: {
-    readonly ears: Ears;
+    readonly remoteEars: HubRemoteEars;
     readonly transcripts: Transcripts;
     readonly transcriber: Transcriber;
   },
@@ -182,7 +129,7 @@ function pluginVoiceOf(
         : context.assistant.chats.chatForPlugin(profileId, source, title)
       ).id,
     keys: { changes: (listener) => voice.keys.changes(listener) },
-    ears: parts.ears,
+    ears: parts.remoteEars,
     transcripts: parts.transcripts,
     transcriber: parts.transcriber,
     names: (): string[] => assistantNames(store),
@@ -192,6 +139,26 @@ function pluginVoiceOf(
   };
 }
 
+function cameraListeningOf(
+  options: BuildOptions,
+  context: ServerContext,
+  parts: { readonly transcripts: Transcripts; readonly transcriber: Transcriber },
+): CameraListening {
+  const { store, clock } = options;
+  return new CameraListening({
+    store,
+    transcripts: parts.transcripts,
+    transcriber: parts.transcriber,
+    ready: (cameraId): Promise<void> => options.core.hub.streamReady(cameraId),
+    keyPresent: (): boolean => context.openRouter.keys.current() !== null,
+    inConversation: (cameraId): boolean =>
+      store.aiOutreach.open().some((row) => row.how === 'camera' && row.target === cameraId),
+    names: (): string[] => assistantNames(store),
+    clock,
+    log: options.log.forArea('hub.transcripts'),
+  });
+}
+
 export function startTranscribing(
   options: BuildOptions,
   context: ServerContext,
@@ -199,7 +166,6 @@ export function startTranscribing(
 ): Transcribing {
   const { store, clock } = options;
   const log = options.log.forArea('hub.transcripts');
-  const names = (): string[] => assistantNames(store);
   const transcripts = new Transcripts({ store, clock, log });
   transcripts.start();
   const transcriber = new Transcriber({
@@ -207,26 +173,25 @@ export function startTranscribing(
     ledger: store.ledger,
     log,
   });
-  const { claims, ears } = earsOf(options, context, transcriber);
-  const wakeTest = wakeTestOf(options, context, { transcriber, ears });
-  const { earHosts, remoteEars } = remoteEarsOf(options, context, { claims, ears, wakeTest });
-  const listening = new CameraListening({
-    store,
-    transcripts,
-    transcriber,
-    ready: (cameraId): Promise<void> => options.core.hub.streamReady(cameraId),
-    keyPresent: (): boolean => context.openRouter.keys.current() !== null,
-    inConversation: (cameraId): boolean =>
-      store.aiOutreach.open().some((row) => row.how === 'camera' && row.target === cameraId),
-    names,
-    clock,
-    log,
+  const claims = new WakeClaims({ clock, log: options.log.forArea('hub.wake-name') });
+  const pause = new EndOfSpeechPause(store);
+  const keywords = new WakeKeywords();
+  const earHosts = new EarHosts({ store, log: options.log.forArea('hub.listening') });
+  const wakeTest = wakeTestOf(options, context, { transcriber, earHosts, keywords });
+  const remoteEars = remoteEarsOf(options, context, {
+    claims,
+    pause,
+    keywords,
+    wakeTest,
+    earHosts,
   });
-  const plugins = pluginVoiceOf(options, context, voice, { ears, transcripts, transcriber });
+  const listening = cameraListeningOf(options, context, { transcripts, transcriber });
+  const plugins = pluginVoiceOf(options, context, voice, { remoteEars, transcripts, transcriber });
   return {
     transcripts,
     listening,
-    ears,
+    pause,
+    keywords,
     earHosts,
     remoteEars,
     claims,

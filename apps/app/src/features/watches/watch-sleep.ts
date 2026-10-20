@@ -5,17 +5,10 @@ import {
   type SleepStageKind,
 } from '@smarteverything/domain';
 import { HOUR_MS } from '../../format/time';
-
-type NightStage = 'deep' | 'core' | 'rem' | 'awake';
-
-interface NightSegment {
-  readonly start: number;
-  readonly end: number;
-  readonly stage: NightStage;
-}
+import type { HypnogramSegment, HypnogramStage } from '../../components/charts';
 
 export interface LastNight {
-  readonly segments: readonly NightSegment[];
+  readonly segments: readonly HypnogramSegment[];
   readonly asleepMinutes: number;
   readonly bedtime: number;
   readonly wake: number;
@@ -23,16 +16,16 @@ export interface LastNight {
 
 export const NIGHT_WINDOW_MS = 36 * HOUR_MS;
 
-const STAGE: Readonly<Record<SleepStageKind, NightStage | null>> = {
+const STAGE: Readonly<Record<SleepStageKind, HypnogramStage | null>> = {
   awake: 'awake',
   rem: 'rem',
-  light: 'core',
+  light: 'light',
   deep: 'deep',
-  asleep: 'core',
+  asleep: 'asleep',
   unknown: null,
 };
 
-function segmentsOf(record: Extract<HealthRecord, { type: 'SleepSession' }>): NightSegment[] {
+function segmentsOf(record: Extract<HealthRecord, { type: 'SleepSession' }>): HypnogramSegment[] {
   const staged = record.data.stages
     .flatMap((span) => {
       const stage = STAGE[SLEEP_STAGE_KINDS[span.stage] ?? 'unknown'];
@@ -48,7 +41,7 @@ function segmentsOf(record: Extract<HealthRecord, { type: 'SleepSession' }>): Ni
     {
       start: Date.parse(record.startTime),
       end: Date.parse(record.endTime),
-      stage: 'core',
+      stage: 'asleep',
     },
   ];
 }

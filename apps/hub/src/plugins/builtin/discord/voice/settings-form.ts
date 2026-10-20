@@ -1,5 +1,4 @@
 import {
-  DEFAULT_PAUSE_MS,
   WAKE_SENSITIVITIES,
   WAKE_SENSITIVITY_HINTS,
   WAKE_SENSITIVITY_LABELS,
@@ -48,10 +47,10 @@ export const VOICE_SETTINGS_FORM: Form = {
     type: 'number',
     title: 'Conversation end-of-speech pause (ms)',
     description:
-      'How long the AI waits after someone stops speaking before it answers in a call. It does not change how speech is written down. 0 lets Gemini decide.',
+      'How long the AI waits after someone stops speaking before it answers in a call. It does not change how speech is written down. 0, the default, lets Gemini decide when the person is done.',
     minimum: 0,
     maximum: 3000,
-    default: DEFAULT_PAUSE_MS,
+    default: 0,
     group: GROUP,
   },
   voice_transcribe: {

@@ -3,6 +3,7 @@ import { chatSet } from '../ai-tools/tool-sets';
 import { SIGHT_SOURCES } from '@smarteverything/domain';
 import type { HostedSpeaking } from './outreach';
 import { VOICE_DEFERRED_TOOLS } from './voice-deferred';
+import { voiceSpecOf } from './voice-shapes';
 
 export const WEB_SEARCH_TOOL = 'web_search';
 
@@ -18,7 +19,7 @@ export const VOICE_TOOL_NAMES = {
 const DO_TASK: ToolSpec = {
   name: VOICE_TOOL_NAMES.task,
   description:
-    'Do something bigger than the home tools: computer work, messages, files, code, research, checking or looking things up online. It runs in the background while you keep talking. Results come back to you as [Task update] notes; tell them about it then.',
+    'Do something bigger than the home tools: computer work, messages, files, code, research, looking things up online. It runs in the background while you keep talking; the result comes back as a [Task update] note.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -41,7 +42,7 @@ const END: ToolSpec = {
 const SEE: ToolSpec = {
   name: VOICE_TOOL_NAMES.see,
   description:
-    'Look at something with your own eyes to answer them: one still picture, taken now. With no source you look at the screen of the device the call comes from. Sources: phone_camera (what their phone camera shows), phone_screen, desktop_screen (their computer screen), desktop_window (one application window on their computer, by application name or title), home_camera (a camera of the home, by name or id). Looking at phone_screen turns the screen share on for the rest of the call: you then keep seeing the current screen, also when the app is in the background, so call see for it once and never again while it is on. Use it when they ask what something is, point at something, or have a question about what is on a screen or in a window. Set asked to true when they asked you to look or asked about it; set it to false when you want to look on your own, and they may be asked first.',
+    'Look with your own eyes to answer them: one still picture, taken now. With no source you look at the screen of the device the call comes from. Sources: phone_camera, phone_screen, desktop_screen, desktop_window (by application name or title), home_camera (by name or id). Looking on your own (asked false) may ask them first.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -63,7 +64,8 @@ const SEE: ToolSpec = {
       why: { type: 'string', description: 'A few words: what you want to see it for' },
       asked: {
         type: 'boolean',
-        description: 'True when they asked you to look or asked a question about it',
+        description:
+          'True when they asked you to look or asked about it; false when you look on your own',
       },
     },
     required: ['why', 'asked'],
@@ -72,8 +74,7 @@ const SEE: ToolSpec = {
 
 const STOP_LOOKING: ToolSpec = {
   name: VOICE_TOOL_NAMES.stopLooking,
-  description:
-    'Stop looking at what they are showing you (camera, screen or window) when you no longer need it or they ask you to. The call goes on.',
+  description: 'Stop looking at what they show you (camera, screen or window); the call goes on.',
   inputSchema: {},
 };
 
@@ -92,9 +93,9 @@ export function voiceSet(
   sight: boolean,
 ): ToolSpec[] {
   return [
-    ...chatSet(withoutChatOnly(enabled, sight)).filter(
-      (tool) => !VOICE_DEFERRED_TOOLS.has(tool.name),
-    ),
+    ...chatSet(withoutChatOnly(enabled, sight))
+      .filter((tool) => !VOICE_DEFERRED_TOOLS.has(tool.name))
+      .map(voiceSpecOf),
     ...(responder ? [DO_TASK] : []),
     ...(sight ? [SEE, STOP_LOOKING] : []),
     END,

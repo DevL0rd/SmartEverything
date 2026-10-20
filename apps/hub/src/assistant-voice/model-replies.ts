@@ -12,6 +12,10 @@ export class ModelReplies {
     private readonly now: () => number,
   ) {}
 
+  get answering(): boolean {
+    return this.begun;
+  }
+
   output(): void {
     if (!this.begun) {
       this.begun = true;

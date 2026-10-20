@@ -8,9 +8,12 @@ import { talkLinked } from '../../modules/health-connect';
 import { PREFS, prefOf } from '../store/prefs';
 import type { StoreState } from '../store/state';
 import { ASSISTANT_PAGES } from './tree-assistant';
+import { NAVIGATION_PAGES } from './tree-navigation';
 import { PLUGIN_PAGES } from './tree-plugins';
+import { SETUP_PAGES } from './tree-setup';
 import { DEVELOPER_PAGES } from './tree-developer';
 import { CLIPBOARD_PAGES } from './tree-clipboard';
+import { HOME_LAYOUT_PAGES } from './tree-home-layouts';
 import { REGION_PAGES } from './tree-region';
 import type { SettingEnv, SettingsPageDefinition } from './types';
 
@@ -41,6 +44,7 @@ const ownerOnly = (env: { readonly owner: boolean }): boolean => env.owner;
 const talkReady = talkLinked();
 
 export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
+  ...SETUP_PAGES,
   {
     id: 'home',
     title: 'Home',
@@ -68,6 +72,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     summary: (state) => countOf(state.tables.rooms.ids.length, 'room'),
     keywords: ['room', 'areas'],
   },
+  ...HOME_LAYOUT_PAGES,
   {
     id: 'members',
     title: 'Paired devices',
@@ -103,6 +108,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     icon: 'bulb',
     parent: null,
     group: 'App',
+    childrenInline: false,
     summary: (state) => countOf(state.tables.devices.ids.length, 'device'),
     keywords: ['hidden', 'add device', 'rename'],
   },
@@ -269,6 +275,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     summary: appearanceSummary,
     keywords: ['theme', 'dark', 'light', 'accent', 'colour', 'density', 'motion'],
   },
+  ...NAVIGATION_PAGES,
   ...REGION_PAGES,
   ...CLIPBOARD_PAGES,
   {

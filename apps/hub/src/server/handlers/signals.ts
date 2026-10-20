@@ -2,17 +2,15 @@ import {
   API_ENDPOINTS as E,
   AUTOMATION_RUNTIME_SIGNAL_SOURCES,
   ApiError,
-  automationSignalErrorV2,
-  type AutomationV2,
   type ResponseOf,
   type SignalInput,
   type SignalSourceSpec,
 } from '@smarteverything/domain';
 import { clientOf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
-import { reachesAi } from '../../automations/ai-steps';
 import { installedSignalSources } from '../../signals/sources/installed';
-import type { Store } from '../../store/store';
+import { triggerCatalogueView } from '../../signals/trigger-catalogue-view';
+import { deviceScopeOf } from '../person-scope';
 import { bound } from '../router';
 
 function sourceInfo(spec: SignalSourceSpec): ResponseOf<'listSignalKinds'>[number] {
@@ -20,7 +18,7 @@ function sourceInfo(spec: SignalSourceSpec): ResponseOf<'listSignalKinds'>[numbe
     ...spec,
     kinds: spec.kinds.map((kind) => ({
       ...kind,
-      fields: kind.fields === 'capabilities' ? kind.fields : [...kind.fields],
+      fields: typeof kind.fields === 'string' ? kind.fields : [...kind.fields],
       match: kind.match.map((entry) => ({
         ...entry,
         values: entry.values === null ? null : [...entry.values],
@@ -52,29 +50,6 @@ function wakesProfile(context: ServerContext, caller: Caller, asked: string | un
   return asked;
 }
 
-export function requireOwnerForAiActions(
-  store: Pick<Store, 'automations'>,
-  caller: Caller,
-  definition: Pick<AutomationV2, 'steps'>,
-): void {
-  if (reachesAi(store, definition) && !isOwner(caller)) {
-    throw new ApiError(
-      'forbidden',
-      'Only an owner can save automations that wake the AI or use tools.',
-    );
-  }
-}
-
-export function requireKnownSignals(
-  store: Pick<Store, 'plugins'>,
-  definition: Pick<AutomationV2, 'when'>,
-): void {
-  const error = automationSignalErrorV2(installedSignalSources(store), definition);
-  if (error !== null) {
-    throw new ApiError('invalid_request', `${error.name}: ${error.message}`);
-  }
-}
-
 export const signalRoutes = (context: ServerContext) =>
   ({
     listSignalKinds: bound(E.listSignalKinds, ({ query }) =>
@@ -90,6 +65,9 @@ export const signalRoutes = (context: ServerContext) =>
       const visible = visibleTo(context, caller);
       return context.hub.signals.latest(query).filter(visible).slice(0, query.limit);
     }),
+    listTriggerCatalogue: bound(E.listTriggerCatalogue, ({ query, caller }) =>
+      triggerCatalogueView(context.store, deviceScopeOf(context.store, caller), query),
+    ),
     listWakes: bound(E.listWakes, ({ query, caller }) =>
       context.store.aiWakes.recent(wakesProfile(context, caller, query.profileId), query.limit),
     ),

@@ -28,12 +28,14 @@ export function Grid({ model }: { readonly model: Model }): ReactNode {
   );
 }
 
+export type ScrubModel = Pick<Model, 'box' | 'x'>;
+
 export function Crosshair({
   hits,
   model,
 }: {
   readonly hits: readonly Hit<ChartSeries>[];
-  readonly model: Model;
+  readonly model: ScrubModel;
 }): ReactNode {
   const stroke = useColour('on-surface-variant');
   const at = hits[0] === undefined ? null : model.x(hits[0].point.t);
@@ -60,7 +62,7 @@ export function Readout({
   valueOf,
 }: {
   readonly hits: readonly Hit<ChartSeries>[];
-  readonly model: Model;
+  readonly model: ScrubModel;
   readonly heading: string;
   readonly valueOf: (hit: Hit<ChartSeries>) => string;
 }): ReactNode {

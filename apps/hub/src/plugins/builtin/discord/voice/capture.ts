@@ -7,6 +7,8 @@ const SILENCE_MS = 600;
 export interface CaptureDeps {
   readonly link: VoiceLink;
   readonly shouldCapture: (userId: string) => boolean;
+  readonly mixed: (userId: string) => boolean;
+  readonly packet: (userId: string, packet: Uint8Array) => void;
   readonly heard: (userId: string, pcm: Int16Array) => void;
   readonly ended: (userId: string) => void;
   readonly failed: (cause: unknown) => void;
@@ -61,6 +63,10 @@ export class Capture {
     decode: (packet: Uint8Array) => Int16Array,
     packet: Uint8Array,
   ): void {
+    this.deps.packet(userId, packet);
+    if (!this.deps.mixed(userId)) {
+      return;
+    }
     let pcm: Int16Array;
     try {
       pcm = decode(packet);

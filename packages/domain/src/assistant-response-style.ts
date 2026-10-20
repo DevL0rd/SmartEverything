@@ -84,10 +84,11 @@ export const DEFAULT_RESPONSE_STYLE = ASSISTANT_RESPONSE_STYLE.parse({});
 
 export function personalityGuidance(style: AssistantResponseStyle): string {
   const custom = style.personality === 'custom' ? style.custom_personality.trim() : '';
-  const preset =
-    RESPONSE_PERSONALITIES.find((entry) => entry.value === style.personality)?.guidance ?? '';
-  const tone = custom === '' ? preset : custom;
-  return tone === '' ? RESPONSE_PERSONALITIES[0].guidance : tone;
+  if (custom !== '') return custom;
+  const preset = RESPONSE_PERSONALITIES.find(
+    (entry) => entry.value === style.personality && entry.guidance !== '',
+  );
+  return (preset ?? RESPONSE_PERSONALITIES[0]).guidance;
 }
 
 export function responseStyleGuidance(style: AssistantResponseStyle): string {

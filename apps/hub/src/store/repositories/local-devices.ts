@@ -47,6 +47,14 @@ export class LocalDevicesRepository {
     );
   }
 
+  ofDriver(driver: LocalDriver): LocalDeviceEntry[] {
+    return this.context.sql.all(
+      STORED_ENTRY,
+      `select ${COLUMNS} from local_devices where driver = $driver order by created_at`,
+      { driver },
+    );
+  }
+
   byExternalId(externalId: string): LocalDeviceEntry {
     return found(
       this.context.sql.get(
@@ -76,6 +84,14 @@ export class LocalDevicesRepository {
       },
     );
     return this.byExternalId(entry.externalId);
+  }
+
+  updateConfig(externalId: string, config: Readonly<Record<string, JsonValue>>): void {
+    this.context.sql.run(
+      'change the built-in device settings',
+      'update local_devices set config = $config where external_id = $externalId',
+      { externalId, config: jsonText(config) },
+    );
   }
 
   remove(externalId: string): void {

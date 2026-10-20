@@ -13,6 +13,7 @@ import expo.modules.healthconnect.watch.NotificationRules
 import expo.modules.healthconnect.watch.RelayChange
 import expo.modules.healthconnect.watch.VendorApps
 import expo.modules.healthconnect.watch.WatchPhoneBridge
+import expo.modules.healthconnect.watch.WatchStore
 import expo.modules.healthconnect.push.PushCommands
 import expo.modules.healthconnect.watch.WatchAction
 import expo.modules.healthconnect.watch.WatchActions
@@ -158,6 +159,10 @@ class HealthConnectModule : Module() {
 
     AsyncFunction("setWatchLive") { on: Boolean ->
       WatchBridge.live(context, on)
+    }
+
+    AsyncFunction("setWatchCapture") { on: Boolean ->
+      WatchStore(context).setCapturing(on)
     }
 
     AsyncFunction("refreshWatches") {

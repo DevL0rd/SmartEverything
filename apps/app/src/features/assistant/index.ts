@@ -1,6 +1,6 @@
 export { AssistantOrb } from './call/orb';
 export { CallAudioSync, startCall } from './call';
-export { QuickAskHost, openQuickAsk } from './quick-ask/quick-ask-host';
+export { QuickAskHost, openQuickAsk, openQuickAskWith } from './quick-ask/quick-ask-host';
 export { AssistantPushHost } from './push/assistant-push';
 export { AiCallHost } from './reach/ai-call-host';
 export { AiSpeechHost } from './reach/ai-speech-host';
@@ -27,6 +27,7 @@ export { useHarnessCatalogue } from './data/harness';
 export { useDesktopHarness } from './data/desktop-harness';
 export { harnessHostReason } from './model/harness-context';
 export { useLastChat } from './data/last-chat';
+export { useSuggestedModels } from './picker/model-queries';
 export { SubscriptionUsageBars } from './provider/subscription-usage';
 export {
   codexSubscriptionWindows,

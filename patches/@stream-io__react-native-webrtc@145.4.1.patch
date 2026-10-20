@@ -1,0 +1,59 @@
+diff --git a/android/src/main/java/com/oney/WebRTCModule/PeerConnectionFactoryProvider.java b/android/src/main/java/com/oney/WebRTCModule/PeerConnectionFactoryProvider.java
+index 02b64a6..88d4428 100644
+--- a/android/src/main/java/com/oney/WebRTCModule/PeerConnectionFactoryProvider.java
++++ b/android/src/main/java/com/oney/WebRTCModule/PeerConnectionFactoryProvider.java
+@@ -1,6 +1,7 @@
+ package com.oney.WebRTCModule;
+ 
+ import android.content.Context;
++import android.media.AudioAttributes;
+ import android.media.AudioManager;
+ import android.media.MediaRecorder;
+ import android.os.Build;
+@@ -117,6 +118,11 @@ class PeerConnectionFactoryProvider {
+                     .setUseStereoOutput(true);
+         }
+ 
++        AudioAttributes audioAttributes = WebRTCModuleOptions.getInstance().audioAttributes;
++        if (audioAttributes != null) {
++            builder.setAudioAttributes(audioAttributes);
++        }
++
+         final SpeechActivityDetector speechDetector = options.speechActivityListener != null
+                 ? new SpeechActivityDetector(options.speechActivityListener)
+                 : null;
+diff --git a/android/src/main/java/com/oney/WebRTCModule/WebRTCModuleOptions.java b/android/src/main/java/com/oney/WebRTCModule/WebRTCModuleOptions.java
+index dc510e5..a598a12 100644
+--- a/android/src/main/java/com/oney/WebRTCModule/WebRTCModuleOptions.java
++++ b/android/src/main/java/com/oney/WebRTCModule/WebRTCModuleOptions.java
+@@ -1,5 +1,7 @@
+ package com.oney.WebRTCModule;
+ 
++import android.media.AudioAttributes;
++
+ import com.oney.WebRTCModule.audio.AudioProcessingFactoryProvider;
+ 
+ import org.webrtc.AudioProcessingFactory;
+@@ -20,6 +22,7 @@ public class WebRTCModuleOptions {
+     public VideoEncoderFactory videoEncoderFactory;
+     public VideoDecoderFactory videoDecoderFactory;
+     public Callable<AudioProcessingFactory> audioProcessingFactoryFactory;
++    public AudioAttributes audioAttributes;
+ 
+     public Loggable injectableLogger;
+     public Logging.Severity loggingSeverity;
+diff --git a/src/index.ts b/src/index.ts
+index 5a1f177..8009956 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -49,7 +49,9 @@ import RTCSessionDescription from './RTCSessionDescription';
+ import RTCView from './RTCView';
+ import ScreenCapturePickerView from './ScreenCapturePickerView';
+ 
+-Logger.enable(`${Logger.ROOT_PREFIX}:*`);
++if (__DEV__) {
++    Logger.enable(`${Logger.ROOT_PREFIX}:*`);
++}
+ 
+ // Add listeners for the native events early, since they are added asynchronously.
+ setupNativeEvents();

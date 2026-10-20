@@ -33,9 +33,9 @@ describe('the mini stage of a group card', () => {
     expect(bright?.opacity).toBeGreaterThan(dim?.opacity ?? 1);
   });
 
-  it('treats a member with no known power as off', () => {
+  it('treats a member with no known power as unknown, not off', () => {
     const stage = miniStageOf(['a'], { state: state([]), powers: {}, colours: {} });
-    expect(stage.dots[0]?.power).toBe('off');
+    expect(stage.dots[0]?.power).toBe('unknown');
   });
 
   it('shows at most eight dots and counts the rest', () => {

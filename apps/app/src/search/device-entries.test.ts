@@ -87,7 +87,7 @@ describe('IR remote search', () => {
     ]);
   });
 
-  it('finds only what a library remote page offers', () => {
+  it('finds only what an IR remote device page offers', () => {
     const remote = { ...deviceOf('ac-1', 'tuya'), kind: 'ir_remote' as const };
     expect(remoteActions(remote).map((action) => action.title)).toEqual([
       'Check with a plug',

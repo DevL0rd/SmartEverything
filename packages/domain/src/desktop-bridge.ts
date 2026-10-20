@@ -10,6 +10,7 @@ import type {
   NativeHubNetworkChange,
 } from './hub-native';
 import { HUB_CONNECTION_METADATA, type HubConnectionMetadata } from './hub-connections';
+import type { FirewallApplyResult } from './api/firewall';
 import type { NativeHtmlPreview } from './native-html-preview';
 import type { DesktopBrowser } from './desktop-browser';
 import type { MachineUpdateStatus } from './machine-updates';
@@ -56,13 +57,6 @@ export interface DesktopServiceStatus {
   readonly detail: string;
   readonly linger: DesktopLinger;
   readonly managedBy?: 'stable-app';
-}
-
-export type DesktopFirewallOutcome = 'applied' | 'declined' | 'failed' | 'stale';
-
-export interface DesktopFirewallResult {
-  readonly outcome: DesktopFirewallOutcome;
-  readonly detail: string;
 }
 
 export interface DesktopServiceLogs {
@@ -157,7 +151,7 @@ export interface SmartEverythingDesktop {
   enableServiceLinger(): Promise<DesktopServiceStatus>;
   serviceLogs(): Promise<DesktopServiceLogs>;
   onServiceStatus(listener: (status: DesktopServiceStatus) => void): () => void;
-  applyFirewall(revision: string): Promise<DesktopFirewallResult>;
+  applyFirewall(revision: string): Promise<FirewallApplyResult>;
   onTalkCommand?(listener: (command: DesktopTalkCommand) => void): () => void;
   talkShortcuts?(): Promise<DesktopTalkShortcuts>;
   configureTalkShortcuts?(): Promise<DesktopTalkShortcuts>;
@@ -284,7 +278,7 @@ export interface DesktopInvokeChannels {
   };
   readonly 'desktop:firewall-apply': {
     readonly request: string;
-    readonly response: DesktopFirewallResult;
+    readonly response: FirewallApplyResult;
   };
   readonly 'desktop:update-status': UpdateCall;
   readonly 'desktop:update-check': UpdateCall;

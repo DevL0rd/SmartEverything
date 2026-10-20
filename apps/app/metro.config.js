@@ -50,6 +50,7 @@ config.transformer.getTransformOptions = async (...args) => {
         'react/compiler-runtime',
         'react-compiler-runtime',
         'react-native',
+        'd3-transition',
       ],
     },
   };

@@ -7,8 +7,9 @@ import {
   type ButtonAction,
   type DeviceRow,
   type JsonValue,
+  type LaundryNoticeChange,
+  type LaundryNoticeSetting,
 } from '@smarteverything/domain';
-import { readableAutomations } from './device-log/automations';
 import { clientOf, type Caller } from '../server/auth';
 import type { RunningHub } from '../hub';
 import { eventSignal } from '../signals/sources/device';
@@ -34,7 +35,8 @@ function pressedAutomations(
     occurredAt: new Date().toISOString(),
     details,
   });
-  return readableAutomations(store.automations.list())
+  return store.automations
+    .list()
     .filter((automation) => automation.enabled && respondsToSignal(automation.definition, signal))
     .map(({ id, name }) => ({ id, name }));
 }
@@ -70,4 +72,15 @@ export async function recordRefill(
     kind: 'maintenance',
     details: { item: REFILL_ITEM, state: REFILL_STATE, ...originOf(caller) },
   });
+}
+
+export function changeLaundryNotices(
+  store: Pick<Store, 'settings'>,
+  device: DeviceRow,
+  change: LaundryNoticeChange,
+): LaundryNoticeSetting {
+  if (deviceFamily(device) !== 'laundry') {
+    throw new ApiError('invalid_request', `${device.name} is not a washing machine or dryer.`);
+  }
+  return store.settings.changeLaundryNotice(device.id, change);
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CALL_STATES, type CallState } from './assistant-voice';
+import { CALL_STATES, VOICE_THINKING_LEVELS, type CallState } from './assistant-voice';
 import { SIGHT_SOURCE } from './call-sight';
 
 export const ORB_STATES = ['idle', 'listening', 'thinking', 'speaking'] as const;
@@ -85,6 +85,7 @@ export const OVERLAY_ACTION = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.enum(OVERLAY_SIMPLE_ACTIONS) }),
   z.strictObject({ kind: z.literal('mic'), id: z.string().nullable() }),
   z.strictObject({ kind: z.literal('volume'), value: z.number().min(0).max(1) }),
+  z.strictObject({ kind: z.literal('voice_thinking'), level: z.enum(VOICE_THINKING_LEVELS) }),
 ]);
 export type OverlayAction = z.infer<typeof OVERLAY_ACTION>;
 
@@ -172,7 +173,7 @@ export const OVERLAY_SURFACE = z.discriminatedUnion('platform', [
     main: z.enum(OVERLAY_MAIN_WINDOWS),
     inShare: z.boolean(),
   }),
-  z.strictObject({ platform: z.literal('phone'), foreground: z.boolean() }),
+  z.strictObject({ platform: z.literal('phone'), main: z.enum(OVERLAY_MAIN_WINDOWS) }),
 ]);
 export type OverlaySurface = z.infer<typeof OVERLAY_SURFACE>;
 
@@ -198,6 +199,14 @@ export const OVERLAY_PREFS = z.strictObject({
 export type OverlayPrefs = z.infer<typeof OVERLAY_PREFS>;
 export const DEFAULT_OVERLAY_PREFS: OverlayPrefs = OVERLAY_PREFS.parse({});
 
+export const OVERLAY_VOICE = z.strictObject({
+  thinking_level: z.enum(VOICE_THINKING_LEVELS).nullable(),
+  saving: z.boolean(),
+  failed: z.boolean(),
+  changedInCall: z.boolean(),
+});
+export type OverlayVoice = z.infer<typeof OVERLAY_VOICE>;
+
 export const OVERLAY_INPUT = z.strictObject({
   prefs: OVERLAY_PREFS,
   surface: OVERLAY_SURFACE,
@@ -208,6 +217,7 @@ export const OVERLAY_INPUT = z.strictObject({
   superseded: z.strictObject({ by: z.string(), at: z.number() }).nullable(),
   audio: OVERLAY_AUDIO,
   hold: z.strictObject({ active: z.boolean(), endedAt: z.number().nullable() }),
+  voice: OVERLAY_VOICE.nullable(),
   now: z.number(),
 });
 export type OverlayInput = z.infer<typeof OVERLAY_INPUT>;
@@ -221,11 +231,28 @@ export const OVERLAY_TILE = z.strictObject({
 });
 export type OverlayTile = z.infer<typeof OVERLAY_TILE>;
 
+export const OVERLAY_SETUP_STATES = ['loading', 'ready', 'saving', 'failed'] as const;
+export const OVERLAY_SETUP = z.strictObject({
+  level: z.enum(VOICE_THINKING_LEVELS).nullable(),
+  state: z.enum(OVERLAY_SETUP_STATES),
+  note: z.string(),
+});
+export type OverlaySetup = z.infer<typeof OVERLAY_SETUP>;
+
+export const OVERLAY_CHIP = z.strictObject({
+  level: z.enum(VOICE_THINKING_LEVELS),
+  label: z.string(),
+  description: z.string(),
+  warm: z.boolean(),
+});
+export type OverlayChip = z.infer<typeof OVERLAY_CHIP>;
+
 export const OVERLAY_TRAY = z.strictObject({
   assistant: z.string(),
   chat: z.string().nullable(),
   elapsedFrom: z.number().nullable(),
   tiles: z.array(OVERLAY_TILE),
+  setup: OVERLAY_SETUP,
   mics: z.array(OVERLAY_MIC),
   micId: z.string().nullable(),
   volume: z.number().min(0).max(1),
@@ -254,6 +281,7 @@ export const OVERLAY_VIEW = z.strictObject({
   speaker: z.boolean().nullable(),
   camera: OVERLAY_CAMERA_PHASE,
   tray: OVERLAY_TRAY.nullable(),
+  chip: OVERLAY_CHIP.nullable(),
   request: OVERLAY_REQUEST.nullable(),
   changesAt: z.number().nullable(),
 });

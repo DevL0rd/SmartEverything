@@ -53,7 +53,12 @@ export class DeviceMirror<T> {
     if (sink === null || device === null) {
       return;
     }
-    const signature = JSON.stringify([device.online, device.model, device.details]);
+    const signature = JSON.stringify([
+      device.online,
+      device.model,
+      device.details,
+      device.capabilities.map(({ key, label }) => [key, label]),
+    ]);
     if (signature !== this.#described) {
       this.#described = signature;
       sink.devices([device]);

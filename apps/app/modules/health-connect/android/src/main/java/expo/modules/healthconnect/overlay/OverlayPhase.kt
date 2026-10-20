@@ -14,6 +14,7 @@ val OVERLAY_HIDDEN = OverlayViewState(
   speaker = null,
   camera = CameraPhase.Off,
   tray = null,
+  chip = null,
   request = null,
   changesAt = null,
 )
@@ -31,7 +32,7 @@ private fun view(state: OverlayState): OverlayViewState = OVERLAY_HIDDEN.copy(st
 private fun shown(input: OverlayInput): Boolean {
   if (!input.prefs.enabled) return false
   return when (val surface = input.surface) {
-    is OverlaySurface.Phone -> !surface.foreground
+    is OverlaySurface.Phone -> surface.main != MainWindow.Call
     is OverlaySurface.Desktop -> {
       val screenShared = surface.inShare && input.call?.sharing?.kind == SharingKind.Screen
       surface.main != MainWindow.Call && !(screenShared && input.prefs.whileSharing == WhileSharing.Hide)
@@ -163,8 +164,7 @@ private fun stateView(input: OverlayInput): OverlayViewState {
 }
 
 private fun compactOf(base: OverlayViewState, input: OverlayInput): OverlayViewState {
-  val surface = input.surface
-  val compact = surface is OverlaySurface.Desktop && surface.main == MainWindow.Other
+  val compact = input.surface.main == MainWindow.Other
   return if (compact) base.copy(mode = OverlayMode.Compact, glow = GlowMode.Off) else base
 }
 

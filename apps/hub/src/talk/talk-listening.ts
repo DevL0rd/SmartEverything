@@ -4,21 +4,20 @@ import {
   type TalkSpeaker,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import { OpusSpeech } from '../reach/voice-pacing';
 import type { Clock } from '../clock';
+import type { RemoteEar, RemoteEars } from '../listening/remote-ears-port';
+import type { SpeechSegment } from '../listening/speech-segment';
 import type { Store } from '../store/store';
 import type { ListeningBudget } from '../transcripts/listening-budget';
 import { ownerProfileOf } from '../transcripts/owner';
 import type { Transcriber } from '../transcripts/transcriber';
 import { Utterances } from '../transcripts/utterances';
-import type { Ear, EarOptions, SpeechSegment } from '../wake-name/ear';
 import type { OnSuperseded, Superseded, WakeClaim } from '../wake-name/wake-claims';
 import type { PacketSink } from './transmission';
 import { background } from '@smarteverything/logging';
 
 const CONTEXT_WINDOW_MS = 120_000;
 const CONTEXT_LINES = 3;
-const SILENCE_PAD_SAMPLES = 16_000;
 
 export interface TalkHeard {
   readonly channel: TalkChannelRow;
@@ -29,15 +28,9 @@ export interface TalkHeard {
   readonly onSuperseded: OnSuperseded;
 }
 
-export type Listener = Pick<Ear, 'hear' | 'close'>;
-
-interface TalkEars {
-  readonly make: (options: EarOptions) => Promise<Listener>;
-}
-
 export interface TalkListeningOptions {
   readonly store: Pick<Store, 'talk' | 'clients' | 'profiles' | 'personAccess'>;
-  readonly ears: TalkEars;
+  readonly ears: Pick<RemoteEars, 'open'>;
   readonly transcriber: Pick<Transcriber, 'transcribe'>;
   readonly budget: Pick<ListeningBudget, 'capReached'>;
   readonly names: () => readonly string[];
@@ -54,10 +47,9 @@ interface Message {
 }
 
 class MessageListener implements PacketSink {
-  private readonly speech: OpusSpeech;
   private readonly utterances: Utterances;
   private readonly texts: Promise<string | null>[] = [];
-  private readonly ear: Promise<Listener | null>;
+  private readonly ear: Promise<RemoteEar | null>;
   private readonly stops: Superseded[] = [];
   private phrase: string | null = null;
   private winner: WakeClaim | null = null;
@@ -67,9 +59,6 @@ class MessageListener implements PacketSink {
     private readonly message: Message,
   ) {
     const { channel } = message;
-    this.speech = new OpusSpeech((pcm) => {
-      this.hear(pcm);
-    });
     this.utterances = new Utterances(options.clock, {
       heard: (utterance): void => {
         this.texts.push(this.transcribe(utterance));
@@ -83,7 +72,9 @@ class MessageListener implements PacketSink {
       },
     });
     this.ear = options.ears
-      .make({
+      .open({
+        source: { kind: 'talk', key: message.messageId },
+        codec: 'opus_48k_mono',
         claim: { source: 'talk', key: channel.id },
         fields: { channelId: channel.id },
         sensitivity: () => DEFAULT_WAKE_SENSITIVITY,
@@ -107,11 +98,15 @@ class MessageListener implements PacketSink {
   }
 
   packet(packet: Uint8Array): void {
-    this.speech.packet(packet);
+    background(
+      this.ear.then((ear) => {
+        ear?.packet(packet);
+      }),
+      'talk_listening.background_failed',
+    );
   }
 
   end(): void {
-    this.speech.free();
     this.finish().catch((cause: unknown) => {
       this.options.log.error('talk.listening_failed', cause, { messageId: this.message.messageId });
     });
@@ -136,21 +131,9 @@ class MessageListener implements PacketSink {
     }
   };
 
-  private hear(pcm: Int16Array): void {
-    background(
-      this.ear.then((ear) => {
-        ear?.hear(pcm);
-      }),
-      'talk_listening.background_failed',
-    );
-  }
-
   private async finish(): Promise<void> {
     const ear = await this.ear;
-    if (ear !== null) {
-      ear.hear(new Int16Array(SILENCE_PAD_SAMPLES));
-      await ear.close();
-    }
+    await ear?.close();
     this.utterances.finish();
     const texts = await Promise.all(this.texts);
     const joined = texts.flatMap((text) => (text === null ? [] : [text])).join(' ');

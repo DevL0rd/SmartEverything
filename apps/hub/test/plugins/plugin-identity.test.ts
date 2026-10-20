@@ -48,6 +48,7 @@ function lifecycleOf(): AccessLifecycle {
     now: (): Date => clock,
     clientRemoved: (): void => undefined,
     clientPaused: (): void => undefined,
+    lapseGrants: (): void => undefined,
   });
 }
 

@@ -41,13 +41,20 @@ describe('visibility', () => {
     );
   });
 
-  it('shows on the phone for any call while the app is in the background', () => {
-    expect(overlayView(input({ surface: PHONE })).state).toBe('listening');
-    const foreground = { platform: 'phone' as const, foreground: true };
-    expect(overlayView(input({ surface: foreground })).state).toBe('hidden');
+  it('shows on the phone whenever the user is not on the call page, compact inside the app', () => {
+    const onCall = { platform: 'phone' as const, main: 'call' as const };
+    const inApp = { platform: 'phone' as const, main: 'other' as const };
     const wake = { at: NOW, words: null, muted: false };
+    expect(overlayView(input({ surface: PHONE })).mode).toBe('full');
+    expect(overlayView(input({ surface: inApp }))).toMatchObject({
+      state: 'listening',
+      mode: 'compact',
+      glow: 'off',
+    });
+    expect(overlayView(input({ surface: onCall })).state).toBe('hidden');
     expect(overlayView(input({ surface: PHONE, call: null, wake })).state).toBe('wake');
-    expect(overlayView(input({ surface: foreground, call: null, wake })).state).toBe('hidden');
+    expect(overlayView(input({ surface: inApp, call: null, wake })).mode).toBe('compact');
+    expect(overlayView(input({ surface: onCall, call: null, wake })).state).toBe('hidden');
   });
 
   it('hides a shared whole screen only when the setting says so and the bar would be seen', () => {

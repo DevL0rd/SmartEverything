@@ -31,7 +31,7 @@ const SAY_NOW = '[Say this to them now, naturally and in your own words]';
 
 export class Conversation {
   private session: LiveSession | null = null;
-  private readonly renewal = new LiveRenewal();
+  private readonly renewal = new LiveRenewal(() => this.hooks.window());
   private readonly codec: OpusCodec = opusCodec();
   private readonly framer = new OpusFramer(this.codec);
   private readonly text = new TurnText();
@@ -217,6 +217,7 @@ export class Conversation {
   private listen(): Promise<SpeechInput> {
     const audible = (): boolean => this.speaking || this.link.playing();
     return speechInput(this.hooks.speech, this.speechEvents(), {
+      ...(this.hooks.pause === undefined ? {} : { pause: this.hooks.pause }),
       assistantAudible: audible,
       now: this.now,
       meter: this.meter,
@@ -257,6 +258,7 @@ export class Conversation {
     this.openedWith = this.tuning;
     this.renewal.opening(reason, resume !== null, this.now());
     const options = liveOptionsOf(this.hooks, this.tuning, resume);
+    this.watchdog.turnsDecidedByGemini(options.automatic);
     return connectWithin(this.line.live(options, this.events(current, options.model))).then(
       (session) =>
         this.opened(trackedSession(session, this.renewal), resume === null, reason === null),
@@ -282,6 +284,9 @@ export class Conversation {
         this.link.caption('assistant', this.text.said(text));
       },
       heard: (text) => {
+        if (!this.replies.answering) {
+          this.watchdog.heard();
+        }
         this.idle.heard();
         this.timing.heard();
         this.link.caption('person', this.text.heard(text));

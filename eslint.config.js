@@ -242,7 +242,11 @@ export default tseslint.config(
     rules: { 'no-console': 'off' },
   },
   {
-    files: ['packages/domain/src/**/*.ts', 'packages/logging/src/**/*.ts'],
+    files: [
+      'packages/domain/src/**/*.ts',
+      'packages/logging/src/**/*.ts',
+      'packages/flow/src/**/*.ts',
+    ],
     ignores: ['**/*.test.ts'],
     rules: { 'local/frame-budget': 'error' },
   },

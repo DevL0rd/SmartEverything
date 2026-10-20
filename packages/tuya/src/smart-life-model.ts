@@ -120,11 +120,8 @@ export function smartLifeModel(
 }
 
 export function isLanWritable(
-  conversions: ReadonlyMap<number, DataPointConversion> | null,
+  conversions: ReadonlyMap<number, DataPointConversion>,
   dpId: number | null,
 ): dpId is number {
-  if (dpId === null) {
-    return false;
-  }
-  return conversions === null || conversions.get(dpId)?.name === IDENTITY_CONVERSION;
+  return dpId !== null && conversions.get(dpId)?.name === IDENTITY_CONVERSION;
 }

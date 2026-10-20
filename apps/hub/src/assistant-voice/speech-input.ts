@@ -1,4 +1,5 @@
 import { BARGE_IN, BARGE_IN_LEVEL } from '@smarteverything/domain';
+import type { EndOfSpeechPause } from '../listening/end-of-speech-pause';
 import type { MicMeter } from './mic-meter';
 import { sileroModel } from './silero-vad';
 import { SpeechGate, type SpeechGateEvents } from './speech-gate';
@@ -19,7 +20,10 @@ export interface SpeechInput {
   readonly release: () => Promise<void>;
 }
 
+export type SpeechPause = Pick<EndOfSpeechPause, 'ms' | 'onChange'>;
+
 export interface SpeechInputContext {
+  readonly pause?: SpeechPause;
   readonly assistantAudible: () => boolean;
   readonly now: () => number;
   readonly meter: MicMeter;
@@ -64,9 +68,15 @@ async function detectedSpeech(
   events: SpeechGateEvents,
   context: SpeechInputContext,
 ): Promise<SpeechInput> {
+  const { pause } = context;
   const gate = new SpeechGate(await sileroModel(), events, {
     bargeInLevel: BARGE_IN_LEVEL.echoCancelled,
-    ...context,
+    assistantAudible: context.assistantAudible,
+    now: context.now,
+    ...(pause === undefined ? {} : { pauseMs: pause.ms() }),
+  });
+  const follow = pause?.onChange((ms) => {
+    gate.pause(ms);
   });
   return {
     hear: (pcm): void => {
@@ -76,7 +86,10 @@ async function detectedSpeech(
     reset: (): void => {
       gate.reset();
     },
-    release: () => gate.release(),
+    release: (): Promise<void> => {
+      follow?.();
+      return gate.release();
+    },
   };
 }
 

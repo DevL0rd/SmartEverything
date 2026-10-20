@@ -1,4 +1,4 @@
-import type { NetworkClient, PluginSearchEntry } from '@smarteverything/domain';
+import type { PluginSearchEntry, RouterSnapshot } from '@smarteverything/domain';
 import { ROUTER_EXTERNAL_ID } from './router-device';
 
 const ROUTER_SECTIONS = {
@@ -50,19 +50,31 @@ const PAGE_ENTRIES: readonly PluginSearchEntry[] = [
   }),
 ];
 
-export function routerSearchEntries(clients: readonly NetworkClient[]): PluginSearchEntry[] {
+export function routerSearchEntries(
+  snapshot: Pick<RouterSnapshot, 'clients' | 'people'>,
+): PluginSearchEntry[] {
   return [
     ...PAGE_ENTRIES,
-    ...clients.map((client) =>
+    ...snapshot.clients.map((client) =>
       entry(`router.client.${client.mac}`, client.name, ROUTER_SECTIONS.clients, {
         subtitle: client.ip === null ? 'Network device' : `Network device · ${client.ip}`,
         keywords: [client.mac, ...(client.ip === null ? [] : [client.ip])],
         query: { mac: client.mac },
       }),
     ),
+    ...snapshot.people.map((person) =>
+      entry(`router.person.${person.id}`, person.name, ROUTER_SECTIONS.clients, {
+        subtitle: person.home ? 'Person · home' : 'Person · away',
+        keywords: ['who is home', 'presence', 'arrived', 'left', 'person', 'family'],
+        query: { filter: 'people' },
+      }),
+    ),
   ];
 }
 
-export function searchSignature(clients: readonly NetworkClient[]): string {
-  return clients.map((client) => `${client.mac}|${client.name}|${client.ip ?? ''}`).join('\n');
+export function searchSignature(snapshot: Pick<RouterSnapshot, 'clients' | 'people'>): string {
+  return [
+    ...snapshot.clients.map((client) => `${client.mac}|${client.name}|${client.ip ?? ''}`),
+    ...snapshot.people.map((person) => `${person.id}|${person.name}|${String(person.home)}`),
+  ].join('\n');
 }

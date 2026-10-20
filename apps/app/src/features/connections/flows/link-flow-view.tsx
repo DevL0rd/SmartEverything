@@ -11,7 +11,7 @@ import { plural } from '../../../format/text';
 import { useDevices } from '../../../store/selectors';
 import { stepIndexOf } from '../model/link-stage';
 import { problemTitle } from '../model/problems';
-import { PromptBody } from './prompt-body';
+import { PromptBody, type ScanPrompt } from './prompt-body';
 import { leaveFlow } from './leave-flow';
 import type { LinkFlow } from './use-link-flow';
 
@@ -71,9 +71,19 @@ export interface LinkFlowViewProps {
   readonly formFooter: ReactNode;
   readonly doneExtra?: ReactNode;
   readonly wide?: boolean;
+  readonly renderScan?: (prompt: ScanPrompt) => ReactNode;
+  readonly failed?: { readonly body: ReactNode; readonly footer: ReactNode };
 }
 
-function Body({ provider, labels, flow, form, doneExtra }: LinkFlowViewProps): ReactNode {
+function Body({
+  provider,
+  labels,
+  flow,
+  form,
+  doneExtra,
+  renderScan,
+  failed,
+}: LinkFlowViewProps): ReactNode {
   const { stage } = flow;
   switch (stage.kind) {
     case 'form':
@@ -84,13 +94,19 @@ function Body({ provider, labels, flow, form, doneExtra }: LinkFlowViewProps): R
       return (
         <View className="gap-6">
           <ProgressSteps steps={stepsAt(labels, stepIndexOf(stage))} />
-          <PromptBody provider={provider} prompt={stage.prompt} />
+          {stage.prompt.kind === 'scan_qr' ? (
+            renderScan?.(stage.prompt)
+          ) : (
+            <PromptBody provider={provider} prompt={stage.prompt} />
+          )}
         </View>
       );
     case 'done':
       return <LinkDone row={stage.row} extra={doneExtra} />;
     case 'failed':
-      return (
+      return failed !== undefined ? (
+        failed.body
+      ) : (
         <Banner
           tone="critical"
           title={problemTitle(provider, stage.problem)}
@@ -100,7 +116,7 @@ function Body({ provider, labels, flow, form, doneExtra }: LinkFlowViewProps): R
   }
 }
 
-function Footer({ flow, formFooter }: LinkFlowViewProps): ReactNode {
+function Footer({ flow, formFooter, failed }: LinkFlowViewProps): ReactNode {
   switch (flow.stage.kind) {
     case 'form':
       return formFooter;
@@ -110,7 +126,11 @@ function Footer({ flow, formFooter }: LinkFlowViewProps): ReactNode {
     case 'done':
       return <FlowButton label="Done" onPress={leaveFlow} />;
     case 'failed':
-      return <FlowButton label="Try again" onPress={flow.restart} />;
+      return failed !== undefined ? (
+        failed.footer
+      ) : (
+        <FlowButton label="Try again" onPress={flow.restart} />
+      );
   }
 }
 

@@ -5,7 +5,7 @@ import type { EarsRelay } from '../computers/ears-relay';
 import { DeviceSpeech } from '../listening/device-speech';
 import type { ListeningRegistry } from '../listening/listening-registry';
 import type { ReachService } from '../reach/reach-service';
-import type { EarKeywords } from '../wake-name/keyword-spotter';
+import type { EarKeywords } from '../wake-name/keyword-lines';
 import { ListeningBudget } from '../transcripts/listening-budget';
 import type { ServerContext } from './context';
 import type { ReachWiring } from './reach-wiring';
@@ -19,7 +19,7 @@ interface Parts {
   readonly listening: ListeningRegistry;
   readonly transcribing: Pick<
     Transcribing,
-    'ears' | 'claims' | 'transcriber' | 'transcripts' | 'wakeTest'
+    'pause' | 'keywords' | 'claims' | 'transcriber' | 'transcripts' | 'wakeTest'
   >;
   readonly service: Pick<ReachService, 'computer' | 'hangUp'>;
   readonly relay: EarsRelay;
@@ -60,12 +60,12 @@ export function startComputerEars(
   const ears = new ComputerEars({
     registry: listening,
     claims: transcribing.claims,
-    pause: transcribing.ears.pause,
+    pause: transcribing.pause,
     speech: speechOf(context, parts, options),
     test: transcribing.wakeTest,
     discord,
     keywords: (sensitivity): EarKeywords =>
-      transcribing.ears.spotter().earConfig(assistantNames(store), sensitivity),
+      transcribing.keywords.earConfig(assistantNames(store), sensitivity),
     wake: (computerId, phrase, heard, onSuperseded): Promise<void> =>
       wakeComputer({ store, service, log }, { computerId, phrase, heard }, onSuperseded),
     log,

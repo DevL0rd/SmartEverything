@@ -10,7 +10,7 @@ import { CardActions } from './card-actions';
 import { HumidifierGraph } from './humidifier-parts';
 import { humidityStateText } from './humidity-model';
 import { levelPercent, numberAt } from './reading';
-import { SensorFrame, VisibleRoot } from './sensor-frame';
+import { SensorFrame, useVisibleFrame } from './sensor-frame';
 import { levelPill } from './state-line';
 
 interface Roles {
@@ -52,14 +52,13 @@ function factsOf(line: string, read: HumidifierRead): readonly string[] {
 function WideHumidifier({
   device,
   cls,
-  live,
   roles,
 }: {
   readonly device: Device;
   readonly cls: WideClass;
-  readonly live: boolean;
   readonly roles: Roles;
 }): ReactNode {
+  const visible = useVisibleFrame();
   const read = useHumidifierRead(device, roles);
   const pill = levelPill('Water', read.water);
   const line = humidityStateText(read.humidity, read.target, read.power);
@@ -67,7 +66,7 @@ function WideHumidifier({
     <SensorFrame
       device={device}
       cls={cls}
-      live={live}
+      visible={visible}
       line={line}
       tone={read.power === 'on' ? 'primary' : 'variant'}
       offline={read.power === 'offline'}
@@ -81,6 +80,7 @@ function WideHumidifier({
           target={read.target}
           water={read.water}
           cls={cls}
+          live={visible.live}
         />
       }
       actions={[<CardActions key="actions" device={device} cls={cls} />]}
@@ -93,20 +93,15 @@ export function HumidifierCard(props: CardFaceProps): ReactNode {
   const humidity = withRole(presentation, 'humidity');
   const { device, cls } = props;
   return isWideClass(cls) && humidity !== undefined ? (
-    <VisibleRoot>
-      {(live) => (
-        <WideHumidifier
-          device={device}
-          cls={cls}
-          live={live}
-          roles={{
-            humidity,
-            target: withRole(presentation, 'target_humidity'),
-            water: withRole(presentation, 'water_level'),
-          }}
-        />
-      )}
-    </VisibleRoot>
+    <WideHumidifier
+      device={device}
+      cls={cls}
+      roles={{
+        humidity,
+        target: withRole(presentation, 'target_humidity'),
+        water: withRole(presentation, 'water_level'),
+      }}
+    />
   ) : (
     <GenericCardFace {...props} />
   );

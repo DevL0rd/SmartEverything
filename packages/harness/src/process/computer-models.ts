@@ -23,7 +23,7 @@ export class ComputerModelRoutes {
     private readonly boot: HarnessBoot,
     private readonly persistence: HubSessionLog,
     private readonly fetcher: typeof fetch,
-    private readonly subscriptions: ProcessSubscriptions,
+    private readonly subscriptions: ProcessSubscriptions | null,
   ) {}
   bind(ctx: Context): void {
     this.ctx = ctx;
@@ -61,6 +61,12 @@ export class ComputerModelRoutes {
       );
   }
   private localSubscription(ctx: Context, route: AiModelRoute): LlmAdapter {
+    const { subscriptions } = this;
+    if (subscriptions === null)
+      throw new HarnessRuntimeError(
+        'capability_unsupported',
+        'This computer does not supply subscription accounts.',
+      );
     const subscription = SUBSCRIPTION_ROUTE.parse({
       id: route.id,
       subscriberProfileId: route.profile_id,
@@ -75,8 +81,8 @@ export class ComputerModelRoutes {
     });
     return new SubscriptionRouteAdapter({
       routes: [subscription],
-      authorization: this.subscriptions.authorization,
-      admission: this.subscriptions.admission,
+      authorization: subscriptions.authorization,
+      admission: subscriptions.admission,
       useAuthorization: subscriptionUse(this.persistence, this.boot.device_id),
       attachments: { resolveAttachments: (): typeof ctx.attachments => ctx.attachments },
     });

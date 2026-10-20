@@ -7,6 +7,7 @@ import {
   NODE_HARNESS_PROTOCOL,
   type HarnessRuntimeReceipt,
 } from '@smarteverything/domain';
+import { createComputerHarness, hostCapabilities } from '@smarteverything/harness/process';
 import { NodeHarnessRuntime } from '../../src/node/harness-runtime';
 import { freePort, temporaryDirectory } from '../support/server';
 import { testLogger } from '../support/logs';
@@ -292,5 +293,66 @@ describe('a computer harness runtime that outlives its socket', () => {
     }, WAIT);
     expect(count('harness_connect')).toBe(1);
     expect(harness.stop).not.toHaveBeenCalled();
+  });
+});
+
+describe('which platform a computer harness runtime announces', () => {
+  function runtimeOn(platform: NodeJS.Platform): NodeHarnessRuntime {
+    return new NodeHarnessRuntime({
+      node: {
+        hub_url: `http://127.0.0.1:${String(hub.port)}`,
+        node_token: `sen_${'a'.repeat(43)}`,
+        device_id: randomUUID(),
+      },
+      dataDirectory: directory.path,
+      machineId: 'a'.repeat(32),
+      name: 'desk',
+      log: testLogger('node'),
+      platform,
+    });
+  }
+
+  function connect(): unknown {
+    return hub.frames.find((frame) => frame.type === 'harness_connect');
+  }
+
+  it('starts a Windows computer and asks for the same capabilities its hello carries', async () => {
+    const windows = runtimeOn('win32');
+    vi.mocked(createComputerHarness).mockClear();
+
+    windows.start();
+    await vi.waitFor(() => {
+      expect(count('harness_hello')).toBe(1);
+    }, WAIT);
+    await windows.stop();
+
+    expect(connect()).toMatchObject({ capabilities: hostCapabilities('windows', true) });
+    expect(hostCapabilities('windows', true)).not.toContain('harness-subscriptions-v1');
+    expect(vi.mocked(createComputerHarness).mock.calls[0]?.[0]).toMatchObject({
+      platform: 'windows',
+    });
+  });
+
+  it('keeps the subscription capability for a macOS computer', async () => {
+    const mac = runtimeOn('darwin');
+    vi.mocked(createComputerHarness).mockClear();
+
+    mac.start();
+    await vi.waitFor(() => {
+      expect(count('harness_hello')).toBe(1);
+    }, WAIT);
+    await mac.stop();
+
+    expect(connect()).toMatchObject({ capabilities: hostCapabilities('macos', true) });
+    expect(hostCapabilities('macos', true)).toContain('harness-subscriptions-v1');
+    expect(vi.mocked(createComputerHarness).mock.calls[0]?.[0]).toMatchObject({
+      platform: 'macos',
+    });
+  });
+
+  it('refuses to be built on a platform that has no harness', () => {
+    expect(() => runtimeOn('freebsd')).toThrow(
+      'No harness runs on the platform "freebsd"; expected linux, darwin or win32.',
+    );
   });
 });

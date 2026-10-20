@@ -44,6 +44,7 @@ export type PhoneActionType = PhoneAction['type'];
 const PERSON_ONLY_ACTIONS: ReadonlySet<PhoneActionType> = new Set([
   'dismiss_notification',
   'launch_app',
+  'open_settings',
   'screenshot',
 ]);
 
@@ -51,11 +52,8 @@ export function phoneActionPersonOnly(type: PhoneActionType): boolean {
   return PERSON_ONLY_ACTIONS.has(type);
 }
 
-export function phoneActionAllowed(
-  action: { readonly type: PhoneActionType },
-  tier: PhoneTier,
-): boolean {
-  if (phoneActionPersonOnly(action.type)) return tier === 'person';
+export function phoneActionAllowed(type: PhoneActionType, tier: PhoneTier): boolean {
+  if (phoneActionPersonOnly(type)) return tier === 'person';
   return tier !== 'member';
 }
 

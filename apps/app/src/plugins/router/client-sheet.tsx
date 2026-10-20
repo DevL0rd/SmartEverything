@@ -10,7 +10,7 @@ import { TextField } from '../../components/text-field';
 import { useProfiles } from '../../store/people';
 import { useIsOwner } from '../../store/selectors';
 import { PluginActionRow, PluginButton } from '../shared/plugin-action';
-import { renameProblem } from './client-model';
+import { ownerIdOf, personNameProblem, renameProblem } from './client-model';
 import { ClientDns } from './clients/client-dns';
 import { ClientDetails, ClientLead, ClientLive } from './clients/client-details';
 import { blockInternet } from './router-confirmations';
@@ -21,9 +21,11 @@ const NOBODY = 'nobody';
 
 function Owner({
   client,
+  people,
   disabled,
 }: {
   readonly client: NetworkClient;
+  readonly people: RouterSnapshot['people'];
   readonly disabled: boolean;
 }): ReactNode {
   const profiles = useProfiles();
@@ -31,6 +33,9 @@ function Owner({
   const options = [
     { value: NOBODY, label: 'Nobody' },
     ...profiles.map((profile) => ({ value: profile.id, label: profile.name })),
+    ...people
+      .filter((person) => !person.profile)
+      .map((person) => ({ value: person.id, label: person.name })),
   ];
   return (
     <SelectRow
@@ -38,19 +43,59 @@ function Owner({
       subtitle="Used to tell who is home"
       icon="user"
       options={options}
-      value={client.profileId ?? NOBODY}
+      value={ownerIdOf(client) ?? NOBODY}
       disabled={disabled}
       onChange={(value) => {
         background(
           tools.run(
-            'assign_client',
-            { mac: client.mac, profileId: value === NOBODY ? null : value },
+            'link_device',
+            { mac: client.mac, person: value === NOBODY ? null : value },
             'The owner wasn’t changed',
           ),
           'tools.run_failed',
         );
       }}
     />
+  );
+}
+
+function NewPerson({
+  client,
+  disabled,
+}: {
+  readonly client: NetworkClient;
+  readonly disabled: boolean;
+}): ReactNode {
+  const tools = useRouterTools();
+  const [name, setName] = useState('');
+  const problem = personNameProblem(name);
+  return (
+    <View className="gap-2">
+      <TextField
+        label="Name it as a new person"
+        value={name}
+        onChange={setName}
+        helper="For someone without an account: their devices tell when they arrive and leave"
+        error={name.trim() === '' ? null : problem}
+        disabled={disabled}
+      />
+      <View className="items-start">
+        <PluginButton
+          label="Save person"
+          disabled={disabled || problem !== null}
+          onPress={async () => {
+            const done = await tools.run(
+              'link_device',
+              { mac: client.mac, newPerson: name.trim() },
+              'The person wasn’t saved',
+            );
+            if (done !== null) {
+              setName('');
+            }
+          }}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -182,14 +227,20 @@ function Actions({
 
 function Controls({
   client,
+  people,
   live,
 }: {
   readonly client: NetworkClient;
+  readonly people: RouterSnapshot['people'];
   readonly live: boolean;
 }): ReactNode {
   const profiles = useProfiles();
   if (!useIsOwner()) {
-    const owner = profiles.find((profile) => profile.id === client.profileId)?.name ?? 'Nobody';
+    const ownerId = ownerIdOf(client);
+    const owner =
+      profiles.find((profile) => profile.id === ownerId)?.name ??
+      people.find((person) => person.id === ownerId)?.name ??
+      'Nobody';
     return (
       <>
         <ReasonLine icon="lock" text="Only the home’s owner can change devices on the router." />
@@ -205,8 +256,9 @@ function Controls({
         <ReasonLine icon="info" text="The router can’t be reached, so changes are paused." />
       )}
       <List>
-        <Owner client={client} disabled={!live} />
+        <Owner client={client} people={people} disabled={!live} />
       </List>
+      <NewPerson key={client.mac} client={client} disabled={!live} />
       <Rename key={client.mac} client={client} disabled={!live} />
       <Actions client={client} disabled={!live} />
     </>
@@ -232,7 +284,11 @@ export function ClientSheet({
             <ClientLive client={client} snapshot={snapshot} />
           ) : null}
           <ClientDetails client={client} />
-          <Controls client={client} live={snapshot.connection.state === 'online'} />
+          <Controls
+            client={client}
+            people={snapshot.people}
+            live={snapshot.connection.state === 'online'}
+          />
           <ClientDns client={client} />
         </View>
       )}

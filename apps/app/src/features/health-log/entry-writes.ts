@@ -28,6 +28,7 @@ function rowOf(input: HealthEntryInput, id: string, before: HealthEntryRow | nul
     food: input.food,
     version: (before?.version ?? 0) + 1,
     save_error: null,
+    source: null,
     created_at: before?.created_at ?? now,
     updated_at: now,
   };

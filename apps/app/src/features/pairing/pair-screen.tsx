@@ -7,7 +7,7 @@ import { Text } from '../../components/text';
 import { useValue } from '../../design/external-store';
 import { useLoaded, useSettings } from '../../store/selectors';
 import { List } from '../../components/section';
-import { ProfileSwitcher } from '../profiles';
+import { ProfileSwitcher, useMayChoosePerson } from '../profiles';
 import { PairingFrame as Frame } from './pairing-frame';
 import { Unpaired } from './onboarding';
 import { welcome, type Welcome } from './welcome';
@@ -20,18 +20,23 @@ function OpenHome({
   readonly joined: Welcome;
 }): ReactNode {
   const router = useRouter();
+  const mayChoose = useMayChoosePerson();
   return (
     <Frame
       title={title}
       body={joined.role === null ? 'Opening your home…' : `You joined as ${joined.role}.`}
     >
       <View className="gap-2">
-        <List inset>
-          <ProfileSwitcher />
-        </List>
-        <Text variant="footnote" tone="variant">
-          Add more people later in Settings › Profiles.
-        </Text>
+        {mayChoose ? (
+          <>
+            <List inset>
+              <ProfileSwitcher />
+            </List>
+            <Text variant="footnote" tone="variant">
+              Add more people later in Settings › Profiles.
+            </Text>
+          </>
+        ) : null}
       </View>
       <Button
         label="Open your home"

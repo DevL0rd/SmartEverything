@@ -95,6 +95,19 @@ describe('reading phone detail', () => {
     expect(detail.network?.wifi?.ssid).toBeNull();
   });
 
+  it('shows the owner and a member the plain on and off settings without any name', () => {
+    const owned = readPhoneDetail(test.store, target, viewer(owner), undefined);
+    expect(owned.network).toMatchObject({ wifiOn: true, locationOn: true, airplane: false });
+    expect(owned.connections?.bluetoothOn).toBe(true);
+    expect(owned.screen?.autoRotate).toBe(true);
+    expect(owned.sound).toMatchObject({ hapticFeedback: true, touchSounds: false });
+    const member = readPhoneDetail(test.store, target, viewer(sam), undefined);
+    expect(member.network).toMatchObject({ wifiOn: true, locationOn: true });
+    expect(member.network?.wifi?.ssid).toBeNull();
+    expect(member.screen?.autoRotate).toBe(true);
+    expect(member.sound).toMatchObject({ hapticFeedback: true, touchSounds: false });
+  });
+
   it('returns only the sections asked for, still cut to the viewer', () => {
     const detail = readPhoneDetail(test.store, target, viewer(owner), ['power', 'apps']);
     expect(Object.keys(detail).sort()).toEqual(['apps', 'power']);

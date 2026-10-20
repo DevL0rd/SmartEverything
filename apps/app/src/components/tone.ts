@@ -10,6 +10,7 @@ export type Tone =
   | 'critical'
   | 'info'
   | 'onPrimary'
+  | 'onPrimaryContainer'
   | 'inverse';
 
 export const TONE_TEXT: Readonly<Record<Tone, string>> = {
@@ -22,6 +23,7 @@ export const TONE_TEXT: Readonly<Record<Tone, string>> = {
   critical: 'text-critical',
   info: 'text-info',
   onPrimary: 'text-on-primary',
+  onPrimaryContainer: 'text-on-primary-container',
   inverse: 'text-bg',
 };
 
@@ -35,6 +37,7 @@ export const TONE_ROLE: Readonly<Record<Tone, ColourRole>> = {
   critical: 'critical',
   info: 'info',
   onPrimary: 'on-primary',
+  onPrimaryContainer: 'on-primary-container',
   inverse: 'bg',
 };
 

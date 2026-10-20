@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+  BROWSER_PAGE_OPERATION,
+  BROWSER_PAGE_READING,
+  type BrowserPageReading,
+} from './browser-page';
 
 export const PREVIEW_DIAGNOSTICS_PATH = '/api/preview-diagnostics';
 export const PREVIEW_DIAGNOSTICS_PROTOCOL = 'se-preview-diagnostics-v1';
@@ -64,7 +69,17 @@ export const PREVIEW_PIXELS = z.strictObject({
   capturedAt: z.iso.datetime({ offset: true }),
 });
 export type PreviewPixels = z.infer<typeof PREVIEW_PIXELS>;
+export const NATIVE_BROWSER_PAGE_REQUEST = z.strictObject({
+  id: ID,
+  operation: BROWSER_PAGE_OPERATION,
+});
+export type NativeBrowserPageRequest = z.infer<typeof NATIVE_BROWSER_PAGE_REQUEST>;
+export const NATIVE_BROWSER_PAGE_RESPONSE = BROWSER_PAGE_READING.nullable();
+export interface NativeBrowserPage {
+  readonly perform: (request: NativeBrowserPageRequest) => Promise<BrowserPageReading | null>;
+}
 export interface NativeBrowserDiagnostics {
+  readonly page?: NativeBrowserPage;
   readonly subscribe: (listener: (event: NativeBrowserDiagnostic) => void) => () => void;
   readonly perform: (
     input: z.infer<typeof NATIVE_BROWSER_OPERATION>,

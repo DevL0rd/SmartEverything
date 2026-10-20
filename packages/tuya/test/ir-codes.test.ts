@@ -5,13 +5,11 @@ import {
   IR_CODE,
   IR_CODE_FORMATS,
   IrCodeError,
-  LIBRARY_KEY,
   MAX_PULSE_MICROSECONDS,
   canonicalIrCode,
   headKeyToPulses,
   learnedCodeFromHex,
   parseHeadKey,
-  parseLibraryKey,
   pulsesFromBase64,
   pulsesFromHex,
   pulsesToBase64,
@@ -38,7 +36,7 @@ const pulseTrain = fc.array(fc.integer({ min: 1, max: MAX_PULSE_MICROSECONDS }),
 
 describe('IR code formats', () => {
   it('names the three stored formats', () => {
-    expect(IR_CODE_FORMATS).toStrictEqual(['pulses', 'head_key', 'library']);
+    expect(IR_CODE_FORMATS).toStrictEqual(['pulses', 'head_key']);
     expect(IR_CODE.safeParse({ format: 'pulses', code: '' }).success).toBe(false);
     expect(MAX_PULSE_MICROSECONDS).toBe(65535);
   });
@@ -231,7 +229,7 @@ describe('head and key codes', () => {
     );
   });
 
-  it('parses head and key JSON and library keys', () => {
+  it('parses head and key JSON', () => {
     expect(parseHeadKey(JSON.stringify({ head: HEAD_TYPE_1, key: '01@@' }))).toStrictEqual({
       head: HEAD_TYPE_1,
       key: '01@@',
@@ -248,10 +246,6 @@ describe('head and key codes', () => {
     expect(HEAD_KEY.safeParse({ head: `${HEAD_TYPE_1}zz`, key: '01@@' }).success).toBe(false);
     expect(HEAD_KEY.safeParse({ head: HEAD_TYPE_1, key: '01@' }).success).toBe(false);
     expect(HEAD_KEY.safeParse({ head: `${HEAD_TYPE_1}0`, key: '01@@' }).success).toBe(false);
-    const library = { remoteId: 'remote', categoryId: 2, keyId: 1, key: 'power' };
-    expect(parseLibraryKey(JSON.stringify(library))).toStrictEqual(library);
-    expect(LIBRARY_KEY.safeParse({ ...library, keyId: 1.5 }).success).toBe(false);
-    expect(() => parseLibraryKey('{}')).toThrow(expect.objectContaining({ format: 'library' }));
   });
 
   it('canonicalises every format it stores', () => {
@@ -274,14 +268,5 @@ describe('head and key codes', () => {
         code: JSON.stringify({ head: HEAD_TYPE_1, key: '01%%' }),
       }),
     ).toThrow(IrCodeError);
-    expect(
-      canonicalIrCode({
-        format: 'library',
-        code: JSON.stringify({ key: 'power', keyId: 1, categoryId: 2, remoteId: 'r' }),
-      }),
-    ).toStrictEqual({
-      format: 'library',
-      code: '{"remoteId":"r","categoryId":2,"keyId":1,"key":"power"}',
-    });
   });
 });

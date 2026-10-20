@@ -16,6 +16,7 @@ import {
   HARNESS_DESIRED_CONFIGURATION,
 } from '../ai-harness-configuration';
 import { JSON_VALUE } from '../values';
+import { HARNESS_PLATFORM, HARNESS_SANDBOX_ENFORCEMENT } from '../harness-platform';
 import {
   AI_SUBSCRIPTION_HOST_STATUS,
   HARNESS_SUBSCRIPTION_REQUEST,
@@ -62,7 +63,8 @@ const BOUND = {
 const SESSION = { session_id: DSH_SESSION_ID, expected_epoch: z.int().positive() };
 export const HARNESS_HOST_DESCRIPTION = z.object({
   name: z.string().min(1).max(200),
-  platform: z.enum(['linux', 'windows', 'macos']),
+  platform: HARNESS_PLATFORM,
+  sandbox: HARNESS_SANDBOX_ENFORCEMENT.optional(),
   home_directory: z.string().min(1).max(4096),
 });
 export const HARNESS_RUNTIME_REQUEST = z.discriminatedUnion('kind', [

@@ -1,3 +1,4 @@
+import { SHOW_IN_APP_TEXT } from '../app-view';
 import { SHOW_WIDGETS_TEXT } from '../chat-widgets';
 import { servedComputerTool } from './catalogue-computers';
 import type { Served } from './served-types';
@@ -74,6 +75,14 @@ export const SERVED_AI = [
     'Show widgets',
     SHOW_WIDGETS_TEXT,
     { part: 'show_widgets' },
+  ],
+  [
+    'show_in_app',
+    'assistant',
+    'control',
+    'Show in the app',
+    SHOW_IN_APP_TEXT,
+    { part: 'show_in_app' },
   ],
   [
     'read_models',
@@ -174,7 +183,7 @@ export const SERVED_AI = [
     'computers',
     'read',
     'Read a computer',
-    'One computer now (summary, battery, processor, graphics, memory, disks, network, temperatures), a reading over time, what SmartEverything may do on it, or its sound, screens, system settings, USB devices, windows, services or startup apps.',
+    'One computer now (summary, battery, processor, graphics, memory, disks, network, temperatures), a reading over time, what SmartEverything may do on it, or its sound, screens, system settings, USB devices, windows, window tiling, services or startup apps.',
     {
       key: 'view',
       parts: {
@@ -186,6 +195,7 @@ export const SERVED_AI = [
         system: 'get_computer_system',
         usb: 'get_computer_usb',
         windows: 'get_computer_windows',
+        tiling: 'get_computer_tiling',
         services: 'get_computer_services',
         startup: 'get_computer_startup',
       },
@@ -196,6 +206,7 @@ export const SERVED_AI = [
   servedComputerTool('set_computer_audio', { part: 'set_computer_audio' }),
   servedComputerTool('set_computer_display', { part: 'set_computer_display' }),
   servedComputerTool('set_computer_system', { part: 'set_computer_system' }),
+  servedComputerTool('use_computer', { part: 'use_computer' }),
   [
     'computer_apps',
     'computers',
@@ -244,7 +255,7 @@ export const SERVED_AI = [
     'plugins',
     'read',
     'Read plugins',
-    'Installed plugins with status, powers and settings, or one plugin’s tools, data streams, log or the people it lets act and the person of the home each acts as.',
+    'Installed plugins with status, powers, settings and the widgets and pages they add (a widget is a board type named pluginId.widgetId, a page opens or pins with route key plugin.pluginId.pageId), or one plugin’s tools, data streams, log or the people it lets act and the person of the home each acts as.',
     {
       key: 'view',
       parts: {

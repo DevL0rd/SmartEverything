@@ -15,8 +15,18 @@ const RETRY_AFTER_MS = [1000, 5000, 30_000] as const;
 export interface OutputDeps {
   readonly feeds: Pick<TalkFeeds, 'open'>;
   readonly play: (cameraId: string, feed: OggFeed) => Promise<string>;
+  readonly linked: (cameraId: string, feed: OggFeed) => Promise<boolean>;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
+}
+
+export interface SpeakerWatch {
+  readonly playing: () => void;
+  readonly refused: (reason: string) => void;
+}
+
+export interface SpeakerSink extends PacketSink {
+  readonly watch: (watch: SpeakerWatch) => void;
 }
 
 type OutputState = 'closed' | 'connecting' | 'ready' | 'waiting';
@@ -26,6 +36,8 @@ type Ending = 'ended' | 'expired';
 export class CameraOutput {
   private readonly mix = new SpeakerMix();
   private readonly waits = new Map<MixSource, number>();
+  private readonly watches = new Map<MixSource, SpeakerWatch>();
+  private lastFailure: string | null = null;
   private holds = 0;
   private feed: OggFeed | null = null;
   private state: OutputState = 'closed';
@@ -55,7 +67,7 @@ export class CameraOutput {
     };
   }
 
-  attach(sessionId: string, owner: SpeakerOwner): PacketSink {
+  attach(sessionId: string, owner: SpeakerOwner): SpeakerSink {
     const source = this.mix.attach(sessionId, owner, this.now());
     if (this.state === 'ready') {
       this.waits.set(source, 0);
@@ -78,7 +90,63 @@ export class CameraOutput {
       end: (): void => {
         this.detach(source, 'ended');
       },
+      watch: (watch): void => {
+        this.watchSource(source, watch);
+      },
     };
+  }
+
+  private watchSource(source: MixSource, watch: SpeakerWatch): void {
+    if (this.state === 'waiting' && this.lastFailure !== null) {
+      watch.refused(this.lastFailure);
+      return;
+    }
+    this.watches.set(source, watch);
+    if (this.state === 'ready' && this.feed !== null) {
+      this.confirm(this.feed);
+    }
+  }
+
+  private confirm(feed: OggFeed): void {
+    this.deps.linked(this.cameraId, feed).then(
+      (linked) => {
+        this.confirmed(feed, linked ? null : 'go2rtc no longer sends the channel to the camera');
+      },
+      (cause: unknown) => {
+        this.confirmed(feed, messageOf(cause));
+      },
+    );
+  }
+
+  private confirmed(feed: OggFeed, problem: string | null): void {
+    if (feed !== this.feed || this.state !== 'ready') {
+      return;
+    }
+    if (problem === null) {
+      this.notify((watch) => {
+        watch.playing();
+      });
+      return;
+    }
+    this.deps.log.warn('talk.camera_speaker_unlinked', {
+      cameraId: this.cameraId,
+      reason: problem,
+    });
+    this.restart();
+  }
+
+  reopen(): void {
+    if (this.state === 'closed') {
+      return;
+    }
+    this.deps.log.info('talk.camera_speaker_reprimed', { cameraId: this.cameraId });
+    this.restart();
+  }
+
+  private notify(tell: (watch: SpeakerWatch) => void): void {
+    const pending = [...this.watches.values()];
+    this.watches.clear();
+    pending.forEach(tell);
   }
 
   private detach(source: MixSource, ending: Ending): void {
@@ -97,6 +165,7 @@ export class CameraOutput {
       ending,
     };
     this.waits.delete(source);
+    this.watches.delete(source);
     if (ending === 'expired') {
       this.deps.log.warn('talk.camera_speaker_played', fields);
     } else {
@@ -153,6 +222,7 @@ export class CameraOutput {
     const now = this.now();
     this.state = 'ready';
     this.failures = 0;
+    this.lastFailure = null;
     this.deps.log.info('talk.camera_speaker_started', {
       cameraId: this.cameraId,
       codec,
@@ -167,6 +237,9 @@ export class CameraOutput {
       }
     });
     this.schedule(KEEPALIVE_MS);
+    this.notify((watch) => {
+      watch.playing();
+    });
   }
 
   private lost(feed: OggFeed): void {
@@ -197,11 +270,15 @@ export class CameraOutput {
     feed.end();
     this.feed = null;
     this.state = 'waiting';
+    this.lastFailure = reason;
     this.timer?.();
     this.timer = this.deps.clock.at(new Date(this.now() + retryInMs), () => {
       this.timer = null;
       this.state = 'closed';
       this.ensure();
+    });
+    this.notify((watch) => {
+      watch.refused(reason);
     });
   }
 

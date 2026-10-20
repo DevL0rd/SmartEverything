@@ -1,5 +1,6 @@
 import type { Model } from '@ricky0123/vad-web/dist/models/common.js';
 import { describe, expect, it } from 'vitest';
+import { AUTOMATIC_HANGOVER_MS } from '@smarteverything/domain';
 import { SpeechGate } from '../../src/assistant-voice/speech-gate';
 
 const FRAME = 512;
@@ -85,6 +86,46 @@ describe('the speech gate end-of-speech pause', () => {
     await gate.silence(12);
     expect(gate.ended()).toBe(0);
     await gate.silence(24);
+    expect(gate.ended()).toBe(1);
+  });
+
+  it.each([undefined, 0])(
+    'keeps a sentence with a 350 ms break in one turn in Automatic (%s)',
+    async (automatic) => {
+      const gate = run(automatic);
+      await gate.speak();
+      await gate.silence(11);
+      await gate.speak();
+      await gate.silence(11);
+      expect(gate.ended()).toBe(0);
+    },
+  );
+
+  it('lets go of the stream a fixed hangover after speech in Automatic', async () => {
+    const gate = run(0);
+    await gate.speak();
+    await gate.silence(Math.floor(AUTOMATIC_HANGOVER_MS / 32) - 4);
+    expect(gate.ended()).toBe(0);
+    await gate.silence(8);
+    expect(gate.ended()).toBe(1);
+  });
+
+  it('keeps a sentence with a 350 ms break in one turn at every explicit pause above it', async () => {
+    for (const pauseMs of [640, 1000, 2500]) {
+      const gate = run(pauseMs);
+      await gate.speak();
+      await gate.silence(11);
+      await gate.speak();
+      await gate.silence(11);
+      expect(gate.ended()).toBe(0);
+    }
+  });
+
+  it('follows a switch to Automatic while it listens', async () => {
+    const gate = run(2500);
+    gate.gate.pause(0);
+    await gate.speak();
+    await gate.silence(Math.ceil(AUTOMATIC_HANGOVER_MS / 32) + 4);
     expect(gate.ended()).toBe(1);
   });
 

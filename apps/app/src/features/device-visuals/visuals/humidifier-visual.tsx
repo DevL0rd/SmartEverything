@@ -3,16 +3,19 @@ import { Circle, Ellipse, Path } from 'react-native-svg';
 import { useColour } from '../../../design/colour';
 import { BLINK, BREATHE, loopStyle } from '../../../design/loops';
 import { type Box, Canvas, FULL, Layer, useSvgId } from '../parts/frame';
-import { BodyGradient, GlowGradient, useInk, useTint, type VisualInk, WELL } from '../parts/ink';
+import { Haze, type Blob } from '../parts/haze';
+import { BodyGradient, useInk, useTint, type VisualInk, WELL } from '../parts/ink';
 import { Puffs } from '../parts/particles';
 import { Water } from '../parts/water';
 import { rounded } from '../parts/shapes';
-import { ContactShadow, LIGHT, ShineGradients, ShinePath, useShineIds } from '../parts/material';
+import { ContactFloor, LIGHT, ShineGradients, ShinePath, useShineIds } from '../parts/material';
 import type { VisualProps } from '../types';
 
 const WINDOW: Box = { x: 30, y: 52, w: 40, h: 26 };
 const TANK = rounded({ x: 20, y: 36, w: 60, h: 52, r: 16 });
 const GLARE = 'M35 57 Q34 64 35 72';
+const FLOOR: Blob = { cx: 50, cy: 90, rx: 36, ry: 5.5 };
+const MIST: Blob = { cx: 50, cy: 18, rx: 14, ry: 14 };
 const DROP = 'M50 58 C50 58 44 65 44 69 A6 6 0 0 0 56 69 C56 65 50 58 50 58 Z';
 
 function Tank({
@@ -32,7 +35,6 @@ function Tank({
   return (
     <>
       <BodyGradient id={body} ink={ink} />
-      <ContactShadow cx={50} cy={90} rx={36} ry={5.5} />
       <Path d={TANK} fill={`url(#${body})`} stroke={ink.edge} strokeWidth={0.6} />
       <ShineGradients ids={shine} />
       <ShinePath d={TANK} ids={shine} />
@@ -77,21 +79,16 @@ function StillPuff({
   readonly colour: string;
   readonly running: boolean;
 }): ReactNode {
-  const glow = useSvgId('mist');
   return (
-    <Layer
-      box={FULL}
+    <Haze
       px={px}
+      blob={MIST}
+      colour={colour}
       motion={loopStyle(
         { name: BREATHE, ms: 2400, easing: 'ease-in-out', alternate: true },
         running,
       )}
-    >
-      <Canvas px={px}>
-        <GlowGradient id={glow} colour={colour} />
-        <Circle cx={50} cy={18} r={14} fill={`url(#${glow})`} />
-      </Canvas>
-    </Layer>
+    />
   );
 }
 
@@ -118,7 +115,8 @@ function TankVisual({
   const flowing = misting && moving && size !== 'tile';
   return (
     <>
-      <Canvas px={px}>
+      <ContactFloor px={px} blob={FLOOR} />
+      <Canvas px={px} layer>
         <Tank ink={ink} tint={tint} low={state.waterLow} />
       </Canvas>
       {state.waterLevel === null ? null : (

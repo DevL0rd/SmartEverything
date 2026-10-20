@@ -7,6 +7,7 @@ import { SETTINGS as CLIPBOARD } from '../features/clipboard';
 import { SETTINGS as DEVELOPER } from '../features/developer';
 import { SETTINGS as DEVICES } from '../features/devices/settings';
 import { SETTINGS as FITNESS } from '../features/fitness/settings';
+import { SETTINGS as HOME } from '../features/home/settings';
 import { SETTINGS as NUTRITION } from '../features/nutrition/settings';
 import { SETTINGS as PHONE } from '../features/phone';
 import { SETTINGS as PROFILES } from '../features/profiles';
@@ -31,6 +32,7 @@ const SETTINGS: readonly SettingDefinition[] = [
   ...TALK,
   ...ASSISTANT,
   ...SETTINGS_PAGES,
+  ...HOME,
   ...REGION,
   ...CLIPBOARD,
   ...DEVELOPER,

@@ -79,7 +79,6 @@ describe('transport choice', () => {
       'gateway_not_on_lan',
       'no_node_id',
       'no_gateway_id',
-      'cloud_library',
     ]);
   });
 

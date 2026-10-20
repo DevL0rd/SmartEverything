@@ -1,5 +1,6 @@
 import { CommandRefusedError } from '@smarteverything/domain';
 import { afterEach, describe, expect, it } from 'vitest';
+import { MESSAGING_TOPICS } from './fake-cloud';
 import { waitFor, world, type World } from './world';
 
 let current: World | null = null;
@@ -36,21 +37,15 @@ afterEach(async () => {
 });
 
 describe('IR blaster on the LAN', () => {
-  it('offers learning and sending, and lists library remotes as cloud remotes', async () => {
+  it('offers learning and sending and lists no library remotes', async () => {
     const w = await started();
     const devices = await w.adapter.discover();
     expect(
       devices
         .find((device) => device.externalId === 'ir1')
         ?.capabilities.map((capability) => capability.key),
-    ).toStrictEqual(['ir_learn', 'ir_send']);
-    expect(devices.find((device) => device.externalId === 'tv-1')).toMatchObject({
-      kind: 'ir_remote',
-      parentExternalId: 'ir1',
-      capabilities: [
-        { key: 'remote_key', value: { kind: 'enum', options: ['power', 'volume_up'] } },
-      ],
-    });
+    ).toStrictEqual(['temperature', 'humidity', 'ir_learn', 'ir_send']);
+    expect(devices.some((device) => device.kind === 'ir_remote')).toBe(false);
   });
 
   it('learns a code locally and returns it as a pulse train', async () => {
@@ -111,7 +106,7 @@ describe('IR blaster on the LAN', () => {
       { '1': 'study_key', '7': 'KCOUETAC', '13': 0 },
       { '1': 'send_ir', '3': head, '4': '01@#', '13': 0 },
     ]);
-    expect(w.h.cloud.requests.filter((request) => request.method === 'POST')).toStrictEqual([]);
+    expect(w.h.cloud.commandsFor('ir1')).toStrictEqual([]);
   });
 
   it('refuses an IR send without a valid format and code', async () => {
@@ -125,10 +120,17 @@ describe('IR blaster on the LAN', () => {
         value: { format: 'raw', code: 'x' },
       }),
     ).rejects.toThrow(
-      new CommandRefusedError(
-        'ir_send',
-        'it needs a format of pulses, head_key or library and a code',
-      ),
+      new CommandRefusedError('ir_send', 'it needs a format of pulses or head_key and a code'),
+    );
+    await expect(
+      w.adapter.execute({
+        commandId: commandId(),
+        externalId: 'ir1',
+        capability: 'ir_send',
+        value: { format: 'library', code: '{}' },
+      }),
+    ).rejects.toThrow(
+      new CommandRefusedError('ir_send', 'it needs a format of pulses or head_key and a code'),
     );
     await expect(
       w.adapter.execute({
@@ -141,87 +143,107 @@ describe('IR blaster on the LAN', () => {
   });
 });
 
-describe('IR through the cloud', () => {
-  it('presses a library remote button through the cloud', async () => {
+describe('IR through the Smart Life cloud', () => {
+  const HEAD = '010ED80000000000030015004000 80'.replaceAll(' ', '');
+
+  async function ended(w: World, count: number): Promise<void> {
+    await waitFor(() => w.h.cloud.commandsFor('ir1').length === count, 'the cloud commands');
+  }
+
+  it('learns a code through the cloud: study exit, study, the reported code, study exit', async () => {
     const w = await started();
-    await w.adapter.execute({
+    const learning = w.adapter.execute({
       commandId: commandId(),
-      externalId: 'tv-1',
-      capability: 'remote_key',
-      value: 'volume_up',
+      externalId: 'ir1',
+      capability: 'ir_learn',
+      value: null,
     });
-    expect(
-      w.h.cloud
-        .calls('POST', '/v2.0/infrareds/ir1/remotes/tv-1/raw/command')
-        .map((request) => request.body),
-    ).toStrictEqual([{ category_id: 2, key_id: 5, key: 'volume_up' }]);
-    await expect(
-      w.adapter.execute({
-        commandId: commandId(),
-        externalId: 'tv-1',
-        capability: 'remote_key',
-        value: 'mute',
-      }),
-    ).rejects.toMatchObject({ name: 'RemoteKeyError' });
-    await expect(
-      w.adapter.execute({
-        commandId: commandId(),
-        externalId: 'tv-1',
-        capability: 'power',
-        value: true,
-      }),
-    ).rejects.toThrow(
-      new CommandRefusedError('power', 'an IR library remote only presses its buttons'),
-    );
+    await ended(w, 2);
+    w.h.broker.publish(MESSAGING_TOPICS.device('ir1', 'pen'), {
+      protocol: 4,
+      data: { devId: 'ir1', status: [{ dpId: 2, value: '1KCOUETAC' }] },
+    });
+    await expect(learning).resolves.toStrictEqual({ format: 'pulses', code: 'KCOUETAC' });
+    await ended(w, 3);
+    expect(w.h.cloud.commandsFor('ir1')).toStrictEqual([
+      { commands: [{ code: 'control', value: 'study_exit' }] },
+      { commands: [{ code: 'control', value: 'study' }] },
+      { commands: [{ code: 'control', value: 'study_exit' }] },
+    ]);
   });
 
-  it('sends a library key given to the blaster through the cloud', async () => {
+  it('gives up learning after the timeout and ends learning on the blaster', async () => {
     const w = await started();
-    const code = JSON.stringify({ remoteId: 'tv-1', categoryId: 2, keyId: 1, key: 'power' });
+    await expect(
+      w.adapter.execute({
+        commandId: commandId(),
+        externalId: 'ir1',
+        capability: 'ir_learn',
+        value: null,
+      }),
+    ).rejects.toMatchObject({ name: 'IrLearnTimeoutError' });
+    await ended(w, 3);
+    expect(w.h.cloud.commandsFor('ir1').at(-1)).toStrictEqual({
+      commands: [{ code: 'control', value: 'study_exit' }],
+    });
+  });
+
+  it('sends a stored pulse train through the cloud as data point writes', async () => {
+    const w = await started();
     await w.adapter.execute({
       commandId: commandId(),
       externalId: 'ir1',
       capability: 'ir_send',
-      value: { format: 'library', code },
+      value: { format: 'pulses', code: 'KCOUETAC' },
     });
-    expect(
-      w.h.cloud
-        .calls('POST', '/v2.0/infrareds/ir1/remotes/tv-1/raw/command')
-        .map((request) => request.body),
-    ).toStrictEqual([{ category_id: 2, key_id: 1, key: 'power' }]);
+    expect(w.h.cloud.commandsFor('ir1')).toStrictEqual([
+      {
+        commands: [
+          { code: 'control', value: 'study_key' },
+          { code: 'type', value: 0 },
+          { code: 'key_study', value: 'KCOUETAC' },
+        ],
+      },
+    ]);
   });
 
-  it('learns on a blaster without a LAN path through the learning query and converts the code', async () => {
+  it('sends a head and key pair through the cloud as data point writes', async () => {
     const w = await started();
-    const learning = w.adapter.execute({
+    await w.adapter.execute({
       commandId: commandId(),
-      externalId: 'ir2',
-      capability: 'ir_learn',
-      value: null,
+      externalId: 'ir1',
+      capability: 'ir_send',
+      value: { format: 'head_key', code: JSON.stringify({ head: HEAD, key: '01@#' }) },
     });
-    await waitFor(
-      () => w.h.cloud.calls('GET', '/v2.0/infrareds/ir2/learning-codes').length > 0,
-      'the first query',
-    );
-    w.h.cloud.learnedCode = 'c4223011';
-    await expect(learning).resolves.toStrictEqual({ format: 'pulses', code: 'xCIwEQ==' });
-    expect(
-      w.h.cloud
-        .calls('PUT', '/v2.0/infrareds/ir2/learning-state')
-        .map((request) => request.query.get('state')),
-    ).toStrictEqual(['true', 'false']);
+    expect(w.h.cloud.commandsFor('ir1')).toStrictEqual([
+      {
+        commands: [
+          { code: 'control', value: 'send_ir' },
+          { code: 'type', value: 0 },
+          { code: 'ir_code', value: HEAD },
+          { code: 'key_code', value: '01@#' },
+        ],
+      },
+    ]);
   });
 
-  it('refuses to send a learned code to a blaster whose data points are unknown', async () => {
+  it('refuses to learn or send on a blaster whose data points are unknown, without any cloud call', async () => {
     const w = await started();
-    await expect(
-      w.adapter.execute({
-        commandId: commandId(),
-        externalId: 'ir2',
-        capability: 'ir_send',
-        value: { format: 'pulses', code: 'KCOUETAC' },
-      }),
-    ).rejects.toMatchObject({ name: 'IrSchemeUnknownError' });
+    const before = w.h.cloud.requests.length;
+    for (const [capability, value] of [
+      ['ir_send', { format: 'pulses', code: 'KCOUETAC' }],
+      ['ir_learn', null],
+    ] as const) {
+      await expect(
+        w.adapter.execute({ commandId: commandId(), externalId: 'ir2', capability, value }),
+      ).rejects.toMatchObject({
+        name: 'IrSchemeUnknownError',
+        message:
+          'IR blaster ir2 has neither published nor shown its infrared data points, so a code cannot be sent to it as data points.',
+      });
+    }
+    expect(w.h.cloud.requests).toHaveLength(before);
+    expect(w.h.cloud.commandsFor('ir2')).toStrictEqual([]);
   });
 
   it('refuses commands for devices outside the inventory', async () => {

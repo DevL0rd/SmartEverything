@@ -39,7 +39,7 @@ export function DotPill({ data }: { readonly data: GroupData }): ReactNode {
   const dots: readonly Dot[] = data.members.map((member) => ({
     key: member.id,
     colour: data.view.colours[member.id] ?? null,
-    state: data.view.powers[member.id] ?? 'off',
+    state: data.view.powers[member.id] ?? 'unknown',
   }));
   return (
     <View className="self-start rounded-full bg-surface-1/70 px-2 py-1.5">

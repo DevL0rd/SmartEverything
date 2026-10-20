@@ -28,6 +28,7 @@ import {
   CLAUDE_PROMPT_ID,
   CLAUDE_SESSION,
   CLAUDE_SESSION_ID,
+  CLAUDE_SESSION_LIST_MAX,
   CLAUDE_SESSION_STATE,
   CLAUDE_START,
   CLAUDE_STARTED,
@@ -71,7 +72,7 @@ export const COMPUTER_AI_READ = z.discriminatedUnion('operation', [
     query: z.strictObject({
       state: CLAUDE_SESSION_STATE.optional(),
       archived: z.boolean().default(false),
-      limit: z.int().min(1).max(200).default(100),
+      limit: z.int().min(1).max(CLAUDE_SESSION_LIST_MAX).default(100),
     }),
   }),
   z.strictObject({ operation: z.literal('session'), session_id: CLAUDE_SESSION_ID }),

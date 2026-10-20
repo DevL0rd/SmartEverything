@@ -2,16 +2,17 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { AUTOMATION_V2, AUTOMATION_RUNS_KEPT } from '@smarteverything/domain';
+import { AUTOMATION_RUNS_KEPT } from '@smarteverything/domain';
+import { AUTOMATION_V2 } from '../../src/store/migrations/legacy/v2-schema';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
-import { openStore } from '../../src/store/store';
 import { captureLogs, testLogger } from '../support/logs';
 
 const BEFORE = 85;
+const BEFORE_V3 = 126;
 const NOW = '2026-10-16T09:00:00.000Z';
 const LAMP = '1a000000-0000-4000-8000-000000000001';
 const SENSOR = '1a000000-0000-4000-8000-000000000002';
@@ -212,7 +213,14 @@ describe('migrating the automations to the v2 model', () => {
     const before = build();
     seed(before);
     before.close();
-    openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+    const reopened = new DatabaseSync(path, { enableForeignKeyConstraints: true });
+    migrate(
+      new Sql(reopened),
+      MIGRATIONS.filter((migration) => migration.version <= BEFORE_V3),
+      NOW,
+      testLogger(),
+    );
+    reopened.close();
     const database = new DatabaseSync(path);
     expectMovedRows(database);
     expectTrimmedRuns(database);

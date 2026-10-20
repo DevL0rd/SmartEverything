@@ -3,10 +3,10 @@ import type { ListeningConfig } from '@smarteverything/domain';
 import { Opus } from '../../../src/assistant-voice/opus';
 import { EarEngine } from '../../../src/node/ear/ear-engine';
 import type { KeywordEngine } from '../../../src/node/ear/relayed-spotter';
-import type { KeywordStream, Kws } from '../../../src/wake-name/sherpa';
-import { KeywordListening } from '../../../src/wake-name/keyword-spotter';
+import type { KeywordStream, Kws } from '../../../src/node/ear/sherpa';
+import { KeywordListening } from '../../../src/node/ear/keyword-spotter';
 
-export const FRAME_48K = 960;
+const FRAME_48K = 960;
 
 interface StreamState {
   samples: number;
@@ -68,30 +68,35 @@ class FakeKws implements Kws {
   }
 }
 
-export interface Listened {
+interface Listened {
   readonly keywords: string;
   readonly threshold: number;
   readonly label: string;
 }
 
-export class FakeKeywords implements KeywordEngine {
+class FakeKeywords implements KeywordEngine {
   readonly listens: Listened[] = [];
   readonly nears: Listened[] = [];
   openStreams = 0;
   wakeAfterSamples = Number.POSITIVE_INFINITY;
   nearAfterSamples = Number.POSITIVE_INFINITY;
-  failEarConfig = false;
+  buildsNoKeywords = false;
+  readonly scored: Listened[] = [];
+  hearsAnything = false;
+  hearsFailure: Error | null = null;
 
-  earConfig(): { keywords: string[]; threshold: number; nearMissThreshold: number } {
-    return {
-      keywords: this.failEarConfig ? [] : ['h ey @hey_jarvis'],
-      threshold: 0.15,
-      nearMissThreshold: 0.06,
-    };
+  scoreOf(): Promise<number | null> {
+    return Promise.resolve(null);
+  }
+
+  hears(keywords: string, threshold: number, pcm: Int16Array): Promise<boolean> {
+    this.scored.push({ keywords, threshold, label: String(pcm.length) });
+    if (this.hearsFailure !== null) return Promise.reject(this.hearsFailure);
+    return Promise.resolve(this.hearsAnything);
   }
 
   listenKeywords(keywords: string, threshold: number, label: string): KeywordListening | null {
-    if (keywords === '') {
+    if (keywords === '' || this.buildsNoKeywords) {
       return null;
     }
     this.listens.push({ keywords, threshold, label });

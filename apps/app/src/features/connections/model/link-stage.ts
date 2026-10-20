@@ -28,7 +28,9 @@ function liveStage(row: ProviderLinkRow): LinkStage {
     case 'linking':
       return { kind: 'working', phase: row.phase ?? 'signing_in' };
     case 'linked':
-      return { kind: 'done', row };
+      return row.problem === null
+        ? { kind: 'done', row }
+        : { kind: 'failed', problem: row.problem, detail: row.last_error };
     case 'unlinked':
     case 'needs_attention':
       return { kind: 'failed', problem: row.problem ?? 'unknown', detail: row.last_error };

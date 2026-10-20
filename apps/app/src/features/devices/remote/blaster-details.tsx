@@ -15,7 +15,7 @@ import { MetricChart } from '../detail/history-section';
 import { useDeviceModel } from '../model/device-model';
 import { HISTORY_RANGES, historyMetrics, type HistoryRangeKey } from '../model/history-model';
 import { CATEGORY_LOOKS } from './remote-category';
-import { useLearnedSource, useLibrarySource, type RemoteSource } from './remote-source';
+import { useLearnedSource, type RemoteSource } from './remote-source';
 import { useRemotes } from './remote-section';
 import { useRemoteView } from './use-remote-view';
 
@@ -81,10 +81,6 @@ function RemoteRow({
   );
 }
 
-function LibraryRow({ device }: { readonly device: Device }): ReactNode {
-  return <RemoteRow source={useLibrarySource(device)} to={href.device(device)} />;
-}
-
 function LearnedRow({
   blaster,
   remote,
@@ -101,9 +97,9 @@ function LearnedRow({
 }
 
 function RemotesCard({ blaster }: { readonly blaster: Device }): ReactNode {
-  const { library, remotes } = useRemotes(blaster);
+  const { remotes } = useRemotes(blaster);
   const settings = href.settings.device(blaster.id, 'remotes');
-  const none = library.length === 0 && remotes.length === 0;
+  const none = remotes.length === 0;
   return (
     <Card title="Remotes" icon="remote" padding="none">
       {none ? (
@@ -117,9 +113,6 @@ function RemotesCard({ blaster }: { readonly blaster: Device }): ReactNode {
         </View>
       ) : (
         <>
-          {library.map((device) => (
-            <LibraryRow key={device.id} device={device} />
-          ))}
           {remotes.map((remote) => (
             <LearnedRow key={remote.id} blaster={blaster} remote={remote} />
           ))}

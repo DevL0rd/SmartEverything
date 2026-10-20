@@ -9,10 +9,10 @@ import type {
   StateUpdate,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { WebSocket, WebSocketServer } from 'ws';
-import type { RunContext } from '../../src/adapters/contract';
+import type { RunContext, StoredAccount } from '../../src/adapters/contract';
 import { nodeDependencies, type TuyaDependencies } from '../../src/adapters/tuya/dependencies';
-import { ACCESS_SECRET, FakeTuyaCloud } from './fake-cloud';
+import type { MqttConnect } from '../../src/adapters/tuya/mqtt-connection';
+import { FakeSmartLife } from './fake-cloud';
 
 export class RecordingSink implements AdapterSink {
   readonly states: StateUpdate[] = [];
@@ -74,112 +74,98 @@ export class RecordingSink implements AdapterSink {
   }
 }
 
-class FakeMessageServer {
-  readonly acks: string[] = [];
-  readonly headers: Record<string, string | string[] | undefined>[] = [];
-  readonly urls: string[] = [];
-  private readonly server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
-  private readonly clients = new Set<WebSocket>();
-  private sequence = 0;
-  readonly ready: Promise<void>;
+type MqttHandlers = Parameters<MqttConnect>[1];
 
-  constructor() {
-    this.ready = new Promise((resolve) => {
-      this.server.once('listening', () => {
-        resolve();
-      });
+interface BrokerConnection {
+  readonly options: Parameters<MqttConnect>[0];
+  readonly handlers: MqttHandlers;
+  readonly subscribed: Set<string>;
+  closed: boolean;
+}
+
+export class FakeBroker {
+  readonly connections: BrokerConnection[] = [];
+
+  get live(): BrokerConnection[] {
+    return this.connections.filter((connection) => !connection.closed);
+  }
+
+  readonly connect: MqttConnect = (options, handlers) => {
+    const connection: BrokerConnection = {
+      options,
+      handlers,
+      subscribed: new Set(),
+      closed: false,
+    };
+    this.connections.push(connection);
+    queueMicrotask(() => {
+      if (!connection.closed) {
+        handlers.connected();
+      }
     });
-    this.server.on('connection', (socket, request) => {
-      this.clients.add(socket);
-      this.headers.push({ ...request.headers });
-      socket.on('message', (data: Buffer) => {
-        this.acks.push(data.toString('utf8'));
-      });
-      socket.on('close', () => this.clients.delete(socket));
-    });
-  }
+    return {
+      subscribe: (topics): void => {
+        for (const topic of topics) {
+          connection.subscribed.add(topic);
+        }
+      },
+      unsubscribe: (topics): void => {
+        for (const topic of topics) {
+          connection.subscribed.delete(topic);
+        }
+      },
+      close: (): void => {
+        connection.closed = true;
+      },
+    };
+  };
 
-  get port(): number {
-    const address = this.server.address();
-    if (address === null || typeof address === 'string') {
-      throw new Error('the message server has no port');
-    }
-    return address.port;
-  }
-
-  get connected(): number {
-    return this.clients.size;
-  }
-
-  socket(url: string, headers: Readonly<Record<string, string>>): WebSocket {
-    this.urls.push(url);
-    const parsed = new URL(url);
-    return new WebSocket(`ws://127.0.0.1:${String(this.port)}${parsed.pathname}${parsed.search}`, {
-      headers: { ...headers },
-    });
-  }
-
-  publish(body: object): string {
-    const cipher = createCipheriv('aes-128-ecb', ACCESS_SECRET.slice(8, 24), null);
-    const data = Buffer.concat([cipher.update(JSON.stringify(body)), cipher.final()]).toString(
-      'base64',
-    );
-    const payload = Buffer.from(JSON.stringify({ data, protocol: 4, pv: '2.0', t: 1 })).toString(
-      'base64',
-    );
-    this.sequence += 1;
-    const messageId = `message-${String(this.sequence)}`;
-    for (const client of this.clients) {
-      client.send(JSON.stringify({ messageId, payload, properties: {}, publishTime: 'now' }));
-    }
-    return messageId;
-  }
-
-  publishRaw(frame: string): void {
-    for (const client of this.clients) {
-      client.send(frame);
+  publish(topic: string, body: object): void {
+    for (const connection of this.live) {
+      if (connection.subscribed.has(topic)) {
+        connection.handlers.message(topic, JSON.stringify(body));
+      }
     }
   }
 
-  dropClients(): void {
-    for (const client of this.clients) {
-      client.terminate();
+  publishRaw(topic: string, payload: string): void {
+    for (const connection of this.live) {
+      connection.handlers.message(topic, payload);
     }
   }
 
-  async close(): Promise<void> {
-    this.dropClients();
-    await new Promise<void>((resolve) => {
-      this.server.close(() => {
-        resolve();
-      });
-    });
+  drop(): void {
+    for (const connection of this.live) {
+      connection.closed = true;
+      connection.handlers.closed();
+    }
   }
 }
 
 export interface Harness {
-  readonly cloud: FakeTuyaCloud;
-  readonly messages: FakeMessageServer;
+  readonly cloud: FakeSmartLife;
+  readonly broker: FakeBroker;
   readonly dependencies: TuyaDependencies;
   readonly context: RunContext;
   readonly attention: string[];
+  readonly saved: StoredAccount[];
   readonly udpSockets: Socket[];
 }
 
 export function harness(localPort: number, overrides: Partial<TuyaDependencies> = {}): Harness {
-  const cloud = new FakeTuyaCloud();
-  const messages = new FakeMessageServer();
   const udpSockets: Socket[] = [];
   const attention: string[] = [];
+  const saved: StoredAccount[] = [];
   const base = nodeDependencies([0, 0]);
+  const now = overrides.now ?? base.now;
+  const cloud = new FakeSmartLife(now);
+  const broker = new FakeBroker();
   const dependencies: TuyaDependencies = {
     ...base,
     fetch: cloud.fetch,
     localPort,
     timing: {
       irLearnTimeoutMs: 2000,
-      cloudLearnQueryMs: 20,
-      messagePingMs: 50,
       qrScanQueryMs: 20,
       qrScanTimeoutMs: 2000,
       messagingRenewMarginMs: 1000,
@@ -191,7 +177,7 @@ export function harness(localPort: number, overrides: Partial<TuyaDependencies> 
       udpSockets.push(socket);
       return socket;
     },
-    messageSocket: (url, headers) => messages.socket(url, headers),
+    mqtt: broker.connect,
     ...overrides,
   };
   const context: RunContext = {
@@ -199,13 +185,16 @@ export function harness(localPort: number, overrides: Partial<TuyaDependencies> 
     dataDirectory: '/nonexistent',
     ask: () => Promise.reject(new Error('the Tuya provider never asks')),
     show: () => Promise.reject(new Error('the Tuya provider never shows a prompt')),
-    saveAccount: () => Promise.resolve(),
+    saveAccount: (account) => {
+      saved.push(account);
+      return Promise.resolve();
+    },
     needsAttention: (reason) => {
       attention.push(reason.message);
       return Promise.resolve();
     },
   };
-  return { cloud, messages, dependencies, context, attention, udpSockets };
+  return { cloud, broker, dependencies, context, attention, saved, udpSockets };
 }
 
 const UDP_KEY = createHash('md5').update('yGAdlopoPVldABfn').digest();

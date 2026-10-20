@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import type { Href } from 'expo-router';
 import { cn } from '../design/cn';
@@ -12,16 +12,34 @@ type ButtonVariant = 'filled' | 'tonal' | 'outlined' | 'text' | 'destructive';
 
 interface Look {
   readonly frame: string;
+  readonly off: string;
   readonly tone: Tone;
   readonly spinner: string;
 }
 
+const FILLED_OFF = 'bg-on-surface/10';
+
 const LOOK: Readonly<Record<ButtonVariant, Look>> = {
-  filled: { frame: 'bg-primary', tone: 'onPrimary', spinner: 'accent-on-primary' },
-  tonal: { frame: 'bg-primary-container', tone: 'primary', spinner: 'accent-primary' },
-  outlined: { frame: 'border border-outline', tone: 'default', spinner: 'accent-on-surface' },
-  text: { frame: '', tone: 'primary', spinner: 'accent-primary' },
-  destructive: { frame: 'bg-critical/14', tone: 'critical', spinner: 'accent-critical' },
+  filled: { frame: 'bg-primary', off: FILLED_OFF, tone: 'onPrimary', spinner: 'accent-on-primary' },
+  tonal: {
+    frame: 'bg-primary-container',
+    off: FILLED_OFF,
+    tone: 'onPrimaryContainer',
+    spinner: 'accent-on-primary-container',
+  },
+  outlined: {
+    frame: 'border border-outline',
+    off: 'border border-outline-variant',
+    tone: 'default',
+    spinner: 'accent-on-surface',
+  },
+  text: { frame: '', off: '', tone: 'primary', spinner: 'accent-primary' },
+  destructive: {
+    frame: 'bg-critical/14',
+    off: FILLED_OFF,
+    tone: 'critical',
+    spinner: 'accent-critical',
+  },
 };
 
 export interface ButtonProps {
@@ -35,6 +53,7 @@ export interface ButtonProps {
   readonly disabled?: boolean;
   readonly grow?: boolean;
   readonly hint?: string;
+  readonly ref?: Ref<View>;
 }
 
 interface FrameInput {
@@ -51,7 +70,7 @@ function frameOf({ look, size, pointer, grow, disabled }: FrameInput): string {
     size === 'lg' ? 'min-h-touch-min px-6' : 'h-control-h',
     pointer ? 'rounded-sm' : 'rounded-full',
     grow && 'flex-1',
-    disabled ? 'bg-on-surface/10' : look.frame,
+    disabled ? look.off : look.frame,
   );
 }
 
@@ -87,11 +106,13 @@ export function Button({
   disabled = false,
   grow = false,
   hint,
+  ref,
 }: ButtonProps): ReactNode {
   const look = LOOK[variant];
   const pointer = useIdiom() === 'pointer';
   return (
     <Interactive
+      ref={ref}
       onPress={onPress}
       href={href}
       disabled={disabled || loading}

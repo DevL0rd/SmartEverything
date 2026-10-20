@@ -1,4 +1,5 @@
 import { HubConnections } from '../../src/network/connections';
+import { OwnerAlerts } from '../../src/extensions/owner-alerts';
 import { AccessService } from '../../src/server/access';
 import type { TestStore } from './store';
 
@@ -30,5 +31,7 @@ export function accessServiceFor(opened: TestStore, now: () => Date): AccessServ
     now,
     clientWithdrawn: (): void => undefined,
     clientPaused: (): void => undefined,
+    alerts: new OwnerAlerts(),
+    scopesChanged: (): void => undefined,
   });
 }

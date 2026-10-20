@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { BUTTON_ACTIONS, DEVICE_LOG_ENTRY } from '../device-log';
 import { EVENT_KINDS } from '../events';
+import { LAUNDRY_NOTICE_CHANGE, LAUNDRY_NOTICE_SETTING } from '../laundry-notices';
+import { MAC_ADDRESS } from '../mac-address';
 import { JSON_VALUE } from '../values';
 import { NO_BODY, endpoint } from './endpoint';
 import {
@@ -115,7 +117,7 @@ const DEVICE_ENDPOINTS = {
     path: '/api/devices/:deviceId',
     access: 'member',
     summary:
-      'Rename, place, hide, favourite or reorder a device, or set the names of a television’s inputs (input id to name; the map replaces the old one)',
+      'Rename, place, hide, favourite or reorder a device, set the names of a television’s inputs (input id to name; the map replaces the old one), or set the Wake-on-LAN address of a television (its network MAC, null clears it; a directly linked screen takes it from the link)',
     params: DEVICE_PARAMS,
     query: NOTHING,
     body: somethingToChange({
@@ -125,6 +127,7 @@ const DEVICE_ENDPOINTS = {
       favourite: z.boolean(),
       position: POSITION,
       input_names: TELEVISION_INPUT_NAMES,
+      wake_address: MAC_ADDRESS.nullable(),
     }),
     response: DEVICE_ROW,
   }),
@@ -162,6 +165,17 @@ const DEVICE_ENDPOINTS = {
     query: NOTHING,
     body: NO_BODY,
     response: DONE,
+  }),
+  updateLaundryNotices: endpoint({
+    method: 'PATCH',
+    path: '/api/devices/:deviceId/laundry-notices',
+    access: 'member',
+    summary:
+      'Switch the phone notices of a washing machine or dryer on or off (finished, fault, detergent, softener, filter, unload) and set how many minutes a finished load waits before the unload reminder; kept for the whole household in the settings (laundry_notices)',
+    params: DEVICE_PARAMS,
+    query: NOTHING,
+    body: LAUNDRY_NOTICE_CHANGE,
+    response: LAUNDRY_NOTICE_SETTING,
   }),
   listState: endpoint({
     method: 'GET',

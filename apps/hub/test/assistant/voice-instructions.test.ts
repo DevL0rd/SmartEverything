@@ -39,10 +39,10 @@ describe('voice instructions', () => {
   it('list every tool, then the guide and plugin tools', () => {
     const text = liveInstructions(PERSONA);
     expect(text).toContain('get_weather: The weather now.');
-    expect(text).toContain('Tool guide');
+    expect(text).toContain('Ids and keys come from reads');
     expect(text).toContain('fan_boost(speed: integer): Boosts the fan.');
-    expect(text.indexOf('get_weather')).toBeLessThan(text.indexOf('Tool guide'));
-    expect(text.indexOf('Tool guide')).toBeLessThan(text.indexOf('fan_boost'));
+    expect(text.indexOf('get_weather')).toBeLessThan(text.indexOf('Ids and keys come from reads'));
+    expect(text.indexOf('Ids and keys come from reads')).toBeLessThan(text.indexOf('fan_boost'));
     expect(text).not.toContain('find_tools');
   });
 
@@ -84,7 +84,7 @@ describe('the conversation note', () => {
   it('ends only at a natural end and never right after an answer', () => {
     const text = liveInstructions(PERSONA);
     expect(text).toContain('only at a natural end');
-    expect(text).toContain('Never end it right after answering');
+    expect(text).toContain('Never end it right after an answer');
     expect(text).toContain('When unsure, keep it open');
     expect(text).not.toContain('in that same turn right after speaking');
   });

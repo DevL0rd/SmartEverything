@@ -5,7 +5,10 @@ import {
   APP_VIEW_NOTICE,
   APP_VIEW_REQUEST,
   LIVE_MESSAGE,
+  MCP_ROUTES,
   SHOW_IN_APP_INPUT,
+  SHOW_IN_APP_RESULT,
+  mcpToolOperation,
 } from '../src';
 
 const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
@@ -75,5 +78,26 @@ describe('the request an app receives and the answer it sends', () => {
       path: '/api/app-view/answer',
       access: 'member',
     });
+  });
+});
+
+describe('the show in app tool', () => {
+  it('is the member-level showInApp operation served as one assistant tool', () => {
+    expect(API_ENDPOINTS.showInApp).toMatchObject({
+      method: 'POST',
+      path: '/api/app-view',
+      access: 'member',
+    });
+    expect(mcpToolOperation('show_in_app')).toBe('showInApp');
+    expect(MCP_ROUTES.get('show_in_app')).toEqual({ part: 'show_in_app' });
+  });
+
+  it('reports what was opened or why nothing was', () => {
+    const done = { ok: true, app: 'Pixel', opened: 'Fitness', highlighted: true, reason: null };
+    expect(SHOW_IN_APP_RESULT.safeParse(done).success).toBe(true);
+    const failed = { ok: false, app: 'Pixel', reason: 'not_connected', detail: 'It is closed.' };
+    expect(SHOW_IN_APP_RESULT.safeParse(failed).success).toBe(true);
+    expect(SHOW_IN_APP_RESULT.safeParse({ ...failed, reason: 'because' }).success).toBe(false);
+    expect(SHOW_IN_APP_RESULT.safeParse({ ...failed, app: undefined }).success).toBe(false);
   });
 });

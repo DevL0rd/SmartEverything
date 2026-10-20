@@ -10,13 +10,15 @@ import type {
 import type { Logger } from '@smarteverything/logging';
 import { messageOf } from '@smarteverything/logging';
 import type { Clock } from '../../clock';
-import { Ear, type SpeechSegment } from '../../wake-name/ear';
+import type { SpeechSegment } from '../../listening/speech-segment';
+import { Ear } from './ear';
+import type { WakeDiagnostics } from './wake-diagnostics';
 import type { EarEngine } from './ear-engine';
 import { encodePcm, GrantedClaims, listeningSegmentOf } from './ear-audio';
 import { packetDecoderFor, type PacketDecoder } from './packet-decoder';
 import { RelayedSpotter } from './relayed-spotter';
 
-const PREROLL_SAMPLES_PER_MS = 16;
+const SAMPLES_PER_MS = 16;
 
 type RestReason = Extract<RemoteEarHubMessage, { readonly kind: 'rest' }>['reason'];
 
@@ -24,6 +26,7 @@ export interface RelayedEarOptions {
   readonly source: EarSource;
   readonly codec: EarCodec;
   readonly engine: EarEngine;
+  readonly diagnostics: WakeDiagnostics | null;
   readonly send: (message: RemoteEarNodeMessage) => void;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
@@ -97,6 +100,7 @@ export class RelayedEar {
   }
 
   close(): Promise<void> {
+    this.running?.ear.flush();
     this.config = null;
     this.queue();
     return this.chain.then(() => {
@@ -149,12 +153,13 @@ export class RelayedEar {
     const ear = new Ear(
       {
         claims: this.grants.claims,
-        spotter: new RelayedSpotter(engine.spotter(), config),
+        spotter: new RelayedSpotter(engine.spotter(), config, true),
         model: engine.model,
-        names: (): readonly string[] => [],
         pauseMs: (): PauseChoiceMs => config.pause_ms,
+        diagnostics: this.options.diagnostics,
         clock,
         log,
+        ...(engine.lost === undefined ? {} : { lost: engine.lost }),
       },
       {
         claim: { source: source.kind, key: source.key },
@@ -195,7 +200,7 @@ export class RelayedEar {
       ...this.fields,
       phrase,
       snippetDbfs: round(this.grants.level),
-      prerollMs: Math.round(words.length / PREROLL_SAMPLES_PER_MS),
+      prerollMs: Math.round(words.length / SAMPLES_PER_MS),
     });
     this.options.send({
       kind: 'claim',

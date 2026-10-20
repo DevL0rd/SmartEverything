@@ -59,7 +59,7 @@ export function PressMenu({
         variant="tonal"
         icon="plus"
         onPress={() => {
-          router.push(href.automation('new'));
+          router.push(href.automationNew());
         }}
       />
     );

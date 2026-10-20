@@ -3,6 +3,7 @@ import type { SettingDefinition } from '../../settings/types';
 import { DEVELOPER_TOGGLES } from '../../developer/toggles';
 import { WatchWorkoutProbe } from './components/watch-workout-probe';
 import { DeveloperToggleRow, ProfilingMasterRow, ReloadRow } from './components/developer-rows';
+import { WatchCaptureClearRow } from './components/watch-capture-rows';
 
 const TOGGLE_SETTINGS: readonly SettingDefinition[] = DEVELOPER_TOGGLES.map((toggle) => ({
   id: `developer.${toggle.id}`,
@@ -58,4 +59,17 @@ export const SETTINGS: readonly SettingDefinition[] = [
     render: () => createElement(WatchWorkoutProbe),
   },
   ...TOGGLE_SETTINGS,
+  {
+    id: 'developer.watch-captures.clear',
+    page: 'developer',
+    section: 'Watch',
+    title: 'Clear saved watch files',
+    description: 'Shows how much raw watch data the hub keeps and deletes all of it.',
+    keywords: ['developer', 'debug', 'watch', 'raw', 'capture', 'files', 'clear', 'size'],
+    scope: 'device',
+    control: 'custom',
+    row: true,
+    visible: (env) => __DEV__ && env.platform === 'android',
+    render: () => createElement(WatchCaptureClearRow),
+  },
 ];

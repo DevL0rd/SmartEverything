@@ -7,8 +7,10 @@ import { isNative } from '../design/platform';
 import { screenPause } from './screen-pause';
 import { forgetRoute, isInstantRoute } from './instant-open';
 import { tabOfRouteName } from './nav-model';
+import { leafRoutesOf, singularIdOf } from './pin-routes';
 import { TabGroupContext } from './tab-group';
 import { preloader } from './preloader';
+import { forgetAwake } from './tab-prewarm';
 
 const log = new Logger('app.nav');
 
@@ -24,7 +26,21 @@ export function useStackOptions(): {
   };
 }
 
-export function TabStack({ children }: { readonly children?: ReactNode }): ReactNode {
+function pinScreens(group: string): ReactNode {
+  return leafRoutesOf(group)
+    .filter((leaf) => !leaf.nested && leaf.keys.length > 0)
+    .map((leaf) => (
+      <Stack.Screen key={leaf.route} name={leaf.route} dangerouslySingular={singularIdOf(leaf)} />
+    ));
+}
+
+export function TabStack({
+  initialRouteName,
+  children,
+}: {
+  readonly initialRouteName: string;
+  readonly children?: ReactNode;
+}): ReactNode {
   const focused = useIsFocused();
   const options = useStackOptions();
   const group = useRoute().name;
@@ -39,6 +55,7 @@ export function TabStack({ children }: { readonly children?: ReactNode }): React
     <TabGroupContext value={group}>
       <View className="flex-1" aria-hidden={!focused}>
         <Stack
+          initialRouteName={initialRouteName}
           screenLayout={screenPause}
           screenListeners={{
             beforeRemove: (event) => {
@@ -47,6 +64,7 @@ export function TabStack({ children }: { readonly children?: ReactNode }): React
                 target: event.target ?? null,
               });
               forgetRoute(event.target);
+              forgetAwake(event.target);
             },
           }}
           screenOptions={({ route }) =>
@@ -54,6 +72,7 @@ export function TabStack({ children }: { readonly children?: ReactNode }): React
           }
         >
           {children}
+          {pinScreens(group)}
         </Stack>
       </View>
     </TabGroupContext>

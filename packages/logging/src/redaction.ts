@@ -1,7 +1,6 @@
 export const REDACTED = '[redacted]';
 
 export const DENIED_FIELDS: readonly string[] = [
-  'accessSecret',
   'accessToken',
   'address',
   'apiKey',

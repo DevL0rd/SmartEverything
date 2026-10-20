@@ -3,7 +3,7 @@ import { DeviceSpeech } from '../listening/device-speech';
 import type { ListeningRegistry } from '../listening/listening-registry';
 import { PhoneEars } from '../listening/phone-ears';
 import { ListeningBudget } from '../transcripts/listening-budget';
-import type { KeywordSpotter } from '../wake-name/keyword-spotter';
+import type { EarKeywords } from '../wake-name/keyword-lines';
 import type { Transcribing } from './transcribing';
 import type { ReachWiring } from './reach-wiring';
 import type { ServerContext } from './context';
@@ -14,7 +14,7 @@ export function startPhoneEars(
     readonly listening: ListeningRegistry;
     readonly transcribing: Pick<
       Transcribing,
-      'ears' | 'claims' | 'transcriber' | 'transcripts' | 'wakeTest'
+      'pause' | 'keywords' | 'claims' | 'transcriber' | 'transcripts' | 'wakeTest'
     >;
   },
   options: ReachWiring,
@@ -43,8 +43,9 @@ export function startPhoneEars(
     store,
     registry: listening,
     claims: transcribing.claims,
-    pause: transcribing.ears.pause,
-    spotter: (): KeywordSpotter => transcribing.ears.spotter(),
+    pause: transcribing.pause,
+    keywords: (names, sensitivity): EarKeywords =>
+      transcribing.keywords.earConfig(names, sensitivity),
     speech,
     test: transcribing.wakeTest,
     names: (): string[] => assistantNames(store),

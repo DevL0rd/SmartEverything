@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import {
-  BOARD_CLASSES,
   BOARD_LAYOUT_VERSION,
+  arrangementOf,
   withArrangementFor,
+  withoutArrangementFor,
   type BoardClass,
   type BoardLayout,
   type BoardWidget,
@@ -64,17 +65,6 @@ function sameLayout(a: BoardLayout, b: BoardLayout): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function withoutClass(layout: BoardLayout, board: BoardClass): BoardLayout {
-  const classes: BoardLayout['classes'] = {};
-  for (const other of BOARD_CLASSES) {
-    const arrangement = layout.classes[other];
-    if (other !== board && arrangement !== undefined) {
-      classes[other] = arrangement;
-    }
-  }
-  return { version: BOARD_LAYOUT_VERSION, classes };
-}
-
 function recorded(
   session: Session | null,
   change: (draft: BoardLayout) => BoardLayout,
@@ -130,13 +120,13 @@ function useChanges(
       gestureRef.current = kind === 'gesture';
       editTally.bump(kind);
       commit((draft) => {
-        const widgets = update(draft.classes[board]?.widgets ?? defaults[board]);
+        const widgets = update(arrangementOf(draft, board, defaults));
         return withArrangementFor(draft, board, { widgets: [...widgets] });
       }, push);
     },
     reset: (board): void => {
       log.info('edit.board_reset', { page, board });
-      commit((draft) => withoutClass(draft, board), true);
+      commit((draft) => withoutArrangementFor(draft, board), true);
     },
     undo: (): void => {
       log.debug('edit.undone', { page });
@@ -203,6 +193,6 @@ export function useBoardEditor(input: BoardEditorInput): BoardEditor {
     begin,
     done,
     cancel,
-    arrangement: (board) => current.classes[board]?.widgets ?? defaults[board],
+    arrangement: (board) => arrangementOf(current, board, defaults),
   };
 }

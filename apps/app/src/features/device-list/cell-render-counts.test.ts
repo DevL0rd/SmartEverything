@@ -145,8 +145,8 @@ const FACES: readonly Face[] = [
 
 const BUDGETS: Readonly<Record<string, Readonly<Record<'S' | 'M', Budget>>>> = {
   light: {
-    S: { nodes: 48, hooks: 88, subscriptions: 9 },
-    M: { nodes: 69, hooks: 109, subscriptions: 10 },
+    S: { nodes: 44, hooks: 81, subscriptions: 9 },
+    M: { nodes: 64, hooks: 94, subscriptions: 10 },
   },
   plug: {
     S: { nodes: 54, hooks: 93, subscriptions: 11 },

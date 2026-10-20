@@ -1,8 +1,10 @@
 import { SCENE_ACTIONS } from '@smarteverything/domain';
 import { z } from 'zod';
+import { OFFSET, moreOf, paged } from '../../../ai-tools/paging';
+import { AUTOMATION_FILTER, listAutomations } from './automation-list';
 import { CHANGE, applyChanges } from './changes';
 import { reported, waitFor } from './commanding';
-import { PHYSICAL, READS, defineTool, type Tool, type ToolContext } from './registry';
+import { PHYSICAL, READS, defineTool, matches, type Tool, type ToolContext } from './registry';
 import { deviceNames } from './targets';
 
 export function scenes(context: Pick<ToolContext, 'store'>): Record<string, unknown>[] {
@@ -23,6 +25,12 @@ export function scenes(context: Pick<ToolContext, 'store'>): Record<string, unkn
     };
   });
 }
+
+const SCENE_FILTER = z.strictObject({
+  search: z.string().min(1).max(100).optional().describe('Words in the scene’s name'),
+  limit: z.number().int().min(1).max(200).default(100),
+  offset: OFFSET,
+});
 
 const CONTROL = z.strictObject({
   changes: z.array(CHANGE).min(1).max(50).describe('Changes, each on the devices it names'),
@@ -49,14 +57,21 @@ export const CONTROL_TOOLS: readonly Tool[] = [
   }),
   defineTool({
     name: 'list_scenes',
-    input: z.strictObject({}),
+    input: SCENE_FILTER,
     annotations: READS,
-    run: (context) => ({ structured: { scenes: scenes(context) } }),
+    run: (context, input) => {
+      const { search } = input;
+      const listed = scenes(context).filter(
+        (scene) => search === undefined || matches(search, String(scene['name'])),
+      );
+      const { rows, more } = paged(listed, input.offset, input.limit);
+      return { structured: { scenes: rows, ...moreOf(more) } };
+    },
   }),
   defineTool({
     name: 'list_automations',
-    input: z.strictObject({}),
+    input: AUTOMATION_FILTER,
     annotations: READS,
-    run: ({ store }) => ({ structured: { automations: store.automations.list() } }),
+    run: (context, input) => ({ structured: listAutomations(context, input) }),
   }),
 ];

@@ -28,7 +28,7 @@ function segmentClass(pointer: boolean, selected: boolean, fill: boolean): strin
     'min-w-0 shrink flex-row items-center justify-center gap-1.5',
     fill && 'flex-1',
     pointer ? 'h-8 rounded-xs px-3' : 'h-12 rounded-full px-2 medium:px-4',
-    selected && 'bg-primary-container',
+    selected ? 'border border-primary bg-primary-container' : 'border border-transparent',
   );
 }
 
@@ -82,7 +82,7 @@ function Segment<T extends string>({
       layerClassName={pointer ? 'rounded-xs' : 'rounded-full'}
     >
       <SegmentIcon option={option} selected={selected} pointer={pointer} />
-      <Text variant="label" tone={selected ? 'primary' : 'default'} numberOfLines={1}>
+      <Text variant="label" tone="default" numberOfLines={1}>
         {option.label}
       </Text>
     </Interactive>

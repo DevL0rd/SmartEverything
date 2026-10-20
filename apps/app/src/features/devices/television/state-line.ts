@@ -45,24 +45,29 @@ export interface StageText {
   readonly meta: string;
 }
 
+function onText(view: TvView): StageText {
+  const volume = volumeText(view.volume);
+  return {
+    title: view.watching.label === '' ? 'On' : view.watching.label,
+    meta: volume === null ? '' : view.volume.muted ? 'Muted' : `Vol ${volume}`,
+  };
+}
+
 export function stageText(view: TvView): StageText {
   switch (view.mode) {
-    case 'on': {
-      const volume = volumeText(view.volume);
-      return {
-        title: view.watching.label === '' ? 'On' : view.watching.label,
-        meta: volume === null ? '' : view.volume.muted ? 'Muted' : `Vol ${volume}`,
-      };
-    }
+    case 'on':
+      return onText(view);
     case 'standby':
       return { title: 'Off', meta: 'Ready to turn on' };
     case 'turning_on':
-      return { title: 'Turning on…', meta: 'Waiting for the TV to answer' };
+      return view.wakesOverNetwork
+        ? { title: 'Waking…', meta: 'Waiting for it to come online' }
+        : { title: 'Turning on…', meta: 'Waiting for the TV to answer' };
     case 'updating':
       return { title: 'Updating', meta: 'Buttons come back when it restarts' };
     case 'unreachable':
       return { title: 'Not responding', meta: 'Check that it is plugged in and on Wi-Fi' };
     case 'off_unreachable':
-      return { title: 'Off', meta: "Can't be turned on from here" };
+      return { title: 'Off', meta: 'Link it directly in its settings' };
   }
 }

@@ -65,6 +65,8 @@ const FAKE_GO2RTC = [
   "  'GET /api/streams': () => '{\"consumers\":[]}',",
   "  'PUT /api/streams': () => '',",
   "  'DELETE /api/streams': () => '',",
+  "  'PUT /api/preload': () => '',",
+  "  'DELETE /api/preload': () => '',",
   "  'GET /api/frame.jpeg': () => Buffer.from([0xff, 0xd8, 0xff]),",
   "  'GET /api/stream.mp4': () => Buffer.from('0123456789'),",
   '};',

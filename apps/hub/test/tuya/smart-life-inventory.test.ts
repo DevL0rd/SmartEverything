@@ -53,6 +53,6 @@ describe('Smart Life inventory', () => {
     ids = ['a', 'b', 'c'];
     const grown = await loadSmartLifeInventory(cloud, log, descriptions);
     expect(descriptionCalls()).toBe(3);
-    expect(grown.inventory.devices.map((entry) => entry.cloud.id)).toEqual(['a', 'b', 'c']);
+    expect(grown.devices.map((entry) => entry.cloud.id)).toEqual(['a', 'b', 'c']);
   });
 });

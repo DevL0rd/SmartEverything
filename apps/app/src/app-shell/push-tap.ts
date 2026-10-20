@@ -1,17 +1,21 @@
 import { z } from 'zod';
 import {
   BODY_READING_PUSH_DATA,
+  DEVICE_NOTICE_PUSH_DATA,
   EVENT_KINDS,
   MCP_CONSENT_PUSH_DATA,
   PROFILE_DETAILS_PUSH_DATA,
   type McpConsentPushData,
 } from '@smarteverything/domain';
 
-const PUSH_DATA = z.object({
-  eventId: z.uuid(),
-  kind: z.enum(EVENT_KINDS),
-  deviceId: z.uuid().optional(),
-});
+const PUSH_DATA = z.union([
+  z.object({
+    eventId: z.uuid(),
+    kind: z.enum(EVENT_KINDS),
+    deviceId: z.uuid().optional(),
+  }),
+  DEVICE_NOTICE_PUSH_DATA,
+]);
 
 export type PushTap = z.infer<typeof PUSH_DATA>;
 

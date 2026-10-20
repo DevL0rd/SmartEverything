@@ -15,7 +15,10 @@ const STILL: DesktopStill = {
   dataBase64: 'AAAA',
 };
 
-function options(path = ''): { readonly options: ElectronActionsOptions; readonly seen: string[] } {
+function options(
+  path = '',
+  screenRecording: boolean | null = null,
+): { readonly options: ElectronActionsOptions; readonly seen: string[] } {
   const seen: string[] = [];
   return {
     seen,
@@ -44,6 +47,7 @@ function options(path = ''): { readonly options: ElectronActionsOptions; readonl
           return Promise.resolve(STILL);
         },
       },
+      access: { screenRecording: (): boolean | null => screenRecording },
       now: (): Date => new Date('2026-10-18T10:00:00.000Z'),
     },
   };
@@ -91,5 +95,15 @@ describe('the desktop app actions', () => {
       code: 'not_supported',
     });
     expect(seen).toEqual([]);
+  });
+
+  it('reports Screen Recording on a Mac and nothing elsewhere', () => {
+    expect(electronAgentActions(options('', false).options).permissions()).toEqual([
+      { permission: 'mac_screen_recording', granted: false },
+    ]);
+    expect(electronAgentActions(options('', true).options).permissions()).toEqual([
+      { permission: 'mac_screen_recording', granted: true },
+    ]);
+    expect(electronAgentActions(options().options).permissions()).toEqual([]);
   });
 });

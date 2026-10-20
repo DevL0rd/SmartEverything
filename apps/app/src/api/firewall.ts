@@ -1,10 +1,9 @@
 import {
   API_ENDPOINTS as E,
-  type DesktopFirewallResult,
+  type FirewallApplyResult,
   type FirewallStatus,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import type { DesktopBridge } from '../design/platform';
 import type { EntityStore } from '../store/entity-store';
 import { api } from './transport';
 
@@ -17,11 +16,19 @@ export async function checkFirewall(store: EntityStore): Promise<FirewallStatus>
   return firewall;
 }
 
+export type SystemPromptApply = (revision: string) => Promise<FirewallApplyResult>;
+
 export async function applyFirewall(
-  bridge: DesktopBridge,
+  store: EntityStore,
+  systemPrompt: SystemPromptApply | null,
   revision: string,
-): Promise<DesktopFirewallResult> {
-  const result = await bridge.applyFirewall(revision);
-  log.info('firewall.applied', { outcome: result.outcome });
+): Promise<FirewallApplyResult> {
+  const fromServer = await api().call(E.applyFirewall, { body: { revision } });
+  const result =
+    fromServer.outcome === 'unavailable' && systemPrompt !== null
+      ? await systemPrompt(revision)
+      : fromServer;
+  store.update((state) => ({ ...state, firewall: result.status }));
+  log.info('firewall.applied', { outcome: result.outcome, via: result.via });
   return result;
 }

@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import type { LiveNotificationNotice } from '@smarteverything/domain';
 
-export const ALERT_CHANNEL = 'alerts';
+export const ALERT_CHANNEL = 'live-alerts';
 
 const ALERT_VIBRATION: readonly number[] = [0, 250, 250, 250];
 
@@ -31,7 +31,6 @@ function alertChannel(): Promise<unknown> {
     description: 'Doorbell, calls, leaks, alarms and replies while the app is running',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [...ALERT_VIBRATION],
-    sound: 'default',
   });
   return channel;
 }

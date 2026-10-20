@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { PinSource } from './pin-prewarm';
 import type { StackHandle } from './stack-handles';
 import {
   CHAT_ROUTE,
@@ -7,6 +8,20 @@ import {
   nextStep,
   type ChatLeafSource,
 } from './tab-prewarm';
+
+const noPins: PinSource = { leaves: [], recent: [], stacks: [] };
+
+function stubHandle(key: string, routeNames: readonly string[]): StackHandle {
+  return {
+    key,
+    routeNames: () => routeNames,
+    declares: () => true,
+    opened: () => [],
+    preloaded: () => [],
+    preload: () => undefined,
+    drop: () => undefined,
+  };
+}
 
 const routes = ['home', 'devices', 'cameras', 'fitness'].map((name) => ({
   key: `${name}-k`,
@@ -72,15 +87,15 @@ describe('the tab prewarmer', () => {
         { key: 'ai-k', name: '(z-assistant)' },
       ],
     };
-    const stack: StackHandle = {
-      key: 'stack-1',
-      routeNames: () => ['assistant/index'],
-      preload: () => undefined,
-    };
+    const stack = stubHandle('stack-1', ['assistant/index']);
     const source: ChatLeafSource = { chatId: 'c1', preloaded: new Set(), stack };
     const order = ['(z-assistant)', 'home'];
-    expect(nextStep(chatState, () => false, source, order)?.kind).toBe('tab');
-    expect(nextStep(chatState, () => true, source, order)?.kind).toBe('chat');
+    expect(nextStep(chatState, () => false, { chat: source, pins: noPins }, order)?.kind).toBe(
+      'tab',
+    );
+    expect(nextStep(chatState, () => true, { chat: source, pins: noPins }, order)?.kind).toBe(
+      'chat',
+    );
   });
 });
 
@@ -93,11 +108,7 @@ describe('the chat leaf prewarm', () => {
       { key: 'ai-k', name: '(z-assistant)' },
     ],
   };
-  const stackOf = (routeNames: readonly string[]): StackHandle => ({
-    key: 'stack-1',
-    routeNames: () => routeNames,
-    preload: () => undefined,
-  });
+  const stackOf = (routeNames: readonly string[]): StackHandle => stubHandle('stack-1', routeNames);
   const awake = (): boolean => true;
   const source = (
     stack: StackHandle | null,
@@ -126,13 +137,15 @@ describe('the chat leaf prewarm', () => {
 
   it('runs after every tab is awake', () => {
     const stack = stackOf(['assistant/index']);
-    expect(nextStep(state, (key) => key === 'home-k', source(stack))).toEqual({
+    expect(
+      nextStep(state, (key) => key === 'home-k', { chat: source(stack), pins: noPins }),
+    ).toEqual({
       kind: 'tab',
       key: 'ai-k',
       name: '(z-assistant)',
       mounted: false,
     });
-    expect(nextStep(state, awake, source(stack))).toEqual({
+    expect(nextStep(state, awake, { chat: source(stack), pins: noPins })).toEqual({
       kind: 'chat',
       stack,
       chatId: 'c1',

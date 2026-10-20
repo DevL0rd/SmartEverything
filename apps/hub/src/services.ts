@@ -4,11 +4,14 @@ import type { Logger } from '@smarteverything/logging';
 import type { ProviderModule } from './adapters/contract';
 import { createRegistry } from './adapters/registry';
 import { go2rtcCameraMotor } from './adapters/xiaomi';
+import { CameraHealth, reconnectingProbe, type CameraFault } from './cameras/camera-health';
 import { go2rtcClient, type Go2rtcClient, type Go2rtcMotor } from './cameras/go2rtc-client';
 import { Go2rtcSupervisor, xiaomiLoginsOf } from './cameras/go2rtc-supervisor';
 import type { Clock } from './clock';
+import { FirewallApplier } from './firewall/apply';
 import { FirewallMonitor } from './firewall/monitor';
-import { observedGo2rtc } from './firewall/observed-go2rtc';
+import { CameraLoad, observedGo2rtc } from './firewall/observed-go2rtc';
+import { cameraSourceOf } from './state/inventory';
 import type { FirewallSystem } from './firewall/system';
 import type { ModuleRegistry } from './providers/registry-types';
 import { startHub, type RunningHub } from './hub';
@@ -67,8 +70,46 @@ export interface Core {
   readonly go2rtc: Go2rtcClient;
   readonly supervisor: Go2rtcSupervisor;
   readonly firewall: FirewallMonitor;
+  readonly firewallApplier: FirewallApplier;
+  readonly cameraHealth: CameraHealth;
   readonly recordingPath: (storagePath: string) => string;
   readonly rtspPort: number;
+}
+
+interface HealthParts {
+  readonly store: Store;
+  readonly firewall: FirewallMonitor;
+  readonly raw: Go2rtcClient;
+  readonly load: CameraLoad;
+}
+
+function healthOf(options: CoreOptions, parts: HealthParts): CameraHealth {
+  const { store, firewall, raw, load } = parts;
+  const health = new CameraHealth({
+    faultOf: (deviceId): CameraFault =>
+      firewall.blockingAddress(deviceId) === null ? 'camera' : 'firewall',
+    probe: reconnectingProbe(raw, (deviceId) => {
+      const device = store.devices.find(deviceId);
+      return device === undefined ? null : cameraSourceOf(device);
+    }),
+    load: (deviceId): Readonly<Record<string, number>> => load.of(deviceId),
+    now: options.clock.now,
+    log: options.log.forArea('hub.cameras'),
+  });
+  health.onChange((deviceId, down) => {
+    if (down === null) {
+      firewall.cameraRecovered(deviceId);
+    } else {
+      firewall.cameraFailed(deviceId);
+    }
+  });
+  return health;
+}
+
+interface StartedCameras {
+  readonly supervisor: Go2rtcSupervisor;
+  readonly go2rtc: Go2rtcClient & Go2rtcMotor;
+  readonly health: CameraHealth;
 }
 
 async function startCameras(
@@ -76,7 +117,7 @@ async function startCameras(
   store: Store,
   secrets: SecretStore,
   firewall: FirewallMonitor,
-): Promise<{ supervisor: Go2rtcSupervisor; go2rtc: Go2rtcClient & Go2rtcMotor }> {
+): Promise<StartedCameras> {
   const log = options.log.forArea('hub.go2rtc');
   const supervisor = new Go2rtcSupervisor({
     binary: options.cameras.binary,
@@ -89,9 +130,6 @@ async function startCameras(
       log.exception('go2rtc.exited', cause);
       options.fatal(cause);
     },
-    reported: (text): void => {
-      firewall.reported(text);
-    },
   });
   const settings = store.settings.read();
   const running = await supervisor.start({
@@ -99,7 +137,38 @@ async function startCameras(
     candidates: settings.webrtc_candidates,
     iceServers: settings.ice_servers,
   });
-  return { supervisor, go2rtc: observedGo2rtc(go2rtcClient({ ...running, fetch }), firewall) };
+  const raw = go2rtcClient({ ...running, fetch });
+  const load = new CameraLoad();
+  const health = healthOf(options, { store, firewall, raw, load });
+  const go2rtc = observedGo2rtc(raw, {
+    load,
+    refusal: (deviceId) => health.refusal(deviceId),
+    failed: (deviceId) => {
+      health.failed(deviceId);
+    },
+    recovered: (deviceId) => {
+      health.recovered(deviceId);
+    },
+    blockingAddress: (deviceId) => firewall.blockingAddress(deviceId),
+  });
+  return { supervisor, go2rtc, health };
+}
+
+function firewallOf(options: CoreOptions): {
+  readonly firewall: FirewallMonitor;
+  readonly firewallApplier: FirewallApplier;
+} {
+  const log = options.log.forArea('hub.firewall');
+  const firewall = new FirewallMonitor({
+    system: options.firewall,
+    webrtcPort: options.cameras.webrtcPort,
+    now: options.clock.now,
+    log,
+  });
+  return {
+    firewall,
+    firewallApplier: new FirewallApplier({ system: options.firewall, monitor: firewall, log }),
+  };
 }
 
 export async function startCore(
@@ -109,13 +178,8 @@ export async function startCore(
 ): Promise<Core> {
   const recordingPath = recordingPathIn(options.dataDirectory);
   await mkdir(join(options.dataDirectory, RECORDINGS_DIRECTORY), { recursive: true, mode: 0o700 });
-  const firewall = new FirewallMonitor({
-    system: options.firewall,
-    webrtcPort: options.cameras.webrtcPort,
-    now: options.clock.now,
-    log: options.log.forArea('hub.firewall'),
-  });
-  const { supervisor, go2rtc } = await startCameras(options, store, secrets, firewall);
+  const { firewall, firewallApplier } = firewallOf(options);
+  const { supervisor, go2rtc, health } = await startCameras(options, store, secrets, firewall);
   const hub = await startHub({
     store,
     database: storeDatabase(store, recordingPath),
@@ -128,6 +192,7 @@ export async function startCore(
       createRegistry(options.smartthings, go2rtcCameraMotor(go2rtc, xiaomiStreamOf(store))),
     secrets,
     go2rtc,
+    cameraRefusal: (deviceId) => health.refusal(deviceId),
     devicesChanged: (devices): void => {
       firewall.devicesChanged(devices);
     },
@@ -136,6 +201,7 @@ export async function startCore(
     logFor: (area) => options.log.forArea(`hub.${area}`),
   }).catch(async (cause: unknown) => {
     firewall.stop();
+    health.stop();
     await supervisor.stop();
     throw cause;
   });
@@ -144,6 +210,8 @@ export async function startCore(
     go2rtc,
     supervisor,
     firewall,
+    firewallApplier,
+    cameraHealth: health,
     recordingPath,
     rtspPort: options.cameras.rtspPort,
   };

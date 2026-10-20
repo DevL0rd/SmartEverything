@@ -3,12 +3,13 @@ import type { AssistantVoiceSettings, CallEnding } from '@smarteverything/domain
 import type { RecordedTurn } from './call-record';
 import type { LiveWindow } from './gemini';
 import type { HostedListening } from './outreach';
-import type { SpeechSource } from './speech-input';
+import type { SpeechPause, SpeechSource } from './speech-input';
 import type { ToolAnswer } from './tool-answer';
 import type { Measure } from './turn-timing';
 
 export interface ConversationHooks {
   readonly speech: SpeechSource;
+  readonly pause?: SpeechPause;
   readonly listening?: HostedListening;
   readonly settings: () => AssistantVoiceSettings;
   readonly system: () => string;

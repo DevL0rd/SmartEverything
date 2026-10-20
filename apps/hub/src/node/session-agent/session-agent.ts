@@ -7,6 +7,7 @@ import {
   type CaptureTarget,
   type ComputerCapture,
   type MachineOpenTarget,
+  type MachinePermissionState,
   type SessionAgentAddress,
   type SessionAgentOperation,
 } from '@smarteverything/domain';
@@ -25,6 +26,7 @@ export interface SessionAgent {
   readonly open: (target: MachineOpenTarget) => Promise<void>;
   readonly ring: (on: boolean, ended: () => void) => Promise<void>;
   readonly capture: (target: CaptureTarget) => Promise<ComputerCapture>;
+  readonly permissions: () => Promise<readonly MachinePermissionState[]>;
 }
 
 export class SocketSessionAgent implements SessionAgent {
@@ -81,6 +83,14 @@ export class SocketSessionAgent implements SessionAgent {
       throw new NodeFailureError('failed', 'The SmartEverything app returned no picture.');
     }
     return answer.capture;
+  }
+
+  async permissions(): Promise<readonly MachinePermissionState[]> {
+    const answer = await this.call({ op: 'permissions' });
+    if (answer.permissions === null) {
+      throw new NodeFailureError('failed', 'The SmartEverything app returned no permissions.');
+    }
+    return answer.permissions;
   }
 
   private follow(): ReturnType<typeof watch> | null {

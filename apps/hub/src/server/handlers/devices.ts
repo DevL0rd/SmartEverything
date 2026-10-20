@@ -11,16 +11,24 @@ import type { Store } from '../../store/store';
 
 type DeviceChange = z.output<typeof E.updateDevice.body>;
 
+function requireTelevision(store: Store, deviceId: string, what: string): void {
+  if (store.devices.byId(deviceId).kind !== 'television') {
+    throw new ApiError('invalid_request', `Only a television has ${what}.`);
+  }
+}
+
 function changeDevice(store: Store, deviceId: string, change: DeviceChange): DeviceRow {
-  const { input_names: inputNames, ...patch } = change;
+  const { input_names: inputNames, wake_address: wakeAddress, ...patch } = change;
   if (patch.room_id !== undefined && patch.room_id !== null) {
     store.rooms.byId(patch.room_id);
   }
   if (inputNames !== undefined) {
-    if (store.devices.byId(deviceId).kind !== 'television') {
-      throw new ApiError('invalid_request', 'Only a television has inputs to name.');
-    }
+    requireTelevision(store, deviceId, 'inputs to name');
     store.televisionSettings.setInputNames(deviceId, inputNames);
+  }
+  if (wakeAddress !== undefined) {
+    requireTelevision(store, deviceId, 'a Wake-on-LAN address');
+    store.televisionSettings.setWakeAddress(deviceId, wakeAddress);
   }
   return Object.keys(patch).length === 0
     ? store.devices.byId(deviceId)

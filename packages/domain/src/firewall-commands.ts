@@ -8,8 +8,13 @@ import {
 } from './api/firewall';
 
 interface FirewallCommand {
+  readonly label: string;
   readonly program: string;
   readonly args: readonly string[];
+}
+
+export interface FirewallStep extends FirewallCommand {
+  readonly command: string;
 }
 
 export const SOCKETFILTERFW = '/usr/libexec/ApplicationFirewall/socketfilterfw';
@@ -23,6 +28,26 @@ const RULE_NAMES: Readonly<Record<PortRule['purpose'], string>> = {
   discovery: `${FIREWALL_GROUP} discovery`,
   announcement: `${FIREWALL_GROUP} device announcements`,
 };
+
+export function ruleText(rule: PortRule): string {
+  const protocol = rule.protocol.toUpperCase();
+  switch (rule.purpose) {
+    case 'webrtc':
+      return `${protocol} port ${String(rule.port)}`;
+    case 'hub':
+    case 'discovery':
+    case 'announcement':
+    case 'plugin':
+      return `${protocol} port ${String(rule.port)} from ${rule.source}`;
+    case 'camera':
+    case 'device':
+      return `${protocol} from ${rule.source}`;
+  }
+}
+
+function ruleLabel(rule: PortRule): string {
+  return `${RULE_NAMES[rule.purpose]}: ${ruleText(rule)}`;
+}
 
 const SAFE_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/;
 
@@ -47,6 +72,7 @@ function ufwMatch(rule: PortRule): readonly string[] {
 
 function ufwCommand(entry: UfwRule): FirewallCommand {
   return {
+    label: ruleLabel(entry.rule),
     program: 'ufw',
     args: [
       ...(entry.prepend ? ['prepend'] : []),
@@ -76,6 +102,7 @@ function firewalldChange(rule: PortRule): string {
 
 function firewalldCommand(zone: string, rule: PortRule): FirewallCommand {
   return {
+    label: ruleLabel(rule),
     program: 'firewall-cmd',
     args: ['--permanent', `--zone=${zone}`, firewalldChange(rule)],
   };
@@ -122,6 +149,7 @@ function windowsCommand(plan: WindowsPrograms, rule: PortRule): FirewallCommand 
   const program =
     rule.purpose === 'camera' || rule.purpose === 'webrtc' ? plan.program : plan.appProgram;
   return {
+    label: ruleLabel(rule),
     program: 'New-NetFirewallRule',
     args: [
       ...windowsMatch(rule),
@@ -143,8 +171,16 @@ function windowsCommand(plan: WindowsPrograms, rule: PortRule): FirewallCommand 
 
 function macCommands(program: string): readonly FirewallCommand[] {
   return [
-    { program: SOCKETFILTERFW, args: ['--add', program] },
-    { program: SOCKETFILTERFW, args: ['--unblockapp', program] },
+    {
+      label: `Add ${program} to the macOS firewall`,
+      program: SOCKETFILTERFW,
+      args: ['--add', program],
+    },
+    {
+      label: `Let ${program} accept incoming connections`,
+      program: SOCKETFILTERFW,
+      args: ['--unblockapp', program],
+    },
   ];
 }
 
@@ -154,6 +190,7 @@ function sysctlCommands(start: number | null): readonly FirewallCommand[] {
   }
   return [
     {
+      label: `Save the setting that lets programs listen on ports from ${String(start)}`,
       program: 'sh',
       args: [
         '-c',
@@ -163,7 +200,11 @@ function sysctlCommands(start: number | null): readonly FirewallCommand[] {
         UNPRIVILEGED_PORT_FILE,
       ],
     },
-    { program: 'sysctl', args: ['-w', `${UNPRIVILEGED_PORT_KEY}=${String(start)}`] },
+    {
+      label: `Apply the setting for ports from ${String(start)} now`,
+      program: 'sysctl',
+      args: ['-w', `${UNPRIVILEGED_PORT_KEY}=${String(start)}`],
+    },
   ];
 }
 
@@ -177,7 +218,9 @@ function firewallCommands(plan: FirewallPlan): readonly FirewallCommand[] {
       return [
         ...sysctlCommands(plan.unprivilegedPortStart),
         ...plan.rules.map((rule) => firewalldCommand(plan.zone, rule)),
-        ...(plan.rules.length === 0 ? [] : [{ program: 'firewall-cmd', args: ['--reload'] }]),
+        ...(plan.rules.length === 0
+          ? []
+          : [{ label: 'Reload firewalld', program: 'firewall-cmd', args: ['--reload'] }]),
       ];
     case 'windows':
       return plan.rules.map((rule) => windowsCommand(plan, rule));
@@ -194,9 +237,19 @@ export function powershellQuoted(text: string): string {
   return text.startsWith('-') ? text : `'${text.replaceAll("'", "''")}'`;
 }
 
-export function firewallScript(plan: FirewallPlan): readonly string[] {
+export function firewallSteps(plan: FirewallPlan): readonly FirewallStep[] {
   const quote = plan.backend === 'windows' ? powershellQuoted : posixQuoted;
-  return firewallCommands(plan).map((command) =>
-    [command.program, ...command.args.map(quote)].join(' '),
-  );
+  return firewallCommands(plan).map((command) => ({
+    ...command,
+    command: [command.program, ...command.args.map(quote)].join(' '),
+  }));
+}
+
+export function firewallScript(plan: FirewallPlan): readonly string[] {
+  return firewallSteps(plan).map((step) => step.command);
+}
+
+export function manualScript(plan: FirewallPlan): string {
+  const lines = firewallScript(plan);
+  return (plan.backend === 'windows' ? lines : lines.map((line) => `sudo ${line}`)).join('\n');
 }

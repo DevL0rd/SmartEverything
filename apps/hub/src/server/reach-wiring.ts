@@ -15,6 +15,7 @@ import type { CameraListening } from '../transcripts/camera-listening';
 import type { Saying } from '../speech/one-shot-speech';
 import type { LiveOpening } from '../talk/relay';
 import type { ServerContext } from './context';
+import { emitReachSignals } from './reach-signals';
 import { listeningRoutes, type ListeningRoutes } from './handlers/listening';
 import { reachRoutes, type Reach, type ReachRoutes } from './handlers/reach';
 import { discordVoiceOf } from '../computers/discord-voice';
@@ -94,7 +95,8 @@ export interface ReachLinks {
   readonly speakers: PluginSpeakers;
   readonly transcribing: Pick<
     Transcribing,
-    | 'ears'
+    | 'pause'
+    | 'keywords'
     | 'earHosts'
     | 'remoteEars'
     | 'claims'
@@ -147,7 +149,8 @@ function serviceOf(
 function speechOf(context: ServerContext, options: ReachWiring, log: Logger): AppSpeech {
   return new AppSpeech({
     online: (): ReadonlySet<string> => context.live.connectedClients(),
-    toClient: (clientId, notice): Promise<number> => context.live.deliver(clientId, notice),
+    toClient: (clientId, notice): Promise<number> =>
+      context.live.deliver(clientId, notice, 'foreground'),
     pushTargets: (): ReadonlySet<string> =>
       new Set(context.store.personal.pushTargets().map((target) => target.client_id)),
     pushConfigured: (): boolean => context.secrets.read().pushServiceAccount !== null,
@@ -198,8 +201,7 @@ function startCameraWake(
   return startWakeName(context, {
     rules,
     service,
-    ears: transcribing.ears,
-    claims: transcribing.claims,
+    ears: transcribing.remoteEars,
     test: transcribing.wakeTest,
     speech: (cameraId, segment): void => {
       transcribing.wakeTest.segment({ kind: 'camera', key: cameraId }, segment);
@@ -259,6 +261,30 @@ function voiceActivityOf(context: ServerContext, options: ReachWiring): VoiceAct
   return activity;
 }
 
+function followContests(
+  context: ServerContext,
+  parts: {
+    readonly voice: AssistantVoice;
+    readonly listening: ListeningRegistry;
+    readonly transcribing: Pick<ReachLinks['transcribing'], 'claims'>;
+  },
+  options: ReachWiring,
+): () => void {
+  const { voice, listening, transcribing } = parts;
+  const stopContests = transcribing.claims.onArbitrated((arbitrated) => {
+    listening.contested(arbitrated);
+  });
+  const stopSignals = emitReachSignals(
+    context.hub.signals,
+    { voice, listening, claims: transcribing.claims },
+    options.clock.now,
+  );
+  return (): void => {
+    stopSignals();
+    stopContests();
+  };
+}
+
 function startRemoteEars(
   transcribing: Pick<ReachLinks['transcribing'], 'remoteEars' | 'earHosts'>,
   listening: Pick<ListeningRegistry, 'setState'>,
@@ -293,9 +319,7 @@ export function startReach(
   };
   const { transcribing } = links;
   const listening = listeningOf(context, rules, transcribing.listening, options);
-  const stopContests = transcribing.claims.onArbitrated((arbitrated) => {
-    listening.contested(arbitrated);
-  });
+  const stopContests = followContests(context, { voice, listening, transcribing }, options);
   const stopRemoteEars = startRemoteEars(transcribing, listening);
   const wake = startCameraWake(context, { rules, service, transcribing }, options);
   startTalkListening(context, { transcribing, service, voice }, options);
@@ -314,7 +338,7 @@ export function startReach(
       wake
         .stop()
         .then(() => {
-          transcribing.ears.free();
+          transcribing.pause.close();
         })
         .catch((cause: unknown) => {
           log.error('wake.stop_failed', cause);

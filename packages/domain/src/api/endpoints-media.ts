@@ -4,6 +4,7 @@ import { NO_BODY, endpoint } from './endpoint';
 import { DONE, ID, MOMENT, NOTHING, TIME_WINDOW, queryLimit } from './primitives';
 import {
   BUTTON_NAME,
+  CAMERA_KEEP_DAYS,
   CAMERA_ROW,
   IR_CODE_FORMAT,
   IR_CODE_ROW,
@@ -30,6 +31,7 @@ const CAMERA_PARAMS = z.strictObject({ deviceId: ID });
 const CAMERA_CHANGE = z
   .strictObject({
     record_events: z.boolean().optional().describe('Keep a snapshot and clip of each event'),
+    keep_days: CAMERA_KEEP_DAYS.optional(),
     wake_sensitivity: WAKE_SENSITIVITY.optional(),
     transcribe: z
       .boolean()
@@ -39,9 +41,13 @@ const CAMERA_CHANGE = z
   .refine(
     (change) =>
       change.record_events !== undefined ||
+      change.keep_days !== undefined ||
       change.wake_sensitivity !== undefined ||
       change.transcribe !== undefined,
-    { message: 'Change recording of events, the wake sensitivity or transcribing' },
+    {
+      message:
+        'Change recording of events, how long recordings are kept, the wake sensitivity or transcribing',
+    },
   );
 
 export type CameraChange = z.output<typeof CAMERA_CHANGE>;
@@ -62,7 +68,7 @@ const CAMERA_ENDPOINTS = {
     path: '/api/cameras/:deviceId',
     access: 'member',
     summary:
-      'Change whether a camera records events, how readily it hears the AI’s name and whether it transcribes what it hears',
+      'Change whether a camera records events, how many days its recordings are kept, how readily it hears the AI’s name and whether it transcribes what it hears',
     params: CAMERA_PARAMS,
     query: NOTHING,
     body: CAMERA_CHANGE,
@@ -193,7 +199,7 @@ const IR_ENDPOINTS = {
     path: '/api/ir-remotes/:remoteId/state',
     access: 'member',
     summary:
-      'Correct what an IR remote is assumed to be doing (on, temperature, mode, speed, mute) or choose the device that confirms its power; the remote id is a library remote device id or a learned remote id; null clears a field; nothing is sent to the appliance',
+      'Correct what an IR remote is assumed to be doing (on, temperature, mode, speed, mute) or choose the device that confirms its power; the remote id is an IR remote device id or a learned remote id; null clears a field; nothing is sent to the appliance',
     params: z.strictObject({ remoteId: ID }),
     query: NOTHING,
     body: IR_REMOTE_CHANGE,

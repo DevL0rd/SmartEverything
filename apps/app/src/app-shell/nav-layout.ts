@@ -13,17 +13,18 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { confirm } from '../components/confirm-store';
+import { useStableValue } from '../components/use-stable-value';
 import { notify } from '../components/toast-store';
 import { useSizeClass } from '../design/size-class';
 import { PREFS, prefValueOf, savePref, usePref, type PrefRead } from '../store/prefs';
-import { useAvailability, type Availability } from '../store/selectors';
+import { availabilityOf, useAvailability, type Availability } from '../store/selectors';
 import type { EntityStore } from '../store/entity-store';
 import type { StoreState } from '../store/state';
 import { useEntityStore, useStoreSelector } from '../store/store-context';
 import { appendPin, itemsOf, removeNode, withItems } from './nav-edits';
-import { startNavEdit } from './nav-edit-state';
+import { pinLeafOf, type PinLeaf } from './pin-leaves';
 import { routeNameOfTab } from './nav-model';
-import { navTargetKey, targetFactsOf, type TargetFacts } from './nav-targets';
+import { navTargetKey, pinExists, targetFactsOf, type TargetFacts } from './nav-targets';
 import { TAB_ROUTES } from './routes';
 
 const log = new Logger('app.nav');
@@ -110,7 +111,7 @@ export function useNavigation(): NavigationState {
     () =>
       resolveNavigation(layout, {
         section: (section) => sectionAvailable(section, availability),
-        exists: (target) => facts.get(navTargetKey(target))?.exists === true,
+        exists: (target) => pinExists(target, facts),
       }),
     [layout, availability, facts],
   );
@@ -128,13 +129,8 @@ function writeLayout(store: EntityStore, scope: NavScope, layout: NavigationLayo
   else savePref(store, PREFS.navigation, layout);
 }
 
-export interface FollowUp {
-  readonly label: string;
-  readonly onPress: () => void;
-}
-
 export interface NavigationWriter {
-  readonly commit: (next: NavigationLayout, message: string, follow?: FollowUp) => void;
+  readonly commit: (next: NavigationLayout, message: string) => void;
   readonly switchScope: (scope: NavScope) => void;
   readonly reset: () => void;
 }
@@ -143,21 +139,16 @@ function resetDevice(store: EntityStore): void {
   savePref(store, PREFS.navigationDevice, { override: null });
 }
 
-function commitLayout(
-  store: EntityStore,
-  next: NavigationLayout,
-  message: string,
-  follow: FollowUp | undefined,
-): void {
+function commitLayout(store: EntityStore, next: NavigationLayout, message: string): void {
   const { scope, layout } = activeLayoutOf(store.get());
   writeLayout(store, scope, next);
   const undo = (): void => {
     writeLayout(store, scope, layout);
   };
-  notify(follow === undefined ? { message, undo } : { message, action: follow });
+  notify({ message, undo });
 }
 
-function switchNavScope(store: EntityStore, scope: NavScope): void {
+export function switchNavScope(store: EntityStore, scope: NavScope): void {
   const current = activeLayoutOf(store.get());
   if (current.scope === scope) return;
   if (scope === 'device') {
@@ -179,7 +170,7 @@ function switchNavScope(store: EntityStore, scope: NavScope): void {
     });
 }
 
-function resetNavigation(store: EntityStore): void {
+export function resetNavigation(store: EntityStore): void {
   const { scope, layout } = activeLayoutOf(store.get());
   confirm({
     title: 'Reset navigation?',
@@ -206,8 +197,8 @@ function resetNavigation(store: EntityStore): void {
 export function useNavigationWriter(): NavigationWriter {
   const store = useEntityStore();
   return {
-    commit: (next, message, follow): void => {
-      commitLayout(store, next, message, follow);
+    commit: (next, message): void => {
+      commitLayout(store, next, message);
     },
     switchScope: (scope): void => {
       switchNavScope(store, scope);
@@ -233,32 +224,41 @@ function findPin(layout: NavigationLayout, target: NavPinTarget): NavPin | undef
   return pinsOf(layout).find((pin) => navTargetKey(pin.target) === key);
 }
 
-function landing(resolved: ResolvedNav, nav: string): string {
+export function landing(layout: NavigationLayout, availability: Availability, nav: string): string {
   if (nav !== 'bar') return 'Pinned to navigation';
-  return resolved.barSlots.length < NAV_BAR_SLOTS ? 'Pinned · in the bar' : 'Pinned · in the sheet';
+  const { barSlots } = resolveNavigation(layout, {
+    section: (section) => sectionAvailable(section, availability),
+    exists: () => true,
+  });
+  return barSlots.length < NAV_BAR_SLOTS ? 'Pinned · in the bar' : 'Pinned · in the sheet';
 }
 
 function newPin(target: NavPinTarget, title: string | undefined): NavPin {
   return { kind: 'pin', id: newNavId(), target, title: title ?? null, icon: null };
 }
 
+export function usePinned(target: NavPinTarget | null): boolean {
+  const key = target === null ? null : navTargetKey(target);
+  return useStoreSelector(
+    (state) =>
+      key !== null &&
+      pinsOf(activeLayoutOf(state).layout).some((pin) => navTargetKey(pin.target) === key),
+    Object.is,
+    [key],
+  );
+}
+
 export function useNavPins(): NavPins {
   const store = useEntityStore();
   const writer = useNavigationWriter();
   const { nav } = useSizeClass();
-  const { resolved } = useNavigation();
   return {
     isPinned: (target) => findPin(activeLayoutOf(store.get()).layout, target) !== undefined,
     pin: (target, title): void => {
       const { layout } = activeLayoutOf(store.get());
       if (findPin(layout, target) !== undefined) return;
       const items = appendPin(itemsOf(layout), newPin(target, title));
-      writer.commit(withItems(layout, items), landing(resolved, nav), {
-        label: 'Edit',
-        onPress: () => {
-          startNavEdit(nav);
-        },
-      });
+      writer.commit(withItems(layout, items), landing(layout, availabilityOf(store.get()), nav));
     },
     unpin: (target): void => {
       const { layout } = activeLayoutOf(store.get());
@@ -275,11 +275,32 @@ function sectionsOf(node: ResolvedNode): readonly NavSection[] {
   return node.items.flatMap((entry) => (entry.kind === 'section' ? [entry.section] : []));
 }
 
+export function prewarmOrderOf(resolved: ResolvedNav): readonly string[] {
+  return [...resolved.nodes.flatMap(sectionsOf).map(routeNameOfTab), routeNameOfTab('settings')];
+}
+
 export function useNavOrder(): readonly string[] {
   const { resolved } = useNavigation();
-  const joined = [
-    ...resolved.nodes.flatMap(sectionsOf).map(routeNameOfTab),
-    routeNameOfTab('settings'),
-  ].join('|');
+  const joined = prewarmOrderOf(resolved).join('|');
   return useMemo(() => joined.split('|'), [joined]);
+}
+
+function pinsOfNode(node: ResolvedNode): readonly NavPin[] {
+  if (node.kind === 'pin') return node.missing ? [] : [node.pin];
+  if (node.kind === 'section') return [];
+  return node.items.flatMap((entry) => (entry.kind === 'pin' && !entry.missing ? [entry.pin] : []));
+}
+
+export function pinLeavesOf(resolved: ResolvedNav): readonly PinLeaf[] {
+  const leaves = resolved.nodes.flatMap(pinsOfNode).flatMap((pin) => pinLeafOf(pin.target) ?? []);
+  return [...new Map(leaves.map((leaf) => [leaf.id, leaf])).values()];
+}
+
+function sameLeaves(kept: readonly PinLeaf[], next: readonly PinLeaf[]): boolean {
+  return kept.length === next.length && kept.every((leaf, index) => leaf.id === next[index]?.id);
+}
+
+export function usePinLeaves(): readonly PinLeaf[] {
+  const { resolved } = useNavigation();
+  return useStableValue(pinLeavesOf(resolved), sameLeaves);
 }

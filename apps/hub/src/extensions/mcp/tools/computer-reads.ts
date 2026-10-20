@@ -5,6 +5,7 @@ import {
   SERVICES_STATE,
   STARTUP_STATE,
   SYSTEM_STATE,
+  TILING_STATE,
   WINDOWS_STATE,
   type EndpointName,
   type McpPartName,
@@ -18,6 +19,7 @@ import {
   compactServices,
   compactStartup,
   compactSystem,
+  compactTiling,
   compactUsb,
   compactWindows,
 } from './computer-compact';
@@ -104,6 +106,7 @@ export const COMPUTER_READ_TOOLS: readonly Tool[] = [
     COMPUTER,
     view('readComputerWindows', WINDOWS_STATE, compactWindows),
   ),
+  reader('get_computer_tiling', COMPUTER, view('readComputerTiling', TILING_STATE, compactTiling)),
   reader(
     'get_computer_services',
     COMPUTER,

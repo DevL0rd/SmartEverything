@@ -266,6 +266,7 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   ai_usage: list('ai_usage'),
   plugins: list('plugins'),
   plugin_streams: applyPluginStream,
+  plugin_ui: list('plugin_ui'),
   health_entries: (state) => state,
   foods: (state) => state,
   watch_days: (state) => state,
@@ -317,10 +318,11 @@ function talkTablesOf(
 function pluginTablesOf(
   snapshot: Snapshot,
   next: NextTable,
-): Pick<Tables, 'plugins' | 'plugin_streams'> {
+): Pick<Tables, 'plugins' | 'plugin_streams' | 'plugin_ui'> {
   return {
     plugins: next('plugins', snapshot.owner?.plugins ?? []),
     plugin_streams: next('plugin_streams', snapshot.tables.plugin_streams ?? []),
+    plugin_ui: next('plugin_ui', snapshot.tables.plugin_ui ?? []),
   };
 }
 

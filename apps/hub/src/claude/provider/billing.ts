@@ -1,5 +1,6 @@
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
+import type { Logger } from '@smarteverything/logging';
 import {
   CLAUDE_BILLING_NOTICES,
   claudeBillingReason,
@@ -67,10 +68,15 @@ export async function nativeSubscriptionBilling(
     ? { state: 'eligible' }
     : blocked('native_billing_freshness_unavailable', staleness);
 }
-export async function requireNativeSubscriptionBilling(runtime: Query): Promise<void> {
+export async function requireNativeSubscriptionBilling(
+  runtime: Query,
+  log?: Logger,
+): Promise<void> {
   const verdict = await nativeSubscriptionBilling(runtime);
-  if (verdict.state === 'blocked')
+  if (verdict.state === 'blocked') {
+    log?.warn('claude.billing_blocked', { code: verdict.code, detail: verdict.detail });
     throw new ClaudeSubscriptionBillingError(verdict.code, verdict.reason, verdict.detail);
+  }
 }
 function blocked(code: ClaudeBillingCode, cause?: string): ClaudeBillingBlocked {
   const notice = CLAUDE_BILLING_NOTICES[code];

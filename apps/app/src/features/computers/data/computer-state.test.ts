@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { API_ENDPOINTS as E, type AudioState } from '@smarteverything/domain';
+import { API_ENDPOINTS as E, type AudioState, type TilingState } from '@smarteverything/domain';
 
 const answers = vi.hoisted(() => new Map<unknown, unknown>());
 
@@ -65,5 +65,12 @@ describe('seedState', () => {
   it('rejects with the read failure so the page can show it', async () => {
     await expect(seedState(DEVICE, 'displays')).rejects.toThrow('Sound control failed');
     expect(computerLive.store(DEVICE).get().parts.displays).toBeUndefined();
+  });
+
+  it('reads the tiling layout of a computer into the live store', async () => {
+    const layout: TilingState = { overviewOpen: true, outputs: [], workspaces: [], windows: [] };
+    answers.set(E.readComputerTiling, layout);
+    await seedState(DEVICE, 'tiling');
+    expect(computerLive.store(DEVICE).get().parts.tiling).toEqual(layout);
   });
 });

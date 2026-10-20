@@ -3,6 +3,7 @@ import type {
   CanUseTool,
   ModelInfo,
   Query,
+  SDKMessage,
   SDKResultMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { PROVIDER_TURN, type ProviderControl, type ProviderTurn } from '@smarteverything/domain';
@@ -113,6 +114,39 @@ describe('native command catalogue', () => {
     expect(rows.find((row) => row.name === 'model')?.unavailable_reason).toContain(
       'settings/control',
     );
+  });
+
+  it('keeps commands whose names cannot be typed as slash commands but disables them', () => {
+    const value = new ProviderCommandCatalogue();
+    value.capture(
+      loose<SDKMessage>({
+        type: 'system',
+        subtype: 'init',
+        terminal_slash_commands: [],
+      }),
+    );
+    value.capture(
+      loose<SDKMessage>({
+        type: 'system',
+        subtype: 'commands_changed',
+        commands: [
+          { name: 'review', description: 'Review', argumentHint: '' },
+          {
+            name: 'claude.ai Expo:onboarding (MCP)',
+            description: 'Onboarding',
+            argumentHint: '',
+            aliases: ['two words'],
+          },
+        ],
+      }),
+    );
+    const rows = value.descriptors();
+    expect(rows.map((row) => [row.name, row.enabled])).toEqual([
+      ['review', true],
+      ['claude.ai Expo:onboarding (MCP)', false],
+    ]);
+    expect(rows[1]?.unavailable_reason).toContain('cannot be typed as a slash command');
+    expect(rows[1]?.aliases).toEqual([]);
   });
 
   it('refuses a selection made against a stale catalogue revision', () => {

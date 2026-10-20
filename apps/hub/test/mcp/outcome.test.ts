@@ -23,6 +23,77 @@ const AUTOMATION = {
 };
 
 describe('the compact answer to a write or action tool', () => {
+  it('keeps the problems a refused program check names, with their fix', () => {
+    const problem = {
+      severity: 'error',
+      code: 'type_mismatch',
+      key: 'lights',
+      port: 'target',
+      message: 'target needs target but gets device.',
+      fix: { summary: 'Pass a target' },
+    };
+    const answer = outcomeOf('check_automation', {
+      result: {
+        ok: false,
+        summary: 'Checked: 1 error.',
+        id: null,
+        revision: null,
+        problems: [problem],
+      },
+    });
+    expect(answer).toMatchObject({ ok: false, problems: [problem] });
+  });
+
+  it('keeps what a dry run would send and why it failed', () => {
+    const command = {
+      at: '2026-10-19T12:00:00.000Z',
+      runId: 'r1',
+      path: 'body/ops/0',
+      node: 'on',
+      kind: 'device.set',
+      key: 'r1/f0:0',
+      targets: ['lamp'],
+      params: { control: 'power', to: true },
+      outcome: 'ok',
+    };
+    const answer = outcomeOf('run_automation', {
+      result: {
+        ok: false,
+        summary: 'The dry run failed.',
+        mode: 'dry',
+        status: 'rehearsed',
+        run: null,
+        outputs: null,
+        rehearsal: {
+          outcome: 'failed',
+          error: 'no light',
+          now: null,
+          steps: 3,
+          run: null,
+          nodes: [{}, {}],
+          commands: [command],
+          paused: [],
+          outputs: null,
+        },
+      },
+    });
+    expect(answer['rehearsal']).toStrictEqual({
+      outcome: 'failed',
+      error: 'no light',
+      steps: 3,
+      nodes: 2,
+      commands: [
+        {
+          node: 'on',
+          kind: 'device.set',
+          targets: ['lamp'],
+          params: { control: 'power', to: true },
+          outcome: 'ok',
+        },
+      ],
+    });
+  });
+
   it('names a saved entity by id and revision instead of echoing it', () => {
     const answer = outcomeOf('update_automation', { result: AUTOMATION });
     expect(answer).toMatchObject({

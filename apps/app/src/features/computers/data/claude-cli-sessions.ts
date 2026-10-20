@@ -1,6 +1,6 @@
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { API_ENDPOINTS as E, type ClaudeCliSession } from '@smarteverything/domain';
-import { computerAiKey } from './computer-ai';
+import { computerAiKey } from '../../../queries/keys';
 import { useClaudeCliOrigin } from './claude-cli-origin';
 
 export function useClaudeCliSessions(

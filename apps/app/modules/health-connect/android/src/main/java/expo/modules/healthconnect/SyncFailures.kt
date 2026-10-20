@@ -50,7 +50,7 @@ class UnmappedValue(kind: String, value: Any) : SyncFailure(
   retryable = false
 )
 
-class IngestRejected(status: Int, body: String, cause: Throwable? = null) : SyncFailure(
+class IngestRejected(val status: Int, body: String, cause: Throwable? = null) : SyncFailure(
   "The health-ingest function refused the batch with HTTP $status: $body",
   cause,
   retryable = false

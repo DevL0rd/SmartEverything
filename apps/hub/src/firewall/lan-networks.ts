@@ -1,5 +1,5 @@
 import { isPrivateIPv4, lanInterfaces } from '../network/lan';
-import { sourceEdges } from './openings';
+import { networkOf } from './openings';
 
 const ROUTE_TABLE = '/proc/net/route';
 
@@ -20,9 +20,8 @@ export async function lanNetworks(
 ): Promise<readonly string[]> {
   const only = await defaultInterface(read);
   const networks = lanInterfaces().flatMap((entry) => {
-    const [base] = sourceEdges(entry.cidr);
     const wanted = (only === null || entry.name === only) && isPrivateIPv4(entry.address);
-    return wanted && base !== undefined ? [`${base}/${String(entry.prefix)}`] : [];
+    return wanted ? [networkOf(entry.cidr)] : [];
   });
   return [...new Set(networks)];
 }

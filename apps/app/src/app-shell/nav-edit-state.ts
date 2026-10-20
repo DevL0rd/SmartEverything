@@ -1,27 +1,12 @@
-import { router } from 'expo-router';
+import type { NavIcon } from '@smarteverything/domain';
 import { ValueStore } from '../design/external-store';
-import type { NavKind } from '../design/size-class';
-import { href } from './hrefs';
 
-export const navEditing = new ValueStore(false);
+export const FOLDER_ICON: NavIcon = 'folder';
 
 export type NavEditor =
   | { readonly kind: 'rename'; readonly key: string }
   | { readonly kind: 'icon'; readonly key: string }
-  | { readonly kind: 'folder' }
+  | { readonly kind: 'folder'; readonly members: readonly string[] }
   | { readonly kind: 'picker' };
 
 export const navEditor = new ValueStore<NavEditor | null>(null);
-
-export function startNavEdit(nav: NavKind): void {
-  if (nav === 'rail') {
-    router.navigate(href.settings.page('appearance/navigation'));
-    return;
-  }
-  navEditing.set(true);
-}
-
-export function stopNavEdit(): void {
-  navEditing.set(false);
-  navEditor.set(null);
-}

@@ -63,8 +63,8 @@ function presented(value: DeviceCapability['value'], unit: string | null): Prese
   return {
     key: 'brightness',
     label: 'Brightness',
-    group: 'light',
-    groupLabel: 'Light',
+    group: 'lighting',
+    groupLabel: 'Lighting',
     tier: 'primary',
     role: 'brightness',
     danger: { tier: 'none' },

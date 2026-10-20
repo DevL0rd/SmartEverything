@@ -2,12 +2,12 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
-import { useSizeClass } from '../../../design/size-class';
+import { useIsOwner } from '../../../store/selectors';
 import { useCameraPrefs } from '../data/use-camera-condition';
 import { useCameraReaches } from '../data/use-cameras';
 
-function FirewallBanner({ desktop }: { readonly desktop: boolean }): ReactNode {
-  return desktop ? (
+function FirewallBanner({ owner }: { readonly owner: boolean }): ReactNode {
+  return owner ? (
     <Banner
       tone="warning"
       title="Some cameras need a firewall rule"
@@ -17,14 +17,14 @@ function FirewallBanner({ desktop }: { readonly desktop: boolean }): ReactNode {
     <Banner
       tone="warning"
       title="Some cameras need a firewall rule"
-      body="Fix it in the SmartEverything app on your computer."
+      body="Ask the owner of this home to fix it."
     />
   );
 }
 
 export function useCameraBanners(): ReactNode {
   const reaches = useCameraReaches();
-  const desktop = useSizeClass().platform === 'desktop';
+  const owner = useIsOwner();
   const { problem } = useCameraPrefs();
   const firewall = reaches.some((reach) => reach.state === 'needs_rule');
   if (!firewall && problem === null) {
@@ -32,7 +32,7 @@ export function useCameraBanners(): ReactNode {
   }
   return (
     <View className="gap-2">
-      {firewall ? <FirewallBanner desktop={desktop} /> : null}
+      {firewall ? <FirewallBanner owner={owner} /> : null}
       {problem === null ? null : (
         <Banner
           tone="critical"

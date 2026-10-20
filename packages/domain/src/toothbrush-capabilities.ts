@@ -1,0 +1,146 @@
+import type { CatalogueEntry } from './capabilities';
+
+const BRUSH_WORDS = [
+  'toothbrush',
+  'teeth',
+  'brushing',
+  'sonicare',
+  'philips',
+  'brush head',
+  'oral-b',
+  'oralb',
+  'io',
+] as const;
+
+export const TOOTHBRUSH_CAPABILITY_CATALOGUE = {
+  brush_activity: {
+    label: 'Toothbrush',
+    group: 'care',
+    kind: 'enum',
+    keywords: [...BRUSH_WORDS, 'picked up', 'charging', 'standby', 'asleep'],
+  },
+  brush_session: {
+    label: 'Brushing session',
+    group: 'care',
+    kind: 'enum',
+    keywords: [...BRUSH_WORDS, 'started', 'finished', 'stopped early', 'completed'],
+  },
+  brush_mode: {
+    label: 'Brushing mode',
+    group: 'care',
+    kind: 'enum',
+    keywords: [...BRUSH_WORDS, 'clean', 'white', 'gum health', 'tongue', 'deep clean', 'sensitive'],
+  },
+  brush_intensity: {
+    label: 'Brushing intensity',
+    group: 'care',
+    kind: 'enum',
+    keywords: [...BRUSH_WORDS, 'low', 'medium', 'high', 'strength'],
+  },
+  brush_routine_seconds: {
+    label: 'Routine length',
+    group: 'care',
+    kind: 'number',
+    keywords: [...BRUSH_WORDS, 'two minutes', 'duration', 'routine'],
+  },
+  brush_head: {
+    label: 'Brush head',
+    group: 'care',
+    kind: 'enum',
+    keywords: [...BRUSH_WORDS, 'fitted', 'missing', 'fake', 'counterfeit'],
+  },
+  brush_head_wear: {
+    label: 'Brush head wear',
+    group: 'care',
+    kind: 'number',
+    keywords: [...BRUSH_WORDS, 'replace', 'worn', 'wear', 'bristles'],
+    sampled: true,
+  },
+  brush_head_sessions_left: {
+    label: 'Brush head sessions left',
+    group: 'care',
+    kind: 'number',
+    keywords: [...BRUSH_WORDS, 'replace', 'sessions left'],
+  },
+  brush_head_type: {
+    label: 'Brush head type',
+    group: 'care',
+    kind: 'enum',
+    keywords: [...BRUSH_WORDS, 'clean', 'white', 'gums', 'tongue', 'all in one', 'sensitive'],
+  },
+  brush_feedback_pressure: {
+    label: 'Pressure feedback',
+    group: 'care',
+    kind: 'boolean',
+    keywords: [...BRUSH_WORDS, 'pressure sensor', 'vibration', 'too hard'],
+  },
+  brush_feedback_scrubbing: {
+    label: 'Scrubbing feedback',
+    group: 'care',
+    kind: 'boolean',
+    keywords: [...BRUSH_WORDS, 'scrub', 'ring', 'light'],
+  },
+  brush_adaptive_intensity: {
+    label: 'Adaptive intensity',
+    group: 'care',
+    kind: 'boolean',
+    keywords: [...BRUSH_WORDS, 'senseiq', 'adaptive', 'ease off'],
+  },
+  brush_link: {
+    label: 'Brush connection',
+    group: 'care',
+    kind: 'enum',
+    keywords: [...BRUSH_WORDS, 'bluetooth', 'asleep', 'needs pairing', 'busy', 'linked'],
+  },
+  brush_motor_hours: {
+    label: 'Motor hours',
+    group: 'care',
+    kind: 'number',
+    keywords: [...BRUSH_WORDS, 'runtime', 'motor', 'hours'],
+    sampled: true,
+  },
+  brush_pacer: {
+    label: 'Brushing pacer',
+    group: 'care',
+    kind: 'boolean',
+    keywords: [...BRUSH_WORDS, 'pacer', 'vibrate', 'quadrant', 'every 30 seconds'],
+  },
+  brush_quadrant_seconds: {
+    label: 'Seconds per quadrant',
+    group: 'care',
+    kind: 'number',
+    keywords: [...BRUSH_WORDS, 'pacer', 'quadrant', 'seconds'],
+  },
+  brush_ring_colour: {
+    label: 'Ring colour',
+    group: 'care',
+    kind: 'enum',
+    keywords: [...BRUSH_WORDS, 'smartring', 'ring', 'colour', 'color', 'light'],
+  },
+  brush_head_days_left: {
+    label: 'Brush head days left',
+    group: 'care',
+    kind: 'number',
+    keywords: [...BRUSH_WORDS, 'replace', 'days left', 'reminder'],
+    sampled: true,
+  },
+  brush_head_reminder: {
+    label: 'Brush head reminder',
+    group: 'care',
+    kind: 'enum',
+    keywords: [...BRUSH_WORDS, 'reminder', 'snooze', 'reset', 'replace'],
+  },
+  brush_charge_runtime: {
+    label: 'Charge runtime',
+    group: 'care',
+    kind: 'number',
+    keywords: [...BRUSH_WORDS, 'battery', 'runtime', 'minutes left', 'charge'],
+    sampled: true,
+  },
+  brush_fault: {
+    label: 'Brush fault',
+    group: 'care',
+    kind: 'boolean',
+    keywords: [...BRUSH_WORDS, 'error', 'fault', 'problem'],
+  },
+} as const satisfies Record<string, CatalogueEntry>;

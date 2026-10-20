@@ -13,7 +13,7 @@ import { useSyncStatus } from '../../../store/selectors';
 import { notify } from '../../../components/toast-store';
 import type { MenuItem } from '../../../components/menu';
 import { useChatHarness, useHarnessCatalogue, useHarnessSwitch } from './harness';
-import { harnessHostName, harnessHostReason } from '../model/harness-context';
+import { harnessHostName, harnessHostNote, harnessHostReason } from '../model/harness-context';
 import {
   harnessHandoffPolicyReason,
   machineSwitchNotice,
@@ -186,8 +186,10 @@ function deviceItems(
     let label = host.name;
     if (current) label += ' · Current';
     else if (reason !== null) label += ` · ${reason}`;
+    const note = harnessHostNote(host);
     return {
       label,
+      ...(note === null ? {} : { description: note }),
       icon: current ? 'check' : 'monitor',
       disabled: current || reason !== null || pending,
       onPress: (): void => {

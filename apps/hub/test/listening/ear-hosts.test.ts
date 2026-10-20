@@ -1,7 +1,15 @@
 import type { ComputerFeature } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { EarHosts, type EarHostFrame, type HostMove } from '../../src/listening/ear-hosts';
-import { testLogger } from '../support/logs';
+import { pcmOfBase64 } from '../../src/computers/ear-pcm';
+import {
+  EarHostLostError,
+  EarHosts,
+  EarScoreFailedError,
+  NoEarHostError,
+  type EarHostFrame,
+  type HostMove,
+} from '../../src/listening/ear-hosts';
+import { captureLogs, testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
 const CAN: readonly ComputerFeature[] = ['cpu', 'ear_host'];
@@ -47,6 +55,26 @@ beforeEach(async () => {
 afterEach(async () => {
   hosts.close();
   await opened.close();
+});
+
+describe('a missing ear host', () => {
+  it('is warned about once when the service starts without one and once per outage', () => {
+    const logs = captureLogs();
+    const ears = (): string[] => logs.events().filter((event) => event.startsWith('ears.'));
+    const quiet = new EarHosts({ store: opened.store, log: testLogger('listening') });
+    quiet.start();
+    expect(ears()).toEqual(['ears.host_missing']);
+    quiet.join('alpha', CAN, sink().send);
+    quiet.leave('alpha');
+    quiet.leave('alpha');
+    expect(ears()).toEqual([
+      'ears.host_missing',
+      'ears.host_changed',
+      'ears.host_changed',
+      'ears.host_missing',
+    ]);
+    quiet.close();
+  });
 });
 
 describe('choosing the computer that listens', () => {
@@ -140,6 +168,13 @@ describe('talking to a host', () => {
     expect(link.frames).toEqual([{ type: 'ears_close', key: 'k' }]);
   });
 
+  it('reports a link that drops while sending as a failed send instead of throwing', () => {
+    hosts.join('alpha', CAN, () => {
+      throw new Error('link closed');
+    });
+    expect(hosts.sendTo('alpha', { type: 'ears_close', key: 'k' })).toBe(false);
+  });
+
   it('hands what a node relays to the listeners with the computer it came from', () => {
     const seen: string[] = [];
     const leave = hosts.onRelayed(({ computerId, key, message }) => {
@@ -149,5 +184,111 @@ describe('talking to a host', () => {
     leave();
     hosts.relayed('alpha', 'cam', { kind: 'near', phrase: 'Sam' });
     expect(seen).toEqual(['alpha:cam:near']);
+  });
+});
+
+describe('scoring speech on the host', () => {
+  const pcm = Int16Array.from([1, 2, 3, 4]);
+  const request = { keywords: ['a b @one'], threshold: 0.06, pcm };
+
+  function scoreFrame(
+    link: ReturnType<typeof sink>,
+  ): Extract<EarHostFrame, { type: 'ears_score' }> {
+    const frame = link.frames.find((one) => one.type === 'ears_score');
+    if (frame?.type !== 'ears_score') throw new Error('no score request was sent');
+    return frame;
+  }
+
+  it('sends the lines, the threshold and the audio to the host and returns its answer', async () => {
+    const link = sink();
+    hosts.join('alpha', CAN, link.send);
+    const scoring = hosts.score(request);
+    const frame = scoreFrame(link);
+    expect(frame).toMatchObject({ keywords: ['a b @one'], threshold: 0.06 });
+    expect(Array.from(pcmOfBase64(frame.pcm))).toEqual([1, 2, 3, 4]);
+    hosts.scored('alpha', frame.id, true);
+    await expect(scoring).resolves.toBe(true);
+  });
+
+  it('keeps simultaneous requests apart by their ids', async () => {
+    const link = sink();
+    hosts.join('alpha', CAN, link.send);
+    const first = hosts.score(request);
+    const second = hosts.score(request);
+    const [one, two] = link.frames.filter((frame) => frame.type === 'ears_score');
+    if (one?.type !== 'ears_score' || two?.type !== 'ears_score') throw new Error('two requests');
+    expect(one.id).not.toBe(two.id);
+    hosts.scored('alpha', two.id, false);
+    hosts.scored('alpha', one.id, true);
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(false);
+  });
+
+  it('refuses at once, naming the cause, when no computer hosts ears', async () => {
+    await expect(hosts.score(request)).rejects.toBeInstanceOf(NoEarHostError);
+  });
+
+  it('fails the request when the host leaves before it answers', async () => {
+    hosts.join('alpha', CAN, sink().send);
+    const scoring = hosts.score(request);
+    hosts.leave('alpha');
+    await expect(scoring).rejects.toBeInstanceOf(EarHostLostError);
+  });
+
+  it('rejects with the host’s reason when it reports that it could not score', async () => {
+    const link = sink();
+    hosts.join('alpha', CAN, link.send);
+    const scoring = hosts.score(request);
+    const { id } = scoreFrame(link);
+    hosts.scoreFailed('alpha', id, 'engine not loaded');
+    await expect(scoring).rejects.toMatchObject({
+      name: 'EarScoreFailedError',
+      computerId: 'alpha',
+      reason: 'engine not loaded',
+    });
+    await expect(scoring).rejects.toBeInstanceOf(EarScoreFailedError);
+    hosts.leave('alpha');
+  });
+
+  it('ignores a failure that nobody asked for or that came from another computer', async () => {
+    const link = sink();
+    hosts.join('alpha', CAN, link.send);
+    hosts.join('beta', CAN, sink().send);
+    const scoring = hosts.score(request);
+    const { id } = scoreFrame(link);
+    hosts.scoreFailed('beta', id, 'nope');
+    hosts.scoreFailed('alpha', 'unknown', 'nope');
+    hosts.scored('alpha', id, true);
+    await expect(scoring).resolves.toBe(true);
+  });
+
+  it('rejects at once when the host link refuses the frame', async () => {
+    class Unreachable extends EarHosts {
+      override sendTo(): boolean {
+        return false;
+      }
+    }
+    const unreachable = new Unreachable({ store: opened.store, log: testLogger('listening') });
+    unreachable.join('alpha', CAN, sink().send);
+    await expect(unreachable.score(request)).rejects.toBeInstanceOf(EarHostLostError);
+  });
+
+  it('rejects at once as a lost host when the link throws while sending', async () => {
+    hosts.join('alpha', CAN, () => {
+      throw new Error('link closed');
+    });
+    await expect(hosts.score(request)).rejects.toBeInstanceOf(EarHostLostError);
+  });
+
+  it('ignores an answer that nobody asked for or that came from another computer', async () => {
+    const link = sink();
+    hosts.join('alpha', CAN, link.send);
+    hosts.join('beta', CAN, sink().send);
+    const scoring = hosts.score(request);
+    const { id } = scoreFrame(link);
+    hosts.scored('beta', id, false);
+    hosts.scored('alpha', 'unknown', false);
+    hosts.scored('alpha', id, true);
+    await expect(scoring).resolves.toBe(true);
   });
 });

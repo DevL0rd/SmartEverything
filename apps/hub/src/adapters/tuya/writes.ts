@@ -22,7 +22,7 @@ interface LanWrite {
 }
 
 function lanWrites(record: DeviceRecord, writes: readonly DataPointWrite[]): LanWrite[] | null {
-  const conversions = record.smartLife?.conversions ?? null;
+  const conversions = record.smartLife.conversions;
   const lan: LanWrite[] = [];
   for (const write of writes) {
     if (!isLanWritable(conversions, write.dpId)) {

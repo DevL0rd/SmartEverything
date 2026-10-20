@@ -12,14 +12,16 @@ export type TvPath = (typeof TV_PATHS)[number];
 export interface TvPaths {
   readonly smartthings: boolean;
   readonly direct: { readonly attached: boolean };
+  readonly wake: boolean;
   readonly irRemoteId: string | null;
   readonly irButtons: readonly string[];
 }
 
-export function tvPathsFor(directAttached: boolean): TvPaths {
+export function tvPathsFor(directAttached: boolean, wake: boolean): TvPaths {
   return {
     smartthings: true,
     direct: { attached: directAttached },
+    wake,
     irRemoteId: null,
     irButtons: [],
   };
@@ -116,12 +118,16 @@ export function irButtonFor(key: TvKey, buttons: readonly string[]): string | nu
   return buttons.find((button) => words.includes(normalised(button))) ?? null;
 }
 
-export function powerOnPath(values: TvValues, paths: TvPaths): TvPath | null {
-  if (paths.smartthings && values.powerOnRemote) {
-    return 'smartthings';
-  }
+export function cloudCanWake(values: TvValues, paths: TvPaths, online: boolean): boolean {
+  return paths.smartthings && (paths.wake || (online && values.powerOnRemote));
+}
+
+export function powerOnPath(values: TvValues, paths: TvPaths, online: boolean): TvPath | null {
   if (paths.direct.attached) {
     return 'direct';
+  }
+  if (cloudCanWake(values, paths, online)) {
+    return 'smartthings';
   }
   const hasButton =
     irButtonFor('power_on', paths.irButtons) !== null ||
@@ -137,7 +143,7 @@ export function tvMode(device: TvDevice, values: TvValues, paths: TvPaths): TvMo
   if (!asleep) {
     return 'on';
   }
-  if (powerOnPath(values, paths) !== null) {
+  if (powerOnPath(values, paths, device.online) !== null) {
     return 'standby';
   }
   return values.power === true ? 'unreachable' : 'off_unreachable';

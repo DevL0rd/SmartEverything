@@ -12,7 +12,7 @@ import { useRows } from '../../../store/selectors';
 import type { DailyFigure } from '../model/points';
 import type { SourceSighting } from '../model/sources';
 import { shiftDay, startOfDayKey } from '../../../format/time';
-import { useMyLiveToday, type LiveToday } from '../../watches';
+import { useMyLiveToday, type LiveToday } from '../../watches/watch-glance';
 import {
   readBestDay,
   readDailyFigures,

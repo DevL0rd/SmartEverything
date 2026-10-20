@@ -45,4 +45,25 @@ describe('a Xiaomi device that returns on another address', () => {
       expect.stringMatching(/the device moved from 127\.0\.0\.2 to 127\.0\.0\.4|127\.0\.0\.4/),
     );
   });
+
+  it('takes the LAN address the cloud lists once a device that had none comes online', async () => {
+    const listed = world.cloud.devices.find((entry) => JSON.stringify(entry).includes('"100001"'));
+    if (typeof listed !== 'object' || listed === null || Array.isArray(listed)) {
+      throw new Error('the purifier is not listed');
+    }
+    Object.assign(listed, { localip: '', isOnline: false });
+    const adapter = await startAdapter(world);
+    const discovered = await adapter.discover();
+    expect(discovered.find((device) => device.externalId === '100001')?.details['transport']).toBe(
+      'cloud',
+    );
+    const recorded = await subscribe(world, adapter);
+    const purifierOf = (): DiscoveredDevice | undefined =>
+      recorded.devices.at(-1)?.find((device) => device.externalId === '100001');
+    expect(world.purifier.handshakes).toBe(0);
+    Object.assign(listed, { localip: '127.0.0.2', isOnline: true });
+    world.cloud.cloudProperties.set('100001/2.1', true);
+    await waitFor(() => purifierOf()?.details['transport'] === 'lan', 5000);
+    expect(world.purifier.handshakes).toBeGreaterThan(0);
+  });
 });

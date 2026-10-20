@@ -53,10 +53,6 @@
   --color-exercise: #c2e070;
   --color-stand: #5ed3cf;
   --color-heart: #f08a7e;
-  --color-sleep-deep: #5b47d6;
-  --color-sleep-core: #8eaeff;
-  --color-sleep-rem: #5ed3cf;
-  --color-sleep-awake: #f2c14e;
 }
 
 @layer theme {
@@ -104,10 +100,18 @@
       --color-viz-blue: #3987e5;
       --color-viz-magenta: #d55181;
       --color-viz-violet: #9085e9;
+      --color-viz-green: #3fbf6f;
       --color-swatch-ice: #e6eaf0;
       --color-laundry-cool: #5ed3cf;
       --color-laundry-warm: #f2b45e;
       --color-laundry-rinse: #5ea8d3;
+      --color-sleep-awake: #b97b22;
+      --color-sleep-rem: #1c9a8a;
+      --color-sleep-core: #4a92e6;
+      --color-sleep-deep: #7c4fe8;
+      --color-sleep-asleep: rgba(242, 241, 238, 0.5);
+      --color-sleep-on-asleep: #0b0b0d;
+      --color-sleep-band: rgba(242, 241, 238, 0.38);
 
       --elevation-1: 0 0 0 0 rgba(0, 0, 0, 0);
       --elevation-2: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
@@ -191,6 +195,7 @@
       --color-viz-blue: #2a78d6;
       --color-viz-magenta: #d55181;
       --color-viz-violet: #4a3aa7;
+      --color-viz-green: #1f8a4c;
       --color-temp-warm: #c26a08;
       --color-temp-neutral: #fffaf0;
       --color-humidity: #2f6f99;
@@ -204,6 +209,13 @@
       --color-laundry-cool: #00808a;
       --color-laundry-warm: #c2410c;
       --color-laundry-rinse: #1d6fb8;
+      --color-sleep-awake: #c2410c;
+      --color-sleep-rem: #008f8a;
+      --color-sleep-core: #3d7be8;
+      --color-sleep-deep: #5236c9;
+      --color-sleep-asleep: rgba(24, 23, 27, 0.5);
+      --color-sleep-on-asleep: #18171b;
+      --color-sleep-band: rgba(24, 23, 27, 0.48);
 
       --elevation-1: 0 1px 2px 0 rgba(0, 0, 0, 0.06);
       --elevation-2: 0 8px 24px -8px rgba(0, 0, 0, 0.18);

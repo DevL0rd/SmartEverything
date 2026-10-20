@@ -16,7 +16,7 @@ export const CHAT_LINK_VALUE_MAX = 80;
 
 const LINK_VALUE = z.string().min(1).max(CHAT_LINK_VALUE_MAX).nullable();
 
-export const BOARD_WIDGET_TYPE = z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,59}$/);
+export const BOARD_WIDGET_TYPE = z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,112}$/);
 
 export const CHAT_LINK_PAGES = ['chat', 'costs', 'plugin', 'person'] as const;
 
@@ -94,7 +94,7 @@ export const CHAT_WIDGET_GUIDE: Readonly<Record<ChatWidgetKind, string>> = {
   health: `metric, range (${HEALTH_WIDGET_RANGES.join(', ')}; default week), optional day (YYYY-MM-DD): a chart of one health measurement; needs recorded data in the last 30 days`,
   nutrition: `part (${NUTRITION_WIDGET_PARTS.join(', ')}), optional day (YYYY-MM-DD): the day's food or water totals`,
   board:
-    'type (one of the board types given with the reply context), optional options: a plugin status board; an unknown type is refused with the types that exist',
+    'type (one of the board types given with the reply context, pluginId.widgetId for what a plugin adds), optional options: a plugin status board; an unknown type is refused with the types that exist',
   weather: 'the current weather and forecast',
   scenes: 'the scenes of the home, to run with a tap',
   setting_link:

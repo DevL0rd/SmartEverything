@@ -22,6 +22,7 @@ object PhoneNode {
     PhoneUnlock.unregister(context)
     PhoneFlashlight.stop()
     PhoneBluetooth.stop(context)
+    PhoneSystemSettings.stop(context)
     PhoneReporter.forget(context)
   }
 
@@ -36,6 +37,7 @@ object PhoneNode {
     PhoneUnlock.register(context)
     PhoneFlashlight.observe(context)
     PhoneBluetooth.observe(context)
+    PhoneSystemSettings.observe(context)
     PhoneBodyFiles.pruneUnreferenced(context)
   }
 

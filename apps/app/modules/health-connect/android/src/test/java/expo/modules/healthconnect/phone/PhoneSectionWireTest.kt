@@ -71,19 +71,21 @@ class PhoneSectionWireTest {
   fun `the sound section has the shape the hub contract fixture names`() {
     val section = PhoneSound.body(
       PhoneSound.streamsBody(40, 70, 80, 50, 60),
+      hapticFeedback = true,
+      touchSounds = false,
       AudioRoute("bluetooth", "Galaxy Buds3"),
       PhoneSound.mediaSection(NowPlaying(true, "Song", "Artist", "Spotify", "com.spotify.music", 1, 200), live = true)
     )
     PhoneWireFixture.sameShape(wire("live", "sound"), section, "sound")
-    PhoneWireFixture.sameShape(wire("rest", "sound"), PhoneSound.body(PhoneSound.streamsBody(1, 1, 1, 1, 1), AudioRoute("speaker", null), JSONObject.NULL), "sound")
+    PhoneWireFixture.sameShape(wire("rest", "sound"), PhoneSound.body(PhoneSound.streamsBody(1, 1, 1, 1, 1), true, true, AudioRoute("speaker", null), JSONObject.NULL), "sound")
   }
 
   @Test
   fun `the screen section has the shape the hub contract fixture names`() {
     val days = (0 until 7).map { LocalDate.parse("2026-10-12").plusDays(it.toLong()) to 100 + it }
-    val section = PhoneScreen.body(60, true, 60, "open", true, PhoneScreen.usageBody(41, days))
+    val section = PhoneScreen.body(60, true, true, 60, "open", true, PhoneScreen.usageBody(41, days))
     PhoneWireFixture.sameShape(wire("live", "screen"), section, "screen")
-    PhoneWireFixture.sameShape(wire("rest", "screen"), PhoneScreen.body(60, true, 60, null, true, JSONObject.NULL), "screen")
+    PhoneWireFixture.sameShape(wire("rest", "screen"), PhoneScreen.body(60, true, true, 60, null, true, JSONObject.NULL), "screen")
   }
 
   @Test
@@ -95,9 +97,11 @@ class PhoneSectionWireTest {
       vpn = false,
       metered = false,
       airplane = false,
+      wifiOn = true,
+      locationOn = true,
       data = PhoneSignal.dataBody(1_000_000_000L, 200_000_000L, 30_000_000_000L, 4_000_000_000L)
     )
     PhoneWireFixture.sameShape(wire("live", "network"), section, "network")
-    PhoneWireFixture.sameShape(wire("rest", "network"), PhoneSignal.body("offline", null, null, vpn = false, metered = false, airplane = false, data = JSONObject.NULL), "network")
+    PhoneWireFixture.sameShape(wire("rest", "network"), PhoneSignal.body("offline", null, null, vpn = false, metered = false, airplane = false, wifiOn = true, locationOn = true, data = JSONObject.NULL), "network")
   }
 }

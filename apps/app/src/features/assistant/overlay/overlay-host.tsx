@@ -6,18 +6,20 @@ import type {
   OverlayHostView,
   OverlayPrefs,
   OverlayTheme,
+  OverlayVoice,
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import {
   addOverlayActionListener,
   applyAssistantCallAudio,
   overlayLinked,
+  setOverlayCallPage,
   setOverlayPrefs,
 } from '../../../../modules/health-connect';
-import { useValue } from '../../../design/external-store';
+import { useSelected, useValue } from '../../../design/external-store';
 import { useMotion } from '../../../design/motion';
 import { desktopBridge, type DesktopBridge } from '../../../design/platform';
-import { useEntityStore } from '../../../store/store-context';
+import { useEntityStore, useStoreSelector } from '../../../store/store-context';
 import { useAssistantName } from '../data/assistant-data';
 import { useAiChat } from '../data/chat-store';
 import { useDesktopHarness } from '../data/desktop-harness';
@@ -45,6 +47,7 @@ import { OverlayPermissionBanner } from './overlay-permission-banner';
 import { toggleCaptions, useOverlayPrefs } from './overlay-settings';
 import { clearWake, overlayExtras, setOverlayHold, type OverlayExtras } from './overlay-state';
 import {
+  CALL_PATH,
   inShareOf,
   overlayPlatform,
   surfaceFacts,
@@ -52,6 +55,13 @@ import {
   useSurfaceEvents,
   type SurfaceFacts,
 } from './overlay-surface';
+import {
+  overlayVoiceOf,
+  reconnected,
+  saveThinking,
+  thinkingOf,
+  thinkingSave,
+} from './overlay-voice';
 import { useAnswerShortcut } from './use-answer-shortcut';
 import { useAssistantShortcut } from './use-assistant-shortcut';
 
@@ -123,6 +133,9 @@ function useActionPorts(): OverlayActionPorts {
     volume: (value): void => {
       saveCallAudio(store, { volume: value }, null);
     },
+    thinking: (level): void => {
+      background(saveThinking(level, store, callState.get().callId), 'overlay.thinking_failed');
+    },
   };
 }
 
@@ -135,6 +148,7 @@ interface Inputs {
   readonly assistant: string;
   readonly chat: string | null;
   readonly audio: OverlayAudio;
+  readonly voice: OverlayVoice | null;
   readonly theme: OverlayTheme;
   readonly reducedMotion: boolean;
 }
@@ -144,6 +158,8 @@ function useInputs(): Inputs {
   const { pref } = useCallAudio();
   const { inputs } = useCallAudioDevices();
   const theme = useUniwind().theme === 'light' ? 'light' : 'dark';
+  const level = useStoreSelector(thinkingOf);
+  const save = useValue(thinkingSave);
   return {
     call,
     prefs: useOverlayPrefs(),
@@ -157,6 +173,7 @@ function useInputs(): Inputs {
       micId: pref.input === 'auto' ? null : pref.input,
       volume: pref.volume,
     },
+    voice: overlayVoiceOf(level, save, call.callId),
     theme,
     reducedMotion: useMotion().reduced,
   };
@@ -175,6 +192,7 @@ function sourcesOf(inputs: Inputs, runtime: Runtime, now: number): OverlaySource
     audio: inputs.audio,
     extras: inputs.extras,
     hosted: inputs.hosted,
+    voice: inputs.voice,
     problemAt: runtime.problems.at(
       call.problem === null ? null : `${call.callId ?? ''}:${call.problem}`,
       now,
@@ -227,6 +245,15 @@ function useHold(bridge: DesktopBridge): void {
   useEffect(() => bridge.onOverlayHold?.(setOverlayHold), [bridge]);
 }
 
+function useReconnected(call: CallView): void {
+  const reconnecting = call.phase === 'reconnecting';
+  useEffect(() => {
+    if (reconnecting) {
+      reconnected();
+    }
+  }, [reconnecting]);
+}
+
 function useWakeLifecycle(call: CallView): void {
   const started = call.phase !== 'idle';
   useEffect(() => {
@@ -243,6 +270,7 @@ function DesktopOverlay({ bridge }: { readonly bridge: DesktopBridge }): null {
   useHold(bridge);
   useOwnComputer();
   useWakeLifecycle(inputs.call);
+  useReconnected(inputs.call);
   useAssistantShortcut();
   useAnswerShortcut();
   return null;
@@ -253,6 +281,10 @@ function usePhoneNative(): void {
   const theme = useUniwind().theme === 'light' ? 'light' : 'dark';
   const { pref } = useCallAudio();
   const ports = useActionPorts();
+  const onCallPage = useSelected(surfaceFacts, (facts) => facts.pathname === CALL_PATH);
+  useEffect(() => {
+    background(setOverlayCallPage(onCallPage), 'overlay.page_failed');
+  }, [onCallPage]);
   useEffect(() => {
     background(setOverlayPrefs({ ...prefs, theme }), 'overlay.prefs_failed');
   }, [prefs, theme]);

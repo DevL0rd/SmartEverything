@@ -22,6 +22,7 @@ import { background } from '@smarteverything/logging';
 interface Owner {
   readonly authorize?: (() => void) | undefined;
   readonly record?: ((rows: readonly CommandRow[]) => void) | undefined;
+  readonly settled?: ((rows: readonly CommandRow[]) => void) | undefined;
 }
 
 interface Stack {
@@ -142,6 +143,7 @@ export class DeviceEffects {
       this.own.delete(row.id);
     }
     const result = this.store.commands.byId(row.id);
+    owner.settled?.([result]);
     if (result.status !== 'succeeded')
       throw new ApiError(
         'upstream_failed',
@@ -197,7 +199,7 @@ export class DeviceEffects {
           effects: before.effects.filter((effect) => effect.id !== id),
         }),
       );
-      await this.dispatch(deviceId, capability, value, { authorize, record });
+      await this.dispatch(deviceId, capability, value, { authorize, settled: record });
     });
   }
   private external(

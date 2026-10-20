@@ -18,7 +18,7 @@ export type WearableSource = () => Promise<SourceList>;
 
 export interface ResolvedSetup {
   readonly entry: Omit<LocalDeviceEntry, 'createdAt'>;
-  readonly key: string;
+  readonly key: string | null;
   readonly replaces: string | null;
 }
 
@@ -27,4 +27,5 @@ export interface SetupContext {
   readonly secrets: SecretStore;
   readonly identities: BluetoothIdentitySource;
   readonly wearables: WearableSource;
+  readonly now: () => Date;
 }

@@ -29,6 +29,7 @@ export const PREFS = {
   appearance: CLIENT_PREFS.appearance,
   callAudio: CLIENT_PREFS.call_audio,
   callRing: CLIENT_PREFS.call_ring,
+  cameraNotifications: CLIENT_PREFS.camera_notifications,
   cameras: CLIENT_PREFS.cameras,
   deviceAlerts: CLIENT_PREFS.device_alerts,
   healthSync: CLIENT_PREFS.health_sync,

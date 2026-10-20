@@ -1,4 +1,4 @@
-import { ROUTES as AUTOMATIONS } from '../features/automations/routes';
+import { AUTOMATIONS_ACTIONS, ROUTES as AUTOMATIONS } from '../features/automations/routes';
 import { ROUTES as CAMERAS, preloadCameras, TRANSCRIPT_ACTIONS } from '../features/cameras/routes';
 import { ROUTES as DEVICE_LIST } from '../features/device-list/routes';
 import { preloadToday } from '../features/fitness/data/preload';
@@ -94,15 +94,7 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
     keywords: ['rules', 'schedules', 'scenes'],
     available: always,
     searchable: true,
-    actions: [
-      {
-        key: 'new',
-        title: 'New automation',
-        icon: 'plus',
-        href: href.automation('new'),
-        keywords: ['create', 'add', 'rule', 'make'],
-      },
-    ],
+    actions: AUTOMATIONS_ACTIONS,
   },
   {
     key: 'assistant',

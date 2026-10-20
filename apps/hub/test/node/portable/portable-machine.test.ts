@@ -14,7 +14,11 @@ function stateOf(
 
 describe('what a Windows or Mac computer reports it can do', () => {
   it('can ring, open, screenshot and lock when the app runs', () => {
-    const report = portableMachineReport('Windows', { agent: true, openNeedsApp: true });
+    const report = portableMachineReport('Windows', {
+      agent: true,
+      openNeedsApp: true,
+      permissions: [],
+    });
     expect(
       report.actions
         .filter((support) => support.state === 'ready')
@@ -34,21 +38,55 @@ describe('what a Windows or Mac computer reports it can do', () => {
   });
 
   it('names the missing app as the reason without it', () => {
-    const report = portableMachineReport('Windows', { agent: false, openNeedsApp: true });
+    const report = portableMachineReport('Windows', {
+      agent: false,
+      openNeedsApp: true,
+      permissions: [],
+    });
     for (const action of ['ring', 'stop_ring', 'open', 'screenshot']) {
       expect(stateOf(report, action)).toBe('unsupported');
     }
     expect(JSON.stringify(report.actions)).toContain('SmartEverything app is not running');
   });
 
+  it('asks for Screen Recording on a Mac that has not granted it', () => {
+    const report = portableMachineReport('macOS', {
+      agent: true,
+      openNeedsApp: false,
+      permissions: [{ permission: 'mac_screen_recording', granted: false }],
+    });
+    expect(report.actions.find((support) => support.action === 'screenshot')).toMatchObject({
+      state: 'needs_permission',
+      permission: 'mac_screen_recording',
+    });
+    expect(report.permissions).toEqual([{ permission: 'mac_screen_recording', granted: false }]);
+  });
+
+  it('screenshots once Screen Recording is granted', () => {
+    const report = portableMachineReport('macOS', {
+      agent: true,
+      openNeedsApp: false,
+      permissions: [{ permission: 'mac_screen_recording', granted: true }],
+    });
+    expect(stateOf(report, 'screenshot')).toBe('ready');
+  });
+
   it('opens links on a Mac without the app', () => {
-    const report = portableMachineReport('macOS', { agent: false, openNeedsApp: false });
+    const report = portableMachineReport('macOS', {
+      agent: false,
+      openNeedsApp: false,
+      permissions: [],
+    });
     expect(stateOf(report, 'open')).toBe('ready');
     expect(stateOf(report, 'screenshot')).toBe('unsupported');
   });
 
   it('says plainly it cannot unlock', () => {
-    const report = portableMachineReport('macOS', { agent: true, openNeedsApp: false });
+    const report = portableMachineReport('macOS', {
+      agent: true,
+      openNeedsApp: false,
+      permissions: [],
+    });
     expect(JSON.stringify(report.actions.find((support) => support.action === 'unlock'))).toContain(
       'macOS cannot be unlocked',
     );
@@ -68,6 +106,7 @@ describe('the Windows or Mac machine control', () => {
       open: () => Promise.resolve(),
       ring: () => Promise.resolve(),
       capture: () => Promise.reject(new Error('unused')),
+      permissions: () => Promise.resolve([]),
     };
     const machine = new PortableMachine({
       machine: 'Windows',

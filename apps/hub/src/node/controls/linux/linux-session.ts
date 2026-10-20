@@ -80,6 +80,10 @@ export class LinuxSession implements SessionControl {
     }
   }
 
+  locked(): boolean | null {
+    return this.readings.locked;
+  }
+
   bridge(): KdeBridge {
     return this.require().bridge;
   }

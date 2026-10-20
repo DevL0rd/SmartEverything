@@ -11,7 +11,7 @@ import type { MicHandlers } from '../../../src/node/controls/linux/mic-capture';
 import { ComputerEar } from '../../../src/node/ear/computer-ear';
 import { pcmOf } from '../../../src/node/ear/ear-audio';
 import { NodeFailureError } from '../../../src/node/node-failure';
-import { KeywordSpotter } from '../../../src/wake-name/keyword-spotter';
+import { WakeKeywords } from '../../../src/wake-name/keyword-lines';
 import { FakeClock } from '../../support/fake-clock';
 import { captureLogs, type CapturedLogs } from '../../support/logs';
 import { until } from '../../support/wait';
@@ -45,9 +45,7 @@ function configOf(
     readonly name?: string;
   } = {},
 ): ListeningConfig {
-  const spotter = new KeywordSpotter();
-  const keywords = spotter.earConfig([overrides.name ?? 'Coordinator'], 'standard');
-  spotter.free();
+  const keywords = new WakeKeywords().earConfig([overrides.name ?? 'Coordinator'], 'standard');
   return {
     wake: overrides.wake ?? true,
     transcribe: overrides.transcribe ?? false,

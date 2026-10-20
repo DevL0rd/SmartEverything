@@ -7,7 +7,7 @@ import { DATABASE_FILE } from '../../../src/service/configuration';
 import { openStore, type Store } from '../../../src/store/store';
 import { clientOf } from '../../automations/support/client';
 import { bootServer, linkFakeProvider, pairPhone, verifiedPublicUrl } from '../../support/booted';
-import { legacyAutomation } from '../../support/legacy-automation';
+import { node, programOf, trigger } from '../../support/automation-fixture';
 import { captureLogs, testLogger } from '../../support/logs';
 import { temporaryDirectory } from '../../support/server';
 
@@ -57,17 +57,17 @@ async function saveFromPhone(options: { readonly removePhone: boolean }): Promis
   if (lamp === undefined || profile === undefined) throw new Error('The home was not seeded.');
   await verifiedPublicUrl(booted);
   const phone = await pairPhone(booted, 'owner');
-  const automation = await owner.request(API_ENDPOINTS.createAutomation, {
+  const automation = await owner.request(API_ENDPOINTS.createAutomationProgram, {
     body: {
       name: 'Occupied',
       enabled: true,
-      definition: legacyAutomation({
-        triggers: [{ type: 'interval', everyMinutes: 10_080 }],
-        conditions: { mode: 'all', items: [] },
-        actions: [{ type: 'command', deviceId: lamp.id, capability: 'power', value: true }],
-      }),
+      definition: programOf(
+        [trigger('trigger.interval', { every: 604_800_000 })],
+        [node('device.set', { target: { device: lamp.id }, control: 'power', to: true })],
+      ),
     },
   });
+  if (automation.id === null) throw new Error(automation.summary);
   if (options.removePhone)
     await owner.request(API_ENDPOINTS.removeClient, { params: { clientId: phone.clientId } });
   await booted.server.stop();
@@ -92,8 +92,8 @@ async function runSaved(saved: Saved): Promise<readonly string[]> {
   const booted = await bootServer(directory.path);
   const owner = clientOf(booted.base, booted.owner);
   try {
-    await owner.request(API_ENDPOINTS.runAutomation, {
-      params: { automationId: saved.automation },
+    await owner.request(API_ENDPOINTS.startProgramRun, {
+      body: { automationId: saved.automation, wait: true },
     });
     return booted.fake.adapter.executed.map(
       (command) => `${command.externalId}:${command.capability}:${JSON.stringify(command.value)}`,

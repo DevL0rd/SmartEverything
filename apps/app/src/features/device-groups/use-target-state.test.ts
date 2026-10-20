@@ -31,4 +31,12 @@ describe('a room target view', () => {
     expect(touches(other)).toBe(false);
     expect(touches(member)).toBe(true);
   });
+
+  it('marks a member whose power was never reported as unknown, not off', () => {
+    const silent = stateFixture(devices, {});
+    const view = select(silent);
+    const powers = Object.values(view.powers);
+    expect(powers).toHaveLength(10);
+    expect(new Set(powers)).toStrictEqual(new Set(['unknown']));
+  });
 });

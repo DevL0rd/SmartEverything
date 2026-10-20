@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
 import { Circle, Defs, Ellipse, Path, Pattern } from 'react-native-svg';
+import { faded } from '../../../design/faded';
+import { isNative } from '../../../design/platform';
 import { BREATHE, SPIN, loopStyle } from '../../../design/loops';
-import { type Box, Canvas, FULL, Layer, Squash, useSvgId } from '../parts/frame';
+import { type Box, Canvas, FULL, Layer, Squash, scaled, useSvgId } from '../parts/frame';
 import { BodyGradient, bandRole, useInk, useTint, type VisualInk, WELL } from '../parts/ink';
+import type { Blob } from '../parts/haze';
 import { Dots } from '../parts/particles';
 import { bladesPath, rounded, spinPeriod } from '../parts/shapes';
-import { ContactShadow, Shine } from '../parts/material';
+import { ContactFloor, Shine } from '../parts/material';
 import type { VisualProps } from '../types';
 
 const SIDE = 'M26 24 V84 A24 7 0 0 0 74 84 V24 Z';
@@ -13,6 +16,14 @@ const GRILLE = 'M31 44 V78 A19 5.5 0 0 0 69 78 V44 A19 5.5 0 0 1 31 44 Z';
 const OUTLET: Box = { x: 30, y: 4, w: 40, h: 40 };
 const BLADES = bladesPath(7, 46, 12);
 const SQUASH = 7 / 24;
+const HALO_STROKE = 1.4;
+const HALO: Box = {
+  x: 50 - 28 - HALO_STROKE / 2,
+  y: 24 - 9.5 - HALO_STROKE / 2,
+  w: 56 + HALO_STROKE,
+  h: 19 + HALO_STROKE,
+};
+const FLOOR: Blob = { cx: 50, cy: 88, rx: 34, ry: 6 };
 
 function Body({
   ink,
@@ -27,14 +38,15 @@ function Body({
   const dots = useSvgId('grille');
   return (
     <>
-      <Defs>
-        <BodyGradient id={body} ink={ink} />
-        <Pattern id={dots} width={3.4} height={3.4} patternUnits="userSpaceOnUse">
-          <Circle cx={1.7} cy={2.05} r={0.8} fill={ink.light} />
-          <Circle cx={1.7} cy={1.7} r={0.8} fill={ink.well} fillOpacity={0.85} />
-        </Pattern>
-      </Defs>
-      <ContactShadow cx={50} cy={88} rx={34} ry={6} />
+      <BodyGradient id={body} ink={ink} />
+      {detailed ? (
+        <Defs>
+          <Pattern id={dots} width={3.4} height={3.4} patternUnits="userSpaceOnUse">
+            <Circle cx={1.7} cy={2.05} r={0.8} fill={ink.light} />
+            <Circle cx={1.7} cy={1.7} r={0.8} fill={ink.well} fillOpacity={0.85} />
+          </Pattern>
+        </Defs>
+      ) : null}
       <Path d={SIDE} fill={`url(#${body})`} stroke={ink.edge} strokeWidth={0.6} />
       <Shine d={SIDE} />
       {detailed ? <Path d={GRILLE} fill={`url(#${dots})`} /> : null}
@@ -91,28 +103,40 @@ function Halo({
   readonly running: boolean;
   readonly on: boolean;
 }): ReactNode {
+  const motion = loopStyle(
+    { name: BREATHE, ms: 3000, easing: 'ease-in-out', alternate: true },
+    running,
+  );
+  const opacity = on ? 0.85 : 0.35;
+  if (!isNative()) {
+    return (
+      <Layer box={FULL} px={px} motion={motion}>
+        <Canvas px={px}>
+          <Ellipse
+            cx={50}
+            cy={24}
+            rx={28}
+            ry={9.5}
+            fill="none"
+            stroke={tint}
+            strokeWidth={HALO_STROKE}
+            strokeOpacity={opacity}
+          />
+        </Canvas>
+      </Layer>
+    );
+  }
   return (
     <Layer
-      box={FULL}
+      box={HALO}
       px={px}
-      motion={loopStyle(
-        { name: BREATHE, ms: 3000, easing: 'ease-in-out', alternate: true },
-        running,
-      )}
-    >
-      <Canvas px={px}>
-        <Ellipse
-          cx={50}
-          cy={24}
-          rx={28}
-          ry={9.5}
-          fill="none"
-          stroke={tint}
-          strokeWidth={1.4}
-          strokeOpacity={on ? 0.85 : 0.35}
-        />
-      </Canvas>
-    </Layer>
+      motion={motion}
+      look={{
+        borderRadius: '50%',
+        borderWidth: scaled(HALO_STROKE, px),
+        borderColor: faded(tint, opacity),
+      }}
+    />
   );
 }
 
@@ -125,7 +149,8 @@ export function PurifierVisual({ state, size, px, tone, moving }: VisualProps): 
   const count = Math.max(2, Math.round(state.level * 6));
   return (
     <>
-      <Canvas px={px}>
+      <ContactFloor px={px} blob={FLOOR} />
+      <Canvas px={px} layer>
         <Body ink={ink} tint={tint} detailed={detailed} />
       </Canvas>
       <Halo px={px} tint={tint} running={breathing} on={tone === 'active'} />

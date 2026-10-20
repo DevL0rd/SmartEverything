@@ -3,6 +3,7 @@ import {
   JSON_VALUE,
   LAUNDRY_EVENT_FAMILY,
   LAUNDRY_MIOT_EVENTS,
+  humanizeKey,
   miotDeviceEventKind,
   type CameraDetection,
   type DeviceEvent,
@@ -116,18 +117,50 @@ const MIOT_EVENT_FACTS: Readonly<Record<string, Readonly<Record<string, JsonValu
   'low-battery': { item: 'battery', state: 'low' },
 };
 
-export function deviceEventFromMiot(name: string, observed: ObservedEvent): DeviceEvent | null {
-  const laundry = deviceEventFromLaundry(name, observed);
+function withArguments(
+  observed: ObservedEvent,
+  miotArguments: Readonly<Record<string, JsonValue>>,
+): ObservedEvent {
+  return { ...observed, details: { ...observed.details, ...miotArguments } };
+}
+
+function passedThroughMiotEvent(
+  name: string,
+  observed: ObservedEvent,
+  miotArguments: Readonly<Record<string, JsonValue>>,
+): DeviceEvent {
+  const carried = Object.keys(miotArguments).length === 0 ? {} : { arguments: miotArguments };
+  return {
+    ...observed,
+    kind: 'activity',
+    details: {
+      ...observed.details,
+      event: name,
+      miotEvent: name,
+      summary: humanizeKey(name),
+      ...carried,
+    },
+  };
+}
+
+export function deviceEventFromMiot(
+  name: string,
+  observed: ObservedEvent,
+  miotArguments: Readonly<Record<string, JsonValue>> = {},
+): DeviceEvent {
+  const merged = withArguments(observed, miotArguments);
+  const laundry = deviceEventFromLaundry(name, merged);
   if (laundry !== null) {
     return laundry;
   }
   const kind = miotEventKind(name);
+  if (kind === null) {
+    return passedThroughMiotEvent(name, observed, miotArguments);
+  }
   const detection = miotDetection(name);
   const facts = Object.hasOwn(MIOT_EVENT_FACTS, name) ? MIOT_EVENT_FACTS[name] : undefined;
-  const named = { ...observed.details, ...facts, miotEvent: name };
-  return kind === null
-    ? null
-    : { ...observed, kind, details: detection === null ? named : { ...named, detection } };
+  const named = { ...merged.details, ...facts, miotEvent: name };
+  return { ...merged, kind, details: detection === null ? named : { ...named, detection } };
 }
 
 export interface MiotEventShape {
@@ -147,6 +180,10 @@ export function miotEventOf(spec: MiotSpec, siid: number, eiid: number): MiotEve
       .map((property) => [property.iid, parseUrn(property.type).name]),
   );
   return { name: parseUrn(event.type).name, argumentNames };
+}
+
+export function unspecifiedMiotEvent(siid: number, eiid: number): MiotEventShape {
+  return { name: `event-${String(siid)}-${String(eiid)}`, argumentNames: new Map() };
 }
 
 export function miotEventDetails(

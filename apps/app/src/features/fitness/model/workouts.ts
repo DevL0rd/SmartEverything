@@ -1,13 +1,17 @@
-import type { HealthRecord } from '@smarteverything/domain';
+import { isOwnSource, preferredShares, type HealthRecord } from '@smarteverything/domain';
 import { max } from 'd3-array';
 import { exerciseKindOf, isDistanceBased, prefersSpeed } from '../../health-log';
-import { endOf, recordsOfType, startOf, type RecordOf } from './records';
-import { MINUTE_MS } from '../../../format/time';
+import { endOf, overlapping, recordsOfType, startOf, type RecordOf } from './records';
+import { HOUR_MS, MINUTE_MS } from '../../../format/time';
 import { decimal, twoDigits, withUnit } from '../../../format/number';
 
 type Session = RecordOf<'ExerciseSession'>;
 
 const PACE_MINIMUM_METERS = 1000;
+
+const SAME_WORKOUT_OVERLAP = 0.5;
+
+const SPEED_GAP_CAP_SECONDS = 30;
 
 export interface HeartSample {
   readonly at: number;
@@ -53,17 +57,25 @@ function overlapShare(record: HealthRecord, from: number, to: number): number {
   return Math.max(0, Math.min(end, to) - Math.max(start, from)) / (end - start);
 }
 
-function attributed(
-  records: readonly HealthRecord[],
+function sessionHours(session: Session): { readonly from: number; readonly to: number } {
+  const first = Math.floor(startOf(session) / HOUR_MS);
+  const last = Math.max(first + 1, Math.ceil(endOf(session) / HOUR_MS));
+  return { from: first * HOUR_MS, to: last * HOUR_MS };
+}
+
+function attributed<T extends HealthRecord>(
+  records: readonly T[],
   session: Session,
-  amount: (record: HealthRecord) => number | null,
+  amount: (record: T) => number,
 ): number | null {
+  const hours = sessionHours(session);
   let total: number | null = null;
-  for (const record of records) {
-    const value = amount(record);
+  for (const { record, share: counted } of preferredShares(
+    overlapping(records, hours.from, hours.to),
+  )) {
     const share = overlapShare(record, startOf(session), endOf(session));
-    if (value !== null && share > 0) {
-      total = (total ?? 0) + value * share;
+    if (share > 0) {
+      total = (total ?? 0) + amount(record) * counted * share;
     }
   }
   return total;
@@ -97,30 +109,51 @@ function routeOf(session: Session): WorkoutRoute {
   };
 }
 
-function containedIn(record: HealthRecord, session: Session): boolean {
-  return startOf(record) >= startOf(session) && endOf(record) <= endOf(session);
+function withinSessionHours(record: HealthRecord, session: Session): boolean {
+  const hours = sessionHours(session);
+  return startOf(record) >= hours.from && endOf(record) <= hours.to;
 }
 
 function distanceOf(records: readonly HealthRecord[], session: Session): number | null {
-  const inside = recordsOfType(records, 'Distance').filter((record) =>
-    containedIn(record, session),
+  const near = recordsOfType(records, 'Distance').filter((record) =>
+    withinSessionHours(record, session),
   );
-  return inside.length === 0
-    ? lapMeters(session)
-    : inside.reduce((sum, record) => sum + record.data.meters, 0);
+  return attributed(near, session, (record) => record.data.meters) ?? lapMeters(session);
+}
+
+function speedMeters(records: readonly HealthRecord[], session: Session): number | null {
+  const from = startOf(session);
+  const to = endOf(session);
+  const samples = recordsOfType(records, 'Speed')
+    .flatMap((record) => record.data.samples)
+    .map((sample) => ({ at: Date.parse(sample.time), speed: sample.metersPerSecond }))
+    .filter((sample) => sample.at >= from && sample.at <= to)
+    .sort((left, right) => left.at - right.at);
+  if (samples.length < 2) {
+    return null;
+  }
+  return samples.slice(0, -1).reduce((total, sample, index) => {
+    const next = samples[index + 1];
+    const seconds = Math.min(((next?.at ?? sample.at) - sample.at) / 1000, SPEED_GAP_CAP_SECONDS);
+    return total + sample.speed * seconds;
+  }, 0);
 }
 
 function energyOf(records: readonly HealthRecord[], session: Session): number | null {
-  const amount = (record: HealthRecord): number | null =>
-    record.type === 'ActiveCaloriesBurned' ? record.data.kilocalories : null;
-  return attributed(recordsOfType(records, 'ActiveCaloriesBurned'), session, amount);
+  return attributed(
+    recordsOfType(records, 'ActiveCaloriesBurned'),
+    session,
+    (record) => record.data.kilocalories,
+  );
 }
 
 export function workoutOf(session: Session, related: readonly HealthRecord[]): Workout {
   const start = startOf(session);
   const end = endOf(session);
   const minutes = (end - start) / MINUTE_MS;
-  const meters = isDistanceBased(session.data.exerciseType) ? distanceOf(related, session) : null;
+  const meters = isDistanceBased(session.data.exerciseType)
+    ? (distanceOf(related, session) ?? speedMeters(related, session))
+    : null;
   const heart = heartDuring(related, start, end);
   return {
     recordId: session.recordId,
@@ -138,18 +171,60 @@ export function workoutOf(session: Session, related: readonly HealthRecord[]): W
     averageBpm:
       heart.length === 0 ? null : heart.reduce((sum, sample) => sum + sample.bpm, 0) / heart.length,
     maxBpm: max(heart, (sample) => sample.bpm) ?? null,
-    secondsPerKm:
-      meters === null || meters < PACE_MINIMUM_METERS ? null : (minutes * 60) / (meters / 1000),
+    secondsPerKm: paceOf(minutes, meters),
     route: routeOf(session),
     laps: session.data.laps.length,
     source: session.sourceApp,
   };
 }
 
+function paceOf(minutes: number, meters: number | null): number | null {
+  return meters === null || meters < PACE_MINIMUM_METERS ? null : (minutes * 60) / (meters / 1000);
+}
+
+function sameWorkout(left: Workout, right: Workout): boolean {
+  const overlap = Math.min(left.end, right.end) - Math.max(left.start, right.start);
+  const shorter = Math.min(left.end - left.start, right.end - right.start);
+  return shorter > 0 && overlap / shorter >= SAME_WORKOUT_OVERLAP;
+}
+
+function leading(left: Workout, right: Workout): { first: Workout; second: Workout } {
+  const own = isOwnSource(left.source) !== isOwnSource(right.source);
+  const leftFirst = own ? isOwnSource(left.source) : left.minutes >= right.minutes;
+  return leftFirst ? { first: left, second: right } : { first: right, second: left };
+}
+
+function joined(left: Workout, right: Workout): Workout {
+  const { first, second } = leading(left, right);
+  const meters = first.meters ?? second.meters;
+  return {
+    ...first,
+    meters,
+    kilocalories: first.kilocalories ?? second.kilocalories,
+    secondsPerKm: paceOf(first.minutes, meters),
+    route: first.route.status === 'recorded' ? first.route : second.route,
+    laps: Math.max(first.laps, second.laps),
+  };
+}
+
+function oneWorkoutEach(workouts: readonly Workout[]): Workout[] {
+  const kept: Workout[] = [];
+  for (const workout of [...workouts].sort((left, right) => left.start - right.start)) {
+    const at = kept.findIndex((known) => sameWorkout(known, workout));
+    if (at < 0) {
+      kept.push(workout);
+    } else {
+      const known = kept[at];
+      kept[at] = known === undefined ? workout : joined(known, workout);
+    }
+  }
+  return kept;
+}
+
 export function workoutsOf(records: readonly HealthRecord[]): Workout[] {
-  return recordsOfType(records, 'ExerciseSession')
-    .map((session) => workoutOf(session, records))
-    .sort((left, right) => right.start - left.start);
+  return oneWorkoutEach(
+    recordsOfType(records, 'ExerciseSession').map((session) => workoutOf(session, records)),
+  ).sort((left, right) => right.start - left.start);
 }
 
 export interface PersonalRecord {

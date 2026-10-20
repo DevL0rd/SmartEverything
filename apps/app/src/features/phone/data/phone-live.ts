@@ -1,5 +1,6 @@
-import { useSyncExternalStore } from 'react';
+import { useCallback } from 'react';
 import type { WatchTopic } from '@smarteverything/domain';
+import { usePausable } from '../../../design/external-store';
 import { liveWatch, type LiveWatchRegistry } from '../../../store/live-watch';
 
 export const PHONE_LIVE_TOPICS: readonly WatchTopic[] = ['live'];
@@ -11,11 +12,12 @@ function heldBy(registry: LiveWatchRegistry, deviceId: string): boolean {
 }
 
 export function usePhoneLiveHeld(deviceId: string): boolean {
-  return useSyncExternalStore(
-    (notify) =>
+  const subscribe = useCallback(
+    (notify: () => void) =>
       liveWatch.follow((changed) => {
         if (changed === deviceId) notify();
       }),
-    () => heldBy(liveWatch, deviceId),
+    [deviceId],
   );
+  return usePausable(subscribe, () => heldBy(liveWatch, deviceId));
 }

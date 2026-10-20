@@ -1,0 +1,700 @@
+{
+  "source": "oralb-ha hardware validation 2026-08-26, iO model 0x36, protocol 8, firmware 82, vibration off",
+  "advert": "0836520832000004001000",
+  "initial": {
+    "ff02": "360852",
+    "ff25": "0b00010302040607",
+    "ff26": "0000000000000000",
+    "ff09": "000000"
+  },
+  "notifications": [
+    {
+      "characteristic": "ff07",
+      "hex": "04"
+    },
+    {
+      "characteristic": "ff09",
+      "hex": "f00000"
+    },
+    {
+      "characteristic": "ff04",
+      "hex": "0300"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0001"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0002"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0003"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0004"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0005"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0006"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0007"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0008"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0009"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "000a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "000b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "000c"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "000d"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "000e"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "000f"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0010"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0011"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0012"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0013"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0014"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0015"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0016"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0017"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0018"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0019"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "001a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "001b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "001c"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "001d"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "001e"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "001f"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0020"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0021"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0022"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0023"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0024"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0025"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0026"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0027"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0028"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0029"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "002a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "002b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "002c"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "002d"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "002e"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "002f"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0030"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0031"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0032"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0033"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0034"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0035"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0036"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0037"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0038"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0039"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "003a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "003b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0100"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0101"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0102"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0103"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0104"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0105"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0106"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0107"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0108"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0109"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "010a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "010b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "010c"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "010d"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "010e"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "010f"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0110"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0111"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0112"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0113"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0114"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0115"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0116"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0117"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0118"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0119"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "011a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "011b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "011c"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "011d"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "011e"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "011f"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0120"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0121"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0122"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0123"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0124"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0125"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0126"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0127"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0128"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0129"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "012a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "012b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "012c"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "012d"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "012e"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "012f"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0130"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0131"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0132"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0133"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0134"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0135"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0136"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0137"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0138"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0139"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "013a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "013b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0200"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0201"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0202"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0203"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0204"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0205"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0206"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0207"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0208"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0209"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "020a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "020b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "020c"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "020d"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "020e"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "020f"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0210"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0211"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0212"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0213"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0214"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0215"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0216"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0217"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0218"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0219"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "021a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "021b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "021c"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "021d"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "021e"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "021f"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0220"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0221"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0222"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0223"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0224"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0225"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0226"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0227"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0228"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "0229"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "022a"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "022b"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "022c"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "022d"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "022e"
+    },
+    {
+      "characteristic": "ff08",
+      "hex": "022f"
+    },
+    {
+      "characteristic": "ff07",
+      "hex": "04"
+    },
+    {
+      "characteristic": "ff04",
+      "hex": "0a00"
+    }
+  ]
+}

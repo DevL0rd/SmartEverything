@@ -19,7 +19,12 @@ const ROOT = join(import.meta.dirname, '..');
 
 export const DATABASE_FILE = 'smarteverything.db';
 export const SERVICE_ENTRY = 'service.mjs';
-export const SERVICE_FILES = [SERVICE_ENTRY, 'voice-worker.mjs', 'hook-helper.mjs'] as const;
+export const SERVICE_FILES = [
+  SERVICE_ENTRY,
+  'voice-worker.mjs',
+  'hook-helper.mjs',
+  'raster-worker.mjs',
+] as const;
 
 const STORE_MODULE = join(ROOT, 'apps', 'hub', 'src', 'store', 'store.ts');
 const FREE_SPACE_FACTOR = 3;

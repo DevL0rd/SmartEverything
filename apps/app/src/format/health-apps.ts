@@ -3,6 +3,7 @@ import { titleCase } from './text';
 const KNOWN_APPS: Readonly<Record<string, string>> = {
   'smarteverything.scale': 'Scale',
   'smarteverything.entries': 'Logged here',
+  'smarteverything.larq': 'Bottle',
   'smarteverything.watch': 'Watch',
   'com.mi.health': 'Mi Fitness',
   'com.xiaomi.wearable': 'Mi Fitness',

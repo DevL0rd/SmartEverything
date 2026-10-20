@@ -34,7 +34,7 @@ import {
 } from './quick-ask-fixes';
 import { newChatReason } from './quick-ask-model';
 
-const QUICK_ASK_DRAFT_KEY = 'quick-ask';
+export const QUICK_ASK_DRAFT_KEY = 'quick-ask';
 
 const READ_ONLY_REASON = 'Only the owner can work in this computer chat.';
 

@@ -3,9 +3,11 @@ import type { RouteDefinition } from '../../app-shell/route-types';
 import { breadcrumbOf, settingsPage } from '../../settings/tree';
 
 const PAGES = [
+  'setup',
   'home',
   'home/location',
   'home/rooms',
+  'home/layouts',
   'members',
   'appearance',
   'notifications',

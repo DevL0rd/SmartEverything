@@ -2,10 +2,22 @@ import { createElement } from 'react';
 import type { SettingDefinition } from '../../settings/types';
 import { AuditList } from './components/audit-list';
 import { PeopleAccessBlock } from './components/people-access-block';
+import { RequestsInbox } from './components/requests-inbox';
 
 const AUDIT_LIMIT = 50;
 
 export const SETTINGS: readonly SettingDefinition[] = [
+  {
+    id: 'access.requests',
+    page: 'access',
+    title: 'Requests for more access',
+    icon: 'key',
+    keywords: ['request', 'ask', 'approve', 'deny', 'allow', 'permission', 'grant', 'owner'],
+    scope: 'server',
+    control: 'custom',
+    visible: (env) => env.owner,
+    render: () => createElement(RequestsInbox),
+  },
   {
     id: 'access.people',
     page: 'access',

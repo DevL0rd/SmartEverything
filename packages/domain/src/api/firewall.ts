@@ -179,6 +179,39 @@ export const FIREWALL_STATUS = z.strictObject({
 
 export type FirewallStatus = z.infer<typeof FIREWALL_STATUS>;
 
+const FIREWALL_STEP_OUTCOMES = ['applied', 'already_present', 'failed'] as const;
+
+const FIREWALL_STEP_RESULT = z.strictObject({
+  label: z.string().min(1),
+  command: z.string().min(1),
+  outcome: z.enum(FIREWALL_STEP_OUTCOMES),
+  detail: z.string(),
+});
+
+export type FirewallStepResult = z.infer<typeof FIREWALL_STEP_RESULT>;
+
+const FIREWALL_APPLY_OUTCOMES = [
+  'applied',
+  'partial',
+  'failed',
+  'stale',
+  'declined',
+  'unavailable',
+] as const;
+
+export const FIREWALL_APPLY_RESULT = z.strictObject({
+  outcome: z.enum(FIREWALL_APPLY_OUTCOMES),
+  via: z.enum(['sudo', 'desktop']).nullable(),
+  steps: z.array(FIREWALL_STEP_RESULT),
+  detail: z.string().min(1),
+  commands: z.string(),
+  status: FIREWALL_STATUS,
+});
+
+export type FirewallApplyResult = z.infer<typeof FIREWALL_APPLY_RESULT>;
+
+export type FirewallApplyOutcome = FirewallApplyResult['outcome'];
+
 export type FirewallBackend = FirewallStatus['backend'];
 
 export const FIREWALL_ENDPOINTS = {
@@ -202,5 +235,16 @@ export const FIREWALL_ENDPOINTS = {
     query: NOTHING,
     body: NO_BODY,
     response: FIREWALL_STATUS,
+  }),
+  applyFirewall: endpoint({
+    method: 'POST',
+    path: '/api/firewall/apply',
+    access: 'owner',
+    summary:
+      'Add the firewall rules the plan lists (revision from the firewall status) with passwordless sudo on the server computer; each rule reports applied, already present or failed, and when the server cannot elevate the result carries the exact sudo commands',
+    params: NOTHING,
+    query: NOTHING,
+    body: z.strictObject({ revision: REVISION }),
+    response: FIREWALL_APPLY_RESULT,
   }),
 } as const;

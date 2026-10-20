@@ -11,9 +11,30 @@ const CLIENT_LEFT_AFTER_MS = 5 * 60 * 1000;
 export const CLIENT_JOINED_EVENT = 'network_client_joined';
 export const CLIENT_LEFT_EVENT = 'network_client_left';
 
+export interface ClientLink {
+  readonly profileId: string | null;
+  readonly personId: string | null;
+}
+
 interface Presence {
   readonly client: KnownClient;
   readonly lostAt: number | null;
+}
+
+function knownFrom(
+  client: NetworkClient,
+  previous: KnownClient | undefined,
+  at: string,
+): KnownClient {
+  return {
+    mac: client.mac,
+    name: client.name,
+    profileId: previous?.profileId ?? null,
+    personId: previous?.personId ?? null,
+    firstSeen: previous?.firstSeen ?? at,
+    lastSeen: at,
+    present: true,
+  };
 }
 
 export class ClientRegistry {
@@ -27,7 +48,7 @@ export class ClientRegistry {
     for (const { key, value } of records.list()) {
       const parsed = KNOWN_CLIENT.safeParse(value);
       if (parsed.success) {
-        this.#presence.set(key, { client: { ...parsed.data, present: false }, lostAt: null });
+        this.#presence.set(key, { client: parsed.data, lostAt: null });
       } else {
         log.warn('router.client_record_invalid', { key });
       }
@@ -44,12 +65,12 @@ export class ClientRegistry {
     return [...merged, ...this.#offlineKnown(seen)];
   }
 
-  assign(mac: string, profileId: string | null): KnownClient | null {
+  assign(mac: string, link: ClientLink): KnownClient | null {
     const presence = this.#presence.get(mac);
     if (presence === undefined) {
       return null;
     }
-    const client = { ...presence.client, profileId };
+    const client = { ...presence.client, ...link };
     this.#store({ ...presence, client });
     return client;
   }
@@ -63,15 +84,7 @@ export class ClientRegistry {
     if (!client.connected) {
       return this.#withKnown(client, previous?.client);
     }
-    const at = now.toISOString();
-    const known: KnownClient = {
-      mac: client.mac,
-      name: client.name,
-      profileId: previous?.client.profileId ?? null,
-      firstSeen: previous?.client.firstSeen ?? at,
-      lastSeen: at,
-      present: true,
-    };
+    const known = knownFrom(client, previous?.client, now.toISOString());
     if (previous?.client.present !== true) {
       this.#store({ client: known, lostAt: null });
       this.#announce(CLIENT_JOINED_EVENT, known);
@@ -110,6 +123,7 @@ export class ClientRegistry {
         blocked: false,
         trafficBytesPerSecond: null,
         profileId: client.profileId,
+        personId: client.personId,
         firstSeen: client.firstSeen,
         lastSeen: client.lastSeen,
       }));
@@ -122,6 +136,7 @@ export class ClientRegistry {
     return {
       ...client,
       profileId: known.profileId,
+      personId: known.personId,
       firstSeen: known.firstSeen,
       lastSeen: known.lastSeen,
     };

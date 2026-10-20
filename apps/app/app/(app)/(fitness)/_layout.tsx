@@ -8,7 +8,7 @@ export const unstable_settings = { initialRouteName: 'fitness/(sections)' };
 
 export default function GroupLayout(): ReactNode {
   return (
-    <TabStack>
+    <TabStack initialRouteName={unstable_settings.initialRouteName}>
       <Stack.Screen name="fitness/(sections)" dangerouslySingular />
     </TabStack>
   );

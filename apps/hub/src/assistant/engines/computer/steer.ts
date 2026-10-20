@@ -34,6 +34,7 @@ export async function steerTurn(
   if (!target.current())
     throw new ApiError('conflict', 'The reply finished before the message could be added to it.');
   turn.steered.push(event);
+  turn.stream.steer(event.message_id);
   deps.conversation.stateOf(event.message_id, 'delivered');
   deps.log.info('computer.steered', { chatId: chat.id, eventId: event.id, jobId: turn.jobId });
   return true;

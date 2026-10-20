@@ -1,5 +1,6 @@
 import {
   COMPUTER_CAPTURE,
+  type ComputerCapture,
   PHONE_ACTION_RESULT,
   SEE_REQUEST,
   type CaptureTarget,
@@ -17,6 +18,10 @@ const PLACED_NAMING: Naming<Placed> = {
   label: ({ name }) => name,
   id: ({ device }) => device.id,
 };
+
+export function pictureSizeOf(capture: Pick<ComputerCapture, 'width' | 'height'>): string {
+  return `${String(capture.width)}x${String(capture.height)} pixels; coordinates for use_computer are in this size, whatever size the picture looks`;
+}
 
 export function machineOf(
   context: Pick<ToolContext, 'store' | 'actor'>,
@@ -62,7 +67,7 @@ async function captured(
   context: ToolContext,
   computer: Placed,
   target: CaptureTarget,
-): Promise<{ readonly at: string; readonly data: string }> {
+): Promise<ComputerCapture> {
   const capture = COMPUTER_CAPTURE.parse(
     await operate(context, 'captureComputer', {
       params: { deviceId: computer.device.id },
@@ -140,7 +145,12 @@ export const SEE_TOOL: Tool = defineTool({
         ? `${input.window} on ${computer.name}`
         : `${computer.name} screen`;
     return {
-      structured: { source: input.source, what, at: capture.at },
+      structured: {
+        source: input.source,
+        what,
+        at: capture.at,
+        ...(input.source === 'desktop_screen' ? { pictureSize: pictureSizeOf(capture) } : {}),
+      },
       images: [{ data: capture.data, mimeType: SNAPSHOT_TYPE }],
     };
   },

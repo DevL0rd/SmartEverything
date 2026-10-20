@@ -5,7 +5,8 @@ import { ValueStore, useValue } from '../../../design/external-store';
 import { useActiveProfile } from '../../../store/people';
 import { useStoreSelector } from '../../../store/store-context';
 import { useAiChats } from '../data/chat-store';
-import { ContinueComposer, NewChatComposer } from './quick-ask-composers';
+import { setDraft } from '../data/drafts';
+import { ContinueComposer, NewChatComposer, QUICK_ASK_DRAFT_KEY } from './quick-ask-composers';
 import { useQuickAskDelivery } from './quick-ask-delivery';
 import { QuickAskFrame } from './quick-ask-frame';
 import {
@@ -20,6 +21,11 @@ import { TargetLine } from './quick-ask-target-line';
 const open = new ValueStore(false);
 
 export function openQuickAsk(): void {
+  open.set(true);
+}
+
+export function openQuickAskWith(text: string): void {
+  setDraft(QUICK_ASK_DRAFT_KEY, text);
   open.set(true);
 }
 

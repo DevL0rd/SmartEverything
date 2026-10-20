@@ -1,6 +1,6 @@
 export interface VirtualSection<T> {
   readonly key: string;
-  readonly title: string;
+  readonly title: string | null;
   readonly data: readonly T[];
 }
 
@@ -23,7 +23,9 @@ export function flattenSections<T>(
   keyOf: (item: T) => string,
 ): readonly ListRow<T>[] {
   return sections.flatMap((section) => [
-    { kind: 'header' as const, key: `${section.key}:header`, title: section.title },
+    ...(section.title === null
+      ? []
+      : [{ kind: 'header' as const, key: `${section.key}:header`, title: section.title }]),
     ...section.data.map((item) => ({
       kind: 'item' as const,
       key: `${section.key}:${keyOf(item)}`,

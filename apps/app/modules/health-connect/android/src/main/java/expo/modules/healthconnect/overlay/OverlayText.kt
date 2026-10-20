@@ -66,8 +66,7 @@ class OverlayTextView(context: Context, private val palette: OverlayPalette, pri
   fun wantedWidth(content: TextContent): Float {
     val face = faceFor(content)
     val dot = (OverlayDims.STATUS_DOT + OverlayDims.STATUS_DOT_GAP) * density
-    val caption = content.caption?.let { captionPaint(content).measureText(it) } ?: 0f
-    return maxOf(dot + face.measureText(content.headline), caption)
+    return dot + face.measureText(content.headline)
   }
 
   fun bind(next: TextContent, animate: Boolean) {

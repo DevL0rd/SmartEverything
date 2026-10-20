@@ -42,6 +42,8 @@ interface Rig {
   readonly joined: Joined[];
   readonly left: string[];
   readonly relayed: { computerId: string; key: string; message: RemoteEarNodeMessage }[];
+  readonly scored: { computerId: string; id: string; heard: boolean }[];
+  readonly scoreFailed: { computerId: string; id: string; reason: string }[];
   readonly sent: HubFrame[];
   readonly session: ComputerSession;
   readonly receive: (frame: unknown) => void;
@@ -51,6 +53,8 @@ function rig(): Rig {
   const joined: Joined[] = [];
   const left: string[] = [];
   const relayed: Rig['relayed'] = [];
+  const scored: Rig['scored'] = [];
+  const scoreFailed: Rig['scoreFailed'] = [];
   const sent: HubFrame[] = [];
   const listeners = new Set<(frame: unknown) => void>();
   const link: HubLink = {
@@ -81,6 +85,12 @@ function rig(): Rig {
     relayed: (computerId, key, message): void => {
       relayed.push({ computerId, key, message });
     },
+    scored: (computerId, id, heard): void => {
+      scored.push({ computerId, id, heard });
+    },
+    scoreFailed: (computerId, id, reason): void => {
+      scoreFailed.push({ computerId, id, reason });
+    },
   };
   const session = new ComputerSession({
     link,
@@ -95,6 +105,8 @@ function rig(): Rig {
     hubComputerResolved: (): void => undefined,
     earHosts,
     recordAppTime: (): void => undefined,
+    signals: { emit: (): void => undefined },
+    personOf: (): null => null,
     now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
     log: testLogger(),
   });
@@ -103,7 +115,7 @@ function rig(): Rig {
       listener(frame);
     });
   };
-  return { joined, left, relayed, sent, session, receive };
+  return { joined, left, relayed, scored, scoreFailed, sent, session, receive };
 }
 
 beforeEach(() => {
@@ -126,6 +138,22 @@ describe('a computer session as an ear host', () => {
     receive({ type: 'ears', key: 'cam', ear: { kind: 'near', phrase: 'Sam' } });
     expect(relayed).toEqual([
       { computerId: 'device-1', key: 'cam', message: { kind: 'near', phrase: 'Sam' } },
+    ]);
+  });
+
+  it('hands a score answer to the hosts under the computer’s device', () => {
+    const { scored, receive } = rig();
+    receive({ type: 'hello', hello: { ...HELLO, features: ['ear_host'] } });
+    receive({ type: 'ears_scored', id: 'one', heard: true });
+    expect(scored).toEqual([{ computerId: 'device-1', id: 'one', heard: true }]);
+  });
+
+  it('hands a score failure to the hosts under the computer’s device', () => {
+    const { scoreFailed, receive } = rig();
+    receive({ type: 'hello', hello: { ...HELLO, features: ['ear_host'] } });
+    receive({ type: 'ears_score_failed', id: 'one', reason: 'engine not loaded' });
+    expect(scoreFailed).toEqual([
+      { computerId: 'device-1', id: 'one', reason: 'engine not loaded' },
     ]);
   });
 

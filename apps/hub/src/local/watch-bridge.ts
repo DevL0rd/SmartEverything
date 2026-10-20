@@ -52,6 +52,13 @@ export class WatchBridges {
     return null;
   }
 
+  heldElsewhere(device: BridgedDevice, client: Pick<ClientRow, 'id'>): WatchBridge | null {
+    const holder = this.holderOf(device);
+    return holder !== null && holder.clientId !== client.id && this.alive(device, holder)
+      ? holder
+      : null;
+  }
+
   async require(device: BridgedDevice, client: Pick<ClientRow, 'id' | 'name'>): Promise<void> {
     const blocking = await this.acquire(device, client);
     if (blocking === null) {

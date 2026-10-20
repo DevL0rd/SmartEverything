@@ -1,9 +1,8 @@
-import { memo, useEffect, useMemo, type ReactElement, type ReactNode } from 'react';
-import { View, useWindowDimensions, type ViewStyle } from 'react-native';
+import { useEffect, useMemo, type ReactElement, type ReactNode } from 'react';
+import { View, useWindowDimensions } from 'react-native';
 import type { Href } from 'expo-router';
 import { Logger } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
-import type { WidgetFrameBox } from '../../../components/widget-board';
 import { useLifecycleLog } from '../../../components/use-lifecycle-log';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import {
@@ -11,147 +10,127 @@ import {
   type ScrollSettled,
   type VirtualSection,
 } from '../../../components/virtual-list';
-import { LogTally } from '../../../design/log-tally';
 import { useIdiom } from '../../../design/platform';
-import { useSizeClass } from '../../../design/size-class';
-import { useThemeSetting } from '../../../design/theme';
-import { GUTTER, SEMANTIC_SIZES, type Idiom } from '../../../design/tokens';
 import { LightGroupCard } from '../../device-groups';
-import { plural } from '../../../format/text';
+import { cn } from '../../../design/cn';
 import { NO_ROOM, type DeviceSection, type LightsCard } from '../model/device-filter';
 import { columnsFor, contentWidth } from '../model/grid-columns';
+import { BAND_INSET } from '../model/room-band';
 import { packRows, sameRow, type PackedRow } from '../model/row-pack';
-import { DeviceCell } from './device-cell';
+import { GridRowView, useCellSize, type CellSize } from './grid-row';
+import { RoomHeader, type RoomHeaderEntry } from './room-header';
 
 const log = new Logger('app.device-list');
-const mounts = new LogTally(log, 'grid.rows_summarised', 5000);
-
-const CELL_HEIGHT: Readonly<Record<Idiom, number>> = { pointer: 196, touch: 220 };
 
 type GridEntry =
+  | { readonly kind: 'room'; readonly key: string; readonly room: RoomHeaderEntry }
   | {
       readonly kind: 'lights';
       readonly key: string;
       readonly card: LightsCard;
       readonly link: Href | undefined;
+      readonly last: boolean;
     }
-  | { readonly kind: 'devices'; readonly key: string; readonly row: PackedRow };
+  | {
+      readonly kind: 'devices';
+      readonly key: string;
+      readonly row: PackedRow;
+      readonly last: boolean;
+    };
+
+function bodyOf(
+  group: DeviceSection,
+  perRow: number,
+): readonly (GridEntry & { readonly kind: 'lights' | 'devices' })[] {
+  const lights = group.lights === null ? [] : [group.lights];
+  const rows = packRows(group.devices, perRow);
+  const total = lights.length + rows.length;
+  return [
+    ...lights.map((card) => ({
+      kind: 'lights' as const,
+      key: `${group.key}:lights`,
+      card,
+      link: group.key === NO_ROOM ? undefined : href.roomLights(group.key),
+      last: total === 1,
+    })),
+    ...rows.map((row, index) => ({
+      kind: 'devices' as const,
+      key: `${group.key}:${row.key}`,
+      row,
+      last: lights.length + index === total - 1,
+    })),
+  ];
+}
 
 function sectionsOf(
   groups: readonly DeviceSection[],
   perRow: number,
+  status: boolean,
 ): readonly VirtualSection<GridEntry>[] {
-  return groups.map((group) => ({
-    key: group.key,
-    title: `${group.title} · ${plural(group.count, 'device')}`,
-    data: [
-      ...(group.lights === null
-        ? []
-        : [
-            {
-              kind: 'lights' as const,
-              key: `${group.key}:lights`,
-              card: group.lights,
-              link: group.key === NO_ROOM ? undefined : href.roomLights(group.key),
-            },
-          ]),
-      ...packRows(group.devices, perRow).map((row) => ({
-        kind: 'devices' as const,
-        key: `${group.key}:${row.key}`,
-        row,
-      })),
-    ],
-  }));
-}
-
-interface CellSize {
-  readonly gap: number;
-  readonly height: number;
-  readonly gutter: number;
-  readonly idiom: Idiom;
-  readonly pad: number;
-  readonly perRow: number;
-  readonly column: number;
-}
-
-function useCellSize(): CellSize {
-  const idiom = useIdiom();
-  const sizes = SEMANTIC_SIZES[idiom][useThemeSetting('density')];
-  return {
-    gap: sizes.gridGap,
-    height: CELL_HEIGHT[idiom],
-    gutter: GUTTER[useSizeClass().width] - sizes.gutterShrink,
-    idiom,
-    pad: sizes.cardPad,
-    perRow: 1,
-    column: 0,
-  };
-}
-
-function frameOf(cell: CellSize): WidgetFrameBox {
-  return {
-    width: cell.column - 2 * cell.pad,
-    height: cell.height - 2 * cell.pad,
-    idiom: cell.idiom,
-  };
-}
-
-interface GridRowProps {
-  readonly row: PackedRow;
-  readonly cell: CellSize;
-}
-
-function GridRow({ row, cell }: GridRowProps): ReactNode {
-  const box = {
-    height: cell.height,
-    marginBottom: cell.gap,
-    marginHorizontal: -cell.gap / 2,
-  };
-  const slot = (span: number): ViewStyle => ({
-    flexBasis: 0,
-    flexGrow: span,
-    paddingHorizontal: cell.gap / 2,
-  });
-  const count = row.devices.length;
-  const frame = frameOf(cell);
-  useEffect(() => {
-    mounts.bump('rowsMounted');
-    mounts.bump('cellsMounted', count);
-    return (): void => {
-      mounts.bump('rowsUnmounted');
-      mounts.bump('cellsUnmounted', count);
+  return groups.map((group) => {
+    const body = bodyOf(group, perRow);
+    return {
+      key: group.key,
+      title: null,
+      data: [
+        {
+          kind: 'room' as const,
+          key: `${group.key}:room`,
+          room: {
+            key: group.key,
+            title: group.title,
+            count: group.count,
+            status,
+            alone: body.length === 0,
+          },
+        },
+        ...body,
+      ],
     };
-  }, [count]);
+  });
+}
+
+function sameRoomEntry(left: RoomHeaderEntry, right: RoomHeaderEntry): boolean {
   return (
-    <View style={box} className="flex-row">
-      {row.devices.map((device) => (
-        <View key={device.id} style={slot(1)}>
-          <DeviceCell device={device} frame={frame} />
-        </View>
-      ))}
-      {count < cell.perRow ? <View style={slot(cell.perRow - count)} /> : null}
-    </View>
+    left.title === right.title &&
+    left.count === right.count &&
+    left.status === right.status &&
+    left.alone === right.alone
   );
 }
 
-const GridRowView = memo(
-  GridRow,
-  (left, right) =>
-    left.cell.gap === right.cell.gap &&
-    left.cell.height === right.cell.height &&
-    left.cell.column === right.cell.column &&
-    left.cell.perRow === right.cell.perRow &&
-    left.cell.idiom === right.cell.idiom &&
-    sameRow(left.row, right.row),
-);
-
 function sameEntry(left: GridEntry, right: GridEntry): boolean {
-  if (left.kind === 'devices' && right.kind === 'devices') return sameRow(left.row, right.row);
+  switch (left.kind) {
+    case 'room':
+      return right.kind === 'room' && sameRoomEntry(left.room, right.room);
+    case 'devices':
+      return right.kind === 'devices' && left.last === right.last && sameRow(left.row, right.row);
+    case 'lights':
+      return (
+        right.kind === 'lights' &&
+        left.last === right.last &&
+        left.card.devices.length === right.card.devices.length &&
+        left.card.devices.every((device, index) => device === right.card.devices[index])
+      );
+  }
+}
+
+function Band({
+  last,
+  children,
+}: {
+  readonly last: boolean;
+  readonly children: ReactNode;
+}): ReactNode {
   return (
-    left.kind === 'lights' &&
-    right.kind === 'lights' &&
-    left.card.devices.length === right.card.devices.length &&
-    left.card.devices.every((device, index) => device === right.card.devices[index])
+    <View
+      className={cn(
+        'border-x border-outline-variant bg-surface-1 px-3',
+        last && 'rounded-b-xl border-b pb-2',
+      )}
+    >
+      {children}
+    </View>
   );
 }
 
@@ -177,8 +156,22 @@ function LightsRow({
   );
 }
 
+function renderEntry(entry: GridEntry, width: number, cell: CellSize): ReactElement {
+  if (entry.kind === 'room') return <RoomHeader entry={entry.room} />;
+  return (
+    <Band last={entry.last}>
+      {entry.kind === 'lights' ? (
+        <LightsRow entry={entry} width={width} />
+      ) : (
+        <GridRowView row={entry.row} cell={cell} />
+      )}
+    </Band>
+  );
+}
+
 interface DeviceGridProps {
   readonly groups: readonly DeviceSection[];
+  readonly status: boolean;
   readonly header: ReactElement;
   readonly empty: ReactElement;
 }
@@ -215,15 +208,17 @@ function useGridLog(shown: {
 
 function Grid({
   groups,
+  status,
   header,
   empty,
   width,
 }: DeviceGridProps & { readonly width: number }): ReactNode {
   const base = useCellSize();
   const content = contentWidth(width, base.gutter);
-  const perRow = columnsFor(content, base.gap);
-  const cell = { ...base, perRow, column: (content + base.gap) / perRow - base.gap };
-  const sections = useMemo(() => sectionsOf(groups, perRow), [groups, perRow]);
+  const inner = content - BAND_INSET;
+  const perRow = columnsFor(inner, base.gap);
+  const cell = { ...base, perRow, column: (inner + base.gap) / perRow - base.gap };
+  const sections = useMemo(() => sectionsOf(groups, perRow, status), [groups, perRow, status]);
   useGridLog({ width, columns: perRow, cell, sections, groups });
   return (
     <VirtualList
@@ -236,13 +231,7 @@ function Grid({
       onScrollSettled={settled}
       header={header}
       empty={empty}
-      renderItem={(entry) =>
-        entry.kind === 'lights' ? (
-          <LightsRow entry={entry} width={content} />
-        ) : (
-          <GridRowView row={entry.row} cell={cell} />
-        )
-      }
+      renderItem={(entry) => renderEntry(entry, inner, cell)}
     />
   );
 }

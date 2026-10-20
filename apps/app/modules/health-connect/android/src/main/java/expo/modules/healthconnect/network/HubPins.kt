@@ -5,6 +5,7 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.Proxy
 import java.net.ProxySelector
+import java.net.Socket
 import java.net.SocketAddress
 import java.net.URI
 import java.security.KeyStore
@@ -12,8 +13,10 @@ import java.security.MessageDigest
 import java.security.cert.X509Certificate
 import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLSession
 import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509ExtendedTrustManager
 import javax.net.ssl.X509TrustManager
 import okhttp3.Dns
 import okhttp3.Interceptor
@@ -98,21 +101,45 @@ object HubPins {
   }
 }
 
-private class PinnedTrust(private val pins: () -> HubPinSet, private val platform: X509TrustManager) : X509TrustManager {
+private class PinnedTrust(private val pins: () -> HubPinSet, private val platform: X509TrustManager) : X509ExtendedTrustManager() {
   override fun getAcceptedIssuers(): Array<X509Certificate> = platform.acceptedIssuers
 
   override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {
     platform.checkClientTrusted(chain, authType)
   }
 
+  override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String, socket: Socket?) {
+    if (platform is X509ExtendedTrustManager) platform.checkClientTrusted(chain, authType, socket) else platform.checkClientTrusted(chain, authType)
+  }
+
+  override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String, engine: SSLEngine?) {
+    if (platform is X509ExtendedTrustManager) platform.checkClientTrusted(chain, authType, engine) else platform.checkClientTrusted(chain, authType)
+  }
+
   override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+    verify(chain, authType) { platform.checkServerTrusted(chain, authType) }
+  }
+
+  override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String, socket: Socket?) {
+    verify(chain, authType) {
+      if (platform is X509ExtendedTrustManager) platform.checkServerTrusted(chain, authType, socket) else platform.checkServerTrusted(chain, authType)
+    }
+  }
+
+  override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String, engine: SSLEngine?) {
+    verify(chain, authType) {
+      if (platform is X509ExtendedTrustManager) platform.checkServerTrusted(chain, authType, engine) else platform.checkServerTrusted(chain, authType)
+    }
+  }
+
+  private fun verify(chain: Array<X509Certificate>, authType: String, platformCheck: () -> Unit) {
     val leaf = chain.firstOrNull()
     if (leaf != null && pins().accepts(leaf)) {
       NativeLog.debug("hub-tls", "trust.pinned") { mapOf("chain" to chain.size, "key" to PinSet.short(leaf.publicKey.encoded), "authType" to authType) }
       return
     }
     try {
-      platform.checkServerTrusted(chain, authType)
+      platformCheck()
       NativeLog.debug("hub-tls", "trust.platform") { mapOf("chain" to chain.size, "key" to leaf?.let { PinSet.short(it.publicKey.encoded) }, "authType" to authType) }
     } catch (failure: java.security.cert.CertificateException) {
       NativeLog.warn("hub-tls", "trust.rejected", failure) { mapOf("chain" to chain.size, "key" to leaf?.let { PinSet.short(it.publicKey.encoded) }, "authType" to authType) }

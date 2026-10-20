@@ -4,18 +4,11 @@ import type {
   DesktopTalkTray,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import {
-  Menu,
-  nativeImage,
-  Tray,
-  type BrowserWindow,
-  type MenuItemConstructorOptions,
-} from 'electron';
-import { talkMenuItems, talkTrayImages } from './talk/talk-tray.js';
+import { Menu, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
+import { talkMenuItems } from './talk/talk-tray.js';
+import { themedTray } from './tray-icon.js';
 import { trayHealthLabel } from './tray-status.js';
 import { revealWindow } from './window.js';
-
-const TRAY_ICON_SIZE = 24;
 
 const log = new Logger('desktop.tray');
 
@@ -26,7 +19,7 @@ interface TrayServiceControls {
 }
 
 export interface TrayOptions {
-  readonly icon: string;
+  readonly iconDirectory: string;
   readonly window: BrowserWindow;
   readonly service: TrayServiceControls;
   readonly managedBy: 'stable-app' | undefined;
@@ -110,13 +103,9 @@ function menuOf(
 }
 
 export function createTray(options: TrayOptions): DesktopTray {
-  const images = talkTrayImages(
-    nativeImage
-      .createFromPath(options.icon)
-      .resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE }),
-  );
-  const tray = new Tray(images.idle);
-  log.info('tray.created', { managedBy: options.managedBy ?? 'self', iconSize: TRAY_ICON_SIZE });
+  const icon = themedTray(options.iconDirectory, process.platform);
+  const { tray } = icon;
+  log.info('tray.created', { managedBy: options.managedBy ?? 'self' });
   let service: MenuItemConstructorOptions[] = [];
   let talk: DesktopTalkTray | null = null;
   let health = trayHealthLabel(null);
@@ -147,12 +136,13 @@ export function createTray(options: TrayOptions): DesktopTray {
         channels: state.channels.length,
         statusLength: state.status.length,
       });
-      tray.setImage(images[state.activity]);
+      icon.show(state.activity);
       render();
     },
     refresh: render,
     destroy: (): void => {
       log.info('tray.destroyed');
+      icon.stop();
       tray.destroy();
     },
   };

@@ -15,6 +15,7 @@ import {
   type CallEndpoint,
   type VoiceEndpoint,
 } from './call-link';
+import { CallMoments, type CallMomentListener } from './call-moments';
 import { CallLive, type Call, type CallDeskOptions, type SightBudget } from './call-parts';
 import { CallRecord } from './call-record';
 import { adoptEndpoint, holdCall } from './call-resume';
@@ -79,6 +80,7 @@ export class CallDesk {
   private readonly calls = new Map<string, Call>();
   readonly sights = new SightCalls(() => this.calls.values());
   private readonly outbox = new Outbox();
+  private readonly moments = new CallMoments();
   private readonly deps: CallHooksDeps;
   private readonly warm: WarmSessions;
   private outreach: OutreachDesk | null = null;
@@ -97,6 +99,10 @@ export class CallDesk {
 
   attachOutreach(desk: OutreachDesk): void {
     this.outreach = desk;
+  }
+
+  onCall(listener: CallMomentListener): () => void {
+    return this.moments.on(listener);
   }
 
   attachBudget(budget: SightBudget): void {
@@ -349,6 +355,7 @@ export class CallDesk {
       conversation: new Conversation(this.lineOf(spec, hooks), link, hooks),
     };
     this.calls.set(slot.id, call);
+    this.moments.started(call);
     const notes = [
       ...(spec.opening === null ? [] : [spec.opening]),
       ...this.outbox.take(spec.caller.profileId),
@@ -371,6 +378,7 @@ export class CallDesk {
       this.calls.delete(call.endpoint.id);
     }
     this.teardown(call);
+    this.moments.ended(call, reason, this.options.now());
     call.record.close();
     this.options.responder.callEnded(call.chatId, call.record.transcript());
     if (call.outreachId !== null) {

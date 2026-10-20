@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import expo.modules.healthconnect.HubClient
+import expo.modules.healthconnect.R
 import expo.modules.healthconnect.ServiceStartRefused
 import expo.modules.healthconnect.SyncFailure
 import expo.modules.healthconnect.relayTarget
@@ -119,12 +120,12 @@ class AiSpeechService : Service() {
     val manager = getSystemService(NotificationManager::class.java)
     manager.createNotificationChannel(NotificationChannel(CHANNEL, "AI voice", NotificationManager.IMPORTANCE_LOW))
     val generic = Notification.Builder(this, CHANNEL)
-      .setSmallIcon(applicationInfo.icon)
+      .setSmallIcon(R.drawable.ic_stat_smarteverything)
       .setContentTitle("SmartEverything")
       .setContentText(SPEAKING)
       .build()
     val notification = Notification.Builder(this, CHANNEL)
-      .setSmallIcon(applicationInfo.icon)
+      .setSmallIcon(R.drawable.ic_stat_smarteverything)
       .setContentTitle(title)
       .apply { if (text != null) setContentText(text) }
       .setVisibility(Notification.VISIBILITY_PRIVATE)

@@ -110,16 +110,6 @@ describe('IR data point writes', () => {
     ]);
   });
 
-  it('refuses to write a library key as data points', () => {
-    expect(() =>
-      irWrites(legacy, { kind: 'send', code: { format: 'library', code: '{}' } }),
-    ).toThrow(
-      new IrCodeError(
-        'library',
-        'a library key is sent through the Tuya cloud, not as data points',
-      ),
-    );
-  });
 });
 
 describe('learned codes', () => {

@@ -7,7 +7,7 @@ import { assertScope, runtimeOf, type Runtime } from './scope';
 
 type OutputStyle = 'pretty' | 'plain' | 'json';
 
-type ConsoleRouting = 'by-level' | 'log-only';
+type ConsoleRouting = 'by-level' | 'log-only' | 'warnings-only';
 
 export interface LoggerSettings {
   readonly level: LogLevel;
@@ -42,6 +42,9 @@ function writeToConsole(record: LogRecord, style: OutputStyle, routing: ConsoleR
 
   if (routing === 'log-only') {
     console.log(line);
+    return;
+  }
+  if (routing === 'warnings-only' && !passesThreshold(record.level, 'warn')) {
     return;
   }
   if (record.level === 'warn') {

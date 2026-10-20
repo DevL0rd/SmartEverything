@@ -38,6 +38,7 @@ export function input(patch: Partial<OverlayInput> = {}): OverlayInput {
     superseded: null,
     audio: { mics: [{ id: 'yeti', label: 'Blue Yeti (USB)' }], micId: null, volume: 0.8 },
     hold: { active: false, endedAt: null },
+    voice: { thinking_level: 'off', saving: false, failed: false, changedInCall: false },
     now: NOW,
     ...patch,
   };

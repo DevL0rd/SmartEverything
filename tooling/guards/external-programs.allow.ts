@@ -48,6 +48,11 @@ export const PROGRAMS: Readonly<Record<string, ProgramEntry>> = {
     kind: 'os',
     reason: 'registers the smarteverything:// link handler on Linux desktops',
   },
+  sudo: {
+    kind: 'os',
+    reason:
+      'passwordless sudo on the server computer adds the firewall rules the owner approved on the firewall page',
+  },
   pkexec: { kind: 'os', reason: 'polkit prompt for the elevated firewall change on Linux' },
   'powershell.exe': {
     kind: 'os',
@@ -89,11 +94,11 @@ export const PROGRAMS: Readonly<Record<string, ProgramEntry>> = {
     kind: 'os',
     reason: 'always on macOS; wakes the display so the person can unlock a Mac',
   },
-  unzip: {
+  gs: {
     kind: 'optional-external',
-    reason: 'the user’s own unzip; unpacking a downloaded app update on Linux needs it',
+    reason:
+      'the user’s own Ghostscript; printing a PDF to a printer that cannot read PDF needs it and reports converter_missing without it',
   },
-  ditto: { kind: 'os', reason: 'always on macOS; unpacks a downloaded app update' },
   unzip: {
     kind: 'optional-external',
     reason:

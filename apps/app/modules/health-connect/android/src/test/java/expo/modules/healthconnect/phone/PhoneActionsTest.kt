@@ -1,6 +1,7 @@
 package expo.modules.healthconnect.phone
 
 import android.content.Context
+import expo.modules.healthconnect.push.PhoneActionOrigin
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -28,7 +29,7 @@ class PhoneActionsTest {
     unmockkAll()
   }
 
-  private fun run(json: String): PhoneActionResult = PhoneActionPush.runSafely(context, JSONObject(json))
+  private fun run(json: String): PhoneActionResult = PhoneActionPush.runSafely(context, JSONObject(json), PhoneActionOrigin("assistant", "Desk"))
 
   @Test
   fun `every action type the hub can send has a handler`() {

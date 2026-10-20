@@ -7,7 +7,7 @@ import {
   type CODEX_OPERATION,
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
-import { computerAiKey } from './computer-ai';
+import { computerAiKey } from '../../../queries/keys';
 import { background } from '@smarteverything/logging';
 
 export interface NativeOperationState {

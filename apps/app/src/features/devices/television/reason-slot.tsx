@@ -10,13 +10,13 @@ import type { TvView } from './view';
 function quietText(view: TvView): string | null {
   switch (view.mode) {
     case 'turning_on':
-      return 'Turning on…';
+      return view.wakesOverNetwork ? 'Waking…' : 'Turning on…';
     case 'updating':
       return 'The TV is installing an update';
     case 'unreachable':
       return "The TV isn't answering";
     case 'off_unreachable':
-      return "This TV can't be turned on from here";
+      return 'Link it directly in its settings';
     case 'standby':
       return 'Turn the TV on to use the remote';
     case 'on':

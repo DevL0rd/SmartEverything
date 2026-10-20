@@ -5,7 +5,6 @@ import { DENIED_FIELDS, REDACTED, isDeniedField, redact, redactText } from '../s
 describe('redaction', () => {
   it('denies exactly the fields it says it denies, in one list nobody has to remember', () => {
     expect([...DENIED_FIELDS]).toEqual([
-      'accessSecret',
       'accessToken',
       'address',
       'apiKey',

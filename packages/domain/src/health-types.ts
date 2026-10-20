@@ -32,10 +32,8 @@ function infoOf(variant: (typeof HEALTH_RECORD_VARIANTS)[number]): HealthTypeInf
 
 export const HEALTH_TYPE_INFO: readonly HealthTypeInfo[] = HEALTH_RECORD_VARIANTS.map(infoOf);
 
-export function healthTypeInfo(type: HealthRecordType): HealthTypeInfo {
+export function healthTypeInfo(type: string): HealthTypeInfo {
   const found = HEALTH_TYPE_INFO.find((info) => info.type === type);
-  if (found === undefined) {
-    throw new UnknownHealthTypeError(type);
-  }
+  if (found === undefined) throw new UnknownHealthTypeError(type);
   return found;
 }

@@ -25,6 +25,7 @@ function rowOf(form: LogForm, data: Record<string, unknown>, end: string | null)
     food: null,
     version: 1,
     save_error: null,
+    source: null,
     created_at: '2026-10-16T10:00:00.000Z',
     updated_at: '2026-10-16T10:00:00.000Z',
   };

@@ -251,5 +251,5 @@ export const TV_KEY_REASON_TEXT: Readonly<Record<TvKeyReason, string>> = {
   updating: 'The TV is installing an update',
   unreachable: "The TV isn't answering",
   not_on_this_tv: "This screen doesn't have it",
-  cannot_wake: "Can't turn on from here",
+  cannot_wake: 'Link it directly in its settings so the hub can turn it on',
 };

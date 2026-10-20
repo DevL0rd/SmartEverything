@@ -15,6 +15,7 @@ interface ToolAction {
 }
 const ACTIONS: ReadonlyMap<string, ToolAction> = new Map([
   ['bash', { title: 'Run a command', goal: 'Running commands' }],
+  ['pwsh', { title: 'Run a command', goal: 'Running commands' }],
   ['exec_command', { title: 'Run a command', goal: 'Running commands' }],
   ['shell', { title: 'Run a command', goal: 'Running commands' }],
   ['read', { title: 'Read a file', goal: 'Reading files', fileVerb: 'Read' }],

@@ -1,7 +1,7 @@
 import {
   BOARD_CLASSES,
-  BOARD_LAYOUT_VERSION,
-  withArrangementFor,
+  arrangementOf,
+  withWidgetOverlaid,
   type BoardLayout,
   type BoardWidget,
 } from '@smarteverything/domain';
@@ -12,12 +12,12 @@ export function withWidgetAdded(
   defaults: BoardDefaults,
   widget: BoardWidget,
 ): BoardLayout | null {
-  let layout: BoardLayout = { version: BOARD_LAYOUT_VERSION, classes: { ...stored.classes } };
+  let layout = stored;
   let changed = false;
   for (const board of BOARD_CLASSES) {
-    const widgets = layout.classes[board]?.widgets ?? defaults[board];
+    const widgets = arrangementOf(layout, board, defaults);
     if (widgets.some((candidate) => candidate.key === widget.key)) continue;
-    layout = withArrangementFor(layout, board, { widgets: [...widgets, widget] });
+    layout = withWidgetOverlaid(layout, board, widget);
     changed = true;
   }
   return changed ? layout : null;

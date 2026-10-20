@@ -1,33 +1,31 @@
-import { useRef, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { useRef } from 'react';
+import type { ReactNode } from 'react';
+import type { View } from 'react-native';
 import type { Tone } from '../../../components/tone';
 import { useVisibleLive } from '../../../design/use-visible-live';
 import { useRoomName } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { DeviceVisual } from '../../device-visuals';
-import { WIDE_VISUAL_PX, WideCard, type WideClass } from '../card/wide-card';
+import { WIDE_VISUAL_PX, WideCard, type WideClass, type WideFrame } from '../card/wide-card';
 import { LogMini } from '../log/log-mini';
 import { LogTicker } from '../log/log-ticker';
-import { OfflineChip, roomOnCard, StateLine, summaryOf } from './state-line';
+import { offlineChip, roomOnCard, StateLine, summaryOf } from './state-line';
 
-export function VisibleRoot({
-  children,
-}: {
-  readonly children: (live: boolean) => ReactNode;
-}): ReactNode {
+export interface VisibleFrame {
+  readonly live: boolean;
+  readonly frame: WideFrame;
+}
+
+export function useVisibleFrame(): VisibleFrame {
   const ref = useRef<View>(null);
   const { live, onLayout } = useVisibleLive(ref);
-  return (
-    <View ref={ref} onLayout={onLayout} className="flex-1" pointerEvents="box-none">
-      {children(live)}
-    </View>
-  );
+  return { live, frame: { ref, onLayout } };
 }
 
 export interface SensorFrameProps {
   readonly device: Device;
   readonly cls: WideClass;
-  readonly live: boolean;
+  readonly visible: VisibleFrame;
   readonly line: string;
   readonly tone: Tone;
   readonly offline: boolean;
@@ -40,7 +38,7 @@ export interface SensorFrameProps {
 export function SensorFrame({
   device,
   cls,
-  live,
+  visible,
   line,
   tone,
   offline,
@@ -49,15 +47,17 @@ export function SensorFrame({
   graph,
   actions,
 }: SensorFrameProps): ReactNode {
+  const { live, frame } = visible;
   const room = useRoomName(device.id);
   const panel = cls === 'l' || cls === 'xl';
   return (
     <WideCard
       cls={cls}
+      frame={frame}
       summary={summaryOf({ name: device.label, room, offline, facts })}
       visual={<DeviceVisual device={device} size="card" px={WIDE_VISUAL_PX[cls]} />}
       title={device.label}
-      chip={<OfflineChip offline={offline} />}
+      chip={offlineChip(offline)}
       state={<StateLine line={line} room={roomOnCard(cls, room)} tone={tone} />}
       figures={figures}
       graph={graph}

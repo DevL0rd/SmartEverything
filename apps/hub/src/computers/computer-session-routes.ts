@@ -23,7 +23,8 @@ export type ComputerSessionEndpointName =
   | 'closeComputerApp'
   | 'listComputerFiles'
   | 'readComputerFile'
-  | 'captureComputer';
+  | 'captureComputer'
+  | 'inputComputer';
 
 const INSTALLED = z.array(INSTALLED_APP);
 const WEEK_DAYS = 7;
@@ -92,6 +93,11 @@ export function computerSessionRoutes(
     captureComputer: bound(E.captureComputer, ({ params, body, caller }) => {
       const request = { verb: 'capture', target: body.target } as const;
       return service.ask({ caller, deviceId: params.deviceId, request }, COMPUTER_CAPTURE);
+    }),
+    inputComputer: bound(E.inputComputer, async ({ params, body, caller }) => {
+      const request = { verb: 'input', input: body } as const;
+      await service.ask({ caller, deviceId: params.deviceId, request }, z.unknown());
+      return DONE_REPLY;
     }),
   };
 }

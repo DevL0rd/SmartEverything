@@ -31,17 +31,19 @@ function Help({
   readonly helper: string | undefined;
   readonly error: string | null;
 }): ReactNode {
-  if (error !== null) {
-    return (
-      <Text variant="footnote" tone="critical" accessibilityLiveRegion="polite">
-        {error}
-      </Text>
-    );
-  }
-  return helper === undefined ? null : (
-    <Text variant="footnote" tone="variant">
-      {helper}
-    </Text>
+  return (
+    <>
+      {error === null ? null : (
+        <Text variant="footnote" tone="critical" accessibilityLiveRegion="polite">
+          {error}
+        </Text>
+      )}
+      {helper === undefined ? null : (
+        <Text variant="footnote" tone="variant">
+          {helper}
+        </Text>
+      )}
+    </>
   );
 }
 

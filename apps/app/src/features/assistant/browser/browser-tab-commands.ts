@@ -1,6 +1,7 @@
 import type { AiPreviewCatalogue, EmbeddedBrowserAction } from '@smarteverything/domain';
 import { assertEmbeddedBrowserAction } from './browser-embedded-policy';
 import { BrowserTabError } from './browser-tab-errors';
+import { isBrowserPageAction, performBrowserPageAction } from './browser-page-control';
 import { browserPublications } from './browser-publications';
 import type { BrowserTabs } from './browser-tabs';
 import type { BrowserTab } from './browser-tab-state';
@@ -13,6 +14,7 @@ export async function performBrowserTabAction(
 ): Promise<void> {
   if (signal?.aborted === true) throw new BrowserTabError('The browser command was cancelled.');
   assertEmbeddedBrowserAction(action, { tab: (id): BrowserTab => tabs.tab(id), catalogue });
+  if (isBrowserPageAction(action)) return performBrowserPageAction(tabs, action);
   switch (action.kind) {
     case 'open':
       return openBrowserTab(tabs, action.source, catalogue, signal);

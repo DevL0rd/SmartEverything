@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { voiceResponseOf } from '../../src/assistant-voice/voice-results';
+import { VOICE_RESULT_GUARD_CHARS, voiceResponseOf } from '../../src/assistant-voice/voice-results';
+import { captureLogs } from '../support/logs';
 
 describe('the voice tool results', () => {
-  it('drop provider internals and empty fields from find_devices but keep ids and capability keys', () => {
+  it('give find_devices as a summary of id, name, room, family, online and capability keys', () => {
     const response = {
       devices: [
         {
@@ -28,7 +29,6 @@ describe('the voice tool results', () => {
           id: 'd1',
           name: 'Lamp',
           family: 'light',
-          kind: 'bulb',
           online: true,
           room: 'Kitchen',
           capabilities: ['power', 'brightness'],
@@ -86,5 +86,21 @@ describe('the voice tool results', () => {
     expect(voiceResponseOf('get_weather', {}, other)).toBe(other);
     const failed = { error: 'no', devices: [] };
     expect(voiceResponseOf('find_devices', {}, failed)).toBe(failed);
+  });
+
+  it('stop an oversized result as a last resort, say so to the model and warn with the tool and size', () => {
+    const logs = captureLogs();
+    const result = voiceResponseOf(
+      'call_tool',
+      { name: 'some_plugin__dump' },
+      { rows: 'x'.repeat(60_000) },
+    );
+    expect(typeof result['over_guard']).toBe('string');
+    expect(String(result['start'])).toHaveLength(VOICE_RESULT_GUARD_CHARS);
+    expect(JSON.stringify(result).length).toBeLessThan(VOICE_RESULT_GUARD_CHARS + 400);
+    const warning = logs.records.find((record) => record.event === 'voice.result_over_guard');
+    expect(warning?.level).toBe('warn');
+    expect(warning?.payload).toMatchObject({ tool: 'some_plugin__dump', chars: 60_011 });
+    expect(voiceResponseOf('call_tool', {}, { ok: true })).toEqual({ ok: true });
   });
 });

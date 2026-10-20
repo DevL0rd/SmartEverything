@@ -1,30 +1,29 @@
-View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
-  View className="flex-1 p-card-pad" pointerEvents="box-none"
-    View className="flex-1 justify-between gap-2" pointerEvents="box-none"
-      View className="flex-row items-start justify-between gap-2" pointerEvents="none"
-        View className="items-center justify-center overflow-hidden bg-surface-3 rounded-md" pointerEvents="none"
-          View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(216, 192, 168, 0.3) 0%, rgba(216, 192, 168, 0.09999999999999999) 60%, rgba(216, 192, 168, 0) 100%)"}]
-          View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
-            Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
-              Svg.Ellipse cx=50 cy=94 fill="#2e3842" fillOpacity=0.12 rx=34 ry=3
-              Svg.Path d="M24 92V94M76 92V94" stroke="#3d444b" strokeLinecap="round" strokeWidth=2
-              Svg.Path d="M22 6 H78 A6 6 0 0 1 84 12 V86 A6 6 0 0 1 78 92 H22 A6 6 0 0 1 16 86 V12 A6 6 0 0 1 22 6 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) stroke="#2e3842" strokeOpacity=0.28 strokeWidth=1
-              Svg.Path d="M16 22H84" stroke="#3d444b" strokeWidth=0.8
-              Svg.Path d="M21.5 10 H38.5 A1.5 1.5 0 0 1 40 11.5 V16.5 A1.5 1.5 0 0 1 38.5 18 H21.5 A1.5 1.5 0 0 1 20 16.5 V11.5 A1.5 1.5 0 0 1 21.5 10 Z" fill="#1a2836" stroke="#3d444b" strokeWidth=0.7
-              Svg.Circle cx=72 cy=14 fill="#1f2c39" r=5 stroke="#3d444b" strokeWidth=0.8
-              Svg.Path d="M72 14L69 17" stroke="#333c45" strokeLinecap="round" strokeWidth=1
-              Svg.Path d="M45.5 10 H60.5 A1.5 1.5 0 0 1 62 11.5 V16.5 A1.5 1.5 0 0 1 60.5 18 H45.5 A1.5 1.5 0 0 1 44 16.5 V11.5 A1.5 1.5 0 0 1 45.5 10 Z" fill="#0B0D10" stroke="#d8c0a8" strokeWidth=0.7
-              Svg.Circle cx=50 cy=57 fill="#1f2c39" r=27 stroke="#3d444b" strokeWidth=1
-              Svg.Circle cx=50 cy=57 fill="#1a2836" r=20.4
-              Svg.Circle cx=50 cy=57 fill="none" r=20.8 stroke="#2e3842" strokeOpacity=0.12 strokeWidth=0.6
-            View pointerEvents="none" style={position:"absolute",left:14.208000000000002,top:17.568,width:19.584,height:19.584,overflow:"hidden",borderRadius:9.792}
-              View pointerEvents="none" style={position:"absolute",left:-14.208000000000002,top:-17.568,width:48,height:48}
-                Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:14.208000000000002,top:17.568,width:19.584,height:19.584},{animationName:{cssRules_:{from:{transform:[{rotate:"0deg"}]},to:{transform:[{rotate:"360deg"}]}},cssText_:"{\"from\":{\"transform\":[{\"rotate\":\"0deg\"}]},\"to\":{\"transform\":[{\"rotate\":\"360deg\"}]}}",length_:2,name_:"REA-CSS-0",processedKeyframes_:"from { transform: rotate(0deg) } to { transform: rotate(360deg) }"},animationDuration:6000,animationTimingFunction:"linear",animationDelay:0,animationIterationCount:"infinite",animationDirection:"normal",animationFillMode:"none",animationPlayState:"running"}]
-                  Svg.default height=19.584 viewBox="29.6 36.6 40.8 40.8" width=19.584
-                    Svg.Path d="M66 57L70 57M42 70.9L40 74.3M42 43.1L40 39.7" fill="none" stroke="#3d444b" strokeLinecap="round" strokeWidth=2.4
-                Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:14.208000000000002,top:17.568,width:19.584,height:19.584},null]
-                  Svg.default height=19.584 viewBox="29.6 36.6 40.8 40.8" width=19.584
-                    Svg.Path d="M38 68C36 62 44 58 50 62C56 59 62 63 60 69C58 74 42 75 38 68Z" fill="#a6988a" fillOpacity=0.85
-      View className="gap-0.5" pointerEvents="none"
-        Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=2 selectable=false
-        Text className="font-sans text-footnote text-primary text-left" numberOfLines=1 selectable=false
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1 p-card-pad" pointerEvents="box-none"
+  View className="flex-1 justify-between gap-2" pointerEvents="box-none"
+    View className="flex-row items-start justify-between gap-2" pointerEvents="none"
+      View className="items-center justify-center overflow-hidden bg-surface-3 rounded-md" pointerEvents="none"
+        View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(216, 54, 144, 0.3) 0%, rgba(216, 54, 144, 0.09999999999999999) 60%, rgba(216, 54, 144, 0) 100%)"}]
+        View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
+          Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
+            Svg.Ellipse cx=50 cy=94 fill="#ce9792" fillOpacity=0.12 rx=34 ry=3
+            Svg.Path d="M24 92V94M76 92V94" stroke="#1ad8bd" strokeLinecap="round" strokeWidth=2
+            Svg.Path d="M22 6 H78 A6 6 0 0 1 84 12 V86 A6 6 0 0 1 78 92 H22 A6 6 0 0 1 16 86 V12 A6 6 0 0 1 22 6 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#07b623"; ); Svg.Stop(offset="0.45" stopColor="#07b490"; ); Svg.Stop(offset="1" stopColor="#07b623"; ))) stroke="#ce9792" strokeOpacity=0.28 strokeWidth=1
+            Svg.Path d="M16 22H84" stroke="#1ad8bd" strokeWidth=0.8
+            Svg.Path d="M21.5 10 H38.5 A1.5 1.5 0 0 1 40 11.5 V16.5 A1.5 1.5 0 0 1 38.5 18 H21.5 A1.5 1.5 0 0 1 20 16.5 V11.5 A1.5 1.5 0 0 1 21.5 10 Z" fill="#07b623" stroke="#1ad8bd" strokeWidth=0.7
+            Svg.Circle cx=72 cy=14 fill="#07b490" r=5 stroke="#1ad8bd" strokeWidth=0.8
+            Svg.Path d="M72 14L69 17" stroke="#edd1be" strokeLinecap="round" strokeWidth=1
+            Svg.Path d="M45.5 10 H60.5 A1.5 1.5 0 0 1 62 11.5 V16.5 A1.5 1.5 0 0 1 60.5 18 H45.5 A1.5 1.5 0 0 1 44 16.5 V11.5 A1.5 1.5 0 0 1 45.5 10 Z" fill="#0B0D10" stroke="#d83690" strokeWidth=0.7
+            Svg.Circle cx=50 cy=57 fill="#07b490" r=27 stroke="#1ad8bd" strokeWidth=1
+            Svg.Circle cx=50 cy=57 fill="#07b623" r=20.4
+            Svg.Circle cx=50 cy=57 fill="none" r=20.8 stroke="#ce9792" strokeOpacity=0.12 strokeWidth=0.6
+          View pointerEvents="none" style={position:"absolute",left:14.208000000000002,top:17.568,width:19.584,height:19.584,overflow:"hidden",borderRadius:9.792}
+            View pointerEvents="none" style={position:"absolute",left:-14.208000000000002,top:-17.568,width:48,height:48}
+              Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:14.208000000000002,top:17.568,width:19.584,height:19.584},undefined,{animationName:{cssRules_:{from:{transform:[{rotate:"0deg"}]},to:{transform:[{rotate:"360deg"}]}},cssText_:"{\"from\":{\"transform\":[{\"rotate\":\"0deg\"}]},\"to\":{\"transform\":[{\"rotate\":\"360deg\"}]}}",length_:2,name_:"REA-CSS-0",processedKeyframes_:"from { transform: rotate(0deg) } to { transform: rotate(360deg) }"},animationDuration:6000,animationTimingFunction:"linear",animationDelay:0,animationIterationCount:"infinite",animationDirection:"normal",animationFillMode:"none",animationPlayState:"running"}]
+                Svg.default height=19.584 viewBox="29.6 36.6 40.8 40.8" width=19.584
+                  Svg.Path d="M66 57L70 57M42 70.9L40 74.3M42 43.1L40 39.7" fill="none" stroke="#1ad8bd" strokeLinecap="round" strokeWidth=2.4
+              Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:14.208000000000002,top:17.568,width:19.584,height:19.584},undefined,null]
+                Svg.default height=19.584 viewBox="29.6 36.6 40.8 40.8" width=19.584
+                  Svg.Path d="M38 68C36 62 44 58 50 62C56 59 62 63 60 69C58 74 42 75 38 68Z" fill="#5a7aee" fillOpacity=0.85
+    View className="gap-0.5" pointerEvents="none"
+      Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=2 selectable=false
+      Text className="font-sans text-footnote text-primary text-left" numberOfLines=1 selectable=false

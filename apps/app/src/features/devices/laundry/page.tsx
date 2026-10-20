@@ -15,7 +15,7 @@ import { AdviceSheet } from './advice-sheet';
 import { CareCard } from './care';
 import { HistoryCard } from './history';
 import { MaintenanceCard } from './maintenance';
-import { NotifyCard } from './notify';
+import { NotifyCard } from './notices-section';
 import { OptionsCard } from './options';
 import { ProgramPicker } from './program-picker';
 import { SettingsCard } from './settings';

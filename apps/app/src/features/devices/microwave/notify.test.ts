@@ -8,7 +8,7 @@ const calls = vi.hoisted(() => {
 });
 
 vi.mock('../../../api/automations', () => ({
-  saveAutomation: (save: unknown): Promise<void> => {
+  createAutomation: (save: unknown): Promise<void> => {
     calls.saved.push(save);
     return Promise.resolve();
   },
@@ -18,8 +18,7 @@ vi.mock('../../../api/automations', () => ({
   },
 }));
 
-const { templatesFor } = await import('../../automations');
-const { setTemplate } = await import('../laundry/notify');
+const { notifyTemplates, setTemplate } = await import('../laundry/notify');
 
 function text(key: DeviceCapability['key']): DeviceCapability {
   return { key, label: key, access: 'read', value: { kind: 'text', maxLength: 40 } };
@@ -39,7 +38,7 @@ const MICROWAVE = {
   ].map(text),
 };
 
-const [READY, INSIDE] = templatesFor([MICROWAVE]);
+const [READY, INSIDE] = notifyTemplates(MICROWAVE);
 
 describe('microwave notify me switches', () => {
   it('offers food is ready and food still inside', () => {
@@ -51,14 +50,7 @@ describe('microwave notify me switches', () => {
     if (READY === undefined) throw new Error('template missing');
     calls.saved.length = 0;
     await setTemplate(READY, null, true);
-    expect(calls.saved).toEqual([
-      {
-        automationId: null,
-        name: READY.draft.name,
-        enabled: true,
-        definition: READY.draft.automation,
-      },
-    ]);
+    expect(calls.saved).toEqual([{ name: READY.name, enabled: true, definition: READY.build() }]);
   });
 
   it('turns an existing automation on and off', async () => {

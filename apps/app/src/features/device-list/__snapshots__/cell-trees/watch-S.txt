@@ -1,23 +1,22 @@
-View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
-  View className="flex-1 p-card-pad" pointerEvents="box-none"
-    View className="flex-1 gap-2" pointerEvents="box-none"
-      View className="flex-row items-start justify-between" pointerEvents="box-none"
-        View className="items-center justify-center overflow-hidden bg-surface-3 rounded-md" pointerEvents="none"
-          View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(76, 80, 84, 0.3) 0%, rgba(76, 80, 84, 0.09999999999999999) 60%, rgba(76, 80, 84, 0) 100%)"}]
-          View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
-            Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
-              Svg.Path d="M41 0 H59 A7 7 0 0 1 66 7 V93 A7 7 0 0 1 59 100 H41 A7 7 0 0 1 34 93 V7 A7 7 0 0 1 41 0 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#111214"; ); Svg.Stop(offset="0.5" stopColor="#2A2C30"; ); Svg.Stop(offset="1" stopColor="#111214"; )))
-              Svg.Path d="M86.5 43 H87.5 A2.5 2.5 0 0 1 90 45.5 V54.5 A2.5 2.5 0 0 1 87.5 57 H86.5 A2.5 2.5 0 0 1 84 54.5 V45.5 A2.5 2.5 0 0 1 86.5 43 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#9EA2A9"; ); Svg.Stop(offset="0.45" stopColor="#6C7078"; ); Svg.Stop(offset="1" stopColor="#25272B"; )))
-              Svg.Path d="M84 31 H85 A1.5 1.5 0 0 1 86.5 32.5 V36.5 A1.5 1.5 0 0 1 85 38 H84 A1.5 1.5 0 0 1 82.5 36.5 V32.5 A1.5 1.5 0 0 1 84 31 Z" fill="#6C7078"
-              Svg.Circle cx=50 cy=50 fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#9EA2A9"; ); Svg.Stop(offset="0.45" stopColor="#6C7078"; ); Svg.Stop(offset="1" stopColor="#25272B"; ))) r=37
-              Svg.Path d="M50.00 13.00 A37 37 0 1 1 50.00 87.00 A37 37 0 1 1 50.00 13.00 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#c9b49f" stopOpacity=0.12; ); Svg.Stop(offset="0.3" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.36" stopColor="#FFFFFF" stopOpacity=1; ); Svg.Stop(offset="0.44" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
-              Svg.Circle cx=50 cy=50 fill="#111214" r=34
-              Svg.Path d="M50.00 19.80 L50.00 17.00 M65.65 22.89 L66.50 21.42 M77.11 34.35 L78.58 33.50 M80.20 50.00 L83.00 50.00 M77.11 65.65 L78.58 66.50 M65.65 77.11 L66.50 78.58 M50.00 80.20 L50.00 83.00 M34.35 77.11 L33.50 78.58 M22.89 65.65 L21.42 66.50 M19.80 50.00 L17.00 50.00 M22.89 34.35 L21.42 33.50 M34.35 22.89 L33.50 21.42" stroke="#9EA2A9" strokeLinecap="round" strokeWidth=0.7
-              Svg.Circle cx=50 cy=50 fill=url(Svg.RadialGradient(cx="45%" cy="40%" r="60%"; Svg.Stop(offset="0" stopColor="#1B1D22"; ); Svg.Stop(offset="1" stopColor="#040405"; ))) r=29.5
-              Svg.Circle cx=50 cy=50 fill="none" r=24.5 stroke="#f1d4b7" strokeOpacity=0.2 strokeWidth=4
-              Anim.created animatedProps={} cx=50 cy=50 fill="none" r=24.5 stroke="#f1d4b7" strokeDasharray="153.93804002589985 153.93804002589985" strokeLinecap="round" strokeWidth=4 transform="rotate(-90 50 50)"
-        View className="flex-row items-center"
-      View className="min-w-0 gap-0.5" pointerEvents="none"
-        Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
-        Text className="font-sans text-callout text-on-surface-variant text-left" numberOfLines=1 selectable=false
-      View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1 p-card-pad" pointerEvents="box-none"
+  View className="flex-1 gap-2" pointerEvents="box-none"
+    View className="flex-row items-start justify-between" pointerEvents="box-none"
+      View className="items-center justify-center overflow-hidden bg-surface-3 rounded-md" pointerEvents="none"
+        View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(46, 95, 217, 0.3) 0%, rgba(46, 95, 217, 0.09999999999999999) 60%, rgba(46, 95, 217, 0) 100%)"}]
+        View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
+          Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
+            Svg.Path d="M41 0 H59 A7 7 0 0 1 66 7 V93 A7 7 0 0 1 59 100 H41 A7 7 0 0 1 34 93 V7 A7 7 0 0 1 41 0 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#111214"; ); Svg.Stop(offset="0.5" stopColor="#2A2C30"; ); Svg.Stop(offset="1" stopColor="#111214"; )))
+            Svg.Path d="M86.5 43 H87.5 A2.5 2.5 0 0 1 90 45.5 V54.5 A2.5 2.5 0 0 1 87.5 57 H86.5 A2.5 2.5 0 0 1 84 54.5 V45.5 A2.5 2.5 0 0 1 86.5 43 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#9EA2A9"; ); Svg.Stop(offset="0.45" stopColor="#6C7078"; ); Svg.Stop(offset="1" stopColor="#25272B"; )))
+            Svg.Path d="M84 31 H85 A1.5 1.5 0 0 1 86.5 32.5 V36.5 A1.5 1.5 0 0 1 85 38 H84 A1.5 1.5 0 0 1 82.5 36.5 V32.5 A1.5 1.5 0 0 1 84 31 Z" fill="#6C7078"
+            Svg.Circle cx=50 cy=50 fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#9EA2A9"; ); Svg.Stop(offset="0.45" stopColor="#6C7078"; ); Svg.Stop(offset="1" stopColor="#25272B"; ))) r=37
+            Svg.Path d="M50.00 13.00 A37 37 0 1 1 50.00 87.00 A37 37 0 1 1 50.00 13.00 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#fa7c8b" stopOpacity=0.12; ); Svg.Stop(offset="0.3" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.36" stopColor="#FFFFFF" stopOpacity=1; ); Svg.Stop(offset="0.44" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
+            Svg.Circle cx=50 cy=50 fill="#111214" r=34
+            Svg.Path d="M50.00 19.80 L50.00 17.00 M65.65 22.89 L66.50 21.42 M77.11 34.35 L78.58 33.50 M80.20 50.00 L83.00 50.00 M77.11 65.65 L78.58 66.50 M65.65 77.11 L66.50 78.58 M50.00 80.20 L50.00 83.00 M34.35 77.11 L33.50 78.58 M22.89 65.65 L21.42 66.50 M19.80 50.00 L17.00 50.00 M22.89 34.35 L21.42 33.50 M34.35 22.89 L33.50 21.42" stroke="#9EA2A9" strokeLinecap="round" strokeWidth=0.7
+            Svg.Circle cx=50 cy=50 fill=url(Svg.RadialGradient(cx="45%" cy="40%" r="60%"; Svg.Stop(offset="0" stopColor="#1B1D22"; ); Svg.Stop(offset="1" stopColor="#040405"; ))) r=29.5
+            Svg.Circle cx=50 cy=50 fill="none" r=24.5 stroke="#493323" strokeOpacity=0.2 strokeWidth=4
+            Anim.created animatedProps={} cx=50 cy=50 fill="none" r=24.5 stroke="#493323" strokeDasharray="153.93804002589985 153.93804002589985" strokeLinecap="round" strokeWidth=4 transform="rotate(-90 50 50)"
+      View className="flex-row items-center"
+    View className="min-w-0 gap-0.5" pointerEvents="none"
+      Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
+      Text className="font-sans text-callout text-on-surface-variant text-left" numberOfLines=1 selectable=false
+    View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"

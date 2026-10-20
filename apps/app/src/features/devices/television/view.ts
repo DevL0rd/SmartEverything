@@ -12,6 +12,7 @@ import {
   type TvKey,
   type TvKeyReason,
   type TvMode,
+  type TvPaths,
   type TvValues,
   type TvVolume,
   type TelevisionSettingsRow,
@@ -34,6 +35,7 @@ export interface TvView {
   readonly canSetChannel: boolean;
   readonly channelRange: ChannelRange | null;
   readonly locks: Readonly<Partial<Record<TvKey, TvKeyReason>>>;
+  readonly wakesOverNetwork: boolean;
   readonly rates: Readonly<Partial<Record<TvKey, number>>>;
 }
 
@@ -78,16 +80,18 @@ function stateContextOf(
   };
 }
 
+function pathsOf(settings: TelevisionSettingsRow | null): TvPaths {
+  const linked = (settings?.direct_mac ?? null) !== null;
+  return tvPathsFor(linked, (settings?.wake_macs.length ?? 0) > 0);
+}
+
 export function televisionView(device: Device, values: DeviceValues, context: ViewContext): TvView {
   const tv = tvOf(device);
   const read = (capability: string): JsonValue | undefined => values[capability]?.value;
   const reported = tvValuesOf(tv, read);
-  const state = tvState(
-    reported,
-    tv,
-    tvPathsFor(context.settings?.direct_link === true),
-    stateContextOf(device, values, reported, context),
-  );
+  const paths = pathsOf(context.settings);
+  const wakesOverNetwork = paths.direct.attached || paths.wake;
+  const state = tvState(reported, tv, paths, stateContextOf(device, values, reported, context));
   const channel = device.capabilities.find((capability) => capability.key === 'channel');
   const locks: Partial<Record<TvKey, TvKeyReason>> = {};
   const rates: Partial<Record<TvKey, number>> = {};
@@ -112,6 +116,7 @@ export function televisionView(device: Device, values: DeviceValues, context: Vi
     channelRange:
       channel?.value.kind === 'number' ? { min: channel.value.min, max: channel.value.max } : null,
     locks,
+    wakesOverNetwork,
     rates,
   };
 }

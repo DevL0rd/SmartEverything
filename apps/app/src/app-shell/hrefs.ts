@@ -58,14 +58,21 @@ export const href = {
   cameras: (): Href => '/cameras',
   fitness: (): Href => '/fitness',
   automations: (): Href => '/automations',
-  automation: (automationId: string, idea?: string, focus?: string): Href => ({
+  automation: (automationId: string): Href => ({
     pathname: '/automations/[automationId]',
+    params: { automationId },
+  }),
+  automationEdit: (automationId: string, focus?: string): Href => ({
+    pathname: '/automations/[automationId]/edit',
     params: {
       automationId,
-      ...(idea === undefined ? {} : { idea }),
       ...(focus === undefined ? {} : { focus }),
     },
   }),
+  automationNew: (template?: string): Href =>
+    template === undefined
+      ? '/automations/new'
+      : { pathname: '/automations/new', params: { template } },
   automationRuns: (automationId?: string, focus?: string): Href =>
     automationId === undefined
       ? { pathname: '/automations/runs', params: focus === undefined ? {} : { focus } }
@@ -73,15 +80,10 @@ export const href = {
           pathname: '/automations/[automationId]/runs',
           params: { automationId, ...(focus === undefined ? {} : { focus }) },
         },
-  automationValues: (): Href => '/automations/values',
-  automationValue: (valueId: string, focus?: string): Href => ({
-    pathname: '/automations/values/[valueId]',
-    params: { valueId, ...(focus === undefined ? {} : { focus }) },
-  }),
-  automationSequences: (): Href => '/automations/sequences',
-  automationSequence: (sequenceId: string, focus?: string): Href => ({
-    pathname: '/automations/sequences/[sequenceId]',
-    params: { sequenceId, ...(focus === undefined ? {} : { focus }) },
+  automationValues: (): Href => '/automations/variables',
+  automationValue: (variableId: string, focus?: string): Href => ({
+    pathname: '/automations/variables/[variableId]',
+    params: { variableId, ...(focus === undefined ? {} : { focus }) },
   }),
   automationSchedule: (): Href => '/automations/schedule',
   scheduled: (): Href => '/automations/scheduled',
@@ -167,6 +169,10 @@ export const href = {
     pathname: '/settings/[...page]',
     params: { page: page === undefined ? ['plugins', pluginId] : ['plugins', pluginId, page] },
   }),
+  pluginPage: (pluginId: string, pageId: string): Href => ({
+    pathname: '/plugins/[pluginId]/[page]',
+    params: { pluginId, page: pageId },
+  }),
   pluginList: (pluginId: string, setting: string): Href => ({
     pathname: '/settings/[...page]',
     params: { page: ['plugins', pluginId, 'list', setting] },
@@ -214,8 +220,18 @@ export const href = {
       params: { provider },
     }),
   },
-  connect: (flow: 'xiaomi' | 'tuya' | 'tuya-developer' | 'smartthings' | 'scale' | 'watch'): Href =>
-    `/connect/${flow}`,
+  connect: (
+    flow:
+      | 'xiaomi'
+      | 'tuya'
+      | 'smartthings'
+      | 'scale'
+      | 'watch'
+      | 'treadmill'
+      | 'sonicare'
+      | 'larq'
+      | 'printer',
+  ): Href => `/connect/${flow}`,
   assistant: (assistant: string): Href => ({
     pathname: '/connect/assistant/[assistant]',
     params: { assistant },
@@ -225,6 +241,7 @@ export const href = {
     params: { requestId },
   }),
   firewallFix: (): Href => '/firewall-fix',
+  setupNetwork: (): Href => '/setup/network',
   assistantCall: (
     source: string,
     chatId: string | null = null,

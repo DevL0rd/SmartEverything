@@ -72,9 +72,11 @@ export {
 export type { Done, IceServer, Role } from './primitives';
 
 export {
+  CLIENT_KIND_OF_PLATFORM,
   CLIENT_ROW,
   COMMAND_ROW,
   COMMAND_SOURCES,
+  DEFAULT_HOME_NAME,
   DEVICE_ROW,
   EVENT_ROW,
   HISTORY_ROW,
@@ -107,8 +109,9 @@ export type {
 
 export {
   AUTOMATION_AUTHOR,
-  AUTOMATION_ROW,
+  CAMERA_KEEP_DAYS,
   CAMERA_ROW,
+  DEFAULT_CAMERA_KEEP_DAYS,
   IR_CODE_FORMATS,
   IR_CODE_ROW,
   IR_REMOTE_ROW,
@@ -120,7 +123,6 @@ export {
 } from './rows-media';
 export type {
   AutomationAuthor,
-  AutomationRow,
   CameraRow,
   IrCodeRow,
   IrRemoteRow,
@@ -188,6 +190,7 @@ export type { CommandInput, HistoryBucket } from './endpoints-devices';
 export { MEDIA_LINK, SESSION_DESCRIPTION } from './endpoints-media';
 export {
   CAMERA_REACH_STATES,
+  FIREWALL_APPLY_RESULT,
   FIREWALL_BACKENDS,
   FIREWALL_STATUS,
   OPENING_STATES,
@@ -196,11 +199,14 @@ export {
 } from './firewall';
 export type {
   CameraReach,
+  FirewallApplyOutcome,
+  FirewallApplyResult,
   FirewallBackend,
   FirewallOpening,
   FirewallPlan,
   FirewallPlanBackend,
   FirewallStatus,
+  FirewallStepResult,
   LowPorts,
   PortRule,
   UfwRule,
@@ -274,8 +280,9 @@ export { CONNECTION_ENDPOINTS } from './endpoints-connections';
 export * from '../ai-harness-discovery';
 
 export * from './endpoints-device-effects';
-export { AUTOMATION_TOOL_ROW } from './endpoints-automation';
-export type { AutomationToolRow } from './endpoints-automation';
+export * from './endpoints-scenes';
+export * from './endpoints-client';
+export * from './endpoints-automation-values';
 export * from './endpoints-device-groups';
 export * from './endpoints-exchange-rates';
 export * from './endpoints-ai-usage';
@@ -313,3 +320,9 @@ export * from './endpoints-reach';
 export * from './endpoints-calls';
 export * from './endpoints-ai-projects';
 export * from './endpoints-ai-references';
+export * from './endpoints-automation-secrets';
+export * from './endpoints-automation-programs';
+export * from './endpoints-automation-functions';
+export * from './endpoints-automation-runs';
+export * from './endpoints-automation-questions';
+export * from './live-automation-trace';

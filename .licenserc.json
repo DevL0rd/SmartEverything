@@ -17,6 +17,7 @@
   ],
   "overrides": {
     "@nornagon/put": "MIT",
+    "bufferpack": "BSD-3-Clause",
     "jsbi": "Apache-2.0",
     "map-stream": "MIT",
     "parse-cache-control": "BSD-3-Clause"

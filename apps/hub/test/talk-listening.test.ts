@@ -13,7 +13,9 @@ import { CameraSpeakers } from '../src/talk/camera-speaker';
 import { TalkFeeds } from '../src/talk/feeds';
 import { TalkMembership } from '../src/talk/membership';
 import { TalkRecorder } from '../src/talk/recorder';
-import { TalkListening, type Listener, type TalkHeard } from '../src/talk/talk-listening';
+import type { RemoteEar, RemoteEarOptions } from '../src/listening/remote-ears-port';
+import type { SpeechSegment } from '../src/listening/speech-segment';
+import { TalkListening, type TalkHeard } from '../src/talk/talk-listening';
 import { talkContext, talkWakeText } from '../src/talk/talk-wake-text';
 import type { PacketSink, TalkEndpoint } from '../src/talk/transmission';
 import { Transmissions } from '../src/talk/transmissions';
@@ -24,7 +26,6 @@ import type {
 } from '../src/openrouter/transcription';
 import type { Superseded, WakeClaim } from '../src/wake-name/wake-claims';
 import { Transcriber } from '../src/transcripts/transcriber';
-import type { EarOptions, SpeechSegment } from '../src/wake-name/ear';
 import { FakeClock } from './support/fake-clock';
 import { testLogger } from './support/logs';
 import { testStore, type TestStore } from './support/store';
@@ -70,8 +71,8 @@ class FakeProvider implements TranscriptionProvider {
 }
 
 interface Heard {
-  readonly options: EarOptions;
-  readonly pcm: Int16Array[];
+  readonly options: RemoteEarOptions;
+  readonly packets: Uint8Array[];
   closed: boolean;
 }
 
@@ -160,12 +161,12 @@ beforeEach(async () => {
   listening = new TalkListening({
     store: test.store,
     ears: {
-      make: (options): Promise<Listener> => {
-        const ear: Heard = { options, pcm: [], closed: false };
+      open: (options): Promise<RemoteEar> => {
+        const ear: Heard = { options, packets: [], closed: false };
         ears.push(ear);
         return Promise.resolve({
-          hear: (pcm): void => {
-            ear.pcm.push(pcm);
+          packet: (packet): void => {
+            ear.packets.push(packet);
           },
           close: (): Promise<void> => {
             ear.closed = true;
@@ -244,6 +245,8 @@ describe('the name heard on a walkie-talkie channel', () => {
     const sink = listening.open(channel, messageId, speaker);
     await settled();
     expect(ears[0]?.options.claim).toEqual({ source: 'talk', key: channel.id });
+    expect(ears[0]?.options.source).toEqual({ kind: 'talk', key: messageId });
+    expect(ears[0]?.options.codec).toBe('opus_48k_mono');
     ears[0]?.options.wake?.(
       'hey jarvis',
       () => new Int16Array(),
@@ -251,6 +254,7 @@ describe('the name heard on a walkie-talkie channel', () => {
     );
     await speak(sink);
     expect(ears[0]?.closed).toBe(true);
+    expect(ears[0]?.packets).toHaveLength(opusPackets(voice()).length);
     expect(heard).toHaveLength(1);
     expect(heard[0]).toMatchObject({
       messageId,
@@ -382,7 +386,10 @@ describe('which messages the AI listens to', () => {
         log,
       }),
       speakers: new CameraSpeakers({
-        go2rtc: { play: (): Promise<void> => Promise.resolve() },
+        go2rtc: {
+          play: (): Promise<void> => Promise.resolve(),
+          backchannel: (): Promise<boolean> => Promise.resolve(true),
+        },
         feeds: new TalkFeeds(log),
         ready,
         clock: systemClock,

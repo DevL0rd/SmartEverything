@@ -4,9 +4,16 @@ import { z } from 'zod';
 
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
+const EXACT_ALIAS =
+  /^npm:(?:@[^/@]+\/)?[^/@]+@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
 const WORKSPACE_FOLDER = /^\s+-\s+(\S+)\/\*\s*$/gm;
 
-const PINNED = z.union([z.string().regex(EXACT_VERSION), z.literal('workspace:*')]);
+const PINNED = z.union([
+  z.string().regex(EXACT_VERSION),
+  z.string().regex(EXACT_ALIAS),
+  z.literal('workspace:*'),
+]);
 
 const SECTIONS = ['dependencies', 'devDependencies', 'optionalDependencies'] as const;
 

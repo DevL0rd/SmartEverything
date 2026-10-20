@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./voice-overlay": "./src/voice-overlay.ts",
+    "./assistant-voice-copy": "./src/assistant-voice-copy.ts",
     "./node/harness-frames": "./src/node/harness-frames.ts"
   },
   "dependencies": {

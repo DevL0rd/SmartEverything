@@ -7,7 +7,6 @@ import { Banner } from '../../../components/banner';
 import { EmptyState } from '../../../components/empty-state';
 import { ActionRow, ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { appPlatform } from '../../../design/platform';
 import { moment } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useFirewall, useIsOwner, useSettings } from '../../../store/selectors';
@@ -18,6 +17,7 @@ import { CamerasList, OpeningsList } from './firewall-lists';
 import { useMutationState } from '../../../store/mutation';
 
 function FixBanner({ firewall }: { readonly firewall: FirewallStatus }): ReactNode {
+  const owner = useIsOwner();
   const missing = needsFix(firewall);
   if (missing.length === 0) {
     return <Banner tone="positive" title="Everything needed is open" />;
@@ -31,14 +31,18 @@ function FixBanner({ firewall }: { readonly firewall: FirewallStatus }): ReactNo
       />
     );
   }
-  return appPlatform() === 'desktop' ? (
+  return owner ? (
     <Banner
       tone="warning"
       title="Some openings are missing"
       action={{ label: 'Review & fix', href: href.firewallFix() }}
     />
   ) : (
-    <Banner tone="warning" title="Some openings are missing" body="Fix it in the desktop app." />
+    <Banner
+      tone="warning"
+      title="Some openings are missing"
+      body="Ask the owner of this home to fix it."
+    />
   );
 }
 

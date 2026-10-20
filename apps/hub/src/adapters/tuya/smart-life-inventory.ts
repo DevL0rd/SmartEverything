@@ -11,19 +11,32 @@ import {
   TuyaCloudError,
   dataPointsOf,
   smartLifeModel,
+  type CloudDevice,
+  type DataPoint,
   type GatewaySource,
   type NodeIdSource,
+  type RejectedDataPoint,
   type SmartLifeDevice,
   type SmartLifeFacts,
 } from '@smarteverything/tuya';
 import { mapBounded, type LoadOnce } from './bounded';
-import { CLOUD_CONCURRENCY, type LoadedDevice, type LoadedInventory } from './cloud-inventory';
 import type { SmartLifeCloud } from './smart-life-cloud';
 
 type SmartLifeCalls = Pick<SmartLifeCloud, 'call'>;
 
+export const CLOUD_CONCURRENCY = 4;
+
+export interface LoadedDevice {
+  readonly cloud: CloudDevice;
+  readonly points: readonly DataPoint[];
+  readonly rejected: readonly RejectedDataPoint[];
+  readonly specificationPublished: boolean;
+  readonly room: string | null;
+  readonly smartLife: SmartLifeFacts;
+}
+
 export interface SmartLifeInventory {
-  readonly inventory: LoadedInventory;
+  readonly devices: readonly LoadedDevice[];
   readonly owners: readonly string[];
   readonly reportsDataPoints: ReadonlyMap<string, boolean>;
 }
@@ -228,7 +241,7 @@ export async function loadSmartLifeInventory(
     if (device.category.startsWith(IR_REMOTE_CATEGORY_PREFIX)) {
       log.info('tuya.ir_library_remote_skipped', {
         deviceId: device.id,
-        reason: 'IR library remotes need the developer-project link',
+        reason: 'virtual remotes of the Smart Life app are not controllable; blasters learn codes',
       });
     } else {
       entries.push(addressed(device, devices, log));
@@ -238,12 +251,12 @@ export async function loadSmartLifeInventory(
     loaded(cloud, entry, log, descriptions),
   );
   return {
-    inventory: { devices: devicesLoaded, remotes: [] },
+    devices: devicesLoaded,
     owners,
     reportsDataPoints: new Map(
       devicesLoaded.map((entry) => [
         entry.cloud.id,
-        entry.smartLife?.cloudReports === 'data_points',
+        entry.smartLife.cloudReports === 'data_points',
       ]),
     ),
   };

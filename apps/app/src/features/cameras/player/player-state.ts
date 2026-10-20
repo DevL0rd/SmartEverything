@@ -3,14 +3,7 @@ import type { ApiErrorCode, CameraReach } from '@smarteverything/domain';
 export type ConnectStep = 'reaching' | 'starting' | 'reconnecting';
 
 export type FailureReason =
-  | 'unreachable'
-  | 'server'
-  | 'dropped'
-  | 'relayUnsupported'
-  | 'noStream'
-  | 'busy'
-  | 'network'
-  | 'unknown';
+  'unreachable' | 'server' | 'dropped' | 'noStream' | 'busy' | 'network' | 'unknown';
 
 export type PlayerState =
   | { readonly kind: 'connecting'; readonly step: ConnectStep }
@@ -27,7 +20,6 @@ export type SessionError =
   | { readonly kind: 'noPath' }
   | { readonly kind: 'gathering'; readonly message: string }
   | { readonly kind: 'dropped' }
-  | { readonly kind: 'relayUnsupported' }
   | { readonly kind: 'other'; readonly message: string };
 
 export type SessionPhase =
@@ -61,6 +53,9 @@ export function blockingStateOf(condition: CameraCondition): PlayerState | null 
   }
   if (condition.privacy) {
     return { kind: 'privacy' };
+  }
+  if (condition.reach === 'unreachable') {
+    return { kind: 'offline', lastSeen: condition.lastSeen };
   }
   return condition.reach === 'blocked' ? { kind: 'blockedByFirewall' } : null;
 }
@@ -97,8 +92,6 @@ function failedStateOf(error: SessionError, inputs: PlayerInputs): PlayerState {
       return { kind: 'failed', reason: 'dropped', detail: '' };
     case 'gathering':
       return { kind: 'failed', reason: 'network', detail: error.message };
-    case 'relayUnsupported':
-      return { kind: 'failed', reason: 'relayUnsupported', detail: '' };
     case 'other':
       return { kind: 'failed', reason: 'unknown', detail: error.message };
   }

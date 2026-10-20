@@ -29,6 +29,11 @@ export async function updateEndOfSpeechPause(pauseMs: PauseChoiceMs): Promise<vo
   log.info('listening.pause_changed', { pauseMs });
 }
 
+export async function updateEarHost(computerId: string | null): Promise<void> {
+  await api().call(E.updateListeningSettings, { body: { ear_host_device_id: computerId } });
+  log.info('listening.ear_host_changed', { computerId });
+}
+
 export async function createRoom(name: string, position: number): Promise<void> {
   await api().call(E.createRoom, { body: { name, position } });
   log.info('room.created');

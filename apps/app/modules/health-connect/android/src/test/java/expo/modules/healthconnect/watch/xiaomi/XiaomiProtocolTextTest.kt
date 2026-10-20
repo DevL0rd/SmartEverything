@@ -10,9 +10,9 @@ import org.junit.Test
 class XiaomiProtocolTextTest {
   @Test
   fun `an unknown sleep file version is described in plain words`() {
-    val id = fileId(version = 6, subtype = XiaomiFileId.SLEEP, detail = XiaomiFileId.DETAILS)
+    val id = fileId(version = 7, subtype = XiaomiFileId.SLEEP, detail = XiaomiFileId.DETAILS)
     val error = assertThrows(UnsupportedFile::class.java) { XiaomiSleepParsers.details(id, activityFile(ByteArray(8))) }
-    assertTrue(error.message.orEmpty().endsWith("sleep version 6 is not known (this app reads 1 to 5)"))
+    assertTrue(error.message.orEmpty().endsWith("sleep version 7 is not known (this app reads 1 to 6)"))
   }
 
   @Test

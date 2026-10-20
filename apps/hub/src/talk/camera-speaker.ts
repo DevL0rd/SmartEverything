@@ -3,8 +3,7 @@ import type { Go2rtcClient } from '../cameras/go2rtc-client';
 import type { Clock } from '../clock';
 import type { OggFeed, TalkFeeds } from './feeds';
 import type { SpeakerOwner } from './speaker-mix';
-import { CameraOutput } from './speaker-output';
-import type { PacketSink } from './transmission';
+import { CameraOutput, type SpeakerSink } from './speaker-output';
 import { messageOf } from '@smarteverything/logging';
 
 const SPEAKER_CODECS = ['opus', 'pcma'] as const;
@@ -12,7 +11,7 @@ const SPEAKER_CODECS = ['opus', 'pcma'] as const;
 type SpeakerCodec = (typeof SPEAKER_CODECS)[number];
 
 export interface CameraSpeakerOptions {
-  readonly go2rtc: Pick<Go2rtcClient, 'play'>;
+  readonly go2rtc: Pick<Go2rtcClient, 'play' | 'backchannel'>;
   readonly feeds: Pick<TalkFeeds, 'open'>;
   readonly ready: (cameraId: string) => Promise<void>;
   readonly clock: Pick<Clock, 'now' | 'at'>;
@@ -37,12 +36,16 @@ export class CameraSpeakers {
 
   constructor(private readonly options: CameraSpeakerOptions) {}
 
-  open(cameraId: string, sessionId: string, owner: SpeakerOwner): PacketSink {
+  open(cameraId: string, sessionId: string, owner: SpeakerOwner): SpeakerSink {
     return this.output(cameraId).attach(sessionId, owner);
   }
 
   standby(cameraId: string): () => void {
     return this.output(cameraId).hold();
+  }
+
+  reprime(cameraId: string): void {
+    this.outputs.get(cameraId)?.reopen();
   }
 
   private output(cameraId: string): CameraOutput {
@@ -55,6 +58,7 @@ export class CameraSpeakers {
       {
         feeds: this.options.feeds,
         play: (id, feed) => this.play(id, feed),
+        linked: (id, feed) => this.options.go2rtc.backchannel(id, feed.url),
         clock: this.options.clock,
         log: this.options.log,
       },

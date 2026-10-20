@@ -29,6 +29,7 @@ function snapshot(patch: Partial<RouterSnapshot>): RouterSnapshot {
     radios: [],
     stations: [],
     clients: [],
+    people: [],
     ...patch,
   };
 }

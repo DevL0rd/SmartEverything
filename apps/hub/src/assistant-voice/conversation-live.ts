@@ -1,3 +1,4 @@
+import { AUTOMATIC_PAUSE_MS, voiceModelFor, voiceThinkingOf } from '@smarteverything/domain';
 import type { ConversationHooks } from './conversation-hooks';
 import type { LiveEvents, LiveOptions } from './gemini';
 import type { LiveRenewal } from './live-renewal';
@@ -5,23 +6,28 @@ import { sightWindow, type SightTuning } from './live-window';
 import { streamsInput } from './speech-input';
 
 export function liveOptionsOf(
-  hooks: ConversationHooks,
+  hooks: Pick<
+    ConversationHooks,
+    'speech' | 'pause' | 'listening' | 'settings' | 'window' | 'system' | 'tools' | 'webSearch'
+  >,
   tuning: SightTuning | null,
   resume: string | null,
 ): LiveOptions {
   const settings = hooks.settings();
   const base = hooks.window();
+  const thinking = voiceThinkingOf(settings.thinking_level);
   return {
-    model: settings.model,
+    model: voiceModelFor(settings.thinking_level),
     voice: settings.voice,
     system: hooks.system(),
     tools: hooks.tools(),
     webSearch: hooks.webSearch(),
     resume,
     window: tuning === null ? base : sightWindow(tuning, base),
-    automatic: streamsInput(hooks.speech),
+    automatic: streamsInput(hooks.speech) || hooks.pause?.ms() === AUTOMATIC_PAUSE_MS,
     ...(tuning === null ? {} : { resolution: tuning.resolution }),
     ...(hooks.listening?.pauseMs === undefined ? {} : { pauseMs: hooks.listening.pauseMs }),
+    ...(thinking === null ? {} : { thinking }),
   };
 }
 

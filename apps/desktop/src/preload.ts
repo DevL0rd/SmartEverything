@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   BROWSER_STATUS,
   BROWSER_WINDOW_REQUEST,
+  FIREWALL_APPLY_RESULT,
   MACHINE_UPDATE_STATUS,
   OVERLAY_ACTION,
 } from '@smarteverything/domain';
@@ -14,7 +15,6 @@ import { OVERLAY_LEVELS_PORT_CHANNEL } from './overlay/overlay-messages';
 import type {
   DesktopBrowser,
   DesktopCaptureSource,
-  DesktopFirewallResult,
   DesktopGlobalName,
   DesktopInvokeChannel,
   DesktopInvokeChannels,
@@ -48,10 +48,6 @@ const SERVICE_STATUS: z.ZodType<DesktopServiceStatus> = z.object({
 const SERVICE_LOGS: z.ZodType<DesktopServiceLogs> = z.object({
   file: z.string(),
   lines: z.array(z.string()),
-});
-const FIREWALL_RESULT: z.ZodType<DesktopFirewallResult> = z.object({
-  outcome: z.enum(['applied', 'declined', 'failed', 'stale']),
-  detail: z.string(),
 });
 const TALK_COMMAND: z.ZodType<DesktopTalkCommand> = z.discriminatedUnion('kind', [
   z.object({ kind: z.enum(['press', 'release', 'toggle', 'next', 'open']) }),
@@ -214,7 +210,7 @@ const desktop: SmartEverythingDesktop = {
     listen('desktop:service-status-changed', (status) => {
       listener(answerOf('desktop:service-status-changed', SERVICE_STATUS, status));
     }),
-  applyFirewall: (revision) => invokeFor('desktop:firewall-apply', FIREWALL_RESULT, revision),
+  applyFirewall: (revision) => invokeFor('desktop:firewall-apply', FIREWALL_APPLY_RESULT, revision),
   onTalkCommand: (listener) =>
     listen('desktop:talk-command', (value) => {
       const command = TALK_COMMAND.safeParse(value);

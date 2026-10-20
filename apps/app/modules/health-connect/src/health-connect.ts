@@ -67,6 +67,7 @@ declare class HealthConnectNative extends NativeModule<HealthConnectEvents> {
   runPushCommand(command: string, payloadJson: string): Promise<void>;
   pauseWatch(deviceId: string, paused: boolean): Promise<void>;
   setWatchLive(on: boolean): Promise<void>;
+  setWatchCapture(on: boolean): Promise<void>;
   refreshWatches(): Promise<void>;
   watchStatus(): Promise<unknown>;
   associateWatch(deviceId: string): Promise<unknown>;

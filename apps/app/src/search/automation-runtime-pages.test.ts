@@ -1,46 +1,32 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { TableRow } from '@smarteverything/domain';
 import { emptyState, makeTable } from '../store/state';
 import type { SearchTables, SourceLinks } from './sources';
-import { href } from '../app-shell/hrefs';
-
-const focusTargets = vi.hoisted(() => vi.fn());
-
-vi.mock('../features/automations', () => ({
-  storedFocusTargets: focusTargets,
-  valueFocusTargets: (): readonly string[] => [],
-}));
-
+import { links } from '../features/automations';
+import {
+  buttonTrigger,
+  rowId,
+  setPower,
+  storedAutomationRow,
+} from '../test-support/automation-rows';
 import { automationRuntimePages } from './automation-runtime-pages';
 
 type Automation = TableRow<'automations'>;
 
-const MOMENT = '2026-10-16T08:00:00.000Z';
-const V2_DEFINITION = {
-  when: [{ on: 'time', at: '07:00' }],
-  steps: [{ do: 'notify', message: 'Good morning' }],
-};
-const V1_DEFINITION = {
-  triggers: [{ type: 'interval', everyMinutes: 5 }],
-  conditions: { mode: 'all', items: [] },
-  actions: [{ type: 'notify', message: 'Old' }],
-};
+const KITCHEN = '00000000-0000-4000-8000-000000000129';
+const LIVING = '00000000-0000-4000-8000-000000000030';
 
-function automation(id: string, definition: Automation['definition']): Automation {
-  return {
-    id,
-    name: id,
-    enabled: true,
-    revision: 1,
-    definition,
-    origin: null,
-    author: null,
-    last_run_at: null,
-    last_error: null,
-    run_count: 0,
-    created_at: MOMENT,
-    updated_at: MOMENT,
-  };
+function morning(index: number): Automation {
+  return storedAutomationRow({
+    index,
+    name: 'Kitchen press',
+    triggers: [buttonTrigger(KITCHEN, 'single_press')],
+    nodes: [setPower(LIVING, true)],
+  });
+}
+
+function unreadable(index: number): Automation {
+  return { ...morning(index), revision: 0 };
 }
 
 function tablesOf(rows: readonly Automation[]): SearchTables {
@@ -58,6 +44,7 @@ function tablesOf(rows: readonly Automation[]): SearchTables {
     scheduled: tables.scheduled_actions,
     plugins: tables.plugins,
     pluginStreams: tables.plugin_streams,
+    pluginUi: tables.plugin_ui,
     chats: [],
     extensions: undefined,
     configuration: undefined,
@@ -70,35 +57,38 @@ function linksOf(): SourceLinks {
 }
 
 describe('automationRuntimePages', () => {
-  it('builds editor focus pages for an automation the editor can read', () => {
-    focusTargets.mockReturnValue({
-      reusable: false,
-      targets: [{ key: 'name', parent: null, title: 'Name', focus: 'name', keywords: ['rename'] }],
-    });
+  it('adds the flowchart and actions under every stored automation', () => {
+    const id = rowId(1);
     const out = linksOf();
-    const pages = automationRuntimePages(tablesOf([automation('morning', V2_DEFINITION)]), out);
-    expect(pages.map((page) => page.path)).toEqual(['automation-editor:morning:name']);
-    expect(out.parents.get('page:automation-editor:morning:name')).toBe('automation:morning');
-    expect(out.links.get('page:automation-editor:morning:name')).toEqual(
-      href.automation('morning', undefined, 'name'),
+    const pages = automationRuntimePages(tablesOf([morning(1)]), out);
+    const paths = pages.map((page) => page.path);
+    for (const key of ['flowchart', 'test', 'publish']) {
+      expect(paths).toContain(`automation-editor:${id}:${key}`);
+      expect(out.parents.get(`page:automation-editor:${id}:${key}`)).toBe(`automation:${id}`);
+    }
+    expect(out.links.get(`page:automation-editor:${id}:flowchart`)).toEqual(links.edit(id));
+  });
+
+  it('gives each node of the program its own page that opens the editor on it', () => {
+    const id = rowId(1);
+    const out = linksOf();
+    const pages = automationRuntimePages(tablesOf([morning(1)]), out);
+    const nodePages = pages.filter((page) => page.path.startsWith(`automation-editor:${id}:node:`));
+    expect(nodePages.length).toBeGreaterThan(0);
+    const [first] = nodePages;
+    expect(out.links.get(`page:${first?.path ?? ''}`)).toEqual(
+      links.edit(id, first?.path.slice(`automation-editor:${id}:`.length)),
     );
   });
 
-  it('links reusable steps to the sequence editor', () => {
-    focusTargets.mockReturnValue({
-      reusable: true,
-      targets: [{ key: 'name', parent: null, title: 'Name', focus: 'name', keywords: [] }],
-    });
-    const out = linksOf();
-    automationRuntimePages(tablesOf([automation('steps', V2_DEFINITION)]), out);
-    expect(out.links.get('page:automation-editor:steps:name')).toEqual(
-      href.automationSequence('steps', 'name'),
+  it('keeps every path unique across automations', () => {
+    const paths = automationRuntimePages(tablesOf([morning(1), morning(2)]), linksOf()).map(
+      (page) => page.path,
     );
+    expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it('gives no editor pages to a stored program the editor cannot read', () => {
-    focusTargets.mockReturnValue(null);
-    const pages = automationRuntimePages(tablesOf([automation('old', V1_DEFINITION)]), linksOf());
-    expect(pages).toEqual([]);
+  it('gives no editor pages to a stored row that is not a readable program', () => {
+    expect(automationRuntimePages(tablesOf([unreadable(1)]), linksOf())).toEqual([]);
   });
 });

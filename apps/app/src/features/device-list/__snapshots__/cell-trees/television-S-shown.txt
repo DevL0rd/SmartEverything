@@ -1,24 +1,23 @@
-View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
-  View className="flex-1 p-card-pad" pointerEvents="box-none"
-    View className="flex-1" pointerEvents="box-none"
-      View className="absolute -inset-5 bg-linear-to-br to-transparent from-viz-2/12" pointerEvents="none"
-      View className="flex-1 justify-center" pointerEvents="box-none"
-        View className="h-12 flex-row items-center gap-2" pointerEvents="box-none"
-          View className="size-12" pointerEvents="none"
-            View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
-              Anim.View pointerEvents="none" renderToHardwareTextureAndroid=true style=[{position:"absolute",left:0,top:0,width:48,height:48},{animationName:{cssRules_:{from:{opacity:0.45},to:{opacity:0.95}},cssText_:"{\"from\":{\"opacity\":0.45},\"to\":{\"opacity\":0.95}}",length_:2,name_:"REA-CSS-1",processedKeyframes_:"from { opacity: 0.45 } to { opacity: 0.95 }"},animationDuration:4200,animationTimingFunction:"ease-in-out",animationDelay:0,animationIterationCount:"infinite",animationDirection:"alternate",animationFillMode:"none",animationPlayState:"running"}]
-                Svg.default height=48 viewBox="0 0 100 100" width=48
-                  Svg.Ellipse cx=50 cy=44 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#888078" stopOpacity=0.45; ); Svg.Stop(offset="1" stopColor="#888078" stopOpacity=0; ))) rx=50 ry=42
-              Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
-                Svg.Ellipse cx=50 cy=86 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=30 ry=4.5
-                Svg.Path d="M44 72 H56 L57 82 H43 Z" fill="#1a2836"
-                Svg.Ellipse cx=50 cy=83 fill="#1f2c39" rx=16 ry=2.6 stroke="#3d444b" strokeWidth=0.5
-                Svg.Path d="M11 16 H89 A5 5 0 0 1 94 21 V67 A5 5 0 0 1 89 72 H11 A5 5 0 0 1 6 67 V21 A5 5 0 0 1 11 16 Z" fill="#1a2836" stroke="#3d444b" strokeWidth=0.6
-                Svg.Path d="M11 16 H89 A5 5 0 0 1 94 21 V67 A5 5 0 0 1 89 72 H11 A5 5 0 0 1 6 67 V21 A5 5 0 0 1 11 16 Z" fill=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#c9b49f" stopOpacity=0.12; ); Svg.Stop(offset="0.22" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.34" stopColor="#FFFFFF" stopOpacity=0.85; ); Svg.Stop(offset="0.56" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
-                Svg.Path d="M12 19 H88 A3 3 0 0 1 91 22 V66 A3 3 0 0 1 88 69 H12 A3 3 0 0 1 9 66 V22 A3 3 0 0 1 12 19 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#888078" stopOpacity=0.9; ); Svg.Stop(offset="1" stopColor="#7e7872" stopOpacity=0.8; ))) fillOpacity=1
-                Svg.Path d="M9 58 Q26 46 42 54 T74 50 T91 54 V66 Q91 69 88 69 H12 Q9 69 9 66 Z" fill="#FFFFFF" fillOpacity=0.14
-                Svg.Path d="M16 62 L38 24" stroke="#FFFFFF" strokeLinecap="round" strokeOpacity=0.14 strokeWidth=6
-          View className="min-w-0 flex-1 justify-center" pointerEvents="none"
-            Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
-            Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
-          Pressable accessibilityHint=undefined accessibilityLabel="Turn off" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#515457",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 size-touch-min items-center justify-center rounded-full bg-primary" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1 p-card-pad" pointerEvents="box-none"
+  View className="flex-1" pointerEvents="box-none"
+    View className="absolute -inset-5 bg-linear-to-br to-transparent from-viz-2/12" pointerEvents="none"
+    View className="flex-1 justify-center" pointerEvents="box-none"
+      View className="h-12 flex-row items-center gap-2" pointerEvents="box-none"
+        View className="size-12" pointerEvents="none"
+          View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
+            Anim.View pointerEvents="none" renderToHardwareTextureAndroid=true style=[{position:"absolute",left:0,top:0,width:48,height:48},undefined,{animationName:{cssRules_:{from:{opacity:0.45},to:{opacity:0.95}},cssText_:"{\"from\":{\"opacity\":0.45},\"to\":{\"opacity\":0.95}}",length_:2,name_:"REA-CSS-1",processedKeyframes_:"from { opacity: 0.45 } to { opacity: 0.95 }"},animationDuration:4200,animationTimingFunction:"ease-in-out",animationDelay:0,animationIterationCount:"infinite",animationDirection:"alternate",animationFillMode:"none",animationPlayState:"running"}]
+              Svg.default height=48 viewBox="0 0 100 100" width=48
+                Svg.Ellipse cx=50 cy=44 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#b7ca7e" stopOpacity=0.45; ); Svg.Stop(offset="1" stopColor="#b7ca7e" stopOpacity=0; ))) rx=50 ry=42
+            Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
+              Svg.Ellipse cx=50 cy=86 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=30 ry=4.5
+              Svg.Path d="M44 72 H56 L57 82 H43 Z" fill="#07b623"
+              Svg.Ellipse cx=50 cy=83 fill="#07b490" rx=16 ry=2.6 stroke="#1ad8bd" strokeWidth=0.5
+              Svg.Path d="M11 16 H89 A5 5 0 0 1 94 21 V67 A5 5 0 0 1 89 72 H11 A5 5 0 0 1 6 67 V21 A5 5 0 0 1 11 16 Z" fill="#07b623" stroke="#1ad8bd" strokeWidth=0.6
+              Svg.Path d="M11 16 H89 A5 5 0 0 1 94 21 V67 A5 5 0 0 1 89 72 H11 A5 5 0 0 1 6 67 V21 A5 5 0 0 1 11 16 Z" fill=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#fa7c8b" stopOpacity=0.12; ); Svg.Stop(offset="0.22" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.34" stopColor="#FFFFFF" stopOpacity=0.85; ); Svg.Stop(offset="0.56" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
+              Svg.Path d="M12 19 H88 A3 3 0 0 1 91 22 V66 A3 3 0 0 1 88 69 H12 A3 3 0 0 1 9 66 V22 A3 3 0 0 1 12 19 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#b7ca7e" stopOpacity=0.9; ); Svg.Stop(offset="1" stopColor="#b7c758" stopOpacity=0.8; ))) fillOpacity=1
+              Svg.Path d="M9 58 Q26 46 42 54 T74 50 T91 54 V66 Q91 69 88 69 H12 Q9 69 9 66 Z" fill="#FFFFFF" fillOpacity=0.14
+              Svg.Path d="M16 62 L38 24" stroke="#FFFFFF" strokeLinecap="round" strokeOpacity=0.14 strokeWidth=6
+        View className="min-w-0 flex-1 justify-center" pointerEvents="none"
+          Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
+          Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+        Pressable accessibilityHint=undefined accessibilityLabel="Turn off" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#33d8e7",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 size-touch-min items-center justify-center rounded-full bg-primary" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn

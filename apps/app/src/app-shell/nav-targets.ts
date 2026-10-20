@@ -1,7 +1,14 @@
 import type { Href } from 'expo-router';
-import type { NavPinTarget } from '@smarteverything/domain';
+import {
+  NAV_PIN_TARGET,
+  parsePluginPageRoute,
+  pluginPageRoute,
+  type NavOpenTarget,
+  type NavPinTarget,
+} from '@smarteverything/domain';
 import { isIconName, type IconName } from '../components/icon';
 import { deviceIcon } from '../features/device-visuals';
+import { extensionIcon } from '../plugins/declared/extension-icon';
 import { settingPageOf } from '../settings/registry';
 import { settingsPage } from '../settings/tree';
 import type { StoreState } from '../store/state';
@@ -15,9 +22,9 @@ export interface TargetFacts {
   readonly count: number;
 }
 
-type Kind = NavPinTarget['kind'];
+type Kind = NavOpenTarget['kind'];
 
-type Of<K extends Kind> = Extract<NavPinTarget, { readonly kind: K }>;
+type Of<K extends Kind> = Extract<NavOpenTarget, { readonly kind: K }>;
 
 interface TargetKind<K extends Kind> {
   readonly key: (target: Of<K>) => string;
@@ -40,12 +47,12 @@ function routeOf(key: string): (typeof ROUTES)[number] | undefined {
   return ROUTES.find((route) => route.key === key);
 }
 
-interface SettingTarget {
+export interface SettingTarget {
   readonly page: string;
   readonly row: string | null;
 }
 
-function settingTargetOf(target: Of<'setting'>): SettingTarget | null {
+export function settingTargetOf(target: Of<'setting'>): SettingTarget | null {
   if (settingsPage(target.page) !== undefined) {
     return { page: target.page, row: target.setting };
   }
@@ -79,9 +86,29 @@ function chatFacts(target: Of<'chat'>, state: StoreState): TargetFacts {
   return named(chat?.title, 'messageCircle', chat?.unread_count ?? 0);
 }
 
-function pageFacts(target: Of<'page'>): TargetFacts {
+function pageFacts(target: Of<'page'>, state: StoreState): TargetFacts {
+  const extension = parsePluginPageRoute(target.path);
+  if (extension !== null) {
+    const page = state.tables.plugin_ui.byId[extension.pluginId]?.pages.find(
+      (candidate) => candidate.id === extension.pageId,
+    );
+    return named(page?.title, page === undefined ? UNKNOWN_ICON : extensionIcon(page.icon));
+  }
   const route = routeOf(target.path);
   return named(route?.title, route?.icon ?? UNKNOWN_ICON);
+}
+
+function pageKey(path: string): string {
+  const extension = parsePluginPageRoute(path);
+  if (extension !== null) return `page:plugins/${extension.pluginId}/${extension.pageId}`;
+  const route = routeOf(path);
+  return `page:${route === undefined ? path : pathnameOf(route.href)}`;
+}
+
+function pageHref(path: string): Href | null {
+  const extension = parsePluginPageRoute(path);
+  if (extension !== null) return href.pluginPage(extension.pluginId, extension.pageId);
+  return routeOf(path)?.href ?? null;
 }
 
 function sectionFacts(target: Of<'section'>): TargetFacts {
@@ -102,11 +129,8 @@ const KINDS: { readonly [K in Kind]: TargetKind<K> } = {
     facts: sectionFacts,
   },
   page: {
-    key: (target) => {
-      const route = routeOf(target.path);
-      return `page:${route === undefined ? target.path : pathnameOf(route.href)}`;
-    },
-    href: (target) => routeOf(target.path)?.href ?? null,
+    key: (target) => pageKey(target.path),
+    href: (target) => pageHref(target.path),
     facts: pageFacts,
   },
   setting: {
@@ -156,15 +180,15 @@ function kindOf<K extends Kind>(target: Of<K>): TargetKind<K> {
   return KINDS[target.kind];
 }
 
-export function navTargetKey(target: NavPinTarget): string {
+export function navTargetKey(target: NavOpenTarget): string {
   return kindOf(target).key(target);
 }
 
-export function navTargetHref(target: NavPinTarget): Href | null {
+export function navTargetHref(target: NavOpenTarget): Href | null {
   return kindOf(target).href(target);
 }
 
-export function targetFactsOf(target: NavPinTarget, state: StoreState): TargetFacts {
+export function targetFactsOf(target: NavOpenTarget, state: StoreState): TargetFacts {
   return kindOf(target).facts(target, state);
 }
 
@@ -180,7 +204,8 @@ const PATH_RULES: readonly PathRule[] = [
   { pattern: /^groups\/(?!new$)([^/]+)/u, kind: 'group' },
   { pattern: /^automations\/scenes\/(?!new$)([^/]+)/u, kind: 'scene' },
   {
-    pattern: /^automations\/(?!runs$|scenes|scheduled|schedule$|sequences|values|new$)([^/]+)/u,
+    pattern:
+      /^automations\/(?!runs$|scenes|scheduled|schedule$|nodes|templates|secrets$|variables|new$)([^/]+)/u,
     kind: 'automation',
   },
   { pattern: /^assistant\/chat\/([^/]+)/u, kind: 'chat' },
@@ -194,4 +219,56 @@ export function leafKeyOfPath(pathname: string): string {
     if (found !== undefined) return `${rule.kind}:${found}`;
   }
   return `page:${path}`;
+}
+
+const PLUGIN_PAGE_PATH = /^plugins\/([^/]+)\/([^/]+)$/u;
+
+function pageTargetOf(path: string): unknown {
+  const plugin = PLUGIN_PAGE_PATH.exec(path);
+  if (plugin?.[1] !== undefined && plugin[2] !== undefined) {
+    return { kind: 'page', path: pluginPageRoute(plugin[1], plugin[2]) };
+  }
+  const route = ROUTES.find((candidate) => pathnameOf(candidate.href) === path);
+  return route === undefined ? null : { kind: 'page', path: route.key };
+}
+
+function candidateOf(kind: string, id: string): unknown {
+  switch (kind) {
+    case 'device':
+      return { kind, deviceId: id, focus: null };
+    case 'camera':
+      return { kind, deviceId: id };
+    case 'room':
+      return { kind, roomId: id };
+    case 'group':
+      return { kind, groupId: id };
+    case 'scene':
+      return { kind, sceneId: id };
+    case 'automation':
+      return { kind, automationId: id, focus: null };
+    case 'page':
+      return pageTargetOf(id);
+    default:
+      return null;
+  }
+}
+
+function isSectionOrSettingsPage(path: string): boolean {
+  return TAB_ROUTES.some((route) => route.key === path) || routeOf(path)?.tab === 'settings';
+}
+
+export function pinnableTarget(target: NavPinTarget): NavPinTarget | null {
+  if (navTargetHref(target) === null) return null;
+  return target.kind === 'page' && isSectionOrSettingsPage(target.path) ? null : target;
+}
+
+export function pinExists(target: NavPinTarget, facts: ReadonlyMap<string, TargetFacts>): boolean {
+  return pinnableTarget(target) !== null && facts.get(navTargetKey(target))?.exists === true;
+}
+
+export function pinTargetOfPath(pathname: string): NavPinTarget | null {
+  const key = leafKeyOfPath(pathname);
+  const split = key.indexOf(':');
+  const parsed = NAV_PIN_TARGET.safeParse(candidateOf(key.slice(0, split), key.slice(split + 1)));
+  return parsed.success ? pinnableTarget(parsed.data) : null;
 }

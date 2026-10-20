@@ -2,14 +2,14 @@ import {
   PRESS_EFFECT_WINDOW_MS,
   buttonActionTitle,
   respondsToSignal,
-  type AutomationRunRow,
+  type AutomationRowV3,
+  type AutomationRunSummary,
   type DeviceLogCause,
   type DeviceLogEffect,
   type DeviceLogEntry,
   type DeviceRow,
   type EventRow,
 } from '@smarteverything/domain';
-import { readableAutomations, type ReadableAutomation } from './automations';
 import { causeOfDetails, peopleByClient } from './causes';
 import { signalOfEvent } from './event-signal';
 import type { DeviceLogSource, LogRequest, LogStore } from './types';
@@ -17,7 +17,7 @@ import type { DeviceLogSource, LogRequest, LogStore } from './types';
 const RUN_CLOCK_LEAD_MS = 1000;
 const PRESS_ACTION = 'action';
 
-const OUTCOMES: Readonly<Record<AutomationRunRow['status'], DeviceLogEffect['outcome']>> = {
+const OUTCOMES: Readonly<Record<AutomationRunSummary['status'], DeviceLogEffect['outcome']>> = {
   succeeded: 'ok',
   failed: 'failed',
   interrupted: 'failed',
@@ -25,6 +25,8 @@ const OUTCOMES: Readonly<Record<AutomationRunRow['status'], DeviceLogEffect['out
   cancelled: 'skipped',
   queued: 'running',
   running: 'running',
+  waiting: 'running',
+  paused: 'running',
   cancelling: 'running',
 };
 
@@ -35,8 +37,8 @@ function pressTitle(details: EventRow['details']): string {
 
 function effectsOf(
   press: EventRow,
-  automations: readonly ReadableAutomation[],
-  runs: readonly AutomationRunRow[],
+  automations: readonly AutomationRowV3[],
+  runs: readonly AutomationRunSummary[],
 ): DeviceLogEffect[] {
   const signal = signalOfEvent(press);
   const pressedAt = Date.parse(press.occurred_at);
@@ -77,7 +79,7 @@ function readPresses(store: LogStore, request: LogRequest): readonly DeviceLogEn
   const newest = presses[0];
   const oldest = presses.at(-1);
   if (newest === undefined || oldest === undefined) return [];
-  const automations = readableAutomations(store.automations.list());
+  const automations = store.automations.list();
   const people = peopleByClient(store);
   const runs = store.automationRuns.startedBetween(
     new Date(Date.parse(oldest.occurred_at) - RUN_CLOCK_LEAD_MS).toISOString(),

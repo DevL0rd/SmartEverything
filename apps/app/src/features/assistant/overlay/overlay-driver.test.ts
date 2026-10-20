@@ -38,6 +38,7 @@ function sources(change: Partial<OverlaySources> = {}): OverlaySources {
     audio: AUDIO,
     extras: EXTRAS,
     hosted: null,
+    voice: null,
     problemAt: null,
     requestAt: null,
     ...change,
@@ -108,6 +109,22 @@ describe('the overlay driver', () => {
     driver.update(driven(speaking));
     expect(pushed).toHaveLength(2);
     expect(pushed[1]).toMatchObject({ state: 'speaking', caption: 'Hello there', level: 'output' });
+  });
+
+  it('puts the thinking setup and chip of the hub value into the pushed view', () => {
+    const { driver, pushed } = harness();
+    const voice = {
+      thinking_level: 'medium',
+      saving: true,
+      failed: false,
+      changedInCall: false,
+    } as const;
+    driver.update(driven(overlayInputOf(sources({ voice }))));
+    expect(pushed[0]?.tray?.setup).toMatchObject({ level: 'medium', state: 'saving' });
+    expect(pushed[0]?.chip).toMatchObject({ label: 'Thinking: Medium', warm: true });
+    driver.update(driven(overlayInputOf(sources())));
+    expect(pushed[1]?.tray?.setup).toMatchObject({ level: null, state: 'loading' });
+    expect(pushed[1]?.chip).toBeNull();
   });
 
   it('hides the overlay when the main window returns to the call page', () => {

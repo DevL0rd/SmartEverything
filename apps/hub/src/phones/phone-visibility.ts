@@ -68,11 +68,19 @@ export function phoneEventOf(
   return tier === undefined ? event : phoneEventFor(event, tier);
 }
 
+export function eventVisibleTo(viewer: PhoneViewer, event: EventRow): boolean {
+  if (event.kind !== 'signal' || viewer.role === 'owner') return true;
+  if (event.details['ownerOnly'] === true) return false;
+  const owner = event.details['profileId'];
+  return typeof owner !== 'string' || owner === viewer.profileId;
+}
+
 export function visibleEvents(
   store: Pick<Store, 'devices'>,
   viewer: PhoneViewer,
-  events: readonly EventRow[],
+  allEvents: readonly EventRow[],
 ): EventRow[] {
+  const events = allEvents.filter((event) => eventVisibleTo(viewer, event));
   const devices = phoneDevicesOf(
     store,
     events.flatMap((event) => (event.device_id === null ? [] : [event.device_id])),

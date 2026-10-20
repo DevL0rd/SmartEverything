@@ -78,6 +78,16 @@ describe('C19 resolving stacked temporary changes', () => {
       resolveDeviceEffects(power, true, [effect({ type: 'add', value: 1 }, 0, 1)]),
     ).toThrow(DeviceEffectValueError);
   });
+
+  it('refuses stacked additions that overflow the finite range', () => {
+    const stack = [
+      effect({ type: 'add', value: Number.MAX_VALUE }, 0, 1),
+      effect({ type: 'add', value: Number.MAX_VALUE }, 0, 2),
+    ];
+    expect(() => resolveDeviceEffects(BRIGHTNESS, 50, stack)).toThrow(
+      'Temporary numeric change exceeds finite range.',
+    );
+  });
 });
 
 describe('C19 what a temporary change may touch', () => {

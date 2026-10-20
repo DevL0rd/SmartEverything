@@ -3,12 +3,13 @@ import type { AddressInfo } from 'node:net';
 import { CommandRefusedError, type ProviderAdapter } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TvDidNotWakeError } from '../../src/adapters/samsung-tv/adapter';
+import { TvDidNotWakeError } from '../../src/adapters/samsung-tv/controller';
 import { TvConnectionError, TvRefusedError } from '../../src/adapters/samsung-tv/connection';
 import { createSamsungTvModule, samsungTvModule } from '../../src/adapters/samsung-tv/index';
 import { FRESH_MS } from '../../src/adapters/samsung-tv/power-polling';
 import { openTvSocket } from '../../src/adapters/samsung-tv/io';
 import { udpSender } from '../../src/network/udp-sender';
+import { WAKE_BOOT_MS, WAKE_RESENDS_MS } from '../../src/network/wake-budget';
 import { TvLinkError } from '../../src/adapters/samsung-tv/link';
 import { contextFor, type ContextRecord } from '../smartthings/fake-cloud';
 import { FakeTv, subscribe, until } from './fake-tv';
@@ -16,21 +17,19 @@ import { FakeTv, subscribe, until } from './fake-tv';
 const CREDENTIALS = {
   provider: 'samsung_tv',
   host: 'tv.test',
-  macAddress: 'A1:B2:C3:D4:E5:F6',
   name: 'Living room TV',
 } as const;
 
-const ACCOUNT = {
-  label: 'Living room TV',
-  secrets: {
-    host: 'tv.test',
-    macAddress: 'A1:B2:C3:D4:E5:F6',
-    name: 'Living room TV',
-    model: 'QE65S95C',
-    token: 'token-1',
-    frame: false,
-  },
+const TELEVISION = {
+  host: 'tv.test',
+  macAddress: 'a1:b2:c3:d4:e5:f6',
+  name: 'Living room TV',
+  model: 'QE65S95C',
+  token: 'token-1',
+  frame: false,
 };
+
+const ACCOUNT = { label: 'Living room TV', secrets: { televisions: [TELEVISION] } };
 
 const COMMAND = {
   commandId: '00000000-0000-4000-8000-000000000001',
@@ -70,6 +69,34 @@ describe('linking a Samsung TV', () => {
       '/api/v2/channels/samsung.remote.control?name=U21hcnRFdmVyeXRoaW5n',
     ]);
     expect(record.prompts).toEqual([{ kind: 'accept_on_device', device: 'Living room TV' }]);
+    await until(() => tv.openSockets === 0);
+  });
+
+  it('refuses a screen that does not report its network address, before asking on it', async () => {
+    tv.wifiMac = 'unknown';
+    await expect(createSamsungTvModule(tv.io).link(CREDENTIALS, record.context)).rejects.toThrow(
+      new TvLinkError('tv.test', 'the screen did not report its network (MAC) address'),
+    );
+    expect(tv.connections).toEqual([]);
+    expect(record.prompts).toEqual([]);
+  });
+
+  it('keeps the screens linked before and names the new one after the screen itself', async () => {
+    const kitchen = {
+      ...TELEVISION,
+      host: 'kitchen.test',
+      macAddress: '10:20:30:40:50:60',
+      name: 'Kitchen TV',
+    };
+    const stored = { label: 'Kitchen', secrets: { televisions: [kitchen] } };
+    const account = await createSamsungTvModule(tv.io).link(
+      { provider: 'samsung_tv', host: 'tv.test' },
+      { ...record.context, stored },
+    );
+    expect(account).toEqual({
+      label: 'Kitchen TV, Living room TV',
+      secrets: { televisions: [kitchen, TELEVISION] },
+    });
     await until(() => tv.openSockets === 0);
   });
 
@@ -231,15 +258,15 @@ describe('the Samsung TV adapter', () => {
     await stop();
   });
 
-  it('says so when the TV does not wake up', async () => {
+  it('resends the packets inside the wake budget and says so when the TV does not wake up', async () => {
     tv.power = 'off';
     tv.wakesOnPacket = false;
     const adapter = await createSamsungTvModule(tv.io).start(ACCOUNT, record.context);
     await expect(adapter.execute({ ...COMMAND, capability: 'power', value: true })).rejects.toThrow(
       new TvDidNotWakeError('tv.test'),
     );
-    expect(tv.packets).toHaveLength(1);
-    expect(tv.sleeps).toEqual(Array.from({ length: 20 }, () => 1000));
+    expect(tv.packets).toHaveLength(1 + WAKE_RESENDS_MS.length);
+    expect(tv.sleeps).toEqual(Array.from({ length: WAKE_BOOT_MS / 1000 }, () => 1000));
   });
 
   it('follows the TV into standby and back, closing and reopening the socket', async () => {
@@ -264,7 +291,7 @@ describe('the Samsung TV adapter', () => {
     await until(() => record.saved.length === 1);
     expect(record.saved[0]).toEqual({
       label: 'Living room TV',
-      secrets: { ...ACCOUNT.secrets, token: 'token-2' },
+      secrets: { televisions: [{ ...TELEVISION, token: 'token-2' }] },
     });
     await stop();
   });

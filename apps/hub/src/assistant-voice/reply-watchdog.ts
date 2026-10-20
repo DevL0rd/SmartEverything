@@ -9,17 +9,37 @@ export class ReplyWatchdog {
   private nudged = false;
   private turnSince: number | null = null;
   private tools = 0;
+  private geminiDecides = false;
+  private unanswered = false;
 
   get toolsRunning(): number {
     return this.tools;
   }
 
+  get heardUnanswered(): boolean {
+    return this.unanswered;
+  }
+
+  heard(): void {
+    this.unanswered = true;
+  }
+
+  turnsDecidedByGemini(decides: boolean): void {
+    this.geminiDecides = decides;
+  }
+
   turnStarted(now: number): void {
+    if (this.geminiDecides) {
+      return;
+    }
     this.turnSince = now;
     this.waitingSince = null;
   }
 
   turnEnded(now: number): void {
+    if (this.geminiDecides) {
+      return;
+    }
     this.turnSince = null;
     this.waitingSince = now;
     this.nudged = false;
@@ -51,6 +71,7 @@ export class ReplyWatchdog {
   }
 
   replied(): void {
+    this.unanswered = false;
     this.waitingSince = null;
     this.owedSince = null;
     this.nudged = false;

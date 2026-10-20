@@ -12,24 +12,22 @@ import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.records.metadata.Device
-import androidx.health.connect.client.records.metadata.Metadata
-import androidx.health.connect.client.units.Energy
-import androidx.health.connect.client.units.Length
-import androidx.health.connect.client.units.Percentage
 import expo.modules.healthconnect.HealthConnectAccess
 import expo.modules.healthconnect.HealthEnvelope
-import expo.modules.healthconnect.double
-import expo.modules.healthconnect.int
-import expo.modules.healthconnect.long
-import expo.modules.healthconnect.objects
-import expo.modules.healthconnect.text
-import expo.modules.healthconnect.textOrNull
-import java.time.Instant
+import expo.modules.healthconnect.SyncFailure
+import expo.modules.healthconnect.diagnostics.NativeLog
 import kotlin.reflect.KClass
-import kotlinx.serialization.json.JsonObject
 
-class WatchWriteReport(val written: Int, val missing: List<String>, val skipped: String?)
+class WatchWriteReport(
+  val written: Int,
+  val missing: List<String>,
+  val skipped: String?,
+  val failed: List<RecordFailure> = emptyList(),
+  val withoutStages: List<String> = emptyList(),
+  val refused: List<BatchRefusal> = emptyList()
+)
+
+class BatchRefusal(val recordIds: List<String>, val types: List<String>, val reason: String)
 
 object WatchHealthWriter {
   private val TYPES: Map<String, KClass<out Record>> = mapOf(
@@ -52,61 +50,44 @@ object WatchHealthWriter {
     val client = HealthConnectAccess.client(context)
     val granted = HealthConnectAccess.call { client.permissionController.getGrantedPermissions() }
     val allowed = TYPES.filterValues { HealthPermission.getWritePermission(it) in granted }.keys
-    val wanted = records.filter { it.type in allowed }
-    wanted.chunked(BATCH).forEach { batch ->
-      HealthConnectAccess.call { client.insertRecords(batch.map { recordOf(it) }) }
+    val built = WatchRecordBuilder.build(records.filter { it.type in allowed })
+    logBuilt(built)
+    val refused = mutableListOf<BatchRefusal>()
+    var written = 0
+    built.records.chunked(BATCH).forEach { batch ->
+      try {
+        HealthConnectAccess.call { client.insertRecords(batch) }
+        written += batch.size
+      } catch (failure: SyncFailure) {
+        refused.add(refusal(batch, failure))
+      } catch (failure: IllegalArgumentException) {
+        refused.add(refusal(batch, failure))
+      }
     }
     val missing = records.map { it.type }.distinct().filter { it !in allowed }
-    return WatchWriteReport(wanted.size, missing, null)
+    return WatchWriteReport(written, missing, null, built.failures, built.withoutStages, refused)
   }
+
+  private fun refusal(batch: List<Record>, cause: Exception): BatchRefusal =
+    BatchRefusal(
+      batch.mapNotNull { it.metadata.clientRecordId?.removePrefix(CLIENT_ID_PREFIX) },
+      batch.map { it::class.simpleName.orEmpty() }.distinct(),
+      "${cause.javaClass.simpleName}: ${cause.message}"
+    )
 
   suspend fun granted(client: HealthConnectClient): Boolean =
     HealthConnectAccess.call { client.permissionController.getGrantedPermissions() }.containsAll(writePermissions)
 
-  private fun recordOf(envelope: HealthEnvelope): Record {
-    val type = envelope.type
-    val t = envelope
-    val d = envelope.data
-    val m = Metadata.autoRecorded(
-      device = Device(type = Device.TYPE_WATCH),
-      clientRecordId = "se-${envelope.recordId}",
-      clientRecordVersion = envelope.lastModified.toEpochMilli()
-    )
-    return when (type) {
-      "Steps" -> StepsRecord(t.startTime, t.zone, t.requireEnd(), t.zone, d.long("count"), m)
-      "Distance" -> DistanceRecord(t.startTime, t.zone, t.requireEnd(), t.zone, Length.meters(d.double("meters")), m)
-      "ActiveCaloriesBurned" ->
-        ActiveCaloriesBurnedRecord(t.startTime, t.zone, t.requireEnd(), t.zone, Energy.kilocalories(d.double("kilocalories")), m)
-      "HeartRate" -> HeartRateRecord(t.startTime, t.zone, t.requireEnd(), t.zone, heartSamples(d), m)
-      "OxygenSaturation" -> OxygenSaturationRecord(t.startTime, t.zone, Percentage(d.double("percent")), m)
-      "RestingHeartRate" -> RestingHeartRateRecord(t.startTime, t.zone, d.long("bpm"), m)
-      "SleepSession" -> SleepSessionRecord(
-        startTime = t.startTime,
-        startZoneOffset = t.zone,
-        endTime = t.requireEnd(),
-        endZoneOffset = t.zone,
-        metadata = m,
-        stages = sleepStages(d)
-      )
-      else -> ExerciseSessionRecord(
-        startTime = t.startTime,
-        startZoneOffset = t.zone,
-        endTime = t.requireEnd(),
-        endZoneOffset = t.zone,
-        metadata = m,
-        exerciseType = d.int("exerciseType"),
-        title = d.textOrNull("title")
-      )
+  private fun logBuilt(built: BuiltRecords) {
+    built.trims.forEach { trim ->
+      NativeLog.warn(SCOPE, "sleep.stages_repaired") { mapOf("record" to trim.recordId, "changes" to trim.changes.size, "stagesRemoved" to trim.stagesRemoved, "detail" to trim.changes.joinToString("; ")) }
+    }
+    built.failures.forEach { failure ->
+      NativeLog.error(SCOPE, "record.unbuildable") { mapOf("record" to failure.recordId, "type" to failure.type, "reason" to failure.reason) }
     }
   }
 
-  private fun heartSamples(d: JsonObject): List<HeartRateRecord.Sample> =
-    d.objects("samples").map { HeartRateRecord.Sample(Instant.parse(it.text("time")), it.long("bpm")) }
-
-  private fun sleepStages(d: JsonObject): List<SleepSessionRecord.Stage> =
-    d.objects("stages").map {
-      SleepSessionRecord.Stage(Instant.parse(it.text("startTime")), Instant.parse(it.text("endTime")), it.int("stage"))
-    }
-
+  const val CLIENT_ID_PREFIX = "se-"
+  private const val SCOPE = "watch-health"
   private const val BATCH = 200
 }

@@ -60,7 +60,7 @@ describe('the Xiaomi inventory', () => {
     const devices = await (await startAdapter(world)).discover();
     const camera = devices.find((device) => device.externalId === '100003');
     expect(camera?.details).toMatchObject({
-      go2rtcSource: `xiaomi://${USER_ID}:de@127.0.0.3?did=100003&model=xiaomi.camera.091ac1`,
+      go2rtcSource: `xiaomi://${USER_ID}:de@127.0.0.3?did=100003&model=xiaomi.camera.091ac1&transport=udp`,
       twoWayAudio: true,
       physicalPtz: true,
       transport: 'cloud',

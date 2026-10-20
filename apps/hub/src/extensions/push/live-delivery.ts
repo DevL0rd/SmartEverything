@@ -13,7 +13,7 @@ export function liveNotificationOf(
 ): LiveNotificationDraft {
   return {
     type: 'notification',
-    id: liveNotificationId(subject),
+    id: notification.tag ?? liveNotificationId(subject),
     title: notification.title,
     body: notification.body,
     data: notification.data,

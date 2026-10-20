@@ -195,6 +195,12 @@ export function sourceEdges(source: string): readonly string[] {
   return [text(first), text(last)];
 }
 
+export function networkOf(cidr: string): string {
+  const [address = '', prefix] = cidr.split('/');
+  const [first = address] = sourceEdges(cidr);
+  return prefix === undefined ? address : `${first}/${prefix}`;
+}
+
 export function portIn(list: string, port: number): boolean {
   return list.split(',').some((entry) => {
     const [low = '', high = low] = entry.split(/[:-]/);

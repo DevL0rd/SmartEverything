@@ -153,6 +153,46 @@ describe('phoneReadingsOf for the values added with the phone page', () => {
   });
 });
 
+describe('the phone system settings', () => {
+  it('reads the switches, the radios and the screen timeout', () => {
+    const readings = phoneReadingsOf(
+      values({
+        screen_timeout: '120',
+        auto_rotate: false,
+        haptic_feedback: true,
+        touch_sounds: false,
+        wifi_on: true,
+        bluetooth_on: false,
+        location_on: true,
+        airplane_mode: false,
+      }),
+    );
+    expect(readings).toMatchObject({
+      screenTimeout: '120',
+      autoRotate: false,
+      hapticFeedback: true,
+      touchSounds: false,
+      wifiOn: true,
+      bluetoothOn: false,
+      locationOn: true,
+      airplaneMode: false,
+    });
+  });
+
+  it('keeps a false switch apart from a switch that was never reported', () => {
+    const readings = phoneReadingsOf(values({ auto_rotate: false }));
+    expect(readings.autoRotate).toBe(false);
+    expect(readings.hapticFeedback).toBeNull();
+    expect(readings.wifiOn).toBeNull();
+  });
+
+  it('treats a timeout outside the choices and a wrong type as not reported', () => {
+    const readings = phoneReadingsOf(values({ screen_timeout: '45', wifi_on: 'yes' }));
+    expect(readings.screenTimeout).toBeNull();
+    expect(readings.wifiOn).toBeNull();
+  });
+});
+
 describe('doingIcon', () => {
   it('shows a car for driving, navigating and parked, and feet for anything else', () => {
     const icon = (

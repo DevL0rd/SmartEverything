@@ -34,6 +34,10 @@ export class TurnTimeline {
     if (index < 0) this.parts.push(part);
     else this.parts[index] = part;
   }
+  steer(messageId: string): void {
+    this.dirty = true;
+    this.parts.push({ kind: 'steer', key: `steer:${messageId}`, message_id: messageId });
+  }
   restore(timeline: ChatTimelineEmbed): void {
     this.dirty = true;
     const tools = this.parts.filter((part) => part.kind === 'tool');

@@ -1,15 +1,22 @@
-export { runSceneNow, toggleAutomation } from './data/actions';
 export { sceneIcon } from './scenes/icon-sheet';
-export { readScene } from './model/scene-state';
+export { readScene } from './scenes/scene-state';
 export { useScheduleItems } from './scheduled/menu-items';
 export { ScheduleSheetHost } from './scheduled/quick-sheet';
 export { DeviceScheduleChip, useScheduleBelow } from './scheduled/schedule-chip';
 export { SleepTimerSheet } from './scheduled/sleep-sheet';
+export { runSceneNow, toggleAutomation } from './shared/actions';
+export { valueFocusTargets } from './values/value-focus';
+export type { AutomationFocusTarget } from './values/value-focus';
 
-export { storedFocusTargets, valueFocusTargets } from './model/search-targets';
-export type { AutomationFocusTarget } from './model/search-targets';
-export { triggerKeywordsOf } from './model/trigger-keywords';
-export { storedAutomationOf } from './model/reusable-steps';
-export { templatesFor, type Template } from './model/templates';
-
-export type { Names as AutomationNames } from './model/describe';
+export { automationRowsOf } from './data/automation-rows';
+export { automationRunAtom } from './model/consumers/activity-lines';
+export { automationsUsing } from './model/consumers/automation-uses';
+export type { AutomationUse } from './model/consumers/automation-uses';
+export { scheduleOf } from './model/consumers/diffuser-schedule';
+export type { ScheduleLine } from './model/consumers/diffuser-schedule';
+export { GESTURES, meaningOf } from './model/consumers/press-meaning';
+export type { Meaning } from './model/consumers/press-meaning';
+export { routineEntryOf } from './model/consumers/search-entries';
+export { templatesFor } from './model/templates/all-templates';
+export type { Template } from './model/templates/parameters';
+export { automationSearchPages, links } from './routes';

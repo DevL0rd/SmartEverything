@@ -20,13 +20,15 @@ const log = new Logger('hub.push');
 describe('who a device’s alerts reach', () => {
   it('reaches everyone when the event belongs to no device', () => {
     const audience = deviceAudience(null, { alertsOf: () => stored(['a']), log });
-    expect(audience(TARGET)).toBe(true);
+    expect(audience(TARGET.client_id)).toBe(true);
   });
 
   it('skips the phones of a person who muted that device only', () => {
     const audience = deviceAudience('a', { alertsOf: () => stored(['a']), log });
-    expect(audience(TARGET)).toBe(false);
-    expect(deviceAudience('b', { alertsOf: () => stored(['a']), log })(TARGET)).toBe(true);
+    expect(audience(TARGET.client_id)).toBe(false);
+    expect(deviceAudience('b', { alertsOf: () => stored(['a']), log })(TARGET.client_id)).toBe(
+      true,
+    );
   });
 
   it('still alerts, and says so, when the saved setting cannot be read', () => {
@@ -35,7 +37,7 @@ describe('who a device’s alerts reach', () => {
       alertsOf: () => ({ status: 'invalid', reason: 'wrong version' }),
       log,
     });
-    expect(audience(TARGET)).toBe(true);
+    expect(audience(TARGET.client_id)).toBe(true);
     expect(logs.events()).toContain('push.device_alerts_unreadable');
   });
 });

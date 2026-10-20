@@ -15,8 +15,7 @@ import { staleOf } from '../widgets/sync-model';
 import { folderState, orderedFolders, type FolderState } from './folder-model';
 import { heroOf } from './hero-model';
 
-type SyncCellKind =
-  'synced' | 'syncing' | 'paused' | 'error' | 'offline' | 'empty' | 'stale';
+type SyncCellKind = 'synced' | 'syncing' | 'paused' | 'error' | 'offline' | 'empty' | 'stale';
 
 export interface CellFolder {
   readonly id: string;

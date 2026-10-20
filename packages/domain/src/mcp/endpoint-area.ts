@@ -20,6 +20,8 @@ export const OPEN_OPERATIONS = [
   'writeSharedClipboard',
   'updateProfile',
   'selectProfile',
+  'createAccessRequest',
+  'listAccessRequests',
 ] as const satisfies readonly EndpointName[];
 
 const OPEN: ReadonlySet<EndpointShape> = new Set(

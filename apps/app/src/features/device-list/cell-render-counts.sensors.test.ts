@@ -58,16 +58,16 @@ const HUMIDIFIER: Face = {
 
 const BUDGETS: Readonly<Record<string, Readonly<Record<'S' | 'M', Budget>>>> = {
   'contact sensor': {
-    S: { nodes: 44, hooks: 79, subscriptions: 10 },
-    M: { nodes: 42, hooks: 56, subscriptions: 8 },
+    S: { nodes: 33, hooks: 65, subscriptions: 10 },
+    M: { nodes: 35, hooks: 52, subscriptions: 8 },
   },
   'air purifier': {
-    S: { nodes: 58, hooks: 94, subscriptions: 9 },
-    M: { nodes: 85, hooks: 113, subscriptions: 14 },
+    S: { nodes: 47, hooks: 84, subscriptions: 9 },
+    M: { nodes: 67, hooks: 105, subscriptions: 13 },
   },
   humidifier: {
-    S: { nodes: 70, hooks: 98, subscriptions: 9 },
-    M: { nodes: 104, hooks: 120, subscriptions: 14 },
+    S: { nodes: 60, hooks: 87, subscriptions: 9 },
+    M: { nodes: 77, hooks: 112, subscriptions: 13 },
   },
 };
 

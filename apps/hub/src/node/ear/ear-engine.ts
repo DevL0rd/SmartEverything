@@ -1,6 +1,8 @@
 import type { Model } from '@ricky0123/vad-web/dist/models/common.js';
 import { sileroModel } from '../../assistant-voice/silero-vad';
-import { KeywordSpotter } from '../../wake-name/keyword-spotter';
+import { WakeKeywords } from '../../wake-name/keyword-lines';
+import type { EarRuntimeLost } from './runtime-lost';
+import { KeywordSpotter } from './keyword-spotter';
 import type { KeywordEngine } from './relayed-spotter';
 
 const PROBE_NAME = 'Jarvis';
@@ -13,6 +15,7 @@ export class EarEngineError extends Error {
 export interface EarEngineParts {
   readonly spotter: () => KeywordEngine;
   readonly model: () => Promise<Model>;
+  readonly lost?: EarRuntimeLost;
 }
 
 export class EarEngine {
@@ -28,6 +31,10 @@ export class EarEngine {
 
   readonly model = (): Promise<Model> => this.parts.model();
 
+  get lost(): EarRuntimeLost | undefined {
+    return this.parts.lost;
+  }
+
   load(): Promise<void> {
     this.loading ??= this.probe().catch((cause: unknown) => {
       this.loading = null;
@@ -38,7 +45,7 @@ export class EarEngine {
 
   private async probe(): Promise<void> {
     const spotter = this.spotter();
-    const { keywords, threshold } = spotter.earConfig([PROBE_NAME], 'standard');
+    const { keywords, threshold } = new WakeKeywords().earConfig([PROBE_NAME], 'standard');
     const listening = spotter.listenKeywords(keywords.join('\n'), threshold, PROBE_LABEL);
     if (listening === null) {
       throw new EarEngineError(
@@ -52,6 +59,10 @@ export class EarEngine {
   }
 }
 
-export function wakeEarEngine(): EarEngine {
-  return new EarEngine({ spotter: () => new KeywordSpotter(), model: sileroModel });
+export function wakeEarEngine(lost?: EarRuntimeLost): EarEngine {
+  return new EarEngine({
+    spotter: () => new KeywordSpotter(),
+    model: sileroModel,
+    ...(lost === undefined ? {} : { lost }),
+  });
 }

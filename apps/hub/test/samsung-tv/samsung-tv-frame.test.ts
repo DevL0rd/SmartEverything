@@ -7,17 +7,16 @@ import { createSamsungTvModule } from '../../src/adapters/samsung-tv/index';
 import { contextFor, type ContextRecord } from '../smartthings/fake-cloud';
 import { FakeTv, subscribe, until } from './fake-tv';
 
-const FRAME = {
-  label: 'Living room TV',
-  secrets: {
-    host: 'tv.test',
-    macAddress: 'A1:B2:C3:D4:E5:F6',
-    name: 'Living room TV',
-    model: 'QE65S95C',
-    token: 'token-1',
-    frame: true,
-  },
+const TELEVISION = {
+  host: 'tv.test',
+  macAddress: 'a1:b2:c3:d4:e5:f6',
+  name: 'Living room TV',
+  model: 'QE65S95C',
+  token: 'token-1',
+  frame: true,
 };
+
+const FRAME = { label: 'Living room TV', secrets: { televisions: [TELEVISION] } };
 
 const COMMAND = {
   commandId: '00000000-0000-4000-8000-000000000002',
@@ -56,19 +55,15 @@ function powerKeys(): unknown[] {
 describe('linking a Frame TV', () => {
   it('remembers that the TV is a Frame from its device information', async () => {
     const account = await createSamsungTvModule(tv.io).link(
-      {
-        provider: 'samsung_tv',
-        host: 'tv.test',
-        macAddress: 'A1:B2:C3:D4:E5:F6',
-        name: 'Living room TV',
-      },
+      { provider: 'samsung_tv', host: 'tv.test', name: 'Living room TV' },
       record.context,
     );
     expect(account).toEqual(FRAME);
     expect(record.logs.find((line) => line.event === 'television.linked')?.payload).toEqual({
-      host: 'tv.test',
       model: 'QE65S95C',
       frame: true,
+      attached: false,
+      televisions: 1,
     });
   });
 });
@@ -239,13 +234,13 @@ describe('the Frame TV adapter', () => {
     const adapter = await start();
     await adapter.refresh([COMMAND.externalId]);
     expect(record.saved).toEqual([
-      { label: 'Living room TV', secrets: { ...FRAME.secrets, token: 'token-2' } },
+      { label: 'Living room TV', secrets: { televisions: [{ ...TELEVISION, token: 'token-2' }] } },
     ]);
   });
 
   it('refuses art mode on a television that is not a Frame', async () => {
     const adapter = await createSamsungTvModule(tv.io).start(
-      { ...FRAME, secrets: { ...FRAME.secrets, frame: false } },
+      { ...FRAME, secrets: { televisions: [{ ...TELEVISION, frame: false }] } },
       record.context,
     );
     await expect(

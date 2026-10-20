@@ -1,6 +1,8 @@
 import { createElement } from 'react';
 import { DevicePageLinks } from './page-settings-links';
 import { href } from '../../app-shell/hrefs';
+import { AddDeviceBlock } from './add-device-block';
+import { PRINTER_PLUGIN } from './printer-plugin';
 import type { SettingDefinition } from '../../settings/types';
 
 export const SETTINGS: readonly SettingDefinition[] = [
@@ -44,9 +46,76 @@ export const SETTINGS: readonly SettingDefinition[] = [
     href: href.settings.page('home/rooms'),
   },
   {
+    id: 'devices.add',
+    page: 'devices/add',
+    title: 'Hub plugins',
+    keywords: [
+      'add device',
+      'new device',
+      'link account',
+      'xiaomi',
+      'mi home',
+      'tuya',
+      'smart life',
+      'smartthings',
+      'samsung',
+    ],
+    scope: 'server',
+    control: 'custom',
+    visible: (env) => env.owner,
+    render: () => createElement(AddDeviceBlock),
+  },
+  {
+    id: 'devices.add.treadmill',
+    page: 'devices/add',
+    section: 'Device plugins',
+    title: 'Treadmill',
+    description: 'A Kingsmith WalkingPad you start, watch and track from the app',
+    icon: 'footprints',
+    keywords: ['treadmill', 'walking pad', 'walkingpad', 'kingsmith', 'ks fit', 'running', 'belt'],
+    scope: 'server',
+    control: 'link',
+    href: href.connect('treadmill'),
+  },
+  {
+    id: 'devices.add.sonicare',
+    page: 'devices/add',
+    section: 'Device plugins',
+    title: 'Toothbrush',
+    description:
+      'A Philips Sonicare or an Oral-B iO that logs every brushing and tells you when to change the head',
+    icon: 'toothbrush',
+    keywords: [
+      'toothbrush',
+      'sonicare',
+      'philips',
+      'oral-b',
+      'oralb',
+      'io',
+      'teeth',
+      'brushing',
+      'brush head',
+    ],
+    scope: 'server',
+    control: 'link',
+    href: href.connect('sonicare'),
+  },
+  {
+    id: 'devices.add.larq',
+    page: 'devices/add',
+    section: 'Device plugins',
+    title: 'Water bottle',
+    description: 'A LARQ PureVis bottle that logs your drinks and cleans itself with UV',
+    icon: 'glassWater',
+    keywords: ['water bottle', 'bottle', 'larq', 'purevis', 'hydration', 'drink', 'uv', 'brita'],
+    scope: 'server',
+    control: 'link',
+    href: href.connect('larq'),
+  },
+  {
     id: 'devices.add.bluetooth-scale',
     page: 'devices/add',
-    section: 'Bluetooth',
+    section: 'Device plugins',
     title: 'Bluetooth scale',
     description: 'Weigh-ins go to whoever steps on',
     icon: 'scale',
@@ -54,5 +123,14 @@ export const SETTINGS: readonly SettingDefinition[] = [
     scope: 'server',
     control: 'link',
     href: href.connect('scale'),
+  },
+  {
+    ...PRINTER_PLUGIN,
+    id: 'devices.add.printer',
+    page: 'devices/add',
+    keywords: ['printer', 'print', 'ink', 'toner', 'ipp', 'airprint', 'paper', 'scanner'],
+    scope: 'server',
+    control: 'listed',
+    in: 'devices.add',
   },
 ];

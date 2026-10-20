@@ -26,7 +26,7 @@ describe('@config-plugins/react-native-webrtc contract', () => {
   });
 
   it('pairs with the react-native-webrtc release it was written for', () => {
-    expect(installedVersion('react-native-webrtc')).toBe(
+    expect(`npm:@stream-io/react-native-webrtc@${installedVersion('react-native-webrtc')}`).toBe(
       declaredVersion(APP_MANIFEST, 'react-native-webrtc'),
     );
   });

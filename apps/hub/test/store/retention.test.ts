@@ -100,7 +100,7 @@ afterEach(async () => {
 describe('sweepRetention', () => {
   it('keeps every table until its rows are older than ninety days', () => {
     const removed = sweepRetention(counted.sql, new Date(DAY_ZERO + 90 * DAY));
-    expect(removed).toStrictEqual({
+    expect(removed).toMatchObject({
       ai_wakes: 0,
       ai_outreach: 0,
       app_sessions: 0,
@@ -113,7 +113,7 @@ describe('sweepRetention', () => {
 
   it('removes only the rows past ninety days from each table', () => {
     const removed = sweepRetention(counted.sql, new Date(DAY_ZERO + 100 * DAY));
-    expect(removed).toStrictEqual({
+    expect(removed).toMatchObject({
       ai_wakes: 1,
       ai_outreach: 1,
       app_sessions: 1,

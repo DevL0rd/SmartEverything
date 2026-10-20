@@ -7,7 +7,7 @@ const calls = vi.hoisted(() => {
 });
 
 vi.mock('../../../api/automations', () => ({
-  saveAutomation: (save: unknown): Promise<void> => {
+  createAutomation: (save: unknown): Promise<void> => {
     calls.saved.push(save);
     return Promise.resolve();
   },
@@ -17,29 +17,30 @@ vi.mock('../../../api/automations', () => ({
   },
 }));
 
-const { templatesFor } = await import('../../automations');
-const { setTemplate, templateStates } = await import('./notify');
-const { washerDevice } = await import('./washer-fixture');
+const { notifyTemplates, setTemplate, templateStates } = await import('./notify');
+const { APPLIANCES } = await import('../../automations/model/templates/template-fixtures');
 
-const [DONE] = templatesFor([washerDevice()]);
+const MICROWAVE = APPLIANCES.find((device) => device.id === 'microwave');
+if (MICROWAVE === undefined) throw new Error('microwave fixture missing');
+
+const [DONE] = notifyTemplates(MICROWAVE);
 
 describe('notify me switches', () => {
-  it('offers the cycle-finished template first for the washer', () => {
-    expect(DONE?.id.startsWith('laundry-done:')).toBe(true);
+  it('offers the food-ready template first for the microwave', () => {
+    expect(DONE?.id.startsWith('microwave-ready:')).toBe(true);
   });
 
-  it('labels each row by its event, without repeating the machine name', () => {
-    const labels = templatesFor([washerDevice()]).map((template) => template.short);
-    expect(labels.slice(0, 2)).toEqual(['Finished', 'Fault']);
-    expect(labels.every((label) => label !== undefined && !label.includes('Washing'))).toBe(true);
+  it('labels each row by its event, without repeating the appliance name', () => {
+    const labels = notifyTemplates(MICROWAVE).map((template) => template.short);
+    expect(labels).toEqual(['Food is ready', 'Food still inside']);
   });
 
   it('matches stored automations to templates by name, ignoring case', () => {
     expect(
       templateStates(
-        ['Laundry done · A', 'Fault · A'],
+        ['Food is ready · A', 'Food still inside · A'],
         [
-          { id: 'x1', name: 'laundry DONE · a', enabled: true },
+          { id: 'x1', name: 'food IS READY · a', enabled: true },
           { id: 'x2', name: 'Other', enabled: false },
         ],
       ),
@@ -50,14 +51,7 @@ describe('notify me switches', () => {
     if (DONE === undefined) throw new Error('template missing');
     calls.saved.length = 0;
     await setTemplate(DONE, null, true);
-    expect(calls.saved).toEqual([
-      {
-        automationId: null,
-        name: DONE.draft.name,
-        enabled: true,
-        definition: DONE.draft.automation,
-      },
-    ]);
+    expect(calls.saved).toEqual([{ name: DONE.name, enabled: true, definition: DONE.build() }]);
   });
 
   it('enables and disables the automation that already exists', async () => {

@@ -33,6 +33,8 @@ object PhoneFiles {
       throw discarded(context, uri, name, failure)
     } catch (failure: SyncFailure) {
       throw discarded(context, uri, name, failure)
+    } catch (failure: IllegalArgumentException) {
+      throw discarded(context, uri, name, failure)
     }
   }
 

@@ -3,7 +3,6 @@ import { DEVICE_FAMILIES, deviceFamily, type DeviceFamily, type DeviceKind } fro
 
 const LIVE_MODELS: readonly (readonly [string, DeviceKind, DeviceFamily])[] = [
   ['lumi.sensor_switch.v2', 'other', 'button'],
-  ['SmartThings-smartthings-Mobile_Presence', 'other', 'presence_phone'],
   ['xiaomi.scales.400pgj', 'other', 'scale'],
   ['miwear.watch.p62g', 'other', 'wearable'],
   ['mibx5.washer.f29gl', 'appliance', 'laundry'],
@@ -27,9 +26,8 @@ describe('the family of every model in the home', () => {
     expect(deviceFamily({ model, kind })).toBe(family);
   });
 
-  it('knows the button and presence phone families', () => {
+  it('knows the button family', () => {
     expect(DEVICE_FAMILIES).toContain('button');
-    expect(DEVICE_FAMILIES).toContain('presence_phone');
   });
 
   it('treats other wireless remotes and buttons like the Aqara one', () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -8,6 +8,7 @@ import {
   type AudioRecorder,
 } from 'expo-audio';
 import { Logger, messageOf } from '@smarteverything/logging';
+import { usePausable } from '../../../design/external-store';
 import {
   VoiceRecorderMachine,
   type RecorderDevice,
@@ -64,7 +65,7 @@ export function useVoiceRecorder(): VoiceRecorder {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const state = useAudioRecorderState(recorder);
   const [machine] = useState(() => new VoiceRecorderMachine(deviceOf(recorder), () => new Date()));
-  const snapshot = useSyncExternalStore(machine.subscribe, machine.read);
+  const snapshot = usePausable(machine.subscribe, machine.read);
   useEffect(
     () => (): void => {
       machine.cancel().catch((cause: unknown) => {

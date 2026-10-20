@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { ORALB_MODE_COLOUR } from '../plugins/toothbrush/model/oralb-mode-colour';
+import { NODE_CATEGORY_COLOUR, TYPE_COLOUR } from './node-colours';
 
 type Theme = 'dark' | 'light';
 
@@ -70,6 +72,39 @@ describe('chart colours', () => {
   });
 });
 
+describe('Oral-B mode colours', () => {
+  const ROLES = Object.values(ORALB_MODE_COLOUR);
+
+  it('gives the nine modes nine different colours', () => {
+    expect(new Set(ROLES).size).toBe(9);
+  });
+
+  it.each(THEMES)('keep every mode colour at 3:1 on every %s surface', (theme) => {
+    for (const surface of SURFACES) {
+      for (const role of ROLES) {
+        expect(
+          contrast(tokenOf(theme, role), tokenOf(theme, surface)),
+          `${role} on ${surface} in ${theme}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it.each(THEMES)(
+    'keep the pressure colours of the Oral-B ring at 3:1 on every %s surface',
+    (theme) => {
+      for (const surface of SURFACES) {
+        for (const role of ['critical', 'positive', 'on-surface-variant']) {
+          expect(
+            contrast(tokenOf(theme, role), tokenOf(theme, surface)),
+            `${role} on ${surface} in ${theme}`,
+          ).toBeGreaterThanOrEqual(3);
+        }
+      }
+    },
+  );
+});
+
 describe('tone text', () => {
   it.each(THEMES)('keeps positive and warning words at 4.5:1 on %s cards and pages', (theme) => {
     for (const surface of TEXT_SURFACES) {
@@ -133,4 +168,32 @@ describe('air band and humidity strokes', () => {
       }
     },
   );
+});
+
+describe('canvas category bars and type dots', () => {
+  const CARD_SURFACES = ['surface-1', 'surface-2'] as const;
+  const CATEGORY_ROLES = [...new Set(Object.values(NODE_CATEGORY_COLOUR))];
+  const TYPE_ROLES = [...new Set(Object.values(TYPE_COLOUR))].filter((role) => role !== 'outline');
+
+  it.each(THEMES)('keeps every category bar colour at 3:1 on %s cards and frames', (theme) => {
+    for (const surface of CARD_SURFACES) {
+      for (const role of CATEGORY_ROLES) {
+        expect(
+          contrast(tokenOf(theme, role), tokenOf(theme, surface)),
+          `${role} on ${surface} in ${theme}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it.each(THEMES)('keeps every port dot and value wire colour at 3:1 on %s cards', (theme) => {
+    for (const surface of CARD_SURFACES) {
+      for (const role of TYPE_ROLES) {
+        expect(
+          contrast(tokenOf(theme, role), tokenOf(theme, surface)),
+          `${role} on ${surface} in ${theme}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
 });

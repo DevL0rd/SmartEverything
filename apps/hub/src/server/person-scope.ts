@@ -14,10 +14,13 @@ import {
   type DeviceScope,
   type EndpointShape,
   type McpToolArea,
+  type ReachScopes,
+  type TalkPresence,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import { profileIdOf, roleOfCaller, type Caller } from './auth';
+import { devicesPrivateToOthers } from './private-devices';
 import { refusal, type Subject } from './person-access';
 import { RepeatGate } from './repeat-gate';
 
@@ -37,7 +40,9 @@ class ScopesUnreadableError extends Error {
   }
 }
 
-export function scopesOf(store: Pick<Store, 'personAccess'>, profileId: string): AccessScopes {
+type ScopeStore = Pick<Store, 'personAccess' | 'localDevices' | 'devices'>;
+
+function storedScopesOf(store: Pick<Store, 'personAccess'>, profileId: string): AccessScopes {
   const scopes = store.personAccess.scopes(profileId);
   if (scopes !== undefined) return scopes;
   if (unreadable.pass(profileId) !== null) {
@@ -46,15 +51,23 @@ export function scopesOf(store: Pick<Store, 'personAccess'>, profileId: string):
   return NOTHING_IN_SCOPE;
 }
 
-export function scopesOfCaller(store: Store, caller: Caller): AccessScopes | null {
+export function scopesOf(store: ScopeStore, profileId: string): ReachScopes {
+  const scopes = storedScopesOf(store, profileId);
+  return {
+    ...scopes,
+    devices: { ...scopes.devices, hidden: devicesPrivateToOthers(store, profileId) },
+  };
+}
+
+export function scopesOfCaller(store: Store, caller: Caller): ReachScopes | null {
   if (caller.kind === 'anonymous' || roleOfCaller(caller) === 'owner') return null;
   return scopesOf(store, profileIdOf(store, caller));
 }
 
 export function scopesOfClient(
-  store: Pick<Store, 'personAccess' | 'profiles'>,
+  store: ScopeStore & Pick<Store, 'profiles'>,
   client: Pick<ClientRow, 'id' | 'role'>,
-): AccessScopes | null {
+): ReachScopes | null {
   return client.role === 'owner' ? null : scopesOf(store, store.profiles.activeOf(client.id).id);
 }
 
@@ -183,4 +196,12 @@ export function assertChannelReach(store: Store, caller: Caller, channelId: stri
     detail: `a channel outside the person's channels was asked for: ${channelId}`,
     message: 'That walkie-talkie channel is not part of your access; ask the owner.',
   });
+}
+
+export function presenceInScope(scope: ChannelScope | null, presence: TalkPresence): TalkPresence {
+  if (scope === null) return presence;
+  return {
+    ...presence,
+    floors: presence.floors.filter((floor) => !channelHidden(scope, floor.channelId)),
+  };
 }

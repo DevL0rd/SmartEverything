@@ -13,12 +13,13 @@ import { isComputerEngine } from '../provider/computer-engine';
 import { useEngineAccessory } from './engine-accessories';
 import { useHarnessDevice } from '../data/harness-device';
 import { useOwnDeviceSelection } from '../data/own-device-selection';
-import { harnessHostName } from '../model/harness-context';
+import { harnessHostName, harnessHostNote } from '../model/harness-context';
 
 export interface MachineChoice {
   readonly key: string;
   readonly label: string;
   readonly reason: string | null;
+  readonly note: string | null;
   readonly selected: boolean;
   readonly disabled: boolean;
   readonly onPress: () => void;
@@ -67,6 +68,7 @@ function ChatSource({
       key: item.label,
       label,
       reason: reason.length === 0 ? null : reason.join(' · '),
+      note: item.description ?? null,
       selected: item.icon === 'check',
       disabled: item.disabled === true,
       onPress: item.onPress,
@@ -104,6 +106,7 @@ function DraftSource({
       key: option.value,
       label: option.label,
       reason,
+      note: host === undefined ? null : harnessHostNote(host),
       selected: option.value === key,
       disabled: reason !== null,
       onPress: (): void => {
@@ -143,6 +146,7 @@ function NativeSource({
       key: `${supply.computer.runtime}:${supply.computer.device_id}`,
       label: supply.computer.name,
       reason: ready ? null : (supply.model.reason ?? supply.computer.reason ?? 'Unavailable'),
+      note: null,
       selected: current,
       disabled: !owner || !ready,
       onPress: (): void => {

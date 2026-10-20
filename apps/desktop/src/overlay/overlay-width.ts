@@ -43,6 +43,18 @@ export function pillWidth(inputs: WidthInputs): WidthResult {
   };
 }
 
+export interface ChipFit {
+  readonly result: WidthResult;
+  readonly iconOnly: boolean;
+}
+
+export function fitChip(layout: (iconOnly: boolean) => WidthResult): ChipFit {
+  const labelled = layout(false);
+  return labelled.clipStatus
+    ? { result: layout(true), iconOnly: true }
+    : { result: labelled, iconOnly: false };
+}
+
 export interface WindowSize {
   readonly width: number;
   readonly height: number;

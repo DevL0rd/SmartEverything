@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import type { ChatLink } from './chat-widgets';
 import type { SearchTarget } from './search';
 
 export const NAV_SECTIONS = [
@@ -69,8 +68,22 @@ export const NAV_PIN_TARGET = z.discriminatedUnion('kind', [
       .string()
       .min(1)
       .max(200)
-      .describe('A page of the app by route key, for example fitness-sleep, devices-air or automations.scenes'),
+      .describe(
+        'A page of the app by route key, for example fitness-sleep, devices-air, automations.scenes or plugin.pluginId.pageId for a page a plugin adds',
+      ),
   }),
+  z.strictObject({ kind: z.literal('device'), deviceId: z.uuid(), focus: FOCUS }),
+  z.strictObject({ kind: z.literal('camera'), deviceId: z.uuid() }),
+  z.strictObject({ kind: z.literal('room'), roomId: z.uuid() }),
+  z.strictObject({ kind: z.literal('group'), groupId: z.uuid() }),
+  z.strictObject({ kind: z.literal('scene'), sceneId: z.uuid() }),
+  z.strictObject({ kind: z.literal('automation'), automationId: z.uuid(), focus: FOCUS }),
+]);
+
+export type NavPinTarget = z.infer<typeof NAV_PIN_TARGET>;
+
+export const NAV_TARGET = z.discriminatedUnion('kind', [
+  ...NAV_PIN_TARGET.options,
   z.strictObject({
     kind: z.literal('setting'),
     page: z
@@ -80,19 +93,7 @@ export const NAV_PIN_TARGET = z.discriminatedUnion('kind', [
       .describe('A settings page id such as appearance/navigation, or the id of one setting'),
     setting: z.string().min(1).max(120).nullable(),
   }),
-  z.strictObject({ kind: z.literal('device'), deviceId: z.uuid(), focus: FOCUS }),
-  z.strictObject({ kind: z.literal('camera'), deviceId: z.uuid() }),
-  z.strictObject({ kind: z.literal('room'), roomId: z.uuid() }),
-  z.strictObject({ kind: z.literal('group'), groupId: z.uuid() }),
-  z.strictObject({ kind: z.literal('scene'), sceneId: z.uuid() }),
-  z.strictObject({ kind: z.literal('automation'), automationId: z.uuid(), focus: FOCUS }),
   z.strictObject({ kind: z.literal('chat'), chatId: z.uuid() }),
-]);
-
-export type NavPinTarget = z.infer<typeof NAV_PIN_TARGET>;
-
-export const NAV_TARGET = z.discriminatedUnion('kind', [
-  ...NAV_PIN_TARGET.options,
   z.strictObject({
     kind: z.literal('nav'),
     node: NAV_ID.describe('The id of a navigation item, to point at it without opening anything'),
@@ -100,6 +101,8 @@ export const NAV_TARGET = z.discriminatedUnion('kind', [
 ]);
 
 export type NavTarget = z.infer<typeof NAV_TARGET>;
+
+export type NavOpenTarget = Exclude<NavTarget, { readonly kind: 'nav' }>;
 
 export const NAV_SECTION_NODE = z.strictObject({
   kind: z.literal('section'),
@@ -221,7 +224,7 @@ function isOrb(node: ResolvedNode): boolean {
   return node.kind === 'section' && node.section === 'assistant';
 }
 
-export function defaultNavigationItems(): readonly NavNode[] {
+export function defaultNavigationItems(): NavNode[] {
   return NAV_SECTIONS.map((section): NavNode => ({ kind: 'section', section }));
 }
 
@@ -266,7 +269,9 @@ export function resolveNavigation(
   availability: NavAvailability,
 ): ResolvedNav {
   const walk: Walk = { layout, availability, seen: new Set(), duplicates: [] };
-  const listed = (layout.items ?? defaultNavigationItems()).flatMap((node) => nodeOf(walk, node) ?? []);
+  const listed = (layout.items ?? defaultNavigationItems()).flatMap(
+    (node) => nodeOf(walk, node) ?? [],
+  );
   const appended = NAV_SECTIONS.filter(
     (section) => !walk.seen.has(section) && shown(walk, section),
   );
@@ -308,25 +313,6 @@ export function navTargetOfSearch(open: SearchTarget): NavPinTarget | null {
       return { kind: 'automation', automationId: open.automationId, focus: null };
     case 'command':
     case 'setting':
-      return null;
-  }
-}
-
-export function navTargetOfLink(link: ChatLink): NavPinTarget | null {
-  switch (link.kind) {
-    case 'setting_link':
-      return { kind: 'setting', page: link.setting, setting: null };
-    case 'device_settings_link':
-      return { kind: 'device', deviceId: link.id, focus: null };
-    case 'automation_link':
-      return { kind: 'automation', automationId: link.id, focus: null };
-    case 'scene_link':
-      return { kind: 'scene', sceneId: link.id };
-    case 'room_link':
-      return { kind: 'room', roomId: link.id };
-    case 'page_link':
-      return link.page === 'chat' && link.id !== null ? { kind: 'chat', chatId: link.id } : null;
-    case 'scheduled_link':
       return null;
   }
 }

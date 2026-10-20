@@ -48,7 +48,9 @@ function detailsOf(id: string): Record<string, unknown> {
 describe('what the AI reads about a television', () => {
   it('shows a television without settings as not linked directly and without input names', () => {
     expect(detailsOf(add('television', 'tv-1'))['television']).toEqual({
-      direct_link: false,
+      direct_link: null,
+      wake_address: null,
+      last_wake_worked_at: null,
       input_names: {},
     });
   });
@@ -56,10 +58,26 @@ describe('what the AI reads about a television', () => {
   it('shows the direct link and the names given to the inputs', () => {
     const id = add('television', 'tv-1');
     opened.store.televisionSettings.setInputNames(id, { HDMI1: 'Console' });
-    opened.store.televisionSettings.setDirectLink(id);
+    opened.store.televisionSettings.setDirectLinks([
+      { deviceId: id, host: '192.168.1.40', macAddress: 'a1:b2:c3:d4:e5:f6' },
+    ]);
     expect(detailsOf(id)['television']).toEqual({
-      direct_link: true,
+      direct_link: { address: '192.168.1.40', mac: 'a1:b2:c3:d4:e5:f6' },
+      wake_address: null,
+      last_wake_worked_at: null,
       input_names: { HDMI1: 'Console' },
+    });
+  });
+
+  it('shows the wake address and when a wake last worked', () => {
+    const id = add('television', 'tv-2');
+    opened.store.televisionSettings.setWakeAddress(id, 'a1:b2:c3:d4:e5:f6');
+    opened.store.televisionSettings.recordWakeWorked(id, '2026-10-18T12:00:00.000Z');
+    expect(detailsOf(id)['television']).toEqual({
+      direct_link: null,
+      wake_address: 'a1:b2:c3:d4:e5:f6',
+      last_wake_worked_at: '2026-10-18T12:00:00.000Z',
+      input_names: {},
     });
   });
 

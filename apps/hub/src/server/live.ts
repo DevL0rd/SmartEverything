@@ -7,7 +7,6 @@ import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import {
   LIVE_PROTOCOL,
-  splitLiveTables,
   type ClientRow,
   type FirewallStatus,
   type HubStatus,
@@ -37,10 +36,12 @@ import { z } from 'zod';
 import type { Store } from '../store/store';
 import { socketClient } from './socket-auth';
 import { issuesOf } from './errors';
-import { allowedStreams, allowedTables, projected } from './live-visibility';
+import { projected, seenBy } from './live-visibility';
+import { applySubscription, type LivePrimer, type LiveSubscription } from './live-subscription';
 import { liveText } from './live-wire';
-import { LIVENESS_PROBE_MS, answersPing } from './live-reach';
+import { answering } from './live-reach';
 import { LiveNotifications } from './live-notifications';
+import { AppViewBroker } from '../app-view/broker';
 
 export type LiveNotice = Exclude<LiveMessage, { type: 'change' | 'ready' | 'subscribed' }>;
 
@@ -48,6 +49,8 @@ const POLICY_VIOLATION = 1008;
 type LiveConnection = LoggedConnection;
 
 export type LiveAudience = 'everyone' | 'owners' | LiveStream;
+
+export type LiveReach = 'any' | 'foreground';
 
 export interface LiveOptions {
   readonly store: Store;
@@ -65,18 +68,35 @@ export class LiveHub {
   readonly watches: LiveWatch<LiveConnection>;
   readonly voice: LiveVoice<LiveConnection>;
   readonly notifications: LiveNotifications;
+  readonly appViews: AppViewBroker;
   private readonly connections = new Set<LiveConnection>();
   private readonly backgrounds = new WeakSet<LiveConnection>();
   private tally = new LiveTally();
   private sequence = 0;
-  private readonly primers = new Map<LiveStream, (profileId: string) => readonly LiveNotice[]>();
+  private readonly primers = new Map<LiveStream, LivePrimer>();
+  private readonly subscription: LiveSubscription;
   private readonly heartbeat: NodeJS.Timeout;
   private readonly unsubscribe: readonly (() => void)[];
 
   constructor(private readonly options: LiveOptions) {
-    this.watches = new LiveWatch({ send: this.send.bind(this), log: options.log });
+    this.subscription = {
+      store: options.store,
+      log: options.log,
+      backgrounds: this.backgrounds,
+      primers: this.primers,
+      send: this.send.bind(this),
+    };
+    this.watches = new LiveWatch({
+      send: this.send.bind(this),
+      sendTrace: this.send.bind(this),
+      log: options.log,
+    });
     this.notifications = new LiveNotifications(
       (clientId, notice) => this.deliver(clientId, notice),
+      options.log,
+    );
+    this.appViews = new AppViewBroker(
+      (clientId, notice) => this.deliver(clientId, notice, 'foreground'),
       options.log,
     );
     this.voice = new LiveVoice({
@@ -131,35 +151,25 @@ export class LiveHub {
     );
   }
 
-  async deliver(clientId: string, notice: LiveNotice): Promise<number> {
+  async deliver(clientId: string, notice: LiveNotice, reach: LiveReach = 'any'): Promise<number> {
     const startedAt = performance.now();
-    const own = [...this.connections].filter((connection) => connection.client.id === clientId);
-    const reached = await Promise.all(
-      own.map(async (connection): Promise<boolean> => {
-        if (!(await answersPing(connection.socket, LIVENESS_PROBE_MS))) {
-          connection.stats.closedBy('hub:probe_unanswered');
-          this.options.log.warn('live.connection_unresponsive', {
-            clientId,
-            socketId: connection.id,
-            probeMs: LIVENESS_PROBE_MS,
-            openMs: Math.round(performance.now() - connection.openedAt),
-            noticeType: notice.type,
-          });
-          return false;
-        }
-        this.send(connection, notice);
-        return true;
-      }),
+    const own = [...this.connections].filter(
+      (connection) =>
+        connection.client.id === clientId && (reach === 'any' || !this.backgrounds.has(connection)),
     );
-    const delivered = reached.filter(Boolean).length;
+    const reached = await answering(own, this.options.log, notice.type);
+    reached.forEach((connection) => {
+      this.send(connection, notice);
+    });
     this.options.log.debug('live.delivered', () => ({
       clientId,
       noticeType: notice.type,
+      reach,
       sockets: own.length,
-      delivered,
+      delivered: reached.length,
       durationMs: Math.round(performance.now() - startedAt),
     }));
-    return delivered;
+    return reached.length;
   }
 
   presence(): void {
@@ -194,7 +204,7 @@ export class LiveHub {
     }
   }
 
-  prime(stream: LiveStream, primer: (profileId: string) => readonly LiveNotice[]): void {
+  prime(stream: LiveStream, primer: LivePrimer): void {
     this.primers.set(stream, primer);
   }
 
@@ -227,6 +237,7 @@ export class LiveHub {
     this.options.log.info('live.stopping', { sockets: this.connections.size });
     clearInterval(this.heartbeat);
     this.notifications.stop();
+    this.appViews.stop();
     this.unsubscribe.forEach((stop) => {
       stop();
     });
@@ -298,6 +309,7 @@ export class LiveHub {
       return;
     }
     if (read.type === 'watch') this.watches.receive(connection, read);
+    else if (read.type === 'watch_automations') this.watches.receiveTrace(connection, read);
     else if (read.type === 'voice_levels_watch') this.voice.watch(connection, read.call_id);
     else this.subscribe(connection, read);
   }
@@ -329,61 +341,7 @@ export class LiveHub {
       });
       return;
     }
-    const requested = splitLiveTables(message.tables);
-    if (requested.unknown.length > 0) {
-      this.options.log.warn('live.tables_unknown', {
-        socketId: connection.id,
-        clientId: connection.client.id,
-        tables: requested.unknown,
-      });
-    }
-    const tables = allowedTables(connection.client, requested.known);
-    const streams = allowedStreams(connection.client, message.streams);
-    connection.stats.subscribed();
-    this.options.log.info('live.subscribed', {
-      socketId: connection.id,
-      clientId: connection.client.id,
-      role: connection.client.role,
-      background: message.background === true,
-      tables: tables.length,
-      tablesDenied: message.tables.length - tables.length,
-      streams,
-      streamsDenied: message.streams.length - streams.length,
-      subscribes: connection.stats.subscribes,
-      seq: this.options.store.feed.seq,
-      sinceOpenMs: Math.round(performance.now() - connection.openedAt),
-    });
-    if (message.background === true) this.backgrounds.add(connection);
-    else this.backgrounds.delete(connection);
-    connection.tables.clear();
-    connection.streams.clear();
-    tables.forEach((table) => connection.tables.add(table));
-    streams.forEach((stream) => connection.streams.add(stream));
-    this.send(connection, {
-      type: 'subscribed',
-      tables,
-      streams,
-      seq: this.options.store.feed.seq,
-    });
-    this.primeConnection(connection);
-  }
-
-  private primeConnection(connection: LiveConnection): void {
-    const profileId = this.options.store.profiles.activeOf(connection.client.id).id;
-    for (const [stream, primer] of this.primers) {
-      if (connection.streams.has(stream)) {
-        const notices = primer(profileId);
-        this.options.log.debug('live.primed', {
-          socketId: connection.id,
-          clientId: connection.client.id,
-          stream,
-          notices: notices.length,
-        });
-        notices.forEach((notice) => {
-          this.send(connection, notice);
-        });
-      }
-    }
+    applySubscription(this.subscription, connection, message);
   }
 
   private broadcast(change: LiveChange): void {
@@ -394,6 +352,7 @@ export class LiveHub {
   }
 
   private send(connection: LiveConnection, message: LiveMessage): void {
+    if (connection.socket.readyState !== connection.socket.OPEN) return;
     const buffered = connection.socket.bufferedAmount;
     connection.stats.buffered(buffered);
     if (buffered > SLOW_CLIENT_BYTES) {
@@ -403,7 +362,7 @@ export class LiveHub {
       return;
     }
     watchBacklog(this.options.log, connection, buffered, message.type);
-    const text = liveText(connection.client.role, message);
+    const text = liveText(connection.client.role, seenBy(connection, message, this.options.store));
     if (text === null) {
       connection.stats.skipped();
       this.tally.skipped();

@@ -18,6 +18,9 @@
       "path": "./packages/ble"
     },
     {
+      "path": "./packages/ipp"
+    },
+    {
       "path": "./packages/tuya"
     },
     {
@@ -25,6 +28,9 @@
     },
     {
       "path": "./packages/shelly"
+    },
+    {
+      "path": "./packages/flow"
     },
     {
       "path": "./apps/hub"

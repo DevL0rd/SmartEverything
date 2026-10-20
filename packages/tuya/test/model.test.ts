@@ -7,7 +7,6 @@ import {
   buildDeviceModel,
   decodeReport,
   encodeCommand,
-  reportFromDps,
 } from '../src';
 import { BOOL, JSON_SHAPE, int, options, point } from './fixtures';
 
@@ -291,36 +290,5 @@ describe('encoding commands', () => {
 
   it('refuses a value outside the exact range', () => {
     expect(() => encodeCommand(light, 'brightness', 5, 'local')).toThrow(InvalidValueError);
-  });
-});
-
-describe('local data point reports', () => {
-  it('translates data point ids to codes and lists the ids it does not know', () => {
-    expect(reportFromDps(light, { '20': true, '22': 10, '99': 'x' })).toStrictEqual({
-      report: [
-        { code: 'switch_led', value: true },
-        { code: 'bright_value_v2', value: 10 },
-      ],
-      unknownDpIds: [99],
-    });
-  });
-
-  it('translates the IR data points of a blaster', () => {
-    const legacy = buildDeviceModel('wnykq', [], new Set([201]));
-    expect(reportFromDps(legacy, { '202': 'AAA=', '201': '{}' }).report).toStrictEqual([
-      { code: 'ir_send', value: '{}' },
-      { code: 'ir_study_code', value: 'AAA=' },
-    ]);
-    const modern = buildDeviceModel('wnykq', [], new Set([1]));
-    expect(
-      reportFromDps(modern, {
-        '1': 'study',
-        '2': 'c',
-        '3': 'h',
-        '4': 'k',
-        '7': 's',
-        '13': 0,
-      }).report.map((item) => item.code),
-    ).toStrictEqual(['control', 'study_code', 'ir_code', 'key_code', 'key_study', 'type']);
   });
 });

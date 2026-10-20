@@ -285,6 +285,20 @@ export type EarCodec = z.output<typeof EAR_CODEC>;
 
 export const EAR_PACKET = z.base64().describe('One Opus packet of a relayed ear, base64');
 
+export const EAR_SCORE = z.strictObject({
+  id: z.string().min(1),
+  keywords: LISTENING_CONFIG.shape.keywords.min(1),
+  threshold: LISTENING_CONFIG.shape.threshold,
+  pcm: PCM,
+});
+
+export const EAR_SCORED = z.strictObject({ id: z.string().min(1), heard: z.boolean() });
+
+export const EAR_SCORE_FAILED = z.strictObject({
+  id: z.string().min(1),
+  reason: z.string().min(1),
+});
+
 export const LISTENING_REST_REASONS = ['switched_off', 'discord_call', 'conversation'] as const;
 
 export const LISTENING_SUPERSEDED = z.strictObject({
@@ -337,11 +351,14 @@ export const LISTENING_NODE_MESSAGE = z.discriminatedUnion('kind', [
   NEAR_MESSAGE,
 ]);
 
+const CLOSED_MESSAGE = z.strictObject({ kind: z.literal('closed') });
+
 export const REMOTE_EAR_NODE_MESSAGE = z.discriminatedUnion('kind', [
   CLAIM_MESSAGE,
   SEGMENT_MESSAGE,
   NEAR_MESSAGE,
   STATE_MESSAGE,
+  CLOSED_MESSAGE,
 ]);
 
 export type RemoteEarNodeMessage = z.output<typeof REMOTE_EAR_NODE_MESSAGE>;

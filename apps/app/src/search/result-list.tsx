@@ -29,6 +29,7 @@ export interface SearchListModel {
   readonly selectedKey: string | null;
   readonly keyboard: boolean;
   readonly navigating: boolean;
+  readonly picking: boolean;
   readonly onOpen: (node: ResultNode) => void;
   readonly onToggle: (key: string, expanded: boolean) => void;
   readonly onShowAll: (target: string) => void;
@@ -68,6 +69,7 @@ function RowBody({ row, model }: RowProps): ReactNode {
           parent={row.parent}
           expandable={row.expandable}
           expanded={row.expanded}
+          picking={model.picking}
           catalogue={model.catalogue}
           onOpen={model.onOpen}
           onToggle={model.onToggle}
@@ -120,6 +122,7 @@ function sameModel(a: SearchListModel, b: SearchListModel): boolean {
     a.look === b.look &&
     a.catalogue === b.catalogue &&
     a.query === b.query &&
+    a.picking === b.picking &&
     a.onOpen === b.onOpen &&
     a.onToggle === b.onToggle &&
     a.onShowAll === b.onShowAll &&

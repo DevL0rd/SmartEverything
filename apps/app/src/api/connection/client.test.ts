@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
+import {
+  API_ENDPOINTS as E,
+  AUTOMATION_PROGRAM_ENDPOINTS as P,
+  ApiError,
+} from '@smarteverything/domain';
 import {
   ApiClient,
   InvalidRequestError,
@@ -73,6 +77,17 @@ describe('the API client', () => {
     await client.call(E.updateRoom, { params: { roomId: ROOM.id }, body: { name: 'Hall' } });
     expect(sent[1]?.url).toBe(`https://home.example.com/api/rooms/${ROOM.id}`);
     expect(sent[1]?.method).toBe('PATCH');
+  });
+
+  it('sends a path parameter the contract reads as a number as the text it was given', async () => {
+    const { client, sent } = serving(200, '{}');
+    const automationId = '00000000-0000-4000-8000-000000000002';
+    await expect(
+      client.call(P.getAutomationProgramRevision, { params: { automationId, revision: '3' } }),
+    ).rejects.toBeInstanceOf(UnreadableAnswerError);
+    expect(sent[0]?.url).toBe(
+      `https://home.example.com/api/automation-programs/${automationId}/revisions/3`,
+    );
   });
 
   it('turns an error envelope into a named error with its code', async () => {

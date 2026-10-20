@@ -49,7 +49,7 @@ describe('the labels built from keys', () => {
 
   it('keeps the health signal labels', () => {
     const labels = HEALTH_SIGNALS.kinds.flatMap((kind) =>
-      kind.fields === 'capabilities' ? [] : kind.fields.map((field) => field.label),
+      typeof kind.fields === 'string' ? [] : kind.fields.map((field) => field.label),
     );
     expect(labels).toContain('Heart rate average');
     expect(labels).toContain('Active energy');

@@ -23,7 +23,7 @@ import { LogTicker } from '../log/log-ticker';
 import { useBlasterRemotes, type BlasterRemote } from './blaster-remotes';
 import { useClimate, type Climate } from './blaster-climate';
 import { RemoteFace } from './remote-face';
-import { useLibrarySource } from './remote-source';
+import { useDeviceRemoteSource } from './remote-source';
 
 const MAX_CHIPS: Readonly<Record<WideClass, number>> = { m: 2, w: 3, l: 8, xl: 8 };
 const SPARK_HEIGHT = 28;
@@ -197,14 +197,14 @@ function WideBlaster({
   );
 }
 
-function LibraryRemote({
+function DeviceRemoteCard({
   device,
   cls,
 }: {
   readonly device: Device;
   readonly cls: WideClass;
 }): ReactNode {
-  return <RemoteFace source={useLibrarySource(device)} cls={cls} />;
+  return <RemoteFace source={useDeviceRemoteSource(device)} cls={cls} />;
 }
 
 export function BlasterCard(props: CardFaceProps): ReactNode {
@@ -213,7 +213,7 @@ export function BlasterCard(props: CardFaceProps): ReactNode {
     return <GenericCardFace {...props} />;
   }
   return device.kind === 'ir_remote' ? (
-    <LibraryRemote device={device} cls={cls} />
+    <DeviceRemoteCard device={device} cls={cls} />
   ) : (
     <WideBlaster device={device} cls={cls} />
   );

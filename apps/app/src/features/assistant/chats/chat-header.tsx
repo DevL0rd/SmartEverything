@@ -17,7 +17,7 @@ import { useSizeClass } from '../../../design/size-class';
 import { useStoreSelector } from '../../../store/store-context';
 import { liveTurnOf } from '../../../store/chat-turns';
 import { useProfiles } from '../../../store/people';
-import { CallPill, startCall } from '../call';
+import { startCall } from '../call';
 import { AssistantOrb } from '../call/orb';
 import { ProfileSwitcher } from '../../profiles';
 import { TypingDots } from '../components/typing-dots';
@@ -173,9 +173,6 @@ function Frame({
         {status}
         {trailing}
         <PageSettingsButton settings={mainPageSettings('assistant')} />
-      </View>
-      <View className="items-start px-3">
-        <CallPill />
       </View>
     </View>
   );

@@ -30,37 +30,34 @@ function scriptOf(args: readonly string[]): string {
   return script;
 }
 
-function echoedWords(script: string): string[] {
-  const echoing = script.replaceAll(SOCKETFILTERFW, "printf '%s\\n'");
-  return execFileSync('/bin/sh', ['-c', echoing], { encoding: 'utf8' }).trimEnd().split('\n');
+function echoedWords(run: ReturnType<typeof elevatedRunOf>): string[] {
+  const echoing = scriptOf(run.args).replaceAll(SOCKETFILTERFW, "printf '%s\\n'");
+  const stdout = execFileSync('/bin/sh', ['-c', echoing], { encoding: 'utf8' });
+  return run.resultsOf(stdout).map((result) => result.detail);
 }
 
 describe('elevated firewall run', () => {
-  it('Linux runs one pkexec shell script that stops on the first failing command', () => {
+  it('Linux runs one pkexec shell script that reports every command and never stops early', () => {
     const run = elevatedRunOf(UFW_PLAN, 'linux');
     expect(run.program).toBe('pkexec');
     expect(run.args.slice(0, 2)).toEqual(['/bin/sh', '-c']);
-    const lines = scriptOf(run.args).split('\n');
-    expect(lines[0]).toBe('set -e');
-    expect(lines.at(-1)).toBe(
+    const script = scriptOf(run.args);
+    expect(script).not.toContain('set -e');
+    expect(script.split('\n').at(-1)).toContain(
       'ufw prepend allow in proto tcp from 192.168.1.0/24 to any port 8788 comment ' +
         "'SmartEverything encrypted LAN'",
     );
+    expect(run.steps).toHaveLength(3);
   });
 
   it.skipIf(process.platform === 'win32')(
     'macOS script keeps a program path with spaces and a quote as one word',
     () => {
-      const script = scriptOf(elevatedRunOf(MAC_PLAN, 'darwin').args);
-      expect(echoedWords(script)).toEqual([
-        '--add',
-        TRICKY_PROGRAM,
-        '--unblockapp',
-        TRICKY_PROGRAM,
-        '--add',
-        '/opt/go2rtc',
-        '--unblockapp',
-        '/opt/go2rtc',
+      expect(echoedWords(elevatedRunOf(MAC_PLAN, 'darwin'))).toEqual([
+        `--add ${TRICKY_PROGRAM}`,
+        `--unblockapp ${TRICKY_PROGRAM}`,
+        '--add /opt/go2rtc',
+        '--unblockapp /opt/go2rtc',
       ]);
     },
   );
@@ -75,6 +72,10 @@ describe('elevated firewall run', () => {
 
   it('every platform reads a declined prompt from its own signal', () => {
     expect(elevatedRunOf(UFW_PLAN, 'linux').declinedWhen(126, '')).toBe(true);
+    expect(elevatedRunOf(UFW_PLAN, 'linux').declinedWhen(127, 'Error: Not authorized')).toBe(true);
+    expect(elevatedRunOf(UFW_PLAN, 'linux').declinedWhen(127, 'No authentication agent')).toBe(
+      false,
+    );
     expect(elevatedRunOf(UFW_PLAN, 'linux').declinedWhen(1, '')).toBe(false);
     expect(elevatedRunOf(MAC_PLAN, 'darwin').declinedWhen(1, 'User canceled. (-128)')).toBe(true);
   });

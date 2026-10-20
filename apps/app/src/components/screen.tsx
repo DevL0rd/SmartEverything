@@ -18,7 +18,14 @@ import {
   usePrimaryActionPlacement,
   type PrimaryActionProps,
 } from './primary-action';
-import { HeaderSlotContext, ScreenContext, useScreen, type ScreenValue } from './screen-context';
+import {
+  HeaderSlotContext,
+  ScreenContext,
+  ScreenScrollContext,
+  useScreen,
+  type ScreenScroll,
+  type ScreenValue,
+} from './screen-context';
 
 const KeyboardViewport = withUniwind(KeyboardAvoidingView);
 
@@ -181,6 +188,14 @@ function ContentBody({ scroll, externalScroll, ...content }: ContentBodyProps): 
   );
 }
 
+function useScrollAnchor(
+  scroll: boolean,
+  scrollRef: ScreenScroll['scrollRef'],
+  scrollY: ScreenScroll['scrollY'],
+): ScreenScroll | null {
+  return useMemo(() => (scroll ? { scrollRef, scrollY } : null), [scroll, scrollRef, scrollY]);
+}
+
 export function Screen({
   header,
   maxWidth = 'dashboard',
@@ -205,25 +220,27 @@ export function Screen({
   );
   return (
     <ScreenContext.Provider value={value}>
-      <KeyboardViewport behavior="padding" automaticOffset className="flex-1">
-        <Ambient />
-        {header}
-        <ContentBody
-          scroll={scroll}
-          externalScroll={externalScroll}
-          scrollRef={scrollRef}
-          header={header}
-          banner={banner}
-          maxWidth={maxWidth}
-          onRefresh={onRefresh}
-          refreshing={refreshing}
-          fab={fab}
-        >
-          {children}
-        </ContentBody>
-        <Footer>{footer}</Footer>
-        {primaryAction !== undefined && fab ? <PrimaryAction {...primaryAction} /> : null}
-      </KeyboardViewport>
+      <ScreenScrollContext.Provider value={useScrollAnchor(scroll, scrollRef, scrollY)}>
+        <KeyboardViewport behavior="padding" automaticOffset className="flex-1">
+          <Ambient />
+          {header}
+          <ContentBody
+            scroll={scroll}
+            externalScroll={externalScroll}
+            scrollRef={scrollRef}
+            header={header}
+            banner={banner}
+            maxWidth={maxWidth}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            fab={fab}
+          >
+            {children}
+          </ContentBody>
+          <Footer>{footer}</Footer>
+          {primaryAction !== undefined && fab ? <PrimaryAction {...primaryAction} /> : null}
+        </KeyboardViewport>
+      </ScreenScrollContext.Provider>
     </ScreenContext.Provider>
   );
 }

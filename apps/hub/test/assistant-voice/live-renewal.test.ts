@@ -5,6 +5,7 @@ import type { CallLink } from '../../src/assistant-voice/call-link';
 import { Conversation } from '../../src/assistant-voice/conversation';
 import { plainLine } from '../../src/assistant-voice/voice-line';
 import type { ConversationHooks } from '../../src/assistant-voice/conversation-hooks';
+import { catchUpCharacters } from '../../src/assistant-voice/live-window';
 import { NO_REPLY_MS } from '../../src/assistant-voice/reply-watchdog';
 import type { ToolAnswer } from '../../src/assistant-voice/tool-answer';
 import {
@@ -46,7 +47,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function startCall(): Promise<Call> {
+interface CallOptions {
+  readonly speech?: ConversationHooks['speech'];
+}
+
+async function startCall(options: CallOptions = {}): Promise<Call> {
   let clock = 0;
   const sockets: Socket[] = [];
   const endings: string[] = [];
@@ -59,7 +64,7 @@ async function startCall(): Promise<Call> {
     caption: () => undefined,
   };
   const hooks: ConversationHooks = {
-    speech: 'gated-client',
+    speech: options.speech ?? 'gated-client',
     settings: (): AssistantVoiceSettings => ASSISTANT_VOICE_SETTINGS.parse({}),
     system: (): string => 'system',
     note: (): string => '',
@@ -252,6 +257,129 @@ describe('Gemini Live renewal', () => {
     await call.advance(0);
     expect(call.sockets).toHaveLength(1);
     expect(call.endings).toEqual(['failed: internal']);
+  });
+});
+
+describe('Gemini Live renewal after a broken session', () => {
+  it('opens a fresh session at once when Gemini closes with an error, since that handle never resumes', async () => {
+    const call = await startCall();
+    await call.serve(0, heard('turn on the lights'), say, done, saved('h1'));
+    drop(call.sockets[0] ?? fail(), 1011, 'Internal error encountered.');
+    await call.advance(0);
+    expect(call.sockets).toHaveLength(2);
+    expect(call.sockets[1]?.config.sessionResumption).toEqual({});
+    expect(call.sockets[1]?.sent[0]).toContain('They said: turn on the lights');
+    expect(logs.events()).not.toContain('conversation.renew_failed');
+    expect(call.endings).toEqual([]);
+  });
+
+  it('carries a compact tool result whole in the catch-up of a fresh session', async () => {
+    const call = await startCall();
+    const automations = Array.from({ length: 25 }, (_, index) => ({
+      id: `a${String(index)}`,
+      name: `Kitchen switch ${String(index)}`,
+      on: true,
+      rooms: ['Kitchen'],
+    }));
+    await call.serve(0, saved('h1'), toolCall('list-1', 'see'));
+    call.answer({ response: { automations }, line: '', pictures: [] });
+    await call.advance(0);
+    drop(call.sockets[0] ?? fail(), 1007, 'Request contains an invalid argument.');
+    await call.advance(0);
+    const catchUp = call.sockets[1]?.sent.find((line) => line.startsWith('text ')) ?? '';
+    expect(catchUp).toContain('Kitchen switch 24');
+    expect(catchUp).not.toContain('left out');
+    expect(logs.events()).not.toContain('voice.catch_up_left_out');
+  });
+
+  it('names a tool result too large for the model window instead of replaying it, and warns with sizes', async () => {
+    const call = await startCall();
+    await call.serve(0, saved('h1'), toolCall('list-1', 'see'));
+    call.answer({ response: { rows: 'x'.repeat(60_000) }, line: '', pictures: [] });
+    await call.advance(0);
+    drop(call.sockets[0] ?? fail(), 1007, 'Request contains an invalid argument.');
+    await call.advance(0);
+    const catchUp = call.sockets[1]?.sent.find((line) => line.startsWith('text ')) ?? '';
+    expect(catchUp).toContain('see returned a result too large to repeat here');
+    expect(catchUp).not.toContain('xxxx');
+    expect(catchUp.length).toBeLessThan(catchUpCharacters(null));
+    expect(payloadOf('voice.catch_up_left_out')).toMatchObject({
+      tooLarge: 1,
+      budgetChars: catchUpCharacters(null),
+    });
+  });
+
+  it('keeps whole recent turns within the model window and says how many earlier ones are left out', async () => {
+    const call = await startCall();
+    const turns = Array.from(
+      { length: 8 },
+      (_, index) => `turn ${String(index)} ${'w'.repeat(2000)}`,
+    );
+    await call.serve(0, saved('h1'));
+    for (const turn of turns) {
+      await call.serve(0, heard(turn), say, done);
+    }
+    drop(call.sockets[0] ?? fail(), 1011, 'Internal error encountered.');
+    await call.advance(0);
+    const catchUp = call.sockets[1]?.sent.find((line) => line.startsWith('text ')) ?? '';
+    expect(catchUp).toContain('turn 7 ');
+    expect(catchUp).not.toContain('turn 0 ');
+    expect(catchUp).toMatch(
+      /\[\d+ earlier lines of this call do not fit in your memory and are left out/,
+    );
+    expect(catchUp.length).toBeLessThan(catchUpCharacters(null) + 2000);
+    expect(payloadOf('voice.catch_up_left_out')).toMatchObject({
+      tooLarge: 0,
+      budgetChars: catchUpCharacters(null),
+    });
+  });
+
+  it('asks the fresh session to answer when Gemini decided the turn and the person was left unanswered', async () => {
+    const call = await startCall({ speech: 'echo-free' });
+    await call.serve(0, saved('h1'), heard('what time is it'));
+    drop(call.sockets[0] ?? fail(), 1011, 'Internal error encountered.');
+    await call.advance(0);
+    const catchUp = call.sockets[1]?.sent.find((line) => line.startsWith('text ')) ?? '';
+    expect(catchUp).toContain('They said: what time is it');
+    expect(catchUp).toContain('answer them now');
+    expect(catchUp).toContain('"turnComplete":true');
+    expect(payloadOf('conversation.renewed')).toMatchObject({ respond: true });
+  });
+
+  it('gives speech held during a renewal to the next session when the renewed one died before answering', async () => {
+    const call = await startCall();
+    await call.serve(0, saved('h1'), say, done);
+    call.conversation.activity(true);
+    drop(call.sockets[0] ?? fail(), 1000, '');
+    call.conversation.hear(new Int16Array(320));
+    call.conversation.activity(false);
+    await call.advance(0);
+    await call.serve(1, saved('h2'));
+    drop(call.sockets[1] ?? fail(), 1007, 'Request contains an invalid argument.');
+    await call.advance(0);
+    expect(call.sockets).toHaveLength(3);
+    const sent = call.sockets[2]?.sent ?? [];
+    expect(sent.filter((line) => line.startsWith('realtime '))).toEqual([
+      'realtime activityStart',
+      'realtime audio',
+      'realtime activityEnd',
+    ]);
+    expect(call.endings).toEqual([]);
+  });
+
+  it('gives a renewed session the full wait before calling it silent', async () => {
+    const call = await startCall();
+    await call.serve(0, saved('h1'), say, done);
+    speak(call.conversation);
+    await call.serve(0, heard('are you there'));
+    await call.advance(NO_REPLY_MS - 2000);
+    drop(call.sockets[0] ?? fail(), 1000, '');
+    await call.advance(0);
+    expect(call.sockets).toHaveLength(2);
+    await call.advance(NO_REPLY_MS - 2000);
+    expect(call.sockets).toHaveLength(2);
+    expect(logs.events()).not.toContain('conversation.renew_silent');
+    expect(call.endings).toEqual([]);
   });
 });
 

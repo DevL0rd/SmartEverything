@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { HOME_ID } from './recorded';
+import { MESSAGING_TOPICS } from './fake-cloud';
 import { NEW_KEY, waitFor, world, type World } from './world';
 
 let current: World | null = null;
@@ -49,7 +51,6 @@ describe('Tuya transports', () => {
       ['cz2', 'cloud', 'not_on_lan'],
       ['ir1', 'cloud', 'not_on_lan'],
       ['ir2', 'cloud', 'not_on_lan'],
-      ['tv-1', 'cloud', 'cloud_library'],
     ]);
   });
 
@@ -104,7 +105,7 @@ describe('local operation', () => {
     ).resolves.toBeNull();
     await w.sink.until(() => stateOf(w, 'plug1', 'power') === true, 'the switched state');
     expect(w.plug.controls).toStrictEqual([{ dps: { '1': true }, cid: null }]);
-    expect(w.h.cloud.calls('POST', '/v1.0/iot-03/devices/plug1/commands')).toStrictEqual([]);
+    expect(w.h.cloud.calls('POST', '/v1.1/m/thing/plug1/commands')).toStrictEqual([]);
   });
 
   it('reads and pushes sub-device state through the gateway with its node id', async () => {
@@ -163,7 +164,7 @@ describe('local operation', () => {
     w.plug.answerKey = NEW_KEY;
     w.plug.push({ '1': true });
     await waitFor(
-      () => w.h.cloud.requests.some((request) => request.query.get('device_ids') === 'plug1'),
+      () => w.h.cloud.requests.some((request) => request.query.get('devIds') === 'plug1'),
       'the key refetch',
     );
     w.plug.key = NEW_KEY;
@@ -200,24 +201,28 @@ describe('cloud operation', () => {
       capability: 'power',
       value: false,
     });
-    expect(
-      w.h.cloud.calls('POST', '/v1.0/iot-03/devices/cz2/commands').map((request) => request.body),
-    ).toStrictEqual([{ commands: [{ code: 'switch_1', value: false }] }]);
+    expect(w.h.cloud.commandsFor('cz2')).toStrictEqual([
+      { commands: [{ code: 'switch_1', value: false }] },
+    ]);
   });
 
-  it('applies message service reports to cloud devices only, and acknowledges every message', async () => {
+  it('applies message service reports to cloud devices only', async () => {
     const w = await started();
     await onLan(w);
-    const first = w.h.messages.publish({
-      devId: 'th1',
-      status: [{ code: 'va_temperature', value: 215, t: 1 }],
+    const topic = MESSAGING_TOPICS.device;
+    w.h.broker.publish(topic('th1', 'pen'), {
+      protocol: 4,
+      data: { devId: 'th1', status: [{ dpId: 1, value: 215 }] },
     });
     await w.sink.until(() => stateOf(w, 'th1', 'temperature') === 21.5, 'the cloud temperature');
-    const second = w.h.messages.publish({
-      devId: 'plug1',
-      status: [{ code: 'switch_1', value: true }],
+    w.h.broker.publish(topic('plug1', 'pen'), {
+      protocol: 4,
+      data: { devId: 'plug1', status: [{ dpId: 1, value: true }] },
     });
-    const third = w.h.messages.publish({ bizCode: 'offline', devId: 'th1', bizData: { time: 1 } });
+    w.h.broker.publish(MESSAGING_TOPICS.owner(HOME_ID), {
+      protocol: 20,
+      data: { bizCode: 'offline', bizData: { devId: 'th1' } },
+    });
     await w.sink.until(
       () =>
         w.sink.events.some(
@@ -226,33 +231,35 @@ describe('cloud operation', () => {
       'offline',
     );
     expect(stateOf(w, 'plug1', 'power')).toBe(false);
-    await waitFor(() => w.h.messages.acks.length === 3, 'three acknowledgements');
-    expect(w.h.messages.acks).toStrictEqual(
-      [first, second, third].map((messageId) => JSON.stringify({ messageId })),
+  });
+
+  it('connects to the message broker with the credentials the cloud gave and follows every device by the way it reports', async () => {
+    const w = await started();
+    const [connection] = w.h.broker.live;
+    expect(connection?.options).toStrictEqual({
+      url: 'ssl://broker.example.test:8883',
+      clientId: 'client-0001',
+      username: 'broker-user',
+      password: 'broker-password',
+    });
+    expect([...(connection?.subscribed ?? [])].sort()).toStrictEqual(
+      [
+        MESSAGING_TOPICS.owner(HOME_ID),
+        ...['plug1', 'pir1', 'th1', 'cz2', 'ir1'].map((id) => MESSAGING_TOPICS.device(id, 'pen')),
+        ...['gw1', 'ir2'].map((id) => MESSAGING_TOPICS.device(id, 'sta')),
+      ].sort(),
     );
   });
 
-  it('connects to the message service with the derived password', async () => {
+  it('skips a message it cannot read and reconnects when the broker drops', async () => {
     const w = await started();
-    expect(w.h.messages.urls).toStrictEqual([
-      'wss://mqe.tuyaeu.com:8285/ws/v2/consumer/persistent/test-access-id/out/event/test-access-id-sub?ackTimeoutMillis=3000&subscriptionType=Failover',
-    ]);
-    expect(w.h.messages.headers[0]).toMatchObject({ username: 'test-access-id' });
-    expect(w.h.messages.headers[0]?.['password']).toHaveLength(16);
-  });
-
-  it('acknowledges an unreadable message and reconnects when the service drops', async () => {
-    const w = await started();
-    w.h.messages.publishRaw(JSON.stringify({ messageId: 'bad-1', payload: '***' }));
+    w.h.broker.publishRaw(MESSAGING_TOPICS.device('th1', 'pen'), '***');
+    w.h.broker.drop();
     await waitFor(
-      () => w.h.messages.acks.includes(JSON.stringify({ messageId: 'bad-1' })),
-      'the acknowledgement',
-    );
-    w.h.messages.dropClients();
-    await waitFor(
-      () => w.h.messages.urls.length === 2 && w.h.messages.connected === 1,
+      () => w.h.broker.connections.length === 2 && w.h.broker.live.length === 1,
       'the reconnection',
     );
+    expect(w.sink.failures).toStrictEqual([]);
   });
 });
 
@@ -265,6 +272,6 @@ describe('stopping', () => {
       () => w.plug.connections === 0 && w.gateway.connections === 0,
       'the local sockets to close',
     );
-    await waitFor(() => w.h.messages.connected === 0, 'the message socket to close');
+    await waitFor(() => w.h.broker.live.length === 0, 'the message broker to close');
   });
 });

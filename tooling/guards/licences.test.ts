@@ -63,7 +63,7 @@ describe('the Android licences', () => {
   it('knows the licence of every library the Android module really depends on', () => {
     const names = extraLicences().map((one) => one.name);
     expect(names).toContain('androidx.health.connect:connect-client');
-    expect(names).toContain('org.jitsi:webrtc');
+    expect(names).toContain('io.getstream:stream-video-webrtc-android');
     expect(names).toContain('electron');
     expect(extraLicences().every((one) => one.licence !== '')).toBe(true);
   });

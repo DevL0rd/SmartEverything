@@ -10,6 +10,7 @@
     "patches/consumer-close.patch",
     "patches/cs2-talk-payload.patch",
     "patches/writer-lifetime.patch",
-    "patches/internal-producer-lifetime.patch"
+    "patches/internal-producer-lifetime.patch",
+    "patches/play-backchannel-reconnect.patch"
   ]
 }

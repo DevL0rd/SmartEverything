@@ -37,6 +37,7 @@ describe('camera speaker lifetime', () => {
           played.push(urlOf(source));
           return Promise.resolve();
         },
+        backchannel: (): Promise<boolean> => Promise.resolve(true),
       },
       feeds,
       ready: (): Promise<void> => Promise.resolve(),
@@ -71,6 +72,7 @@ describe('camera speaker when go2rtc stops reading', () => {
           played.push(urlOf(source));
           return Promise.resolve();
         },
+        backchannel: (): Promise<boolean> => Promise.resolve(true),
       },
       feeds,
       ready: (): Promise<void> => Promise.resolve(),

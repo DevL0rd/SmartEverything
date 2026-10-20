@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
+import { StyleSheet } from 'react-native';
 import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useColour } from '../../design/colour';
 import { useMotion } from '../../design/motion';
 import { useDraw } from '../use-draw';
 import type { ColourRole } from '../../design/tokens';
+import { shadeAt, type DrawnShades } from './draw-shades';
 import { arcLength, arcPath, pointOn, type XY } from './geometry';
 
 export { angleAt, polar } from './geometry';
@@ -29,6 +31,7 @@ export interface ArcProps {
   readonly sweep?: number;
   readonly tinted?: boolean;
   readonly ticks?: readonly ArcTick[];
+  readonly overlay?: boolean;
 }
 
 function ArcStroke({
@@ -81,33 +84,29 @@ function StartDot({
 export function DrawnStroke({
   d,
   length,
-  colour,
+  shades,
   thickness,
   drawn,
-  after = 0,
-  through = Number.POSITIVE_INFINITY,
 }: {
   readonly d: string;
   readonly length: number;
-  readonly colour: ColourRole;
+  readonly shades: DrawnShades;
   readonly thickness: number;
   readonly drawn: SharedValue<number>;
-  readonly after?: number;
-  readonly through?: number;
 }): ReactNode {
-  const stroke = useColour(colour);
-  const animated = useAnimatedProps(
-    () => ({
-      strokeDashoffset: length * (1 - drawn.get()),
-      strokeOpacity: drawn.get() > after && drawn.get() <= through ? 1 : 0,
-    }),
-    [length, after, through],
-  );
+  const animated = useAnimatedProps(() => {
+    const share = drawn.get();
+    return {
+      strokeDashoffset: length * (1 - share),
+      strokeOpacity: share > 0 ? 1 : 0,
+      stroke: shadeAt(shades, share),
+    };
+  }, [length, shades]);
   return (
     <AnimatedPath
       d={d}
       fill="none"
-      stroke={stroke}
+      stroke={shades[0].colour}
       strokeWidth={thickness}
       strokeLinecap="round"
       strokeDasharray={`${String(length)} ${String(length)}`}
@@ -124,6 +123,23 @@ function trackOf(
   return tinted ? { colour, opacity: 0.2 } : { colour: track, opacity: 1 };
 }
 
+function Ticks({
+  ticks,
+  ring,
+}: {
+  readonly ticks: readonly ArcTick[];
+  readonly ring: Parameters<typeof arcPath>[0];
+}): ReactNode {
+  return ticks.map((tick, index) => (
+    <ArcStroke
+      key={`${String(index)}-${String(tick.start)}-${String(tick.sweep)}`}
+      d={arcPath(ring, tick.start, tick.start + tick.sweep)}
+      colour={tick.colour}
+      thickness={tick.thickness}
+    />
+  ));
+}
+
 export function Arc({
   value,
   size,
@@ -134,33 +150,33 @@ export function Arc({
   sweep = 360,
   tinted = false,
   ticks = [],
+  overlay = false,
 }: ArcProps): ReactNode {
   const centre = size / 2;
   const radius = (size - thickness) / 2;
   const target = Math.min(1, Math.max(0, value));
   const drawn = useDraw(target, !useMotion().reduced);
+  const stroke = useColour(colour);
   const ring = { cx: centre, cy: centre, r: radius };
   const path = arcPath(ring, startAngle, startAngle + sweep);
   return (
-    <Svg width={size} height={size} aria-hidden>
+    <Svg
+      width={size}
+      height={size}
+      aria-hidden
+      {...(overlay ? { style: StyleSheet.absoluteFill, pointerEvents: 'none' as const } : {})}
+    >
       {trackColour === null ? null : (
         <ArcStroke d={path} {...trackOf(colour, trackColour, tinted)} thickness={thickness} />
       )}
       <DrawnStroke
         d={path}
         length={arcLength(radius, sweep)}
-        colour={colour}
+        shades={[{ through: Number.POSITIVE_INFINITY, colour: stroke }]}
         thickness={thickness}
         drawn={drawn}
       />
-      {ticks.map((tick) => (
-        <ArcStroke
-          key={`${String(tick.start)}-${tick.colour}`}
-          d={arcPath(ring, tick.start, tick.start + tick.sweep)}
-          colour={tick.colour}
-          thickness={tick.thickness}
-        />
-      ))}
+      <Ticks ticks={ticks} ring={ring} />
       {tinted ? (
         <StartDot
           at={pointOn(ring, startAngle)}

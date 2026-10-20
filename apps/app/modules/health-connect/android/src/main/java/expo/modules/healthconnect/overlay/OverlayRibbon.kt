@@ -52,6 +52,8 @@ object RibbonShape {
     max(OverlayDims.METER_BAR_MIN / OverlayDims.METER_HEIGHT, (METER_WEIGHTS[index] * step).toFloat())
 }
 
+private data class RibbonBinding(val kind: RibbonKind, val orb: OrbState, val muted: Boolean, val level: LevelSource?)
+
 class RibbonMotion(private val reduced: Boolean) {
   val positions = DoubleArray(RibbonShape.WEIGHTS.size)
   private val velocities = DoubleArray(RibbonShape.WEIGHTS.size)
@@ -129,7 +131,12 @@ class OverlayRibbonView(context: Context, private val palette: OverlayPalette, r
   val widthDp: Float
     get() = if (kind == RibbonKind.Ribbon) OverlayDims.RIBBON_WIDTH else OverlayDims.METER_WIDTH
 
+  private var bound: RibbonBinding? = null
+
   fun bind(kind: RibbonKind, orb: OrbState, muted: Boolean, level: LevelSource?) {
+    val next = RibbonBinding(kind, orb, muted, level)
+    if (next == bound) return
+    bound = next
     this.kind = kind
     thinking = orb == OrbState.Thinking
     flat = muted && level == null

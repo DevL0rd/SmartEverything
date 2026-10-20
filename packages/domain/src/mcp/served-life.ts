@@ -55,7 +55,7 @@ export const SERVED_LIFE = [
     'nutrition',
     'control',
     'Log food or water',
-    'Logs a portion of food (foodId or barcode from find_food, or a new food) or a drink of water for a person (personId from list_people).',
+    'Logs a portion of food (foodId or barcode from find_food, or a new food) or a drink of water for a person (personId from list_people). A linked water bottle logs its own drinks.',
     { key: 'action', parts: { food: 'log_food', water: 'log_water' } },
   ],
   [
@@ -113,7 +113,7 @@ export const SERVED_LIFE = [
     'settings',
     'control',
     'Change settings',
-    'Changes settings of one area (get_settings shows the current values and allowed ones): an app preference, the home, its location, the assistant, AI defaults, the AI budget or the switched-off tools; also re-detects the firewall, fetches the weather or the exchange rates now or downloads the model list.',
+    'Changes settings of one area (get_settings shows the current values and allowed ones): an app preference, the home, its location, the assistant, AI defaults, the AI budget or the switched-off tools; also re-detects the firewall (firewall) or adds the missing firewall rules from its plan with the plan revision (fix_firewall; each rule reports applied, already present or failed, and the result carries sudo commands when the server cannot elevate), fetches the weather or the exchange rates now or downloads the model list.',
     {
       key: 'action',
       parts: {
@@ -125,6 +125,7 @@ export const SERVED_LIFE = [
         budget: 'set_ai_budget',
         tools: 'update_mcp_tools',
         firewall: 'check_firewall',
+        fix_firewall: 'apply_firewall',
         weather: 'refresh_weather',
         exchange_rates: 'refresh_exchange_rates',
         models: 'refresh_models',

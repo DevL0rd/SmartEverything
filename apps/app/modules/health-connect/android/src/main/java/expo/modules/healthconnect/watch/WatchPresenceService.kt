@@ -7,6 +7,10 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import expo.modules.healthconnect.NativeGuard
 import expo.modules.healthconnect.phone.PhoneCar
+import expo.modules.healthconnect.toothbrush.BrushService
+import expo.modules.healthconnect.toothbrush.BrushStore
+import expo.modules.healthconnect.treadmill.TreadmillService
+import expo.modules.healthconnect.treadmill.TreadmillStore
 
 @RequiresApi(Build.VERSION_CODES.S)
 class WatchPresenceService : CompanionDeviceService() {
@@ -20,7 +24,8 @@ class WatchPresenceService : CompanionDeviceService() {
   @Deprecated("Replaced by onDevicePresenceEvent on Android 16")
   override fun onDeviceDisappeared(address: String) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-      PhoneCar.presence(this, address.uppercase(), false)
+      val upper = address.uppercase()
+      if (!treadmillGone(upper)) PhoneCar.presence(this, upper, false)
     }
   }
 
@@ -36,7 +41,10 @@ class WatchPresenceService : CompanionDeviceService() {
   @Deprecated("Replaced by onDevicePresenceEvent on Android 16")
   override fun onDeviceDisappeared(associationInfo: AssociationInfo) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
-      associationInfo.deviceMacAddress?.let { PhoneCar.presence(this, it.toString().uppercase(), false) }
+      associationInfo.deviceMacAddress?.let {
+        val upper = it.toString().uppercase()
+        if (!treadmillGone(upper)) PhoneCar.presence(this, upper, false)
+      }
     }
   }
 
@@ -57,12 +65,35 @@ class WatchPresenceService : CompanionDeviceService() {
       PhoneCar.presence(this, address, false)
       return
     }
+    if (gone && address != null && treadmillGone(address)) {
+      return
+    }
     WatchEvents.emit("presence", "event ${event.event} for association ${event.associationId}")
+  }
+
+  private fun treadmillGone(address: String): Boolean {
+    if (TreadmillStore(this).byAddress(address) == null) return false
+    NativeGuard.run("TreadmillPresence") {
+      TreadmillService.send(this, TreadmillService.ACTION_LOST, address)
+    }
+    return true
   }
 
   private fun appeared(address: String, how: String) {
     if (PhoneCar.isCar(this, address)) {
       PhoneCar.presence(this, address, true)
+      return
+    }
+    if (BrushStore(this).byAddress(address) != null) {
+      NativeGuard.run("BrushPresence") {
+        BrushService.send(this, BrushService.ACTION_CONNECT, address)
+      }
+      return
+    }
+    if (TreadmillStore(this).byAddress(address) != null) {
+      NativeGuard.run("TreadmillPresence") {
+        TreadmillService.send(this, TreadmillService.ACTION_CONNECT, address)
+      }
       return
     }
     val watch = WatchStore(this).byAddress(address) ?: return

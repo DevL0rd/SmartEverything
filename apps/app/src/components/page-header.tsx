@@ -7,6 +7,7 @@ import { useNavigationState } from 'expo-router/react-navigation';
 import { PageSettingsButton, type PageSettingsLink } from './page-settings-button';
 import { useSizeClass, type HeaderKind } from '../design/size-class';
 import { Breadcrumbs, type Crumb } from './breadcrumbs';
+import { useHeaderPinItems } from './header-pin';
 import { useHeaderSearchHandler } from './header-search';
 import { useHeaderStatus } from './header-status';
 import { Button } from './button';
@@ -102,30 +103,36 @@ function settingsMenuItem(settings: PageSettingsLink): MenuItem {
   };
 }
 
+type LateItems = (() => readonly MenuItem[]) | null;
+
 function TouchMenu({
   rest,
   settings,
+  late,
 }: {
   readonly rest: readonly MenuItem[];
   readonly settings: PageSettingsLink | undefined;
+  readonly late: LateItems;
 }): ReactNode {
   if (settings === undefined) {
-    return rest.length === 0 ? null : <OverflowButton items={rest} />;
+    return rest.length === 0 && late === null ? null : <OverflowButton items={rest} late={late} />;
   }
-  if (rest.length === 0) {
+  if (rest.length === 0 && late === null) {
     return <PageSettingsButton settings={settings} />;
   }
-  return <OverflowButton items={[...rest, settingsMenuItem(settings)]} />;
+  return <OverflowButton items={[...rest, settingsMenuItem(settings)]} late={late} />;
 }
 
 function TouchActions({
   actions,
   overflow,
+  late,
   search,
   settings,
 }: {
   readonly actions: readonly HeaderAction[];
   readonly overflow: readonly MenuItem[];
+  readonly late: LateItems;
   readonly search: boolean;
   readonly settings: PageSettingsLink | undefined;
 }): ReactNode {
@@ -149,7 +156,7 @@ function TouchActions({
           {...(action.href === undefined ? {} : { href: action.href })}
         />
       ))}
-      <TouchMenu rest={rest} settings={settings} />
+      <TouchMenu rest={rest} settings={settings} late={late} />
     </View>
   );
 }
@@ -189,9 +196,11 @@ function PointerAction({
 function PointerActions({
   actions,
   overflow,
+  late,
 }: {
   readonly actions: readonly HeaderAction[];
   readonly overflow: readonly MenuItem[];
+  readonly late: LateItems;
 }): ReactNode {
   const { primaryAction } = useScreen();
   const compact = useSizeClass().width === 'compact';
@@ -203,7 +212,9 @@ function PointerActions({
       {primaryAction === null ? null : (
         <PointerAction action={{ ...primaryAction, primary: true }} compact={compact} />
       )}
-      {overflow.length === 0 ? null : <OverflowButton items={overflow} />}
+      {overflow.length === 0 && late === null ? null : (
+        <OverflowButton items={overflow} late={late} />
+      )}
     </View>
   );
 }
@@ -219,6 +230,7 @@ function EditBar({ editing }: { readonly editing: HeaderEditing }): ReactNode {
 
 function Trailing(props: PageHeaderProps & { readonly kind: HeaderKind }): ReactNode {
   const status = useHeaderStatus();
+  const late = useHeaderPinItems();
   if (props.editing !== undefined && props.editing !== null) {
     return <EditBar editing={props.editing} />;
   }
@@ -228,11 +240,12 @@ function Trailing(props: PageHeaderProps & { readonly kind: HeaderKind }): React
     <View className="flex-row items-center gap-1">
       {status}
       {props.kind === 'desktop' ? (
-        <PointerActions actions={actions} overflow={overflow} />
+        <PointerActions actions={actions} overflow={overflow} late={late} />
       ) : (
         <TouchActions
           actions={actions}
           overflow={overflow}
+          late={late}
           search={props.search ?? true}
           settings={props.settings}
         />

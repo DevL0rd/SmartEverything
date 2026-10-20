@@ -37,6 +37,14 @@ export class EarsRelay implements SessionEars, SessionEarHosts {
     this.hosts?.relayed(computerId, key, message);
   }
 
+  scored(computerId: string, id: string, heard: boolean): void {
+    this.hosts?.scored(computerId, id, heard);
+  }
+
+  scoreFailed(computerId: string, id: string, reason: string): void {
+    this.hosts?.scoreFailed(computerId, id, reason);
+  }
+
   online(computerId: string, send: EarSend): void {
     this.target?.online(computerId, send);
   }

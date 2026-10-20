@@ -3,6 +3,7 @@ import type {
   EarSource,
   ListeningRuntimeState,
   PauseChoiceMs,
+  WakeSensitivity,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { base64OfPcm } from '../../src/computers/ear-pcm';
@@ -10,10 +11,10 @@ import { EarHosts, type EarHostFrame } from '../../src/listening/ear-hosts';
 import { HubRemoteEars, EarKeyConflictError } from '../../src/listening/remote-ears';
 import type { RemoteEarOptions } from '../../src/listening/remote-ears-port';
 import { WakeClaims, type OnSuperseded } from '../../src/wake-name/wake-claims';
-import type { SpeechSegment } from '../../src/wake-name/ear';
-import type { EarKeywords } from '../../src/wake-name/keyword-spotter';
+import type { SpeechSegment } from '../../src/listening/speech-segment';
+import type { EarKeywords } from '../../src/wake-name/keyword-lines';
 import { FakeClock } from '../support/fake-clock';
-import { testLogger } from '../support/logs';
+import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
 const CAN: readonly ComputerFeature[] = ['cpu', 'ear_host'];
@@ -26,6 +27,7 @@ interface Woke {
   readonly onSuperseded: OnSuperseded;
 }
 
+let logs: CapturedLogs;
 let opened: TestStore;
 let clock: FakeClock;
 let hosts: EarHosts;
@@ -38,7 +40,7 @@ let nears: { kind: string; key: string; phrase: string }[];
 let woke: Woke[];
 let segments: SpeechSegment[];
 let resting: boolean;
-let sensitivity: 'low' | 'medium' | 'high';
+let sensitivity: WakeSensitivity;
 
 function computerDevice(name: string): string {
   const [row] = opened.store.devices.upsert([
@@ -105,6 +107,7 @@ function claimOf(snippetDbfs: number): {
 }
 
 beforeEach(async () => {
+  logs = captureLogs();
   opened = await testStore();
   clock = new FakeClock(START);
   hosts = new EarHosts({ store: opened.store, log: testLogger('listening') });
@@ -117,7 +120,7 @@ beforeEach(async () => {
   woke = [];
   segments = [];
   resting = false;
-  sensitivity = 'medium';
+  sensitivity = 'standard';
   ears = new HubRemoteEars({
     hosts,
     claims,
@@ -171,10 +174,10 @@ describe('a source with no computer to listen', () => {
         config: {
           wake: true,
           transcribe: true,
-          keywords: ['Sam medium'],
+          keywords: ['Sam standard'],
           threshold: 0.25,
           nearMissThreshold: 0.1,
-          sensitivity: 'medium',
+          sensitivity: 'standard',
           pause_ms: 200,
         },
       },
@@ -212,6 +215,37 @@ describe('moving between hosts', () => {
     join('beta');
     hosts.leave('alpha');
     expect(frames['beta']?.map((frame) => frame.type)).toEqual(['ears_open', 'ears_open']);
+  });
+});
+
+describe('a source that cannot be configured', () => {
+  it('names the source and keeps the other sources moving to the new host', async () => {
+    let broken = false;
+    await ears.open({
+      ...camera(),
+      sensitivity: (): WakeSensitivity => {
+        if (broken) throw new Error('no camera row');
+        return sensitivity;
+      },
+    });
+    await ears.open(options({ kind: 'talk', key: 'msg-1' }, { source: 'talk', key: 'room' }));
+    broken = true;
+    join('desk');
+    expect(frames['desk']?.map((frame) => frame.type)).toEqual(['ears_open']);
+    expect(frames['desk']?.[0]).toMatchObject({ source: { kind: 'talk', key: 'msg-1' } });
+    expect(logs.events()).toContain('ears.attach_failed');
+  });
+});
+
+describe('a node link that drops while a source attaches', () => {
+  it('opens the source without an attach failure and keeps the other sources moving', async () => {
+    await ears.open(camera());
+    await ears.open(options({ kind: 'talk', key: 'msg-1' }, { source: 'talk', key: 'room' }));
+    hosts.join('desk', CAN, () => {
+      throw new Error('link closed');
+    });
+    expect(logs.events()).not.toContain('ears.attach_failed');
+    expect(logs.events()).toContain('ears.send_failed');
   });
 });
 
@@ -379,20 +413,73 @@ describe('resting and settings', () => {
 });
 
 describe('opening and closing', () => {
-  it('closes on the host and frees the key and the state', async () => {
+  it('closes on the host, waits for it to say closed, then frees the key and the state', async () => {
     join('desk');
     const ear = await ears.open(camera());
-    await ear.close();
+    let closed = false;
+    const closing = ear.close().then(() => {
+      closed = true;
+    });
     ear.packet(new Uint8Array([1]));
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    hosts.relayed('desk', CAMERA, { kind: 'closed' });
+    await closing;
+    expect(closed).toBe(true);
     expect(frames['desk']?.map((frame) => frame.type)).toEqual(['ears_open', 'ears_close']);
     hosts.relayed('desk', CAMERA, claimOf(-30));
     expect(woke).toEqual([]);
   });
 
-  it('replaces an ear that is opened again for the same source', async () => {
+  it('still hands over the speech the host finishes while it is closing', async () => {
+    join('desk');
+    const ear = await ears.open(camera());
+    const closing = ear.close();
+    hosts.relayed('desk', CAMERA, {
+      kind: 'segment',
+      segment: {
+        at: '2026-10-18T10:00:01.000Z',
+        endedAt: '2026-10-18T10:00:03.000Z',
+        levelDbfs: -30,
+        pcm: base64OfPcm(pcm(7, 8)),
+      },
+    });
+    hosts.relayed('desk', CAMERA, { kind: 'closed' });
+    await closing;
+    expect(segments.map((one) => Array.from(one.pcm))).toEqual([[7, 8]]);
+  });
+
+  it('stops waiting when the host goes away while closing', async () => {
+    join('desk');
+    const ear = await ears.open(camera());
+    const closing = ear.close();
+    hosts.leave('desk');
+    await closing;
+    await expect(ear.close()).resolves.toBeUndefined();
+  });
+
+  it('stops waiting when the host moves while closing', async () => {
+    join('desk');
+    const ear = await ears.open(camera());
+    const closing = ear.close();
+    join('studio');
+    hosts.leave('desk');
+    await closing;
+    expect(frames['studio']).toEqual([]);
+  });
+
+  it('closes at once when no computer hosts the source', async () => {
+    const ear = await ears.open(camera());
+    await expect(ear.close()).resolves.toBeUndefined();
+    expect(states.at(-1)).toEqual([CAMERA, null]);
+  });
+
+  it('replaces an ear that is opened again for the same source once the host has closed it', async () => {
     join('desk');
     await ears.open(camera());
-    await ears.open(camera());
+    const reopened = ears.open(camera());
+    hosts.relayed('desk', CAMERA, { kind: 'closed' });
+    await reopened;
     expect(frames['desk']?.map((frame) => frame.type)).toEqual([
       'ears_open',
       'ears_close',

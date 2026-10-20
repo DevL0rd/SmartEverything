@@ -5,14 +5,13 @@ import {
   type SpeedTestResult,
 } from '@smarteverything/domain';
 import type { PluginContext, PluginStop } from '../contract';
-import { ClientRegistry } from './client-registry';
 import { RouterCollector } from './collector';
+import { RouterPresence } from './presence';
 import { runRouterCommand } from './controls';
 import { DeviceMirror } from '../device-mirror';
 import { wirelessInterfaces } from './frame';
 import { forgetHostKey, pinHostKey, pinnedFingerprint } from './host-pin';
 import { ROUTER_DRIVER_ID, ROUTER_EXTERNAL_ID, routerMirror } from './router-device';
-import { routerSearchEntries, searchSignature } from './router-search';
 import { importRouterMonitor, SSH_KEY_SECRET } from './router-monitor-import';
 import type { RouterSettings } from './settings';
 import { listSpeedTests, saveSpeedTest } from './speed-tests';
@@ -27,34 +26,34 @@ export const SPEED_TEST_STREAM = 'router.speed_test';
 type Context = PluginContext<RouterSettings>;
 
 export function startRouter(ctx: Context): PluginStop {
-  const registry = new ClientRegistry(ctx.records('clients'), ctx.events.emit, ctx.log);
+  const presence = new RouterPresence(ctx);
   const sync = new DeviceMirror(routerMirror(ctx.metrics));
-  let searched: string | null = null;
-  const enrich = (snapshot: RouterSnapshot): RouterSnapshot => ({
-    ...snapshot,
-    clients: registry.observe(snapshot.clients, new Date()),
-  });
+  const publish = (enriched: RouterSnapshot): void => {
+    ctx.data.publish(SNAPSHOT_STREAM, enriched);
+    presence.index(enriched);
+  };
   const collector = createCollector(ctx, {
     record: (snapshot) => {
-      sync.update(snapshot);
+      sync.update(presence.enrich(snapshot));
     },
     publish: (snapshot) => {
-      const enriched = enrich(snapshot);
-      ctx.data.publish(SNAPSHOT_STREAM, enriched);
-      const signature = searchSignature(enriched.clients);
-      if (signature !== searched) {
-        searched = signature;
-        ctx.search.replace(routerSearchEntries(enriched.clients));
-      }
+      publish(presence.enrich(snapshot));
     },
   });
-  const latest = (): RouterSnapshot => collector?.latest ?? notSetUp();
+  const latest = (): RouterSnapshot =>
+    collector === null ? notSetUp() : presence.enrich(collector.latest);
+  const refresh = (): void => {
+    if (collector !== null) {
+      const enriched = presence.enrich(collector.latest);
+      sync.update(enriched);
+      publish(enriched);
+    }
+  };
   const speedTests = new SpeedTestRunner(ctx);
   ctx.tools.register(
     routerTools({
       snapshot: latest,
-      knownClients: () => registry.known(),
-      assignClient: (mac, profileId) => registry.assign(mac, profileId),
+      people: presence.controls(latest, refresh),
       command: (command) => runCommand(ctx, collector, command),
       speedTest: () => speedTests.run(),
       speedTests: () => listSpeedTests(ctx.records('speed_tests')),
@@ -209,5 +208,6 @@ function notSetUp(): RouterSnapshot {
     radios: [],
     stations: [],
     clients: [],
+    people: [],
   };
 }

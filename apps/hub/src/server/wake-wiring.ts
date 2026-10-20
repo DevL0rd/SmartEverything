@@ -1,11 +1,11 @@
 import type { AiOutreachRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import { assistantNames } from '../assistant-voice/persona';
 import type { Clock } from '../clock';
 import type { ReachRules } from '../reach/reach-rules';
 import type { ReachService } from '../reach/reach-service';
-import type { Ears, SpeechSegment } from '../wake-name/ear';
-import type { OnSuperseded, WakeClaim, WakeClaims } from '../wake-name/wake-claims';
+import type { RemoteEars } from '../listening/remote-ears-port';
+import type { SpeechSegment } from '../listening/speech-segment';
+import type { OnSuperseded, WakeClaim } from '../wake-name/wake-claims';
 import type { WakeTest } from '../wake-name/wake-test';
 import { WakeListeners } from '../wake-name/wake-listeners';
 import type { Store } from '../store/store';
@@ -15,8 +15,7 @@ import { messageOf } from '@smarteverything/logging';
 export interface WakeWiring {
   readonly rules: ReachRules;
   readonly service: ReachService;
-  readonly ears: Ears;
-  readonly claims: WakeClaims;
+  readonly ears: RemoteEars;
   readonly test: WakeTest;
   readonly speech: (cameraId: string, segment: SpeechSegment) => void;
   readonly clock: Clock;
@@ -90,12 +89,11 @@ export function startWakeName(context: ServerContext, wiring: WakeWiring): WakeL
   const listeners = new WakeListeners({
     store,
     rules: wiring.rules,
+    health: context.cameraHealth,
     microphones: context.talk.camera.microphones,
     speakers: context.talk.camera.speakers,
     ears: wiring.ears,
-    claims: wiring.claims,
     test: wiring.test,
-    names: (): string[] => assistantNames(store),
     wake: (cameraId, phrase, heard, onSuperseded): Promise<void> =>
       wakeCamera(
         { store, service: wiring.service, log: wiring.log },

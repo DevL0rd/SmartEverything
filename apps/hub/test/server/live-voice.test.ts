@@ -8,6 +8,7 @@ const CLIENT: ClientRow = {
   id: 'client-1',
   name: 'Desktop',
   platform: 'desktop',
+  kind: 'computer',
   role: 'owner',
   built_in: false,
   profile_id: null,

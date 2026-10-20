@@ -1,15 +1,13 @@
-import {
-  DIFFUSER_STRENGTH_LABELS,
-  type AutomationRow,
-  type AutomationV2,
-  type SprayRhythm,
-  type StepV2,
-} from '@smarteverything/domain';
+import { DIFFUSER_STRENGTH_LABELS, type SprayRhythm } from '@smarteverything/domain';
 import type { BadgeTone } from '../../../components/badge';
 import { LOW_LEVEL } from '../../../components/level-pill-model';
-import { compareText, joinParts } from '../../../format/text';
+import { joinParts } from '../../../format/text';
 import { MINUTE_MS } from '../../../format/time';
-import { storedAutomationOf } from '../../automations';
+import {
+  automationRowsOf,
+  scheduleOf as scheduleOfRows,
+  type ScheduleLine,
+} from '../../automations';
 import type { OnSegment } from '../button/relay-model';
 import type { DiffuserRead } from './diffuser-read';
 
@@ -113,61 +111,8 @@ export function refillLine(hours: number): string {
     : `Running ${String(Math.floor(hours / DAY_HOURS))} days since refill`;
 }
 
-export interface ScheduleLine {
-  readonly text: string;
-  readonly automationId: string;
-}
+export type { ScheduleLine };
 
-interface PowerChange {
-  readonly at: string;
-  readonly on: boolean;
-  readonly automationId: string;
-}
-
-function targetsDevice(step: StepV2, deviceId: string): boolean {
-  if (step.do !== 'set') {
-    return false;
-  }
-  const { target } = step;
-  if ('device' in target) {
-    return target.device === deviceId;
-  }
-  return 'devices' in target && target.devices.includes(deviceId);
-}
-
-function changesOf(
-  automation: AutomationV2,
-  automationId: string,
-  deviceId: string,
-): readonly PowerChange[] {
-  const times = automation.when.flatMap((trigger) => (trigger.on === 'time' ? [trigger.at] : []));
-  const flips = automation.steps.flatMap((step) =>
-    step.do === 'set' &&
-    step.control === 'power' &&
-    typeof step.to === 'boolean' &&
-    targetsDevice(step, deviceId)
-      ? [step.to]
-      : [],
-  );
-  return times.flatMap((at) => flips.map((on) => ({ at, on, automationId })));
-}
-
-export function scheduleOf(rows: readonly AutomationRow[], deviceId: string): ScheduleLine | null {
-  const changes = rows
-    .filter((row) => row.enabled)
-    .flatMap((row) => {
-      const automation = storedAutomationOf(row);
-      return automation === null ? [] : changesOf(automation, row.id, deviceId);
-    })
-    .sort((left, right) => Number(right.on) - Number(left.on) || compareText(left.at, right.at));
-  const [first] = changes;
-  if (first === undefined) {
-    return null;
-  }
-  const words = changes.map((change) => `${change.on ? 'on' : 'off'} ${change.at}`);
-  const text = words.join(' · ');
-  return {
-    text: `${text.charAt(0).toUpperCase()}${text.slice(1)}`,
-    automationId: first.automationId,
-  };
+export function scheduleOf(rows: readonly unknown[], deviceId: string): ScheduleLine | null {
+  return scheduleOfRows(automationRowsOf(rows).rows, deviceId);
 }

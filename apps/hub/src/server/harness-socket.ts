@@ -257,7 +257,6 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
   private host(
     connection: HarnessSocket,
     frame: Extract<NodeHarnessFrame, { type: 'harness_hello' }>,
-    platform: 'linux' | 'macos',
   ): AiHarnessHost {
     return {
       target: { kind: 'device', device_id: frame.device_id },
@@ -265,7 +264,8 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
       name: frame.host.name,
       online: true,
       configuration_sync: connection.configurationSync,
-      platform,
+      platform: frame.host.platform,
+      ...(frame.host.sandbox === undefined ? {} : { sandbox: frame.host.sandbox }),
       runtime_instance: frame.runtime_instance,
       connection_generation: frame.generation,
       manifest: frame.manifest,
@@ -282,11 +282,11 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
     connection: HarnessSocket,
     frame: Extract<NodeHarnessFrame, { type: 'harness_hello' }>,
   ): void {
-    const platform = this.validateHello(connection, frame);
+    this.validateHello(connection, frame);
     const residence = this.helloResidence(connection);
     const remote = residence.remote;
     this.service.directory.register({
-      host: this.host(connection, frame, platform),
+      host: this.host(connection, frame),
       actor: { kind: 'node', id: frame.device_id },
       ...(connection.configurationSync
         ? {
@@ -368,20 +368,18 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
   private validateHello(
     connection: HarnessSocket,
     frame: Extract<NodeHarnessFrame, { type: 'harness_hello' }>,
-  ): 'linux' | 'macos' {
+  ): void {
     if (
       connection.helloed ||
       connection.configurationSync !==
         (frame.capabilities?.includes(HARNESS_CONFIGURATION_CAPABILITY) === true) ||
-      (frame.host.platform !== 'linux' && frame.host.platform !== 'macos') ||
       connection.subscriptionControl !==
         (frame.capabilities?.includes(HARNESS_SUBSCRIPTION_CAPABILITY) === true)
     )
       throw new ApiError(
         'forbidden',
-        'Only Linux/macOS computer composition accepts inbound execution; Windows is unavailable.',
+        'The computer hello repeats itself or disagrees with its connect handshake.',
       );
-    return frame.host.platform;
   }
   private send(connection: HarnessSocket, frame: HubHarnessControl): void {
     connection.send(frame);

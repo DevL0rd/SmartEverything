@@ -359,6 +359,22 @@ describe('Logger writing to the console', () => {
     expect(error).not.toHaveBeenCalled();
   });
 
+  it('keeps info off the console but still taps it when the host asks for warnings-only routing', () => {
+    const tap = vi.fn();
+    Logger.configure({ consoleRouting: 'warnings-only', tap });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const logger = new Logger('app.devices');
+    logger.info('device.paired');
+    logger.warn('request.refused');
+    logger.error('request.crashed', new Error('boom'));
+    expect(log).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(tap).toHaveBeenCalledTimes(3);
+  });
+
   it('writes a warning through console.warn, so a host can route it', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     new Logger('app.devices').warn('request.refused');

@@ -192,7 +192,7 @@ describe('hub commands issued by unattended work', () => {
       clientId: null,
       role: 'member',
       profileId,
-      devices: { mode: 'all', devices: [], rooms: [] },
+      devices: { mode: 'all', devices: [], rooms: [], hidden: [] },
     });
   });
 });

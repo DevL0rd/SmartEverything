@@ -1,10 +1,11 @@
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import { syncNativeLogLevel } from '../../modules/health-connect/src/native-log';
 import { errorFields } from '../design/log-tally';
 import { loadLocalPrefs, localPref, setLocalPref } from '../store/local-prefs';
 import { activateFlags, readDeveloperFlags } from './flags';
 import { withAllProfiling } from './profiling-master';
 import { DEVELOPER_TOGGLES, resolveFlags, type DeveloperFlagId, type StoredFlags } from './toggles';
+import { applyWatchCapture } from './watch-capture';
 
 const log = new Logger('app.developer');
 
@@ -40,6 +41,9 @@ function store(stored: StoredFlags): void {
   setLocalPref('developerFlags', stored);
   const wanted = resolveFlags(stored, __DEV__);
   const current = readDeveloperFlags();
+  if (wanted['watch.capture'] !== current['watch.capture']) {
+    background(applyWatchCapture(wanted['watch.capture']), 'developer.watch_capture_failed');
+  }
   const live = Object.fromEntries(
     DEVELOPER_TOGGLES.filter((toggle) => !toggle.reload).map((toggle) => [
       toggle.id,

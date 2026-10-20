@@ -71,7 +71,7 @@ function actionsOf(state: PlayerState, actions: StateActions): readonly Action[]
 
 function bodyOf(state: PlayerState, copy: StateCopy, actions: StateActions): string | null {
   if (state.kind === 'blockedByFirewall' && actions.fix.kind === 'elsewhere') {
-    return 'Fix it in the SmartEverything app on your computer.';
+    return 'Ask the owner of this home to fix it.';
   }
   return copy.body;
 }

@@ -1,4 +1,8 @@
-import type { MachineActionSupport, MachineOpenTarget } from '@smarteverything/domain';
+import type {
+  MachineActionSupport,
+  MachineOpenTarget,
+  MachinePermissionState,
+} from '@smarteverything/domain';
 import { NodeFailureError } from '../../node-failure';
 import type { SessionAgent } from '../../session-agent/session-agent';
 import type { MachineControl, MachineReport, StopWatching } from '../session-controls';
@@ -9,6 +13,7 @@ const NO_APP = 'The SmartEverything app is not running on this computer.';
 export interface MachineFacts {
   readonly agent: boolean;
   readonly openNeedsApp: boolean;
+  readonly permissions: readonly MachinePermissionState[];
 }
 
 function ready(action: MachineActionSupport['action']): MachineActionSupport {
@@ -27,6 +32,19 @@ function viaApp(
   return facts.agent ? ready(action) : unsupported(action, `${what} needs it. ${NO_APP}`);
 }
 
+function screenshot(facts: MachineFacts): MachineActionSupport {
+  const denied = facts.permissions.some(
+    (state) => state.permission === 'mac_screen_recording' && !state.granted,
+  );
+  if (!facts.agent || !denied) return viaApp(facts, 'screenshot', 'Screenshots');
+  return {
+    action: 'screenshot',
+    state: 'needs_permission',
+    permission: 'mac_screen_recording',
+    reason: 'Allow SmartEverything under Screen Recording, then reopen the app.',
+  };
+}
+
 export function portableMachineReport(machine: MachineName, facts: MachineFacts): MachineReport {
   return {
     actions: [
@@ -35,7 +53,7 @@ export function portableMachineReport(machine: MachineName, facts: MachineFacts)
       unsupported('flashlight', 'A computer has no flashlight.'),
       ready('launch_app'),
       facts.openNeedsApp ? viaApp(facts, 'open', 'Opening links and files') : ready('open'),
-      viaApp(facts, 'screenshot', 'Screenshots'),
+      screenshot(facts),
       ready('lock'),
       unsupported(
         'unlock',
@@ -44,7 +62,7 @@ export function portableMachineReport(machine: MachineName, facts: MachineFacts)
       ready('show_unlock'),
       ready('receive_file'),
     ],
-    permissions: [],
+    permissions: facts.permissions,
   };
 }
 
@@ -61,9 +79,11 @@ export class PortableMachine implements MachineControl {
   constructor(private readonly options: PortableMachineOptions) {}
 
   async report(): Promise<MachineReport> {
+    const agent = await this.options.agent.reachable();
     return portableMachineReport(this.options.machine, {
-      agent: await this.options.agent.reachable(),
+      agent,
       openNeedsApp: this.options.openNeedsApp,
+      permissions: agent ? await this.options.agent.permissions() : [],
     });
   }
 

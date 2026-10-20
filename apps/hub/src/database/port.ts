@@ -6,6 +6,7 @@ import {
   type CommandRow,
   type CommandStatus,
   type DeviceCapability,
+  type DeviceKind,
   type EventKind,
   type JsonValue,
   type Provider,
@@ -55,6 +56,15 @@ export interface DeviceUpsert {
   readonly online: boolean;
   readonly capabilities: readonly DeviceCapability[];
   readonly details: Readonly<Record<string, JsonValue>>;
+}
+
+export interface DeviceIdentity {
+  readonly id: string;
+  readonly kind: DeviceKind;
+  readonly name: string;
+  readonly model: string;
+  readonly manufacturer: string;
+  readonly providerRoom: string | null;
 }
 
 export interface StateRecord {
@@ -136,6 +146,7 @@ export interface HubDatabase {
     record?: (rows: readonly CommandRow[]) => void,
   ) => Promise<readonly CommandRow[]>;
   readonly loadDevices: () => Promise<readonly DeviceRecord[]>;
+  readonly loadDeviceIdentities: () => Promise<readonly DeviceIdentity[]>;
   readonly upsertDevices: (rows: readonly DeviceUpsert[]) => Promise<readonly DeviceRecord[]>;
   readonly setDevicesOnline: (
     ids: readonly string[],

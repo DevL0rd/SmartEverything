@@ -19,8 +19,10 @@ import {
   NAVIGATION_DEVICE_PREF,
   NAVIGATION_LAYOUT,
 } from './navigation-layout';
+import { CAMERA_NOTIFICATIONS_PREF, DEFAULT_CAMERA_NOTIFICATIONS } from './camera-notifications';
 import { DEVICE_ALERTS_PREF } from './device-alerts';
 import { SHARED_CLIPBOARD_PREF } from './shared-clipboard';
+import { AUTOMATION_CLIENT_PREFS } from './automation-v3/prefs';
 import {
   clientPref,
   noLegacy,
@@ -321,6 +323,14 @@ export const CLIENT_PREFS = {
     schema: DEVICE_ALERTS_PREF,
     legacy: noLegacy,
   }),
+  camera_notifications: clientPref({
+    storageKey: 'camera-notifications',
+    scope: 'profile',
+    version: 1,
+    defaultValue: DEFAULT_CAMERA_NOTIFICATIONS,
+    schema: CAMERA_NOTIFICATIONS_PREF,
+    legacy: noLegacy,
+  }),
   shared_clipboard: clientPref({
     storageKey: 'shared-clipboard',
     scope: 'profile',
@@ -345,6 +355,7 @@ export const CLIENT_PREFS = {
     schema: NAVIGATION_DEVICE_PREF,
     legacy: noLegacy,
   }),
+  ...AUTOMATION_CLIENT_PREFS,
 } as const;
 
 export type ClientPrefKey = keyof typeof CLIENT_PREFS;
@@ -363,9 +374,13 @@ export const CLIENT_PREF_KEYS: readonly ClientPrefKey[] = [
   'ai_speech',
   'region',
   'device_alerts',
+  'camera_notifications',
   'shared_clipboard',
   'navigation',
   'navigation_device',
+  'automations_editor',
+  'automations_palette',
+  'automations_breakpoints',
 ];
 
 export const RESERVED_LAYOUT_KEYS: ReadonlySet<string> = new Set(

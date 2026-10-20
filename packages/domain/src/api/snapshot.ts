@@ -1,11 +1,11 @@
 import { DEVICE_GROUP_ROW } from '../device-groups';
 import { AUTOMATION_VALUE_ROW } from '../automation-values';
-import { AUTOMATION_RUN_ROW } from '../automation-runs';
+import { AUTOMATION_ROW_V3, AUTOMATION_RUN_SUMMARY } from '../automation-v3/rows';
 import { z } from 'zod';
 import { BODY_READING_ROW } from '../body-readings';
 import { PROFILE_ROW } from '../profiles';
 import { SCHEDULE_ROW } from '../schedules';
-import { PLUGIN_ROW, PLUGIN_STREAM_ROW } from '../plugins';
+import { PLUGIN_ROW, PLUGIN_STREAM_ROW, PLUGIN_UI_ROW } from '../plugins';
 import { TALK_CHANNEL_ROW, TALK_MEMBER_ROW, TALK_MESSAGE_ROW, TALK_PRESENCE } from '../talk';
 import { WEATHER_ROW } from '../weather/forecast';
 import { EXCHANGE_RATES_ROW } from '../exchange-rates';
@@ -33,7 +33,6 @@ import {
   TELEVISION_SETTINGS_ROW,
 } from './rows-home';
 import {
-  AUTOMATION_ROW,
   CAMERA_ROW,
   IR_CODE_ROW,
   IR_REMOTE_ROW,
@@ -47,6 +46,7 @@ export const SNAPSHOT_WINDOWS = {
   events: 200,
   commands: 200,
   recordings: 200,
+  automationRuns: 200,
   healthDailyDays: 30,
 } as const;
 
@@ -59,9 +59,9 @@ export const SNAPSHOT_TABLES = z.object({
   device_state: z.array(STATE_ROW),
   cameras: z.array(CAMERA_ROW),
   scenes: z.array(SCENE_ROW),
-  automations: z.array(AUTOMATION_ROW),
+  automations: z.array(AUTOMATION_ROW_V3),
   automation_values: z.array(AUTOMATION_VALUE_ROW).optional(),
-  automation_runs: z.array(AUTOMATION_RUN_ROW).optional(),
+  automation_runs: z.array(AUTOMATION_RUN_SUMMARY).optional(),
   provider_links: z.array(PROVIDER_LINK_ROW),
   ir_remotes: z.array(IR_REMOTE_ROW),
   ir_codes: z.array(IR_CODE_ROW),
@@ -85,6 +85,7 @@ export const SNAPSHOT_TABLES = z.object({
   chat_activity: z.array(CHAT_ACTIVITY_NOTICE).optional(),
   scheduled_actions: z.array(SCHEDULE_ROW).optional(),
   plugin_streams: z.array(PLUGIN_STREAM_ROW).optional(),
+  plugin_ui: z.array(PLUGIN_UI_ROW).optional(),
 });
 
 export type SnapshotTables = z.infer<typeof SNAPSHOT_TABLES>;

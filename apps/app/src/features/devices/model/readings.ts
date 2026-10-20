@@ -25,11 +25,7 @@ const HERO_ROLES: Partial<Readonly<Record<DeviceFamily, readonly CapabilityRole[
 
 const NO_HERO_READING: ReadonlySet<DeviceFamily> = new Set(['tower_fan', 'fan', 'light']);
 
-const FIRST_READING_HERO: ReadonlySet<DeviceFamily> = new Set([
-  'sensor',
-  'presence_phone',
-  'generic',
-]);
+const FIRST_READING_HERO: ReadonlySet<DeviceFamily> = new Set(['sensor', 'generic']);
 
 export function heroReadingOf(
   model: DeviceModel,

@@ -1,7 +1,7 @@
 import { DEVICE_EFFECT_TARGET } from '../device-effects';
 import { DEVICE_GROUP_ROW } from '../device-groups';
 import { AUTOMATION_VALUE_ROW } from '../automation-values';
-import { AUTOMATION_RUN_ROW } from '../automation-runs';
+import { AUTOMATION_ROW_V3, AUTOMATION_RUN_SUMMARY } from '../automation-v3/rows';
 import { TRANSCRIPT_CHANGED_NOTICE } from '../transcript-reader';
 import {
   LISTENING_CHANGED_NOTICE,
@@ -39,7 +39,10 @@ import { ASSISTANT_MESSAGE_ROW, ASSISTANT_STATUS_NOTICE } from '../assistant';
 import { AI_USAGE_ROW } from '../ai-usage';
 import { COMPUTER_AI_NOTICES } from '../computer-ai-notices';
 import { COMPUTER_LIVE_NOTICE, WATCH_MESSAGE } from '../node/computer-live';
+import { AUTOMATION_TRACE_NOTICE, AUTOMATION_WATCH_MESSAGE } from './live-automation-trace';
 import { PHONE_DETAIL_NOTICE } from '../phone-detail';
+import { TREADMILL_LIVE_NOTICE } from '../treadmill-views';
+import { BRUSH_LIVE_NOTICE } from '../toothbrush-views';
 import { CLAUDE_NOTICES } from '../claude';
 import { HEALTH_ENTRY_ROW } from '../health-entries';
 import { PROFILE_ROW } from '../profiles';
@@ -47,7 +50,7 @@ import { SCHEDULE_ROW } from '../schedules';
 import { AI_OUTREACH_ROW, AI_SPEECH_NOTICE } from '../reach';
 import { APP_VIEW_NOTICE } from '../app-view';
 import { CLIPBOARD_NOTICE } from '../shared-clipboard';
-import { PLUGIN_ROW, PLUGIN_STREAM_ROW } from '../plugins';
+import { PLUGIN_ROW, PLUGIN_STREAM_ROW, PLUGIN_UI_ROW } from '../plugins';
 import { LIVE_NOTIFICATION_NOTICE } from '../live-notification';
 import { PUSH_COMMAND } from '../push-commands';
 import { JSON_VALUE } from '../values';
@@ -76,7 +79,6 @@ import {
   TELEVISION_SETTINGS_ROW,
 } from './rows-home';
 import {
-  AUTOMATION_ROW,
   CAMERA_ROW,
   IR_CODE_ROW,
   IR_REMOTE_ROW,
@@ -110,9 +112,9 @@ export const TABLE_ROWS = {
   ir_remotes: IR_REMOTE_ROW,
   ir_codes: IR_CODE_ROW,
   scenes: SCENE_ROW,
-  automations: AUTOMATION_ROW,
+  automations: AUTOMATION_ROW_V3,
   automation_values: AUTOMATION_VALUE_ROW,
-  automation_runs: AUTOMATION_RUN_ROW,
+  automation_runs: AUTOMATION_RUN_SUMMARY,
   layouts: LAYOUT_ROW,
   push_targets: PUSH_TARGET_ROW,
   health_sources: HEALTH_SOURCE_ROW,
@@ -135,6 +137,7 @@ export const TABLE_ROWS = {
   ai_usage: AI_USAGE_ROW,
   plugins: PLUGIN_ROW,
   plugin_streams: PLUGIN_STREAM_ROW,
+  plugin_ui: PLUGIN_UI_ROW,
   ai_outreach: AI_OUTREACH_ROW,
 } as const;
 
@@ -239,6 +242,7 @@ export const ROW_CHANGE = z.discriminatedUnion('table', [
   changeOf('ai_usage', TABLE_ROWS.ai_usage),
   changeOf('plugins', TABLE_ROWS.plugins),
   changeOf('plugin_streams', TABLE_ROWS.plugin_streams),
+  changeOf('plugin_ui', TABLE_ROWS.plugin_ui),
   changeOf('ai_outreach', TABLE_ROWS.ai_outreach),
 ]);
 
@@ -292,6 +296,8 @@ const NOTICES = [
   ...COMPUTER_AI_NOTICES,
   COMPUTER_LIVE_NOTICE,
   PHONE_DETAIL_NOTICE,
+  TREADMILL_LIVE_NOTICE,
+  BRUSH_LIVE_NOTICE,
   AI_CHAT_PROVIDER_NOTICE,
   AI_HARNESS_NOTICE,
   AI_HARNESS_CONFIGURATION_NOTICE,
@@ -330,12 +336,18 @@ const SUBSCRIBED = z.strictObject({
 
 export const LIVE_MESSAGE = z.union([
   LIVE_CHANGE,
-  z.discriminatedUnion('type', [READY, SUBSCRIBED, ...NOTICES]),
+  z.discriminatedUnion('type', [READY, SUBSCRIBED, ...NOTICES, ...AUTOMATION_TRACE_NOTICE.options]),
 ]);
 
 export type LiveMessage = z.output<typeof LIVE_MESSAGE>;
 
-export const LIVE_SERVER_MESSAGE = z.union([ROW_CHANGE, READY, SUBSCRIBED, ...NOTICES]);
+export const LIVE_SERVER_MESSAGE = z.union([
+  ROW_CHANGE,
+  READY,
+  SUBSCRIBED,
+  ...NOTICES,
+  ...AUTOMATION_TRACE_NOTICE.options,
+]);
 
 export type LiveServerMessage = z.output<typeof LIVE_SERVER_MESSAGE>;
 
@@ -353,6 +365,7 @@ export const LIVE_CLIENT_MESSAGE = z.discriminatedUnion('type', [
       .optional(),
   }),
   WATCH_MESSAGE,
+  AUTOMATION_WATCH_MESSAGE,
   VOICE_LEVELS_WATCH,
 ]);
 

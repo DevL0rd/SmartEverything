@@ -5,6 +5,7 @@ import {
   entryRefOfClientRecordId,
   entryRecordRefs,
   entryRecords,
+  type EntrySourceRef,
   type HealthEntryInput,
   type HealthEntryRow,
   type LoggableType,
@@ -20,7 +21,7 @@ import type { HealthRecordsRepository } from './health-records';
 const STORED_ENTRY = storedRow(HEALTH_ENTRY_ROW, { json: ['data', 'food'] });
 
 const COLUMNS = `e.id, e.profile_id, e.record_type, e.start_time, e.end_time, e.zone_offset_seconds,
-  e.data, e.food, e.version,
+  e.data, e.food, e.source, e.version,
   (select f.reason from health_entry_failures f where f.entry_id = e.id and f.version >= e.version
     order by f.failed_at desc limit 1) as save_error,
   e.created_at, e.updated_at`;
@@ -28,6 +29,8 @@ const COLUMNS = `e.id, e.profile_id, e.record_type, e.start_time, e.end_time, e.
 const OUTBOX_LIMIT = 200;
 
 const REMOVAL = z.object({ id: z.string(), record_type: LOGGABLE_TYPE, version: z.number() });
+
+const ENTRY_ID = z.object({ id: z.string() });
 
 const REMAINING = z.object({ writes: z.number() });
 
@@ -100,17 +103,36 @@ export class HealthEntriesRepository {
     );
   }
 
-  create(profileId: string, input: HealthEntryInput): HealthEntryRow {
+  idBySource(profileId: string, source: EntrySourceRef): string | undefined {
+    return this.context.sql.get(
+      ENTRY_ID,
+      'select id from health_entries where profile_id = $profileId and source_key = $sourceKey',
+      { profileId, sourceKey: source.key },
+    )?.id;
+  }
+
+  create(
+    profileId: string,
+    input: HealthEntryInput,
+    source: EntrySourceRef | null = null,
+  ): HealthEntryRow {
     return this.context.write(() => {
       const id = this.context.newId();
       const now = this.context.now();
       this.context.sql.run(
         'log the health entry',
         `insert into health_entries (id, profile_id, record_type, start_time, end_time,
-           zone_offset_seconds, data, food, version, created_at, updated_at)
+           zone_offset_seconds, data, food, source, source_key, version, created_at, updated_at)
          values ($id, $profileId, $record_type, $start_time, $end_time, $zone_offset_seconds, $data,
-           $food, 1, $now, $now)`,
-        { id, profileId, now, ...inputValues(input) },
+           $food, $source, $sourceKey, 1, $now, $now)`,
+        {
+          id,
+          profileId,
+          now,
+          source: source?.source ?? null,
+          sourceKey: source?.key ?? null,
+          ...inputValues(input),
+        },
       );
       const row = this.byId(id, profileId);
       this.health.replaceOwn({

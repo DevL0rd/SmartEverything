@@ -20,8 +20,10 @@ import type {
   CaptureControl,
   DisplayControl,
   FileControl,
+  InputControl,
   MachineControl,
   SessionControl,
+  TilingControl,
   WindowControl,
 } from './session-controls';
 import type { SystemControls } from './system-controls';
@@ -48,10 +50,12 @@ export interface ComputerControls {
   readonly audio: AudioControl;
   readonly displays: DisplayControl;
   readonly windows: WindowControl;
+  readonly tiling: TilingControl;
   readonly system: SystemControls;
   readonly apps: AppControl;
   readonly files: FileControl;
   readonly capture: CaptureControl;
+  readonly input: InputControl;
   readonly machine: MachineControl;
 }
 
@@ -87,7 +91,9 @@ export async function controlFeatures(
     ['audio', controls.audio],
     ['displays', controls.displays],
     ['windows', controls.windows],
+    ['tiling', controls.tiling],
     ['system', controls.system],
+    ['input', controls.input],
   ] as const;
   const found = await Promise.all(
     sources.map(async ([area, control]) => {

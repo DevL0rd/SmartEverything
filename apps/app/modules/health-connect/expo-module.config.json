@@ -8,7 +8,10 @@
       "expo.modules.healthconnect.phone.PhoneModule",
       "expo.modules.healthconnect.diagnostics.DiagnosticsModule",
       "expo.modules.healthconnect.network.HubNetworkModule",
-      "expo.modules.healthconnect.listening.ListeningModule"
+      "expo.modules.healthconnect.listening.ListeningModule",
+      "expo.modules.healthconnect.treadmill.TreadmillModule",
+      "expo.modules.healthconnect.larq.LarqModule",
+      "expo.modules.healthconnect.toothbrush.BrushModule"
     ]
   }
 }

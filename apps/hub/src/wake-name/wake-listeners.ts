@@ -3,19 +3,18 @@ import {
   isPrivate,
   privacySwitchOf,
   type AiOutreachRow,
-  type PauseChoiceMs,
   type WakeSensitivity,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import { sileroModel } from '../assistant-voice/silero-vad';
+import type { CameraHealth } from '../cameras/camera-health';
 import type { Clock } from '../clock';
 import type { Store } from '../store/store';
 import type { CameraMicrophones } from '../talk/camera-microphone';
 import type { CameraSpeakers } from '../talk/camera-speaker';
 import { CameraEar, type EarDeps } from './camera-ear';
-import type { EndOfSpeechPause } from '../listening/end-of-speech-pause';
-import type { Ears, SpeechSegment } from './ear';
-import type { OnSuperseded, WakeClaims } from './wake-claims';
+import type { RemoteEars } from '../listening/remote-ears-port';
+import type { SpeechSegment } from '../listening/speech-segment';
+import type { OnSuperseded } from './wake-claims';
 import type { WakeTest } from './wake-test';
 import { background, messageOf } from '@smarteverything/logging';
 
@@ -28,14 +27,11 @@ interface WakeRules {
 export interface WakeListenersOptions {
   readonly store: Pick<Store, 'aiOutreach' | 'cameras' | 'devices' | 'feed' | 'state'>;
   readonly rules: WakeRules;
+  readonly health: Pick<CameraHealth, 'onChange'>;
   readonly microphones: Pick<CameraMicrophones, 'open'>;
   readonly speakers: Pick<CameraSpeakers, 'standby'>;
-  readonly ears: Pick<Ears, 'spotter' | 'diagnostics'> & {
-    readonly pause: Pick<EndOfSpeechPause, 'ms'>;
-  };
-  readonly claims: Pick<WakeClaims, 'request'>;
+  readonly ears: Pick<RemoteEars, 'open'>;
   readonly test: Pick<WakeTest, 'active' | 'onActive' | 'matched'>;
-  readonly names: () => readonly string[];
   readonly wake: (
     cameraId: string,
     phrase: string,
@@ -68,6 +64,7 @@ export class WakeListeners {
   private readonly busy = new Set<string>();
   private unsubscribe: (() => void) | null = null;
   private unwatchTest: (() => void) | null = null;
+  private unwatchHealth: (() => void) | null = null;
 
   constructor(private readonly options: WakeListenersOptions) {}
 
@@ -92,6 +89,11 @@ export class WakeListeners {
     this.unwatchTest = this.options.test.onActive(() => {
       this.sync();
     });
+    this.unwatchHealth = this.options.health.onChange((cameraId, down) => {
+      if (down === null) {
+        this.cameraRecovered(cameraId);
+      }
+    });
     this.sync();
   }
 
@@ -112,9 +114,14 @@ export class WakeListeners {
       });
   }
 
+  private cameraRecovered(cameraId: string): void {
+    this.ears.get(cameraId)?.ear.resume();
+  }
+
   async stop(): Promise<void> {
     this.unsubscribe?.();
     this.unwatchTest?.();
+    this.unwatchHealth?.();
     const running = [...this.ears.values()];
     this.ears.clear();
     running.forEach((one) => {
@@ -175,13 +182,8 @@ export class WakeListeners {
 
   private listen(cameraId: string, listening: Listening): void {
     const deps: EarDeps = {
-      claims: this.options.claims,
+      ears: this.options.ears,
       microphones: this.options.microphones,
-      spotter: this.options.ears.spotter(),
-      diagnostics: this.options.ears.diagnostics,
-      model: sileroModel,
-      names: this.options.names,
-      pauseMs: (): PauseChoiceMs => this.options.ears.pause.ms(),
       sensitivity: (id): WakeSensitivity => this.sensitivity(id),
       busy: (id): boolean => this.busy.has(id),
       ...(listening.wake

@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { background } from '@smarteverything/logging';
 import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
-import { nativeSessionsKey } from '../data/computer-ai';
+import { nativeSessionsKey } from '../../../queries/keys';
 
 export function DesktopHistoryFailed({
   deviceId,

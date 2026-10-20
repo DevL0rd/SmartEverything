@@ -240,7 +240,8 @@ export class ApiClient {
     sequence?: (seq: number | null) => void,
   ): Promise<unknown> {
     const route = routeOf(endpoint);
-    const params = PATH_PARAMS.parse(checked(route, 'path', endpoint.params, input.params ?? {}));
+    const params = PATH_PARAMS.parse(input.params ?? {});
+    checked(route, 'path', endpoint.params, params);
     const query = wireQueryOf(WIRE_QUERY.parse(input.query ?? {}));
     checked(route, 'query', endpoint.query, query);
     const body: unknown = checked(route, 'body', endpoint.body, input.body);

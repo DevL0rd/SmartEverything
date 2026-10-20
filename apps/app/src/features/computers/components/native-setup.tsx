@@ -12,7 +12,8 @@ import { Sheet } from '../../../components/sheet';
 import { AttachedCliTools, attachedCliToolsReady } from './attached-cli-tools';
 import { List } from '../../../components/section';
 import { notify } from '../../../components/toast-store';
-import { computerAiKey, useNativeStatus } from '../data/computer-ai';
+import { computerAiKey } from '../../../queries/keys';
+import { useNativeStatus } from '../data/computer-ai';
 
 const log = new Logger('app.computers');
 type SetupAction = 'link' | 'unlink';

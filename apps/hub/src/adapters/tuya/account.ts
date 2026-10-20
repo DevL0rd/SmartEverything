@@ -1,15 +1,6 @@
-import { TUYA_REGIONS, type TUYA_PROJECT_CREDENTIALS } from '@smarteverything/domain';
 import type { SmartLifeSession } from '@smarteverything/tuya';
 import { z } from 'zod';
-import type { StoredAccount } from '../contract';
-
-const PROJECT_SECRETS = z.object({
-  method: z.literal('developer_project'),
-  accessId: z.string().min(1),
-  accessSecret: z.string().min(1),
-  region: z.enum(TUYA_REGIONS),
-  appUserId: z.string().min(1),
-});
+import { ProviderProblemError, type StoredAccount } from '../contract';
 
 const SMART_LIFE_SECRETS = z.object({
   method: z.literal('smart_life'),
@@ -23,33 +14,16 @@ const SMART_LIFE_SECRETS = z.object({
   expiresAt: z.number().int(),
 });
 
-const TUYA_SECRETS = z.discriminatedUnion('method', [PROJECT_SECRETS, SMART_LIFE_SECRETS]);
+export type TuyaSecrets = z.output<typeof SMART_LIFE_SECRETS>;
 
-export type TuyaProjectSecrets = z.output<typeof PROJECT_SECRETS>;
+export class StoredTuyaAccountUnreadableError extends Error {
+  override readonly name = 'StoredTuyaAccountUnreadableError';
 
-export type TuyaSecrets = z.output<typeof TUYA_SECRETS>;
-
-export function projectSecretsFrom(
-  credentials: z.output<typeof TUYA_PROJECT_CREDENTIALS>,
-): TuyaProjectSecrets {
-  return {
-    method: 'developer_project',
-    accessId: credentials.accessId,
-    accessSecret: credentials.accessSecret,
-    region: credentials.region,
-    appUserId: credentials.appUserId,
-  };
-}
-
-function devices(count: number): string {
-  return `${String(count)} ${count === 1 ? 'device' : 'devices'}`;
-}
-
-export function projectAccount(secrets: TuyaProjectSecrets, deviceCount: number): StoredAccount {
-  return {
-    label: `Developer project · ${secrets.region.toUpperCase()} · ${devices(deviceCount)}`,
-    secrets: { ...secrets },
-  };
+  constructor(readonly problems: string) {
+    super(
+      `The Tuya account stored on this hub is not a Smart Life sign-in, so scan a new code to link it again: ${problems}`,
+    );
+  }
 }
 
 const GENERATED_USERNAME = /^[a-z]{2,3}-\d{6,}$/;
@@ -66,11 +40,21 @@ export function smartLifeAccount(session: SmartLifeSession): StoredAccount {
 }
 
 export function secretsOf(account: StoredAccount): TuyaSecrets {
-  return TUYA_SECRETS.parse(account.secrets);
+  const parsed = SMART_LIFE_SECRETS.safeParse(account.secrets);
+  if (!parsed.success) {
+    throw new ProviderProblemError(
+      'session_expired',
+      new StoredTuyaAccountUnreadableError(z.prettifyError(parsed.error)),
+    );
+  }
+  return parsed.data;
+}
+
+export function storedUserCode(account: StoredAccount | undefined): string | null {
+  const parsed = SMART_LIFE_SECRETS.safeParse(account?.secrets);
+  return parsed.success ? parsed.data.userCode : null;
 }
 
 export function labelOf(secrets: TuyaSecrets): string {
-  return secrets.method === 'smart_life'
-    ? smartLifeLabel(secrets.username)
-    : `Developer project · ${secrets.region.toUpperCase()}`;
+  return smartLifeLabel(secrets.username);
 }

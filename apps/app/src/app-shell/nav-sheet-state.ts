@@ -1,8 +1,7 @@
 import { makeMutable, withSpring } from 'react-native-reanimated';
 import { ValueStore } from '../design/external-store';
 import { SPRING } from '../design/motion';
-import type { NavEntry } from './nav-model';
-import type { TabKey } from './route-types';
+import type { NavEntry, NavModel } from './nav-model';
 
 export type NavSheetPhase = 'closed' | 'open' | 'full';
 
@@ -17,7 +16,7 @@ export const navSheetReduced = makeMutable(false);
 export const navSheetPhase = new ValueStore<NavSheetPhase>('closed');
 export const navSheetQuery = new ValueStore('');
 export const navSheetFocus = new ValueStore(false);
-export const navCurrent = new ValueStore<TabKey>('home');
+export const navShown = new ValueStore<NavModel | null>(null);
 
 function liftOf(phase: NavSheetPhase, stops: NavSheetStops): number {
   'worklet';

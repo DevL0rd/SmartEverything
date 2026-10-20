@@ -2,8 +2,9 @@ import type { ReactNode, RefObject } from 'react';
 import { TextInput, type TextInputKeyPressEvent } from 'react-native';
 import type { ComposerSelection } from '../references/intent';
 import { useKeyboardCombobox } from '../../../components/keyboard-list';
-import { useIdiom } from '../../../design/platform';
+import { isNative, useIdiom } from '../../../design/platform';
 import { useDraft } from '../data/drafts';
+import { submitPropsOf } from './composer-submit';
 
 interface FieldKeys {
   readonly onCommandKey?: (key: string) => boolean;
@@ -72,6 +73,7 @@ export function ComposerField({
           handleKey(event, text, keys);
         }
       }}
+      {...submitPropsOf(isNative(), keys.onSend)}
       editable={!disabled}
       multiline
       numberOfLines={1}

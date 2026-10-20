@@ -8,9 +8,29 @@ function nothing(): () => void {
   return (): void => undefined;
 }
 
+function unusedSystem(): ComputerControls['system'] {
+  return {
+    settings: { state: refused, apply: refused },
+    startup: { list: refused, set: refused },
+    services: { list: refused, set: refused },
+    processes: { detail: refused, prioritise: refused },
+    files: {
+      search: refused,
+      properties: refused,
+      write: refused,
+      upload: refused,
+      places: refused,
+      openDownload: refused,
+      readDownload: refused,
+      closeDownload: refused,
+    },
+    features: refused,
+  };
+}
+
 export function unusedControls(): Pick<
   ComputerControls,
-  'audio' | 'displays' | 'windows' | 'system' | 'machine'
+  'audio' | 'displays' | 'windows' | 'tiling' | 'system' | 'machine' | 'input'
 > {
   return {
     audio: { features: refused, read: refused, watch: nothing, change: refused },
@@ -23,6 +43,15 @@ export function unusedControls(): Pick<
       stop: refused,
     },
     windows: { features: refused, read: refused, watch: nothing, change: refused },
+    input: { features: () => Promise.resolve([]), send: refused },
+    tiling: {
+      features: () => Promise.resolve([]),
+      read: refused,
+      watch: nothing,
+      change: refused,
+      watchPresence: nothing,
+      stop: () => Promise.resolve(),
+    },
     machine: {
       report: () => Promise.resolve({ actions: [], permissions: [] }),
       watch: nothing,
@@ -31,23 +60,7 @@ export function unusedControls(): Pick<
       unlock: refused,
       showUnlock: refused,
     },
-    system: {
-      settings: { state: refused, apply: refused },
-      startup: { list: refused, set: refused },
-      services: { list: refused, set: refused },
-      processes: { detail: refused, prioritise: refused },
-      files: {
-        search: refused,
-        properties: refused,
-        write: refused,
-        upload: refused,
-        places: refused,
-        openDownload: refused,
-        readDownload: refused,
-        closeDownload: refused,
-      },
-      features: refused,
-    },
+    system: unusedSystem(),
   };
 }
 

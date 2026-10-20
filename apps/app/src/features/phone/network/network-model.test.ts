@@ -21,6 +21,8 @@ function network(overrides: Partial<NetworkSection> = {}): NetworkSection {
     vpn: false,
     metered: false,
     airplane: false,
+    wifiOn: true,
+    locationOn: true,
     data: {
       today: { wifiBytes: 1_000_000, mobileBytes: 500_000 },
       month: { wifiBytes: 9_000_000, mobileBytes: 3_000_000 },

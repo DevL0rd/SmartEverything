@@ -1,4 +1,4 @@
-import type { ComputerScope, StateParts, SystemState } from '@smarteverything/domain';
+import type { ComputerScope, StateParts, SystemState, TilingState } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComputerControls } from '../../src/node/controls/controls';
 import { StateWatch } from '../../src/node/state-watch';
@@ -98,5 +98,51 @@ describe('node state watch', () => {
     watch.sync({ system: 1000 });
     await vi.advanceTimersByTimeAsync(10_000);
     expect(read).not.toHaveBeenCalled();
+  });
+
+  it('follows the tiling layout only while it is demanded and the apps permission is on', () => {
+    const layout: TilingState = { overviewOpen: true, outputs: [], workspaces: [], windows: [] };
+    const stops: string[] = [];
+    let push: (state: TilingState) => void = (): void => undefined;
+    const { tiling } = unusedControls();
+    const emitted: StateParts[] = [];
+    captureLogs();
+    const watch = new StateWatch({
+      controls: stubControls({
+        tiling: {
+          ...tiling,
+          watch: (onChange) => {
+            push = onChange;
+            return (): void => {
+              stops.push('tiling');
+            };
+          },
+        },
+      }),
+      allows: (scope): boolean => scope === 'apps',
+      emit: (parts): void => {
+        emitted.push(parts);
+      },
+      log: testLogger('node'),
+    });
+    watch.sync({ tiling: 1000 });
+    push(layout);
+    expect(emitted).toEqual([{ tiling: layout }]);
+    watch.sync({});
+    expect(stops).toEqual(['tiling']);
+  });
+
+  it('leaves the tiling layout alone while the apps permission is off', () => {
+    const watched = vi.fn((): (() => void) => (): void => undefined);
+    const { tiling } = unusedControls();
+    captureLogs();
+    const watch = new StateWatch({
+      controls: stubControls({ tiling: { ...tiling, watch: watched } }),
+      allows: (): boolean => false,
+      emit: (): void => undefined,
+      log: testLogger('node'),
+    });
+    watch.sync({ tiling: 1000 });
+    expect(watched).not.toHaveBeenCalled();
   });
 });

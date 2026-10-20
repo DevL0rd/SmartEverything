@@ -24,9 +24,28 @@ describe('builtin plugin manifests', () => {
         'discord.call',
         'router-internet',
         'router-people',
+        'syncthing-peers',
         'syncthing-sync',
       ].sort(),
     );
+  });
+
+  it('lets Syncthing add a page whose sections read fields of its own snapshot stream', () => {
+    const syncthing = BUILTIN_PLUGINS.find((plugin) => plugin.manifest.id === 'syncthing');
+    const contributes = PLUGIN_MANIFEST.parse(syncthing?.manifest).contributes;
+    const streams = new Set(contributes.data.map((stream) => stream.stream));
+    const bodies = [
+      ...contributes.widgets.map((widget) => widget.body),
+      ...contributes.pages.flatMap((page) => page.sections.map((section) => section.body)),
+    ];
+    expect(contributes.pages.map((page) => page.id)).toStrictEqual(['overview']);
+    expect(
+      contributes.widgets.find((widget) => widget.id === 'syncthing-peers')?.sizes,
+    ).toStrictEqual(['W']);
+    for (const body of bodies) {
+      if (body.type === 'controls') continue;
+      expect(streams.has(body.value.stream)).toBe(true);
+    }
   });
 
   it('keep the router, Syncthing and AdGuard snapshot streams in memory instead of SQLite per frame', () => {

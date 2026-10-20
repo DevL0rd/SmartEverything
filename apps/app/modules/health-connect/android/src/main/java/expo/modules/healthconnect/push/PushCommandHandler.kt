@@ -28,7 +28,10 @@ class IncomingCallPayload(val outreachId: String, val chatId: String, val caller
 class IncomingCallCancelPayload(val outreachId: String)
 
 @Serializable
-class PhoneActionPayload(val requestId: String, val action: JsonObject)
+class PhoneActionOrigin(val source: String, val client: String? = null)
+
+@Serializable
+class PhoneActionPayload(val requestId: String, val action: JsonObject, val origin: PhoneActionOrigin)
 
 @Serializable
 class MachineApproval(val action: String, val machine: String, val source: String)
@@ -41,6 +44,31 @@ class MachineApprovalCancelPayload(val requestId: String)
 
 @Serializable
 class WatchActionPayload(val requestId: String, val deviceId: String, val action: JsonObject, val expiresAt: Instant)
+
+@Serializable
+class TreadmillActionPayload(
+  val requestId: String,
+  val deviceId: String,
+  val steps: List<expo.modules.healthconnect.treadmill.WriteStep>,
+  val expiresAt: Instant
+)
+
+@Serializable
+class BrushActionPayload(
+  val requestId: String,
+  val deviceId: String,
+  val steps: List<expo.modules.healthconnect.toothbrush.Step>,
+  val expiresAt: Instant
+)
+
+@Serializable
+class BottleActionPayload(
+  val requestId: String,
+  val deviceId: String,
+  val action: String,
+  val plan: expo.modules.healthconnect.larq.BottlePlan,
+  val expiresAt: Instant
+)
 
 @Serializable
 class ActionAnswer(val requestId: String, val ok: Boolean, val detail: String, val image: String? = null)

@@ -94,6 +94,7 @@ export function sessionOf(
       id: THIS_CLIENT,
       name: 'Dana’s phone',
       platform: 'android',
+      kind: 'phone',
       role,
       built_in: false,
       profile_id: profileId,

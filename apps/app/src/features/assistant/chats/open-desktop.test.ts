@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CLAUDE_SESSION } from '@smarteverything/domain';
+import { CLAUDE_LISTED_SESSION } from '@smarteverything/domain';
 import { APP_SOURCE } from '../model/chat-source';
 import type { ChatEntry } from './chat-entry';
-import { openDesktopEntry, type DesktopOpenDeps } from './open-desktop';
+import { linkedChatOf, openDesktopEntry, type DesktopOpenDeps } from './open-desktop';
 
-const SESSION = CLAUDE_SESSION.parse({
+const SESSION = CLAUDE_LISTED_SESSION.parse({
+  app_chat_id: null,
   id: '5f0e1c52-1a0e-4b0d-8f0b-7f2b1f6d4e91',
   desktop_id: null,
   title: 'Fix it',
@@ -122,5 +123,28 @@ describe('opening a Desktop Claude session from the chat list', () => {
       expect(deps.open).toHaveBeenCalledWith('app-chat');
     });
     expect(deps.confirm).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('finding the app chat that continues a Desktop session', () => {
+  const desktop = entry().desktop;
+  const live = {
+    id: 'live-chat',
+    engine: { kind: 'claude', device_id: 'pc', continued_from: SESSION.id },
+  };
+
+  it('prefers a live chat, then the chat the hub names, which may be archived', () => {
+    if (desktop === undefined) throw new Error('entry has no desktop');
+    const named = { ...desktop, session: { ...desktop.session, app_chat_id: 'archived-chat' } };
+    expect(linkedChatOf([live], named)).toBe('live-chat');
+    expect(linkedChatOf([], named)).toBe('archived-chat');
+    expect(linkedChatOf([], desktop)).toBeUndefined();
+  });
+
+  it('ignores chats of another computer or another session', () => {
+    if (desktop === undefined) throw new Error('entry has no desktop');
+    const elsewhere = { ...live, engine: { ...live.engine, device_id: 'other' } };
+    const another = { ...live, engine: { ...live.engine, continued_from: 'other-session' } };
+    expect(linkedChatOf([elsewhere, another], desktop)).toBeUndefined();
   });
 });

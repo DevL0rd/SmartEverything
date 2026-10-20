@@ -9,6 +9,7 @@ function client(id: string, change: Partial<ClientRow> = {}): ClientRow {
     id,
     name: id,
     platform: 'android',
+    kind: 'phone',
     role: 'member',
     built_in: false,
     profile_id: null,

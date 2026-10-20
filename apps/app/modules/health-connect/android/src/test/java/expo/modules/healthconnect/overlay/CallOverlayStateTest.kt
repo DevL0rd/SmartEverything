@@ -10,8 +10,8 @@ class CallOverlayStateTest {
   private val id = "6c1c4f32-0b8e-4c55-9d7a-2b1f8f6a1e01"
   private val prefs = OverlayPrefsData()
 
-  private fun view(facts: CallFacts?, foreground: Boolean = false, now: Long = 1_000L, wake: OverlayWake? = null): OverlayViewState =
-    overlayView(CallOverlayState.inputOf(facts, wake, prefs, foreground, now))
+  private fun view(facts: CallFacts?, main: MainWindow = MainWindow.Away, now: Long = 1_000L, wake: OverlayWake? = null): OverlayViewState =
+    overlayView(CallOverlayState.inputOf(facts, wake, prefs, main, now))
 
   private fun message(json: String, facts: CallFacts, now: Long = 1_000L): CallFacts =
     CallOverlayState.message(facts, JSONObject(json), now)
@@ -22,7 +22,7 @@ class CallOverlayStateTest {
   fun `a running call shows the bar only while the app is not in front`() {
     val facts = message("""{"type":"call_state","callId":"$id","state":"listening"}""", live())
     assertEquals(OverlayState.Listening, view(facts).state)
-    assertEquals(OverlayState.Hidden, view(facts, foreground = true).state)
+    assertEquals(OverlayState.Hidden, view(facts, main = MainWindow.Call).state)
   }
 
   @Test
@@ -105,7 +105,7 @@ class CallOverlayStateTest {
   @Test
   fun `captions are left out when the person turned them off`() {
     val facts = message("""{"type":"caption","callId":"$id","who":"person","text":"Turn on the lights"}""", live())
-    val quiet = overlayView(CallOverlayState.inputOf(facts, null, prefs.copy(captions = false), false, 1_000L))
+    val quiet = overlayView(CallOverlayState.inputOf(facts, null, prefs.copy(captions = false), MainWindow.Away, 1_000L))
     assertNull(quiet.caption)
     assertEquals("Turn on the lights", view(facts).caption)
   }

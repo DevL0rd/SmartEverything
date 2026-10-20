@@ -22,10 +22,10 @@ function apps(minutes: Record<string, number>): PhoneDetail['apps'] {
 
 describe('the top apps of today', () => {
   it('lists the most used apps first with a share of the busiest', () => {
-    const top = topAppsOf(apps({ a: 20, b: 50, c: 10, d: 30 }));
-    expect(top.map((app) => app.package)).toEqual(['b', 'd', 'a']);
+    const top = topAppsOf(apps({ a: 20, b: 50, c: 10, d: 30, e: 40, f: 5, g: 15 }));
+    expect(top.map((app) => app.package)).toEqual(['b', 'e', 'd', 'a', 'g']);
     expect(top).toHaveLength(MOST_TOP_APPS);
-    expect(top.map((app) => app.share)).toEqual([1, 0.6, 0.4]);
+    expect(top.map((app) => app.share)).toEqual([1, 0.8, 0.6, 0.4, 0.3]);
   });
 
   it('leaves out apps that were not used today and names a missing app by its package', () => {

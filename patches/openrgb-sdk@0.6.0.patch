@@ -1,0 +1,28 @@
+diff --git a/dist/client.js b/dist/client.js
+index ed87c8be573b46bc6d7237b0653081536118a5fa..203f909c95a61a11448b11dc420fec973cd08936 100644
+--- a/dist/client.js
++++ b/dist/client.js
+@@ -110,9 +110,7 @@ class Client extends events_1.default {
+                     }
+                     else {
+                         // some packets have no body, only header
+-                        if (this.resolver.length) {
+-                            resolve.bind(this)(header);
+-                        }
++                        resolve.bind(this)(header);
+                     }
+                 }
+                 if (this.currentPacketLength > 0) {
+diff --git a/package.json b/package.json
+index caecc9898e802cb48b14f8cee8d5b0d30ffc6e1f..57c4eb9b2a831f1db11d448edfbd14c10ffdf4e1 100644
+--- a/package.json
++++ b/package.json
+@@ -28,7 +28,7 @@
+ 		"@types/node": "^20.4.10",
+ 		"typescript": "^5.1.6"
+ 	},
+-	"types": "./types/index.js",
++	"types": "./dist/index.d.ts",
+ 	"engines": {
+ 		"node": ">=8.3"
+ 	}

@@ -30,7 +30,7 @@ interface WatchSink {
   fun failed(reason: String, retryable: Boolean)
   fun event(event: WatchEvent)
   fun syncing(detail: String)
-  fun synced(files: List<WatchFile>, done: (Set<String>?) -> Unit)
+  fun synced(files: List<WatchFile>, captures: List<WatchCapture>, done: (Set<String>?) -> Unit)
 }
 
 interface WatchConnection {
@@ -49,7 +49,10 @@ class WatchContext(
   val sink: WatchSink,
   val handler: Handler
 ) {
-  val skippedFiles: MutableSet<String> = SkippedFiles(context, watch.deviceId)
+  val capturing: () -> Boolean = { WatchStore(context).capturing() }
+
+  val skippedFiles: MutableSet<String> =
+    WatchStore(context).skippedFiles(watch.deviceId, context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime)
 }
 
 interface WatchFamily {
