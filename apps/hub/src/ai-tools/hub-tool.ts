@@ -37,6 +37,7 @@ export interface ToolCaller {
   readonly profileId: string;
   readonly role: 'owner' | 'member';
   readonly chatId: string | null;
+  readonly callId?: string;
   readonly via: ToolVia;
   readonly clientId: string | null;
   readonly pluginRequester?: PluginRequester;

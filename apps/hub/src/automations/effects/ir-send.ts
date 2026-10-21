@@ -16,7 +16,7 @@ export async function sendIrButton(
     tools,
     {
       profileId: request.profileId,
-      tool: 'press_remote_button',
+      tool: 'remote_press',
       args: { remote: request.remote, button: request.button },
     },
     origin,

@@ -29,28 +29,28 @@ describe('the served MCP tools', () => {
   });
 
   it('describe a routed tool by its key, with one value per part', () => {
-    const listing = LISTING.parse(served('edit_room').listing);
+    const listing = LISTING.parse(served('room_edit').listing);
     expect(listing.inputSchema.required).toEqual(['action']);
     expect(listing.inputSchema.properties['action']?.enum).toEqual(['create', 'update', 'remove']);
     expect(listing.inputSchema.properties).toHaveProperty('roomId');
-    expect(listing.annotations.destructiveHint).toBe(false);
+    expect(listing.annotations.destructiveHint).toBe(true);
     expect(listing.annotations.readOnlyHint).toBe(false);
-    expect(served('edit_room').variants?.get('remove')).toMatchObject({
+    expect(served('room_edit').variants?.get('remove')).toMatchObject({
       annotations: { destructiveHint: true },
     });
   });
 
   it('resolve a served call to the part that runs it', () => {
-    expect(partCallOf('log_food', { action: 'water', millilitres: 250 })).toEqual({
+    expect(partCallOf('food_log', { action: 'water', millilitres: 250 })).toEqual({
       name: 'log_water',
       args: { millilitres: 250 },
     });
-    expect(partCallOf('read_phone', { view: 'context', profileId: 'p' })).toEqual({
+    expect(partCallOf('phone_read', { view: 'context', profileId: 'p' })).toEqual({
       name: 'read_phone_context',
       args: { profileId: 'p' },
     });
     expect(
-      partCallOf('read_phone', { view: 'detail', deviceId: 'd', sections: 'power,sound' }),
+      partCallOf('phone_read', { view: 'detail', deviceId: 'd', sections: 'power,sound' }),
     ).toEqual({
       name: 'read_phone_detail',
       args: { deviceId: 'd', sections: 'power,sound' },
@@ -60,12 +60,12 @@ describe('the served MCP tools', () => {
       args: { on: true },
     });
     expect(
-      partCallOf('read_signals', { view: 'catalogue', query: 'lamp', group: 'devices' }),
+      partCallOf('signal_read', { view: 'catalogue', query: 'lamp', group: 'devices' }),
     ).toEqual({
       name: 'list_trigger_catalogue',
       args: { query: 'lamp', group: 'devices' },
     });
-    expect(() => partCallOf('edit_room', { action: 'paint' })).toThrow(
+    expect(() => partCallOf('room_edit', { action: 'paint' })).toThrow(
       'action must be one of: create, update, remove',
     );
   });
@@ -76,7 +76,7 @@ describe('the served MCP tools', () => {
       .strictObject({ contents: z.array(z.looseObject({ text: z.string() })) })
       .parse(read).contents[0]?.text;
     expect(text?.split('\n')).toHaveLength(TOOLS.length);
-    expect(text).toContain('edit_room(action: "create"|"update"|"remove"');
+    expect(text).toContain('room_edit(action: "create"|"update"|"remove"');
     expect(resourceRead('smarteverything://nothing', TOOLS)).toBeNull();
   });
 });
@@ -93,28 +93,24 @@ describe('the chat tool set', () => {
   });
 
   it('always declares the common tools and the three discovery tools, in an order that does not depend on input order', () => {
-    const tools = [tool('get_home', false), tool('edit_room', false), tool('log_b', true)];
+    const tools = [tool('home_read', false), tool('room_edit', false), tool('log_b', true)];
     const names = chatSet(tools).map((spec) => spec.name);
-    expect(names).toEqual(['call_tool', 'get_home', 'search_tools', 'tool_details']);
+    expect(names).toEqual(['home_read', 'tool_call', 'tool_read', 'tool_search']);
     expect(chatSet([...tools].reverse()).map((spec) => spec.name)).toEqual(names);
   });
 
   it('keeps discovery declared when the enabled list holds no discovery tool', () => {
-    expect(chatSet([]).map((spec) => spec.name)).toEqual([
-      'call_tool',
-      'search_tools',
-      'tool_details',
-    ]);
+    expect(chatSet([]).map((spec) => spec.name)).toEqual(['tool_call', 'tool_read', 'tool_search']);
   });
 
   it('lists plugin tools by title and every other tool by area, never as raw schemas', () => {
     const tools = [
-      tool('get_home', false),
-      tool('edit_room', false),
+      tool('home_read', false),
+      tool('room_edit', false),
       tool('router_reboot', true),
-      tool('search_tools', false),
+      tool('tool_search', false),
     ];
     expect(chatCatalogue(tools)).toBe('router_reboot: router_reboot');
-    expect(toolIndex(tools)).toBe('edit_room (home)');
+    expect(toolIndex(tools)).toBe('room_edit (home)');
   });
 });

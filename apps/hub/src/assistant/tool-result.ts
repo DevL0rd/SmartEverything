@@ -11,7 +11,7 @@ export interface ToolResultRequest {
   readonly chatId: string;
   readonly callId: string;
   readonly field: 'output' | 'input';
-  readonly offset: number;
+  readonly cursor: string | undefined;
   readonly limit: number;
 }
 
@@ -30,5 +30,5 @@ export function readToolResult(store: Store, request: ToolResultRequest): AiTool
   const tool = toolOf(store, request.chatId, request.callId);
   if (tool === undefined)
     throw new ApiError('not_found', `This chat has no tool call ${request.callId}.`);
-  return toolResultPage(tool, request.field, request.offset, request.limit);
+  return toolResultPage(tool, request.field, request.cursor, request.limit);
 }

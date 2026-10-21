@@ -1,6 +1,5 @@
 import {
   DEFAULT_ENGINE,
-  MCP_PART_TEXTS,
   PLUGIN_MANIFEST,
   SHOW_WIDGETS_INPUT,
   chatWidgetsOf,
@@ -129,7 +128,7 @@ afterEach(async () => {
   await opened.close();
 });
 
-describe('show_widgets', () => {
+describe('widget_show', () => {
   it('puts the chosen widgets under the reply being written', () => {
     const reply = message('responder', 'working');
     const result = showWidgets(context(), [
@@ -256,19 +255,19 @@ describe('show_widgets', () => {
     const parsed = SHOW_WIDGETS_INPUT.safeParse({ widgets: [{ kind: 'hologram' }] });
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues[0]?.path).toEqual(['widgets', 0, 'kind']);
-    const text = MCP_PART_TEXTS.find((part) => part.name === 'show_widgets')?.description ?? '';
-    expect(text).toContain('camera (');
-    expect(text).toContain('health (');
+    const schema = JSON.stringify(TOOLS.find((tool) => tool.name === 'widget_show')?.listing);
+    expect(schema).toContain('"camera"');
+    expect(schema).toContain('"health"');
   });
 });
 
-describe('where show_widgets is offered', () => {
-  const listed = TOOLS.find((tool) => tool.name === 'show_widgets');
+describe('where widget_show is offered', () => {
+  const listed = TOOLS.find((tool) => tool.name === 'widget_show');
 
   it('is in the tool registry for chat, with the instruction, and not in voice', () => {
     expect(listed).toBeDefined();
     const hubTool: HubTool = {
-      name: 'show_widgets',
+      name: 'widget_show',
       title: 'Show widgets',
       description: '',
       inputSchema: {},
@@ -277,8 +276,8 @@ describe('where show_widgets is offered', () => {
       humanOnly: false,
     };
     const voiceTools = voiceSet([hubTool], false, false).map((tool) => tool.name);
-    expect(voiceTools).toContain('end_conversation');
-    expect(voiceTools).not.toContain('show_widgets');
+    expect(voiceTools).toContain('conversation_end');
+    expect(voiceTools).not.toContain('widget_show');
     expect(
       stablePrompt({
         name: 'A',
@@ -297,11 +296,11 @@ describe('where show_widgets is offered', () => {
     ).toContain(WIDGET_MANNER);
   });
 
-  it('puts the board types of the home in the reply context only when show_widgets is offered', () => {
+  it('puts the board types of the home in the reply context only when widget_show is offered', () => {
     pluginWithBoards('garden', ['garden.soil'], true);
     pluginWithBoards('attic', ['attic.heat'], false);
     const tool: HubTool = {
-      name: 'show_widgets',
+      name: 'widget_show',
       title: 'Show widgets',
       description: '',
       inputSchema: {},
@@ -319,7 +318,7 @@ describe('where show_widgets is offered', () => {
     const now = new Date('2026-10-08T10:00:00.000Z');
     expect(
       turnPrompt(facts(opened.store, chat, new ToolHub([source]), { now, clientId: null })),
-    ).toContain('Board types for show_widgets kind board: garden.soil.');
+    ).toContain('Board types for widget_show kind board: garden.soil.');
     expect(
       turnPrompt(facts(opened.store, chat, new ToolHub([]), { now, clientId: null })),
     ).not.toContain('Board types');

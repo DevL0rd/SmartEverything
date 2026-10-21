@@ -27,7 +27,7 @@ export function sessionWork(
   return {
     ...live,
     cleanup: liveCleanup(cleanup, live),
-    queuedMessages: agent.inbox.nextTurn.length + agent.inbox.nextStep.length,
+    queuedMessages: agent.inbox.nextTurn.length,
   };
 }
 

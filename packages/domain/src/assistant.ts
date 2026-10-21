@@ -26,7 +26,18 @@ export const REUSE_CHAT_MINUTES = 120;
 
 export const COMPACT_AT_PERCENT = { min: 50, max: 95, step: 5, fallback: 85 } as const;
 
+export const IMAGE_MODEL_CHOICE = z.strictObject({
+  model: z.string().min(1).max(200),
+  provider_tag: z.string().min(1).max(200),
+});
+export type ImageModelChoice = z.infer<typeof IMAGE_MODEL_CHOICE>;
+
+export const IMAGE_MODEL_SETTING = IMAGE_MODEL_CHOICE.nullable().describe(
+  'The image model and provider the person picked for making and editing images; null lets the AI choose from the available image endpoints. It must accept reference images before the AI uses it to edit',
+);
+
 const SETTINGS_SHAPE = {
+  image_model: IMAGE_MODEL_SETTING,
   instructions: z.string().max(ASSISTANT_INSTRUCTIONS_MAX),
   activity_steps: z.boolean(),
   name: ASSISTANT_NAME.nullable(),
@@ -43,7 +54,7 @@ const SETTINGS_SHAPE = {
   describe_images: z
     .boolean()
     .describe(
-      'For models that can already see images, also store a short background description to carry in later turns; models that cannot see images always get one. Off leaves only the image details and the read_chats view attachment hint',
+      'For models that can already see images, also store a short background description to carry in later turns; models that cannot see images always get one. Off leaves only the image details and the chat_read view attachment hint',
     ),
   reply_cost: z.boolean().describe('Show what each reply cost under it in the chat'),
   reply_suggestions: z
@@ -68,6 +79,7 @@ const SETTINGS_FIELDS = {
   compact_at_percent: SETTINGS_SHAPE.compact_at_percent.default(COMPACT_AT_PERCENT.fallback),
   reuse_chat_minutes: SETTINGS_SHAPE.reuse_chat_minutes.default(REUSE_CHAT_MINUTES),
   describe_images: SETTINGS_SHAPE.describe_images.default(false),
+  image_model: SETTINGS_SHAPE.image_model.default(null),
   reply_cost: SETTINGS_SHAPE.reply_cost.default(true),
   reply_suggestions: SETTINGS_SHAPE.reply_suggestions.default(false),
   claude_link_auto: SETTINGS_SHAPE.claude_link_auto.default(true),

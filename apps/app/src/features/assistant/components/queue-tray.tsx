@@ -7,13 +7,11 @@ import { Text } from '../../../components/text';
 import {
   cancelPending,
   removePending,
-  retryPending,
   useDeliveringMessages,
   usePendingMessages,
 } from '../data/outbox';
 import type { PendingMessage } from '../data/outbox';
 import { queuedLabel, trayRowOf, type TrayRow } from '../model/composer-state';
-import { background } from '@smarteverything/logging';
 
 const OPEN_UP_TO = 3;
 
@@ -32,15 +30,6 @@ function RowActions({
 }): ReactNode {
   return (
     <>
-      {row.retry ? (
-        <IconButton
-          icon="refresh"
-          label={`Try “${body}” again`}
-          onPress={(): void => {
-            background(retryPending(message.id), 'pending.retry_failed');
-          }}
-        />
-      ) : null}
       {row.edit === 'absent' ? null : (
         <IconButton
           icon="pencil"
@@ -76,24 +65,14 @@ function TrayItem({
   readonly delivering: boolean;
   readonly onEdit: (message: PendingMessage) => void;
 }): ReactNode {
-  const failed = message.state === 'failed';
   const body = queuedLabel(message.text, message.attachments.length);
   const row = trayRowOf(message, { fieldHasText, delivering });
   return (
     <View>
       <View className="h-hairline bg-outline-variant" />
       <View className="min-h-touch-min flex-row items-center gap-1.5 pl-3 pr-1">
-        <Icon
-          name={failed ? 'circleX' : 'clock'}
-          size={16}
-          tone={failed ? 'critical' : 'variant'}
-        />
-        <Text
-          variant="callout"
-          tone={failed ? 'critical' : 'default'}
-          numberOfLines={1}
-          className="min-w-0 flex-1"
-        >
+        <Icon name="clock" size={16} tone="variant" />
+        <Text variant="callout" numberOfLines={1} className="min-w-0 flex-1">
           {row.text}
         </Text>
         <RowActions message={message} body={body} row={row} onEdit={onEdit} />

@@ -51,9 +51,9 @@ export const AUDIO_STATE = z.strictObject({
 
 export type AudioState = z.infer<typeof AUDIO_STATE>;
 
-const DEVICE = z.string().trim().min(1).describe('A device id from get_computer, or its name');
+const DEVICE = z.string().trim().min(1).describe('A device id from computer_read, or its name');
 const KIND = z.enum(AUDIO_KINDS).default('output');
-const APP = z.string().trim().min(1).describe('A streamId from get_computer, or the app name');
+const APP = z.string().trim().min(1).describe('A streamId from computer_read, or the app name');
 
 export const AUDIO_CHANGE = z.discriminatedUnion('action', [
   z.strictObject({

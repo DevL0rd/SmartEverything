@@ -1,5 +1,8 @@
+import { BROWSER_RETIRED_PROBLEM } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { notify } from '../../../components/toast-store';
+import { BrowserTabError } from './browser-tab-errors';
+import type { BrowserTabId } from './browser-tab-state';
 import type { BrowserTabs } from './browser-tabs';
 const log = new Logger('app.browser-tabs');
 export function browserTabOperation(operation: Promise<void>): void {
@@ -27,5 +30,16 @@ export function openBrowserAddress(
     browserTabOperation(tabs.navigate(id, address));
   } catch (error: unknown) {
     notify({ message: 'A browser tab could not be opened.', error, tone: 'default' });
+  }
+}
+
+export async function recoverRetiredTab(tabs: BrowserTabs, id: BrowserTabId): Promise<void> {
+  const { source } = tabs.tab(id);
+  try {
+    if (source.kind !== 'project') throw new BrowserTabError(BROWSER_RETIRED_PROBLEM);
+    await tabs.renew(id);
+  } catch (cause: unknown) {
+    if (!tabs.read().tabs.some((tab) => tab.id === id)) return;
+    await tabs.unavailable(id, cause instanceof Error ? cause.message : BROWSER_RETIRED_PROBLEM);
   }
 }

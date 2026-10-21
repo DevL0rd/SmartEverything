@@ -1,9 +1,7 @@
 import {
   appendTo,
-  MCP_PART_TEXTS,
   MCP_TOOLS,
   isAdminOperation,
-  mcpToolLine,
   mcpToolOperation,
   type McpRoute,
   type McpToolName,
@@ -22,6 +20,8 @@ import {
   type ToolOutput,
 } from './registry';
 import { withoutDefault } from './computer-flat';
+import { TOOL_FIELD_TEXTS } from './field-texts';
+import { withOnePagingWord } from './paging-words';
 
 type Args = Readonly<Record<string, unknown>>;
 
@@ -42,14 +42,33 @@ function textOf(name: McpToolName): (typeof MCP_TOOLS)[number] {
   return text;
 }
 
-function firstSentence(name: string): string {
-  return mcpToolLine(
-    MCP_PART_TEXTS.find((candidate) => candidate.name === name)?.description ?? '',
-  );
-}
-
 function annotationsOf(members: readonly Tool[]): ToolAnnotations {
   return combinedAnnotations(members.map((member) => member.listing.annotations));
+}
+
+const LISTED_PROPERTIES = z.looseObject({
+  properties: z
+    .record(z.string(), z.looseObject({ description: z.string().optional() }))
+    .optional(),
+});
+
+function withToolTexts(name: McpToolName, inputSchema: Args): Args {
+  const parsed = LISTED_PROPERTIES.parse(inputSchema);
+  if (parsed.properties === undefined) {
+    return inputSchema;
+  }
+  const properties = Object.fromEntries(
+    Object.entries(parsed.properties).map(([field, schema]) => {
+      const text = TOOL_FIELD_TEXTS[`${name}.${field}`];
+      return [
+        field,
+        schema.description === undefined && text !== undefined
+          ? { ...schema, description: text }
+          : schema,
+      ];
+    }),
+  );
+  return { ...inputSchema, properties };
 }
 
 export function servedListing(
@@ -62,8 +81,8 @@ export function servedListing(
     name,
     title: text.title,
     description: text.description,
-    inputSchema,
-    annotations: { title: text.title, ...annotations },
+    inputSchema: withToolTexts(name, inputSchema),
+    annotations: { ...annotations, title: text.title },
   };
 }
 
@@ -71,6 +90,7 @@ type Shape = Readonly<Record<string, z.core.$ZodType>>;
 
 interface Branch {
   readonly value: string;
+  readonly line: string;
   readonly part: Tool;
   readonly shape: Shape;
   readonly required: readonly string[];
@@ -86,20 +106,25 @@ function shapeOf(part: Tool): Shape {
   return part.input.shape;
 }
 
-function branchOf(route: Routed, value: string, part: Tool): Branch {
+function branchOf(route: Routed, value: string, line: string, part: Tool): Branch {
   const shape = shapeOf(part);
-  const schema = jsonSchemaOf(z.strictObject({ [route.key]: z.literal(value), ...shape }), 'input');
+  if (route.key in shape) {
+    throw new ToolError(
+      `The part ${part.name} has its own field ${route.key}, which collides with the ${route.key} selector`,
+      'internal',
+    );
+  }
+  const schema = jsonSchemaOf(
+    z.strictObject({ [route.key]: z.literal(value).describe(line), ...shape }),
+    'input',
+  );
   const required = REQUIRED.parse(schema).required.filter((field) => field !== route.key);
-  return { value, part, shape, required, schema };
-}
-
-function spoken(identifier: string): string {
-  return identifier.replaceAll('_', ' ');
+  return { value, line, part, shape, required, schema };
 }
 
 function fieldsText(branch: Branch): string {
   const names = Object.keys(branch.shape).map((field) =>
-    branch.required.includes(field) ? `${spoken(field)} (required)` : spoken(field),
+    branch.required.includes(field) ? `${field} (required)` : field,
   );
   return names.length === 0 ? 'no other fields' : `fields: ${names.join(', ')}`;
 }
@@ -114,9 +139,11 @@ function adminNote(part: string): string {
 function keyText(route: Routed, branches: readonly Branch[]): string {
   const lines = branches.map(
     (branch) =>
-      `${spoken(branch.value)}: ${route.says?.[branch.value] ?? firstSentence(branch.part.name)}${adminNote(branch.part.name)} (${fieldsText(branch)})`,
+      `${branch.value}: ${branch.line}${adminNote(branch.part.name)} (${fieldsText(branch)})`,
   );
-  return `${lines.join('; ')}. Send only the fields of the chosen ${route.key}.`;
+  const standing =
+    route.default === undefined ? '' : ` ${route.key} ${route.default} when left out.`;
+  return `${lines.join('; ')}. Send only the fields of the chosen ${route.key}.${standing}`;
 }
 
 const FIELD_SHAPE = z.looseObject({
@@ -187,8 +214,9 @@ function routedInput(route: Routed, branches: readonly Branch[]): z.ZodType {
       appendTo(uses, field, useOf(branch.value, schema));
     }
   }
+  const selector = z.enum(Object.keys(route.branches)).describe(keyText(route, branches));
   return z.strictObject({
-    [route.key]: z.enum(Object.keys(route.parts)).describe(keyText(route, branches)),
+    [route.key]: route.default === undefined ? selector : selector.optional(),
     ...Object.fromEntries([...uses].map(([field, used]) => [field, mergedField(used)])),
   });
 }
@@ -200,14 +228,14 @@ export function partCall(route: McpRoute, name: string, args: Args): PartCall {
   if (!('key' in route)) {
     return { name, args };
   }
-  const value = args[route.key];
-  const part = typeof value === 'string' ? route.parts[value] : undefined;
-  if (part === undefined) {
-    const allowed = Object.keys(route.parts).join(', ');
+  const value = args[route.key] ?? route.default;
+  const branch = typeof value === 'string' ? route.branches[value] : undefined;
+  if (branch === undefined) {
+    const allowed = Object.keys(route.branches).join(', ');
     throw new ToolError(`${route.key} must be one of: ${allowed}`);
   }
   return {
-    name: part,
+    name: branch.part,
     args: Object.fromEntries(Object.entries(args).filter(([field]) => field !== route.key)),
   };
 }
@@ -230,8 +258,8 @@ function refusedFields(route: Routed, branch: Branch, args: Args): void {
 }
 
 function routedTool(name: McpToolName, route: Routed, parts: ReadonlyMap<string, Tool>): Tool {
-  const branches = Object.entries(route.parts).map(([value, part]) =>
-    branchOf(route, value, partNamed(parts, part)),
+  const branches = Object.entries(route.branches).map(([value, branch]) =>
+    branchOf(route, value, branch.line, partNamed(parts, branch.part)),
   );
   const branchOfPart = new Map(branches.map((branch) => [branch.part.name, branch]));
   const resolve = (args: Args): { tool: Tool; args: Args } => {
@@ -254,8 +282,8 @@ function routedTool(name: McpToolName, route: Routed, parts: ReadonlyMap<string,
         branch.value,
         {
           selector: { [route.key]: branch.value },
-          inputSchema: branch.schema,
-          annotations: branch.part.listing.annotations,
+          inputSchema: withToolTexts(name, branch.schema),
+          annotations: { ...branch.part.listing.annotations, title: textOf(name).title },
         },
       ]),
     ),
@@ -298,7 +326,26 @@ function composed(name: McpToolName, members: readonly Tool[]): Tool {
   };
 }
 
+function admittedAs(name: McpToolName, tool: Tool): Tool {
+  return {
+    ...tool,
+    call: async (context, args): Promise<ToolOutput> => {
+      const output = await tool.call({ ...context, servedTool: name }, args);
+      return { ...output, structured: withOnePagingWord(name, output.structured) };
+    },
+  };
+}
+
 export function servedTool(
+  name: McpToolName,
+  route: McpRoute,
+  parts: ReadonlyMap<string, Tool>,
+  custom: ReadonlyMap<string, Tool>,
+): Tool {
+  return admittedAs(name, builtTool(name, route, parts, custom));
+}
+
+function builtTool(
   name: McpToolName,
   route: McpRoute,
   parts: ReadonlyMap<string, Tool>,

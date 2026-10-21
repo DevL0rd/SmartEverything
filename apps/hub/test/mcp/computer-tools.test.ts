@@ -354,7 +354,7 @@ describe('the screen tool', () => {
   it('says when a risky change reverts and sends keep as a confirmation', async () => {
     const answer = await changeDisplay(context, {
       deviceId: DEVICE,
-      change: { action: 'mode', output: 'Dell', width: 1920, height: 1080 },
+      change: { action: 'mode', output: 'Dell', resolution: '1920x1080' },
     });
     expect(calls[0]?.name).toBe('changeComputerDisplay');
     expect(answer['summary']).toMatch(
@@ -489,7 +489,7 @@ describe('windows, programs and files', () => {
 
 describe('the served tools', () => {
   it('shows one flat input with the action and every field of every action', () => {
-    const listing = toolNamed('set_computer_display')?.listing;
+    const listing = toolNamed('computer_display_set')?.listing;
     const properties = JSON.stringify(listing?.inputSchema);
     expect(properties).toContain('"night_light"');
     expect(properties).toContain('"keep"');
@@ -499,7 +499,7 @@ describe('the served tools', () => {
   });
 
   it('names the missing field of the chosen action in a refusal', () => {
-    const parsed = toolNamed('set_computer_display')?.input?.safeParse({
+    const parsed = toolNamed('computer_display_set')?.input?.safeParse({
       deviceId: DEVICE,
       action: 'mode',
       output: 'Dell',
@@ -510,23 +510,26 @@ describe('the served tools', () => {
 
   it('marks reads as reads and destructive tools as destructive', () => {
     const marks = (name: string): unknown => toolNamed(name)?.listing.annotations;
-    expect(marks('get_computer')).toMatchObject({ readOnlyHint: true, destructiveHint: false });
-    expect(marks('list_processes')).toMatchObject({ readOnlyHint: true });
-    expect(marks('end_process')).toMatchObject({ readOnlyHint: false, destructiveHint: true });
-    expect(marks('edit_computer_files')).toMatchObject({ destructiveHint: true });
-    expect(marks('set_computer_audio')).toMatchObject({ readOnlyHint: false });
-    expect(marks('set_computer_system')).toMatchObject({
+    expect(marks('computer_read')).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+    expect(marks('process_read')).toMatchObject({ readOnlyHint: true });
+    expect(marks('process_control')).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    expect(marks('file_edit')).toMatchObject({ destructiveHint: true });
+    expect(marks('computer_audio_set')).toMatchObject({ readOnlyHint: false });
+    expect(marks('computer_system_set')).toMatchObject({
       readOnlyHint: false,
       destructiveHint: true,
     });
   });
 
-  it('serves each view of get_computer and each window action', () => {
-    expect(MCP_ROUTES.get('get_computer')).toMatchObject({
-      parts: { audio: 'get_computer_audio', startup: 'get_computer_startup' },
+  it('serves each view of computer_read and each window action', () => {
+    expect(MCP_ROUTES.get('computer_read')).toMatchObject({
+      branches: {
+        audio: { part: 'get_computer_audio' },
+        startup: { part: 'get_computer_startup' },
+      },
     });
-    expect(MCP_ROUTES.get('run_computer_app')).toMatchObject({
-      parts: { window_focus: 'focus_window', window_close: 'close_window' },
+    expect(MCP_ROUTES.get('computer_app_control')).toMatchObject({
+      branches: { window_focus: { part: 'focus_window' }, window_close: { part: 'close_window' } },
     });
   });
 });
@@ -568,9 +571,12 @@ describe('the tiling view', () => {
     });
   });
 
-  it('is a view of get_computer', () => {
-    expect(MCP_ROUTES.get('get_computer')).toMatchObject({
-      parts: { windows: 'get_computer_windows', tiling: 'get_computer_tiling' },
+  it('is a view of computer_read', () => {
+    expect(MCP_ROUTES.get('computer_read')).toMatchObject({
+      branches: {
+        windows: { part: 'get_computer_windows' },
+        tiling: { part: 'get_computer_tiling' },
+      },
     });
   });
 });

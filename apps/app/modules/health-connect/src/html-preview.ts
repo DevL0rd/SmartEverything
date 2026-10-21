@@ -1,9 +1,9 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 import {
   NATIVE_HTML_ID,
-  NATIVE_HTML_OPEN,
   NATIVE_HTML_PROJECTION,
   NATIVE_HTML_RETIRED,
+  NATIVE_PAGE_OPEN,
   type NativeHtmlPreview,
 } from '@smarteverything/domain';
 
@@ -13,9 +13,6 @@ interface HtmlEvents {
 }
 declare class HtmlNative extends NativeModule<HtmlEvents> {
   htmlReady(): boolean;
-  htmlLifetimeVersion?(): number;
-  htmlPageVersion?(): number;
-  htmlProjectVersion?(): number;
   htmlCurrent(id: string): boolean;
   htmlViewReady(): boolean;
   openHtml(json: string): Promise<unknown>;
@@ -23,9 +20,6 @@ declare class HtmlNative extends NativeModule<HtmlEvents> {
 }
 const native = requireOptionalNativeModule<HtmlNative>('HubNetwork');
 export const androidHtmlPreview: NativeHtmlPreview = {
-  pageVersion: (): number => native?.htmlPageVersion?.() ?? 0,
-  projectVersion: (): number => native?.htmlProjectVersion?.() ?? 0,
-  lifetimeVersion: (): number => native?.htmlLifetimeVersion?.() ?? 1,
   supported: (): boolean =>
     native !== null &&
     typeof native.htmlReady === 'function' &&
@@ -36,13 +30,13 @@ export const androidHtmlPreview: NativeHtmlPreview = {
     typeof native.releaseHtml === 'function' &&
     native.htmlReady(),
   open: async (input) => {
-    if (native === null) throw new Error('Native HTML projection is unavailable.');
+    if (native === null) throw new Error('Chat pages are unavailable in this app build.');
     return NATIVE_HTML_PROJECTION.parse(
-      await native.openHtml(JSON.stringify(NATIVE_HTML_OPEN.parse(input))),
+      await native.openHtml(JSON.stringify(NATIVE_PAGE_OPEN.parse(input))),
     );
   },
   release: async (id) => {
-    if (native === null) throw new Error('Native HTML projection is unavailable.');
+    if (native === null) throw new Error('Chat pages are unavailable in this app build.');
     await native.releaseHtml(NATIVE_HTML_ID.parse(id));
   },
 };

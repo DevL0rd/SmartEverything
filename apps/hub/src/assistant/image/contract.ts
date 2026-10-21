@@ -10,7 +10,7 @@ import type { ImageOperationsRepository } from '../../store/repositories/image-o
 import type { Store } from '../../store/store';
 import type { MediaNotes } from '../../transcripts/media-notes';
 
-export type ImageEffect = 'read' | 'wait' | 'provider' | 'persist';
+export type ImageEffect = 'read' | 'provider' | 'persist';
 export interface ImageActor {
   readonly profileId: string;
   readonly key: string;

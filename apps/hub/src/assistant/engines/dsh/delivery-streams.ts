@@ -9,9 +9,9 @@ import {
   type NativeCompletionTurn,
 } from './completion';
 import { TurnStream, type StreamEmit } from '../../conversation/stream';
+import { TurnRetries } from './turn-retry';
 import {
   ApiError,
-  CHAT_RECONNECTING_REASON,
   type AiChatRow,
   type AiHarnessEvent,
   type ChatActivityNotice,
@@ -20,7 +20,7 @@ import type { HarnessService } from '../../../harness/service';
 import type { ConversationLog } from '../../conversation-log';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 const log = new Logger('hub.assistant-engine');
-function retrying(notice: ChatActivityNotice): boolean {
+function marked(notice: ChatActivityNotice): boolean {
   return notice.state === 'thinking' && notice.reason !== null;
 }
 
@@ -43,11 +43,29 @@ export class NativeDeliveryStreams {
   private readonly admitted = new Set<string>();
   private readonly aliases = new Map<string, string>();
   private readonly held = new Set<string>();
+  private readonly retries: TurnRetries<ActiveTurn>;
   constructor(
     private readonly options: DeliveryStreamOptions,
     private readonly authorize: (event: StoredEvent, chat: AiChatRow, id: string) => void,
     private readonly toolFinished: (turn: ActiveTurn) => void,
-  ) {}
+    resume: (turn: ActiveTurn, deliveryId: string, text: string) => Promise<void>,
+  ) {
+    this.retries = new TurnRetries({
+      resume: (turn, deliveryId, text): Promise<void> => {
+        this.continueAs(turn, deliveryId);
+        return resume(turn, deliveryId, text);
+      },
+      active: (turn): boolean => this.active.get(turn.event.id) === turn,
+    });
+  }
+
+  stopRetrying(chatId: string): boolean {
+    const stopped = [...this.active.values()].filter(
+      (turn) => turn.chat.id === chatId && this.retries.cancel(turn),
+    );
+    for (const turn of stopped) this.complete(turn, { kind: 'completed', interrupted: true });
+    return stopped.length > 0;
+  }
   hold(turn: ActiveTurn): void {
     this.held.add(turn.event.id);
   }
@@ -288,8 +306,9 @@ export class NativeDeliveryStreams {
       turn.stream.assistantAttempt(event.assistant_attempt);
     if (event.session.reconnecting === true) {
       log.info('dsh.turn_reconnecting', { eventId: turn.event.id, chatId: turn.chat.id });
-      turn.stream.snapshot('thinking', null, CHAT_RECONNECTING_REASON);
-    } else if (retrying(turn.stream.current())) turn.stream.snapshot('thinking', null, null);
+      turn.stream.retrying();
+    } else if (event.session.reconnecting === false && marked(turn.stream.current()))
+      turn.stream.snapshot('thinking', null, null);
   }
   private working(turn: ActiveTurn): void {
     const messageId = turn.event.message_id;
@@ -347,6 +366,10 @@ export class NativeDeliveryStreams {
     );
   }
   complete(turn: ActiveTurn, event: NativeCompletion, admissionRefused = false): void {
+    if (event.kind === 'failed' && !admissionRefused) {
+      this.retries.failed(turn, event.failure);
+      return;
+    }
     completeNativeTurn({
       service: this.service,
       conversation: this.conversation,
@@ -355,6 +378,7 @@ export class NativeDeliveryStreams {
       admissionRefused,
       finished: this.options.finished,
       retire: (): void => {
+        this.retries.forget(turn);
         this.active.delete(turn.event.id);
         this.claimed.delete(turn.event.id);
         this.admitted.delete(turn.event.id);

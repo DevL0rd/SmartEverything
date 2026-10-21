@@ -31,7 +31,7 @@ export function admitDeviceSpeech(
   principal: SpeechPrincipal,
   device?: { readonly kind: TranscriptSource; readonly deviceId: string },
 ): void {
-  admitSpeechReadTool(store, principal, { name: 'read_transcripts' });
+  admitSpeechReadTool(store, principal, { name: 'transcript_read' });
   const caller = speechCaller(store, principal);
   admitTranscriptCaller(caller);
   if (device !== undefined) admitTranscriptSource(store, caller, device.kind, device.deviceId);
@@ -77,7 +77,7 @@ export function admitSpeechSources(
 
 function ownSpeechChat(store: Store, principal: SpeechPrincipal, chatId: string): void {
   ownedChat(store, { profileId: principal.profileId, role: principal.role }, chatId);
-  admitSpeechReadTool(store, principal, { name: 'read_chats' });
+  admitSpeechReadTool(store, principal, { name: 'chat_read' });
 }
 
 export function validateSpeechSource(
@@ -147,7 +147,7 @@ function validateAttachment(
 ): void {
   if (source !== null && (source.kind !== 'attachment' || source.chatId !== speech.chatId))
     throw new ApiError('forbidden', 'The speech occurrence belongs to another source.');
-  admitSpeechReadTool(store, principal, { name: 'read_chats' });
+  admitSpeechReadTool(store, principal, { name: 'chat_read' });
   const file = store.assistantChat.attachment(speech.attachmentId);
   if (file.profile_id !== principal.profileId || file.profile_id !== speech.profileId)
     throw new ApiError('forbidden', 'The speech attachment belongs to another profile.');

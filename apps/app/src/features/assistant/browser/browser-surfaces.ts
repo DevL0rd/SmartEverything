@@ -1,4 +1,3 @@
-import { releasePreviewDiagnostics } from './browser-diagnostics';
 import type { BrowserSurfaceProps } from '../../../platform/browser-contract';
 import { ValueStore } from '../../../design/external-store';
 export interface BrowserRegion {
@@ -44,10 +43,8 @@ export function layoutBrowserSurface(id: string, bounds: BrowserRegion, owner: s
   );
 }
 export function closeBrowserSurface(id: string): void {
-  releasePreviewDiagnostics(id);
   browserSurfaces.set(browserSurfaces.get().filter((entry) => entry.props.target.id !== id));
 }
 export function closeBrowserSurfaces(): void {
-  for (const surface of browserSurfaces.get()) releasePreviewDiagnostics(surface.props.target.id);
   browserSurfaces.set([]);
 }

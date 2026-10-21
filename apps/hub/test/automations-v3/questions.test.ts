@@ -17,7 +17,7 @@ const REMOTE = randomUUID();
 const MINUTE = 60_000;
 
 const TOOL: HubTool = {
-  name: 'notify_person',
+  name: 'person_notify',
   title: 'Notify',
   description: 'x',
   inputSchema: {},

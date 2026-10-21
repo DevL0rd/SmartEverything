@@ -31,7 +31,6 @@ const NOTICES: { readonly [K in LiveNotice['type']]: NoticeHandler<K> } = {
   voice_levels: ignoreNotice,
   voice_calls: ignoreNotice,
   voice_caption: ignoreNotice,
-  ai_preview: ignoreNotice,
   ai_harness: ignoreNotice,
   ai_harness_configuration: ignoreNotice,
   image_operation: ignoreNotice,

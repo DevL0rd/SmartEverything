@@ -73,7 +73,7 @@ export const SIGNAL_TRIGGER = z
       .record(z.string().min(1).max(80), JSON_VALUE)
       .default({})
       .describe(
-        'Details that must match exactly, using only the kind’s match keys from read_signals view kinds, e.g. {"detection":"baby_cry"} for kind sound',
+        'Details that must match exactly, using only the kind’s match keys from signal_read view kinds, e.g. {"detection":"baby_cry"} for kind sound',
       ),
     comparison: COMPARISON.nullable()
       .default(null)

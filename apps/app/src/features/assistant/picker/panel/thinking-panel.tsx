@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { PixelRatio, ScrollView, View } from 'react-native';
+import { PixelRatio, View } from 'react-native';
 import type { Engine } from '@smarteverything/domain';
 import { usePanelFrame } from '../../../../components/adaptive-panel';
 import { Icon } from '../../../../components/icon';
@@ -12,7 +12,7 @@ import { useKeyboard } from '../../../../app-shell/shortcuts';
 import { cycleEffort, useEngineEfforts } from '../../chats/engine-efforts';
 import { isComputerEngine } from '../../provider/computer-engine';
 import { effortLabel } from '../efforts';
-import { KeyedRow, PanelHead } from './panel-chrome';
+import { KeyedRow, PanelCard, PanelHead, PanelScroll, PanelSection } from './panel-chrome';
 
 const NARROW_BELOW = 380;
 const LARGE_TEXT_ABOVE = 1.3;
@@ -27,9 +27,13 @@ interface ThinkingProps {
 function levelsOf(
   engine: Engine,
   efforts: readonly string[],
-): readonly { value: string; label: string }[] {
+): readonly { value: string; label: string; spoken?: string }[] {
   return [
-    { value: '', label: isComputerEngine(engine) ? 'Runtime default' : 'Default' },
+    {
+      value: '',
+      label: 'Default',
+      ...(isComputerEngine(engine) ? { spoken: 'Runtime default' } : {}),
+    },
     ...efforts.map((value) => ({ value, label: effortLabel(value) })),
   ];
 }
@@ -73,20 +77,18 @@ function SegmentedThinking({ engine, onChange, blocked }: ThinkingProps): ReactN
           select(cycleEffort(efforts, engine.effort, direction, false));
         }}
       />
-      <View className="min-h-11 flex-row items-center gap-3 px-4 pb-2">
-        <Text variant="label">Thinking</Text>
-        <View className="min-w-0 flex-1">
-          <Segmented
-            label="Thinking level"
-            value={engine.effort ?? ''}
-            disabled={blocked}
-            options={levelsOf(engine, efforts)}
-            onChange={(value): void => {
-              select(value === '' ? null : value);
-            }}
-          />
-        </View>
-      </View>
+      <PanelSection title="Thinking">
+        <Segmented
+          fill
+          label="Thinking level"
+          value={engine.effort ?? ''}
+          disabled={blocked}
+          options={levelsOf(engine, efforts)}
+          onChange={(value): void => {
+            select(value === '' ? null : value);
+          }}
+        />
+      </PanelSection>
     </>
   );
 }
@@ -101,7 +103,7 @@ export function ThinkingRow({
   const { width } = usePanelFrame();
   if (efforts.length === 0) {
     return (
-      <View className="min-h-11 justify-center px-4">
+      <View className="min-h-11 justify-center px-4 pt-3">
         <Text variant="footnote" tone="faint">
           No thinking levels for this model
         </Text>
@@ -113,15 +115,17 @@ export function ThinkingRow({
     levelsOf(engine, efforts).length > SEGMENTS_MAX ||
     PixelRatio.getFontScale() > LARGE_TEXT_ABOVE;
   return (
-    <KeyedRow id={THINKING_ROW}>
+    <KeyedRow id={THINKING_ROW} className={asPage ? 'mx-4 mt-3 rounded-lg' : undefined}>
       {asPage ? (
-        <ListRow
-          title="Thinking"
-          value={currentLabel(engine)}
-          chevron
-          disabled={blocked}
-          onPress={onOpen}
-        />
+        <PanelCard>
+          <ListRow
+            title="Thinking"
+            value={currentLabel(engine)}
+            chevron
+            disabled={blocked}
+            onPress={onOpen}
+          />
+        </PanelCard>
       ) : (
         <SegmentedThinking engine={engine} onChange={onChange} blocked={blocked} />
       )}
@@ -140,7 +144,7 @@ export function ThinkingPage({
   return (
     <>
       <PanelHead title="Thinking" onBack={onBack} onClose={onClose} />
-      <ScrollView className="min-h-0 flex-1">
+      <PanelScroll>
         <List>
           {levelsOf(engine, efforts).map((level) => {
             const selected = (engine.effort ?? '') === level.value;
@@ -159,7 +163,7 @@ export function ThinkingPage({
             );
           })}
         </List>
-      </ScrollView>
+      </PanelScroll>
     </>
   );
 }

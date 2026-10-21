@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { AiModelSearchSort } from '@smarteverything/domain';
 import { Banner } from '../../../../components/banner';
 import { Button } from '../../../../components/button';
 import { HScroller } from '../../../../components/h-scroller';
@@ -15,27 +14,27 @@ import type { LibraryState } from './library-state';
 import { ModelSearchSource } from '../model-search-source';
 import { SourceStatuses } from '../model-source-status';
 
-function SortSelect({
+export function SortSelect<T extends string>({
+  options,
   sort,
   onChange,
 }: {
-  readonly sort: AiModelSearchSort;
-  readonly onChange: (sort: AiModelSearchSort) => void;
+  readonly options: readonly { readonly value: T; readonly label: string }[];
+  readonly sort: T;
+  readonly onChange: (sort: T) => void;
 }): ReactNode {
   return (
     <View className="w-44">
-      <Select
-        label="Sort"
-        showLabel={false}
-        options={SORT_OPTIONS}
-        value={sort}
-        onChange={onChange}
-      />
+      <Select label="Sort" showLabel={false} options={options} value={sort} onChange={onChange} />
     </View>
   );
 }
 
-function SourceStrip({ sources }: { readonly sources: readonly LibrarySource[] }): ReactNode {
+export function SourceStrip({
+  sources,
+}: {
+  readonly sources: readonly LibrarySource[];
+}): ReactNode {
   return (
     <HScroller label="Model sources">
       {sources.map((source) => (
@@ -54,28 +53,56 @@ export interface LibraryToolsProps {
   readonly toggleDetails: () => void;
 }
 
-function CountLine({ state, data, filtersInline, touch }: LibraryToolsProps): ReactNode {
+export function CountLine({
+  inline,
+  active,
+  onFilters,
+  sort,
+  count,
+}: {
+  readonly inline: boolean;
+  readonly active: number;
+  readonly onFilters: () => void;
+  readonly sort: ReactNode;
+  readonly count: string;
+}): ReactNode {
   return (
     <View className="flex-row items-center justify-between gap-2">
-      {filtersInline ? (
+      {inline ? (
         <Text variant="footnote" tone="variant">
           Filters in the left column
         </Text>
       ) : (
         <Button
-          label={state.active === 0 ? 'Filters' : `Filters · ${String(state.active)}`}
+          label={active === 0 ? 'Filters' : `Filters · ${String(active)}`}
           variant="outlined"
           icon="filter"
-          onPress={(): void => {
-            state.setPage('filters');
-          }}
+          onPress={onFilters}
         />
       )}
-      {touch ? <SortSelect sort={state.sort} onChange={state.setSort} /> : null}
+      {sort}
       <Text variant="footnote" tone="variant" className="tabular">
-        {`${String(data.rows.length)} models`}
+        {count}
       </Text>
     </View>
+  );
+}
+
+function LibraryCountLine({ state, data, filtersInline, touch }: LibraryToolsProps): ReactNode {
+  return (
+    <CountLine
+      inline={filtersInline}
+      active={state.active}
+      onFilters={(): void => {
+        state.setPage('filters');
+      }}
+      sort={
+        touch ? (
+          <SortSelect options={SORT_OPTIONS} sort={state.sort} onChange={state.setSort} />
+        ) : null
+      }
+      count={`${String(data.rows.length)} models`}
+    />
   );
 }
 
@@ -94,9 +121,11 @@ export function LibraryTools(props: LibraryToolsProps): ReactNode {
               focusOnMount={!touch}
             />
           </View>
-          {touch ? null : <SortSelect sort={state.sort} onChange={state.setSort} />}
+          {touch ? null : (
+            <SortSelect options={SORT_OPTIONS} sort={state.sort} onChange={state.setSort} />
+          )}
         </View>
-        <CountLine {...props} />
+        <LibraryCountLine {...props} />
       </View>
       <SourceStrip sources={data.sources} />
       <SourceStatuses sources={[data.search.sources.native, data.search.sources.routes]} />

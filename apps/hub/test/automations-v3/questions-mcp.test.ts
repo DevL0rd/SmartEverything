@@ -32,7 +32,7 @@ async function until(done: () => Promise<boolean>): Promise<void> {
 
 describe('MCP parity for automation questions', () => {
   it('lists the question a run waits on and lets the AI press its button', async () => {
-    const reply = await call('edit_automation', {
+    const reply = await call('automation_edit', {
       action: 'create',
       name: 'Door',
       definition: programOf(
@@ -48,14 +48,14 @@ describe('MCP parity for automation questions', () => {
       ),
     });
     const created = CREATED.parse(reply);
-    const started = STARTED.parse(await call('run_automation', { automationId: created.id }));
+    const started = STARTED.parse(await call('automation_run', { automationId: created.id }));
     expect(started.ok).toBe(true);
     await until(async () => {
-      const open = QUESTIONS.parse(await call('read_automation_runs', { view: 'questions' }));
+      const open = QUESTIONS.parse(await call('automation_runs_read', { view: 'questions' }));
       return open.result.length > 0;
     });
     const [question] = QUESTIONS.parse(
-      await call('read_automation_runs', { view: 'questions' }),
+      await call('automation_runs_read', { view: 'questions' }),
     ).result;
     expect(question).toMatchObject({
       question: 'Lock the door?',
@@ -63,13 +63,13 @@ describe('MCP parity for automation questions', () => {
       state: 'open',
     });
     expect(rig().sent()).toStrictEqual([]);
-    await call('answer_automation_question', { questionId: question?.id, answer: 'Yes' });
+    await call('automation_answer', { questionId: question?.id, answer: 'Yes' });
     await until(async () => {
-      const [run] = RUNS.parse(await call('read_automation_runs', { view: 'list' })).result;
+      const [run] = RUNS.parse(await call('automation_runs_read', { view: 'list' })).result;
       return run?.status === 'succeeded';
     });
     expect(rig().sent()).toStrictEqual([['lamp-1', 'power', true]]);
-    const left = QUESTIONS.parse(await call('read_automation_runs', { view: 'questions' }));
+    const left = QUESTIONS.parse(await call('automation_runs_read', { view: 'questions' }));
     expect(left.result).toStrictEqual([]);
   });
 });

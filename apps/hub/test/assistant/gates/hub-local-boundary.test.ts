@@ -56,7 +56,7 @@ afterEach(async () => {
 });
 
 const CONTROL_DEVICES: HubTool = {
-  name: 'control_devices',
+  name: 'device_control',
   title: 'Control devices',
   description: 'Changes devices.',
   inputSchema: { type: 'object' },
@@ -71,7 +71,7 @@ function controlDevices(reached: string[]): ToolSource {
     validate: () => null,
     changes: (): (() => void) => () => undefined,
     call: (_tool, args): Promise<HubToolResult> => {
-      const room = /"roomId":"([^"]+)"/.exec(JSON.stringify(args))?.[1];
+      const room = /"rooms":\["([^"]+)"/.exec(JSON.stringify(args))?.[1];
       reached.push(
         ...rig.opened.store.devices
           .list()
@@ -150,8 +150,10 @@ describe('a hub chat controlling devices that include a computer', () => {
     const reached: string[] = [];
     const tools = hubTools(controlDevices(reached));
     const session = deskSession();
-    const result = await tools.call(session, 'control_devices', {
-      changes: [{ target: { roomId: office.id }, capability: 'power', value: false }],
+    const result = await tools.call(session, 'device_control', {
+      rooms: [office.id],
+      capability: 'power',
+      value: false,
     });
     expect(result.response).toStrictEqual({ ok: true });
     expect(reached.toSorted()).toStrictEqual([hubMachine, light?.id ?? ''].toSorted());
@@ -160,7 +162,7 @@ describe('a hub chat controlling devices that include a computer', () => {
   it('admits a tool call from a hub conversation through the boundary once', () => {
     boundary(hubMachine);
     const refusal = vi.spyOn(HubLocalBoundary.prototype, 'refusal');
-    hubTools(controlDevices([])).authorizeCall(deskSession(), 'control_devices', { changes: [] });
+    hubTools(controlDevices([])).authorizeCall(deskSession(), 'device_control', {});
     expect(refusal).toHaveBeenCalledTimes(1);
   });
 
@@ -169,8 +171,8 @@ describe('a hub chat controlling devices that include a computer', () => {
     const refusal = vi.spyOn(HubLocalBoundary.prototype, 'refusal');
     const hub = new ToolHub([controlDevices([])], toolAdmission(rig.opened.store));
     const result = await hub.call(
-      'control_devices',
-      { changes: [] },
+      'device_control',
+      {},
       {
         authority: { ...hubChat(), hub_os_ban: false },
         profileId: rig.owner.profileId,
@@ -188,10 +190,10 @@ describe('a hub chat controlling devices that include a computer', () => {
 describe('the hub-local native bridge', () => {
   it('is refused for hub conversations and hidden from their tool list', () => {
     const subject = boundary();
-    expect(reachesNativeBridge('read_claude')).toBe(true);
-    expect(subject.refusal('read_claude', { view: 'status' })).toMatch(/native desktop session/);
+    expect(reachesNativeBridge('claude_read')).toBe(true);
+    expect(subject.refusal('claude_read', { view: 'status' })).toMatch(/native desktop session/);
     expect(
-      subject.refusal('call_operation', { operation: 'readClaudeStatus', arguments: {} }),
+      subject.refusal('operation_call', { operation: 'readClaudeStatus', arguments: {} }),
     ).toMatch(/native desktop session/);
   });
 
@@ -213,7 +215,7 @@ describe('starting native work from a hub chat', () => {
       arguments: { body: { engine: { kind: 'claude', device_id: desk } } },
     };
     expect(() =>
-      withExecutionAuthority(hubChat(), () => subject.refusal('call_operation', create)),
+      withExecutionAuthority(hubChat(), () => subject.refusal('operation_call', create)),
     ).toThrow(/pick another computer/);
   });
 
@@ -223,7 +225,7 @@ describe('starting native work from a hub chat', () => {
       operation: 'createAiChat',
       arguments: { body: { engine: { kind: 'claude', device_id: desk } } },
     };
-    expect(withExecutionAuthority(hubChat(), () => subject.refusal('call_operation', create))).toBe(
+    expect(withExecutionAuthority(hubChat(), () => subject.refusal('operation_call', create))).toBe(
       undefined,
     );
   });

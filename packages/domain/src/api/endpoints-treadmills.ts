@@ -58,7 +58,7 @@ export const TREADMILL_AREA_ENDPOINTS = {
     path: '/api/treadmills/:deviceId/actions',
     access: 'member',
     summary:
-      'Act on a treadmill: assign a session to a walker, say who is on the belt now, set a person’s goals (daily minutes, weekly distance and sessions), change settings (remote start and remote incline policy, incline scale, grade, running speed, stay connected, oiling days; owner), mark the belt oiled, make this phone hold the Bluetooth link (a phone next to the belt only, never the assistant or a computer), forget a session, or turn the raw frame log on or off (owner). Start, stop, speed, incline and mode go through control_devices',
+      'Act on a treadmill: assign a session to a walker, say who is on the belt now, set a person’s goals (daily minutes, weekly distance and sessions), change settings (remote start and remote incline policy, incline scale, grade, running speed, stay connected, oiling days; owner), mark the belt oiled, make this phone hold the Bluetooth link (a phone next to the belt only, never the assistant or a computer), forget a session, or turn the raw frame log on or off (owner). Start, stop, speed, incline and mode go through device_control',
     params: z.strictObject({ deviceId: ID }),
     query: NOTHING,
     body: TREADMILL_ACTION,

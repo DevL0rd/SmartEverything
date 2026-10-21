@@ -1,5 +1,6 @@
 import { NativeReferences } from '../references/runtime';
 import { mountReferencePrompts } from '../references/prompt';
+import { mountPromptIdempotence } from './prompt-idempotence';
 import type {
   AiNativeReferenceAction,
   AiNativeReferenceResult,
@@ -86,6 +87,7 @@ export class HarnessRuntime {
       () => this.configurationStatus(),
     );
     mountReferencePrompts(ctx);
+    mountPromptIdempotence(ctx);
     this.composition = new HarnessRuntimeConfiguration(
       configuration,
       lifecycle.configurationPending,

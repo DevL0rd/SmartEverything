@@ -124,14 +124,14 @@ async function toolResult(
     invalidArguments(event, caller, checked.reason);
     return { response: { error: checked.reason }, line: '', pictures: [] };
   }
-  return grant.hub.call(event.name, event.input, caller);
+  return grant.hub.call(event.name, event.input, { ...caller, callId: event.call_id });
 }
 
 function nativeToolResponse(text: string): string {
   if (text.length <= 200_000) return text;
   return JSON.stringify({
     error:
-      'The complete output exceeds the native transport limit. The full output is kept in the chat; read it a page at a time with read_tool_result (chatId, callId, offset, limit). Nothing was lost.',
+      'The complete output exceeds the native transport limit. The full output is kept in the chat; read it a page at a time with tool_result_read (chatId, callId, offset, limit). Nothing was lost.',
     output_characters: text.length,
     transport_limit: 200_000,
   });

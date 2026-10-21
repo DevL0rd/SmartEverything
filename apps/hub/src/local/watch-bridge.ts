@@ -7,10 +7,15 @@ import {
   type WatchBridge,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import { z } from 'zod';
 
 export type BridgedDevice = Pick<DeviceRow, 'id' | 'external_id' | 'details'>;
 
 const BRIDGE_IDLE_MS = 2 * 60 * 60_000;
+
+const PAIRED = z.array(WATCH_BRIDGE.pick({ clientId: true, clientName: true })).catch([]);
+
+type Paired = z.infer<typeof PAIRED>;
 
 export interface WatchBridgesOptions {
   readonly observe: (
@@ -21,6 +26,10 @@ export interface WatchBridgesOptions {
   readonly log: Logger;
 }
 
+function isPaired(paired: Paired, clientId: string): boolean {
+  return paired.some((entry) => entry.clientId === clientId);
+}
+
 function moment(value: unknown): number {
   return typeof value === 'string' ? Date.parse(value) : 0;
 }
@@ -28,6 +37,7 @@ function moment(value: unknown): number {
 export class WatchBridges {
   private readonly traffic = new Map<string, number>();
   private readonly assigned = new Map<string, WatchBridge>();
+  private readonly proven = new Map<string, Paired>();
 
   constructor(private readonly options: WatchBridgesOptions) {}
 
@@ -41,22 +51,30 @@ export class WatchBridges {
     device: BridgedDevice,
     client: Pick<ClientRow, 'id' | 'name'>,
   ): Promise<WatchBridge | null> {
-    const holder = this.holderOf(device);
-    if (holder !== null && holder.clientId !== client.id && this.alive(device, holder)) {
-      return holder;
+    const blocking = this.blocker(device, client);
+    if (blocking !== null) {
+      return blocking;
     }
-    if (holder?.clientId !== client.id) {
-      await this.assign(device, client, holder);
+    if (this.holderOf(device)?.clientId !== client.id) {
+      await this.assign(device, client, this.holderOf(device));
     }
     this.traffic.set(device.id, this.options.now().getTime());
     return null;
   }
 
   heldElsewhere(device: BridgedDevice, client: Pick<ClientRow, 'id'>): WatchBridge | null {
-    const holder = this.holderOf(device);
-    return holder !== null && holder.clientId !== client.id && this.alive(device, holder)
-      ? holder
-      : null;
+    return this.blocker(device, client);
+  }
+
+  async pair(device: BridgedDevice, client: Pick<ClientRow, 'id' | 'name'>): Promise<void> {
+    const paired = this.pairedOf(device);
+    if (isPaired(paired, client.id)) {
+      return;
+    }
+    const next = [...paired, { clientId: client.id, clientName: client.name }];
+    this.proven.set(device.id, next);
+    await this.options.observe(device.external_id, { pairedBy: next });
+    this.options.log.info('watch.bridge_paired', { device: device.id, client: client.id });
   }
 
   async require(device: BridgedDevice, client: Pick<ClientRow, 'id' | 'name'>): Promise<void> {
@@ -84,8 +102,43 @@ export class WatchBridges {
     return holder?.clientId === client.id ? holder : this.assign(device, client, holder);
   }
 
+  private pairedOf(device: BridgedDevice): Paired {
+    return this.proven.get(device.id) ?? PAIRED.parse(device.details['pairedBy']);
+  }
+
+  private blocker(device: BridgedDevice, client: Pick<ClientRow, 'id'>): WatchBridge | null {
+    const holder = this.holderOf(device);
+    if (holder?.clientId === client.id) {
+      return null;
+    }
+    const paired = this.pairedOf(device);
+    if (paired.length === 0) {
+      return this.liveHolder(device, holder);
+    }
+    if (!isPaired(paired, client.id)) {
+      return this.ownerOf(paired, holder);
+    }
+    return holder !== null && isPaired(paired, holder.clientId)
+      ? this.liveHolder(device, holder)
+      : null;
+  }
+
+  private liveHolder(device: BridgedDevice, holder: WatchBridge | null): WatchBridge | null {
+    return holder !== null && this.alive(device, holder) ? holder : null;
+  }
+
+  private ownerOf(paired: Paired, holder: WatchBridge | null): WatchBridge | null {
+    const owner = paired.find((entry) => entry.clientId === holder?.clientId) ?? paired[0];
+    return owner === undefined
+      ? null
+      : { ...owner, since: holder?.since ?? this.options.now().toISOString() };
+  }
+
   private alive(device: BridgedDevice, holder: WatchBridge): boolean {
     const reportedByHolder = device.details['reportedBy'] === holder.clientId;
+    if (reportedByHolder && device.details['phase'] === 'failed') {
+      return false;
+    }
     const lastSeen = Math.max(
       Date.parse(holder.since),
       this.traffic.get(device.id) ?? 0,

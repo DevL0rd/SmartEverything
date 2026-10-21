@@ -11,7 +11,7 @@ import type {
 } from './hub-native';
 import { HUB_CONNECTION_METADATA, type HubConnectionMetadata } from './hub-connections';
 import type { FirewallApplyResult } from './api/firewall';
-import type { NativeHtmlPreview } from './native-html-preview';
+import type { NativeHtmlPreview } from './chat-pages';
 import type { DesktopBrowser } from './desktop-browser';
 import type { MachineUpdateStatus } from './machine-updates';
 import type { OverlayAction, OverlayHostView } from './voice-overlay';

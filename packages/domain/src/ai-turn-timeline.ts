@@ -35,10 +35,10 @@ export const AI_TOOL_RESULT_PAGE = z.strictObject({
   call_id: z.string(),
   name: z.string(),
   field: z.enum(AI_TOOL_RESULT_FIELDS),
-  offset: z.int().nonnegative(),
+  cursor: z.string(),
   total_chars: z.int().nonnegative(),
   text: z.string(),
-  next_offset: z.int().nonnegative().nullable(),
+  nextCursor: z.string().nullable(),
 });
 export type AiToolResultPage = z.infer<typeof AI_TOOL_RESULT_PAGE>;
 
@@ -55,21 +55,21 @@ function clippedField(value: string | null, limit: number): string | null {
 export function toolResultPage(
   tool: ChatTimelineTool,
   field: (typeof AI_TOOL_RESULT_FIELDS)[number],
-  offset: number,
+  cursor: string | undefined,
   limit: number,
 ): AiToolResultPage {
   const full = tool[field] ?? '';
-  const start = Math.min(offset, full.length);
+  const start = Math.min(cursor === undefined ? 0 : Number(cursor), full.length);
   const text = clipped(full.slice(start), limit);
   const end = start + text.length;
   return {
     call_id: tool.callId,
     name: tool.name,
     field,
-    offset: start,
+    cursor: String(start),
     total_chars: full.length,
     text,
-    next_offset: end < full.length ? end : null,
+    nextCursor: end < full.length ? String(end) : null,
   };
 }
 

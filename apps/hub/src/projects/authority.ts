@@ -51,7 +51,7 @@ export function projectCallerAuthority(
 function projectTool(request: AiProjectRequest): string {
   if (request.operation === 'remove') return 'remove_project_files';
   return ['stat', 'list', 'read', 'search'].includes(request.operation)
-    ? 'read_project_files'
+    ? 'project_read'
     : 'write_project_files';
 }
 

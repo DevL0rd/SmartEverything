@@ -53,12 +53,12 @@ async function run(name: string, args: Record<string, unknown>): Promise<Record<
 }
 
 async function pair(): Promise<string> {
-  await run('edit_device_group', {
+  await run('group_edit', {
     action: 'create',
     name: 'Pair',
-    device_ids: [lamp, camera],
+    deviceIds: [lamp, camera],
   });
-  const groups = GROUPS.parse((await run('get_home', {}))['device_groups']);
+  const groups = GROUPS.parse((await run('home_read', {}))['device_groups']);
   const found = groups.find((group) => group.name === 'Pair');
   return found?.key.replace('group:', '') ?? '';
 }
@@ -66,7 +66,7 @@ async function pair(): Promise<string> {
 describe('the device group read', () => {
   it('gives each group a key, its members and its live state', async () => {
     const groupId = await pair();
-    const groups = GROUPS.parse((await run('get_home', {}))['device_groups']);
+    const groups = GROUPS.parse((await run('home_read', {}))['device_groups']);
     expect(groups).toMatchObject([
       {
         key: `group:${groupId}`,
@@ -81,27 +81,18 @@ describe('the device group read', () => {
 });
 
 describe('controlling a device group', () => {
-  it('names an unsupported member without calling it a failure', async () => {
-    const groupId = await pair();
-    const result = await run('control_device_target', {
-      target: { kind: 'group', groupId },
-      capability: 'power',
-      value: true,
-    });
-    expect(result['changed']).toMatchObject([{ device: 'Desk lamp', capability: 'power' }]);
-    expect(result['skipped']).toStrictEqual([{ item: 'Front door', reason: 'Not supported' }]);
-    expect(result['headline']).toBeUndefined();
+  it('names an unsupported member as skipped next to the member it changed', async () => {
+    await pair();
+    const result = await run('device_control', { group: 'Pair', capability: 'power', value: true });
+    expect(result['changed']).toStrictEqual([{ device: 'Desk lamp', capability: 'power' }]);
+    expect(result['skipped']).toStrictEqual([{ item: 'Front door', reason: 'has no power' }]);
+    expect(result['failed']).toBeUndefined();
   });
 
   it('puts a failing member in the headline', async () => {
-    const groupId = await pair();
+    await pair();
     booted.fake.adapter.failure = new Error('The lamp is unplugged');
-    const result = await run('control_device_target', {
-      target: { kind: 'group', groupId },
-      capability: 'power',
-      value: true,
-    });
-    expect(result['headline']).toBe("1 device didn't change");
-    expect(result['failed']).toMatchObject([{ device: 'Desk lamp', capability: 'power' }]);
+    const result = await run('device_control', { group: 'Pair', capability: 'power', value: true });
+    expect(result['headline']).toBe("1 light didn't change");
   });
 });

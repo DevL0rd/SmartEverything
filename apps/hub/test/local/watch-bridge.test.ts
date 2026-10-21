@@ -96,6 +96,63 @@ describe('watch bridge', () => {
     expect(await bridges.acquire(other, TABLET)).toBeNull();
   });
 
+  it('lets another app take the watch from a holder whose last report was a failed connection', async () => {
+    const held = {
+      ...device,
+      details: {
+        bridge: { clientId: TABLET.id, clientName: 'Tablet', since: START },
+        reportedBy: TABLET.id,
+        reportedAt: START,
+        phase: 'failed',
+      },
+    };
+    clock.advanceTo('2026-10-08T10:05:00.000Z');
+    expect(await bridges.acquire(held, PHONE)).toBeNull();
+    expect(bridges.holderOf(held)?.clientId).toBe(PHONE.id);
+    const connecting = { ...held, details: { ...held.details, phase: 'connecting' } };
+    const other = new WatchBridges({
+      observe: (): Promise<void> => Promise.resolve(),
+      now: clock.now,
+      log: testLogger('watch'),
+    });
+    expect(await other.acquire(connecting, PHONE)).toMatchObject({ clientId: TABLET.id });
+  });
+
+  it('never gives the watch to an app that has not connected once another app has, even when the holder is gone', async () => {
+    await bridges.acquire(device, PHONE);
+    await bridges.pair(device, PHONE);
+    expect(observed.at(-1)?.values['pairedBy']).toEqual([
+      { clientId: PHONE.id, clientName: 'Pixel' },
+    ]);
+    clock.advanceTo('2026-10-09T10:00:00.000Z');
+    expect(await bridges.acquire(device, TABLET)).toMatchObject({
+      clientId: PHONE.id,
+      clientName: 'Pixel',
+    });
+    expect(bridges.heldElsewhere(device, TABLET)).toMatchObject({ clientId: PHONE.id });
+    expect(bridges.holderOf(device)?.clientId).toBe(PHONE.id);
+  });
+
+  it('lets the app that has connected take the watch back from an app that never has', async () => {
+    const connected = {
+      ...device,
+      details: { pairedBy: [{ clientId: PHONE.id, clientName: 'Pixel' }] },
+    };
+    await bridges.takeOver(connected, TABLET);
+    expect(bridges.holderOf(connected)?.clientId).toBe(TABLET.id);
+    expect(await bridges.acquire(connected, PHONE)).toBeNull();
+    expect(bridges.holderOf(connected)?.clientId).toBe(PHONE.id);
+  });
+
+  it('keeps an app that took the watch over on purpose, and records a connection once', async () => {
+    await bridges.pair(device, PHONE);
+    await bridges.takeOver(device, TABLET);
+    expect(await bridges.acquire(device, TABLET)).toBeNull();
+    await bridges.pair(device, TABLET);
+    await bridges.pair(device, TABLET);
+    expect(observed.filter((entry) => 'pairedBy' in entry.values)).toHaveLength(2);
+  });
+
   it('reads a holder saved on the device from an earlier run', async () => {
     const saved = stored(PHONE.id, 'Pixel', START);
     expect(bridges.holderOf(saved)).toMatchObject({ clientId: PHONE.id });

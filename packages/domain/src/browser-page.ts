@@ -109,3 +109,13 @@ export const BROWSER_PAGE_PROBE_RESULT = z.discriminatedUnion('ok', [
   }),
   z.strictObject({ ok: z.literal(false), error: z.string().min(1) }),
 ]);
+
+export const NATIVE_BROWSER_PAGE_REQUEST = z.strictObject({
+  id: z.string().min(1).max(512),
+  operation: BROWSER_PAGE_OPERATION,
+});
+export type NativeBrowserPageRequest = z.infer<typeof NATIVE_BROWSER_PAGE_REQUEST>;
+export const NATIVE_BROWSER_PAGE_RESPONSE = BROWSER_PAGE_READING.nullable();
+export interface NativeBrowserPage {
+  readonly perform: (request: NativeBrowserPageRequest) => Promise<BrowserPageReading | null>;
+}

@@ -54,6 +54,8 @@ function fixture(steer: Engine['steer']): Fixture {
     route: (): ReturnType<DeliveryOptions['route']> => ({ kind: 'engine', engine, chat }),
     delivered: (): undefined => undefined,
     failed: (): undefined => undefined,
+    retrying: (): undefined => undefined,
+    stopped: (): undefined => undefined,
     log: testLogger('delivery'),
   });
   const add = (text: string): StoredEvent =>

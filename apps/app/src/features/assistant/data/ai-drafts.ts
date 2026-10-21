@@ -60,8 +60,6 @@ export interface PendingMessage {
   readonly attachments: readonly string[];
   readonly queuedAt: string;
   readonly references: readonly AiMessageReference[];
-  readonly state: 'waiting' | 'failed';
-  readonly reason: string | null;
 }
 
 export interface AiDraftsState {
@@ -100,8 +98,6 @@ const STORED = z.strictObject({
       attachments: z.array(z.string()),
       queuedAt: z.string(),
       references: AI_MESSAGE_REFERENCES,
-      state: z.enum(['waiting', 'failed']),
-      reason: z.string().nullable(),
     }),
   ),
 });

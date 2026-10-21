@@ -66,7 +66,7 @@ export const TILING_WORKSPACE_REFERENCE = z
       .regex(/\D/, 'a workspace name has at least one character that is not a digit'),
   ])
   .describe(
-    'A workspace position counted on the focused screen (1 is the first), or its name from get_computer view tiling',
+    'A workspace position counted on the focused screen (1 is the first), or its name from computer_read view tiling',
   );
 
 export type TilingWorkspaceReference = z.infer<typeof TILING_WORKSPACE_REFERENCE>;
@@ -76,7 +76,7 @@ const FOCUS = z
   .default(true)
   .describe('Follow the move and show the target workspace (default true)');
 
-const TARGET_WINDOW = WINDOW_ID.describe('A window id from get_computer view tiling');
+const TARGET_WINDOW = WINDOW_ID.describe('A window id from computer_read view tiling');
 
 export const TILING_CHANGE = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('focus-window'), windowId: TARGET_WINDOW }),
@@ -94,7 +94,7 @@ export const TILING_CHANGE = z.discriminatedUnion('action', [
   }),
   z.strictObject({
     action: z.literal('move-column-to-monitor'),
-    output: z.string().trim().min(1).describe('A screen name from get_computer view tiling'),
+    output: z.string().trim().min(1).describe('A screen name from computer_read view tiling'),
   }),
   z.strictObject({ action: z.literal('switch-preset-column-width') }),
   z.strictObject({ action: z.literal('center-column') }),

@@ -37,13 +37,15 @@ afterEach(async () => {
 });
 
 async function listed(): Promise<z.infer<typeof LISTED>> {
-  const result = await resultOf(await rpc(booted.base, token, { method: 'tools/list' }));
+  const result = await resultOf(
+    await rpc(booted.base, token, { method: 'tools/list' }, { 'user-agent': 'claude-code/2.1' }),
+  );
   return LISTED.parse(result['tools']);
 }
 
 describe('a bad automation call', () => {
   it('returns a short error that names the failing field and carries no schema', async () => {
-    const result = await callTool(booted.base, token, 'edit_automation', {
+    const result = await callTool(booted.base, token, 'automation_edit', {
       action: 'create',
       name: 'Broken',
       definition: { triggers: [{ type: 'event', kind: 7 }], actions: 'none' },
@@ -58,24 +60,24 @@ describe('a bad automation call', () => {
 });
 
 describe('the tool listing', () => {
-  it('keeps edit_automation and the whole listing small by writing shared schemas once', async () => {
+  it('keeps automation_edit and the whole listing small by writing shared schemas once', async () => {
     const tools = await listed();
-    const automation = tools.find((tool) => tool.name === 'edit_automation');
+    const automation = tools.find((tool) => tool.name === 'automation_edit');
     expect(JSON.stringify(automation).length).toBeLessThan(AUTOMATION_SCHEMA_BUDGET);
     expect(JSON.stringify(tools).length).toBeLessThan(TOOL_LIST_BUDGET);
   });
 
   it('hides the plugin hand-over tool from an assistant that is not a plugin', async () => {
-    expect((await listed()).map((tool) => tool.name)).not.toContain('ai_inbox_post');
-    const refused = await callTool(booted.base, token, 'ai_inbox_post', {});
+    expect((await listed()).map((tool) => tool.name)).not.toContain('inbox_post');
+    const refused = await callTool(booted.base, token, 'inbox_post', {});
     expect(refused.isError).toBe(true);
     expect(JSON.stringify(refused.content)).toContain('forbidden');
   });
 });
 
-describe('tool_details', () => {
+describe('tool_read', () => {
   async function details(args: Record<string, unknown>): Promise<z.infer<typeof DETAILS>> {
-    return DETAILS.parse(structured(await callTool(booted.base, token, 'tool_details', args)));
+    return DETAILS.parse(structured(await callTool(booted.base, token, 'tool_read', args)));
   }
 
   const DETAILS = z.looseObject({
@@ -84,28 +86,28 @@ describe('tool_details', () => {
   });
 
   it('sends the variants of a routed tool only when one is asked for', async () => {
-    const plain = await details({ name: 'edit_room' });
+    const plain = await details({ name: 'room_edit' });
     expect(plain.tool).not.toHaveProperty('variants');
     expect(plain.variant).toBeUndefined();
-    const one = await details({ name: 'edit_room', variant: 'remove' });
+    const one = await details({ name: 'room_edit', variant: 'remove' });
     expect(one.variant?.selector).toEqual({ action: 'remove' });
   });
 
   it('says which variants exist when the asked one does not', async () => {
-    const result = await callTool(booted.base, token, 'tool_details', {
-      name: 'edit_room',
+    const result = await callTool(booted.base, token, 'tool_read', {
+      name: 'room_edit',
       variant: 'paint',
     });
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain(
       'variant must be one of: create, update, remove',
     );
-    const single = await callTool(booted.base, token, 'tool_details', {
-      name: 'get_home',
+    const single = await callTool(booted.base, token, 'tool_read', {
+      name: 'home_read',
       variant: 'x',
     });
     expect(single.isError).toBe(false);
-    expect(JSON.stringify(single.content)).toContain('get_home has no variants');
+    expect(JSON.stringify(single.content)).toContain('home_read has no variants');
   });
 });
 
@@ -116,14 +118,14 @@ describe('the server instructions', () => {
   }
 
   it('stop naming a tool the owner switched off', async () => {
-    expect(await instructions()).toContain('assistant_post');
+    expect(await instructions()).toContain('chat_post');
     await call(booted.base, booted.owner, {
       method: 'PUT',
       path: '/api/mcp/tools',
-      body: { disabled: ['assistant_post'] },
+      body: { disabled: ['chat_post'] },
     });
     const after = await instructions();
-    expect(after).not.toContain('assistant_post');
-    expect(after).toContain('get_home');
+    expect(after).not.toContain('chat_post');
+    expect(after).toContain('home_read');
   });
 });

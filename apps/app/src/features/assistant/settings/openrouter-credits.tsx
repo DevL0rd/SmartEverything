@@ -3,7 +3,8 @@ import type { OpenRouterAccount } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { ListRow } from '../../../components/list-row';
 import { ValueRow } from '../../../components/rows';
-import { balanceOf, isLow, MANAGEMENT_KEY_NOTE, topUp, usedLine } from '../costs/costs-credits';
+import { balanceOf, isLow, usedLine } from '../costs/credit-balance';
+import { MANAGEMENT_KEY_NOTE, topUp } from '../costs/costs-credits';
 import { useMoney, type Money } from '../../region';
 import {
   useOpenRouterAccount,
@@ -56,7 +57,7 @@ export function CreditRow(): ReactNode {
   const line = creditLine(account.keySet, account.data, account.isError, money);
   return (
     <ListRow
-      title="Credit"
+      title="Account credit"
       icon="gauge"
       iconTone={line.warning ? 'warning' : 'positive'}
       subtitle={line.subtitle}

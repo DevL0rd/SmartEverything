@@ -1,15 +1,14 @@
-import type { NativeBrowserDiagnostics } from './browser-diagnostics';
+import type { NativeBrowserPage } from './browser-page';
 import { z } from 'zod';
-import { NATIVE_HTML_PROJECTION, NATIVE_PAGE_DESCRIPTOR } from './native-html-preview';
-export * from './native-html-preview';
-export * from './browser-diagnostics';
+import { CHAT_PAGE, NATIVE_HTML_PROJECTION } from './chat-pages';
+export * from './chat-pages';
 export * from './embedded-browser';
 export * from './browser-page';
 export * from './browser-page-script';
 export * from './browser-page-driver';
 
 export const BROWSER_RETIRED_PROBLEM =
-  'The browser page ownership was withdrawn. Reload to request current access.';
+  'This page was closed. Reload to open it again.';
 const BROWSER_ID = z.string().min(1).max(512);
 
 export class BrowserPolicyError extends Error {
@@ -21,28 +20,17 @@ export class BrowserPolicyError extends Error {
 
 export const BROWSER_TARGET = z.discriminatedUnion('kind', [
   z.strictObject({
-    kind: z.literal('preview'),
-    id: BROWSER_ID,
-    url: z.url(),
-    origin: z.url(),
-    initialPath: z.string().regex(/^\/(?!\/)/),
-    page: NATIVE_PAGE_DESCRIPTOR.optional(),
-    profileId: z.uuid().optional(),
-  }),
-  z.strictObject({
     kind: z.literal('public'),
     id: BROWSER_ID,
     url: z.url(),
     profileId: z.uuid().optional(),
   }),
   z.strictObject({
-    kind: z.literal('native-html'),
+    kind: z.literal('project'),
     id: BROWSER_ID,
     url: NATIVE_HTML_PROJECTION.shape.url,
     projectionId: NATIVE_HTML_PROJECTION.shape.id,
-    project: NATIVE_HTML_PROJECTION.shape.project,
-    profileId: z.uuid().optional(),
-    page: NATIVE_PAGE_DESCRIPTOR.optional(),
+    page: CHAT_PAGE,
   }),
 ]);
 export type BrowserTarget = z.infer<typeof BROWSER_TARGET>;
@@ -79,7 +67,7 @@ export const BROWSER_COMMAND = z.discriminatedUnion('kind', [
 ]);
 export type BrowserCommand = z.infer<typeof BROWSER_COMMAND>;
 export interface DesktopBrowser {
-  readonly diagnostics?: NativeBrowserDiagnostics;
+  readonly page?: NativeBrowserPage;
   command(command: BrowserCommand): Promise<void>;
   subscribe(listener: (status: BrowserStatus) => void): () => void;
   subscribeWindowRequests(listener: (request: BrowserWindowRequest) => void): () => void;
@@ -109,32 +97,14 @@ export function publicBrowserUrl(value: string): boolean {
 }
 export function browserAllows(target: BrowserTarget, value: string): boolean {
   if (target.kind === 'public') return browsableUrl(value);
-  if (target.kind === 'native-html') return nativeHtmlAllows(target, value);
   const parsed = z.url().safeParse(value);
   if (!parsed.success) return false;
   const url = new URL(parsed.data);
-  return (
-    url.protocol === 'https:' &&
-    url.origin === target.origin &&
-    url.username === '' &&
-    url.password === ''
-  );
-}
-
-function nativeHtmlAllows(
-  target: Extract<BrowserTarget, { kind: 'native-html' }>,
-  value: string,
-): boolean {
-  const url = z.url().safeParse(value);
-  if (!url.success) return false;
-  const parsed = new URL(url.data);
-  parsed.hash = '';
-  if (target.project !== true) return parsed.href === target.url;
   const origin = new URL(target.url);
   return (
-    parsed.protocol === origin.protocol &&
-    parsed.host === origin.host &&
-    parsed.username === '' &&
-    parsed.password === ''
+    url.protocol === origin.protocol &&
+    url.host === origin.host &&
+    url.username === '' &&
+    url.password === ''
   );
 }

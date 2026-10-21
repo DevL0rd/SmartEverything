@@ -9,7 +9,12 @@ const SHORT_TOKEN = /^[\w\-.:/]{1,40}$/;
 const TURN = z.looseObject({ turn: z.number().optional() });
 const TURN_END = z.looseObject({
   turn: z.number().optional(),
-  reason: z.looseObject({ kind: z.string().optional() }).optional(),
+  reason: z
+    .looseObject({
+      kind: z.string().optional(),
+      error: z.looseObject({ code: z.string().optional() }).optional(),
+    })
+    .optional(),
 });
 const ATTEMPT = z.looseObject({ stream: z.array(z.unknown()).optional() });
 const CALL = z.looseObject({ callId: z.string(), name: z.string(), arguments: z.string() });
@@ -103,10 +108,11 @@ const turnStarted: Handler = ({ id, state, now, data }) => {
 };
 
 const turnEnded: Handler = ({ id, state, now, data }) => {
+  const reason = TURN_END.safeParse(data).data?.reason;
   log.info('turn.ended', {
     session_id: id,
     turn: state.turn,
-    reason: TURN_END.safeParse(data).data?.reason?.kind,
+    reason: reason?.error?.code ?? reason?.kind,
     steps: state.steps,
     toolCalls: state.tools,
     durationMs: elapsed(now, state.turnStartedAt),

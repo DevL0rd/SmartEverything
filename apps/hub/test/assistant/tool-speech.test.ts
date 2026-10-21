@@ -163,7 +163,7 @@ const FACTS: PromptFacts = {
   now: new Date('2026-10-10T10:00:00.000Z'),
   boardTypes: [],
   instructions: '',
-  toolIndex: 'get_home: Overview.',
+  toolIndex: 'home_read: Overview.',
   catalogue: '',
   chat: { id: 'c', title: 'Home', kind: 'chat' },
   interruption: null,
@@ -179,6 +179,12 @@ describe('every path that runs tools carries the one shared tool manner', () => 
     expect(stablePrompt(FACTS).split(FORMAT_MANNER)).toHaveLength(2);
   });
 
+  it('never asks the AI to announce what it is about to do before it runs tools', () => {
+    expect(TOOL_MANNER).not.toMatch(/what you are about to do|before you run tools/iu);
+    expect(TOOL_MANNER).toContain('never ask for permission or confirmation');
+    expect(stablePrompt(FACTS)).not.toMatch(/what you are about to do|before you run tools/iu);
+  });
+
   it('voice instructions with each ending', () => {
     const persona = {
       names: ['Coco'],
@@ -187,7 +193,7 @@ describe('every path that runs tools carries the one shared tool manner', () => 
       instructions: '',
       place: null,
       unavailable: null,
-      toolIndex: 'get_home: Overview.',
+      toolIndex: 'home_read: Overview.',
       catalogue: '',
     };
     for (const ending of [undefined, STAYS_OPEN_ENDING, ROBOT_ENDING]) {
@@ -290,7 +296,7 @@ describe('trackToolProgress', () => {
 
   it('says nothing for a tool that finishes before the threshold', () => {
     vi.useFakeTimers();
-    const stop = trackToolProgress('get_home', ports());
+    const stop = trackToolProgress('home_read', ports());
     vi.advanceTimersByTime(TOOL_PROGRESS_AFTER_MS - 1);
     stop();
     vi.advanceTimersByTime(TOOL_PROGRESS_EVERY_MS * 3);

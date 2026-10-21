@@ -2,11 +2,8 @@ import { z } from 'zod';
 import {
   IMAGE_PROVIDER_CATALOG,
   IMAGE_OPERATION_RECEIPT,
-  IMAGE_OPERATION_REQUEST,
-  IMAGE_SELECTOR,
-  IMAGE_RESOLVED_SELECTION,
-  IMAGE_WAIT_REQUEST,
-  IMAGE_WAIT_RESULT,
+  IMAGE_GENERATE_INPUT,
+  IMAGE_EDIT_INPUT,
 } from '../image-operations';
 import { endpoint, NO_BODY } from './endpoint';
 import { NOTHING, ID, QUERY_FLAG } from './primitives';
@@ -22,44 +19,33 @@ export const IMAGE_AREA_ENDPOINTS = {
     body: NO_BODY,
     response: IMAGE_PROVIDER_CATALOG,
   }),
-  resolveImageInput: endpoint({
-    method: 'POST',
-    path: '/api/assistant/images/resolve',
-    access: 'member',
-    summary: 'Resolve an owned chat image to a frozen attachment identity',
-    params: NOTHING,
-    query: NOTHING,
-    body: z.strictObject({ chat_id: ID, selector: IMAGE_SELECTOR }),
-    response: IMAGE_RESOLVED_SELECTION,
-  }),
-  startImageOperation: endpoint({
+  generateImageOperation: endpoint({
     method: 'POST',
     path: '/api/assistant/images/operations',
     access: 'member',
     summary:
-      'Start a metered image request and return immediately; the UI shows the result automatically. Only edit_image action wait when further user-requested work needs saved images; never poll or repeat the request',
+      'Generate a new image with a metered request, with no input image or with images only as style, composition or mood references, and wait for the outcome: the receipt returns once the request is completed, failed, cancelled or unknown, with the saved attachment ids',
     params: NOTHING,
     query: NOTHING,
-    body: IMAGE_OPERATION_REQUEST,
+    body: IMAGE_GENERATE_INPUT,
     response: IMAGE_OPERATION_RECEIPT,
   }),
-  waitForImages: endpoint({
+  editImageOperation: endpoint({
     method: 'POST',
-    path: '/api/assistant/images/wait',
+    path: '/api/assistant/images/edits',
     access: 'member',
     summary:
-      'Wait once for the initiating chat’s current image batch when further requested work needs saved results; never wait merely to display images or monitor progress',
+      'Edit an existing image with a metered request, preserving what the prompt does not change, and wait for the outcome: the receipt returns once the request is completed, failed, cancelled or unknown, with the saved attachment ids',
     params: NOTHING,
     query: NOTHING,
-    body: IMAGE_WAIT_REQUEST,
-    response: IMAGE_WAIT_RESULT,
+    body: IMAGE_EDIT_INPUT,
+    response: IMAGE_OPERATION_RECEIPT,
   }),
   listImageOperations: endpoint({
     method: 'GET',
     path: '/api/assistant/images/operations',
     access: 'member',
-    summary:
-      'Image receipt history for the person in the app; UI-only, because the UI owns completion and AI must not check or poll it',
+    summary: 'Image receipt history for the person in the app',
     params: NOTHING,
     query: z.strictObject({ chat_id: ID }),
     body: NO_BODY,
@@ -69,8 +55,7 @@ export const IMAGE_AREA_ENDPOINTS = {
     method: 'GET',
     path: '/api/assistant/images/operations/:operationId',
     access: 'member',
-    summary:
-      'Image receipt status and lineage for the person in the app; UI-only, because the UI owns completion and AI must not check or poll it',
+    summary: 'Image receipt status and lineage for the person in the app',
     params: z.strictObject({ operationId: ID }),
     query: NOTHING,
     body: NO_BODY,

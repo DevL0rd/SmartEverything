@@ -1,13 +1,14 @@
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { BrowserTarget } from '@smarteverything/domain';
-import { browserHandle } from './browser-native';
+import { browserHandle, nativeSourceKey } from './browser-native';
 
 const PUBLIC: BrowserTarget = { kind: 'public', id: 'tab-1', url: 'https://example.com/' };
 const HTML: BrowserTarget = {
-  kind: 'native-html',
+  kind: 'project',
   id: 'tab-2',
-  url: 'https://hub.example/page',
+  url: 'http://127.0.0.1:50000/workspace/site/index.html',
   projectionId: 'projection-1',
+  page: { chatId: '00000000-0000-4000-8000-000000000001', path: '/workspace/site/index.html' },
 };
 
 type Native = NonNullable<Parameters<typeof browserHandle>[0]['current']>;
@@ -44,12 +45,14 @@ describe('the native browser handle', () => {
     expect(native.navigate).not.toHaveBeenCalled();
   });
 
-  it('leaves an HTML projection on its page', () => {
+  it('keeps a project page on its own isolated origin', () => {
     const native = commands();
     const handle = browserHandle({ current: native }, HTML);
-    handle.navigate(HTML.url);
+    handle.navigate('http://127.0.0.1:50000/workspace/site/other.html');
+    handle.navigate('https://smarteverything.devl0rd.com/api/ai');
     handle.reload();
-    expect(native.navigate).not.toHaveBeenCalled();
+    expect(native.navigate).toHaveBeenCalledOnce();
+    expect(native.navigate).toHaveBeenCalledWith('http://127.0.0.1:50000/workspace/site/other.html');
     expect(native.reload).toHaveBeenCalledOnce();
   });
 
@@ -62,5 +65,19 @@ describe('the native browser handle', () => {
     }).not.toThrow();
     await Promise.resolve();
     expect(native.reload).toHaveBeenCalledOnce();
+  });
+});
+
+describe('the native browser source key', () => {
+  it('stays stable for the same target and changes with the bound source', () => {
+    expect(nativeSourceKey({ ...HTML })).toBe(nativeSourceKey(HTML));
+    expect(nativeSourceKey({ ...HTML, projectionId: 'projection-2' })).not.toBe(
+      nativeSourceKey(HTML),
+    );
+    expect(nativeSourceKey({ ...HTML, id: 'tab-3' })).not.toBe(nativeSourceKey(HTML));
+    expect(nativeSourceKey({ ...PUBLIC, url: 'https://example.org/' })).not.toBe(
+      nativeSourceKey(PUBLIC),
+    );
+    expect(nativeSourceKey(HTML)).not.toBe(nativeSourceKey(PUBLIC));
   });
 });

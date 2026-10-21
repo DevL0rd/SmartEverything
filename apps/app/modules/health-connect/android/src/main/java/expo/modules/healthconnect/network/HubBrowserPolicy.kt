@@ -9,18 +9,16 @@ class HubBrowserPolicy(json: String, private val view: WebView) : AutoCloseable 
   val id = input.getString("id")
   val url = input.getString("url")
   private val kind = input.getString("kind")
-  private val origin = if (kind == "preview") Uri.parse(input.getString("origin")) else null
   private val lifecycle: HubBrowserProfile
   private val name: String get() = lifecycle.name
   private val profileClass = Class.forName("androidx.webkit.Profile")
   private val ownedProfile: Any
   private var closed = false
-  private val cookies = HubBrowserCookies { profile() }
   init {
-    require(id.length in 1..512 && kind in listOf("preview", "public"))
+    require(id.length in 1..512 && kind == "public")
     require(allows(url))
     check(supported()) { "System WebView does not support isolated profiles" }
-    val publicProfile = if (kind == "public" && input.has("profileId")) input.getString("profileId") else null
+    val publicProfile = if (input.has("profileId")) input.getString("profileId") else null
     if (publicProfile != null) require(UUID_PATTERN.matches(publicProfile)) { "Public browser requires its app profile identity" }
     lifecycle = HubBrowserProfile(view.context, publicProfile)
     Class.forName("androidx.webkit.WebViewCompat").getMethod("setProfile", WebView::class.java, String::class.java).invoke(null, view, name)
@@ -30,7 +28,6 @@ class HubBrowserPolicy(json: String, private val view: WebView) : AutoCloseable 
   fun allows(value: String): Boolean {
     val parsed = Uri.parse(value)
     if (parsed.userInfo != null) return false
-    if (origin != null) return parsed.scheme == "https" && parsed.host == origin.host && parsed.port == origin.port
     val host = parsed.host?.lowercase() ?: return false
     return when (parsed.scheme) {
       "https" -> publicHost(host) || privateNetworkHost(host)
@@ -45,15 +42,10 @@ class HubBrowserPolicy(json: String, private val view: WebView) : AutoCloseable 
     check(actualName == name && actualName != profileClass.getField("DEFAULT_PROFILE_NAME").get(null)) { "The preview does not own its isolated profile" }
     return current
   }
-  fun profile(): Any { readProfile(); return ownedProfile }
-  fun cookiesAvailable(): Boolean { if (closed) return false; profile(); return true }
-  suspend fun clearCookies(checkOwner: () -> Unit) { cookies.clear(checkOwner) }
   override fun close() {
     if (closed) return
-    if (kind == "public") {
-      val manager = requireNotNull(android.webkit.CookieManager::class.java.cast(profileClass.getMethod("getCookieManager").invoke(ownedProfile)))
-      manager.flush()
-    }
+    val manager = requireNotNull(android.webkit.CookieManager::class.java.cast(profileClass.getMethod("getCookieManager").invoke(ownedProfile)))
+    manager.flush()
     closed = true
     lifecycle.close()
   }

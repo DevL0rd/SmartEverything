@@ -300,11 +300,13 @@ export const INBOUND_MESSAGE = z.object({
   eventId: z.string().min(1),
   conversation: z.object({ key: z.string().min(1), title: TITLE }),
   text: z.string(),
-  from: z.object({
-    id: z.string().min(1),
-    name: z.string().trim().min(1),
-    trusted: z.boolean().default(false),
-  }),
+  from: z
+    .object({
+      id: z.string().min(1),
+      name: z.string().trim().min(1),
+      trusted: z.boolean().default(false),
+    })
+    .describe('The sender: the plugin’s id for them and their name'),
   attachments: z.array(INBOUND_ATTACHMENT).default([]),
   reply: z.object({
     tool: TOOL,

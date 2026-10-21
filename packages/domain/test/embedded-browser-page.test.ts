@@ -3,6 +3,7 @@ import {
   BROWSER_PAGE_NOTICE,
   EMBEDDED_BROWSER_ACTION,
   EMBEDDED_BROWSER_ACTION_NAMES,
+  EMBEDDED_BROWSER_EDIT,
   EMBEDDED_BROWSER_READ,
   EMBEDDED_BROWSER_REQUEST,
   EMBEDDED_BROWSER_RESULT,
@@ -113,5 +114,35 @@ describe('reading a browser page', () => {
     ).toEqual({ id: 'page', operation: { kind: 'snapshot' } });
     expect(NATIVE_BROWSER_PAGE_RESPONSE.parse(null)).toBeNull();
     expect(NATIVE_BROWSER_PAGE_RESPONSE.parse({ ...READING, end: 4 })?.generation).toBe(3);
+  });
+});
+
+describe('the browser command the AI sends', () => {
+  it('opens a page with only an address', () => {
+    expect(
+      EMBEDDED_BROWSER_EDIT.parse({ action: { kind: 'open', url: 'https://example.com/' } }),
+    ).toEqual({ action: { kind: 'open', url: 'https://example.com/' } });
+  });
+
+  it('opens a project file or folder by its path', () => {
+    expect(
+      EMBEDDED_BROWSER_EDIT.parse({ action: { kind: 'open', path: 'workspace/site' } }),
+    ).toEqual({ action: { kind: 'open', path: 'workspace/site' } });
+  });
+
+  it('needs exactly one of address or path to open', () => {
+    expect(EMBEDDED_BROWSER_EDIT.safeParse({ action: { kind: 'open' } }).success).toBe(false);
+    expect(
+      EMBEDDED_BROWSER_EDIT.safeParse({
+        action: { kind: 'open', url: 'https://example.com/', path: 'workspace/site' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('leaves the tab out of page actions', () => {
+    expect(EMBEDDED_BROWSER_EDIT.safeParse({ action: { kind: 'reload' } }).success).toBe(true);
+    expect(EMBEDDED_BROWSER_EDIT.safeParse({ action: { kind: 'click', ref: 'e1' } }).success).toBe(
+      true,
+    );
   });
 });

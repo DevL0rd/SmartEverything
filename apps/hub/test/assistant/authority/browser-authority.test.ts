@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PreviewDiagnosticAuthority } from '../../../src/preview/diagnostic-authority';
-import { EmbeddedBrowserAuthority } from '../../../src/preview/embedded-browser-authority';
+import { EmbeddedBrowserAuthority } from '../../../src/browser/embedded-browser-authority';
 import { harnessRig, type Rig } from '../harness/support/rig';
 
 let rig: Rig;
@@ -13,12 +12,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await rig.close();
 });
-
-function unavailable(): never {
-  throw new Error('This test publishes nothing.');
-}
-
-const SOURCES = { require: unavailable };
 
 function browserScope(chatId: string): {
   readonly viewerId: string;
@@ -44,7 +37,7 @@ function switchPhoneToAnotherPerson(): void {
 describe('the embedded browser follows the chat, not the phone profile', () => {
   it('keeps controlling the chat after the phone switched to another person', () => {
     const chat = rig.newChat({ kind: 'server' });
-    const authority = new EmbeddedBrowserAuthority(rig.opened.store, SOURCES);
+    const authority = new EmbeddedBrowserAuthority(rig.opened.store);
     switchPhoneToAnotherPerson();
     expect(() => {
       authority.validate(browserScope(chat.id));
@@ -52,17 +45,17 @@ describe('the embedded browser follows the chat, not the phone profile', () => {
   });
 
   it('refuses a viewer scope that names a chat that no longer exists', () => {
-    const authority = new EmbeddedBrowserAuthority(rig.opened.store, SOURCES);
+    const authority = new EmbeddedBrowserAuthority(rig.opened.store);
     expect(() => {
       authority.validate(browserScope('0d000000-0000-4000-8000-0000000000aa'));
     }).toThrow();
   });
 
-  it.each(['https://example.com/', 'http://example.com/news'])(
-    'opens the public website %s',
+  it.each(['https://example.com/', 'http://example.com/news', 'http://192.168.1.20:5173/'])(
+    'opens the address %s the device can reach',
     (url) => {
       const chat = rig.newChat({ kind: 'server' });
-      const authority = new EmbeddedBrowserAuthority(rig.opened.store, SOURCES);
+      const authority = new EmbeddedBrowserAuthority(rig.opened.store);
       expect(() => {
         authority.action(browserScope(chat.id), {
           kind: 'open',
@@ -72,38 +65,17 @@ describe('the embedded browser follows the chat, not the phone profile', () => {
     },
   );
 
-  it.each(['http://192.168.1.1/', 'http://localhost:8080/', 'https://user:pass@example.com/'])(
-    'refuses the local or credentialed address %s',
+  it.each(['https://user:pass@example.com/', 'ftp://example.com/', 'javascript:alert(1)'])(
+    'refuses the credentialed or non-web address %s',
     (url) => {
       const chat = rig.newChat({ kind: 'server' });
-      const authority = new EmbeddedBrowserAuthority(rig.opened.store, SOURCES);
+      const authority = new EmbeddedBrowserAuthority(rig.opened.store);
       expect(() => {
         authority.action(browserScope(chat.id), {
           kind: 'open',
           source: { kind: 'public', url },
         });
-      }).toThrow('public websites');
+      }).toThrow('http or https addresses');
     },
   );
-});
-
-describe('preview diagnostics follow the chat, not the phone profile', () => {
-  it('keeps reading the chat after the phone switched to another person', () => {
-    const chat = rig.newChat({ kind: 'server' });
-    const authority = new PreviewDiagnosticAuthority(rig.opened.store, SOURCES);
-    switchPhoneToAnotherPerson();
-    const browserId = `public:${randomUUID()}`;
-    expect(() => {
-      authority.validate({
-        clientId: rig.clientId,
-        profileId: rig.owner.profileId,
-        chatId: chat.id,
-        viewerId: randomUUID(),
-        browserId,
-        documentId: browserId,
-        revision: null,
-        epoch: 'epoch',
-      });
-    }).not.toThrow();
-  });
 });

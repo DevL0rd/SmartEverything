@@ -20,7 +20,7 @@ export function transcriptActions(
     {
       action: 'calls',
       description:
-        'Active and up to 200 recent approved voice calls, newest first, with participants and line counts. Read a call’s lines with read_transcripts, passing its callId as sessionId.',
+        'Active and up to 200 recent approved voice calls, newest first, with participants and line counts. Read a call’s lines with transcript_read, passing its callId as sessionId.',
       shape: {},
       run: async (_args, caller): Promise<LocalOutput> => {
         await services.authority.access(caller, undefined);

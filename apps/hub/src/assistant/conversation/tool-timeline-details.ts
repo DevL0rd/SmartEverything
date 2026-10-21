@@ -1,5 +1,6 @@
+import { imageOperationIdOfCall } from '../image/call-operation';
 import { z } from 'zod';
-import { IMAGE_OPERATION_REQUEST, IMAGE_OPERATION_RECEIPT } from '@smarteverything/domain';
+import { IMAGE_OPERATION_RECEIPT } from '@smarteverything/domain';
 import { redact, REDACTED } from '@smarteverything/logging';
 import type { ChatTimelineTool } from '@smarteverything/domain';
 
@@ -21,8 +22,6 @@ function decoded(value: unknown): unknown {
 function imageOperationId(value: unknown, depth = 0): string | null {
   if (depth > 5) return null;
   const source = decoded(value);
-  const request = IMAGE_OPERATION_REQUEST.safeParse(source);
-  if (request.success) return request.data.operation_id;
   const receipt = IMAGE_OPERATION_RECEIPT.safeParse(source);
   if (receipt.success) return receipt.data.id;
   const record = RECORD.safeParse(source);
@@ -43,6 +42,7 @@ function reported(value: unknown): string | null {
 export function toolTimelineDetails(
   name: string,
   details: ToolTimelineDetails,
+  callId: string,
 ): Pick<ChatTimelineTool, 'input' | 'output' | 'redacted' | 'image_operation_id'> {
   const input = reported(details.input);
   const output = returnedOutput(details.output);
@@ -50,14 +50,22 @@ export function toolTimelineDetails(
     input,
     output,
     redacted: input?.includes(REDACTED) === true,
-    image_operation_id: initiatingImageId(name, details),
+    image_operation_id: initiatingImageId(name, details, callId),
   };
 }
 
-function initiatingImageId(name: string, details: ToolTimelineDetails): string | null {
-  const input = imageOperationId(details.input);
-  if (input !== null) return input;
-  return /(?:^|__)start_?image_?operation$/i.test(name) ? imageOperationId(details.output) : null;
+const IMAGE_MAKING = z.looseObject({ action: z.enum(['generate', 'edit']) });
+
+function initiatingImageId(
+  name: string,
+  details: ToolTimelineDetails,
+  callId: string,
+): string | null {
+  const returned = imageOperationId(details.output);
+  if (returned !== null) return returned;
+  return name === 'image_gen' && IMAGE_MAKING.safeParse(decoded(details.input)).success
+    ? imageOperationIdOfCall(callId)
+    : null;
 }
 
 function returnedOutput(value: unknown): string | null {

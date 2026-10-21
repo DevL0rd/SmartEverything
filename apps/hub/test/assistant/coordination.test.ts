@@ -73,7 +73,7 @@ beforeEach(async () => {
     },
     added: (): void => undefined,
     now,
-    tools: (): ToolHub => toolHub(['search_everything']),
+    tools: (): ToolHub => toolHub(['home_search']),
   });
 });
 
@@ -240,7 +240,7 @@ describe('subagents', () => {
     const parent = chat('Planner');
     const result = await coordination.subagent(sender(parent.id), parent.id, {
       task: 'Compare two kettles\nwith details',
-      tools: ['search_everything'],
+      tools: ['home_search'],
       wait: false,
       timeoutSeconds: 60,
     });
@@ -249,7 +249,7 @@ describe('subagents', () => {
       kind: 'subagent',
       parent_id: parent.id,
       title: 'Compare two kettles',
-      tools: ['search_everything'],
+      tools: ['home_search'],
     });
   });
 
@@ -257,7 +257,7 @@ describe('subagents', () => {
     const parent = chat('Planner');
     const child = await coordination.subagent(sender(parent.id), parent.id, {
       task: 'Compare two kettles',
-      tools: ['search_everything'],
+      tools: ['home_search'],
       wait: false,
       timeoutSeconds: 60,
     });
@@ -286,7 +286,7 @@ describe('subagents', () => {
       clientId: null,
     };
     expect(scoped.list().map((entry) => entry.name)).toStrictEqual(['allowed']);
-    const hidden = await scoped.call('call_tool', { name: 'hidden', arguments: {} }, caller);
+    const hidden = await scoped.call('tool_call', { name: 'hidden', arguments: {} }, caller);
     expect(String(hidden.response['error'])).toContain('no tool named hidden');
     await expect(scoped.call('allowed', {}, caller)).resolves.toMatchObject({
       response: { ran: 'allowed' },

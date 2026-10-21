@@ -49,11 +49,11 @@ describe('tool effect', () => {
     const calls: Call[] = [];
     const response = await callTool(
       hub(calls, () => ({ result: { n: 1 } })),
-      { profileId: randomUUID(), tool: 'speak', args: { a: 1 } },
+      { profileId: randomUUID(), tool: 'voice_speak', args: { a: 1 } },
       ORIGIN,
     );
     expect(response).toStrictEqual({ result: { n: 1 } });
-    expect(calls).toStrictEqual([{ name: 'speak', args: { a: 1 } }]);
+    expect(calls).toStrictEqual([{ name: 'voice_speak', args: { a: 1 } }]);
   });
 
   it('turns a refused or failed tool into one error', async () => {
@@ -73,7 +73,7 @@ describe('tool effect', () => {
     ).rejects.toThrow('The tool: boom');
   });
 
-  it('runs a device operation through call_operation', async () => {
+  it('runs a device operation through operation_call', async () => {
     const calls: Call[] = [];
     const result = await runDeviceOperation(
       hub(calls, () => ({ result: { pressed: true } })),
@@ -82,7 +82,7 @@ describe('tool effect', () => {
     );
     expect(result).toStrictEqual({ pressed: true });
     expect(calls[0]).toStrictEqual({
-      name: 'call_operation',
+      name: 'operation_call',
       args: { operation: 'pressDeviceButton', arguments: { id: 'a' } },
     });
   });
@@ -155,7 +155,7 @@ describe('notify effects', () => {
     );
     expect(result).toStrictEqual({ ok: true, spokenOn: ['Living room camera'] });
     expect(calls[0]).toStrictEqual({
-      name: 'speak',
+      name: 'voice_speak',
       args: { target: { kind: 'device', deviceId }, text: 'Air is bad' },
     });
   });

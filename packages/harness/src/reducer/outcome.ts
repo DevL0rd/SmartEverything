@@ -5,8 +5,11 @@ type TurnEnd = Extract<NativeBody, { type: 'turn/end' }>['data'];
 type ToolResult = Extract<NativeBody, { type: 'tool/result' }>['data'];
 
 function turnFailureMessage(reason: TurnEnd['reason']): string {
-  const message = reason.kind === 'error' ? (reason.error?.message ?? '') : '';
-  if (message !== '') return message;
+  const error = reason.kind === 'error' ? reason.error : undefined;
+  const message = error?.message ?? '';
+  const code = error?.['code'];
+  const named = typeof code === 'string' && code !== '' ? `${code}: ` : '';
+  if (message !== '') return `${named}${message}`;
   return reason.kind === 'blocked' ? 'The turn was blocked.' : 'The turn failed.';
 }
 

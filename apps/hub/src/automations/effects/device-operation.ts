@@ -18,7 +18,7 @@ export async function runDeviceOperation(
     tools,
     {
       profileId: request.profileId,
-      tool: 'call_operation',
+      tool: 'operation_call',
       args: {
         operation: request.operation,
         arguments: request.args,

@@ -34,7 +34,7 @@ describe('C30 schedule timing', () => {
 describe('C30 schedule steps', () => {
   it('runs tools, AI turns and waits, and defaults stop-on-failure to off', () => {
     const steps = SCHEDULE_STEPS.parse([
-      { kind: 'tool', tool: 'control_devices', args: {} },
+      { kind: 'tool', tool: 'device_control', args: {} },
       { kind: 'wait', seconds: 30 },
       { kind: 'ai', prompt: 'Say hi' },
     ]);

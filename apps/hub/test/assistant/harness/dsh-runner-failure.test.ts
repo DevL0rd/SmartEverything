@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
-import type { AiChatRow } from '@smarteverything/domain';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  CHAT_RETRYING_REASON,
+  type AiChatRow,
+  type ChatActivityNotice,
+  type ChatStreamNotice,
+} from '@smarteverything/domain';
+import { CONTINUE_NOTE } from '../../../src/assistant/interruption';
+import { RETRY_WAIT_MS } from '../../../src/assistant/engines/dsh/turn-retry';
 import { ConversationLog } from '../../../src/assistant/conversation-log';
 import { DshRunner } from '../../../src/assistant/engines/dsh/runner';
 import { nativeReplyId } from '../../../src/assistant/engines/dsh/reconciliation';
@@ -19,17 +26,21 @@ interface Fixture {
   readonly chat: AiChatRow;
   readonly finished: { readonly id: string; readonly ok: boolean }[];
   readonly send: (text: string) => { readonly event: StoredEvent };
+  readonly notices: (ChatActivityNotice | ChatStreamNotice)[];
 }
 
 function fixture(): Fixture {
   const { store } = rig.opened;
   const chat = rig.newChat(rig.hub.target);
   const finished: { id: string; ok: boolean }[] = [];
+  const notices: (ChatActivityNotice | ChatStreamNotice)[] = [];
   const engine = new DshRunner({
     service: rig.service,
     dispatcher: { runtime: { pendingInput: (): readonly string[] => [] } },
     conversation: new ConversationLog(store),
-    emit: (): void => undefined,
+    emit: (notice): void => {
+      notices.push(notice);
+    },
     finished: (event, _text, ok): void => {
       finished.push({ id: event.id, ok });
     },
@@ -47,36 +58,60 @@ function fixture(): Fixture {
     });
     return { event };
   };
-  return { engine, chat, finished, send };
+  return { engine, chat, finished, send, notices };
 }
 
 function promptsSent(): number {
   return rig.hub.requests.filter((request) => request.kind === 'prompt').length;
 }
 
+function prompts(): string[] {
+  return rig.hub.requests.flatMap((request) => (request.kind === 'prompt' ? [request.text] : []));
+}
+
 describe('a prompt the host fails after the turn was admitted', () => {
-  it('settles the turn as outcome unknown and never submits the prompt twice', async () => {
-    const { engine, chat, send } = fixture();
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps the turn retrying with one continue note every 2 seconds until Stop settles it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { engine, chat, send, notices } = fixture();
     rig.hub.script = (request): undefined => {
       if (request.kind === 'prompt') throw new Error('socket closed during the prompt');
       return undefined;
     };
     const { event } = send('turn the lights on');
 
-    await expect(engine.deliver(event, chat)).resolves.toBeUndefined();
-    await expect(engine.deliver(event, chat)).resolves.toBeUndefined();
+    const delivered = engine.deliver(event, chat);
+    await vi.waitFor(() => {
+      expect(promptsSent()).toBe(1);
+    });
+    expect(notices.at(-1)).toMatchObject({ state: 'thinking', reason: CHAT_RETRYING_REASON });
 
-    expect(promptsSent()).toBe(1);
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS);
+    await vi.waitFor(() => {
+      expect(promptsSent()).toBe(2);
+    });
+    expect(prompts().at(-1)).toBe(CONTINUE_NOTE);
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS);
+    await vi.waitFor(() => {
+      expect(promptsSent()).toBe(3);
+    });
+    expect(prompts().filter((text) => text === CONTINUE_NOTE)).toHaveLength(2);
+
+    await engine.interrupt(chat);
+    await expect(delivered).resolves.toBeUndefined();
     const { store } = rig.opened;
     const delivery = store.harnessDeliveries.find(event.id);
     if (delivery === undefined) throw new Error('The delivery was not admitted.');
-    expect(delivery.state).toBe('unknown');
-    const reply = store.assistantChat.message(nativeReplyId(delivery));
-    expect(reply.state).toBe('failed');
-    expect(reply.reason_code).toBe('interrupted');
+    expect(store.assistantChat.message(nativeReplyId(delivery)).reason_code).toBe('stopped');
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS * 5);
+    expect(promptsSent()).toBe(3);
   });
 
-  it('frees the chat so the next message is delivered to the host', async () => {
+  it('frees the chat after Stop so the next message is delivered to the host', async () => {
     const { engine, chat, send } = fixture();
     let refuse = true;
     rig.hub.script = (request): undefined => {
@@ -84,7 +119,12 @@ describe('a prompt the host fails after the turn was admitted', () => {
       return undefined;
     };
     const first = send('first');
-    await engine.deliver(first.event, chat);
+    const settled = engine.deliver(first.event, chat);
+    await vi.waitFor(() => {
+      expect(promptsSent()).toBe(1);
+    });
+    await engine.interrupt(chat);
+    await settled;
     refuse = false;
 
     const second = send('second');

@@ -9,6 +9,7 @@ import { useIsOwner } from '../../../store/selectors';
 import { NATIVE_OWNER_REASON } from '../provider/provider-access';
 import type { NativeModelRequest } from '../provider/subscription-models';
 import { useChatModel } from './chat-model';
+import { ImageLibrary } from '../picker/image/image-library';
 import { ModelLibrary, useLibraryDisclosure } from '../picker/model-library';
 import { Skeleton } from '../../../components/skeleton';
 import { useHarnessCatalogue } from '../data/harness';
@@ -161,15 +162,19 @@ function ChipControl({
 interface ChipPanel {
   readonly page: PanelPage | null;
   readonly library: string | null;
+  readonly imageLibrary: boolean;
   readonly openMain: () => void;
   readonly close: () => void;
   readonly openLibrary: (query: string) => void;
   readonly closeLibrary: () => void;
+  readonly openImageLibrary: () => void;
+  readonly closeImageLibrary: () => void;
 }
 
 function useChipPanel(engine: Engine, chipRef: RefObject<View | null>): ChipPanel {
   const opening = usePanelOpening(engine);
   const disclosure = useLibraryDisclosure();
+  const [imageLibrary, setImageLibrary] = useState(false);
   const closeFor = (reason: MenuDismissal): void => {
     opening.hide();
     if (returnsFocus(reason, opening.page !== null)) focusModelTrigger(chipRef);
@@ -180,6 +185,7 @@ function useChipPanel(engine: Engine, chipRef: RefObject<View | null>): ChipPane
   return {
     page: opening.page,
     library: disclosure.query,
+    imageLibrary,
     openMain: (): void => {
       dismissCommands();
       opening.show('main');
@@ -193,6 +199,14 @@ function useChipPanel(engine: Engine, chipRef: RefObject<View | null>): ChipPane
     },
     closeLibrary: (): void => {
       disclosure.close();
+      focusModelTrigger(chipRef);
+    },
+    openImageLibrary: (): void => {
+      opening.hide();
+      setImageLibrary(true);
+    },
+    closeImageLibrary: (): void => {
+      setImageLibrary(false);
       focusModelTrigger(chipRef);
     },
   };
@@ -239,8 +253,10 @@ export function ModelChip({
           initialPage={panel.page}
           close={panel.close}
           onLibrary={panel.openLibrary}
+          onImageLibrary={panel.openImageLibrary}
         />
       )}
+      {panel.imageLibrary ? <ImageLibrary open onClose={panel.closeImageLibrary} /> : null}
       {panel.library === null ? null : (
         <EngineSheet
           open

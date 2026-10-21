@@ -20,11 +20,10 @@ import { OPUS_SILENCE, SpeakerPacer, type TurnStats } from './voice-pacing';
 export type HostVoice = (request: HostedCallRequest) => Promise<HostedCall>;
 
 export const REACH_TOOL_NAMES: ReadonlySet<string> = new Set([
-  'speak',
-  'start_conversation',
-  'call',
-  'hang_up',
-  'notify_person',
+  'voice_speak',
+  'call_start',
+  'call_end',
+  'person_notify',
 ]);
 
 export const CONVERSATION: HostedSpeaking = { hiddenTools: REACH_TOOL_NAMES };

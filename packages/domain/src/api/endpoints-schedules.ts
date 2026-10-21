@@ -33,7 +33,11 @@ export const SCHEDULE_ENDPOINTS = {
     access: 'member',
     summary: 'One-off scheduled actions, soonest first, with each step’s results',
     params: NOTHING,
-    query: z.strictObject({ deviceId: ID.optional(), state: SCHEDULE_STATE.optional() }),
+    query: z.strictObject({
+      deviceId: ID.optional(),
+      state: SCHEDULE_STATE.optional(),
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+    }),
     body: NO_BODY,
     response: z.array(SCHEDULE_ROW),
   }),

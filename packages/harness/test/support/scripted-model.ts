@@ -24,6 +24,7 @@ export type ScriptedReply =
 export class ScriptedModel extends LlmAdapter {
   readonly requests: GenerateOptions[] = [];
   private readonly replies: ScriptedReply[] = [];
+  guard: ((options: GenerateOptions) => void) | undefined;
 
   script(...replies: readonly ScriptedReply[]): void {
     this.replies.push(...replies);
@@ -44,6 +45,7 @@ export class ScriptedModel extends LlmAdapter {
 
   override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     await Promise.resolve();
+    this.guard?.(options);
     this.requests.push(options);
     const reply = this.replies.shift();
     if (reply === undefined) throw new Error('The scripted model has no reply left.');

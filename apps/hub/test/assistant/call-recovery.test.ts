@@ -91,14 +91,14 @@ describe('deliverToolAnswer', () => {
     const log: string[] = [];
     deliverToolAnswer(
       { session: recordingSession(log), record: () => undefined, scheduling: 'idle' },
-      { id: 'c', name: 'get_weather' },
+      { id: 'c', name: 'weather_read' },
       {
         response: { result: 'sunny' },
         line: '',
         pictures: [],
       },
     );
-    expect(log).toEqual(['result get_weather {"result":"sunny"}']);
+    expect(log).toEqual(['result weather_read {"result":"sunny"}']);
   });
 });
 
@@ -202,7 +202,7 @@ describe('Conversation idle timeout', () => {
     const provider: VoiceProvider = {
       live: (_options, events) => {
         toolCall = (): void => {
-          events.tool('t', 'get_home', {});
+          events.tool('t', 'home_read', {});
         };
         return Promise.resolve(recordingSession([]));
       },

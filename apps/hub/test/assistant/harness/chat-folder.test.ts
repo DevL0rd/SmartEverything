@@ -27,11 +27,7 @@ function tool(name: string): HubTool {
 function hubTools(): HarnessHubTools {
   const hub = new ToolHub([
     {
-      tools: (): HubTool[] => [
-        tool('get_home'),
-        tool('read_project_files'),
-        tool('edit_project_files'),
-      ],
+      tools: (): HubTool[] => [tool('home_read'), tool('project_read'), tool('project_edit')],
       call: (): Promise<HubToolResult> => Promise.resolve({ response: {}, line: '', pictures: [] }),
       validate: (): null => null,
       changes: (): (() => void) => (): void => undefined,
@@ -72,11 +68,11 @@ describe('the file tools a chat is offered', () => {
         .map((entry) => entry.name)
         .sort();
 
-    expect(names(onHub.claim.session_id)).toStrictEqual(['get_home']);
+    expect(names(onHub.claim.session_id)).toStrictEqual(['home_read']);
     expect(names(onDesk.claim.session_id)).toStrictEqual([
-      'edit_project_files',
-      'get_home',
-      'read_project_files',
+      'home_read',
+      'project_edit',
+      'project_read',
     ]);
   });
 });

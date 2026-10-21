@@ -3,7 +3,7 @@ import { DEVICE_GROUP_ENDPOINTS } from './endpoints-device-groups';
 import { AI_REFERENCE_ENDPOINTS } from './endpoints-ai-references';
 import { AI_PROJECT_ENDPOINTS } from './endpoints-ai-projects';
 import { AI_NATIVE_COMMAND_ENDPOINTS } from './endpoints-ai-native-commands';
-import { AI_PREVIEW_ENDPOINTS } from './endpoints-ai-previews';
+import { EMBEDDED_BROWSER_ENDPOINTS } from './endpoints-embedded-browser';
 import { AI_HARNESS_COMMAND_ENDPOINTS } from './endpoints-ai-harness-commands';
 import { IMAGE_AREA_ENDPOINTS } from './endpoints-images';
 import { AI_HARNESS_EXTENSION_ENDPOINTS } from './endpoints-ai-harness-extensions';
@@ -74,7 +74,7 @@ const AI_ENDPOINTS = {
   ...AI_REFERENCE_ENDPOINTS,
   ...AI_PROJECT_ENDPOINTS,
   ...AI_NATIVE_COMMAND_ENDPOINTS,
-  ...AI_PREVIEW_ENDPOINTS,
+  ...EMBEDDED_BROWSER_ENDPOINTS,
   ...AI_HARNESS_COMMAND_ENDPOINTS,
   ...AI_HARNESS_EXTENSION_ENDPOINTS,
   ...AI_HARNESS_ENDPOINTS,

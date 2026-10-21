@@ -7,6 +7,7 @@ import {
   HEALTH_METRIC,
   HEALTH_SOURCE_NAME,
   HEALTH_SOURCE_ROW,
+  MCP_TOKEN_ACCESS,
   MCP_TOKEN_ROW,
   OAUTH_CLIENT_ROW,
   TOKEN_NAME,
@@ -142,7 +143,7 @@ const ASSISTANT_ENDPOINTS = {
     summary: 'Create a personal MCP token; it is returned once',
     params: NOTHING,
     query: NOTHING,
-    body: z.strictObject({ name: TOKEN_NAME }),
+    body: z.strictObject({ name: TOKEN_NAME, access: MCP_TOKEN_ACCESS.default('control') }),
     response: ISSUED_TOKEN.extend({ row: MCP_TOKEN_ROW }),
   }),
   revokeMcpToken: endpoint({

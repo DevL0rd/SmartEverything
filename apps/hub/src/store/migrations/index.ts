@@ -117,7 +117,6 @@ import { moveLayoutsToV2 } from './board-layouts-v2';
 import { repriceLiveUsage } from './ai-usage-live-reprice';
 import { VOICE_MEMORY_LINES } from './voice-memory-lines';
 import { VOICE_HISTORY_COLUMNS } from './voice-history';
-import { renameRetiredDisabledTools } from './tool-names';
 import { COMPUTER_SCOPE_TABLES } from './computer-scopes';
 import { AI_PROVIDER_TABLES } from './ai-provider';
 import { AI_PROVIDER_RETENTION, retainExistingProviderEvents } from './ai-provider-retention';
@@ -287,12 +286,7 @@ export const MIGRATIONS: readonly Migration[] = inOrder(
       name: 'harness_stream_memory',
       statements: HARNESS_STREAM_MEMORY_STATEMENTS,
     },
-    {
-      version: 88,
-      name: 'retired_disabled_tools',
-      statements: [],
-      backfill: renameRetiredDisabledTools,
-    },
+    { version: 88, name: 'retired_disabled_tools', statements: [] },
     {
       version: 89,
       name: 'harness_extensions',

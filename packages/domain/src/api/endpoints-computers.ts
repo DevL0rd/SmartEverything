@@ -70,7 +70,7 @@ export const COMPUTER_ENDPOINTS = {
     summary:
       'A computer reading over time: the last 10 minutes by second, 24 hours by minute or 30 days by hour, with minimum and maximum',
     params: COMPUTER_PARAMS,
-    query: z.strictObject({ capability: z.enum(COMPUTER_METRICS), range: z.enum(METRIC_RANGES) }),
+    query: z.strictObject({ capability: z.enum(COMPUTER_METRICS), range: z.enum(METRIC_RANGES).default('24h') }),
     body: NO_BODY,
     response: METRIC_SERIES,
   }),

@@ -12,10 +12,11 @@ import {
   type TelevisionSettingsRow,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { OFFSET, moreOf, paged, type Paged } from '../../../ai-tools/paging';
+import { CURSOR, moreOf, paged, type Paged } from '../../../ai-tools/paging';
 import type { PhoneViewer } from '../../../phones/phone-detail';
 import { visibleRows } from '../../../phones/phone-visibility';
 import type { Store } from '../../../store/store';
+import { DEVICE_REFERENCE } from './references';
 import { deviceScopeOfActor, phoneViewerOfActor, type Limited } from './person-reach';
 import { READS, defineTool, matches, type Tool } from './registry';
 import { formatOf } from './value-format';
@@ -45,8 +46,8 @@ export const DEVICE_FILTER = z.strictObject({
   search: z.string().min(1).max(100).optional().describe('Words in the name, model or room'),
   includeHidden: z.boolean().default(false).describe('Also list devices hidden in the app'),
   limit: z.number().int().min(1).max(500).default(200),
-  offset: OFFSET,
-  detail: z.boolean().default(false).describe('Each device in full, as get_device gives it'),
+  cursor: CURSOR,
+  detail: z.boolean().default(false).describe('Each device in full, as device_read gives it'),
 });
 
 const DETAIL_MAX = 5;
@@ -56,7 +57,9 @@ const NOTHING_MATCHES =
 
 export type DeviceFind = z.infer<typeof DEVICE_FILTER>;
 
-type DeviceFilter = Omit<DeviceFind, 'detail' | 'offset'> & { readonly offset?: number };
+type DeviceFilter = Omit<DeviceFind, 'detail' | 'cursor'> & {
+  readonly cursor?: string | undefined;
+};
 
 function deviceSummary({ name, device, room, family }: Placed): Record<string, unknown> {
   return {
@@ -115,7 +118,7 @@ function listedPlaced(
 ): Paged<Placed> {
   return paged(
     placedDevices(store, scope).filter((placed) => wanted(filter, placed)),
-    filter.offset ?? 0,
+    filter.cursor,
     filter.limit,
   );
 }
@@ -277,7 +280,7 @@ function foundOrNothing(
   filter: DeviceFind,
 ): Record<string, unknown> {
   const { rows: devices, more } = foundPage(store, scope, viewer, filter);
-  if (devices.length > 0 || filter.offset > 0 || !hasCriteria(filter)) {
+  if (devices.length > 0 || filter.cursor !== undefined || !hasCriteria(filter)) {
     return { devices, ...moreOf(more) };
   }
   return {
@@ -304,8 +307,8 @@ export const DEVICE_TOOLS: readonly Tool[] = [
     run: (context, input) => ({ structured: listDevices(context, input) }),
   }),
   defineTool({
-    name: 'get_device',
-    input: z.strictObject({ deviceId: z.uuid() }),
+    name: 'device_read',
+    input: z.strictObject({ deviceId: DEVICE_REFERENCE }),
     annotations: READS,
     run: (context, input) => {
       const scope = deviceScopeOfActor(context);

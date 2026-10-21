@@ -1,14 +1,10 @@
 import { Logger } from '@smarteverything/logging';
-import type {
-  AiChatRow,
-  AiRetryFrom,
-  AssistantMessageRow,
-  AiMessageReference,
-} from '@smarteverything/domain';
+import type { AiChatRow, AssistantMessageRow, AiMessageReference } from '@smarteverything/domain';
 import { branchAiChat, editAiChatMessage, retryAiChatMessage } from '../../../api/ai';
 import { sendAssistantMessage } from '../../../api/assistant';
 import { notify } from '../../../components/toast-store';
 import { trimmedReferences } from '../references/spans';
+import { OUTBOX_RETRY_MS } from './outbox';
 import { clearUploads } from './uploads';
 
 const log = new Logger('app.assistant');
@@ -28,36 +24,41 @@ async function sendMessageRow(
     return row;
   } catch (error) {
     operation.failed(error);
-    notify({ message: 'Message not sent', error, tone: 'critical' });
     return null;
   }
 }
 
-export async function sendMessage(text: string, attachments: readonly string[]): Promise<boolean> {
-  return (await sendMessageRow(text, attachments)) !== null;
+function pause(ms: number): Promise<void> {
+  return new Promise((done) => {
+    setTimeout(done, ms);
+  });
 }
 
-const retrying = new Set<string>();
+export async function sendMessage(text: string, attachments: readonly string[]): Promise<boolean> {
+  while ((await sendMessageRow(text, attachments)) === null) await pause(OUTBOX_RETRY_MS);
+  return true;
+}
 
-export async function retryMessage(request: AssistantMessageRow, from: AiRetryFrom): Promise<void> {
-  if (retrying.has(request.id)) {
-    log.debug('message.retry_skipped', { chatId: request.chat_id, messageId: request.id });
+const continuing = new Set<string>();
+
+export async function continueMessage(request: AssistantMessageRow): Promise<void> {
+  if (continuing.has(request.id)) {
+    log.debug('message.continue_skipped', { chatId: request.chat_id, messageId: request.id });
     return;
   }
-  retrying.add(request.id);
-  const operation = log.operation('message.retry', {
+  continuing.add(request.id);
+  const operation = log.operation('message.continue', {
     chatId: request.chat_id,
     messageId: request.id,
-    from,
   });
   try {
-    await retryAiChatMessage(request.chat_id, request.id, from);
+    await retryAiChatMessage(request.chat_id, request.id, 'failed');
     operation.succeeded();
   } catch (error) {
     operation.failed(error);
-    notify({ message: 'Message not retried', error, tone: 'critical' });
+    notify({ message: 'Message not continued', error, tone: 'critical' });
   } finally {
-    retrying.delete(request.id);
+    continuing.delete(request.id);
   }
 }
 

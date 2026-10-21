@@ -1,11 +1,8 @@
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../../components/button';
-import { IconButton } from '../../../../components/icon-button';
-import { Interactive } from '../../../../components/interactive';
 import { KeyboardList } from '../../../../components/keyboard-list';
 import { ReasonLine } from '../../../../components/reason-line';
-import { Text } from '../../../../components/text';
 import { useIdiom } from '../../../../design/platform';
 import { useFavouriteModels } from '../../data/favourites';
 import type { ModelPickerProps } from '../../data/model-candidates';
@@ -21,6 +18,7 @@ import {
   type LibraryMode,
   type PrimaryAction,
 } from './library-model';
+import { LibraryBack, SelectionBar } from './library-pages';
 import { LibraryProblem } from './library-states';
 import { useLibraryState, type LibraryState } from './library-state';
 import { LibraryTools } from './library-tools';
@@ -51,30 +49,14 @@ function Footer({
   const row = data.selected;
   if (row === null) return null;
   return (
-    <View className="flex-row items-center gap-2 border-t border-outline-variant p-3">
-      <Interactive
-        label={`Details of ${row.candidate.model.name}`}
-        onPress={(): void => {
-          state.setPage('detail');
-        }}
-        className="min-h-touch-min min-w-0 flex-1 justify-center rounded-md px-2"
-        layerClassName="rounded-md"
-      >
-        <Text variant="callout" numberOfLines={1}>
-          {row.candidate.model.name}
-        </Text>
-        <Text variant="caption" tone="variant" numberOfLines={1}>
-          {row.where ?? row.candidate.model.providerLabel}
-        </Text>
-      </Interactive>
-      {action === null ? null : (
-        <Button
-          label={action.label}
-          disabled={action.run === null}
-          {...(action.run === null ? {} : { onPress: action.run })}
-        />
-      )}
-    </View>
+    <SelectionBar
+      name={row.candidate.model.name}
+      source={row.where ?? row.candidate.model.providerLabel}
+      action={action}
+      onDetails={(): void => {
+        state.setPage('detail');
+      }}
+    />
   );
 }
 
@@ -168,35 +150,6 @@ function Results({ body, state, data, filtersInline, touch }: ResultsProps): Rea
   );
 }
 
-function Back({
-  title,
-  state,
-  children,
-  footer,
-}: {
-  readonly title: string;
-  readonly state: LibraryState;
-  readonly children: ReactNode;
-  readonly footer?: ReactNode;
-}): ReactNode {
-  return (
-    <View className="min-h-0 flex-1">
-      <View className="flex-row items-center gap-1 border-b border-outline-variant px-2">
-        <IconButton
-          icon="chevronLeft"
-          label="Back"
-          onPress={(): void => {
-            state.setPage('results');
-          }}
-        />
-        <Text variant="body-strong">{title}</Text>
-      </View>
-      {children}
-      {footer}
-    </View>
-  );
-}
-
 function detailOf(data: LibraryData, action: PrimaryAction | null): ReactNode {
   const row = data.selected;
   if (row === null) return null;
@@ -230,9 +183,11 @@ function FiltersColumn({
 
 function FiltersPage({ state, data }: Pick<ResultsProps, 'state' | 'data'>): ReactNode {
   return (
-    <Back
+    <LibraryBack
       title="Filters"
-      state={state}
+      onBack={(): void => {
+        state.setPage('results');
+      }}
       footer={
         <View className="flex-row border-t border-outline-variant p-3">
           <Button
@@ -247,7 +202,7 @@ function FiltersPage({ state, data }: Pick<ResultsProps, 'state' | 'data'>): Rea
       }
     >
       <FiltersColumn state={state} data={data} />
-    </Back>
+    </LibraryBack>
   );
 }
 
@@ -295,9 +250,14 @@ export function LibraryBody(body: LibraryBodyProps): ReactNode {
   if (state.page === 'detail' && layout !== 'three') {
     const action = primaryAction(body.mode, data.selected?.candidate ?? null);
     return (
-      <Back title="Details" state={state}>
+      <LibraryBack
+        title="Details"
+        onBack={(): void => {
+          state.setPage('results');
+        }}
+      >
         {detailOf(data, action)}
-      </Back>
+      </LibraryBack>
     );
   }
   return <Columns body={body} state={state} data={data} layout={layout} touch={touch} />;

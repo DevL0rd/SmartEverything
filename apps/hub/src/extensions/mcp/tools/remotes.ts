@@ -9,7 +9,7 @@ import { z } from 'zod';
 import type { Store } from '../../../store/store';
 import { reported, sendAndWait } from './commanding';
 import { deviceScopeOfActor } from './person-reach';
-import { PHYSICAL, READS, defineTool, type Tool } from './registry';
+import { COMMANDS, READS, defineTool, type Tool } from './registry';
 import { inRooms, placedDevices, resolveNamed, type Placed } from './targets';
 
 interface Remote {
@@ -61,7 +61,7 @@ function summary(
 
 export const REMOTE_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'list_remotes',
+    name: 'remote_find',
     input: z.strictObject({
       rooms: z.array(z.string().min(1)).min(1).optional().describe('Room ids or names'),
     }),
@@ -82,12 +82,12 @@ export const REMOTE_TOOLS: readonly Tool[] = [
     },
   }),
   defineTool({
-    name: 'press_remote_button',
+    name: 'remote_press',
     input: z.strictObject({
       remote: z.string().min(1).describe('Remote id or name'),
       button: z.string().min(1).describe('Button name, such as Power or Temp +'),
     }),
-    annotations: PHYSICAL,
+    annotations: COMMANDS,
     run: async (context, input) => {
       const remote = resolveNamed(
         remotes(context.store, deviceScopeOfActor(context)),

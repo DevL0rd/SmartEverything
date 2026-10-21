@@ -101,7 +101,7 @@ describe('web search in the OpenRouter request', () => {
   it('keeps the function tools beside the search tool', async () => {
     const tool = {
       type: 'function' as const,
-      function: { name: 'get_weather', description: 'Weather', parameters: {} },
+      function: { name: 'weather_read', description: 'Weather', parameters: {} },
     };
     const body = await sentBody({ ...BASE, tools: [tool], webSearch: true });
     expect(body['tools']).toHaveLength(2);

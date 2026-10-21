@@ -115,7 +115,7 @@ afterEach(async () => {
 type Json = Readonly<Record<string, unknown>>;
 
 const ROWS = z.array(z.record(z.string(), z.unknown()));
-const MORE = z.object({ total: z.number(), next_offset: z.number(), ask: z.string() });
+const MORE = z.object({ total: z.number(), nextCursor: z.string(), ask: z.string() });
 const INNER = z.object({ arguments: z.record(z.string(), z.unknown()) });
 
 function reach(): { store: TestStore['store']; actor: null } {
@@ -131,13 +131,13 @@ function chatAutomations(args: Json): Json {
 }
 
 function voiceFind(args: Json): Json {
-  const asked = voiceArgumentsOf('find_devices', args);
-  return voiceResponseOf('find_devices', asked, chatDevices(asked));
+  const asked = voiceArgumentsOf('device_find', args);
+  return voiceResponseOf('device_find', asked, chatDevices(asked));
 }
 
 function voiceAutomations(args: Json): Json {
-  const call = voiceArgumentsOf('call_tool', { name: 'list_automations', arguments: args });
-  return voiceResponseOf('call_tool', call, chatAutomations(INNER.parse(call).arguments));
+  const call = voiceArgumentsOf('tool_call', { name: 'automation_read', arguments: args });
+  return voiceResponseOf('tool_call', call, chatAutomations(INNER.parse(call).arguments));
 }
 
 function rows(result: Json, key: string): Record<string, unknown>[] {
@@ -156,11 +156,11 @@ describe('voice tool results for a home of 72 devices and 37 automations', () =>
     expect(size(full)).toBeGreaterThan(VOICE_BUDGET * 3);
   });
 
-  it('pages find_devices in a bounded summary and every page together covers the home', () => {
+  it('pages device_find in a bounded summary and every page together covers the home', () => {
     const seen = new Set<unknown>();
-    let offset: number | undefined = 0;
-    while (offset !== undefined) {
-      const page = voiceFind({ offset });
+    let cursor: string | undefined = '0';
+    while (cursor !== undefined) {
+      const page = voiceFind({ cursor });
       expect(size(page)).toBeLessThan(VOICE_BUDGET);
       for (const device of rows(page, 'devices')) {
         expect(Object.keys(device).sort()).toEqual(['family', 'id', 'name', 'online', 'room']);
@@ -169,9 +169,9 @@ describe('voice tool results for a home of 72 devices and 37 automations', () =>
       const more = page['more'] === undefined ? undefined : MORE.parse(page['more']);
       if (more !== undefined) {
         expect(more.total).toBe(DEVICE_COUNT);
-        expect(more.ask).toContain('next_offset');
+        expect(more.ask).toContain('nextCursor');
       }
-      offset = more?.next_offset;
+      cursor = more?.nextCursor;
     }
     expect(seen.size).toBe(DEVICE_COUNT);
   });
@@ -196,7 +196,10 @@ describe('voice tool results for a home of 72 devices and 37 automations', () =>
     const listed = voiceAutomations({});
     expect(size(listed)).toBeLessThan(VOICE_BUDGET);
     expect(rows(listed, 'automations')).toHaveLength(VOICE_PAGE);
-    expect(listed['more']).toMatchObject({ total: AUTOMATION_COUNT, next_offset: VOICE_PAGE });
+    expect(listed['more']).toMatchObject({
+      total: AUTOMATION_COUNT,
+      nextCursor: String(VOICE_PAGE),
+    });
     expect(rows(listed, 'automations')[0]).not.toHaveProperty('definition');
   });
 
@@ -232,9 +235,9 @@ describe('voice tool results for a home of 72 devices and 37 automations', () =>
     expect(logs.events()).not.toContain('voice.result_over_guard');
   });
 
-  it('declares the voice page as the limit of find_devices', () => {
+  it('declares the voice page as the limit of device_find', () => {
     const spec = voiceSpecOf({
-      name: 'find_devices',
+      name: 'device_find',
       description: '',
       inputSchema: { type: 'object', properties: { limit: { type: 'integer', maximum: 500 } } },
     });

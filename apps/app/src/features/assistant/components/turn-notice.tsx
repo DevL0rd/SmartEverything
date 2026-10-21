@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import type { AiChatRow, AiRetryFrom, AssistantMessageRow } from '@smarteverything/domain';
+import type { AiChatRow, AssistantMessageRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
@@ -10,8 +10,8 @@ import { Text } from '../../../components/text';
 import { useIsOwner, useRow } from '../../../store/selectors';
 import { useChatModel } from '../chats/chat-model';
 import { useAiChat } from '../data/chat-store';
-import { useRetryFrom } from '../data/retry';
-import { retryMessage } from '../data/send';
+import { useCanContinue } from '../data/retry';
+import { continueMessage } from '../data/send';
 import { failureCopy, type FailureAction } from '../model/failure-copy';
 import type { NoticeSubject } from '../model/turn-notice';
 import { background } from '@smarteverything/logging';
@@ -29,33 +29,24 @@ interface NoticeProps {
 const TOP_UP = href.settings.focus('assistant', 'assistant.openrouter.credit');
 
 interface Handlers {
-  readonly retries: Readonly<Record<RetryAction, (() => void) | null>>;
+  readonly resume: (() => void) | null;
   readonly owner: boolean;
   readonly switchable: boolean;
 }
 
 type Variant = 'tonal' | 'outlined';
-type RetryAction = 'retry' | 'regenerate' | 'continue';
-
-const RETRY_LABEL = { retry: 'Try again', regenerate: 'Regenerate', continue: 'Continue' } as const;
-
-function retryButton(action: RetryAction, variant: Variant, retry: (() => void) | null): ReactNode {
-  return retry === null ? null : (
-    <Button label={RETRY_LABEL[action]} icon="refresh" variant={variant} onPress={retry} />
-  );
-}
 
 function buttonOf(action: FailureAction, variant: Variant, on: Handlers): ReactNode {
   switch (action) {
-    case 'retry':
-    case 'regenerate':
     case 'continue':
-      return retryButton(action, variant, on.retries[action]);
+      return on.resume === null ? null : (
+        <Button label="Continue" icon="refresh" variant={variant} onPress={on.resume} />
+      );
     case 'top_up':
       return on.owner ? <Button label="Top up" variant={variant} href={TOP_UP} /> : null;
     case 'choose_model':
       return <Button label="Choose another model" variant={variant} onPress={openPanel('model')} />;
-    case 'switch_machine':
+    case 'machine_switch':
       return on.switchable ? (
         <Button label="Switch machine" variant={variant} onPress={openPanel('device')} />
       ) : null;
@@ -68,13 +59,10 @@ function openPanel(operation: 'model' | 'device'): () => void {
   };
 }
 
-function retryOf(
-  request: AssistantMessageRow | null,
-  from: AiRetryFrom | null,
-): (() => void) | null {
-  if (request === null || from === null) return null;
+function resumeOf(request: AssistantMessageRow | null): (() => void) | null {
+  if (request?.state !== 'failed') return null;
   return (): void => {
-    background(retryMessage(request, from), 'message.retry_failed');
+    background(continueMessage(request), 'message.continue_failed');
   };
 }
 
@@ -85,15 +73,9 @@ function useHandlers(
 ): Handlers {
   const replyTo = useRow('assistant_messages', subject === 'reply' ? row.reply_to : null);
   const request = subject === 'request' ? row : replyTo;
-  const from = useRetryFrom(request);
+  const continuable = useCanContinue(request);
   const owner = useIsOwner();
-  const retry = retryOf(request, from);
-  const resume = from === 'failed' ? retry : null;
-  return {
-    retries: { retry, regenerate: retry, continue: resume },
-    owner,
-    switchable,
-  };
+  return { resume: continuable ? resumeOf(request) : null, owner, switchable };
 }
 
 function Notice({ row, subject, model, switchable }: NoticeProps & Names): ReactNode {

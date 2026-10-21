@@ -7,13 +7,13 @@ import { voiceSpecOf } from './voice-shapes';
 
 export const WEB_SEARCH_TOOL = 'web_search';
 
-const CHAT_ONLY_TOOLS: ReadonlySet<string> = new Set(['show_widgets']);
+const CHAT_ONLY_TOOLS: ReadonlySet<string> = new Set(['widget_show']);
 
 export const VOICE_TOOL_NAMES = {
-  task: 'do_task',
-  end: 'end_conversation',
-  see: 'see',
-  stopLooking: 'stop_looking',
+  task: 'task_start',
+  end: 'conversation_end',
+  see: 'sight_look',
+  stopLooking: 'sight_stop',
 } as const;
 
 const DO_TASK: ToolSpec = {

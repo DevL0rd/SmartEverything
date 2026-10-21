@@ -250,7 +250,7 @@ export class VoiceDesk {
       tools: request.tools,
       events: request.events,
       conversation: { key: ROBOT_CONVERSATION, earlier: oneShot ? 0 : settings.memory_lines },
-      hidden: ['do_task'],
+      hidden: ['task_start'],
       ...(externalId === null ? {} : { deviceExternalId: externalId }),
       ...(oneShot ? { bare: true } : { ending: ROBOT_ENDING }),
     });

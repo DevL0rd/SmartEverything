@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { ASSISTANT_ATTACHMENT } from './assistant';
+import { ASSISTANT_ATTACHMENT, IMAGE_MODEL_SETTING, type ImageModelChoice } from './assistant';
+import { ApiError } from './api/errors';
 
 export const IMAGE_BYTES_MAX = 20 * 1024 * 1024;
 export const IMAGE_INPUT_BYTES_MAX = 24 * 1024 * 1024;
@@ -7,8 +8,6 @@ export const IMAGE_OUTPUT_BYTES_MAX = 120 * 1024 * 1024;
 export const IMAGE_PIXELS_MAX = 64 * 1024 * 1024;
 export const IMAGE_RESULTS_MAX = 4;
 export const IMAGE_REFERENCES_MAX = 10;
-export const IMAGE_COMPLETION_INSTRUCTION =
-  'UI-owned completion: SmartEverything automatically shows progress and the saved image in this chat. For a standalone image request, briefly confirm generation started and finish. Only use edit_image action wait when further work the user requested needs saved images, such as editing them or explicitly sending them. Never wait merely to display images, poll status/history, start the same request again, or schedule another AI turn for completion. Continue only work the user asked for. Receipt status/history remain UI-only, including through generic operations.';
 export const IMAGE_MIME = z.enum(['image/png', 'image/jpeg', 'image/webp']);
 export const IMAGE_SELECTOR = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('attachment'), attachment_id: z.uuid() }),
@@ -55,7 +54,7 @@ const REQUEST_FIELDS = {
   chat_id: z.uuid(),
   prompt: z.string().trim().min(1).max(16_000),
   model: z.string().min(1).max(200),
-  provider_tag: z.string().min(1).max(200),
+  provider_tag: z.string().min(1).max(200).optional(),
   options: IMAGE_OPTIONS.prefault({}),
 };
 const REFERENCES = z.array(IMAGE_SELECTOR).max(IMAGE_REFERENCES_MAX);
@@ -74,6 +73,120 @@ export const IMAGE_OPERATION_REQUEST = z.discriminatedUnion('mode', [
   }),
 ]);
 export type ImageOperationRequest = z.infer<typeof IMAGE_OPERATION_REQUEST>;
+export const IMAGE_AI_OPTIONS = z.strictObject({
+  n: IMAGE_OPTIONS.shape.n.describe(
+    'How many variants of this one prompt to make; use separate requests for different prompts',
+  ),
+  aspect_ratio: IMAGE_OPTIONS.shape.aspect_ratio.describe(
+    'Shape that suits the picture, such as 1:1, 16:9, 9:16, 4:3, 3:2 or 2:3; leave out to let the model choose. Quality and resolution are always set to the highest the model offers',
+  ),
+  background: IMAGE_OPTIONS.shape.background.describe(
+    'transparent for a cutout with no background, opaque or auto otherwise',
+  ),
+});
+export const IMAGE_REFERENCE_WORDS = ['latest', 'latestUploaded', 'latestGenerated'] as const;
+const REFERENCE_ORIGIN: Readonly<Record<string, 'any' | 'uploaded' | 'generated'>> = {
+  latest: 'any',
+  latestUploaded: 'uploaded',
+  latestGenerated: 'generated',
+};
+const IMAGE_REFERENCE = z
+  .string()
+  .refine((text) => z.uuid().safeParse(text).success || Object.hasOwn(REFERENCE_ORIGIN, text), {
+    message: `must be an attachment id from an earlier image result or chat_read, or one of ${IMAGE_REFERENCE_WORDS.join(', ')}`,
+  });
+export function selectorOf(reference: string): ImageSelector {
+  const origin = REFERENCE_ORIGIN[reference];
+  return origin === undefined
+    ? { kind: 'attachment', attachment_id: reference }
+    : { kind: 'latest', origin };
+}
+const INPUT_FIELDS = {
+  operationId: z
+    .uuid()
+    .optional()
+    .describe('Set by the hub from the tool call; a request without one gets a new id'),
+  chatId: z.uuid().describe('The chat to make the image in; the calling chat when left out'),
+  prompt: REQUEST_FIELDS.prompt.describe('What to make, as a clear spec'),
+  model: REQUEST_FIELDS.model
+    .optional()
+    .describe(
+      'An image model id from model_read view images; left out, the model the person picked in the app',
+    ),
+  providerTag: z
+    .string()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe(
+      'The provider_tag from model_read view images; only with a model that has more than one',
+    ),
+  options: IMAGE_AI_OPTIONS.prefault({}),
+};
+const STYLE_REFERENCES = z
+  .array(IMAGE_REFERENCE)
+  .max(IMAGE_REFERENCES_MAX)
+  .describe(
+    'Images used only as style, composition, mood or subject references, each an attachment id or latest, latestUploaded, latestGenerated; the result is a new image',
+  );
+export const IMAGE_GENERATE_INPUT = z.strictObject({
+  ...INPUT_FIELDS,
+  references: STYLE_REFERENCES.default([]),
+});
+export const IMAGE_EDIT_INPUT = z.strictObject({
+  ...INPUT_FIELDS,
+  source: IMAGE_REFERENCE.default('latest').describe(
+    'The image to change: an attachment id, or latest (default), latestUploaded or latestGenerated for the newest image in the chat; everything the prompt does not ask to change is preserved',
+  ),
+  references: STYLE_REFERENCES.default([]),
+});
+export type ImageGenerateInput = z.infer<typeof IMAGE_GENERATE_INPUT>;
+export type ImageEditInput = z.infer<typeof IMAGE_EDIT_INPUT>;
+function requestFieldsOf(
+  input: ImageGenerateInput | ImageEditInput,
+  operationId: string,
+  selected: ImageModelChoice | null,
+): z.input<(typeof IMAGE_OPERATION_REQUEST.options)[0]> {
+  const model = input.model ?? selected?.model;
+  if (model === undefined) {
+    throw new ApiError(
+      'invalid_request',
+      'No image model is picked in the app; pass model (and providerTag) from model_read view images',
+    );
+  }
+  const providerTag = input.model === undefined ? selected?.provider_tag : input.providerTag;
+  return {
+    operation_id: operationId,
+    chat_id: input.chatId,
+    prompt: input.prompt,
+    model,
+    ...(providerTag === undefined ? {} : { provider_tag: providerTag }),
+    options: input.options,
+    mode: 'generate',
+  };
+}
+
+export function generateRequestOf(
+  input: ImageGenerateInput,
+  operationId: string,
+  selected: ImageModelChoice | null,
+): z.input<typeof IMAGE_OPERATION_REQUEST> {
+  const request = requestFieldsOf(input, operationId, selected);
+  if (input.references.length === 0) return request;
+  return { ...request, references: input.references.map(selectorOf), mode: 'reference' };
+}
+export function editRequestOf(
+  input: ImageEditInput,
+  operationId: string,
+  selected: ImageModelChoice | null,
+): z.input<typeof IMAGE_OPERATION_REQUEST> {
+  return {
+    ...requestFieldsOf(input, operationId, selected),
+    source: selectorOf(input.source),
+    references: input.references.map(selectorOf),
+    mode: 'edit',
+  };
+}
 export const IMAGE_RESOLVED_INPUT = z.strictObject({
   attachment_id: z.uuid(),
   role: z.enum(['source', 'reference']),
@@ -136,8 +249,6 @@ export const IMAGE_OPERATION_RECEIPT = z.object({
   message_id: z.uuid().nullable(),
   result_message_id: z.uuid().optional(),
   message_deleted: z.boolean().optional(),
-  completion_owner: z.literal('ui').optional(),
-  completion_instruction: z.string().min(1).max(800).optional(),
   created_at: z.iso.datetime({ offset: true }),
   updated_at: z.iso.datetime({ offset: true }),
   reason: z.string().max(200).nullable(),
@@ -152,41 +263,6 @@ export const IMAGE_OPERATION_NOTICE = z.object({
   receipt: IMAGE_OPERATION_RECEIPT,
 });
 
-export const IMAGE_RESOLVED_SELECTION = z.object(IMAGE_RESOLVED_INPUT.shape).extend({
-  attachment: z.object(ASSISTANT_ATTACHMENT.shape),
-});
-export type ImageResolvedSelection = z.infer<typeof IMAGE_RESOLVED_SELECTION>;
-export const IMAGE_WAIT_MS_MAX = 180_000;
-export const IMAGE_WAIT_OPERATIONS_MAX = 100;
-export const IMAGE_WAIT_REQUEST = z.strictObject({
-  operation_ids: z
-    .array(z.uuid())
-    .min(1)
-    .max(IMAGE_WAIT_OPERATIONS_MAX)
-    .refine((ids) => new Set(ids).size === ids.length, 'Select each operation only once.')
-    .optional()
-    .describe(
-      'Exact operation IDs returned by image creation; omit to snapshot this chat’s active jobs.',
-    ),
-  wait_ms: z.int().min(1).max(IMAGE_WAIT_MS_MAX).default(IMAGE_WAIT_MS_MAX),
-});
-export type ImageWaitRequest = z.infer<typeof IMAGE_WAIT_REQUEST>;
-export const IMAGE_WAIT_RESULT = z.object({
-  outcome: z.enum(['finished', 'timed_out']),
-  all_finished: z.boolean(),
-  operations: z
-    .array(
-      z.object({
-        id: z.uuid(),
-        state: IMAGE_OPERATION_RECEIPT.shape.state,
-        reason: z.string().max(200).nullable(),
-        result_available: z.boolean(),
-        results: z.array(IMAGE_ARTIFACT).max(IMAGE_RESULTS_MAX),
-      }),
-    )
-    .max(IMAGE_WAIT_OPERATIONS_MAX),
-});
-export type ImageWaitResult = z.infer<typeof IMAGE_WAIT_RESULT>;
 export const IMAGE_PREVIEW_BYTES_MAX = 512 * 1024;
 export const IMAGE_OPERATION_PREVIEW = z.object({
   type: z.literal('image_operation_preview'),
@@ -232,5 +308,8 @@ export type ImageProviderReadiness = z.infer<typeof IMAGE_PROVIDER_READINESS>;
 export const IMAGE_PROVIDER_CATALOG = z.object({
   endpoints: z.array(IMAGE_ENDPOINT),
   readiness: IMAGE_PROVIDER_READINESS,
+  selected: IMAGE_MODEL_SETTING.describe(
+    'The model and provider the person picked in the app for images; use it for new images and for edits when it accepts reference images, and choose another endpoint only when it is null or cannot take the requested options',
+  ),
 });
 export type ImageProviderCatalog = z.infer<typeof IMAGE_PROVIDER_CATALOG>;

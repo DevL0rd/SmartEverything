@@ -7,7 +7,7 @@ import { AssistantFiles } from '../../src/assistant/files';
 import { completionFailure } from '../../src/assistant/engines/dsh/completion';
 import {
   CONNECTION_LOST,
-  continuation,
+  CONTINUE_NOTE,
   HUB_RESTARTED,
   STOPPED_BY_USER,
   interruptionNote,
@@ -56,6 +56,8 @@ beforeEach(async () => {
     route: (): Routing => ({ kind: 'blocked', reason: 'not routed in this test' }),
     delivered: (): void => undefined,
     failed: (): void => undefined,
+    retrying: (): void => undefined,
+    stopped: (): void => undefined,
     log: testLogger(),
   });
   requests = new AssistantRequests({
@@ -162,22 +164,27 @@ describe('continuing an interrupted turn', () => {
     const replies = store.assistantChat.repliesTo(askedId).map((row) => row.id);
     const messages = store.assistantChat.since(chatId, null).length;
     const before = delivery.added_count;
-    const row = await requests.resume(store.aiChats.chat(chatId), askedId, sender.clientId);
+    const row = await requests.retry(
+      store.aiChats.chat(chatId),
+      askedId,
+      'failed',
+      sender.clientId,
+    );
     expect(row).toMatchObject({ id: askedId, state: 'answered', reason_code: null });
     expect(store.assistantChat.since(chatId, null)).toHaveLength(messages);
     expect(store.assistantChat.repliesTo(askedId).map((reply) => reply.id)).toEqual(replies);
     const queued = store.assistantEvents.pending().filter((event) => event.chat_id === chatId);
-    expect(queued.at(-1)).toMatchObject({ message_id: null, text: continuation(STOPPED_BY_USER) });
+    expect(queued.at(-1)).toMatchObject({ message_id: null, text: CONTINUE_NOTE });
     expect(delivery.added_count).toBe(before + 1);
   });
 
   it('does nothing the second time it is pressed', async () => {
     const askedId = interruptedTurn('interrupted', HUB_RESTARTED);
     const { store } = opened;
-    await requests.resume(store.aiChats.chat(chatId), askedId, sender.clientId);
+    await requests.retry(store.aiChats.chat(chatId), askedId, 'failed', sender.clientId);
     const before = delivery.added_count;
     const pending = store.assistantEvents.pending().length;
-    await requests.resume(store.aiChats.chat(chatId), askedId, sender.clientId);
+    await requests.retry(store.aiChats.chat(chatId), askedId, 'failed', sender.clientId);
     expect(delivery.added_count).toBe(before);
     expect(store.assistantEvents.pending()).toHaveLength(pending);
   });
@@ -185,8 +192,27 @@ describe('continuing an interrupted turn', () => {
   it('still tells the AI what was done once the continuation is under way', async () => {
     const askedId = interruptedTurn('interrupted', HUB_RESTARTED);
     const { store } = opened;
-    await requests.resume(store.aiChats.chat(chatId), askedId, sender.clientId);
+    await requests.retry(store.aiChats.chat(chatId), askedId, 'failed', sender.clientId);
     expect(interruptionNote(store, chatId)).toContain('Read devices; Control devices');
+  });
+});
+
+describe('retrying a failed turn', () => {
+  it('deletes nothing, does not re-queue the request and adds exactly one short note', async () => {
+    const askedId = interruptedTurn('unknown', 'The model failed.');
+    const { store } = opened;
+    const empty = log.startReply(store.aiChats.chat(chatId), askedId, MODEL);
+    log.failReply(empty.id, { text: '', reason: 'x', code: 'unknown' }, []);
+    const replies = store.assistantChat.repliesTo(askedId).map((row) => row.id);
+    const messages = store.assistantChat.since(chatId, null).length;
+    await requests.retry(store.aiChats.chat(chatId), askedId, 'failed', sender.clientId);
+    await requests.retry(store.aiChats.chat(chatId), askedId, 'failed', sender.clientId);
+    expect(store.assistantChat.repliesTo(askedId).map((row) => row.id)).toEqual(replies);
+    expect(store.assistantChat.since(chatId, null)).toHaveLength(messages);
+    const queued = store.assistantEvents.pending().filter((event) => event.chat_id === chatId);
+    expect(queued.filter((event) => event.text === CONTINUE_NOTE)).toHaveLength(1);
+    expect(queued.find((event) => event.text === CONTINUE_NOTE)?.message_id).toBeNull();
+    expect(store.assistantChat.message(askedId).state).toBe('answered');
   });
 });
 

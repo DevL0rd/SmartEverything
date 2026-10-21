@@ -44,6 +44,7 @@ async function streaming(): Promise<Streaming> {
     },
     (): void => undefined,
     (): void => undefined,
+    (): Promise<void> => Promise.resolve(),
   );
   rig.service.onEvent(streams.received);
   const question = addMessage(rig, chat.id, { role: 'person', text: 'work' });

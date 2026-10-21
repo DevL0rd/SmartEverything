@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { BrowserStatus } from '@smarteverything/domain';
-import type { BrowserPublication, BrowserSelection } from './browser-selection';
+import type { BrowserSelection } from './browser-selection';
 
 export const BROWSER_TAB_ID = z.uuid().brand<'BrowserTabId'>();
 export type BrowserTabId = z.infer<typeof BROWSER_TAB_ID>;
@@ -16,7 +16,7 @@ export const EMPTY_BROWSER_STATUS: BrowserStatus = {
 type BrowserTabSource =
   | { readonly kind: 'blank' }
   | { readonly kind: 'public'; readonly url: string }
-  | { readonly kind: 'publication'; readonly publication: BrowserPublication };
+  | { readonly kind: 'project'; readonly path: string };
 interface BrowserTabBase {
   readonly id: BrowserTabId;
   readonly title: string;
@@ -40,6 +40,13 @@ export function closedTabSelection(snapshot: BrowserTabsSnapshot, id: string): B
   if (snapshot.selectedId !== id) return snapshot.selectedId;
   const index = snapshot.tabs.findIndex((tab) => tab.id === id);
   return snapshot.tabs[index + 1]?.id ?? snapshot.tabs[index - 1]?.id ?? null;
+}
+export function reorderable(snapshot: BrowserTabsSnapshot, ids: readonly string[]): boolean {
+  return (
+    ids.length === snapshot.tabs.length &&
+    new Set(ids).size === ids.length &&
+    ids.every((id) => snapshot.tabs.some((tab) => tab.id === id))
+  );
 }
 export function shiftedTabs(
   order: readonly string[],

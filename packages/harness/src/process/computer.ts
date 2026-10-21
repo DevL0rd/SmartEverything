@@ -3,8 +3,6 @@ import type {
   SubscriptionInferenceRequest,
   SubscriptionInferenceResult,
 } from '@smarteverything/domain';
-import { NativePreviewTools, type NativePreviewAdapter } from './preview-tools';
-import { NativePreviewFileTools } from './preview-file-tools';
 import { ProcessSubscriptions } from './subscriptions';
 import { ComputerModelRoutes } from './computer-models';
 import { join } from 'node:path';
@@ -155,7 +153,6 @@ export class ComputerHarness {
 }
 export interface ComputerHarnessOptions {
   readonly publishSubscription?: (status: AiSubscriptionHostStatus) => Promise<void>;
-  readonly preview?: NativePreviewAdapter;
   readonly fetch?: typeof fetch;
 }
 export async function createComputerHarness(
@@ -163,7 +160,7 @@ export async function createComputerHarness(
   port: HarnessCallPort,
   options: ComputerHarnessOptions = {},
 ): Promise<ComputerHarness> {
-  const { publishSubscription, preview, fetch: injectedFetch = fetch } = options;
+  const { publishSubscription, fetch: injectedFetch = fetch } = options;
   const boot = HARNESS_BOOT.parse(raw);
   const abort = new AbortController();
   const fetcher: typeof fetch = (input, init): Promise<Response> =>
@@ -190,10 +187,9 @@ export async function createComputerHarness(
     persistence,
     models,
     configuration,
-    ...(preview === undefined ? {} : { preview }),
   });
   configuration.bind(dispatcher.runtime);
-  const hello = computerHello(boot, dispatcher, preview !== undefined, supply !== null);
+  const hello = computerHello(boot, dispatcher, supply !== null);
   if (HOST_PLATFORM[boot.platform].sandbox === 'partial')
     log.warn('harness.sandbox_partial', { platform: boot.platform });
   return new ComputerHarness(hello, dispatcher, persistence, {
@@ -222,7 +218,6 @@ async function openSupply(
   };
 }
 function composeComputer(input: {
-  readonly preview?: NativePreviewAdapter;
   readonly boot: HarnessBoot;
   readonly http: HarnessHub;
   readonly persistence: HubSessionLog;
@@ -253,10 +248,6 @@ function composeComputer(input: {
     route: (id): AiModelRoute => models.get(id),
     installModelRoutes: (ctx): Promise<void> => {
       models.bind(ctx);
-      if (input.preview !== undefined) {
-        new NativePreviewTools(http, persistence, input.preview).install(ctx);
-        new NativePreviewFileTools(http, persistence, input.preview).install(ctx);
-      }
       return new CentralHarnessTools(http, persistence).install(ctx);
     },
     publish: async (native): Promise<void> => {
@@ -272,7 +263,6 @@ function composeComputer(input: {
 function computerHello(
   boot: HarnessBoot,
   dispatcher: HarnessDispatcher,
-  preview: boolean,
   supplies: boolean,
 ): Extract<NodeHarnessFrame, { type: 'harness_hello' }> {
   const { sandbox } = HOST_PLATFORM[boot.platform];
@@ -282,7 +272,7 @@ function computerHello(
     runtime_instance: boot.runtime_instance,
     type: 'harness_hello',
     protocol: 1,
-    capabilities: hostCapabilities(boot.platform, preview),
+    capabilities: hostCapabilities(boot.platform),
     manifest: {
       ...dispatcher.runtime.manifest(),
       ...(supplies ? { subscription_inference: { protocol: 1 } } : {}),

@@ -1,3 +1,4 @@
+import { ReadOnlyRow } from './read-only-row';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -53,6 +54,7 @@ function TokenRow({
       title={token.name}
       subtitle={joinParts([
         `Made ${relative(token.created_at, now)}`,
+        token.access === 'read' ? 'Read only' : null,
         token.last_used_at === null ? 'Never used' : `Used ${relative(token.last_used_at, now)}`,
       ])}
       trailing={
@@ -75,25 +77,56 @@ interface TokenDraft {
   readonly close: () => void;
   readonly create: () => void;
   readonly valid: boolean;
+  readonly readOnly: boolean;
+  readonly setReadOnly: (readOnly: boolean) => void;
 }
 
 function useTokenDraft(onClose: () => void): TokenDraft {
   const [name, setName] = useState('');
   const [token, setToken] = useState<string | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
   const mutation = useMutationState();
   const close = (): void => {
     setName('');
+    setReadOnly(false);
     setToken(null);
     onClose();
   };
   const create = (): void => {
-    mutation.run(() => createMcpToken(name.trim()), {
+    mutation.run(() => createMcpToken(name.trim(), readOnly ? 'read' : 'control'), {
       failure: 'No token was made',
       onDone: setToken,
     });
   };
   const valid = name.trim() !== '' && name.trim().length <= 80;
-  return { name, setName, token, busy: mutation.busy, close, create, valid };
+  return {
+    name,
+    setName,
+    token,
+    busy: mutation.busy,
+    close,
+    create,
+    valid,
+    readOnly,
+    setReadOnly,
+  };
+}
+
+function TokenForm({ draft }: { readonly draft: TokenDraft }): ReactNode {
+  return (
+    <View className="gap-3">
+      <TextField
+        label="Name"
+        placeholder="App that will use it"
+        helper="So you know which app or script uses it"
+        value={draft.name}
+        onChange={draft.setName}
+        onSubmit={draft.create}
+        focusOnMount
+      />
+      <ReadOnlyRow who="It" value={draft.readOnly} onChange={draft.setReadOnly} />
+    </View>
+  );
 }
 
 function CreateSheet({
@@ -103,7 +136,8 @@ function CreateSheet({
   readonly open: boolean;
   readonly onClose: () => void;
 }): ReactNode {
-  const { name, setName, token, busy, close, create, valid } = useTokenDraft(onClose);
+  const draft = useTokenDraft(onClose);
+  const { token, busy, close, create, valid } = draft;
   const live = useHubLive();
   return (
     <Sheet
@@ -120,15 +154,7 @@ function CreateSheet({
       }
     >
       {token === null ? (
-        <TextField
-          label="Name"
-          placeholder="App that will use it"
-          helper="So you know which app or script uses it"
-          value={name}
-          onChange={setName}
-          onSubmit={create}
-          focusOnMount
-        />
+        <TokenForm draft={draft} />
       ) : (
         <View className="gap-3">
           <Banner

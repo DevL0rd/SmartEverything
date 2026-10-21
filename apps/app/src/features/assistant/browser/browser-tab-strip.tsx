@@ -266,7 +266,7 @@ function TabSourceIcon({
   const name =
     tab.problem !== null
       ? 'alert'
-      : tab.source.kind === 'publication' && 'kind' in tab.source.publication
+      : tab.source.kind === 'project'
         ? 'fileText'
         : 'globe';
   return (

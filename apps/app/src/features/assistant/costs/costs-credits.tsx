@@ -9,7 +9,8 @@ import { Figure } from '../../../components/figure';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { CardEmpty, CostCard } from './cost-card';
-import { useMoney, type Money } from '../../region';
+import { useMoney } from '../../region';
+import { balanceOf, isLow, usedLine } from './credit-balance';
 import {
   useOpenRouterAccount,
   useOpenRouterActions,
@@ -17,31 +18,7 @@ import {
 } from '../data/openrouter';
 import { background } from '@smarteverything/logging';
 
-const LOW_CREDITS_USD = 1;
-
 const SETTINGS_PAGE = 'assistant';
-
-export interface Balance {
-  readonly left: number;
-  readonly total: number;
-  readonly used: number;
-}
-
-export function balanceOf(account: OpenRouterAccount): Balance | null {
-  if (account.credits.state !== 'known') {
-    return null;
-  }
-  const { total, used } = account.credits;
-  return { left: Math.max(0, total - used), total, used };
-}
-
-export function isLow(balance: Balance): boolean {
-  return balance.left < LOW_CREDITS_USD;
-}
-
-export function usedLine(balance: Balance, money: Money): string {
-  return `Used ${money.dollars(balance.used)} of ${money.dollars(balance.total)}`;
-}
 
 export const MANAGEMENT_KEY_NOTE = 'OpenRouter shows the balance only to management keys.';
 
@@ -71,7 +48,7 @@ function BalanceView({ account }: { readonly account: OpenRouterAccount }): Reac
       <View className="gap-0.5">
         <Figure value={money.dollars(balance.left)} size="l" tone={low ? 'warning' : 'default'} />
         <Text variant="caption" tone={low ? 'warning' : 'variant'}>
-          {low ? 'Running low' : 'Left to spend'}
+          {low ? 'Running low' : 'Left on the account'}
         </Text>
       </View>
       <ProgressBar

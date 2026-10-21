@@ -13,9 +13,7 @@ let person: string;
 
 const PEOPLE = z.object({ people: z.array(z.looseObject({ id: z.string() })) });
 
-const OPERATIONS = z.object({
-  operations: z.array(z.looseObject({ name: z.string() })),
-});
+const OPERATION = z.object({ operation: z.looseObject({ name: z.string() }) });
 
 beforeEach(async () => {
   captureLogs();
@@ -29,7 +27,7 @@ beforeEach(async () => {
     body: { name: 'ChatGPT' },
   });
   token = API_ENDPOINTS.createMcpToken.response.parse(created.body).token;
-  const people = PEOPLE.parse(structured(await callTool(booted.base, token, 'list_people', {})));
+  const people = PEOPLE.parse(structured(await callTool(booted.base, token, 'person_read', {})));
   person = people.people[0]?.id ?? '';
 });
 
@@ -46,7 +44,7 @@ async function refusal(name: string, args: Record<string, unknown>): Promise<str
 
 describe('refusals a model can act on', () => {
   it('name the fields of the chosen view when another view’s field is sent', async () => {
-    const text = await refusal('read_health', {
+    const text = await refusal('health_read', {
       view: 'summary',
       from: '2026-10-10',
       to: '2026-10-10',
@@ -57,13 +55,13 @@ describe('refusals a model can act on', () => {
   });
 
   it('name the argument a tool that takes none was sent', async () => {
-    const text = await refusal('get_home', { rooms: true });
+    const text = await refusal('home_read', { rooms: true });
     expect(text).toContain('The arguments are not valid');
     expect(text).toContain('rooms');
   });
 
   it('say how a day must be written', async () => {
-    const text = await refusal('read_health', {
+    const text = await refusal('health_read', {
       view: 'summary',
       from: '2026-10-10T00:00:00',
       to: '2026-10-10T23:59:59',
@@ -71,24 +69,21 @@ describe('refusals a model can act on', () => {
     expect(text).toContain('must be a day written YYYY-MM-DD');
   });
 
-  it('answer list_operations for tool names and snake_case names with the real operation', async () => {
-    const result = await callTool(booted.base, token, 'list_operations', {
-      operations: ['control_claude_cli_session', 'list_claude_prompts', 'listClaudeSessions'],
-    });
-    const names = OPERATIONS.parse(structured(result)).operations.map((entry) => entry.name);
-    expect(names).toStrictEqual([
-      'controlClaudeCliSession',
-      'listClaudePrompts',
-      'listClaudeSessions',
-    ]);
+  it('read an operation by its exact camelCase name through tool_read', async () => {
+    const result = await callTool(booted.base, token, 'tool_read', { name: 'listClaudeSessions' });
+    expect(OPERATION.parse(structured(result)).operation.name).toBe('listClaudeSessions');
+  });
+
+  it('refuse a snake_case operation or a tool name in operation_call and say the right one', async () => {
+    const snake = await refusal('operation_call', { operation: 'list_claude_prompts' });
+    expect(snake).toContain('did you mean listClaudePrompts');
+    const tool = await refusal('operation_call', { operation: 'remote_press' });
+    expect(tool).toContain('remote_press is a tool, not an operation: call it directly');
   });
 
   it('suggest the operations that look like an unknown name', async () => {
-    const listed = await refusal('list_operations', { operations: ['claudeSession'] });
-    expect(listed).toContain('There is no operation claudeSession');
-    expect(listed).toContain('did you mean');
-    expect(listed).toContain('readClaudeSession');
-    const called = await refusal('call_operation', { operation: 'sessions' });
-    expect(called).toContain('listClaudeSessions');
+    const called = await refusal('operation_call', { operation: 'claudeSession' });
+    expect(called).toContain('There is no operation claudeSession');
+    expect(called).toContain('readClaudeSession');
   });
 });

@@ -40,9 +40,7 @@ export function rowLineOf(entry: ChatEntry, waiting: number, queued: number): Ro
 
 export function useRowLine(entry: ChatEntry): RowLine {
   const waiting = useAiDrafts(
-    (state) =>
-      state.outbox.filter((message) => message.chatId === entry.id && message.state === 'waiting')
-        .length,
+    (state) => state.outbox.filter((message) => message.chatId === entry.id).length,
   );
   const queued = useStoreSelector((state) => queuedByChat(state).get(entry.id) ?? 0);
   return rowLineOf(entry, waiting, queued);

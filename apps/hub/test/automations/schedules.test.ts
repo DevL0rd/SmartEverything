@@ -14,9 +14,9 @@ interface ToolStep {
 function lamp(value: boolean, stopOnFailure = false): ToolStep {
   return {
     kind: 'tool',
-    tool: 'control_devices',
+    tool: 'device_control',
     args: {
-      changes: [{ target: { deviceIds: [rig().ids.lamp] }, capability: 'power', value }],
+      deviceIds: [rig().ids.lamp], capability: 'power', value,
     },
     stopOnFailure,
   };
@@ -25,7 +25,7 @@ function lamp(value: boolean, stopOnFailure = false): ToolStep {
 function failing(stopOnFailure: boolean): ToolStep {
   return {
     kind: 'tool',
-    tool: 'get_device',
+    tool: 'device_read',
     args: { deviceId: '0d000000-0000-4000-8000-0000000000aa' },
     stopOnFailure,
   };
@@ -34,9 +34,9 @@ function failing(stopOnFailure: boolean): ToolStep {
 function lampTwo(value: boolean): ToolStep {
   return {
     kind: 'tool',
-    tool: 'control_devices',
+    tool: 'device_control',
     args: {
-      changes: [{ target: { deviceIds: [rig().ids.lampTwo] }, capability: 'power', value }],
+      deviceIds: [rig().ids.lampTwo], capability: 'power', value,
     },
     stopOnFailure: false,
   };

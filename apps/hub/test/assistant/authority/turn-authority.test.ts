@@ -13,6 +13,7 @@ import type { Caller } from '../../../src/server/auth';
 import { commandPrincipal } from '../../../src/server/commands';
 import type { StoredEvent } from '../../../src/store/repositories/assistant-events';
 import { testStore, type TestStore } from '../../support/store';
+import { scopedToolCall } from '../../../src/extensions/mcp/tools/authority';
 
 let opened: TestStore;
 let profileId: string;
@@ -83,6 +84,24 @@ function authority(overrides: Partial<ConversationAuthority> = {}): Conversation
     ...overrides,
   };
 }
+
+describe('a tool grant', () => {
+  it('admits a routed tool by its served name, never by the internal part it runs', () => {
+    const granted = chat({ tools: ['device_find'] });
+    const scoped = eventAuthority(opened.store, event(granted, ownerId));
+    const context = { store: opened.store, actor: null, caller: null };
+    const run = (servedTool?: string): unknown =>
+      withExecutionAuthority(scoped, () =>
+        scopedToolCall(
+          servedTool === undefined ? context : { ...context, servedTool },
+          'list_devices',
+          () => ({ structured: { ran: true } }),
+        ),
+      );
+    expect(run('device_find')).toStrictEqual({ structured: { ran: true } });
+    expect(() => run()).toThrow('does not expose this tool');
+  });
+});
 
 describe('child turn authority', () => {
   it('intersects a child tool grant with its parent and cannot widen it', () => {

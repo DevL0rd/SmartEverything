@@ -4,7 +4,7 @@ export const DEVICE_ALERTS_PREF = z.strictObject({
   muted: z
     .array(z.string().min(1))
     .describe(
-      'Ids of devices and cameras whose alerts (doorbell, calls, alarms, leaks, smoke) do not reach this person’s phones; every other device alerts. Ids come from find_devices; send the whole list',
+      'Ids of devices and cameras whose alerts (doorbell, calls, alarms, leaks, smoke) do not reach this person’s phones; every other device alerts. Ids come from device_find; send the whole list',
     ),
 });
 

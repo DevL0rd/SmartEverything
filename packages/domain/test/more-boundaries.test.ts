@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { AI_PROJECT_PREVIEW_SOURCE } from '../src/ai-preview-documents';
-import { AI_PREVIEW_SERVICE_WRITE } from '../src/ai-previews';
 import { CODEX_NATIVE_NOTICE } from '../src/codex-prompts';
 import { ASSISTANT_NEW_MESSAGE } from '../src/api/endpoints-assistant';
 import { NODE_RUNTIME_FRAME } from '../src/node/ai-frames';
@@ -41,28 +39,6 @@ describe('a new assistant message', () => {
     expect(ASSISTANT_NEW_MESSAGE.safeParse({ text: 'hello' }).success).toBe(true);
     expect(ASSISTANT_NEW_MESSAGE.safeParse({ text: '', attachments: [ID] }).success).toBe(true);
     expect(ASSISTANT_NEW_MESSAGE.safeParse({ text: '  ' }).success).toBe(false);
-  });
-});
-
-describe('a preview service address', () => {
-  const base = {
-    origin: 'http://127.0.0.1:3000',
-    title: 'Dev server',
-    service_scope: 'authorized_workspace_service',
-  };
-
-  it('starts on a path of its own site and never on another host or a broken line', () => {
-    expect(AI_PREVIEW_SERVICE_WRITE.safeParse({ ...base, initial_path: '/docs' }).success).toBe(
-      true,
-    );
-    expect(AI_PREVIEW_SERVICE_WRITE.safeParse(base).success).toBe(true);
-    for (const initial_path of ['docs', '//evil.example', '/a\nb', '/a\\b']) {
-      expect(AI_PREVIEW_SERVICE_WRITE.safeParse({ ...base, initial_path }).success).toBe(false);
-    }
-  });
-
-  it('keeps project previews to a plain html entry', () => {
-    expect(AI_PROJECT_PREVIEW_SOURCE.shape.entry.safeParse('site/index.html').success).toBe(true);
   });
 });
 

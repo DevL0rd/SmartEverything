@@ -92,12 +92,14 @@ describe('saying something once', () => {
   });
 
   it('hides the reach tools from hosted conversations', () => {
-    const set: ToolSpec[] = ['get_device', 'speak', 'call', 'hang_up'].map((name) => ({
-      name,
-      description: name,
-      inputSchema: {},
-    }));
-    expect(hostedSet(set, CONVERSATION).map((entry) => entry.name)).toEqual(['get_device']);
+    const set: ToolSpec[] = ['device_read', 'voice_speak', 'call_start', 'call_end'].map(
+      (name) => ({
+        name,
+        description: name,
+        inputSchema: {},
+      }),
+    );
+    expect(hostedSet(set, CONVERSATION).map((entry) => entry.name)).toEqual(['device_read']);
     expect(hostedSet(set, null)).toHaveLength(4);
   });
 });

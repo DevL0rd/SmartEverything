@@ -74,7 +74,7 @@ export const SYSTEM_CHANGE = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('dnd'), enabled: z.boolean() }),
   z.strictObject({
     action: z.literal('keyboard_layout'),
-    layout: z.string().trim().min(1).describe('A layout id from get_computer, or its name'),
+    layout: z.string().trim().min(1).describe('A layout id from computer_read, or its name'),
   }),
   z.strictObject({ action: z.literal('wifi'), enabled: z.boolean() }),
   z.strictObject({
@@ -84,7 +84,7 @@ export const SYSTEM_CHANGE = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('bluetooth'), enabled: z.boolean() }),
   z.strictObject({
     action: z.literal('bluetooth_device'),
-    device: z.string().trim().min(1).describe('A device id from get_computer, or its name'),
+    device: z.string().trim().min(1).describe('A device id from computer_read, or its name'),
     connected: z.boolean(),
   }),
 ]);
@@ -107,7 +107,7 @@ export type StartupState = z.infer<typeof STARTUP_STATE>;
 
 export const STARTUP_CHANGE = z.strictObject({
   action: z.literal('startup_app'),
-  id: z.string().trim().min(1).describe('A startup app id from get_computer, or its name'),
+  id: z.string().trim().min(1).describe('A startup app id from computer_read, or its name'),
   enabled: z.boolean(),
 });
 
@@ -147,7 +147,7 @@ export type ServicesState = z.infer<typeof SERVICES_STATE>;
 
 export const SERVICE_CHANGE = z.strictObject({
   action: z.literal('service'),
-  unit: z.string().trim().min(1).describe('A unit from get_computer services, or its name'),
+  unit: z.string().trim().min(1).describe('A unit from computer_read services, or its name'),
   operation: z.enum(SERVICE_OPERATIONS),
 });
 

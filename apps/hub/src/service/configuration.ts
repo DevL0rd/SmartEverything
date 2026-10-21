@@ -1,4 +1,3 @@
-import { PREVIEW_GATEWAY_CONFIG } from '../preview/gateway';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { CLIENT_TOKEN, NODE_AI_TOKEN } from '@smarteverything/domain';
@@ -32,7 +31,6 @@ const PORT = z.int().min(1).max(65_535);
 const SERVICE_ENVIRONMENT = z.object({ [DATA_DIRECTORY_VARIABLE]: ABSOLUTE_PATH });
 
 const HUB_SERVICE_CONFIG = z.strictObject({
-  preview: PREVIEW_GATEWAY_CONFIG.optional(),
   lan: z
     .strictObject({
       port: PORT.default(7882),

@@ -8,7 +8,6 @@ import { cn } from '../../../../design/cn';
 import { useEngineAccessory } from '../../chats/engine-accessories';
 import { usePickerSession } from '../model-search-session';
 import { MachinePage } from './machine-panel';
-import { panelEscapeOf } from './panel-escape';
 import { MainPage } from './panel-main';
 import { useModelPanelState, type ModelPanelState, type PanelPage } from './panel-state';
 import { ThinkingPage } from './thinking-panel';
@@ -22,6 +21,7 @@ export interface ModelPanelProps {
   readonly initialPage: PanelPage;
   readonly close: () => void;
   readonly onLibrary: (query: string) => void;
+  readonly onImageLibrary: () => void;
 }
 
 function useCloseOnSessionChange(close: () => void): void {
@@ -34,17 +34,17 @@ function useCloseOnSessionChange(close: () => void): void {
   }, [opened, key, close]);
 }
 
-function useLibraryShortcut(state: ModelPanelState, onLibrary: (query: string) => void): void {
+function useLibraryShortcut(onLibrary: (query: string) => void): void {
   useKeyboard((press): boolean => {
     if (!press.command || press.shift || press.alt || press.key.toLowerCase() !== 'l') return false;
-    onLibrary(state.text.trim());
+    onLibrary('');
     return true;
   }, true);
 }
 
 function PanelRoot({ children }: { readonly children: ReactNode }): ReactNode {
   const sheet = usePanelFrame().presentation === 'sheet';
-  return <View className={cn('min-h-0 flex-1', sheet && '-mx-4')}>{children}</View>;
+  return <View className={cn(sheet ? '-mx-4' : 'min-h-0 flex-1')}>{children}</View>;
 }
 
 function PanelPages({
@@ -60,7 +60,7 @@ function PanelPages({
   const back = (): void => {
     state.setPage('main');
   };
-  useEscape(panelEscapeOf(state.page, state.text) === 'back', back);
+  useEscape(state.page !== 'main', back);
   switch (state.page) {
     case 'machine':
       return <MachinePage engine={engine} onBack={back} onClose={close} />;
@@ -82,6 +82,7 @@ function PanelPages({
           engine={engine}
           onClose={close}
           onLibrary={panel.onLibrary}
+          onImageLibrary={panel.onImageLibrary}
         />
       );
   }
@@ -91,7 +92,7 @@ export function ModelPanel(props: ModelPanelProps): ReactNode {
   const { engine, onChange, blocked, close } = props;
   const state = useModelPanelState(props.initialPage);
   useCloseOnSessionChange(close);
-  useLibraryShortcut(state, props.onLibrary);
+  useLibraryShortcut(props.onLibrary);
   const pick = usePanelPicker({
     engine,
     onChange,
@@ -102,7 +103,7 @@ export function ModelPanel(props: ModelPanelProps): ReactNode {
     },
   });
   return (
-    <AdaptivePanel anchorRef={props.anchorRef} open onClose={close} label="Model and thinking">
+    <AdaptivePanel anchorRef={props.anchorRef} open fit onClose={close} label="Models and thinking">
       <PanelRoot>
         <PanelPages state={state} pick={pick} panel={props} />
       </PanelRoot>

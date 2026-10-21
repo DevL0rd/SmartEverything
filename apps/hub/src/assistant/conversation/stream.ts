@@ -3,6 +3,7 @@ import { TurnTimeline } from './turn-timeline';
 import type { ToolTimelineDetails } from './tool-timeline-details';
 import type { ChatTimelineEmbed } from '@smarteverything/domain';
 import {
+  CHAT_RETRYING_REASON,
   settledSteps,
   type ChatActivityNotice,
   type ChatStreamNotice,
@@ -103,6 +104,7 @@ export class TurnStream {
     this.timeline.text('text', delta);
     this.draft += delta;
     this.state = 'replying';
+    this.reason = null;
     this.push({ kind: 'text', delta });
   }
 
@@ -140,7 +142,12 @@ export class TurnStream {
     this.timeline.text('reasoning', delta);
     this.reasoningText += delta;
     this.state = 'thinking';
+    this.reason = null;
     this.push({ kind: 'reasoning', delta });
+  }
+
+  retrying(): void {
+    this.snapshot('thinking', null, CHAT_RETRYING_REASON);
   }
 
   steer(messageId: string): void {

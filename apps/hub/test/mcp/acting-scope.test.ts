@@ -151,3 +151,24 @@ describe('the resolved profile', () => {
     });
   });
 });
+
+describe('whether the caller may attach files by path', () => {
+  function localOf(context: ActingContext): boolean | undefined {
+    const built = callerFor(context, {});
+    return built.kind === 'client' ? built.local : undefined;
+  }
+
+  it('is allowed for a chat running on the hub, which calls its tools in process', () => {
+    expect(localOf(chat(owner, ownerProfile))).toBe(true);
+  });
+
+  it('is allowed for a loopback-only token and refused for a remote or delegated one', () => {
+    const base = chat(owner, ownerProfile);
+    const accepted = { kind: 'accepted', via: 'personal', id: 'a', readOnly: false } as const;
+    expect(localOf({ ...base, caller: { ...accepted, localOnly: true } })).toBe(true);
+    expect(localOf({ ...base, caller: { ...accepted, localOnly: false } })).toBe(false);
+    expect(localOf({ ...base, caller: { ...accepted, via: 'oauth', localOnly: false } })).toBe(
+      false,
+    );
+  });
+});

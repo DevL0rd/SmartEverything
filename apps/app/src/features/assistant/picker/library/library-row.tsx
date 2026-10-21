@@ -49,9 +49,11 @@ export function capabilitiesOf(model: ModelChoice): readonly Capability[] {
 function Facts({ row }: { readonly row: LibraryRow }): ReactNode {
   const money = useMoney();
   const { model } = row.candidate;
-  const text = [contextText(model.contextLength), priceOf(model, money)]
-    .filter((part) => part !== null)
-    .join(' · ');
+  const text =
+    row.facts ??
+    [contextText(model.contextLength), priceOf(model, money)]
+      .filter((part) => part !== null)
+      .join(' · ');
   return (
     <View className="flex-row items-center gap-2">
       <Text variant="caption" tone="variant" numberOfLines={1} className="shrink">
@@ -179,6 +181,7 @@ function same(left: LibraryRowViewProps, right: LibraryRowViewProps): boolean {
     left.row.candidate === right.row.candidate &&
     left.row.reason === right.row.reason &&
     left.row.where === right.row.where &&
+    left.row.facts === right.row.facts &&
     left.mode === right.mode &&
     left.shown === right.shown &&
     left.onSelect === right.onSelect &&

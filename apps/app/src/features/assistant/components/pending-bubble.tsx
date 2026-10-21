@@ -4,8 +4,7 @@ import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { clock } from '../../../format/time';
-import { cancelPending, retryPending, type PendingMessage } from '../data/outbox';
-import { background } from '@smarteverything/logging';
+import { cancelPending, type PendingMessage } from '../data/outbox';
 
 export function PendingBubble({ message }: { readonly message: PendingMessage }): ReactNode {
   const files = message.attachments.length;
@@ -14,7 +13,7 @@ export function PendingBubble({ message }: { readonly message: PendingMessage })
   return (
     <View
       accessible
-      accessibilityLabel={`You, ${clock(message.queuedAt)}, ${message.state === 'failed' ? 'not sent' : 'waiting for connection'}: ${body}`}
+      accessibilityLabel={`You, ${clock(message.queuedAt)}, waiting for connection: ${body}`}
       className="items-end gap-1 pt-1"
     >
       <View className="max-w-4/5 rounded-xl rounded-br-sm bg-primary-container px-4 py-2.5 opacity-80">
@@ -26,21 +25,8 @@ export function PendingBubble({ message }: { readonly message: PendingMessage })
         </Text>
         <Icon name="clock" size={16} tone="variant" />
         <Text variant="caption" tone="variant">
-          {message.state === 'failed' ? 'Not sent' : 'Waiting for connection'}
+          Waiting for connection
         </Text>
-        {message.state === 'failed' ? (
-          <Interactive
-            label="Retry this message"
-            onPress={(): void => {
-              background(retryPending(message.id), 'pending.retry_failed');
-            }}
-            className="min-h-touch-min justify-center rounded-sm px-2"
-          >
-            <Text variant="caption" tone="primary">
-              Retry
-            </Text>
-          </Interactive>
-        ) : null}
         <Interactive
           label="Cancel this message"
           onPress={() => {

@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  CHAT_RECONNECTING_REASON,
+  CHAT_RETRYING_REASON,
+  type ChatActivityNotice,
+  type ChatStreamNotice,
   type AiChatRow,
   type AiHarnessEvent,
 } from '@smarteverything/domain';
@@ -14,6 +16,8 @@ import type { StoredEvent } from '../../../src/store/repositories/assistant-even
 import { useRig, type Rig } from './support/rig';
 import { addMessage } from './support/native-conversation';
 import { captureLogs } from '../../support/logs';
+import { CONTINUE_NOTE } from '../../../src/assistant/interruption';
+import { RETRY_WAIT_MS } from '../../../src/assistant/engines/dsh/turn-retry';
 
 let rig: Rig;
 useRig((made) => {
@@ -31,6 +35,10 @@ interface Fixture {
   readonly text: (seq: number, delta: string) => AiHarnessEvent;
   readonly continued: (kind: 'state' | 'completed', seq: number, id: string) => AiHarnessEvent;
   readonly addSteered: () => StoredEvent;
+  readonly failed: (seq: number, message: string) => AiHarnessEvent;
+  readonly resumed: { readonly id: string; readonly text: string }[];
+  readonly notices: (ChatActivityNotice | ChatStreamNotice)[];
+  readonly control: { rejectResume: boolean };
 }
 
 async function startedTurn(): Promise<Fixture> {
@@ -42,11 +50,16 @@ async function startedTurn(): Promise<Fixture> {
   const conversation = new ConversationLog(store);
   const finished: { id: string; ok: boolean }[] = [];
   const toolsFinished: string[] = [];
+  const resumed: { id: string; text: string }[] = [];
+  const notices: (ChatActivityNotice | ChatStreamNotice)[] = [];
+  const control = { rejectResume: false };
   const streams = new NativeDeliveryStreams(
     {
       service: rig.service,
       conversation,
-      emit: (): void => undefined,
+      emit: (notice): void => {
+        notices.push(notice);
+      },
       finished: (event, _text, ok): void => {
         finished.push({ id: event.id, ok });
       },
@@ -54,6 +67,11 @@ async function startedTurn(): Promise<Fixture> {
     (): void => undefined,
     (turn): void => {
       toolsFinished.push(turn.event.id);
+    },
+    (_turn, id, text): Promise<void> => {
+      if (control.rejectResume) return Promise.reject(new Error('Host is offline.'));
+      resumed.push({ id, text });
+      return Promise.resolve();
     },
   );
   const question = addMessage(rig, chat.id, { role: 'person', text: 'work' });
@@ -94,6 +112,15 @@ async function startedTurn(): Promise<Fixture> {
     chat: current,
     finished,
     toolsFinished,
+    resumed,
+    notices,
+    control,
+    failed: (seq, message): AiHarnessEvent => ({
+      ...base,
+      seq,
+      kind: 'failed',
+      failure: { code: 'operation_failed', message, retry_at: null },
+    }),
     event: (kind, seq): AiHarnessEvent =>
       kind === 'completed'
         ? { ...base, seq, kind: 'completed', durable_seq: 3, interrupted: true }
@@ -196,7 +223,7 @@ describe('a provider that is retrying', () => {
     mine.deliver({ ...base, seq: 1, session: { ...session, reconnecting: true } });
     expect(mine.turn.stream.current()).toMatchObject({
       state: 'thinking',
-      reason: CHAT_RECONNECTING_REASON,
+      reason: CHAT_RETRYING_REASON,
     });
 
     mine.deliver({ ...base, seq: 2, session: { ...session, reconnecting: false } });
@@ -285,5 +312,90 @@ describe('output after a steered message', () => {
 
     expect(mine.turn.replyId).not.toBe(firstReply);
     mine.deliver(mine.event('completed', 5));
+  });
+});
+
+describe('a turn that fails', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps the turn, shows Retrying at once, logs the real error and sends one continue note', async () => {
+    vi.useFakeTimers();
+    const logs = captureLogs();
+    const mine = await startedTurn();
+    mine.deliver(mine.failed(1, 'IMAGE_OFFLOAD_REQUIRED: request images exceed the bound'));
+
+    expect(mine.finished).toStrictEqual([]);
+    expect(mine.streams.active.has(mine.turn.event.id)).toBe(true);
+    expect(mine.turn.stream.current()).toMatchObject({
+      state: 'thinking',
+      reason: CHAT_RETRYING_REASON,
+    });
+    const scheduled = logs.records.find((record) => record.event === 'turn.retry_scheduled');
+    expect(scheduled?.payload).toMatchObject({
+      failureCode: 'operation_failed',
+      reason: 'IMAGE_OFFLOAD_REQUIRED: request images exceed the bound',
+      waitMs: RETRY_WAIT_MS,
+    });
+
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS - 1);
+    expect(mine.resumed).toStrictEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mine.resumed).toHaveLength(1);
+    expect(mine.resumed[0]?.text).toBe(CONTINUE_NOTE);
+  });
+
+  it('retries every 2 seconds with the same single note until the turn works again', async () => {
+    vi.useFakeTimers();
+    const mine = await startedTurn();
+    mine.deliver(mine.failed(1, 'first'));
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS);
+    const note = mine.resumed[0]?.id ?? '';
+    mine.deliver(mine.continued('state', 2, note));
+    mine.deliver({
+      ...mine.continued('completed', 3, note),
+      kind: 'failed',
+      failure: { code: 'operation_failed', message: 'second', retry_at: null },
+    });
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS);
+    expect(mine.resumed.map((entry) => entry.id)).toStrictEqual([note, note]);
+
+    mine.deliver(mine.continued('state', 4, note));
+    mine.deliver({ ...mine.text(5, 'Back again'), delivery_id: note, native_turn: 2 });
+    expect(mine.turn.stream.current().reason).toBeNull();
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS * 5);
+    expect(mine.resumed).toHaveLength(2);
+  });
+
+  it('keeps retrying when the continue note cannot be sent and logs each failure', async () => {
+    vi.useFakeTimers();
+    const logs = captureLogs();
+    const mine = await startedTurn();
+    mine.control.rejectResume = true;
+    mine.deliver(mine.failed(1, 'offline'));
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS * 3);
+    const failures = logs.records.filter((record) => record.event === 'turn.retry_send_failed');
+    expect(failures).toHaveLength(3);
+    expect(mine.turn.stream.current().reason).toBe(CHAT_RETRYING_REASON);
+    mine.control.rejectResume = false;
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS);
+    expect(mine.resumed).toHaveLength(1);
+  });
+
+  it('stops at once on Stop, ends the turn as stopped and leaves no timer behind', async () => {
+    vi.useFakeTimers();
+    const mine = await startedTurn();
+    mine.deliver(mine.failed(1, 'down'));
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    expect(mine.streams.stopRetrying(mine.chat.id)).toBe(true);
+
+    expect(mine.finished).toStrictEqual([{ id: mine.turn.event.id, ok: false }]);
+    expect(mine.streams.active.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS * 5);
+    expect(mine.resumed).toStrictEqual([]);
+    expect(mine.streams.stopRetrying(mine.chat.id)).toBe(false);
   });
 });

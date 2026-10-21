@@ -24,41 +24,33 @@ describe('schedule steps and editor actions', () => {
 
   it('turns any other tool step into a generic tool action that keeps its arguments', () => {
     const steps = stepsFrom([
-      { kind: 'tool', tool: 'speak', args: { text: 'Dinner', deviceId: LAMP } },
+      { kind: 'tool', tool: 'voice_speak', args: { text: 'Dinner', deviceId: LAMP } },
     ]);
     const actions = actionsOf(steps, PROFILE);
     expect(actions).toStrictEqual([
-      { type: 'tool', profileId: PROFILE, tool: 'speak', args: { text: 'Dinner', deviceId: LAMP } },
+      {
+        type: 'tool',
+        profileId: PROFILE,
+        tool: 'voice_speak',
+        args: { text: 'Dinner', deviceId: LAMP },
+      },
     ]);
     expect(stepsOf(actions ?? [])).toStrictEqual([
-      { kind: 'tool', tool: 'speak', args: { text: 'Dinner', deviceId: LAMP } },
+      { kind: 'tool', tool: 'voice_speak', args: { text: 'Dinner', deviceId: LAMP } },
     ]);
   });
 
-  it('shows a device control with several changes as a generic tool action', () => {
-    const args = {
-      changes: [
-        { target: { deviceIds: [LAMP] }, capability: 'power', value: true },
-        { target: { deviceIds: [LAMP] }, capability: 'brightness', value: 40 },
-      ],
-    };
-    const actions = actionsOf(
-      stepsFrom([{ kind: 'tool', tool: 'control_devices', args }]),
-      PROFILE,
-    );
+  it('shows a device control on a room as a generic tool action', () => {
+    const args = { rooms: ['Bedroom'], families: ['light'], capability: 'power', value: true };
+    const actions = actionsOf(stepsFrom([{ kind: 'tool', tool: 'device_control', args }]), PROFILE);
     expect(actions).toStrictEqual([
-      { type: 'tool', profileId: PROFILE, tool: 'control_devices', args },
+      { type: 'tool', profileId: PROFILE, tool: 'device_control', args },
     ]);
   });
 
   it('keeps a single device control as a device command', () => {
-    const args = {
-      changes: [{ target: { deviceIds: [LAMP] }, capability: 'power', value: false }],
-    };
-    const actions = actionsOf(
-      stepsFrom([{ kind: 'tool', tool: 'control_devices', args }]),
-      PROFILE,
-    );
+    const args = { deviceIds: [LAMP], capability: 'power', value: false };
+    const actions = actionsOf(stepsFrom([{ kind: 'tool', tool: 'device_control', args }]), PROFILE);
     expect(actions).toStrictEqual([
       { type: 'command', deviceId: LAMP, capability: 'power', value: false },
     ]);
@@ -78,8 +70,8 @@ describe('schedule steps and editor actions', () => {
       { kind: 'ai', prompt: 'Try', stopOnFailure: true },
       {
         kind: 'tool',
-        tool: 'control_devices',
-        args: { changes: [{ target: { deviceIds: [LAMP] }, capability: 'power', value: false }] },
+        tool: 'device_control',
+        args: { deviceIds: [LAMP], capability: 'power', value: false },
       },
     ]);
     expect(powerVerbOf(steps, LAMP)).toBe('Off');

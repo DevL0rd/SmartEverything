@@ -1,16 +1,15 @@
 import { z } from 'zod';
+import { COMPUTER_ID } from './computer-target';
 import { ToolError } from './registry';
 
-export const COMPUTER_ID = z
-  .uuid()
-  .describe('The computer: its deviceId from find_devices with family computer');
-
 export interface Chosen<C> {
-  readonly deviceId: string;
+  readonly deviceId: string | undefined;
   readonly change: C;
 }
 
 type Fields = Record<string, z.ZodType>;
+
+type Texts = Readonly<Record<string, string>>;
 
 export function actionOf(option: z.ZodObject): string {
   const action: unknown = option.shape['action'];
@@ -45,15 +44,20 @@ export function withoutDefault(field: z.core.$ZodType): z.core.$ZodType {
   return copy;
 }
 
-function merged(options: readonly z.ZodObject[]): Fields {
+function merged(options: readonly z.ZodObject[], texts: Texts): Fields {
   const all: Fields = {};
   for (const option of options)
-    for (const [name, schema] of fieldsOf(option)) all[name] ??= z.optional(withoutDefault(schema));
+    for (const [name, schema] of fieldsOf(option)) {
+      const text = texts[name];
+      const field = z.optional(withoutDefault(schema));
+      all[name] ??= text === undefined ? field : field.describe(text);
+    }
   return all;
 }
 
 export function flatChange<O extends z.ZodObject>(
   options: readonly O[],
+  texts: Texts = {},
 ): z.ZodType<Chosen<z.output<O>>> {
   const byAction = new Map(options.map((option) => [actionOf(option), option]));
   const actions = [...byAction.keys()];
@@ -62,7 +66,7 @@ export function flatChange<O extends z.ZodObject>(
     .strictObject({
       deviceId: COMPUTER_ID,
       action: z.enum([first, ...rest]).describe(options.map(takes).join('; ')),
-      ...merged(options),
+      ...merged(options, texts),
     })
     .transform((input, context): Chosen<z.output<O>> => {
       const { deviceId, action, ...fields } = input;

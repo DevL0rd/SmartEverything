@@ -3,7 +3,6 @@ import type { NodeHubTransport } from '../client-network/node-transport';
 import { HarnessCalls } from './harness-connection';
 import { isSupplierInferenceControl, supplierInferenceControl } from './harness-model-inference';
 import { NodeHarnessError, NodeHarnessBinding } from './harness-binding';
-import { NativePreviewRelay } from '../preview/native-relay';
 import { randomUUID } from 'node:crypto';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
@@ -16,7 +15,6 @@ import {
   NODE_HARNESS_PATH,
   NODE_HARNESS_PROTOCOL,
   harnessPlatform,
-  isPreviewControl,
 } from '@smarteverything/domain';
 import type {
   AiSubscriptionHostStatus,
@@ -37,7 +35,6 @@ import { subscriptionFailureCategory } from './harness-subscription-failure';
 type Welcome = Extract<HubHarnessControl, { type: 'harness_welcome' }>;
 interface Composed {
   readonly harness: ComputerHarness;
-  readonly preview: NativePreviewRelay;
   readonly generation: string;
 }
 export class NodeHarnessRuntime {
@@ -162,12 +159,6 @@ export class NodeHarnessRuntime {
   }
   private async replace(frame: Welcome, os: HarnessPlatform): Promise<Composed> {
     await this.dispose();
-    const preview = new NativePreviewRelay(
-      this.options.node.hub_url,
-      this.options.node.node_token,
-      this.options.log,
-      this.options.transport,
-    );
     const harness = await createComputerHarness(
       {
         type: 'harness_boot',
@@ -187,13 +178,12 @@ export class NodeHarnessRuntime {
       this.calls,
       {
         publishSubscription: (status): Promise<void> => this.publishSubscription(frame, status),
-        preview,
         ...(this.options.transport?.fetch === undefined
           ? {}
           : { fetch: this.options.transport.fetch }),
       },
     );
-    this.runtime = { harness, preview, generation: frame.generation };
+    this.runtime = { harness, generation: frame.generation };
     return this.runtime;
   }
   private async dispose(): Promise<void> {
@@ -201,7 +191,6 @@ export class NodeHarnessRuntime {
     this.runtime = null;
     this.unsent.length = 0;
     if (runtime === null) return;
-    runtime.preview.stop();
     try {
       await runtime.harness.stop();
     } catch (cause) {
@@ -236,13 +225,9 @@ export class NodeHarnessRuntime {
     const runtime = this.runtime;
     if (runtime === null || this.ready !== socket)
       throw new NodeHarnessError('Computer composition has not completed its hello.');
-    const { harness, preview } = runtime;
+    const { harness } = runtime;
     if (isSupplierInferenceControl(frame)) {
       await supplierInferenceControl(socket, harness, frame, (): boolean => this.ready === socket);
-      return;
-    }
-    if (isPreviewControl(frame)) {
-      await this.previewControl(preview, frame);
       return;
     }
     if (frame.type === 'harness_subscription_control') {
@@ -254,27 +239,10 @@ export class NodeHarnessRuntime {
       return;
     }
     if (frame.type === 'harness_ownership_lost') {
-      preview.lose(frame.session_id);
       await harness.lose(frame.session_id);
       return;
     }
     await this.request(harness, frame);
-  }
-  private async previewControl(
-    preview: NativePreviewRelay,
-    frame: Extract<HubHarnessControl, { type: 'preview_open' | 'preview_file_close' }>,
-  ): Promise<void> {
-    if (frame.type === 'preview_file_close') {
-      preview.forget(frame.watch_handle);
-      return;
-    }
-    try {
-      await preview.open(frame);
-    } catch (cause) {
-      this.options.log.warn('preview.open_refused', {
-        error_name: cause instanceof Error ? cause.name : 'unknown',
-      });
-    }
   }
   private async subscriptionControl(
     harness: ComputerHarness,

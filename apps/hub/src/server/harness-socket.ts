@@ -10,8 +10,6 @@ import {
   NODE_HARNESS_PROTOCOL,
   HARNESS_CONFIGURATION_CAPABILITY,
   HARNESS_SUBSCRIPTION_CAPABILITY,
-  AI_PREVIEW_CAPABILITY,
-  AI_PREVIEW_FILE_CAPABILITY,
 } from '@smarteverything/domain';
 import type {
   ApiErrorBody,
@@ -20,8 +18,6 @@ import type {
   AiHarnessHost,
   HubHarnessControl,
   NodeHarnessFrame,
-  HubPreviewOpen,
-  HubPreviewFileClose,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
@@ -304,7 +300,6 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
           }
         : {}),
       ...this.inferencePort(frame, remote),
-      ...this.previewPort(residence, frame),
       execute: (id, request) => residence.execute(id, request),
       hasSession: (id, epoch) => remote.hasSession(id, epoch),
     });
@@ -346,24 +341,6 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
     return frame.manifest.subscription_inference?.protocol === 1
       ? { inference: remote.models }
       : {};
-  }
-  private previewPort(
-    residence: HarnessResidence,
-    frame: Extract<NodeHarnessFrame, { type: 'harness_hello' }>,
-  ): Pick<HarnessConnection, 'preview' | 'previewFileClose'> {
-    if (frame.capabilities?.includes(AI_PREVIEW_CAPABILITY) !== true) return {};
-    return {
-      ...(frame.capabilities.includes(AI_PREVIEW_FILE_CAPABILITY)
-        ? {
-            previewFileClose: (control: HubPreviewFileClose): void => {
-              residence.send(control);
-            },
-          }
-        : {}),
-      preview: (control: HubPreviewOpen): void => {
-        residence.send(control);
-      },
-    };
   }
   private validateHello(
     connection: HarnessSocket,

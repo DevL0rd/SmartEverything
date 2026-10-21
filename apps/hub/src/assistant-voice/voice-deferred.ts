@@ -2,7 +2,7 @@ import { appendTo } from '@smarteverything/domain';
 import type { HubTool } from '../ai-tools/hub-tool';
 import { COMMON_TOOL_NAMES, indexedTools } from '../ai-tools/tool-sets';
 
-export const VOICE_DEFERRED_TOOLS: ReadonlySet<string> = new Set(['read_health', 'log_food']);
+export const VOICE_DEFERRED_TOOLS: ReadonlySet<string> = new Set(['health_read', 'food_log']);
 
 const VOICE_DECLARED_TOOLS: ReadonlySet<string> = new Set(
   [...COMMON_TOOL_NAMES].filter((name) => !VOICE_DEFERRED_TOOLS.has(name)),

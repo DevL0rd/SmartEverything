@@ -88,7 +88,7 @@ function imageRequestBody(input: ImageProviderInput): Record<string, unknown> {
     ...options,
     ...(input.endpoint.parameters['n'] === undefined ? {} : { n }),
     ...(stream ? { stream: true } : {}),
-    provider: { only: [request.provider_tag], allow_fallbacks: false },
+    provider: { only: [input.endpoint.provider_tag], allow_fallbacks: false },
     ...(input.inputs.length === 0
       ? {}
       : {

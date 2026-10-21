@@ -43,7 +43,7 @@ export function robotInstructions(persona: RobotPersona): string {
 }
 
 export const ROBOT_ENDING =
-  'end_conversation ends the conversation, and only at a natural end: they clearly wrap up ("bye", "thanks, that is all", "never mind", "stop"), they say no when you ask whether there is anything else, they turn to someone else, or only background noise is left. AIBI stays in conversation mode after every answer and hears them without the wake word, so never end right after answering a question, after an action or a look, mid-task, or because you think the matter is settled: after you answer, simply wait for the next turn. When unsure, keep it open. A lone word, a garbled fragment or an echo of your own words is noise, not speech.';
+  'conversation_end ends the conversation, and only at a natural end: they clearly wrap up ("bye", "thanks, that is all", "never mind", "stop"), they say no when you ask whether there is anything else, they turn to someone else, or only background noise is left. AIBI stays in conversation mode after every answer and hears them without the wake word, so never end right after answering a question, after an action or a look, mid-task, or because you think the matter is settled: after you answer, simply wait for the next turn. When unsure, keep it open. A lone word, a garbled fragment or an echo of your own words is noise, not speech.';
 
 export function oneShotInstructions(persona: RobotPersona): string {
   return [

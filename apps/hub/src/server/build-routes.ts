@@ -2,7 +2,7 @@ import { deviceEffectRoutes } from './handlers/device-effects';
 import { deviceGroupRoutes } from './handlers/device-groups';
 import { aiReferenceRoutes } from './handlers/ai-references';
 import { aiProjectRoutes } from './handlers/ai-projects';
-import { aiPreviewRoutes } from './handlers/ai-previews';
+import { embeddedBrowserRoutes } from './handlers/embedded-browser';
 import { imageRoutes } from './handlers/images';
 import { aiAgentRunRoutes } from './handlers/ai-agent-runs';
 import { aiHarnessRoutes } from './handlers/ai-harness';
@@ -183,13 +183,13 @@ function assistantMediaRoutes(
 ): Pick<
   RouteTable,
   | keyof ReturnType<typeof imageApiRoutes>
-  | keyof ReturnType<typeof aiPreviewRoutes>
+  | keyof ReturnType<typeof embeddedBrowserRoutes>
   | keyof ReturnType<typeof aiProjectRoutes>
   | keyof ReturnType<typeof aiReferenceRoutes>
 > {
   return {
     ...imageApiRoutes(context),
-    ...aiPreviewRoutes(context.preview),
+    ...embeddedBrowserRoutes(context.browser),
     ...aiProjectRoutes(context.store, context.assistant.projects),
     ...aiReferenceRoutes(context.assistant.references),
   };
@@ -235,5 +235,6 @@ function imageApiRoutes(context: ServerContext): ReturnType<typeof imageRoutes> 
     images: context.imageRuntime.service,
     imageActor: context.imageRuntime.actor,
     imageCatalog: context.imageRuntime.readCatalog,
+    selectedImageModel: () => context.store.assistantChat.settings().image_model,
   });
 }

@@ -136,6 +136,7 @@ export interface ImageRig {
     operationId?: string,
   ) => Promise<ImageOperationReceipt>;
   readonly settle: (id: string) => Promise<ImageOperationReceipt>;
+  readonly outcome: (id: string, signal?: AbortSignal) => Promise<ImageOperationReceipt>;
   readonly cancel: (id: string) => ImageOperationReceipt;
 }
 
@@ -198,6 +199,7 @@ export function imageRig(
         }),
       ),
     settle: (id) => service.settled(actor, id),
+    outcome: (id, signal) => service.outcome(actor, id, signal),
     cancel: (id) => service.cancel(actor, id),
   };
 }

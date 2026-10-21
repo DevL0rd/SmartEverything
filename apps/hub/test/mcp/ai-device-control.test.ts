@@ -111,7 +111,7 @@ async function refusal(name: string, args: Record<string, unknown>): Promise<str
 
 function colourOf(value: unknown): Record<string, unknown> {
   return {
-    changes: [{ target: { deviceIds: [ids['light-colour']] }, capability: 'color', value }],
+    deviceIds: [ids['light-colour']], capability: 'color', value,
   };
 }
 
@@ -119,7 +119,7 @@ function sentColour(): unknown {
   return booted.fake.adapter.executed.find((command) => command.capability === 'color')?.value;
 }
 
-describe('colour sent by the AI through control_devices', () => {
+describe('colour sent by the AI through device_control', () => {
   const RED = { hue: 0, saturation: 100, value: 100 };
 
   it.each([
@@ -131,12 +131,12 @@ describe('colour sent by the AI through control_devices', () => {
     ['a colour name', 'red'],
     ['hue, saturation and value', RED],
   ])('accepts %s and sends the device hue, saturation and value', async (_form, value) => {
-    structured(await tool('control_devices', colourOf(value)));
+    structured(await tool('device_control', colourOf(value)));
     expect(sentColour()).toStrictEqual(RED);
   });
 
   it('refuses text that is no colour and names the accepted forms', async () => {
-    const message = await refusal('control_devices', colourOf('not a colour'));
+    const message = await refusal('device_control', colourOf('not a colour'));
     expect(message).toContain('is not a colour');
     expect(message).toContain('hex (#ff0000)');
     expect(message).toContain('Brightness is a separate capability');
@@ -144,12 +144,12 @@ describe('colour sent by the AI through control_devices', () => {
 
   it('sends a white tone in the colour temperature unit of the device', async () => {
     const change = (value: unknown): Record<string, unknown> => ({
-      changes: [
-        { target: { deviceIds: [ids['light-colour']] }, capability: 'color_temperature', value },
-      ],
+      deviceIds: [ids['light-colour']],
+      capability: 'color_temperature',
+      value,
     });
-    structured(await tool('control_devices', change('2700K')));
-    structured(await tool('control_devices', change('250 mireds')));
+    structured(await tool('device_control', change('2700K')));
+    structured(await tool('device_control', change('250 mireds')));
     const sent = booted.fake.adapter.executed
       .filter((command) => command.capability === 'color_temperature')
       .map((command) => command.value);
@@ -168,7 +168,7 @@ describe('finding a fan', () => {
       { families: ['tower_fan'] },
       { rooms: ['Living room'], families: ['tower_fan'] },
     ]) {
-      const found = DEVICES.parse(structured(await tool('find_devices', filter))['devices']);
+      const found = DEVICES.parse(structured(await tool('device_find', filter))['devices']);
       expect(
         found.map((device) => device.id),
         JSON.stringify(filter),
@@ -177,14 +177,14 @@ describe('finding a fan', () => {
   });
 
   it('says plainly that nothing matched and lists the families in the home', async () => {
-    const empty = structured(await tool('find_devices', { families: ['fan'] }));
+    const empty = structured(await tool('device_find', { families: ['fan'] }));
     expect(empty['devices']).toStrictEqual([]);
     expect(String(empty['nothing_matches'])).toContain('ask the person');
     expect(empty['families_in_the_home']).toMatchObject({ tower_fan: 1, light: 1, camera: 1 });
   });
 
   it('gives no hint for a search that matches', async () => {
-    expect(structured(await tool('find_devices', { search: 'fan' }))).not.toHaveProperty(
+    expect(structured(await tool('device_find', { search: 'fan' }))).not.toHaveProperty(
       'nothing_matches',
     );
   });
@@ -192,30 +192,32 @@ describe('finding a fan', () => {
 
 describe('raw controls', () => {
   const raw = (target: Record<string, unknown>, capability: string): Record<string, unknown> => ({
-    changes: [{ target, capability, value: true }],
+    ...target,
+    capability,
+    value: true,
   });
 
   it('are refused when the device was not named by id', async () => {
-    const message = await refusal('control_devices', raw({ search: 'fan' }, 'raw:8.8'));
+    const message = await refusal('device_control', raw({ search: 'fan' }, 'raw:8.8'));
     expect(message).toContain('target it by deviceIds');
     expect(message).toContain('ask the person instead of guessing raw ids');
     expect(booted.fake.adapter.executed).toHaveLength(0);
   });
 
   it('are never sent to the fan, which does not report them', async () => {
-    const message = await refusal('control_devices', raw({ deviceIds: [ids['fan-1']] }, 'raw:8.8'));
+    const message = await refusal('device_control', raw({ deviceIds: [ids['fan-1']] }, 'raw:8.8'));
     expect(message).toContain('has no raw:8.8');
     expect(message).toContain('ask the person instead of guessing raw ids');
     expect(booted.fake.adapter.executed).toHaveLength(0);
   });
 });
 
-describe('tool_details for a tool without variants', () => {
-  it('gives control_devices its full schema and says it has no variants', async () => {
+describe('tool_read for a tool without variants', () => {
+  it('gives device_control its full schema and says it has no variants', async () => {
     const result = structured(
-      await tool('tool_details', { name: 'control_devices', variant: 'color' }),
+      await tool('tool_read', { name: 'device_control', variant: 'color' }),
     );
-    expect(result['note']).toContain('control_devices has no variants');
+    expect(result['note']).toContain('device_control has no variants');
     expect(JSON.stringify(result['tool'])).toContain('hex (#ff0000)');
   });
 });

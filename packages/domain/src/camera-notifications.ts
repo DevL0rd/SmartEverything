@@ -100,7 +100,7 @@ export const CAMERA_NOTIFICATIONS_PREF = z.strictObject({
   cameras: z
     .record(z.string().min(1), CAMERA_OVERRIDE)
     .describe(
-      'Per camera (id from find_devices) overrides: kinds (only the ones that differ from the default), cooldownMinutes (null follows the default), quiet (null follows the default, "off" for none)',
+      'Per camera (id from device_find) overrides: kinds (only the ones that differ from the default), cooldownMinutes (null follows the default), quiet (null follows the default, "off" for none)',
     ),
 });
 

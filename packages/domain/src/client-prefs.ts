@@ -209,6 +209,7 @@ export type HealthSyncPref = z.infer<typeof HEALTH_SYNC_PREF>;
 const AI_MODELS_PREF = z.strictObject({
   favourites: z.array(z.string().min(1)),
   recent: z.array(z.string().min(1)).default([]),
+  image_favourites: z.array(z.string().min(1)).default([]),
 });
 
 const AI_SPEECH_PREF = z.strictObject({ showText: z.boolean() });
@@ -295,7 +296,7 @@ export const CLIENT_PREFS = {
     storageKey: 'ai-models',
     scope: 'profile',
     version: 1,
-    defaultValue: { favourites: [], recent: [] },
+    defaultValue: { favourites: [], recent: [], image_favourites: [] },
     schema: AI_MODELS_PREF,
     legacy: noLegacy,
   }),

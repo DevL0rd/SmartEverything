@@ -146,14 +146,14 @@ describe('what the AI reads and sets about an IR remote', () => {
     const token = await aiToken();
     const remote = await deviceIdOf('ir-ac');
     const set = structured(
-      await callTool(booted.base, token, 'call_operation', {
+      await callTool(booted.base, token, 'operation_call', {
         operation: 'updateIrRemote',
         arguments: { remoteId: remote, on: true, temp: 21 },
       }),
     );
     expect(set).toMatchObject({ on: true, temp: 21 });
     const device = structured(
-      await callTool(booted.base, token, 'get_device', { deviceId: remote }),
+      await callTool(booted.base, token, 'device_read', { deviceId: remote }),
     );
     expect(device).toMatchObject({ device: { infrared: { assumed: { on: true, temp: 21 } } } });
     expect(await homeStates()).toMatchObject({ [remote]: { temp: 21 } });
@@ -169,7 +169,7 @@ describe('what the AI reads and sets about an IR remote', () => {
     });
     const learned = API_ENDPOINTS.createIrRemote.response.parse(created.body).id;
     await patch(learned, { speed: 3 });
-    const listed = structured(await callTool(booted.base, token, 'list_remotes', {}));
+    const listed = structured(await callTool(booted.base, token, 'remote_find', {}));
     expect(listed).toMatchObject({
       remotes: [{ id: learned, assumed: { speed: 3, on: null } }],
     });

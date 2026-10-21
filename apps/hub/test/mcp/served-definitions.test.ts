@@ -11,7 +11,11 @@ import { servedTool } from '../../src/extensions/mcp/tools/served';
 
 const ROUTE = {
   key: 'action',
-  parts: { create: 'create_room', update: 'update_room', remove: 'remove_room' },
+  branches: {
+    create: { part: 'create_room', line: 'Add a room' },
+    update: { part: 'update_room', line: 'Rename or move one room' },
+    remove: { part: 'remove_room', line: 'Remove one room' },
+  },
 } as const;
 
 const NAME = z.string().min(1).max(60);
@@ -57,7 +61,7 @@ function room(
       part('remove_room', overrides.remove ?? z.strictObject({ roomId: ROOM }), REMOVES),
     ].map((tool) => [tool.name, tool]),
   );
-  return servedTool('edit_room', ROUTE, parts, new Map());
+  return servedTool('room_edit', ROUTE, parts, new Map());
 }
 
 function properties(tool: Tool): Record<string, unknown> {
@@ -136,11 +140,16 @@ describe('a routed tool built from the Zod input of each of its parts', () => {
     });
   });
 
-  it('is destructive at the top only when every value is, so one remove does not gate a rename', () => {
+  it('is destructive at the top when any value is, so a client warns before a remove', () => {
     expect(room().listing.annotations).toMatchObject({
       readOnlyHint: false,
-      destructiveHint: false,
+      destructiveHint: true,
     });
+  });
+
+  it('refuses a part whose own field has the selector name, so the selector cannot be overwritten', () => {
+    const clash = { create: z.strictObject({ action: z.string(), name: NAME }) };
+    expect(() => room(clash)).toThrow('collides with the action selector');
   });
 
   it('rejects a part that has no object input rather than guess its fields', () => {
@@ -150,6 +159,6 @@ describe('a routed tool built from the Zod input of each of its parts', () => {
       check: () => null,
       call: () => Promise.resolve({ structured: {} }),
     };
-    expect(() => servedTool('edit_room', ROUTE, new Map([[bare.name, bare]]), new Map())).toThrow();
+    expect(() => servedTool('room_edit', ROUTE, new Map([[bare.name, bare]]), new Map())).toThrow();
   });
 });

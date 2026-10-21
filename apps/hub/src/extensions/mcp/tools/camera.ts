@@ -3,6 +3,7 @@ import type { DeviceScope, RecordingRow } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Store } from '../../../store/store';
 import { reported, sendAndWait } from './commanding';
+import { DEVICE_REFERENCE } from './references';
 import { deviceScopeOfActor } from './person-reach';
 import { IMAGE_LIMIT_BYTES, LIVE_CAMERA_TOOL, SNAPSHOT_TYPE } from './camera-live';
 import { READS, ToolError, WRITES, defineTool, type Tool, type ToolContext } from './registry';
@@ -16,7 +17,7 @@ export function latestSnapshot(store: Store, deviceId: string): RecordingRow {
   });
   if (snapshot === undefined) {
     throw new ToolError(
-      `The camera ${deviceId} has no saved snapshot; camera_pictures view live takes one now`,
+      `The camera ${deviceId} has no saved snapshot; camera_read view live takes one now`,
       'not_found',
     );
   }
@@ -36,11 +37,11 @@ async function imageOf(context: ToolContext, recording: RecordingRow): Promise<s
 
 const SAVED = z
   .strictObject({
-    deviceId: z.uuid().optional().describe('The newest snapshot of this camera'),
+    deviceId: DEVICE_REFERENCE.optional(),
     recordingId: z
       .uuid()
       .optional()
-      .describe('One saved snapshot, such as one listed with an event'),
+      .describe('One saved snapshot, such as one listed with an event_find'),
   })
   .refine((input) => (input.deviceId === undefined) !== (input.recordingId === undefined), {
     message: 'give deviceId or recordingId',
@@ -55,8 +56,7 @@ function recordingFor(
     if (input.deviceId === undefined) {
       throw new ToolError('Give deviceId or recordingId');
     }
-    placedDevice(store, scope, input.deviceId);
-    return latestSnapshot(store, input.deviceId);
+    return latestSnapshot(store, placedDevice(store, scope, input.deviceId).device.id);
   }
   const recording = store.cameras.recording(input.recordingId);
   placedDevice(store, scope, recording.device_id);
@@ -90,15 +90,23 @@ export const CAMERA_TOOLS: readonly Tool[] = [
   }),
   LIVE_CAMERA_TOOL,
   defineTool({
-    name: 'record_camera_clip',
+    name: 'camera_record',
     input: z.strictObject({
-      deviceId: z.uuid(),
-      seconds: z.int().min(5).max(300).default(30),
+      deviceId: DEVICE_REFERENCE,
+      seconds: z.int().min(5).max(300).default(30).describe('How long to record, 5 to 300 seconds'),
     }),
     annotations: { ...WRITES, openWorldHint: true },
     run: async (context, input) => {
       const outcome = await sendAndWait(context, [
-        { device_id: null, capability: 'hub:record_clip', value: input },
+        {
+          device_id: null,
+          capability: 'hub:record_clip',
+          value: {
+            deviceId: placedDevice(context.store, deviceScopeOfActor(context), input.deviceId)
+              .device.id,
+            seconds: input.seconds,
+          },
+        },
       ]);
       return { structured: reported(context, outcome) };
     },

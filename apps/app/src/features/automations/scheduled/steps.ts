@@ -8,20 +8,16 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 
-const CONTROL_DEVICES: McpToolName = 'control_devices';
-const RUN_SCENE: McpToolName = 'run_scene';
+const CONTROL_DEVICES: McpToolName = 'device_control';
+const RUN_SCENE: McpToolName = 'scene_run';
 const LONGEST_DELAY = 86_400;
 
 export const STEP_ACTION_TYPES = ['command', 'scene', 'delay', 'wake_ai'] as const;
 
 const CONTROL_ARGS = z.strictObject({
-  changes: z.tuple([
-    z.strictObject({
-      target: z.strictObject({ deviceIds: z.tuple([z.uuid()]) }),
-      capability: CAPABILITY_KEY,
-      value: JSON_VALUE,
-    }),
-  ]),
+  deviceIds: z.tuple([z.uuid()]),
+  capability: CAPABILITY_KEY,
+  value: JSON_VALUE,
 });
 
 const RUN_SCENE_ARGS = z.strictObject({ sceneId: z.uuid() });
@@ -32,15 +28,7 @@ function stepOf(action: Action): ScheduleStepInput | null {
       return {
         kind: 'tool',
         tool: CONTROL_DEVICES,
-        args: {
-          changes: [
-            {
-              target: { deviceIds: [action.deviceId] },
-              capability: action.capability,
-              value: action.value,
-            },
-          ],
-        },
+        args: { deviceIds: [action.deviceId], capability: action.capability, value: action.value },
       };
     case 'scene':
       return { kind: 'tool', tool: RUN_SCENE, args: { sceneId: action.sceneId } };
@@ -68,9 +56,8 @@ function builtInOf(step: Extract<ScheduleStep, { kind: 'tool' }>): Action | null
     if (!args.success) {
       return null;
     }
-    const [change] = args.data.changes;
-    const [deviceId] = change.target.deviceIds;
-    return { type: 'command', deviceId, capability: change.capability, value: change.value };
+    const [deviceId] = args.data.deviceIds;
+    return { type: 'command', deviceId, capability: args.data.capability, value: args.data.value };
   }
   if (step.tool === RUN_SCENE) {
     const args = RUN_SCENE_ARGS.safeParse(step.args);

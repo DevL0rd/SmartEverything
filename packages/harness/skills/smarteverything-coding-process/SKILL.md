@@ -1,9 +1,13 @@
 ---
 name: smarteverything-coding-process
-description: Write, edit, debug, test or review code in a project folder on the selected machine or in the chat's own project files; coordinate agents that build and review the work; run builds, tests and commands; show a web page or app you built.
+description: "Writes, edits, debugs, tests and reviews code in a project folder on the selected machine or in the chat's own project files; coordinates helper agents that build and review the work; runs builds and tests and shows the result in the app. Use it for “fix this bug”, “add a feature to my app”, “write a script”, “review this change” or “build me a small website”. Not for reading or controlling a computer's apps and settings (smarteverything-computers) or a public webpage (smarteverything-browser)."
 ---
 
 # Coding
+
+## Test pages without the person's device
+
+While building, look at and test pages with the headless browser (`mcp__playwright-mcp__` tools on a Linux computer; serve the project from a local dev server or static server on that machine and open its `http://127.0.0.1:PORT` address). It runs in the background, so the person's phone is not disturbed and the work needs no connected device. Do not use `browser_read` or `browser_control` to test: they act on the browser pane of the person's own device, interrupt what they are doing, and fail when no device has the chat open. When the work is finished and checked, open it once with `browser_control` open and the project `path` (a folder opens its index.html), and say where to look; after later edits open the same path again to reload it. `smarteverything-browser` has the details.
 
 ## Start from the project
 
@@ -11,11 +15,11 @@ Read the project's own instructions (`AGENTS.md`, `CLAUDE.md`, README, contribut
 
 ## Files and commands
 
-- Native `read`, `read_image`, `write`, `edit`, shell and job tools run on the selected machine under this chat's permission. Use `switch_machine` to work on another machine. A Windows machine's shell is PowerShell (`pwsh`: native paths, `$env:NAME`); its sandbox confines writes but not reads, and it cannot supply subscription accounts.
+- Native `read`, `read_image`, `write`, `edit`, shell and job tools run on the selected machine under this chat's permission. Use `machine_switch` to work on another machine. A Windows machine's shell is PowerShell (`pwsh`: native paths, `$env:NAME`); its sandbox confines writes but not reads, and it cannot supply subscription accounts.
 - Use `glob` and `grep` instead of shell `find` and `grep`. For declarations and relationships use `codegraph`; run `codegraph_index` once when it reports a stale or missing index.
 - The primary folder gives relative paths and indexing context. `set_working_directory` changes it for this chat; it moves no files and widens no permission.
 - On multi-step work keep a visible list with `todo_write`. After `/plan`, explore first, then present the whole plan with `exit_plan_mode` and wait for approval.
-- Files with no machine live in the chat's central project: use `read_project_files` and `edit_project_files` with workspace/, temporary/ or transfers/ paths. They persist across machine changes, are separate from machine folders and cannot run commands.
+- Files with no machine live in the chat's central project: use `project_read` and `project_edit` with workspace/, temporary/ or transfers/ paths. They persist across machine changes, are separate from machine folders and cannot run commands.
 
 ## You are the coordinator
 
@@ -50,4 +54,4 @@ For UI work, have a thoughtful design written first, build a working prototype w
 
 ## Show a page
 
-Build real files (separate CSS, scripts, images) and publish them with `edit_previews`; editing the files updates the open page. `smarteverything-browser` covers previews, logs and viewport capture.
+Build real files (separate CSS, scripts, images) in the project and open the folder with `browser_control` when done. `smarteverything-browser` has the details.

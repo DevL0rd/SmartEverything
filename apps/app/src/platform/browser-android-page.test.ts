@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BROWSER_PAGE_SCRIPT, type NativeBrowserDiagnostics } from '@smarteverything/domain';
+import { BROWSER_PAGE_SCRIPT, type NativeBrowserPage } from '@smarteverything/domain';
 
 const fake = vi.hoisted(
   (): {
@@ -15,8 +15,6 @@ vi.mock('expo', () => ({
   NativeModule: Object,
   requireOptionalNativeModule: (): Record<string, unknown> => ({
     browserProfileReady: (): boolean => fake.ready,
-    browserObserveRaw: (): Promise<void> => Promise.resolve(),
-    browserPerform: (): Promise<null> => Promise.resolve(null),
     ...(fake.withPage
       ? {
           browserEvaluate: (id: string, code: string): Promise<string> => {
@@ -51,14 +49,14 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-async function diagnostics(nativeHtml = false): Promise<NativeBrowserDiagnostics | null> {
-  const module = await import('../../modules/health-connect/src/browser-diagnostics');
-  return module.androidBrowserDiagnostics(nativeHtml);
+async function pageAccess(): Promise<NativeBrowserPage | undefined> {
+  const module = await import('../../modules/health-connect/src/browser-page');
+  return module.androidBrowserPage();
 }
 
 describe('page access on Android', () => {
   it('reads a page by running the shared script in the browser with that id', async () => {
-    const page = (await diagnostics())?.page;
+    const page = await pageAccess();
     const reading = await page?.perform({ id: 'public:1', operation: { kind: 'snapshot' } });
     expect(reading).toEqual(READING);
     expect(fake.evaluated[0]?.id).toBe('public:1');
@@ -66,7 +64,7 @@ describe('page access on Android', () => {
   });
 
   it('keeps counting refs for the same browser across readings', async () => {
-    const page = (await diagnostics())?.page;
+    const page = await pageAccess();
     await page?.perform({ id: 'public:1', operation: { kind: 'snapshot' } });
     await page?.perform({ id: 'public:1', operation: { kind: 'snapshot' } });
     expect(fake.evaluated[0]?.code.endsWith(', 1)')).toBe(true);
@@ -74,7 +72,7 @@ describe('page access on Android', () => {
   });
 
   it('clicks and types inside the page script, and presses keys natively', async () => {
-    const page = (await diagnostics())?.page;
+    const page = await pageAccess();
     fake.answer = JSON.stringify({ ok: true });
     await page?.perform({ id: 'public:1', operation: { kind: 'click', ref: 'e1' } });
     await page?.perform({
@@ -91,14 +89,6 @@ describe('page access on Android', () => {
 
   it('is not offered when the app build has no page access', async () => {
     fake.withPage = false;
-    const result = await diagnostics();
-    expect(result).not.toBeNull();
-    expect(result?.page).toBeUndefined();
-  });
-
-  it('is not offered before the browser profile is ready, except for a native html page', async () => {
-    fake.ready = false;
-    expect(await diagnostics()).toBeNull();
-    expect((await diagnostics(true))?.page).toBeDefined();
+    expect(await pageAccess()).toBeUndefined();
   });
 });

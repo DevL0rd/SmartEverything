@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { Logger } from '@smarteverything/logging';
 import {
   ApiError,
-  isInterruption,
   type AiChatRow,
   type AiEdit,
   type AiRetryFrom,
@@ -15,7 +14,7 @@ import {
 } from '../store/repositories/assistant-chat';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
-import { continuation } from './interruption';
+import { CONTINUE_NOTE } from './interruption';
 import type { AssistantDelivery } from './delivery';
 import type { AssistantFiles } from './files';
 import { ownedUploads, queueEvent } from './request-events';
@@ -52,17 +51,7 @@ export class MessageReplay {
     clientId?: string | null,
   ): Promise<AssistantMessageRow> {
     return this.replayed('retry', chat.id, messageId, () =>
-      this.rearm(chat, messageId, from, clientId),
-    );
-  }
-
-  async resume(
-    chat: AiChatRow,
-    messageId: string,
-    clientId?: string | null,
-  ): Promise<AssistantMessageRow> {
-    return this.replayed('resume', chat.id, messageId, () =>
-      this.continued(chat, messageId, clientId),
+      this.continued(chat, messageId, from, clientId),
     );
   }
 
@@ -78,7 +67,7 @@ export class MessageReplay {
   }
 
   private async replayed(
-    kind: 'retry' | 'resume' | 'edit',
+    kind: 'retry' | 'edit',
     chatId: string,
     messageId: string,
     work: () => Rearmed,
@@ -99,7 +88,7 @@ export class MessageReplay {
     return row;
   }
 
-  private rearm(
+  private continued(
     chat: AiChatRow,
     messageId: string,
     from: AiRetryFrom,
@@ -109,26 +98,12 @@ export class MessageReplay {
     if (message.state !== from) {
       return { row: message, files: [], queued: false };
     }
-    this.requireLatest(chat, message, 'retried');
-    return this.replay(chat, { message, event }, {}, clientId);
-  }
-
-  private continued(
-    chat: AiChatRow,
-    messageId: string,
-    clientId: string | null | undefined,
-  ): Rearmed {
-    const { message, event } = this.askedMessage(chat, messageId);
-    if (message.state !== 'failed' || !isInterruption(message.reason_code)) {
-      return { row: message, files: [], queued: false };
-    }
     this.requireLatest(chat, message, 'continued');
     const row = this.deps.store.assistantChat.updateMessage(message.id, {
       state: 'answered',
       reason: null,
       reason_code: null,
     });
-    const original = eventAuthority(this.deps.store, event);
     queueEvent(
       this.deps.store,
       {
@@ -138,11 +113,11 @@ export class MessageReplay {
         message_id: null,
         profile_id: event.profile_id,
         client_id: clientId === undefined ? event.client_id : clientId,
-        text: continuation(message.reason),
+        text: CONTINUE_NOTE,
         report_to: event.report_to,
         hops: event.hops,
       },
-      original,
+      eventAuthority(this.deps.store, event),
     );
     return { row, files: [], queued: true };
   }

@@ -16,7 +16,7 @@ export const VOICE_PAGE = 25;
 const CAPABILITY_KEYS_UP_TO = 5;
 
 const MORE =
-  'Only part of the list was sent. Ask for what they need with a filter (a room, a family or words in the name), or call again with offset set to next_offset.';
+  'Only part of the list was sent. Ask for what they need with a filter (a room, a family or words in the name), or call again with cursor set to nextCursor.';
 
 function isRecord(value: unknown): value is Json {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -82,9 +82,9 @@ const clientRow: Row = (row) =>
   });
 
 const VOICE_LISTS: ReadonlyMap<string, VoiceList> = new Map([
-  ['find_devices', { key: 'devices', row: deviceRow }],
-  ['list_automations', { key: 'automations', row: automationRow }],
-  ['list_scenes', { key: 'scenes', row: sceneRow }],
+  ['device_find', { key: 'devices', row: deviceRow }],
+  ['automation_read', { key: 'automations', row: automationRow }],
+  ['scene_find', { key: 'scenes', row: sceneRow }],
   [pluginToolName('router', 'list_clients'), { key: 'clients', row: clientRow }],
 ]);
 

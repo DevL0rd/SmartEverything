@@ -3,6 +3,7 @@ import {
   MCP_ROUTES,
   isMcpToolName,
   mcpToolOperation,
+  partsOf,
   type EndpointName,
 } from '@smarteverything/domain';
 
@@ -11,14 +12,7 @@ export const NATIVE_BRIDGE_REFUSAL =
 
 export function reachesNativeBridge(name: string): boolean {
   const route = isMcpToolName(name) ? MCP_ROUTES.get(name) : undefined;
-  const parts =
-    route === undefined
-      ? [name]
-      : 'part' in route
-        ? [route.part]
-        : 'parts' in route
-          ? Object.values(route.parts)
-          : [];
+  const parts = route === undefined ? [name] : partsOf(route);
   return parts.some((part) => {
     const operation = mcpToolOperation(part);
     return operation !== undefined && nativeBridgeOperation(operation);

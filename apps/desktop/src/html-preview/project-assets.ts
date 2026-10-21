@@ -1,6 +1,6 @@
 import { request as requestHttps } from 'node:https';
 import { request as requestHttp, type IncomingMessage } from 'node:http';
-import { BrowserPolicyError, chatPageAssetUrl } from '@smarteverything/domain';
+import { BrowserPolicyError, chatFilesUrl } from '@smarteverything/domain';
 import type { NativeHtmlPage, NativeHtmlTransportPort } from './page.js';
 
 const HEADERS = [
@@ -21,7 +21,7 @@ export function projectAsset(
 ): Promise<Response> {
   const { input } = page;
   port.authorize(input.scopeId, input.authorization, page.owner);
-  const prefix = chatPageAssetUrl(input.page.chatId, input.page.publicationId, '');
+  const prefix = chatFilesUrl(input.page.chatId, '');
   const url = new URL(`${input.binding.canonicalOrigin}${prefix}${assetPath(request.url)}`);
   const lease = port.lease(input.scopeId, url.href, input.binding);
   const signals = [page.signal, request.signal];
@@ -85,7 +85,7 @@ function assetResponse(
       location.startsWith(`${prefix}//`) ||
       /[\\\r\n]/u.test(location)
     )
-      throw new BrowserPolicyError('Page asset redirect must remain within its publication.');
+      throw new BrowserPolicyError('Page redirects must stay inside the chat project.');
     headers.set('location', location.slice(prefix.length));
   }
   if (method === 'HEAD' || [204, 205, 304].includes(status)) {

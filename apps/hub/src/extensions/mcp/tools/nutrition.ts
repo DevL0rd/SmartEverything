@@ -12,6 +12,7 @@ import {
   type FoodCandidate,
   type FoodOrigin,
   type FoodRow,
+  localClock,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { operate, type ActingAs } from './acting';
@@ -31,7 +32,7 @@ import { minuteSpan } from './spans';
 
 const LOG_FOOD = z
   .strictObject({
-    foodId: z.uuid().optional().describe('A saved food from find_food'),
+    foodId: z.uuid().optional().describe('A saved food from food_find'),
     barcode: BARCODE.optional().describe(
       'A packaged product’s barcode: the person’s saved food with it, else Open Food Facts',
     ),
@@ -45,7 +46,10 @@ const LOG_FOOD = z
       .describe(
         'Total grams or ml eaten, for example 150 for 1.5 servings of 100 g; one serving when left out',
       ),
-    meal: z.enum(MEALS),
+    meal: z
+      .enum(MEALS)
+      .optional()
+      .describe('Which meal it was; breakfast, lunch, dinner or snack by the time of day when left out'),
     at: MOMENT_ARGUMENT.optional().describe(
       'When it was eaten or drunk, an ISO time that may be in the past, for example last night; now when left out',
     ),
@@ -114,6 +118,14 @@ async function chosen(context: ToolContext, input: LogFood): Promise<Chosen> {
     : { food: input.food, foodId: null };
 }
 
+function mealAt(context: ToolContext, at: Date): (typeof MEALS)[number] {
+  const hour = localClock(at, context.store.settings.read().time_zone).minuteOfDay / 60;
+  if (hour < 10.5) return 'breakfast';
+  if (hour < 14.5) return 'lunch';
+  if (hour < 17) return 'snack';
+  return hour < 21.5 ? 'dinner' : 'snack';
+}
+
 async function foodLogged(context: ToolContext, input: LogFood): Promise<unknown> {
   const { food, foodId } = await chosen(context, input);
   const start = input.at === undefined ? context.clock.now() : new Date(input.at);
@@ -121,7 +133,7 @@ async function foodLogged(context: ToolContext, input: LogFood): Promise<unknown
     food,
     foodId,
     amount: input.amount ?? defaultAmount(food),
-    mealType: MEAL_TYPES[input.meal],
+    mealType: MEAL_TYPES[input.meal ?? mealAt(context, start)],
     span: minuteSpan(context, start),
   });
   return operate(context, 'createHealthEntry', { body: entry }, input);
@@ -213,7 +225,7 @@ async function found(
 
 export const NUTRITION_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'log_food',
+    name: 'food_log',
     input: LOG_FOOD,
     annotations: WRITES,
     run: async (context, input) => ({ structured: { entry: await foodLogged(context, input) } }),
@@ -225,7 +237,7 @@ export const NUTRITION_TOOLS: readonly Tool[] = [
     run: async (context, input) => ({ structured: { entry: await waterLogged(context, input) } }),
   }),
   defineTool({
-    name: 'find_food',
+    name: 'food_find',
     input: FIND,
     annotations: { ...READS, openWorldHint: true },
     run: async (context, input) => ({ structured: await found(context, input) }),

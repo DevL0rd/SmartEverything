@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from 'react';
-import { ScrollView } from 'react-native';
 import type { AiChatRow, DshEngine, Engine } from '@smarteverything/domain';
 import { Icon } from '../../../../components/icon';
 import { IconWell } from '../../../../components/icon-well';
@@ -11,7 +10,7 @@ import { MachineSource, type MachineChoice, type MachineView } from '../../chats
 import { useComputerFolderChange, useFolderChange } from './panel-folder';
 import { isComputerEngine, type ComputerEngine } from '../../provider/computer-engine';
 import { folderName, machineLine, useMachineFacts, type MachineFacts } from './panel-machine';
-import { KeyedRow, PanelHead } from './panel-chrome';
+import { KeyedRow, PanelCard, PanelHead, PanelScroll } from './panel-chrome';
 
 function rowSubtitle(machine: MachineView, facts: MachineFacts): string {
   if (machine.pending) return 'Choose where this model runs';
@@ -29,16 +28,18 @@ export function MachineRow({
   return (
     <MachineSource engine={engine}>
       {(machine): ReactNode => (
-        <KeyedRow id="machine">
-          <ListRow
-            title={machine.name}
-            subtitle={rowSubtitle(machine, facts)}
-            subtitleTone={machine.pending || machineLine(facts).warning ? 'warning' : 'variant'}
-            leading={<IconWell icon="monitor" colour="viz-1" size="m" />}
-            chevron
-            onPress={onOpen}
-            label={`Runs on ${machine.name}. ${rowSubtitle(machine, facts)}`}
-          />
+        <KeyedRow id="machine" className="mx-4 mt-1 rounded-lg">
+          <PanelCard>
+            <ListRow
+              title={machine.name}
+              subtitle={rowSubtitle(machine, facts)}
+              subtitleTone={machine.pending || machineLine(facts).warning ? 'warning' : 'variant'}
+              leading={<IconWell icon="monitor" colour="viz-1" size="m" />}
+              chevron
+              onPress={onOpen}
+              label={`Runs on ${machine.name}. ${rowSubtitle(machine, facts)}`}
+            />
+          </PanelCard>
         </KeyedRow>
       )}
     </MachineSource>
@@ -187,7 +188,7 @@ export function MachinePage({
       <PanelHead title="Runs on" onBack={onBack} onClose={onClose} />
       <MachineSource engine={engine}>
         {(machine): ReactNode => (
-          <ScrollView className="min-h-0 flex-1">
+          <PanelScroll>
             <List>
               {machine.choices.length === 0 ? (
                 <ListRow title={machine.empty} disabled />
@@ -203,7 +204,7 @@ export function MachinePage({
                 <FolderChoice chat={chat} engine={engine} facts={facts} machine={machine.name} />
               )}
             </List>
-          </ScrollView>
+          </PanelScroll>
         )}
       </MachineSource>
     </>

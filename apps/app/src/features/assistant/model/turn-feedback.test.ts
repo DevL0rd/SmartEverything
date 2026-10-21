@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { CHAT_RECONNECTING_REASON, type AssistantMessageRow } from '@smarteverything/domain';
+import { CHAT_RETRYING_REASON, type AssistantMessageRow } from '@smarteverything/domain';
 import type { Turn } from '../../../store/chat-turns';
-import { feedbackKind, feedbackTone, turnFeedback, type FeedbackInput } from './turn-feedback';
+import {
+  RETRYING_LABEL,
+  feedbackKind,
+  feedbackTone,
+  turnFeedback,
+  type FeedbackInput,
+} from './turn-feedback';
 
 function row(fields: Partial<AssistantMessageRow>): AssistantMessageRow {
   return {
@@ -95,14 +101,19 @@ describe('turnFeedback', () => {
 });
 
 describe('feedbackTone and feedbackKind', () => {
-  it('shows a provider retry as the red Reconnecting label and never the provider wording', () => {
+  it('shows a retry as the moving Retrying label and never the provider wording', () => {
     const feedback = turnFeedback({
       ...base,
-      turn: turn({ state: 'thinking', reason: CHAT_RECONNECTING_REASON }),
+      turn: turn({ state: 'thinking', reason: CHAT_RETRYING_REASON }),
     });
-    expect(feedback).toEqual({ label: 'Reconnecting…', moving: true });
-    expect(feedbackKind(feedback)).toBe('reconnecting');
-    expect(feedback === null ? null : feedbackTone(feedback)).toBe('critical');
+    expect(feedback).toEqual({ label: RETRYING_LABEL, moving: true });
+    expect(feedbackKind(feedback)).toBeNull();
+    expect(feedback === null ? null : feedbackTone(feedback)).toBe('variant');
+  });
+
+  it('returns to the normal label once the turn works again', () => {
+    const feedback = turnFeedback({ ...base, turn: turn({ state: 'thinking', reason: null }) });
+    expect(feedback?.label).toBe('Thinking…');
   });
 
   it('ignores any other thinking reason text', () => {

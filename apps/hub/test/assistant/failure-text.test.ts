@@ -5,7 +5,7 @@ import { reasonWithActions } from '../../src/assistant/failure-reason';
 import { networkFailure } from '../../src/openrouter/errors';
 
 const EDIT: HubTool = {
-  name: 'edit_automation',
+  name: 'automation_edit',
   title: 'Edit an automation',
   description: 'Adds, changes or removes an automation',
   inputSchema: {},

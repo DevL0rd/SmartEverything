@@ -18,7 +18,10 @@ import { filesUnder, repositoryRoot as root } from './repository-files';
 
 const ROUTE = z.union([
   z.object({ part: z.string() }),
-  z.object({ key: z.string(), parts: z.record(z.string(), z.string()) }),
+  z.object({
+    key: z.string(),
+    branches: z.record(z.string(), z.object({ part: z.string(), line: z.string() })),
+  }),
   z.object({ compose: z.array(z.string()) }),
   z.object({ custom: z.literal(true) }),
 ]);
@@ -29,7 +32,8 @@ const DOMAIN = z.object({
   MCP_OPERATION_TOOLS: z.array(z.tuple([z.string(), z.string()])),
   MCP_ROUTES: z.map(z.string(), ROUTE),
   MCP_TOOLS: z.array(z.object({ name: z.string(), description: z.string() })),
-  MCP_PART_TEXTS: z.array(z.object({ name: z.string(), description: z.string() })),
+  MCP_TOOL_DOMAINS: z.array(z.string()),
+  looksLikeMcpTool: z.custom<(word: string) => boolean>((value) => typeof value === 'function'),
 });
 const GUIDE = z.object({ TOOL_GUIDE: z.string() });
 const INSTRUCTIONS = z.object({
@@ -41,30 +45,37 @@ const HUB_TOOLS = z.object({
   TOOLS: z.array(z.object({ name: z.string(), listing: z.unknown() })),
 });
 const CATALOGUE = z.object({
-  skills: z.array(z.object({ name: z.string(), content: z.string() })),
+  skills: z.array(z.object({ name: z.string(), description: z.string(), content: z.string() })),
 });
 
+const DESCRIPTION_MAX = 1024;
+const BODY_MAX = 20_000;
+const FRONT_MATTER = /^---\nname: ([a-z0-9-]+)\ndescription: (.+)\n---\n/u;
+
 const OUTSIDE_NAMES = {
-  dispatcher: ['call_tool'],
+  dispatcher: ['tool_call'],
   nativeAgent: ['apply_patch'],
   nativeComputer: [
     'read_image',
     'set_working_directory',
-    'publish_file_preview',
-    'publish_preview',
-    'revoke_preview',
   ],
-  liveCall: ['end_conversation', 'stop_looking'],
-  settingKey: ['claude_skills_enabled', 'call_audio', 'camera_notifications'],
-  fieldName: [
-    'refresh_token',
-    'read_at',
-    'tool_switches',
-    'ai_listens',
-    'record_events',
-    'ai_defaults',
-    'claude_link_auto',
+  liveCall: ['conversation_end', 'sight_stop', 'task_start'],
+  settingKey: ['claude_skills_enabled', 'call_audio', 'camera_notifications', 'health_sync'],
+  capabilityKey: ['remote_control'],
+  sharedSchema: [
+    'automation_program',
+    'custom_node_program',
+    'automation_layout',
+    'claude_cli_settings',
+    'claude_settings',
+    'codex_settings',
+    'phone_action',
+    'assistant_voice',
+    'claude_cli_action',
+    'claude_answer',
+    'engine',
   ],
+  fieldName: ['refresh_token', 'read_at', 'ai_defaults', 'person_id'],
   actionValue: [
     'set_member',
     'set_mode_order',
@@ -75,7 +86,14 @@ const OUTSIDE_NAMES = {
     'set_secret',
     'remove_secret',
     'open_settings',
+    'assign_reading',
+    'speech_sources',
+    'create_node',
+    'save_node',
+    'remove_node',
   ],
+  fieldValue: ['open_food_facts'],
+  pluginTool: ['save_profile'],
   settingsPage: ['write_settings'],
 } as const;
 const TOOL_LOOKING = /(?<![\w-])[a-z]+(?:_[a-z]+)+(?![\w-])/g;
@@ -96,6 +114,7 @@ interface Names {
   readonly known: ReadonlySet<string>;
   readonly verbs: ReadonlySet<string>;
   readonly publicForm: ReadonlyMap<string, string>;
+  readonly looksLikeTool: (word: string) => boolean;
 }
 
 function publicForms(domain: z.infer<typeof DOMAIN>): ReadonlyMap<string, string> {
@@ -103,21 +122,29 @@ function publicForms(domain: z.infer<typeof DOMAIN>): ReadonlyMap<string, string
   for (const [tool, route] of domain.MCP_ROUTES) {
     if ('part' in route) forms.set(route.part, tool);
     if ('compose' in route) for (const part of route.compose) forms.set(part, tool);
-    if ('parts' in route)
-      for (const [value, part] of Object.entries(route.parts))
-        forms.set(part, `${tool} ${route.key} ${value}`);
+    if ('branches' in route)
+      for (const [value, branch] of Object.entries(route.branches))
+        forms.set(branch.part, `${tool} ${route.key} ${value}`);
   }
   for (const [tool, operation] of domain.MCP_OPERATION_TOOLS)
-    if (!forms.has(tool)) forms.set(tool, `call_operation ${operation}`);
+    if (!forms.has(tool)) forms.set(tool, `operation_call ${operation}`);
   return forms;
 }
 
 function namesOf(domain: z.infer<typeof DOMAIN>): Names {
   const known = new Set([...domain.MCP_TOOL_NAMES, ...Object.values(OUTSIDE_NAMES).flat()]);
+  const domains = new Set(domain.MCP_TOOL_DOMAINS);
   const verbs = new Set(
-    [...domain.MCP_TOOL_NAMES, ...domain.MCP_PART_NAMES].map((name) => name.split('_')[0] ?? ''),
+    domain.MCP_PART_NAMES.map((name) => name.split('_')[0] ?? '').filter(
+      (verb) => !domains.has(verb),
+    ),
   );
-  return { known, verbs, publicForm: publicForms(domain) };
+  return {
+    known,
+    verbs,
+    publicForm: publicForms(domain),
+    looksLikeTool: domain.looksLikeMcpTool,
+  };
 }
 
 function missingTools(text: string, names: Names): readonly string[] {
@@ -125,7 +152,7 @@ function missingTools(text: string, names: Names): readonly string[] {
     .map((match) => match[0])
     .filter((token) => {
       const [verb = ''] = token.split('_');
-      return names.verbs.has(verb) && !names.known.has(token);
+      return (names.verbs.has(verb) || names.looksLikeTool(token)) && !names.known.has(token);
     });
 }
 
@@ -191,7 +218,7 @@ describe('the tool-name check', () => {
   it('flags a part that is not a public tool and names its public form', () => {
     const [token = ''] = missingTools('match keys from list_signal_kinds', names);
     expect(describeMissing(token, names)).toBe(
-      'list_signal_kinds (public form: read_signals view kinds)',
+      'list_signal_kinds (public form: signal_read view kinds)',
     );
   });
 
@@ -199,9 +226,16 @@ describe('the tool-name check', () => {
     expect(missingTools('call list_everything first', names)).toEqual(['list_everything']);
   });
 
+  it('flags a domain_verb name that is not a tool, and an old verb_noun name', () => {
+    expect(missingTools('use device_start, then find_devices', names)).toEqual([
+      'device_start',
+      'find_devices',
+    ]);
+  });
+
   it('accepts public tools, the dispatcher and ordinary snake_case words', () => {
     expect(
-      missingTools('read_signals view kinds, call_tool, energy_in, baby_cry, tool_details', names),
+      missingTools('signal_read view kinds, tool_call, energy_in, baby_cry, tool_read', names),
     ).toEqual([]);
   });
 
@@ -212,10 +246,88 @@ describe('the tool-name check', () => {
   });
 });
 
+const CODE_ROOTS: readonly string[] = ['packages', 'apps/hub/src'];
+
+const SKIPPED_FOLDERS: ReadonlySet<string> = new Set(['node_modules', 'dist', 'out', 'build']);
+
+function sourceFiles(from: string): readonly string[] {
+  return readdirSync(from, { withFileTypes: true }).flatMap((entry) => {
+    const at = join(from, entry.name);
+    if (entry.isDirectory()) return SKIPPED_FOLDERS.has(entry.name) ? [] : sourceFiles(at);
+    return entry.isFile() && entry.name.endsWith('.ts') ? [at] : [];
+  });
+}
+
+let words: ReadonlySet<string> | null = null;
+
+function codeWords(): ReadonlySet<string> {
+  if (words !== null) return words;
+  const found = new Set<string>();
+  for (const path of CODE_ROOTS)
+    for (const file of sourceFiles(join(root, path)))
+      for (const match of readFileSync(file, 'utf8').matchAll(/[A-Za-z_][A-Za-z0-9_]*/gu))
+        found.add(match[0]);
+  words = found;
+  return found;
+}
+
+const LISTED = z.object({
+  inputSchema: z.object({ properties: z.record(z.string(), z.unknown()).optional() }),
+});
+
+function topParameters(tools: z.infer<typeof HUB_TOOLS>['TOOLS']): ReadonlySet<string> {
+  return new Set(
+    tools.flatMap((tool) => Object.keys(LISTED.parse(tool.listing).inputSchema.properties ?? {})),
+  );
+}
+
+function camelOf(word: string): string {
+  return word.replace(/_([a-z0-9])/gu, (_match, letter: string) => letter.toUpperCase());
+}
+
+interface Vocabulary {
+  readonly known: ReadonlySet<string>;
+  readonly code: ReadonlySet<string>;
+  readonly parameters: ReadonlySet<string>;
+  readonly selectors: ReadonlySet<string>;
+}
+
+function driftOf(text: string, vocabulary: Vocabulary): readonly string[] {
+  const camel = [...text.matchAll(/`([a-z]+[A-Z][A-Za-z0-9]*)`/gu)]
+    .map((match) => match[1] ?? '')
+    .filter((word) => !vocabulary.code.has(word))
+    .map((word) => `${word} (no such name in the code)`);
+  const snake = [...text.matchAll(/`([a-z]+(?:_[a-z0-9]+)+)`/gu)]
+    .map((match) => match[1] ?? '')
+    .filter((word) => vocabulary.parameters.has(camelOf(word)) && !vocabulary.known.has(word))
+    .map((word) => `${word} (the parameter is ${camelOf(word)})`);
+  const selectors = [...text.matchAll(/\b(?:action|view) `([a-z_]+)`/gu)]
+    .map((match) => match[1] ?? '')
+    .filter((value) => !vocabulary.selectors.has(value))
+    .map((value) => `${value} (no tool has this action or view)`);
+  return [...camel, ...snake, ...selectors];
+}
+
 describe('the product skills', () => {
   const folders = readdirSync(join(root, 'packages/harness/skills'), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
+
+  it.each(folders)('%s names only fields and selector values that exist', async (folder) => {
+    const { TOOLS } = await load('apps/hub/src/extensions/mcp/tools/index.ts', HUB_TOOLS);
+    const vocabulary: Vocabulary = {
+      known: names.known,
+      code: codeWords(),
+      parameters: topParameters(TOOLS),
+      selectors: new Set(
+        [...domain.MCP_ROUTES.values()].flatMap((route) =>
+          'branches' in route ? Object.keys(route.branches) : [],
+        ),
+      ),
+    };
+    const text = readFileSync(join(root, 'packages/harness/skills', folder, 'SKILL.md'), 'utf8');
+    expect(driftOf(text, vocabulary)).toEqual([]);
+  });
 
   it('finds the skills it judges', () => {
     expect(folders.length).toBeGreaterThanOrEqual(10);
@@ -225,6 +337,22 @@ describe('the product skills', () => {
     const text = readFileSync(join(root, 'packages/harness/skills', folder, 'SKILL.md'), 'utf8');
     expect(missingTools(text, names).map((token) => describeMissing(token, names))).toEqual([]);
   });
+
+  it.each(folders)(
+    '%s triggers on a bounded description with a boundary and stays short',
+    (folder) => {
+      const text = readFileSync(join(root, 'packages/harness/skills', folder, 'SKILL.md'), 'utf8');
+      const [, name = '', description = ''] = FRONT_MATTER.exec(text) ?? [];
+      expect(name).toBe(folder);
+      expect(description.length).toBeGreaterThan(80);
+      expect(description.length).toBeLessThanOrEqual(DESCRIPTION_MAX);
+      expect(description).toMatch(/\bnot for\b/iu);
+      expect(text.length - (FRONT_MATTER.exec(text)?.[0].length ?? 0)).toBeLessThanOrEqual(
+        BODY_MAX,
+      );
+      expect(text).not.toMatch(/\b(MUST|NEVER|ALWAYS)\b/u);
+    },
+  );
 
   it('ships generated skills that name only tools that exist', () => {
     const catalogue = CATALOGUE.parse(
@@ -262,7 +390,7 @@ describe('the texts the model reads', () => {
   });
 
   it('has catalogue descriptions that name only tools that exist', () => {
-    const findings = [...domain.MCP_TOOLS, ...domain.MCP_PART_TEXTS].flatMap((tool) =>
+    const findings = domain.MCP_TOOLS.flatMap((tool) =>
       missingTools(tool.description, names).map(
         (token) => `${tool.name}: ${describeMissing(token, names)}`,
       ),

@@ -11,7 +11,7 @@ import type { AssistantServiceOptions } from './service-contract';
 export function assistantDelivery(
   options: AssistantServiceOptions,
   engines: EngineRegistry,
-  ports: Pick<DeliveryOptions, 'admit' | 'delivered' | 'failed'>,
+  ports: Pick<DeliveryOptions, 'admit' | 'delivered' | 'failed' | 'retrying' | 'stopped'>,
 ): AssistantDelivery {
   return new AssistantDelivery({
     events: options.store.assistantEvents,

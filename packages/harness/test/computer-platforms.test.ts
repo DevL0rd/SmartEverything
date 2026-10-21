@@ -4,22 +4,13 @@ import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  AI_PREVIEW_CAPABILITY,
   HARNESS_CONFIGURATION_CAPABILITY,
   HARNESS_SUBSCRIPTION_CAPABILITY,
   type AiModelRoute,
   type HarnessPlatform,
 } from '@smarteverything/domain';
 import { createComputerHarness, type ComputerHarness } from '../src/process/computer';
-import type { NativePreviewAdapter } from '../src/process/preview-tools';
 import { HarnessRuntimeError } from '../src/host/errors';
-
-const PREVIEW: NativePreviewAdapter = {
-  publish: () => Promise.reject(new Error('The test host publishes no previews.')),
-  forget: (): void => undefined,
-  registerFile: (): void => undefined,
-  reportFileFailure: (): void => undefined,
-};
 
 function route(): AiModelRoute {
   const profile = randomUUID();
@@ -73,7 +64,6 @@ async function compose(platform: HarnessPlatform): Promise<ComputerHarness> {
           ? Promise.resolve([])
           : Promise.reject(new Error(`The test hub does not answer ${request.operation}.`)),
     },
-    { preview: PREVIEW },
   );
   return harness;
 }
@@ -104,7 +94,6 @@ describe('a Windows computer harness', () => {
     const { hello } = await compose('windows');
 
     expect(hello.capabilities).toContain(HARNESS_CONFIGURATION_CAPABILITY);
-    expect(hello.capabilities).toContain(AI_PREVIEW_CAPABILITY);
     expect(hello.capabilities).not.toContain(HARNESS_SUBSCRIPTION_CAPABILITY);
     expect(hello.manifest.subscription_inference).toBeUndefined();
     expect(hello.manifest.subscription_consumer).toStrictEqual({ protocol: 1 });

@@ -134,9 +134,9 @@ describe('connecting an assistant', () => {
       await rpc(booted.base, tokens.access_token, {
         method: 'tools/call',
         params: {
-          name: 'control_devices',
+          name: 'device_control',
           arguments: {
-            changes: [{ target: { deviceIds: [lamp?.id] }, capability: 'brightness', value: 40 }],
+            deviceIds: [lamp?.id], capability: 'brightness', value: 40,
           },
         },
       }),

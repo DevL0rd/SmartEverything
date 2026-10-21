@@ -37,7 +37,7 @@ export function createBrowserView(target: BrowserTarget, owner: number): WebCont
     targets.delete(contentsId);
     log.debug('browser.view_destroyed', { contentsId, open: targets.size });
   });
-  if (target.kind === 'native-html') {
+  if (target.kind === 'project') {
     const projection = desktopHtml();
     if (projection === null) {
       log.warn('browser.projection_missing', { contentsId, kind: target.kind });
@@ -102,10 +102,10 @@ function configureSession(isolated: Session): void {
       details.webContentsId === undefined ? undefined : targets.get(details.webContentsId);
     const value = details.url.replace(/^wss:/, 'https:');
     const inline =
-      target?.kind === 'native-html' &&
+      target?.kind === 'project' &&
       ['data:', 'blob:'].some((scheme) => value.startsWith(scheme));
     const external =
-      target?.kind === 'native-html' &&
+      target?.kind === 'project' &&
       details.resourceType !== 'mainFrame' &&
       publicBrowserUrl(value);
     answer({
@@ -119,7 +119,7 @@ function configureSession(isolated: Session): void {
 }
 function browserSession(target: BrowserTarget): Session {
   const partition =
-    target.kind !== 'preview' && target.profileId !== undefined
+    target.kind === 'public' && target.profileId !== undefined
       ? `persist:smarteverything-public-${target.profileId}`
       : `browser-${target.kind}-${randomUUID()}`;
   return session.fromPartition(partition);

@@ -3,13 +3,13 @@ import {
   CommandRefusedError,
   InvalidValueError,
   MCP_TOOLS,
-  currentToolCall,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { switchedOffTools } from '../../ai-tools/tool-discovery';
 import { StoreNotFoundError } from '../../store/context';
 import { TOOLS, shownOutput, toolNamed } from './tools';
 import { areaRefusal } from './tools/person-reach';
+import { readOnlyCaller, readOnlyRefusal, readsOnly } from './tools/read-only';
 import { toolInScope, visibleTools } from './tools/visibility';
 import {
   PLUGIN_ONLY_TOOLS,
@@ -158,20 +158,19 @@ export async function runTool(
   args: Readonly<Record<string, unknown>>,
   log: Logger,
 ): Promise<ToolRun> {
-  const requested = currentToolCall(name, args);
-  const tool = toolNamed(requested.name);
+  const tool = toolNamed(name);
   if (tool === undefined) {
     log.warn('tool.unknown', { tool: name, via: context.caller?.via });
     return { kind: 'unknown' };
   }
-  const fields = callFields(context, tool.name, requested.arguments);
-  if (requested.name !== name) {
-    log.debug('tool.renamed', () => ({ ...fields, requested: name }));
-  }
-  const unavailable = unavailability(context, tool.name, log);
+  const fields = callFields(context, tool.name, args);
+  const unavailable =
+    readOnlyCaller(context) && !readsOnly(tool, args)
+      ? { code: 'forbidden', message: readOnlyRefusal(tool) }
+      : unavailability(context, tool.name, log);
   if (unavailable !== null) {
     log.warn('tool.unavailable', { ...fields, refusal: unavailable.code });
     return { kind: 'refused', refusal: unavailable };
   }
-  return invoke(context, { tool, args: requested.arguments, fields }, log);
+  return invoke(context, { tool, args, fields }, log);
 }

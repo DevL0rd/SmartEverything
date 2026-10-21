@@ -29,7 +29,7 @@ const STATUS: Readonly<Record<ChatTimelineTool['state'], ActionStatus>> = {
   unknown: { label: 'Couldn’t confirm', icon: 'circle', tone: 'warning' },
 };
 
-const STARTED: ActionStatus = { ...STATUS.done, label: 'Started' };
+const FINISHED: ActionStatus = { ...STATUS.done, label: 'Finished' };
 
 function groupStatus(tools: readonly ChatTimelineTool[], live: boolean): ActionStatus {
   const states = tools.map((tool) => toolOutcome(tool, live));
@@ -38,7 +38,7 @@ function groupStatus(tools: readonly ChatTimelineTool[], live: boolean): ActionS
   if (failures > 0) return { ...STATUS.failed, label: `${String(failures)} failed` };
   if (states.includes('unknown')) return STATUS.unknown;
   if (states.includes('interrupted')) return STATUS.interrupted;
-  return tools.some((tool) => tool.image_operation_id !== null) ? STARTED : STATUS.done;
+  return tools.some((tool) => tool.image_operation_id !== null) ? FINISHED : STATUS.done;
 }
 
 const StatusIcon = memo(function StatusIcon({
@@ -61,7 +61,8 @@ const ToolAction = memo(function ToolAction({
   readonly live: boolean;
 }): ReactNode {
   const outcome = toolOutcome(tool, live);
-  const status = outcome === 'done' && tool.image_operation_id !== null ? STARTED : STATUS[outcome];
+  const status =
+    outcome === 'done' && tool.image_operation_id !== null ? FINISHED : STATUS[outcome];
   const result = outcome === 'done' ? null : toolResultLine(tool, live);
   return (
     <View className="gap-1 py-1.5" accessibilityLabel={`${title}. ${status.label}`}>
@@ -176,11 +177,7 @@ const GroupDisclosure = memo(function GroupDisclosure({
 
 const ToolGroup = memo(function ToolGroup(props: GroupProps): ReactNode {
   return props.tools.length === 1 ? (
-    <GroupBody
-      activities={props.activities}
-      live={props.live}
-      pluginName={props.pluginName}
-    />
+    <GroupBody activities={props.activities} live={props.live} pluginName={props.pluginName} />
   ) : (
     <GroupDisclosure {...props} />
   );

@@ -46,7 +46,7 @@ export function targetCapability(
   );
 }
 
-function targetValue(
+export function targetValue(
   presented: PresentedCapability,
   value: JsonValue,
   percent: boolean,

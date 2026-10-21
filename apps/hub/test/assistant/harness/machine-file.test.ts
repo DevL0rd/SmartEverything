@@ -10,7 +10,7 @@ useRig((made) => {
 });
 
 const READ_FILES: HubTool = {
-  name: 'read_files',
+  name: 'file_read',
   title: 'Read files',
   description: 'Read a file',
   inputSchema: {},
@@ -47,7 +47,7 @@ function ownerCaller(): ToolCaller {
 }
 
 describe('reading a file from another machine for a plugin', () => {
-  it('reads it with the same read_files tool the AI uses and returns the bytes', async () => {
+  it('reads it with the same file_read tool the AI uses and returns the bytes', async () => {
     const asked: Record<string, unknown>[] = [];
     const read = machineFileReader({
       tools: toolsReturning(

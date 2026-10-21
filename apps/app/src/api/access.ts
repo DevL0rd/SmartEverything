@@ -3,6 +3,7 @@ import {
   MCP_PATHS,
   type McpApprovalCode,
   type McpConsentDecision,
+  type McpTokenAccess,
   isMcpToolName,
   type PublicUrlCheck,
 } from '@smarteverything/domain';
@@ -22,8 +23,8 @@ export async function createApprovalCode(): Promise<McpApprovalCode> {
   return code;
 }
 
-export async function createMcpToken(name: string): Promise<string> {
-  const created = await api().call(E.createMcpToken, { body: { name } });
+export async function createMcpToken(name: string, access: McpTokenAccess): Promise<string> {
+  const created = await api().call(E.createMcpToken, { body: { name, access } });
   log.info('mcp_token.created');
   return created.token;
 }

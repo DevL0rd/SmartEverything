@@ -13,34 +13,34 @@ import {
 } from './registry';
 
 export const CHANGED_BY = {
-  home_name: 'update_settings action home',
-  time_zone: 'update_settings action home',
-  latitude: 'update_settings action home or location',
-  longitude: 'update_settings action home or location',
-  public_url: 'call_operation setPublicUrl, then verifyPublicUrl',
-  ice_servers: 'call_operation updateNetwork',
-  webrtc_candidates: 'call_operation updateNetwork',
-  push: 'call_operation setPushAccount or clearPushAccount',
-  mcp_disabled_tools: 'update_settings action tools',
-  ir_remotes: 'call_operation updateIrRemote (remote ids from get_device or list_remotes)',
-  end_of_speech_pause_ms: 'call_operation updateListeningSettings',
-  ear_host_device_id: 'call_operation updateListeningSettings',
-  device_refills: 'call_operation recordDeviceRefill',
-  laundry_notices: 'call_operation updateLaundryNotices',
-  history_settings: 'call_operation updateHistorySettings',
-  trigger_settings: 'call_operation updateTriggerSettings',
-  location_name: 'update_settings action location',
-  fitness_goals: 'edit_person action goals',
-  max_heart_rate: 'edit_person action goals',
-  push_project_id: 'call_operation setPushAccount or clearPushAccount',
-  goals: 'edit_person action goals',
-  preferences: 'update_settings action preference',
-  layouts: 'call_operation saveLayout (page = home, climate, fitness or cameras)',
-  rooms: 'edit_room',
-  people: 'edit_person',
+  home_name: 'settings_edit action home',
+  time_zone: 'settings_edit action home',
+  latitude: 'settings_edit action home or location',
+  longitude: 'settings_edit action home or location',
+  public_url: 'operation_call setPublicUrl, then verifyPublicUrl',
+  ice_servers: 'operation_call updateNetwork',
+  webrtc_candidates: 'operation_call updateNetwork',
+  push: 'operation_call setPushAccount or clearPushAccount',
+  mcp_disabled_tools: 'settings_edit action tools',
+  ir_remotes: 'operation_call updateIrRemote (remote ids from device_read or remote_find)',
+  end_of_speech_pause_ms: 'operation_call updateListeningSettings',
+  ear_host_device_id: 'operation_call updateListeningSettings',
+  device_refills: 'operation_call recordDeviceRefill',
+  laundry_notices: 'operation_call updateLaundryNotices',
+  history_settings: 'operation_call updateHistorySettings',
+  trigger_settings: 'operation_call updateTriggerSettings',
+  location_name: 'settings_edit action location',
+  fitness_goals: 'person_edit action goals',
+  max_heart_rate: 'person_edit action goals',
+  push_project_id: 'operation_call setPushAccount or clearPushAccount',
+  goals: 'person_edit action goals',
+  preferences: 'settings_edit action preference',
+  layouts: 'operation_call saveLayout (page = home, climate, fitness or cameras)',
+  rooms: 'room_edit',
+  people: 'person_edit',
   devices:
-    'edit_device action device (name, room, hidden, favourite, position, a television’s input_names and wake_address); device options with control_devices',
-  cameras: 'edit_device action camera (save event clips); camera options with control_devices',
+    'device_edit action device (name, room, hidden, favourite, position, a television’s input_names and wake_address); device options with device_control',
+  cameras: 'device_edit action camera (save event clips); camera options with device_control',
 } as const;
 
 const CLIENT = z
@@ -78,7 +78,7 @@ async function settings(context: ToolContext, as: ActingAs): Promise<Record<stri
 
 export const SETTINGS_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'get_settings',
+    name: 'settings_read',
     input: z.strictObject({ personId: PERSON, clientId: CLIENT }),
     annotations: READS,
     run: async (context, input) => ({ structured: await settings(context, input) }),
@@ -86,10 +86,10 @@ export const SETTINGS_TOOLS: readonly Tool[] = [
   defineTool({
     name: 'set_preference',
     input: z.strictObject({
-      preference: z.enum(CLIENT_PREF_KEYS).describe('Which preference; get_settings lists them'),
+      preference: z.enum(CLIENT_PREF_KEYS).describe('Which preference; settings_read lists them'),
       value: z
         .record(z.string(), z.unknown())
-        .describe('Only the fields to change, with values from get_settings › allowed'),
+        .describe('Only the fields to change, with values from settings_read › allowed'),
       personId: PERSON,
       clientId: CLIENT,
     }),

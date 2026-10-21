@@ -3,9 +3,13 @@ import { toolTimelineDetails } from '../../src/assistant/conversation/tool-timel
 
 describe('tool timeline details', () => {
   it('shows the input of a settings tool and hides only its secret fields', () => {
-    const details = toolTimelineDetails('update_settings', {
-      input: { section: 'ai', theme: 'dark', apiKey: 'sk-live-value' },
-    });
+    const details = toolTimelineDetails(
+      'settings_edit',
+      {
+        input: { section: 'ai', theme: 'dark', apiKey: 'sk-live-value' },
+      },
+      'call-1',
+    );
 
     expect(details.input).toContain('"theme": "dark"');
     expect(details.input).toContain('"apiKey": "[redacted]"');
@@ -14,9 +18,13 @@ describe('tool timeline details', () => {
   });
 
   it('leaves a tool input without secret fields untouched', () => {
-    const details = toolTimelineDetails('edit_automation', {
-      input: { name: 'Porch light', authority: 'owner', url: 'https://example.com/hook' },
-    });
+    const details = toolTimelineDetails(
+      'automation_edit',
+      {
+        input: { name: 'Porch light', authority: 'owner', url: 'https://example.com/hook' },
+      },
+      'call-1',
+    );
 
     expect(details.input).toContain('"authority": "owner"');
     expect(details.input).toContain('https://example.com/hook');
@@ -24,7 +32,7 @@ describe('tool timeline details', () => {
   });
 
   it('shows text input as written', () => {
-    const details = toolTimelineDetails('run_command', { input: 'ls -la /home/user' });
+    const details = toolTimelineDetails('run_command', { input: 'ls -la /home/user' }, 'call-1');
 
     expect(details.input).toBe('ls -la /home/user');
   });

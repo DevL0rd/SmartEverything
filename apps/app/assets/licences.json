@@ -2020,6 +2020,11 @@
     "licence": "Apache-2.0"
   },
   {
+    "name": "androidx.webkit:webkit",
+    "version": "1.14.0",
+    "licence": "Apache-2.0"
+  },
+  {
     "name": "androidx.work:work-runtime-ktx",
     "version": "2.12.0",
     "licence": "Apache-2.0"

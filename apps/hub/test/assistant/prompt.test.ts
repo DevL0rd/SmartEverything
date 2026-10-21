@@ -18,7 +18,7 @@ function facts(change: Partial<PromptFacts>): PromptFacts {
     boardTypes: [],
     interruption: null,
     instructions: 'Keep it short.',
-    toolIndex: 'get_weather: The weather now.',
+    toolIndex: 'weather_read: The weather now.',
     catalogue: 'fan_boost(speed: integer): Boosts the fan.',
     chat: { id: 'chat-1', title: 'New chat', kind: 'chat' },
     ...change,
@@ -44,7 +44,7 @@ describe('the stable prompt prefix', () => {
 
   it('lists every enabled tool, the plugin catalogue and the owner instructions', () => {
     const text = stablePrompt(facts({}));
-    expect(text).toContain('get_weather: The weather now.');
+    expect(text).toContain('weather_read: The weather now.');
     expect(text).toContain('fan_boost(speed: integer)');
     expect(text).toContain('Owner instructions:\nKeep it short.');
     expect(stablePrompt(facts({ toolIndex: '', catalogue: '', instructions: '' }))).not.toContain(
@@ -63,7 +63,7 @@ describe('the per-turn prompt', () => {
 
   it('names the plugin board types of the home, and nothing when there are none', () => {
     expect(turnPrompt(facts({ boardTypes: ['router', 'aibi'] }))).toContain(
-      'Board types for show_widgets kind board: router, aibi.',
+      'Board types for widget_show kind board: router, aibi.',
     );
     expect(turnPrompt(facts({}))).not.toContain('Board types');
   });
@@ -100,9 +100,7 @@ describe('what the AI is told about dates, changes and widgets', () => {
   it('makes no change to an automation, scene or schedule that nobody asked for', () => {
     const text = stablePrompt(facts({}));
     expect(text).toMatch(/only when the person asked for that; otherwise suggest it in words/u);
-    expect(text).toContain(
-      'look for the tool (search_tools, list_operations) before saying you cannot',
-    );
+    expect(text).toContain('look for the tool with tool_search before saying you cannot');
   });
 
   it('keeps widgets off short answers, commands and brief replies instead of always attaching one', () => {

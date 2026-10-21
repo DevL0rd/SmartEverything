@@ -9,8 +9,8 @@ const ID = '20000000-0000-4000-8000-000000000001';
 function power(deviceId: string, value: boolean): Record<string, unknown> {
   return {
     kind: 'tool',
-    tool: 'control_devices',
-    args: { changes: [{ target: { deviceIds: [deviceId] }, capability: 'power', value }] },
+    tool: 'device_control',
+    args: { deviceIds: [deviceId], capability: 'power', value },
   };
 }
 
@@ -56,10 +56,8 @@ describe('television sleep timer', () => {
         steps: [
           {
             kind: 'tool',
-            tool: 'control_devices',
-            args: {
-              changes: [{ target: { deviceIds: [TV] }, capability: 'power', value: false }],
-            },
+            tool: 'device_control',
+            args: { deviceIds: [TV], capability: 'power', value: false },
           },
         ],
       },

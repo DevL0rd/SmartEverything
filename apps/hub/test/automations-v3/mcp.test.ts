@@ -32,18 +32,18 @@ const TOOLS = z.array(
 type Kind = 'read' | 'write' | 'destructive';
 
 const AUTOMATION_TOOLS: Readonly<Record<string, Kind>> = {
-  list_automations: 'read',
-  edit_automation: 'write',
-  run_automation: 'write',
-  read_automation_runs: 'read',
-  stop_automation: 'write',
-  list_values: 'read',
-  edit_value: 'write',
-  list_scenes: 'read',
-  edit_scene: 'write',
-  run_scene: 'destructive',
-  list_scheduled: 'read',
-  edit_schedule: 'write',
+  automation_read: 'read',
+  automation_edit: 'destructive',
+  automation_run: 'write',
+  automation_runs_read: 'read',
+  automation_stop: 'write',
+  value_read: 'read',
+  value_edit: 'destructive',
+  scene_find: 'read',
+  scene_edit: 'destructive',
+  scene_run: 'destructive',
+  schedule_find: 'read',
+  schedule_edit: 'destructive',
 };
 
 async function call(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -62,13 +62,18 @@ async function stored(): Promise<readonly { readonly id: string; readonly name: 
 }
 
 async function create(name: string, definition = turnOn()): Promise<string> {
-  return CREATED.parse(await call('edit_automation', { action: 'create', name, definition })).id;
+  return CREATED.parse(await call('automation_edit', { action: 'create', name, definition })).id;
 }
 
 describe('MCP parity for automations', () => {
   it('offers a tool for every automation capability with the right read, write and destructive marking', async () => {
     const result = await resultOf(
-      await rpc(rig().booted.base, await rig().mcp(), { method: 'tools/list' }),
+      await rpc(
+        rig().booted.base,
+        await rig().mcp(),
+        { method: 'tools/list' },
+        { 'user-agent': 'claude-code/2.1' },
+      ),
     );
     const tools = new Map(TOOLS.parse(result['tools']).map((tool) => [tool.name, tool]));
     const kinds = Object.keys(AUTOMATION_TOOLS).map((name) => {
@@ -82,26 +87,26 @@ describe('MCP parity for automations', () => {
 
   it('creates, lists, runs and removes an automation through the same hub handlers', async () => {
     const created = CREATED.parse(
-      await call('edit_automation', { action: 'create', name: 'By AI', definition: turnOn() }),
+      await call('automation_edit', { action: 'create', name: 'By AI', definition: turnOn() }),
     );
     expect(created).toMatchObject({ ok: true, revision: 1 });
     expect((await stored()).map((row) => row.name)).toStrictEqual(['By AI']);
-    expect(JSON.stringify(await call('list_automations', { view: 'summary' }))).toContain('By AI');
+    expect(JSON.stringify(await call('automation_read', { view: 'summary' }))).toContain('By AI');
     const ran = STARTED.parse(
-      await call('run_automation', { automationId: created.id, wait: true }),
+      await call('automation_run', { automationId: created.id, wait: true }),
     );
     expect(ran).toMatchObject({ ok: true, status: 'finished' });
-    const [run] = RUN_LIST.parse(await call('read_automation_runs', { view: 'list' })).result;
+    const [run] = RUN_LIST.parse(await call('automation_runs_read', { view: 'list' })).result;
     expect(run).toMatchObject({ id: ran.id, status: 'succeeded' });
     expect(rig().sent()).toStrictEqual([['lamp-1', 'power', true]]);
-    await call('edit_automation', { action: 'remove', automationId: created.id });
+    await call('automation_edit', { action: 'remove', automationId: created.id });
     expect(await stored()).toHaveLength(0);
   });
 
   it('checks a program without saving it and refuses an unknown node kind', async () => {
-    const good = await call('edit_automation', { action: 'check', body: { definition: turnOn() } });
+    const good = await call('automation_edit', { action: 'check', body: { definition: turnOn() } });
     expect(good).toMatchObject({ ok: true });
-    const bad = await call('edit_automation', {
+    const bad = await call('automation_edit', {
       action: 'check',
       body: { definition: programOf([], [node('no.such.kind')]) },
     });
@@ -110,7 +115,7 @@ describe('MCP parity for automations', () => {
   });
 
   it('reads the node catalog before a program is written', async () => {
-    const catalog = CATALOG.parse(await call('list_automations', { view: 'catalog' }));
+    const catalog = CATALOG.parse(await call('automation_read', { view: 'catalog' }));
     const kinds = catalog.result.nodes.map((entry) => entry.kind);
     expect(kinds).toContain('device.set');
     expect(kinds).toContain('flow.wait');
@@ -122,7 +127,7 @@ describe('MCP parity for automations', () => {
   it('dry runs record the commands without sending them', async () => {
     const id = await create('Dry');
     const ran = REHEARSED.parse(
-      await call('run_automation', { automationId: id, mode: 'dry', wait: true }),
+      await call('automation_run', { automationId: id, mode: 'dry', wait: true }),
     );
     expect(ran.ok).toBe(true);
     expect(rig().sent()).toStrictEqual([]);
@@ -157,12 +162,12 @@ describe('MCP parity for automations', () => {
     };
     const sentTo = async (extra: Record<string, unknown>): Promise<unknown> =>
       COMMANDS.parse(
-        await call('run_automation', { automationId: id, mode: 'dry', wait: true, ...extra }),
+        await call('automation_run', { automationId: id, mode: 'dry', wait: true, ...extra }),
       ).rehearsal.commands[0]?.params['to'];
     expect(await sentTo({ trigger: { key: button.key, signal } })).toBe(true);
     expect(await sentTo({ trigger: { key: change.key } })).toBe(false);
     expect(await sentTo({})).toBe(false);
-    const wrong = await callTool(rig().booted.base, await rig().mcp(), 'run_automation', {
+    const wrong = await callTool(rig().booted.base, await rig().mcp(), 'automation_run', {
       automationId: id,
       mode: 'dry',
       trigger: { key: 'nope' },
@@ -189,7 +194,7 @@ describe('MCP parity for automations', () => {
     const modes = [{ mode: 'dry' }, { mode: 'simulate', scenario: { start: NOW } }];
     const sentTo = async (mode: object, key: string): Promise<unknown> =>
       COMMANDS.parse(
-        await call('run_automation', { automationId: id, ...mode, wait: true, trigger: { key } }),
+        await call('automation_run', { automationId: id, ...mode, wait: true, trigger: { key } }),
       ).rehearsal.commands[0]?.params['to'];
     for (const mode of modes) {
       expect(await sentTo(mode, button.key)).toBe(true);
@@ -200,21 +205,21 @@ describe('MCP parity for automations', () => {
 
   it('starts a run that can be read and stopped', async () => {
     const id = await create('Slow', programOf([], [node('flow.wait', { duration: 600_000 })]));
-    const { id: runId } = STARTED.parse(await call('run_automation', { automationId: id }));
+    const { id: runId } = STARTED.parse(await call('automation_run', { automationId: id }));
     const statusOf = async (): Promise<string> =>
-      RUN.parse(await call('read_automation_runs', { view: 'run', runId })).result.run.status;
+      RUN.parse(await call('automation_runs_read', { view: 'run', runId })).result.run.status;
     await rig().until(async () => ['running', 'waiting'].includes(await statusOf()));
-    await call('stop_automation', { action: 'automation', automationId: id });
+    await call('automation_stop', { action: 'automation', automationId: id });
     await rig().until(async () => (await statusOf()) === 'cancelled');
   });
 
   it('creates a Value and applies an operation to it', async () => {
-    const created = await call('edit_value', {
+    const created = await call('value_edit', {
       action: 'create',
       content: { kind: 'number', name: 'Level', value: 4, bounds: { overflow: 'reject' } },
     });
     const valueId = VALUE.parse(created).id;
-    await call('edit_value', {
+    await call('value_edit', {
       action: 'apply',
       valueId,
       body: { kind: 'number', operation: { type: 'add', value: 3 } },
@@ -223,26 +228,18 @@ describe('MCP parity for automations', () => {
     expect(value?.content).toMatchObject({ value: 7 });
   });
 
-  it('answers a call made under a retired tool name like the current tool', async () => {
-    await call('edit_value', {
-      action: 'create',
-      content: { kind: 'boolean', name: 'Away', value: false },
-    });
-    expect(await call('list_automation_values', {})).toStrictEqual(await call('list_values', {}));
-  });
-
   it('schedules a one-off action through the same scheduler as the app', async () => {
-    await call('edit_schedule', {
+    await call('schedule_edit', {
       action: 'create',
       timing: { kind: 'in', seconds: 30 },
       steps: [
         {
           kind: 'tool',
-          tool: 'control_devices',
+          tool: 'device_control',
           args: {
-            changes: [
-              { target: { deviceIds: [rig().ids.lamp] }, capability: 'power', value: true },
-            ],
+            deviceIds: [rig().ids.lamp],
+            capability: 'power',
+            value: true,
           },
         },
       ],

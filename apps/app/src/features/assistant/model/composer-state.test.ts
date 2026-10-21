@@ -238,25 +238,12 @@ describe('trayRowOf', () => {
   const waiting = {
     text: 'dim the lamp',
     attachments: [],
-    state: 'waiting',
-    reason: null,
   } as const;
   const idle = { fieldHasText: false, delivering: false };
 
   it('says a waiting message waits for the connection and offers edit and remove only', () => {
     expect(trayRowOf(waiting, idle)).toEqual({
       text: 'Waiting for connection · “dim the lamp”',
-      retry: false,
-      edit: 'enabled',
-      remove: true,
-    });
-  });
-
-  it('says why a failed message was not sent and offers retry', () => {
-    const failed = { ...waiting, state: 'failed', reason: 'No credits' } as const;
-    expect(trayRowOf(failed, idle)).toEqual({
-      text: 'Not sent · dim the lamp · No credits',
-      retry: true,
       edit: 'enabled',
       remove: true,
     });
@@ -273,7 +260,6 @@ describe('trayRowOf', () => {
   it('offers nothing to change while the message is being delivered', () => {
     expect(trayRowOf(waiting, { ...idle, delivering: true })).toEqual({
       text: 'Sending · “dim the lamp”',
-      retry: false,
       edit: 'absent',
       remove: false,
     });

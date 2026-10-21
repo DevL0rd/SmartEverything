@@ -53,9 +53,14 @@ export class DshRunner {
     reconcileNativeReplies(options.service.store, options.conversation, options.finished, (input) =>
       options.dispatcher.runtime.pendingInput(input),
     );
-    this.turns = new NativeDeliveryStreams(options, this.authorizeEvent.bind(this), (turn) => {
-      this.moves.atToolCall(turn);
-    });
+    this.turns = new NativeDeliveryStreams(
+      options,
+      this.authorizeEvent.bind(this),
+      (turn) => {
+        this.moves.atToolCall(turn);
+      },
+      (turn, deliveryId, text) => this.resume(turn, deliveryId, text),
+    );
     this.moves = new TurnMachineMoves(options.service, this.turns);
     for (const delivery of options.service.store.harnessDeliveries.pending()) {
       const event = options.service.store.assistantEvents.event(delivery.delivery_id);
@@ -104,7 +109,7 @@ export class DshRunner {
       deliver: (event, chat) => this.deliver(event, chat),
       steer: (event, chat) => this.steer(event, chat),
       interrupt: async (chat): Promise<void> => {
-        await this.control(chat, 'interrupt');
+        if (!this.turns.stopRetrying(chat.id)) await this.control(chat, 'interrupt');
       },
       compact: async (chat): Promise<boolean> => {
         const receipt = await this.control(chat, 'compact');
@@ -112,10 +117,11 @@ export class DshRunner {
           throw new ApiError('conflict', 'Native compaction returned no confirmed outcome.');
         return receipt.compacted;
       },
-      historyChanged: (chat, owner): Promise<void> =>
-        chat.engine.kind === 'dsh'
-          ? closeNativeHistory(this.service, chat, owner, this.turns.hasChat(chat.id))
-          : Promise.resolve(),
+      historyChanged: (chat, owner): Promise<void> => {
+        if (chat.engine.kind !== 'dsh') return Promise.resolve();
+        this.turns.stopRetrying(chat.id);
+        return closeNativeHistory(this.service, chat, owner, this.turns.hasChat(chat.id));
+      },
       historyRemoved: (chat, rows): void => {
         rewriteNativeHistory(this.service, chat, rows);
       },
@@ -159,6 +165,27 @@ export class DshRunner {
     await completed;
     trace.turnFinished(sessionId);
     await this.moves.atTurnEnd(chat.id);
+  }
+  private resume(turn: ActiveTurn, deliveryId: string, text: string): Promise<void> {
+    const authority = eventAuthority(this.service.store, turn.event);
+    return withExecutionAuthority(authority, async () => {
+      const chat = this.service.store.aiChats.chat(turn.chat.id);
+      this.authorizeEvent(turn.event, chat, await this.session(turn.event, chat));
+      const state = this.service.state(
+        { profileId: turn.event.profile_id, role: executionRole(authority) },
+        chat.id,
+      );
+      if (state.epoch === null)
+        throw new ApiError('conflict', 'Native writer authority is unavailable.');
+      await this.service.directory.execute(state.target, randomUUID(), {
+        kind: 'prompt',
+        session_id: state.session_id,
+        expected_epoch: state.epoch,
+        delivery_id: deliveryId,
+        text,
+        attachments: [],
+      });
+    });
   }
   private failAdmitted(event: StoredEvent, cause: unknown): void {
     const active = this.turns.active.get(event.id);

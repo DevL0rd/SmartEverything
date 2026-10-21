@@ -11,8 +11,6 @@ import {
   TALK_PATH,
   NODE_AI_PATH,
   NODE_HARNESS_PATH,
-  NODE_PREVIEW_PATH,
-  PREVIEW_DIAGNOSTICS_PATH,
   matchPath,
   type HttpMethod,
 } from '@smarteverything/domain';
@@ -288,9 +286,7 @@ async function upgrade(
     string,
     { readonly upgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void }
   >([
-    [PREVIEW_DIAGNOSTICS_PATH, options.context.preview.diagnosticSockets],
-    [EMBEDDED_BROWSER_PATH, options.context.preview.browserSockets],
-    [NODE_PREVIEW_PATH, options.context.preview.data],
+    [EMBEDDED_BROWSER_PATH, options.context.browser.sockets],
     [NODE_HARNESS_PATH, options.context.harnessSockets],
     [NODE_AI_PATH, options.context.nodeSockets],
   ]).get(url.pathname);

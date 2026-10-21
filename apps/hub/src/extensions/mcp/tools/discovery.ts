@@ -9,6 +9,9 @@ import {
   toolDetails,
 } from '../../../ai-tools/tool-discovery';
 import { scopedToolCall } from './authority';
+import { operationLookup } from './operation-details';
+import { toolExamples } from './examples';
+import { sharedSchemaNamed } from './shared-schemas';
 import { reachableAreas } from './person-reach';
 import { READS, ToolError, issuesOf, jsonSchemaOf, type Tool, type ToolContext } from './registry';
 import { visibleTools } from './visibility';
@@ -48,20 +51,24 @@ function discovered(
 
 function searchScope(context: ToolContext): SearchScope {
   const areas = reachableAreas(context);
-  return areas === undefined ? {} : { operationInScope: (area) => areas.includes(area) };
+  return {
+    operations: operationLookup((area) => areas === undefined || areas.includes(area)),
+    schema: sharedSchemaNamed,
+    examples: toolExamples,
+  };
 }
 
 export function discoveryTools(served: () => readonly Tool[]): Tool[] {
   return [
     {
-      name: 'search_tools',
-      listing: servedListing('search_tools', jsonSchemaOf(SEARCH_TOOLS_INPUT, 'input'), READS),
+      name: 'tool_search',
+      listing: servedListing('tool_search', jsonSchemaOf(SEARCH_TOOLS_INPUT, 'input'), READS),
       check: (_context, raw): string | null => {
         const result = SEARCH_TOOLS_INPUT.safeParse(raw);
         return result.success ? null : issuesOf(result.error);
       },
       call: async (context, raw) =>
-        await scopedToolCall(context, 'search_tools', (scoped) => ({
+        await scopedToolCall(context, 'tool_search', (scoped) => ({
           structured: discovered(() =>
             searchTools(
               (scoped.visibleTools?.() ?? visibleTools(served(), scoped)).map(discoverable),
@@ -72,18 +79,19 @@ export function discoveryTools(served: () => readonly Tool[]): Tool[] {
         })),
     },
     {
-      name: 'tool_details',
-      listing: servedListing('tool_details', jsonSchemaOf(TOOL_DETAILS_INPUT, 'input'), READS),
+      name: 'tool_read',
+      listing: servedListing('tool_read', jsonSchemaOf(TOOL_DETAILS_INPUT, 'input'), READS),
       check: (_context, raw): string | null => {
         const result = TOOL_DETAILS_INPUT.safeParse(raw);
         return result.success ? null : issuesOf(result.error);
       },
       call: async (context, raw) =>
-        await scopedToolCall(context, 'tool_details', (scoped) => ({
+        await scopedToolCall(context, 'tool_read', (scoped) => ({
           structured: discovered(() =>
             toolDetails(
               (scoped.visibleTools?.() ?? visibleTools(served(), scoped)).map(discoverable),
               raw,
+              searchScope(scoped),
             ),
           ),
         })),

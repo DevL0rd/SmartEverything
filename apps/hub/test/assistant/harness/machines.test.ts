@@ -36,7 +36,7 @@ function startTurn(chat: AiChatRow): void {
   store.harnessDeliveries.admit(event.id, sessionId, () => answer.id);
 }
 
-describe('list_machines', () => {
+describe('machine_read', () => {
   it('names every machine with its system, whether it is online and which one the chat is on', async () => {
     const chat = await openChat();
 
@@ -63,7 +63,7 @@ describe('list_machines', () => {
   });
 });
 
-describe('switch_machine', () => {
+describe('machine_switch', () => {
   it('moves an idle chat by machine name, whatever the letter case', async () => {
     const chat = await openChat();
 
@@ -75,7 +75,7 @@ describe('switch_machine', () => {
     );
   });
 
-  it('accepts the machine id from list_machines', async () => {
+  it('accepts the machine id from machine_read', async () => {
     const chat = await openChat();
     const { machines } = listMachines(rig.service, rig.owner, chat.id);
     const desk = machines.find((machine) => machine.name === 'Desk');

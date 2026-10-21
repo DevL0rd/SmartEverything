@@ -18,16 +18,17 @@ describe('failureCopy', () => {
       expect(copy.title).toBe(PLAIN_ERROR);
       expect(copy.body).toBeNull();
     }
-    expect(failureCopy('rate_limit', context).actions).toEqual(['retry', 'choose_model']);
-    expect(failureCopy('offline', context).actions).toEqual(['retry', 'switch_machine']);
-    expect(failureCopy(null, context).actions).toEqual(['retry']);
+    expect(failureCopy('rate_limit', context).actions).toEqual(['choose_model']);
+    expect(failureCopy('offline', context).actions).toEqual(['machine_switch']);
+    expect(failureCopy(null, context).actions).toEqual([]);
+    expect(PLAIN_ERROR).not.toMatch(/try again/i);
   });
 
   it('never shows the server reason for an unavailable model', () => {
     const copy = failureCopy('model_unavailable', { ...context, reason: 'Route withdrew it' });
     expect(copy.title).toBe('Sonnet 4.5 isn’t available');
     expect(copy.body).toBeNull();
-    expect(copy.actions).toEqual(['choose_model', 'retry']);
+    expect(copy.actions).toEqual(['choose_model']);
   });
 
   it('shows an interrupted reply as a quiet note with the hub reason and a continue action', () => {
@@ -54,11 +55,11 @@ describe('failureCopy', () => {
     expect(failureCopy('model_unavailable', empty).title).toBe('The model isn’t available');
   });
 
-  it('covers every reason code with a title and at least one action', () => {
+  it('covers every reason code with a title and never offers to retry', () => {
     for (const code of ASSISTANT_REASON_CODES) {
       const copy = failureCopy(code, context);
       expect(copy.title).not.toBe('');
-      expect(copy.actions.length).toBeGreaterThan(0);
+      expect(copy.actions).not.toContain('retry');
     }
   });
 });

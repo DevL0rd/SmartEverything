@@ -31,7 +31,7 @@ function makerOptions(
   ];
 }
 
-function Group({
+export function Group({
   title,
   children,
 }: {

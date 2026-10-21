@@ -34,8 +34,8 @@ export function cameraOpening(
   liveVideo: boolean,
 ): string {
   const sight = liveVideo
-    ? 'You see through it live: its video reaches you about once a second, so answer what you see directly. camera_pictures is for other cameras and saved pictures.'
-    : `You can see through it: camera_pictures with view "live" and deviceIds ["${camera.id}"] shows what it sees right now. Use it whenever they ask what you see, what they are holding or wearing, or to look at something.`;
+    ? 'You see through it live: its video reaches you about once a second, so answer what you see directly. camera_read is for other cameras and saved pictures.'
+    : `You can see through it: camera_read with view "live" and deviceIds ["${camera.id}"] shows what it sees right now. Use it whenever they ask what you see, what they are holding or wearing, or to look at something.`;
   return [
     `You are now talking through ${camera.name}’s speaker and microphone to whoever is there.`,
     sight,

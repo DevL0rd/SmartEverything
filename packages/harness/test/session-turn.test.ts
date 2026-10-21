@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -122,6 +123,34 @@ describe('a native turn', () => {
     session.text('try again');
     await turnsFinished(host, session, 2);
     expect(streamedText(host.events)).toBe('back again');
+  });
+
+  it('leaves nothing active after a turn the model rejects before streaming', async () => {
+    const host = await booted();
+    const options = host.sessionOptions();
+    const session = await host.runtime.create({ ...options, effort: 'max' });
+
+    session.text('first');
+    await turnsFinished(host, session, 1);
+
+    expect(host.model.requests).toHaveLength(0);
+    await expect(session.drain()).resolves.toBeUndefined();
+  });
+
+  it('drains an idle session that holds a note for its next turn', async () => {
+    const host = await booted();
+    const options = host.sessionOptions();
+    const session = await host.runtime.create(options);
+
+    session.note(
+      createUserMessage({
+        content: [{ type: 'text', text: 'Machine changed: you are now running elsewhere.' }],
+        source: { kind: 'user' },
+      }),
+    );
+
+    await expect(session.drain()).resolves.toBeUndefined();
+    await expect(host.runtime.close(options.sessionId)).resolves.toBeUndefined();
   });
 
   it('ends a turn the model fails permanently and accepts the next prompt on the same session', async () => {

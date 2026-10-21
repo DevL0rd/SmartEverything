@@ -163,7 +163,7 @@ describe('the activity feed for any signal', () => {
   });
 });
 
-describe('list_events with signal rows', () => {
+describe('event_find with signal rows', () => {
   beforeEach(async () => {
     bus.emit(garage('door_moved'));
     bus.emit({

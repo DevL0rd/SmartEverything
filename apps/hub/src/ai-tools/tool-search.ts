@@ -1,6 +1,5 @@
 import {
   API_ENDPOINTS,
-  MCP_PART_TEXTS,
   MCP_ROUTES,
   MCP_UNAVAILABLE_OPERATIONS,
   isHumanOnlyOperation,
@@ -22,7 +21,7 @@ export interface SearchedOperation {
   readonly operation: string;
   readonly summary: string;
   readonly area: McpToolArea;
-  readonly call: 'call_operation';
+  readonly call: 'operation_call';
 }
 
 const WEIGHT = { name: 8, title: 5, description: 2, parts: 1 } as const;
@@ -161,18 +160,21 @@ function scored(terms: readonly string[], fields: readonly Weighted[], aliased: 
   return terms.reduce((sum, word) => sum + termScore(word, fields, aliased), 0);
 }
 
-const PART_TEXTS: ReadonlyMap<string, string> = new Map(
-  MCP_PART_TEXTS.map((part) => [part.name, `${part.title} ${part.description}`]),
-);
+function partSummary(part: string): string {
+  const operation = mcpToolOperation(part);
+  return operation === undefined ? '' : API_ENDPOINTS[operation].summary;
+}
 
 function partsText(name: string): string {
   const route = isMcpToolName(name) ? MCP_ROUTES.get(name) : undefined;
   if (route === undefined) {
     return '';
   }
-  const selectors = 'parts' in route ? Object.keys(route.parts) : [];
-  const texts = partsOf(route).map((part) => `${part} ${PART_TEXTS.get(part) ?? ''}`);
-  return [...selectors, ...texts].join(' ');
+  const branches =
+    'branches' in route
+      ? Object.entries(route.branches).map(([value, branch]) => `${value} ${branch.line}`)
+      : [];
+  return [...branches, ...partsOf(route).map(partSummary)].join(' ');
 }
 
 function toolFields(tool: SearchableTool): Weighted[] {
@@ -234,7 +236,7 @@ const REACHED_BY_CALL: readonly SearchedOperation[] = Object.keys(API_ENDPOINTS)
     operation: name,
     summary: API_ENDPOINTS[name].summary,
     area: mcpOperationArea(API_ENDPOINTS[name]),
-    call: 'call_operation',
+    call: 'operation_call',
   }));
 
 export function rankOperations(

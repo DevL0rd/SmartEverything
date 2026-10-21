@@ -16,10 +16,8 @@ import { signalKey } from '../src/signals';
 import { talkMemberKey } from '../src/talk';
 import { tvPathsFor } from '../src/television-values';
 import { transcriptRetentionLabel } from '../src/transcripts';
-import { isPreviewControl } from '../src/ai-preview-files';
 import type { DeviceCapability } from '../src/devices';
 import { ASSISTANT_SETTINGS_WRITE } from '../src/assistant';
-import { HUB_HARNESS_CONTROL } from '../src/node/harness-frames';
 
 const ID = '3a000000-0000-4000-8000-0000000000a1';
 
@@ -196,22 +194,6 @@ describe('small rules', () => {
     });
     expect(colorFromInput('{broken')).toBeNull();
     expect(colorFromInput('[broken')).toBeNull();
-  });
-
-  it('tells preview control frames from the others', () => {
-    const bound = { device_id: ID, generation: ID, runtime_instance: ID };
-    const close = HUB_HARNESS_CONTROL.parse({
-      ...bound,
-      type: 'preview_file_close',
-      watch_handle: ID,
-    });
-    const cancel = HUB_HARNESS_CONTROL.parse({
-      ...bound,
-      type: 'harness_subscription_inference_cancel',
-      id: ID,
-    });
-    expect(isPreviewControl(close)).toBe(true);
-    expect(isPreviewControl(cancel)).toBe(false);
   });
 
   it('removes the response style when writing settings for an older hub', () => {

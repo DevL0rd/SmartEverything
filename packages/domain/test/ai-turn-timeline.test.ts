@@ -113,38 +113,38 @@ describe('toolResultPage', () => {
   const entry = tool('call-1', 'echo hi', '0123456789abcdef');
 
   it('returns a page and where the next one starts', () => {
-    expect(toolResultPage(entry, 'output', 4, 6)).toStrictEqual({
+    expect(toolResultPage(entry, 'output', '4', 6)).toStrictEqual({
       call_id: 'call-1',
       name: 'bash',
       field: 'output',
-      offset: 4,
+      cursor: '4',
       total_chars: 16,
       text: '456789',
-      next_offset: 10,
+      nextCursor: '10',
     });
   });
 
   it('has no next page at the end of the text', () => {
-    expect(toolResultPage(entry, 'output', 10, 100)).toMatchObject({
+    expect(toolResultPage(entry, 'output', '10', 100)).toMatchObject({
       text: 'abcdef',
-      next_offset: null,
+      nextCursor: null,
     });
   });
 
   it('is empty past the end', () => {
-    expect(toolResultPage(entry, 'output', 500, 10)).toMatchObject({
-      offset: 16,
+    expect(toolResultPage(entry, 'output', '500', 10)).toMatchObject({
+      cursor: '16',
       text: '',
-      next_offset: null,
+      nextCursor: null,
     });
   });
 
   it('reads the input, and an absent field as empty', () => {
-    expect(toolResultPage(entry, 'input', 0, 100).text).toBe('echo hi');
-    expect(toolResultPage(tool('c', null, null), 'output', 0, 10)).toMatchObject({
+    expect(toolResultPage(entry, 'input', '0', 100).text).toBe('echo hi');
+    expect(toolResultPage(tool('c', null, null), 'output', '0', 10)).toMatchObject({
       total_chars: 0,
       text: '',
-      next_offset: null,
+      nextCursor: null,
     });
   });
 });

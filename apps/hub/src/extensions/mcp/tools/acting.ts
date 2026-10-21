@@ -67,13 +67,17 @@ function actingClient(context: ActingContext, client: ClientRow): ClientRow {
   return member && client.role === 'owner' ? { ...client, role: 'member' } : client;
 }
 
+function runsOnThisHub(context: ActingContext): boolean {
+  return context.caller === null ? context.actor !== null : context.caller.localOnly;
+}
+
 function clientCaller(context: ActingContext, client: ClientRow): ActingCaller {
   const chatId = context.actor?.chatId ?? null;
   return {
     kind: 'client',
     client: actingClient(context, client),
     via: 'assistant',
-    local: context.caller?.localOnly === true,
+    local: runsOnThisHub(context),
     ...(chatId === null ? {} : { chatId }),
     ...pluginOrigin(context),
     ...assistantOrigin(context),

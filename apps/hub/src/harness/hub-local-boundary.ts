@@ -22,18 +22,8 @@ const MANAGED_RESOURCE_OPERATIONS = new Set([
   'readAiProjectFiles',
   'writeAiProjectFiles',
   'removeAiProjectFiles',
-  'publishAiHtmlPreview',
-  'publishAiProjectPreview',
-  'revokeAiPreview',
   'readEmbeddedBrowser',
   'editEmbeddedBrowser',
-  'clearPreviewWebsiteData',
-  'readPreviewLogs',
-  'searchPreviewLogs',
-  'capturePreviewViewport',
-  'readPreviewErrorRules',
-  'ignorePreviewError',
-  'restorePreviewError',
 ]);
 const ENGINE_SELECTION = z.object({
   kind: z.string(),
@@ -44,11 +34,11 @@ const ENGINE_SELECTION = z.object({
 export class HubLocalBoundary {
   constructor(private readonly store: Store) {}
   refusal(name: string, args: Readonly<Record<string, unknown>>): string | undefined {
-    if (name === 'call_tool') {
+    if (name === 'tool_call') {
       const call = CALL_TOOL_INPUT.parse(args);
       return this.refusal(call.name, call.arguments);
     }
-    if (name === 'call_operation') {
+    if (name === 'operation_call') {
       const operation = operationNamed(z.string().parse(args['operation']));
       if (nativeBridgeOperation(operation)) return NATIVE_BRIDGE_REFUSAL;
       this.assistantTarget(

@@ -1,6 +1,5 @@
 import { hears, readSubscribe } from './live-subscribe';
 import { clientSocketsOf } from './client-sockets';
-import { LivePreviewOwners } from './live-preview-owners';
 import { LiveVoice } from './live-voice';
 import { LiveWatch } from './live-watch';
 import type { IncomingMessage } from 'node:http';
@@ -64,7 +63,6 @@ export class LiveHub {
     handleProtocols: (protocols: Set<string>): string | false =>
       protocols.has(LIVE_PROTOCOL) ? LIVE_PROTOCOL : false,
   });
-  readonly previewOwners = new LivePreviewOwners();
   readonly watches: LiveWatch<LiveConnection>;
   readonly voice: LiveVoice<LiveConnection>;
   readonly notifications: LiveNotifications;
@@ -271,7 +269,6 @@ export class LiveHub {
       this.receive(connection, data);
     });
     socket.once('close', (closeCode: number, reason: Buffer) => {
-      this.previewOwners.close(connection);
       this.watches.close(connection);
       this.voice.close(connection);
       this.connections.delete(connection);
@@ -333,14 +330,6 @@ export class LiveHub {
   }
 
   private subscribe(connection: LiveConnection, message: LiveSubscribeMessage): void {
-    if (!this.previewOwners.receive(connection, message)) {
-      this.options.log.debug('live.subscribe_consumed', {
-        socketId: connection.id,
-        clientId: connection.client.id,
-        messageType: message.type,
-      });
-      return;
-    }
     applySubscription(this.subscription, connection, message);
   }
 

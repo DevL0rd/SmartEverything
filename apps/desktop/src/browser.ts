@@ -15,9 +15,7 @@ import {
   type BrowserPageDriver,
   type BrowserTarget,
 } from '@smarteverything/domain';
-import { BrowserDiagnostics } from './browser-diagnostics.js';
-import { ElectronDiagnosticsHost } from './browser-diagnostics-host.js';
-import { NATIVE_BROWSER_OPERATION, NATIVE_BROWSER_PAGE_REQUEST } from '@smarteverything/domain';
+import { NATIVE_BROWSER_PAGE_REQUEST } from '@smarteverything/domain';
 import { electronPageDriver, performPageOperation } from './browser-page.js';
 import { confineBrowserView, createBrowserView } from './browser-session.js';
 import { isAppOrigin } from './origin.js';
@@ -28,7 +26,6 @@ const failures = new WeakMap<WebContentsView, string>();
 interface Page {
   readonly view: WebContentsView;
   readonly target: BrowserTarget;
-  readonly diagnostics: BrowserDiagnostics;
   readonly driver: BrowserPageDriver;
 }
 export function registerBrowser(window: BrowserWindow, startUrl: string): void {
@@ -38,13 +35,6 @@ export function registerBrowser(window: BrowserWindow, startUrl: string): void {
     assertMainFrame(event, window, startUrl, 'Browser commands');
     apply(window, pages, BROWSER_COMMAND.parse(value));
   });
-  ipcMain.handle('desktop:browser-diagnostics', async (event, value: unknown) => {
-    assertMainFrame(event, window, startUrl, 'Diagnostics');
-    const input = NATIVE_BROWSER_OPERATION.parse(value);
-    const page = pages.get(input.id);
-    if (page === undefined) throw new BrowserPolicyError('This browser was closed.');
-    return page.diagnostics.perform(input.epoch, input.action);
-  });
   ipcMain.handle('desktop:browser-page', async (event, value: unknown) => {
     assertMainFrame(event, window, startUrl, 'Page actions');
     const request = NATIVE_BROWSER_PAGE_REQUEST.parse(value);
@@ -52,11 +42,8 @@ export function registerBrowser(window: BrowserWindow, startUrl: string): void {
     if (page === undefined) throw new BrowserPolicyError('This browser was closed.');
     return performPageOperation(page.driver, request.operation);
   });
-  observeDiagnostics(window, startUrl, pages);
   window.on('closed', () => {
-    ipcMain.removeHandler('desktop:browser-diagnostics');
     ipcMain.removeHandler('desktop:browser-page');
-    ipcMain.removeAllListeners('desktop:browser-observe');
     ipcMain.removeHandler('desktop:browser');
     for (const page of pages.values()) page.view.webContents.close();
     pages.clear();
@@ -83,26 +70,11 @@ function assertMainFrame(
   )
     throw new BrowserPolicyError(`${what} require the app main frame.`);
 }
-function observeDiagnostics(
-  window: BrowserWindow,
-  startUrl: string,
-  pages: ReadonlyMap<string, Page>,
-): void {
-  ipcMain.on('desktop:browser-observe', (event) => {
-    if (
-      event.sender === window.webContents &&
-      event.senderFrame === window.webContents.mainFrame &&
-      isAppOrigin(event.senderFrame.url, startUrl)
-    )
-      for (const page of pages.values()) page.diagnostics.replay();
-  });
-}
 function emit(window: BrowserWindow, page: Page, problem: string | null): void {
   const contents = page.view.webContents;
   if (problem !== null) failures.set(page.view, problem);
   if (contents.isDestroyed() || window.isDestroyed()) return;
   const url = new URL(contents.getURL() || page.target.url);
-  if (url.pathname === '/.se-preview/bootstrap') url.search = '';
   window.webContents.send('desktop:browser-status', {
     id: page.target.id,
     url: url.href,
@@ -119,7 +91,6 @@ function create(window: BrowserWindow, target: BrowserTarget): Page {
   const page = {
     target,
     view,
-    diagnostics: new BrowserDiagnostics(new ElectronDiagnosticsHost(window, view), target.id),
     driver: electronPageDriver(view.webContents),
   };
   page.view.setVisible(false);
@@ -171,12 +142,6 @@ function openPage(window: BrowserWindow, page: Page): void {
   const target = page.target;
   void contents
     .loadURL(target.url)
-    .then(() => {
-      if (target.kind !== 'preview' || contents.isDestroyed()) return undefined;
-      const wanted = new URL(target.initialPath, target.origin).href;
-      if (contents.getURL() !== wanted) return contents.loadURL(wanted);
-      return undefined;
-    })
     .catch((cause: unknown) => {
       log.error('browser.load_failed', cause);
       emit(window, page, 'The page could not be loaded.');
@@ -194,7 +159,6 @@ function apply(window: BrowserWindow, pages: Map<string, Page>, command: Browser
   if (command.kind === 'layout') {
     page.view.setBounds(command.bounds);
     page.view.setVisible(command.visible);
-    page.diagnostics.layout(command.visible);
     return;
   }
   if (command.kind === 'navigate') {

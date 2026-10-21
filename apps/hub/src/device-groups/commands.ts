@@ -26,7 +26,7 @@ export function resolveTarget(store: Store, target: DeviceTarget): readonly Devi
   return targetDevices(store.devices.list(), store.deviceGroups.list(), target);
 }
 
-function litMembers(store: Store, devices: readonly DeviceRow[]): readonly DeviceRow[] {
+export function litMembers(store: Store, devices: readonly DeviceRow[]): readonly DeviceRow[] {
   const lit = new Set(
     store.state
       .list()

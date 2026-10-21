@@ -57,9 +57,17 @@ export class OpenRouterImageCatalog {
   private find(
     request: Pick<ImageOperationRequest, 'model' | 'provider_tag'>,
   ): ImageEndpoint | undefined {
-    return this.snapshot.endpoints.find(
-      (row) => row.model === request.model && row.provider_tag === request.provider_tag,
-    );
+    const ofModel = this.snapshot.endpoints.filter((row) => row.model === request.model);
+    if (request.provider_tag !== undefined) {
+      return ofModel.find((row) => row.provider_tag === request.provider_tag);
+    }
+    if (ofModel.length > 1) {
+      throw new ApiError(
+        'invalid_request',
+        `${request.model} has several endpoints; give providerTag, one of: ${ofModel.map((row) => row.provider_tag).join(', ')}`,
+      );
+    }
+    return ofModel[0];
   }
   private stale(): boolean {
     const refreshed = this.snapshot.refreshed_at;

@@ -86,7 +86,7 @@ function updatedTool(
   details: ToolTimelineDetails,
   previous: ChatTimelineTool | null,
 ): ChatTimelineTool {
-  const reported = toolTimelineDetails(item.name, details);
+  const reported = toolTimelineDetails(item.name, details, item.callId);
   const current = {
     ...item,
     ...reported,

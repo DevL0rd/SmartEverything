@@ -50,12 +50,12 @@ function withTool(tools: readonly ChatToolItem[], tool: ChatToolItem): readonly 
 function applyPart(turn: Turn, part: ChatStreamPart): Turn {
   switch (part.kind) {
     case 'text':
-      return { ...turn, text: turn.text + part.delta, state: 'replying' };
+      return { ...turn, text: turn.text + part.delta, state: 'replying', reason: null };
     case 'reasoning':
-      return { ...turn, reasoning: turn.reasoning + part.delta, state: 'thinking' };
+      return { ...turn, reasoning: turn.reasoning + part.delta, state: 'thinking', reason: null };
     case 'tool': {
       const { kind: _kind, ...tool } = part;
-      return { ...turn, tools: withTool(turn.tools, tool), state: 'tool' };
+      return { ...turn, tools: withTool(turn.tools, tool), state: 'tool', reason: null };
     }
   }
 }

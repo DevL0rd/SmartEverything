@@ -69,7 +69,7 @@ export const SIGNAL_SOURCE_INFO = z.strictObject({
 });
 
 export const SIGNAL_LATEST_QUERY = z.strictObject({
-  source: SIGNAL_SOURCE_NAME,
+  source: SIGNAL_SOURCE_NAME.describe('The signal source, as view catalogue or kinds lists it'),
   kind: z.string().min(1).max(80).optional(),
   subject: z.string().min(1).max(200).optional(),
   field: z.string().min(1).max(120).optional(),

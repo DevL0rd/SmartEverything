@@ -1,12 +1,12 @@
-import { AI_PREVIEW_ENDPOINTS as E } from '@smarteverything/domain';
-import type { PreviewService } from '../../preview/service';
+import { EMBEDDED_BROWSER_ENDPOINTS as E } from '@smarteverything/domain';
+import type { BrowserService } from '../../browser/service';
 import { bound } from '../router';
-export const embeddedBrowserRoutes = (preview: PreviewService) =>
+export const embeddedBrowserRoutes = (browser: BrowserService) =>
   ({
     readEmbeddedBrowser: bound(E.readEmbeddedBrowser, ({ caller, params, body }) =>
-      preview.browserControllers.read(caller, params.chatId, body),
+      browser.controllers.read(caller, params.chatId, body),
     ),
     editEmbeddedBrowser: bound(E.editEmbeddedBrowser, ({ caller, params, body }) =>
-      preview.browserControllers.edit(caller, params.chatId, body),
+      browser.controllers.edit(caller, params.chatId, body),
     ),
   }) as const;

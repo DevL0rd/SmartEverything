@@ -83,7 +83,7 @@ const messageRoutes = (context: ChatContext) =>
     }),
     readAiToolResult: bound(E.readAiToolResult, ({ params, query, caller }) => {
       context.assistant.chats.own(ownerOf(context, caller), params.chatId);
-      return readToolResult(context.store, { ...params, ...query });
+      return readToolResult(context.store, { ...params, ...query, cursor: query.cursor });
     }),
     sendAiChatMessage: bound(E.sendAiChatMessage, ({ params, body, caller }) =>
       context.assistant.submissions.send(

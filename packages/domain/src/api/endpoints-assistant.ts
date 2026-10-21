@@ -51,7 +51,7 @@ export const ASSISTANT_POST = z.strictObject({
   text: z.string().trim().default(''),
   files: z.array(ASSISTANT_OUT_FILE).default([]),
   profileId: ID.optional().describe(
-    'Whose chat: a person’s profile id from list_people (not a device or client id); the owner’s when left out',
+    'Whose chat: a person’s profile id from person_read (not a device or client id); the owner’s when left out',
   ),
   notify: z.boolean().default(true).describe('false to skip the phone notification'),
 });

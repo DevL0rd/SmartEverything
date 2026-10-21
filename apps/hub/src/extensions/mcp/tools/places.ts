@@ -21,7 +21,7 @@ function described(place: PlaceMatch): Record<string, unknown> {
 
 export const PLACE_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'search_places',
+    name: 'place_search',
     input: z.strictObject({
       query: QUERY,
       count: z.int().min(1).max(10).default(5).describe('How many matches to return'),
@@ -40,7 +40,7 @@ export const PLACE_TOOLS: readonly Tool[] = [
         .min(0)
         .max(9)
         .default(0)
-        .describe('Which match from search_places to use, 0 for the best'),
+        .describe('Which match from place_search to use, 0 for the best'),
       setTimeZone: z
         .boolean()
         .default(true)

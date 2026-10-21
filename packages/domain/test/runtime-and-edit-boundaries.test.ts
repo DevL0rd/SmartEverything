@@ -2,13 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { API_ENDPOINTS } from '../src/api/endpoints';
 import { callAudioWith, CLIENT_PREFS } from '../src/client-prefs';
 import { HUB_DISCOVERY_CANDIDATE, HUB_ENDPOINT } from '../src/hub-connections';
-import { IMAGE_WAIT_REQUEST } from '../src/image-operations';
-import { servedComputerTool } from '../src/mcp/catalogue-computers';
 import { NODE_REPORT, NODE_SAMPLE } from '../src/node/report';
 import { DEFAULT_PAUSE_MS } from '../src/voice-activity';
 
 const ID = '3a000000-0000-4000-8000-0000000000a1';
-const OTHER = '3a000000-0000-4000-8000-0000000000a2';
 
 const SCOPE = {
   version: 1,
@@ -77,14 +74,6 @@ describe('editing a chat message', () => {
   });
 });
 
-describe('image waiting', () => {
-  it('asks for each operation once', () => {
-    expect(IMAGE_WAIT_REQUEST.safeParse({ operation_ids: [ID, OTHER] }).success).toBe(true);
-    expect(IMAGE_WAIT_REQUEST.safeParse({ operation_ids: [ID, ID] }).success).toBe(false);
-    expect(IMAGE_WAIT_REQUEST.safeParse({}).success).toBe(true);
-  });
-});
-
 describe('hub addresses', () => {
   it('takes only secure addresses for a LAN endpoint and a discovered candidate', () => {
     expect(HUB_ENDPOINT.safeParse({ kind: 'lan', url: 'https://192.168.1.5:8443' }).success).toBe(
@@ -113,17 +102,6 @@ describe('what a computer reports', () => {
     expect(
       NODE_REPORT.safeParse({ at: sample.at, values: { nonsense: 1 }, events: [] }).success,
     ).toBe(false);
-  });
-});
-
-describe('served computer tools', () => {
-  it('serves a computer tool with its area and text, and refuses a tool with no text', () => {
-    const [name, area] = servedComputerTool('list_processes', { part: 'list_processes' });
-    expect(name).toBe('list_processes');
-    expect(area).toBe('computers');
-    expect(() => servedComputerTool('list_rooms', { part: 'list_rooms' })).toThrow(
-      'No computer tool text for list_rooms',
-    );
   });
 });
 

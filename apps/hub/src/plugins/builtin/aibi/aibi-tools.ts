@@ -37,7 +37,7 @@ function readTool(host: AibiToolsHost): PluginTool {
     name: 'read',
     title: 'Look at the AIBI robot',
     description:
-      'Look at AIBI, the small robot companion. view status: how it is connected, whether it is in a conversation, its firmware and the last things said. view activity: what it heard, said, did and asked the server, newest last (kind and limit narrow it). view actions: the native moves it may use, with their options. To make it speak use speak with its device as the target; to make it move send its Move or act control (an action and options object) with control_devices, which only works while it is in a conversation.',
+      'Look at AIBI, the small robot companion. view status: how it is connected, whether it is in a conversation, its firmware and the last things said. view activity: what it heard, said, did and asked the server, newest last (kind and limit narrow it). view actions: the native moves it may use, with their options. To make it speak use speak with its device as the target; to make it move send its Move or act control (an action and options object) with device_control, which only works while it is in a conversation.',
     input: READ,
     annotations: READ_HINTS,
     humanOnly: false,

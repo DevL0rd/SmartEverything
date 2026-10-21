@@ -8,7 +8,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { HubToolResult } from '../../../ai-tools/hub-tool';
-import { OFFSET, moreOf, paged } from '../../../ai-tools/paging';
+import { CURSOR, moreOf, paged } from '../../../ai-tools/paging';
 import type { PluginTool } from '../contract';
 import type { PeopleControls } from './people-controls';
 import { peopleTools } from './people-tools';
@@ -39,7 +39,7 @@ const CLIENT_FILTER = z.strictObject({
   onlineOnly: z.boolean().default(false),
   search: z.string().min(1).max(100).optional().describe('Words in the name, IP or MAC'),
   limit: z.number().int().min(1).max(500).default(300),
-  offset: OFFSET,
+  cursor: CURSOR,
 });
 
 function clientMatches(search: string, client: NetworkClient): boolean {
@@ -79,11 +79,11 @@ function readTools(ports: RouterToolPorts): PluginTool[] {
       name: 'list_clients',
       title: 'Devices on the network',
       description:
-        'Devices the router knows, filtered by words or online state: name, IP, MAC, Wi-Fi or wired, signal, traffic, who it belongs to, last seen. A partial list has more with the total and next_offset.',
+        'Devices the router knows, filtered by words or online state: name, IP, MAC, Wi-Fi or wired, signal, traffic, who it belongs to, last seen. A partial list has more with the total and nextCursor.',
       input: CLIENT_FILTER,
       annotations: READ_HINTS,
       humanOnly: false,
-      run: ({ onlineOnly, search, limit, offset }) => {
+      run: ({ onlineOnly, search, limit, cursor }) => {
         const clients = ports
           .snapshot()
           .clients.filter(
@@ -91,7 +91,7 @@ function readTools(ports: RouterToolPorts): PluginTool[] {
               (!onlineOnly || client.connected) &&
               (search === undefined || clientMatches(search, client)),
           );
-        const { rows, more } = paged(clients, offset, limit);
+        const { rows, more } = paged(clients, cursor, limit);
         return Promise.resolve(toolResult({ clients: rows, ...moreOf(more) }));
       },
     }),

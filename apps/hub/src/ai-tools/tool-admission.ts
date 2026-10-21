@@ -1,4 +1,4 @@
-import { ApiError } from '@smarteverything/domain';
+import { ApiError, MCP_DISCOVERY_TOOLS } from '@smarteverything/domain';
 import {
   admitExecutionTool,
   currentExecutionAuthority,
@@ -11,7 +11,6 @@ import type { ConversationAuthority } from '../harness/authority-contract';
 import { HubLocalBoundary } from '../harness/hub-local-boundary';
 import type { Store } from '../store/store';
 import type { ToolCaller } from './hub-tool';
-import { DISCOVERY_NAMES } from './tool-discovery';
 
 export type ToolAdmission = (
   name: string,
@@ -22,7 +21,7 @@ export type ToolAdmission = (
 export function toolAdmission(store: Store): ToolAdmission {
   const boundary = new HubLocalBoundary(store);
   return (name, args, caller) => {
-    if (DISCOVERY_NAMES.has(name)) return caller;
+    if (MCP_DISCOVERY_TOOLS.has(name)) return caller;
     const authority = authorityOf(store, caller);
     if (authority === undefined) return caller;
     if (authority.profile_id !== caller.profileId)

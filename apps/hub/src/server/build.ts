@@ -1,8 +1,6 @@
-import { chatPageRoutes } from '../preview/chat-pages';
-import { nativeHtmlClaimRoute, nativeProjectAssetRoutes } from '../preview/native-html';
+import { chatFileRoutes } from '../browser/chat-files';
 import { nodeConnectionRoute } from './handlers/node-connection';
 import type { HubConnections } from '../network/connections';
-import type { PreviewGatewayConfig } from '../preview/gateway';
 import type { Server } from 'node:http';
 import { startHubHarness } from './harness-wiring';
 import { imageSpendCheck } from './image-authority';
@@ -52,7 +50,6 @@ import { startWatchDriver } from './watch-driver-wiring';
 
 export interface BuildOptions {
   readonly connections?: HubConnections;
-  readonly preview?: PreviewGatewayConfig;
   readonly store: Store;
   readonly secrets: SecretStore;
   readonly core: Core;
@@ -271,7 +268,6 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
   });
   const context = contextOf(options, live, status);
   const stopWatches = startWatchDriver(context);
-  await context.preview.gateway.start();
   await context.talk.start();
   context.assistant.start();
   const operations = new Operations(context.log, context.store);
@@ -332,9 +328,7 @@ function rawRoutesOf(
   return [
     ...extensions.flatMap((extension) => extension.routes),
     ...routes,
-    nativeHtmlClaimRoute(context.store, context.preview),
-    ...nativeProjectAssetRoutes(context.store, context.preview),
-    ...chatPageRoutes(context.store, context.preview),
+    ...chatFileRoutes(context.store, context.assistant.projects),
     computerMcpGrantRoute(context),
     computerMcpGrantRoute(context, true),
     computerMcpPolicyRoute(context),
@@ -396,5 +390,5 @@ async function stopAssistantServices(context: ServerContext): Promise<void> {
   await context.harness.skillUpdates.stop();
   context.assistant.stop();
   await context.imageRuntime.stop();
-  await context.preview.stop();
+  context.browser.stop();
 }

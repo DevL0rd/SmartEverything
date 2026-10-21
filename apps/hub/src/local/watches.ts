@@ -104,6 +104,9 @@ export class LocalWatches {
     const entry = this.ownedBy(device, profileId);
     await this.bridges.require(device, client);
     const { at, config, workout, ...rest } = state;
+    if (state.phase === 'connected') {
+      await this.bridges.pair(device, client);
+    }
     await this.options.local.observe(entry.externalId, {
       ...rest,
       ...(config === undefined ? {} : { config }),

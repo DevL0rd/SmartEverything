@@ -11,9 +11,7 @@ function cause(reason: string): string {
   return `Your previous turn was interrupted (${reason.replace(/\.$/u, '').toLowerCase()}).`;
 }
 
-export function continuation(reason: string | null): string {
-  return `${cause(reason ?? STOPPED_BY_USER)} ${CARRY_ON}`;
-}
+export const CONTINUE_NOTE = 'Continue the work you were doing.';
 
 export function interruptionNote(store: Store, chatId: string): string | null {
   const reply = store.assistantChat.latestSettledReply(chatId);

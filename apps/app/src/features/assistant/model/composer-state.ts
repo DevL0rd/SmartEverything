@@ -164,13 +164,10 @@ export function queuedLabel(text: string, files: number): string {
 export interface TrayMessage {
   readonly text: string;
   readonly attachments: readonly string[];
-  readonly state: 'waiting' | 'failed';
-  readonly reason: string | null;
 }
 
 export interface TrayRow {
   readonly text: string;
-  readonly retry: boolean;
   readonly edit: 'enabled' | 'blocked' | 'absent';
   readonly remove: boolean;
 }
@@ -182,10 +179,8 @@ export function trayRowOf(
   const { fieldHasText, delivering } = context;
   const body = queuedLabel(message.text, message.attachments.length);
   if (delivering) {
-    return { text: `Sending · “${body}”`, retry: false, edit: 'absent', remove: false };
+    return { text: `Sending · “${body}”`, edit: 'absent', remove: false };
   }
-  const failed = message.state === 'failed';
-  const reason = message.reason === null ? '' : ` · ${message.reason}`;
   let edit: TrayRow['edit'] = 'enabled';
   if (message.attachments.length > 0) {
     edit = 'absent';
@@ -193,8 +188,7 @@ export function trayRowOf(
     edit = 'blocked';
   }
   return {
-    text: failed ? `Not sent · ${body}${reason}` : `Waiting for connection · “${body}”`,
-    retry: failed,
+    text: `Waiting for connection · “${body}”`,
     edit,
     remove: true,
   };

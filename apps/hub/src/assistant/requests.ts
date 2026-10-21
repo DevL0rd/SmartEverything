@@ -135,14 +135,6 @@ export class AssistantRequests {
     return this.replay.retry(chat, messageId, from, clientId);
   }
 
-  resume(
-    chat: AiChatRow,
-    messageId: string,
-    clientId?: string | null,
-  ): Promise<AssistantMessageRow> {
-    return this.replay.resume(chat, messageId, clientId);
-  }
-
   edit(
     chat: AiChatRow,
     messageId: string,

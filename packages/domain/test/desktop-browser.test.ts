@@ -7,13 +7,6 @@ import {
 } from '../src/desktop-browser';
 
 const PUBLIC_TARGET = { kind: 'public', id: 'tab', url: 'https://example.com' } as const;
-const PREVIEW_TARGET = {
-  kind: 'preview',
-  id: 'preview',
-  url: 'https://preview.example.net/start',
-  origin: 'https://preview.example.net',
-  initialPath: '/',
-} as const;
 
 describe('public browser addresses', () => {
   it.each(['https://example.com/page?q=1', 'http://example.com/page', 'http://news.example.org'])(
@@ -47,49 +40,29 @@ describe('public browser addresses', () => {
     expect(browsableUrl(address)).toBe(false);
     expect(browserAllows(PUBLIC_TARGET, address)).toBe(false);
   });
-
-  it('keeps a preview page on its own https origin', () => {
-    expect(browserAllows(PREVIEW_TARGET, 'https://preview.example.net/other')).toBe(true);
-    expect(browserAllows(PREVIEW_TARGET, 'http://preview.example.net/other')).toBe(false);
-    expect(browserAllows(PREVIEW_TARGET, 'https://elsewhere.example.net/')).toBe(false);
-  });
 });
 
-describe('a native html page', () => {
-  const PAGE = `se-preview-html://${'a'.repeat(64)}/`;
-  const single = {
-    kind: 'native-html',
-    id: 'page',
-    url: PAGE,
-    projectionId: 'a'.repeat(64),
-  } as const;
-  const project = {
-    kind: 'native-html',
+describe('a chat project page', () => {
+  const page = { chatId: '00000000-0000-4000-8000-000000000001', path: '/workspace/site/index.html' };
+  const loopback = {
+    kind: 'project',
     id: 'project',
-    url: 'http://127.0.0.1:4000/site/',
+    url: 'http://127.0.0.1:4000/workspace/site/index.html',
     projectionId: 'a'.repeat(64),
-    project: true,
+    page,
   } as const;
+  const desktop = { ...loopback, url: `se-preview-html://${'a'.repeat(64)}/workspace/site/` } as const;
 
-  it('allows a single page only at its own address, ignoring the fragment', () => {
-    expect(browserAllows(single, PAGE)).toBe(true);
-    expect(browserAllows(single, `${PAGE}#top`)).toBe(true);
-    expect(browserAllows(single, `${PAGE}other`)).toBe(false);
-    expect(browserAllows(single, 'https://example.com/')).toBe(false);
-    expect(browserAllows(single, 'not a url')).toBe(false);
-  });
-
-  it('allows a project anywhere on its own scheme and host, without credentials', () => {
-    expect(browserAllows(project, 'http://127.0.0.1:4000/site/app.js')).toBe(true);
-    expect(browserAllows(project, 'http://127.0.0.1:4000/other')).toBe(true);
-    expect(browserAllows(project, 'http://127.0.0.1:4001/site/')).toBe(false);
-    expect(browserAllows(project, 'https://127.0.0.1:4000/site/')).toBe(false);
-    expect(browserAllows(project, 'http://user:pw@127.0.0.1:4000/site/')).toBe(false);
-    expect(browserAllows(project, 'not a url')).toBe(false);
-  });
-
-  it('refuses a preview address that is not a url', () => {
-    expect(browserAllows(PREVIEW_TARGET, 'not a url')).toBe(false);
+  it('stays on its own isolated origin, without credentials', () => {
+    expect(browserAllows(loopback, 'http://127.0.0.1:4000/workspace/site/app.js')).toBe(true);
+    expect(browserAllows(loopback, 'http://127.0.0.1:4000/workspace/other.html')).toBe(true);
+    expect(browserAllows(loopback, 'http://127.0.0.1:4001/workspace/site/')).toBe(false);
+    expect(browserAllows(loopback, 'https://127.0.0.1:4000/workspace/site/')).toBe(false);
+    expect(browserAllows(loopback, 'http://user:pw@127.0.0.1:4000/workspace/')).toBe(false);
+    expect(browserAllows(loopback, 'https://smarteverything.devl0rd.com/api/')).toBe(false);
+    expect(browserAllows(loopback, 'not a url')).toBe(false);
+    expect(browserAllows(desktop, `se-preview-html://${'a'.repeat(64)}/workspace/x.html`)).toBe(true);
+    expect(browserAllows(desktop, `se-preview-html://${'b'.repeat(64)}/workspace/x.html`)).toBe(false);
   });
 });
 

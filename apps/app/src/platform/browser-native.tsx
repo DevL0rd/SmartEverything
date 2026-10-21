@@ -20,7 +20,6 @@ import {
   nativeHtmlCurrent,
   onNativeHtmlRetired,
 } from '../../modules/health-connect/src/html-preview';
-import { nativeBrowserDiagnostic } from '../../modules/health-connect/src/browser-diagnostics-events';
 import { nativeBrowserStatus, type NativeBrowserEvent } from './browser-native-events';
 import { useBrowserDisplayed } from './browser-displayed';
 import type { BrowserHandle, BrowserSurfaceProps } from './browser-contract';
@@ -38,7 +37,6 @@ type NativeBrowserProps = NativeBrowserSource & {
   readonly displayed: boolean;
   readonly style: StyleProp<ViewStyle>;
   readonly onStatus: (event: NativeBrowserEvent) => void;
-  readonly onDiagnostic: (event: { readonly nativeEvent: unknown }) => void;
 };
 const NativeBrowser = requireNativeView<NativeBrowserProps>('HubNetwork');
 const STYLES = StyleSheet.create({ page: { flex: 1 }, hidden: { opacity: 0 } });
@@ -50,30 +48,43 @@ export function NativeBrowserSurface({
   ref,
   onStatus,
 }: BrowserSurfaceProps): ReactNode {
-  const displayed = useBrowserDisplayed(visible);
   const view = useRef<NativeBrowserCommands>(null);
-  const initial = useRef(true);
   const retired = useProjectionRetired(target, onStatus);
   useImperativeHandle(ref, () => browserHandle(view, target));
   if (retired) return <View style={STYLES.page} />;
+  return (
+    <BoundNativeBrowser key={nativeSourceKey(target)} {...{ target, visible, onStatus, view }} />
+  );
+}
+
+function BoundNativeBrowser({
+  target,
+  visible,
+  onStatus,
+  view,
+}: Pick<BrowserSurfaceProps, 'target' | 'visible' | 'onStatus'> & {
+  readonly view: RefObject<NativeBrowserCommands | null>;
+}): ReactNode {
+  const displayed = useBrowserDisplayed(visible);
   return (
     <NativeBrowser
       ref={view}
       {...nativeSource(target)}
       displayed={displayed}
       style={visible ? STYLES.page : [STYLES.page, STYLES.hidden]}
-      onDiagnostic={(event) => {
-        nativeBrowserDiagnostic(event.nativeEvent);
-      }}
       onStatus={(event) => {
-        receiveStatus(event, { target, onStatus, view, initial });
+        onStatus(nativeBrowserStatus(event, target.id));
       }}
     />
   );
 }
 
+export function nativeSourceKey(target: BrowserTarget): string {
+  return JSON.stringify(nativeSource(target));
+}
+
 function nativeSource(target: BrowserTarget): NativeBrowserSource {
-  if (target.kind === 'native-html')
+  if (target.kind === 'project')
     return {
       projection: JSON.stringify({ projectionId: target.projectionId, browserId: target.id }),
     };
@@ -93,7 +104,7 @@ export function browserHandle(
   };
   return {
     navigate: (url): void => {
-      if (target.kind !== 'native-html' && browserAllows(target, url))
+      if (browserAllows(target, url))
         run((native) => native.navigate(url));
     },
     back: (): void => {
@@ -111,35 +122,16 @@ export function browserHandle(
   };
 }
 
-function receiveStatus(
-  event: NativeBrowserEvent,
-  context: {
-    readonly target: BrowserTarget;
-    readonly onStatus: BrowserSurfaceProps['onStatus'];
-    readonly view: RefObject<NativeBrowserCommands | null>;
-    readonly initial: { current: boolean };
-  },
-): void {
-  const { target, onStatus, view, initial } = context;
-  const status = nativeBrowserStatus(event, target.id);
-  onStatus(status);
-  if (status.loading || !initial.current || status.problem !== null) return;
-  initial.current = false;
-  if (target.kind !== 'preview') return;
-  const wanted = new URL(target.initialPath, target.origin).href;
-  if (status.url !== wanted) browserHandle(view, target).navigate(wanted);
-}
-
 function useProjectionRetired(
   target: BrowserTarget,
   onStatus: BrowserSurfaceProps['onStatus'],
 ): boolean {
   const [retired, setRetired] = useState(
-    () => target.kind === 'native-html' && !nativeHtmlCurrent(target.projectionId),
+    () => target.kind === 'project' && !nativeHtmlCurrent(target.projectionId),
   );
   const receive = useEffectEvent(onStatus);
   useEffect(() => {
-    if (target.kind !== 'native-html') return undefined;
+    if (target.kind !== 'project') return undefined;
     const retire = (): void => {
       setRetired(true);
       receive({

@@ -37,7 +37,7 @@ function airNow(report: WeatherReport): Record<string, unknown> | string {
 
 export const WEATHER_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'get_weather',
+    name: 'weather_read',
     input: z.strictObject({}),
     annotations: READS,
     run: (context) => {

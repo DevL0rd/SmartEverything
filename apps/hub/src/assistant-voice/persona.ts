@@ -62,7 +62,7 @@ export function assistantNames(store: Store): string[] {
 }
 
 const OMITTED =
-  'Earlier messages of this chat are not shown here; read them with read_chats view messages when they matter.';
+  'Earlier messages of this chat are not shown here; read them with chat_read view messages when they matter.';
 
 function linesOf(store: Store, row: AssistantMessageRow): string[] {
   if (row.kind === 'call') {

@@ -1,10 +1,10 @@
 import { performBrowserTabAction } from './browser-tab-commands';
 import { BrowserTabError } from './browser-tab-errors';
-import { browserTabOperation } from './browser-tab-operation';
+import { browserTabOperation, recoverRetiredTab } from './browser-tab-operation';
 import { BrowserTabAdmissions } from './browser-tab-admissions';
 import {
   browserTabAddress,
-  publicationAddress,
+  projectAddress,
   publicAddressTab,
   statusAddress,
 } from './browser-tab-address';
@@ -12,17 +12,15 @@ import * as Crypto from 'expo-crypto';
 import { Linking } from 'react-native';
 import {
   BROWSER_RETIRED_PROBLEM,
-  type AiPreviewCatalogue,
   type EmbeddedBrowserAction,
   type BrowserStatus,
 } from '@smarteverything/domain';
 import { ValueStore } from '../../../design/external-store';
 import { browserCapability } from '../../../platform/browser-surface';
 import type { BrowserHandle } from '../../../platform/browser-contract';
-import { browserPublications } from './browser-publications';
-import { type BrowserPublication, type BrowserSelection } from './browser-selection';
+import type { BrowserSelection } from './browser-selection';
 import {
-  admitBrowserPublication,
+  admitProjectPage,
   retireBrowserSelection,
   retireBrowserSelectionQuietly,
 } from './browser-tab-admission';
@@ -31,6 +29,7 @@ import {
   BROWSER_TAB_LIMIT,
   EMPTY_BROWSER_STATUS,
   closedTabSelection,
+  reorderable,
   type BrowserTab,
   type BrowserTabId,
   type BrowserTabsSnapshot,
@@ -44,7 +43,6 @@ export class BrowserTabs {
   });
   private readonly admissions = new BrowserTabAdmissions();
   private readonly handles = new Map<BrowserTabId, BrowserHandle>();
-  private catalogue: AiPreviewCatalogue | undefined;
   private disposed = false;
   constructor(
     readonly chatId: string,
@@ -57,14 +55,10 @@ export class BrowserTabs {
   loadSelected(): void {
     const tab = this.read().tabs.find((entry) => entry.id === this.read().selectedId);
     if (tab?.phase !== 'dormant') return;
-    if (tab.source.kind === 'publication' && this.catalogue === undefined) return;
     browserTabOperation(this.reload(tab.id));
   }
   readonly read = (): BrowserTabsSnapshot => this.state.get();
   readonly subscribe = this.state.subscribe;
-  setCatalogue(catalogue: AiPreviewCatalogue | undefined): void {
-    this.catalogue = catalogue;
-  }
   tab(id: string): BrowserTab {
     const tab = this.read().tabs.find((entry) => entry.id === id);
     if (tab === undefined)
@@ -117,7 +111,7 @@ export class BrowserTabs {
     );
     if (current === undefined) return;
     if (status.problem === BROWSER_RETIRED_PROBLEM) {
-      browserTabOperation(this.renew(id));
+      browserTabOperation(recoverRetiredTab(this, id));
       return;
     }
     this.update(id, (tab) => {
@@ -135,86 +129,55 @@ export class BrowserTabs {
       };
     });
   }
-  async openPublication(
-    publication: BrowserPublication,
-    preferredId?: BrowserTabId,
-  ): Promise<void> {
-    const existing = this.read().tabs.find(
-      (tab) => tab.source.kind === 'publication' && tab.source.publication.id === publication.id,
-    );
-    if (existing !== undefined) {
-      this.select(existing.id);
-      if (existing.phase === 'dormant') await this.reload(existing.id);
+  projectTab(path: string): BrowserTabId | undefined {
+    return this.read().tabs.find((tab) => tab.source.kind === 'project' && tab.source.path === path)
+      ?.id;
+  }
+  async openProject(id: BrowserTabId, path: string): Promise<void> {
+    const tab = this.tab(id);
+    this.select(id);
+    if (tab.phase === 'ready' && tab.source.kind === 'project' && tab.source.path === path) {
+      await this.reload(id);
       return;
     }
-    const id = preferredId ?? this.blank();
-    this.select(id);
-    await this.replacePublication(id, publication);
+    await this.replaceProject(id, path);
   }
-  async replacePublication(id: BrowserTabId, publication: BrowserPublication): Promise<void> {
-    const generation = await this.begin(
-      id,
-      { kind: 'publication', publication },
-      publication.title,
-      publicationAddress(publication),
-    );
+  private async replaceProject(id: BrowserTabId, path: string): Promise<void> {
+    const address = projectAddress(path);
+    const title = address.split('/').at(-1) ?? address;
+    const generation = await this.begin(id, { kind: 'project', path }, title, address);
     if (!this.matches(id, generation)) return;
     try {
-      const selection = await admitBrowserPublication(this.chatId, publication);
+      const selection = await admitProjectPage(this.chatId, path, `project:${Crypto.randomUUID()}`);
       if (!this.matches(id, generation)) {
         await retireBrowserSelection(selection);
         return;
       }
-      this.update(id, (tab) => ({
-        ...tab,
+      this.update(id, (entry) => ({
+        ...entry,
         phase: 'ready',
         selection,
         status: { ...EMPTY_BROWSER_STATUS, id: selection.target.id, loading: true },
         problem: null,
       }));
-      this.admissions.expire(id, selection, () => {
-        browserTabOperation(this.renew(id));
-      });
     } catch (error: unknown) {
       if (!this.matches(id, generation)) return;
-      const problem =
-        error instanceof Error ? error.message : 'The browser page could not be opened.';
-      this.markUnavailable(id, problem);
+      this.markUnavailable(
+        id,
+        error instanceof Error ? error.message : 'The browser page could not be opened.',
+      );
       throw error;
     }
   }
-  async navigate(id: string, address: string, byAssistant = false): Promise<void> {
+  async navigate(id: string, address: string): Promise<void> {
     const tab = this.tab(id);
-    const parsed = this.parseAddress(tab, address, byAssistant);
+    const parsed = browserTabAddress(tab, address);
     if (parsed.kind === 'document') return this.reload(id);
     if (parsed.kind === 'rejected') {
       this.update(id, (entry) => ({ ...entry, problem: parsed.reason }));
       throw new BrowserTabError(parsed.reason);
     }
-    if (parsed.kind === 'preview') {
-      if (
-        tab.selection?.kind === 'preview' &&
-        tab.selection.publication.id === parsed.publication.id
-      ) {
-        this.handle(tab.id).navigate(`${tab.selection.lease.origin}${parsed.path}`);
-        this.update(id, (entry) => ({ ...entry, editing: false, problem: null }));
-      } else
-        await this.replacePublication(tab.id, { ...parsed.publication, initial_path: parsed.path });
-      return;
-    }
     await this.navigatePublic(tab, parsed.url);
-  }
-  private parseAddress(
-    tab: BrowserTab,
-    address: string,
-    byAssistant: boolean,
-  ): ReturnType<typeof browserTabAddress> {
-    return browserTabAddress(
-      tab,
-      address,
-      this.catalogue?.publications ?? [],
-      byAssistant ? 'public-hosts' : 'any-host',
-    );
   }
   private async navigatePublic(tab: BrowserTab, url: string): Promise<void> {
     const publicBrowsing = browserCapability().publicBrowsing;
@@ -268,19 +231,14 @@ export class BrowserTabs {
       return;
     }
     if (tab.source.kind === 'public') return this.navigatePublic(tab, tab.source.url);
-    if (tab.source.kind !== 'publication')
+    if (tab.source.kind !== 'project')
       throw new BrowserTabError('Enter an address to open this tab.');
     await this.renew(tab.id);
   }
   async renew(id: BrowserTabId): Promise<void> {
     const { source } = this.tab(id);
-    if (source.kind !== 'publication') return;
-    const current = browserPublications(this.catalogue).find(
-      (row) => row.id === source.publication.id,
-    );
-    if (current === undefined)
-      throw new BrowserTabError('This page is no longer shared with this chat.');
-    await this.replacePublication(id, current);
+    if (source.kind !== 'project') return;
+    await this.replaceProject(id, source.path);
   }
   async close(id: string): Promise<void> {
     const tab = this.tab(id);
@@ -296,11 +254,7 @@ export class BrowserTabs {
   }
   reorder(ids: readonly string[]): void {
     const snapshot = this.read();
-    if (
-      ids.length !== snapshot.tabs.length ||
-      new Set(ids).size !== ids.length ||
-      ids.some((id) => !snapshot.tabs.some((tab) => tab.id === id))
-    )
+    if (!reorderable(snapshot, ids))
       throw new BrowserTabError('Tab order must contain every current tab exactly once.');
     const tabs = ids.map((id) => this.tab(id));
     this.state.set({ ...snapshot, tabs });
@@ -321,7 +275,7 @@ export class BrowserTabs {
     }));
   }
   perform(action: EmbeddedBrowserAction, signal?: AbortSignal): Promise<void> {
-    return performBrowserTabAction(this, action, this.catalogue, signal);
+    return performBrowserTabAction(this, action, signal);
   }
   async guardAdmission(
     id: BrowserTabId,
@@ -355,6 +309,9 @@ export class BrowserTabs {
     }
     this.handles.clear();
     this.state.set({ tabs: [], selectedId: null, problem: null });
+  }
+  mounted(id: BrowserTabId): boolean {
+    return this.handles.has(id);
   }
   handle(id: BrowserTabId): BrowserHandle {
     const handle = this.handles.get(id);

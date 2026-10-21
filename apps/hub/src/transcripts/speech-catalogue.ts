@@ -32,7 +32,7 @@ export async function readableSpeechSources(
     .chats({ profileId: principal.profileId, archived: false })
     .flatMap((chat) => {
       try {
-        admitSpeechReadTool(store, principal, { name: 'read_chats' });
+        admitSpeechReadTool(store, principal, { name: 'chat_read' });
         return [
           {
             source: { kind: 'attachment' as const, chatId: chat.id },

@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-type BrowserFocus = 'pane' | 'services' | 'tools' | 'console-level';
+type BrowserFocus = 'pane' | 'services' | 'tools';
 const openers = new Map<BrowserFocus, HTMLElement>();
 export function rememberBrowserFocus(key: BrowserFocus): void {
   if (Platform.OS !== 'web') return;

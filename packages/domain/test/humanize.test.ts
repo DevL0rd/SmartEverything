@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   HEALTH_METRICS,
   LOGGABLE_TYPES,
-  MCP_PART_TEXTS,
   friendlyUnit,
   humanizeEnum,
   humanizeKey,
@@ -39,12 +38,6 @@ describe('the labels built from keys', () => {
     expect(robotMoveLabel('interact_high_five')).toBe('High five');
     expect(robotMoveLabel('behavior_look_around')).toBe('Look around');
     expect(robotMoveLabel('wave')).toBe('Wave');
-  });
-
-  it('keeps the MCP tool titles', () => {
-    const titles = new Map(MCP_PART_TEXTS.map((text) => [text.name, text.title]));
-    expect(titles.get('list_device_groups')).toBe('List device groups');
-    expect(titles.get('list_scenes')).toBe('List scenes');
   });
 
   it('keeps the health signal labels', () => {

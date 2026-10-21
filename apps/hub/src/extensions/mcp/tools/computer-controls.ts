@@ -10,6 +10,7 @@ import {
   SYSTEM_TOOL_CHANGE,
   WINDOWS_STATE,
   type AudioChange,
+  type DisplayChange,
   type EndpointName,
   type McpPartName,
   type SystemToolChange,
@@ -26,8 +27,9 @@ import {
   compactSystem,
   compactWindows,
 } from './computer-compact';
-import { COMPUTER_ID, actionOf, flatChange, type Chosen } from './computer-flat';
-import { WRITES, defineTool, type Tool } from './registry';
+import { actionOf, flatChange, type Chosen } from './computer-flat';
+import { COMPUTER_ID, computerIdOf } from './computer-target';
+import { ToolError, WRITES, defineTool, issuesOf, type Tool } from './registry';
 
 type Fields = Record<string, unknown>;
 
@@ -50,8 +52,60 @@ const REVERT = z.strictObject({ action: z.literal('revert') });
 
 const DISPLAY_TOOL_NAMES: ReadonlySet<string> = new Set(DISPLAY_TOOL_ACTIONS);
 
-const DISPLAY_OPTIONS = [
-  ...DISPLAY_CHANGE.options.filter((option) => DISPLAY_TOOL_NAMES.has(actionOf(option))),
+const SCREEN = z
+  .string()
+  .trim()
+  .min(1)
+  .optional()
+  .describe('A screen id or name from computer_read view displays; the only screen when left out');
+
+const RESOLUTION = z
+  .string()
+  .regex(/^\d+x\d+$/u, 'use WIDTHxHEIGHT, such as 2560x1440')
+  .describe('Resolution as WIDTHxHEIGHT, such as 2560x1440, one the screen lists in its modes');
+
+const PERCENT = z
+  .number()
+  .min(0)
+  .max(400)
+  .describe('Percent: the scale for action scale (50 to 400, 100 is normal) or the brightness for action brightness (0 to 100)');
+
+const NEEDS_SCREEN: ReadonlySet<string> = new Set([
+  'enable',
+  'disable',
+  'mode',
+  'scale',
+  'rotation',
+  'primary',
+  'position',
+  'mirror',
+  'hdr',
+  'vrr',
+]);
+
+function displayOption(option: z.ZodObject): z.ZodObject {
+  const action = actionOf(option);
+  if (action === 'mode') {
+    return z.strictObject({
+      action: z.literal('mode'),
+      output: SCREEN,
+      resolution: RESOLUTION,
+      refreshHz: option.shape['refreshHz'] ?? z.never(),
+    });
+  }
+  if (action === 'brightness') {
+    return z.strictObject({ action: z.literal('brightness'), percent: PERCENT, output: SCREEN });
+  }
+  if (action === 'scale') {
+    return z.strictObject({ action: z.literal('scale'), output: SCREEN, percent: PERCENT });
+  }
+  return NEEDS_SCREEN.has(action) ? option.extend({ output: SCREEN }) : option;
+}
+
+const DISPLAY_OPTIONS: readonly z.ZodObject[] = [
+  ...DISPLAY_CHANGE.options
+    .filter((option) => DISPLAY_TOOL_NAMES.has(actionOf(option)))
+    .map(displayOption),
   KEEP,
   REVERT,
 ];
@@ -66,31 +120,75 @@ type DisplayRequest = z.output<typeof DISPLAY_INPUT>;
 
 export async function changeAudio(
   context: OperatingContext,
-  { deviceId, change }: Chosen<AudioChange>,
+  { deviceId: wanted, change }: Chosen<AudioChange>,
 ): Promise<Fields> {
+  const deviceId = computerIdOf(context, wanted);
   const state = AUDIO_STATE.parse(await changed(context, 'changeComputerAudio', deviceId, change));
   return answered(audioSummary(change), compactAudio(state));
 }
 
-function displayHeadline(change: DisplayRequest['change']): string {
-  if (change.action === 'keep') return 'Screen change kept';
-  return change.action === 'revert' ? 'Screen change reverted' : displaySummary(change);
+function displayHeadline(keep: boolean): string {
+  return keep ? 'Screen change kept' : 'Screen change reverted';
+}
+
+async function screenOf(
+  context: OperatingContext,
+  deviceId: string,
+  wanted: unknown,
+): Promise<string> {
+  if (typeof wanted === 'string') return wanted;
+  const state = DISPLAY_STATE.parse(
+    await operate(context, 'readComputerDisplays', { params: { deviceId } }),
+  );
+  const [only, second] = state.outputs;
+  if (only !== undefined && second === undefined) return only.id;
+  const listed = state.outputs.map((screen) => `${screen.name} (${screen.id})`).join(', ');
+  throw new ToolError(`Say which screen with output: ${listed}`);
+}
+
+async function wireChange(
+  context: OperatingContext,
+  deviceId: string,
+  change: DisplayRequest['change'],
+): Promise<DisplayChange> {
+  const { action: named, resolution, percent, ...rest } = change;
+  const action = String(named);
+  const output = NEEDS_SCREEN.has(action)
+    ? { output: await screenOf(context, deviceId, rest['output']) }
+    : {};
+  const size = typeof resolution === 'string' ? resolution.split('x').map(Number) : [];
+  const raw = {
+    ...rest,
+    action,
+    ...output,
+    ...(size.length === 2 ? { width: size[0], height: size[1] } : {}),
+    ...(percent === undefined ? {} : action === 'brightness' ? { level: percent } : { percent }),
+  };
+  const parsed = DISPLAY_CHANGE.safeParse(raw);
+  if (!parsed.success) {
+    throw new ToolError(`The arguments are not valid: ${issuesOf(parsed.error)}`);
+  }
+  return parsed.data;
 }
 
 export async function changeDisplay(
   context: OperatingContext,
-  { deviceId, change }: DisplayRequest,
+  { deviceId: wanted, change }: DisplayRequest,
 ): Promise<Fields> {
-  const confirming = change.action === 'keep' || change.action === 'revert';
+  const deviceId = computerIdOf(context, wanted);
+  if (change['action'] === 'keep' || change['action'] === 'revert') {
+    const keep = change['action'] === 'keep';
+    const state = DISPLAY_STATE.parse(
+      await changed(context, 'confirmComputerDisplay', deviceId, { keep }),
+    );
+    return answered(displayHeadline(keep), compactDisplays(state, false));
+  }
+  const applied = await wireChange(context, deviceId, change);
   const state = DISPLAY_STATE.parse(
-    confirming
-      ? await changed(context, 'confirmComputerDisplay', deviceId, {
-          keep: change.action === 'keep',
-        })
-      : await changed(context, 'changeComputerDisplay', deviceId, change),
+    await changed(context, 'changeComputerDisplay', deviceId, applied),
   );
   const note = revertNote(state.pendingRevert?.revertsAt ?? null);
-  return answered(`${displayHeadline(change)}${note}`, compactDisplays(state, false));
+  return answered(`${displaySummary(applied)}${note}`, compactDisplays(state, false));
 }
 
 async function systemState(
@@ -112,14 +210,15 @@ async function systemState(
 
 export async function changeSystem(
   context: OperatingContext,
-  { deviceId, change }: Chosen<SystemToolChange>,
+  { deviceId: wanted, change }: Chosen<SystemToolChange>,
 ): Promise<Fields> {
+  const deviceId = computerIdOf(context, wanted);
   return answered(systemSummary(change), await systemState(context, deviceId, change));
 }
 
 const WINDOW_INPUT = z.strictObject({
   deviceId: COMPUTER_ID,
-  windowId: z.string().min(1).describe('A windowId from get_computer view windows'),
+  windowId: z.string().min(1).describe('A windowId from computer_read view windows'),
 });
 
 const WINDOW_PAST: Readonly<Record<WindowAction, string>> = {
@@ -130,10 +229,11 @@ const WINDOW_PAST: Readonly<Record<WindowAction, string>> = {
 
 export async function changeWindow(
   context: OperatingContext,
-  deviceId: string,
+  wanted: string | undefined,
   windowId: string,
   action: WindowAction,
 ): Promise<Fields> {
+  const deviceId = computerIdOf(context, wanted);
   const state = WINDOWS_STATE.parse(
     await changed(context, 'changeComputerWindow', deviceId, { windowId, action }),
   );
@@ -158,21 +258,21 @@ function windowTool(name: McpPartName, action: WindowAction): Tool {
 
 export const COMPUTER_CONTROL_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'set_computer_audio',
+    name: 'computer_audio_set',
     input: AUDIO_INPUT,
     annotations: { ...WRITES, idempotentHint: true },
     answer: true,
     run: async (context, request) => ({ structured: await changeAudio(context, request) }),
   }),
   defineTool({
-    name: 'set_computer_display',
+    name: 'computer_display_set',
     input: DISPLAY_INPUT,
     annotations: WRITES,
     answer: true,
     run: async (context, request) => ({ structured: await changeDisplay(context, request) }),
   }),
   defineTool({
-    name: 'set_computer_system',
+    name: 'computer_system_set',
     input: SYSTEM_INPUT,
     annotations: { ...WRITES, destructiveHint: true },
     answer: true,

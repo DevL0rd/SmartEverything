@@ -150,7 +150,7 @@ function askHandler(ports: HubEffectPorts): EffectHandler {
         ports.ai.current().tools,
         {
           profileId: who.profileId,
-          tool: 'notify_person',
+          tool: 'person_notify',
           args: { personId: ask.person, text: askLine(who.name, ask.question, ask.options) },
         },
         who,

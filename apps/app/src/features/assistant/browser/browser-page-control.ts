@@ -7,7 +7,7 @@ import {
   type EmbeddedBrowserAction,
 } from '@smarteverything/domain';
 import { embeddedAddress } from './browser-embedded-snapshot';
-import { previewDiagnosticsNative } from './browser-diagnostics-platform';
+import { nativeBrowserPage } from './browser-page-platform';
 import { BrowserTabError } from './browser-tab-errors';
 import type { BrowserTabs } from './browser-tabs';
 import type { BrowserTab } from './browser-tab-state';
@@ -31,18 +31,19 @@ export function isBrowserPageAction(action: EmbeddedBrowserAction): action is Br
 }
 
 export function browserPageSupported(): boolean {
-  return previewDiagnosticsNative('public')?.page !== undefined;
+  return nativeBrowserPage() !== undefined;
 }
 
 function pageOf(
   tab: BrowserTab,
   selectedId: string | null,
+  mounted: boolean,
 ): { readonly page: NativeBrowserPage; readonly id: string } {
-  if (tab.phase !== 'ready')
+  if (tab.phase !== 'ready' || !mounted)
     throw new BrowserTabError('This tab has no page open yet. Wait for it to finish opening.');
   if (tab.id !== selectedId)
     throw new BrowserTabError('Select this tab first so its page is showing, then try again.');
-  const page = previewDiagnosticsNative(tab.selection.target.kind)?.page;
+  const page = nativeBrowserPage();
   if (page === undefined)
     throw new BrowserTabError('This device cannot read or act on a page in the browser.');
   return { page, id: tab.selection.target.id };
@@ -51,8 +52,9 @@ function pageOf(
 export async function readBrowserPage(
   tab: BrowserTab,
   selectedId: string | null,
+  mounted: boolean,
 ): Promise<BrowserPage> {
-  const { page, id } = pageOf(tab, selectedId);
+  const { page, id } = pageOf(tab, selectedId, mounted);
   const reading = await page.perform({ id, operation: { kind: 'snapshot' } });
   if (reading === null) throw new BrowserTabError('The page did not answer with a reading.');
   return BROWSER_PAGE.parse({
@@ -71,15 +73,16 @@ export async function readBrowserPage(
 async function actOnBrowserPage(
   tab: BrowserTab,
   selectedId: string | null,
+  mounted: boolean,
   action: BrowserPageOperationAction,
 ): Promise<void> {
-  const { page, id } = pageOf(tab, selectedId);
+  const { page, id } = pageOf(tab, selectedId, mounted);
   const { tabId: _tabId, ...operation } = action;
   await page.perform({ id, operation });
 }
 
 export function performBrowserPageAction(
-  tabs: Pick<BrowserTabs, 'tab' | 'read' | 'handle'>,
+  tabs: Pick<BrowserTabs, 'tab' | 'read' | 'handle' | 'mounted'>,
   action: BrowserPageAction,
 ): Promise<void> {
   const tab = tabs.tab(action.tabId);
@@ -91,5 +94,5 @@ export function performBrowserPageAction(
     tabs.handle(tab.id).forward();
     return Promise.resolve();
   }
-  return actOnBrowserPage(tab, tabs.read().selectedId, action);
+  return actOnBrowserPage(tab, tabs.read().selectedId, tabs.mounted(tab.id), action);
 }

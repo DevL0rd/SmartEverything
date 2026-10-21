@@ -43,6 +43,7 @@ export const MCP_TOOL_AREA_LABELS: Readonly<Record<McpToolArea, string>> = {
 export interface McpToolSummary<N extends string = string> {
   readonly name: N;
   readonly title: string;
+  readonly line: string;
   readonly description: string;
   readonly access: McpToolAccess;
   readonly area: McpToolArea;

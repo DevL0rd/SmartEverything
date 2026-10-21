@@ -58,7 +58,7 @@ function change(
   value: unknown,
   deviceIds: readonly string[],
 ): Record<string, unknown> {
-  return { changes: [{ target: { deviceIds }, capability, value }] };
+  return { deviceIds, capability, value };
 }
 
 async function owner(method: string, path: string, body?: unknown): Promise<unknown> {
@@ -69,10 +69,10 @@ async function owner(method: string, path: string, body?: unknown): Promise<unkn
 
 describe('the home tools', () => {
   it('describe the home, its rooms and its linked providers', async () => {
-    const home = structured(await tool('get_home'));
+    const home = structured(await tool('home_read'));
     const computers = z
       .array(z.object({ family: z.string() }))
-      .parse(structured(await tool('find_devices'))['devices'])
+      .parse(structured(await tool('device_find'))['devices'])
       .filter((device) => device.family === 'computer');
     expect(home['homes']).toStrictEqual([
       {
@@ -98,13 +98,13 @@ describe('the home tools', () => {
     ]);
   });
 
-  it('refuse an argument get_home does not declare', async () => {
-    expect(await refusal('get_home', { homeId: lamp })).toContain('not valid');
+  it('refuse an argument home_read does not declare', async () => {
+    expect(await refusal('home_read', { homeId: lamp })).toContain('not valid');
   });
 
   it('list, filter, describe and search devices', async () => {
     const ids = (args: Record<string, unknown>): Promise<string[]> =>
-      tool('find_devices', args).then((result) =>
+      tool('device_find', args).then((result) =>
         z
           .array(z.object({ id: z.string(), family: z.string() }))
           .parse(structured(result)['devices'])
@@ -119,49 +119,53 @@ describe('the home tools', () => {
     await owner('PATCH', `/api/devices/${camera}`, { hidden: true });
     expect(await ids({})).toStrictEqual([lamp]);
     expect((await ids({ includeHidden: true })).sort()).toStrictEqual([lamp, camera].sort());
-    const described = structured(await tool('get_device', { deviceId: camera }));
+    const described = structured(await tool('device_read', { deviceId: camera }));
     expect(described['device']).toMatchObject({
       name: 'Front door',
       camera: { physical_ptz: true, two_way_audio: false },
     });
     expect(described['capabilities']).toMatchObject([{ key: 'privacy_mode' }]);
     expect(described['device']).toHaveProperty('capabilities', ['privacy_mode']);
-    expect(await refusal('get_device', { deviceId: NOT_FOUND_ID })).toContain('There is no device');
-    expect(await refusal('get_device', { deviceId: 'nope' })).toContain('deviceId');
-    const found = structured(await tool('search_everything', { query: 'dim' }));
+    expect(await refusal('device_read', { deviceId: NOT_FOUND_ID })).toContain(
+      'There is no device',
+    );
+    expect(await refusal('device_read', { deviceId: 'nope' })).toContain(
+      'There is no device matching "nope"',
+    );
+    const found = structured(await tool('home_search', { query: 'dim' }));
     expect(found['capabilities']).toStrictEqual([
       { key: 'brightness', label: 'Brightness', devices: 1 },
     ]);
-    const desk = structured(await tool('search_everything', { query: 'desk' }));
+    const desk = structured(await tool('home_search', { query: 'desk' }));
     expect(NAMED.parse(desk['devices']).map((device) => device.name)).toStrictEqual(['Desk lamp']);
   });
 });
 
 describe('the control tools', () => {
   it('validate a device command, issue it as the assistant and wait for its result', async () => {
-    expect(await refusal('control_devices', change('brightness', 150, [lamp]))).toContain(
+    expect(await refusal('device_control', change('brightness', 150, [lamp]))).toContain(
       'outside 1 to 100',
     );
-    expect(await refusal('control_devices', change('temperature', 20, [lamp]))).toContain(
+    expect(await refusal('device_control', change('temperature', 20, [lamp]))).toContain(
       'is read-only',
     );
-    expect(await refusal('control_devices', change('hub:unlink_provider', {}, [lamp]))).toContain(
+    expect(await refusal('device_control', change('hub:unlink_provider', {}, [lamp]))).toContain(
       'has no hub:unlink_provider',
     );
-    expect(await refusal('control_devices', change('power', true, [NOT_FOUND_ID]))).toContain(
-      'No device matches',
+    expect(await refusal('device_control', change('power', true, [NOT_FOUND_ID]))).toContain(
+      'There is no device matching',
     );
-    const done = structured(await tool('control_devices', change('power', false, [lamp])));
+    const done = structured(await tool('device_control', change('power', false, [lamp])));
     expect(done).toStrictEqual({
       ok: true,
-      summary: 'Controlled devices: 1 of 1 commands done',
+      summary: 'Controlled device: 1 of 1 commands done',
       changed: [{ device: 'Desk lamp', capability: 'power' }],
     });
     booted.fake.adapter.failure = new Error('The lamp is unplugged');
-    const failed = structured(await tool('control_devices', change('power', true, [lamp])));
+    const failed = structured(await tool('device_control', change('power', true, [lamp])));
     expect(failed).toMatchObject({
       ok: false,
-      summary: 'Controlled devices: 0 of 1 commands done, 1 failed',
+      summary: 'Controlled device: 0 of 1 commands done, 1 failed',
       failed: [
         { device: 'Desk lamp', capability: 'power', reason: 'Error: The lamp is unplugged' },
       ],
@@ -181,7 +185,7 @@ describe('the control tools', () => {
     const empty = API_ENDPOINTS.createScene.response.parse(
       await owner('POST', '/api/scenes', { name: 'Empty', actions: [] }),
     );
-    const ran = structured(await tool('run_scene', { sceneId: scene.id }));
+    const ran = structured(await tool('scene_run', { sceneId: scene.id }));
     expect(ran).toMatchObject({
       ok: true,
       id: scene.id,
@@ -191,9 +195,9 @@ describe('the control tools', () => {
       .parse(await owner('GET', '/api/commands'))
       .map((command) => command.source);
     expect(sources).toStrictEqual(['scene', 'scene']);
-    expect(await refusal('run_scene', { sceneId: empty.id })).toContain('has no actions');
-    expect(await refusal('run_scene', { sceneId: NOT_FOUND_ID })).toContain('There is no scene');
-    expect(structured(await tool('list_scenes'))['scenes']).toMatchObject([
+    expect(await refusal('scene_run', { sceneId: empty.id })).toContain('has no actions');
+    expect(await refusal('scene_run', { sceneId: NOT_FOUND_ID })).toContain('There is no scene');
+    expect(structured(await tool('scene_find'))['scenes']).toMatchObject([
       { name: 'Empty', actions: [] },
       {
         name: 'Evening',
@@ -228,12 +232,12 @@ describe('the history, event, health and camera tools', () => {
     live.socket.close();
     const range = { from: '2026-01-01T00:00:00Z', to: '2026-01-01T03:00:00Z' };
     const raw = structured(
-      await tool('get_history', { deviceId: lamp, capability: 'temperature', ...range }),
+      await tool('history_read', { deviceId: lamp, capability: 'temperature', ...range }),
     );
     expect(raw).toMatchObject({ kind: 'number', bucket: 'raw' });
     expect(z.array(z.unknown()).parse(raw['points'])).toHaveLength(9);
     const hourly = structured(
-      await tool('get_history', {
+      await tool('history_read', {
         deviceId: lamp,
         capability: 'temperature',
         bucket: 'hour',
@@ -246,7 +250,7 @@ describe('the history, event, health and camera tools', () => {
       { bucket: '2026-01-01T02:00:00.000Z', average: 27, minimum: 26, maximum: 28, samples: 3 },
     ]);
     expect(
-      await refusal('get_history', {
+      await refusal('history_read', {
         deviceId: lamp,
         capability: 'power',
         bucket: 'day',
@@ -254,7 +258,7 @@ describe('the history, event, health and camera tools', () => {
       }),
     ).toContain('only numbers can be bucketed');
     expect(
-      await refusal('get_history', {
+      await refusal('history_read', {
         deviceId: lamp,
         capability: 'temperature',
         from: range.to,
@@ -262,7 +266,7 @@ describe('the history, event, health and camera tools', () => {
       }),
     ).toContain('from must be before to');
     expect(
-      await refusal('get_history', {
+      await refusal('history_read', {
         deviceId: lamp,
         capability: 'temperature',
         from: '2026-01-01T00:00:00Z',
@@ -270,7 +274,7 @@ describe('the history, event, health and camera tools', () => {
       }),
     ).toContain('must not exceed 92 days');
     expect(
-      await refusal('get_history', { deviceId: lamp, capability: 'humidity', ...range }),
+      await refusal('history_read', { deviceId: lamp, capability: 'humidity', ...range }),
     ).toContain('has no capability');
   });
 
@@ -297,11 +301,11 @@ describe('the history, event, health and camera tools', () => {
         message.record?.kind === 'snapshot',
     );
     live.socket.close();
-    const motion = structured(await tool('list_events', { kinds: ['motion'] }));
+    const motion = structured(await tool('event_find', { kinds: ['motion'] }));
     expect(motion['events']).toMatchObject([{ kind: 'motion', device: 'Desk lamp' }]);
-    const all = structured(await tool('list_events', { deviceIds: [camera], kinds: ['doorbell'] }));
+    const all = structured(await tool('event_find', { deviceIds: [camera], kinds: ['doorbell'] }));
     expect(all['events']).toMatchObject([{ kind: 'doorbell', device: 'Front door' }]);
-    const snapshot = await tool('camera_pictures', { view: 'saved', deviceId: camera });
+    const snapshot = await tool('camera_read', { view: 'saved', deviceId: camera });
     expect(snapshot.isError).toBe(false);
     expect(snapshot.content[1]).toStrictEqual({
       type: 'image',
@@ -313,7 +317,7 @@ describe('the history, event, health and camera tools', () => {
       device: 'Front door',
       mimeType: 'image/jpeg',
     });
-    expect(await refusal('camera_pictures', { view: 'saved', deviceId: lamp })).toContain(
+    expect(await refusal('camera_read', { view: 'saved', deviceId: lamp })).toContain(
       'has no saved snapshot',
     );
   });
@@ -345,7 +349,7 @@ describe('the history, event, health and camera tools', () => {
     expect(ingested.status).toBe(200);
     const range = { from: '2026-01-01', to: '2026-01-02' };
     const summary = (args: Record<string, unknown>): Promise<ToolResult> =>
-      tool('read_health', { view: 'summary', ...args });
+      tool('health_read', { view: 'summary', ...args });
     const days = (result: ToolResult): unknown =>
       z
         .array(z.object({ days: z.array(z.unknown()) }))
@@ -357,7 +361,7 @@ describe('the history, event, health and camera tools', () => {
     ]);
     expect(days(await summary(range))).toHaveLength(2);
     expect(
-      await refusal('read_health', { view: 'summary', from: range.to, to: range.from }),
+      await refusal('health_read', { view: 'summary', from: range.to, to: range.from }),
     ).toContain('from must not be after to');
   });
 });

@@ -11,6 +11,7 @@ const ANDROID_LIBRARIES: Readonly<Record<string, string>> = {
   'androidx.health.connect:connect-client': APACHE,
   'androidx.work:work-runtime-ktx': APACHE,
   'androidx.lifecycle:lifecycle-process': APACHE,
+  'androidx.webkit:webkit': APACHE,
   'org.jetbrains.kotlinx:kotlinx-coroutines-android': APACHE,
   'org.jetbrains.kotlinx:kotlinx-serialization-json': APACHE,
   'com.squareup.okhttp3:okhttp': APACHE,

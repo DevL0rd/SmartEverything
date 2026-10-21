@@ -45,9 +45,8 @@ vi.mock('../../../../api/connection/active-route', () => ({
     state: { subscribe: (): (() => void) => () => undefined },
   }),
 }));
-vi.mock('../browser-diagnostics-platform', () => ({
-  previewDiagnosticsNative: (): { page?: typeof hub.page } =>
-    hub.page === undefined ? {} : { page: hub.page },
+vi.mock('../browser-page-platform', () => ({
+  nativeBrowserPage: (): typeof hub.page => hub.page,
 }));
 
 const { EmbeddedBrowserChannel } = await import('./embedded-browser-channel');

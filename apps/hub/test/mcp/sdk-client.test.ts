@@ -1,3 +1,4 @@
+import { listedFor } from '../../src/extensions/mcp/server';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { API_ENDPOINTS, MCP_TOOLS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -41,9 +42,11 @@ describe('the official MCP client', () => {
     expect(client.getServerCapabilities()).toMatchObject({ tools: { listChanged: true } });
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name)).toStrictEqual(
-      MCP_TOOLS.map((tool) => tool.name).filter((name) => !PLUGIN_ONLY_TOOLS.has(name)),
+      MCP_TOOLS.map((tool) => tool.name).filter(
+        (name) => !PLUGIN_ONLY_TOOLS.has(name) && listedFor('')(name),
+      ),
     );
-    const answer = await client.callTool({ name: 'search_tools', arguments: { query: 'weather' } });
+    const answer = await client.callTool({ name: 'tool_search', arguments: { query: 'weather' } });
     expect(answer.isError).toBe(false);
     const docs = await client.readResource({ uri: 'smarteverything://docs/tools' });
     expect(docs.contents).toHaveLength(1);
@@ -58,10 +61,10 @@ describe('the official MCP client', () => {
     await call(booted.base, booted.owner, {
       method: 'PUT',
       path: '/api/mcp/tools',
-      body: { disabled: ['speak'] },
+      body: { disabled: ['voice_speak'] },
     });
     await heard;
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name)).not.toContain('speak');
+    expect(tools.map((tool) => tool.name)).not.toContain('voice_speak');
   });
 });

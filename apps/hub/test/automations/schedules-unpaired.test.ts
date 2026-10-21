@@ -14,11 +14,11 @@ describe('a scheduled action outlives the phone that scheduled it', () => {
         steps: [
           {
             kind: 'tool',
-            tool: 'control_devices',
+            tool: 'device_control',
             args: {
-              changes: [
-                { target: { deviceIds: [rig().ids.lamp] }, capability: 'power', value: true },
-              ],
+              deviceIds: [rig().ids.lamp],
+              capability: 'power',
+              value: true,
             },
             stopOnFailure: false,
           },

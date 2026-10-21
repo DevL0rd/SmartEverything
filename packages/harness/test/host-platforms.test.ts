@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  AI_PREVIEW_CAPABILITY,
-  AI_PREVIEW_FILE_CAPABILITY,
   HARNESS_CONFIGURATION_CAPABILITY,
   HARNESS_PLATFORM,
   HARNESS_SUBSCRIPTION_CAPABILITY,
@@ -39,31 +37,17 @@ describe('the host platform table', () => {
 });
 
 describe('the capabilities a host advertises', () => {
-  it('lists configuration, subscriptions and previews for a previewing Linux or macOS computer', () => {
+  it('lists configuration and subscriptions for a Linux or macOS computer', () => {
     for (const platform of ['linux', 'macos'] as const) {
-      expect(hostCapabilities(platform, true)).toStrictEqual([
+      expect(hostCapabilities(platform)).toStrictEqual([
         HARNESS_CONFIGURATION_CAPABILITY,
         HARNESS_SUBSCRIPTION_CAPABILITY,
-        AI_PREVIEW_CAPABILITY,
-        AI_PREVIEW_FILE_CAPABILITY,
       ]);
     }
   });
 
-  it('leaves out previews when the computer has none', () => {
-    expect(hostCapabilities('linux', false)).toStrictEqual([
-      HARNESS_CONFIGURATION_CAPABILITY,
-      HARNESS_SUBSCRIPTION_CAPABILITY,
-    ]);
-  });
-
   it('never advertises the subscription capability for Windows', () => {
-    expect(hostCapabilities('windows', true)).toStrictEqual([
-      HARNESS_CONFIGURATION_CAPABILITY,
-      AI_PREVIEW_CAPABILITY,
-      AI_PREVIEW_FILE_CAPABILITY,
-    ]);
-    expect(hostCapabilities('windows', false)).toStrictEqual([HARNESS_CONFIGURATION_CAPABILITY]);
+    expect(hostCapabilities('windows')).toStrictEqual([HARNESS_CONFIGURATION_CAPABILITY]);
   });
 });
 

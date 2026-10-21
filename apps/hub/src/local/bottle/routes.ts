@@ -44,7 +44,7 @@ export type BottleEndpointName =
 export interface RouteDeps {
   readonly store: Store;
   readonly local: Pick<LocalDevices, 'deviceOf' | 'add' | 'remove'>;
-  readonly bridges: Pick<WatchBridges, 'acquire' | 'heldElsewhere' | 'holderOf'>;
+  readonly bridges: Pick<WatchBridges, 'acquire' | 'heldElsewhere' | 'holderOf' | 'pair'>;
   readonly ingest: BottleIngest;
   readonly broker: Pick<BottleActionBroker, 'answer'>;
   readonly actions: Pick<BottleActions, 'run'>;
@@ -152,6 +152,7 @@ async function upload(
     );
   }
   const result = await deps.ingest.process(device, entry, client, body);
+  await deps.bridges.pair(device, client);
   deps.stats.invalidate();
   return result;
 }

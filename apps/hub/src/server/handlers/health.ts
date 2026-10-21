@@ -85,7 +85,15 @@ export const assistantRoutes = ({ store }: ServerContext) =>
     listMcpTokens: bound(E.listMcpTokens, () => store.oauth.personalTokens()),
     createMcpToken: bound(E.createMcpToken, ({ body }) => {
       const token = createMcpToken();
-      return { token, row: store.oauth.createPersonalToken(body.name, hashMcpToken(token)) };
+      return {
+        token,
+        row: store.oauth.createPersonalToken({
+          name: body.name,
+          tokenHash: hashMcpToken(token),
+          localOnly: false,
+          access: body.access,
+        }),
+      };
     }),
     revokeMcpToken: bound(E.revokeMcpToken, ({ params }) =>
       store.oauth.revokePersonalToken(params.tokenId),

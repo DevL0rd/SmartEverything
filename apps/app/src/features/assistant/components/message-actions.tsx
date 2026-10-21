@@ -1,4 +1,3 @@
-import type { AiRetryFrom, AssistantMessageRow } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Share, type AccessibilityActionEvent, type AccessibilityActionInfo } from 'react-native';
@@ -13,7 +12,7 @@ import { quoteInto, setReferenceDraft } from '../data/drafts';
 import { startEditing } from '../data/editing';
 import { deleteMessageWithUndo } from '../data/message-delete';
 import { useRowActionState } from '../data/retry';
-import { branchFromMessage, retryMessage } from '../data/send';
+import { branchFromMessage } from '../data/send';
 import type { MessageItem } from '../data/thread';
 import {
   actionPlan,
@@ -91,7 +90,6 @@ function menuItem(spec: ActionSpec, run: (id: ActionId) => void, pointer: boolea
 }
 
 interface Controls {
-  readonly retry: (() => void) | null;
   readonly select: () => void;
   readonly details: () => void;
 }
@@ -102,9 +100,6 @@ function quoteWho(item: MessageItem): string {
 
 function handlersOf(item: MessageItem, controls: Controls): Readonly<Record<ActionId, () => void>> {
   const { row } = item;
-  const retry = (): void => {
-    controls.retry?.();
-  };
   return {
     copy: (): void => {
       copyText(row.text, 'Message');
@@ -115,8 +110,6 @@ function handlersOf(item: MessageItem, controls: Controls): Readonly<Record<Acti
     quote: (): void => {
       quoteInto(row.chat_id, { who: quoteWho(item), text: readableText(row.text) });
     },
-    regenerate: retry,
-    retry,
     edit: (): void => {
       startEditing(row.id);
     },
@@ -140,14 +133,7 @@ function handlersOf(item: MessageItem, controls: Controls): Readonly<Record<Acti
   };
 }
 
-const NATIVE_MUTATIONS: ReadonlySet<ActionId> = new Set([
-  'regenerate',
-  'edit',
-  'retry',
-  'branch',
-  'delete',
-  'quote',
-]);
+const NATIVE_MUTATIONS: ReadonlySet<ActionId> = new Set(['edit', 'branch', 'delete', 'quote']);
 function readablePlan(plan: ActionPlan, readOnly: boolean): ActionPlan {
   if (!readOnly) return plan;
   const keep = (action: ActionSpec): boolean => !NATIVE_MUTATIONS.has(action.id);
@@ -157,33 +143,17 @@ function readablePlan(plan: ActionPlan, readOnly: boolean): ActionPlan {
   };
 }
 
-function retryOf(
-  request: AssistantMessageRow | null,
-  retryFrom: AiRetryFrom | null,
-): (() => void) | null {
-  if (request === null || retryFrom === null) return null;
-  return (): void => {
-    background(retryMessage(request, retryFrom), 'message.retry_failed');
-  };
-}
-
-function useActionPlan(item: MessageItem): {
-  readonly plan: ActionPlan;
-  readonly retry: (() => void) | null;
-} {
-  const { row, speaker, latestReply } = item;
+function useActionPlan(item: MessageItem): ActionPlan {
+  const { row, speaker } = item;
   const pointer = useIdiom() === 'pointer';
-  const { request, retryFrom, canEdit, readOnly } = useRowActionState(row);
+  const { canEdit, readOnly } = useRowActionState(row);
   const plan = actionPlan({
     speaker: speaker.kind,
     hasText: row.text.trim() !== '',
-    canRegenerate: speaker.kind === 'ai' && latestReply && retryFrom !== null,
-    canRetry: speaker.kind === 'me' && row.state === 'failed' && retryFrom !== null,
     canEdit,
     pointer,
   });
-  const retry = retryOf(request, retryFrom);
-  return { plan: readablePlan(plan, readOnly), retry: readOnly ? null : retry };
+  return readablePlan(plan, readOnly);
 }
 
 function accessibilityOf(
@@ -234,8 +204,8 @@ export function useMessageActions(item: MessageItem): MessageActions {
   const pointer = useIdiom() === 'pointer';
   const details = useSheetFlag();
   const selecting = useSheetFlag();
-  const { plan, retry } = useActionPlan(item);
-  const handlers = handlersOf(item, { retry, select: selecting.show, details: details.show });
+  const plan = useActionPlan(item);
+  const handlers = handlersOf(item, { select: selecting.show, details: details.show });
   const run = (id: ActionId): void => {
     if (![...plan.quick, ...plan.list].some((spec) => spec.id === id)) return;
     handlers[id]();

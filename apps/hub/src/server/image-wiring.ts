@@ -97,14 +97,16 @@ export function createImageRuntime(options: ImageRuntimeOptions): ImageRuntime {
     actor,
     readCatalog: async (caller, chatId, refresh): Promise<ImageProviderCatalog> => {
       const readiness = imageReadiness(service, configured(), actor(caller), chatId);
+      const selected = options.store.assistantChat.settings().image_model;
       try {
-        return { endpoints: [...(await catalog.list(refresh === true))], readiness };
+        return { endpoints: [...(await catalog.list(refresh === true))], readiness, selected };
       } catch (cause) {
         options.log.warn('image.catalog_unavailable', {
           reason: messageOf(cause),
         });
         return {
           endpoints: [],
+          selected,
           readiness: {
             ...readiness,
             ready: false,

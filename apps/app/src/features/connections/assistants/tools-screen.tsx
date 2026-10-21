@@ -10,7 +10,6 @@ import { notify } from '../../../components/toast-store';
 import { useSettings } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
 import { TOOL_GROUPS, groupState, withGroup, withTool, type ToolGroup } from '../model/tools';
-import { toolLine } from '../model/tool-text';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { ToolSheet } from './tool-sheet';
 
@@ -56,7 +55,7 @@ function ToolRow({
   return (
     <ListRow
       title={tool.title}
-      subtitle={toolLine(tool)}
+      subtitle={tool.line}
       value={disabled.includes(tool.name) ? 'Off' : 'On'}
       chevron
       onPress={() => {

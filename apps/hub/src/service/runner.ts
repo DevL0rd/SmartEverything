@@ -75,7 +75,6 @@ function serverOptions(
     logLines: lifecycle.files.logFile.lines,
     port: config.port,
     ...(config.lan === undefined ? {} : { lan: config.lan }),
-    ...(config.preview === undefined ? {} : { preview: config.preview }),
     host: config.host,
     go2rtcBinary: config.go2rtcBinary,
     codex: {

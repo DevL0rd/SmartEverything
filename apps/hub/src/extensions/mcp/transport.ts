@@ -86,7 +86,11 @@ export async function handleMcp(
   if (caller === null) {
     return;
   }
-  const mcp = createMcpServer({ ...options.tools, caller }, options.log);
+  const mcp = createMcpServer(
+    { ...options.tools, caller },
+    options.log,
+    request.headers['user-agent'] ?? '',
+  );
   const http = statelessHttp(true);
   response.once('close', () => {
     mcp.close().catch((cause: unknown) => {

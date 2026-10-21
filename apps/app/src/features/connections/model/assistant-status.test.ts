@@ -23,6 +23,7 @@ function token(name: string, lastUsed: string | null, revoked: string | null = n
   return {
     id: '00000000-0000-4000-8000-000000000001',
     name,
+    access: 'control',
     created_at: '2026-10-01T00:00:00.000Z',
     last_used_at: lastUsed,
     revoked_at: revoked,

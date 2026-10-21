@@ -1,6 +1,7 @@
 import { ApiError } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { ChatDirectory, ChatOwner } from './chat-directory';
+import type { AssistantDelivery } from './delivery';
 import type { EngineRegistry } from './engines/registry';
 
 const log = new Logger('hub.assistant');
@@ -8,6 +9,7 @@ const log = new Logger('hub.assistant');
 export interface ChatRunControl {
   readonly chats: ChatDirectory;
   readonly engines: EngineRegistry;
+  readonly delivery: AssistantDelivery;
 }
 
 export async function compactChat(
@@ -44,12 +46,16 @@ export async function compactChat(
 }
 
 export async function interruptChat(
-  { chats, engines }: ChatRunControl,
+  { chats, engines, delivery }: ChatRunControl,
   owner: ChatOwner,
   chatId: string,
 ): Promise<void> {
   const chat = chats.own(owner, chatId);
   const engine = engines.forMutation(chat, owner.role);
+  if (delivery.stopChat(chatId)) {
+    log.info('interrupt.delivery_retry_stopped', { chatId, profileId: owner.profileId });
+    return;
+  }
   if (engine === null) {
     log.debug('interrupt.nothing_running', { chatId, profileId: owner.profileId });
     throw new ApiError('conflict', 'Nothing is running in this chat.');

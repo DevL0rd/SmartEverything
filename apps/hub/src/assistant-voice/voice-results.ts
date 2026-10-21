@@ -13,11 +13,11 @@ const FLAGS_DROPPED_WHEN_FALSE: ReadonlySet<string> = new Set(['favourite', 'hid
 
 const PROJECTIONS: ReadonlyMap<string, Projection> = new Map([
   [
-    'get_home',
+    'home_read',
     { drop: new Set(['position', 'updated_at', 'latitude', 'longitude', 'sign_in', 'room_id']) },
   ],
   [
-    'find_devices',
+    'device_find',
     {
       drop: new Set([
         'provider',
@@ -34,7 +34,7 @@ const PROJECTIONS: ReadonlyMap<string, Projection> = new Map([
     },
   ],
   [
-    'get_device',
+    'device_read',
     {
       drop: new Set(['details', 'updated_at', 'observed_at', 'group', 'tier', 'access', 'room_id']),
     },

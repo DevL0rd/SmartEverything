@@ -144,7 +144,7 @@ export class ChatDirectory {
     if (!this.store.profiles.list().some((profile) => profile.id === profileId))
       throw new ApiError(
         'invalid_request',
-        'There is no person with that profileId; take it from list_people, or leave it out for the owner.',
+        'There is no person with that profileId; take it from person_read, or leave it out for the owner.',
       );
   }
 

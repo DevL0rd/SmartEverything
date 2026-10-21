@@ -31,7 +31,7 @@ export type LaundryNoticeSetting = z.infer<typeof LAUNDRY_NOTICE_SETTING>;
 export const LAUNDRY_NOTICES = z
   .record(z.uuid(), LAUNDRY_NOTICE_SETTING)
   .describe(
-    'Phone notices of each washing machine or dryer, by device id, shared by the whole household: finished (cycle done), fault, detergent (low), softener (low), filter (needs cleaning), unload (laundry still waiting unloadMinutes after the cycle). A machine without an entry sends every notice and reminds after 30 minutes. Change with call_operation updateLaundryNotices',
+    'Phone notices of each washing machine or dryer, by device id, shared by the whole household: finished (cycle done), fault, detergent (low), softener (low), filter (needs cleaning), unload (laundry still waiting unloadMinutes after the cycle). A machine without an entry sends every notice and reminds after 30 minutes. Change with operation_call updateLaundryNotices',
   );
 
 export type LaundryNotices = z.infer<typeof LAUNDRY_NOTICES>;

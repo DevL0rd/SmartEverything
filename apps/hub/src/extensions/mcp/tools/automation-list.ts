@@ -1,6 +1,6 @@
 import type { AutomationRowV3, RoomRow } from '@smarteverything/domain';
 import { z } from 'zod';
-import { OFFSET, moreOf, paged } from '../../../ai-tools/paging';
+import { CURSOR, moreOf, paged } from '../../../ai-tools/paging';
 import { deviceScopeOfActor } from './person-reach';
 import { matches, type ToolContext } from './registry';
 import { inRooms, placedDevices } from './targets';
@@ -15,7 +15,7 @@ export const AUTOMATION_FILTER = z.strictObject({
     .describe('Room ids or names of the devices it watches or changes'),
   enabled: z.boolean().optional().describe('Only those switched on (true) or off (false)'),
   limit: z.number().int().min(1).max(200).default(100),
-  offset: OFFSET,
+  cursor: CURSOR,
 });
 
 type AutomationFilter = z.infer<typeof AUTOMATION_FILTER>;
@@ -65,6 +65,6 @@ export function listAutomations(
     .map((automation) => ({ automation, rooms: roomsOf(automation, roomOfDevice) }))
     .filter(({ automation, rooms }) => wanted(filter, automation, rooms))
     .map(({ automation, rooms }) => ({ ...automation, rooms: rooms.map((room) => room.name) }));
-  const { rows, more } = paged(listed, filter.offset, filter.limit);
+  const { rows, more } = paged(listed, filter.cursor, filter.limit);
   return { automations: rows, ...moreOf(more) };
 }

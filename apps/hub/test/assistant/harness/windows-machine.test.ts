@@ -31,7 +31,7 @@ async function openChat(): Promise<AiChatRow> {
   return rig.opened.store.aiChats.chat(chat.id);
 }
 
-describe('list_machines for a Windows computer', () => {
+describe('machine_read for a Windows computer', () => {
   it('names the system and the partial sandbox so the model knows reads are not confined', async () => {
     const chat = await openChat();
     const host = windowsHost('partial');

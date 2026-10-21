@@ -77,13 +77,13 @@ async function attachment(
 
 const POST = ASSISTANT_POST.omit({ profileId: true }).extend({
   personId: ASSISTANT_POST.shape.profileId.describe(
-    'Whose chat: a person id from list_people (not a device or app id); the owner’s when left out',
+    'Whose chat: a person id from person_read (not a device or app id); the owner’s when left out',
   ),
 });
 
 export const ASSISTANT_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'assistant_post',
+    name: 'chat_post',
     input: POST,
     annotations: WRITES,
     run: async (context, { personId, ...post }) => ({
@@ -95,15 +95,17 @@ export const ASSISTANT_TOOLS: readonly Tool[] = [
     }),
   }),
   defineTool({
-    name: 'show_widgets',
+    name: 'widget_show',
     input: SHOW_WIDGETS_INPUT,
     annotations: WRITES,
     run: (context, input) => ({ structured: showWidgets(context, input.widgets) }),
   }),
   defineTool({
     name: 'read_assistant_attachment',
-    input: z.strictObject({ id: z.uuid() }),
+    input: z.strictObject({
+      attachmentId: z.uuid().describe('The attachment id, from chat_read view messages'),
+    }),
     annotations: READS,
-    run: (context, input) => attachment(context, input.id),
+    run: (context, input) => attachment(context, input.attachmentId),
   }),
 ];

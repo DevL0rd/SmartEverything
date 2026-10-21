@@ -39,9 +39,6 @@ class HubHtmlRegistrar(private val context: () -> Context, private val policy: (
   }
   fun register(builder: ModuleDefinitionBuilder) = with(builder) {
     Function("htmlReady") { ready(); true }
-    Function("htmlPageVersion") { ready(); if (HubBrowserPolicy.supported()) 2 else 0 }
-    Function("htmlProjectVersion") { ready(); if (HubBrowserPolicy.supported()) 1 else 0 }
-    Function("htmlLifetimeVersion") { ready(); 2 }
     Function("htmlViewReady") { android.webkit.WebView.getCurrentWebViewPackage() != null }
     Function("htmlCurrent") { id: String -> current(id) }
     AsyncFunction("openHtml") Coroutine { json: String -> withContext(Dispatchers.IO) { open(json) } }
@@ -64,7 +61,7 @@ class HubHtmlRegistrar(private val context: () -> Context, private val policy: (
       val broker = origin(projection)
       projection.install(broker)
       projection.check()
-      return mapOf("id" to id, "url" to broker.url(), "project" to true, "expiresAt" to null)
+      return mapOf("id" to id, "url" to broker.origin() + input.page.encodedPath())
     } catch (failure: Exception) { release(id); throw failure }
   }
   private fun origin(projection: Projection): HubHtmlBroker = synchronized(this) {
@@ -73,7 +70,7 @@ class HubHtmlRegistrar(private val context: () -> Context, private val policy: (
     val identity = input.identity()
     val previous = aliases[identity]
     if (previous != null) {
-      require(previous.input.binding == input.binding && previous.input.authorization == input.authorization)
+      require(previous.input.binding == input.binding && previous.input.authorization == input.authorization && previous.input.page.chatId == input.page.chatId)
       previous.owners.add(projection)
       return@synchronized previous.broker
     }
@@ -86,6 +83,8 @@ class HubHtmlRegistrar(private val context: () -> Context, private val policy: (
     alias.broker
   }
   fun attach(view: HubHtmlView, json: String) {
+    if (view.attached(json)) return
+    if (view.attachedElsewhere()) view.unbind()
     val input = org.json.JSONObject(json)
     require(input.length() == 2)
     val id = input.getString("projectionId")
@@ -96,8 +95,9 @@ class HubHtmlRegistrar(private val context: () -> Context, private val policy: (
     val browserId = input.getString("browserId")
     require(browserId.length in 1..512)
     try {
-      view.bind(browserId, broker.url(), broker.origin(), broker.gate.cookie(), projection.input.page.profileId, projection::check) { projection.detach(view) }
+      view.bind(browserId, broker.origin() + projection.input.page.encodedPath(), broker.origin(), broker.gate.cookie(), projection.input.page.chatId, projection::check) { projection.detach(view) }
       projection.attach(view)
+      view.markAttached(json)
     } catch (failure: Exception) { view.retire(); projection.detach(view); throw failure }
   }
   fun current(id: String): Boolean {

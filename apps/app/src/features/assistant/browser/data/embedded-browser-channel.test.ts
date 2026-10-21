@@ -110,6 +110,25 @@ describe('embedded browser channel', () => {
     expect(socket.readyState).toBe(1);
   });
 
+  it('answers closing a tab that is already gone with an already-closed notice', async () => {
+    const { socket, scope } = connected();
+    const tabId = globalThis.crypto.randomUUID();
+    receive(socket, {
+      kind: 'perform',
+      request: {
+        requestId: globalThis.crypto.randomUUID(),
+        scope,
+        operation: { kind: 'edit', action: { kind: 'close', tabId } },
+      },
+    });
+    await settled();
+    const answer = results(socket)[0];
+    if (answer?.kind !== 'result' || answer.result === null) throw new Error('expected a result');
+    expect(answer.result.notice).toBe('That tab was already closed.');
+    expect(answer.result.tabId).toBeNull();
+    expect(answer.result.snapshot.tabs).toEqual([]);
+  });
+
   it('ignores a malformed message and keeps answering', async () => {
     const { socket, scope } = connected();
     receive(socket, 'not json');

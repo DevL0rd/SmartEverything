@@ -28,7 +28,7 @@ const LIST_INPUT = z.strictObject({
     .optional()
     .describe('Words to match in the name, maker or id, e.g. "gemini flash"'),
   provider: AI_MODEL_MAKER.optional().describe(
-    'Only this maker, e.g. google, anthropic, openai (see call_operation listAiModelProviders)',
+    'Only this maker, e.g. google, anthropic, openai (see operation_call listAiModelProviders)',
   ),
   gone: z.boolean().default(false).describe('Include models OpenRouter no longer offers'),
   limit: z.int().min(1).max(60).default(30).describe('Most models to return, newest first'),
@@ -97,7 +97,7 @@ export const AI_MODEL_TOOLS: readonly Tool[] = [
   defineTool({
     name: 'get_model',
     input: z.strictObject({
-      id: AI_MODEL_ID.describe('Model id from read_models view list'),
+      id: AI_MODEL_ID.describe('Model id from model_read view list'),
     }),
     annotations: READS,
     run: async (context, input) => {
@@ -129,7 +129,7 @@ export const AI_MODEL_TOOLS: readonly Tool[] = [
     name: 'set_ai_defaults',
     input: z.strictObject({
       model: AI_MODEL_CHOICE.describe(
-        'auto:latest-gemini-flash (follows new releases) or a chat model id from read_models view list',
+        'auto:latest-gemini-flash (follows new releases) or a chat model id from model_read view list',
       ),
       thinking: AI_EFFORT.describe('Thinking level; clamped to what the model supports'),
     }),

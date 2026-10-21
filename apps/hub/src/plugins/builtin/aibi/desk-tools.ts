@@ -84,7 +84,7 @@ function actionTool(host: DeskToolHost): DeskTool {
 
 function taskTool(host: DeskToolHost): DeskTool {
   return {
-    name: 'do_task',
+    name: 'task_start',
     description:
       'Do something beyond conversation and your robot body: computer work, messages, files, code, research, looking things up. It runs in the background; results come back to you as [Task update] notes.',
     parameters: {
@@ -141,7 +141,7 @@ export function deskTools(host: DeskToolHost): readonly DeskTool[] {
     taskTool(host),
     assistantTool(host),
     {
-      name: 'end_conversation',
+      name: 'conversation_end',
       description: 'End this conversation.',
       parameters: {},
       delivery: 'silent',

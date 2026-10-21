@@ -1,5 +1,5 @@
 import type { HubConnections } from '../network/connections';
-import type { PreviewService } from '../preview/service';
+import type { BrowserService } from '../browser/service';
 import type { ImageRuntime } from './image-wiring';
 import type { ComputerAiDirectory } from '../computers/ai-directory';
 import type { HarnessService } from '../harness/service';
@@ -37,7 +37,7 @@ import type { DeveloperDevices } from '../watch-captures/developer-devices';
 
 export interface ServerContext {
   readonly connections?: HubConnections;
-  readonly preview: PreviewService;
+  readonly browser: BrowserService;
   readonly imageRuntime: ImageRuntime;
   readonly harness: HarnessService;
   readonly store: Store;

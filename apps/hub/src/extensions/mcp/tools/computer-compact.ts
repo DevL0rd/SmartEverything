@@ -131,7 +131,7 @@ export function compactSystem(state: SystemState): Fields {
 
 export function compactUsb(state: SystemState): Fields {
   return {
-    devices: state.usb.map((device) => ({
+    usb: state.usb.map((device) => ({
       id: device.id,
       name: device.name,
       ...(device.vendor === null ? {} : { vendor: device.vendor }),
@@ -205,7 +205,7 @@ export function compactServices(state: ServicesState): Fields {
 
 export function compactStartup(state: StartupState): Fields {
   return {
-    apps: state.entries.map((entry) => ({
+    startupApps: state.entries.map((entry) => ({
       id: entry.id,
       name: entry.name,
       enabled: entry.enabled,

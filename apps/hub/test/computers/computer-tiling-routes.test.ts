@@ -164,8 +164,8 @@ describe('tiling for an AI', () => {
     desktop.changes.length = 0;
   });
 
-  it('reads it as a view of get_computer', async () => {
-    const result = await callTool(hub.booted().base, token, 'get_computer', {
+  it('reads it as a view of computer_read', async () => {
+    const result = await callTool(hub.booted().base, token, 'computer_read', {
       view: 'tiling',
       deviceId: paired.deviceId,
     });
@@ -173,8 +173,8 @@ describe('tiling for an AI', () => {
     expect(JSON.stringify(structured(result))).toContain('main.ts');
   });
 
-  it('changes it with call_operation and gets the layout back', async () => {
-    const result = await callTool(hub.booted().base, token, 'call_operation', {
+  it('changes it with operation_call and gets the layout back', async () => {
+    const result = await callTool(hub.booted().base, token, 'operation_call', {
       operation: 'changeComputerTiling',
       arguments: { deviceId: paired.deviceId, body: { action: 'center-column' } },
     });
@@ -183,7 +183,7 @@ describe('tiling for an AI', () => {
   });
 
   it('is refused a change that is not on the list', async () => {
-    const result = await callTool(hub.booted().base, token, 'call_operation', {
+    const result = await callTool(hub.booted().base, token, 'operation_call', {
       operation: 'changeComputerTiling',
       arguments: { deviceId: paired.deviceId, body: { action: 'load_config_file', path: '/x' } },
     });

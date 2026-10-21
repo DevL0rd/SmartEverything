@@ -1,34 +1,30 @@
 import type { Served } from './served-types';
 
 export const SERVED_IMAGES = [
-  [
-    'list_image_endpoints',
-    'assistant',
-    'read',
-    'Read image endpoints',
-    'Lists the image models that can create or edit pictures, with prices and whether this chat may use them; read it before starting an image.',
-    { part: 'list_image_endpoints' },
-  ],
-  [
-    'edit_image',
-    'assistant',
-    'control',
-    'Create or edit images',
-    'Creates or edits an image, picture or drawing from a prompt, a source image or references; it returns at once and the app shows progress and the saved image, so do not poll and wait only when later work needs the image.',
-    {
+  {
+    name: 'image_gen',
+    area: 'assistant',
+    access: 'control',
+    title: 'Generate or edit images',
+    line: 'Generate or edit a picture and wait for it',
+    description:
+      'Makes images: generate makes a new image (no input image, or images only as style, composition, mood or subject references), edit changes the source image while preserving what the prompt does not change; both wait and return the finished, failed, cancelled or unknown image with its operationId and saved attachment ids. After an error or timeout the image may still finish in the chat, so never start it again. cancel stops a running operation.',
+    route: {
       key: 'action',
-      parts: {
-        start: 'start_image_operation',
-        cancel: 'cancel_image_operation',
-        resolve: 'resolve_image_input',
-        wait: 'wait_for_images',
-      },
-      says: {
-        start: 'Generate or edit an image with an endpoint from list_image_endpoints',
-        cancel: 'Cancel an image that is still being made',
-        resolve: 'Turn a chat image into an attachment id for an edit or a reference',
-        wait: 'Wait once for images still being made when further work needs them',
+      branches: {
+        generate: {
+          part: 'generate_image_operation',
+          line: 'Make a new image, optionally from style references, and wait for it',
+        },
+        edit: {
+          part: 'edit_image_operation',
+          line: 'Change the source image while preserving the rest, and wait for it',
+        },
+        cancel: {
+          part: 'cancel_image_operation',
+          line: 'Cancel an image that is still being made',
+        },
       },
     },
-  ],
+  },
 ] as const satisfies readonly Served[];

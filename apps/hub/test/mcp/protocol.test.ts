@@ -1,6 +1,9 @@
 import { API_ENDPOINTS, MCP_TOOLS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { listedFor } from '../../src/extensions/mcp/server';
+
+const SEARCHING = { 'user-agent': 'claude-code/2.1.299' };
 import { TOOLS } from '../../src/extensions/mcp/tools';
 import { PLUGIN_ONLY_TOOLS } from '../../src/extensions/mcp/tools/registry';
 import { bootServer, verifiedPublicUrl, type Booted } from '../support/booted';
@@ -130,6 +133,17 @@ describe('the MCP endpoint', () => {
     expect((await errorOf(nameless)).message).toContain('name');
   });
 
+  it('lists only the core tools and discovery to a client without its own tool search', async () => {
+    const listed = z
+      .array(z.object({ name: z.string() }))
+      .parse((await resultOf(await rpc(booted.base, token, { method: 'tools/list' })))['tools']);
+    const names = listed.map((tool) => tool.name);
+    expect(names).toContain('tool_search');
+    expect(names).toContain('device_find');
+    expect(names).not.toContain('automation_edit');
+    expect(names.every((name) => listedFor('')(name))).toBe(true);
+  });
+
   it('lists every tool with an object schema and honest annotations', async () => {
     const tools = z
       .array(
@@ -139,24 +153,38 @@ describe('the MCP endpoint', () => {
           annotations: z.object({ readOnlyHint: z.boolean(), destructiveHint: z.boolean() }),
         }),
       )
-      .parse((await resultOf(await rpc(booted.base, token, { method: 'tools/list' })))['tools']);
+      .parse(
+        (await resultOf(await rpc(booted.base, token, { method: 'tools/list' }, SEARCHING)))[
+          'tools'
+        ],
+      );
     expect(tools.map((tool) => tool.name)).toStrictEqual(
       MCP_TOOLS.map((tool) => tool.name).filter((name) => !PLUGIN_ONLY_TOOLS.has(name)),
     );
     expect(
       tools.filter((tool) => tool.annotations.destructiveHint).map((tool) => tool.name),
     ).toStrictEqual([
-      'control_device_target',
-      'press_remote_button',
-      'control_devices',
-      'run_scene',
-      'edit_project_files',
-      'clear_preview_data',
-      'end_process',
-      'set_computer_system',
-      'use_computer',
-      'edit_computer_files',
-      'edit_claude_session',
+      'room_edit',
+      'group_edit',
+      'transcript_edit',
+      'scene_edit',
+      'schedule_edit',
+      'automation_edit',
+      'secret_edit',
+      'value_edit',
+      'health_edit',
+      'food_edit',
+      'person_edit',
+      'talk_edit',
+      'project_edit',
+      'chat_edit',
+      'process_control',
+      'computer_system_set',
+      'computer_use',
+      'computer_app_control',
+      'file_edit',
+      'claude_control',
+      'operation_call',
     ]);
     expect(
       tools.some((tool) => tool.annotations.destructiveHint && tool.annotations.readOnlyHint),
@@ -166,20 +194,22 @@ describe('the MCP endpoint', () => {
   it('lists exactly the registry listings, unchanged by the protocol layer', async () => {
     const listed = z
       .array(z.record(z.string(), z.unknown()))
-      .parse((await resultOf(await rpc(booted.base, token, { method: 'tools/list' })))['tools']);
+      .parse(
+        (await resultOf(await rpc(booted.base, token, { method: 'tools/list' }, SEARCHING)))[
+          'tools'
+        ],
+      );
     expect(listed).toEqual(
       TOOLS.filter((tool) => !PLUGIN_ONLY_TOOLS.has(tool.name)).map((tool) => tool.listing),
     );
   });
 
   it('answers a tool call as JSON text and a refusal as an error result with its code', async () => {
-    const ok = await callTool(booted.base, token, 'get_home', {});
+    const ok = await callTool(booted.base, token, 'home_read', {});
     expect(ok.isError).toBe(false);
-    const refused = await callTool(booted.base, token, 'ai_inbox_post', {});
+    const refused = await callTool(booted.base, token, 'inbox_post', {});
     expect(refused.isError).toBe(true);
-    expect(JSON.stringify(refused.content)).toContain(
-      'forbidden: ai_inbox_post is only for a plugin',
-    );
+    expect(JSON.stringify(refused.content)).toContain('forbidden: inbox_post is only for a plugin');
   });
 
   it('refuses a revoked personal token', async () => {

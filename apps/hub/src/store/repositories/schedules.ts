@@ -30,6 +30,8 @@ const COLUMNS =
   'state, next_at, occurrence, step, results, confirmed_at, confirmed_by, origin, created_at, ' +
   'updated_at, finished_at';
 
+const SQL_NO_LIMIT = -1;
+
 const ORDER =
   'order by case when next_at is null then 1 else 0 end, next_at, ' +
   'coalesce(finished_at, updated_at) desc';
@@ -41,6 +43,7 @@ const WAITING_STATES = "('scheduled', 'waiting')";
 export interface ScheduleFilter {
   readonly deviceId?: string | undefined;
   readonly state?: ScheduleState | undefined;
+  readonly limit?: number | undefined;
 }
 
 export interface NewSchedule {
@@ -107,8 +110,13 @@ export class SchedulesRepository {
       `select ${COLUMNS} from scheduled_actions
        where ($state is null or state = $state)
          and ($deviceId is null or exists (select 1 from json_each(device_ids) where value = $deviceId))
-       ${ORDER}`,
-      { state: filter.state ?? null, deviceId: filter.deviceId ?? null },
+       ${ORDER}
+       limit $limit`,
+      {
+        state: filter.state ?? null,
+        deviceId: filter.deviceId ?? null,
+        limit: filter.limit ?? SQL_NO_LIMIT,
+      },
     );
   }
 

@@ -88,8 +88,8 @@ describe('the show in app tool', () => {
       path: '/api/app-view',
       access: 'member',
     });
-    expect(mcpToolOperation('show_in_app')).toBe('showInApp');
-    expect(MCP_ROUTES.get('show_in_app')).toEqual({ part: 'show_in_app' });
+    expect(mcpToolOperation('app_show')).toBe('showInApp');
+    expect(MCP_ROUTES.get('app_show')).toEqual({ part: 'app_show' });
   });
 
   it('reports what was opened or why nothing was', () => {

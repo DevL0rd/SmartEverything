@@ -213,7 +213,7 @@ function callMe(urgent = false): Promise<AiOutreachRow> {
   });
 }
 
-describe('call_person', () => {
+describe('call_start ring', () => {
   it('rings, and answering in the right chat makes it live with the reason as the opening', async () => {
     const row = await callMe();
     expect(row.state).toBe('ringing');
@@ -303,7 +303,7 @@ function spoken(index = 0): SpeechRequest {
   return request;
 }
 
-describe('speak', () => {
+describe('voice_speak', () => {
   it('plays on an app by sending it the audio, with no chat and no turn', async () => {
     const row = await current.service.speak(current.asker, {
       target: { kind: 'device', deviceId: current.phone.id },
@@ -385,7 +385,7 @@ describe('start_conversation and call', () => {
     expect(row).toMatchObject({ how: 'app', clients: [current.phone.id] });
   });
 
-  it('hang_up stops a ringing call', async () => {
+  it('call_end stops a ringing call', async () => {
     const row = await callMe();
     await expect(current.service.hangUp(row.id)).resolves.toMatchObject({ state: 'ended' });
   });

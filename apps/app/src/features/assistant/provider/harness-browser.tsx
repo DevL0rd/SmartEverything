@@ -12,20 +12,14 @@ import { BrowserTabStrip } from '../browser/browser-tab-strip';
 import { BrowserTabPage } from '../browser/browser-tab-page';
 import { BrowserBlankPage } from '../browser/browser-blank-page';
 import { BrowserToolbar } from '../browser/browser-toolbar';
-import {
-  browserPublicationAvailability,
-  browserPublications,
-} from '../browser/browser-publications';
 import { EMPTY_BROWSER_STATUS } from '../browser/browser-tab-state';
 import { announcedBrowserTabOperation, openBrowserAddress } from '../browser/browser-tab-operation';
 import { focusBrowserTab } from '../browser/browser-tab-strip-keyboard';
 import type { BrowserTabs } from '../browser/browser-tabs';
-import type { usePreviews } from '../data/previews';
 interface HarnessBrowserProps {
   readonly chat: AiChatRow;
   readonly visible: boolean;
   readonly tabs: BrowserTabs;
-  readonly catalogue: ReturnType<typeof usePreviews>;
 }
 export function HarnessBrowser(props: HarnessBrowserProps): ReactNode {
   const profile = useActiveProfile();
@@ -38,9 +32,8 @@ export function HarnessBrowser(props: HarnessBrowserProps): ReactNode {
     );
   return <ChatBrowser {...props} />;
 }
-function ChatBrowser({ chat, visible, tabs, catalogue }: HarnessBrowserProps): ReactNode {
+function ChatBrowser({ chat, visible, tabs }: HarnessBrowserProps): ReactNode {
   const snapshot = usePausable(tabs.subscribe, tabs.read);
-  const publications = browserPublications(catalogue.data);
   const onNew = (): void => {
     newBrowserTab(tabs);
   };
@@ -63,7 +56,7 @@ function ChatBrowser({ chat, visible, tabs, catalogue }: HarnessBrowserProps): R
       />
       <View className="relative min-h-0 flex-1 overflow-hidden">
         {snapshot.tabs.length === 0 ? (
-          <EmptyBrowser tabs={tabs} catalogue={catalogue} onNew={onNew} />
+          <EmptyBrowser tabs={tabs} onNew={onNew} />
         ) : (
           snapshot.tabs.map((tab) => (
             <BrowserTabPage
@@ -73,8 +66,6 @@ function ChatBrowser({ chat, visible, tabs, catalogue }: HarnessBrowserProps): R
               tab={tab}
               selected={snapshot.selectedId === tab.id}
               visible={visible}
-              publications={publications}
-              available={browserPublicationAvailability(catalogue.data)}
               onNew={onNew}
             />
           ))
@@ -85,9 +76,8 @@ function ChatBrowser({ chat, visible, tabs, catalogue }: HarnessBrowserProps): R
 }
 function EmptyBrowser({
   tabs,
-  catalogue,
   onNew,
-}: Pick<HarnessBrowserProps, 'tabs' | 'catalogue'> & { readonly onNew: () => void }): ReactNode {
+}: Pick<HarnessBrowserProps, 'tabs'> & { readonly onNew: () => void }): ReactNode {
   const [address, setAddress] = useState('');
   const inputRef = useRef<TextInput>(null);
   useRequestedBrowserAction({
@@ -113,13 +103,7 @@ function EmptyBrowser({
         ready={false}
         tools={<EmptyBrowserTools onNew={onNew} />}
       />
-      <BrowserBlankPage
-        publications={browserPublications(catalogue.data)}
-        available={browserPublicationAvailability(catalogue.data)}
-        onSelect={(publication) => {
-          announcedBrowserTabOperation(tabs.openPublication(publication));
-        }}
-      />
+      <BrowserBlankPage />
     </>
   );
 }

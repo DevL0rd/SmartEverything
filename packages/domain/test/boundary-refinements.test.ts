@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AI_MODEL_ROUTE } from '../src/ai-model-route';
-import { AI_PREVIEW_ORIGIN } from '../src/ai-previews';
-import { AI_PROJECT_PREVIEW_SOURCE } from '../src/ai-preview-documents';
+import { CHAT_PAGE_PATH } from '../src/chat-pages';
 import { AI_PROJECT_PATH } from '../src/ai-project-files';
 import { AI_SUBSCRIPTION_INTERACTION } from '../src/ai-subscription-host';
 import { CLAUDE_MCP_SERVERS, COMPUTER_AI_SETTINGS_PATCH } from '../src/computer-ai';
@@ -118,30 +117,19 @@ describe('project paths and previews', () => {
     expect(AI_PROJECT_PATH.safeParse(path).success).toBe(false);
   });
 
-  it('keeps a project preview inside the workspace and on a plain html entry', () => {
-    const source = { root: 'workspace/site', entry: 'index.html' };
-    expect(AI_PROJECT_PREVIEW_SOURCE.safeParse(source).success).toBe(true);
-    expect(AI_PROJECT_PREVIEW_SOURCE.safeParse({ ...source, root: 'temporary/site' }).success).toBe(
-      false,
-    );
-    for (const entry of [
-      '/index.html',
-      'a/../index.html',
-      'a//b.html',
-      'a\\b.html',
-      'a%2e.html',
-      'index.js',
+  it('keeps a chat page path inside the project folder', () => {
+    expect(CHAT_PAGE_PATH.safeParse('/workspace/site/index.html').success).toBe(true);
+    expect(CHAT_PAGE_PATH.safeParse('/temporary/a.html').success).toBe(true);
+    for (const path of [
+      'workspace/index.html',
+      '/workspace/../secret',
+      '/workspace//b.html',
+      '/workspace/a\\b.html',
+      '/workspace/a%2e.html',
+      '/etc/passwd',
     ]) {
-      expect(AI_PROJECT_PREVIEW_SOURCE.safeParse({ ...source, entry }).success).toBe(false);
+      expect(CHAT_PAGE_PATH.safeParse(path).success).toBe(false);
     }
-  });
-
-  it('allows only a literal loopback origin with an exact valid port', () => {
-    expect(AI_PREVIEW_ORIGIN.safeParse('http://127.0.0.1:3000').success).toBe(true);
-    expect(AI_PREVIEW_ORIGIN.safeParse('https://[::1]:65535').success).toBe(true);
-    expect(AI_PREVIEW_ORIGIN.safeParse('http://127.0.0.1:65536').success).toBe(false);
-    expect(AI_PREVIEW_ORIGIN.safeParse('http://127.0.0.1').success).toBe(false);
-    expect(AI_PREVIEW_ORIGIN.safeParse('http://localhost:3000').success).toBe(false);
   });
 });
 

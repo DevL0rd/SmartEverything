@@ -9,14 +9,14 @@ import type { ConversationAuthority } from '../../src/harness/authority-contract
 const ACTION = {
   type: 'tool',
   profileId: randomUUID(),
-  tool: 'use_computer',
+  tool: 'computer_use',
   args: { deviceId: randomUUID(), action: 'click', x: 1, y: 2 },
 } as const;
 
 const ORIGIN = { automationId: randomUUID(), name: 'Night', signal: null, plugin: null };
 
 const TOOL: HubTool = {
-  name: 'use_computer',
+  name: 'computer_use',
   title: 'Use the mouse and keyboard',
   description: 'x',
   inputSchema: {},

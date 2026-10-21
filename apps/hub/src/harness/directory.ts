@@ -2,8 +2,6 @@ import type { SubscriptionInferencePort } from '@smarteverything/harness';
 import { ApiError, AI_HARNESS_HOST, harnessTargetKey } from '@smarteverything/domain';
 import type {
   AiHarnessHost,
-  HubPreviewOpen,
-  HubPreviewFileClose,
   AiSubscriptionHostStatus,
   HarnessSubscriptionRequest,
   AiHarnessTarget,
@@ -17,8 +15,6 @@ import type {
 
 export interface HarnessConnection {
   readonly inference?: SubscriptionInferencePort;
-  readonly preview?: (frame: HubPreviewOpen) => void;
-  readonly previewFileClose?: (frame: HubPreviewFileClose) => void;
   readonly host: AiHarnessHost;
   readonly actor: { readonly kind: 'node' | 'server'; readonly id: string };
   readonly profileId?: string;

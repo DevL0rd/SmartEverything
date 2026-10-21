@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { ReasoningEffortId, createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm';
+import type { Context } from '@deepseek-ai/cordis';
 import type { AiModelRoute } from '@smarteverything/domain';
 import { MeteredRouteAdapter } from '../src/process/model-route';
 import type { MeteredRouteTransport } from '../src/process/model-route';
+import { bootRuntime } from './support/runtime';
 
 const ROUTE_ID = randomUUID();
 
@@ -131,4 +133,48 @@ describe('the metered OpenRouter route', () => {
     expect(resolved.context?.contextWindow).toBeGreaterThan(0);
     expect(chunks.some((chunk) => chunk.type === 'text-delta')).toBe(true);
   });
+
+  it.each(['max', 'high', 'low', 'none'])(
+    'accepts the %s effort the hub offers for a DeepSeek model',
+    async (effort) => {
+      const id = '~deepseek/deepseek-flash-latest';
+      const reasoning = model(id, { context: 200_000 });
+      const transport = new Transport(streamBody(['ok']));
+      const adapter = new MeteredRouteAdapter(
+        route([
+          {
+            ...reasoning,
+            capabilities: {
+              ...reasoning.capabilities,
+              reasoning: true,
+              efforts: ['max', 'high', 'low', 'none'],
+            },
+          },
+        ]),
+        transport,
+        {},
+      );
+      let llm: Context['llm'] | undefined;
+      const host = await bootRuntime({
+        mount: (active) => {
+          llm = active.llm;
+          active.effect(() => active.llm.registerAdapter([ROUTE_ID], adapter));
+        },
+      });
+      try {
+        if (llm === undefined) throw new Error('The test runtime did not mount the model host.');
+        const chunks = await collect(
+          llm.stream({ ...request(id), reasoningEffort: ReasoningEffortId(effort) }),
+        );
+
+        expect(chunks.some((chunk) => chunk.type === 'text-delta')).toBe(true);
+        expect(
+          chunks.some((chunk) => chunk.type === 'finish' && chunk.reason.kind === 'error'),
+        ).toBe(false);
+        expect(transport.requests).toBe(1);
+      } finally {
+        await host.dispose();
+      }
+    },
+  );
 });

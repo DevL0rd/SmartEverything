@@ -92,7 +92,7 @@ describe('the schema every served tool declares', () => {
     });
   });
 
-  it('is small enough to read whole through tool_details, with any one variant beside it', () => {
+  it('is small enough to read whole through tool_read, with any one variant beside it', () => {
     for (const tool of TOOLS) {
       const largest = Math.max(0, ...[...(tool.variants?.values() ?? [])].map(bytes));
       expect(bytes(tool.listing) + largest, tool.name).toBeLessThan(DETAILS_BYTES_MAX * 2);
@@ -106,7 +106,7 @@ const MARKS = z.object({
 });
 
 describe('the annotations of a routed tool', () => {
-  it('are read-only or destructive at the top only when every value is', () => {
+  it('are read-only at the top only when every value is, and destructive when any is', () => {
     for (const tool of TOOLS) {
       const marks = [...(tool.variants?.values() ?? [])].map((variant) => MARKS.parse(variant));
       if (marks.length > 0) {
@@ -114,15 +114,15 @@ describe('the annotations of a routed tool', () => {
           marks.every((mark) => mark.annotations.readOnlyHint),
         );
         expect(tool.listing.annotations.destructiveHint, tool.name).toBe(
-          marks.every((mark) => mark.annotations.destructiveHint),
+          marks.some((mark) => mark.annotations.destructiveHint),
         );
       }
     }
   });
 
   it('say what the whole tool does, and each value says what it does itself', () => {
-    const tool = TOOLS.find((candidate) => candidate.name === 'edit_chat');
-    expect(tool?.listing.annotations.destructiveHint).toBe(false);
+    const tool = TOOLS.find((candidate) => candidate.name === 'chat_edit');
+    expect(tool?.listing.annotations.destructiveHint).toBe(true);
     expect(tool?.variants?.get('delete')).toMatchObject({
       annotations: { destructiveHint: true },
     });
@@ -131,11 +131,11 @@ describe('the annotations of a routed tool', () => {
     });
   });
 
-  it('describe call_operation as the mixture of everything it can reach', () => {
-    const tool = TOOLS.find((candidate) => candidate.name === 'call_operation');
+  it('describe operation_call as the mixture of everything it can reach', () => {
+    const tool = TOOLS.find((candidate) => candidate.name === 'operation_call');
     expect(tool?.listing.annotations).toMatchObject({
       readOnlyHint: false,
-      destructiveHint: false,
+      destructiveHint: true,
       openWorldHint: true,
     });
   });

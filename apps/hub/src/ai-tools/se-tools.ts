@@ -38,6 +38,7 @@ function actorOf(caller: ToolCaller): ToolActor {
     profileId: caller.profileId,
     role: caller.role,
     chatId: caller.chatId,
+    ...(caller.callId === undefined ? {} : { callId: caller.callId }),
     ...(caller.pluginRequester === undefined ? {} : { pluginRequester: caller.pluginRequester }),
     ...(caller.pluginId === undefined ? {} : { pluginId: caller.pluginId }),
   };

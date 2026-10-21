@@ -22,7 +22,7 @@ export function referenceContext(
     validate: (): void => {
       authority.validate(false);
       if (request !== undefined && initiating !== undefined)
-        admitExecutionTool(store, 'search_chat_references', initiating);
+        admitExecutionTool(store, 'reference_search', initiating);
     },
   };
 }

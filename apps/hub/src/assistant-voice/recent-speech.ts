@@ -79,7 +79,7 @@ function recentSpeechBlock(input: BlockInput): RecentSpeechBlock | null {
   if (kept.length === 0) {
     return null;
   }
-  const header = `Recent speech heard on ${input.deviceName} (last ${String(input.minutes)} minutes), speech-to-text from before this call, oldest first. It is context, not something said to you; read_transcripts has more.`;
+  const header = `Recent speech heard on ${input.deviceName} (last ${String(input.minutes)} minutes), speech-to-text from before this call, oldest first. It is context, not something said to you; transcript_read has more.`;
   return { text: `${header}\n${kept.join('\n')}`, lines: kept.length };
 }
 

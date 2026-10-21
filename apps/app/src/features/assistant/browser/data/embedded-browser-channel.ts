@@ -19,7 +19,7 @@ import {
 import { openHubSocket, type HubSocket } from '../../../../api/connection/hub-socket';
 import { routeFor } from '../../../../api/connection/active-route';
 import type { ServerConnection } from '../../../../api/connection/storage';
-import { DiagnosticsRecovery } from '../browser-diagnostics-recovery';
+import { SocketRecovery } from './socket-recovery';
 import { embeddedBrowserSnapshot } from '../browser-embedded-snapshot';
 import {
   browserPageSupported,
@@ -42,7 +42,7 @@ export class EmbeddedBrowserChannel {
   private accepted = false;
   private disposed = false;
   private readonly tasks = new Map<string, Task>();
-  private readonly recovery: DiagnosticsRecovery;
+  private readonly recovery: SocketRecovery;
   private readonly stopRoute: () => void;
   constructor(
     private readonly connection: ServerConnection,
@@ -50,7 +50,7 @@ export class EmbeddedBrowserChannel {
     private readonly tabs: BrowserTabs,
     private readonly reveal: () => void,
   ) {
-    this.recovery = new DiagnosticsRecovery({
+    this.recovery = new SocketRecovery({
       connect: (): void => {
         this.connect();
       },
@@ -147,8 +147,10 @@ export class EmbeddedBrowserChannel {
     signal: AbortSignal,
   ): Promise<EmbeddedBrowserResult> {
     assertBrowserCommandActive(signal);
-    const tabId =
-      request.operation.kind === 'edit' ? await this.edit(request.operation.action, signal) : null;
+    const edited =
+      request.operation.kind === 'edit'
+        ? await this.edit(request.operation.action, signal)
+        : { tabId: null, notice: undefined };
     assertBrowserCommandActive(signal);
     const page =
       request.operation.kind === 'read' && request.operation.view === 'page'
@@ -161,16 +163,26 @@ export class EmbeddedBrowserChannel {
       capabilities: advertisedActions(),
       ...(page === undefined ? {} : { page }),
     };
-    return EMBEDDED_BROWSER_RESULT.parse({ snapshot, tabId: page?.tabId ?? tabId });
+    return EMBEDDED_BROWSER_RESULT.parse({
+      snapshot,
+      tabId: page?.tabId ?? edited.tabId,
+      notice: edited.notice,
+    });
   }
   private async page(tabId: string | undefined): Promise<BrowserPage> {
     const { selectedId } = this.tabs.read();
     const id = tabId ?? selectedId;
     if (id === null) throw new BrowserTabError('No tab is open.');
     this.reveal();
-    return readBrowserPage(this.tabs.tab(id), selectedId);
+    const tab = this.tabs.tab(id);
+    return readBrowserPage(tab, selectedId, this.tabs.mounted(tab.id));
   }
-  private async edit(action: EmbeddedBrowserAction, signal: AbortSignal): Promise<string | null> {
+  private async edit(
+    action: EmbeddedBrowserAction,
+    signal: AbortSignal,
+  ): Promise<{ readonly tabId: string | null; readonly notice?: string }> {
+    const gone =
+      action.kind === 'close' && !this.tabs.read().tabs.some((tab) => tab.id === action.tabId);
     if (showsPane(action)) this.reveal();
     const performed = this.tabs.perform(action, signal);
     const tabId =
@@ -180,7 +192,7 @@ export class EmbeddedBrowserChannel {
           ? this.tabs.read().selectedId
           : action.tabId;
     await performed;
-    return tabId;
+    return gone ? { tabId: null, notice: 'That tab was already closed.' } : { tabId };
   }
   private answer(socket: HubSocket, task: Task): void {
     background(

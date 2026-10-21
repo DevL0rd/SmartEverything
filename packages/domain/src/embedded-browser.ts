@@ -7,6 +7,7 @@ import {
   BROWSER_PAGE_SCROLL,
   BROWSER_PAGE_TYPE,
 } from './browser-page';
+import { CHAT_PAGE_PATH } from './chat-pages';
 
 export const EMBEDDED_BROWSER_PROTOCOL = 'smarteverything.embedded-browser.v1';
 export const EMBEDDED_BROWSER_PATH = '/api/embedded-browser';
@@ -26,7 +27,7 @@ export const EMBEDDED_BROWSER_ACTION = z.discriminatedUnion('kind', [
     kind: z.literal('open'),
     source: z.discriminatedUnion('kind', [
       z.strictObject({ kind: z.literal('public'), url: z.url().max(8192) }),
-      z.strictObject({ kind: z.literal('publication'), publicationId: z.uuid() }),
+      z.strictObject({ kind: z.literal('project'), path: CHAT_PAGE_PATH }),
     ]),
   }),
   z.strictObject({ kind: z.literal('select'), tabId: TAB_ID }),
@@ -62,8 +63,7 @@ export const EMBEDDED_BROWSER_TAB = z.strictObject({
   browserId: z.string().min(1).max(512).optional(),
   title: z.string().max(512),
   address: z.string().max(8192),
-  source: z.enum(['blank', 'public', 'service', 'html']),
-  publicationId: z.uuid().nullable(),
+  source: z.enum(['blank', 'public', 'project']),
   state: z.enum(['blank', 'opening', 'ready', 'unavailable']),
   problem: z.string().max(4096).nullable(),
   back: z.boolean(),
@@ -93,9 +93,46 @@ export const EMBEDDED_BROWSER_READ = EMBEDDED_BROWSER_SELECTOR.extend({
   view: z.enum(EMBEDDED_BROWSER_VIEWS).default('tabs'),
   tabId: TAB_ID.optional(),
 });
+const OPTIONAL_TAB = {
+  tabId: TAB_ID.optional().describe('Defaults to the selected tab'),
+} as const;
+export const EMBEDDED_BROWSER_COMMAND = z.discriminatedUnion('kind', [
+  z
+    .strictObject({
+      kind: z.literal('open'),
+      url: z.url().max(8192).optional().describe('An http or https address the device can reach'),
+      path: z
+        .string()
+        .min(1)
+        .max(4096)
+        .optional()
+        .describe('A file or folder of this chat’s project, such as workspace/site'),
+    })
+    .refine((open) => (open.url === undefined) !== (open.path === undefined), {
+      message: 'Give either url or path',
+    }),
+  z.strictObject({ kind: z.literal('select'), tabId: TAB_ID }),
+  z.strictObject({ kind: z.literal('reload'), ...OPTIONAL_TAB }),
+  z.strictObject({ kind: z.literal('close'), ...OPTIONAL_TAB }),
+  z.strictObject({
+    kind: z.literal('navigate'),
+    ...OPTIONAL_TAB,
+    address: z.string().min(1).max(8192),
+  }),
+  z.strictObject({
+    kind: z.literal('reorder'),
+    tabIds: z.array(TAB_ID).max(EMBEDDED_BROWSER_MAX_TABS),
+  }),
+  z.strictObject({ kind: z.literal('back'), ...OPTIONAL_TAB }),
+  z.strictObject({ kind: z.literal('forward'), ...OPTIONAL_TAB }),
+  BROWSER_PAGE_CLICK.extend(OPTIONAL_TAB),
+  BROWSER_PAGE_TYPE.extend(OPTIONAL_TAB),
+  BROWSER_PAGE_KEYS.extend(OPTIONAL_TAB),
+  BROWSER_PAGE_SCROLL.extend(OPTIONAL_TAB),
+]);
+export type EmbeddedBrowserCommand = z.infer<typeof EMBEDDED_BROWSER_COMMAND>;
 export const EMBEDDED_BROWSER_EDIT = EMBEDDED_BROWSER_SELECTOR.extend({
-  requestId: z.uuid(),
-  action: EMBEDDED_BROWSER_ACTION,
+  action: EMBEDDED_BROWSER_COMMAND,
 });
 export const EMBEDDED_BROWSER_OPERATION = z.discriminatedUnion('kind', [
   z.strictObject({
@@ -114,6 +151,7 @@ export type EmbeddedBrowserRequest = z.infer<typeof EMBEDDED_BROWSER_REQUEST>;
 export const EMBEDDED_BROWSER_RESULT = z.strictObject({
   snapshot: EMBEDDED_BROWSER_SNAPSHOT,
   tabId: TAB_ID.nullable(),
+  notice: z.string().min(1).max(512).optional(),
 });
 export type EmbeddedBrowserResult = z.infer<typeof EMBEDDED_BROWSER_RESULT>;
 export const EMBEDDED_BROWSER_MESSAGE = z.discriminatedUnion('kind', [

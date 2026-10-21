@@ -106,7 +106,7 @@ const LOG = z.strictObject({
   endTime: MOMENT_ARGUMENT.optional().describe('When a session ended; required for sessions'),
   data: z
     .record(z.string(), z.unknown())
-    .describe('The record data, shaped as read_health view types gives for the type'),
+    .describe('The record data, shaped as health_read view types gives for the type'),
   personId: PERSON,
 });
 
@@ -174,7 +174,7 @@ export const HEALTH_TOOLS: readonly Tool[] = [
     }),
   }),
   defineTool({
-    name: 'log_health',
+    name: 'health_edit',
     input: LOG,
     annotations: WRITES,
     run: async (context, input) => ({ structured: { entry: await logged(context, input) } }),

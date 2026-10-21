@@ -89,7 +89,7 @@ export const CHAT_WIDGETS_MAX = 6;
 export const CHAT_WIDGET_GUIDE: Readonly<Record<ChatWidgetKind, string>> = {
   device:
     'id: a live card of one device, with its state and controls (deviceId of any non-camera device)',
-  remote: 'id: an infrared remote with its buttons (remote id from list_remotes)',
+  remote: 'id: an infrared remote with its buttons (remote id from remote_find)',
   camera: 'id: a live camera view (deviceId of a camera)',
   health: `metric, range (${HEALTH_WIDGET_RANGES.join(', ')}; default week), optional day (YYYY-MM-DD): a chart of one health measurement; needs recorded data in the last 30 days`,
   nutrition: `part (${NUTRITION_WIDGET_PARTS.join(', ')}), optional day (YYYY-MM-DD): the day's food or water totals`,

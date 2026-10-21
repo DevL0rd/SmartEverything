@@ -1,6 +1,5 @@
 export type { NativeMediaNoteInput, NativeMediaNote } from './native-media-note';
 export { toolMediaReferences } from './media-reference';
-export type { NativePreviewAdapter } from './preview-tools';
 export { createComputerHarness, ComputerHarness } from './computer';
 export type { HarnessCallPort } from './http';
 export { readNativeHistory, forkNativeHistory } from './history';

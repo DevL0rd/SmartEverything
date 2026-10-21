@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePathname } from 'expo-router';
 import { View } from 'react-native';
-import { usePreviewDiagnostics } from './browser-diagnostics';
 import { BrowserSurface } from '../../../platform/browser-surface';
 import { browserCovered } from '../../../platform/browser-overlays';
 import { useValue } from '../../../design/external-store';
@@ -10,12 +9,9 @@ import { useStoreSelector } from '../../../store/store-context';
 import { useLocalPref } from '../../../store/local-prefs';
 import { browserSurfaces, type RetainedBrowserSurface } from './browser-surfaces';
 import {
-  browserTargetProfile,
   browserTabVisible,
   retainBrowserAuthority,
   ownBrowserRuntime,
-  followBrowserRevocations,
-  followGatewayRetirements,
 } from './browser-runtime';
 export function BrowserRuntimeHost(): ReactNode {
   useBrowserAuthority();
@@ -25,16 +21,7 @@ export function BrowserRuntimeHost(): ReactNode {
   const open = useLocalPref('chatPanelOpen');
   const host = useRef<View>(null);
   const [origin, setOrigin] = useState({ x: 0, y: 0 });
-  useEffect(() => {
-    const close = ownBrowserRuntime();
-    const stop = followBrowserRevocations();
-    const gateway = followGatewayRetirements();
-    return (): void => {
-      stop();
-      gateway();
-      close();
-    };
-  }, []);
+  useEffect(() => ownBrowserRuntime(), []);
   return (
     <View
       ref={host}
@@ -66,18 +53,6 @@ function RetainedPage({
   readonly origin: { readonly x: number; readonly y: number };
   readonly visible: boolean;
 }): ReactNode {
-  const profileId = browserTargetProfile(surface.chatId, surface.props.target.id);
-  const { controller } = usePreviewDiagnostics(
-    surface.chatId,
-    profileId ?? '',
-    profileId === null ? null : surface.props.target,
-  );
-  useEffect(() => {
-    controller.setVisible(visible);
-    return (): void => {
-      controller.setVisible(false);
-    };
-  }, [controller, visible]);
   const bounds = surface.bounds;
   const frame = {
     position: 'absolute',

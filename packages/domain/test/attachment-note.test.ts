@@ -23,21 +23,21 @@ describe('attachmentNote', () => {
     const line = attachmentNote(IMAGE, 'a cat on a sofa');
     expect(line).toContain('image "shot.png", image/png, 800×600, 2048 bytes · id a1');
     expect(line).toContain('Description: a cat on a sofa');
-    expect(line).toContain('read_chats view attachment with id a1');
+    expect(line).toContain('chat_read view attachment with id a1');
   });
 
   it('carries details and the hint when there is no description', () => {
     const line = attachmentNote(IMAGE, null);
     expect(line).toContain('id a1');
     expect(line).not.toContain('Description');
-    expect(line).toContain('read_chats view attachment with id a1');
+    expect(line).toContain('chat_read view attachment with id a1');
   });
 
   it('says pending while the note is being made, keeping details and hint', () => {
     const line = attachmentNote(AUDIO, null, { pending: true });
     expect(line).toContain('Transcript pending.');
     expect(line).toContain('audio "clip.ogg"');
-    expect(line).toContain('read_chats view attachment with id b2');
+    expect(line).toContain('chat_read view attachment with id b2');
   });
 
   it('leaves other files as a plain tag', () => {

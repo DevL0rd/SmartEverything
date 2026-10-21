@@ -3,9 +3,10 @@ import { z } from 'zod';
 import type { Clock } from '../../../clock';
 import type { RunningHub } from '../../../hub';
 import type { Store } from '../../../store/store';
+import { DEVICE_REFERENCES } from './references';
 import { deviceScopeOfActor } from './person-reach';
 import { READS, defineTool, type Tool, type ToolContext, type ToolImage } from './registry';
-import { inRooms, placedDevices, type Placed } from './targets';
+import { inRooms, placedDevice, placedDevices, type Placed } from './targets';
 import { messageOf } from '@smarteverything/logging';
 
 export const IMAGE_LIMIT_BYTES = 4 * 1024 * 1024;
@@ -13,11 +14,7 @@ export const IMAGE_LIMIT_BYTES = 4 * 1024 * 1024;
 export const SNAPSHOT_TYPE = 'image/jpeg';
 
 const LOOK = z.strictObject({
-  deviceIds: z
-    .array(z.uuid())
-    .min(1)
-    .optional()
-    .describe('These cameras; every camera when left out'),
+  deviceIds: DEVICE_REFERENCES.optional(),
   rooms: z
     .array(z.string().min(1))
     .min(1)
@@ -38,12 +35,14 @@ export interface Shot {
 
 function chosenCameras(context: ToolContext, input: Look): Placed[] {
   const cameras = new Set(context.store.cameras.list().map((camera) => camera.device_id));
-  return placedDevices(context.store, deviceScopeOfActor(context)).filter(
+  const scope = deviceScopeOfActor(context);
+  const wanted = input.deviceIds?.map((ref) => placedDevice(context.store, scope, ref).device.id);
+  return placedDevices(context.store, scope).filter(
     ({ device, room }) =>
       cameras.has(device.id) &&
-      (input.deviceIds === undefined || input.deviceIds.includes(device.id)) &&
+      (wanted === undefined || wanted.includes(device.id)) &&
       (input.rooms === undefined || inRooms(room, input.rooms)) &&
-      (input.deviceIds !== undefined || !device.hidden),
+      (wanted !== undefined || !device.hidden),
   );
 }
 

@@ -102,11 +102,11 @@ describe('turn timing', () => {
     clock = 1500;
     timer.heard();
     clock = 2000;
-    timer.tool('see', 1600);
+    timer.tool('sight_look', 1600);
     clock = 2600;
     timer.spoke();
     expect(logged.map((entry) => entry.event)).toEqual(['voice.tool_timed', 'voice.turn_timed']);
-    expect(logged[0]?.fields).toEqual({ tool: 'see', ms: 400 });
+    expect(logged[0]?.fields).toEqual({ tool: 'sight_look', ms: 400 });
     expect(logged[1]?.fields).toEqual({
       toolMs: 400,
       tools: 1,

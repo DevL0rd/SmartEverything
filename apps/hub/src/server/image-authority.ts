@@ -12,9 +12,8 @@ import type { Budget } from '../ledger/budget';
 import type { Store } from '../store/store';
 import { profileIdOf, type Caller } from './auth';
 import { ImageAdmissionError } from './image-admission';
-import { admitImageWait } from './image-wait-authority';
 
-const IMAGE_SPEND_TOOL = 'start_image_operation';
+const IMAGE_SPEND_TOOL = 'image_gen';
 export interface ImageSpend {
   readonly background: boolean;
   readonly profileId: string;
@@ -86,10 +85,6 @@ function authorizeImage(
 ): void {
   validatePrincipal(options.store, principal, chatId);
   if (effect === 'read') return;
-  if (effect === 'wait') {
-    admitImageWait(options.store, chatId, principal.scopes);
-    return;
-  }
   if (chatId === '') throw new ApiError('forbidden', 'Image spend requires a specific owned chat.');
   if (effect === 'persist') {
     admitImageToolEnabled(options.store);

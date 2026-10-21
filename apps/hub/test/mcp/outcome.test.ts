@@ -56,7 +56,7 @@ describe('the compact answer to a write or action tool', () => {
       params: { control: 'power', to: true },
       outcome: 'ok',
     };
-    const answer = outcomeOf('run_automation', {
+    const answer = outcomeOf('automation_run', {
       result: {
         ok: false,
         summary: 'The dry run failed.',
@@ -137,7 +137,7 @@ describe('the compact answer to a write or action tool', () => {
   });
 
   it('counts finished, failed, running and skipped device commands and lists the problems', () => {
-    const answer = outcomeOf('control_devices', {
+    const answer = outcomeOf('device_control', {
       commands: [
         { device: 'Lamp', capability: 'power', status: 'succeeded', now: true, error: null },
         { device: 'Fan', capability: 'power', status: 'failed', error: 'offline' },
@@ -148,7 +148,7 @@ describe('the compact answer to a write or action tool', () => {
     });
     expect(answer).toStrictEqual({
       ok: false,
-      summary: 'Controlled devices: 1 of 3 commands done, 1 failed, 1 still running, 1 skipped',
+      summary: 'Controlled device: 1 of 3 commands done, 1 failed, 1 still running, 1 skipped',
       changed: [{ device: 'Lamp', capability: 'power', now: true }],
       failed: [{ device: 'Fan', capability: 'power', reason: 'offline' }],
       skipped: [{ item: 'Clock', reason: 'Display is read-only' }],

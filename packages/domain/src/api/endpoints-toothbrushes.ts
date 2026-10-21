@@ -59,7 +59,7 @@ export const TOOTHBRUSH_AREA_ENDPOINTS = {
     path: '/api/toothbrushes/:deviceId/actions',
     access: 'member',
     summary:
-      'Act on a toothbrush: assign a session to a person, say who brushes with it, set a person’s brushing goal (sessions per day, minimum seconds, morning and evening hours), change settings (connection policy, alerts, sensors, defaults, handle change consent, model pick; owner), make this phone hold the Bluetooth link, forget a session, or turn the raw frame log on or off (owner). Oral-B only: set_mode_order, reset_head_reminder, snooze_head_reminder, and probe (owner; a handle test that talks to the real brush, so ask the person first). Mode, intensity and feedback switches go through control_devices; pairing is a human step in the app',
+      'Act on a toothbrush: assign a session to a person, say who brushes with it, set a person’s brushing goal (sessions per day, minimum seconds, morning and evening hours), change settings (connection policy, alerts, sensors, defaults, handle change consent, model pick; owner), make this phone hold the Bluetooth link, forget a session, or turn the raw frame log on or off (owner). Oral-B only: set_mode_order, reset_head_reminder, snooze_head_reminder, and probe (owner; a handle test that talks to the real brush, so ask the person first). Mode, intensity and feedback switches go through device_control; pairing is a human step in the app',
     params: z.strictObject({ deviceId: ID }),
     query: NOTHING,
     body: BRUSH_ACTION,

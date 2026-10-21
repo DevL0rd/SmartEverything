@@ -197,7 +197,12 @@ export const AUTOMATION_RUN_ENDPOINTS = {
       'Node records of one run, paged by sequence, optionally for one node and one loop iteration',
     params: RUN_PARAMS,
     query: z.strictObject({
-      after: z.coerce.number().int().min(-1).default(-1),
+      after: z.coerce
+        .number()
+        .int()
+        .min(-1)
+        .default(-1)
+        .describe('Sequence number to continue after, from the last item of the previous page; -1 starts at the first'),
       limit: queryLimit(100, 500),
       nodeId: ID.optional(),
       iteration: z.coerce.number().int().min(0).optional(),

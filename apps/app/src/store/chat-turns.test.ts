@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatStreamNotice } from '@smarteverything/domain';
-import { withFrame, type Turns } from './chat-turns';
+import {
+  CHAT_RETRYING_REASON,
+  type ChatActivityNotice,
+  type ChatStreamNotice,
+} from '@smarteverything/domain';
+import { withFrame, withSnapshot, type Turns } from './chat-turns';
 
 const frame = (seq: number, delta: string): ChatStreamNotice => ({
   type: 'chat_stream',
@@ -42,5 +46,27 @@ describe('withFrame', () => {
   it('ignores a frame already applied', () => {
     const turns = withFrame({}, frame(1, 'a'));
     expect(withFrame(turns, frame(1, 'x'))).toBe(turns);
+  });
+});
+
+describe('a retrying turn', () => {
+  it('drops the retrying reason as soon as the turn streams again', () => {
+    const notice: ChatActivityNotice = {
+      type: 'chat_activity',
+      chatId: 'c',
+      turnId: 't',
+      messageId: null,
+      seq: 0,
+      state: 'thinking',
+      steps: [],
+      draft: '',
+      reasoning: '',
+      tools: [],
+      finish: null,
+      reason: CHAT_RETRYING_REASON,
+    };
+    const retrying = withSnapshot({}, notice);
+    expect(retrying['t']?.reason).toBe(CHAT_RETRYING_REASON);
+    expect(withFrame(retrying, frame(1, 'back'))['t']?.reason).toBeNull();
   });
 });

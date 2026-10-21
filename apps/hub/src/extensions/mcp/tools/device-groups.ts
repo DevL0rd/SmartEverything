@@ -1,19 +1,10 @@
 import {
-  API_ENDPOINTS as E,
-  TARGET_CHANGE,
-  deviceFamily,
   groupTargets,
-  memberOutcomes,
   presentDevice,
   roomLightTargets,
-  skippedText,
-  targetResultHeadline,
   targetState,
   type DeviceScope,
   type JsonValue,
-  type MemberOutcome,
-  type ResultNoun,
-  type SkippedGroupDevice,
   type Spread,
   type TargetEntry,
   type TargetReadings,
@@ -22,12 +13,8 @@ import {
 import { deviceHidden, deviceIdReachable } from '../../../server/person-scope';
 import type { Store } from '../../../store/store';
 import { z } from 'zod';
-import { submitAndWait } from '../command-waiter';
-import { operate } from './acting';
-import { reported } from './commanding';
 import { deviceScopeOfActor } from './person-reach';
-import { PHYSICAL, READS, defineTool, type Tool } from './registry';
-import { deviceNames } from './targets';
+import { READS, defineTool, type Tool } from './registry';
 
 export interface TargetSummary extends TargetEntry {
   readonly state: TargetState;
@@ -75,7 +62,6 @@ function summaryRow(summary: TargetSummary): Record<string, unknown> {
     key: summary.key,
     name: summary.name,
     kind: summary.kind,
-    target: summary.target,
     member_ids: summary.members.map((member) => member.id),
     lost: summary.lost,
     state: {
@@ -91,16 +77,6 @@ function summaryRow(summary: TargetSummary): Record<string, unknown> {
   };
 }
 
-function noun(store: Store, outcomes: readonly MemberOutcome[]): ResultNoun {
-  const lights = new Set(
-    store.devices
-      .list()
-      .filter((device) => deviceFamily(device) === 'light')
-      .map((device) => device.id),
-  );
-  return outcomes.every((outcome) => lights.has(outcome.deviceId)) ? 'light' : 'device';
-}
-
 export const DEVICE_GROUP_TOOLS: readonly Tool[] = [
   defineTool({
     name: 'list_device_groups',
@@ -113,38 +89,5 @@ export const DEVICE_GROUP_TOOLS: readonly Tool[] = [
         ),
       },
     }),
-  }),
-  defineTool({
-    name: 'control_device_target',
-    input: TARGET_CHANGE,
-    annotations: PHYSICAL,
-    run: async (context, input) => {
-      let skipped: readonly SkippedGroupDevice[] = [];
-      const outcome = await submitAndWait({
-        feed: context.store.feed,
-        clock: context.clock,
-        waitMs: context.commandWaitMs,
-        submit: async () => {
-          const result = E.sendTargetCommands.response.parse(
-            await operate(context, 'sendTargetCommands', { body: input }),
-          );
-          skipped = result.skipped;
-          return result.commands;
-        },
-        current: (id) => context.store.commands.byId(id),
-      });
-      const outcomes = memberOutcomes(skipped, outcome.commands);
-      const names = deviceNames(context.store);
-      return {
-        structured: {
-          ...reported(context, outcome),
-          headline: targetResultHeadline(outcomes, noun(context.store, outcomes)),
-          skipped: skipped.map((skip) => ({
-            device: names.get(skip.deviceId) ?? skip.deviceId,
-            reason: skippedText(skip),
-          })),
-        },
-      };
-    },
   }),
 ];

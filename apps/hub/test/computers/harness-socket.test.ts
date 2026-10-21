@@ -5,7 +5,6 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import {
   AI_HARNESS_PERMISSIONS,
-  AI_PREVIEW_CAPABILITY,
   HARNESS_CONFIGURATION_CAPABILITY,
   HARNESS_SUBSCRIPTION_CAPABILITY,
   NODE_HARNESS_PROTOCOL,
@@ -42,7 +41,7 @@ const WELCOME = z.object({
   runtime_instance: z.uuid(),
 });
 const SUBSCRIPTION = [HARNESS_SUBSCRIPTION_CAPABILITY];
-const BASE = [HARNESS_CONFIGURATION_CAPABILITY, AI_PREVIEW_CAPABILITY];
+const BASE = [HARNESS_CONFIGURATION_CAPABILITY];
 
 interface Bench {
   readonly rig: Rig;

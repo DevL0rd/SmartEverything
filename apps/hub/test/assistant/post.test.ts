@@ -63,7 +63,7 @@ describe('assistant posts', () => {
       { profileId: owner, role: 'owner' },
     );
     await expect(post).rejects.toBeInstanceOf(ApiError);
-    await expect(post).rejects.toThrow('take it from list_people');
+    await expect(post).rejects.toThrow('take it from person_read');
     expect(opened.store.aiChats.chats({ profileId: owner, archived: false })).toHaveLength(0);
   });
 

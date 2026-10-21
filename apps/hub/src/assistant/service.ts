@@ -61,6 +61,7 @@ import { costRolledUp } from './cost-rollup';
 import type { AssistantDelivery } from './delivery';
 import { removeConversationMessages } from './remove-messages';
 import { compactChat, interruptChat } from './chat-run-control';
+import { deliveryPorts } from './delivery-ports';
 import { MessageEdits } from './message-edits';
 import type { EngineStatus } from './engines/engine';
 import { EngineRegistry } from './engines/registry';
@@ -112,18 +113,17 @@ export class AssistantService {
     this.chats = assistantChats(options, this.files, () => this.selections, this.projects);
     this.branches = new ChatBranches(store, this.files, this.chats);
     this.engines = new EngineRegistry(store);
-    this.delivery = assistantDelivery(options, this.engines, {
-      admit: (event): boolean => this.coordination.admit(event),
-      delivered: (event): void => {
-        this.conversation.delivered(event.id);
-        this.publisher.publish();
-      },
-      failed: (event, reason): void => {
-        this.conversation.failed(event, reason);
-        this.ended(event, reason, false);
-        this.publisher.publish();
-      },
-    });
+    this.delivery = assistantDelivery(
+      options,
+      this.engines,
+      deliveryPorts({
+        options,
+        conversation: this.conversation,
+        publisher: this.publisher,
+        coordination: () => this.coordination,
+        ended: this.ended.bind(this),
+      }),
+    );
     this.coordination = assistantCoordination(options, {
       tools: (): ToolHub | null => this.tools,
       chats: this.chats,
@@ -355,11 +355,20 @@ export class AssistantService {
   }
 
   compact(owner: ChatOwner, chatId: string, clientId?: string): Promise<boolean> {
-    return compactChat({ chats: this.chats, engines: this.engines }, owner, chatId, clientId);
+    return compactChat(
+      { chats: this.chats, engines: this.engines, delivery: this.delivery },
+      owner,
+      chatId,
+      clientId,
+    );
   }
 
   interrupt(owner: ChatOwner, chatId: string): Promise<void> {
-    return interruptChat({ chats: this.chats, engines: this.engines }, owner, chatId);
+    return interruptChat(
+      { chats: this.chats, engines: this.engines, delivery: this.delivery },
+      owner,
+      chatId,
+    );
   }
 
   send(sender: Sender, body: AssistantNewMessage, chatId?: string): AssistantMessageRow {

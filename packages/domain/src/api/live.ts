@@ -16,8 +16,6 @@ import {
   VOICE_LEVELS_NOTICE,
   VOICE_LEVELS_WATCH,
 } from '../voice-activity';
-import { AI_PREVIEW_NOTICE, AI_PREVIEW_LEASE } from '../ai-previews';
-import { AI_HTML_PREVIEW_LEASE } from '../ai-preview-documents';
 import { IMAGE_OPERATION_NOTICE, IMAGE_OPERATION_PREVIEW } from '../image-operations';
 import {
   AI_CHAT_RUNTIME_PROVIDER_NOTICE,
@@ -301,7 +299,6 @@ const NOTICES = [
   AI_CHAT_PROVIDER_NOTICE,
   AI_HARNESS_NOTICE,
   AI_HARNESS_CONFIGURATION_NOTICE,
-  AI_PREVIEW_NOTICE,
   AI_CHAT_RUNTIME_PROVIDER_NOTICE,
   COMPUTER_RUNTIME_STATUS_NOTICE,
   COMPUTER_RUNTIME_NATIVE_NOTICE,
@@ -360,9 +357,6 @@ export const LIVE_CLIENT_MESSAGE = z.discriminatedUnion('type', [
       .boolean()
       .optional()
       .describe('The app is not in front: this connection only receives notices for the phone'),
-    previewOwner: z
-      .strictObject({ chatId: z.uuid(), lease: z.union([AI_PREVIEW_LEASE, AI_HTML_PREVIEW_LEASE]) })
-      .optional(),
   }),
   WATCH_MESSAGE,
   AUTOMATION_WATCH_MESSAGE,

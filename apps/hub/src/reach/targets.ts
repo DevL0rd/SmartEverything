@@ -50,7 +50,7 @@ function deviceTarget(store: TargetStore, access: TargetRules, deviceId: string)
   const client = store.clients.list().find((candidate) => candidate.id === deviceId);
   if (client === undefined) {
     throw new ReachRefusedError(
-      'No camera or app has that id; take it from read_presence or find_devices.',
+      'No camera or app has that id; take it from presence_read or device_find.',
     );
   }
   return { kind: 'app', client, label: client.name };

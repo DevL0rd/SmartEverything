@@ -9,6 +9,7 @@ import { Button } from '../../../components/button';
 import { CodeBlock } from '../../../components/code';
 import { FlowFrame } from '../../../components/flow-frame';
 import { ReasonLine } from '../../../components/reason-line';
+import { ReadOnlyRow } from './read-only-row';
 import { Text } from '../../../components/text';
 import { useSession, useSettings } from '../../../store/selectors';
 import { FlowButton } from '../flows/flow-button';
@@ -73,14 +74,40 @@ function Created({
   );
 }
 
+function TokenIntro({
+  name,
+  live,
+  readOnly,
+  setReadOnly,
+}: {
+  readonly name: string;
+  readonly live: boolean;
+  readonly readOnly: boolean;
+  readonly setReadOnly: (readOnly: boolean) => void;
+}): ReactNode {
+  return (
+    <View className="gap-3">
+      <Text variant="body" tone="variant">
+        {`This makes a private key for ${name} and shows how to add it.`}
+      </Text>
+      <ReadOnlyRow who={name} value={readOnly} onChange={setReadOnly} />
+      {live ? null : (
+        <ReasonLine icon="wifiOff" text="Needs your home hub. Reconnect to continue." />
+      )}
+    </View>
+  );
+}
+
 export function TokenFlow({ assistant }: { readonly assistant: TokenAssistant }): ReactNode {
   const url = useServerUrl();
   const clientName = useSession().client.name;
   const [token, setToken] = useState<string | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
   const mutation = useMutationState();
   const live = useHubLive();
   const create = (): void => {
-    mutation.run(() => createMcpToken(tokenNameFor(assistant, clientName)), {
+    const access = readOnly ? 'read' : 'control';
+    mutation.run(() => createMcpToken(tokenNameFor(assistant, clientName), access), {
       failure: 'No connection was made',
       onDone: setToken,
     });
@@ -104,14 +131,12 @@ export function TokenFlow({ assistant }: { readonly assistant: TokenAssistant })
       }
     >
       {token === null || url === null ? (
-        <View className="gap-3">
-          <Text variant="body" tone="variant">
-            {`This makes a private key for ${assistant.name} and shows how to add it.`}
-          </Text>
-          {live ? null : (
-            <ReasonLine icon="wifiOff" text="Needs your home hub. Reconnect to continue." />
-          )}
-        </View>
+        <TokenIntro
+          name={assistant.name}
+          live={live}
+          readOnly={readOnly}
+          setReadOnly={setReadOnly}
+        />
       ) : (
         <Created assistant={assistant} url={url} token={token} />
       )}

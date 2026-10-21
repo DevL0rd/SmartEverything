@@ -1,4 +1,4 @@
-import { MCP_PART_NAMES, MCP_TOOL_NAMES } from '@smarteverything/domain';
+import { MCP_PART_NAMES, MCP_ROUTES, MCP_TOOL_NAMES } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { TOOLS, toolNamed } from '../../src/extensions/mcp/tools';
@@ -7,8 +7,14 @@ import { TOOL_GUIDE } from '../../src/ai-tools/tool-guide';
 
 const TOOL_NAMES: ReadonlySet<string> = new Set(MCP_TOOL_NAMES);
 
+const SELECTOR_VALUES: ReadonlySet<string> = new Set(
+  [...MCP_ROUTES.values()].flatMap((route) =>
+    'branches' in route ? Object.keys(route.branches) : [],
+  ),
+);
+
 const INTERNAL_PART_NAMES: readonly string[] = MCP_PART_NAMES.filter(
-  (name) => !TOOL_NAMES.has(name),
+  (name) => !TOOL_NAMES.has(name) && !SELECTOR_VALUES.has(name),
 );
 
 const NODE = z.looseObject({});
@@ -42,7 +48,7 @@ describe('the text a model reads about the tools', () => {
   });
 
   it('describes each branch of a routed tool in its own words when the route gives them', () => {
-    const logs = toolNamed('read_preview_logs');
+    const logs = toolNamed('signal_read');
     const keyed = z
       .looseObject({
         inputSchema: z.looseObject({
@@ -51,7 +57,7 @@ describe('the text a model reads about the tools', () => {
       })
       .parse(logs?.listing);
     expect(keyed.inputSchema.properties.view.description).toContain(
-      'read: The newest console messages, page by page',
+      'values: The newest values of one signal',
     );
     expect(keyed.inputSchema.properties.view.description).not.toContain('never poll');
   });

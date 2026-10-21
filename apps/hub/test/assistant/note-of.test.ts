@@ -85,7 +85,7 @@ describe('reading a media note for a turn', () => {
     const file = await stored('video/mp4', 'clip.mp4');
     const line = files.noteLine(file);
     expect(line).toContain('Transcript pending.');
-    expect(line).toContain(`read_chats view attachment with id ${file.id}`);
+    expect(line).toContain(`chat_read view attachment with id ${file.id}`);
     await settle();
     expect(calls).toBe(1);
   });
@@ -103,7 +103,7 @@ describe('reading a media note for a turn', () => {
     test.store.assistantChat.setTranscript(file.id, 'a clip');
     const line = files.noteLine(test.store.assistantChat.attachment(file.id));
     expect(line).toContain('Transcript: a clip');
-    expect(line).toContain(`read_chats view attachment with id ${file.id}`);
+    expect(line).toContain(`chat_read view attachment with id ${file.id}`);
     await settle();
     expect(calls).toBe(0);
   });

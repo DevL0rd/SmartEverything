@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import {
   IMAGE_AREA_ENDPOINTS as E,
-  ApiError,
+  editRequestOf,
+  generateRequestOf,
+  type ImageModelChoice,
   type ImageProviderCatalog,
 } from '@smarteverything/domain';
 import type { ImageActor, ImageOperationService } from '../../assistant/image/service';
@@ -11,30 +14,37 @@ import { currentRequestSignal } from '../request-signal';
 export interface ImageRouteContext {
   readonly images: ImageOperationService;
   readonly imageActor: (caller: Caller) => ImageActor;
+  readonly selectedImageModel: () => ImageModelChoice | null;
   readonly imageCatalog: (
     caller: Caller,
     chatId?: string,
     refresh?: boolean,
   ) => Promise<ImageProviderCatalog>;
 }
-export const imageRoutes = ({ images, imageActor, imageCatalog }: ImageRouteContext) =>
+export const imageRoutes = ({
+  images,
+  imageActor,
+  imageCatalog,
+  selectedImageModel,
+}: ImageRouteContext) =>
   ({
     listImageEndpoints: bound(E.listImageEndpoints, ({ caller, query }) =>
       imageCatalog(caller, query.chat_id, query.refresh),
     ),
-    resolveImageInput: bound(E.resolveImageInput, ({ caller, body }) =>
-      images.resolve(imageActor(caller), body.chat_id, body.selector),
+    generateImageOperation: bound(E.generateImageOperation, ({ caller, body }) =>
+      images.run(
+        imageActor(caller),
+        generateRequestOf(body, body.operationId ?? randomUUID(), selectedImageModel()),
+        currentRequestSignal(),
+      ),
     ),
-    startImageOperation: bound(E.startImageOperation, ({ caller, body }) =>
-      images.start(imageActor(caller), body),
+    editImageOperation: bound(E.editImageOperation, ({ caller, body }) =>
+      images.run(
+        imageActor(caller),
+        editRequestOf(body, body.operationId ?? randomUUID(), selectedImageModel()),
+        currentRequestSignal(),
+      ),
     ),
-    waitForImages: bound(E.waitForImages, ({ caller, body }) => {
-      if (caller.kind !== 'client' && caller.kind !== 'service')
-        throw new ApiError('forbidden', 'Image waits require an authenticated initiating profile.');
-      if (caller.chatId === undefined || caller.chatId === null)
-        throw new ApiError('forbidden', 'Image waits require a trusted initiating chat.');
-      return images.wait(imageActor(caller), caller.chatId, body, currentRequestSignal());
-    }),
     listImageOperations: bound(E.listImageOperations, ({ caller, query }) =>
       images.list(imageActor(caller), query.chat_id),
     ),

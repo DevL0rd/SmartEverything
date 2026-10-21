@@ -1,4 +1,4 @@
-import type { AiRetryFrom, AssistantMessageRow } from '@smarteverything/domain';
+import type { AssistantMessageRow } from '@smarteverything/domain';
 import { rowsOf, type StoreState } from '../../../store/state';
 import { isComputerEngine } from '../provider/computer-engine';
 
@@ -28,22 +28,15 @@ function copiedIntoBranch(state: StoreState, row: AssistantMessageRow): boolean 
   return chat !== undefined && chat.branch_message_id !== null && row.created_at < chat.created_at;
 }
 
-export function retryFromOf(
-  state: StoreState,
-  request: AssistantMessageRow | null,
-): AiRetryFrom | null {
-  if (request === null || (request.state !== 'failed' && request.state !== 'answered')) {
-    return null;
+export function canContinue(state: StoreState, request: AssistantMessageRow | null): boolean {
+  if (request?.state !== 'failed' || copiedIntoBranch(state, request)) {
+    return false;
   }
-  if (copiedIntoBranch(state, request)) {
-    return null;
-  }
-  return latestPersonId(state, request.chat_id) === request.id ? request.state : null;
+  return latestPersonId(state, request.chat_id) === request.id;
 }
 
 export interface RowActionState {
   readonly request: AssistantMessageRow | null;
-  readonly retryFrom: AiRetryFrom | null;
   readonly canEdit: boolean;
   readonly readOnly: boolean;
 }
@@ -60,7 +53,6 @@ export function rowActionState(state: StoreState, row: AssistantMessageRow): Row
   const chat = state.tables.ai_chats.byId[row.chat_id];
   return {
     request,
-    retryFrom: retryFromOf(state, request),
     canEdit: editableOf(state, row),
     readOnly:
       chat !== undefined && isComputerEngine(chat.engine) && state.session?.client.role !== 'owner',

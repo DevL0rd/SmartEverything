@@ -4,8 +4,6 @@ import {
   SUBSCRIPTION_INFERENCE_REQUEST,
   SUBSCRIPTION_INFERENCE_RESULT,
 } from '../ai-subscription-inference';
-import { AI_PREVIEW_NATIVE_REQUEST, HUB_PREVIEW_OPEN } from '../ai-previews';
-import { HUB_PREVIEW_FILE_CLOSE } from '../ai-preview-files';
 import {
   AI_HARNESS_COMMAND_DESCRIPTORS,
   AI_HARNESS_COMMAND_OUTCOME,
@@ -197,7 +195,6 @@ export const HARNESS_CALL_REQUEST = z.discriminatedUnion('operation', [
     claim: DSH_WRITER_CLAIM_WRITE,
     input: HARNESS_NATIVE_MEDIA_NOTE_INPUT,
   }),
-  ...AI_PREVIEW_NATIVE_REQUEST.options,
   z.strictObject({
     operation: z.literal('configuration_report'),
     report: AI_HARNESS_CONFIGURATION_REPORT,
@@ -343,7 +340,5 @@ export const HUB_HARNESS_CONTROL = z.discriminatedUnion('type', [
       z.strictObject({ ok: z.literal(false), error: API_ERROR.shape.error }),
     ]),
   }),
-  HUB_PREVIEW_OPEN,
-  HUB_PREVIEW_FILE_CLOSE,
 ]);
 export type HubHarnessControl = z.infer<typeof HUB_HARNESS_CONTROL>;

@@ -1,9 +1,9 @@
-import type { AiRetryFrom, AssistantMessageRow } from '@smarteverything/domain';
+import type { AssistantMessageRow } from '@smarteverything/domain';
 import { useStoreSelector } from '../../../store/store-context';
 import {
   editableOf,
   latestPersonId,
-  retryFromOf,
+  canContinue,
   rowActionState,
   type RowActionState,
 } from './retry-state';
@@ -11,7 +11,6 @@ import {
 function sameActionState(left: RowActionState, right: RowActionState): boolean {
   return (
     left.request === right.request &&
-    left.retryFrom === right.retryFrom &&
     left.canEdit === right.canEdit &&
     left.readOnly === right.readOnly
   );
@@ -21,8 +20,8 @@ export function useRowActionState(row: AssistantMessageRow): RowActionState {
   return useStoreSelector((state) => rowActionState(state, row), sameActionState, [row]);
 }
 
-export function useRetryFrom(request: AssistantMessageRow | null): AiRetryFrom | null {
-  return useStoreSelector((state) => retryFromOf(state, request), Object.is, [request]);
+export function useCanContinue(request: AssistantMessageRow | null): boolean {
+  return useStoreSelector((state) => canContinue(state, request), Object.is, [request]);
 }
 
 export function useLatestEditableId(chatId: string): string | null {

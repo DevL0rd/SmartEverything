@@ -9,9 +9,9 @@ import type { LibraryView } from './library-rows';
 
 const SKELETON_ROWS = 6;
 
-function Loading(): ReactNode {
+function Loading({ noun }: { readonly noun: string }): ReactNode {
   return (
-    <View aria-busy accessibilityLabel="Loading models" className="gap-3 p-4">
+    <View aria-busy accessibilityLabel={`Loading ${noun}`} className="gap-3 p-4">
       {Array.from({ length: SKELETON_ROWS }, (_, index) => (
         <Skeleton key={index} shape="block" className="h-16" />
       ))}
@@ -19,12 +19,20 @@ function Loading(): ReactNode {
   );
 }
 
-function LoadFailed({ retry }: { readonly retry: () => void }): ReactNode {
+function LoadFailed({
+  retry,
+  noun,
+  single,
+}: {
+  readonly retry: () => void;
+  readonly noun: string;
+  readonly single: string;
+}): ReactNode {
   return (
     <View accessibilityRole="alert" className="items-center gap-3 px-6 py-12">
       <Icon name="alert" size={24} tone="critical" />
       <Text variant="callout" align="center">
-        Couldn’t load models. Your current model still works.
+        {`Couldn’t load ${noun}. Your current ${single} still works.`}
       </Text>
       <Button label="Try again" variant="tonal" onPress={retry} />
     </View>
@@ -35,29 +43,33 @@ export function LibraryProblem({
   view,
   retry,
   reset,
+  noun = 'models',
+  single = 'model',
 }: {
   readonly view: Exclude<LibraryView, 'ready'>;
   readonly retry: () => void;
   readonly reset: () => void;
+  readonly noun?: string;
+  readonly single?: string;
 }): ReactNode {
   switch (view) {
     case 'loading':
-      return <Loading />;
+      return <Loading noun={noun} />;
     case 'error':
-      return <LoadFailed retry={retry} />;
+      return <LoadFailed retry={retry} noun={noun} single={single} />;
     case 'offline':
       return (
         <EmptyState
           icon="wifiOff"
           title="Can’t reach your Home Hub"
-          body="Models load when the connection is back."
+          body={`${noun.charAt(0).toUpperCase()}${noun.slice(1)} load when the connection is back.`}
         />
       );
     case 'empty':
       return (
         <EmptyState
           icon="search"
-          title="No models match these filters"
+          title={`No ${noun} match these filters`}
           body="Reset the filters or search for another name."
           action={<Button label="Reset filters" variant="outlined" onPress={reset} />}
         />

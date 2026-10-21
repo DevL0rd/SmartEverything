@@ -39,8 +39,8 @@ function replyWith(chat: AiChatRow, embed: ChatTimelineEmbed): void {
   rig.opened.store.assistantChat.updateMessage(row.id, { embeds: [embed] });
 }
 
-function request(chat: AiChatRow, callId: string, offset = 0, limit = 10): ToolResultRequest {
-  return { chatId: chat.id, callId, field: 'output', offset, limit };
+function request(chat: AiChatRow, callId: string, cursor = '0', limit = 10): ToolResultRequest {
+  return { chatId: chat.id, callId, field: 'output', cursor, limit };
 }
 
 describe('reading the full result of a tool call', () => {
@@ -50,15 +50,15 @@ describe('reading the full result of a tool call', () => {
     const { store } = rig.opened;
 
     const first = readToolResult(store, request(chat, 'call-1'));
-    const second = readToolResult(store, request(chat, 'call-1', first.next_offset ?? 0));
-    const last = readToolResult(store, request(chat, 'call-1', second.next_offset ?? 0));
+    const second = readToolResult(store, request(chat, 'call-1', first.nextCursor ?? '0'));
+    const last = readToolResult(store, request(chat, 'call-1', second.nextCursor ?? '0'));
 
     expect([first.text, second.text, last.text]).toStrictEqual([
       '0123456789',
       'abcdefghij',
       '0123',
     ]);
-    expect([first.total_chars, first.next_offset, last.next_offset]).toStrictEqual([24, 10, null]);
+    expect([first.total_chars, first.nextCursor, last.nextCursor]).toStrictEqual([24, '10', null]);
   });
 
   it('reads the input of a call when asked', () => {
@@ -66,11 +66,11 @@ describe('reading the full result of a tool call', () => {
     replyWith(chat, timeline('call-1', 'echo hello', 'hello'));
 
     const page = readToolResult(rig.opened.store, {
-      ...request(chat, 'call-1', 0, 100),
+      ...request(chat, 'call-1', '0', 100),
       field: 'input',
     });
 
-    expect(page).toMatchObject({ field: 'input', text: 'echo hello', next_offset: null });
+    expect(page).toMatchObject({ field: 'input', text: 'echo hello', nextCursor: null });
   });
 
   it('finds a call in an earlier reply of the chat', () => {
@@ -78,7 +78,7 @@ describe('reading the full result of a tool call', () => {
     replyWith(chat, timeline('old-call', 'a', 'old output'));
     replyWith(chat, timeline('new-call', 'b', 'new output'));
 
-    const page = readToolResult(rig.opened.store, request(chat, 'old-call', 0, 100));
+    const page = readToolResult(rig.opened.store, request(chat, 'old-call', '0', 100));
 
     expect(page.text).toBe('old output');
   });

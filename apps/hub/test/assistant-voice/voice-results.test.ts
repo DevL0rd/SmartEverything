@@ -3,7 +3,7 @@ import { VOICE_RESULT_GUARD_CHARS, voiceResponseOf } from '../../src/assistant-v
 import { captureLogs } from '../support/logs';
 
 describe('the voice tool results', () => {
-  it('give find_devices as a summary of id, name, room, family, online and capability keys', () => {
+  it('give device_find as a summary of id, name, room, family, online and capability keys', () => {
     const response = {
       devices: [
         {
@@ -23,7 +23,7 @@ describe('the voice tool results', () => {
         },
       ],
     };
-    expect(voiceResponseOf('find_devices', {}, response)).toEqual({
+    expect(voiceResponseOf('device_find', {}, response)).toEqual({
       devices: [
         {
           id: 'd1',
@@ -37,7 +37,7 @@ describe('the voice tool results', () => {
     });
   });
 
-  it('keep a false value that matters and the options a control needs in get_device', () => {
+  it('keep a false value that matters and the options a control needs in device_read', () => {
     const response = {
       device: { id: 'd1', name: 'Lamp', details: { ip: '10.0.0.2' }, updated_at: 't' },
       capabilities: [
@@ -58,7 +58,7 @@ describe('the voice tool results', () => {
         },
       ],
     };
-    expect(voiceResponseOf('get_device', {}, response)).toEqual({
+    expect(voiceResponseOf('device_read', {}, response)).toEqual({
       device: { id: 'd1', name: 'Lamp' },
       capabilities: [
         {
@@ -74,24 +74,24 @@ describe('the voice tool results', () => {
     });
   });
 
-  it('shortens get_home when it is reached through call_tool', () => {
+  it('shortens home_read when it is reached through tool_call', () => {
     const response = { homes: [{ name: 'Home', latitude: 1, longitude: 2, rooms: 3 }] };
-    expect(voiceResponseOf('call_tool', { name: 'get_home' }, response)).toEqual({
+    expect(voiceResponseOf('tool_call', { name: 'home_read' }, response)).toEqual({
       homes: [{ name: 'Home', rooms: 3 }],
     });
   });
 
   it('leaves other tools and errors untouched', () => {
     const other = { a: null, b: [] };
-    expect(voiceResponseOf('get_weather', {}, other)).toBe(other);
+    expect(voiceResponseOf('weather_read', {}, other)).toBe(other);
     const failed = { error: 'no', devices: [] };
-    expect(voiceResponseOf('find_devices', {}, failed)).toBe(failed);
+    expect(voiceResponseOf('device_find', {}, failed)).toBe(failed);
   });
 
   it('stop an oversized result as a last resort, say so to the model and warn with the tool and size', () => {
     const logs = captureLogs();
     const result = voiceResponseOf(
-      'call_tool',
+      'tool_call',
       { name: 'some_plugin__dump' },
       { rows: 'x'.repeat(60_000) },
     );
@@ -101,6 +101,6 @@ describe('the voice tool results', () => {
     const warning = logs.records.find((record) => record.event === 'voice.result_over_guard');
     expect(warning?.level).toBe('warn');
     expect(warning?.payload).toMatchObject({ tool: 'some_plugin__dump', chars: 60_011 });
-    expect(voiceResponseOf('call_tool', {}, { ok: true })).toEqual({ ok: true });
+    expect(voiceResponseOf('tool_call', {}, { ok: true })).toEqual({ ok: true });
   });
 });

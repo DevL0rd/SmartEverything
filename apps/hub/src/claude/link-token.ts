@@ -56,7 +56,12 @@ export class LinkToken {
     }
     this.revokeRows();
     const token = createMcpToken();
-    this.store.oauth.createPersonalToken(LINK_TOKEN_NAME, hashMcpToken(token), true);
+    this.store.oauth.createPersonalToken({
+      name: LINK_TOKEN_NAME,
+      tokenHash: hashMcpToken(token),
+      localOnly: true,
+      access: 'control',
+    });
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     await writeFile(`${this.file}.tmp`, `${token}\n`, { mode: 0o600 });
     await rename(`${this.file}.tmp`, this.file);

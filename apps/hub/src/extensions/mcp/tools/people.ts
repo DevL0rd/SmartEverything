@@ -19,7 +19,7 @@ export function peopleOf(store: Pick<Store, 'clients' | 'profiles'>): Record<str
 
 export const PEOPLE_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'list_people',
+    name: 'person_read',
     input: z.strictObject({}),
     annotations: READS,
     run: ({ store }) => ({ structured: { people: peopleOf(store) } }),

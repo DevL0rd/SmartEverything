@@ -17,7 +17,7 @@ afterEach(async () => {
 
 function hubAccess(native: boolean, refusal?: string): HarnessServerToolAccess {
   return {
-    hubToolNames: () => ['get_home'],
+    hubToolNames: () => ['home_read'],
     nativeAccess: () => native,
     deny: () => refusal,
   };
@@ -29,7 +29,7 @@ async function server(native: boolean, refusal?: string): Promise<RuntimeFixture
     serverToolAccess: hubAccess(native, refusal),
     mount: (ctx) => {
       ctx.tools.register({
-        name: 'get_home',
+        name: 'home_read',
         description: 'Read the home.',
         parameters: { type: 'object', properties: {}, additionalProperties: false },
         isConcurrencySafe: (): boolean => true,
@@ -137,7 +137,7 @@ describe('hub-hosted conversations', () => {
   it('run an exposed hub tool and return its result to the model', async () => {
     const host = await server(false);
     host.model.script(
-      { kind: 'tool', id: 'c1', name: 'get_home', input: {} },
+      { kind: 'tool', id: 'c1', name: 'home_read', input: {} },
       { kind: 'text', text: 'two rooms' },
     );
     await asked(host, 'how many rooms');
@@ -149,7 +149,7 @@ describe('hub-hosted conversations', () => {
   it('report the access policy refusal of a hub tool instead of running it', async () => {
     const host = await server(false, 'This profile cannot read the home.');
     host.model.script(
-      { kind: 'tool', id: 'c1', name: 'get_home', input: {} },
+      { kind: 'tool', id: 'c1', name: 'home_read', input: {} },
       { kind: 'text', text: 'sorry' },
     );
     await asked(host, 'how many rooms');

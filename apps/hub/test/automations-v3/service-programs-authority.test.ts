@@ -90,7 +90,7 @@ describe('who may save what the manifest reaches', () => {
   });
 
   it('lets only an owner save an automation that uses a tool', () => {
-    const program = automationOf([step('tool', 'tool.call', { tool: lit('get_home') })]);
+    const program = automationOf([step('tool', 'tool.call', { tool: lit('home_read') })]);
     expect(refusal(() => create(rig.member.caller, program)).code).toBe('forbidden');
   });
 
@@ -202,8 +202,8 @@ describe('who and what the saved automation remembers', () => {
       plugin_id: 'weather-plugin',
       requester: 'owner',
     });
-    rig.refusedTools.push('get_home');
-    const program = automationOf([step('tool', 'tool.call', { tool: lit('get_home') })]);
+    rig.refusedTools.push('home_read');
+    const program = automationOf([step('tool', 'tool.call', { tool: lit('home_read') })]);
     expect(refusal(() => create(plugin, program)).message).toMatch(/not available to a plugin/);
   });
 });

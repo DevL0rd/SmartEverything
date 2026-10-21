@@ -19,7 +19,7 @@ export const SEND_FILE = z.union([
       .max(200)
       .optional()
       .describe(
-        'Machine name or id from list_machines that holds the file; omit for the home hub’s own machine.',
+        'Machine name or id from machine_read that holds the file; omit for the home hub’s own machine.',
       ),
   }),
   z.strictObject({

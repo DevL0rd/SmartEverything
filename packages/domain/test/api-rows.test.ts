@@ -103,7 +103,7 @@ const settings = {
   ice_servers: [{ urls: ['stun:stun.example.com:3478'] }],
   webrtc_candidates: ['192.168.1.2:8555'],
   push_project_id: 'home-push',
-  mcp_disabled_tools: ['find_devices'],
+  mcp_disabled_tools: ['device_find'],
   fitness_goals: {
     steps: 8000,
     move_kcal: null,

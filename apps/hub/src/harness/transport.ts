@@ -10,7 +10,6 @@ import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import {
   ApiError,
-  AI_PREVIEW_NATIVE_REQUEST,
   DSH_WRITER_CLAIM_WRITE,
   JSON_VALUE,
 } from '@smarteverything/domain';
@@ -72,7 +71,7 @@ export function harnessTransportRoutes(
     },
   ];
 }
-export type HarnessTransportPorts = Pick<ServerContext, 'assistant' | 'preview'>;
+export type HarnessTransportPorts = Pick<ServerContext, 'assistant'>;
 export async function harnessTransport(
   context: HarnessTransportPorts,
   service: HarnessService,
@@ -107,7 +106,6 @@ async function dispatchTransport(
 ): Promise<unknown> {
   const request = input.request;
   if (request.operation === 'tools') return centralCatalogue(service);
-  if (request.operation.startsWith('preview_')) return previewTransport(context, input);
   if (request.operation === 'extension_tree')
     return service.extensions.tree(request.kind, request.id, request.version);
   if (request.operation === 'configuration_report')
@@ -299,18 +297,6 @@ async function streamInference(
     abort.abort('Inference forwarding finished.');
     response.removeListener('close', disconnected);
   }
-}
-
-function previewTransport(context: HarnessTransportPorts, input: HarnessTransportRequest): unknown {
-  const preview = AI_PREVIEW_NATIVE_REQUEST.parse(input.request);
-  if (
-    preview.operation === 'preview_file_abandon' ||
-    preview.operation === 'preview_file_publish' ||
-    preview.operation === 'preview_file_validate' ||
-    preview.operation === 'preview_file_update'
-  )
-    return context.preview.files.native(input, preview);
-  return context.preview.publications.native(input, preview);
 }
 
 function inferenceAccounting(

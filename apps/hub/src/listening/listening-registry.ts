@@ -132,7 +132,7 @@ export class ListeningRegistry {
       (source) => source.key === key,
     );
     if (found === undefined || !canSee(viewer, found)) {
-      throw new ApiError('not_found', `No listening source ${key}; read_listening lists them.`);
+      throw new ApiError('not_found', `No listening source ${key}; listening_read lists them.`);
     }
     return found;
   }

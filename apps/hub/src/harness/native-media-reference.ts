@@ -96,7 +96,7 @@ function retainedCall(
 
 function explicitReadId(call: z.infer<typeof CALL>): string | undefined {
   if (call.name === 'read_assistant_attachment') return READ.parse(JSON.parse(call.arguments)).id;
-  if (call.name !== 'call_tool') return undefined;
+  if (call.name !== 'tool_call') return undefined;
   const forwarded = CALL_TOOL_INPUT.parse(JSON.parse(call.arguments));
   return forwarded.name === 'read_assistant_attachment'
     ? READ.parse(forwarded.arguments).id

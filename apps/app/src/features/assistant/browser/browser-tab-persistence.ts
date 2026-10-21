@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { AI_HTML_PREVIEW_PUBLICATION, AI_PREVIEW_PUBLICATION } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
+import { CHAT_PAGE_PATH } from '@smarteverything/domain';
 import {
   browserMetadata,
   setBrowserMetadata,
@@ -14,14 +15,12 @@ import {
 } from './browser-tab-state';
 import type { BrowserTabs } from './browser-tabs';
 
+const log = new Logger('app.browser-tabs');
 const TABS_KEY = z.tuple([z.string(), z.string(), z.string(), z.string()]);
 const SAVED_SOURCE = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('blank') }),
   z.strictObject({ kind: z.literal('public'), url: z.url() }),
-  z.strictObject({
-    kind: z.literal('publication'),
-    publication: z.union([AI_HTML_PREVIEW_PUBLICATION, AI_PREVIEW_PUBLICATION]),
-  }),
+  z.strictObject({ kind: z.literal('project'), path: CHAT_PAGE_PATH }),
 ]);
 const SAVED_TABS = z
   .strictObject({
@@ -46,7 +45,13 @@ const SAVED_TABS = z
 export function restoreBrowserTabs(key: string): BrowserTabsSnapshot {
   const value = browserMetadata(key);
   if (value === undefined) return { tabs: [], selectedId: null, problem: null };
-  const saved = SAVED_TABS.parse(value);
+  const parsed = SAVED_TABS.safeParse(value);
+  if (!parsed.success) {
+    log.warn('tabs.saved_refused', { issues: parsed.error.issues.length });
+    forgetBrowserMetadataWhere((stored) => stored === key);
+    return { tabs: [], selectedId: null, problem: null };
+  }
+  const saved = parsed.data;
   return {
     selectedId: saved.selectedId,
     problem: null,

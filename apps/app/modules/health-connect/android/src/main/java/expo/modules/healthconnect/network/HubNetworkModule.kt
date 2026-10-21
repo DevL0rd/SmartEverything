@@ -195,16 +195,11 @@ class HubNetworkModule : Module() {
   }
 
   private fun ModuleDefinitionBuilder.browserFunctions() {
-    Function("browserDiagnosticsVersion") { 1 }
-    Function("browserDiagnosticsRawVersion") { 2 }
     Function("browserProfileReady") { HubBrowserPolicy.supported() }
-    AsyncFunction("browserObserve") Coroutine { -> withContext(Dispatchers.Main) { HubBrowserDiagnostics.replayAll(1) } }
-    AsyncFunction("browserObserveRaw") Coroutine { -> withContext(Dispatchers.Main) { HubBrowserDiagnostics.replayAll(2) } }
-    AsyncFunction("browserPerform") Coroutine { json: String -> withContext(Dispatchers.Main) { HubBrowserDiagnostics.perform(json) } }
-    AsyncFunction("browserEvaluate") Coroutine { id: String, code: String -> withContext(Dispatchers.Main) { HubBrowserDiagnostics.evaluate(id, code) } }
-    AsyncFunction("browserPress") Coroutine { id: String, json: String -> withContext(Dispatchers.Main) { HubBrowserDiagnostics.press(id, json) } }
+    AsyncFunction("browserEvaluate") Coroutine { id: String, code: String -> withContext(Dispatchers.Main) { HubBrowserPage.evaluate(id, code) } }
+    AsyncFunction("browserPress") Coroutine { id: String, json: String -> withContext(Dispatchers.Main) { HubBrowserPage.press(id, json) } }
     View(HubHtmlView::class) {
-      Events("onStatus", "onDiagnostic")
+      Events("onStatus")
       Prop("target") { view: HubHtmlView, json: String -> view.bindBrowser(json) }
       Prop("displayed") { view: HubHtmlView, value: Boolean -> view.displayed(value) }
       Prop("projection") { view: HubHtmlView, json: String -> html.attach(view, json) }

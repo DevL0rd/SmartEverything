@@ -114,9 +114,16 @@ export type HealthSourceRow = z.infer<typeof HEALTH_SOURCE_ROW>;
 
 export const TOKEN_NAME = boundedText(80);
 
+export const MCP_TOKEN_ACCESS = z
+  .enum(['read', 'control'])
+  .describe('read lets the assistant read the home but change nothing; control lets it do both');
+
+export type McpTokenAccess = z.infer<typeof MCP_TOKEN_ACCESS>;
+
 export const MCP_TOKEN_ROW = z.object({
   id: ID,
   name: TOKEN_NAME,
+  access: MCP_TOKEN_ACCESS,
   created_at: MOMENT,
   last_used_at: MOMENT.nullable(),
   revoked_at: MOMENT.nullable(),

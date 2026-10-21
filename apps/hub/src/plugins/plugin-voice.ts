@@ -35,7 +35,7 @@ import {
 import { transcriptsOf, type PluginTranscripts } from './plugin-transcripts';
 import { background } from '@smarteverything/logging';
 
-const TURN_HIDDEN_TOOLS: ReadonlySet<string> = new Set([...REACH_TOOL_NAMES, 'end_conversation']);
+const TURN_HIDDEN_TOOLS: ReadonlySet<string> = new Set([...REACH_TOOL_NAMES, 'conversation_end']);
 
 class PluginVoiceDeniedError extends Error {
   override readonly name = 'PluginVoiceDeniedError';

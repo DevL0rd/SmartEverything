@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo, useCallback, type ReactNode } from 'react';
+import { useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import { type TextInput, View } from 'react-native';
 import type { AiChatRow, BrowserTarget } from '@smarteverything/domain';
 import { notify } from '../../../components/toast-store';
@@ -7,9 +7,7 @@ import { IconButton } from '../../../components/icon-button';
 import { BrowserSurfaceSlot } from './browser-surface-slot';
 import type { BrowserHandle } from '../../../platform/browser-contract';
 import { BrowserToolbar } from './browser-toolbar';
-import { BrowserConsole } from './browser-console';
 import { BrowserTools } from './browser-tools';
-import { usePreviewDiagnostics } from './browser-diagnostics';
 import { BrowserActionScope } from './browser-action-scope';
 import { useRequestedBrowserAction } from './browser-requested-action';
 import {
@@ -19,7 +17,6 @@ import {
 } from './browser-tab-operation';
 import { shiftedTabs, type BrowserTab } from './browser-tab-state';
 import type { BrowserTabs } from './browser-tabs';
-import type { BrowserPublication } from './browser-selection';
 import { BrowserBlankPage } from './browser-blank-page';
 interface BrowserTabPageProps {
   readonly chat: AiChatRow;
@@ -27,8 +24,6 @@ interface BrowserTabPageProps {
   readonly tab: BrowserTab;
   readonly selected: boolean;
   readonly visible: boolean;
-  readonly publications: readonly BrowserPublication[];
-  readonly available: (publication: BrowserPublication) => boolean;
   readonly onNew: () => void;
 }
 export function BrowserTabPage(props: BrowserTabPageProps): ReactNode {
@@ -95,40 +90,22 @@ function useTabControls(
   return { surfaceRef, controls };
 }
 function TabContent(props: BrowserTabPageProps): ReactNode {
-  const { chat, tabs, tab, selected } = props;
+  const { tabs, tab, selected } = props;
   const { surfaceRef, controls } = useTabControls(tabs, tab);
   const addressRef = useRef<TextInput>(null);
-  const [height, setHeight] = useState(0);
-  const diagnostics = usePreviewDiagnostics(
-    chat.id,
-    chat.profile_id,
-    tab.selection?.target ?? null,
-  );
   useEffect(() => {
     if (selected && tab.phase === 'blank') addressRef.current?.focus();
   }, [selected, tab.phase]);
   useTabActions(props, addressRef);
   return (
     <>
-      <TabChrome {...props} addressRef={addressRef} controls={controls} diagnostics={diagnostics} />
-      <View
-        className="min-h-0 flex-1 overflow-hidden"
-        onLayout={(event) => {
-          setHeight(event.nativeEvent.layout.height);
-        }}
-      >
-        <View className="min-h-0 flex-1 overflow-hidden">
-          {tab.selection !== null ? (
-            <TabSurface {...props} target={tab.selection.target} surfaceRef={surfaceRef} />
-          ) : (
-            <TabEmpty {...props} />
-          )}
-        </View>
-        <BrowserConsole
-          controller={diagnostics.controller}
-          snapshot={diagnostics.snapshot}
-          availableHeight={height}
-        />
+      <TabChrome {...props} addressRef={addressRef} controls={controls} />
+      <View className="min-h-0 flex-1 overflow-hidden">
+        {tab.selection !== null ? (
+          <TabSurface {...props} target={tab.selection.target} surfaceRef={surfaceRef} />
+        ) : (
+          <TabEmpty {...props} />
+        )}
       </View>
     </>
   );
@@ -164,10 +141,9 @@ function TabSurface({
 interface TabChromeProps extends BrowserTabPageProps {
   readonly addressRef: React.RefObject<TextInput | null>;
   readonly controls: BrowserHandle;
-  readonly diagnostics: ReturnType<typeof usePreviewDiagnostics>;
 }
 function TabChrome(props: TabChromeProps): ReactNode {
-  const { tab, tabs, addressRef, controls, diagnostics, onNew } = props;
+  const { tab, tabs, addressRef, controls, onNew } = props;
   const ready = tab.phase === 'ready' || tab.phase === 'unavailable';
   const problem = tab.problem ?? tab.status.problem;
   return (
@@ -188,13 +164,7 @@ function TabChrome(props: TabChromeProps): ReactNode {
         controls={controls}
         ready={ready}
         tools={
-          <TabTools
-            tab={tab}
-            tabs={tabs}
-            diagnostics={diagnostics}
-            controls={controls}
-            onNew={onNew}
-          />
+          <TabTools tab={tab} tabs={tabs} controls={controls} onNew={onNew} />
         }
       />
       <View className={tab.status.loading ? 'h-0.5 bg-primary' : 'h-0.5 bg-outline-variant'} />
@@ -211,17 +181,8 @@ function TabChrome(props: TabChromeProps): ReactNode {
     </>
   );
 }
-function TabEmpty({ tab, tabs, publications, available }: BrowserTabPageProps): ReactNode {
-  if (tab.phase === 'blank')
-    return (
-      <BrowserBlankPage
-        publications={publications}
-        available={available}
-        onSelect={(publication) => {
-          browserTabOperation(tabs.openPublication(publication, tab.id));
-        }}
-      />
-    );
+function TabEmpty({ tab, tabs }: BrowserTabPageProps): ReactNode {
+  if (tab.phase === 'blank') return <BrowserBlankPage />;
   return (
     <View className="min-h-0 flex-1 items-center justify-center gap-2 px-6">
       <Text variant="title-3">{tab.phase === 'opening' ? 'Opening page…' : tab.title}</Text>
@@ -271,16 +232,13 @@ function useTabActions(props: BrowserTabPageProps, input: React.RefObject<TextIn
 function TabTools({
   tab,
   tabs,
-  diagnostics,
   controls,
   onNew,
-}: Pick<TabChromeProps, 'tab' | 'tabs' | 'diagnostics' | 'controls' | 'onNew'>): ReactNode {
+}: Pick<TabChromeProps, 'tab' | 'tabs' | 'controls' | 'onNew'>): ReactNode {
   const ready = tab.phase === 'ready' || tab.phase === 'unavailable';
-  const address = tab.selection?.kind === 'html' || tab.address === '' ? null : tab.address;
+  const address = tab.selection?.kind === 'project' || tab.address === '' ? null : tab.address;
   return (
     <BrowserTools
-      controller={diagnostics.controller}
-      snapshot={diagnostics.snapshot}
       controls={controls}
       address={address}
       ready={ready}

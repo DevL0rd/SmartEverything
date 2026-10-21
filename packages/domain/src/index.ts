@@ -252,13 +252,13 @@ export { HEALTH_TYPE_INFO, healthTypeInfo, type HealthTypeInfo } from './health-
 export { defaultAmount, factsOf, foodEntryOf, portionLabel, waterEntryOf } from './food-entries';
 export type { EntrySpan, FoodLog } from './food-entries';
 
-export { MCP_PART_TEXTS, MCP_PATHS, MCP_SCOPE } from './mcp-tools';
+export { MCP_PATHS, MCP_SCOPE } from './mcp-tools';
 export { MCP_TOOL_AREAS, MCP_TOOL_AREA_LABELS } from './mcp/areas';
 export type { McpToolAccess, McpToolArea, McpToolSummary } from './mcp/areas';
 export { MCP_CORE_TOOL_NAMES, MCP_OPERATION_TOOLS, MCP_PART_NAMES } from './mcp/names';
 export type { McpCoreToolName, McpPartName } from './mcp/names';
 export {
-  MCP_ONLY_TOOLS,
+  MCP_DISCOVERY_TOOLS,
   MCP_ROUTES,
   MCP_TOOLS,
   MCP_TOOL_NAME,
@@ -266,12 +266,16 @@ export {
   isMcpToolName,
   partsOf,
 } from './mcp/served';
-export type { McpRoute, McpToolName } from './mcp/served';
-export { MCP_TOOL_LINES } from './mcp/served-lines';
+export type { McpBranch, McpRoute, McpSelector, McpToolName, Served } from './mcp/served';
 export * from './mcp/operations';
+export {
+  MCP_TOOL_DOMAINS,
+  MCP_TOOL_VERBS,
+  isUnknownMcpTool,
+  looksLikeMcpTool,
+  mcpToolScheme,
+} from './mcp/scheme';
 export * from './mcp/endpoint-area';
-export { currentToolCall } from './mcp/retired-tools';
-export type { ToolCall } from './mcp/retired-tools';
 
 export {
   DESKTOP_COMPUTER_IDENTITY,

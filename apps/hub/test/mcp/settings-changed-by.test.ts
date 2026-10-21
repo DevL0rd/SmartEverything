@@ -9,7 +9,7 @@ const DERIVED = new Set([
   'public_url_error',
 ]);
 
-describe('get_settings changed_by', () => {
+describe('settings_read changed_by', () => {
   it('names the tool or operation that changes every home setting the AI can read', () => {
     const unnamed = Object.keys(SETTINGS_ROW.shape).filter(
       (key) => !DERIVED.has(key) && !Object.hasOwn(CHANGED_BY, key),
@@ -17,7 +17,7 @@ describe('get_settings changed_by', () => {
     expect(unnamed).toEqual([]);
   });
 
-  it('names only things that exist as settings or as the per-person parts get_settings returns', () => {
+  it('names only things that exist as settings or as the per-person parts settings_read returns', () => {
     const known = new Set([
       ...Object.keys(SETTINGS_ROW.shape),
       'push',

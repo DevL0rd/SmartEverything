@@ -1,16 +1,19 @@
 import { withExecutionAuthority, currentExecutionAuthority } from '../assistant/turn-authority';
 import type { FunctionDeclaration } from '@google/genai';
-import { currentToolCall, pluginToolName } from '@smarteverything/domain';
+import { pluginToolName, MCP_DISCOVERY_TOOLS } from '@smarteverything/domain';
 import { Logger, messageOf, failureLine } from '@smarteverything/logging';
 import {
   CALL_TOOL_INPUT,
-  DISCOVERY_NAMES,
   SEARCH_TOOLS_INPUT,
   ToolDiscoveryError,
   discoveryInput,
   searchTools,
   toolDetails,
+  type SearchScope,
 } from './tool-discovery';
+import { operationLookup } from '../extensions/mcp/tools/operation-details';
+import { toolExamples } from '../extensions/mcp/tools/examples';
+import { sharedSchemaNamed } from '../extensions/mcp/tools/shared-schemas';
 import {
   failure,
   type HubTool,
@@ -26,6 +29,12 @@ import { META_TOOL_NAMES, META_TOOLS, chatCatalogue, toolIndex } from './tool-se
 import type { ToolAdmission } from './tool-admission';
 
 const log = new Logger('hub.ai-tools');
+
+const CHAT_SCOPE: SearchScope = {
+  operations: operationLookup(() => true),
+  schema: sharedSchemaNamed,
+  examples: toolExamples,
+};
 
 export type ToolCheck =
   { readonly ok: true; readonly tool: HubTool } | { readonly ok: false; readonly reason: string };
@@ -167,11 +176,11 @@ export class ToolHub {
       log.warn('tool.unavailable', { tool: name, chatId: caller.chatId });
       return failure(`There is no tool named ${name}, or it is switched off`);
     }
-    if (DISCOVERY_NAMES.has(name)) {
+    if (MCP_DISCOVERY_TOOLS.has(name)) {
       const response =
         name === META_TOOL_NAMES.search
-          ? searchTools(this.list(), args)
-          : toolDetails(this.list(), args);
+          ? searchTools(this.list(), args, CHAT_SCOPE)
+          : toolDetails(this.list(), args, CHAT_SCOPE);
       return { response, line: '', pictures: [] };
     }
     return await withExecutionAuthority(caller.authority ?? currentExecutionAuthority(), () =>
@@ -186,11 +195,11 @@ export class ToolHub {
       if (found === null) {
         return { ok: false, reason: `There is no tool named ${name}, or it is switched off` };
       }
-      if (DISCOVERY_NAMES.has(name)) {
+      if (MCP_DISCOVERY_TOOLS.has(name)) {
         if (name === META_TOOL_NAMES.search) {
           discoveryInput(SEARCH_TOOLS_INPUT, args);
         } else {
-          toolDetails(this.list(), args);
+          toolDetails(this.list(), args, CHAT_SCOPE);
         }
         return { ok: true, tool: found.tool };
       }
@@ -265,12 +274,12 @@ export function forwardedCall(
   name: string,
   args: Readonly<Record<string, unknown>>,
 ): ReturnType<typeof CALL_TOOL_INPUT.parse> {
-  if (name !== META_TOOL_NAMES.call) return currentToolCall(name, args);
+  if (name !== META_TOOL_NAMES.call) return { name, arguments: args };
   const call = discoveryInput(CALL_TOOL_INPUT, args);
   if (META_TOOLS.some((tool) => tool.name === call.name)) {
     throw new ToolDiscoveryError(
-      'call_tool cannot forward discovery or itself; call those directly',
+      'tool_call cannot forward discovery or itself; call those directly',
     );
   }
-  return currentToolCall(call.name, call.arguments);
+  return call;
 }

@@ -70,7 +70,7 @@ const RULES = [
   `Tools are how you see and change the home; their results are facts. ${TOOL_MANNER} ${WIDGET_MANNER} ${FORMAT_MANNER}`,
   `${CHANGE_MANNER} ${DATE_MANNER}`,
   'Chats are separate conversations of one person. chat_send messages another of their chats; subagent_run starts a helper chat that sees only the task you write, not this conversation; answers from both arrive here as reports.',
-  'The Writing from line in your context names the device the person is typing on and, for a computer, its room (a phone has none). Use it for here and this room, and find that device with find_devices search.',
+  'The Writing from line in your context names the device the person is typing on and, for a computer, its room (a phone has none). Use it for here and this room, and find that device with device_find search.',
   'Reply in chat text at the depth the task and response style call for. After acting, say what you did.',
   MID_WORK_MANNER,
   INTERRUPTED_MANNER,
@@ -83,12 +83,12 @@ export function stablePrompt(facts: PromptFacts): string {
     RULES,
     facts.toolIndex === ''
       ? ''
-      : `Other enabled home tools for call_tool; use the exact schema from tool_details when available, or the schema supplied here:\n${facts.toolIndex}`,
+      : `Other enabled home tools for tool_call; use the exact schema from tool_read when available, or the schema supplied here:\n${facts.toolIndex}`,
     facts.guide ?? TOOL_GUIDE,
     facts.responseStyle === undefined ? '' : responseStyleGuidance(facts.responseStyle),
     facts.catalogue === ''
       ? ''
-      : `Enabled plugin tools for call_tool; use the exact schema from tool_details when available, or the schema supplied here:\n${facts.catalogue}`,
+      : `Enabled plugin tools for tool_call; use the exact schema from tool_read when available, or the schema supplied here:\n${facts.catalogue}`,
   ]
     .filter((part) => part !== '')
     .join('\n\n');
@@ -97,7 +97,7 @@ export function stablePrompt(facts: PromptFacts): string {
 function boardsLine(facts: PromptFacts): string {
   return facts.boardTypes.length === 0
     ? ''
-    : `Board types for show_widgets kind board: ${facts.boardTypes.join(', ')}.`;
+    : `Board types for widget_show kind board: ${facts.boardTypes.join(', ')}.`;
 }
 
 export function turnPrompt(facts: PromptFacts): string {

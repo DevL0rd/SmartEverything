@@ -1,4 +1,4 @@
-import { CHAT_RECONNECTING_REASON, type AssistantMessageRow } from '@smarteverything/domain';
+import { CHAT_RETRYING_REASON, type AssistantMessageRow } from '@smarteverything/domain';
 import type { Turn } from '../../../store/chat-turns';
 import { compareText } from '../../../format/text';
 
@@ -8,6 +8,8 @@ export interface TurnFeedback {
 }
 
 export const RECONNECTING_LABEL = 'Reconnecting…';
+
+export const RETRYING_LABEL = 'Retrying…';
 
 export const SWITCHING_LABEL = 'Switching machine…';
 
@@ -78,8 +80,8 @@ function turnStopped(turn: Turn | null): boolean {
 }
 
 function retryFeedback(turn: Turn | null): TurnFeedback | null {
-  return turn?.state === 'thinking' && turn.reason === CHAT_RECONNECTING_REASON
-    ? { label: RECONNECTING_LABEL, moving: true }
+  return turn?.state === 'thinking' && turn.reason === CHAT_RETRYING_REASON
+    ? { label: RETRYING_LABEL, moving: true }
     : null;
 }
 

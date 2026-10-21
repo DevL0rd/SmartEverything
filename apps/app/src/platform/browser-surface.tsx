@@ -1,4 +1,4 @@
-import { androidBrowserProfileReady } from '../../modules/health-connect/src/browser-diagnostics';
+import { androidBrowserProfileReady } from '../../modules/health-connect/src/browser-page';
 import { androidHtmlPreview } from '../../modules/health-connect/src/html-preview';
 import type { ReactNode } from 'react';
 import { Text } from '../components/text';
@@ -13,13 +13,9 @@ export function browserCapability(): BrowserCapability {
 }
 export function BrowserSurface(props: BrowserSurfaceProps): ReactNode {
   const available =
-    props.target.kind === 'native-html'
+    props.target.kind === 'project'
       ? androidHtmlPreview.supported()
       : androidBrowserProfileReady();
   if (!available) return <Text>{LIMITATION}</Text>;
   return <NativeBrowserSurface {...props} />;
-}
-
-export function gatewayBrowserAvailable(): boolean {
-  return androidBrowserProfileReady();
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { usePanelFrame } from '../../../../components/adaptive-panel';
 import { Button } from '../../../../components/button';
 import { Icon, type IconName } from '../../../../components/icon';
@@ -62,25 +62,51 @@ export function PanelNote({
 
 export function KeyedRow({
   id,
+  className,
   children,
 }: {
   readonly id: string;
+  readonly className?: string | undefined;
   readonly children: ReactNode;
 }): ReactNode {
   const keyboard = useKeyboardRow(id);
   return (
-    <View nativeID={keyboard.nativeID} className={cn(keyboard.highlighted && 'bg-surface-2')}>
+    <View
+      nativeID={keyboard.nativeID}
+      className={cn(className, keyboard.highlighted && 'bg-surface-2')}
+    >
       {children}
     </View>
   );
 }
 
-export function ShortcutHint({ keys }: { readonly keys: string }): ReactNode {
+export function usePanelFill(): string {
+  return usePanelFrame().presentation === 'sheet' ? '' : 'min-h-0 flex-1';
+}
+
+export function PanelScroll({ children }: { readonly children: ReactNode }): ReactNode {
+  const fill = usePanelFill();
+  if (fill === '') return <View>{children}</View>;
+  return <ScrollView className={fill}>{children}</ScrollView>;
+}
+
+export function PanelCard({ children }: { readonly children: ReactNode }): ReactNode {
+  return <View className="overflow-hidden rounded-lg border border-outline">{children}</View>;
+}
+
+export function PanelSection({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+}): ReactNode {
   return (
-    <View className="rounded-xs border border-outline px-1.5 py-0.5">
-      <Text variant="caption" tone="variant">
-        {keys}
+    <View className="gap-2 px-4 pt-4">
+      <Text variant="caption" tone="variant" accessibilityRole="header">
+        {title}
       </Text>
+      {children}
     </View>
   );
 }

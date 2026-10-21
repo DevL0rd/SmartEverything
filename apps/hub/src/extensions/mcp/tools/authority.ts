@@ -1,5 +1,4 @@
-import { ApiError } from '@smarteverything/domain';
-import { DISCOVERY_NAMES } from '../../../ai-tools/tool-discovery';
+import { ApiError, MCP_DISCOVERY_TOOLS } from '@smarteverything/domain';
 import {
   admitExecutionTool,
   currentExecutionAuthority,
@@ -12,10 +11,12 @@ import type { ConversationAuthority } from '../../../harness/authority-contract'
 import { NATIVE_BRIDGE_REFUSAL, reachesNativeBridge } from '../../../harness/native-bridge';
 import { pluginCallAuthority } from '../../../plugins/call-authority';
 import type { ToolActor, ToolContext, ToolOutput } from './registry';
-export function scopedToolCall(
-  context: ToolContext,
+type Scoped = Pick<ToolContext, 'store' | 'actor' | 'caller' | 'servedTool'>;
+
+export function scopedToolCall<C extends Scoped>(
+  context: C,
   name: string,
-  work: (context: ToolContext) => Promise<ToolOutput> | ToolOutput,
+  work: (context: C) => Promise<ToolOutput> | ToolOutput,
 ): Promise<ToolOutput> | ToolOutput {
   const callback =
     context.caller?.via === 'plugin'
@@ -24,18 +25,20 @@ export function scopedToolCall(
   const authority = context.actor?.authority ?? callback ?? currentExecutionAuthority();
   if (authority === undefined) return work(context);
   const actor =
-    context.actor?.authority === undefined ? admitted(context, name, authority) : context.actor;
+    context.actor?.authority === undefined
+      ? admitted(context, context.servedTool ?? name, authority)
+      : context.actor;
   return withExecutionAuthority(authority, () => work({ ...context, actor }));
 }
-function admitted(context: ToolContext, name: string, authority: ConversationAuthority): ToolActor {
-  if (!DISCOVERY_NAMES.has(name)) {
+function admitted(context: Scoped, name: string, authority: ConversationAuthority): ToolActor {
+  if (!MCP_DISCOVERY_TOOLS.has(name)) {
     admitExecutionTool(context.store, name, authority);
     if (hubOriginated(authority) && reachesNativeBridge(name))
       throw new ApiError('forbidden', NATIVE_BRIDGE_REFUSAL);
   }
   return actorOf(context, authority);
 }
-function actorOf(context: ToolContext, authority: ConversationAuthority): ToolActor {
+function actorOf(context: Scoped, authority: ConversationAuthority): ToolActor {
   const origin = inheritedOrigin([
     authority,
     {

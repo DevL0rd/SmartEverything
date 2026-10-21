@@ -12,6 +12,7 @@ import {
 import { operate, type OperatingContext } from './acting';
 import { readableAttachment } from './assistant';
 import { flatChange, type Chosen } from './computer-flat';
+import { computerIdOf } from './computer-target';
 import { defineTool } from './registry';
 
 export type FilesContext = OperatingContext & { readonly assistantFiles: string };
@@ -60,8 +61,9 @@ function written(result: FileWriteResult): Record<string, unknown> {
 
 export async function changeFiles(
   context: FilesContext,
-  { deviceId, change }: Chosen<FileToolChange>,
+  { deviceId: wanted, change }: Chosen<FileToolChange>,
 ): Promise<Record<string, unknown>> {
+  const deviceId = computerIdOf(context, wanted);
   if (change.action === 'upload') {
     const result = await uploaded(context, deviceId, change);
     return { ok: true, summary: `Saved ${result.path} (${String(result.size)} bytes)`, ...result };
@@ -73,7 +75,7 @@ export async function changeFiles(
 export const FILES_INPUT = flatChange(FILE_TOOL_CHANGE.options);
 
 export const EDIT_FILES_TOOL = defineTool({
-  name: 'edit_computer_files',
+  name: 'file_edit',
   input: FILES_INPUT,
   annotations: {
     readOnlyHint: false,

@@ -36,7 +36,7 @@ export interface RouteDeps {
   readonly store: Store;
   readonly fleet: Fleet;
   readonly local: Pick<LocalDevices, 'deviceOf'>;
-  readonly bridges: Pick<WatchBridges, 'acquire' | 'heldElsewhere'>;
+  readonly bridges: Pick<WatchBridges, 'acquire' | 'heldElsewhere' | 'pair'>;
   readonly ingest: TreadmillIngest;
   readonly broker: Pick<TreadmillActionBroker, 'answer'>;
   readonly views: ViewDeps;
@@ -124,6 +124,9 @@ async function report(
     );
   }
   const result = deps.ingest.process(device, client, body);
+  if (body.link.phase === 'linked') {
+    await deps.bridges.pair(device, client);
+  }
   deps.afterReport(device);
   return result;
 }

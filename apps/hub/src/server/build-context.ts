@@ -1,5 +1,5 @@
 import type { Logger } from '@smarteverything/logging';
-import { PreviewService } from '../preview/service';
+import { BrowserService } from '../browser/service';
 import { createImageRuntime, type ImageRuntime } from './image-wiring';
 import { ComputerAiDirectory } from '../computers/ai-directory';
 import { EarsRelay } from '../computers/ears-relay';
@@ -176,15 +176,14 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
   const talk = talkOf(options, live);
   const pushCommands = new PushCommandChannel();
   pushCommands.attachLive((clientId, notice) => live.deliver(clientId, notice));
-  const preview = previewOf(options, live, { harness, access: computers.computerNodes, assistant });
   return {
     ...connectionContext(options),
     store: options.store,
     harness,
-    preview,
+    browser: new BrowserService(options.store, assistant.projects),
     harnessSockets: harnessSocketsOf(options, computers.computerNodes, {
       harness,
-      transport: { assistant, preview },
+      transport: { assistant },
     }),
     imageRuntime: imagesOf(options, live, assistant, outbound.mediaNotes),
     ...computers,
@@ -233,31 +232,6 @@ function developerOf(
 
 function machineApprovalsOf(options: BuildOptions, push: PushCommandChannel): MachineApprovals {
   return new MachineApprovals(push, options.store, options.log.forArea('hub.machine'));
-}
-
-function previewOf(
-  options: BuildOptions,
-  live: LiveHub,
-  dependencies: {
-    readonly harness: HarnessService;
-    readonly access: ComputerNodeAccess;
-    readonly assistant: ServerContext['assistant'];
-  },
-): PreviewService {
-  const preview = new PreviewService(
-    dependencies.harness,
-    dependencies.access,
-    options.log.forArea('hub.preview'),
-    {
-      assistant: dependencies.assistant,
-      ...(options.preview === undefined ? {} : { config: options.preview }),
-      notice: (notice): void => {
-        live.profileNotice(notice, notice.profile_id, 'assistant');
-      },
-    },
-  );
-  live.previewOwners.attach(preview.leases);
-  return preview;
 }
 
 function computerServicesOf(

@@ -35,7 +35,7 @@ export const SCHEDULE_STEP = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('ai'),
     prompt: z.string().trim().min(1).max(SCHEDULE_LIMITS.prompt).describe('What the AI should do'),
-    chatId: ID.nullable().default(null).describe('The chat to run it in; null starts a new chat'),
+    chatId: ID.nullable().default(null).describe('The chat to run it in; an AI call without it uses the calling chat, null starts a new chat'),
     stopOnFailure: STOP_ON_FAILURE,
   }),
   z.strictObject({

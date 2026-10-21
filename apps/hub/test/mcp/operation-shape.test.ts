@@ -44,7 +44,7 @@ describe('the annotations of an operation tool', () => {
   it('start from the HTTP method and apply the traits of the operation', () => {
     const annotations = (tool: McpPartName, operation: EndpointName): unknown =>
       operationTool(tool, operation).listing.annotations;
-    expect(annotations('read_project_files', 'readAiProjectFiles')).toMatchObject({
+    expect(annotations('project_read', 'readAiProjectFiles')).toMatchObject({
       readOnlyHint: true,
       idempotentHint: true,
       destructiveHint: false,

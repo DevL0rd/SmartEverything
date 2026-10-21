@@ -247,7 +247,7 @@ export const CHAT_STREAM_PART = z.discriminatedUnion('kind', [
 
 export type ChatStreamPart = z.infer<typeof CHAT_STREAM_PART>;
 
-export const CHAT_RECONNECTING_REASON = 'reconnecting';
+export const CHAT_RETRYING_REASON = 'retrying';
 
 export const CHAT_ACTIVITY_NOTICE = z.strictObject({
   type: z.literal('chat_activity'),
@@ -342,7 +342,7 @@ export type AiAsk = z.output<typeof AI_ASK>;
 export const AI_SUBAGENT = z.strictObject({
   task: z.string().trim().min(1).max(AI_ASK_TEXT_MAX),
   title: z.string().trim().min(1).max(AI_CHAT_TITLE_MAX).optional(),
-  engine: ENGINE.optional(),
+  engine: ENGINE_REQUEST.optional(),
   tools: z.array(z.string().min(1).max(200)).max(200).optional(),
   wait: z.boolean().default(true),
   timeoutSeconds: z.int().min(5).max(300).default(120),

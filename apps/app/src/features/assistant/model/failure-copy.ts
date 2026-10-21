@@ -1,8 +1,7 @@
 import type { AssistantReasonCode } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
 
-export type FailureAction =
-  'retry' | 'regenerate' | 'continue' | 'choose_model' | 'switch_machine' | 'top_up';
+export type FailureAction = 'continue' | 'choose_model' | 'machine_switch' | 'top_up';
 
 export interface FailureContext {
   readonly model: string | null;
@@ -27,7 +26,7 @@ function critical(
   return { tone: 'critical', icon: 'alert', title, body, actions };
 }
 
-export const PLAIN_ERROR = 'An error occurred. Please try again.';
+export const PLAIN_ERROR = 'An error occurred.';
 
 type Row = (names: Names, context: FailureContext) => FailureCopy;
 
@@ -49,10 +48,9 @@ const ROWS: Readonly<Record<AssistantReasonCode, Row>> = {
       'top_up',
       'choose_model',
     ]),
-  rate_limit: () => critical(PLAIN_ERROR, null, ['retry', 'choose_model']),
-  model_unavailable: ({ model }) =>
-    critical(`${model} isn’t available`, null, ['choose_model', 'retry']),
-  offline: () => critical(PLAIN_ERROR, null, ['retry', 'switch_machine']),
+  rate_limit: () => critical(PLAIN_ERROR, null, ['choose_model']),
+  model_unavailable: ({ model }) => critical(`${model} isn’t available`, null, ['choose_model']),
+  offline: () => critical(PLAIN_ERROR, null, ['machine_switch']),
   interrupted: (_names, { reason }) => ({
     tone: 'neutral',
     icon: 'clock',
@@ -61,7 +59,7 @@ const ROWS: Readonly<Record<AssistantReasonCode, Row>> = {
     actions: ['continue'],
   }),
   stopped: () => STOPPED,
-  unknown: () => critical(PLAIN_ERROR, null, ['retry']),
+  unknown: () => critical(PLAIN_ERROR, null, []),
 };
 
 export function failureCopy(

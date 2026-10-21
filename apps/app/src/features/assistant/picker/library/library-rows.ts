@@ -8,6 +8,7 @@ export interface LibraryRow {
   readonly sources: readonly string[];
   readonly where: string | null;
   readonly reason: string | null;
+  readonly facts: string | null;
   readonly favouriteId: string;
 }
 
@@ -23,6 +24,7 @@ function rowOf(candidate: ModelCandidate, facts: SourceFacts, interactive: boole
     sources: where.sources,
     where: where.line,
     reason: !where.ready || (interactive && candidate.pick === null) ? where.blame : null,
+    facts: null,
     favouriteId: favouriteIdOf(candidate),
   };
 }

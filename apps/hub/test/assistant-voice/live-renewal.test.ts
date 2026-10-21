@@ -69,7 +69,9 @@ async function startCall(options: CallOptions = {}): Promise<Call> {
     system: (): string => 'system',
     note: (): string => '',
     history: (): string[] => [],
-    tools: (): FunctionDeclaration[] => [{ name: 'see', description: 'Look at what they show' }],
+    tools: (): FunctionDeclaration[] => [
+      { name: 'sight_look', description: 'Look at what they show' },
+    ],
     webSearch: (): boolean => false,
     window: (): null => null,
     record: (): void => undefined,
@@ -126,7 +128,7 @@ describe('Gemini Live renewal', () => {
     const call = await startCall();
     await call.serve(0, saved('before-look'));
     speak(call.conversation);
-    await call.serve(0, heard('what is on my screen'), toolCall('look-1', 'see'));
+    await call.serve(0, heard('what is on my screen'), toolCall('look-1', 'sight_look'));
     call.conversation.tune({ mode: 'live', resolution: 'medium', memorySeconds: 30 });
     await call.serve(0, say);
     call.answer(SCREEN);
@@ -152,7 +154,7 @@ describe('Gemini Live renewal', () => {
     const call = await startCall();
     await call.serve(0, saved('before-look'));
     speak(call.conversation);
-    await call.serve(0, heard('look at my screen'), toolCall('look-1', 'see'));
+    await call.serve(0, heard('look at my screen'), toolCall('look-1', 'sight_look'));
     call.answer(SCREEN);
     await call.advance(0);
     drop(call.sockets[0] ?? fail(), 1000, '');
@@ -161,7 +163,7 @@ describe('Gemini Live renewal', () => {
     expect(call.sockets[1]?.config.sessionResumption).toEqual({ handle: 'before-look' });
     const sent = call.sockets[1]?.sent ?? [];
     expect(sent[0]).toBe('realtime video');
-    expect(sent[1]).toContain('see returned {\\"result\\":\\"a settings page\\"}');
+    expect(sent[1]).toContain('sight_look returned {\\"result\\":\\"a settings page\\"}');
     expect(sent[1]).toContain('answer them now');
     expect(sent[1]).toContain('"turnComplete":true');
     expect(payloadOf('conversation.renewing')).toMatchObject({
@@ -180,14 +182,16 @@ describe('Gemini Live renewal', () => {
 
   it('answers a tool that finishes after the renewal as a note, not with the old call id', async () => {
     const call = await startCall();
-    await call.serve(0, saved('h1'), toolCall('look-1', 'see'));
+    await call.serve(0, saved('h1'), toolCall('look-1', 'sight_look'));
     drop(call.sockets[0] ?? fail(), 1000, '');
     await call.advance(0);
     call.answer(SCREEN);
     await call.advance(0);
     const sent = call.sockets[1]?.sent ?? [];
     expect(sent.some((line) => line.startsWith('tool '))).toBe(false);
-    expect(sent.at(-1)).toContain('[see, which you called before your connection was renewed');
+    expect(sent.at(-1)).toContain(
+      '[sight_look, which you called before your connection was renewed',
+    );
     expect(sent.at(-1)).toContain('"turnComplete":true');
   });
 
@@ -281,7 +285,7 @@ describe('Gemini Live renewal after a broken session', () => {
       on: true,
       rooms: ['Kitchen'],
     }));
-    await call.serve(0, saved('h1'), toolCall('list-1', 'see'));
+    await call.serve(0, saved('h1'), toolCall('list-1', 'sight_look'));
     call.answer({ response: { automations }, line: '', pictures: [] });
     await call.advance(0);
     drop(call.sockets[0] ?? fail(), 1007, 'Request contains an invalid argument.');
@@ -294,13 +298,13 @@ describe('Gemini Live renewal after a broken session', () => {
 
   it('names a tool result too large for the model window instead of replaying it, and warns with sizes', async () => {
     const call = await startCall();
-    await call.serve(0, saved('h1'), toolCall('list-1', 'see'));
+    await call.serve(0, saved('h1'), toolCall('list-1', 'sight_look'));
     call.answer({ response: { rows: 'x'.repeat(60_000) }, line: '', pictures: [] });
     await call.advance(0);
     drop(call.sockets[0] ?? fail(), 1007, 'Request contains an invalid argument.');
     await call.advance(0);
     const catchUp = call.sockets[1]?.sent.find((line) => line.startsWith('text ')) ?? '';
-    expect(catchUp).toContain('see returned a result too large to repeat here');
+    expect(catchUp).toContain('sight_look returned a result too large to repeat here');
     expect(catchUp).not.toContain('xxxx');
     expect(catchUp.length).toBeLessThan(catchUpCharacters(null));
     expect(payloadOf('voice.catch_up_left_out')).toMatchObject({

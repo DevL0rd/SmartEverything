@@ -21,27 +21,39 @@ export interface Placed {
   readonly family: DeviceFamily;
 }
 
-export const TARGET = z
-  .strictObject({
-    deviceIds: z.array(z.uuid()).min(1).max(100).optional().describe('These devices'),
-    rooms: z
-      .array(z.string().min(1).max(80))
-      .min(1)
-      .optional()
-      .describe('Devices in these rooms, by room id or name'),
-    families: z
-      .array(z.enum(DEVICE_FAMILIES))
-      .min(1)
-      .optional()
-      .describe('Device families, such as air_conditioner, light or camera'),
-    search: z.string().min(1).max(100).optional().describe('Words in the name, model or room'),
-  })
-  .refine((target) => Object.values(target).some((value) => value !== undefined), {
-    message: 'name devices by deviceIds, rooms, families or search',
-  })
-  .describe('Which devices; every filter given must match');
+export const TARGET_FIELDS = {
+  deviceIds: z
+    .array(z.string().min(1).max(200))
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('These devices, each by name or id (device_find lists both)'),
+  group: z
+    .string()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe('Every device of this device group, by name or id (home_read lists groups)'),
+  rooms: z
+    .array(z.string().min(1).max(80))
+    .min(1)
+    .optional()
+    .describe('Devices in these rooms, by room name or id'),
+  families: z
+    .array(z.enum(DEVICE_FAMILIES))
+    .min(1)
+    .optional()
+    .describe('Device families, such as air_conditioner, light or camera'),
+  search: z.string().min(1).max(100).optional().describe('Words in the name, model or room'),
+};
+
+const TARGET = z.strictObject(TARGET_FIELDS);
 
 export type Target = z.infer<typeof TARGET>;
+
+export function hasTarget(target: Target): boolean {
+  return Object.values(target).some((value) => value !== undefined);
+}
 
 export function deviceNames(store: Store): ReadonlyMap<string, string> {
   return new Map(store.devices.list().map((device) => [device.id, baseNameOf(device)] as const));
@@ -105,30 +117,89 @@ function placedAsAsked(target: Target, placed: Placed): boolean {
   );
 }
 
-function selected(target: Target, placed: Placed): boolean {
-  const named = target.deviceIds;
+const ID_PATTERN = z.uuid();
+
+const DEVICE_NAMING: Naming<Placed> = {
+  names: ({ name, device }) => [name, device.name, device.display_name],
+  label: ({ name }) => name,
+  id: ({ device }) => device.id,
+};
+
+function memberIds(
+  store: Store,
+  target: Target,
+  all: readonly Placed[],
+): ReadonlySet<string> | null {
+  const sets: ReadonlySet<string>[] = [];
+  if (target.deviceIds !== undefined) {
+    sets.push(
+      new Set(
+        target.deviceIds.map(
+          (wanted) => resolveNamed(all, wanted, 'device', DEVICE_NAMING, 'device_find').device.id,
+        ),
+      ),
+    );
+  }
+  if (target.group !== undefined) {
+    const group = resolveNamed(
+      store.deviceGroups.list(),
+      target.group,
+      'device group',
+      { names: (row) => [row.name], label: (row) => row.name, id: (row) => row.id },
+      'home_read',
+    );
+    sets.push(new Set(group.device_ids));
+  }
+  const [first, ...rest] = sets;
+  return first === undefined
+    ? null
+    : new Set([...first].filter((id) => rest.every((set) => set.has(id))));
+}
+
+function selected(target: Target, members: ReadonlySet<string> | null, placed: Placed): boolean {
   return (
-    (named === undefined ? !placed.device.hidden : named.includes(placed.device.id)) &&
+    (members === null ? !placed.device.hidden : members.has(placed.device.id)) &&
     placedAsAsked(target, placed) &&
     (target.search === undefined || wordsMatch(target.search, placed))
   );
 }
 
+function describedTarget(target: Target): string {
+  return Object.entries(target)
+    .filter(([, value]) => value !== undefined)
+    .map(([field, value]) => `${field} ${JSON.stringify(value)}`)
+    .join(', ');
+}
+
 export function targeted(store: Store, scope: DeviceScope | null, target: Target): Placed[] {
-  const found = placedDevices(store, scope).filter((placed) => selected(target, placed));
+  const all = placedDevices(store, scope);
+  const members = memberIds(store, target, all);
+  const found = all.filter((placed) => selected(target, members, placed));
   if (found.length === 0) {
     throw new ToolError(
-      `No device matches ${JSON.stringify(target)}; find_devices and get_home show what exists`,
+      `No device matches ${describedTarget(target)}; device_find lists the devices, home_read the rooms and groups`,
       'not_found',
     );
   }
   return found;
 }
 
-export function placedDevice(store: Store, scope: DeviceScope | null, deviceId: string): Placed {
-  const device = store.devices.find(deviceId);
+export function placedDevice(store: Store, scope: DeviceScope | null, reference: string): Placed {
+  const device = store.devices.find(reference);
   if (device === undefined) {
-    throw new ToolError(`There is no device ${deviceId} in your home`, 'not_found');
+    if (ID_PATTERN.safeParse(reference).success) {
+      throw new ToolError(
+        `There is no device ${reference} in your home; device_find lists the devices`,
+        'not_found',
+      );
+    }
+    return resolveNamed(
+      placedDevices(store, scope),
+      reference,
+      'device',
+      DEVICE_NAMING,
+      'device_find',
+    );
   }
   if (deviceHidden(scope, device)) {
     throw new ToolError('That device is not part of your access; ask the owner.', 'forbidden');
@@ -171,11 +242,15 @@ export function resolveNamed<T>(
   wanted: string,
   noun: string,
   naming: Naming<T>,
+  lists?: string,
 ): T {
   const found = closestMatches(rows, wanted, naming);
   const [first, second] = found;
   if (first === undefined) {
-    throw new ToolError(`There is no ${noun} matching "${wanted}"`, 'not_found');
+    throw new ToolError(
+      `There is no ${noun} matching "${wanted}"${lists === undefined ? '' : `; ${lists} lists them`}`,
+      'not_found',
+    );
   }
   if (second !== undefined) {
     throw new ToolError(
@@ -214,7 +289,7 @@ export function capabilityOf({ name, device }: Placed, reference: string): Prese
   const found = findCapability(device, reference);
   if (found === undefined) {
     throw new ToolError(
-      `${name} has no capability "${reference}" (key, role or label); get_device lists them`,
+      `${name} has no capability "${reference}" (key, role or label); device_read lists them`,
       'not_found',
     );
   }

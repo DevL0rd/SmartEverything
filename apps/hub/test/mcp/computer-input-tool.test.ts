@@ -81,7 +81,7 @@ afterEach(async () => {
   await opened.close();
 });
 
-describe('the use_computer tool', () => {
+describe('the computer_use tool', () => {
   it('sends the input to its computer without the look flag and answers with a summary', async () => {
     const answer = await useComputer(
       operating(),
@@ -164,14 +164,14 @@ describe('the use_computer tool', () => {
     ).toBe(false);
   });
 
-  it('is a physical, answering tool that call_operation reaches', () => {
-    expect(mcpToolOperation('use_computer')).toBe('inputComputer');
-    const listing = toolNamed('use_computer')?.listing;
+  it('is a physical, answering tool that operation_call reaches', () => {
+    expect(mcpToolOperation('computer_use')).toBe('inputComputer');
+    const listing = toolNamed('computer_use')?.listing;
     expect(listing?.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: true,
       openWorldHint: true,
     });
-    expect(listing?.description).toContain('screen picture');
+    expect(listing?.description).toContain('pictureSize');
   });
 });

@@ -40,7 +40,7 @@ const SEND = z.strictObject({
     .max(MAX_FILES)
     .default([])
     .describe(
-      'Up to 10 files or images from any source: { path, machine? } an absolute file path on the home hub’s machine or, with machine (name or id from list_machines), on that computer, { url } an http(s) download, { name, text } or { name, base64 } inline content. Discord limits apply: the plugin’s per-file size setting and 25 MiB in total per message.',
+      'Up to 10 files or images from any source: { path, machine? } an absolute file path on the home hub’s machine or, with machine (name or id from machine_read), on that computer, { url } an http(s) download, { name, text } or { name, base64 } inline content. Discord limits apply: the plugin’s per-file size setting and 25 MiB in total per message.',
     ),
   notify: USER_REF.optional().describe(
     'Ping this approved person. In a reply, only the person who asked can be pinged. Roles and everyone are never pinged.',

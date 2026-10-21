@@ -13,7 +13,7 @@ import { ProviderLogo } from '../provider-logo';
 import type { PrimaryAction } from './library-model';
 import type { LibraryRow } from './library-rows';
 
-function Fact({
+export function Fact({
   title,
   children,
 }: {

@@ -58,6 +58,12 @@ const FRIENDLY: Readonly<Record<OpenRouterErrorCode, string>> = {
   failed: 'OpenRouter failed',
 };
 
+const PROVIDER_QUOTA = 'The model’s provider has no quota left for this account';
+
+function outOfQuota(code: OpenRouterErrorCode, detail: string | null): boolean {
+  return code === 'rate_limited' && detail !== null && /\b(quota|billing)\b/iu.test(detail);
+}
+
 function causeChain(cause: unknown): string[] {
   const parts: string[] = [];
   let current: unknown = cause;
@@ -84,7 +90,7 @@ export function openRouterError(
   status: number | null = null,
   retryAfterMs: number | null = null,
 ): OpenRouterError {
-  const base = FRIENDLY[code];
+  const base = outOfQuota(code, detail) ? PROVIDER_QUOTA : FRIENDLY[code];
   return new OpenRouterError(
     code,
     detail === null ? `${base}.` : `${base} (${detail}).`,

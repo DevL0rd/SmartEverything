@@ -17,7 +17,7 @@ const PERSONA: Persona = {
   instructions: '',
   place: null,
   unavailable: null,
-  toolIndex: 'get_weather: The weather now.',
+  toolIndex: 'weather_read: The weather now.',
   catalogue: 'fan_boost(speed: integer): Boosts the fan.',
 };
 
@@ -38,10 +38,10 @@ const NOTE: VoiceNote = {
 describe('voice instructions', () => {
   it('list every tool, then the guide and plugin tools', () => {
     const text = liveInstructions(PERSONA);
-    expect(text).toContain('get_weather: The weather now.');
+    expect(text).toContain('weather_read: The weather now.');
     expect(text).toContain('Ids and keys come from reads');
     expect(text).toContain('fan_boost(speed: integer): Boosts the fan.');
-    expect(text.indexOf('get_weather')).toBeLessThan(text.indexOf('Ids and keys come from reads'));
+    expect(text.indexOf('weather_read')).toBeLessThan(text.indexOf('Ids and keys come from reads'));
     expect(text.indexOf('Ids and keys come from reads')).toBeLessThan(text.indexOf('fan_boost'));
     expect(text).not.toContain('find_tools');
   });

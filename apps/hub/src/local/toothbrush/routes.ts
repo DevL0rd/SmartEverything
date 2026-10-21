@@ -36,7 +36,7 @@ export interface RouteDeps {
   readonly store: Store;
   readonly fleet: Fleet;
   readonly local: Pick<LocalDevices, 'deviceOf'>;
-  readonly bridges: Pick<WatchBridges, 'acquire' | 'heldElsewhere'>;
+  readonly bridges: Pick<WatchBridges, 'acquire' | 'heldElsewhere' | 'pair'>;
   readonly ingest: BrushIngest;
   readonly broker: Pick<BrushActionBroker, 'answer'>;
   readonly views: ViewDeps;
@@ -124,7 +124,11 @@ async function report(
       `${blocking.clientName} holds the Bluetooth link to this toothbrush. Take over in the toothbrush settings to use it here.`,
     );
   }
-  return deps.ingest.process(device, client, body);
+  const result = deps.ingest.process(device, client, body);
+  if (body.link.phase === 'linked') {
+    await deps.bridges.pair(device, client);
+  }
+  return result;
 }
 
 function actorOf(deps: RouteDeps, caller: Caller): Actor {

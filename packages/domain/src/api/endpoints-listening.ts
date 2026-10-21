@@ -31,7 +31,7 @@ export const LISTENING_ENDPOINTS = {
     path: '/api/listening/sources/:sourceKey',
     access: 'member',
     summary:
-      'Switch one device’s wake word listening or writing down on or off, change how readily it hears the name, or set when a phone may listen (always, only with the screen on, only while charging, only away from home) (sourceKey from read_listening); phones start with listening off; owners change any camera, phone or computer, members only their own phone or computer',
+      'Switch one device’s wake word listening or writing down on or off, change how readily it hears the name, or set when a phone may listen (always, only with the screen on, only while charging, only away from home) (sourceKey from listening_read); phones start with listening off; owners change any camera, phone or computer, members only their own phone or computer',
     params: z.strictObject({ sourceKey: z.string().min(1) }),
     query: NOTHING,
     body: LISTENING_SOURCE_CHANGE,

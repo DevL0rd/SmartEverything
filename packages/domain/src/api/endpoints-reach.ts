@@ -10,7 +10,7 @@ import {
 import { NO_BODY, endpoint } from './endpoint';
 import { ID, NOTHING, queryLimit } from './primitives';
 
-const PERSON = ID.describe('The person: a profile id from list_people');
+const PERSON = ID.describe('The person: a profile id from person_read');
 
 const REASON = z
   .string()
@@ -40,7 +40,7 @@ export const REACH_TARGET = z
     z.strictObject({
       kind: z.literal('device'),
       deviceId: ID.describe(
-        'A camera or plugin speaker device id, or an app clientId from read_presence',
+        'A camera or plugin speaker device id, or an app clientId from presence_read',
       ),
     }),
     z.strictObject({
@@ -114,7 +114,7 @@ export const REACH_ENDPOINTS = {
     path: '/api/reach/speak',
     access: 'member',
     summary:
-      'Say something out loud once, exactly as written, on one camera speaker or to a whole walkie-talkie channel; nobody is listened to. It returns once playback has started (state live), or fails with the reason in plain words when the camera speaker cannot play (stream down, probably the firewall or the camera offline), so offer another speaker; a failure after it started comes back to this chat as an outreach note. For a back-and-forth use start_conversation',
+      'Say something out loud once, exactly as written, on one camera speaker or to a whole walkie-talkie channel; nobody is listened to. It returns once playback has started (state live), or fails with the reason in plain words when the camera speaker cannot play (stream down, probably the firewall or the camera offline), so offer another speaker; a failure after it started comes back to this chat as an outreach note. For a back-and-forth use call_start',
     params: NOTHING,
     query: NOTHING,
     body: SPEAK,

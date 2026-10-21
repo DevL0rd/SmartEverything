@@ -100,7 +100,7 @@ export const AI_MACHINE = z.object({
 export const AI_MACHINE_LIST = z.object({ machines: z.array(AI_MACHINE).max(200) });
 export type AiMachineList = z.infer<typeof AI_MACHINE_LIST>;
 export const AI_MACHINE_SWITCH = z.strictObject({
-  machine: z.string().trim().min(1).max(200).describe('Machine id or name from list_machines'),
+  machine: z.string().trim().min(1).max(200).describe('Machine id or name from machine_read'),
 });
 export const AI_MACHINE_SWITCH_RESULT = z.object({
   state: z.enum(['applied', 'pending', 'cleared']),

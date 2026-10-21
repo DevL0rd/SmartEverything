@@ -2,7 +2,6 @@ import {
   ApiError,
   IMAGE_OPERATION_RECEIPT,
   IMAGE_OPERATION_REQUEST_READ,
-  IMAGE_COMPLETION_INSTRUCTION,
   type ImageOperationReceipt,
   type ImageOperationRequest,
   type ImageSelector,
@@ -50,7 +49,7 @@ export class ImageOperationsRepository {
   }
   reserve(actorKey: string, receipt: ImageOperationReceipt): ImageOperationReceipt {
     return this.context.write(() => {
-      const reserved = uiReceipt({ ...receipt, result_message_id: this.context.newId() });
+      const reserved = { ...receipt, result_message_id: this.context.newId() };
       this.context.sql.run(
         'reserve the image operation',
         `insert into image_operations
@@ -71,15 +70,14 @@ export class ImageOperationsRepository {
     });
   }
   private resultAvailability(receipt: ImageOperationReceipt): ImageOperationReceipt {
-    const shared = uiReceipt(receipt);
-    if (receipt.state !== 'completed' || receipt.message_id === null) return shared;
+    if (receipt.state !== 'completed' || receipt.message_id === null) return receipt;
     const row = this.context.sql.get(
       z.strictObject({ present: z.int().min(0).max(1) }),
       'select exists(select 1 from assistant_messages where id=$message) as present',
       { message: receipt.message_id },
     );
     return {
-      ...shared,
+      ...receipt,
       result_message_id: receipt.message_id,
       message_deleted: found(row, 'image result availability', receipt.id).present === 0,
     };
@@ -90,7 +88,7 @@ export class ImageOperationsRepository {
       if (prior.state !== 'reserved' && prior.state !== 'running')
         throw new ApiError('conflict', 'This image operation already has a terminal receipt.');
       const next = IMAGE_OPERATION_RECEIPT.parse({
-        ...uiReceipt(receipt),
+        ...receipt,
         updated_at: this.context.now(),
       });
       this.context.sql.run(
@@ -139,7 +137,7 @@ export class ImageOperationsRepository {
       },
     );
     if (row === undefined)
-      throw new ApiError('not_found', 'No eligible owned image exists in this chat.');
+      throw new ApiError('not_found', 'This chat has no image to use: source and references need an image already in this chat (an upload or an earlier result) or an attachmentId from chat_read view messages; use generate to make a new one.');
     return row;
   }
   recover(record?: (receipt: ImageOperationReceipt) => ImageOperationReceipt): void {
@@ -157,12 +155,4 @@ export class ImageOperationsRepository {
       });
     }
   }
-}
-
-function uiReceipt(receipt: ImageOperationReceipt): ImageOperationReceipt {
-  return {
-    ...receipt,
-    completion_owner: 'ui',
-    completion_instruction: IMAGE_COMPLETION_INSTRUCTION,
-  };
 }

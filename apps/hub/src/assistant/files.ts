@@ -1,20 +1,10 @@
-import { hubOriginated } from './turn-authority';
+import { remoteRefusal, resolveOutFile } from './out-file-path';
 import mime from 'mime-types';
 import type { ProjectFilesService } from '../projects/service';
 import { chatFolder } from '../projects/paths';
 import { createHash, randomUUID } from 'node:crypto';
-import {
-  appendFile,
-  mkdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { basename, dirname, join, relative, sep } from 'node:path';
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import {
   ASSISTANT_ATTACHMENT_BYTES_MAX,
   ASSISTANT_UPLOAD_CHUNK_BYTES,
@@ -67,10 +57,6 @@ function safeName(name: string): string {
 function mimeOf(name: string): string {
   const type = mime.lookup(name);
   return type === false ? 'application/octet-stream' : type;
-}
-
-function within(path: string, root: string): boolean {
-  return path === root || path.startsWith(`${root}${sep}`);
 }
 
 export class AssistantFiles {
@@ -176,24 +162,17 @@ export class AssistantFiles {
     if ('uploadId' in file) {
       return this.options.chat.attachment(file.uploadId);
     }
-    if (!scope.local) {
-      throw new ApiError(
-        'forbidden',
-        'Files by path can only be sent from this computer; use the upload operations.',
-      );
-    }
+    if (!scope.local) throw remoteRefusal();
     scope.authorize();
-    const folder = chatFolder(this.options.dataDirectory, scope.chatId);
-    const path = within(file.path, folder) ? relative(folder, file.path) : file.path;
-    const managed = /^(workspace|temporary)(\/|$)/u.test(path);
-    if (!managed && hubOriginated())
-      throw new ApiError(
-        'forbidden',
-        'Hub conversations can attach only files from their chat folder.',
-      );
-    const content = managed
-      ? await this.managedFile(profileId, scope, path)
-      : await readFile(await this.tempFile(file.path));
+    const resolved = await resolveOutFile(
+      file.path,
+      chatFolder(this.options.dataDirectory, scope.chatId),
+      join(this.options.dataDirectory, 'assistant', 'projects'),
+    );
+    const content =
+      resolved.home.kind === 'chat'
+        ? await this.managedFile(profileId, scope, resolved.home.path)
+        : await readFile(resolved.real);
     const name = safeName(basename(file.path));
     return this.keepBytes({
       profileId,
@@ -251,21 +230,6 @@ export class AssistantFiles {
     await Promise.all(
       files.map((file) => rm(dirname(this.pathOf(file)), { recursive: true, force: true })),
     );
-  }
-
-  private async tempFile(path: string): Promise<string> {
-    const [real, root] = await Promise.all([realpath(path), realpath(tmpdir())]);
-    if (!within(real, root)) {
-      throw new ApiError(
-        'forbidden',
-        `Only files in the temp folder (${root}) can be sent; copy it there first.`,
-      );
-    }
-    const info = await stat(real);
-    if (!info.isFile() || info.size === 0 || info.size > ASSISTANT_ATTACHMENT_BYTES_MAX) {
-      throw new ApiError('invalid_request', 'That path is not a file of at most 25 MB.');
-    }
-    return real;
   }
 
   private async keep(input: {

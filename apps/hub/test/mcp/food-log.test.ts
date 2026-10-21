@@ -22,6 +22,9 @@ const FOOD = {
   water_percent: 0,
 } as const;
 
+const { water_percent: waterPercent, ...FOOD_FIELDS } = FOOD;
+const EDITED_FOOD = { ...FOOD_FIELDS, waterPercent };
+
 const AT = '2026-10-10T12:00:00.000Z';
 const NOW = '2026-10-10T22:04:30.000Z';
 
@@ -68,7 +71,7 @@ async function energy(): Promise<number> {
 
 describe('food logged through the AI tool', () => {
   it('by food object stores what the app path stores and counts at once', async () => {
-    const result = await tool('log_food', {
+    const result = await tool('food_log', {
       action: 'food',
       food: FOOD,
       amount: 375,
@@ -94,9 +97,9 @@ describe('food logged through the AI tool', () => {
   });
 
   it('by foodId and a larger amount counts the nutrients at once', async () => {
-    const saved = await tool('edit_food', {
+    const saved = await tool('food_edit', {
       action: 'create',
-      ...FOOD,
+      ...EDITED_FOOD,
       origin: 'custom',
       favourite: false,
     });
@@ -104,7 +107,7 @@ describe('food logged through the AI tool', () => {
     const foodId = (await call(booted.base, booted.owner, { method: 'GET', path: '/api/foods' }))
       .body;
     const id = E.listFoods.response.parse(foodId)[0]?.id;
-    const result = await tool('log_food', {
+    const result = await tool('food_log', {
       action: 'food',
       foodId: id,
       amount: 200,
@@ -123,7 +126,7 @@ describe('food logged through the AI tool', () => {
       path: '/api/settings/home',
       body: { time_zone: 'Asia/Bangkok' },
     });
-    const result = await tool('log_food', {
+    const result = await tool('food_log', {
       action: 'food',
       food: FOOD,
       amount: 375,
@@ -144,15 +147,15 @@ describe('food logged through the AI tool', () => {
 
   it('by barcode uses the person’s own saved food and never replaces it with Open Food Facts', async () => {
     const barcode = '5000112637922';
-    const created = await tool('edit_food', {
+    const created = await tool('food_edit', {
       action: 'create',
-      ...FOOD,
+      ...EDITED_FOOD,
       barcode,
       origin: 'custom',
       favourite: true,
     });
     expect(created.isError, JSON.stringify(created.content)).toBe(false);
-    const result = await tool('log_food', {
+    const result = await tool('food_log', {
       action: 'food',
       barcode,
       amount: 375,
@@ -167,7 +170,7 @@ describe('food logged through the AI tool', () => {
     expect(foods).toHaveLength(1);
     expect(foods[0]).toMatchObject({ origin: 'custom', favourite: true, serving: FOOD.serving });
     expect(row?.food?.foodId).toBe(foods[0]?.id);
-    const found = await tool('find_food', { view: 'search', barcode });
+    const found = await tool('food_find', { view: 'search', barcode });
     expect(found.isError, JSON.stringify(found.content)).toBe(false);
     expect(JSON.stringify(found.content)).toContain('Fish congee');
     expect(JSON.stringify(found.content)).not.toContain('Open Food Facts');
@@ -175,9 +178,9 @@ describe('food logged through the AI tool', () => {
 
   it('saving an Open Food Facts product with a saved custom food’s barcode keeps the custom food', async () => {
     const barcode = '5000112637922';
-    await tool('edit_food', {
+    await tool('food_edit', {
       action: 'create',
-      ...FOOD,
+      ...EDITED_FOOD,
       barcode,
       origin: 'custom',
       favourite: true,

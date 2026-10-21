@@ -204,14 +204,14 @@ export async function compactAiChat(chatId: string): Promise<boolean> {
 
 export async function readFullToolOutput(chatId: string, callId: string): Promise<string> {
   let text = '';
-  let offset: number | null = 0;
-  while (offset !== null) {
+  let cursor: string | null = '0';
+  while (cursor !== null) {
     const page: AiToolResultPage = await api().call(C.readAiToolResult, {
       params: { chatId, callId },
-      query: { field: 'output', offset },
+      query: { field: 'output', cursor },
     });
     text += page.text;
-    offset = page.next_offset;
+    cursor = page.nextCursor;
   }
   return text;
 }

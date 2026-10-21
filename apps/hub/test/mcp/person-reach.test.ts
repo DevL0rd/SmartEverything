@@ -69,15 +69,15 @@ function areaOf(tool: string): McpToolArea {
 
 describe('the areas the AI of a person reaches', () => {
   it('hides the tools of a missing area from a member AI and keeps them for an owner AI', () => {
-    const area = areaOf('find_devices');
+    const area = areaOf('device_find');
     limit({ areas: TEMPLATE_SCOPES.adult.areas.filter((one) => one !== area) });
-    expect(toolInScope(member(), 'find_devices')).toBe(false);
-    expect(toolInScope(member(), 'get_home')).toBe(areaOf('get_home') !== area);
+    expect(toolInScope(member(), 'device_find')).toBe(false);
+    expect(toolInScope(member(), 'home_read')).toBe(areaOf('home_read') !== area);
     const ownerActor: ToolActor = { clientId: null, profileId, role: 'owner', chatId: null };
     expect(
-      toolInScope({ store: opened.store, actor: ownerActor, caller: null }, 'find_devices'),
+      toolInScope({ store: opened.store, actor: ownerActor, caller: null }, 'device_find'),
     ).toBe(true);
-    expect(toolInScope({ store: opened.store, actor: null, caller: null }, 'find_devices')).toBe(
+    expect(toolInScope({ store: opened.store, actor: null, caller: null }, 'device_find')).toBe(
       true,
     );
   });
@@ -91,17 +91,18 @@ describe('the areas the AI of a person reaches', () => {
         via: 'personal',
         id: 'token',
         localOnly: false,
+        readOnly: false,
         areas: ['devices', 'health'],
       },
     } satisfies Pick<ToolContext, 'store' | 'actor' | 'caller'>;
     expect(reachableAreas(context)).toStrictEqual(['devices']);
-    expect(areaRefusal(context, 'list_automations', 'automations').message).toContain(
+    expect(areaRefusal(context, 'automation_read', 'automations').message).toContain(
       'personal token',
     );
-    expect(areaRefusal(context, 'read_health', 'health').message).toContain(
+    expect(areaRefusal(context, 'health_read', 'health').message).toContain(
       'Health is not part of your access',
     );
-    expect(areaRefusal(member(), 'update_settings', 'settings').message).toContain(
+    expect(areaRefusal(member(), 'settings_edit', 'settings').message).toContain(
       'Settings is not part of your access',
     );
   });

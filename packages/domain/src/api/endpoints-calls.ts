@@ -30,7 +30,7 @@ export type CallRow = z.infer<typeof CALL_ROW>;
 const CALL_PARAMS = z.strictObject({ callId: ID });
 
 export const SHOW_CAMERA_IN_CALL = z.strictObject({
-  cameraId: ID.describe('A home camera, from find_devices'),
+  cameraId: ID.describe('A home camera, from device_find'),
 });
 
 export const CALL_ENDPOINTS = {

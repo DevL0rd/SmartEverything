@@ -20,7 +20,7 @@ const PLACED_NAMING: Naming<Placed> = {
 };
 
 export function pictureSizeOf(capture: Pick<ComputerCapture, 'width' | 'height'>): string {
-  return `${String(capture.width)}x${String(capture.height)} pixels; coordinates for use_computer are in this size, whatever size the picture looks`;
+  return `${String(capture.width)}x${String(capture.height)} pixels; coordinates for computer_use are in this size, whatever size the picture looks`;
 }
 
 export function machineOf(

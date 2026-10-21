@@ -1,41 +1,19 @@
 import { closeBrowserSurface } from './browser-surfaces';
 import { Logger } from '@smarteverything/logging';
-import { AI_PREVIEW_LEASE } from '@smarteverything/domain';
-import { trustedHubOrigins } from '../../../api/connection/route-consumers';
-import { releaseHtmlTarget } from '../../../platform/browser-html-projection';
-import { createPreviewLease, openChatPage, releasePreviewLease } from '../data/previews';
-import {
-  isHtmlPublication,
-  chatPageSelection,
-  previewSelection,
-  type BrowserPublication,
-  type BrowserSelection,
-} from './browser-selection';
+import { projectPageTarget, releaseProjectTarget } from '../../../platform/browser-html-projection';
+import type { BrowserSelection } from './browser-selection';
 const log = new Logger('app.browser-tabs');
-export async function admitBrowserPublication(
+export async function admitProjectPage(
   chatId: string,
-  publication: BrowserPublication,
+  path: string,
+  id: string,
 ): Promise<BrowserSelection> {
-  if (isHtmlPublication(publication)) {
-    const { page, target } = await openChatPage(publication);
-    return chatPageSelection(publication, page, target);
-  }
-  const lease = await createPreviewLease(chatId, publication);
-  try {
-    return previewSelection(publication, AI_PREVIEW_LEASE.parse(lease), trustedHubOrigins());
-  } catch (error: unknown) {
-    await releasePreviewLease(chatId, lease);
-    throw error;
-  }
+  const page = { chatId, path };
+  return { kind: 'project', page, target: await projectPageTarget(page, id) };
 }
 export async function retireBrowserSelection(selection: BrowserSelection): Promise<void> {
   closeBrowserSurface(selection.target.id);
-  try {
-    await releaseHtmlTarget(selection.target);
-  } finally {
-    if (selection.kind === 'preview')
-      await releasePreviewLease(selection.publication.chat_id, selection.lease);
-  }
+  await releaseProjectTarget(selection.target);
 }
 export function retireBrowserSelectionQuietly(selection: BrowserSelection): void {
   void retireBrowserSelection(selection).catch((error: unknown) => {

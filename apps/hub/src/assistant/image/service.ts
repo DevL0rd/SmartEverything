@@ -2,28 +2,24 @@ import {
   ApiError,
   IMAGE_OPERATION_REQUEST,
   IMAGE_OPERATION_RECEIPT,
-  IMAGE_SELECTOR,
-  IMAGE_WAIT_REQUEST,
-  type ImageWaitResult,
   type ImageOperationRequest,
   type ImageOperationReceipt,
-  type ImageResolvedSelection,
   type ImageEndpoint,
 } from '@smarteverything/domain';
 import { Logger, messageOf } from '@smarteverything/logging';
 import pLimit from 'p-limit';
 import type { ImageActor, ImageServiceOptions } from './contract';
 import { ImageOperationError } from './errors';
-import { ownedChat, readInputs, resolveImage, resolveInputs, type ResolvedImage } from './inputs';
+import { ownedChat, readInputs, resolveInputs, type ResolvedImage } from './inputs';
 import { keepResults } from './results';
-import { summaryOf } from '../../store/repositories/assistant-chat';
 import { imagePreview } from './preview';
 import { recordImageUsage } from './usage';
-import { waitForImageBatch } from './wait';
-import { admitOptions } from '../../openrouter/image-options';
+import { admitOptions, withBestSettings } from '../../openrouter/image-options';
 
 const log = new Logger('hub.assistant');
 const PROVIDER_CONCURRENCY = 4;
+const ABANDONED =
+  'This call stopped waiting; the image request keeps running and the app shows its result. Do not start it again.';
 interface RunningImage {
   readonly controller: AbortController;
   readonly settled: Promise<ImageOperationReceipt>;
@@ -32,20 +28,11 @@ export class ImageOperationService {
   private readonly running = new Map<string, RunningImage>();
   private readonly queue = pLimit(PROVIDER_CONCURRENCY);
   private accepting = true;
-  private readonly listeners = new Set<(receipt: ImageOperationReceipt) => void>();
   constructor(private readonly options: ImageServiceOptions) {
     options.repository.recover((receipt) => recordImageUsage(options.store, receipt));
   }
   availability(): { readonly accepting: boolean; readonly active: number } {
     return { accepting: this.accepting, active: this.running.size };
-  }
-  resolve(actor: ImageActor, chatId: string, selector: unknown): ImageResolvedSelection {
-    const resolved = resolveImage(this.options, actor, chatId, {
-      selector: IMAGE_SELECTOR.parse(selector),
-      role: 'reference',
-      order: 0,
-    });
-    return { ...resolved.identity, attachment: summaryOf(resolved.file) };
   }
   read(actor: ImageActor, id: string): ImageOperationReceipt {
     const receipt = this.options.repository.read(id);
@@ -56,53 +43,19 @@ export class ImageOperationService {
     ownedChat(this.options, actor, chatId);
     return this.options.repository.list(chatId);
   }
-  wait(
-    actor: ImageActor,
-    chatId: string,
-    value: unknown,
-    signal?: AbortSignal,
-  ): Promise<ImageWaitResult> {
-    const input = IMAGE_WAIT_REQUEST.parse(value);
-    const signals = [actor.signal, signal].filter((candidate) => candidate !== undefined);
-    actor.authorize('wait', chatId);
-    ownedChat(this.options, actor, chatId);
-    return waitForImageBatch({
-      snapshot: () =>
-        input.operation_ids ??
-        [...this.running.keys()].filter(
-          (id) => this.options.repository.read(id).chat_id === chatId,
-        ),
-      read: (id) => this.waitReceipt(actor, chatId, id),
-      subscribe: (listener) => {
-        this.listeners.add(listener);
-        return () => this.listeners.delete(listener);
-      },
-      waitMs: input.wait_ms,
-      ...(signals.length === 0 ? {} : { signal: AbortSignal.any(signals) }),
-    });
-  }
-  private waitReceipt(actor: ImageActor, chatId: string, id: string): ImageOperationReceipt {
-    actor.authorize('wait', chatId);
-    const receipt = this.read(actor, id);
-    if (receipt.chat_id !== chatId)
-      throw new ApiError('forbidden', 'An image wait cannot leave its initiating chat.');
-    if (receipt.state === 'completed' && receipt.message_deleted !== true)
-      for (const artifact of receipt.results)
-        this.resolve(actor, chatId, { kind: 'attachment', attachment_id: artifact.attachment.id });
-    return receipt;
-  }
   private publish(receipt: ImageOperationReceipt): void {
     this.options.publish(receipt);
-    for (const listener of this.listeners) listener(receipt);
   }
   async start(actor: ImageActor, value: unknown): Promise<ImageOperationReceipt> {
-    const request = IMAGE_OPERATION_REQUEST.parse(value);
-    ownedChat(this.options, actor, request.chat_id);
+    const asked = IMAGE_OPERATION_REQUEST.parse(value);
+    ownedChat(this.options, actor, asked.chat_id);
+    const endpoint = await this.options.catalog.endpointFor(asked);
+    const request = withBestSettings(endpoint, asked);
     const replay = this.options.repository.replay(actor.key, request);
     if (replay !== undefined) return replay;
     actor.signal?.throwIfAborted();
     actor.authorize('provider', request.chat_id);
-    return this.begin(actor, request, await this.options.catalog.endpointFor(request));
+    return this.begin(actor, request, endpoint);
   }
   private begin(
     actor: ImageActor,
@@ -170,6 +123,22 @@ export class ImageOperationService {
     const receipt = this.read(actor, id);
     const running = this.running.get(id);
     return running === undefined ? receipt : running.settled;
+  }
+  async run(
+    actor: ImageActor,
+    value: unknown,
+    signal?: AbortSignal,
+  ): Promise<ImageOperationReceipt> {
+    const started = await this.start(actor, value);
+    return this.outcome(actor, started.id, signal);
+  }
+  async outcome(
+    actor: ImageActor,
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<ImageOperationReceipt> {
+    await untilSettled(this.settled(actor, id), signal);
+    return this.read(actor, id);
   }
   cancel(actor: ImageActor, id: string): ImageOperationReceipt {
     const receipt = this.read(actor, id);
@@ -301,6 +270,24 @@ export class ImageOperationService {
   }
 }
 export type { ImageActor, ImageServiceOptions } from './contract';
+
+function untilSettled(
+  settled: Promise<unknown>,
+  signal: AbortSignal | undefined,
+): Promise<unknown> {
+  if (signal === undefined) return settled;
+  return new Promise((resolve, reject) => {
+    const abandon = (): void => {
+      reject(new ApiError('conflict', ABANDONED));
+    };
+    const release = (): void => {
+      signal.removeEventListener('abort', abandon);
+    };
+    signal.addEventListener('abort', abandon, { once: true });
+    if (signal.aborted) abandon();
+    settled.finally(release).then(resolve, reject);
+  });
+}
 
 const FAILURE_REASONS = {
   unknown: 'Provider delivery or billing is unknown. Do not automatically resubmit.',

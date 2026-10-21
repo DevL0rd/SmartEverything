@@ -28,7 +28,6 @@ class HubHtmlBroker(context: Context, val id: String, val page: HubHtmlPage, pri
   }
   fun check() { check(!closed); check.invoke() }
   fun origin(): String = "http://127.0.0.1:$port"
-  fun url(): String = origin() + "/"
   @Synchronized override fun close() {
     if (closed) return
     closed = true

@@ -1,45 +1,64 @@
+import {
+  MCP_DISCOVERY_TOOLS,
+  MCP_TOOL_AREAS,
+  MCP_TOOLS,
+  mcpToolLine,
+  type McpToolArea,
+} from '@smarteverything/domain';
 import { z } from 'zod';
-import type { McpToolArea } from '@smarteverything/domain';
 import type { HubTool, ToolSpec } from './hub-tool';
-import { rankOperations, rankTools, type SearchedOperation } from './tool-search';
+import { rankOperations, rankTools } from './tool-search';
 
 const SEARCH_PAGE_MAX = 50;
 const OPERATION_HITS = 5;
 const CURSOR = /^(0|[1-9][0-9]*)$/u;
 
-export const SEARCH_TOOLS_INPUT = z.strictObject({
-  query: z
+export const SEARCH_TOOLS_INPUT = z
+  .strictObject({
+    query: z
+      .string()
+      .trim()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe('What you want to do, in your own words; any word can match a tool or operation'),
+    area: z
+      .enum(MCP_TOOL_AREAS)
+      .optional()
+      .describe('Only API operations of this part of the app; alone it lists them all'),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(SEARCH_PAGE_MAX)
+      .default(10)
+      .describe(`Tools per page, at most ${String(SEARCH_PAGE_MAX)}`),
+    cursor: z.string().trim().min(1).optional().describe('nextCursor of the previous page'),
+  })
+  .refine((input) => input.query !== undefined || input.area !== undefined, {
+    message: 'give query, area or both',
+    path: ['query'],
+  });
+
+export const TOOL_DETAILS_INPUT = z.strictObject({
+  name: z
     .string()
     .trim()
     .min(1)
-    .max(100)
-    .describe('What you want to do, in your own words; any word can match a tool'),
-  limit: z
-    .number()
-    .int()
-    .min(1)
-    .max(SEARCH_PAGE_MAX)
-    .default(10)
-    .describe(`Tools per page, at most ${String(SEARCH_PAGE_MAX)}`),
-  cursor: z.string().trim().min(1).optional().describe('nextCursor of the previous page'),
-});
-
-export const TOOL_DETAILS_INPUT = z.strictObject({
-  name: z.string().trim().min(1),
+    .describe('A tool name, an API operation name (camelCase) or a shared schema name'),
   variant: z
     .string()
     .trim()
     .min(1)
     .optional()
-    .describe('For a tool with an action, view, area, what or kind: that value’s own schema'),
+    .describe('For a tool with an action or view: that value’s own schema'),
+  responses: z.boolean().default(false).describe('For an API operation: also its response schema'),
 });
 
 export const CALL_TOOL_INPUT = z.strictObject({
   name: z.string().trim().min(1).describe('An enabled tool name'),
-  arguments: z.record(z.string(), z.unknown()).describe('Arguments matching tool_details'),
+  arguments: z.record(z.string(), z.unknown()).describe('Arguments matching tool_read'),
 });
-
-export const DISCOVERY_NAMES: ReadonlySet<string> = new Set(['search_tools', 'tool_details']);
 
 export class ToolDiscoveryError extends Error {
   override readonly name = 'ToolDiscoveryError';
@@ -64,7 +83,7 @@ export function discoveryInput<T>(schema: z.ZodType<T>, raw: unknown): T {
 }
 
 export function switchedOffTools(disabled: readonly string[]): ReadonlySet<string> {
-  return new Set(disabled.filter((name) => !DISCOVERY_NAMES.has(name)));
+  return new Set(disabled.filter((name) => !MCP_DISCOVERY_TOOLS.has(name)));
 }
 
 export interface DiscoverableTool extends ToolSpec {
@@ -72,8 +91,16 @@ export interface DiscoverableTool extends ToolSpec {
   readonly annotations?: HubTool['annotations'];
 }
 
+export interface OperationLookup {
+  readonly details: (name: string, responses: boolean) => Readonly<Record<string, unknown>>;
+  readonly ofArea: (area: McpToolArea) => readonly Readonly<Record<string, unknown>>[];
+  readonly inScope: (area: McpToolArea) => boolean;
+}
+
 export interface SearchScope {
-  readonly operationInScope?: (area: McpToolArea) => boolean;
+  readonly operations?: OperationLookup;
+  readonly schema?: (name: string) => Readonly<Record<string, unknown>> | undefined;
+  readonly examples?: (name: string) => readonly object[] | undefined;
 }
 
 function offsetOf(cursor: string | undefined): number {
@@ -81,22 +108,34 @@ function offsetOf(cursor: string | undefined): number {
     return 0;
   }
   if (!CURSOR.test(cursor)) {
-    throw new ToolDiscoveryError('cursor must be a nextCursor from search_tools');
+    throw new ToolDiscoveryError('cursor must be a nextCursor from tool_search');
   }
   return Number(cursor);
 }
 
-function firstOperations(
-  query: string,
-  offset: number,
-  scope: SearchScope,
-): readonly SearchedOperation[] {
-  return offset > 0
-    ? []
-    : rankOperations(query, scope.operationInScope ?? ((): boolean => true)).slice(
-        0,
-        OPERATION_HITS,
-      );
+const SERVED_LINES: ReadonlyMap<string, string> = new Map(
+  MCP_TOOLS.map((tool) => [tool.name, tool.line]),
+);
+
+function lineOf(tool: DiscoverableTool): string {
+  return SERVED_LINES.get(tool.name) ?? mcpToolLine(tool.description);
+}
+
+function operationsCallable(tools: readonly DiscoverableTool[], scope: SearchScope): boolean {
+  return scope.operations !== undefined && tools.some((tool) => tool.name === 'operation_call');
+}
+
+function operationHits(
+  query: string | undefined,
+  area: McpToolArea | undefined,
+  lookup: OperationLookup,
+): readonly unknown[] {
+  if (query === undefined) {
+    return area === undefined ? [] : lookup.ofArea(area);
+  }
+  const inScope = (found: McpToolArea): boolean =>
+    lookup.inScope(found) && (area === undefined || found === area);
+  return rankOperations(query, inScope).slice(0, OPERATION_HITS);
 }
 
 export function searchTools(
@@ -104,18 +143,20 @@ export function searchTools(
   raw: unknown,
   scope: SearchScope = {},
 ): Readonly<Record<string, unknown>> {
-  const { query, limit, cursor } = discoveryInput(SEARCH_TOOLS_INPUT, raw);
+  const { query, area, limit, cursor } = discoveryInput(SEARCH_TOOLS_INPUT, raw);
   const offset = offsetOf(cursor);
-  const found = rankTools(tools, query);
+  const found = query === undefined ? [] : rankTools(tools, query);
   const next = offset + limit;
-  const operations = tools.some((tool) => tool.name === 'call_operation')
-    ? { operations: firstOperations(query, offset, scope) }
-    : {};
+  const lookup = operationsCallable(tools, scope) ? scope.operations : undefined;
+  const operations =
+    lookup === undefined
+      ? {}
+      : { operations: offset === 0 ? operationHits(query, area, lookup) : [] };
   return {
     tools: found.slice(offset, next).map((tool) => ({
       name: tool.name,
       title: tool.title,
-      description: tool.description,
+      line: lineOf(tool),
       annotations: tool.annotations,
     })),
     count: found.length,
@@ -149,19 +190,14 @@ function variantPart(
   return { variant: variantOf(tool, variant) };
 }
 
-export function toolDetails(
-  tools: readonly DiscoverableTool[],
-  raw: unknown,
+function detailsOfTool(
+  tool: DiscoverableTool,
+  variant: string | undefined,
+  scope: SearchScope,
 ): Readonly<Record<string, unknown>> {
-  const { name, variant } = discoveryInput(TOOL_DETAILS_INPUT, raw);
-  const tool = tools.find((candidate) => candidate.name === name);
-  if (tool === undefined) {
-    throw new ToolDiscoveryError(
-      `There is no enabled tool named ${name} in this scope`,
-      'not_found',
-    );
-  }
+  const examples = scope.examples?.(tool.name);
   return {
+    ...(examples === undefined ? {} : { inputExamples: examples }),
     tool: {
       name: tool.name,
       title: tool.title,
@@ -171,4 +207,33 @@ export function toolDetails(
     },
     ...variantPart(tool, variant),
   };
+}
+
+const OPERATION_NAME = /^[a-z]+[A-Z][A-Za-z0-9]*$/u;
+
+export function toolDetails(
+  tools: readonly DiscoverableTool[],
+  raw: unknown,
+  scope: SearchScope = {},
+): Readonly<Record<string, unknown>> {
+  const { name, variant, responses } = discoveryInput(TOOL_DETAILS_INPUT, raw);
+  const tool = tools.find((candidate) => candidate.name === name);
+  if (tool !== undefined) {
+    return detailsOfTool(tool, variant, scope);
+  }
+  const schema = scope.schema?.(name);
+  if (schema !== undefined) {
+    return { schema: { name, inputSchema: schema } };
+  }
+  if (
+    OPERATION_NAME.test(name) &&
+    operationsCallable(tools, scope) &&
+    scope.operations !== undefined
+  ) {
+    return { operation: scope.operations.details(name, responses) };
+  }
+  throw new ToolDiscoveryError(
+    `There is no enabled tool, API operation or shared schema named ${name} in this scope; tool_search finds them`,
+    'not_found',
+  );
 }

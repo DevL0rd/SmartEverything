@@ -1,6 +1,6 @@
+import { MCP_DISCOVERY_TOOLS } from '@smarteverything/domain';
 import type { FunctionDeclaration } from '@google/genai';
 import { toolGuide } from '../ai-tools/tool-guide';
-import { DISCOVERY_NAMES } from '../ai-tools/tool-discovery';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { VoiceResponder } from '../assistant/voice-link';
 import type { Store } from '../store/store';
@@ -43,7 +43,7 @@ export function voiceHub(kit: VoiceKit, who: () => VoiceWho): ToolHub {
   return kit.tools.restrict((tool) => {
     const now = who();
     return (
-      (allowed === null || allowed.includes(tool.name) || DISCOVERY_NAMES.has(tool.name)) &&
+      (allowed === null || allowed.includes(tool.name) || MCP_DISCOVERY_TOOLS.has(tool.name)) &&
       withoutChatOnly([tool], now.canSee).length > 0 &&
       hostedSet([tool], now.speaking).length > 0
     );

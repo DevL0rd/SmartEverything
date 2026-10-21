@@ -1,6 +1,3 @@
-import { retiredGatewayLease } from '../data/preview-owner';
-import { previewNotices } from '../../../queries/preview-notices';
-import { browserTabOperation } from './browser-tab-operation';
 import type { ServerConnection } from '../../../api/transport';
 import { BrowserTabs } from './browser-tabs';
 import { closeBrowserSurfaces } from './browser-surfaces';
@@ -29,16 +26,6 @@ export function browserWorkspace(
   tabs.restore(restoreBrowserTabs(key));
   workspaces.set(key, { ...owner, tabs, stop: persistBrowserTabs(key, tabs) });
   return tabs;
-}
-export function browserTargetProfile(chatId: string, id: string): string | null {
-  for (const workspace of workspaces.values()) {
-    if (
-      workspace.chatId === chatId &&
-      workspace.tabs.read().tabs.some((tab) => tab.selection?.target.id === id)
-    )
-      return workspace.profileId;
-  }
-  return null;
 }
 export function browserTabVisible(chatId: string, id: string): boolean {
   for (const workspace of workspaces.values()) {
@@ -86,42 +73,6 @@ function closeWorkspace(key: string, workspace: BrowserWorkspace): void {
   workspaces.delete(key);
   workspace.stop();
   workspace.tabs.dispose();
-}
-
-export function followBrowserRevocations(): () => void {
-  return previewNotices.subscribe(() => {
-    const notice = previewNotices.get();
-    if (notice === null || notice.state === 'published') return;
-    for (const workspace of workspaces.values()) {
-      if (workspace.chatId !== notice.chat_id || workspace.profileId !== notice.profile_id)
-        continue;
-      for (const tab of workspace.tabs.read().tabs) {
-        if (
-          tab.source.kind === 'publication' &&
-          tab.source.publication.id === notice.publication_id
-        )
-          browserTabOperation(
-            workspace.tabs.unavailable(tab.id, 'This page is no longer shared with this chat.'),
-          );
-      }
-    }
-  });
-}
-
-export function followGatewayRetirements(): () => void {
-  return retiredGatewayLease.subscribe(() => {
-    const origin = retiredGatewayLease.get();
-    for (const workspace of workspaces.values())
-      for (const tab of workspace.tabs.read().tabs) {
-        if (
-          tab.selection !== null &&
-          tab.selection.kind === 'preview' &&
-          !('purpose' in tab.selection.lease) &&
-          tab.selection.lease.origin === origin
-        )
-          browserTabOperation(workspace.tabs.renew(tab.id));
-      }
-  });
 }
 
 function sameBrowserEnrollment(owner: ServerConnection, current: ServerConnection | null): boolean {

@@ -50,5 +50,5 @@ export function managedProviderInstructions(
   project: NativeManagedProject | undefined,
 ): string {
   if (project === undefined) return system;
-  return `${system}\nAuthored files belong to this chat's central managed project. Discover home project file and preview tools. The native runtime directory is runtime state, not project storage. Local file, shell, agent and external tool sources are unavailable in this session.`;
+  return `${system}\nAuthored files belong to this chat's central managed project. Use project_read and project_edit for its files and browser_control open with a path to show one in the app. The native runtime directory is runtime state, not project storage. Local file, shell, agent and external tool sources are unavailable in this session.`;
 }

@@ -52,7 +52,7 @@ export function strengthPlan(id: DiffuserStrengthId): readonly [StrengthStep, St
 export const DEVICE_REFILLS = z
   .record(z.uuid(), z.iso.datetime({ offset: true }))
   .describe(
-    'When each scent diffuser was last refilled with fragrance, as device id to ISO time, shared by the whole household; the diffusers have no fragrance sensor, so this is the only record. Say a diffuser was refilled with call_operation recordDeviceRefill',
+    'When each scent diffuser was last refilled with fragrance, as device id to ISO time, shared by the whole household; the diffusers have no fragrance sensor, so this is the only record. Say a diffuser was refilled with operation_call recordDeviceRefill',
   );
 
 export type DeviceRefills = z.infer<typeof DEVICE_REFILLS>;

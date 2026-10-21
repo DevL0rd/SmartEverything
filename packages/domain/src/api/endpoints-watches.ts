@@ -95,7 +95,7 @@ export const WATCH_AREA_ENDPOINTS = {
     path: '/api/watches/:deviceId/actions',
     access: 'member',
     summary:
-      'Ask the phone connected to a watch to do something on it (find, sync, change a setting, save or delete an alarm, switch or remove a face, and start, pause, resume or finish a workout or exercise such as treadmill, run, walk or cycling) and wait for the answer; read_watch view config lists the setting keys, allowed values, alarm ids and face ids, and view workout lists the sports this watch offers',
+      'Ask the phone connected to a watch to do something on it (find, sync, change a setting, save or delete an alarm, switch or remove a face, and start, pause, resume or finish a workout or exercise such as treadmill, run, walk or cycling) and wait for the answer; watch_read view config lists the setting keys, allowed values, alarm ids and face ids, and view workout lists the sports this watch offers',
     params: z.strictObject({ deviceId: ID }),
     query: NOTHING,
     body: WATCH_ACTION,
@@ -117,7 +117,7 @@ export const WATCH_AREA_ENDPOINTS = {
     path: '/api/watches/:deviceId/workout',
     access: 'member',
     summary:
-      'Start a workout of the given sport on the watch (treadmill, indoor walk, run, cycling and more; read_watch view workout lists the sports this watch offers) and wait for the watch to answer',
+      'Start a workout of the given sport on the watch (treadmill, indoor walk, run, cycling and more; watch_read view workout lists the sports this watch offers) and wait for the watch to answer',
     params: z.strictObject({ deviceId: ID }),
     query: NOTHING,
     body: WATCH_WORKOUT_START,

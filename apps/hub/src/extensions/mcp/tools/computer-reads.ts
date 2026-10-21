@@ -23,7 +23,7 @@ import {
   compactUsb,
   compactWindows,
 } from './computer-compact';
-import { COMPUTER_ID } from './computer-flat';
+import { COMPUTER_ID, computerIdOf } from './computer-target';
 import { READS, defineTool, type Tool } from './registry';
 
 const COMPUTER = z.strictObject({ deviceId: COMPUTER_ID });
@@ -33,7 +33,7 @@ const DISPLAYS = z.strictObject({
   modes: z
     .boolean()
     .optional()
-    .describe('Also list every resolution and refresh rate each screen offers'),
+    .describe('true also lists every resolution and refresh rate each screen offers'),
 });
 
 export async function readState<T>(
@@ -51,7 +51,7 @@ interface Reading<T, R> {
   readonly project: (state: T, request: R) => Record<string, unknown>;
 }
 
-function reader<T, R extends { readonly deviceId: string }>(
+function reader<T, R extends { readonly deviceId?: string | undefined }>(
   name: McpPartName,
   input: z.ZodType<R>,
   { endpoint, schema, project }: Reading<T, R>,
@@ -61,7 +61,8 @@ function reader<T, R extends { readonly deviceId: string }>(
     input,
     annotations: READS,
     run: async (context, request) => {
-      const state = await readState(context, endpoint, request.deviceId, schema);
+      const deviceId = computerIdOf(context, request.deviceId);
+      const state = await readState(context, endpoint, deviceId, schema);
       return { structured: project(state, request) };
     },
   });
@@ -71,7 +72,7 @@ function view<T>(
   endpoint: EndpointName,
   schema: z.ZodType<T>,
   project: (state: T) => Record<string, unknown>,
-): Reading<T, { readonly deviceId: string }> {
+): Reading<T, { readonly deviceId?: string | undefined }> {
   return { endpoint, schema, project };
 }
 
@@ -88,10 +89,12 @@ export async function computerNow(
 
 export const COMPUTER_READ_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'get_computer',
+    name: 'computer_read',
     input: COMPUTER,
     annotations: READS,
-    run: async (context, { deviceId }) => ({ structured: await computerNow(context, deviceId) }),
+    run: async (context, { deviceId }) => ({
+      structured: await computerNow(context, computerIdOf(context, deviceId)),
+    }),
   }),
   reader('get_computer_audio', COMPUTER, view('readComputerAudio', AUDIO_STATE, compactAudio)),
   reader('get_computer_displays', DISPLAYS, {
@@ -99,22 +102,28 @@ export const COMPUTER_READ_TOOLS: readonly Tool[] = [
     schema: DISPLAY_STATE,
     project: (state, request) => compactDisplays(state, request.modes === true),
   }),
-  reader('get_computer_system', COMPUTER, view('readComputerSystem', SYSTEM_STATE, compactSystem)),
-  reader('get_computer_usb', COMPUTER, view('readComputerSystem', SYSTEM_STATE, compactUsb)),
+  reader('get_computer_system', COMPUTER, {
+    endpoint: 'readComputerSystem',
+    schema: SYSTEM_STATE,
+    project: (state) => ({ ...compactSystem(state), ...compactUsb(state) }),
+  }),
   reader(
     'get_computer_windows',
     COMPUTER,
     view('readComputerWindows', WINDOWS_STATE, compactWindows),
   ),
   reader('get_computer_tiling', COMPUTER, view('readComputerTiling', TILING_STATE, compactTiling)),
-  reader(
-    'get_computer_services',
-    COMPUTER,
-    view('readComputerServices', SERVICES_STATE, compactServices),
-  ),
-  reader(
-    'get_computer_startup',
-    COMPUTER,
-    view('readComputerStartup', STARTUP_STATE, compactStartup),
-  ),
+  defineTool({
+    name: 'get_computer_services',
+    input: COMPUTER,
+    annotations: READS,
+    run: async (context, { deviceId }) => {
+      const id = computerIdOf(context, deviceId);
+      const [services, startup] = await Promise.all([
+        readState(context, 'readComputerServices', id, SERVICES_STATE),
+        readState(context, 'readComputerStartup', id, STARTUP_STATE),
+      ]);
+      return { structured: { ...compactServices(services), ...compactStartup(startup) } };
+    },
+  }),
 ];

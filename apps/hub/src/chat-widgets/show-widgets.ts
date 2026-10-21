@@ -10,7 +10,7 @@ export function showWidgets(
   const { actor, store, clock } = context;
   const chatId = actor?.chatId ?? null;
   if (actor === null || chatId === null) {
-    throw new ToolError('show_widgets only works while you are writing a reply in a chat');
+    throw new ToolError('widget_show only works while you are writing a reply in a chat');
   }
   const reply = workingReply(store, chatId);
   if (reply === null) {

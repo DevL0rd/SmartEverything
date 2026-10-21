@@ -5,9 +5,9 @@ import { ToolError } from '../extensions/mcp/tools/registry';
 import type { HubTool } from './hub-tool';
 import { PluginTurnRefusedError, operationRefusal } from './plugin-turn';
 
-const CALL_OPERATION_TOOL = 'call_operation';
+const CALL_OPERATION_TOOL = 'operation_call';
 
-const CALL_PLUGIN_TOOL = 'call_plugin_tool';
+const CALL_PLUGIN_TOOL = 'plugin_call';
 
 const OPERATION_CALL = z.looseObject({ operation: z.string() });
 

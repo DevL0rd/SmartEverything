@@ -1,6 +1,4 @@
 import {
-  AI_PREVIEW_CAPABILITY,
-  AI_PREVIEW_FILE_CAPABILITY,
   HARNESS_CONFIGURATION_CAPABILITY,
   HARNESS_SUBSCRIPTION_CAPABILITY,
 } from '@smarteverything/domain';
@@ -26,12 +24,11 @@ export const HOST_PLATFORM: Readonly<Record<HarnessPlatform, HostPlatformProfile
   windows: { shell: 'pwsh', subscriptionStorage: null, sandbox: 'partial' },
 };
 
-export function hostCapabilities(platform: HarnessPlatform, preview: boolean): readonly string[] {
+export function hostCapabilities(platform: HarnessPlatform): readonly string[] {
   return [
     HARNESS_CONFIGURATION_CAPABILITY,
     ...(HOST_PLATFORM[platform].subscriptionStorage === null
       ? []
       : [HARNESS_SUBSCRIPTION_CAPABILITY]),
-    ...(preview ? [AI_PREVIEW_CAPABILITY, AI_PREVIEW_FILE_CAPABILITY] : []),
   ];
 }

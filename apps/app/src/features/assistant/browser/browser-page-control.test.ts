@@ -15,9 +15,8 @@ const native = vi.hoisted(
   } => ({ page: undefined, requests: [], answer: null }),
 );
 
-vi.mock('./browser-diagnostics-platform', () => ({
-  previewDiagnosticsNative: (): { page?: typeof native.page } =>
-    native.page === undefined ? {} : { page: native.page },
+vi.mock('./browser-page-platform', () => ({
+  nativeBrowserPage: (): typeof native.page => native.page,
 }));
 
 const { browserPageSupported, performBrowserPageAction, readBrowserPage } =
@@ -80,7 +79,7 @@ beforeEach(() => {
 
 describe('reading a browser page', () => {
   it('labels the text as data and carries the tab and its address', async () => {
-    const page = await readBrowserPage(tab(), TAB_ID);
+    const page = await readBrowserPage(tab(), TAB_ID, true);
     expect(page).toEqual({
       notice: BROWSER_PAGE_NOTICE,
       tabId: TAB_ID,
@@ -96,22 +95,27 @@ describe('reading a browser page', () => {
   });
 
   it('asks to wait for a tab that has no page yet', async () => {
-    await expect(readBrowserPage(tab('opening'), TAB_ID)).rejects.toThrow('no page open yet');
+    await expect(readBrowserPage(tab('opening'), TAB_ID, true)).rejects.toThrow('no page open yet');
+  });
+
+  it('asks to wait for a tab whose native view is not mounted', async () => {
+    await expect(readBrowserPage(tab(), TAB_ID, false)).rejects.toThrow('no page open yet');
+    expect(native.requests).toEqual([]);
   });
 
   it('asks to select a tab that is not the one showing', async () => {
-    await expect(readBrowserPage(tab(), null)).rejects.toThrow('Select this tab first');
+    await expect(readBrowserPage(tab(), null, true)).rejects.toThrow('Select this tab first');
   });
 
   it('says so when this device cannot read pages', async () => {
     native.page = undefined;
     expect(browserPageSupported()).toBe(false);
-    await expect(readBrowserPage(tab(), TAB_ID)).rejects.toThrow('cannot read or act');
+    await expect(readBrowserPage(tab(), TAB_ID, true)).rejects.toThrow('cannot read or act');
   });
 
   it('fails when the page answers nothing', async () => {
     native.answer = null;
-    await expect(readBrowserPage(tab(), TAB_ID)).rejects.toThrow('did not answer');
+    await expect(readBrowserPage(tab(), TAB_ID, true)).rejects.toThrow('did not answer');
   });
 });
 
@@ -119,6 +123,7 @@ describe('acting on a browser page', () => {
   const tabs = (selected: typeof TAB_ID | null): Parameters<typeof performBrowserPageAction>[0] => {
     return {
       tab: () => tab(),
+      mounted: () => true,
       read: () => ({ tabs: [], selectedId: selected, problem: null }),
       handle: () => ({
         navigate: () => undefined,

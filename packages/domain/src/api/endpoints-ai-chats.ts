@@ -26,15 +26,25 @@ const TOOL_RESULT_PARAMS = z.strictObject({ chatId: ID, callId: z.string().min(1
 
 const TOOL_RESULT_QUERY = z.strictObject({
   field: z.enum(AI_TOOL_RESULT_FIELDS).default('output'),
-  offset: z.coerce.number().int().min(0).default(0),
-  limit: z.coerce.number().int().min(1).default(TOOL_RESULT_PAGE_CHARS),
+  cursor: z
+    .string()
+    .regex(/^(0|[1-9][0-9]*)$/u, 'cursor must be the nextCursor of the previous page')
+    .optional()
+    .describe('nextCursor of the previous page'),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(TOOL_RESULT_PAGE_CHARS)
+    .default(TOOL_RESULT_PAGE_CHARS)
+    .describe('How many characters to return at most'),
 });
 
 const AI_RETRY = z.strictObject({
   from: z
-    .enum(['failed', 'answered'])
+    .enum(['failed'])
     .describe(
-      'The state of the message the person is retrying; if it has moved on (already retried), nothing runs again',
+      'The state of the message the person is continuing; if it has moved on (already continued), nothing runs again',
     ),
 });
 
@@ -76,7 +86,13 @@ const CHAT_ENDPOINTS = {
       before: ID.optional().describe(
         'Only chats after this chat in the list; pass the last chat of the previous page',
       ),
-      limit: z.coerce.number().int().min(1).optional().describe('Page size; left out, every chat'),
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe('Page size, at most 500; left out, every chat'),
       unread: QUERY_FLAG.optional().describe('true lists only chats with unread messages'),
       pinned: QUERY_FLAG.optional().describe('true lists only pinned chats'),
       source: z.enum(MESSAGE_SOURCES).optional().describe('Only chats that began from this source'),

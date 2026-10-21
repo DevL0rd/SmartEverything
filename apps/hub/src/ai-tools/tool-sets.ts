@@ -1,48 +1,55 @@
-import { MCP_TOOLS } from '@smarteverything/domain';
+import { MCP_TOOLS, type McpToolName } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { HubTool, ToolSpec } from './hub-tool';
 import { CALL_TOOL_INPUT, SEARCH_TOOLS_INPUT, TOOL_DETAILS_INPUT } from './tool-discovery';
 
 export const META_TOOL_NAMES = {
-  call: 'call_tool',
-  search: 'search_tools',
-  details: 'tool_details',
+  call: 'tool_call',
+  search: 'tool_search',
+  details: 'tool_read',
 } as const;
 
 export const COMMON_TOOL_NAMES: ReadonlySet<string> = new Set([
-  'get_home',
-  'search_everything',
-  'find_devices',
-  'get_device',
-  'control_devices',
-  'list_people',
-  'read_health',
-  'log_food',
-  'read_presence',
-  'speak',
-  'notify_person',
-  'get_weather',
-  'show_widgets',
-  'list_machines',
-  'switch_machine',
+  'home_read',
+  'home_search',
+  'device_find',
+  'device_read',
+  'device_control',
+  'person_read',
+  'health_read',
+  'food_log',
+  'presence_read',
+  'voice_speak',
+  'person_notify',
+  'weather_read',
+  'widget_show',
+  'machine_read',
+  'machine_switch',
 ]);
+
+function servedDescription(name: McpToolName): string {
+  const tool = MCP_TOOLS.find((candidate) => candidate.name === name);
+  if (tool === undefined) {
+    throw new Error(`The served tool ${name} is missing from MCP_TOOLS`);
+  }
+  return tool.description;
+}
 
 export const META_TOOLS: readonly ToolSpec[] = [
   {
     name: META_TOOL_NAMES.call,
-    description: 'Run any enabled tool by name with arguments from tool_details.',
+    description:
+      'Runs any enabled tool that is not declared, by its name with arguments matching tool_read. Not for API operations (operation_call) or the declared tools (call them directly).',
     inputSchema: z.toJSONSchema(CALL_TOOL_INPUT, { io: 'input' }),
   },
   {
     name: META_TOOL_NAMES.search,
-    description:
-      'Find enabled tools and app operations (reached through call_operation) by what you want to do, best matches first; a nextCursor pages on.',
+    description: servedDescription('tool_search'),
     inputSchema: z.toJSONSchema(SEARCH_TOOLS_INPUT, { io: 'input' }),
   },
   {
     name: META_TOOL_NAMES.details,
-    description:
-      'Read an enabled tool’s exact input schema, annotations and selector variants before calling it.',
+    description: servedDescription('tool_read'),
     inputSchema: z.toJSONSchema(TOOL_DETAILS_INPUT, { io: 'input' }),
   },
 ];

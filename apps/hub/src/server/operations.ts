@@ -93,7 +93,7 @@ export class Operations {
     const authority = caller.kind === 'service' ? caller.authority : currentExecutionAuthority();
     if (hubOriginated(authority)) {
       const refusal = withExecutionAuthority(authority, () =>
-        this.boundary.refusal('call_operation', {
+        this.boundary.refusal('operation_call', {
           operation: name,
           arguments: {
             params: input.params ?? {},

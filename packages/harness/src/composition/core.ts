@@ -17,6 +17,7 @@ import Commands from '@deepseek-ai/dsh-commands';
 import * as HumanCommands from './human-commands';
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner';
 import * as CheckpointPolicy from '@deepseek-ai/dsh-session-checkpoint-policy';
+import { mountImageOffload } from './image-offload';
 import * as LlmRetry from '@deepseek-ai/dsh-llm-retry';
 import { MachineSessionPersistence } from '../persistence/service';
 import type { NativeSessionPersistencePort } from '../persistence/port';
@@ -57,6 +58,7 @@ export async function mountCore(
   await ctx.plugin(LlmRetry);
   await ctx.plugin(TokenMeter);
   await ctx.plugin(ToolResultPruner);
+  await mountImageOffload(ctx);
   await ctx.plugin(ConfiguredCompaction);
   await ctx.plugin(HumanCommands);
   await ctx.plugin(CheckpointPolicy);

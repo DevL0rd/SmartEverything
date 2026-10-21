@@ -3,7 +3,12 @@ import { openRouterSearchAvailable } from '../assistant/web-search-supplier';
 import { executionRole, eventAuthority } from '../assistant/turn-authority';
 import { reachesNativeBridge } from './native-bridge';
 import { z } from 'zod';
-import { JSON_VALUE, ApiError, HARNESS_CENTRAL_RESULT } from '@smarteverything/domain';
+import {
+  JSON_VALUE,
+  ApiError,
+  HARNESS_CENTRAL_RESULT,
+  MCP_DISCOVERY_TOOLS,
+} from '@smarteverything/domain';
 import type { HARNESS_CENTRAL_CATALOGUE } from '@smarteverything/domain';
 import type { Context } from '@deepseek-ai/cordis';
 import { harnessToolSchema } from './tool-schema';
@@ -18,15 +23,11 @@ import {
   centralToolDeclarationNames,
 } from './tool-declarations';
 import { effectiveTools } from '../assistant/coordination/grants';
-import { DISCOVERY_NAMES } from '../ai-tools/tool-discovery';
 import { META_TOOL_NAMES } from '../ai-tools/tool-sets';
 import { scopedHub } from '../assistant/coordination/scoped-tools';
 import type { HarnessService } from './service';
 
-const CHAT_FOLDER_TOOLS: ReadonlySet<string> = new Set([
-  'read_project_files',
-  'edit_project_files',
-]);
+const CHAT_FOLDER_TOOLS: ReadonlySet<string> = new Set(['project_read', 'project_edit']);
 const IMAGE_MIME = z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 export class HarnessHubTools implements HarnessServerToolAccess {
   private readonly admit: ToolAdmission;
@@ -104,7 +105,7 @@ export class HarnessHubTools implements HarnessServerToolAccess {
         if (execution.agent === undefined)
           throw new ApiError('forbidden', 'Hub tools require a native conversation.');
         const args = z.record(z.string(), z.unknown()).parse(raw);
-        const result = await this.call(execution.agent.id, tool.name, args);
+        const result = await this.call(execution.agent.id, tool.name, args, execution.callId);
         const blocks: ContentBlock[] = [{ type: 'text', text: JSON.stringify(result.response) }];
         for (const picture of result.pictures) {
           const admitted = await ctx.attachments.admitPromptContent([
@@ -144,9 +145,14 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     id: string,
     name: string,
     args: Readonly<Record<string, unknown>>,
+    callId?: string,
   ): Promise<HubToolResult> {
     const { caller, hub } = this.authorizeCall(id, name, args);
-    const result = await hub.callAdmitted(name, args, caller);
+    const result = await hub.callAdmitted(
+      name,
+      args,
+      callId === undefined ? caller : { ...caller, callId },
+    );
     if (typeof result.response['error'] === 'string')
       throw new HubCapabilityFailure(name, result.response['error']);
     return result;
@@ -184,7 +190,7 @@ export class HarnessHubTools implements HarnessServerToolAccess {
         (grantedNames === null ||
           grantedNames.has(tool.name) ||
           tool.name === META_TOOL_NAMES.call ||
-          DISCOVERY_NAMES.has(tool.name)),
+          MCP_DISCOVERY_TOOLS.has(tool.name)),
     );
     if (hub === undefined)
       throw new ApiError('forbidden', 'This conversation has no available hub capabilities.');

@@ -135,7 +135,7 @@ function appHits({ query, limit }: Search): Record<string, unknown> {
 }
 
 export const SEARCH_TOOL: Tool = defineTool({
-  name: 'search_everything',
+  name: 'home_search',
   input: SEARCH,
   annotations: READS,
   run: (context, input) => {

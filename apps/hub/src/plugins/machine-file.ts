@@ -12,7 +12,7 @@ export function machineFileReader(ports: {
     const host = resolveMachine(ports.harness.directory.visible(caller.role, ''), input.machine);
     if (host.target.kind === 'server') return null;
     const result = await ports.tools.call(
-      'read_files',
+      'file_read',
       { view: 'file', deviceId: host.target.device_id, path: input.path },
       caller,
     );

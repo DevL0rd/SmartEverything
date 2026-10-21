@@ -29,7 +29,7 @@ const WINDOW = {
     .describe('Start of the window (ISO time); defaults to `days` before `to`'),
   to: z.iso.datetime({ offset: true }).optional().describe('End of the window; defaults to now'),
   days: z.int().min(1).max(400).default(30).describe('Window length when `from` is not given'),
-  personIds: z.array(z.uuid()).min(1).optional().describe('Only these people (list_people)'),
+  personIds: z.array(z.uuid()).min(1).optional().describe('Only these people (person_read)'),
   clientIds: z.array(z.uuid()).min(1).optional().describe('Only these paired devices'),
   works: z.array(USAGE_WORK).min(1).optional().describe('Only these kinds of work'),
   sources: z.array(USAGE_SOURCE).min(1).optional().describe('Only these providers'),

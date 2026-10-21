@@ -7,8 +7,6 @@ import {
   MEDIA_PATHS,
   NODE_AI_PATH,
   NODE_HARNESS_PATH,
-  NODE_PREVIEW_PATH,
-  PREVIEW_DIAGNOSTICS_PATH,
   TALK_PATH,
   matchPath,
   type ApiError,
@@ -24,9 +22,7 @@ export const refusals = new RepeatGate(30_000);
 const SUMMARY_MS = 30_000;
 
 const NATIVE_SOCKETS: ReadonlyMap<string, string> = new Map([
-  [PREVIEW_DIAGNOSTICS_PATH, 'preview-diagnostics'],
   [EMBEDDED_BROWSER_PATH, 'embedded-browser'],
-  [NODE_PREVIEW_PATH, 'node-preview'],
   [NODE_HARNESS_PATH, 'node-harness'],
   [NODE_AI_PATH, 'node-ai'],
   [MEDIA_PATHS.live, 'live'],

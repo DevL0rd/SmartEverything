@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { HubTool, HubToolResult, ToolCaller } from '../../src/ai-tools/hub-tool';
 import { SE_TOOLS, hubResult } from '../../src/ai-tools/se-tools';
-import { searchTools, switchedOffTools } from '../../src/ai-tools/tool-discovery';
+import { searchTools, switchedOffTools, toolDetails } from '../../src/ai-tools/tool-discovery';
+import { operationLookup } from '../../src/extensions/mcp/tools/operation-details';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
 import { TOOLS } from '../../src/extensions/mcp/tools';
 import { bootServer, verifiedPublicUrl, type Booted } from '../support/booted';
@@ -13,37 +14,39 @@ import { callTool, resultOf, rpc, structured } from './client';
 
 const LISTED = TOOLS.map((tool) => tool.listing);
 
+const EVERY_AREA = { operations: operationLookup(() => true) };
+
 const FOUND = z.object({
   tools: z.array(z.looseObject({ name: z.string() })),
   count: z.number(),
   hasMore: z.boolean(),
   nextCursor: z.string().optional(),
-  operations: z.array(z.looseObject({ operation: z.string(), call: z.literal('call_operation') })),
+  operations: z.array(z.looseObject({ operation: z.string(), call: z.literal('operation_call') })),
 });
 
 function found(query: string, extra: Record<string, unknown> = {}): z.infer<typeof FOUND> {
-  return FOUND.parse(searchTools(LISTED, { query, ...extra }));
+  return FOUND.parse(searchTools(LISTED, { query, ...extra }, EVERY_AREA));
 }
 
 function names(query: string): string[] {
   return found(query).tools.map((tool) => tool.name);
 }
 
-describe('search_tools ranking', () => {
+describe('tool_search ranking', () => {
   it.each([
-    ['turn on the light', 'control_devices'],
-    ['lights', 'control_devices'],
-    ['timer', 'edit_schedule'],
-    ['water', 'log_food'],
-    ['what is the weather', 'get_weather'],
-    ['log my breakfast', 'log_food'],
-    ['create automation', 'edit_automation'],
+    ['turn on the light', 'device_control'],
+    ['lights', 'device_control'],
+    ['timer', 'schedule_edit'],
+    ['water', 'food_log'],
+    ['what is the weather', 'weather_read'],
+    ['log my breakfast', 'food_log'],
+    ['create automation', 'automation_edit'],
   ])('puts the tool for %j first', (query, expected) => {
     expect(names(query)[0]).toBe(expected);
   });
 
   it('finds settings tools for a settings word that only the settings tools name', () => {
-    expect(names('firewall').slice(0, 2).sort()).toEqual(['get_settings', 'update_settings']);
+    expect(names('firewall').slice(0, 2).sort()).toEqual(['settings_read', 'settings_sync']);
   });
 
   it('treats singular, plural and tense of a word alike', () => {
@@ -52,11 +55,11 @@ describe('search_tools ranking', () => {
   });
 
   it('matches any word of the query, best match first, without needing every word', () => {
-    expect(names('zzzz timer')).toContain('edit_schedule');
+    expect(names('zzzz timer')).toContain('schedule_edit');
     expect(found('zzzz').count).toBe(0);
   });
 
-  it('reaches operations that have no tool of their own through call_operation', () => {
+  it('reaches operations that have no tool of their own through operation_call', () => {
     const operations = (query: string): string[] =>
       found(query).operations.map((entry) => entry.operation);
     expect(operations('bluetooth')).toContain('readBleDevice');
@@ -71,17 +74,44 @@ describe('search_tools ranking', () => {
     expect(operations).not.toContain('controlAiChatProvider');
   });
 
-  it('offers operations only where call_operation is offered, and only in a permitted area', () => {
-    const without = LISTED.filter((tool) => tool.name !== 'call_operation');
-    expect(searchTools(without, { query: 'bluetooth' })).not.toHaveProperty('operations');
+  it('offers operations only where operation_call is offered, and only in a permitted area', () => {
+    const without = LISTED.filter((tool) => tool.name !== 'operation_call');
+    expect(searchTools(without, { query: 'bluetooth' }, EVERY_AREA)).not.toHaveProperty(
+      'operations',
+    );
     const none = FOUND.parse(
-      searchTools(LISTED, { query: 'bluetooth' }, { operationInScope: () => false }),
+      searchTools(LISTED, { query: 'bluetooth' }, { operations: operationLookup(() => false) }),
     );
     expect(none.operations).toEqual([]);
   });
 });
 
-describe('search_tools paging', () => {
+describe('API operations through tool_search and tool_read', () => {
+  it('lists every operation of an area when only the area is given', () => {
+    const listed = z
+      .object({ operations: z.array(z.looseObject({ name: z.string(), area: z.string() })) })
+      .parse(searchTools(LISTED, { area: 'computers' }, EVERY_AREA));
+    expect(listed.operations.length).toBeGreaterThan(0);
+    expect(listed.operations.every((entry) => entry.area === 'computers')).toBe(true);
+  });
+
+  it('refuses a search with neither words nor an area', () => {
+    expect(() => searchTools(LISTED, {}, EVERY_AREA)).toThrow(/query, area or both/u);
+  });
+
+  it('reads the input schema of an operation by its camelCase name', () => {
+    const read = z
+      .object({ operation: z.looseObject({ name: z.string(), inputSchema: z.looseObject({}) }) })
+      .parse(toolDetails(LISTED, { name: 'listDeviceEffects' }, EVERY_AREA));
+    expect(read.operation.name).toBe('listDeviceEffects');
+  });
+
+  it('refuses a name that is neither a tool, an operation nor a schema, and says how to find one', () => {
+    expect(() => toolDetails(LISTED, { name: 'list_rooms' }, EVERY_AREA)).toThrow(/tool_search/u);
+  });
+});
+
+describe('tool_search paging', () => {
   it('pages with an opaque cursor, states whether more exist and repeats nothing', () => {
     const first = found('device', { limit: 2 });
     expect(first.tools).toHaveLength(2);
@@ -106,8 +136,10 @@ describe('search_tools paging', () => {
 });
 
 describe('discovery tools are core', () => {
-  it('never counts search_tools or tool_details as switched off', () => {
-    expect([...switchedOffTools(['search_tools', 'tool_details', 'speak'])]).toEqual(['speak']);
+  it('never counts tool_search or tool_read as switched off', () => {
+    expect([...switchedOffTools(['tool_search', 'tool_read', 'voice_speak'])]).toEqual([
+      'voice_speak',
+    ]);
   });
 });
 
@@ -115,9 +147,9 @@ describe('the in-app answer of a tool run', () => {
   const nameOf = (): null => null;
 
   function homeTool(): HubTool {
-    const found = SE_TOOLS.find((candidate) => candidate.name === 'get_home');
+    const found = SE_TOOLS.find((candidate) => candidate.name === 'home_read');
     if (found === undefined) {
-      throw new Error('get_home is not an in-app tool');
+      throw new Error('home_read is not an in-app tool');
     }
     return found;
   }
@@ -168,34 +200,34 @@ describe('the in-app tool hub', () => {
     },
   ]);
 
-  it('answers search_tools with the same ranking and cursor as the MCP server', async () => {
+  it('answers tool_search with the same ranking and cursor as the MCP server', async () => {
     const result = FOUND.parse(
-      (await hub.call('search_tools', { query: 'timer', limit: 1 }, caller)).response,
+      (await hub.call('tool_search', { query: 'timer', limit: 1 }, caller)).response,
     );
-    expect(result.tools.map((tool) => tool.name)).toEqual(['edit_schedule']);
+    expect(result.tools.map((tool) => tool.name)).toEqual(['schedule_edit']);
     expect(result.nextCursor).toBeDefined();
   });
 
   it('keeps the code of a discovery refusal and says it once', async () => {
-    const bad = await hub.call('search_tools', { query: 'timer', cursor: 'abc' }, caller);
+    const bad = await hub.call('tool_search', { query: 'timer', cursor: 'abc' }, caller);
     expect(bad.response).toEqual({
-      error: 'cursor must be a nextCursor from search_tools',
+      error: 'cursor must be a nextCursor from tool_search',
       code: 'invalid_request',
     });
-    const missing = await hub.call('tool_details', { name: 'no_such_tool' }, caller);
+    const missing = await hub.call('tool_read', { name: 'no_such_tool' }, caller);
     expect(missing.response).toMatchObject({ code: 'not_found' });
   });
 
-  it('gives the schema of one variant through tool_details, like the MCP server', async () => {
+  it('gives the schema of one variant through tool_read, like the MCP server', async () => {
     const DETAILS = z.object({
       tool: z.looseObject({ name: z.string() }),
       variant: z.looseObject({ selector: z.record(z.string(), z.string()) }),
     });
     const one = DETAILS.parse(
-      (await hub.call('tool_details', { name: 'edit_room', variant: 'remove' }, caller)).response,
+      (await hub.call('tool_read', { name: 'room_edit', variant: 'remove' }, caller)).response,
     );
     expect(one.variant.selector).toEqual({ action: 'remove' });
-    const refused = hub.check('tool_details', { name: 'edit_room', variant: 'paint' });
+    const refused = hub.check('tool_read', { name: 'room_edit', variant: 'paint' });
     expect(refused).toMatchObject({ ok: false });
     expect(JSON.stringify(refused)).toContain('variant must be one of: create, update, remove');
   });
@@ -225,25 +257,27 @@ describe('the MCP server', () => {
   });
 
   it('answers every call with its JSON as text and declares no output schema', async () => {
-    const result = await resultOf(await rpc(booted.base, token, { method: 'tools/list' }));
+    const result = await resultOf(
+      await rpc(booted.base, token, { method: 'tools/list' }, { 'user-agent': 'claude-code/2.1' }),
+    );
     const tools = z.array(z.looseObject({ name: z.string() })).parse(result['tools']);
     expect(tools.length).toBeGreaterThan(0);
     expect(tools.every((tool) => !('outputSchema' in tool))).toBe(true);
-    const answer = await callTool(booted.base, token, 'search_tools', { query: 'weather' });
+    const answer = await callTool(booted.base, token, 'tool_search', { query: 'weather' });
     expect(answer).not.toHaveProperty('structuredContent');
     expect(FOUND.parse(structured(answer)).tools.length).toBeGreaterThan(0);
   });
 
-  it('answers search_tools with the same ranking and cursor the in-app path uses', async () => {
+  it('answers tool_search with the same ranking and cursor the in-app path uses', async () => {
     const result = FOUND.parse(
-      structured(await callTool(booted.base, token, 'search_tools', { query: 'timer', limit: 1 })),
+      structured(await callTool(booted.base, token, 'tool_search', { query: 'timer', limit: 1 })),
     );
-    expect(result.tools.map((tool) => tool.name)).toEqual(['edit_schedule']);
+    expect(result.tools.map((tool) => tool.name)).toEqual(['schedule_edit']);
     expect(result.nextCursor).toBeDefined();
   });
 
   it('words a discovery refusal with its code once', async () => {
-    const result = await callTool(booted.base, token, 'search_tools', {
+    const result = await callTool(booted.base, token, 'tool_search', {
       query: 'timer',
       cursor: 'abc',
     });
@@ -253,7 +287,7 @@ describe('the MCP server', () => {
   });
 
   it('refuses a null for a field that does not allow null and names the field', async () => {
-    const result = await callTool(booted.base, token, 'edit_room', {
+    const result = await callTool(booted.base, token, 'room_edit', {
       action: 'create',
       name: null,
     });
@@ -261,18 +295,20 @@ describe('the MCP server', () => {
     expect(JSON.stringify(result.content)).toContain('name');
   });
 
-  it('keeps answering search_tools after the owner switches it off', async () => {
+  it('keeps answering tool_search after the owner switches it off', async () => {
     await call(booted.base, booted.owner, {
       method: 'PUT',
       path: '/api/mcp/tools',
-      body: { disabled: ['search_tools'] },
+      body: { disabled: ['tool_search'] },
     });
-    const result = await callTool(booted.base, token, 'search_tools', { query: 'weather' });
+    const result = await callTool(booted.base, token, 'tool_search', { query: 'weather' });
     expect(result.isError).toBe(false);
-    const listed = await resultOf(await rpc(booted.base, token, { method: 'tools/list' }));
+    const listed = await resultOf(
+      await rpc(booted.base, token, { method: 'tools/list' }, { 'user-agent': 'claude-code/2.1' }),
+    );
     const names = z.array(z.looseObject({ name: z.string() })).parse(listed['tools']);
     expect(names.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(['search_tools', 'tool_details']),
+      expect.arrayContaining(['tool_search', 'tool_read']),
     );
   });
 });

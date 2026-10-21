@@ -8,7 +8,6 @@ import {
   withTool,
   type ToolGroup,
 } from './tools';
-import { toolLine } from './tool-text';
 
 function firstGroup(): ToolGroup {
   const group = TOOL_GROUPS[0];
@@ -66,7 +65,7 @@ describe('tool text', () => {
   it('has a title and a line for every tool', () => {
     for (const tool of MCP_TOOLS) {
       expect(tool.title.length, tool.name).toBeGreaterThan(0);
-      expect(toolLine(tool).length, tool.name).toBeGreaterThan(0);
+      expect(tool.line.length, tool.name).toBeGreaterThan(0);
     }
   });
 });

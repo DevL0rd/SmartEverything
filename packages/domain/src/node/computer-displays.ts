@@ -67,7 +67,7 @@ export const DISPLAY_STATE = z.strictObject({
 
 export type DisplayState = z.infer<typeof DISPLAY_STATE>;
 
-const OUTPUT = z.string().trim().min(1).describe('A display id from get_computer, or its name');
+const OUTPUT = z.string().trim().min(1).describe('A display id from computer_read, or its name');
 
 export const DISPLAY_MODE_CHANGE = z.strictObject({
   action: z.literal('mode'),

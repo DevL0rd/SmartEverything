@@ -29,7 +29,7 @@ const CHECK_DEVICE = z
   .string()
   .min(1)
   .describe(
-    'A device with a power reading (a smart plug) whose draw confirms whether the appliance is on; ids come from find_devices',
+    'A device with a power reading (a smart plug) whose draw confirms whether the appliance is on; ids come from device_find',
   );
 
 export const IR_REMOTE_STATE = z.strictObject({

@@ -61,6 +61,24 @@ describe('OpenRouter image errors', () => {
     expect(detailOf(failure)).toContain('Prompt blocked by policy.');
   });
 
+  it('says the provider has no quota left instead of calling OpenRouter busy', async () => {
+    const body = JSON.stringify({
+      error: {
+        code: 429,
+        message: 'You exceeded your current quota, please check your plan and billing details.',
+      },
+    });
+    const detail = detailOf(await generationFailure(answering(429, body)));
+    expect(detail).toContain('provider has no quota left');
+    expect(detail).toContain('You exceeded your current quota');
+    expect(detail).not.toContain('busy');
+  });
+
+  it('still calls a plain rate limit busy', async () => {
+    const body = JSON.stringify({ error: { code: 429, message: 'Too many requests.' } });
+    expect(detailOf(await generationFailure(answering(429, body)))).toContain('busy');
+  });
+
   it('reports the status when the error body is not an OpenRouter error', async () => {
     for (const body of ['<html>bad gateway</html>', '{"unexpected":true}', '']) {
       const failure = await generationFailure(answering(502, body));

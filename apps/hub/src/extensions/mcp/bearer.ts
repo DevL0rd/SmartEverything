@@ -17,6 +17,7 @@ export type McpCaller =
       readonly via: 'personal' | 'oauth' | 'plugin' | 'computer';
       readonly id: string;
       readonly localOnly: boolean;
+      readonly readOnly: boolean;
       readonly areas?: readonly McpToolArea[];
     }
   | { readonly kind: 'refused'; readonly reason: string };
@@ -47,6 +48,7 @@ function pluginCaller(store: Store, token: string): McpCaller | null {
         via: 'plugin',
         id: row.pluginId,
         localOnly: true,
+        readOnly: false,
         areas: row.areas.filter((area) => area !== 'plugins'),
       };
 }
@@ -59,6 +61,7 @@ function computerCaller(store: Store, token: string): McpCaller | null {
       via: 'computer',
       id: grant.deviceId,
       localOnly: grant.localOnly,
+      readOnly: false,
       areas: grant.areas,
     };
   }
@@ -82,6 +85,7 @@ function personal(store: Store, token: string): McpCaller {
     via: 'personal',
     id: row.id,
     localOnly: store.oauth.personalTokenIsLocalOnly(row.id),
+    readOnly: row.access === 'read',
   };
 }
 
@@ -99,7 +103,7 @@ function delegated(check: BearerCheck, token: string): McpCaller {
   if (!row.scopes.includes(MCP_SCOPE) || !grantStillHolds(check.store, row)) {
     return { kind: 'refused', reason: 'The owner revoked this assistant; connect it again' };
   }
-  return { kind: 'accepted', via: 'oauth', id: row.client_id, localOnly: false };
+  return { kind: 'accepted', via: 'oauth', id: row.client_id, localOnly: false, readOnly: false };
 }
 
 export function callerFor(check: BearerCheck, token: string): McpCaller {

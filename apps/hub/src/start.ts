@@ -3,7 +3,6 @@ import { HubConnections } from './network/connections';
 import { openHubIdentity } from './network/identity';
 import { advertiseHub } from './network/mdns-advertise';
 import type { Server } from 'node:http';
-import type { PreviewGatewayConfig } from './preview/gateway';
 import { mkdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
@@ -44,7 +43,6 @@ export const DEFAULT_ORIGINS: readonly string[] = ['app://smarteverything'];
 
 export interface ServerOptions {
   readonly lan?: { readonly port: number; readonly host?: string; readonly advertise?: boolean };
-  readonly preview?: PreviewGatewayConfig;
   readonly dataDirectory: string;
   readonly codex?: {
     readonly executable?: string;
@@ -211,7 +209,6 @@ async function boot(options: ServerOptions, clock: Clock, undo: Undo[]): Promise
     secrets,
     core,
     dataDirectory: options.dataDirectory,
-    ...(options.preview === undefined ? {} : { preview: options.preview }),
     ...(options.codex === undefined ? {} : { codex: options.codex }),
     allowedOrigins: allowedOriginsOf(options),
     extensions: serverExtensions(options, clock, alerts, smartthings),

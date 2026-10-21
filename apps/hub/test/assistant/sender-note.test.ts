@@ -137,10 +137,10 @@ describe('the guidance for the sender line', () => {
     );
     expect(stable).toContain('Writing from');
     expect(stable).toContain('this room');
-    expect(stable).toContain('find_devices');
+    expect(stable).toContain('device_find');
   });
 
   it('keeps it out of the shared tool guide so a voice call does not pay for it', () => {
-    expect(toolGuide(['find_devices'])).not.toContain('Writing from');
+    expect(toolGuide(['device_find'])).not.toContain('Writing from');
   });
 });

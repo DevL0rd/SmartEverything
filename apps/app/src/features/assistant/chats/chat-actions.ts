@@ -11,14 +11,12 @@ import {
   createAiChat,
   interruptAiChat,
   removeAiChat,
-  sendAiChatMessage,
   updateAiChat,
 } from '../../../api/ai';
 import { deferAction } from '../../../components/deferred-action';
 import { notify } from '../../../components/toast-store';
 import type { MessageSender } from '../components/composer';
-import { trimmedReferences } from '../references/spans';
-import { clearUploads } from '../data/uploads';
+import { outboxSender } from '../data/outbox';
 import { forgetBrowserChat } from '../browser/browser-runtime';
 
 const log = new Logger('app.chat');
@@ -114,32 +112,6 @@ export async function stopChat(chatId: string): Promise<void> {
   await attempt('chat.stop', { chatId }, () => interruptAiChat(chatId), 'Couldn’t stop it');
 }
 
-function chatSender(chatId: string): MessageSender {
-  return async (text, attachments, references = [], clientMessageId) => {
-    const message = trimmedReferences({ text, references });
-    const sent = await attempt(
-      'chat_message.send',
-      {
-        chatId,
-        clientMessageId: clientMessageId ?? null,
-        length: message.text.length,
-        attachments: attachments.length,
-        references: message.references.length,
-      },
-      () =>
-        sendAiChatMessage(chatId, message.text, attachments, {
-          references: message.references,
-          ...(clientMessageId === undefined ? {} : { clientMessageId }),
-        }),
-      'Message not sent',
-    );
-    if (sent !== null) {
-      clearUploads();
-    }
-    return sent !== null;
-  };
-}
-
 export function chatStarter(
   engine: Engine,
   opened: (chatId: string) => void,
@@ -160,7 +132,7 @@ export function chatStarter(
       return false;
     }
     log.info('chat.started', { chatId: chat.id, engineKind: selected.kind });
-    const sent = await chatSender(chat.id)(text, attachments, references, clientMessageId);
+    const sent = await outboxSender(chat.id, true)(text, attachments, references, clientMessageId);
     opened(chat.id);
     return sent;
   };

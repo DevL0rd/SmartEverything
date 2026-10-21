@@ -1,43 +1,31 @@
-import type { AiPreviewCatalogue, EmbeddedBrowserAction } from '@smarteverything/domain';
+import type { EmbeddedBrowserAction } from '@smarteverything/domain';
 import { browserCapability } from '../../../platform/browser-surface';
-import { browserAddress } from './browser-address';
 import { isBrowserPageAction, type BrowserPageAction } from './browser-page-control';
 import { browserTabAddress } from './browser-tab-address';
 import { BrowserTabError } from './browser-tab-errors';
 import type { BrowserTab } from './browser-tab-state';
-interface EmbeddedActionContext {
-  readonly tab: (id: string) => BrowserTab;
-  readonly catalogue: AiPreviewCatalogue | undefined;
-}
 export function assertEmbeddedBrowserAction(
   action: EmbeddedBrowserAction,
-  context: EmbeddedActionContext,
+  tab: (id: string) => BrowserTab,
 ): void {
   if (
     !browserCapability().publicBrowsing &&
     !isBrowserPageAction(action) &&
-    targetsPublicPage(action, context)
+    targetsPublicPage(action, tab)
   )
-    throw new BrowserTabError('Public websites open in your browser, not here.');
+    throw new BrowserTabError('Websites open in your browser, not here.');
 }
 function targetsPublicPage(
   action: Exclude<EmbeddedBrowserAction, BrowserPageAction>,
-  context: EmbeddedActionContext,
+  tab: (id: string) => BrowserTab,
 ): boolean {
-  const publications = context.catalogue?.publications ?? [];
   switch (action.kind) {
     case 'open':
-      return (
-        action.source.kind === 'public' &&
-        browserAddress(action.source.url, null, publications, 'public-hosts').kind === 'public'
-      );
+      return action.source.kind === 'public';
     case 'navigate':
-      return (
-        browserTabAddress(context.tab(action.tabId), action.address, publications, 'public-hosts')
-          .kind === 'public'
-      );
+      return browserTabAddress(tab(action.tabId), action.address).kind === 'public';
     case 'reload':
-      return context.tab(action.tabId).source.kind === 'public';
+      return tab(action.tabId).source.kind === 'public';
     case 'select':
     case 'close':
     case 'reorder':

@@ -1,15 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('expo-crypto', () => ({ randomUUID: (): string => globalThis.crypto.randomUUID() }));
-vi.mock('../data/preview-owner', async () => {
-  const { ValueStore } = await import('../../../design/external-store');
-  return { retiredGatewayLease: new ValueStore<string | null>(null) };
-});
-vi.mock('../../../queries/preview-notices', async () => {
-  const { ValueStore } = await import('../../../design/external-store');
-  return { previewNotices: new ValueStore(null) };
-});
-vi.mock('./browser-diagnostics', () => ({ releasePreviewDiagnostics: vi.fn() }));
 vi.mock('./browser-tab-persistence', () => ({
   persistBrowserTabs: (): (() => void) => () => undefined,
   restoreBrowserTabs: (): { tabs: []; selectedId: null; problem: null } => ({
@@ -21,11 +12,9 @@ vi.mock('./browser-tab-persistence', () => ({
 }));
 vi.mock('../../../platform/browser-surface', () => ({
   browserCapability: (): boolean => true,
-  gatewayBrowserAvailable: (): boolean => true,
 }));
 vi.mock('../../../platform/browser-html-projection', () => ({
-  nativeHtmlPreviewAvailable: (): boolean => false,
-  releaseHtmlTarget: (): Promise<void> => Promise.resolve(),
+  releaseProjectTarget: (): Promise<void> => Promise.resolve(),
 }));
 
 const { browserWorkspace, retainBrowserAuthority } = await import('./browser-runtime');

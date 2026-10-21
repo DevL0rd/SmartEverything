@@ -161,7 +161,12 @@ describe('OAuth tokens', () => {
 
 describe('personal MCP tokens', () => {
   it('records when a token was last used and announces the change', () => {
-    const created = opened.store.oauth.createPersonalToken('Laptop', 'b'.repeat(64));
+    const created = opened.store.oauth.createPersonalToken({
+      name: 'Laptop',
+      tokenHash: 'b'.repeat(64),
+      localOnly: false,
+      access: 'control',
+    });
     expect(created.last_used_at).toBeNull();
     clock += 5000;
     const used = opened.store.oauth.personalTokenUsed(created.id);

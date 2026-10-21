@@ -206,7 +206,7 @@ describe('camera and machine effects', () => {
     const { perform, seen } = rig();
     await perform('phone.action', { phone: 'ph-1', action: { type: 'set_dnd', on: true } });
     expect(seen.toolCalls[0]).toMatchObject({
-      name: 'call_operation',
+      name: 'operation_call',
       args: {
         operation: 'runPhoneAction',
         arguments: { deviceId: 'ph-1', body: { type: 'set_dnd', on: true } },
@@ -246,7 +246,7 @@ describe('health, signal and webhook effects', () => {
       ok: true,
     });
     expect(seen.toolCalls[0]).toMatchObject({
-      name: 'press_remote_button',
+      name: 'remote_press',
       args: { remote: 'TV', button: 'Power' },
     });
     expect(await perform('device.ir_send', {})).toMatchObject({ ok: false, class: 'Invalid' });

@@ -66,7 +66,7 @@ export class Notifier {
           this.ports.tools,
           {
             profileId: request.asProfileId,
-            tool: 'notify_person',
+            tool: 'person_notify',
             args: { personId, text, urgent: request.priority === 'urgent' },
           },
           origin,
@@ -85,7 +85,7 @@ export class Notifier {
       this.ports.tools,
       {
         profileId: request.asProfileId,
-        tool: 'speak',
+        tool: 'voice_speak',
         args: { target: JSON_VALUE.parse(request.target), text: request.text },
       },
       origin,

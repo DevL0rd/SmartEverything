@@ -20,8 +20,6 @@ import { HarnessRecoveryRepository } from '../harness-recovery';
 import { HarnessSkillUpdatesRepository } from '../harness-skill-updates';
 import { ImageOperationsRepository } from '../image-operations';
 import { NativeCommandOperationsRepository } from '../native-command-operations';
-import { PreviewProjectsRepository } from '../preview-projects';
-import { PreviewErrorRulesRepository } from '../preview-error-rules';
 
 export const assistantRepositories = (context: StoreContext) =>
   ({
@@ -32,8 +30,6 @@ export const assistantRepositories = (context: StoreContext) =>
     assistantSearch: new AssistantMessageSearchRepository(context),
     aiChats: new AiChatsRepository(context),
     aiProjects: new AiProjectsRepository(context),
-    previewProjects: new PreviewProjectsRepository(context),
-    previewErrorRules: new PreviewErrorRulesRepository(context),
     aiProvider: new AiProviderRepository(context),
     aiRuntimeProvider: new AiRuntimeProviderRepository(context),
     aiAgentRuns: new AiAgentRunsRepository(context),

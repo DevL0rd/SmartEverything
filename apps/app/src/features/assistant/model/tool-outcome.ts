@@ -144,7 +144,7 @@ export function toolResultLine(tool: ChatTimelineTool, live: boolean): string | 
   if (state === 'unknown') return 'The result could not be confirmed.';
   if (state === 'running') return null;
   if (tool.image_operation_id !== null)
-    return 'Image request accepted. Its progress appears below.';
+    return 'The image request finished. Its result appears below.';
   const result = recordsOf(tool)
     .map((record) => reportedLine(record, ['summary', 'line', 'message']) ?? countLine(record))
     .find((line) => line !== null);

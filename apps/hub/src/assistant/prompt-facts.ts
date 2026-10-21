@@ -10,7 +10,7 @@ import { interruptionNote } from './interruption';
 import { senderNote } from './sender-note';
 
 function boardsOf(store: Store, tools: ToolHub | null): readonly string[] {
-  return tools?.list().some((tool) => tool.name === 'show_widgets') === true
+  return tools?.list().some((tool) => tool.name === 'widget_show') === true
     ? boardTypes(store)
     : [];
 }

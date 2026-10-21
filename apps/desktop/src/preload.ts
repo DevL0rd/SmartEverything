@@ -9,7 +9,7 @@ import {
 } from '@smarteverything/domain';
 import { htmlPreview } from './html-preview/preload';
 import * as hubPreload from './hub-network/preload';
-import { browserDiagnostics } from './browser-diagnostics-preload';
+import { browserPage } from './browser-page-preload';
 import { relayOverlayLevels, type MessageTarget } from './overlay/levels-relay';
 import { OVERLAY_LEVELS_PORT_CHANNEL } from './overlay/overlay-messages';
 import type {
@@ -163,7 +163,7 @@ const invokeForBoolean = (
 ): Promise<boolean> => invokeFor(channel, z.boolean(), request);
 
 const browser: DesktopBrowser = {
-  diagnostics: browserDiagnostics,
+  page: browserPage,
   command: async (command) => {
     await electron.ipcRenderer.invoke('desktop:browser', command);
   },

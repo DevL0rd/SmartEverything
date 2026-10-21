@@ -128,6 +128,6 @@ describe('the prompt a chat on another computer receives', () => {
     const context = HARNESS_CENTRAL_CONTEXT.parse(await send({ operation: 'context', claim }));
 
     expect(`${context.system}\n${context.turn}`).not.toContain('Primary machine folder');
-    expect(`${context.system}\n${context.turn}`).not.toContain('read_project_files');
+    expect(`${context.system}\n${context.turn}`).not.toContain('project_read');
   });
 });

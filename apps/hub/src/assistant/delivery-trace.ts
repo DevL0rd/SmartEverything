@@ -1,4 +1,4 @@
-import type { Logger } from '@smarteverything/logging';
+import { describeFailure, type Logger } from '@smarteverything/logging';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 
 export function eventFields(event: StoredEvent): Record<string, unknown> {
@@ -46,13 +46,12 @@ export class DeliveryTrace {
     });
   }
 
-  failed(attempt: number, maxAttempts: number, cause: unknown, reason: string): void {
+  failed(attempt: number, cause: unknown, reason: string): void {
     this.log.warn('assistant.delivery_failed', {
       ...this.fields,
       attempt,
-      maxAttempts,
       reason,
-      cause: cause instanceof Error ? cause.name : typeof cause,
+      cause: describeFailure(cause).name,
       durationMs: this.elapsed(),
     });
   }
@@ -65,7 +64,7 @@ export class DeliveryTrace {
     }));
   }
 
-  abandoned(attempts: number, reason: string | undefined): void {
-    this.log.error('assistant.delivery_abandoned', undefined, { ...this.fields, attempts, reason });
+  stopped(): void {
+    this.log.info('assistant.delivery_stopped', this.fields);
   }
 }

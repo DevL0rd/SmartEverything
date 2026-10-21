@@ -9,6 +9,8 @@ const UNOWNED_SESSION =
   'Legacy session IDs have no managed ownership; use controlClaudeCliSession with the owned chat, computer, session and job.';
 const UNBOUND_PROMPT =
   'Legacy prompts have no managed chat binding; use answerClaudeCliPrompt for the exact owned current CLI request.';
+const CLI_TOOL =
+  'claude_control starts, steers and answers Claude CLI chats and fills in the operation, session and job ids itself.';
 const CONTROLLER_REGISTRATION =
   'Desktop controller registration is replaced by owned CLI sessions and native provider execution.';
 const CONTROLLER_REMOVAL =
@@ -21,6 +23,9 @@ export const MCP_UNAVAILABLE_OPERATIONS: Readonly<Partial<Record<EndpointName, s
   controlComputerClaudeSession: UNOWNED_SESSION,
   answerClaudePrompt: UNBOUND_PROMPT,
   answerComputerClaudePrompt: UNBOUND_PROMPT,
+  startClaudeCliSession: CLI_TOOL,
+  controlClaudeCliSession: CLI_TOOL,
+  answerClaudeCliPrompt: CLI_TOOL,
   registerClaudeController: CONTROLLER_REGISTRATION,
   registerComputerClaudeController: CONTROLLER_REGISTRATION,
   removeClaudeController: CONTROLLER_REMOVAL,
@@ -32,10 +37,6 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'Audio audition is an explicit person-operated Play control in voice settings.',
   updateComputerNativeMcpPolicy:
     'Grants native computer/runtime tool access; only a person changes this policy in the app.',
-  createAiHtmlPreviewLease:
-    'Issues an isolated document browser credential to the current paired viewer; assistants publish content without reading viewer credentials.',
-  createAiPreviewLease:
-    'Issues a single-publication browser credential to the current paired viewer; assistants read and revoke publications through the normal operations.',
   listAiChatHarnessCommands:
     'Discovers the person’s native slash-command surface; AI tools use their own live capability catalogue.',
   controlAiHarnessSubscription:
@@ -70,51 +71,50 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
   decideMcpConsent: 'Allows or denies an assistant; consent stays with the person.',
   createHealthSource:
     'A phone registers itself to upload Health Connect data with its own pairing.',
-  ingestHealth: 'Phone upload protocol (the phone’s pairing); use log_health to add data.',
+  ingestHealth: 'Phone upload protocol (the phone’s pairing); use health_edit to add data.',
   readHealthOutbox: 'Phone delivery protocol (the phone’s pairing) for writing to Health Connect.',
   ackHealthOutbox: 'Phone delivery protocol (the phone’s pairing) for writing to Health Connect.',
   readBleWatch: 'The phone’s Bluetooth listener asks what to listen for.',
   reportClientFailures:
     'An app reports its own redacted errors for diagnosis; there is nothing for an assistant to do with it.',
   watchListeningLevel:
-    'A live loudness meter for the person looking at the Listening page; assistants read read_listening.',
+    'A live loudness meter for the person looking at the Listening page; assistants read listening_read.',
   watchWakeTest:
-    'A live view for the person testing the wake word; assistants read read_listening and change the name and aliases with update_settings (action assistant).',
+    'A live view for the person testing the wake word; assistants read listening_read and change the name and aliases with settings_edit (action assistant).',
   readPhoneListeningConfig:
-    'The phone’s own ear asks how to listen; assistants read and change it with read_listening and edit_listening.',
+    'The phone’s own ear asks how to listen; assistants read and change it with listening_read and listening_edit.',
   claimPhoneWake:
     'The phone’s own ear claims a wake it heard; assistants have no ears to claim with.',
   reportPhoneListening:
-    'The phone’s own ear uploads speech and its state; assistants read read_listening and read_transcripts.',
-  reportPhone: 'A phone reports what it sees about itself; use read_phone to read it.',
-  answerPhoneAction: 'A phone answers an action; use run_phone_action to act.',
+    'The phone’s own ear uploads speech and its state; assistants read listening_read and transcript_read.',
+  reportPhone: 'A phone reports what it sees about itself; use phone_read to read it.',
+  answerPhoneAction: 'A phone answers an action; use phone_control to act.',
   answerAppView: 'An app answers a request to show something.',
   uploadPhoneIcon: 'A phone uploads the icon pictures of its apps for the app to show.',
-  readPhoneIcon: 'App icon pictures are shown by the app; read_phone detail lists the apps.',
+  readPhoneIcon: 'App icon pictures are shown by the app; phone_read detail lists the apps.',
   relayBleAdverts: 'The phone’s Bluetooth listener forwards raw radio adverts.',
   readPhoneWatches:
     'Hands a phone the keys it needs to connect to its watches; keys stay on phones.',
   readAiSpeech:
     'A phone fetches speech the AI sent it by push; use speak to make the AI say something.',
   readWatchData:
-    'The phone connected to a watch fetches what it sends the watch; use get_weather and list_people for the same facts.',
+    'The phone connected to a watch fetches what it sends the watch; use weather_read and person_read for the same facts.',
   reportWatchState: 'The phone connected to a watch reports what it sees.',
   takeOverWatchBridge:
     'Chooses which phone’s Bluetooth connects to a watch; only the person on that phone decides.',
-  answerWatchAction:
-    'The phone connected to a watch answers an action; use run_watch_action to act.',
+  answerWatchAction: 'The phone connected to a watch answers an action; use watch_control to act.',
   saveWatchRecords:
-    'The phone connected to a watch uploads what it read; use log_health to add data.',
+    'The phone connected to a watch uploads what it read; use health_edit to add data.',
   readPhoneTreadmills:
     'Hands a phone the Bluetooth plan for the treadmills it may hold; the link stays on phones.',
   reportTreadmillFrames: 'The phone holding a treadmill reports the frames it received.',
   answerTreadmillAction:
-    'The phone holding a treadmill answers a belt command; use control_devices to command the belt.',
+    'The phone holding a treadmill answers a belt command; use device_control to command the belt.',
   readPhoneBrushes:
     'Hands a phone the Bluetooth plan for the toothbrushes it may hold; the link stays on phones.',
   reportBrushFrames: 'The phone holding a toothbrush reports the frames it received.',
   answerBrushAction:
-    'The phone holding a toothbrush answers a command; use control_devices to change the mode or feedback switches.',
+    'The phone holding a toothbrush answers a command; use device_control to change the mode or feedback switches.',
   readPhoneBottles:
     'Hands a phone the Bluetooth plan for the water bottles it syncs; the link stays on phones.',
   uploadBottleSync:
@@ -126,11 +126,11 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'UV-C needs a person at the bottle holding the Clean button; an assistant may stop a clean with actBottle uv_stop.',
   savePushTarget: 'A phone registers its own Firebase token.',
   removePushTarget: 'A phone forgets its own Firebase token.',
-  offerCamera: 'Live video needs a WebRTC peer; use camera_pictures to see a camera.',
+  offerCamera: 'Live video needs a WebRTC peer; use camera_read to see a camera.',
   talkCamera: 'Sends microphone audio to a camera speaker; only the person talks through cameras.',
-  cameraStream: 'Live video over a WebSocket; use camera_pictures to see a camera.',
-  cameraSnapshot: 'Returns a signed link for a browser; camera_pictures returns the image.',
-  recordingLinks: 'Returns signed links for a browser; camera_pictures returns saved images.',
+  cameraStream: 'Live video over a WebSocket; use camera_read to see a camera.',
+  cameraSnapshot: 'Returns a signed link for a browser; camera_read returns the image.',
+  recordingLinks: 'Returns signed links for a browser; camera_read returns saved images.',
   importGeminiKey:
     'Copies a credential between apps on the computer; the person does it in Settings.',
   setGeminiKey: 'Stores a credential for the voice assistant; the person enters it in Settings.',
@@ -141,7 +141,7 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
   updateReachSettings:
     'The person’s own rules for how the AI may reach them; only they change them in Settings.',
   assistantAttachmentLinks:
-    'Returns signed links for a browser; read_chats view attachment returns the file.',
+    'Returns signed links for a browser; chat_read view attachment returns the file.',
   updateComputerScopes:
     'Decides what SmartEverything and the AI may do on a computer; only the person changes it in the app.',
   captureComputer:
@@ -305,25 +305,34 @@ export function isHumanOnlyOperation(name: EndpointName): boolean {
 const MCP_CORE_OPERATIONS: Readonly<Partial<Record<McpCoreToolName, EndpointName>>> = {
   list_device_groups: 'listDeviceGroups',
   set_ai_defaults: 'setOpenRouterDefaults',
-  get_computer: 'readComputer',
+  computer_read: 'readComputer',
   get_computer_audio: 'readComputerAudio',
   get_computer_displays: 'readComputerDisplays',
   get_computer_system: 'readComputerSystem',
-  get_computer_usb: 'readComputerSystem',
   get_computer_windows: 'readComputerWindows',
   get_computer_tiling: 'readComputerTiling',
   get_computer_services: 'readComputerServices',
-  get_computer_startup: 'readComputerStartup',
-  list_processes: 'listComputerProcesses',
-  end_process: 'signalComputerProcess',
-  set_computer_audio: 'changeComputerAudio',
-  set_computer_display: 'changeComputerDisplay',
-  set_computer_system: 'changeComputerSystem',
-  use_computer: 'inputComputer',
+  process_read: 'listComputerProcesses',
+  process_control: 'signalComputerProcess',
+  computer_audio_set: 'changeComputerAudio',
+  computer_display_set: 'changeComputerDisplay',
+  computer_system_set: 'changeComputerSystem',
+  computer_use: 'inputComputer',
   focus_window: 'changeComputerWindow',
   minimise_window: 'changeComputerWindow',
   close_window: 'changeComputerWindow',
-  edit_computer_files: 'writeComputerFiles',
+  file_edit: 'writeComputerFiles',
+  list_claude_cli_sessions: 'listClaudeCliSessions',
+  read_claude_cli_session: 'readClaudeCliSession',
+  read_claude_cli_history: 'readClaudeCliHistory',
+  read_claude_cli_operation: 'readClaudeCliOperation',
+  list_claude_cli_prompts: 'readClaudeCliPrompts',
+  start_claude_session: 'startClaudeCliSession',
+  send_claude_message: 'controlClaudeCliSession',
+  stop_claude_session: 'controlClaudeCliSession',
+  close_claude_session: 'controlClaudeCliSession',
+  configure_claude_session: 'controlClaudeCliSession',
+  answer_claude_prompt: 'answerClaudeCliPrompt',
 };
 
 const OPERATION_OF_TOOL: ReadonlyMap<string, EndpointName> = new Map<string, EndpointName>([
@@ -353,11 +362,13 @@ export interface McpAnnotationHints {
 export interface McpOperationTraits {
   readonly hints?: McpAnnotationHints;
   readonly answers?: true;
-  readonly returnsImage?: true;
+  readonly callIdentity?: string;
+  readonly householdWide?: true;
 }
 
 const READS_BY_POST: McpOperationTraits = { hints: { readOnlyHint: true, idempotentHint: true } };
 const ANSWERS: McpOperationTraits = { answers: true };
+const REACHES_OUT: McpOperationTraits = { hints: { openWorldHint: true } };
 const CLAUDE_TURN: McpOperationTraits = {
   hints: { idempotentHint: true, destructiveHint: true, openWorldHint: true },
 };
@@ -366,30 +377,35 @@ const MCP_OPERATION_TRAITS: Readonly<Partial<Record<EndpointName, McpOperationTr
   searchAiChatReferences: READS_BY_POST,
   readAiProjectFiles: READS_BY_POST,
   readEmbeddedBrowser: READS_BY_POST,
-  readPreviewLogs: READS_BY_POST,
-  searchPreviewLogs: READS_BY_POST,
-  resolveImageInput: READS_BY_POST,
   prepareComputerDownload: READS_BY_POST,
-  waitForImages: READS_BY_POST,
-  capturePreviewViewport: { ...READS_BY_POST, returnsImage: true },
   writeAiProjectFiles: { hints: { idempotentHint: true, destructiveHint: true } },
   removeAiProjectFiles: { hints: { destructiveHint: true, idempotentHint: true } },
-  clearPreviewWebsiteData: {
-    hints: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
-  },
   startClaudeCliSession: CLAUDE_TURN,
   controlClaudeCliSession: CLAUDE_TURN,
   answerClaudeCliPrompt: { hints: { destructiveHint: true, openWorldHint: true } },
-  startImageOperation: { hints: { openWorldHint: true } },
+  generateImageOperation: { hints: { openWorldHint: true }, callIdentity: 'operationId' },
+  editImageOperation: { hints: { openWorldHint: true }, callIdentity: 'operationId' },
   cancelImageOperation: { hints: { idempotentHint: true, openWorldHint: true } },
   listImageEndpoints: { hints: { openWorldHint: true } },
   showInApp: { answers: true, hints: { idempotentHint: true } },
+  createProfile: { householdWide: true },
+  updateHome: { householdWide: true },
+  runSchedule: REACHES_OUT,
+  startProgramRun: REACHES_OUT,
+  refreshWeather: { hints: { idempotentHint: true, openWorldHint: true } },
+  refreshExchangeRates: { hints: { idempotentHint: true, openWorldHint: true } },
+  setAutomationSecret: { hints: { idempotentHint: true } },
   askAiChat: ANSWERS,
   runAiSubagent: ANSWERS,
   callPluginTool: ANSWERS,
-  editEmbeddedBrowser: ANSWERS,
-  publishAiHtmlPreview: ANSWERS,
-  publishAiProjectPreview: ANSWERS,
+  editEmbeddedBrowser: { ...ANSWERS, hints: { openWorldHint: true } },
+  closeComputerApp: { hints: { destructiveHint: true } },
+  runPhoneAction: REACHES_OUT,
+  runWatchAction: REACHES_OUT,
+  speak: REACHES_OUT,
+  callPerson: REACHES_OUT,
+  startConversation: REACHES_OUT,
+  notifyPerson: REACHES_OUT,
 };
 
 export function mcpOperationTraits(name: EndpointName): McpOperationTraits {

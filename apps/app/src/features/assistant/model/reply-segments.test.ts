@@ -36,7 +36,7 @@ function giantTurn(): readonly ChatTimelinePart[] {
     ['read', 1800],
     ['write', 12100],
     ['job_output', 700],
-    ['call_tool', 4000],
+    ['tool_call', 4000],
   ] as const;
   for (let turn = 0; turn < 98; turn += 1) {
     const text = turn === 40 ? paragraphs(34) : `Step ${String(turn)} ${'detail '.repeat(25)}`;

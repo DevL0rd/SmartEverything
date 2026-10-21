@@ -90,7 +90,8 @@ describe('outbox flush', () => {
     expect(mocks.send).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a failed message with its reason and holds later messages of that chat only', async () => {
+  it('keeps a failed message waiting, holds later messages of that chat only and retries every 2 seconds until it is sent', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const { store, outbox } = await boot();
     await store.bindAiDraftsProfile(PROFILE);
     mocks.send.mockImplementationOnce(() => Promise.reject(new Error('hub said no')));
@@ -99,13 +100,31 @@ describe('outbox flush', () => {
     await queued(outbox, CHAT_TWO, 'other chat', 'id-3');
     await outbox.flushOutbox();
     expect(sentTexts()).toEqual(['first', 'other chat']);
-    expect(store.aiDrafts.get().outbox.map((m) => [m.id, m.state, m.reason])).toEqual([
-      ['id-1', 'failed', 'hub said no'],
-      ['id-2', 'waiting', null],
-    ]);
-    await outbox.retryPending('id-1');
+    expect(store.aiDrafts.get().outbox.map((m) => m.id)).toEqual(['id-1', 'id-2']);
+    expect(mocks.notify).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(outbox.OUTBOX_RETRY_MS - 1);
+    expect(sentTexts()).toEqual(['first', 'other chat']);
+    await vi.advanceTimersByTimeAsync(1);
     expect(sentTexts()).toEqual(['first', 'other chat', 'first', 'second']);
     expect(store.aiDrafts.get().outbox).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('queues an online send that fails and keeps retrying until it is cancelled', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { store, outbox } = await boot();
+    await store.bindAiDraftsProfile(PROFILE);
+    mocks.send.mockRejectedValue(new Error('offline'));
+    expect(await outbox.outboxSender(CHAT_ONE, true)('hello', [], [], 'id-1')).toBe(true);
+    expect(store.aiDrafts.get().outbox.map((m) => m.id)).toEqual(['id-1']);
+    await vi.advanceTimersByTimeAsync(outbox.OUTBOX_RETRY_MS * 3);
+    expect(mocks.send.mock.calls.length).toBeGreaterThanOrEqual(4);
+    outbox.cancelPending('id-1');
+    const calls = mocks.send.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(outbox.OUTBOX_RETRY_MS * 5);
+    expect(mocks.send.mock.calls.length).toBe(calls);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
   });
 
   it('resends after a restart with the same client message id', async () => {

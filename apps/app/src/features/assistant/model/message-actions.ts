@@ -5,9 +5,7 @@ export type ActionId =
   | 'copy'
   | 'copy-plain'
   | 'quote'
-  | 'regenerate'
   | 'edit'
-  | 'retry'
   | 'branch'
   | 'select'
   | 'share'
@@ -26,8 +24,6 @@ export interface ActionSpec {
 export interface ActionContext {
   readonly speaker: MessageSpeaker['kind'];
   readonly hasText: boolean;
-  readonly canRegenerate: boolean;
-  readonly canRetry: boolean;
   readonly canEdit: boolean;
   readonly pointer: boolean;
 }
@@ -50,9 +46,7 @@ const SPECS = {
   copy: spec('copy', 'Copy', 'copy', 'C'),
   'copy-plain': spec('copy-plain', 'Copy as plain text', 'fileText', '⇧C'),
   quote: spec('quote', 'Quote', 'reply', 'Q'),
-  regenerate: spec('regenerate', 'Regenerate', 'refresh', 'R'),
   edit: spec('edit', 'Edit', 'pencil', 'E'),
-  retry: spec('retry', 'Try again', 'refresh', 'R'),
   branch: spec('branch', 'Branch from here', 'gitBranch', 'B'),
   select: spec('select', 'Select text', 'textCursor'),
   share: spec('share', 'Share…', 'share'),
@@ -66,15 +60,12 @@ function pick(...ids: readonly (ActionId | false)[]): readonly ActionSpec[] {
 }
 
 function aiQuick(context: ActionContext): readonly ActionSpec[] {
-  const { hasText, canRegenerate } = context;
-  return pick(hasText && 'copy', 'quote', canRegenerate && 'regenerate', 'branch');
+  return pick(context.hasText && 'copy', 'quote', 'branch');
 }
 
 function ownQuick(context: ActionContext): readonly ActionSpec[] {
-  const { hasText, canRetry, canEdit, pointer } = context;
-  return canRetry
-    ? pick('retry', canEdit && 'edit', hasText && 'copy', 'quote', pointer && !canEdit && 'branch')
-    : pick(hasText && 'copy', 'quote', canEdit && 'edit', 'branch');
+  const { hasText, canEdit } = context;
+  return pick(hasText && 'copy', 'quote', canEdit && 'edit', 'branch');
 }
 
 function quickOf(context: ActionContext): readonly ActionSpec[] {

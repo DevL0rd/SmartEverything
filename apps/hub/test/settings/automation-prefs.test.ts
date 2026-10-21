@@ -43,11 +43,11 @@ function tool(name: string, args: Record<string, unknown>): Promise<ToolResult> 
 }
 
 async function listed(): Promise<z.infer<typeof LISTED>['preferences']> {
-  return LISTED.parse(structured(await tool('get_settings', { view: 'app' }))).preferences;
+  return LISTED.parse(structured(await tool('settings_read', { view: 'app' }))).preferences;
 }
 
 describe('automation preferences through the AI settings tools', () => {
-  it('get_settings lists the three per-person entries with their defaults', async () => {
+  it('settings_read lists the three per-person entries with their defaults', async () => {
     const preferences = await listed();
     for (const key of KEYS) {
       const entry = preferences.find((candidate) => candidate.key === key);
@@ -66,24 +66,24 @@ describe('automation preferences through the AI settings tools', () => {
     });
   });
 
-  it('set_preference writes each entry for the person and get_settings reads it back', async () => {
+  it('set_preference writes each entry for the person and settings_read reads it back', async () => {
     const view = { phone: 'outline', tablet: 'auto', desktop: 'canvas' };
     structured(
-      await tool('update_settings', {
+      await tool('settings_edit', {
         action: 'preference',
         preference: 'automations_editor',
         value: { view },
       }),
     );
     structured(
-      await tool('update_settings', {
+      await tool('settings_edit', {
         action: 'preference',
         preference: 'automations_palette',
         value: { favourites: ['flow.if'] },
       }),
     );
     structured(
-      await tool('update_settings', {
+      await tool('settings_edit', {
         action: 'preference',
         preference: 'automations_breakpoints',
         value: { byAutomation: { [AUTOMATION]: [NODE] } },
@@ -103,7 +103,7 @@ describe('automation preferences through the AI settings tools', () => {
   });
 
   it('refuses a value outside the schema and keeps what was stored', async () => {
-    const refused = await tool('update_settings', {
+    const refused = await tool('settings_edit', {
       action: 'preference',
       preference: 'automations_palette',
       value: { recents: ['Not A Kind'] },

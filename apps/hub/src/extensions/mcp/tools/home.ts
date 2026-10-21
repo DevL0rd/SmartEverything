@@ -89,18 +89,21 @@ export const HOME_TOOLS: readonly Tool[] = [
     }),
   }),
   defineTool({
-    name: 'sync_provider',
+    name: 'provider_sync',
     input: z.strictObject({
       provider: z
         .enum(PROVIDERS)
-        .nullable()
-        .default(null)
-        .describe('One provider, or null for all'),
+        .optional()
+        .describe('One provider; every provider when left out (home_read lists them)'),
     }),
     annotations: { ...WRITES, idempotentHint: true, openWorldHint: true },
     run: async (context, input) => {
       const outcome = await sendAndWait(context, [
-        { device_id: null, capability: 'hub:discover', value: { provider: input.provider } },
+        {
+          device_id: null,
+          capability: 'hub:discover',
+          value: { provider: input.provider ?? null },
+        },
       ]);
       return { structured: reported(context, outcome) };
     },

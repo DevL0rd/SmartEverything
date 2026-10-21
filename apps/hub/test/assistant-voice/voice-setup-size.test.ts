@@ -45,7 +45,7 @@ function setupOf(hosted: boolean): Setup {
 
 function overBudget(kind: string, setup: Setup, budget: number): string {
   const total = setup.systemTokens + setup.declarationTokens;
-  return `The ${kind} Live setup is about ${String(total)} tokens (system ${String(setup.systemTokens)}, tool declarations ${String(setup.declarationTokens)}), over the ${String(budget)} budget. Every turn of every call pays for it again: move rarely used tools behind call_tool, shorten schemas or trim the guide instead of raising the budget.`;
+  return `The ${kind} Live setup is about ${String(total)} tokens (system ${String(setup.systemTokens)}, tool declarations ${String(setup.declarationTokens)}), over the ${String(budget)} budget. Every turn of every call pays for it again: move rarely used tools behind tool_call, shorten schemas or trim the guide instead of raising the budget.`;
 }
 
 describe('the Live setup size', () => {
@@ -66,7 +66,7 @@ describe('the Live setup size', () => {
   });
 });
 
-describe('the tools a call reaches through call_tool', () => {
+describe('the tools a call reaches through tool_call', () => {
   const tools = SE_TOOLS;
 
   it('are not declared in a call but stay declared for text chat', () => {

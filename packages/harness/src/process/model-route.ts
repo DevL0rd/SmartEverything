@@ -1,4 +1,4 @@
-import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm';
+import { LlmAdapter, LlmError, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import type {
   GenerateOptions,
   LlmModelInfo,
@@ -11,7 +11,7 @@ import type {
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai';
 import type { ResolvedPiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai';
 import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter';
-import type { Provider, Model } from '@earendil-works/pi-ai';
+import type { Provider, Model, ModelThinkingLevel } from '@earendil-works/pi-ai';
 import type { AiModelRoute } from '@smarteverything/domain';
 import type { SubscriptionAttachmentOptions } from '../providers/pi-delegate';
 import {
@@ -45,13 +45,13 @@ export class MeteredRouteAdapter extends LlmAdapter {
     this.check(provider);
     return this.delegate().listModels(provider);
   }
-  override resolveModel(
+  override async resolveModel(
     provider: string,
     model: string,
     signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
     this.check(provider);
-    return this.delegate().resolveModel(provider, model, signal);
+    return hubEfforts(await this.delegate().resolveModel(provider, model, signal));
   }
   override async prepareCall(
     provider: string,
@@ -73,7 +73,10 @@ export class MeteredRouteAdapter extends LlmAdapter {
       retryAfter = retryAfterMs(response.headers.get('retry-after'));
       return response;
     };
-    yield* withTransientFailures(this.delegate(meteredFetch).stream(options), () => retryAfter);
+    yield* withTransientFailures(
+      this.delegate(meteredFetch).stream(harnessEffort(options)),
+      () => retryAfter,
+    );
   }
   private check(provider: string): void {
     if (
@@ -146,7 +149,51 @@ export class MeteredRouteAdapter extends LlmAdapter {
     return provider;
   }
 }
+const HUB_NO_EFFORT = 'none';
+const HARNESS_NO_EFFORT = 'off';
+function hubEffortId(id: ReasoningEffortId): ReasoningEffortId {
+  return id === HARNESS_NO_EFFORT ? ReasoningEffortId(HUB_NO_EFFORT) : id;
+}
+function hubEfforts(info: LlmResolvedModelInfo): LlmResolvedModelInfo {
+  const { reasoning } = info;
+  if (reasoning === undefined) return info;
+  return {
+    ...info,
+    reasoning: {
+      ...reasoning,
+      efforts: reasoning.efforts.map((effort) => ({ ...effort, id: hubEffortId(effort.id) })),
+      ...(reasoning.defaultEffort === undefined
+        ? {}
+        : { defaultEffort: hubEffortId(reasoning.defaultEffort) }),
+    },
+  };
+}
+function harnessEffort(options: GenerateOptions): GenerateOptions {
+  if (options.reasoningEffort !== HUB_NO_EFFORT) return options;
+  return { ...options, reasoningEffort: ReasoningEffortId(HARNESS_NO_EFFORT) };
+}
 const UNKNOWN_CONTEXT_TOKENS = 128_000;
+const THINKING_LEVELS: readonly ModelThinkingLevel[] = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
+type ThinkingLevels = Partial<Record<ModelThinkingLevel, string | null>>;
+function thinkingLevels(efforts: readonly string[]): ThinkingLevels {
+  const offered = new Set(
+    efforts.map((effort) => (effort === HUB_NO_EFFORT ? HARNESS_NO_EFFORT : effort)),
+  );
+  const levels: ThinkingLevels = {};
+  for (const level of THINKING_LEVELS) {
+    if (!offered.has(level)) levels[level] = null;
+    else if (level !== 'off') levels[level] = level;
+  }
+  return levels;
+}
 function routeModels(route: AiModelRoute): readonly Model<'openai-completions'>[] {
   const catalogue = openrouterProvider().getModels();
   return route.models.map((model): Model<'openai-completions'> => {
@@ -160,6 +207,9 @@ function routeModels(route: AiModelRoute): readonly Model<'openai-completions'>[
       baseUrl: 'https://openrouter.ai/api/v1',
       input: capabilities.input_modalities.includes('image') ? ['text', 'image'] : ['text'],
       reasoning: capabilities.reasoning,
+      ...(capabilities.reasoning && capabilities.efforts.length > 0
+        ? { thinkingLevelMap: thinkingLevels(capabilities.efforts) }
+        : {}),
       contextWindow: capabilities.context_tokens ?? known?.contextWindow ?? UNKNOWN_CONTEXT_TOKENS,
       maxTokens: capabilities.max_output_tokens ?? known?.maxTokens ?? 0,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

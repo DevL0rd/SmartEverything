@@ -1,5 +1,4 @@
 import {
-  isInterruption,
   type AiChatRow,
   type AiEdit,
   type AiRetryFrom,
@@ -28,22 +27,14 @@ interface MessageTarget {
 export class MessageEdits {
   constructor(private readonly ports: MessageEditPorts) {}
 
-  async retry(
+  retry(
     owner: ChatOwner,
     target: MessageTarget,
     from: AiRetryFrom,
     actor?: ReplayActor,
   ): Promise<AssistantMessageRow> {
-    const { requests, submissions, store } = this.ports;
     const chat = mutableChat(this.ports.chats, this.ports.engines, owner, target.chatId);
-    const message = store.assistantChat.message(target.messageId);
-    if (message.chat_id === chat.id && message.state === from) {
-      if (from === 'failed' && isInterruption(message.reason_code))
-        return requests.resume(chat, message.id, replayClient(actor));
-      await submissions.replay(actor, chat, message);
-      await this.rewriteAsked(owner, chat, message);
-    }
-    return requests.retry(chat, target.messageId, from, replayClient(actor));
+    return this.ports.requests.retry(chat, target.messageId, from, replayClient(actor));
   }
 
   async edit(
@@ -65,7 +56,7 @@ export class MessageEdits {
     owner: ChatOwner,
     chat: AiChatRow,
     message: AssistantMessageRow,
-    edit?: AiEdit,
+    edit: AiEdit,
   ): Promise<void> {
     this.ports.requests.assertReplay(chat, message.id, edit);
     const engine = this.ports.engines.forMutation(chat, owner.role);

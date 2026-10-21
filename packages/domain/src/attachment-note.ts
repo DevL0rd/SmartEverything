@@ -31,7 +31,7 @@ export function attachmentNote(
   const label = kind === 'image' ? 'Description' : 'Transcript';
   const body =
     text !== null ? ` ${label}: ${text}` : options.pending === true ? ` ${label} pending.` : '';
-  return `${lead}${body} Use read_chats view attachment with id ${file.id} to look at the original again if you need detail.`;
+  return `${lead}${body} Use chat_read view attachment with id ${file.id} to look at the original again if you need detail.`;
 }
 
 export interface MediaPlan {

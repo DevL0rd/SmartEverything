@@ -4,6 +4,7 @@ import {
   BrowserPolicyError,
   NATIVE_PAGE_OPEN,
   NATIVE_HTML_SCHEME,
+  encodedPagePath,
   type NativeHtmlProjection,
   type BrowserTarget,
 } from '@smarteverything/domain';
@@ -33,18 +34,13 @@ export class DesktopHtmlPreviews {
     this.port.authorize(input.scopeId, input.authorization, owner);
     const alias = createHash('sha256')
       .update(
-        JSON.stringify([
-          input.binding.canonicalOrigin,
-          input.page.chatId,
-          input.page.publicationId,
-          input.page.profileId,
-        ]),
+        JSON.stringify([input.binding.canonicalOrigin, input.page.chatId]),
       )
       .digest('hex');
-    const url = `${NATIVE_HTML_SCHEME}://${alias}/`;
+    const url = `${NATIVE_HTML_SCHEME}://${alias}${encodedPagePath(input.page.path)}`;
     const id = randomBytes(32).toString('hex');
     if (this.projections.size >= 16)
-      throw new BrowserPolicyError('Close another HTML preview first.');
+      throw new BrowserPolicyError('Close another chat page first.');
     this.retainAlias(alias, input, owner, id);
     const controller = new AbortController();
     this.projections.set(id, {
@@ -57,7 +53,7 @@ export class DesktopHtmlPreviews {
       signal: controller.signal,
       contents: new Set(),
     });
-    return Promise.resolve({ id, url, expiresAt: null, project: true });
+    return Promise.resolve({ id, url });
   }
   private retainAlias(
     alias: string,
@@ -87,39 +83,37 @@ export class DesktopHtmlPreviews {
   }
   attach(
     owner: number,
-    target: Extract<BrowserTarget, { kind: 'native-html' }>,
+    target: Extract<BrowserTarget, { kind: 'project' }>,
     isolated: Session,
     contents: WebContents,
   ): void {
     const entry = this.require(owner, target.projectionId);
     if (
       entry.url !== target.url ||
-      target.project !== true ||
-      target.profileId !== entry.input.page.profileId ||
       JSON.stringify(target.page) !== JSON.stringify(entry.input.page)
     )
       throw new BrowserPolicyError('HTML target differs from its native page.');
-    this.configureSession(isolated, entry.input.page.profileId);
+    this.configureSession(isolated, entry.input.page.chatId);
     entry.contents.add(contents);
     contents.once('destroyed', () => {
       entry.contents.delete(contents);
       if (entry.contents.size === 0) this.release(owner, entry.id);
     });
   }
-  private configureSession(isolated: Session, profileId: string): void {
+  private configureSession(isolated: Session, chatId: string): void {
     if (this.sessions.has(isolated)) return;
     isolated.protocol.handle(NATIVE_HTML_SCHEME, (request) => {
       const url = new URL(request.url);
       const entry = [...this.projections.values()].find(
         (candidate) =>
           candidate.alias === url.hostname &&
-          candidate.input.page.profileId === profileId &&
+          candidate.input.page.chatId === chatId &&
           candidate.contents.size > 0,
       );
       if (
         entry === undefined ||
         entry.signal.aborted ||
-        entry.input.page.profileId !== profileId ||
+        entry.input.page.chatId !== chatId ||
         url.protocol !== `${NATIVE_HTML_SCHEME}:` ||
         url.port !== '' ||
         url.username !== '' ||

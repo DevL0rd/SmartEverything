@@ -28,6 +28,7 @@ export interface AdaptivePanelProps {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly label: string;
+  readonly fit?: boolean;
   readonly children: ReactNode;
 }
 
@@ -107,6 +108,7 @@ function OpenPanel({
   anchorRef,
   onClose,
   label,
+  fit = false,
   children,
 }: Omit<AdaptivePanelProps, 'open'>): ReactNode {
   const placement = usePanelPlacement(anchorRef);
@@ -121,8 +123,8 @@ function OpenPanel({
           onClose={onClose}
           title={label}
           label={label}
-          detents={['full']}
-          scroll={false}
+          detents={fit ? ['fit'] : ['full']}
+          scroll={fit}
         >
           {children}
         </BottomSheet>

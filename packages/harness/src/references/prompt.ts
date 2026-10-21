@@ -19,7 +19,7 @@ export function referencePromptSource(references: readonly AiMessageReference[])
   return { kind: 'user', references };
 }
 export function referenceLocatorText(references: readonly AiMessageReference[]): string {
-  return `Selected reference locators (metadata only; do not infer access or expand folders): ${JSON.stringify(references.map((item) => item.reference))}. Managed paths belong to central chat storage; use read_project_files with the exact chatId/path, even on a computer. Chat locators use existing chat read tools. Commands and agents require their existing explicit invocation/delegation authority.`;
+  return `Selected reference locators (metadata only; do not infer access or expand folders): ${JSON.stringify(references.map((item) => item.reference))}. Managed paths belong to central chat storage; use project_read with the exact chatId/path, even on a computer. Chat locators use existing chat read tools. Commands and agents require their existing explicit invocation/delegation authority.`;
 }
 export function mountReferencePrompts(ctx: Context): void {
   const references = new NativePromptReferences(ctx);

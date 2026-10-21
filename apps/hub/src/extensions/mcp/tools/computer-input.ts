@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { operate, type OperatingContext } from './acting';
 import { IMAGE_LIMIT_BYTES, SNAPSHOT_TYPE } from './camera-live';
 import { flatChange } from './computer-flat';
+import { computerIdOf } from './computer-target';
 import { pictureSizeOf } from './see';
 import { PHYSICAL, defineTool, type Tool, type ToolOutput } from './registry';
 
@@ -84,8 +85,9 @@ type Request = z.output<typeof INPUT>;
 
 export async function useComputer(
   context: OperatingContext,
-  { deviceId, change }: Request,
+  { deviceId: wanted, change }: Request,
 ): Promise<ToolOutput> {
+  const deviceId = computerIdOf(context, wanted);
   const { look, ...input } = change;
   await operate(context, 'inputComputer', { params: { deviceId }, body: input });
   const summary = inputSummary(input);
@@ -104,7 +106,7 @@ export async function useComputer(
 
 export const COMPUTER_INPUT_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'use_computer',
+    name: 'computer_use',
     input: INPUT,
     annotations: PHYSICAL,
     answer: true,

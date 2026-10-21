@@ -11,18 +11,16 @@ import expo.modules.kotlin.viewevent.EventDispatcher
 class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   override val shouldUseAndroidLayout = true
   private val onStatus by EventDispatcher<Map<String, Any?>>()
-  private val onDiagnostic by EventDispatcher<Map<String, Any?>>()
   private val page = WebView(context)
   private var policy: HubBrowserPolicy? = null
   @Volatile private var projectProfile: HubHtmlProfile? = null
-  private val diagnostics = HubBrowserDiagnostics(page, { active && displayed && allows(authorizedUrl) }, { appContext.currentActivity }, { policy?.profile() ?: projectProfile?.profile() }, ::admitPage, { onDiagnostic(it) }, { status(false, it) })
-  private var displayed = false
+  private val access = HubBrowserPage(page)
   @Volatile private var active = false
   @Volatile private var authorizedUrl = ""
   @Volatile private var fence: (() -> Unit)? = null
   @Volatile private var projectOrigin: String? = null
-  @Volatile private var pageCookie = ""
   private var browserId = ""
+  @Volatile private var source: String? = null
   private var detach: (() -> Unit)? = null
   @Volatile private var destroyed = false
   init { addView(page, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)) }
@@ -42,8 +40,8 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     }
     CookieManager.getInstance().setAcceptThirdPartyCookies(page, false)
     page.webViewClient = HubHtmlViewClient(this)
-    page.webChromeClient = HubHtmlViewChrome(diagnostics)
-    page.setDownloadListener { _, _, _, _, _ -> status(false, "Downloads are blocked in this HTML preview.") }
+    page.webChromeClient = HubHtmlViewChrome()
+    page.setDownloadListener { _, _, _, _, _ -> status(false, "Downloads are blocked in this browser.") }
   }
   fun bind(id: String, url: String, origin: String, cookie: String, profileId: String, check: () -> Unit, detached: () -> Unit) {
     check(!active) { "HTML view is already bound" }
@@ -54,21 +52,28 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     try {
       configurePage()
       browserId = id
-      diagnostics.bind(id)
+      access.bind(id)
       authorizedUrl = url
       projectOrigin = origin
-      pageCookie = cookie
       fence = check
       detach = detached
       active = true
-      diagnostics.prepare(url)
       owned.admit(origin, cookie) { page.post { if (active) page.loadUrl(url) } }
     } catch (failure: Exception) { active = false; closeProjectProfile(); throw failure }
   }
-  private suspend fun admitPage() {
-    val owned = projectProfile ?: return
-    val origin = projectOrigin ?: return
-    owned.admit(origin, pageCookie)
+  fun attached(value: String): Boolean = active && source == value
+  fun attachedElsewhere(): Boolean = active && source != null
+  fun markAttached(value: String) { source = value }
+  fun unbind() {
+    check(source != null) { "HTML view is not bound to a page" }
+    access.close()
+    active = false
+    fence = null
+    source = null
+    detach?.invoke()
+    detach = null
+    page.stopLoading()
+    closeProjectProfile()
   }
   fun bindBrowser(json: String) {
     check(!active)
@@ -76,18 +81,12 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     policy = value
     configurePage()
     browserId = value.id
-    diagnostics.bind(value.id)
+    access.bind(value.id)
     authorizedUrl = value.url
     active = true
-    diagnostics.prepare(value.url)
     page.loadUrl(value.url)
   }
-  fun displayed(value: Boolean) { displayed = value; page.visibility = if (value) android.view.View.VISIBLE else android.view.View.INVISIBLE; diagnostics.availability() }
-  override fun onWindowFocusChanged(hasWindowFocus: Boolean) { super.onWindowFocusChanged(hasWindowFocus); diagnostics.availability() }
-  fun requested(url: String) { diagnostics.requested(url) }
-  fun navigating(url: String, redirect: Boolean) { diagnostics.navigating(url, redirect) }
-  fun started(url: String): Boolean = diagnostics.started(url)
-  fun finished(url: String): Boolean = diagnostics.finished(url)
+  fun displayed(value: Boolean) { page.visibility = if (value) android.view.View.VISIBLE else android.view.View.INVISIBLE }
   fun allowsRequest(url: String, method: String, mainFrame: Boolean): Boolean {
     if (allows(url)) return policy != null || method in listOf("GET", "HEAD")
     if (!active || mainFrame || projectOrigin == null || method !in listOf("GET", "HEAD")) return false
@@ -119,11 +118,14 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     parsed.scheme == "http" && parsed.host == "127.0.0.1" && parsed.rawUserInfo == null &&
       "${parsed.scheme}://${parsed.host}:${parsed.port}" == origin
   }.getOrDefault(false)
-  private fun owned() { check(allows(authorizedUrl)) { "HTML view ownership was withdrawn" } }
+  private fun owned() {
+    if (allows(authorizedUrl)) return
+    retire()
+    error("This page was closed")
+  }
   fun navigate(value: String) {
     owned()
     check(allows(value))
-    if (value == authorizedUrl || value.substringBefore('#') != authorizedUrl.substringBefore('#')) diagnostics.prepare(value)
     authorizedUrl = value
     page.loadUrl(value)
   }
@@ -131,7 +133,6 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     owned()
     val value = page.url ?: authorizedUrl
     check(allows(value))
-    diagnostics.prepare(value)
     page.reload()
   }
   fun stop() { owned(); page.stopLoading(); status(false, null) }
@@ -143,9 +144,10 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
       "back" to (active && page.canGoBack()), "forward" to (active && page.canGoForward()), "problem" to problem))
   }
   fun retire() {
-    diagnostics.close()
+    access.close()
     val wasActive = active
     active = false
+    source = null
     if (!wasActive) return
     fence = null
     post {
@@ -153,7 +155,7 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
       page.stopLoading()
       page.visibility = android.view.View.GONE
       try { page.loadData("", "text/html", "UTF-8") } finally { closeProjectProfile() }
-      status(false, "This HTML page ownership was withdrawn. Reload its publication.")
+      status(false, RETIRED_PROBLEM)
     }
   }
   private fun closeProjectProfile() {
@@ -162,8 +164,9 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     owned?.close()
   }
   fun dispose() {
-    diagnostics.close()
+    access.close()
     active = false
+    source = null
     fence = null
     detach?.invoke()
     detach = null
@@ -179,5 +182,8 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
         try { retired?.close() } finally { closeProjectProfile() }
       }
     }
+  }
+  companion object {
+    const val RETIRED_PROBLEM = "This page was closed. Reload to open it again."
   }
 }

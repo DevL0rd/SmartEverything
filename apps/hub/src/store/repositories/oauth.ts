@@ -1,6 +1,7 @@
 import {
   MCP_TOKEN_ROW,
   OAUTH_CLIENT_ROW,
+  type McpTokenAccess,
   type McpTokenRow,
   type OAuthClientRow,
 } from '@smarteverything/domain';
@@ -81,7 +82,14 @@ const CLIENT_COLUMNS =
 const TOKEN_COLUMNS =
   'token_hash, kind, client_id, family, scopes, resource, created_at, expires_at, used_at';
 
-const MCP_TOKEN_COLUMNS = 'id, name, created_at, last_used_at, revoked_at';
+const MCP_TOKEN_COLUMNS = 'id, name, access, created_at, last_used_at, revoked_at';
+
+export interface PersonalToken {
+  readonly name: string;
+  readonly tokenHash: string;
+  readonly localOnly: boolean;
+  readonly access: McpTokenAccess;
+}
 
 export class OAuthRepository {
   constructor(private readonly context: StoreContext) {}
@@ -273,14 +281,21 @@ export class OAuthRepository {
     );
   }
 
-  createPersonalToken(name: string, tokenHash: string, localOnly = false): McpTokenRow {
+  createPersonalToken(token: PersonalToken): McpTokenRow {
     return this.context.write(() => {
       const id = this.context.newId();
       this.context.sql.run(
         'add the MCP token',
-        `insert into mcp_tokens (id, name, token_hash, created_at, local_only)
-         values ($id, $name, $tokenHash, $now, $localOnly)`,
-        { id, name, tokenHash, now: this.context.now(), localOnly: flag(localOnly) },
+        `insert into mcp_tokens (id, name, token_hash, created_at, local_only, access)
+         values ($id, $name, $tokenHash, $now, $localOnly, $access)`,
+        {
+          id,
+          name: token.name,
+          tokenHash: token.tokenHash,
+          now: this.context.now(),
+          localOnly: flag(token.localOnly),
+          access: token.access,
+        },
       );
       const row = this.personalToken(id);
       this.context.changed('mcp_tokens', 'INSERT', row, null);

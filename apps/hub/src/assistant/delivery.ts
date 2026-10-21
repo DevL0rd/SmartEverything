@@ -1,4 +1,4 @@
-import { ApiError, type AiChatRow, type ApiErrorCode } from '@smarteverything/domain';
+import { ApiError, type AiChatRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type {
   AssistantEventsRepository,
@@ -8,22 +8,7 @@ import { DeliveryTrace, eventFields } from './delivery-trace';
 import type { Engine } from './engines/engine';
 import { background, messageOf } from '@smarteverything/logging';
 
-const RETRY_MS = 5000;
-const MAX_ATTEMPTS = 3;
-const PERMANENT_CODES: ReadonlySet<ApiErrorCode> = new Set([
-  'invalid_request',
-  'unauthorized',
-  'forbidden',
-  'not_found',
-  'method_not_allowed',
-  'payload_too_large',
-  'unsupported_media_type',
-  'command_refused',
-]);
-
-function permanentFailure(cause: unknown): boolean {
-  return cause instanceof ApiError && PERMANENT_CODES.has(cause.code);
-}
+export const DELIVERY_RETRY_MS = 2000;
 
 export type Routing =
   | { readonly kind: 'engine'; readonly engine: Engine; readonly chat: AiChatRow }
@@ -36,13 +21,9 @@ export interface DeliveryOptions {
   readonly route: (event: StoredEvent) => Routing;
   readonly delivered: (event: StoredEvent) => void;
   readonly failed: (event: StoredEvent, reason: string) => void;
+  readonly retrying: (event: StoredEvent, active: boolean) => void;
+  readonly stopped: (event: StoredEvent) => void;
   readonly log: Logger;
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((done) => {
-    setTimeout(done, ms);
-  });
 }
 
 export class AssistantDelivery {
@@ -52,6 +33,8 @@ export class AssistantDelivery {
   private readonly unsteerable = new Set<string>();
   private readonly suspended = new Map<string, Promise<void>>();
   private readonly removed = new Set<string>();
+  private readonly waits = new Map<string, () => void>();
+  private readonly halted = new Set<string>();
   readonly blocked = new Map<string, string>();
   private readonly admissions = new Set<(event: StoredEvent) => boolean>();
 
@@ -183,7 +166,16 @@ export class AssistantDelivery {
     for (const id of chatIds) {
       if (this.busy.has(id)) this.removed.add(id);
       this.blocked.delete(id);
+      this.waits.get(id)?.();
     }
+  }
+
+  stopChat(chatId: string): boolean {
+    const wake = this.waits.get(chatId);
+    if (wake === undefined) return false;
+    this.halted.add(chatId);
+    wake();
+    return true;
   }
 
   stop(): void {
@@ -211,7 +203,7 @@ export class AssistantDelivery {
     routing: Extract<Routing, { kind: 'engine' }>,
   ): Promise<void> {
     const trace = new DeliveryTrace(this.options.log, event);
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    for (let attempt = 1; ; attempt += 1) {
       const suspended = this.suspended.get(event.chat_id);
       if (suspended !== undefined) {
         trace.waiting(attempt);
@@ -235,23 +227,36 @@ export class AssistantDelivery {
       } catch (cause) {
         const reason = messageOf(cause);
         this.blocked.set(event.chat_id, reason);
-        trace.failed(attempt, MAX_ATTEMPTS, cause, reason);
-        if (permanentFailure(cause) || this.stopped) break;
-        await this.backoff(trace, attempt);
+        trace.failed(attempt, cause, reason);
+        if (this.stopped) return;
+        this.options.retrying(event, true);
+        await this.pause(trace, event.chat_id, attempt);
+        if (this.halted.delete(event.chat_id)) {
+          this.settleStopped(trace, event);
+          return;
+        }
       }
     }
-    if (this.removed.has(event.chat_id)) return;
-    trace.abandoned(MAX_ATTEMPTS, this.blocked.get(event.chat_id));
-    this.give(
-      event,
-      this.blocked.get(event.chat_id) ?? 'the request could not be handed to the assistant',
-    );
   }
 
-  private async backoff(trace: DeliveryTrace, attempt: number): Promise<void> {
-    if (attempt >= MAX_ATTEMPTS) return;
-    trace.retryScheduled(attempt, RETRY_MS);
-    await wait(RETRY_MS);
+  private pause(trace: DeliveryTrace, chatId: string, attempt: number): Promise<void> {
+    trace.retryScheduled(attempt, DELIVERY_RETRY_MS);
+    return new Promise<void>((resolve) => {
+      const done = (): void => {
+        clearTimeout(timer);
+        this.waits.delete(chatId);
+        resolve();
+      };
+      const timer = setTimeout(done, DELIVERY_RETRY_MS);
+      this.waits.set(chatId, done);
+    });
+  }
+
+  private settleStopped(trace: DeliveryTrace, event: StoredEvent): void {
+    trace.stopped();
+    this.options.events.mark(event.id, 'answered_at');
+    this.options.retrying(event, false);
+    this.options.stopped(event);
   }
 
   private retired(event: StoredEvent): boolean {

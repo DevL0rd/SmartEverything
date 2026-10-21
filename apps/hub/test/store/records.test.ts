@@ -340,7 +340,12 @@ describe('scenes, automations, remotes and personal settings', () => {
 
   it('revokes MCP tokens and OAuth grants', () => {
     const { store } = opened;
-    const token = store.oauth.createPersonalToken('Claude', 'hash-1');
+    const token = store.oauth.createPersonalToken({
+      name: 'Claude',
+      tokenHash: 'hash-1',
+      localOnly: false,
+      access: 'control',
+    });
     expect(store.oauth.activePersonalTokenByHash('hash-1')?.id).toBe(token.id);
     expect(store.oauth.revokePersonalToken(token.id).revoked_at).toBe('2026-10-08T10:00:00.000Z');
     expect(store.oauth.activePersonalTokenByHash('hash-1')).toBeUndefined();
