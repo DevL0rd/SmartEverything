@@ -144,6 +144,47 @@ function useStableRows<T>(
   return stable;
 }
 
+const NO_VIEWABLE_ROWS: ReadonlySet<string> = new Set();
+
+function refreshViewableRows<T>(
+  list: FlashListRef<ListRow<T>> | null,
+  visibility: RowVisibility,
+): void {
+  if (list?.getLayout(0) === undefined) return;
+  const { startIndex, endIndex } = list.computeVisibleIndices();
+  const first = startIndex <= endIndex ? list.getLayout(startIndex) : undefined;
+  const { height } = list.getWindowSize();
+  const offset = list.getAbsoluteLastScrollOffset() - list.getFirstItemOffset();
+  if (first === undefined || height <= 0 || first.y >= offset + height) {
+    visibility.replace(NO_VIEWABLE_ROWS);
+  }
+  list.recomputeViewableItems();
+}
+
+function useViewabilityRefresh<T>(
+  list: RefObject<FlashListRef<ListRow<T>> | null>,
+  listRows: readonly ListRow<T>[],
+  visibility: RowVisibility,
+): void {
+  const previousRows = useRef(listRows);
+  useEffect(() => {
+    const previous = previousRows.current;
+    previousRows.current = listRows;
+    if (
+      previous === listRows ||
+      (previous.length === listRows.length &&
+        previous.every((row, index) => row.key === listRows[index]?.key))
+    ) {
+      return;
+    }
+    if (listRows.length === 0) {
+      visibility.replace(NO_VIEWABLE_ROWS);
+    } else {
+      refreshViewableRows(list.current, visibility);
+    }
+  }, [list, listRows, visibility]);
+}
+
 function useProbeProps<T>(
   name: string | undefined,
   total: number,
@@ -251,6 +292,7 @@ export function VirtualList<T>({
   const ref = useScrollTopRef<T>();
   const distance = useDrawDistance(drawDistance);
   const listRows = useStableRows(flattenSections(sections, keyOf), sameItem);
+  useViewabilityRefresh(ref, listRows, rows);
   const sticky = useMemo(() => headerIndices(listRows), [listRows]);
   useScrollHandle({ handleRef, rows: listRows, keyOf, list: ref });
   const typeOfRow = (row: ListRow<T>): string =>
