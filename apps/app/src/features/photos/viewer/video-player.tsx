@@ -240,18 +240,21 @@ function useIntent(
   player: Player,
   live: boolean,
 ): {
-  readonly wanted: boolean;
   readonly setWanted: (wanted: boolean) => void;
 } {
-  const [wanted, setWanted] = useState(true);
+  const wanted = useRef(true);
   useEffect(() => {
-    if (live && wanted) player.play();
+    if (live && wanted.current) player.play();
     else player.pause();
-  }, [player, live, wanted]);
+  }, [player, live]);
   useEventListener(player, 'playToEnd', () => {
-    setWanted(false);
+    wanted.current = false;
   });
-  return { wanted, setWanted };
+  return {
+    setWanted: (next: boolean): void => {
+      wanted.current = next;
+    },
+  };
 }
 
 interface Clock {
@@ -294,6 +297,17 @@ function usePlayerClock(player: Player, fallback: number, anchor: Anchor): Clock
   return { second, duration, buffered, playing, muted, failed, setSecond };
 }
 
+export function togglePlayback(
+  player: Pick<Player, 'playing' | 'currentTime' | 'duration' | 'play' | 'pause'>,
+  seek: (seconds: number) => void,
+): boolean {
+  const wanted = !player.playing;
+  if (wanted && player.currentTime >= player.duration) seek(0);
+  if (wanted) player.play();
+  else player.pause();
+  return wanted;
+}
+
 function usePlayerState(player: Player, fallback: number, live: boolean): PlayerState {
   const position = useSharedValue(0);
   const [scrubbing, setScrubbing] = useState(false);
@@ -305,8 +319,7 @@ function usePlayerState(player: Player, fallback: number, live: boolean): Player
     position.set(seconds);
   };
   const toggle = (): void => {
-    if (!intent.wanted && player.currentTime >= player.duration) seek(0);
-    intent.setWanted(!intent.wanted);
+    intent.setWanted(togglePlayback(player, seek));
   };
   return { ...clock, position, scrubbing, toggle, seek, setScrubbing };
 }

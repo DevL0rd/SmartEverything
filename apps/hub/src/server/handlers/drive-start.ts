@@ -1,5 +1,4 @@
-import { migratePhotosFolder } from '../../photos/folder-migration';
-import { DriveBackupRepository } from '../../store/repositories/drive-backup';
+import { assertPhotosFolderPrepared } from '../../photos/folder-migration';
 import type { DriveRoot } from '@smarteverything/domain';
 import { finishCommitFromDisk } from '../../drive/changes';
 import { physicalRoot, recoverIntents } from '../../drive/intents';
@@ -98,15 +97,11 @@ class RootFollower {
 }
 
 export async function startDrive(deps: DriveDeps): Promise<RunningDrive> {
+  assertPhotosFolderPrepared(deps.store.context.sql);
   const runtime = createDrive(deps);
   const follower = new RootFollower(deps, runtime);
   await ensureManagedRoots(deps.store, deps.layout, deps.store.profiles.list());
   await recoverFiles(deps, runtime);
-  await migratePhotosFolder({
-    ...runtime.env,
-    store: { ...deps.store, driveBackup: new DriveBackupRepository(deps.store.context) },
-    sql: deps.store.context.sql,
-  });
   runtime.media.start();
   runtime.purge.start();
   await runtime.uploads.sweepExpired();

@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { MediaInfo, MediaState } from '@smarteverything/domain';
 import { receivePhotosProgress } from '../../nas/data/live';
 import { photoKeys } from '../data/keys';
@@ -8,6 +8,7 @@ import {
   followPlayable,
   playableProgressOf,
   playableShare,
+  togglePlayback,
   videoLookOf,
   type PlayableProgress,
 } from './video-player';
@@ -94,5 +95,49 @@ describe('viewer video', () => {
       { done: 2, total: 5 },
       { done: 5, total: 5 },
     ]);
+  });
+});
+
+describe('video playback gestures', () => {
+  it('plays synchronously on the first gesture when autoplay left the player paused', () => {
+    let playing = false;
+    const player = {
+      get playing(): boolean {
+        return playing;
+      },
+      currentTime: 0,
+      duration: 10,
+      play: vi.fn((): void => {
+        playing = true;
+      }),
+      pause: vi.fn((): void => {
+        playing = false;
+      }),
+    };
+    const seek = vi.fn<(seconds: number) => void>();
+    expect(togglePlayback(player, seek)).toBe(true);
+    expect(playing).toBe(true);
+    expect(player.play).toHaveBeenCalledTimes(1);
+    expect(player.pause).not.toHaveBeenCalled();
+    expect(seek).not.toHaveBeenCalled();
+    expect(togglePlayback(player, seek)).toBe(false);
+    expect(player.pause).toHaveBeenCalledTimes(1);
+    expect(playing).toBe(false);
+  });
+
+  it('restarts an ended video before playing and preserves synchronous native play methods', () => {
+    const play = vi.fn<() => void>();
+    const seek = vi.fn<(seconds: number) => void>();
+    const player = {
+      playing: false,
+      currentTime: 10,
+      duration: 10,
+      play,
+      pause: vi.fn<() => void>(),
+    };
+    expect(togglePlayback(player, seek)).toBe(true);
+    expect(seek).toHaveBeenCalledWith(0);
+    expect(play).toHaveBeenCalledOnce();
+    expect(seek.mock.invocationCallOrder[0]).toBeLessThan(play.mock.invocationCallOrder[0] ?? 0);
   });
 });

@@ -1,4 +1,5 @@
 import { clearPhotoFolderReceipts, restorePhotoFolders } from './release-photo-folders.ts';
+import { prepareHubData, withHubDataLock } from './release-hub-prepare.ts';
 import { serviceIdentity } from './self-update-service-identity.ts';
 import { spawn, spawnSync } from 'node:child_process';
 import {
@@ -183,6 +184,12 @@ export function flowOf(options: WatchdogOptions): Flow {
       schema: schemaOf,
     },
     storage,
+    withDataLock: (work) =>
+      withHubDataLock(options.data, () => {
+        work();
+        return Promise.resolve();
+      }),
+    prepareData: () => prepareHubData(options.install, options.data),
     migrations: { restore: restorePhotoFolders, clear: clearPhotoFolderReceipts },
     recordLedger: (ledger: Parameters<typeof writeLedger>[1]): void => {
       writeLedger(options.ledger, ledger);

@@ -97,7 +97,6 @@ async function hubMigrates(): Promise<void> {
   const database = new DatabaseSync(after.system.database.file);
   database.exec("insert into schema_version values (9, 'sql migration', 'now')");
   database.close();
-  startedLine(after.system.logs.service);
 }
 
 function fakeUnits(startLog: () => string): Units {
@@ -128,6 +127,14 @@ function options(units: Units): ReleaseOptions {
     environment,
     transition,
     units,
+    prepareData: async (): Promise<void> => {
+      events.push('prepare');
+      atRestart = {
+        pointer: readFileSync(join(environment.bootstrap, LOCATION_FILE), 'utf8'),
+        unit: readFileSync(join(environment.unitDirectory, 'smarteverything.service'), 'utf8'),
+      };
+      await hubMigrates();
+    },
     name: NAME,
     built: join(scratch, 'built'),
     url,
@@ -136,9 +143,12 @@ function options(units: Units): ReleaseOptions {
   };
 }
 
-async function runRelease(): Promise<void> {
+async function runRelease(cleanup = true): Promise<void> {
   const plan = releasePlan(options(fakeUnits(() => after.system.logs.service)));
-  for (const step of plan) if (!step.title.startsWith('run')) await step.run();
+  for (const step of plan) {
+    if (step.title.startsWith('run') || (!cleanup && step.title.startsWith('delete'))) continue;
+    await step.run();
+  }
   await Promise.all(pending);
 }
 
@@ -222,7 +232,7 @@ describe('the transition release', () => {
 
   it('saves the old unit in the backup, then writes pointer and unit and reloads before the restart', async () => {
     await runRelease();
-    expect(events).toEqual(['reload', 'restart']);
+    expect(events).toEqual(['stop', 'reload', 'prepare', 'start']);
     expect(JSON.parse(atRestart?.pointer ?? 'null')).toMatchObject({
       root,
       state: 'pending-v1',
@@ -230,16 +240,13 @@ describe('the transition release', () => {
     expect(atRestart?.unit).toContain('WorkingDirectory=%E/SmartEverything-Hub');
     expect(atRestart?.unit).not.toContain('SMARTEVERYTHING_DATA_DIRECTORY');
     const backup = join(after.backups.releases, `${NAME}-${String(EPOCH)}`);
-    expect(readFileSync(join(backup, 'transition', 'smarteverything.service'), 'utf8')).toBe(
-      OLD_UNIT,
-    );
-    expect(readFileSync(join(backup, 'status'), 'utf8')).toBe('verified');
+    expect(existsSync(backup)).toBe(false);
   });
 });
 
 describe('rolling back across v1', () => {
   async function released(): Promise<string> {
-    await runRelease();
+    await runRelease(false);
     events.length = 0;
     return join(root, 'release-backups', `${NAME}-${String(EPOCH)}`);
   }
@@ -280,7 +287,7 @@ describe('rolling back across v1', () => {
       v: 7,
     });
     database.close();
-    expect(existsSync(join(root, 'release-backups', `${NAME}-${String(EPOCH)}`))).toBe(true);
+    expect(existsSync(join(root, 'release-backups', `${NAME}-${String(EPOCH)}`))).toBe(false);
   });
 
   it('accepts the backup at its v1 location as well', async () => {
@@ -312,11 +319,14 @@ describe('rolling back across v1', () => {
         throw new Error('restart refused');
       },
     };
-    const plan = releasePlan(options(units));
-    await plan[1]?.run();
+    const plan = releasePlan({
+      ...options(units),
+      prepareData: () => Promise.reject(new Error('preparation refused')),
+    });
+    await plan.find((step) => step.title.startsWith('back up'))?.run();
     await plan[3]?.run();
-    await expect(plan[4]?.run()).rejects.toThrow('restart refused');
-    expect(events).toEqual(['reload', 'stop', 'reload', 'start']);
+    await expect(plan[4]?.run()).rejects.toThrow('preparation refused');
+    expect(events).toEqual(['stop', 'reload', 'stop', 'reload', 'start']);
     expect(readFileSync(join(environment.unitDirectory, 'smarteverything.service'), 'utf8')).toBe(
       OLD_UNIT,
     );

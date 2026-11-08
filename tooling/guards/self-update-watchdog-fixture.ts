@@ -303,6 +303,11 @@ export function world(start: Start): World {
       schema: schemaOf,
     },
     storage: storageOf(machine),
+    withDataLock: (work) => {
+      work();
+      return Promise.resolve();
+    },
+    prepareData: () => Promise.resolve(),
     migrations: { restore: () => false, clear: () => undefined },
     note: () => undefined,
   };

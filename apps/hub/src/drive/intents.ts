@@ -143,7 +143,7 @@ export async function moveWithin(
 
 export type DriveFileStore = Pick<
   Store,
-  'driveIntents' | 'driveVersions' | 'driveTrash' | 'driveRoots' | 'write'
+  'driveIntents' | 'driveVersions' | 'driveTrash' | 'driveRoots' | 'driveUploads' | 'write'
 >;
 
 export interface FileEnv {
@@ -309,7 +309,8 @@ async function resolveIntent(
 
 async function removeOrphanTmp(env: FileEnv, root: DriveWriteRoot): Promise<number> {
   const directory = await locate(root, TMP_DIRECTORY);
-  const names = await env.files.list(directory);
+  const openUploads = new Set(env.store.driveUploads.openIdsInRoot(root.id));
+  const names = (await env.files.list(directory)).filter((name) => !openUploads.has(name));
   for (const name of names) {
     await env.files.remove(join(directory, name));
   }

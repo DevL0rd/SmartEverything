@@ -205,6 +205,16 @@ export class DriveUploadsRepository {
     });
   }
 
+  openIdsInRoot(rootId: string): string[] {
+    return this.context.sql
+      .all(
+        z.strictObject({ id: z.string() }),
+        "select id from drive_uploads where root_id = $rootId and state = 'open'",
+        { rootId },
+      )
+      .map((upload) => upload.id);
+  }
+
   soonestExpiry(): string | null {
     return (
       this.context.sql.get(

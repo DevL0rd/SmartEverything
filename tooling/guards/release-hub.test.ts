@@ -357,7 +357,7 @@ describe('the release plan', () => {
     expect(readFileSync(join(target.install.service, 'service.mjs'), 'utf8')).toBe(
       'old service.mjs',
     );
-    expect(calls).toEqual([`stop ${HUB_UNIT}`, `start ${HUB_UNIT}`]);
+    expect(calls).toEqual([`stop ${HUB_UNIT}`, `stop ${HUB_UNIT}`, `start ${HUB_UNIT}`]);
   });
 
   it('stops at the first problem with the built service and touches nothing', async () => {
@@ -479,10 +479,12 @@ describe('a failed rollback', () => {
   it('reports the original failure together with the rollback failure', async () => {
     const built = join(scratch, 'built');
     writeService(built, 'new');
+    let stops = 0;
     const units = {
       ...fakeUnits([]),
       stop: (): void => {
-        throw new Error('stop refused');
+        stops += 1;
+        if (stops > 1) throw new Error('stop refused');
       },
     };
     const plan = releasePlan({
@@ -654,6 +656,70 @@ describe('same-schema Photos rollback', () => {
     );
     expectPhotoRestored(photos);
     expect(existsSync(join(data.backups.releases, 'photos-12'))).toBe(false);
+  });
+
+  it('rolls back offline preparation failures before starting the prior service', async () => {
+    const photos = photoRelocation();
+    const built = join(scratch, 'built');
+    writeService(built, 'new');
+    const base = fakeUnits([]);
+    const plan = releasePlan({
+      environment,
+      transition: null,
+      target,
+      name: 'photos',
+      built,
+      url,
+      schema: 201,
+      epoch: 12,
+      units: {
+        ...base,
+        start: (unit) => {
+          expectPhotoRestored(photos);
+          base.start(unit);
+        },
+      },
+      prepareData: () => {
+        photos.move();
+        return Promise.reject(new Error('preparation refused'));
+      },
+    });
+    await plan.find((step) => step.title.startsWith('back up'))?.run();
+    await plan.find((step) => step.title.startsWith('swap'))?.run();
+    await expect(plan[4]?.run()).rejects.toThrow('preparation refused');
+    expectPhotoRestored(photos);
+    expect(existsSync(join(data.backups.releases, 'photos-12'))).toBe(false);
+  });
+
+  it('does not start normal service until offline preparation completes', async () => {
+    const photos = photoRelocation();
+    const calls: string[] = [];
+    const built = join(scratch, 'built');
+    writeService(built, 'new');
+    let complete: () => void = () => undefined;
+    const preparation = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    const plan = releasePlan({
+      environment,
+      transition: null,
+      target,
+      units: fakeUnits(calls),
+      name: 'photos',
+      built,
+      url,
+      schema: 201,
+      epoch: 12,
+      prepareData: () => preparation,
+    });
+    await plan.find((step) => step.title.startsWith('back up'))?.run();
+    await plan.find((step) => step.title.startsWith('swap'))?.run();
+    const starting = plan[4]?.run();
+    expect(calls).toEqual([`stop ${HUB_UNIT}`]);
+    expect(readFileSync(photos.original, 'utf8')).toBe('original video bytes');
+    complete();
+    await starting;
+    expect(calls).toEqual([`stop ${HUB_UNIT}`, `start ${HUB_UNIT}`]);
   });
 
   it('restores matching database paths for filesystem receipts even without the manual database flag', async () => {

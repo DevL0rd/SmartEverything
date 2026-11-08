@@ -1,6 +1,7 @@
-import { existsSync } from 'node:fs';
+import { prepareHubData } from './release-hub-prepare.ts';
 import { join } from 'node:path';
-import { clearPhotoFolderReceipts, restorePhotoFolders } from './release-photo-folders.ts';
+import { rollbackWith } from './release-hub-rollback.ts';
+export { rollbackWith, type RollbackOptions } from './release-hub-rollback.ts';
 import { parseArgs } from 'node:util';
 import { withIdleHubRelease } from '../apps/hub/src/self-update/release-lock.ts';
 import { defaultHubInstall, HUB_INSTALL_DIRECTORY } from './hub-install-layout.ts';
@@ -11,11 +12,8 @@ import {
   checkMigrations,
   markBackup,
   ReleaseStepError,
-  restoreDatabase,
-  restoreService,
   releaseSceneOf,
   rollbackPreflight,
-  schemaVersionOf,
   swapService,
   type ReleaseTarget,
 } from './release-hub-files.ts';
@@ -33,11 +31,9 @@ import {
   CROSSING_STEPS,
   environmentFrom,
   hasV1Marker,
-  legacyLayoutOf,
   locateBackup,
   releaseRoot,
   saveTransition,
-  undoV1,
   type Transition,
   type TransitionEnvironment,
 } from './release-hub-transition.ts';
@@ -62,6 +58,7 @@ options for every command: --install <dir> (default ~/${HUB_INSTALL_DIRECTORY}),
 
 export interface ReleaseOptions {
   readonly target: ReleaseTarget;
+  readonly prepareData?: () => Promise<void>;
   readonly environment: TransitionEnvironment;
   readonly transition: Transition | null;
   readonly units: Units;
@@ -129,16 +126,36 @@ async function restartRelease(options: ReleaseOptions, state: ReleaseState): Pro
   const { target, transition, environment, units, url } = options;
   try {
     if (transition !== null) await applyTransition(transition, environment, target.data.root);
+    await (
+      options.prepareData ??
+      ((): Promise<void> => prepareHubData(join(target.install.service, '../..'), target.data.root))
+    )();
     const since = new Date();
-    units.restart(HUB_UNIT);
+    units.start(HUB_UNIT);
     await awaitHub((transition?.after ?? target.data).system.logs.service, url, since);
   } catch (cause) {
     return rollbackAfter(cause, options, state);
   }
 }
 
+async function captureRelease(options: ReleaseOptions): Promise<string> {
+  const { target, name, epoch, transition, environment, units, url } = options;
+  units.stop(HUB_UNIT);
+  try {
+    const backup = backUpRelease(target, name, epoch);
+    if (transition !== null) saveTransition(backup, environment);
+    log.info('release.backed_up', { backup });
+    return backup;
+  } catch (cause) {
+    const since = new Date();
+    units.start(HUB_UNIT);
+    await awaitHub(target.data.system.logs.service, url, since);
+    throw cause;
+  }
+}
+
 export function releasePlan(options: ReleaseOptions): readonly Plan[] {
-  const { target, environment, transition, name, built, url, epoch } = options;
+  const { target, environment, transition, name, built, url } = options;
   const { install, data } = target;
   const state: ReleaseState = { backup: '', schemaMoved: false };
   return [
@@ -154,19 +171,19 @@ export function releasePlan(options: ReleaseOptions): readonly Plan[] {
     }),
     {
       title: `back up ${install.service} and ${data.system.database.file} into ${data.backups.releases}`,
-      run: () =>
-        settled(() => {
-          state.backup = backUpRelease(target, name, epoch);
-          if (transition !== null) saveTransition(state.backup, environment);
-          log.info('release.backed_up', { backup: state.backup });
-        }),
+      run: async (): Promise<void> => {
+        state.backup = await captureRelease(options);
+      },
     },
     {
       title: `swap ${install.service} for ${built}`,
-      run: () =>
-        settled(() => {
+      run: async (): Promise<void> => {
+        try {
           swapService(install, built, name);
-        }),
+        } catch (cause) {
+          return rollbackAfter(cause, options, state);
+        }
+      },
     },
     {
       title: `${transition === null ? '' : `write the pending-v1 pointer in ${environment.bootstrap}, the new hub unit in ${environment.unitDirectory} and reload systemd, then `}restart ${HUB_UNIT} and wait until it reports started and answers at ${url}`,
@@ -185,46 +202,6 @@ export function releasePlan(options: ReleaseOptions): readonly Plan[] {
         }),
     },
   ];
-}
-
-export interface RollbackOptions {
-  readonly target: ReleaseTarget;
-  readonly environment: TransitionEnvironment;
-  readonly units: Units;
-  readonly backup: string;
-  readonly url: string;
-  readonly withDatabase: boolean;
-  readonly stamp: string;
-}
-
-export async function rollbackWith(options: RollbackOptions): Promise<void> {
-  const { target, environment, units, backup, url, withDatabase, stamp } = options;
-  const { install } = target;
-  const { scene, problems } = rollbackPreflight(target, backup, withDatabase, environment);
-  if (problems.length > 0) throw new ReleaseStepError('rollback preflight', problems.join('; '));
-  units.stop(HUB_UNIT);
-  const data = scene.undo ? legacyLayoutOf(target.data.root) : target.data;
-  const restored = scene.undo ? await undoV1(data.root, scene.backup, environment) : scene.backup;
-  const savedDatabase = join(restored, 'smarteverything.db');
-  const movedFiles = existsSync(savedDatabase) && restorePhotoFolders(savedDatabase);
-  const restoreSavedDatabase = withDatabase || movedFiles;
-  restoreService(install, restored, stamp);
-  if (restoreSavedDatabase) restoreDatabase(data, restored, stamp);
-  const since = new Date();
-  units.start(HUB_UNIT);
-  await awaitHub(data.system.logs.service, url, since);
-  const expected = restoreSavedDatabase ? schemaVersionOf(savedDatabase) : null;
-  const checked = await verifyHub(data, url, units, expected);
-  const failed = failedChecks(checked);
-  if (failed.length > 0)
-    throw new ReleaseStepError(
-      'rollback verification',
-      failed.map((check) => check.detail).join('; '),
-    );
-  markBackup(restored, 'rolled-back');
-  clearPhotoFolderReceipts(join(restored, 'smarteverything.db'));
-  finishRelease({ install, data }, stamp);
-  log.info('release.rolled_back', { backup: restored, withDatabase: restoreSavedDatabase });
 }
 
 async function execute(plan: readonly Plan[], dryRun: boolean): Promise<void> {

@@ -69,13 +69,15 @@ function verifyBuild(flow: Flow, release: HubUpdateRelease): void {
     throw new Error('The staged service changed after verification.');
 }
 
-function apply(flow: Flow, release: HubUpdateRelease): void {
+async function apply(flow: Flow, release: HubUpdateRelease): Promise<void> {
   verifyBuild(flow, release);
   if (release.build === null || release.backup === null)
     throw new Error('the prepared release has no build or backup');
   transition(flow, 'applying');
+  if (flow.units.active(HUB_UNIT)) flow.units.act('stop', HUB_UNIT);
   flow.storage.removeAny(flow.options.health);
   flow.storage.replaceTree(release.build, flow.options.service);
+  await flow.prepareData();
   transition(flow, 'restarting');
 }
 
@@ -109,7 +111,7 @@ async function finishPrepared(flow: Flow, release: HubUpdateRelease): Promise<Hu
   const ready = await backupOrResume(flow, release);
   if (hubUpdateFinished(ready)) return ready;
   try {
-    if (ready.phase === 'backed_up') apply(flow, ready);
+    if (ready.phase === 'backed_up') await apply(flow, ready);
     if (ready.phase !== 'verifying') flow.units.act('start', HUB_UNIT);
     transition(flow, 'verifying');
     return await kept(flow);

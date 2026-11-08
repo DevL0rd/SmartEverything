@@ -24,6 +24,7 @@ import {
   type DriveRoot,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { fileDraft, folderDraft, recordItem, type ChangeEnv } from '../../src/drive/changes';
 import { commitRestore, commitTrash } from '../../src/drive/trash-purge';
 import { removeTrashEntry } from '../../src/drive/trash';
@@ -31,7 +32,7 @@ import { identityOf, isoOf } from '../../src/drive/changes';
 import { migratePhotosFolder } from '../../src/photos/folder-migration';
 import { PHOTO_FOLDER_RECEIPT, PHOTO_FOLDER_RECEIPTS } from '../../src/photos/folder-receipts';
 import { PHOTOS_FOLDER_MIGRATION } from '../../src/store/migrations/photos-folder';
-import { physicalRoot } from '../../src/drive/intents';
+import { physicalRoot, recoverIntents, TMP_DIRECTORY } from '../../src/drive/intents';
 import { nodeFiles } from '../../src/drive/versions';
 import {
   BackupService,
@@ -859,6 +860,32 @@ describe('existing photo and video folder migration', () => {
       actor: { actorProfileId: alice, via: 'app', deviceId: null },
     });
   }
+
+  it('keeps active upload staged bytes through offline and normal Drive recovery', async () => {
+    const folder = await oldFolder('Camera roll/Alice/2026/2026-01');
+    insertUpload({
+      profileId: alice,
+      folderId: folder.id,
+      rootId: aliceRoot,
+      length: 1000,
+      offset: 400,
+    });
+    const upload = database.prepare('select id from drive_uploads').get();
+    const parsed = z.strictObject({ id: z.string() }).parse(upload);
+    const temporary = join(base, 'alice', TMP_DIRECTORY);
+    await mkdir(temporary, { recursive: true });
+    await writeFile(join(temporary, parsed.id), 'original uploaded prefix');
+    await writeFile(join(temporary, 'orphan'), 'discard this orphan');
+    const root = physicalRoot(store.driveRoots.byId(aliceRoot));
+    const report = await recoverIntents({ ...env, finishCommit: (): void => undefined }, [root]);
+    expect(report.tmpRemoved).toBe(1);
+    expect(await readFile(join(temporary, parsed.id), 'utf8')).toBe('original uploaded prefix');
+    enqueue();
+    await migratePhotosFolder(env);
+    await recoverIntents({ ...env, finishCommit: (): void => undefined }, [root]);
+    expect(await readFile(join(temporary, parsed.id), 'utf8')).toBe('original uploaded prefix');
+    expect(store.driveUploads.byId(parsed.id).offset).toBe(400);
+  });
 
   it('retargets pending media uploads without changing uploaded offsets or non-media destinations', async () => {
     const folder = await oldFolder('Camera roll/Alice/2026/2026-01');

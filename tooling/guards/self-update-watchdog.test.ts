@@ -6,7 +6,7 @@ import {
   HUB_UNIT,
   HUB_UPDATE_BOOT_RECEIPT_FILE,
 } from '@smarteverything/domain';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { serviceIdentity } from '../self-update-service-identity.ts';
 import { handle } from '../self-update-watchdog.ts';
 import { AT, OLD, NEW, EXPECTED, paths, write, world } from './self-update-watchdog-fixture.ts';
@@ -368,5 +368,76 @@ describe('the hub update watchdog', { timeout: 60_000 }, () => {
     expect(again.phase).toBe('done');
     expect(existsSync(paths().backup)).toBe(false);
     expect(test.actions).toEqual([`stop ${HUB_UNIT}`, `start ${HUB_UNIT}`]);
+  });
+  it('waits for offline preparation beyond the HTTP deadline before starting normal health checks', async () => {
+    const test = world({ phase: 'built', up: true });
+    let complete = false;
+    const act = test.flow.units.act;
+    const release = await handle({
+      ...test.flow,
+      prepareData: async () => {
+        expect(test.ledger()?.phase).toBe('applying');
+        expect(test.flow.units.active(HUB_UNIT)).toBe(false);
+        await vi.advanceTimersByTimeAsync(HUB_STARTUP_DEADLINE_MS + 1);
+        complete = true;
+      },
+      units: {
+        ...test.flow.units,
+        act: (verb, unit) => {
+          if (verb === 'start') expect(complete).toBe(true);
+          act(verb, unit);
+        },
+      },
+    });
+    expect(release.phase).toBe('done');
+    expect(Date.now() - Date.parse(AT)).toBeGreaterThan(HUB_STARTUP_DEADLINE_MS);
+    expect(test.service()).toBe(NEW);
+  });
+
+  it('restores saved paths and database when offline preparation fails before normal boot', async () => {
+    const test = world({ phase: 'built', up: true });
+    let restored = false;
+    const act = test.flow.units.act;
+    const release = await handle({
+      ...test.flow,
+      prepareData: () => {
+        write(paths().database, 'schema:201');
+        return Promise.reject(new Error('offline preparation failed'));
+      },
+      migrations: {
+        restore: () => {
+          restored = true;
+          return true;
+        },
+        clear: () => undefined,
+      },
+      units: {
+        ...test.flow.units,
+        act: (verb, unit) => {
+          if (verb === 'start') {
+            expect(restored).toBe(true);
+            expect(test.service()).toBe(OLD);
+            expect(test.database()).toBe(EXPECTED);
+          }
+          act(verb, unit);
+        },
+      },
+    });
+    expect(release.phase).toBe('reverted');
+    expect(test.actions).toEqual([`stop ${HUB_UNIT}`, `stop ${HUB_UNIT}`, `start ${HUB_UNIT}`]);
+  });
+
+  it('rolls back an interrupted offline preparation instead of booting its partial service', async () => {
+    const test = world({ phase: 'applying', up: false });
+    write(join(paths().service, 'service.mjs'), NEW);
+    write(paths().database, 'schema:201');
+    const release = await handle({
+      ...test.flow,
+      prepareData: () => Promise.reject(new Error('must not resume a partial apply')),
+    });
+    expect(release.phase).toBe('reverted');
+    expect(test.service()).toBe(OLD);
+    expect(test.database()).toBe(EXPECTED);
+    expect(existsSync(paths().backup)).toBe(false);
   });
 });

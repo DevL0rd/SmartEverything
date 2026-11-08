@@ -68,6 +68,8 @@ export interface Flow {
     readonly removeFile: (path: string) => void;
     readonly removeAny: (path: string) => void;
   };
+  readonly withDataLock: (work: () => void) => Promise<void>;
+  readonly prepareData: () => Promise<void>;
   readonly migrations: {
     readonly restore: (database: string) => boolean;
     readonly clear: (database: string) => void;
@@ -269,7 +271,9 @@ export function message(cause: unknown): string {
 async function restoreService(flow: Flow): Promise<string | null> {
   try {
     flow.units.act('stop', HUB_UNIT);
-    restoreData(flow);
+    await flow.withDataLock(() => {
+      restoreData(flow);
+    });
     flow.units.act('start', HUB_UNIT);
     const verdict = await verifyNew(flow, flow.options.startingSchema);
     return verdict.ok

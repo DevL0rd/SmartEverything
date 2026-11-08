@@ -2,6 +2,7 @@ import { rmdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { DriveItem } from '@smarteverything/domain';
 import { z } from 'zod';
+import type { Sql } from '../store/sql';
 import { fsCode } from '../fs-code';
 import { announce, appendFeed, isoOf } from '../drive/changes';
 import { migratePhotoPending } from './folder-pending';
@@ -123,7 +124,7 @@ async function relocate(env: BackupEnv, service: BackupService, row: Relocation)
   });
 }
 
-export async function migratePhotosFolder(env: BackupEnv): Promise<void> {
+export async function migratePhotosFolder(env: BackupEnv, signal?: AbortSignal): Promise<void> {
   const pending = env.sql.all(
     RELOCATION,
     'select item_id, from_path, to_path, mtime_ns from drive_photo_relocations order by item_id',
@@ -131,7 +132,11 @@ export async function migratePhotosFolder(env: BackupEnv): Promise<void> {
   const service = new BackupService(env);
   if (pending.length > 0)
     env.log.info('photos.folders_migration_started', { items: pending.length });
-  for (const row of pending) await relocate(env, service, row);
+  for (const row of pending) {
+    signal?.throwIfAborted();
+    await relocate(env, service, row);
+  }
+  signal?.throwIfAborted();
   await migratePhotoPending(env, service);
   await removeOldFolders(env);
   if (pending.length > 0) env.log.info('photos.folders_migrated', { items: pending.length });
@@ -192,4 +197,18 @@ async function removeOldFolder(env: BackupEnv, item: DriveItem): Promise<void> {
     env.store.driveItems.remove(item.id);
     announce(env, item.rootId, item.parentId, []);
   });
+}
+
+export function assertPhotosFolderPrepared(sql: Sql): void {
+  const pending = sql.get(
+    z.strictObject({ total: z.int().nonnegative() }),
+    `select (select count(*) from drive_photo_relocations)
+      + (select count(*) from drive_photo_old_folders)
+      + (select count(*) from drive_photo_trash_folders) as total`,
+  );
+  if (pending === undefined || pending.total > 0) {
+    throw new Error(
+      'Hub data preparation is incomplete. Run service.mjs --prepare-data <absolute data root> before starting the Hub.',
+    );
+  }
 }
