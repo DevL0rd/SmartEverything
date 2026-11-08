@@ -49,7 +49,7 @@ vi.mock('../settings-log', () => ({ trackSetting: vi.fn() }));
 
 const { RoomsBlock } = await import('./rooms-block');
 
-it('counts the physical laptop and hidden devices without counting the same-name built-in hub', () => {
+it('counts the hub, paired laptop and hidden devices assigned to the room', () => {
   devices.push(
     deviceFixture(0, {
       kind: 'computer',
@@ -68,5 +68,5 @@ it('counts the physical laptop and hidden devices without counting the same-name
     }),
     deviceFixture(2, { room_id: 'study', hidden: true }),
   );
-  expect(renderToStaticMarkup(createElement(RoomsBlock))).toContain('2 devices');
+  expect(renderToStaticMarkup(createElement(RoomsBlock))).toContain('3 devices');
 });

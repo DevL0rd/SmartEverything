@@ -1,3 +1,4 @@
+import type { ComputerRole } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -13,8 +14,24 @@ const KWIN = {
   path: '/Scripting',
   iface: 'org.kde.kwin.Scripting',
 } as const;
-const FOCUS_SCRIPT = 'smarteverything-focus';
-const WATCH_SCRIPT = 'smarteverything-windows-watch';
+interface BridgeNames {
+  readonly service: string;
+  readonly focusScript: string;
+  readonly watchScript: string;
+}
+
+const BRIDGE_NAMES: Readonly<Record<ComputerRole, BridgeNames>> = {
+  pc: {
+    service: NAME,
+    focusScript: 'smarteverything-focus',
+    watchScript: 'smarteverything-windows-watch',
+  },
+  hub: {
+    service: `${NAME}.Hub`,
+    focusScript: 'smarteverything-hub-focus',
+    watchScript: 'smarteverything-hub-windows-watch',
+  },
+};
 const WINDOWS_TIMEOUT_MS = 5000;
 
 const FOCUSED = z.tuple([z.string(), z.string()]);
@@ -52,18 +69,22 @@ function quoted(text: string): string {
   return JSON.stringify(text);
 }
 
-const CALL = `callDBus(${quoted(NAME)}, ${quoted(PATH)}, ${quoted(NAME)}`;
+function callback(service: string): string {
+  return `callDBus(${quoted(service)}, ${quoted(PATH)}, ${quoted(NAME)}`;
+}
 
-const FOCUS_SOURCE = `function report(w) {
-  ${CALL}, 'Focused', w ? String(w.desktopFileName || '') : '', w ? String(w.resourceClass || '') : '');
+function focusSource(service: string): string {
+  return `function report(w) {
+  ${callback(service)}, 'Focused', w ? String(w.desktopFileName || '') : '', w ? String(w.resourceClass || '') : '');
 }
 workspace.windowActivated.connect(report);
 report(workspace.activeWindow);
 `;
+}
 
-function closeSource(request: string, appId: string, close: boolean): string {
+function closeSource(service: string, request: string, appId: string, close: boolean): string {
   return `const found = workspace.windowList().filter((w) => w.desktopFileName === ${quoted(appId)});
-${CALL}, 'Windows', ${quoted(request)}, found.map((w) => w.pid));
+${callback(service)}, 'Windows', ${quoted(request)}, found.map((w) => w.pid));
 ${close ? 'found.forEach((w) => w.closeWindow());' : ''}
 `;
 }
@@ -80,15 +101,15 @@ const LIST_FIELDS = `({
 
 const ROWS_SOURCE = `workspace.windowList().filter((w) => w.normalWindow).map((w) => ${LIST_FIELDS})`;
 
-function listSource(request: string): string {
+function listSource(service: string, request: string): string {
   return `const rows = ${ROWS_SOURCE};
-${CALL}, 'WindowList', ${quoted(request)}, JSON.stringify(rows));
+${callback(service)}, 'WindowList', ${quoted(request)}, JSON.stringify(rows));
 `;
 }
 
-function actSource(request: string, windowId: string, action: string): string {
+function actSource(service: string, request: string, windowId: string, action: string): string {
   return `const w = workspace.windowList().find((c) => String(c.internalId) === ${quoted(windowId)});
-${CALL}, 'Windows', ${quoted(request)}, w ? [w.pid] : []);
+${callback(service)}, 'Windows', ${quoted(request)}, w ? [w.pid] : []);
 if (w) {
   if (${quoted(action)} === 'focus') {
     w.minimized = false;
@@ -102,8 +123,9 @@ if (w) {
 `;
 }
 
-const WATCH_SOURCE = `function changed() {
-  ${CALL}, 'WindowsChanged', JSON.stringify(${ROWS_SOURCE}));
+function watchSource(service: string): string {
+  return `function changed() {
+  ${callback(service)}, 'WindowsChanged', JSON.stringify(${ROWS_SOURCE}));
 }
 function watch(w) {
   if (!w.normalWindow) {
@@ -123,12 +145,14 @@ workspace.windowRemoved.connect(changed);
 workspace.windowActivated.connect(changed);
 changed();
 `;
+}
 
 function scriptPath(name: string): string {
   return join(runtimeDirectory(), `${name}.js`);
 }
 
 export class KdeBridge {
+  private readonly names: BridgeNames;
   private readonly waiting = new Map<string, (pids: readonly number[]) => void>();
   private readonly listing = new Map<string, (json: string) => void>();
   private windowsChanged: (() => void) | null = null;
@@ -138,10 +162,13 @@ export class KdeBridge {
   constructor(
     private readonly bus: BridgeBus,
     private readonly focused: (window: FocusedWindow | null) => void,
-  ) {}
+    role: ComputerRole = 'pc',
+  ) {
+    this.names = BRIDGE_NAMES[role];
+  }
 
   async start(): Promise<void> {
-    await this.bus.own(NAME);
+    await this.bus.own(this.names.service);
     this.stopServing = this.bus.serve(
       { path: PATH, iface: NAME },
       {
@@ -165,7 +192,7 @@ export class KdeBridge {
         },
       },
     );
-    await this.load(FOCUS_SCRIPT, FOCUS_SOURCE);
+    await this.load(this.names.focusScript, focusSource(this.names.service));
   }
 
   async stop(): Promise<void> {
@@ -176,8 +203,8 @@ export class KdeBridge {
     this.stopServing = null;
     this.windowsChanged = null;
     this.watched = null;
-    await this.unload(WATCH_SCRIPT);
-    await this.unload(FOCUS_SCRIPT);
+    await this.unload(this.names.watchScript);
+    await this.unload(this.names.focusScript);
   }
 
   async listWindows(): Promise<readonly KdeWindow[]> {
@@ -188,7 +215,7 @@ export class KdeBridge {
     const script = `smarteverything-windows-${request}`;
     const reply = this.reply(this.listing, request);
     try {
-      await this.load(script, listSource(request));
+      await this.load(script, listSource(this.names.service, request));
       const rows: unknown = JSON.parse(await reply.answer);
       return WINDOW_ROWS.parse(rows);
     } finally {
@@ -202,7 +229,7 @@ export class KdeBridge {
     const script = `smarteverything-windows-${request}`;
     const reply = this.reply(this.waiting, request);
     try {
-      await this.load(script, actSource(request, windowId, action));
+      await this.load(script, actSource(this.names.service, request, windowId, action));
       return (await reply.answer).length > 0;
     } finally {
       reply.drop();
@@ -215,11 +242,11 @@ export class KdeBridge {
     onFailure: (cause: unknown) => void,
   ): Promise<() => void> {
     this.windowsChanged = onChange;
-    await this.load(WATCH_SCRIPT, WATCH_SOURCE);
+    await this.load(this.names.watchScript, watchSource(this.names.service));
     return (): void => {
       this.windowsChanged = null;
       this.watched = null;
-      this.unload(WATCH_SCRIPT).catch(onFailure);
+      this.unload(this.names.watchScript).catch(onFailure);
     };
   }
 
@@ -228,7 +255,7 @@ export class KdeBridge {
     const script = `smarteverything-windows-${request}`;
     const reply = this.reply(this.waiting, request);
     try {
-      await this.load(script, closeSource(request, appId, close));
+      await this.load(script, closeSource(this.names.service, request, appId, close));
       return await reply.answer;
     } finally {
       reply.drop();

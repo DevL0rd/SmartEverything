@@ -51,6 +51,7 @@ function options(bound: string[]): ComputerDriverOptions {
     signals: { emit: (): void => undefined },
     personOf: () => null,
     hub: { hostname: 'nas', osName: 'Linux' },
+    createLocal: () => ({ start: () => undefined, stop: () => undefined }),
     bindHubDevice: (deviceId): void => {
       bound.push(deviceId);
     },

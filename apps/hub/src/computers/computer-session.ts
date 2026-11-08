@@ -29,7 +29,7 @@ import { demandedTopics, nodeDemandOf } from './computer-demand';
 import { FrameCounter } from './frame-counter';
 import { FreshRead, type FreshViewers } from './fresh-read';
 import { isEarFrame, routeEarFrame, type EarFrame, type EarRoutes } from './ear-frames';
-import { computerExternalId, describeComputer } from './computer-device';
+import { computerExternalId, describeComputer, type ComputerIdentity } from './computer-device';
 import { offeredMachineActions } from './machine-requests';
 import type { ComputerDirectory } from './computer-directory';
 import { ComputerOfflineError } from './computer-errors';
@@ -41,6 +41,7 @@ import { sessionCapabilities, sessionReadings } from './session-readings';
 
 export interface ComputerSessionOptions
   extends Pick<AppPresenceOptions, 'signals' | 'personOf'>, EarRoutes {
+  readonly identity?: ComputerIdentity;
   readonly link: HubLink;
   readonly sink: AdapterSink;
   readonly history: Pick<MetricHistory, 'push'>;
@@ -103,7 +104,7 @@ export class ComputerSession {
   get role(): ComputerRole {
     const machineId = this.known?.hello.machineId;
     const hubMachine = machineId !== undefined && this.options.directory.isHubMachine(machineId);
-    return hubMachine ? 'hub' : 'pc';
+    return this.options.identity?.role ?? (hubMachine ? 'hub' : 'pc');
   }
 
   machineActions(): readonly MachineActionSupport[] {
@@ -136,9 +137,7 @@ export class ComputerSession {
   view(): ComputerView | null {
     const { known, scopes } = this;
     const deviceId = known === null ? null : this.resolve(known);
-    if (known === null || deviceId === null || scopes === null) {
-      return null;
-    }
+    if (known === null || deviceId === null || scopes === null) return null;
     return {
       deviceId,
       role: this.role,
@@ -227,6 +226,11 @@ export class ComputerSession {
       case 'reply':
         this.replied(data.id, data.result);
         return;
+      case 'placement_state':
+        this.options.log.debug('computer.placement_state_unhandled', {
+          placementId: data.placementId,
+        });
+        return;
       case 'report':
         return;
     }
@@ -268,7 +272,7 @@ export class ComputerSession {
   }
 
   private greeted(hello: NodeHello): void {
-    const externalId = computerExternalId(hello.machineId);
+    const externalId = this.options.identity?.externalId ?? computerExternalId(hello.machineId);
     this.options.log.info('computer.hello_received', {
       externalId,
       role: this.role,
@@ -331,9 +335,7 @@ export class ComputerSession {
 
   private actions(): ComputerAction[] {
     const known = this.known;
-    if (known === null || this.scopes?.power !== true) {
-      return [];
-    }
+    if (known === null || this.scopes?.power !== true) return [];
     const wake = this.role === 'pc' && known.hello.interfaces.length > 0 ? ['wake' as const] : [];
     return [...known.hello.power, ...wake];
   }
@@ -341,9 +343,7 @@ export class ComputerSession {
   private sessionChanged(known: Known, session: ComputerSessionState): void {
     this.options.log.trace('computer.session_state', { externalId: known.externalId });
     const deviceId = this.deviceId;
-    if (deviceId === null) {
-      return;
-    }
+    if (deviceId === null) return;
     const apps = this.scopes?.apps === true;
     sessionReadings(session, apps).forEach((reading) => {
       this.options.sink.state({
@@ -365,6 +365,7 @@ export class ComputerSession {
     const device = describeComputer(known.hello, readings, {
       power: this.actions(),
       machine: offeredMachineActions(this.scopes),
+      ...(this.options.identity === undefined ? {} : { identity: this.options.identity }),
     });
     const capabilities = device.capabilities.map((capability) => capability.key).join(',');
     if (capabilities !== this.capabilities) {

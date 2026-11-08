@@ -133,6 +133,7 @@ export function linuxControls(options: ControlOptions): ComputerControls {
   });
   const agent = linuxAgent();
   const session = new LinuxSession({
+    role: options.role ?? 'pc',
     entries,
     audio,
     now: options.now,

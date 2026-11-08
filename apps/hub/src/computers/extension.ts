@@ -18,6 +18,7 @@ import { ComputerDownloads } from './computer-downloads';
 import { computerDownloadRoute } from './file-download';
 import { computerDriver, type ComputerDriverOptions } from './computer-driver';
 import { computerMachineId } from '../node/identity';
+import { localComputerFactory } from './local-computer';
 import type { HubLayout } from '../data-layout';
 
 const HUB_MACHINE_ID_NAME = 'hub-machine.id';
@@ -30,10 +31,37 @@ interface Wiring {
   readonly context: ExtensionContext;
   readonly directory: ComputerDirectory;
   readonly service: ComputerService;
+  readonly machineId: string;
   readonly now: () => Date;
 }
 
-function driverOptions({ context, directory, service, now }: Wiring): ComputerDriverOptions {
+function commandRecords({ context, service }: Wiring): ComputerDriverOptions['records'] {
+  const { store } = context;
+  return {
+    originOf: commandOrigin(store),
+    visibleTo: (deviceId, clientId) =>
+      service.access.visible(deviceId, viewerOfClient(store, effectiveClientById(store, clientId))),
+    macsOf: computerMacs(store),
+    wake: wakeOnLan,
+    approve: (deviceId, action, source): Promise<void> => {
+      const device = store.devices.byId(deviceId);
+      return context.machineApprovals.require({
+        action,
+        source,
+        machine: device.display_name ?? device.name,
+        profileId: store.computerNodes.personOf(deviceId),
+      });
+    },
+  };
+}
+
+function driverOptions({
+  context,
+  directory,
+  service,
+  machineId,
+  now,
+}: Wiring): ComputerDriverOptions {
   const { store } = context;
   const drivers = context.hub.drivers;
   return {
@@ -46,25 +74,7 @@ function driverOptions({ context, directory, service, now }: Wiring): ComputerDr
     deviceIdOf: drivers.deviceIdOf,
     scopesOf: (deviceId) => store.computerScopes.read(deviceId),
     directory,
-    records: {
-      originOf: commandOrigin(store),
-      visibleTo: (deviceId, clientId) =>
-        service.access.visible(
-          deviceId,
-          viewerOfClient(store, effectiveClientById(store, clientId)),
-        ),
-      macsOf: computerMacs(store),
-      wake: wakeOnLan,
-      approve: (deviceId, action, source): Promise<void> => {
-        const device = store.devices.byId(deviceId);
-        return context.machineApprovals.require({
-          action,
-          source,
-          machine: device.display_name ?? device.name,
-          profileId: store.computerNodes.personOf(deviceId),
-        });
-      },
-    },
+    records: commandRecords({ context, directory, service, machineId, now }),
     recordAppTime: ({ deviceId, app, startedAt, endedAt }): void => {
       store.appSessions.add({ deviceId, appId: app.id, appName: app.name, startedAt, endedAt });
     },
@@ -73,6 +83,7 @@ function driverOptions({ context, directory, service, now }: Wiring): ComputerDr
     ears: context.computerEars,
     earHosts: context.computerEars,
     hub: { hostname: hostname(), osName: osType() },
+    createLocal: localComputerFactory({ machineId, now, log: context.log }),
     bindHubDevice: (deviceId): void => {
       context.computerAi.bindLocalDevice(deviceId);
     },
@@ -108,11 +119,10 @@ export function computersExtension(now: () => Date): ServerExtension {
   return async (context): Promise<RunningExtension> => {
     const { store } = context;
     await resetComputerPresence(store, context.hub.setDeviceOnline);
-    const directory = new ComputerDirectory(
-      await computerMachineId(hubMachineIdFile(context.layout)),
-    );
+    const machineId = await computerMachineId(hubMachineIdFile(context.layout));
+    const directory = new ComputerDirectory(machineId);
     const service = new ComputerService({ store, directory, log: context.log });
-    const wiring: Wiring = { context, directory, service, now };
+    const wiring: Wiring = { context, directory, service, machineId, now };
     const driver = computerDriver(driverOptions(wiring));
     const unregister = context.hub.drivers.registry.register(driver);
     const unfollow = context.nodeSockets.onComputer((_identity, link) => driver.attach(link));

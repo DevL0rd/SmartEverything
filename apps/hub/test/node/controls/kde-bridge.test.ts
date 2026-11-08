@@ -108,4 +108,72 @@ describe('KWin window scripts', () => {
     await bridge.stop();
     expect(calls).toContain('unloadScript ["smarteverything-focus"]');
   });
+
+  it('keeps hub and computer bridges independent across a hub process restart', async () => {
+    const owners = new Set<string>();
+    const scripts = new Map<string, string>();
+    const unloaded: string[] = [];
+    const bus = (): BridgeBus => {
+      const desktop = fakeDesktop([4242]);
+      return {
+        ...desktop,
+        own: (name): Promise<void> => {
+          if (owners.has(name)) return Promise.reject(new Error('name taken'));
+          owners.add(name);
+          return Promise.resolve();
+        },
+        call: async (call): Promise<readonly unknown[]> => {
+          const [path, name] = call.body ?? [];
+          if (call.member === 'loadScript') {
+            scripts.set(String(name), await readFile(String(path), 'utf8'));
+          }
+          if (call.member === 'unloadScript') unloaded.push(String(path));
+          return desktop.call(call);
+        },
+      };
+    };
+    const hub = new KdeBridge(bus(), () => undefined, 'hub');
+    const computer = new KdeBridge(bus(), () => undefined);
+    await hub.start();
+    await hub.watchWindows(
+      () => undefined,
+      () => undefined,
+    );
+    const hubScripts = [...scripts.keys()];
+    await computer.start();
+    await computer.watchWindows(
+      () => undefined,
+      () => undefined,
+    );
+    expect(owners.size).toBe(2);
+    expect([...owners].sort()).toEqual([
+      'org.smarteverything.Node',
+      'org.smarteverything.Node.Hub',
+    ]);
+    expect(scripts.size).toBe(4);
+    for (const service of owners) {
+      expect(
+        [...scripts.values()].filter((source) => source.includes(`callDBus("${service}"`)),
+      ).toHaveLength(2);
+    }
+    await expect(hub.actOnWindow('{hub}', 'focus')).resolves.toBe(true);
+    await expect(computer.actOnWindow('{computer}', 'focus')).resolves.toBe(true);
+    owners.delete('org.smarteverything.Node.Hub');
+    unloaded.length = 0;
+    const restartedHub = new KdeBridge(bus(), () => undefined, 'hub');
+    await restartedHub.start();
+    await restartedHub.watchWindows(
+      () => undefined,
+      () => undefined,
+    );
+    expect(unloaded.sort()).toEqual(hubScripts.sort());
+    expect(
+      [...scripts.keys()].filter((name) => !/windows-[0-9a-f-]{36}$/u.test(name)),
+    ).toHaveLength(4);
+    unloaded.length = 0;
+    await restartedHub.stop();
+    expect(unloaded.sort()).toEqual(hubScripts.sort());
+    await expect(computer.windowsOf('org.kde.calculator', false)).resolves.toEqual([4242]);
+    await computer.stop();
+  });
 });

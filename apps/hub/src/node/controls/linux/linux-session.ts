@@ -1,4 +1,9 @@
-import type { ComputerSessionState, MediaStatus, SessionApp } from '@smarteverything/domain';
+import type {
+  ComputerRole,
+  ComputerSessionState,
+  MediaStatus,
+  SessionApp,
+} from '@smarteverything/domain';
 import { userInfo } from 'node:os';
 import { NodeFailureError } from '../../node-failure';
 import type { SessionControl } from '../session-controls';
@@ -11,6 +16,7 @@ import { watchScreenSaver } from './screensaver';
 import { messageOf } from '@smarteverything/logging';
 
 export interface LinuxSessionOptions {
+  readonly role?: ComputerRole;
   readonly entries: DesktopEntries;
   readonly audio: PulseAudio;
   readonly now: () => Date;
@@ -123,9 +129,13 @@ export class LinuxSession implements SessionControl {
           this.options.failed('media', cause);
         },
       ),
-      bridge: new KdeBridge(bus, (window) => {
-        this.update({ focused: this.appOf(window) });
-      }),
+      bridge: new KdeBridge(
+        bus,
+        (window) => {
+          this.update({ focused: this.appOf(window) });
+        },
+        this.options.role,
+      ),
       unwatch: [
         this.options.audio.watchMaster((reading) => {
           this.update({ volume: reading?.volume ?? null, muted: reading?.muted ?? null });

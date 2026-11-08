@@ -21,6 +21,7 @@ import { COMPUTER_DRIVER, HUB_EXTERNAL_ID, describeHub, type HubMachine } from '
 import type { ComputerDirectory } from './computer-directory';
 import { ComputerOfflineError } from './computer-errors';
 import { ComputerSession } from './computer-session';
+import { startLocalComputer, type LocalComputerFactory } from './local-computer';
 
 export interface ComputerDriverOptions {
   readonly history: MetricHistory;
@@ -35,6 +36,7 @@ export interface ComputerDriverOptions {
   readonly signals: Pick<SignalBus, 'emit'>;
   readonly personOf: (deviceId: string) => string | null;
   readonly hub: HubMachine;
+  readonly createLocal: LocalComputerFactory;
   readonly bindHubDevice: (deviceId: string) => void;
   readonly ears?: SessionEars;
   readonly earHosts?: SessionEarHosts;
@@ -74,14 +76,16 @@ export function computerDriver(options: ComputerDriverOptions): ComputerDriver {
       sink = context.sink;
       try {
         await registerHub(options, context.publishDevices);
+        const stopLocal = startLocalComputer(options, context.sink);
+        return (): Promise<void> => {
+          stopLocal();
+          sink = null;
+          return Promise.resolve();
+        };
       } catch (cause) {
         sink = null;
         throw cause;
       }
-      return (): Promise<void> => {
-        sink = null;
-        return Promise.resolve();
-      };
     },
     execute: (command: DeviceCommand): Promise<JsonValue> => {
       if (sink === null) {

@@ -12,7 +12,7 @@ import { Section } from '../../../components/section';
 import { notifyFailure } from '../../../components/toast-store';
 import { useValue } from '../../../design/external-store';
 import { plural } from '../../../format/text';
-import { isPhysicalDevice, useDevices, useRooms } from '../../../store/selectors';
+import { useDevices, useRooms } from '../../../store/selectors';
 import { TextEditSheet } from '../../../settings/text-edit-sheet';
 import { orderedRooms } from '../../../store/table-rules';
 import { moveRoom, openRenameRoom, reorderRooms, roomEditor } from './rooms';
@@ -120,7 +120,7 @@ function RoomRow({
 
 export function RoomsBlock(): ReactNode {
   const rooms = orderedRooms(useRooms());
-  const devices = useDevices({ includeHidden: true }).filter(isPhysicalDevice);
+  const devices = useDevices({ includeHidden: true });
   const counts = deviceCounts(devices);
   const indexes = new Map(rooms.map((room, index) => [room.id, index]));
   const request = useValue(roomEditor);

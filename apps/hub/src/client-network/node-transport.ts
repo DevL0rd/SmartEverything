@@ -30,6 +30,7 @@ export interface NodeHubTransport {
   readonly fetch: typeof fetch;
   readonly byteStream: (request: Request) => Promise<RouteBoundResponse>;
   readonly settled: () => Promise<void>;
+  readonly refresh: () => Promise<void>;
   readonly socket: (url: URL, protocols: string | string[], options: ClientOptions) => WebSocket;
   readonly subscribe: (listener: (state: NodeRouteState) => void) => () => void;
   readonly ready: () => boolean;
@@ -44,6 +45,7 @@ export function nodeHubTransport(
     fetch: routedNodeFetch(authority, new URL(canonical).origin),
     byteStream: (request) => routedByteStream(authority, new URL(canonical).origin, request),
     settled: () => authority.settled(),
+    refresh: () => authority.refresh(),
     socket: (input, protocols, options): WebSocket =>
       routedNodeSocket(authority, input, protocols, options),
     subscribe: (listener) => authority.subscribe(listener),

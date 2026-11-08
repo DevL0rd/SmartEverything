@@ -14,7 +14,7 @@ import { Section } from '../../../components/section';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { CONTAINER_WIDTH } from '../../../design/tokens';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
-import { isPhysicalDevice, useDevices, useRoom } from '../../../store/selectors';
+import { useDevices, useRoom } from '../../../store/selectors';
 import { roomLightsTarget, type TableRow } from '@smarteverything/domain';
 import { LightGroupCard } from '../../device-groups';
 import { RoomDeviceGrid, splitRoomLights } from '../../device-list';
@@ -111,7 +111,7 @@ function RoomOverview({
 }
 
 function RoomBody({ room }: { readonly room: Room }): ReactNode {
-  const devices = useDevices({ room: room.id }).filter(isPhysicalDevice);
+  const devices = useDevices({ room: room.id });
   const [renaming, setRenaming] = useState<TextEditRequest | null>(null);
   const overflow = useOverflow(room, () => {
     setRenaming(renameRequest(room));

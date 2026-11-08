@@ -2,7 +2,7 @@ import { COMPUTER_ROLE_MODELS } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { groupedDevices, ANY } from '../features/device-list/model/device-filter';
 import { deviceFixture, stateFixture } from './device-fixture';
-import { devicesIn, isPhysicalDevice, listedDevicesIn } from './selectors';
+import { devicesIn, listedDevicesIn } from './selectors';
 import { rowsOf } from './state';
 
 const HUB = deviceFixture(0, {
@@ -24,15 +24,15 @@ const LAPTOP = deviceFixture(1, {
   name: HUB.name,
 });
 
-describe('physical device listings', () => {
-  it('keeps the paired laptop with the same name while retaining the hub raw identity', () => {
+describe('device listings', () => {
+  it('lists the hub and paired laptop even when they share the same name', () => {
     const state = stateFixture([HUB, LAPTOP], {});
-    expect(listedDevicesIn(state)).toEqual([LAPTOP]);
+    expect(listedDevicesIn(state)).toEqual([HUB, LAPTOP]);
     expect(rowsOf(state.tables.devices)).toEqual([HUB, LAPTOP]);
     expect(listedDevicesIn(state)).toBe(listedDevicesIn(state));
   });
 
-  it('shows the paired laptop in Devices without demanding telemetry from the built-in hub', () => {
+  it('includes the hub alongside the paired laptop in the Devices grid', () => {
     const state = stateFixture([HUB, LAPTOP], {});
     const sections = groupedDevices(listedDevicesIn(state), [], {
       text: '',
@@ -40,29 +40,26 @@ describe('physical device listings', () => {
       kind: ANY,
       offline: false,
     });
-    expect(sections.flatMap((section) => section.devices)).toEqual([LAPTOP]);
+    expect(sections.flatMap((section) => section.devices)).toEqual([HUB, LAPTOP]);
   });
 
-  it('retains hidden physical devices in Settings and excludes replaced devices', () => {
+  it('retains the hub and hidden devices in Settings while excluding replaced devices', () => {
     const hidden = deviceFixture(2, { hidden: true });
     const replacement = deviceFixture(3, { details: { replaces: LAPTOP.id } });
     expect(listedDevicesIn(stateFixture([HUB, LAPTOP, hidden, replacement], {}))).toEqual([
+      HUB,
       hidden,
       replacement,
     ]);
   });
 
-  it('excludes the assigned hub from automatic room tiles while preserving raw room access', () => {
+  it('includes the assigned hub in automatic room tiles while excluding hidden devices', () => {
     const hub = { ...HUB, room_id: 'study' };
     const laptop = { ...LAPTOP, room_id: 'study' };
     const hidden = deviceFixture(2, { room_id: 'study', hidden: true });
     const state = stateFixture([hub, laptop, hidden], {});
     const room = devicesIn(state, { room: 'study' });
     expect(room).toEqual([hub, laptop]);
-    expect(room.filter(isPhysicalDevice)).toEqual([laptop]);
-    expect(devicesIn(state, { includeHidden: true }).filter(isPhysicalDevice)).toEqual([
-      laptop,
-      hidden,
-    ]);
+    expect(devicesIn(state, { includeHidden: true })).toEqual([hub, laptop, hidden]);
   });
 });

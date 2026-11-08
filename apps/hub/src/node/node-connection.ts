@@ -1,6 +1,6 @@
 import type { RawData, WebSocket } from 'ws';
 import { NODE_HEARTBEAT_MS } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import { NodeConnectionLog } from './node-connection-log';
 import {
   openNodeHubSocket,
@@ -55,8 +55,11 @@ export class NodeConnection {
     this.followRoute();
     if (this.options.transport?.ready() === false) {
       this.trace.deferred();
+      this.scheduleRetry();
       return;
     }
+    if (this.retry !== null) clearTimeout(this.retry);
+    this.retry = null;
     const url = new URL(this.options.path, this.options.hubUrl);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     const socket = openNodeHubSocket(this.options.transport, url, [this.options.protocol], {
@@ -176,13 +179,29 @@ export class NodeConnection {
     this.stopListeningForHub();
     this.welcomed();
     this.options.closed(socket);
-    if (this.stopped) return;
+    this.scheduleRetry();
+  }
+
+  private scheduleRetry(): void {
+    if (this.stopped || this.retry !== null) return;
     this.trace.retryScheduled(this.delay);
     this.retry = setTimeout(() => {
       this.retry = null;
-      this.start();
+      background(this.retryConnection(), 'node.connection_retry_failed', {
+        path: this.options.path,
+      });
     }, this.delay);
     this.delay = Math.min(this.delay * 2, LAST_RETRY_MS);
+  }
+
+  private async retryConnection(): Promise<void> {
+    try {
+      if (this.options.transport?.ready() === false) await this.options.transport.refresh();
+      this.start();
+    } catch (cause) {
+      this.options.log.error('node.route_refresh_failed', cause, { path: this.options.path });
+      this.scheduleRetry();
+    }
   }
 }
 

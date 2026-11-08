@@ -1,5 +1,6 @@
 import type {
   ComputerFeature,
+  ComputerRole,
   ConnectLink,
   NodeHello,
   PowerAction,
@@ -62,6 +63,7 @@ export interface ComputerControls {
 }
 
 export interface ControlOptions {
+  readonly role?: ComputerRole;
   readonly now: () => Date;
   readonly log: Logger;
 }

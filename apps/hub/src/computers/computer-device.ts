@@ -2,6 +2,7 @@ import {
   CAPABILITY_CATALOGUE,
   COMPUTER_ROLE_MODELS,
   type ComputerAction,
+  type ComputerRole,
   type DeviceCapability,
   type DiscoveredDevice,
   type MachineAction,
@@ -35,6 +36,12 @@ function actionCapability(action: ComputerAction): DeviceCapability {
 export interface ComputerControlSet {
   readonly power: readonly ComputerAction[];
   readonly machine: readonly MachineAction[];
+  readonly identity?: ComputerIdentity;
+}
+
+export interface ComputerIdentity {
+  readonly externalId: string;
+  readonly role: ComputerRole;
 }
 
 export function describeComputer(
@@ -44,11 +51,11 @@ export function describeComputer(
 ): DiscoveredDevice {
   return {
     provider: 'local',
-    externalId: computerExternalId(hello.machineId),
+    externalId: controls.identity?.externalId ?? computerExternalId(hello.machineId),
     parentExternalId: null,
     kind: 'computer',
     name: hello.hostname,
-    model: COMPUTER_ROLE_MODELS.pc,
+    model: COMPUTER_ROLE_MODELS[controls.identity?.role ?? 'pc'],
     manufacturer: hello.hardware.vendor ?? hello.os.name,
     room: null,
     online: true,
