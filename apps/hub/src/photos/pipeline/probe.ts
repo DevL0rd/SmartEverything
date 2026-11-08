@@ -116,17 +116,20 @@ export function readVideoProbe(result: unknown): VideoProbe {
 
 export async function probeVideo(path: string): Promise<VideoProbe> {
   const handle = await open(path, 'r');
-  const info = await openProbe();
   try {
-    const { size } = await handle.stat();
-    const result = await info.analyzeData(size, async (length, offset) => {
-      const chunk = Buffer.alloc(length);
-      const { bytesRead } = await handle.read(chunk, 0, length, offset);
-      return chunk.subarray(0, bytesRead);
-    });
-    return readVideoProbe(result);
+    const info = await openProbe();
+    try {
+      const { size } = await handle.stat();
+      const result = await info.analyzeData(size, async (length, offset) => {
+        const chunk = Buffer.alloc(length);
+        const { bytesRead } = await handle.read(chunk, 0, length, offset);
+        return chunk.subarray(0, bytesRead);
+      });
+      return readVideoProbe(result);
+    } finally {
+      info.close();
+    }
   } finally {
-    info.close();
     await handle.close();
   }
 }

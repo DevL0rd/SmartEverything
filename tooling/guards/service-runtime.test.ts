@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -18,6 +19,7 @@ import {
   missingFromOutput,
   publishStage,
   runtimePackageNames,
+  SERVICE_EXTERNALS,
 } from '../build-service.ts';
 import {
   copyRuntimePackages,
@@ -334,4 +336,33 @@ describe('packaging check isolation', () => {
     expect(readFileSync(join(out, 'service.mjs'), 'utf8')).toBe('new');
     expect(existsSync(join(out, 'old-worker.mjs'))).toBe(false);
   });
+});
+
+it('loads MediaInfo WASM from the shipped Node package after the service ESM bundle is relocated', async () => {
+  const installedFrom = join(import.meta.dirname, '../../apps/hub');
+  copyRuntimePackages({
+    ...copyOptions(),
+    installedFrom,
+    modules: join(scratch, 'node_modules'),
+    roots: ['mediainfo.js'],
+  });
+  const entry = join(scratch, 'probe.ts');
+  writeFileSync(
+    entry,
+    `import mediaInfoFactory from 'mediainfo.js';
+const probe = await mediaInfoFactory({ format: 'object' });
+try {
+  const bytes = new TextEncoder().encode('unrecognized media fixture');
+  const result = await probe.analyzeData(bytes.length, (length, offset) => bytes.subarray(offset, offset + length));
+  process.stdout.write(JSON.stringify(result.media.track.map((track) => track['@type'])));
+} finally { probe.close(); }
+`,
+  );
+  await bundle({ entry, file: 'probe.mjs', external: SERVICE_EXTERNALS }, scratch);
+  const result = spawnSync(process.execPath, [join(scratch, 'probe.mjs')], {
+    cwd: scratch,
+    encoding: 'utf8',
+  });
+  expect(result.status, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout)).toContain('General');
 });

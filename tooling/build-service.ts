@@ -69,7 +69,7 @@ const LOADED_AT_RUNTIME = [
   /createRequire\w*\(import\.meta\.url\)\.resolve\(\s*"([^"]+)"/gu,
 ];
 const VOICE_EXTERNALS = [DAVEY_PACKAGE, 'ffmpeg-static', `${VOICE_ASSET_PREFIX}*`, '*.node'];
-const SERVICE_EXTERNALS = [
+export const SERVICE_EXTERNALS = [
   '@deepseek-ai/*',
   '@earendil-works/*',
   'jose',
@@ -79,6 +79,7 @@ const SERVICE_EXTERNALS = [
   'usocket',
   'cpu-features',
   'sharp',
+  'mediainfo.js',
   ...VOICE_EXTERNALS,
 ];
 const BUNDLES: readonly Bundle[] = [
