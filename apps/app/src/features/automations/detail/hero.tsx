@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
-import type { AutomationRowV3 } from '@smarteverything/domain';
+import type { AppHref } from '../../../components/app-href';
+import type { AutomationRow } from '../data/graph-adapter';
 import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
@@ -13,10 +13,10 @@ import type { ListActions } from '../list/list-actions';
 import { statusLine } from './detail-model';
 
 export interface HeroProps {
-  readonly row: AutomationRowV3;
+  readonly row: AutomationRow;
   readonly sentence: string | null;
   readonly timeZone: string | null;
-  readonly edit: Href;
+  readonly edit: AppHref;
   readonly actions: ListActions;
   readonly onShowVersions: () => void;
 }
@@ -54,7 +54,7 @@ function LastRun({
   row,
   timeZone,
 }: {
-  readonly row: AutomationRowV3;
+  readonly row: AutomationRow;
   readonly timeZone: string | null;
 }): ReactNode {
   if (row.last_error !== null) {
@@ -85,7 +85,7 @@ export function Hero(props: HeroProps): ReactNode {
       <View className="flex-row flex-wrap items-start gap-x-4 gap-y-3">
         <View className="min-w-64 flex-1 gap-1">
           <View className="flex-row items-center gap-3">
-            <Text variant="title-2" className="min-w-0 flex-1" numberOfLines={2}>
+            <Text variant="title-2" className="min-w-0 flex-1">
               {row.name}
             </Text>
             <Switch

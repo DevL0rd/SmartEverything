@@ -20,18 +20,33 @@ const PARAMS = z.object({
   extensionId: z.string().max(400).optional(),
   skillId: z.string().max(200).optional(),
   section: z.enum(['devices', 'source', 'import']).optional(),
+  search: z.string().optional(),
+  source: z.string().min(1).optional(),
+  sourceRef: z.string().min(1).optional(),
+  sourcePath: z.string().min(1).optional(),
+  originUrl: z.string().min(1).optional(),
+  originRef: z.string().min(1).optional(),
+  originPath: z.string().min(1).optional(),
 });
 
 export function AiExtensionsRoute(): ReactNode {
-  const params = PARAMS.safeParse(useLocalSearchParams());
+  const raw = useLocalSearchParams();
+  const params = PARAMS.safeParse(raw);
+  const skill = Array.isArray(raw['page']) && raw['page'][1] === 'skills';
   if (!params.success)
     return (
-      <SettingsFrame page="assistant/extensions">
+      <SettingsFrame page={skill ? 'assistant/skills' : 'assistant/extensions'}>
         <EmptyState
-          icon="puzzle"
-          title="That link doesn’t open an extension"
-          body="The link isn’t valid. Browse extensions to find it."
-          action={<Button label="Browse extensions" variant="tonal" href={extensionBrowseHref()} />}
+          icon={skill ? 'fileText' : 'puzzle'}
+          title={skill ? 'Skill link unavailable' : 'Extension link unavailable'}
+          body="Browse the catalogue to find this item."
+          action={
+            <Button
+              label={skill ? 'Browse skills' : 'Browse extensions'}
+              variant="tonal"
+              href={extensionBrowseHref(skill ? 'skill' : 'extension')}
+            />
+          }
         />
       </SettingsFrame>
     );

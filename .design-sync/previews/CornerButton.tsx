@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react';
 import { CornerButton, Stage, WidgetFrame, Text } from 'smarteverything-kit';
 
 const body = (
   <div style={{ position: 'relative', width: 280, height: 150, margin: 12 }}>
-    <WidgetFrame title="Climate" icon="thermometer" accent="temp-warm" size="M">
+    <WidgetFrame title="Climate" icon="thermometer" accent="temp-warm">
       <Text variant="callout" tone="variant">
         Editing layout
       </Text>
@@ -16,12 +17,12 @@ const body = (
     />
   </div>
 );
-export const Corners = () => (
+export const Corners = (): ReactNode => (
   <Stage theme="dark" width={340}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactNode => (
   <Stage theme="light" width={340}>
     {body}
   </Stage>

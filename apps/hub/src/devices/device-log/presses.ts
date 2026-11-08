@@ -2,7 +2,7 @@ import {
   PRESS_EFFECT_WINDOW_MS,
   buttonActionTitle,
   respondsToSignal,
-  type AutomationRowV3,
+  type StoredAutomationRow,
   type AutomationRunSummary,
   type DeviceLogCause,
   type DeviceLogEffect,
@@ -37,10 +37,11 @@ function pressTitle(details: EventRow['details']): string {
 
 function effectsOf(
   press: EventRow,
-  automations: readonly AutomationRowV3[],
+  roomId: string | null,
+  automations: readonly StoredAutomationRow[],
   runs: readonly AutomationRunSummary[],
 ): DeviceLogEffect[] {
-  const signal = signalOfEvent(press);
+  const signal = signalOfEvent(press, roomId);
   const pressedAt = Date.parse(press.occurred_at);
   return automations
     .filter((automation) => automation.enabled && respondsToSignal(automation.definition, signal))
@@ -86,7 +87,7 @@ function readPresses(store: LogStore, request: LogRequest): readonly DeviceLogEn
     new Date(Date.parse(newest.occurred_at) + PRESS_EFFECT_WINDOW_MS + 1).toISOString(),
   );
   return presses.map((press): DeviceLogEntry => {
-    const effects = effectsOf(press, automations, runs);
+    const effects = effectsOf(press, device.room_id, automations, runs);
     return {
       at: press.occurred_at,
       kind: 'press',

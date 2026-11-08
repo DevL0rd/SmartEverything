@@ -22,6 +22,7 @@ import {
   type PluginIdentity,
 } from './plugin-identity';
 import { failureLine, messageOf } from '@smarteverything/logging';
+import { pluginLogger } from './plugin-logs';
 
 const PROGRESS_GAP_MS = 2000;
 
@@ -33,6 +34,7 @@ export interface PluginInboxOptions {
   >;
   readonly host: () => PluginHost;
   readonly fetch: typeof fetch;
+  readonly tmp: string;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -114,6 +116,7 @@ export class PluginInbox {
     const attached = await inboundFiles(message.attachments, {
       plugin,
       folder: this.options.host().dataOf(pluginId),
+      tmp: this.options.tmp,
       fetch: this.options.fetch,
     });
     try {
@@ -252,7 +255,6 @@ export class PluginInbox {
   }
 
   private note(pluginId: string, line: string): void {
-    this.options.log.warn('plugin.inbound_failed', { plugin: pluginId, reason: line });
-    this.options.host().slot(pluginId)?.logs.add(line, this.options.now());
+    pluginLogger(this.options.log, pluginId).warn('plugin.inbound_failed', { reason: line });
   }
 }

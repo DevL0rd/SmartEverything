@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button } from '../../../components/button';
-import { Sheet } from '../../../components/sheet';
+import type { Rect } from '../../../components/anchor';
+import { Sheet, type SheetProps } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { href } from '../../../app-shell/hrefs';
 import { deviceCardOf } from '../../../plugins/device-contributions';
@@ -40,7 +41,13 @@ function Header({ device }: { readonly device: Device }): ReactNode {
   );
 }
 
-function Body({ device }: { readonly device: Device }): ReactNode {
+function Body({
+  device,
+  onExit,
+}: {
+  readonly device: Device;
+  readonly onExit: () => void;
+}): ReactNode {
   const router = useRouter();
   const model = useDeviceModel(device);
   const Quick = FAMILY_CONTROLS[model.family]?.quick;
@@ -55,7 +62,7 @@ function Body({ device }: { readonly device: Device }): ReactNode {
         icon="chevronRight"
         variant="tonal"
         onPress={() => {
-          closeQuickControls();
+          onExit();
           router.push(href.device(device));
         }}
       />
@@ -63,25 +70,42 @@ function Body({ device }: { readonly device: Device }): ReactNode {
   );
 }
 
-export function QuickControlsHost(): ReactNode {
-  const target = useQuickControlsTarget();
-  const device = useDevice(target?.deviceId ?? '');
-  const name = useDisplayName(target?.deviceId ?? '');
-  if (target === null || device === null) {
-    return null;
-  }
+export function QuickControlsPanel({
+  device,
+  anchor = null,
+  onClose,
+  onExit = onClose,
+  subpage,
+}: {
+  readonly device: Device;
+  readonly anchor?: Rect | null;
+  readonly onClose: () => void;
+  readonly onExit?: () => void;
+  readonly subpage?: SheetProps['subpage'];
+}): ReactNode {
+  const name = useDisplayName(device.id);
   return (
     <Sheet
       open
-      onClose={closeQuickControls}
+      onClose={onClose}
+      subpage={subpage}
       label={`${name} quick controls`}
       detents={['half', 'full']}
-      kind={target.anchor === null ? 'dialog' : 'popover'}
-      anchor={target.anchor}
+      kind={anchor === null ? 'dialog' : 'popover'}
+      anchor={anchor}
     >
-      <View className={target.anchor === null ? '' : 'p-3'}>
-        <Body device={device} />
+      <View className={anchor === null ? '' : 'p-3'}>
+        <Body device={device} onExit={onExit} />
       </View>
     </Sheet>
   );
+}
+
+export function QuickControlsHost(): ReactNode {
+  const target = useQuickControlsTarget();
+  const device = useDevice(target?.deviceId ?? '');
+  if (target === null || device === null) {
+    return null;
+  }
+  return <QuickControlsPanel device={device} anchor={target.anchor} onClose={closeQuickControls} />;
 }

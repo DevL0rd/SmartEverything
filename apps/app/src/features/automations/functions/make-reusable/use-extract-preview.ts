@@ -1,3 +1,5 @@
+import { randomUUID } from 'expo-crypto';
+import { useAutomationsSource } from '../../data/source';
 import { useCallback, useState } from 'react';
 import type { CheckContext } from '@smarteverything/flow/check/shapes';
 import { extractRegion, type Extraction } from '@smarteverything/flow/extract/extract';
@@ -6,6 +8,7 @@ import { indexProgram } from '@smarteverything/flow/program/lookup';
 import type { Program } from '@smarteverything/flow/program/walk';
 import { useSelected } from '../../../../design/external-store';
 import type { DocumentStore } from '../../model/editor/document-store';
+import { treeFor } from '../../model/editor/structured';
 
 export const PREVIEW_FUNCTION_ID = '00000000-0000-4000-8000-000000000000';
 export const PREVIEW_NAME = 'New Custom Node';
@@ -34,6 +37,7 @@ export function previewExtract(
   const result = extractRegion(program, keys, ctx, {
     functionId: PREVIEW_FUNCTION_ID,
     name: PREVIEW_NAME,
+    newId: randomUUID,
   });
   return result.ok
     ? { status: 'ready', keys, preview: result }
@@ -52,14 +56,16 @@ interface Held {
 }
 
 export function useExtractPreview(store: DocumentStore, ctx: CheckContext): ExtractPreview {
+  const kinds = useAutomationsSource().lookup;
   const [held, setHeld] = useState<Held | null>(null);
   const selection = useSelected(store.state, (value) => value.selection.ids.join(','));
   const run = useCallback((): PreviewState => {
     const { program, selection: current } = store.state.get();
-    const value = previewExtract(program, current.ids, ctx);
+    const tree = treeFor(program, kinds);
+    const value = tree === null ? IDLE : previewExtract(tree, current.ids, ctx);
     setHeld({ selection: current.ids.join(','), value });
     return value;
-  }, [store, ctx]);
+  }, [store, ctx, kinds]);
   const reset = useCallback((): void => {
     setHeld(null);
   }, []);

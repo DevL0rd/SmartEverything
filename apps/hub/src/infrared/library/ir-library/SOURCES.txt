@@ -1,0 +1,15 @@
+index.bin and models.bin are built by packages/tuya/tools/build-ir-library.ts from two open infrared databases:
+
+SmartIR (MIT, see SmartIR-LICENSE.txt)
+  https://github.com/smartHomeHub/SmartIR
+  commit e4df2957ad915536f41ffb39daa96886d7cfe040
+  used: codes/climate (air conditioners with Broadlink, ESPHome and LOOKin codes)
+
+Flipper-IRDB (CC0-1.0, see Flipper-IRDB-LICENSE.txt)
+  https://github.com/Lucaslhm/Flipper-IRDB
+  commit d126fb1b6f1e114c52b4a8c19839ea65e3a9c24d
+  used: every category folder except _Converted_ (its files come from other databases with their own terms)
+  The Flipper-IRDB README says commits before 2319685 are not covered by CC0.
+
+Rebuild: clone both into a scratch folder and run, from packages/tuya,
+  pnpm exec tsx tools/build-ir-library.ts --smartir <dir> --smartir-commit <hash> --flipper <dir> --flipper-commit <hash> --out ../../apps/hub/src/infrared/library/ir-library

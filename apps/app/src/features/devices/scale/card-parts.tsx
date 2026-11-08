@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { View, type LayoutChangeEvent } from 'react-native';
 import { Button } from '../../../components/button';
 import { EmptyGraph, Sparkline } from '../../../components/charts';
 import { Glow } from '../../../components/glow';
@@ -8,13 +8,12 @@ import { decimal } from '../../../format/number';
 import { DeviceVisual } from '../../device-visuals';
 import { WIDE_VISUAL_PX, WideFigure, type WideClass } from '../card/wide-card';
 import { MiniRings } from './composition-rings';
-import { scaleActions, scaleTicker, type ScaleAction } from './card-model';
+import { chartHeight, scaleActions, scaleTicker, type ScaleAction } from './card-model';
 import type { Scale } from './use-scale';
 import { useScaleStage } from './use-scale';
 import { cardPoints } from './trend-model';
 
 const GRAPH_DAYS: Readonly<Record<WideClass, number>> = { m: 30, w: 30, l: 90, xl: 90 };
-const GRAPH_HEIGHT: Readonly<Record<WideClass, number>> = { m: 34, w: 40, l: 120, xl: 120 };
 
 export function Stage({
   scale,
@@ -76,6 +75,38 @@ export function figuresOf({
   return figures;
 }
 
+function useRoom(): readonly [number | null, (event: LayoutChangeEvent) => void] {
+  const [room, setRoom] = useState<number | null>(null);
+  return [
+    room,
+    (event): void => {
+      setRoom(event.nativeEvent.layout.height);
+    },
+  ];
+}
+
+function Trend({
+  scale,
+  cls,
+  height,
+}: {
+  readonly scale: Scale;
+  readonly cls: WideClass;
+  readonly height: number;
+}): ReactNode {
+  const points = cardPoints(
+    scale.facts.trend,
+    GRAPH_DAYS[cls],
+    cls === 'l' || cls === 'xl',
+    scale.now,
+  );
+  return points.length < 2 ? (
+    <EmptyGraph text="No weigh-ins yet" height={height} />
+  ) : (
+    <Sparkline points={points} colour="viz-1" height={height} />
+  );
+}
+
 export function Graph({
   scale,
   cls,
@@ -83,16 +114,15 @@ export function Graph({
   readonly scale: Scale;
   readonly cls: WideClass;
 }): ReactNode {
-  const { trend, latest } = scale.facts;
-  const height = GRAPH_HEIGHT[cls];
-  const points = cardPoints(trend, GRAPH_DAYS[cls], cls === 'l' || cls === 'xl', scale.now);
-  if (points.length < 2) {
-    return <EmptyGraph text="No weigh-ins yet" height={height} />;
-  }
+  const [room, onLayout] = useRoom();
+  const height = room === null ? null : chartHeight(room);
+  const { latest } = scale.facts;
   const composition = cls === 'w' && latest?.outlier === false ? latest.composition : null;
   return (
-    <View className="gap-1.5">
-      <Sparkline points={points} colour="viz-1" height={height} />
+    <View className="min-h-0 flex-1 gap-1.5">
+      <View className="min-h-0 flex-1 justify-end" onLayout={onLayout}>
+        {height === null ? null : <Trend scale={scale} cls={cls} height={height} />}
+      </View>
       {composition === null ? null : <MiniRings composition={composition} />}
     </View>
   );
@@ -110,16 +140,21 @@ export function tickerOf({ scale }: { readonly scale: Scale }): ReactNode {
 export function actionsOf({
   scale,
   onOpen,
+  narrow,
 }: {
   readonly scale: Scale;
+  readonly narrow: boolean;
   readonly onOpen: (kind: ScaleAction['kind']) => void;
 }): ReactNode[] {
   return scaleActions(scale.facts, scale.pending.length).map((action) => (
     <Button
       key={action.kind}
-      label={action.label}
-      variant={action.filled ? 'filled' : 'text'}
-      icon={action.kind === 'queue' ? 'users' : 'user'}
+      label={
+        narrow && action.kind === 'queue' ? `Assign ${String(scale.pending.length)}` : action.label
+      }
+      spoken={action.label}
+      variant={action.kind === 'queue' ? 'tonal' : action.filled ? 'filled' : 'text'}
+      {...(narrow ? {} : { icon: action.kind === 'queue' ? 'users' : 'user' })}
       onPress={() => {
         onOpen(action.kind);
       }}

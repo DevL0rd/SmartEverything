@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import {
   harnessTargetKey,
   type AiHarnessCatalogue,
@@ -28,7 +28,7 @@ interface Page {
   readonly path: string;
   readonly title: string;
   readonly description: string;
-  readonly to: Href;
+  readonly to: AppHref;
   readonly icon?: IconName;
 }
 
@@ -65,7 +65,9 @@ function itemPages(
   const path = `extension:${item.id}`;
   const root = page(
     out,
-    item.kind === 'skill' ? 'setting:page/assistant/skills' : 'setting:page/assistant/extensions',
+    pageKind(item) === 'skill'
+      ? 'setting:page/assistant/skills'
+      : 'setting:page/assistant/extensions',
     {
       path,
       title: item.name,

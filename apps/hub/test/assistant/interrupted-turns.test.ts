@@ -1,10 +1,9 @@
-import { DEFAULT_ENGINE } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChatDirectory } from '../../src/assistant/chat-directory';
 import { ConversationLog } from '../../src/assistant/conversation-log';
 import { AssistantDelivery, type Routing } from '../../src/assistant/delivery';
 import { AssistantFiles } from '../../src/assistant/files';
-import { completionFailure } from '../../src/assistant/engines/dsh/completion';
+import { completionFailure } from '../../src/assistant/engines/dsh/projector-completion';
 import {
   CONNECTION_LOST,
   CONTINUE_NOTE,
@@ -15,6 +14,8 @@ import {
 import { AssistantRequests } from '../../src/assistant/requests';
 import { captureLogs, testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
+import { hubLayout } from '../../src/data-layout';
 
 const MODEL = 'google/gemini-3.8-flash';
 
@@ -44,12 +45,12 @@ beforeEach(async () => {
   sender = { profileId, clientId: client.id };
   const now = (): Date => new Date();
   const files = new AssistantFiles({
-    dataDirectory: opened.directory,
+    layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
     now,
   });
-  const chats = new ChatDirectory(store, files, now);
-  chatId = chats.create({ profileId, role: 'owner' }, { engine: DEFAULT_ENGINE }).id;
+  const chats = new ChatDirectory(store, files);
+  chatId = chats.create({ profileId, role: 'owner' }, { engine: TEST_ENGINE }).id;
   log = new ConversationLog(store);
   delivery = new CountingDelivery({
     events: store.assistantEvents,
@@ -158,7 +159,7 @@ describe('the interruption note', () => {
 });
 
 describe('continuing an interrupted turn', () => {
-  it('queues a hidden directive without adding a message and keeps the partial reply', async () => {
+  it('queues the continue as a SmartEverything note, not as the person, and keeps the partial reply', async () => {
     const askedId = interruptedTurn('stopped', STOPPED_BY_USER);
     const { store } = opened;
     const replies = store.assistantChat.repliesTo(askedId).map((row) => row.id);
@@ -171,10 +172,17 @@ describe('continuing an interrupted turn', () => {
       sender.clientId,
     );
     expect(row).toMatchObject({ id: askedId, state: 'answered', reason_code: null });
-    expect(store.assistantChat.since(chatId, null)).toHaveLength(messages);
+    expect(store.assistantChat.since(chatId, null)).toHaveLength(messages + 1);
     expect(store.assistantChat.repliesTo(askedId).map((reply) => reply.id)).toEqual(replies);
     const queued = store.assistantEvents.pending().filter((event) => event.chat_id === chatId);
-    expect(queued.at(-1)).toMatchObject({ message_id: null, text: CONTINUE_NOTE });
+    const continued = queued.at(-1);
+    expect(continued).toMatchObject({ text: CONTINUE_NOTE });
+    expect(store.assistantChat.message(continued?.message_id ?? '')).toMatchObject({
+      role: 'system',
+      author: 'SmartEverything',
+      text: CONTINUE_NOTE,
+      origin: { source: 'hub' },
+    });
     expect(delivery.added_count).toBe(before + 1);
   });
 
@@ -208,10 +216,9 @@ describe('retrying a failed turn', () => {
     await requests.retry(store.aiChats.chat(chatId), askedId, 'failed', sender.clientId);
     await requests.retry(store.aiChats.chat(chatId), askedId, 'failed', sender.clientId);
     expect(store.assistantChat.repliesTo(askedId).map((row) => row.id)).toEqual(replies);
-    expect(store.assistantChat.since(chatId, null)).toHaveLength(messages);
+    expect(store.assistantChat.since(chatId, null)).toHaveLength(messages + 1);
     const queued = store.assistantEvents.pending().filter((event) => event.chat_id === chatId);
     expect(queued.filter((event) => event.text === CONTINUE_NOTE)).toHaveLength(1);
-    expect(queued.find((event) => event.text === CONTINUE_NOTE)?.message_id).toBeNull();
     expect(store.assistantChat.message(askedId).state).toBe('answered');
   });
 });

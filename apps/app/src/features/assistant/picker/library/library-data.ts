@@ -38,12 +38,13 @@ export function useLibraryData(props: ModelPickerProps, state: LibraryState): Li
   return {
     search,
     rows,
-    sources: librarySources(facts),
+    sources: search.scoped ? [] : librarySources(facts),
     selected: selectedRow(rows, state.selectedKey),
     view: libraryView({
       rows: rows.length,
-      failed: search.pages.error !== null,
-      loading: search.pages.pending || search.pages.loading,
+      failed: (search.sources.native?.error ?? search.pages.error) !== null,
+      loading:
+        search.sources.native?.pending === true || search.pages.pending || search.pages.loading,
       reachable: area.kind !== 'offline-empty',
     }),
   };

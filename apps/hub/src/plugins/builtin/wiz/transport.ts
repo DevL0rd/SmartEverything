@@ -4,7 +4,7 @@ import type { PluginNetwork } from '../../plugin-listen';
 import { WIZ_FRAME, WizProtocolError, type WizFrame, type WizPorts } from './protocol';
 
 const REQUEST_ATTEMPTS = 3;
-const REQUEST_ATTEMPT_MS = 1000;
+const REQUEST_ATTEMPT_MS = 400;
 const ANY_ADDRESS = '0.0.0.0';
 
 type WizParams = Readonly<Record<string, JsonValue>>;

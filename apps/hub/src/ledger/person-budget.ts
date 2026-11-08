@@ -8,6 +8,7 @@ import {
   alertsOf,
   limitOf,
   periodStarts,
+  roomForSpend,
   stopReasons,
   type BudgetAlert,
   type Spend,
@@ -62,6 +63,12 @@ export class PersonBudgets {
     if (budget === null) return;
     const reasons = stopReasons(this.spend(profileId, budget), settingsOf(budget));
     if (reasons.length > 0) throw new PersonBudgetStopError(reasons);
+  }
+
+  canReserve(profileId: string, micros: number): boolean {
+    const budget = this.options.people.budget(profileId);
+    if (budget === undefined) return false;
+    return budget === null || roomForSpend(this.spend(profileId, budget), micros);
   }
 
   alerts(profileId: string): PersonAlert[] {

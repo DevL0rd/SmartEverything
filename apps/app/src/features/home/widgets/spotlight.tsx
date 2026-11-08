@@ -10,12 +10,20 @@ import {
   type WidgetDefinition,
   type WidgetSize,
 } from '../../../components/widget-board';
-import { useDevices } from '../../../store/selectors';
+import { useDevice, useDevices } from '../../../store/selectors';
 import { deviceOf } from '../../../store/state';
-import { DeviceSpotlightWidget, spotlightSections, type SpotlightKind } from '../../devices';
+import {
+  DeviceSpotlightWidget,
+  VACUUM_FACE_FIELDS,
+  VacuumFaceOptionsEditor,
+  deviceModelOf,
+  spotlightSections,
+  vacuumFaceOptionsOf,
+  type SpotlightKind,
+} from '../../devices';
 import { spotlightable } from '../model/spotlight';
 
-const SPOTLIGHT_OPTIONS = z.object({ deviceId: z.string().min(1) });
+const SPOTLIGHT_OPTIONS = z.object({ deviceId: z.string().min(1), ...VACUUM_FACE_FIELDS });
 
 type SpotlightOptions = z.infer<typeof SPOTLIGHT_OPTIONS>;
 
@@ -35,15 +43,26 @@ function SpotlightEditor({
   readonly onChange: (value: SpotlightOptions) => void;
 }): ReactNode {
   const devices = useDevices().filter(spotlightable);
+  const chosen = useDevice(value.deviceId);
   return (
-    <Select
-      label="Device"
-      options={devices.map((device) => ({ value: device.id, label: device.label }))}
-      value={value.deviceId}
-      onChange={(deviceId) => {
-        onChange({ deviceId });
-      }}
-    />
+    <>
+      <Select
+        label="Device"
+        options={devices.map((device) => ({ value: device.id, label: device.label }))}
+        value={value.deviceId}
+        onChange={(deviceId) => {
+          onChange({ ...value, deviceId });
+        }}
+      />
+      {chosen !== null && deviceModelOf(chosen).family === 'vacuum' ? (
+        <VacuumFaceOptionsEditor
+          view={vacuumFaceOptionsOf(value).view}
+          onChange={(vacuumView) => {
+            onChange({ ...value, vacuumView });
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -106,6 +125,7 @@ export const SPOTLIGHT_WIDGET: WidgetDefinition = {
         size={size}
         editing={editing}
         frame={frame}
+        options={parsed.data}
       />
     ) : (
       <NoDevice />

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CHART_MIN_HEIGHT,
+  chartHeight,
   EMPTY_LINE,
   readingsLabel,
   scaleActions,
@@ -86,5 +88,17 @@ describe('the spoken summary', () => {
     expect(scaleSummary('Body scale', facts, 'Today 06:53', 1)).toBe(
       'Body scale, 87.9 kilograms, Today 06:53, 1 reading needs a person',
     );
+  });
+});
+
+describe('the trend chart height in the card', () => {
+  it('fills the whole room left above the actions', () => {
+    expect(chartHeight(80)).toBe(80);
+    expect(chartHeight(57.6)).toBe(57);
+  });
+
+  it('leaves the chart out when the room cannot hold its caption line', () => {
+    expect(chartHeight(CHART_MIN_HEIGHT - 1)).toBeNull();
+    expect(chartHeight(CHART_MIN_HEIGHT)).toBe(CHART_MIN_HEIGHT);
   });
 });

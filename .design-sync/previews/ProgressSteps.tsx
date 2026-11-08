@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { ProgressSteps, Stage } from 'smarteverything-kit';
 
 const steps = [
@@ -7,12 +8,12 @@ const steps = [
   { label: 'Assign rooms', state: 'waiting' as const },
   { label: 'Enable cameras', state: 'failed' as const, detail: 'Cloud region not supported' },
 ];
-export const Setup = () => (
+export const Setup = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <ProgressSteps steps={steps} />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     <ProgressSteps steps={steps} />
   </Stage>

@@ -1,5 +1,6 @@
 import { Logger } from '@smarteverything/logging';
-import { ValueStore, useValue } from '../design/external-store';
+import { useSyncExternalStore } from 'react';
+import { ValueStore } from '../design/external-store';
 import { DURATION } from '../design/motion';
 import { rawErrorText } from '../format/errors';
 import { ToastClock, type ToastHold } from './toast-clock';
@@ -33,6 +34,7 @@ export interface Toast extends ToastBase {
   readonly leaving: boolean;
   readonly held: boolean;
   readonly undoable: boolean;
+  readonly expanded: boolean;
   readonly action?: ToastAction;
 }
 
@@ -116,6 +118,7 @@ function toastOf(input: ToastInput, id: number): Toast {
     leaving: false,
     held: false,
     undoable: undo !== undefined,
+    expanded: false,
   };
 }
 
@@ -178,7 +181,8 @@ export function actOnToast(toast: Toast): void {
   close(toast.id, true);
 }
 
-export function expandToast(toast: Toast): void {
+export function setToastExpanded(toast: Toast, expanded: boolean): void {
+  change((items) => items.map((entry) => (entry.id === toast.id ? { ...entry, expanded } : entry)));
   clock.restart(toast.id, SHOWN_MS.error);
 }
 
@@ -231,6 +235,6 @@ export function setToastCapacity(capacity: number): void {
 }
 
 export function useShownToasts(): readonly Toast[] {
-  const { items, capacity } = useValue(state);
+  const { items, capacity } = useSyncExternalStore(state.subscribe, state.get, state.get);
   return items.slice(0, capacity);
 }

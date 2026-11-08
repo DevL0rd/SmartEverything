@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
 import { API_ENDPOINTS as E, type HistorySourceClass } from '@smarteverything/domain';
-import { background } from '@smarteverything/logging';
+import { Logger } from '@smarteverything/logging';
 import { api } from '../api/transport';
 import { RING_SPAN_MS, computerRings } from './computer-rings';
 
+const log = new Logger('app.background');
 const BACKFILL_TOPICS = ['summary', 'cpu', 'gpu', 'memory', 'disks', 'network', 'power'];
 const BACKFILL_POINTS = 400;
 
@@ -32,12 +33,9 @@ export function useRingBackfill(
   useEffect(() => {
     const fresh = computerRings.claimBackfill(deviceId, topics);
     if (fresh.length === 0) return;
-    background(
-      backfill(deviceId, source, fresh).catch((error: unknown) => {
-        computerRings.releaseBackfill(deviceId, fresh);
-        throw error;
-      }),
-      'computer.backfill_failed',
-    );
+    backfill(deviceId, source, fresh).catch((error: unknown) => {
+      computerRings.releaseBackfill(deviceId, fresh);
+      log.warn('computer.backfill_failed', { deviceId, error });
+    });
   }, [deviceId, source, topics]);
 }

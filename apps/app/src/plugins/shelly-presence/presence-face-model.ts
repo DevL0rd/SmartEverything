@@ -91,6 +91,41 @@ export function occupiedSegments(
   return segments;
 }
 
+export type PresenceFace = 'map' | 'room';
+
+export interface FaceSwitch {
+  readonly label: string;
+  readonly spoken: string;
+  readonly icon: 'house' | 'motion';
+}
+
+const FACE_SWITCHES: Readonly<Record<PresenceFace, FaceSwitch>> = {
+  map: { label: 'Home map', spoken: 'Show the sensor on the home map', icon: 'house' },
+  room: { label: 'Sensor view', spoken: 'Show the sensor view', icon: 'motion' },
+};
+
+export function presenceFaces(placedOnMap: boolean): readonly PresenceFace[] {
+  return placedOnMap ? ['map', 'room'] : ['room'];
+}
+
+export function faceShown(
+  faces: readonly PresenceFace[],
+  picked: PresenceFace | null,
+): PresenceFace {
+  if (picked !== null && faces.includes(picked)) return picked;
+  return faces[0] ?? 'room';
+}
+
+export function nextFace(faces: readonly PresenceFace[], shown: PresenceFace): PresenceFace | null {
+  if (faces.length < 2) return null;
+  const at = faces.indexOf(shown);
+  return faces[(at + 1) % faces.length] ?? null;
+}
+
+export function faceSwitchOf(face: PresenceFace): FaceSwitch {
+  return FACE_SWITCHES[face];
+}
+
 export function occupancyWindow(to: number): { readonly from: number; readonly to: number } {
   return { from: to - OCCUPANCY_HOURS * HOUR_MS, to };
 }

@@ -1,8 +1,8 @@
 import type { PhoneFold } from '../types';
 import type { Bounds } from './shapes';
 
-export const BODY_TOP = 10;
-export const BODY_HEIGHT = 86;
+const BODY_TOP = 10;
+const BODY_HEIGHT = 86;
 const BEZEL = 3.2;
 const LOW_LEVEL = 20;
 const WARNING_LEVEL = 35;
@@ -22,10 +22,6 @@ const OPEN: Slab = { x: 14, w: 72, r: 9, screenR: 5 };
 
 export function slabOf(fold: PhoneFold | null): Slab {
   return fold === 'open' ? OPEN : CLOSED;
-}
-
-export function bodyBounds(slab: Slab): Bounds {
-  return { x: slab.x, y: BODY_TOP, w: slab.w, h: BODY_HEIGHT, r: slab.r };
 }
 
 export function screenBounds(slab: Slab): Bounds {

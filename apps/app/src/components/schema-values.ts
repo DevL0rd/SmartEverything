@@ -56,7 +56,7 @@ export function matchesType(schema: Schema, value: JsonValue): boolean {
 }
 export function valueSummary(value: JsonValue | undefined): string {
   if (value === undefined) return 'Not edited';
-  if (value === null) return 'Reset to runtime default';
+  if (value === null) return 'Clears the override';
   if (Array.isArray(value)) return `${String(value.length)} items`;
   if (typeof value === 'object') return `${String(Object.keys(value).length)} fields`;
   return String(value);

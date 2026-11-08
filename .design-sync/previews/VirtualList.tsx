@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { ListRow, Stage, VirtualList } from 'smarteverything-kit';
 
 const sections = [
@@ -26,12 +27,12 @@ const list = (
     renderItem={(i) => <ListRow title={i.name} subtitle={i.sub} icon="plug" chevron />}
   />
 );
-export const Grouped = () => (
+export const Grouped = (): ReactElement => (
   <Stage theme="dark" width={520} height={420}>
     {list}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520} height={420}>
     {list}
   </Stage>

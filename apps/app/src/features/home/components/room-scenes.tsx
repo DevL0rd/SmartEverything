@@ -19,7 +19,7 @@ export function RoomScenes({ devices }: { readonly devices: readonly Device[] })
     return null;
   }
   return (
-    <List title="Scenes" inset>
+    <List title="Scenes" inset className="w-full max-w-reading self-start">
       {scenes.map((scene) => (
         <ListRow
           key={scene.id}

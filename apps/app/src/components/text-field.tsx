@@ -22,6 +22,8 @@ export interface TextFieldProps {
   readonly multiline?: boolean;
   readonly disabled?: boolean;
   readonly focusOnMount?: boolean;
+  readonly showLabel?: boolean;
+  readonly action?: ReactNode;
 }
 
 function Help({
@@ -71,7 +73,7 @@ function Input(props: TextFieldProps & { readonly revealed: boolean }): ReactNod
       cursorColorClassName="accent-primary"
       selectionColorClassName="accent-primary"
       className={cn(
-        'min-w-0 flex-1 self-stretch px-3 text-body text-on-surface outline-none',
+        'min-w-0 flex-1 self-stretch px-3 text-body text-on-surface web:outline-none',
         look.mono ? 'font-mono' : 'font-sans',
         props.multiline === true && 'py-2',
       )}
@@ -82,30 +84,42 @@ function Input(props: TextFieldProps & { readonly revealed: boolean }): ReactNod
 export function TextField(props: TextFieldProps): ReactNode {
   const [revealed, setRevealed] = useState(false);
   const error = props.error ?? null;
+  const input = (
+    <View
+      className={cn(
+        'flex-row items-center rounded-md border bg-surface-2',
+        props.multiline === true ? 'min-h-24' : 'h-control-h',
+        error === null ? 'border-outline' : 'border-critical',
+        props.disabled === true && 'opacity-40',
+      )}
+    >
+      <Input {...props} revealed={revealed} />
+      {props.kind === 'password' ? (
+        <IconButton
+          icon={revealed ? 'eyeOff' : 'eye'}
+          label={revealed ? 'Hide password' : 'Show password'}
+          onPress={() => {
+            setRevealed(!revealed);
+          }}
+        />
+      ) : null}
+    </View>
+  );
   return (
     <View className="gap-1">
-      <Text variant="footnote" tone="variant">
-        {props.label}
-      </Text>
-      <View
-        className={cn(
-          'flex-row items-center rounded-md border bg-surface-2',
-          props.multiline === true ? 'min-h-24' : 'h-control-h',
-          error === null ? 'border-outline' : 'border-critical',
-          props.disabled === true && 'opacity-40',
-        )}
-      >
-        <Input {...props} revealed={revealed} />
-        {props.kind === 'password' ? (
-          <IconButton
-            icon={revealed ? 'eyeOff' : 'eye'}
-            label={revealed ? 'Hide password' : 'Show password'}
-            onPress={() => {
-              setRevealed(!revealed);
-            }}
-          />
-        ) : null}
-      </View>
+      {props.showLabel === false ? null : (
+        <Text variant="footnote" tone="variant">
+          {props.label}
+        </Text>
+      )}
+      {props.action === undefined ? (
+        input
+      ) : (
+        <View className="flex-row items-center gap-2">
+          <View className="min-w-0 flex-1">{input}</View>
+          {props.action}
+        </View>
+      )}
       <Help helper={props.helper} error={error} />
     </View>
   );

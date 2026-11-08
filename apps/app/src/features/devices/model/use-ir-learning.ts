@@ -1,33 +1,41 @@
 import { useEffect, useRef, useState } from 'react';
-import type { IrCodeRow, IrRemoteRow } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { saveIrCode } from '../../../api/ir';
 import { useRow } from '../../../store/selectors';
 import { useLedger } from '../../../store/store-context';
 import type { Device } from '../../../store/state';
-import { learnOutcome, type LearnOutcome } from './ir-links';
+import { learnOutcome, type LearnedCode, type LearnOutcome } from './ir-links';
 import { rawErrorText } from '../../../format/errors';
 
 const log = new Logger('app.devices');
 
+export interface LearnTarget {
+  readonly id: string;
+  readonly save: (button: string, code: LearnedCode) => Promise<void>;
+}
+
 interface Listening {
   readonly kind: 'listening';
   readonly commandId: string;
-  readonly remote: IrRemoteRow;
+  readonly target: LearnTarget;
   readonly button: string;
+}
+
+export interface SavedButton {
+  readonly button: string;
+  readonly code: LearnedCode;
 }
 
 type Asked =
   | { readonly kind: 'idle' }
   | Listening
-  | { readonly kind: 'saved'; readonly code: IrCodeRow }
+  | ({ readonly kind: 'saved' } & SavedButton)
   | { readonly kind: 'failed'; readonly message: string };
 
 type LearnPhase = Asked | { readonly kind: 'saving'; readonly button: string };
 
 export interface IrLearning {
   readonly phase: LearnPhase;
-  readonly start: (remote: IrRemoteRow, button: string) => void;
+  readonly start: (target: LearnTarget, button: string) => void;
   readonly reset: () => void;
 }
 
@@ -55,21 +63,14 @@ function useSaveLearned(asked: Asked, outcome: LearnOutcome, settle: (asked: Ask
       return;
     }
     saving.current = asked.commandId;
-    saveIrCode({
-      remoteId: asked.remote.id,
-      button: asked.button,
-      format: outcome.code.format,
-      code: outcome.code.code,
-    }).then(
-      (code) => {
-        log.info('ir.code_saved', { remoteId: asked.remote.id, codeId: code.id });
-        settle({ kind: 'saved', code });
+    const { target, button, commandId } = asked;
+    target.save(button, outcome.code).then(
+      () => {
+        log.info('ir.code_saved', { targetId: target.id, commandId });
+        settle({ kind: 'saved', button, code: outcome.code });
       },
       (error: unknown) => {
-        log.error('ir.save_failed', error, {
-          remoteId: asked.remote.id,
-          commandId: asked.commandId,
-        });
+        log.error('ir.save_failed', error, { targetId: target.id, commandId });
         settle({ kind: 'failed', message: rawErrorText(error) });
       },
     );
@@ -84,22 +85,22 @@ export function useIrLearning(blaster: Device): IrLearning {
   useSaveLearned(asked, outcome, setAsked);
   return {
     phase: phaseOf(asked, outcome),
-    start: (remote, button): void => {
+    start: (target, button): void => {
       ledger.send(blaster, 'ir_learn', null).then(
         (sent) => {
           log.info(sent.sent ? 'ir.learn_started' : 'ir.learn_refused', {
             blasterId: blaster.id,
-            remoteId: remote.id,
+            targetId: target.id,
             ...(sent.sent ? { commandId: sent.row.id } : { reason: sent.message }),
           });
           setAsked(
             sent.sent
-              ? { kind: 'listening', commandId: sent.row.id, remote, button }
+              ? { kind: 'listening', commandId: sent.row.id, target, button }
               : { kind: 'failed', message: sent.message },
           );
         },
         (error: unknown) => {
-          log.error('ir.learn_failed', error, { blasterId: blaster.id, remoteId: remote.id });
+          log.error('ir.learn_failed', error, { blasterId: blaster.id, targetId: target.id });
           setAsked({ kind: 'failed', message: rawErrorText(error) });
         },
       );

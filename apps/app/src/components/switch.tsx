@@ -40,6 +40,7 @@ export function SwitchTrack({
   return (
     <View
       aria-hidden
+      pointerEvents="none"
       className={cn(
         'h-8 w-13 justify-center rounded-full border-2 px-0.5',
         value ? 'border-primary bg-primary' : 'border-outline bg-surface-3',

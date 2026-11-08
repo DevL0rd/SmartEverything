@@ -1,3 +1,4 @@
+import { connect } from 'node:net';
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HubGuestBroker } from '../../src/client-network/guest-broker';
@@ -45,14 +46,22 @@ async function upstream(
 
 const TOKEN = `scg_${'A'.repeat(43)}`;
 
-async function guest(
+const HUB_ID = 'ab'.repeat(32);
+const LAN_ORIGIN = 'https://192.168.50.2:7882';
+const PUBLIC_ORIGIN = 'https://home.example.com';
+const TRUST = {
+  identity: { id: HUB_ID },
+  endpoints: [
+    { kind: 'lan', url: LAN_ORIGIN },
+    { kind: 'remote', url: PUBLIC_ORIGIN },
+  ],
+} as const;
+
+async function guestBroker(
   origin: string,
   signal = new AbortController().signal,
-): Promise<{
-  readonly mcpUrl: string;
-  readonly broker: HubGuestBroker;
-  readonly failures: number[];
-}> {
+  trust: typeof TRUST | null = null,
+): Promise<{ readonly broker: HubGuestBroker; readonly failures: number[] }> {
   const failures: number[] = [];
   const broker = new HubGuestBroker(
     {
@@ -64,6 +73,7 @@ async function guest(
       failed: (generation): void => {
         failures.push(generation);
       },
+      view: { trust },
     },
     origin,
   );
@@ -71,8 +81,20 @@ async function guest(
   closers.push(() => {
     broker.close();
   });
+  return { broker, failures };
+}
+
+async function guest(
+  origin: string,
+  signal = new AbortController().signal,
+): Promise<{
+  readonly mcpUrl: string;
+  readonly broker: HubGuestBroker;
+  readonly failures: number[];
+}> {
+  const { broker, failures } = await guestBroker(origin, signal);
   return {
-    mcpUrl: broker.openMcp('claude', new URL('/mcp', origin).href, TOKEN),
+    mcpUrl: broker.openMcp('claude', { url: new URL('/mcp', origin).href, pin: null }, TOKEN),
     broker,
     failures,
   };
@@ -103,6 +125,31 @@ describe('guest MCP broker', () => {
     expect(hub.seen[0]?.headers['traceparent']).toBeUndefined();
     expect(hub.seen[0]?.headers['x-stainless-lang']).toBeUndefined();
     expect(hub.seen[0]?.headers.authorization).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it('forwards the headers a 2026-07-28 MCP request mirrors from its body', async () => {
+    const hub = await upstream(() => ({ status: 200, body: '{}' }));
+    const { mcpUrl } = await guest(hub.origin);
+    await fetch(mcpUrl, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2026-07-28',
+        'mcp-method': 'tools/call',
+        'mcp-name': 'device_find',
+        'mcp-param-query': 'lamp',
+        'user-agent': 'claude-code/2.1.289',
+      },
+      body: '{}',
+    });
+    expect(hub.seen[0]?.headers).toMatchObject({
+      'mcp-protocol-version': '2026-07-28',
+      'mcp-method': 'tools/call',
+      'mcp-name': 'device_find',
+      'mcp-param-query': 'lamp',
+      'user-agent': 'claude-code/2.1.289',
+    });
   });
 
   it('refuses a wrong credential with a reason and logs it', async () => {
@@ -141,6 +188,35 @@ describe('guest MCP broker', () => {
     });
     expect(failed.status).toBe(502);
     expect(unreachable.failures).toEqual([3]);
+  });
+
+  it('relays a pinned LAN grant and the public grant through the canonical hub', async () => {
+    const hub = await upstream(() => ({ status: 200, body: '{}' }));
+    const { broker } = await guestBroker(hub.origin, undefined, TRUST);
+    const pinned = broker.openMcp('claude', { url: `${LAN_ORIGIN}/mcp`, pin: HUB_ID }, TOKEN);
+    await fetch(pinned, { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` } });
+    const remote = broker.openMcp('codex', { url: `${PUBLIC_ORIGIN}/mcp`, pin: null }, TOKEN);
+    await fetch(remote, { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` } });
+    expect(hub.seen.map((seen) => seen.url)).toEqual(['/mcp', '/mcp']);
+  });
+
+  it('refuses a grant with a foreign pin, an unenrolled address or a pin it cannot check', async () => {
+    const hub = await upstream(() => ({ status: 200, body: '{}' }));
+    const { broker } = await guestBroker(hub.origin, undefined, TRUST);
+    expect(() =>
+      broker.openMcp('claude', { url: `${LAN_ORIGIN}/mcp`, pin: 'cd'.repeat(32) }, TOKEN),
+    ).toThrow('pin differs');
+    expect(() =>
+      broker.openMcp('claude', { url: 'https://192.168.50.9:7882/mcp', pin: HUB_ID }, TOKEN),
+    ).toThrow('not an enrolled hub endpoint');
+    expect(() =>
+      broker.openMcp('claude', { url: `${LAN_ORIGIN}/other`, pin: HUB_ID }, TOKEN),
+    ).toThrow('not a hub MCP endpoint');
+    const untrusted = await guestBroker(hub.origin);
+    expect(() =>
+      untrusted.broker.openMcp('claude', { url: `${hub.origin}/mcp`, pin: HUB_ID }, TOKEN),
+    ).toThrow('pin differs');
+    expect(hub.seen).toHaveLength(0);
   });
 });
 
@@ -247,5 +323,68 @@ describe('resource broker', () => {
       purpose: 'recording',
     });
     expect((await fetch(down.localUrl)).status).toBe(502);
+  });
+});
+
+describe('brokers on the shared listener', () => {
+  it('refuse a request whose Host differs from the listener', async () => {
+    const hub = await upstream(() => ({ status: 200, body: 'x' }));
+    const { broker } = await resources('http://app.example');
+    const link = signedUrl(hub.origin, '/media/recordings/r1', 600_000);
+    const resource = broker.open(1, {
+      scopeId: 'scope-1',
+      binding: { ...BINDING, canonicalOrigin: hub.origin },
+      url: link.url,
+      expiresAt: link.expiresAt,
+      purpose: 'recording',
+    });
+    const port = Number(new URL(resource.localUrl).port);
+    const answer = await new Promise<string>((resolve) => {
+      const socket = connect(port, '127.0.0.1', () => {
+        socket.write(
+          `GET /resource/${resource.id} HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n`,
+        );
+      });
+      let received = '';
+      socket.on('data', (chunk: Buffer) => {
+        received += chunk.toString('utf8');
+      });
+      socket.on('close', () => {
+        resolve(received);
+      });
+    });
+    expect(answer).toContain('403');
+    expect(hub.seen).toHaveLength(0);
+  });
+
+  it('refuses to release a resource grant for another owner and keeps it serving', async () => {
+    const hub = await upstream(() => ({ status: 200, body: 'kept' }));
+    const { broker } = await resources('http://app.example');
+    const link = signedUrl(hub.origin, '/media/recordings/r1', 600_000);
+    const resource = broker.open(1, {
+      scopeId: 'scope-1',
+      binding: { ...BINDING, canonicalOrigin: hub.origin },
+      url: link.url,
+      expiresAt: link.expiresAt,
+      purpose: 'recording',
+    });
+    expect(() => {
+      broker.release(2, resource.id);
+    }).toThrow('another owner');
+    expect(await (await fetch(resource.localUrl)).text()).toBe('kept');
+    broker.closeOwner(1);
+    expect((await fetch(resource.localUrl)).status).toBe(409);
+  });
+
+  it('reuses the MCP grant for the same credential and replaces it for a new one', async () => {
+    const hub = await upstream(() => ({ status: 200, body: '{}' }));
+    const { broker, mcpUrl } = await guest(hub.origin);
+    const canonical = { url: new URL('/mcp', hub.origin).href, pin: null };
+    const again = broker.openMcp('claude', canonical, TOKEN);
+    expect(again).toBe(mcpUrl);
+    const other = broker.openMcp('claude', canonical, `scg_${'B'.repeat(43)}`);
+    expect(other).not.toBe(mcpUrl);
+    const old = await fetch(mcpUrl, { headers: { authorization: `Bearer ${TOKEN}` } });
+    expect(old.status).toBe(409);
   });
 });

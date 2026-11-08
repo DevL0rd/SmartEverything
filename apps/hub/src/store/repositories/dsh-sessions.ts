@@ -24,7 +24,7 @@ import {
 import { found, type StoreContext } from '../context';
 import { jsonText, SQL_JSON } from '../sql';
 import { durableSessionWrite } from './dsh-session-durability';
-import { assertChatWork } from './ai-chat-removal-hold';
+import { assertChatNotRetired, assertChatWork } from './ai-chat-removal-hold';
 import { DshSessionStorageError } from './dsh-session-errors';
 import { requireNativeHeader } from './dsh-session-headers';
 import { DshSessionEvents } from './dsh-session-events';
@@ -46,16 +46,26 @@ const WORKSPACE = z
   })
   .pipe(DSH_SESSION_WORKSPACE_CHOICE);
 const PAGE_EVENTS = 10_000;
+const PRESENT = z.strictObject({ present: z.literal(1) });
 export interface DshSessionOpened {
   readonly metadata: DshSessionMetadata;
   readonly claim: DshWriterClaim;
 }
 
+export type DshSessionWrite = 'append' | 'rewrite';
+
+export type DshSessionListener = (
+  sessionId: string,
+  events: DshSessionAppend['events'],
+  write: DshSessionWrite,
+) => void;
+
 export class DshSessionsRepository {
   private readonly rows: DshSessionRows;
   private readonly claims: DshSessionClaims;
   private readonly events: DshSessionEvents;
-  private readonly appended = new Set<
+  private readonly appended = new Set<DshSessionListener>();
+  private readonly admissions = new Set<
     (sessionId: string, events: DshSessionAppend['events']) => void
   >();
   constructor(private readonly context: StoreContext) {
@@ -86,10 +96,12 @@ export class DshSessionsRepository {
     const principal = DSH_SESSION_PRINCIPAL.parse(authority);
     const metadata = durableSessionWrite(this.context, () => {
       const row = this.rows.get(request.claim.session_id, principal.profile_id);
+      assertChatNotRetired(this.context, row.chat_id);
       requireWriter(row, request.claim, principal);
+      for (const admit of this.admissions) admit(request.claim.session_id, request.events);
       return this.events.append(row, request);
     });
-    this.announce(request.claim.session_id, request.events);
+    this.announce(request.claim.session_id, request.events, 'append');
     return metadata;
   }
   rewrite(
@@ -105,11 +117,14 @@ export class DshSessionsRepository {
       this.claims.detach(row);
       return this.events.write(row, written);
     });
-    this.announce(id, written);
+    this.announce(id, written, 'rewrite');
     return metadata;
   }
-  onAppend(listener: (sessionId: string, events: DshSessionAppend['events']) => void): void {
+  onAppend(listener: DshSessionListener): void {
     this.appended.add(listener);
+  }
+  admitAppend(admit: (sessionId: string, events: DshSessionAppend['events']) => void): void {
+    this.admissions.add(admit);
   }
   flush(input: unknown, authority: DshSessionPrincipal): DshSessionMetadata {
     const request = DSH_SESSION_FLUSH.parse(input);
@@ -131,6 +146,10 @@ export class DshSessionsRepository {
     const principal = DSH_SESSION_PRINCIPAL.parse(authority);
     const row = this.rows.get(claim.session_id, principal.profile_id);
     return requireWriter(row, claim, principal);
+  }
+  ownerOf(sessionId: string): DshSessionMetadata | undefined {
+    const row = this.rows.find(DSH_SESSION_ID.parse(sessionId));
+    return row === undefined ? undefined : sessionMetadata(row);
   }
   stat(sessionId: string, profileId: string): DshSessionMetadata | undefined {
     const row = this.rows.find(DSH_SESSION_ID.parse(sessionId));
@@ -169,6 +188,16 @@ export class DshSessionsRepository {
       offset = page.next_offset;
     }
     return events;
+  }
+  recorded(sessionId: string, profileId: string, type: string): boolean {
+    const row = this.rows.get(DSH_SESSION_ID.parse(sessionId), profileId);
+    return (
+      this.context.sql.get(
+        PRESENT,
+        "select 1 as present from dsh_session_events where session_id=$id and json_extract(event,'$.type')=$type limit 1",
+        { id: row.session_id, type },
+      ) !== undefined
+    );
   }
   workspaces(sessionId: string, profileId: string): DshSessionWorkspaceChoice[] {
     const id = DSH_SESSION_ID.parse(sessionId);
@@ -214,8 +243,12 @@ export class DshSessionsRepository {
       return choice;
     });
   }
-  private announce(sessionId: string, events: DshSessionAppend['events']): void {
-    for (const listener of this.appended) listener(sessionId, events);
+  private announce(
+    sessionId: string,
+    events: DshSessionAppend['events'],
+    write: DshSessionWrite,
+  ): void {
+    for (const listener of this.appended) listener(sessionId, events, write);
   }
   private createStored(
     request: DshSessionCreate,

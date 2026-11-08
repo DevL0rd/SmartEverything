@@ -2,14 +2,14 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { SceneRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
-import { Figure } from '../../../components/figure';
+import { Figure, type FigureSize } from '../../../components/figure';
 import { Icon, type IconName } from '../../../components/icon';
 import { IconWell } from '../../../components/icon-well';
 import { Text } from '../../../components/text';
-import { WidgetEmpty, WidgetFrame } from '../../../components/widget-board';
-import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
-import type { ColourRole } from '../../../design/tokens';
-import { decimal } from '../../../format/number';
+import { WidgetEmpty, WidgetFrame, widgetBodyHeight } from '../../../components/widget-board';
+import { useWidgetFace, type WidgetFace } from '../../../components/widget-board/use-widget-face';
+import { TYPE_SCALE, type ColourRole } from '../../../design/tokens';
+import { decimal, withUnit } from '../../../format/number';
 import { plural, joinParts } from '../../../format/text';
 import { DAY_MS, localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
@@ -19,12 +19,7 @@ import { useHome } from '../data/home-data';
 import { consumersOf, sameConsumers } from '../model/consumers';
 import type { FitnessFigure } from '../model/fitness-today';
 import type { SecurityLine } from '../model/security';
-import {
-  activityRowCount,
-  bodyHeight,
-  consumerRowCount,
-  securityRowCount,
-} from '../model/widget-fit';
+import { activityRowCount, consumerRowCount, securityRowCount } from '../model/widget-fit';
 import { ActivityLatest, ActivityRows } from './activity-rows';
 import { ConsumerRows } from './energy-rows';
 import { SceneChipGrid, SceneGlance, SceneScroller } from './scene-chips';
@@ -41,7 +36,7 @@ export function ActivityWidget(): ReactNode {
       ) : (
         <ActivityRows
           items={activity}
-          count={activityRowCount(bodyHeight(frame), sizes, tall)}
+          count={activityRowCount(widgetBodyHeight(frame), frame.idiom, sizes, tall)}
           footer={tall}
         />
       )}
@@ -59,7 +54,7 @@ function SceneFace({ scenes }: { readonly scenes: readonly SceneRow[] }): ReactN
       <SceneChipGrid
         scenes={scenes}
         columns={cls === 'xl' ? 3 : 2}
-        body={bodyHeight(frame)}
+        body={widgetBodyHeight(frame)}
         sizes={sizes}
       />
     );
@@ -98,13 +93,13 @@ export function EnergyWidget(): ReactNode {
   const shown = small
     ? 0
     : consumerRowCount(
-        bodyHeight(frame),
+        widgetBodyHeight(frame),
         CONSUMER_FIGURE_HEIGHT,
         consumers.length > 1 ? consumers.length : 0,
       );
   return (
     <WidgetFrame title="Energy" icon="plug" accent="viz-2" glow="viz-2">
-      <View className="flex-1 justify-end gap-2">
+      <View className="gap-2">
         <View className="flex-row items-end justify-between gap-3">
           <Figure
             value={decimal(power.watts, 0)}
@@ -154,7 +149,7 @@ function SecurityGlance({ security }: { readonly security: readonly SecurityLine
 
 function SecurityLines({ security }: { readonly security: readonly SecurityLine[] }): ReactNode {
   const { frame } = useWidgetFace();
-  const { shown, more } = securityRowCount(bodyHeight(frame), security.length);
+  const { shown, more } = securityRowCount(widgetBodyHeight(frame), security.length);
   return (
     <View className="flex-1 gap-2.5 overflow-hidden">
       {security.slice(0, shown).map((line) => (
@@ -224,24 +219,83 @@ const FIGURE_LOOK: Readonly<Record<string, { icon: IconName; colour: ColourRole 
   distance: { icon: 'route', colour: 'viz-1' },
 };
 
-function FitnessFigureView({ figure }: { readonly figure: FitnessFigure }): ReactNode {
+const FITNESS_COLUMN_WIDTH = 152;
+
+export type FitnessLayout = 'columns' | 'stacked' | 'compact';
+
+const FITNESS_LAYOUT: Readonly<Record<FitnessLayout, string>> = {
+  columns: 'flex-row gap-2',
+  stacked: 'gap-1',
+  compact: '',
+};
+
+const STACKED_GAP = 4;
+
+export function fitnessLayout(
+  face: Pick<WidgetFace, 'frame' | 'cls'>,
+  count: number,
+): FitnessLayout {
+  const { frame, cls } = face;
+  if (cls === 's') {
+    return 'compact';
+  }
+  if (frame.width >= count * FITNESS_COLUMN_WIDTH) {
+    return 'columns';
+  }
+  const row = TYPE_SCALE[frame.idiom]['figure-s'][1];
+  const stacked = count * row + (count - 1) * STACKED_GAP;
+  return stacked <= widgetBodyHeight(frame) ? 'stacked' : 'compact';
+}
+
+function FitnessFigureView({
+  figure,
+  layout,
+  figureSize,
+}: {
+  readonly figure: FitnessFigure;
+  readonly layout: FitnessLayout;
+  readonly figureSize: FigureSize;
+}): ReactNode {
   const look = FIGURE_LOOK[figure.key] ?? FALLBACK_LOOK;
-  return (
-    <View className="min-w-0 flex-1 gap-1.5">
-      <IconWell icon={look.icon} colour={look.colour} size="s" />
+  const label = (
+    <Text variant="footnote" tone="variant" className="min-w-0 shrink">
+      {figure.label}
+    </Text>
+  );
+  const value =
+    layout === 'compact' ? (
+      <Text variant="callout" className="tabular">
+        {withUnit(figure.value, figure.unit)}
+      </Text>
+    ) : (
       <Figure
         value={figure.value}
-        size="m"
+        size={figureSize}
+        wrap
         {...(figure.unit === '' ? {} : { unit: figure.unit })}
       />
-      <Text variant="footnote" tone="variant" numberOfLines={1}>
-        {figure.label}
-      </Text>
+    );
+  return layout !== 'columns' ? (
+    <View className="flex-row items-center justify-between gap-2">
+      <View className="min-w-0 shrink flex-row items-center gap-1.5">
+        <Icon name={look.icon} size={16} colour={look.colour} />
+        {label}
+      </View>
+      <View className="min-w-0 shrink">{value}</View>
+    </View>
+  ) : (
+    <View className="min-w-0 flex-1 gap-1.5">
+      <View className="flex-row items-center gap-1.5">
+        <IconWell icon={look.icon} colour={look.colour} size="s" />
+        {label}
+      </View>
+      {value}
     </View>
   );
 }
 
 export function FitnessTodayWidget(): ReactNode {
+  const face = useWidgetFace();
   const fitness = useHome((view) => view.fitness);
   const zone = useSettings().time_zone;
   const now = useMinute();
@@ -253,11 +307,18 @@ export function FitnessTodayWidget(): ReactNode {
     return null;
   }
   const day = fitnessDayTitle(fitness.day, now, zone);
+  const layout = fitnessLayout(face, fitness.figures.length);
+  const figureSize = layout === 'columns' && (face.cls === 'w' || face.cls === 'xl') ? 'm' : 's';
   return (
     <WidgetFrame title={day} icon="fitness" accent="move" href={href.fitness()}>
-      <View className="flex-1 flex-row items-end gap-4">
-        {fitness.figures.slice(0, 3).map((figure) => (
-          <FitnessFigureView key={figure.key} figure={figure} />
+      <View className={FITNESS_LAYOUT[layout]}>
+        {fitness.figures.map((figure) => (
+          <FitnessFigureView
+            key={figure.key}
+            figure={figure}
+            layout={layout}
+            figureSize={figureSize}
+          />
         ))}
       </View>
     </WidgetFrame>

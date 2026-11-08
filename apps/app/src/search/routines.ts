@@ -1,4 +1,4 @@
-import { NODE_REGISTRY, type SearchSources } from '@smarteverything/domain';
+import { type NodeKindLookup, type SearchSources } from '@smarteverything/domain';
 import { automationRowsOf, routineEntryOf } from '../features/automations';
 import { rowsOf, type StoreState } from '../store/state';
 
@@ -7,9 +7,12 @@ interface RoutineTables {
   readonly automations: StoreState['tables']['automations'];
 }
 
-export function routinesOf(tables: RoutineTables): Pick<SearchSources, 'scenes' | 'automations'> {
+export function routinesOf(
+  tables: RoutineTables,
+  kinds: NodeKindLookup,
+): Pick<SearchSources, 'scenes' | 'automations'> {
   const stored = rowsOf(tables.automations);
-  const readable = new Map(automationRowsOf(stored).rows.map((row) => [row.id, row]));
+  const readable = new Map(automationRowsOf(stored, kinds).rows.map((row) => [row.id, row]));
   return {
     scenes: rowsOf(tables.scenes).map((scene) => ({ id: scene.id, name: scene.name, path: '' })),
     automations: stored.map((automation) => {
@@ -22,7 +25,7 @@ export function routinesOf(tables: RoutineTables): Pick<SearchSources, 'scenes' 
             triggerKeywords: [],
             path: '',
           }
-        : routineEntryOf(row, NODE_REGISTRY.get);
+        : routineEntryOf(row, (id) => kinds.get(id));
     }),
   };
 }

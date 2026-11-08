@@ -2,7 +2,7 @@ import type {
   AutomationAuthor,
   AutomationProgramProblem,
   AutomationProgramReply,
-  AutomationV3,
+  AutomationV4,
   Layout,
 } from '@smarteverything/domain';
 import { ApiError } from '@smarteverything/domain';
@@ -17,14 +17,14 @@ const log = new Logger('app.automations');
 export type SyncStatus = 'saved' | 'saving' | 'unsaved' | 'offline' | 'conflict' | 'failed';
 
 export interface DraftBase {
-  readonly program: AutomationV3;
+  readonly program: AutomationV4;
   readonly layout: Layout;
   readonly revision: number;
 }
 
 export interface TheirRevision {
   readonly revision: number;
-  readonly program: AutomationV3;
+  readonly program: AutomationV4;
   readonly layout: Layout;
   readonly author: AutomationAuthor | null;
   readonly savedAt: string;
@@ -72,7 +72,7 @@ export type PublishOutcome =
 export function theirRevisionOf(row: RevisionRow): TheirRevision {
   return {
     revision: row.revision,
-    program: row.definition,
+    program: row.graph,
     layout: row.layout,
     author: row.author,
     savedAt: row.saved_at,
@@ -91,7 +91,7 @@ export class DraftSyncModel {
   readonly state: ValueStore<SyncState>;
 
   private base: DraftBase;
-  private lastSaved: { readonly program: AutomationV3; readonly layout: Layout };
+  private lastSaved: { readonly program: AutomationV4; readonly layout: Layout };
   private online: boolean;
   private depth = 0;
   private forced = false;
@@ -161,13 +161,17 @@ export class DraftSyncModel {
     const theirs = this.conflict;
     if (theirs === null) return;
     const mine = this.store.state.get();
-    const result = rebaseDraft({
-      base: this.base.program,
-      draft: mine.program,
-      draftLayout: mine.layout,
-      theirs: theirs.program,
-      theirsLayout: theirs.layout,
-    });
+    const result = rebaseDraft(
+      {
+        base: this.base.program,
+        draft: mine.program,
+        draftLayout: mine.layout,
+        theirs: theirs.program,
+        theirsLayout: theirs.layout,
+        options: this.store.patchOptions,
+      },
+      this.store.patchOptions.kinds,
+    );
     this.store.replace(result.program, result.layout);
     this.base = { program: theirs.program, layout: theirs.layout, revision: theirs.revision };
     this.conflict = null;
@@ -199,7 +203,7 @@ export class DraftSyncModel {
 
   readonly restoreAsDraft = async (revision: number): Promise<void> => {
     const row = await this.ports.revision(revision);
-    this.store.replace(row.definition, row.layout);
+    this.store.replace(row.graph, row.layout);
     this.forced = true;
     await this.settle();
   };

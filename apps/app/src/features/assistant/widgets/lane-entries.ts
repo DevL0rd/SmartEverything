@@ -33,6 +33,7 @@ const SUBJECT: Readonly<Record<BoardChatWidget['kind'], string>> = {
   board: 'this widget',
   weather: 'the weather',
   scenes: 'the scenes',
+  planner: 'this planner data',
 };
 
 function missingReason(state: StoreState, widget: BoardChatWidget): string | null {

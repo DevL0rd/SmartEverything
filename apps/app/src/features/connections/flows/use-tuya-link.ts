@@ -38,14 +38,14 @@ function useSend(flow: LinkFlow): (userCode: string | undefined) => void {
   };
 }
 
-function useAutoScan(scanOnly: boolean, flow: LinkFlow, send: (code: undefined) => void): void {
+function useAutoScan(scan: boolean, flow: LinkFlow, send: (code: undefined) => void): void {
   const requested = useRef(false);
   useEffect(() => {
-    if (scanOnly && flow.stage.kind === 'form' && !requested.current) {
+    if (scan && flow.stage.kind === 'form' && !requested.current) {
       requested.current = true;
       send(undefined);
     }
-  }, [scanOnly, flow, send]);
+  }, [scan, flow, send]);
 }
 
 export function useTuyaLink(): TuyaLink {
@@ -56,7 +56,7 @@ export function useTuyaLink(): TuyaLink {
   const scanOnly = startOf(row, different) === 'scan';
   const typed = code.trim() === '' ? undefined : code;
   const send = useSend(flow);
-  useAutoScan(scanOnly, flow, send);
+  useAutoScan(scanOnly && row?.status === 'needs_attention', flow, send);
   const act = (action: TuyaFailureAction): void => {
     if (action === 'enter_code') {
       setDifferent(true);

@@ -11,7 +11,6 @@ import type {
   BeltLinkPhase,
   BeltState,
   BottleOrientation,
-  DeviceFamily,
   LaundryPhase,
   LaundryStage,
   ORALB_HANDLE_COLOURS,
@@ -21,6 +20,7 @@ import type {
 } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import type { IrCategory } from './model/ir-category';
+import type { VacuumLook } from './visuals/vacuum/look';
 
 export type VisualSize = 'tile' | 'card' | 'hero';
 
@@ -272,6 +272,7 @@ export interface VisualState {
   readonly treadmill?: TreadmillFacts;
   readonly bottle?: BottleFacts;
   readonly toothbrush?: ToothbrushFacts;
+  readonly vacuum?: VacuumLook;
 }
 
 export type VisualTone = 'active' | 'idle' | 'offline';
@@ -286,5 +287,3 @@ export interface VisualProps {
 }
 
 export type VisualComponent = (props: VisualProps) => ReactNode;
-
-export type VisualRegistry = Readonly<Record<DeviceFamily, VisualComponent>>;

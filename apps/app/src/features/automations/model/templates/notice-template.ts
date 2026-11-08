@@ -1,5 +1,5 @@
-import type { FlowNode, TriggerNode } from '@smarteverything/domain';
-import { automation, type Maker } from './build';
+import type { GraphPiece, TriggerNode } from '@smarteverything/domain';
+import { graphAutomation, type GraphMaker } from './graph-kit';
 import {
   messageSlot,
   template,
@@ -21,8 +21,8 @@ export interface NoticeSpec {
   readonly category: Category;
   readonly message: string;
   readonly slots?: readonly Slot[];
-  readonly trigger: (m: Maker, use: Use) => TriggerNode;
-  readonly checks?: (m: Maker, use: Use) => readonly FlowNode[];
+  readonly trigger: (m: GraphMaker, use: Use) => TriggerNode;
+  readonly checks?: (m: GraphMaker, use: Use) => readonly GraphPiece[];
 }
 
 export function noticeTemplate(spec: NoticeSpec): Template {
@@ -38,7 +38,7 @@ export function noticeTemplate(spec: NoticeSpec): Template {
     devices: [device.label],
     slots: [...(spec.slots ?? []), messageSlot(spec.message)],
     make: (use, m) =>
-      automation({
+      graphAutomation({
         triggers: [spec.trigger(m, use)],
         body: [...(spec.checks?.(m, use) ?? []), notice(m, 'note', use.text('message'))],
       }),

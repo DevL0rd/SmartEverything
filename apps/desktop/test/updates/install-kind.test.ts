@@ -9,6 +9,7 @@ function probe(writable: readonly string[], existing: readonly string[] = []): I
   return {
     writable: (path) => Promise.resolve(writable.includes(path)),
     exists: (path) => Promise.resolve(existing.includes(path)),
+    hasCommand: () => Promise.resolve(true),
   };
 }
 

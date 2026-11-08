@@ -7,6 +7,7 @@ import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg'
 import type { HsvColor } from '@smarteverything/domain';
 import { cn } from '../design/cn';
 import { useFocusedKeys } from './focused-keys';
+import { spaceKeyProps } from './space-key';
 import {
   COLOUR_SIZE,
   COLOUR_PADDING,
@@ -193,6 +194,7 @@ function Wheel(props: Props): ReactNode {
 }
 
 function Swatches({ value, label, disabled = false, onCommit }: Props): ReactNode {
+  const current = value === null ? null : colourCss(value);
   return (
     <View
       accessibilityRole="radiogroup"
@@ -200,20 +202,22 @@ function Swatches({ value, label, disabled = false, onCommit }: Props): ReactNod
       className="flex-row flex-wrap justify-center gap-2"
     >
       {SWATCHES.map(({ name, colour }) => {
-        const fill = { backgroundColor: colourCss(colour) };
+        const backgroundColor = colourCss(colour);
+        const fill = { backgroundColor };
+        const checked = backgroundColor === current;
+        const commit = (): void => {
+          onCommit(colour);
+        };
         return (
           <Pressable
             key={name}
             accessibilityRole="radio"
             accessibilityLabel={name}
-            accessibilityState={{
-              checked: value !== null && colourCss(value) === colourCss(colour),
-              disabled,
-            }}
+            accessibilityState={{ checked, disabled }}
+            aria-checked={checked}
             disabled={disabled}
-            onPress={() => {
-              onCommit(colour);
-            }}
+            {...spaceKeyProps('radio', disabled, commit)}
+            onPress={commit}
             style={fill}
             className="size-touch-min rounded-full border-2 border-outline focus:outline-2 focus:outline-offset-2 focus:outline-focus"
           />

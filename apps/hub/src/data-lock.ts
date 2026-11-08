@@ -1,7 +1,5 @@
-import { join } from 'node:path';
+import type { HubLayout } from './data-layout';
 import { PidLockedError, pidLock, type PidLock } from './pid-lock';
-
-export const LOCK_FILE = 'server.lock';
 
 export class DataDirectoryLockedError extends Error {
   override readonly name = 'DataDirectoryLockedError';
@@ -18,12 +16,14 @@ export class DataDirectoryLockedError extends Error {
 
 export type DataLock = PidLock;
 
-export async function lockDataDirectory(directory: string): Promise<DataLock> {
+export async function lockDataDirectory(
+  layout: Pick<HubLayout, 'root' | 'lock'>,
+): Promise<DataLock> {
   try {
-    return await pidLock(join(directory, LOCK_FILE));
+    return await pidLock(layout.lock);
   } catch (error) {
     if (error instanceof PidLockedError) {
-      throw new DataDirectoryLockedError(directory, error.holder);
+      throw new DataDirectoryLockedError(layout.root, error.holder);
     }
     throw error;
   }

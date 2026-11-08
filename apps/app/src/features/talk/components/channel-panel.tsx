@@ -61,9 +61,13 @@ function TalkChannelChoice({ channelId }: { readonly channelId: string }): React
 function Hero({ channel }: { readonly channel: TalkChannelRow }): ReactNode {
   const activity = useChannelActivity(channel.id);
   return (
-    <View className="items-center gap-4 rounded-xl bg-surface-1 px-card-pad py-section-gap elevation-1">
-      <View className="flex-row items-center gap-2">
-        <Text variant="footnote" tone={activity.live ? 'primary' : 'variant'} numberOfLines={1}>
+    <View className="items-center gap-3 rounded-xl bg-surface-1 p-card-pad elevation-1">
+      <View className="max-w-full flex-row items-center gap-2">
+        <Text
+          variant="footnote"
+          tone={activity.live ? 'primary' : 'variant'}
+          className="min-w-0 shrink"
+        >
           {activity.line}
         </Text>
         {channel.priority === 'urgent' ? <Badge label="Priority" tone="warning" /> : null}
@@ -74,13 +78,37 @@ function Hero({ channel }: { readonly channel: TalkChannelRow }): ReactNode {
   );
 }
 
-export function ChannelPanel({ channel }: { readonly channel: TalkChannelRow }): ReactNode {
-  return (
-    <View className="gap-section-gap">
+export function ChannelPanel({
+  channel,
+  split = false,
+}: {
+  readonly channel: TalkChannelRow;
+  readonly split?: boolean;
+}): ReactNode {
+  const controls = (
+    <>
       <Notice channel={channel} />
       <Hero channel={channel} />
+    </>
+  );
+  const activity = (
+    <>
       <MemberList channelId={channel.id} />
       <MessageList channelId={channel.id} />
+    </>
+  );
+  if (!split) {
+    return (
+      <View className="gap-section-gap">
+        {controls}
+        {activity}
+      </View>
+    );
+  }
+  return (
+    <View className="gap-section-gap large:flex-row large:items-start">
+      <View className="min-w-0 gap-section-gap large:flex-1">{controls}</View>
+      <View className="min-w-0 gap-section-gap large:flex-1">{activity}</View>
     </View>
   );
 }

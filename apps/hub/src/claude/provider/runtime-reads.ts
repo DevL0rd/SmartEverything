@@ -5,7 +5,6 @@ import {
   type ProviderReadQuery,
   type ComputerAiReply,
 } from '@smarteverything/domain';
-import { z } from 'zod';
 import type { Logger } from '@smarteverything/logging';
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
 import type { ComputerAiModel } from '@smarteverything/domain';
@@ -14,7 +13,6 @@ import { ProviderInputError } from './input';
 import { jsonOf } from './control';
 import { mcpStatusValue } from './mcp-status';
 import { metadataOf } from './metadata';
-import { nativeSubscriptionBilling } from './billing';
 import type { ProviderMetadata } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 type ConnectionRead = Extract<ProviderReadQuery, { kind: 'account_info' | 'mcp_status' }>;
@@ -31,7 +29,6 @@ export function validateTurnSize(turn: ProviderTurn): void {
     throw new ProviderInputError('The serialized provider turn exceeds the node transport limit.');
 }
 export async function readModels(runtime: Query, deviceId: string): Promise<ComputerAiModel[]> {
-  const billing = await nativeSubscriptionBilling(runtime);
   return (await runtime.supportedModels()).map((model) => ({
     device_id: deviceId,
     id: model.value,
@@ -41,8 +38,8 @@ export async function readModels(runtime: Query, deviceId: string): Promise<Comp
     efforts: model.supportedEffortLevels ?? [],
     adaptive_thinking: model.supportsAdaptiveThinking === true,
     fast: model.supportsFastMode === true,
-    available: billing.state === 'eligible',
-    reason: billing.state === 'blocked' ? billing.reason : null,
+    available: true,
+    reason: null,
   }));
 }
 export async function jobMetadata(job: ProviderJob): Promise<ProviderMetadata> {
@@ -64,19 +61,9 @@ export function closeProbe(discovery: Promise<Query> | null, log: Logger): void 
     );
 }
 
-const DISCOVERY_BILLING = z.discriminatedUnion('state', [
-  z.object({ state: z.literal('eligible') }),
-  z.object({ state: z.literal('blocked'), reason: z.string().min(1) }),
-]);
 export function providerDiscoveryReason(reply: ComputerAiReply): string | null {
-  if (reply.operation === 'models') {
-    if (reply.value.some((model) => model.available)) return null;
-    for (const model of reply.value) if (model.reason !== null) return model.reason.slice(0, 500);
-    return 'No Claude model has verified included-only readiness.';
-  }
-  if (reply.operation !== 'provider_metadata')
-    throw new ProviderInputError('Claude provider readiness requires model or metadata discovery.');
-  const billing = DISCOVERY_BILLING.safeParse(reply.value.initialization['billing_guard']);
-  if (!billing.success) return 'Claude included-only readiness could not be verified.';
-  return billing.data.state === 'eligible' ? null : billing.data.reason.slice(0, 500);
+  if (reply.operation === 'models')
+    return reply.value.length === 0 ? 'The Claude runtime reported no models.' : null;
+  if (reply.operation === 'provider_metadata') return null;
+  throw new ProviderInputError('Claude provider readiness requires model or metadata discovery.');
 }

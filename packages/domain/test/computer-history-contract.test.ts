@@ -16,6 +16,7 @@ import {
   HISTORY_SETTINGS_CHANGE,
   NODE_DEMAND,
   NODE_HELLO,
+  NODE_PROTOCOL_VERSION,
   NODE_REQUEST,
   NODE_VERB_SCOPES,
   SETTINGS_ROW,
@@ -48,8 +49,8 @@ describe('computer role', () => {
     expect(computerIconKeyOfModel('other')).toBe('computer');
   });
 
-  it('defaults a hello without a role to a pc', () => {
-    const hello = NODE_HELLO.parse({
+  it('carries the protocol number and no role', () => {
+    const base = {
       machineId: 'a'.repeat(32),
       hostname: 'box',
       os: { name: 'Linux', kernel: '7' },
@@ -58,9 +59,14 @@ describe('computer role', () => {
       memoryBytes: 1,
       interfaces: [],
       bootedAt: '2026-10-17T09:00:00.000Z',
-    });
-    expect(hello.role).toBe('pc');
-    expect(NODE_HELLO.shape.role.parse('hub')).toBe('hub');
+    };
+    const hello = NODE_HELLO.parse({ ...base, protocol: NODE_PROTOCOL_VERSION });
+    expect(hello.protocol).toBe(NODE_PROTOCOL_VERSION);
+    expect(hello).not.toHaveProperty('role');
+    expect(NODE_HELLO.safeParse(base).success).toBe(false);
+    expect(NODE_HELLO.safeParse({ ...base, protocol: NODE_PROTOCOL_VERSION + 1 }).success).toBe(
+      false,
+    );
   });
 
   it('blocks hub power and own-service danger unless explicit', () => {

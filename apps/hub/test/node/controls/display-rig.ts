@@ -27,6 +27,7 @@ export interface Rig {
   readonly lines: ReturnType<typeof fakeLines>;
   readonly failures: unknown[];
   readonly layout: () => readonly FixtureOutput[];
+  readonly setEnvironment: (next: DisplayEnvironment) => void;
 }
 
 interface RigOptions {
@@ -100,6 +101,7 @@ export function displayRig(initial: readonly FixtureOutput[], options: RigOption
       outputs = next;
     },
   };
+  let environment = options.environment ?? KDE;
   const calls: string[] = [];
   const notices: Notice[] = [];
   const clock = manualSchedule();
@@ -113,7 +115,7 @@ export function displayRig(initial: readonly FixtureOutput[], options: RigOption
     run,
     probe: installed(...(options.programs ?? ['kscreen-doctor', 'udevadm'])),
     lines: lines.subscriber,
-    environment: (): DisplayEnvironment => options.environment ?? KDE,
+    environment: (): DisplayEnvironment => environment,
     nightLight: new KwinNightLight(unreachable, run),
     notice: revertNotice(notices, options.noticeFails === true),
     revert: new DisplayRevert({
@@ -126,7 +128,18 @@ export function displayRig(initial: readonly FixtureOutput[], options: RigOption
       failures.push(cause);
     },
   });
-  return { displays, calls, notices, clock, lines, failures, layout: layout.read };
+  return {
+    displays,
+    calls,
+    notices,
+    clock,
+    lines,
+    failures,
+    layout: layout.read,
+    setEnvironment: (next): void => {
+      environment = next;
+    },
+  };
 }
 
 export const BOTH: FixtureOutput[] = [

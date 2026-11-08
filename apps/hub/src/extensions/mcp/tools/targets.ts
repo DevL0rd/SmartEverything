@@ -47,9 +47,7 @@ export const TARGET_FIELDS = {
   search: z.string().min(1).max(100).optional().describe('Words in the name, model or room'),
 };
 
-const TARGET = z.strictObject(TARGET_FIELDS);
-
-export type Target = z.infer<typeof TARGET>;
+export type Target = z.output<z.ZodObject<typeof TARGET_FIELDS>>;
 
 export function hasTarget(target: Target): boolean {
   return Object.values(target).some((value) => value !== undefined);
@@ -119,7 +117,8 @@ function placedAsAsked(target: Target, placed: Placed): boolean {
 
 const ID_PATTERN = z.uuid();
 
-const DEVICE_NAMING: Naming<Placed> = {
+const DEVICE_NAMING: NamedLookup<Placed> = {
+  lists: 'device_find',
   names: ({ name, device }) => [name, device.name, device.display_name],
   label: ({ name }) => name,
   id: ({ device }) => device.id,
@@ -135,19 +134,18 @@ function memberIds(
     sets.push(
       new Set(
         target.deviceIds.map(
-          (wanted) => resolveNamed(all, wanted, 'device', DEVICE_NAMING, 'device_find').device.id,
+          (wanted) => resolveNamed(all, wanted, 'device', DEVICE_NAMING).device.id,
         ),
       ),
     );
   }
   if (target.group !== undefined) {
-    const group = resolveNamed(
-      store.deviceGroups.list(),
-      target.group,
-      'device group',
-      { names: (row) => [row.name], label: (row) => row.name, id: (row) => row.id },
-      'home_read',
-    );
+    const group = resolveNamed(store.deviceGroups.list(), target.group, 'device group', {
+      names: (row) => [row.name],
+      label: (row) => row.name,
+      id: (row) => row.id,
+      lists: 'home_read',
+    });
     sets.push(new Set(group.device_ids));
   }
   const [first, ...rest] = sets;
@@ -193,13 +191,7 @@ export function placedDevice(store: Store, scope: DeviceScope | null, reference:
         'not_found',
       );
     }
-    return resolveNamed(
-      placedDevices(store, scope),
-      reference,
-      'device',
-      DEVICE_NAMING,
-      'device_find',
-    );
+    return resolveNamed(placedDevices(store, scope), reference, 'device', DEVICE_NAMING);
   }
   if (deviceHidden(scope, device)) {
     throw new ToolError('That device is not part of your access; ask the owner.', 'forbidden');
@@ -237,13 +229,17 @@ export function closestMatches<T>(rows: readonly T[], wanted: string, naming: Na
   return rows.filter((row) => lowered(row).some((name) => name?.includes(text) === true));
 }
 
+interface NamedLookup<T> extends Naming<T> {
+  readonly lists?: string;
+}
+
 export function resolveNamed<T>(
   rows: readonly T[],
   wanted: string,
   noun: string,
-  naming: Naming<T>,
-  lists?: string,
+  naming: NamedLookup<T>,
 ): T {
+  const { lists } = naming;
   const found = closestMatches(rows, wanted, naming);
   const [first, second] = found;
   if (first === undefined) {

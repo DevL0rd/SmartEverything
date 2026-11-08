@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import { Text } from '../../../components/text';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { PluginIconButton } from '../../shared/plugin-action';
 import { heroOf } from '../overview/hero-model';
-import { useRouterTools, useSpeedTestRun, useSpeedTests } from '../router-data';
+import { useRouterTools, useSpeedTests } from '../router-data';
 import { InternetFace } from './internet-faces';
 import { runControlOf, type RunControl } from './internet-model';
 import { RouterWidgetFrame, type RouterReady } from './router-widget-frame';
@@ -17,9 +18,11 @@ function RunAction({
 }): ReactNode {
   if (control.kind === 'running') {
     return (
-      <Text variant="footnote" tone="info" numberOfLines={1} accessibilityLiveRegion="polite">
-        {control.label}
-      </Text>
+      <View className="h-control-h shrink justify-center">
+        <Text variant="footnote" tone="info" numberOfLines={1} accessibilityLiveRegion="polite">
+          {control.label}
+        </Text>
+      </View>
     );
   }
   return (
@@ -36,10 +39,9 @@ function RunAction({
 export function InternetWidget(): ReactNode {
   const { cls } = useWidgetFace();
   const tools = useRouterTools();
-  const run = useSpeedTestRun();
-  const list = useSpeedTests();
+  const { run, list } = useSpeedTests();
   const tests = list.state === 'ready' ? list.tests : [];
-  const action = ({ snapshot }: RouterReady): ReactNode =>
+  const band = ({ snapshot }: RouterReady): ReactNode =>
     cls === 's' ? undefined : (
       <RunAction
         control={runControlOf(snapshot, run)}
@@ -47,10 +49,11 @@ export function InternetWidget(): ReactNode {
       />
     );
   return (
-    <RouterWidgetFrame title="Internet" icon="router" accent="viz-1" action={action}>
-      {(ready) => (
+    <RouterWidgetFrame title="Internet" icon="router" accent="viz-1" actions={band}>
+      {(ready, layout) => (
         <InternetFace
           ready={ready}
+          layout={layout}
           hero={heroOf(ready.snapshot, tests[0] ?? null)}
           run={run}
           tests={tests}

@@ -39,7 +39,9 @@ function RemoveRule({
       label="Remove"
       variant="text"
       hint={`Removes ${rule}`}
-      onPress={() => tools.run('remove_domain_rule', { domain }, 'The rule wasn’t removed')}
+      onPress={() =>
+        tools.run('set_domain_rule', { domain, rule: 'remove' }, 'The rule wasn’t removed')
+      }
     />
   );
 }

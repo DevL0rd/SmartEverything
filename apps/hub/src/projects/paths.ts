@@ -1,11 +1,12 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { z } from 'zod';
+import type { AiChatRow } from '@smarteverything/domain';
+import type { HubLayout } from '../data-layout';
 
 const AREAS = ['workspace', 'temporary'] as const;
 
-export function chatFolder(dataDirectory: string, chat: string): string {
-  return join(dataDirectory, 'assistant', 'projects', z.uuid().parse(chat));
+export function chatFolder(layout: HubLayout, chat: Pick<AiChatRow, 'id' | 'profile_id'>): string {
+  return layout.chat(chat.profile_id, chat.id).project;
 }
 
 export function ensureChatFolder(root: string): string {

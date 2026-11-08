@@ -14,6 +14,15 @@ import { AIR_PURIFIER_VB4, HUMIDIFIER_600EK, TOWER_FAN_P45 } from './xiaomi-clim
 import { DIFFUSER_XW2IV } from './xiaomi-diffuser';
 import { SCALE_S400_PRO, WATCH_S5 } from './xiaomi-health';
 import { WASHER_F29GL } from './xiaomi-laundry';
+import { VACUUM_GROUPS, XIAOMI_VACUUM_CLEANING } from './xiaomi-vacuum';
+import { XIAOMI_VACUUM_DOCK } from './xiaomi-vacuum-dock';
+import { XIAOMI_VACUUM_SYSTEM } from './xiaomi-vacuum-system';
+
+const VACUUM_PV11GL: ModelOverride = {
+  family: 'vacuum',
+  capabilities: { ...XIAOMI_VACUUM_CLEANING, ...XIAOMI_VACUUM_DOCK, ...XIAOMI_VACUUM_SYSTEM },
+  unlisted: { tier: 'diagnostic', group: 'system', groupLabel: VACUUM_GROUPS.system },
+};
 
 export const MODEL_OVERRIDES: Readonly<Record<string, ModelOverride>> = {
   'zhimi.airp.vb4': AIR_PURIFIER_VB4,
@@ -24,6 +33,7 @@ export const MODEL_OVERRIDES: Readonly<Record<string, ModelOverride>> = {
   'xiaomi.scales.400pgj': SCALE_S400_PRO,
   'miwear.watch.p62g': WATCH_S5,
   'mibx5.washer.f29gl': WASHER_F29GL,
+  'xiaomi.vacuum.pv11gl': VACUUM_PV11GL,
 };
 
 const CAPABILITY_OVERRIDES: readonly CapabilityMatch[] = [

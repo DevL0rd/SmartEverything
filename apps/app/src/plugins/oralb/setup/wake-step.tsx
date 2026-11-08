@@ -20,6 +20,7 @@ export const WAKE_HINT =
   'Nothing heard? Close the Oral-B app, or move the brush away from an iO Sense charger.';
 
 const RADAR_PX = 168;
+const BRUSH_PX = 128;
 const RING_MS = 1600;
 const RING_DELAY_MS = 800;
 
@@ -50,7 +51,7 @@ function Radar({ listening }: { readonly listening: boolean }): ReactNode {
           />
         ),
       )}
-      <StaticBrush brand="oralb" px={RADAR_PX - 24} />
+      <StaticBrush brand="oralb" px={BRUSH_PX} />
     </View>
   );
 }

@@ -1,3 +1,4 @@
+import type { AiSubscriptionUsage } from '@smarteverything/domain';
 import { SUBSCRIPTION_CREDENTIAL } from '../credentials/contracts';
 import type { SubscriptionCredential, ClaudeAccountIdentity } from '../credentials/contracts';
 import { ClaudeOAuthProfile } from '../authorization/claude-profile';
@@ -13,6 +14,7 @@ export interface SubscriptionBillingSnapshot {
   readonly message: string;
   readonly checkedAt: number;
   readonly expiresAt: number;
+  readonly usage?: AiSubscriptionUsage;
   readonly identity?: ClaudeAccountIdentity;
   readonly codexProof?: CodexAdmissionProof;
 }

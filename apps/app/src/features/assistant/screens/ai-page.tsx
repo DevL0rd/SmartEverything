@@ -6,12 +6,15 @@ import { Logger } from '@smarteverything/logging';
 import { setAiChatRead } from '../../../api/ai';
 import { href } from '../../../app-shell/hrefs';
 import { mainPageSettings } from '../../../app-shell/main-pages';
+import { IconButton } from '../../../components/icon-button';
 import { OverlayPane } from '../../../components/master-detail';
 import { PageHeader, type HeaderAction } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { useForeground } from '../../../design/animation-gate';
+import { localPref, setLocalPref } from '../../../store/local-prefs';
 import { ChatFrame } from '../chats/chat-frame';
 import { ChatList, type ChatListProps } from '../chats/chat-list';
+import { chatSelectionParams } from '../chats/chat-selection-route';
 import {
   closeChatListSlideOver,
   toggleChatList,
@@ -19,20 +22,21 @@ import {
 } from '../chats/chat-list-toggle';
 import { ChatThread } from '../chats/chat-thread';
 import { DraftThread, NEW_CHAT_ID } from '../chats/draft-thread';
-import { leaveChat, leaveToChatList } from '../chats/leave-chat';
+import { leaveToChatList } from '../chats/leave-chat';
 import { ListPane } from '../chats/list-pane';
 import { MissingChat } from '../chats/missing-chat';
 import { BlockedChat } from '../components/chat-states';
 import { useAreaStatus } from '../data/area-status';
 import { useAssistantName } from '../data/assistant-data';
 import { areaBlocked } from '../model/area-status';
+import { appChatHistoryOnly } from '../chats/chat-visibility';
 import { useAiChat, useAiChats, useChatMessages } from '../data/chat-store';
 import { isOpenChat, rememberChat } from '../data/last-chat';
-import { markChatSeen } from '../data/recent-chat';
 import type { AiLayout } from '../model/ai-layout';
 import { useAiLayout } from '../shell/use-ai-layout';
 import { noteChatSeen, useOpenLastChat } from './open-last-chat';
 import { useOpenerFocus } from './use-opener-focus';
+import { showChatOnScreen } from '../voice-message/voice-request';
 
 const log = new Logger('app.assistant');
 
@@ -40,7 +44,7 @@ const NO_ACTIONS: readonly HeaderAction[] = [];
 
 function openChat(chatId: string, inPlace: boolean, messageId?: string): void {
   if (inPlace) {
-    router.setParams({ chatId, agent: undefined, message: messageId });
+    router.setParams(chatSelectionParams(chatId, messageId));
   } else {
     router.push(href.assistantChat(chatId, messageId === undefined ? {} : { message: messageId }));
   }
@@ -63,12 +67,15 @@ function useSeen(chatId: string, remember: boolean, unread: number): void {
     if (!focused) {
       return undefined;
     }
-    markChatSeen(chatId);
+    const hide = showChatOnScreen(chatId);
     noteChatSeen();
     if (remember) {
       rememberChat(chatId);
     }
-    return noteChatSeen;
+    return (): void => {
+      noteChatSeen();
+      hide();
+    };
   }, [focused, chatId, remember]);
   useEffect(() => {
     if (focused && foreground && unread > 0) {
@@ -109,15 +116,7 @@ function Thread({
       />
     );
   }
-  return (
-    <ChatThread
-      chat={chat}
-      rows={rows}
-      back={!wide}
-      leading={leading}
-      onDeleted={wide ? leaveToChatList : leaveChat}
-    />
-  );
+  return <ChatThread chat={chat} rows={rows} back={!wide} leading={leading} />;
 }
 
 function useListToggle(shown: boolean): HeaderAction {
@@ -179,7 +178,7 @@ function Conversation({
   readonly onStarted: (chatId: string) => void;
 }): ReactNode {
   if (areaBlocked(useAreaStatus())) {
-    return wide ? <BlockedPane /> : <Blocked />;
+    return wide ? <BlockedPane toggle={toggle} /> : <Blocked />;
   }
   const leading = wide ? [toggle] : NO_ACTIONS;
   return selected === null ? (
@@ -190,7 +189,9 @@ function Conversation({
 }
 
 function usePhoneList(wide: boolean, selected: string | null): boolean {
-  const hasChats = useAiChats().some((chat) => chat.archived_at === null);
+  const hasChats = useAiChats().some(
+    (chat) => chat.archived_at === null && !appChatHistoryOnly(chat),
+  );
   const blocked = areaBlocked(useAreaStatus());
   return !wide && selected === null && (hasChats || blocked);
 }
@@ -276,14 +277,21 @@ function SplitPage({
   );
 }
 
-function BlockedPane(): ReactNode {
+function BlockedPane({ toggle }: { readonly toggle: HeaderAction }): ReactNode {
   const state = useAreaStatus();
   if (!areaBlocked(state)) {
     return null;
   }
   return (
-    <View className="flex-1 justify-center">
-      <BlockedChat state={state} />
+    <View className="flex-1">
+      {toggle.selected === true ? null : (
+        <View className="items-start px-1 pt-safe">
+          <IconButton icon={toggle.icon} label={toggle.label} onPress={toggleChatList} />
+        </View>
+      )}
+      <View className="flex-1 justify-center">
+        <BlockedChat state={state} />
+      </View>
     </View>
   );
 }
@@ -309,6 +317,12 @@ function Blocked(): ReactNode {
 export function AiPage(): ReactNode {
   const layout = useAiLayout();
   const { filter } = useLocalSearchParams<{ filter?: string }>();
+  const focused = useIsFocused();
+  useEffect(() => {
+    if (focused && filter !== undefined && layout.mode === 'split' && !localPref('chatListOpen')) {
+      setLocalPref('chatListOpen', true);
+    }
+  }, [filter, focused, layout.mode]);
   useOpenLastChat(layout.mode !== 'stack', filter !== undefined);
   useClearChatParam();
   return <SplitPage selected={null} layout={layout} />;

@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { ChatLink } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import type { IconName } from '../../../components/icon';
@@ -15,7 +15,7 @@ export interface LinkView {
   readonly title: string;
   readonly trail: string;
   readonly value: string | null;
-  readonly href: Href;
+  readonly href: AppHref;
   readonly toggle: SwitchSetting | null;
 }
 
@@ -87,7 +87,7 @@ interface EntityKind {
   readonly icon: IconName;
   readonly trail: string;
   readonly title: (tables: Tables, id: string) => string | null;
-  readonly to: (id: string) => Href;
+  readonly to: (id: string) => AppHref;
 }
 
 const ENTITIES: Readonly<Record<EntityLink['kind'], EntityKind>> = {

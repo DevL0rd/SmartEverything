@@ -1,9 +1,11 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import {
   createClientToken,
   hashClientToken,
   type AutomationV3,
+  type AutomationV4,
   type ClientRow,
   type DeviceRow,
   type FlowNode,
@@ -13,6 +15,7 @@ import {
 } from '@smarteverything/domain';
 import type { AutomationPrograms } from '../../../src/automations/service-programs';
 import { automationPrograms } from '../../../src/automations/service-programs';
+import { createKindCatalog } from '../../../src/automations/plugin-kinds/catalog';
 import type { ProgramEnv } from '../../../src/automations/service-programs-analysis';
 import { PluginTurnRefusedError } from '../../../src/ai-tools/plugin-turn';
 import type { Caller } from '../../../src/server/auth';
@@ -24,9 +27,11 @@ import { MIGRATIONS } from '../../../src/store/migrations';
 import { assistantRepositories } from '../../../src/store/repositories/areas/assistant';
 import { automationRepositories } from '../../../src/store/repositories/areas/automation';
 import { computerRepositories } from '../../../src/store/repositories/areas/computers';
+import { driveRepositories } from '../../../src/store/repositories/areas/drive';
 import { healthRepositories } from '../../../src/store/repositories/areas/health';
 import { homeRepositories } from '../../../src/store/repositories/areas/home';
 import { peopleRepositories } from '../../../src/store/repositories/areas/people';
+import { plannerRepositories } from '../../../src/store/repositories/areas/planner';
 import { platformRepositories } from '../../../src/store/repositories/areas/platform';
 import { AutomationFunctionsRepository } from '../../../src/store/repositories/automation-functions';
 import { AutomationPlansRepository } from '../../../src/store/repositories/automation-plans';
@@ -37,7 +42,9 @@ import { SettingsRepository } from '../../../src/store/repositories/settings';
 import { Sql } from '../../../src/store/sql';
 import type { Store } from '../../../src/store/store';
 import { testLogger } from '../../support/logs';
+import { graphAutomation } from './graph-of';
 import { addPhoneDevice } from '../../support/phone-fixtures';
+import { hubLayout } from '../../../src/data-layout';
 
 interface Person {
   readonly client: ClientRow;
@@ -65,24 +72,29 @@ export interface ProgramRig {
 
 const NOW = new Date('2026-10-18T09:00:00.000Z');
 
-function composeStore(context: StoreContext, feed: ChangeFeed): Store {
+function composeStore(context: StoreContext, feed: ChangeFeed, database: DatabaseSync): Store {
   const log = testLogger('store');
   const settings = new SettingsRepository(context);
   settings.ensure();
   return {
+    context,
+    database,
     feed,
     settings,
     ledger: new Ledger(context, () => settings.read().time_zone),
     now: () => NOW,
     ...homeRepositories(context, log),
     ...computerRepositories(context),
+    ...driveRepositories(context),
     ...automationRepositories(context),
     ...healthRepositories(context),
+    ...plannerRepositories(context),
     ...assistantRepositories(context),
     ...peopleRepositories(context),
     ...platformRepositories(context),
     write: (work) => context.write(work),
     durableWrite: (work) => durableSessionWrite(context, work),
+    startRetention: (): void => undefined,
     close: (): void => undefined,
   };
 }
@@ -132,7 +144,7 @@ function opened(): Opened {
   migrate(sql, MIGRATIONS, NOW.toISOString(), testLogger());
   const feed = new ChangeFeed(testLogger('store'));
   const context = new StoreContext(sql, feed, () => NOW);
-  return { database, context, store: composeStore(context, feed) };
+  return { database, context, store: composeStore(context, feed, database) };
 }
 
 function envOf(
@@ -147,6 +159,7 @@ function envOf(
     revisions: new AutomationRevisionsRepository(context),
     functions,
     plans: new AutomationPlansRepository(context),
+    kinds: createKindCatalog(),
     secrets: {
       list: () => secretIds.map((id) => ({ id, name: id, createdAt: '', updatedAt: '' })),
     },
@@ -182,7 +195,12 @@ export function programRig(): ProgramRig {
     refusedTools,
     addPhone: (person, name) =>
       addPhoneDevice(
-        { store, directory: '', close: () => Promise.resolve() },
+        {
+          store,
+          directory: '',
+          layout: hubLayout('/unused', {}),
+          close: () => Promise.resolve(),
+        },
         { clientId: person.client.id, profileId: person.profileId, name },
       ).device,
     close: (): void => {
@@ -225,16 +243,19 @@ export function trigger(
 export function automationOf(
   body: readonly FlowNode[],
   extra: Partial<AutomationV3> = {},
-): AutomationV3 {
-  return {
-    version: 3,
-    kind: 'automation',
-    triggers: [],
-    inputs: [],
-    outputs: [],
-    variables: [],
-    body: { nodes: [...body] },
-    policy: { mode: 'single' },
-    ...extra,
-  };
+): AutomationV4 {
+  return graphAutomation(
+    {
+      version: 3,
+      kind: 'automation',
+      triggers: [],
+      inputs: [],
+      outputs: [],
+      variables: [],
+      body: { nodes: [...body] },
+      policy: { mode: 'single' },
+      ...extra,
+    },
+    STATIC_KIND_LOOKUP,
+  );
 }

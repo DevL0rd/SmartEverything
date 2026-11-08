@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { planChipGrid, planChips, planRows, rowMetrics, spanParts } from './group-layout';
+import {
+  planChipGrid,
+  planChips,
+  planRows,
+  rowColumns,
+  rowMetrics,
+  spanParts,
+} from './group-layout';
 
 const PHONE_L = {
   width: 326,
@@ -10,11 +17,11 @@ const PHONE_L = {
   expandedIndex: null,
   expandedExtra: 90,
   lines: 0,
-  note: false,
+  footer: 48,
 } as const;
 
 describe('planRows', () => {
-  it('shows three rows and a Show all row on a phone Large widget with six lights', () => {
+  it('shows three rows above the footer band on a phone Large widget with six lights', () => {
     const plan = planRows(PHONE_L);
     expect(plan.columns).toBe(1);
     expect(plan.count).toBe(3);
@@ -53,6 +60,16 @@ describe('planRows', () => {
     expect(planRows({ ...PHONE_L, total: 20, lines: 2 }).count).toBeLessThan(
       planRows({ ...PHONE_L, total: 20 }).count,
     );
+  });
+
+  it('keeps the footer band row clear of the member rows', () => {
+    expect(planRows({ ...PHONE_L, total: 20, footer: 98 }).count).toBe(2);
+    expect(planRows({ ...PHONE_L, total: 20, footer: 48 }).count).toBe(3);
+  });
+
+  it('splits wide rows into two columns below 1000 px and three from it', () => {
+    expect(rowColumns(999)).toBe(2);
+    expect(rowColumns(1000)).toBe(3);
   });
 
   it('keeps one row when the frame is too short', () => {
@@ -121,9 +138,9 @@ describe('spanParts', () => {
 
 describe('planRows on the capped Devices card', () => {
   const caps = [
-    { idiom: 'touch', height: 520, width: 326, wide: false },
-    { idiom: 'touch', height: 520, width: 700, wide: true },
-    { idiom: 'pointer', height: 460, width: 1200, wide: true },
+    { idiom: 'touch', height: 324, width: 326, wide: false, footer: 48 },
+    { idiom: 'touch', height: 324, width: 700, wide: true, footer: 48 },
+    { idiom: 'pointer', height: 296, width: 1200, wide: true, footer: 36 },
   ] as const;
 
   for (const cap of caps) {
@@ -138,7 +155,7 @@ describe('planRows on the capped Devices card', () => {
           metrics.white +
           metrics.gap * 3 +
           rows * (metrics.row + metrics.gap) +
-          (plan.hidden > 0 ? metrics.more : 0);
+          cap.footer;
         expect(used).toBeLessThanOrEqual(cap.height);
         expect(plan.hidden).toBe(total - plan.count);
         expect(plan.count).toBeLessThanOrEqual(total);

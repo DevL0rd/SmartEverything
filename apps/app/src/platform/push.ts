@@ -1,9 +1,11 @@
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import { z } from 'zod';
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { api } from '../api/transport';
 import { appPlatform } from '../design/platform';
+import { phoneHardwareOf } from './phone-hardware';
 
 const log = new Logger('app.push');
 
@@ -49,7 +51,13 @@ export async function registerForPush(): Promise<PushRegistration> {
 }
 
 async function saveToken(token: string): Promise<void> {
-  await api().call(E.savePushTarget, { body: { token, platform: 'android' } });
+  const hardware = phoneHardwareOf(Platform.constants);
+  await api().call(E.savePushTarget, {
+    body:
+      hardware === undefined
+        ? { token, platform: 'android' }
+        : { token, platform: 'android', hardware },
+  });
 }
 
 export async function forgetThisPhone(): Promise<void> {

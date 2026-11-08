@@ -1,12 +1,10 @@
-import { LOOP_LIMIT } from '@smarteverything/domain';
+import { ERROR_EXIT_PORT, LOOP_LIMIT } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Frame, NodeLowering, Reader } from './lower-effects';
 import { effectFields } from './lower-effects';
 import type { PlanOp } from './plan';
 import type { LoopGap, LoopSource, LoopTest } from './plan-parts';
 import { TEXT } from './plan-parts';
-
-const ON_ERROR_SCOPE = 'onError';
 
 function inner(read: Reader, loops: readonly string[] = read.low.frame.loops): Frame {
   return { loops, durable: read.low.frame.durable };
@@ -59,7 +57,7 @@ const lowerParallel: NodeLowering = (read) => ({
   join: read.fixed('join', z.enum(['all', 'first', 'settled']), 'all'),
   errors: read.fixed('errors', z.enum(['failFast', 'settle']), 'failFast'),
   branches: Object.entries(read.node.scopes ?? {})
-    .filter(([name]) => name !== ON_ERROR_SCOPE)
+    .filter(([name]) => name !== ERROR_EXIT_PORT)
     .map(([name, scope]) => ({ name, body: read.low.scope(scope, inner(read, [])) })),
   outputs: read.node.outputs,
 });
@@ -178,8 +176,6 @@ const lowerForever: NodeLowering = (read) =>
     skipAfterLast: false,
   });
 
-const lowerSequence: NodeLowering = (read) => body(read, 'body');
-
 function loopTarget(read: Reader): string {
   const { loops } = read.low.frame;
   const named = read.fixed('target', TEXT.optional(), undefined);
@@ -223,7 +219,6 @@ export const CONTROL_LOWERING: Readonly<Record<string, NodeLowering>> = {
   'flow.while': lowerWhile,
   'flow.do_until': lowerDoUntil,
   'flow.forever': lowerForever,
-  'flow.sequence': lowerSequence,
   'flow.break': lowerBreak,
   'flow.continue': lowerContinue,
   'flow.parallel': lowerParallel,

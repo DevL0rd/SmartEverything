@@ -17,6 +17,7 @@ import {
   type NodeResult,
   type NodeSampleFrame,
   type ProcessWindow,
+  type RelayNodeFrame,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { MetricHistory } from '../metrics/history';
@@ -27,9 +28,7 @@ import { AppPresence, type AppPresenceOptions } from './app-presence';
 import { demandedTopics, nodeDemandOf } from './computer-demand';
 import { FrameCounter } from './frame-counter';
 import { FreshRead, type FreshViewers } from './fresh-read';
-import type { SessionEars } from './computer-ears';
-import { isEarFrame, routeEarFrame } from './ear-frames';
-import type { SessionEarHosts } from '../listening/ear-hosts';
+import { isEarFrame, routeEarFrame, type EarFrame, type EarRoutes } from './ear-frames';
 import { computerExternalId, describeComputer } from './computer-device';
 import { offeredMachineActions } from './machine-requests';
 import type { ComputerDirectory } from './computer-directory';
@@ -37,27 +36,20 @@ import { ComputerOfflineError } from './computer-errors';
 import { MergedParts, visibleParts } from './computer-view';
 import { HeadlineRecorder, headlineCapabilities } from './headlines';
 import { NodeCalls } from './node-calls';
+import { RelayStreams } from './relay-streams';
 import { sessionCapabilities, sessionReadings } from './session-readings';
 
-type DescriptionFrame = Extract<NodeFrame, { readonly type: 'machine' | 'features' }>;
-
-function isDescription(frame: NodeFrame): frame is DescriptionFrame {
-  return frame.type === 'machine' || frame.type === 'features';
-}
-
-export interface ComputerSessionOptions extends Pick<AppPresenceOptions, 'signals' | 'personOf'> {
+export interface ComputerSessionOptions
+  extends Pick<AppPresenceOptions, 'signals' | 'personOf'>, EarRoutes {
   readonly link: HubLink;
   readonly sink: AdapterSink;
   readonly history: Pick<MetricHistory, 'push'>;
   readonly viewers: Pick<Viewers<ProcessWindow>, 'follow'> & FreshViewers;
-  readonly policyOf: (deviceId: string, role: ComputerRole) => HistoryPolicy;
+  readonly policyOf: (deviceId: string) => HistoryPolicy;
   readonly publish: (notice: ComputerLiveNotice) => void;
   readonly deviceIdOf: (externalId: string) => string | undefined;
   readonly scopesOf: (deviceId: string) => ComputerScopes;
   readonly directory: Pick<ComputerDirectory, 'isHubMachine'>;
-  readonly hubComputerResolved: (deviceId: string) => void;
-  readonly ears?: SessionEars;
-  readonly earHosts?: SessionEarHosts;
   readonly recordAppTime: (time: AppTime) => void;
   readonly now: () => Date;
   readonly log: Logger;
@@ -88,12 +80,14 @@ export class ComputerSession {
   private scopes: ComputerScopes | null = null;
   private readonly counter: FrameCounter;
   private readonly calls: NodeCalls;
+  readonly relay: RelayStreams;
   private readonly fresh: FreshRead;
   private readonly stops: (() => void)[] = [];
   private unfollow: (() => void) | null = null;
 
   constructor(private readonly options: ComputerSessionOptions) {
     this.calls = new NodeCalls(options.link.send);
+    this.relay = new RelayStreams(options.link.send);
     this.fresh = new FreshRead(options.viewers);
     this.focus = new AppFocusTracker(options.recordAppTime);
     this.presence = new AppPresence(options, { view: (): ComputerView | null => this.view() });
@@ -126,6 +120,7 @@ export class ComputerSession {
     this.focus.end(this.options.now());
     this.presence.end();
     this.calls.close();
+    this.relay.close();
     this.known = null;
     this.unfollow?.();
     this.unfollow = null;
@@ -202,13 +197,23 @@ export class ComputerSession {
       routeEarFrame(this.options, this.deviceId, data);
       return;
     }
-    if (isDescription(data)) {
-      this.described(data);
+    if ('stream' in data) {
+      if (!this.relay.receive(data)) this.options.log.debug('computer.relay_unexpected', {});
       return;
     }
+    this.route(data);
+  }
+
+  private route(data: Exclude<NodeFrame, EarFrame | RelayNodeFrame>): void {
     switch (data.type) {
       case 'hello':
         this.greeted(data.hello);
+        return;
+      case 'machine':
+        this.machineReported(data.actions, data.permissions);
+        return;
+      case 'features':
+        this.featuresReported(data.features);
         return;
       case 'sample':
         this.sampleReceived(data);
@@ -224,14 +229,6 @@ export class ComputerSession {
         return;
       case 'report':
         return;
-    }
-  }
-
-  private described(frame: DescriptionFrame): void {
-    if (frame.type === 'machine') {
-      this.machineReported(frame.actions, frame.permissions);
-    } else {
-      this.featuresReported(frame.features);
     }
   }
 
@@ -365,7 +362,7 @@ export class ComputerSession {
       ...(summary === undefined ? [] : headlineCapabilities(summary)),
       ...sessionCapabilities(session ?? null, this.scopes?.apps === true),
     ];
-    const device = describeComputer(known.hello, this.role, readings, {
+    const device = describeComputer(known.hello, readings, {
       power: this.actions(),
       machine: offeredMachineActions(this.scopes),
     });
@@ -396,7 +393,6 @@ export class ComputerSession {
       deviceId,
       role: this.role,
     });
-    if (this.role === 'hub') this.options.hubComputerResolved(deviceId);
     this.allow(this.options.scopesOf(deviceId));
     this.follow(deviceId);
     this.earsOnline(deviceId);
@@ -418,7 +414,7 @@ export class ComputerSession {
     if (this.known === null || this.scopes === null) return;
     const demand = nodeDemandOf(
       this.options.viewers.demand(deviceTarget(deviceId)),
-      this.options.policyOf(deviceId, this.role),
+      this.options.policyOf(deviceId),
       this.scopes.processes,
     );
     this.options.log.debug('computer.demand_sent', () => ({

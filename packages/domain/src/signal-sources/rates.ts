@@ -38,6 +38,7 @@ export const SIGNAL_RATES: readonly SignalRateLine[] = [
   { source: 'call', perMinute: 10, burst: 5, per: ['kind', 'subject'] },
   { source: 'device', kind: 'command', perMinute: 60, burst: 20, per: ['kind', 'subject'] },
   { source: 'provider', perMinute: 6, burst: 3, per: ['kind', 'subject'] },
+  { source: 'presence', perMinute: 6, burst: 3, per: ['kind', 'subject'] },
   {
     source: 'plugin_router',
     kind: 'person_arrived',

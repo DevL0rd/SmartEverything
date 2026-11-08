@@ -1,4 +1,5 @@
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import type { SearchEntry } from '@smarteverything/domain';
 import type { NavPinTarget } from '@smarteverything/domain';
 import { href } from '../app-shell/hrefs';
@@ -50,7 +51,7 @@ export function inlineOf(node: ResultNode, catalogue: SearchCatalogue): InlineAc
   return named?.device.online === true ? { kind: 'power', device: named.device } : null;
 }
 
-function linkOf(node: ResultNode, catalogue: SearchCatalogue): Href | undefined {
+function linkOf(node: ResultNode, catalogue: SearchCatalogue): AppHref | undefined {
   if (node.item.kind === 'entry') {
     return catalogue.links.get(node.item.entry.id);
   }

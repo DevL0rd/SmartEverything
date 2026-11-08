@@ -172,8 +172,42 @@ interface BodyProps {
   readonly quiet: boolean;
 }
 
-function NightBody({ night, naps, goalMinutes, quiet }: BodyProps): ReactNode {
+function NightLayout({
+  headline,
+  summary,
+  chart,
+  quiet,
+}: {
+  readonly headline: ReactNode;
+  readonly summary: ReactNode;
+  readonly chart: ReactNode;
+  readonly quiet: boolean;
+}): ReactNode {
   const { split } = useSizeClass();
+  if (!split || summary === null) {
+    return (
+      <>
+        {headline}
+        {chart}
+        {summary}
+      </>
+    );
+  }
+  return (
+    <>
+      <View className="flex-row gap-6">
+        <View className="min-w-0 flex-5 gap-3">
+          {headline}
+          {quiet ? chart : null}
+        </View>
+        <View className="min-w-0 flex-3">{summary}</View>
+      </View>
+      {quiet ? null : chart}
+    </>
+  );
+}
+
+function NightBody({ night, naps, goalMinutes, quiet }: BodyProps): ReactNode {
   const [at, setAt] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const nap = useNapReveal();
@@ -190,7 +224,7 @@ function NightBody({ night, naps, goalMinutes, quiet }: BodyProps): ReactNode {
     />
   );
   const parts = expanded && score !== null ? <ScoreParts night={night} score={score} /> : null;
-  const summary = (
+  const summary = !night.hasStages && naps.length === 0 ? null : (
     <View className="gap-3">
       <StageSummary rows={stageRowsOf(night)} />
       <Naps naps={naps} reveal={nap.reveal} />
@@ -198,23 +232,18 @@ function NightBody({ night, naps, goalMinutes, quiet }: BodyProps): ReactNode {
   );
   const chart = <StageChart night={night} quiet={quiet} at={at} onAt={setAt} />;
   return (
-    <Card title="Last night" icon="moon" action={<DateLabel night={night} />}>
-      {split ? (
-        <View className="flex-row gap-6">
-          <View className="min-w-0 flex-5 gap-3">
+    <Card title="Last night" icon="moon" metadata={<DateLabel night={night} />}>
+      <NightLayout
+        headline={
+          <>
             {header}
             {parts}
-          </View>
-          <View className="min-w-0 flex-3">{summary}</View>
-        </View>
-      ) : (
-        <>
-          {header}
-          {parts}
-        </>
-      )}
-      {chart}
-      {split ? null : summary}
+          </>
+        }
+        chart={chart}
+        summary={summary}
+        quiet={quiet}
+      />
       {quiet ? null : <NightVitals night={night} at={at} onAt={setAt} />}
       <NapSection naps={naps} target={nap.ref} />
     </Card>
@@ -234,13 +263,7 @@ function NapOnlyCard({
     <Card
       title="Nap"
       icon="moon"
-      action={
-        first === undefined ? null : (
-          <Text variant="footnote" tone="variant" className="tabular">
-            {nightDateLabel(first)}
-          </Text>
-        )
-      }
+      metadata={first === undefined ? null : <DateLabel night={first} />}
     >
       <Text variant="callout" tone="variant">
         {napOnlyLine(day)}

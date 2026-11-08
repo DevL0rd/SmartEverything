@@ -13,6 +13,7 @@ import { syncControlOf } from './watch-card-model';
 import { BatteryAndOxygen, SetupAction, SyncAction } from './watch-card-parts';
 import { FactTile, factsOf } from './watch-facts';
 import { FindWatchButton } from './watch-find';
+import { useRinging } from './watch-ringing';
 import { useWatchGlance, type WatchGlance } from './watch-glance';
 import { beatingBpm } from './watch-heart';
 import { HeartToday } from './watch-heart-today';
@@ -31,11 +32,12 @@ function Actions({
   const profile = device.details['profileId'];
   const owner = useRow('profiles', typeof profile === 'string' ? profile : null)?.name ?? null;
   const neverReported = !glance.onThisPhone && typeof device.details['reportedAt'] !== 'string';
+  const ringing = useRinging(device.id);
   return (
     <View className="flex-row flex-wrap justify-center gap-3">
       {neverReported ? <SetupAction /> : null}
       {neverReported || lastSeen !== null ? null : (
-        <FindWatchButton device={device} lastSeen={lastSeen} />
+        <FindWatchButton device={device} lastSeen={lastSeen} ringing={ringing} />
       )}
       {neverReported ? null : <SyncAction control={syncControlOf(glance, owner)} />}
       <Button label="Open in Fitness" icon="fitness" variant="tonal" href={href.fitness()} />
@@ -54,7 +56,7 @@ export function WatchHero({ device }: { readonly device: Device }): ReactNode {
     <Card>
       <View className="gap-5">
         <View className="items-center">
-          <DeviceVisual device={device} size="hero" state={state} />
+          <DeviceVisual device={device} size="hero" state={state} interactive />
         </View>
         <StepsBlock glance={glance} size="l" />
         <View className="h-28">

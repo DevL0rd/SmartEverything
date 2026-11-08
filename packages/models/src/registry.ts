@@ -1,0 +1,190 @@
+import {
+  KINGSMITH_G15_MODEL,
+  LARQ_PUREVIS_2_MODEL,
+  ORALB_IO9_MODEL,
+  XIAOMI_MAGNET_DW2HL_MODEL,
+  XIAOMI_S400_SCALE_MODEL,
+} from '@smarteverything/ble';
+import type { ModelSpec } from '@smarteverything/domain';
+import {
+  SAMSUNG_G9_OLED_49_MODEL,
+  SAMSUNG_MICROWAVE_MODEL,
+  SAMSUNG_S95B_65_MODEL,
+} from '@smarteverything/smartthings';
+import { TUYA_S06_PRO_MODEL } from '@smarteverything/tuya';
+import {
+  MIJIA_EVAPORATIVE_HUMIDIFIER_PRO_MODEL,
+  MIJIA_WASHER_DRYER_F29GL_MODEL,
+  XIAOMI_AIR_PURIFIER_4_PRO_MODEL,
+  XIAOMI_CAMERA_083AE2_MODEL,
+  XIAOMI_PV11GL_ROBOT_MODEL,
+  XIAOMI_PV11GL_STATION_MODEL,
+  XIAOMI_SMART_HOME_HUB_2_MODEL,
+  XIAOMI_SMART_SCENT_DIFFUSER_MODEL,
+  XIAOMI_SMART_TOWER_FAN_2_MODEL,
+  XIAOMI_WATCH_S5_46_MODEL,
+  XIAOMI_WIRELESS_SWITCH_ROUND_MODEL,
+} from '@smarteverything/xiaomi';
+
+import {
+  BEDROOM_BED_MODELS,
+  BEDROOM_STORAGE_MODELS,
+  BEDROOM_TEXTILE_MODELS,
+} from './catalogue/bedroom';
+import {
+  DECOR_HOBBY_MODELS,
+  DECOR_OBJECT_MODELS,
+  DECOR_TEXTILE_MODELS,
+  DECOR_WALL_MODELS,
+} from './catalogue/decor';
+import { RUG_MODELS } from './catalogue/rugs';
+import { BATHROOM_FITTING_MODELS, BATHROOM_FIXTURE_MODELS } from './catalogue/bathroom';
+import { DINING_STORAGE_MODELS, DINING_TABLE_MODELS } from './catalogue/dining';
+import {
+  KITCHEN_ACCESSORY_MODELS,
+  KITCHEN_CABINETRY_MODELS,
+  KITCHEN_COLUMN_MODELS,
+} from './catalogue/kitchen';
+import {
+  LIVING_LOUNGE_MODELS,
+  LIVING_SEATING_MODELS,
+  LIVING_STORAGE_MODELS,
+} from './catalogue/living';
+import {
+  OUTDOOR_FEATURE_MODELS,
+  OUTDOOR_GARDEN_MODELS,
+  OUTDOOR_PATIO_MODELS,
+  OUTDOOR_VEHICLE_MODELS,
+} from './catalogue/outdoor';
+import { STORAGE_HALL_MODELS, STORAGE_UTILITY_MODELS } from './catalogue/storage';
+import { OFFICE_DESK_MODELS, OFFICE_STORAGE_MODELS } from './catalogue/office';
+import {
+  STRUCTURE_DETAIL_MODELS,
+  STRUCTURE_DOOR_MODELS,
+  STRUCTURE_STAIR_MODELS,
+  STRUCTURE_WALL_MODELS,
+  STRUCTURE_WINDOW_MODELS,
+} from './catalogue/structure';
+import { PLANTS_COMPACT_MODELS, PLANTS_LEAFY_MODELS, PLANTS_TREE_MODELS } from './catalogue/plants';
+import { FITNESS_GEAR_MODELS, HOBBY_MODELS } from './catalogue/fitness-hobby';
+import { KIDS_ROOM_MODELS, PET_MODELS } from './catalogue/kids-pets';
+import { COMPUTER_MODELS } from './devices/computers';
+import { FITNESS_MODELS } from './devices/fitness';
+import { PHONE_MODELS } from './devices/phones';
+import { GENERIC_PHONE_MODELS } from './devices/phones-2';
+import { SCREEN_MODELS } from './devices/screens';
+import { SENSOR_MODELS } from './devices/sensors';
+import { AUDIO_MODELS } from './devices/audio';
+import { SENSOR_2_MODELS } from './devices/sensors-2';
+import { SENSOR_3_MODELS } from './devices/sensors-3';
+import { SECURITY_2_MODELS } from './devices/security-2';
+import { COVER_2_MODELS } from './devices/covers-2';
+import { COMPUTER_2_MODELS } from './devices/computers-2';
+import { PRINTER_2_MODELS } from './devices/printers-2';
+
+import { KITCHEN_APPLIANCE_MODELS } from './devices/kitchen-2';
+import { KITCHEN_COOLING_DRINK_MODELS } from './devices/kitchen-3';
+import { KITCHEN_COUNTER_MODELS } from './devices/kitchen-4';
+import { LIGHT_FIXTURE_MODELS } from './devices/light-fixtures';
+import { LIGHT_FIXTURE_2_MODELS } from './devices/light-fixtures-2';
+import { ENERGY_MODELS } from './devices/energy';
+import { ENERGY_2_MODELS } from './devices/energy-2';
+import { OTHER_MODELS } from './devices/other';
+import { ACCESS_MODELS } from './devices/access';
+import { CLIMATE_MODELS } from './devices/climate';
+import { REMOTE_MODELS } from './devices/remotes';
+import { NETWORK_DEFAULT_MODELS } from './devices/network-defaults';
+import { DEFAULT_MEDIA_CLEANING_MODELS } from './devices/defaults-dm21';
+import { HOME_BASIC_MODELS } from './devices/home-basics';
+import { CLIMATE_APPLIANCE_MODELS } from './devices/climate-2';
+import { DEFAULT_PERSONAL_MODELS } from './devices/defaults-dm23';
+
+export const MODEL_REGISTRY: readonly ModelSpec[] = [
+  XIAOMI_CAMERA_083AE2_MODEL,
+  KINGSMITH_G15_MODEL,
+  ORALB_IO9_MODEL,
+  LARQ_PUREVIS_2_MODEL,
+  XIAOMI_PV11GL_ROBOT_MODEL,
+  XIAOMI_PV11GL_STATION_MODEL,
+  XIAOMI_SMART_TOWER_FAN_2_MODEL,
+  XIAOMI_AIR_PURIFIER_4_PRO_MODEL,
+  MIJIA_EVAPORATIVE_HUMIDIFIER_PRO_MODEL,
+  MIJIA_WASHER_DRYER_F29GL_MODEL,
+  SAMSUNG_S95B_65_MODEL,
+  SAMSUNG_G9_OLED_49_MODEL,
+  XIAOMI_MAGNET_DW2HL_MODEL,
+  XIAOMI_WIRELESS_SWITCH_ROUND_MODEL,
+  XIAOMI_WATCH_S5_46_MODEL,
+  XIAOMI_SMART_HOME_HUB_2_MODEL,
+  XIAOMI_S400_SCALE_MODEL,
+  TUYA_S06_PRO_MODEL,
+  XIAOMI_SMART_SCENT_DIFFUSER_MODEL,
+  SAMSUNG_MICROWAVE_MODEL,
+  ...SCREEN_MODELS,
+  ...SENSOR_MODELS,
+  ...FITNESS_MODELS,
+  ...COMPUTER_MODELS,
+  ...PHONE_MODELS,
+  ...GENERIC_PHONE_MODELS,
+  ...LIVING_SEATING_MODELS,
+  ...LIVING_LOUNGE_MODELS,
+  ...LIVING_STORAGE_MODELS,
+  ...STRUCTURE_WALL_MODELS,
+  ...STRUCTURE_DETAIL_MODELS,
+  ...STRUCTURE_DOOR_MODELS,
+  ...STRUCTURE_WINDOW_MODELS,
+  ...STRUCTURE_STAIR_MODELS,
+  ...DINING_TABLE_MODELS,
+  ...DINING_STORAGE_MODELS,
+  ...KITCHEN_CABINETRY_MODELS,
+  ...KITCHEN_COLUMN_MODELS,
+  ...KITCHEN_ACCESSORY_MODELS,
+  ...BEDROOM_BED_MODELS,
+  ...BEDROOM_STORAGE_MODELS,
+  ...BEDROOM_TEXTILE_MODELS,
+  ...BATHROOM_FIXTURE_MODELS,
+  ...BATHROOM_FITTING_MODELS,
+  ...OFFICE_DESK_MODELS,
+  ...OFFICE_STORAGE_MODELS,
+  ...STORAGE_HALL_MODELS,
+  ...STORAGE_UTILITY_MODELS,
+  ...OUTDOOR_PATIO_MODELS,
+  ...OUTDOOR_GARDEN_MODELS,
+  ...OUTDOOR_FEATURE_MODELS,
+  ...OUTDOOR_VEHICLE_MODELS,
+  ...PLANTS_LEAFY_MODELS,
+  ...PLANTS_COMPACT_MODELS,
+  ...PLANTS_TREE_MODELS,
+  ...KIDS_ROOM_MODELS,
+  ...PET_MODELS,
+  ...FITNESS_GEAR_MODELS,
+  ...HOBBY_MODELS,
+  ...DECOR_WALL_MODELS,
+  ...DECOR_OBJECT_MODELS,
+  ...DECOR_TEXTILE_MODELS,
+  ...DECOR_HOBBY_MODELS,
+  ...RUG_MODELS,
+  ...AUDIO_MODELS,
+  ...SENSOR_2_MODELS,
+  ...SENSOR_3_MODELS,
+  ...SECURITY_2_MODELS,
+  ...COVER_2_MODELS,
+  ...COMPUTER_2_MODELS,
+  ...PRINTER_2_MODELS,
+  ...KITCHEN_APPLIANCE_MODELS,
+  ...KITCHEN_COOLING_DRINK_MODELS,
+  ...KITCHEN_COUNTER_MODELS,
+  ...LIGHT_FIXTURE_MODELS,
+  ...LIGHT_FIXTURE_2_MODELS,
+  ...ENERGY_MODELS,
+  ...ENERGY_2_MODELS,
+  ...OTHER_MODELS,
+  ...ACCESS_MODELS,
+  ...CLIMATE_MODELS,
+  ...REMOTE_MODELS,
+  ...NETWORK_DEFAULT_MODELS,
+  ...DEFAULT_MEDIA_CLEANING_MODELS,
+  ...HOME_BASIC_MODELS,
+  ...CLIMATE_APPLIANCE_MODELS,
+  ...DEFAULT_PERSONAL_MODELS,
+];

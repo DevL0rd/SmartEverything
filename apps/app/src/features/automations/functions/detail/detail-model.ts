@@ -1,10 +1,10 @@
 import type {
-  AutomationFunctionDetail,
   AutomationFunctionUser,
   FunctionV3,
   InputPort,
   OutputPort,
 } from '@smarteverything/domain';
+import type { FunctionDetail } from '../../data/graph-adapter';
 import { walkProgram } from '@smarteverything/flow/program/walk';
 import type { FunctionCreateBody } from '../../data/api';
 import { typeText } from '../make-reusable/plain-reference';
@@ -29,7 +29,7 @@ export interface InterfaceCardModel {
   readonly exits: readonly ExitLine[];
 }
 
-export type Ownership = 'builtin' | 'mine' | 'shared';
+export type Ownership = 'mine' | 'shared';
 
 export interface HeroModel {
   readonly name: string;
@@ -56,7 +56,6 @@ export interface UsedByGroups {
 }
 
 const OWNERSHIP_LABEL: Readonly<Record<Ownership, string>> = {
-  builtin: 'Built in',
   mine: 'You made it',
   shared: 'Made by someone else',
 };
@@ -110,18 +109,16 @@ export function exitLine(name: string): PortLine {
   return { name, title: name, typeText: '', requirement: '', description: null };
 }
 
-export function ownershipOf(detail: AutomationFunctionDetail, userId: string | null): Ownership {
-  if (detail.builtin) return 'builtin';
+export function ownershipOf(detail: FunctionDetail, userId: string | null): Ownership {
   return userId !== null && detail.createdBy === userId ? 'mine' : 'shared';
 }
 
-export function deleteRefusal(detail: AutomationFunctionDetail): string | null {
-  if (detail.builtin) return 'Built-in Custom Nodes cannot be deleted.';
+export function deleteRefusal(detail: FunctionDetail): string | null {
   if (detail.usedBy.length === 0) return null;
   return `It is used in ${placesText(detail.usedBy.length)}. Remove it from them first.`;
 }
 
-export function heroModel(detail: AutomationFunctionDetail, userId: string | null): HeroModel {
+export function heroModel(detail: FunctionDetail, userId: string | null): HeroModel {
   const ownership = ownershipOf(detail, userId);
   const refusal = deleteRefusal(detail);
   return {
@@ -131,13 +128,13 @@ export function heroModel(detail: AutomationFunctionDetail, userId: string | nul
     ownership,
     ownershipLabel: OWNERSHIP_LABEL[ownership],
     description: detail.description,
-    canEdit: detail.editable && !detail.builtin,
-    canDelete: !detail.builtin && detail.editable,
+    canEdit: detail.editable,
+    canDelete: detail.editable,
     deleteRefusal: refusal,
   };
 }
 
-export function usedByGroups(detail: AutomationFunctionDetail): UsedByGroups {
+export function usedByGroups(detail: FunctionDetail): UsedByGroups {
   const automations = detail.usedBy.filter((user) => user.kind === 'automation');
   const nodes = detail.usedBy.filter((user) => user.kind === 'function');
   const parts = [
@@ -159,11 +156,11 @@ export function bodyLines(program: FunctionV3): readonly BodyLine[] {
   }));
 }
 
-export function copyRequest(detail: AutomationFunctionDetail): FunctionCreateBody {
+export function copyRequest(detail: FunctionDetail): FunctionCreateBody {
   const named = `${detail.name} copy`;
   return {
     name: FUNCTION_NAME.safeParse(named).success ? named : detail.name,
-    definition: detail.program,
+    definition: detail.graph,
     layout: detail.layout,
   };
 }

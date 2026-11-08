@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { KeyLike } from '../canvas/shortcuts';
+import type { ShortcutEvent as KeyLike } from '../canvas/keyboard/shortcut-keys';
 import { SHORTCUT_GROUPS, editorKeyFor } from './editor-keys';
 
 const press = (

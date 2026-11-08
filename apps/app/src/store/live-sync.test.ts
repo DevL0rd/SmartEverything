@@ -1,4 +1,5 @@
-import { LIVE_TABLES } from '@smarteverything/domain';
+import { LIVE_HEARTBEAT_MS, LIVE_TABLES, SNAPSHOT } from '@smarteverything/domain';
+import { snapshotWire } from './snapshot-fixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerConnection } from '../api/transport';
 import type * as LiveSocket from './live-socket';
@@ -6,7 +7,7 @@ import type { SocketHandlers } from './live-socket';
 
 const opened: { handlers: SocketHandlers; closed: boolean; target: unknown }[] = [];
 const snapshotCalls: {
-  resolve: (value: never) => void;
+  resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   request: unknown;
 }[] = [];
@@ -26,9 +27,9 @@ vi.mock('./live-socket', async (importOriginal) => {
 });
 
 vi.mock('../api/transport', () => ({
-  api: (): { callTables: (endpoint: unknown, request: unknown) => Promise<never> } => ({
-    callTables: (_endpoint: unknown, request: unknown): Promise<never> =>
-      new Promise<never>((resolve, reject) => {
+  api: (): { callTables: (endpoint: unknown, request: unknown) => Promise<unknown> } => ({
+    callTables: (_endpoint: unknown, request: unknown): Promise<unknown> =>
+      new Promise<unknown>((resolve, reject) => {
         snapshotCalls.push({ resolve, reject, request });
       }),
   }),
@@ -55,6 +56,8 @@ vi.mock('./ai-speech-requests', () => ({ deliverAiSpeech: vi.fn() }));
 const { LiveSync, LINK_DEADLINE_MS } = await import('./live-sync');
 const { EntityStore } = await import('./entity-store');
 const { liveWatch } = await import('./live-watch');
+const { backoffOf } = await import('./live-socket');
+const { hubAnswered } = await import('../api/connection/hub-answers');
 
 const CONNECTION: ServerConnection = {
   url: 'http://hub.test:7880',
@@ -141,6 +144,25 @@ describe('the live connection after the hub stops answering', () => {
     expect(opened).toHaveLength(2);
   });
 
+  it('stays connected and names the section when one part of the snapshot is unreadable', async () => {
+    const { store } = await started();
+    subscribed(0);
+    snapshotCalls[0]?.resolve({
+      data: SNAPSHOT.parse(snapshotWire(null)),
+      skipped: [],
+      unreadable: [{ section: 'firewall', path: 'firewall.openings.0', reason: 'bad' }],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(opened[0]?.closed).toBe(false);
+    expect(store.get().sync.status).toBe('live');
+    expect(store.get().sync.outdated).toStrictEqual(['firewall']);
+    expect(store.get().firewall).toBeNull();
+    expect(store.get().tables.rooms.ids).toHaveLength(1);
+    vi.advanceTimersByTime(5000);
+    expect(opened).toHaveLength(1);
+    expect(snapshotCalls).toHaveLength(1);
+  });
+
   it('stops retrying once stopped', async () => {
     const { sync } = await started();
     opened[0]?.handlers.onClose(1006, '');
@@ -159,6 +181,37 @@ describe('the live connection after the hub stops answering', () => {
     expect(opened).toHaveLength(2);
     vi.advanceTimersByTime(1);
     expect(opened).toHaveLength(3);
+  });
+
+  it('reconnects at once when any request reaches the hub while a retry is waiting', async () => {
+    const { sync } = await started();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      opened.at(-1)?.handlers.onClose(1006, '');
+      vi.advanceTimersByTime(backoffOf(attempt));
+    }
+    opened.at(-1)?.handlers.onClose(1006, '');
+    expect(opened).toHaveLength(6);
+    hubAnswered();
+    expect(opened).toHaveLength(7);
+    hubAnswered();
+    expect(opened).toHaveLength(7);
+    sync.stop();
+    opened.at(-1)?.handlers.onClose(1006, '');
+    hubAnswered();
+    expect(opened).toHaveLength(7);
+  });
+
+  it('never waits longer than one hub heartbeat between attempts', () => {
+    expect([0, 1, 2, 3, 4, 5, 6, 20].map(backoffOf)).toStrictEqual([
+      1000,
+      2000,
+      4000,
+      8000,
+      16_000,
+      LIVE_HEARTBEAT_MS,
+      LIVE_HEARTBEAT_MS,
+      LIVE_HEARTBEAT_MS,
+    ]);
   });
 
   it('sends the held watch demand on every connect and stops sending when the socket closes', async () => {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { DEFAULT_ENGINE, type AiChatRow } from '@smarteverything/domain';
+import { type AiChatRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   admitExecutionTool,
@@ -14,6 +14,7 @@ import { commandPrincipal } from '../../../src/server/commands';
 import type { StoredEvent } from '../../../src/store/repositories/assistant-events';
 import { testStore, type TestStore } from '../../support/store';
 import { scopedToolCall } from '../../../src/extensions/mcp/tools/authority';
+import { TEST_ENGINE } from '../../support/engine';
 
 let opened: TestStore;
 let profileId: string;
@@ -53,7 +54,7 @@ function chat(options: {
     icon: null,
     parentId: options.parent?.id ?? null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
     tools: options.tools ?? null,
   });
 }

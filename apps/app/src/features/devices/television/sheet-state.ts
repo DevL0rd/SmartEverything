@@ -1,4 +1,5 @@
-import { useReducer } from 'react';
+import { createRef, useReducer, useState, type RefObject } from 'react';
+import type { View } from 'react-native';
 import { MAX_CHANNEL_DIGITS } from './keys';
 
 export type TvSheet =
@@ -38,6 +39,7 @@ export function sheetReducer(sheet: TvSheet, action: SheetAction): TvSheet {
 }
 
 export interface TvSheets {
+  readonly openers: Readonly<Record<SheetKind, RefObject<View | null>>>;
   readonly sheet: TvSheet;
   readonly open: (kind: SheetKind, typed?: string) => void;
   readonly close: () => void;
@@ -47,8 +49,16 @@ export interface TvSheets {
 
 export function useTvSheets(): TvSheets {
   const [sheet, dispatch] = useReducer(sheetReducer, null);
+  const [openers] = useState(() => ({
+    volume: createRef<View>(),
+    inputs: createRef<View>(),
+    apps: createRef<View>(),
+    sleep: createRef<View>(),
+    numpad: createRef<View>(),
+  }));
   return {
     sheet,
+    openers,
     open: (kind, typed): void => {
       dispatch(typed === undefined ? { type: 'open', kind } : { type: 'open', kind, typed });
     },

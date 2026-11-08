@@ -49,6 +49,9 @@ const { COLOUR_VARIABLE, PaletteContext } = await import('../../../design/colour
 const { computerLive } = await import('../../../store/computer-live');
 const { ScreenPause, ScreenPausedContext } = await import('../../../design/screen-pause');
 const { ComputerFace } = await import('./computer-faces');
+const { WIDE_SPARK } = await import('./wide-face');
+const { tierInnerHeight } = await import('../../../components/widget-board/tier');
+const { SEMANTIC_SIZES, TYPE_SCALE } = await import('../../../design/tokens');
 
 const DEVICE = '00000000-0000-4000-8000-0000000000c1';
 const AT = '2026-10-17T14:02:00.000Z';
@@ -243,6 +246,46 @@ describe('computer card faces', () => {
       const markup = html(cls, computer({ online: false }), HELD);
       for (const text of ['51 degrees', '60 degrees', 'RAM 40 percent']) {
         expect([cls, text, markup.includes(text)]).toEqual([cls, text, true]);
+      }
+    }
+  });
+
+  it('puts every button after the readings, in the band at the bottom of the card', () => {
+    live(true);
+    for (const cls of ['w', 'l', 'xl'] as const) {
+      const markup = html(cls, computer({ online: true }));
+      const reading = markup.indexOf('aria-label="CPU 22 percent, 46 degrees"');
+      expect([cls, reading >= 0]).toEqual([cls, true]);
+      expect([cls, markup.indexOf('aria-label="Lock Device 0"') > reading]).toEqual([cls, true]);
+    }
+  });
+
+  it('wakes an offline computer from the band with a labelled button, not a header icon', () => {
+    for (const cls of ['xs', 'm', 'w', 'l', 'xl'] as const) {
+      const markup = html(cls, computer({ online: false }), HELD);
+      expect([cls, markup.includes('Wake Device 0')]).toEqual([cls, false]);
+      expect([cls, markup.lastIndexOf('Wake') > markup.indexOf('RAM 40 percent')]).toEqual([
+        cls,
+        true,
+      ]);
+    }
+  });
+
+  it('fits the wide tiles and the band inside the wide tier at every idiom and density', () => {
+    const TILE_GAP = 4;
+    const BAR = 4;
+    const BAND_GAP = 6;
+    for (const idiom of ['touch', 'pointer'] as const) {
+      for (const density of ['comfortable', 'compact'] as const) {
+        const type = TYPE_SCALE[idiom];
+        const sizes = SEMANTIC_SIZES[idiom][density];
+        const tile = type.caption[1] + type['figure-s'][1] + BAR + WIDE_SPARK + 3 * TILE_GAP;
+        const band = BAND_GAP + Math.max(sizes.controlH, sizes.touchMin);
+        expect([idiom, density, tile + band <= tierInnerHeight('W', idiom, density)]).toEqual([
+          idiom,
+          density,
+          true,
+        ]);
       }
     }
   });

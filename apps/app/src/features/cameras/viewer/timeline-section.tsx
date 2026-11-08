@@ -13,12 +13,15 @@ import { clock } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import { FilterButton } from '../components/filter-sheet';
-import { TimelineStrip } from '../components/timeline-strip';
+import { TimelineStrip, TimelineZoom } from '../components/timeline-strip';
 import { useCameraDay, type CameraItem } from '../data/use-camera-day';
 import { useRecordingLinks } from '../data/use-media-links';
 import type { CameraEntry } from '../logic/cameras';
 import { entryOf, recordingTarget } from '../logic/event-entries';
 import { NO_FILTER, dayFraction, sameDay, type TimelineFilter } from '../logic/timeline';
+import type { ZoomHours } from '../logic/timeline-track';
+
+const WHOLE_DAY: ZoomHours = 24;
 
 function dateOf(day: CalendarDate): Date {
   return new Date(day.year, day.month - 1, day.day, 12);
@@ -32,9 +35,10 @@ interface DayStripProps {
   readonly entry: CameraEntry;
   readonly items: readonly CameraItem[];
   readonly today: boolean;
+  readonly hours: ZoomHours;
 }
 
-function DayStrip({ entry, items, today }: DayStripProps): ReactNode {
+function DayStrip({ entry, items, today, hours }: DayStripProps): ReactNode {
   const router = useRouter();
   const timeZone = useSettings().time_zone;
   const now = useMinute();
@@ -52,6 +56,7 @@ function DayStrip({ entry, items, today }: DayStripProps): ReactNode {
   return (
     <TimelineStrip
       label={`Events on the timeline for ${entry.name}`}
+      hours={hours}
       now={today ? dayFraction(new Date(now).toISOString(), timeZone) : null}
       items={items.map((item) => ({
         id: item.id,
@@ -78,9 +83,14 @@ export function TimelineSection({ entry }: { readonly entry: CameraEntry }): Rea
   const day = chosen ?? today;
   const [filter, setFilter] = useState<TimelineFilter>(NO_FILTER);
   const read = useCameraDay([entry.device.id], day, timeZone, filter);
+  const [hours, setHours] = useState<ZoomHours>(WHOLE_DAY);
+  const hasTimeline = read.status === 'ready' && read.items.length > 0;
+  if (!hasTimeline && hours !== WHOLE_DAY) {
+    setHours(WHOLE_DAY);
+  }
   return (
     <Section title="Timeline">
-      <View className="flex-row flex-wrap items-center justify-between gap-2 px-1">
+      <View className="flex-row flex-wrap items-center gap-2">
         <DateNav
           value={dateOf(day)}
           range="day"
@@ -90,11 +100,12 @@ export function TimelineSection({ entry }: { readonly entry: CameraEntry }): Rea
           }}
         />
         <FilterButton filter={filter} onChange={setFilter} cameras={[entry]} />
+        {hasTimeline ? <TimelineZoom hours={hours} setHours={setHours} /> : null}
       </View>
       {read.status === 'loading' ? <Skeleton shape="block" className="h-28" /> : null}
       {read.status === 'failed' ? <ErrorState error={read.error} retry={read.retry} /> : null}
       {read.status === 'ready' ? (
-        <DayStrip entry={entry} items={read.items} today={sameDay(day, today)} />
+        <DayStrip entry={entry} items={read.items} today={sameDay(day, today)} hours={hours} />
       ) : null}
     </Section>
   );

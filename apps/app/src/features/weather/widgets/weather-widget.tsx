@@ -4,25 +4,23 @@ import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
-import {
-  WidgetFrame,
-  WidgetStat,
-  WidgetStats,
-  type FrameClass,
-} from '../../../components/widget-board';
+import { WidgetFrame, widgetBodyHeight, type FrameClass } from '../../../components/widget-board';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { useMinute } from '../../../store/clock';
-import { DayList } from '../components/forecast-parts';
+import { fitVisualPx } from '../../device-visuals';
 import { HourStrip } from '../components/hour-strip';
 import { WeatherHero } from '../components/weather-hero';
 import { WeatherWidgetNotice } from '../components/weather-notice';
 import { LocationPrompt } from './location-prompt';
+import { FittedDays, FittedStats } from './fit';
 import { useWeather, type WeatherView } from '../data/use-weather';
 import { conditionOf, degrees } from '../model/present';
 import { weatherStats } from '../model/stats';
 import { WeatherVisual } from '../visual/weather-visual';
 
 const SMALL_ICON_PX = 48;
+
+const ROW_ICON_MAX = 96;
 
 interface ReadyProps {
   readonly forecast: WeatherForecast;
@@ -33,7 +31,7 @@ interface ReadyProps {
 function Small({ forecast, stale }: ReadyProps): ReactNode {
   const { now } = forecast;
   return (
-    <View className="flex-1 justify-end">
+    <View>
       <View className="flex-row items-center gap-1.5">
         <WeatherVisual code={now.code} day={now.isDay} px={SMALL_ICON_PX} />
         <Figure value={degrees(now.temperatureC)} size="m" stale={stale} />
@@ -45,32 +43,42 @@ function Small({ forecast, stale }: ReadyProps): ReactNode {
   );
 }
 
-function Medium(props: ReadyProps): ReactNode {
-  const [range, rain] = weatherStats(props.forecast, props.now);
+function NowRow({ forecast, stale }: ReadyProps): ReactNode {
+  const { frame } = useWidgetFace();
+  const px = fitVisualPx(widgetBodyHeight(frame), ROW_ICON_MAX);
+  const { now } = forecast;
   return (
-    <View className="flex-1 flex-row items-center gap-4">
-      <View className="flex-1">
-        <WeatherHero forecast={props.forecast} now={props.now} scale="m" stale={props.stale} />
+    <View className="min-w-0 shrink flex-row items-center gap-3 self-start">
+      {px === undefined ? null : <WeatherVisual code={now.code} day={now.isDay} px={px} />}
+      <View className="min-w-0 shrink gap-0.5">
+        <Figure value={degrees(now.temperatureC)} size="l" stale={stale} />
+        <Text variant="body-strong" numberOfLines={1}>
+          {conditionOf(now.code)}
+        </Text>
       </View>
-      <View className="w-36 gap-3">
-        {[range, rain].map((stat) => {
-          if (stat === undefined) {
-            return null;
-          }
-          const { key, ...shown } = stat;
-          return <WidgetStat key={key} {...shown} />;
-        })}
-      </View>
+    </View>
+  );
+}
+
+function Hours({ forecast, now }: ReadyProps): ReactNode {
+  return <HourStrip forecast={forecast} now={now} most={forecast.hourly.length} />;
+}
+
+function Medium(props: ReadyProps): ReactNode {
+  return (
+    <View className="flex-1 flex-row gap-3">
+      <NowRow {...props} />
+      <FittedStats stats={weatherStats(props.forecast, props.now)} />
     </View>
   );
 }
 
 function Wide(props: ReadyProps): ReactNode {
   return (
-    <View className="flex-1 flex-row items-center gap-6">
-      <WeatherHero forecast={props.forecast} now={props.now} scale="m" stale={props.stale} />
-      <View className="flex-1">
-        <HourStrip forecast={props.forecast} now={props.now} most={8} />
+    <View className="flex-1 flex-row gap-6">
+      <NowRow {...props} />
+      <View className="min-w-0 flex-1">
+        <Hours {...props} />
       </View>
     </View>
   );
@@ -78,24 +86,25 @@ function Wide(props: ReadyProps): ReactNode {
 
 function Large(props: ReadyProps): ReactNode {
   return (
-    <View className="flex-1 justify-between gap-3">
+    <View className="flex-1 gap-3">
       <WeatherHero forecast={props.forecast} now={props.now} scale="m" stale={props.stale} />
-      <HourStrip forecast={props.forecast} now={props.now} most={6} />
-      <WidgetStats stats={weatherStats(props.forecast, props.now).slice(0, 4)} columns={2} />
+      <Hours {...props} />
+      <FittedStats stats={weatherStats(props.forecast, props.now)} />
     </View>
   );
 }
 
 function ExtraLarge(props: ReadyProps): ReactNode {
+  const stats = weatherStats(props.forecast, props.now).filter((stat) => stat.key !== 'range');
   return (
     <View className="flex-1 flex-row gap-6">
-      <View className="flex-1 justify-between gap-3">
+      <View className="min-w-0 flex-1 gap-3">
         <WeatherHero forecast={props.forecast} now={props.now} scale="l" stale={props.stale} />
-        <WidgetStats stats={weatherStats(props.forecast, props.now).slice(1)} columns={2} />
+        <FittedStats stats={stats} />
       </View>
-      <View className="flex-1 justify-between gap-3">
-        <HourStrip forecast={props.forecast} now={props.now} most={7} />
-        <DayList forecast={props.forecast} now={props.now} count={5} />
+      <View className="min-w-0 flex-1 gap-3">
+        <Hours {...props} />
+        <FittedDays forecast={props.forecast} now={props.now} />
       </View>
     </View>
   );

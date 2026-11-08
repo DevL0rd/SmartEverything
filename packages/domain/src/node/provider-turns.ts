@@ -3,13 +3,18 @@ import { CLAUDE_ANSWER, CLAUDE_PROMPT } from '../claude';
 import { CLAUDE_PROVIDER_OPTIONS, NATIVE_MANAGED_PROJECT } from '../computer-ai';
 import { JSON_VALUE } from '../values';
 
+export const PROVIDER_TEXT_MAX = 200_000;
+export const CODEX_PROVIDER_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+export const PROVIDER_MESSAGE_PARTS_MAX = 64;
 export const PROVIDER_TURN_MAX_BYTES = 32 * 1024 * 1024 - 1024;
 
+export const PROVIDER_IMAGE_MIME = z.enum(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
 export const PROVIDER_CONTENT = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('text'), text: z.string().min(1).max(200_000) }),
+  z.strictObject({ type: z.literal('text'), text: z.string().min(1).max(PROVIDER_TEXT_MAX) }),
   z.strictObject({
     type: z.literal('image'),
-    media_type: z.enum(['image/jpeg', 'image/png', 'image/gif', 'image/webp']),
+    media_type: PROVIDER_IMAGE_MIME,
     data: z.string().min(1).max(28_000_000),
   }),
   z.strictObject({
@@ -33,7 +38,7 @@ export const PROVIDER_TURN = z.strictObject({
     .array(
       z.strictObject({
         role: z.enum(['user', 'assistant']),
-        content: z.array(PROVIDER_CONTENT).min(1).max(64),
+        content: z.array(PROVIDER_CONTENT).min(1).max(PROVIDER_MESSAGE_PARTS_MAX),
       }),
     )
     .min(1)

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.core.content.FileProvider
@@ -11,12 +12,22 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import expo.modules.kotlin.activityresult.AppContextActivityResultContract
 import expo.modules.kotlin.activityresult.AppContextActivityResultLauncher
-import java.io.Serializable
 import java.io.IOException
+import java.io.Serializable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+
+internal fun visibleResourceActivity(activity: () -> Activity?): Activity {
+  val current = activity() ?: error("Open a resource from the visible app")
+  require(!current.isFinishing && !current.isDestroyed) { "The app screen is closing" }
+  require(current is LifecycleOwner && current.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) { "The app is not in the foreground" }
+  return current
+}
 
 class HubResourceSave(val mime: String, val name: String) : Serializable
 class HubResourceSaveContract : AppContextActivityResultContract<HubResourceSave, Uri?> {
@@ -26,9 +37,14 @@ class HubResourceSaveContract : AppContextActivityResultContract<HubResourceSave
     if (resultCode == Activity.RESULT_OK) intent?.data else null
 }
 
-class HubResourceDownload(private val context: Context, private val broker: HubResourceBroker) {
+class HubResourceDownload(
+  private val context: Context,
+  private val broker: HubResourceBroker,
+  private val emit: (Map<String, Any>) -> Unit,
+) {
   var launcher: AppContextActivityResultLauncher<HubResourceSave, Uri?>? = null
   private var busy = false
+  @Volatile private var running: AndroidUpdateRun? = null
   suspend fun download(json: String, activity: () -> Activity?): String {
     val input = JSONObject(json)
     require(input.length() == 2 && input.getString("intent") in listOf("open", "save"))
@@ -36,11 +52,11 @@ class HubResourceDownload(private val context: Context, private val broker: HubR
     var downloaded: HubResourceFile? = null
     try {
       val grant = broker.grants.get(input.getString("id"))
-      withContext(Dispatchers.Main) { visible(activity) }
+      withContext(Dispatchers.Main) { visibleResourceActivity(activity) }
       val file = withContext(broker.io.asCoroutineDispatcher()) { HubResourceFiles.fetch(context, grant, broker.grants) }
       downloaded = file
       if (input.getString("intent") == "open") return withContext(Dispatchers.Main) {
-        open(grant, file, visible(activity)); file.shared = true; "completed"
+        open(grant, file, visibleResourceActivity(activity)); file.shared = true; "completed"
       }
       return save(grant, file, activity)
     } finally {
@@ -48,12 +64,77 @@ class HubResourceDownload(private val context: Context, private val broker: HubR
       finally { synchronized(this) { busy = false } }
     }
   }
-  private fun visible(activity: () -> Activity?): Activity {
-    val current = activity() ?: error("Open or save a resource from the visible app")
-    require(!current.isFinishing && !current.isDestroyed) { "The app screen is closing" }
-    require(current is LifecycleOwner && current.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) { "The app is not in the foreground" }
-    return current
+  internal suspend fun install(json: String, activity: () -> Activity?): AndroidUpdateOutcome {
+    val request = AndroidUpdateRequest.parse(json)
+    val grant = installGrant(request)
+    synchronized(this) { require(!busy) { "A resource action is already pending" }; busy = true }
+    val job = Job(currentCoroutineContext()[Job])
+    val active = AndroidUpdateRun(request.id, job)
+    running = active
+    try {
+      withContext(Dispatchers.Main) { visibleResourceActivity(activity) }
+      return withContext(broker.io.asCoroutineDispatcher() + job) { runInstall(request, grant, active, activity) }
+    } catch (failure: Exception) {
+      if (active.cancelled) return AndroidUpdateOutcome.CANCELLED
+      throw failure
+    } finally {
+      running = null
+      job.cancel()
+      synchronized(this) { busy = false }
+    }
   }
+
+  internal fun cancelInstall(id: String) {
+    running?.takeIf { it.id == id }?.cancel()
+  }
+
+  private suspend fun runInstall(
+    request: AndroidUpdateRequest,
+    grant: HubResourceGrant,
+    active: AndroidUpdateRun,
+    activity: () -> Activity?,
+  ): AndroidUpdateOutcome {
+    val job = currentCoroutineContext()
+    val checkGrant = { job.ensureActive(); grant.check() }
+    val progress = AndroidUpdateProgress(request.id, request.size, emit)
+    return AndroidUpdateSession(context, request).install(activity, checkGrant, progress) { session ->
+      stageUpdate(grant, request, session, progress, active, checkGrant)
+    }
+  }
+
+  private fun stageUpdate(
+    grant: HubResourceGrant,
+    request: AndroidUpdateRequest,
+    session: PackageInstaller.Session,
+    progress: AndroidUpdateProgress,
+    active: AndroidUpdateRun,
+    checkGrant: () -> Unit,
+  ) {
+    val call = HubResourceStream.request(grant)
+    active.call = call
+    try {
+      HubResourceStream.response(grant, call, broker.grants).use { response ->
+        require(response.isSuccessful) { "Hub refused the signed resource download (${response.code})" }
+        val body = response.body ?: throw IOException("Signed resource has no response body")
+        AndroidUpdateInstaller.admit(context, request, response.header("Content-Type")?.substringBefore(';'), body.contentLength())
+        AndroidUpdateInstaller.stream(session, body.byteStream(), request, progress, checkGrant)
+      }
+    } finally {
+      grant.untrack(call)
+      call.cancel()
+    }
+  }
+
+  private fun installGrant(request: AndroidUpdateRequest): HubResourceGrant {
+    val grant = broker.grants.get(request.id)
+    val path = Uri.parse(grant.url).pathSegments
+    require(grant.purpose == "attachment" && path.size == 5 &&
+      path.take(2) == listOf("media", "android-apks") && path.last() == request.releaseId) {
+      "The resource does not match the offered Android update"
+    }
+    return grant
+  }
+
   private fun open(grant: HubResourceGrant, file: HubResourceFile, activity: Activity) {
     grant.check()
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.hub.resources", file.file)
@@ -66,7 +147,7 @@ class HubResourceDownload(private val context: Context, private val broker: HubR
   }
   private suspend fun save(grant: HubResourceGrant, file: HubResourceFile, activity: () -> Activity?): String {
     val picker = launcher ?: error("Android document picker is unavailable")
-    val uri = withContext(Dispatchers.Main) { visible(activity); grant.check(); picker.launch(HubResourceSave(file.mime, file.name)) }
+    val uri = withContext(Dispatchers.Main) { visibleResourceActivity(activity); grant.check(); picker.launch(HubResourceSave(file.mime, file.name)) }
       ?: return "cancelled"
     try {
       withContext(broker.io.asCoroutineDispatcher()) { persist(grant, file, uri) }

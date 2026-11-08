@@ -8,17 +8,19 @@ export const LogTicker = memo(function LogTicker({
   deviceId,
   live,
   omit,
+  lines = 1,
 }: {
   readonly deviceId: string;
   readonly live: boolean;
   readonly omit?: DeviceLogEntry['kind'];
+  readonly lines?: 1 | 2;
 }): ReactNode {
   const entry = useLatestLogEntry(deviceId, live);
   if (entry === undefined || entry.kind === omit) {
     return null;
   }
   return (
-    <Text variant="caption" tone={tickerTone(entry)} numberOfLines={1} align="end">
+    <Text variant="caption" tone={tickerTone(entry)} numberOfLines={lines} align="end">
       {`${cardTime(entry.at)} · ${tickerText(entry)}`}
     </Text>
   );

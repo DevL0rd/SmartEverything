@@ -10,46 +10,43 @@ import { friendlyError } from '../../../format/errors';
 import type { EntityStore } from '../../../store/entity-store';
 import type { StoreState } from '../../../store/state';
 import { oldestOf } from './thread';
-
-const PAGE = 50;
+import { HISTORY_PAGE_SIZE, recoverPages } from './history-recovery';
 const log = new Logger('app.assistant');
 
 interface History {
   readonly rows: readonly AssistantMessageRow[];
   readonly loading: boolean;
   readonly complete: boolean;
-  readonly before: string | null;
+  readonly pending: { readonly before: string | undefined } | null;
+  readonly loaded: boolean;
 }
 
-export type OlderLoader = (before: string) => Promise<readonly AssistantMessageRow[]>;
+export type OlderLoader = (before: string | undefined) => Promise<readonly AssistantMessageRow[]>;
 
-const EMPTY: History = { rows: [], loading: false, complete: false, before: null };
+const EMPTY: History = {
+  rows: [],
+  loading: false,
+  complete: false,
+  pending: null,
+  loaded: false,
+};
 
 const histories = new ValueStore<Readonly<Record<string, History>>>({});
 export const historyRevision = new ValueStore(0);
+export const historySynchronization = new ValueStore(0);
 
 class HistoryOwner {
   recovery = 0;
-  pending: { readonly before: string; readonly recovery: number } | null = null;
 
   constructor(
     readonly current: () => boolean,
-    readonly live: () => boolean,
     readonly load: OlderLoader,
     readonly stop: () => void,
   ) {}
 
-  recovered(): void {
+  recovered(): number {
     this.recovery += 1;
-  }
-
-  begin(): number {
-    this.pending = null;
     return this.recovery;
-  }
-
-  wait(before: string, recovery: number): void {
-    this.pending = { before, recovery };
   }
 }
 
@@ -116,14 +113,13 @@ export function ownOlderMessages(key: string, load: OlderLoader, store: EntitySt
   const previous = owners.get(key);
   if (previous !== undefined) release(key, previous, false);
   log.debug('history.owned', { chatId: key, replaced: previous !== undefined });
-  let live = store.get().sync.status === 'live';
+  const live = store.get().sync.status === 'live';
   const owner = new HistoryOwner(
     (): boolean =>
       owners.get(key) === owner &&
       connectionCurrent(connection.connection) &&
       historySessionKey(store.get()) === session &&
       store.get().tables.ai_chats.byId[key] !== undefined,
-    (): boolean => store.get().sync.status === 'live',
     load,
     (): void => {
       stopStore();
@@ -132,14 +128,7 @@ export function ownOlderMessages(key: string, load: OlderLoader, store: EntitySt
   );
   owners.set(key, owner);
   const stopStore = store.subscribeSlices(['session', 'sync', 'tables.ai_chats'], () => {
-    if (!owner.current()) {
-      release(key, owner, true);
-      return;
-    }
-    const nextLive = store.get().sync.status === 'live';
-    if (nextLive && !live) owner.recovered();
-    live = nextLive;
-    retryOlderMessages(key, owner);
+    if (!owner.current()) release(key, owner, true);
   });
   const stopConnection = connectionState.subscribe(() => {
     if (!owner.current()) release(key, owner, true);
@@ -151,10 +140,9 @@ export function ownOlderMessages(key: string, load: OlderLoader, store: EntitySt
 }
 
 function resumeOlderMessages(key: string, owner: HistoryOwner, live: boolean): void {
-  const before = histories.get()[key]?.before;
-  if (before === undefined || before === null || !owner.current()) return;
-  if (live) background(loadPage(key, owner, before, owner.load), 'page.load_failed');
-  else owner.wait(before, owner.recovery);
+  const pending = histories.get()[key]?.pending;
+  if (pending === undefined || pending === null || !owner.current()) return;
+  if (live) background(loadPage(key, owner, pending.before, owner.load), 'page.load_failed');
 }
 
 function patch(key: string, change: (history: History) => History): void {
@@ -183,24 +171,61 @@ export async function loadOlderMessages(
     return;
   }
   const current = histories.get()[key] ?? EMPTY;
-  if (current.loading || current.complete || owner.pending !== null) {
+  if (current.loading || current.complete) {
     log.trace('history.load_skipped', {
       chatId: key,
       loading: current.loading,
       complete: current.complete,
-      waiting: owner.pending !== null,
     });
     return;
   }
-  const before = current.before ?? oldestOf(shown) ?? new Date().toISOString();
+  const before = current.pending === null ? (oldestOf(shown) ?? undefined) : current.pending.before;
   await loadPage(key, owner, before, load);
 }
 
-function retryOlderMessages(key: string, owner: HistoryOwner): void {
-  const pending = owner.pending;
-  if (pending === null || pending.recovery === owner.recovery || !owner.current() || !owner.live())
-    return;
-  background(loadPage(key, owner, pending.before, owner.load), 'page.load_failed');
+export function refreshOlderMessages(snapshot: readonly AssistantMessageRow[]): void {
+  historySynchronization.update((revision) => revision + 1);
+  for (const [key, history] of Object.entries(histories.get())) {
+    const owner = owners.get(key);
+    if (owner?.current() === true) {
+      const oldest = oldestOf(snapshot.filter((row) => row.chat_id === key));
+      refreshLoadedHistory(key, owner, history, oldest ?? undefined);
+    } else {
+      patch(key, () => EMPTY);
+    }
+  }
+}
+
+function refreshLoadedHistory(
+  key: string,
+  owner: HistoryOwner,
+  history: History,
+  first: string | undefined,
+): void {
+  if (!history.loaded && history.pending === null) return;
+  const recovery = owner.recovered();
+  const through = oldestOf(history.rows);
+  patch(key, (current) => ({ ...current, loading: true }));
+  const current = (): boolean => owner.current() && recovery === owner.recovery;
+  background(
+    recoverPages({
+      first,
+      through,
+      additionalPage: through !== null && history.pending !== null,
+      load: owner.load,
+      current,
+    })
+      .then((recovered) => {
+        if (recovered === null || !current()) return;
+        patch(key, () => ({ ...recovered, loaded: true, pending: null, loading: false }));
+      })
+      .catch((error: unknown) => {
+        if (!current()) return;
+        patch(key, (previous) => ({ ...previous, loading: false }));
+        historyFailure(error);
+      }),
+    'history.refresh_failed',
+  );
 }
 
 function transportFailure(error: unknown): boolean {
@@ -220,31 +245,38 @@ function historyFailure(error: unknown): void {
 }
 
 function logPage(event: string, chatId: string, rows: number, startedAt: number): void {
-  log.info(event, { chatId, rows, complete: rows < PAGE, durationMs: Date.now() - startedAt });
+  log.info(event, {
+    chatId,
+    rows,
+    complete: rows < HISTORY_PAGE_SIZE,
+    durationMs: Date.now() - startedAt,
+  });
 }
 
 async function loadPage(
   key: string,
   owner: HistoryOwner,
-  before: string,
+  before: string | undefined,
   load: OlderLoader,
 ): Promise<void> {
-  const recovery = owner.begin();
-  patch(key, (history) => ({ ...history, loading: true, before }));
+  const recovery = owner.recovery;
+  patch(key, (history) => ({ ...history, loading: true, pending: { before } }));
   const startedAt = Date.now();
   log.debug('history.page_loading', { chatId: key, before, recovery });
   try {
     const page = await load(before);
-    if (!owner.current()) {
+    if (!owner.current() || recovery !== owner.recovery) {
       logPage('history.page_discarded', key, page.length, startedAt);
       return;
     }
     logPage('history.page_loaded', key, page.length, startedAt);
     patch(key, (history) => ({
+      ...history,
       rows: [...history.rows, ...page],
+      loaded: true,
       loading: false,
-      complete: page.length < PAGE,
-      before: null,
+      complete: page.length < HISTORY_PAGE_SIZE,
+      pending: null,
     }));
   } catch (error) {
     log.error('history.load_failed', error, {
@@ -254,14 +286,12 @@ async function loadPage(
       current: owner.current(),
       durationMs: Date.now() - startedAt,
     });
-    if (!owner.current()) return;
+    if (!owner.current() || recovery !== owner.recovery) return;
     patch(key, (history) => ({ ...history, loading: false }));
     if (!transportFailure(error)) {
       historyFailure(error);
       return;
     }
     log.debug('history.page_waiting', { chatId: key, before, recovery });
-    owner.wait(before, recovery);
-    retryOlderMessages(key, owner);
   }
 }

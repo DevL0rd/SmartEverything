@@ -22,12 +22,11 @@ export interface RouterCell {
   readonly chip: CellChip;
   readonly tone: MedallionTone;
   readonly ratio: number | null;
-  readonly line: string;
+  readonly line: string | null;
   readonly figures: readonly CellFigure[];
   readonly lastTest: string | null;
   readonly spoken: string;
   readonly canRun: boolean;
-  readonly reason: string | null;
 }
 
 function onlineCount(snapshot: RouterSnapshot): number {
@@ -60,16 +59,16 @@ function pairOf(down: number, up: number): readonly CellFigure[] {
   ];
 }
 
-function staleChip(connection: RouterSnapshot['connection']): CellChip {
+function staleChip(connection: RouterSnapshot['connection'], label: string | null): CellChip {
   switch (connection.state) {
     case 'paused':
-      return { tone: 'warning', label: 'Paused' };
+      return { tone: 'warning', label: label ?? 'Paused' };
     case 'connecting':
-      return { tone: 'info', label: 'Connecting…' };
+      return { tone: 'info', label: label ?? 'Connecting…' };
     case 'online':
     case 'not_set_up':
     case 'unreachable':
-      return { tone: 'neutral', label: 'Not reachable' };
+      return { tone: 'neutral', label: label ?? 'Not reachable' };
   }
 }
 
@@ -84,8 +83,7 @@ function spokenOf(chip: CellChip, figures: readonly CellFigure[], line: string):
 
 function staleCell(snapshot: RouterSnapshot, now: number): RouterCell {
   const caption = staleCaptionOf(snapshot.connection, now);
-  const chip = staleChip(snapshot.connection);
-  const line = caption?.long ?? 'Not reachable';
+  const chip = staleChip(snapshot.connection, caption?.short ?? null);
   const figures =
     snapshot.network === null
       ? []
@@ -95,12 +93,11 @@ function staleCell(snapshot: RouterSnapshot, now: number): RouterCell {
     chip,
     tone: 'neutral',
     ratio: null,
-    line,
+    line: null,
     figures,
     lastTest: null,
-    spoken: spokenOf(chip, [], line),
+    spoken: ['Router', caption?.long ?? chip.label.toLowerCase()].join(', '),
     canRun: false,
-    reason: line,
   };
 }
 
@@ -118,13 +115,12 @@ function testingCell(snapshot: RouterSnapshot, run: SpeedTestRun): RouterCell {
     lastTest: null,
     spoken: spokenOf(chip, [], `${line}, ${plural(onlineCount(snapshot), 'device')}`),
     canRun: false,
-    reason: null,
   };
 }
 
 function downCell(): RouterCell {
   const chip: CellChip = { tone: 'critical', label: 'No internet' };
-  const line = 'No internet · the router is fine';
+  const line = 'The router is fine';
   return {
     kind: 'down',
     chip,
@@ -135,7 +131,6 @@ function downCell(): RouterCell {
     lastTest: null,
     spoken: spokenOf(chip, [], line),
     canRun: false,
-    reason: null,
   };
 }
 
@@ -170,7 +165,6 @@ export function routerCellOf(
     lastTest: lastTestText(last, now),
     spoken: spokenOf(chip, figures, line),
     canRun: hero.canRun,
-    reason: null,
   };
 }
 

@@ -1,5 +1,5 @@
-import { useRef, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { useRef, useState, type ReactNode } from 'react';
+import { View, type LayoutChangeEvent } from 'react-native';
 import { href } from '../../app-shell/hrefs';
 import { Button } from '../../components/button';
 import { EmptyGraph, ProgressBar, Rings, Sparkline } from '../../components/charts';
@@ -19,7 +19,23 @@ import type { HeartView } from './watch-heart';
 import { useDayFacts, useHeartToday } from './watch-health-data';
 import { background } from '@smarteverything/logging';
 
-export function HeartGraph({
+const EMPTY_LINE = 16;
+
+function useHeartRoom(cap: number): {
+  readonly height: number | null;
+  readonly onLayout: (event: LayoutChangeEvent) => void;
+} {
+  const [room, setRoom] = useState(cap);
+  const height = Math.min(room, cap);
+  return {
+    height: height < EMPTY_LINE ? null : height,
+    onLayout: (event): void => {
+      setRoom(Math.max(0, Math.min(cap, Math.floor(event.nativeEvent.layout.height))));
+    },
+  };
+}
+
+function HeartLine({
   device,
   height,
 }: {
@@ -41,19 +57,29 @@ export function HeartGraph({
   );
 }
 
+export function HeartGraph({
+  device,
+  cap,
+}: {
+  readonly device: Device;
+  readonly cap: number;
+}): ReactNode {
+  const { height, onLayout } = useHeartRoom(cap);
+  return (
+    <View onLayout={onLayout} className="min-h-0 flex-1 justify-end">
+      {height === null ? null : <HeartLine device={device} height={height} />}
+    </View>
+  );
+}
+
 export function StepsGraph({ glance }: { readonly glance: WatchGlance }): ReactNode {
   const steps = glance.steps;
   return (
-    <View className="gap-1">
-      <ProgressBar
-        progress={steps === null ? 0 : steps.value / glance.stepsGoal}
-        colour="stand"
-        label="Steps today"
-      />
-      <Text variant="caption" tone="variant">
-        Steps today
-      </Text>
-    </View>
+    <ProgressBar
+      progress={steps === null ? 0 : steps.value / glance.stepsGoal}
+      colour="stand"
+      label="Steps today"
+    />
   );
 }
 
@@ -120,7 +146,7 @@ export function BatteryAndOxygen({
 }): ReactNode {
   const spo2 = useDayFacts(device).spo2;
   return (
-    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1 pt-1">
+    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
       {battery === null ? null : (
         <LevelPill percent={battery} label={`Battery ${count(battery)} %`} />
       )}
@@ -170,7 +196,7 @@ export function GoalRings({
             variant="caption"
             tone="variant"
             className="tabular"
-            numberOfLines={1}
+            numberOfLines={2}
           >
             {`${goal.label} ${count(goal.value)} / ${count(goal.goal)}${goal.unit === '' ? '' : ` ${goal.unit}`}`}
           </Text>

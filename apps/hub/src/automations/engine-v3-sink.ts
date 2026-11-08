@@ -26,6 +26,10 @@ interface SinkParts {
 
 type NodeStep = Extract<StepRecord, { kind: 'node' }>;
 
+function outputOf(step: NodeStep): RunNodeActivation['output'] {
+  return step.outputs === undefined ? null : { value: { value: step.outputs, type: { t: 'any' } } };
+}
+
 export const CANCELLED_MESSAGE = 'The automation run was cancelled.';
 
 function activationOf(step: StepRecord, at: string, nodeId: string): RunNodeActivation | undefined {
@@ -56,7 +60,7 @@ function activationOf(step: StepRecord, at: string, nodeId: string): RunNodeActi
     finishedAt: open ? null : at,
     durationMs: open ? null : 0,
     input: null,
-    output: null,
+    output: outputOf(step),
     error: step.error ?? null,
     commandIds: [],
     late: false,
@@ -98,6 +102,7 @@ function record(slice: Slice, steps: readonly StepRecord[]): void {
         status: settled,
         finishedAt: at,
         durationMs: 0,
+        output: outputOf(step),
         ...(step.error === undefined ? {} : { error: step.error }),
       });
       if (closed) continue;

@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { CopyButton, Stage, Text } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -7,12 +8,12 @@ const body = (
     <CopyButton value="dana@example.com" label="Copy email" />
   </Row>
 );
-export const Inline = () => (
+export const Inline = (): ReactElement => (
   <Stage theme="dark" width={360}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={360}>
     {body}
   </Stage>

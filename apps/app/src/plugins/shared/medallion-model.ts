@@ -1,4 +1,5 @@
 import type { StatusTone } from '../../components/tone';
+import type { WideClass } from '../../features/devices';
 
 export type MedallionTone = StatusTone | 'neutral';
 
@@ -50,6 +51,10 @@ export function medallionGeometry(size: MedallionSize, pointer: boolean): Medall
     glowInset: -px * GLOW_OVERSHOOT,
     glowSpan: px * (1 + 2 * GLOW_OVERSHOOT),
   };
+}
+
+export function cellMedallionSize(cls: WideClass): MedallionSize {
+  return cls === 'l' || cls === 'xl' ? 'hero' : 'cell';
 }
 
 export function ringValue(ratio: number | null, offline: boolean): number {

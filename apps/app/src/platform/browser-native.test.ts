@@ -52,7 +52,9 @@ describe('the native browser handle', () => {
     handle.navigate('https://smarteverything.devl0rd.com/api/ai');
     handle.reload();
     expect(native.navigate).toHaveBeenCalledOnce();
-    expect(native.navigate).toHaveBeenCalledWith('http://127.0.0.1:50000/workspace/site/other.html');
+    expect(native.navigate).toHaveBeenCalledWith(
+      'http://127.0.0.1:50000/workspace/site/other.html',
+    );
     expect(native.reload).toHaveBeenCalledOnce();
   });
 

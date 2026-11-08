@@ -4,7 +4,7 @@ import { PhoneApps } from '../apps/phone-apps';
 
 export function PhoneAppsScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   return (
-    <PhonePage deviceId={deviceId} title="Apps" width="detail">
+    <PhonePage deviceId={deviceId} title="Apps" width="dashboard">
       {(device) => <PhoneApps device={device} />}
     </PhonePage>
   );

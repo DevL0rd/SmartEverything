@@ -12,6 +12,7 @@ import { smartLifeAccount } from '../../src/adapters/tuya/account';
 import { createTuyaModule } from '../../src/adapters/tuya/module';
 import { USER_CODE } from './fake-cloud';
 import { harness, type Harness } from './harness';
+import { hubLayout } from '../../src/data-layout';
 
 const CLOCK = 1_000_000;
 const WRONG_CODE_TEXT =
@@ -49,7 +50,7 @@ function linking(stored?: StoredAccount): Linking {
   const shown: ProviderPrompt[] = [];
   const context: LinkContext = {
     log: new Logger('tool.tuya-test'),
-    dataDirectory: '/nonexistent',
+    layout: hubLayout('/nonexistent', {}),
     ask: () => Promise.reject(new Error('the Tuya provider never asks')),
     show: (prompt) => {
       shown.push(PROVIDER_PROMPT.parse(prompt));
@@ -80,6 +81,7 @@ describe('first link with a User Code', () => {
         kind: 'scan_qr',
         app: 'Smart Life or Tuya Smart',
         content: 'tuyaSmart--qrLogin?token=qr-token-0001',
+        issuedAt: new Date(CLOCK).toISOString(),
         expiresAt: new Date(CLOCK + 2000).toISOString(),
       },
     ]);

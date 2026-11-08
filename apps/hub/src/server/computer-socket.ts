@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { ApiError, type ComputerNodeRow } from '@smarteverything/domain';
+import { ApiError, NODE_HEARTBEAT_MS, type ComputerNodeRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { ComputerNodeAccess } from '../computers/node-access';
@@ -8,9 +8,9 @@ import { bearerOf } from './http';
 import { ComputerLog } from './computer-log';
 import { remoteKind } from './request-trace';
 import { messageOf } from '@smarteverything/logging';
+import { afterPendingInput, pingWhenOpen } from '../network/guarded-socket';
 
 const HELLO_TIMEOUT_MS = 30_000;
-const HEARTBEAT_MS = 30_000;
 const CLOSE_POLICY = 1008;
 const CLOSE_REVOKED = 4001;
 const CLOSE_REPLACED = 4002;
@@ -87,8 +87,10 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
       handleProtocols: (protocols): string | false => (protocols.has(protocol) ? protocol : false),
     });
     this.heartbeat = setInterval(() => {
-      this.beat();
-    }, HEARTBEAT_MS);
+      afterPendingInput(() => {
+        this.beat();
+      });
+    }, NODE_HEARTBEAT_MS);
     this.heartbeat.unref();
   }
 
@@ -199,13 +201,13 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
           socketId: connection.id,
           deviceId: connection.identity.device_id,
           sinceLastPongMs: Math.round(performance.now() - connection.lastPongAt),
-          heartbeatMs: HEARTBEAT_MS,
+          heartbeatMs: NODE_HEARTBEAT_MS,
         });
         connection.terminate();
         continue;
       }
       connection.alive = false;
-      connection.socket.ping();
+      pingWhenOpen(connection.socket);
     }
   }
 }

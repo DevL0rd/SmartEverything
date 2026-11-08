@@ -5,6 +5,7 @@ import { Button } from '../../../../components/button';
 import { ListLoader } from '../../../../components/list-loader';
 import { Text } from '../../../../components/text';
 import { LibraryRowItem } from './library-row';
+import { CatalogueMeasure, useCatalogueRows } from './catalogue-fit';
 import { scrollTarget, type LibraryMode } from './library-model';
 import type { LibraryRow } from './library-rows';
 
@@ -16,6 +17,7 @@ export interface LibraryListProps {
   readonly rows: readonly LibraryRow[];
   readonly mode: LibraryMode;
   readonly rowHeight: number;
+  readonly columns?: number;
   readonly shownKey: string | null;
   readonly onSelect: (key: string) => void;
   readonly onFavourite: ((id: string) => void) | null;
@@ -31,24 +33,27 @@ function Footer({
   loading,
 }: Pick<LibraryListProps, 'count' | 'more' | 'loading'>): ReactNode {
   return (
-    <View className="items-center gap-2 p-4">
-      <Text variant="caption" tone="variant" accessibilityLiveRegion="polite" className="tabular">
-        {count}
-      </Text>
-      {more === null ? null : <Button label="Load more" variant="outlined" onPress={more} />}
-      <ListLoader loading={loading} />
-    </View>
+    <CatalogueMeasure part="listFooter">
+      <View className="items-center gap-2 p-4">
+        <Text variant="caption" tone="variant" accessibilityLiveRegion="polite" className="tabular">
+          {count}
+        </Text>
+        {more === null ? null : <Button label="Load more" variant="outlined" onPress={more} />}
+        <ListLoader loading={loading} />
+      </View>
+    </CatalogueMeasure>
   );
 }
 
 export function LibraryList({ ref, ...props }: LibraryListProps): ReactNode {
-  const { rows, mode, rowHeight, shownKey, onSelect, onFavourite } = props;
+  const { rows, mode, rowHeight, shownKey, onSelect, onFavourite, columns = 1 } = props;
+  useCatalogueRows(Math.ceil(rows.length / columns) * rowHeight);
   const list = useRef<FlashListRef<LibraryRow>>(null);
   const position = useRef({ offset: 0, viewport: 0 });
   useImperativeHandle(ref, () => ({
     reveal: (index): void => {
       const target = scrollTarget(
-        index,
+        Math.floor(index / columns),
         rowHeight,
         position.current.offset,
         position.current.viewport,
@@ -61,6 +66,7 @@ export function LibraryList({ ref, ...props }: LibraryListProps): ReactNode {
       <FlashList
         ref={list}
         data={rows}
+        numColumns={columns}
         keyExtractor={(row) => row.key}
         renderItem={({ item }) => (
           <View className="px-2">

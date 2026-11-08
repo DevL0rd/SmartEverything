@@ -63,6 +63,7 @@ function nativeModel(input: {
   readonly applying: string | null;
   readonly banner: AccessBanner | null;
   readonly footnote: string;
+  readonly tools: AccessModel['tools'];
   readonly select: (sectionId: string, value: string) => void;
 }): AccessModel {
   return {
@@ -74,8 +75,7 @@ function nativeModel(input: {
     blocked: input.banner !== null,
     banner: input.banner,
     footnote: input.footnote,
-    tools: null,
-    cloud: null,
+    tools: input.tools,
     select: input.select,
   };
 }
@@ -147,6 +147,7 @@ function ClaudePermissions({
         applying: applyingMode(control),
         banner,
         footnote: accessFootnoteText('claude', chat !== undefined && !live, false),
+        tools: chat ?? null,
         select: claudeSelect(engine, live, banner !== null, { control, onChange }),
       })}
     />
@@ -179,6 +180,7 @@ const CLAUDE_STUCK = 'Stop the reply first. Claude can’t change mode while wor
 
 function CodexPermissions({
   engine,
+  chat,
   working,
   onChange,
 }: Omit<Props, 'engine'> & {
@@ -209,6 +211,7 @@ function CodexPermissions({
         applying: null,
         banner,
         footnote: accessFootnoteText('codex', false, false),
+        tools: chat ?? null,
         select,
       })}
     />

@@ -12,15 +12,31 @@ import type { Workout } from '../model/workouts';
 import { workoutFacts } from '../model/workout-facts';
 import { QuickStats } from '../components/glance-parts';
 import { clock, dayLabel, startOfDayKey } from '../../../format/time';
-import { workoutFactCount } from './workout-facts-count';
+import { workoutFactGrid } from './workout-facts-count';
+
+function FactRows({ workout }: { readonly workout: Workout }): ReactNode {
+  const { columns, rows } = workoutFactGrid(useWidgetFace().frame);
+  const facts = workoutFacts(workout)
+    .slice(0, columns * rows)
+    .map((fact) => ({ label: fact.label, value: fact.text }));
+  const lines = Array.from({ length: Math.ceil(facts.length / columns) }, (_, index) =>
+    facts.slice(index * columns, (index + 1) * columns),
+  );
+  return (
+    <View className="gap-1.5">
+      {lines.map((line) => (
+        <QuickStats key={line.map((fact) => fact.label).join()} stats={line} />
+      ))}
+    </View>
+  );
+}
 
 function Latest({ workout }: { readonly workout: Workout }): ReactNode {
   const { day } = useTodayContext();
-  const { cls, frame } = useWidgetFace();
   return (
-    <View className="flex-1 justify-between gap-3">
+    <View className="flex-1 gap-1.5">
       <View className="flex-row items-center gap-3">
-        <IconWell icon={exerciseKindOf(workout.code).icon} colour="exercise" size="l" />
+        <IconWell icon={exerciseKindOf(workout.code).icon} colour="exercise" size="m" />
         <View className="min-w-0 flex-1">
           <Text variant="title-3" numberOfLines={1}>
             {workout.title ?? workout.name}
@@ -30,11 +46,7 @@ function Latest({ workout }: { readonly workout: Workout }): ReactNode {
           </Text>
         </View>
       </View>
-      <QuickStats
-        stats={workoutFacts(workout)
-          .slice(0, workoutFactCount(cls, frame))
-          .map((fact) => ({ label: fact.label, value: fact.text }))}
-      />
+      <FactRows workout={workout} />
     </View>
   );
 }

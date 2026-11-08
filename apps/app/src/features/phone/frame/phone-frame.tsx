@@ -76,13 +76,14 @@ function FrameBody({
   const hidden = useHidden(device);
   const active = sectionParamOf(useLocalSearchParams(), 'page') ?? 'overview';
   const compact = frameLayoutOf(area) === 'compact';
+  const railWidth = railWidthOf(area);
   const rail = (
     <PhoneRail
       deviceId={device.id}
       active={active}
       online={device.online}
       hidden={hidden}
-      width={railWidthOf(area)}
+      width={railWidth}
     />
   );
   return (
@@ -96,7 +97,7 @@ function FrameBody({
           {children}
         </CompactBody>
       ) : (
-        <WideBody scroll={scroll} width={width} rail={rail}>
+        <WideBody scroll={scroll} width={width} rail={rail} railWidth={railWidth}>
           {children}
         </WideBody>
       )}

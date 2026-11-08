@@ -37,14 +37,23 @@ interface Reading {
   readonly value: JsonValue | undefined;
 }
 
+interface Readings {
+  readonly online: readonly Reading[];
+  readonly offline: readonly DeviceRow[];
+}
+
 function controlReadings(
   deps: WorldReadDeps,
   devices: readonly DeviceRow[],
   control: CapabilityKey,
-): readonly Reading[] {
-  return devices
-    .filter((device) => hasReadableControl(device, control))
-    .map((device) => ({ device, value: controlValue(deps, device, control) }));
+): Readings {
+  const readable = devices.filter((device) => hasReadableControl(device, control));
+  return {
+    online: readable
+      .filter((device) => device.online)
+      .map((device) => ({ device, value: controlValue(deps, device, control) })),
+    offline: readable.filter((device) => !device.online),
+  };
 }
 
 function numeric(readings: readonly Reading[]): readonly { device: DeviceRow; value: number }[] {
@@ -122,26 +131,38 @@ function matchesOf(fn: string, matches: JsonValue | undefined): JsonValue {
   return matches;
 }
 
+function combined(
+  deps: WorldReadDeps,
+  request: z.infer<typeof AGGREGATE>,
+  readings: readonly Reading[],
+): ReadResult {
+  switch (request.fn) {
+    case 'latest':
+      return latestResult(deps, request.control, readings);
+    case 'average':
+    case 'min':
+    case 'max':
+    case 'sum':
+      return numericResult(request.fn, readings);
+    case 'any':
+    case 'all':
+    case 'none':
+    case 'count':
+      return matchResult(request.fn, readings, matchesOf(request.fn, request.matches));
+  }
+}
+
 export function aggregateHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
     'device.aggregate': (inputs): ReadResult => {
       const request = parseInputs('device.aggregate', AGGREGATE, inputs);
       const key = controlKey(request.control);
-      const readings = controlReadings(deps, devicesOf(deps.store, request.target), key);
-      switch (request.fn) {
-        case 'latest':
-          return latestResult(deps, request.control, readings);
-        case 'average':
-        case 'min':
-        case 'max':
-        case 'sum':
-          return numericResult(request.fn, readings);
-        case 'any':
-        case 'all':
-        case 'none':
-        case 'count':
-          return matchResult(request.fn, readings, matchesOf(request.fn, request.matches));
-      }
+      const { online, offline } = controlReadings(deps, devicesOf(deps.store, request.target), key);
+      const result = combined(deps, request, online);
+      return {
+        ...result,
+        outputs: { ...result.outputs, offline: deviceRefs(offline.map((device) => device.id)) },
+      };
     },
   };
 }

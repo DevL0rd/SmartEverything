@@ -5,7 +5,6 @@ import { visualStateOf } from '../visual-state';
 import {
   SPEAKING_WINDOW_MS,
   newestMove,
-  robotFacts,
   robotFactsOf,
   robotMood,
   robotOnBase,
@@ -156,11 +155,6 @@ describe('the resting robot', () => {
   });
 
   it('sleeps when the device is offline', () => {
-    expect(robotFacts(stateOf(false)).mood).toBe('asleep');
-  });
-
-  it('keeps what the plugin reported over the resting facts', () => {
-    const reported = { mood: 'speaking', onBase: false, move: null } as const;
-    expect(robotFacts({ ...stateOf(true), robot: reported })).toBe(reported);
+    expect(stateOf(false).robot?.mood).toBe('asleep');
   });
 });

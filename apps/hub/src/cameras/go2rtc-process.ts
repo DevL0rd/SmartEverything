@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import { REDACTED, type Logger } from '@smarteverything/logging';
@@ -13,7 +13,7 @@ export const GO2RTC_USERNAME = 'hub';
 
 export interface Go2rtcLaunch {
   readonly binary: string;
-  readonly dataDirectory: string;
+  readonly configPath: string;
   readonly apiPort: number;
   readonly rtspPort: number;
   readonly webrtcPort: number;
@@ -29,6 +29,7 @@ export interface RunningGo2rtc {
   readonly baseUrl: string;
   readonly username: string;
   readonly password: string;
+  readonly expectStop: () => void;
   readonly stop: () => Promise<void>;
 }
 
@@ -147,9 +148,9 @@ function reportStarted(launch: Go2rtcLaunch, child: Go2rtcChild, startedAt: numb
 }
 
 export async function startGo2rtc(launch: Go2rtcLaunch): Promise<RunningGo2rtc> {
-  const directory = join(launch.dataDirectory, 'go2rtc');
+  const configPath = launch.configPath;
+  const directory = dirname(configPath);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const configPath = join(directory, 'go2rtc.yaml');
   await writeFile(
     configPath,
     go2rtcConfig({ ...launch, username: GO2RTC_USERNAME, ffmpegBinary: ffmpegPath() }),
@@ -170,14 +171,21 @@ export async function startGo2rtc(launch: Go2rtcLaunch): Promise<RunningGo2rtc> 
   await awaitReady(child, launch);
   watchExit(child, launch, () => stopping);
   reportStarted(launch, child, startedAt);
+  const expectStop = (): void => {
+    if (stopping) {
+      return;
+    }
+    stopping = true;
+    launch.log.info('go2rtc.stopping', { pid: child.pid });
+  };
   return {
     baseUrl: `http://127.0.0.1:${String(launch.apiPort)}`,
     username: GO2RTC_USERNAME,
     password: launch.password,
+    expectStop,
     stop: () =>
       new Promise((resolve) => {
-        stopping = true;
-        launch.log.info('go2rtc.stopping', { pid: child.pid });
+        expectStop();
         if (child.exitCode !== null || child.signalCode !== null) {
           resolve();
           return;

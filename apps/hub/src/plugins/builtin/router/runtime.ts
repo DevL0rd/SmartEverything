@@ -6,6 +6,7 @@ import {
 } from '@smarteverything/domain';
 import type { PluginContext, PluginStop } from '../contract';
 import { RouterCollector } from './collector';
+import { registerRouterPickers } from './pickers';
 import { RouterPresence } from './presence';
 import { runRouterCommand } from './controls';
 import { DeviceMirror } from '../device-mirror';
@@ -65,6 +66,7 @@ export function startRouter(ctx: Context): PluginStop {
       },
     }),
   );
+  registerRouterPickers(ctx, { snapshot: latest });
   if (collector === null) {
     ctx.data.publish(SNAPSHOT_STREAM, notSetUp());
     return () => Promise.resolve();

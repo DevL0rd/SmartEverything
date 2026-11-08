@@ -1,4 +1,5 @@
 import type {
+  ImageDefaults,
   ImageOperationReceipt,
   ImageOperationPreview,
   ImageOperationOrigin,
@@ -25,6 +26,7 @@ export interface ImageServiceOptions {
   readonly notes?: Pick<MediaNotes, 'later'>;
   readonly catalog: OpenRouterImageCatalog;
   readonly provider: OpenRouterImageProvider;
+  readonly imageDefaults: () => Readonly<ImageDefaults>;
   readonly now: () => Date;
   readonly publish: (receipt: ImageOperationReceipt) => void;
   readonly preview?: (preview: ImageOperationPreview) => void;

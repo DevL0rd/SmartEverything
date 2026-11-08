@@ -8,6 +8,7 @@ import {
   type ComputerRuntimeReply,
   type ComputerRuntimeTarget,
 } from '@smarteverything/domain';
+import { externalChatRetired } from './external-chat';
 import type { Store } from '../store/store';
 
 const RUNTIME_COMMAND_CAPABILITIES: ReadonlyMap<string, string> = new Map([
@@ -30,12 +31,20 @@ export function assertNativeEffectsReconciled(
         'Native command effects for this session require verified reconciliation before mutation.',
       );
 }
+const PUBLIC_RUNTIME_READS: ReadonlySet<string> = new Set([
+  'status',
+  'models',
+  'usage',
+  'provider_metadata',
+]);
+
 export function assertPublicRuntimeRequest(request: ComputerRuntimeRequest): void {
   if (AI_NATIVE_COMMAND_PRIVATE_OPERATION.safeParse(request.request.operation).success)
     throw new ApiError(
       'forbidden',
       'Native commands require their dedicated caller-bound durable admission route.',
     );
+  if (!PUBLIC_RUNTIME_READS.has(request.request.operation)) externalChatRetired();
 }
 export function isRuntimeRead(request: ComputerRuntimeRequest): request is ComputerRuntimeRead {
   return COMPUTER_RUNTIME_READ.safeParse(request).success;
@@ -55,11 +64,13 @@ export function assertRuntimeAvailable(
     );
   const required =
     RUNTIME_COMMAND_CAPABILITIES.get(request.request.operation) ?? request.request.operation;
-  if (!status.capabilities.operations.some((operation) => operation === required))
+  if (!status.capabilities.operations.some((operation) => operation === required)) {
+    const reason = required === 'provider_start' ? status.capabilities.provider_reason : null;
     throw new ApiError(
       'claude_not_ready',
-      `The selected runtime does not implement ${request.request.operation}.`,
+      reason ?? `The selected runtime does not implement ${request.request.operation}.`,
     );
+  }
 }
 export function assertRuntimeReply(
   request: ComputerRuntimeRequest,

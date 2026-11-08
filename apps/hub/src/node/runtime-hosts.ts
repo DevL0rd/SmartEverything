@@ -1,13 +1,15 @@
 import type { NodeHubTransport } from '../client-network/node-transport';
+import type { ComputerServiceConfig } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { NodeServiceConfig } from '../service/configuration';
+import type { NodeLayout } from '../data-layout';
 import { adaptClaudeHost, type ComputerRuntimeHost } from '../computers/runtime-host';
 import { createCodexHost } from '../codex/host';
+import { nodeCodexSites } from '../codex/sites';
 import { createNodeClaudeHost } from './claude-host';
 import { NodeCodexGrant } from './codex-grant';
 interface NodeRuntimeHostOptions {
-  readonly dataDirectory: string;
-  readonly node: NodeServiceConfig['node'];
+  readonly layout: NodeLayout;
+  readonly node: ComputerServiceConfig['node'];
   readonly log: Logger;
   readonly transport?: NodeHubTransport;
 }
@@ -17,7 +19,7 @@ export async function nodeRuntimeHosts(
   const { node } = options;
   const claude = adaptClaudeHost(
     await createNodeClaudeHost({
-      dataDirectory: options.dataDirectory,
+      node: options.layout,
       deviceId: node.device_id,
       hubUrl: node.hub_url,
       token: node.node_token,
@@ -38,7 +40,7 @@ export async function nodeRuntimeHosts(
           }),
     });
     const codex = createCodexHost({
-      dataDirectory: options.dataDirectory,
+      sites: nodeCodexSites(options.layout),
       deviceId: node.device_id,
       log: options.log,
       nativeMcpGrant: grant,

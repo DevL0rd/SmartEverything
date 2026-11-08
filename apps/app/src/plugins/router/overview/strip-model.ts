@@ -1,5 +1,5 @@
 import type { RouterSnapshot } from '@smarteverything/domain';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { ChartPoint } from '../../../components/charts';
 import type { MetricItem } from '../../../components/metric-strip';
 import { count, decimal } from '../../../format/number';
@@ -105,7 +105,7 @@ function withSeries(
 export function stripItems(
   snapshot: RouterSnapshot,
   series: StripSeries,
-  clientsHref: Href,
+  clientsHref: AppHref,
 ): readonly MetricItem[] {
   const shared = sharedOf(snapshot);
   const connected = snapshot.clients.filter((client) => client.connected).length;

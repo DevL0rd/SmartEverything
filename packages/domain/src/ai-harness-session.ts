@@ -122,15 +122,7 @@ export const AI_HARNESS_SESSION = z
     route: AI_MODEL_ROUTE_SELECTION,
     state: z.enum(['idle', 'working', 'waiting', 'switching', 'unavailable', 'failed']),
     reconnecting: z.boolean().optional(),
-    context_request: z
-      .object({
-        id: z.uuid(),
-        epoch: z.int().positive(),
-        provider: z.string().min(1),
-        model: z.string().min(1),
-        capacity_tokens: z.int().positive(),
-      })
-      .optional(),
+    plan: z.object({ active: z.boolean(), pending: z.boolean() }).optional(),
     context: z
       .object({
         provider: z.string().min(1).optional(),

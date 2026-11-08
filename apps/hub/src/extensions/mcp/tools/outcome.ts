@@ -62,11 +62,11 @@ const ENTITY_FACTS = [
   'path',
   'operation',
   'windows',
+  'instanceKey',
 ] as const;
 const LABEL_KEYS = ['device', 'name', 'title', 'deviceId', 'device_id', 'id'] as const;
 const REASON_KEYS = ['reason', 'error', 'message', 'status'] as const;
 const NOISY_KEY = /(_at|At|_id|Id)$|^allFinished$/u;
-const SHOWN_ITEMS = 20;
 const SHOWN_TEXT = 200;
 
 function isRecord(value: unknown): value is Fields {
@@ -132,7 +132,7 @@ function revisionOf(entity: Fields): string | number | null {
 function problemsOf(payload: Fields): readonly Fields[] {
   return PROBLEM_LISTS.flatMap((key) => {
     const list = payload[key];
-    return Array.isArray(list) ? list.slice(0, SHOWN_ITEMS).map(problemOf) : [];
+    return Array.isArray(list) ? list.map(problemOf) : [];
   });
 }
 
@@ -152,7 +152,6 @@ function failureOf(payload: Fields): string | null {
 function countsOf(payload: Fields): string {
   const counts = Object.entries(payload)
     .filter(([key, value]) => Array.isArray(value) && !PROBLEM_LISTS.some((one) => one === key))
-    .slice(0, 3)
     .map(([key, value]) => `${String(Array.isArray(value) ? value.length : 0)} ${key}`);
   return counts.length === 0 ? '' : ` (${counts.join(', ')})`;
 }
@@ -200,8 +199,7 @@ function rehearsalFacts(rehearsal: Fields): Fields {
     error: rehearsal['error'],
     steps: rehearsal['steps'],
     nodes: nodes.length,
-    commands: sent.slice(0, SHOWN_ITEMS),
-    ...(sent.length > SHOWN_ITEMS ? { moreCommands: sent.length - SHOWN_ITEMS } : {}),
+    commands: sent,
     ...(rehearsal['outputs'] === null ? {} : { outputs: rehearsal['outputs'] }),
   };
 }
@@ -209,9 +207,7 @@ function rehearsalFacts(rehearsal: Fields): Fields {
 function programFacts(payload: Fields): Fields {
   const { problems, rehearsal } = payload;
   return {
-    ...(Array.isArray(problems) && problems.length > 0
-      ? { problems: problems.slice(0, SHOWN_ITEMS) }
-      : {}),
+    ...(Array.isArray(problems) && problems.length > 0 ? { problems } : {}),
     ...(isRecord(rehearsal) ? { rehearsal: rehearsalFacts(rehearsal) } : {}),
   };
 }
@@ -256,8 +252,8 @@ function commandsOutcome(
     summary: `${sentence(phrase, nameOf(entity, payload))}: ${note.join(', ')}`,
     ...identity(entity),
     ...scalarFacts(payload, null),
-    ...(done.length === 0 ? {} : { changed: done.slice(0, SHOWN_ITEMS).map(changedOf) }),
-    ...(failed.length === 0 ? {} : { failed: failed.slice(0, SHOWN_ITEMS).map(failedOf) }),
+    ...(done.length === 0 ? {} : { changed: done.map(changedOf) }),
+    ...(failed.length === 0 ? {} : { failed: failed.map(failedOf) }),
     ...(skipped.length === 0 ? {} : { skipped }),
   };
 }
@@ -282,9 +278,9 @@ function failedOf(command: Fields): Fields {
 }
 
 function listOutcome(phrase: Phrase, items: readonly unknown[]): Fields {
-  const ids = items
-    .flatMap((item) => (isRecord(item) && typeof item['id'] === 'string' ? [item['id']] : []))
-    .slice(0, SHOWN_ITEMS);
+  const ids = items.flatMap((item) =>
+    isRecord(item) && typeof item['id'] === 'string' ? [item['id']] : [],
+  );
   return {
     ok: true,
     summary: `${phrase.past} ${String(items.length)} ${phrase.noun}`.trim(),

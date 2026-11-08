@@ -37,7 +37,9 @@ const END_INPUT = z
     pid: PID,
     signal: z
       .enum([...PROCESS_SIGNALS, 'priority'])
-      .describe('end asks it to quit, force quits it now, stop pauses, continue resumes, priority changes how much processor it gets (set nice)'),
+      .describe(
+        'end asks it to quit, force quits it now, stop pauses, continue resumes, priority changes how much processor it gets (set nice)',
+      ),
     nice: z
       .int()
       .min(-20)

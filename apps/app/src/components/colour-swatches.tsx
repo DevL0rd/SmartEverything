@@ -38,7 +38,7 @@ export function ColourSwatches<T extends string>({
             key={option.value}
             role="radio"
             label={option.label}
-            selected={selected}
+            checked={selected}
             disabled={disabled}
             onPress={() => {
               if (!selected) {

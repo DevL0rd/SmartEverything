@@ -19,8 +19,14 @@ function rounded(value: number | null | undefined): number | null {
   return value === null || value === undefined ? null : Math.round(value);
 }
 
-export function Ident({ device }: { readonly device: Device }): ReactNode {
-  return <IconWell icon={computerGlyph(device)} colour="viz-blue" size="m" />;
+export function Ident({
+  device,
+  size,
+}: {
+  readonly device: Device;
+  readonly size: 's' | 'm';
+}): ReactNode {
+  return <IconWell icon={computerGlyph(device)} colour="viz-blue" size={size} />;
 }
 
 function Dot({ status }: { readonly status: ComputerStatus }): ReactNode {

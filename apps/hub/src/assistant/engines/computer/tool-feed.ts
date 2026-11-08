@@ -42,12 +42,11 @@ export function bridgeTool(
     },
     event,
   )
-    .then(({ line, failed, output }) => {
+    .then(({ failed, output }) => {
       if (!current()) {
         staleTool(turn.chat.id, event);
         return;
       }
-      if (line !== '') deps.conversation.action(turn.chat, line);
       turn.stream.tool({ ...item, state: failed ? 'failed' : 'done' }, { output });
     })
     .catch((cause: unknown) => {

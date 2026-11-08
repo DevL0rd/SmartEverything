@@ -51,6 +51,16 @@ const skillUpdateRoutes = (service: HarnessService) =>
     discoverAiHarnessExtensions: bound(API_ENDPOINTS.discoverAiHarnessExtensions, ({ body }) =>
       service.discovery.browse(body),
     ),
+    previewAiHarnessExtensions: bound(API_ENDPOINTS.previewAiHarnessExtensions, ({ body }) =>
+      service.extensions.preview(body),
+    ),
+    readAiHarnessSources: bound(API_ENDPOINTS.readAiHarnessSources, () => service.sources.list()),
+    addAiHarnessSource: bound(API_ENDPOINTS.addAiHarnessSource, ({ body }) =>
+      service.sources.add(body),
+    ),
+    removeAiHarnessSource: bound(API_ENDPOINTS.removeAiHarnessSource, ({ params }) =>
+      service.sources.remove(params.id),
+    ),
     readAiHarnessSkillUpdates: bound(API_ENDPOINTS.readAiHarnessSkillUpdates, () =>
       service.skillUpdates.read(),
     ),
@@ -165,6 +175,9 @@ const readRoutes = (service: HarnessService) =>
     }),
     readDshSessionEvents: bound(API_ENDPOINTS.readDshSessionEvents, ({ body, caller }) =>
       service.store.dshSessions.read(body, profileIdOf(service.store, caller)),
+    ),
+    readAiRouteInfo: bound(API_ENDPOINTS.readAiRouteInfo, ({ query, caller }) =>
+      service.routes.info(profileIdOf(service.store, caller), query),
     ),
   }) as const;
 function ownerOf(service: HarnessService, caller: Caller): ChatOwner {

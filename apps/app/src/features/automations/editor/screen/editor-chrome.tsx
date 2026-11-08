@@ -14,6 +14,7 @@ export function EditorTopBar({ model }: { readonly model: EditorModel }): ReactN
       status={screen.status}
       reusable={screen.reusable}
       online={screen.online}
+      empty={flags.empty}
       counts={check.counts}
       canUndo={flags.canUndo}
       canRedo={flags.canRedo}
@@ -23,13 +24,12 @@ export function EditorTopBar({ model }: { readonly model: EditorModel }): ReactN
       onRedo={screen.store.redo}
       onPublish={screen.onPublish}
       onTest={screen.onTest}
-      onAdd={() => {
-        model.insertion.open(null);
-      }}
+      onAdd={model.openPalette}
       onProblems={model.onProblems}
       onShortcuts={() => {
         model.setShortcuts(true);
       }}
+      focusRef={model.focus.topBar}
     />
   );
 }
@@ -37,6 +37,15 @@ export function EditorTopBar({ model }: { readonly model: EditorModel }): ReactN
 export function OfflineBanner({ online }: { readonly online: boolean }): ReactNode {
   return online ? null : (
     <Banner tone="warning" title={OFFLINE_BANNER.title} body={OFFLINE_BANNER.body} wrapBody />
+  );
+}
+
+export function EditorBanners({ model }: { readonly model: EditorModel }): ReactNode {
+  return (
+    <>
+      <OfflineBanner online={model.props.online} />
+      {model.props.notice}
+    </>
   );
 }
 

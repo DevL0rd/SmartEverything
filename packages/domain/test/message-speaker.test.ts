@@ -3,6 +3,8 @@ import { messageSpeaker } from '../src/message-speaker';
 import type { AssistantMessageRow } from '../src/assistant';
 import type { MessageOrigin } from '../src/ai-chats';
 
+const CHAT = '0f8fad5b-d9cb-469f-a165-70867728950e';
+
 type Input = Pick<AssistantMessageRow, 'role' | 'author' | 'origin'>;
 
 function origin(fields: Partial<MessageOrigin> & Pick<MessageOrigin, 'source'>): MessageOrigin {
@@ -20,6 +22,7 @@ describe('messageSpeaker', () => {
       name: 'Ada',
       via: null,
       pluginId: null,
+      chatId: null,
     });
     expect(messageSpeaker(message('system', null)).kind).toBe('system');
   });
@@ -43,5 +46,16 @@ describe('messageSpeaker', () => {
       pluginId: 'bridge',
     });
     expect(messageSpeaker(message('person', theirs)).kind).toBe('person');
+  });
+
+  it('names the participant and the source chat of a relayed message', () => {
+    const relayed = origin({ source: 'subagent', name: 'Check the data', chat_id: CHAT });
+    expect(messageSpeaker({ role: 'person', author: 'Nova', origin: relayed })).toStrictEqual({
+      kind: 'person',
+      name: 'Nova',
+      via: 'subagent',
+      pluginId: null,
+      chatId: CHAT,
+    });
   });
 });

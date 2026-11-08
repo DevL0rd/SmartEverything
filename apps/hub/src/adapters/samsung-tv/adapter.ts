@@ -90,6 +90,7 @@ export function createSamsungTvAdapter(
       return Promise.resolve(() => {
         stopWatching();
         fleet.screens.forEach((screen) => {
+          screen.cancelWake();
           screen.polling.stop();
           screen.close();
           screen.attach(null);

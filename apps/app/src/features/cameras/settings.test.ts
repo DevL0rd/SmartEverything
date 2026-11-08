@@ -18,6 +18,7 @@ const AVAILABILITY: SettingEnv['availability'] = {
 const env = (owner: boolean, hasCameras: boolean): SettingEnv => ({
   owner,
   platform: 'android',
+  developer: false,
   availability: { ...AVAILABILITY, hasCameras },
 });
 

@@ -13,6 +13,12 @@ export type Readable<T> =
   | { readonly ok: true; readonly data: T; readonly ignored: readonly string[] }
   | { readonly ok: false; readonly error: z.ZodError };
 
+export interface UnreadableSection {
+  readonly section: string;
+  readonly path: string;
+  readonly reason: string;
+}
+
 interface DroppedRows {
   readonly table: string;
   readonly count: number;
@@ -26,6 +32,7 @@ export type ReadableTables<T> =
       readonly ignored: readonly string[];
       readonly skipped: readonly string[];
       readonly dropped: readonly DroppedRows[];
+      readonly unreadable: readonly UnreadableSection[];
     }
   | { readonly ok: false; readonly error: z.ZodError };
 
@@ -125,10 +132,24 @@ interface Address {
   readonly table: string;
   readonly row: number | null;
   readonly reason: string;
+  readonly section: UnreadableSection | null;
 }
 
-function addressOf(issue: Issue, roots: readonly string[]): Address | null {
+function addressOf(
+  issue: Issue,
+  roots: readonly string[],
+  sections: readonly string[],
+): Address | null {
   const [root, table, row] = issue.path;
+  if (typeof root === 'string' && sections.includes(root)) {
+    const reason = issue.message;
+    return {
+      table: root,
+      row: null,
+      reason,
+      section: { section: root, path: issue.path.map(String).join('.'), reason },
+    };
+  }
   if (typeof root !== 'string' || !roots.includes(root) || typeof table !== 'string') {
     return null;
   }
@@ -136,12 +157,21 @@ function addressOf(issue: Issue, roots: readonly string[]): Address | null {
     table: `${root}.${table}`,
     row: typeof row === 'number' ? row : null,
     reason: `${issue.path.slice(2).join('.') || 'value'} ${issue.message}`,
+    section: null,
   };
 }
 
-function addressesOf(error: z.ZodError, roots: readonly string[]): readonly Address[] | null {
-  const found = error.issues.map((issue) => addressOf(issue, roots));
+function addressesOf(
+  error: z.ZodError,
+  roots: readonly string[],
+  sections: readonly string[],
+): readonly Address[] | null {
+  const found = error.issues.map((issue) => addressOf(issue, roots, sections));
   return found.every((address) => address !== null) ? found : null;
+}
+
+function withoutSection(value: unknown, section: string): unknown {
+  return isRecord(value) ? { ...value, [section]: null } : value;
 }
 
 function withoutTable(value: unknown, table: string): unknown {
@@ -172,12 +202,20 @@ interface Trimmed {
   readonly value: unknown;
   readonly skipped: Set<string>;
   readonly dropped: Map<string, { rows: Set<number>; reason: string }>;
+  readonly unreadable: Map<string, UnreadableSection>;
 }
 
 function trimmed(value: unknown, addresses: readonly Address[], into: Trimmed): Trimmed {
   const rowsOf = new Map<string, Set<number>>();
   let current = value;
   for (const address of addresses) {
+    if (address.section !== null) {
+      current = withoutSection(current, address.section.section);
+      if (!into.unreadable.has(address.section.section)) {
+        into.unreadable.set(address.section.section, address.section);
+      }
+      continue;
+    }
     if (address.row === null || !Array.isArray(rowListOf(value, address.table))) {
       current = withoutTable(current, address.table);
       into.skipped.add(address.table);
@@ -211,11 +249,17 @@ export function readTablesLeniently<S extends z.ZodType>(
   schema: S,
   value: unknown,
   roots: readonly string[],
+  sections: readonly string[] = [],
 ): ReadableTables<z.output<S>> {
-  let state: Trimmed = { value, skipped: new Set(), dropped: new Map() };
+  let state: Trimmed = {
+    value,
+    skipped: new Set(),
+    dropped: new Map(),
+    unreadable: new Map(),
+  };
   let read = readLeniently(schema, state.value);
   for (let round = 0; round < TABLE_ROUNDS && !read.ok; round += 1) {
-    const addresses = addressesOf(read.error, roots);
+    const addresses = addressesOf(read.error, roots, sections);
     if (addresses === null) {
       return read;
     }
@@ -233,5 +277,6 @@ export function readTablesLeniently<S extends z.ZodType>(
       count: entry.rows.size,
       reason: entry.reason,
     })),
+    unreadable: [...state.unreadable.values()],
   };
 }

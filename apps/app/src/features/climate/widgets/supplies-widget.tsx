@@ -5,12 +5,12 @@ import { Arc, ProgressBar } from '../../../components/charts';
 import type { IconName } from '../../../components/icon';
 import { IconWell } from '../../../components/icon-well';
 import { Text } from '../../../components/text';
-import { WidgetFrame, isTall, type WidgetSize } from '../../../components/widget-board';
+import { WidgetFrame } from '../../../components/widget-board';
 import type { ColourRole } from '../../../design/tokens';
 import { useClimateSources } from '../model/climate-devices';
 import { needsAttention, suppliesOf, type SupplyKind, type SupplyLine } from '../model/supplies';
-
-const SHOWN: Readonly<Record<WidgetSize, number>> = { M: 2, W: 4, XL: 8 };
+import { rowsOf, supplyListFit, supplyRingFit, type RingFit } from './climate-fit';
+import { useClimateBody } from './use-body-box';
 
 const ICON: Readonly<Record<SupplyKind, IconName>> = {
   filter: 'layers',
@@ -63,23 +63,26 @@ function Line({ line }: { readonly line: SupplyLine }): ReactNode {
   );
 }
 
-const RING_LINES = 3;
-const RING_SIZE = 120;
-
 function colourOf(line: SupplyLine): ColourRole {
   return line.kind === 'water' && line.tone === 'positive' ? 'humidity' : TONE_COLOUR[line.tone];
 }
 
-function SupplyRing({ line }: { readonly line: SupplyLine }): ReactNode {
-  const box = { width: RING_SIZE, height: RING_SIZE };
+function SupplyRing({
+  line,
+  fit,
+}: {
+  readonly line: SupplyLine;
+  readonly fit: RingFit;
+}): ReactNode {
+  const box = { width: fit.ring, height: fit.ring };
   return (
     <View className="min-w-0 flex-1 items-center gap-2">
       <View style={box} className="items-center justify-center">
         <View className="absolute inset-0">
           <Arc
             value={line.level ?? 0}
-            size={RING_SIZE}
-            thickness={10}
+            size={fit.ring}
+            thickness={fit.thickness}
             colour={colourOf(line)}
             startAngle={-135}
             sweep={270}
@@ -107,50 +110,44 @@ function SupplyRing({ line }: { readonly line: SupplyLine }): ReactNode {
   );
 }
 
-function rowsOf(lines: readonly SupplyLine[], columns: number): readonly (readonly SupplyLine[])[] {
-  const rows: SupplyLine[][] = [];
-  for (let index = 0; index < lines.length; index += columns) {
-    rows.push(lines.slice(index, index + columns));
-  }
-  return rows;
-}
-
-function SupplyList({
-  shown,
-  more,
-  columns,
-}: {
-  readonly shown: readonly SupplyLine[];
-  readonly more: number;
-  readonly columns: number;
-}): ReactNode {
+function SupplyList({ lines }: { readonly lines: readonly SupplyLine[] }): ReactNode {
+  const fit = supplyListFit(useClimateBody().box, lines.length);
   return (
-    <View className="flex-1 justify-center gap-3">
-      {rowsOf(shown, columns).map((row) => (
+    <View className="flex-1 gap-3">
+      {rowsOf(lines.slice(0, fit.shown), fit.columns).map((row) => (
         <View key={row.map((line) => line.key).join()} className="flex-row gap-5">
           {row.map((line) => (
             <Line key={line.key} line={line} />
           ))}
-          {row.length < columns ? <View className="flex-1" /> : null}
+          {Array.from({ length: fit.columns - row.length }, (_, index) => (
+            <View key={`gap-${String(index)}`} className="min-w-0 flex-1" />
+          ))}
         </View>
       ))}
-      {more > 0 ? <Text variant="footnote" tone="variant">{`${String(more)} more`}</Text> : null}
+      {fit.more > 0 ? (
+        <Text variant="footnote" tone="variant">{`${String(fit.more)} more`}</Text>
+      ) : null}
     </View>
   );
 }
 
-export function SuppliesWidget({
-  size,
-  room,
-}: {
-  readonly size: WidgetSize;
-  readonly room: string | null;
-}): ReactNode {
+function Supplies({ lines }: { readonly lines: readonly SupplyLine[] }): ReactNode {
+  const ring = supplyRingFit(useClimateBody().box, lines.length);
+  if (ring === null) {
+    return <SupplyList lines={lines} />;
+  }
+  return (
+    <View className="flex-1 flex-row items-start justify-around gap-4">
+      {lines.map((line) => (
+        <SupplyRing key={line.key} line={line} fit={ring} />
+      ))}
+    </View>
+  );
+}
+
+export function SuppliesWidget({ room }: { readonly room: string | null }): ReactNode {
   const lines = useSupplies(room);
-  const shown = lines.slice(0, SHOWN[size]);
-  const more = lines.length - shown.length;
   const urgent = lines.some((line) => line.tone === 'critical');
-  const columns = Math.min(size === 'W' || size === 'XL' ? 2 : 1, Math.max(1, shown.length));
   return (
     <WidgetFrame
       title="Filters & water"
@@ -159,15 +156,7 @@ export function SuppliesWidget({
       glow={urgent ? 'critical' : null}
       href={href.devicesPage('supplies')}
     >
-      {isTall(size) && shown.length <= RING_LINES ? (
-        <View className="flex-1 flex-row items-center justify-around gap-4">
-          {shown.map((line) => (
-            <SupplyRing key={line.key} line={line} />
-          ))}
-        </View>
-      ) : (
-        <SupplyList shown={shown} more={more} columns={columns} />
-      )}
+      <Supplies lines={lines} />
     </WidgetFrame>
   );
 }

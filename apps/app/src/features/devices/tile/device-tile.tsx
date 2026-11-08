@@ -6,6 +6,7 @@ import { Interactive } from '../../../components/interactive';
 import { StatusChip } from '../../../components/status-chip';
 import { Text } from '../../../components/text';
 import { useHighlightAnchor } from '../../../components/use-highlight-anchor';
+import { ActionBand } from '../../../components/widget-board/action-band';
 import { href } from '../../../app-shell/hrefs';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
@@ -20,6 +21,7 @@ import { deviceModelOf, powerStateOf, useDeviceModel } from '../model/device-mod
 import { stateLine } from '../model/state-line';
 import { renderFamilyFace } from '../../../app-shell/family-faces';
 import { FAMILY_TILE_PARTS } from './family-tile-parts';
+import { TILE_MIN_HEIGHT } from './tile-grid';
 
 export interface DeviceTileProps {
   readonly device: Device;
@@ -30,6 +32,11 @@ export interface DeviceTileProps {
 const TILE_SURFACE: Readonly<Record<'card' | 'inset', string>> = {
   card: 'rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1',
   inset: 'flex-1 rounded-md bg-surface-2',
+};
+
+const TILE_BOX = {
+  touch: { minHeight: TILE_MIN_HEIGHT.touch },
+  pointer: { minHeight: TILE_MIN_HEIGHT.pointer },
 };
 
 function TileText({
@@ -46,7 +53,7 @@ function TileText({
   const room = useRoomName(device.id);
   const on = powerStateOf(model, values) === 'on';
   return (
-    <View className="gap-0.5">
+    <View className="gap-0.5" pointerEvents="none">
       <Text variant="body-strong" numberOfLines={2}>
         {name}
       </Text>
@@ -62,6 +69,30 @@ function TileText({
   );
 }
 
+function TileBand({
+  device,
+  offline,
+}: {
+  readonly device: Device;
+  readonly offline: boolean;
+}): ReactNode {
+  const Corner = FAMILY_TILE_PARTS[useDeviceModel(device).family]?.corner;
+  return (
+    <ActionBand>
+      <DeviceScheduleChip deviceId={device.id} compact />
+      {offline || Corner === undefined ? null : <Corner device={device} />}
+      {offline ? <StatusChip status="offline" /> : <PowerToggle device={device} />}
+    </ActionBand>
+  );
+}
+
+function ownBodyOf(device: Device, showRoom: boolean): { readonly body: ReactNode } | null {
+  const card = deviceCardOf(device);
+  if (card !== undefined) return { body: card.render(device, 'tile', showRoom) };
+  const registered = renderFamilyFace(deviceModelOf(device).family, device, 's');
+  return registered === null ? null : { body: registered };
+}
+
 function TileBody({
   device,
   name,
@@ -73,65 +104,61 @@ function TileBody({
   readonly showRoom: boolean;
   readonly offline: boolean;
 }): ReactNode {
-  const card = deviceCardOf(device);
-  if (card !== undefined) return card.render(device, 'tile', showRoom);
-  const { family } = deviceModelOf(device);
-  const registered = renderFamilyFace(family, device, 's');
-  if (registered !== null) return registered;
-  const Bar = FAMILY_TILE_PARTS[family]?.bar;
+  const own = ownBodyOf(device, showRoom);
+  const band = <TileBand device={device} offline={offline} />;
+  if (own !== null) {
+    return (
+      <>
+        <View className="flex-1" pointerEvents="box-none">
+          {own.body}
+        </View>
+        {band}
+      </>
+    );
+  }
+  const Bar = FAMILY_TILE_PARTS[deviceModelOf(device).family]?.bar;
   return (
-    <>
-      <View className={cn('flex-row items-start', offline && 'opacity-60')}>
+    <View className="flex-1 flex-row gap-3" pointerEvents="box-none">
+      <View className={cn('shrink-0 self-start', offline && 'opacity-60')} pointerEvents="none">
         <DeviceVisual device={device} size="tile" />
       </View>
-      <TileText device={device} name={name} showRoom={showRoom} />
-      {Bar === undefined ? null : <Bar device={device} />}
-    </>
-  );
-}
-
-function TileCorner({
-  device,
-  offline,
-}: {
-  readonly device: Device;
-  readonly offline: boolean;
-}): ReactNode {
-  const Corner = FAMILY_TILE_PARTS[useDeviceModel(device).family]?.corner;
-  return (
-    <View className="absolute right-2 top-2 flex-row items-center" pointerEvents="box-none">
-      <DeviceScheduleChip deviceId={device.id} compact />
-      {offline || Corner === undefined ? null : <Corner device={device} />}
-      {offline ? <StatusChip status="offline" /> : <PowerToggle device={device} />}
+      <View className="min-w-0 flex-1 gap-2" pointerEvents="box-none">
+        <TileText device={device} name={name} showRoom={showRoom} />
+        {Bar === undefined ? null : <Bar device={device} />}
+        {band}
+      </View>
     </View>
   );
 }
 
 function DeviceTileBase({ device, showRoom = true, inset = false }: DeviceTileProps): ReactNode {
-  const pointer = useIdiom() === 'pointer';
+  const box = TILE_BOX[useIdiom()];
   const name = useDisplayName(device.id);
   const model = useDeviceModel(device);
   const offline = !device.online && !model.sleepy;
   const menu = useDeviceContextMenu(device, { quickControls: true, label: name });
   const anchor = useHighlightAnchor(anchorKey.tile(device.id), name);
+  const rounded = inset ? 'rounded-md' : 'rounded-lg';
   return (
-    <View {...anchor} className={inset ? 'relative flex-1' : 'relative'}>
+    <View
+      {...anchor}
+      className={cn('relative', TILE_SURFACE[inset ? 'inset' : 'card'])}
+      style={box}
+    >
       <Interactive
         href={href.device(device)}
         label={name}
         hint="Hold for more"
         onLongPress={menu.onLongPress}
         onContextMenu={menu.onContextMenu}
-        className={cn(
-          'justify-between gap-3 p-card-pad',
-          TILE_SURFACE[inset ? 'inset' : 'card'],
-          pointer ? 'min-h-30' : 'min-h-33',
-        )}
-        layerClassName={inset ? 'rounded-md' : 'rounded-lg'}
+        className={cn('absolute inset-0', rounded)}
+        layerClassName={rounded}
       >
-        <TileBody device={device} name={name} showRoom={showRoom} offline={offline} />
+        {null}
       </Interactive>
-      <TileCorner device={device} offline={offline} />
+      <View className="flex-1 gap-3 p-card-pad" pointerEvents="box-none">
+        <TileBody device={device} name={name} showRoom={showRoom} offline={offline} />
+      </View>
       {menu.host}
     </View>
   );

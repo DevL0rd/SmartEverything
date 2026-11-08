@@ -6,13 +6,13 @@ export const PROFILING_IDS: readonly DeveloperFlagId[] = DEVELOPER_TOGGLES.filte
   (toggle) => toggle.section === 'Performance',
 ).map((toggle) => toggle.id);
 
-export function profilingOnCount(stored: StoredFlags, development: boolean): number {
-  const flags = resolveFlags(stored, development);
+export function profilingOnCount(stored: StoredFlags, developer: boolean): number {
+  const flags = resolveFlags(stored, developer);
   return PROFILING_IDS.filter((id) => flags[id]).length;
 }
 
-export function profilingState(stored: StoredFlags, development: boolean): ProfilingState {
-  const on = profilingOnCount(stored, development);
+export function profilingState(stored: StoredFlags, developer: boolean): ProfilingState {
+  const on = profilingOnCount(stored, developer);
   if (on === 0) {
     return 'off';
   }

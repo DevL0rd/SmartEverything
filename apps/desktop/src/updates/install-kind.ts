@@ -9,6 +9,7 @@ export type InstallKind =
 export interface InstallProbe {
   readonly writable: (path: string) => Promise<boolean>;
   readonly exists: (path: string) => Promise<boolean>;
+  readonly hasCommand: (name: string) => Promise<boolean>;
 }
 
 export interface InstallFacts {
@@ -30,6 +31,12 @@ async function unpackedFolder(facts: InstallFacts, probe: InstallProbe): Promise
   if (PACKAGE_MANAGED.some((prefix) => root.startsWith(prefix))) {
     return { kind: 'unmanaged', reason: 'This copy was installed by a package; update it there.' };
   }
+  if (!(await probe.hasCommand('unzip'))) {
+    return {
+      kind: 'unmanaged',
+      reason: 'Install the unzip program on this computer to let SmartEverything update itself.',
+    };
+  }
   const replaceable = (await probe.writable(root)) && (await probe.writable(parentOf(root)));
   return replaceable
     ? { kind: 'folder', root }
@@ -40,6 +47,9 @@ async function appBundle(facts: InstallFacts, probe: InstallProbe): Promise<Inst
   const cut = facts.execPath.indexOf(BUNDLE_MARKER);
   if (cut < 0) return { kind: 'unmanaged', reason: 'This copy is not inside an app bundle.' };
   const root = facts.execPath.slice(0, cut + BUNDLE_MARKER.length - 1);
+  if (!(await probe.hasCommand('ditto'))) {
+    return { kind: 'unmanaged', reason: 'The ditto program is missing from this Mac.' };
+  }
   return (await probe.writable(parentOf(root)))
     ? { kind: 'bundle', root }
     : { kind: 'unmanaged', reason: 'The Applications folder is read-only for this account.' };

@@ -1,9 +1,10 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import {
   ALL_NODE_KINDS,
   EMPTY_LAYOUT,
   type AutomationFunctionSummary,
-  type AutomationV3,
+  type AutomationV4,
 } from '@smarteverything/domain';
 import { catalogOf, searchCatalog } from './catalog-view';
 import { fixedAutomationRows, listOf, parseAutomationRows } from './automation-rows';
@@ -13,14 +14,14 @@ const ID_A = '00000000-0000-4000-8000-00000000000a';
 const ID_B = '00000000-0000-4000-8000-00000000000b';
 const MOMENT = '2026-10-18T10:00:00+07:00';
 
-const program: AutomationV3 = {
-  version: 3,
+const program: AutomationV4 = {
+  version: 4,
   kind: 'automation',
   triggers: [],
   inputs: [],
   outputs: [],
   variables: [],
-  body: { nodes: [] },
+  nodes: [{ id: '00000000-0000-4000-8000-0000000000f1', key: 'start', kind: 'flow.start' }],
   policy: { mode: 'single' },
 };
 
@@ -49,7 +50,6 @@ const fn: AutomationFunctionSummary = {
   description: 'Dims every light in a room',
   category: 'lighting',
   icon: null,
-  builtin: false,
   editable: true,
   revision: 1,
   interface: { flavour: 'action', inputs: [], outputs: [], exits: ['done'] },
@@ -61,7 +61,10 @@ const fn: AutomationFunctionSummary = {
 
 describe('automation rows', () => {
   it('keeps valid rows, counts the ones the contract refuses and sorts by name', () => {
-    const parsed = parseAutomationRows([row(ID_B, 'Zebra'), { id: 'x' }, row(ID_A, 'alpha')]);
+    const parsed = parseAutomationRows(
+      [row(ID_B, 'Zebra'), { id: 'x' }, row(ID_A, 'alpha')],
+      STATIC_KIND_LOOKUP,
+    );
     expect(parsed.rejected).toBe(1);
     const list = listOf(parsed);
     expect(list.rows.map((entry) => entry.name)).toEqual(['alpha', 'Zebra']);
@@ -69,7 +72,9 @@ describe('automation rows', () => {
   });
 
   it('gives a fixed source the same snapshot every time', () => {
-    const source = fixedAutomationRows(parseAutomationRows([row(ID_A, 'One')]).rows);
+    const source = fixedAutomationRows(
+      parseAutomationRows([row(ID_A, 'One')], STATIC_KIND_LOOKUP).rows,
+    );
     expect(source.snapshot()).toBe(source.snapshot());
   });
 });

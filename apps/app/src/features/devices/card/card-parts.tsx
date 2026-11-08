@@ -13,14 +13,15 @@ import { StatusChip } from '../../../components/status-chip';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { AIR_BAND_COLOUR } from '../../../design/data-colours';
-import type { ColourRole } from '../../../design/tokens';
+import { useIdiom } from '../../../design/platform';
+import { useThemeSetting } from '../../../design/theme';
+import { SEMANTIC_SIZES, type ColourRole } from '../../../design/tokens';
 import { joinParts } from '../../../format/text';
 import { useHistory } from '../../../queries/history';
 import { memoOnInputs } from '../../../store/memo-selector';
 import { useDeviceDerived } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { deviceValuesOf, type Device, type DeviceValues } from '../../../store/state';
-import { PowerToggle } from '../controls/power-toggle';
 import { splitUnit } from '../detail/device-hero';
 import { useOfflineLine, useSeenLine } from '../detail/offline-banner';
 import { cardFacts, levelText, targetText, type CardFact } from '../model/card-facts';
@@ -175,16 +176,9 @@ export function Names({
   );
 }
 
-export function Corner({ device }: { readonly device: Device }): ReactNode {
+export function OfflineChip({ device }: { readonly device: Device }): ReactNode {
   const model = useDeviceModel(device);
-  if (!device.online && !model.sleepy) {
-    return <StatusChip status="offline" />;
-  }
-  return (
-    <View className="flex-row items-center">
-      <PowerToggle device={device} />
-    </View>
-  );
+  return !device.online && !model.sleepy ? <StatusChip status="offline" /> : null;
 }
 
 export function Header({
@@ -195,11 +189,11 @@ export function Header({
   readonly large: boolean;
 }): ReactNode {
   return (
-    <View className="flex-row items-start gap-2" pointerEvents="box-none">
-      <View className="min-w-0 flex-1" pointerEvents="none">
+    <View className="flex-row items-start gap-2" pointerEvents="none">
+      <View className="min-w-0 flex-1">
         <Names device={device} look={large ? 'large' : 'card'} />
       </View>
-      <Corner device={device} />
+      <OfflineChip device={device} />
     </View>
   );
 }
@@ -208,12 +202,26 @@ function FactChip({
   fact,
   stale,
   large,
+  compact,
 }: {
   readonly fact: CardFact;
   readonly stale: boolean;
   readonly large: boolean;
+  readonly compact: boolean;
 }): ReactNode {
   const icon = (fact.role === null ? undefined : FACT_ICONS[fact.role]) ?? 'activity';
+  if (compact) {
+    return (
+      <View className="h-7 flex-row items-center gap-2 rounded-md bg-surface-2 px-2">
+        <Text variant="caption" tone="variant" numberOfLines={1} className="min-w-0 flex-1">
+          {fact.label}
+        </Text>
+        <Text variant="callout" tone={stale ? 'faint' : 'default'} numberOfLines={1}>
+          {fact.text}
+        </Text>
+      </View>
+    );
+  }
   return (
     <View className="min-w-24 gap-0.5 rounded-md bg-surface-2 px-3 py-2">
       <View className="flex-row items-center gap-1.5">
@@ -233,12 +241,14 @@ export function Facts({
   max,
   column,
   large,
+  compact = false,
 }: {
   readonly device: Device;
   readonly hidden: ReadonlySet<CapabilityRole>;
-  readonly max: number;
+  readonly max?: number;
   readonly column: boolean;
   readonly large: boolean;
+  readonly compact?: boolean;
 }): ReactNode {
   const model = useDeviceModel(device);
   const { off, facts } = useDeviceDerived(
@@ -253,9 +263,18 @@ export function Facts({
     return null;
   }
   return (
-    <View className={cn('gap-2', !column && 'flex-row flex-wrap')} pointerEvents="none">
+    <View
+      className={cn(compact ? 'gap-1' : 'gap-2', !column && 'flex-row flex-wrap')}
+      pointerEvents="none"
+    >
       {facts.map((fact) => (
-        <FactChip key={fact.key} fact={fact} stale={!device.online || off} large={large} />
+        <FactChip
+          key={fact.key}
+          fact={fact}
+          stale={!device.online || off}
+          large={large}
+          compact={compact}
+        />
       ))}
     </View>
   );
@@ -299,17 +318,18 @@ function TrendLine({
   readonly presented: PresentedCapability;
 }): ReactNode {
   const history = useHistory([presented.key], TREND_HOURS);
+  const height = SEMANTIC_SIZES[useIdiom()][useThemeSetting('density')].controlH;
   const points = history.isSuccess ? trendPoints(history.data, device.id) : [];
   if (points.length < TREND_MIN_POINTS) {
     return null;
   }
   return (
     <View className="w-full min-w-0 gap-1.5" pointerEvents="none">
-      <View className="h-10 w-full">
+      <View className="h-control-h w-full">
         <Sparkline
           points={points}
           colour={trendColour(presented, points.at(-1)?.v)}
-          height={40}
+          height={height}
           area
         />
       </View>

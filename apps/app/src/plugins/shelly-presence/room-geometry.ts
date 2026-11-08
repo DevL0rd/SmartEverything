@@ -305,6 +305,36 @@ export function sizeOf(rect: Rect): { readonly width: number; readonly height: n
   return { width: rect.right - rect.left, height: rect.bottom - rect.top };
 }
 
+export const AXIS_FONT_PX = 10;
+
+const AXIS_CHAR_EM = 0.62;
+
+export function depthMarks(room: Rect): readonly number[] {
+  const deepest = Math.floor(room.bottom);
+  return Array.from({ length: Math.max(0, deepest) }, (_, index) => index + 1).filter(
+    (metre) => metre % 2 === 0,
+  );
+}
+
+export const axisMetres = (metre: number): string => `${String(metre)} m`;
+
+export function axisGutterPx(room: Rect): number {
+  const widest = Math.max(0, ...depthMarks(room).map((metre) => axisMetres(metre).length));
+  return widest * AXIS_FONT_PX * AXIS_CHAR_EM;
+}
+
+export interface PixelBox {
+  readonly width: number;
+  readonly height: number;
+}
+
+export function heroView(view: Rect, room: Rect, box: PixelBox): Rect {
+  const gutter = axisGutterPx(room);
+  const { width, height } = sizeOf(view);
+  const metresPerPixel = Math.max(width / (box.width - gutter), height / box.height);
+  return { ...view, left: view.left - gutter * metresPerPixel };
+}
+
 export interface MapModel {
   readonly origin: number;
   readonly frame: MapFrame;

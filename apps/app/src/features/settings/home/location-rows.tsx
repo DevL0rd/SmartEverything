@@ -8,7 +8,7 @@ import { notifyFailure } from '../../../components/toast-store';
 import { useIsOwner, useSettings } from '../../../store/selectors';
 import { zoneLabel } from '../../../format/time';
 import { TextEditSheet } from '../../../settings/text-edit-sheet';
-import { timeZoneOptions } from './place';
+import { matchingTimeZone, timeZoneOptions } from './place';
 
 import { trackSetting } from '../settings-log';
 function TypedTimeZone({ zone }: { readonly zone: string }): ReactNode {
@@ -56,14 +56,16 @@ export function TimeZoneRow(): ReactNode {
   if (options === null) {
     return <TypedTimeZone zone={zone} />;
   }
+  const selected = matchingTimeZone(zone, options);
   return (
     <SelectRow
       title="Time zone"
       icon="clock"
       options={options}
-      value={zone}
+      value={selected}
       searchable
       onChange={(time_zone) => {
+        if (time_zone === selected) return;
         trackSetting('home_time_zone.set', {}, () => updateHome({ time_zone })).catch(
           notifyFailure('The time zone was not changed'),
         );

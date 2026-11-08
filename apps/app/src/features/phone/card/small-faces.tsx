@@ -2,9 +2,9 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { BatterySpark } from './battery-spark';
 import { BatteryFigure, PlayingLine, SignalStat, WordLine } from './card-parts';
-import { AccessChip, ControlRow } from './control-rows';
+import { ArtLane } from './art-lane';
+import { AccessChip, PhoneBand } from './control-rows';
 import { FaceHeader } from './face-header';
-import { PhoneArt } from './phone-art';
 import type { PhoneFaceData } from './use-phone-face';
 import { isLow } from '../model/face-model';
 
@@ -32,28 +32,23 @@ function StatsRow({ data }: { readonly data: PhoneFaceData }): ReactNode {
 }
 
 export function MediumFace({ data }: { readonly data: PhoneFaceData }): ReactNode {
-  const { device, readings, access, online } = data;
+  const { device, readings, online } = data;
   return (
-    <View className="flex-1 gap-2" pointerEvents="box-none">
+    <ArtLane cls="m" data={data}>
       <FaceHeader data={data} chips={false} />
-      <View className="min-h-0 flex-1 flex-row items-center gap-3" pointerEvents="box-none">
-        <PhoneArt device={device} foldable={access.fold} tall={false} />
-        <View className="min-w-0 flex-1 justify-between gap-1" pointerEvents="box-none">
-          <View className="flex-row items-center gap-2" pointerEvents="none">
-            <BatteryFigure readings={readings} size="m" stale={!online} />
-            <View className="min-w-0 flex-1">
-              <BatterySpark
-                deviceId={device.id}
-                low={isLow(readings)}
-                stale={!online}
-                height={SPARK_HEIGHT}
-              />
-            </View>
-          </View>
-          <StatsRow data={data} />
-          <ControlRow controls={data.controls} layout="m" />
+      <View className="flex-row items-center gap-2" pointerEvents="none">
+        <BatteryFigure readings={readings} size="m" stale={!online} />
+        <View className="min-w-0 flex-1">
+          <BatterySpark
+            deviceId={device.id}
+            low={isLow(readings)}
+            stale={!online}
+            height={SPARK_HEIGHT}
+          />
         </View>
       </View>
-    </View>
+      <StatsRow data={data} />
+      <PhoneBand data={data} layout="m" />
+    </ArtLane>
   );
 }

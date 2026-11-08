@@ -43,8 +43,9 @@ class WatchWeather(
   companion object {
     private const val PREFERENCES = "expo.modules.healthconnect.watch-weather"
 
-    fun save(context: Context, weather: WatchWeather) {
-      context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit().putString("latest", HubJson.encode(weather)).apply()
+    fun save(context: Context, weather: WatchWeather?) {
+      val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+      preferences.edit().putString("latest", weather?.let { HubJson.encode(it) }).apply()
     }
 
     fun latest(context: Context): WatchWeather? =

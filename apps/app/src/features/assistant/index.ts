@@ -11,6 +11,7 @@ export { OverlayHost } from './overlay/overlay-host';
 export { useUnreadChatCount } from './data/chat-store';
 export { useAnyChatWorking } from './chats/row-status';
 export { chatSourceOf } from './model/chat-source';
+export { appChatHistoryOnly } from './chats/chat-visibility';
 
 export { IMAGE_NOTICES } from './images/data/image-notices';
 export { WAKE_TEST_NOTICES } from './settings/wake-test/wake-test-notices';
@@ -20,7 +21,7 @@ export { refreshImageOperations, reconcileImageMessages } from './images/data/im
 export { IMAGE_QUERY_PREFIX } from './images/model/image-query-keys';
 export { clearImageSession } from './images/data/image-session';
 export { attachFiles, clearUploads } from './data/uploads';
-export { forgetOlderMessages } from './data/history';
+export { forgetOlderMessages, refreshOlderMessages } from './data/history';
 
 export { useExtensions, useExtensionConfiguration } from './extensions/queries';
 export { useHarnessCatalogue } from './data/harness';
@@ -41,3 +42,5 @@ export { AiExtensionsRoute } from './extensions/route';
 export { BrowserRuntimeHost } from './browser/browser-runtime-host';
 
 export { matchesQuickAskShortcut, useQuickAskKeys } from './settings/quick-ask-shortcut';
+
+export { callActive, callState } from './call/call-state';

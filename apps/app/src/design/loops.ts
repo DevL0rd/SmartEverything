@@ -25,13 +25,6 @@ export const BLINK = css.keyframes({
   '100%': { opacity: 1 },
 });
 
-export const EYE_BLINK = css.keyframes({
-  '0%': { transform: [{ scaleY: 1 }] },
-  '3%': { transform: [{ scaleY: 0.08 }] },
-  '6%': { transform: [{ scaleY: 1 }] },
-  '100%': { transform: [{ scaleY: 1 }] },
-});
-
 export const RING = css.keyframes({
   from: { opacity: 0.8, transform: [{ scale: 0.82 }] },
   to: { opacity: 0, transform: [{ scale: 1.32 }] },

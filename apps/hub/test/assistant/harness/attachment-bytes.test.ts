@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ApiError, type NodeHello } from '@smarteverything/domain';
+import { ApiError, type NodeHello, NODE_PROTOCOL_VERSION } from '@smarteverything/domain';
 import { AssistantFiles } from '../../../src/assistant/files';
 import { ComputerNodeAccess } from '../../../src/computers/node-access';
 import { attachmentBytes } from '../../../src/harness/transport';
 import { useRig, type Rig } from './support/rig';
+import { hubLayout } from '../../../src/data-layout';
 
 const CONTENT = Buffer.from('attachment bytes that travel by GET');
 const NAME = 'notes.txt';
@@ -23,7 +24,7 @@ function helloOf(machine: string): NodeHello {
     interfaces: [],
     bootedAt: '2026-10-08T09:00:00.000Z',
     features: [],
-    role: 'pc',
+    protocol: NODE_PROTOCOL_VERSION,
     power: [],
     actions: [],
     permissions: [],
@@ -61,6 +62,7 @@ async function storedAttachment(chatId: string): Promise<string> {
     steps: [],
     step_states: [],
     reply_to: null,
+    quote: null,
     chat_id: chatId,
     origin: null,
     embeds: [],
@@ -69,8 +71,9 @@ async function storedAttachment(chatId: string): Promise<string> {
   });
   const id = randomUUID();
   const path = join('files', id, NAME);
-  await mkdir(join(rig.opened.directory, 'assistant', 'files', id), { recursive: true });
-  await writeFile(join(rig.opened.directory, 'assistant', path), CONTENT);
+  const stored = rig.opened.layout.person(rig.owner.profileId).attachment(id, NAME);
+  await mkdir(dirname(stored), { recursive: true });
+  await writeFile(stored, CONTENT);
   store.assistantChat.addAttachment({
     id,
     profile_id: rig.owner.profileId,
@@ -93,7 +96,7 @@ beforeEach(async () => {
   sessionId = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId).claim.session_id;
   attachmentId = await storedAttachment(chat.id);
   const files = new AssistantFiles({
-    dataDirectory: rig.opened.directory,
+    layout: hubLayout(rig.opened.directory, {}),
     chat: store.assistantChat,
     now: (): Date => new Date(),
   });

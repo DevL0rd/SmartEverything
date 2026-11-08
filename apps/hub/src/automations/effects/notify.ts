@@ -1,4 +1,4 @@
-import { JSON_VALUE, type ReachTarget } from '@smarteverything/domain';
+import { JSON_VALUE, type JsonValue, type ReachTarget } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { ToolHub } from '../../ai-tools/tool-hub';
 import type { Clock } from '../../clock';
@@ -21,6 +21,10 @@ export interface NotifyPersonRequest {
   readonly title: string;
   readonly body: string;
   readonly priority: 'normal' | 'high' | 'urgent';
+  readonly image?: string;
+  readonly tag?: string;
+  readonly link?: string;
+  readonly sound?: string;
   readonly asProfileId: string;
 }
 
@@ -29,8 +33,20 @@ export interface NotifyPersonResult {
   readonly failed: readonly string[];
 }
 
-export interface SpeakRequest {
+export interface SpeechStyle {
+  readonly priority: 'queue' | 'interrupt';
+  readonly volume?: number;
+  readonly voice?: string;
+}
+
+export interface SpeakRequest extends SpeechStyle {
   readonly target: ReachTarget;
+  readonly text: string;
+  readonly asProfileId: string;
+}
+
+export interface SpeakEverywhereRequest extends SpeechStyle {
+  readonly targets: readonly ReachTarget[];
   readonly text: string;
   readonly asProfileId: string;
 }
@@ -43,6 +59,39 @@ export interface SpeakResult {
 const SPOKEN = z.looseObject({
   result: z.looseObject({ result: z.looseObject({ target_label: z.string() }) }),
 });
+
+function present(
+  entries: Readonly<Record<string, JsonValue | undefined>>,
+): Record<string, JsonValue> {
+  const args: Record<string, JsonValue> = {};
+  for (const [key, value] of Object.entries(entries)) {
+    if (value !== undefined) args[key] = value;
+  }
+  return args;
+}
+
+function personArgs(request: NotifyPersonRequest, personId: string): Record<string, JsonValue> {
+  const text = request.body === '' ? request.title : `${request.title}\n${request.body}`;
+  return present({
+    personId,
+    text,
+    urgent: request.priority === 'urgent',
+    image: request.image,
+    tag: request.tag,
+    link: request.link,
+    sound: request.sound,
+  });
+}
+
+function speakArgs(request: SpeakRequest): Record<string, JsonValue> {
+  return present({
+    target: JSON_VALUE.parse(request.target),
+    text: request.text,
+    priority: request.priority === 'queue' ? undefined : request.priority,
+    volume: request.volume,
+    voice: request.voice,
+  });
+}
 
 export class Notifier {
   constructor(private readonly ports: NotifyPorts) {}
@@ -57,7 +106,6 @@ export class Notifier {
   }
 
   async person(request: NotifyPersonRequest, origin: ToolOrigin): Promise<NotifyPersonResult> {
-    const text = request.body === '' ? request.title : `${request.title}\n${request.body}`;
     const sent: string[] = [];
     const failed: string[] = [];
     for (const personId of request.people) {
@@ -67,7 +115,7 @@ export class Notifier {
           {
             profileId: request.asProfileId,
             tool: 'person_notify',
-            args: { personId, text, urgent: request.priority === 'urgent' },
+            args: personArgs(request, personId),
           },
           origin,
         );
@@ -86,10 +134,18 @@ export class Notifier {
       {
         profileId: request.asProfileId,
         tool: 'voice_speak',
-        args: { target: JSON_VALUE.parse(request.target), text: request.text },
+        args: speakArgs(request),
       },
       origin,
     );
     return { ok: true, spokenOn: [SPOKEN.parse(response).result.result.target_label] };
+  }
+
+  async speakAll(request: SpeakEverywhereRequest, origin: ToolOrigin): Promise<SpeakResult> {
+    const { targets, ...rest } = request;
+    const spoken = await Promise.all(
+      targets.map((target) => this.speak({ ...rest, target }, origin)),
+    );
+    return { ok: true, spokenOn: spoken.flatMap((result) => result.spokenOn) };
   }
 }

@@ -54,6 +54,7 @@ export const LIST_MORE_KINDS: readonly NodeKind[] = [
         'field',
         { t: 'optional', of: TEXT },
         'For a list of records: the field to compare, such as temperature.',
+        { ui: { optionsFrom: 'record.fields', typedBy: 'list' } },
       ),
       option(
         'direction',
@@ -94,6 +95,7 @@ export const LIST_MORE_KINDS: readonly NodeKind[] = [
         'field',
         { t: 'optional', of: TEXT },
         'For a list of records: the field that makes items equal, such as room.',
+        { ui: { optionsFrom: 'record.fields', typedBy: 'list' } },
       ),
     ],
     outputs: [

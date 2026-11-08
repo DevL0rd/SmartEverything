@@ -16,7 +16,6 @@ export interface PaletteUsage {
 
 export interface RankedEntry {
   readonly entry: PaletteEntry;
-  readonly reason: string | null;
   readonly score: number;
 }
 
@@ -31,9 +30,6 @@ export const NO_USAGE: PaletteUsage = { recents: [], favourites: [] };
 
 export const LOOP_ONLY_KINDS: ReadonlySet<string> = new Set(['flow.break', 'flow.continue']);
 
-export const TRIGGER_REASON = 'Triggers go at the start of the automation.';
-export const LOOP_REASON = 'Only works inside a loop.';
-
 const SECTION_NAMES: ReadonlyMap<string, string> = new Map([
   ...NODE_CATEGORIES.map(({ id, name }): [string, string] => [id, name.toLowerCase()]),
   ['snippets', SNIPPETS_NAME.toLowerCase()],
@@ -46,6 +42,7 @@ const SCORE = {
   nameInside: 55,
   keywordExact: 50,
   keywordInside: 35,
+  origin: 30,
   section: 25,
   meaning: 20,
   portType: 15,
@@ -67,15 +64,6 @@ export function isShown(entry: PaletteEntry, context: PaletteContext): boolean {
   return context.slot !== 'trigger' || entry.trigger;
 }
 
-export function reasonFor(entry: PaletteEntry, context: PaletteContext): string | null {
-  if (entry.disabled !== null) return entry.disabled;
-  if (entry.trigger && context.slot !== 'trigger') return TRIGGER_REASON;
-  if (entry.kindId !== null && LOOP_ONLY_KINDS.has(entry.kindId) && !context.inLoop) {
-    return LOOP_REASON;
-  }
-  return null;
-}
-
 function nameScore(name: string, word: string): number {
   const parts = name.split(/\s+/);
   if (name === word) return SCORE.nameExact;
@@ -95,6 +83,7 @@ function wordScore(entry: PaletteEntry, word: string): number {
     nameScore(entry.name.toLowerCase(), word),
     keywordScore(entry.keywords, word),
     SECTION_NAMES.get(entry.section)?.includes(word) === true ? SCORE.section : 0,
+    entry.origin?.name.toLowerCase().includes(word) === true ? SCORE.origin : 0,
     entry.meaning.toLowerCase().includes(word) ? SCORE.meaning : 0,
     entry.typeWords.some((type) => type.includes(word)) ? SCORE.portType : 0,
   );
@@ -140,7 +129,6 @@ export function contextScore(
 }
 
 function compareRanked(left: RankedEntry, right: RankedEntry): number {
-  if ((left.reason === null) !== (right.reason === null)) return left.reason === null ? -1 : 1;
   if (left.score !== right.score) return right.score - left.score;
   return compareText(left.entry.name, right.entry.name);
 }
@@ -157,11 +145,7 @@ export function rankEntries(
     if (!isShown(entry, context)) continue;
     const text = textScore(entry, words);
     if (words.length > 0 && text === 0) continue;
-    ranked.push({
-      entry,
-      reason: reasonFor(entry, context),
-      score: text + contextScore(entry, context, usage),
-    });
+    ranked.push({ entry, score: text + contextScore(entry, context, usage) });
   }
   return ranked.sort(compareRanked);
 }
@@ -170,7 +154,5 @@ export function inOrder(
   entries: readonly PaletteEntry[],
   context: PaletteContext,
 ): readonly RankedEntry[] {
-  return entries
-    .filter((entry) => isShown(entry, context))
-    .map((entry) => ({ entry, reason: reasonFor(entry, context), score: 0 }));
+  return entries.filter((entry) => isShown(entry, context)).map((entry) => ({ entry, score: 0 }));
 }

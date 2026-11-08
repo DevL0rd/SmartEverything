@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import type { QueryClient } from '@tanstack/react-query';
 import { Logger, background } from '@smarteverything/logging';
 import { errorFields } from '../design/log-tally';
@@ -9,7 +9,7 @@ const log = new Logger('app.preloader');
 
 const SETTLE_MS = 1500;
 
-function hrefKey(target: Href): string {
+function hrefKey(target: AppHref): string {
   return typeof target === 'string' ? target : JSON.stringify(target);
 }
 
@@ -36,7 +36,7 @@ class Preloader {
     this.schedule();
   }
 
-  boost(target: Href): void {
+  boost(target: AppHref): void {
     const key = hrefKey(target);
     const index = this.queue.findIndex((route) => hrefKey(route.href) === key);
     const route = this.queue[index];

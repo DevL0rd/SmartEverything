@@ -112,27 +112,61 @@ describe('attributing a new weighing', () => {
     });
   });
 
-  it('leaves a weigh-in pending when its scale slot belongs to nobody and the home has several people', () => {
+  it('leaves a weigh-in pending when its slot belongs to nobody and its weight matches nobody', () => {
     const alice = test.store.profiles.first();
     const sam = test.store.profiles.create({ name: 'Sam' });
     test.store.profiles.update(alice.id, { scale_user: 1 });
     test.store.profiles.update(sam.id, { scale_user: 2 });
     scale.assign(scale.record(measurement({ measuredAt: daysAgo(3), weightKg: 60 })).id, alice.id);
-    expect(scale.record(measurement({ scaleUser: 3, weightKg: 60.5 }))).toMatchObject({
+    expect(scale.record(measurement({ scaleUser: 3, weightKg: 75 }))).toMatchObject({
       profile_id: null,
       attribution: 'pending',
     });
   });
 
-  it('never picks a person by how close the weight is', () => {
+  it('picks the one person whose recent weight it matches', () => {
     const alice = test.store.profiles.first();
     const sam = test.store.profiles.create({ name: 'Sam' });
     scale.assign(scale.record(measurement({ measuredAt: daysAgo(3), weightKg: 60 })).id, alice.id);
-    scale.assign(scale.record(measurement({ measuredAt: daysAgo(2), weightKg: 90 })).id, sam.id);
+    scale.assign(
+      scale.record(measurement({ scaleUser: 2, measuredAt: daysAgo(2), weightKg: 90 })).id,
+      sam.id,
+    );
     expect(scale.record(measurement({ scaleUser: 5, weightKg: 61 }))).toMatchObject({
-      profile_id: null,
-      attribution: 'pending',
+      profile_id: alice.id,
+      attribution: 'weight',
     });
+    expect(recordsOf(alice.id, 'Weight')).toBe(2);
+    expect(test.store.profiles.byId(alice.id).scale_user).toBe(1);
+  });
+
+  it('counts the weigh-ins of the only person when the scale reports them on two slots', () => {
+    const owner = test.store.profiles.first();
+    [88.8, 88.9, 89.2].forEach((weightKg, index) => {
+      scale.record(measurement({ scaleUser: 0, measuredAt: daysAgo(10 - index), weightKg }));
+    });
+    expect(test.store.profiles.byId(owner.id).scale_user).toBe(0);
+    const reading = scale.record(
+      measurement({ scaleUser: 1, measuredAt: daysAgo(1), weightKg: 90.1 }),
+    );
+    expect(reading).toMatchObject({ profile_id: owner.id, attribution: 'weight' });
+    const pending = test.store.bodyReadings
+      .recent(10)
+      .filter((row) => row.attribution === 'pending');
+    expect(pending).toEqual([]);
+    expect(recordsOf(owner.id, 'Weight')).toBe(4);
+  });
+
+  it('learns the slot of a person who had none from their first automatic weigh-in', () => {
+    const owner = test.store.profiles.first();
+    expect(owner.scale_user).toBeNull();
+    scale.record(measurement({ scaleUser: 4 }));
+    expect(test.store.profiles.byId(owner.id).scale_user).toBe(4);
+    const sam = test.store.profiles.create({ name: 'Sam' });
+    expect(
+      scale.record(measurement({ scaleUser: 4, measuredAt: daysAgo(1), weightKg: 70.4 })),
+    ).toMatchObject({ profile_id: owner.id, attribution: 'scale' });
+    expect(test.store.profiles.byId(sam.id).scale_user).toBeNull();
   });
 });
 
@@ -241,6 +275,8 @@ describe('assigning a reading by hand', () => {
     expect(recordsOf(sam.id, 'Weight')).toBe(1);
     const back = scale.assign(reading.id, alice.id);
     expect(back.profile_id).toBe(alice.id);
+    expect(test.store.profiles.byId(alice.id).scale_user).toBe(3);
+    expect(test.store.profiles.byId(sam.id).scale_user).toBeNull();
     expect(recordsOf(sam.id, 'Weight')).toBe(0);
     expect(recordsOf(alice.id, 'Weight')).toBe(1);
   });

@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -9,9 +17,11 @@ import { build } from 'esbuild';
 import { z } from 'zod';
 import {
   copyServiceAssets,
+  DAVEY_PACKAGE,
   VOICE_ASSET_PACKAGE_NAMES,
   VOICE_ASSET_PREFIX,
 } from './copy-voice-assets.ts';
+import { HUB_SERVICE_VERSION_FILE, readReleaseVersion } from './release-version.ts';
 import {
   copyRuntimePackages,
   matchesPattern,
@@ -35,6 +45,7 @@ export interface Bundle {
   readonly file: string;
   readonly external: readonly string[];
   readonly banner?: string;
+  readonly define?: Readonly<Record<string, string>>;
 }
 
 export interface Found {
@@ -45,7 +56,7 @@ export interface Found {
 const log = new Logger('tool.build-service');
 
 const root = join(import.meta.dirname, '..');
-const desktop = join(root, 'apps', 'desktop');
+
 const hub = join(root, 'apps', 'hub');
 
 const SERVICE_BANNER =
@@ -55,8 +66,9 @@ const EVERY_TARGET_ROOTS = ['@anthropic-ai/claude-agent-sdk'];
 const LOADED_AT_RUNTIME = [
   /createLazyRequire\w*\(\s*"([^"]+)"/gu,
   /createRequire\w*\(import\.meta\.url\)\(\s*"([^"]+)"/gu,
+  /createRequire\w*\(import\.meta\.url\)\.resolve\(\s*"([^"]+)"/gu,
 ];
-const VOICE_EXTERNALS = ['ffmpeg-static', `${VOICE_ASSET_PREFIX}*`, '*.node'];
+const VOICE_EXTERNALS = [DAVEY_PACKAGE, 'ffmpeg-static', `${VOICE_ASSET_PREFIX}*`, '*.node'];
 const SERVICE_EXTERNALS = [
   '@deepseek-ai/*',
   '@earendil-works/*',
@@ -82,10 +94,31 @@ const BUNDLES: readonly Bundle[] = [
     external: VOICE_EXTERNALS,
     banner: SERVICE_BANNER,
   },
+  {
+    entry: join(hub, 'src', 'photos', 'pipeline', 'heic-worker.ts'),
+    file: 'heic-worker.mjs',
+    external: [],
+    banner: SERVICE_BANNER,
+  },
+  {
+    entry: join(hub, 'src', 'service', 'loop-watchdog', 'worker.ts'),
+    file: 'loop-watchdog.mjs',
+    external: [],
+  },
   { entry: join(hub, 'src', 'claude', 'hook-helper.ts'), file: 'hook-helper.mjs', external: [] },
   {
     entry: join(hub, 'src', 'plugins', 'builtin', 'printer', 'raster-worker.ts'),
     file: 'raster-worker.mjs',
+    external: [],
+  },
+  {
+    entry: join(hub, 'src', 'drive', 'scanner-worker.ts'),
+    file: 'scanner-worker.mjs',
+    external: [],
+  },
+  {
+    entry: join(hub, 'src', 'drive', 'hasher-worker.ts'),
+    file: 'hasher-worker.mjs',
     external: [],
   },
 ];
@@ -109,6 +142,7 @@ export async function bundle(item: Bundle, out: string): Promise<Found> {
     target: 'node24',
     external: [...item.external],
     banner: item.banner === undefined ? {} : { js: item.banner },
+    define: { ...item.define },
     metafile: true,
     logLevel: 'warning',
   });
@@ -199,21 +233,25 @@ function startServiceBundle(out: string): void {
   const started = Date.now();
   log.debug('smoke.started', { bundle: 'service.mjs' });
   try {
-    const result = spawnSync(process.execPath, [join(out, 'service.mjs'), '--pair-node'], {
+    const result = spawnSync(process.execPath, [join(out, 'service.mjs')], {
       cwd: scratch,
       encoding: 'utf8',
-      env: { HOME: scratch, SMARTEVERYTHING_DATA_DIRECTORY: scratch },
+      env: { HOME: scratch, SMARTEVERYTHING_HUB_HOME: scratch },
     });
     const output = `${result.stdout}${result.stderr}`;
     log.debug('smoke.finished', () => ({
       exitCode: result.status,
       outputBytes: output.length,
-      reachedArgumentCheck: output.includes('NodeSetupArgumentsError'),
+      reachedConfigurationCheck: output.includes('LocationError'),
       durationMs: Date.now() - started,
     }));
-    if (!output.includes('NodeSetupArgumentsError') || output.includes('ERR_MODULE_NOT_FOUND'))
+    if (
+      result.status !== 1 ||
+      !output.includes('LocationError') ||
+      output.includes('ERR_MODULE_NOT_FOUND')
+    )
       throw new ServiceRuntimeError(
-        `The service bundle did not reach its argument check:\n${output.slice(0, 2000)}`,
+        `The service bundle did not reach its configuration check:\n${output.slice(0, 2000)}`,
       );
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -228,19 +266,14 @@ export function publishStage(stage: string, out: string): void {
   log.debug('publish.finished', { out });
 }
 
-function copyPackages(
-  stage: string,
-  names: readonly string[],
-  target: ServiceTarget | undefined,
-): number {
-  const platform = target?.platform ?? process.platform;
-  const arch = target?.arch ?? process.arch;
+function copyPackages(stage: string, names: readonly string[], target: ServiceTarget): number {
+  const { platform, arch } = target;
   const copying = log.operation('service.packages', { roots: names.length, platform, arch });
   const count = copyRuntimePackages({
     installedFrom: hub,
     modules: join(stage, 'node_modules'),
     roots: [...names, SHARP_WASM],
-    omit: (name) => SHARP_NATIVE.test(name),
+    omit: (name) => SHARP_NATIVE.test(name) || name.startsWith(VOICE_ASSET_PREFIX),
     omitPath: (path) => otherTargetPrebuild(path, platform, arch),
     everyTargetRoots: EVERY_TARGET_ROOTS,
     platform,
@@ -258,9 +291,9 @@ function checkStage(stage: string, targetName: ServiceTargetName | undefined): v
 
 async function buildStage(
   stage: string,
-  targetName: ServiceTargetName | undefined,
+  targetName: ServiceTargetName,
 ): Promise<{ names: number; count: number }> {
-  const target = targetName === undefined ? undefined : serviceTarget(targetName);
+  const target = serviceTarget(targetName);
   const bundling = log.operation('service.bundle', { bundles: BUNDLES.length });
   const found = await Promise.all(BUNDLES.map((item) => bundle(item, stage)));
   bundling.succeeded();
@@ -280,21 +313,17 @@ async function buildStage(
   return { names: names.length, count };
 }
 
-async function main(): Promise<void> {
-  const { values } = parseArgs({
-    options: { out: { type: 'string' }, target: { type: 'string' } },
-  });
-  const targetName =
-    values.target === undefined ? undefined : SERVICE_TARGET_NAME.parse(values.target);
-  const out = values.out === undefined ? join(desktop, 'dist', 'service') : resolve(values.out);
+export async function buildService(out: string, targetName: ServiceTargetName): Promise<void> {
   const stage = mkdtempSync(join(tmpdir(), 'service-build-'));
   const building = log.operation('service.build', {
     out,
-    target: targetName ?? `${process.platform}-${process.arch}`,
+    target: targetName,
   });
   try {
     assertIsolated(stage);
     const { names, count } = await buildStage(stage, targetName);
+    const version = readReleaseVersion('hub');
+    writeFileSync(join(stage, HUB_SERVICE_VERSION_FILE), `${JSON.stringify({ version })}\n`);
     publishStage(stage, out);
     building.succeeded({ packages: count, roots: names });
     process.stdout.write(
@@ -307,6 +336,15 @@ async function main(): Promise<void> {
     rmSync(stage, { recursive: true, force: true });
     log.debug('stage.removed');
   }
+}
+
+async function main(): Promise<void> {
+  const { values } = parseArgs({
+    options: { out: { type: 'string' }, target: { type: 'string' } },
+  });
+  const target = SERVICE_TARGET_NAME.parse(values.target ?? `${process.platform}-${process.arch}`);
+  const out = resolve(values.out ?? join(root, 'tmp', 'hub-service'));
+  await buildService(out, target);
 }
 
 if (import.meta.main) await main();

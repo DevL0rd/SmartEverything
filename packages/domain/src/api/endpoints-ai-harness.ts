@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { AI_SUBSCRIPTION_CONTROL, AI_SUBSCRIPTION_HOST_STATUS } from '../ai-subscription-host';
-import { AI_HARNESS_HOST } from '../ai-harness';
+import { AI_HARNESS_CAPABILITY, AI_HARNESS_HOST } from '../ai-harness';
 import { AI_MODEL_ROUTE } from '../ai-model-route';
+import { AI_ROUTE_INFO, AI_ROUTE_INFO_QUERY } from '../ai-route-info';
+import { AI_SESSION_INFO } from '../ai-session-info';
+import { AI_WORKSPACE } from '../ai-workspace';
 import {
   AI_HARNESS_ANSWER,
   AI_HARNESS_PERMISSION_CHANGE,
@@ -27,7 +30,7 @@ import { AI_HARNESS_CONFIGURATION_CATALOGUE } from '../ai-harness-configuration'
 const CHAT = z.strictObject({ chatId: z.uuid() });
 const SESSION = z.strictObject({ sessionId: DSH_SESSION_ID });
 export const AI_HARNESS_CATALOGUE = z.object({
-  capability: z.literal('ai-harness-v1'),
+  capability: z.literal(AI_HARNESS_CAPABILITY),
   hosts: z.array(AI_HARNESS_HOST).max(1000),
   routes: z.array(AI_MODEL_ROUTE).max(1000),
 });
@@ -53,6 +56,17 @@ export const AI_HARNESS_CONFIGURATION_ENDPOINTS = {
 } as const;
 
 export const AI_HARNESS_ENDPOINTS = {
+  readAiRouteInfo: endpoint({
+    method: 'GET',
+    path: '/api/ai/harness/route-info',
+    access: 'member',
+    summary:
+      'Read what the native runtime reports for one model on one supplying route: context window, default output size, reasoning efforts with names and descriptions, input modalities, and the permission presets it offers',
+    params: NOTHING,
+    query: AI_ROUTE_INFO_QUERY,
+    body: NO_BODY,
+    response: AI_ROUTE_INFO,
+  }),
   controlAiHarnessSubscription: endpoint({
     method: 'POST',
     path: '/api/ai/harness/subscriptions',
@@ -181,10 +195,33 @@ export const AI_HARNESS_ENDPOINTS = {
     method: 'POST',
     path: '/api/ai/harness/sessions/read',
     access: 'member',
-    summary: 'Read original ordered native events for authorized session replay',
+    summary:
+      'Read one page of a native AI session’s original events in order (type, seq, time, data) to debug what the AI did: offset is the seq to start at, limit is the page size, next_offset reads the next page (null at the end)',
     params: NOTHING,
     query: NOTHING,
     body: DSH_SESSION_READ,
     response: DSH_SESSION_PAGE,
+  }),
+  readAiChatWorkspace: endpoint({
+    method: 'GET',
+    path: '/api/ai/chats/:chatId/harness/workspace',
+    access: 'member',
+    summary:
+      'Read the files this chat changed in each turn with their per-file comparisons, whether git could track shell edits on its machine, and the files the AI presented as deliverables',
+    params: CHAT,
+    query: NOTHING,
+    body: NO_BODY,
+    response: AI_WORKSPACE,
+  }),
+  readAiChatSessionInfo: endpoint({
+    method: 'GET',
+    path: '/api/ai/chats/:chatId/harness/session-info',
+    access: 'member',
+    summary:
+      'Read whole-conversation turn and step counts with model, tool, first-token and decode wall times, and the outline of every turn with its prompt and response previews',
+    params: CHAT,
+    query: NOTHING,
+    body: NO_BODY,
+    response: AI_SESSION_INFO,
   }),
 } as const;

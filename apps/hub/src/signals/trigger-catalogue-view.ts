@@ -1,22 +1,14 @@
 import {
-  baseNameOf,
   rowSentence,
   searchTriggerCatalogue,
-  triggerCatalogue,
   type DeviceScope,
-  type PluginManifest,
   type ResponseOf,
-  type SignalSourceSpec,
   type TriggerCatalogueQuery,
   type TriggerRow,
 } from '@smarteverything/domain';
-import { deviceHidden } from '../server/person-scope';
-import type { Store } from '../store/store';
-import { installedSignalSources } from './sources/installed';
+import { triggerCatalogueOf, type CatalogueStore } from './trigger-catalogue-of';
 
 type CatalogueView = ResponseOf<'listTriggerCatalogue'>;
-
-type ViewStore = Pick<Store, 'devices' | 'rooms' | 'plugins'>;
 
 function rowView(row: TriggerRow, sentence: string): CatalogueView['rows'][number] {
   return {
@@ -35,25 +27,11 @@ function rowView(row: TriggerRow, sentence: string): CatalogueView['rows'][numbe
 }
 
 export function triggerCatalogueView(
-  store: ViewStore,
+  store: CatalogueStore,
   scope: DeviceScope | null,
   query: TriggerCatalogueQuery,
 ): CatalogueView {
-  const sources: readonly SignalSourceSpec[] = installedSignalSources(store);
-  const manifests: readonly PluginManifest[] = store.plugins.list().map((row) => row.manifest);
-  const catalogue = triggerCatalogue(
-    sources,
-    {
-      devices: store.devices
-        .list()
-        .filter((device) => !deviceHidden(scope, device))
-        .map((device) => ({ ...device, name: baseNameOf(device), roomId: device.room_id })),
-      rooms: store.rooms.list(),
-      people: [],
-      chats: [],
-    },
-    manifests.map((manifest) => ({ id: manifest.id, name: manifest.name })),
-  );
+  const catalogue = triggerCatalogueOf(store, scope);
   const found = searchTriggerCatalogue(catalogue, query);
   return {
     total: found.length,

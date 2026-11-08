@@ -5,6 +5,7 @@ import {
   withCodexProviderEvent,
   type CodexChatProvider,
 } from './codex-provider-events';
+import { providerSequence } from './provider-events';
 import { runningRead } from './running-read';
 import { noticeHandler } from '../store/notice-registry';
 import { background } from '@smarteverything/logging';
@@ -36,7 +37,7 @@ function applyEvent(
       );
     return;
   }
-  const sequence = state.events.reduce((seq, known) => Math.max(seq, known.seq), 0);
+  const sequence = providerSequence(state, event.job_id);
   if (event.seq <= sequence) return;
   client.setQueryData(key, withCodexProviderEvent(state, event));
   if (event.seq > sequence + 1 || event.kind === 'accepted' || event.kind === 'usage')

@@ -93,6 +93,12 @@ describe('literal text', () => {
     expect(literalText(undefined, [1, 2], names)).toBe('1, 2');
   });
 
+  it('writes a generic item list in words instead of raw JSON', () => {
+    const items: FlowType = { t: 'list', of: { t: 'param', name: 'T' } };
+    const text = literalText(items, [{ device: ids.lamp }, { device: ids.lamp }], names);
+    expect(text).toBe('Desk lamp, Desk lamp');
+  });
+
   it('formats durations', () => {
     expect(durationText(5000)).toBe('5 s');
     expect(durationText(120_000)).toBe('2 min');
@@ -114,6 +120,9 @@ describe('literal text', () => {
     expect(portText({ wire: { from: 'run', port: 'id' } }, decl, names, scope)).toBe(
       'This run › Id',
     );
+    expect(
+      portText({ wire: { from: 'run', port: 'id' } }, decl, names, { ...scope, spoken: true }),
+    ).toBe('the id from this run');
   });
 });
 
@@ -185,7 +194,7 @@ describe('summaries and the sentence', () => {
 
   it('writes the automation sentence', () => {
     expect(automationSentence(program, CTX)).toBe(
-      'When Kitchen switch gets a Single press, next level, then set brightness of light in Kitchen to Cycle level › Value.',
+      'When Kitchen switch gets a Single press, next level, then set brightness of light in Kitchen to cycle level.',
     );
   });
 
@@ -210,6 +219,66 @@ describe('summaries and the sentence', () => {
       },
     };
     expect(automationSentence(quiet, CTX)).toBeNull();
+  });
+
+  it('names a single-output step without its output, skips structural steps and gives an If its condition', () => {
+    const decided: AutomationV3 = {
+      ...program,
+      admit: { wire: { from: 'b', port: 'value' } },
+      body: {
+        nodes: [
+          node(7, 'b', 'var.constant', { label: 'Baby mode on', ports: { value: { lit: true } } }),
+          node(8, 'd', 'flow.if', {
+            branches: [
+              {
+                id: '00000000-0000-4000-8000-000000000099',
+                when: { wire: { from: 'b', port: 'value' } },
+                scope: { nodes: [] },
+              },
+            ],
+          }),
+          node(9, 'j', 'flow.join'),
+        ],
+      },
+    };
+    const text = automationSentence(decided, CTX) ?? '';
+    expect(text).toContain(', if baby mode on, if baby mode on.');
+    expect(text).not.toContain('Wait for all');
+  });
+
+  it('tells what runs inside an If, a loop and a Try, in lower case', () => {
+    const nested: AutomationV3 = {
+      ...program,
+      body: {
+        nodes: [
+          node(7, 'b', 'var.constant', { label: 'Is it night', ports: { value: { lit: true } } }),
+          node(8, 'd', 'flow.if', {
+            branches: [
+              {
+                id: '00000000-0000-4000-8000-000000000099',
+                when: { wire: { from: 'b', port: 'value' } },
+                scope: { nodes: [node(9, 'lamp', 'device.set')] },
+              },
+            ],
+            scopes: { else: { nodes: [node(10, 'other', 'device.set')] } },
+          }),
+          node(11, 't', 'flow.try', {
+            scopes: { try: { nodes: [node(12, 'song', 'device.set')] } },
+            catches: [
+              {
+                id: '00000000-0000-4000-8000-000000000098',
+                scope: { nodes: [node(13, 'sorry', 'device.set')] },
+              },
+            ],
+          }),
+        ],
+      },
+    };
+    const text = automationSentence(nested, CTX) ?? '';
+    expect(text).toContain(', if is it night (set ');
+    expect(text).toContain(', otherwise set ');
+    expect(text).toContain(', then try set ');
+    expect(text).toContain(', if that fails set ');
   });
 
   it('joins several triggers with or', () => {

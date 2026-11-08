@@ -5,6 +5,7 @@ import { DayAxis, FillChart } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
 import { WidgetFrame } from '../../../components/widget-board';
+import { faceLayoutOf } from '../../../components/widget-board/all-sizes';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { QuickStats } from '../components/glance-parts';
 import { useTodayContext } from '../data/today';
@@ -27,7 +28,7 @@ function Headline({
 }): ReactNode {
   const latest = spec.combine === 'latest';
   return (
-    <View className="flex-row items-baseline gap-2">
+    <View className="flex-row flex-wrap items-baseline gap-x-2">
       <Figure
         value={shownOf(spec)(latest ? (glance.latest?.value ?? null) : glance.average)}
         unit={spec.unit}
@@ -60,6 +61,59 @@ function Stats({
   );
 }
 
+function Chart({
+  spec,
+  glance,
+  days,
+}: {
+  readonly spec: DailySpec;
+  readonly glance: MetricGlance;
+  readonly days: number;
+}): ReactNode {
+  return (
+    <View className="min-w-0 flex-1 gap-0.5">
+      <FillChart
+        values={glance.values}
+        kind={spec.chart === 'bars' ? 'bars' : 'line'}
+        colour={spec.colour}
+        reference={glance.average}
+        label={`${spec.label}, last ${String(days)} days`}
+      />
+      {days <= 7 ? <DayAxis days={glance.values.map((item) => item.key)} /> : null}
+    </View>
+  );
+}
+
+function Body({
+  spec,
+  glance,
+  days,
+}: {
+  readonly spec: DailySpec;
+  readonly glance: MetricGlance;
+  readonly days: number;
+}): ReactNode {
+  const layout = faceLayoutOf(useWidgetFace().cls);
+  if (layout === 'wide') {
+    return (
+      <View className="flex-1 flex-row gap-6">
+        <View className="w-1/4">
+          <Headline spec={spec} glance={glance} tall />
+        </View>
+        <Chart spec={spec} glance={glance} days={days} />
+      </View>
+    );
+  }
+  const tall = layout === 'tall' || layout === 'report';
+  return (
+    <View className="flex-1 gap-0.5">
+      <Headline spec={spec} glance={glance} tall={tall} />
+      <Chart spec={spec} glance={glance} days={days} />
+      {tall ? <Stats spec={spec} glance={glance} /> : null}
+    </View>
+  );
+}
+
 export function TrendWidget({
   spec,
   days,
@@ -69,8 +123,6 @@ export function TrendWidget({
 }): ReactNode {
   const { figures, day } = useTodayContext();
   const glance = glanceOf(figures, { metric: spec.daily, day, days, better: spec.better });
-  const { cls } = useWidgetFace();
-  const tall = cls === 'l' || cls === 'xl';
   return (
     <WidgetFrame
       title={`${spec.label} · ${String(days)} days`}
@@ -78,18 +130,7 @@ export function TrendWidget({
       accent={spec.colour}
       href={href.healthMetric(spec.key, { day, range: days <= 7 ? 'week' : 'month' })}
     >
-      <View className="flex-1 gap-2">
-        <Headline spec={spec} glance={glance} tall={tall} />
-        <FillChart
-          values={glance.values}
-          kind={spec.chart === 'bars' ? 'bars' : 'line'}
-          colour={spec.colour}
-          reference={glance.average}
-          label={`${spec.label}, last ${String(days)} days`}
-        />
-        {days <= 7 ? <DayAxis days={glance.values.map((item) => item.key)} /> : null}
-        {tall ? <Stats spec={spec} glance={glance} /> : null}
-      </View>
+      <Body spec={spec} glance={glance} days={days} />
     </WidgetFrame>
   );
 }

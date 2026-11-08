@@ -26,6 +26,13 @@ export function lowBattery(facts: Pick<WatchFacts, 'battery' | 'charging'>): boo
   return facts.battery !== null && facts.battery <= LOW_BATTERY && !facts.charging;
 }
 
+export function onWristNow(
+  facts: Pick<WatchFacts, 'worn' | 'charging'>,
+  lastSeen: number | null,
+): boolean {
+  return facts.worn === true && lastSeen === null && !facts.charging;
+}
+
 export function headlineOf(facts: WatchFacts, lastSeen: number | null): Headline {
   if (lastSeen !== null) {
     return { tone: 'neutral', label: `Last seen ${clock(lastSeen)}` };

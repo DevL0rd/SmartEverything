@@ -13,6 +13,7 @@ data class OverlayPhonePrefs(
   val display: OverlayDisplay = OverlayDisplay.Active,
   val whileSharing: WhileSharing = WhileSharing.Small,
   val theme: OverlayTheme = OverlayTheme.Dark,
+  val powerButton: PowerButton = PowerButton.Call,
 ) {
   val data: OverlayPrefsData
     get() = OverlayPrefsData(enabled, position, glow, captions, display, whileSharing)

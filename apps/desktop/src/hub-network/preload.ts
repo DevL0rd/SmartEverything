@@ -20,6 +20,10 @@ import {
   NATIVE_HUB_SOCKET_OPEN,
   NATIVE_HUB_SOCKET_SEND,
   NATIVE_HUB_TRUST,
+  NATIVE_HUB_UPLOAD_ACCEPTING,
+  NATIVE_HUB_UPLOAD_CHUNK,
+  NATIVE_HUB_UPLOAD_ID,
+  NATIVE_HUB_UPLOAD_OPEN,
   type DesktopComputerIdentity,
   type DesktopServer,
   type HubPairingNetwork,
@@ -115,6 +119,20 @@ export const hubNetwork: NativeHubNetwork & HubPairingNetwork = {
     NATIVE_HUB_RESPONSE.parse(
       await ipcRenderer.invoke('desktop:hub-request', NATIVE_HUB_REQUEST.parse(request)),
     ),
+  openUpload: async (request) => {
+    await ipcRenderer.invoke('desktop:hub-upload-open', NATIVE_HUB_UPLOAD_OPEN.parse(request));
+  },
+  sendUpload: async (chunk) =>
+    NATIVE_HUB_UPLOAD_ACCEPTING.parse(
+      await ipcRenderer.invoke('desktop:hub-upload-send', NATIVE_HUB_UPLOAD_CHUNK.parse(chunk)),
+    ),
+  finishUpload: async (id) =>
+    NATIVE_HUB_RESPONSE.parse(
+      await ipcRenderer.invoke('desktop:hub-upload-finish', NATIVE_HUB_UPLOAD_ID.parse(id)),
+    ),
+  abortUpload: async (id) => {
+    await ipcRenderer.invoke('desktop:hub-upload-abort', NATIVE_HUB_UPLOAD_ID.parse(id));
+  },
   startDiscovery: async () =>
     NATIVE_HUB_DISCOVERY.parse(await ipcRenderer.invoke('desktop:hub-discovery-start')),
   stopDiscovery: async () => {

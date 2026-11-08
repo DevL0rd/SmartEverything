@@ -1,10 +1,12 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import type { View } from 'react-native';
 import { useRef, useState } from 'react';
 import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
 import { useControl, type Control } from '../../../store/control';
+import { useEntityStore } from '../../../store/store-context';
 import type { Device } from '../../../store/state';
-import { useDisplayName } from '../model/display-name';
+import { displayNameOf } from '../model/display-name';
 import { ActionSheet } from './action-sheet';
 import { approved, presetArguments } from './run-action';
 
@@ -25,7 +27,7 @@ function useActionSender(
   deviceId: string,
   control: Control,
   presented: PresentedCapability,
-  name: string,
+  nameOf: () => string,
 ): ActionSender {
   const busy = useRef(false);
   const [sending, setSending] = useState(false);
@@ -44,7 +46,7 @@ function useActionSender(
     const startedAt = Date.now();
     const submit = async (): Promise<void> => {
       try {
-        if (await approved(presented, name)) {
+        if (await approved(presented, nameOf())) {
           log.info('action.sending', { ...where, danger: presented.danger.tier });
           const sent = await control.set(value);
           log.info('action.settled', { ...where, sent, latencyMs: Date.now() - startedAt });
@@ -64,10 +66,16 @@ function useActionSender(
   return { send, pending: sending || control.pending };
 }
 
-export function useAction(device: Device, presented: PresentedCapability): ActionHandle {
+export function useAction(
+  device: Device,
+  presented: PresentedCapability,
+  opener: RefObject<View | null>,
+): ActionHandle {
   const control = useControl(device.id, presented.key);
-  const name = useDisplayName(device.id);
-  const sender = useActionSender(device.id, control, presented, name);
+  const store = useEntityStore();
+  const sender = useActionSender(device.id, control, presented, () =>
+    displayNameOf(store.get(), device.id),
+  );
   const [asking, setAsking] = useState(false);
   const preset = presetArguments(presented);
   return {
@@ -84,6 +92,7 @@ export function useAction(device: Device, presented: PresentedCapability): Actio
     pending: sender.pending,
     sheet: asking ? (
       <ActionSheet
+        opener={opener}
         presented={presented}
         onClose={() => {
           setAsking(false);

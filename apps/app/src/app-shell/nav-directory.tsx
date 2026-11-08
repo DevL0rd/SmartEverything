@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import { ListRow } from '../components/list-row';
 import { List } from '../components/section';
 import { ProfileAvatar, ProfileSwitcher } from '../features/profiles';
@@ -11,7 +12,7 @@ import { href } from './hrefs';
 import { SheetPages } from './nav-sheet-pages';
 import { closeNavSheet } from './nav-sheet-state';
 
-function leaveTo(target: Href): void {
+function leaveTo(target: AppHref): void {
   closeNavSheet();
   router.navigate(target);
 }

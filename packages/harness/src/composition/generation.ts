@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { HarnessRuntimeError } from '../host/errors';
 
-const PATCHED_GENERATION = 'dsh-0.2.1-alpha.2+smarteverything-historical-paths-v1';
+const PATCHED_GENERATION = 'dsh-0.2.1-rc.3+smarteverything-historical-paths-v1';
 
 export async function effectiveDshGeneration(): Promise<string> {
   const [session, directory] = await Promise.all([

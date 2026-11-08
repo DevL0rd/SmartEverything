@@ -25,6 +25,7 @@ export async function createHarnessRuntime(
         'permissionPresets',
         'sessionProjections',
         'compaction',
+        'tokenMeter',
         'commands',
         'systemPrompt',
         'llm',

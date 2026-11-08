@@ -17,11 +17,13 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import { Icon } from '../../../components/icon';
 import { DURATION, useMotion } from '../../../design/motion';
-import { selectionTick } from '../../../platform/haptics';
+import { lightTap } from '../../../platform/haptics';
 
-const ARM_PX = 56;
+const ARM_PX = 44;
 
-const GHOST_SLOT = 'w-18 items-start justify-start pl-2 pt-1';
+const ARMED_SCALE = 1.1;
+
+const GHOST_SLOT = 'w-11 items-start justify-start pt-1';
 
 function useArmed(translation: SharedValue<number>, reduced: boolean): SharedValue<number> {
   const armed = useSharedValue(0);
@@ -34,7 +36,7 @@ function useArmed(translation: SharedValue<number>, reduced: boolean): SharedVal
       const target = isArmed ? 1 : 0;
       armed.set(reduced ? target : withTiming(target, { duration: DURATION.fast }));
       if (isArmed) {
-        scheduleOnRN(selectionTick);
+        scheduleOnRN(lightTap);
       }
     },
     [reduced],
@@ -48,20 +50,24 @@ function Ghost({ translation }: { readonly translation: SharedValue<number> }): 
   const grow = useAnimatedStyle(() => ({
     transform: [
       {
-        scale: interpolate(translation.get(), [0, ARM_PX], [0.6, 1], Extrapolation.CLAMP),
+        scale:
+          interpolate(translation.get(), [0, ARM_PX], [0.5, 1], Extrapolation.CLAMP) *
+          (1 + armed.get() * (ARMED_SCALE - 1)),
       },
     ],
     opacity: interpolate(translation.get(), [0, ARM_PX / 2], [0, 1], Extrapolation.CLAMP),
   }));
-  const fill = useAnimatedStyle(() => ({ opacity: armed.get() }));
+  const lit = useAnimatedStyle(() => ({ opacity: armed.get() }));
   return (
     <View className={GHOST_SLOT}>
       <Animated.View
         style={grow}
-        className="size-10 items-center justify-center overflow-hidden rounded-full bg-surface-3"
+        className="size-7 items-center justify-center rounded-full bg-surface-2"
       >
-        <Animated.View style={fill} className="absolute inset-0 bg-primary" />
-        <Icon name="reply" size={20} tone="variant" />
+        <Icon name="reply" size={16} tone="variant" />
+        <Animated.View style={lit} className="absolute inset-0 items-center justify-center">
+          <Icon name="reply" size={16} tone="primary" />
+        </Animated.View>
       </Animated.View>
     </View>
   );

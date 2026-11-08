@@ -13,7 +13,7 @@ const PRESSURE_CODES: Readonly<Record<BrushPressure, 0 | 1 | 2>> = {
 
 type Code = 0 | 1 | 2;
 
-function entries(strip: readonly Code[], code: Code): number {
+export function pressureEntries(strip: readonly Code[], code: Code): number {
   return strip.filter((value, index) => value === code && index > 0 && strip[index - 1] !== code)
     .length;
 }
@@ -107,8 +107,8 @@ export class OpenSession {
   private detail(): Partial<SessionPressure> {
     return {
       lowS: this.strip.filter((code) => code === 0).length,
-      highEvents: entries(this.strip, 2),
-      lowEvents: entries(this.strip, 0),
+      highEvents: pressureEntries(this.strip, 2),
+      lowEvents: pressureEntries(this.strip, 0),
       ...(this.forceCount === 0
         ? {}
         : { forceAvgN: this.forceSum / this.forceCount, forceMaxN: this.forceMax }),

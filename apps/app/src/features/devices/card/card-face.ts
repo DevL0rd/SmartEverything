@@ -7,6 +7,7 @@ export interface CardFaceProps {
   readonly cls: FrameClass;
   readonly frame: WidgetFrameBox;
   readonly size: WidgetSize;
+  readonly options?: unknown;
 }
 
 export type CardFace = (props: CardFaceProps) => ReactNode;

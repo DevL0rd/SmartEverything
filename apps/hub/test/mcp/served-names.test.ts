@@ -5,7 +5,7 @@ import { CAMERA, LAMP } from '../support/fake-provider';
 import { bootServer, linkFakeProvider, verifiedPublicUrl, type Booted } from '../support/booted';
 import { captureLogs } from '../support/logs';
 import { call, temporaryDirectory } from '../support/server';
-import { RPC_ERROR, callTool, rpc, structured } from './client';
+import { RPC_ERROR, callTool, messageOf, rpc, structured } from './client';
 import { TOOL_EXAMPLES } from '../../src/extensions/mcp/tools/examples';
 
 let directory: { path: string; remove: () => Promise<void> };
@@ -58,7 +58,7 @@ describe('the tool names', () => {
       method: 'tools/call',
       params: { name: 'get_home', arguments: {} },
     });
-    expect(RPC_ERROR.parse(await unknown.json()).error.message).toContain('get_home');
+    expect(RPC_ERROR.parse(await messageOf(unknown)).error.message).toContain('get_home');
     const old = await callTool(booted.base, token, 'health_read', {
       view: 'latest',
       withinDays: 7,

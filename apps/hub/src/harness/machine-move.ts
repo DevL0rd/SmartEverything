@@ -35,7 +35,7 @@ export type MoveOutcome =
 export async function moveConversation(service: HarnessService, move: Move): Promise<MoveOutcome> {
   const { session } = move;
   const from = service.directory.registered(session.target).host;
-  service.store.harnessCoordination.markSwitching(session.session_id);
+  service.store.harnessSessions.markSwitching(session.session_id);
   let detached = false;
   let asked: readonly AiHarnessInteraction[] = [];
   try {
@@ -64,10 +64,10 @@ async function settleFailure(
   service.store.aiChats.update(move.chat.id, { engine: move.chat.engine });
   try {
     if (failure.reattach) await attachSource(service, move, failure.asked);
-    else service.store.harnessCoordination.settleSwitching(move.session.session_id, null);
+    else service.store.harnessSessions.settleSwitching(move.session.session_id, null);
   } catch (cause) {
     log.error('machine_move.restore_failed', cause, { chat_id: move.chat.id });
-    service.store.harnessCoordination.settleSwitching(move.session.session_id, {
+    service.store.harnessSessions.settleSwitching(move.session.session_id, {
       code: 'operation_failed',
       message: failure.reason,
       retry_at: null,
@@ -153,7 +153,7 @@ async function attachSource(
 }
 
 function targetWorkspace(service: HarnessService, move: Move): string {
-  if (move.target.kind === 'server') return service.chatFolder(move.chat.id);
+  if (move.target.kind === 'server') return service.chatFolder(move.chat);
   const host = service.directory.get(move.target).host;
   const cwd =
     move.directory?.path ??

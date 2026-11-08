@@ -117,7 +117,7 @@ export function DefaultsList({ device, actor }: SettingsProps): ReactNode {
   const write = (prefs: PrinterPrefsPatch): void => {
     actor.fire(
       { action: 'configure', printer: device.external_id, prefs },
-      'The default could not be saved',
+      'Your print preference could not be saved',
     );
   };
   return (

@@ -18,7 +18,7 @@ import type { z } from 'zod';
 import type { Caller } from '../server/auth';
 import type { RawRoute } from '../server/http-server';
 import type { MediaLinks } from '../server/media-links';
-import { sendBytes } from '../server/recording-files';
+import { serveBytes } from '../server/file-serve';
 import type { ComputerViewer } from './computer-access';
 import { guarded } from './computer-access';
 import type { ComputerDirectory } from './computer-directory';
@@ -105,7 +105,7 @@ export class ComputerDownloads {
           const chunkOf: ChunkOf = (start, length) =>
             this.ask(ticket, { verb: 'file_range', path: plan.path, start, length }, FILE_RANGE);
           await chunkOf(0, 1);
-          await sendBytes(
+          await serveBytes(
             {
               size: plan.size,
               headers: {

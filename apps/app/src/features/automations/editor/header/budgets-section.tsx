@@ -46,7 +46,9 @@ function StormOffNote({ env }: { readonly env: HeaderEnv }): ReactNode {
 }
 
 function defaultText(row: LimitRow): string {
-  return row.fallback === null ? 'No limit by default.' : `Default ${decimal(row.fallback, 0)}.`;
+  return row.fallback === null
+    ? 'Unless you set one, there is no limit.'
+    : `Unless you set one, it is ${decimal(row.fallback, 0)}.`;
 }
 
 function LimitCard({ env, row }: { readonly env: HeaderEnv; readonly row: LimitRow }): ReactNode {
@@ -112,7 +114,7 @@ export function BudgetsSection({ env }: HeaderSectionProps): ReactNode {
       </List>
       <List
         title="Limits"
-        footer="A run that goes past a limit you set stops. Only the command rate has a default."
+        footer="A run that goes past a limit you set stops. Only the command rate is limited when you set nothing."
       >
         {LIMIT_ROWS.map((row) => (
           <LimitCard key={row.name} env={env} row={row} />

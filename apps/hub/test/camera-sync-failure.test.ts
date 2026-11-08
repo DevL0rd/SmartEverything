@@ -102,4 +102,26 @@ describe('syncing camera streams', () => {
     await service.sync(devices);
     expect(service.hasStream(second.id)).toBe(true);
   });
+
+  it('registers every camera at once instead of one after the other', async () => {
+    const devices = await cameras();
+    let inFlight = 0;
+    let peak = 0;
+    const service = serviceOf(
+      go2rtcClient({
+        baseUrl: 'http://127.0.0.1:1984',
+        username: 'hub',
+        password: 'secret',
+        fetch: async () => {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          await new Promise((resolve) => setImmediate(resolve));
+          inFlight -= 1;
+          return new Response(null);
+        },
+      }),
+    );
+    await service.sync(devices);
+    expect(peak).toBe(devices.length);
+  });
 });

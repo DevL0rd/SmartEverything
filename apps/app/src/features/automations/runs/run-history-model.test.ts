@@ -15,7 +15,9 @@ import {
   percentile,
   runDays,
   spreadOf,
+  startedLine,
   tookMs,
+  triggerText,
   type RunFilter,
 } from './run-history-model';
 
@@ -187,6 +189,20 @@ describe('nodeOutcomes', () => {
       ok: 4,
       failed: 0,
     });
+  });
+});
+
+describe('who started a run', () => {
+  const by = (startedBy: string | null): AutomationRunSummary => ({
+    ...run('2026-10-19T10:00:00Z', 'succeeded'),
+    started_by: startedBy,
+  });
+
+  it('says the run fired instead of showing the raw starter', () => {
+    expect(startedLine(by('trigger'), '15:38')).toBe('Fired 15:38');
+    expect(startedLine(by(null), '15:38')).toBe('Fired 15:38');
+    expect(startedLine(by('manual'), '15:38')).toBe('Started by hand at 15:38');
+    expect(triggerText(by('trigger'))).toBe('Started by its trigger');
   });
 });
 

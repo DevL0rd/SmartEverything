@@ -1,5 +1,6 @@
 import {
   ERROR_CLASS,
+  ERROR_EXIT_PORT,
   JSON_VALUE,
   compileWaitEventMatcher,
   waitUntilTimeError,
@@ -38,7 +39,7 @@ export type LowerProblemCode = LowerProblem['code'];
 
 export type LowerKind = Pick<
   NodeKind,
-  'id' | 'class' | 'inputs' | 'exits' | 'effect' | 'stateful' | 'reads'
+  'id' | 'class' | 'inputs' | 'exits' | 'effect' | 'stateful' | 'reads' | 'capture'
 >;
 
 export interface Frame {
@@ -126,6 +127,20 @@ export function readerOf(low: Lowering, node: FlowNode, kind: LowerKind): Reader
   return { node, kind, low, at, fixed, port, maybe: (name) => node.ports?.[name], rest, problem };
 }
 
+export function policyOf(node: FlowNode): FlowNode['policy'] {
+  const { policy } = node;
+  if (policy === undefined || node.scopes?.[ERROR_EXIT_PORT] === undefined) return policy;
+  return { ...policy, onError: 'route' };
+}
+
+function withDeclaredTimeout(
+  policy: FlowNode['policy'],
+  timeout: number | undefined,
+): FlowNode['policy'] {
+  if (timeout === undefined || policy?.timeout !== undefined) return policy;
+  return { ...policy, timeout };
+}
+
 const FLAG = z.boolean();
 const OPTIONAL_TEXT = TEXT.optional();
 const OPTIONAL_JSON = JSON_VALUE.optional();
@@ -145,7 +160,7 @@ export function effectFields(read: Reader): {
   }
   return {
     at: read.at,
-    policy: read.node.policy,
+    policy: withDeclaredTimeout(policyOf(read.node), effect?.timeout),
     kind: read.node.kind,
     params: read.rest(),
     retry: effect?.retry ?? 'idempotent',
@@ -153,7 +168,10 @@ export function effectFields(read: Reader): {
   };
 }
 
-const lowerEffect: NodeLowering = (read) => ({ op: 'effect', ...effectFields(read) });
+const lowerEffect: NodeLowering = (read) => {
+  const scopes = exitScopes(read);
+  return { op: 'effect', ...effectFields(read), ...(scopes === undefined ? {} : { scopes }) };
+};
 
 const lowerCompute: NodeLowering = (read) => ({
   op: 'compute',
@@ -165,16 +183,26 @@ const lowerCompute: NodeLowering = (read) => ({
 const lowerRead: NodeLowering = (read) => ({
   op: 'read',
   at: read.at,
-  policy: read.node.policy,
+  policy: policyOf(read.node),
   kind: read.node.kind,
   ports: read.rest(),
   reads: [...(read.kind.reads?.(read.rest()) ?? [])],
+  ...(read.kind.capture === undefined ? {} : { capture: read.kind.capture }),
 });
 
-const ERROR_SCOPE = 'onError';
+export function routeOnError(node: FlowNode, op: PlanOp, low: Lowering): PlanOp {
+  const handler = node.scopes?.[ERROR_EXIT_PORT];
+  if (handler === undefined) return op;
+  return {
+    op: 'try',
+    at: { id: node.id, key: node.key },
+    body: op,
+    catches: [{ id: node.id, then: low.scope(handler, low.frame) }],
+  };
+}
 
 function exitScopes(read: Reader): Record<string, PlanOp> | undefined {
-  const named = Object.entries(read.node.scopes ?? {}).filter(([name]) => name !== ERROR_SCOPE);
+  const named = Object.entries(read.node.scopes ?? {}).filter(([name]) => name !== ERROR_EXIT_PORT);
   if (named.length === 0) return undefined;
   return Object.fromEntries(
     named.map(([name, scope]) => [name, read.low.scope(scope, read.low.frame)]),
@@ -184,7 +212,7 @@ function exitScopes(read: Reader): Record<string, PlanOp> | undefined {
 const lowerState: NodeLowering = (read) => ({
   op: 'state_op',
   at: read.at,
-  policy: read.node.policy,
+  policy: policyOf(read.node),
   kind: read.node.kind,
   ports: read.rest(),
   exits: [...read.kind.exits],
@@ -197,7 +225,7 @@ function setVar(mode: 'set' | 'change'): NodeLowering {
   return (read) => ({
     op: 'set_var',
     at: read.at,
-    policy: read.node.policy,
+    policy: policyOf(read.node),
     mode,
     source: read.fixed('source', VAR_SOURCE, 'run'),
     name: read.fixed('name', OPTIONAL_TEXT, undefined),
@@ -221,7 +249,7 @@ function setVar(mode: 'set' | 'change'): NodeLowering {
 const lowerCall: NodeLowering = (read) => ({
   op: 'call',
   at: read.at,
-  policy: read.node.policy,
+  policy: policyOf(read.node),
   fn: read.fixed('fn', TEXT, ''),
   pin: pinOf(read.node),
   inputs: read.rest(['fn', 'pin']),
@@ -231,7 +259,7 @@ const lowerCall: NodeLowering = (read) => ({
 const lowerRun: NodeLowering = (read) => ({
   op: 'run',
   at: read.at,
-  policy: read.node.policy,
+  policy: policyOf(read.node),
   automation: read.fixed('automation', TEXT, ''),
   wait: read.fixed('wait', FLAG, false),
   allowSelf: read.fixed('allowSelf', FLAG, false),
@@ -245,7 +273,7 @@ function waitOp(read: Reader, wait: WaitSpec): PlanOp {
   return {
     op: 'wait',
     at: read.at,
-    policy: read.node.policy,
+    policy: policyOf(read.node),
     durable: read.low.frame.durable,
     wait,
     scopes: exitScopes(read),

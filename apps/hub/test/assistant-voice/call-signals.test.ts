@@ -1,4 +1,5 @@
-import { DEFAULT_ENGINE, NO_PRICES, type SignalInput } from '@smarteverything/domain';
+import { NO_PRICES, type SignalInput } from '@smarteverything/domain';
+import { testVoiceMemory } from '../support/voice-memory';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
 import { CallDesk } from '../../src/assistant-voice/call-desk';
@@ -7,6 +8,7 @@ import { emitReachSignals } from '../../src/server/reach-signals';
 import { SignalBus } from '../../src/signals/bus';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 const START = Date.parse('2026-10-18T10:00:00.000Z');
 
@@ -42,6 +44,7 @@ function endpointOf(id: string): {
 function deskOf(): CallDesk {
   const desk = new CallDesk({
     store: opened.store,
+    memory: testVoiceMemory(opened.store),
     provider,
     responder: {
       ready: (): null => null,
@@ -91,7 +94,7 @@ beforeEach(async () => {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   }).id;
 });
 

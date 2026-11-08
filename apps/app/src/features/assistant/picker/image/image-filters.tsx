@@ -3,7 +3,7 @@ import { ScrollView, View } from 'react-native';
 import { Button } from '../../../../components/button';
 import { Select, type SelectOption } from '../../../../components/select';
 import { Group } from '../library/library-filters';
-import { LibraryChip } from '../library/library-chip';
+import { FlatChoice } from '../../../../components/flat-choice';
 import { NO_IMAGE_FILTERS, type ImageFilters } from './image-rows';
 
 export interface ImageFiltersProps {
@@ -28,15 +28,17 @@ export function ImageFiltersColumn({ filters, makers, onChange }: ImageFiltersPr
         />
       </Group>
       <Group title="Capabilities">
-        <View className="flex-row flex-wrap gap-2">
-          <LibraryChip
+        <View className="flex-row flex-wrap">
+          <FlatChoice
+            role="checkbox"
             label="Reference images"
             active={filters.references}
             onPress={(): void => {
               onChange({ ...filters, references: !filters.references });
             }}
           />
-          <LibraryChip
+          <FlatChoice
+            role="checkbox"
             label="Live preview"
             active={filters.preview}
             onPress={(): void => {

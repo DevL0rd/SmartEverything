@@ -42,7 +42,10 @@ function withPrompt(state: AiChatProvider, event: ProviderEvent): AiChatProvider
   };
 }
 
-export function providerSequence(state: AiChatProvider, jobId: string): number {
+export function providerSequence(
+  state: { readonly events: readonly Pick<ProviderEvent, 'job_id' | 'seq'>[] },
+  jobId: string,
+): number {
   return state.events.reduce(
     (seq, event) => (event.job_id === jobId ? Math.max(seq, event.seq) : seq),
     0,

@@ -1,7 +1,8 @@
+import { randomUUID } from 'expo-crypto';
 import {
   AUTOMATION_FUNCTION_ENDPOINTS,
-  FUNCTION_V3,
-  type FunctionV3,
+  FUNCTION_V4,
+  type FunctionV4,
 } from '@smarteverything/domain';
 import { DEFAULT_EXIT } from '@smarteverything/flow/extract/control';
 import type { FunctionCreateBody } from '../../data/api';
@@ -29,25 +30,24 @@ export const KIND_OPTIONS: readonly KindOption[] = [
   },
 ];
 
-export function emptyFunction(kind: NewNodeKind, newId: () => string): FunctionV3 {
-  return FUNCTION_V3.parse({
-    version: 3,
+export function emptyFunction(kind: NewNodeKind, newId: () => string): FunctionV4 {
+  return FUNCTION_V4.parse({
+    version: 4,
     kind: 'function',
     flavour: kind === 'value' ? 'pure' : 'action',
     inputs: [],
     outputs: [],
     exits: [DEFAULT_EXIT],
     variables: [],
-    body: {
-      nodes: [
-        {
-          id: newId(),
-          key: 'finish',
-          kind: 'flow.return',
-          ports: { exit: { lit: DEFAULT_EXIT } },
-        },
-      ],
-    },
+    nodes: [
+      { id: newId(), key: 'start', kind: 'flow.start', to: { next: 'finish' } },
+      {
+        id: newId(),
+        key: 'finish',
+        kind: 'flow.return',
+        ports: { exit: { lit: DEFAULT_EXIT } },
+      },
+    ],
   });
 }
 
@@ -60,7 +60,7 @@ export function nameIssue(name: string): string | null {
 export function newNodeRequest(
   name: string,
   kind: NewNodeKind,
-  newId: () => string = () => globalThis.crypto.randomUUID(),
+  newId: () => string = randomUUID,
 ): FunctionCreateBody {
   return { name: name.trim(), definition: emptyFunction(kind, newId) };
 }

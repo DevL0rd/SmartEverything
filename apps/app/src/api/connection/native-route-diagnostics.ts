@@ -41,7 +41,7 @@ interface RequestFailure {
 
 export function noteNativeRequestFailure(failure: RequestFailure): void {
   const path = new URL(failure.url).pathname;
-  if (path === E.reportClientFailures.path) return;
+  if (path === E.reportClientPerf.path || path === E.ingestRuntimeLogs.path) return;
   const route = path.split('/').slice(0, 3).join('/');
   log.warn('route.request_failed', {
     reason: `Native ${failure.method} ${route} failed after ${String(failure.elapsedMs)}ms; start=${routeContext(failure.started)} current=${routeContext(failure.current)}; ${rawErrorText(failure.error)}`,

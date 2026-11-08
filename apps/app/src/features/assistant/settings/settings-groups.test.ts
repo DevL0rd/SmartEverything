@@ -6,6 +6,7 @@ vi.mock('./call-voice-setting-row', () => ({
   SpokenLineVoiceSettingRow: (): null => null,
 }));
 vi.mock('./gemini-key', () => ({ GeminiKeySection: (): null => null }));
+vi.mock('./memory-model-row', () => ({ MemoryModelRow: (): null => null }));
 vi.mock('./clear-history-row', () => ({ ClearHistoryRow: (): null => null }));
 vi.mock('./quick-ask-shortcut-row', () => ({ QuickAskShortcutRow: (): null => null }));
 vi.mock('../call/settings-sheet/live-strip', () => ({ CallAudioPageStrip: (): null => null }));
@@ -47,7 +48,6 @@ const BEFORE_REGROUPING = [
   'assistant.reply-cost',
   'assistant.reply-suggestions',
   'assistant.compact',
-  'assistant.reuse-chat',
   'assistant.instructions',
   'assistant.voice.call-voice',
   'assistant.voice.idle',
@@ -78,6 +78,7 @@ describe('the Assistant settings root page', () => {
       'Assistant',
       'Models',
       'OpenRouter',
+      'DeepSeek',
       'Conversation',
       'Voice AI model',
       'Voice and calls',
@@ -105,7 +106,7 @@ describe('the Assistant settings root page', () => {
       hasWatch: false,
       needsAttention: false,
     };
-    const env = { owner: false, availability } as const;
+    const env = { owner: false, availability, developer: false } as const;
     expect(row?.visible?.({ ...env, platform: 'android' })).toBe(true);
     expect(row?.visible?.({ ...env, platform: 'web' })).toBe(false);
     expect(row?.visible?.({ ...env, platform: 'desktop' })).toBe(false);
@@ -151,7 +152,10 @@ describe('the Assistant settings root page', () => {
     const conversation = rootRows.filter((setting) => setting.section === 'Conversation');
     const ids = conversation.map((setting) => setting.id);
     const at = ids.indexOf('assistant.quick-ask-shortcut');
-    expect(ids.slice(at + 1)).toEqual(OVERLAY_SETTINGS.map((setting) => setting.id));
+    expect(ids.slice(at + 1)).toEqual([
+      ...OVERLAY_SETTINGS.map((setting) => setting.id),
+      'assistant.page.assistant/helpers',
+    ]);
     const last = conversation[at];
     const availability = {
       hasDevices: false,
@@ -165,10 +169,38 @@ describe('the Assistant settings root page', () => {
       hasWatch: false,
       needsAttention: false,
     };
-    const env = { owner: false, availability } as const;
+    const env = { owner: false, availability, developer: false } as const;
     expect(last?.visible?.({ ...env, platform: 'desktop' })).toBe(true);
     expect(last?.visible?.({ ...env, platform: 'web' })).toBe(true);
     expect(last?.visible?.({ ...env, platform: 'android' })).toBe(false);
+  });
+
+  it('puts the memory manager model in Privacy right after the memory page, owners only', () => {
+    const privacy = rootRows.filter((setting) => setting.section === 'Privacy');
+    const ids = privacy.map((setting) => setting.id);
+    expect(ids.indexOf('assistant.memory-model')).toBe(
+      ids.indexOf('assistant.page.assistant/memory') + 1,
+    );
+    const row = privacy.find((setting) => setting.id === 'assistant.memory-model');
+    expect(row?.keywords).toEqual(['memory', 'manager', 'model', 'remember', 'learn']);
+    const availability = {
+      hasDevices: false,
+      hasClimate: false,
+      hasCameras: false,
+      hasHealth: false,
+      hasScenes: false,
+      hasEnergy: false,
+      hasSecurity: false,
+      hasIr: false,
+      hasWatch: false,
+      needsAttention: false,
+    };
+    expect(row?.visible?.({ owner: true, platform: 'web', availability, developer: false })).toBe(
+      true,
+    );
+    expect(row?.visible?.({ owner: false, platform: 'web', availability, developer: false })).toBe(
+      false,
+    );
   });
 
   it('keeps Clear chat history on the Chat privacy page, open to members', () => {

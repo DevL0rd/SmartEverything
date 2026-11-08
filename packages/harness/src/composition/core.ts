@@ -4,6 +4,7 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop';
 import SessionStore from '@deepseek-ai/dsh-session';
 import LlmRuntime from '@deepseek-ai/dsh-llm';
 import SessionProjection from '@deepseek-ai/dsh-session-projection';
+import SessionQuery from '@deepseek-ai/dsh-session-query-sqlite';
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
 import ToolRuntime from '@deepseek-ai/dsh-tools';
 import ApprovalService from '@deepseek-ai/dsh-user-approval';
@@ -14,11 +15,14 @@ import { ConfiguredCompaction } from './compaction-policy';
 import TokenMeter from '@deepseek-ai/dsh-token-meter';
 import { mountSkillCatalogue } from './product-skills';
 import Commands from '@deepseek-ai/dsh-commands';
+import * as CommandCompact from '@deepseek-ai/dsh-command-compact';
 import * as HumanCommands from './human-commands';
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner';
 import * as CheckpointPolicy from '@deepseek-ai/dsh-session-checkpoint-policy';
 import { mountImageOffload } from './image-offload';
 import * as LlmRetry from '@deepseek-ai/dsh-llm-retry';
+import { mountPlugins } from '../plugins';
+import { ApiKeyCredentials, type ApiKeyVault } from '../plugins/providers';
 import { MachineSessionPersistence } from '../persistence/service';
 import type { NativeSessionPersistencePort } from '../persistence/port';
 
@@ -26,17 +30,19 @@ interface CoreOptions {
   readonly cwd: string;
   readonly server: boolean;
   readonly catalogDescriptionMaxLength: number;
+  readonly apiKeys: ApiKeyVault;
 }
 
 export async function mountCore(
   ctx: Context,
   port: NativeSessionPersistencePort,
-  { cwd, server, catalogDescriptionMaxLength }: CoreOptions,
+  { cwd, server, catalogDescriptionMaxLength, apiKeys }: CoreOptions,
 ): Promise<void> {
   await ctx.plugin(LlmRuntime);
   await ctx.plugin(SessionStore);
   await ctx.plugin(AgentRegistry);
   await ctx.plugin(SessionProjection);
+  await ctx.plugin(SessionQuery, { path: ':memory:', openAt: 'never' });
   await ctx.plugin(SystemPrompt, { personaPrefix: '' });
   await ctx.plugin(ToolRuntime);
   await ctx.plugin(MachineSessionPersistence, port);
@@ -60,8 +66,11 @@ export async function mountCore(
   await ctx.plugin(ToolResultPruner);
   await mountImageOffload(ctx);
   await ctx.plugin(ConfiguredCompaction);
+  await ctx.plugin(CommandCompact);
   await ctx.plugin(HumanCommands);
   await ctx.plugin(CheckpointPolicy);
   await ctx.plugin(AgentLoop, { agents: [] });
+  await ctx.plugin(ApiKeyCredentials, apiKeys);
+  await mountPlugins(ctx, { cwd, server });
   if (server) await mountSkillCatalogue(ctx, catalogDescriptionMaxLength);
 }

@@ -1,3 +1,4 @@
+import type { IncomingHttpHeaders } from 'node:http';
 import type { DeviceRow } from '@smarteverything/domain';
 import { BottleActions } from '../../src/local/bottle/actions';
 import { BOTTLE_CAPABILITIES } from '../../src/local/bottle/capabilities';
@@ -89,11 +90,13 @@ export function raw(parts: { params?: unknown; query?: unknown; body?: unknown }
   query: unknown;
   body: unknown;
   remote: string;
+  headers: IncomingHttpHeaders;
 } {
   return {
     params: parts.params ?? {},
     query: parts.query ?? {},
     body: parts.body,
     remote: '127.0.0.1',
+    headers: {},
   };
 }

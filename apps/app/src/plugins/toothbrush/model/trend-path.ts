@@ -1,10 +1,10 @@
 import type { TrendPoint } from './stats-model';
 
-export const TREND_HEIGHT = 120;
 const PAD = 6;
 
 export interface TrendFrame {
   readonly width: number;
+  readonly height: number;
   readonly min: number;
   readonly max: number;
 }
@@ -15,7 +15,8 @@ function xOf(index: number, count: number, frame: TrendFrame): number {
 
 export function trendY(seconds: number, frame: TrendFrame): number {
   const span = Math.max(1, frame.max - frame.min);
-  return TREND_HEIGHT - PAD - ((seconds - frame.min) / span) * (TREND_HEIGHT - 2 * PAD);
+  const { height } = frame;
+  return height - PAD - ((seconds - frame.min) / span) * (height - 2 * PAD);
 }
 
 export function trendPath(

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { BodyComposition } from '@smarteverything/domain';
 import { Text } from '../../../components/text';
+import { cn } from '../../../design/cn';
 import {
   BandLabel,
   COMPOSITION_METRICS,
@@ -28,28 +29,39 @@ function metricOf(key: ChipKey): CompositionMetric | undefined {
 function Chip({
   composition,
   metric,
+  compact,
 }: {
   readonly composition: BodyComposition;
   readonly metric: CompositionMetric;
+  readonly compact: boolean;
 }): ReactNode {
   const value = metricValue(composition, metric);
   if (value === null) {
     return null;
   }
   const band = metric.band === null ? undefined : composition.bands[metric.band];
+  const valueText =
+    metric.unit === ''
+      ? formatMetric(value, metric)
+      : `${formatMetric(value, metric)} ${metric.unit}`;
   return (
-    <View className="min-w-0 flex-1 gap-0.5 rounded-md bg-surface-2 px-3 py-2">
-      <Text variant="caption" tone="variant" numberOfLines={1}>
+    <View
+      className={cn(
+        'min-w-0 flex-1 rounded-md bg-surface-2 px-2',
+        compact ? 'py-0.5' : 'gap-0.5 py-1.5',
+      )}
+    >
+      <Text variant="caption" tone="variant">
         {metric.label}
       </Text>
-      <Text variant="callout" className="tabular" numberOfLines={1}>
-        {metric.unit === ''
-          ? formatMetric(value, metric)
-          : `${formatMetric(value, metric)} ${metric.unit}`}
-      </Text>
-      {band === undefined || metric.band === null ? null : (
-        <BandLabel metric={metric.band} band={band} />
-      )}
+      <View className={compact ? 'flex-row flex-wrap items-baseline gap-x-1' : 'gap-0.5'}>
+        <Text variant={compact ? 'caption' : 'callout'} className="tabular">
+          {valueText}
+        </Text>
+        {band === undefined || metric.band === null ? null : (
+          <BandLabel metric={metric.band} band={band} />
+        )}
+      </View>
     </View>
   );
 }
@@ -58,10 +70,12 @@ export function CompositionChips({
   composition,
   keys,
   columns,
+  compact = false,
 }: {
   readonly composition: BodyComposition;
   readonly keys: readonly ChipKey[];
   readonly columns: number;
+  readonly compact?: boolean;
 }): ReactNode {
   const metrics = keys.flatMap((key) => {
     const metric = metricOf(key);
@@ -71,11 +85,11 @@ export function CompositionChips({
     metrics.slice(index * columns, index * columns + columns),
   );
   return (
-    <View className="gap-2">
+    <View className={compact ? 'gap-1' : 'gap-2'}>
       {rows.map((row) => (
         <View key={row.map((metric) => metric.key).join()} className="flex-row gap-2">
           {row.map((metric) => (
-            <Chip key={metric.key} composition={composition} metric={metric} />
+            <Chip key={metric.key} composition={composition} metric={metric} compact={compact} />
           ))}
         </View>
       ))}

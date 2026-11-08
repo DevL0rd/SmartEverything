@@ -39,7 +39,9 @@ function FoodList({
           key={food.id}
           icon={food.kind === 'drink' ? 'cupSoda' : 'apple'}
           title={food.name}
+          wrapTitle
           subtitle={joinParts([food.brand, perText(food)])}
+          wrapSubtitle
           onPress={() => {
             onPick(food);
           }}
@@ -135,7 +137,9 @@ function ProductList({
           key={product.barcode ?? product.name}
           icon={product.kind === 'drink' ? 'cupSoda' : 'apple'}
           title={product.name}
+          wrapTitle
           subtitle={joinParts([product.brand, perText(product)])}
+          wrapSubtitle
           onPress={() => {
             onPick(product);
           }}

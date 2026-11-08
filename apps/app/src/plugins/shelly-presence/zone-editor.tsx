@@ -1,5 +1,5 @@
-import type { ShellyDevice, ShellyZone } from '@smarteverything/shelly';
-import type { ReactNode } from 'react';
+import type { ShellyArea, ShellyDevice, ShellyZone } from '@smarteverything/shelly';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../components/button';
 import { TextField } from '../../components/text-field';
@@ -14,6 +14,16 @@ import { useCanOperate } from './use-can-operate';
 import { LeaseCaption } from './lease-caption';
 import { useLivePresence } from './use-live-presence';
 import { background } from '@smarteverything/logging';
+import { Segmented } from '../../components/segmented';
+import { MapZoneEditor, useSensorMapView } from './map-zone-editor';
+import type { SensorMapView } from './presence-map';
+
+type PaintSurface = 'map' | 'grid';
+
+const SURFACES = [
+  { value: 'map', label: 'Home map', icon: 'plan' },
+  { value: 'grid', label: 'Sensor grid', icon: 'grid' },
+] as const;
 
 function DelayFields({ draft }: { readonly draft: ZoneDraft }): ReactNode {
   return (
@@ -24,7 +34,7 @@ function DelayFields({ draft }: { readonly draft: ZoneDraft }): ReactNode {
           kind="number"
           value={draft.present}
           onChange={draft.setPresent}
-          helper="Blank uses the sensor default"
+          helper="Blank lets the sensor decide"
         />
       </View>
       <View className="min-w-32 flex-1">
@@ -33,7 +43,7 @@ function DelayFields({ draft }: { readonly draft: ZoneDraft }): ReactNode {
           kind="number"
           value={draft.absent}
           onChange={draft.setAbsent}
-          helper="Blank uses the sensor default"
+          helper="Blank lets the sensor decide"
         />
       </View>
     </View>
@@ -85,6 +95,83 @@ function ZoneActions({
   );
 }
 
+interface AreaSurfaceProps {
+  readonly sensor: ShellyDevice;
+  readonly tracking: boolean;
+  readonly zone: ShellyZone | null;
+  readonly draft: ZoneDraft;
+}
+
+function areaContext(sensor: ShellyDevice, zone: ShellyZone | null): ShellyArea {
+  return sensor.zones
+    .filter((entry) => entry.key !== zone?.key)
+    .flatMap((entry) => entry.config.area ?? []);
+}
+
+function allowedArea(sensor: ShellyDevice, zone: ShellyZone | null): ShellyArea | undefined {
+  return zone?.main === true
+    ? undefined
+    : (sensor.zones.find((entry) => entry.main)?.config.area ?? []);
+}
+
+function GridSurface({ sensor, tracking, zone, draft }: AreaSurfaceProps): ReactNode {
+  const allowed = allowedArea(sensor, zone);
+  return (
+    <>
+      <RoomMap sensor={sensor} area={draft.area} live={tracking} />
+      <AreaEditor
+        tracks={tracking ? sensor.tracks : []}
+        value={draft.area}
+        change={draft.setArea}
+        validity={draft.setValidArea}
+        context={areaContext(sensor, zone)}
+        {...(allowed === undefined ? {} : { allowed })}
+        origin={sensorOrigin(sensor.config?.sensor?.position)}
+      />
+    </>
+  );
+}
+
+function MapSurface({
+  sensor,
+  zone,
+  draft,
+  view,
+}: AreaSurfaceProps & { readonly view: SensorMapView }): ReactNode {
+  const allowed = allowedArea(sensor, zone);
+  return (
+    <MapZoneEditor
+      view={view}
+      sensor={sensor}
+      area={draft.area}
+      change={draft.setArea}
+      allowed={allowed}
+      context={areaContext(sensor, zone)}
+      roomArea={zone?.main === true}
+    />
+  );
+}
+
+function AreaSurface(props: AreaSurfaceProps): ReactNode {
+  const view = useSensorMapView(props.sensor);
+  const [surface, setSurface] = useState<PaintSurface>('map');
+  if (view === null) return <GridSurface {...props} />;
+  return (
+    <>
+      <Segmented
+        label="Paint the zone on"
+        options={SURFACES}
+        value={surface}
+        onChange={(next) => {
+          if (next === 'map') props.draft.setValidArea(true);
+          setSurface(next);
+        }}
+      />
+      {surface === 'map' ? <MapSurface {...props} view={view} /> : <GridSurface {...props} />}
+    </>
+  );
+}
+
 export function ZoneEditor({
   sensor: base,
   zone,
@@ -98,7 +185,7 @@ export function ZoneEditor({
   const draft = useZoneDraft(base, zone);
   return (
     <View ref={frame} onLayout={onLayout} collapsable={false} className="gap-3">
-      <RoomMap sensor={sensor} area={draft.area} live={lease.tracking} />
+      <AreaSurface sensor={sensor} tracking={lease.tracking} zone={zone} draft={draft} />
       <LeaseCaption sensor={sensor} lease={lease} />
       <TextField
         label="Zone name"
@@ -109,19 +196,6 @@ export function ZoneEditor({
       <SwitchRow title="Detection enabled" value={draft.enable} onChange={draft.setEnable} />
       <ZoneColor value={draft.color} change={draft.setColor} />
       <DelayFields draft={draft} />
-      <AreaEditor
-        tracks={lease.tracking ? sensor.tracks : []}
-        value={draft.area}
-        change={draft.setArea}
-        validity={draft.setValidArea}
-        context={sensor.zones
-          .filter((entry) => entry.key !== zone?.key)
-          .flatMap((entry) => entry.config.area ?? [])}
-        {...(zone?.main === true
-          ? {}
-          : { allowed: sensor.zones.find((entry) => entry.main)?.config.area ?? [] })}
-        origin={sensorOrigin(sensor.config?.sensor?.position)}
-      />
       <ZoneActions sensor={sensor} zone={zone} draft={draft} close={close} />
     </View>
   );

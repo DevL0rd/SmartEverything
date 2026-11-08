@@ -11,7 +11,7 @@ export type ListHeaderKind = 'screen' | 'pane' | 'slide-over';
 
 function ScreenHeader(): ReactNode {
   return (
-    <View className="flex-row items-center gap-1 pb-1 pl-gutter pr-2 pt-safe-offset-2">
+    <View className="flex-row items-center gap-1 pl-gutter pr-2 pt-safe-offset-2">
       <Text variant="large-title" accessibilityRole="header" className="min-w-0 flex-1">
         Chats
       </Text>

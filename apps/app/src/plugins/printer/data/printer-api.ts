@@ -13,6 +13,22 @@ import {
   type PrinterReadInput,
 } from '@smarteverything/domain';
 import { parsePluginReply, readPluginTool } from '../../use-plugin-tool';
+import { printerCallErrorOf } from './printer-call-error';
+
+export { PrinterCallError } from './printer-call-error';
+
+async function callPrinter(
+  tool: string,
+  args: Readonly<Record<string, unknown>>,
+): Promise<Readonly<Record<string, unknown>>> {
+  try {
+    return await readPluginTool(PRINTER_PLUGIN, tool, args);
+  } catch (error) {
+    const failure = printerCallErrorOf(error);
+    if (failure !== null) throw failure;
+    throw error;
+  }
+}
 
 export const PRINTER_PLUGIN = 'printer';
 
@@ -54,44 +70,21 @@ const READERS: Readers = {
 
 export type ViewQuery = Omit<PrinterReadInput, 'view' | 'printer'>;
 
-export class PrinterCallError extends Error {
-  override readonly name = 'PrinterCallError';
-
-  constructor(
-    message: string,
-    readonly reason: string | null,
-  ) {
-    super(message);
-  }
-}
-
-function failureOf(result: Readonly<Record<string, unknown>>): PrinterCallError | null {
-  const error = result['error'];
-  if (typeof error !== 'string') return null;
-  const reason = result['reason'];
-  return new PrinterCallError(error, typeof reason === 'string' ? reason : null);
-}
-
 export async function readPrinterView<K extends ViewName>(
   printer: string | null,
   view: K,
   query: ViewQuery = {},
 ): Promise<ViewOf<K>> {
-  const result = await readPluginTool(PRINTER_PLUGIN, 'printer', {
+  const result = await callPrinter('printer', {
     view,
     ...(printer === null ? {} : { printer }),
     ...query,
   });
-  const failure = failureOf(result);
-  if (failure !== null) throw failure;
   return READERS[view](result);
 }
 
 export async function actOnPrinter(
   input: PrinterActionInput,
 ): Promise<Readonly<Record<string, unknown>>> {
-  const result = await readPluginTool(PRINTER_PLUGIN, 'printer_action', input);
-  const failure = failureOf(result);
-  if (failure !== null) throw failure;
-  return result;
+  return callPrinter('printer_action', input);
 }

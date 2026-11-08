@@ -1,6 +1,7 @@
+import type { ReactElement } from 'react';
 import { Button, Stage } from 'smarteverything-kit';
 
-export const Variants = () => (
+export const Variants = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <Button label="Pair device" icon="plus" />
@@ -12,7 +13,7 @@ export const Variants = () => (
   </Stage>
 );
 
-export const States = () => (
+export const States = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <Button label="Saving changes" loading />
@@ -22,7 +23,7 @@ export const States = () => (
   </Stage>
 );
 
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <Button label="Pair device" icon="plus" />

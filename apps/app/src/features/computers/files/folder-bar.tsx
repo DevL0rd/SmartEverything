@@ -4,6 +4,7 @@ import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
+import { cn } from '../../../design/cn';
 import type { Crumb } from './path-model';
 
 function CrumbButton({
@@ -38,13 +39,15 @@ function CrumbButton({
 export function CrumbTrail({
   crumbs,
   onGo,
+  compact = false,
 }: {
   readonly crumbs: readonly Crumb[];
   readonly onGo: (path: string) => void;
+  readonly compact?: boolean;
 }): ReactNode {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View className="flex-row items-center gap-0.5 px-2">
+      <View className={cn('flex-row items-center gap-0.5', !compact && 'px-2')}>
         {crumbs.map((crumb, index) => (
           <View key={crumb.path} className="flex-row items-center">
             {index === 0 ? null : <Icon name="chevronRight" size={16} tone="faint" />}
@@ -63,6 +66,7 @@ export function FolderBar({
   showHidden,
   onHidden,
   onGo,
+  compact,
 }: {
   readonly crumbs: readonly Crumb[];
   readonly machine: string;
@@ -70,15 +74,23 @@ export function FolderBar({
   readonly showHidden: boolean;
   readonly onHidden: (value: boolean) => void;
   readonly onGo: (path: string) => void;
+  readonly compact: boolean;
 }): ReactNode {
   return (
     <View className="gap-1 pb-2">
-      <CrumbTrail crumbs={crumbs} onGo={onGo} />
-      <View className="flex-row items-center justify-between gap-3 px-4">
-        <Text variant="footnote" tone={online ? 'positive' : 'faint'} numberOfLines={1}>
-          {`${machine} · ${online ? 'online' : 'offline'}`}
-        </Text>
-        <View className="flex-row items-center gap-2">
+      <CrumbTrail crumbs={crumbs} onGo={onGo} compact={compact} />
+      <View
+        className={cn('flex-row items-center justify-between gap-3', compact ? 'px-1.5' : 'px-4')}
+      >
+        <View className="min-w-0 shrink flex-row items-center gap-1">
+          <Text variant="footnote" tone="variant" numberOfLines={1} className="min-w-0 shrink">
+            {machine}
+          </Text>
+          <Text variant="footnote" tone={online ? 'positive' : 'faint'} className="shrink-0">
+            {`· ${online ? 'online' : 'offline'}`}
+          </Text>
+        </View>
+        <View className={cn('flex-row items-center gap-2', compact && 'shrink-0')}>
           <Text variant="footnote" tone="variant">
             Show hidden
           </Text>

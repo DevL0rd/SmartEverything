@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import type { View } from 'react-native';
 import { useState } from 'react';
 import {
   readPresentedColor,
@@ -65,7 +66,7 @@ function applyPreset(
 }
 
 function StripCore({ light, kind, density, surface, colour, temperature }: CoreProps): ReactNode {
-  const [open, setOpen] = useState(false);
+  const [opener, setOpener] = useState<RefObject<View | null> | null>(null);
   const ledger = useLedger();
   const powerKey = light.model.power?.key ?? null;
   const turnOn =
@@ -97,15 +98,13 @@ function StripCore({ light, kind, density, surface, colour, temperature }: CoreP
             applyPreset(plan, colour, temperature, turnOn);
           }
         }}
-        onMore={() => {
-          setOpen(true);
-        }}
+        onMore={setOpener}
       />
       <LightColourSheet
         device={light.device}
-        open={open}
+        opener={opener}
         onClose={() => {
-          setOpen(false);
+          setOpener(null);
         }}
       />
     </>

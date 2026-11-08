@@ -15,6 +15,7 @@ export interface XiaomiTiming {
   readonly cameraFollowUps: CameraFollowUps;
   readonly requestTimeoutMs: number;
   readonly requestAttempts: number;
+  readonly writeConfirmMs: number;
   readonly handshakeMaxAgeMs: number;
   readonly lanFailuresBeforeCloud: number;
   readonly lanRetryFirstMs: number;
@@ -44,6 +45,7 @@ const DEFAULT_TIMING: XiaomiTiming = {
   cameraFollowUps: { delaysMs: [20_000, 70_000], gridMs: 15_000 },
   requestTimeoutMs: 2_000,
   requestAttempts: 3,
+  writeConfirmMs: 5_000,
   handshakeMaxAgeMs: 60_000,
   lanFailuresBeforeCloud: 3,
   lanRetryFirstMs: 10_000,

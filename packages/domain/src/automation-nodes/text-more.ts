@@ -106,7 +106,9 @@ export const TEXT_MORE_KINDS: readonly NodeKind[] = [
         { t: 'optional', of: TEXT },
         'A unit spoken after a number, such as "degrees".',
       ),
-      option('locale', { t: 'optional', of: TEXT }, 'The locale for moments; en-GB when empty.'),
+      option('locale', { t: 'optional', of: TEXT }, 'The locale for moments; en-GB when empty.', {
+        ui: { optionsFrom: 'locales' },
+      }),
     ],
     outputs: [output('text', TEXT, 'The spoken text.')],
     exits: [],

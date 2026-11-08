@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DeviceLogEntry } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
+import { Card } from '../../../components/card';
 import { ErrorState } from '../../../components/error-state';
 import { Icon } from '../../../components/icon';
 import { Skeleton } from '../../../components/skeleton';
@@ -10,7 +11,7 @@ import { cn } from '../../../design/cn';
 import { useMinute } from '../../../store/clock';
 import { CauseChip } from './cause-chip';
 import { effectIcon, effectText, effectTone, pageTime } from './log-model';
-import { useDeviceLogPages } from './use-device-log';
+import { useDeviceLogPages, type DeviceLogPages } from './use-device-log';
 
 const EMPTY_TEXT = 'Nothing yet. Changes, presses and runs show up here.';
 
@@ -82,14 +83,7 @@ function Loading(): ReactNode {
   );
 }
 
-export function DeviceLog({
-  deviceId,
-  label = 'Activity',
-}: {
-  readonly deviceId: string;
-  readonly label?: string;
-}): ReactNode {
-  const log = useDeviceLogPages(deviceId);
+function LogBody({ log }: { readonly log: DeviceLogPages }): ReactNode {
   const now = useMinute();
   if (log.failure !== null && log.entries.length === 0) {
     return <ErrorState error={log.failure} retry={log.retry} />;
@@ -106,7 +100,7 @@ export function DeviceLog({
   }
   return (
     <View className="min-w-0">
-      <View role="list" aria-label={label}>
+      <View role="list" aria-label="Activity">
         {log.entries.map((entry, index) => (
           <Row
             key={`${entry.at}-${entry.kind}-${entry.title}`}
@@ -120,5 +114,19 @@ export function DeviceLog({
         <Button label="Show more" variant="text" loading={log.loadingMore} onPress={log.loadMore} />
       ) : null}
     </View>
+  );
+}
+
+export function DeviceLogCard({ deviceId }: { readonly deviceId: string }): ReactNode {
+  const log = useDeviceLogPages(deviceId);
+  const empty = !log.loading && log.failure === null && log.entries.length === 0;
+  return (
+    <Card
+      title="Activity"
+      icon="activity"
+      className={empty ? 'w-full max-w-reading self-start' : ''}
+    >
+      <LogBody log={log} />
+    </Card>
   );
 }

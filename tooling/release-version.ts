@@ -8,44 +8,26 @@ const log = new Logger('tool.release-version');
 
 const ROOT = join(import.meta.dirname, '..');
 
-export const VERSIONED_PACKAGES = ['app', 'desktop', 'hub'] as const;
+export const HUB_SERVICE_VERSION_FILE = 'version.json';
+
+const RELEASE_TARGET = z.enum(['app', 'desktop', 'hub']);
+type ReleaseTarget = z.infer<typeof RELEASE_TARGET>;
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const VERSION = z.string().regex(SEMVER);
 const MANIFEST = z.looseObject({ version: VERSION });
 const ANY_MANIFEST = z.record(z.string(), z.unknown());
 
-export class ReleaseVersionError extends Error {
-  override readonly name = 'ReleaseVersionError';
-
-  constructor(
-    readonly versions: Readonly<Record<string, string>>,
-    reason: string,
-  ) {
-    super(`${reason}: ${JSON.stringify(versions)}`);
-  }
+function manifestPath(target: ReleaseTarget, root: string): string {
+  return join(root, 'apps', target, 'package.json');
 }
 
-function manifestPath(name: string): string {
-  return join(ROOT, 'apps', name, 'package.json');
+export function readVersionManifest(path: string): string {
+  return MANIFEST.parse(JSON.parse(readFileSync(path, 'utf8'))).version;
 }
 
-export function readVersions(): Readonly<Record<string, string>> {
-  return Object.fromEntries(
-    VERSIONED_PACKAGES.map((name) => [
-      name,
-      MANIFEST.parse(JSON.parse(readFileSync(manifestPath(name), 'utf8'))).version,
-    ]),
-  );
-}
-
-export function agreedVersion(versions: Readonly<Record<string, string>>): string {
-  const distinct = [...new Set(Object.values(versions))];
-  const [only] = distinct;
-  if (only === undefined || distinct.length !== 1) {
-    throw new ReleaseVersionError(versions, 'The app, desktop and hub must share one version');
-  }
-  return only;
+export function readReleaseVersion(target: ReleaseTarget, root: string = ROOT): string {
+  return readVersionManifest(manifestPath(target, root));
 }
 
 export function withVersion(manifest: string, version: string): string {
@@ -54,26 +36,21 @@ export function withVersion(manifest: string, version: string): string {
   return `${JSON.stringify({ ...kept, version: VERSION.parse(version) }, null, 2)}\n`;
 }
 
-function setEverywhere(version: string): void {
-  const rewritten = VERSIONED_PACKAGES.map((name) => ({
-    path: manifestPath(name),
-    text: withVersion(readFileSync(manifestPath(name), 'utf8'), version),
-  }));
-  for (const { path, text } of rewritten) {
-    writeFileSync(`${path}.next`, text);
-  }
-  for (const { path } of rewritten) {
-    renameSync(`${path}.next`, path);
-  }
+function setVersion(target: ReleaseTarget, version: string): void {
+  const path = manifestPath(target, ROOT);
+  const text = withVersion(readFileSync(path, 'utf8'), version);
+  writeFileSync(`${path}.next`, text);
+  renameSync(`${path}.next`, path);
 }
 
 function main(): void {
-  const { values } = parseArgs({ options: { set: { type: 'string' } } });
-  if (values.set !== undefined) {
-    setEverywhere(values.set);
-  }
-  const version = agreedVersion(readVersions());
-  log.info('release.version', { version, packages: VERSIONED_PACKAGES.length });
+  const { values } = parseArgs({
+    options: { target: { type: 'string' }, set: { type: 'string' } },
+  });
+  const target = RELEASE_TARGET.parse(values.target);
+  if (values.set !== undefined) setVersion(target, values.set);
+  const version = readReleaseVersion(target);
+  log.info('release.version', { target, version });
   process.stdout.write(`${version}\n`);
 }
 

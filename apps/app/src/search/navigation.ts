@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NO_EXPANSION, type Expansion, type SearchRow } from './result-rows';
+import { defaultResultIndex, NO_EXPANSION, type Expansion, type SearchRow } from './result-rows';
 
 interface Cursor {
   readonly query: string;
@@ -51,7 +51,7 @@ function toggled(expansion: Expansion, key: string, expanded: boolean): Expansio
 
 function indexOf(rows: readonly SearchRow[], key: string | null): number {
   const found = key === null ? -1 : rows.findIndex((row) => row.key === key);
-  return found >= 0 ? found : rows.findIndex((row) => row.kind !== 'group');
+  return found >= 0 ? found : defaultResultIndex(rows);
 }
 
 interface Moves {

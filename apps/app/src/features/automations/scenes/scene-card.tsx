@@ -133,6 +133,7 @@ export function SceneListRow({
   return (
     <ListRow
       title={scene.name}
+      wrapTitle
       subtitle={sceneSummary(scene, names)}
       icon={sceneIcon(scene.icon)}
       iconTone="primary"
@@ -163,13 +164,13 @@ export function SceneCard({
 }): ReactNode {
   const menu = useSceneMenu(scene, scenes);
   return (
-    <Card>
+    <Card className="flex-1">
       <View className="flex-row items-center gap-3">
         <View className="size-12 items-center justify-center rounded-full bg-primary-container">
           <Icon name={sceneIcon(scene.icon)} size={24} tone="primary" />
         </View>
         <View className="min-w-0 flex-1">
-          <Text variant="title-3" numberOfLines={1}>
+          <Text variant="title-3">
             {scene.name}
           </Text>
           <Text variant="footnote" tone="variant">
@@ -179,7 +180,7 @@ export function SceneCard({
         <IconButton icon="pencil" label={`Edit ${scene.name}`} href={href.scene(scene.id)} />
         <OverflowButton items={menu} label={`More for ${scene.name}`} />
       </View>
-      <Text variant="callout" tone="variant" numberOfLines={2} className="min-h-10">
+      <Text variant="callout" tone="variant" numberOfLines={2} className="min-h-10 grow">
         {sceneSummary(scene, names)}
       </Text>
       <Button

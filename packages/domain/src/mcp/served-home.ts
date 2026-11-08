@@ -111,7 +111,7 @@ export const SERVED_HOME = [
     title: 'Read a device',
     line: 'Every capability and its value',
     description:
-      'One device in full: every capability with key, label, allowed values, unit, danger level and current value, plus what its kind adds (a remote’s assumed state, a television’s direct link and inputs, a treadmill, toothbrush or bottle link; a toothbrush’s history is operation_call readToothbrush). Read it before device_control or an automation action for the exact capability keys and values.',
+      'One device in full: every capability with key, label, allowed values, unit, danger level and current value, plus what its kind adds (a remote’s assumed state, a television’s direct link and inputs, a treadmill, toothbrush or bottle link; a toothbrush’s history is operation_call readToothbrush) and its 3D model (id, source, finish, extras). Read it before device_control or an automation action for the exact capability keys and values.',
     route: { part: 'device_read' },
   },
   {
@@ -154,7 +154,7 @@ export const SERVED_HOME = [
     title: 'Find remotes',
     line: 'Infrared remotes and their buttons',
     description:
-      'Lists infrared remotes with their blaster, room, button names and what each is assumed to be doing (on, temperature, mode, speed, mute, last key); the state is what was sent, never a reading, and operation_call updateIrRemote corrects it. Read it before remote_press.',
+      'Lists infrared remotes with their blaster, room, button names and what each is assumed to be doing (on, temperature, mode, speed, mute, last key); a remote promoted to its own device (operation promoteIrRemote) also has its device_id, which device_control sets in one command (power, hvac_mode, target_temperature, fan_mode). The state is what was sent, never a reading, and operation_call updateIrRemote corrects it. Read it before remote_press.',
     route: { part: 'remote_find' },
   },
   {
@@ -164,7 +164,7 @@ export const SERVED_HOME = [
     title: 'Press a remote button',
     line: 'One learned button through its blaster',
     description:
-      'Sends one learned button of an infrared remote through its blaster; remote and button names come from remote_find. The press is not confirmed by the device, so the remote’s state is assumed.',
+      'Sends one learned button of an infrared remote or appliance through its blaster; remote and button names come from remote_find. The press is not confirmed by the device, so the remote’s state is assumed.',
     route: { part: 'remote_press' },
   },
   {

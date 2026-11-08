@@ -1,8 +1,6 @@
-import type { AirBand } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { LinearGradient, RadialGradient, Stop } from 'react-native-svg';
 import { useColour, useColourResolver } from '../../../design/colour';
-import { AIR_BAND_COLOUR } from '../../../design/data-colours';
 import type { ColourRole } from '../../../design/tokens';
 import type { LaundryGlow, VisualTone } from '../types';
 
@@ -15,8 +13,6 @@ export interface VisualInk {
   readonly faint: string;
   readonly sheen: string;
 }
-
-export const WELL = 0.6;
 
 export const FIXED_INK = {
   lcd: '#0B0D10',
@@ -51,16 +47,12 @@ export function useInk(): VisualInk {
   };
 }
 
-export function tintRole(role: ColourRole, tone: VisualTone): ColourRole {
+function tintRole(role: ColourRole, tone: VisualTone): ColourRole {
   return tone === 'active' ? role : 'on-surface-faint';
 }
 
 export function useTint(role: ColourRole, tone: VisualTone): string {
   return useColour(tintRole(role, tone));
-}
-
-export function bandRole(band: AirBand | null): ColourRole {
-  return band === null ? 'temp-cool' : AIR_BAND_COLOUR[band];
 }
 
 export function BodyGradient({

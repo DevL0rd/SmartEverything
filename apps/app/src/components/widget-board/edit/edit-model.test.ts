@@ -17,7 +17,7 @@ import {
 
 function definition(
   type: string,
-  change: Partial<Pick<WidgetDefinition, 'sizes' | 'defaultSize' | 'aspect'>> = {},
+  change: Partial<Pick<WidgetDefinition, 'sizes' | 'defaultSize'>> = {},
 ): WidgetDefinition {
   return {
     type,
@@ -57,11 +57,13 @@ describe('sizeOptions', () => {
     expect(sizeOptions(only, 'expanded')).toEqual([]);
   });
 
-  it('takes the rows from the aspect ratio, which merges sizes that end up the same shape', () => {
-    const cell = { width: 100, height: 50, gap: 10, pad: 8 };
-    const options = sizeOptions(definition('t', { aspect: 2 }), 'compact', cell);
-    expect(options.find((option) => option.size === 'M')).toMatchObject({ columns: 4, rows: 4 });
-    expect(options.map((option) => option.size)).toEqual(['M']);
+  it('gives each size the whole rows of its tier', () => {
+    const options = sizeOptions(definition('t'), 'expanded');
+    expect(options.map(({ size, rows }) => [size, rows])).toEqual([
+      ['M', 2],
+      ['W', 2],
+      ['XL', 4],
+    ]);
   });
 });
 

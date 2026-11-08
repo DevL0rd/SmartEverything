@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { canonicalRuntimeInput } from '../computers/runtime-receipts';
-import { join } from 'node:path';
 import { z } from 'zod';
 import {
   CODEX_AI_REPLY,
   CODEX_OPERATION,
   JSON_VALUE,
   type CodexAiExecute,
+  type ComputerRuntimeModel,
   type CodexAiRead,
   type CodexAiReply,
   type CodexAiSettings,
@@ -15,6 +15,7 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { modelsOf } from './models';
+import type { CodexSites } from './sites';
 import { launchCodex, type CodexProcessOptions } from './process';
 import { CodexClient } from './client';
 import { CodexPrompts } from './prompts';
@@ -37,7 +38,7 @@ interface Receipt {
   readonly reply: Promise<CodexAiReply>;
 }
 export interface CodexNativeOptions extends CodexProcessOptions {
-  readonly dataDirectory: string;
+  readonly sites: CodexSites;
   readonly deviceId: string;
   readonly log: Logger;
   readonly nativeMcpGrant?: CodexNativeGrantResolver;
@@ -118,8 +119,8 @@ export class CodexNative {
         this.options.log.error('mcp.revoke_failed', cause);
       });
   }
-  async models(): Promise<Awaited<ReturnType<typeof modelsOf>>> {
-    return modelsOf(await this.ready(), this.options.deviceId);
+  async models(): Promise<ComputerRuntimeModel[]> {
+    return (await modelsOf(await this.ready(), this.options.deviceId)).models;
   }
   private requireEpoch(epoch: number): void {
     if (!this.enabled || epoch !== this.epoch)
@@ -141,7 +142,7 @@ export class CodexNative {
     const epoch = this.epoch;
     this.options.log.debug('codex.initializing', { mode: 'control', epoch });
     const client = new CodexClient({
-      process: await launchCodex(this.options, 'control'),
+      process: await launchCodex(this.options, this.options.sites.home, 'control'),
       log: this.options.log,
       mode: 'control',
       received: (method, params, id): void => {
@@ -232,7 +233,7 @@ export class CodexNative {
   ): Promise<unknown> {
     const location = await executionOptions(
       request.start.options,
-      join(this.options.dataDirectory, 'codex', 'workspaces', request.operation_id),
+      this.options.sites.operationWorkspace(request.operation_id),
     );
     validateModel(
       {

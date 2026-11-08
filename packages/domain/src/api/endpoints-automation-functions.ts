@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FUNCTION_V3, IDENT, INPUT_PORT, LAYOUT, OUTPUT_PORT, PORT_VALUE } from '../automation-v3';
+import { FUNCTION_V4, IDENT, INPUT_PORT, LAYOUT, OUTPUT_PORT, PORT_VALUE } from '../automation-v3';
 import { AUTOMATION_PROGRAM_PROBLEM } from './endpoints-automation-programs';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, FLAG, ID, MOMENT, NOTHING } from './primitives';
@@ -23,7 +23,6 @@ export const AUTOMATION_FUNCTION_SUMMARY = z.strictObject({
   description: z.string().nullable(),
   category: z.string().nullable(),
   icon: z.string().nullable(),
-  builtin: FLAG,
   editable: FLAG,
   revision: REVISION,
   interface: AUTOMATION_FUNCTION_INTERFACE,
@@ -44,7 +43,7 @@ export const AUTOMATION_FUNCTION_USER = z.strictObject({
 export type AutomationFunctionUser = z.infer<typeof AUTOMATION_FUNCTION_USER>;
 
 export const AUTOMATION_FUNCTION_DETAIL = AUTOMATION_FUNCTION_SUMMARY.extend({
-  program: FUNCTION_V3,
+  program: FUNCTION_V4,
   layout: LAYOUT,
   usedBy: z.array(AUTOMATION_FUNCTION_USER),
 });
@@ -156,7 +155,7 @@ export const AUTOMATION_FUNCTION_ENDPOINTS = {
     query: NOTHING,
     body: z.strictObject({
       name: AUTOMATION_NAME,
-      definition: FUNCTION_V3,
+      definition: FUNCTION_V4,
       layout: LAYOUT.optional(),
     }),
     response: AUTOMATION_FUNCTION_REPLY,
@@ -170,7 +169,7 @@ export const AUTOMATION_FUNCTION_ENDPOINTS = {
     params: FUNCTION_PARAMS,
     query: NOTHING,
     body: z.strictObject({
-      definition: FUNCTION_V3,
+      definition: FUNCTION_V4,
       layout: LAYOUT.optional(),
       name: AUTOMATION_NAME.optional(),
       expectedRevision: REVISION,

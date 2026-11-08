@@ -113,23 +113,29 @@ function OwnApps({
   const front = rows.find((entry) => entry.package === section.front)?.label ?? null;
   const minutes = weekMinutesOf(usePhoneSection(device.id, 'screen'));
   return (
-    <View className="gap-section-gap">
-      {usageAllowed ? (
-        <OwnCards rows={rows} front={front} minutes={minutes} />
-      ) : (
-        <PermissionNeed device={device} feature="usage" />
-      )}
-      <AppsList
-        rows={rows}
-        query={query}
-        onQuery={setQuery}
-        notificationsOf={notificationsOf}
-        onPick={(app) => {
-          pick(app.package);
-        }}
-      />
+    <>
+      <View className="flex-row flex-wrap items-start gap-section-gap">
+        <View className="w-full max-w-detail">
+          {usageAllowed ? (
+            <OwnCards rows={rows} front={front} minutes={minutes} />
+          ) : (
+            <PermissionNeed device={device} feature="usage" />
+          )}
+        </View>
+        <View className="w-full max-w-reading">
+          <AppsList
+            rows={rows}
+            query={query}
+            onQuery={setQuery}
+            notificationsOf={notificationsOf}
+            onPick={(app) => {
+              pick(app.package);
+            }}
+          />
+        </View>
+      </View>
       <OwnSheet device={device} rows={rows} usageAllowed={usageAllowed} />
-    </View>
+    </>
   );
 }
 
@@ -143,11 +149,13 @@ function OtherApps({
   const person = usePersonName(device);
   const screen = usePhoneSection(device.id, 'screen');
   return (
-    <AppsTotals
-      person={person}
-      installed={section.installedCount}
-      minutesByDay={weekMinutesOf(screen)}
-    />
+    <View className="max-w-detail">
+      <AppsTotals
+        person={person}
+        installed={section.installedCount}
+        minutesByDay={weekMinutesOf(screen)}
+      />
+    </View>
   );
 }
 

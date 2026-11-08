@@ -18,6 +18,15 @@ describe('family search items', () => {
     expect(items.every((item) => item.title !== '')).toBe(true);
   });
 
+  it('finds the robot vacuum rooms, zones, schedules and settings on its page', () => {
+    const items = familySearchItems('vacuum');
+    const keys = items.map((item) => item.key);
+    expect(keys).toEqual(expect.arrayContaining(['rooms', 'zones', 'schedules', 'settings']));
+    expect(new Set(keys).size).toBe(items.length);
+    expect(items.every((item) => item.page === 'overview')).toBe(true);
+    expect(keys.some((key) => key.includes('drive'))).toBe(false);
+  });
+
   it('offers nothing for a family without in-page controls', () => {
     expect(familySearchItems('light')).toEqual([]);
   });

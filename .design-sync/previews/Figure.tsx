@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Figure, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -10,12 +11,12 @@ const body = (
     <Figure value="--" size="m" stale />
   </Row>
 );
-export const Sizes = () => (
+export const Sizes = (): ReactElement => (
   <Stage theme="dark" width={640}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={640}>
     {body}
   </Stage>

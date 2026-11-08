@@ -1,19 +1,19 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { Button } from '../../../components/button';
 import type { IconName } from '../../../components/icon-glyphs';
 import { IconWell } from '../../../components/icon-well';
 import { Text } from '../../../components/text';
-import { WIDGET_SURFACE, WidgetHeader } from '../../../components/widget-board';
+import { ActionBand, WIDGET_SURFACE, WidgetHeader } from '../../../components/widget-board';
 import type { ColourRole } from '../../../design/tokens';
 
 export interface CostCardProps {
   readonly title: string;
   readonly icon: IconName;
   readonly accent: ColourRole;
-  readonly href?: Href;
-  readonly action?: ReactNode;
+  readonly href?: AppHref;
+  readonly actions?: ReactNode;
   readonly children: ReactNode;
 }
 
@@ -22,19 +22,19 @@ export function CostCard({
   icon,
   accent,
   href,
-  action,
+  actions,
   children,
 }: CostCardProps): ReactNode {
   return (
-    <View className={`gap-3 p-card-pad ${WIDGET_SURFACE}`}>
+    <View className={`grow gap-3 p-card-pad ${WIDGET_SURFACE}`}>
       <WidgetHeader
         title={title}
         icon={icon}
         accent={accent}
         {...(href === undefined ? {} : { href })}
-        {...(action === undefined ? {} : { action })}
       />
       {children}
+      {actions === undefined ? null : <ActionBand>{actions}</ActionBand>}
     </View>
   );
 }
@@ -44,7 +44,7 @@ export interface CardEmptyProps {
   readonly colour: ColourRole;
   readonly title: string;
   readonly body?: string;
-  readonly action?: { readonly label: string; readonly href: Href };
+  readonly action?: { readonly label: string; readonly href: AppHref };
 }
 
 export function CardEmpty({ icon, colour, title, body, action }: CardEmptyProps): ReactNode {

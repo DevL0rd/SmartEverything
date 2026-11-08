@@ -16,6 +16,9 @@ import { ScaleHero } from './scale-hero';
 import { FAMILY_PRIMARY_CARDS } from './primary-card-families';
 import { stagedRoles } from './stage-level';
 import { OfflineBanner } from './offline-banner';
+import { ApplianceBanner } from '../appliance/appliance-banner';
+import { applianceOf } from '../appliance/appliance-model';
+import { useOfflineHint } from '../model/offline-hint';
 
 export function Hero({ device }: { readonly device: Device }): ReactNode {
   const model = useDeviceModel(device);
@@ -63,6 +66,7 @@ export function PrimaryCard({ device }: { readonly device: Device }): ReactNode 
   const controls = usePrimaryControls(device, staged);
   const custom = FAMILY_PRIMARY_CARDS[model.family];
   const empty = custom === undefined ? controls.length === 0 : !custom.present(model);
+  const hint = useOfflineHint(device);
   if (empty) {
     return null;
   }
@@ -71,12 +75,7 @@ export function PrimaryCard({ device }: { readonly device: Device }): ReactNode 
       {device.online || model.sleepy ? (
         <CardControls device={device} staged={staged} />
       ) : (
-        <EmptyState
-          compact
-          icon="plug"
-          title="Not responding"
-          body="Check that it’s plugged in and on Wi‑Fi."
-        />
+        <EmptyState compact icon="plug" title="Not responding" body={hint} />
       )}
     </Card>
   );
@@ -87,6 +86,10 @@ export function DeviceBanner({ device }: { readonly device: Device }): ReactNode
   const notice = deviceCardOf(device)?.notice;
   if (notice !== undefined) {
     return notice(device);
+  }
+  const appliance = applianceOf(device);
+  if (appliance !== null) {
+    return <ApplianceBanner device={device} appliance={appliance} />;
   }
   return model.sleepy ? null : <OfflineBanner device={device} />;
 }

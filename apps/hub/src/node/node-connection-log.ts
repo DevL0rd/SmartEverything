@@ -1,5 +1,6 @@
 import type { RawData } from 'ws';
 import type { Logger } from '@smarteverything/logging';
+import { describeFailure } from '@smarteverything/logging';
 
 function rawLength(raw: RawData): number {
   if (Array.isArray(raw)) return raw.reduce((total, part) => total + part.length, 0);
@@ -54,6 +55,15 @@ export class NodeConnectionLog {
     });
   }
 
+  hubSilent(silenceMs: number): void {
+    this.log.warn('node.hub_silent', {
+      path: this.path,
+      silenceMs,
+      framesIn: this.framesIn,
+      consequence: 'the link is closed and opened again',
+    });
+  }
+
   socketOpened(subprotocol: string): void {
     this.openedAt = performance.now();
     this.log.info('node.socket_opened', {
@@ -69,11 +79,12 @@ export class NodeConnectionLog {
   }
 
   socketFailed(event: string, cause: Error, nextRetryMs: number): void {
-    this.log.error(event, cause, {
+    this.log.warn(event, {
       path: this.path,
       attempt: this.attempts,
       opened: this.opened,
       nextRetryMs,
+      failure: describeFailure(cause),
     });
   }
 

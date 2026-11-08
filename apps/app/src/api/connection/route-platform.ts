@@ -13,7 +13,7 @@ import { abortFacts, countEvent, failureFacts, nowMs, pathShape } from './reques
 
 const log = new Logger('app.hub-route');
 
-const METHOD = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+const METHOD = z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
 
 let nativeActivation: Promise<void> = Promise.resolve();
 

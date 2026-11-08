@@ -16,7 +16,8 @@ import type { ComputerAiDirectory } from '../../../computers/ai-directory';
 import { withProviderToolAuthority } from './tool-authority';
 import { runtimeValue } from './request';
 import { ProviderToolTrace, invalidArguments, outsideGrant } from './tool-trace';
-import { scopedHub } from '../../coordination/scoped-tools';
+import { scopedHub } from '../../tool-scope';
+import { readProductSkill } from './product-skills';
 
 export interface ProviderGrant {
   readonly hub: ToolHub | null;
@@ -53,7 +54,7 @@ export interface ProviderToolRoute {
 export async function routeProviderTool(
   route: ProviderToolRoute,
   event: Extract<ProviderEvent | CodexProviderEvent, { kind: 'tool_call' }>,
-): Promise<{ readonly line: string; readonly failed: boolean; readonly output: string }> {
+): Promise<{ readonly failed: boolean; readonly output: string }> {
   const { directory, deviceId, grant, caller } = route;
   const trace = new ProviderToolTrace(event, caller, route.runtime, deviceId);
   const result = await withProviderToolAuthority(
@@ -96,7 +97,7 @@ export async function routeProviderTool(
   trace.answered(result, response.delivered, text.length, responseText !== text);
   if (!response.delivered)
     throw new ApiError('conflict', 'The Claude computer no longer recognizes this tool request.');
-  return { line: result.line, failed, output: text };
+  return { failed, output: text };
 }
 
 const TOOL_RESULT_CONTENT = {
@@ -119,7 +120,9 @@ async function toolResult(
       pictures: [],
     };
   }
-  const checked = grant.hub.check(event.name, event.input);
+  const skill = readProductSkill(event.name, event.input);
+  if (skill !== undefined) return skill;
+  const checked = grant.hub.check(event.name, event.input, caller);
   if (!checked.ok) {
     invalidArguments(event, caller, checked.reason);
     return { response: { error: checked.reason }, line: '', pictures: [] };

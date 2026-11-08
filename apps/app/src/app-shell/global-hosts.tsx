@@ -14,14 +14,17 @@ import {
   PhoneEarHost,
   QuickAskHost,
 } from '../features/assistant';
+import { AppUpdateHost } from '../features/app-updates';
 import { ScheduleSheetHost } from '../features/automations';
 import { CallHost } from '../features/cameras';
 import { ClipboardSyncHost } from '../features/clipboard';
 import { ConsentHost } from '../features/connections';
 import { QuickControlsHost } from '../features/devices';
 import { BackgroundAlertsHost, PushRegistrationHost } from '../features/settings';
+import { PhotosBackupHost } from '../features/photos/backup/runner/host';
 import { HealthSyncHost } from '../features/fitness';
 import { EntryDeliveryHost } from '../features/health-log';
+import { BakeHost, LiveSurfaceHost } from '../features/models';
 import { ScaleListenerHost, WhoWasThisHost } from '../features/profiles';
 import { TalkHost } from '../features/talk';
 import { WatchLinkHost } from '../features/watches';
@@ -64,6 +67,22 @@ function PhoneAlertHosts(): ReactNode {
   );
 }
 
+function PhoneDataHosts(): ReactNode {
+  if (appPlatform() !== 'android') return null;
+  return (
+    <>
+      <PhoneEarHost />
+      <EntryDeliveryHost />
+      <HealthSyncHost />
+      <PhotosBackupHost />
+      <WatchLinkHost />
+      <TreadmillLinkHost />
+      <BrushLinkHost />
+      <BottleLinkHost />
+    </>
+  );
+}
+
 export function GlobalHosts(): ReactNode {
   usePreloading();
   useEffect(() => {
@@ -94,13 +113,10 @@ export function GlobalHosts(): ReactNode {
       <OverlayHost />
       <OutboxHost />
       <PhoneAlertHosts />
-      {appPlatform() === 'android' ? <PhoneEarHost /> : null}
-      {appPlatform() === 'android' ? <EntryDeliveryHost /> : null}
-      {appPlatform() === 'android' ? <HealthSyncHost /> : null}
-      {appPlatform() === 'android' ? <WatchLinkHost /> : null}
-      {appPlatform() === 'android' ? <TreadmillLinkHost /> : null}
-      {appPlatform() === 'android' ? <BrushLinkHost /> : null}
-      {appPlatform() === 'android' ? <BottleLinkHost /> : null}
+      <PhoneDataHosts />
+      <BakeHost />
+      <LiveSurfaceHost />
+      <AppUpdateHost />
     </>
   );
 }

@@ -48,7 +48,7 @@ export function ConversationWidget({ size }: { readonly size: WidgetSize }): Rea
       stream={useRobotStatus()}
       unavailable={() => null}
     >
-      {(status) => <ConversationBody status={status} size={size} />}
+      {(status) => <ConversationBody status={status} />}
     </PluginWidgetFrame>
   );
 }
@@ -65,9 +65,7 @@ function MovesWidget({ size }: { readonly size: WidgetSize }): ReactNode {
       stream={useRobotMoves()}
       unavailable={() => (device === null ? 'Waiting for AIBI…' : null)}
     >
-      {(moves) =>
-        device === null ? null : <QuickMoves moves={moves} size={size} device={device} />
-      }
+      {(moves) => (device === null ? null : <QuickMoves moves={moves} device={device} />)}
     </PluginWidgetFrame>
   );
 }

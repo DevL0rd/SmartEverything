@@ -1,4 +1,3 @@
-import { BUILTIN_FUNCTIONS } from '@smarteverything/domain';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import { decisionView } from '../automations/decision-view';
 import { automationFunctions } from '../automations/service-functions';
@@ -32,17 +31,19 @@ export function automationRoutes(context: ServerContext, tools: ToolHub): Automa
     plans: store.automationPlans,
     functions: store.automationFunctions,
     secrets: hub.automationSecrets,
+    kinds: hub.automationKinds,
     tools,
   };
-  const functions = automationFunctions({
-    ...env,
-    functions: store.automationFunctions,
-    builtins: BUILTIN_FUNCTIONS,
-  });
+  const functions = automationFunctions({ ...env, functions: store.automationFunctions });
   return {
-    ...automationValueRoutes(context),
+    ...automationValueRoutes(context, hub.automationKinds),
     ...automationProgramRoutes(automationPrograms(env)),
-    ...automationProgramReadRoutes({ store, secrets: hub.automationSecrets, functions }),
+    ...automationProgramReadRoutes({
+      store,
+      secrets: hub.automationSecrets,
+      functions,
+      kinds: hub.automationKinds,
+    }),
     ...automationFunctionRoutes(functions),
     ...automationSecretRoutes(hub.automationSecrets),
     ...automationRunRoutes({
@@ -58,6 +59,6 @@ export function automationRoutes(context: ServerContext, tools: ToolHub): Automa
       rehearsals: hub.automationRehearsals,
     }),
     ...automationQuestionRoutes({ store, questions: hub.automationQuestions }),
-    ...clientRoutes(store),
+    ...clientRoutes(store, hub.phones),
   };
 }

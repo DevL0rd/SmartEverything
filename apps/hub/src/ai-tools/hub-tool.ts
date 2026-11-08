@@ -38,6 +38,7 @@ export interface ToolCaller {
   readonly role: 'owner' | 'member';
   readonly chatId: string | null;
   readonly callId?: string;
+  readonly automationId?: string;
   readonly via: ToolVia;
   readonly clientId: string | null;
   readonly pluginRequester?: PluginRequester;
@@ -62,7 +63,11 @@ export interface ToolSource {
     args: Readonly<Record<string, unknown>>,
     caller: ToolCaller,
   ) => Promise<HubToolResult>;
-  readonly validate: (tool: HubTool, args: Readonly<Record<string, unknown>>) => string | null;
+  readonly validate: (
+    tool: HubTool,
+    args: Readonly<Record<string, unknown>>,
+    caller?: ToolCaller,
+  ) => string | null;
   readonly changes: (listener: () => void) => () => void;
 }
 

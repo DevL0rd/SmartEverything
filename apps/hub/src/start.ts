@@ -2,22 +2,29 @@ import { connectionPortNeeds } from './network/firewall';
 import { HubConnections } from './network/connections';
 import { openHubIdentity } from './network/identity';
 import { advertiseHub } from './network/mdns-advertise';
+import type { OpenMdns } from './network/mdns';
 import type { Server } from 'node:http';
 import { mkdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
-import { join } from 'node:path';
+import { dirname } from 'node:path';
 import type { HubStatus, PublicStatus } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ProviderModule } from './adapters/contract';
 import { rearmTimers, systemClock, type Clock } from './clock';
+import type { HubLayout } from './data-layout';
 import { lockDataDirectory, type DataLock } from './data-lock';
 import type { RunningExtension, ServerExtension } from './extensions';
 import { bodyAlertsExtension } from './extensions/body-alerts';
 import { computersExtension } from './computers/extension';
+import { appUpdatesExtension } from './app-updates/extension';
+import { hubUpdateCompletionExtension } from './self-update/completion-extension';
+import { hubUpdateSourceWiring } from './self-update/source-wiring';
+import type { HubUpdateSourceRoutes } from './server/handlers/hub-update-source';
 import { machineUpdatesExtension } from './updates/extension';
 import { phonesExtension } from './phones/extension';
 import { treadmillsExtension } from './local/treadmill/extension';
 import { recordingRetentionExtension } from './cameras/recording-retention-extension';
+import { stopGo2rtcForShutdown } from './cameras/go2rtc-shutdown';
 import { toothbrushesExtension } from './local/toothbrush/extension';
 import { bottlesExtension } from './local/bottle/extension';
 import { mcpExtension } from './extensions/mcp';
@@ -33,7 +40,7 @@ import { watchResume } from './clock/resume-watch';
 import { openSecretStore } from './secrets/open';
 import { buildServer, type BuiltServer } from './server/build';
 import { originAllowList } from './server/origin-allow-list';
-import { DATABASE_FILE, serviceUrl } from './service/configuration';
+import { serviceUrl } from './service/configuration';
 import type { LogLines } from './service/log-lines';
 import { startCore, type Core } from './services';
 import { openStore, type Store } from './store/store';
@@ -43,7 +50,8 @@ export const DEFAULT_ORIGINS: readonly string[] = ['app://smarteverything'];
 
 export interface ServerOptions {
   readonly lan?: { readonly port: number; readonly host?: string; readonly advertise?: boolean };
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
+  readonly hubBootRunId?: string;
   readonly codex?: {
     readonly executable?: string;
     readonly controlSocket?: string;
@@ -64,6 +72,7 @@ export interface ServerOptions {
   readonly clock?: Clock;
   readonly fetch?: typeof fetch;
   readonly firewall?: FirewallSystem;
+  readonly mdns?: OpenMdns;
 }
 
 export interface RunningServer {
@@ -103,6 +112,8 @@ function serverExtensions(
     bottlesExtension(clock.now),
     toothbrushesExtension(clock),
     machineUpdatesExtension(),
+    appUpdatesExtension(),
+    hubUpdateCompletionExtension(),
     recordingRetentionExtension(clock),
     ...(options.extensions ?? []),
   ];
@@ -132,7 +143,11 @@ function listen(server: Server, port: number, host: string): Promise<AddressInfo
   });
 }
 
-async function stopAll(started: Started, withdraw: () => Promise<void>): Promise<void> {
+async function stopAll(
+  started: Started,
+  withdraw: () => Promise<void>,
+  go2rtcLog: Logger,
+): Promise<void> {
   await withdraw();
   await started.built.stop();
   await closeListeners(started.built);
@@ -140,7 +155,7 @@ async function stopAll(started: Started, withdraw: () => Promise<void>): Promise
   await started.core.hub.stop();
   started.core.firewall.stop();
   started.core.cameraHealth.stop();
-  await started.core.supervisor.stop();
+  await stopGo2rtcForShutdown(started.core.supervisor, go2rtcLog);
   started.store.close();
   await started.lock.release();
 }
@@ -163,7 +178,7 @@ function coreOptions(
   smartthings: ProviderModule<'smartthings'>,
 ): Parameters<typeof startCore>[0] {
   return {
-    dataDirectory: options.dataDirectory,
+    layout: options.layout,
     cameras: {
       binary: options.go2rtcBinary,
       apiPort: options.go2rtcApiPort ?? 1984,
@@ -174,17 +189,27 @@ function coreOptions(
     modules: options.modules === undefined ? null : { smartthings, ...options.modules },
     firewall: options.firewall ?? nodeFirewallSystem(options.go2rtcBinary),
     clock,
+    fetch: options.fetch ?? fetch,
     log: options.log,
     fatal: options.fatal,
   };
 }
 
-async function boot(options: ServerOptions, clock: Clock, undo: Undo[]): Promise<Started> {
-  const lock = await lockDataDirectory(options.dataDirectory);
+async function openConnections(layout: HubLayout, store: Store): Promise<HubConnections> {
+  return new HubConnections(await openHubIdentity(layout.system.keys.tlsIdentity), store);
+}
+
+async function boot(
+  options: ServerOptions,
+  clock: Clock,
+  undo: Undo[],
+  hubUpdateSourceRoutes: HubUpdateSourceRoutes,
+): Promise<Started> {
+  const lock = await lockDataDirectory(options.layout);
   undo.push(lock.release);
-  const secrets = await openSecretStore(options.dataDirectory, options.log);
+  const secrets = await openSecretStore(options.layout.system.keys, options.log);
   const store = openStore({
-    path: join(options.dataDirectory, DATABASE_FILE),
+    path: options.layout.system.database.file,
     log: options.log,
     now: clock.now,
     systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -194,7 +219,7 @@ async function boot(options: ServerOptions, clock: Clock, undo: Undo[]): Promise
   const smartthings = smartThingsWiring({ secrets, fetch: outbound, now: clock.now });
   const core = await startCore(coreOptions(options, clock, smartthings.module), store, secrets);
   undo.push(
-    () => core.supervisor.stop(),
+    () => stopGo2rtcForShutdown(core.supervisor, options.log.forArea('hub.go2rtc')),
     () => {
       core.firewall.stop();
       core.cameraHealth.stop();
@@ -202,13 +227,14 @@ async function boot(options: ServerOptions, clock: Clock, undo: Undo[]): Promise
     () => core.hub.stop(),
   );
   const alerts = new OwnerAlerts();
-  const connections = new HubConnections(await openHubIdentity(options.dataDirectory), store);
+  const connections = await openConnections(options.layout, store);
   const built = await buildServer({
     connections,
     store,
     secrets,
     core,
-    dataDirectory: options.dataDirectory,
+    layout: options.layout,
+    hubUpdateSourceRoutes,
     ...(options.codex === undefined ? {} : { codex: options.codex }),
     allowedOrigins: allowedOriginsOf(options),
     extensions: serverExtensions(options, clock, alerts, smartthings),
@@ -220,33 +246,53 @@ async function boot(options: ServerOptions, clock: Clock, undo: Undo[]): Promise
     alerts,
   });
   rememberBuilt(built, undo);
+  return { lock, store, core, built, extensions: built.extensions };
+}
+
+interface ResumeWatch {
+  readonly attach: (core: Core) => void;
+  readonly stop: () => void;
+}
+
+function resumeWatchOf(options: ServerOptions): ResumeWatch {
+  let attached: Core | null = null;
+  const resumed = (): void => {
+    attached?.planner.resumed();
+    attached?.google.runner.resumed();
+    rearmTimers();
+  };
   return {
-    lock,
-    store,
-    core,
-    built,
-    extensions: built.extensions,
+    attach: (core): void => {
+      attached = core;
+    },
+    stop:
+      options.clock === undefined
+        ? watchResume({ log: options.log, onResume: resumed })
+        : (): void => undefined,
   };
 }
 
 export async function startServer(options: ServerOptions): Promise<RunningServer> {
   const clock = options.clock ?? systemClock;
-  await mkdir(options.dataDirectory, { recursive: true, mode: 0o700 });
+  await mkdir(options.layout.root, { recursive: true, mode: 0o700 });
+  await mkdir(dirname(options.layout.system.database.file), { recursive: true, mode: 0o700 });
   const undo: Undo[] = [];
-  const stopResumeWatch =
-    options.clock === undefined
-      ? watchResume({ log: options.log, onResume: rearmTimers })
-      : (): void => undefined;
+  const resume = resumeWatchOf(options);
+  const stopResumeWatch = resume.stop;
   undo.push(stopResumeWatch);
   try {
-    const started = await boot(options, clock, undo);
+    const source = hubUpdateSourceWiring(options.layout, options.hubBootRunId);
+    const started = await boot(options, clock, undo, source.routes);
+    resume.attach(started.core);
     const ownerToken = await started.built.access.ensureOwner();
     const host = options.host ?? '0.0.0.0';
     const address = await listen(started.built.http, options.port, host);
     const url = serviceUrl({ host, port: address.port });
-    const withdraw = await startLan(options, started, url);
-    undo.push(withdraw);
+    const withdraw = await startLan(options, started);
+    const stopSourceWatch = source.watch(started.built.context.live);
+    undo.push(withdraw, stopSourceWatch);
     options.log.info('server.started', { port: address.port, version: HUB_VERSION });
+    started.store.startRetention();
     return {
       ownerToken,
       url,
@@ -254,8 +300,10 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       status: started.built.context.status,
       publicStatus: started.built.context.publicStatus,
       stop: async (): Promise<void> => {
+        started.core.supervisor.expectStop();
         stopResumeWatch();
-        await stopAll(started, withdraw);
+        await stopSourceWatch();
+        await stopAll(started, withdraw, options.log.forArea('hub.go2rtc'));
       },
     };
   } catch (cause) {
@@ -279,28 +327,25 @@ async function closeListeners(built: BuiltServer): Promise<void> {
   );
 }
 
-async function startLan(
-  options: ServerOptions,
-  started: Started,
-  loopback: string,
-): Promise<() => Promise<void>> {
+async function startLan(options: ServerOptions, started: Started): Promise<() => Promise<void>> {
   const connections = started.built.context.connections;
   if (connections === undefined)
     throw new Error('The hub connection identity was not initialized.');
   if (options.lan === undefined) {
-    connections.listening(loopback, null);
+    connections.listening(null);
     return () => Promise.resolve();
   }
   const server = started.built.secure;
   if (server === null) throw new Error('The encrypted LAN listener was not initialized.');
   const listener = await listen(server, options.lan.port, options.lan.host ?? '0.0.0.0');
-  connections.listening(loopback, listener);
+  connections.listening(listener);
   started.core.firewall.connectionsChanged(connectionPortNeeds(listener, false));
   if (options.lan.advertise === false) return () => Promise.resolve();
   return advertiseHub({
     identity: connections.tls.identity,
     listener,
     log: options.log.forArea('hub.network'),
+    ...(options.mdns === undefined ? {} : { mdns: options.mdns }),
     changed: (status) => {
       connections.discoveryChanged(status);
       started.core.firewall.connectionsChanged(

@@ -58,7 +58,10 @@ export class DeviceQueue {
       return;
     }
     this.draining = true;
-    background(this.loop(), 'device_queue.loop_failed');
+    background(
+      Promise.resolve().then(() => this.loop()),
+      'device_queue.loop_failed',
+    );
   }
 
   private async loop(): Promise<void> {

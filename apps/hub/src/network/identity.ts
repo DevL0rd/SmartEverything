@@ -1,7 +1,7 @@
 import { createHash, createPrivateKey, randomBytes, X509Certificate } from 'node:crypto';
-import { readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
-import { join } from 'node:path';
+import { dirname } from 'node:path';
 import { HUB_IDENTITY, type HubIdentity } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { generate } from 'selfsigned';
@@ -10,7 +10,6 @@ import { isMissing } from '../fs-util';
 
 const log = new Logger('hub.network');
 
-const IDENTITY_FILE = 'hub-tls-identity.json';
 const KEY_BITS = 3072;
 const VALID_DAYS = 3650;
 const DAY_MS = 86_400_000;
@@ -101,8 +100,7 @@ async function generated(): Promise<StoredIdentity> {
   return { version: 1, name, serverName, key: pair.private, cert: pair.cert };
 }
 
-export async function openHubIdentity(dataDirectory: string): Promise<HubTlsIdentity> {
-  const path = join(dataDirectory, IDENTITY_FILE);
+export async function openHubIdentity(path: string): Promise<HubTlsIdentity> {
   try {
     const loaded = validated(path, STORED_IDENTITY.parse(JSON.parse(await readFile(path, 'utf8'))));
     log.info('identity.loaded', { hubId: loaded.identity.id.slice(0, 12) });
@@ -116,6 +114,7 @@ export async function openHubIdentity(dataDirectory: string): Promise<HubTlsIden
   const stored = await generated();
   const identity = validated(path, stored);
   const temporary = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   try {
     await writeFile(temporary, JSON.stringify(stored), { mode: 0o600, flag: 'wx' });
     await rename(temporary, path);

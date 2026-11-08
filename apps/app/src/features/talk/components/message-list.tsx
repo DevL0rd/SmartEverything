@@ -31,6 +31,7 @@ function MessageRow({ message }: { readonly message: TalkMessageRow }): ReactNod
   return (
     <ListRow
       title={message.speaker_label}
+      wrapTitle
       subtitle={subtitleOf(message, now)}
       wrapSubtitle
       icon={message.speaker_kind === 'camera' ? 'camera' : 'user'}

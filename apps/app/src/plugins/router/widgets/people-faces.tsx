@@ -1,15 +1,14 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Button } from '../../../components/button';
 import { HScroller } from '../../../components/h-scroller';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { cn } from '../../../design/cn';
 import { ProfileAvatar } from '../../../features/profiles';
 import { routerSectionHref } from '../overview/links';
-import { bodyHeightOf, peopleFaceOf } from './frame-faces';
+import type { ServiceLayout } from '../../shared/service-widget-frame';
+import { TYPE_SCALE } from '../../../design/tokens';
 import { StaleLine } from './internet-parts';
 import {
   fitRows,
@@ -27,10 +26,11 @@ const STALE_RESERVE = 22;
 interface PeopleFaceProps {
   readonly people: readonly WidgetPerson[];
   readonly ready: RouterReady;
+  readonly layout: ServiceLayout;
   readonly stale: StaleCaption | null;
 }
 
-function peopleHref(ready: RouterReady): ReturnType<typeof routerSectionHref> {
+export function peopleHref(ready: RouterReady): ReturnType<typeof routerSectionHref> {
   return routerSectionHref(ready.device.id, 'clients', { filter: 'people' });
 }
 
@@ -163,9 +163,8 @@ function Row({
   );
 }
 
-function Rows({ people, ready, stale }: PeopleFaceProps): ReactNode {
-  const { frame } = useWidgetFace();
-  const capacity = rowCapacity(bodyHeightOf(frame), stale === null ? 0 : STALE_RESERVE);
+function Rows({ people, ready, layout, stale }: PeopleFaceProps): ReactNode {
+  const capacity = rowCapacity(layout.room, stale === null ? 0 : STALE_RESERVE);
   const { shown, more } = fitRows(people, capacity);
   return (
     <View className="flex-1 gap-1">
@@ -190,32 +189,26 @@ function Rows({ people, ready, stale }: PeopleFaceProps): ReactNode {
   );
 }
 
-export function PeopleEmpty({ ready }: { readonly ready: RouterReady }): ReactNode {
-  const { cls } = useWidgetFace();
+export function PeopleEmpty({ layout }: { readonly layout: ServiceLayout }): ReactNode {
+  const lines = Math.max(1, Math.floor(layout.room / TYPE_SCALE[layout.idiom].footnote[1]));
   return (
-    <View className="gap-2">
-      <Text variant="footnote" tone="variant" numberOfLines={3}>
-        Say whose phone is whose on the router’s device list.
-      </Text>
-      {cls === 's' ? null : (
-        <View className="items-start">
-          <Button label="Open devices" variant="tonal" href={peopleHref(ready)} />
-        </View>
-      )}
-    </View>
+    <Text variant="footnote" tone="variant" numberOfLines={lines}>
+      Say whose phone is whose on the router’s device list.
+    </Text>
   );
 }
 
 export function PeopleFace(props: Omit<PeopleFaceProps, 'stale'>): ReactNode {
-  const { cls } = useWidgetFace();
   const stale = staleCaptionOf(props.ready.snapshot.connection, props.ready.now);
   const shared = { ...props, stale };
-  switch (peopleFaceOf(cls)) {
-    case 'stack':
+  switch (props.layout.face) {
+    case 'tile':
       return <Stack {...shared} />;
-    case 'chips':
+    case 'compact':
+    case 'wide':
       return <Chips {...shared} />;
-    case 'rows':
+    case 'tall':
+    case 'wide-tall':
       return <Rows {...shared} />;
   }
 }

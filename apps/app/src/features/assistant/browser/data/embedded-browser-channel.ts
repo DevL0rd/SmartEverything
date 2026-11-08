@@ -57,7 +57,12 @@ export class EmbeddedBrowserChannel {
       eligible: (): boolean => !this.disposed,
       connected: (): boolean => this.socket !== null,
     });
-    this.stopRoute = routeFor(connection).state.subscribe(() => {
+    const route = routeFor(connection);
+    let generation = route.state.get().generation;
+    this.stopRoute = route.state.subscribe(() => {
+      const next = route.state.get().generation;
+      if (next === generation) return;
+      generation = next;
       this.recovery.resume();
     });
     this.recovery.resume();
@@ -192,6 +197,10 @@ export class EmbeddedBrowserChannel {
           ? this.tabs.read().selectedId
           : action.tabId;
     await performed;
+    if (action.kind === 'navigate' || action.kind === 'reload') {
+      this.tabs.select(action.tabId);
+      this.reveal();
+    }
     return gone ? { tabId: null, notice: 'That tab was already closed.' } : { tabId };
   }
   private answer(socket: HubSocket, task: Task): void {

@@ -6,7 +6,7 @@
     "lib": ["ES2023", "ESNext.TypedArrays"],
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "tools/**/*.ts"],
   "references": [
     {
       "path": "../domain"

@@ -1,25 +1,54 @@
-import type { AiHarnessPermission } from '@smarteverything/domain';
+import type {
+  AiHarnessPermission,
+  AiPermissionPresetOption,
+  AiPermissionPresets,
+} from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
-import { rowKey, sectionById, sectionView, type AccessSectionView } from './access-model';
-import { accessSections } from './ai-access';
+import { rowKey, sectionView, type AccessSectionView } from './access-model';
+import type { AccessLevel, AccessOption } from './ai-access';
+
+const PRESET_LEVELS: Readonly<Record<string, AccessLevel>> = {
+  'read-only': 'read',
+  'workspace-write': 'edits',
+  'danger-full-access': 'full',
+};
+
+function presetOption(preset: AiPermissionPresetOption): AccessOption {
+  return {
+    value: preset.value,
+    title: preset.name,
+    description: preset.description,
+    level: PRESET_LEVELS[preset.value] ?? null,
+  };
+}
+
+export function presetName(presets: AiPermissionPresets | null, sandbox: string): string | null {
+  if (presets === null) return null;
+  return (presets.options.find((preset) => preset.value === sandbox) ?? presets.custom).name;
+}
+
+function offered(permissions: readonly AiHarnessPermission[], sandbox: string): boolean {
+  return permissions.some((policy) => policy.sandbox === sandbox);
+}
 
 export function harnessSections(
+  presets: AiPermissionPresets | null,
   permissions: readonly AiHarnessPermission[],
   current: AiHarnessPermission,
   host: string,
 ): readonly AccessSectionView[] {
-  const sections = accessSections('harness');
+  if (presets === null) return [];
+  const known = presets.options.some((preset) => preset.value === current.sandbox);
+  const shown = known ? presets.options : [...presets.options, presets.custom];
   const missing = `Not offered by ${host}`;
   return [
-    sectionView(sectionById(sections, 'access'), current.sandbox, (option) =>
-      permissions.some((policy) => policy.sandbox === option.value) ? null : missing,
-    ),
-    sectionView(sectionById(sections, 'asking'), current.approval, (option) =>
-      permissions.some(
-        (policy) => policy.sandbox === current.sandbox && policy.approval === option.value,
-      )
-        ? null
-        : missing,
+    sectionView(
+      { id: 'access', title: 'Permissions', options: shown.map(presetOption) },
+      known ? current.sandbox : presets.custom.value,
+      (option) =>
+        (!known && option.value === presets.custom.value) || offered(permissions, option.value)
+          ? null
+          : missing,
     ),
   ];
 }
@@ -27,17 +56,9 @@ export function harnessSections(
 export function harnessChoice(
   permissions: readonly AiHarnessPermission[],
   current: AiHarnessPermission,
-  sectionId: string,
   value: string,
 ): AiHarnessPermission | null {
-  const next =
-    sectionId === 'access'
-      ? (permissions.find(
-          (policy) => policy.sandbox === value && policy.approval === current.approval,
-        ) ?? permissions.find((policy) => policy.sandbox === value))
-      : permissions.find(
-          (policy) => policy.sandbox === current.sandbox && policy.approval === value,
-        );
+  const next = permissions.find((policy) => policy.sandbox === value);
   if (next === undefined) return null;
   return next.sandbox === current.sandbox && next.approval === current.approval ? null : next;
 }
@@ -51,6 +72,7 @@ export interface HarnessFacts {
   readonly switching: boolean;
   readonly liveChange: boolean;
   readonly bound: boolean;
+  readonly presets: boolean;
   readonly choices: number;
 }
 
@@ -85,6 +107,8 @@ export function harnessBlock(facts: HarnessFacts): AccessBlock | null {
       icon: 'info',
       text: `Update ${host} to change access in a running chat`,
     };
+  if (!facts.presets)
+    return { kind: 'blocked', icon: 'clock', text: `Access options for ${host} aren’t loaded yet` };
   if (facts.choices < 2)
     return { kind: 'blocked', icon: 'info', text: `Access can’t be changed on ${host}` };
   return null;
@@ -95,6 +119,5 @@ export function applyingKey(
   target: AiHarnessPermission | undefined,
 ): string | null {
   if (target === undefined) return null;
-  if (target.sandbox !== current.sandbox) return rowKey('access', target.sandbox);
-  return target.approval === current.approval ? null : rowKey('asking', target.approval);
+  return target.sandbox === current.sandbox ? null : rowKey('access', target.sandbox);
 }

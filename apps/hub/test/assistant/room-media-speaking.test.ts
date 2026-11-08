@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_ENGINE, NO_PRICES } from '@smarteverything/domain';
+import { testVoiceMemory } from '../support/voice-memory';
+import { NO_PRICES } from '@smarteverything/domain';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
 import { CallDesk } from '../../src/assistant-voice/call-desk';
 import type { LiveEvents, LiveSession, VoiceProvider } from '../../src/assistant-voice/gemini';
@@ -7,6 +8,7 @@ import type { HostedCall } from '../../src/assistant-voice/outreach';
 import type { SpeakingCall, SpeakingMedia } from '../../src/reach/room-media';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 const FRAME_SAMPLES = 480;
 
@@ -41,6 +43,7 @@ const roomMedia: SpeakingMedia = {
 async function hostedCall(): Promise<HostedCall> {
   const desk = new CallDesk({
     store: opened.store,
+    memory: testVoiceMemory(opened.store),
     provider,
     responder: {
       ready: (): null => null,
@@ -76,7 +79,7 @@ beforeEach(async () => {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   }).id;
 });
 

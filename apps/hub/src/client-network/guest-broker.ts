@@ -1,118 +1,180 @@
-import { randomBytes } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { type IncomingMessage, type ServerResponse } from 'node:http';
 import { COMPUTER_MCP_TOKEN, type ComputerAiRuntime } from '@smarteverything/domain';
 import type { HubFetchLease } from './stream-fetch';
 import { HubRefusalError, HubTransportError } from './policy';
 import { guestRequestTarget } from './guest-contract';
 import { relayGuestRequest } from './guest-http';
-import { refuseLoopbackRequest } from './refusal';
+import { LoopbackListener, type LoopbackEntry } from './loopback-listener';
+import type { McpGrantAddress } from './node-transport';
 
 export interface GuestLeaseAuthority {
   lease(url: string): HubFetchLease & { readonly generation: number };
   failed(generation: number): void;
+  readonly view: {
+    readonly trust: {
+      readonly identity: { readonly id: string };
+      readonly endpoints: readonly { readonly url: string }[];
+    } | null;
+  };
 }
-interface GuestGrant {
-  readonly owner: string;
-  readonly prefix: string;
+export interface BrokerGrantCredentials {
   readonly url: string;
   readonly token: string;
-  readonly controller: AbortController;
-  readonly removeAbort: () => void;
+  readonly secret?: string;
 }
+export interface BrokerExchange {
+  readonly request: IncomingMessage;
+  readonly response: ServerResponse;
+  readonly prefix: string;
+  readonly grant: BrokerGrantCredentials;
+  readonly signal: AbortSignal;
+  readonly host: string;
+  readonly authority: GuestLeaseAuthority;
+}
+export interface BrokerFamily {
+  readonly kind: string;
+  serve(exchange: BrokerExchange): Promise<void>;
+}
+export interface BrokerGrantRequest extends BrokerGrantCredentials {
+  readonly kind: string;
+  readonly owner: string;
+}
+interface BrokerGrant {
+  readonly family: BrokerFamily;
+  readonly credentials: BrokerGrantCredentials;
+}
+
+const FAMILY_KIND = /^[a-z]+$/;
+const MCP_KIND = 'guest';
+
+const mcpFamily: BrokerFamily = {
+  kind: MCP_KIND,
+  async serve({ request, response, prefix, grant, signal, host, authority }): Promise<void> {
+    const target = guestRequestTarget(request, { ...grant, prefix }, host);
+    const lease = authority.lease(target.url);
+    await relayGuestRequest(request, response, target, {
+      ...lease,
+      signal: AbortSignal.any([lease.signal, signal]),
+      failed: (): void => {
+        authority.failed(lease.generation);
+      },
+    });
+  },
+};
+
+function digest(value: string): Buffer {
+  return createHash('sha256').update(value).digest();
+}
+function secretAdmitted(header: string | undefined, secret: string): boolean {
+  return header !== undefined && timingSafeEqual(digest(header), digest(`Bearer ${secret}`));
+}
+function underPrefix(url: string | undefined, prefix: string): boolean {
+  return (
+    url !== undefined &&
+    url.startsWith(prefix) &&
+    (url.length === prefix.length || url[prefix.length] === '/' || url[prefix.length] === '?')
+  );
+}
+
 export class HubGuestBroker {
-  private server: Server | null = null;
-  private host = '';
-  private readonly grants = new Map<string, GuestGrant>();
+  private readonly families = new Map<string, BrokerFamily>([[MCP_KIND, mcpFamily]]);
+  private readonly listener = new LoopbackListener<string, BrokerGrant>({
+    name: 'Guest broker',
+    event: 'guest.refused',
+    idPattern: /^\/[a-z]+\/([0-9a-f]{64})(?:[/?]|$)/,
+    unknownMessage: 'Broker grant is unknown or was retired',
+    retiredMessage: 'Broker grant was retired',
+    serve: (request, response, id, entry): Promise<void> =>
+      this.serve(request, response, id, entry),
+  });
   constructor(
     readonly authority: GuestLeaseAuthority,
     readonly canonicalOrigin: string,
   ) {}
   async start(): Promise<void> {
-    if (this.server !== null) throw new HubTransportError('Guest broker is already running');
-    const server = createServer((request, response): void => {
-      void this.serve(request, response).catch((cause: unknown) => {
-        refuseLoopbackRequest(response, cause, 'guest.refused');
-      });
-    });
-    server.on('connect', (_request, socket): void => {
-      socket.destroy();
-    });
-    server.on('upgrade', (_request, socket): void => {
-      socket.destroy();
-    });
-    await new Promise<void>((resolve, reject): void => {
-      server.once('error', reject);
-      server.listen(0, '127.0.0.1', (): void => {
-        server.removeListener('error', reject);
-        resolve();
-      });
-    });
-    const address = server.address();
-    if (address === null || typeof address === 'string') {
-      server.close();
-      throw new HubTransportError('Guest broker has no loopback TCP address');
-    }
-    this.host = `127.0.0.1:${String(address.port)}`;
-    this.server = server;
+    await this.listener.start();
   }
-  openMcp(runtime: ComputerAiRuntime, url: string, credential: string): string {
-    if (this.server === null) throw new HubTransportError('Guest broker listener is unavailable');
+  register(family: BrokerFamily): void {
+    if (!FAMILY_KIND.test(family.kind))
+      throw new HubTransportError('Broker family kind must be lowercase letters');
+    if (this.families.has(family.kind))
+      throw new HubTransportError(`Broker family ${family.kind} is already registered`);
+    this.families.set(family.kind, family);
+  }
+  grant(request: BrokerGrantRequest): string {
+    const family = this.families.get(request.kind);
+    if (family === undefined)
+      throw new HubTransportError(`Broker family ${request.kind} is not registered`);
+    if (!this.listener.running) throw new HubTransportError('Guest broker listener is unavailable');
+    const { kind, owner, ...credentials } = request;
+    const id = this.listener.add(owner, { family, credentials }, undefined, (retired) => {
+      this.listener.release(retired);
+    });
+    return this.grantUrl(kind, id);
+  }
+  openMcp(runtime: ComputerAiRuntime, address: McpGrantAddress, credential: string): string {
+    if (!this.listener.running) throw new HubTransportError('Guest broker listener is unavailable');
     const token = COMPUTER_MCP_TOKEN.parse(credential);
-    if (url !== new URL('/mcp', this.canonicalOrigin).href)
-      throw new HubTransportError('MCP grant URL differs from the canonical MCP endpoint');
+    const url = this.admittedMcpUrl(address);
     const owner = `mcp:${runtime}`;
-    const known = [...this.grants.values()].find(
-      (grant) => grant.owner === owner && grant.token === token,
+    const known = this.listener.find(
+      (entry) => entry.owner === owner && entry.value.credentials.token === token,
     );
-    if (known !== undefined) return `http://${this.host}${known.prefix}/mcp`;
+    if (known !== undefined) return this.mcpUrl(known);
     this.closeOwner(owner);
-    const grant = this.create(owner, url, token);
-    return `http://${this.host}${grant.prefix}/mcp`;
-  }
-  private create(owner: string, url: string, token: string): GuestGrant {
     const lease = this.authority.lease(url);
     lease.signal.throwIfAborted();
-    const id = randomBytes(32).toString('hex');
-    const retire = (): void => {
-      this.release(id);
-    };
-    lease.signal.addEventListener('abort', retire, { once: true });
-    const grant: GuestGrant = {
+    const id = this.listener.add(
       owner,
-      url,
-      token,
-      prefix: `/guest/${id}`,
-      controller: new AbortController(),
-      removeAbort: (): void => {
-        lease.signal.removeEventListener('abort', retire);
+      { family: mcpFamily, credentials: { url, token } },
+      lease.signal,
+      (retired) => {
+        this.listener.release(retired);
       },
-    };
-    this.grants.set(id, grant);
-    return grant;
+    );
+    return this.mcpUrl(id);
   }
-  private release(id: string): void {
-    const grant = this.grants.get(id);
-    if (grant === undefined) return;
-    this.grants.delete(id);
-    grant.removeAbort();
-    grant.controller.abort(new HubTransportError('MCP grant was retired'));
+  private admittedMcpUrl(address: McpGrantAddress): string {
+    const origin = new URL(address.url).origin;
+    if (address.url !== new URL('/mcp', origin).href)
+      throw new HubTransportError('MCP grant URL is not a hub MCP endpoint');
+    const { trust } = this.authority.view;
+    if (address.pin !== null && trust?.identity.id !== address.pin)
+      throw new HubTransportError('MCP grant pin differs from the enrolled hub identity');
+    const enrolled =
+      origin === this.canonicalOrigin ||
+      trust?.endpoints.some((endpoint) => new URL(endpoint.url).origin === origin) === true;
+    if (!enrolled) throw new HubTransportError('MCP grant URL is not an enrolled hub endpoint');
+    return new URL('/mcp', this.canonicalOrigin).href;
+  }
+  private mcpUrl(id: string): string {
+    return `${this.grantUrl(MCP_KIND, id)}/mcp`;
+  }
+  private grantUrl(kind: string, id: string): string {
+    return `http://${this.listener.host}/${kind}/${id}`;
   }
   closeOwner(owner: string): void {
-    for (const [id, grant] of this.grants) if (grant.owner === owner) this.release(id);
+    this.listener.releaseWhere((entry) => entry.owner === owner);
   }
   close(): void {
-    for (const id of this.grants.keys()) this.release(id);
-    this.server?.closeAllConnections();
-    this.server?.close();
-    this.server = null;
-    this.host = '';
+    this.listener.close();
   }
-  private async serve(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const id = /^\/guest\/([0-9a-f]{64})\//.exec(request.url ?? '')?.[1];
-    const grant = id === undefined ? undefined : this.grants.get(id);
-    if (grant === undefined) throw new HubRefusalError('MCP grant is unknown or was retired', 409);
-    const target = guestRequestTarget(request, grant, this.host);
-    const lease = this.authority.lease(target.url);
+  private async serve(
+    request: IncomingMessage,
+    response: ServerResponse,
+    id: string,
+    entry: LoopbackEntry<string, BrokerGrant>,
+  ): Promise<void> {
+    const { family, credentials } = entry.value;
+    const prefix = `/${family.kind}/${id}`;
+    if (!underPrefix(request.url, prefix))
+      throw new HubRefusalError('Grant belongs to another broker family', 403);
+    if (
+      credentials.secret !== undefined &&
+      !secretAdmitted(request.headers.authorization, credentials.secret)
+    )
+      throw new HubRefusalError('Grant secret was not presented', 403);
     const controller = new AbortController();
     const cancel = (): void => {
       controller.abort();
@@ -120,12 +182,14 @@ export class HubGuestBroker {
     response.once('close', cancel);
     request.once('aborted', cancel);
     try {
-      await relayGuestRequest(request, response, target, {
-        ...lease,
-        signal: AbortSignal.any([lease.signal, controller.signal, grant.controller.signal]),
-        failed: (): void => {
-          this.authority.failed(lease.generation);
-        },
+      await family.serve({
+        request,
+        response,
+        prefix,
+        grant: credentials,
+        signal: AbortSignal.any([controller.signal, entry.controller.signal]),
+        host: this.listener.host,
+        authority: this.authority,
       });
     } finally {
       controller.abort();

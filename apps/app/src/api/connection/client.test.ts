@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { Logger } from '@smarteverything/logging';
 import {
   API_ENDPOINTS as E,
   AUTOMATION_PROGRAM_ENDPOINTS as P,
@@ -11,6 +12,7 @@ import {
   ServerUnreachableError,
   UnreadableAnswerError,
 } from './client';
+import { onHubAnswered } from './hub-answers';
 
 const TOKEN = `set_${'a'.repeat(64)}`;
 const AT = '2026-10-09T10:00:00.000Z';
@@ -49,6 +51,43 @@ function serving(
 }
 
 describe('the API client', () => {
+  it('does not create new transport logs when uploading runtime logs', async () => {
+    const { client, sent } = serving(
+      200,
+      JSON.stringify({ stored: 1, accepted: 1, alreadyStored: 0, overflowed: false }),
+    );
+    const logged: string[] = [];
+    Logger.configure({
+      level: 'trace',
+      sink: (record) => {
+        logged.push(record.event);
+      },
+    });
+    try {
+      await client.call(E.ingestRuntimeLogs, {
+        body: {
+          clientId: ROOM.id,
+          profileId: ROOM.id,
+          dropped: 0,
+          records: [
+            {
+              timestamp: AT,
+              runtime: 'app',
+              platform: 'android',
+              level: 'warn',
+              scope: 'app.cameras',
+              event: 'capture.failed',
+            },
+          ],
+        },
+      });
+      expect(sent).toHaveLength(1);
+      expect(logged).toEqual([]);
+    } finally {
+      Logger.reset();
+    }
+  });
+
   it('builds the path and query, sends the bearer token and parses the answer', async () => {
     const { client, sent } = serving(200, '[]');
     await expect(
@@ -90,6 +129,20 @@ describe('the API client', () => {
     );
   });
 
+  it('tells waiting connections the hub answered only when the hub itself answered', async () => {
+    const heard: string[] = [];
+    const stop = onHubAnswered(() => heard.push('answered'));
+    try {
+      await serving(200, '[]').client.call(E.listRooms, {});
+      await expect(
+        serving(502, 'Bad Gateway').client.call(E.listRooms, {}),
+      ).rejects.toBeInstanceOf(Error);
+    } finally {
+      stop();
+    }
+    expect(heard).toEqual(['answered']);
+  });
+
   it('turns an error envelope into a named error with its code', async () => {
     const { client, refused } = serving(
       409,
@@ -112,9 +165,28 @@ describe('the API client', () => {
     expect(refused).toEqual([401]);
   });
 
-  it('refuses an answer that does not match the contract', async () => {
+  it('rejects an incompatible answer with update guidance and logs the contract issue', async () => {
     const { client } = serving(200, '[{"id":"nope"}]');
-    await expect(client.call(E.listRooms, {})).rejects.toBeInstanceOf(UnreadableAnswerError);
+    const logged: unknown[] = [];
+    const issue: unknown = expect.stringContaining('0.id');
+    Logger.configure({
+      level: 'warn',
+      sink: (record) => {
+        if (record.event === 'api.answer_unreadable') logged.push(record.payload);
+      },
+    });
+    try {
+      const request = client.call(E.listRooms, {});
+      await expect(request).rejects.toBeInstanceOf(UnreadableAnswerError);
+      await expect(request).rejects.toMatchObject({
+        message: 'Check for a SmartEverything update, then try again.',
+        route: 'GET /api/rooms',
+        issues: issue,
+      });
+      expect(logged).toEqual([{ route: 'GET /api/rooms', issues: issue }]);
+    } finally {
+      Logger.reset();
+    }
   });
 
   it('refuses to send a request the contract would refuse', async () => {

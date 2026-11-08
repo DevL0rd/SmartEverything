@@ -26,6 +26,7 @@ export class MachineUpdates {
     if (first === undefined) return null;
     return {
       version: manifest.version,
+      ...(manifest.notes === undefined ? {} : { notes: manifest.notes }),
       artifacts: signed.map(({ artifact, link }) => ({ ...artifact, url: link.url })),
       expiresAt: first,
     };

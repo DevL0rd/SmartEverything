@@ -43,6 +43,7 @@ type ScalarTag = Exclude<
 const SCALAR_FITS: Readonly<Record<ScalarTag, (value: JsonValue) => boolean>> = {
   boolean: (value) => typeof value === 'boolean',
   text: (value) => typeof value === 'string',
+  entity: isText,
   duration: (value) => typeof value === 'number' && value >= 0,
   instant: isInstant,
   timeOfDay: (value) => typeof value === 'string' && TIME_OF_DAY.test(value),

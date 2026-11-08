@@ -1,7 +1,17 @@
 import { DEVICE_EFFECT_TARGET } from '../device-effects';
 import { DEVICE_GROUP_ROW } from '../device-groups';
 import { AUTOMATION_VALUE_ROW } from '../automation-values';
-import { AUTOMATION_ROW_V3, AUTOMATION_RUN_SUMMARY } from '../automation-v3/rows';
+import { AUTOMATION_PLUGIN_KIND_ROW } from '../automation-plugin-kinds';
+import { HOME_MAP_SUMMARY_ROW } from './endpoints-home-map';
+import { DRIVE_NOTICES, DRIVE_TABLE_ROWS } from './live-drive';
+import { PLANNER_LIVE_NOTICES, PLANNER_TABLE_ROWS } from './live-planner';
+import {
+  MODEL_CATALOG_ROW,
+  MODEL_OVERRIDE_ROW,
+  MODEL_OWNER,
+  MODEL_SHA256,
+} from '../models/catalog';
+import { AUTOMATION_ROW, AUTOMATION_RUN_SUMMARY } from '../automation-v3/rows';
 import { TRANSCRIPT_CHANGED_NOTICE } from '../transcript-reader';
 import {
   LISTENING_CHANGED_NOTICE,
@@ -25,6 +35,7 @@ import {
 import { AI_HARNESS_NOTICE } from '../ai-harness-session';
 import { AI_HARNESS_CONFIGURATION_NOTICE } from '../ai-harness-extensions';
 import { AI_CHAT_PROVIDER_NOTICE } from '../ai-provider';
+import { AI_SUBSCRIPTION_USAGE_NOTICE } from '../ai-subscription-usage';
 import { z } from 'zod';
 import { BODY_READING_ROW } from '../body-readings';
 import { FOOD_ROW } from '../foods';
@@ -47,6 +58,8 @@ import { PROFILE_ROW } from '../profiles';
 import { SCHEDULE_ROW } from '../schedules';
 import { AI_OUTREACH_ROW, AI_SPEECH_NOTICE } from '../reach';
 import { APP_VIEW_NOTICE } from '../app-view';
+import { APP_UPDATE_NOTICE } from '../app-updates';
+import { HUB_UPDATE_STATUS_CHANGED } from '../self-update-recovery';
 import { CLIPBOARD_NOTICE } from '../shared-clipboard';
 import { PLUGIN_ROW, PLUGIN_STREAM_ROW, PLUGIN_UI_ROW } from '../plugins';
 import { LIVE_NOTIFICATION_NOTICE } from '../live-notification';
@@ -88,9 +101,23 @@ import {
 
 export const LIVE_SEQUENCE_HEADER = 'x-smarteverything-live-seq';
 
+export const LIVE_HEARTBEAT_MS = 30_000;
+
 export const ROW_OPERATIONS = ['INSERT', 'UPDATE', 'DELETE'] as const;
 
 export type RowOperation = (typeof ROW_OPERATIONS)[number];
+
+const MODEL_ASSET_KINDS = ['spec', 'glb'] as const;
+
+const MODEL_ASSET_OWNER = z.union([MODEL_OWNER, z.string().regex(/^user:.+$/)]);
+
+export const MODEL_ASSET_ROW = z.object({
+  sha256: MODEL_SHA256,
+  kind: z.enum(MODEL_ASSET_KINDS),
+  size: z.int().positive(),
+  owner: MODEL_ASSET_OWNER,
+  created: z.iso.datetime({ offset: true }),
+});
 
 export const TABLE_ROWS = {
   settings: SETTINGS_ROW,
@@ -110,7 +137,7 @@ export const TABLE_ROWS = {
   ir_remotes: IR_REMOTE_ROW,
   ir_codes: IR_CODE_ROW,
   scenes: SCENE_ROW,
-  automations: AUTOMATION_ROW_V3,
+  automations: AUTOMATION_ROW,
   automation_values: AUTOMATION_VALUE_ROW,
   automation_runs: AUTOMATION_RUN_SUMMARY,
   layouts: LAYOUT_ROW,
@@ -137,6 +164,13 @@ export const TABLE_ROWS = {
   plugin_streams: PLUGIN_STREAM_ROW,
   plugin_ui: PLUGIN_UI_ROW,
   ai_outreach: AI_OUTREACH_ROW,
+  home_maps: HOME_MAP_SUMMARY_ROW,
+  model_assets: MODEL_ASSET_ROW,
+  model_catalog: MODEL_CATALOG_ROW,
+  model_overrides: MODEL_OVERRIDE_ROW,
+  automation_plugin_kinds: AUTOMATION_PLUGIN_KIND_ROW,
+  ...DRIVE_TABLE_ROWS,
+  ...PLANNER_TABLE_ROWS,
 } as const;
 
 export type LiveTable = keyof typeof TABLE_ROWS;
@@ -242,6 +276,22 @@ export const ROW_CHANGE = z.discriminatedUnion('table', [
   changeOf('plugin_streams', TABLE_ROWS.plugin_streams),
   changeOf('plugin_ui', TABLE_ROWS.plugin_ui),
   changeOf('ai_outreach', TABLE_ROWS.ai_outreach),
+  changeOf('home_maps', TABLE_ROWS.home_maps),
+  changeOf('model_assets', TABLE_ROWS.model_assets),
+  changeOf('model_catalog', TABLE_ROWS.model_catalog),
+  changeOf('model_overrides', TABLE_ROWS.model_overrides),
+  changeOf('automation_plugin_kinds', TABLE_ROWS.automation_plugin_kinds),
+  changeOf('drive_roots', TABLE_ROWS.drive_roots),
+  changeOf('drive_albums', TABLE_ROWS.drive_albums),
+  changeOf('drive_sync_clients', TABLE_ROWS.drive_sync_clients),
+  changeOf('drive_placements', TABLE_ROWS.drive_placements),
+  changeOf('planner_collections', TABLE_ROWS.planner_collections),
+  changeOf('planner_items', TABLE_ROWS.planner_items),
+  changeOf('planner_occurrences', TABLE_ROWS.planner_occurrences),
+  changeOf('planner_alarms', TABLE_ROWS.planner_alarms),
+  changeOf('planner_timers', TABLE_ROWS.planner_timers),
+  changeOf('planner_stopwatches', TABLE_ROWS.planner_stopwatches),
+  changeOf('google_accounts', TABLE_ROWS.google_accounts),
 ]);
 
 export type RowChange = z.output<typeof ROW_CHANGE>;
@@ -297,6 +347,7 @@ const NOTICES = [
   TREADMILL_LIVE_NOTICE,
   BRUSH_LIVE_NOTICE,
   AI_CHAT_PROVIDER_NOTICE,
+  AI_SUBSCRIPTION_USAGE_NOTICE,
   AI_HARNESS_NOTICE,
   AI_HARNESS_CONFIGURATION_NOTICE,
   AI_CHAT_RUNTIME_PROVIDER_NOTICE,
@@ -311,6 +362,11 @@ const NOTICES = [
   VOICE_CALLS_NOTICE,
   VOICE_LEVELS_NOTICE,
   VOICE_CAPTION_NOTICE,
+  APP_UPDATE_NOTICE,
+  HUB_UPDATE_STATUS_CHANGED,
+  z.strictObject({ type: z.literal('hub_update_source_changed') }),
+  ...DRIVE_NOTICES,
+  ...PLANNER_LIVE_NOTICES,
 ] as const;
 
 export const LIVE_NOTICE = z.union(NOTICES);

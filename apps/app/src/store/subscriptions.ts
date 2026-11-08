@@ -121,16 +121,46 @@ export function ledgerEntry(state: StoreState, slot: string): LedgerEntry | unde
 }
 
 export function turnsSlice(chatId: string): Slice {
-  return keyedSlice('turns', chatId);
+  return `turns/${chatId}`;
+}
+
+const noTurns: Turns = {};
+const turnsBySource = new WeakMap<Turns, ReadonlyMap<string, Turns>>();
+const turnsByFirst = new WeakMap<Turn, Turns>();
+
+function sharedChatTurns(first: Turn, turns: Turns): Turns {
+  const previous = turnsByFirst.get(first);
+  if (previous !== undefined) {
+    const ids = Object.keys(turns);
+    if (
+      ids.length === Object.keys(previous).length &&
+      ids.every((id) => previous[id] === turns[id])
+    )
+      return previous;
+  }
+  turnsByFirst.set(first, turns);
+  return turns;
+}
+
+function indexTurns(source: Turns): ReadonlyMap<string, Turns> {
+  const groups = new Map<string, { readonly first: Turn; readonly turns: Record<string, Turn> }>();
+  for (const [id, turn] of Object.entries(source)) {
+    const group = groups.get(turn.chatId);
+    if (group === undefined) groups.set(turn.chatId, { first: turn, turns: { [id]: turn } });
+    else group.turns[id] = turn;
+  }
+  const index = new Map<string, Turns>();
+  for (const [chatId, group] of groups) {
+    index.set(chatId, sharedChatTurns(group.first, group.turns));
+  }
+  turnsBySource.set(source, index);
+  return index;
 }
 
 export function turnsOfChat(state: StoreState, chatId: string): Turns {
   recordRead(turnsSlice(chatId));
-  const own: Record<string, Turn> = {};
-  for (const [id, turn] of Object.entries(rawState(state).turns)) {
-    if (turn.chatId === chatId) own[id] = turn;
-  }
-  return own;
+  const source = rawState(state).turns;
+  return (turnsBySource.get(source) ?? indexTurns(source)).get(chatId) ?? noTurns;
 }
 
 export function messagesSlice(chatId: string): Slice {
@@ -225,6 +255,7 @@ function plainChanges(previous: StoreState, next: StoreState, out: Set<Slice>): 
 
 function turnChanges(previous: Turns, next: Turns, out: Set<Slice>): void {
   keyedChanges('turns', { previous, next }, (_, turn) => turn.chatId, out);
+  out.delete('turns');
   if (previous !== next && workChanged(previous, next)) out.add(WORK);
 }
 

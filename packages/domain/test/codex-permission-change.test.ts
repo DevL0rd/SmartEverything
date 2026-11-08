@@ -15,7 +15,15 @@ function codex(settings: CodexProviderOptions, model = 'gpt-test'): CodexEngine 
   return { kind: 'codex', device_id: DEVICE, model, effort: null, settings };
 }
 
-const OPENROUTER: Engine = { kind: 'openrouter', model: null, effort: null };
+const DSH: Engine = {
+  kind: 'dsh',
+  execution_target: { kind: 'server' },
+  session_id: null,
+  model_route_id: '33333333-3333-4333-8333-333333333333',
+  model: 'vendor/model',
+  effort: null,
+  permission: { sandbox: 'workspace-write', approval: 'on-request' },
+};
 
 const READ_ONLY = { type: 'readOnly', networkAccess: false } as const;
 const READ_ONLY_ONLINE = { type: 'readOnly', networkAccess: true } as const;
@@ -34,8 +42,8 @@ function permissionOnly(before: CodexProviderOptions, after: CodexProviderOption
 
 describe('a change that touches only permissions', () => {
   it('is not one when either side is not a Codex chat', () => {
-    expect(isCodexPermissionOnlyChange(OPENROUTER, codex({}))).toBe(false);
-    expect(isCodexPermissionOnlyChange(codex({}), OPENROUTER)).toBe(false);
+    expect(isCodexPermissionOnlyChange(DSH, codex({}))).toBe(false);
+    expect(isCodexPermissionOnlyChange(codex({}), DSH)).toBe(false);
   });
 
   it('is one when nothing changed at all', () => {

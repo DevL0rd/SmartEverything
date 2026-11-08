@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { isNative } from '../../../../design/platform';
-import { isEditableTarget } from '../canvas/shortcuts';
+import { isEditableTarget } from '../canvas/keyboard/shortcut-keys';
 import { editorKeyFor, type EditorKey } from './editor-keys';
 
 export function useEditorKeys(run: (key: EditorKey) => void, enabled: boolean): void {

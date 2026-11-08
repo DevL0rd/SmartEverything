@@ -8,6 +8,7 @@ import {
 } from '@smarteverything/domain';
 import type { ListTable, RowOf } from './state';
 import { compareText } from '../format/text';
+import { DRIVE_TABLE_RULES } from './drive-tables';
 
 export interface TableRule<R> {
   readonly idOf: (row: R) => string;
@@ -52,6 +53,22 @@ function soonestScheduled(
     return left.next_at === null ? 1 : -1;
   }
   return left.next_at === null ? compareText(rightAt, leftAt) : compareText(leftAt, rightAt);
+}
+
+function modelCatalogKey(row: RowOf<'model_catalog'>): string {
+  return `${row.id}\n${row.owner}`;
+}
+
+function modelOverrideKey(row: RowOf<'model_overrides'>): string {
+  return `${row.scope}\n${row.target}`;
+}
+
+function occurrenceKey(row: RowOf<'planner_occurrences'>): string {
+  return `${row.item_id}\n${row.occurrence_key}`;
+}
+
+function byId<R extends { readonly id: string }>(): TableRule<R> {
+  return { idOf: (row) => row.id, order: alphabetical((row) => row.id), keep: ALL };
 }
 
 type Rules = { readonly [T in ListTable]: TableRule<RowOf<T>> };
@@ -108,6 +125,11 @@ export const RULES: Rules = {
     idOf: (row) => row.id,
     order: newest((row) => row.created_at),
     keep: AUTOMATION_RUN_HISTORY_LIMIT,
+  },
+  automation_plugin_kinds: {
+    idOf: (row) => row.kind_id,
+    order: alphabetical((row) => row.kind_id),
+    keep: ALL,
   },
   layouts: { idOf: (row) => row.page, order: alphabetical((row) => row.page), keep: ALL },
   push_targets: {
@@ -167,9 +189,36 @@ export const RULES: Rules = {
     keep: ALL,
   },
   plugin_ui: { idOf: (row) => row.id, order: alphabetical((row) => row.name), keep: ALL },
+  model_assets: { idOf: (row) => row.sha256, order: alphabetical((row) => row.sha256), keep: ALL },
+  model_catalog: {
+    idOf: modelCatalogKey,
+    order: alphabetical(modelCatalogKey),
+    keep: ALL,
+  },
+  model_overrides: {
+    idOf: modelOverrideKey,
+    order: alphabetical(modelOverrideKey),
+    keep: ALL,
+  },
   body_readings: {
     idOf: (row) => row.id,
     order: newest((row) => row.measured_at),
     keep: BODY_READINGS_SNAPSHOT,
   },
+  planner_collections: { idOf: (row) => row.id, order: positioned, keep: ALL },
+  planner_items: byId(),
+  planner_occurrences: {
+    idOf: occurrenceKey,
+    order: alphabetical(occurrenceKey),
+    keep: ALL,
+  },
+  planner_alarms: byId(),
+  planner_timers: byId(),
+  planner_stopwatches: byId(),
+  google_accounts: {
+    idOf: (row) => row.profile_id,
+    order: alphabetical((row) => row.profile_id),
+    keep: ALL,
+  },
+  ...DRIVE_TABLE_RULES,
 };

@@ -134,6 +134,30 @@ describe('running Xiaomi devices', () => {
     await waitFor(() => valuesOf(recorded.states).includes('100001/power=false'));
   });
 
+  it('keeps a working push session on the LAN when its subscription refreshes time out', async () => {
+    world.purifier.offersPush = true;
+    const adapter = await startAdapter(world);
+    await adapter.discover();
+    const recorded = await subscribe(world, adapter);
+    const purifierOf = (): DiscoveredDevice | undefined =>
+      recorded.devices.at(-1)?.find((device) => device.externalId === '100001');
+    await waitFor(() => typeof purifierOf()?.details['pushSource'] === 'string');
+    world.purifier.dropsReads = true;
+    for (const expected of [2, 3, 4]) {
+      world.purifier.forgetSubscription();
+      await waitFor(() => world.purifier.subscriptions.length >= expected, 5000);
+      await waitFor(
+        () =>
+          recorded.failures.filter((failure) => failure.operation === 'lan-subscription-refresh')
+            .length >=
+          expected - 1,
+        5000,
+      );
+    }
+    expect(purifierOf()?.details['transport']).toBe('lan');
+    expect(typeof purifierOf()?.details['pushSource']).toBe('string');
+  });
+
   it('stops every loop when the subscription ends', async () => {
     const adapter = await startAdapter(world);
     await adapter.discover();
@@ -157,6 +181,21 @@ describe('running Xiaomi devices', () => {
     world.purifier.properties.set('4.1', 55);
     await waitFor(() => valuesOf(recorded.states).includes('100001/filter_life=55'));
     expect(world.purifier.handshakes).toBeGreaterThan(1);
+  });
+
+  it('keeps reading a device that ignores repeated message ids after its link reopens', async () => {
+    world.purifier.rejectsSeenIds = true;
+    const adapter = await startAdapter(world);
+    await adapter.discover();
+    const recorded = await subscribe(world, adapter);
+    await waitFor(() => world.purifier.requests.length > 0);
+    await adapter.discover();
+    world.purifier.properties.set('4.1', 55);
+    await waitFor(() => valuesOf(recorded.states).includes('100001/filter_life=55'));
+    expect(world.purifier.handshakes).toBeGreaterThan(1);
+    expect(recorded.failures.filter((failure) => failure.externalId === '100001')).toStrictEqual(
+      [],
+    );
   });
 
   it('names a failing cloud HTTP status', async () => {

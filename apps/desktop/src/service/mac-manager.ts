@@ -1,4 +1,4 @@
-import type { DesktopLinger } from '@smarteverything/domain';
+import { COMPUTER_LAUNCH_AGENT_LABEL, type DesktopLinger } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { launchAgent } from './definitions.js';
 import {
@@ -22,7 +22,7 @@ class MacManager implements ServiceManager {
 
   constructor(private readonly context: ManagerContext) {
     this.domain = `gui/${String(context.user.uid)}`;
-    this.target = `${this.domain}/${context.names.launchAgentLabel}`;
+    this.target = `${this.domain}/${COMPUTER_LAUNCH_AGENT_LABEL}`;
   }
 
   async state(): Promise<ManagerState> {
@@ -92,11 +92,7 @@ class MacManager implements ServiceManager {
   }
 
   private definition(): string {
-    return launchAgent(
-      this.context.launch,
-      this.context.locations.outputLogFile,
-      this.context.names.launchAgentLabel,
-    );
+    return launchAgent(this.context.launch, this.context.locations.outputLogFile);
   }
 
   private async launchctl(...args: readonly string[]): Promise<void> {

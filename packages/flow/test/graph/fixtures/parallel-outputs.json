@@ -1,0 +1,72 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "08000000-0000-4000-8000-000000000005",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "08000000-0000-4000-8000-000000000003",
+        "key": "together",
+        "kind": "flow.parallel",
+        "ports": {},
+        "scopes": {
+          "brightness": {
+            "nodes": [
+              {
+                "id": "08000000-0000-4000-8000-000000000001",
+                "key": "level",
+                "kind": "device.set",
+                "ports": {
+                  "target": { "lit": { "target": "hall" } },
+                  "control": { "lit": "level" },
+                  "to": { "lit": 80 }
+                }
+              }
+            ]
+          },
+          "colour": {
+            "nodes": [
+              {
+                "id": "08000000-0000-4000-8000-000000000002",
+                "key": "tint",
+                "kind": "device.set",
+                "ports": {
+                  "target": { "lit": { "target": "hall" } },
+                  "control": { "lit": "color" },
+                  "to": { "lit": "warm" }
+                }
+              }
+            ]
+          }
+        },
+        "outputs": [
+          {
+            "name": "chosen",
+            "values": { "brightness": { "lit": 80 }, "colour": { "lit": "warm" } }
+          }
+        ]
+      },
+      {
+        "id": "08000000-0000-4000-8000-000000000004",
+        "key": "echo",
+        "kind": "device.set",
+        "ports": {
+          "target": { "lit": { "target": "kitchen" } },
+          "control": { "lit": "level" },
+          "to": { "wire": { "from": "together", "port": "chosen" } }
+        }
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

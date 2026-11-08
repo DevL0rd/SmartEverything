@@ -81,7 +81,9 @@ describe('previewing a patch', () => {
       ops: [{ op: 'remove', key: 'later' }],
     });
     expect(result).toMatchObject({ ok: true, id, revision: 1 });
-    expect(rig.programs.byId(id).definition.body.nodes).toHaveLength(2);
+    expect(
+      rig.programs.byId(id).definition.nodes.filter((node) => node.kind === 'device.set'),
+    ).toHaveLength(2);
     expect(rig.programs.byId(id).revision).toBe(1);
   });
 

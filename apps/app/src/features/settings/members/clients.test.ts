@@ -20,7 +20,7 @@ function client(id: string, change: Partial<ClientRow> = {}): ClientRow {
 }
 
 describe('clientViews', () => {
-  it('lists this device first, then built-in clients, then the rest by creation time', () => {
+  it('hides the built-in hub and lists this device first, then paired devices by creation time', () => {
     const views = clientViews(
       [
         client('late', { created_at: '2026-10-05T00:00:00.000Z' }),
@@ -31,8 +31,20 @@ describe('clientViews', () => {
       'me',
       NOW,
     );
-    expect(views.map((view) => view.client.id)).toEqual(['me', 'built-in', 'early', 'late']);
-    expect(views.map((view) => view.you)).toEqual([true, false, false, false]);
+    expect(views.map((view) => view.client.id)).toEqual(['me', 'early', 'late']);
+    expect(views.map((view) => view.you)).toEqual([true, false, false]);
+  });
+
+  it('keeps paired computers visible even when they share the hub name', () => {
+    const views = clientViews(
+      [
+        client('hub', { name: 'This computer', built_in: true }),
+        client('desktop', { name: 'This computer', platform: 'desktop', kind: 'computer' }),
+      ],
+      'phone',
+      NOW,
+    );
+    expect(views.map((view) => view.client.id)).toEqual(['desktop']);
   });
 
   it('does not reorder the list it was given', () => {
@@ -49,7 +61,6 @@ describe('clientViews', () => {
     );
     expect(views.map((view) => [view.client.id, view.removable])).toEqual([
       ['me', false],
-      ['built-in', false],
       ['other', true],
     ]);
   });

@@ -31,9 +31,14 @@ interface Fixture {
   readonly marks: string[];
   readonly stopped: string[];
   readonly add: (text: string) => StoredEvent;
+  readonly attach: () => void;
 }
 
-function fixture(deliver: (event: StoredEvent, attempt: number) => Promise<void>): Fixture {
+function fixture(
+  deliver: (event: StoredEvent, attempt: number) => Promise<void>,
+  attachedAtStart = true,
+): Fixture {
+  let attached = attachedAtStart;
   const { store } = rig.opened;
   const chat: AiChatRow = rig.newChat(rig.hub.target);
   const attempts: string[] = [];
@@ -57,7 +62,8 @@ function fixture(deliver: (event: StoredEvent, attempt: number) => Promise<void>
   };
   const delivery = new AssistantDelivery({
     events: store.assistantEvents,
-    route: (): ReturnType<DeliveryOptions['route']> => ({ kind: 'engine', engine, chat }),
+    route: (): ReturnType<DeliveryOptions['route']> =>
+      attached ? { kind: 'engine', engine, chat } : { kind: 'waiting' },
     delivered: (): undefined => undefined,
     failed: (event): undefined => {
       given.push(event.text);
@@ -80,8 +86,28 @@ function fixture(deliver: (event: StoredEvent, attempt: number) => Promise<void>
       client_id: null,
       text,
     });
-  return { delivery, attempts, given, marks, stopped, add };
+  const attach = (): void => {
+    attached = true;
+  };
+  return { delivery, attempts, given, marks, stopped, add, attach };
 }
+
+describe('a message queued while its engine is still starting', () => {
+  it('waits in the queue and is delivered once the engine attaches, never failed', async () => {
+    const mine = fixture(() => Promise.resolve(), false);
+    const event = mine.add('sent around the restart');
+    mine.delivery.pump();
+    await vi.advanceTimersByTimeAsync(DELIVERY_RETRY_MS * 3);
+    expect(mine.given).toStrictEqual([]);
+    expect(mine.attempts).toStrictEqual([]);
+    expect(rig.opened.store.assistantEvents.pending().map((row) => row.id)).toContain(event.id);
+    mine.attach();
+    mine.delivery.pump();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mine.attempts).toStrictEqual(['sent around the restart']);
+    expect(mine.given).toStrictEqual([]);
+  });
+});
 
 describe('a delivery that fails', () => {
   it('retries every 2 seconds for as long as it fails, whatever the error', async () => {

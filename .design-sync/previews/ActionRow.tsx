@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { ActionRow, Stage } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
@@ -14,12 +15,12 @@ const body = (
     <ActionRow title="Clear cache" icon="close" disabled onPress={() => undefined} />
   </Col>
 );
-export const Rows = () => (
+export const Rows = (): ReactElement => (
   <Stage theme="dark" width={480}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     {body}
   </Stage>

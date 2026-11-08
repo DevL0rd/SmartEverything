@@ -31,7 +31,7 @@ const COMPUTER = {
   capabilities: COMPUTER_RUNTIME_CAPABILITIES,
 };
 export const AI_RUNTIME_ENGINE_CATALOGUE = z.strictObject({
-  default: ENGINE.nullable(),
+  default: ENGINE,
   computers: z.array(
     z.discriminatedUnion('runtime', [
       z.strictObject({

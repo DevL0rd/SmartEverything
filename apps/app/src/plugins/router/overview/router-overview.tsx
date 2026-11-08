@@ -12,7 +12,7 @@ import { TrafficCard } from './traffic-card';
 export function RouterOverview({ device }: { readonly device: Device }): ReactNode {
   const stream = useRouterSnapshot();
   const medium = useSizeClass().width === 'medium';
-  const tests = useSpeedTests();
+  const tests = useSpeedTests().list;
   if (stream.state === 'waiting') {
     return <Skeleton shape="tile" />;
   }

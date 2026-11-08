@@ -5,9 +5,7 @@ import {
   API_ENDPOINTS as E,
   type ComputerRuntimeStatus,
   type ComputerRuntimeSettingsPatch,
-  type CodexAiRead,
-  type CodexAiExecute,
-  type CodexAiReply,
+  type ComputerRuntimeModel,
 } from '@smarteverything/domain';
 import { api, useConnection } from '../../../api/transport';
 import { notify } from '../../../components/toast-store';
@@ -59,75 +57,12 @@ export function useComputerRuntimeChange(
     },
   });
 }
-export async function readCodex(deviceId: string, request: CodexAiRead): Promise<CodexAiReply> {
-  const startedAt = Date.now();
-  const envelope = await api()
-    .call(E.readComputerRuntimeState, {
-      params: { deviceId, runtime: 'codex' },
-      body: { runtime: 'codex', request },
-    })
-    .catch((error: unknown) => {
-      log.warn('runtime.read_failed', {
-        deviceId,
-        operation: request.operation,
-        error: error instanceof Error ? error.name : typeof error,
-        durationMs: Date.now() - startedAt,
-      });
-      throw error;
-    });
-  log.debug('runtime.read', () => ({
-    deviceId,
-    operation: request.operation,
-    durationMs: Date.now() - startedAt,
-  }));
-  if (envelope.runtime !== 'codex' || envelope.reply.operation !== request.operation)
-    throw new Error(`Expected Codex ${request.operation} reply.`);
-  return envelope.reply;
-}
-async function executeCodex(deviceId: string, request: CodexAiExecute): Promise<CodexAiReply> {
-  const operation = log.operation('runtime.execute', {
-    deviceId,
-    runtime: 'codex',
-    operation: request.operation,
-  });
-  const envelope = await api()
-    .call(E.executeComputerRuntime, {
-      params: { deviceId, runtime: 'codex' },
-      body: { runtime: 'codex', request },
-    })
-    .catch((error: unknown) => {
-      operation.failed(error);
-      throw error;
-    });
-  operation.succeeded();
-  if (envelope.runtime !== 'codex' || envelope.reply.operation !== request.operation)
-    throw new Error(`Expected Codex ${request.operation} result.`);
-  return envelope.reply;
-}
-export function useCodexRead(
+export function useCodexModels(
   deviceId: string,
-  request: CodexAiRead,
-  enabled: boolean,
-): ReturnType<typeof useScreenQuery<CodexAiReply>> {
+): ReturnType<typeof useScreenQuery<ComputerRuntimeModel[]>> {
   return useScreenQuery({
-    queryKey: [...runtimeKey(deviceId), 'read', request],
-    queryFn: () => readCodex(deviceId, request),
-    enabled,
-  });
-}
-export function useCodexExecute(
-  deviceId: string,
-): ReturnType<typeof useMutation<CodexAiReply, Error, CodexAiExecute>> {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (request: CodexAiExecute) => executeCodex(deviceId, request),
-    onSuccess: () => {
-      background(
-        client.invalidateQueries({ queryKey: runtimeKey(deviceId) }),
-        'queries.invalidate_failed',
-      );
-    },
-    onError: (error) =>
-      notify({ message: 'Codex operation could not be confirmed', error, tone: 'critical' }),
+    queryKey: [...runtimeKey(deviceId), 'models'],
+    queryFn: () =>
+      api().call(E.readComputerRuntimeModels, { params: { deviceId, runtime: 'codex' } }),
   });
 }

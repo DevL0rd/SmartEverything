@@ -7,7 +7,7 @@ const LOOP = /withRepeat\(|useFrameCallback\(|loopStyle\(/;
 const GATE = /from '[./]*design\/animation-gate'/;
 
 const GATED_BY_CALLER: Readonly<Record<string, string>> = {
-  'src/features/device-visuals/': 'device-visual.tsx gates every visual and passes moving',
+  'src/features/device-visuals/': 'model-visual.tsx gates every model overlay and passes moving',
   'src/features/weather/visual/': 'weather-visual.tsx gates every layer and passes moving',
   'src/plugins/printer/components/supply-tank.tsx':
     'supply-band.tsx gates every tank row and passes running',

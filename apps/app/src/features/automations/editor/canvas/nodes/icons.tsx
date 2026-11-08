@@ -47,6 +47,19 @@ const GLYPHS: Readonly<Record<string, ReactNode>> = {
       <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
     </>
   ),
+  'toggle-right': (
+    <>
+      <circle cx="15" cy="12" r="3" />
+      <rect width="20" height="14" x="2" y="5" rx="7" />
+    </>
+  ),
+  'git-merge': (
+    <>
+      <circle cx="18" cy="18" r="3" />
+      <circle cx="6" cy="6" r="3" />
+      <path d="M6 21V9a9 9 0 0 0 9 9" />
+    </>
+  ),
   'corner-down-left': <path d="M20 4v7a4 4 0 0 1-4 4H4M9 10l-5 5 5 5" />,
   'sticky-note': (
     <>

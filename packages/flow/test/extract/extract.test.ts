@@ -193,6 +193,7 @@ describe('extractRegion', () => {
     const program = automation([probe('a', { room: lit('room-1'), label: lit('x') })]);
     const result = extractRegion(program, ['a'], CTX, {
       functionId: FUNCTION_ID,
+      newId: () => crypto.randomUUID(),
       name: 'Make tea',
       expose: [{ key: 'a', port: 'room' }],
     });
@@ -242,10 +243,16 @@ describe('extractRegion', () => {
 
   it('makes up its own ids when none are given', () => {
     const program = automation([probe('a'), probe('b', { count: wired('a.out') })]);
-    const result = extractRegion(program, ['a'], CTX, { functionId: FUNCTION_ID, name: 'Tea' });
+    const result = extractRegion(program, ['a'], CTX, {
+      functionId: FUNCTION_ID,
+      newId: () => crypto.randomUUID(),
+      name: 'Tea',
+    });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const back = detachInstance(result.caller, result.instanceKey, result.callee);
+    const back = detachInstance(result.caller, result.instanceKey, result.callee, {
+      newId: () => crypto.randomUUID(),
+    });
     expect(back.ok).toBe(true);
   });
 

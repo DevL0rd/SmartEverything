@@ -17,12 +17,17 @@ import {
 import { APP_EVENTS_FRAME } from './computer-app-events';
 import { COMPUTER_SCOPES } from './computer-scopes';
 import { COMPUTER_FEATURE_LIST } from './computer-features';
-import { COMPUTER_ROLE } from './computer-role';
 import { CORE_KINDS } from './computer-snapshot';
 import { NODE_DEMAND, SAMPLE_PARTS, STATE_PARTS } from './computer-live';
 import { MACHINE_ACTION_SUPPORTS, MACHINE_PERMISSION_STATES } from '../machine-actions';
 import { NODE_REQUEST, NODE_RESULT, POWER_ACTIONS } from './node-requests';
+import { HUB_PLACEMENTS_FRAME, NODE_PLACEMENT_STATE_FRAME } from './placement-frames';
 import { NODE_REPORT } from './report';
+import { RELAY_HUB_FRAMES, RELAY_NODE_FRAMES } from './relay-frames';
+
+export const NODE_HEARTBEAT_MS = 30_000;
+
+export const NODE_PROTOCOL_VERSION = 1;
 
 export const NODE_INTERFACE = z.object({
   name: z.string().min(1),
@@ -33,6 +38,7 @@ export const NODE_INTERFACE = z.object({
 export type NodeInterface = z.infer<typeof NODE_INTERFACE>;
 
 export const NODE_HELLO = z.object({
+  protocol: z.literal(NODE_PROTOCOL_VERSION),
   machineId: z.string().regex(/^[0-9a-f]{32}$/),
   hostname: z.string().min(1),
   os: z.object({ name: z.string().min(1), kernel: z.string().min(1) }),
@@ -52,7 +58,6 @@ export const NODE_HELLO = z.object({
   bootedAt: z.iso.datetime({ offset: true }),
   power: z.array(z.enum(POWER_ACTIONS)).default([]),
   features: COMPUTER_FEATURE_LIST.default([]),
-  role: COMPUTER_ROLE.default('pc'),
   actions: MACHINE_ACTION_SUPPORTS.default([]),
   permissions: MACHINE_PERMISSION_STATES.default([]),
 });
@@ -93,11 +98,13 @@ export const NODE_FRAME = z.discriminatedUnion('type', [
   NODE_SAMPLE_FRAME,
   NODE_STATE_FRAME,
   APP_EVENTS_FRAME,
+  NODE_PLACEMENT_STATE_FRAME,
   z.object({ type: z.literal('reply'), id: REQUEST_ID, result: NODE_RESULT }),
   z.object({ type: z.literal('ear'), ear: LISTENING_NODE_MESSAGE }),
   z.object({ type: z.literal('ears'), key: EAR_KEY, ear: REMOTE_EAR_NODE_MESSAGE }),
   z.object({ type: z.literal('ears_scored'), ...EAR_SCORED.shape }),
   z.object({ type: z.literal('ears_score_failed'), ...EAR_SCORE_FAILED.shape }),
+  ...RELAY_NODE_FRAMES,
 ]);
 
 export type NodeFrame = z.infer<typeof NODE_FRAME>;
@@ -105,6 +112,7 @@ export type NodeFrame = z.infer<typeof NODE_FRAME>;
 export const HUB_FRAME = z.discriminatedUnion('type', [
   z.object({ type: z.literal('demand'), demand: NODE_DEMAND }),
   z.object({ type: z.literal('scopes'), scopes: COMPUTER_SCOPES }),
+  HUB_PLACEMENTS_FRAME,
   z.object({ type: z.literal('request'), id: REQUEST_ID, request: NODE_REQUEST }),
   z.object({ type: z.literal('ear'), ear: LISTENING_HUB_MESSAGE }),
   z.object({
@@ -117,6 +125,7 @@ export const HUB_FRAME = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ears_close'), key: EAR_KEY }),
   z.object({ type: z.literal('ears'), key: EAR_KEY, ear: REMOTE_EAR_HUB_MESSAGE }),
   z.object({ type: z.literal('ears_score'), ...EAR_SCORE.shape }),
+  ...RELAY_HUB_FRAMES,
 ]);
 
 export type HubFrame = z.infer<typeof HUB_FRAME>;

@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
-import { Modal, View } from 'react-native';
+import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Logger, background } from '@smarteverything/logging';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeScope } from '../../../design/theme-scope';
 import { acknowledgeEvent } from '../../../api/media';
 import { href } from '../../../app-shell/hrefs';
+import { ToastModal } from '../../../components/toast-modal';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
@@ -135,7 +136,7 @@ function Actions(props: CallProps): ReactNode {
 
 function CallScreen(props: CallProps): ReactNode {
   return (
-    <Modal visible animationType="slide" onRequestClose={props.onDone} statusBarTranslucent>
+    <ToastModal visible animationType="slide" onRequestClose={props.onDone} statusBarTranslucent>
       <GestureHandlerRootView style={FILL}>
         <ThemeScope theme="dark">
           <View className="flex-1 justify-between gap-8 bg-bg px-gutter pb-safe-offset-6 pt-safe-offset-12">
@@ -145,7 +146,7 @@ function CallScreen(props: CallProps): ReactNode {
           </View>
         </ThemeScope>
       </GestureHandlerRootView>
-    </Modal>
+    </ToastModal>
   );
 }
 

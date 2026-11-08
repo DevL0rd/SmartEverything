@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Badge, HScroller, Stage } from 'smarteverything-kit';
 
 const chips = [
@@ -15,12 +16,12 @@ const chips = [
     <Badge label={r} tone="primary" />
   </div>
 ));
-export const Scrolling = () => (
+export const Scrolling = (): ReactElement => (
   <Stage theme="dark" width={360}>
     <HScroller label="Rooms">{chips}</HScroller>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={360}>
     <HScroller label="Rooms">{chips}</HScroller>
   </Stage>

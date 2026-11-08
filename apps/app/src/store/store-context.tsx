@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
 import { use, useCallback, useContext, useRef, useSyncExternalStore } from 'react';
-import { WidgetPickerSource, type PickerState } from '../components/widget-board';
 import type { CommandLedger } from './command-ledger';
 import type { EntityStore } from './entity-store';
 import { ScreenPausedContext } from '../design/screen-pause';
-import { rowsOf, type StoreState } from './state';
+import type { StoreState } from './state';
 import { StoreContext, type StoreRuntime } from './store-runtime';
 import { trackReads, type Slice } from './subscriptions';
 
@@ -23,21 +22,7 @@ export function StoreProvider({
   readonly runtime: StoreRuntime;
   readonly children: ReactNode;
 }): ReactNode {
-  return (
-    <StoreContext.Provider value={runtime}>
-      <WidgetPickerSource read={() => pickerStateOf(runtime.store.get())}>
-        {children}
-      </WidgetPickerSource>
-    </StoreContext.Provider>
-  );
-}
-
-function pickerStateOf(state: StoreState): PickerState {
-  return {
-    devices: rowsOf(state.tables.devices),
-    rooms: rowsOf(state.tables.rooms),
-    groups: rowsOf(state.tables.device_groups),
-  };
+  return <StoreContext.Provider value={runtime}>{children}</StoreContext.Provider>;
 }
 
 function useRuntime(): StoreRuntime {

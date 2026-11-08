@@ -1,6 +1,6 @@
 import type { ClipboardClip } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ClipboardSync, decideSync } from './clipboard-sync';
 
 const FROM = '3f0a1d52-6a37-4c0e-9d3c-8a1c5f7e2b10';
@@ -40,23 +40,32 @@ class Bench {
   shared: ClipboardClip | null = null;
   readonly sent: string[] = [];
   failSend = false;
-  readonly sync = new ClipboardSync(
-    {
-      readLocal: (): Promise<string> => Promise.resolve(this.local),
-      writeLocal: (text): Promise<void> => {
-        this.local = text;
-        return Promise.resolve();
+  readable = true;
+  failRead: Error | null = null;
+  readonly sync: ClipboardSync;
+
+  constructor(log = new Logger('app.clipboard')) {
+    this.sync = new ClipboardSync(
+      {
+        readLocal: (): Promise<string | null> =>
+          this.failRead === null
+            ? Promise.resolve(this.readable ? this.local : null)
+            : Promise.reject(this.failRead),
+        writeLocal: (text): Promise<void> => {
+          this.local = text;
+          return Promise.resolve();
+        },
+        readRemote: (): Promise<ClipboardClip | null> => Promise.resolve(this.shared),
+        sendRemote: (text): Promise<void> => {
+          if (this.failSend) return Promise.reject(new Error('offline'));
+          this.sent.push(text);
+          this.shared = clip(text);
+          return Promise.resolve();
+        },
       },
-      readRemote: (): Promise<ClipboardClip | null> => Promise.resolve(this.shared),
-      sendRemote: (text): Promise<void> => {
-        if (this.failSend) return Promise.reject(new Error('offline'));
-        this.sent.push(text);
-        this.shared = clip(text);
-        return Promise.resolve();
-      },
-    },
-    new Logger('app.clipboard'),
-  );
+      log,
+    );
+  }
 }
 
 describe('keeping two clipboards in step', () => {
@@ -111,5 +120,28 @@ describe('keeping two clipboards in step', () => {
     bench.failSend = false;
     await bench.sync.localChanged();
     expect(bench.sent).toEqual(['important']);
+  });
+
+  it('does nothing and reports nothing while the clipboard cannot be read now', async () => {
+    const log = new Logger('app.clipboard');
+    const error = vi.spyOn(log, 'error');
+    const bench = new Bench(log);
+    bench.shared = clip('elsewhere');
+    bench.readable = false;
+    await bench.sync.foreground();
+    await bench.sync.localChanged();
+    expect(bench.local).toBe('');
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('reports the real cause when reading the clipboard is refused', async () => {
+    const log = new Logger('app.clipboard');
+    const error = vi.spyOn(log, 'error');
+    const bench = new Bench(log);
+    bench.failRead = new DOMException('Document is not focused.', 'NotAllowedError');
+    await bench.sync.foreground();
+    expect(error).toHaveBeenCalledWith('clipboard.sync_failed', bench.failRead, {
+      reason: 'foreground',
+    });
   });
 });

@@ -15,6 +15,8 @@ object AssistantLink {
     "assistant/call?source=assistant&chatId=${Uri.encode(chatId)}&answering=${Uri.encode(outreachId)}"
   )
 
+  fun voiceMessage(context: Context): Intent = open(context, "assistant/voice-message")
+
   private fun open(context: Context, path: String): Intent {
     val intent = viewIntent(context, "$SCHEME://$path")
       .takeIf { intent -> intent.resolveActivity(context.packageManager) != null }

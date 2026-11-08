@@ -100,12 +100,30 @@ function readEnvironment(): z.infer<typeof BUILD_ENVIRONMENT> {
   return parsed.data;
 }
 
+function serverOf(environment: z.infer<typeof BUILD_ENVIRONMENT>): string | null {
+  return environment.EXPO_PUBLIC_SERVER_URL === undefined
+    ? null
+    : environment.EXPO_PUBLIC_SERVER_URL.replace(/\/$/, '');
+}
+
 function extraOf(environment: z.infer<typeof BUILD_ENVIRONMENT>): Extra {
+  const server = serverOf(environment);
+  return { privacyPolicyUrl: server === null ? null : `${server}/privacy` };
+}
+
+function updatesOf(
+  environment: z.infer<typeof BUILD_ENVIRONMENT>,
+): NonNullable<ExpoConfig['updates']> {
+  const server = serverOf(environment);
+  if (environment.ANDROID_VARIANT !== 'release' || server === null) return { enabled: false };
   return {
-    privacyPolicyUrl:
-      environment.EXPO_PUBLIC_SERVER_URL === undefined
-        ? null
-        : `${environment.EXPO_PUBLIC_SERVER_URL.replace(/\/$/, '')}/privacy`,
+    enabled: true,
+    url: `${server}/api/app-update/manifest`,
+    checkAutomatically: 'ON_ERROR_RECOVERY',
+    fallbackToCacheTimeout: 0,
+    useEmbeddedUpdate: true,
+    codeSigningCertificate: './certs/app-update-certificate.pem',
+    codeSigningMetadata: { keyid: 'main', alg: 'rsa-v1_5-sha256' },
   };
 }
 
@@ -130,6 +148,7 @@ export default (): ExpoConfig => {
       CAMERA_PLUGIN,
       ['expo-font', { fonts: FONT_FILES }],
       'expo-secure-store',
+      ['expo-media-library', { granularPermissions: ['photo', 'video'] }],
       LOCATION_PLUGIN,
       './plugins/accumulated-updates/app.plugin.js',
       ['./plugins/android-build/app.plugin.js', { variant: environment.ANDROID_VARIANT }],
@@ -147,8 +166,8 @@ export default (): ExpoConfig => {
         backgroundColor: '#0E0E10',
       },
     },
-    runtimeVersion: { policy: 'appVersion' },
-    updates: { enabled: false },
+    runtimeVersion: { policy: 'fingerprint' },
+    updates: updatesOf(environment),
     extra,
   };
   return extra.privacyPolicyUrl === null ? withMissingPrivacyPolicy(config) : config;

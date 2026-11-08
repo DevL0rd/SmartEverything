@@ -4,9 +4,10 @@ import { API_ENDPOINTS as E, type PushStatus } from '@smarteverything/domain';
 import { PUSH_STATUS_KEY } from '../queries/keys';
 import { api } from './transport';
 
-export function usePushDeliveries(): UseQueryResult<PushStatus> {
+export function usePushDeliveries(enabled = true): UseQueryResult<PushStatus> {
   return useScreenQuery({
     queryKey: PUSH_STATUS_KEY,
+    enabled,
     queryFn: () => api().call(E.readPushStatus, {}),
   });
 }

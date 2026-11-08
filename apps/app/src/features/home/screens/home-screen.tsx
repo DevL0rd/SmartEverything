@@ -1,5 +1,6 @@
 import { useEffect, useMemo, type ReactNode } from 'react';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { z } from 'zod';
 import { Logger } from '@smarteverything/logging';
 import { DEVICE_TARGET } from '@smarteverything/domain';
@@ -21,6 +22,7 @@ import {
 } from '../../../components/widget-board';
 import { useStableValue } from '../../../components/use-stable-value';
 import { useSizeClass } from '../../../design/size-class';
+import { isNative } from '../../../design/platform';
 import { usePageLayout, useSavePageLayout } from '../../../store/layouts';
 import { useSettings } from '../../../store/selectors';
 import { useExtensionWidgets } from '../../../plugins/declared/use-extension-widgets';
@@ -29,8 +31,11 @@ import { cameraInstanceAvailable } from '../../cameras';
 import { useNutritionWidgets, useTodayKey } from '../../nutrition';
 import { useClimateWidgets } from '../../climate';
 import { useLightGroupDefaults } from '../../device-groups';
+import { ScrollModelLayer } from '../../models';
 import { useWeather, weatherShown } from '../../weather';
 import { HeaderBelow, SummaryLine } from '../components/home-header';
+import { HomeMapHero } from '../components/home-map-hero';
+import { homeMapRealistic } from '../../home-map';
 import {
   HomeDataContext,
   availableWidgets,
@@ -54,7 +59,7 @@ const REVEAL_PARAMS = z.object({
 
 const TARGET_OPTIONS = z.object({ target: DEVICE_TARGET });
 
-function memberPageOf(widget: BoardWidget, member: string | undefined): Href | null {
+function memberPageOf(widget: BoardWidget, member: string | undefined): AppHref | null {
   const options = TARGET_OPTIONS.safeParse(widget.options);
   if (!options.success) {
     return null;
@@ -80,7 +85,7 @@ function useReveal(): BoardReveal | undefined {
   return {
     key: reveal,
     member: member ?? null,
-    pageOf: (widget): Href | null => memberPageOf(widget, member),
+    pageOf: (widget): AppHref | null => memberPageOf(widget, member),
     onDone: (): void => {
       router.setParams({ reveal: undefined, member: undefined });
     },
@@ -179,6 +184,7 @@ function HomeBoard({
         catalogue={catalogue}
         available={available}
         instanceAvailable={instanceCheck(data.cameras, data.digest.spotlightable)}
+        {...(isNative() ? { rowLayer: ScrollModelLayer } : {})}
         {...(reveal === undefined ? {} : { reveal })}
       />
     </HomeDataContext>
@@ -230,6 +236,7 @@ export function HomeScreen(): ReactNode {
       }
     >
       {header === 'standard' ? <SummaryLine /> : null}
+      <HomeMapHero realistic={homeMapRealistic} />
       <HomeBoard editor={editor} reveal={reveal} />
     </Screen>
   );

@@ -4,16 +4,16 @@ import type {
   AutomationProgramPatchReply,
   AutomationProgramReply,
   AutomationProgramRevisionSummary,
-  AutomationRowV3,
 } from '@smarteverything/domain';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import type { PatchOps, ProgramCheckBody, ProgramCreateBody, ProgramUpdateBody } from './api';
 import { automationKeys } from './keys';
+import type { AutomationRow } from './graph-adapter';
 import { useAutomationsSource } from './source';
 import { useAutomations } from './use-automations';
 
 export interface AutomationView {
-  readonly row: AutomationRowV3 | null;
+  readonly row: AutomationRow | null;
   readonly revisions: UseQueryResult<AutomationProgramRevisionSummary[]>;
 }
 
@@ -40,6 +40,7 @@ export interface AutomationActions {
   ) => Promise<AutomationProgramPatchReply>;
   readonly check: (body: ProgramCheckBody) => Promise<AutomationProgramReply>;
   readonly setEnabled: (automationId: string, enabled: boolean) => Promise<AutomationProgramReply>;
+  readonly rename: (automationId: string, name: string) => Promise<AutomationProgramReply>;
   readonly remove: (automationId: string) => Promise<void>;
 }
 
@@ -66,6 +67,11 @@ export function useAutomationActions(): AutomationActions {
       },
       check: api.checkProgram,
       setEnabled: api.setProgramEnabled,
+      rename: async (automationId, name): Promise<AutomationProgramReply> => {
+        const reply = await api.renameProgram(automationId, name);
+        await client.invalidateQueries({ queryKey: automationKeys.draft(automationId) });
+        return reply;
+      },
       remove: async (automationId): Promise<void> => {
         await api.removeProgram(automationId);
         client.removeQueries({ queryKey: automationKeys.draft(automationId) });

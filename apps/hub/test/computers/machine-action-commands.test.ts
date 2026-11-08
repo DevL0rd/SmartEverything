@@ -9,6 +9,7 @@ import {
   type MachineAction,
   type MachineActionSupport,
   type NodeRequest,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import {
@@ -46,6 +47,7 @@ function rig(options: {
     context: {
       directory: {
         byExternalId: () => ({
+          protocol: NODE_PROTOCOL_VERSION,
           role: 'pc',
           machineActions: () => options.supports,
           call: (request): Promise<null> => {

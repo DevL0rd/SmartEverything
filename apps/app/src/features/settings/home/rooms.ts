@@ -19,7 +19,9 @@ export function openAddRoom(count: number): void {
     placeholder: 'Room name',
     confirmLabel: 'Add',
     maxLength: ROOM_NAME_LENGTH,
-    save: (name) => trackSetting('room.create', { rooms: count }, () => createRoom(name, count)),
+    save: async (name) => {
+      await trackSetting('room.create', { rooms: count }, () => createRoom(name, count));
+    },
   });
 }
 

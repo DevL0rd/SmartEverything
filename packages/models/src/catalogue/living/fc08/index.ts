@@ -1,0 +1,22 @@
+import type { ModelSpec } from '@smarteverything/domain';
+import { BOOKSHELF_MODEL, DISPLAY_CABINET_MODEL } from './cabinets';
+import { MEDIA_WALL_UNIT_MODEL, SIDE_TABLE_MODEL, TV_CONSOLE_MODEL } from './consoles';
+import { UPRIGHT_PIANO_MODEL } from './piano';
+
+export {
+  BOOKSHELF_MODEL,
+  DISPLAY_CABINET_MODEL,
+  MEDIA_WALL_UNIT_MODEL,
+  SIDE_TABLE_MODEL,
+  TV_CONSOLE_MODEL,
+  UPRIGHT_PIANO_MODEL,
+};
+
+export const LIVING_STORAGE_MODELS: readonly ModelSpec[] = [
+  SIDE_TABLE_MODEL,
+  TV_CONSOLE_MODEL,
+  MEDIA_WALL_UNIT_MODEL,
+  BOOKSHELF_MODEL,
+  DISPLAY_CABINET_MODEL,
+  UPRIGHT_PIANO_MODEL,
+];

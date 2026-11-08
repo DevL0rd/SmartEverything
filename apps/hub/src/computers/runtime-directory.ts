@@ -1,3 +1,4 @@
+import { assertProviderTurnSize } from './provider-turn-size';
 import { randomUUID } from 'node:crypto';
 import {
   startRuntimeCommand,
@@ -22,7 +23,6 @@ import {
   COMPUTER_RUNTIME_REQUEST,
   COMPUTER_RUNTIME_SETTINGS,
   computerRuntimeKey,
-  PROVIDER_TURN_MAX_BYTES,
   type ComputerAiRuntime,
   type ComputerRuntimeTarget,
   type ComputerRuntimeSettingsPatch,
@@ -44,11 +44,14 @@ import {
   assertNativeEffectsReconciled,
   assertRuntimeReply,
   isRuntimeRead,
-  runtimeAccessEnabled,
 } from './runtime-access';
 import { RuntimeReceipts } from './runtime-receipts';
 import { runtimeDetached } from './runtime-trace';
-import { attachmentGeneration, runtimeDirectoryStatus } from './runtime-directory-status';
+import {
+  attachmentGeneration,
+  runtimeDirectoryStatus,
+  runtimeModelUnavailableReason,
+} from './runtime-directory-status';
 type RuntimeFactory = (deviceId: string) => ComputerRuntimeHost;
 export class ComputerRuntimeDirectory {
   private readonly hosts = new Map<string, AttachedRuntime>();
@@ -200,14 +203,12 @@ export class ComputerRuntimeDirectory {
     return result;
   }
   async models(target: ComputerRuntimeTarget): Promise<ComputerRuntimeModel[]> {
-    const status = this.status(target);
-    if (!status.online || !runtimeAccessEnabled(status, 'models'))
+    const reason = runtimeModelUnavailableReason(this.status(target));
+    if (reason !== null)
       return this.store.computerRuntimes.models(target).map((model) => ({
         ...model,
         available: false,
-        reason: status.online
-          ? 'The selected runtime model discovery is disabled.'
-          : 'The supplying computer runtime is offline.',
+        reason,
       }));
     const request = COMPUTER_RUNTIME_REQUEST.parse({
       runtime: target.runtime,
@@ -245,11 +246,7 @@ export class ComputerRuntimeDirectory {
       runtime: input.runtime,
       request: { operation: 'provider_start', turn: input.turn },
     });
-    if (Buffer.byteLength(JSON.stringify(input.turn), 'utf8') > PROVIDER_TURN_MAX_BYTES)
-      throw new ApiError(
-        'invalid_request',
-        'Runtime provider turn exceeds the 32 MiB transport limit.',
-      );
+    assertProviderTurnSize(input.turn);
     const key = JSON.stringify([target.device_id, target.runtime, input.turn.job_id]);
     if (this.jobs.has(key))
       throw new ApiError('conflict', 'This runtime provider job was already submitted.');

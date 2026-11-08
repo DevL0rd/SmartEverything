@@ -10,7 +10,7 @@ import { CONTINUE_NOTE } from '../../../src/assistant/interruption';
 import { RETRY_WAIT_MS } from '../../../src/assistant/engines/dsh/turn-retry';
 import { ConversationLog } from '../../../src/assistant/conversation-log';
 import { DshRunner } from '../../../src/assistant/engines/dsh/runner';
-import { nativeReplyId } from '../../../src/assistant/engines/dsh/reconciliation';
+import { nativeReplyId } from '../../../src/assistant/engines/dsh/projector-replay';
 import type { Engine } from '../../../src/assistant/engines/engine';
 import type { StoredEvent } from '../../../src/store/repositories/assistant-events';
 import { useRig, type Rig } from './support/rig';
@@ -74,7 +74,7 @@ describe('a prompt the host fails after the turn was admitted', () => {
     vi.useRealTimers();
   });
 
-  it('keeps the turn retrying with one continue note every 2 seconds until Stop settles it', async () => {
+  it('keeps resending the message the person wrote every 2 seconds until Stop settles it', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const { engine, chat, send, notices } = fixture();
     rig.hub.script = (request): undefined => {
@@ -93,12 +93,17 @@ describe('a prompt the host fails after the turn was admitted', () => {
     await vi.waitFor(() => {
       expect(promptsSent()).toBe(2);
     });
-    expect(prompts().at(-1)).toBe(CONTINUE_NOTE);
+    expect(prompts().at(-1)).toBe('turn the lights on');
     await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS);
     await vi.waitFor(() => {
       expect(promptsSent()).toBe(3);
     });
-    expect(prompts().filter((text) => text === CONTINUE_NOTE)).toHaveLength(2);
+    expect(prompts()).not.toContain(CONTINUE_NOTE);
+    expect(
+      rig.hub.requests.flatMap((request) =>
+        request.kind === 'prompt' ? [`${request.author}:${request.delivery_id}`] : [],
+      ),
+    ).toStrictEqual(Array.from({ length: 3 }, () => `person:${event.id}`));
 
     await engine.interrupt(chat);
     await expect(delivered).resolves.toBeUndefined();

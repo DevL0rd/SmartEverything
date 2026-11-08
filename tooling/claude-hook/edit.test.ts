@@ -30,6 +30,7 @@ function edit(): Promise<number> {
 
 beforeEach(async () => {
   session = `hook-edit-${String(process.pid)}-${String(Date.now())}`;
+  vi.stubEnv('CLAUDE_PROJECT_DIR', '/home/user/Github/SmartEverything');
   stderr = '';
   mocks.tool.mockReset();
   mocks.tool.mockResolvedValue(clean);
@@ -43,6 +44,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await removeSession(session);
 });
 

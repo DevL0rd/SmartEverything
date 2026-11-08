@@ -133,11 +133,13 @@ describe('phone card faces for your own phone', () => {
     expect(html('m').includes('This phone')).toBe(false);
   });
 
-  it('turns Ring into Stop while it rings, short on the medium face', () => {
+  it('turns Ring into Stop ringing while it rings, as an icon on the medium face', () => {
     const ringing = { ...AWAY, readings: { ringing: true } };
     expect(offers(html('l', ringing), 'Stop ringing')).toBe(true);
-    expect(offers(html('m', ringing), 'Stop')).toBe(true);
-    expect(offers(html('m', ringing), 'Ring')).toBe(false);
+    const medium = html('m', ringing);
+    expect(offers(medium, 'Stop ringing')).toBe(true);
+    expect(offers(medium, 'Ring')).toBe(false);
+    expect(medium.includes('>Stop ringing<')).toBe(false);
   });
 
   it('shows the flashlight as on and what is playing with its controls', () => {
@@ -188,6 +190,18 @@ describe('phone card faces for your own phone', () => {
     };
     expect(html('l', scene).includes('Flashlight')).toBe(false);
   });
+});
+
+describe('phone card band', () => {
+  it.each(['m', 'w', 'l', 'xl'] as const)(
+    'keeps the options menu after the controls at the bottom of %s',
+    (cls) => {
+      const markup = html(cls);
+      const torch = markup.indexOf('aria-label="Flashlight off, turn on"');
+      expect(torch).toBeGreaterThan(markup.indexOf('aria-label="Dana’s Fold7, Phone'));
+      expect(markup.indexOf('aria-label="Dana’s Fold7 options"')).toBeGreaterThan(torch);
+    },
+  );
 });
 
 describe('phone card faces for someone else’s phone', () => {

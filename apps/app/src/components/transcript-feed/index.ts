@@ -1,1 +1,1 @@
-export { TranscriptFeed } from './transcript-feed';
+export { TranscriptFeed, type TranscriptFeedProps } from './transcript-feed';

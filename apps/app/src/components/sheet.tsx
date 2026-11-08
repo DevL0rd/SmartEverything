@@ -1,9 +1,11 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import type { View } from 'react-native';
 import { useIdiom } from '../design/platform';
 import type { Rect } from './anchor';
 import { BottomSheet, type Detent } from './bottom-sheet';
 import { DialogFrame } from './dialog-frame';
 import { Popover } from './popover';
+import { useSheetSubpage } from './sheet-navigation';
 
 type PointerSheetKind = 'dialog' | 'popover' | 'inspector';
 
@@ -18,32 +20,69 @@ export interface SheetProps {
   readonly wide?: boolean;
   readonly footer?: ReactNode;
   readonly scroll?: boolean;
+  readonly reading?: boolean;
+  readonly subpage?: boolean | { readonly opener: RefObject<View | null> } | undefined;
   readonly children: ReactNode;
 }
 
-export function Sheet({
+function TouchSheet({
   open,
   onClose,
   title,
-  label,
+  name,
   detents = ['half', 'full'],
-  kind = 'dialog',
-  anchor = null,
-  wide = false,
   footer,
   scroll = true,
+  reading = false,
+  subpage = false,
   children,
-}: SheetProps): ReactNode {
+}: SheetProps & { readonly name: string }): ReactNode {
+  const mayNest = subpage !== false;
+  const nested = useSheetSubpage(mayNest && open, {
+    title: title ?? name,
+    onClose,
+    detents,
+    footer,
+    scroll,
+    children,
+    compact: false,
+    opener: typeof subpage === 'boolean' ? undefined : subpage.opener,
+  });
+  if (mayNest && nested) return null;
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={title}
+      label={name}
+      detents={detents}
+      footer={footer}
+      scroll={scroll}
+      reading={reading}
+    >
+      {children}
+    </BottomSheet>
+  );
+}
+
+export function Sheet(props: SheetProps): ReactNode {
   const touch = useIdiom() === 'touch';
-  const name = label ?? title ?? 'Sheet';
-  const shared = { open, onClose, title, label: name, footer, scroll };
+  const name = props.label ?? props.title ?? 'Sheet';
   if (touch) {
-    return (
-      <BottomSheet {...shared} detents={detents}>
-        {children}
-      </BottomSheet>
-    );
+    return <TouchSheet {...props} name={name} />;
   }
+  const {
+    open,
+    onClose,
+    title,
+    kind = 'dialog',
+    anchor = null,
+    wide = false,
+    footer,
+    scroll = true,
+    reading = false,
+    children,
+  } = props;
   if (kind === 'popover') {
     return (
       <Popover open={open} onClose={onClose} anchor={anchor} label={name}>
@@ -52,7 +91,17 @@ export function Sheet({
     );
   }
   return (
-    <DialogFrame {...shared} kind={kind} wide={wide}>
+    <DialogFrame
+      open={open}
+      onClose={onClose}
+      title={title}
+      label={name}
+      footer={footer}
+      scroll={scroll}
+      reading={reading}
+      kind={kind}
+      wide={wide}
+    >
       {children}
     </DialogFrame>
   );

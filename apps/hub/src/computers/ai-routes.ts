@@ -1,7 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import {
   API_ENDPOINTS as E,
-  CLAUDE_SESSION,
   CLAUDE_STATUS,
   CLAUDE_PROVIDER_OPTIONS,
   COMPUTER_AI_CAPABILITIES,
@@ -9,15 +7,13 @@ import {
   type COMPUTER_AI_ENDPOINTS,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { Store } from '../store/store';
-import { withContinuingChats } from './session-chats';
+import { externalChatRetired } from './external-chat';
 import type { ComputerAiDirectory } from './ai-directory';
 import { bound, type Routes } from '../server/router';
 import { roleOfCaller } from '../server/auth';
 
 export function computerAiRoutes(
   directory: ComputerAiDirectory,
-  store: Store,
 ): Routes<
   Exclude<
     keyof typeof COMPUTER_AI_ENDPOINTS,
@@ -25,21 +21,23 @@ export function computerAiRoutes(
   >
 > {
   return {
-    readComputerClaudeOperation: bound(E.readComputerClaudeOperation, ({ params, caller }) =>
-      directory.nativeRequest(
-        params.deviceId,
-        { operation: 'native_operation', operation_id: params.operationId },
-        E.readComputerClaudeOperation.response,
-        caller,
-      ),
-    ),
     ...settingsRoutes(directory),
     ...providerDiscoveryRoutes(directory),
-    ...sessionReadRoutes(directory, store),
-    ...promptReadRoutes(directory),
-    ...sessionActionRoutes(directory),
-    ...linkRoutes(directory),
-    ...promptAndToolRoutes(directory),
+    ...retiredSessionRoutes,
+    readComputerClaudeUsage: bound(E.readComputerClaudeUsage, ({ params }) =>
+      directory.request(
+        params.deviceId,
+        { operation: 'usage' },
+        E.readComputerClaudeUsage.response,
+      ),
+    ),
+    removeComputerClaudeLink: bound(E.removeComputerClaudeLink, ({ params }) =>
+      directory.request(
+        params.deviceId,
+        { operation: 'remove_link' },
+        E.removeComputerClaudeLink.response,
+      ),
+    ),
   };
 }
 
@@ -93,177 +91,18 @@ function providerDiscoveryRoutes(
   };
 }
 
-function sessionReadRoutes(
-  directory: ComputerAiDirectory,
-  store: Store,
-): Routes<'listComputerClaudeSessions' | 'readComputerClaudeSession' | 'listComputerClaudeThread'> {
-  return {
-    listComputerClaudeSessions: bound(E.listComputerClaudeSessions, async ({ params, query }) =>
-      withContinuingChats(
-        await directory.request(
-          params.deviceId,
-          { operation: 'sessions', query },
-          z.array(CLAUDE_SESSION),
-        ),
-        store.aiChats.continuingSessions(params.deviceId),
-      ),
-    ),
-    readComputerClaudeSession: bound(E.readComputerClaudeSession, ({ params }) =>
-      directory.request(
-        params.deviceId,
-        { operation: 'session', session_id: params.sessionId },
-        E.readComputerClaudeSession.response,
-      ),
-    ),
-    listComputerClaudeThread: bound(E.listComputerClaudeThread, ({ params, query }) =>
-      directory.request(
-        params.deviceId,
-        { operation: 'thread', session_id: params.sessionId, query },
-        E.listComputerClaudeThread.response,
-      ),
-    ),
-  };
-}
-
-function promptReadRoutes(
-  directory: ComputerAiDirectory,
-): Routes<'readComputerClaudeUsage' | 'listComputerClaudePrompts'> {
-  return {
-    readComputerClaudeUsage: bound(E.readComputerClaudeUsage, ({ params }) =>
-      directory.request(
-        params.deviceId,
-        { operation: 'usage' },
-        E.readComputerClaudeUsage.response,
-      ),
-    ),
-    listComputerClaudePrompts: bound(E.listComputerClaudePrompts, ({ params, query }) =>
-      directory.request(
-        params.deviceId,
-        {
-          operation: 'prompts',
-          ...(query.sessionId === undefined ? {} : { session_id: query.sessionId }),
-        },
-        E.listComputerClaudePrompts.response,
-      ),
-    ),
-  };
-}
-
-function sessionActionRoutes(
-  directory: ComputerAiDirectory,
-): Routes<'controlComputerClaudeSession' | 'startComputerClaudeSession'> {
-  return {
-    controlComputerClaudeSession: bound(
-      E.controlComputerClaudeSession,
-      ({ params, body, caller }) => {
-        const { operation_id, ...control } = body;
-        return directory.nativeRequest(
-          params.deviceId,
-          {
-            operation: 'control',
-            session_id: params.sessionId,
-            control,
-            operation_id: operation_id ?? randomUUID(),
-          },
-          E.controlComputerClaudeSession.response,
-          caller,
-        );
-      },
-    ),
-    startComputerClaudeSession: bound(E.startComputerClaudeSession, ({ params, body, caller }) => {
-      const { operation_id, ...start } = body;
-      return directory.nativeRequest(
-        params.deviceId,
-        {
-          operation: 'start',
-          start,
-          operation_id: operation_id ?? randomUUID(),
-        },
-        E.startComputerClaudeSession.response,
-        caller,
-      );
-    }),
-  };
-}
-
-function linkRoutes(
-  directory: ComputerAiDirectory,
-): Routes<
-  | 'installComputerClaudeLink'
-  | 'removeComputerClaudeLink'
-  | 'registerComputerClaudeController'
-  | 'removeComputerClaudeController'
-> {
-  return {
-    installComputerClaudeLink: bound(E.installComputerClaudeLink, ({ params }) =>
-      directory.request(
-        params.deviceId,
-        { operation: 'install_link' },
-        E.installComputerClaudeLink.response,
-      ),
-    ),
-    removeComputerClaudeLink: bound(E.removeComputerClaudeLink, ({ params }) =>
-      directory.request(
-        params.deviceId,
-        { operation: 'remove_link' },
-        E.removeComputerClaudeLink.response,
-      ),
-    ),
-    registerComputerClaudeController: bound(E.registerComputerClaudeController, ({ params }) =>
-      directory.request(
-        params.deviceId,
-        { operation: 'register_controller' },
-        E.registerComputerClaudeController.response,
-      ),
-    ),
-    removeComputerClaudeController: bound(E.removeComputerClaudeController, ({ params }) =>
-      directory.request(
-        params.deviceId,
-        { operation: 'remove_controller' },
-        E.removeComputerClaudeController.response,
-      ),
-    ),
-  };
-}
-
-function promptAndToolRoutes(
-  directory: ComputerAiDirectory,
-): Routes<'answerComputerClaudePrompt' | 'listComputerClaudeTools' | 'callComputerClaudeTool'> {
-  return {
-    answerComputerClaudePrompt: bound(E.answerComputerClaudePrompt, ({ params, body, caller }) =>
-      directory.request(
-        params.deviceId,
-        {
-          operation: 'answer',
-          prompt_id: params.promptId,
-          answer: body,
-          requester: caller.kind === 'client' && caller.via === 'assistant' ? 'ai' : 'owner',
-        },
-        E.answerComputerClaudePrompt.response,
-      ),
-    ),
-    listComputerClaudeTools: bound(E.listComputerClaudeTools, ({ params, query }) =>
-      directory.request(
-        params.deviceId,
-        {
-          operation: 'native_tools_list',
-          ...(query.sessionId === undefined ? {} : { session_id: query.sessionId }),
-        },
-        E.listComputerClaudeTools.response,
-      ),
-    ),
-    callComputerClaudeTool: bound(E.callComputerClaudeTool, ({ params, body, caller }) =>
-      directory.nativeRequest(
-        params.deviceId,
-        {
-          operation: 'native_tools_call',
-          session_id: params.sessionId,
-          ...body,
-          operation_id: body.operation_id ?? randomUUID(),
-        },
-        E.callComputerClaudeTool.response,
-        caller,
-      ),
-    ),
-  };
-}
+const retiredSessionRoutes = {
+  readComputerClaudeOperation: bound(E.readComputerClaudeOperation, externalChatRetired),
+  listComputerClaudeSessions: bound(E.listComputerClaudeSessions, externalChatRetired),
+  readComputerClaudeSession: bound(E.readComputerClaudeSession, externalChatRetired),
+  listComputerClaudeThread: bound(E.listComputerClaudeThread, externalChatRetired),
+  listComputerClaudePrompts: bound(E.listComputerClaudePrompts, externalChatRetired),
+  controlComputerClaudeSession: bound(E.controlComputerClaudeSession, externalChatRetired),
+  startComputerClaudeSession: bound(E.startComputerClaudeSession, externalChatRetired),
+  installComputerClaudeLink: bound(E.installComputerClaudeLink, externalChatRetired),
+  registerComputerClaudeController: bound(E.registerComputerClaudeController, externalChatRetired),
+  removeComputerClaudeController: bound(E.removeComputerClaudeController, externalChatRetired),
+  answerComputerClaudePrompt: bound(E.answerComputerClaudePrompt, externalChatRetired),
+  listComputerClaudeTools: bound(E.listComputerClaudeTools, externalChatRetired),
+  callComputerClaudeTool: bound(E.callComputerClaudeTool, externalChatRetired),
+} as const;

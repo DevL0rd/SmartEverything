@@ -82,27 +82,7 @@ describe('computer pages', () => {
   it('re-point every earlier settings string at its new wording on the same page', () => {
     const renamed: Readonly<Record<string, Readonly<Record<string, string>>>> = {
       codex: { 'Subscription route': 'Plan' },
-      'codex-sessions': {
-        'New native session': 'New Codex session',
-        'Pending requests': 'Requested scope',
-        Permissions: 'Access',
-      },
       'codex-provider': { 'Approval policy': 'When to ask', 'Sandbox policy': 'Sandbox' },
-      claude: {
-        'Legacy history and attached CLI access': 'Earlier Claude history',
-        'Allow native home tools': 'Let Claude use home tools',
-        'Keep native link installed': 'Keep home tools link',
-        'Native link': 'Home tools link',
-        'Live native sessions': 'Open Claude sessions',
-        'Native harness tools': 'Claude’s tools',
-        'Run native tool': 'Run tool',
-        'Install or repair native link': 'Install or repair link',
-        'Remove native link': 'Remove link',
-      },
-      'claude-sessions': {
-        'Owned CLI sessions': 'Claude sessions',
-        'Legacy native history': 'Earlier Claude history',
-      },
       'claude-provider': {
         'Permission mode': 'Access',
         'Native MCP servers': 'Claude’s MCP servers',

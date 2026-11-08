@@ -1,13 +1,6 @@
 import type { RouterSnapshot, SpeedTestResult } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import {
-  compactLayoutOf,
-  latestSample,
-  pairHeightOf,
-  readingLine,
-  runControlOf,
-  testBars,
-} from './internet-model';
+import { latestSample, readingLine, runControlOf, testBars } from './internet-model';
 
 const NETWORK: NonNullable<RouterSnapshot['network']> = {
   wanUp: true,
@@ -116,31 +109,5 @@ describe('latestSample', () => {
       value: 215,
     });
     expect(latestSample(snapshot({ state: 'paused' }), 'downloadMbps')).toBeNull();
-  });
-});
-
-describe('compactLayoutOf', () => {
-  it('keeps the large figure and a trend when the body is tall enough', () => {
-    expect(compactLayoutOf(120)).toEqual({ figure: 'l', tight: false, trend: 40 });
-  });
-
-  it('drops to the medium figure to keep a trend in a short body', () => {
-    expect(compactLayoutOf(88)).toEqual({ figure: 'm', tight: false, trend: 26 });
-  });
-
-  it('tightens the gaps to keep a trend in the pointer-sized body', () => {
-    expect(compactLayoutOf(76)).toEqual({ figure: 'm', tight: true, trend: 18 });
-  });
-
-  it('omits the trend when nothing fits', () => {
-    expect(compactLayoutOf(60)).toEqual({ figure: 'm', tight: true, trend: null });
-  });
-});
-
-describe('pairHeightOf', () => {
-  it('splits the body between two trends within bounds', () => {
-    expect(pairHeightOf(84)).toBe(38);
-    expect(pairHeightOf(20)).toBe(20);
-    expect(pairHeightOf(400)).toBe(48);
   });
 });

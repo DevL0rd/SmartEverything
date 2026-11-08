@@ -12,6 +12,7 @@ import type {
   StoredAttachment,
 } from '../store/repositories/assistant-chat';
 import { transcribeModel } from './transcriber';
+import { describeFailure } from '@smarteverything/logging';
 
 export type MediaKind = 'audio' | 'video' | 'image';
 
@@ -120,7 +121,10 @@ export class MediaNotes {
     void Promise.resolve()
       .then(() => this.ensure(file))
       .catch((cause: unknown) => {
-        this.options.log.error('assistant.media_note_failed', cause, { attachmentId: file.id });
+        this.options.log.warn('assistant.media_note_failed', {
+          attachmentId: file.id,
+          failure: describeFailure(cause),
+        });
       });
   }
 

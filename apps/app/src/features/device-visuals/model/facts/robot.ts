@@ -1,5 +1,5 @@
 import type { RobotActivityEntry, RobotStatus } from '@smarteverything/domain';
-import type { RobotFacts, RobotMood, VisualState } from '../../types';
+import type { RobotFacts, RobotMood } from '../../types';
 import type { Decorate } from './decorate';
 
 const NOT_ON_BASE = /not on base/i;
@@ -64,10 +64,6 @@ export function robotFactsOf(
 
 function resting(online: boolean): RobotFacts {
   return { mood: online ? 'awake' : 'asleep', onBase: null, move: null };
-}
-
-export function robotFacts(state: VisualState): RobotFacts {
-  return state.robot ?? resting(state.online);
 }
 
 export const robotState: Decorate = (base) => ({ ...base, robot: resting(base.online) });

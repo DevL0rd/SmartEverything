@@ -1,16 +1,12 @@
 import { MICROWAVE_KEYS, type DeviceCapability } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
 import type { DeviceValues, StoreState } from '../../store/state';
-import {
-  budgetCase,
-  renderVisual,
-  useCellEnvironment,
-  type Budget,
-  type Face,
-  type Spec,
-} from './cell-budget';
+import { budgetCase, useCellEnvironment, type Budget, type Face, type Spec } from './cell-budget';
+import { renderVisualPart } from './visual-budget';
 
 vi.mock('../../queries/use-screen-query', async () => (await import('./idle-queries')).idleQueries);
+
+const { MicrowaveVisual } = await import('../device-visuals/visuals/microwave-visual');
 
 const DEVICE = '00000000-0000-4000-8000-000000000001';
 const AT = '2026-10-16T08:00:00.000Z';
@@ -162,7 +158,13 @@ describe('microwave visual node budgets', () => {
   for (const [size, px, limit] of VISUAL_LIMITS) {
     for (const [name, values] of VISUAL_STATES) {
       it(`draws ${name} within ${String(limit)} nodes at ${size} size`, () => {
-        const { count } = renderVisual(IDLE, values, size, px);
+        const { count } = renderVisualPart(MicrowaveVisual, {
+          visual: IDLE,
+          values,
+          size,
+          px,
+        });
+        expect(count).toBeGreaterThan(0);
         expect(count).toBeLessThanOrEqual(limit);
       });
     }

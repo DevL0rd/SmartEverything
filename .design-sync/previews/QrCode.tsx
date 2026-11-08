@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { QrCode, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -7,12 +8,12 @@ const body = (
     <QrCode text="WIFI:S:HomeNet;T:WPA;P:correct-horse;;" size={110} label="Wi-Fi QR code" />
   </Row>
 );
-export const Codes = () => (
+export const Codes = (): ReactElement => (
   <Stage theme="dark" width={420}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     {body}
   </Stage>

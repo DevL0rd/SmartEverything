@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { Sheet } from '../../../components/sheet';
@@ -14,6 +14,7 @@ function adviceSteps(advice: string): readonly string[] {
 }
 
 interface AdviceProps {
+  readonly opener?: RefObject<View | null>;
   readonly laundry: Laundry;
   readonly runner: Runner;
   readonly onClose: () => void;
@@ -66,6 +67,7 @@ export function AdviceSheet(props: AdviceProps): ReactNode {
   }
   return (
     <Sheet
+      subpage={{ opener: props.opener ?? props.runner.adviceOpener }}
       open
       title={`${fault.title} (E${String(fault.code)})`}
       detents={['fit']}

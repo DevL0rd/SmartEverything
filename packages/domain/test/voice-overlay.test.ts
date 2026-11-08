@@ -338,8 +338,10 @@ describe('schemas', () => {
       captions: true,
       display: 'active',
       whileSharing: 'small',
+      powerButton: 'call',
     });
     expect(OVERLAY_PREFS.safeParse({ position: 'top' }).success).toBe(false);
+    expect(OVERLAY_PREFS.safeParse({ powerButton: 'photo' }).success).toBe(false);
     expect(OVERLAY_PREFS.safeParse({ whileSharing: 'blur' }).success).toBe(false);
     expect(OVERLAY_PREFS.safeParse({ extra: 1 }).success).toBe(false);
   });

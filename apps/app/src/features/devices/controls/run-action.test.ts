@@ -3,7 +3,7 @@ import type { DeviceCapability, PresentedCapability } from '@smarteverything/dom
 import { pendingConfirm, settleConfirm } from '../../../components/confirm-store';
 import type { Device } from '../../../store/state';
 import { deviceModelOf } from '../model/device-model';
-import { approved, argumentValue, argumentsOf, presetArguments } from './run-action';
+import { actionLookOf, approved, argumentValue, argumentsOf, presetArguments } from './run-action';
 
 function presentedAction(
   key: DeviceCapability['key'],
@@ -112,5 +112,22 @@ describe('approved', () => {
     });
     settleConfirm(true);
     await expect(answer).resolves.toBe(true);
+  });
+});
+
+describe('actionLookOf', () => {
+  it('paints only the typed-word actions red and shows confirmed ones as calm guarded rows', () => {
+    expect(actionLookOf(presentedAction('raw:self_clean', 'Clean'))).toStrictEqual({
+      icon: 'play',
+      destructive: false,
+    });
+    expect(actionLookOf(presentedAction('restart', 'Restart'))).toStrictEqual({
+      icon: 'shield',
+      destructive: false,
+    });
+    expect(actionLookOf(presentedAction('raw:format_storage', 'Format card'))).toStrictEqual({
+      icon: 'warning',
+      destructive: true,
+    });
   });
 });

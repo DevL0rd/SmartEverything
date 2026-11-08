@@ -3,7 +3,9 @@ import type { ReactNode } from 'react';
 import { memo, useState } from 'react';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { Badge, CountPill } from '../../../components/badge';
+import { CountPill } from '../../../components/badge';
+import { BrandGlyph } from '../../../components/brand-glyphs';
+import { NATIVE_CHAT_BRANDS } from './native-chat-brand';
 import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
@@ -20,10 +22,11 @@ import { useEntityStore } from '../../../store/store-context';
 import { useMinute } from '../../../store/clock';
 import { chatListTime } from '../model/chat-list-time';
 import { sameEntry, type ChatEntry } from './chat-entry';
+import { AgentMark } from './agent-mark';
 import { HOVER_BAR, ROW_EXIT, ROW_REORDER, UNREAD_PULSE, arrivedJustNow } from './list-motion';
 import { Line, a11yLabelOf, statusOf, type Status } from './row-lines';
 import { useRowLine, type RowLine } from './row-status';
-import { desktopMenuOf, menuOf, rowSwipeOf } from './row-actions';
+import { menuOf, rowSwipeOf } from './row-actions';
 import { ComputerMark } from './computer-mark';
 import { avatarOf } from './row-avatar';
 import { SourceMark } from './source-mark';
@@ -41,8 +44,6 @@ export interface ChatRowProps {
   readonly onOpen: (chatId: string) => void;
   readonly onToggleAgents: (chatId: string) => void;
   readonly onDeleted: (chatId: string) => void;
-  readonly busy?: boolean;
-  readonly onOpenDesktop?: (entry: ChatEntry) => void;
 }
 
 function Unread({ entry }: { readonly entry: ChatEntry }): ReactNode {
@@ -78,11 +79,7 @@ function Trailing({
         </Text>
         {entry.pinned && !entry.archived ? <Icon name="pin" size={16} tone="variant" /> : null}
       </View>
-      {entry.desktop !== undefined ? (
-        <Badge label="Desktop" tone="neutral" />
-      ) : agent ? null : (
-        <Unread entry={entry} />
-      )}
+      {agent ? null : <Unread entry={entry} />}
     </View>
   );
 }
@@ -95,9 +92,6 @@ function HoverActions({
   readonly clearToggle: boolean;
 }): ReactNode {
   const { leading, trailing } = rowSwipeOf(entry);
-  if (trailing === undefined) {
-    return null;
-  }
   return (
     <Animated.View
       entering={HOVER_BAR}
@@ -119,36 +113,20 @@ function HoverActions({
   );
 }
 
-function AgentDot({ entry }: { readonly entry: ChatEntry }): ReactNode {
-  const fill =
-    entry.requests > 0
-      ? 'bg-warning'
-      : entry.line.kind === 'working'
-        ? 'bg-primary'
-        : 'bg-on-surface-faint';
-  return (
-    <View aria-hidden className="w-6 items-center">
-      <View className={cn('size-2 rounded-full', fill)} />
-    </View>
-  );
-}
-
 function ChatMark({
   entry,
   status,
   size,
-  busy,
 }: {
   readonly entry: ChatEntry;
   readonly status: Status | null;
   readonly size: 32 | 40;
-  readonly busy: boolean;
 }): ReactNode {
   const avatar = avatarOf(entry);
   return (
     <View className="relative">
       {avatar.kind === 'computer' ? (
-        <ComputerMark computerId={avatar.computerId} size={size} busy={busy} />
+        <ComputerMark computerId={avatar.computerId} size={size} />
       ) : (
         <SourceMark source={avatar.source} size={size} />
       )}
@@ -213,13 +191,28 @@ function Body({
 }): ReactNode {
   return (
     <View className="min-w-0 flex-1 gap-0.5">
-      <Text
-        variant={agent ? 'label' : 'body-strong'}
-        numberOfLines={1}
-        className={cn(entry.unread > 0 && 'font-sans-semibold')}
-      >
-        {entry.title}
-      </Text>
+      <View className="min-w-0 flex-row items-center gap-1.5">
+        {entry.nativeAdmission === 'standalone' && entry.runtime !== null ? (
+          <View aria-hidden>
+            <BrandGlyph brand={NATIVE_CHAT_BRANDS[entry.runtime]} size={16} />
+          </View>
+        ) : null}
+        <Text
+          variant={agent ? 'label' : 'body-strong'}
+          numberOfLines={1}
+          className={cn(
+            entry.helperName === undefined ? 'min-w-0 shrink' : 'max-w-full shrink-0',
+            entry.unread > 0 && 'font-sans-semibold',
+          )}
+        >
+          {entry.helperName ?? entry.title}
+        </Text>
+        {entry.helperName === undefined ? null : (
+          <Text variant="caption" tone="variant" numberOfLines={1} className="min-w-0 shrink">
+            {`· ${entry.title}`}
+          </Text>
+        )}
+      </View>
       <Line entry={entry} line={line} />
     </View>
   );
@@ -230,16 +223,12 @@ const OWNER_ONLY_ICONS: ReadonlySet<string> = new Set(['trash', 'gitBranch']);
 function useRowMenu(
   entry: ChatEntry,
   onDeleted: ChatRowProps['onDeleted'],
-  openEntry: () => void,
 ): ReturnType<typeof menuOf> {
   const owner = useIsOwner();
   const store = useEntityStore();
   const readOnly = entry.runtime !== null && !owner;
   const storedMessages = (): readonly AssistantMessageRow[] =>
     store.get().tables.assistant_messages.rows.filter((row) => row.chat_id === entry.id);
-  if (entry.desktop !== undefined) {
-    return desktopMenuOf(openEntry);
-  }
   return menuOf(entry, { onDeleted, storedMessages }).filter(
     (item) => !readOnly || !OWNER_ONLY_ICONS.has(item.icon ?? ''),
   );
@@ -253,7 +242,6 @@ interface PressProps {
   readonly hovered: boolean;
   readonly highlighted: boolean;
   readonly menu: ReturnType<typeof useContextMenu>;
-  readonly busy: boolean;
   readonly openEntry: () => void;
 }
 
@@ -271,6 +259,11 @@ function Bars({ selected, lit }: { readonly selected: boolean; readonly lit: boo
   );
 }
 
+function rowHeight(agent: boolean, pointer: boolean): string {
+  if (agent) return pointer ? 'h-10' : 'h-12';
+  return pointer ? 'h-14' : 'h-16';
+}
+
 function RowPress({
   entry,
   agent,
@@ -279,11 +272,10 @@ function RowPress({
   hovered,
   highlighted,
   menu,
-  busy,
   openEntry,
 }: PressProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const line = useRowLine(entry);
+  const line = useRowLine(entry, agent);
   const { leading, trailing } = rowSwipeOf(entry);
   return (
     <SwipeRow leading={leading} trailing={trailing} surface="bg">
@@ -295,17 +287,18 @@ function RowPress({
         onContextMenu={menu.onContextMenu}
         {...swipeAccessibility(leading, trailing)}
         className={cn(
-          'flex-row items-center gap-3 px-gutter',
-          pointer ? 'h-14' : 'h-16',
+          'flex-row items-center px-gutter',
+          agent ? 'gap-2' : 'gap-3',
+          rowHeight(agent, pointer),
           selected && 'bg-primary/12',
           highlighted && !selected && 'bg-on-surface/8',
         )}
       >
         <Bars selected={selected} lit={hovered || highlighted} />
         {agent ? (
-          <AgentDot entry={entry} />
+          <AgentMark entry={entry} />
         ) : (
-          <ChatMark entry={entry} status={statusOf(line)} size={pointer ? 32 : 40} busy={busy} />
+          <ChatMark entry={entry} status={statusOf(line)} size={pointer ? 32 : 40} />
         )}
         <Body entry={entry} line={line} agent={agent} />
         <Trailing entry={entry} agent={agent} timeZone={timeZone} hovered={hovered} />
@@ -314,24 +307,16 @@ function RowPress({
   );
 }
 
-function useOpenEntry({ entry, onOpen, onOpenDesktop }: ChatRowProps): () => void {
-  return (): void => {
-    if (entry.desktop === undefined) {
-      onOpen(entry.id);
-    } else {
-      onOpenDesktop?.(entry);
-    }
-  };
-}
-
 const isDelete = (item: MenuItem): boolean => item.destructive === true;
 
 function Row(props: ChatRowProps): ReactNode {
-  const { entry, agent, onDeleted } = props;
+  const { entry, agent, onDeleted, onOpen } = props;
   const motion = useMotion();
   const [hovered, setHovered] = useState(false);
-  const openEntry = useOpenEntry(props);
-  const items = useRowMenu(entry, onDeleted, openEntry);
+  const openEntry = (): void => {
+    onOpen(entry.id);
+  };
+  const items = useRowMenu(entry, onDeleted);
   const menu = useContextMenu(items, entry.title);
   const hoverShown = useIdiom() === 'pointer' && hovered;
   const keyboard = useKeyboardRow(entry.id);
@@ -349,13 +334,12 @@ function Row(props: ChatRowProps): ReactNode {
       }}
       className={cn('-mx-gutter relative flex-row items-center', entry.archived && 'opacity-80')}
     >
-      <View className={cn('min-w-0 flex-1', agent && 'ml-7 border-l-2 border-outline-variant')}>
+      <View className={cn('min-w-0 flex-1', agent && 'ml-4 border-l-2 border-outline-variant')}>
         <RowPress
           {...props}
           hovered={hoverShown}
           highlighted={keyboard.highlighted}
           menu={menu}
-          busy={props.busy === true}
           openEntry={openEntry}
         />
       </View>
@@ -386,8 +370,6 @@ const ROW_KEYS = [
   'onOpen',
   'onToggleAgents',
   'onDeleted',
-  'busy',
-  'onOpenDesktop',
 ] as const;
 
 export const ChatRow = memo(

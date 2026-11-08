@@ -1,10 +1,12 @@
+import type { ReactElement } from 'react';
 import { LoadedImage, Stage } from 'smarteverything-kit';
 
 function gradientUrl(c1: string, c2: string): string {
   const canvas = document.createElement('canvas');
   canvas.width = 320;
   canvas.height = 180;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (ctx === null) throw new Error('LoadedImage preview requires a 2D canvas context');
   const g = ctx.createLinearGradient(0, 0, 320, 180);
   g.addColorStop(0, c1);
   g.addColorStop(1, c2);
@@ -16,19 +18,19 @@ function gradientUrl(c1: string, c2: string): string {
   ctx.fill();
   return canvas.toDataURL('image/png');
 }
-const frame = (url: string, mode: 'cover' | 'contain') => (
+const frame = (url: string, mode: 'cover' | 'contain'): ReactElement => (
   <div
     style={{ width: 280, height: 160, borderRadius: 12, overflow: 'hidden', position: 'relative' }}
   >
     <LoadedImage url={url} label="Camera snapshot" resizeMode={mode} onError={() => undefined} />
   </div>
 );
-export const Cover = () => (
+export const Cover = (): ReactElement => (
   <Stage theme="dark" width={320}>
     {frame(gradientUrl('#2a3b6b', '#e0884b'), 'cover')}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={320}>
     {frame(gradientUrl('#7fb4d9', '#f2d6a0'), 'contain')}
   </Stage>

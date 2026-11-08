@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { TvInput } from '@smarteverything/domain';
 import { Pressable, View } from 'react-native';
 import { Button } from '../../../components/button';
@@ -72,8 +72,9 @@ function InputRow({
   readonly current: boolean;
   readonly off: boolean;
   readonly onChoose: () => void;
-  readonly onRename: () => void;
+  readonly onRename: (opener: RefObject<View | null>) => void;
 }): ReactNode {
+  const opener = useRef<View>(null);
   return (
     <View className="flex-row items-center">
       <Pressable
@@ -93,7 +94,14 @@ function InputRow({
         </Text>
         {current ? <Icon name="check" size={20} tone="primary" /> : null}
       </Pressable>
-      <IconButton icon="pencil" label={`Rename ${input.label}`} onPress={onRename} />
+      <IconButton
+        ref={opener}
+        icon="pencil"
+        label={`Rename ${input.label}`}
+        onPress={() => {
+          onRename(opener);
+        }}
+      />
     </View>
   );
 }
@@ -126,8 +134,8 @@ function InputsBody({
             actions.chooseInput(input.id);
             close();
           }}
-          onRename={() => {
-            setRequest(inputRenameRequest(input, actions.renameInput));
+          onRename={(opener) => {
+            setRequest({ ...inputRenameRequest(input, actions.renameInput), opener });
           }}
         />
       ))}
@@ -265,14 +273,22 @@ function Panel({
   close,
   half = false,
   children,
+  opener,
 }: {
   readonly title: string;
+  readonly opener: RefObject<View | null>;
   readonly close: () => void;
   readonly half?: boolean;
   readonly children: ReactNode;
 }): ReactNode {
   return (
-    <Sheet open onClose={close} title={title} detents={half ? ['half', 'full'] : ['fit']}>
+    <Sheet
+      subpage={{ opener }}
+      open
+      onClose={close}
+      title={title}
+      detents={half ? ['half', 'full'] : ['fit']}
+    >
       {children}
     </Sheet>
   );
@@ -289,28 +305,29 @@ export function TelevisionSheets({
   readonly actions: TelevisionActions;
   readonly apps: readonly TvApp[];
 }): ReactNode {
-  const { sheet, close } = sheets;
-  if (sheet === null) {
-    return null;
-  }
+  const { sheet, close, openers } = sheets;
+  if (sheet === null) return null;
+  const opener = openers[sheet.kind];
   switch (sheet.kind) {
-    case 'sleep':
-      return <SleepTimerSheet deviceId={tv.device.id} name={tv.name} open onClose={close} />;
+    case 'sleep': {
+      const sleep = { deviceId: tv.device.id, name: tv.name };
+      return <SleepTimerSheet {...sleep} opener={opener} open onClose={close} />;
+    }
     case 'volume':
       return (
-        <Panel title="Volume" close={close}>
+        <Panel opener={opener} title="Volume" close={close}>
           <VolumeBody tv={tv} actions={actions} />
         </Panel>
       );
     case 'inputs':
       return (
-        <Panel title="Inputs" close={close}>
+        <Panel opener={opener} title="Inputs" close={close}>
           <InputsBody tv={tv} actions={actions} close={close} />
         </Panel>
       );
     case 'apps':
       return (
-        <Panel title="Apps" close={close} half>
+        <Panel opener={opener} title="Apps" close={close} half>
           <AppsBody
             apps={apps}
             off={tv.view.mode !== 'on'}
@@ -320,7 +337,7 @@ export function TelevisionSheets({
       );
     case 'numpad':
       return (
-        <Panel title={numberTitle(tv)} close={close}>
+        <Panel opener={opener} title={numberTitle(tv)} close={close}>
           <NumberBody tv={tv} actions={actions} sheets={sheets} typed={sheet.typed} />
         </Panel>
       );

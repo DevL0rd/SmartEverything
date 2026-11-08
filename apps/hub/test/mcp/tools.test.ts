@@ -130,7 +130,7 @@ describe('the home tools', () => {
       'There is no device',
     );
     expect(await refusal('device_read', { deviceId: 'nope' })).toContain(
-      'There is no device matching "nope"',
+      'There is no device matching \\"nope\\"',
     );
     const found = structured(await tool('home_search', { query: 'dim' }));
     expect(found['capabilities']).toStrictEqual([

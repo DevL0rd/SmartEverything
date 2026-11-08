@@ -19,9 +19,14 @@ export const MCP_TOOL_DOMAINS = [
   'transcript',
   'listening',
   'schedule',
+  'planner',
+  'drive',
   'signal',
   'automation',
   'automation_runs',
+  'automation_versions',
+  'automation_tests',
+  'custom_node',
   'secret',
   'value',
   'health',
@@ -40,6 +45,7 @@ export const MCP_TOOL_DOMAINS = [
   'app',
   'model',
   'usage',
+  'log',
   'outreach',
   'voice',
   'call',
@@ -57,6 +63,7 @@ export const MCP_TOOL_DOMAINS = [
   'file',
   'claude',
   'plugin',
+  'self',
 ] as const;
 
 export const MCP_TOOL_VERBS = [
@@ -86,6 +93,7 @@ export const MCP_TOOL_VERBS = [
   'use',
   'set',
   'capture',
+  'update',
 ] as const;
 
 const DOMAIN_SET: ReadonlySet<string> = new Set(MCP_TOOL_DOMAINS);

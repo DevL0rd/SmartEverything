@@ -6,7 +6,7 @@ import type {
   HarnessRuntimeReceipt,
   HarnessRuntimeRequest,
 } from '@smarteverything/domain';
-import type { NativeCompletion } from '../../../src/assistant/engines/dsh/completion';
+import type { NativeCompletion } from '../../../src/assistant/engines/dsh/projector-completion';
 import {
   TurnMachineMoves,
   type MovableTurn,
@@ -79,6 +79,7 @@ describe('moving the chat to another machine at the AI’s tool call', () => {
     const [prompt] = promptsOn(rig.desk);
     expect(prompt).toMatchObject({
       kind: 'prompt',
+      author: 'hub',
       delivery_id: recorded.aliases[0],
       text: 'Machine changed: you are now running on Desk (Linux), folder /home/test. Previous machine: Hub. Continue the work you were doing.',
     });

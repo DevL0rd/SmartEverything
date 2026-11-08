@@ -10,7 +10,18 @@ export const CHAT_PAGE_PATH = z
     (value) => value.startsWith('/') && AI_PROJECT_PATH.safeParse(value.slice(1)).success,
     'Use a page path inside the chat project, such as /workspace/site/index.html.',
   );
-export const CHAT_PAGE = z.strictObject({ chatId: z.uuid(), path: CHAT_PAGE_PATH });
+export const SERVER_PORT = z.int().min(1).max(65535);
+export const CHAT_SERVER = z.strictObject({ computerId: z.uuid(), port: SERVER_PORT });
+export type ChatServer = z.infer<typeof CHAT_SERVER>;
+export const CHAT_SERVER_PATH = '/api/ai/chats/:chatId/servers/:computerId/:port/*path';
+export const SERVER_PAGE_PATH = z
+  .string()
+  .max(4096)
+  .regex(/^\/(?!\/)[^\\\s]*$/u, 'Use a path on the server, such as /');
+export const CHAT_PAGE = z.union([
+  z.strictObject({ chatId: z.uuid(), path: CHAT_PAGE_PATH }),
+  z.strictObject({ chatId: z.uuid(), path: SERVER_PAGE_PATH, server: CHAT_SERVER }),
+]);
 export type ChatPage = z.infer<typeof CHAT_PAGE>;
 
 export function encodedPagePath(path: string): string {
@@ -18,6 +29,10 @@ export function encodedPagePath(path: string): string {
 }
 export function chatFilesUrl(chatId: string, path: string): string {
   return `/api/ai/chats/${encodeURIComponent(chatId)}/files${encodedPagePath(path)}`;
+}
+
+export function chatServerPrefix(chatId: string, server: ChatServer): string {
+  return `/api/ai/chats/${encodeURIComponent(chatId)}/servers/${server.computerId}/${String(server.port)}`;
 }
 
 export const NATIVE_HTML_ID = z.string().regex(/^[0-9a-f]{64}$/);
@@ -39,10 +54,13 @@ export const NATIVE_HTML_PROJECTION = z.strictObject({
       url.port === '';
     const loopback =
       url.protocol === 'http:' && url.hostname === '127.0.0.1' && Number(url.port) > 0;
+    const forbidden = loopback
+      ? [url.username, url.password]
+      : [url.search, url.hash, url.username, url.password];
     return (
       (custom || loopback) &&
       /^\/(?!\/)/u.test(url.pathname) &&
-      [url.search, url.hash, url.username, url.password].every((part) => part === '')
+      forbidden.every((part) => part === '')
     );
   }, 'A chat page opens on its own loopback or app origin'),
 });

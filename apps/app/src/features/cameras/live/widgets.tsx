@@ -12,7 +12,7 @@ import {
   type WidgetSize,
 } from '../../../components/widget-board';
 import { Select } from '../../../components/select';
-import { RecentEventsBody } from '../components/recent-events';
+import { RecentEventsGrid } from '../components/recent-events';
 import { useCameraEntries } from '../data/use-cameras';
 import type { CameraEntry } from '../logic/cameras';
 import { useCameraCondition } from '../data/use-camera-condition';
@@ -20,8 +20,6 @@ import { CameraTile } from './camera-tile';
 import { CameraUnreachable } from './camera-unreachable';
 
 export const CAMERAS_PAGE = 'cameras';
-
-const LIVE_TILES_AT_MOST = 4;
 
 const CAMERA_OPTIONS = z.object({ deviceId: z.string().min(1) });
 
@@ -36,16 +34,16 @@ function cameraOf(entries: readonly CameraEntry[], options: unknown): CameraEntr
 
 function CameraFace({
   entry,
-  live,
+  editing,
 }: {
   readonly entry: CameraEntry;
-  readonly live: boolean;
+  readonly editing: boolean;
 }): ReactNode {
   const condition = useCameraCondition(entry);
   return condition.online ? (
-    <CameraTile entry={entry} live={live} condition={condition} />
+    <CameraTile entry={entry} condition={condition} editing={editing} />
   ) : (
-    <CameraUnreachable entry={entry} lastSeen={condition.lastSeen} />
+    <CameraUnreachable entry={entry} lastSeen={condition.lastSeen} editing={editing} />
   );
 }
 
@@ -72,7 +70,7 @@ function CameraWidget({
       </WidgetSurface>
     );
   }
-  return <CameraFace entry={entry} live={!editing && entries.length <= LIVE_TILES_AT_MOST} />;
+  return <CameraFace entry={entry} editing={editing} />;
 }
 
 function CameraEditor({
@@ -97,22 +95,12 @@ function CameraEditor({
   );
 }
 
-function EventsWidget({
-  size,
-  editing,
-}: {
-  readonly size: WidgetSize;
-  readonly editing: boolean;
-}): ReactNode {
+function EventsWidget({ editing }: { readonly editing: boolean }): ReactNode {
   const entries = useCameraEntries();
-  const grid = size === 'XL';
   return (
     <WidgetFrame title="Latest events" icon="film" accent="critical" href={href.cameraEvents()}>
-      <View
-        className={grid ? 'flex-1 overflow-hidden' : '-mx-card-pad flex-1 overflow-hidden'}
-        pointerEvents={editing ? 'none' : 'auto'}
-      >
-        <RecentEventsBody cameras={entries} limit={grid ? 12 : 4} layout={grid ? 'grid' : 'list'} />
+      <View className="flex-1" pointerEvents={editing ? 'none' : 'auto'}>
+        <RecentEventsGrid cameras={entries} />
       </View>
     </WidgetFrame>
   );
@@ -126,7 +114,6 @@ export const CAMERA_WIDGETS: readonly WidgetDefinition[] = [
     title: 'Camera',
     icon: 'cameras',
     group: 'Cameras',
-    aspect: 16 / 9,
     sizes: { compact: ['M'], medium: ALL_SIZES, expanded: ALL_SIZES },
     defaultSize: 'M',
     instanceOptions: {
@@ -142,7 +129,7 @@ export const CAMERA_WIDGETS: readonly WidgetDefinition[] = [
     group: 'Cameras',
     sizes: { compact: ['XL'], medium: ['XL'], expanded: ['XL'] },
     defaultSize: 'XL',
-    render: ({ size, editing }) => <EventsWidget size={size} editing={editing} />,
+    render: ({ editing }) => <EventsWidget editing={editing} />,
   },
 ];
 

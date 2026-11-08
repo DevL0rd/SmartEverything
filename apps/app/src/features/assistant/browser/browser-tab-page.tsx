@@ -6,8 +6,10 @@ import { Text } from '../../../components/text';
 import { IconButton } from '../../../components/icon-button';
 import { BrowserSurfaceSlot } from './browser-surface-slot';
 import type { BrowserHandle } from '../../../platform/browser-contract';
+import { browserInert } from '../../../platform/browser-focus';
 import { BrowserToolbar } from './browser-toolbar';
 import { BrowserTools } from './browser-tools';
+import { browserSiteStorageAction } from './browser-site-storage';
 import { BrowserActionScope } from './browser-action-scope';
 import { useRequestedBrowserAction } from './browser-requested-action';
 import {
@@ -31,6 +33,7 @@ export function BrowserTabPage(props: BrowserTabPageProps): ReactNode {
   const frame = selected ? { flex: 1 } : ({ position: 'absolute', inset: 0, opacity: 0 } as const);
   return (
     <View
+      {...browserInert(!selected)}
       pointerEvents={selected ? 'auto' : 'none'}
       aria-hidden={!selected}
       accessibilityElementsHidden={!selected}
@@ -90,12 +93,12 @@ function useTabControls(
   return { surfaceRef, controls };
 }
 function TabContent(props: BrowserTabPageProps): ReactNode {
-  const { tabs, tab, selected } = props;
+  const { tabs, tab, selected, visible } = props;
   const { surfaceRef, controls } = useTabControls(tabs, tab);
   const addressRef = useRef<TextInput>(null);
   useEffect(() => {
-    if (selected && tab.phase === 'blank') addressRef.current?.focus();
-  }, [selected, tab.phase]);
+    if (visible && selected && tab.phase === 'blank') addressRef.current?.focus();
+  }, [selected, tab.phase, visible]);
   useTabActions(props, addressRef);
   return (
     <>
@@ -163,9 +166,7 @@ function TabChrome(props: TabChromeProps): ReactNode {
         status={tab.status}
         controls={controls}
         ready={ready}
-        tools={
-          <TabTools tab={tab} tabs={tabs} controls={controls} onNew={onNew} />
-        }
+        tools={<TabTools tab={tab} tabs={tabs} controls={controls} onNew={onNew} />}
       />
       <View className={tab.status.loading ? 'h-0.5 bg-primary' : 'h-0.5 bg-outline-variant'} />
       {problem === null ? null : (
@@ -242,6 +243,7 @@ function TabTools({
       controls={controls}
       address={address}
       ready={ready}
+      siteStorageAction={browserSiteStorageAction(tab.selection?.target, tab.status)}
       tabActions={[
         { label: 'New tab', icon: 'plus', onPress: onNew },
         {

@@ -142,6 +142,7 @@ function AlreadyAdded({ scale }: { readonly scale: Device }): ReactNode {
       <EmptyState
         icon="scale"
         title={`${scale.display_name ?? scale.name} is already set up`}
+        compact
         body="Its weigh-ins arrive on their own. Remove it in its settings on the Devices page to add it again."
       />
     </FlowFrame>

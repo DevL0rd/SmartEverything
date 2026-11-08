@@ -6,6 +6,7 @@ import {
   NODE_RUNTIME_FRAME,
   type ComputerRuntimeReply,
   type NodeHello,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
@@ -23,7 +24,7 @@ const HELLO: NodeHello = {
   interfaces: [],
   bootedAt: '2026-10-01T00:00:00.000Z',
   features: [],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
   power: [],
   actions: [],
   permissions: [],

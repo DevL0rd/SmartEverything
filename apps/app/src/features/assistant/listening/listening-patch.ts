@@ -9,10 +9,7 @@ function writingOf(source: ListeningSource, transcribe: boolean): ListeningSourc
   return source.writing.state === 'off' ? { state: 'on' } : source.writing;
 }
 
-function patchedSource(
-  source: ListeningSource,
-  change: ListeningSourceChange,
-): ListeningSource {
+function patchedSource(source: ListeningSource, change: ListeningSourceChange): ListeningSource {
   const transcribe = change.transcribe ?? source.transcribe;
   return {
     ...source,

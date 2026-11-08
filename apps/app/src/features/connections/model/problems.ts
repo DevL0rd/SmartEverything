@@ -6,6 +6,14 @@ import {
 } from '@smarteverything/domain';
 import { joinParts, plural } from '../../../format/text';
 import type { Tone } from '../../../components/tone';
+import type { BadgeProps } from '../../../components/badge';
+
+export const ACCOUNT_BADGE: Readonly<Record<ProviderLinkRow['status'], BadgeProps | null>> = {
+  unlinked: null,
+  linking: { label: 'Sign-in in progress', tone: 'primary' },
+  linked: { label: 'Connected', tone: 'positive' },
+  needs_attention: { label: 'Needs attention', tone: 'warning' },
+};
 
 function problemTitles(provider: Provider): Readonly<Record<ProviderProblem, string>> {
   const name = PROVIDER_INFO[provider].name;

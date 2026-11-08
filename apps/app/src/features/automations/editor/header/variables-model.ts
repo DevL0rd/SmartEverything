@@ -1,5 +1,5 @@
 import type { PortValue, Variable } from '@smarteverything/domain';
-import type { HeaderOp } from '@smarteverything/flow/ops/schema';
+import type { HeaderOp } from '@smarteverything/flow/graph/ops/schema';
 import { freshName, initialFor, nameProblem, optionOf, typeValueOf } from './type-choices';
 
 export const KEEP_TITLE = 'Keep between runs';

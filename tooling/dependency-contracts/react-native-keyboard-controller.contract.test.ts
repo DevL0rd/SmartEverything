@@ -28,10 +28,13 @@ describe('react-native-keyboard-controller contract', () => {
     );
   });
 
-  it('exports the provider and the avoiding view the screens are built on', () => {
+  it('exports the provider and the live keyboard height the keyboard viewport is built on', () => {
     const root = `node_modules/${PACKAGE}/lib/typescript`;
     const read = (file: string): string => readFileSync(repositoryFile(`${root}/${file}`), 'utf8');
-    expect(read('index.d.ts')).toContain('KeyboardAvoidingView');
+    expect(read('index.d.ts')).toContain('./hooks');
+    expect(read('hooks/index.d.ts')).toContain(
+      'useReanimatedKeyboardAnimation: () => ReanimatedContext',
+    );
     expect(read('index.d.ts')).toContain('./animated');
     expect(read('animated.d.ts')).toContain('KeyboardProvider');
   });

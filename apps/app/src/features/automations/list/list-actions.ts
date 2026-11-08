@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { AutomationRowV3 } from '@smarteverything/domain';
+import type { AutomationRow } from '../data/graph-adapter';
 import { background, Logger } from '@smarteverything/logging';
 import { confirm } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
@@ -31,7 +31,7 @@ interface Services {
   readonly programs: ReturnType<typeof useAutomationActions>;
   readonly runs: ReturnType<typeof useRunActions>;
   readonly current: () => {
-    readonly byId: ReadonlyMap<string, AutomationRowV3>;
+    readonly byId: ReadonlyMap<string, AutomationRow>;
     readonly names: readonly string[];
   };
 }
@@ -44,7 +44,7 @@ function duplicateOf(services: Services, automationId: string): void {
       services.programs.create({
         name: copyName(source.name, services.current().names),
         enabled: false,
-        definition: source.definition,
+        definition: source.graph,
         layout: source.layout,
       }),
     ),

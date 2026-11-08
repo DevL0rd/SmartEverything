@@ -41,14 +41,18 @@
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },
     "packages/tuya": {
-      "entry": ["test/**/*.test.ts"],
-      "project": ["src/**/*.ts", "test/**/*.ts"]
+      "entry": ["test/**/*.test.ts", "tools/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts", "tools/**/*.ts"]
     },
     "packages/smartthings": {
       "entry": ["test/**/*.test.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },
     "packages/shelly": {
+      "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "packages/models": {
       "entry": ["test/**/*.test.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },

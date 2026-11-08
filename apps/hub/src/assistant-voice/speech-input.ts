@@ -154,7 +154,6 @@ function streamedSpeech(
     activity: () => false,
     reset: (): void => undefined,
     release: async (): Promise<void> => {
-      context.meter.summarize();
       await (await loading)?.release();
     },
   };

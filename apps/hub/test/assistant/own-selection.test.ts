@@ -1,8 +1,10 @@
 import {
   type AiModelRow,
   DEFAULT_AI_HARNESS_PERMISSION,
+  DSH_ENGINE_REQUEST,
   NO_PRICES,
   type DshEngine,
+  type Engine,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { systemClock } from '../../src/clock';
@@ -10,9 +12,15 @@ import { OwnEngineSelections } from '../../src/harness/own-selection';
 import { HarnessRoutes } from '../../src/harness/routes';
 import { HarnessService } from '../../src/harness/service';
 import { Catalogue } from '../../src/openrouter/catalogue';
+import {
+  completeEngine,
+  defaultEngine,
+  meteredCatalogue,
+} from '../../src/openrouter/metered-engine';
 import { OpenRouterClient } from '../../src/openrouter/client';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { hubLayout } from '../../src/data-layout';
 
 const MODEL = 'qwen/qwen-test';
 const CLAUDE_MODEL = 'anthropic/claude-test';
@@ -57,6 +65,14 @@ let selections: OwnEngineSelections;
 let ownerId: string;
 let memberId: string;
 
+function select(profileId: string, model: string): Engine {
+  return completeEngine(
+    profileId,
+    DSH_ENGINE_REQUEST.parse({ kind: 'dsh', model }),
+    meteredCatalogue(opened.store),
+  );
+}
+
 function engine(route: string): DshEngine {
   return {
     kind: 'dsh',
@@ -73,7 +89,6 @@ beforeEach(async () => {
   opened = await testStore();
   const { store } = opened;
   store.aiModels.replace([ROW, CLAUDE_ROW], 'openrouter');
-  store.aiModels.saveSettings({ ...store.aiModels.settings(), default_model: MODEL });
   store.aiModels.saveSyncState({
     synced_at: '2026-10-08T10:00:00.000Z',
     error: null,
@@ -90,7 +105,7 @@ beforeEach(async () => {
   const routes = new HarnessRoutes(catalogue, () => true);
   selections = new OwnEngineSelections(
     new HarnessService(store, routes, () => undefined, {
-      dataDirectory: opened.directory,
+      layout: hubLayout(opened.directory, {}),
       clock: systemClock,
     }),
   );
@@ -116,11 +131,7 @@ function chatOf(profileId: string, stored: DshEngine): string {
 
 describe('a dsh chat carrying another profile’s model route', () => {
   it('gets its own profile’s route when its first turn is admitted', () => {
-    const ownerRoute = selections.select(ownerId, {
-      kind: 'openrouter',
-      model: MODEL,
-      effort: null,
-    });
+    const ownerRoute = select(ownerId, MODEL);
     if (ownerRoute.kind !== 'dsh') throw new Error('The owner route did not resolve.');
     const chatId = chatOf(memberId, ownerRoute);
 
@@ -134,7 +145,7 @@ describe('a dsh chat carrying another profile’s model route', () => {
   });
 
   it('keeps a route its profile already has, with its target and session', () => {
-    const own = selections.select(ownerId, { kind: 'openrouter', model: MODEL, effort: null });
+    const own = select(ownerId, MODEL);
     if (own.kind !== 'dsh') throw new Error('The owner route did not resolve.');
     const onDevice: DshEngine = {
       ...own,
@@ -158,13 +169,18 @@ describe('a dsh chat carrying another profile’s model route', () => {
 
 describe('paid Claude and OpenAI models on the metered OpenRouter route', () => {
   it('can be selected like any other OpenRouter model', () => {
-    const selected = selections.select(ownerId, {
-      kind: 'openrouter',
-      model: CLAUDE_MODEL,
-      effort: null,
-    });
+    const selected = select(ownerId, CLAUDE_MODEL);
 
     expect(selected).toMatchObject({ kind: 'dsh', model: CLAUDE_MODEL });
+  });
+
+  it('leaves a chosen model to its provider default and keeps the configured new-chat effort', () => {
+    opened.store.aiModels.replace(
+      [{ ...ROW, reasoning: 'optional', efforts: ['low', 'high'], default_effort: 'high' }],
+      'openrouter',
+    );
+    expect(select(ownerId, MODEL)).toMatchObject({ kind: 'dsh', model: MODEL, effort: null });
+    expect(defaultEngine(opened.store, ownerId)).toMatchObject({ kind: 'dsh', effort: 'low' });
   });
 });
 

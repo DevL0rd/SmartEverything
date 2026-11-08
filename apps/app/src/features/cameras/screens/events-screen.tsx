@@ -81,6 +81,7 @@ function FeedRow({ row, feed, expanded, cameraName, onToggle, onRemove }: FeedRo
         thumb={thumbOf(feed, entry)}
         timeZone={feed.timeZone}
         expanded={expanded}
+        fullDetails
         onToggle={onToggle}
         onDelete={(): void => {
           onRemove(entry);
@@ -135,7 +136,7 @@ export function EventsScreen(): ReactNode {
   useEventsLog({ cameras: cameras.length, feed, filter, open: open.size });
   return (
     <Screen header={<PageHeader title="Events" />} scroll={false}>
-      <View className="w-full max-w-reading flex-1 self-center">
+      <View className="w-full max-w-reading flex-1 self-start">
         <VirtualList
           header={<Toolbar filter={filter} setFilter={setFilter} cameras={cameras} />}
           sections={sectionsOf(feed, open, deleting.hidden, now)}

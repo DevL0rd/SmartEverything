@@ -1,18 +1,12 @@
 import path from 'node:path';
 import { app } from 'electron';
-import {
-  GO2RTC_RESOURCE_DIRECTORY,
-  go2rtcBuildName,
-  go2rtcShippedName,
-} from './service/go2rtc-binary.js';
 import { DESKTOP_VARIANTS, type DesktopVariant } from './variant.js';
+import { COMPUTER_DIRECTORY, COMPUTER_ENTRY } from './package-layout.js';
 import { WINDOW_STATE_FILE } from './window-state.js';
 
 const WEB_EXPORT_DIRECTORY = 'dist';
 const ICON_FILE = 'icon.png';
 const TRAY_DIRECTORY = 'tray';
-const SERVICE_RESOURCE_DIRECTORY = 'service';
-const SERVICE_ENTRY_FILE = 'service.mjs';
 
 export interface DesktopPaths {
   readonly webRoot: string;
@@ -22,25 +16,16 @@ export interface DesktopPaths {
   readonly windowState: string;
   readonly dataDirectory: string;
   readonly serviceEntry: string;
-  readonly go2rtcBinary: string;
 }
 
-type Resources = Pick<
-  DesktopPaths,
-  'webRoot' | 'icon' | 'trayIcons' | 'serviceEntry' | 'go2rtcBinary'
->;
+type Resources = Pick<DesktopPaths, 'webRoot' | 'icon' | 'trayIcons' | 'serviceEntry'>;
 
 function packagedResources(): Resources {
   return {
     webRoot: path.join(process.resourcesPath, WEB_EXPORT_DIRECTORY),
     icon: path.join(process.resourcesPath, ICON_FILE),
     trayIcons: path.join(process.resourcesPath, TRAY_DIRECTORY),
-    serviceEntry: path.join(process.resourcesPath, SERVICE_RESOURCE_DIRECTORY, SERVICE_ENTRY_FILE),
-    go2rtcBinary: path.join(
-      process.resourcesPath,
-      GO2RTC_RESOURCE_DIRECTORY,
-      go2rtcShippedName(process.platform),
-    ),
+    serviceEntry: path.join(process.resourcesPath, COMPUTER_DIRECTORY, COMPUTER_ENTRY),
   };
 }
 
@@ -51,35 +36,28 @@ function workspaceResources(): Resources {
     webRoot: path.join(appWorkspace, WEB_EXPORT_DIRECTORY),
     icon: path.join(appWorkspace, 'assets', ICON_FILE),
     trayIcons: path.join(desktopWorkspace, 'assets', TRAY_DIRECTORY),
-    serviceEntry: path.join(
-      desktopWorkspace,
-      'dist',
-      SERVICE_RESOURCE_DIRECTORY,
-      SERVICE_ENTRY_FILE,
-    ),
-    go2rtcBinary: path.resolve(
-      desktopWorkspace,
-      '..',
-      '..',
-      'tooling',
-      'go2rtc',
-      'out',
-      go2rtcBuildName(process.platform, process.arch),
-    ),
+    serviceEntry: path.join(desktopWorkspace, 'dist', COMPUTER_DIRECTORY, COMPUTER_ENTRY),
   };
 }
 
-function serviceDataDirectory(variant: DesktopVariant): string {
-  return variant.managedBy === 'stable-app'
-    ? path.join(app.getPath('appData'), DESKTOP_VARIANTS.release.productName)
-    : app.getPath('userData');
+function serviceDataDirectory(): string {
+  const appData = app.getPath('appData');
+  return path.join(appData, `${DESKTOP_VARIANTS.release.productName}-node`);
 }
 
-export function desktopPaths(variant: DesktopVariant): DesktopPaths {
+export function desktopUserDataPath(variant: DesktopVariant): string {
+  return path.join(app.getPath('appData'), variant.userDataName);
+}
+
+export function prepareUserData(variant: DesktopVariant): void {
+  app.setPath('userData', desktopUserDataPath(variant));
+}
+
+export function desktopPaths(): DesktopPaths {
   return {
     ...(app.isPackaged ? packagedResources() : workspaceResources()),
     preload: path.join(import.meta.dirname, 'preload.cjs'),
     windowState: path.join(app.getPath('userData'), WINDOW_STATE_FILE),
-    dataDirectory: serviceDataDirectory(variant),
+    dataDirectory: serviceDataDirectory(),
   };
 }

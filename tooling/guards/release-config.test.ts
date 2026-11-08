@@ -1,16 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import appConfig from '../../apps/app/app.config.ts';
-import {
-  ReleaseVersionError,
-  VERSIONED_PACKAGES,
-  agreedVersion,
-  readVersions,
-  withVersion,
-} from '../release-version.ts';
+import { readReleaseVersion, withVersion } from '../release-version.ts';
 
 const IDENTITY = z
   .object({ applicationId: z.string().min(1) })
@@ -37,17 +31,6 @@ function build(environment: Readonly<Record<string, string>>): ReturnType<typeof
 }
 
 describe('the release number', () => {
-  it('is the same in the app, the desktop and the hub', () => {
-    expect(() => agreedVersion(readVersions())).not.toThrow();
-    expect(Object.keys(readVersions())).toEqual([...VERSIONED_PACKAGES]);
-  });
-
-  it('refuses two packages on different versions', () => {
-    expect(() => agreedVersion({ app: '0.2.0', desktop: '0.1.0', hub: '0.2.0' })).toThrow(
-      ReleaseVersionError,
-    );
-  });
-
   it('rewrites only the version of a manifest and keeps everything else in order', () => {
     const rewritten = withVersion('{"name":"x","version":"0.1.0","scripts":{"a":"b"}}', '1.2.3');
     expect(rewritten).toBe(
@@ -62,12 +45,12 @@ describe('the release number', () => {
 });
 
 describe('the app identity', () => {
-  it('gives every build the one id, name, scheme and the shared version', () => {
+  it('gives every build the one id, name, scheme and its own version', () => {
     const config = build({});
     expect(config.android?.package).toBe(IDENTITY);
     expect(config.scheme).toBe('smarteverything');
     expect(config.name).toBe('SmartEverything');
-    expect(config.version).toBe(agreedVersion(readVersions()));
+    expect(config.version).toBe(readReleaseVersion('app'));
   });
 
   it('keeps the id of the installed app and never names it Dev', () => {
@@ -133,6 +116,24 @@ describe('scratch manifests', () => {
   afterEach(() => {
     for (const directory of directories.splice(0))
       rmSync(directory, { recursive: true, force: true });
+  });
+
+  it('reads each release version independently of the other manifests', () => {
+    const root = mkdtempSync(join(tmpdir(), 'release-targets-'));
+    directories.push(root);
+    const versions = { app: '1.2.3', desktop: '2.3.4', hub: '3.4.5' } as const;
+    const targets = ['app', 'desktop', 'hub'] as const;
+    for (const target of targets) {
+      const directory = join(root, 'apps', target);
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(join(directory, 'package.json'), JSON.stringify({ version: versions[target] }));
+    }
+    for (const target of targets) {
+      expect(readReleaseVersion(target, root)).toBe(versions[target]);
+    }
+    writeFileSync(join(root, 'apps', 'desktop', 'package.json'), '{"version":"invalid"}');
+    expect(readReleaseVersion('app', root)).toBe(versions.app);
+    expect(() => readReleaseVersion('desktop', root)).toThrow();
   });
 
   it('are written whole by the version rewrite', () => {

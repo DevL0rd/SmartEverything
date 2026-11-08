@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { StatTile, Stage, Text } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -26,17 +27,17 @@ const tiles = (
     <StatTile label="Air quality" value="--" caption="Sensor offline" stale />
   </div>
 );
-export const Grid = () => (
+export const Grid = (): ReactElement => (
   <Stage theme="dark" width={520}>
     {tiles}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     {tiles}
   </Stage>
 );
-export const Pressable = () => (
+export const Pressable = (): ReactElement => (
   <Stage theme="dark" width={260}>
     <Row>
       <StatTile label="Steps" value="8,412" caption="Goal 10,000" onPress={() => undefined} />

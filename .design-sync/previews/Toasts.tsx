@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { type ReactElement, useEffect } from 'react';
 import { GlobalTheme, Stage, Toasts, notify } from 'smarteverything-kit';
 
-function Fire({ theme }: { theme: 'dark' | 'light' }) {
+function Fire({ theme }: { theme: 'dark' | 'light' }): ReactElement {
   useEffect(() => {
     notify({
       message: 'Scene saved',
@@ -17,5 +17,5 @@ function Fire({ theme }: { theme: 'dark' | 'light' }) {
     </GlobalTheme>
   );
 }
-export const Dark = () => <Fire theme="dark" />;
-export const Light = () => <Fire theme="light" />;
+export const Dark = (): ReactElement => <Fire theme="dark" />;
+export const Light = (): ReactElement => <Fire theme="light" />;

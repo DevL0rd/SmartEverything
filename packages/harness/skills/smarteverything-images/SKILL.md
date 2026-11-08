@@ -1,6 +1,6 @@
 ---
 name: smarteverything-images
-description: "Generates or edits raster images in a chat: photos, illustrations, textures, sprites, mockups, product shots and transparent cutouts, new or from references, or changes to an earlier image. Use for “draw me…”, “edit this photo” or “remove the background”. Load smarteverything-image-prompts to shape the prompt and smarteverything-image-samples for worked prompts. Not for work better done as SVG, HTML, CSS, code or a chart."
+description: 'Generates or edits raster images in a chat: photos, illustrations, textures, sprites, mockups, product shots and transparent cutouts, new or from references, or changes to an earlier image. Use for “draw me…”, “edit this photo” or “remove the background”. Load smarteverything-image-prompts to shape the prompt and smarteverything-image-samples for worked prompts. Not for work better done as SVG, HTML, CSS, code or a chart.'
 ---
 
 # Image generation
@@ -21,16 +21,16 @@ Images are made with two tools:
 Rules:
 
 - Use `image_gen` action `generate` for new images and action `edit` for changing an existing image. There are no files, scripts, API keys or command lines to use, and nothing to set up.
-- Call `model_read` view images before the first image request in a chat. When `selected` is set, use that model (and its providerTag when the model has several endpoints) for new images and for edits, restyles and reference images alike. The person picked it in the app, so do not swap it for a cheaper or different model unless it cannot take the references or options the request needs.
-- When `selected` is null, use a returned model with a capability that fits, and its providerTag only when that model lists several endpoints (generate, edit, references). A reference the endpoint does not list is unsupported: do not send it.
-- Quality and resolution are not yours to set: every request is made at the highest quality and resolution that endpoint offers. You only choose the `aspect_ratio` that suits the picture (or leave it out), how many variants `n`, and a transparent `background` for cutouts.
+- Never send `model` or `providerTag` for the person's own images. The hub fills in the model picked in the app itself, for new images and for edits, restyles and reference images alike; passing it again is only a copy of what is already chosen and can go stale. Send `model` (with its providerTag when it has several endpoints) only when the person explicitly asks for a different model, such as a cheaper or faster one.
+- Only when no image model is picked in the app does the request need `model` (and `providerTag` when that model has several endpoints): read `model_read` view images and choose a returned endpoint with a capability that fits. A reference the endpoint does not list is unsupported: do not send it.
+- Leave every image option out by default. The app saves a default per image model for the aspect ratio, resolution, quality, background and output format in the chat bar picker, and a request that leaves an option out is made with that saved default. Send an option only when the person explicitly asks for something different from those defaults, and only with a value the endpoint's `parameters` list. An option you send overrides the saved default for that request.
 - A missing provider grant is fixed in the app, not by switching to another paid route.
-- When a request fails because the provider has no quota, is unavailable or refused it, tell the person plainly which model failed and why, and ask before using a different model. Never start the same request again on that endpoint, and never switch to another model or provider on your own, because each one is billed differently.
+- The request is made with the model picked in the app and nothing else. If it fails, report the model and the reason plainly and offer the person another model from `model_read` view images; never retry or substitute one yourself.
 - Image requests are metered. Do not start extra images, test renders or retries the person did not ask for.
 
 Where images go:
 
-- The app saves each result in the chat as an attachment and shows progress and the finished image itself. Do not describe file paths or copy images anywhere.
+- The app saves each result in the chat as an attachment and shows progress and the finished image itself. When the person asks a helper to share its saved results with the parent, use the granted `chat_post` parent share with the completed operation ID.
 - An edit always makes a new image and leaves the original untouched, so nothing is overwritten.
 
 Shared prompt guidance is in "Prompting best practices", "Use-case tips" and "Sample prompts" below.
@@ -93,7 +93,7 @@ Assume the person wants a new image unless they clearly ask to change an existin
    - If the person's prompt is already specific and detailed, normalize it into a clear spec without adding creative requirements.
    - If the prompt is generic, add tasteful augmentation only when it materially improves output quality.
 9. Call `image_gen` action `generate` (or `edit`) once per requested image, all in the same turn when there are several. The hub names each operation and returns its operationId; after an uncertain result do not start the request again, because it may still finish in the chat.
-10. `generate` and `edit` wait for their own result. They return the final state (`completed`, `failed`, `cancelled` or `unknown`), the reason when there is one, the model used and, for a completed image, the saved attachments with their IDs. The app shows progress and the saved image in the chat meanwhile; do not describe file paths or copy images.
+10. `generate` and `edit` wait for their own result. They return the final state (`completed`, `failed`, `cancelled` or `unknown`), the reason when there is one, the model used and, for a completed image, the saved attachments with their IDs. The app shows progress and the saved image in the initiating chat meanwhile. For an explicitly requested parent share, use the saved operation ID and keep the new attachment IDs from the post receipt.
 11. If a `generate` or `edit` call errors or runs out of time, the image may still be running or already saved: say so, point to the chat, and never start the same request again. An `unknown` state means billing and delivery could not be confirmed; report it and ask before any new attempt. Use `cancel` with its operationId to stop an active request.
 12. When the call returns, check the result against what the person asked: subject, style, composition, text accuracy, and invariants/avoid items. Report which model made it and any mismatch plainly.
 13. When the person asks for changes, iterate with one targeted change, then check the new result the same way. Make each iteration a new edit from the latest image (use its attachment ID) and repeat the invariants.
@@ -126,9 +126,15 @@ Not allowed augmentations:
 
 ## Image options
 
-The request `options` take only these. Quality, resolution and size are always set for you to the highest the endpoint offers, so never send them.
+The request `options` take only these. The app saves a default per image model for the aspect ratio, resolution, quality, background and output format, and every option left out is made with that saved default, so leave them all out by default. Send an option only when the person explicitly asks for something different, with a value the endpoint's `parameters` list; an option you send overrides the saved default for that request.
 
-- `aspect_ratio`: the shape that suits the picture, for example 1:1 for an avatar or icon, 16:9 for a wide scene or banner, 9:16 for a phone wallpaper or story, 4:3 or 3:2 for a photo, 2:3 or 3:4 for a portrait or poster. Leave it out to let the model choose. The endpoint's `parameters` list the ratios it accepts, and the nearest is used when a listed one differs.
+- `aspect_ratio`: the shape, for example 1:1 for an avatar or icon, 16:9 for a wide scene or banner, 9:16 for a phone wallpaper or story, 4:3 or 3:2 for a photo, 2:3 or 3:4 for a portrait or poster; it must be one the endpoint's `parameters` list, and the nearest listed one is used when it differs. Leave it out to use the saved default.
+- `resolution`: only when the person asks for a specific size, such as 4K or 2K; it must be one the endpoint's `parameters` list. Leave it out to use the saved default.
+- `quality`: only when the person asks for a different quality than the saved default, such as the highest or the fastest; it must be one the endpoint's `parameters` list. Leave it out to use the saved default.
+- `output_format`: only when the person asks for `png`, `jpeg` or `webp` and the endpoint lists it; a transparent background needs a format that supports transparency. Leave it out to use the saved default.
+- `size`: only when the person asks for an exact width and height the endpoint lists; prefer `aspect_ratio` for a shape.
+- `seed`: only when the person asks to repeat or vary a result reproducibly; it must be one the endpoint accepts.
+- `output_compression`: only when the person asks for a smaller file, 0 to 100, where the endpoint lists it.
 - `n`: how many variants of one prompt (1-4), where the endpoint allows more than one.
 - `background`: `transparent` for a cutout with no background (the format is switched to one that supports transparency), otherwise leave it out. It is not the scene in the prompt.
 - References: up to 10 images per request, only on endpoints that list reference support. Edits and reference images both use it, so an endpoint without it can only generate.

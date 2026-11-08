@@ -1,4 +1,11 @@
-import { SEMANTIC_SIZES, type Density, type Idiom, type WidthClass } from '../../design/tokens';
+import { BOARD_COLUMNS, WIDGET_FOOTPRINTS } from '@smarteverything/domain';
+import {
+  CONTAINER_WIDTH,
+  SEMANTIC_SIZES,
+  type Density,
+  type Idiom,
+  type WidthClass,
+} from '../../design/tokens';
 import type { BoardClass } from './types';
 
 export function boardClassOf(width: WidthClass): BoardClass {
@@ -6,6 +13,16 @@ export function boardClassOf(width: WidthClass): BoardClass {
     return 'compact';
   }
   return width === 'medium' ? 'medium' : 'expanded';
+}
+
+export function boardColumnsOf(board: BoardClass, width: number): number {
+  const base = BOARD_COLUMNS[board];
+  if (board !== 'expanded' || width <= CONTAINER_WIDTH.dashboard) {
+    return base;
+  }
+  const step = WIDGET_FOOTPRINTS.expanded.M.columns;
+  const groups = Math.round((width * base) / (CONTAINER_WIDTH.dashboard * step));
+  return groups * step;
 }
 
 export interface Cell {
@@ -38,23 +55,17 @@ export interface Span {
   readonly row: number;
   readonly cols: number;
   readonly rows: number;
-  readonly height?: number | undefined;
 }
 
 export function spanWidth(cell: Cell, columns: number): number {
   return columns * cell.width + (columns - 1) * cell.gap;
 }
 
-export function aspectRows(cell: Cell, columns: number, aspect: number): number {
-  const height = spanWidth(cell, columns) / aspect;
-  return Math.max(1, Math.ceil((height + cell.gap) / (cell.height + cell.gap)));
-}
-
-export function frameOf(cell: Cell, { col, row, cols, rows, height }: Span): Frame {
+export function frameOf(cell: Cell, { col, row, cols, rows }: Span): Frame {
   return {
     left: col * (cell.width + cell.gap),
     top: row * (cell.height + cell.gap),
     width: spanWidth(cell, cols),
-    height: height ?? rows * cell.height + (rows - 1) * cell.gap,
+    height: rows * cell.height + (rows - 1) * cell.gap,
   };
 }

@@ -1,10 +1,15 @@
-import type {
-  ChatActivityNotice,
-  ChatActivityState,
-  ChatStreamNotice,
-  ChatStreamPart,
-  ChatToolItem,
+import {
+  CHAT_RETRYING_REASON,
+  CHAT_WAITING_HELPERS_REASON,
+  CHAT_WAITING_JOBS_REASON,
+  type AssistantMessageRow,
+  type ChatActivityNotice,
+  type ChatActivityState,
+  type ChatStreamNotice,
+  type ChatStreamPart,
+  type ChatToolItem,
 } from '@smarteverything/domain';
+import { sameJson } from './same-json';
 
 export interface Turn {
   readonly chatId: string;
@@ -27,15 +32,65 @@ export function isWorking(turn: Turn): boolean {
   return turn.state !== 'idle' && turn.state !== 'failed';
 }
 
-export function stepOf(turn: Turn): string | null {
-  const running = turn.tools.findLast((tool) => tool.state === 'running');
-  return running?.title ?? turn.steps.at(-1) ?? null;
+function acknowledged(
+  turn: Turn,
+  messages: Readonly<Record<string, AssistantMessageRow>>,
+): boolean {
+  if (isWorking(turn)) return false;
+  if (turn.messageId === null) return !turn.behind;
+  const row = messages[turn.messageId];
+  return row?.chat_id === turn.chatId && (row.state === 'answered' || row.state === 'failed');
+}
+
+export function retainPendingTurns(
+  turns: Turns,
+  messages: Readonly<Record<string, AssistantMessageRow>>,
+): Turns {
+  for (const id in turns) {
+    const turn = turns[id];
+    if (turn !== undefined && acknowledged(turn, messages))
+      return Object.fromEntries(
+        Object.entries(turns).filter(([, entry]) => !acknowledged(entry, messages)),
+      );
+  }
+  return turns;
+}
+
+export interface WorkStatus {
+  readonly phase: string;
+  readonly step: string | null;
+}
+
+const REASON_PHASES: Readonly<Record<string, string>> = {
+  [CHAT_RETRYING_REASON]: 'Retrying',
+  [CHAT_WAITING_HELPERS_REASON]: 'Waiting on helpers',
+  [CHAT_WAITING_JOBS_REASON]: 'Waiting on background jobs',
+};
+
+function phaseOf(turn: Turn): string {
+  const reasoned = turn.reason === null ? undefined : REASON_PHASES[turn.reason];
+  if (reasoned !== undefined) return reasoned;
+  if (turn.state !== 'thinking') return 'Working';
+  const started = turn.reasoning !== '' || turn.text !== '' || turn.tools.length > 0;
+  return started ? 'Thinking' : 'Waiting for response';
+}
+
+export function workStatusOf(turn: Turn): WorkStatus {
+  return {
+    phase: phaseOf(turn),
+    step:
+      turn.tools.findLast((tool) => tool.state === 'running')?.title ?? turn.steps.at(-1) ?? null,
+  };
+}
+
+export function workText(work: WorkStatus): string {
+  return work.step === null ? work.phase : `${work.phase} · ${work.step}`;
 }
 
 export function workKey(turn: Turn | undefined): string | null {
   return turn === undefined || !isWorking(turn)
     ? null
-    : `${turn.chatId}\u0000${stepOf(turn) ?? ''}`;
+    : `${turn.chatId}\u0000${workText(workStatusOf(turn))}`;
 }
 
 const WAITING_MAX = 200;
@@ -75,7 +130,9 @@ function drain(turn: Turn): Turn {
       left.push(frame);
     }
   }
-  return { ...current, waiting: left, behind: left.length > 0 };
+  const behind = left.length > 0;
+  if (current === turn && !behind && turn.waiting.length === 0) return turn;
+  return { ...current, waiting: left, behind };
 }
 
 function emptyTurn(frame: ChatStreamNotice): Turn {
@@ -95,11 +152,17 @@ function emptyTurn(frame: ChatStreamNotice): Turn {
   };
 }
 
-export function withSnapshot(turns: Turns, notice: ChatActivityNotice): Turns {
-  const previous = turns[notice.turnId];
-  if (previous !== undefined && previous.seq > notice.seq) return turns;
+function toolsWith(previous: Turn | undefined, tools: readonly ChatToolItem[]): ChatToolItem[] {
+  if (previous === undefined) return [...tools];
+  return tools.map((tool) => {
+    const before = previous.tools.find((item) => item.callId === tool.callId);
+    return before !== undefined && sameJson(before, tool) ? before : tool;
+  });
+}
+
+function snapshotOf(previous: Turn | undefined, notice: ChatActivityNotice): Turn {
   const kept = previous?.waiting.filter((frame) => frame.seq > notice.seq) ?? [];
-  const turn: Turn = {
+  return drain({
     chatId: notice.chatId,
     turnId: notice.turnId,
     messageId: notice.messageId,
@@ -107,23 +170,58 @@ export function withSnapshot(turns: Turns, notice: ChatActivityNotice): Turns {
     seq: notice.seq,
     text: notice.draft,
     reasoning: notice.reasoning,
-    tools: notice.tools,
+    tools: toolsWith(previous, notice.tools),
     steps: notice.steps,
     reason: notice.reason,
     behind: false,
     waiting: kept,
-  };
-  const others = Object.entries(turns).filter(
-    ([turnId, other]) =>
-      turnId !== notice.turnId &&
-      !(other.chatId === notice.chatId && other.state === 'idle') &&
-      !(notice.messageId !== null && other.messageId === notice.messageId),
+  });
+}
+
+export function sameActivity(turn: Turn | undefined, notice: ChatActivityNotice): boolean {
+  return (
+    turn?.chatId === notice.chatId &&
+    turn.messageId === notice.messageId &&
+    turn.state === notice.state &&
+    turn.seq === notice.seq &&
+    turn.text === notice.draft &&
+    turn.reasoning === notice.reasoning &&
+    turn.reason === notice.reason
   );
-  return { ...Object.fromEntries(others), [notice.turnId]: drain(turn) };
+}
+
+function superseded(other: Turn, turn: Turn): boolean {
+  return (
+    other.chatId === turn.chatId && turn.messageId !== null && other.messageId === turn.messageId
+  );
+}
+
+function withTurn(turns: Turns, turn: Turn): Turns {
+  const next: Record<string, Turn> = {};
+  for (const [turnId, other] of Object.entries(turns)) {
+    if (turnId !== turn.turnId && !superseded(other, turn)) next[turnId] = other;
+  }
+  next[turn.turnId] = turn;
+  return next;
+}
+
+function settlesBehind(turns: Turns, previous: Turn, notice: ChatActivityNotice): Turns {
+  if (notice.state !== 'idle' || notice.tools.length > 0) return turns;
+  if (notice.messageId !== null && notice.messageId !== previous.messageId) return turns;
+  if (previous.state === 'idle') return turns;
+  return { ...turns, [notice.turnId]: { ...previous, state: 'idle' } };
+}
+
+export function withSnapshot(turns: Turns, notice: ChatActivityNotice): Turns {
+  const previous = turns[notice.turnId];
+  if (previous !== undefined && previous.seq > notice.seq)
+    return settlesBehind(turns, previous, notice);
+  if (previous !== undefined && sameActivity(previous, notice)) return turns;
+  return withTurn(turns, snapshotOf(previous, notice));
 }
 
 export function turnsOf(notices: readonly ChatActivityNotice[]): Turns {
-  return notices.reduce<Turns>(withSnapshot, {});
+  return notices.reduce<Turns>((turns, notice) => withSnapshot(turns, notice), {});
 }
 
 export function settleChatTurns(turns: Turns, observed: Turns, chatId: string): Turns {
@@ -153,6 +251,20 @@ export function withFrame(turns: Turns, frame: ChatStreamNotice): Turns {
   }
   const waiting = [...turn.waiting, frame].slice(-WAITING_MAX);
   return { ...turns, [frame.turnId]: drain({ ...turn, waiting }) };
+}
+
+const workingIn = new WeakMap<Turns, Map<string, Turn | null>>();
+
+export function workingTurnOf(turns: Turns, chatId: string): Turn | null {
+  const known = workingIn.get(turns);
+  const cached = known?.get(chatId);
+  if (cached !== undefined) return cached;
+  const found =
+    Object.values(turns).findLast((turn) => turn.chatId === chatId && isWorking(turn)) ?? null;
+  const cache = known ?? new Map<string, Turn | null>();
+  cache.set(chatId, found);
+  workingIn.set(turns, cache);
+  return found;
 }
 
 export function liveTurnOf(turns: Turns, chatId: string): Turn | null {

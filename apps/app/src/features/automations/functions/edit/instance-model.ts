@@ -1,5 +1,5 @@
 import type { FlowNode } from '@smarteverything/domain';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
 import { pinOf } from '@smarteverything/flow/functions/calls';
 
 export type FollowMode = 'follow' | 'pin';

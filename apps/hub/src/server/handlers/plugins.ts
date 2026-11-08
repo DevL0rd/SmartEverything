@@ -7,7 +7,7 @@ import type { SettingsAuthor } from '../../plugins/plugin-settings';
 import { clientOf, profileIdOf, type Caller } from '../auth';
 import { DONE_REPLY, bound } from '../router';
 
-function toolCallerOf(store: Store, caller: Caller): ToolCaller {
+export function toolCallerOf(store: Store, caller: Caller): ToolCaller {
   const client = clientOf(caller);
   return {
     profileId: profileIdOf(store, caller),
@@ -72,8 +72,8 @@ export const pluginRoutes = (store: Store, admin: PluginAdmin) =>
       admin.data(params.pluginId, query.stream, query.limit),
     ),
     listPluginSearch: bound(E.listPluginSearch, (): PluginSearchHit[] => searchHitsOf(store)),
-    readPluginOptions: bound(E.readPluginOptions, ({ params, query }) =>
-      admin.choices(params.pluginId, params.source, query),
+    readPluginOptions: bound(E.readPluginOptions, ({ params, query, caller }) =>
+      admin.choices(params.pluginId, params.source, query, toolCallerOf(store, caller)),
     ),
     listPluginPeople: bound(E.listPluginPeople, ({ params }) => admin.people(params.pluginId)),
     setPluginPerson: bound(E.setPluginPerson, ({ params, body, caller }) => {

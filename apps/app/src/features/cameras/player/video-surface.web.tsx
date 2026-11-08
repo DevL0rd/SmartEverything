@@ -9,9 +9,12 @@ export interface VideoSurfaceProps {
   readonly onWheel: ((deltaY: number) => void) | null;
   readonly onFrame: () => void;
   readonly onSoundBlocked: () => void;
+  readonly fit?: 'contain' | 'cover';
 }
 
 const LIVE_EDGE_LAG_SECONDS = 3;
+
+const FIT_CLASS = { contain: 'object-contain', cover: 'object-cover' } as const;
 
 export function surfaceReportsFrames(): boolean {
   return true;
@@ -125,6 +128,7 @@ export function VideoSurface({
   onWheel,
   onFrame,
   onSoundBlocked,
+  fit,
 }: VideoSurfaceProps): ReactNode {
   const video = useAttachedMedia(media);
   usePlaying(video, media, onSoundBlocked);
@@ -137,7 +141,7 @@ export function VideoSurface({
       playsInline
       muted={muted}
       aria-label="Live camera picture"
-      className="absolute inset-0 h-full w-full object-contain"
+      className={`absolute inset-0 h-full w-full ${String(fit === undefined ? undefined : FIT_CLASS[fit])}`}
     />
   );
 }

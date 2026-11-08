@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { View, type LayoutChangeEvent } from 'react-native';
 import { Rings } from '../../../components/charts';
 import { Icon } from '../../../components/icon';
 import { LoadedQuery } from '../../../components/loaded-query';
 import { Text } from '../../../components/text';
+import type { FrameClass, WidgetFrameBox } from '../../../components/widget-board';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { cn } from '../../../design/cn';
 import { GhostBars } from '../components/ghost-bars';
@@ -16,29 +17,89 @@ import {
   type StatsView,
   type TodayRing,
 } from '../model/today-model';
-import { bodyHeightOf, legendLines, ringsWithClimb } from '../model/widget-model';
+import { bodyHeightOf, ringsWithClimb } from '../model/widget-model';
 
-function Legend({
-  rings,
-  lines,
+const STACK_GAP = 12;
+const SUBPIXEL = 0.5;
+
+export function FitPlot({
+  className,
+  children,
 }: {
-  readonly rings: readonly TodayRing[];
-  readonly lines: number;
+  readonly className?: string;
+  readonly children: (plot: number) => ReactNode;
+}): ReactNode {
+  const [room, setRoom] = useState(0);
+  const [chrome, setChrome] = useState(0);
+  const plot = Math.max(0, Math.floor(room - chrome));
+  const onRoom = (event: LayoutChangeEvent): void => {
+    setRoom(event.nativeEvent.layout.height);
+  };
+  const onContent = (event: LayoutChangeEvent): void => {
+    setChrome(Math.max(0, Math.ceil(event.nativeEvent.layout.height - plot)));
+  };
+  return (
+    <View className={cn('min-h-0 min-w-0 flex-1', className)} onLayout={onRoom}>
+      <View onLayout={onContent}>{children(plot)}</View>
+    </View>
+  );
+}
+
+function progressRingPx(cls: FrameClass, frame: WidgetFrameBox): number {
+  const body = bodyHeightOf(frame);
+  if (cls === 'l') {
+    return Math.floor((body - STACK_GAP) / 2);
+  }
+  return cls === 'xl' ? Math.min(body, Math.floor(frame.width / 3)) : body;
+}
+
+function LegendRow({
+  item,
+  shown,
+  onEnd,
+}: {
+  readonly item: TodayRing;
+  readonly shown: boolean;
+  readonly onEnd: (key: string, end: number) => void;
 }): ReactNode {
   return (
-    <View className="min-w-0 gap-1">
-      {rings.slice(0, lines).map((item) => (
-        <View
+    <View
+      accessible={shown}
+      aria-hidden={!shown}
+      accessibilityLabel={ringSentence(item)}
+      onLayout={(event) => {
+        onEnd(item.key, event.nativeEvent.layout.y + event.nativeEvent.layout.height);
+      }}
+      className={cn('flex-row items-center gap-2', !shown && 'opacity-0')}
+    >
+      <View className={cn('size-2 rounded-full', RING_DOT[item.colour])} />
+      <Text variant="caption" numberOfLines={2} className="tabular min-w-0 shrink">
+        {item.name}: {item.done} of {item.goal}
+      </Text>
+    </View>
+  );
+}
+
+function Legend({ rings }: { readonly rings: readonly TodayRing[] }): ReactNode {
+  const [room, setRoom] = useState(Number.POSITIVE_INFINITY);
+  const [ends, setEnds] = useState<Readonly<Record<string, number>>>({});
+  const onEnd = (key: string, end: number): void => {
+    setEnds((previous) => (previous[key] === end ? previous : { ...previous, [key]: end }));
+  };
+  return (
+    <View
+      className="min-h-0 min-w-0 flex-1 gap-1 self-stretch overflow-hidden"
+      onLayout={(event) => {
+        setRoom(event.nativeEvent.layout.height);
+      }}
+    >
+      {rings.map((item) => (
+        <LegendRow
           key={item.key}
-          accessible
-          accessibilityLabel={ringSentence(item)}
-          className="flex-row items-center gap-2"
-        >
-          <View className={cn('size-2 rounded-full', RING_DOT[item.colour])} />
-          <Text variant="caption" numberOfLines={2} className="tabular min-w-0 shrink">
-            {item.name}: {item.done} of {item.goal}
-          </Text>
-        </View>
+          item={item}
+          shown={(ends[item.key] ?? 0) <= room + SUBPIXEL}
+          onEnd={onEnd}
+        />
       ))}
     </View>
   );
@@ -69,7 +130,7 @@ function Streak({ view }: { readonly view: StatsView }): ReactNode {
   return (
     <View className="flex-row items-center gap-2">
       <Icon name="flame" size={16} tone={streak.current > 0 ? 'warning' : 'faint'} />
-      <Text variant="caption" numberOfLines={1}>
+      <Text variant="caption" numberOfLines={1} className="min-w-0 shrink">
         {streakLine(streak)}
       </Text>
     </View>
@@ -95,41 +156,42 @@ function RingsOf({
   );
 }
 
+function Info({
+  view,
+  rings,
+}: {
+  readonly view: StatsView;
+  readonly rings: readonly TodayRing[];
+}): ReactNode {
+  return (
+    <View className="min-w-0 flex-1 gap-2 self-stretch">
+      <Legend rings={rings} />
+      <Streak view={view} />
+    </View>
+  );
+}
+
 function Body({ view }: { readonly view: StatsView }): ReactNode {
   const { cls, frame } = useWidgetFace();
-  const body = bodyHeightOf(frame);
-  const wide = cls === 'w' || cls === 'xl';
   const rings = ringsWithClimb(view);
+  const ring = <RingsOf rings={rings} size={progressRingPx(cls, frame)} />;
+  const bars = <FitPlot>{(plot) => <WeekBars view={view} height={plot} />}</FitPlot>;
   if (cls === 'l') {
-    const ring = 104;
     return (
       <View className="flex-1 gap-3">
-        <View className="flex-row items-center gap-4">
-          <RingsOf rings={rings} size={ring} />
-          <View className="min-w-0 flex-1 gap-2">
-            <Legend rings={rings} lines={3} />
-            <Streak view={view} />
-          </View>
+        <View className="flex-row gap-4">
+          {ring}
+          <Info view={view} rings={rings} />
         </View>
-        <View className="min-h-0 flex-1 justify-end">
-          <WeekBars view={view} height={Math.max(40, body - ring - 64)} />
-        </View>
+        {bars}
       </View>
     );
   }
-  const ring = Math.min(112, Math.max(72, body - 8));
   return (
-    <View className="flex-1 flex-row items-center gap-4">
-      <RingsOf rings={rings} size={ring} />
-      <View className="min-w-0 flex-1 gap-2">
-        <Legend rings={rings} lines={legendLines(wide, body)} />
-        {cls === 'xl' ? <Streak view={view} /> : null}
-      </View>
-      {wide ? (
-        <View className="min-w-0 flex-1">
-          <WeekBars view={view} height={Math.max(40, body - 36)} />
-        </View>
-      ) : null}
+    <View className="flex-1 flex-row gap-4">
+      {ring}
+      {cls === 'xl' ? <Info view={view} rings={rings} /> : <Legend rings={rings} />}
+      {cls === 'w' || cls === 'xl' ? bars : null}
     </View>
   );
 }

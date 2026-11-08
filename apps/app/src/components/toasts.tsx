@@ -2,9 +2,10 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { cn } from '../design/cn';
-import { isNative } from '../design/platform';
+import { isNative, useIdiom } from '../design/platform';
 import { useSizeClass } from '../design/size-class';
 import { ToastCard } from './toast-card';
+import { useActiveToastLayer } from './toast-layers';
 import { useKeyboardObstacle, useMeasuredFrame, useToastRoom, type Frame } from './toast-obstacles';
 import { isUndoChord, setToastCapacity, undoLatestToast, useShownToasts } from './toast-store';
 
@@ -37,18 +38,13 @@ function useUndoShortcut(): void {
   }, []);
 }
 
-export function Toasts(): ReactNode {
-  const { nav, idiom } = useSizeClass();
+function ToastStack(): ReactNode {
+  const { nav } = useSizeClass();
   const [host, setHost] = useState<Frame | null>(null);
   const { attach, onLayout } = useMeasuredFrame(setHost);
   const room = useToastRoom(host);
   const shown = useShownToasts();
   const place = { bottom: room.bottom ?? 0, left: room.start ?? 0 };
-  useKeyboardObstacle();
-  useUndoShortcut();
-  useEffect(() => {
-    setToastCapacity(CAPACITY[idiom]);
-  }, [idiom]);
   return (
     <View ref={attach} onLayout={onLayout} pointerEvents="box-none" className="absolute inset-0">
       <View
@@ -67,4 +63,18 @@ export function Toasts(): ReactNode {
       </View>
     </View>
   );
+}
+
+export function ToastLayer({ id }: { readonly id: string | null }): ReactNode {
+  return useActiveToastLayer(id) ? <ToastStack /> : null;
+}
+
+export function Toasts(): ReactNode {
+  const idiom = useIdiom();
+  useKeyboardObstacle();
+  useUndoShortcut();
+  useEffect(() => {
+    setToastCapacity(CAPACITY[idiom]);
+  }, [idiom]);
+  return <ToastLayer id={null} />;
 }

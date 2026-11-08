@@ -1,4 +1,8 @@
-import type { ChatTimelinePart, ChatTimelineTool } from '@smarteverything/domain';
+import {
+  AI_CODE_EXECUTION_TOOL_NAMES,
+  type ChatTimelinePart,
+  type ChatTimelineTool,
+} from '@smarteverything/domain';
 import { finalView } from './stream-view';
 
 export const TEXT_CHUNK_CHARS = 1400;
@@ -12,7 +16,12 @@ export type InlineTimelinePart =
       readonly tools: readonly ChatTimelineTool[];
       readonly activities: readonly InlineToolActivity[];
     }
-  | { readonly kind: 'image'; readonly key: string; readonly operationId: string };
+  | {
+      readonly kind: 'image';
+      readonly key: string;
+      readonly operationId: string;
+      readonly awaitingReceipt: boolean;
+    };
 
 export function inlineTimeline(parts: readonly ChatTimelinePart[]): readonly InlineTimelinePart[] {
   const result: InlineTimelinePart[] = [];
@@ -62,27 +71,52 @@ function textChunks(part: TextPart): readonly TextPart[] {
   }));
 }
 
+const LOOP_TOOLS: ReadonlySet<string> = new Set(AI_CODE_EXECUTION_TOOL_NAMES);
+
+export function isLoopTool(tool: ChatTimelineTool): boolean {
+  return LOOP_TOOLS.has(tool.name);
+}
+
+type ToolGroup = Extract<InlineTimelinePart, { readonly kind: 'tools' }>;
+
+function mergeable(
+  group: ToolGroup,
+  part: Extract<ChatTimelinePart, { readonly kind: 'tool' }>,
+): boolean {
+  return group.tools.every((tool) => !isLoopTool(tool)) && !isLoopTool(part.tool);
+}
+
 function appendTool(
   result: InlineTimelinePart[],
   part: Extract<ChatTimelinePart, { readonly kind: 'tool' }>,
 ): void {
   const previous = result.at(-1);
-  if (previous?.kind === 'tools') {
-    result.splice(result.length - 1, 1, {
-      ...previous,
-      tools: [...previous.tools, part.tool],
-      activities: [...previous.activities, part],
-    });
+  if (previous?.kind === 'tools' && mergeable(previous, part)) {
+    const tools = [...previous.tools, part.tool];
+    const activities = [...previous.activities, part];
+    result.splice(result.length - 1, 1, { ...previous, tools, activities });
   } else {
-    result.push({ kind: 'tools', key: part.key, tools: [part.tool], activities: [part] });
+    const thoughts = leadingThoughts(result);
+    const activities = [...thoughts, part];
+    const key = thoughts[0]?.key ?? part.key;
+    result.push({ kind: 'tools', key, tools: [part.tool], activities });
   }
   if (part.tool.image_operation_id !== null) {
     result.push({
       kind: 'image',
       key: `image:${part.key}`,
       operationId: part.tool.image_operation_id,
+      awaitingReceipt: part.tool.state === 'running' || part.tool.state === 'done',
     });
   }
+}
+
+type ReasoningPart = Extract<ChatTimelinePart, { readonly kind: 'reasoning' }>;
+
+function leadingThoughts(result: InlineTimelinePart[]): readonly ReasoningPart[] {
+  let start = result.length;
+  while (start > 0 && result[start - 1]?.kind === 'reasoning') start -= 1;
+  return result.splice(start).flatMap((entry) => (entry.kind === 'reasoning' ? [entry] : []));
 }
 
 export function streamingKey(parts: readonly InlineTimelinePart[], live: boolean): string | null {

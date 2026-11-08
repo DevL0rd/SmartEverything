@@ -1,7 +1,10 @@
+import { helperParentMessageId } from '../../delegation/helper-dialogue';
+import { admitsChatExecution } from '../../native-helpers';
 import { CONNECTION_LOST, HUB_RESTARTED, STOPPED_BY_USER } from '../../interruption';
 import {
   ApiError,
   type AiChatRow,
+  type AiSubscriptionUsage,
   type AssistantReasonCode,
   type Engine as ChatEngine,
   type JsonValue,
@@ -12,14 +15,14 @@ import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import { StoreNotFoundError } from '../../../store/context';
 import type { Engine, EngineStatus } from '../engine';
 import { ComputerTrace } from './runner-trace';
-import { openProviderTurn } from './turn';
-import { providerInput } from './input';
+import { assertProviderHelperDelivery, openProviderTurn } from './turn';
+import { preflightProviderInput, providerInput } from './input';
 import { ProviderState, type ComputerControl, type ComputerEvent } from './provider-state';
 import { failureLifecycle, interruptJob, publishProviderEvent } from './provider-wire';
 import { NativeCommands } from './native-commands';
 import { computerEngineStatus } from './engine-status';
 import { providerAgents } from './agents';
-import { subscriptionUsage } from './subscription-usage';
+import { observeNativeSubscription, subscriptionUsage } from './subscription-usage';
 import { noteContext } from './context-meter';
 import { settleSteered, steerTurn } from './steer';
 import { bridgeTool, receiveToolResult } from './tool-feed';
@@ -37,7 +40,7 @@ export class ComputerRunner {
 
   constructor(private readonly deps: ComputerRunnerDeps) {
     this.trace = new ComputerTrace(deps.log, deps.runtime);
-    this.state = new ProviderState(deps.store, deps.directory, deps.runtime, deps.now);
+    this.state = new ProviderState(deps.store, deps.directory, deps.runtime);
     deps.store.aiProvider.interruptRestart();
     this.commands = new NativeCommands(deps, this.state, (chatId): boolean =>
       this.turns.has(chatId),
@@ -45,7 +48,11 @@ export class ComputerRunner {
     const received = (deviceId: string, event: ComputerEvent): void => {
       try {
         const chat = deps.store.aiChats.chat(event.chat_id);
-        if (chat.engine.kind === deps.runtime && chat.engine.device_id === deviceId)
+        if (
+          chat.engine.kind === deps.runtime &&
+          chat.engine.device_id === deviceId &&
+          admitsChatExecution(chat)
+        )
           this.received(chat, event);
       } catch (cause) {
         if (!(cause instanceof StoreNotFoundError)) throw cause;
@@ -69,6 +76,8 @@ export class ComputerRunner {
       historyChanged: (chat): Promise<void> => this.historyChanged(chat),
       status: (chat) => this.status(chat),
       deliver: (event, chat) => this.deliver(event, chat),
+      preflightHelperInput: (input) =>
+        preflightProviderInput(this.deps, input, this.state.read(input.target).session_id),
       steer: (event, chat): Promise<boolean> => this.steer(event, chat),
       compact: (chat, clientId): Promise<boolean> => {
         this.state.bound(chat);
@@ -198,7 +207,7 @@ export class ComputerRunner {
     } catch (cause) {
       this.trace.errored(chat, event, turn, cause);
       const reason = messageOf(cause);
-      if (turn !== null) this.fail(turn, reason);
+      if (turn !== null) this.fail(turn, reason, this.submitFailureLifecycle(turn));
       else {
         this.deps.conversation.failedMessage(event.message_id, reason, 'unknown');
         this.deps.finished(event, reason, false);
@@ -206,20 +215,31 @@ export class ComputerRunner {
     }
   }
 
+  private submitFailureLifecycle(turn: Turn): 'retained' | 'close' {
+    if (helperParentMessageId(turn.event) === null) return 'close';
+    return this.state.read(turn.chat).job_id === turn.jobId ? 'close' : 'retained';
+  }
+
   private async submit(turn: Turn): Promise<void> {
+    assertProviderHelperDelivery(this.deps, turn);
     const { chat, event } = turn;
     let previous = this.state.read(chat);
     if (this.deps.store.aiProvider.submitted(event.message_id)) {
       if (previous.job_id !== null) await this.state.control(chat, { action: 'close' });
       previous = { ...previous, job_id: null, session_id: null, prompts: [] };
     }
-    const input = await providerInput(this.deps, turn, previous.session_id);
+    const { input, engine } = await providerInput(this.deps, turn, previous.session_id);
+    const active = this.turns.get(chat.id);
+    if (active !== turn) return;
+    assertProviderHelperDelivery(this.deps, turn, input);
+    active.executionEngine = engine;
     this.state.save(chat, {
       ...previous,
       job_id: turn.jobId,
       managed_project: input.turn.managed_project,
       context:
-        input.turn.managed_project === undefined && previous.managed_project !== undefined
+        input.runtime === 'codex' ||
+        (input.turn.managed_project === undefined && previous.managed_project !== undefined)
           ? null
           : previous.context,
       state: 'working',
@@ -254,9 +274,13 @@ export class ComputerRunner {
     const usage = subscriptionUsage(
       event,
       this.deps.now().toISOString(),
-      this.state.read(chat).subscription_usage,
+      (): AiSubscriptionUsage | undefined => this.state.read(chat).subscription_usage,
     );
-    if (usage !== undefined) this.deps.store.aiProvider.saveSubscriptionUsage(chat.id, usage);
+    if (usage !== undefined)
+      this.deps.store.write(() => {
+        this.deps.store.aiProvider.saveSubscriptionUsage(chat.id, usage.current);
+        observeNativeSubscription(this.deps.store, chat, usage.observed);
+      });
     noteContext(this.deps.store, chat, event);
     publishProviderEvent(this.deps, chat, chat.engine.device_id, event);
     const turn = this.turns.get(chat.id);
@@ -375,9 +399,10 @@ export class ComputerRunner {
     const target = { device_id: turn.chat.engine.device_id, runtime: this.deps.runtime };
     if (!this.deps.directory.runtimeStatus(target).online) return;
     void this.state.control(turn.chat, { action: 'close' }).catch((cause: unknown) => {
-      this.deps.log.error('computer.close_failed', cause, {
+      this.deps.log.warn('computer.close_failed', {
         chatId: turn.chat.id,
         runtime: target.runtime,
+        failure: messageOf(cause),
       });
     });
   }

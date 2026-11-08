@@ -13,7 +13,17 @@ const shown = vi.hoisted(
     sparks: Record<string, unknown>[];
     empties: Record<string, unknown>[];
     texts: string[];
-  } => ({ values: {}, series: [], figures: [], gauges: [], sparks: [], empties: [], texts: [] }),
+    room: number | null;
+  } => ({
+    values: {},
+    series: [],
+    figures: [],
+    gauges: [],
+    sparks: [],
+    empties: [],
+    texts: [],
+    room: null,
+  }),
 );
 
 vi.mock('./use-stream-value', () => ({
@@ -51,7 +61,13 @@ vi.mock('../../components/text', () => ({
     return null;
   },
 }));
-vi.mock('../../components/widget-board', () => ({ heroFigure: (): string => 'l' }));
+vi.mock('../../components/widget-board', () => ({
+  heroFigure: (): string => 'l',
+  widgetBodyHeight: ({ height }: { readonly height: number }): number => height,
+}));
+vi.mock('../../components/widget-board/widget-scope', () => ({
+  useWidgetFrame: (): unknown => (shown.room === null ? null : { height: shown.room }),
+}));
 
 const { BodyView } = await import('./body-view');
 
@@ -73,6 +89,7 @@ beforeEach(() => {
   shown.sparks.length = 0;
   shown.empties.length = 0;
   shown.texts.length = 0;
+  shown.room = null;
 });
 
 describe('BodyView', () => {
@@ -94,6 +111,48 @@ describe('BodyView', () => {
     render({ type: 'gauge', value: { stream: 'soil', field: null }, min: 0, max: 100 });
     expect(shown.gauges).toMatchObject([{ value: 61.234, min: 0, max: 100 }]);
     expect(shown.figures).toMatchObject([{ value: '61.23' }]);
+  });
+
+  it('draws the gauge at its tier size outside a board widget', () => {
+    shown.values['soil'] = ready(40);
+    const gauge: WidgetBody = {
+      type: 'gauge',
+      value: { stream: 'soil', field: null },
+      min: 0,
+      max: 100,
+    };
+    render(gauge);
+    renderToStaticMarkup(createElement(BodyView, { pluginId: 'garden', body: gauge, size: 'XL' }));
+    expect(shown.gauges.map((props) => props['size'])).toStrictEqual([96, 128]);
+  });
+
+  it('draws the sparkline at its tier height outside a board widget', () => {
+    shown.series = [{ v: 1 }, { v: 2 }];
+    render({ type: 'sparkline', value: { stream: 'rain', field: null }, minutes: 60 });
+    expect(shown.sparks).toMatchObject([{ height: 56 }]);
+  });
+
+  it('fits the gauge into a board body shorter than its tier size and never drops it', () => {
+    shown.values['soil'] = ready(40);
+    shown.room = 30;
+    render({ type: 'gauge', value: { stream: 'soil', field: null }, min: 0, max: 100 });
+    shown.room = 300;
+    render({ type: 'gauge', value: { stream: 'soil', field: null }, min: 0, max: 100 });
+    expect(shown.gauges.map((props) => props['size'])).toStrictEqual([30, 96]);
+  });
+
+  it('gives the sparkline and its empty graph the whole height left in a board body', () => {
+    const body: WidgetBody = {
+      type: 'sparkline',
+      value: { stream: 'rain', field: null },
+      minutes: 60,
+    };
+    shown.room = 200;
+    render(body);
+    shown.series = [{ v: 1 }, { v: 2 }];
+    render(body);
+    expect(shown.empties).toMatchObject([{ height: 200 }]);
+    expect(shown.sparks).toMatchObject([{ height: 200 }]);
   });
 
   it('explains a gauge reading that is not a number', () => {
@@ -123,6 +182,12 @@ describe('BodyView', () => {
     shown.values['spots'] = ready(['a', 'b', { title: 'c', detail: 'wet' }, 'd']);
     render({ type: 'list', value: { stream: 'spots', field: null }, limit: 3 });
     expect(shown.texts).toStrictEqual(['a', 'b', 'c', 'wet', '1 more']);
+  });
+
+  it('shows every item within the declared limit outside a board widget', () => {
+    shown.values['spots'] = ready(['a', 'b']);
+    render({ type: 'list', value: { stream: 'spots', field: null }, limit: 3 });
+    expect(shown.texts).toStrictEqual(['a', 'b']);
   });
 
   it('says so for an empty list', () => {

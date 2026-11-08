@@ -43,7 +43,7 @@ export const TrendTile = memo(function TrendTile(props: TileProps): ReactNode {
       label={presented.label}
       {...shown}
       stale={!device.online}
-      href={href.deviceSection(device.id, 'history')}
+      href={href.deviceSection(device.id, 'history', { metric: presented.key })}
       {...(points.length < MIN_POINTS
         ? {}
         : {

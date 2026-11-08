@@ -2,7 +2,14 @@ import {
   TABLE_AREAS,
   areaInScope,
   type ClientRow,
+  type DriveAlbum,
+  type DrivePlacement,
+  type DriveChangedNotice,
+  type DriveProgressNotice,
+  type DriveRoot,
+  type DriveSyncClient,
   type LiveChange,
+  type LiveMessage,
   type LiveTable,
   type TalkFloorsNotice,
 } from '@smarteverything/domain';
@@ -107,4 +114,115 @@ export function floorsSeenBy(
 ): TalkFloorsNotice {
   const scopes = scopesOfClient(store, hearer.client);
   return scopes === null ? notice : { ...notice, ...presenceInScope(scopes.channels, notice) };
+}
+
+export type DriveStore = Pick<
+  Store,
+  'driveRoots' | 'driveAlbums' | 'driveItems' | 'profiles' | 'computerNodes'
+>;
+
+interface DriveScoped {
+  readonly scope: 'home' | 'person';
+  readonly ownerProfileId: string | null;
+}
+
+export function driveScopeVisible(
+  role: ClientRow['role'],
+  profileId: string,
+  row: DriveScoped,
+): boolean {
+  return role === 'owner' || row.scope === 'home' || row.ownerProfileId === profileId;
+}
+
+function rootShown(hearer: Pick<Hearer, 'client'>, rootId: string, store: DriveStore): boolean {
+  const root = store.driveRoots.find(rootId);
+  return (
+    root !== undefined &&
+    driveScopeVisible(hearer.client.role, store.profiles.activeOf(hearer.client.id).id, root)
+  );
+}
+
+function albumShown(hearer: Pick<Hearer, 'client'>, albumId: string, store: DriveStore): boolean {
+  const album = store.driveAlbums.find(albumId);
+  return (
+    album !== undefined &&
+    driveScopeVisible(hearer.client.role, store.profiles.activeOf(hearer.client.id).id, album)
+  );
+}
+
+function folderShown(hearer: Pick<Hearer, 'client'>, folderId: string, store: DriveStore): boolean {
+  const folder = store.driveItems.find(folderId);
+  return folder !== undefined && rootShown(hearer, folder.rootId, store);
+}
+
+function changedSeenBy(
+  hearer: Pick<Hearer, 'client'>,
+  notice: DriveChangedNotice,
+  store: DriveStore,
+): DriveChangedNotice | null {
+  const rootIds = notice.rootIds.filter((id) => rootShown(hearer, id, store));
+  const folderIds = notice.folderIds.filter((id) => folderShown(hearer, id, store));
+  const albumIds = notice.albumIds.filter((id) => albumShown(hearer, id, store));
+  return rootIds.length + folderIds.length + albumIds.length === 0
+    ? null
+    : { ...notice, rootIds, folderIds, albumIds };
+}
+
+export function driveNoticeSeenBy(
+  hearer: Pick<Hearer, 'client'>,
+  notice: DriveChangedNotice | DriveProgressNotice,
+  store: DriveStore,
+): LiveMessage | null {
+  if (hearer.client.role === 'owner') return notice;
+  if (notice.type === 'drive_progress') {
+    return rootShown(hearer, notice.rootId, store) ? notice : null;
+  }
+  return changedSeenBy(hearer, notice, store);
+}
+
+export type DriveChange = Extract<
+  LiveChange,
+  { table: 'drive_roots' | 'drive_albums' | 'drive_sync_clients' | 'drive_placements' }
+>;
+
+export function driveChange(change: LiveChange): change is DriveChange {
+  return (
+    change.table === 'drive_roots' ||
+    change.table === 'drive_albums' ||
+    change.table === 'drive_sync_clients' ||
+    change.table === 'drive_placements'
+  );
+}
+
+export type DriveRow = DriveRoot | DriveAlbum | DriveSyncClient | DrivePlacement;
+
+export function driveRowVisible(
+  hearer: Pick<Hearer, 'client'>,
+  row: DriveRow,
+  profileOf: (clientId: string) => string,
+  personOfDevice: (deviceId: string) => string | null,
+): boolean {
+  const profileId = profileOf(hearer.client.id);
+  if ('localPath' in row) {
+    return hearer.client.role === 'owner' || personOfDevice(row.deviceId) === profileId;
+  }
+  if ('clientId' in row) return hearer.client.role === 'owner' || row.profileId === profileId;
+  return driveScopeVisible(hearer.client.role, profileId, row);
+}
+
+export function driveChangeVisible(
+  hearer: Pick<Hearer, 'client'>,
+  change: DriveChange,
+  store: DriveStore,
+): boolean {
+  const row = change.record ?? change.oldRecord;
+  return (
+    row !== null &&
+    driveRowVisible(
+      hearer,
+      row,
+      (id) => store.profiles.activeOf(id).id,
+      (deviceId) => store.computerNodes.personOf(deviceId),
+    )
+  );
 }

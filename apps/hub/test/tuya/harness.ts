@@ -13,6 +13,7 @@ import type { RunContext, StoredAccount } from '../../src/adapters/contract';
 import { nodeDependencies, type TuyaDependencies } from '../../src/adapters/tuya/dependencies';
 import type { MqttConnect } from '../../src/adapters/tuya/mqtt-connection';
 import { FakeSmartLife } from './fake-cloud';
+import { hubLayout } from '../../src/data-layout';
 
 export class RecordingSink implements AdapterSink {
   readonly states: StateUpdate[] = [];
@@ -182,7 +183,7 @@ export function harness(localPort: number, overrides: Partial<TuyaDependencies> 
   };
   const context: RunContext = {
     log: new Logger('tool.tuya-test'),
-    dataDirectory: '/nonexistent',
+    layout: hubLayout('/nonexistent', {}),
     ask: () => Promise.reject(new Error('the Tuya provider never asks')),
     show: () => Promise.reject(new Error('the Tuya provider never shows a prompt')),
     saveAccount: (account) => {

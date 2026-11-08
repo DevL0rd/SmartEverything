@@ -1,8 +1,19 @@
 import { z } from 'zod';
 import { CAMERA_DETECTION_KINDS } from '../events';
 import { SIGNAL_MATCHER, type SignalMatcher } from '../signal-matcher';
+import {
+  PRESENCE_ARRIVED_KIND,
+  PRESENCE_LEFT_KIND,
+  PRESENCE_SIGNAL_SOURCE,
+} from '../signal-sources/presence';
 import { JSON_VALUE, type JsonValue } from '../values';
+import { DRIVE_MATCHER_MAPPINGS } from './drive';
+import { PLANNER_MATCHER_MAPPINGS } from './planner';
+import { APPLIANCE_MATCHER_MAPPINGS } from './triggers-appliance';
 import { V11_MATCHER_MAPPINGS } from './triggers-v11-signals';
+import { VACUUM_MATCHER_MAPPINGS } from './triggers-vacuum';
+
+export { vacuumTriggerOutputs } from './triggers-vacuum';
 
 export interface MatcherVariant {
   readonly source?: string;
@@ -10,7 +21,9 @@ export interface MatcherVariant {
   readonly field?: string;
   readonly match?: Readonly<Record<string, JsonValue>>;
   readonly test?:
-    { readonly is: 'eq'; readonly to: boolean } | { readonly is: 'lt'; readonly toPort: string };
+    | { readonly is: 'eq'; readonly to: JsonValue }
+    | { readonly is: 'in'; readonly to: readonly JsonValue[] }
+    | { readonly is: 'lt'; readonly toPort: string };
 }
 
 export interface MatcherMapping {
@@ -26,6 +39,7 @@ export interface MatcherMapping {
   readonly matchPorts: Readonly<Record<string, string>>;
   readonly requireOneOf?: readonly string[];
   readonly runtimePorts: readonly string[];
+  readonly outputs?: Readonly<Record<string, string>>;
 }
 
 export type CompiledMatcher =
@@ -57,6 +71,10 @@ export const RUN_STATUSES = ['failed', 'succeeded', 'cancelled', 'interrupted'] 
 
 export const DEVICE_MATCHER_MAPPINGS: Readonly<Record<string, MatcherMapping>> = {
   ...V11_MATCHER_MAPPINGS,
+  ...APPLIANCE_MATCHER_MAPPINGS,
+  ...VACUUM_MATCHER_MAPPINGS,
+  ...PLANNER_MATCHER_MAPPINGS,
+  ...DRIVE_MATCHER_MAPPINGS,
   'trigger.device': {
     variantPort: null,
     defaultVariant: '',
@@ -83,8 +101,8 @@ export const DEVICE_MATCHER_MAPPINGS: Readonly<Record<string, MatcherMapping>> =
     variantPort: 'event',
     defaultVariant: 'arrived',
     variants: {
-      arrived: { source: 'plugin_router', kind: 'person_arrived' },
-      left: { source: 'plugin_router', kind: 'person_left' },
+      arrived: { source: PRESENCE_SIGNAL_SOURCE, kind: PRESENCE_ARRIVED_KIND },
+      left: { source: PRESENCE_SIGNAL_SOURCE, kind: PRESENCE_LEFT_KIND },
     },
     subjectPort: null,
     fieldPort: null,
@@ -189,7 +207,7 @@ function timingOf(variant: MatcherVariant, ports: PortValues): Record<string, un
   for (const port of ['test', 'window', 'first', 'rearm']) timing[port] = ports[port];
   const fixed = variant.test;
   if (fixed !== undefined) {
-    timing['test'] = { is: fixed.is, to: fixed.is === 'eq' ? fixed.to : ports[fixed.toPort] };
+    timing['test'] = fixed.is === 'lt' ? { is: fixed.is, to: ports[fixed.toPort] } : fixed;
   }
   return timing;
 }
@@ -225,8 +243,11 @@ function candidateOf(
   };
 }
 
-export function compileTriggerMatcher(kindId: string, ports: PortValues): CompiledMatcher {
-  const mapping = DEVICE_MATCHER_MAPPINGS[kindId];
+export function compileTriggerMatcher(
+  kindId: string,
+  ports: PortValues,
+  mapping: MatcherMapping | undefined = DEVICE_MATCHER_MAPPINGS[kindId],
+): CompiledMatcher {
   if (mapping === undefined) return { ok: false, error: `${kindId} does not compile to a matcher` };
   const variant = variantOf(mapping, ports);
   if (variant === undefined) return { ok: false, error: 'That choice is not offered here' };

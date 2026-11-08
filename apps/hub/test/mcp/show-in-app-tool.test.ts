@@ -1,39 +1,45 @@
-import { MCP_TOOLS } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { toolGuide } from '../../src/ai-tools/tool-guide';
-import { serverInstructions } from '../../src/extensions/mcp/instructions';
 import { partCallOf, toolNamed } from '../../src/extensions/mcp/tools';
 
-const OPEN = { action: 'open', target: { kind: 'section', section: 'fitness' }, focus: 'sleep' };
+const OPEN_FIELDS = {
+  target: { kind: 'setting', page: 'app-updates', setting: null },
+  focus: 'app-updates.android-installer',
+};
+const APP_ID = '33333333-3333-4333-8333-333333333333';
 
 describe('the app_show tool', () => {
-  it('is one assistant tool that is not read only and says when to use it', () => {
+  it('is exposed as a tool that can change the app', () => {
     const listing = toolNamed('app_show')?.listing;
-    expect(listing?.description).toContain('Only when they ask to see');
     expect(listing?.annotations.readOnlyHint).toBe(false);
   });
 
-  it('takes an action, a target, a focus and an app id, and nothing else', () => {
-    const input = toolNamed('app_show')?.input;
-    expect(input?.safeParse(OPEN).success).toBe(true);
-    expect(input?.safeParse({ action: 'dismiss' }).success).toBe(true);
-    expect(
-      input?.safeParse({ ...OPEN, appId: '33333333-3333-4333-8333-333333333333' }).success,
-    ).toBe(true);
-    expect(input?.safeParse({ action: 'close' }).success).toBe(false);
-    expect(input?.safeParse({ ...OPEN, page: 'home' }).success).toBe(false);
+  it('serves the selector with the required fields for each action', () => {
+    const variants = toolNamed('app_show')?.variants;
+    const fields = [
+      ['open', 'target'],
+      ['highlight', 'focus'],
+      ['dismiss', 'appId'],
+    ] as const;
+    for (const [action, field] of fields) {
+      expect(variants?.get(action)).toMatchObject({
+        selector: { action },
+        inputSchema: { additionalProperties: false, required: ['action', field] },
+      });
+    }
   });
 
-  it('is its own part, not a view of another tool', () => {
-    expect(partCallOf('app_show', OPEN)).toEqual({ name: 'app_show', args: OPEN });
-  });
-
-  it('is explained to the AI only where the tool is enabled, and only on request', () => {
-    expect(MCP_TOOLS.find((tool) => tool.name === 'app_show')?.description).toContain(
-      'Only when they ask to see, open, find or be shown something',
-    );
-    expect(toolGuide(['home_read'])).not.toContain('app_show');
-    expect(serverInstructions(['app_show'])).toContain('only when they ask to be shown it');
-    expect(serverInstructions(['home_read'])).not.toContain('app_show');
+  it('routes each action to the part that runs it', () => {
+    expect(partCallOf('app_show', { action: 'open', ...OPEN_FIELDS })).toEqual({
+      name: 'show_in_app',
+      args: OPEN_FIELDS,
+    });
+    expect(partCallOf('app_show', { action: 'highlight', focus: OPEN_FIELDS.focus })).toEqual({
+      name: 'point_in_app',
+      args: { focus: OPEN_FIELDS.focus },
+    });
+    expect(partCallOf('app_show', { action: 'dismiss', appId: APP_ID })).toEqual({
+      name: 'clear_app_pointer',
+      args: { appId: APP_ID },
+    });
   });
 });

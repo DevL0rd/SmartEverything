@@ -1,34 +1,74 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { ChatLink } from '@smarteverything/domain';
-import { IconWell } from '../../../components/icon-well';
-import { ListRow } from '../../../components/list-row';
+import { Icon } from '../../../components/icon';
+import { Interactive } from '../../../components/interactive';
 import { SwitchTrack } from '../../../components/switch';
+import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
-import { WIDGET_SURFACE } from '../../../components/widget-board';
+import { cn } from '../../../design/cn';
 import { selectionTick } from '../../../platform/haptics';
 import { useSettingEnv } from '../../../settings/env';
 import type { SwitchSetting } from '../../../settings/types';
 import { sameJson } from '../../../store/same-json';
 import { useEntityStore, useStoreSelector } from '../../../store/store-context';
-import { Overline } from '../components/overline';
+import { CHAT_SURFACE } from '../components/chat-surface';
 import { linkView, mostSpecific, type LinkView } from './link-sources';
 
-function LinkRow({ view }: { readonly view: LinkView }): ReactNode {
+const LINE = 'h-full min-w-0 flex-1 flex-row items-center gap-3 pl-2 pr-3';
+
+function LinkBody({
+  view,
+  trailing,
+}: {
+  readonly view: LinkView;
+  readonly trailing: ReactNode;
+}): ReactNode {
   return (
-    <ListRow
-      title={view.title}
-      subtitle={view.trail}
-      leading={<IconWell icon={view.icon} colour="primary" />}
-      {...(view.value === null ? {} : { value: view.value })}
-      chevron
-      href={view.href}
-      label={`Open ${view.title}`}
-    />
+    <>
+      <View aria-hidden className="size-10 items-center justify-center rounded-sm bg-primary/16">
+        <Icon name={view.icon} size={20} tone="primary" />
+      </View>
+      <View className="min-w-0 flex-1">
+        <Text variant="label" numberOfLines={1}>
+          {view.title}
+        </Text>
+        <Text variant="caption" tone="faint" numberOfLines={1}>
+          {view.trail}
+        </Text>
+      </View>
+      {trailing}
+    </>
   );
 }
 
-function SwitchLinkRow({
+function OpenTrail({ value }: { readonly value: string | null }): ReactNode {
+  return (
+    <View className="shrink-0 flex-row items-center gap-1">
+      {value === null ? null : (
+        <Text variant="caption" tone="variant" className="tabular">
+          {value}
+        </Text>
+      )}
+      <Icon name="chevronRight" size={16} tone="faint" />
+    </View>
+  );
+}
+
+function OpenLink({ view }: { readonly view: LinkView }): ReactNode {
+  return (
+    <Interactive
+      label={`Open ${view.title}`}
+      href={view.href}
+      className={LINE}
+      layerClassName="rounded-md"
+    >
+      <LinkBody view={view} trailing={<OpenTrail value={view.value} />} />
+    </Interactive>
+  );
+}
+
+function SwitchLink({
   view,
   setting,
 }: {
@@ -38,10 +78,7 @@ function SwitchLinkRow({
   const store = useEntityStore();
   const on = useStoreSelector((state) => setting.read(state), Object.is, [setting.id]);
   return (
-    <ListRow
-      title={view.title}
-      subtitle={view.trail}
-      leading={<IconWell icon={view.icon} colour="primary" />}
+    <Interactive
       label={view.title}
       role="switch"
       checked={on}
@@ -51,25 +88,21 @@ function SwitchLinkRow({
           notify({ message: `${setting.title} was not changed`, error, tone: 'critical' });
         });
       }}
-      trailing={<SwitchTrack value={on} />}
-    />
+      className={LINE}
+      layerClassName="rounded-md"
+    >
+      <LinkBody view={view} trailing={<SwitchTrack value={on} />} />
+    </Interactive>
   );
 }
 
-function RelatedRow({
-  view,
-  first,
-}: {
-  readonly view: LinkView;
-  readonly first: boolean;
-}): ReactNode {
+function LinkCard({ view }: { readonly view: LinkView }): ReactNode {
   return (
-    <View>
-      {first ? null : <View className="mx-4 h-px bg-outline-variant" />}
+    <View className={cn('h-14 w-full max-w-sm flex-row items-center', CHAT_SURFACE)}>
       {view.toggle === null ? (
-        <LinkRow view={view} />
+        <OpenLink view={view} />
       ) : (
-        <SwitchLinkRow view={view} setting={view.toggle} />
+        <SwitchLink view={view} setting={view.toggle} />
       )}
     </View>
   );
@@ -92,10 +125,9 @@ export function LinkCards({ links }: { readonly links: readonly ChatLink[] }): R
     return null;
   }
   return (
-    <View className={WIDGET_SURFACE}>
-      <Overline className="px-4 pb-1 pt-3">Related</Overline>
-      {views.map((view, index) => (
-        <RelatedRow key={view.key} view={view} first={index === 0} />
+    <View accessibilityLabel="Related" className="w-full gap-1">
+      {views.map((view) => (
+        <LinkCard key={view.key} view={view} />
       ))}
     </View>
   );

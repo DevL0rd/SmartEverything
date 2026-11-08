@@ -1,7 +1,6 @@
 import { STATEFUL_KIND_IDS } from '@smarteverything/domain';
-import type { Layout } from '@smarteverything/domain';
+import type { PortValue } from '@smarteverything/domain';
 import { walkProgram, type Program } from '@smarteverything/flow/program/walk';
-import { titleOf } from '../../model/canvas/tree-env';
 import type { SceneOptions } from '../../editor/host/use-canvas-props';
 
 export interface ProgramFacts {
@@ -16,6 +15,8 @@ export const EMPTY_FACTS: ProgramFacts = {
   stateful: new Set(),
 };
 
+const FUNCTION_CALL_KIND = 'fn.call';
+
 const LISTED_ITEM = 'Item';
 const REPEATED_ITEM = 'Time';
 
@@ -28,16 +29,29 @@ const LOOP_ITEM: ReadonlyMap<string, string> = new Map([
   ['flow.forever', REPEATED_ITEM],
 ]);
 
-export function programFacts(
-  program: Program,
-  layout: Layout,
-  options: SceneOptions,
-): ProgramFacts {
-  const full = { ...options, layout };
+interface Titled {
+  readonly kind: string;
+  readonly label?: string | undefined;
+  readonly ports?: Readonly<Record<string, PortValue>> | undefined;
+}
+
+function calledName(node: Titled, options: SceneOptions): string | undefined {
+  const fn = node.ports?.['fn'];
+  const id = fn !== undefined && 'lit' in fn && typeof fn.lit === 'string' ? fn.lit : null;
+  return id === null ? undefined : options.functions.get(id)?.name;
+}
+
+function titleOf(options: SceneOptions, node: Titled): string {
+  if (node.label !== undefined) return node.label;
+  const called = node.kind === FUNCTION_CALL_KIND ? calledName(node, options) : undefined;
+  return called ?? options.registry.get(node.kind)?.name ?? 'Unknown step';
+}
+
+export function programFacts(program: Program, options: SceneOptions): ProgramFacts {
   const nodes = walkProgram(program).map(({ node }) => node);
   const triggers = 'triggers' in program ? program.triggers : [];
   const titles = new Map<string, string>(
-    [...triggers, ...nodes].map((node) => [node.id, titleOf(full, node)]),
+    [...triggers, ...nodes].map((node) => [node.id, titleOf(options, node)]),
   );
   const itemNames = new Map<string, string>();
   const stateful = new Set<string>();

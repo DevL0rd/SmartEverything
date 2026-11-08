@@ -67,6 +67,9 @@ describe('literalFits', () => {
     expect(fits({ t: 'duration' }, '1s')).toBe(false);
     expect(fits(any, null)).toBe(true);
     expect(fits({ t: 'param', name: 'T' }, 1)).toBe(true);
+    expect(fits({ t: 'entity', of: 'chat-hub.channel' }, 'general')).toBe(true);
+    expect(fits({ t: 'entity', of: 'chat-hub.channel' }, '')).toBe(false);
+    expect(fits({ t: 'entity', of: 'chat-hub.channel' }, 1)).toBe(false);
   });
 
   it('checks times and dates', () => {

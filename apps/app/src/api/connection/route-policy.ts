@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import type { HubEndpoint, HubConnectionMetadata, NativeHubTrust } from '@smarteverything/domain';
-import { appPlatform } from '../../design/platform';
 import { hubNetwork } from './route-platform';
 
 const IP = z.union([z.ipv4(), z.ipv6()]);
@@ -22,20 +21,16 @@ export class StaleHubRouteError extends Error {
 
 export function trustedBootstrap(url: string): boolean {
   const parsed = new URL(url);
-  const endpoint = bootstrapEndpoint(url);
-  if (endpoint.kind === 'loopback') return appPlatform() === 'desktop';
-  return endpoint.kind !== 'lan' && parsed.protocol === 'https:';
+  return bootstrapEndpoint(url).kind !== 'lan' && parsed.protocol === 'https:';
 }
 
 export function bootstrapEndpoint(url: string, kind?: HubEndpoint['kind']): HubEndpoint {
   if (kind !== undefined) return { kind, url };
   const parsed = new URL(url);
-  return ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
-    ? { kind: 'loopback', url }
-    : IP.safeParse(parsed.hostname.replace(/^\[|\]$/g, '')).success ||
-        parsed.hostname.endsWith('.local')
-      ? { kind: 'lan', url }
-      : { kind: 'remote', url };
+  return IP.safeParse(parsed.hostname.replace(/^\[|\]$/g, '')).success ||
+    parsed.hostname.endsWith('.local')
+    ? { kind: 'lan', url }
+    : { kind: 'remote', url };
 }
 
 export function usableEndpoints(
@@ -43,10 +38,8 @@ export function usableEndpoints(
   canonical: HubEndpoint,
 ): HubEndpoint[] {
   const supported = hubNetwork().capabilities;
-  const endpoints = metadata.endpoints.filter((endpoint) =>
-    endpoint.kind === 'lan'
-      ? supported.http && supported.websocket
-      : endpoint.kind !== 'loopback' || appPlatform() === 'desktop',
+  const endpoints = metadata.endpoints.filter(
+    (endpoint) => endpoint.kind !== 'lan' || (supported.http && supported.websocket),
   );
   const distinct = new Map(endpoints.map((endpoint) => [endpoint.url, endpoint]));
   if (
@@ -58,7 +51,7 @@ export function usableEndpoints(
 }
 
 function rank(endpoint: HubEndpoint): number {
-  return endpoint.kind === 'loopback' ? 0 : endpoint.kind === 'lan' ? 1 : 2;
+  return endpoint.kind === 'lan' ? 0 : 1;
 }
 
 export function trustOf(scopeId: string, metadata: HubConnectionMetadata): NativeHubTrust {

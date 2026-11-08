@@ -53,19 +53,17 @@ function AddField({ label, placeholder, parse, onAdd }: AddFieldProps): ReactNod
     setError(null);
   };
   return (
-    <View className="flex-row items-end gap-2 px-4 py-3">
-      <View className="flex-1">
-        <TextField
-          label={label}
-          value={text}
-          placeholder={placeholder}
-          kind="text"
-          onChange={setText}
-          onSubmit={add}
-          {...(error === null ? {} : { error })}
-        />
-      </View>
-      <Button label="Add" variant="tonal" disabled={text.trim() === ''} onPress={add} />
+    <View className="px-4 py-3">
+      <TextField
+        label={label}
+        value={text}
+        placeholder={placeholder}
+        kind="text"
+        onChange={setText}
+        onSubmit={add}
+        {...(error === null ? {} : { error })}
+        action={<Button label="Add" variant="tonal" disabled={text.trim() === ''} onPress={add} />}
+      />
     </View>
   );
 }
@@ -94,6 +92,7 @@ function IceServers({ servers }: { readonly servers: readonly IceServer[] }): Re
         <ListRow
           key={server.urls.join()}
           title={server.urls.join(', ')}
+          wrapTitle
           {...(server.username === undefined ? {} : { subtitle: server.username })}
           trailing={
             <IconButton
@@ -128,6 +127,7 @@ function Candidates({ candidates }: { readonly candidates: readonly string[] }):
         <ListRow
           key={candidate}
           title={candidate}
+          wrapTitle
           trailing={
             <IconButton
               icon="trash"
@@ -161,6 +161,7 @@ function Advanced({ settings }: { readonly settings: SettingsRow }): ReactNode {
         <ListRow
           icon="settings"
           title="Advanced"
+          expanded={open}
           subtitle="Relay servers and extra addresses"
           trailing={<Icon name={open ? 'chevronUp' : 'chevronDown'} size={20} tone="faint" />}
           onPress={() => {

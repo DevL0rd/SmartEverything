@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BrowserPolicyError,
+  NATIVE_HTML_PROJECTION,
   browsableUrl,
   browserAllows,
   publicBrowserUrl,
@@ -43,7 +44,10 @@ describe('public browser addresses', () => {
 });
 
 describe('a chat project page', () => {
-  const page = { chatId: '00000000-0000-4000-8000-000000000001', path: '/workspace/site/index.html' };
+  const page = {
+    chatId: '00000000-0000-4000-8000-000000000001',
+    path: '/workspace/site/index.html',
+  };
   const loopback = {
     kind: 'project',
     id: 'project',
@@ -51,7 +55,28 @@ describe('a chat project page', () => {
     projectionId: 'a'.repeat(64),
     page,
   } as const;
-  const desktop = { ...loopback, url: `se-preview-html://${'a'.repeat(64)}/workspace/site/` } as const;
+
+  it('restores private server queries and fragments without accepting credentials or external hosts', () => {
+    const id = 'a'.repeat(64);
+    expect(
+      NATIVE_HTML_PROJECTION.safeParse({ id, url: 'http://127.0.0.1:4000/demo?q=1#result' })
+        .success,
+    ).toBe(true);
+    expect(
+      NATIVE_HTML_PROJECTION.safeParse({ id, url: 'http://user:pw@127.0.0.1:4000/demo?q=1' })
+        .success,
+    ).toBe(false);
+    expect(
+      NATIVE_HTML_PROJECTION.safeParse({ id, url: 'http://example.com:4000/demo?q=1' }).success,
+    ).toBe(false);
+    expect(
+      NATIVE_HTML_PROJECTION.safeParse({ id, url: `se-preview-html://${id}/demo?q=1` }).success,
+    ).toBe(false);
+  });
+  const desktop = {
+    ...loopback,
+    url: `se-preview-html://${'a'.repeat(64)}/workspace/site/`,
+  } as const;
 
   it('stays on its own isolated origin, without credentials', () => {
     expect(browserAllows(loopback, 'http://127.0.0.1:4000/workspace/site/app.js')).toBe(true);
@@ -61,8 +86,12 @@ describe('a chat project page', () => {
     expect(browserAllows(loopback, 'http://user:pw@127.0.0.1:4000/workspace/')).toBe(false);
     expect(browserAllows(loopback, 'https://smarteverything.devl0rd.com/api/')).toBe(false);
     expect(browserAllows(loopback, 'not a url')).toBe(false);
-    expect(browserAllows(desktop, `se-preview-html://${'a'.repeat(64)}/workspace/x.html`)).toBe(true);
-    expect(browserAllows(desktop, `se-preview-html://${'b'.repeat(64)}/workspace/x.html`)).toBe(false);
+    expect(browserAllows(desktop, `se-preview-html://${'a'.repeat(64)}/workspace/x.html`)).toBe(
+      true,
+    );
+    expect(browserAllows(desktop, `se-preview-html://${'b'.repeat(64)}/workspace/x.html`)).toBe(
+      false,
+    );
   });
 });
 

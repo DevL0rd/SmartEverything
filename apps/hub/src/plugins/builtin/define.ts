@@ -32,6 +32,7 @@ export function definePluginTool<I>(definition: PluginToolDefinition<I>): Plugin
 export function defineBuiltinPlugin<S>(definition: BuiltinPluginDefinition<S>): BuiltinPlugin {
   return {
     manifest: definition.manifest,
+    ...(definition.models === undefined ? {} : { models: definition.models }),
     validate: (raw): string | null => {
       const parsed = definition.settings.safeParse(raw);
       return parsed.success ? null : `The settings are not valid: ${issuesOf(parsed.error)}`;

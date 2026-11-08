@@ -37,6 +37,7 @@ export class CameraEar {
   private watchedAt = Number.NEGATIVE_INFINITY;
   private closed = false;
   private waiting = false;
+  private listening = 0;
 
   constructor(
     readonly cameraId: string,
@@ -77,21 +78,32 @@ export class CameraEar {
   }
 
   private async listen(): Promise<void> {
+    this.release();
+    const listening = ++this.listening;
+    const current = (): boolean => !this.closed && listening === this.listening;
     this.flowing = false;
     this.watchedAt = Number.NEGATIVE_INFINITY;
-    this.watchAudio();
-    this.microphone = await this.deps.microphones
+    const microphone = await this.deps.microphones
       .open(this.cameraId, {
         packet: (packet): void => {
+          if (!current()) {
+            return;
+          }
           this.arrived();
           this.ear?.packet(packet);
         },
         ended: (failure): void => {
+          if (!current()) {
+            return;
+          }
           this.release();
           this.retry(failure ?? 'the camera audio stopped');
         },
       })
       .catch((cause: unknown) => {
+        if (!current()) {
+          return null;
+        }
         this.release();
         if (cause instanceof CameraOfflineError) {
           this.waitForCamera(cause.message);
@@ -100,6 +112,15 @@ export class CameraEar {
         }
         return null;
       });
+    if (microphone === null) {
+      return;
+    }
+    if (!current()) {
+      microphone.stop();
+      return;
+    }
+    this.microphone = microphone;
+    this.watchAudio();
   }
 
   resume(): void {

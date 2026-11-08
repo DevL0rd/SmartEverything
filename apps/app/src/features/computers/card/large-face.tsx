@@ -9,7 +9,7 @@ import { useComputerDetail, useComputerSelect } from '../data/computer-metrics';
 import type { ComputerStatus } from '../model/computer-view';
 import { TOP_WINDOW, topEntries } from '../model/top-processes';
 import { NetworkTile } from './card-text';
-import { FaceControls, QuickIcons } from './face-controls';
+import { FaceBand, WakeNote } from './face-controls';
 import { FaceHeader } from './face-header';
 import { CoreStrip } from './core-strip';
 import { VitalRow, type TileLook, type TileLooks } from './vital-parts';
@@ -17,12 +17,8 @@ import { VitalRow, type TileLook, type TileLooks } from './vital-parts';
 const PROCESS_TOPICS = ['processes'] as const;
 const SPARK = 32;
 const NET_LOOK: TileLook = { spark: 22, inline: true };
-
-const LOOKS: TileLooks = {
-  cpu: { spark: SPARK, inline: false },
-  gpu: { spark: SPARK, inline: false },
-  ram: { spark: SPARK, inline: false },
-};
+const LOOK: TileLook = { spark: SPARK, inline: false };
+const LOOKS: TileLooks = { cpu: LOOK, gpu: LOOK, ram: LOOK };
 
 interface PanelProps {
   readonly device: Device;
@@ -32,13 +28,11 @@ interface PanelProps {
 function Panel({ device, status }: PanelProps): ReactNode {
   const stale = status.offline;
   return (
-    <View className="min-w-0 flex-1 gap-3" pointerEvents="box-none">
-      <View className="gap-3" pointerEvents="none">
-        <VitalRow deviceId={device.id} stale={stale} looks={LOOKS} />
-        <NetworkTile deviceId={device.id} stale={stale} look={NET_LOOK} />
-        {stale ? null : <CoreStrip deviceId={device.id} />}
-      </View>
-      <FaceControls device={device} offline={stale} />
+    <View className="min-w-0 flex-1 gap-3" pointerEvents="none">
+      <VitalRow deviceId={device.id} stale={stale} looks={LOOKS} />
+      <NetworkTile deviceId={device.id} stale={stale} look={NET_LOOK} />
+      {stale ? null : <CoreStrip deviceId={device.id} />}
+      <WakeNote device={device} offline={stale} />
     </View>
   );
 }
@@ -73,9 +67,9 @@ function TallBody(props: PanelProps): ReactNode {
   const scopes = useComputerDetail(device.id, device.online).data?.scopes;
   if (status.offline || scopes?.processes === false) return <Panel {...props} />;
   return (
-    <View className="flex-row gap-6" pointerEvents="box-none">
+    <View className="flex-row gap-6" pointerEvents="none">
       <Panel {...props} />
-      <View className="min-w-0 flex-1 gap-2" pointerEvents="none">
+      <View className="min-w-0 flex-1 gap-2">
         <TopList device={device} />
         <NowPlayingRow deviceId={device.id} disabled={false} compact />
       </View>
@@ -86,13 +80,9 @@ function TallBody(props: PanelProps): ReactNode {
 export function LargeFace({ tall, ...panel }: PanelProps & { readonly tall: boolean }): ReactNode {
   return (
     <View className="flex-1 gap-3" pointerEvents="box-none">
-      <FaceHeader
-        device={panel.device}
-        status={panel.status}
-        compact
-        actions={<QuickIcons device={panel.device} mute={false} />}
-      />
+      <FaceHeader device={panel.device} status={panel.status} compact />
       {tall ? <TallBody {...panel} /> : <Panel {...panel} />}
+      <FaceBand device={panel.device} offline={panel.status.offline} controls="full" />
     </View>
   );
 }

@@ -6,6 +6,7 @@ import {
   type ListeningConfig,
   type ListeningHubMessage,
   type ListeningRuntimeState,
+  type ListeningSuperseded,
   type ListeningWakeClaim,
 } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
@@ -61,6 +62,10 @@ interface EarCalls {
   readonly end: () => void;
 }
 
+interface EarOverlay {
+  readonly superseded: (winner: ListeningSuperseded['winner']) => void;
+}
+
 interface EarEnvironment {
   readonly onLocalNetwork: () => boolean;
   readonly microphoneGranted: () => Promise<boolean>;
@@ -70,6 +75,7 @@ export interface EarPorts {
   readonly native: EarNative;
   readonly hub: EarHub;
   readonly calls: EarCalls;
+  readonly overlay: EarOverlay;
   readonly environment: EarEnvironment;
 }
 
@@ -108,7 +114,7 @@ export class PhoneEar {
         );
         return;
       case 'superseded':
-        this.superseded();
+        this.superseded(message.superseded.winner);
         return;
       case 'level':
         background(this.ports.native.watchLevel(message.watched), 'phone_ear.level_watch_failed');
@@ -285,9 +291,10 @@ export class PhoneEar {
     }
   }
 
-  private superseded(): void {
+  private superseded(winner: ListeningSuperseded['winner']): void {
     if (this.waking && this.ports.calls.active()) {
-      log.info('phone_ear.superseded');
+      log.info('phone_ear.superseded', { source: winner.source });
+      this.ports.overlay.superseded(winner);
       this.ports.calls.end();
     }
   }

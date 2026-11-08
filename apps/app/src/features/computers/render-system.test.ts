@@ -206,6 +206,10 @@ vi.mock('../../store/computer-backfill', () => ({
   useRingBackfill: (): undefined => undefined,
 }));
 
+vi.mock('./components/computer-frame', () => ({
+  ComputerFrame: ({ children }: { readonly children: ReactNode }): ReactNode => children,
+}));
+
 const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
 const { CommandLedger } = await import('../../store/command-ledger');
 const { EntityStore } = await import('../../store/entity-store');
@@ -227,6 +231,7 @@ const { Results: ProcessResults } = await import('./processes/processes-screen')
 const { SettingsSection } = await import('./system/settings-section');
 const { ServicesSection } = await import('./system/services-section');
 const { TimersSection, UsbSection } = await import('./system/info-sections');
+const { ComputerOverviewScreen } = await import('./screens/computer-overview');
 
 const ROLES = Object.keys(COLOUR_VARIABLE);
 const PALETTE: Palette = new Proxy(COLOUR_VARIABLE, {
@@ -586,6 +591,16 @@ const PROCESSES: Part = {
 };
 
 const PARTS: readonly Part[] = [DRIVES, ADAPTERS, SETTINGS, AUDIO, DISPLAYS, WINDOWS, PROCESSES];
+
+it('requests overview metrics before an online computer has sent a summary', () => {
+  computerLive.store(DEVICE).set({ at: null, parts: {} });
+  const mounted = mountElement((device) =>
+    createElement(ComputerOverviewScreen, { deviceId: device.id }),
+  );
+  expect(liveWatch.topicsOf(DEVICE)).toEqual(new Set(['summary', 'system']));
+  mounted.unmount();
+  expect(liveWatch.topicsOf(DEVICE).size).toBe(0);
+});
 
 describe('network, storage and system parts', () => {
   it.each(PARTS)('$name draws from live data and asks only for its topics', (part) => {

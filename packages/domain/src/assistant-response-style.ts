@@ -4,7 +4,7 @@ export const CUSTOM_PERSONALITY_MAX = 2000;
 export const RESPONSE_PERSONALITIES = [
   {
     value: 'default',
-    label: 'Default',
+    label: 'Witty',
     description: 'Warm, witty and playful.',
     guidance:
       'Warm, witty and playful: friendly and quick, with real humour, glad to joke, banter and play along.',

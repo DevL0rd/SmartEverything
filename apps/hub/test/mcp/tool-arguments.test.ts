@@ -9,9 +9,6 @@ import { callTool, structured } from './client';
 let directory: { path: string; remove: () => Promise<void> };
 let booted: Booted;
 let token: string;
-let person: string;
-
-const PEOPLE = z.object({ people: z.array(z.looseObject({ id: z.string() })) });
 
 const OPERATION = z.object({ operation: z.looseObject({ name: z.string() }) });
 
@@ -27,8 +24,6 @@ beforeEach(async () => {
     body: { name: 'ChatGPT' },
   });
   token = API_ENDPOINTS.createMcpToken.response.parse(created.body).token;
-  const people = PEOPLE.parse(structured(await callTool(booted.base, token, 'person_read', {})));
-  person = people.people[0]?.id ?? '';
 });
 
 afterEach(async () => {
@@ -48,10 +43,10 @@ describe('refusals a model can act on', () => {
       view: 'summary',
       from: '2026-10-10',
       to: '2026-10-10',
-      personId: person,
+      limit: 5,
     });
-    expect(text).toContain('view summary does not take personId');
-    expect(text).toContain('from (required), to (required), metrics, records');
+    expect(text).toContain('view summary does not take limit');
+    expect(text).toContain('from, to, metrics, records, personId');
   });
 
   it('name the argument a tool that takes none was sent', async () => {

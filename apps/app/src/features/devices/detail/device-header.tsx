@@ -2,7 +2,11 @@ import type { ReactNode } from 'react';
 import { useRouter } from 'expo-router';
 import { copyText } from '../../../components/copy-button';
 import type { MenuItem } from '../../../components/menu';
-import { PageHeader, type HeaderAction } from '../../../components/page-header';
+import {
+  PageHeader,
+  type HeaderAction,
+  type PageHeaderProps,
+} from '../../../components/page-header';
 import { href } from '../../../app-shell/hrefs';
 import { joinParts } from '../../../format/text';
 import { useRoomName } from '../../../store/selectors';
@@ -14,11 +18,31 @@ import { useDisplayName } from '../model/display-name';
 import { useDeviceModel } from '../model/device-model';
 import { useStateLine } from '../model/state-line';
 import { settingsItem } from '../../../settings/settings-item';
+import { useHomeMap } from '../../home-map';
+
+function useShowOnMap(deviceId: string): readonly MenuItem[] {
+  const router = useRouter();
+  const { map } = useHomeMap();
+  const placed =
+    map?.floors.some((floor) => floor.placements.some((item) => item.deviceId === deviceId)) ===
+    true;
+  if (!placed) return [];
+  return [
+    {
+      label: 'Show on map',
+      icon: 'mapPin',
+      onPress: (): void => {
+        router.push(href.devicesSelection({ device: deviceId }));
+      },
+    },
+  ];
+}
 
 function useOverflow(device: Device, name: string): readonly MenuItem[] {
   const router = useRouter();
   const model = useDeviceModel(device);
   const health = model.family === 'scale' || model.family === 'wearable';
+  const showOnMap = useShowOnMap(device.id);
   const favourite = (): void => {
     changeDevice(device, name, { favourite: !device.favourite });
   };
@@ -28,6 +52,7 @@ function useOverflow(device: Device, name: string): readonly MenuItem[] {
       icon: 'star',
       onPress: favourite,
     },
+    ...showOnMap,
     ...(health
       ? [
           {
@@ -53,12 +78,17 @@ function useOverflow(device: Device, name: string): readonly MenuItem[] {
 export function DeviceHeader({
   device,
   sectionTitle,
+  stateLine,
+  titleLines = 2,
 }: {
   readonly device: Device;
   readonly sectionTitle: string | null;
+  readonly stateLine?: string | null;
+  readonly titleLines?: PageHeaderProps['titleLines'];
 }): ReactNode {
   const model = useDeviceModel(device);
-  const line = useStateLine(model, false);
+  const generic = useStateLine(model, false);
+  const line = stateLine ?? generic;
   const name = useDisplayName(device.id);
   const room = useRoomName(device.id);
   const power = usePowerAction(device);
@@ -79,7 +109,7 @@ export function DeviceHeader({
   return (
     <PageHeader
       title={sectionTitle ?? name}
-      titleLines={2}
+      titleLines={titleLines}
       subtitle={sectionTitle === null ? joinParts([room, line]) : name}
       actions={sectionTitle === null ? actions : []}
       overflow={sectionTitle === null ? [...schedule, ...overflow] : []}

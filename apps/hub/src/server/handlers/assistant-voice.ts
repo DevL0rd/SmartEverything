@@ -1,7 +1,14 @@
-import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
+import {
+  API_ENDPOINTS as E,
+  ApiError,
+  type ASSISTANT_VOICE_ENDPOINTS,
+} from '@smarteverything/domain';
+import { ChatVoiceReplies } from '../../assistant-voice/chat-voice-replies';
+import type { Budget } from '../../ledger/budget';
+import type { ServerContext } from '../context';
 import type { AssistantVoice } from '../../assistant-voice/assistant-voice';
 import { clientOf, type Caller } from '../auth';
-import { bound } from '../router';
+import { bound, type RouteTable } from '../router';
 import { currentRequestSignal } from '../request-signal';
 
 function onThisComputer(caller: Caller): void {
@@ -13,8 +20,16 @@ function onThisComputer(caller: Caller): void {
   }
 }
 
-export const assistantVoiceRoutes = (voice: AssistantVoice) =>
-  ({
+export function assistantVoiceRoutes(
+  { store, assistant }: Pick<ServerContext, 'store' | 'assistant'>,
+  voice: AssistantVoice,
+  budget: Budget['gate'],
+): Pick<RouteTable, keyof typeof ASSISTANT_VOICE_ENDPOINTS> {
+  const replies = new ChatVoiceReplies({ store, files: assistant.files, voice, budget });
+  return {
+    postChatVoiceReply: bound(E.postChatVoiceReply, ({ body, caller }) =>
+      replies.post(caller, body),
+    ),
     readAssistantVoiceSample: bound(E.readAssistantVoiceSample, ({ params, caller }) =>
       voice.sample(
         clientOf(caller),
@@ -30,4 +45,5 @@ export const assistantVoiceRoutes = (voice: AssistantVoice) =>
     }),
     setGeminiKey: bound(E.setGeminiKey, ({ body }) => voice.keys.save(body.key)),
     removeGeminiKey: bound(E.removeGeminiKey, () => voice.keys.remove()),
-  }) as const;
+  } as const;
+}

@@ -8,8 +8,11 @@ import { useStoreSelector } from '../../../store/store-context';
 import type { Device } from '../../../store/state';
 import { useActivity, type ActivityItem } from '../../activity';
 import { useCameraEntries, type CameraEntry } from '../../cameras';
-import { useComfortReadings, type ComfortMetric, type MetricReading } from '../../climate';
+import { useComfortReadings, type ComfortMetric } from '../../climate';
+import { DEVICE_GROUP_TYPE } from '../../device-groups';
+import { useMyPhone } from '../../phone';
 import { useHasScale } from '../../profiles';
+import { TALK_WIDGETS } from '../../talk';
 import { useMyWatch } from '../../watches';
 import { favouritesOf, sameFavourites, type Favourites } from '../model/favourites';
 import { fitnessDayOf, type FitnessDay } from '../model/fitness-today';
@@ -23,7 +26,6 @@ const HOME_METRICS: readonly ComfortMetric[] = ['temperature', 'humidity', 'pm25
 
 export interface HomeData {
   readonly digest: DeviceDigest;
-  readonly readings: readonly MetricReading[];
   readonly power: PowerUse | null;
   readonly favourites: Favourites;
   readonly rooms: readonly RoomSummary[];
@@ -34,6 +36,7 @@ export interface HomeData {
   readonly fitness: FitnessDay | null;
   readonly scale: boolean;
   readonly watch: boolean;
+  readonly phone: boolean;
 }
 
 function useFitnessDay(): FitnessDay | null {
@@ -54,10 +57,6 @@ export function useHomeSummary(): HomeSummary {
   const readings = useComfortReadings(HOME_METRICS);
   const { offline } = useStoreSelector(deviceDigest, sameDigest);
   return homeSummary(readings, offline);
-}
-
-export function useHomeReadings(): readonly MetricReading[] {
-  return useComfortReadings(HOME_METRICS);
 }
 
 export function useHomePower(): PowerUse | null {
@@ -90,7 +89,6 @@ export function useHomeData(): HomeData {
   const { digest, cameras } = useHomeBasics();
   return {
     digest,
-    readings: useHomeReadings(),
     power: useHomePower(),
     favourites: useHomeFavourites(),
     rooms: useHomeRooms(),
@@ -101,12 +99,12 @@ export function useHomeData(): HomeData {
     fitness: useHomeFitness(),
     scale: useHasScale(),
     watch: useMyWatch() !== null,
+    phone: useMyPhone() !== null,
   };
 }
 
 export const NO_HOME_DATA: HomeView = {
   digest: { count: 0, offline: 0, spotlightable: [], featured: [] },
-  readings: [],
   power: null,
   favourites: { chosen: false, title: '', devices: [] },
   rooms: [],
@@ -117,6 +115,7 @@ export const NO_HOME_DATA: HomeView = {
   fitness: null,
   scale: false,
   watch: false,
+  phone: false,
   spotlighted: new Set(),
 };
 
@@ -198,7 +197,6 @@ export function unspotlighted(
 
 export function availableWidgets(data: HomeView): ReadonlySet<string> {
   const entries: readonly (readonly [string, boolean])[] = [
-    ['glance', data.readings.length > 0],
     ['scenes', data.scenes.length > 0],
     [
       'favourites',
@@ -215,6 +213,12 @@ export function availableWidgets(data: HomeView): ReadonlySet<string> {
     ['body', data.scale],
     ['watch', data.watch],
     ['stress', data.watch],
+    ['watch-workout', data.watch],
+    ['phone', data.phone],
   ];
-  return new Set(entries.filter(([, shown]) => shown).map(([type]) => type));
+  return new Set([
+    DEVICE_GROUP_TYPE,
+    ...entries.filter(([, shown]) => shown).map(([type]) => type),
+    ...TALK_WIDGETS.map((definition) => definition.type),
+  ]);
 }

@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { API_ENDPOINTS } from '@smarteverything/domain';
@@ -10,6 +11,7 @@ import { bootServer, linkFakeProvider, pairPhone, verifiedPublicUrl } from '../.
 import { node, programOf, trigger } from '../../support/automation-fixture';
 import { captureLogs, testLogger } from '../../support/logs';
 import { temporaryDirectory } from '../../support/server';
+import { graphAutomation } from '../../automations-v3/support/graph-of';
 
 const HEAVY_MS = 30_000;
 
@@ -61,9 +63,12 @@ async function saveFromPhone(options: { readonly removePhone: boolean }): Promis
     body: {
       name: 'Occupied',
       enabled: true,
-      definition: programOf(
-        [trigger('trigger.interval', { every: 604_800_000 })],
-        [node('device.set', { target: { device: lamp.id }, control: 'power', to: true })],
+      definition: graphAutomation(
+        programOf(
+          [trigger('trigger.interval', { every: 604_800_000 })],
+          [node('device.set', { target: { device: lamp.id }, control: 'power', to: true })],
+        ),
+        STATIC_KIND_LOOKUP,
       ),
     },
   });

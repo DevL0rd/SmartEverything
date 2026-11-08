@@ -1,3 +1,9 @@
+import {
+  CLIENT_CAPABILITIES_META_KEY,
+  CLIENT_INFO_META_KEY,
+  PROTOCOL_VERSION_META_KEY,
+  SERVER_INFO_META_KEY,
+} from '@modelcontextprotocol/server';
 import { API_ENDPOINTS, MCP_TOOLS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -9,7 +15,11 @@ import { PLUGIN_ONLY_TOOLS } from '../../src/extensions/mcp/tools/registry';
 import { bootServer, verifiedPublicUrl, type Booted } from '../support/booted';
 import { captureLogs } from '../support/logs';
 import { call, temporaryDirectory } from '../support/server';
-import { RPC_ERROR, callTool, initialize, resultOf, rpc } from './client';
+import { RPC_ERROR, callTool, initialize, messageOf, resultOf, rpc } from './client';
+
+function listedToExternalMcp(name: string): boolean {
+  return name !== 'self_update' && !PLUGIN_ONLY_TOOLS.has(name);
+}
 
 describe('the served tool catalogue', () => {
   it('offers exactly the tools the app describes, with the same words and read-only hints', () => {
@@ -30,6 +40,22 @@ describe('the served tool catalogue', () => {
     );
   });
 });
+
+const MODERN = '2026-07-28';
+
+function modernHeaders(method: string): Record<string, string> {
+  return { 'mcp-protocol-version': MODERN, 'mcp-method': method };
+}
+
+function modernEnvelope(version = MODERN): Record<string, unknown> {
+  return {
+    _meta: {
+      [PROTOCOL_VERSION_META_KEY]: version,
+      [CLIENT_INFO_META_KEY]: { name: 'test-client', version: '1.0.0' },
+      [CLIENT_CAPABILITIES_META_KEY]: {},
+    },
+  };
+}
 
 const STREAMABLE = {
   'content-type': 'application/json',
@@ -60,7 +86,7 @@ describe('the MCP endpoint', () => {
   });
 
   async function errorOf(response: Response): Promise<{ code: number; message: string }> {
-    return RPC_ERROR.parse(await response.json()).error;
+    return RPC_ERROR.parse(await messageOf(response)).error;
   }
 
   it('initializes with a personal token and records when the token was used', async () => {
@@ -101,7 +127,7 @@ describe('the MCP endpoint', () => {
       method: 'DELETE',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(deleted.status).toBe(200);
+    expect(deleted.status).toBe(405);
   });
 
   it('refuses unsupported versions, malformed bodies, unknown methods and unknown tools', async () => {
@@ -127,10 +153,90 @@ describe('the MCP endpoint', () => {
     const tool = await rpc(booted.base, token, { method: 'tools/call', params: { name: 'nope' } });
     expect(await errorOf(tool)).toStrictEqual({
       code: -32602,
-      message: 'MCP error -32602: Unknown tool: nope',
+      message: 'Unknown tool: nope',
     });
     const nameless = await rpc(booted.base, token, { method: 'tools/call', params: {} });
     expect((await errorOf(nameless)).message).toContain('name');
+  });
+
+  it('negotiates every 2025-era version a client offers and answers a newer offer with its newest', async () => {
+    const offered = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+    for (const version of offered) {
+      const result = await resultOf(
+        await rpc(booted.base, token, initialize(version), { 'mcp-protocol-version': version }),
+      );
+      expect(result['protocolVersion']).toBe(version);
+    }
+    const newer = await resultOf(await rpc(booted.base, token, initialize(MODERN)));
+    expect(newer['protocolVersion']).toBe('2025-11-25');
+  });
+
+  it('answers a 2025-era follow-up that names its negotiated version in the header', async () => {
+    for (const version of ['2025-11-25', '2025-06-18', '2025-03-26']) {
+      const listed = await resultOf(
+        await rpc(
+          booted.base,
+          token,
+          { method: 'tools/list' },
+          { 'mcp-protocol-version': version },
+        ),
+      );
+      expect(z.array(z.unknown()).parse(listed['tools']).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('answers server/discover with 2026-07-28 among the revisions it serves', async () => {
+    const result = await resultOf(
+      await rpc(
+        booted.base,
+        token,
+        { method: 'server/discover', params: modernEnvelope() },
+        modernHeaders('server/discover'),
+      ),
+    );
+    expect(z.array(z.string()).parse(result['supportedVersions'])).toContain(MODERN);
+    expect(result).toMatchObject({
+      _meta: { [SERVER_INFO_META_KEY]: { name: 'smarteverything' } },
+      capabilities: { tools: { listChanged: true } },
+    });
+  });
+
+  it('lists the tools to a 2026-07-28 request that carries the version in its header and its envelope', async () => {
+    const result = await resultOf(
+      await rpc(
+        booted.base,
+        token,
+        { method: 'tools/list', params: modernEnvelope() },
+        modernHeaders('tools/list'),
+      ),
+    );
+    const names = z
+      .array(z.object({ name: z.string() }))
+      .parse(result['tools'])
+      .map((tool) => tool.name);
+    expect(names).toContain('tool_search');
+    expect(names).toContain('device_find');
+  });
+
+  it('refuses a 2026-07-28 header whose body names another version, and one without the envelope', async () => {
+    const mismatched = await rpc(
+      booted.base,
+      token,
+      {
+        method: 'tools/list',
+        params: modernEnvelope('2025-11-25'),
+      },
+      modernHeaders('tools/list'),
+    );
+    expect(mismatched.status).toBe(400);
+    const bare = await rpc(
+      booted.base,
+      token,
+      { method: 'tools/list' },
+      modernHeaders('tools/list'),
+    );
+    expect(bare.status).toBe(400);
+    expect((await errorOf(bare)).code).toBe(-32602);
   });
 
   it('lists only the core tools and discovery to a client without its own tool search', async () => {
@@ -144,7 +250,7 @@ describe('the MCP endpoint', () => {
     expect(names.every((name) => listedFor('')(name))).toBe(true);
   });
 
-  it('lists every tool with an object schema and honest annotations', async () => {
+  it('lists external tools with an object schema and honest annotations', async () => {
     const tools = z
       .array(
         z.object({
@@ -158,9 +264,9 @@ describe('the MCP endpoint', () => {
           'tools'
         ],
       );
-    expect(tools.map((tool) => tool.name)).toStrictEqual(
-      MCP_TOOLS.map((tool) => tool.name).filter((name) => !PLUGIN_ONLY_TOOLS.has(name)),
-    );
+    const names = tools.map((tool) => tool.name);
+    expect(names).toStrictEqual(MCP_TOOLS.map((tool) => tool.name).filter(listedToExternalMcp));
+    expect(names).not.toContain('self_update');
     expect(
       tools.filter((tool) => tool.annotations.destructiveHint).map((tool) => tool.name),
     ).toStrictEqual([
@@ -170,12 +276,16 @@ describe('the MCP endpoint', () => {
       'scene_edit',
       'schedule_edit',
       'automation_edit',
+      'automation_versions_edit',
+      'automation_tests_edit',
       'secret_edit',
       'value_edit',
       'health_edit',
       'food_edit',
+      'food_log',
       'person_edit',
       'talk_edit',
+      'planner_edit',
       'project_edit',
       'chat_edit',
       'process_control',
@@ -183,7 +293,6 @@ describe('the MCP endpoint', () => {
       'computer_use',
       'computer_app_control',
       'file_edit',
-      'claude_control',
       'operation_call',
     ]);
     expect(
@@ -200,7 +309,7 @@ describe('the MCP endpoint', () => {
         ],
       );
     expect(listed).toEqual(
-      TOOLS.filter((tool) => !PLUGIN_ONLY_TOOLS.has(tool.name)).map((tool) => tool.listing),
+      TOOLS.filter((tool) => listedToExternalMcp(tool.name)).map((tool) => tool.listing),
     );
   });
 
@@ -210,6 +319,11 @@ describe('the MCP endpoint', () => {
     const refused = await callTool(booted.base, token, 'inbox_post', {});
     expect(refused.isError).toBe(true);
     expect(JSON.stringify(refused.content)).toContain('forbidden: inbox_post is only for a plugin');
+    const update = await callTool(booted.base, token, 'self_update', { action: 'status' });
+    expect(update.isError).toBe(true);
+    expect(JSON.stringify(update.content)).toContain(
+      'forbidden: Only the owner’s own AI chat can use self_update.',
+    );
   });
 
   it('refuses a revoked personal token', async () => {

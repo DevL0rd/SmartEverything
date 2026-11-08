@@ -4,7 +4,7 @@ import {
   type BoardClass,
   type BoardWidget,
 } from '@smarteverything/domain';
-import { aspectRows, spanWidth, type Cell } from './board-geometry';
+import { frameOf, type Cell } from './board-geometry';
 
 export interface Placement {
   readonly widget: BoardWidget;
@@ -12,13 +12,6 @@ export interface Placement {
   readonly row: number;
   readonly cols: number;
   readonly rows: number;
-  readonly height?: number;
-}
-
-export interface Sizing {
-  readonly cell: Cell;
-  readonly aspectOf: (type: string) => number | undefined;
-  readonly footprintOf?: (type: string, board: BoardClass, size: BoardWidget['size']) => Size;
 }
 
 interface Size {
@@ -26,82 +19,55 @@ interface Size {
   readonly rows: number;
 }
 
-function cellsOf(row: number, col: number, size: Size): readonly string[] {
-  const cells: string[] = [];
-  for (let r = row; r < row + size.rows; r += 1) {
-    for (let c = col; c < col + size.columns; c += 1) {
-      cells.push(`${String(r)}:${String(c)}`);
+function firstOpenRow(placed: readonly Placement[], size: Size, col: number): number {
+  let row = 0;
+  for (const tile of placed) {
+    if (col >= tile.col + tile.cols || col + size.columns <= tile.col) {
+      continue;
     }
+    if (row + size.rows <= tile.row) {
+      break;
+    }
+    row = Math.max(row, tile.row + tile.rows);
   }
-  return cells;
+  return row;
 }
 
 function firstFit(
-  taken: ReadonlySet<string>,
+  placed: readonly Placement[],
   size: Size,
   columns: number,
-): { row: number; col: number } {
-  for (let row = 0; ; row += 1) {
-    for (let col = 0; col + size.columns <= columns; col += 1) {
-      if (cellsOf(row, col, size).every((cell) => !taken.has(cell))) {
-        return { row, col };
-      }
+): { readonly row: number; readonly col: number } {
+  const ordered = [...placed].sort((a, b) => a.row - b.row);
+  let best = { row: firstOpenRow(ordered, size, 0), col: 0 };
+  for (let col = 1; col + size.columns <= columns && best.row > 0; col += 1) {
+    const row = firstOpenRow(ordered, size, col);
+    if (row < best.row) {
+      best = { row, col };
     }
   }
-}
-
-function sizeOf(
-  board: BoardClass,
-  widget: BoardWidget,
-  sizing: Sizing | undefined,
-): Size & { readonly height?: number } {
-  const footprint =
-    sizing?.footprintOf?.(widget.type, board, widget.size) ?? WIDGET_FOOTPRINTS[board][widget.size];
-  const aspect = sizing?.aspectOf(widget.type);
-  if (sizing === undefined || aspect === undefined) {
-    return footprint;
-  }
-  return {
-    columns: footprint.columns,
-    rows: aspectRows(sizing.cell, footprint.columns, aspect),
-    height: spanWidth(sizing.cell, footprint.columns) / aspect,
-  };
-}
-
-export function fittedCell(
-  board: BoardClass,
-  widgets: readonly BoardWidget[],
-  sizing: Sizing,
-): Cell {
-  const { cell } = sizing;
-  const first = widgets.find((widget) => sizing.aspectOf(widget.type) !== undefined);
-  const aspect = first === undefined ? undefined : sizing.aspectOf(first.type);
-  if (first === undefined || aspect === undefined) {
-    return cell;
-  }
-  const height = spanWidth(cell, WIDGET_FOOTPRINTS[board][first.size].columns) / aspect;
-  const rows = Math.max(1, Math.round((height + cell.gap) / (cell.height + cell.gap)));
-  return { ...cell, height: (height + cell.gap) / rows - cell.gap };
+  return best;
 }
 
 export function pack(
   board: BoardClass,
   widgets: readonly BoardWidget[],
-  sizing?: Sizing,
+  columns = BOARD_COLUMNS[board],
 ): readonly Placement[] {
-  const columns = BOARD_COLUMNS[board];
-  const taken = new Set<string>();
-  return widgets.map((widget) => {
-    const size = sizeOf(board, widget, sizing);
-    const spot = firstFit(taken, size, columns);
-    for (const cell of cellsOf(spot.row, spot.col, size)) {
-      taken.add(cell);
-    }
-    const placed = { widget, col: spot.col, row: spot.row, cols: size.columns, rows: size.rows };
-    return size.height === undefined ? placed : { ...placed, height: size.height };
-  });
+  const placed: Placement[] = [];
+  for (const widget of widgets) {
+    const size = WIDGET_FOOTPRINTS[board][widget.size];
+    const spot = firstFit(placed, size, columns);
+    placed.push({ widget, ...spot, cols: size.columns, rows: size.rows });
+  }
+  return placed;
 }
 
-export function rowsOf(placements: readonly Placement[]): number {
-  return placements.reduce((most, placement) => Math.max(most, placement.row + placement.rows), 0);
+export function boardHeightOf(placements: readonly Placement[], cell: Cell): number {
+  let height = 0;
+  for (const placement of placements) {
+    const frame = frameOf(cell, placement);
+    height = Math.max(height, frame.top + frame.height);
+  }
+  return height;
 }

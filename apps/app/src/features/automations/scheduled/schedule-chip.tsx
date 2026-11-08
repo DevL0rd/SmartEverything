@@ -60,24 +60,12 @@ function Chip({
 export function DeviceScheduleChip({
   deviceId,
   compact = false,
-  pinnedClassName,
 }: {
   readonly deviceId: string;
   readonly compact?: boolean;
-  readonly pinnedClassName?: string;
 }): ReactNode {
   const row = useDeviceSchedule(deviceId);
-  if (row === null) {
-    return null;
-  }
-  const chip = <Chip row={row} deviceId={deviceId} compact={compact} />;
-  return pinnedClassName === undefined ? (
-    chip
-  ) : (
-    <View className={pinnedClassName} pointerEvents="box-none">
-      {chip}
-    </View>
-  );
+  return row === null ? null : <Chip row={row} deviceId={deviceId} compact={compact} />;
 }
 
 export function useScheduleBelow(deviceId: string): { readonly below?: ReactNode } {

@@ -56,7 +56,7 @@ function usesOf(plan: Plan, resolve: FactsContext['plans'] = none): ReturnType<t
 describe('slots', () => {
   it('cover every reference kind except the target, which is split', () => {
     expect([...REF_SLOTS].sort()).toEqual(REF_KINDS.filter((kind) => kind !== 'target').sort());
-    expect(MANIFEST_SLOTS).toEqual([...REF_SLOTS, 'control', 'tool', 'host']);
+    expect(MANIFEST_SLOTS).toEqual([...REF_SLOTS, 'control', 'tool', 'host', 'plugin', 'entity']);
   });
 });
 
@@ -188,7 +188,7 @@ describe('manifest of the outside world', () => {
 
   it('lists a computer and leaves a member program unflagged', () => {
     const plan = planFrom([
-      make('c', 'computer.audio', { computer: lit('pc1'), change: lit({ volume: 10 }) }),
+      make('c', 'computer.audio', { computer: lit('pc1'), action: lit('volume'), level: lit(10) }),
     ]);
     const manifest = usesOf(plan);
     expect(manifest.uses.computer).toEqual(['pc1']);

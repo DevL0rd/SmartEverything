@@ -24,6 +24,31 @@ describe('Shelly operations', () => {
     expect(reads()).toBe(before + 1);
   });
 
+  it('sends a virtual value with one round trip and no inventory read, concurrently', async () => {
+    const { session, shelly } = await harness({
+      handler: (method) => (method === 'Boolean.Set' ? { was_on: false } : undefined),
+    });
+    const before = shelly.calls.length;
+    const first = session.execute({
+      action: 'virtual_set',
+      params: { id: 200, setting: { component: 'boolean', value: true } },
+    });
+    const second = session.execute({
+      action: 'virtual_set',
+      params: { id: 201, setting: { component: 'boolean', value: false } },
+    });
+    await until(
+      () => shelly.calls.filter((c) => c.method === 'Boolean.Set').length === 2,
+      'both writes',
+    );
+    const outcomes = await Promise.all([first, second]);
+    expect(outcomes[0]).not.toHaveProperty('confirmed');
+    expect(shelly.calls.slice(before).map((call) => call.method)).toEqual([
+      'Boolean.Set',
+      'Boolean.Set',
+    ]);
+  });
+
   it('reports a restart the device asks for', async () => {
     const { session } = await harness({
       handler: (method) =>

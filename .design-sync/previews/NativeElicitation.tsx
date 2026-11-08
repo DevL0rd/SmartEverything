@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { NativeElicitation, Stage } from 'smarteverything-kit';
 
 const request = {
@@ -12,12 +13,12 @@ const request = {
     },
   },
 };
-export const Form = () => (
+export const Form = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <NativeElicitation request={request} url={false} pending={false} submit={() => undefined} />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     <NativeElicitation request={request} url={false} pending={false} submit={() => undefined} />
   </Stage>

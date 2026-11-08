@@ -1,12 +1,10 @@
 import { rememberBrowserFocus, restoreBrowserFocus } from '../../../platform/browser-focus';
-import { useEffect, useState } from 'react';
-import { BackHandler, Platform } from 'react-native';
+import { useEffect, useState, type RefObject } from 'react';
+import { BackHandler, Platform, type View } from 'react-native';
 import { router, useLocalSearchParams, useIsFocused } from 'expo-router';
+import { WIDTH_BREAKPOINTS } from '../../../design/size-class';
 import { setLocalPref, useLocalPref } from '../../../store/local-prefs';
 
-export const BROWSER_MIN_WIDTH = 560;
-const CHAT_MIN_WIDTH = 560;
-const DOCK_AT = BROWSER_MIN_WIDTH + CHAT_MIN_WIDTH;
 export interface PanelState {
   readonly docked: boolean;
   readonly open: boolean;
@@ -15,7 +13,7 @@ export interface PanelState {
   readonly hide: () => void;
   readonly measure: (width: number) => void;
 }
-export function usePanelState(): PanelState {
+export function usePanelState(toggleRef?: RefObject<View | null>): PanelState {
   const open = useLocalPref('chatPanelOpen');
   const focused = useIsFocused();
   const [width, measure] = useState<number | null>(null);
@@ -26,12 +24,12 @@ export function usePanelState(): PanelState {
   };
   const hide = (): void => {
     setLocalPref('chatPanelOpen', false);
-    restoreBrowserFocus('pane');
+    restoreBrowserFocus('pane', () => toggleRef?.current);
   };
   useEffect(() => {
     if (section !== 'browser' || !focused) return;
     setLocalPref('chatPanelOpen', true);
-    router.setParams({ section: undefined, sheet: undefined });
+    router.setParams({ section: undefined });
   }, [section, focused]);
   useEffect(() => {
     if (Platform.OS !== 'android' || !focused || !open) return;
@@ -44,7 +42,7 @@ export function usePanelState(): PanelState {
     };
   }, [focused, open]);
   return {
-    docked: open && width !== null && width >= DOCK_AT,
+    docked: open && width !== null && width >= WIDTH_BREAKPOINTS.expanded,
     open,
     toggle: open ? hide : show,
     show,

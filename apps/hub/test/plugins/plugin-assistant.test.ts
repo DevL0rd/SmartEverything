@@ -1,3 +1,4 @@
+import { hubLayout } from '../../src/data-layout';
 import {
   ApiError,
   PLUGIN_MANIFEST,
@@ -78,7 +79,6 @@ beforeEach(async () => {
     store,
     assistant: assistantFake(store),
     catalogue: unused,
-    dataDirectory: opened.directory,
     now: (): Date => NOW,
   }).forPlugin('discord');
   people = new PluginPeople(store);
@@ -91,11 +91,11 @@ afterEach(async () => {
 function chatOf(profileId: string): string {
   const { store } = opened;
   const files = new AssistantFiles({
-    dataDirectory: opened.directory,
+    layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
     now: (): Date => NOW,
   });
-  return new ChatDirectory(store, files, (): Date => NOW).chatForPlugin(
+  return new ChatDirectory(store, files).chatForPlugin(
     profileId,
     pluginChatKey('discord', KEY),
     '#general',

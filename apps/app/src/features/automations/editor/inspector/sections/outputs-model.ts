@@ -5,7 +5,8 @@ import type {
   PortValue,
   TriggerNode,
 } from '@smarteverything/domain';
-import { JSON_VALUE, outputLabel, typeDisplayName } from '@smarteverything/domain';
+import { JSON_VALUE, outputLabel } from '@smarteverything/domain';
+import { shortTypeName } from '../../../model/graph/scene-pins';
 import { z } from 'zod';
 import type { ProgramIndex } from '@smarteverything/flow/program/lookup';
 import { referencesOf } from '../../../model/canvas/references';
@@ -61,7 +62,7 @@ export function outputRows(
   return kind.outputs.map((decl): OutputRow => ({
     name: decl.name,
     label: outputLabel(decl.name),
-    typeChip: typeDisplayName(decl.type),
+    typeChip: shortTypeName(decl.type),
     optional: decl.optional === true,
     description: decl.description,
     used: usedByCount(index, key, decl.name),

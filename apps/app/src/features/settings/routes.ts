@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../components/app-href';
 import type { RouteDefinition } from '../../app-shell/route-types';
 import { breadcrumbOf, settingsPage } from '../../settings/tree';
 
@@ -24,7 +24,7 @@ function routeOf(id: (typeof PAGES)[number]): RouteDefinition {
   }
   const trail = breadcrumbOf(id);
   const parent = trail.at(-2);
-  const path: Href = `/settings/${id}`;
+  const path: AppHref = `/settings/${id}`;
   return {
     key: `settings/${id}`,
     href: path,

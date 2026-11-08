@@ -1,7 +1,8 @@
 import { randomUUID } from 'expo-crypto';
 import { useRootNavigationState } from 'expo-router';
-import type { NavigationAction, NavigationState, PartialState } from 'expo-router/react-navigation';
+import type { NavigationState, PartialState } from 'expo-router/react-navigation';
 import { z } from 'zod';
+import type { TabNavigationAction } from './tab-router';
 
 type RouterState = NavigationState | PartialState<NavigationState>;
 
@@ -23,12 +24,12 @@ export function remountsOnVisit(tabName: string): boolean {
   return tabName === SETTINGS_ROUTE;
 }
 
-function settingsDestination(action: NavigationAction): boolean {
+function settingsDestination(action: TabNavigationAction): boolean {
   if (action.type !== 'NAVIGATE' && action.type !== 'JUMP_TO') return false;
   return DESTINATION.safeParse(action.payload).data?.name === SETTINGS_ROUTE;
 }
 
-function directDestination(action: NavigationAction): void {
+function directDestination(action: TabNavigationAction): void {
   const payload: unknown = action.payload;
   let params: unknown = nestedParams(payload) ? payload.params : undefined;
   while (nestedParams(params) && typeof params.screen === 'string') {
@@ -39,7 +40,7 @@ function directDestination(action: NavigationAction): void {
 
 export function prepareSettingsVisit<State extends NavigationState>(
   state: State,
-  action: NavigationAction,
+  action: TabNavigationAction,
 ): State {
   const current = state.routes[state.index];
   if (!settingsDestination(action) || current?.name === SETTINGS_ROUTE) return state;
@@ -54,9 +55,27 @@ export function prepareSettingsVisit<State extends NavigationState>(
   };
 }
 
+function withSettingsOrigin<State extends { readonly history?: unknown }>(
+  next: State,
+  sourceKey: string,
+  destinationKey: string,
+): State {
+  const history = HISTORY.safeParse(next.history).data;
+  if (history?.at(-2)?.key === sourceKey && history.at(-1)?.key === destinationKey) {
+    return next;
+  }
+  return {
+    ...next,
+    history: [
+      { type: 'route' as const, key: sourceKey },
+      { type: 'route' as const, key: destinationKey },
+    ],
+  };
+}
+
 export function retainSettingsOrigin<State extends NavigationState>(
   previous: State,
-  action: NavigationAction,
+  action: TabNavigationAction,
   next: State | PartialState<State> | null,
 ): State | PartialState<State> | null {
   const source = previous.routes[previous.index];
@@ -70,13 +89,7 @@ export function retainSettingsOrigin<State extends NavigationState>(
     !settingsDestination(action)
   )
     return next;
-  return {
-    ...next,
-    history: [
-      { type: 'route' as const, key: source.key },
-      { type: 'route' as const, key: destination.key },
-    ],
-  };
+  return withSettingsOrigin(next, source.key, destination.key);
 }
 
 export function hasSettingsOrigin(state: RouterState): boolean {

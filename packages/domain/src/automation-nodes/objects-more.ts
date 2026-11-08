@@ -23,7 +23,11 @@ export const OBJECT_MORE_KINDS: readonly NodeKind[] = [
       'Returns a copy of the record without one field, found by path (dotted names and [0] indexes). A missing path fails with NotFound unless missing paths are ignored.',
     inputs: [
       input('source', RECORD, 'The record to change.'),
-      input('path', TEXT, 'The path of the field to remove.', { static: true, summary: true }),
+      input('path', TEXT, 'The path of the field to remove.', {
+        static: true,
+        summary: true,
+        ui: { optionsFrom: 'record.fields', typedBy: 'source' },
+      }),
       option('ignoreMissing', FLAG, 'Leave the record unchanged when the path does not exist.', {
         default: false,
       }),
@@ -98,7 +102,11 @@ export const OBJECT_MORE_KINDS: readonly NodeKind[] = [
       'Returns a copy of the record with only the listed fields, or without them. Fields that are listed but missing are ignored.',
     inputs: [
       input('source', RECORD, 'The record to cut down.'),
-      input('keys', { t: 'list', of: TEXT }, 'The field names.', { static: true, summary: true }),
+      input('keys', { t: 'list', of: TEXT }, 'The field names.', {
+        static: true,
+        summary: true,
+        ui: { optionsFrom: 'record.fields', typedBy: 'source', multiple: true },
+      }),
       option('mode', choice(PICK_MODES), 'Keep the listed fields or drop them.', {
         default: 'keep',
       }),

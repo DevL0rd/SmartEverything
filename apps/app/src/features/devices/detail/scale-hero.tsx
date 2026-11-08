@@ -159,7 +159,7 @@ export function ScaleHero({ device }: { readonly device: Device }): ReactNode {
       />
       <Card>
         <View className="items-center gap-4 py-2">
-          <DeviceVisual device={device} size="hero" state={stage} />
+          <DeviceVisual device={device} size="hero" state={stage} interactive />
           <WeighInFigure scale={scale} />
           <HeroActions scale={scale} onOpen={setOpen} />
         </View>

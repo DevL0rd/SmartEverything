@@ -1,6 +1,8 @@
+import { env } from 'node:process';
 import { defineConfig } from 'vitest/config';
+import { z } from 'zod';
 
-const include = (process.env['CORE_MUTATION_TESTS'] ?? '').split(',');
+const include = (z.string().optional().parse(env['CORE_MUTATION_TESTS']) ?? '').split(',');
 const hub = include.some((file) => file.startsWith('apps/hub'));
 
 export default defineConfig({

@@ -27,6 +27,7 @@ class HubHtmlViewClient(private val owner: HubHtmlView) : WebViewClient() {
   }
   override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
     if (!owner.allows(url)) { owner.retire(); return }
+    owner.consoleNavigation()
     owner.status(true, null)
   }
   override fun onPageFinished(view: WebView, url: String) {

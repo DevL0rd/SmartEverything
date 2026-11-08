@@ -1,6 +1,12 @@
 import { z } from 'zod';
-import { DSH_ENGINE, DSH_ENGINE_WRITE } from './ai-harness-session';
-import { AI_HARNESS_TARGET } from './ai-harness';
+import { DSH_ENGINE, DSH_ENGINE_FIELDS, DSH_ENGINE_WRITE } from './ai-harness-session';
+import { DSH_SESSION_ID } from './dsh-sessions';
+import {
+  AI_HARNESS_PERMISSION_WRITE,
+  AI_HARNESS_TARGET,
+  AI_HARNESS_TARGET_WRITE,
+  DEFAULT_AI_HARNESS_PERMISSION,
+} from './ai-harness';
 import { CLAUDE_SESSION_ID } from './claude';
 import { CLAUDE_PROVIDER_OPTIONS } from './computer-ai';
 import { CODEX_PROVIDER_OPTIONS } from './codex';
@@ -9,17 +15,13 @@ import { PLUGIN_REQUESTERS } from './plugin-people';
 const ID = z.uuid();
 const MOMENT = z.iso.datetime({ offset: true });
 
-export const ENGINE_KINDS = ['openrouter', 'claude', 'codex', 'dsh'] as const;
+export const ENGINE_KINDS = ['claude', 'codex', 'dsh'] as const;
 
 export type EngineKind = (typeof ENGINE_KINDS)[number];
 
 export const ENGINE_KIND = z.enum(ENGINE_KINDS);
+export const NATIVE_DEFAULT_MODEL = 'default';
 
-const OPENROUTER_ENGINE_FIELDS = {
-  kind: z.literal('openrouter'),
-  model: z.string().trim().min(1).max(200).nullable().default(null),
-  effort: z.string().trim().min(1).max(32).nullable().default(null),
-};
 const CLAUDE_ENGINE_FIELDS = {
   kind: z.literal('claude'),
   device_id: ID,
@@ -36,34 +38,44 @@ const CODEX_ENGINE_FIELDS = {
   settings: CODEX_PROVIDER_OPTIONS.default({}),
 };
 export const ENGINE = z.discriminatedUnion('kind', [
-  z.object(OPENROUTER_ENGINE_FIELDS),
   z.object(CLAUDE_ENGINE_FIELDS),
   z.object(CODEX_ENGINE_FIELDS),
   DSH_ENGINE,
 ]);
 export const ENGINE_WRITE = z.discriminatedUnion('kind', [
-  z.strictObject(OPENROUTER_ENGINE_FIELDS),
   z.strictObject(CLAUDE_ENGINE_FIELDS),
   z.strictObject(CODEX_ENGINE_FIELDS),
   DSH_ENGINE_WRITE,
 ]);
 export type Engine = z.output<typeof ENGINE>;
+export const DSH_ENGINE_REQUEST = z
+  .strictObject({
+    ...DSH_ENGINE_FIELDS,
+    execution_target: AI_HARNESS_TARGET_WRITE.default({ kind: 'server' }),
+    session_id: DSH_SESSION_ID.nullable().default(null),
+    model_route_id: z
+      .uuid()
+      .nullable()
+      .default(null)
+      .describe('The route to run on; left out, the person’s own metered OpenRouter route'),
+    model: DSH_ENGINE_FIELDS.model
+      .nullable()
+      .default(null)
+      .describe('The model to run; left out with no route, the hub’s default model'),
+    permission: AI_HARNESS_PERMISSION_WRITE.default(DEFAULT_AI_HARNESS_PERMISSION),
+  })
+  .refine((engine) => engine.model_route_id === null || engine.model !== null, {
+    path: ['model'],
+    message: 'name the model that runs on the chosen route',
+  });
 export const ENGINE_REQUEST = z.discriminatedUnion('kind', [
-  z
-    .strictObject({ ...OPENROUTER_ENGINE_FIELDS, worker_id: z.string().nullable().optional() })
-    .transform(({ kind, model, effort }): Engine => ({ kind, model, effort })),
   z.strictObject(CLAUDE_ENGINE_FIELDS),
   z.strictObject(CODEX_ENGINE_FIELDS),
-  DSH_ENGINE_WRITE,
+  DSH_ENGINE_REQUEST,
 ]);
+export type EngineRequest = z.output<typeof ENGINE_REQUEST>;
 export const AI_ENGINE_DEFAULT = z.strictObject({ engine: ENGINE.nullable() });
 export const AI_ENGINE_DEFAULT_CHANGE = z.strictObject({ engine: ENGINE_WRITE.nullable() });
-
-export const DEFAULT_ENGINE: Engine = {
-  kind: 'openrouter',
-  model: null,
-  effort: null,
-};
 
 export const AI_CHAT_KINDS = ['chat', 'subagent', 'plugin', 'call'] as const;
 
@@ -83,24 +95,26 @@ export const MESSAGE_SOURCES = [
   'subagent',
   'schedule',
   'chat',
+  'hub',
 ] as const;
 
 export type MessageSource = (typeof MESSAGE_SOURCES)[number];
-
-export const AI_HOPS_MAX = 8;
 
 export const MESSAGE_ORIGIN = z.strictObject({
   source: z.enum(MESSAGE_SOURCES),
   plugin_id: z.string().min(1).max(80).nullable().default(null),
   device_id: ID.nullable().default(null),
   name: z.string().min(1).max(120).nullable().default(null),
-  hops: z.int().min(0).max(AI_HOPS_MAX).optional(),
+  chat_id: ID.optional().describe(
+    'The chat a relayed message came from; name holds that chat’s title',
+  ),
+  hops: z.int().min(0).optional(),
   requester: z.enum(PLUGIN_REQUESTERS).optional(),
 });
 
 export type MessageOrigin = z.output<typeof MESSAGE_ORIGIN>;
 
-export const AI_CHAT_ROW = z.object({
+const CHAT_ROW_FIELDS = z.object({
   id: ID,
   profile_id: ID,
   deletion_state: z.enum(['deleting', 'failed']).nullable().default(null),
@@ -109,13 +123,26 @@ export const AI_CHAT_ROW = z.object({
   title: z.string().min(1).max(AI_CHAT_TITLE_MAX),
   icon: z.string().min(1).max(40).nullable(),
   parent_id: ID.nullable(),
+  helper_name: z
+    .string()
+    .trim()
+    .min(1)
+    .nullable()
+    .default(null)
+    .describe('The helper’s display name, separate from its task title'),
   source_key: z.string().min(1).max(300).nullable(),
   engine: ENGINE,
+  native_admission: z.enum(['standalone', 'retired']).nullable().optional(),
   pending_execution_target: AI_HARNESS_TARGET.nullable()
     .default(null)
     .describe('The machine the chat moves to at the AI’s next tool call; null when no move waits'),
   tools: z.array(z.string().min(1).max(200)).nullable(),
   pinned: z.boolean(),
+  memory: z
+    .boolean()
+    .describe(
+      'Whether this chat recalls and keeps memories; memory works only when this and the person’s memory switch are both on',
+    ),
   archived_at: MOMENT.nullable(),
   cost_micros: z.int().min(0),
   cost_incomplete: z.boolean().optional(),
@@ -144,6 +171,29 @@ export const AI_CHAT_ROW = z.object({
     .describe(
       'Measured input pressure of the latest ordinary model request; retained after compaction until the next measurement; null when unknown',
     ),
+  last_input_tokens: z
+    .int()
+    .min(0)
+    .nullable()
+    .default(null)
+    .describe('Input tokens of the latest model request, cached ones included; null when unknown'),
+  last_cached_tokens: z
+    .int()
+    .min(0)
+    .nullable()
+    .default(null)
+    .describe(
+      'Input tokens of the latest model request that were read from the prompt cache; null when the provider reported none',
+    ),
+  cache_percent: z
+    .int()
+    .min(0)
+    .max(100)
+    .nullable()
+    .default(null)
+    .describe(
+      'Cache hit share across the latest ordinary model requests, so it does not swing on a single turn; null when unknown',
+    ),
   branch_message_id: ID.nullable()
     .default(null)
     .describe('The message of the parent chat this chat was branched from; null when not a branch'),
@@ -152,7 +202,32 @@ export const AI_CHAT_ROW = z.object({
   updated_at: MOMENT,
 });
 
+export const AI_CHAT_ROW = CHAT_ROW_FIELDS.refine(
+  (chat) => chat.helper_name === null || chat.kind === 'subagent',
+  { path: ['helper_name'], message: 'Only helper chats have a helper display name' },
+);
+
 export type AiChatRow = z.infer<typeof AI_CHAT_ROW>;
+
+export const AI_CHAT_LOCAL_METER_SAMPLE = z.strictObject({
+  at: MOMENT,
+  kind: z.enum(['context', 'cache']),
+  percent: z.int().min(0).max(100),
+});
+
+export const AI_CHAT_SUBSCRIPTION_SAMPLE = z.strictObject({
+  at: MOMENT,
+  kind: z.literal('subscription'),
+  percent: z.number().min(0).max(100),
+  resets_at: MOMENT,
+});
+
+export const AI_CHAT_METER_SAMPLE = z.discriminatedUnion('kind', [
+  AI_CHAT_LOCAL_METER_SAMPLE,
+  AI_CHAT_SUBSCRIPTION_SAMPLE,
+]);
+
+export type AiChatMeterSample = z.infer<typeof AI_CHAT_METER_SAMPLE>;
 
 export const WEB_SOURCES_KIND = 'web_sources';
 
@@ -249,6 +324,10 @@ export type ChatStreamPart = z.infer<typeof CHAT_STREAM_PART>;
 
 export const CHAT_RETRYING_REASON = 'retrying';
 
+export const CHAT_WAITING_HELPERS_REASON = 'waiting_helpers';
+
+export const CHAT_WAITING_JOBS_REASON = 'waiting_jobs';
+
 export const CHAT_ACTIVITY_NOTICE = z.strictObject({
   type: z.literal('chat_activity'),
   chatId: ID,
@@ -290,6 +369,9 @@ export const AI_CHAT_CHANGE = z
     title: z.string().trim().min(1).max(AI_CHAT_TITLE_MAX),
     icon: z.string().trim().min(1).max(40).nullable(),
     pinned: z.boolean(),
+    memory: z
+      .boolean()
+      .describe('Turn memory on or off for this chat only; other chats follow the person’s switch'),
     archived: z.boolean(),
     read: z
       .boolean()
@@ -304,7 +386,9 @@ export const AI_CHAT_CHANGE = z
     message: 'name at least one field to change',
   });
 
-export type AiChatChange = z.output<typeof AI_CHAT_CHANGE>;
+export type AiChatChangeRequest = z.output<typeof AI_CHAT_CHANGE>;
+
+export type AiChatChange = Omit<AiChatChangeRequest, 'engine'> & { readonly engine?: Engine };
 
 export const AI_CHAT_BRANCH = z.strictObject({
   messageId: ID.describe(
@@ -335,6 +419,9 @@ export const AI_ASK = z.strictObject({
   text: z.string().trim().min(1).max(AI_ASK_TEXT_MAX),
   wait: z.boolean().default(false),
   timeoutSeconds: z.int().min(5).max(120).default(60),
+  quoteMessageId: ID.optional().describe(
+    'A message in the chat being messaged, from chat_read, to quote as the one this message replies to',
+  ),
 });
 
 export type AiAsk = z.output<typeof AI_ASK>;

@@ -1,82 +1,39 @@
 import { type ReactNode } from 'react';
-import { View, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { z } from 'zod';
-import type { HarnessDiscoveryItem } from '@smarteverything/domain';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { TextEditSheet } from '../../../settings/text-edit-sheet';
 import { SearchField } from '../../../components/search-field';
 import { NavRow } from '../../../components/rows';
-import { VirtualList } from '../../../components/virtual-list';
+import { ListRow } from '../../../components/list-row';
+import { VirtualList, type VirtualSection } from '../../../components/virtual-list';
 import { EmptyState } from '../../../components/empty-state';
-import { Text } from '../../../components/text';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
-import { friendlyError } from '../../../format/errors';
-import { useDebouncedValue } from '../../../design/use-debounced-value';
 import { useExtensions } from './queries';
-import { ExtensionReadStatus, useMemberBanner } from './query-status';
+import { useMemberBanner } from './query-status';
 import { useSkillInspection } from './inspection';
-import { useDiscovery, discoveryItemKey } from './discovery';
+import { discoveryItemKey, type DiscoverySelection } from './discovery';
 import { discoveryHref } from './links';
-import { background } from '@smarteverything/logging';
+import { browseItemKey, browseSections, type BrowseItem } from './browse-items';
+import { catalogueItemHref, catalogueItemIcon } from './catalogue-items';
+import { BrowseFooter, BrowseStatus } from './browse-status';
+import { useBrowse, type BrowseModel } from './use-browse';
+import { offerSourceLabel } from './offer-source';
 
-const SEARCH_DELAY_MS = 250;
-const PARAMS = z.object({
-  search: z.string().max(200).optional(),
-  browsePage: z.coerce.number().int().min(1).max(1000).optional(),
-  source: z.string().optional(),
-});
-type DiscoveryQuery = ReturnType<typeof useDiscovery>;
-function DiscoveryError({
-  discovery,
-  label,
-}: {
-  readonly discovery: DiscoveryQuery;
-  readonly label: string;
-}): ReactNode {
-  const error = discovery.error;
-  if (error === null) return null;
-  const page = discovery.data?.selection.page;
-  return (
-    <Banner
-      tone={page === undefined ? 'critical' : 'warning'}
-      title={
-        page === undefined
-          ? `Couldn’t load ${label}`
-          : `Couldn’t load the requested page · showing page ${String(page)}`
-      }
-      body={friendlyError(error) ?? error.message}
-      action={{
-        label: 'Try again',
-        onPress: () => {
-          background(discovery.refetch(), 'discovery.refetch_failed');
-        },
-      }}
-      wrapBody
-    />
-  );
-}
-function DiscoveryStatus({
-  discovery,
-  kind,
-}: {
-  readonly discovery: DiscoveryQuery;
-  readonly kind: 'skill' | 'extension';
-}): ReactNode {
-  const label = kind === 'skill' ? 'Anthropic skills' : 'Official plugins and community extensions';
-  if (discovery.error !== null) return <DiscoveryError discovery={discovery} label={label} />;
-  return discovery.isFetching && discovery.data !== undefined ? (
-    <ActivityIndicator colorClassName="accent-primary" accessibilityLabel={`Loading ${label}`} />
-  ) : null;
-}
+const OFFER_BADGES = {
+  available: undefined,
+  installed: 'Installed',
+  conflict: 'Name in use',
+} as const;
+
 function ImportRow({
   kind,
   onImport,
 }: {
-  readonly kind: 'skill' | 'extension';
+  readonly kind: DiscoverySelection['kind'];
   readonly onImport: () => void;
 }): ReactNode {
   const owner = useIsOwner();
@@ -86,207 +43,183 @@ function ImportRow({
     <NavRow
       icon="link"
       title="From a skill link"
-      subtitle={live ? 'Add skills from a git link or marketplace' : 'Needs your home hub'}
+      subtitle={live ? 'Browse a git repository or marketplace' : 'Needs your home hub'}
       disabled={!live}
       onPress={onImport}
     />
   );
 }
-function BrowseHeader({
-  kind,
-  query,
-  setQuery,
-  discovery,
-  onImport,
-}: {
-  readonly kind: 'skill' | 'extension';
-  readonly query: string;
-  readonly setQuery: (query: string) => void;
-  readonly discovery: DiscoveryQuery;
-  readonly onImport: () => void;
-}): ReactNode {
-  return (
-    <View className="gap-3 px-gutter pb-3">
-      <SearchField
-        value={query}
-        onChange={setQuery}
-        placeholder={kind === 'skill' ? 'Search skills' : 'Search extensions'}
-        variant="field"
-      />
-      <Text variant="caption" tone="variant">
-        {kind === 'skill' ? 'Anthropic skills' : 'Official plugins and community extensions'}
-      </Text>
-      <ExtensionReadStatus
-        kind={kind}
-        loading={discovery.data === undefined ? discovery.isFetching : false}
-        error={null}
-        retry={() => {
-          background(discovery.refetch(), 'discovery.refetch_failed');
-        }}
-      />
-      <DiscoveryStatus discovery={discovery} kind={kind} />
-      <ImportRow kind={kind} onImport={onImport} />
-    </View>
-  );
-}
-function BrowseRow({
-  item,
-  source,
-}: {
-  readonly item: HarnessDiscoveryItem;
-  readonly source: string | undefined;
-}): ReactNode {
+
+function BrowseRow({ row }: { readonly row: BrowseItem }): ReactNode {
   const client = useQueryClient();
   const router = useRouter();
-  const installed = useExtensions();
-  const present =
-    item.installed_id !== null &&
-    installed.data?.items.some((entry) => entry.id === item.installed_id) === true;
+  if (row.origin === 'local') {
+    const { item } = row;
+    return (
+      <NavRow
+        icon={catalogueItemIcon(item)}
+        title={item.name}
+        subtitle={item.description}
+        caption={item.publisher}
+        value={
+          item.kind === 'bundled_skill' || item.source.kind === 'included'
+            ? 'Included'
+            : 'Installed'
+        }
+        href={catalogueItemHref(item)}
+      />
+    );
+  }
+  const { item: offer, installation } = row;
+  const badge = OFFER_BADGES[installation.status];
+  const source = offerSourceLabel(offer);
   return (
-    <NavRow
-      icon={item.kind === 'skill' ? 'fileText' : 'puzzle'}
-      title={item.name}
-      subtitle={item.description}
-      caption={item.publisher}
-      {...(present ? { value: 'Installed' } : {})}
+    <ListRow
+      icon={offer.kind === 'skill' ? 'fileText' : 'puzzle'}
+      title={offer.name}
+      subtitle={`${offer.publisher} · ${source}`}
+      wrapSubtitle
+      caption={offer.description}
+      label={
+        badge === undefined
+          ? `${offer.name}, ${source}, ${offer.publisher}`
+          : `${offer.name}, ${source}, ${offer.publisher}, ${badge}`
+      }
+      chevron
+      {...(badge === undefined ? {} : { value: badge })}
       onPress={() => {
-        client.setQueryData(discoveryItemKey(item.id, source), item);
-        router.push(discoveryHref(item, source));
+        client.setQueryData(discoveryItemKey(offer.reference), offer);
+        router.push(discoveryHref(offer));
       }}
     />
   );
 }
-function BrowsePagination({
-  discovery,
-  move,
-}: {
-  readonly discovery: DiscoveryQuery;
-  readonly move: (page: number) => void;
-}): ReactNode {
-  const result = discovery.data;
-  if (result === undefined) return null;
-  const disabled = discovery.isFetching || discovery.isPlaceholderData || discovery.error !== null;
-  return (
-    <View className="flex-row items-center justify-center gap-3 px-gutter pt-3">
-      <Button
-        label="Previous"
-        variant="text"
-        disabled={disabled || result.selection.page <= 1}
-        onPress={() => {
-          move(result.selection.page - 1);
-        }}
-      />
-      <Text variant="caption" tone="variant">
-        Page {String(result.selection.page)}
-      </Text>
-      <Button
-        label="Next"
-        variant="text"
-        disabled={disabled || result.catalogue.next_page === null}
-        onPress={() => {
-          if (result.catalogue.next_page !== null) move(result.catalogue.next_page);
-        }}
-      />
-    </View>
-  );
-}
+
 export function BrowseAiExtensionsScreen({
-  kind = 'extension',
+  kind,
 }: {
-  readonly kind?: 'extension' | 'skill';
+  readonly kind: DiscoverySelection['kind'];
 }): ReactNode {
-  const { query, discovery, changeQuery, move } = useBrowse(kind);
+  const banner = useMemberBanner(
+    kind === 'skill'
+      ? 'browse online sources or add skills'
+      : 'browse online sources or add extensions',
+  );
   const inspection = useSkillInspection(kind);
-  const banner = useMemberBanner(kind === 'skill' ? 'add skills' : 'add extensions');
   return (
     <SettingsFrame
       page={kind === 'skill' ? 'assistant/skills/add' : 'assistant/extensions/add'}
       scroll={false}
       {...(banner === undefined ? {} : { banner })}
     >
-      <VirtualList
-        header={
-          <BrowseHeader
-            kind={kind}
-            query={query}
-            setQuery={changeQuery}
-            discovery={discovery}
-            onImport={inspection.open}
-          />
-        }
-        sections={[{ key: 'online', title: '', data: discovery.data?.catalogue.items ?? [] }]}
-        keyOf={(item) => item.id}
-        renderItem={(item) => <BrowseRow item={item} source={discovery.data?.selection.source} />}
-        footer={<BrowsePagination discovery={discovery} move={move} />}
-        empty={
-          <BrowseEmpty
-            kind={kind}
-            discovery={discovery}
-            query={query.trim()}
-            clear={() => {
-              changeQuery('');
-            }}
-          />
-        }
-      />
+      <BrowseList kind={kind} onImport={inspection.open} />
       <TextEditSheet request={inspection.request} onClose={inspection.close} />
     </SettingsFrame>
   );
 }
 
-function BrowseEmpty({
+function useBrowseSections(
+  model: BrowseModel,
+  installed: ReturnType<typeof useExtensions>,
+): readonly VirtualSection<BrowseItem>[] {
+  const owner = useIsOwner();
+  const live = useSyncStatus().status === 'live';
+  const query = model.query.trim();
+  const pages = model.waiting ? [] : (model.discovery.data?.pages ?? []);
+  const includeLocal = query !== '' || !owner || !live || model.discovery.isError;
+  return browseSections({ ...model.selection, query }, installed.data, pages, includeLocal);
+}
+
+function BrowseList({
   kind,
-  discovery,
-  query,
-  clear,
+  onImport,
 }: {
-  readonly kind: 'skill' | 'extension';
-  readonly discovery: DiscoveryQuery;
-  readonly query: string;
-  readonly clear: () => void;
+  readonly kind: DiscoverySelection['kind'];
+  readonly onImport: () => void;
 }): ReactNode {
-  if (discovery.isFetching || discovery.error !== null || discovery.data === undefined) return null;
+  const model = useBrowse(kind);
+  const installed = useExtensions();
+  const sections = useBrowseSections(model, installed);
   const noun = kind === 'skill' ? 'skills' : 'extensions';
-  return query === '' ? (
+  const source = model.selection.source;
+  return (
+    <>
+      <View className="w-full max-w-reading gap-3 px-gutter pb-3">
+        <SearchField
+          value={model.query}
+          onChange={model.changeQuery}
+          placeholder={`Search ${noun}`}
+          variant="field"
+        />
+        {source === undefined ? null : (
+          <Banner
+            tone="info"
+            title="Browsing one source"
+            body={source.url}
+            wrapBody
+            action={{ label: 'All sources', onPress: model.clearSource, variant: 'outlined' }}
+          />
+        )}
+      </View>
+      <VirtualList
+        header={
+          <View className="gap-3 px-gutter pb-3">
+            <BrowseStatus kind={kind} installed={installed} model={model} />
+            <ImportRow kind={kind} onImport={onImport} />
+          </View>
+        }
+        sections={sections}
+        keyOf={browseItemKey}
+        renderItem={(row) => <BrowseRow row={row} />}
+        {...(model.discovery.error === null ? { onEndReached: model.loadMore } : {})}
+        footer={<BrowseFooter model={model} />}
+        empty={<BrowseEmpty noun={noun} installed={installed} model={model} />}
+      />
+    </>
+  );
+}
+
+function useBrowseReady(model: BrowseModel, installed: ReturnType<typeof useExtensions>): boolean {
+  const owner = useIsOwner();
+  const live = useSyncStatus().status === 'live';
+  const online = model.discovery.data?.pages[0];
+  if (model.waiting || model.discovery.isFetching) return false;
+  if (model.selection.source === undefined && (installed.isFetching || installed.error !== null))
+    return false;
+  if (!owner) return true;
+  return live && online?.unavailable_sources.length === 0;
+}
+
+function BrowseEmpty({
+  noun,
+  installed,
+  model,
+}: {
+  readonly noun: string;
+  readonly installed: ReturnType<typeof useExtensions>;
+  readonly model: BrowseModel;
+}): ReactNode {
+  if (!useBrowseReady(model, installed)) return null;
+  return model.query.trim() === '' ? (
     <EmptyState
-      icon={kind === 'skill' ? 'fileText' : 'puzzle'}
-      title={`No ${noun} in the catalogue`}
-      body="The catalogue has nothing to show right now. Check again later."
+      icon={noun === 'skills' ? 'fileText' : 'puzzle'}
+      title={`No ${noun} available`}
+      body="There are no entries in the sources you can browse."
     />
   ) : (
     <EmptyState
       icon="search"
-      title={`No ${noun} match “${query}”`}
+      title={`No ${noun} match “${model.query.trim()}”`}
       body="Search by name, description or publisher."
-      action={<Button label="Clear search" variant="text" onPress={clear} />}
+      action={
+        <Button
+          label="Clear search"
+          variant="text"
+          onPress={() => {
+            model.changeQuery('');
+          }}
+        />
+      }
     />
   );
-}
-function useBrowse(kind: 'skill' | 'extension'): {
-  readonly query: string;
-  readonly discovery: DiscoveryQuery;
-  readonly changeQuery: (value: string) => void;
-  readonly move: (page: number) => void;
-} {
-  const params = PARAMS.parse(useLocalSearchParams());
-  const router = useRouter();
-  const query = params.search ?? '';
-  const settled = useDebouncedValue(query.trim(), SEARCH_DELAY_MS);
-  const selection = {
-    kind,
-    query: settled,
-    page: params.browsePage ?? 1,
-    ...(params.source === undefined ? {} : { source: params.source }),
-  };
-  const discovery = useDiscovery(selection);
-  return {
-    query,
-    discovery,
-    changeQuery: (value): void => {
-      router.setParams({ search: value.slice(0, 200), browsePage: '1' });
-    },
-    move: (page): void => {
-      router.setParams({ browsePage: String(page) });
-    },
-  };
 }

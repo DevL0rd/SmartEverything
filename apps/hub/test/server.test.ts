@@ -1,29 +1,25 @@
 import { readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
 import { API_ENDPOINTS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  DataDirectoryLockedError,
-  LOCK_FILE,
-  OWNER_TOKEN_FILE,
-  startServer,
-  type RunningServer,
-} from '../src/main';
+import { DataDirectoryLockedError, startServer, type RunningServer } from '../src/main';
+import type { HubLayout } from '../src/data-layout';
 import { LogLines } from '../src/service/log-lines';
 import { LAMP, fakeModule, type FakeModule } from './support/fake-provider';
 import { captureLogs, testLogger } from './support/logs';
 import { PUBLIC_URL, tunnel, xiaomiWithCameraLogin } from './support/booted';
+import { testLayout } from './support/test-layout';
 import { call, fakeGo2rtcBinary, openLive, temporaryDirectory } from './support/server';
 
 let directory: { path: string; remove: () => Promise<void> };
 let running: RunningServer | null = null;
 let fake: FakeModule;
+let layout: HubLayout;
 
 async function boot(): Promise<RunningServer> {
   fake = fakeModule();
   let base = '';
   const server = await startServer({
-    dataDirectory: directory.path,
+    layout,
     port: 0,
     host: '127.0.0.1',
     go2rtcBinary: await fakeGo2rtcBinary(directory.path),
@@ -42,6 +38,7 @@ async function boot(): Promise<RunningServer> {
 beforeEach(async () => {
   captureLogs();
   directory = await temporaryDirectory();
+  layout = await testLayout(directory.path);
 });
 
 afterEach(async () => {
@@ -55,8 +52,8 @@ describe('startServer', () => {
     running = await boot();
     const base = running.url;
     const owner = running.ownerToken;
-    expect((await readFile(join(directory.path, OWNER_TOKEN_FILE), 'utf8')).trim()).toBe(owner);
-    expect((await stat(join(directory.path, OWNER_TOKEN_FILE))).mode & 0o777).toBe(0o600);
+    expect((await readFile(layout.system.keys.ownerToken, 'utf8')).trim()).toBe(owner);
+    expect((await stat(layout.system.keys.ownerToken)).mode & 0o777).toBe(0o600);
     expect(await call(base, null, { method: 'GET', path: '/status' })).toMatchObject({
       status: 200,
       body: { service: 'smarteverything', publicUrl: { configured: false, verified: false } },
@@ -219,7 +216,7 @@ describe('startServer', () => {
     });
     await running.stop();
     running = null;
-    await expect(stat(join(directory.path, LOCK_FILE))).rejects.toThrow(/ENOENT/);
+    await expect(stat(layout.lock)).rejects.toThrow(/ENOENT/);
     running = await boot();
     expect(running.ownerToken).toBe(fresh);
   });

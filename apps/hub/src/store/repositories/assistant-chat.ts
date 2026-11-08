@@ -1,9 +1,11 @@
+import { setAttachmentLevels } from './assistant-attachment-levels';
 import { setAttachmentTranscript } from './assistant-attachment-transcripts';
 import { messageWithToolCall } from './assistant-tool-call-lookup';
 import {
-  STORED_MESSAGE,
+  COORDINATOR_MESSAGE_SQL,
+  STORED_REACTED_MESSAGE,
   STORED_MESSAGE_COLUMNS,
-  MESSAGE_COLUMNS,
+  REACTED_MESSAGE_COLUMNS,
 } from './assistant-message-storage';
 export { STORED_MESSAGE, MESSAGE_COLUMNS } from './assistant-message-storage';
 import {
@@ -21,6 +23,8 @@ import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
 import {
+  AttachmentCleanup,
+  attachFiles,
   FILE_COLUMNS,
   STORED_FILE,
   type NewAttachment,
@@ -29,6 +33,10 @@ import {
 
 export type { NewAttachment, StoredAttachment };
 export { summaryOf } from './assistant-files';
+
+function nullableJson(value: unknown): string | null {
+  return value === null ? null : jsonText(value);
+}
 
 const STORED_SETTINGS = storedRow(z.strictObject({ settings: ASSISTANT_SETTINGS }), {
   json: ['settings'],
@@ -49,6 +57,8 @@ export interface MessagePage {
 }
 
 export class AssistantChatRepository {
+  readonly attachmentCleanup = new AttachmentCleanup();
+
   constructor(private readonly context: StoreContext) {}
 
   settings(): AssistantSettings {
@@ -79,8 +89,8 @@ export class AssistantChatRepository {
 
   find(id: string): AssistantMessageRow | undefined {
     return this.context.sql.get(
-      STORED_MESSAGE,
-      `select ${MESSAGE_COLUMNS} from assistant_messages where id = $id`,
+      STORED_REACTED_MESSAGE,
+      `select ${REACTED_MESSAGE_COLUMNS} from assistant_messages where id = $id`,
       { id },
     );
   }
@@ -91,8 +101,8 @@ export class AssistantChatRepository {
 
   messages(page: MessagePage): AssistantMessageRow[] {
     return this.context.sql.all(
-      STORED_MESSAGE,
-      `select ${MESSAGE_COLUMNS} from assistant_messages
+      STORED_REACTED_MESSAGE,
+      `select ${REACTED_MESSAGE_COLUMNS} from assistant_messages
        where chat_id = $chat and ($before is null or created_at < $before)
        order by created_at desc, rowid desc limit $limit`,
       { chat: page.chatId, before: page.before ?? null, limit: page.limit },
@@ -101,9 +111,9 @@ export class AssistantChatRepository {
 
   latestPersonText(chatId: string): AssistantMessageRow | undefined {
     return this.context.sql.get(
-      STORED_MESSAGE,
-      `select ${MESSAGE_COLUMNS} from assistant_messages
-       where chat_id = $chat and role = 'person' and kind = 'text'
+      STORED_REACTED_MESSAGE,
+      `select ${REACTED_MESSAGE_COLUMNS} from assistant_messages
+       where chat_id = $chat and role = 'person' and kind = 'text' and ${COORDINATOR_MESSAGE_SQL}
        order by created_at desc, rowid desc limit 1`,
       { chat: chatId },
     );
@@ -111,9 +121,9 @@ export class AssistantChatRepository {
 
   latestSettledReply(chatId: string): AssistantMessageRow | undefined {
     return this.context.sql.get(
-      STORED_MESSAGE,
-      `select ${MESSAGE_COLUMNS} from assistant_messages
-       where chat_id = $chat and role = 'responder' and kind = 'text' and state in ('answered', 'failed')
+      STORED_REACTED_MESSAGE,
+      `select ${REACTED_MESSAGE_COLUMNS} from assistant_messages
+       where chat_id = $chat and role = 'responder' and kind = 'text' and ${COORDINATOR_MESSAGE_SQL} and state in ('answered', 'failed')
        order by created_at desc, rowid desc limit 1`,
       { chat: chatId },
     );
@@ -121,8 +131,8 @@ export class AssistantChatRepository {
 
   repliesTo(messageId: string): AssistantMessageRow[] {
     return this.context.sql.all(
-      STORED_MESSAGE,
-      `select ${MESSAGE_COLUMNS} from assistant_messages
+      STORED_REACTED_MESSAGE,
+      `select ${REACTED_MESSAGE_COLUMNS} from assistant_messages
        where reply_to = $message and role = 'responder' and kind = 'text'
        order by created_at, rowid`,
       { message: messageId },
@@ -131,8 +141,8 @@ export class AssistantChatRepository {
 
   latestWithEmbed(chatId: string, kind: string): AssistantMessageRow | undefined {
     return this.context.sql.get(
-      STORED_MESSAGE,
-      `select ${MESSAGE_COLUMNS} from assistant_messages
+      STORED_REACTED_MESSAGE,
+      `select ${REACTED_MESSAGE_COLUMNS} from assistant_messages
        where chat_id = $chat
          and exists (select 1 from json_each(embeds) where json_extract(value, '$.kind') = $kind)
        order by created_at desc, rowid desc limit 1`,
@@ -146,8 +156,8 @@ export class AssistantChatRepository {
 
   since(chatId: string, after: string | null): AssistantMessageRow[] {
     return this.context.sql.all(
-      STORED_MESSAGE,
-      `select ${MESSAGE_COLUMNS} from assistant_messages
+      STORED_REACTED_MESSAGE,
+      `select ${REACTED_MESSAGE_COLUMNS} from assistant_messages
        where chat_id = $chat and ($after is null or created_at > $after)
        order by created_at, rowid`,
       { chat: chatId, after },
@@ -178,8 +188,8 @@ export class AssistantChatRepository {
 
   recent(profileId: string, limit: number): AssistantMessageRow[] {
     return this.context.sql.all(
-      STORED_MESSAGE,
-      `select ${MESSAGE_COLUMNS} from assistant_messages where profile_id = $profile
+      STORED_REACTED_MESSAGE,
+      `select ${REACTED_MESSAGE_COLUMNS} from assistant_messages where profile_id = $profile
        order by created_at desc, rowid desc limit $limit`,
       { profile: profileId, limit },
     );
@@ -197,7 +207,7 @@ export class AssistantChatRepository {
         'add the assistant message',
         `insert into assistant_messages (${STORED_MESSAGE_COLUMNS})
          values ($id, $profile, $client, $role, $kind, $author, $text, $attachments, $references, $state,
-                 $reason, $reasonCode, $clientMessage, $steps, $stepStates, $replyTo, $chat, $origin, $embeds, $cost,
+                 $reason, $reasonCode, $clientMessage, $steps, $stepStates, $replyTo, $quote, $chat, $origin, $embeds, $cost,
                  $model, $createdAt, $updatedAt)`,
         {
           id,
@@ -216,8 +226,9 @@ export class AssistantChatRepository {
           steps: jsonText(input.steps),
           stepStates: jsonText(input.step_states),
           replyTo: input.reply_to,
+          quote: nullableJson(input.quote),
           chat: input.chat_id,
-          origin: input.origin === null ? null : jsonText(input.origin),
+          origin: nullableJson(input.origin),
           embeds: jsonText(input.embeds),
           cost: input.cost_micros,
           model: input.model,
@@ -323,13 +334,18 @@ export class AssistantChatRepository {
     });
   }
 
-  addAttachment(input: NewAttachment): StoredAttachment {
+  addAttachment(
+    input: NewAttachment & {
+      readonly transcript?: string | null;
+      readonly levels?: readonly number[] | null;
+    },
+  ): StoredAttachment {
     return this.context.write(() => {
       const { id } = input;
       this.context.sql.run(
         'keep the assistant attachment',
         `insert into assistant_attachments (${FILE_COLUMNS})
-         values ($id, null, $profile, $name, $mime, $bytes, $width, $height, $path, $sha, null, $now)`,
+         values ($id, null, $profile, $name, $mime, $bytes, $width, $height, $path, $sha, $transcript, $levels, $now)`,
         {
           id,
           profile: input.profile_id,
@@ -340,6 +356,9 @@ export class AssistantChatRepository {
           height: input.height,
           path: input.storage_path,
           sha: input.sha256,
+          transcript: input.transcript ?? null,
+          levels:
+            input.levels === undefined || input.levels === null ? null : jsonText(input.levels),
           now: this.context.now(),
         },
       );
@@ -351,15 +370,27 @@ export class AssistantChatRepository {
     setAttachmentTranscript(this.context, this, id, transcript);
   }
 
+  setLevels(id: string, levels: number[]): void {
+    setAttachmentLevels(this.context, this, id, levels);
+  }
+
+  unleveledAudio(): StoredAttachment[] {
+    return this.context.sql.all(
+      STORED_FILE,
+      `select ${FILE_COLUMNS} from assistant_attachments
+       where levels is null and mime like 'audio/%' order by rowid`,
+    );
+  }
+
   attachment(id: string): StoredAttachment {
-    return found(
-      this.context.sql.get(
-        STORED_FILE,
-        `select ${FILE_COLUMNS} from assistant_attachments where id = $id`,
-        { id },
-      ),
-      'assistant attachment',
-      id,
+    return found(this.findAttachment(id), 'assistant attachment', id);
+  }
+
+  findAttachment(id: string): StoredAttachment | undefined {
+    return this.context.sql.get(
+      STORED_FILE,
+      `select ${FILE_COLUMNS} from assistant_attachments where id = $id`,
+      { id },
     );
   }
 
@@ -399,15 +430,7 @@ export class AssistantChatRepository {
   }
 
   attachTo(messageId: string, ids: readonly string[]): void {
-    this.context.write(() => {
-      ids.forEach((id) => {
-        this.context.sql.run(
-          'attach the file to the assistant message',
-          'update assistant_attachments set message_id = $message where id = $id and message_id is null',
-          { message: messageId, id },
-        );
-      });
-    });
+    attachFiles(this.context, this.attachmentCleanup, messageId, ids);
   }
 
   unattachedBefore(moment: string): StoredAttachment[] {

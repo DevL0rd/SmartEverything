@@ -3,7 +3,7 @@ import { HARNESS_PLUGIN_METADATA } from '@smarteverything/domain';
 import type { HarnessPluginMetadata } from '@smarteverything/domain';
 import { deepFreeze } from '@deepseek-ai/dsh-util-values';
 
-export const HARNESS_DSH_VERSION = '0.2.1-alpha.2';
+export const HARNESS_DSH_VERSION = '0.2.1-rc.3';
 export const HARNESS_NATIVE_RUNTIME_REVISION = 'dsh-alpha.2-selected-machine-native-v2';
 
 export function builtinMetadata(identity: {

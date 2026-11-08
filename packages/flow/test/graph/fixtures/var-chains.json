@@ -1,0 +1,67 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "01000000-0000-4000-8000-000000000006",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [
+    { "name": "count", "type": { "t": "number" }, "initial": { "lit": 0 } },
+    { "name": "streak", "type": { "t": "number" }, "initial": { "lit": 0 }, "persist": true }
+  ],
+  "body": {
+    "nodes": [
+      {
+        "id": "01000000-0000-4000-8000-000000000001",
+        "key": "seed",
+        "kind": "var.set",
+        "ports": { "source": { "lit": "run" }, "name": { "lit": "count" }, "to": { "lit": 5 } }
+      },
+      {
+        "id": "01000000-0000-4000-8000-000000000002",
+        "key": "bump",
+        "kind": "var.change",
+        "ports": {
+          "source": { "lit": "run" },
+          "name": { "lit": "count" },
+          "op": { "lit": "add" },
+          "amount": { "lit": 2 }
+        }
+      },
+      {
+        "id": "01000000-0000-4000-8000-000000000003",
+        "key": "keep",
+        "kind": "var.set",
+        "ports": {
+          "source": { "lit": "automation" },
+          "name": { "lit": "streak" },
+          "to": { "wire": { "from": "vars", "port": "count" } }
+        }
+      },
+      {
+        "id": "01000000-0000-4000-8000-000000000004",
+        "key": "grow",
+        "kind": "var.change",
+        "ports": {
+          "source": { "lit": "automation" },
+          "name": { "lit": "streak" },
+          "op": { "lit": "add" },
+          "amount": { "wire": { "from": "trigger", "port": "tick" } }
+        }
+      },
+      {
+        "id": "01000000-0000-4000-8000-000000000005",
+        "key": "done",
+        "kind": "notify.feed",
+        "ports": { "message": { "lit": "chains done" } }
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

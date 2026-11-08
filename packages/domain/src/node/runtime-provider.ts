@@ -3,6 +3,7 @@ import { CODEX_PROVIDER_OPTIONS, CODEX_LIFECYCLE, CODEX_ID, CODEX_USAGE } from '
 import { CODEX_ANSWER, CODEX_PROMPT } from '../codex-prompts';
 import { PROVIDER_EXECUTION_CONTEXT } from '../computer-ai-runtime';
 import { AI_AGENT_RUN } from '../ai-agent-runs';
+import { AI_SUBSCRIPTION_USAGE } from '../ai-subscription-usage';
 import { JSON_VALUE } from '../values';
 import { PROVIDER_TURN, PROVIDER_EVENT, PROVIDER_ANSWER } from './provider-turns';
 import { PROVIDER_CONTROL, PROVIDER_READ_QUERY, PROVIDER_METADATA } from './provider-controls';
@@ -90,7 +91,13 @@ export const CODEX_PROVIDER_EVENT = z.discriminatedUnion('kind', [
   }),
   z.strictObject({ ...BASE, kind: z.literal('prompt'), prompt: CODEX_PROMPT }),
   z.strictObject({ ...BASE, kind: z.literal('prompt_resolved'), prompt_id: CODEX_ID }),
-  z.strictObject({ ...BASE, kind: z.literal('usage'), usage: CODEX_USAGE }),
+  z.strictObject({
+    ...BASE,
+    kind: z.literal('usage'),
+    usage: CODEX_USAGE,
+    context_percent: z.number().min(0).max(100).optional(),
+    subscription_usage: AI_SUBSCRIPTION_USAGE.extend({ runtime: z.literal('codex') }).optional(),
+  }),
   z.strictObject({
     ...BASE,
     kind: z.literal('rate_limit'),

@@ -7,7 +7,14 @@ import { useMeasuredWidth } from '../../components/use-measured-width';
 import { cn } from '../../design/cn';
 import { useSvgId } from '../../features/device-visuals';
 import { zoneState } from './presence-model';
-import { modelFor, sizeOf, type MapModel, type Rect } from './room-geometry';
+import {
+  heroView,
+  modelFor,
+  sizeOf,
+  type MapModel,
+  type PixelBox,
+  type Rect,
+} from './room-geometry';
 import {
   Backdrop,
   MapDefs,
@@ -71,32 +78,27 @@ export interface RoomMapProps {
   readonly height?: number;
 }
 
-interface Box {
-  readonly width: number;
-  readonly height: number;
-}
-
-function boxOf(props: RoomMapProps, measured: number, view: Rect): Box {
+function boxOf(props: RoomMapProps, measured: number, view: Rect): PixelBox {
   const width = props.width ?? measured;
   const { width: metresWide, height: metresHigh } = sizeOf(view);
   const natural = (width * metresHigh) / metresWide;
   return { width, height: props.height ?? Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, natural)) };
 }
 
-function usePaint(model: MapModel, box: Box, mini: boolean): Paint {
-  const { width, height } = sizeOf(model.frame.view);
+function usePaint(view: Rect, box: PixelBox, hero: boolean): Paint {
+  const { width, height } = sizeOf(view);
   return {
     u: 1 / Math.min(box.width / width, box.height / height),
     c: useMapColours(),
     hatch: useSvgId('blind'),
     clip: useSvgId('room'),
-    hero: !mini && box.width >= HERO_WIDTH,
+    hero,
   };
 }
 
 type CanvasProps = RoomMapProps & {
   readonly model: MapModel;
-  readonly box: Box;
+  readonly box: PixelBox;
   readonly colours: ReadonlyMap<string, string>;
 };
 
@@ -164,8 +166,9 @@ function Annotations({
 
 function MapCanvas(props: CanvasProps): ReactNode {
   const { sensor, mini = false, live = false, model, box } = props;
-  const paint = usePaint(model, box, mini);
-  const { view } = model.frame;
+  const hero = !mini && box.width >= HERO_WIDTH;
+  const view = hero ? heroView(model.frame.view, model.frame.room, box) : model.frame.view;
+  const paint = usePaint(view, box, hero);
   const { width, height } = sizeOf(view);
   const tracks = live && sensor.connection.state === 'online' ? sensor.tracks : [];
   return (
@@ -173,8 +176,7 @@ function MapCanvas(props: CanvasProps): ReactNode {
       width={box.width}
       height={box.height}
       viewBox={`${String(view.left)} ${String(view.top)} ${String(width)} ${String(height)}`}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
     >
       <MapDefs model={model} paint={paint} />
       <Backdrop model={model} paint={paint} />

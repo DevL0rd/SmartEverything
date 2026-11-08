@@ -103,6 +103,15 @@ describe('the calls a computer harness makes to the hub over its socket', () => 
     );
   });
 
+  it('refuses a call made after the harness stopped so shutdown never waits for a link', async () => {
+    const { calls, socket } = linked();
+    calls.close();
+    await expect(calls.call(STAT)).rejects.toSatisfy(
+      (cause: unknown) => cause instanceof ApiError && cause.code === 'conflict',
+    );
+    expect(socket.sent).toHaveLength(0);
+  });
+
   it('holds a call made while reconnecting and sends it on the next socket', async () => {
     const calls = new HarnessCalls();
     const pending = calls.call(STAT);

@@ -58,7 +58,7 @@ async function call<R extends z.ZodType>(
   if (route === undefined) throw new Error('The endpoint is not bound.');
   const result = await route.run(
     caller,
-    { params: {}, query: {}, body: undefined, remote: 'test', ...raw },
+    { params: {}, query: {}, body: undefined, remote: 'test', headers: {}, ...raw },
     testLogger(),
   );
   return shape.response.parse(result);

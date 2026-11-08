@@ -13,7 +13,7 @@ const MANIFEST = z.looseObject({
   description: z.string().optional(),
   license: z.string().optional(),
 });
-const FRONTMATTER_KEYS = ['name', 'description', 'model', 'argument-hint', 'license'] as const;
+const FRONTMATTER_KEYS = ['name', 'description', 'argument-hint', 'license'] as const;
 const log = new Logger('hub.plugins');
 const YAML_MAPPING = z.record(z.string(), z.unknown());
 
@@ -26,13 +26,6 @@ export interface ClaudeCommandFile {
   readonly body: string;
   readonly path: string;
 }
-export interface ClaudeAgentFile {
-  readonly name: string;
-  readonly description?: string;
-  readonly model?: string;
-  readonly body: string;
-  readonly path: string;
-}
 export interface LoadedPlugin {
   readonly root: string;
   readonly metadata: {
@@ -42,7 +35,6 @@ export interface LoadedPlugin {
   };
   readonly components: {
     readonly commands: readonly ClaudeCommandFile[];
-    readonly agents: readonly ClaudeAgentFile[];
     readonly hooksFile?: string;
     readonly mcpServers: Readonly<Record<string, McpServerEntry>>;
   };
@@ -62,9 +54,8 @@ export async function loadPlugin(root: string): Promise<LoadedPlugin> {
   );
   const hooksFile = join(resolved, 'hooks', 'hooks.json');
   const mcpFile = join(resolved, '.mcp.json');
-  const [commands, agents, hooks, mcp] = await Promise.all([
+  const [commands, hooks, mcp] = await Promise.all([
     markdownFiles(join(resolved, 'commands')),
-    markdownFiles(join(resolved, 'agents')),
     readOptional(hooksFile),
     readOptional(mcpFile),
   ]);
@@ -77,7 +68,6 @@ export async function loadPlugin(root: string): Promise<LoadedPlugin> {
     },
     components: {
       commands: usableFiles(manifest.name, commands, commandFile),
-      agents: usableFiles(manifest.name, agents, agentFile),
       ...(hooks === undefined ? {} : { hooksFile }),
       mcpServers: mcp === undefined ? {} : usableMcpServers(manifest.name, mcp, mcpFile),
     },
@@ -177,20 +167,6 @@ function commandFile(source: MarkdownSource): ClaudeCommandFile {
       ? {}
       : { argumentHint: frontmatter['argument-hint'] }),
     body: trimmed,
-    path: source.path,
-  };
-}
-
-function agentFile(source: MarkdownSource): ClaudeAgentFile {
-  const { frontmatter, body } = parseMarkdownFile(source.text);
-  const name = validName(frontmatter.name ?? basename(source.path, '.md'), source.path);
-  const description = presentText(frontmatter.description);
-  const model = presentText(frontmatter.model);
-  return {
-    name,
-    ...(description === undefined ? {} : { description }),
-    ...(model === undefined ? {} : { model }),
-    body: nonEmptyBody(body, source.path),
     path: source.path,
   };
 }

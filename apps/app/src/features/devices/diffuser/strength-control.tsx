@@ -16,7 +16,7 @@ import { ControlBlock } from '../controls/control-block';
 import { useDeviceModel } from '../model/device-model';
 import { useStrengthWriter } from './strength-writer';
 import type { DiffuserRead } from './diffuser-read';
-import { useDiffuserRead, useDiffuserReadOf } from './use-diffuser';
+import { useDiffuserRead } from './use-diffuser';
 
 const OPTIONS: readonly { readonly value: DiffuserStrength; readonly label: string }[] = [
   ...DIFFUSER_STRENGTH_IDS,
@@ -111,9 +111,14 @@ function StrengthMenu({
   );
 }
 
-export function StrengthMenuButton({ device }: { readonly device: Device }): ReactNode {
+export function StrengthMenuButton({
+  device,
+  read,
+}: {
+  readonly device: Device;
+  readonly read: DiffuserRead;
+}): ReactNode {
   const model = useDeviceModel(device);
-  const read = useDiffuserReadOf(device, model);
   const interval = withRole(model.presentation, 'spray_interval');
   const duration = withRole(model.presentation, 'spray_duration');
   if (interval === undefined || duration === undefined) {

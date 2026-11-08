@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Slider, Stage, Text } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
-function Demo() {
+function Demo(): ReactElement {
   const [v, setV] = useState(65);
   const [t, setT] = useState(21);
   return (
@@ -15,7 +15,7 @@ function Demo() {
         step={1}
         onChange={setV}
         onCommit={setV}
-        formatValue={(x) => `${x}%`}
+        formatValue={(x) => `${String(x)}%`}
       />
       <Slider
         label="Target temperature"
@@ -44,22 +44,22 @@ function Demo() {
         step={1}
         disabled
         onCommit={() => undefined}
-        formatValue={(x) => `${x}%`}
+        formatValue={(x) => `${String(x)}%`}
       />
     </Col>
   );
 }
-export const Horizontal = () => (
+export const Horizontal = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     <Demo />
   </Stage>
 );
-export const Vertical = () => (
+export const Vertical = (): ReactElement => (
   <Stage theme="dark" width={200}>
     <div style={{ height: 220, display: 'flex' }}>
       <Slider
@@ -70,7 +70,7 @@ export const Vertical = () => (
         max={100}
         step={10}
         onCommit={() => undefined}
-        formatValue={(x) => `${x}%`}
+        formatValue={(x) => `${String(x)}%`}
       />
     </div>
     <Text variant="caption" tone="variant">

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { ProviderLinkRow } from '@smarteverything/domain';
-import { isAccount, linkSummary, problemTitle } from './problems';
+import { ACCOUNT_BADGE, isAccount, linkSummary, problemTitle } from './problems';
+
+describe('account picker status', () => {
+  it('shows Connected only once sign-in has succeeded', () => {
+    expect(ACCOUNT_BADGE.linked).toEqual({ label: 'Connected', tone: 'positive' });
+    expect(ACCOUNT_BADGE.linking).toEqual({ label: 'Sign-in in progress', tone: 'primary' });
+    expect(ACCOUNT_BADGE.needs_attention).toEqual({ label: 'Needs attention', tone: 'warning' });
+    expect(ACCOUNT_BADGE.unlinked).toBeNull();
+  });
+});
 
 function row(change: Partial<ProviderLinkRow> = {}): ProviderLinkRow {
   return {

@@ -30,6 +30,7 @@ import {
   agentFile,
   agentName,
   hashManifests,
+  isAgentSession,
   readManifests,
   readSnapshot,
   removeSession,
@@ -69,8 +70,15 @@ export async function onEdit(raw: unknown): Promise<number> {
   const input = parseInput('edit', editInput, raw);
   const rel = await repoPath(input.tool_input.file_path, false);
   if (rel === null) return 0;
-  await addLines(agentFile(input.session_id, agentName(input), 'edited'), [rel]);
   const present = existsSync(join(ROOT, rel));
+  if (isAgentSession(input)) {
+    const [formatted, spelled] = await Promise.all([
+      present ? format(rel) : null,
+      present ? spell(rel) : null,
+    ]);
+    return report(`Checks failed for ${rel}:`, [formatted, spelled]);
+  }
+  await addLines(agentFile(input.session_id, agentName(input), 'edited'), [rel]);
   const [linted, formatted, spelled, typed] = await Promise.all([
     present ? lint(rel) : null,
     present ? format(rel) : null,
@@ -91,13 +99,15 @@ function lockedCommand(toolInput: Record<string, unknown>, command: string): num
 
 export async function onSnapshot(raw: unknown): Promise<number> {
   const input = parseInput('snapshot', snapshotInput, raw);
+  const agent = isAgentSession(input);
   if (input.tool_name !== 'Bash') {
     const rel = await repoPath(input.tool_input.file_path, false);
-    if (rel !== null && affectsTypes(rel)) await ensureSnapshot(input, scopeOf([rel]));
+    if (!agent && rel !== null && affectsTypes(rel)) await ensureSnapshot(input, scopeOf([rel]));
     return 0;
   }
   const { command, run_in_background: background } = input.tool_input;
   if (!changesDependencies(command)) return 0;
+  if (agent) return lockedCommand(input.tool_input, command);
   if (background === true) {
     process.stderr.write(
       'claude-hook: run pnpm dependency changes in the foreground so they can be checked\n',

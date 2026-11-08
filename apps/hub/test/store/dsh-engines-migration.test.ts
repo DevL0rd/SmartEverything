@@ -84,6 +84,11 @@ function seedBefore(): void {
   chat(PLAIN_MODEL, JSON.stringify({ kind: 'openrouter', model: 'plain/model', effort: 'high' }));
   chat(UNOFFERED, dshEngine({ sandbox: 'danger-full-access', approval: 'on-request' }));
   chat(OFFERED, dshEngine({ sandbox: 'read-only', approval: 'on-request' }));
+  run(
+    'insert into ai_engine_defaults (singleton, engine, updated_at) values (1, ?, ?)',
+    JSON.stringify({ kind: 'openrouter', model: 'openai/gpt-5', effort: 'high' }),
+    NOW,
+  );
   database.close();
 }
 
@@ -143,6 +148,30 @@ describe('migrating a database that still has chats on the retired hub engine', 
     });
     expect(stored[OFFERED]).toMatchObject({
       permission: { sandbox: 'read-only', approval: 'on-request' },
+    });
+  });
+
+  it('leaves every stored engine, chats and the default, readable by the current schema with no openrouter kind', () => {
+    seedBefore();
+
+    openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+
+    const database = new DatabaseSync(path);
+    const columns = z
+      .array(ENGINE_ROW)
+      .parse([
+        ...database.prepare('select engine from ai_chats').all(),
+        ...database.prepare('select engine from ai_engine_defaults').all(),
+      ]);
+    database.close();
+    expect(columns).toHaveLength(6);
+    for (const column of columns)
+      expect(ENGINE.parse(JSON.parse(column.engine)).kind).not.toBe('openrouter');
+    expect(JSON.parse(columns[5]?.engine ?? 'null')).toMatchObject({
+      kind: 'dsh',
+      model: 'openai/gpt-5',
+      effort: 'high',
+      model_route_id: meteredRouteId(PROFILE),
     });
   });
 });

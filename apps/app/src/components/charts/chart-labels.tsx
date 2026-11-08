@@ -5,7 +5,8 @@ import { useColour } from '../../design/colour';
 import { withUnit } from '../../format/number';
 import { Text } from '../text';
 import { LABEL_W, X_AXIS_H, type Model } from './chart-model';
-import { clamp, extremaOf } from './scale';
+import { extremeLabelsOf } from './chart-extreme-labels';
+import { clamp } from './scale';
 
 const Y_LABEL_GAP = 6;
 
@@ -63,27 +64,15 @@ export function Axes({ model }: { readonly model: Model }): ReactNode {
 }
 
 export function Extremes({ model }: { readonly model: Model }): ReactNode {
-  const extrema = extremaOf(model.drawn[0]?.points ?? []);
-  if (extrema === null || extrema.peak.v === extrema.low.v) {
-    return null;
-  }
-  const { peak, low } = extrema;
-  return (
-    <>
-      <AxisLabel
-        left={centred(model, model.x(peak.t))}
-        top={model.y(peak.v) - 18}
-        align="center"
-        text={withUnit(model.format(peak.v), model.unit)}
-      />
-      <AxisLabel
-        left={centred(model, model.x(low.t))}
-        top={model.y(low.v) + 4}
-        align="center"
-        text={withUnit(model.format(low.v), model.unit)}
-      />
-    </>
-  );
+  return extremeLabelsOf(model).map(({ left, top, value }) => (
+    <AxisLabel
+      key={value}
+      left={left}
+      top={top}
+      align="center"
+      text={withUnit(model.format(value), model.unit)}
+    />
+  ));
 }
 
 function markerX(model: Model): number | null {

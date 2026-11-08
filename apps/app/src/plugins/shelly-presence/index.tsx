@@ -3,11 +3,11 @@ import { SHELLY_PAGES, SHELLY_PLUGIN_ID } from '@smarteverything/shelly';
 import type { AppPlugin } from '../contract';
 import { isPresence, isPhysicalPresence } from './presence-data';
 import { PresenceCard } from './presence-card';
-import { PresenceHero, PresenceOverview } from './presence-overview';
+import { PresenceOverview } from './presence-overview';
 import { ZoneOverview } from './zone-overview';
 import { PresenceSettings } from './presence-settings';
 import { presenceSearch } from './presence-search';
-import { PresencePage } from './presence-page';
+import { PresencePage, PresencePageHero } from './presence-page';
 import { PRESENCE_PAGE_ICONS } from './presence-pages';
 
 const ENROLLMENT_SEARCH = [
@@ -29,7 +29,7 @@ export const shellyPresenceAppPlugin: AppPlugin = {
       applies: isPresence,
       render: (device, _size, showRoom) => <PresenceCard device={device} showRoom={showRoom} />,
       cell: (device, frame) => <PresenceCard device={device} frame={frame} />,
-      hero: (device) => <PresenceHero device={device} />,
+      hero: (device) => <PresencePageHero device={device} />,
     },
   ],
   deviceOverviews: [

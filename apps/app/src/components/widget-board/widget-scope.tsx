@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { createContext, useContext } from 'react';
+import type { View } from 'react-native';
+import type { AnimatedRef, DerivedValue } from 'react-native-reanimated';
 import type { WidgetFrameBox } from './frame-class';
 import type { WidgetDefinition, WidgetRenderProps } from './types';
 
@@ -13,6 +15,13 @@ const FrameContext = createContext<WidgetFrameBox | null>(null);
 const ActionsContext = createContext<WidgetActions | null>(null);
 
 const MemberContext = createContext<string | null>(null);
+
+export interface WidgetMotionFrame {
+  readonly ref: AnimatedRef<View>;
+  readonly top: DerivedValue<number>;
+}
+
+export const WidgetMotionFrameContext = createContext<WidgetMotionFrame | null>(null);
 
 export function RevealedMember({
   member,

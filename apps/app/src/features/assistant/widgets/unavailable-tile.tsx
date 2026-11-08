@@ -2,10 +2,8 @@ import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { View } from 'react-native';
 import { Logger } from '@smarteverything/logging';
-import { IconWell } from '../../../components/icon-well';
+import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { WIDGET_SURFACE } from '../../../components/widget-board';
-import { cn } from '../../../design/cn';
 import type { UnavailableEntry } from './lane-entries';
 
 const log = new Logger('app.chat-widgets');
@@ -20,16 +18,12 @@ export function UnavailableTile({ entry }: { readonly entry: UnavailableEntry })
     log.error('chat_widgets.resolve_failed', cause, { subject });
   }, [subject, reason, cause]);
   return (
-    <View className={cn('w-full flex-row items-center gap-3 p-3', WIDGET_SURFACE)}>
-      <IconWell icon="alert" colour="warning" />
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant="body-strong" numberOfLines={2}>
-          {`Can’t show ${subject}`}
-        </Text>
-        <Text variant="footnote" tone="variant">
-          {reason}
-        </Text>
-      </View>
+    <View className="min-h-5 w-full flex-row items-center gap-1.5">
+      <Icon name="alert" size={16} tone="warning" />
+      <Text variant="footnote" tone="variant" className="min-w-0 flex-1">
+        {`Can’t show ${subject}`}
+        <Text variant="footnote" tone="faint">{` · ${reason}`}</Text>
+      </Text>
     </View>
   );
 }

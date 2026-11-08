@@ -1,8 +1,8 @@
-import { API_ENDPOINTS, ApiError } from '@smarteverything/domain';
+import { API_ENDPOINTS, ApiError, type ClientRow } from '@smarteverything/domain';
 import { listHarnessCommands, executeHarnessCommand } from '../../harness/commands';
 import type { HarnessService } from '../../harness/service';
 import { bound } from '../router';
-import { chatOwnerOf, clientOf } from '../auth';
+import { chatOwnerOf, directClient } from '../auth';
 import type { ChatOwner } from '../../assistant/chat-directory';
 import type { Caller } from '../auth';
 
@@ -32,18 +32,14 @@ export const harnessCommandRoutes = (service: HarnessService) =>
     ),
   }) as const;
 
-function humanClient(caller: Caller): ReturnType<typeof clientOf> {
-  if (
-    caller.kind !== 'client' ||
-    caller.via !== undefined ||
-    caller.pluginId !== undefined ||
-    caller.pluginRequester !== undefined
-  )
+function humanClient(caller: Caller): ClientRow {
+  const client = directClient(caller);
+  if (client === undefined)
     throw new ApiError(
       'forbidden',
       'Slash commands require the person’s direct authenticated app request.',
     );
-  return clientOf(caller);
+  return client;
 }
 
 function ownerOf(service: HarnessService, caller: Caller): ChatOwner {

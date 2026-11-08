@@ -18,6 +18,7 @@ import {
 import { CallMoments, type CallMomentListener } from './call-moments';
 import { CallLive, type Call, type CallDeskOptions, type SightBudget } from './call-parts';
 import { CallRecord } from './call-record';
+import { logCallEnd } from './call-end';
 import { adoptEndpoint, holdCall } from './call-resume';
 import { routeSight, SightCalls, type SightMessage } from './call-sight-desk';
 import { callSightOf } from './call-sight-ports';
@@ -36,6 +37,7 @@ import type {
   OutreachDesk,
 } from './outreach';
 import { callerOf, hostedCallerOf, type Caller } from './persona';
+import { callPrincipal } from './voice-memory';
 import { answeredCaller } from './plugin-caller';
 import type { SpeechSource } from './speech-input';
 import { NoSuchCallError, type VideoSource } from './video';
@@ -91,8 +93,8 @@ export class CallDesk {
     this.deps = {
       options,
       outbox: this.outbox,
-      ended: (call, reason, detail): void => {
-        this.ended(call, reason, detail);
+      ended: (call, reason, detail, cause): void => {
+        this.ended(call, reason, detail, cause);
       },
     };
   }
@@ -110,7 +112,7 @@ export class CallDesk {
   }
 
   async start(endpoint: VoiceEndpoint, client: ClientRow, message: CallStart): Promise<void> {
-    await this.calls.get(endpoint.id)?.conversation.end('replaced');
+    await this.calls.get(endpoint.id)?.conversation.end('replaced', null, 'replaced_by_new_call');
     const caller = callerOf(this.options.store, client, message.device);
     const chatId = this.options.responder.chatForCall({
       profileId: caller.profileId,
@@ -243,7 +245,11 @@ export class CallDesk {
   async hangUp(endpointId: string, callId: string | null, reason: CallEnding): Promise<void> {
     const call = this.calls.get(endpointId);
     if (call !== undefined && (callId === null || call.id === callId)) {
-      await call.conversation.end(reason);
+      await call.conversation.end(
+        reason,
+        null,
+        reason === 'hung_up' ? 'client_hang_up' : undefined,
+      );
     }
   }
 
@@ -296,7 +302,9 @@ export class CallDesk {
 
   async stop(): Promise<void> {
     await Promise.all(
-      [...this.calls.values()].map((call) => call.conversation.end('disconnected')),
+      [...this.calls.values()].map((call) =>
+        call.conversation.end('disconnected', null, 'hub_stopping'),
+      ),
     );
     this.warm.stop();
   }
@@ -322,6 +330,7 @@ export class CallDesk {
 
   private async open(spec: CallSpec): Promise<Call> {
     const { store } = this.options;
+    await this.options.memory.prepare(callPrincipal({ ...spec.caller, chatId: spec.chatId }));
     const record = new CallRecord(store, {
       chatId: spec.chatId,
       profileId: spec.caller.profileId,
@@ -363,7 +372,7 @@ export class CallDesk {
     await call.conversation
       .start(notes.length > 0 ? combined(notes) : null, spec.heard)
       .catch(async (cause: unknown) => {
-        await call.conversation.end('failed', messageOf(cause));
+        await call.conversation.end('failed', messageOf(cause), 'start_failed');
       });
     return call;
   }
@@ -373,14 +382,19 @@ export class CallDesk {
     return this.warm.line(warmKeyOf(spec), spec.id, base, hooks.settings().live_warm_enabled);
   }
 
-  private ended(call: Call, reason: CallEnding, detail: string | null): void {
+  private ended(
+    call: Call,
+    reason: CallEnding,
+    detail: string | null,
+    cause: string | undefined,
+  ): void {
     if (this.calls.get(call.endpoint.id) === call) {
       this.calls.delete(call.endpoint.id);
     }
     this.teardown(call);
     this.moments.ended(call, reason, this.options.now());
     call.record.close();
-    this.options.responder.callEnded(call.chatId, call.record.transcript());
+    this.options.responder.callEnded(call.chatId, call.record.transcript(), call.record.messageId);
     if (call.outreachId !== null) {
       const summary = call.record.transcript();
       this.outreach?.ended(call.outreachId, reason, summary === '' ? null : summary);
@@ -391,7 +405,7 @@ export class CallDesk {
       reason,
       detail: detail?.slice(0, 200) ?? null,
     });
-    this.logEnd(call, reason, detail);
+    logCallEnd(this.options.log, call, { reason, detail, cause }, this.options.now());
   }
 
   private teardown(call: Call): void {
@@ -401,13 +415,5 @@ export class CallDesk {
     call.detachers.splice(0).forEach((stop) => {
       stop();
     });
-  }
-
-  private logEnd(call: Call, reason: CallEnding, detail: string | null): void {
-    if (reason === 'failed') {
-      this.options.log.warn('voice.call_failed', { callId: call.id, reason: detail });
-    } else {
-      this.options.log.info('voice.call_ended', { callId: call.id, ending: reason });
-    }
   }
 }

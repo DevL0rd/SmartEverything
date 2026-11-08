@@ -20,7 +20,6 @@ function summary(
     description: null,
     category: null,
     icon: null,
-    builtin: false,
     editable: true,
     revision: 3,
     interface: {
@@ -45,18 +44,19 @@ describe('library model', () => {
     expect(interfaceLine({ inputs: [], outputs: [] })).toBe('in: nothing · out: nothing');
   });
 
-  it('splits rows into my, built in and shared sections in order', () => {
+  it('splits rows into my and shared sections in order', () => {
     const rows = libraryRows(
       [
         summary('theirs', { createdBy: 'other' }),
         summary('Zed'),
         summary('Abc'),
-        summary('sys', { builtin: true, editable: false, createdBy: null }),
+        summary('sys', { editable: false, createdBy: null }),
       ],
       CONTEXT,
     );
     const sections = librarySections(rows, EMPTY_FILTER);
-    expect(sections.map((section) => section.id)).toEqual(['mine', 'builtin', 'shared']);
+    expect(sections.map((section) => section.id)).toEqual(['mine', 'shared']);
+    expect(sections[1]?.rows.map((row) => row.name)).toEqual(['sys', 'theirs']);
     expect(sections[0]?.rows.map((row) => row.name)).toEqual(['Abc', 'Zed']);
     expect(rows.find((row) => row.id === 'theirs')?.needsMapping).toBe(true);
     expect(rows.find((row) => row.id === 'Abc')?.versionLabel).toBe('Version 3');
@@ -90,11 +90,11 @@ describe('library model', () => {
   it('tells empty states apart', () => {
     const none = libraryRows([], CONTEXT);
     expect(libraryEmpty(none, librarySections(none, EMPTY_FILTER), EMPTY_FILTER)).toBe('none-yet');
-    const builtins = libraryRows([summary('sys', { builtin: true })], CONTEXT);
-    expect(libraryEmpty(builtins, librarySections(builtins, EMPTY_FILTER), EMPTY_FILTER)).toBe(
+    const shared = libraryRows([summary('sys', { createdBy: null })], CONTEXT);
+    expect(libraryEmpty(shared, librarySections(shared, EMPTY_FILTER), EMPTY_FILTER)).toBe(
       'no-own',
     );
     const filter = { query: 'zzz', category: null };
-    expect(libraryEmpty(builtins, librarySections(builtins, filter), filter)).toBe('no-match');
+    expect(libraryEmpty(shared, librarySections(shared, filter), filter)).toBe('no-match');
   });
 });

@@ -1,10 +1,9 @@
-import type { Layout } from '@smarteverything/domain';
+import { randomUUID } from 'expo-crypto';
+import type { Layout, NodeKindLookup, ProgramV4 } from '@smarteverything/domain';
 import { EMPTY_LAYOUT } from '@smarteverything/domain';
-import { indexProgram } from '@smarteverything/flow/program/lookup';
-import type { Program } from '@smarteverything/flow/program/walk';
-import type { PatchOptions, PatchResult } from '@smarteverything/flow/ops/reducer';
-import { applyPatch } from '@smarteverything/flow/ops/reducer';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
+import type { PatchOptions, PatchResult } from '@smarteverything/flow/graph/ops/reducer';
+import { applyPatch } from '@smarteverything/flow/graph/ops/reducer';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
 import { ValueStore } from '../../../../design/external-store';
 import type { Selection } from './selection';
 import {
@@ -27,13 +26,13 @@ export interface Refusal {
 }
 
 export interface Snapshot {
-  readonly program: Program;
+  readonly program: ProgramV4;
   readonly layout: Layout;
   readonly version: number;
 }
 
 export interface DocumentState {
-  readonly program: Program;
+  readonly program: ProgramV4;
   readonly layout: Layout;
   readonly selection: Selection;
   readonly canUndo: boolean;
@@ -49,8 +48,8 @@ interface HistoryEntry {
   readonly layout: Layout;
 }
 
-export function pruneLayout(layout: Layout, program: Program): Layout {
-  const present = new Set(indexProgram(program).byId.keys());
+export function pruneLayout(layout: Layout, program: ProgramV4): Layout {
+  const present = new Set(programOrder(program));
   const nodes = Object.entries(layout.nodes).filter(([id]) => present.has(id));
   const framed = layout.frames.some((frame) => frame.nodeIds.some((id) => !present.has(id)));
   if (nodes.length === Object.keys(layout.nodes).length && !framed) return layout;
@@ -67,7 +66,7 @@ export function pruneLayout(layout: Layout, program: Program): Layout {
 export class DocumentStore {
   readonly state: ValueStore<DocumentState>;
 
-  private program: Program;
+  private program: ProgramV4;
   private layout: Layout;
   private selection: Selection = EMPTY_SELECTION;
   private undoStack: HistoryEntry[] = [];
@@ -79,15 +78,27 @@ export class DocumentStore {
   private saving = false;
   private refusal: Refusal | null = null;
 
+  private options: PatchOptions;
+
   constructor(
-    program: Program,
+    program: ProgramV4,
+    kinds: NodeKindLookup,
     layout: Layout = EMPTY_LAYOUT,
-    private readonly options: PatchOptions = {},
+    options: Partial<Omit<PatchOptions, 'kinds'>> = {},
   ) {
+    this.options = { allowProblems: true, ...options, newId: options.newId ?? randomUUID, kinds };
     this.program = program;
     this.layout = layout;
     this.state = new ValueStore<DocumentState>(this.build());
   }
+
+  get patchOptions(): PatchOptions {
+    return this.options;
+  }
+
+  readonly setKinds = (kinds: NodeKindLookup): void => {
+    this.options = { ...this.options, kinds };
+  };
 
   readonly apply = (ops: readonly PatchOp[]): PatchResult => {
     const result = applyPatch(this.program, ops, this.options);
@@ -131,7 +142,7 @@ export class DocumentStore {
     this.step(this.redoStack, this.undoStack);
   };
 
-  readonly replace = (program: Program, layout: Layout): void => {
+  readonly replace = (program: ProgramV4, layout: Layout): void => {
     this.program = program;
     this.layout = layout;
     this.undoStack = [];

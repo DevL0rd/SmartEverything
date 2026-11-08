@@ -24,7 +24,7 @@ function canonical(value: JsonValue): JsonValue {
   );
 }
 
-function canonicalPlanText(plan: JsonValue): string {
+export function canonicalPlanText(plan: JsonValue): string {
   return JSON.stringify(canonical(plan));
 }
 

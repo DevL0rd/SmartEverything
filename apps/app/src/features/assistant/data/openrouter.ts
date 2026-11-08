@@ -3,8 +3,6 @@ import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   AI_MODEL_ENDPOINTS as M,
   type AiCatalogueSync,
-  type AiEffort,
-  type AiModelChoice,
   type OpenRouterAccount,
   type OpenRouterStatus,
 } from '@smarteverything/domain';
@@ -47,7 +45,6 @@ function keyChanged(client: QueryClient, status: OpenRouterStatus): OpenRouterSt
 export interface OpenRouterActions {
   readonly saveKey: (key: string) => Promise<OpenRouterStatus>;
   readonly removeKey: () => Promise<OpenRouterStatus>;
-  readonly setDefaults: (model: AiModelChoice, effort: AiEffort) => Promise<OpenRouterStatus>;
   readonly refresh: () => Promise<AiCatalogueSync>;
   readonly recheckAccount: () => void;
 }
@@ -65,17 +62,6 @@ export function useOpenRouterActions(): OpenRouterActions {
       log.info('openrouter.key_removed', {});
       client.removeQueries({ queryKey: OPENROUTER_ACCOUNT_KEY });
       return keyChanged(client, status);
-    },
-    setDefaults: async (model, effort): Promise<OpenRouterStatus> => {
-      const status = await api().call(M.setOpenRouterDefaults, {
-        body: { default_model: model, default_effort: effort },
-      });
-      client.setQueryData(STATUS_KEY, status);
-      background(
-        client.invalidateQueries({ queryKey: AI_MODELS_PREFIX }),
-        'queries.invalidate_failed',
-      );
-      return status;
     },
     refresh: async (): Promise<AiCatalogueSync> => {
       const sync = await api().call(M.refreshAiModels, {});

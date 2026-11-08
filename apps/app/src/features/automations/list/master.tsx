@@ -2,6 +2,9 @@ import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
+import { cn } from '../../../design/cn';
+import { WIDTH_BREAKPOINTS } from '../../../design/size-class';
 import { ListBody, type ListProps } from './automations-screen';
 import { HealthStrip } from './health-strip';
 import { useListActions } from './list-actions';
@@ -15,13 +18,14 @@ export function AutomationsMaster({
   links,
   onNew,
   selectedId = null,
-}: ListProps & { readonly selectedId?: string | null }): ReactNode {
+  section,
+}: ListProps & { readonly selectedId?: string | null; readonly section: string }): ReactNode {
   const list = useAutomationsList(environment);
   const actions = useListActions();
   return (
     <ScrollView
       keyboardShouldPersistTaps="handled"
-      contentContainerClassName="gap-section-gap px-4 pb-6 pt-safe-offset-6"
+      contentContainerClassName="gap-3 px-4 pb-6 pt-safe-offset-6"
     >
       <View className="min-h-page-header flex-row items-center gap-2 pl-2">
         <View className="min-w-0 flex-1">
@@ -39,7 +43,7 @@ export function AutomationsMaster({
       <WorkspaceRail
         links={links.workspace}
         extras={links.extras}
-        active="automations"
+        active={section}
         orientation="column"
       />
       <ListBody
@@ -54,15 +58,33 @@ export function AutomationsMaster({
   );
 }
 
+function overviewWidth(width: number): number {
+  return width >= WIDTH_BREAKPOINTS.large ? WIDTH_BREAKPOINTS.large : 0;
+}
+
 export function AutomationsOverviewPane({
   environment,
   links,
 }: Pick<ListProps, 'environment' | 'links'>): ReactNode {
   const list = useAutomationsList(environment);
+  const { width, onLayout } = useMeasuredWidth(overviewWidth);
+  const paired = width === WIDTH_BREAKPOINTS.large;
+  const paneClass = cn(paired && 'min-w-0 flex-1');
   return (
-    <ScrollView contentContainerClassName="gap-section-gap px-6 pb-6 pt-safe-offset-6">
-      <HealthStrip health={list.health} next={list.next} timeZone={list.timeZone} />
-      <TimelineBand events={list.events} links={links} timeZone={list.timeZone} />
+    <ScrollView contentContainerClassName="px-6 pb-6 pt-safe-offset-6">
+      <View onLayout={onLayout} className={cn('gap-3', paired && 'flex-row items-start')}>
+        <View className={paneClass}>
+          <HealthStrip
+            health={list.health}
+            next={list.next}
+            timeZone={list.timeZone}
+            paired={paired}
+          />
+        </View>
+        <View className={paneClass}>
+          <TimelineBand events={list.events} links={links} timeZone={list.timeZone} />
+        </View>
+      </View>
     </ScrollView>
   );
 }

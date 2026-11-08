@@ -200,6 +200,17 @@ export const PLUGIN_ENDPOINTS = {
     body: NO_BODY,
     response: PLUGIN_OPTION_PAGE,
   }),
+  readAutomationEntityOptions: endpoint({
+    method: 'GET',
+    path: '/api/plugins/:pluginId/entities/:entity/options',
+    access: 'member',
+    summary:
+      'The things of one automation entity type that a plugin declares, such as the channels of a Discord server, to pick from in an automation: search with q, continue with after, or look up chosen ones with ids (comma separated). The plugin is told who asks and decides what that person may see. Says unavailable, with the reason, when the plugin cannot list them now',
+    params: z.strictObject({ pluginId: PLUGIN_ID, entity: PLUGIN_KEY }),
+    query: PLUGIN_OPTION_QUERY,
+    body: NO_BODY,
+    response: PLUGIN_OPTION_PAGE,
+  }),
   listPluginPeople: endpoint({
     method: 'GET',
     path: '/api/plugins/:pluginId/people',

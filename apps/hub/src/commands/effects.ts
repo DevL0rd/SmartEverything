@@ -16,6 +16,7 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
+import { STALE_FRAME_MS } from './command-budgets';
 import type { CommandExecutor } from './executor';
 import { background } from '@smarteverything/logging';
 
@@ -210,7 +211,7 @@ export class DeviceEffects {
     return (
       target !== undefined &&
       value !== undefined &&
-      Date.parse(observedAt) >= Date.parse(target.updated_at) &&
+      Date.parse(observedAt) >= Date.parse(target.updated_at) + STALE_FRAME_MS &&
       !jsonEquals(value, target.resolved)
     );
   }

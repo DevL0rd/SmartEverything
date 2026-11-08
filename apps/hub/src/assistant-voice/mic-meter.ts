@@ -5,6 +5,7 @@ const MIC_RATE = 16_000;
 const PLAYBACK_RATE = 24_000;
 const LIVE_CHUNK_SAMPLES = 800;
 const STALL_MS = 100;
+const LONG_STALL_MS = 1000;
 const VOICE_OVER_FLOOR = 4;
 const FLOOR_RISE = 0.001;
 const ECHO_SETTLE_MS = 3000;
@@ -36,12 +37,25 @@ export class MicMeter {
   private droppedMs = 0;
   private stalls = 0;
   private longestStallMs = 0;
+  private chunks = 0;
+  private forwardedChunks = 0;
+  private droppedChunks = 0;
+  private startedAt: number;
 
   constructor(
     private readonly now: () => number,
     private readonly measure: Measure,
   ) {
     this.probe = new EchoProbe(now, PLAYBACK_RATE);
+    this.startedAt = now();
+  }
+
+  get stallCount(): number {
+    return this.stalls;
+  }
+
+  get longestMs(): number {
+    return this.longestStallMs;
   }
 
   get sinceVoiceMs(): number | null {
@@ -54,8 +68,10 @@ export class MicMeter {
 
   heard(pcm: Int16Array, dropped: boolean): void {
     const ms = (pcm.length * 1000) / MIC_RATE;
+    this.chunks += 1;
     if (pcm.length > LIVE_CHUNK_SAMPLES) {
       this.forwardedMs += ms;
+      this.forwardedChunks += 1;
       return;
     }
     const { sumSquares, peak } = energyOf(pcm);
@@ -66,17 +82,23 @@ export class MicMeter {
     } else {
       this.reopen();
       this.forwardedMs += ms;
+      this.forwardedChunks += 1;
       this.watchVoice(Math.sqrt(sumSquares / Math.max(pcm.length, 1)));
     }
   }
 
   summarize(): void {
     this.reopen();
+    const at = this.now();
     this.measure('voice.mic_summarized', {
       forwardedMs: Math.round(this.forwardedMs),
       droppedMs: Math.round(this.droppedMs),
       stalls: this.stalls,
       longestStallMs: this.longestStallMs,
+      chunks: this.chunks,
+      forwardedChunks: this.forwardedChunks,
+      droppedChunks: this.droppedChunks,
+      silentForMs: this.lastChunkAt === null ? at - this.startedAt : at - this.lastChunkAt,
     });
   }
 
@@ -87,6 +109,16 @@ export class MicMeter {
       if (gap > STALL_MS) {
         this.stalls += 1;
         this.longestStallMs = Math.max(this.longestStallMs, Math.round(gap));
+        this.measure(
+          'voice.mic_stalled',
+          {
+            startedAtMs: Math.round(at - gap),
+            lengthMs: Math.round(gap),
+            count: this.stalls,
+            sinceStartMs: at - this.startedAt,
+          },
+          gap >= LONG_STALL_MS ? 'warn' : 'debug',
+        );
       }
     }
     this.lastChunkAt = at;
@@ -102,6 +134,7 @@ export class MicMeter {
 
   private drop(ms: number, sumSquares: number, samples: number, peak: number): void {
     this.droppedMs += ms;
+    this.droppedChunks += 1;
     const run = this.run ?? { ms: 0, sumSquares: 0, samples: 0, peak: 0 };
     run.ms += ms;
     run.sumSquares += sumSquares;

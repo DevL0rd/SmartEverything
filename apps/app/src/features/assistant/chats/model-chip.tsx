@@ -6,62 +6,33 @@ import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { Engine } from '@smarteverything/domain';
 import { useIsOwner } from '../../../store/selectors';
-import { NATIVE_OWNER_REASON } from '../provider/provider-access';
 import type { NativeModelRequest } from '../provider/subscription-models';
 import { useChatModel } from './chat-model';
-import { ImageLibrary } from '../picker/image/image-library';
-import { ModelLibrary, useLibraryDisclosure } from '../picker/model-library';
 import { Skeleton } from '../../../components/skeleton';
 import { useHarnessCatalogue } from '../data/harness';
+import { routeFacts, useRouteInfo } from '../data/route-info';
 import { useEngineCatalogue } from '../provider/provider-data';
 import { ModelPanel } from '../picker/panel/model-panel';
-import { recentIdOfEngine, useRecentModels } from '../picker/panel/panel-recent';
 import { useChipShortcuts } from '../picker/panel/panel-shortcuts';
-import type { PanelPage } from '../picker/panel/panel-state';
-import { effortSteps } from '../model/composer-state';
+import { modelPanelPage, type PanelPage } from '../picker/panel/panel-state';
 import type { ComposerClass } from '../model/ai-layout';
 import { CompactPickerControl } from '../components/compact-picker-control';
 import { ComposerClassProvider } from '../components/composer-accessory-layout';
 import { useEngineAccessory, useMachineSwitchPending } from './engine-accessories';
 import { focusModelTrigger } from './model-menu-anchor';
+import {
+  appliedEffort,
+  chipLabel,
+  effortText,
+  levelSteps,
+  useEngineThinking,
+} from './engine-efforts';
 import { returnsFocus, type MenuDismissal } from './menu-dismissal';
-
-const BLOCKED_NOTE = 'Stop active work before changing its model.';
 
 function useEngineEditable(engine: Engine, blocked: boolean): boolean {
   const owner = useIsOwner();
-  return !blocked && (!isComputerEngine(engine) || owner);
-}
-
-export function EngineSheet({
-  open,
-  onClose,
-  engine,
-  onChange,
-  blocked = false,
-  initialQuery,
-}: {
-  readonly open: boolean;
-  readonly onClose: () => void;
-  readonly engine: Engine;
-  readonly onChange: (engine: Engine) => void;
-  readonly blocked?: boolean;
-  readonly initialQuery?: string;
-}): ReactNode {
-  const accessory = useEngineAccessory();
-  const editable = useEngineEditable(engine, blocked);
-  return (
-    <ModelLibrary
-      open={open}
-      onClose={onClose}
-      mode="pick"
-      engine={engine}
-      onChange={editable ? onChange : null}
-      note={editable ? null : blocked ? BLOCKED_NOTE : NATIVE_OWNER_REASON}
-      {...(initialQuery === undefined ? {} : { initialQuery })}
-      onNativeNeeded={accessory === null || !editable ? undefined : accessory.request}
-    />
-  );
+  const draft = useEngineAccessory()?.host.draft === true;
+  return !blocked && (draft || !isComputerEngine(engine) || owner);
 }
 
 export interface ModelChipProps {
@@ -70,6 +41,7 @@ export interface ModelChipProps {
   readonly blocked?: boolean;
   readonly composerClass?: ComposerClass;
   readonly anchorRef?: RefObject<View | null>;
+  readonly machineInHeader?: boolean;
 }
 
 interface PanelOpening {
@@ -78,18 +50,17 @@ interface PanelOpening {
   readonly hide: () => void;
 }
 
-function routedPage(operation: string | undefined, engine: Engine): PanelPage | null {
-  if (operation === 'model') return 'main';
-  return operation === 'device' && engine.kind === 'dsh' ? 'machine' : null;
-}
-
-function usePanelOpening(engine: Engine): PanelOpening {
+function usePanelOpening(engine: Engine, machineInHeader: boolean): PanelOpening {
   const accessory = useEngineAccessory();
-  const { operation } = useLocalSearchParams<{ operation?: string }>();
+  const { operation, work } = useLocalSearchParams<{ operation?: string; work?: string }>();
   const [chosen, setChosen] = useState<PanelPage | null>(null);
   const pending = accessory === null ? null : accessory.pending;
   const [dismissed, setDismissed] = useState<NativeModelRequest | null>(null);
-  const routed = routedPage(operation, engine);
+  const routed = modelPanelPage(
+    machineInHeader && operation === 'device' ? undefined : operation,
+    work,
+    engine.kind,
+  );
   const asked = pending !== null && pending !== dismissed;
   return {
     page: chosen ?? routed ?? (asked ? 'machine' : null),
@@ -134,24 +105,28 @@ function ChipControl({
   engine,
   chipRef,
   onOpen,
+  machineInHeader,
 }: {
   readonly engine: Engine;
   readonly chipRef: RefObject<View | null>;
   readonly onOpen: () => void;
+  readonly machineInHeader: boolean;
 }): ReactNode {
   const model = useChatModel(engine);
   const accessory = useEngineAccessory();
   const switching = useMachineSwitchPending(accessory?.chat);
   const needsMachine = accessory !== null && accessory.pending !== null;
+  const thinking = useEngineThinking(engine);
+  const facts = routeFacts(useRouteInfo(engine).data);
   if (useModelLoading(model)) return <ChipSkeleton />;
-  const icon = switching ? 'loader' : needsMachine ? 'monitor' : 'brain';
+  const icon = switching && !machineInHeader ? 'loader' : needsMachine ? 'monitor' : 'brain';
   return (
     <CompactPickerControl
       anchorRef={chipRef}
-      label={`Model and thinking: ${model.name}, ${model.effort ?? 'Default'}. Opens the model menu`}
+      label={chipLabel(model.name, effortText(thinking, engine.effort), facts)}
       value={needsMachine ? 'Choose machine' : model.shortName}
-      suffix={needsMachine ? null : model.effort}
-      steps={effortSteps(model.effort)}
+      suffix={needsMachine ? null : effortText(thinking, engine.effort)}
+      steps={levelSteps(appliedEffort(thinking, engine.effort))}
       icon={icon}
       unrestricted={needsMachine}
       onPress={onOpen}
@@ -161,20 +136,16 @@ function ChipControl({
 
 interface ChipPanel {
   readonly page: PanelPage | null;
-  readonly library: string | null;
-  readonly imageLibrary: boolean;
   readonly openMain: () => void;
   readonly close: () => void;
-  readonly openLibrary: (query: string) => void;
-  readonly closeLibrary: () => void;
-  readonly openImageLibrary: () => void;
-  readonly closeImageLibrary: () => void;
 }
 
-function useChipPanel(engine: Engine, chipRef: RefObject<View | null>): ChipPanel {
-  const opening = usePanelOpening(engine);
-  const disclosure = useLibraryDisclosure();
-  const [imageLibrary, setImageLibrary] = useState(false);
+function useChipPanel(
+  engine: Engine,
+  chipRef: RefObject<View | null>,
+  machineInHeader: boolean,
+): ChipPanel {
+  const opening = usePanelOpening(engine, machineInHeader);
   const closeFor = (reason: MenuDismissal): void => {
     opening.hide();
     if (returnsFocus(reason, opening.page !== null)) focusModelTrigger(chipRef);
@@ -184,8 +155,6 @@ function useChipPanel(engine: Engine, chipRef: RefObject<View | null>): ChipPane
   });
   return {
     page: opening.page,
-    library: disclosure.query,
-    imageLibrary,
     openMain: (): void => {
       dismissCommands();
       opening.show('main');
@@ -193,31 +162,6 @@ function useChipPanel(engine: Engine, chipRef: RefObject<View | null>): ChipPane
     close: (): void => {
       closeFor('user');
     },
-    openLibrary: (query): void => {
-      opening.hide();
-      disclosure.open(query);
-    },
-    closeLibrary: (): void => {
-      disclosure.close();
-      focusModelTrigger(chipRef);
-    },
-    openImageLibrary: (): void => {
-      opening.hide();
-      setImageLibrary(true);
-    },
-    closeImageLibrary: (): void => {
-      setImageLibrary(false);
-      focusModelTrigger(chipRef);
-    },
-  };
-}
-
-function useRecordedChange(onChange: (engine: Engine) => void): (engine: Engine) => void {
-  const recent = useRecentModels();
-  return (next): void => {
-    const id = recentIdOfEngine(next);
-    if (id !== null) recent.record(id);
-    onChange(next);
   };
 }
 
@@ -227,11 +171,11 @@ export function ModelChip({
   blocked = false,
   composerClass,
   anchorRef,
+  machineInHeader = false,
 }: ModelChipProps): ReactNode {
   const chipRef = useRef<View>(null);
-  const panel = useChipPanel(engine, chipRef);
+  const panel = useChipPanel(engine, chipRef, machineInHeader);
   const editable = useEngineEditable(engine, blocked);
-  const recorded = useRecordedChange(onChange);
   useChipShortcuts({
     engine,
     editable,
@@ -243,7 +187,12 @@ export function ModelChip({
   });
   return (
     <ClassScope value={composerClass}>
-      <ChipControl engine={engine} chipRef={chipRef} onOpen={panel.openMain} />
+      <ChipControl
+        engine={engine}
+        chipRef={chipRef}
+        onOpen={panel.openMain}
+        machineInHeader={machineInHeader}
+      />
       {panel.page === null ? null : (
         <ModelPanel
           anchorRef={anchorRef ?? chipRef}
@@ -252,19 +201,7 @@ export function ModelChip({
           blocked={blocked}
           initialPage={panel.page}
           close={panel.close}
-          onLibrary={panel.openLibrary}
-          onImageLibrary={panel.openImageLibrary}
-        />
-      )}
-      {panel.imageLibrary ? <ImageLibrary open onClose={panel.closeImageLibrary} /> : null}
-      {panel.library === null ? null : (
-        <EngineSheet
-          open
-          onClose={panel.closeLibrary}
-          engine={engine}
-          onChange={recorded}
-          blocked={blocked}
-          {...(panel.library === '' ? {} : { initialQuery: panel.library })}
+          machineInHeader={machineInHeader}
         />
       )}
     </ClassScope>

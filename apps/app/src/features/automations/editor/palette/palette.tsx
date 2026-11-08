@@ -1,16 +1,24 @@
 import type { ReactNode } from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { Button } from '../../../../components/button';
+import { pointRect } from '../../../../components/anchor';
+import { Popover } from '../../../../components/popover';
 import { Sheet } from '../../../../components/sheet';
 import { SheetHeader } from '../../../../components/sheet-header';
 import { Text } from '../../../../components/text';
 import { useIsPhone } from '../../../../design/size-class';
-import { useDevices, useIsOwner } from '../../../../store/selectors';
+import { useDevices } from '../../../../store/selectors';
 import { useCatalog } from '../../data/use-catalog';
 import { useAutomationPrefs } from '../../data/use-automation-prefs';
 import { useAutomationsSource } from '../../data/source';
-import { insertPointText, paletteOpen, type InsertState } from './armed-insert';
+import {
+  anchorOf,
+  insertPointText,
+  paletteOpen,
+  filterPinOf,
+  type InsertState,
+  type ScreenPoint,
+} from './armed-insert';
 import {
   NEW_REUSABLE_ENTRY,
   functionEntry,
@@ -22,6 +30,7 @@ import {
 } from './palette-categories';
 import { PaletteBody } from './palette-body';
 import { NO_USAGE, type PaletteContext, type PaletteUsage } from './palette-search';
+import { filterEntriesForPin, type PinSource } from './pin-filter';
 import { presetEntries } from './presets';
 import { snippetEntries } from './snippets';
 
@@ -37,33 +46,42 @@ interface PaletteModel {
   readonly groups: readonly PaletteGroup[];
 }
 
+const DROP_PICKER = { width: 360, height: 480 } as const;
+
 const FAVOURITES_FULL = 'Favourites are full. Remove one to add another.';
 const PREFS_INVALID = 'Your saved palette could not be read, so it cannot be changed right now.';
 
-export function usePaletteModel(): PaletteModel {
+export function usePaletteEntries(): readonly PaletteEntry[] {
   const { kinds } = useAutomationsSource();
   const { functions } = useCatalog();
   const devices = useDevices();
-  const isOwner = useIsOwner();
-  const hasComputer = devices.some((device) => device.kind === 'computer');
-  return useMemo(() => {
-    const env = { isOwner, hasComputer };
-    const entries = [
-      ...shippedNodeEntries(kinds, env),
+  return useMemo(
+    () => [
+      ...shippedNodeEntries(kinds),
       ...presetEntries(),
       ...functions.map(functionEntry),
       NEW_REUSABLE_ENTRY,
       ...snippetEntries(devices),
-    ];
+    ],
+    [kinds, functions, devices],
+  );
+}
+
+export function usePaletteModel(pin: PinSource | null): PaletteModel {
+  const { lookup } = useAutomationsSource();
+  const all = usePaletteEntries();
+  return useMemo(() => {
+    const entries = pin === null ? all : filterEntriesForPin(all, pin, lookup);
     return { entries, groups: paletteGroups(entries) };
-  }, [kinds, functions, devices, isOwner, hasComputer]);
+  }, [all, lookup, pin]);
 }
 
 function PaletteContent({
   context,
+  pin,
   onChoose,
-}: Pick<PaletteProps, 'context' | 'onChoose'>): ReactNode {
-  const { entries, groups } = usePaletteModel();
+}: Pick<PaletteProps, 'context' | 'onChoose'> & { readonly pin: PinSource | null }): ReactNode {
+  const { entries, groups } = usePaletteModel(pin);
   const prefs = useAutomationPrefs();
   const read = prefs.palette;
   const usage = useMemo<PaletteUsage>(
@@ -99,11 +117,34 @@ function PaletteContent({
   );
 }
 
+function DropPicker(props: PaletteProps & { readonly anchor: ScreenPoint }): ReactNode {
+  return (
+    <Popover
+      open
+      onClose={props.onClose}
+      anchor={pointRect(props.anchor.x, props.anchor.y)}
+      label="Add a step"
+      width={DROP_PICKER.width}
+      height={DROP_PICKER.height}
+      scroll={false}
+      className="pt-3"
+    >
+      <PaletteContent
+        context={props.context}
+        pin={filterPinOf(props.state)}
+        onChoose={props.onChoose}
+      />
+    </Popover>
+  );
+}
+
 export function Palette(props: PaletteProps): ReactNode {
   const phone = useIsPhone();
   const open = paletteOpen(props.state);
   if (!open) return null;
   const armed = insertPointText(props.state);
+  const anchor = anchorOf(props.state);
+  if (!phone && anchor !== null) return <DropPicker {...props} anchor={anchor} />;
   if (phone) {
     return (
       <Sheet open onClose={props.onClose} title="Add" label="Add a step">
@@ -112,7 +153,11 @@ export function Palette(props: PaletteProps): ReactNode {
             {armed}
           </Text>
         )}
-        <PaletteContent context={props.context} onChoose={props.onChoose} />
+        <PaletteContent
+          context={props.context}
+          pin={filterPinOf(props.state)}
+          onChoose={props.onChoose}
+        />
       </Sheet>
     );
   }
@@ -129,29 +174,11 @@ export function Palette(props: PaletteProps): ReactNode {
           {armed}
         </Text>
       )}
-      <PaletteContent context={props.context} onChoose={props.onChoose} />
-    </View>
-  );
-}
-
-export function PlacingBanner({
-  state,
-  onCancel,
-}: {
-  readonly state: InsertState;
-  readonly onCancel: () => void;
-}): ReactNode {
-  const text = state.phase === 'placing' ? insertPointText(state) : null;
-  if (text === null) return null;
-  return (
-    <View
-      accessibilityRole="alert"
-      className="flex-row items-center gap-3 rounded-md bg-primary-container px-4 py-2"
-    >
-      <Text variant="callout" tone="onPrimaryContainer" className="flex-1">
-        {text}
-      </Text>
-      <Button label="Cancel" variant="text" onPress={onCancel} />
+      <PaletteContent
+        context={props.context}
+        pin={filterPinOf(props.state)}
+        onChoose={props.onChoose}
+      />
     </View>
   );
 }

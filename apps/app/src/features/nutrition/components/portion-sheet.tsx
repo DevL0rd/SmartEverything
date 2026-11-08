@@ -179,7 +179,7 @@ function PortionBody({
   const subtitle = joinParts([target.food.brand, portionLabel(target.food, amount)]);
   return (
     <View className="gap-5 pb-2">
-      <Text variant="callout" tone="variant" numberOfLines={1}>
+      <Text variant="callout" tone="variant">
         {subtitle}
       </Text>
       <NutrientPreview food={target.food} amount={amount} />

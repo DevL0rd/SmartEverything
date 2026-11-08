@@ -50,6 +50,7 @@ export const HTTP_REQUEST = defineNodeKind({
       default: {},
       description:
         'Extra headers. authorization, proxy-authorization, cookie and x-api-key are refused: use auth.',
+      ui: { editor: 'key-value-rows' },
     },
     {
       name: 'query',
@@ -57,12 +58,14 @@ export const HTTP_REQUEST = defineNodeKind({
       required: false,
       default: {},
       description: 'Query parameters added to the address.',
+      ui: { editor: 'key-value-rows' },
     },
     {
       name: 'body',
       type: { t: 'optional', of: { t: 'any' } },
       required: false,
       description: 'The request body.',
+      ui: { editor: 'field-rows', typedBy: 'bodyKind' },
     },
     {
       name: 'bodyKind',
@@ -190,6 +193,7 @@ const HTTP_RESPOND = defineNodeKind({
       type: { t: 'optional', of: { t: 'any' } },
       required: false,
       description: 'The answer body, as JSON or text.',
+      ui: { editor: 'field-rows' },
     },
     {
       name: 'headers',
@@ -198,6 +202,7 @@ const HTTP_RESPOND = defineNodeKind({
       default: {},
       static: true,
       description: 'Extra answer headers.',
+      ui: { editor: 'key-value-rows' },
     },
   ],
   outputs: [],

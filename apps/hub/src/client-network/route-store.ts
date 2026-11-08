@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { z } from 'zod';
 import {
   NATIVE_HUB_ROUTE_CONFIGURATION,
@@ -14,12 +14,13 @@ const STORED_ROUTE = z.strictObject({
   configuration: NATIVE_HUB_ROUTE_CONFIGURATION.nullable(),
 });
 export class NodeRouteStore {
-  private readonly path: string;
   private readonly credentialDigest: string;
   private generation = 0;
   private writing: Promise<void> = Promise.resolve();
-  constructor(directory: string, token: string) {
-    this.path = join(directory, 'node-route.json');
+  constructor(
+    private readonly path: string,
+    token: string,
+  ) {
     this.credentialDigest = createHash('sha256').update(token).digest('hex');
   }
   async read(): Promise<NativeHubRouteConfiguration | null> {

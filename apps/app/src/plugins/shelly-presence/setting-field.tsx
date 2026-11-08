@@ -31,7 +31,7 @@ function helper(row: ShellySettingRow): string | undefined {
     row.min === undefined || row.max === undefined
       ? undefined
       : `${String(row.min)} to ${String(row.max)}`;
-  const blank = row.nullable === true ? 'Blank uses the sensor default' : undefined;
+  const blank = row.nullable === true ? 'Blank lets the sensor decide' : undefined;
   const parts = [range, blank].filter((part) => part !== undefined);
   return parts.length === 0 ? undefined : parts.join(' · ');
 }
@@ -93,7 +93,7 @@ function EnumField({ row, value, change, disabled }: SettingFieldProps): ReactNo
       placeholder="Not set"
       options={
         row.nullable === true
-          ? [{ value: CLEARED, label: 'Not set / default' }, ...options]
+          ? [{ value: CLEARED, label: 'Let the sensor decide' }, ...options]
           : options
       }
       onChange={(next) => {

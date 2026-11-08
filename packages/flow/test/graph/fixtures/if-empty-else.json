@@ -1,0 +1,69 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "03000000-0000-4000-8000-000000000007",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "03000000-0000-4000-8000-000000000001",
+        "key": "start",
+        "kind": "debug.log",
+        "ports": { "message": { "lit": "checking" } }
+      },
+      {
+        "id": "03000000-0000-4000-8000-000000000002",
+        "key": "hot",
+        "kind": "logic.compare",
+        "ports": {
+          "a": { "wire": { "from": "trigger", "port": "tick" } },
+          "op": { "lit": "gt" },
+          "b": { "lit": 1 }
+        }
+      },
+      {
+        "id": "03000000-0000-4000-8000-000000000005",
+        "key": "decide",
+        "kind": "flow.if",
+        "ports": {},
+        "branches": [
+          {
+            "id": "03000000-0000-4000-8000-000000000003",
+            "when": { "wire": { "from": "hot", "port": "result" } },
+            "scope": {
+              "nodes": [
+                {
+                  "id": "03000000-0000-4000-8000-000000000004",
+                  "key": "cool",
+                  "kind": "device.set",
+                  "ports": {
+                    "target": { "lit": { "target": "hall" } },
+                    "control": { "lit": "power" },
+                    "to": { "lit": "on" }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "scopes": { "else": { "nodes": [] } }
+      },
+      {
+        "id": "03000000-0000-4000-8000-000000000006",
+        "key": "after",
+        "kind": "notify.feed",
+        "ports": { "message": { "lit": "decided" } }
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

@@ -42,18 +42,19 @@ class HubHtmlHttp(private val broker: HubHtmlBroker) : SimpleChannelInboundHandl
     context.pipeline().remove(io.netty.handler.timeout.ReadTimeoutHandler::class.java)
     broker.assets.serve(context, input.method().name(), input.uri(), input.headers().get("Range"))
   }
-  private fun allowsPath(path: String): Boolean {
-    val parsed = java.net.URI(path)
-    val decoded = java.net.URLDecoder.decode(parsed.rawPath.replace("+", "%2B"), "UTF-8")
-    if (decoded.contains('\\') || decoded.contains('%') || decoded.contains('\u0000') || decoded.split('/').any { it == "." || it == ".." }) return false
-    return path.startsWith("/") && !path.startsWith("//") && parsed.rawAuthority == null && parsed.rawFragment == null &&
-      !path.contains('\\') && !path.contains('\r') && !path.contains('\n')
-  }
   private fun reject(context: ChannelHandlerContext, failure: Exception) {
     answered = true
     explain(context, HttpResponseStatus.FORBIDDEN, "This page request was refused: ${failure.message}", failure)
   }
   override fun exceptionCaught(context: ChannelHandlerContext, cause: Throwable) { context.close() }
+}
+
+internal fun allowsPath(path: String): Boolean {
+  val parsed = java.net.URI(path)
+  val decoded = java.net.URLDecoder.decode(parsed.rawPath.replace("+", "%2B"), "UTF-8")
+  if (decoded.contains('\\') || decoded.contains('%') || decoded.contains('\u0000') || decoded.split('/').any { it == "." || it == ".." }) return false
+  return path.startsWith("/") && !path.startsWith("//") && parsed.rawAuthority == null && parsed.rawFragment == null &&
+    !path.contains('\\') && !path.contains('\r') && !path.contains('\n')
 }
 
 internal fun explain(context: ChannelHandlerContext, status: HttpResponseStatus, reason: String, failure: Throwable) {

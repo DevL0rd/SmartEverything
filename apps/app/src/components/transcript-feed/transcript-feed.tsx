@@ -2,6 +2,7 @@ import type { ReactNode, ReactElement } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Text } from '../text';
+import { cn } from '../../design/cn';
 import { HeaderSlotContext } from '../screen-context';
 import { FeedChrome } from './feed-chrome';
 import { feedItems, sessionRemovable, type FeedItem } from './feed-items';
@@ -20,10 +21,20 @@ export interface TranscriptFeedProps {
   readonly pageHeader?: ReactElement;
   readonly banner?: ReactNode;
   readonly controls?: ReactNode;
-  readonly maxWidth?: 'dashboard' | 'detail';
+  readonly inlineControls?: boolean;
+  readonly compactRows?: boolean;
+  readonly headerWidth?: 'dashboard' | 'detail' | 'full';
   readonly focus?: boolean;
   readonly focusSearch?: boolean;
 }
+
+const HEADER_WIDTH = {
+  dashboard: 'max-w-dashboard',
+  detail: 'max-w-detail',
+  full: '',
+} as const;
+
+const READER_WIDTH = 'w-full max-w-detail self-start';
 
 interface FeedHeaderProps extends TranscriptFeedProps {
   readonly layout: (event: LayoutChangeEvent) => void;
@@ -33,7 +44,7 @@ interface FeedHeaderProps extends TranscriptFeedProps {
 function FeedFooter({ feed }: { readonly feed: TranscriptFeedState }): ReactNode {
   const quiet = feed.rows.length === 0 || (feed.older && !feed.loadingOlder);
   return (
-    <View className="pb-section-gap">
+    <View className={cn('pb-section-gap', READER_WIDTH)}>
       {quiet ? null : (
         <View className="py-3">
           <Text variant="caption" tone="variant" align="center">
@@ -45,12 +56,32 @@ function FeedFooter({ feed }: { readonly feed: TranscriptFeedState }): ReactNode
   );
 }
 
+function FeedHeaderContent({
+  banner,
+  header,
+  width,
+}: {
+  readonly banner: ReactNode;
+  readonly header: ReactNode;
+  readonly width: keyof typeof HEADER_WIDTH;
+}): ReactNode {
+  if (banner === undefined && header === undefined) return null;
+  return (
+    <View className={cn('gap-section-gap w-full self-start', HEADER_WIDTH[width])}>
+      {banner}
+      {header}
+    </View>
+  );
+}
+
 function FeedHeader({
   header,
   pageHeader,
   banner,
   controls,
+  inlineControls,
   focusSearch,
+  headerWidth = 'full',
   feed,
   layout,
   top,
@@ -66,9 +97,8 @@ function FeedHeader({
   return (
     <View className="gap-section-gap pb-3">
       <HeaderSlotContext.Provider value="large">{pageHeader}</HeaderSlotContext.Provider>
-      {banner}
-      {header}
-      <View onLayout={layout}>
+      <FeedHeaderContent banner={banner} header={header} width={headerWidth} />
+      <View onLayout={layout} className={READER_WIDTH}>
         <FeedChrome
           words={feed.words}
           changeWords={feed.changeWords}
@@ -77,6 +107,7 @@ function FeedHeader({
           back={back}
           latest={latest}
           controls={controls}
+          inlineControls={inlineControls === true}
           focusSearch={focusSearch === true}
         />
         <ReaderState
@@ -121,6 +152,7 @@ function renderItem(
       hit={hit}
       timeZone={timeZone}
       showSource={!grouped}
+      compact={props.compactRows === true}
       highlighted={highlighted}
       ready={highlighted ? anchorReady : undefined}
       open={
@@ -170,23 +202,17 @@ function FeedViewport(props: TranscriptFeedProps): ReactNode {
       onEndReachedThreshold={0.3}
       onStartReached={feed.loadNewer}
       onStartReachedThreshold={0.3}
-      renderItem={({ item }) => renderItem(item, props, anchorReady)}
+      renderItem={({ item }) => {
+        const content = renderItem(item, props, anchorReady);
+        return <View className={READER_WIDTH}>{content}</View>;
+      }}
     />
   );
 }
 
-export function TranscriptFeed({
-  maxWidth = 'dashboard',
-  ...props
-}: TranscriptFeedProps): ReactNode {
+export function TranscriptFeed(props: TranscriptFeedProps): ReactNode {
   return (
-    <View
-      className={
-        maxWidth === 'detail'
-          ? 'min-h-0 w-full max-w-detail flex-1 self-center px-gutter'
-          : 'min-h-0 w-full max-w-dashboard flex-1 self-center px-gutter'
-      }
-    >
+    <View className="min-h-0 w-full flex-1 px-gutter">
       <FeedViewport {...props} />
     </View>
   );

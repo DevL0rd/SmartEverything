@@ -11,7 +11,7 @@ export const AI_ENGINE_PREFERENCE = z.strictObject({
   device_id: z.uuid(),
 });
 export const AI_ENGINE_CATALOGUE = z.strictObject({
-  default: ENGINE.nullable(),
+  default: ENGINE,
   computers: z.array(
     z.strictObject({
       device_id: z.uuid(),

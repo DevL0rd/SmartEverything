@@ -29,10 +29,8 @@ function contextProps(handler: ((point: Point) => void) | undefined): {
 
 interface FrameProps {
   readonly actions: MessageActions;
-  readonly preview: ReactNode;
   readonly align: 'start' | 'end';
   readonly bar: ReactNode;
-  readonly swipeable: boolean;
   readonly swipeEnabled?: boolean;
   readonly onQuote: () => void;
   readonly children: ReactNode;
@@ -67,24 +65,38 @@ function MessageContent({
   );
 }
 
-export function MessageFrame({
-  actions,
-  preview,
+function MenuPreviewOf({
   align,
   bar,
-  swipeable,
-  swipeEnabled = swipeable,
+  children,
+}: Pick<FrameProps, 'align' | 'bar' | 'children'>): ReactNode {
+  if (align === 'end') return children;
+  return (
+    <View className="rounded-2xl border-hairline border-outline-variant bg-bg px-3 py-2.5">
+      {children}
+      {bar}
+    </View>
+  );
+}
+
+export function MessageFrame({
+  actions,
+  align,
+  bar,
+  swipeEnabled = true,
   onQuote,
   children,
 }: FrameProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const expanded = useSizeClass().split;
   const menu = useContextMenu(actions.list, 'Message', {
-    quick: actions.quick,
-    preview,
-    previewAlign: align,
+    ...(actions.header === null ? {} : { header: actions.header }),
+    preview: (
+      <MenuPreviewOf align={align} bar={bar}>
+        {children}
+      </MenuPreviewOf>
+    ),
   });
-  const quotable = swipeable && !pointer;
   return (
     <Pressable
       accessible={false}
@@ -98,11 +110,12 @@ export function MessageFrame({
           bar={bar}
           align={align}
           pointer={pointer}
-          quotable={quotable}
+          quotable={!pointer}
           onQuote={onQuote}
           swipeEnabled={swipeEnabled}
         >
           {children}
+          {actions.reactionFooter(align)}
         </MessageContent>
         {pointer && expanded ? <MessageMenu actions={actions} /> : null}
       </View>

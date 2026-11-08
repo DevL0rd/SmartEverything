@@ -1,5 +1,5 @@
 import type { AutomationFunctionUser, FunctionV3 } from '@smarteverything/domain';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../../../components/text';
 import { TextField } from '../../../../components/text-field';
@@ -8,7 +8,7 @@ import { kindLabel } from '../library/library-model';
 import { ExitRouteSheet } from './exit-route-sheet';
 import { ImpactLabel } from './impact-label';
 import { impactOf } from './impact-model';
-import { InterfaceRows } from './interface-rows';
+import { InterfaceRows, type InterfaceOpener, type InterfaceRowsProps } from './interface-rows';
 import { KeptSection } from './kept-section';
 import { RowEditor } from './row-editor';
 import { useInterfacePanel, type EditSide, type InterfacePanelState } from './use-interface-panel';
@@ -31,23 +31,42 @@ function takenNames(program: FunctionV3, side: EditSide | null): readonly string
   return (side === 'outputs' ? program.outputs : program.inputs).map((port) => port.name);
 }
 
+function rowActions(
+  panel: InterfacePanelState,
+  locked: boolean,
+  setOpener: (opener: InterfaceOpener) => void,
+): Pick<InterfaceRowsProps, 'editable' | 'onAdd' | 'onEdit' | 'onRemove' | 'onReorder'> {
+  return {
+    editable: !locked,
+    onAdd: (side: EditSide, opener: InterfaceOpener): void => {
+      setOpener(opener);
+      panel.add(side);
+    },
+    onEdit: (side: 'inputs' | 'outputs', name: string, opener: InterfaceOpener): void => {
+      setOpener(opener);
+      panel.edit(side, name);
+    },
+    onRemove: (side: EditSide, name: string, opener: InterfaceOpener): void => {
+      setOpener(opener);
+      panel.remove(side, name);
+    },
+    onReorder: panel.reorder,
+  };
+}
+
 function Lists({
   program,
   panel,
   locked,
+  setOpener,
 }: {
   readonly program: FunctionV3;
   readonly panel: InterfacePanelState;
   readonly locked: boolean;
+  readonly setOpener: (opener: InterfaceOpener) => void;
 }): ReactNode {
   const card = useMemo(() => interfaceCard(program), [program]);
-  const rows = {
-    editable: !locked,
-    onAdd: panel.add,
-    onEdit: panel.edit,
-    onRemove: panel.remove,
-    onReorder: panel.reorder,
-  };
+  const rows = rowActions(panel, locked, setOpener);
   return (
     <>
       <InterfaceRows
@@ -78,13 +97,16 @@ function Lists({
 function Sheets({
   program,
   panel,
+  opener,
 }: {
   readonly program: FunctionV3;
   readonly panel: InterfacePanelState;
+  readonly opener: InterfaceOpener | null;
 }): ReactNode {
   return (
     <>
       <RowEditor
+        opener={opener}
         side={panel.editing?.side ?? null}
         draft={panel.editing?.draft ?? blankDraft()}
         issues={panel.issues}
@@ -94,6 +116,7 @@ function Sheets({
         onCancel={panel.cancel}
       />
       <ExitRouteSheet
+        opener={opener}
         routing={panel.routing}
         choices={program.exits}
         onPick={panel.route}
@@ -105,6 +128,7 @@ function Sheets({
 
 export function InterfacePanel(props: InterfacePanelProps): ReactNode {
   const { program, saved, locked } = props;
+  const [opener, setOpener] = useState<InterfaceOpener | null>(null);
   const panel = useInterfacePanel(program, props.onProgram);
   const impact = useMemo(
     () => impactOf(saved, program, props.users),
@@ -124,9 +148,9 @@ export function InterfacePanel(props: InterfacePanelProps): ReactNode {
           {panel.notice}
         </Text>
       )}
-      <Lists program={program} panel={panel} locked={locked} />
+      <Lists program={program} panel={panel} locked={locked} setOpener={setOpener} />
       <KeptSection program={program} locked={locked} onProgram={props.onProgram} />
-      <Sheets program={program} panel={panel} />
+      <Sheets program={program} panel={panel} opener={opener} />
     </View>
   );
 }

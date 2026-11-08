@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import type { PluginInstall } from '@smarteverything/domain';
+import { PLUGIN_INSTALL, type PluginInstall } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { installPlugin } from '../../../api/plugin-admin';
 import { NavRow } from '../../../components/rows';
@@ -10,16 +10,17 @@ import { Text } from '../../../components/text';
 import { appPlatform } from '../../../design/platform';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
+import { useSession } from '../../../store/selectors';
 
 import { Logger } from '@smarteverything/logging';
 
 const log = new Logger('app.plugins');
 type Source = PluginInstall['source'];
 
-const LINK = /^https?:\/\/[^\s/?#]+[^\s]*$/;
-
 function linkProblem(value: string): string | null {
-  return LINK.test(value) ? null : 'Enter a link starting with https://';
+  return PLUGIN_INSTALL.safeParse({ source: 'url', url: value }).success
+    ? null
+    : 'Enter a valid HTTP or HTTPS plugin link.';
 }
 
 function requestOf(
@@ -52,6 +53,39 @@ function requestOf(
   };
 }
 
+function PluginSources({ onSelect }: { readonly onSelect: (source: Source) => void }): ReactNode {
+  const local = useSession().client.built_in;
+  return (
+    <List inset>
+      <NavRow
+        icon="link"
+        title="From a link"
+        subtitle="A plugin running on the web or your network"
+        wrapSubtitle
+        onPress={() => {
+          onSelect('url');
+        }}
+      />
+      {appPlatform() === 'desktop' ? (
+        <NavRow
+          icon="monitor"
+          title="From this computer"
+          subtitle={
+            local
+              ? 'A plugin folder on this computer'
+              : 'Connect to this computer’s hub to use a folder'
+          }
+          wrapSubtitle
+          disabled={!local}
+          onPress={() => {
+            onSelect('local');
+          }}
+        />
+      ) : null}
+    </List>
+  );
+}
+
 export function AddPluginScreen(): ReactNode {
   const router = useRouter();
   const [source, setSource] = useState<Source | null>(null);
@@ -71,26 +105,7 @@ export function AddPluginScreen(): ReactNode {
       <Text variant="callout" tone="variant" className="px-4">
         Added plugins start switched off, so you can look at what they do first.
       </Text>
-      <List inset>
-        <NavRow
-          icon="link"
-          title="From a link"
-          subtitle="A plugin running on the web or your network"
-          onPress={() => {
-            setSource('url');
-          }}
-        />
-        {appPlatform() === 'desktop' ? (
-          <NavRow
-            icon="monitor"
-            title="From this computer"
-            subtitle="A plugin folder on the server’s computer"
-            onPress={() => {
-              setSource('local');
-            }}
-          />
-        ) : null}
-      </List>
+      <PluginSources onSelect={setSource} />
       <TextEditSheet
         request={source === null ? null : requestOf(source, install)}
         onClose={() => {

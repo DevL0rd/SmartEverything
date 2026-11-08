@@ -171,6 +171,7 @@ interface TileProps {
   readonly vitals: Vitals;
   readonly stale: boolean;
   readonly look: TileLook;
+  readonly dense: boolean;
 }
 
 function TileSpark({ deviceId, spec, stale, look }: TileProps): ReactNode {
@@ -206,7 +207,7 @@ function TileFigure({
 }
 
 function VitalTile(props: TileProps): ReactNode {
-  const { spec, vitals, stale, look } = props;
+  const { spec, vitals, stale, look, dense } = props;
   const load = spec.load(vitals);
   if (load === null) return null;
   const temperature = spec.temperature(vitals);
@@ -214,7 +215,7 @@ function VitalTile(props: TileProps): ReactNode {
     <View
       accessible
       accessibilityLabel={spokenVital(spec.label, load, temperature)}
-      className="min-w-0 flex-1 gap-1"
+      className={cn('min-w-0 flex-1', dense ? 'gap-0.5' : 'gap-1')}
     >
       <View className="flex-row items-center justify-between gap-1">
         <Text variant="caption" tone="variant">
@@ -246,12 +247,14 @@ export function VitalRow({
   looks,
   className = 'flex-row gap-3',
   extra,
+  dense = false,
 }: {
   readonly deviceId: string;
   readonly stale: boolean;
   readonly looks: TileLooks;
   readonly className?: string;
   readonly extra?: ReactNode;
+  readonly dense?: boolean;
 }): ReactNode {
   return (
     <WithVitals deviceId={deviceId} stale={stale}>
@@ -265,6 +268,7 @@ export function VitalRow({
               vitals={vitals}
               stale={stale}
               look={looks[spec.key]}
+              dense={dense}
             />
           ))}
           {extra}

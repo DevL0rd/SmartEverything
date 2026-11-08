@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Block, Inline } from './parse';
+import type { Block, Inline } from '@smarteverything/domain/markdown';
 import { blockLength, inlineLength, renderedLength, startsFrom, startsOf } from './rendered-length';
 
 const text = (value: string): Inline => ({ kind: 'text', text: value });

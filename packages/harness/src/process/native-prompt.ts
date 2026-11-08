@@ -1,4 +1,6 @@
 import { MessageId, createUserMessage } from '@deepseek-ai/dsh-llm';
+import type { MessageSource } from '@deepseek-ai/dsh-llm';
+import { HUB_NOTE_SOURCE, hubNoteText } from '../host/hub-note';
 import type { Context } from '@deepseek-ai/cordis';
 import { Logger } from '@smarteverything/logging';
 import { referencesMatchText } from '@smarteverything/domain';
@@ -12,9 +14,17 @@ import type { HarnessDispatcherOptions } from './dispatcher-options';
 
 const log = new Logger('hub.harness');
 
+type Prompt = Extract<HarnessRuntimeRequest, { kind: 'prompt' }>;
+
+function promptSource(request: Prompt): MessageSource {
+  if (request.author === 'hub') return HUB_NOTE_SOURCE;
+  const references = request.references ?? [];
+  return references.length === 0 ? { kind: 'user' } : referencePromptSource(references);
+}
+
 export async function submitNativePrompt(
   runtime: HarnessRuntime,
-  session: HarnessSession,
+  session: Pick<HarnessSession, 'prompt'>,
   request: Extract<HarnessRuntimeRequest, { kind: 'prompt' }>,
   ports: { readonly ctx: Context; readonly options: HarnessDispatcherOptions },
 ): Promise<void> {
@@ -30,15 +40,14 @@ export async function submitNativePrompt(
     request.session_id,
     references.map((item) => item.reference),
   );
-  const content = await nativePromptContent(runtime, request, {
+  const written =
+    request.author === 'hub' ? { ...request, text: hubNoteText(request.text) } : request;
+  const content = await nativePromptContent(runtime, written, {
     ctx,
     load: options.loadAttachments,
   });
   if (references.length > 0) content.push({ type: 'text', text: referenceLocatorText(references) });
-  const message = createUserMessage({
-    content,
-    source: references.length === 0 ? { kind: 'user' } : referencePromptSource(references),
-  });
+  const message = createUserMessage({ content, source: promptSource(request) });
   session.prompt({ ...message, id: MessageId(request.delivery_id) });
   log.debug('prompt.submitted', () => ({
     session_id: request.session_id,

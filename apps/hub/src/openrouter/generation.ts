@@ -1,6 +1,6 @@
-import type { GenerationStats } from './chat-types';
 import type { OpenRouterClient } from './client';
 import { OpenRouterError } from './errors';
+import type { GenerationStats } from './wire';
 
 const FIRST_WAIT_MS = 2000;
 const WAIT_CEILING_MS = 30_000;

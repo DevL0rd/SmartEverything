@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { notify } from '../../../../components/toast-store';
 import { useStableCallback } from '../../../../design/use-stable-callback';
-import type { InsertPoint, ViewportCommand } from '../../model/canvas/contract';
 import type { DocumentStore } from '../../model/editor/document-store';
+import type { ViewportCommand } from '../canvas/viewport';
 import {
   CLOSED,
   cancel,
   choose as chooseEntry,
+  openAtDrop,
   openPalette,
-  placeAt,
+  type InsertPoint,
+  type ScreenPoint,
   type InsertState,
   type InsertStep,
   type Insertion,
@@ -18,7 +20,12 @@ import { PANE_DEFAULTS, type EditorLayout, type PaneSizes } from './screen-model
 
 export interface InsertionControl {
   readonly state: InsertState;
-  readonly open: (point: InsertPoint | null) => void;
+  readonly open: (point: InsertPoint) => void;
+  readonly drop: (
+    point: InsertPoint,
+    anchor: ScreenPoint | null,
+    fits: readonly PaletteChoice[],
+  ) => void;
   readonly choose: (choice: PaletteChoice) => void;
   readonly cancel: () => void;
 }
@@ -29,16 +36,21 @@ export function useInsertion(onInsert: (insertion: Insertion) => void): Insertio
     setState(step.state);
     if (step.insertion !== null) onInsert(step.insertion);
   });
-  const open = useStableCallback((point: InsertPoint | null): void => {
-    run(state.phase === 'placing' && point !== null ? placeAt(state, point) : openPalette(point));
+  const open = useStableCallback((point: InsertPoint): void => {
+    run(openPalette(point, null));
   });
+  const drop = useStableCallback(
+    (point: InsertPoint, anchor: ScreenPoint | null, fits: readonly PaletteChoice[]): void => {
+      run(openAtDrop(point, anchor, fits));
+    },
+  );
   const choose = useStableCallback((choice: PaletteChoice): void => {
     run(chooseEntry(state, choice));
   });
   const close = useStableCallback((): void => {
     run(cancel(state));
   });
-  return { state, open, choose, cancel: close };
+  return { state, open, drop, choose, cancel: close };
 }
 
 export interface PaneControl {

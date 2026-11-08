@@ -1,14 +1,16 @@
 import { closeBrowserSurface } from './browser-surfaces';
 import { Logger } from '@smarteverything/logging';
 import { projectPageTarget, releaseProjectTarget } from '../../../platform/browser-html-projection';
+import type { ChatPage, ChatServer } from '@smarteverything/domain';
 import type { BrowserSelection } from './browser-selection';
 const log = new Logger('app.browser-tabs');
 export async function admitProjectPage(
   chatId: string,
   path: string,
+  server: ChatServer | undefined,
   id: string,
 ): Promise<BrowserSelection> {
-  const page = { chatId, path };
+  const page: ChatPage = server === undefined ? { chatId, path } : { chatId, path, server };
   return { kind: 'project', page, target: await projectPageTarget(page, id) };
 }
 export async function retireBrowserSelection(selection: BrowserSelection): Promise<void> {

@@ -1,8 +1,11 @@
-import { useState, type ReactNode } from 'react';
+import { useAutomationsSource } from '../data/source';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { z } from 'zod';
-import type { AutomationFunctionDetail, FunctionV3 } from '@smarteverything/domain';
+import type { FunctionV3 } from '@smarteverything/domain';
+import type { FunctionDetail } from '../data/graph-adapter';
+import { useHideNavigation } from '../../../app-shell/nav-visibility';
 import { LoadedQuery } from '../../../components/loaded-query';
 import { Sheet } from '../../../components/sheet';
 import { usePausable } from '../../../design/external-store';
@@ -13,7 +16,9 @@ import { UsersBanner } from '../functions/edit/users-banner';
 import { InterfacePanel } from '../functions/edit/interface-panel';
 import { heroModel } from '../functions/detail/detail-model';
 import { MappingSheet } from '../functions/mapping/mapping-sheet';
+import { unstructure } from '@smarteverything/flow/graph/unstructure';
 import { DocumentStore } from '../model/editor/document-store';
+import { treeFor } from '../model/editor/structured';
 import { links } from '../routes';
 import {
   EditorValueServices,
@@ -24,6 +29,7 @@ import {
 } from './editor-binding';
 import { useEditorContext, type EditorContext } from './editor-context';
 import { NotFound, PageShell } from './page-shell';
+import { nodeEditStage } from './node-edit-stage';
 import { useNodeSave, type NodeSave } from './use-node-save';
 
 const PARAMS = z.object({ functionId: z.string() });
@@ -31,8 +37,12 @@ const PARAMS = z.object({ functionId: z.string() });
 const NO_GESTURES: GesturePort = { beginGesture: () => undefined, endGesture: () => undefined };
 
 function useFunctionProgram(store: DocumentStore): FunctionV3 | null {
+  const kinds = useAutomationsSource().lookup;
   const program = usePausable(store.state.subscribe, () => store.state.get().program);
-  return program.kind === 'function' ? program : null;
+  return useMemo(() => {
+    const tree = treeFor(program, kinds);
+    return tree?.kind === 'function' ? tree : null;
+  }, [program, kinds]);
 }
 
 interface NodeParts {
@@ -44,52 +54,68 @@ interface NodeParts {
   readonly setPanel: (open: boolean) => void;
 }
 
-function useNodeParts(detail: AutomationFunctionDetail): NodeParts {
-  const [store] = useState(() => new DocumentStore(detail.program, detail.layout));
+function useNodeParts(detail: FunctionDetail): NodeParts {
+  const kinds = useAutomationsSource().lookup;
+  const [store] = useState(() => new DocumentStore(detail.graph, kinds, detail.layout));
   const context = useEditorContext();
+  useEffect(() => {
+    store.setKinds(context.registry);
+  }, [store, context.registry]);
   const [name, setName] = useState(detail.name);
   const [panel, setPanel] = useState(false);
   return { store, context, name, setName, panel, setPanel };
 }
 
-function useScreenProps(
-  detail: AutomationFunctionDetail,
+function NodeUsers({ detail }: { readonly detail: FunctionDetail }): ReactNode {
+  return <UsersBanner users={detail.users} />;
+}
+
+function useNodeEditing(
   parts: NodeParts,
-  save: NodeSave,
-): EditorScreenProps {
+): Pick<EditorScreenProps, 'inspector' | 'onInsert' | 'onInterface'> {
   const router = useRouter();
   const { store, context, setPanel } = parts;
-  const openPanel = (): void => {
+  const onInterface = (): void => {
     setPanel(true);
   };
   const inspector = useInspectorBinding({
     store,
     context,
     gestures: NO_GESTURES,
-    onInterface: openPanel,
+    onInterface,
     onUnavailable: unavailable,
   });
   const onInsert = useInsert(store, context, () => {
     router.push(links.nodes());
   });
+  return { inspector, onInsert, onInterface };
+}
+
+function useScreenProps(
+  detail: FunctionDetail,
+  parts: NodeParts,
+  save: NodeSave,
+): EditorScreenProps {
+  const router = useRouter();
+  const { store, context } = parts;
+  const editing = useNodeEditing(parts);
   return {
+    ...editing,
     store,
     name: parts.name,
     status: store.state.get().dirty ? 'Unsaved changes' : 'Saved',
     reusable: true,
     online: true,
     sentence: null,
+    notice: <NodeUsers detail={detail} />,
     run: null,
     onScreen: useIsFocused(),
     options: context.options,
     lint: context.lint,
-    inspector,
-    onInsert,
     onBack: (): void => {
       router.back();
     },
-    onRename: openPanel,
-    onInterface: openPanel,
+    onRename: editing.onInterface,
     onPublish: save.start,
     onTest: (): void => {
       unavailable('Testing');
@@ -108,10 +134,11 @@ function InterfaceSheet({
   parts,
   program,
 }: {
-  readonly detail: AutomationFunctionDetail;
+  readonly detail: FunctionDetail;
   readonly parts: NodeParts;
   readonly program: FunctionV3;
 }): ReactNode {
+  const kinds = useAutomationsSource().lookup;
   const userId = useActiveProfile()?.id ?? null;
   const { store, name, setName, panel, setPanel } = parts;
   return (
@@ -133,7 +160,7 @@ function InterfaceSheet({
         locked={!detail.editable}
         onName={setName}
         onProgram={(next) => {
-          store.replace(next, store.state.get().layout);
+          store.replace(unstructure(next, kinds), store.state.get().layout);
         }}
       />
     </Sheet>
@@ -145,7 +172,7 @@ function Mapping({
   program,
   save,
 }: {
-  readonly detail: AutomationFunctionDetail;
+  readonly detail: FunctionDetail;
   readonly program: FunctionV3;
   readonly save: NodeSave;
 }): ReactNode {
@@ -173,7 +200,8 @@ function Mapping({
   );
 }
 
-function Editing({ detail }: { readonly detail: AutomationFunctionDetail }): ReactNode {
+function Editing({ detail }: { readonly detail: FunctionDetail }): ReactNode {
+  useHideNavigation();
   const parts = useNodeParts(detail);
   const save = useNodeSave(detail, parts.store, parts.name);
   const screen = useScreenProps(detail, parts, save);
@@ -181,7 +209,6 @@ function Editing({ detail }: { readonly detail: AutomationFunctionDetail }): Rea
   return (
     <EditorValueServices store={parts.store} context={parts.context}>
       <View className="min-h-0 flex-1 bg-bg">
-        <UsersBanner builtin={detail.builtin} users={detail.users} onCopy={screen.onRuns} />
         <EditorScreen {...screen} />
       </View>
       {program === null ? null : (
@@ -196,20 +223,16 @@ function Editing({ detail }: { readonly detail: AutomationFunctionDetail }): Rea
 
 function Load({ functionId }: { readonly functionId: string }): ReactNode {
   const query = useFunction(functionId);
+  const stage = nodeEditStage(query.data);
+  if (stage.kind === 'editing') return <Editing key={stage.detail.id} detail={stage.detail} />;
+  if (stage.kind === 'read-only') {
+    return (
+      <NotFound title="Read only" body="Make your own copy of this Custom Node to change it." />
+    );
+  }
   return (
-    <PageShell title={query.data?.name ?? 'Custom Node'}>
-      <LoadedQuery query={query}>
-        {(detail) =>
-          detail.editable ? (
-            <Editing key={detail.id} detail={detail} />
-          ) : (
-            <NotFound
-              title="Read only"
-              body="Make your own copy of this Custom Node to change it."
-            />
-          )
-        }
-      </LoadedQuery>
+    <PageShell title="Custom Node">
+      <LoadedQuery query={query}>{() => null}</LoadedQuery>
     </PageShell>
   );
 }

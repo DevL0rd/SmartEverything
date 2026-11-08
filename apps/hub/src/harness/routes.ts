@@ -13,8 +13,11 @@ import type {
   AiModelRow,
   AiPricing,
   AiHarnessTarget,
+  AiRouteInfo,
+  AiRouteInfoQuery,
 } from '@smarteverything/domain';
 import type { Catalogue } from '../openrouter/catalogue';
+import { presetsOf, routeInfoOf, type RouteInfoRuntime } from './route-info';
 
 export class HarnessRoutes {
   private readonly listeners = new Set<() => void>();
@@ -28,6 +31,7 @@ export class HarnessRoutes {
     for (const listener of this.listeners) listener();
   }
   private readonly supplierRoutes = new Map<string, AiModelRoute>();
+  private runtime: RouteInfoRuntime | null = null;
   constructor(
     private readonly catalogue: Catalogue,
     private readonly configured: () => boolean,
@@ -37,6 +41,32 @@ export class HarnessRoutes {
       this.metered(profileId),
       ...[...this.supplierRoutes.values()].filter((route) => route.profile_id === profileId),
     ];
+  }
+  supplierRoute(profileId: string, routeId: string): AiModelRoute | undefined {
+    const route = this.supplierRoutes.get(routeId);
+    return route?.profile_id === profileId ? route : undefined;
+  }
+  attachInfo(runtime: RouteInfoRuntime): () => void {
+    this.runtime = runtime;
+    return (): void => {
+      if (this.runtime === runtime) this.runtime = null;
+    };
+  }
+  async info(profileId: string, query: AiRouteInfoQuery): Promise<AiRouteInfo> {
+    const runtime = this.runtime;
+    if (runtime === null)
+      throw new ApiError('conflict', 'SmartEverything runtime is starting. Try again in a moment.');
+    const route = this.list(profileId).find((entry) => entry.id === query.route_id);
+    if (route === undefined)
+      throw new ApiError('not_found', 'That model route does not exist for you.');
+    if (route.state !== 'ready') throw new ApiError('conflict', route.failure.message);
+    if (!route.models.some((entry) => entry.id === query.model))
+      throw new ApiError('not_found', 'That model is not offered on this route.');
+    return routeInfoOf(
+      route.id,
+      await runtime.model(route.id, query.model),
+      presetsOf(runtime.presets()),
+    );
   }
   priceOf(modelId: string): AiPricing | null {
     return this.catalogue.rows('chat').find((row) => row.id === modelId)?.pricing ?? null;
@@ -89,11 +119,6 @@ export class HarnessRoutes {
       throw new ApiError(
         'conflict',
         'The selected supplying route is unavailable. Subscription routes have no paid fallback.',
-      );
-    if (route.capability_revision !== selection.capability_revision)
-      throw new ApiError(
-        'conflict',
-        'Model capability revision changed; select the discovered route again.',
       );
     const model = route.models.find((entry) => entry.id === selection.model);
     if (
@@ -150,6 +175,7 @@ function model(row: AiModelRow, revision: string): AiModelRoute['models'][number
       output_modalities: ['text'],
       reasoning: row.reasoning !== 'none',
       efforts: row.efforts,
+      default_effort: row.default_effort,
       local_tools: row.tools,
       context_tokens: row.context_length === 0 ? null : row.context_length,
       max_output_tokens: row.max_output === 0 ? null : row.max_output,
@@ -168,6 +194,7 @@ function capabilityRevision(rows: readonly AiModelRow[]): string {
           input_modalities: row.input_modalities,
           reasoning: row.reasoning,
           efforts: row.efforts,
+          default_effort: row.default_effort,
           tools: row.tools,
           context_length: row.context_length,
           max_output: row.max_output,

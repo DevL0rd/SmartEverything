@@ -3,6 +3,7 @@ import type { IconName } from '../../components/icon';
 import { WideCard, type WideClass } from '../../features/devices';
 import type { Device } from '../../store/state';
 import { CellLine } from './cell-parts';
+import { cellMedallionSize } from './medallion-model';
 import { ServiceMedallion } from './service-medallion';
 
 export function PendingCell({
@@ -31,7 +32,7 @@ export function PendingCell({
           tone="neutral"
           ratio={null}
           live={false}
-          size={cls === 'm' ? 'cell' : 'hero'}
+          size={cellMedallionSize(cls)}
           label={line}
           offline
         />

@@ -1,7 +1,6 @@
 import type {
   AdapterSink,
   ComputerLiveNotice,
-  ComputerRole,
   ComputerScopes,
   DeviceCommand,
   HistoryPolicy,
@@ -9,7 +8,7 @@ import type {
   ProcessWindow,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { DeviceDriver } from '../local/device-driver';
+import type { DeviceDriver, DeviceDriverContext } from '../local/device-driver';
 import type { MetricHistory } from '../metrics/history';
 import type { Viewers } from '../metrics/viewers';
 import type { HubLink } from '../node/link';
@@ -18,7 +17,7 @@ import type { AppTime } from './app-focus';
 import type { SessionEars } from './computer-ears';
 import type { SessionEarHosts } from '../listening/ear-hosts';
 import { runComputerCommand, type ComputerCommandRecords } from './computer-commands';
-import { COMPUTER_DRIVER } from './computer-device';
+import { COMPUTER_DRIVER, HUB_EXTERNAL_ID, describeHub, type HubMachine } from './computer-device';
 import type { ComputerDirectory } from './computer-directory';
 import { ComputerOfflineError } from './computer-errors';
 import { ComputerSession } from './computer-session';
@@ -26,7 +25,7 @@ import { ComputerSession } from './computer-session';
 export interface ComputerDriverOptions {
   readonly history: MetricHistory;
   readonly viewers: Viewers<ProcessWindow>;
-  readonly policyOf: (deviceId: string, role: ComputerRole) => HistoryPolicy;
+  readonly policyOf: (deviceId: string) => HistoryPolicy;
   readonly publish: (notice: ComputerLiveNotice) => void;
   readonly deviceIdOf: (externalId: string) => string | undefined;
   readonly scopesOf: (deviceId: string) => ComputerScopes;
@@ -35,7 +34,8 @@ export interface ComputerDriverOptions {
   readonly recordAppTime: (time: AppTime) => void;
   readonly signals: Pick<SignalBus, 'emit'>;
   readonly personOf: (deviceId: string) => string | null;
-  readonly hubComputerResolved: (deviceId: string) => void;
+  readonly hub: HubMachine;
+  readonly bindHubDevice: (deviceId: string) => void;
   readonly ears?: SessionEars;
   readonly earHosts?: SessionEarHosts;
   readonly now: () => Date;
@@ -44,6 +44,17 @@ export interface ComputerDriverOptions {
 
 interface ComputerDriver extends DeviceDriver {
   readonly attach: (link: HubLink) => () => void;
+}
+
+async function registerHub(
+  options: ComputerDriverOptions,
+  publish: DeviceDriverContext['publishDevices'],
+): Promise<void> {
+  await publish([describeHub(options.hub)]);
+  const deviceId = options.deviceIdOf(HUB_EXTERNAL_ID);
+  if (deviceId === undefined) throw new Error('The hub device was not registered.');
+  options.bindHubDevice(deviceId);
+  options.log.info('computer.hub_device_bound', { deviceId });
 }
 
 export function computerDriver(options: ComputerDriverOptions): ComputerDriver {
@@ -59,12 +70,18 @@ export function computerDriver(options: ComputerDriverOptions): ComputerDriver {
         session.stop();
       };
     },
-    start: (context): Promise<() => Promise<void>> => {
+    start: async (context): Promise<() => Promise<void>> => {
       sink = context.sink;
-      return Promise.resolve((): Promise<void> => {
+      try {
+        await registerHub(options, context.publishDevices);
+      } catch (cause) {
+        sink = null;
+        throw cause;
+      }
+      return (): Promise<void> => {
         sink = null;
         return Promise.resolve();
-      });
+      };
     },
     execute: (command: DeviceCommand): Promise<JsonValue> => {
       if (sink === null) {

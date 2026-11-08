@@ -12,6 +12,12 @@ export interface Lease {
 
 export type LiveSupport = 'ready' | 'offline' | 'unsupported';
 
+export type ShownPhase = 'off' | 'held' | 'failed';
+
+export function shownPhase(lease: Lease): ShownPhase {
+  return lease.phase === 'starting' ? 'off' : lease.phase;
+}
+
 const IDLE_LEASE: Lease = { count: 0, phase: 'off', error: null };
 
 export function liveSupport(sensor: ShellyDevice): LiveSupport {

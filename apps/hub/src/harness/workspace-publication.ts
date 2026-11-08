@@ -22,5 +22,5 @@ export function projectNativeWorkspace(
     { claim, cwd: directory.path },
     service.hostPrincipal(grant.profile_id, service.directory.get(grant.target).host),
   );
-  service.store.harnessCoordination.issue({ ...grant, cwd: directory.path });
+  service.store.harnessSessions.issue({ ...grant, cwd: directory.path });
 }

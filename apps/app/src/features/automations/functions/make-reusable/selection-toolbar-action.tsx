@@ -1,16 +1,17 @@
+import { useAutomationsSource } from '../../data/source';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { CheckContext } from '@smarteverything/flow/check/shapes';
 import type { Extraction } from '@smarteverything/flow/extract/extract';
-import { indexProgram } from '@smarteverything/flow/program/lookup';
 import { Button } from '../../../../components/button';
 import { notify, notifyFailure } from '../../../../components/toast-store';
 import { Text } from '../../../../components/text';
 import { useSelected } from '../../../../design/external-store';
 import { useAutomationActions } from '../../data/use-automation';
 import { useFunctionActions } from '../../data/use-functions';
-import { selectIds } from '../../editor/host/edit-intents';
+import { selectIds } from '../../editor/host/intent-env';
 import type { DocumentStore } from '../../model/editor/document-store';
+import { treeFor } from '../../model/editor/structured';
 import { commitExtraction } from './commit';
 import { extractBody, madeText, type Draft, type ExtractTarget } from './dialog-model';
 import { MakeReusableDialog } from './make-reusable-dialog';
@@ -39,8 +40,10 @@ export function unavailableReason(
   kind: 'automation' | 'function',
   target: ExtractTarget | null,
   inSync: boolean,
+  structured = true,
 ): string | null {
   if (kind !== 'automation') return 'Custom Nodes cannot be made inside another Custom Node yet.';
+  if (!structured) return 'Fix the problems on the canvas first.';
   if (target === null) return 'Save the automation first.';
   return inSync ? null : 'Publish your changes first, then make the Custom Node.';
 }
@@ -104,17 +107,19 @@ function useSubmit(input: MakeReusableInput): Submitter {
 }
 
 function selectKeys(store: MakeReusableInput['store'], keys: readonly string[]): void {
-  const index = indexProgram(store.state.get().program);
-  selectIds(
-    store,
-    keys.flatMap((key) => index.byKey.get(key)?.node.id ?? []),
-  );
+  const ids = store.state
+    .get()
+    .program.nodes.filter((node) => keys.includes(node.key))
+    .map((node) => node.id);
+  selectIds(store, ids);
 }
 
 export function useMakeReusable(input: MakeReusableInput): MakeReusable {
+  const kinds = useAutomationsSource().lookup;
   const { store, checkContext, titleOf, target, inSync } = input;
   const preview = useExtractPreview(store, checkContext);
   const kind = useSelected(store.state, (value) => value.program.kind);
+  const structured = useSelected(store.state, (value) => treeFor(value.program, kinds) !== null);
   const [open, setOpen] = useState(false);
   const close = (): void => {
     setOpen(false);
@@ -122,10 +127,11 @@ export function useMakeReusable(input: MakeReusableInput): MakeReusable {
   };
   const { busy, failure, made, submit, clearFailure } = useSubmit(input);
   const { state } = preview;
-  const unavailable = unavailableReason(kind, target, inSync);
+  const unavailable = unavailableReason(kind, target, inSync, structured);
+  const tree = treeFor(store.state.get().program, kinds);
   const refusal =
-    state.status === 'refused'
-      ? refusalView(state.refusal, store.state.get().program, state.keys, titleOf)
+    state.status === 'refused' && tree !== null
+      ? refusalView(state.refusal, tree, state.keys, titleOf)
       : null;
   return {
     unavailable,

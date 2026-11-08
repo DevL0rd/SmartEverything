@@ -1,9 +1,11 @@
 import { parseArgs } from 'node:util';
+import { env } from 'node:process';
 import { z } from 'zod';
 import { apkProblems, readApk, readAppIdentity, type ApkVariant } from './release-apk.ts';
-import { hubLayout } from './release-hub-files.ts';
-import { systemdUnits, verifyHub } from './release-hub-verify.ts';
-import { agreedVersion, readVersions } from './release-version.ts';
+import { dataRootOf } from './data-root.ts';
+import { dataLayoutOf } from './release-hub-files.ts';
+import { parseSchemaFlag, systemdUnits, verifyHub } from './release-hub-verify.ts';
+import { readReleaseVersion } from './release-version.ts';
 
 export type SmokeArea = 'phone' | 'desktop' | 'hub';
 export type SmokeCoverage = 'apk' | 'hub' | 'manual';
@@ -20,7 +22,8 @@ export const SMOKE_STEPS: readonly SmokeStep[] = [
     id: 'apk-identity',
     area: 'phone',
     coverage: 'apk',
-    check: 'The APK has the one app id, the release number and a version code above the last one.',
+    check:
+      'The APK has the one app id, the release number and a version code above the code given with --above (the newest published or installed one).',
   },
   {
     id: 'apk-signed',
@@ -125,7 +128,7 @@ export const SMOKE_STEPS: readonly SmokeStep[] = [
     area: 'desktop',
     coverage: 'manual',
     check:
-      'The installer runs, the app starts, the tray appears and the service is installed and active.',
+      'The desktop installer opens the app and tray without creating or replacing a hub service.',
   },
   {
     id: 'desktop-link',
@@ -151,12 +154,13 @@ export const SMOKE_STEPS: readonly SmokeStep[] = [
     area: 'hub',
     coverage: 'manual',
     check:
-      'A rollback has been rehearsed once with release-hub.ts rollback --dry-run and then for real on a copy.',
+      'release-hub.ts rollback --dry-run --backup <newest verified backup> passes: the backup holds the service files and a readable database and the disks have room to restore it.',
   },
 ];
 
 const VARIANT = z.enum(['release', 'development']);
-const DEFAULT_ABOVE = 2;
+const COUNT_FLAG = z.string().regex(/^\d+$/u, 'must be a whole number').transform(Number);
+const SERVER_FLAG = z.url({ protocol: /^https?$/u });
 
 export function stepsCovered(coverage: SmokeCoverage): readonly SmokeStep[] {
   return SMOKE_STEPS.filter((step) => step.coverage === coverage);
@@ -175,14 +179,22 @@ function printManual(area: SmokeArea): void {
   for (const step of pending) process.stdout.write(`  [ ] ${step.id}: ${step.check}\n`);
 }
 
-async function checkApk(file: string, variant: ApkVariant, above: number): Promise<void> {
+export interface ApkRequest {
+  readonly file: string;
+  readonly variant: ApkVariant;
+  readonly above: number;
+  readonly server: string | undefined;
+}
+
+async function checkApk({ file, variant, above, server }: ApkRequest): Promise<void> {
   const identity = readAppIdentity();
   const problems = await apkProblems(readApk(file), {
     variant,
     applicationId: identity.applicationId,
     signingCertificateSha256: identity.signingCertificateSha256,
-    versionName: agreedVersion(readVersions()),
+    versionName: readReleaseVersion('app'),
     versionCodeAbove: above,
+    ...(server === undefined ? {} : { server }),
   });
   for (const step of stepsCovered('apk')) {
     const failed = problems.filter((problem) => problem.step === step.id);
@@ -193,38 +205,72 @@ async function checkApk(file: string, variant: ApkVariant, above: number): Promi
   printManual('phone');
 }
 
-async function checkHub(url: string, schema: number | null): Promise<void> {
-  const checks = await verifyHub(hubLayout(), url, systemdUnits, schema);
+async function checkHub(
+  url: string,
+  schema: number | null,
+  data: string | undefined,
+): Promise<void> {
+  const checks = await verifyHub(
+    dataLayoutOf(await dataRootOf(data, env)),
+    url,
+    systemdUnits,
+    schema,
+  );
   for (const check of checks)
     process.stdout.write(`${check.ok ? 'ok  ' : 'FAIL'} ${check.name}: ${check.detail}\n`);
   if (checks.some((check) => !check.ok)) process.exitCode = 1;
   printManual('hub');
 }
 
+const FLAGS = {
+  allowPositionals: true,
+  options: {
+    file: { type: 'string' },
+    variant: { type: 'string' },
+    above: { type: 'string' },
+    server: { type: 'string' },
+    url: { type: 'string' },
+    schema: { type: 'string' },
+    data: { type: 'string' },
+  },
+} as const;
+
+const USAGE =
+  'usage: tsx tooling/release-smoke.ts list | apk --file <apk> --above <versionCode of the newest published or installed build> [--variant release|development] [--server <https url>] | hub --url <https url> [--schema <n>] [--data <hub data folder>]';
+
+export function parseApkRequest(values: Readonly<Record<string, string | undefined>>): ApkRequest {
+  const { file, above } = values;
+  if (file === undefined || above === undefined) throw new Error(USAGE);
+  return {
+    file,
+    variant: VARIANT.parse(values['variant'] ?? 'release'),
+    above: COUNT_FLAG.parse(above),
+    server: values['server'] === undefined ? undefined : SERVER_FLAG.parse(values['server']),
+  };
+}
+
+export function parseHubRequest(values: Readonly<Record<string, string | undefined>>): {
+  readonly url: string;
+  readonly schema: number | null;
+} {
+  const { url, schema } = values;
+  if (url === undefined) throw new Error(USAGE);
+  return { url: SERVER_FLAG.parse(url), schema: parseSchemaFlag(schema) };
+}
+
 async function main(): Promise<void> {
-  const { positionals, values } = parseArgs({
-    allowPositionals: true,
-    options: {
-      file: { type: 'string' },
-      variant: { type: 'string' },
-      above: { type: 'string' },
-      url: { type: 'string' },
-      schema: { type: 'string' },
-    },
-  });
+  const { positionals, values } = parseArgs(FLAGS);
   const command = positionals[0];
-  if (command === 'list') return printList();
-  if (command === 'apk' && values.file !== undefined)
-    return checkApk(
-      values.file,
-      VARIANT.parse(values.variant ?? 'release'),
-      Number(values.above ?? DEFAULT_ABOVE),
-    );
-  if (command === 'hub' && values.url !== undefined)
-    return checkHub(values.url, values.schema === undefined ? null : Number(values.schema));
-  throw new Error(
-    'usage: tsx tooling/release-smoke.ts list | apk --file <apk> [--variant release|development] [--above <versionCode>] | hub --url <https url> [--schema <n>]',
-  );
+  if (command === 'list') {
+    printList();
+    return;
+  }
+  if (command === 'apk') return checkApk(parseApkRequest(values));
+  if (command === 'hub') {
+    const request = parseHubRequest(values);
+    return checkHub(request.url, request.schema, values.data);
+  }
+  throw new Error(USAGE);
 }
 
 if (import.meta.main) await main();

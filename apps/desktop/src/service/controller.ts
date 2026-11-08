@@ -1,23 +1,20 @@
 import path from 'node:path';
 import { Logger } from '@smarteverything/logging';
 import type {
+  ComputerServiceConfig,
+  ComputerServiceReady,
   DesktopServer,
   DesktopServiceHealth,
   DesktopServiceLogs,
   DesktopServiceStatus,
 } from '@smarteverything/domain';
-import type { ServiceConfig } from '@smarteverything/hub/service/configuration';
-import { prepareServiceConfig, type PreparedConfig } from './config-file.js';
-import { LiveLink, type OpenSocket } from './live-link.js';
-import { PRIVATE_MODE, type ManagerState, type ServiceManager } from './manager.js';
+import { parseComputerConfig } from './config-file.js';
+import { type ManagerState, type ServiceManager } from './manager.js';
 import {
-  answers,
-  nodeWindowFile,
-  readNodeWindow,
-  readOwnerToken,
+  desktopConnectionFile,
+  readDesktopConnection,
   readReady,
-  readyUrl,
-  writeNodeWindow,
+  writeDesktopConnection,
 } from './ready.js';
 import type { ServiceLocations } from './locations.js';
 import type { ServiceSystem } from './system.js';
@@ -31,8 +28,6 @@ export interface ControllerOptions {
   readonly manager: ServiceManager;
   readonly locations: ServiceLocations;
   readonly system: ServiceSystem;
-  readonly go2rtcBinary: string;
-  readonly openSocket: OpenSocket;
   readonly timeoutMs: number;
   readonly failed: (cause: unknown) => void;
   readonly managedBy?: 'stable-app' | undefined;
@@ -41,7 +36,7 @@ export interface ControllerOptions {
 export class ManagedByStableAppError extends Error {
   constructor() {
     super(
-      'the stable SmartEverything app manages the server; SmartEverything Dev only connects to it',
+      'the stable SmartEverything app manages the Computer service; SmartEverything Dev only connects to it',
     );
     this.name = 'ManagedByStableAppError';
   }
@@ -50,31 +45,30 @@ export class ManagedByStableAppError extends Error {
 export class ServiceTimeoutError extends Error {
   constructor(expected: string, timeoutMs: number, detail: string) {
     super(
-      `the server must be ${expected} within ${String(timeoutMs / 1000)} seconds; ${detail}. Its log is in Settings.`,
+      `the Computer service must be ${expected} within ${String(timeoutMs / 1000)} seconds; ${detail}. Its log is in Settings.`,
     );
     this.name = 'ServiceTimeoutError';
   }
 }
 
-export class ServiceNotRunningError extends Error {
-  constructor(status: DesktopServiceStatus) {
-    super(
-      `the SmartEverything server must be running for the window to reach it; it is ${status.health} (${status.detail})`,
-    );
-    this.name = 'ServiceNotRunningError';
+class ComputerNotPairedError extends Error {
+  override readonly name = 'ComputerNotPairedError';
+
+  constructor() {
+    super('Pair this computer with a Hub before starting its service.');
   }
 }
 
 interface Observed {
   readonly state: ManagerState;
-  readonly url: string | null;
+  readonly ready: ComputerServiceReady | null;
 }
 
 function healthOf(observed: Observed, failure: string | null): DesktopServiceHealth {
   if (!observed.state.installed) {
     return 'not-installed';
   }
-  if (observed.url !== null) {
+  if (observed.state.active && observed.ready !== null) {
     return 'running';
   }
   if (failure !== null) {
@@ -94,24 +88,24 @@ function tail(text: string | null, prefix: string): readonly string[] {
 export class ServiceController {
   readonly #options: ControllerOptions;
   readonly #listeners = new Set<(status: DesktopServiceStatus) => void>();
-  readonly #live: LiveLink;
+  readonly #connections = new Set<(server: DesktopServer | null) => void>();
+  #lastWindow: DesktopServer | null = null;
+  #connectionRevision = 0;
   #failure: string | null = null;
   #last = '';
   #stopWatching: (() => void) | null = null;
 
   constructor(options: ControllerOptions) {
     this.#options = options;
-    this.#live = new LiveLink(options.openSocket, () => {
-      this.refresh();
-    });
   }
 
   get dataDirectory(): string {
     return this.#options.locations.dataDirectory;
   }
 
-  async config(): Promise<ServiceConfig> {
-    return (await this.#prepare()).config;
+  async config(): Promise<ComputerServiceConfig | null> {
+    const { locations, system } = this.#options;
+    return parseComputerConfig(locations.configFile, await system.files.read(locations.configFile));
   }
 
   onChange(listener: (status: DesktopServiceStatus) => void): () => void {
@@ -121,24 +115,31 @@ export class ServiceController {
     };
   }
 
+  onConnection(listener: (server: DesktopServer | null) => void): void {
+    this.#connections.add(listener);
+  }
+
   watch(): void {
     const { locations, system } = this.#options;
-    const relevant = new Set(
-      [
-        locations.readyFile,
-        locations.supervisorPidFile,
-        locations.ownerTokenFile,
-        nodeWindowFile(locations),
-      ].map((file) => path.basename(file)),
+    const relevant = new Set([
+      locations.readyFile,
+      locations.supervisorPidFile,
+      desktopConnectionFile(locations),
+    ]);
+    const directories = new Set([...relevant].map((file) => path.dirname(file)));
+    const stops = [...directories].map((directory) =>
+      system.watch(directory, {
+        changed: (name) => {
+          if (relevant.has(path.join(directory, name))) {
+            this.refresh();
+          }
+        },
+        failed: this.#options.failed,
+      }),
     );
-    this.#stopWatching = system.watch(locations.dataDirectory, {
-      changed: (name) => {
-        if (relevant.has(name)) {
-          this.refresh();
-        }
-      },
-      failed: this.#options.failed,
-    });
+    this.#stopWatching = (): void => {
+      for (const stop of stops) stop();
+    };
     log.info('service.watching', {
       manager: this.#options.manager.kind,
       files: relevant.size,
@@ -147,8 +148,9 @@ export class ServiceController {
   }
 
   close(): void {
+    this.#connectionRevision += 1;
+    this.#connections.clear();
     this.#stopWatching?.();
-    this.#live.drop();
   }
 
   refresh(): void {
@@ -171,7 +173,7 @@ export class ServiceController {
       installed: observed.state.installed,
       active: observed.state.active,
       current: observed.state.current,
-      answering: observed.url !== null,
+      connected: observed.ready?.connected ?? false,
     });
     if (health === 'running') {
       this.#failure = null;
@@ -181,7 +183,7 @@ export class ServiceController {
       health,
       installed: observed.state.installed,
       active: observed.state.active,
-      url: observed.url,
+      url: observed.ready?.connected === true ? observed.ready.hub_url : null,
       dataDirectory: this.dataDirectory,
       detail: health === 'failed' && this.#failure !== null ? this.#failure : observed.state.detail,
       linger: await this.#options.manager.linger(),
@@ -189,16 +191,15 @@ export class ServiceController {
     };
   }
 
-  async ensure(): Promise<DesktopServiceStatus> {
+  async ensure(source: 'start' | 'pairing' = 'start'): Promise<DesktopServiceStatus> {
     return this.#attempt('ensure', async () => {
       const { manager } = this.#options;
-      const configChanged = await this.#writeConfig();
+      if ((await this.config()) === null) throw new ComputerNotPairedError();
       const state = await manager.state();
       log.debug('service.ensure_decided', {
         installed: state.installed,
         active: state.active,
         current: state.current,
-        configChanged,
       });
       if (!state.current) {
         await this.#reinstall(state);
@@ -209,10 +210,7 @@ export class ServiceController {
         await manager.start();
         return this.#serving();
       }
-      if (configChanged) {
-        return this.#restarted();
-      }
-      return this.#serving();
+      return source === 'pairing' ? this.#restarted() : this.#serving();
     });
   }
 
@@ -265,62 +263,23 @@ export class ServiceController {
     return { file: logFile, lines };
   }
 
-  async server(): Promise<DesktopServer | null> {
-    const status = await this.status();
-    if (status.health === 'starting') {
-      await this.#serving();
-    } else if (status.health !== 'running') {
-      log.warn('service.server_unavailable', { health: status.health });
-      throw new ServiceNotRunningError(status);
-    }
-    return this.#connection();
+  server(): Promise<DesktopServer | null> {
+    const { system, locations } = this.#options;
+    return readDesktopConnection(system, locations);
   }
 
   async setWindow(window: DesktopServer | null): Promise<void> {
     const { system, locations } = this.#options;
-    await writeNodeWindow(system, locations, window);
-  }
-
-  async #connection(): Promise<DesktopServer | null> {
-    const { system, locations } = this.#options;
-    const ready = await readReady(system, locations);
-    if (ready === null) {
-      log.warn('service.ready_missing', { file: path.basename(locations.readyFile) });
-      throw new ServiceNotRunningError(await this.status());
-    }
-    return 'role' in ready
-      ? readNodeWindow(system, locations)
-      : { url: ready.url, token: await readOwnerToken(system, locations) };
+    await writeDesktopConnection(system, locations, window);
+    this.#connectionRevision += 1;
+    this.#followWindow(await this.server());
   }
 
   async #observe(): Promise<Observed> {
     const { system, locations, manager } = this.#options;
     const state = await manager.state();
-    const ready = await readReady(system, locations);
-    const connected = ready !== null && (!('role' in ready) || ready.connected);
-    const url = connected && (await answers(system, readyUrl(ready))) ? readyUrl(ready) : null;
-    return { state, url };
-  }
-
-  async #prepare(): Promise<PreparedConfig> {
-    const file = this.#options.locations.configFile;
-    return prepareServiceConfig(
-      file,
-      await this.#options.system.files.read(file),
-      this.#options.go2rtcBinary,
-    );
-  }
-
-  async #writeConfig(): Promise<boolean> {
-    const prepared = await this.#prepare();
-    if (prepared.changed) {
-      await this.#options.system.files.write(
-        this.#options.locations.configFile,
-        prepared.text,
-        PRIVATE_MODE,
-      );
-    }
-    return prepared.changed;
+    const ready = state.current ? await readReady(system, locations) : null;
+    return { state, ready };
   }
 
   async #reinstall(state: ManagerState): Promise<void> {
@@ -365,20 +324,16 @@ export class ServiceController {
   async #serving(previousPid: number | null = null): Promise<DesktopServiceStatus> {
     await this.#until('running', async () => {
       const ready = await readReady(this.#options.system, this.#options.locations);
-      return (
-        ready !== null &&
-        ready.pid !== previousPid &&
-        ('role' in ready ? ready.connected : await answers(this.#options.system, ready.url))
-      );
+      return ready !== null && ready.pid !== previousPid;
     });
     const status = await this.status();
-    this.#followWindow(await this.#connection());
+    this.#followWindow(await this.server());
     return status;
   }
 
   async #stopped(): Promise<void> {
-    this.#live.drop();
     await this.#until('stopped', async () => !(await this.#options.manager.state()).active);
+    await this.#options.system.files.remove(this.#options.locations.readyFile);
   }
 
   #until(expected: string, check: () => Promise<boolean>): Promise<void> {
@@ -394,21 +349,23 @@ export class ServiceController {
   }
 
   #followWindow(connection: DesktopServer | null): void {
-    if (connection !== null) this.#live.follow(connection.url, connection.token);
+    if (this.#lastWindow?.url === connection?.url && this.#lastWindow?.token === connection?.token)
+      return;
+    this.#lastWindow = connection;
+    for (const listener of this.#connections) listener(connection);
   }
 
   #publish(status: DesktopServiceStatus): void {
-    if (status.health === 'running') {
-      this.#connection().then(
-        (connection) => {
-          this.#followWindow(connection);
-        },
-        (cause: unknown) => {
-          log.error('service.connection_failed', cause);
-          this.#options.failed(cause);
-        },
-      );
-    }
+    const revision = ++this.#connectionRevision;
+    this.server().then(
+      (connection) => {
+        if (revision === this.#connectionRevision) this.#followWindow(connection);
+      },
+      (cause: unknown) => {
+        log.error('service.connection_failed', cause);
+        this.#options.failed(cause);
+      },
+    );
     const text = JSON.stringify(status);
     if (text === this.#last) {
       return;

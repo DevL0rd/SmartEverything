@@ -1,14 +1,22 @@
 import type { ReactNode } from 'react';
 import { memo, useId, useMemo, useRef, useState } from 'react';
-import { ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import {
+  Platform,
+  ScrollView,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-import { CopyButton } from '../../../../components/copy-button';
 import { Text } from '../../../../components/text';
 import { useMeasuredWidth } from '../../../../components/use-measured-width';
 import { useColour } from '../../../../design/colour';
 import { cn } from '../../../../design/cn';
 import { plural } from '../../../../format/text';
-import { inlineText, tableTsv, type Block, type Inline } from './parse';
+import { CHAT_SURFACE } from '../chat-surface';
+import { CardCopy } from './card-action';
+import { inlineText, tableTsv, type Block, type Inline } from '@smarteverything/domain/markdown';
 import { Runs } from './inline-runs';
 
 type TableBlock = Extract<Block, { kind: 'table' }>;
@@ -34,7 +42,9 @@ function widthsOf(table: TableBlock, available: number): readonly number[] {
     );
   });
   const total = natural.reduce((sum, width) => sum + width, 0);
-  return available > total ? natural.map((width) => (width * available) / total) : natural;
+  return available > total
+    ? natural.map((width) => Math.min(COLUMN.max, (width * available) / total))
+    : natural;
 }
 
 function columnStyle(width: number): { readonly width: number } {
@@ -53,19 +63,23 @@ function Row({
   readonly head: boolean;
 }): ReactNode {
   return (
-    <View className={cn('flex-row', head ? 'bg-surface-1' : 'border-t border-outline-variant')}>
+    <View className={cn('flex-row', !head && 'border-t border-outline-variant')}>
       {widths.map((width, column) => (
         <View
           key={column}
           style={columnStyle(width)}
-          className={cn('px-3.5 py-2.5', numeric[column] === true && 'items-end')}
+          className={cn(
+            'px-3',
+            head ? 'pb-1.5 pt-2' : 'py-1.75',
+            numeric[column] === true && 'items-end',
+          )}
         >
           <Runs
             inline={cells[column] ?? []}
-            variant="callout"
-            tone={head ? 'variant' : 'default'}
-            weight={head ? 'medium' : 'regular'}
+            variant={head ? 'caption' : 'callout'}
+            tone={head ? 'faint' : 'default'}
             align={numeric[column] === true ? 'end' : 'start'}
+            tabular={numeric[column] === true}
           />
         </View>
       ))}
@@ -145,31 +159,41 @@ const TableGrid = memo(function TableGrid({
 export function TableCard({ table }: { readonly table: TableBlock }): ReactNode {
   const frame = useMeasuredWidth();
   const end = useEnd();
+  const cardWidth = { maxWidth: table.header.length * COLUMN.max };
   const tsv = useMemo(() => tableTsv(table), [table]);
+  const drag = useMemo(() => Gesture.Native().disallowInterruption(true), []);
+  const grid = (
+    <ScrollView
+      horizontal
+      className="grow-0"
+      scrollEventThrottle={64}
+      onScroll={end.onScroll}
+      onContentSizeChange={end.onContentSize}
+      onLayout={(event) => {
+        end.onLayout(event.nativeEvent.layout.width);
+      }}
+    >
+      <TableGrid table={table} width={frame.width} />
+    </ScrollView>
+  );
   return (
     <View
       onLayout={frame.onLayout}
-      className="overflow-hidden rounded-md border-hairline border-outline-variant bg-surface-1"
+      style={cardWidth}
+      className={cn('w-full self-start overflow-hidden', CHAT_SURFACE)}
     >
-      <View className="min-h-9 flex-row items-center bg-surface-2 pl-3.5 pr-0.5">
-        <Text variant="caption" tone="variant" className="flex-1">
+      <View className="h-7.5 flex-row items-center pl-3 pr-1.5">
+        <Text variant="caption" tone="faint" className="flex-1">
           {plural(table.rows.length, 'row')}
         </Text>
-        <CopyButton value={tsv} label="Copy table" />
+        <CardCopy value={tsv} what="table" />
       </View>
       <View>
-        <ScrollView
-          horizontal
-          className="grow-0"
-          scrollEventThrottle={64}
-          onScroll={end.onScroll}
-          onContentSizeChange={end.onContentSize}
-          onLayout={(event) => {
-            end.onLayout(event.nativeEvent.layout.width);
-          }}
-        >
-          <TableGrid table={table} width={frame.width} />
-        </ScrollView>
+        {Platform.OS === 'android' ? (
+          <GestureDetector gesture={drag}>{grid}</GestureDetector>
+        ) : (
+          grid
+        )}
         {end.atEnd ? null : <EdgeFade />}
       </View>
     </View>

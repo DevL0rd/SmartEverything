@@ -5,6 +5,7 @@ import { LiveWatch } from './live-watch';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import {
+  LIVE_HEARTBEAT_MS,
   LIVE_PROTOCOL,
   type ClientRow,
   type FirewallStatus,
@@ -16,7 +17,6 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import {
-  HEARTBEAT_MS,
   SLOW_CLIENT_BYTES,
   logClosed,
   logConnected,
@@ -38,6 +38,7 @@ import { issuesOf } from './errors';
 import { projected, seenBy } from './live-visibility';
 import { applySubscription, type LivePrimer, type LiveSubscription } from './live-subscription';
 import { liveText } from './live-wire';
+import { afterPendingInput, pingWhenOpen } from '../network/guarded-socket';
 import { answering } from './live-reach';
 import { LiveNotifications } from './live-notifications';
 import { AppViewBroker } from '../app-view/broker';
@@ -110,13 +111,17 @@ export class LiveHub {
         if (notice.type === 'transcript_changed')
           this.announce(notice, notice.source === 'camera' ? 'everyone' : 'owners');
         if (notice.type === 'listening_changed') this.announce(notice, 'everyone');
+        if (notice.type === 'ai_subscription_usage_changed')
+          this.profileNotice(notice, notice.profile_id, 'assistant');
       }),
     ];
     this.heartbeat = setInterval(() => {
-      this.beat();
-    }, HEARTBEAT_MS);
+      afterPendingInput(() => {
+        this.beat();
+      });
+    }, LIVE_HEARTBEAT_MS);
     options.log.info('live.started', {
-      heartbeatMs: HEARTBEAT_MS,
+      heartbeatMs: LIVE_HEARTBEAT_MS,
       slowClientBytes: SLOW_CLIENT_BYTES,
     });
   }
@@ -351,7 +356,8 @@ export class LiveHub {
       return;
     }
     watchBacklog(this.options.log, connection, buffered, message.type);
-    const text = liveText(connection.client.role, seenBy(connection, message, this.options.store));
+    const shown = seenBy(connection, message, this.options.store);
+    const text = shown === null ? null : liveText(connection.client.role, shown);
     if (text === null) {
       connection.stats.skipped();
       this.tally.skipped();
@@ -373,7 +379,7 @@ export class LiveHub {
         continue;
       }
       connection.alive = false;
-      connection.socket.ping();
+      pingWhenOpen(connection.socket);
     }
     this.summarise(silent);
   }

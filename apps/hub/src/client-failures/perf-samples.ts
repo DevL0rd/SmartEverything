@@ -1,12 +1,9 @@
-import { appendFile, rename, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { appendFile, mkdir, rename, stat } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import { isMissing } from '../fs-util';
 import { failureLine } from '@smarteverything/logging';
 
-export const PERF_SCOPE = 'app.perf';
-export const PERF_FILE = 'perf-samples.jsonl';
-export const PERF_ROTATED_FILE = 'perf-samples.jsonl.1';
 const PERF_MAX_BYTES = 20 * 1024 * 1024;
 
 export interface PerfRecord {
@@ -32,16 +29,14 @@ async function sizeOf(path: string): Promise<number> {
 
 export class PerfSamples {
   private queue: Promise<void> = Promise.resolve();
-  private readonly file: string;
   private readonly rotated: string;
 
   constructor(
-    directory: string,
+    private readonly file: string,
     private readonly log: Logger,
     private readonly maxBytes: number = PERF_MAX_BYTES,
   ) {
-    this.file = join(directory, PERF_FILE);
-    this.rotated = join(directory, PERF_ROTATED_FILE);
+    this.rotated = `${file}.1`;
   }
 
   append(record: PerfRecord): void {
@@ -58,6 +53,7 @@ export class PerfSamples {
   }
 
   private async write(line: string): Promise<void> {
+    await mkdir(dirname(this.file), { recursive: true, mode: 0o700 });
     const size = await sizeOf(this.file);
     if (size > 0 && size + line.length > this.maxBytes) {
       await rename(this.file, this.rotated);

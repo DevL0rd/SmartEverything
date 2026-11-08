@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, View } from 'react-native';
+import { ActivityIndicator, Linking, ScrollView, View } from 'react-native';
 import { Logger, background } from '@smarteverything/logging';
 import {
   CameraView,
@@ -10,6 +10,7 @@ import {
 } from 'expo-camera';
 import { withUniwind } from 'uniwind';
 import { cn } from '../design/cn';
+import { ThemeScope } from '../design/theme-scope';
 import { Button } from './button';
 import { EmptyState } from './empty-state';
 import { IconButton } from './icon-button';
@@ -106,6 +107,43 @@ function CameraPermission({
   );
 }
 
+function CameraAccess({
+  permission,
+  requestPermission,
+  purpose,
+  onClose,
+}: {
+  readonly permission: PermissionResponse | null;
+  readonly requestPermission: () => Promise<PermissionResponse>;
+  readonly purpose: string;
+  readonly onClose: () => void;
+}): ReactNode {
+  return (
+    <View className="flex-1 bg-bg">
+      <View className="items-start px-2 pt-safe-offset-2">
+        <IconButton icon="close" label="Close scanner" onPress={onClose} />
+      </View>
+      <ScrollView className="flex-1" contentContainerClassName="px-gutter pb-safe-offset-3">
+        {permission === null ? (
+          <ActivityIndicator
+            accessibilityLabel="Checking camera access"
+            className="py-12"
+            colorClassName="accent-primary"
+          />
+        ) : (
+          <CameraPermission
+            purpose={purpose}
+            canAsk={permission.canAskAgain}
+            onAsk={() => {
+              background(asked(requestPermission), 'code_scanner.asked_failed');
+            }}
+          />
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
 function judge(
   read: CodeScannerProps['read'],
   scanned: { readonly type: string; readonly data: string },
@@ -145,17 +183,13 @@ export function CodeScanner({
   const [problem, setProblem] = useState<string | null>(null);
   const [torch, setTorch] = useState(false);
   const handled = useRef(false);
-  if (permission === null) {
-    return null;
-  }
-  if (!permission.granted) {
+  if (!permission?.granted) {
     return (
-      <CameraPermission
+      <CameraAccess
+        permission={permission}
+        requestPermission={requestPermission}
         purpose={purpose}
-        canAsk={permission.canAskAgain}
-        onAsk={() => {
-          background(asked(requestPermission), 'code_scanner.asked_failed');
-        }}
+        onClose={onClose}
       />
     );
   }
@@ -179,7 +213,9 @@ export function CodeScanner({
         }}
       />
       <Frame message={problem ?? hint} shape={shape} />
-      <Bar torch={torch} onTorch={setTorch} onClose={onClose} />
+      <ThemeScope theme="dark">
+        <Bar torch={torch} onTorch={setTorch} onClose={onClose} />
+      </ThemeScope>
     </View>
   );
 }

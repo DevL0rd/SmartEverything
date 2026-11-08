@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { TEST_AUTHOR } from '../support/automation-author';
 import {
   EMPTY_LAYOUT,
@@ -10,6 +11,7 @@ import type { RowChange } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { graphAutomation } from '../automations-v3/support/graph-of';
 
 let opened: TestStore;
 let clock = Date.parse('2026-10-08T10:00:00.000Z');
@@ -266,13 +268,20 @@ describe('scenes, automations, remotes and personal settings', () => {
       last_error: 'boom',
       run_count: 1,
     });
-    const replaced = store.automations.replace(rule.id, {
-      program: programOf([trigger('trigger.interval', { every: 300_000 })]),
-      layout: EMPTY_LAYOUT,
-      expectedRevision: rule.revision,
-      planHash: PLACEHOLDER_HASH,
-      author: TEST_AUTHOR,
-    });
+    const replaced = store.automations.replace(
+      rule.id,
+      {
+        program: graphAutomation(
+          programOf([trigger('trigger.interval', { every: 300_000 })]),
+          STATIC_KIND_LOOKUP,
+        ),
+        layout: EMPTY_LAYOUT,
+        expectedRevision: rule.revision,
+        planHash: PLACEHOLDER_HASH,
+        author: TEST_AUTHOR,
+      },
+      STATIC_KIND_LOOKUP,
+    );
     expect(replaced).toMatchObject({ last_error: null, revision: 2 });
     store.automations.remove(rule.id);
     expect(store.automations.list()).toStrictEqual([]);

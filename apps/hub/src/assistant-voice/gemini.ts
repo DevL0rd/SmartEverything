@@ -381,7 +381,9 @@ export class Gemini implements VoiceProvider {
         },
       });
       trace.connected();
-      return liveSessionOf(session, options.automatic, options.thinking === undefined);
+      return trace.watching(
+        liveSessionOf(session, options.automatic, options.thinking === undefined),
+      );
     } catch (cause) {
       trace.connectFailed(cause);
       throw cause;

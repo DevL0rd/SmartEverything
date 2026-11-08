@@ -4,62 +4,72 @@ import { failureCopy, PLAIN_ERROR, type FailureContext } from './failure-copy';
 
 const context: FailureContext = { model: 'Sonnet 4.5', reason: null };
 
+const LINE_BUDGET = 40;
+
 describe('failureCopy', () => {
+  it('names the specific reason for every code and never the plain error', () => {
+    for (const code of ASSISTANT_REASON_CODES) {
+      const copy = failureCopy(code, context);
+      expect(copy.title).not.toBe('');
+      expect(copy.title).not.toBe(PLAIN_ERROR);
+      expect(copy.title.length).toBeLessThanOrEqual(LINE_BUDGET);
+    }
+    expect(failureCopy(null, context).title).toBe('The reply failed.');
+  });
+
+  it('keeps the native provider’s exact text for the details sheet only', () => {
+    const reason = 'Codex could not send this turn because the account is signed out.';
+    const native = failureCopy('unknown', { ...context, reason, native: true });
+    expect(native.title).toBe('The reply failed.');
+    expect(native.detail).toBe(reason);
+    expect(native.actions).toEqual(['continue', 'details']);
+    const hidden = failureCopy('unknown', { ...context, reason });
+    expect(hidden.detail).toBeNull();
+    expect(hidden.actions).toEqual(['continue']);
+  });
+
   it('maps credits to a top-up and a model change', () => {
     const copy = failureCopy('credits', context);
-    expect(copy.title).toBe('Out of OpenRouter credits');
-    expect(copy.body).toBe('Add credit or pick a model on another plan.');
+    expect(copy).toMatchObject({ tone: 'critical', title: 'Out of OpenRouter credits.' });
     expect(copy.actions).toEqual(['top_up', 'choose_model']);
   });
 
-  it('answers a rate limit, an offline machine and an unknown stop with the same plain error', () => {
-    for (const code of ['rate_limit', 'offline', 'unknown'] as const) {
-      const copy = failureCopy(code, { ...context, reason: 'provider.exit code 137' });
-      expect(copy.title).toBe(PLAIN_ERROR);
-      expect(copy.body).toBeNull();
-    }
-    expect(failureCopy('rate_limit', context).actions).toEqual(['choose_model']);
-    expect(failureCopy('offline', context).actions).toEqual(['machine_switch']);
-    expect(failureCopy(null, context).actions).toEqual([]);
-    expect(PLAIN_ERROR).not.toMatch(/try again/i);
+  it('shows a rate limit as a soft warning that can be retried or moved to another model', () => {
+    const copy = failureCopy('rate_limit', { ...context, reason: 'HTTP 429' });
+    expect(copy).toMatchObject({ tone: 'warning', icon: 'clock', detail: null });
+    expect(copy.actions).toEqual(['continue', 'choose_model']);
+  });
+
+  it('offers a retry and a machine switch when the machine went offline', () => {
+    const copy = failureCopy('offline', context);
+    expect(copy).toMatchObject({ tone: 'critical', title: 'The machine went offline.' });
+    expect(copy.actions).toEqual(['continue', 'machine_switch']);
   });
 
   it('never shows the server reason for an unavailable model', () => {
     const copy = failureCopy('model_unavailable', { ...context, reason: 'Route withdrew it' });
-    expect(copy.title).toBe('Sonnet 4.5 isn’t available');
-    expect(copy.body).toBeNull();
+    expect(copy.title).toBe('Sonnet 4.5 isn’t available.');
+    expect(copy.detail).toBeNull();
     expect(copy.actions).toEqual(['choose_model']);
+    expect(failureCopy('model_unavailable', { model: null, reason: null }).title).toBe(
+      'The model isn’t available.',
+    );
   });
 
-  it('shows an interrupted reply as a quiet note with the hub reason and a continue action', () => {
-    const copy = failureCopy('interrupted', {
-      ...context,
-      reason: 'The hub restarted.',
-    });
+  it('shows an interruption quietly with the hub reason behind Details', () => {
+    const copy = failureCopy('interrupted', { ...context, reason: 'The hub restarted.' });
     expect(copy).toMatchObject({
-      tone: 'neutral',
+      tone: 'variant',
       title: 'Interrupted',
-      body: 'The hub restarted.',
+      detail: 'The hub restarted.',
     });
-    expect(copy.actions).toEqual(['continue']);
+    expect(copy.actions).toEqual(['continue', 'details']);
+    expect(failureCopy('interrupted', context).actions).toEqual(['continue']);
   });
 
-  it('treats a stopped reply as neutral with a continue action', () => {
+  it('treats a stopped reply as a quiet line with a continue action', () => {
     const copy = failureCopy('stopped', context);
-    expect(copy).toMatchObject({ tone: 'neutral', title: 'Stopped', body: null });
+    expect(copy).toMatchObject({ tone: 'variant', icon: 'square', title: 'Stopped', detail: null });
     expect(copy.actions).toEqual(['continue']);
-  });
-
-  it('falls back to a generic model name', () => {
-    const empty = { model: null, reason: null };
-    expect(failureCopy('model_unavailable', empty).title).toBe('The model isn’t available');
-  });
-
-  it('covers every reason code with a title and never offers to retry', () => {
-    for (const code of ASSISTANT_REASON_CODES) {
-      const copy = failureCopy(code, context);
-      expect(copy.title).not.toBe('');
-      expect(copy.actions).not.toContain('retry');
-    }
   });
 });

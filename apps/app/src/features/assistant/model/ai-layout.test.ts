@@ -17,7 +17,6 @@ const BASE: AiLayoutInput = {
   nav: 'sidebar',
   sidebarCollapsed: false,
   listOpen: true,
-  chatSelected: true,
   dockOpen: false,
   dockWidth: DOCK_DEFAULT,
 };
@@ -69,20 +68,38 @@ describe('how the assistant shell lays out narrow windows', () => {
 });
 
 describe('how the assistant shell lays out desktop windows', () => {
-  it('overlays the list at 1024 and brings it back as a pane when the sidebar collapses', () => {
-    expect(layoutOf({ windowWidth: 1024 })).toMatchObject({ mode: 'overlay', areaWidth: 760 });
-    const collapsed = layoutOf({ windowWidth: 1024, sidebarCollapsed: true });
-    expect(collapsed).toMatchObject({ mode: 'split', areaWidth: 952, listPane: true });
-    expect(collapsed.conversationWidth).toBe(652);
+  it('splits at the measured room for the list and the minimum detail width', () => {
+    expect(layoutOf({ windowWidth: 1243 })).toMatchObject({
+      mode: 'overlay',
+      listPane: false,
+      conversationWidth: 979,
+    });
+    expect(layoutOf({ windowWidth: 1244 })).toMatchObject({
+      mode: 'split',
+      listPane: true,
+      conversationWidth: 560,
+    });
+    expect(layoutOf({ windowWidth: 1052, sidebarCollapsed: true })).toMatchObject({
+      mode: 'split',
+      listPane: true,
+      conversationWidth: 560,
+    });
   });
 
-  it('shows the list beside a 716 wide conversation at 1280', () => {
+  it('keeps the detail minimum at 1024 even with the sidebar collapsed', () => {
+    expect(layoutOf({ windowWidth: 1024 })).toMatchObject({ mode: 'overlay', areaWidth: 760 });
+    const collapsed = layoutOf({ windowWidth: 1024, sidebarCollapsed: true });
+    expect(collapsed).toMatchObject({ mode: 'overlay', areaWidth: 952, listPane: false });
+    expect(collapsed.conversationWidth).toBe(952);
+  });
+
+  it('shows the list beside a 596 wide conversation at 1280', () => {
     expect(layoutOf({})).toMatchObject({
       mode: 'split',
       areaWidth: 1016,
       listPane: true,
       dock: 'none',
-      conversationWidth: 716,
+      conversationWidth: 596,
     });
   });
 
@@ -100,14 +117,14 @@ describe('how the assistant shell lays out desktop windows', () => {
     expect(layout.dockWidth).toBeLessThanOrEqual(DOCK_DEFAULT);
   });
 
-  it('keeps the list, a 875 wide conversation and the dock at 1920', () => {
+  it('keeps the list, a 755 wide conversation and the dock at 1920', () => {
     const layout = layoutOf({ windowWidth: 1920, windowHeight: 1080, dockOpen: true });
     expect(layout).toMatchObject({
       areaWidth: 1656,
       listPane: true,
       dock: 'docked',
       dockWidth: DOCK_DEFAULT,
-      conversationWidth: 875,
+      conversationWidth: 755,
       composerClass: 'regular',
     });
   });
@@ -124,15 +141,12 @@ describe('how the assistant shell lays out desktop windows', () => {
   });
 });
 
-describe('the list pane follows the open pref and the selected chat', () => {
-  it('shows the list when no chat is selected even if the pref is closed', () => {
-    expect(layoutOf({ listOpen: false, chatSelected: false }).listPane).toBe(true);
-  });
-
-  it('hides the list beside a selected chat when the pref is closed', () => {
+describe('the list pane follows the open preference', () => {
+  it('returns the list width to the conversation when the pane is hidden', () => {
     const layout = layoutOf({ listOpen: false });
     expect(layout.listPane).toBe(false);
     expect(layout.conversationWidth).toBe(1016);
+    expect(layoutOf({ listOpen: true }).conversationWidth).toBe(596);
   });
 });
 

@@ -31,13 +31,12 @@ const MANIFEST = JSON.stringify({
 });
 
 describe('loading a Claude plugin folder', () => {
-  it('reads the manifest, commands, agents, hooks file and MCP servers', async () => {
+  it('reads the manifest, commands, hooks file and MCP servers', async () => {
     const folder = await plugin({
       '.claude-plugin/plugin.json': MANIFEST,
       'commands/review.md':
         '---\nargument-hint: file\n---\n\nReview the file.\n\nSecond paragraph.\n',
       'commands/ship.md': '---\ndescription: Ship it\n---\n\nShip.\n',
-      'agents/helper.md': '---\nname: helper\nmodel: sonnet\n---\n\nHelp out.\n',
       'hooks/hooks.json': '{}',
       '.mcp.json': JSON.stringify({ mcpServers: { files: { command: 'node', args: ['x.js'] } } }),
     });
@@ -53,9 +52,6 @@ describe('loading a Claude plugin folder', () => {
       }),
       expect.objectContaining({ name: 'ship', description: 'Ship it' }),
     ]);
-    expect(loaded.components.agents).toStrictEqual([
-      expect.objectContaining({ name: 'helper', model: 'sonnet', body: 'Help out.' }),
-    ]);
     expect(loaded.components.hooksFile).toBe(join(folder, 'hooks', 'hooks.json'));
     expect(Object.keys(loaded.components.mcpServers)).toStrictEqual(['files']);
   });
@@ -65,7 +61,7 @@ describe('loading a Claude plugin folder', () => {
 
     const loaded = await loadPlugin(folder);
 
-    expect(loaded.components).toStrictEqual({ commands: [], agents: [], mcpServers: {} });
+    expect(loaded.components).toStrictEqual({ commands: [], mcpServers: {} });
   });
 
   it('names the manifest file when it has no plugin name', async () => {
@@ -74,18 +70,17 @@ describe('loading a Claude plugin folder', () => {
     await expect(loadPlugin(folder)).rejects.toThrow(/plugin\.json.*name/su);
   });
 
-  it('skips a command or agent file that cannot be used and keeps the rest of the plugin', async () => {
+  it('skips a command file that cannot be used and keeps the rest of the plugin', async () => {
     const folder = await plugin({
       '.claude-plugin/plugin.json': '{"name":"demo"}',
       'commands/empty.md': '---\ndescription: x\n---\n',
       'commands/good.md': 'Do it',
-      'agents/Bad_Name.md': 'Persona',
+      'commands/Bad_Name.md': 'Persona',
     });
 
     const loaded = await loadPlugin(folder);
 
     expect(loaded.components.commands.map((command) => command.name)).toStrictEqual(['good']);
-    expect(loaded.components.agents).toStrictEqual([]);
   });
 });
 
@@ -127,20 +122,19 @@ describe('tolerant frontmatter like Claude Code reads it', () => {
     ]);
   });
 
-  it('reads an agent description that holds an unquoted colon', async () => {
+  it('reads a command description that holds an unquoted colon', async () => {
     const folder = await plugin({
       '.claude-plugin/plugin.json': '{"name":"demo"}',
-      'agents/reviewer.md':
-        '---\nname: reviewer\ndescription: Use this agent when needed: for reviews\nmodel: opus\n---\n\nReview.\n',
+      'commands/reviewer.md':
+        '---\ndescription: Use this command when needed: for reviews\n---\n\nReview.\n',
     });
 
     const loaded = await loadPlugin(folder);
 
-    expect(loaded.components.agents).toStrictEqual([
+    expect(loaded.components.commands).toStrictEqual([
       expect.objectContaining({
         name: 'reviewer',
-        description: 'Use this agent when needed: for reviews',
-        model: 'opus',
+        description: 'Use this command when needed: for reviews',
       }),
     ]);
   });

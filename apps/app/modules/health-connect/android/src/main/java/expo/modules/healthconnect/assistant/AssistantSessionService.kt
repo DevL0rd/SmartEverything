@@ -1,6 +1,7 @@
 package expo.modules.healthconnect.assistant
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Region
 import android.graphics.drawable.ColorDrawable
@@ -53,11 +54,20 @@ class AssistantSession(context: Context) : VoiceInteractionSession(context), Ove
     super.onShow(args, showFlags)
     val foreground = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
     val wake = args?.getString(AssistantInteractionService.SOURCE) == AssistantInteractionService.WAKE
-    val start = OverlayHostRule.sessionStart(foreground, AssistantCalls.running(), wake)
+    val press = OverlayPrefs.load(context).powerButton
+    val start = OverlayHostRule.sessionStart(foreground, AssistantCalls.running(), wake, press)
     NativeLog.info("assistant-session", "session.shown") { mapOf("start" to start.name, "foreground" to foreground, "wake" to wake) }
     when (start) {
       SessionStart.OpenApp -> {
         openApp(null)
+        hide()
+      }
+      SessionStart.VoiceInApp -> {
+        AssistantCallEvents.voiceMessage()
+        hide()
+      }
+      SessionStart.OpenVoiceMessage -> {
+        launch(AssistantLink.voiceMessage(context))
         hide()
       }
       SessionStart.HostOnly -> OverlayStage.attachSession(this)
@@ -100,7 +110,10 @@ class AssistantSession(context: Context) : VoiceInteractionSession(context), Ove
   override fun handOver() = hide()
 
   override fun openApp(action: String?) {
-    val intent = AssistantLink.call(context, AssistantCalls.ASSIST, action)
+    launch(AssistantLink.call(context, AssistantCalls.ASSIST, action))
+  }
+
+  private fun launch(intent: Intent) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startAssistantActivity(intent) else context.startActivity(intent)
   }
 }

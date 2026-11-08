@@ -79,6 +79,10 @@ function useMenuItems(data: PhoneFaceData): readonly MenuItem[] {
   return items;
 }
 
+export function PhoneMenu({ data }: { readonly data: PhoneFaceData }): ReactNode {
+  return <OverflowButton items={useMenuItems(data)} label={`${data.device.label} options`} />;
+}
+
 export function FaceHeader({
   data,
   chips,
@@ -86,14 +90,12 @@ export function FaceHeader({
   readonly data: PhoneFaceData;
   readonly chips: boolean;
 }): ReactNode {
-  const items = useMenuItems(data);
   return (
-    <View className="h-7 flex-row items-center gap-2" pointerEvents="box-none">
+    <View className="flex-row items-center gap-2" pointerEvents="none">
       <View
         accessible
         accessibilityLabel={`${data.device.label}, ${spokenPhone(data.readings, data.online)}`}
         className="min-w-0 flex-1 flex-row items-center gap-2"
-        pointerEvents="none"
       >
         <Text variant="body-strong" numberOfLines={1} className="shrink">
           {data.device.label}
@@ -101,9 +103,6 @@ export function FaceHeader({
         {chips ? <Chips data={data} /> : null}
       </View>
       <StateLabel data={data} />
-      <View className="-my-3 -mr-2">
-        <OverflowButton items={items} label={`${data.device.label} options`} />
-      </View>
     </View>
   );
 }

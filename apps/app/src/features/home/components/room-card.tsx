@@ -67,6 +67,7 @@ function Members({ room }: { readonly room: RoomSummary }): ReactNode {
 interface RoomCardProps {
   readonly room: RoomSummary;
   readonly dense: boolean;
+  readonly fitContent?: boolean;
 }
 
 function LightsButton({ toggle }: { readonly toggle: LightsToggle }): ReactNode {
@@ -84,38 +85,51 @@ function LightsButton({ toggle }: { readonly toggle: LightsToggle }): ReactNode 
   );
 }
 
-function Card({ room, dense }: RoomCardProps): ReactNode {
+function Card({ room, dense, fitContent = false }: RoomCardProps): ReactNode {
   const climate = useRoomClimate(room.id);
   const toggle = lightsToggleOf(room);
   const menu = usePinContextMenu({ kind: 'room', roomId: room.id }, room.name);
   return (
-    <View className="relative h-full">
+    <View className={cn('relative', !fitContent && 'h-full')}>
       <Interactive
         href={href.room(room.id)}
         onLongPress={menu.onLongPress}
         onContextMenu={menu.onContextMenu}
         label={`${room.name}, ${plural(room.devices, 'device')}`}
-        className="h-full justify-between gap-1.5 rounded-md bg-surface-2 p-2.5"
+        className={cn(
+          'justify-between gap-1.5 rounded-md bg-surface-2 p-2.5',
+          fitContent ? 'min-h-28' : 'h-full',
+        )}
         layerClassName="rounded-md"
       >
-        <Text variant="callout" numberOfLines={2} className={toggle === null ? '' : 'pr-touch-min'}>
-          {room.name}
-        </Text>
-        <Text variant="footnote" tone={room.offline > 0 ? 'warning' : 'variant'} numberOfLines={1}>
+        <View className="flex-row items-start gap-2">
+          <Text
+            variant="callout"
+            numberOfLines={fitContent ? undefined : 2}
+            className={cn(
+              'min-w-0 flex-1',
+              toggle !== null && 'pr-touch-min',
+              fitContent && 'web:wrap-anywhere',
+            )}
+          >
+            {room.name}
+          </Text>
+          {dense || room.on === 0 || toggle !== null ? null : (
+            <Badge label={`${String(room.on)} on`} tone="primary" />
+          )}
+        </View>
+        <Text
+          variant="footnote"
+          tone={room.offline > 0 ? 'warning' : 'variant'}
+          numberOfLines={fitContent ? undefined : 1}
+        >
           {joinParts([
             plural(room.devices, 'device'),
             room.offline > 0 && `${String(room.offline)} offline`,
             climate,
           ])}
         </Text>
-        {dense ? null : (
-          <View className="flex-row items-center justify-between gap-2">
-            <Members room={room} />
-            {room.on === 0 || toggle !== null ? null : (
-              <Badge label={`${String(room.on)} on`} tone="primary" />
-            )}
-          </View>
-        )}
+        {dense ? null : <Members room={room} />}
       </Interactive>
       {menu.host}
       {toggle === null ? null : <LightsButton toggle={toggle} />}
@@ -125,5 +139,8 @@ function Card({ room, dense }: RoomCardProps): ReactNode {
 
 export const RoomCard = memo(
   Card,
-  (left, right) => left.dense === right.dense && sameRoom(left.room, right.room),
+  (left, right) =>
+    left.dense === right.dense &&
+    left.fitContent === right.fitContent &&
+    sameRoom(left.room, right.room),
 );

@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { frameClassOf, type WidgetFrameBox } from '../../../components/widget-board';
 import { isWideClass } from '../../../features/devices';
 import type { Device } from '../../../store/state';
-import { useRouterSnapshot, useSpeedTestRun, useSpeedTests } from '../router-data';
+import { useRouterSnapshot, useSpeedTests } from '../router-data';
 import { ServiceMedallion } from '../../shared/service-medallion';
 import { ServiceNames } from '../../shared/service-names';
 import { heroOf, type HeroModel } from './hero-model';
@@ -36,8 +36,7 @@ function useFace(): {
   readonly running: boolean;
 } {
   const stream = useRouterSnapshot();
-  const run = useSpeedTestRun();
-  const tests = useSpeedTests();
+  const { run, list: tests } = useSpeedTests();
   if (stream.state !== 'ready') {
     return { hero: null, line: 'Waiting for the router', running: run.running };
   }

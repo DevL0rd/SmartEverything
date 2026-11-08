@@ -6,44 +6,13 @@ import {
   type MicrowaveTimeRange,
 } from '@smarteverything/domain';
 import { IconButton } from '../../../components/icon-button';
-import { Interactive } from '../../../components/interactive';
+import { FlatChoice } from '../../../components/flat-choice';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { duration, playTime } from '../../../format/time';
 import { selectionTick } from '../../../platform/haptics';
 import { durationBounds, snapSeconds } from './duration';
 import { QUICK_SECONDS } from './quick-model';
-
-function QuickChip({
-  seconds,
-  selected,
-  disabled,
-  onPress,
-}: {
-  readonly seconds: number;
-  readonly selected: boolean;
-  readonly disabled: boolean;
-  readonly onPress: () => void;
-}): ReactNode {
-  return (
-    <Interactive
-      label={duration(seconds)}
-      selected={selected}
-      disabled={disabled}
-      onPress={onPress}
-      className={cn(
-        'min-h-touch-min flex-row items-center rounded-full border-hairline px-3',
-        selected ? 'border-primary bg-primary-container' : 'border-outline-variant bg-surface-1',
-        disabled && 'opacity-50',
-      )}
-      layerClassName="rounded-full"
-    >
-      <Text variant="label" tone={selected ? 'primary' : 'default'}>
-        {duration(seconds)}
-      </Text>
-    </Interactive>
-  );
-}
 
 function Stepper({
   seconds,
@@ -103,12 +72,17 @@ function QuickChips({
       quick >= bounds.min && quick <= bounds.max && (quick - bounds.min) % bounds.step === 0,
   );
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <View
+      className="flex-row flex-wrap"
+      accessibilityRole="radiogroup"
+      accessibilityLabel="Quick time"
+    >
       {choices.map((quick) => (
-        <QuickChip
+        <FlatChoice
           key={quick}
-          seconds={quick}
-          selected={quick === seconds}
+          role="radio"
+          label={duration(quick)}
+          active={quick === seconds}
           disabled={disabled}
           onPress={() => {
             set(quick);

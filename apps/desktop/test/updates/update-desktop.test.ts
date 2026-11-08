@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { DESKTOP_PACKAGE_RESOURCES } from '../../src/package-layout.js';
 import { createUpdates, type DesktopUpdatePorts } from '../../src/updates/update-desktop.js';
 
 const ZIP = Buffer.from('the zipped new app');
@@ -13,13 +14,23 @@ let root = '';
 beforeEach(async () => {
   base = await mkdtemp(join(tmpdir(), 'update-desktop-'));
   root = join(base, 'opt', 'SmartEverything');
-  await mkdir(root, { recursive: true });
+  await writeComputer(root);
   await writeFile(join(root, 'smarteverything'), 'old executable');
 });
 
 afterEach(async () => {
   await rm(base, { recursive: true, force: true });
 });
+
+async function writeComputer(directory: string): Promise<void> {
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, 'smarteverything'), 'desktop executable');
+  for (const entry of DESKTOP_PACKAGE_RESOURCES) {
+    const file = join(directory, 'resources', entry);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, 'desktop package resource');
+  }
+}
 
 function offer(): unknown {
   return {
@@ -63,26 +74,27 @@ function rig(overrides: Partial<DesktopUpdatePorts> = {}): Rig {
     run: async (file, args) => {
       events.push(`run ${file}`);
       const destination = args.at(-1) ?? '';
-      await mkdir(join(destination, 'SmartEverything-linux-x64'), { recursive: true });
+      await writeComputer(join(destination, 'SmartEverything-linux-x64'));
       await writeFile(
         join(destination, 'SmartEverything-linux-x64', 'smarteverything'),
         'new executable',
       );
     },
-    restartServices: () => {
-      events.push('restart services');
-      return Promise.resolve();
-    },
+    verifyCandidate: () => Promise.resolve(),
+    prepareComputerRestart: () =>
+      Promise.resolve(() => {
+        events.push('restart services');
+        return Promise.resolve();
+      }),
     relaunch: (executable) => {
       events.push(`relaunch ${executable}`);
+      return Promise.resolve();
     },
     squirrel: {
       setFeedURL: (): void => undefined,
       checkForUpdates: (): void => undefined,
       quitAndInstall: (): void => undefined,
-      onceDownloaded: (): void => undefined,
-      onceNotAvailable: (): void => undefined,
-      onceFailed: (): void => undefined,
+      listen: () => (): void => undefined,
     },
     ...overrides,
   };
@@ -95,9 +107,11 @@ describe('the update flow of the desktop app', () => {
     const updates = await createUpdates(ports);
     await updates.check();
     expect(updates.status()).toMatchObject({ state: 'available', installable: true });
-    await updates.install();
+    const { offerId } = updates.status();
+    if (offerId === undefined) throw new Error('No desktop installer identity');
+    await updates.install(offerId);
     expect(await readFile(join(root, 'smarteverything'), 'utf8')).toBe('new executable');
-    expect(await readFile(join(`${root}.previous`, 'smarteverything'), 'utf8')).toBe(
+    expect(await readFile(join(`${root}.rollback`, 'smarteverything'), 'utf8')).toBe(
       'old executable',
     );
     expect(events).toStrictEqual([
@@ -105,8 +119,8 @@ describe('the update flow of the desktop app', () => {
       'restart services',
       `relaunch ${join(root, 'smarteverything')}`,
     ]);
-    expect(await readFile(join(base, 'user-data', 'updates', '0.4.2', 'app.zip'))).toStrictEqual(
-      ZIP,
+    await expect(readFile(join(base, 'user-data', 'updates', '0.4.2', 'app.zip'))).rejects.toThrow(
+      'ENOENT',
     );
   });
 

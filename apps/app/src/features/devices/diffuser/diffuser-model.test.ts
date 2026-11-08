@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import {
   diffuserStatus,
@@ -9,6 +10,7 @@ import {
   sprayTicks,
   paused,
   strengthLine,
+  summaryOf,
 } from './diffuser-model';
 import {
   rowId,
@@ -75,6 +77,21 @@ describe('diffuser status and lines', () => {
     expect(lowBattery({ ...READ, battery: 21 })).toBe(false);
     expect(lowBattery({ ...READ, battery: null })).toBe(false);
   });
+
+  it('announces the charging warning only when a low battery is not charging', () => {
+    const label = 'Fragrance Diffuser';
+    const room = 'Bedroom';
+    const read = { ...READ, battery: 14 };
+    const compact = { label, room, announceChargeWarning: true };
+    expect(summaryOf({ label, room, read })).not.toContain('Charge soon');
+    expect(summaryOf({ ...compact, read })).toBe(
+      'Fragrance Diffuser, Bedroom. Scenting. Medium · every 15 min · 4 s. battery 14 percent. Charge soon',
+    );
+    expect(summaryOf({ ...compact, read: { ...read, charging: true } })).not.toContain(
+      'Charge soon',
+    );
+    expect(summaryOf({ ...compact, read: READ })).not.toContain('Charge soon');
+  });
 });
 
 describe('spray rhythm', () => {
@@ -136,6 +153,7 @@ describe('schedule line from automations', () => {
     const line = scheduleOf(
       [automation(2, '00:00', false), automation(1, '15:00', true)],
       DIFFUSER_ID,
+      STATIC_KIND_LOOKUP,
     );
     expect(line).toEqual({ text: 'On 15:00 · off 00:00', automationId: rowId(1) });
   });
@@ -145,10 +163,10 @@ describe('schedule line from automations', () => {
       automation(1, '15:00', true, { enabled: false }),
       automation(2, '16:00', true, { device: '00000000-0000-4000-8000-0000000000aa' }),
     ];
-    expect(scheduleOf(rows, DIFFUSER_ID)).toBeNull();
+    expect(scheduleOf(rows, DIFFUSER_ID, STATIC_KIND_LOOKUP)).toBeNull();
   });
 
   it('has no line without any scheduled power change', () => {
-    expect(scheduleOf([], DIFFUSER_ID)).toBeNull();
+    expect(scheduleOf([], DIFFUSER_ID, STATIC_KIND_LOOKUP)).toBeNull();
   });
 });

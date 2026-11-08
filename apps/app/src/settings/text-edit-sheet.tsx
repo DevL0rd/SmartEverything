@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
+import type { View } from 'react-native';
 import { Button } from '../components/button';
 import { Sheet } from '../components/sheet';
 import { TextField, type FieldKind } from '../components/text-field';
@@ -7,6 +8,7 @@ import { useMutationState, type MutationState } from '../store/mutation';
 
 export interface TextEditRequest {
   readonly id?: string;
+  readonly opener?: RefObject<View | null> | undefined;
   readonly title: string;
   readonly label: string;
   readonly initial: string;
@@ -89,6 +91,7 @@ function Editor({
   const { value, setValue, invalid, ready, submit, mutation } = useEditor(request, onClose);
   return (
     <Sheet
+      subpage={request.opener === undefined ? true : { opener: request.opener }}
       open
       onClose={onClose}
       title={request.title}

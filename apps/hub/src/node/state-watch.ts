@@ -11,6 +11,12 @@ import type { StopWatching } from './controls/session-controls';
 
 type StateTopic = (typeof STATE_TOPICS)[number];
 
+type StatePartTopic = Exclude<StateTopic, 'drive_mounts'>;
+
+const STATE_PART_TOPICS = STATE_TOPICS.filter(
+  (topic): topic is StatePartTopic => topic !== 'drive_mounts',
+);
+
 type Emit = (parts: StateParts) => void;
 
 type StateSource = (emit: Emit, failed: (cause: unknown) => void) => StopWatching;
@@ -47,7 +53,7 @@ function readOnce<State>(
   };
 }
 
-function sourcesOf(controls: ComputerControls): Readonly<Record<StateTopic, StateSource>> {
+function sourcesOf(controls: ComputerControls): Readonly<Record<StatePartTopic, StateSource>> {
   return {
     audio: (emit) =>
       controls.audio.watch((audio) => {
@@ -84,15 +90,15 @@ export interface StateWatchOptions {
 }
 
 export class StateWatch {
-  private readonly sources: Readonly<Record<StateTopic, StateSource>>;
-  private readonly stops = new Map<StateTopic, StopWatching>();
+  private readonly sources: Readonly<Record<StatePartTopic, StateSource>>;
+  private readonly stops = new Map<StatePartTopic, StopWatching>();
 
   constructor(private readonly options: StateWatchOptions) {
     this.sources = sourcesOf(options.controls);
   }
 
   sync(topics: NodeDemandTopics): void {
-    const wanted = new Set(STATE_TOPICS.filter((topic) => this.wants(topic, topics)));
+    const wanted = new Set(STATE_PART_TOPICS.filter((topic) => this.wants(topic, topics)));
     for (const [topic, stop] of this.stops) {
       if (wanted.has(topic)) continue;
       stop();
@@ -115,7 +121,7 @@ export class StateWatch {
     this.sync({});
   }
 
-  private wants(topic: StateTopic, topics: NodeDemandTopics): boolean {
+  private wants(topic: StatePartTopic, topics: NodeDemandTopics): boolean {
     const scope = NODE_VERB_SCOPES[topic];
     return topics[topic] !== undefined && (scope === null || this.options.allows(scope));
   }

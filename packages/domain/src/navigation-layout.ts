@@ -6,9 +6,13 @@ export const NAV_SECTIONS = [
   'devices',
   'cameras',
   'fitness',
+  'planner',
+  'clock',
   'assistant',
   'talk',
   'automations',
+  'photos',
+  'drive',
 ] as const;
 
 export type NavSection = (typeof NAV_SECTIONS)[number];
@@ -25,6 +29,9 @@ export const NAV_ICONS = [
   'sparkles',
   'radio',
   'automations',
+  'calendar',
+  'alarmClock',
+  'image',
   'folder',
   'star',
   'bed',
@@ -78,6 +85,23 @@ export const NAV_PIN_TARGET = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('group'), groupId: z.uuid() }),
   z.strictObject({ kind: z.literal('scene'), sceneId: z.uuid() }),
   z.strictObject({ kind: z.literal('automation'), automationId: z.uuid(), focus: FOCUS }),
+  z.strictObject({
+    kind: z.literal('drive'),
+    rootId: z.uuid(),
+    path: z
+      .string()
+      .min(1)
+      .describe(
+        'The folder inside the Drive root, starting with a slash; a single slash is the root',
+      ),
+    itemId: z.uuid().nullable().describe('The file or folder to select in the folder, or null'),
+    focus: z
+      .enum(['versions', 'conflict'])
+      .nullable()
+      .describe(
+        'versions opens the versions of the item, conflict opens its conflict, null opens neither',
+      ),
+  }),
 ]);
 
 export type NavPinTarget = z.infer<typeof NAV_PIN_TARGET>;
@@ -102,7 +126,21 @@ export const NAV_TARGET = z.discriminatedUnion('kind', [
 
 export type NavTarget = z.infer<typeof NAV_TARGET>;
 
-export type NavOpenTarget = Exclude<NavTarget, { readonly kind: 'nav' }>;
+export const NAV_OPEN_TARGET = z.discriminatedUnion('kind', [
+  ...NAV_PIN_TARGET.options,
+  z.strictObject({
+    kind: z.literal('setting'),
+    page: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe('A settings page id such as appearance/navigation, or the id of one setting'),
+    setting: z.string().min(1).max(120).nullable(),
+  }),
+  z.strictObject({ kind: z.literal('chat'), chatId: z.uuid() }),
+]);
+
+export type NavOpenTarget = z.infer<typeof NAV_OPEN_TARGET>;
 
 export const NAV_SECTION_NODE = z.strictObject({
   kind: z.literal('section'),

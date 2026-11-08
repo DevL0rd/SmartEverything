@@ -17,6 +17,7 @@ export function Stage({
   readonly tv: Television;
   readonly sheets: TvSheets;
 }): ReactNode {
+  const { sleep } = sheets.openers;
   const text = stageText(tv.view);
   const standby = tv.view.mode === 'standby' || tv.view.mode === 'turning_on';
   return (
@@ -38,6 +39,7 @@ export function Stage({
         </View>
         {standby ? null : <PowerButton tv={tv} />}
         <IconButton
+          ref={sleep}
           icon="timer"
           label="Sleep timer"
           variant="tonal"
@@ -50,7 +52,6 @@ export function Stage({
         <Button
           label={tv.view.mode === 'turning_on' ? 'Turning on…' : 'Turn on'}
           icon="power"
-          size="lg"
           disabled={tv.view.mode === 'turning_on'}
           onPress={tv.togglePower}
         />

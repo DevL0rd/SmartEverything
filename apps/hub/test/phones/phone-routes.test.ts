@@ -1,3 +1,4 @@
+import type { IncomingHttpHeaders } from 'node:http';
 import { createHash } from 'node:crypto';
 import {
   API_ENDPOINTS as E,
@@ -99,8 +100,9 @@ function raw(parts: { params?: unknown; query?: unknown; body?: unknown }): {
   query: unknown;
   body: unknown;
   remote: string;
+  headers: IncomingHttpHeaders;
 } {
-  return { params: {}, query: {}, body: undefined, remote: 'test', ...parts };
+  return { params: {}, query: {}, body: undefined, remote: 'test', headers: {}, ...parts };
 }
 
 function detailOf(person: TestPerson, query: unknown = {}): Promise<unknown> {

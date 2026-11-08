@@ -1,4 +1,5 @@
 import type { AiChatRow } from '@smarteverything/domain';
+import { admitChatExecution } from './native-helpers';
 import type { ChatDirectory, ChatOwner } from './chat-directory';
 import type { EngineRegistry } from './engines/registry';
 import type { AssistantDelivery } from './delivery';
@@ -18,7 +19,10 @@ export async function removeChatTree(
 ): Promise<void> {
   const scope = deps.chats.removalScope(owner, chatId);
   deps.admit?.(scope);
-  for (const chat of scope) deps.engines.forMutation(chat, owner.role);
+  for (const chat of scope) {
+    admitChatExecution(chat);
+    deps.engines.forMutation(chat, owner.role);
+  }
   const ids = scope.map((chat) => chat.id);
   await deps.chats.holdRemoval(
     ids,

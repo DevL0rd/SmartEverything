@@ -21,6 +21,14 @@ import {
   type WideClass,
 } from '../card/wide-card';
 import { LogTicker } from '../log/log-ticker';
+import {
+  SPARK_MIN_PX,
+  TIMELINE_CAPTIONS_PX,
+  emptyStripPx,
+  shownPx,
+  trackPx,
+  useGraphRoom,
+} from '../sensors/layout';
 import { deviceModelOf } from '../model/device-model';
 import { cardActions } from './card-actions';
 import {
@@ -43,67 +51,71 @@ const PANEL_STRIP_HEIGHT = 96;
 const SPARK_HEIGHT = 30;
 const PANEL_SPARK_HEIGHT = 64;
 const COOKED_WINDOW_HOURS = 24;
+const SPARK_GAP = 6;
+const THIN_BAR = 6;
+const THICK_BAR = 10;
 
-function figuresOf(run: MicrowaveRun, cls: WideClass): readonly ReactNode[] {
-  return figureSpecs(run, cls !== 'w').map(({ key, ...figure }) => (
-    <WideFigure key={key} {...figure} />
-  ));
+function figuresOf(run: MicrowaveRun): readonly ReactNode[] {
+  return figureSpecs(run).map(({ key, ...figure }) => <WideFigure key={key} {...figure} />);
 }
 
 function CookedToday({
   cycles,
-  height,
+  track,
 }: {
   readonly cycles: readonly DeviceLogEntry[];
-  readonly height: number;
+  readonly track: number;
 }): ReactNode {
+  const { room, onLayout } = useGraphRoom(track + TIMELINE_CAPTIONS_PX);
   const to = readMinute();
   const from = to - COOKED_WINDOW_HOURS * HOUR_MS;
   const segments = cookedSegments(cycles, from, to);
+  const height = segments.length === 0 ? emptyStripPx(STRIP_HEIGHT, room) : trackPx(track, room);
   return (
-    <StateTimeline
-      segments={segments}
-      colours={{ [COOKED_STATE]: 'temp-warm' }}
-      label="Cooking in the last 24 hours"
-      height={height}
-      from={from}
-      to={to}
-      ticks={segments.map((segment) => segment.start)}
-      captions={cookedCaptions(segments.length)}
-      empty="Nothing cooked today"
-      track="surface-2"
-    />
+    <View onLayout={onLayout} className="min-h-0 flex-1 justify-end">
+      {height === null ? null : (
+        <StateTimeline
+          segments={segments}
+          colours={{ [COOKED_STATE]: 'temp-warm' }}
+          label="Cooking in the last 24 hours"
+          height={height}
+          from={from}
+          to={to}
+          ticks={segments.map((segment) => segment.start)}
+          captions={cookedCaptions(segments.length)}
+          empty="Nothing cooked today"
+          track="surface-2"
+        />
+      )}
+    </View>
   );
 }
 
 function CookingGraph({
   device,
   run,
-  height,
+  panel,
   drawKey,
-  wide,
 }: {
   readonly device: Device;
   readonly run: MicrowaveRun;
-  readonly height: number;
+  readonly panel: boolean;
   readonly drawKey: string | null;
-  readonly wide: boolean;
 }): ReactNode {
+  const cap = panel ? PANEL_SPARK_HEIGHT : SPARK_HEIGHT;
+  const bar = SPARK_GAP + (panel ? THICK_BAR : THIN_BAR);
+  const { room, onLayout } = useGraphRoom(cap + bar);
+  const spark = shownPx(cap, room - bar, SPARK_MIN_PX);
   return (
-    <View className="gap-1.5">
-      {wide && drawKey !== null ? (
-        <LiveSpark
-          device={device}
-          capability={drawKey}
-          colour="temp-warm"
-          height={height > STRIP_HEIGHT ? PANEL_SPARK_HEIGHT : SPARK_HEIGHT}
-        />
-      ) : null}
+    <View onLayout={onLayout} className="min-h-0 flex-1 justify-end gap-1.5">
+      {drawKey === null || spark === null ? null : (
+        <LiveSpark device={device} capability={drawKey} colour="temp-warm" height={spark} />
+      )}
       <ProgressBar
         progress={run.progress}
         colour="temp-warm"
         label={`Progress ${String(Math.round((run.progress ?? 0) * 100))} percent`}
-        thick={height > STRIP_HEIGHT}
+        thick={panel}
       />
     </View>
   );
@@ -121,12 +133,11 @@ function CardGraph({
   readonly cls: WideClass;
 }): ReactNode {
   const panel = cls === 'l' || cls === 'xl';
-  const height = panel ? PANEL_STRIP_HEIGHT : STRIP_HEIGHT;
   const drawKey = withRole(deviceModelOf(device).presentation, 'power_draw')?.key ?? null;
   return run.phase === 'running' || run.phase === 'paused' ? (
-    <CookingGraph device={device} run={run} height={height} drawKey={drawKey} wide={cls !== 'm'} />
+    <CookingGraph device={device} run={run} panel={panel} drawKey={drawKey} />
   ) : (
-    <CookedToday cycles={cycles} height={height} />
+    <CookedToday cycles={cycles} track={panel ? PANEL_STRIP_HEIGHT : STRIP_HEIGHT} />
   );
 }
 
@@ -157,7 +168,6 @@ function WideMicrowave({
   const room = useRoomName(device.id);
   const chip = cardChip(run);
   const line = stateLine(run, cycles[0]);
-  const panel = cls === 'l' || cls === 'xl';
   return (
     <View ref={ref} onLayout={onLayout} className="flex-1" pointerEvents="box-none">
       <WideCard
@@ -175,11 +185,11 @@ function WideMicrowave({
             {line}
           </Text>
         }
-        figures={figuresOf(run, cls)}
+        figures={figuresOf(run)}
         graph={<CardGraph device={device} run={run} cycles={cycles} cls={cls} />}
         actions={cardActions({ device, run, quick })}
         ticker={tickerOf(device, run, cls, live)}
-        log={panel ? <PanelExtras device={device} cycles={cycles} /> : undefined}
+        log={<PanelExtras device={device} cycles={cycles} />}
       />
     </View>
   );

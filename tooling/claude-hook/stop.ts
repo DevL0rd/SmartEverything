@@ -1,7 +1,14 @@
 import { parseInput, stopInput } from './input.ts';
 import { report, skippedNotice, timedOut, warnUser, type Section } from './output.ts';
 import { projectsTsc, WORKSPACE_TSC_MS, type Run } from './process.ts';
-import { addLines, agentFile, agentName, readSnapshot, takeLines } from './state.ts';
+import {
+  addLines,
+  agentFile,
+  agentName,
+  isAgentSession,
+  readSnapshot,
+  takeLines,
+} from './state.ts';
 import { scopeOf, type Scope } from './projects.ts';
 import { relatedTests } from './tests.ts';
 import { affectsTypes, judge, type Claim } from './types.ts';
@@ -40,6 +47,7 @@ async function check(input: StopInput, files: readonly string[]): Promise<Checke
 
 export async function onStop(raw: unknown): Promise<number> {
   const input = parseInput('stop', stopInput, raw);
+  if (isAgentSession(input)) return 0;
   const editedPath = agentFile(input.session_id, agentName(input), 'edited');
   const files = (await takeLines(editedPath)).filter(affectsTypes);
   if (files.length === 0) return 0;

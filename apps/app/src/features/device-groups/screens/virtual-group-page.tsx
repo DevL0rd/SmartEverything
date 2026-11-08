@@ -1,13 +1,13 @@
 import type { ReactNode, RefObject } from 'react';
 import { useEffect, useMemo, useRef } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
 import { Screen } from '../../../components/screen';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { VirtualList, type VirtualListHandle } from '../../../components/virtual-list';
 import { useIdiom } from '../../../design/platform';
 import { useSizeClass } from '../../../design/size-class';
 import { useThemeSetting } from '../../../design/theme';
-import { CONTAINER_WIDTH, GUTTER, SEMANTIC_SIZES } from '../../../design/tokens';
+import { gutterOf } from '../../../design/tokens';
 import type { Device } from '../../../store/state';
 import { VirtualMemberRow } from '../components/virtual-member-rows';
 import { ActivitySection, AutomationsSection } from '../components/page-sections';
@@ -23,9 +23,8 @@ import {
 } from './group-page-parts';
 
 function useContentWidth(measured: number): number {
-  const sizes = SEMANTIC_SIZES[useIdiom()][useThemeSetting('density')];
-  const gutter = GUTTER[useSizeClass().width] - sizes.gutterShrink;
-  return Math.min(measured - 2 * gutter, CONTAINER_WIDTH.dashboard);
+  const gutter = gutterOf(useSizeClass().width, useIdiom(), useThemeSetting('density'));
+  return measured - 2 * gutter;
 }
 
 function useRevealRow(
@@ -57,13 +56,11 @@ function ListTop({
   readonly focus: string | null;
 }): ReactNode {
   return (
-    <View className="px-gutter">
-      <View className="w-full max-w-dashboard gap-4 self-center pb-2">
-        <View className="max-w-xl">
-          <Stage data={data} page={page} focus={focus} />
-        </View>
-        <LostBanner data={data} group={group} page={page} />
+    <View className="gap-4 px-gutter pb-2">
+      <View className="max-w-xl">
+        <Stage data={data} page={page} focus={focus} />
       </View>
+      <LostBanner data={data} group={group} page={page} />
     </View>
   );
 }
@@ -76,7 +73,7 @@ function ListBottom({
   const memberIds = useMemo(() => data.members.map((member) => member.id), [data.members]);
   return (
     <View className="px-gutter">
-      <View className="w-full max-w-dashboard gap-4 self-center pt-4">
+      <View className="w-full max-w-detail gap-4 pt-4">
         <Today data={data} page={page} />
         <ActivitySection name={data.name} deviceIds={memberIds} />
         <AutomationsSection uses={uses} />
@@ -116,7 +113,6 @@ function Rows({
       keyOf={(row) => row.key}
       typeOf={() => 'members'}
       sameItem={sameGroup}
-      widthClassName="max-w-dashboard"
       handleRef={handle}
       header={<ListTop data={data} group={group} page={page} focus={focus} />}
       footer={<ListBottom data={data} page={page} uses={uses} />}
@@ -136,15 +132,10 @@ function Rows({
 export function VirtualGroupPage(props: LivePageProps): ReactNode {
   const { data, group, page, uses, addToHome, params } = props;
   const names = useMemo(() => uses.map((use) => use.name), [uses]);
-  const screenWidth = useWindowDimensions().width;
-  const { width, onLayout } = useMeasuredWidth(
-    Math.round,
-    useIdiom() === 'touch' ? Math.round(screenWidth) : 0,
-  );
+  const { width, onLayout } = useMeasuredWidth(Math.round);
   return (
     <Screen
       scroll={false}
-      maxWidth="dashboard"
       header={<Header data={data} group={group} uses={names} page={page} addToHome={addToHome} />}
     >
       <View className="flex-1" onLayout={onLayout}>

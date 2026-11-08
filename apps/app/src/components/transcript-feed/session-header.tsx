@@ -21,7 +21,7 @@ function rangeOf(session: TranscriptSession, timeZone: string): string {
 export function SessionHeader({ session, timeZone, remove }: SessionHeaderProps): ReactNode {
   return (
     <View className="flex-row items-center justify-between gap-2 bg-surface-2 px-4 py-1">
-      <Text variant="caption" tone="variant" className="min-w-0 flex-1" numberOfLines={1}>
+      <Text variant="caption" tone="variant" className="min-w-0 flex-1">
         {`${rangeOf(session, timeZone)} · ${String(session.line_count)} lines`}
       </Text>
       {remove === undefined ? null : (

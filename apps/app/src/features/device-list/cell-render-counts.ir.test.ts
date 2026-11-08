@@ -1,11 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import {
-  budgetCase,
-  renderVisual,
-  useCellEnvironment,
-  type Budget,
-  type Face,
-} from './cell-budget';
+import { vi } from 'vitest';
+import { budgetCase, type Budget, type Face } from './cell-budget';
 
 vi.mock('../../queries/use-screen-query', async () => (await import('./idle-queries')).idleQueries);
 
@@ -53,24 +47,3 @@ function budgetOf(name: string): Readonly<Record<'S' | 'M', Budget>> {
 
 budgetCase(BLASTER.name, BLASTER, budgetOf(BLASTER.name));
 budgetCase(REMOTE.name, REMOTE, budgetOf(REMOTE.name));
-
-const VISUAL_LIMITS = [
-  ['tile', 48, 40],
-  ['card', 96, 40],
-  ['hero', 220, 40],
-] as const;
-
-describe('ir visual node budgets', () => {
-  useCellEnvironment();
-
-  for (const [size, px, limit] of VISUAL_LIMITS) {
-    it(`draws a blaster within ${String(limit)} nodes at ${size} size`, () => {
-      const { count } = renderVisual(BLASTER, BLASTER.values, size, px);
-      expect(count).toBeLessThanOrEqual(limit);
-    });
-    it(`draws a remote within ${String(limit)} nodes at ${size} size`, () => {
-      const { count } = renderVisual(REMOTE, REMOTE.values, size, px);
-      expect(count).toBeLessThanOrEqual(limit);
-    });
-  }
-});

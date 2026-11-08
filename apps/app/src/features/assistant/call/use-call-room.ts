@@ -1,8 +1,7 @@
 import { useWindowDimensions, type View } from 'react-native';
 import { useRef, type RefObject } from 'react';
 import type { SharedValue } from 'react-native-reanimated';
-import type { CallAudioPref, SightFacing } from '@smarteverything/domain';
-import type { MenuItem } from '../../../components/menu-rows';
+import type { CallAudioPref, DesktopCaptureMode, SightFacing } from '@smarteverything/domain';
 import { appPlatform, useIdiom } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { heavyThud, selectionTick } from '../../../platform/haptics';
@@ -10,12 +9,10 @@ import { useEscape } from '../../../components/use-escape';
 import { useAssistantName } from '../data/assistant-data';
 import {
   answerRequest,
-  chooseFacing,
   flipCamera,
   interruptAssistant,
   openSystemSettings,
   pauseCamera,
-  setCameraLight,
   startCamera,
   startPick,
   stopCamera,
@@ -28,12 +25,17 @@ import { useCaptureMode } from './components/use-capture-sources';
 import { callEngine } from './engine/engine';
 import { callLayoutOf, type CallLayout } from './model/call-layout';
 import { reasonsOf, type CallControlHandlers, type ControlReasons } from './model/call-controls';
-import { cameraMenuOf, shareMenuOf } from './model/call-menus';
 import { missedActionOf, missedOf } from './model/call-missed';
 import type { SourcePick } from './model/call-sources';
 import { useCallAudio } from './settings-sheet/call-audio-pref';
 import { useCallAnnouncements, useCallNotices } from './use-call-announcements';
-import { useCallLayers, type CallLayers } from './use-call-layers';
+import {
+  HOME_PICKER,
+  WINDOW_PICKER,
+  useCallLayers,
+  type CallLayers,
+  type CallPage,
+} from './use-call-layers';
 import { useCallShortcuts } from './use-call-shortcuts';
 
 const PHONE_SCREEN: SourcePick = {
@@ -58,8 +60,9 @@ export interface CallRoomModel {
   readonly pref: CallAudioPref;
   readonly reasons: ControlReasons;
   readonly handlers: CallControlHandlers;
-  readonly cameraMenu: readonly MenuItem[];
-  readonly shareMenu: readonly MenuItem[];
+  readonly captureMode: DesktopCaptureMode | null;
+  readonly screenSharePage: CallPage | null;
+  readonly shareScreen: () => void;
   readonly cameraAnchor: RefObject<View | null>;
   readonly shareAnchor: RefObject<View | null>;
   readonly stage: StageActions & { readonly onFlip: () => void };
@@ -75,21 +78,11 @@ function facingOf(pref: CallAudioPref): SightFacing {
   return appPlatform() === 'android' ? pref.facing : 'external';
 }
 
-function openHomePicker(layers: CallLayers): void {
-  layers.open({ kind: 'picker', scope: 'home', still: false });
-}
-
-function useShareScreen(layers: CallLayers): () => void {
-  const captureMode = useCaptureMode();
-  return (): void => {
-    if (appPlatform() === 'android') {
-      layers.open({ kind: 'explainer' });
-    } else if (captureMode === 'picker') {
-      layers.open({ kind: 'picker', scope: 'screen', still: false });
-    } else {
-      startPick(SYSTEM_SCREEN, false);
-    }
-  };
+function screenSharePageOf(captureMode: DesktopCaptureMode | null): CallPage | null {
+  if (appPlatform() === 'android') {
+    return { kind: 'explainer' };
+  }
+  return captureMode === 'picker' ? { kind: 'picker', scope: 'screen', still: false } : null;
 }
 
 interface HandlerInput {
@@ -149,35 +142,6 @@ function stageActionsOf(pref: CallAudioPref): CallRoomModel['stage'] {
   };
 }
 
-function useRoomMenus(
-  call: CallView,
-  layers: CallLayers,
-  shareScreen: () => void,
-): Pick<CallRoomModel, 'cameraMenu' | 'shareMenu'> {
-  const captureMode = useCaptureMode();
-  return {
-    cameraMenu: cameraMenuOf(call, callEngine.capabilities(), {
-      onFacing: chooseFacing,
-      onPause: pauseCamera,
-      onLight: setCameraLight,
-      onHome: (): void => {
-        openHomePicker(layers);
-      },
-      onStop: stopCamera,
-    }),
-    shareMenu: shareMenuOf(call, appPlatform(), captureMode === 'picker', {
-      onScreen: shareScreen,
-      onWindow: (): void => {
-        layers.open({ kind: 'picker', scope: 'window', still: false });
-      },
-      onHome: (): void => {
-        openHomePicker(layers);
-      },
-      onStop: stopSharing,
-    }),
-  };
-}
-
 function useRoomEffects(
   call: CallView,
   layout: CallLayout,
@@ -203,7 +167,7 @@ function actionRunner(
     } else if (action === 'share' && reasons.share === null) {
       shareScreen();
     } else if (action === 'home') {
-      openHomePicker(layers);
+      layers.open(HOME_PICKER);
     } else if (action === 'settings') {
       layers.open({ kind: 'settings' });
     }
@@ -234,7 +198,7 @@ function requestActions(
       changeCall(() => ({ missed: null }));
       const action = missedActionOf(missed.what);
       if (action === 'window') {
-        layers.open({ kind: 'picker', scope: 'window', still: false });
+        layers.open(WINDOW_PICKER);
       } else {
         runAction(action);
       }
@@ -253,7 +217,15 @@ export function useCallRoom(): CallRoomModel {
   const level = useCallLevel(call.phase, call.muted);
   const cameraAnchor = useRef<View>(null);
   const shareAnchor = useRef<View>(null);
-  const shareScreen = useShareScreen(layers);
+  const captureMode = useCaptureMode();
+  const screenSharePage = screenSharePageOf(captureMode);
+  const shareScreen = (): void => {
+    if (screenSharePage === null) {
+      startPick(SYSTEM_SCREEN, false);
+      return;
+    }
+    layers.open(screenSharePage);
+  };
   const handlers = handlersOf({ call, reasons, pref, layers });
   const runAction = actionRunner(reasons, pref, layers, shareScreen);
   useRoomEffects(call, layout, layers, handlers);
@@ -266,7 +238,9 @@ export function useCallRoom(): CallRoomModel {
     pref,
     reasons,
     handlers,
-    ...useRoomMenus(call, layers, shareScreen),
+    captureMode,
+    screenSharePage,
+    shareScreen,
     cameraAnchor,
     shareAnchor,
     stage: stageActionsOf(pref),

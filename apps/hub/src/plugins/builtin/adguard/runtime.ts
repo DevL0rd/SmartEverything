@@ -19,8 +19,9 @@ import { changeProtection } from './controls';
 import { AdGuardMonitor } from './monitor';
 import type { LookupRate } from './lookup-rates';
 import { importAdGuardFromRouterMonitor } from './router-monitor-import';
+import { registerAdGuardPickers } from './pickers';
 import { PASSWORD_SECRET, type AdGuardSettings } from './settings';
-import { adguardTools } from './tools';
+import { adguardTools, type AdGuardToolPorts } from './tools';
 
 export const SNAPSHOT_STREAM = 'adguard.snapshot';
 export const PROTECTION_CHANGED_EVENT = 'protection_changed';
@@ -32,16 +33,16 @@ export function startAdGuard(ctx: Context): PluginStop {
   const password = ctx.secrets.get(PASSWORD_SECRET);
   if (url === null || user === null || password === null) {
     const idle = idleSnapshot(url, url === null ? 'not_set_up' : 'sign_in_needed');
-    ctx.tools.register(
-      adguardTools({
-        snapshot: () => idle,
-        client: () => {
-          throw new Error('AdGuard Home is not set up yet');
-        },
-        changed: () => undefined,
-        importRouterMonitor: importer(ctx),
-      }),
-    );
+    const ports: AdGuardToolPorts = {
+      snapshot: () => idle,
+      client: () => {
+        throw new Error('AdGuard Home is not set up yet');
+      },
+      changed: () => undefined,
+      importRouterMonitor: importer(ctx),
+    };
+    ctx.tools.register(adguardTools(ports));
+    registerAdGuardPickers(ctx, ports);
     ctx.data.publish(SNAPSHOT_STREAM, idle);
     ctx.search.replace(adguardSearchEntries([]));
     return () => Promise.resolve();
@@ -84,15 +85,19 @@ function createMonitor(
   });
 }
 
-function protectionEvent(status: AdGuardStatus): {
+export function protectionEvent(status: AdGuardStatus): {
   kind: string;
   subject: string;
-  data: { enabled: boolean; until: string | null };
+  data: { enabled: boolean; until?: string; state: 'on' | 'off' };
 } {
   return {
     kind: PROTECTION_CHANGED_EVENT,
     subject: status.protection ? 'Ad blocking turned on' : 'Ad blocking turned off',
-    data: { enabled: status.protection, until: status.pausedUntil },
+    data: {
+      enabled: status.protection,
+      ...(status.pausedUntil === null ? {} : { until: status.pausedUntil }),
+      state: status.protection ? 'on' : 'off',
+    },
   };
 }
 
@@ -127,17 +132,17 @@ function registerDevice(
 function startMonitor(ctx: Context, url: string, client: AdGuardClient): PluginStop {
   const mirror = new DeviceMirror(adguardMirror(ctx.metrics));
   const monitor = createMonitor(ctx, url, client, mirror);
-  ctx.tools.register(
-    adguardTools({
-      snapshot: () => monitor.latest,
-      client: () => client,
-      changed: () => {
-        ctx.log.info('adguard.change_done', {});
-        monitor.refresh();
-      },
-      importRouterMonitor: importer(ctx),
-    }),
-  );
+  const ports: AdGuardToolPorts = {
+    snapshot: () => monitor.latest,
+    client: () => client,
+    changed: () => {
+      ctx.log.info('adguard.change_done', {});
+      monitor.refresh();
+    },
+    importRouterMonitor: importer(ctx),
+  };
+  ctx.tools.register(adguardTools(ports));
+  registerAdGuardPickers(ctx, ports);
   const unregister = registerDevice(ctx, mirror, monitor);
   const unwatch = ctx.settings.paused
     ? null

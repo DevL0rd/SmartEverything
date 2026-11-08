@@ -1,4 +1,3 @@
-import { appendTo } from '@smarteverything/domain';
 import { BlockList, isIP } from 'node:net';
 import type {
   FirewallBackend,
@@ -22,6 +21,16 @@ export interface DeviceAddress {
   readonly address: string;
 }
 
+export interface DeviceIdentity extends DeviceAddress {
+  readonly mac: string;
+}
+
+export interface DraftInput {
+  readonly needed: readonly FirewallOpening[];
+  readonly openings: readonly FirewallOpening[];
+  readonly unlearned: readonly DeviceAddress[];
+}
+
 export interface PluginPortNeed {
   readonly pluginId: string;
   readonly protocol: 'tcp' | 'udp';
@@ -42,8 +51,8 @@ export interface ConnectionPortNeed {
 }
 
 export interface OpeningNeeds {
-  readonly cameras: readonly DeviceAddress[];
-  readonly pushing: readonly DeviceAddress[];
+  readonly cameras: readonly DeviceIdentity[];
+  readonly pushing: readonly DeviceIdentity[];
   readonly plugins: readonly PluginPortNeed[];
   readonly announcements?: readonly AnnouncementNeed[];
   readonly networks: readonly string[];
@@ -60,7 +69,7 @@ export interface Probe {
   readonly filtering: boolean | null;
   readonly detail: string;
   readonly stateOf: (rule: PortRule) => OpeningState;
-  readonly draft: ((needed: readonly FirewallOpening[]) => PlanDraft) | null;
+  readonly draft: ((input: DraftInput) => PlanDraft | null) | null;
   readonly fixable: ReadonlySet<OpeningState>;
   readonly watch: readonly string[];
 }
@@ -74,19 +83,21 @@ export function cameraAddressOf(source: string): string | null {
   return isIP(host) === 0 ? null : host;
 }
 
-function sourceOpenings(
+function deviceOpenings(
   purpose: 'camera' | 'device',
-  devices: readonly DeviceAddress[],
+  devices: readonly DeviceIdentity[],
 ): RequiredOpening[] {
-  const byAddress = new Map<string, string[]>();
+  const byMac = new Map<string, { readonly address: string; readonly deviceIds: string[] }>();
   for (const device of devices) {
-    appendTo(byAddress, device.address, device.deviceId);
+    const entry = byMac.get(device.mac) ?? { address: device.address, deviceIds: [] };
+    entry.deviceIds.push(device.deviceId);
+    byMac.set(device.mac, entry);
   }
-  return [...byAddress].map(([address, deviceIds]): RequiredOpening => ({
-    id: `${purpose}:${address}`,
+  return [...byMac].map(([mac, { address, deviceIds }]): RequiredOpening => ({
+    id: `${purpose}:mac:${mac}`,
     deviceIds,
     pluginIds: [],
-    rule: { purpose, protocol: 'udp', source: address },
+    rule: { purpose, protocol: 'udp', mac, address },
   }));
 }
 
@@ -148,8 +159,8 @@ export function requiredOpenings({
     rule: { purpose: 'webrtc', protocol, port: webrtcPort },
   }));
   return [
-    ...sourceOpenings('camera', cameras),
-    ...sourceOpenings('device', pushing),
+    ...deviceOpenings('camera', cameras),
+    ...deviceOpenings('device', pushing),
     ...pluginOpenings(plugins, networks),
     ...announcementOpenings(announcements, networks),
     ...connectionOpenings(connections),

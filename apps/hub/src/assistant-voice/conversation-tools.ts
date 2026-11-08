@@ -11,6 +11,7 @@ import { deliverLateAnswer, deliverToolAnswer, timingOf, type ToolCallRef } from
 import { trackToolProgress } from './tool-progress';
 import type { TurnText } from './turn-text';
 import type { TurnTimer } from './turn-timing';
+import type { HandedMode, TurnTrace } from './turn-trace';
 import { VOICE_TOOL_NAMES } from './voice-tools';
 
 const log = new Logger('hub.voice-tools');
@@ -23,6 +24,8 @@ export interface VoiceToolPorts {
   readonly watchdog: ReplyWatchdog;
   readonly text: TurnText;
   readonly timing: TurnTimer;
+  readonly turns: TurnTrace;
+  readonly answerOwed: () => void;
   readonly now: () => number;
   readonly session: () => LiveSession | null;
   readonly closed: () => boolean;
@@ -30,6 +33,13 @@ export interface VoiceToolPorts {
   readonly assistantSpeaking: () => boolean;
   readonly flushHeard: () => void;
   readonly finishSoon: () => void;
+}
+
+function handedModeOf(live: LiveSession | null, asked: LiveSession | null): HandedMode {
+  if (live === null) {
+    return 'no_session';
+  }
+  return live === asked ? 'session' : 'late_text';
 }
 
 interface TaskCall {
@@ -44,8 +54,9 @@ export class VoiceTools {
   constructor(private readonly ports: VoiceToolPorts) {}
 
   handle(id: string, name: string, args: Readonly<Record<string, unknown>>): void {
-    const { session, flushHeard, finishSoon } = this.ports;
+    const { session, flushHeard, finishSoon, turns, assistantSpeaking } = this.ports;
     flushHeard();
+    turns.toolReceived(id, name, assistantSpeaking());
     const callId = this.ports.hooks.callId?.();
     log.debug('tool.requested', () => ({
       callId,
@@ -64,10 +75,12 @@ export class VoiceTools {
         { error: `This voice control ${name} is unavailable in this call` },
         { scheduling: 'silent', more: false },
       );
+      turns.resultHanded(id, session() === null ? 'no_session' : 'session');
       return;
     }
     if (name === VOICE_TOOL_NAMES.end) {
       session()?.toolResult(id, name, { ok: true }, { scheduling: 'silent', more: false });
+      turns.resultHanded(id, session() === null ? 'no_session' : 'session');
       finishSoon();
     } else if (name === VOICE_TOOL_NAMES.task) {
       this.startTask(id, name, stringArgument(args, 'task'));
@@ -96,7 +109,9 @@ export class VoiceTools {
   private startTask(id: string, name: string, task: string): void {
     const { hooks, session, text, record } = this.ports;
     const reply = (response: Readonly<Record<string, unknown>>, more: boolean): void => {
-      session()?.toolResult(id, name, response, { scheduling: more ? 'idle' : 'silent', more });
+      const live = session();
+      live?.toolResult(id, name, response, { scheduling: more ? 'idle' : 'silent', more });
+      this.ports.turns.resultHanded(id, live === null ? 'no_session' : 'session');
     };
     if (task === '') {
       reply({ error: 'No task was given' }, false);
@@ -123,16 +138,18 @@ export class VoiceTools {
     name: string,
     args: Readonly<Record<string, unknown>>,
   ): Promise<void> {
-    const { hooks, link, watchdog, session, closed, timing, now } = this.ports;
+    const { hooks, link, watchdog, session, closed, timing, now, turns } = this.ports;
     const asked = session();
     link.state('thinking');
     watchdog.toolStarted();
+    turns.toolStarted(id);
     const startedAt = now();
     const stopProgress = trackToolProgress(name, { ...this.ports, now });
     const answer = await hooks.run(name, args).catch(failedAnswer);
     stopProgress();
     watchdog.toolFinished();
     timing.tool(name, startedAt);
+    turns.toolFinished(id, 'error' in answer.response);
     log.debug('tool.answered', () => ({
       callId: hooks.callId?.(),
       tool: name,
@@ -143,21 +160,25 @@ export class VoiceTools {
       durationMs: now() - startedAt,
     }));
     if (closed()) {
+      turns.resultHanded(id, 'call_closed');
       return;
     }
     this.deliver(asked, { id, name }, answer);
   }
 
   private deliver(asked: LiveSession | null, call: ToolCallRef, answer: ToolAnswer): void {
-    const { hooks, session, record, renewal, watchdog, now } = this.ports;
+    const { hooks, session, record, renewal, watchdog, now, turns, answerOwed } = this.ports;
     const live = session();
     const to = { session: live, record, scheduling: timingOf(hooks.settings()) };
+    const mode: HandedMode = handedModeOf(live, asked);
     if (live === asked) {
       deliverToolAnswer(to, call, answer);
     } else {
       deliverLateAnswer(to, call, answer);
     }
     renewal.delivered(call.name, answer);
+    answerOwed();
     watchdog.asked(now());
+    turns.resultHanded(call.id, mode);
   }
 }

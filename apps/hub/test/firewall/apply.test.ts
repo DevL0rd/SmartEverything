@@ -8,15 +8,19 @@ import { fakeSystem } from './fake-system';
 
 const REVISION = '0123456789abcdef';
 const CAMERA_COMMAND =
-  "ufw allow in proto udp from 192.168.50.147 to any comment 'SmartEverything camera'";
+  "ufw allow in proto udp from 192.168.50.7 to any port 5353 comment 'SmartEverything discovery'";
 
 function planOf(source = '192.168.50.0/24'): FirewallPlan {
   return {
     backend: 'ufw',
     revision: REVISION,
     unprivilegedPortStart: null,
+    mac: null,
     rules: [
-      { rule: { purpose: 'camera', protocol: 'udp', source: '192.168.50.147' }, prepend: false },
+      {
+        rule: { purpose: 'discovery', protocol: 'udp', port: 5353, source: '192.168.50.7' },
+        prepend: false,
+      },
       {
         rule: { purpose: 'hub', protocol: 'tcp', port: 7882, source },
         prepend: false,
@@ -34,6 +38,7 @@ function statusOf(plan: FirewallPlan | null): FirewallStatus {
     openings: [],
     plan,
     cameras: [],
+    unlearned: [],
     lowPorts: null,
   };
 }
@@ -101,7 +106,7 @@ describe('applying the firewall plan from the server', () => {
 
   it('keeps going after a failing rule and says which one failed and why', async () => {
     const { applier } = rigOf(planOf(), (command) => {
-      if (command.includes('from 192.168.50.147')) {
+      if (command.includes('from 192.168.50.7 ')) {
         return Promise.resolve({ code: 1, stdout: '', stderr: 'ERROR: Bad source address\n' });
       }
       return OK('Rule added\n');
@@ -123,7 +128,7 @@ describe('applying the firewall plan from the server', () => {
 
   it('turns a program that crashes into a failed rule instead of losing the others', async () => {
     const { applier } = rigOf(planOf(), (command) =>
-      command.includes('192.168.50.147') ? Promise.reject(new Error('timed out')) : OK(''),
+      command.includes('192.168.50.7 ') ? Promise.reject(new Error('timed out')) : OK(''),
     );
     const result = await applier.apply(REVISION);
     expect(result.steps.map((step) => step.outcome)).toStrictEqual(['failed', 'applied']);
@@ -157,7 +162,9 @@ describe('applying the firewall plan from the server', () => {
       revision: REVISION,
       program: 'C:\\go2rtc.exe',
       appProgram: 'C:\\app.exe',
-      rules: [{ purpose: 'camera', protocol: 'udp', source: '192.168.50.147' }],
+      rules: [
+        { purpose: 'camera', protocol: 'udp', mac: 'b8:88:80:d7:19:ac', address: '192.168.50.147' },
+      ],
     };
     const { applier, ran } = rigOf(windows, () => OK(''), 'win32');
     const result = await applier.apply(REVISION);

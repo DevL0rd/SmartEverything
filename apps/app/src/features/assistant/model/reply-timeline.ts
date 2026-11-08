@@ -52,6 +52,24 @@ export function replyParts(row: AssistantMessageRow): readonly InlineTimelinePar
   return parts;
 }
 
+const quietParts = new WeakMap<readonly InlineTimelinePart[], readonly InlineTimelinePart[]>();
+
+export function visibleReplyParts(
+  row: AssistantMessageRow,
+  showSteps: boolean,
+): readonly InlineTimelinePart[] | null {
+  const parts = replyParts(row);
+  if (parts === null || showSteps) return parts;
+  const known = quietParts.get(parts);
+  if (known !== undefined) return known;
+  const visible = parts.filter(
+    (part) =>
+      part.kind !== 'tools' || part.activities.some((activity) => activity.kind === 'reasoning'),
+  );
+  quietParts.set(parts, visible);
+  return visible;
+}
+
 export function imageTimelineIds(rows: readonly AssistantMessageRow[]): ReadonlySet<string> {
   return new Set(
     rows.flatMap(
@@ -77,5 +95,5 @@ export function steeredMessageIds(rows: readonly AssistantMessageRow[]): Readonl
 }
 
 export function hasReplyTimeline(row: AssistantMessageRow): boolean {
-  return row.embeds.some((embed) => embed.kind === 'chat_timeline');
+  return replyTimeline(row) !== null;
 }

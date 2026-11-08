@@ -33,6 +33,7 @@ const NOTICES: { readonly [K in LiveNotice['type']]: NoticeHandler<K> } = {
   voice_caption: ignoreNotice,
   ai_harness: ignoreNotice,
   ai_harness_configuration: ignoreNotice,
+  ai_subscription_usage_changed: ignoreNotice,
   image_operation: ignoreNotice,
   image_operation_preview: ignoreNotice,
   presence: setHub,
@@ -71,6 +72,11 @@ const NOTICES: { readonly [K in LiveNotice['type']]: NoticeHandler<K> } = {
     }));
   },
   assistant_status: ignoreNotice,
+  drive_changed: ignoreNotice,
+  drive_progress: ignoreNotice,
+  photos_progress: ignoreNotice,
+  planner_ring: ignoreNotice,
+  planner_summary: ignoreNotice,
   chat_activity: (store, message) => {
     store.update((state) => ({ ...state, turns: withSnapshot(state.turns, message) }));
   },
@@ -106,6 +112,9 @@ const NOTICES: { readonly [K in LiveNotice['type']]: NoticeHandler<K> } = {
   treadmill_live: ignoreNotice,
   toothbrush_live: ignoreNotice,
   clipboard: ignoreNotice,
+  app_update: ignoreNotice,
+  hub_update_status_changed: ignoreNotice,
+  hub_update_source_changed: ignoreNotice,
   trace_keyframe: deliverTrace,
   trace_node_state: deliverTrace,
   trace_run_parked: deliverTrace,

@@ -1,6 +1,7 @@
+import type { ReactElement } from 'react';
 import { CodeScanner, Stage } from 'smarteverything-kit';
 
-const scanner = (shape: 'square' | 'wide') => (
+const scanner = (shape: 'square' | 'wide'): ReactElement => (
   <div style={{ height: 380, display: 'flex', flexDirection: 'column' }}>
     <CodeScanner
       types={['qr']}
@@ -12,12 +13,12 @@ const scanner = (shape: 'square' | 'wide') => (
     />
   </div>
 );
-export const Square = () => (
+export const Square = (): ReactElement => (
   <Stage theme="dark" width={420}>
     {scanner('square')}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     {scanner('square')}
   </Stage>

@@ -8,8 +8,21 @@
   "exports": {
     ".": "./src/index.ts",
     "./voice-overlay": "./src/voice-overlay.ts",
+    "./markdown": "./src/markdown.ts",
+    "./drive-sync": "./src/drive/sync/index.ts",
     "./assistant-voice-copy": "./src/assistant-voice-copy.ts",
-    "./node/harness-frames": "./src/node/harness-frames.ts"
+    "./node/harness-frames": "./src/node/harness-frames.ts",
+    "./vacuum-scene": "./src/vacuum-scene.ts",
+    "./vacuum-finish": "./src/vacuum-finish.ts",
+    "./home-map": "./src/home-map.ts",
+    "./home-map-elements": "./src/home-map-elements.ts",
+    "./home-map-placement": "./src/home-map-placement.ts",
+    "./home-map-geometry": "./src/home-map-geometry.ts",
+    "./home-map-openings": "./src/home-map-openings.ts",
+    "./home-map-edit-core": "./src/home-map-edit-core.ts",
+    "./model-footprint": "./src/models/placement-footprint.ts",
+    "./model-placement": "./src/models/placement.ts",
+    "./model-spec": "./src/models/spec.ts"
   },
   "dependencies": {
     "@noble/hashes": "2.4.0",

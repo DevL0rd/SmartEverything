@@ -1,0 +1,143 @@
+diff --git a/android/src/main/java/expo/modules/updates/EnabledUpdatesController.kt b/android/src/main/java/expo/modules/updates/EnabledUpdatesController.kt
+index 95495df3bcd0396c845692ebc0f55efc41512eaf..9c2a90f092417adc1e94cc4c9c3744e9612c3461 100644
+--- a/android/src/main/java/expo/modules/updates/EnabledUpdatesController.kt
++++ b/android/src/main/java/expo/modules/updates/EnabledUpdatesController.kt
+@@ -29,6 +29,7 @@ import expo.modules.updates.procedures.RelaunchProcedure
+ import expo.modules.updates.procedures.StartupProcedure
+ import expo.modules.updates.reloadscreen.ReloadScreenManager
+ import expo.modules.updates.selectionpolicy.SelectionPolicy
++import expo.modules.updates.selectionpolicy.UpdateLaunchApproval
+ import expo.modules.updates.selectionpolicy.SelectionPolicyFactory
+ import expo.modules.updates.statemachine.UpdatesStateMachine
+ import expo.modules.updates.statemachine.UpdatesStateValue
+@@ -67,8 +68,12 @@ class EnabledUpdatesController(
+   private val logger = UpdatesLogger(context.filesDir)
+   override val eventManager: IUpdatesEventManager = UpdatesEventManager(logger)
+ 
++  private val launchApproval = UpdateLaunchApproval(context)
+   private val selectionPolicy: SelectionPolicy
+-    get() = SelectionPolicyFactory.createFilterAwarePolicy(updatesConfiguration.getRuntimeVersion(), updatesConfiguration)
++    get() = launchApproval.policy(
++      SelectionPolicyFactory.createFilterAwarePolicy(updatesConfiguration.getRuntimeVersion(), updatesConfiguration),
++      getEmbeddedUpdate()?.id
++    )
+   private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+   private val stateMachine = UpdatesStateMachine(logger, eventManager, UpdatesStateValue.entries.toSet(), controllerScope)
+   private val fileDownloader: FileDownloader
+@@ -127,6 +132,10 @@ class EnabledUpdatesController(
+     selectionPolicy,
+     logger,
+     object : StartupProcedure.StartupProcedureCallback {
++      override fun onRecoveryUpdateDownloaded(update: UpdateEntity) {
++        launchApproval.approve(update.id)
++      }
++
+       override fun onFinished() {
+         onStartupProcedureFinished()
+       }
+diff --git a/android/src/main/java/expo/modules/updates/UpdatesModule.kt b/android/src/main/java/expo/modules/updates/UpdatesModule.kt
+index 229cedbfb1c8010ec651d9967abc5fab15ffd324..1320eaf23531f2fc2c5b2a9c62dc66b0c13d9ad2 100644
+--- a/android/src/main/java/expo/modules/updates/UpdatesModule.kt
++++ b/android/src/main/java/expo/modules/updates/UpdatesModule.kt
+@@ -3,6 +3,8 @@ package expo.modules.updates
+ import android.content.Context
+ import android.net.Uri
+ import android.os.Bundle
++import expo.modules.updates.selectionpolicy.UpdateLaunchApproval
++import java.util.UUID
+ import expo.modules.kotlin.exception.CodedException
+ import expo.modules.kotlin.exception.Exceptions
+ import expo.modules.kotlin.functions.Coroutine
+@@ -61,6 +63,10 @@ class UpdatesModule : Module(), IUpdatesEventManagerObserver {
+       UpdatesController.removeUpdatesEventManagerObserver()
+     }
+ 
++    AsyncFunction("approveUpdateAsync") Coroutine { updateId: String? ->
++      UpdateLaunchApproval(context).approve(updateId?.let(UUID::fromString))
++    }
++
+     AsyncFunction("reload") Coroutine { options: ReloadScreenOptions? ->
+       UpdatesController.instance.reloadScreenManager?.setConfiguration(options)
+       UpdatesController.instance.relaunchReactApplicationForModule()
+@@ -136,7 +142,7 @@ class UpdatesModule : Module(), IUpdatesEventManagerObserver {
+     }
+ 
+     AsyncFunction("setExtraParamAsync") Coroutine { key: String, value: String? ->
+-      logger.debug("Called setExtraParamAsync with key = $key, value = $value")
++      logger.debug("Called setExtraParamAsync")
+       UpdatesController.instance.setExtraParam(
+         key,
+         value
+diff --git a/android/src/main/java/expo/modules/updates/procedures/StartupProcedure.kt b/android/src/main/java/expo/modules/updates/procedures/StartupProcedure.kt
+index 365958fa29028959f0459347cdcdc5390bf8fa04..55cb468439bf5b5a5a647cc1a355ae64fb6d1dd5 100644
+--- a/android/src/main/java/expo/modules/updates/procedures/StartupProcedure.kt
++++ b/android/src/main/java/expo/modules/updates/procedures/StartupProcedure.kt
+@@ -42,6 +42,7 @@ class StartupProcedure(
+ 
+   interface StartupProcedureCallback {
+     fun onFinished()
++    fun onRecoveryUpdateDownloaded(update: UpdateEntity)
+     fun onRequestRelaunch(shouldRunReaper: Boolean, callback: Launcher.LauncherCallback)
+   }
+ 
+@@ -261,6 +262,7 @@ class StartupProcedure(
+               Loader.OnUpdateResponseLoadedResult(shouldDownloadManifestIfPresentInResponse = selectionPolicy.shouldLoadNewUpdate(update.updateEntity, launchedUpdate, updateResponse.responseHeaderData?.manifestFilters))
+             }
+ 
++            loaderResult.updateEntity?.let(callback::onRecoveryUpdateDownloaded)
+             setRemoteLoadStatus(
+               if (loaderResult.updateEntity != null || loaderResult.updateDirective is UpdateDirective.RollBackToEmbeddedUpdateDirective) {
+                 ErrorRecoveryDelegate.RemoteLoadStatus.NEW_UPDATE_LOADED
+diff --git a/android/src/main/java/expo/modules/updates/selectionpolicy/UpdateLaunchApproval.kt b/android/src/main/java/expo/modules/updates/selectionpolicy/UpdateLaunchApproval.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..b21c832710cabc46a22c5c74cf8245fe306c88bb
+--- /dev/null
++++ b/android/src/main/java/expo/modules/updates/selectionpolicy/UpdateLaunchApproval.kt
+@@ -0,0 +1,47 @@
++package expo.modules.updates.selectionpolicy
++
++import android.content.Context
++import expo.modules.updates.db.entity.UpdateEntity
++import org.json.JSONObject
++import java.util.UUID
++
++internal class UpdateLaunchApproval(context: Context) {
++  private val preferences = context.getSharedPreferences("SmartEverythingUpdateLaunch", Context.MODE_PRIVATE)
++
++  fun approve(updateId: UUID?) {
++    check(preferences.edit().putString(APPROVED_UPDATE, updateId?.toString()).commit()) {
++      "Could not save update launch approval"
++    }
++  }
++
++  private fun eligible(update: UpdateEntity, embeddedId: UUID?, approved: String?): Boolean =
++    update.id == embeddedId || update.successfulLaunchCount > 0 || update.id.toString() == approved
++
++  fun policy(base: SelectionPolicy, embeddedId: UUID?): SelectionPolicy = SelectionPolicy(
++    object : LauncherSelectionPolicy {
++      override fun selectUpdateToLaunch(updates: List<UpdateEntity>, filters: JSONObject?): UpdateEntity? {
++        val approved = preferences.getString(APPROVED_UPDATE, null)
++        return base.selectUpdateToLaunch(updates.filter { eligible(it, embeddedId, approved) }, filters)
++          ?: updates.firstOrNull { it.id == embeddedId }
++      }
++    },
++    object : LoaderSelectionPolicy by base.loaderSelectionPolicy {
++      override fun shouldLoadNewUpdate(newUpdate: UpdateEntity?, launchedUpdate: UpdateEntity?, filters: JSONObject?): Boolean =
++        (newUpdate != null && newUpdate.id == embeddedId && launchedUpdate == null) ||
++          base.shouldLoadNewUpdate(newUpdate, launchedUpdate, filters)
++    },
++    object : ReaperSelectionPolicy {
++      override fun selectUpdatesToDelete(updates: List<UpdateEntity>, launchedUpdate: UpdateEntity?, filters: JSONObject?): List<UpdateEntity> {
++        if (launchedUpdate == null) return emptyList()
++        val approved = preferences.getString(APPROVED_UPDATE, null)
++        val (eligible, staged) = updates.partition { eligible(it, embeddedId, approved) }
++        return base.selectUpdatesToDelete(eligible, launchedUpdate, filters).filterNot { it.id == embeddedId } +
++          staged.filter { it.scopeKey == launchedUpdate.scopeKey && it.commitTime.before(launchedUpdate.commitTime) }
++      }
++    }
++  )
++
++  private companion object {
++    const val APPROVED_UPDATE = "approvedUpdate"
++  }
++}

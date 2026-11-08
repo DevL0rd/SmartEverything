@@ -3,18 +3,17 @@ import { View } from 'react-native';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
 import { count } from '../../../format/number';
-import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { ServiceMedallion } from '../../shared/service-medallion';
+import {
+  figureFitOf,
+  GraphFill,
+  type FigureFit,
+  type ServiceLayout,
+} from '../../shared/service-widget-frame';
 import { hourlyStack } from '../model/chart-model';
 import type { BlockingView } from './blocking-model';
-import { Caption, Resume, StaleLine } from './blocking-parts';
-import {
-  blockingFaceOf,
-  bodyHeightOf,
-  compactLayoutOf,
-  topRowsOf,
-  wideBarsHeightOf,
-} from './frame-faces';
+import { Caption, StaleLine } from './blocking-parts';
+import { stoppedLinesOf, topRowsOf } from './frame-faces';
 import { MiniStack } from './mini-stack';
 import type { BlockingReady } from './blocking-widget-frame';
 
@@ -22,8 +21,8 @@ const MINI_HOURS = 24;
 
 export interface BlockingFaceProps {
   readonly ready: BlockingReady;
+  readonly layout: ServiceLayout;
   readonly view: BlockingView;
-  readonly onResume: (() => Promise<unknown>) | null;
 }
 
 function barsOf({ ready, view }: BlockingFaceProps, hours: number): ReturnType<typeof hourlyStack> {
@@ -82,39 +81,48 @@ function Tile({ view }: BlockingFaceProps): ReactNode {
   );
 }
 
-type StoppedProps = Pick<BlockingFaceProps, 'view' | 'onResume'>;
-
-function Stopped({ view, onResume }: StoppedProps): ReactNode {
+function Stopped({ view, layout }: Pick<BlockingFaceProps, 'view' | 'layout'>): ReactNode {
+  const lines = stoppedLinesOf(layout.room, layout.idiom);
   return (
-    <View className="flex-1 gap-1">
-      <View className="flex-row items-center gap-2">
-        <Text variant="title-3" tone="warning" numberOfLines={2} className="min-w-0 flex-1">
-          {view.headline}
-        </Text>
-        {onResume === null ? null : <Resume onResume={onResume} />}
-      </View>
-      <Text variant="footnote" tone="variant">
+    <View>
+      <Text variant="title-3" tone="warning" numberOfLines={lines.headline}>
+        {view.headline}
+      </Text>
+      <Text variant="footnote" tone="variant" numberOfLines={lines.detail}>
         {view.detail}
       </Text>
     </View>
   );
 }
 
-function Compact(props: BlockingFaceProps): ReactNode {
-  const { view } = props;
-  const { frame } = useWidgetFace();
-  const layout = compactLayoutOf(bodyHeightOf(frame));
-  const bars = view.stale === null ? layout.bars : null;
+function Reading({
+  view,
+  fit,
+}: {
+  readonly view: BlockingView;
+  readonly fit: FigureFit;
+}): ReactNode {
   return (
-    <View className="gap-1.5">
-      <Figure
-        value={view.percent}
-        unit="% blocked"
-        size={layout.figure}
-        stale={view.stale !== null}
-      />
-      <Caption text={view.share} stale={view.stale} />
-      {bars === null ? null : <MiniStack bars={barsOf(props, MINI_HOURS)} height={bars} />}
+    <View className={fit.gap}>
+      <Figure value={view.percent} unit="% blocked" size={fit.figure} stale={view.stale !== null} />
+      <Caption text={view.share} stale={view.stale} variant={fit.caption} />
+    </View>
+  );
+}
+
+function Hours(props: BlockingFaceProps): ReactNode {
+  return props.view.stale === null ? (
+    <GraphFill spaced>
+      {(height) => <MiniStack bars={barsOf(props, MINI_HOURS)} height={height} />}
+    </GraphFill>
+  ) : null;
+}
+
+function Compact(props: BlockingFaceProps): ReactNode {
+  return (
+    <View className="flex-1">
+      <Reading view={props.view} fit={figureFitOf(props.layout.room, props.layout.idiom)} />
+      <Hours {...props} />
     </View>
   );
 }
@@ -127,7 +135,7 @@ function TopBlocked({
   readonly rows: number;
 }): ReactNode {
   const entries = view.stats.topBlocked.slice(0, rows);
-  return rows === 0 || entries.length === 0 ? null : (
+  return entries.length === 0 ? null : (
     <View className="gap-1">
       <Text variant="label" tone="variant">
         Top blocked
@@ -149,46 +157,39 @@ function TopBlocked({
 }
 
 function Tall(props: BlockingFaceProps): ReactNode {
-  const { frame } = useWidgetFace();
+  const { view, layout } = props;
   return (
-    <View className="flex-1 justify-between gap-2">
+    <View className="flex-1">
       <Compact {...props} />
-      {props.view.stale === null ? (
-        <TopBlocked view={props.view} rows={topRowsOf(bodyHeightOf(frame))} />
+      {view.stale === null ? (
+        <GraphFill spaced edge="start" least={0}>
+          {(height) => <TopBlocked view={view} rows={topRowsOf(height, layout.idiom)} />}
+        </GraphFill>
       ) : null}
     </View>
   );
 }
 
 function Wide(props: BlockingFaceProps): ReactNode {
-  const { view } = props;
-  const { frame } = useWidgetFace();
   return (
-    <View className="flex-1 flex-row items-center gap-6">
-      <View className="w-1/3 gap-1.5">
-        <Figure value={view.percent} unit="% blocked" size="l" stale={view.stale !== null} />
-        <Caption text={view.share} stale={view.stale} />
+    <View className="flex-1 flex-row gap-6">
+      <View className="w-1/3">
+        <Reading view={props.view} fit={figureFitOf(props.layout.room, props.layout.idiom)} />
       </View>
       <View className="min-w-0 flex-1">
-        {view.stale === null ? (
-          <MiniStack
-            bars={barsOf(props, MINI_HOURS)}
-            height={wideBarsHeightOf(bodyHeightOf(frame))}
-          />
-        ) : null}
+        <Hours {...props} />
       </View>
     </View>
   );
 }
 
 export function BlockingFace(props: BlockingFaceProps): ReactNode {
-  const { cls } = useWidgetFace();
-  const face = blockingFaceOf(cls);
+  const { face } = props.layout;
   if (face === 'tile') {
     return <Tile {...props} />;
   }
   if (props.view.stale === null && props.view.protection !== 'on') {
-    return <Stopped view={props.view} onResume={props.onResume} />;
+    return <Stopped view={props.view} layout={props.layout} />;
   }
   switch (face) {
     case 'compact':
@@ -196,6 +197,7 @@ export function BlockingFace(props: BlockingFaceProps): ReactNode {
     case 'tall':
       return <Tall {...props} />;
     case 'wide':
+    case 'wide-tall':
       return <Wide {...props} />;
   }
 }

@@ -86,7 +86,7 @@ const flowIf = defineNodeKind({
   icon: 'split',
   class: 'control',
   description:
-    'Runs the first branch whose condition is true, checking top to bottom. Runs else when none is.',
+    'Checks each case from the top and follows the first one that is true, otherwise the Otherwise path.',
   inputs: [],
   outputs: [],
   exits: [],
@@ -157,8 +157,7 @@ const forEach = defineNodeKind({
   category: 'flow',
   icon: 'list-ordered',
   class: 'control',
-  description:
-    'Runs the body once for every item of a list, taken as a snapshot at the start. An empty list skips the body.',
+  description: 'Runs the steps inside once for every item in the list.',
   inputs: [
     input('items', { t: 'list', of: ITEM }, 'The list to go through.', { summary: true }),
     option(

@@ -38,12 +38,7 @@ export { IR_REMOTE_CATEGORY_PREFIX, kindOf } from './categories';
 export { CAPABILITY_RULES } from './capability-rules';
 export type { CapabilityRule, Codec } from './capability-rules';
 
-export {
-  IR_CAPABILITIES,
-  buildDeviceModel,
-  decodeReport,
-  encodeCommand,
-} from './model';
+export { IR_CAPABILITIES, buildDeviceModel, decodeReport, encodeCommand } from './model';
 export type {
   CapabilityBinding,
   DecodeProblem,
@@ -161,3 +156,33 @@ export { ConversionError, convertDataPoints, convertValue, isKnownConversion } f
 export type { ConvertedReport, DataPointConversion } from './conversions';
 
 export { deviceTopic, ownerTopic, readSmartLifeMessage } from './smart-life-messages';
+
+export { FlipperProtocolUnsupportedError, readFlipperFile } from './ir-library/flipper';
+export type { FlipperFile, FlipperSignal } from './ir-library/flipper';
+export { isSkippableSmartIrError, readSmartIrClimate } from './ir-library/smartir';
+export type { SmartIrClimate } from './ir-library/smartir';
+export { pulsesToCode } from './ir-library/pulse-train';
+export {
+  LIBRARY_CLIMATE,
+  LIBRARY_ENTRY,
+  LIBRARY_INDEX,
+  LIBRARY_KEYS,
+  LIBRARY_MODEL,
+} from './ir-library/library';
+export type {
+  LibraryClimate,
+  LibraryEntry,
+  LibraryIndex,
+  LibraryKeys,
+  LibraryModel,
+} from './ir-library/library';
+export { LibraryPackError, buildPack, readPackIndex, readPackModel } from './ir-library/pack';
+export type { Pack, PackedModel } from './ir-library/pack';
+export {
+  UNKNOWN_BRAND,
+  libraryOrder,
+  mergeBrands,
+  modelTitles,
+  tidyBrand,
+} from './ir-library/names';
+export { TUYA_S06_PRO_MODEL } from './models/ir';

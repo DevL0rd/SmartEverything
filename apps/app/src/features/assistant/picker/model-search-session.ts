@@ -1,5 +1,6 @@
 import { useConnection } from '../../../api/transport';
 import { connectionState } from '../../../api/connection/connection';
+import { sameSessionAuthority } from '../../../store/session-authority';
 import { useEntityStore } from '../../../store/store-context';
 import { useSession, useSyncStatus } from '../../../store/selectors';
 
@@ -15,10 +16,19 @@ export function usePickerSession(): PickerSession {
   const connection = useConnection();
   const url = connection.status === 'paired' ? connection.connection.url : '';
   return {
-    key: JSON.stringify([url, session.client.id, session.client.profile_id]),
+    key: JSON.stringify([
+      url,
+      connection.status === 'paired'
+        ? (connection.connection.trustedMetadata?.identity.id ?? null)
+        : null,
+      session.client.id,
+      session.client.profile_id,
+      session.client.role,
+      session.client.built_in,
+    ]),
     ready: connection.status === 'paired' && sync.status === 'live',
     valid: (): boolean =>
-      store.get().session === session &&
+      sameSessionAuthority(store.get().session, session) &&
       store.get().sync.status === 'live' &&
       connectionState.get() === connection,
   };

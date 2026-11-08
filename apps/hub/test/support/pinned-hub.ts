@@ -73,13 +73,13 @@ export function trustFor(
       },
     },
     endpoints: [
-      { kind: 'lan', url: `https://127.0.0.1:${String(port)}` },
+      { kind: 'lan', url: `https://127.0.0.2:${String(port)}` },
       ...extraAddresses.map((address) => ({
         kind: 'lan' as const,
         url: `https://${address}:${String(port)}`,
       })),
     ],
-    lanAddresses: ['127.0.0.1', ...extraAddresses],
+    lanAddresses: ['127.0.0.2', ...extraAddresses],
   });
 }
 export async function listenPinned(
@@ -91,7 +91,7 @@ export async function listenPinned(
   server.on('secureConnection', () => {
     connections += 1;
   });
-  server.listen(0, '127.0.0.1');
+  server.listen(0, '127.0.0.2');
   await once(server, 'listening');
   const address = server.address();
   if (address === null || typeof address === 'string') throw new Error('Fixture hub has no port');
@@ -99,7 +99,7 @@ export async function listenPinned(
   return {
     server,
     port,
-    url: `https://127.0.0.1:${String(port)}`,
+    url: `https://127.0.0.2:${String(port)}`,
     connections: (): number => connections,
     close: async (): Promise<void> => {
       server.closeAllConnections();

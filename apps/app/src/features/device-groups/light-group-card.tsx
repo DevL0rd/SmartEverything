@@ -1,19 +1,14 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../components/app-href';
 import type { DeviceTarget } from '@smarteverything/domain';
+import { frameClassOf, tierInnerHeight } from '../../components/widget-board';
 import { useWidgetFrame } from '../../components/widget-board/widget-scope';
 import { useIdiom } from '../../design/platform';
+import { useThemeSetting } from '../../design/theme';
 import { useMeasuredWidth } from '../../components/use-measured-width';
+import { rowColumns } from './group-layout';
 import { LightGroup } from './widget/light-group';
-
-const MIN_MEMBER_WIDTH = 220;
-const MAX_COLUMNS = 3;
-const CAPPED_HEIGHT = { touch: 520, pointer: 460 } as const;
-
-function columnsFor(width: number): number {
-  return Math.min(MAX_COLUMNS, Math.max(1, Math.floor(width / MIN_MEMBER_WIDTH)));
-}
 
 export function LightGroupCard({
   target,
@@ -25,20 +20,22 @@ export function LightGroupCard({
   readonly target: DeviceTarget;
   readonly rows: 'fit' | 'capped' | 'all';
   readonly title?: string;
-  readonly href?: Href;
+  readonly href?: AppHref;
   readonly availableWidth?: number;
 }): ReactNode {
   const idiom = useIdiom();
+  const tall = tierInnerHeight('XL', idiom, useThemeSetting('density'));
   const { width, onLayout } = useMeasuredWidth(Math.round, availableWidth);
   const scoped = useWidgetFrame();
   const fit = rows === 'fit' && scoped !== null;
   const capped = rows === 'capped';
-  const frame = fit ? scoped : { width, height: capped ? CAPPED_HEIGHT[idiom] : 0, idiom };
+  const frame = fit ? scoped : { width, height: tall, idiom };
+  const columns = frameClassOf(frame) === 'xl' ? rowColumns(width) : 1;
   const card = (
     <LightGroup
       target={target}
       frame={frame}
-      {...(fit || capped ? {} : { allColumns: columnsFor(width) })}
+      {...(fit || capped ? {} : { allColumns: columns })}
       {...(title === undefined ? {} : { title })}
       {...(href === undefined ? {} : { titleHref: href })}
     />

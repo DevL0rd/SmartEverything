@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
+import { InMemoryServerEventBus, type McpServer } from '@modelcontextprotocol/server';
 import type { SettingsRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../../store/store';
-import { statelessHttp } from './http-transport';
 import { notifierServer } from './server';
 
 function switchesOf(row: SettingsRow | null): string {
@@ -11,6 +11,7 @@ function switchesOf(row: SettingsRow | null): string {
 }
 
 export class ToolListFeed {
+  readonly bus: InMemoryServerEventBus;
   private readonly streams = new Set<McpServer>();
   private readonly unsubscribe: () => void;
 
@@ -18,6 +19,9 @@ export class ToolListFeed {
     store: Store,
     private readonly log: Logger,
   ) {
+    this.bus = new InMemoryServerEventBus((cause) => {
+      log.error('tool_list_changed.failed', cause);
+    });
     this.unsubscribe = store.feed.subscribe((change) => {
       if (
         change.table === 'settings' &&
@@ -35,9 +39,9 @@ export class ToolListFeed {
       this.streams.delete(stream);
       this.closing(stream);
     });
-    const http = statelessHttp(false);
-    await stream.connect(http.transport);
-    await http.handle(request, response);
+    const transport = new NodeStreamableHTTPServerTransport();
+    await stream.connect(transport);
+    await transport.handleRequest(request, response);
   }
 
   stop(): void {
@@ -48,6 +52,7 @@ export class ToolListFeed {
   }
 
   private announce(): void {
+    this.bus.publish({ kind: 'tools_list_changed' });
     for (const stream of this.streams) {
       stream.server.sendToolListChanged().catch((cause: unknown) => {
         this.log.error('tool_list_changed.failed', cause);

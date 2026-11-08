@@ -1,11 +1,14 @@
 import type { ReactNode, RefObject } from 'react';
-import { View } from 'react-native';
+import { View, type LayoutChangeEvent } from 'react-native';
 import type { FrameClass } from '../../../components/widget-board';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
+import { ActionBand } from '../../../components/widget-board/action-band';
 import { FigureText } from '../../../components/figure';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
 import { cn } from '../../../design/cn';
 import type { VisualPx } from '../../device-visuals';
+import { LogSlot, useLogFit, type LogFit } from './wide-log';
 
 export type WideClass = 'm' | 'w' | 'l' | 'xl';
 
@@ -22,16 +25,14 @@ export const WIDE_VISUAL_PX: Readonly<Record<WideClass, VisualPx>> = {
   xl: 128,
 };
 
-export const WIDE_MAX_ACTIONS: Readonly<Record<WideClass, number>> = {
-  m: 2,
-  w: 3,
-  l: 6,
-  xl: 6,
-};
+export function wideClassOf(cls: FrameClass): WideClass {
+  return isWideClass(cls) ? cls : 'm';
+}
 
-export const WIDE_MAX_FIGURES = 3;
-
-const PANEL_CHART_HEIGHT = 120;
+export function useWideArt(): { readonly cls: WideClass; readonly px: VisualPx } {
+  const cls = wideClassOf(useWidgetFace().cls);
+  return { cls, px: WIDE_VISUAL_PX[cls] };
+}
 
 export interface WideFrame {
   readonly ref: RefObject<View | null>;
@@ -44,7 +45,9 @@ export interface WideCardProps {
   readonly summary: string;
   readonly visual: ReactNode;
   readonly title: string;
+  readonly titleLines?: 1 | 2 | 3;
   readonly chip?: ReactNode;
+  readonly interactiveChip?: boolean;
   readonly state?: ReactNode;
   readonly figures?: readonly ReactNode[];
   readonly graph?: ReactNode;
@@ -72,7 +75,7 @@ export function WideFigure({
     <View className="min-w-0 shrink-0">
       <FigureText text={value} unit={unit} size="m" tone={tone} stale={stale} />
       {caption === undefined ? null : (
-        <Text variant="caption" tone="faint" numberOfLines={1}>
+        <Text variant="caption" tone="variant" numberOfLines={1}>
           {caption}
         </Text>
       )}
@@ -80,17 +83,21 @@ export function WideFigure({
   );
 }
 
-function Head({ title, chip }: { readonly title: string; readonly chip: ReactNode }): ReactNode {
+function Head({
+  title,
+  chip,
+  titleLines = 1,
+}: Pick<WideCardProps, 'title' | 'chip' | 'titleLines'>): ReactNode {
   if (chip === undefined) {
     return (
-      <Text variant="body-strong" numberOfLines={1} className="min-w-0">
+      <Text variant="body-strong" numberOfLines={titleLines} className="min-w-0">
         {title}
       </Text>
     );
   }
   return (
     <View className="flex-row items-center justify-between gap-2">
-      <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
+      <Text variant="body-strong" numberOfLines={titleLines} className="min-w-0 flex-1">
         {title}
       </Text>
       {chip}
@@ -101,158 +108,153 @@ function Head({ title, chip }: { readonly title: string; readonly chip: ReactNod
 function Info({
   summary,
   title,
+  titleLines,
   chip,
+  interactiveChip,
   state,
   figures,
-}: Pick<WideCardProps, 'summary' | 'title' | 'chip' | 'state' | 'figures'>): ReactNode {
+}: Pick<
+  WideCardProps,
+  'summary' | 'title' | 'titleLines' | 'chip' | 'interactiveChip' | 'state' | 'figures'
+>): ReactNode {
   return (
-    <View accessible accessibilityLabel={summary} pointerEvents="none" className="min-w-0 gap-0.5">
-      <Head title={title} chip={chip} />
+    <View
+      accessible
+      accessibilityLabel={summary}
+      pointerEvents={interactiveChip === true ? 'box-none' : 'none'}
+      className="min-w-0 gap-0.5"
+    >
+      <Head title={title} titleLines={titleLines ?? 1} chip={chip} />
       {state}
       {figures === undefined || figures.length === 0 ? null : (
-        <View className="flex-row items-end gap-3 overflow-hidden pt-0.5">
-          {figures.slice(0, WIDE_MAX_FIGURES)}
-        </View>
+        <View className="flex-row flex-wrap items-end gap-x-3 gap-y-1 pt-0.5">{figures}</View>
       )}
     </View>
   );
 }
 
-function VisualSlot({
+function boxOf(px: VisualPx): { readonly width: number; readonly height: number } {
+  return { width: px, height: px };
+}
+
+export function WideArt({
   cls,
-  visual,
+  children,
 }: {
   readonly cls: WideClass;
-  readonly visual: ReactNode;
+  readonly children: ReactNode;
 }): ReactNode {
-  const box = { width: WIDE_VISUAL_PX[cls] };
   return (
-    <View style={box} className="items-center justify-center self-center" pointerEvents="none">
-      {visual}
+    <View
+      style={boxOf(WIDE_VISUAL_PX[cls])}
+      className="shrink-0 items-center justify-center self-start"
+      pointerEvents="none"
+    >
+      {children}
     </View>
   );
 }
 
 function Graph({
   graph,
-  className,
+  beside,
+  onLayout,
 }: {
   readonly graph: ReactNode;
-  readonly className?: string;
+  readonly beside: boolean;
+  readonly onLayout?: ((event: LayoutChangeEvent) => void) | undefined;
 }): ReactNode {
   return graph === undefined || graph === null ? null : (
-    <View className={cn('min-h-0 min-w-0 justify-end', className)} aria-hidden pointerEvents="none">
+    <View
+      className={cn('min-h-0 min-w-0 flex-1 justify-end', beside && 'self-stretch')}
+      aria-hidden
+      pointerEvents="none"
+      onLayout={onLayout}
+    >
       {graph}
     </View>
   );
 }
 
-function Actions({
-  cls,
-  actions,
-  ticker,
-  wrap = false,
-}: {
-  readonly cls: WideClass;
-  readonly actions: readonly ReactNode[] | undefined;
-  readonly ticker: ReactNode;
-  readonly wrap?: boolean;
-}): ReactNode {
-  const shown = (actions ?? []).slice(0, WIDE_MAX_ACTIONS[cls]);
-  if (shown.length === 0 && ticker === undefined) {
-    return null;
+function heightOf(event: LayoutChangeEvent): number {
+  return event.nativeEvent.layout.height;
+}
+
+interface Measured {
+  readonly fit: LogFit | undefined;
+}
+
+function roomOf(fit: LogFit | undefined): ((event: LayoutChangeEvent) => void) | undefined {
+  return fit === undefined
+    ? undefined
+    : (event): void => {
+        fit.onSlack(heightOf(event));
+      };
+}
+
+function Spare({ fit }: Measured): ReactNode {
+  const room = roomOf(fit);
+  return room === undefined ? null : <View className="min-h-0 flex-1" onLayout={room} />;
+}
+
+function Beside(props: WideCardProps & Measured): ReactNode {
+  return (
+    <View className="min-h-0 flex-1 flex-row gap-4" pointerEvents="box-none">
+      <View className="min-w-0 flex-1" pointerEvents="box-none">
+        <Info {...props} />
+        <Spare fit={props.fit} />
+      </View>
+      <Graph graph={props.graph} beside />
+    </View>
+  );
+}
+
+function Stacked(props: WideCardProps & Measured): ReactNode {
+  const { graph, fit } = props;
+  if (graph === undefined || graph === null) {
+    return (
+      <>
+        <Info {...props} />
+        <Spare fit={fit} />
+      </>
+    );
   }
   return (
-    <View
-      className={cn('flex-row items-center gap-2', wrap && 'flex-wrap')}
-      pointerEvents="box-none"
-    >
-      {shown}
-      {ticker === undefined ? null : (
-        <View className="min-w-0 flex-1 items-end" pointerEvents="none">
-          {ticker}
-        </View>
-      )}
-    </View>
+    <>
+      <Info {...props} />
+      <Graph graph={graph} beside={false} onLayout={roomOf(fit)} />
+    </>
   );
 }
 
-function RowCard(props: WideCardProps): ReactNode {
+function Content(props: WideCardProps): ReactNode {
+  const { cls, log, ticker } = props;
+  const fit = useLogFit();
+  const logged = log !== undefined && log !== null;
+  const measured = logged ? fit : undefined;
   return (
-    <View
-      ref={props.frame?.ref}
-      onLayout={props.frame?.onLayout}
-      className="flex-1 gap-1.5"
-      pointerEvents="box-none"
-    >
-      <View className="flex-1 flex-row gap-3" pointerEvents="box-none">
-        <VisualSlot cls={props.cls} visual={props.visual} />
-        <View className="min-w-0 flex-1 gap-1" pointerEvents="box-none">
-          <Info {...props} />
-          <Graph graph={props.graph} className="flex-1" />
-        </View>
-      </View>
-      <Actions cls={props.cls} actions={props.actions} ticker={props.ticker} />
-    </View>
-  );
-}
-
-function SplitCard(props: WideCardProps): ReactNode {
-  return (
-    <View
-      ref={props.frame?.ref}
-      onLayout={props.frame?.onLayout}
-      className="flex-1 gap-1.5"
-      pointerEvents="box-none"
-    >
-      <View className="flex-1 flex-row gap-4" pointerEvents="box-none">
-        <VisualSlot cls={props.cls} visual={props.visual} />
-        <View className="min-w-0 flex-1 justify-center" pointerEvents="box-none">
-          <Info {...props} />
-        </View>
-        <Graph graph={props.graph} className="min-w-0 flex-1" />
-      </View>
-      <Actions cls={props.cls} actions={props.actions} ticker={props.ticker} />
-    </View>
-  );
-}
-
-function PanelCard(props: WideCardProps): ReactNode {
-  const { cls, actions, ticker, log, graph } = props;
-  const height = { height: PANEL_CHART_HEIGHT };
-  return (
-    <View
-      ref={props.frame?.ref}
-      onLayout={props.frame?.onLayout}
-      className="flex-1 gap-3"
-      pointerEvents="box-none"
-    >
-      <View className="flex-row items-center gap-4" pointerEvents="box-none">
-        <VisualSlot cls={cls} visual={props.visual} />
-        <View className="min-w-0 flex-1" pointerEvents="box-none">
-          <Info {...props} />
-        </View>
-      </View>
-      {graph === undefined ? null : (
-        <View style={height} className="w-full" aria-hidden pointerEvents="none">
-          {graph}
-        </View>
-      )}
-      <Actions cls={cls} actions={actions} ticker={undefined} wrap />
-      {log}
-      {ticker === undefined ? null : <View pointerEvents="none">{ticker}</View>}
-    </View>
+    <>
+      {cls === 'w' ? <Beside {...props} fit={measured} /> : <Stacked {...props} fit={measured} />}
+      {logged ? <LogSlot log={log} fit={fit} /> : null}
+      {ticker === undefined || ticker === null ? null : <View pointerEvents="none">{ticker}</View>}
+    </>
   );
 }
 
 export function WideCard(props: WideCardProps): ReactNode {
-  switch (props.cls) {
-    case 'm':
-      return <RowCard {...props} />;
-    case 'w':
-      return <SplitCard {...props} />;
-    case 'l':
-    case 'xl':
-      return <PanelCard {...props} />;
-  }
+  const { cls, frame } = props;
+  return (
+    <View
+      ref={frame?.ref}
+      onLayout={frame?.onLayout}
+      className={cn('flex-1 flex-row', cls === 'm' ? 'gap-3' : 'gap-4')}
+      pointerEvents="box-none"
+    >
+      <WideArt cls={cls}>{props.visual}</WideArt>
+      <View className="min-w-0 flex-1 gap-1.5" pointerEvents="box-none">
+        <Content {...props} />
+        <ActionBand>{props.actions}</ActionBand>
+      </View>
+    </View>
+  );
 }

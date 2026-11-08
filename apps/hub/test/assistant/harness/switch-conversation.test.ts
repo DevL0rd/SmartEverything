@@ -15,6 +15,7 @@ import { systemClock } from '../../../src/clock';
 import { applyPendingMachine } from '../../../src/harness/pending-machine';
 import { acknowledge, useRig, type FakeHost, type Rig } from './support/rig';
 import { addMessage } from './support/native-conversation';
+import { hubLayout } from '../../../src/data-layout';
 
 let rig: Rig;
 useRig((made) => {
@@ -79,7 +80,7 @@ describe('the hub session always works in the chat folder', () => {
 
     await switchChat(chat, moveTo(rig.hub));
 
-    expect(openedCwd(rig.hub)).toBe(rig.service.chatFolder(chat.id));
+    expect(openedCwd(rig.hub)).toBe(rig.service.chatFolder(chat));
   });
 
   it('ignores a directory asked for on the hub, so file tools stay inside the chat folder', async () => {
@@ -90,7 +91,7 @@ describe('the hub session always works in the chat folder', () => {
       moveTo(rig.hub, { directory: { target: rig.hub.target, path: '/home/someone' } }),
     );
 
-    expect(openedCwd(rig.hub)).toBe(rig.service.chatFolder(chat.id));
+    expect(openedCwd(rig.hub)).toBe(rig.service.chatFolder(chat));
   });
 });
 
@@ -308,11 +309,11 @@ describe('a hub restart in the middle of a machine change', () => {
   it('ends the change as failed, so the chat is not left switching', async () => {
     const { chat } = await openOn(rig.hub);
     const session = rig.service.state(rig.owner, chat.id);
-    rig.opened.store.harnessCoordination.markSwitching(session.session_id);
+    rig.opened.store.harnessSessions.markSwitching(session.session_id);
     expect(rig.service.state(rig.owner, chat.id).state).toBe('switching');
 
     const restarted = new HarnessService(rig.opened.store, rig.service.routes, () => undefined, {
-      dataDirectory: rig.opened.directory,
+      layout: hubLayout(rig.opened.directory, {}),
       clock: systemClock,
     });
 

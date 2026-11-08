@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { BrandMark, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -18,12 +19,12 @@ const body = (
     ))}
   </Row>
 );
-export const Brands = () => (
+export const Brands = (): ReactElement => (
   <Stage theme="dark" width={520}>
     {body}
   </Stage>
 );
-export const Sizes = () => (
+export const Sizes = (): ReactElement => (
   <Stage theme="dark" width={520}>
     <Row gap={16}>
       <BrandMark brand="xiaomi" size={24} />
@@ -32,7 +33,7 @@ export const Sizes = () => (
     </Row>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     {body}
   </Stage>

@@ -6,6 +6,8 @@ import { net, protocol, type Session } from 'electron';
 import { OVERLAY_SCHEME } from './overlay/overlay-assets-route.js';
 import { APP_HOST, APP_SCHEME, isAppOrigin } from './origin.js';
 import { planWebResponse, resolveWebPath } from './web-root.js';
+import { desktopPhotoLibrary } from './photos/ipc.js';
+import { LOCAL_MEDIA_PREFIX, localMediaResponse } from './photos/files.js';
 
 const log = new Logger('desktop.protocol');
 
@@ -67,6 +69,9 @@ async function respond(root: string, request: Request): Promise<Response> {
   if (url.host !== APP_HOST) {
     return refusal(404, `the web export is served on ${APP_HOST}; received host ${url.host}`);
   }
+  if (url.pathname.startsWith(LOCAL_MEDIA_PREFIX)) {
+    return localMediaResponse(desktopPhotoLibrary(), request);
+  }
   const resolved = resolveWebPath(root, url.pathname);
   const exists = resolved.kind === 'inside' && (await isFile(resolved.filePath));
   const plan = planWebResponse(root, resolved, exists);
@@ -82,9 +87,9 @@ async function respond(root: string, request: Request): Promise<Response> {
   }
 }
 
-export function serveWebExport(root: string): void {
+export function serveWebExport(root: () => string): void {
   log.info('web.serving', { scheme: APP_SCHEME });
-  protocol.handle(APP_SCHEME, (request) => respond(root, request));
+  protocol.handle(APP_SCHEME, (request) => respond(root(), request));
 }
 
 export function enforceContentSecurityPolicy(session: Session, policy: string): void {

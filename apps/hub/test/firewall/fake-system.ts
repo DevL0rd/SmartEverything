@@ -1,3 +1,4 @@
+import type { DeviceMacs } from '../../src/firewall/monitor';
 import type { FirewallSystem } from '../../src/firewall/system';
 
 interface Answer {
@@ -34,3 +35,27 @@ export function fakeSystem(setup: FakeSystemSetup = {}): FirewallSystem {
     watch: (): null => null,
   };
 }
+
+export interface MemoryMacs extends DeviceMacs {
+  readonly saved: ReadonlyMap<string, string>;
+}
+
+export function memoryMacs(initial: Readonly<Record<string, string>> = {}): MemoryMacs {
+  const saved = new Map(Object.entries(initial));
+  return {
+    saved,
+    all: () => new Map(saved),
+    remember: (deviceId, mac): void => {
+      saved.set(deviceId, mac);
+    },
+  };
+}
+
+export const UFW_FILES: Readonly<Record<string, string>> = {
+  '/etc/ufw/ufw.conf': 'ENABLED=yes\n',
+  '/etc/default/ufw': 'DEFAULT_INPUT_POLICY="DROP"\n',
+  '/etc/ufw/user.rules': '',
+  '/etc/ufw/user6.rules': '',
+  '/etc/ufw/after.rules': 'COMMIT\n',
+  '/etc/ufw/after6.rules': 'COMMIT\n',
+};

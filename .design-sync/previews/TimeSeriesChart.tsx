@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Stage, TimeSeriesChart } from 'smarteverything-kit';
 
 const HOUR = 3_600_000;
@@ -10,12 +11,12 @@ const humid = Array.from({ length: 25 }, (_, i) => ({
   t: start + i * HOUR,
   v: 46 + 6 * Math.cos(((i - 4) / 24) * Math.PI * 2),
 }));
-const days = Array.from({ length: 7 }, (_, i) => ({
+const days = [6.8, 7.4, 5.9, 8.1, 6.3, 7.7, 6.2].map((value, i) => ({
   t: start - (6 - i) * 24 * HOUR,
-  v: [6.8, 7.4, 5.9, 8.1, 6.3, 7.7, 6.2][i]!,
+  v: value,
 }));
 
-export const Day = () => (
+export const Day = (): ReactElement => (
   <Stage theme="dark" width={560}>
     <TimeSeriesChart
       range="24h"
@@ -25,7 +26,7 @@ export const Day = () => (
     />
   </Stage>
 );
-export const TwoSeries = () => (
+export const TwoSeries = (): ReactElement => (
   <Stage theme="dark" width={560}>
     <TimeSeriesChart
       range="24h"
@@ -38,7 +39,7 @@ export const TwoSeries = () => (
     />
   </Stage>
 );
-export const Week = () => (
+export const Week = (): ReactElement => (
   <Stage theme="dark" width={560}>
     <TimeSeriesChart
       range="7d"
@@ -48,7 +49,7 @@ export const Week = () => (
     />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={560}>
     <TimeSeriesChart
       range="24h"

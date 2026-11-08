@@ -1,18 +1,29 @@
+import type { ReactElement } from 'react';
 import { GlobalTheme, Menu, Stage, Text } from 'smarteverything-kit';
 
 const items = [
-  { label: 'Rename', icon: 'customize' as const, onPress: () => undefined },
+  { label: 'Rename', icon: 'customize' as const, onPress: (): void => undefined },
   {
     label: 'Move to room',
     icon: 'home' as const,
     description: 'Living room',
-    onPress: () => undefined,
+    onPress: (): void => undefined,
   },
-  { label: 'Copy device ID', icon: 'grid' as const, shortcut: 'Ctrl+C', onPress: () => undefined },
-  { label: 'Remove device', icon: 'close' as const, destructive: true, onPress: () => undefined },
+  {
+    label: 'Copy device ID',
+    icon: 'grid' as const,
+    shortcut: 'Ctrl+C',
+    onPress: (): void => undefined,
+  },
+  {
+    label: 'Remove device',
+    icon: 'close' as const,
+    destructive: true,
+    onPress: (): void => undefined,
+  },
 ];
 const anchor = { x: 280, y: 80, width: 40, height: 40 };
-export const Dark = () => (
+export const Dark = (): ReactElement => (
   <Stage theme="dark">
     <Text>Living room lamp</Text>
     <Menu
@@ -24,7 +35,7 @@ export const Dark = () => (
     />
   </Stage>
 );
-export const Light = () => (
+export const Light = (): ReactElement => (
   <GlobalTheme theme="light">
     <Stage theme="light">
       <Text>Living room lamp</Text>

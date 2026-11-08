@@ -1,35 +1,20 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
-import { Text as NativeText } from 'react-native';
-import { useForeground } from '../../../design/animation-gate';
-import { useMotion } from '../../../design/motion';
+import Animated from 'react-native-reanimated';
+import { useAnimationGate } from '../../../design/animation-gate';
+import { BLINK, EASE_IN_OUT, loopStyle } from '../../../design/loops';
 import { useScreenPaused } from '../../../design/screen-pause';
 import { useScopeVisible } from '../../../design/visibility';
 
-const STEP_MS = 530;
+const BLINK_MS = 1000;
 
 export function StreamCaret(): ReactNode {
-  const { reduced } = useMotion();
-  const foreground = useForeground();
   const paused = useScreenPaused();
-  const [beat, setBeat] = useState(0);
-  const visible = useScopeVisible();
-  const blinking = !reduced && foreground && !paused && visible;
-  useEffect(() => {
-    if (!blinking) {
-      return undefined;
-    }
-    const timer = setInterval(() => {
-      setBeat((current) => current + 1);
-    }, STEP_MS);
-    return (): void => {
-      clearInterval(timer);
-    };
-  }, [blinking]);
-  const on = !blinking || beat % 2 === 0;
+  const gate = useAnimationGate(true, useScopeVisible());
   return (
-    <NativeText aria-hidden className={on ? 'text-primary' : 'text-transparent'}>
-      {' ▍'}
-    </NativeText>
+    <Animated.View
+      aria-hidden
+      style={loopStyle({ name: BLINK, ms: BLINK_MS, easing: EASE_IN_OUT }, gate.moving && !paused)}
+      className="ml-0.5 h-4.25 w-0.5 rounded-full bg-primary"
+    />
   );
 }

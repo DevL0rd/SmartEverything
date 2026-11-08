@@ -84,7 +84,7 @@ async function startHubWithoutAccounts(): Promise<RunningHub> {
   const secrets = await SecretStore.open(join(opened.directory, 'secrets'), Buffer.alloc(32, 5));
   return startHub({
     store: opened.store,
-    database: storeDatabase(opened.store, recordingPathIn(opened.directory)),
+    database: storeDatabase(opened.store, recordingPathIn(opened.layout)),
     accountChanged: () => Promise.resolve(false),
     registry: { samsung_tv: SAMSUNG },
     secrets,
@@ -102,9 +102,17 @@ async function startHubWithoutAccounts(): Promise<RunningHub> {
       backchannel: () => Promise.resolve(true),
       socketOf: () => ({ url: 'ws://go2rtc/api/ws', authorization: 'Basic x' }),
     },
+    vacuumVideo: {
+      client: {
+        putStream: () => Promise.resolve(),
+        deleteStream: () => Promise.resolve(),
+        answer: () => Promise.resolve(''),
+      },
+      blockingAddress: () => null,
+    },
     cameraRefusal: () => null,
     devicesChanged: () => undefined,
-    dataDirectory: opened.directory,
+    layout: opened.layout,
     clock: new FakeClock('2026-10-08T10:00:00.000Z'),
     logFor: (area) => testLogger(area),
   });

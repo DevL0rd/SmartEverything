@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { href } from '../../../app-shell/hrefs';
 import type { IconName } from '../../../components/icon';
 import type { SetupFacts } from './facts';
@@ -51,7 +51,7 @@ export interface SetupItem {
   readonly doneText: string;
   readonly todoText: string;
   readonly action: string;
-  readonly go: Href;
+  readonly go: AppHref;
   readonly stateOf: (facts: SetupFacts) => RawState;
 }
 
@@ -101,7 +101,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     icon: 'home',
     title: 'Name your home',
     doneText: 'Your home has its own name.',
-    todoText: 'Give your home a name instead of the default.',
+    todoText: 'Give your home its own name.',
     action: 'Name your home',
     go: href.settings.page('home'),
     stateOf: (facts) => done(facts.homeNamed),

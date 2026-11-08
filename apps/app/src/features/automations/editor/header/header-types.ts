@@ -1,9 +1,9 @@
-import type { AutomationV3, NodeRegistry } from '@smarteverything/domain';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
+import type { AutomationV4, NodeRegistry } from '@smarteverything/domain';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
 import type { ValueSlot } from '../inspector/sections/section-types';
 
 export interface HeaderEnv {
-  readonly program: AutomationV3;
+  readonly program: AutomationV4;
   readonly registry: NodeRegistry;
   readonly renderValue: ValueSlot;
   readonly anchorKey: string;

@@ -4,6 +4,7 @@ import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import { midWorkMessage } from '../../conversation/prompt';
 import type { ComputerRunnerDeps, Turn } from './ports';
 import type { ProviderState } from './provider-state';
+import { helperParentMessageId } from '../../delegation/helper-dialogue';
 import { steerContent } from './content';
 
 const STEERED = z.strictObject({ steered: z.boolean() });
@@ -21,7 +22,9 @@ export async function steerTurn(
   event: StoredEvent,
 ): Promise<boolean> {
   const { turn, chat } = target;
-  if (deps.runtime !== 'claude' || turn === undefined) return false;
+  if (deps.runtime !== 'claude' || turn === undefined || event.message_id === null) return false;
+  if (helperParentMessageId(event) !== null || helperParentMessageId(turn.event) !== null)
+    return false;
   const provider = target.state.read(chat);
   if (provider.job_id !== turn.jobId || provider.state !== 'working') return false;
   const content = await steerContent(deps, event, midWorkMessage(event.text));

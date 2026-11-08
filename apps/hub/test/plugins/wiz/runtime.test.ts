@@ -132,7 +132,7 @@ describe('WiZ plugin', () => {
     expect(fixture.puts).toHaveLength(writes);
   });
 
-  it('sends a control to the light and reads its state back', async () => {
+  it('sends a control to the light without waiting for a reply', async () => {
     const driver = fixture.drivers[0];
     const result = await driver?.execute({
       commandId: 'command-1',
@@ -141,10 +141,29 @@ describe('WiZ plugin', () => {
       value: 30,
     });
     expect(result).toEqual({ success: true });
+    await vi.waitFor(() => {
+      expect(fixture.bulb.received.some((entry) => entry.method === 'setPilot')).toBe(true);
+    });
     const methods = fixture.bulb.received.map((entry) => entry.method);
     const set = methods.lastIndexOf('setPilot');
     expect(fixture.bulb.received[set]?.params).toEqual({ dimming: 30 });
-    expect(methods[set + 1]).toBe('getPilot');
+    expect(methods.slice(set + 1)).not.toContain('getPilot');
+  });
+
+  it('sends several controls as one setPilot packet', async () => {
+    const before = fixture.bulb.received.filter((entry) => entry.method === 'setPilot').length;
+    const result = await fixture.drivers[0]?.executeTogether?.([
+      { commandId: 'command-3', externalId: EXTERNAL_ID, capability: 'brightness', value: 40 },
+      { commandId: 'command-4', externalId: EXTERNAL_ID, capability: 'power', value: true },
+    ]);
+    expect(result).toEqual({ success: true });
+    await vi.waitFor(() => {
+      expect(fixture.bulb.received.filter((entry) => entry.method === 'setPilot')).toHaveLength(
+        before + 1,
+      );
+    });
+    const sets = fixture.bulb.received.filter((entry) => entry.method === 'setPilot');
+    expect(sets.at(-1)?.params).toEqual({ dimming: 40, state: true });
   });
 
   it('refuses a control for a light it does not know', async () => {

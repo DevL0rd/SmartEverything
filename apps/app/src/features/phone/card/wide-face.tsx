@@ -5,9 +5,9 @@ import { usePhoneSection } from '../data/phone-detail';
 import { isLow } from '../model/face-model';
 import { BatterySpark } from './battery-spark';
 import { BatteryFigure, MiniBars, ScreenTimeStat, SignalStat, WordLine } from './card-parts';
-import { AccessChip, ControlRow } from './control-rows';
+import { ArtLane } from './art-lane';
+import { AccessChip, PhoneBand } from './control-rows';
 import { FaceHeader } from './face-header';
-import { PhoneArt } from './phone-art';
 import type { PhoneFaceData } from './use-phone-face';
 
 const SPARK_HEIGHT = 24;
@@ -32,7 +32,7 @@ function Stats({ data }: { readonly data: PhoneFaceData }): ReactNode {
   const { device, readings, online, access, word } = data;
   const blocked = online && access.dnd === 'needs_permission';
   return (
-    <View className="flex-row items-end gap-5" pointerEvents="none">
+    <View className="flex-row flex-wrap items-end gap-x-5 gap-y-1" pointerEvents="none">
       <View>
         <Text variant="caption" tone="variant">
           Battery
@@ -67,17 +67,11 @@ function Stats({ data }: { readonly data: PhoneFaceData }): ReactNode {
 }
 
 export function WideFace({ data }: { readonly data: PhoneFaceData }): ReactNode {
-  const { device, access } = data;
   return (
-    <View className="flex-1 gap-2" pointerEvents="box-none">
+    <ArtLane cls="w" data={data}>
       <FaceHeader data={data} chips />
-      <View className="min-h-0 flex-1 flex-row items-center gap-4" pointerEvents="box-none">
-        <PhoneArt device={device} foldable={access.fold} tall={false} />
-        <View className="min-w-0 flex-1 justify-between gap-2" pointerEvents="box-none">
-          <Stats data={data} />
-          <ControlRow controls={data.controls} layout="w" />
-        </View>
-      </View>
-    </View>
+      <Stats data={data} />
+      <PhoneBand data={data} layout="w" />
+    </ArtLane>
   );
 }

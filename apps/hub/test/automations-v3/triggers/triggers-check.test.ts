@@ -50,10 +50,14 @@ describe('checking the triggers that came after the first thirteen', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('refuses a condition that reads a step after the first action', () => {
+  it('refuses a condition that reads the result of an action', () => {
     const result = rig.service.check(rig.owner.caller, {
-      definition: automationOf([logLine('say', 'hot'), room(), hot()], {
-        triggers: [trigger('hot', 'trigger.becomes_true', { condition: HOT })],
+      definition: automationOf([logLine('say', 'hot')], {
+        triggers: [
+          trigger('hot', 'trigger.becomes_true', {
+            condition: { wire: { from: 'say', port: 'ok' } },
+          }),
+        ],
       }),
     });
     expect(result.ok).toBe(false);

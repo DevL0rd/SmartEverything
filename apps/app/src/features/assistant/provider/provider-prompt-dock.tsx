@@ -88,13 +88,15 @@ function CodexPromptDock({ chat }: { readonly chat: AiChatRow }): ReactNode {
   );
 }
 export function ProviderPromptDock({ chat }: { readonly chat: AiChatRow }): ReactNode {
-  if (chat.engine.kind === 'dsh')
-    return <HarnessPromptDock key={JSON.stringify(chat.engine)} chat={chat} />;
-  if (chat.engine.kind === 'codex')
-    return <CodexPromptDock key={JSON.stringify(chat.engine)} chat={chat} />;
-  if (chat.engine.kind === 'claude')
-    return <ClaudePromptDock key={JSON.stringify(chat.engine)} chat={chat} />;
-  return null;
+  const key = JSON.stringify(chat.engine);
+  switch (chat.engine.kind) {
+    case 'dsh':
+      return <HarnessPromptDock key={key} chat={chat} />;
+    case 'codex':
+      return <CodexPromptDock key={key} chat={chat} />;
+    case 'claude':
+      return <ClaudePromptDock key={key} chat={chat} />;
+  }
 }
 
 function providerSource(name: string, device: string | undefined): string {

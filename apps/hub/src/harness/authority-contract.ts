@@ -10,5 +10,6 @@ export const CONVERSATION_AUTHORITY = z.object({
   tools: z.array(z.string()).nullable(),
   plugin_id: z.string().nullable(),
   requester: z.enum(PLUGIN_REQUESTERS).nullable(),
+  repair_origin: z.uuid().optional(),
 });
 export type ConversationAuthority = z.infer<typeof CONVERSATION_AUTHORITY>;

@@ -18,7 +18,7 @@ export class TabDrag {
   private edge = 0;
   private pointer = 0;
   private suppressed = false;
-  private scroll: ScrollView | null = null;
+  private scroll: Pick<ScrollView, 'scrollTo'> | null = null;
   private frame: number | null = null;
   private releaseFrame: number | null = null;
   private commit: (order: readonly string[]) => void = (): void => undefined;
@@ -35,12 +35,14 @@ export class TabDrag {
     this.rtl = layout.rtl;
     this.commit = commit;
   }
-  attach(scroll: ScrollView | null): void {
+  attach(scroll: Pick<ScrollView, 'scrollTo'> | null): void {
     this.scroll = scroll;
   }
-  measure(width: number, left: number): void {
+  measure(width: number, left: number, selectedId: string | null): void {
+    const resized = this.viewport !== width;
     this.viewport = width;
     this.left = left;
+    if (resized && width > 0 && selectedId !== null) this.reveal(selectedId);
   }
   scrolled(offset: number): void {
     this.offset = offset;

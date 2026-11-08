@@ -9,12 +9,11 @@ import type { KeywordSpotter } from './keyword-spotter';
 
 export const CLIP_MS = 10_000;
 export const WAKE_CLIP_REQUEST_FILE = 'wake-clip';
-export const WAKE_DIAGNOSTICS_DIRECTORY = 'wake-diagnostics';
 
 export type ClipReason = 'near_miss' | 'asked';
 
 export interface WakeDiagnosticsOptions {
-  readonly dataDirectory: string;
+  readonly directory: string;
   readonly spotter: () => Pick<KeywordSpotter, 'scoreOf'>;
   readonly clock: Pick<Clock, 'now'>;
   readonly log: Logger;
@@ -51,7 +50,7 @@ export class WakeDiagnostics {
   }
 
   async start(): Promise<void> {
-    this.watch = await watchRequest(this.options.dataDirectory, WAKE_CLIP_REQUEST_FILE, {
+    this.watch = await watchRequest(join(this.options.directory, WAKE_CLIP_REQUEST_FILE), {
       requested: (): void => {
         this.watch?.stop();
         this.ears.forEach((ear) => {
@@ -78,7 +77,7 @@ export class WakeDiagnostics {
     extra: Readonly<Record<string, unknown>>,
   ): Promise<void> {
     const pcm = ear.recent();
-    const directory = join(this.options.dataDirectory, WAKE_DIAGNOSTICS_DIRECTORY);
+    const { directory } = this.options;
     const stamp = this.options.clock.now().toISOString().replace(/[:.]/g, '-');
     const clip = `${stamp}-${labelOf(ear.fields)}-${reason}.wav`;
     await mkdir(directory, { recursive: true, mode: 0o700 });

@@ -1,12 +1,37 @@
-import { ApiError, DEFAULT_ENGINE, type AiChatRow, type Engine } from '@smarteverything/domain';
+import {
+  ApiError,
+  DEFAULT_AI_HARNESS_PERMISSION,
+  DSH_ENGINE_REQUEST,
+  type AiChatRow,
+  type Engine,
+} from '@smarteverything/domain';
+import { meteredRouteId } from '../../src/openrouter/metered-engine';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChatBranches } from '../../src/assistant/chat-branch';
 import { ChatDirectory, type ChatOwner } from '../../src/assistant/chat-directory';
 import { AssistantFiles } from '../../src/assistant/files';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
+import { hubLayout } from '../../src/data-layout';
 
-const ROUTED: Engine = { kind: 'openrouter', model: 'anthropic/claude-sonnet', effort: 'high' };
+const ROUTED = DSH_ENGINE_REQUEST.parse({
+  kind: 'dsh',
+  model: 'anthropic/claude-sonnet',
+  effort: 'high',
+});
+
+function routedOn(profileId: string): Engine {
+  return {
+    kind: 'dsh',
+    execution_target: { kind: 'server' },
+    session_id: null,
+    model_route_id: meteredRouteId(profileId),
+    model: 'anthropic/claude-sonnet',
+    effort: 'high',
+    permission: DEFAULT_AI_HARNESS_PERMISSION,
+  };
+}
 
 let opened: TestStore;
 let branches: ChatBranches;
@@ -30,11 +55,11 @@ beforeEach(async () => {
   owner = { profileId, role: 'owner' };
   const now = (): Date => new Date('2026-10-09T10:00:00.000Z');
   const files = new AssistantFiles({
-    dataDirectory: opened.directory,
+    layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
     now,
   });
-  const chats = new ChatDirectory(store, files, now, {
+  const chats = new ChatDirectory(store, files, {
     validate: (engine): void => {
       if (refusing) throw new ApiError('forbidden', 'That engine is not available to you.');
       validated.push(engine);
@@ -48,7 +73,7 @@ beforeEach(async () => {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
     titleAuto: false,
   });
   messageId = store.assistantChat.addMessage({
@@ -64,6 +89,7 @@ beforeEach(async () => {
     steps: [],
     step_states: [],
     reply_to: null,
+    quote: null,
     chat_id: source.id,
     origin: null,
     embeds: [],
@@ -79,15 +105,15 @@ afterEach(async () => {
 describe('branching a chat with another engine', () => {
   it('continues on the engine, model and thinking the branch names', async () => {
     const branch = await branches.branch(owner, source.id, { messageId, engine: ROUTED });
-    expect(branch.engine).toEqual(ROUTED);
+    expect(branch.engine).toEqual(routedOn(owner.profileId));
     expect(branch.parent_id).toBe(source.id);
-    expect(validated).toEqual([ROUTED]);
-    expect(opened.store.aiChats.chat(source.id).engine).toEqual(DEFAULT_ENGINE);
+    expect(validated).toEqual([routedOn(owner.profileId)]);
+    expect(opened.store.aiChats.chat(source.id).engine).toEqual(TEST_ENGINE);
   });
 
   it('keeps the original engine when none is named', async () => {
     const branch = await branches.branch(owner, source.id, { messageId });
-    expect(branch.engine).toEqual(DEFAULT_ENGINE);
+    expect(branch.engine).toEqual(TEST_ENGINE);
     expect(validated).toEqual([]);
   });
 

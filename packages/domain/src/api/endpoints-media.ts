@@ -14,6 +14,8 @@ import {
 } from './rows-media';
 import { IR_REMOTE_CHANGE, IR_REMOTE_STATE } from '../ir-remote-state';
 import { WAKE_SENSITIVITY } from '../wake-sensitivity';
+import { IR_APPLIANCE_ENDPOINTS } from './endpoints-ir-appliances';
+import { IR_LIBRARY_ENDPOINTS } from './endpoints-ir-library';
 
 export const SESSION_DESCRIPTION = z.strictObject({ sdp: z.string().min(1).max(200_000) });
 
@@ -242,4 +244,9 @@ const IR_ENDPOINTS = {
   }),
 } as const;
 
-export const MEDIA_ENDPOINTS = { ...CAMERA_ENDPOINTS, ...IR_ENDPOINTS } as const;
+export const MEDIA_ENDPOINTS = {
+  ...CAMERA_ENDPOINTS,
+  ...IR_ENDPOINTS,
+  ...IR_APPLIANCE_ENDPOINTS,
+  ...IR_LIBRARY_ENDPOINTS,
+} as const;

@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import {
   NAV_PIN_TARGET,
   parsePluginPageRoute,
@@ -13,6 +13,7 @@ import { settingPageOf } from '../settings/registry';
 import { settingsPage } from '../settings/tree';
 import type { StoreState } from '../store/state';
 import { href } from './hrefs';
+import type { TabKey } from './route-types';
 import { ROUTES, TAB_ROUTES } from './routes';
 
 export interface TargetFacts {
@@ -22,13 +23,31 @@ export interface TargetFacts {
   readonly count: number;
 }
 
+export type SectionCounts = ReadonlyMap<TabKey, number>;
+
+export function sectionCountsOf(entries: readonly (readonly [TabKey, number])[]): SectionCounts {
+  return new Map(entries.filter(([, count]) => count > 0));
+}
+
+export function sectionCountOf(counts: SectionCounts, section: TabKey): number {
+  return counts.get(section) ?? 0;
+}
+
+export function targetCountOf(
+  target: NavOpenTarget,
+  facts: TargetFacts | undefined,
+  counts: SectionCounts,
+): number {
+  return target.kind === 'section' ? sectionCountOf(counts, target.section) : (facts?.count ?? 0);
+}
+
 type Kind = NavOpenTarget['kind'];
 
 type Of<K extends Kind> = Extract<NavOpenTarget, { readonly kind: K }>;
 
 interface TargetKind<K extends Kind> {
   readonly key: (target: Of<K>) => string;
-  readonly href: (target: Of<K>) => Href | null;
+  readonly href: (target: Of<K>) => AppHref | null;
   readonly facts: (target: Of<K>, state: StoreState) => TargetFacts;
 }
 
@@ -38,7 +57,7 @@ function named(title: string | undefined, icon: IconName, count = 0): TargetFact
   return { exists: title !== undefined, title: title ?? null, icon, count };
 }
 
-export function pathnameOf(target: Href): string {
+export function pathnameOf(target: AppHref): string {
   const path = typeof target === 'string' ? target : target.pathname;
   return path.replace(/^\//u, '').replace(/\/index$/u, '');
 }
@@ -60,7 +79,7 @@ export function settingTargetOf(target: Of<'setting'>): SettingTarget | null {
   return owner === undefined ? null : { page: owner, row: target.page };
 }
 
-function settingHref(target: Of<'setting'>): Href | null {
+function settingHref(target: Of<'setting'>): AppHref | null {
   const resolved = settingTargetOf(target);
   if (resolved === null) return null;
   return resolved.row === null
@@ -105,7 +124,7 @@ function pageKey(path: string): string {
   return `page:${route === undefined ? path : pathnameOf(route.href)}`;
 }
 
-function pageHref(path: string): Href | null {
+function pageHref(path: string): AppHref | null {
   const extension = parsePluginPageRoute(path);
   if (extension !== null) return href.pluginPage(extension.pluginId, extension.pageId);
   return routeOf(path)?.href ?? null;
@@ -120,6 +139,19 @@ function settingFacts(target: Of<'setting'>): TargetFacts {
   const resolved = settingTargetOf(target);
   const page = resolved === null ? undefined : settingsPage(resolved.page);
   return named(page?.title, page?.icon ?? UNKNOWN_ICON);
+}
+
+function driveHref(target: Of<'drive'>): AppHref {
+  return href.driveRoot(target.rootId, {
+    path: target.path,
+    ...(target.itemId === null ? {} : { item: target.itemId }),
+    ...(target.focus === null ? {} : { focus: target.focus }),
+  });
+}
+
+function driveFacts(): TargetFacts {
+  const route = routeOf('drive');
+  return named(route?.title, route?.icon ?? UNKNOWN_ICON);
 }
 
 const KINDS: { readonly [K in Kind]: TargetKind<K> } = {
@@ -169,6 +201,12 @@ const KINDS: { readonly [K in Kind]: TargetKind<K> } = {
     facts: (target, state) =>
       named(state.tables.automations.byId[target.automationId]?.name, 'automations'),
   },
+  drive: {
+    key: (target) =>
+      `drive:${target.rootId}:${target.path}${target.itemId === null ? '' : `:${target.itemId}`}`,
+    href: driveHref,
+    facts: driveFacts,
+  },
   chat: {
     key: (target) => `chat:${target.chatId}`,
     href: (target) => href.assistantChat(target.chatId),
@@ -184,7 +222,7 @@ export function navTargetKey(target: NavOpenTarget): string {
   return kindOf(target).key(target);
 }
 
-export function navTargetHref(target: NavOpenTarget): Href | null {
+export function navTargetHref(target: NavOpenTarget): AppHref | null {
   return kindOf(target).href(target);
 }
 

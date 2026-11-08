@@ -1,6 +1,6 @@
-import { AUDIO_CHANGE, DISPLAY_CHANGE, JSON_VALUE } from '@smarteverything/domain';
+import { JSON_VALUE } from '@smarteverything/domain';
 import type { JsonValue, PluginOrigin, ReachTarget } from '@smarteverything/domain';
-import type { NodeResult, Outputs } from '@smarteverything/flow/interpret/frames';
+import type { EffectRequest, NodeResult, Outputs } from '@smarteverything/flow/interpret/frames';
 import { z } from 'zod';
 import { resolveTarget } from '../device-groups/commands';
 import type { Clock } from '../clock';
@@ -9,7 +9,8 @@ import type { Store } from '../store/store';
 import type { ActionOrigin, AutomationAiSlot } from './automation-ai';
 import type { AutomationComputersSlot } from './automation-computers';
 import { wakeAssistant } from './effects/ai-wake';
-import { ComputerEffects } from './effects/computer';
+import { modeOf } from './effects/action-mode';
+import { deliver } from './effects/deliver';
 import { runDeviceOperation } from './effects/device-operation';
 import type { EffectHandler, EffectHandlers, EffectRun } from './effects/effect-run';
 import { Notifier } from './effects/notify';
@@ -17,6 +18,7 @@ import type { QuestionDesk } from './questions/desk';
 import { callTool } from './effects/tool';
 import { PERSON_REF, TARGET_VALUE, personRefs } from './world-v3/refs';
 import { effectFailure } from './effect-failure';
+import { IntegrationError } from './effects/integration-error';
 
 export interface HubEffectPorts {
   readonly store: Store;
@@ -36,14 +38,32 @@ interface Who {
 const PERSON = z.union([z.string().min(1), PERSON_REF]);
 const OPTIONAL_PERSON = PERSON.optional();
 
+const OPTIONAL_TEXT = z
+  .string()
+  .nullish()
+  .transform((text) =>
+    text === null || text === undefined || text.trim() === '' ? undefined : text,
+  );
+
 const FEED = z.object({ message: z.string() });
 const NOTIFY_PERSON = z.object({
   people: z.array(PERSON),
   title: z.string(),
   body: z.string(),
   priority: z.enum(['normal', 'high', 'urgent']).default('normal'),
+  image: OPTIONAL_TEXT,
+  tag: OPTIONAL_TEXT,
+  link: OPTIONAL_TEXT,
+  sound: OPTIONAL_TEXT,
 });
-const SPEAK = z.object({ target: TARGET_VALUE, text: z.string().min(1) });
+const SPEAK = z.object({
+  target: TARGET_VALUE.nullish(),
+  channel: OPTIONAL_TEXT,
+  text: z.string().min(1),
+  priority: z.enum(['queue', 'interrupt']).default('queue'),
+  volume: z.number().min(0).max(100).nullish(),
+  voice: OPTIONAL_TEXT,
+});
 const ASK = z.object({
   person: PERSON,
   question: z.string().min(1),
@@ -63,12 +83,6 @@ const TOOL = z.object({
 const OPERATION = z.object({
   operation: z.string().min(1),
   args: z.record(z.string(), JSON_VALUE).default({}),
-});
-const AUDIO = z.object({ computer: z.string().min(1), change: AUDIO_CHANGE });
-const DISPLAY = z.object({
-  computer: z.string().min(1),
-  change: DISPLAY_CHANGE,
-  keep: z.boolean().default(false),
 });
 
 function invalid(error: z.ZodError): NodeResult {
@@ -93,23 +107,40 @@ function originOf(who: Who, run: EffectRun): ActionOrigin {
   };
 }
 
-function reachTargets(store: Store, target: z.infer<typeof TARGET_VALUE>): ReachTarget[] {
-  return resolveTarget(store, target).map((device) => ({ kind: 'device', deviceId: device.id }));
+function reachTargets(store: Store, request: z.infer<typeof SPEAK>): ReachTarget[] {
+  const devices: ReachTarget[] =
+    request.target === null || request.target === undefined
+      ? []
+      : resolveTarget(store, request.target).map((device) => ({
+          kind: 'device',
+          deviceId: device.id,
+        }));
+  return request.channel === undefined
+    ? devices
+    : [...devices, { kind: 'channel', channelId: request.channel }];
 }
 
 function handle<T>(
   schema: z.ZodType<T>,
-  work: (data: T, run: EffectRun) => Promise<Outputs> | Outputs,
+  work: (data: T, run: EffectRun, request: EffectRequest) => Promise<Outputs> | Outputs,
 ): EffectHandler {
-  return async (params, _request, run) => {
+  return async (params, request, run) => {
     const checked = schema.safeParse(params);
     if (!checked.success) return invalid(checked.error);
     try {
-      return { ok: true, value: await work(checked.data, run) };
+      return { ok: true, value: await work(checked.data, run, request) };
     } catch (cause) {
       return effectFailure(cause);
     }
   };
+}
+
+async function delivered(
+  request: EffectRequest,
+  run: EffectRun,
+  work: () => Promise<Outputs>,
+): Promise<Outputs> {
+  return (await deliver({ kind: request.kind, mode: modeOf(request), run, work })) ?? {};
 }
 
 function notifier(ports: HubEffectPorts): Notifier {
@@ -163,40 +194,68 @@ function askHandler(ports: HubEffectPorts): EffectHandler {
   };
 }
 
-function notifyHandlers(ports: HubEffectPorts): EffectHandlers {
-  return {
-    'notify.ask': askHandler(ports),
-    'notify.feed': handle(FEED, ({ message }, run) => {
-      const who = whoOf(ports, run);
-      notifier(ports).feed({ automationId: run.automationId, name: who.name }, message);
-      return {};
-    }),
-    'notify.person': handle(NOTIFY_PERSON, async (request, run) => {
-      const who = whoOf(ports, run);
+function personHandler(ports: HubEffectPorts): EffectHandler {
+  return handle(NOTIFY_PERSON, (request, run, effect) => {
+    const who = whoOf(ports, run);
+    const { image, tag, link, sound } = request;
+    return delivered(effect, run, async () => {
       const result = await notifier(ports).person(
         {
           people: request.people,
           title: request.title,
           body: request.body,
           priority: request.priority,
+          ...(image === undefined ? {} : { image }),
+          ...(tag === undefined ? {} : { tag }),
+          ...(link === undefined ? {} : { link }),
+          ...(sound === undefined ? {} : { sound }),
           asProfileId: who.profileId,
         },
         who,
       );
       return { sent: personRefs(result.sent), failed: personRefs(result.failed) };
-    }),
-    'notify.speak': handle(SPEAK, async (request, run) => {
-      const who = whoOf(ports, run);
-      const spokenOn: string[] = [];
-      for (const target of reachTargets(ports.store, request.target)) {
-        const spoken = await notifier(ports).speak(
-          { target, text: request.text, asProfileId: who.profileId },
-          who,
-        );
-        spokenOn.push(...spoken.spokenOn);
-      }
+    });
+  });
+}
+
+function speakHandler(ports: HubEffectPorts): EffectHandler {
+  return handle(SPEAK, (request, run, effect) => {
+    const noDevices = request.target === null || request.target === undefined;
+    if (noDevices && request.channel === undefined) {
+      throw new IntegrationError('Invalid', 'Pick a device or a Talk channel to speak on.');
+    }
+    const targets = reachTargets(ports.store, request);
+    const who = whoOf(ports, run);
+    const { volume, voice } = request;
+    return delivered(effect, run, async () => {
+      const { spokenOn } = await notifier(ports).speakAll(
+        {
+          targets,
+          text: request.text,
+          priority: request.priority,
+          ...(volume === null || volume === undefined ? {} : { volume }),
+          ...(voice === undefined ? {} : { voice }),
+          asProfileId: who.profileId,
+        },
+        who,
+      );
       return { ok: spokenOn.length > 0, spokenOn };
+    });
+  });
+}
+
+function notifyHandlers(ports: HubEffectPorts): EffectHandlers {
+  return {
+    'notify.ask': askHandler(ports),
+    'notify.feed': handle(FEED, ({ message }, run, effect) => {
+      const who = whoOf(ports, run);
+      return delivered(effect, run, () => {
+        notifier(ports).feed({ automationId: run.automationId, name: who.name }, message);
+        return Promise.resolve({});
+      });
     }),
+    'notify.person': personHandler(ports),
+    'notify.speak': speakHandler(ports),
   };
 }
 
@@ -241,20 +300,6 @@ function aiHandlers(ports: HubEffectPorts): EffectHandlers {
   };
 }
 
-function computerHandlers(ports: HubEffectPorts): EffectHandlers {
-  const computers = new ComputerEffects(ports.computers);
-  return {
-    'computer.audio': handle(AUDIO, async (request, run) => {
-      await computers.audio(request, run);
-      return { ok: true };
-    }),
-    'computer.display': handle(DISPLAY, async (request, run) => {
-      await computers.display(request, run);
-      return { ok: true };
-    }),
-  };
-}
-
 export function hubEffectHandlers(ports: HubEffectPorts): EffectHandlers {
-  return { ...notifyHandlers(ports), ...aiHandlers(ports), ...computerHandlers(ports) };
+  return { ...notifyHandlers(ports), ...aiHandlers(ports) };
 }

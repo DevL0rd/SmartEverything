@@ -10,6 +10,7 @@ export interface MessageSpeaker {
   readonly name: string;
   readonly via: MessageSource | null;
   readonly pluginId: string | null;
+  readonly chatId: string | null;
 }
 
 const OWN_SOURCES: ReadonlySet<MessageSource> = new Set<MessageSource>(['app', 'voice']);
@@ -43,5 +44,6 @@ export function messageSpeaker(
     name: message.author,
     via: message.origin?.source ?? null,
     pluginId: message.origin?.plugin_id ?? null,
+    chatId: message.origin?.chat_id ?? null,
   };
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Icon, type IconName } from '../../../components/icon';
@@ -20,7 +20,7 @@ const ICON: Readonly<Record<ProblemItem['severity'], IconName>> = {
   hint: 'info',
 };
 
-export type EditAt = (nodeId: string | null) => Href;
+export type EditAt = (nodeId: string | null) => AppHref;
 
 function Item({
   item,

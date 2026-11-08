@@ -55,7 +55,7 @@ describe('queryLogOptions', () => {
     await client.infiniteQuery({ ...queryLogOptions('ads', 'blocked'), pages: 2 });
     expect(readPluginTool.mock.calls[1]?.[2]).toEqual({
       search: 'ads',
-      filter: 'blocked',
+      outcome: 'blocked',
       olderThan: cursor(1),
       limit: 50,
     });

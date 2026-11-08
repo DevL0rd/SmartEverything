@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { AssistantMessageRow } from '@smarteverything/domain';
-import { compactShown, executionFolderPath, executionLineOf, footerFacts } from './chat-footer';
+import {
+  cacheBand,
+  cacheLabel,
+  cachePercent,
+  costText,
+  compactShown,
+  helperRuns,
+  executionFolderPath,
+  executionLineOf,
+  footerFacts,
+} from './chat-footer';
 
 const FILE: AssistantMessageRow['attachments'][number] = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -11,6 +21,7 @@ const FILE: AssistantMessageRow['attachments'][number] = {
   height: null,
 };
 
+type CostedChat = Parameters<typeof helperRuns>[0][number];
 type Row = Pick<AssistantMessageRow, 'role' | 'attachments'>;
 
 const person: Row = { role: 'person', attachments: [FILE, FILE] };
@@ -25,12 +36,13 @@ describe('footerFacts', () => {
   it('shows the chat total and counts replies and files', () => {
     expect(
       footerFacts({ cost_micros: 120_000, context_percent: 42 }, [person, reply, replyWithFile]),
-    ).toEqual({ costMicros: 120_000, context: 42, replies: 2, files: 3 });
+    ).toEqual({ costMicros: 120_000, costIncomplete: false, context: 42, replies: 2, files: 3 });
   });
 
   it('shows with only a context reading, even at zero', () => {
     expect(footerFacts({ cost_micros: 0, context_percent: 0 }, [])).toEqual({
       costMicros: 0,
+      costIncomplete: false,
       context: 0,
       replies: 0,
       files: 0,
@@ -105,5 +117,92 @@ describe('executionFolderPath', () => {
     expect(
       executionFolderPath({ kind: 'device', device_id: 'computer:abc' }, '/home/dana/repo'),
     ).toBe('/home/dana/repo');
+  });
+});
+
+describe('helper cost in the footer', () => {
+  const chat = (
+    id: string,
+    parent: string | null,
+    cost: number,
+    incomplete = false,
+  ): CostedChat => ({
+    id,
+    parent_id: parent,
+    kind: parent === null ? ('chat' as const) : ('subagent' as const),
+    cost_micros: cost,
+    cost_incomplete: incomplete,
+  });
+  const root = chat('root', null, 100);
+  const chats = [
+    root,
+    chat('a', 'root', 10),
+    chat('b', 'a', 5, true),
+    chat('other', null, 999),
+    chat('c', 'other', 7),
+  ];
+
+  it('adds every nested helper run once and flags unknown helper cost', () => {
+    const helpers = helperRuns(chats, 'root');
+    expect(helpers.map((helper) => helper.id).sort()).toEqual(['a', 'b']);
+    expect(footerFacts({ ...root, context_percent: null }, [], helpers)).toMatchObject({
+      costMicros: 115,
+      costIncomplete: true,
+    });
+  });
+});
+
+describe('cachePercent', () => {
+  it('reads the rolling share the hub computed', () => {
+    expect(cachePercent({ cache_percent: 87 })).toBe(87);
+    expect(cachePercent({ cache_percent: 0 })).toBe(0);
+  });
+
+  it('shows nothing when the hub has no measurement', () => {
+    expect(cachePercent({ cache_percent: null })).toBeNull();
+  });
+});
+
+describe('cacheBand', () => {
+  it('splits the cache share into the four readable bands', () => {
+    expect(cacheBand(null)).toBe('none');
+    expect(cacheBand(0)).toBe('none');
+    expect(cacheBand(1)).toBe('low');
+    expect(cacheBand(24)).toBe('low');
+    expect(cacheBand(25)).toBe('part');
+    expect(cacheBand(59)).toBe('part');
+    expect(cacheBand(60)).toBe('most');
+    expect(cacheBand(94)).toBe('most');
+    expect(cacheBand(95)).toBe('all');
+    expect(cacheBand(100)).toBe('all');
+  });
+});
+
+describe('cacheLabel', () => {
+  it('distinguishes a known zero from a provider that reports no cache data', () => {
+    expect(cacheLabel(null)).toBeNull();
+    expect(cacheLabel(0)).not.toBeNull();
+    expect(cacheLabel(0)).toContain('0%');
+    expect(cacheLabel(70)).toContain('70%');
+  });
+});
+
+describe('costText', () => {
+  const money = { cost: (micros: number): string => `$${(micros / 1_000_000).toFixed(2)}` };
+  const of = (micros: number, incomplete: boolean, working: boolean): string | null =>
+    costText({ money, micros, incomplete, working });
+
+  it('shows nothing before any cost is known', () => {
+    expect(of(0, false, false)).toBeNull();
+  });
+
+  it('never claims an unknown cost while a turn is still running', () => {
+    expect(of(1_500_000, true, true)).toBe('$1.50');
+    expect(of(1_500_000, false, true)).toBe('$1.50');
+  });
+
+  it('admits an unknown cost once the turn has stopped and it is still missing', () => {
+    expect(of(1_500_000, true, false)).toBe('$1.50 + unknown');
+    expect(of(1_500_000, false, false)).toBe('$1.50');
   });
 });

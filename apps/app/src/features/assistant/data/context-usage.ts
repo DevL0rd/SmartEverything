@@ -3,7 +3,7 @@ import { useChatHarness } from './harness';
 import { contextUsage, type ContextUsage } from '../model/context-usage';
 
 export function useContextUsage(chat: AiChatRow): ContextUsage {
-  const native = chat.engine.kind === 'dsh' || chat.engine.kind === 'openrouter';
+  const native = chat.engine.kind === 'dsh';
   const session = useChatHarness(chat.id, native);
   return contextUsage(
     native ? selectedContext(chat, session.data?.context) : undefined,

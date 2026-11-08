@@ -12,10 +12,11 @@ export function queueEvent(
   store: Store,
   input: Parameters<Store['assistantEvents']['add']>[0],
   source?: ConversationAuthority,
+  repairOrigin?: string,
 ): StoredEvent {
   return store.write(() => {
     const event = store.assistantEvents.add(input);
-    eventAuthority(store, event, source);
+    eventAuthority(store, event, source, repairOrigin);
     log.info('request.queued', {
       eventId: event.id,
       kind: event.kind,
@@ -34,6 +35,8 @@ export function ownedUploads(
   profileId: string,
   ids: readonly string[],
 ): StoredAttachment[] {
+  if (new Set(ids).size !== ids.length)
+    throw new ApiError('invalid_request', 'Each upload can be attached only once per message.');
   return ids.map((id) => {
     const file = store.assistantChat.attachment(id);
     if (file.profile_id !== profileId || file.message_id !== null) {

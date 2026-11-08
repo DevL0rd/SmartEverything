@@ -1,0 +1,88 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "04000000-0000-4000-8000-000000000009",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "04000000-0000-4000-8000-000000000007",
+        "key": "pick",
+        "kind": "flow.switch",
+        "ports": { "subject": { "wire": { "from": "trigger", "port": "tick" } } },
+        "cases": [
+          {
+            "id": "04000000-0000-4000-8000-000000000001",
+            "match": { "eq": 1 },
+            "scope": {
+              "nodes": [
+                {
+                  "id": "04000000-0000-4000-8000-000000000002",
+                  "key": "one",
+                  "kind": "device.set",
+                  "ports": {
+                    "target": { "lit": { "target": "hall" } },
+                    "control": { "lit": "level" },
+                    "to": { "lit": 10 }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "04000000-0000-4000-8000-000000000003",
+            "match": { "in": [2, 3] },
+            "scope": {
+              "nodes": [
+                {
+                  "id": "04000000-0000-4000-8000-000000000004",
+                  "key": "many",
+                  "kind": "debug.log",
+                  "ports": { "message": { "lit": "two or three" } }
+                },
+                {
+                  "id": "04000000-0000-4000-8000-000000000005",
+                  "key": "two",
+                  "kind": "device.set",
+                  "ports": {
+                    "target": { "lit": { "target": "hall" } },
+                    "control": { "lit": "level" },
+                    "to": { "lit": 20 }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "scopes": {
+          "default": {
+            "nodes": [
+              {
+                "id": "04000000-0000-4000-8000-000000000006",
+                "key": "other",
+                "kind": "notify.feed",
+                "ports": { "message": { "lit": "something else" } }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "04000000-0000-4000-8000-000000000008",
+        "key": "after",
+        "kind": "notify.feed",
+        "ports": { "message": { "lit": "picked" } }
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

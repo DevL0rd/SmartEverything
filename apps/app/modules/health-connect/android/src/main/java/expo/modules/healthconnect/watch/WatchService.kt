@@ -1,39 +1,34 @@
 package expo.modules.healthconnect.watch
 
 import expo.modules.healthconnect.BluetoothConnectNotAllowed
-import expo.modules.healthconnect.CompanionScreenUnavailable
-import expo.modules.healthconnect.R
 import expo.modules.healthconnect.UnsupportedWatchFamily
-import expo.modules.healthconnect.WatchNotConfigured
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
 import android.content.Context
 import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import expo.modules.healthconnect.ServiceStartRefused
+import expo.modules.healthconnect.connections.ConnectedDeviceService
+import expo.modules.healthconnect.connections.DeviceConnection
 import expo.modules.healthconnect.phone.PhoneUnlock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 
-class WatchService : Service() {
+class WatchService : ConnectedDeviceService() {
   private val thread = HandlerThread("smarteverything-watch").apply { start() }
   private val handler = Handler(thread.looper)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val connections = mutableMapOf<String, WatchConnection>()
   private val attempts = mutableMapOf<String, Int>()
   private val connectedIds = mutableSetOf<String>()
+  private val connectionNotices = mutableMapOf<String, WatchConnectionNotice>()
   private val retrying = mutableSetOf<String>()
+  private val store by lazy { WatchStore(this) }
+  private var stopWatchingConfiguration: (() -> Unit)? = null
   private var live = false
   private var lastStartId = 0
   private val lastSyncAt = mutableMapOf<String, Long>()
@@ -55,7 +50,9 @@ class WatchService : Service() {
 
   override fun onCreate() {
     super.onCreate()
-    foreground("Connecting to your watch")
+    stopWatchingConfiguration = store.watchConfigurationChanges {
+      handler.post { stopIfUnconfigured() }
+    }
     PhoneUnlock.register(this)
     registerReceiver(unlock, IntentFilter(Intent.ACTION_USER_PRESENT))
     registerReceiver(clock, IntentFilter().apply {
@@ -66,17 +63,19 @@ class WatchService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    lastStartId = startId
-    foreground(summary())
     val action = intent?.action ?: ACTION_CONNECT
     val address = intent?.getStringExtra(EXTRA_ADDRESS)
     val deviceId = intent?.getStringExtra(EXTRA_DEVICE)
     val on = intent?.getBooleanExtra(EXTRA_ON, false) ?: false
-    handler.post { handle(action, address, deviceId, on) }
+    handler.post {
+      lastStartId = startId
+      if (!stopIfUnconfigured()) handle(action, address, deviceId, on)
+    }
     return START_STICKY
   }
 
   override fun onDestroy() {
+    stopWatchingConfiguration?.invoke()
     unregisterReceiver(unlock)
     unregisterReceiver(clock)
     calls.unregister()
@@ -96,12 +95,10 @@ class WatchService : Service() {
       ACTION_LIVE -> setLive(on)
       ACTION_REFRESH -> connections.values.forEach { it.refresh() }
       ACTION_SYNC -> syncAll("asked in the app")
-      ACTION_STOP -> stopAll()
     }
   }
 
   private fun connectAll(address: String?) {
-    val store = WatchStore(this)
     val active = store.active()
     dropUnwanted(active)
     val wanted = active.filter { address == null || it.address == address.uppercase() }
@@ -112,16 +109,22 @@ class WatchService : Service() {
   }
 
   private fun dropUnwanted(active: List<WatchConfig>) {
+    connectionNotices.keys.retainAll(active.map { it.deviceId }.toSet())
     connections.keys.filter { id -> active.none { it.deviceId == id } }.forEach { id ->
       connections.remove(id)?.let { detach(id, it) }
       connectedIds.remove(id)
       attempts.remove(id)
       WatchEvents.emit("watch_released", "no longer bridged by this app", mapOf("deviceId" to id))
     }
+    noteConnections()
   }
 
   private fun connect(watch: WatchConfig) {
-    val monitor = WatchMonitor(this, watch, scope, { changed(watch, it) }) { reason, retryable ->
+    val notice = WatchConnectionNotice()
+    connectionNotices[watch.deviceId] = notice
+    val monitor = WatchMonitor(this, watch, scope, { changed(watch, it) }, { phase, battery ->
+      recordConnection(watch, notice, phase, battery)
+    }) { reason, retryable ->
       handler.post { lost(watch, reason, retryable) }
     }
     if (!WatchPermissions.connectAllowed(this)) {
@@ -156,7 +159,6 @@ class WatchService : Service() {
     if (reported != null && reportedSyncAt.put(watch.deviceId, reported) != reported) {
       lastSyncAt[watch.deviceId] = System.currentTimeMillis()
     }
-    foreground(summary())
   }
 
   private fun syncOne(deviceId: String, reason: String) {
@@ -212,8 +214,10 @@ class WatchService : Service() {
     attempts.remove(deviceId)
     val watch = store.watches().firstOrNull { it.deviceId == deviceId } ?: return
     if (paused) {
+      connectionNotices.remove(deviceId)
       connections.remove(deviceId)?.let { detach(deviceId, it) }
-      WatchMonitor(this, watch, scope, { foreground(summary()) }) { _, _ -> }.paused()
+      WatchMonitor(this, watch, scope, {}) { _, _ -> }.paused()
+      noteConnections()
       if (connections.isEmpty()) stopSelfResult(lastStartId)
     } else {
       connect(watch)
@@ -230,46 +234,42 @@ class WatchService : Service() {
     connection.stop()
   }
 
-  private fun stopAll() {
+  private fun stopIfUnconfigured(): Boolean {
+    if (store.watches().isNotEmpty()) return false
+    connectionNotices.clear()
     connections.forEach { (id, connection) -> detach(id, connection) }
     connections.clear()
+    noteConnections()
     stopSelfResult(lastStartId)
+    return true
   }
 
-  private fun summary(): String {
-    val snapshots = WatchStore(this).watches().map { WatchSnapshots.of(it) }
-    return snapshots.joinToString(" · ") { snapshot ->
-      val battery = snapshot.battery?.let { " $it%" }.orEmpty()
-      "${snapshot.name}: ${snapshot.phase.label}$battery"
-    }.ifEmpty { "No watches set up" }
+  private fun recordConnection(watch: WatchConfig, notice: WatchConnectionNotice, phase: WatchPhase?, level: Int?) {
+    if (connectionNotices[watch.deviceId] !== notice) return
+    if (phase != null) notice.phase = phase
+    val battery = level?.let { " $it%" }.orEmpty()
+    val next = DeviceConnection(watch.name, "${notice.phase.label}$battery", notice.phase == WatchPhase.CONNECTED)
+    if (notice.device == next) return
+    notice.device = next
+    noteConnections()
   }
 
-  private fun foreground(text: String) {
-    val manager = getSystemService(NotificationManager::class.java)
-    manager.createNotificationChannel(NotificationChannel(CHANNEL, "Watch connection", NotificationManager.IMPORTANCE_MIN))
-    val open = packageManager.getLaunchIntentForPackage(packageName)?.let {
-      PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE)
+  private fun noteConnections() {
+    publishConnections(connectionNotices.values.mapNotNull { it.device })
+  }
+
+  private class WatchConnectionNotice {
+    var phase = WatchPhase.WAITING
+    var device: DeviceConnection? = null
+  }
+
+  override fun foregroundRefused(failure: RuntimeException) {
+    val reason = if (failure is SecurityException) {
+      "Android refused the watch connection service"
+    } else {
+      "Android did not let the watch connection service run in the foreground now"
     }
-    val notification = Notification.Builder(this, CHANNEL)
-      .setSmallIcon(R.drawable.ic_stat_smarteverything)
-      .setContentTitle("Watch")
-      .setContentText(text)
-      .setOngoing(true)
-      .setContentIntent(open)
-      .build()
-    try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-      } else {
-        startForeground(NOTIFICATION_ID, notification)
-      }
-    } catch (failure: SecurityException) {
-      WatchEvents.emit("service_refused", "Android refused the watch connection service: ${failure.message}")
-      stopSelf()
-    } catch (failure: IllegalStateException) {
-      WatchEvents.emit("service_refused", "Android did not let the watch connection service run in the foreground now: ${failure.message}")
-      stopSelf()
-    }
+    WatchEvents.emit("service_refused", "$reason: ${failure.message}")
   }
 
   companion object {
@@ -277,14 +277,11 @@ class WatchService : Service() {
     const val ACTION_PAUSE = "expo.modules.healthconnect.watch.PAUSE"
     const val ACTION_LIVE = "expo.modules.healthconnect.watch.LIVE"
     const val ACTION_REFRESH = "expo.modules.healthconnect.watch.REFRESH"
-    const val ACTION_STOP = "expo.modules.healthconnect.watch.STOP"
     const val ACTION_SYNC = "expo.modules.healthconnect.watch.SYNC"
     private const val UNLOCK_SYNC_GAP_MS = 15 * 60_000L
     const val EXTRA_ADDRESS = "address"
     const val EXTRA_DEVICE = "deviceId"
     const val EXTRA_ON = "on"
-    private const val CHANNEL = "smarteverything.watch"
-    private const val NOTIFICATION_ID = 7402
     private val RETRY_DELAYS_MS = longArrayOf(30_000L, 60_000L, 120_000L, 240_000L, 480_000L)
 
     fun send(context: Context, action: String, extras: Intent.() -> Unit = {}) {

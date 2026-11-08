@@ -5,7 +5,7 @@ import { AUTOMATION_RUN_ID } from '../automation-runs';
 import { PLUGIN_ORIGIN } from '../plugin-people';
 import { FLOW_ERROR } from './errors';
 import { LAYOUT } from './layout';
-import { AUTOMATION_V3, FUNCTION_V3 } from './program';
+import { AUTOMATION_V4, FUNCTION_V4 } from './graph';
 
 const HASH = z.string().regex(/^[0-9a-f]{64}$/, 'a hash is 64 lowercase hex digits');
 
@@ -13,21 +13,21 @@ export const PLAN_HASH = HASH;
 export const INTERFACE_HASH = HASH;
 
 export const AUTOMATION_DRAFT = z.strictObject({
-  program: AUTOMATION_V3,
+  program: AUTOMATION_V4,
   layout: LAYOUT,
 });
 
 export const FUNCTION_DRAFT = z.strictObject({
-  program: FUNCTION_V3,
+  program: FUNCTION_V4,
   layout: LAYOUT,
 });
 
-export const AUTOMATION_ROW_V3 = z.strictObject({
+export const AUTOMATION_ROW = z.strictObject({
   id: ID,
   name: AUTOMATION_NAME,
   enabled: FLAG,
   revision: z.int().positive(),
-  definition: AUTOMATION_V3,
+  definition: AUTOMATION_V4,
   draft: AUTOMATION_DRAFT.nullable(),
   layout: LAYOUT,
   origin: PLUGIN_ORIGIN.nullable(),
@@ -42,7 +42,7 @@ export const AUTOMATION_ROW_V3 = z.strictObject({
 export const AUTOMATION_REVISION_ROW = z.strictObject({
   automation_id: ID,
   revision: z.int().positive(),
-  definition: AUTOMATION_V3,
+  definition: AUTOMATION_V4,
   layout: LAYOUT,
   plan_hash: PLAN_HASH,
   saved_at: MOMENT,
@@ -68,7 +68,7 @@ export const FUNCTION_ROW = z.strictObject({
 export const FUNCTION_REVISION_ROW = z.strictObject({
   function_id: ID,
   revision: z.int().positive(),
-  definition: FUNCTION_V3,
+  definition: FUNCTION_V4,
   layout: LAYOUT,
   interface_hash: INTERFACE_HASH,
   compat: FUNCTION_COMPAT,
@@ -222,7 +222,7 @@ export const STORED_TEST = z.strictObject({
   updated_at: MOMENT,
 });
 
-export type AutomationRowV3 = z.infer<typeof AUTOMATION_ROW_V3>;
+export type StoredAutomationRow = z.infer<typeof AUTOMATION_ROW>;
 export type AutomationRevisionRow = z.infer<typeof AUTOMATION_REVISION_ROW>;
 export type FunctionRow = z.infer<typeof FUNCTION_ROW>;
 export type FunctionRevisionRow = z.infer<typeof FUNCTION_REVISION_ROW>;

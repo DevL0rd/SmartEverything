@@ -1,8 +1,9 @@
-import type { NodePolicy, PortValue, StructuredOutput } from '@smarteverything/domain';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
-import { keyAvailable, usedKeys } from '@smarteverything/flow/program/keys';
-import { formatScopePath } from '@smarteverything/flow/program/paths';
+import type { NodeKindLookup } from '@smarteverything/domain';
+import type { NodePolicy, PortValue, ProgramV4, StructuredOutput } from '@smarteverything/domain';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
+import { keyAvailable, keyBase, usedKeys } from '@smarteverything/flow/program/keys';
 import type { Program } from '@smarteverything/flow/program/walk';
+import { replaceOps } from '../../../model/editor/replace';
 import type { NodeView } from './node-view';
 
 export function labelOps(key: string, text: string): readonly PatchOp[] {
@@ -40,23 +41,22 @@ export function renameProblem(program: Program, from: string, to: string): strin
   return keyAvailable(to, usedKeys(program));
 }
 
-export function swapKindOps(view: NodeView, kind: string): readonly PatchOp[] {
-  const { entry } = view;
-  if (entry.kind !== 'node') return [];
-  const { node } = entry;
-  return [
-    {
-      op: 'add',
-      in: formatScopePath(entry.scope),
-      after: node.key,
-      node: {
-        kind,
-        ...(node.ports === undefined ? {} : { ports: node.ports }),
-        ...(node.label === undefined ? {} : { label: node.label }),
-        ...(node.note === undefined ? {} : { note: node.note }),
-        ...(node.enabled === undefined ? {} : { enabled: node.enabled }),
-      },
-    },
-    { op: 'remove', key: node.key },
-  ];
+export function swapKindOps(
+  graph: ProgramV4,
+  view: NodeView,
+  swap: { readonly kind: string; readonly ports?: Readonly<Record<string, PortValue>> },
+  kinds: NodeKindLookup,
+): readonly PatchOp[] {
+  const { kind, ports } = swap;
+  const node = graph.nodes.find((item) => item.id === view.id);
+  if (node === undefined) return [];
+  const replacement = {
+    kind,
+    base: keyBase(kind.split('.').pop() ?? kind),
+    ports: ports ?? node.ports ?? {},
+    label: node.label,
+    note: node.note,
+    enabled: node.enabled,
+  };
+  return replaceOps(graph, node.key, replacement, { dropOwned: false, kinds }) ?? [];
 }

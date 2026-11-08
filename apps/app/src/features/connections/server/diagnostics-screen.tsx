@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import { usePushDeliveries } from '../../../api/diagnostics';
 import { useServiceLogTail } from '../../../api/desktop-service';
 import { CodeBlock } from '../../../components/code';
 import { ErrorState } from '../../../components/error-state';
+import { ListRow } from '../../../components/list-row';
 import { ValueRow } from '../../../components/rows';
 import { List, Section } from '../../../components/section';
 import { Skeleton } from '../../../components/skeleton';
@@ -14,8 +16,7 @@ import { useHubStatus, useIsOwner, useServiceLog } from '../../../store/selector
 import { joinLogLines } from '../model/log-seam';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { background } from '@smarteverything/logging';
-
-const LOG_LINES = 80;
+import { SERVER_PANEL, ServerPanels } from './server-panels';
 
 function ServerRows(): ReactNode {
   const hub = useHubStatus();
@@ -24,8 +25,8 @@ function ServerRows(): ReactNode {
     return null;
   }
   return (
-    <List inset title="Server">
-      <ValueRow icon="info" title="Version" value={hub.version} />
+    <List inset title="Server" className={SERVER_PANEL}>
+      <ListRow icon="info" title="Version" subtitle={hub.version} wrapSubtitle />
       <ValueRow icon="clock" title="Running since" value={relative(hub.startedAt, now)} />
       <ValueRow
         icon="cameras"
@@ -45,6 +46,7 @@ function Pushes(): ReactNode {
     return (
       <ErrorState
         error={status.error}
+        wrapDetail
         retry={() => {
           background(status.refetch(), 'status.refetch_failed');
         }}
@@ -68,12 +70,13 @@ function Pushes(): ReactNode {
 function LiveLog({ bridge }: { readonly bridge: DesktopBridge }): ReactNode {
   const tail = useServiceLogTail(bridge);
   const live = useServiceLog();
-  const lines = joinLogLines(tail.data?.lines ?? [], live).slice(-LOG_LINES);
+  const lines = joinLogLines(tail.data?.lines ?? [], live);
   return (
     <Section title="Live log">
       {tail.isError ? (
         <ErrorState
           error={tail.error}
+          wrapDetail
           retry={() => {
             background(tail.refetch(), 'tail.refetch_failed');
           }}
@@ -82,7 +85,7 @@ function LiveLog({ bridge }: { readonly bridge: DesktopBridge }): ReactNode {
       {tail.isPending ? (
         <Skeleton shape="block" />
       ) : (
-        <CodeBlock label={tail.data?.file ?? 'Log'} code={lines.join('\n')} />
+        <CodeBlock label={tail.data?.file ?? 'Log'} code={lines.join('\n')} wrapLines />
       )}
     </Section>
   );
@@ -92,9 +95,15 @@ export function DiagnosticsScreen(): ReactNode {
   const bridge = desktopBridge();
   const owner = useIsOwner();
   return (
-    <SettingsFrame page="server/diagnostics">
-      <ServerRows />
-      {owner ? <Pushes /> : null}
+    <SettingsFrame page="server/diagnostics" contentWidth="full">
+      <ServerPanels>
+        <ServerRows />
+        {owner ? (
+          <View className={SERVER_PANEL}>
+            <Pushes />
+          </View>
+        ) : null}
+      </ServerPanels>
       {bridge === null ? null : <LiveLog bridge={bridge} />}
     </SettingsFrame>
   );

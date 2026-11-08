@@ -190,6 +190,7 @@ const stateMachine = defineNodeKind({
       required: true,
       static: true,
       description: 'Every state the machine can be in.',
+      ui: { editor: 'state-list' },
     },
     {
       name: 'initial',
@@ -197,6 +198,7 @@ const stateMachine = defineNodeKind({
       required: true,
       static: true,
       description: 'The state before any event.',
+      ui: { typedBy: 'states' },
     },
     {
       name: 'transitions',
@@ -216,6 +218,7 @@ const stateMachine = defineNodeKind({
       live: true,
       description:
         'Each transition: the state it leaves (or * for any), the event, the state it enters and an optional guard that must be true.',
+      ui: { typedBy: 'states' },
     },
   ],
   outputs: [

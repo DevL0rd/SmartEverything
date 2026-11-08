@@ -1,17 +1,31 @@
+import { AI_IMAGE_KINDS } from './ai-image';
 import { AI_MODEL_KINDS } from './ai-model';
 import { AI_TOOLS_KINDS } from './ai-tools';
+import { APPLIANCE_KINDS } from './appliances';
 import { AUTOMATION_KINDS } from './automation';
+import { CALL_KINDS } from './calls';
+import { CAMERA_KINDS } from './cameras';
 import { CAMERA_SIGNAL_KINDS } from './cameras-signals';
+import { CLIMATE_KINDS } from './climate';
+import { COMPUTER_SYSTEM_KINDS } from './computer-system';
 import { COMPUTERS_PHONES_KINDS } from './computers-phones';
+import { CONVERSATION_KINDS } from './conversations';
 import { DATE_KINDS } from './dates';
 import { DATE_MORE_KINDS } from './dates-more';
 import { DEBUG_KINDS } from './debug';
 import type { NodeKind } from './define';
 import { DEVICE_NODE_KINDS } from './devices';
 import { DEVICE_EXTRA_KINDS } from './devices-extra';
+import { DRIVE_KINDS } from './drive';
+import { EVENT_NODE_KINDS } from './events';
 import { FLOW_KINDS } from './flow';
+import { FLOW_GRAPH_KINDS } from './flow-graph';
 import { FLOW_MORE_KINDS } from './flow-more';
+import { HEALTH_KINDS } from './health';
 import { HTTP_KINDS } from './http';
+import { IR_KINDS } from './ir';
+import { LAUNDRY_KINDS } from './laundry';
+import { LIGHT_KINDS } from './lights';
 import { LIST_KINDS } from './lists';
 import { LIST_MORE_KINDS } from './lists-more';
 import { LOGIC_KINDS } from './logic';
@@ -22,26 +36,34 @@ import { NOTIFY_KINDS } from './notify';
 import { OBJECT_KINDS } from './objects';
 import { OBJECT_MORE_KINDS } from './objects-more';
 import { HOME_STRUCTURE_NODE_KINDS, PEOPLE_NODE_KINDS } from './people';
+import { PHONE_ACTION_KINDS } from './phone-actions';
+import { PLANNER_KINDS } from './planner';
 import { RANDOM_KINDS } from './random';
 import { RANDOM_MORE_KINDS } from './random-more';
 import type { NodeRegistry } from './registry';
 import { buildRegistry } from './registry';
+import { SECURITY_KINDS } from './security';
 import { STATE_NODE_KINDS } from './state';
 import { STATE_EXTRA_KINDS } from './state-extra';
 import { STATE_TIMING_KINDS } from './state-timing';
+import { TELEVISION_KINDS } from './television';
 import { TEXT_KINDS } from './text';
 import { TEXT_MORE_KINDS } from './text-more';
 import { TRIGGER_KINDS } from './triggers';
+import { APPLIANCE_TRIGGER_KINDS } from './triggers-appliance';
 import { TRIGGER_V11_KINDS } from './triggers-v11';
 import { UTIL_KINDS } from './util';
+import { VACUUM_KINDS } from './vacuums';
 import { VAR_KINDS } from './vars';
 import { WEATHER_NODE_KINDS } from './weather';
 
 export const ALL_NODE_KINDS: readonly NodeKind[] = [
   ...TRIGGER_KINDS,
   ...TRIGGER_V11_KINDS,
+  ...APPLIANCE_TRIGGER_KINDS,
   ...FLOW_KINDS,
   ...FLOW_MORE_KINDS,
+  ...FLOW_GRAPH_KINDS,
   ...LOGIC_KINDS,
   ...LOGIC_MORE_KINDS,
   ...MATH_KINDS,
@@ -59,18 +81,36 @@ export const ALL_NODE_KINDS: readonly NodeKind[] = [
   ...VAR_KINDS,
   ...DEVICE_NODE_KINDS,
   ...DEVICE_EXTRA_KINDS,
+  ...LIGHT_KINDS,
+  ...CLIMATE_KINDS,
+  ...APPLIANCE_KINDS,
+  ...LAUNDRY_KINDS,
+  ...VACUUM_KINDS,
+  ...TELEVISION_KINDS,
+  ...SECURITY_KINDS,
   ...STATE_NODE_KINDS,
   ...STATE_TIMING_KINDS,
   ...STATE_EXTRA_KINDS,
+  ...EVENT_NODE_KINDS,
   ...PEOPLE_NODE_KINDS,
   ...HOME_STRUCTURE_NODE_KINDS,
   ...NOTIFY_KINDS,
+  ...CALL_KINDS,
   ...COMPUTERS_PHONES_KINDS,
+  ...COMPUTER_SYSTEM_KINDS,
+  ...CONVERSATION_KINDS,
+  ...PHONE_ACTION_KINDS,
+  ...PLANNER_KINDS,
+  ...DRIVE_KINDS,
   ...WEATHER_NODE_KINDS,
   ...CAMERA_SIGNAL_KINDS,
+  ...HEALTH_KINDS,
+  ...CAMERA_KINDS,
   ...AI_TOOLS_KINDS,
   ...AI_MODEL_KINDS,
+  ...AI_IMAGE_KINDS,
   ...HTTP_KINDS,
+  ...IR_KINDS,
   ...AUTOMATION_KINDS,
   ...DEBUG_KINDS,
   ...UTIL_KINDS,

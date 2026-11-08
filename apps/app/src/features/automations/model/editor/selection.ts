@@ -1,5 +1,4 @@
-import { indexProgram } from '@smarteverything/flow/program/lookup';
-import type { Program } from '@smarteverything/flow/program/walk';
+import type { ProgramV4 } from '@smarteverything/domain';
 
 export interface Selection {
   readonly ids: readonly string[];
@@ -8,8 +7,9 @@ export interface Selection {
 
 export const EMPTY_SELECTION: Selection = { ids: [], anchor: null };
 
-export function programOrder(program: Program): readonly string[] {
-  return [...indexProgram(program).byId.keys()];
+export function programOrder(program: ProgramV4): readonly string[] {
+  const triggers = program.kind === 'automation' ? program.triggers : [];
+  return [...triggers.map((trigger) => trigger.id), ...program.nodes.map((node) => node.id)];
 }
 
 export function isSelected(selection: Selection, id: string): boolean {

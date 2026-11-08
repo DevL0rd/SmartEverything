@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RELEASE_NOTES } from './release-notes';
 
 export const MACHINE_UPDATE_PLATFORMS = ['linux', 'win32', 'darwin'] as const;
 
@@ -14,6 +15,14 @@ export const MACHINE_UPDATE_MANIFEST_FILE = 'manifest.json';
 
 export const MACHINE_UPDATE_VERSION = z.string().regex(/^\d+\.\d+\.\d+$/u, {
   message: 'must be a version written major.minor.patch, such as 0.4.2',
+});
+
+export const MACHINE_UPDATE_NOTICE_FILE = 'notice.json';
+
+export const MACHINE_UPDATE_NOTICE = z.strictObject({
+  id: z.uuid(),
+  version: MACHINE_UPDATE_VERSION,
+  runtimeVersion: z.string().regex(/^[0-9a-f]{32}$/u),
 });
 
 export const MACHINE_UPDATE_FILE = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,150}$/u, {
@@ -60,6 +69,8 @@ function complete(artifacts: readonly MachineUpdateArtifact[]): boolean {
 export const MACHINE_UPDATE_MANIFEST = z
   .strictObject({
     version: MACHINE_UPDATE_VERSION,
+    replaces: MACHINE_UPDATE_VERSION.optional(),
+    notes: RELEASE_NOTES.optional(),
     artifacts: z.array(MACHINE_UPDATE_ARTIFACT).min(1),
   })
   .refine((manifest) => complete(manifest.artifacts), {
@@ -83,13 +94,18 @@ export type MachineUpdateOfferArtifact = z.infer<typeof MACHINE_UPDATE_OFFER_ART
 
 export const MACHINE_UPDATE_OFFER = z.strictObject({
   version: MACHINE_UPDATE_VERSION,
+  replaces: MACHINE_UPDATE_VERSION.optional(),
+  notes: RELEASE_NOTES.optional(),
   artifacts: z.array(MACHINE_UPDATE_OFFER_ARTIFACT).min(1),
   expiresAt: z.iso.datetime({ offset: true }),
 });
 
 export type MachineUpdateOffer = z.infer<typeof MACHINE_UPDATE_OFFER>;
 
+export const DESKTOP_UPDATE_PRODUCT = 'desktop-computer';
+
 export const MACHINE_UPDATE_QUERY = z.strictObject({
+  product: z.literal(DESKTOP_UPDATE_PRODUCT),
   platform: z.enum(MACHINE_UPDATE_PLATFORMS),
   arch: z.enum(MACHINE_UPDATE_ARCHES),
 });
@@ -117,6 +133,13 @@ export function isNewerVersion(candidate: string, current: string): boolean {
   return false;
 }
 
+export function machineUpdateApplies(
+  offer: Pick<MachineUpdateOffer, 'version' | 'replaces'>,
+  current: string,
+): boolean {
+  return offer.replaces === current || isNewerVersion(offer.version, current);
+}
+
 export const MACHINE_UPDATE_STATES = [
   'none',
   'available',
@@ -127,11 +150,23 @@ export const MACHINE_UPDATE_STATES = [
 
 export type MachineUpdateState = (typeof MACHINE_UPDATE_STATES)[number];
 
+export const MACHINE_UPDATE_OFFER_ID = z.string().regex(/^[0-9a-f]{64}$/u);
+
+export const MACHINE_UPDATE_PROGRESS = z.strictObject({
+  received: z.int().nonnegative(),
+  total: z.int().positive(),
+});
+
+export type MachineUpdateProgress = z.infer<typeof MACHINE_UPDATE_PROGRESS>;
+
 export const MACHINE_UPDATE_STATUS = z.strictObject({
   state: z.enum(MACHINE_UPDATE_STATES),
+  progress: MACHINE_UPDATE_PROGRESS.nullable(),
   version: MACHINE_UPDATE_VERSION.nullable(),
   detail: z.string(),
   installable: z.boolean(),
+  offerId: MACHINE_UPDATE_OFFER_ID.optional(),
+  notes: RELEASE_NOTES.optional(),
 });
 
 export type MachineUpdateStatus = z.infer<typeof MACHINE_UPDATE_STATUS>;

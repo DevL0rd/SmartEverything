@@ -16,7 +16,7 @@ export function decideSync(
 }
 
 export interface ClipboardPorts {
-  readonly readLocal: () => Promise<string>;
+  readonly readLocal: () => Promise<string | null>;
   readonly writeLocal: (text: string) => Promise<void>;
   readonly readRemote: () => Promise<ClipboardClip | null>;
   readonly sendRemote: (text: string) => Promise<void>;
@@ -40,13 +40,14 @@ export class ClipboardSync {
   localChanged(): Promise<void> {
     return this.queue('local_changed', async () => {
       const local = await this.ports.readLocal();
-      if (local !== '' && local !== this.synced) await this.send(local);
+      if (local !== null && local !== '' && local !== this.synced) await this.send(local);
     });
   }
 
   foreground(): Promise<void> {
     return this.queue('foreground', async () => {
       const local = await this.ports.readLocal();
+      if (local === null) return;
       const remote = await this.ports.readRemote();
       const decision = decideSync(local, remote, this.synced);
       if (decision === 'send') await this.send(local);
@@ -76,7 +77,7 @@ export class ClipboardSync {
 
   private queue(reason: string, task: () => Promise<void>): Promise<void> {
     const run = this.tail.then(task).catch((error: unknown) => {
-      this.log.warn('clipboard.sync_failed', { reason, cause: String(error) });
+      this.log.error('clipboard.sync_failed', error, { reason });
     });
     this.tail = run;
     return run;

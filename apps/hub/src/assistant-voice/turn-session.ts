@@ -1,3 +1,4 @@
+import { callPrincipal } from './voice-memory';
 import type { FunctionDeclaration, UsageMetadata } from '@google/genai';
 import {
   assistantLabel,
@@ -205,7 +206,11 @@ export class TurnSession {
     this.session?.close();
     this.flush();
     this.record.close();
-    this.options.kit.responder.callEnded(this.options.who.chatId, this.record.transcript());
+    this.options.kit.responder.callEnded(
+      this.options.who.chatId,
+      this.record.transcript(),
+      this.record.messageId,
+    );
     this.options.events.ended(reason, detail);
   }
 
@@ -265,7 +270,7 @@ export class TurnSession {
     });
   }
 
-  private open(resume: string | null, reason: RenewReason | null): Promise<LiveSession> {
+  private async open(resume: string | null, reason: RenewReason | null): Promise<LiveSession> {
     const { kit, who } = this.options;
     const settings = kit.store.assistantChat.settings();
     this.generation += 1;
@@ -273,6 +278,7 @@ export class TurnSession {
     const model = voiceModelFor(settings.voice.thinking_level);
     const thinking = voiceThinkingOf(settings.voice.thinking_level);
     this.renewal.opening(reason, resume !== null, this.now());
+    await kit.memory.prepare(callPrincipal({ ...who.caller, chatId: who.chatId }));
     return connectWithin(
       this.options.provider.live(
         {
@@ -280,7 +286,7 @@ export class TurnSession {
           voice: settings.voice.voice,
           system: turnSystemOf(kit, this.hub, who, this.options.bare === true),
           tools: [...this.assistantTools(), ...this.tools.declarations()],
-          webSearch: callSearchesWeb(this.hub),
+          webSearch: callSearchesWeb(kit, who),
           resume,
           window: liveWindow(settings),
           automatic: false,

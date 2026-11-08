@@ -6,9 +6,9 @@ import { Card } from '../../../components/card';
 import { ProgressBar } from '../../../components/charts';
 import { IconWell } from '../../../components/icon-well';
 import { Text } from '../../../components/text';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { decimal } from '../../../format/number';
-import { columnsOfArea } from '../components/card-grid';
+import { columnsOfBody } from '../components/card-grid';
 import { LiveSeriesChart, type LiveLine } from '../components/live-series-chart';
 import { byteRate } from '../model/computer-charts';
 import { diskSeverity } from '../model/computer-view';
@@ -96,7 +96,7 @@ export function DiskCard({
   readonly disk: DiskFacts;
   readonly offline: boolean;
 }): ReactNode {
-  const wide = columnsOfArea(useAreaWidth()) === 2;
+  const wide = columnsOfBody(useFrameBodyWidth()) === 2;
   return (
     <Card>
       <View className="gap-3">

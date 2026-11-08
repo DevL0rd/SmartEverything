@@ -19,7 +19,6 @@ export interface ComposerFieldProps extends FieldKeys {
   readonly disabled: boolean;
   readonly placeholder: string;
   readonly tall?: boolean;
-  readonly onFocus?: (() => void) | undefined;
   readonly selection?: ComposerSelection | undefined;
   readonly onSelection?: (selection: ComposerSelection) => void;
 }
@@ -49,7 +48,6 @@ export function ComposerField({
   disabled,
   placeholder,
   tall = false,
-  onFocus,
   selection,
   onSelection,
   ...keys
@@ -67,7 +65,6 @@ export function ComposerField({
         onSelection?.(event.nativeEvent.selection);
       }}
       onChangeText={setText}
-      onFocus={onFocus}
       onKeyPress={(event) => {
         if (pointer) {
           handleKey(event, text, keys);
@@ -84,8 +81,8 @@ export function ComposerField({
       accessibilityLabel="Message"
       className={
         tall
-          ? 'min-h-0 flex-1 resize-none px-1 py-3 font-sans text-body text-on-surface outline-none'
-          : 'field-sizing-content max-h-48 min-h-touch-min flex-1 resize-none px-1 py-3 font-sans text-body text-on-surface outline-none'
+          ? 'min-h-0 flex-1 resize-none px-1 py-3 font-sans text-body text-on-surface web:outline-none'
+          : 'field-sizing-content max-h-48 min-h-touch-min flex-1 resize-none px-1 py-3 font-sans text-body text-on-surface web:outline-none'
       }
     />
   );

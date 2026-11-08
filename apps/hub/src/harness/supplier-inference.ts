@@ -29,8 +29,8 @@ export function admitSupplierInference(
   const current = service.routes
     .list(expected.profile_id)
     .find((route) => route.id === expected.id);
-  if (current?.state !== 'ready' || JSON.stringify(current) !== JSON.stringify(expected))
-    throw new ApiError('conflict', 'Supplier model account or capability publication changed.');
+  if (current?.state !== 'ready')
+    throw new ApiError('conflict', 'Supplier model route is not available.');
   if (request.kind === 'resolve') {
     if (!current.models.some((model) => model.id === request.model))
       throw new ApiError('forbidden', 'Supplier model was not discovered on the selected route.');
@@ -81,16 +81,14 @@ function admitExecutionWriter(
     claim.session_id !== sessionId ||
     grant.profile_id !== route.profile_id ||
     provider !== route.id ||
-    model !== grant.route.model ||
-    grant.route.credential_generation !== route.credential_generation ||
-    grant.runtime_instance !== execution.runtime_instance ||
-    grant.generation !== execution.connection_generation
+    model !== grant.route.model
   )
     throw new ApiError(
       'forbidden',
       'Supplier call differs from the exact executing writer, profile, session, route or account generation.',
     );
-  admitSelectedAccount(selected, route);
+  if (selected.id !== route.id)
+    throw new ApiError('forbidden', 'This selected route differs from the executing route.');
   service.store.dshSessions.verifyWriter(claim, service.hostPrincipal(grant.profile_id, execution));
 }
 export function subscriptionInferenceConnection(
@@ -131,18 +129,6 @@ function admitSupplierBinding(
   )
     throw new ApiError('forbidden', 'This connection is not the exact subscription supplier.');
 }
-function admitSelectedAccount(selected: AiModelRoute, route: AiModelRoute): void {
-  if (
-    selected.id !== route.id ||
-    selected.capability_revision !== route.capability_revision ||
-    selected.credential_generation !== route.credential_generation
-  )
-    throw new ApiError(
-      'forbidden',
-      'This selected route account or capability generation changed.',
-    );
-}
-
 export function admitConsumerExecution(
   service: HarnessService,
   connection: HarnessConnection,

@@ -1,5 +1,10 @@
 import { ApiError } from '@smarteverything/domain';
-import type { AutomationRunTrigger, JsonValue, SignalInput } from '@smarteverything/domain';
+import type {
+  AutomationRunTrigger,
+  JsonValue,
+  NodeKindLookup,
+  SignalInput,
+} from '@smarteverything/domain';
 import type { RunStart } from './driver/ports';
 import type { SimStart } from './sim/rig';
 import { contextOf, freshState, triggerKeyOf } from './engine-v3-start';
@@ -17,6 +22,7 @@ export interface RehearsalSource {
   readonly given: Readonly<Record<string, JsonValue>>;
   readonly startedBy: string | null;
   readonly zone: () => string;
+  readonly kinds: NodeKindLookup;
   readonly trigger?: AutomationRunTrigger | undefined;
 }
 
@@ -43,7 +49,7 @@ function firedBy(subject: Subject, trigger: AutomationRunTrigger, now: Date): Fi
 
 export function rehearsalOf(subject: Subject, source: RehearsalSource): Rehearsal {
   const { program } = subject;
-  const { given, startedBy, zone, trigger } = source;
+  const { given, startedBy, zone, trigger, kinds } = source;
   return {
     nodeIds: new Map(walkProgram(program).map(({ node }) => [node.key, node.id])),
     start: {
@@ -79,6 +85,7 @@ export function rehearsalOf(subject: Subject, source: RehearsalSource): Rehearsa
             reads: env.reads,
             persistent: env.world.persistentVariables(),
             stateMemory: env.world.stateMemory(),
+            kinds,
             clock: env.clock,
             zone: () => env.zone ?? zone(),
           }),

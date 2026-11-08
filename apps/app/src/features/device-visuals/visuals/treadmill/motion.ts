@@ -26,7 +26,7 @@ const flexes = new Map<number, CSSKeyframesRule>();
 const lifts = new Map<number, CSSKeyframesRule>();
 const slides = new Map<number, CSSKeyframesRule>();
 
-export function slide(distance: number): CSSKeyframesRule {
+function slide(distance: number): CSSKeyframesRule {
   const key = Math.round(distance * 100);
   const known = slides.get(key);
   if (known !== undefined) {
@@ -40,7 +40,7 @@ export function slide(distance: number): CSSKeyframesRule {
   return made;
 }
 
-export function kneeFlex(bend: number): CSSKeyframesRule {
+function kneeFlex(bend: number): CSSKeyframesRule {
   const key = Math.round(bend);
   const known = flexes.get(key);
   if (known !== undefined) {
@@ -60,7 +60,7 @@ export function kneeFlex(bend: number): CSSKeyframesRule {
   return made;
 }
 
-export function lift(distance: number): CSSKeyframesRule {
+function lift(distance: number): CSSKeyframesRule {
   const key = Math.round(distance * 10);
   const known = lifts.get(key);
   if (known !== undefined) {

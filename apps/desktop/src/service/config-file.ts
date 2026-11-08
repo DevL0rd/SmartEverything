@@ -1,9 +1,5 @@
 import { z } from 'zod';
-import {
-  parseServiceConfigText,
-  type ServiceConfig,
-  type HubServiceConfig,
-} from '@smarteverything/hub/service/configuration';
+import { COMPUTER_SERVICE_CONFIG, type ComputerServiceConfig } from '@smarteverything/domain';
 
 const CONFIG_OBJECT = z.record(z.string(), z.unknown());
 
@@ -34,29 +30,10 @@ function existingObject(file: string, text: string | null): Record<string, unkno
   return parsed.data;
 }
 
-export interface PreparedConfig {
-  readonly text: string;
-  readonly config: ServiceConfig;
-  readonly changed: boolean;
-}
-
-export function prepareServiceConfig(
+export function parseComputerConfig(
   file: string,
-  existing: null,
-  go2rtcBinary: string,
-): PreparedConfig & { readonly config: HubServiceConfig };
-export function prepareServiceConfig(
-  file: string,
-  existing: string | null,
-  go2rtcBinary: string,
-): PreparedConfig;
-export function prepareServiceConfig(
-  file: string,
-  existing: string | null,
-  go2rtcBinary: string,
-): PreparedConfig {
-  const previous = existingObject(file, existing);
-  const merged = previous['role'] === 'node' ? previous : { ...previous, go2rtcBinary };
-  const text = `${JSON.stringify(merged, null, 2)}\n`;
-  return { text, config: parseServiceConfigText(file, text), changed: text !== existing };
+  text: string | null,
+): ComputerServiceConfig | null {
+  if (text === null) return null;
+  return COMPUTER_SERVICE_CONFIG.parse(existingObject(file, text));
 }

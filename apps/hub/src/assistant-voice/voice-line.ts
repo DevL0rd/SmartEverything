@@ -1,6 +1,7 @@
 import type { LiveEvents, LiveOptions, LiveSession, VoiceProvider } from './gemini';
 
 export interface VoiceLine {
+  readonly warmKey?: string;
   readonly live: (options: LiveOptions, events: LiveEvents) => Promise<LiveSession>;
   readonly known: () => ReadonlySet<string> | null;
   readonly release: (session: LiveSession | null, lines: readonly string[]) => void;

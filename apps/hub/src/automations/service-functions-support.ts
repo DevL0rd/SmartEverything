@@ -8,14 +8,14 @@ import {
   type AutomationProgramProblem,
   type FunctionRevisionRow,
   type FunctionRow,
-  type FunctionV3,
+  type FunctionV4,
+  type ProgramV4,
 } from '@smarteverything/domain';
 import {
   classifyInterfaceChange,
   type InterfaceClassification,
 } from '@smarteverything/flow/functions/compat';
 import { interfaceHash, interfaceOf } from '@smarteverything/flow/functions/interface-hash';
-import type { Program } from '@smarteverything/flow/program/walk';
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
 import type { AutomationFunctionsRepository } from '../store/repositories/automation-functions';
 import type { Built, ProgramEnv } from './service-programs-analysis';
@@ -26,25 +26,17 @@ import {
   requireVisibleComputers,
 } from './service-reach';
 
-export interface BuiltinFunction {
-  readonly id: string;
-  readonly revision: number;
-  readonly name: string;
-  readonly program: FunctionV3;
-}
-
 export interface FunctionsEnv extends ProgramEnv {
   readonly functions: AutomationFunctionsRepository;
-  readonly builtins: readonly BuiltinFunction[];
 }
 
-export function builtinOf(env: FunctionsEnv, id: string): BuiltinFunction | undefined {
-  return env.builtins.find((builtin) => builtin.id === id);
-}
-
-export function requireCustom(env: FunctionsEnv, id: string): void {
-  if (builtinOf(env, id) !== undefined) {
-    throw new ApiError('forbidden', 'A built-in Custom Node is read only. Make your own copy.');
+export function requireFreeName(env: FunctionsEnv, name: string, ownId?: string): void {
+  const taken = env.functions.findByName(name);
+  if (taken !== undefined && taken.id !== ownId) {
+    throw new ApiError(
+      'conflict',
+      `A Custom Node named "${name}" already exists. Choose another name, or save changes to that one instead.`,
+    );
   }
 }
 
@@ -66,7 +58,7 @@ export function expectRevision(row: FunctionRow, expected: number): void {
   }
 }
 
-function interfaceView(program: FunctionV3): AutomationFunctionInterface {
+function interfaceView(program: FunctionV4): AutomationFunctionInterface {
   return {
     flavour: program.flavour,
     inputs: program.inputs,
@@ -75,11 +67,11 @@ function interfaceView(program: FunctionV3): AutomationFunctionInterface {
   };
 }
 
-export function hashOf(program: FunctionV3): string {
+export function hashOf(program: FunctionV4): string {
   return interfaceHash(interfaceOf(program));
 }
 
-export function classify(before: FunctionV3, after: FunctionV3): InterfaceClassification {
+export function classify(before: FunctionV4, after: FunctionV4): InterfaceClassification {
   return classifyInterfaceChange(interfaceOf(before), interfaceOf(after));
 }
 
@@ -109,7 +101,6 @@ export function summaryOf(
     description: row.description,
     category: row.category,
     icon: row.icon,
-    builtin: false,
     editable: owner || own,
     revision: latest.revision,
     interface: interfaceView(latest.definition),
@@ -120,28 +111,12 @@ export function summaryOf(
   };
 }
 
-export function builtinSummary(
+export function authorise(
   env: FunctionsEnv,
-  builtin: BuiltinFunction,
-): AutomationFunctionSummary {
-  return {
-    id: builtin.id,
-    name: builtin.name,
-    description: builtin.program.description ?? null,
-    category: builtin.program.category ?? null,
-    icon: builtin.program.icon ?? null,
-    builtin: true,
-    editable: false,
-    revision: builtin.revision,
-    interface: interfaceView(builtin.program),
-    interfaceHash: hashOf(builtin.program),
-    users: usersOf(env, builtin.id).length,
-    createdBy: null,
-    updatedAt: null,
-  };
-}
-
-export function authorise(env: FunctionsEnv, caller: Caller, program: Program, built: Built): void {
+  caller: Caller,
+  program: ProgramV4,
+  built: Built,
+): void {
   const { store } = env;
   if (program.kind === 'automation') requireKnownSignals(store, program);
   requireOwnerForManifest(caller, built.manifest);

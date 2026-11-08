@@ -43,7 +43,7 @@ function ZoneRow({
         <Text variant="footnote" tone="variant" className="tabular">
           {withUnit(`${count(from)}+`, 'bpm')}
         </Text>
-        <Text variant="callout" className="w-16 text-right tabular">
+        <Text variant="callout" className="min-w-16 shrink-0 text-right tabular">
           {hoursMinutes(minutes)}
         </Text>
       </View>
@@ -61,7 +61,7 @@ export function ZonesCard({ window }: { readonly window: Window }): ReactNode {
   );
   const maximum = maximumHeartRate(useMaxHeartRateSetting(), observed);
   if (records.data === undefined) {
-    return <Skeleton shape="block" className="h-56" />;
+    return <Skeleton shape="block" className="h-56 w-full max-w-detail" />;
   }
   if (maximum === null || samples.length === 0) {
     return null;
@@ -69,8 +69,8 @@ export function ZonesCard({ window }: { readonly window: Window }): ReactNode {
   const zones = zoneMinutes(samples, maximum.bpm);
   const most = ZONES.reduce((largest, zone) => Math.max(largest, zones[zone.key]), 1);
   return (
-    <Card title="Heart rate zones" icon="gauge">
-      <View className="gap-3">
+    <Card title="Heart rate zones" icon="gauge" className="w-full max-w-detail">
+      <View className="gap-2">
         {ZONES.map((zone) => (
           <ZoneRow
             key={zone.key}

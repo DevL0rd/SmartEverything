@@ -84,7 +84,7 @@ const OFF = {
 };
 
 export function useListProbe(list: string | undefined, total: number): ListProbe {
-  if (list === undefined || !__DEV__ || !readDeveloperFlags()['perf.lists']) {
+  if (list === undefined || !readDeveloperFlags()['perf.lists']) {
     return OFF;
   }
   sinkOf()?.listRows(list, 0, total);

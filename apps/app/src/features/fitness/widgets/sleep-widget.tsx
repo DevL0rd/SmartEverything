@@ -15,17 +15,14 @@ import {
   Goal,
   Headline,
   LegendColumn,
-  LegendRow,
+  LegendGrid,
   NapBar,
   NightChart,
   Ring,
   TimesLine,
+  columnFitOf,
+  rowFitOf,
 } from './sleep-widget-parts';
-
-const RING_SPLIT_PX = 44;
-const RING_STACKED_PX = 48;
-const RING_WIDE_PX = 56;
-const STACKED_CHART_PX = 56;
 
 interface NightProps {
   readonly night: SleepNight;
@@ -42,29 +39,37 @@ function TileFace({ night, goalMinutes }: NightProps): ReactNode {
 }
 
 function SplitFace({ night, goalMinutes }: NightProps): ReactNode {
+  const fit = rowFitOf(useWidgetFace().frame);
   return (
-    <View className="flex-1 flex-row items-center gap-4">
-      <View className="w-2/5 gap-1.5">
-        <View className="flex-row items-center gap-2">
-          <Ring night={night} goalMinutes={goalMinutes} size={RING_SPLIT_PX} />
-          <Headline night={night} scale="s" />
+    <View className="flex-1 gap-1">
+      <View className="flex-row items-center gap-3">
+        <Ring night={night} goalMinutes={goalMinutes} size={fit.ring} />
+        <Headline night={night} scale={fit.scale} />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <TimesLine night={night} />
+          <Goal night={night} goalMinutes={goalMinutes} long />
         </View>
-        <Goal night={night} goalMinutes={goalMinutes} long={false} />
       </View>
-      <View className="min-w-0 flex-1">
-        <NightChart night={night} />
+      <View className="min-h-0 flex-1 flex-row gap-3">
+        <View className="min-w-0 flex-1">
+          <NightChart night={night} />
+        </View>
+        <View className={night.hasStages ? 'shrink-0' : 'w-1/2'}>
+          <LegendGrid night={night} />
+        </View>
       </View>
     </View>
   );
 }
 
 function WideFace({ night, goalMinutes }: NightProps): ReactNode {
+  const fit = columnFitOf(useWidgetFace().frame);
   return (
-    <View className="flex-1 flex-row items-center gap-5">
-      <View className="w-1/3 gap-1.5">
+    <View className="flex-1 flex-row gap-5">
+      <View className="w-1/3 gap-0.5">
         <View className="flex-row items-center gap-3">
-          <Ring night={night} goalMinutes={goalMinutes} size={RING_WIDE_PX} />
-          <Headline night={night} scale="m" />
+          <Ring night={night} goalMinutes={goalMinutes} size={fit.ring} />
+          <Headline night={night} scale={fit.scale} />
         </View>
         <TimesLine night={night} />
         <Goal night={night} goalMinutes={goalMinutes} long />
@@ -79,35 +84,15 @@ function WideFace({ night, goalMinutes }: NightProps): ReactNode {
   );
 }
 
-function StackedFace({ night, goalMinutes }: NightProps): ReactNode {
-  return (
-    <View className="flex-1 justify-between gap-2">
-      <View className="flex-row items-center gap-3">
-        <Ring night={night} goalMinutes={goalMinutes} size={RING_STACKED_PX} />
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Headline night={night} scale="m" />
-          <TimesLine night={night} />
-        </View>
-        <View className="w-2/5">
-          <Goal night={night} goalMinutes={goalMinutes} long />
-        </View>
-      </View>
-      <NightChart night={night} height={STACKED_CHART_PX} />
-      <LegendRow night={night} />
-    </View>
-  );
-}
-
 function NightFace({ layout, ...props }: NightProps & { readonly layout: RowLayout }): ReactNode {
   switch (layout) {
     case 'tile':
       return <TileFace {...props} />;
     case 'split':
+    case 'tall':
       return <SplitFace {...props} />;
     case 'wide':
       return <WideFace {...props} />;
-    case 'tall':
-      return <StackedFace {...props} />;
   }
 }
 
@@ -130,9 +115,9 @@ function NapFaceView({
     return headline;
   }
   return (
-    <View className={layout === 'tall' ? 'flex-1 justify-between gap-3' : 'flex-1 flex-row gap-5'}>
-      <View className={layout === 'tall' ? '' : 'w-2/5 justify-center'}>{headline}</View>
-      <View className={layout === 'tall' ? '' : 'min-w-0 flex-1 justify-center'}>
+    <View className="flex-1 flex-row gap-5">
+      <View className="w-2/5">{headline}</View>
+      <View className="min-w-0 flex-1">
         <NapBar face={face} />
       </View>
     </View>
@@ -141,13 +126,15 @@ function NapFaceView({
 
 function EmptyFace({ layout }: { readonly layout: RowLayout }): ReactNode {
   return (
-    <View className="flex-1 justify-between gap-2">
-      <WidgetEmpty
-        icon="moon"
-        colour="sleep-core"
-        title="No sleep recorded"
-        body="Wear your watch to bed to see last night here."
-      />
+    <View className="flex-1 gap-2">
+      <View>
+        <WidgetEmpty
+          icon="moon"
+          colour="sleep-core"
+          title="No sleep recorded"
+          body="Wear your watch to bed to see last night here."
+        />
+      </View>
       {layout === 'tile' ? null : <GhostChart />}
     </View>
   );

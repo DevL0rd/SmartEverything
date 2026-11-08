@@ -91,14 +91,14 @@ describe('changing the Access of a chat that is open on a machine', () => {
 
     const session = await rig.service.permission(rig.owner, chat.id, change(epoch, READ_ONLY));
 
-    expect(rig.opened.store.harnessCoordination.permissionChange(session.session_id)).toBeNull();
+    expect(rig.opened.store.harnessSessions.permissionChange(session.session_id)).toBeNull();
   });
 
   it('settles a change left pending by a restart when the chat is opened again', async () => {
     const { chat, epoch, close } = await openOn(rig.desk);
     const input = change(epoch, READ_ONLY);
     const session = rig.service.state(rig.owner, chat.id);
-    rig.opened.store.harnessCoordination.begin(input.operation_id, session.session_id, {
+    rig.opened.store.harnessSessions.begin(input.operation_id, session.session_id, {
       kind: 'permission',
       ...input,
     });
@@ -107,7 +107,7 @@ describe('changing the Access of a chat that is open on a machine', () => {
     const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
 
     expect(open.permission).toStrictEqual(READ_ONLY);
-    expect(rig.opened.store.harnessCoordination.permissionChange(session.session_id)).toBeNull();
+    expect(rig.opened.store.harnessSessions.permissionChange(session.session_id)).toBeNull();
     expect(rig.service.binding(rig.opened.store.aiChats.chat(chat.id)).permission).toStrictEqual(
       READ_ONLY,
     );

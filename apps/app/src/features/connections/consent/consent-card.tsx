@@ -29,7 +29,7 @@ export function ConsentDetails({ request }: { readonly request: McpConsentReques
         </View>
       ))}
       {request.clientUri === null ? null : (
-        <Text variant="footnote" tone="variant" numberOfLines={1}>
+        <Text variant="footnote" tone="variant">
           {request.clientUri}
         </Text>
       )}

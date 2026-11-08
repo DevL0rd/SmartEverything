@@ -12,6 +12,7 @@ import type { DecisionLog } from './driver/decisions';
 import type { LiveSinkParts } from './driver/live-sink';
 import type { DriverPorts, FinishedRun, RefusedStart } from './driver/ports';
 import type { ContextPorts } from './engine-v3-context';
+import type { KindCatalog } from './plugin-kinds/catalog';
 import type { StartedRun } from './webhooks/gateway';
 import type { Performer } from './engine-v3-effects';
 import type { Subject } from './engine-v3-start';
@@ -35,6 +36,7 @@ export interface EngineV3Ports {
   readonly zone: () => string;
   readonly repositories: EngineRepositories;
   readonly world: Pick<ContextPorts, 'reads' | 'persistent' | 'stateMemory'>;
+  readonly kinds: KindCatalog;
   readonly effects: Performer;
   readonly retain: (runId: string, rows: readonly CommandRow[]) => void;
   readonly watch: DriverPorts['watch'];

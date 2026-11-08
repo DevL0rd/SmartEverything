@@ -7,6 +7,7 @@ import {
   REACH_SETTINGS,
   REACH_SETTINGS_CHANGE,
 } from '../reach';
+import { SPEECH_VOICE } from '../one-shot-speech';
 import { NO_BODY, endpoint } from './endpoint';
 import { ID, NOTHING, queryLimit } from './primitives';
 
@@ -55,6 +56,21 @@ export type ReachTarget = z.output<typeof REACH_TARGET>;
 export const SPEAK = z.strictObject({
   target: REACH_TARGET,
   text: z.string().trim().min(1).max(1000).describe('Exactly what to say, said once word for word'),
+  priority: z
+    .enum(['queue', 'interrupt'])
+    .optional()
+    .describe(
+      'queue (the default) speaks after what is playing on the speaker; interrupt takes the speaker over from what is playing',
+    ),
+  volume: z
+    .number()
+    .min(0)
+    .max(100)
+    .optional()
+    .describe('How loud, in percent of the normal level; left out it is the normal level'),
+  voice: SPEECH_VOICE.optional().describe(
+    'Which voice says it; the voice chosen in settings when left out',
+  ),
 });
 
 export type Speak = z.output<typeof SPEAK>;
@@ -71,6 +87,15 @@ export const NOTIFY_PERSON = z.strictObject({
   personId: PERSON,
   text: z.string().trim().min(1).max(2000).describe('The message'),
   urgent: URGENT,
+  image: ID.optional().describe('A picture id from camera_snapshot to show with the message'),
+  tag: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe('A later message with the same tag replaces the earlier notification'),
+  link: z.string().trim().min(1).optional().describe('The page of the app the notification opens'),
+  sound: z.string().trim().min(1).optional().describe('The sound the phone plays for it'),
 });
 
 export type NotifyPerson = z.output<typeof NOTIFY_PERSON>;

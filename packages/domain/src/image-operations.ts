@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { ASSISTANT_ATTACHMENT, IMAGE_MODEL_SETTING, type ImageModelChoice } from './assistant';
 import { ApiError } from './api/errors';
+import { IMAGE_COUNT, IMAGE_DEFAULT_OPTIONS, IMAGE_RESULTS_MAX } from './image-defaults';
 
 export const IMAGE_BYTES_MAX = 20 * 1024 * 1024;
 export const IMAGE_INPUT_BYTES_MAX = 24 * 1024 * 1024;
 export const IMAGE_OUTPUT_BYTES_MAX = 120 * 1024 * 1024;
 export const IMAGE_PIXELS_MAX = 64 * 1024 * 1024;
-export const IMAGE_RESULTS_MAX = 4;
 export const IMAGE_REFERENCES_MAX = 10;
 export const IMAGE_MIME = z.enum(['image/png', 'image/jpeg', 'image/webp']);
 export const IMAGE_SELECTOR = z.discriminatedUnion('kind', [
@@ -22,6 +22,7 @@ export const IMAGE_PARAMETER = z.discriminatedUnion('type', [
   z.object({ type: z.literal('range'), min: z.number(), max: z.number() }),
   z.object({ type: z.literal('boolean') }),
 ]);
+export type ImageParameter = z.infer<typeof IMAGE_PARAMETER>;
 export const IMAGE_ENDPOINT = z.object({
   model: z.string().min(1).max(200),
   name: z.string().min(1).max(200),
@@ -38,15 +39,8 @@ export const IMAGE_ENDPOINT = z.object({
 });
 export type ImageEndpoint = z.infer<typeof IMAGE_ENDPOINT>;
 export const IMAGE_OPTIONS = z.strictObject({
-  n: z.int().min(1).max(IMAGE_RESULTS_MAX).default(1),
-  aspect_ratio: z.string().max(40).optional(),
-  resolution: z.string().max(40).optional(),
-  size: z.string().max(40).optional(),
-  quality: z.string().max(40).optional(),
-  output_format: z.enum(['png', 'jpeg', 'webp']).optional(),
-  background: z.string().max(40).optional(),
-  output_compression: z.int().min(0).max(100).optional(),
-  seed: z.int().optional(),
+  ...IMAGE_DEFAULT_OPTIONS.shape,
+  n: IMAGE_COUNT.default(1),
   stream: z.boolean().default(false),
 });
 const REQUEST_FIELDS = {
@@ -75,13 +69,31 @@ export const IMAGE_OPERATION_REQUEST = z.discriminatedUnion('mode', [
 export type ImageOperationRequest = z.infer<typeof IMAGE_OPERATION_REQUEST>;
 export const IMAGE_AI_OPTIONS = z.strictObject({
   n: IMAGE_OPTIONS.shape.n.describe(
-    'How many variants of this one prompt to make; use separate requests for different prompts',
+    'How many variants of this one prompt to make; use separate requests for different prompts, and leave it out unless the person asks for more than one',
   ),
   aspect_ratio: IMAGE_OPTIONS.shape.aspect_ratio.describe(
-    'Shape that suits the picture, such as 1:1, 16:9, 9:16, 4:3, 3:2 or 2:3; leave out to let the model choose. Quality and resolution are always set to the highest the model offers',
+    'Shape of the picture, such as 1:1, 16:9, 9:16, 4:3, 3:2 or 2:3; leave it out unless the person asks for a different shape, because the defaults saved in the app for the image model apply',
+  ),
+  resolution: IMAGE_OPTIONS.shape.resolution.describe(
+    'Resolution tier the model offers, such as 1K, 2K or 4K; leave it out unless the person asks for a different resolution, because the defaults saved in the app for the image model apply',
+  ),
+  quality: IMAGE_OPTIONS.shape.quality.describe(
+    'Quality tier the model offers, such as low, medium, high or hd; leave it out unless the person asks for a different quality, because the defaults saved in the app for the image model apply',
+  ),
+  size: IMAGE_OPTIONS.shape.size.describe(
+    'Exact pixel size, such as 1536x1024; leave it out unless the person asks for an exact size, because the defaults saved in the app for the image model apply',
+  ),
+  output_format: IMAGE_OPTIONS.shape.output_format.describe(
+    'png, jpeg or webp; leave it out unless the person asks for a different format, because the defaults saved in the app for the image model apply',
   ),
   background: IMAGE_OPTIONS.shape.background.describe(
-    'transparent for a cutout with no background, opaque or auto otherwise',
+    'transparent for a cutout with no background, opaque or auto otherwise; leave it out unless the person asks for a different background, because the defaults saved in the app for the image model apply',
+  ),
+  output_compression: IMAGE_OPTIONS.shape.output_compression.describe(
+    'Compression from 0 to 100 percent; leave it out unless the person asks for a compression, because the defaults saved in the app for the image model apply',
+  ),
+  seed: IMAGE_OPTIONS.shape.seed.describe(
+    'Seed that makes a repeated request give the same picture; leave it out unless the person asks for a seed, because the defaults saved in the app for the image model apply',
   ),
 });
 export const IMAGE_REFERENCE_WORDS = ['latest', 'latestUploaded', 'latestGenerated'] as const;
@@ -111,7 +123,7 @@ const INPUT_FIELDS = {
   model: REQUEST_FIELDS.model
     .optional()
     .describe(
-      'An image model id from model_read view images; left out, the model the person picked in the app',
+      'An image model id from model_read view images; leave it out to use the model picked in the app, which is required whenever the person did not ask for a different model',
     ),
   providerTag: z
     .string()
@@ -119,7 +131,7 @@ const INPUT_FIELDS = {
     .max(200)
     .optional()
     .describe(
-      'The provider_tag from model_read view images; only with a model that has more than one',
+      'The provider_tag from model_read view images for the model given; only with a model that has more than one endpoint, and never without one',
     ),
   options: IMAGE_AI_OPTIONS.prefault({}),
 };
@@ -239,7 +251,9 @@ export const IMAGE_OPERATION_RECEIPT = z.object({
   profile_id: z.uuid(),
   chat_id: z.uuid(),
   request: IMAGE_OPERATION_REQUEST_READ,
-  endpoint: IMAGE_ENDPOINT,
+  endpoint: IMAGE_ENDPOINT.describe(
+    'The model and provider that made, or tried to make, the image',
+  ),
   origin: IMAGE_OPERATION_ORIGIN.nullable().default(null),
   inputs: z.array(z.object(IMAGE_RESOLVED_INPUT.shape)),
   state: z.enum(['reserved', 'running', 'completed', 'failed', 'cancelled', 'unknown']),

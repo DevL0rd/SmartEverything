@@ -22,6 +22,14 @@ export const CHAT_LINK_PAGES = ['chat', 'costs', 'plugin', 'person'] as const;
 
 export type ChatLinkPage = (typeof CHAT_LINK_PAGES)[number];
 
+export const PLANNER_WIDGET_VIEWS = ['day', 'item', 'alarm', 'timer'] as const;
+
+export type PlannerWidgetView = (typeof PLANNER_WIDGET_VIEWS)[number];
+
+export const PHOTOS_WIDGET_VIEWS = ['item', 'album', 'memory', 'month'] as const;
+
+export type PhotosWidgetView = (typeof PHOTOS_WIDGET_VIEWS)[number];
+
 export const CHAT_WIDGET = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('device'), id: ID }),
   z.strictObject({ kind: z.literal('remote'), id: ID }),
@@ -41,6 +49,17 @@ export const CHAT_WIDGET = z.discriminatedUnion('kind', [
     kind: z.literal('board'),
     type: BOARD_WIDGET_TYPE,
     options: z.record(z.string().min(1).max(40), z.string().min(1).max(120)).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('planner'),
+    view: z.enum(PLANNER_WIDGET_VIEWS),
+    id: ID.optional(),
+    day: DAY.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('photos'),
+    view: z.enum(PHOTOS_WIDGET_VIEWS),
+    id: z.string().min(1).max(80),
   }),
   z.strictObject({ kind: z.literal('weather') }),
   z.strictObject({ kind: z.literal('scenes') }),
@@ -95,6 +114,8 @@ export const CHAT_WIDGET_GUIDE: Readonly<Record<ChatWidgetKind, string>> = {
   nutrition: `part (${NUTRITION_WIDGET_PARTS.join(', ')}), optional day (YYYY-MM-DD): the day's food or water totals`,
   board:
     'type (one of the board types given with the reply context, pluginId.widgetId for what a plugin adds), optional options: a plugin status board; an unknown type is refused with the types that exist',
+  planner: `view (${PLANNER_WIDGET_VIEWS.join(', ')}), id (item, alarm or timer id from the planner reads; not for day), optional day (YYYY-MM-DD, for day): the person's planner day, one task or event, an alarm or a timer`,
+  photos: `view (${PHOTOS_WIDGET_VIEWS.join(', ')}), id (a file id, an album id, a memory id or a month as YYYY-MM from drive_read): a photo, an album, a memory or a month of the person's library`,
   weather: 'the current weather and forecast',
   scenes: 'the scenes of the home, to run with a tap',
   setting_link:
@@ -118,7 +139,11 @@ function optionsKey(options: Readonly<Record<string, string>> | undefined): stri
     .join('&');
 }
 
-function specialKey(widget: ChatWidget): string | null {
+function planner(widget: Extract<ChatWidget, { kind: 'planner' }>): string {
+  return `planner:${widget.view}:${widget.id ?? ''}:${widget.day ?? ''}`;
+}
+
+function dataKey(widget: ChatWidget): string | null {
   if (widget.kind === 'health') {
     return `health:${widget.metric}:${widget.range}:${widget.day ?? ''}`;
   }
@@ -128,10 +153,21 @@ function specialKey(widget: ChatWidget): string | null {
   if (widget.kind === 'board') {
     return `board:${widget.type}:${optionsKey(widget.options)}`;
   }
+  if (widget.kind === 'planner') {
+    return planner(widget);
+  }
+  return widget.kind === 'photos' ? `photos:${widget.view}:${widget.id}` : null;
+}
+
+function linkKey(widget: ChatWidget): string | null {
   if (widget.kind === 'page_link') {
     return `page_link:${widget.page}:${widget.id ?? ''}`;
   }
   return widget.kind === 'setting_link' ? `setting_link:${widget.setting}` : null;
+}
+
+function specialKey(widget: ChatWidget): string | null {
+  return dataKey(widget) ?? linkKey(widget);
 }
 
 export function chatWidgetKey(widget: ChatWidget): string {

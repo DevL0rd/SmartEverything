@@ -12,7 +12,6 @@ import { BodyView } from './body-view';
 import { extensionIcon } from './extension-icon';
 
 const SECTION_MIN_WIDTH = 320;
-const SECTION_COLUMNS = 2;
 
 function Sections({
   ui,
@@ -24,8 +23,15 @@ function Sections({
   const page = ui.pages.find((candidate) => candidate.id === pageId);
   if (page === undefined) return <PageGone />;
   return (
-    <Screen maxWidth="detail" header={<PageHeader title={page.title} subtitle={ui.name} back />}>
-      <Grid minItemWidth={SECTION_MIN_WIDTH} maxColumns={SECTION_COLUMNS}>
+    <Screen
+      header={<PageHeader title={page.title} titleLines="wrap" subtitle={ui.name} back />}
+    >
+      <Grid
+        minItemWidth={SECTION_MIN_WIDTH}
+        maxColumns={page.sections.length}
+        cellClassName="max-w-reading"
+        stretchLastRow={false}
+      >
         {page.sections.map((section, index) => (
           <Card
             key={`${String(index)}:${section.title}`}

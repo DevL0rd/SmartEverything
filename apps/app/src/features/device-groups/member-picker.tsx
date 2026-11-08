@@ -37,12 +37,18 @@ function SectionHeading({
   const all = selected === section.devices.length;
   return (
     <View className="flex-row items-end justify-between gap-2 pt-2">
-      <Text variant="footnote" tone="variant" accessibilityRole="header" className="pb-1">
+      <Text
+        variant="footnote"
+        tone="variant"
+        accessibilityRole="header"
+        className="min-w-0 flex-1 pb-1"
+      >
         {`${section.title} · ${String(selected)} of ${String(section.devices.length)}`}
       </Text>
       {busy ? null : (
         <SectionAction
-          label={all ? `Clear ${section.title}` : `Select all in ${section.title}`}
+          label={all ? 'Clear' : 'Select all'}
+          spoken={all ? `Clear ${section.title}` : `Select all in ${section.title}`}
           onPress={() => {
             onChange(withSection(members, section, !all));
           }}

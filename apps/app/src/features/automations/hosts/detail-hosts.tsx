@@ -42,7 +42,7 @@ function Detail({ automationId }: { readonly automationId: string }): ReactNode 
   const environment = useDetailEnvironment();
   const onOpenRun = useOpenRun();
   return (
-    <PageShell title={row?.name ?? 'Automation'}>
+    <PageShell title={row?.name ?? 'Automation'} maxWidth={row === null ? 'reading' : 'full'}>
       <DetailScreen
         automationId={automationId}
         environment={environment}
@@ -68,7 +68,7 @@ function Runs({ automationId }: { readonly automationId: string | null }): React
   const onOpenRun = useOpenRun();
   const title = automationId === null ? 'Run history' : row === null ? 'Runs' : `${row.name} runs`;
   return (
-    <PageShell title={title}>
+    <PageShell title={title} maxWidth="full">
       <RunsScreen automationId={automationId} timeZone={timeZone} onOpenRun={onOpenRun} />
     </PageShell>
   );

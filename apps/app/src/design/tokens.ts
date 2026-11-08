@@ -70,15 +70,15 @@ interface AccentInk {
 export const ACCENTS: Readonly<Record<AccentName, Readonly<Record<ThemeName, AccentInk>>>> = {
   amber: {
     dark: { primary: '#F2B45E', onPrimary: '#1A1206' },
-    light: { primary: '#A9620A', onPrimary: '#FFFFFF' },
+    light: { primary: '#955607', onPrimary: '#FFFFFF' },
   },
   aqua: {
     dark: { primary: '#5ED3CF', onPrimary: '#04201F' },
-    light: { primary: '#00808A', onPrimary: '#FFFFFF' },
+    light: { primary: '#00727A', onPrimary: '#FFFFFF' },
   },
   rose: {
     dark: { primary: '#F49A8E', onPrimary: '#2A0C08' },
-    light: { primary: '#BF3F4E', onPrimary: '#FFFFFF' },
+    light: { primary: '#BA3C4A', onPrimary: '#FFFFFF' },
   },
   violet: {
     dark: { primary: '#A99BFF', onPrimary: '#140F33' },
@@ -148,7 +148,7 @@ export const SEMANTIC_SIZES: Readonly<Record<Idiom, Readonly<Record<Density, Sem
       rowH: 56,
       rowH2: 72,
       gridGap: 12,
-      sectionGap: 24,
+      sectionGap: 20,
       cardPad: 16,
       rowUnit: 80,
       gutterShrink: 0,
@@ -159,7 +159,7 @@ export const SEMANTIC_SIZES: Readonly<Record<Idiom, Readonly<Record<Density, Sem
       rowH: 52,
       rowH2: 64,
       gridGap: 8,
-      sectionGap: 20,
+      sectionGap: 16,
       cardPad: 12,
       rowUnit: 80,
       gutterShrink: 4,
@@ -172,7 +172,7 @@ export const SEMANTIC_SIZES: Readonly<Record<Idiom, Readonly<Record<Density, Sem
       rowH: 40,
       rowH2: 52,
       gridGap: 16,
-      sectionGap: 32,
+      sectionGap: 24,
       cardPad: 20,
       rowUnit: 72,
       gutterShrink: 0,
@@ -183,7 +183,7 @@ export const SEMANTIC_SIZES: Readonly<Record<Idiom, Readonly<Record<Density, Sem
       rowH: 36,
       rowH2: 44,
       gridGap: 12,
-      sectionGap: 24,
+      sectionGap: 20,
       cardPad: 16,
       rowUnit: 72,
       gutterShrink: 8,
@@ -191,9 +191,20 @@ export const SEMANTIC_SIZES: Readonly<Record<Idiom, Readonly<Record<Density, Sem
   },
 };
 
-export const CONTAINER_WIDTH = { dashboard: 1440 } as const;
+export function controlHitSlop(idiom: Idiom, density: Density): number {
+  const { touchMin, controlH } = SEMANTIC_SIZES[idiom][density];
+  return Math.max(0, (touchMin - controlH) / 2);
+}
+
+export const CONTAINER_WIDTH = { dashboard: 1440, detail: 1120, reading: 720 } as const;
+
+export function gutterOf(width: WidthClass, idiom: Idiom, density: Density): number {
+  return GUTTER[width] - SEMANTIC_SIZES[idiom][density].gutterShrink;
+}
 
 export type WidthClass = 'compact' | 'medium' | 'expanded' | 'large' | 'xlarge';
+
+export const WIDTH_BREAKPOINTS = { medium: 600, expanded: 840, large: 1200, xlarge: 1600 } as const;
 
 export const GUTTER: Readonly<Record<WidthClass, number>> = {
   compact: 16,

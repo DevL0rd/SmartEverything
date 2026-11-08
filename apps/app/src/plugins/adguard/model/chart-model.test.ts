@@ -45,7 +45,7 @@ describe('tooltip and summary', () => {
 
   it('writes lookups, blocked and the blocked share for one bar', () => {
     expect(tooltipOf(must(bars[0]))).toBe(
-      `${must(bars[0]).label} · 1,240 lookups · 180 blocked (15 %)`,
+      `${must(bars[0]).label} · 1,240 lookups · 180 blocked (15\u00a0%)`,
     );
   });
 

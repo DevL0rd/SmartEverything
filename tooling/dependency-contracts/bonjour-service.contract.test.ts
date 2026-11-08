@@ -5,7 +5,9 @@ import { installedVersion } from './versions';
 
 describe('bonjour-service contract', () => {
   it('is declared by the hub at the installed version', () => {
-    expect(declaredVersion(HUB_MANIFEST, 'bonjour-service')).toBe(installedVersion('bonjour-service'));
+    expect(declaredVersion(HUB_MANIFEST, 'bonjour-service')).toBe(
+      installedVersion('bonjour-service'),
+    );
   });
 
   it('builds browsers for a service type that report found and lost services', () => {

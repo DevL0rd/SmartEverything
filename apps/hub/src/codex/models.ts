@@ -5,8 +5,9 @@ import { CodexRuntimeError } from './errors';
 export async function modelsOf(
   client: CodexClient,
   deviceId: string,
-): Promise<ComputerRuntimeModel[]> {
+): Promise<{ readonly models: ComputerRuntimeModel[]; readonly defaultModel: string | null }> {
   const models: ComputerRuntimeModel[] = [];
+  let defaultModel: string | null = null;
   let cursor: string | null = null;
   const seen = new Set<string>();
   do {
@@ -17,7 +18,8 @@ export async function modelsOf(
         ...(cursor === null ? {} : { cursor }),
       }),
     );
-    for (const model of page.data)
+    for (const model of page.data) {
+      if (model.isDefault === true) defaultModel = model.id;
       models.push({
         runtime: 'codex',
         device_id: deviceId,
@@ -33,6 +35,7 @@ export async function modelsOf(
         input_modalities: model.inputModalities.filter((modality) => modality !== 'audio'),
         service_tiers: model.serviceTiers.map((tier) => tier.id),
       });
+    }
     cursor = page.nextCursor;
     if (cursor !== null && seen.has(cursor))
       throw new CodexRuntimeError('models', 'Codex repeated its model pagination cursor.');
@@ -40,5 +43,5 @@ export async function modelsOf(
     if (models.length > 500)
       throw new CodexRuntimeError('models', 'Codex model catalogue exceeds its bounded capacity.');
   } while (cursor !== null);
-  return models;
+  return { models, defaultModel };
 }

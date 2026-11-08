@@ -22,6 +22,24 @@ export function warningBuzz(): void {
   }
 }
 
+export function lightTap(): void {
+  if (isNative()) {
+    felt(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
+  }
+}
+
+export function mediumTap(): void {
+  if (isNative()) {
+    felt(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+  }
+}
+
+export function successBuzz(): void {
+  if (isNative()) {
+    felt(Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+  }
+}
+
 export function heavyThud(): void {
   if (isNative()) {
     felt(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy));

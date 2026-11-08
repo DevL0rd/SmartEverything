@@ -27,9 +27,12 @@ const SECTIONS: readonly { readonly title: string; readonly body: string }[] = [
 
 export function PrivacyContent(): ReactNode {
   return (
-    <View className="gap-section-gap">
+    <View className="gap-section-gap web:flex-row web:flex-wrap web:items-start">
       {SECTIONS.map((section) => (
-        <View key={section.title} className="gap-2">
+        <View
+          key={section.title}
+          className="min-w-0 max-w-reading gap-2 web:shrink web:grow web:basis-96"
+        >
           <Text variant="title-3" accessibilityRole="header">
             {section.title}
           </Text>

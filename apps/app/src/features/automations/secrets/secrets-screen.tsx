@@ -53,18 +53,19 @@ function Rows(props: {
   readonly onRemove: (row: SecretRowModel) => void;
 }): ReactNode {
   return (
-    <View className="gap-3">
+    <View className="flex-row flex-wrap items-start gap-3">
       {props.rows.map((row) => {
         const verdict = props.refusedId === row.id ? removeVerdict(row) : null;
         return (
-          <SecretRow
-            key={row.id}
-            row={row}
-            readOnly={false}
-            refusal={verdict === null || verdict.allowed ? null : verdict}
-            onReplace={props.onReplace}
-            onRemove={props.onRemove}
-          />
+          <View key={row.id} className="min-w-0 max-w-reading grow shrink basis-96">
+            <SecretRow
+              row={row}
+              readOnly={false}
+              refusal={verdict === null || verdict.allowed ? null : verdict}
+              onReplace={props.onReplace}
+              onRemove={props.onRemove}
+            />
+          </View>
         );
       })}
     </View>
@@ -121,10 +122,12 @@ export function SecretsScreen({
   const listed = owner && rows.length > 0;
   return (
     <View className="gap-section-gap">
-      <Heading owner={owner} onAdd={flow.add} />
-      {flow.failure === null ? null : (
-        <Banner tone="critical" title="Not removed" body={flow.failure} wrapBody />
-      )}
+      <View className="w-full max-w-reading gap-section-gap">
+        <Heading owner={owner} onAdd={flow.add} />
+        {flow.failure === null ? null : (
+          <Banner tone="critical" title="Not removed" body={flow.failure} wrapBody />
+        )}
+      </View>
       {owner ? null : <ReadOnly rows={rows} />}
       {owner && rows.length === 0 ? <Empty onAdd={flow.add} /> : null}
       {listed ? (

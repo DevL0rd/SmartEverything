@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import type { TableRow } from '@smarteverything/domain';
 import { emptyState, makeTable } from '../store/state';
 import type { SearchTables, SourceLinks } from './sources';
@@ -45,7 +46,10 @@ function tablesOf(rows: readonly Automation[]): SearchTables {
     plugins: tables.plugins,
     pluginStreams: tables.plugin_streams,
     pluginUi: tables.plugin_ui,
+    automationPluginKinds: tables.automation_plugin_kinds,
     chats: [],
+    homeMaps: [],
+    modelCategories: [],
     extensions: undefined,
     configuration: undefined,
     inventory: undefined,
@@ -60,7 +64,7 @@ describe('automationRuntimePages', () => {
   it('adds the flowchart and actions under every stored automation', () => {
     const id = rowId(1);
     const out = linksOf();
-    const pages = automationRuntimePages(tablesOf([morning(1)]), out);
+    const pages = automationRuntimePages(tablesOf([morning(1)]), out, STATIC_KIND_LOOKUP);
     const paths = pages.map((page) => page.path);
     for (const key of ['flowchart', 'test', 'publish']) {
       expect(paths).toContain(`automation-editor:${id}:${key}`);
@@ -72,7 +76,7 @@ describe('automationRuntimePages', () => {
   it('gives each node of the program its own page that opens the editor on it', () => {
     const id = rowId(1);
     const out = linksOf();
-    const pages = automationRuntimePages(tablesOf([morning(1)]), out);
+    const pages = automationRuntimePages(tablesOf([morning(1)]), out, STATIC_KIND_LOOKUP);
     const nodePages = pages.filter((page) => page.path.startsWith(`automation-editor:${id}:node:`));
     expect(nodePages.length).toBeGreaterThan(0);
     const [first] = nodePages;
@@ -82,13 +86,17 @@ describe('automationRuntimePages', () => {
   });
 
   it('keeps every path unique across automations', () => {
-    const paths = automationRuntimePages(tablesOf([morning(1), morning(2)]), linksOf()).map(
-      (page) => page.path,
-    );
+    const paths = automationRuntimePages(
+      tablesOf([morning(1), morning(2)]),
+      linksOf(),
+      STATIC_KIND_LOOKUP,
+    ).map((page) => page.path);
     expect(new Set(paths).size).toBe(paths.length);
   });
 
   it('gives no editor pages to a stored row that is not a readable program', () => {
-    expect(automationRuntimePages(tablesOf([unreadable(1)]), linksOf())).toEqual([]);
+    expect(
+      automationRuntimePages(tablesOf([unreadable(1)]), linksOf(), STATIC_KIND_LOOKUP),
+    ).toEqual([]);
   });
 });

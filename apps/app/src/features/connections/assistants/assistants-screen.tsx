@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { revokeOAuthGrant } from '../../../api/access';
 import { RowBrand } from '../row-brand';
@@ -9,6 +10,7 @@ import { ActionRow, NavRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
 import { notifyFailure } from '../../../components/toast-store';
+import { isNative } from '../../../design/platform';
 import { useMinute } from '../../../store/clock';
 import { useConsentRequests, useRows, useSettings } from '../../../store/selectors';
 import { ApprovalCode } from '../consent/approval-code';
@@ -20,19 +22,23 @@ import { confirmRevoke, useHubLive, useOfflineBanner } from './revoke-access';
 
 import { trackConnection } from '../connections-log';
 import { background } from '@smarteverything/logging';
+
+const SECTION_LANE = 'min-w-0 web:max-w-reading web:basis-picker web:shrink web:grow';
+
 function Waiting(): ReactNode {
   const requests = useConsentRequests();
   if (requests.length === 0) {
     return null;
   }
   return (
-    <List inset title="Waiting for you">
+    <List inset title="Waiting for you" className={SECTION_LANE}>
       {requests.map((request) => (
         <ListRow
           key={request.id}
           icon="key"
           iconTone="primary"
           title={request.clientName}
+          wrapTitle
           subtitle="Wants to use your home"
           href={href.consent(request.id)}
           chevron
@@ -47,7 +53,7 @@ function Assistants(): ReactNode {
   const tokens = useRows('mcp_tokens');
   const now = useMinute();
   return (
-    <List inset title="Assistants">
+    <List inset title="Assistants" className={SECTION_LANE}>
       {ASSISTANTS.map((assistant) => {
         const status = assistantStatus(assistant, clients, tokens, now);
         return (
@@ -90,6 +96,7 @@ function Allowed(): ReactNode {
       inset
       title="Apps you allowed"
       footer="Apps act as you and only see the tools you expose."
+      className={SECTION_LANE}
     >
       {clients.map((client) => {
         const onRevoke = (): void => {
@@ -100,6 +107,7 @@ function Allowed(): ReactNode {
             key={client.id}
             icon="sparkles"
             title={client.name}
+            wrapTitle
             {...(client.uri === null ? {} : { subtitle: client.uri })}
             trailing={
               <IconButton
@@ -123,7 +131,7 @@ function More(): ReactNode {
   const live = useHubLive();
   return (
     <>
-      <List inset>
+      <List inset className={SECTION_LANE}>
         <NavRow
           icon="wrench"
           title="Exposed tools"
@@ -163,11 +171,17 @@ function More(): ReactNode {
 export function AssistantsScreen(): ReactNode {
   const banner = useOfflineBanner();
   return (
-    <SettingsFrame page="assistant/integrations" {...(banner === undefined ? {} : { banner })}>
-      <Waiting />
-      <Assistants />
-      <Allowed />
-      <More />
+    <SettingsFrame
+      page="assistant/integrations"
+      contentWidth={isNative() ? 'reading' : 'full'}
+      {...(banner === undefined ? {} : { banner })}
+    >
+      <View className="gap-section-gap web:flex-row web:flex-wrap web:items-start">
+        <Waiting />
+        <Assistants />
+        <Allowed />
+        <More />
+      </View>
     </SettingsFrame>
   );
 }

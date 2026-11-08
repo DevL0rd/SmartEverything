@@ -1,18 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import {
-  HUB_SERVICE_NAMES,
-  launchAgent,
-  windowsLauncher,
-  windowsRunCommand,
-} from '../src/service/definitions.js';
+import { launchAgent, windowsLauncher, windowsRunCommand } from '../src/service/definitions.js';
 import { macManager } from '../src/service/mac-manager.js';
 import { LingerUnsupportedError, type ManagerContext } from '../src/service/manager.js';
-import { windowsManager } from '../src/service/windows-manager.js';
+import { parseRunValue, windowsManager } from '../src/service/windows-manager.js';
 import { LAUNCH, LOCATIONS, failure, fakeSystem, type FakeSystem } from './support/fake-system.js';
 
 function context(system: FakeSystem): ManagerContext {
   return {
-    names: HUB_SERVICE_NAMES,
     launch: LAUNCH,
     locations: LOCATIONS,
     system,
@@ -58,9 +52,9 @@ describe('macManager', () => {
       system.commands.filter((command) => !command.startsWith('launchctl print')),
     ).toStrictEqual([
       `launchctl bootstrap gui/501 ${LOCATIONS.launchAgentFile}`,
-      'launchctl kickstart gui/501/app.smarteverything.server',
-      'launchctl kickstart -k gui/501/app.smarteverything.server',
-      'launchctl bootout gui/501/app.smarteverything.server',
+      'launchctl kickstart gui/501/app.smarteverything.node',
+      'launchctl kickstart -k gui/501/app.smarteverything.node',
+      'launchctl bootout gui/501/app.smarteverything.node',
     ]);
   });
 
@@ -88,7 +82,7 @@ describe('windowsManager', () => {
       if (args[0] === 'query') {
         return registered === null
           ? failure('reg query', 1)
-          : `    SmartEverything    REG_SZ    ${registered}\r\n`;
+          : `    SmartEverything    REG_SZ    other\r\n    SmartEverything Node    REG_SZ    ${registered}\r\n`;
       }
       return '';
     });
@@ -118,10 +112,15 @@ describe('windowsManager', () => {
     await manager.uninstall();
     expect(system.stored.has(LOCATIONS.windowsLauncherFile)).toBe(false);
     expect(system.commands.filter((command) => !command.startsWith('reg query'))).toStrictEqual([
-      `reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v SmartEverything /t REG_SZ /d ${windowsRunCommand(LOCATIONS.windowsLauncherFile)} /f`,
+      `reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v SmartEverything Node /t REG_SZ /d ${windowsRunCommand(LOCATIONS.windowsLauncherFile)} /f`,
       `wscript.exe //B //Nologo ${LOCATIONS.windowsLauncherFile}`,
-      'reg delete HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v SmartEverything /f',
+      'reg delete HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v SmartEverything Node /f',
     ]);
+  });
+
+  it('reads only its own sign-in value', () => {
+    expect(parseRunValue('    SmartEverything    REG_SZ    x')).toBeNull();
+    expect(parseRunValue('    SmartEverything Node    REG_SZ    x')).toBe('x');
   });
 
   it('passes on reg failures other than a missing value, and has no lingering', async () => {

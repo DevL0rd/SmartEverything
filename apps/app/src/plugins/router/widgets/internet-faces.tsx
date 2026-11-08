@@ -6,22 +6,27 @@ import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { plural } from '../../../format/text';
-import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import type { HeroModel } from '../overview/hero-model';
 import type { SpeedTestRun } from '../router-data';
 import { ServiceMedallion } from '../../shared/service-medallion';
-import { bodyHeightOf, internetFaceOf } from './frame-faces';
-import { compactLayoutOf, pairHeightOf, testBars } from './internet-model';
+import {
+  figureFitOf,
+  GraphFill,
+  type FigureFit,
+  type ServiceLayout,
+} from '../../shared/service-widget-frame';
+import { testBars } from './internet-model';
 import { Caption, DownNotice, Figures, isDown, Progress, StaleLine, Trend } from './internet-parts';
 import type { RouterReady } from './router-widget-frame';
 import { staleCaptionOf } from './stale-caption';
 
-const HISTORY_BAR_HEIGHT = 56;
 const TREND_HOURS = 6;
 const DAY_HOURS = 24;
+const PROGRESS_LEAST = 12;
 
 export interface InternetFaceProps {
   readonly ready: RouterReady;
+  readonly layout: ServiceLayout;
   readonly hero: HeroModel;
   readonly run: SpeedTestRun;
   readonly tests: readonly SpeedTestResult[];
@@ -66,38 +71,67 @@ function Tile({ ready, hero, run }: InternetFaceProps): ReactNode {
   );
 }
 
-function Compact(props: InternetFaceProps): ReactNode {
-  const { ready, hero, run } = props;
-  const { frame } = useWidgetFace();
-  const layout = compactLayoutOf(bodyHeightOf(frame));
-  const trend = hero.stale ? null : layout.trend;
+function Reading({
+  ready,
+  hero,
+  tests,
+  fit,
+}: Pick<InternetFaceProps, 'ready' | 'hero' | 'tests'> & { readonly fit: FigureFit }): ReactNode {
   return (
-    <View className={layout.tight ? 'gap-1' : 'gap-1.5'}>
-      <Figures hero={hero} size={layout.figure} />
-      {run.running ? <Progress run={run} /> : null}
-      {!run.running && trend !== null ? (
+    <View className={fit.gap}>
+      <Figures hero={hero} size={fit.figure} />
+      <Caption
+        snapshot={ready.snapshot}
+        hero={hero}
+        last={tests[0] ?? null}
+        now={ready.now}
+        variant={fit.caption}
+      />
+    </View>
+  );
+}
+
+function Motion({
+  ready,
+  hero,
+  run,
+}: Pick<InternetFaceProps, 'ready' | 'hero' | 'run'>): ReactNode {
+  if (run.running) {
+    return (
+      <GraphFill spaced least={PROGRESS_LEAST}>
+        {() => <Progress run={run} />}
+      </GraphFill>
+    );
+  }
+  return hero.stale ? null : (
+    <GraphFill spaced>
+      {(height) => (
         <Trend
           deviceId={ready.device.id}
           snapshot={ready.snapshot}
           capability="download_rate"
           hours={TREND_HOURS}
           colour="viz-1"
-          height={trend}
+          height={height}
         />
-      ) : null}
-      <Caption
-        snapshot={ready.snapshot}
-        hero={hero}
-        last={props.tests[0] ?? null}
-        now={ready.now}
-      />
+      )}
+    </GraphFill>
+  );
+}
+
+function Compact(props: InternetFaceProps): ReactNode {
+  const fit = figureFitOf(props.layout.room, props.layout.idiom);
+  return (
+    <View className="flex-1">
+      <Reading {...props} fit={fit} />
+      <Motion {...props} />
     </View>
   );
 }
 
 function History({ tests }: { readonly tests: readonly SpeedTestResult[] }): ReactNode {
   return (
-    <View className="gap-1">
+    <View className="min-h-0 flex-1 gap-1 pt-2">
       <Text variant="label" tone="variant">
         Last 6 tests
       </Text>
@@ -106,14 +140,18 @@ function History({ tests }: { readonly tests: readonly SpeedTestResult[] }): Rea
           No speed tests yet
         </Text>
       ) : (
-        <View aria-hidden>
-          <Bars
-            bars={testBars(tests)}
-            colour="viz-1"
-            label="Download of the last 6 tests"
-            height={HISTORY_BAR_HEIGHT}
-          />
-        </View>
+        <GraphFill>
+          {(height) => (
+            <View aria-hidden>
+              <Bars
+                bars={testBars(tests)}
+                colour="viz-1"
+                label="Download of the last 6 tests"
+                height={height}
+              />
+            </View>
+          )}
+        </GraphFill>
       )}
     </View>
   );
@@ -121,41 +159,48 @@ function History({ tests }: { readonly tests: readonly SpeedTestResult[] }): Rea
 
 function Tall(props: InternetFaceProps): ReactNode {
   const online = props.ready.snapshot.clients.filter((client) => client.connected).length;
+  const fit = figureFitOf(props.layout.room, props.layout.idiom);
   return (
-    <View className="flex-1 justify-between gap-2">
-      <Compact {...props} />
+    <View className="flex-1">
+      <View className="gap-1">
+        <Reading {...props} fit={fit} />
+        <Text variant="footnote" tone="variant" numberOfLines={1}>
+          {`${plural(online, 'device')} online`}
+        </Text>
+      </View>
+      <Motion {...props} />
       <History tests={props.tests} />
-      <Text variant="footnote" tone="variant" numberOfLines={1}>
-        {`${plural(online, 'device')} online`}
-      </Text>
     </View>
   );
 }
 
-function Pair({ ready, hero }: InternetFaceProps): ReactNode {
-  const { frame } = useWidgetFace();
-  const height = pairHeightOf(bodyHeightOf(frame));
-  const rows = [
-    { label: 'Download', capability: 'download_rate', colour: 'viz-1', swatch: 'bg-viz-1' },
-    { label: 'Upload', capability: 'upload_rate', colour: 'viz-2', swatch: 'bg-viz-2' },
-  ] as const;
+const SERIES = [
+  { label: 'Download', capability: 'download_rate', colour: 'viz-1', swatch: 'bg-viz-1' },
+  { label: 'Upload', capability: 'upload_rate', colour: 'viz-2', swatch: 'bg-viz-2' },
+] as const;
+
+function Pair({ ready, hero, layout }: InternetFaceProps): ReactNode {
   return (
-    <View className="flex-1 gap-2">
-      {rows.map((row) => (
-        <View key={row.label} className="flex-row items-center gap-2">
+    <View className={cn('flex-1', layout.face === 'wide' ? 'flex-row gap-4' : 'gap-2')}>
+      {SERIES.map((row) => (
+        <View key={row.label} className="min-h-0 flex-1 flex-row items-center gap-2">
           <View aria-hidden className={cn('size-2.5 rounded-full', row.swatch)} />
           <Text variant="caption" tone="variant" className="w-14">
             {row.label}
           </Text>
-          <View className={cn('min-w-0 flex-1', hero.stale && 'opacity-60')}>
-            <Trend
-              deviceId={ready.device.id}
-              snapshot={ready.snapshot}
-              capability={row.capability}
-              hours={DAY_HOURS}
-              colour={row.colour}
-              height={height}
-            />
+          <View className={cn('min-w-0 flex-1 self-stretch', hero.stale && 'opacity-60')}>
+            <GraphFill>
+              {(height) => (
+                <Trend
+                  deviceId={ready.device.id}
+                  snapshot={ready.snapshot}
+                  capability={row.capability}
+                  hours={DAY_HOURS}
+                  colour={row.colour}
+                  height={height}
+                />
+              )}
+            </GraphFill>
           </View>
         </View>
       ))}
@@ -164,21 +209,15 @@ function Pair({ ready, hero }: InternetFaceProps): ReactNode {
 }
 
 function Wide(props: InternetFaceProps): ReactNode {
-  const { ready, hero, run } = props;
+  const fit = figureFitOf(props.layout.room, props.layout.idiom);
   return (
-    <View className="flex-1 flex-row items-center gap-6">
-      <View className="w-2/5 gap-1.5">
-        <Figures hero={hero} size="l" />
-        <Caption
-          snapshot={ready.snapshot}
-          hero={hero}
-          last={props.tests[0] ?? null}
-          now={ready.now}
-        />
+    <View className="flex-1 flex-row gap-6">
+      <View className="w-2/5">
+        <Reading {...props} fit={fit} />
       </View>
-      {run.running ? (
-        <View className="flex-1">
-          <Progress run={run} />
+      {props.run.running ? (
+        <View className="flex-1 justify-center">
+          <Progress run={props.run} />
         </View>
       ) : (
         <Pair {...props} />
@@ -188,8 +227,7 @@ function Wide(props: InternetFaceProps): ReactNode {
 }
 
 export function InternetFace(props: InternetFaceProps): ReactNode {
-  const { cls } = useWidgetFace();
-  switch (internetFaceOf(cls)) {
+  switch (props.layout.face) {
     case 'tile':
       return <Tile {...props} />;
     case 'compact':
@@ -197,6 +235,7 @@ export function InternetFace(props: InternetFaceProps): ReactNode {
     case 'tall':
       return <Tall {...props} />;
     case 'wide':
+    case 'wide-tall':
       return <Wide {...props} />;
   }
 }

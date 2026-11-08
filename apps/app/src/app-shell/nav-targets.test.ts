@@ -17,6 +17,7 @@ vi.mock('./routes', () => ({
   ],
   ROUTES: [
     { key: 'fitness', tab: 'fitness', title: 'Fitness', icon: 'fitness', href: '/fitness' },
+    { key: 'drive', tab: 'drive', title: 'Drive', icon: 'folder', href: '/drive' },
     {
       key: 'fitness-sleep',
       tab: 'fitness',
@@ -66,6 +67,7 @@ const {
 } = await import('./nav-targets');
 
 const ID = '11111111-1111-4111-8111-111111111111';
+const OTHER = '22222222-2222-4222-8222-222222222222';
 const STAMP = '2026-10-17T10:00:00.000Z';
 
 function roomRow(): RoomRow {
@@ -80,10 +82,19 @@ function chatRow(unread: number): AiChatRow {
     title: 'Dinner plan',
     icon: null,
     parent_id: null,
+    helper_name: null,
     source_key: null,
-    engine: { kind: 'openrouter', model: 'x', effort: null },
+    engine: {
+      kind: 'dsh',
+      execution_target: { kind: 'server' },
+      session_id: null,
+      model_route_id: '0e000000-0000-4000-8000-0000000000a1',
+      model: 'x',
+      effort: null,
+    },
     tools: null,
     pinned: false,
+    memory: true,
     archived_at: null,
     cost_micros: 0,
     unread_count: unread,
@@ -147,6 +158,40 @@ describe('where a pin leads', () => {
     ],
   ] as const satisfies readonly [NavOpenTarget, unknown][])('opens %j', (target, expected) => {
     expect(navTargetHref(target)).toEqual(expected);
+  });
+
+  it('opens a Drive folder, with the item and the focus when given', () => {
+    expect(
+      navTargetHref({ kind: 'drive', rootId: ID, path: '/Photos', itemId: null, focus: null }),
+    ).toEqual({
+      pathname: '/drive/root/[rootId]',
+      params: { rootId: ID, path: '/Photos' },
+    });
+    expect(
+      navTargetHref({ kind: 'drive', rootId: ID, path: '/', itemId: OTHER, focus: 'versions' }),
+    ).toEqual({
+      pathname: '/drive/root/[rootId]',
+      params: { rootId: ID, path: '/', item: OTHER, focus: 'versions' },
+    });
+    expect(
+      navTargetHref({ kind: 'drive', rootId: ID, path: '/a', itemId: OTHER, focus: 'conflict' }),
+    ).toEqual({
+      pathname: '/drive/root/[rootId]',
+      params: { rootId: ID, path: '/a', item: OTHER, focus: 'conflict' },
+    });
+  });
+
+  it('keeps the keys of two Drive places apart and names a Drive pin after the page', () => {
+    const folder = { kind: 'drive', rootId: ID, path: '/a', itemId: null, focus: null } as const;
+    const item = { ...folder, itemId: OTHER } as const;
+    expect(navTargetKey(folder)).not.toBe(navTargetKey(item));
+    expect(navTargetKey(folder)).not.toBe(navTargetKey({ ...folder, path: '/b' }));
+    expect(targetFactsOf(folder, emptyState())).toEqual({
+      exists: true,
+      title: 'Drive',
+      icon: 'folder',
+      count: 0,
+    });
   });
 
   it('has no place for a page the app no longer has', () => {

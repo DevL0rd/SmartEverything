@@ -73,12 +73,12 @@ function StepRows({
   readonly rows: readonly FirewallStepResult[];
 }): ReactNode {
   return (
-    <List inset title={title}>
+    <List title={title}>
       {rows.map((row) => (
         <ListRow
           key={row.command}
-          icon="shield"
           title={row.label}
+          wrapTitle
           {...(row.detail === '' ? {} : { subtitle: row.detail })}
           wrapSubtitle
           trailing={
@@ -92,9 +92,9 @@ function StepRows({
 
 function PlannedRows({ plan }: { readonly plan: FirewallPlan }): ReactNode {
   return (
-    <List inset title="What will be added">
+    <List title="What will be added">
       {firewallSteps(plan).map((step) => (
-        <ListRow key={step.command} icon="shield" title={step.label} wrapSubtitle />
+        <ListRow key={step.command} title={step.label} wrapTitle />
       ))}
     </List>
   );

@@ -44,6 +44,8 @@ export const SHOWN_KEYS: readonly TvKey[] = [
   'ch_up',
   'ch_down',
   'play_pause',
+  'play',
+  'pause',
   'rewind',
   'ff',
   'prev_track',

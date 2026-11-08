@@ -3,13 +3,25 @@ import { ipcMain, Notification, type IpcMainInvokeEvent, type WebContents } from
 import { z } from 'zod';
 import { Logger } from '@smarteverything/logging';
 import {
+  APP_UPDATE_CHANNELS,
+  APP_UPDATE_SUMMARY,
   CLIENT_TOKEN,
+  COMPUTER_NODE_PAIRING,
+  HUB_CONNECTION_METADATA,
+  type ComputerNodePairing,
+  MACHINE_UPDATE_OFFER_ID,
   OVERLAY_HOST_VIEW,
+  WEB_UPDATE_APPLY_TARGET,
+  type AppUpdateChannel,
   type FirewallApplyResult,
   type DesktopInvokeChannel,
   type DesktopInvokeChannels,
+  type WebUpdateApplyTarget,
+  type WebUpdateStatus,
 } from '@smarteverything/domain';
 import type { DisplayCapture } from './display-capture.js';
+import { registerClipboardIpc } from './clipboard-ipc.js';
+import { registerPhotosIpc } from './photos/ipc.js';
 import { isAppOrigin } from './origin.js';
 import { ManagedByStableAppError, type ServiceController } from './service/controller.js';
 import type { OverlayDesktop } from './overlay/overlay-desktop.js';
@@ -41,15 +53,26 @@ class NotificationsUnsupportedError extends Error {
   }
 }
 
+export interface WebUpdateIpc {
+  readonly status: () => WebUpdateStatus;
+  readonly check: (channel: AppUpdateChannel) => Promise<WebUpdateStatus>;
+  readonly download: (expectedId: string) => Promise<WebUpdateStatus>;
+  readonly apply: (target: WebUpdateApplyTarget) => Promise<WebUpdateStatus>;
+  readonly confirm: () => Promise<void>;
+  readonly reportFailure: (reason: string) => Promise<void>;
+}
+
 export interface IpcServices {
   readonly takeDeepLinks: (sender: WebContents) => readonly string[];
   readonly onNotificationClick: () => void;
   readonly service: ServiceController;
+  readonly pairComputer: (pairing: ComputerNodePairing) => Promise<void>;
   readonly applyFirewall: (revision: string) => Promise<FirewallApplyResult>;
   readonly talk: TalkDesktop;
   readonly overlay: OverlayDesktop;
   readonly capture: DisplayCapture;
   readonly updates: UpdateController;
+  readonly webUpdates: WebUpdateIpc;
   readonly startUrl: string;
   readonly managedBy: 'stable-app' | undefined;
 }
@@ -60,9 +83,15 @@ const captureSourceIdSchema = z
   .nullable();
 
 const windowSchema = z
-  .strictObject({ url: z.url({ protocol: /^https?$/ }), token: CLIENT_TOKEN })
+  .strictObject({
+    url: z.url({ protocol: /^https?$/ }),
+    token: CLIENT_TOKEN,
+    connection: z.exactOptional(HUB_CONNECTION_METADATA),
+  })
   .nullable();
 const firewallRevisionSchema = z.string().regex(/^[0-9a-f]{16,64}$/);
+const updateChannelSchema = z.enum(APP_UPDATE_CHANNELS);
+const failureReasonSchema = z.string().min(1);
 
 type Handler<C extends DesktopInvokeChannel> = (
   argument: unknown,
@@ -70,6 +99,13 @@ type Handler<C extends DesktopInvokeChannel> = (
 ) => DesktopInvokeChannels[C]['response'] | Promise<DesktopInvokeChannels[C]['response']>;
 
 type Handle = <C extends DesktopInvokeChannel>(channel: C, handler: Handler<C>) => void;
+
+export type ArgumentHandle = <C extends DesktopInvokeChannel>(
+  channel: C,
+  handler: (
+    argument: unknown,
+  ) => DesktopInvokeChannels[C]['response'] | Promise<DesktopInvokeChannels[C]['response']>,
+) => void;
 
 function settled(channel: string, startedAt: number, cause?: unknown): void {
   const durationMs = Date.now() - startedAt;
@@ -157,12 +193,15 @@ export function registerDesktopIpc(services: IpcServices): void {
     services.onNotificationClick();
     return undefined;
   });
+  registerClipboardIpc(handle);
+  registerPhotosIpc(handle);
   registerServiceIpc(services, handle);
   registerOwnerIpc(services, handle);
   registerTalkIpc(services.talk, handle);
   registerOverlayHandlers(services.overlay, handle);
   registerCaptureIpc(services.capture, handle);
   registerUpdateIpc(services.updates, handle);
+  registerWebUpdateIpc(services.webUpdates, handle);
 }
 
 function refuseForStableApp(): never {
@@ -224,7 +263,28 @@ function registerCaptureIpc(capture: DisplayCapture, handle: Handle): void {
 function registerUpdateIpc(updates: UpdateController, handle: Handle): void {
   handle('desktop:update-status', () => updates.status());
   handle('desktop:update-check', () => updates.check());
-  handle('desktop:update-install', () => updates.install());
+  handle('desktop:update-install', (argument) =>
+    updates.install(MACHINE_UPDATE_OFFER_ID.parse(argument)),
+  );
+}
+
+export function registerWebUpdateIpc(web: WebUpdateIpc, handle: ArgumentHandle): void {
+  handle('desktop:web-update-status', () => web.status());
+  handle('desktop:web-update-check', (argument) => web.check(updateChannelSchema.parse(argument)));
+  handle('desktop:web-update-download', (argument) =>
+    web.download(APP_UPDATE_SUMMARY.shape.id.parse(argument)),
+  );
+  handle('desktop:web-update-apply', (argument) =>
+    web.apply(WEB_UPDATE_APPLY_TARGET.parse(argument)),
+  );
+  handle('desktop:web-update-confirm', async () => {
+    await web.confirm();
+    return undefined;
+  });
+  handle('desktop:web-update-report-failure', async (argument) => {
+    await web.reportFailure(failureReasonSchema.parse(argument));
+    return undefined;
+  });
 }
 
 function registerServiceIpc(services: IpcServices, handle: Handle): void {
@@ -233,6 +293,11 @@ function registerServiceIpc(services: IpcServices, handle: Handle): void {
   handle('desktop:server', () => service.server());
   handle('desktop:set-window', async (argument) => {
     await service.setWindow(windowSchema.parse(argument));
+    return undefined;
+  });
+  handle('desktop:computer-pair', async (argument) => {
+    if (services.managedBy === 'stable-app') throw new ManagedByStableAppError();
+    await services.pairComputer(COMPUTER_NODE_PAIRING.parse(argument));
     return undefined;
   });
   handle('desktop:service-status', () => service.status());

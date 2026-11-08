@@ -29,7 +29,7 @@ export function CandidateRow({
       )}
     >
       <View className="min-w-0 flex-1">
-        <Text variant="body-strong" numberOfLines={1}>
+        <Text variant="body-strong">
           {candidate.name}
         </Text>
         <Text variant="caption" tone="faint" numberOfLines={1} className="tabular">

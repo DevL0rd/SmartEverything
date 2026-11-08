@@ -12,6 +12,8 @@ import { Text } from '../../../components/text';
 import { useProviderLink } from '../../../store/selectors';
 import { CONNECT_FLOW, PROVIDER_BRAND, isAddable } from '../model/brands';
 import { SettingsFrame } from '../../../settings/settings-frame';
+import { ACCOUNT_BADGE, isAccount } from '../model/problems';
+import { useAccountBackFocus } from './use-account-back-focus';
 
 function matches(provider: Provider, query: string): boolean {
   const info = PROVIDER_INFO[provider];
@@ -19,16 +21,28 @@ function matches(provider: Provider, query: string): boolean {
   return [info.name, info.brand, info.summary].some((text) => text.toLowerCase().includes(needle));
 }
 
-function ProviderCard({ provider }: { readonly provider: Provider }): ReactNode {
+function ProviderCard({
+  provider,
+  onPress,
+}: {
+  readonly provider: Provider;
+  readonly onPress: () => void;
+}): ReactNode {
   const row = useProviderLink(provider);
   const info = PROVIDER_INFO[provider];
-  const connected = row !== null && row.status !== 'unlinked';
+  const badge = ACCOUNT_BADGE[row?.status ?? 'unlinked'];
+  const label = `${info.name}, ${info.summary}`;
   const target =
-    connected || !isAddable(provider)
+    (row !== null && isAccount(row)) || !isAddable(provider)
       ? href.settings.account(provider)
       : href.connect(CONNECT_FLOW[provider]);
   return (
-    <Card href={target} label={`${info.name}, ${info.summary}`}>
+    <Card
+      href={target}
+      onPress={onPress}
+      label={badge === null ? label : `${label}, ${badge.label}`}
+      className="grow"
+    >
       <View className="flex-row items-start gap-3">
         <BrandMark brand={PROVIDER_BRAND[provider]} size={40} />
         <View className="min-w-0 flex-1 gap-0.5">
@@ -38,8 +52,8 @@ function ProviderCard({ provider }: { readonly provider: Provider }): ReactNode 
           <Text variant="callout" tone="variant" numberOfLines={2}>
             {info.summary}
           </Text>
+          {badge === null ? null : <Badge {...badge} />}
         </View>
-        {connected ? <Badge label="Connected" tone="positive" /> : null}
       </View>
     </Card>
   );
@@ -47,9 +61,10 @@ function ProviderCard({ provider }: { readonly provider: Provider }): ReactNode 
 
 export function AddAccountScreen(): ReactNode {
   const [query, setQuery] = useState('');
+  const rememberFocus = useAccountBackFocus();
   const shown = ADDABLE_PROVIDERS.filter((provider) => matches(provider, query));
   return (
-    <SettingsFrame page="connections/add">
+    <SettingsFrame page="connections/add" contentWidth="detail">
       <SearchField
         value={query}
         onChange={setQuery}
@@ -61,9 +76,9 @@ export function AddAccountScreen(): ReactNode {
           {`Nothing matches “${query.trim()}”`}
         </Text>
       ) : (
-        <Grid minItemWidth={240} maxColumns={2}>
+        <Grid minItemWidth={240} maxColumns={ADDABLE_PROVIDERS.length} stretchLastRow={false}>
           {shown.map((provider) => (
-            <ProviderCard key={provider} provider={provider} />
+            <ProviderCard key={provider} provider={provider} onPress={rememberFocus} />
           ))}
         </Grid>
       )}

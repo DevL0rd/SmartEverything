@@ -10,10 +10,9 @@ import { useFileDrop } from '../../../platform/file-drop';
 import { Composer } from '../components/composer';
 import { DropOverlay } from '../components/drop-overlay';
 import { useAssistantName } from '../data/assistant-data';
-import { resetDraftEngine, useDraftEngine } from '../data/draft-engine';
+import { chooseCoordinator, resetDraftEngine, useDraftEngine } from '../data/draft-engine';
 import { useDraftKeyNeeded, useDraftExecution, useDraftReadiness } from '../data/draft-execution';
 import { useDraftRun, type DraftRun } from '../data/draft-run';
-import { setDraft } from '../data/drafts';
 import { attachFiles } from '../data/uploads';
 import {
   useDraftChatStart,
@@ -41,7 +40,8 @@ interface DraftScreen {
 }
 
 function openMachine(engine: Engine): void {
-  router.setParams({ operation: engine.kind === 'dsh' ? 'device' : 'model' });
+  if (engine.kind === 'dsh') router.setParams({ operation: 'device' });
+  else router.setParams({ operation: 'engine-computer' });
 }
 
 function useDraftScreen(onStarted: (chatId: string) => void): DraftScreen {
@@ -65,8 +65,8 @@ function useDraftScreen(onStarted: (chatId: string) => void): DraftScreen {
     runtimeStopped: readiness.runtimeStopped,
     needsKey: keyNeeded && ready,
     run,
-    draftChat: useDraftChatStart(DRAFT_KEY, execution.engine, actions),
-    sender: useDraftSender(run.host, actions),
+    draftChat: useDraftChatStart(DRAFT_KEY, engine, actions),
+    sender: useDraftSender(DRAFT_KEY, run.host, actions),
   };
 }
 
@@ -87,9 +87,9 @@ export function StartChat({
           run={screen.run}
           loading={screen.loading}
           needsKey={screen.needsKey}
-          onSuggest={(text): void => {
-            setDraft(DRAFT_KEY, text);
-          }}
+          engine={engine}
+          onEngine={screen.setEngine}
+          onCoordinator={chooseCoordinator}
           onOpenMachine={(): void => {
             openMachine(engine);
           }}
@@ -108,7 +108,7 @@ function fixesFor(screen: DraftScreen): readonly ReasonAction[] {
   if ((screen.loading && !screen.runtimeStopped) || screen.needsKey) return [];
   return [
     {
-      label: 'Switch machine',
+      label: screen.engine.kind === 'dsh' ? 'Switch machine' : 'Choose computer',
       onPress: (): void => {
         openMachine(screen.engine);
       },
@@ -121,11 +121,11 @@ function DraftFooter({ screen }: { readonly screen: DraftScreen }): ReactNode {
   const cardRef = useRef<View>(null);
   const { engine, setEngine, sender } = screen;
   return (
-    <View className="w-full max-w-reading gap-2 self-center px-gutter">
+    <View className="w-full gap-2 px-gutter">
       {sender.failure === null ? null : (
         <ReasonLine text={sender.failure} icon="circleX" tone="critical" />
       )}
-      <DraftChatPrompt draftChat={screen.draftChat} canStart={screen.status === null} />
+      <DraftChatPrompt draftChat={screen.draftChat} status={screen.status} />
       <View ref={cardRef}>
         <Composer
           disabled={false}
@@ -146,22 +146,22 @@ function DraftFooter({ screen }: { readonly screen: DraftScreen }): ReactNode {
 
 function DraftChatPrompt({
   draftChat,
-  canStart,
+  status,
 }: {
   readonly draftChat: DraftChatStart;
-  readonly canStart: boolean;
+  readonly status: string | null;
 }): ReactNode {
   if (!draftChat.requested) return null;
   return (
     <View className="flex-row items-center gap-2">
       <Text tone="variant" className="min-w-0 flex-1">
-        {draftChat.problem ?? 'Commands and references work inside a started chat.'}
+        {draftChat.problem ?? status ?? 'Commands and references work inside a started chat.'}
       </Text>
       <Button
         label="Start chat"
         variant="text"
         loading={draftChat.pending}
-        disabled={!canStart}
+        disabled={status !== null}
         onPress={draftChat.start}
       />
     </View>

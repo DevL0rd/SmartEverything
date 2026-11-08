@@ -15,6 +15,7 @@ import type { CameraListening } from '../transcripts/camera-listening';
 import type { Saying } from '../speech/one-shot-speech';
 import type { LiveOpening } from '../talk/relay';
 import type { ServerContext } from './context';
+import { noticeMessenger } from './reach-notice';
 import { emitReachSignals } from './reach-signals';
 import { listeningRoutes, type ListeningRoutes } from './handlers/listening';
 import { reachRoutes, type Reach, type ReachRoutes } from './handlers/reach';
@@ -43,8 +44,7 @@ export interface ReachWiring {
 function assistantOf(context: ServerContext): ReachAssistant {
   const { assistant, store } = context;
   return {
-    conversationChat: (profileId, title): string =>
-      assistant.chats.conversationChat(profileId, title).id,
+    conversationChat: (profileId): string => assistant.chats.conversationChat(profileId).id,
     turn: (chatId, text, origin): void => {
       assistant.runTurn({
         profileId: store.aiChats.chat(chatId).profile_id,
@@ -53,14 +53,7 @@ function assistantOf(context: ServerContext): ReachAssistant {
         origin: outcomeOrigin(origin),
       });
     },
-    message: async (personId, text): Promise<string> => {
-      const chatId = assistant.chats.defaultChat(personId).id;
-      await assistant.post({ text, files: [], profileId: personId, notify: true }, false, {
-        profileId: personId,
-        role: 'owner',
-      });
-      return chatId;
-    },
+    message: noticeMessenger(context),
     aiName: (): string => assistantLabel(store.assistantChat.settings()),
     liveVideo: (): boolean => store.assistantChat.settings().voice.live_video,
     muteMic: (): boolean => store.assistantChat.settings().voice.mute_mic_while_speaking,

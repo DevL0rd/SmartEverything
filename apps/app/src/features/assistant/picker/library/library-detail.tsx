@@ -12,6 +12,7 @@ import { openSourceWebsite } from '../model-search-source';
 import { ProviderLogo } from '../provider-logo';
 import type { PrimaryAction } from './library-model';
 import type { LibraryRow } from './library-rows';
+import { useLibraryActionFocus } from './library-pages';
 
 export function Fact({
   title,
@@ -38,9 +39,7 @@ function priceText(model: ModelChoice, money: Money): string {
 }
 
 function thinkingText(model: ModelChoice): string {
-  return model.efforts.length === 0
-    ? 'None'
-    : ['Default', ...model.efforts.map(effortLabel)].join(', ');
+  return model.efforts.length === 0 ? 'None' : model.efforts.map(effortLabel).join(', ');
 }
 
 function Ranking({
@@ -79,6 +78,23 @@ export interface LibraryDetailProps {
   readonly action: PrimaryAction | null;
 }
 
+function DetailAction({ action }: { readonly action: PrimaryAction | null }): ReactNode {
+  const ref = useLibraryActionFocus();
+  if (action === null) return null;
+  return (
+    <View className="flex-row p-3">
+      <Button
+        ref={ref}
+        label={action.label}
+        size="lg"
+        grow
+        disabled={action.run === null}
+        {...(action.run === null ? {} : { onPress: action.run })}
+      />
+    </View>
+  );
+}
+
 export function LibraryDetail({ row, metrics, source, action }: LibraryDetailProps): ReactNode {
   const money = useMoney();
   const { model } = row.candidate;
@@ -115,17 +131,7 @@ export function LibraryDetail({ row, metrics, source, action }: LibraryDetailPro
           <ReasonLine text={row.reason} icon="warning" tone="warning" />
         )}
       </ScrollView>
-      {action === null ? null : (
-        <View className="flex-row p-3">
-          <Button
-            label={action.label}
-            size="lg"
-            grow
-            disabled={action.run === null}
-            {...(action.run === null ? {} : { onPress: action.run })}
-          />
-        </View>
-      )}
+      <DetailAction action={action} />
     </View>
   );
 }

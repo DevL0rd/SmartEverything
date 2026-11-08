@@ -8,6 +8,10 @@ import {
 import type { BuiltinPlugin } from '../contract';
 import { figureWidget } from '../board-widget';
 import { defineBuiltinPlugin } from '../define';
+import { entryFromSpec } from '../../../models/contributions';
+import { AIBI_AUTOMATION } from './automation';
+import { AIBI_MODEL_MATCH, AIBI_MODELS } from './models';
+import { startWithPickers } from './pickers';
 import { startAibi, type AibiEnvironment } from './runtime';
 import { AIBI_SETTINGS } from './settings';
 import { AIBI_SETTINGS_FORM } from './settings-form';
@@ -60,13 +64,17 @@ const AIBI_MANIFEST: PluginManifestInput = {
     settings: AIBI_SETTINGS_FORM,
     search: 'push',
     deviceFamilies: ['robot'],
+    automation: AIBI_AUTOMATION,
   },
 };
 
 export function createAibiPlugin(environment: AibiEnvironment): BuiltinPlugin {
   return defineBuiltinPlugin({
     manifest: AIBI_MANIFEST,
+    models: AIBI_MODELS.map((spec) =>
+      entryFromSpec(spec, { match: AIBI_MODEL_MATCH, brands: ['AIBI'] }),
+    ),
     settings: AIBI_SETTINGS,
-    start: (ctx) => startAibi(ctx, environment),
+    start: (ctx) => startWithPickers(ctx, (observed) => startAibi(observed, environment)),
   });
 }

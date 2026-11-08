@@ -2,6 +2,7 @@ import type { LiveChange, Snapshot } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { LogTally } from '../design/log-tally';
 import { perfStoreChanged } from '../perf/store-hook';
+import { retainPendingTurns } from './chat-turns';
 import { applyChange, replaceWith } from './live-reducers';
 import { emptyState, type StoreState, type SyncState } from './state';
 import { changedSlices, SubscriptionManager, type Slice } from './subscriptions';
@@ -42,6 +43,13 @@ class Listeners {
 function offlineSinceOf(status: SyncState['status'], since: number | null): number | null {
   if (status === 'live') return null;
   return since ?? Date.now();
+}
+
+function reconcileTurns(previous: StoreState, next: StoreState): StoreState {
+  const messages = next.tables.assistant_messages;
+  if (next.turns === previous.turns && messages === previous.tables.assistant_messages) return next;
+  const turns = retainPendingTurns(next.turns, messages.byId);
+  return turns === next.turns ? next : { ...next, turns };
 }
 
 export class EntityStore {
@@ -90,7 +98,7 @@ export class EntityStore {
   }
 
   private commit(change: (state: StoreState) => StoreState): boolean {
-    const next = change(this.state);
+    const next = reconcileTurns(this.state, change(this.state));
     if (next === this.state) {
       return false;
     }

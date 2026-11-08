@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { DecisionQuestions, Stage } from 'smarteverything-kit';
 
 const questions = [
@@ -27,12 +28,12 @@ const questions = [
     ],
   },
 ];
-export const Steps = () => (
+export const Steps = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <DecisionQuestions questions={questions} pending={false} submit={() => undefined} />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     <DecisionQuestions questions={questions} pending={false} submit={() => undefined} />
   </Stage>

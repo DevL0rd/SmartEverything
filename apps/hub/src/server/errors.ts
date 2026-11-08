@@ -18,19 +18,8 @@ import { Go2rtcError } from '../cameras/go2rtc-client';
 import { CameraBusyError, CameraTalkUnsupportedError } from '../cameras/viewers';
 import { ThumbnailError } from '../cameras/thumbnails';
 import { CameraBlockedByFirewallError } from '../firewall/observed-go2rtc';
-import {
-  ClaudeControlFailedError,
-  ClaudeControlTimeoutError,
-  ClaudeCursorError,
-  ClaudeHookInputError,
-  ClaudeInvalidAnswerError,
-  ClaudeLinkError,
-  ClaudeNotReadyError,
-  ClaudePromptNotFoundError,
-  ClaudePromptNotWaitingError,
-  ClaudeSendRefusedError,
-  ClaudeSessionNotFoundError,
-} from '../claude/errors';
+import { claudeApiErrorFor } from '../claude/api-errors';
+import { IrLibraryEntryUnknownError } from '../infrared/library/ir-library';
 import { StoreNotFoundError } from '../store/context';
 import { StoreConflictError } from '../store/sql';
 
@@ -45,6 +34,7 @@ type ErrorClass = abstract new (...args: never) => Error;
 
 const KNOWN_ERRORS: readonly (readonly [ErrorClass, ApiErrorCode])[] = [
   [StoreNotFoundError, 'not_found'],
+  [IrLibraryEntryUnknownError, 'not_found'],
   [AutomationBindingError, 'invalid_request'],
   [AutomationValueError, 'invalid_request'],
   [StoreConflictError, 'conflict'],
@@ -60,17 +50,6 @@ const KNOWN_ERRORS: readonly (readonly [ErrorClass, ApiErrorCode])[] = [
   [FrameTimeoutError, 'camera_unavailable'],
   [Go2rtcError, 'upstream_failed'],
   [ThumbnailError, 'upstream_failed'],
-  [ClaudeNotReadyError, 'claude_not_ready'],
-  [ClaudeSessionNotFoundError, 'not_found'],
-  [ClaudeCursorError, 'invalid_request'],
-  [ClaudeSendRefusedError, 'forbidden'],
-  [ClaudePromptNotFoundError, 'not_found'],
-  [ClaudePromptNotWaitingError, 'conflict'],
-  [ClaudeInvalidAnswerError, 'invalid_request'],
-  [ClaudeHookInputError, 'invalid_request'],
-  [ClaudeControlFailedError, 'upstream_failed'],
-  [ClaudeControlTimeoutError, 'upstream_failed'],
-  [ClaudeLinkError, 'upstream_failed'],
 ];
 
 export function apiErrorFor(cause: unknown): ApiError | null {
@@ -82,9 +61,32 @@ export function apiErrorFor(cause: unknown): ApiError | null {
       return new ApiError(code, cause.message);
     }
   }
-  return null;
+  return claudeApiErrorFor(cause);
+}
+
+export interface HttpFailure {
+  readonly error: ApiError;
+  readonly unexpected: { readonly cause: unknown } | null;
+}
+
+export function httpFailureOf(cause: unknown): HttpFailure {
+  const known = apiErrorFor(cause);
+  if (known !== null) return { error: known, unexpected: null };
+  return {
+    error: new ApiError('internal', 'The server failed while handling this request; see its log.'),
+    unexpected: { cause },
+  };
 }
 
 export function invalid(what: string, error: z.ZodError): ApiError {
   return new ApiError('invalid_request', `The ${what} is not valid: ${issuesOf(error)}.`);
+}
+
+export class InvalidResponseError extends ApiError {
+  readonly issueCodes: readonly string[];
+
+  constructor(path: string, error: z.ZodError) {
+    super('internal', `The server built an invalid response for ${path}.`);
+    this.issueCodes = [...new Set(error.issues.map((issue) => issue.code))];
+  }
 }

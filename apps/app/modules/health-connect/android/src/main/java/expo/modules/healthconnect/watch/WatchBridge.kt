@@ -17,12 +17,8 @@ object WatchBridge {
   suspend fun sync(context: Context, serverUrl: String, token: String, enrollment: String): List<Map<String, Any?>> {
     configureServer(context, serverUrl, token, enrollment)
     val watches = HubClient(relayTarget(context)).get<PhoneWatches>(WATCHES_PATH).watches
-    val store = WatchStore(context)
-    store.save(watches)
+    WatchStore(context).save(watches)
     WatchEvents.emit("watches_synced", "${watches.size} watch(es) for this phone's person")
-    if (watches.isEmpty()) {
-      stop(context)
-    }
     return status(context)
   }
 
@@ -71,10 +67,6 @@ object WatchBridge {
     val result = WatchCompanion.associate(activity ?: throw CompanionScreenUnavailable(), watch.address)
     WatchEvents.emit("companion", "${watch.name}: $result", mapOf("deviceId" to deviceId))
     return result
-  }
-
-  private fun stop(context: Context) {
-    context.stopService(Intent(context, WatchService::class.java))
   }
 
   private fun sendWhenActive(context: Context, action: String, extras: Intent.() -> Unit) {

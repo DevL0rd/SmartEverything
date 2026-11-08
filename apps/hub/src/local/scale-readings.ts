@@ -1,14 +1,11 @@
 import {
   COMPOSITION_FORMULA,
-  acceptedWeights,
   attributeReading,
   bmiOf,
   bodyComposition,
   bodyFactsOf,
   fitnessReady,
   impedancePair,
-  isOutlier,
-  type AttributionResult,
   type Attribution,
   type BodyReadingRow,
 } from '@smarteverything/domain';
@@ -101,36 +98,39 @@ export class ScaleReadings {
   }
 
   private attribute(reading: BodyReadingRow, weightKg: number): BodyReadingRow {
-    const candidates = this.options.store.profiles.list().map((profile) => ({
+    const { store } = this.options;
+    const candidates = store.profiles.list().map((profile) => ({
       profileId: profile.id,
       scaleUser: profile.scale_user,
+      weighIns: store.bodyReadings
+        .ofProfile(profile.id)
+        .flatMap((owned) =>
+          owned.weight_kg === null
+            ? []
+            : [{ weightKg: owned.weight_kg, confirmed: owned.attribution === 'person' }],
+        ),
     }));
-    const result = this.unlessOutlier(
-      attributeReading({ scaleUser: reading.scale_user }, candidates),
-      weightKg,
-    );
+    const result = attributeReading({ scaleUser: reading.scale_user, weightKg }, candidates);
     this.options.log.info('scale.attributed', {
       readingId: reading.id,
       attribution: result.attribution,
       candidates: candidates.length,
     });
+    if (result.profileId !== null) {
+      this.linkFreeSlot(result.profileId, reading.scale_user);
+    }
     return this.own(reading, result.profileId, result.attribution);
   }
 
-  private unlessOutlier(result: AttributionResult, weightKg: number): AttributionResult {
-    if (result.profileId === null || result.attribution === 'person') {
-      return result;
+  private linkFreeSlot(profileId: string, scaleUser: number | null): void {
+    const profiles = this.options.store.profiles;
+    if (scaleUser === null || profiles.byId(profileId).scale_user !== null) {
+      return;
     }
-    const history = this.options.store.bodyReadings
-      .ofProfile(result.profileId)
-      .flatMap((reading) =>
-        reading.weight_kg === null
-          ? []
-          : [{ weightKg: reading.weight_kg, confirmed: reading.attribution === 'person' }],
-      );
-    return isOutlier(weightKg, acceptedWeights(history))
-      ? { profileId: null, attribution: 'pending' }
-      : result;
+    if (profiles.list().every((profile) => profile.scale_user !== scaleUser)) {
+      profiles.learnScaleUser(profileId, scaleUser);
+      this.options.log.info('scale.slot_learned', { profileId, scaleUser });
+    }
   }
 
   private ownerOf(

@@ -30,9 +30,10 @@ function unusedSystem(): ComputerControls['system'] {
 
 export function unusedControls(): Pick<
   ComputerControls,
-  'audio' | 'displays' | 'windows' | 'tiling' | 'system' | 'machine' | 'input'
+  'audio' | 'displays' | 'windows' | 'tiling' | 'system' | 'machine' | 'input' | 'environment'
 > {
   return {
+    environment: { start: () => Promise.resolve(), stop: nothing() },
     audio: { features: refused, read: refused, watch: nothing, change: refused },
     displays: {
       features: refused,

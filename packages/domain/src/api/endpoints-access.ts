@@ -33,7 +33,7 @@ export const PAIRING = z.strictObject({
 
 export type Pairing = z.infer<typeof PAIRING>;
 
-export const PAIRED_PLATFORMS = ['android', 'web'] as const;
+export const PAIRED_PLATFORMS = ['android', 'desktop', 'web'] as const;
 
 export const HANDHELD_KINDS = ['phone', 'tablet'] as const;
 

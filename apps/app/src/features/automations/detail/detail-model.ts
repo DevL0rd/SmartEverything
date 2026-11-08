@@ -1,12 +1,12 @@
 import type {
   AutomationProgramRevisionSummary,
-  AutomationRowV3,
   AutomationRunSummary,
   AutomationV3,
   FunctionLookup,
   NodeKind,
   RefNames,
 } from '@smarteverything/domain';
+import type { AutomationRow } from '../data/graph-adapter';
 import { lower } from '@smarteverything/flow/compile/lower';
 import {
   REF_SLOTS,
@@ -24,7 +24,7 @@ export type UseSlot = (typeof REF_SLOTS)[number];
 
 export type KindOf = (id: string) => NodeKind | undefined;
 
-export function statusLine(row: Pick<AutomationRowV3, 'enabled' | 'revision' | 'draft'>): string {
+export function statusLine(row: Pick<AutomationRow, 'enabled' | 'revision' | 'draft'>): string {
   return [
     row.enabled ? 'Live' : 'Paused',
     `revision ${String(row.revision)}`,

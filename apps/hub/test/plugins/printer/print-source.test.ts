@@ -5,7 +5,10 @@ import { OWNER } from './service-rig';
 const PDF = Buffer.from('%PDF-1.4 a');
 const OTHER_PDF = Buffer.from('%PDF-1.4 b');
 
-function portsWith(files: Readonly<Record<string, Buffer>>): PrintPorts {
+function portsWith(
+  files: Readonly<Record<string, Buffer>>,
+  pictures: Readonly<Record<string, Buffer>> = {},
+): PrintPorts {
   return {
     converter: {
       pdfToRaster: () => Promise.reject(new Error('unused')),
@@ -14,6 +17,10 @@ function portsWith(files: Readonly<Record<string, Buffer>>): PrintPorts {
     },
     files: {
       fromUpload: () => Promise.resolve(null),
+      fromPicture: (_caller, id): Promise<{ data: Buffer; name: string } | null> => {
+        const data = pictures[id];
+        return Promise.resolve(data === undefined ? null : { data, name: `picture-${id}` });
+      },
       fromMachine: () => Promise.resolve(null),
       attachmentsOf: () => Object.keys(files),
       readAttachment: (path) => Promise.resolve(files[path] ?? Buffer.alloc(0)),
@@ -55,5 +62,33 @@ describe('printing a chat attachment', () => {
     await expect(
       loadSource(portsWith({}), OWNER, { kind: 'attachment', name: 'a.pdf' }),
     ).rejects.toMatchObject({ reason: 'not_authorized' });
+  });
+});
+
+describe('printing a picture made in an automation run', () => {
+  const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]);
+
+  it('loads the picture by its id with no chat and no file name', async () => {
+    const loaded = await loadSource(portsWith({}, { snap1: JPEG }), OWNER, {
+      kind: 'picture',
+      pictureId: 'snap1',
+    });
+    expect(loaded).toMatchObject({ kind: 'jpeg', name: 'picture-snap1' });
+    expect(Buffer.from(loaded.data)).toEqual(JPEG);
+  });
+
+  it('refuses a picture that does not exist or is not the caller’s', async () => {
+    await expect(
+      loadSource(portsWith({}), OWNER, { kind: 'picture', pictureId: 'missing' }),
+    ).rejects.toMatchObject({ reason: 'not_authorized' });
+  });
+
+  it('refuses a picture that is not an image the printer can take', async () => {
+    await expect(
+      loadSource(portsWith({}, { text: Buffer.from('hello') }), OWNER, {
+        kind: 'picture',
+        pictureId: 'text',
+      }),
+    ).rejects.toMatchObject({ reason: 'format_unsupported' });
   });
 });

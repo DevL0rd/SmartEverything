@@ -39,7 +39,7 @@ function ScenesBody({
     );
   }
   return (
-    <Grid minItemWidth={260}>
+    <Grid minItemWidth={260} stretchLastRow={false}>
       {scenes.map((scene) => (
         <SceneCard key={scene.id} scene={scene} scenes={scenes} names={catalog.names} />
       ))}

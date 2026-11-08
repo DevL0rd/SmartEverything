@@ -1,3 +1,4 @@
+import { fitnessReady, type BodyComposition } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Card } from '../../components/card';
@@ -42,6 +43,28 @@ function Hero({
   );
 }
 
+function Composition({
+  composition,
+  ready,
+}: {
+  readonly composition: BodyComposition | null;
+  readonly ready: boolean;
+}): ReactNode {
+  if (composition !== null) {
+    return <CompositionGrid composition={composition} />;
+  }
+  if (!ready) {
+    return <FinishFitnessCard />;
+  }
+  return (
+    <Card title="Body composition" icon="scale">
+      <Text variant="callout" tone="variant">
+        Body composition is unavailable for this weigh-in.
+      </Text>
+    </Card>
+  );
+}
+
 export function BodyReport(): ReactNode {
   const profile = useActiveProfile();
   const readings = useBodyReadings(profile?.id ?? null);
@@ -50,13 +73,12 @@ export function BodyReport(): ReactNode {
     return null;
   }
   return (
-    <View className="gap-section-gap">
+    <View className="w-full max-w-detail gap-section-gap">
       <Hero latest={latest} previous={previous} />
-      {latest.composition === null ? (
-        <FinishFitnessCard />
-      ) : (
-        <CompositionGrid composition={latest.composition} />
-      )}
+      <Composition
+        composition={latest.composition}
+        ready={profile !== null && fitnessReady(profile)}
+      />
       <BodyHistory readings={[...readings].reverse()} />
     </View>
   );

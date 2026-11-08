@@ -1,5 +1,5 @@
 import type { DesktopLinger, DesktopServiceManager } from '@smarteverything/domain';
-import type { ServiceLaunch, ServiceNames } from './definitions.js';
+import type { ServiceLaunch } from './definitions.js';
 import type { ServiceLocations } from './locations.js';
 import type { ServiceSystem } from './system.js';
 
@@ -24,7 +24,6 @@ export interface ServiceManager {
 }
 
 export interface ManagerContext {
-  readonly names: ServiceNames;
   readonly launch: ServiceLaunch;
   readonly locations: ServiceLocations;
   readonly system: ServiceSystem;
@@ -34,7 +33,7 @@ export interface ManagerContext {
 export class LingerUnsupportedError extends Error {
   constructor(manager: DesktopServiceManager) {
     super(
-      `keeping the server running while signed out needs systemd's lingering; this computer uses ${manager}`,
+      `keeping the Computer service running while signed out needs systemd's lingering; this computer uses ${manager}`,
     );
     this.name = 'LingerUnsupportedError';
   }

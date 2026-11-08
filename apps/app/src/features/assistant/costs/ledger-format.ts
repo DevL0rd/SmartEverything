@@ -26,6 +26,7 @@ function meterLine(row: UsageLedgerRow): string {
     row.tokens_in + row.tokens_out > 0
       ? `${count(row.tokens_in)} in · ${count(row.tokens_out)} out tokens`
       : null,
+    row.tokens_reasoning > 0 ? `${count(row.tokens_reasoning)} thinking` : null,
     row.images > 0 ? `${String(row.images)} ${row.images === 1 ? 'image' : 'images'}` : null,
     row.video_ms > 0 ? `${duration(seconds(row.video_ms))} video` : null,
   ]);

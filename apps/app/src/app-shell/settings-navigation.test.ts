@@ -66,6 +66,17 @@ describe('remembering the page Settings was opened from', () => {
     });
   });
 
+  it('retains earlier browser visits when the router already remembered the Settings origin', () => {
+    const previous = tabs('(cameras)');
+    const next = tabs('(settings)', [
+      { type: 'route', key: '(home)-1' },
+      { type: 'route', key: '(cameras)-1' },
+      { type: 'route', key: '(settings)-1' },
+    ]);
+    expect(retainSettingsOrigin(previous, toSettings, next)).toBe(next);
+    expect(hasSettingsOrigin(next)).toBe(true);
+  });
+
   it('does not touch other navigation', () => {
     const previous = tabs('(cameras)');
     const next = tabs('(home)');

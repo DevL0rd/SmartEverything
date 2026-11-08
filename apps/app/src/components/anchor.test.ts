@@ -9,6 +9,7 @@ import {
   type PanelPlacement,
   type Rect,
 } from './anchor';
+import { floatingSheetFrame } from './compact-panel';
 
 const SAFE: Insets = { top: 24, bottom: 0, left: 0, right: 0 };
 const DESKTOP = { width: 1440, height: 900 };
@@ -82,14 +83,56 @@ describe('placing the model panel', () => {
     expect(frame.height).toBe(460 - 2 * MARGIN);
   });
 
-  it('uses a bottom sheet for touch, full width on a phone and centred 560 on a tablet', () => {
+  it('keeps a fitted dialog at the same width as its anchored panel', () => {
+    const anchor = { ...composer, y: 380 };
+    const size = { ...PANEL_SIZE, dialogWidth: PANEL_SIZE.width };
+    const { presentation, frame } = placePanel(anchor, size, {
+      window: DESKTOP,
+      safeArea: SAFE,
+      idiom: 'pointer',
+    });
+    expect(presentation).toBe('dialog');
+    expect(frame.width).toBe(PANEL_SIZE.width);
+    expect(frame.x).toBe((DESKTOP.width - frame.width) / 2);
+  });
+
+  it('keeps a top-bar picker below its trigger when it changes height', () => {
+    const context = {
+      window: DESKTOP,
+      safeArea: SAFE,
+      idiom: 'pointer',
+      pointerPlacement: 'below',
+    } as const;
+    const button = { x: 1200, y: 28, width: 48, height: 48 };
+    const open = placePanel(button, PANEL_SIZE, context);
+    const lower = { ...button, y: 420 };
+    const settled = settlePanel(open, placePanel(lower, PANEL_SIZE, context), 'below');
+    expect(open.presentation).toBe('popover');
+    expect(open.frame.y).toBe(button.y + button.height + GAP);
+    expect(settled.frame.y).toBe(lower.y + lower.height + GAP);
+    expect(settled.frame.height).toBeLessThan(open.frame.height);
+  });
+
+  it('lets a nested catalogue grow into a centered frame', () => {
+    const size = { ...PANEL_SIZE, dialogWidth: 960, maxHeight: 760 };
+    const { presentation, frame } = placePanel(composer, size, {
+      window: DESKTOP,
+      safeArea: SAFE,
+      idiom: 'pointer',
+      pointerPlacement: 'center',
+    });
+    expect(presentation).toBe('dialog');
+    expect(frame).toEqual({ x: 240, y: 70, width: 960, height: 760 });
+  });
+
+  it('uses the full safe width of touch sheets on phones and unfolded displays', () => {
     const phone = place(composer, { width: 390, height: 844 }, 'touch');
     expect(phone.presentation).toBe('sheet');
-    expect(phone.frame.width).toBe(390);
-    expect(phone.frame.y + phone.frame.height).toBe(844);
-    const tablet = place(composer, { width: 1000, height: 800 }, 'touch');
-    expect(tablet.frame.width).toBe(560);
-    expect(tablet.frame.x).toBe(220);
+    expect(phone.frame.width).toBe(366);
+    expect(phone.frame.y + phone.frame.height).toBe(836);
+    const unfolded = place(composer, { width: 784, height: 800 }, 'touch');
+    expect(unfolded.frame.width).toBe(760);
+    expect(unfolded.frame.x).toBe(12);
   });
 
   it('never returns an empty frame, even in a degenerate window', () => {
@@ -102,6 +145,31 @@ describe('placing the model panel', () => {
       expect(frame.height).toBeGreaterThan(0);
       expect(frame.width).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('floating sheets', () => {
+  it('leaves gutters inside asymmetric system insets', () => {
+    expect(
+      floatingSheetFrame(
+        { width: 784, height: 800 },
+        {
+          top: 24,
+          bottom: 28,
+          left: 32,
+          right: 10,
+        },
+      ),
+    ).toEqual({ left: 44, width: 718, bottom: 36, maxHeight: 732 });
+  });
+
+  it('centres a wider sheet in the usable safe area without changing the height allowance', () => {
+    expect(
+      floatingSheetFrame(
+        { width: 1440, height: 900 },
+        { top: 24, bottom: 28, left: 32, right: 10 },
+      ),
+    ).toEqual({ left: 323, width: 816, bottom: 36, maxHeight: 832 });
   });
 });
 

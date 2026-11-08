@@ -1,5 +1,5 @@
 import type { Ref } from 'react';
-import type { BrowserTarget, BrowserStatus } from '@smarteverything/domain';
+import type { BrowserConsoleEvent, BrowserTarget, BrowserStatus } from '@smarteverything/domain';
 export interface BrowserHandle {
   navigate(url: string): void;
   back(): void;
@@ -12,6 +12,7 @@ export interface BrowserSurfaceProps {
   readonly visible: boolean;
   readonly ref: Ref<BrowserHandle>;
   readonly onStatus: (status: BrowserStatus) => void;
+  readonly onConsole?: (event: BrowserConsoleEvent) => void;
   readonly onOpenWindow?: (url: string) => void;
 }
 export interface BrowserCapability {

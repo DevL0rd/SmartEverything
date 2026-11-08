@@ -11,6 +11,7 @@ import {
   type AiHarnessHost,
   type HarnessPlatform,
   type NodeHello,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
 import { ComputerHarnessSockets } from '../../src/server/harness-socket';
@@ -29,7 +30,7 @@ const HELLO: NodeHello = {
   interfaces: [],
   bootedAt: '2026-10-08T09:00:00.000Z',
   features: [],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
   power: [],
   actions: [],
   permissions: [],
@@ -60,7 +61,7 @@ beforeEach(async () => {
   const logs = captureLogs();
   const rig = await harnessRig();
   const access = new ComputerNodeAccess(rig.opened.store, () => new Date());
-  const { code } = access.pair('http://127.0.0.1:8788', rig.clientId);
+  const { code } = access.pair('https://hub.example.com', rig.clientId);
   const { paired } = access.claim(code, HELLO, 'test');
   const sockets = new ComputerHarnessSockets(
     rig.opened.store,

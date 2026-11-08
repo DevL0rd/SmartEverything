@@ -10,6 +10,7 @@ import { EndpointLog } from './endpoint-log';
 import { remoteKind } from './request-trace';
 import { socketClient } from './socket-auth';
 import { clientSocketsOf } from './client-sockets';
+import { afterPendingInput, pingWhenOpen } from '../network/guarded-socket';
 
 const SLOW_CLIENT_BYTES = 512 * 1024;
 
@@ -90,7 +91,9 @@ export class SocketEndpoint<Message> {
         protocols.has(options.protocol) ? options.protocol : false,
     });
     this.heartbeat = setInterval(() => {
-      this.beat();
+      afterPendingInput(() => {
+        this.beat();
+      });
     }, options.heartbeatMs);
     this.heartbeat.unref();
   }
@@ -236,7 +239,7 @@ export class SocketEndpoint<Message> {
         continue;
       }
       connection.alive = false;
-      connection.socket.ping();
+      pingWhenOpen(connection.socket);
     }
   }
 }

@@ -9,7 +9,6 @@ import {
   type HubPairingObservation,
   type PairingQr,
 } from '@smarteverything/domain';
-import { appPlatform } from '../../design/platform';
 import {
   PairingTargetError,
   PairingUnreachableError,
@@ -29,21 +28,14 @@ export type EnrollmentDestination =
 function originOf(endpoint: HubEndpoint): HubEndpoint {
   const parsed = HUB_ENDPOINT.parse(endpoint);
   const url = new URL(parsed.url);
-  const loopback = parsed.kind === 'loopback' && appPlatform() === 'web';
-  if (
-    (!loopback && url.protocol !== 'https:') ||
-    url.pathname !== '/' ||
-    url.search !== '' ||
-    url.hash !== ''
-  )
+  if (url.protocol !== 'https:' || url.pathname !== '/' || url.search !== '' || url.hash !== '')
     throw new PairingTargetError();
   return { ...parsed, url: url.origin };
 }
 
 export function httpsDestination(url: string): EnrollmentDestination {
   const endpoint = bootstrapEndpoint(url);
-  if (endpoint.kind !== 'remote' && !(endpoint.kind === 'loopback' && appPlatform() === 'web'))
-    throw new PairingTargetError();
+  if (endpoint.kind !== 'remote') throw new PairingTargetError();
   return { kind: 'https', endpoint: originOf(endpoint) };
 }
 
@@ -85,12 +77,7 @@ export function trustedInventory(
   metadata: HubConnectionMetadata,
   endpoint: HubEndpoint,
 ): HubConnectionMetadata {
-  const endpoints = metadata.endpoints
-    .filter(
-      (entry) =>
-        entry.kind !== 'loopback' || (endpoint.kind === 'loopback' && entry.url === endpoint.url),
-    )
-    .map(originOf);
+  const endpoints = metadata.endpoints.map(originOf);
   if (!endpoints.some((entry) => entry.url === endpoint.url && entry.kind === endpoint.kind))
     throw new PairingUnreadableError();
   return { ...metadata, endpoints };

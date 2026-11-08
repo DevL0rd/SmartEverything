@@ -1,13 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { makeTable, type StoreState } from '../../store/state';
-import {
-  budgetCase,
-  mountFace,
-  renderVisual,
-  useCellEnvironment,
-  type Budget,
-  type Face,
-} from './cell-budget';
+import { budgetCase, mountFace, useCellEnvironment, type Budget, type Face } from './cell-budget';
 
 vi.mock('../../queries/use-screen-query', async () => (await import('./idle-queries')).idleQueries);
 
@@ -43,23 +36,6 @@ const BUDGETS: Readonly<Record<'S' | 'M', Budget>> = {
 };
 
 budgetCase(DIFFUSER.name, DIFFUSER, BUDGETS);
-
-const VISUAL_LIMITS = [
-  ['tile', 48, 40],
-  ['card', 96, 44],
-  ['hero', 220, 44],
-] as const;
-
-describe('scent diffuser visual node budgets', () => {
-  useCellEnvironment();
-
-  for (const [size, px, limit] of VISUAL_LIMITS) {
-    it(`draws a scenting diffuser within ${String(limit)} nodes at ${size} size`, () => {
-      const { count } = renderVisual(DIFFUSER, DIFFUSER.values, size, px);
-      expect(count).toBeLessThanOrEqual(limit);
-    });
-  }
-});
 
 const WIDE = { width: 560, height: 190, idiom: 'pointer' } as const;
 const PANEL = { width: 360, height: 420, idiom: 'touch' } as const;
@@ -124,11 +100,12 @@ describe('scent diffuser states', () => {
     mounted.unmount();
   });
 
-  it('puts the strength menu, not the light, beside Spray now at wide size', () => {
+  it('puts the strength menu and the light beside Spray now at wide size', () => {
     const mounted = mountFace(DIFFUSER, WIDE);
     const tree = mounted.tree();
+    expect(tree).toContain('accessibilityLabel="Spray now"');
     expect(tree).toContain('accessibilityLabel="Strength: Medium"');
-    expect(tree).not.toContain('light"');
+    expect(tree).toContain('light"');
     mounted.unmount();
   });
 

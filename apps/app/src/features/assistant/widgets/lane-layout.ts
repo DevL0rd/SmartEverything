@@ -2,7 +2,6 @@ type SlotKind = 'tile' | 'half' | 'wide' | 'note';
 
 export interface Slot {
   readonly kind: SlotKind;
-  readonly aspect: number | null;
   readonly rows: number;
 }
 
@@ -34,18 +33,8 @@ export function rowsHeight(rows: number, metrics: Pick<Metrics, 'gap' | 'line'>)
   return rows * metrics.line + (rows - 1) * metrics.gap;
 }
 
-function heightOf(slot: Slot, width: number, metrics: Metrics): number | null {
-  switch (slot.kind) {
-    case 'tile':
-    case 'half':
-      return rowsHeight(slot.rows, metrics);
-    case 'wide':
-      return slot.aspect === null
-        ? rowsHeight(slot.rows, metrics)
-        : Math.round(width / slot.aspect);
-    case 'note':
-      return null;
-  }
+function heightOf(slot: Slot, metrics: Metrics): number | null {
+  return slot.kind === 'note' ? null : rowsHeight(slot.rows, metrics);
 }
 
 function rowOf(
@@ -66,7 +55,7 @@ function rowOf(
     return {
       index,
       width: slot.kind === 'note' ? null : each,
-      height: heightOf(slot, each, metrics),
+      height: heightOf(slot, metrics),
       shared: count > 1,
     };
   });

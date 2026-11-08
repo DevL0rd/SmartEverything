@@ -21,6 +21,7 @@ import {
   trackedSensor,
   type PresenceReadings,
 } from './presence-readings';
+import { useTrackingHeld } from './use-tracking-lease';
 
 export function isPresence(device: Pick<Device, 'external_id'>): boolean {
   return device.external_id.startsWith(`${SHELLY_PLUGIN_ID}:`);
@@ -91,4 +92,41 @@ export function useTracked(sensor: ShellyDevice, enabled: boolean): ShellyDevice
     () => trackedSensor(sensor, tracks.state === 'ready' ? tracks.value : null),
     [sensor, tracks],
   );
+}
+
+export interface MapPresence {
+  readonly sensors: readonly ShellyDevice[];
+  readonly tracking: boolean;
+}
+
+function placedSensors(
+  inventory: PluginStream<ShellySnapshot>,
+  externalIds: readonly string[],
+): readonly ShellyDevice[] {
+  if (inventory.state !== 'ready') return [];
+  return inventory.value.devices.filter((sensor) => externalIds.includes(sensor.externalId));
+}
+
+export function useMapPresence(externalIds: readonly string[]): MapPresence {
+  const inventory = usePluginStream(
+    SHELLY_PLUGIN_ID,
+    SHELLY_SNAPSHOT_STREAM,
+    PRESENCE_INVENTORY,
+    externalIds.length > 0,
+  );
+  const placed = useMemo(() => placedSensors(inventory, externalIds), [inventory, externalIds]);
+  const readings = useStoreSelector(
+    (state) => placed.map((sensor) => readingsOf(state, sensor)),
+    sameJson,
+    [placed],
+  );
+  const tracking = useTrackingHeld(externalIds);
+  const tracks = usePluginStream(SHELLY_PLUGIN_ID, SHELLY_TRACKS_STREAM, TRACKS, tracking);
+  return useMemo(() => {
+    const frame = tracks.state === 'ready' ? tracks.value : null;
+    const sensors = placed.map((sensor, at) =>
+      trackedSensor(liveSensor(sensor, readings[at] ?? NO_READINGS), frame),
+    );
+    return { sensors, tracking };
+  }, [placed, readings, tracks, tracking]);
 }

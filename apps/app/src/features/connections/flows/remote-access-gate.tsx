@@ -27,6 +27,7 @@ export function UnverifiedAddressNotice(): ReactNode {
       tone="warning"
       title="We couldn’t check your public address from inside your network"
       body="Setup can continue. If it fails later, check that the address works from outside."
+      wrapBody
     />
   );
 }

@@ -1,5 +1,10 @@
-import type { AssistantMessageRow } from '@smarteverything/domain';
+import {
+  helperDialogueOf,
+  isHelperDialogueMessage,
+  type AssistantMessageRow,
+} from '@smarteverything/domain';
 import { rowsOf, type StoreState } from '../../../store/state';
+import { appChatHistoryOnly } from '../chats/chat-visibility';
 import { isComputerEngine } from '../provider/computer-engine';
 
 const latestPersonByTable = new WeakMap<object, ReadonlyMap<string, string>>();
@@ -11,7 +16,12 @@ function latestPersonIds(
   if (known !== undefined) return known;
   const latest = new Map<string, string>();
   for (const row of rowsOf(table)) {
-    if (row.role === 'person' && row.kind === 'text' && !latest.has(row.chat_id)) {
+    if (
+      helperDialogueOf(row) === undefined &&
+      row.role === 'person' &&
+      row.kind === 'text' &&
+      !latest.has(row.chat_id)
+    ) {
       latest.set(row.chat_id, row.id);
     }
   }
@@ -29,9 +39,15 @@ function copiedIntoBranch(state: StoreState, row: AssistantMessageRow): boolean 
 }
 
 export function canContinue(state: StoreState, request: AssistantMessageRow | null): boolean {
-  if (request?.state !== 'failed' || copiedIntoBranch(state, request)) {
+  if (
+    request?.state !== 'failed' ||
+    isHelperDialogueMessage(request) ||
+    copiedIntoBranch(state, request)
+  ) {
     return false;
   }
+  const chat = state.tables.ai_chats.byId[request.chat_id];
+  if (chat !== undefined && appChatHistoryOnly(chat)) return false;
   return latestPersonId(state, request.chat_id) === request.id;
 }
 
@@ -42,6 +58,7 @@ export interface RowActionState {
 }
 
 function requestOf(state: StoreState, row: AssistantMessageRow): AssistantMessageRow | null {
+  if (helperDialogueOf(row) !== undefined) return null;
   if (row.role === 'person') return row;
   return row.reply_to === null
     ? null
@@ -55,7 +72,9 @@ export function rowActionState(state: StoreState, row: AssistantMessageRow): Row
     request,
     canEdit: editableOf(state, row),
     readOnly:
-      chat !== undefined && isComputerEngine(chat.engine) && state.session?.client.role !== 'owner',
+      chat !== undefined &&
+      (appChatHistoryOnly(chat) ||
+        (isComputerEngine(chat.engine) && state.session?.client.role !== 'owner')),
   };
 }
 
@@ -66,6 +85,7 @@ function writtenInApp(row: AssistantMessageRow): boolean {
 export function editableOf(state: StoreState, row: AssistantMessageRow): boolean {
   const settled = row.state === 'answered' || row.state === 'failed';
   return (
+    !isHelperDialogueMessage(row) &&
     row.role === 'person' &&
     row.kind === 'text' &&
     writtenInApp(row) &&

@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import {
   ALL_NODE_KINDS,
@@ -7,7 +8,7 @@ import {
   type AutomationRunSummary,
   type NodeKind,
 } from '@smarteverything/domain';
-import { airPurifier } from '../model/fixtures/air-purifier';
+import { airPurifier, airPurifierGraph } from '../model/fixtures/air-purifier';
 import {
   ACTIVITY_DAYS,
   RECENT_RUNS,
@@ -23,7 +24,7 @@ import {
 const KINDS = new Map(ALL_NODE_KINDS.map((kind) => [kind.id, kind]));
 const kindOf = (id: string): NodeKind | undefined => KINDS.get(id);
 const NO_FUNCTIONS = (): undefined => undefined;
-const PURIFIER = airPurifier();
+const PURIFIER = airPurifier(STATIC_KIND_LOOKUP);
 
 function revision(
   number: number,
@@ -44,7 +45,7 @@ describe('statusLine', () => {
       statusLine({
         enabled: false,
         revision: 3,
-        draft: { program: PURIFIER, layout: EMPTY_LAYOUT },
+        draft: { program: airPurifierGraph(), layout: EMPTY_LAYOUT },
       }),
     ).toBe('Paused · revision 3 · draft has changes');
   });

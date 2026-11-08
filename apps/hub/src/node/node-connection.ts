@@ -1,4 +1,5 @@
 import type { RawData, WebSocket } from 'ws';
+import { NODE_HEARTBEAT_MS } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { NodeConnectionLog } from './node-connection-log';
 import {
@@ -11,6 +12,8 @@ const FIRST_RETRY_MS = 1000;
 const LAST_RETRY_MS = 30_000;
 const WELCOME_TIMEOUT_MS = 30_000;
 const HANDSHAKE_TIMEOUT_MS = 10_000;
+const MISSED_HEARTBEATS = 2.5;
+const HUB_SILENCE_MS = NODE_HEARTBEAT_MS * MISSED_HEARTBEATS;
 
 export interface NodeConnectionOptions {
   readonly hubUrl: string;
@@ -30,6 +33,8 @@ export class NodeConnection {
   private unsubscribeRoute: (() => void) | null = null;
   private retry: NodeJS.Timeout | null = null;
   private welcome: NodeJS.Timeout | null = null;
+  private silence: NodeJS.Timeout | null = null;
+  private heardAt = 0;
   private stopped = false;
   private delay = FIRST_RETRY_MS;
   private readonly trace: NodeConnectionLog;
@@ -76,10 +81,15 @@ export class NodeConnection {
     socket.on('open', () => {
       if (this.current !== socket) return;
       this.trace.socketOpened(socket.protocol);
+      this.listenForHub(socket);
       this.options.opened(socket);
+    });
+    socket.on('ping', () => {
+      if (this.current === socket) this.listenForHub(socket);
     });
     socket.on('message', (raw, binary) => {
       if (this.current !== socket) return;
+      this.listenForHub(socket);
       this.trace.frame(raw);
       if (binary) this.trace.frameRejected();
       else this.options.message(socket, textOf(raw));
@@ -118,6 +128,7 @@ export class NodeConnection {
     this.unsubscribeRoute?.();
     this.unsubscribeRoute = null;
     this.welcomed();
+    this.stopListeningForHub();
     if (this.retry !== null) clearTimeout(this.retry);
     this.retry = null;
     const socket = this.current;
@@ -136,9 +147,33 @@ export class NodeConnection {
     });
   }
 
+  private listenForHub(socket: WebSocket): void {
+    this.heardAt = performance.now();
+    if (this.silence === null) this.waitForHub(socket, HUB_SILENCE_MS);
+  }
+
+  private waitForHub(socket: WebSocket, waitMs: number): void {
+    this.silence = setTimeout(() => {
+      this.silence = null;
+      const quietMs = performance.now() - this.heardAt;
+      if (quietMs < HUB_SILENCE_MS) {
+        this.waitForHub(socket, HUB_SILENCE_MS - quietMs);
+        return;
+      }
+      this.trace.hubSilent(Math.round(quietMs));
+      socket.terminate();
+    }, waitMs);
+  }
+
+  private stopListeningForHub(): void {
+    if (this.silence !== null) clearTimeout(this.silence);
+    this.silence = null;
+  }
+
   private closed(socket: WebSocket): void {
     if (this.current !== socket) return;
     this.current = null;
+    this.stopListeningForHub();
     this.welcomed();
     this.options.closed(socket);
     if (this.stopped) return;

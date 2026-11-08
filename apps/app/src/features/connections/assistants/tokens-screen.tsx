@@ -9,11 +9,16 @@ import { Button } from '../../../components/button';
 import { IconButton } from '../../../components/icon-button';
 import { CodeBlock } from '../../../components/code';
 import { EmptyState } from '../../../components/empty-state';
+import { useGridLayout } from '../../../components/grid';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
+import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { notifyFailure } from '../../../components/toast-store';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
+import { isNative } from '../../../design/platform';
+import { DETAIL_MIN_WIDTH } from '../../../design/size-class';
 import { joinParts } from '../../../format/text';
 import { relative } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
@@ -24,6 +29,9 @@ import { confirmRevoke, useHubLive, useOfflineBanner } from './revoke-access';
 
 import { trackConnection } from '../connections-log';
 import { background } from '@smarteverything/logging';
+
+const CREATE_FAILURE = 'No token was made';
+
 function revoke(token: McpTokenRow): void {
   background(
     confirmRevoke(token.name).then((accepted) => {
@@ -52,6 +60,7 @@ function TokenRow({
     <ListRow
       icon="key"
       title={token.name}
+      wrapTitle
       subtitle={joinParts([
         `Made ${relative(token.created_at, now)}`,
         token.access === 'read' ? 'Read only' : null,
@@ -74,9 +83,10 @@ interface TokenDraft {
   readonly setName: (name: string) => void;
   readonly token: string | null;
   readonly busy: boolean;
+  readonly failed: boolean;
   readonly close: () => void;
   readonly create: () => void;
-  readonly valid: boolean;
+  readonly canCreate: boolean;
   readonly readOnly: boolean;
   readonly setReadOnly: (readOnly: boolean) => void;
 }
@@ -85,28 +95,36 @@ function useTokenDraft(onClose: () => void): TokenDraft {
   const [name, setName] = useState('');
   const [token, setToken] = useState<string | null>(null);
   const [readOnly, setReadOnly] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const mutation = useMutationState();
+  const live = useHubLive();
+  const trimmedName = name.trim();
+  const canCreate = live && trimmedName !== '' && trimmedName.length <= 80;
   const close = (): void => {
     setName('');
     setReadOnly(false);
     setToken(null);
+    setSubmitted(false);
     onClose();
   };
   const create = (): void => {
-    mutation.run(() => createMcpToken(name.trim(), readOnly ? 'read' : 'control'), {
-      failure: 'No token was made',
+    if (!canCreate || mutation.busy) return;
+    setSubmitted(true);
+    mutation.run(() => createMcpToken(trimmedName, readOnly ? 'read' : 'control'), {
+      failure: CREATE_FAILURE,
+      inline: true,
       onDone: setToken,
     });
   };
-  const valid = name.trim() !== '' && name.trim().length <= 80;
   return {
     name,
     setName,
     token,
     busy: mutation.busy,
+    failed: submitted && mutation.problem !== null,
     close,
     create,
-    valid,
+    canCreate,
     readOnly,
     setReadOnly,
   };
@@ -125,6 +143,7 @@ function TokenForm({ draft }: { readonly draft: TokenDraft }): ReactNode {
         focusOnMount
       />
       <ReadOnlyRow who="It" value={draft.readOnly} onChange={draft.setReadOnly} />
+      {draft.failed ? <Banner tone="critical" title={CREATE_FAILURE} announceTitle /> : null}
     </View>
   );
 }
@@ -137,8 +156,7 @@ function CreateSheet({
   readonly onClose: () => void;
 }): ReactNode {
   const draft = useTokenDraft(onClose);
-  const { token, busy, close, create, valid } = draft;
-  const live = useHubLive();
+  const { token, busy, close, create, canCreate } = draft;
   return (
     <Sheet
       open={open}
@@ -147,7 +165,7 @@ function CreateSheet({
       detents={['fit']}
       footer={
         token === null ? (
-          <Button label="Create" disabled={!valid || !live} loading={busy} onPress={create} />
+          <Button label="Create" disabled={!canCreate} loading={busy} onPress={create} />
         ) : (
           <Button label="Done" onPress={close} />
         )
@@ -170,6 +188,37 @@ function CreateSheet({
   );
 }
 
+function TokenLists({
+  tokens,
+  now,
+}: {
+  readonly tokens: readonly McpTokenRow[];
+  readonly now: number;
+}): ReactNode {
+  const { width, onLayout } = useMeasuredWidth();
+  const { columns } = useGridLayout(width, DETAIL_MIN_WIDTH, 'grid', tokens.length);
+  return (
+    <View onLayout={isNative() ? undefined : onLayout} className="gap-1">
+      <View className="flex-row items-start gap-grid-gap">
+        {Array.from({ length: columns }, (_, index) => {
+          const start = Math.floor((index * tokens.length) / columns);
+          const end = Math.floor(((index + 1) * tokens.length) / columns);
+          return (
+            <List inset key={index} className="min-w-0 max-w-reading flex-1">
+              {tokens.slice(start, end).map((token) => (
+                <TokenRow key={token.id} token={token} now={now} />
+              ))}
+            </List>
+          );
+        })}
+      </View>
+      <Text variant="footnote" tone="variant" className="px-4 pt-1">
+        Each token lets one app use your home.
+      </Text>
+    </View>
+  );
+}
+
 export function TokensScreen(): ReactNode {
   const tokens = useRows('mcp_tokens').filter((token) => token.revoked_at === null);
   const now = useMinute();
@@ -178,6 +227,7 @@ export function TokensScreen(): ReactNode {
   return (
     <SettingsFrame
       page="assistant/integrations/tokens"
+      contentWidth={isNative() ? 'reading' : 'full'}
       {...(banner === undefined ? {} : { banner })}
       primaryAction={{
         label: 'New token',
@@ -194,11 +244,7 @@ export function TokensScreen(): ReactNode {
           body="Assistant connections make their own. Make one here for other apps."
         />
       ) : (
-        <List inset footer="Each token lets one app use your home.">
-          {tokens.map((token) => (
-            <TokenRow key={token.id} token={token} now={now} />
-          ))}
-        </List>
+        <TokenLists tokens={tokens} now={now} />
       )}
       <CreateSheet
         open={creating}

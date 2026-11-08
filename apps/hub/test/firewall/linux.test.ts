@@ -7,6 +7,8 @@ const UFW_FILES = {
   '/etc/default/ufw': 'DEFAULT_INPUT_POLICY="DROP"\n',
   '/etc/ufw/user.rules': '',
   '/etc/ufw/user6.rules': '',
+  '/etc/ufw/after.rules': 'COMMIT\n',
+  '/etc/ufw/after6.rules': 'COMMIT\n',
 };
 
 const FIREWALLD = {

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { act, createElement, Fragment, memo, useEffect, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,7 +12,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
     removeItem: (): Promise<void> => Promise.resolve(),
   },
 }));
-vi.mock('expo-crypto', () => ({ randomUUID: (): string => globalThis.crypto.randomUUID() }));
+vi.mock('expo-crypto', () => ({ randomUUID: (): string => randomUUID() }));
 vi.mock('../../../components/toast-store', () => ({ notify: vi.fn() }));
 vi.mock('../../../api/ai', () => ({ sendAiChatMessage: vi.fn() }));
 vi.mock('../../../api/assistant', () => ({
@@ -155,7 +156,11 @@ describe('typing in the composer', () => {
 
   it('clears text and quote in one store update', () => {
     drafts.setDraft(KEY, 'hello');
-    drafts.quoteInto(KEY, { who: 'AI', text: 'quoted' });
+    drafts.quoteInto(KEY, {
+      messageId: '00000000-0000-4000-8000-000000000001',
+      who: 'AI',
+      text: 'quoted',
+    });
     const notices = vi.fn();
     const stop = ai.aiDrafts.subscribe(notices);
     drafts.clearDraft(KEY);

@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { ListRow, Stage, SwipeRow } from 'smarteverything-kit';
 
 const body = (
@@ -9,12 +10,12 @@ const body = (
     <ListRow title="Evening lights" subtitle="Swipe left to remove, right to pin" icon="lamp" />
   </SwipeRow>
 );
-export const Resting = () => (
+export const Resting = (): ReactElement => (
   <Stage theme="dark" width={440}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={440}>
     {body}
   </Stage>

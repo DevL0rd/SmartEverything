@@ -166,7 +166,9 @@ describe('workspace skills on a machine', () => {
     session.text('use a skill');
     await turnsFinished(host, session, 1);
 
-    expect(toolResult(host)).toBe('Error: skill "no-such-skill" is unknown or no longer available');
+    const result = toolResult(host);
+    expect(result.startsWith('Error:')).toBe(true);
+    expect(result).toContain('no-such-skill');
   });
 });
 

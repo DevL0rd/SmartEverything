@@ -1,65 +1,74 @@
 import type { AssistantReasonCode } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
 
-export type FailureAction = 'continue' | 'choose_model' | 'machine_switch' | 'top_up';
+export type FailureAction = 'continue' | 'choose_model' | 'machine_switch' | 'top_up' | 'details';
+
+export type FailureTone = 'critical' | 'warning' | 'variant';
 
 export interface FailureContext {
   readonly model: string | null;
   readonly reason: string | null;
+  readonly native?: boolean;
 }
 
 export interface FailureCopy {
-  readonly tone: 'critical' | 'neutral';
+  readonly tone: FailureTone;
   readonly icon: IconName;
   readonly title: string;
-  readonly body: string | null;
+  readonly detail: string | null;
   readonly actions: readonly FailureAction[];
 }
 
 const MODEL_FALLBACK = 'The model';
 
-function critical(
-  title: string,
-  body: string | null,
-  actions: readonly FailureAction[],
-): FailureCopy {
-  return { tone: 'critical', icon: 'alert', title, body, actions };
-}
-
 export const PLAIN_ERROR = 'An error occurred.';
-
-type Row = (names: Names, context: FailureContext) => FailureCopy;
 
 interface Names {
   readonly model: string;
 }
 
-const STOPPED: FailureCopy = {
-  tone: 'neutral',
-  icon: 'square',
-  title: 'Stopped',
-  body: null,
-  actions: ['continue'],
-};
+type Row = (names: Names, context: FailureContext) => FailureCopy;
+
+type Line = Omit<FailureCopy, 'detail'>;
+
+function withDetail(line: Line, detail: string | null): FailureCopy {
+  return {
+    ...line,
+    detail,
+    actions: detail === null ? line.actions : [...line.actions, 'details'],
+  };
+}
+
+function critical(title: string, actions: readonly FailureAction[]): FailureCopy {
+  return withDetail({ tone: 'critical', icon: 'alert', title, actions }, null);
+}
 
 const ROWS: Readonly<Record<AssistantReasonCode, Row>> = {
-  credits: () =>
-    critical('Out of OpenRouter credits', 'Add credit or pick a model on another plan.', [
-      'top_up',
-      'choose_model',
-    ]),
-  rate_limit: () => critical(PLAIN_ERROR, null, ['choose_model']),
-  model_unavailable: ({ model }) => critical(`${model} isn’t available`, null, ['choose_model']),
-  offline: () => critical(PLAIN_ERROR, null, ['machine_switch']),
-  interrupted: (_names, { reason }) => ({
-    tone: 'neutral',
-    icon: 'clock',
-    title: 'Interrupted',
-    body: reason,
-    actions: ['continue'],
-  }),
-  stopped: () => STOPPED,
-  unknown: () => critical(PLAIN_ERROR, null, []),
+  credits: () => critical('Out of OpenRouter credits.', ['top_up', 'choose_model']),
+  rate_limit: () =>
+    withDetail(
+      {
+        tone: 'warning',
+        icon: 'clock',
+        title: 'The model is rate limited.',
+        actions: ['continue', 'choose_model'],
+      },
+      null,
+    ),
+  model_unavailable: ({ model }) => critical(`${model} isn’t available.`, ['choose_model']),
+  offline: () => critical('The machine went offline.', ['continue', 'machine_switch']),
+  interrupted: (_names, { reason }) =>
+    withDetail(
+      { tone: 'variant', icon: 'clock', title: 'Interrupted', actions: ['continue'] },
+      reason,
+    ),
+  stopped: () =>
+    withDetail({ tone: 'variant', icon: 'square', title: 'Stopped', actions: ['continue'] }, null),
+  unknown: (_names, { reason, native }) =>
+    withDetail(
+      { tone: 'critical', icon: 'alert', title: 'The reply failed.', actions: ['continue'] },
+      native === true ? reason : null,
+    ),
 };
 
 export function failureCopy(

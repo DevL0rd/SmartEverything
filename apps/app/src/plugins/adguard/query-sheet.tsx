@@ -17,6 +17,8 @@ import { PluginActionRow } from '../shared/plugin-action';
 import { useAdGuardTools } from './adguard-data';
 import { OUTCOME_LOOK, OUTCOME_TEXT, ownRulesOf, plainDomain, whenText } from './query-outcome';
 
+type DomainRule = 'block' | 'allow' | 'remove';
+
 const DONE = z.looseObject({ done: z.string() });
 
 function Rule({ rule }: { readonly rule: string }): ReactNode {
@@ -67,9 +69,9 @@ function RuleActions({
   const tools = useAdGuardTools();
   const domain = plainDomain(query.domain);
   const own = ownRulesOf(rules, domain);
-  const run = async (tool: string, failure: string): Promise<unknown> => {
+  const run = async (rule: DomainRule, failure: string): Promise<unknown> => {
     done();
-    const result = await tools.run(tool, { domain }, failure);
+    const result = await tools.run('set_domain_rule', { domain, rule }, failure);
     const parsed = DONE.safeParse(result);
     if (parsed.success) {
       notify({ message: parsed.data.done });
@@ -82,14 +84,14 @@ function RuleActions({
         <PluginActionRow
           title="Block it"
           icon="ban"
-          onPress={() => run('block_domain', `${domain} wasn’t blocked`)}
+          onPress={() => run('block', `${domain} wasn’t blocked`)}
         />
       )}
       {own.includes(`@@||${domain}^`) ? null : (
         <PluginActionRow
           title="Always allow it"
           icon="circleCheck"
-          onPress={() => run('allow_domain', `${domain} wasn’t allowed`)}
+          onPress={() => run('allow', `${domain} wasn’t allowed`)}
         />
       )}
       {own.length === 0 ? null : (
@@ -97,7 +99,7 @@ function RuleActions({
           title="Remove my rule"
           subtitle={`Removes ${own.join(' and ')}`}
           icon="undo"
-          onPress={() => run('remove_domain_rule', 'The rule wasn’t removed')}
+          onPress={() => run('remove', 'The rule wasn’t removed')}
         />
       )}
     </List>

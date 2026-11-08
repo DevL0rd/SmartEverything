@@ -1,36 +1,83 @@
 import type { ChatTimelineTool } from '@smarteverything/domain';
-import { toolActionTitle, toolActivityGoal } from './tool-presentation';
+import { toolOutcome } from './tool-outcome';
+import { toolActionTitle, toolVerb } from './tool-presentation';
+import { plural } from '../../../format/text';
 
-const GOALS: readonly (readonly [RegExp, string])[] = [
-  [/^(?:Search (?:the )?web|Web search)\b/i, 'Searching the web'],
-  [/^Read (?:a file|file contents|[^ ]+\.[a-z0-9]+)\b/i, 'Reading files'],
-  [/^(?:Write |Edit |Update files)/i, 'Updating files'],
-  [/^(?:Search file|Find files)/i, 'Searching files'],
-  [/^(?:Check code|Check formatting|Run checks)/i, 'Checking code'],
-  [/^Build the app/i, 'Building the app'],
-  [/^Inspect (?:the working folder|code changes)/i, 'Inspecting the workspace'],
-  [/^Run /i, 'Running commands'],
-  [/^Read the home/i, 'Checking devices'],
-  [/^Change device/i, 'Updating devices'],
-  [/^(?:Create or edit images|Choose an image|Check available image)/i, 'Working with images'],
-  [/^Stop an image/i, 'Stopping an image request'],
-  [/^Ask for your input/i, 'Getting your input'],
-];
-export function toolGroupGoal(
-  tools: readonly ChatTimelineTool[],
-  pluginName: (id: string) => string | null,
-): string {
-  const goals = [
+export type ActivityTone = 'live' | 'done' | 'failed' | 'stopped';
+
+export interface ActivitySummary {
+  readonly tone: ActivityTone;
+  readonly lead: string;
+  readonly verbs: readonly string[];
+  readonly failedNote: string | null;
+}
+
+export interface ActivityInput {
+  readonly tools: readonly ChatTimelineTool[];
+  readonly live: boolean;
+  readonly stopped: boolean;
+  readonly thinking: boolean;
+  readonly thoughtSeconds: number | null;
+  readonly pluginName: (id: string) => string | null;
+}
+
+export function toolGroupVerbs(tools: readonly ChatTimelineTool[]): readonly string[] {
+  return [
     ...new Set(
-      tools.map((tool) => {
-        const title = toolActionTitle(tool, pluginName);
-        return (
-          GOALS.find(([pattern]) => pattern.test(title))?.[1] ??
-          toolActivityGoal(tool) ??
-          'Working on your request'
-        );
+      tools.flatMap((tool) => {
+        const verb = toolVerb(tool);
+        return verb === null ? [] : [verb];
       }),
     ),
   ];
-  return goals.length > 2 ? 'Working on your request' : goals.join(' · ');
+}
+
+function liveSummary(input: ActivityInput): ActivitySummary {
+  const running = input.tools.findLast((tool) => toolOutcome(tool, true) === 'running');
+  const lead =
+    running === undefined
+      ? input.thinking || input.tools.length === 0
+        ? 'Thinking'
+        : 'Working'
+      : toolActionTitle(running, input.pluginName);
+  return { tone: 'live', lead, verbs: [], failedNote: null };
+}
+
+function thoughtLead(seconds: number | null): string {
+  return seconds === null ? 'Thought' : `Thought for ${String(Math.max(1, Math.round(seconds)))} s`;
+}
+
+export function activitySummary(input: ActivityInput): ActivitySummary {
+  if (input.live) return liveSummary(input);
+  const { tools } = input;
+  if (tools.length === 0) {
+    return { tone: 'done', lead: thoughtLead(input.thoughtSeconds), verbs: [], failedNote: null };
+  }
+  const outcomes = tools.map((tool) => toolOutcome(tool, false));
+  const failed = outcomes.filter((outcome) => outcome === 'failed').length;
+  const stopped =
+    input.stopped || outcomes.some((outcome) => outcome === 'interrupted' || outcome === 'unknown');
+  const verbs = toolGroupVerbs(tools);
+  const failedNote = failed === 0 ? null : `${String(failed)} failed`;
+  if (stopped) {
+    return {
+      tone: 'stopped',
+      lead: `Stopped after ${plural(tools.length, 'tool')}`,
+      verbs,
+      failedNote,
+    };
+  }
+  return {
+    tone: failed === 0 ? 'done' : 'failed',
+    lead: `Used ${plural(tools.length, 'tool')}`,
+    verbs,
+    failedNote,
+  };
+}
+
+export function activitySummaryLine(summary: ActivitySummary, verbCount: number): string {
+  const verbs = summary.verbs.slice(0, verbCount).join(', ');
+  return [summary.lead, verbs, summary.failedNote]
+    .filter((part) => part !== null && part !== '')
+    .join(' · ');
 }

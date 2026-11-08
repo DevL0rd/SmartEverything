@@ -36,6 +36,8 @@ export interface ClientChange {
   readonly role?: Role | undefined;
 }
 
+const TOKEN_HASH = z.object({ token_hash: z.string().regex(/^[0-9a-f]{64}$/u) });
+
 const PAIRING = z.object({
   role: z.enum(['owner', 'member']),
   profile_id: z.string().nullable(),
@@ -78,6 +80,12 @@ export class ClientsRepository {
       `select ${COLUMNS} from clients where token_hash = $tokenHash`,
       { tokenHash },
     );
+  }
+
+  tokenHashOf(id: string): string | undefined {
+    return this.context.sql.get(TOKEN_HASH, 'select token_hash from clients where id = $id', {
+      id,
+    })?.token_hash;
   }
 
   owner(): ClientRow | undefined {
@@ -142,6 +150,12 @@ export class ClientsRepository {
       this.context.sql.run(
         'choose the profile',
         'update clients set profile_id = $profileId where id = $id',
+        { id, profileId },
+      );
+      this.context.sql.run(
+        'move linked Computers to the chosen profile',
+        `update computer_nodes set profile_id = $profileId
+         where window_client_id = $id and revoked_at is null`,
         { id, profileId },
       );
       const after = this.byId(id);

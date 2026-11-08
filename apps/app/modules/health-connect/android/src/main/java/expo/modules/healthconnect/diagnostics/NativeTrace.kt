@@ -32,14 +32,36 @@ object DiagnosticText {
 object NativeTrace {
   private const val MAX_BYTES = 512 * 1024
   private const val MAX_FRAMES = 24
+  private val JAVA_THROWABLE = Regex("(?:[\\w$]+\\.)+[A-Z][\\w$]*(?:Exception|Error|Throwable|Failure)")
+  private val JAVA_FRAME = Regex("(?:^|\\sat\\s)[\\w$.]+\\.[\\w$<>]+\\(")
 
-  fun read(exit: ApplicationExitInfo): Map<String, Any?> {
-    if (exit.reason != ApplicationExitInfo.REASON_CRASH_NATIVE) return state("not_native")
+  fun read(exit: ApplicationExitInfo): Map<String, Any?> = when (exit.reason) {
+    ApplicationExitInfo.REASON_CRASH_NATIVE -> readNative(exit.traceInputStream)
+    ApplicationExitInfo.REASON_CRASH -> readJava(exit.traceInputStream)
+    else -> state("not_native")
+  }
+
+  private fun readNative(stream: InputStream?): Map<String, Any?> {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return state("unsupported")
     return try {
-      val stream = exit.traceInputStream ?: return state("unavailable")
-      val bytes = stream.use { bounded(it) } ?: return state("too_large")
-      decode(bytes)
+      decode(stream?.use { bounded(it) } ?: return state("unavailable"))
+    } catch (failure: Exception) {
+      state("unreadable")
+    }
+  }
+
+  private fun readJava(stream: InputStream?): Map<String, Any?> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || stream == null) return state("unavailable")
+    return try {
+      val text = stream.use { bounded(it) }?.decodeToString() ?: return state("too_large")
+      val name = JAVA_THROWABLE.find(text)?.value ?: return state("unreadable")
+      val frame = JAVA_FRAME.find(text)?.value ?: return state("unreadable")
+      mapOf(
+        "state" to "java",
+        "name" to name.substringAfterLast('.'),
+        "message" to DiagnosticText.description(text.lineSequence().first()),
+        "frame" to DiagnosticText.symbol(frame.substring(0, frame.length - 1))
+      )
     } catch (failure: Exception) {
       state("unreadable")
     }

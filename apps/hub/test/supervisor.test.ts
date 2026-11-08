@@ -1,21 +1,25 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { pidHolder } from '../src/pid-lock';
-import {
-  RESTART_EXIT_CODE,
-  RESTART_REQUEST_FILE,
-  SERVICE_OUTPUT_LOG_FILE,
-  SERVICE_READY_FILE,
-  STOP_REQUEST_FILE,
-  SUPERVISOR_PID_FILE,
-} from '../src/service/configuration';
+import { nodeLayout } from '../src/data-layout';
+import { RESTART_EXIT_CODE } from '../src/service/configuration';
 import { runSupervisor, type ServiceChild, type SupervisorHost } from '../src/service/supervisor';
 import { temporaryDirectory } from './support/server';
 import { until } from './support/wait';
 
 let directory: { path: string; remove: () => Promise<void> };
+
+function files(): SupervisorHost['files'] {
+  const node = nodeLayout(directory.path);
+  return {
+    supervisorPid: node.supervisorPid,
+    restartRequest: node.restartRequest,
+    stopRequest: node.stopRequest,
+    ready: node.ready,
+    output: node.logs.serviceOutput,
+  };
+}
 
 beforeEach(async () => {
   directory = await temporaryDirectory();
@@ -81,7 +85,7 @@ function harness(alive: (processId: number) => boolean = () => false): Harness {
             waiting.push({ count, resolve });
           }),
     host: {
-      dataDirectory: directory.path,
+      files: files(),
       pid: 4242,
       spawnService: (): ServiceChild => {
         const child = fakeChild();
@@ -119,12 +123,12 @@ describe('runSupervisor', () => {
   it('records its pid, keeps the output, starts it again at once on a restart and after a delay on a crash', async () => {
     const run = harness();
     await runSupervisor(run.host);
-    expect(await pidHolder(join(directory.path, SUPERVISOR_PID_FILE))).toBe(4242);
+    expect(await pidHolder(files().supervisorPid)).toBe(4242);
     run.children[0]?.stdoutStream.write('booting\n');
-    await writeFile(join(directory.path, SERVICE_READY_FILE), '{}');
+    await writeFile(files().ready, '{}');
     run.children[0]?.exit(RESTART_EXIT_CODE);
     await run.spawned(2);
-    expect(await exists(join(directory.path, SERVICE_READY_FILE))).toBe(false);
+    expect(await exists(files().ready)).toBe(false);
     run.children[1]?.exit(1);
     await until(() => run.timers.length === 1, 'the retry timer');
     expect(run.children).toHaveLength(2);
@@ -133,8 +137,8 @@ describe('runSupervisor', () => {
     expect(run.children).toHaveLength(3);
     run.children[2]?.exit(0);
     expect(await run.exited).toBe(0);
-    expect(await exists(join(directory.path, SUPERVISOR_PID_FILE))).toBe(false);
-    const output = await readFile(join(directory.path, SERVICE_OUTPUT_LOG_FILE), 'utf8');
+    expect(await exists(files().supervisorPid)).toBe(false);
+    const output = await readFile(files().output, 'utf8');
     expect(output).toContain('booting');
     expect(output).toContain('"event":"supervisor.service_exited"');
   });
@@ -142,9 +146,9 @@ describe('runSupervisor', () => {
   it('stops the service through its restart request when a stop is requested, forcing it after the grace period', async () => {
     const run = harness();
     await runSupervisor(run.host);
-    await writeFile(join(directory.path, STOP_REQUEST_FILE), 'stop');
-    await until(() => exists(join(directory.path, RESTART_REQUEST_FILE)), 'the restart request');
-    expect(await readFile(join(directory.path, RESTART_REQUEST_FILE), 'utf8')).toBe('stop');
+    await writeFile(files().stopRequest, 'stop');
+    await until(() => exists(files().restartRequest), 'the restart request');
+    expect(await readFile(files().restartRequest, 'utf8')).toBe('stop');
     const grace = run.timers.at(-1);
     expect(grace?.delayMs).toBe(30_000);
     grace?.run();
@@ -152,8 +156,8 @@ describe('runSupervisor', () => {
     run.children[0]?.exit(RESTART_EXIT_CODE);
     expect(await run.exited).toBe(0);
     expect(run.children).toHaveLength(1);
-    expect(await exists(join(directory.path, STOP_REQUEST_FILE))).toBe(false);
-    expect(await exists(join(directory.path, RESTART_REQUEST_FILE))).toBe(false);
+    expect(await exists(files().stopRequest)).toBe(false);
+    expect(await exists(files().restartRequest)).toBe(false);
   });
 
   it('stops at once when a stop arrives while it waits to retry', async () => {
@@ -161,23 +165,23 @@ describe('runSupervisor', () => {
     await runSupervisor(run.host);
     run.children[0]?.exit(1);
     await until(() => run.timers.length === 1, 'the retry timer');
-    await writeFile(join(directory.path, STOP_REQUEST_FILE), 'stop');
+    await writeFile(files().stopRequest, 'stop');
     expect(await run.exited).toBe(0);
     expect(run.timers[0]?.cancelled).toBe(true);
   });
 
   it('leaves a running supervisor alone and replaces the pid of one that is gone', async () => {
-    await writeFile(join(directory.path, SUPERVISOR_PID_FILE), '777\n');
+    await writeFile(files().supervisorPid, '777\n');
     const blocked = harness((processId) => processId === 777);
     await runSupervisor(blocked.host);
     expect(await blocked.exited).toBe(0);
     expect(blocked.children).toHaveLength(0);
-    expect(await pidHolder(join(directory.path, SUPERVISOR_PID_FILE))).toBe(777);
+    expect(await pidHolder(files().supervisorPid)).toBe(777);
     const replacing = harness();
     await runSupervisor(replacing.host);
-    expect(await pidHolder(join(directory.path, SUPERVISOR_PID_FILE))).toBe(4242);
+    expect(await pidHolder(files().supervisorPid)).toBe(4242);
     replacing.children[0]?.exit(0);
     expect(await replacing.exited).toBe(0);
-    expect(await pidHolder(join(directory.path, SUPERVISOR_PID_FILE))).toBeNull();
+    expect(await pidHolder(files().supervisorPid)).toBeNull();
   });
 });

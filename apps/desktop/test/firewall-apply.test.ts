@@ -9,8 +9,12 @@ const PLAN: FirewallPlan = {
   backend: 'ufw',
   revision: REVISION,
   unprivilegedPortStart: null,
+  mac: null,
   rules: [
-    { rule: { purpose: 'camera', protocol: 'udp', source: '192.168.50.147' }, prepend: false },
+    {
+      rule: { purpose: 'discovery', protocol: 'udp', port: 5353, source: '192.168.50.7/32' },
+      prepend: false,
+    },
     {
       rule: { purpose: 'hub', protocol: 'tcp', port: 7882, source: '192.168.50.0/24' },
       prepend: false,
@@ -68,7 +72,7 @@ describe('applying the firewall through the system prompt', () => {
     expect(result.outcome).toBe('applied');
     expect(result.via).toBe('desktop');
     expect(result.steps.map((step) => step.outcome)).toStrictEqual(['applied', 'already_present']);
-    expect(result.commands).toContain('sudo ufw allow in proto udp from 192.168.50.147');
+    expect(result.commands).toContain('sudo ufw allow in proto udp from 192.168.50.7/32');
     expect(calls).toStrictEqual(['/api/firewall', '/api/firewall/check']);
   });
 

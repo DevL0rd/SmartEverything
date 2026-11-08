@@ -39,13 +39,16 @@ export const STATE_TOPICS = [
   'windows',
   'tiling',
   'services',
+  'drive_mounts',
 ] as const;
 
 export const COMPUTER_TOPICS = [...SAMPLE_TOPICS, ...STATE_TOPICS] as const;
 
 export type ComputerTopic = (typeof COMPUTER_TOPICS)[number];
 
-export const WATCH_TOPICS = [...COMPUTER_TOPICS, 'live'] as const;
+export const VACUUM_VIDEO_TOPIC = 'video';
+
+export const WATCH_TOPICS = [...COMPUTER_TOPICS, 'live', VACUUM_VIDEO_TOPIC] as const;
 
 export type WatchTopic = (typeof WATCH_TOPICS)[number];
 

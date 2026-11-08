@@ -8,6 +8,7 @@ export interface NewChat {
   readonly parentId: string | null;
   readonly sourceKey: string | null;
   readonly engine: Engine;
+  readonly nativeAdmission?: 'standalone' | 'retired';
   readonly tools?: readonly string[] | null;
   readonly branchMessageId?: string | null;
   readonly titleAuto?: boolean;
@@ -19,4 +20,11 @@ export function modelKey(engine: Engine): string {
     engine.model,
     'model_route_id' in engine ? engine.model_route_id : null,
   ]);
+}
+
+export function archivedAt(archived: boolean | undefined, now: string): string | null | undefined {
+  if (archived === undefined) {
+    return undefined;
+  }
+  return archived ? now : null;
 }

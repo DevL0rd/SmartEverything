@@ -1,5 +1,8 @@
-import { referenceSubmissions, type ReferenceSubmissions } from './reference-submission';
+import { assertOrdinaryMessageKey } from './delegation/helper-dialogue';
+import { ReferenceSubmissions } from './reference-submission';
+import type { Delegation } from './delegation/delegation';
 import { MessageReplay } from './message-replay';
+import { admitChatExecution } from './native-helpers';
 import { ownedUploads, queueEvent } from './request-events';
 import type { ReferenceService } from '../references/service';
 import type { EngineRegistry } from './engines/registry';
@@ -23,9 +26,11 @@ import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
 import type { ChatDirectory, ChatOwner } from './chat-directory';
 import type { ConversationLog } from './conversation-log';
+import { quoteForChat } from './message-quote';
 import type { AssistantDelivery } from './delivery';
 import type { AssistantFiles } from './files';
 import type { VoiceResultHandler, VoiceTask } from './voice-link';
+import type { TurnRequest } from './service-contract';
 
 export interface Sender {
   readonly clientId: string;
@@ -67,12 +72,20 @@ export class AssistantRequests {
   referenceSubmissions(
     references: ReferenceService,
     engines: EngineRegistry,
+    delegation: Pick<Delegation, 'sendToHelper'>,
   ): ReferenceSubmissions {
-    return referenceSubmissions(this.deps, references, engines, this);
+    return new ReferenceSubmissions({
+      ...this.deps,
+      references,
+      engines,
+      requests: this,
+      delegation,
+    });
   }
 
   send(sender: Sender, body: AssistantNewMessage, chat: AiChatRow): AssistantMessageRow {
     const { store } = this.deps;
+    assertOrdinaryMessageKey(this.deps.store, chat, body.client_message_id);
     const sent =
       body.client_message_id === undefined
         ? undefined
@@ -86,6 +99,7 @@ export class AssistantRequests {
       });
       return sent;
     }
+    admitChatExecution(chat);
     const row = store.write(() => this.accept(sender, body, chat));
     log.debug('request.accepted', {
       chatId: chat.id,
@@ -110,6 +124,7 @@ export class AssistantRequests {
       text: body.text,
       files,
       ...(body.references === undefined ? {} : { references: body.references }),
+      quote: quoteForChat(store, chat, body.quote_message_id),
       origin: { source: 'app', plugin_id: null, device_id: null, name: null },
       ...(body.client_message_id === undefined ? {} : { clientMessageId: body.client_message_id }),
     });
@@ -151,6 +166,7 @@ export class AssistantRequests {
   voice(task: VoiceTask & { readonly chatId: string }): string {
     const { store } = this.deps;
     const chat = store.aiChats.chat(task.chatId);
+    admitChatExecution(chat);
     const eventId = randomUUID();
     this.queued({
       id: eventId,
@@ -172,6 +188,8 @@ export class AssistantRequests {
     actor: ChatOwner,
   ): Promise<AssistantMessageRow> {
     const { profileId, chat } = this.deps.chats.postTarget(actor, body, ownerProfile);
+    admitChatExecution(chat);
+    const quote = quoteForChat(this.deps.store, chat, body.quoteMessageId);
     log.debug('request.post_received', {
       chatId: chat.id,
       profileId,
@@ -194,6 +212,7 @@ export class AssistantRequests {
       text: body.text,
       files,
       kind: 'update',
+      quote,
     });
   }
 
@@ -204,6 +223,7 @@ export class AssistantRequests {
   ): void {
     const added = this.deps.store.write(() => {
       if (this.deps.store.assistantEvents.find(id) !== undefined) return false;
+      admitChatExecution(this.deps.store.aiChats.chat(scope.chatId));
       const event = this.deps.store.assistantEvents.add({
         id,
         kind: 'wake',
@@ -220,7 +240,20 @@ export class AssistantRequests {
     if (added) this.deps.delivery().added();
   }
 
+  runTurn(input: TurnRequest): { chatId: string; eventId: string } {
+    const chat = this.deps.chats.forTurn(input.profileId, input.chatId, input.title);
+    log.debug('turn.requested', {
+      chatId: chat.id,
+      profileId: input.profileId,
+      textLength: input.text.length,
+      source: input.origin.source,
+      newChat: input.chatId === undefined,
+    });
+    return { chatId: chat.id, eventId: this.turn(chat, input.text, input.origin) };
+  }
+
   turn(chat: AiChatRow, text: string, origin: MessageOrigin): string {
+    admitChatExecution(chat);
     const eventId = randomUUID();
     const note = this.deps.conversation.originNote(chat, origin);
     this.queued({
@@ -237,6 +270,7 @@ export class AssistantRequests {
   }
 
   async inbound(turn: InboundTurn): Promise<{ eventId: string; messageId: string }> {
+    admitChatExecution(turn.chat);
     log.debug('request.inbound_received', {
       chatId: turn.chat.id,
       profileId: turn.chat.profile_id,
@@ -284,6 +318,7 @@ export class AssistantRequests {
       ok,
       replyLength: text.length,
     });
+    if (!ok) this.deps.store.aiRepairInbox.markFailed(event.id);
     this.deps.store.assistantEvents.mark(event.id, 'answered_at');
     if (event.kind === 'voice') {
       this.deps.voiceResult()?.(event.id, text, false);

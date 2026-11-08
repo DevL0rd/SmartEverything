@@ -7,6 +7,7 @@ import type { PersistentVariables } from './variables';
 import type { PresenceSource } from './presence';
 import type { RandomPort } from './random';
 import type { SignalReads } from './integration-reads';
+import type { KindCatalog } from '../plugin-kinds/catalog';
 
 export interface WorldReadDeps {
   readonly store: Store;
@@ -18,4 +19,5 @@ export interface WorldReadDeps {
   readonly random: RandomPort;
   readonly memory: NodeMemory;
   readonly signals: SignalReads;
+  readonly kinds: KindCatalog;
 }

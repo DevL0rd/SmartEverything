@@ -48,9 +48,7 @@ export function computerIdOf(context: Reach, wanted: string | undefined): string
   const [only, second] = computers;
   if (only === undefined) throw new ToolError('This home has no computer', 'not_found');
   if (second !== undefined) {
-    throw new ToolError(
-      `Say which computer with deviceId: ${listed(computers)}`,
-    );
+    throw new ToolError(`Say which computer with deviceId: ${listed(computers)}`);
   }
   return only.device.id;
 }

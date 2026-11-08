@@ -20,7 +20,11 @@ export function ActivitySection({
   const ids = useMemo(() => new Set(deviceIds), [deviceIds]);
   const items = useActivity({ deviceIds: ids }).slice(0, ACTIVITY_SHOWN);
   return (
-    <Section title="Activity" action={<SectionAction label="See all" href={href.activity()} />}>
+    <Section
+      title="Activity"
+      action={<SectionAction label="See all" href={href.activity()} />}
+      className="w-full max-w-reading self-start"
+    >
       <View
         role="list"
         aria-label={`Recent activity in ${name}`}
@@ -45,7 +49,11 @@ export function AutomationsSection({
 }): ReactNode {
   if (uses.length === 0) return null;
   return (
-    <List title={`Automations · ${String(uses.length)}`} inset>
+    <List
+      title={`Automations · ${String(uses.length)}`}
+      className="w-full max-w-reading self-start"
+      inset
+    >
       {uses.map((use) => (
         <NavRow
           key={use.id}

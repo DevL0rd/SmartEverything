@@ -13,11 +13,13 @@ import { jsonText } from '../../format/json-text';
 import { WIRE_QUERY, wireQueryOf, type CallInput, type TypedEndpoint } from './request';
 import { Logger } from '@smarteverything/logging';
 import { rawErrorText } from '../../format/errors';
-import { readLeniently, readTablesLeniently } from './readable';
+import { readLeniently, readTablesLeniently, type UnreadableSection } from './readable';
 import { assertHubLease, type HubRouteLease } from './active-route';
 import { hubNetwork } from './route-platform';
 import { presentMediaResource } from './media-resources';
-import { RequestTrace, noteSendFailure } from './request-log';
+import { RequestTrace } from './request-log';
+import { sendUpload, uploadBodyOf, type UploadBody, type UploadOptions } from './binary-upload';
+import { hubAnswered } from './hub-answers';
 
 const log = new Logger('app.api');
 
@@ -39,7 +41,7 @@ export class UnreadableAnswerError extends Error {
     readonly route: string,
     readonly issues: string,
   ) {
-    super(`The server answered ${route} with something this app cannot read: ${issues}.`);
+    super('Check for a SmartEverything update, then try again.');
   }
 }
 
@@ -110,15 +112,33 @@ function answered<S extends z.ZodType>(route: string, schema: S, value: unknown)
 export interface TablesAnswer<T> {
   readonly data: T;
   readonly skipped: readonly string[];
+  readonly unreadable: readonly UnreadableSection[];
+}
+
+export interface TablesScope {
+  readonly roots: readonly string[];
+  readonly sections: readonly string[];
+}
+
+const reportedSections = new Set<string>();
+
+function noteUnreadable(route: string, sections: readonly UnreadableSection[]): void {
+  for (const unreadable of sections) {
+    const key = `${route}|${unreadable.section}|${unreadable.path}`;
+    if (reportedSections.has(key)) continue;
+    reportedSections.add(key);
+    log.warn('api.section_unreadable', { route, ...unreadable });
+  }
 }
 
 function answeredTables<S extends z.ZodType>(
   route: string,
   schema: S,
   value: unknown,
-  roots: readonly string[],
+  scope: TablesScope,
 ): TablesAnswer<z.output<S>> {
-  const read = readTablesLeniently(schema, value, roots);
+  const { roots, sections } = scope;
+  const read = readTablesLeniently(schema, value, roots, sections);
   if (!read.ok) {
     log.warn('api.answer_unreadable', { route, issues: issuesOf(read.error), roots });
     throw new UnreadableAnswerError(route, issuesOf(read.error));
@@ -136,11 +156,19 @@ function answeredTables<S extends z.ZodType>(
   if (wholly.length > 0) {
     log.warn('api.tables_skipped', { route, tables: wholly.join(', ') });
   }
-  return { data: read.data, skipped: read.skipped };
+  noteUnreadable(route, read.unreadable);
+  return { data: read.data, skipped: read.skipped, unreadable: read.unreadable };
 }
 
 function routeOf(endpoint: EndpointShape): string {
   return `${endpoint.method} ${endpoint.path}`;
+}
+
+function isLogUpload(endpoint: EndpointShape): boolean {
+  return (
+    endpoint.method === 'POST' &&
+    (endpoint.path === E.reportClientPerf.path || endpoint.path === E.ingestRuntimeLogs.path)
+  );
 }
 
 async function bodyOf(response: Response): Promise<unknown> {
@@ -151,6 +179,15 @@ async function bodyOf(response: Response): Promise<unknown> {
   const read = jsonText(text);
   return read.ok ? read.value : text;
 }
+
+type Reading = 'json' | 'bytes';
+
+async function answerBody(response: Response, reading: Reading): Promise<unknown> {
+  if (reading === 'bytes' && response.ok) return new Uint8Array(await response.arrayBuffer());
+  return bodyOf(response);
+}
+
+type Payload = { readonly kind: 'json'; readonly value: unknown } | UploadBody;
 
 export interface ApiClientOptions {
   readonly baseUrl: string;
@@ -206,12 +243,33 @@ export class ApiClient {
     } = {},
   ): Promise<z.output<R>> {
     let sequence: number | null = null;
-    const answer = await this.answerOf(endpoint, input, options.signal, (value) => {
-      sequence = value;
+    const answer = await this.answerOf(endpoint, input, {
+      signal: options.signal,
+      sequence: (value) => {
+        sequence = value;
+      },
     });
     const result = answered(routeOf(endpoint), endpoint.response, answer);
     options.onSequence?.(sequence);
     return result;
+  }
+
+  async callBytes<
+    P extends z.ZodType,
+    Q extends z.ZodType,
+    B extends z.ZodType,
+    R extends z.ZodType,
+  >(
+    endpoint: TypedEndpoint<P, Q, B, R>,
+    input: CallInput<P, Q, B>,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<Uint8Array> {
+    const answer = await this.answerOf(endpoint, input, {
+      signal: options.signal,
+      reading: 'bytes',
+    });
+    if (answer instanceof Uint8Array) return answer;
+    throw new UnreadableAnswerError(routeOf(endpoint), 'the answer is not a file');
   }
 
   async callTables<
@@ -222,10 +280,21 @@ export class ApiClient {
   >(
     endpoint: TypedEndpoint<P, Q, B, R>,
     input: CallInput<P, Q, B>,
-    roots: readonly string[],
+    scope: TablesScope,
   ): Promise<TablesAnswer<z.output<R>>> {
     const answer = await this.answerOf(endpoint, input);
-    return answeredTables(routeOf(endpoint), endpoint.response, answer, roots);
+    return answeredTables(routeOf(endpoint), endpoint.response, answer, scope);
+  }
+
+  async upload<P extends z.ZodType, Q extends z.ZodType, B extends z.ZodType, R extends z.ZodType>(
+    endpoint: TypedEndpoint<P, Q, B, R>,
+    input: Omit<CallInput<P, Q, B>, 'body'>,
+    blob: Blob,
+    options: UploadOptions,
+  ): Promise<z.output<R>> {
+    const upload = uploadBodyOf(endpoint.method, blob, options);
+    const answer = await this.answerOf(endpoint, input, { signal: options.signal, upload });
+    return answered(routeOf(endpoint), endpoint.response, answer);
   }
 
   private async answerOf<
@@ -235,34 +304,43 @@ export class ApiClient {
     R extends z.ZodType,
   >(
     endpoint: TypedEndpoint<P, Q, B, R>,
-    input: CallInput<P, Q, B>,
-    signal?: AbortSignal,
-    sequence?: (seq: number | null) => void,
+    input: { readonly params?: unknown; readonly query?: unknown; readonly body?: unknown },
+    read: {
+      readonly signal?: AbortSignal | undefined;
+      readonly sequence?: ((seq: number | null) => void) | undefined;
+      readonly reading?: Reading;
+      readonly upload?: UploadBody;
+    } = {},
   ): Promise<unknown> {
     const route = routeOf(endpoint);
     const params = PATH_PARAMS.parse(input.params ?? {});
     checked(route, 'path', endpoint.params, params);
     const query = wireQueryOf(WIRE_QUERY.parse(input.query ?? {}));
     checked(route, 'query', endpoint.query, query);
-    const body: unknown = checked(route, 'body', endpoint.body, input.body);
+    const body: Payload = read.upload ?? {
+      kind: 'json',
+      value: checked(route, 'body', endpoint.body, input.body),
+    };
     const path = `${buildPath(endpoint.path, params)}${encodeQuery(query)}`;
     return this.exchange(path, endpoint.method, body, {
-      route: endpoint.path === E.reportClientFailures.path ? null : route,
+      route: isLogUpload(endpoint) ? null : route,
       authenticated: endpoint.access !== 'public',
-      signal,
-      sequence,
+      signal: read.signal,
+      sequence: read.sequence,
+      reading: read.reading ?? 'json',
     });
   }
 
   private async exchange(
     path: string,
     method: string,
-    body: unknown,
+    body: Payload,
     options: {
       readonly route: string | null;
       readonly authenticated: boolean;
       readonly signal: AbortSignal | undefined;
       readonly sequence: ((seq: number | null) => void) | undefined;
+      readonly reading: Reading;
     },
   ): Promise<unknown> {
     const trace = new RequestTrace(options.route, method, options.signal);
@@ -273,16 +351,19 @@ export class ApiClient {
       const lease = this.options.route?.();
       trace.lease = lease;
       const baseUrl = lease?.baseUrl ?? this.options.baseUrl;
-      const response = await this.send(`${baseUrl}${path}`, method, body, {
-        lease,
-        signal: options.signal,
-      });
+      const response = heard(
+        await this.send(`${baseUrl}${path}`, method, body, {
+          lease,
+          signal: options.signal,
+          trace,
+        }),
+      );
       trace.status = response.status;
-      const answer = await bodyOf(response);
+      const answer = await answerBody(response, options.reading);
       if (!response.ok) {
         const refusal = apiErrorOf(response.status, answer);
         if (refusal.code === 'unauthorized' && options.authenticated) {
-          log.warn('api.unauthorized', { route: options.route, status: trace.status });
+          trace.unauthorized();
           this.options.onUnauthorized();
         }
         throw refusal;
@@ -299,29 +380,36 @@ export class ApiClient {
   private async send(
     url: string,
     method: string,
-    body: unknown,
+    body: Payload,
     options: {
       readonly lease: HubRouteLease | undefined;
       readonly signal: AbortSignal | undefined;
+      readonly trace: RequestTrace;
     },
   ): Promise<Response> {
     const { lease, signal } = options;
     const token = this.options.token;
+    const authorization = token === null ? {} : { authorization: `Bearer ${token}` };
     try {
+      if (body.kind === 'bytes') {
+        const headers = { ...authorization, 'content-type': 'application/octet-stream' };
+        return await sendUpload(lease, { ...body, url, headers, signal });
+      }
+      const { value } = body;
       const response = await (lease?.fetch ?? this.options.fetch)(url, {
         method,
         redirect: 'error',
         ...(signal === undefined ? {} : { signal }),
         headers: {
-          ...(token === null ? {} : { authorization: `Bearer ${token}` }),
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...authorization,
+          ...(value === undefined ? {} : { 'content-type': 'application/json' }),
         },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...(value === undefined ? {} : { body: JSON.stringify(value) }),
       });
       return response;
     } catch (error) {
       assertNotAborted(signal, error);
-      noteSendFailure(method, lease, signal, error);
+      options.trace.sendFailed(error);
       if (lease !== undefined) {
         assertHubLease(lease, method);
         lease.failed();
@@ -329,6 +417,11 @@ export class ApiClient {
       throw new ServerUnreachableError(this.options.baseUrl, rawErrorText(error));
     }
   }
+}
+
+function heard(response: Response): Response {
+  if (response.ok) hubAnswered();
+  return response;
 }
 
 function assertNotAborted(signal: AbortSignal | undefined, error: unknown): void {

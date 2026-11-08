@@ -42,7 +42,11 @@ export interface PluginRuntime {
   readonly stop: () => Promise<void>;
   readonly settingsChanged: (settings: Readonly<Record<string, JsonValue>>) => void;
   readonly tools: () => readonly RuntimeTool[];
-  readonly choices: (source: string, query: PluginOptionQuery) => Promise<PluginOptionPage>;
+  readonly choices: (
+    source: string,
+    query: PluginOptionQuery,
+    caller: ToolCaller,
+  ) => Promise<PluginOptionPage>;
   readonly call: (
     name: string,
     args: Readonly<Record<string, unknown>>,

@@ -6,16 +6,15 @@ export const VIEW = { w: 400, h: 384 } as const;
 export const FLOOR_Y = 362;
 export const PIVOT = { x: 40, y: 356 } as const;
 export const BELT_Y = 316;
-export const MACHINE_MM = 1632;
-export const MACHINE_UNITS = 350;
+const MACHINE_MM = 1632;
+const MACHINE_UNITS = 350;
 export const UNITS_PER_METER = (MACHINE_UNITS * 1000) / MACHINE_MM;
 export const SEAM_PERIOD = 28;
-export const SEAMS_PER_CYCLE = 4;
+const SEAMS_PER_CYCLE = 4;
 export const TEXTURE_TRAVEL = SEAM_PERIOD * SEAMS_PER_CYCLE;
 export const WALKER_X = 114;
 export const LIFT_X = 336;
-export const HEART_MAX_BPM = 188;
-export const SPRING_SETTLE_MS = 1000;
+const HEART_MAX_BPM = 188;
 
 const DEGREES = 180 / Math.PI;
 const FLIGHT_FROM_KMH = 8;
@@ -24,15 +23,9 @@ const CADENCE_PER_KMH = 6.5;
 const MS_PER_MINUTE = 60_000;
 const STEPS_PER_STRIDE = 2;
 
-export const HEART_ZONE_FROM: readonly number[] = [0.5, 0.6, 0.7, 0.8, 0.9];
+const HEART_ZONE_FROM: readonly number[] = [0.5, 0.6, 0.7, 0.8, 0.9];
 
-export const HEART_ZONE_ROLES: readonly ColourRole[] = [
-  'viz-6',
-  'viz-1',
-  'viz-5',
-  'viz-2',
-  'critical',
-];
+const HEART_ZONE_ROLES: readonly ColourRole[] = ['viz-6', 'viz-1', 'viz-5', 'viz-2', 'critical'];
 
 export interface Point {
   readonly x: number;

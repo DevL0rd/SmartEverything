@@ -20,6 +20,7 @@ export const COMMON_TOOL_NAMES: ReadonlySet<string> = new Set([
   'food_log',
   'presence_read',
   'voice_speak',
+  'chat_speak',
   'person_notify',
   'weather_read',
   'widget_show',

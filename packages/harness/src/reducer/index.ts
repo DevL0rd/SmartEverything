@@ -8,6 +8,8 @@ import type { SessionOpening } from './session';
 
 export type { SessionOpening } from './session';
 export { isProjectedType } from './event';
+export { settledUsage } from './settled-usage';
+export type { SettledUsage } from './settled-usage';
 
 export interface ReducerPorts {
   readonly metadata: (sessionId: string) => DshSessionMetadata;

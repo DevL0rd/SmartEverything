@@ -137,14 +137,3 @@ class ScaleRelayWorker(context: Context, parameters: WorkerParameters) :
   override suspend fun getForegroundInfo(): ForegroundInfo = RelayNotification.forScale(applicationContext)
 }
 
-class ScaleRelayRestart : BroadcastReceiver() {
-  override fun onReceive(context: Context, intent: Intent) {
-    NativeGuard.run("ScaleRelayRestart") {
-      try {
-        ScaleRelay(context).resume()
-      } catch (failure: SyncFailure) {
-        ScaleStatus(context).note("failed", "Listening did not restart: ${failure.message}")
-      }
-    }
-  }
-}

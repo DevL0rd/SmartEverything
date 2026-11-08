@@ -126,7 +126,7 @@ describe('opening a chat in the app', () => {
   it('leaves a chat that is mid-change alone', async () => {
     const { chat } = await openOnDesk();
     const session = rig.service.state(rig.owner, chat.id);
-    rig.opened.store.harnessCoordination.markSwitching(session.session_id);
+    rig.opened.store.harnessSessions.markSwitching(session.session_id);
     restartDesk(false);
     rig.calls.length = 0;
 

@@ -12,10 +12,10 @@ import { Text } from '../../../components/text';
 import { Button } from '../../../components/button';
 import { useExtensions, useExtensionConfiguration } from './queries';
 import { ExtensionReadStatus, useMemberBanner } from './query-status';
-import { pageKind } from './items';
 import {
   catalogueItemIcon,
   catalogueItemHref,
+  installedCatalogueItems,
   matchesCatalogueItem,
   type CatalogueItem,
 } from './catalogue-items';
@@ -34,7 +34,6 @@ function InstalledHeader({
   onDevices,
   query,
   setQuery,
-  searchable,
   kind,
 }: {
   readonly configuration: ConfigurationQuery;
@@ -42,7 +41,6 @@ function InstalledHeader({
   readonly onDevices: () => void;
   readonly query: string;
   readonly setQuery: (value: string) => void;
-  readonly searchable: boolean;
   readonly kind: 'extension' | 'skill';
 }): ReactNode {
   return (
@@ -65,39 +63,36 @@ function InstalledHeader({
       </Text>
       <ClaudeCollectionControl kind={kind} />
       <DeviceLink configuration={configuration} onDevices={onDevices} />
-      {searchable ? (
-        <SearchField
-          value={query}
-          onChange={setQuery}
-          placeholder={kind === 'skill' ? 'Search skills' : 'Search added extensions'}
-          variant="field"
-        />
-      ) : null}
+      <CatalogueLinks kind={kind} />
+      <SearchField
+        value={query}
+        onChange={setQuery}
+        placeholder={kind === 'skill' ? 'Search your skills' : 'Search your extensions'}
+        variant="field"
+      />
     </View>
   );
 }
 
-function InstalledFooter({ kind }: { readonly kind: 'extension' | 'skill' }): ReactNode {
+function CatalogueLinks({ kind }: { readonly kind: 'extension' | 'skill' }): ReactNode {
   return (
-    <View className="px-gutter pt-3">
-      <List inset>
+    <List inset>
+      <NavRow
+        icon="plus"
+        title={kind === 'skill' ? 'Browse skills' : 'Browse extensions'}
+        href={extensionBrowseHref(kind)}
+      />
+      {kind === 'skill' ? (
         <NavRow
-          icon="plus"
-          title={kind === 'skill' ? 'Browse skills' : 'Browse extensions'}
-          href={extensionBrowseHref(kind)}
+          icon="refresh"
+          title="Updates"
+          href={{
+            pathname: '/settings/[...page]',
+            params: { page: ['assistant', 'skills', 'updates'] },
+          }}
         />
-        {kind === 'skill' ? (
-          <NavRow
-            icon="refresh"
-            title="Updates"
-            href={{
-              pathname: '/settings/[...page]',
-              params: { page: ['assistant', 'skills', 'updates'] },
-            }}
-          />
-        ) : null}
-      </List>
-    </View>
+      ) : null}
+    </List>
   );
 }
 
@@ -126,7 +121,7 @@ function InstalledList({ kind }: { readonly kind: 'extension' | 'skill' }): Reac
   const params = z.object({ section: z.string().optional() }).parse(useLocalSearchParams());
   const [devices, setDevices] = useState(params.section === 'devices');
   const [query, setQuery] = useState('');
-  const items = useInstalledItems(kind);
+  const items = installedCatalogueItems(catalogue.data, kind);
   return (
     <>
       <VirtualList
@@ -139,18 +134,16 @@ function InstalledList({ kind }: { readonly kind: 'extension' | 'skill' }): Reac
             }}
             query={query}
             setQuery={setQuery}
-            searchable={items.length > 8}
             kind={kind}
           />
         }
-        sections={sectionsOf(items.filter((item) => matchesCatalogueItem(item, query)))}
+        sections={sectionsOf(items.filter((item) => matchesCatalogueItem(item, query.trim())))}
         keyOf={(item) => item.id}
         renderItem={(item) => <InstalledRow item={item} />}
-        footer={<InstalledFooter kind={kind} />}
         empty={
           <CatalogueEmpty
             kind={kind}
-            query={query}
+            query={query.trim()}
             clear={() => {
               setQuery('');
             }}
@@ -187,12 +180,6 @@ export function AiExtensionsScreen({
       <InstalledList kind={kind} />
     </SettingsFrame>
   );
-}
-
-function useInstalledItems(kind: 'extension' | 'skill'): readonly CatalogueItem[] {
-  const catalogue = useExtensions().data;
-  const installed = (catalogue?.items ?? []).filter((item) => pageKind(item) === kind);
-  return kind === 'skill' ? [...(catalogue?.bundled_skills ?? []), ...installed] : installed;
 }
 
 function InstalledRow({ item }: { readonly item: CatalogueItem }): ReactNode {

@@ -125,19 +125,26 @@ describe('turning on a screen', () => {
     expect(rig.packets).toStrictEqual([]);
   });
 
-  it('wakes an offline screen at its address and switches it on once it is online', async () => {
+  it('resolves once the packets are sent and switches the screen on when it comes online', async () => {
     const switchOn = vi.fn(() => Promise.resolve('on'));
-    const result = rig.wake.powerOn(TV, switchOn);
+    await expect(rig.wake.powerOn(TV, switchOn)).resolves.toBeNull();
     expect(rig.packets).toStrictEqual(['a1:b2:c3:d4:e5:f6']);
     heard(signal('tv-2', true));
     heard(signal(TV, false));
     expect(switchOn).not.toHaveBeenCalled();
     heard(signal(TV, true));
-    await expect(result).resolves.toBe('on');
-    expect(switchOn).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(switchOn).toHaveBeenCalledTimes(1);
+    });
     expect(rig.listeners.size).toBe(0);
     expect(rig.timers.every((timer) => timer.cancelled)).toBe(true);
     expect(rig.woke).toStrictEqual([TV]);
+  });
+
+  it('does not send a second set of packets while the screen is already waking', async () => {
+    await rig.wake.powerOn(TV, () => Promise.resolve(null));
+    await expect(rig.wake.powerOn(TV, () => Promise.resolve(null))).resolves.toBeNull();
+    expect(rig.packets).toHaveLength(1);
   });
 
   it('derives the resend times and the deadline from the wake budget', () => {
@@ -148,21 +155,28 @@ describe('turning on a screen', () => {
   });
 
   it('sends the packets again while it waits', async () => {
-    const result = rig.wake.powerOn(TV, () => Promise.resolve(null));
+    await rig.wake.powerOn(TV, () => Promise.resolve(null));
     for (const after of WAKE_RESENDS_MS) {
       fire(after);
     }
     expect(rig.packets).toHaveLength(1 + WAKE_RESENDS_MS.length);
     heard(signal(TV, true));
-    await expect(result).resolves.toBeNull();
+    await vi.waitFor(() => {
+      expect(rig.woke).toStrictEqual([TV]);
+    });
   });
 
-  it('fails without claiming success when the screen never comes online', async () => {
+  it('logs an error and never switches on when the screen never comes online', async () => {
+    const logs = captureLogs();
     const switchOn = vi.fn(() => Promise.resolve(null));
-    const result = rig.wake.powerOn(TV, switchOn);
+    await expect(rig.wake.powerOn(TV, switchOn)).resolves.toBeNull();
     fire(WAKE_DEADLINE_MS);
-    await expect(result).rejects.toThrow(new TelevisionDidNotWakeError(TV));
-    await expect(result).rejects.toThrow(/Power On with Mobile/);
+    await vi.waitFor(() => {
+      expect(logs.events()).toContain('television.did_not_wake');
+    });
+    const failure = logs.records.find((record) => record.event === 'television.did_not_wake');
+    expect(JSON.stringify(failure)).toContain('Power On with Mobile');
+    expect(new TelevisionDidNotWakeError(TV).message).toMatch(/Power On with Mobile/);
     expect(switchOn).not.toHaveBeenCalled();
     expect(rig.woke).toStrictEqual([]);
     expect(rig.listeners.size).toBe(0);

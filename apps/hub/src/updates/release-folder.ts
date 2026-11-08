@@ -1,5 +1,4 @@
 import {
-  MACHINE_UPDATE_FOLDER,
   MACHINE_UPDATE_MANIFEST,
   MACHINE_UPDATE_MANIFEST_FILE,
   type MachineUpdateArtifact,
@@ -7,7 +6,9 @@ import {
 } from '@smarteverything/domain';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { HubLayout } from '../data-layout';
 import { isMissing } from '../fs-util';
+import { Loaded } from '../app-updates/index-file';
 
 export class ReleaseFolderInvalidError extends Error {
   override readonly name = 'ReleaseFolderInvalidError';
@@ -23,53 +24,65 @@ export class ReleaseFolderInvalidError extends Error {
 
 export class ReleaseFolder {
   private readonly directory: string;
+  private readonly loaded: Loaded<MachineUpdateManifest | null>;
 
-  constructor(dataDirectory: string) {
-    this.directory = join(dataDirectory, MACHINE_UPDATE_FOLDER);
+  constructor(layout: HubLayout) {
+    this.directory = layout.system.updates.machineUpdates;
+    this.loaded = new Loaded(() => loadRelease(this.directory));
   }
 
   pathOf(file: string): string {
     return join(this.directory, file);
   }
 
-  async manifest(): Promise<MachineUpdateManifest | null> {
-    const file = join(this.directory, MACHINE_UPDATE_MANIFEST_FILE);
-    const text = await readFile(file, 'utf8').catch((cause: unknown) => {
-      if (isMissing(cause)) return null;
-      throw cause;
-    });
-    if (text === null) return null;
-    const manifest = MACHINE_UPDATE_MANIFEST.safeParse(parsed(file, text));
-    if (!manifest.success) {
-      throw new ReleaseFolderInvalidError(
-        file,
-        'a release manifest naming every file of each platform',
-        manifest.error.message,
-      );
-    }
-    await Promise.all(manifest.data.artifacts.map((artifact) => this.checked(artifact)));
-    return manifest.data;
+  manifest(): Promise<MachineUpdateManifest | null> {
+    return this.loaded.get();
   }
 
-  private async checked(artifact: MachineUpdateArtifact): Promise<void> {
-    const file = this.pathOf(artifact.file);
-    const found = await stat(file).catch((cause: unknown) => {
-      if (isMissing(cause)) {
-        throw new ReleaseFolderInvalidError(
-          file,
-          `the ${artifact.kind} file the manifest names`,
-          'no file',
-        );
-      }
-      throw cause;
-    });
-    if (found.size !== artifact.size) {
+  refresh(): Promise<MachineUpdateManifest | null> {
+    return this.loaded.refresh();
+  }
+}
+
+export async function loadRelease(directory: string): Promise<MachineUpdateManifest | null> {
+  const file = join(directory, MACHINE_UPDATE_MANIFEST_FILE);
+  const text = await readFile(file, 'utf8').catch((cause: unknown) => {
+    if (isMissing(cause)) return null;
+    throw cause;
+  });
+  if (text === null) return null;
+  const manifest = MACHINE_UPDATE_MANIFEST.safeParse(parsed(file, text));
+  if (!manifest.success) {
+    throw new ReleaseFolderInvalidError(
+      file,
+      'a release manifest naming every file of each platform',
+      manifest.error.message,
+    );
+  }
+  await Promise.all(
+    manifest.data.artifacts.map((artifact) => checkedArtifact(directory, artifact)),
+  );
+  return manifest.data;
+}
+
+async function checkedArtifact(directory: string, artifact: MachineUpdateArtifact): Promise<void> {
+  const file = join(directory, artifact.file);
+  const found = await stat(file).catch((cause: unknown) => {
+    if (isMissing(cause)) {
       throw new ReleaseFolderInvalidError(
         file,
-        `${String(artifact.size)} bytes as the manifest says`,
-        `${String(found.size)} bytes`,
+        `the ${artifact.kind} file the manifest names`,
+        'no file',
       );
     }
+    throw cause;
+  });
+  if (found.size !== artifact.size) {
+    throw new ReleaseFolderInvalidError(
+      file,
+      `${String(artifact.size)} bytes as the manifest says`,
+      `${String(found.size)} bytes`,
+    );
   }
 }
 

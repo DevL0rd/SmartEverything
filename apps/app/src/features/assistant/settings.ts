@@ -12,6 +12,10 @@ import { BUDGET_SETTINGS } from './settings/budget-settings';
 import { CALL_AUDIO_SETTINGS } from './settings/call-audio-settings';
 import { CONVERSATION_SETTINGS } from './settings/conversation-settings';
 import { PRIVACY_SETTINGS } from './settings/privacy-settings';
+import { SUBAGENT_SETTINGS } from './settings/subagent-settings';
+import { MEMORY_SETTINGS } from './memory/memory-page';
+import { MEMORY_MODEL_SETTINGS } from './settings/memory-model-settings';
+import { DEEPSEEK_SETTINGS } from './settings/deepseek-settings';
 import { OPENROUTER_SETTINGS } from './settings/openrouter-settings';
 import { RESPONSE_STYLE_SETTINGS } from './settings/response-style-settings';
 import { ASSISTANT_GROUPS, assistantPageLink } from './settings/settings-groups';
@@ -92,6 +96,8 @@ const NAVIGATION_SETTINGS: readonly SettingDefinition[] = [
   assistantPageLink('assistant/extensions', ASSISTANT_GROUPS.addOns),
   assistantPageLink('assistant/skills', ASSISTANT_GROUPS.addOns),
   assistantPageLink('assistant/integrations', ASSISTANT_GROUPS.addOns),
+  assistantPageLink('assistant/memory', ASSISTANT_GROUPS.privacy),
+  ...MEMORY_MODEL_SETTINGS,
   assistantPageLink('assistant/privacy', ASSISTANT_GROUPS.privacy),
 ];
 
@@ -99,7 +105,9 @@ export const SETTINGS: readonly SettingDefinition[] = [
   ...IDENTITY_SETTINGS,
   assistantPageLink('assistant/models', ASSISTANT_GROUPS.models),
   ...OPENROUTER_SETTINGS,
+  ...DEEPSEEK_SETTINGS,
   ...CONVERSATION_SETTINGS,
+  assistantPageLink('assistant/helpers', ASSISTANT_GROUPS.conversation),
   ...VOICE_SETTINGS,
   assistantPageLink('assistant/calls', ASSISTANT_GROUPS.voice),
   GEMINI_KEY_SETTING,
@@ -110,4 +118,6 @@ export const SETTINGS: readonly SettingDefinition[] = [
   ...RESPONSE_STYLE_SETTINGS,
   ...EXTENSION_UPDATE_SETTINGS,
   ...PRIVACY_SETTINGS,
+  ...SUBAGENT_SETTINGS,
+  ...MEMORY_SETTINGS,
 ];

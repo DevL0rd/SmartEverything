@@ -81,11 +81,12 @@ describe('routerCellOf', () => {
     );
     expect(cell.kind).toBe('down');
     expect(cell.chip).toEqual({ tone: 'critical', label: 'No internet' });
+    expect(cell.line).toBe('The router is fine');
     expect(cell.figures).toEqual([]);
     expect(cell.canRun).toBe(false);
   });
 
-  it('goes stale with the reason, last figures and no actions when unreachable', () => {
+  it('names the outage once in the chip and speaks the full reason when unreachable', () => {
     const since = '2026-10-17T13:40:00.000+00:00';
     const cell = routerCellOf(
       snapshot({ state: 'unreachable', reason: 'timeout', since }),
@@ -94,9 +95,10 @@ describe('routerCellOf', () => {
       NOW,
     );
     expect(cell.kind).toBe('stale');
-    expect(cell.chip).toEqual({ tone: 'neutral', label: 'Not reachable' });
-    expect(cell.reason).toBe(cell.line);
-    expect(cell.line).toContain('Can’t reach the router');
+    expect(cell.chip.tone).toBe('neutral');
+    expect(cell.chip.label).toMatch(/^Offline · /);
+    expect(cell.line).toBeNull();
+    expect(cell.spoken).toMatch(/^Router, Can’t reach the router · /);
     expect(cell.figures).toHaveLength(2);
     expect(cell.canRun).toBe(false);
     expect(cell.tone).toBe('neutral');

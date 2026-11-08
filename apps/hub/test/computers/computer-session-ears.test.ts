@@ -7,6 +7,7 @@ import {
   type NodeHello,
   type ProcessWindow,
   type RemoteEarNodeMessage,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
@@ -27,7 +28,7 @@ const HELLO: NodeHello = {
   bootedAt: '2026-10-08T09:00:00.000Z',
   power: [],
   features: ['cpu'],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
   actions: [],
   permissions: [],
 };
@@ -102,7 +103,6 @@ function rig(): Rig {
     deviceIdOf: (): string => 'device-1',
     scopesOf: (): typeof DEFAULT_COMPUTER_SCOPES => DEFAULT_COMPUTER_SCOPES,
     directory: new ComputerDirectory(null),
-    hubComputerResolved: (): void => undefined,
     earHosts,
     recordAppTime: (): void => undefined,
     signals: { emit: (): void => undefined },

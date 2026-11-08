@@ -1,6 +1,8 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import type { FlowNode } from '@smarteverything/domain';
 import { indexProgram } from '@smarteverything/flow/program/lookup';
+import { unstructure } from '@smarteverything/flow/graph/unstructure';
 import type { Program } from '@smarteverything/flow/program/walk';
 import { Ids, automation, scope, setLight } from '../../../model/canvas/canvas-fixtures';
 import {
@@ -29,21 +31,31 @@ describe('label, note and enabled', () => {
   ]);
 
   it('sets a label and clears it when the text is blank', () => {
-    expect(nodeOf(applied(program, labelOps('n1', '  New  ')), 'n1').label).toBe('New');
-    expect(nodeOf(applied(program, labelOps('n1', '   ')), 'n1').label).toBeUndefined();
+    expect(
+      nodeOf(applied(program, labelOps('n1', '  New  '), STATIC_KIND_LOOKUP), 'n1').label,
+    ).toBe('New');
+    expect(
+      nodeOf(applied(program, labelOps('n1', '   '), STATIC_KIND_LOOKUP), 'n1').label,
+    ).toBeUndefined();
   });
 
   it('sets a note and clears it when blank', () => {
-    expect(nodeOf(applied(program, noteOps('n1', 'Line one\nLine two')), 'n1').note).toBe(
-      'Line one\nLine two',
-    );
-    expect(nodeOf(applied(program, noteOps('n1', '')), 'n1').note).toBeUndefined();
+    expect(
+      nodeOf(applied(program, noteOps('n1', 'Line one\nLine two'), STATIC_KIND_LOOKUP), 'n1').note,
+    ).toBe('Line one\nLine two');
+    expect(
+      nodeOf(applied(program, noteOps('n1', ''), STATIC_KIND_LOOKUP), 'n1').note,
+    ).toBeUndefined();
   });
 
   it('turns a step on by removing the flag and off by writing false', () => {
-    expect(nodeOf(applied(program, enabledOps('n1', true)), 'n1').enabled).toBeUndefined();
-    const on = applied(program, enabledOps('n1', true));
-    expect(nodeOf(applied(on, enabledOps('n1', false)), 'n1').enabled).toBe(false);
+    expect(
+      nodeOf(applied(program, enabledOps('n1', true), STATIC_KIND_LOOKUP), 'n1').enabled,
+    ).toBeUndefined();
+    const on = applied(program, enabledOps('n1', true), STATIC_KIND_LOOKUP);
+    expect(nodeOf(applied(on, enabledOps('n1', false), STATIC_KIND_LOOKUP), 'n1').enabled).toBe(
+      false,
+    );
   });
 });
 
@@ -52,16 +64,22 @@ describe('ports, policy, outputs and filter', () => {
   const program = automation([setLight(ids, null)]);
 
   it('writes and removes a port', () => {
-    const written = applied(program, portOps('n1', 'to', { lit: 10 }));
+    const written = applied(program, portOps('n1', 'to', { lit: 10 }), STATIC_KIND_LOOKUP);
     expect(nodeOf(written, 'n1').ports?.['to']).toEqual({ lit: 10 });
-    const removed = applied(written, portOps('n1', 'to', null));
+    const removed = applied(written, portOps('n1', 'to', null), STATIC_KIND_LOOKUP);
     expect(nodeOf(removed, 'n1').ports?.['to']).toBeUndefined();
   });
 
   it('writes a policy and clears it with null', () => {
-    const written = applied(program, policyOps('n1', { onError: 'continue', timeout: 5000 }));
+    const written = applied(
+      program,
+      policyOps('n1', { onError: 'continue', timeout: 5000 }),
+      STATIC_KIND_LOOKUP,
+    );
     expect(nodeOf(written, 'n1').policy).toEqual({ onError: 'continue', timeout: 5000 });
-    expect(nodeOf(applied(written, policyOps('n1', null)), 'n1').policy).toBeUndefined();
+    expect(
+      nodeOf(applied(written, policyOps('n1', null), STATIC_KIND_LOOKUP), 'n1').policy,
+    ).toBeUndefined();
   });
 
   it('turns an empty structured output list into a clear', () => {
@@ -77,7 +95,7 @@ describe('rename', () => {
   const program = automation([setLight(ids, null), setLight(ids, 'n1.value')]);
 
   it('renames a key and rewrites the formulas that read it', () => {
-    const renamed = applied(program, renameOps('n1', 'lamp'));
+    const renamed = applied(program, renameOps('n1', 'lamp'), STATIC_KIND_LOOKUP);
     expect(nodeOf(renamed, 'lamp').kind).toBe('device.set');
     expect(nodeOf(renamed, 'n2').ports?.['to']).toEqual({ wire: { from: 'lamp', port: 'value' } });
   });
@@ -91,7 +109,7 @@ describe('rename', () => {
 });
 
 describe('swapKindOps', () => {
-  it('swaps Break for Continue and keeps the target, label and place', () => {
+  it('swaps Break for Continue and keeps the target and label', () => {
     const ids = new Ids();
     const leave: FlowNode = {
       ...ids.next(),
@@ -104,12 +122,22 @@ describe('swapKindOps', () => {
         ...ids.next(),
         kind: 'flow.repeat',
         ports: { times: { lit: 2 } },
-        scopes: { body: scope([leave, setLight(ids, null)]) },
+        scopes: { body: scope([leave]) },
       },
     ]);
-    const swapped = applied(program, swapKindOps(viewByKey(program, leave.key), 'flow.continue'));
-    const keys = indexProgram(swapped).nodes.map((entry) => entry.node.kind);
-    expect(keys).toEqual(['flow.repeat', 'flow.continue', 'device.set']);
+    const swapped = applied(
+      program,
+      swapKindOps(
+        unstructure(program, STATIC_KIND_LOOKUP),
+        viewByKey(program, leave.key),
+        { kind: 'flow.continue' },
+        STATIC_KIND_LOOKUP,
+      ),
+      STATIC_KIND_LOOKUP,
+    );
+    const kinds = indexProgram(swapped).nodes.map((entry) => entry.node.kind);
+    expect(kinds).toContain('flow.continue');
+    expect(kinds).not.toContain('flow.break');
     const next = indexProgram(swapped).nodes.find((entry) => entry.node.kind === 'flow.continue');
     expect(next?.node.label).toBe('Leave');
     expect(next?.node.ports?.['target']).toEqual({ lit: 'n2' });
@@ -117,6 +145,13 @@ describe('swapKindOps', () => {
 
   it('does nothing for a trigger', () => {
     const program = automation([]);
-    expect(swapKindOps(viewByKey(program, 't0'), 'flow.continue')).toEqual([]);
+    expect(
+      swapKindOps(
+        unstructure(program, STATIC_KIND_LOOKUP),
+        viewByKey(program, 't0'),
+        { kind: 'flow.continue' },
+        STATIC_KIND_LOOKUP,
+      ),
+    ).toEqual([]);
   });
 });

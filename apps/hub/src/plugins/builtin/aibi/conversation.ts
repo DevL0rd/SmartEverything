@@ -10,8 +10,9 @@ import { SpeechGate } from './rms-gate';
 import { Errand } from './errand';
 import { clean, type SpeechStream, type Speeches } from './speech-stream';
 import { TURN_TIMEOUT_MS, Turn, type BodyOutcome, type Outcome } from './turn';
+import { pluginLogger } from '../../plugin-logs';
 
-const log = new Logger('hub.aibi-conversation');
+const log = pluginLogger(new Logger('hub.aibi-conversation'), 'aibi');
 
 export class Conversation {
   private session: Promise<VoiceTurn> | null = null;

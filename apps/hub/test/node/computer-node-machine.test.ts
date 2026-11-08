@@ -3,6 +3,7 @@ import {
   type MachineActionSupport,
   type NodeFrame,
   type NodeHello,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ComputerCollector } from '../../src/node/collectors/collector';
@@ -28,7 +29,7 @@ const HELLO: NodeHello = {
   actions: [],
   permissions: [],
   features: ['cpu'],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
 };
 
 const READY: readonly MachineActionSupport[] = [{ action: 'unlock', state: 'ready' }];

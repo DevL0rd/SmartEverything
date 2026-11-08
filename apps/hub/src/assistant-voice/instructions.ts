@@ -1,31 +1,29 @@
-import type { AssistantResponseStyle } from '@smarteverything/domain';
-import { CHANGE_MANNER, DATE_MANNER, TOOL_GUIDE, TOOL_MANNER } from '../ai-tools/tool-guide';
+import {
+  contextLines,
+  homeRules,
+  identityLine,
+  presentation,
+  toolSections,
+  type PromptFacts,
+  type StableFacts,
+} from '../assistant/conversation/prompt';
 import { personalitySection } from '../assistant/personality';
 
 export interface Persona {
-  readonly names: readonly string[];
-  readonly home: string;
-  readonly style: AssistantResponseStyle | undefined;
-  readonly instructions: string;
+  readonly facts: StableFacts;
   readonly place: string | null;
   readonly unavailable: string | null;
-  readonly guide?: string;
-  readonly toolIndex: string;
-  readonly catalogue: string;
   readonly sight?: boolean;
   readonly stopLooking?: boolean;
   readonly ending?: string;
 }
 
 export interface VoiceNote {
-  readonly person: string;
-  readonly role: 'owner' | 'member';
-  readonly device: string;
+  readonly context: PromptFacts;
   readonly screenRule: string | null;
-  readonly timeZone: string;
-  readonly now: Date;
   readonly place: string | null;
   readonly recentSpeech: string | null;
+  readonly memories: string;
   readonly history: readonly string[];
   readonly since: 'start' | 'last_talk';
   readonly starting: boolean;
@@ -34,28 +32,19 @@ export interface VoiceNote {
 const NEW_CONVERSATION =
   '[New conversation. Earlier conversations in your memory may be out of date: check the home with tools before relying on them.]';
 
-function localTime(timeZone: string, now: Date): string {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    dateStyle: 'full',
-    timeStyle: 'short',
-  }).format(now);
-}
-
 function identity(persona: Persona): string {
-  const [name = 'Assistant', ...aliases] = persona.names;
-  const also = aliases.length > 0 ? ` (also called ${aliases.join(', ')})` : '';
   const character =
     persona.place === null
       ? ''
       : ' When the notes further down give you another character for this conversation, play that one.';
-  return `You are ${name}${also}, the voice of SmartEverything for the home "${persona.home}".${character}`;
+  return `${identityLine(persona.facts)}, talking with them in a live voice call.${character}`;
 }
 
 const MANNER =
   'This is a live voice call: talk like a person, in natural spoken sentences with no lists or markdown, and stop when interrupted. Answer what was just said first. Quick requests get quick answers; chats, stories and games run as long as they enjoy them.';
 
-const TOOLS = `Tools are how you see and change the home; their results are facts. What a camera shows comes only from a fresh camera picture: when they question or correct something you saw, look again before answering, never guess. ${TOOL_MANNER} ${CHANGE_MANNER} ${DATE_MANNER}`;
+const FRESH_SIGHT =
+  'What a camera shows comes only from a fresh camera picture: when they question or correct something you saw, look again before answering, never guess.';
 
 const SIGHT =
   'You can look at what they show you: their phone camera, their screen or one window on their computer, or a camera of the home. While a source is on, pictures reach you continuously and the newest one is what is there now, so answer from it and do not call see for what is already on. Calling see for their phone screen turns it on for the rest of the call, so ask for it once. Pictures stay in your memory for a short while only: for something that is not on, or that you did not see, call see before answering.';
@@ -76,10 +65,9 @@ function work(persona: Persona): string {
   return `Computer work and looking things up online are unavailable right now (${persona.unavailable}).`;
 }
 
-function who(note: VoiceNote): string {
-  const role = note.role === 'owner' ? 'the owner of the home' : 'a member of the home';
-  const rule = note.screenRule === null ? '' : ` ${note.screenRule}`;
-  return `${note.person} is ${role}, talking through ${note.device}.${rule} Local time: ${localTime(note.timeZone, note.now)} (${note.timeZone}).`;
+function context(note: VoiceNote): string {
+  const lines = contextLines(note.context);
+  return note.screenRule === null ? lines.join('\n') : [...lines, note.screenRule].join('\n');
 }
 
 function chatSoFar(note: VoiceNote): string {
@@ -95,9 +83,10 @@ function chatSoFar(note: VoiceNote): string {
 
 export function conversationNote(note: VoiceNote): string {
   return [
-    who(note),
+    context(note),
     note.place ?? '',
     note.recentSpeech ?? '',
+    note.memories,
     chatSoFar(note),
     note.starting ? NEW_CONVERSATION : '',
   ]
@@ -106,19 +95,15 @@ export function conversationNote(note: VoiceNote): string {
 }
 
 export function liveInstructions(persona: Persona): string {
+  const { facts } = persona;
   return [
     identity(persona),
-    personalitySection(persona.style, persona.instructions),
+    personalitySection(facts.responseStyle, facts.instructions),
+    presentation(facts, 'voice'),
     MANNER,
-    TOOLS,
-    persona.toolIndex === ''
-      ? ''
-      : `Other enabled home tools for tool_call (schema from tool_read, or as supplied here):\n${persona.toolIndex}`,
-    persona.guide ?? TOOL_GUIDE,
+    homeRules([FRESH_SIGHT]),
+    ...toolSections(facts),
     TRUST,
-    persona.catalogue === ''
-      ? ''
-      : `Enabled plugin tools for tool_call; use the exact schema from tool_read when available, or the schema supplied here:\n${persona.catalogue}`,
     persona.sight === true ? SIGHT : '',
     persona.sight === true && persona.stopLooking !== false
       ? 'When you no longer need to look, or they ask you to stop, call sight_stop.'

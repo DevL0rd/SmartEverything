@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { LoadOnce, mapBounded } from '../../src/adapters/tuya/bounded';
+import { LoadOnce } from '../../src/adapters/tuya/bounded';
+import { mapBounded } from '../../src/providers/map-bounded';
 
 describe('mapBounded', () => {
   it('keeps the order of the items and never exceeds the limit', async () => {

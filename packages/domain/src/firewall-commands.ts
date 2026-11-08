@@ -3,9 +3,12 @@ import {
   UNPRIVILEGED_PORT_FILE,
   UNPRIVILEGED_PORT_KEY,
   type FirewallPlan,
+  type NetworkPortRule,
   type PortRule,
+  type UfwMacOpenings,
   type UfwRule,
 } from './api/firewall';
+import { UFW_MAC_SCRIPT, UFW_RULE_FILES, ufwMacWord, ufwStaleWord } from './firewall-ufw-mac';
 
 interface FirewallCommand {
   readonly label: string;
@@ -41,7 +44,7 @@ export function ruleText(rule: PortRule): string {
       return `${protocol} port ${String(rule.port)} from ${rule.source}`;
     case 'camera':
     case 'device':
-      return `${protocol} from ${rule.source}`;
+      return `${protocol} from ${rule.mac} (now at ${rule.address})`;
   }
 }
 
@@ -55,7 +58,7 @@ function familyOf(address: string): 'ipv4' | 'ipv6' {
   return address.includes(':') ? 'ipv6' : 'ipv4';
 }
 
-function ufwMatch(rule: PortRule): readonly string[] {
+function ufwMatch(rule: NetworkPortRule): readonly string[] {
   switch (rule.purpose) {
     case 'webrtc':
       return ['proto', rule.protocol, 'from', 'any', 'to', 'any', 'port', String(rule.port)];
@@ -64,10 +67,27 @@ function ufwMatch(rule: PortRule): readonly string[] {
     case 'announcement':
     case 'plugin':
       return ['proto', rule.protocol, 'from', rule.source, 'to', 'any', 'port', String(rule.port)];
-    case 'camera':
-    case 'device':
-      return ['proto', rule.protocol, 'from', rule.source, 'to', 'any'];
   }
+}
+
+function ufwMacCommand({ entries, staleAddresses, staleRules }: UfwMacOpenings): FirewallCommand {
+  const stale = staleAddresses.length + staleRules.length;
+  return {
+    label:
+      entries.length === 0
+        ? 'Remove the SmartEverything MAC address openings from ufw'
+        : `Allow ${String(entries.length)} MAC address openings in ufw and remove ${String(stale)} old or duplicate rules`,
+    program: 'sh',
+    args: [
+      '-c',
+      UFW_MAC_SCRIPT,
+      'sh',
+      entries.map(ufwMacWord).join(' '),
+      staleAddresses.join(' '),
+      staleRules.map(ufwStaleWord).join(' '),
+      ...UFW_RULE_FILES.flatMap((file) => [file.path, file.chain]),
+    ],
+  };
 }
 
 function ufwCommand(entry: UfwRule): FirewallCommand {
@@ -96,7 +116,7 @@ function firewalldChange(rule: PortRule): string {
       return `--add-rich-rule=rule family="${familyOf(rule.source)}" source address="${rule.source}" port port="${String(rule.port)}" protocol="${rule.protocol}" accept`;
     case 'camera':
     case 'device':
-      return `--add-rich-rule=rule family="${familyOf(rule.source)}" source address="${rule.source}" protocol value="${rule.protocol}" accept`;
+      return `--add-rich-rule=rule family="${familyOf(rule.address)}" source address="${rule.address}" protocol value="${rule.protocol}" accept`;
   }
 }
 
@@ -133,9 +153,9 @@ function windowsMatch(rule: PortRule): readonly string[] {
     case 'device':
       return [
         '-DisplayName',
-        `${RULE_NAMES[rule.purpose]} ${rule.source}`,
+        `${RULE_NAMES[rule.purpose]} ${rule.address}`,
         '-RemoteAddress',
-        rule.source,
+        rule.address,
       ];
   }
 }
@@ -213,7 +233,11 @@ function firewallCommands(plan: FirewallPlan): readonly FirewallCommand[] {
     case 'sysctl':
       return sysctlCommands(plan.unprivilegedPortStart);
     case 'ufw':
-      return [...sysctlCommands(plan.unprivilegedPortStart), ...plan.rules.map(ufwCommand)];
+      return [
+        ...sysctlCommands(plan.unprivilegedPortStart),
+        ...plan.rules.map(ufwCommand),
+        ...(plan.mac === null ? [] : [ufwMacCommand(plan.mac)]),
+      ];
     case 'firewalld':
       return [
         ...sysctlCommands(plan.unprivilegedPortStart),

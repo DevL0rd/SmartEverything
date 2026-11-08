@@ -36,7 +36,6 @@ export function useCostSummary(
       api().call(U.readUsageSummary, {
         query: { from: window.from, to: window.to, bucket: window.bucket, ...queryOf(filters) },
       }),
-    placeholderData: keepPreviousData,
   });
 }
 
@@ -50,7 +49,6 @@ export function useCostTotals(
       api().call(U.readUsageTotals, {
         query: { from: window.from, to: window.to, ...queryOf(filters) },
       }),
-    placeholderData: keepPreviousData,
   });
 }
 

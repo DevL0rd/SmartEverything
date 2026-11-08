@@ -1,5 +1,8 @@
 import { DeviceValueIndex } from './device-values';
 import { automationTablesOf } from './automation-tables';
+import { modelTablesOf } from './model-tables';
+import { plannerTablesOf } from './planner-tables';
+import { driveTablesOf } from './drive-tables';
 import {
   type RowChange,
   type Snapshot,
@@ -249,6 +252,7 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   automations: list('automations'),
   automation_values: list('automation_values'),
   automation_runs: list('automation_runs'),
+  automation_plugin_kinds: list('automation_plugin_kinds'),
   layouts: list('layouts'),
   push_targets: list('push_targets'),
   health_sources: list('health_sources'),
@@ -267,10 +271,25 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   plugins: list('plugins'),
   plugin_streams: applyPluginStream,
   plugin_ui: list('plugin_ui'),
+  model_assets: list('model_assets'),
+  model_catalog: list('model_catalog'),
+  model_overrides: list('model_overrides'),
+  planner_collections: list('planner_collections'),
+  planner_items: list('planner_items'),
+  planner_occurrences: list('planner_occurrences'),
+  planner_alarms: list('planner_alarms'),
+  planner_timers: list('planner_timers'),
+  planner_stopwatches: list('planner_stopwatches'),
+  google_accounts: list('google_accounts'),
+  drive_roots: list('drive_roots'),
+  drive_albums: list('drive_albums'),
+  drive_sync_clients: list('drive_sync_clients'),
+  drive_placements: list('drive_placements'),
   health_entries: (state) => state,
   foods: (state) => state,
   watch_days: (state) => state,
   ai_outreach: (state) => state,
+  home_maps: (state) => state,
   weather: applyWeather,
   exchange_rates: applyExchangeRates,
 };
@@ -371,6 +390,9 @@ function tablesOf(snapshot: Snapshot, previous: Tables): Tables {
     scheduled_actions: next('scheduled_actions', t.scheduled_actions ?? []),
     ai_usage: previous.ai_usage,
     ...pluginTablesOf(snapshot, next),
+    ...modelTablesOf(snapshot, next),
+    ...plannerTablesOf(snapshot, next),
+    ...driveTablesOf(t, next),
   };
 }
 

@@ -8,7 +8,7 @@ import { SwitchRow } from '../../../components/rows';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { List } from '../../../components/section';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { ComputerFrame } from '../components/computer-frame';
@@ -17,7 +17,6 @@ import { StateMissing } from '../components/state-missing';
 import { NowPlayingRow, useMedia } from '../components/now-playing';
 import { useAudioChange, useComputerAudio, type AudioView } from '../data/computer-audio';
 import { masterOf } from '../model/audio-model';
-import { bodyWidthOf } from '../model/sections';
 import { AppRow } from './app-row';
 import { DeviceRow } from './device-row';
 import { LevelSlider, MuteToggle } from './level-slider';
@@ -199,7 +198,7 @@ function AudioSections({
 }): ReactNode {
   const change = useAudioChange(device.id);
   const [over, setOver] = useState(false);
-  const wide = bodyWidthOf(useAreaWidth()) >= WIDE_BODY;
+  const wide = useFrameBodyWidth() >= WIDE_BODY;
   const offline = !device.online;
   const shared = { state, over, offline, wide, change };
   return (

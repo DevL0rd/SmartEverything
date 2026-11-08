@@ -1,3 +1,4 @@
+import { nativeInputId } from './helper-input';
 import type { Context } from '@deepseek-ai/cordis';
 import { Session, SessionLogOffset, SessionPreparation } from '@deepseek-ai/dsh-session';
 import type { DshSessionMetadata } from '@smarteverything/domain';
@@ -24,7 +25,10 @@ export function nativePendingInput(ctx: Context, input: NativeInputHistory): rea
         'runtime_unavailable',
         'The native inbox projection is unavailable.',
       );
-    return [...inbox['next-turn'], ...inbox['next-step']].map((message) => message.id);
+    return [...inbox['next-turn'], ...inbox['next-step']].flatMap((message) => {
+      const id = nativeInputId(message);
+      return id === undefined ? [] : [id];
+    });
   } finally {
     preparation[Symbol.dispose]();
   }

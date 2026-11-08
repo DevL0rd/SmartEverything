@@ -4,7 +4,7 @@ import { join, relative } from 'node:path';
 import { parseArgs } from 'node:util';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import { WAKE_MODEL_DIRECTORY } from './copy-voice-assets.ts';
+import { IR_LIBRARY_DIRECTORY, WAKE_MODEL_DIRECTORY } from './copy-voice-assets.ts';
 import {
   archOfElfMachine,
   ELF_MACHINE_BY_ARCH,
@@ -36,13 +36,8 @@ export const OLDEST_SUPPORTED_GLIBC: GlibcVersion = [2, 31];
 const CLAUDE_SDK = '@anthropic-ai/claude-agent-sdk';
 export const SHARP_WASM = '@img/sharp-wasm32';
 export const SHARP_NATIVE = /^@img\/sharp-(?!wasm32$)/u;
-const WAKE_MODEL_FILES = [
-  'encoder.int8.onnx',
-  'decoder.int8.onnx',
-  'joiner.int8.onnx',
-  'tokens.txt',
-  'bpe.vocab',
-];
+const WAKE_MODEL_FILES = ['bpe.vocab'];
+const IR_LIBRARY_FILES = ['index.bin', 'models.bin'];
 const FFMPEG_PACKAGE = 'ffmpeg-static';
 const GO2RTC_DIRECTORY = 'go2rtc';
 
@@ -145,6 +140,13 @@ function wakeModelProblems(directory: string): string[] {
   );
 }
 
+function irLibraryProblems(directory: string): string[] {
+  const library = join(directory, IR_LIBRARY_DIRECTORY);
+  return IR_LIBRARY_FILES.filter((file) => !existsSync(join(library, file))).map(
+    (file) => `${join(IR_LIBRARY_DIRECTORY, file)} is missing`,
+  );
+}
+
 function binaryProblems(directory: string, target: ServiceTarget): string[] {
   return [
     ...requiredFile(directory, join('node_modules', FFMPEG_PACKAGE, 'ffmpeg'), target),
@@ -168,6 +170,7 @@ export function serviceTargetProblems(
       ...sharpProblems(directory),
       ...wasmProblems(directory),
       ...wakeModelProblems(directory),
+      ...irLibraryProblems(directory),
       ...(options.binaries ? binaryProblems(directory, target) : []),
     ]),
   ];
@@ -177,8 +180,6 @@ const SMOKE_SCRIPT = `
   import { createRequire } from 'node:module';
   const { native } = JSON.parse(process.argv[1]);
   const require = createRequire(process.cwd() + '/service.mjs');
-  const sherpa = require('sherpa-onnx');
-  if (typeof sherpa.createKws !== 'function') throw new Error('sherpa-onnx has no keyword spotter');
   const OpusScript = require('opusscript');
   const opus = new OpusScript(48000, 1, OpusScript.Application.AUDIO);
   if (opus.encode(Buffer.alloc(1920), 960).length === 0) throw new Error('opusscript encoded nothing');

@@ -111,7 +111,7 @@ export class Ledger {
         ...change,
         meta: { ...before.meta, ...change.meta },
       });
-      this.rows.replace(after);
+      this.rows.replace(before, after);
       this.context.changed('ai_usage', 'UPDATE', after, before);
       this.sink(after, after.cost_micros - before.cost_micros);
       return after;
@@ -137,7 +137,7 @@ export class Ledger {
         meta: { ...before.meta, ...change.meta, cost_available: true },
         cost_state: 'reconciled',
       });
-      this.rows.replace(after);
+      this.rows.replace(before, after);
       this.context.changed('ai_usage', 'UPDATE', after, before);
       this.sink(after, after.cost_micros - before.cost_micros);
       return after;

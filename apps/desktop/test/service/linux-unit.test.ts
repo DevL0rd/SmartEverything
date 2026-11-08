@@ -1,15 +1,17 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { HUB_SERVICE_NAMES, systemdUnit } from '../../src/service/definitions.js';
+import { systemdUnit } from '../../src/service/definitions.js';
 import { linuxManager } from '../../src/service/linux-manager.js';
 import type { ManagerContext } from '../../src/service/manager.js';
+import { ORIGINAL_SUFFIX } from '../../src/service/unit-adoption.js';
 import { LAUNCH, LOCATIONS, failure, fakeSystem, type FakeSystem } from '../support/fake-system.js';
 
 const INACTIVE = 'LoadState=not-found\nActiveState=inactive\nSubState=dead\nResult=success';
 const ACTIVE = 'ActiveState=active\nSubState=running\nResult=success';
+const UNIT = 'smarteverything-node.service';
 
 function context(system: FakeSystem): ManagerContext {
   return {
-    names: HUB_SERVICE_NAMES,
     launch: LAUNCH,
     locations: LOCATIONS,
     system,
@@ -36,13 +38,12 @@ describe('linux user unit', () => {
     expect(unit).toContain(
       'ExecStart="/opt/SmartEverything/smarteverything" "/opt/SmartEverything/resources/service/service.mjs"',
     );
-    expect(LOCATIONS.unitFile).toBe('/home/ann/.config/systemd/user/smarteverything.service');
-    expect(LOCATIONS.dataDirectory).toBe('/home/ann/.config/SmartEverything');
+    expect(LOCATIONS.unitFile).toBe(`/home/ann/.config/systemd/user/${UNIT}`);
   });
 });
 
 describe('linuxManager install', () => {
-  it('writes the unit, enables it and turns lingering on for the current user', async () => {
+  it('writes the unit and enables it without touching lingering or starting it', async () => {
     const system = fakeSystem();
     lingering(system, 'no');
     await linuxManager(context(system)).install();
@@ -50,51 +51,66 @@ describe('linuxManager install', () => {
     expect(system.modes.get(LOCATIONS.unitFile)).toBe(0o644);
     expect(system.commands).toStrictEqual([
       'systemctl --user daemon-reload',
-      'systemctl --user enable smarteverything.service',
-      'loginctl show-user ann --property=Linger --value',
-      'loginctl enable-linger ann',
+      `systemctl --user enable ${UNIT}`,
     ]);
   });
 
-  it('leaves an already lingering user alone', async () => {
-    const system = fakeSystem();
-    lingering(system, 'yes');
-    await linuxManager(context(system)).install();
-    expect(system.commands).toStrictEqual([
-      'systemctl --user daemon-reload',
-      'systemctl --user enable smarteverything.service',
-      'loginctl show-user ann --property=Linger --value',
-    ]);
-  });
-});
-
-describe('linuxManager when polkit refuses lingering', () => {
-  function refusing(system: FakeSystem): void {
-    system.respond((file, args) => {
-      if (file !== 'loginctl') return args.includes('show') ? INACTIVE : '';
-      return args[0] === 'show-user' ? 'no\n' : failure('loginctl enable-linger', 1);
-    });
-  }
-
-  it('installs and starts anyway, trying lingering again on every start', async () => {
-    const system = fakeSystem();
-    refusing(system);
-    const manager = linuxManager(context(system));
-    await manager.install();
-    await manager.start();
-    expect(
-      system.commands.filter((command) => command.startsWith('systemctl --user start')),
-    ).toHaveLength(1);
-    expect(
-      system.commands.filter((command) => command === 'loginctl enable-linger ann'),
-    ).toHaveLength(2);
-  });
-
-  it('turns lingering on at the next start once it is allowed', async () => {
+  it('starts the unit without touching lingering', async () => {
     const system = fakeSystem();
     lingering(system, 'no');
     await linuxManager(context(system)).start();
-    expect(system.commands.at(-1)).toBe('loginctl enable-linger ann');
+    expect(system.commands).toStrictEqual([`systemctl --user start ${UNIT}`]);
+  });
+
+  it('adopts the hand-written unit, reports it as not current until then, and can give it back', async () => {
+    const system = fakeSystem();
+    const handWritten = systemdUnit(LAUNCH).replace(
+      'PATH=/usr/local/bin:/usr/bin',
+      'PATH=/usr/bin',
+    );
+    system.touch(LOCATIONS.unitFile, handWritten);
+    system.respond(() => ACTIVE);
+    const manager = linuxManager(context(system));
+    expect(await manager.state()).toMatchObject({ installed: true, current: false, active: true });
+    await manager.install();
+    expect(await manager.state()).toMatchObject({ installed: true, current: true });
+    expect(system.stored.get(`${LOCATIONS.unitFile}${ORIGINAL_SUFFIX}`)).toBe(handWritten);
+    expect(system.commands.some((command) => /(start|restart|stop)\b/u.test(command))).toBe(false);
+    expect(await manager.restoreOriginal()).toBe(true);
+    expect(system.stored.get(LOCATIONS.unitFile)).toBe(handWritten);
+    expect(await manager.state()).toMatchObject({ current: false });
+    expect(await manager.restoreOriginal()).toBe(false);
+  });
+
+  it('repeats the takeover without changing anything', async () => {
+    const system = fakeSystem();
+    system.respond(() => INACTIVE);
+    system.touch(LOCATIONS.unitFile, 'hand written');
+    const manager = linuxManager(context(system));
+    await manager.install();
+    const snapshot = new Map(system.stored);
+    await manager.install();
+    expect(system.stored).toEqual(snapshot);
+  });
+
+  it('rewrites the unit an earlier Desktop wrote with the old folder variable and keeps no original', async () => {
+    const system = fakeSystem();
+    const earlier = systemdUnit(LAUNCH)
+      .replace('SMARTEVERYTHING_COMPUTER_DIRECTORY', 'SMARTEVERYTHING_DATA_DIRECTORY')
+      .replace('SmartEverything Computer service', 'SmartEverything computer client');
+    system.touch(LOCATIONS.unitFile, earlier);
+    system.touch(
+      `${LOCATIONS.dataDirectory}/service-unit.sha256`,
+      createHash('sha256').update(earlier).digest('hex'),
+    );
+    system.respond(() => ACTIVE);
+    const manager = linuxManager(context(system));
+    expect(await manager.state()).toMatchObject({ installed: true, current: false });
+    await manager.install();
+    expect(system.stored.get(LOCATIONS.unitFile)).toBe(systemdUnit(LAUNCH));
+    expect(system.stored.get(LOCATIONS.unitFile)).not.toContain('SMARTEVERYTHING_DATA_DIRECTORY');
+    expect(system.stored.has(`${LOCATIONS.unitFile}${ORIGINAL_SUFFIX}`)).toBe(false);
+    expect(await manager.state()).toMatchObject({ current: true });
   });
 });
 
@@ -118,23 +134,19 @@ describe('linuxManager control', () => {
     await manager.uninstall();
     await manager.uninstall();
     expect(system.stored.has(LOCATIONS.unitFile)).toBe(false);
-    expect(
-      system.commands.filter(
-        (command) => !command.includes(' show') && !command.startsWith('loginctl'),
-      ),
-    ).toStrictEqual([
+    expect(system.commands.filter((command) => !command.includes(' show'))).toStrictEqual([
       'systemctl --user daemon-reload',
-      'systemctl --user enable smarteverything.service',
-      'systemctl --user start smarteverything.service',
-      'systemctl --user restart smarteverything.service',
-      'systemctl --user stop smarteverything.service',
-      'systemctl --user disable --now smarteverything.service',
+      `systemctl --user enable ${UNIT}`,
+      `systemctl --user start ${UNIT}`,
+      `systemctl --user restart ${UNIT}`,
+      `systemctl --user stop ${UNIT}`,
+      `systemctl --user disable --now ${UNIT}`,
       'systemctl --user daemon-reload',
       'systemctl --user daemon-reload',
     ]);
   });
 
-  it('reads lingering and enables it on request', async () => {
+  it('reads lingering and enables it only on request', async () => {
     const system = fakeSystem();
     lingering(system, 'no');
     const manager = linuxManager(context(system));
@@ -144,5 +156,13 @@ describe('linuxManager control', () => {
       'loginctl show-user ann --property=Linger --value',
       'loginctl enable-linger ann',
     ]);
+  });
+
+  it('passes on a refused lingering request', async () => {
+    const system = fakeSystem();
+    system.respond(() => failure('loginctl enable-linger', 1));
+    await expect(linuxManager(context(system)).enableLinger()).rejects.toThrow(
+      'loginctl enable-linger must succeed',
+    );
   });
 });

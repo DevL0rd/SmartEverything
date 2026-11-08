@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as StoreModule from './ai-drafts';
 import type * as OutboxModule from './outbox';
@@ -21,7 +22,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
     },
   },
 }));
-vi.mock('expo-crypto', () => ({ randomUUID: (): string => globalThis.crypto.randomUUID() }));
+vi.mock('expo-crypto', () => ({ randomUUID: (): string => randomUUID() }));
 vi.mock('../../../components/toast-store', () => ({ notify: mocks.notify }));
 vi.mock('../../../api/ai', () => ({ sendAiChatMessage: mocks.send }));
 vi.mock('../../../api/assistant', () => ({}));
@@ -46,7 +47,7 @@ async function queued(
   text: string,
   id: string,
 ): Promise<void> {
-  await outbox.outboxSender(chat, false)(text, [], [], id);
+  await outbox.outboxSender(chat, false)(text, [], { clientMessageId: id });
 }
 
 beforeAll(async () => {
@@ -79,6 +80,25 @@ describe('outbox flush', () => {
       expect.objectContaining({ clientMessageId: 'id-3' }),
     ]);
     expect(store.aiDrafts.get().outbox).toEqual([]);
+  });
+
+  it('sends the quoted message id with a direct send and with a queued retry', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { store, outbox } = await boot();
+    await store.bindAiDraftsProfile(PROFILE);
+    const quoted = '00000000-0000-4000-8000-0000000000b1';
+    mocks.send.mockRejectedValueOnce(new Error('offline'));
+    await outbox.outboxSender(CHAT_ONE, true)('why?', [], {
+      clientMessageId: 'id-1',
+      quoteMessageId: quoted,
+    });
+    expect(store.aiDrafts.get().outbox[0]?.quoteMessageId).toBe(quoted);
+    await vi.advanceTimersByTimeAsync(outbox.OUTBOX_RETRY_MS);
+    expect(mocks.send.mock.calls.map((call: readonly unknown[]) => call[3])).toEqual([
+      expect.objectContaining({ clientMessageId: 'id-1', quoteMessageId: quoted }),
+      expect.objectContaining({ clientMessageId: 'id-1', quoteMessageId: quoted }),
+    ]);
+    vi.useRealTimers();
   });
 
   it('delivers each message once when flushes overlap or a message is queued twice', async () => {
@@ -115,7 +135,9 @@ describe('outbox flush', () => {
     const { store, outbox } = await boot();
     await store.bindAiDraftsProfile(PROFILE);
     mocks.send.mockRejectedValue(new Error('offline'));
-    expect(await outbox.outboxSender(CHAT_ONE, true)('hello', [], [], 'id-1')).toBe(true);
+    expect(
+      await outbox.outboxSender(CHAT_ONE, true)('hello', [], { clientMessageId: 'id-1' }),
+    ).toBe(true);
     expect(store.aiDrafts.get().outbox.map((m) => m.id)).toEqual(['id-1']);
     await vi.advanceTimersByTimeAsync(outbox.OUTBOX_RETRY_MS * 3);
     expect(mocks.send.mock.calls.length).toBeGreaterThanOrEqual(4);

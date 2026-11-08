@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { InboundMessage } from '@smarteverything/domain';
+import type { InboundMessage, PluginEvent } from '@smarteverything/domain';
+import { promptAnsweredEvent } from './automation-events';
 import { replyEmbed, type CommandReply, type CommandSet } from './commands';
 import { DiscordPolicyError } from './errors';
 import { INTERACTION_LIFETIME_MS, type Interactions, type LiveInteraction } from './interactions';
@@ -27,6 +28,7 @@ export interface ControlsDeps {
   readonly guildNames: ReadonlyMap<string, string>;
   readonly typing: Typing;
   readonly post: (message: InboundMessage) => void;
+  readonly emit: (event: PluginEvent) => void;
   readonly report: (cause: unknown) => void;
   readonly refused: (cause: unknown) => void;
 }
@@ -186,6 +188,13 @@ export class Controls {
       await interactions.showModal(live, accepted.modal);
       return;
     }
+    this.deps.emit(
+      promptAnsweredEvent({
+        promptId: accepted.flowId,
+        answer: accepted.text ?? '',
+        user: actor.id,
+      }),
+    );
     const child: EventOrigin = {
       id: randomUUID(),
       kind: 'interaction',

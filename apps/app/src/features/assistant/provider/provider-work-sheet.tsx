@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { AiChatRow, AiChatProvider } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
-import { NavRow, SelectRow, ValueRow } from '../../../components/rows';
+import { NavRow, SelectRow } from '../../../components/rows';
 import { SearchField } from '../../../components/search-field';
 import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
@@ -18,67 +18,12 @@ import { PROVIDER_OPERATIONS, type ProviderOperation } from './provider-operatio
 import { ProviderPrompt } from './provider-prompts';
 import { NativeMcpControl } from './native-mcp-control';
 import { ProviderEvents } from './provider-events';
-import { RuntimeOverview } from './runtime-overview';
+import { RuntimeOverview, RuntimeValue, WorkStatus } from './runtime-overview';
 
+import { WorkOperationRow, type WorkOperationSelection } from './work-operation-row';
+import { WorkOperationSheet } from './work-operation-sheet';
 import { WORK_TABS, type WorkTab } from './work-tabs';
 import { background } from '@smarteverything/logging';
-
-function OperationSheet({
-  chatId,
-  chosen,
-  sessionId,
-  close,
-}: {
-  readonly chatId: string;
-  readonly chosen: ProviderOperation | null;
-  readonly sessionId: string | null;
-  readonly close: () => void;
-}): ReactNode {
-  return (
-    <Sheet
-      open={chosen !== null}
-      title={chosen?.title ?? 'Provider action'}
-      onClose={() => {
-        close();
-      }}
-      detents={['full']}
-    >
-      {chosen === null ? null : (
-        <OperationForm key={chosen.id} chatId={chatId} operation={chosen} sessionId={sessionId} />
-      )}
-    </Sheet>
-  );
-}
-
-function OperationRow({
-  operation,
-  available,
-  reason,
-  choose,
-}: {
-  readonly operation: ProviderOperation;
-  readonly available: boolean;
-  readonly reason: string;
-  readonly choose: (operation: ProviderOperation) => void;
-}): ReactNode {
-  return (
-    <View>
-      <NavRow
-        title={operation.title}
-        subtitle={available ? operation.description : 'Unavailable'}
-        disabled={!available}
-        onPress={() => {
-          choose(operation);
-        }}
-      />
-      {available ? null : (
-        <Text selectable variant="footnote" tone="variant" className="px-4 pb-3">
-          {reason}
-        </Text>
-      )}
-    </View>
-  );
-}
 
 function OperationRows({
   operations,
@@ -89,46 +34,48 @@ function OperationRows({
   readonly operations: readonly ProviderOperation[];
   readonly available: readonly string[];
   readonly state: AiChatProvider;
-  readonly choose: (operation: ProviderOperation) => void;
+  readonly choose: (selection: WorkOperationSelection<ProviderOperation>) => void;
 }): ReactNode {
   return (
     <List footer="Availability comes from this chat’s actual runtime metadata.">
-      {operations.map((operation) => (
-        <OperationRow
-          key={operation.id}
-          operation={operation}
-          available={available.includes(operation.id)}
-          reason={
-            state.metadata?.unavailable_operations[operation.id] ??
-            'Unavailable in this runtime or session'
-          }
-          choose={choose}
-        />
-      ))}
+      {operations.map((operation) => {
+        const supported = available.includes(operation.id);
+        return (
+          <WorkOperationRow
+            key={operation.id}
+            operation={operation}
+            available={supported}
+            subtitle={supported ? operation.description : 'Unavailable'}
+            unavailableReason={
+              state.metadata?.unavailable_operations[operation.id] ??
+              'Unavailable in this runtime or session'
+            }
+            choose={choose}
+          />
+        );
+      })}
     </List>
   );
 }
 
-function Operations({
-  chatId,
-  state,
-  kind,
-  requested,
-}: {
+interface OperationsProps {
   readonly chatId: string;
   readonly state: AiChatProvider;
   readonly kind: 'control' | 'read';
   readonly requested?: string;
-}): ReactNode {
+}
+
+function Operations({ chatId, state, kind, requested }: OperationsProps): ReactNode {
   const [query, setQuery] = useState('');
-  const [chosen, setChosen] = useState<ProviderOperation | null>(
-    PROVIDER_OPERATIONS.find(
+  const [chosen, setChosen] = useState<WorkOperationSelection<ProviderOperation> | null>(() => {
+    const operation = PROVIDER_OPERATIONS.find(
       (operation) =>
         operation.id === requested &&
         operation.kind === kind &&
         state.metadata?.operations.includes(operation.id) === true,
-    ) ?? null,
-  );
+    );
+    return operation === undefined ? null : { operation };
+  });
   const operations = PROVIDER_OPERATIONS.filter(
     (operation) =>
       operation.kind === kind &&
@@ -144,14 +91,22 @@ function Operations({
         state={state}
         choose={setChosen}
       />
-      <OperationSheet
-        chatId={chatId}
-        chosen={chosen}
-        sessionId={state.session_id}
-        close={() => {
-          setChosen(null);
-        }}
-      />
+      {chosen === null ? null : (
+        <WorkOperationSheet
+          title={chosen.operation.title}
+          opener={chosen.opener}
+          onClose={() => {
+            setChosen(null);
+          }}
+        >
+          <OperationForm
+            key={chosen.operation.id}
+            chatId={chatId}
+            operation={chosen.operation}
+            sessionId={state.session_id}
+          />
+        </WorkOperationSheet>
+      )}
     </View>
   );
 }
@@ -251,13 +206,10 @@ function WorkView({
 }): ReactNode {
   switch (tab) {
     case 'overview':
-      return state.metadata === null ? (
-        <Text tone="variant">
-          Runtime metadata is unavailable. Start a turn on the selected computer to initialize its
-          provider session.
-        </Text>
-      ) : (
-        <RuntimeOverview chatId={chat.id} metadata={state.metadata} />
+      return (
+        <RuntimeOverview chatId={chat.id} metadata={state.metadata}>
+          <RuntimeValue title="Provider session" value={state.session_id ?? 'Not started'} />
+        </RuntimeOverview>
       );
     case 'prompts':
       return <PromptList chatId={chat.id} state={state} />;
@@ -280,31 +232,6 @@ function WorkView({
   }
 }
 
-function ProviderSummary({
-  name,
-  state,
-}: {
-  readonly name: string;
-  readonly state: AiChatProvider;
-}): ReactNode {
-  return (
-    <List>
-      <NavRow
-        title={name}
-        subtitle="Runs on this computer"
-        href={href.settings.device(state.device_id, 'claude')}
-      />
-      <View className="gap-1 px-4 py-3">
-        <Text variant="footnote" tone="variant">
-          Provider session
-        </Text>
-        <Text selectable>{state.session_id ?? 'Not started'}</Text>
-      </View>
-      <ValueRow title="State" value={state.reason ?? state.state} />
-    </List>
-  );
-}
-
 function WorkBody({
   chat,
   state,
@@ -322,8 +249,15 @@ function WorkBody({
     catalogue.data?.computers.find((computer) => computer.device_id === state.device_id)?.name ??
     'Computer unavailable';
   return (
-    <View className="gap-section-gap">
-      <ProviderSummary name={name} state={state} />
+    <View className="gap-3">
+      <List>
+        <NavRow
+          title={name}
+          subtitle="Runs on this computer"
+          href={href.settings.device(state.device_id, 'claude')}
+        />
+      </List>
+      <WorkStatus value={state.reason ?? state.state} />
       <SelectRow title="Work with Claude" value={tab} options={WORK_TABS} onChange={setWorkTab} />
       <WorkView
         chat={chat}
@@ -351,7 +285,7 @@ export function ClaudeWorkSheet({
   const owner = useIsOwner();
   const provider = useChatProvider(chat.id, open && owner && chat.engine.kind === 'claude');
   return (
-    <Sheet title="Claude on your computer" open={open} onClose={onClose} detents={['full']}>
+    <Sheet title="Claude on your computer" open={open} onClose={onClose} detents={['fit']}>
       {owner ? (
         <QueryState
           error={provider.error}

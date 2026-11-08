@@ -144,12 +144,12 @@ function ValueInput(props: ValueInputProps): ReactNode {
         cursorColorClassName="accent-primary"
         selectionColorClassName="accent-primary"
         className={cn(
-          'w-20 rounded-md px-1 py-2 text-center font-sans-medium text-body text-on-surface tabular outline-none focus:bg-surface-3',
+          'w-20 rounded-md px-1 py-2 text-center font-sans-medium text-body text-on-surface tabular web:outline-none focus:bg-surface-3',
           disabled && 'opacity-40',
         )}
       />
       {unit === undefined || unit === '' ? null : (
-        <Text variant="body" tone="variant" className={cn(disabled && 'opacity-40')}>
+        <Text variant="body" tone="variant" className={cn('min-w-6', disabled && 'opacity-40')}>
           {unit}
         </Text>
       )}

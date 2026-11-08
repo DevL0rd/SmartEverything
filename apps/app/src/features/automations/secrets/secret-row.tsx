@@ -86,10 +86,8 @@ export function SecretRow({
           <Icon name="key" size={20} tone="primary" />
         </View>
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text variant="body-strong" numberOfLines={1}>
-            {row.name}
-          </Text>
-          <Text variant="footnote" tone="variant" numberOfLines={1}>
+          <Text variant="body-strong">{row.name}</Text>
+          <Text variant="footnote" tone="variant">
             {dateLine(row)}
           </Text>
         </View>

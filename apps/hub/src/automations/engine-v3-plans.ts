@@ -1,5 +1,5 @@
-import { ApiError, NODE_REGISTRY } from '@smarteverything/domain';
-import type { AutomationRowV3 } from '@smarteverything/domain';
+import { ApiError } from '@smarteverything/domain';
+import type { NodeKindLookup, StoredAutomationRow } from '@smarteverything/domain';
 import { callsIn } from '@smarteverything/flow/compile/manifest';
 import { lower } from '@smarteverything/flow/compile/lower';
 import { PLAN } from '@smarteverything/flow/compile/plan';
@@ -9,6 +9,7 @@ import type { FunctionInterface } from '@smarteverything/flow/functions/interfac
 import type { Checked } from '@smarteverything/flow/interpret/frames';
 import type { PlanRef } from '@smarteverything/flow/state/run-state';
 import type { Logger } from '@smarteverything/logging';
+import { readAutomation } from '../store/repositories/automation-trees';
 import type { AutomationFunctionsRepository } from '../store/repositories/automation-functions';
 import type { AutomationOwnedValuesRepository } from '../store/repositories/automation-owned-values';
 import type { AutomationPlansRepository } from '../store/repositories/automation-plans';
@@ -27,10 +28,19 @@ export class PlanBook implements CalleeLookup {
   constructor(
     private readonly repositories: PlanRepositories,
     private readonly log: Logger,
+    private readonly kinds: NodeKindLookup,
   ) {}
 
-  compile(row: AutomationRowV3): Subject | undefined {
-    const lowered = lower(row.definition, { kinds: (id) => NODE_REGISTRY.get(id) });
+  compile(row: StoredAutomationRow): Subject | undefined {
+    const read = readAutomation(row.definition, this.kinds);
+    if (!read.ok) {
+      this.log.warn('automation.not_loaded', {
+        automationId: row.id,
+        problems: read.problems.map((problem) => problem.message),
+      });
+      return undefined;
+    }
+    const lowered = lower(read.tree, { kinds: (id) => this.kinds.get(id) });
     if (!lowered.ok) {
       this.log.warn('automation.not_loaded', {
         automationId: row.id,
@@ -45,7 +55,7 @@ export class PlanBook implements CalleeLookup {
       name: row.name,
       revision: row.revision,
       row,
-      program: row.definition,
+      program: read.tree,
       hash,
       plan: lowered.plan,
       callees: this.calleesOf(lowered.plan),

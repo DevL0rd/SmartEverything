@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { buttonLabel, type IrRemoteState } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
@@ -6,7 +6,6 @@ import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
-import type { WideClass } from '../card/wide-card';
 import type { KeyControl, RemoteControlSet, StepControl } from './remote-controls';
 
 type Press = (key: string) => void;
@@ -105,10 +104,17 @@ function ModeMenu({
       press(mode);
     },
   }));
-  const { ref, open, menu } = useAnchoredMenu(items, 'Mode');
+  const opener = useRef<View>(null);
+  const { ref, open, menu } = useAnchoredMenu(items, 'Mode', { withinSheet: { opener } });
   return (
     <View ref={ref} collapsable={false}>
-      <Button label={current ?? 'Mode'} variant="text" icon="chevronDown" onPress={open} />
+      <Button
+        ref={opener}
+        label={current ?? 'Mode'}
+        variant="text"
+        icon="chevronDown"
+        onPress={open}
+      />
       {menu}
     </View>
   );
@@ -168,21 +174,10 @@ function primaryOf({ controls, assumed, press }: ActionsInput, on: boolean | nul
   return first;
 }
 
-const SECONDARY_SHOWN: Readonly<Record<WideClass, number>> = { m: 0, w: 1, l: 8, xl: 8 };
-
 export function actionsOf(
-  input: ActionsInput & { readonly on: boolean | null; readonly cls: WideClass },
+  input: ActionsInput & { readonly on: boolean | null },
 ): readonly ReactNode[] {
-  const secondary = secondaryOf(input).slice(0, SECONDARY_SHOWN[input.cls]);
-  const first = primaryOf(input, input.on);
-  return secondary.length === 0
-    ? first
-    : [
-        ...first,
-        <View key="more" className="min-w-0 shrink flex-row flex-wrap items-center gap-x-1">
-          {secondary}
-        </View>,
-      ];
+  return [...primaryOf(input, input.on), ...secondaryOf(input)];
 }
 
 export function quickActionsOf(input: ActionsInput & { readonly on: boolean | null }): ReactNode {

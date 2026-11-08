@@ -26,6 +26,7 @@ export function referenceTitles(
     REFERENCE_TITLE,
     `select id, title, kind, (archived_at is not null) as archived
      from ai_chats where profile_id = $profile and deletion_state is null and id > $after
+       and native_admission is not 'retired'
      order by id limit $limit`,
     { profile: query.profileId, after: query.after ?? '', limit: query.limit },
   );

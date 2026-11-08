@@ -97,7 +97,7 @@ interface DisclosureProps {
   readonly trailing?: ReactNode;
   readonly open: boolean;
   readonly onToggle: () => void;
-  readonly hint: string;
+  readonly hint?: string;
   readonly bodyClassName?: string;
   readonly children: ReactNode;
 }

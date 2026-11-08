@@ -1,6 +1,5 @@
 import { createWriteStream } from 'node:fs';
-import { mkdtemp, rename, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { randomBytes } from 'node:crypto';
@@ -28,11 +27,14 @@ const FILE_EXTENSIONS: Readonly<Record<string, string>> = {
   'text/javascript': '.txt',
 };
 export class HubResourceDownloads {
-  constructor(readonly policies: HubLeasePort) {}
+  constructor(
+    readonly policies: HubLeasePort,
+    private readonly staging: string,
+  ) {}
   async write(admission: ResourceAdmission, destination?: string): Promise<string> {
-    const directory = await mkdtemp(
-      join(destination === undefined ? tmpdir() : dirname(destination), '.smarteverything-media-'),
-    );
+    if (destination === undefined) await mkdir(this.staging, { recursive: true, mode: 0o700 });
+    const parent = destination === undefined ? this.staging : dirname(destination);
+    const directory = await mkdtemp(join(parent, '.smarteverything-media-'));
     try {
       const file = await this.stream(admission, directory);
       admission.signal.throwIfAborted();

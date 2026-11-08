@@ -1,20 +1,23 @@
-import { OwnEngineSelections } from '../harness/own-selection';
-import type { HarnessService } from '../harness/service';
+import {
+  completeEngine,
+  defaultEngine,
+  meteredCatalogue,
+  meteredEngine,
+} from '../openrouter/metered-engine';
 import {
   ApiError,
-  AUTO_LATEST_GEMINI_FLASH,
   ENGINE_WRITE,
-  OPENROUTER_DEFAULTS,
   CLAUDE_PROVIDER_OPTIONS,
   CODEX_PROVIDER_OPTIONS,
   type AiRuntimeEngineCatalogue,
   type Engine,
+  type EngineRequest,
   type Role,
   type ComputerAiRuntime,
   type ComputerRuntimeStatus,
 } from '@smarteverything/domain';
 import { assertModelAllowed } from '../server/person-scope';
-import { validateComputerEngine } from './engine-validation';
+import { computerProviderReadiness, validateComputerEngine } from './engine-validation';
 import { computerEngine } from './engine-kind';
 import type { Logger } from '@smarteverything/logging';
 import type { ComputerAiDirectory } from '../computers/ai-directory';
@@ -26,7 +29,6 @@ export interface EngineUser {
   readonly profileId: string;
 }
 export class EngineSelections {
-  private own: OwnEngineSelections | null = null;
   private readonly refreshing = new Set<string>();
   private readonly leave: () => void;
   constructor(
@@ -46,15 +48,17 @@ export class EngineSelections {
   stop(): void {
     this.leave();
   }
-  attachHarness(service: HarnessService): void {
-    this.own = new OwnEngineSelections(service);
-  }
-  select(profileId: string, engine: Engine): Engine {
+  select(profileId: string, request: EngineRequest): Engine {
+    const engine = completeEngine(profileId, request, meteredCatalogue(this.store));
+    if (request.kind === 'dsh' && request.model_route_id === null && request.model !== null)
+      this.assertKnownModel(request.model);
     this.validate(engine, { role: 'owner', profileId });
-    if (engine.kind !== 'openrouter') return engine;
-    if (this.own === null)
-      throw new ApiError('conflict', 'The assistant is starting. Try again in a moment.');
-    return this.own.select(profileId, engine);
+    return engine;
+  }
+  private assertKnownModel(model: string): void {
+    const row = this.store.aiModels.row(model);
+    if (row?.gone_at !== null)
+      throw new ApiError('not_found', `The hub doesn’t know a model called ${model}.`);
   }
   hasComputerProvider(runtime: ComputerAiRuntime = 'claude'): boolean {
     return this.store.devices
@@ -70,12 +74,14 @@ export class EngineSelections {
     ENGINE_WRITE.parse(engine);
     const computer = computerEngine(engine);
     if (computer !== null) validateComputerEngine(this.store, this.directory, computer, user.role);
-    if (user.role !== 'owner')
-      assertModelAllowed(this.store, user.profileId, modelOf(this.store, engine));
+    if (user.role !== 'owner') assertModelAllowed(this.store, user.profileId, engine.model);
   }
-  catalogue(role: Role): AiRuntimeEngineCatalogue {
+  catalogue(profileId: string, role: Role): AiRuntimeEngineCatalogue {
     return {
-      default: role === 'owner' ? this.store.aiEngineDefaults.read() : null,
+      default:
+        role === 'owner'
+          ? defaultEngine(this.store, profileId)
+          : meteredEngine(profileId, { model: null, effort: null }, meteredCatalogue(this.store)),
       preferences: this.store.aiRuntimeProvider.preferences(),
       computers: this.store.devices
         .list()
@@ -97,13 +103,7 @@ export class EngineSelections {
       enabled: status.settings.settings.provider.enabled,
       reason,
       capabilities: status.capabilities,
-      models: this.store.computerRuntimes
-        .models({ device_id: device.id, runtime })
-        .map((model) => ({
-          ...model,
-          available: reason === null && model.available,
-          reason: reason ?? model.reason,
-        })),
+      models: this.store.computerRuntimes.models({ device_id: device.id, runtime }),
     };
     return status.settings.runtime === 'claude'
       ? {
@@ -140,14 +140,7 @@ export class EngineSelections {
     );
   }
 }
-function modelOf(store: Store, engine: Engine): string {
-  const wanted = engine.model ?? store.aiModels.settings().default_model;
-  return wanted === AUTO_LATEST_GEMINI_FLASH ? OPENROUTER_DEFAULTS.default_model : wanted;
-}
 function unavailableReason(status: ComputerRuntimeStatus, role: Role): string | null {
   if (role !== 'owner') return 'Only the home owner can use Claude or Codex on computers.';
-  if (!status.online) return 'The supplying computer is offline.';
-  if (!status.settings.settings.provider.enabled)
-    return 'The provider is disabled on this computer.';
-  return status.capabilities.provider_reason;
+  return computerProviderReadiness(status);
 }

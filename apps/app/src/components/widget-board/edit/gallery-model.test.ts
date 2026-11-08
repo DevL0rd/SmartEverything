@@ -34,7 +34,9 @@ function entryOf(title: string, group: string, extra: Partial<GalleryEntry> = {}
   return { title, subtitle: `${title} subtitle`, icon: 'bulb', group, ...extra };
 }
 
-const PICK = { title: 'Choose light', sections: (): readonly [] => [] };
+const TARGET: TargetRow = { key: 'a', title: 'Floor lamp', subtitle: 'Room', options: { id: 'a' } };
+
+const PICK = { title: 'Choose light', sections: () => [{ title: 'Room', rows: [TARGET] }] };
 
 const SPOTLIGHT = definitionOf('spotlight', {
   entries: [
@@ -51,13 +53,13 @@ function placedOf(type: string, key: string = type): BoardWidget {
 
 describe('galleryItems', () => {
   it('presents one item per entry of a definition', () => {
-    const items = galleryItems([SPOTLIGHT], [], 'compact');
+    const items = galleryItems([SPOTLIGHT], [], 'compact', NOTHING);
     expect(items.map((item) => item.entry.title)).toStrictEqual(['Light', 'Device']);
     expect(items.map((item) => item.id)).toStrictEqual(['spotlight:0', 'spotlight:1']);
   });
 
   it('presents a definition without entries as one item listing its sizes', () => {
-    const [item] = galleryItems([PLAIN], [], 'compact');
+    const [item] = galleryItems([PLAIN], [], 'compact', NOTHING);
     expect(item?.entry).toMatchObject({
       title: 'weather',
       group: 'Home',
@@ -66,16 +68,16 @@ describe('galleryItems', () => {
   });
 
   it('files a definition without a group under More widgets', () => {
-    const [item] = galleryItems([definitionOf('notes')], [], 'compact');
+    const [item] = galleryItems([definitionOf('notes')], [], 'compact', NOTHING);
     expect(item?.entry.group).toBe('More widgets');
   });
 
   it('hides a plain widget once it is placed', () => {
-    expect(galleryItems([PLAIN], [placedOf('weather')], 'compact')).toHaveLength(0);
+    expect(galleryItems([PLAIN], [placedOf('weather')], 'compact', NOTHING)).toHaveLength(0);
   });
 
   it('keeps entries that pick a target available after one is placed', () => {
-    const items = galleryItems([SPOTLIGHT], [placedOf('spotlight')], 'compact');
+    const items = galleryItems([SPOTLIGHT], [placedOf('spotlight')], 'compact', NOTHING);
     expect(items).toHaveLength(2);
   });
 });
@@ -85,6 +87,7 @@ describe('galleryGroups', () => {
     [PLAIN, SPOTLIGHT, definitionOf('notes'), definitionOf('rig', { group: 'Network' })],
     [],
     'compact',
+    NOTHING,
   );
 
   it('orders Lights, Devices, Home, other named groups, then More widgets', () => {
@@ -138,6 +141,7 @@ describe('entrySize', () => {
       [definitionOf('g', { entries: [entryOf('Group', 'Lights', { defaultSize: 'XL' })] })],
       [],
       'compact',
+      NOTHING,
     )[0];
     expect(item === undefined ? null : entrySize(item, 'compact')).toBe('XL');
   });
@@ -147,7 +151,7 @@ describe('entrySize', () => {
       sizes: { compact: ['M'], medium: ['M'], expanded: ['M'] },
       entries: [entryOf('Group', 'Lights', { defaultSize: 'XL' })],
     });
-    const item = galleryItems([limited], [], 'compact')[0];
+    const item = galleryItems([limited], [], 'compact', NOTHING)[0];
     expect(item === undefined ? null : entrySize(item, 'compact')).toBe('M');
   });
 });
@@ -157,7 +161,15 @@ describe('suggestionsOf', () => {
     keys.map((key) => ({ key, title: key, subtitle: key, options: { key } }));
   const suggesting = (type: string, ...keys: readonly string[]): WidgetDefinition =>
     definitionOf(type, {
-      entries: [entryOf(type, 'Lights', { pick: { ...PICK, suggestions: () => rowsOf(...keys) } })],
+      entries: [
+        entryOf(type, 'Lights', {
+          pick: {
+            ...PICK,
+            sections: () => [{ title: 'Room', rows: rowsOf(...keys) }],
+            suggestions: () => rowsOf(...keys),
+          },
+        }),
+      ],
     });
   const keysOf = (suggestions: readonly Suggestion[]): readonly string[] =>
     suggestions.map(({ row }) => row.key);
@@ -167,6 +179,7 @@ describe('suggestionsOf', () => {
       [suggesting('a', 'a1', 'a2', 'a3'), suggesting('b', 'b1', 'b2', 'b3')],
       [],
       'compact',
+      NOTHING,
     );
     expect(suggestionsOf(items, NOTHING, [])).toHaveLength(4);
   });
@@ -176,18 +189,21 @@ describe('suggestionsOf', () => {
       [suggesting('a', 'a1', 'a2', 'a3', 'a4'), suggesting('b', 'b1'), suggesting('c', 'c1')],
       [],
       'compact',
+      NOTHING,
     );
     expect(keysOf(suggestionsOf(items, NOTHING, []))).toStrictEqual(['a1', 'b1', 'c1', 'a2']);
   });
 
   it('leaves out targets already on the page', () => {
-    const items = galleryItems([suggesting('a', 'a1', 'a2')], [], 'compact');
+    const items = galleryItems([suggesting('a', 'a1', 'a2')], [], 'compact', NOTHING);
     const placed: BoardWidget = { key: 'a', type: 'a', size: 'M', options: { key: 'a1' } };
     expect(keysOf(suggestionsOf(items, NOTHING, [placed]))).toStrictEqual(['a2']);
   });
 
   it('suggests nothing from entries without suggestions', () => {
-    expect(suggestionsOf(galleryItems([SPOTLIGHT], [], 'compact'), NOTHING, [])).toStrictEqual([]);
+    expect(
+      suggestionsOf(galleryItems([SPOTLIGHT], [], 'compact', NOTHING), NOTHING, []),
+    ).toStrictEqual([]);
   });
 });
 

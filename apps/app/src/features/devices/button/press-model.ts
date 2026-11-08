@@ -1,3 +1,4 @@
+import type { NodeKindLookup } from '@smarteverything/domain';
 import { NODE_REGISTRY, type EventRow } from '@smarteverything/domain';
 import { pressesOf, type ButtonGesture, type Press } from '../../device-visuals';
 import { DAY_MS } from '../../../format/time';
@@ -22,8 +23,12 @@ export const STRIP_PRESS_MS = 12 * 60_000;
 const MENTIONED = 2;
 const GESTURE_LEAD = /^(?:long |double )?press(?:es)?\s+/i;
 
-export function meaningOf(rows: readonly unknown[], deviceId: string): readonly Meaning[] {
-  return meaningOfRows(automationRowsOf(rows).rows, deviceId, NODE_REGISTRY.get);
+export function meaningOf(
+  rows: readonly unknown[],
+  deviceId: string,
+  kinds: NodeKindLookup,
+): readonly Meaning[] {
+  return meaningOfRows(automationRowsOf(rows, kinds).rows, deviceId, NODE_REGISTRY.get);
 }
 
 export function phraseOf(name: string): string {

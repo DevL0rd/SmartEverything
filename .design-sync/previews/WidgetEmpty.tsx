@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Stage, WidgetEmpty } from 'smarteverything-kit';
 
 const body = (
@@ -8,16 +9,15 @@ const body = (
       title="No cameras yet"
       body="Add a camera to see live video here."
       action={{ label: 'Add camera', href: '/cameras/add' }}
-      size="M"
     />
   </div>
 );
-export const Empty = () => (
+export const Empty = (): ReactNode => (
   <Stage theme="dark" width={340}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactNode => (
   <Stage theme="light" width={340}>
     {body}
   </Stage>

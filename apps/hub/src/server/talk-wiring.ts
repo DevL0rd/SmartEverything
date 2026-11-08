@@ -68,10 +68,7 @@ function wakeTurn(
         CONTEXT_ROWS,
       )
       .filter((row) => row.id !== message.messageId);
-    const chat = assistant.chats.conversationChat(
-      profileId,
-      `Walkie-talkie · ${message.channel.name}`,
-    );
+    const chat = assistant.chats.conversationChat(profileId);
     const text = talkWakeText({
       channel: message.channel,
       speaker: message.speaker.label,

@@ -11,7 +11,7 @@ export const AI_COORDINATION_ENDPOINTS = {
     path: '/api/ai/chats/:chatId/ask',
     access: 'member',
     summary:
-      'Send a message from your chat to another of your AI chats; with wait it returns the reply, otherwise the reply comes back to your chat by itself',
+      'Send a message to another of your AI chats. A direct helper’s message to its parent appears under the helper’s name. Set wait to return the reply in the tool result. Otherwise the reply returns to your chat automatically.',
     params: CHAT_PARAMS,
     query: NOTHING,
     body: AI_ASK,
@@ -22,7 +22,7 @@ export const AI_COORDINATION_ENDPOINTS = {
     path: '/api/ai/chats/:chatId/subagents',
     access: 'member',
     summary:
-      'Start a subagent: a child chat of chatId that works on a task with its own engine, model and optional tool list; with wait (default) it returns the answer, otherwise the answer comes back to the parent chat by itself',
+      'Start a helper in a child chat with its own engine, model and optional tool list. With wait (the default), the tool returns the answer. Otherwise the answer appears under the helper’s name in the parent thread.',
     params: CHAT_PARAMS,
     query: NOTHING,
     body: AI_SUBAGENT,

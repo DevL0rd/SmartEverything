@@ -8,6 +8,7 @@ import { HScroller } from '../../../components/h-scroller';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
+import { ActionBand } from '../../../components/widget-board';
 import type { SemanticSizes } from '../../../design/tokens';
 import { cn } from '../../../design/cn';
 import { plural } from '../../../format/text';
@@ -60,13 +61,14 @@ function SceneChip({
         onRun(scene);
       }}
       className={cn(
-        'min-h-touch-min flex-row items-center gap-2 rounded-full bg-primary-container pl-3 pr-4',
+        'min-h-touch-min flex-row items-center gap-2 rounded-lg pl-3 pr-4',
+        ran ? 'bg-primary-container' : 'bg-surface-2',
         grow && 'min-w-0 flex-1',
       )}
-      layerClassName="rounded-full"
+      layerClassName="rounded-lg"
     >
       <Icon name={ran ? 'check' : sceneIcon(scene.icon)} size={20} tone="primary" />
-      <Text variant="label" tone="primary" numberOfLines={1} className="shrink">
+      <Text variant="label" tone={ran ? 'primary' : 'default'} numberOfLines={1} className="shrink">
         {scene.name}
       </Text>
     </Interactive>
@@ -118,9 +120,9 @@ export function SceneChipGrid({
         ))}
       </View>
       {more === 0 ? null : (
-        <View className="flex-row">
+        <ActionBand>
           <Button label={`+${String(more)} more`} variant="text" href={href.scenes()} />
-        </View>
+        </ActionBand>
       )}
     </View>
   );
@@ -130,7 +132,7 @@ export function SceneGlance({ scenes }: { readonly scenes: readonly SceneRow[] }
   const { ranId, run } = useRanScene();
   const [first] = scenes;
   return (
-    <View className="flex-1 justify-end gap-1.5">
+    <View className="gap-1.5">
       <Text variant="footnote" tone="variant">
         {plural(scenes.length, 'scene')}
       </Text>

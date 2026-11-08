@@ -1,8 +1,6 @@
 import { Logger, describeFailure } from '@smarteverything/logging';
 import type { z } from 'zod';
 import { IMAGE_OUTPUT_BYTES_MAX } from '@smarteverything/domain';
-import { OPENROUTER_WEB_SEARCH_TOOL } from '../assistant/web-search';
-import type { ChatRequest, Credits, GenerationStats, KeyInfo } from './chat-types';
 import {
   errorCodeOf,
   networkFailure,
@@ -12,9 +10,8 @@ import {
   readJson,
 } from './errors';
 import { IMAGE_ENDPOINTS_WIRE, type ImageEndpointWire } from './image-wire';
-import { sseData } from './sse';
+import { imageEventData } from './image-events';
 import { retryTransient } from './transient';
-import { parseChunk } from './stream';
 import { responseText } from './response';
 import {
   OR_CREDITS,
@@ -25,7 +22,9 @@ import {
   OR_KEY,
   OR_MODELS,
   OR_VIDEO_MODELS,
-  type OrChunk,
+  type Credits,
+  type GenerationStats,
+  type KeyInfo,
   type OrImageModel,
   type OrImagePrice,
   type OrModel,
@@ -55,39 +54,6 @@ export interface OpenRouterCall {
   readonly key?: string | null;
   readonly signal?: AbortSignal;
   readonly responseBytesMax?: number;
-}
-
-function wireMessages(req: ChatRequest): readonly unknown[] {
-  const [first, ...rest] = req.messages;
-  if (req.prefixBreakpoint !== true || first?.role !== 'system') {
-    return req.messages;
-  }
-  const marked = [{ type: 'text', text: first.content, cache_control: { type: 'ephemeral' } }];
-  return [{ role: 'system', content: marked }, ...rest];
-}
-
-function toolFields(req: ChatRequest): Record<string, unknown> {
-  const tools = [
-    ...(req.tools ?? []),
-    ...(req.webSearch === true ? [OPENROUTER_WEB_SEARCH_TOOL] : []),
-  ];
-  return tools.length === 0 ? {} : { tools, tool_choice: req.toolChoice ?? 'auto' };
-}
-
-function requestBody(req: ChatRequest): Record<string, unknown> {
-  return {
-    model: req.model,
-    messages: wireMessages(req),
-    stream: true,
-    usage: { include: true },
-    ...toolFields(req),
-    ...(req.parallelToolCalls === undefined ? {} : { parallel_tool_calls: req.parallelToolCalls }),
-    ...(req.effort === null ? {} : { reasoning: { effort: req.effort } }),
-    ...(req.maxTokens === undefined ? {} : { max_tokens: req.maxTokens }),
-    ...(req.user === undefined ? {} : { user: req.user }),
-    ...(req.sessionId === undefined ? {} : { session_id: req.sessionId }),
-    ...(req.cacheControl === true ? { cache_control: { type: 'ephemeral' } } : {}),
-  };
 }
 
 async function failureOf(response: Response, limit?: number): Promise<OpenRouterError> {
@@ -125,31 +91,6 @@ export class OpenRouterClient {
   retrying<T>(run: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
     const signals = [signal, this.options.shutdown].filter((entry) => entry !== undefined);
     return retryTransient(run, { signal: AbortSignal.any(signals) });
-  }
-
-  usingFetch(scope: (fetcher: typeof fetch) => typeof fetch): OpenRouterClient {
-    return new OpenRouterClient({ ...this.options, fetch: scope(this.options.fetch) });
-  }
-
-  async *chat(req: ChatRequest, signal: AbortSignal): AsyncGenerator<OrChunk> {
-    const response = await this.send({
-      path: '/chat/completions',
-      method: 'POST',
-      body: requestBody(req),
-      signal,
-    });
-    if (response.body === null) {
-      throw openRouterError('unreadable', 'empty stream');
-    }
-    let finished = false;
-    for await (const data of sseData(response.body, signal)) {
-      const chunk = parseChunk(data);
-      finished ||= chunk.usage !== undefined && chunk.usage !== null;
-      yield chunk;
-    }
-    if (!finished && !signal.aborted) {
-      throw openRouterError('unavailable', 'the answer stopped before it finished');
-    }
   }
 
   async models(): Promise<OrModel[]> {
@@ -211,7 +152,7 @@ export class OpenRouterClient {
     if (response.body === null) {
       throw openRouterError('unreadable', 'empty stream');
     }
-    yield* sseData(response.body, signal, IMAGE_STREAM_IDLE_MS);
+    yield* imageEventData(response.body, signal, IMAGE_STREAM_IDLE_MS);
   }
 
   async imagePrices(model: OrImageModel): Promise<OrImagePrice[] | null> {

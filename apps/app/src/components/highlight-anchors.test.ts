@@ -82,19 +82,20 @@ describe('the highlight registry', () => {
 
   it('clears the highlight when the shown anchor unmounts', async () => {
     const registry = new HighlightRegistry();
-    const off = registry.register(entry('a'));
-    await registry.request(['a'], NEVER);
+    const off = registry.register(entry('setting:a'));
+    await registry.request(['setting:a'], NEVER);
+    expect(registry.resolve('a')).toBe('setting:a');
     off();
     expect(registry.shown.get()).toBeNull();
-    expect(registry.present(['a'])).toBe(false);
+    expect(registry.resolve('a')).toBeNull();
   });
 
   it('keeps a newer registration of the same key when an older one unmounts', () => {
     const registry = new HighlightRegistry();
-    const offOld = registry.register(entry('a'));
-    registry.register(entry('a'));
+    const offOld = registry.register(entry('setting:a'));
+    registry.register(entry('setting:a'));
     offOld();
-    expect(registry.present(['a'])).toBe(true);
+    expect(registry.resolve('a')).toBe('setting:a');
   });
 
   it('clears what is shown and settles what is waiting', async () => {

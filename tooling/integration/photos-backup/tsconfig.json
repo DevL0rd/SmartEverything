@@ -1,0 +1,28 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "noEmit": true,
+    "rootDir": "../../..",
+    "lib": ["ES2023", "DOM", "ESNext.TypedArrays", "ESNext.Temporal"],
+    "types": ["node"],
+    "ignoreDeprecations": "6.0",
+    "disableSourceOfProjectReferenceRedirect": true
+  },
+  "include": ["*.ts"],
+  "references": [
+    {
+      "path": "../../../packages/domain"
+    },
+    {
+      "path": "../../../packages/logging"
+    },
+    {
+      "path": "../../../apps/hub"
+    },
+    {
+      "path": "../../../apps/app"
+    }
+  ]
+}

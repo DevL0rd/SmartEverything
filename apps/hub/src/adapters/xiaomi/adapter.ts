@@ -2,6 +2,7 @@ import { XIAOMI_MAGNET_MODEL } from '@smarteverything/ble';
 import { readBluetoothIdentity } from './bluetooth-identity';
 import { createHash } from 'node:crypto';
 import type { PassiveSource } from '../../local/passive-observations';
+import type { VacuumLink } from '../../vacuum/link';
 import {
   CommandRefusedError,
   type AdapterSink,
@@ -20,6 +21,7 @@ import {
   parseToken,
   type SourceList,
 } from '@smarteverything/xiaomi';
+import { refreshDevices } from './refresh-devices';
 import { CameraEventPoller, cameraEventsDetail } from './camera-events';
 import type { CameraMotor } from './camera-motor';
 import type { XiaomiCloud } from './cloud-api';
@@ -29,7 +31,8 @@ import type { Opened } from './device-link';
 import { DeviceRunner, type RunnerContext } from './device-runner';
 import { XiaomiHealthCloud } from './health-cloud';
 import { discoveredDevice, fetchInventory, type InventoryEntry } from './inventory';
-import { MiioClient } from './miio-client';
+import { createMapCloud } from './map-cloud';
+import { MESSAGE_ID_SEED_BYTES, MessageIds, MiioClient } from './miio-client';
 import type { CloudLookup } from './reachability';
 import { lookupDeviceAddress } from './device-address';
 import type { SpecStore } from './spec-store';
@@ -86,9 +89,11 @@ export class XiaomiAdapter implements ProviderAdapter {
     { readonly source: PassiveSource; readonly address: string }
   >();
   private readonly virtualDid: bigint;
+  private readonly messageIds: MessageIds;
 
   constructor(private readonly options: XiaomiAdapterOptions) {
     this.virtualDid = virtualDidOf(options.dependencies.randomBytes(VIRTUAL_DID_BYTES));
+    this.messageIds = MessageIds.seeded(options.dependencies.randomBytes(MESSAGE_ID_SEED_BYTES));
   }
 
   readonly discover = (): Promise<readonly DiscoveredDevice[]> =>
@@ -157,23 +162,14 @@ export class XiaomiAdapter implements ProviderAdapter {
     return runner.execute(command, device);
   };
 
-  readonly refresh = async (externalIds: readonly string[]): Promise<readonly StateUpdate[]> => {
-    const updates: StateUpdate[] = [];
-    for (const externalId of externalIds) {
-      const runner = this.runners.get(externalId);
-      if (runner !== undefined) {
-        try {
-          updates.push(...(await runner.readAll()).all);
-        } catch (error) {
-          this.options.log.warn('xiaomi_device.refresh_failed', {
-            did: externalId,
-            reason: failureLine(error),
-          });
-        }
-      }
-    }
-    return updates;
-  };
+  readonly refresh = async (externalIds: readonly string[]): Promise<readonly StateUpdate[]> =>
+    refreshDevices(
+      [...new Set(externalIds)].flatMap((externalId) => {
+        const runner = this.runners.get(externalId);
+        return runner === undefined ? [] : [{ did: externalId, readAll: () => runner.readAll() }];
+      }),
+      this.options.log,
+    );
 
   private runnerContext(generation: number): RunnerContext {
     const { dependencies, cloud, log } = this.options;
@@ -242,6 +238,13 @@ export class XiaomiAdapter implements ProviderAdapter {
     this.sink?.devices([...this.devices.values()]);
   }
 
+  vacuumLink(): VacuumLink {
+    return {
+      io: (did) => this.runners.get(did)?.vacuumIo ?? null,
+      cloud: createMapCloud(this.options.cloud, this.options.dependencies),
+    };
+  }
+
   async bluetoothIdentity(did: string, expectedModel?: string): Promise<BluetoothIdentity> {
     return readBluetoothIdentity(
       this.options.cloud,
@@ -294,6 +297,7 @@ export class XiaomiAdapter implements ProviderAdapter {
       timing: dependencies.timing,
       now: dependencies.now,
       log,
+      messageIds: this.messageIds,
     });
     try {
       await client.handshake();

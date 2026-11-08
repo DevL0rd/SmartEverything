@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { Text } from '../../../components/text';
 import { useAnimationGate } from '../../../design/animation-gate';
 import { useScopeVisible } from '../../../design/visibility';
 import { RING, loopStyle } from '../../../design/loops';
 import { useStoreSelector } from '../../../store/store-context';
 import type { StoreState } from '../../../store/state';
-import { Overline } from '../components/overline';
 
 const RING_MS = 1800;
 
@@ -22,7 +22,7 @@ function LiveDot({ live }: { readonly live: boolean }): ReactNode {
       {live ? (
         <Animated.View
           style={loopStyle({ name: RING, ms: RING_MS, easing: 'ease-out' }, running)}
-          className="absolute -inset-1 rounded-full border-2 border-positive"
+          className="absolute -inset-1 rounded-full border border-positive"
         />
       ) : null}
     </View>
@@ -32,9 +32,11 @@ function LiveDot({ live }: { readonly live: boolean }): ReactNode {
 export function LiveCaption(): ReactNode {
   const live = useStoreSelector(selectLive);
   return (
-    <View className="flex-row items-center gap-1.5 px-0.5">
+    <View className="flex-row items-center gap-1.5">
       <LiveDot live={live} />
-      <Overline>{live ? 'Live' : 'Offline'}</Overline>
+      <Text variant="footnote" tone={live ? 'variant' : 'faint'} numberOfLines={1}>
+        {live ? 'Live' : 'Offline'}
+      </Text>
     </View>
   );
 }

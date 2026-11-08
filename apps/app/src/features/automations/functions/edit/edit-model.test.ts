@@ -203,7 +203,7 @@ describe('new node and instance helpers', () => {
     const value = emptyFunction('value', newId);
     expect(value.flavour).toBe('pure');
     expect(value.exits).toEqual(['done']);
-    expect(value.body.nodes[0]?.kind).toBe('flow.return');
+    expect(value.nodes.map((entry) => entry.kind)).toEqual(['flow.start', 'flow.return']);
     expect(newNodeRequest(' Fade ', 'step', newId).definition.flavour).toBe('action');
     expect(nameIssue(' ')).not.toBeNull();
     expect(nameIssue('x'.repeat(200))).not.toBeNull();

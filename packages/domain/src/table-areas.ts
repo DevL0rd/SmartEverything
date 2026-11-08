@@ -4,6 +4,7 @@ import type { McpToolArea } from './mcp/areas';
 export const TABLE_AREAS: Readonly<Partial<Record<LiveTable, McpToolArea>>> = {
   provider_links: 'home',
   rooms: 'home',
+  home_maps: 'home',
   weather: 'home',
   devices: 'devices',
   device_groups: 'devices',
@@ -20,6 +21,17 @@ export const TABLE_AREAS: Readonly<Partial<Record<LiveTable, McpToolArea>>> = {
   scenes: 'automations',
   automations: 'automations',
   automation_values: 'automations',
+  automation_plugin_kinds: 'automations',
+  drive_roots: 'drive',
+  drive_albums: 'drive',
+  drive_sync_clients: 'drive',
+  planner_collections: 'planner',
+  planner_items: 'planner',
+  planner_occurrences: 'planner',
+  planner_alarms: 'planner',
+  planner_timers: 'planner',
+  planner_stopwatches: 'planner',
+  google_accounts: 'planner',
   automation_runs: 'automations',
   scheduled_actions: 'automations',
   health_sources: 'health',
@@ -37,6 +49,9 @@ export const TABLE_AREAS: Readonly<Partial<Record<LiveTable, McpToolArea>>> = {
   ai_outreach: 'assistant',
   plugin_streams: 'plugins',
   plugin_ui: 'plugins',
+  model_assets: 'devices',
+  model_catalog: 'devices',
+  model_overrides: 'devices',
 };
 
 export const SNAPSHOT_ONLY_AREAS: Readonly<Record<string, McpToolArea>> = {

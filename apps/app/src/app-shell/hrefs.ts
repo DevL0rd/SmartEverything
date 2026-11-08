@@ -1,11 +1,12 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import { isCamera } from '@smarteverything/domain';
 import type { Device } from '../store/state';
+import { selectionOf, selectionParams } from '../features/home-map/model/selection';
+
+export const UPDATES_SETTINGS_PAGE = 'app-updates';
 
 interface AssistantChatOptions {
-  readonly sheet?: 'chat';
-  readonly section?: 'overview' | 'activity' | 'files' | 'branches' | 'tools' | 'browser';
-  readonly agent?: string;
+  readonly section?: 'browser';
   readonly message?: string;
   readonly work?: string;
   readonly operation?: string;
@@ -14,9 +15,7 @@ interface AssistantChatOptions {
 
 function assistantChatParams(options: AssistantChatOptions): Readonly<Record<string, string>> {
   return {
-    ...(options.sheet === undefined ? {} : { sheet: options.sheet }),
     ...(options.section === undefined ? {} : { section: options.section }),
-    ...(options.agent === undefined ? {} : { agent: options.agent }),
     ...(options.message === undefined ? {} : { message: options.message }),
     ...(options.work === undefined ? {} : { work: options.work }),
     ...(options.operation === undefined ? {} : { operation: options.operation }),
@@ -44,7 +43,7 @@ function groupPageParams(options: GroupPageOptions): Readonly<Record<string, str
 }
 
 export const href = {
-  home: (target?: HomeReveal): Href =>
+  home: (target?: HomeReveal): AppHref =>
     target === undefined
       ? '/'
       : {
@@ -54,61 +53,124 @@ export const href = {
             ...(target.member === undefined ? {} : { member: target.member }),
           },
         },
-  devicesPage: (page: 'air' | 'supplies'): Href => `/devices/${page}`,
-  cameras: (): Href => '/cameras',
-  fitness: (): Href => '/fitness',
-  automations: (): Href => '/automations',
-  automation: (automationId: string): Href => ({
+  devicesPage: (page: 'air' | 'supplies'): AppHref => `/devices/${page}`,
+  cameras: (): AppHref => '/cameras',
+  fitness: (): AppHref => '/fitness',
+  planner: {
+    index: (): AppHref => '/planner',
+    tasks: (): AppHref => '/planner/tasks',
+    calendar: (): AppHref => '/planner/calendar',
+    insights: (): AppHref => '/planner/insights',
+    item: (itemId: string): AppHref => ({
+      pathname: '/planner/item/[itemId]',
+      params: { itemId },
+    }),
+  },
+  clock: {
+    alarms: (): AppHref => '/clock',
+    timers: (): AppHref => '/clock/timers',
+    stopwatch: (): AppHref => '/clock/stopwatch',
+    world: (): AppHref => '/clock/world',
+    ring: (ringId: string): AppHref => ({
+      pathname: '/clock/ring/[ringId]',
+      params: { ringId },
+    }),
+  },
+  photos: (): AppHref => '/photos',
+  photosPage: (
+    page:
+      | 'search'
+      | 'memories'
+      | 'albums'
+      | 'map'
+      | 'favourites'
+      | 'videos'
+      | 'screenshots'
+      | 'cameras'
+      | 'ai'
+      | 'duplicates'
+      | 'backup'
+      | 'insights'
+      | 'deleted',
+    params: Readonly<Record<string, string>> = {},
+  ): AppHref => ({ pathname: `/photos/${page}`, params }),
+  photosAlbum: (albumId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
+    pathname: '/photos/albums/[albumId]',
+    params: { ...params, albumId },
+  }),
+  photosPlace: (placeId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
+    pathname: '/photos/places/[placeId]',
+    params: { ...params, placeId },
+  }),
+  photosItem: (itemId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
+    pathname: '/photos/view/[itemId]',
+    params: { ...params, itemId },
+  }),
+  drive: (): AppHref => '/drive',
+  drivePage: (
+    page: 'recent' | 'starred' | 'shared' | 'activity' | 'sync' | 'computers' | 'storage' | 'trash',
+    params: Readonly<Record<string, string>> = {},
+  ): AppHref => ({ pathname: `/drive/${page}`, params }),
+  driveRoot: (rootId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
+    pathname: '/drive/root/[rootId]',
+    params: { ...params, rootId },
+  }),
+  driveSyncFolder: (rootId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
+    pathname: '/drive/sync/[rootId]',
+    params: { ...params, rootId },
+  }),
+  automations: (): AppHref => '/automations',
+  automation: (automationId: string): AppHref => ({
     pathname: '/automations/[automationId]',
     params: { automationId },
   }),
-  automationEdit: (automationId: string, focus?: string): Href => ({
+  automationEdit: (automationId: string, focus?: string): AppHref => ({
     pathname: '/automations/[automationId]/edit',
     params: {
       automationId,
       ...(focus === undefined ? {} : { focus }),
     },
   }),
-  automationNew: (template?: string): Href =>
+  automationNew: (template?: string): AppHref =>
     template === undefined
       ? '/automations/new'
       : { pathname: '/automations/new', params: { template } },
-  automationRuns: (automationId?: string, focus?: string): Href =>
+  automationRuns: (automationId?: string, focus?: string): AppHref =>
     automationId === undefined
       ? { pathname: '/automations/runs', params: focus === undefined ? {} : { focus } }
       : {
           pathname: '/automations/[automationId]/runs',
           params: { automationId, ...(focus === undefined ? {} : { focus }) },
         },
-  automationValues: (): Href => '/automations/variables',
-  automationValue: (variableId: string, focus?: string): Href => ({
+  automationValues: (): AppHref => '/automations/variables',
+  automationValue: (variableId: string, focus?: string): AppHref => ({
     pathname: '/automations/variables/[variableId]',
     params: { variableId, ...(focus === undefined ? {} : { focus }) },
   }),
-  automationSchedule: (): Href => '/automations/schedule',
-  scheduled: (): Href => '/automations/scheduled',
-  scheduledItem: (scheduleId: string): Href => ({
+  automationSchedule: (): AppHref => '/automations/schedule',
+  scheduled: (): AppHref => '/automations/scheduled',
+  scheduledItem: (scheduleId: string): AppHref => ({
     pathname: '/automations/scheduled/[scheduleId]',
     params: { scheduleId },
   }),
-  scheduledEdit: (scheduleId: string): Href => ({
+  scheduledEdit: (scheduleId: string): AppHref => ({
     pathname: '/automations/scheduled/[scheduleId]/edit',
     params: { scheduleId },
   }),
-  scheduledNew: (deviceId?: string): Href =>
+  scheduledNew: (deviceId?: string): AppHref =>
     deviceId === undefined
       ? '/automations/scheduled/new'
       : { pathname: '/automations/scheduled/new', params: { deviceId } },
-  scenes: (): Href => '/automations/scenes',
-  scene: (sceneId: string): Href => ({
+  scenes: (): AppHref => '/automations/scenes',
+  scene: (sceneId: string): AppHref => ({
     pathname: '/automations/scenes/[sceneId]',
     params: { sceneId },
   }),
-  assistantCosts: (filters?: { readonly chat?: string }): Href =>
+  assistantCosts: (filters?: { readonly chat?: string }): AppHref =>
     filters?.chat === undefined
       ? '/settings/assistant/costs'
       : { pathname: '/settings/assistant/costs', params: { chat: filters.chat } },
-  assistantChat: (chatId?: string, options: AssistantChatOptions = {}): Href =>
+  assistantChat: (chatId?: string, options: AssistantChatOptions = {}): AppHref =>
     chatId === undefined
       ? '/assistant'
       : {
@@ -118,76 +180,87 @@ export const href = {
             ...assistantChatParams(options),
           },
         },
-  assistantChats: (filter: 'unread' | 'archived'): Href => ({
+  assistantChatFiles: (chatId: string): AppHref => ({
+    pathname: '/assistant/chat/[chatId]/files',
+    params: { chatId },
+  }),
+  assistantChats: (filter: 'unread' | 'archived'): AppHref => ({
     pathname: '/assistant',
     params: { filter },
   }),
-  talk: (): Href => '/talk',
-  talkChannel: (channelId: string): Href => ({
+  talk: (): AppHref => '/talk',
+  talkChannel: (channelId: string): AppHref => ({
     pathname: '/talk/[channelId]',
     params: { channelId },
   }),
-  devices: (status?: 'offline'): Href =>
+  devices: (status?: 'offline'): AppHref =>
     status === undefined ? '/devices' : { pathname: '/devices', params: { status } },
-  activity: (): Href => '/activity',
-  weather: (): Href => '/weather',
-  room: (roomId: string): Href => ({ pathname: '/rooms/[roomId]', params: { roomId } }),
-  roomLights: (roomId: string, options: GroupPageOptions = {}): Href => ({
+  devicesSelection: (selection: {
+    readonly room?: string | undefined;
+    readonly device?: string | undefined;
+  }): AppHref => {
+    const params = selectionParams(selectionOf(selection));
+    return Object.keys(params).length === 0 ? '/devices' : { pathname: '/devices', params };
+  },
+  activity: (): AppHref => '/activity',
+  weather: (): AppHref => '/weather',
+  room: (roomId: string): AppHref => ({ pathname: '/rooms/[roomId]', params: { roomId } }),
+  roomLights: (roomId: string, options: GroupPageOptions = {}): AppHref => ({
     pathname: '/rooms/[roomId]/lights',
     params: { roomId, ...groupPageParams(options) },
   }),
-  group: (groupId: string, options: GroupPageOptions = {}): Href => ({
+  group: (groupId: string, options: GroupPageOptions = {}): AppHref => ({
     pathname: '/groups/[groupId]',
     params: { groupId, ...groupPageParams(options) },
   }),
-  newGroup: (): Href => '/groups/new',
-  search: (query = ''): Href =>
+  newGroup: (): AppHref => '/groups/new',
+  search: (query = ''): AppHref =>
     query === '' ? '/search' : { pathname: '/search', params: { q: query } },
-  device: (device: Pick<Device, 'id' | 'kind' | 'model'>): Href =>
+  device: (device: Pick<Device, 'id' | 'kind' | 'model'>): AppHref =>
     isCamera(device)
       ? { pathname: '/cameras/[cameraId]', params: { cameraId: device.id } }
       : { pathname: '/device/[deviceId]', params: { deviceId: device.id } },
-  camera: (cameraId: string, mode: 'call' | 'full' | null = null): Href => ({
+  camera: (cameraId: string, mode: 'call' | 'full' | null = null): AppHref => ({
     pathname: '/cameras/[cameraId]',
     params: mode === null ? { cameraId } : { cameraId, [mode]: '1' },
   }),
-  clip: (cameraId: string, recordingId: string): Href => ({
+  clip: (cameraId: string, recordingId: string): AppHref => ({
     pathname: '/cameras/[cameraId]/clip/[recordingId]',
     params: { cameraId, recordingId },
   }),
-  cameraEvents: (): Href => '/cameras/events',
-  cameraMonitor: (): Href => '/cameras/monitor',
+  cameraEvents: (): AppHref => '/cameras/events',
+  cameraMonitor: (): AppHref => '/cameras/monitor',
   deviceSection: (
     deviceId: string,
     section: string,
     query: Readonly<Record<string, string>> = {},
-  ): Href => ({
+  ): AppHref => ({
     pathname: '/device/[deviceId]/[section]',
     params: { ...query, deviceId, section },
   }),
-  pluginSettings: (pluginId: string, page?: 'tools' | 'log' | 'people'): Href => ({
+  pluginSettings: (pluginId: string, page?: 'tools' | 'log' | 'people'): AppHref => ({
     pathname: '/settings/[...page]',
     params: { page: page === undefined ? ['plugins', pluginId] : ['plugins', pluginId, page] },
   }),
-  pluginPage: (pluginId: string, pageId: string): Href => ({
+  pluginPage: (pluginId: string, pageId: string): AppHref => ({
     pathname: '/plugins/[pluginId]/[page]',
     params: { pluginId, page: pageId },
   }),
-  pluginList: (pluginId: string, setting: string): Href => ({
+  pluginList: (pluginId: string, setting: string): AppHref => ({
     pathname: '/settings/[...page]',
     params: { page: ['plugins', pluginId, 'list', setting] },
   }),
   settings: {
-    index: (): Href => '/settings',
-    page: (path: string): Href => ({
+    index: (): AppHref => '/settings',
+    page: (path: string): AppHref => ({
       pathname: '/settings/[...page]',
       params: { page: path.split('/') },
     }),
-    focus: (path: string, focus: string): Href => ({
+    focus: (path: string, focus: string): AppHref => ({
       pathname: '/settings/[...page]',
       params: { page: path.split('/'), focus },
     }),
-    connections: (): Href => ({
+    connections: (): AppHref => ({
       pathname: '/settings/[...page]',
       params: { page: ['connections'] },
     }),
@@ -195,27 +268,27 @@ export const href = {
       deviceId: string,
       page?: string,
       query: Readonly<Record<string, string>> = {},
-    ): Href =>
+    ): AppHref =>
       page === undefined
         ? { pathname: '/device/[deviceId]/settings', params: { deviceId } }
         : { pathname: '/device/[deviceId]/settings/[page]', params: { ...query, deviceId, page } },
-    cameras: (): Href => '/settings/cameras',
-    talk: (): Href => '/settings/talk',
-    talkChannel: (channelId: string): Href => ({
+    cameras: (): AppHref => '/settings/cameras',
+    talk: (): AppHref => '/settings/talk',
+    talkChannel: (channelId: string): AppHref => ({
       pathname: '/settings/[...page]',
       params: { page: ['talk', 'channels', channelId] },
     }),
-    camera: (deviceId: string): Href => ({
+    camera: (deviceId: string): AppHref => ({
       pathname: '/device/[deviceId]/settings/[page]',
       params: { deviceId, page: 'camera' },
     }),
-    remoteViewing: (): Href => '/settings/cameras/remote-viewing',
-    assistant: (): Href => '/settings/assistant',
-    profile: (profileId: string): Href => ({
+    remoteViewing: (): AppHref => '/settings/cameras/remote-viewing',
+    assistant: (): AppHref => '/settings/assistant',
+    profile: (profileId: string): AppHref => ({
       pathname: '/settings/profiles/[profileId]',
       params: { profileId },
     }),
-    account: (provider: string): Href => ({
+    account: (provider: string): AppHref => ({
       pathname: '/settings/connections/[provider]',
       params: { provider },
     }),
@@ -231,22 +304,22 @@ export const href = {
       | 'sonicare'
       | 'larq'
       | 'printer',
-  ): Href => `/connect/${flow}`,
-  assistant: (assistant: string): Href => ({
+  ): AppHref => `/connect/${flow}`,
+  assistant: (assistant: string): AppHref => ({
     pathname: '/connect/assistant/[assistant]',
     params: { assistant },
   }),
-  consent: (requestId: string): Href => ({
+  consent: (requestId: string): AppHref => ({
     pathname: '/consent/[requestId]',
     params: { requestId },
   }),
-  firewallFix: (): Href => '/firewall-fix',
-  setupNetwork: (): Href => '/setup/network',
+  firewallFix: (): AppHref => '/firewall-fix',
+  setupNetwork: (): AppHref => '/setup/network',
   assistantCall: (
     source: string,
     chatId: string | null = null,
     answering: string | null = null,
-  ): Href => ({
+  ): AppHref => ({
     pathname: '/assistant/call',
     params: {
       source,
@@ -254,37 +327,38 @@ export const href = {
       ...(answering === null ? {} : { answering }),
     },
   }),
-  pairPhone: (profileId?: string): Href =>
+  assistantVoiceMessage: (): AppHref => '/assistant/voice-message',
+  pairPhone: (profileId?: string): AppHref =>
     profileId === undefined ? '/pair-phone' : { pathname: '/pair-phone', params: { profileId } },
-  fitnessSetup: (step?: 'about' | 'goals' | 'connect'): Href =>
+  fitnessSetup: (step?: 'about' | 'goals' | 'connect'): AppHref =>
     step === undefined ? '/fitness-setup' : { pathname: '/fitness-setup', params: { step } },
-  addByAddress: (): Href => '/add-by-address',
+  addByAddress: (): AppHref => '/add-by-address',
   fitnessPage: (
     page: 'activity' | 'heart' | 'sleep' | 'body' | 'workouts' | 'vitals' | 'browse' | 'nutrition',
     params: Readonly<Record<string, string>> = {},
-  ): Href => ({ pathname: `/fitness/${page}`, params }),
-  workout: (workoutId: string): Href => ({
+  ): AppHref => ({ pathname: `/fitness/${page}`, params }),
+  workout: (workoutId: string): AppHref => ({
     pathname: '/fitness/workouts/[workoutId]',
     params: { workoutId },
   }),
-  logFood: (params: Readonly<Record<string, string>> = {}): Href => ({
+  logFood: (params: Readonly<Record<string, string>> = {}): AppHref => ({
     pathname: '/log-food',
     params,
   }),
-  scanFood: (params: Readonly<Record<string, string>> = {}): Href => ({
+  scanFood: (params: Readonly<Record<string, string>> = {}): AppHref => ({
     pathname: '/scan-food',
     params,
   }),
-  food: (foodId: string): Href => ({ pathname: '/food/[foodId]', params: { foodId } }),
-  newFood: (params: Readonly<Record<string, string>> = {}): Href => ({
+  food: (foodId: string): AppHref => ({ pathname: '/food/[foodId]', params: { foodId } }),
+  newFood: (params: Readonly<Record<string, string>> = {}): AppHref => ({
     pathname: '/food/new',
     params,
   }),
-  logHealth: (type?: string, params: Readonly<Record<string, string>> = {}): Href =>
+  logHealth: (type?: string, params: Readonly<Record<string, string>> = {}): AppHref =>
     type === undefined
       ? { pathname: '/log', params }
       : { pathname: '/log/[type]', params: { ...params, type } },
-  healthMetric: (metric: string, params: Readonly<Record<string, string>> = {}): Href => ({
+  healthMetric: (metric: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
     pathname: '/fitness/metric/[metric]',
     params: { ...params, metric },
   }),

@@ -1,6 +1,6 @@
 ---
 name: smarteverything-cameras
-description: "Looks at a home camera now, reviews saved pictures, recordings and events, records a clip, reads what cameras, phones and computers heard, and changes event recording, keep days and listening for the AI’s name. Use for “what’s happening in the garden”, “show me the front door”, “did anyone come by today”, “record the living room for a minute” or “what did the camera hear”. Not for automations that react to cameras (smarteverything-automation-triggers)."
+description: 'Looks at a home camera now, reviews saved pictures, recordings and events, records a clip, reads what cameras, phones and computers heard, and changes event recording, keep days and listening for the AI’s name. Use for “what’s happening in the garden”, “show me the front door”, “did anyone come by today”, “record the living room for a minute” or “what did the camera hear”. Not for automations that react to cameras (smarteverything-automation-triggers).'
 ---
 
 # Cameras, events and transcripts

@@ -33,7 +33,7 @@ function metricOutput(metric: WeatherMetric): OutputPortDecl {
 const weatherRead = defineNodeKind({
   id: 'weather.read',
   name: 'Weather now',
-  category: 'cameras',
+  category: 'weather',
   icon: 'cloud-sun',
   class: 'read',
   description:

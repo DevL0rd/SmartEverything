@@ -2,10 +2,10 @@ import { useMemo } from 'react';
 import { useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type {
   AutomationProgramComparison,
-  AutomationRowV3,
   FunctionLookup,
   NodeKind,
 } from '@smarteverything/domain';
+import type { AutomationRow } from '../data/graph-adapter';
 import type { Manifest } from '@smarteverything/flow/compile/manifest';
 import { background, Logger } from '@smarteverything/logging';
 import { confirm } from '../../../components/confirm-store';
@@ -25,7 +25,7 @@ export function useKindOf(): KindOf {
   }, [kinds]);
 }
 
-export function useManifest(row: AutomationRowV3, functions: FunctionLookup): Manifest | null {
+export function useManifest(row: AutomationRow, functions: FunctionLookup): Manifest | null {
   const kindOf = useKindOf();
   return useMemo(
     () => manifestFor(row.definition, kindOf, functions),
@@ -49,7 +49,8 @@ export function useComparison(
 
 export type RestoreVersion = (revision: number) => void;
 
-export function useRestoreVersion(row: AutomationRowV3): RestoreVersion {
+export function useRestoreVersion(row: AutomationRow): RestoreVersion {
+  const kinds = useAutomationsSource().lookup;
   const { api } = useAutomationsSource();
   const client = useQueryClient();
   return useMemo(() => {
@@ -64,9 +65,9 @@ export function useRestoreVersion(row: AutomationRowV3): RestoreVersion {
       });
       if (!accepted) return;
       try {
-        const source = await api.getRevision(row.id, revision);
+        const source = await api.getRevision(row.id, revision, kinds);
         await api.saveDraft(row.id, {
-          program: source.definition,
+          program: source.graph,
           layout: source.layout,
           expectedRevision: row.revision,
         });
@@ -80,5 +81,5 @@ export function useRestoreVersion(row: AutomationRowV3): RestoreVersion {
     return (revision) => {
       background(restore(revision), 'automations.restore_failed');
     };
-  }, [api, client, row.id, row.revision, row.draft]);
+  }, [api, client, row.id, row.revision, row.draft, kinds]);
 }

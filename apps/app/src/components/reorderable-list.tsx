@@ -83,7 +83,7 @@ function Row(props: RowProps): ReactNode {
   const touch = useIdiom() === 'touch';
   const motion = useWidgetMotion(frame, reduced);
   const still = useSharedValue(0);
-  const style = useWidgetStyle(rowKey, motion, drag, still);
+  const { style } = useWidgetStyle(rowKey, motion, drag, still);
   const gesture = useMoveGesture({
     key: rowKey,
     touch,

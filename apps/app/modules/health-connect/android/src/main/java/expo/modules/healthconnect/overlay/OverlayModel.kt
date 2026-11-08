@@ -127,6 +127,12 @@ enum class WhileSharing {
 }
 
 @Serializable
+enum class PowerButton {
+  @SerialName("call") Call,
+  @SerialName("voice_message") VoiceMessage,
+}
+
+@Serializable
 enum class OverlayTheme {
   @SerialName("light") Light,
   @SerialName("dark") Dark,

@@ -1,22 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ToothbrushFacts } from '../types';
-import {
-  displayOf,
-  driveDuration,
-  driveOf,
-  driveStops,
-  faceStars,
-  headRimOf,
-  ioLabel,
-  ioStateOf,
-  type IoRing,
-  materialOf,
-  moveOf,
-  pipsOf,
-  ringNameOf,
-  ringOf,
-  timerText,
-} from './io-look';
+import { displayOf, faceStars, ioStateOf, pipsOf, timerText } from './io-look';
 
 function facts(patch: Partial<ToothbrushFacts> = {}): ToothbrushFacts {
   return {
@@ -61,35 +45,6 @@ describe('the state of the iO handle', () => {
     expect(ioStateOf(facts({ activity: 'brushing' }), 'offline')).toBe('unreachable');
     expect(ioStateOf(facts({ link: 'bluetooth_off' }), 'active')).toBe('unreachable');
     expect(ioStateOf(facts({ link: 'busy', activity: 'brushing' }), 'offline')).toBe('busy');
-  });
-});
-
-describe('the SmartRing', () => {
-  it('is unlit while the brush sleeps or cannot be reached', () => {
-    for (const state of ['asleep', 'unreachable', 'busy'] as const) {
-      expect(ringOf(facts(), state)).toEqual({ kind: 'unlit' });
-    }
-  });
-
-  it('shows the configured colour at rest and a grey dashed ring when it was never read', () => {
-    expect(ringOf(facts(), 'standby')).toEqual({ kind: 'configured', hex: '#3870ff' });
-    expect(ringOf(facts({ ring: null }), 'summary')).toEqual({ kind: 'unread' });
-    expect(ringOf(facts(), 'charging')).toEqual({ kind: 'configured', hex: '#3870ff' });
-  });
-
-  it('follows the pressure while brushing', () => {
-    const level = (pressure: ToothbrushFacts['pressure']): IoRing =>
-      ringOf(facts({ pressure }), 'brushing');
-    expect(level('no_contact')).toEqual({ kind: 'pressure', level: 'light' });
-    expect(level(null)).toEqual({ kind: 'pressure', level: 'light' });
-    expect(level('optimal')).toEqual({ kind: 'pressure', level: 'good' });
-    expect(level('too_high')).toEqual({ kind: 'pressure', level: 'hard' });
-  });
-
-  it('names the measured colours and calls anything else custom', () => {
-    expect(ringNameOf('#3870ff')).toBe('blue');
-    expect(ringNameOf('#FFFFFF')).toBe('white');
-    expect(ringNameOf('#123456')).toBe('custom');
   });
 });
 
@@ -154,131 +109,5 @@ describe('the display glass', () => {
 
   it('puts a result face on one of three star bands', () => {
     expect([0, 1, 2, 4, 5, 8, 9, 11].map(faceStars)).toEqual([0, 0, 1, 1, 2, 2, 3, 3]);
-  });
-});
-
-describe('the head rim', () => {
-  it('is green with life left, amber near the end and red when due', () => {
-    expect(headRimOf(facts({ daysLeftRatio: 0.6 }))).toBe('positive');
-    expect(headRimOf(facts({ daysLeftRatio: 0.15 }))).toBe('warning');
-    expect(headRimOf(facts({ daysLeftRatio: 0 }))).toBe('critical');
-  });
-
-  it('is neutral without a baseline or a fitted head', () => {
-    expect(headRimOf(facts({ daysLeftRatio: null }))).toBeNull();
-    expect(headRimOf(facts({ head: 'missing' }))).toBeNull();
-  });
-});
-
-describe('the drive motion', () => {
-  it('oscillates with the period of the mode', () => {
-    const period = (mode: ToothbrushFacts['mode']): number => driveOf(facts({ mode })).stepMs;
-    expect(period('daily_clean')).toBe(140);
-    expect(period('sensitive')).toBe(180);
-    expect(period('gum_care')).toBe(160);
-    expect(period('whiten')).toBe(130);
-    expect(period('intense')).toBe(110);
-    expect(period('super_sensitive')).toBe(220);
-    expect(period('tongue_clean')).toBe(160);
-    expect(period('smart_adapt')).toBe(150);
-    expect(period('gentle_white')).toBe(150);
-    expect(period(null)).toBe(140);
-  });
-
-  it('swings plus and minus nine degrees at a steady pace', () => {
-    const drive = driveOf(facts({ mode: 'intense' }));
-    expect(driveDuration(drive)).toBe(220);
-    expect(driveStops(drive)).toEqual([
-      { at: 0, degrees: -9 },
-      { at: 50, degrees: 9 },
-      { at: 100, degrees: -9 },
-    ]);
-  });
-
-  it('pulses in groups of three swings and rests 200 ms between groups', () => {
-    const drive = driveOf(facts({ mode: 'gum_care' }));
-    expect(drive.steps).toHaveLength(6);
-    expect(drive.restMs).toBe(200);
-    expect(driveDuration(drive)).toBe(1160);
-    const stops = driveStops(drive);
-    expect(stops.at(-1)).toEqual({ at: 100, degrees: 0 });
-    expect(stops.at(-2)).toEqual({ at: 82.76, degrees: 0 });
-  });
-
-  it('alternates strong and light strokes for whiten', () => {
-    const drive = driveOf(facts({ mode: 'whiten' }));
-    expect(drive.steps).toEqual([-9, 9, -4, 4]);
-    expect(driveStops(drive).at(-1)).toEqual({ at: 100, degrees: -9 });
-  });
-});
-
-describe('what the handle does when the activity changes', () => {
-  it('sweeps the ring when the brush is picked up or lifted off the charger', () => {
-    expect(moveOf('asleep', 'standby')).toBe('wake');
-    expect(moveOf('off', 'brushing')).toBe('wake');
-    expect(moveOf('charging', 'standby')).toBe('wake');
-  });
-
-  it('ripples the button when brushing starts, pauses or stops', () => {
-    expect(moveOf('standby', 'brushing')).toBe('press');
-    expect(moveOf('brushing', 'paused')).toBe('press');
-    expect(moveOf('paused', 'standby')).toBe('press');
-    expect(moveOf('brushing', 'asleep')).toBe('press');
-  });
-
-  it('does nothing when nothing changed or the brush only went to rest', () => {
-    expect(moveOf('standby', 'standby')).toBeNull();
-    expect(moveOf('standby', 'asleep')).toBeNull();
-    expect(moveOf('standby', 'charging')).toBeNull();
-  });
-});
-
-describe('the handle material', () => {
-  it('is black unless the handle colour is known', () => {
-    expect(materialOf(facts()).body).toBe('#1C1D22');
-    expect(materialOf(facts({ handle: 'rose' })).body).toBe('#E6A9B6');
-  });
-});
-
-describe('the accessible name', () => {
-  it('names the state, the ring, the timer and the quarter while brushing', () => {
-    expect(
-      ioLabel(
-        facts({ activity: 'brushing', pressure: 'optimal', elapsedS: 72, sector: 2 }),
-        'active',
-      ),
-    ).toBe('Oral-B iO, brushing, ring green: good pressure, 1:12, quarter 2 of 4');
-  });
-
-  it('says too hard and light pressure in words', () => {
-    expect(ioLabel(facts({ activity: 'brushing', pressure: 'too_high' }), 'active')).toContain(
-      'ring red: too hard',
-    );
-    expect(ioLabel(facts({ activity: 'brushing' }), 'active')).toContain(
-      'ring grey: light pressure',
-    );
-  });
-
-  it('names the configured colour and the battery at rest', () => {
-    expect(ioLabel(facts(), 'active')).toBe('Oral-B iO, awake, ring blue, battery 80 percent');
-  });
-
-  it('says when the ring colour was not read yet', () => {
-    expect(ioLabel(facts({ ring: null }), 'active')).toContain('ring colour not read yet');
-  });
-
-  it('drops the ring for a sleeping, unreachable or busy brush', () => {
-    expect(ioLabel(facts({ activity: 'asleep' }), 'idle')).toBe(
-      'Oral-B iO, asleep, battery 80 percent',
-    );
-    expect(ioLabel(facts(), 'offline')).toBe('Oral-B iO, unreachable, battery 80 percent');
-    expect(ioLabel(facts({ link: 'busy' }), 'active')).toBe('Oral-B iO, busy, battery 80 percent');
-  });
-
-  it('names the summary and the charger', () => {
-    expect(ioLabel(facts({ face: 4 }), 'active')).toContain('showing the result');
-    expect(ioLabel(facts({ activity: 'charging', battery: null }), 'idle')).toBe(
-      'Oral-B iO, charging, ring blue',
-    );
   });
 });

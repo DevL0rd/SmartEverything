@@ -9,16 +9,23 @@ interface ButtonProps {
 }
 
 interface CellProps {
+  readonly ref?: unknown;
   readonly label: string;
   readonly selected?: boolean;
   readonly disabled?: boolean;
   readonly onPress: () => void;
 }
 
+interface CalendarSheetProps {
+  readonly open: boolean;
+  readonly subpage: { readonly opener: unknown };
+  readonly children: ReactNode;
+}
+
 const seen = vi.hoisted(() => ({
   buttons: new Array<ButtonProps>(),
   cells: new Array<CellProps>(),
-  sheets: new Array<{ readonly open: boolean }>(),
+  sheets: new Array<CalendarSheetProps>(),
 }));
 
 vi.mock('react-native', async () => {
@@ -37,7 +44,7 @@ vi.mock('react-native', async () => {
 vi.mock('../design/platform', () => ({ useIdiom: (): string => 'pointer' }));
 
 vi.mock('./sheet', () => ({
-  Sheet: (props: { readonly open: boolean; readonly children: ReactNode }): ReactNode => {
+  Sheet: (props: CalendarSheetProps): ReactNode => {
     seen.sheets.push(props);
     return props.children;
   },
@@ -177,6 +184,13 @@ describe('DateNav stepping', () => {
 });
 
 describe('DateNav calendar', () => {
+  it('returns sheet focus to the date chip that opens it', () => {
+    render(new Date(2026, 9, 16), 'day');
+    const chip = seen.cells.find((cell) => cell.label.endsWith('choose date'));
+    expect(chip?.ref).toBeDefined();
+    expect(seen.sheets[0]?.subpage.opener).toBe(chip?.ref);
+  });
+
   it('starts closed and lists every day of the month with the value selected', () => {
     render(new Date(2026, 9, 16), 'day');
     expect(seen.sheets[0]?.open).toBe(false);

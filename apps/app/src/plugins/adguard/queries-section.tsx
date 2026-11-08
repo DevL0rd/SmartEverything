@@ -50,7 +50,7 @@ function CountsNote({
 function ListControls({ search, onSearch, filter, onFilter, stats, log }: Controls): ReactNode {
   const counts = stats === null || search.trim() !== '' ? null : filterCounts(stats);
   return (
-    <View className="gap-3 px-gutter pb-2 pt-2">
+    <View className="w-full max-w-reading gap-3 self-start px-gutter py-2">
       <SearchField
         value={search}
         onChange={onSearch}
@@ -58,19 +58,26 @@ function ListControls({ search, onSearch, filter, onFilter, stats, log }: Contro
         variant="field"
       />
       <HScroller label="Filter lookups" fade>
-        {QUERY_LOG_FILTERS.map((value) => (
-          <FilterChip
-            key={value}
-            label="Show"
-            value={FILTER_LABEL[value]}
-            icon={FILTER_ICON[value]}
-            {...(counts === null ? {} : { count: counts[value] })}
-            active={filter === value}
-            onPress={() => {
-              onFilter(value);
-            }}
-          />
-        ))}
+        <View
+          className="flex-row"
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Filter lookups"
+        >
+          {QUERY_LOG_FILTERS.map((value) => (
+            <FilterChip
+              key={value}
+              singleChoice
+              label="Show"
+              value={FILTER_LABEL[value]}
+              icon={FILTER_ICON[value]}
+              {...(counts === null ? {} : { count: counts[value] })}
+              active={filter === value}
+              onPress={() => {
+                onFilter(value);
+              }}
+            />
+          ))}
+        </View>
       </HScroller>
       {counts === null || stats === null ? null : <CountsNote stats={stats} />}
       {log.failed ? (
@@ -88,7 +95,7 @@ function ListControls({ search, onSearch, filter, onFilter, stats, log }: Contro
 
 function LoadOlder({ log }: { readonly log: QueryLogView }): ReactNode {
   return log.more ? (
-    <View className="items-center px-gutter py-2">
+    <View className="w-full max-w-reading items-center self-start px-gutter py-2">
       <Button
         label="Load older lookups"
         variant="text"
@@ -102,16 +109,18 @@ function LoadOlder({ log }: { readonly log: QueryLogView }): ReactNode {
 }
 
 function Empty({ log }: { readonly log: QueryLogView }): ReactNode {
-  return log.loading ? (
-    <View className="px-gutter">
-      <Skeleton shape="block" />
+  return (
+    <View className="w-full max-w-reading self-start px-gutter">
+      {log.loading ? (
+        <Skeleton shape="block" />
+      ) : (
+        <EmptyState
+          icon="search"
+          title="No lookups here"
+          body="Try another filter or a shorter search."
+        />
+      )}
     </View>
-  ) : (
-    <EmptyState
-      icon="search"
-      title="No lookups here"
-      body="Try another filter or a shorter search."
-    />
   );
 }
 

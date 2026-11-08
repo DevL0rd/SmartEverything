@@ -1,26 +1,30 @@
 import { turnsOfChat } from '../../../store/subscriptions';
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { mainPageSettings } from '../../../app-shell/main-pages';
 import { View } from 'react-native';
-import { router } from 'expo-router';
-import type { AiChatRow, AssistantMessageRow, Engine } from '@smarteverything/domain';
+import {
+  helperDialogueOf,
+  type AiChatRow,
+  type AssistantMessageRow,
+  type Engine,
+} from '@smarteverything/domain';
 import { useHeaderStatus } from '../../../components/header-status';
 import { PageSettingsButton } from '../../../components/page-settings-button';
 import { IconButton } from '../../../components/icon-button';
 import { Icon, type IconName } from '../../../components/icon';
-import { Interactive } from '../../../components/interactive';
 import type { HeaderAction } from '../../../components/page-header';
 import { useHeaderSlot } from '../../../components/screen-context';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
 import { useSizeClass } from '../../../design/size-class';
 import { useStoreSelector } from '../../../store/store-context';
-import { liveTurnOf } from '../../../store/chat-turns';
+import { workStatusOf, workingTurnOf, type WorkStatus } from '../../../store/chat-turns';
 import { useProfiles } from '../../../store/people';
 import { startCall } from '../call';
 import { AssistantOrb } from '../call/orb';
 import { ProfileSwitcher } from '../../profiles';
 import { TypingDots } from '../components/typing-dots';
+import { useAgentActivity } from '../data/agent-runs';
 import { useAssistantName } from '../data/assistant-data';
 import { useTurnFeedback } from '../data/turn-feedback';
 import {
@@ -32,11 +36,14 @@ import {
 } from '../model/chat-subline';
 import { feedbackKind } from '../model/turn-feedback';
 import { useChatIdentity } from './chat-identity';
+import { ChatHeaderMenu } from './chat-header-menu';
+import { ChatMachineControl } from './chat-machine-control';
 import { useChatModel } from './chat-model';
 import { leaveChat } from './leave-chat';
 import { SourceMark } from './source-mark';
 
 interface PanelToggle {
+  readonly docked: boolean;
   readonly open: boolean;
   readonly toggle: () => void;
 }
@@ -99,20 +106,16 @@ function SublineText({ line }: { readonly line: Subline }): ReactNode {
   return (
     <View className="min-w-0 flex-row items-center gap-1.5">
       <Text variant="footnote" tone="primary" numberOfLines={1} className="shrink-0">
-        Working
+        {line.work.phase}
       </Text>
-      {line.step === null ? null : (
+      {line.work.step === null ? null : (
         <Text variant="footnote" tone="variant" numberOfLines={1} className="shrink">
-          {`· ${line.step}`}
+          {`· ${line.work.step}`}
         </Text>
       )}
       <TypingDots tone="primary" />
     </View>
   );
-}
-
-function openDetails(): void {
-  router.setParams({ sheet: 'chat' });
 }
 
 function TitleText({
@@ -123,18 +126,17 @@ function TitleText({
   readonly line: ReactNode;
 }): ReactNode {
   return (
-    <View role="heading" aria-level={1} className="min-w-0 shrink">
-      <Interactive
-        label={`${title}. Open chat details`}
-        onPress={openDetails}
-        className="min-h-touch-min min-w-0 justify-center rounded-md px-1"
-        layerClassName="rounded-md"
+    <View className="min-h-touch-min min-w-0 shrink justify-center px-1">
+      <Text
+        role="heading"
+        aria-level={1}
+        variant="title-3"
+        numberOfLines={1}
+        className="min-w-0 shrink"
       >
-        <Text variant="title-3" numberOfLines={1} className="min-w-0 shrink">
-          {title}
-        </Text>
-        {line}
-      </Interactive>
+        {title}
+      </Text>
+      {line}
     </View>
   );
 }
@@ -144,11 +146,13 @@ function Frame({
   leading,
   title,
   trailing,
+  menu,
 }: {
   readonly back: boolean;
   readonly leading: readonly HeaderAction[];
   readonly title: ReactNode;
   readonly trailing: ReactNode;
+  readonly menu: ReactNode;
 }): ReactNode {
   const slot = useHeaderSlot();
   const status = useHeaderStatus();
@@ -157,7 +161,7 @@ function Frame({
   }
   return (
     <View className="z-10 border-b border-outline-variant bg-chrome/95 pt-safe">
-      <View className="h-app-bar flex-row items-center gap-1 px-1">
+      <View className="min-h-14 flex-row items-center gap-1 px-1">
         {back ? <Back /> : null}
         {leading.map((action) => (
           <IconButton
@@ -172,7 +176,7 @@ function Frame({
         <View className="min-w-0 flex-1">{title}</View>
         {status}
         {trailing}
-        <PageSettingsButton settings={mainPageSettings('assistant')} />
+        {menu}
       </View>
     </View>
   );
@@ -221,12 +225,20 @@ export interface ChatHeaderProps {
   readonly back: boolean;
   readonly leading?: readonly HeaderAction[];
   readonly panel: PanelToggle | null;
+  readonly ref?: Ref<View>;
 }
 
-function useLiveStep(chatId: string): string | null {
+function sameWork(left: WorkStatus | null, right: WorkStatus | null): boolean {
+  return left === right || (left?.phase === right?.phase && left?.step === right?.step);
+}
+
+function useLiveWork(chatId: string): WorkStatus | null {
   return useStoreSelector(
-    (state) => liveTurnOf(turnsOfChat(state, chatId), chatId)?.steps.at(-1) ?? null,
-    undefined,
+    (state) => {
+      const turn = workingTurnOf(turnsOfChat(state, chatId), chatId);
+      return turn === null ? null : workStatusOf(turn);
+    },
+    sameWork,
     [chatId],
   );
 }
@@ -234,23 +246,28 @@ function useLiveStep(chatId: string): string | null {
 function useSubline(
   chat: AiChatRow,
   rows: readonly AssistantMessageRow[],
-  working: boolean,
   waiting: number,
 ): Subline {
   const identity = useChatIdentity(chat);
-  const step = useLiveStep(chat.id);
+  const live = useLiveWork(chat.id);
+  const activity = useAgentActivity(chat.kind === 'subagent' ? chat.parent_id : null, chat.id);
   const kind = feedbackKind(useTurnFeedback(chat, rows));
+  const coordinatorRows = rows.filter((row) => helperDialogueOf(row) === undefined);
   return sublineOf({
-    working,
-    step,
+    work: activity === null ? live : { phase: 'Working', step: activity },
     needsYou: kind === 'needs-you',
     waiting,
-    queued: queuedCount(rows),
+    queued: queuedCount(coordinatorRows),
     switching: kind === 'switching',
     reconnecting: kind === 'reconnecting',
-    failed: lastReplyFailed(rows),
+    failed: lastReplyFailed(coordinatorRows),
     lead: identity.lead,
   });
+}
+
+function browserToggleLabel(panel: PanelToggle): string {
+  if (!panel.open) return 'Browser';
+  return panel.docked ? 'Close browser' : 'Back to chat';
 }
 
 export function ChatHeader({
@@ -261,12 +278,14 @@ export function ChatHeader({
   back,
   leading = [],
   panel,
+  ref,
 }: ChatHeaderProps): ReactNode {
-  const line = useSubline(chat, rows, working, waiting);
+  const line = useSubline(chat, rows, waiting);
   return (
     <Frame
       back={back}
       leading={leading}
+      menu={<ChatHeaderMenu chatId={chat.id} />}
       title={
         <View className="min-w-0 flex-row items-center gap-2 py-1">
           <HeaderMark chat={chat} working={working} />
@@ -276,17 +295,43 @@ export function ChatHeader({
       trailing={
         <>
           <ProfileAction />
+          <ChatMachineControl key={chat.id} chat={chat} />
           <CallAction chatId={chat.id} />
           {panel !== null ? (
             <IconButton
-              icon="panelRight"
-              label="Browser"
+              {...(ref === undefined ? {} : { ref })}
+              icon={panel.open ? 'close' : 'panelRight'}
+              label={browserToggleLabel(panel)}
               shortcut="Ctrl I"
               selected={panel.open}
               onPress={panel.toggle}
             />
           ) : null}
         </>
+      }
+    />
+  );
+}
+
+export function ChatHistoryHeader({
+  title,
+  back,
+  leading,
+}: {
+  readonly title: string;
+  readonly back: boolean;
+  readonly leading: readonly HeaderAction[];
+}): ReactNode {
+  return (
+    <Frame
+      back={back}
+      leading={leading}
+      trailing={null}
+      menu={null}
+      title={
+        <Text variant="title-3" numberOfLines={1} role="heading" aria-level={1} className="px-1">
+          {title}
+        </Text>
       }
     />
   );
@@ -307,6 +352,7 @@ export function DraftHeader({
     <Frame
       back={back}
       leading={leading}
+      menu={<PageSettingsButton settings={mainPageSettings('assistant')} />}
       title={
         <View className="min-w-0 flex-row items-center gap-2 py-1">
           <View aria-hidden className="size-8 items-center justify-center">

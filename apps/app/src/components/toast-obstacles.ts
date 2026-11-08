@@ -118,6 +118,10 @@ export function useToastObstacle(edge: ObstacleEdge, active = true): MeasuredVie
   return useMeasuredFrame(onFrame);
 }
 
+export function useKeyboardVisible(): boolean {
+  return useSelected(obstacles, (current) => current.has('keyboard'));
+}
+
 export function useKeyboardObstacle(): void {
   useEffect(() => {
     const shown = Keyboard.addListener('keyboardDidShow', ({ endCoordinates }) => {

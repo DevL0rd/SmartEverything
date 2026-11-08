@@ -26,6 +26,7 @@ interface Pending {
 
 export class HarnessCalls implements HarnessCallPort {
   private link: Link | null = null;
+  private closed = false;
   private readonly pending = new Map<string, Pending>();
   private readonly waiting = new Set<() => void>();
 
@@ -58,8 +59,9 @@ export class HarnessCalls implements HarnessCallPort {
 
   close(): void {
     log.info('harness.calls_closing', { pending: this.pending.size, waiting: this.waiting.size });
+    this.closed = true;
     this.link = null;
-    this.fail(() => true, new ApiError('conflict', 'The computer harness has stopped.'));
+    this.fail(() => true, stoppedError());
     for (const wake of this.waiting) wake();
     this.waiting.clear();
   }
@@ -87,7 +89,13 @@ export class HarnessCalls implements HarnessCallPort {
         durationMs,
         errorCode: frame.result.error.code,
       });
-      entry.reject(new ApiError(frame.result.error.code, frame.result.error.message));
+      entry.reject(
+        new ApiError(
+          frame.result.error.code,
+          frame.result.error.message,
+          frame.result.error.reason ?? null,
+        ),
+      );
     }
   }
 
@@ -126,13 +134,13 @@ export class HarnessCalls implements HarnessCallPort {
 
   private attached(signal?: AbortSignal): Promise<Link> {
     signal?.throwIfAborted();
+    if (this.closed) return Promise.reject(stoppedError());
     const link = this.link;
     if (link !== null) return Promise.resolve(link);
     return new Promise((resolve, reject) => {
       const wake = (): void => {
         signal?.removeEventListener('abort', give);
-        if (this.link === null)
-          reject(new ApiError('conflict', 'The computer harness has stopped.'));
+        if (this.link === null) reject(stoppedError());
         else resolve(this.link);
       };
       const give = (): void => {
@@ -167,6 +175,10 @@ export class HarnessCalls implements HarnessCallPort {
         entry.reject(cause);
       }
   }
+}
+
+function stoppedError(): ApiError {
+  return new ApiError('conflict', 'The computer harness has stopped.');
 }
 
 function abortReason(signal: AbortSignal | undefined): Error {

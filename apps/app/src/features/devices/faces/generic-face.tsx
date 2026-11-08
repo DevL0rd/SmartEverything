@@ -3,14 +3,14 @@ import { View } from 'react-native';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { useIdiom } from '../../../design/platform';
+import { ActionBand } from '../../../components/widget-board/action-band';
 import type { Device } from '../../../store/state';
 import { familyIcon } from '../../device-visuals';
 import { ControlsArea } from '../card/card-controls';
 import { Names } from '../card/card-parts';
-import { GENERIC_FACES } from '../card/card-faces';
-import { nominalFrame } from '../card/nominal-frame';
+import { GenericFace } from '../card/card-faces';
 import { StandaloneShell } from '../card/standalone-shell';
+import { BandActions } from './band-actions';
 import { usePowerAction } from '../controls/power-toggle';
 import { LEVEL_ROLES } from '../model/card-facts';
 import { deviceModelOf, useDeviceModel } from '../model/device-model';
@@ -22,7 +22,6 @@ import type { FaceName, FaceProps } from './face-types';
 import { DeviceTile } from '../tile/device-tile';
 
 const EXPANDED_BOX = { width: 320, height: 168, idiom: 'touch' } as const;
-const EXPANDED_CONTROLS = 3;
 const STATE_WORD = { on: 'On', off: 'Off' } as const;
 
 function levelPart(device: Device): ReturnType<typeof deviceModelOf>['curated'][number] | null {
@@ -131,7 +130,10 @@ function GenericRow({
       )}
       {expanded ? (
         <View className="min-h-12 rounded-b-md bg-surface-2 px-2.5 pb-2.5">
-          <ControlsArea device={device} box={EXPANDED_BOX} max={EXPANDED_CONTROLS} dense />
+          <ControlsArea device={device} box={EXPANDED_BOX} dense />
+          <ActionBand>
+            <BandActions device={device} />
+          </ActionBand>
         </View>
       ) : null}
     </View>
@@ -145,12 +147,9 @@ function GenericCard({
   readonly device: Device;
   readonly face: FaceName;
 }): ReactNode {
-  const idiom = useIdiom();
-  const size = face === 'card' ? 'M' : 'XL';
-  const Face = GENERIC_FACES[face === 'card' ? 'm' : 'l'];
   return (
     <StandaloneShell device={device} editing={false} quickControls={false} padded>
-      <Face device={device} box={nominalFrame(size, idiom)} size={size} />
+      <GenericFace device={device} cls={face === 'card' ? 'm' : 'l'} />
     </StandaloneShell>
   );
 }

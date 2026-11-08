@@ -24,7 +24,7 @@ export function searchReason(
   if (!ready) return BINDING_COPY.offline;
   if (kind === undefined) return { kind: 'other', text: 'Preparing this chat…' };
   if (kind === 'claude') return null;
-  if (kind !== 'dsh' && kind !== 'openrouter') {
+  if (kind !== 'dsh') {
     return {
       kind: 'unsupported',
       text: `${COMPUTER_ENGINE_LABELS[kind].name} can’t use references.`,

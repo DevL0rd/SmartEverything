@@ -7,7 +7,6 @@ import { Text } from '../../../components/text';
 import type { Device } from '../../../store/state';
 import type { ButtonGesture } from '../../device-visuals';
 import { DeviceStage } from '../detail/device-stage';
-import { DeviceLog } from '../log/device-log';
 import { PressMenu } from './press-menu';
 import { PressStrip } from './press-strip';
 import {
@@ -87,14 +86,6 @@ export function ButtonHero({ device }: { readonly device: Device }): ReactNode {
           </Text>
         )}
       </View>
-    </Card>
-  );
-}
-
-export function DeviceLogCard({ device }: { readonly device: Device }): ReactNode {
-  return (
-    <Card title="Activity" icon="activity">
-      <DeviceLog deviceId={device.id} />
     </Card>
   );
 }

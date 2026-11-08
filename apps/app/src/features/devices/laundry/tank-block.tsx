@@ -7,7 +7,7 @@ import { ProgressBar } from '../../../components/charts';
 import { confirm } from '../../../components/confirm-store';
 import { argumentsOf } from '../controls/run-action';
 import { Block } from './block';
-import { Pills } from './parts';
+import { ChoiceStrip } from './parts';
 import { useRoleControl } from './use-role-control';
 import type { Laundry } from './use-laundry';
 
@@ -56,7 +56,7 @@ export function TankBlock({ laundry }: { readonly laundry: Laundry }): ReactNode
           label="Tank rinse progress"
         />
       ) : (
-        <Pills
+        <ChoiceStrip
           label="Tank"
           options={TANKS}
           value={chosen}

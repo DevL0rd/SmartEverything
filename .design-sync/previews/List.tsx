@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { List, ListRow, Stage, ValueRow } from 'smarteverything-kit';
 
 const body = (
@@ -13,12 +14,12 @@ const body = (
     </List>
   </>
 );
-export const Grouped = () => (
+export const Grouped = (): ReactElement => (
   <Stage theme="dark" width={480}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     {body}
   </Stage>

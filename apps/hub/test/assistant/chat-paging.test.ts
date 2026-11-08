@@ -1,7 +1,8 @@
-import { DEFAULT_ENGINE, type AiChatRow } from '@smarteverything/domain';
+import { type AiChatRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 let opened: TestStore;
 let profileId: string;
@@ -32,7 +33,7 @@ function archivedChat(title: string, pinned = false): AiChatRow {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
     titleAuto: false,
   });
   return opened.store.aiChats.update(chat.id, { archived: true, pinned });
@@ -83,7 +84,7 @@ describe('paging through archived chats in the store', () => {
       icon: null,
       parentId: null,
       sourceKey: null,
-      engine: DEFAULT_ENGINE,
+      engine: TEST_ENGINE,
       titleAuto: false,
     });
     expect(opened.store.aiChats.chats({ profileId, archived: true, limit: 20 })).toHaveLength(1);

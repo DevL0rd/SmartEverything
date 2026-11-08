@@ -40,8 +40,12 @@ export const TRIGGER_KINDS: readonly NodeKind[] = [
       input('device', ref('device'), 'One device.'),
       input('room', ref('room'), 'Every matching device in this room.'),
       input('family', choice(DEVICE_FAMILIES), 'Only this kind of device.'),
-      input('role', TEXT, 'Only devices where the value has this role.'),
-      input('control', TEXT, 'Which value, for example power or brightness.'),
+      input('role', TEXT, 'Only devices where the value has this role.', {
+        ui: { optionsFrom: 'device.roles' },
+      }),
+      input('control', TEXT, 'Which value, for example power or brightness.', {
+        ui: { optionsFrom: 'device.controls' },
+      }),
       input('cause', CAUSE_TYPE, 'Only changes made this way.'),
       ...timing(),
       IGNORE_OWN,
@@ -66,11 +70,17 @@ export const TRIGGER_KINDS: readonly NodeKind[] = [
     inputs: [
       input('source', TEXT, 'Signal source, for example device, event or weather.', {
         required: true,
+        ui: { optionsFrom: 'signal.sources' },
       }),
-      input('kind', TEXT, 'Signal kind within the source.', { required: true }),
-      input('subject', TEXT, 'Only this subject.'),
-      input('field', TEXT, 'Only this field.'),
-      input('match', ANY_RECORD, 'Details that must match exactly.'),
+      input('kind', TEXT, 'Signal kind within the source.', {
+        required: true,
+        ui: { optionsFrom: 'signal.kinds' },
+      }),
+      input('subject', TEXT, 'Only this subject.', { ui: { optionsFrom: 'signal.subjects' } }),
+      input('field', TEXT, 'Only this field.', { ui: { optionsFrom: 'signal.fields' } }),
+      input('match', ANY_RECORD, 'Details that must match exactly.', {
+        ui: { editor: 'field-rows', typedBy: 'kind' },
+      }),
       ...timing(),
       IGNORE_OWN,
     ],
@@ -164,6 +174,7 @@ export const TRIGGER_KINDS: readonly NodeKind[] = [
         'source',
         { t: 'record', values: TEXT },
         'Only from this source (camera, phone, computer, plugin or chat).',
+        { ui: { optionsFrom: 'speech.sources' } },
       ),
     ],
     outputs: [

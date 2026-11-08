@@ -1,11 +1,9 @@
-import type { DesktopLinger } from '@smarteverything/domain';
-import { Logger } from '@smarteverything/logging';
-import { serviceUnit } from './definitions.js';
+import { COMPUTER_UNIT, type DesktopLinger } from '@smarteverything/domain';
+import { systemdUnit } from './definitions.js';
 import { type ManagerContext, type ManagerState, type ServiceManager } from './manager.js';
 import { restoreOriginalUnit, writeManagedUnit, type UnitFiles } from './unit-adoption.js';
 import { parseLinger, parseSystemdShow, systemdDetail, type SystemdState } from './parse.js';
 
-const log = new Logger('desktop.linger');
 const SYSTEMCTL = 'systemctl';
 const LOGINCTL = 'loginctl';
 const SHOWN_PROPERTIES = ['LoadState', 'ActiveState', 'SubState', 'Result'].map(
@@ -31,27 +29,25 @@ class LinuxManager implements ServiceManager {
   async install(): Promise<void> {
     await writeManagedUnit(this.unitFiles(), this.definition());
     await this.systemctl('daemon-reload');
-    await this.systemctl('enable', this.unit);
-    await this.keepRunningLoggedOut();
+    await this.systemctl('enable', COMPUTER_UNIT);
   }
 
   async start(): Promise<void> {
-    await this.systemctl('start', this.unit);
-    await this.keepRunningLoggedOut();
+    await this.systemctl('start', COMPUTER_UNIT);
   }
 
   async stop(): Promise<void> {
-    await this.systemctl('stop', this.unit);
+    await this.systemctl('stop', COMPUTER_UNIT);
   }
 
   async restart(): Promise<void> {
-    await this.systemctl('restart', this.unit);
+    await this.systemctl('restart', COMPUTER_UNIT);
   }
 
   async uninstall(): Promise<void> {
     const { files } = this.context.system;
     if ((await files.read(this.context.locations.unitFile)) !== null) {
-      await this.systemctl('disable', '--now', this.unit);
+      await this.systemctl('disable', '--now', COMPUTER_UNIT);
     }
     await files.remove(this.context.locations.unitFile);
     await this.systemctl('daemon-reload');
@@ -77,12 +73,8 @@ class LinuxManager implements ServiceManager {
     await this.context.system.run(LOGINCTL, ['enable-linger', this.context.user.name]);
   }
 
-  private get unit(): string {
-    return this.context.names.unit;
-  }
-
   private definition(): string {
-    return serviceUnit(this.context.names, this.context.launch);
+    return systemdUnit(this.context.launch);
   }
 
   private unitFiles(): UnitFiles {
@@ -94,17 +86,6 @@ class LinuxManager implements ServiceManager {
     };
   }
 
-  private async keepRunningLoggedOut(): Promise<void> {
-    if (!this.context.names.keepsRunningLoggedOut) return;
-    try {
-      if ((await this.linger()) === 'disabled') {
-        await this.enableLinger();
-      }
-    } catch (cause) {
-      log.warn('linger.not_enabled', { cause: String(cause) });
-    }
-  }
-
   private async systemctl(...args: readonly string[]): Promise<void> {
     await this.context.system.run(SYSTEMCTL, ['--user', ...args]);
   }
@@ -113,7 +94,7 @@ class LinuxManager implements ServiceManager {
     const { stdout } = await this.context.system.run(SYSTEMCTL, [
       '--user',
       'show',
-      this.unit,
+      COMPUTER_UNIT,
       ...SHOWN_PROPERTIES,
     ]);
     return parseSystemdShow(stdout);

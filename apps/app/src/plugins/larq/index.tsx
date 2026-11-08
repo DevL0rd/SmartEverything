@@ -34,9 +34,7 @@ export const larqAppPlugin: AppPlugin = {
     {
       key: 'larq',
       applies: isBottle,
-      render: (device, size, showRoom) => (
-        <BottleTile device={device} showRoom={showRoom} compact={size === 'tile'} />
-      ),
+      render: (device, _size, showRoom) => <BottleTile device={device} showRoom={showRoom} />,
       cell: (device, frame, size) => <BottleCardFace device={device} frame={frame} size={size} />,
       quick: (device) => <BottleQuick device={device} />,
       hero: (device) => <BottleHero device={device} />,

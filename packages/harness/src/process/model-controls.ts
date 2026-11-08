@@ -87,7 +87,6 @@ export function admitRuntimeRoute(
   const route = lookup(selection.route_id);
   if (
     route.state !== 'ready' ||
-    route.capability_revision !== selection.capability_revision ||
     !route.models.some((model) => model.id === selection.model)
   )
     throw new HarnessRuntimeError(

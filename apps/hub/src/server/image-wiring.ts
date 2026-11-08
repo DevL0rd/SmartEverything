@@ -1,4 +1,6 @@
 import {
+  type AssistantSettings,
+  type ImageDefaults,
   type ImageOperationPreview,
   type ImageOperationReceipt,
   type ImageProviderCatalog,
@@ -64,6 +66,7 @@ function serviceOf(
   client: OpenRouterClient,
   catalog: OpenRouterImageCatalog,
 ): ImageOperationService {
+  const settings = (): AssistantSettings => options.store.assistantChat.settings();
   return new ImageOperationService({
     store: options.store,
     repository: options.store.imageOperations,
@@ -71,6 +74,7 @@ function serviceOf(
     notes: options.notes,
     catalog,
     provider: new OpenRouterImageProvider(client),
+    imageDefaults: (): Readonly<ImageDefaults> => settings().image_defaults,
     now: options.now,
     publish: options.publish,
     preview: options.preview,

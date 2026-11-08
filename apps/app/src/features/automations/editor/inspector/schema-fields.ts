@@ -2,11 +2,13 @@ import type {
   FlowType,
   InputPortDecl,
   JsonValue,
+  OptionSourceId,
+  PortEditorId,
   PortUi,
   PortValue,
 } from '@smarteverything/domain';
 import { outputLabel } from '@smarteverything/domain';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
 import type { Schema } from '../../../../components/schema-values';
 
 interface ChoiceOption {
@@ -29,11 +31,21 @@ export type FieldControl =
   | { readonly t: 'duration' }
   | { readonly t: 'moment'; readonly of: 'instant' | 'timeOfDay' | 'date' }
   | { readonly t: 'reference'; readonly of: string; readonly capabilities: readonly string[] }
+  | { readonly t: 'entity'; readonly of: string }
   | { readonly t: 'colour' }
   | { readonly t: 'list'; readonly item: FieldControl }
   | { readonly t: 'record'; readonly fields: readonly RecordField[] }
+  | { readonly t: 'entries'; readonly item: FieldControl }
   | { readonly t: 'json' }
-  | { readonly t: 'wire' };
+  | { readonly t: 'wire' }
+  | {
+      readonly t: 'pick';
+      readonly source: OptionSourceId;
+      readonly multiple: boolean;
+      readonly typedBy?: string;
+    }
+  | { readonly t: 'editor'; readonly id: PortEditorId; readonly base: FieldControl }
+  | { readonly t: 'typedBy'; readonly port: string; readonly base: FieldControl };
 
 interface RecordField {
   readonly name: string;
@@ -76,7 +88,8 @@ function recordControl(type: Extract<FlowType, { t: 'record' }>): FieldControl {
     const optional = member.t === 'optional';
     return { name, title: outputLabel(name), control: controlOf(member), optional };
   });
-  return fields.length === 0 ? { t: 'json' } : { t: 'record', fields };
+  if (fields.length > 0) return { t: 'record', fields };
+  return { t: 'entries', item: type.values === undefined ? { t: 'json' } : controlOf(type.values) };
 }
 
 type FixedTag =
@@ -100,23 +113,59 @@ function scalarControl(type: ScalarType, ui: PortUi | undefined): FieldControl {
   if (type.t === 'number') return numberControl(type, ui);
   if (type.t === 'text') return { t: 'text' };
   if (type.t === 'choice') return { t: 'choice', options: ui?.options ?? type.options };
+  if (type.t === 'entity') return { t: 'entity', of: type.of };
   if (type.t === 'ref') {
     return { t: 'reference', of: type.of, capabilities: type.capabilities ?? [] };
   }
   return FIXED_CONTROLS[type.t];
 }
 
-export function controlOf(type: FlowType, ui?: PortUi): FieldControl {
-  if (type.t === 'list') return { t: 'list', item: controlOf(type.of) };
-  if (type.t === 'optional') return controlOf(type.of, ui);
+function plainControl(type: FlowType, ui: PortUi | undefined): FieldControl {
+  if (type.t === 'list') return { t: 'list', item: plainControl(type.of, ui) };
+  if (type.t === 'optional') return plainControl(type.of, ui);
   if (type.t === 'record') return recordControl(type);
   return scalarControl(type, ui);
+}
+
+function innerOf(type: FlowType): FlowType {
+  return type.t === 'optional' ? innerOf(type.of) : type;
+}
+
+function itemOf(type: FlowType): FlowType {
+  const inner = innerOf(type);
+  return inner.t === 'list' ? innerOf(inner.of) : inner;
+}
+
+function picksText(type: FlowType): boolean {
+  return itemOf(type).t === 'text';
+}
+
+function isGenericType(type: FlowType): boolean {
+  const item = itemOf(type);
+  return item.t === 'any' || item.t === 'param';
+}
+
+function annotatedControl(type: FlowType, ui: PortUi): FieldControl | undefined {
+  if (ui.editor !== undefined) return { t: 'editor', id: ui.editor, base: plainControl(type, ui) };
+  if (ui.optionsFrom !== undefined && picksText(type)) {
+    const multiple = ui.multiple === true || innerOf(type).t === 'list';
+    const typedBy = ui.typedBy === undefined ? {} : { typedBy: ui.typedBy };
+    return { t: 'pick', source: ui.optionsFrom, multiple, ...typedBy };
+  }
+  if (ui.typedBy !== undefined && isGenericType(type)) {
+    return { t: 'typedBy', port: ui.typedBy, base: plainControl(type, ui) };
+  }
+  return undefined;
+}
+
+export function controlOf(type: FlowType, ui?: PortUi): FieldControl {
+  return (ui === undefined ? undefined : annotatedControl(type, ui)) ?? plainControl(type, ui);
 }
 
 export function fieldOf(decl: InputPortDecl): Field {
   return {
     name: decl.name,
-    title: outputLabel(decl.name),
+    title: decl.ui?.label ?? outputLabel(decl.name),
     helper: decl.description,
     required: decl.required,
     isStatic: decl.static === true,
@@ -128,6 +177,11 @@ export function fieldOf(decl: InputPortDecl): Field {
 
 export function fieldsOf(inputs: readonly InputPortDecl[]): readonly Field[] {
   return inputs.map(fieldOf);
+}
+
+export function isTextOnly(control: FieldControl): boolean {
+  if (control.t === 'editor' || control.t === 'typedBy') return isTextOnly(control.base);
+  return control.t === 'json' || control.t === 'entries';
 }
 
 export function formKind(field: Field): FormControlKind | null {

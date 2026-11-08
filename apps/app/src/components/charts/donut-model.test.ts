@@ -24,6 +24,12 @@ describe('donut arcs', () => {
     expect(donutArcs([])).toEqual([]);
   });
 
+  it('keeps a slice shade so related kinds read as one colour family', () => {
+    const [full, light] = donutArcs([SLICES[0], { ...SLICES[1], shade: 0.4 }]);
+    expect(full?.shade).toBe(1);
+    expect(light?.shade).toBe(0.4);
+  });
+
   it('says every share in words, so colour is never the only carrier', () => {
     expect(donutSummary(donutArcs(SLICES))).toBe('Colour 30 percent, Mono 70 percent');
     expect(donutSummary([])).toBe('No data');

@@ -70,6 +70,7 @@ describe('hub-produced chat data has no size caps', () => {
       reason: null,
       steps: [],
       reply_to: null,
+      quote: null,
       chat_id: ID,
       origin: null,
       embeds: Array.from({ length: 60 }, () => ({ kind: 'note' })),

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import {
   API_ENDPOINTS,
+  COMPUTER_ROLE_MODELS,
   COMPUTER_RUNTIME_REPLY,
   type ComputerRuntimeReply,
 } from '@smarteverything/domain';
@@ -10,6 +11,7 @@ import type { ComputerRuntimeHost } from '../../src/computers/runtime-host';
 import type { MicHandlers } from '../../src/node/controls/linux/mic-capture';
 import type { SpeakerStream } from '../../src/node/controls/linux/speaker-playback';
 import { ComputerEar, type EarFactory } from '../../src/node/ear/computer-ear';
+import { localEarPipeline } from '../../src/node/ear/ear-pipeline';
 import { FakeClock } from '../support/fake-clock';
 import { captureLogs } from '../support/logs';
 import { stubControls, useComputerHub } from '../support/paired-computer';
@@ -75,6 +77,7 @@ function microphone(): Microphone {
         send,
         clock,
         log: new Logger('hub.node-ear'),
+        pipeline: localEarPipeline({ clock, log: new Logger('hub.node-ear') }),
       }),
     opened: () => handlers.length,
     speak: (pcm): void => {
@@ -113,7 +116,7 @@ async function resolved(deviceId: string): Promise<boolean> {
 }
 
 describe.skipIf(process.platform !== 'linux')('the hub computer as its own node service', () => {
-  it('wakes from the node ear on the hub machine, as the one hub-role computer row', async () => {
+  it('wakes from the node ear on the hub machine, as an ordinary pc beside the hub own device', async () => {
     const logs = captureLogs();
     const paired = await hub.pair();
     const mic = microphone();
@@ -135,21 +138,32 @@ describe.skipIf(process.platform !== 'linux')('the hub computer as its own node 
     const spotted = hubSpotted();
     expect(spotted?.payload).toMatchObject({ computerId: paired.deviceId, granted: true });
     const rows = await computers();
-    expect(rows.map((row) => row.id)).toEqual([paired.deviceId]);
-    expect(rows[0]?.model).toBe('smarteverything.computer.hub');
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.id === paired.deviceId)?.model).toBe(COMPUTER_ROLE_MODELS.pc);
+    expect(rows.filter((row) => row.model === COMPUTER_ROLE_MODELS.hub)).toHaveLength(1);
   }, 30_000);
 
-  it('marks the node on the hub machine as the local computer of the hub', async () => {
+  it('marks the hub own device and not the node on the hub machine as the local computer', async () => {
     const paired = await hub.pair();
     hub.run(paired, stubControls(), { hosts: [fakeHost('claude'), fakeHost('codex')] });
 
     await until(() => answers(paired.deviceId), 'the computer to answer');
-    const status = await call(hub.booted().base, hub.booted().owner, {
+    const hubDevice = (await computers()).find((row) => row.model === COMPUTER_ROLE_MODELS.hub);
+    if (hubDevice === undefined) throw new Error('The hub own device is missing.');
+    const node = await call(hub.booted().base, hub.booted().owner, {
       method: 'GET',
       path: `/api/computers/${paired.deviceId}/claude`,
     });
-    expect(API_ENDPOINTS.readComputerAi.response.parse(status.body)).toMatchObject({
+    expect(API_ENDPOINTS.readComputerAi.response.parse(node.body)).toMatchObject({
       device_id: paired.deviceId,
+      local: false,
+    });
+    const own = await call(hub.booted().base, hub.booted().owner, {
+      method: 'GET',
+      path: `/api/computers/${hubDevice.id}/claude`,
+    });
+    expect(API_ENDPOINTS.readComputerAi.response.parse(own.body)).toMatchObject({
+      device_id: hubDevice.id,
       local: true,
     });
   }, 30_000);

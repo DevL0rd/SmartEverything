@@ -69,21 +69,21 @@ describe('microwave card words', () => {
 
   it('shows whole minutes left with the ready time and the draw while cooking, and no figure when the food is ready', () => {
     const cooking = { phase: 'running', leftMinutes: 4, readyAt: '8:16 PM', watts: 1180 } as const;
-    expect(figureSpecs(cooking, true)).toEqual([
+    expect(figureSpecs(cooking)).toEqual([
       { key: 'left', value: '4', unit: 'min left', caption: 'ready 8:16 PM' },
       { key: 'draw', value: '1.2', unit: 'kW', caption: 'power' },
     ]);
-    expect(figureSpecs({ ...cooking, leftMinutes: 0 }, true)[0]?.value).toBe('<1');
-    expect(figureSpecs({ ...cooking, phase: 'paused' }, true)).toHaveLength(1);
-    expect(figureSpecs({ ...cooking, phase: 'ready' }, true)).toEqual([]);
-    expect(figureSpecs({ ...cooking, phase: 'idle', leftMinutes: null }, true)).toEqual([]);
+    expect(figureSpecs({ ...cooking, leftMinutes: 0 })[0]?.value).toBe('<1');
+    expect(figureSpecs({ ...cooking, phase: 'paused' })).toHaveLength(1);
+    expect(figureSpecs({ ...cooking, phase: 'ready' })).toEqual([]);
+    expect(figureSpecs({ ...cooking, phase: 'idle', leftMinutes: null })).toEqual([]);
   });
 
-  it('leaves the captions out where the card has no room for them', () => {
-    const cooking = { phase: 'running', leftMinutes: 4, readyAt: '8:16 PM', watts: 1180 } as const;
-    expect(figureSpecs(cooking, false)).toEqual([
+  it('keeps the figure captions at every card size', () => {
+    const cooking = { phase: 'running', leftMinutes: 4, readyAt: null, watts: 1180 } as const;
+    expect(figureSpecs(cooking)).toEqual([
       { key: 'left', value: '4', unit: 'min left' },
-      { key: 'draw', value: '1.2', unit: 'kW' },
+      { key: 'draw', value: '1.2', unit: 'kW', caption: 'power' },
     ]);
   });
 

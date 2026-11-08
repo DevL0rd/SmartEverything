@@ -1,12 +1,16 @@
 import { JSON_VALUE } from '@smarteverything/domain';
-import type { CommandRow, JsonValue, SignalInput } from '@smarteverything/domain';
-import type { NodeResult } from '@smarteverything/flow/interpret/frames';
+import type { JsonValue, SignalInput } from '@smarteverything/domain';
+import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
+import { FLOW_ERRORS } from '@smarteverything/flow/state/errors';
+import type { RunNodeActivation } from '../store/repositories/automation-run-nodes';
+import { effectFailure } from './effect-failure';
+import { AutomationRunCancelledError } from './effects/run-abort';
 import { z } from 'zod';
 import type { Clock } from '../clock';
 import type { CauseLink } from './driver/admission';
 import type { FinishedRun, RunScope } from './driver/ports';
 import type { EffectRun } from './effects/effect-run';
-import type { Loaded } from './engine-v3-types';
+import type { EngineV3Ports, Loaded } from './engine-v3-types';
 import type { TriggerFire } from './triggers-v3/payload';
 
 const CHILD_CALL = z.object({
@@ -50,7 +54,8 @@ export function calledFire(
 export function effectRun(
   scope: RunScope,
   trigger: SignalInput | null,
-  retain: (runId: string, rows: readonly CommandRow[]) => void,
+  request: EffectRequest,
+  ports: Pick<EngineV3Ports, 'retain' | 'clock' | 'repositories'>,
 ): EffectRun {
   return {
     runId: scope.runId,
@@ -58,8 +63,38 @@ export function effectRun(
     signal: scope.signal,
     trigger,
     commands: (rows): void => {
-      retain(scope.runId, rows);
+      ports.retain(scope.runId, rows);
     },
+    late: (cause): void => {
+      const activation = lateActivation(request, cause, ports.clock.now());
+      if (activation !== undefined) ports.repositories.nodes.append(scope.runId, [activation]);
+    },
+  };
+}
+
+export function lateActivation(
+  request: EffectRequest,
+  cause: unknown,
+  now: Date,
+): RunNodeActivation | undefined {
+  if (cause instanceof AutomationRunCancelledError) return undefined;
+  const failure = effectFailure(cause);
+  const site = { node: request.node.id, path: request.path, at: now.getTime() };
+  const extras = failure.code === undefined ? {} : { detail: { code: failure.code } };
+  const at = now.toISOString();
+  return {
+    path: request.activation,
+    nodeId: request.node.id,
+    iteration: 0,
+    status: 'failed',
+    startedAt: at,
+    finishedAt: at,
+    durationMs: 0,
+    input: null,
+    output: null,
+    error: FLOW_ERRORS[failure.class](failure.message, site, extras),
+    commandIds: [],
+    late: true,
   };
 }
 

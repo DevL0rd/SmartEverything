@@ -83,10 +83,7 @@ export interface ListeningGroup {
   readonly rows: readonly ListeningRow[];
 }
 
-function blockedCamera(
-  source: ListeningSource,
-  allowed: ReadonlySet<string> | null,
-): boolean {
+function blockedCamera(source: ListeningSource, allowed: ReadonlySet<string> | null): boolean {
   return source.kind === 'camera' && allowed !== null && !allowed.has(source.key);
 }
 

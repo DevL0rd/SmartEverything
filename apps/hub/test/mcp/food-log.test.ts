@@ -70,6 +70,94 @@ async function energy(): Promise<number> {
 }
 
 describe('food logged through the AI tool', () => {
+  it('returns the saved label facts and corrects and removes a meal without creating another', async () => {
+    const logged = await tool('food_log', {
+      action: 'food',
+      food: {
+        name: 'Rice',
+        kind: 'food',
+        basis: { amount: 150, unit: 'g' },
+        kcal: 270,
+        grams: { protein: 3, dietaryFiber: 2 },
+        water_percent: 65,
+      },
+      at: AT,
+    });
+    expect(logged.isError, JSON.stringify(logged.content)).toBe(false);
+    const [row] = await entries();
+    if (row === undefined) throw new Error('Expected a saved meal');
+    expect(row.food?.waterMl).toBe(98);
+    expect(JSON.stringify(logged.content)).toContain('dietaryFiber');
+
+    const corrected = await tool('food_log', {
+      action: 'update',
+      entryId: row.id,
+      changes: {
+        name: 'Brown rice',
+        kcal: 280,
+        grams: { protein: null, sodium: 0.01 },
+        waterMl: 0,
+      },
+    });
+    expect(corrected.isError, JSON.stringify(corrected.content)).toBe(false);
+    const correctedRows = await entries();
+    expect(correctedRows).toMatchObject([
+      {
+        id: row.id,
+        start_time: row.start_time,
+        food: { name: 'Brown rice', amount: 150, waterMl: 0 },
+        data: { name: 'Brown rice', kilocalories: 280 },
+      },
+    ]);
+    expect(correctedRows[0]?.data['grams']).toEqual({ dietaryFiber: 2, sodium: 0.01 });
+    const stale = await call(booted.base, booted.owner, {
+      method: 'PUT',
+      path: `/api/health/entries/${row.id}?expectedVersion=${String(row.version)}`,
+      body: {
+        type: row.record_type,
+        startTime: row.start_time,
+        endTime: row.end_time,
+        zoneOffsetSeconds: row.zone_offset_seconds,
+        data: row.data,
+        food: row.food,
+      },
+    });
+    expect(stale.status).toBe(409);
+    expect(await energy()).toBe(280);
+    const hydration = await call(booted.base, booted.owner, {
+      method: 'GET',
+      path: '/api/health/daily?from=2026-10-09&to=2026-10-12&metrics=hydration',
+    });
+    expect(E.readHealthDaily.response.parse(hydration.body)).toEqual([]);
+
+    const removed = await tool('food_log', { action: 'remove', entryId: row.id });
+    expect(removed.isError, JSON.stringify(removed.content)).toBe(false);
+    expect(await entries()).toEqual([]);
+    expect(await energy()).toBe(0);
+  });
+
+  it('leaves unprinted nutrients and water out when logging label facts', async () => {
+    const result = await tool('food_log', {
+      action: 'food',
+      food: {
+        name: 'Pork',
+        kind: 'food',
+        basis: { amount: 130, unit: 'g' },
+        kcal: 140,
+        grams: { protein: 25, sugar: 0 },
+      },
+      at: AT,
+    });
+    expect(result.isError, JSON.stringify(result.content)).toBe(false);
+    const [row] = await entries();
+    expect(row?.food?.amount).toBe(130);
+    expect(row?.data['kilocalories']).toBe(140);
+    expect(row?.food?.waterMl).toBe(0);
+    expect(row?.data['grams']).toEqual({ protein: 25, sugar: 0 });
+    const foods = await call(booted.base, booted.owner, { method: 'GET', path: '/api/foods' });
+    expect(E.listFoods.response.parse(foods.body)).toEqual([]);
+  });
+
   it('by food object stores what the app path stores and counts at once', async () => {
     const result = await tool('food_log', {
       action: 'food',

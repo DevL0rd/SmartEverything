@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import type { ConfirmRequest } from '../components/confirm-store';
 import type { IconName } from '../components/icon';
 import type { SelectOption } from '../components/select-picker';
@@ -14,6 +14,7 @@ export interface SettingEnv {
   readonly owner: boolean;
   readonly platform: AppPlatform;
   readonly availability: Availability;
+  readonly developer: boolean;
 }
 
 export interface SettingContext {
@@ -32,7 +33,6 @@ interface SettingBase {
   readonly scope: SettingScope;
   readonly visible?: (env: SettingEnv) => boolean;
   readonly when?: (state: StoreState) => boolean;
-  readonly beforeSubPages?: boolean;
 }
 
 export interface SwitchSetting extends SettingBase {
@@ -73,7 +73,7 @@ interface TextSetting extends SettingBase {
 
 interface LinkSetting extends SettingBase {
   readonly control: 'link';
-  readonly href: Href;
+  readonly href: AppHref;
   readonly value?: (state: StoreState) => string | null;
 }
 
@@ -118,7 +118,6 @@ export interface SettingsPageDefinition {
   readonly visible?: (env: SettingEnv) => boolean;
   readonly platform?: AppPlatform;
   readonly keywords: readonly string[];
-  readonly href?: Href;
-  readonly subPagesFirst?: boolean;
+  readonly href?: AppHref;
   readonly childrenInline?: boolean;
 }

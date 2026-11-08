@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { MCP_TOKEN, hashMcpToken } from '@smarteverything/domain';
 import { ClaudeFileReadError, ClaudeNotReadyError } from '../claude/errors';
 import { dirname, join } from 'node:path';
-import type { ClaudePrompt } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
 import { systemClaudeCli } from '../claude/claude-cli';
@@ -12,8 +11,9 @@ import { LinkPlane } from '../claude/link-plane';
 import { claudeLocations } from '../claude/locations';
 import { createClaudeHost } from '../claude/host';
 import { ClaudeService } from '../claude/service';
-import type { OwnerAlerts } from '../extensions/owner-alerts';
-import { SERVICE_READY, SERVICE_READY_FILE } from '../service/configuration';
+import { hubClaudeSites, type ClaudeSites } from '../claude/sites';
+import type { HubLayout } from '../data-layout';
+import { SERVICE_READY } from '../service/configuration';
 import type { Store } from '../store/store';
 import type { RawRoute } from './http-server';
 import type { ServerContext } from './context';
@@ -24,8 +24,7 @@ export interface ClaudeWiring {
   readonly clock: Clock;
   readonly log: Logger;
   readonly store: Store;
-  readonly dataDirectory: string;
-  readonly alerts: OwnerAlerts;
+  readonly layout: HubLayout;
 }
 
 export interface StartedClaude {
@@ -33,52 +32,43 @@ export interface StartedClaude {
   readonly routes: readonly RawRoute[];
 }
 
-function promptPush(prompt: ClaudePrompt): Parameters<OwnerAlerts['raise']>[0] {
-  return {
-    title: `Claude needs you: ${prompt.tool_name}`,
-    body: `${prompt.risk_reasons.join('; ')}. Answer it in the attached CLI session.`,
-    data: { kind: 'claude_prompt', promptId: prompt.id, sessionId: prompt.session_id },
-  };
-}
-
-async function readyUrl(dataDirectory: string): Promise<string> {
-  const text = await readFile(join(dataDirectory, SERVICE_READY_FILE), 'utf8');
+async function readyUrl(ready: string): Promise<string> {
+  const text = await readFile(ready, 'utf8');
   return SERVICE_READY.parse(JSON.parse(text)).url;
 }
 
 export function startClaude(context: ServerContext, options: ClaudeWiring): StartedClaude {
   const log = options.log.forArea('hub.claude');
-  const locations = claudeLocations();
-  const launch = linkLaunchOf(options.dataDirectory);
+  const sites = hubClaudeSites(options.layout);
+  const locations = claudeLocations(sites.home);
+  const launch = linkLaunchOf(sites);
   let localDeviceId: string | null = null;
   const plane = new LinkPlane({
     store: options.store,
     clock: options.clock,
     log,
-    directory: join(options.dataDirectory, 'claude'),
+    directory: sites.directory,
     launch,
     cli: systemClaudeCli,
-    readUrl: (): Promise<string> => readyUrl(options.dataDirectory),
-    readMcp: (): ReturnType<typeof localMcp> => localMcp(options, localDeviceId),
+    readUrl: (): Promise<string> => readyUrl(sites.ready),
+    readMcp: (): ReturnType<typeof localMcp> => localMcp(options, sites, localDeviceId),
     pluginsDirectory: join(dirname(locations.sessions), 'plugins'),
-    raised: (prompt): void => {
-      options.alerts.raise(promptPush(prompt));
-    },
+    raised: (): void => undefined,
   });
   const service = new ClaudeService({
     locations,
-    historyDirectory: join(options.dataDirectory, 'claude'),
+    historyDirectory: sites.directory,
     plane,
     clock: options.clock,
     publish: (notice): void => {
-      context.live.announce(notice, notice.type === 'claude_thread' ? 'claude' : 'owners');
+      if (notice.type === 'claude_status') context.live.announce(notice, 'owners');
     },
     log,
   });
   context.computerAi.setLocalFactory((deviceId) => {
     localDeviceId = deviceId;
     try {
-      retainLocalCredential(options.store, deviceId, join(options.dataDirectory, 'claude'));
+      retainLocalCredential(options.store, deviceId, sites.directory);
     } catch (cause) {
       log.error('link.credential_unavailable', cause);
     }
@@ -86,7 +76,7 @@ export function startClaude(context: ServerContext, options: ClaudeWiring): Star
       service,
       plane,
       deviceId,
-      dataDirectory: options.dataDirectory,
+      sites,
       log,
       settings: options.store.computerAi.settings(deviceId),
     });
@@ -112,18 +102,19 @@ function retainLocalCredential(store: Store, deviceId: string, directory: string
 
 async function localMcp(
   options: ClaudeWiring,
+  sites: ClaudeSites,
   deviceId: string | null,
 ): Promise<{ url: string | null; headersCommand: string }> {
   if (deviceId === null)
     throw new ClaudeNotReadyError('mcp', 'The local native computer identity is not bound.');
-  retainLocalCredential(options.store, deviceId, join(options.dataDirectory, 'claude'));
+  retainLocalCredential(options.store, deviceId, sites.directory);
   const policy = options.store.computerNativeMcpPolicy.read({
     device_id: deviceId,
     runtime: 'claude',
   });
   const enabled = policy.enabled && policy.areas?.length !== 0;
   return {
-    url: enabled ? new URL('/mcp', await readyUrl(options.dataDirectory)).toString() : null,
-    headersCommand: helperCommand(linkLaunchOf(options.dataDirectory), 'headers'),
+    url: enabled ? new URL('/mcp', await readyUrl(sites.ready)).toString() : null,
+    headersCommand: helperCommand(linkLaunchOf(sites), 'headers'),
   };
 }

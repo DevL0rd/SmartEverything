@@ -31,3 +31,16 @@ export class UpdateInstallError extends Error {
     super(`The update stopped while ${step}: ${reason}`);
   }
 }
+
+export class UpdateCleanupError extends Error {
+  override readonly name = 'UpdateCleanupError';
+
+  constructor(cause: unknown) {
+    super(
+      'Could not clear older desktop update files. Check that the installation folder is writable.',
+      {
+        cause,
+      },
+    );
+  }
+}

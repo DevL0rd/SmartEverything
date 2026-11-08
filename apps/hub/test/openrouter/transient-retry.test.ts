@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { OpenRouterClient } from '../../src/openrouter/client';
@@ -28,12 +30,13 @@ function clientOf(replies: readonly (() => Response)[]): {
   return { client, calls: (): number => calls };
 }
 
+const tmp = join(tmpdir(), 'smarteverything-unused-staging');
 const IMAGE = { model: 'm', prompt: 'p', mime: 'video/mp4', data: Buffer.from('x') };
 
 describe('transient OpenRouter retries', () => {
   it('retries a busy provider until the media note succeeds', async () => {
     const { client, calls } = clientOf([BUSY, BUSY, BUSY]);
-    const answer = await new OpenRouterMediaNotes(client).describe(IMAGE);
+    const answer = await new OpenRouterMediaNotes(client, tmp).describe(IMAGE);
     expect(answer.text).toBe('a cat');
     expect(calls()).toBe(4);
   });
@@ -42,7 +45,7 @@ describe('transient OpenRouter retries', () => {
     const { client, calls } = clientOf([
       (): Response => Response.json({ error: { code: 502, message: 'Provider returned error' } }),
     ]);
-    const answer = await new OpenRouterMediaNotes(client).describe(IMAGE);
+    const answer = await new OpenRouterMediaNotes(client, tmp).describe(IMAGE);
     expect(answer.text).toBe('a cat');
     expect(calls()).toBe(2);
   });
@@ -68,7 +71,7 @@ describe('transient OpenRouter retries', () => {
       fetch: (): Promise<Response> => Promise.resolve(BUSY()),
       shutdown: shutdown.signal,
     });
-    const retrying = new OpenRouterMediaNotes(client).describe(IMAGE);
+    const retrying = new OpenRouterMediaNotes(client, tmp).describe(IMAGE);
     setTimeout(() => {
       shutdown.abort(new Error('stopping'));
     }, 50);
@@ -79,7 +82,9 @@ describe('transient OpenRouter retries', () => {
     const { client, calls } = clientOf([
       (): Response => Response.json({ error: { message: 'bad key' } }, { status: 401 }),
     ]);
-    const failure = await new OpenRouterMediaNotes(client).describe(IMAGE).catch((c: unknown) => c);
+    const failure = await new OpenRouterMediaNotes(client, tmp)
+      .describe(IMAGE)
+      .catch((c: unknown) => c);
     expect(failure).toBeInstanceOf(OpenRouterError);
     expect(failure).toMatchObject({ code: 'unauthorized' });
     expect(calls()).toBe(1);

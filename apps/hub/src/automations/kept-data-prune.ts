@@ -1,8 +1,9 @@
 import type { CallRef } from '@smarteverything/flow/functions/calls';
 import { callsOf } from '@smarteverything/flow/functions/calls';
 import type { Program } from '@smarteverything/flow/program/walk';
-import type { FunctionV3 } from '@smarteverything/domain';
+import type { FunctionV4 } from '@smarteverything/domain';
 import type { AutomationNodeStateRepository } from '../store/repositories/automation-node-state';
+import { flatFunction } from '../store/repositories/automation-trees';
 import { pruneKeptRows } from './world-v3/kept-data';
 
 export type ResolveCall = (call: CallRef) => Program | undefined;
@@ -25,7 +26,7 @@ export function reachableCallNodes(program: Program, resolve: ResolveCall): Read
 }
 
 interface Defined {
-  readonly definition: FunctionV3;
+  readonly definition: FunctionV4;
 }
 
 export interface FunctionDefinitions {
@@ -36,11 +37,13 @@ export interface FunctionDefinitions {
 
 export function resolveFromStore(functions: FunctionDefinitions): ResolveCall {
   return (call) => {
-    if (call.pin !== undefined)
-      return functions.findRevision(call.functionId, call.pin)?.definition;
-    return functions.find(call.functionId) === undefined
-      ? undefined
-      : functions.latest(call.functionId).definition;
+    const row =
+      call.pin !== undefined
+        ? functions.findRevision(call.functionId, call.pin)
+        : functions.find(call.functionId) === undefined
+          ? undefined
+          : functions.latest(call.functionId);
+    return row === undefined ? undefined : flatFunction(row.definition);
   };
 }
 

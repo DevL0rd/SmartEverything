@@ -1,9 +1,10 @@
-import { CODEX_PROVIDER_METADATA } from '@smarteverything/domain';
+import { CODEX_PROVIDER_METADATA, type AiSubscriptionUsage } from '@smarteverything/domain';
 import type { RpcRecord } from './protocol';
 import { subscriptionBillingBlock } from './rate-limits';
 export function providerMetadata(
   rateLimits: RpcRecord | null,
   catalogueRevision: string,
+  usage?: AiSubscriptionUsage,
 ): ReturnType<typeof CODEX_PROVIDER_METADATA.parse> {
   const billing = subscriptionBillingBlock(rateLimits);
   return CODEX_PROVIDER_METADATA.parse({
@@ -40,6 +41,7 @@ export function providerMetadata(
       subscription: 'eligible',
       billing_guard: billing === null ? { state: 'eligible' } : { state: 'blocked', ...billing },
       rate_limits: rateLimits,
+      ...(usage === undefined ? {} : { subscription_usage: usage }),
     },
   });
 }

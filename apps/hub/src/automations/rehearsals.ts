@@ -77,7 +77,13 @@ class NodeLedger {
     const index = this.open.get(step.activation);
     const kept = index === undefined ? undefined : this.nodes[index];
     if (index !== undefined && kept !== undefined && settled) {
-      this.nodes[index] = { ...kept, status: step.status, finished_at: this.at, duration_ms: 0 };
+      this.nodes[index] = {
+        ...kept,
+        status: step.status,
+        finished_at: this.at,
+        duration_ms: 0,
+        ...(step.outputs === undefined ? {} : { output_preview: previewOf(step.outputs) }),
+      };
       this.open.delete(step.activation);
       return;
     }
@@ -97,7 +103,7 @@ class NodeLedger {
       finished_at: settled ? this.at : null,
       duration_ms: settled ? 0 : null,
       input_preview: null,
-      output_preview: null,
+      output_preview: step.outputs === undefined ? null : previewOf(step.outputs),
       truncated: false,
       error: step.error ?? null,
       command_ids: [],
@@ -120,10 +126,12 @@ function nodesOf(
 function sourceOf(
   ports: RehearsalPorts,
   automationId: string,
-  source: Omit<RehearsalSource, 'zone'>,
+  source: Omit<RehearsalSource, 'zone' | 'kinds'>,
 ): Rehearsal | undefined {
   const subject = ports.subjectOf(automationId);
-  return subject === undefined ? undefined : rehearsalOf(subject, { ...source, zone: ports.zone });
+  return subject === undefined
+    ? undefined
+    : rehearsalOf(subject, { ...source, zone: ports.zone, kinds: ports.base.kinds });
 }
 
 function requireSource(ports: RehearsalPorts, request: RehearsalRequest): Rehearsal {

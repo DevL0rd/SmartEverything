@@ -1,5 +1,7 @@
 import type { BrowserSurfaceProps } from '../../../platform/browser-contract';
+import type { BrowserConsoleEvent } from '@smarteverything/domain';
 import { ValueStore } from '../../../design/external-store';
+import { browserConsole } from './browser-console-store';
 export interface BrowserRegion {
   readonly x: number;
   readonly y: number;
@@ -44,7 +46,14 @@ export function layoutBrowserSurface(id: string, bounds: BrowserRegion, owner: s
 }
 export function closeBrowserSurface(id: string): void {
   browserSurfaces.set(browserSurfaces.get().filter((entry) => entry.props.target.id !== id));
+  browserConsole.forget(id);
 }
 export function closeBrowserSurfaces(): void {
   browserSurfaces.set([]);
+  browserConsole.reset();
+}
+
+export function recordBrowserSurfaceConsole(event: BrowserConsoleEvent): void {
+  if (browserSurfaces.get().some((entry) => entry.props.target.id === event.id))
+    browserConsole.record(event);
 }

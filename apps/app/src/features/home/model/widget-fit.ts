@@ -1,9 +1,6 @@
-import type { SemanticSizes } from '../../../design/tokens';
-import type { WidgetFrameBox } from '../../../components/widget-board';
+import { TYPE_SCALE, type Idiom, type SemanticSizes } from '../../../design/tokens';
 
-const HEADER_HEIGHT = { touch: 40, pointer: 32 } as const;
-
-const BODY_GAP = 12;
+const ACTION_GAP = 12;
 
 const CHIP_GAP = 8;
 
@@ -13,13 +10,20 @@ const CONSUMER_GAP = 8;
 
 export const CONSUMERS_SHOWN = 3;
 
-export function bodyHeight({ height, idiom }: WidgetFrameBox): number {
-  return height - HEADER_HEIGHT[idiom] - BODY_GAP;
-}
+const ACTIVITY_ROW_PADDING = 16;
 
-export function activityRowCount(body: number, sizes: SemanticSizes, footer: boolean): number {
-  const room = footer ? body - sizes.controlH - BODY_GAP : body;
-  return Math.max(1, Math.floor(room / sizes.rowH2));
+const ACTIVITY_ROW_TEXT_GAP = 2;
+
+export function activityRowCount(
+  body: number,
+  idiom: Idiom,
+  sizes: SemanticSizes,
+  footer: boolean,
+): number {
+  const room = footer ? body - sizes.controlH - ACTION_GAP : body;
+  const type = TYPE_SCALE[idiom];
+  const content = type.body[1] + type.callout[1] + ACTIVITY_ROW_TEXT_GAP + ACTIVITY_ROW_PADDING;
+  return Math.max(1, Math.floor(room / Math.max(sizes.rowH2, content)));
 }
 
 export interface SceneGrid {
@@ -40,7 +44,7 @@ export function sceneGrid(
   if (Math.ceil(count / columns) <= chipRows(body, sizes.touchMin)) {
     return { shown: count, more: 0 };
   }
-  const rows = Math.max(1, chipRows(body - sizes.controlH - BODY_GAP, sizes.touchMin));
+  const rows = Math.max(1, chipRows(body - sizes.controlH - ACTION_GAP, sizes.touchMin));
   const shown = Math.min(count, rows * columns);
   return { shown, more: count - shown };
 }

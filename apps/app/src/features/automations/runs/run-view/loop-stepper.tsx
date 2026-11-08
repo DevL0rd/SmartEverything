@@ -44,7 +44,7 @@ function Cell({
       onPress={() => {
         if (iteration !== undefined) onPick(info.nodeId, iteration);
       }}
-      className="min-h-touch-min min-w-6 items-center justify-center"
+      className="min-h-touch-min min-w-touch-min items-center justify-center"
     >
       <View
         className={cn('w-2.5 rounded-full', OUTCOME_FILL[item.outcome], here ? 'h-7' : 'h-4')}

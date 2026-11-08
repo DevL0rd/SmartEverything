@@ -3,7 +3,6 @@ import { background } from '@smarteverything/logging';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { Button } from '../../../components/button';
-import { EmptyState } from '../../../components/empty-state';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
@@ -32,16 +31,16 @@ function CandidateRow({
       label={`${candidate.name}${candidate.known ? ', already added' : ''}`}
       onPress={onPick}
       className={cn(
-        'min-h-touch-min flex-row items-center gap-3 rounded-md border-hairline px-4 py-2',
+        'min-h-touch-min flex-row items-center gap-2 rounded-md border-hairline px-3 py-1.5',
         picked ? 'border-primary bg-primary-container' : 'border-outline-variant bg-surface-1',
       )}
     >
       <Icon name={candidate.secure ? 'lock' : 'printer'} tone="variant" />
       <View className="min-w-0 flex-1">
-        <Text variant="body-strong" numberOfLines={1}>
+        <Text variant="body-strong" className="web:wrap-anywhere">
           {candidate.name}
         </Text>
-        <Text variant="caption" tone="faint" numberOfLines={1}>
+        <Text variant="caption" tone="variant" className="web:wrap-anywhere">
           {candidate.known ? 'Already added' : (candidate.model ?? candidate.uri)}
           {candidate.location === null ? '' : ` · ${candidate.location}`}
         </Text>
@@ -52,9 +51,9 @@ function CandidateRow({
 
 function Searching(): ReactNode {
   return (
-    <View className="flex-row items-center gap-3 rounded-md bg-surface-2 p-4">
+    <View className="min-w-0 flex-1 flex-row items-center gap-2">
       <ActivityIndicator size="small" colorClassName="accent-primary" />
-      <Text variant="callout" accessibilityLiveRegion="polite">
+      <Text variant="callout" accessibilityLiveRegion="polite" className="flex-1">
         Looking for printers on your network…
       </Text>
     </View>
@@ -65,20 +64,39 @@ function Rescan(): ReactNode {
   const actor = usePrinterActor(null);
   const client = useQueryClient();
   return (
-    <View className="flex-row">
-      <Button
-        label="Look again"
-        variant="tonal"
-        icon="refresh"
-        onPress={() => {
-          background(
-            actor
-              .throwing({ action: 'rescan' })
-              .then(() => client.invalidateQueries({ queryKey: CANDIDATES_KEY })),
-            'printer.rescan_failed',
-          );
-        }}
-      />
+    <Button
+      label="Look again"
+      variant="text"
+      icon="refresh"
+      onPress={() => {
+        background(
+          actor
+            .throwing({ action: 'rescan' })
+            .then(() => client.invalidateQueries({ queryKey: CANDIDATES_KEY })),
+          'printer.rescan_failed',
+        );
+      }}
+    />
+  );
+}
+
+function DiscoveryHeading({
+  searching,
+  empty,
+}: {
+  readonly searching: boolean;
+  readonly empty: boolean;
+}): ReactNode {
+  return (
+    <View className="flex-row items-center justify-between gap-2">
+      {searching ? (
+        <Searching />
+      ) : (
+        <Text variant="body-strong" accessibilityRole="header" className="min-w-0 flex-1">
+          {empty ? 'No printers found' : 'Nearby printers'}
+        </Text>
+      )}
+      <Rescan />
     </View>
   );
 }
@@ -96,18 +114,16 @@ export function FindStep({
   const found = candidates.data?.candidates ?? [];
   const searching = candidates.data?.searching === true;
   return (
-    <View className="gap-4">
-      {searching ? <Searching /> : null}
-      {found.length === 0 && !searching ? (
-        <EmptyState
-          compact
-          icon="printer"
-          title="No printers found"
-          body="Make sure the printer is on and on the same network as the hub, or type its address below."
-        />
-      ) : (
-        <View className="gap-2">
-          {found.map((candidate) => (
+    <View className="gap-3">
+      <View className="gap-1">
+        <DiscoveryHeading searching={searching} empty={found.length === 0} />
+        {found.length === 0 && !searching ? (
+          <Text variant="callout" tone="variant">
+            Make sure the printer is on and on the same network as the hub, or type its address
+            below.
+          </Text>
+        ) : (
+          found.map((candidate) => (
             <CandidateRow
               key={candidate.uri}
               candidate={candidate}
@@ -116,10 +132,9 @@ export function FindStep({
                 onPick(candidate);
               }}
             />
-          ))}
-        </View>
-      )}
-      <Rescan />
+          ))
+        )}
+      </View>
       <TextField
         label="Or type the printer address"
         value={uri}

@@ -17,8 +17,13 @@ export interface VoiceTools {
   readonly botName: () => string;
 }
 
+export interface MuteCalls {
+  target(guildId?: string): { readonly guildId: string };
+  mute(guildId: string, muted: boolean): void;
+}
+
 function guarded(
-  services: DiscordServices,
+  services: Pick<DiscordServices, 'authority'>,
   work: (args: Readonly<Record<string, unknown>>) => unknown,
 ): LocalAction['run'] {
   return async (args, caller): Promise<LocalOutput> => {
@@ -64,6 +69,34 @@ function leaveAction(services: DiscordServices, tools: VoiceTools): LocalAction 
   };
 }
 
+function muteAction(
+  services: Pick<DiscordServices, 'authority'>,
+  calls: MuteCalls,
+  action: 'mute' | 'unmute',
+): LocalAction {
+  const muted = action === 'mute';
+  return {
+    action,
+    description: muted
+      ? 'Mute the bot in the voice call in guildId (or the only active call): it stops listening and talking, and what it would say is only typed in the call chat.'
+      : 'Let the bot listen and talk again in the voice call in guildId (or the only active call).',
+    shape: { guildId: SNOWFLAKE.optional() },
+    run: guarded(services, (args) => {
+      const { guildId } = z.object({ guildId: SNOWFLAKE.optional() }).parse(args);
+      const target = calls.target(guildId).guildId;
+      calls.mute(target, muted);
+      return { guildId: target, muted };
+    }),
+  };
+}
+
+export function muteActions(
+  services: Pick<DiscordServices, 'authority'>,
+  calls: MuteCalls,
+): readonly LocalAction[] {
+  return [muteAction(services, calls, 'mute'), muteAction(services, calls, 'unmute')];
+}
+
 function speakAction(services: DiscordServices, tools: VoiceTools): LocalAction {
   return {
     action: 'speak',
@@ -92,6 +125,7 @@ export function voiceActions(services: DiscordServices, tools: VoiceTools): read
     joinAction(services, tools),
     leaveAction(services, tools),
     speakAction(services, tools),
+    ...muteActions(services, tools.service),
     ...transcriptActions(services, tools),
   ];
 }

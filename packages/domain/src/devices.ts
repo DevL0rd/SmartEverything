@@ -103,3 +103,8 @@ export function capabilityOf(
 ): DeviceCapability | undefined {
   return device.capabilities.find((capability) => capability.key === key);
 }
+
+export function ptzPresetsOf(device: Pick<DiscoveredDevice, 'capabilities'>): readonly string[] {
+  const preset = capabilityOf(device, 'ptz_preset');
+  return preset?.value.kind === 'enum' ? preset.value.options : [];
+}

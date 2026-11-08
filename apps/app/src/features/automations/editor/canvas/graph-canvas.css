@@ -1,0 +1,27 @@
+.se-flow.gc-flow {
+  --se-wire-exec: var(--se-on-surface-variant);
+  --se-wire-taken: var(--se-primary);
+  --xy-edge-stroke: var(--se-wire-exec);
+  --xy-edge-stroke-selected: var(--se-select, var(--se-focus));
+  --xy-connectionline-stroke: var(--se-wire-taken);
+}
+
+.gc-flow .react-flow__edge-path {
+  shape-rendering: geometricPrecision;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gc-flow .gc-card[data-state='running'] {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--se-wire-taken);
+  }
+
+  .gc-flow .react-flow__edge.gc-taken .react-flow__edge-path {
+    animation: none;
+    filter: none;
+  }
+}
+
+.gc-flow[data-readonly='true'] .gc-insert {
+  display: none;
+}

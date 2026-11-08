@@ -4,6 +4,8 @@ import type {
   AssistantEventsRepository,
   StoredEvent,
 } from '../store/repositories/assistant-events';
+import type { ConversationAuthority } from '../harness/authority-contract';
+import { withExecutionAuthority } from './turn-authority';
 import { DeliveryTrace, eventFields } from './delivery-trace';
 import type { Engine } from './engines/engine';
 import { background, messageOf } from '@smarteverything/logging';
@@ -11,7 +13,13 @@ import { background, messageOf } from '@smarteverything/logging';
 export const DELIVERY_RETRY_MS = 2000;
 
 export type Routing =
-  | { readonly kind: 'engine'; readonly engine: Engine; readonly chat: AiChatRow }
+  | {
+      readonly kind: 'engine';
+      readonly engine: Engine;
+      readonly chat: AiChatRow;
+      readonly authority?: ConversationAuthority;
+    }
+  | { readonly kind: 'waiting' }
   | { readonly kind: 'blocked'; readonly reason: string };
 
 export interface DeliveryOptions {
@@ -29,6 +37,7 @@ export interface DeliveryOptions {
 export class AssistantDelivery {
   private stopped = false;
   private readonly busy = new Set<string>();
+  private readonly unsteerableChats = new Set<string>();
   private readonly steering = new Set<string>();
   private readonly unsteerable = new Set<string>();
   private readonly suspended = new Map<string, Promise<void>>();
@@ -76,7 +85,9 @@ export class AssistantDelivery {
       }
       if (!this.admitted(event)) continue;
       const routing = this.options.route(event);
-      if (routing.kind === 'blocked') {
+      if (routing.kind === 'waiting') {
+        this.options.log.debug('assistant.delivery_waiting', () => eventFields(event));
+      } else if (routing.kind === 'blocked') {
         this.options.log.info('assistant.delivery_blocked', {
           ...eventFields(event),
           reason: routing.reason,
@@ -92,6 +103,7 @@ export class AssistantDelivery {
   private steerable(event: StoredEvent): boolean {
     return (
       this.busy.has(event.chat_id) &&
+      !this.unsteerableChats.has(event.chat_id) &&
       !this.suspended.has(event.chat_id) &&
       this.options.frozen?.(event.chat_id) !== true &&
       !this.steering.has(event.id) &&
@@ -101,7 +113,11 @@ export class AssistantDelivery {
 
   private steer(event: StoredEvent): void {
     const routing = this.options.route(event);
-    const steer = routing.kind === 'engine' ? routing.engine.steer : undefined;
+    if (routing.kind === 'waiting') return;
+    const steer =
+      routing.kind === 'engine' && routing.authority?.repair_origin === undefined
+        ? routing.engine.steer
+        : undefined;
     if (routing.kind !== 'engine' || steer === undefined) {
       this.unsteerable.add(event.id);
       this.options.log.debug('assistant.steer_unsupported', () => ({
@@ -183,14 +199,21 @@ export class AssistantDelivery {
   }
 
   private start(event: StoredEvent, routing: Extract<Routing, { kind: 'engine' }>): void {
+    const authority = routing.authority;
     this.busy.add(event.chat_id);
+    if (authority?.repair_origin !== undefined) this.unsteerableChats.add(event.chat_id);
     this.options.log.info('assistant.delivery_started', {
       ...eventFields(event),
       busyChats: this.busy.size,
     });
+    const attempt =
+      authority === undefined
+        ? this.attempt(event, routing)
+        : withExecutionAuthority(authority, () => this.attempt(event, routing));
     background(
-      this.attempt(event, routing).finally(() => {
+      attempt.finally(() => {
         this.busy.delete(event.chat_id);
+        this.unsteerableChats.delete(event.chat_id);
         this.removed.delete(event.chat_id);
         this.pump();
       }),

@@ -39,10 +39,11 @@ export function adapterSink(
       });
     },
     failure: (failure): void => {
-      log.error('provider.failed', failure.cause, {
+      log.warn('provider.failed', {
         provider,
         externalId: failure.externalId,
         operation: failure.operation,
+        failure: failureLine(failure.cause),
       });
       void ports.store
         .updateProviderLink(provider, {

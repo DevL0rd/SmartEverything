@@ -4,7 +4,6 @@ import {
   NO_USAGE,
   givesExpected,
   isShown,
-  reasonFor,
   type PaletteContext,
   type PaletteUsage,
 } from './palette-search';
@@ -49,9 +48,7 @@ export function suggestedEntries(
   context: PaletteContext,
   usage: PaletteUsage = NO_USAGE,
 ): readonly PaletteEntry[] {
-  const usable = entries.filter(
-    (entry) => isShown(entry, context) && reasonFor(entry, context) === null,
-  );
+  const usable = entries.filter((entry) => isShown(entry, context));
   const ordered = [
     ...contextual(usable, context, usage),
     ...pickUsage(usable, usage.favourites),

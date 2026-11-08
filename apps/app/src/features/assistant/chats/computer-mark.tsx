@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import { Icon } from '../../../components/icon';
 import { cn } from '../../../design/cn';
 import { useDevice } from '../../../store/selectors';
@@ -18,11 +18,9 @@ const GLYPH: Readonly<Record<SourceMarkSize, 16 | 20>> = { 20: 16, 28: 16, 32: 1
 export function ComputerMark({
   computerId,
   size,
-  busy = false,
 }: {
   readonly computerId: string;
   readonly size: SourceMarkSize;
-  readonly busy?: boolean;
 }): ReactNode {
   const device = useDevice(computerId);
   return (
@@ -30,15 +28,11 @@ export function ComputerMark({
       aria-hidden
       className={cn('items-center justify-center rounded-full bg-surface-3', BOX[size])}
     >
-      {busy ? (
-        <ActivityIndicator size="small" colorClassName="accent-on-surface-variant" />
-      ) : (
-        <Icon
-          name={device === null ? 'monitor' : computerGlyph(device)}
-          size={GLYPH[size]}
-          tone="variant"
-        />
-      )}
+      <Icon
+        name={device === null ? 'monitor' : computerGlyph(device)}
+        size={GLYPH[size]}
+        tone="variant"
+      />
     </View>
   );
 }

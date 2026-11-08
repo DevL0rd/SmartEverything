@@ -159,7 +159,7 @@ const typeArbitrary: fc.Arbitrary<FlowType> = fc.letrec<{ type: FlowType }>((tie
 })).type;
 
 describe('the implicit coercion table', () => {
-  it('lists exactly the six coercions of the language', () => {
+  it('lists exactly the eight coercions of the language', () => {
     expect(IMPLICIT_COERCIONS.map((row) => [row.id, row.where])).toEqual([
       ['integerToNumber', 'everywhere'],
       ['valueToOptional', 'everywhere'],
@@ -167,6 +167,8 @@ describe('the implicit coercion table', () => {
       ['devicesToTarget', 'everywhere'],
       ['listToListOfAny', 'everywhere'],
       ['renderToText', 'template'],
+      ['entityToText', 'everywhere'],
+      ['textToEntity', 'everywhere'],
     ]);
   });
 

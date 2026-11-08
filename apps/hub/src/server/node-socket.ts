@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import {
   ApiError,
   NODE_AI_PROTOCOL,
+  NODE_LOGS_FRAME,
+  NODE_PROTOCOL_VERSION,
   NODE_RUNTIME_FRAME,
   type ComputerNodeRow,
   type HubFrame,
@@ -16,12 +18,22 @@ import { RemoteComputerRuntimeHost } from '../computers/remote-runtime-host';
 import { HUB_COMPUTER_FRAME, NODE_COMPUTER_FRAME } from '../node/computer-channel';
 import { pipeLink, type HubLink } from '../node/link';
 import type { Store } from '../store/store';
+import { ComputerOutages } from './computer-outages';
 import { ComputerConnection, ComputerSockets } from './computer-socket';
+import { ingestNodeLogs } from './node-logs';
 
 const NODE_SOCKET_FRAME = z.discriminatedUnion('type', [
   ...NODE_RUNTIME_FRAME.options,
   NODE_COMPUTER_FRAME,
+  NODE_LOGS_FRAME,
 ]);
+
+const CLOSE_UPDATE_REQUIRED = 4003;
+
+const HELLO_PROTOCOL = z.looseObject({
+  type: z.literal('hello'),
+  hello: z.looseObject({ protocol: z.unknown() }),
+});
 
 type ComputerAttach = (identity: ComputerNodeRow, link: HubLink) => () => void;
 
@@ -65,6 +77,7 @@ export interface NodeSocketServices {
 
 export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
   private readonly attachers = new Set<ComputerAttach>();
+  private readonly outages: ComputerOutages;
 
   constructor(
     private readonly store: Store,
@@ -73,6 +86,7 @@ export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
     log: Logger,
   ) {
     super(NODE_AI_PROTOCOL, access, log);
+    this.outages = new ComputerOutages(log);
   }
 
   onComputer(attach: ComputerAttach): () => void {
@@ -83,9 +97,11 @@ export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
   }
 
   protected open(socket: WebSocket, identity: ComputerNodeRow): NodeSocketConnection {
-    return new NodeSocketConnection(socket, identity, () => {
+    const connection = new NodeSocketConnection(socket, identity, () => {
+      this.outages.lost(identity.device_id, connection.closer ?? 'computer_or_network');
       this.markOnline(identity.device_id, false);
     });
+    return connection;
   }
 
   private markOnline(deviceId: string, online: boolean): void {
@@ -95,6 +111,11 @@ export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
   }
 
   protected receive(connection: NodeSocketConnection, value: unknown): void {
+    const probe = HELLO_PROTOCOL.safeParse(value);
+    if (probe.success && probe.data.hello.protocol !== NODE_PROTOCOL_VERSION) {
+      this.refuseProtocol(connection, probe.data.hello.protocol);
+      return;
+    }
     const frame = NODE_SOCKET_FRAME.parse(value);
     if (frame.type === 'hello') {
       this.hello(connection, frame);
@@ -102,11 +123,32 @@ export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
     }
     if (!connection.welcomed)
       throw new ApiError('forbidden', 'The computer must complete its hello first.');
+    if (frame.type === 'logs') {
+      connection.send(ingestNodeLogs(this.store, this.log, connection.identity, frame));
+      return;
+    }
     if (frame.type !== 'computer') {
       for (const host of connection.hosts) host.receive(frame);
       return;
     }
     connection.deliver(frame.frame);
+  }
+
+  private refuseProtocol(connection: NodeSocketConnection, offered: unknown): void {
+    this.log.warn('node.protocol_refused', {
+      socketId: connection.id,
+      deviceId: connection.identity.device_id,
+      offered: z.int().safeParse(offered).data ?? null,
+      required: NODE_PROTOCOL_VERSION,
+    });
+    connection.send(
+      new ApiError(
+        'computer_update_required',
+        'This computer must update SmartEverything Desktop before it can connect.',
+        `protocol_${String(NODE_PROTOCOL_VERSION)}_required`,
+      ).body(),
+    );
+    connection.close(CLOSE_UPDATE_REQUIRED, 'computer_update_required');
   }
 
   private hello(
@@ -133,6 +175,7 @@ export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
       );
     }
     this.openComputer(connection);
+    this.outages.returned(deviceId);
     this.markOnline(deviceId, true);
     const welcome: HubRuntimeControl = {
       type: 'welcome',

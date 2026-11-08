@@ -82,11 +82,10 @@ export function SwitchRows({ row }: { readonly row: PluginRow }): ReactNode {
   );
 }
 
-function toolsValue(row: PluginRow, count: number | undefined): string {
-  if (row.status !== 'running') {
-    return 'When it runs';
-  }
-  return count === undefined ? '' : plural(count, 'tool');
+function toolsValue(row: PluginRow, tools: ReturnType<typeof usePluginTools>): string {
+  if (row.status !== 'running') return 'When it runs';
+  if (tools.data === undefined) return tools.isError ? 'Unavailable' : 'Loading…';
+  return tools.data.length === 0 ? 'No tools' : plural(tools.data.length, 'tool');
 }
 
 function reportDone(result: PluginToolResult | null): void {
@@ -97,9 +96,11 @@ function reportDone(result: PluginToolResult | null): void {
 }
 
 export function ToolRows({ row }: { readonly row: PluginRow }): ReactNode {
-  const tools = usePluginTools(row).data;
+  const tools = usePluginTools(row);
   const runner = usePluginTool(row.id);
-  const setup = (tools ?? []).filter((tool) => tool.human_only && tool.name.startsWith('setup_'));
+  const setup = (tools.data ?? []).filter(
+    (tool) => tool.human_only && tool.name.startsWith('setup_'),
+  );
   return (
     <List inset>
       {[
@@ -117,7 +118,7 @@ export function ToolRows({ row }: { readonly row: PluginRow }): ReactNode {
           key="tools"
           icon="list"
           title="Tools"
-          value={toolsValue(row, tools?.length)}
+          value={toolsValue(row, tools)}
           href={href.pluginSettings(row.id, 'tools')}
         />,
         ...(row.manifest.permissions.inbound

@@ -4,6 +4,7 @@ import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
 import type { ComposerClass } from '../model/ai-layout';
 import { useComposerClass } from './composer-accessory-layout';
 
@@ -88,6 +89,7 @@ export function ComposerChip({
   onRemove,
   children,
 }: ComposerChipProps): ReactNode {
+  const touch = useIdiom() === 'touch';
   return (
     <View
       className={cn(
@@ -111,7 +113,10 @@ export function ComposerChip({
       <ChipAction
         label={removeLabel}
         onPress={onRemove}
-        className="size-9 items-center justify-center rounded-full"
+        className={cn(
+          'shrink-0 items-center justify-center rounded-full',
+          touch ? 'size-touch-min' : 'size-9',
+        )}
       >
         <Icon name="close" size={16} />
       </ChipAction>

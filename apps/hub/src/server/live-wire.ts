@@ -9,6 +9,8 @@ const OWNER_NOTICES: ReadonlySet<LiveMessage['type']> = new Set([
   'computer_ai_status',
   'computer_claude',
   'ai_chat_provider',
+  'hub_update_status_changed',
+  'hub_update_source_changed',
 ]);
 
 function wireChange(change: LiveChange): LiveChange {

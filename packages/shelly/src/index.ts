@@ -12,3 +12,4 @@ export * from './settings-dynamic';
 export * from './settings-presence';
 export * from './settings-system';
 export type * from './settings-meta';
+export { SHELLY_PRESENCE_GEN4_MODEL } from './models/presence';

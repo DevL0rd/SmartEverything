@@ -16,10 +16,11 @@
       "@smarteverything/ble": ["packages/ble/src/index.ts"],
       "@smarteverything/ipp": ["packages/ipp/src/index.ts"],
       "@smarteverything/harness": ["packages/harness/src/index.ts"],
+      "@smarteverything/models": ["packages/models/src/index.ts"],
       "@smarteverything/shelly": ["packages/shelly/src/index.ts"],
       "@smarteverything/shelly/rpc": ["packages/shelly/src/rpc-entry.ts"]
     },
-    "lib": ["ES2023", "ESNext.TypedArrays"]
+    "lib": ["ES2023", "ESNext.TypedArrays", "ESNext.Temporal"]
   },
   "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts", "bench/**/*.ts", "package.json"],
   "references": []

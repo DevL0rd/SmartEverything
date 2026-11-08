@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { OtpField, Stage } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
-function Demo() {
+function Demo(): ReactElement {
   const [pair, setPair] = useState('482');
   const [code, setCode] = useState('1234');
   return (
@@ -18,12 +18,12 @@ function Demo() {
     </Col>
   );
 }
-export const Formats = () => (
+export const Formats = (): ReactElement => (
   <Stage theme="dark" width={460}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={460}>
     <Demo />
   </Stage>

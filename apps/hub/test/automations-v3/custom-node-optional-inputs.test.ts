@@ -1,9 +1,13 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
+import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { FlowNode, FunctionV3, JsonValue } from '@smarteverything/domain';
-import { NODE_REGISTRY, PRESENCE_LIGHTS } from '@smarteverything/domain';
+import type { FlowNode, FunctionV3, FunctionV4 } from '@smarteverything/domain';
+import { NODE_REGISTRY } from '@smarteverything/domain';
 import { lower } from '@smarteverything/flow/compile/lower';
 import { jsonRecord } from '../../src/automations/engine-v3-start';
 import { rehearsals } from '../../src/automations/rehearsals';
+import { structuredFunction } from '../../src/store/repositories/automation-trees';
+import { graphFunction } from './support/graph-of';
 import { closeSetups, lit, node, program, rigV3, wired } from './support/rig-v3';
 import type { RigV3 } from './support/rig-v3';
 
@@ -37,19 +41,71 @@ const PROBE: FunctionV3 = {
   },
 };
 
-function saved(rig: RigV3, definition: FunctionV3): string {
-  const lowered = lower(definition, { kinds: (id) => NODE_REGISTRY.get(id) });
+const SENSED: FunctionV3 = {
+  version: 3,
+  kind: 'function',
+  flavour: 'action',
+  inputs: [
+    { name: 'lights', type: { t: 'ref', of: 'target' }, required: true },
+    {
+      name: 'darkSensor',
+      type: { t: 'optional', of: { t: 'ref', of: 'device' } },
+      required: false,
+    },
+  ],
+  outputs: [{ name: 'done', type: { t: 'boolean' } }],
+  exits: ['done'],
+  variables: [{ name: 'seen', type: { t: 'text' }, initial: lit('') }],
+  body: {
+    nodes: [
+      node('hasSensor', 'logic.exists', { value: wired('inputs.darkSensor') }),
+      node('on', 'device.set', {
+        target: wired('inputs.lights'),
+        control: lit('power'),
+        to: lit(true),
+      }),
+      {
+        ...node('sensorKnown', 'flow.if', {}),
+        branches: [
+          {
+            id: randomUUID(),
+            when: wired('hasSensor.result'),
+            scope: {
+              nodes: [
+                node('sensor', 'logic.coalesce', { a: wired('inputs.darkSensor') }),
+                node('light', 'device.get', {
+                  device: wired('sensor.value'),
+                  control: lit('illumination'),
+                }),
+                node('remember', 'var.set', { name: lit('seen'), to: wired('light.value') }),
+              ],
+            },
+          },
+        ],
+      },
+      node('result', 'flow.return', { done: lit(true) }),
+    ],
+  },
+};
+
+function saved(rig: RigV3, definition: FunctionV4): string {
+  const lowered = lower(structuredFunction(definition, STATIC_KIND_LOOKUP), {
+    kinds: (id) => NODE_REGISTRY.get(id),
+  });
   if (!lowered.ok) throw new Error(lowered.problems.map((found) => found.message).join('; '));
-  return rig.functions.create({
-    name: 'Probe',
-    program: definition,
-    layout: { nodes: {}, frames: [], comments: [] },
-    interfaceHash: 'b'.repeat(64),
-    compat: 'compatible',
-    planHash: rig.plans.put('function', jsonRecord(lowered.plan)),
-    author: null,
-    createdBy: null,
-  }).id;
+  return rig.functions.create(
+    {
+      name: 'Probe',
+      program: definition,
+      layout: { nodes: {}, frames: [], comments: [] },
+      interfaceHash: 'b'.repeat(64),
+      compat: 'compatible',
+      planHash: rig.plans.put('function', jsonRecord(lowered.plan)),
+      author: null,
+      createdBy: null,
+    },
+    STATIC_KIND_LOOKUP,
+  ).id;
 }
 
 async function runOnce(rig: RigV3, nodes: readonly FlowNode[]): Promise<string | null> {
@@ -89,7 +145,7 @@ function probeCalls(id: string, lamp: string): readonly FlowNode[] {
 describe('optional Custom Node inputs on the hub', () => {
   it('reads an omitted optional input as absent and a given one as present', async () => {
     const rig = await rigV3();
-    const id = saved(rig, PROBE);
+    const id = saved(rig, graphFunction(PROBE, STATIC_KIND_LOOKUP));
     const error = await runOnce(rig, probeCalls(id, rig.home.lampId));
     expect(error).toBeNull();
     expect(rig.home.adapter.executed.map((command) => command.value)).toStrictEqual([1, 8]);
@@ -121,7 +177,9 @@ describe('optional Custom Node inputs on the hub', () => {
 
   it('reads optional inputs the same way in a dry run', async () => {
     const rig = await rigV3();
-    const row = rig.add(program(probeCalls(saved(rig, PROBE), rig.home.lampId)));
+    const row = rig.add(
+      program(probeCalls(saved(rig, graphFunction(PROBE, STATIC_KIND_LOOKUP)), rig.home.lampId)),
+    );
     rig.engine.sync();
     const rehearsal = await rehearsals({
       clock: rig.clock,
@@ -144,21 +202,20 @@ describe('optional Custom Node inputs on the hub', () => {
     expect(rig.home.adapter.executed).toStrictEqual([]);
   });
 
-  it('runs Presence lights without a sensor and reads the sensor when one is given', async () => {
+  it('runs without an optional sensor and reads the sensor when one is given', async () => {
     const rig = await rigV3();
-    const id = saved(rig, PRESENCE_LIGHTS.program);
-    const lights: JsonValue = { device: rig.home.lampId };
+    const id = saved(rig, graphFunction(SENSED, STATIC_KIND_LOOKUP));
+    const lights = { device: rig.home.lampId };
     const without = await runOnce(rig, [
-      node('presence', 'fn.call', { fn: lit(id), lights: lit(lights), occupied: lit(true) }),
+      node('call', 'fn.call', { fn: lit(id), lights: lit(lights) }),
     ]);
     expect(without).toBeNull();
     expect(rig.home.adapter.executed.map((command) => command.value)).toStrictEqual([true]);
     const other = await rigV3();
     const withSensor = await runOnce(other, [
-      node('presence', 'fn.call', {
-        fn: lit(saved(other, PRESENCE_LIGHTS.program)),
+      node('call', 'fn.call', {
+        fn: lit(saved(other, graphFunction(SENSED, STATIC_KIND_LOOKUP))),
         lights: lit({ device: other.home.lampId }),
-        occupied: lit(true),
         darkSensor: lit(other.home.lampId),
       }),
     ]);

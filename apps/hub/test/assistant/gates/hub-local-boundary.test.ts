@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import type { NodeHello } from '@smarteverything/domain';
+import { isMcpToolName, type NodeHello, NODE_PROTOCOL_VERSION } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toolAdmission } from '../../../src/ai-tools/tool-admission';
 import { ToolHub } from '../../../src/ai-tools/tool-hub';
 import type { HubTool, HubToolResult, ToolSource } from '../../../src/ai-tools/hub-tool';
 import { HarnessHubTools } from '../../../src/harness/tools';
 import { eventAuthority, withExecutionAuthority } from '../../../src/assistant/turn-authority';
-import { describeComputer } from '../../../src/computers/computer-device';
+import { describeHub } from '../../../src/computers/computer-device';
 import type { ConversationAuthority } from '../../../src/harness/authority-contract';
 import { HubLocalBoundary } from '../../../src/harness/hub-local-boundary';
 import { reachesNativeBridge } from '../../../src/harness/native-bridge';
@@ -26,7 +26,7 @@ const HUB_MACHINE: NodeHello = {
   interfaces: [],
   bootedAt: '2026-10-08T09:00:00.000Z',
   features: [],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
   power: [],
   actions: [],
   permissions: [],
@@ -39,7 +39,7 @@ beforeEach(async () => {
   desk = target.device_id;
   const [row] = rig.opened.store.devices.upsert([
     {
-      ...describeComputer(HUB_MACHINE, 'hub', [], { power: [], machine: [] }),
+      ...describeHub({ hostname: HUB_MACHINE.hostname, osName: HUB_MACHINE.os.name }),
       parentId: null,
       providerRoom: null,
       roomId: null,
@@ -190,8 +190,8 @@ describe('a hub chat controlling devices that include a computer', () => {
 describe('the hub-local native bridge', () => {
   it('is refused for hub conversations and hidden from their tool list', () => {
     const subject = boundary();
-    expect(reachesNativeBridge('claude_read')).toBe(true);
-    expect(subject.refusal('claude_read', { view: 'status' })).toMatch(/native desktop session/);
+    expect(isMcpToolName('claude_read')).toBe(false);
+    expect(isMcpToolName('claude_control')).toBe(false);
     expect(
       subject.refusal('operation_call', { operation: 'readClaudeStatus', arguments: {} }),
     ).toMatch(/native desktop session/);

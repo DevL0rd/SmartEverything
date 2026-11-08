@@ -1,5 +1,7 @@
 import { z } from 'zod';
+import { entryFromSpec } from '../../../models/contributions';
 import { defineBuiltinPlugin } from '../define';
+import { WIZ_MODEL_MATCH, WIZ_MODELS } from './models';
 import { WIZ_CONTROL_PORT, WIZ_PUSH_PORT } from './protocol';
 import { WizRuntime } from './runtime';
 
@@ -20,6 +22,9 @@ export const wizPlugin = defineBuiltinPlugin({
     },
     contributes: { deviceFamilies: ['light'] },
   },
+  models: WIZ_MODELS.map((spec) =>
+    entryFromSpec(spec, { match: WIZ_MODEL_MATCH, brands: ['WiZ'] }),
+  ),
   settings: z.strictObject({}),
   start: (ctx) => new WizRuntime(ctx).start(),
 });

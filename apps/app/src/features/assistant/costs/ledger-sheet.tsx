@@ -8,6 +8,7 @@ import {
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Figure } from '../../../components/figure';
+import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { ValueRow } from '../../../components/rows';
 import { Sheet } from '../../../components/sheet';
@@ -20,6 +21,7 @@ import { costStateLabel, titleOfRow } from './ledger-format';
 interface Fact {
   readonly title: string;
   readonly value: string | null;
+  readonly wrap?: boolean;
 }
 
 function factsOf(row: UsageLedgerRow, timeZone: string): readonly Fact[] {
@@ -28,12 +30,12 @@ function factsOf(row: UsageLedgerRow, timeZone: string): readonly Fact[] {
   const tokens = (value: number): string | null => (value > 0 ? count(value) : null);
   return [
     { title: 'When', value: `${longDate(row.at, timeZone)}, ${clock(row.at, timeZone)}` },
-    { title: 'Person', value: row.profile.label },
-    { title: 'Device', value: row.client?.label ?? null },
-    { title: 'Model', value: row.model?.label ?? null },
+    { title: 'Person', wrap: true, value: row.profile.label },
+    { title: 'Device', wrap: true, value: row.client?.label ?? null },
+    { title: 'Model', wrap: true, value: row.model?.label ?? null },
     { title: 'Service', value: USAGE_SOURCE_LABELS[row.source] },
     { title: 'Type of work', value: USAGE_WORK_LABELS[row.work] },
-    { title: 'Plugin', value: row.plugin?.label ?? null },
+    { title: 'Plugin', wrap: true, value: row.plugin?.label ?? null },
     { title: 'Usage', value: row.usage_available === false ? 'Supplier usage unavailable' : null },
     { title: 'Tokens in', value: tokens(row.tokens_in) },
     { title: 'Tokens out', value: tokens(row.tokens_out) },
@@ -43,6 +45,18 @@ function factsOf(row: UsageLedgerRow, timeZone: string): readonly Fact[] {
     { title: 'Images', value: row.images > 0 ? count(row.images) : null },
     { title: 'Video', value: ms(row.video_ms) },
   ];
+}
+
+function factRows(row: UsageLedgerRow, timeZone: string): readonly ReactNode[] {
+  return factsOf(row, timeZone)
+    .filter((fact): fact is Fact & { readonly value: string } => fact.value !== null)
+    .map(({ title, value, wrap }) =>
+      wrap === true ? (
+        <ListRow key={title} title={title} subtitle={value} wrapSubtitle />
+      ) : (
+        <ValueRow key={title} title={title} value={value} />
+      ),
+    );
 }
 
 export interface LedgerSheetProps {
@@ -86,13 +100,7 @@ export function LedgerSheet({ row, timeZone, onClose }: LedgerSheetProps): React
                 : costStateLabel(row.cost_state)}
             </Text>
           </View>
-          <List inset>
-            {factsOf(row, timeZone)
-              .filter((fact): fact is Fact & { readonly value: string } => fact.value !== null)
-              .map((fact) => (
-                <ValueRow key={fact.title} title={fact.title} value={fact.value} />
-              ))}
-          </List>
+          <List inset>{factRows(row, timeZone)}</List>
         </View>
       )}
     </Sheet>

@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Button, FlowFrame, Stage, TextField } from 'smarteverything-kit';
 
 const steps = [
@@ -26,12 +27,12 @@ const frame = (
     <TextField label="Region" value="Europe" onChange={() => undefined} />
   </FlowFrame>
 );
-export const SignIn = () => (
+export const SignIn = (): ReactElement => (
   <Stage theme="dark" width={820} height={520}>
     {frame}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={820} height={520}>
     {frame}
   </Stage>

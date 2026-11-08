@@ -1,4 +1,5 @@
 import { nativeMediaFile } from '../api/connection/media-resources';
+import { inlineAssistantAttachmentMime } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { Linking, Share } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -7,10 +8,8 @@ import { isNative } from '../design/platform';
 
 const log = new Logger('app.assistant');
 
-const PREVIEW_MIMES: readonly string[] = ['application/pdf', 'application/json'];
-
 export const isPreviewable = (mime: string): boolean =>
-  mime.startsWith('text/') || PREVIEW_MIMES.includes(mime);
+  inlineAssistantAttachmentMime(mime) !== null;
 
 export const canShareFiles = (): boolean => isNative();
 

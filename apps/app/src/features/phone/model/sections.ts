@@ -36,7 +36,7 @@ export const PHONE_SECTIONS: readonly PhoneSectionDef[] = [
   { id: 'setup', label: 'Setup', icon: 'settings' },
 ];
 
-export const { frameLayoutOf, railWidthOf, bodyWidthOf, twoColumnsAt } = frameLayoutMath({
+export const { frameLayoutOf, railWidthOf } = frameLayoutMath({
   compactMax: 600,
   iconRailMax: 720,
   wideRailMin: 1024,

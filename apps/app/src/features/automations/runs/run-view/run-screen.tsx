@@ -1,24 +1,28 @@
-import { useMemo, type ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { useMemo, useState, type ReactNode } from 'react';
+import { ScrollView, View, useWindowDimensions } from 'react-native';
 import type { AutomationRunSummary } from '@smarteverything/domain';
+import { Button } from '../../../../components/button';
 import { ErrorState } from '../../../../components/error-state';
 import { Skeleton } from '../../../../components/skeleton';
 import { confirm } from '../../../../components/confirm-store';
 import { notifyFailure } from '../../../../components/toast-store';
+import { useSizeClass } from '../../../../design/size-class';
 import { useStableCallback } from '../../../../design/use-stable-callback';
 import { background } from '@smarteverything/logging';
 import { useRunActions } from '../../data/use-runs';
+import { selectIds } from '../../editor/host/intent-env';
 import type { SceneOptions } from '../../editor/host/use-canvas-props';
-import { selectIds } from '../../editor/host/edit-intents';
 import type { DocumentStore } from '../../model/editor/document-store';
 import { NodePane } from './commands-pane';
 import { useFollow, type Follow } from './follow';
 import { LoopStepper } from './loop-stepper';
 import { EMPTY_FACTS, programFacts } from './program-facts';
 import { RunCanvas, useSelectedNode } from './run-canvas';
+import { RunFailure } from './run-failure';
 import { DEFAULT_ITEM_NAME, activationFor } from './run-overlay';
 import { RunHeader } from './run-header';
 import { TimelineBand } from './timeline-band';
+import { timelineStartsOpen } from './run-timeline';
 import { useRunOverlay, type RunOverlayModel } from './use-run-overlay';
 import { usePinnedProgram } from './use-pinned-program';
 import { useRunRecords } from './use-run-records';
@@ -37,7 +41,7 @@ const NO_GROW = { flexGrow: 0 } as const;
 
 function Loading(): ReactNode {
   return (
-    <View className="gap-3 p-4">
+    <View className="gap-3 px-gutter py-4">
       <Skeleton shape="line" className="h-16" />
       <Skeleton shape="line" className="h-64" />
     </View>
@@ -103,6 +107,7 @@ function Top(props: TopProps): ReactNode {
 }
 
 function Bottom({
+  run,
   store,
   model,
   titles,
@@ -110,9 +115,24 @@ function Bottom({
   selected,
 }: BodyProps & { readonly selected: string | null }): ReactNode {
   const pane = activationFor(model.activations, model.chosen, selected);
+  const compact = useSizeClass().width === 'compact';
+  const [open, setOpen] = useState(timelineStartsOpen(compact, useWindowDimensions().height));
   return (
     <ScrollView className="max-h-80 shrink-0" style={NO_GROW}>
-      <View className="gap-2 p-2">
+      <View className="w-full max-w-detail gap-2 px-gutter py-2">
+        {model.timeline === null ? null : (
+          <View className="self-start">
+            <Button
+              label={open ? 'Hide timeline' : 'Show timeline'}
+              icon={open ? 'chevronDown' : 'chevronUp'}
+              variant="text"
+              onPress={() => {
+                setOpen((current) => !current);
+              }}
+            />
+          </View>
+        )}
+        <RunFailure error={run.error} />
         {selected === null ? null : (
           <NodePane
             title={titles.get(selected) ?? selected}
@@ -120,7 +140,7 @@ function Bottom({
             stateful={stateful.has(selected)}
           />
         )}
-        {model.timeline === null ? null : (
+        {model.timeline === null || !open ? null : (
           <TimelineBand
             model={model.timeline}
             at={model.at}
@@ -140,6 +160,12 @@ function Body(props: BodyProps): ReactNode {
   const { store, model, itemNames } = props;
   const selected = useSelectedNode(store);
   const follow = useFollow(model.running, model.live);
+  const [opening] = useState(model.running);
+  const stepPass = useStableCallback((nodeId: string, delta: -1 | 1): void => {
+    const info = model.loops.find((loop) => loop.nodeId === nodeId);
+    const iteration = info?.iterations[info.position - 1 + delta];
+    if (iteration !== undefined) model.pick(nodeId, iteration);
+  });
   return (
     <View className="flex-1">
       <Top {...props} follow={follow} selected={selected} />
@@ -156,9 +182,10 @@ function Body(props: BodyProps): ReactNode {
           store={store}
           options={props.options}
           overlay={model.overlay}
-          focusNode={follow.focusNode}
+          focusNode={follow.focusNode ?? opening}
           onScreen={props.onScreen}
           onSettled={follow.settled}
+          onStepPass={stepPass}
         />
       </View>
       <Bottom {...props} selected={selected} />
@@ -175,11 +202,8 @@ export function RunScreen(props: RunScreenProps): ReactNode {
   );
   const pinned = usePinnedProgram(pin);
   const facts = useMemo(
-    () =>
-      pinned.program === null || pinned.layout === null
-        ? EMPTY_FACTS
-        : programFacts(pinned.program, pinned.layout, props.options),
-    [pinned.program, pinned.layout, props.options],
+    () => (pinned.program === null ? EMPTY_FACTS : programFacts(pinned.program, props.options)),
+    [pinned.program, props.options],
   );
   const model = useRunOverlay({
     runId: props.runId,
@@ -192,12 +216,14 @@ export function RunScreen(props: RunScreenProps): ReactNode {
   const failed = records.isError ? records : pinned.query.isError ? pinned.query : null;
   if (failed !== null) {
     return (
-      <ErrorState
-        error={failed.error}
-        retry={() => {
-          background(failed.refetch(), 'automations.run_refetch');
-        }}
-      />
+      <View className="w-full max-w-reading px-gutter">
+        <ErrorState
+          error={failed.error}
+          retry={() => {
+            background(failed.refetch(), 'automations.run_refetch');
+          }}
+        />
+      </View>
     );
   }
   if (run === null || pinned.store === null) return <Loading />;

@@ -24,6 +24,7 @@ export function bootComposition(
         cwd: host.homeDirectory,
         server: host.target.kind === 'server',
         catalogDescriptionMaxLength: skillCatalogueLength(options.desiredConfiguration),
+        apiKeys: options.apiKeys,
       }),
       mountLocalServices(ctx, host.homeDirectory, host.stateDirectory, host.platform),
     ]);
@@ -48,13 +49,14 @@ export async function initializeRuntime(
     options.configurationChanged,
   );
   await configuration.reconcile(options.desiredConfiguration);
-  observeHarness(ctx, options.onEvent, options.beforeStep);
+  observeHarness(ctx, options.onEvent, options.beforeStep, options.failureContext);
   const runtime = new HarnessRuntime(ctx, host, configuration, {
     interactions,
     dispose,
     serverPolicy,
     generation,
     notify: options.onEvent,
+    attachmentTransfer: options.attachmentTransfer === true,
     ...(options.configurationPending === undefined
       ? {}
       : { configurationPending: options.configurationPending }),

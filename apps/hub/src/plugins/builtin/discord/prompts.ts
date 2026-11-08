@@ -92,6 +92,7 @@ export interface ControlInput {
 }
 
 export interface Accepted {
+  readonly flowId: string;
   readonly eventId: string;
   readonly origin: EventOrigin;
   readonly text?: string;
@@ -238,12 +239,18 @@ export class Flows {
     const { prompt } = flow;
     if (prompt.mode === 'modal') {
       this.items.set(flow.id, { ...flow, state: 'modal' });
-      return { eventId: flow.eventId, origin: flow.origin, modal: this.modal(flow) };
+      return {
+        flowId: flow.id,
+        eventId: flow.eventId,
+        origin: flow.origin,
+        modal: this.modal(flow),
+      };
     }
     const values = this.picked(flow, input);
     this.items.set(flow.id, { ...flow, state: 'used' });
     const [first] = values;
     return {
+      flowId: flow.id,
       eventId: flow.eventId,
       origin: flow.origin,
       text: JSON.stringify(values.length === 1 ? { choice: first } : { choices: values }),
@@ -295,6 +302,7 @@ export class Flows {
     this.assertFields(flow, input.fields);
     this.items.set(flow.id, { ...flow, state: 'used' });
     return {
+      flowId: flow.id,
       eventId: flow.eventId,
       origin: flow.origin,
       text: JSON.stringify({ fields: input.fields }),

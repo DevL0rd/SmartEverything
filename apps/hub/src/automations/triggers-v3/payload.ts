@@ -1,9 +1,11 @@
 import {
   COMPUTER_TRIGGER_EVENTS,
   PHONE_TRIGGER_EVENTS,
+  phoneStateEventName,
   type JsonValue,
   type MatcherVariant,
   type SignalInput,
+  vacuumTriggerOutputs,
 } from '@smarteverything/domain';
 
 export type TriggerPayload = Readonly<Record<string, JsonValue>>;
@@ -99,7 +101,7 @@ const MAPPERS: Readonly<Record<string, (signal: SignalInput) => Draft>> = {
   }),
   'trigger.phone': (signal) => ({
     phone: signal.subject ?? undefined,
-    kind: eventName(PHONE_TRIGGER_EVENTS, signal),
+    kind: phoneStateEventName(signal) ?? eventName(PHONE_TRIGGER_EVENTS, signal),
     data: signal.data,
   }),
   'trigger.health': (signal) => ({
@@ -130,6 +132,10 @@ const MAPPERS: Readonly<Record<string, (signal: SignalInput) => Draft>> = {
     query: signal.data['query'],
   }),
   'trigger.hub_started': (signal) => ({ downFor: signal.data['downFor'] }),
+  'trigger.vacuum': (signal) => ({
+    vacuum: signal.subject ?? undefined,
+    ...vacuumTriggerOutputs(signal),
+  }),
   'trigger.chat': (signal) => ({
     chat: signal.subject ?? undefined,
     outcome: signal.data['outcome'],
@@ -138,7 +144,30 @@ const MAPPERS: Readonly<Record<string, (signal: SignalInput) => Draft>> = {
   }),
 };
 
-export function signalPayload(kindId: string, signal: SignalInput): TriggerPayload {
+function declaredPayload(
+  outputs: Readonly<Record<string, string>>,
+  signal: SignalInput,
+): TriggerPayload {
+  const sources: Readonly<Record<string, JsonValue | undefined>> = {
+    subject: signal.subject ?? undefined,
+    at: signal.at,
+  };
+  return present(
+    Object.fromEntries(
+      Object.entries(outputs).map(([name, from]) => [
+        name,
+        Object.hasOwn(sources, from) ? sources[from] : signal.data[from],
+      ]),
+    ),
+  );
+}
+
+export function signalPayload(
+  kindId: string,
+  signal: SignalInput,
+  outputs?: Readonly<Record<string, string>>,
+): TriggerPayload {
+  if (outputs !== undefined) return { ...declaredPayload(outputs, signal), at: signal.at };
   const mapper = MAPPERS[kindId];
   return { ...(mapper === undefined ? {} : present(mapper(signal))), at: signal.at };
 }

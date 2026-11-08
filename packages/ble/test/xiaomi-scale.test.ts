@@ -91,11 +91,21 @@ describe('Xiaomi body scale', () => {
     expect(decodeScaleObject(packed(705, 127, 0))).toMatchObject({ heartRate: null });
   });
 
-  it('keeps the largest weight and impedance the packed word holds', () => {
-    expect(decodeScaleObject(packed(0x7ff, 0, 0x3fff))).toMatchObject({
-      weightKg: 204.7,
-      impedance: 1638.3,
+  it('reads all weight bits set as the scale having no weight, not 204.7 kg', () => {
+    expect(decodeScaleObject(packed(0x7ff, 0, 5000))).toMatchObject({
+      kind: 'measurement',
+      weightKg: null,
+      impedance: 500,
     });
+    expect(decodeScaleObject(packed(0x7fe, 0, 0))).toMatchObject({ weightKg: 204.6 });
+  });
+
+  it('reads no weight with nothing else as the person stepping off', () => {
+    expect(decodeScaleObject(packed(0x7ff, 0, 0))).toMatchObject({ kind: 'stepped_off' });
+  });
+
+  it('keeps the largest impedance the packed word holds', () => {
+    expect(decodeScaleObject(packed(705, 0, 0x3fff))).toMatchObject({ impedance: 1638.3 });
   });
 
   it('names its packet error', () => {

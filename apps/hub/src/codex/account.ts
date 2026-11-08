@@ -4,6 +4,7 @@ import { ACCOUNT } from './protocol';
 import { CodexRuntimeError } from './errors';
 import type { CodexClient } from './client';
 import { readRateLimits, requireSubscriptionBilling } from './rate-limits';
+import type { RpcRecord } from './protocol';
 import { THREAD_REPLY } from './protocol';
 const MANAGED_CHATGPT_BASE_URL = 'https://chatgpt.com/backend-api/';
 const CONFIG = z.object({
@@ -49,9 +50,11 @@ export async function requireSubscription(
 export async function requireSubscriptionInference(
   client: CodexClient,
   cwd: string,
-): Promise<void> {
+): Promise<RpcRecord | null> {
   await requireSubscription(client, cwd);
-  requireSubscriptionBilling(await readRateLimits(client));
+  const rates = await readRateLimits(client);
+  requireSubscriptionBilling(rates);
+  return rates;
 }
 export async function requireThreadSubscriptionInference(
   client: CodexClient,

@@ -23,6 +23,20 @@ export function timeZoneOptions(): readonly SelectOption<string>[] | null {
   return zones;
 }
 
+export function matchingTimeZone(
+  zone: string,
+  options: readonly SelectOption<string>[],
+): string | null {
+  if (options.some((option) => option.value === zone)) return zone;
+  try {
+    const canonical = new Intl.DateTimeFormat('en-US', { timeZone: zone }).resolvedOptions().timeZone;
+    return options.some((option) => option.value === canonical) ? canonical : null;
+  } catch (error) {
+    if (error instanceof RangeError) return null;
+    throw error;
+  }
+}
+
 export function sunLines(point: GeoPoint, timeZone: string, now: Date): readonly string[] {
   const today = localClock(now, timeZone);
   const rise = sunEventOn('sunrise', today, point);

@@ -1,26 +1,11 @@
 import { createElement } from 'react';
-import {
-  COMPACT_AT_PERCENT,
-  REUSE_CHAT_MINUTES,
-  type AssistantSettingsChange,
-} from '@smarteverything/domain';
+import { COMPACT_AT_PERCENT, type AssistantSettingsChange } from '@smarteverything/domain';
 import type { SettingDefinition } from '../../../settings/types';
 import type { StoreState } from '../../../store/state';
 import { known, owner, writeAssistant } from './assistant-write';
 import { OVERLAY_SETTINGS } from '../overlay/overlay-settings';
 import { QuickAskShortcutRow } from './quick-ask-shortcut-row';
 import { ASSISTANT_GROUPS } from './settings-groups';
-
-const REUSE_CHAT_CHOICES = [
-  { value: '0', label: 'Never: a new chat each time' },
-  { value: '15', label: '15 minutes' },
-  { value: '30', label: '30 minutes' },
-  { value: '60', label: '1 hour' },
-  { value: '120', label: '2 hours' },
-  { value: '240', label: '4 hours' },
-  { value: '480', label: '8 hours' },
-  { value: '1440', label: '24 hours' },
-] as const;
 
 interface SwitchSpec {
   readonly id: string;
@@ -102,32 +87,6 @@ export const CONVERSATION_SETTINGS: readonly SettingDefinition[] = [
     when: known,
     read: (state) => state.assistant?.settings.compact_at_percent ?? COMPACT_AT_PERCENT.fallback,
     write: (value, context) => writeAssistant({ compact_at_percent: value }, context),
-  },
-  {
-    id: 'assistant.reuse-chat',
-    page: 'assistant',
-    icon: 'messageCircle',
-    section: ASSISTANT_GROUPS.conversation,
-    title: 'Keep the same chat for',
-    description:
-      'Calls and conversations the AI starts continue your latest one if it was active this recently.',
-    keywords: [
-      'reuse chat',
-      'same conversation',
-      'same chat',
-      'new chat after',
-      'conversation chat',
-      'timeout',
-      'calls',
-      'wake word',
-    ],
-    scope: 'server',
-    control: 'select',
-    options: REUSE_CHAT_CHOICES,
-    visible: owner,
-    when: known,
-    read: (state) => String(state.assistant?.settings.reuse_chat_minutes ?? REUSE_CHAT_MINUTES),
-    write: (value, context) => writeAssistant({ reuse_chat_minutes: Number(value) }, context),
   },
   {
     id: 'assistant.quick-ask-shortcut',

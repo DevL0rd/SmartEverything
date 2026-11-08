@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { href } from '../../../app-shell/hrefs';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
@@ -35,7 +35,7 @@ function TimeText({
   );
 }
 
-function useTarget(item: ActivityItem): Href | undefined {
+function useTarget(item: ActivityItem): AppHref | undefined {
   const device = useRow('devices', item.deviceId);
   if (device !== null) {
     return href.device(device);
@@ -43,8 +43,13 @@ function useTarget(item: ActivityItem): Href | undefined {
   return item.category === 'automations' ? href.automations() : undefined;
 }
 
-function Leading({ item }: { readonly item: ActivityItem }): ReactNode {
-  const pointer = useIdiom() === 'pointer';
+function Leading({
+  item,
+  pointer,
+}: {
+  readonly item: ActivityItem;
+  readonly pointer: boolean;
+}): ReactNode {
   return (
     <View
       className={cn(
@@ -77,6 +82,41 @@ export interface ActivityRowProps {
   readonly time?: ActivityTime;
   readonly withName?: boolean;
   readonly flush?: boolean;
+  readonly timeline?: boolean;
+}
+
+function RowContent({
+  item,
+  time,
+  withName,
+  timeline,
+  title,
+  detail,
+}: Required<Omit<ActivityRowProps, 'flush'>> & {
+  readonly title: string;
+  readonly detail: string;
+}): ReactNode {
+  const pointer = useIdiom() === 'pointer';
+  const leadingTime = timeline && pointer;
+  const timestamp = <TimeText item={item} time={time} />;
+  const lines = timeline ? 0 : 1;
+  return (
+    <>
+      <Leading item={item} pointer={pointer} />
+      {leadingTime ? <View className="w-32">{timestamp}</View> : null}
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text variant={withName ? 'body-strong' : 'body'} numberOfLines={lines}>
+          {title}
+        </Text>
+        {detail === '' ? null : (
+          <Text variant="callout" tone={item.failed ? 'critical' : 'variant'} numberOfLines={lines}>
+            {detail}
+          </Text>
+        )}
+      </View>
+      {leadingTime ? null : timestamp}
+    </>
+  );
 }
 
 export const ActivityRow = memo(function ActivityRow({
@@ -84,26 +124,21 @@ export const ActivityRow = memo(function ActivityRow({
   time = 'clock',
   withName = true,
   flush = false,
+  timeline = false,
 }: ActivityRowProps): ReactNode {
   const target = useTarget(item);
   const { title, detail } = textOf(item, withName);
-  const content = (
-    <>
-      <Leading item={item} />
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant={withName ? 'body-strong' : 'body'} numberOfLines={1}>
-          {title}
-        </Text>
-        {detail === '' ? null : (
-          <Text variant="callout" tone={item.failed ? 'critical' : 'variant'} numberOfLines={1}>
-            {detail}
-          </Text>
-        )}
-      </View>
-      <TimeText item={item} time={time} />
-    </>
-  );
   const frame = frameOf(flush, detail === '');
+  const content = (
+    <RowContent
+      item={item}
+      time={time}
+      withName={withName}
+      timeline={timeline}
+      title={title}
+      detail={detail}
+    />
+  );
   if (target === undefined || !withName) {
     return <View className={frame}>{content}</View>;
   }

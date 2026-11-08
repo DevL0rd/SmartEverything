@@ -1,5 +1,6 @@
-import { NODE_REGISTRY, outlineLines, type RefNames } from '@smarteverything/domain';
+import { outlineLines, type NodeKindLookup, type RefNames } from '@smarteverything/domain';
 import type { Template } from './parameters';
+import { templateTree } from './structured';
 
 const INDENT = '  ';
 const SHOWN = 5;
@@ -8,9 +9,13 @@ const SAYS_WHEN = /^when\b/i;
 export function previewLines(
   entry: Template,
   names: RefNames,
+  kinds: NodeKindLookup,
   limit: number = SHOWN,
 ): readonly string[] {
-  const lines = outlineLines(entry.build(), { kinds: (id) => NODE_REGISTRY.get(id), names });
+  const lines = outlineLines(templateTree(entry, undefined, kinds), {
+    kinds: (id) => kinds.get(id),
+    names,
+  });
   return lines
     .filter((line) => line.kind !== 'scope')
     .slice(0, limit)

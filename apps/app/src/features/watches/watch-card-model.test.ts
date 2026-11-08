@@ -7,6 +7,7 @@ import {
   headlineOf,
   heartCaption,
   lowBattery,
+  onWristNow,
   stateLineOf,
   syncControlOf,
   type WatchFacts,
@@ -172,5 +173,14 @@ describe('the find request', () => {
   it('asks the watch to ring first and to stop once it rings', () => {
     expect(findRequestOf(false)).toEqual({ type: 'find_watch', on: true });
     expect(findRequestOf(true)).toEqual({ type: 'find_watch', on: false });
+  });
+});
+
+describe('the live wrist readings on the card', () => {
+  it('shows heart and battery only while the watch is worn, fresh and off the charger', () => {
+    expect(onWristNow(FACTS, null)).toBe(true);
+    expect(onWristNow({ ...FACTS, worn: false }, null)).toBe(false);
+    expect(onWristNow({ ...FACTS, charging: true }, null)).toBe(false);
+    expect(onWristNow(FACTS, 3)).toBe(false);
   });
 });

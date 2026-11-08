@@ -1,0 +1,65 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "14000000-0000-4000-8000-000000000006",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "14000000-0000-4000-8000-000000000001",
+        "key": "first",
+        "kind": "device.set",
+        "ports": {
+          "target": { "lit": { "target": "hall" } },
+          "control": { "lit": "power" },
+          "to": { "lit": "on" }
+        }
+      },
+      {
+        "id": "14000000-0000-4000-8000-000000000002",
+        "key": "allowed",
+        "kind": "logic.compare",
+        "ports": {
+          "a": { "wire": { "from": "trigger", "port": "tick" } },
+          "op": { "lit": "gt" },
+          "b": { "lit": 1 }
+        }
+      },
+      {
+        "id": "14000000-0000-4000-8000-000000000003",
+        "key": "gate",
+        "kind": "flow.guard",
+        "ports": {
+          "condition": { "wire": { "from": "allowed", "port": "result" } },
+          "quietly": { "lit": true }
+        }
+      },
+      {
+        "id": "14000000-0000-4000-8000-000000000004",
+        "key": "second",
+        "kind": "device.set",
+        "ports": {
+          "target": { "lit": { "target": "hall" } },
+          "control": { "lit": "level" },
+          "to": { "lit": 50 }
+        }
+      },
+      {
+        "id": "14000000-0000-4000-8000-000000000005",
+        "key": "last",
+        "kind": "notify.feed",
+        "ports": { "message": { "lit": "passed the gate" } }
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

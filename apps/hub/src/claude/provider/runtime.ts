@@ -21,7 +21,6 @@ import type { Logger } from '@smarteverything/logging';
 import { ProviderInputError } from './input';
 import { ProviderJob } from './job';
 import { metadataOf } from './metadata';
-import { requireNativeSubscriptionBilling } from './billing';
 import { readProvider } from './runtime-read';
 import { RuntimeLog } from './runtime-log';
 import { validateTurnSize, readModels, jobMetadata, closeProbe } from './runtime-reads';
@@ -38,6 +37,7 @@ import { adoptSession } from './adopt';
 export interface ClaudeProviderRuntimeOptions {
   readonly deviceId: string;
   readonly directory: string;
+  readonly claudeHome: string | null;
   readonly executable?: string;
   readonly log: Logger;
   readonly publish: (event: ProviderEvent) => void;
@@ -94,7 +94,9 @@ export class ClaudeProviderRuntime {
     return readModels(await this.probe(), this.config.deviceId);
   }
   async metadata(id: string | undefined): Promise<ProviderMetadata> {
-    return id === undefined ? metadataOf(await this.probe()) : jobMetadata(this.job(id));
+    return id === undefined
+      ? metadataOf(await this.probe())
+      : jobMetadata(this.job(id));
   }
 
   async start(
@@ -131,7 +133,6 @@ export class ClaudeProviderRuntime {
     }
     this.starting.add(key);
     try {
-      await requireNativeSubscriptionBilling(await this.probe());
       return await this.admitTurn(turn);
     } finally {
       this.starting.delete(key);
@@ -196,6 +197,7 @@ export class ClaudeProviderRuntime {
     const job = new ProviderJob({
       turn,
       cwd,
+      claudeHome: this.config.claudeHome,
       log: this.config.log,
       publish: (event): void => {
         this.event(event, cwd, job.options.turn);
@@ -395,15 +397,13 @@ export class ClaudeProviderRuntime {
   private probe(): Promise<Query> {
     this.ready();
     if (this.discovery === null) this.trace.probeStarting();
-    this.discovery ??= providerProbe({
-      directory: this.config.directory,
-      options: this.options,
-      ...(this.config.executable === undefined ? {} : { executable: this.config.executable }),
-    }).catch((cause: unknown) => {
-      this.discovery = null;
-      this.trace.probeFailed(cause);
-      throw cause;
-    });
+    this.discovery ??= providerProbe({ ...this.config, options: this.options }).catch(
+      (cause: unknown) => {
+        this.discovery = null;
+        this.trace.probeFailed(cause);
+        throw cause;
+      },
+    );
     return this.discovery;
   }
 

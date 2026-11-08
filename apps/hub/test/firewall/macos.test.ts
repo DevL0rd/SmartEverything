@@ -4,7 +4,12 @@ import type { FirewallSystem } from '../../src/firewall/system';
 import { probeMac } from '../../src/firewall/macos';
 import { fakeSystem } from './fake-system';
 
-const CAMERA: PortRule = { purpose: 'camera', protocol: 'udp', source: '192.168.1.50' };
+const CAMERA: PortRule = {
+  purpose: 'camera',
+  protocol: 'udp',
+  mac: 'b8:88:80:d7:19:ac',
+  address: '192.168.1.50',
+};
 const WEBRTC: PortRule = { purpose: 'webrtc', protocol: 'tcp', port: 8555 };
 const HUB: PortRule = { purpose: 'hub', protocol: 'tcp', port: 8788, source: '192.168.1.0/24' };
 
@@ -61,12 +66,15 @@ describe('probeMac', () => {
 
   it('drafts a plan for exactly the programs that are not permitted', async () => {
     const both = await probeMac(mac('1', BLOCKED, UNLISTED));
-    expect(both.draft?.([])).toEqual({
+    expect(both.draft?.({ needed: [], openings: [], unlearned: [] })).toEqual({
       backend: 'macos',
       programs: ['/opt/go2rtc', '/opt/app'],
     });
     const one = await probeMac(mac('1', PERMITTED, BLOCKED));
-    expect(one.draft?.([])).toEqual({ backend: 'macos', programs: ['/opt/app'] });
+    expect(one.draft?.({ needed: [], openings: [], unlearned: [] })).toEqual({
+      backend: 'macos',
+      programs: ['/opt/app'],
+    });
     const none = await probeMac(mac('1', PERMITTED, PERMITTED));
     expect(none.draft).toBeNull();
   });

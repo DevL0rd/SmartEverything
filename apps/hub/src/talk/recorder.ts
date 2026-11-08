@@ -8,7 +8,6 @@ import type { Store } from '../store/store';
 import { OggOpusWriter } from './ogg';
 import type { PacketSink } from './transmission';
 
-const TALK_DIRECTORY = 'talk';
 const HOUR_MS = 3_600_000;
 
 class TalkPathError extends Error {
@@ -26,7 +25,7 @@ export interface Recording extends PacketSink {
 
 export interface RecorderOptions {
   readonly store: Store;
-  readonly dataDirectory: string;
+  readonly directory: string;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -43,7 +42,7 @@ export class TalkRecorder {
   private readonly root: string;
 
   constructor(private readonly options: RecorderOptions) {
-    this.root = resolve(options.dataDirectory, TALK_DIRECTORY);
+    this.root = resolve(options.directory);
   }
 
   pathOf(storagePath: string): string {

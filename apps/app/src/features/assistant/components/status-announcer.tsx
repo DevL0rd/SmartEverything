@@ -1,38 +1,72 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Text } from 'react-native';
-import type { AssistantMessageRow } from '@smarteverything/domain';
-import { announcementOf, type Announcement } from '../model/reply-announcement';
+import { useValue } from '../../../design/external-store';
+import { useChatMessages } from '../data/chat-store';
+import { historySynchronization } from '../data/history';
+import {
+  replyAnnouncements,
+  type Announcement,
+  type AnnouncementFrame,
+} from '../model/reply-announcement';
 
-const SILENT: Announcement = { text: '', urgent: false };
+interface Speech {
+  readonly polite: string;
+  readonly assertive: string;
+}
 
-export function StatusAnnouncer({ row }: { readonly row: AssistantMessageRow | null }): ReactNode {
-  const [spoken, setSpoken] = useState(SILENT);
-  const key = row === null ? null : `${row.id}:${String(row.state)}`;
-  const previous = useRef<string | null>(key);
+const SILENT: Speech = { polite: '', assertive: '' };
+
+function speechOf(batch: readonly Announcement[]): Speech {
+  const polite: string[] = [];
+  const assertive: string[] = [];
+  for (const { urgent, text } of batch) (urgent ? assertive : polite).push(text);
+  return { polite: polite.join('\n'), assertive: assertive.join('\n') };
+}
+
+function LiveRegion({
+  priority,
+  text,
+}: {
+  readonly priority: keyof Speech;
+  readonly text: string;
+}): ReactNode {
+  return (
+    <Text
+      accessibilityLiveRegion={priority}
+      aria-live={priority}
+      className="absolute size-px opacity-0"
+    >
+      {text}
+    </Text>
+  );
+}
+
+export function StatusAnnouncer({ chatId }: { readonly chatId: string }): ReactNode {
+  const rows = useChatMessages(chatId);
+  const revision = useValue(historySynchronization);
+  const previous = useRef<AnnouncementFrame | null>(null);
+  const [spoken, setSpoken] = useState({ alternate: false, speech: SILENT });
   useEffect(() => {
-    if (row === null || key === previous.current) {
-      return;
+    const prior = previous.current;
+    const current = { rows, revision };
+    previous.current = current;
+    const batch = replyAnnouncements(prior, current);
+    if (batch.length > 0) {
+      const speech = speechOf(batch);
+      setSpoken((last) => ({ alternate: !last.alternate, speech }));
+    } else if (prior !== null && prior.revision !== revision) {
+      setSpoken((last) => ({ ...last, speech: SILENT }));
     }
-    previous.current = key;
-    setSpoken(announcementOf(row) ?? SILENT);
-  }, [row, key]);
+  }, [rows, revision]);
+  const first = spoken.alternate ? SILENT : spoken.speech;
+  const second = spoken.alternate ? spoken.speech : SILENT;
   return (
     <>
-      <Text
-        accessibilityLiveRegion="polite"
-        aria-live="polite"
-        className="absolute size-px opacity-0"
-      >
-        {spoken.urgent ? '' : spoken.text}
-      </Text>
-      <Text
-        accessibilityLiveRegion="assertive"
-        aria-live="assertive"
-        className="absolute size-px opacity-0"
-      >
-        {spoken.urgent ? spoken.text : ''}
-      </Text>
+      <LiveRegion priority="polite" text={first.polite} />
+      <LiveRegion priority="assertive" text={first.assertive} />
+      <LiveRegion priority="polite" text={second.polite} />
+      <LiveRegion priority="assertive" text={second.assertive} />
     </>
   );
 }

@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { AUTOMATION_REVISION_ROW, AUTOMATION_V3, LAYOUT, PROGRAM_V3 } from '../automation-v3';
+import { AUTOMATION_REVISION_ROW, AUTOMATION_V4, LAYOUT, PROGRAM_V4 } from '../automation-v3';
+import { ACTION_MODE } from '../automation-v3/policy';
+import { NODE_ORIGIN_KINDS } from '../automation-nodes/define';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, FLAG, ID, JSON_OBJECT, MOMENT, NOTHING } from './primitives';
 import { AUTOMATION_AUTHOR, AUTOMATION_NAME } from './rows-media';
@@ -47,10 +49,12 @@ export type AutomationProgramPatchReply = z.infer<typeof AUTOMATION_PROGRAM_PATC
 const PATCH_OPS = z
   .array(JSON_OBJECT)
   .min(1)
-  .describe('Patch operations applied in order as one change; the hub validates each one');
+  .describe(
+    'Patch operations applied in order as one change; the hub validates each one. A set operation also takes mode (fire_and_forget sends the command and continues, wait_for_result continues when the device confirms or the answer arrives; only kinds that offer both accept fire_and_forget) and timeout in milliseconds, each cleared with null. A connect from the port onError wires the If it fails exit and makes the step route its errors there; a disconnect of that wire stops routing, and the inverse operations restore the previous policy.',
+  );
 
 export const AUTOMATION_PROGRAM_CHECK_REQUEST = z.union([
-  z.strictObject({ definition: PROGRAM_V3 }),
+  z.strictObject({ definition: PROGRAM_V4 }),
   z.strictObject({ automationId: ID, ops: PATCH_OPS }),
 ]);
 
@@ -61,7 +65,7 @@ export const AUTOMATION_PROGRAM_DRAFT_VIEW = z.strictObject({
   name: AUTOMATION_NAME,
   revision: REVISION,
   drafted: FLAG,
-  program: AUTOMATION_V3,
+  program: AUTOMATION_V4,
   layout: LAYOUT,
 });
 
@@ -70,7 +74,7 @@ export const AUTOMATION_PROGRAM_VIEW = z.strictObject({
   name: AUTOMATION_NAME,
   revision: REVISION,
   enabled: FLAG,
-  program: AUTOMATION_V3,
+  program: AUTOMATION_V4,
 });
 
 export type AutomationProgramView = z.infer<typeof AUTOMATION_PROGRAM_VIEW>;
@@ -91,6 +95,23 @@ export const AUTOMATION_CATALOG_ENTRY = z.strictObject({
   inputs: z.array(JSON_OBJECT),
   outputs: z.array(JSON_OBJECT),
   example: JSON_OBJECT.optional(),
+  origin: z
+    .strictObject({
+      kind: z.enum(NODE_ORIGIN_KINDS),
+      id: z.string().min(1),
+      name: z.string().min(1),
+    })
+    .optional(),
+  available: FLAG.optional(),
+  unavailable: z.string().min(1).optional(),
+  fallible: FLAG.optional(),
+  modes: z.strictObject({ default: ACTION_MODE, allowed: z.array(ACTION_MODE) }).optional(),
+  pickers: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      'Where each value comes from, by port: an option source id, an editor id, ref:<kind> for the id of a device, room, person and so on, or entity:<type> for a plugin entity id',
+    ),
 });
 
 export const AUTOMATION_CATALOG_REPLY = z.strictObject({
@@ -152,7 +173,7 @@ export const AUTOMATION_PROGRAM_ENDPOINTS = {
     body: z.strictObject({
       name: AUTOMATION_NAME,
       enabled: FLAG.default(true),
-      definition: AUTOMATION_V3,
+      definition: AUTOMATION_V4,
       layout: LAYOUT.optional(),
     }),
     response: AUTOMATION_PROGRAM_REPLY,
@@ -201,7 +222,7 @@ export const AUTOMATION_PROGRAM_ENDPOINTS = {
     params: PROGRAM_PARAMS,
     query: NOTHING,
     body: z.strictObject({
-      definition: AUTOMATION_V3,
+      definition: AUTOMATION_V4,
       layout: LAYOUT.optional(),
       expectedRevision: REVISION,
     }),
@@ -226,6 +247,17 @@ export const AUTOMATION_PROGRAM_ENDPOINTS = {
     params: PROGRAM_PARAMS,
     query: NOTHING,
     body: z.strictObject({ enabled: FLAG }),
+    response: AUTOMATION_PROGRAM_REPLY,
+  }),
+  renameAutomationProgram: endpoint({
+    method: 'PUT',
+    path: '/api/automation-programs/:automationId/name',
+    access: 'member',
+    summary:
+      'Rename the automation; the program and its revision stay as they are, and a name another automation uses is refused',
+    params: PROGRAM_PARAMS,
+    query: NOTHING,
+    body: z.strictObject({ name: AUTOMATION_NAME }),
     response: AUTOMATION_PROGRAM_REPLY,
   }),
   checkAutomationProgram: endpoint({
@@ -265,7 +297,7 @@ export const AUTOMATION_PROGRAM_ENDPOINTS = {
     summary: 'Save the working copy without publishing; the reply lists what the check finds in it',
     params: PROGRAM_PARAMS,
     query: NOTHING,
-    body: z.strictObject({ program: AUTOMATION_V3, layout: LAYOUT, expectedRevision: REVISION }),
+    body: z.strictObject({ program: AUTOMATION_V4, layout: LAYOUT, expectedRevision: REVISION }),
     response: AUTOMATION_PROGRAM_REPLY,
   }),
   discardAutomationProgramDraft: endpoint({

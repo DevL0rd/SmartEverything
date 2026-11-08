@@ -14,10 +14,14 @@ interface Props {
   readonly operation?: string;
 }
 export function ProviderWorkSheet(props: Props): ReactNode {
-  if (props.chat.engine.kind === 'dsh') return <HarnessWorkSheet {...props} />;
-  if (props.chat.engine.kind === 'claude') return <ClaudeWorkSheet {...props} />;
-  if (props.chat.engine.kind === 'codex') return <CodexWorkSheet {...props} />;
-  return null;
+  switch (props.chat.engine.kind) {
+    case 'dsh':
+      return <HarnessWorkSheet {...props} />;
+    case 'claude':
+      return <ClaudeWorkSheet {...props} />;
+    case 'codex':
+      return <CodexWorkSheet {...props} />;
+  }
 }
 export function ProviderWorkButton({ chat }: { readonly chat: AiChatRow }): ReactNode {
   const [open, change] = useState(false);

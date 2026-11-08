@@ -57,7 +57,7 @@ const INCLUDED_PRESENTATIONS = new Map([
       name: 'Plugins',
       description: 'Use the agents, commands, skills, hooks and MCP servers of installed plugins.',
       capabilities: [
-        'Load plugin skills, commands and agents',
+        'Load plugin skills and commands',
         'Run the hooks and MCP servers of plugins the owner confirmed',
       ],
       requirements: ['Installed plugins reach every machine from the Home Hub'],

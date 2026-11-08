@@ -18,13 +18,20 @@ export interface PlayerStageProps {
   readonly entry: CameraEntry;
   readonly live: LiveSession;
   readonly compact: boolean;
+  readonly cameraNameShown?: boolean;
+  readonly snapshotFit?: 'contain' | 'cover';
+  readonly videoFit?: 'contain' | 'cover';
   readonly zoom?: Zoom;
   readonly gesture?: ComposedGesture;
   readonly children?: ReactNode;
   readonly underBar?: boolean;
 }
 
-function Picture({ live, zoom }: Pick<PlayerStageProps, 'live' | 'zoom'>): ReactNode {
+function Picture({
+  live,
+  zoom,
+  fit,
+}: Pick<PlayerStageProps, 'live' | 'zoom'> & { readonly fit: 'contain' | 'cover' }): ReactNode {
   const { session } = live;
   if (session.media === null) {
     return null;
@@ -37,6 +44,7 @@ function Picture({ live, zoom }: Pick<PlayerStageProps, 'live' | 'zoom'>): React
         onWheel={zoom?.wheel ?? null}
         onFrame={session.frameSeen}
         onSoundBlocked={session.soundBlocked}
+        fit={fit}
       />
     </Animated.View>
   );
@@ -46,10 +54,13 @@ function Surface({
   live,
   zoom,
   gesture,
-}: Pick<PlayerStageProps, 'live' | 'zoom' | 'gesture'>): ReactNode {
+  fit,
+}: Pick<PlayerStageProps, 'live' | 'zoom' | 'gesture'> & {
+  readonly fit: 'contain' | 'cover';
+}): ReactNode {
   const picture = (
     <View onLayout={zoom?.onLayout} className="absolute inset-0 overflow-hidden">
-      <Picture live={live} {...(zoom === undefined ? {} : { zoom })} />
+      <Picture live={live} fit={fit} {...(zoom === undefined ? {} : { zoom })} />
     </View>
   );
   return gesture === undefined ? (
@@ -59,10 +70,17 @@ function Surface({
   );
 }
 
+function isMuted(compact: boolean, kind: string): boolean {
+  return compact && kind !== 'live' && kind !== 'connecting';
+}
+
 export function PlayerStage({
   entry,
   live,
   compact,
+  cameraNameShown = false,
+  snapshotFit = 'cover',
+  videoFit = 'contain',
   zoom,
   gesture,
   children,
@@ -71,14 +89,20 @@ export function PlayerStage({
   const timeZone = useSettings().time_zone;
   const now = useMinute();
   const actions = useStateActions(entry, live.session);
-  const muted = compact && live.state.kind !== 'live' && live.state.kind !== 'connecting';
+  const muted = isMuted(compact, live.state.kind);
   const stage = (
     <View className={cn('absolute inset-0 overflow-hidden', muted ? 'bg-surface-2' : 'bg-black')}>
       {live.state.kind === 'live' ? null : (
-        <CameraSnapshot deviceId={entry.device.id} label={entry.name} placeholder={false} />
+        <CameraSnapshot
+          deviceId={entry.device.id}
+          label={entry.name}
+          placeholder={false}
+          fit={snapshotFit}
+        />
       )}
       <Surface
         live={live}
+        fit={videoFit}
         {...(zoom === undefined ? {} : { zoom })}
         {...(gesture === undefined ? {} : { gesture })}
       />
@@ -89,6 +113,7 @@ export function PlayerStage({
         now={now}
         actions={actions}
         compact={compact}
+        cameraNameShown={cameraNameShown}
         underBar={underBar}
         muted={muted}
       />

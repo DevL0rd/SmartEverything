@@ -1,12 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { DEFAULT_ENGINE, type AiChatRow } from '@smarteverything/domain';
+import type { z } from 'zod';
+import { AI_AGENT_LOOP_SETTINGS, type AiChatRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  SUBAGENT_QUEUE_LIMIT,
-  SubagentAdmission,
-} from '../../src/assistant/coordination/admission';
+import { SubagentAdmission } from '../../src/assistant/delegation/admission';
 import type { StoredEvent } from '../../src/store/repositories/assistant-events';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 let opened: TestStore;
 let profileId: string;
@@ -32,7 +31,14 @@ function chat(parent: AiChatRow | null): AiChatRow {
     icon: null,
     parentId: parent?.id ?? null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
+  });
+}
+
+function configure(loops: z.input<typeof AI_AGENT_LOOP_SETTINGS>): void {
+  opened.store.assistantChat.saveSettings({
+    ...opened.store.assistantChat.settings(),
+    agent_loops: AI_AGENT_LOOP_SETTINGS.parse(loops),
   });
 }
 
@@ -63,7 +69,8 @@ describe('queued subagent work', () => {
   });
 
   it('shares the active slots between root conversations in turn', () => {
-    const admission = new SubagentAdmission(opened.store, 1);
+    configure({ subagents: { max_active: 1 } });
+    const admission = new SubagentAdmission(opened.store);
     const rootA = chat(null);
     const rootB = chat(null);
     const childA = chat(rootA);
@@ -80,14 +87,62 @@ describe('queued subagent work', () => {
     expect(admission.enter(other)).toBe(true);
   });
 
-  it('refuses new work once the queue is full', () => {
+  it('never refuses new work because of how much is queued', () => {
     const admission = new SubagentAdmission(opened.store);
     const root = chat(null);
     const child = chat(root);
-    for (let count = 0; count < SUBAGENT_QUEUE_LIMIT; count += 1) queue(child);
+    for (let count = 0; count < 300; count += 1) queue(child);
 
     expect(() => {
       admission.preflight(root, false);
-    }).toThrow('The bounded subagent queue is full.');
+    }).not.toThrow();
+  });
+
+  it('admits every queued helper while no capacity is set', () => {
+    const admission = new SubagentAdmission(opened.store);
+    const root = chat(null);
+    const events = Array.from({ length: 12 }, () => queue(chat(root)));
+
+    expect(events.map((event) => admission.enter(event))).not.toContain(false);
+  });
+
+  it('refuses nesting beyond the depth from the settings', () => {
+    configure({ subagents: { max_depth: 2 } });
+    const admission = new SubagentAdmission(opened.store);
+    const root = chat(null);
+    const first = chat(root);
+    const second = chat(first);
+
+    expect(() => {
+      admission.preflight(first, false);
+    }).not.toThrow();
+    expect(() => {
+      admission.preflight(second, false);
+    }).toThrow('nesting depth limit');
+  });
+
+  it('allows any nesting while no depth is set', () => {
+    const admission = new SubagentAdmission(opened.store);
+    let parent = chat(null);
+    for (let level = 0; level < 12; level += 1) parent = chat(parent);
+
+    expect(() => {
+      admission.preflight(parent, true);
+    }).not.toThrow();
+  });
+
+  it('asks a waiting helper to queue instead once the capacity from the settings is used', () => {
+    configure({ subagents: { max_active: 1 } });
+    const admission = new SubagentAdmission(opened.store);
+    const root = chat(null);
+    const child = chat(root);
+    expect(admission.enter(queue(child))).toBe(true);
+
+    expect(() => {
+      admission.preflight(child, true);
+    }).toThrow('Child capacity is full');
+    expect(() => {
+      admission.preflight(child, false);
+    }).not.toThrow();
   });
 });

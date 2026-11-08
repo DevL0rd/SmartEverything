@@ -94,6 +94,20 @@ describe('codex provider notices', () => {
     expect(client.getQueryState(KEY)?.isInvalidated).toBe(true);
   });
 
+  it('completes the current job while retaining higher-sequence events from previous jobs', () => {
+    const { client, receive } = setup();
+    const history = [noticeOf(133, OTHER_JOB).event, noticeOf(73, JOB).event];
+    client.setQueryData(KEY, { ...stateOf(), events: history });
+
+    receive(74, JOB, true);
+    receive(73);
+
+    const state = client.getQueryData<CodexChatProvider>(KEY);
+    expect(state?.state).toBe('completed');
+    expect(state?.events).toStrictEqual([...history, noticeOf(74, JOB, 'completed').event]);
+    expect(client.getQueryState(KEY)?.isInvalidated).toBe(false);
+  });
+
   it('rereads the state when the event belongs to another job', () => {
     const { client, receive } = setup();
     receive(1, OTHER_JOB);

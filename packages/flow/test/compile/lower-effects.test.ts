@@ -1,4 +1,6 @@
+import { NODE_REGISTRY } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
+import type { LowerContext } from '../../src/compile/lower';
 import { codesOf, wired, lit, make, opOf, problemsOf } from './support';
 
 describe('waits', () => {
@@ -174,5 +176,31 @@ describe('fixed settings', () => {
     expect(problemsOf([make('w', 'flow.wait')])).toMatchObject([
       { code: 'missing_port', port: 'duration' },
     ]);
+  });
+});
+
+describe('declared effect timeout', () => {
+  const base = NODE_REGISTRY.get('http.request');
+  const timed: LowerContext = {
+    kinds: (id) =>
+      id === 'plugin.p.timed' && base?.effect !== undefined
+        ? { ...base, id, effect: { ...base.effect, timeout: 10_000 } }
+        : NODE_REGISTRY.get(id),
+  };
+
+  it('feeds the declared default into the policy when the node sets none', () => {
+    expect(opOf(make('t', 'plugin.p.timed'), timed)).toMatchObject({
+      op: 'effect',
+      policy: { timeout: 10_000 },
+    });
+    expect(
+      opOf(make('t', 'plugin.p.timed', {}, { policy: { onError: 'continue' } }), timed),
+    ).toMatchObject({ policy: { onError: 'continue', timeout: 10_000 } });
+  });
+
+  it('keeps the timeout the user chose over the declared default', () => {
+    expect(
+      opOf(make('t', 'plugin.p.timed', {}, { policy: { timeout: 90_000 } }), timed),
+    ).toMatchObject({ policy: { timeout: 90_000 } });
   });
 });

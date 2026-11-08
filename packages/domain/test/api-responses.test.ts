@@ -82,6 +82,7 @@ const HEALTH_SOURCE = {
 const MCP_TOKEN = {
   id: FIRST,
   name: 'Laptop',
+  access: 'control',
   created_at: AT,
   last_used_at: null,
   revoked_at: null,

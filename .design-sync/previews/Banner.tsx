@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Banner, Stage } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
@@ -28,12 +29,12 @@ const body = (
     />
   </Col>
 );
-export const Tones = () => (
+export const Tones = (): ReactElement => (
   <Stage theme="dark" width={520}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     {body}
   </Stage>

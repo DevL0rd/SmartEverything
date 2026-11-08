@@ -1,7 +1,7 @@
+import type { ReactNode } from 'react';
 import type { LintContext } from '@smarteverything/flow/check/lint';
-import type { RunOverlay } from '../../model/canvas/contract';
 import type { DocumentStore } from '../../model/editor/document-store';
-import type { SceneOptions } from '../host/use-canvas-props';
+import type { RunSource, SceneOptions } from '../host/use-canvas-props';
 import type { Insertion } from '../palette/armed-insert';
 import type { InspectorBinding } from './editor-panes';
 
@@ -12,7 +12,8 @@ export interface EditorScreenProps {
   readonly reusable: boolean;
   readonly online: boolean;
   readonly sentence: string | null;
-  readonly run: RunOverlay | null;
+  readonly notice: ReactNode;
+  readonly run: RunSource | null;
   readonly onScreen: boolean;
   readonly options: SceneOptions;
   readonly lint: LintContext;

@@ -7,6 +7,7 @@ export class IntegrationError extends Error {
   constructor(
     readonly kind: IntegrationErrorKind,
     message: string,
+    readonly code?: string,
   ) {
     super(message);
   }

@@ -1,8 +1,10 @@
 import type { AssistantMessageRow, RowChange } from '@smarteverything/domain';
+import type { PushNotification } from './fcm';
+import type { ReplyExtras } from './reply-notices';
 
 const ASSISTANT_BODY_MAX = 180;
 
-export function assistantBody(row: AssistantMessageRow): string {
+function assistantBody(row: AssistantMessageRow): string {
   if (row.text !== '') {
     return row.text.length > ASSISTANT_BODY_MAX
       ? `${row.text.slice(0, ASSISTANT_BODY_MAX - 1)}…`
@@ -33,4 +35,25 @@ function justFinished(
     return row.state === null;
   }
   return operation === 'UPDATE' && row.state === 'answered' && old?.state !== 'answered';
+}
+
+export function replyNotification(
+  row: AssistantMessageRow,
+  title: string,
+  extras: ReplyExtras | undefined,
+): PushNotification {
+  return {
+    title,
+    body: assistantBody(row),
+    data: {
+      kind: 'assistant_reply',
+      messageId: row.id,
+      chatId: row.chat_id,
+      categoryId: 'assistant_reply',
+      ...(extras?.link === undefined ? {} : { link: extras.link }),
+    },
+    dataOnly: extras === undefined,
+    ...(extras?.tag === undefined ? {} : { tag: extras.tag }),
+    ...(extras?.sound === undefined ? {} : { sound: extras.sound }),
+  };
 }

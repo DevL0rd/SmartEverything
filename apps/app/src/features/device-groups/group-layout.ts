@@ -7,7 +7,6 @@ export interface RowMetrics {
   readonly header: number;
   readonly master: number;
   readonly white: number;
-  readonly more: number;
 }
 
 export interface RowInput {
@@ -19,7 +18,7 @@ export interface RowInput {
   readonly expandedIndex: number | null;
   readonly expandedExtra: number;
   readonly lines: number;
-  readonly note: boolean;
+  readonly footer: number;
 }
 
 export interface RowPlan {
@@ -38,7 +37,6 @@ export interface ChipGridPlan {
 }
 
 const LINE = 24;
-const NOTE = 20;
 const WIDE_COLUMNS_FROM = 1000;
 const CHIP_WIDTH = 104;
 const CHIP_GAP = 6;
@@ -52,8 +50,8 @@ const TWO_ROWS_FROM = 110;
 
 export function rowMetrics(idiom: Idiom): RowMetrics {
   return idiom === 'touch'
-    ? { row: 48, gap: 2, column: 8, header: 40, master: 48, white: 32, more: 44 }
-    : { row: 40, gap: 4, column: 12, header: 36, master: 40, white: 28, more: 32 };
+    ? { row: 48, gap: 2, column: 8, header: 40, master: 48, white: 32 }
+    : { row: 40, gap: 4, column: 12, header: 36, master: 40, white: 28 };
 }
 
 function stackHeight(metrics: RowMetrics, lines: number): number {
@@ -62,18 +60,20 @@ function stackHeight(metrics: RowMetrics, lines: number): number {
   );
 }
 
+export function rowColumns(width: number): number {
+  return width >= WIDE_COLUMNS_FROM ? 3 : 2;
+}
+
 export function planRows(input: RowInput): RowPlan {
   const metrics = rowMetrics(input.idiom);
-  const columns = input.wide ? (input.width >= WIDE_COLUMNS_FROM ? 3 : 2) : 1;
+  const columns = input.wide ? rowColumns(input.width) : 1;
   const free =
     input.height -
     stackHeight(metrics, input.lines) -
+    input.footer -
     (input.expandedIndex === null ? 0 : input.expandedExtra);
-  const step = metrics.row + metrics.gap;
-  let perColumn = Math.floor((free - (input.note ? NOTE : 0) + metrics.gap) / step);
-  if (input.total > perColumn * columns)
-    perColumn = Math.max(1, Math.floor((free - metrics.more) / step));
-  const count = Math.min(Math.max(perColumn, 0) * columns, input.total);
+  const perColumn = Math.max(1, Math.floor(free / (metrics.row + metrics.gap)));
+  const count = Math.min(perColumn * columns, input.total);
   const start =
     input.expandedIndex !== null && input.expandedIndex >= count
       ? input.expandedIndex - count + 1

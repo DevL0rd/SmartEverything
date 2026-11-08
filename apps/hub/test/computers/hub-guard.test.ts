@@ -13,12 +13,18 @@ describe('hub own-service guard', () => {
     'refuses %s of the hub units unconfirmed',
     (op) => {
       expect(hubAllows(service('smarteverything.service', op), HUB, false)).toBe(false);
-      expect(hubAllows(service('SmartEverything-desktop.service', op), HUB, false)).toBe(false);
     },
   );
 
   it('lets a confirmed request through', () => {
     expect(hubAllows(service('smarteverything.service', 'stop'), HUB, true)).toBe(true);
+  });
+
+  it('lets the Computer service on the hub machine be controlled', () => {
+    (['stop', 'restart', 'disable'] as const).forEach((op) => {
+      expect(hubAllows(service('smarteverything-node.service', op), HUB, false)).toBe(true);
+      expect(hubAllows(service('SmartEverything-desktop.service', op), HUB, false)).toBe(true);
+    });
   });
 
   it('keeps every other service control working', () => {

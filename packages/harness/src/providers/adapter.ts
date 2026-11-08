@@ -23,6 +23,7 @@ import { subscriptionPiDelegate } from './pi-delegate';
 import type { SubscriptionAttachmentOptions } from './pi-delegate';
 import { SubscriptionProviderError } from './errors';
 import { subscriptionStreamOutcome } from './stream-outcome';
+import { piUsageChunk } from './pi-usage';
 import { SubscriptionInferenceTransport } from './inference-transport';
 
 export const SUBSCRIPTION_ROUTE = z.strictObject({
@@ -167,7 +168,7 @@ export class SubscriptionRouteAdapter extends LlmAdapter {
         signal,
       });
       for await (const chunk of stream)
-        yield subscriptionStreamOutcome(chunk, transport.failureFacts());
+        yield subscriptionStreamOutcome(piUsageChunk(chunk), transport.failureFacts());
     } finally {
       unsubscribe();
     }

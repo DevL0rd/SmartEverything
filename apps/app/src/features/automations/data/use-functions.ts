@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type {
   AutomationFunctionCallersReply,
-  AutomationFunctionDetail,
   AutomationFunctionExtractReply,
   AutomationFunctionReply,
   AutomationFunctionSummary,
@@ -14,6 +13,7 @@ import type {
   FunctionExtractBody,
   FunctionSaveBody,
 } from './api';
+import type { FunctionDetail } from './graph-adapter';
 import { automationKeys } from './keys';
 import { useAutomationsSource } from './source';
 
@@ -22,11 +22,12 @@ export function useFunctions(): UseQueryResult<AutomationFunctionSummary[]> {
   return useScreenQuery({ queryKey: automationKeys.functions(), queryFn: api.listFunctions });
 }
 
-export function useFunction(functionId: string): UseQueryResult<AutomationFunctionDetail> {
+export function useFunction(functionId: string): UseQueryResult<FunctionDetail> {
+  const kinds = useAutomationsSource().lookup;
   const { api } = useAutomationsSource();
   return useScreenQuery({
     queryKey: automationKeys.function(functionId),
-    queryFn: () => api.getFunction(functionId),
+    queryFn: () => api.getFunction(functionId, kinds),
   });
 }
 

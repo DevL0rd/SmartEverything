@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ServerConnection } from './storage';
+import type { AppPlatform } from '../../design/platform';
+import type { ServerConnection, StoredKind } from './storage';
 
 const CONNECTION: ServerConnection = {
   url: 'https://home.example.com',
@@ -7,17 +8,15 @@ const CONNECTION: ServerConnection = {
 };
 let activation: Promise<void> = Promise.resolve();
 const tracked: Promise<void>[] = [];
+let platform: AppPlatform = 'android';
+const read = vi.fn<(_: StoredKind) => Promise<ServerConnection>>();
 
 vi.mock('../../design/platform', () => ({
-  appPlatform: (): string => 'android',
-  desktopBridge: (): null => null,
+  appPlatform: (): AppPlatform => platform,
 }));
 vi.mock('./storage', () => ({
-  desktopConnection: vi.fn(),
   forgetConnection: vi.fn(),
-  prefersRemoteServer: (): boolean => false,
-  preferRemoteServer: vi.fn(),
-  readStoredConnection: (): Promise<ServerConnection> => Promise.resolve(CONNECTION),
+  readStoredConnection: (kind: StoredKind): Promise<ServerConnection> => read(kind),
 }));
 vi.mock('./dev-server', () => ({ devServerUrl: (): null => null }));
 vi.mock('./client', () => ({ ApiClient: vi.fn() }));
@@ -41,9 +40,22 @@ const { connectionState, loadConnection } = await import('./connection');
 beforeEach(() => {
   tracked.length = 0;
   activation = Promise.resolve();
+  platform = 'android';
+  read.mockReset().mockResolvedValue(CONNECTION);
 });
 
 describe('loading the saved connection', () => {
+  it.each([
+    ['desktop', 'desktop'],
+    ['web', 'browser'],
+    ['android', 'phone'],
+  ] as const)('uses the %s app’s own stored Hub connection', async (form, kind) => {
+    platform = form;
+    await loadConnection();
+    expect(read).toHaveBeenCalledWith(kind);
+    expect(connectionState.get()).toMatchObject({ status: 'paired', kind });
+  });
+
   it('shows the paired state without waiting for the native activation', async () => {
     activation = new Promise<void>(() => undefined);
     await loadConnection();

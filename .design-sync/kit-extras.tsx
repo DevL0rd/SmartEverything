@@ -2,9 +2,16 @@ import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import {
   NavigationContainer,
   StackRouter,
-  createNavigatorFactory,
   useNavigationBuilder,
 } from 'expo-router/react-navigation';
+import { Screen } from 'expo-router/build/react-navigation/core/Screen';
+import type {
+  NavigationAction,
+  ParamListBase,
+  RouterFactory,
+  StackNavigationState,
+  StackRouterOptions,
+} from 'expo-router/build/react-navigation/routers';
 import { View } from 'react-native';
 import Head from 'expo-router/head';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -16,8 +23,45 @@ import { ThemeScope } from '../apps/app/src/design/theme-scope';
 
 export { ThemeScope };
 
+type StackAction = Parameters<ReturnType<typeof StackRouter>['getStateForAction']>[1];
+
+function previewStackAction(action: NavigationAction): StackAction | null {
+  const { type, payload, ...origin } = action;
+  if (type === 'GO_BACK') return { type, ...origin };
+  if (payload === undefined) return null;
+
+  const params: unknown = Reflect.get(payload, 'params');
+  const routeParams = typeof params === 'object' && params !== null ? { params } : {};
+  if (type === 'SET_PARAMS' || type === 'REPLACE_PARAMS') {
+    return { type, ...origin, payload: routeParams };
+  }
+
+  const name: unknown = Reflect.get(payload, 'name');
+  if (type !== 'NAVIGATE' || name !== 'preview') return null;
+  return { type, ...origin, payload: { name, ...routeParams } };
+}
+
+const previewRouter: RouterFactory<
+  StackNavigationState<ParamListBase>,
+  NavigationAction,
+  StackRouterOptions
+> = (options) => {
+  const { actionCreators: _actionCreators, ...router } = StackRouter(options);
+  return {
+    ...router,
+    getStateForAction: (
+      state,
+      action,
+      config,
+    ): ReturnType<ReturnType<typeof StackRouter>['getStateForAction']> => {
+      const stackAction = previewStackAction(action);
+      return stackAction === null ? null : router.getStateForAction(state, stackAction, config);
+    },
+  };
+};
+
 function SingleNavigator({ children }: { readonly children?: ReactNode }): ReactNode {
-  const { state, descriptors, NavigationContent } = useNavigationBuilder(StackRouter, {
+  const { state, descriptors, NavigationContent } = useNavigationBuilder(previewRouter, {
     children,
   });
   const route = state.routes[state.index];
@@ -28,14 +72,12 @@ function SingleNavigator({ children }: { readonly children?: ReactNode }): React
   );
 }
 
-const { Navigator, Screen } = createNavigatorFactory(SingleNavigator)();
-
 function NavigationFrame({ children }: { readonly children: ReactNode }): ReactNode {
   return (
     <NavigationContainer documentTitle={{ enabled: false }}>
-      <Navigator>
+      <SingleNavigator>
         <Screen name="preview">{() => children}</Screen>
-      </Navigator>
+      </SingleNavigator>
     </NavigationContainer>
   );
 }
@@ -117,3 +159,5 @@ export function GlobalTheme({
 }
 
 export { useBoardEditor } from '../apps/app/src/components/widget-board/edit/use-board-editor';
+export { Grid as LayoutGrid } from '../apps/app/src/components/grid';
+export { Overlay as ModalOverlay } from '../apps/app/src/components/overlay';

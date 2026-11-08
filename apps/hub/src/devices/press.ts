@@ -28,13 +28,16 @@ function pressedAutomations(
   device: DeviceRow,
   details: Readonly<Record<string, JsonValue>>,
 ): { id: string; name: string }[] {
-  const signal = eventSignal({
-    id: device.id,
-    deviceId: device.id,
-    kind: 'button',
-    occurredAt: new Date().toISOString(),
-    details,
-  });
+  const signal = eventSignal(
+    {
+      id: device.id,
+      deviceId: device.id,
+      kind: 'button',
+      occurredAt: new Date().toISOString(),
+      details,
+    },
+    device.room_id,
+  );
   return store.automations
     .list()
     .filter((automation) => automation.enabled && respondsToSignal(automation.definition, signal))

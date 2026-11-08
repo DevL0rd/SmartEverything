@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { presenceFixture } from './presence-fixture';
-import { liveSupport, TrackingLeases } from './tracking-leases';
+import { liveSupport, shownPhase, TrackingLeases } from './tracking-leases';
 
 const SENSOR = 'shelly-presence:radar-1';
 
@@ -142,5 +142,13 @@ describe('live support', () => {
     expect(liveSupport({ ...live, connection: { state: 'offline', reason: null } })).toBe(
       'offline',
     );
+  });
+});
+
+describe('shown phase', () => {
+  it('shows a starting lease as off, so a card does not redraw until it is held or failed', () => {
+    expect(shownPhase({ count: 1, phase: 'starting', error: null })).toBe('off');
+    expect(shownPhase({ count: 2, phase: 'held', error: null })).toBe('held');
+    expect(shownPhase({ count: 1, phase: 'failed', error: 'No reply' })).toBe('failed');
   });
 });

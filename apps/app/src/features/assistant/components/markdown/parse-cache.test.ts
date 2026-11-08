@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseMarkdown, readableBlocks, readableText } from './parse';
+import { parseMarkdown, readableBlocks, readableText } from '@smarteverything/domain/markdown';
 import { finalView } from '../../model/stream-view';
 
 describe('parseMarkdown cache', () => {

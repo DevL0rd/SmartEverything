@@ -96,20 +96,23 @@ export function leasedSession(
   session: LiveSession,
   leased: () => boolean,
   close: () => void,
+  dropped: (what: string) => void,
 ): LiveSession {
   const only =
-    <A extends unknown[]>(send: (...args: A) => void) =>
+    <A extends unknown[]>(send: (...args: A) => void, what: string | null = null) =>
     (...args: A): void => {
       if (leased()) {
         send(...args);
+      } else if (what !== null) {
+        dropped(what);
       }
     };
   return {
     audio: only(session.audio),
     speaking: only(session.speaking),
-    text: only(session.text),
-    picture: only(session.picture),
-    toolResult: only(session.toolResult),
+    text: only(session.text, 'text'),
+    picture: only(session.picture, 'picture'),
+    toolResult: only(session.toolResult, 'tool_result'),
     video: only(session.video),
     close: only(close),
   };

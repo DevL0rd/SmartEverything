@@ -17,8 +17,11 @@ import { SCHEDULE_SIGNALS } from './schedule';
 import { PROVIDER_SIGNALS } from './provider';
 import { LISTENING_SIGNALS } from './listening';
 import { CALL_SIGNALS } from './call';
+import { PRESENCE_SIGNALS } from './presence';
 
 export * from './spec';
+
+export * from './presence';
 
 export * from './health';
 
@@ -49,4 +52,5 @@ export const SIGNAL_SOURCES: readonly SignalSourceSpec[] = [
   PROVIDER_SIGNALS,
   LISTENING_SIGNALS,
   CALL_SIGNALS,
+  PRESENCE_SIGNALS,
 ];

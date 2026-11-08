@@ -83,3 +83,10 @@ export function scaleSummary(
   ];
   return parts.filter((part): part is string => part !== null).join(', ');
 }
+
+export const CHART_MIN_HEIGHT = 16;
+
+export function chartHeight(room: number): number | null {
+  const height = Math.floor(room);
+  return height < CHART_MIN_HEIGHT ? null : height;
+}

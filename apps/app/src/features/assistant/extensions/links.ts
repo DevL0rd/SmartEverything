@@ -1,11 +1,11 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { HarnessDiscoveryItem } from '@smarteverything/domain';
 
 export function extensionHref(
   id: string,
   kind: 'extension' | 'skill',
   section?: 'devices' | 'source',
-): Href {
+): AppHref {
   return {
     pathname: '/settings/[...page]',
     params: {
@@ -19,7 +19,7 @@ export function extensionHref(
 export function extensionBrowseHref(
   kind: 'extension' | 'skill' = 'extension',
   source?: string,
-): Href {
+): AppHref {
   return {
     pathname: '/settings/[...page]',
     params: {
@@ -29,20 +29,33 @@ export function extensionBrowseHref(
   };
 }
 
-export function bundledSkillHref(id: string): Href {
+export function bundledSkillHref(id: string): AppHref {
   return {
     pathname: '/settings/[...page]',
     params: { page: ['assistant', 'skills', 'detail'], skillId: id },
   };
 }
 
-export function discoveryHref(item: HarnessDiscoveryItem, source?: string): Href {
+export function discoveryHref(item: HarnessDiscoveryItem): AppHref {
+  const {
+    source: { url, ref, path },
+    origin,
+  } = item.reference;
   return {
     pathname: '/settings/[...page]',
     params: {
       page: ['assistant', item.kind === 'skill' ? 'skills' : 'extensions', 'detail'],
       discoveryId: item.id,
-      ...(source === undefined ? {} : { source }),
+      source: url,
+      ...(ref === undefined ? {} : { sourceRef: ref }),
+      ...(path === undefined ? {} : { sourcePath: path }),
+      ...(origin === undefined
+        ? {}
+        : {
+            originUrl: origin.url,
+            ...(origin.ref === null ? {} : { originRef: origin.ref }),
+            ...(origin.path === null ? {} : { originPath: origin.path }),
+          }),
     },
   };
 }

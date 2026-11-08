@@ -32,6 +32,7 @@ const env = (platform: SettingEnv['platform']): SettingEnv => ({
   owner: true,
   platform,
   availability: AVAILABILITY,
+  developer: false,
 });
 
 const idsFor = (platform: SettingEnv['platform']): readonly string[] =>
@@ -49,6 +50,7 @@ describe('overlay settings', () => {
       captions: true,
       display: 'active',
       whileSharing: 'small',
+      powerButton: 'call',
     });
   });
 
@@ -70,6 +72,8 @@ describe('overlay settings', () => {
     expect(choiceValue('whileSharing', 'hide')).toBe('hide');
     expect(choiceValue('position', 'top')).toBeNull();
     expect(choiceValue('display', 'everywhere')).toBeNull();
+    expect(choiceValue('powerButton', 'voice_message')).toBe('voice_message');
+    expect(choiceValue('powerButton', 'photo')).toBeNull();
   });
 
   it('offer every choice the contract has, with a label for each', () => {
@@ -98,6 +102,7 @@ describe('overlay settings', () => {
       'assistant.overlay-glow',
       'assistant.overlay-captions',
       'assistant.overlay-position',
+      'assistant.power-button',
       'assistant.overlay-permission',
       'assistant.overlay-reset-position',
     ]);
@@ -106,7 +111,16 @@ describe('overlay settings', () => {
 
   it('can be found by their search words', () => {
     const words = new Set(OVERLAY_SETTINGS.flatMap((setting) => setting.keywords));
-    for (const word of ['overlay', 'glow', 'captions', 'shortcut', 'floating', 'subtitles']) {
+    for (const word of [
+      'overlay',
+      'glow',
+      'captions',
+      'shortcut',
+      'floating',
+      'subtitles',
+      'power button',
+      'voice message',
+    ]) {
       expect(words.has(word), word).toBe(true);
     }
     expect(OVERLAY_SWITCHES.map((spec) => spec.key)).toEqual(['enabled', 'glow', 'captions']);

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { EmptyState } from '../../../components/empty-state';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { useAreaWidth } from '../../../design/size-class';
 import { joinParts } from '../../../format/text';
 import { useDevice, useIsOwner } from '../../../store/selectors';
@@ -21,7 +22,8 @@ import { OverviewSkeleton } from '../overview/overview-skeleton';
 import { SectionList } from '../overview/section-list';
 import { NowPlayingCard, VolumeCard } from '../overview/sound-cards';
 import { TopProcesses } from '../overview/top-processes';
-import { frameLayoutOf, twoColumnsAt } from '../model/sections';
+import { frameLayoutOf } from '../model/sections';
+import { twoFrameColumnsAt } from '../../../components/frame-layout';
 import { uptimeText } from '../model/computer-view';
 
 const TOPICS = ['summary', 'system'] as const;
@@ -48,7 +50,7 @@ function Columns({
   readonly disabled: boolean;
   readonly sections: ReactNode;
 }): ReactNode {
-  const two = twoColumnsAt(useAreaWidth());
+  const two = twoFrameColumnsAt(useFrameBodyWidth());
   const left = (
     <View className="min-w-0 flex-1 gap-4">
       <MemoryCard deviceId={device.id} online={device.online} />
@@ -86,7 +88,7 @@ function Body({ device }: { readonly device: Device }): ReactNode {
   const compact = frameLayoutOf(useAreaWidth()) === 'compact';
   if (!loaded && device.online) return <OverviewSkeleton />;
   return (
-    <DemandRegion deviceId={device.id} topics={TOPICS} history={device} className="gap-section-gap">
+    <>
       <ComputerHero device={device} status={status} />
       <ComputerStrip deviceId={device.id} offline={status.offline} />
       <OverviewCharts deviceId={device.id} hasGpu={hasGpu} offline={status.offline} />
@@ -105,7 +107,7 @@ function Body({ device }: { readonly device: Device }): ReactNode {
           ) : null
         }
       />
-    </DemandRegion>
+    </>
   );
 }
 
@@ -119,7 +121,14 @@ function Overview({ device }: { readonly device: Device }): ReactNode {
       width="dashboard"
       crumbs={[{ label: 'Devices', href: href.devices() }, { label: device.label }]}
     >
-      <Body device={device} />
+      <DemandRegion
+        deviceId={device.id}
+        topics={TOPICS}
+        history={device}
+        className="gap-section-gap"
+      >
+        <Body device={device} />
+      </DemandRegion>
     </ComputerFrame>
   );
 }

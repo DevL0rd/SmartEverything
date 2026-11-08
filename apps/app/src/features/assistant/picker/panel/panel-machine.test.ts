@@ -40,7 +40,13 @@ describe('the machine row line', () => {
 describe('which machine an engine runs on', () => {
   it('maps each engine to its library source id', () => {
     const device = ENGINE.parse({ kind: 'claude', device_id: DEVICE, model: 'opus' });
-    const hub = ENGINE.parse({ kind: 'openrouter', model: null });
+    const hub = ENGINE.parse({
+      kind: 'dsh',
+      execution_target: { kind: 'server' },
+      session_id: null,
+      model_route_id: DEVICE,
+      model: 'sonnet',
+    });
     const harness = ENGINE.parse({
       kind: 'dsh',
       execution_target: { kind: 'device', device_id: DEVICE },

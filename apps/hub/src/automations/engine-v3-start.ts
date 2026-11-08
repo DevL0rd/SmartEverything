@@ -1,6 +1,6 @@
 import { JSON_VALUE } from '@smarteverything/domain';
 import type {
-  AutomationRowV3,
+  StoredAutomationRow,
   AutomationV3,
   JsonValue,
   Place,
@@ -30,7 +30,7 @@ export interface Subject {
   readonly id: string;
   readonly name: string;
   readonly revision: number;
-  readonly row: AutomationRowV3;
+  readonly row: StoredAutomationRow;
   readonly program: AutomationV3;
   readonly hash: string;
   readonly plan: Plan;
@@ -136,22 +136,22 @@ export function nodeKeys(program: AutomationV3): ReadonlyMap<string, string> {
   return new Map(walkProgram(program).map(({ node }) => [node.key, node.id]));
 }
 
-export function signatureOf(row: AutomationRowV3, place: Place | null): string {
+export function signatureOf(row: StoredAutomationRow, place: Place | null): string {
   return `${String(row.revision)}|${row.name}|${JSON.stringify(place)}`;
 }
 
 export function restartedSubject(
-  row: AutomationRowV3,
+  row: StoredAutomationRow,
   state: Pick<RunState, 'revision' | 'planRefs'>,
   hash: string,
-  stored: Pick<Subject, 'plan' | 'lookup'>,
+  stored: Pick<Subject, 'plan' | 'lookup' | 'program'>,
 ): Subject {
   return {
     id: row.id,
     name: row.name,
     revision: state.revision,
     row,
-    program: row.definition,
+    program: stored.program,
     hash,
     plan: stored.plan,
     callees: state.planRefs.slice(1),

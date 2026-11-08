@@ -1,8 +1,9 @@
 import type { ReactNode, Ref } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from './app-href';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
+import { useBandHitSlop } from './widget-board/band-context';
 import { Icon, type IconName } from './icon';
 import { Interactive } from './interactive';
 import { Text } from './text';
@@ -44,14 +45,16 @@ const LOOK: Readonly<Record<ButtonVariant, Look>> = {
 
 export interface ButtonProps {
   readonly label: string;
+  readonly spoken?: string;
   readonly onPress?: () => void;
-  readonly href?: Href;
+  readonly href?: AppHref;
   readonly variant?: ButtonVariant;
   readonly size?: 'md' | 'lg';
   readonly icon?: IconName;
   readonly loading?: boolean;
   readonly disabled?: boolean;
   readonly grow?: boolean;
+  readonly wrap?: boolean;
   readonly hint?: string;
   readonly ref?: Ref<View>;
 }
@@ -61,15 +64,26 @@ interface FrameInput {
   readonly size: 'md' | 'lg';
   readonly pointer: boolean;
   readonly grow: boolean;
+  readonly wrap: boolean;
   readonly disabled: boolean;
 }
 
-function frameOf({ look, size, pointer, grow, disabled }: FrameInput): string {
+function controlShaped(size: 'md' | 'lg', wrap: boolean): boolean {
+  return size === 'md' && !wrap;
+}
+
+function radiusOf(pointer: boolean): string {
+  return pointer ? 'rounded-sm' : 'rounded-full';
+}
+
+function frameOf({ look, size, pointer, grow, wrap, disabled }: FrameInput): string {
   return cn(
     'max-w-full shrink flex-row items-center justify-center gap-2 px-4',
-    size === 'lg' ? 'min-h-touch-min px-6' : 'h-control-h',
-    pointer ? 'rounded-sm' : 'rounded-full',
+    size === 'lg' && 'px-6',
+    controlShaped(size, wrap) ? 'h-control-h' : 'min-h-touch-min',
+    radiusOf(pointer),
     grow && 'flex-1',
+    wrap && 'py-2',
     disabled ? look.off : look.frame,
   );
 }
@@ -95,6 +109,46 @@ function Leading({
   );
 }
 
+function ButtonLabel({
+  label,
+  look,
+  disabled,
+  wrap = false,
+}: {
+  readonly label: string;
+  readonly look: Look;
+  readonly disabled: boolean;
+  readonly wrap?: boolean;
+}): ReactNode {
+  return (
+    <View className="shrink">
+      <Text
+        variant="label"
+        tone={disabled ? 'faint' : look.tone}
+        numberOfLines={wrap ? undefined : 1}
+        className={wrap ? 'web:wrap-anywhere' : ''}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+export function ButtonSample({
+  label,
+  variant = 'filled',
+}: Pick<ButtonProps, 'label' | 'variant'>): ReactNode {
+  const look = LOOK[variant];
+  const pointer = useIdiom() === 'pointer';
+  return (
+    <View
+      className={frameOf({ look, size: 'md', pointer, grow: false, wrap: false, disabled: false })}
+    >
+      <ButtonLabel label={label} look={look} disabled={false} />
+    </View>
+  );
+}
+
 export function Button({
   label,
   onPress,
@@ -105,29 +159,29 @@ export function Button({
   loading = false,
   disabled = false,
   grow = false,
+  wrap = false,
   hint,
+  spoken,
   ref,
 }: ButtonProps): ReactNode {
   const look = LOOK[variant];
   const pointer = useIdiom() === 'pointer';
+  const hitSlop = useBandHitSlop(controlShaped(size, wrap));
   return (
     <Interactive
       ref={ref}
+      hitSlop={hitSlop}
       onPress={onPress}
       href={href}
       disabled={disabled || loading}
-      label={label}
+      label={spoken ?? label}
       hint={hint}
       onTone={variant === 'filled' ? 'primary' : 'surface'}
-      className={frameOf({ look, size, pointer, grow, disabled })}
-      layerClassName={pointer ? 'rounded-sm' : 'rounded-full'}
+      className={frameOf({ look, size, pointer, grow, wrap, disabled })}
+      layerClassName={radiusOf(pointer)}
     >
       <Leading icon={icon} loading={loading} look={look} pointer={pointer} disabled={disabled} />
-      <View className="shrink">
-        <Text variant="label" tone={disabled ? 'faint' : look.tone} numberOfLines={1}>
-          {label}
-        </Text>
-      </View>
+      <ButtonLabel label={label} look={look} disabled={disabled} wrap={wrap} />
     </Interactive>
   );
 }

@@ -4,8 +4,9 @@ import type { DiscordRest } from '../link';
 import { RAW_MEMBER, RAW_USER } from '../payloads';
 import { person, rawPerson, type Person } from '../person';
 import type { VoiceState } from './link';
+import { pluginLogger } from '../../../plugin-logs';
 
-const log = new Logger('hub.discord-roster');
+const log = pluginLogger(new Logger('hub.discord-roster'), 'discord');
 
 const NEGATIVE_MS = 10 * 60_000;
 

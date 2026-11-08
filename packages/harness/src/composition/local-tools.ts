@@ -73,11 +73,11 @@ export async function mountLocalTools(
 ): Promise<void> {
   await ctx.plugin(FsObservation);
   await ctx.plugin(FileTools);
-  await ctx.plugin(SearchTools, { sampleOverCapGlobResults: false });
+  await ctx.plugin(SearchTools, { sampleOverCapGlobResults: true });
   await SHELLS[HOST_PLATFORM[platform].shell].tool(ctx);
   await ctx.plugin(JobTools);
   await ctx.plugin(QuestionTool);
-  await ctx.plugin(TodoTool, { allowParallelInProgress: false });
+  await ctx.plugin(TodoTool, { allowParallelInProgress: true });
   await ctx.plugin(PlanMode, { section: PLAN_GUIDANCE });
   await mountWebTools(ctx);
   if (!server) await ctx.plugin(ProjectInstructions, { maxBytes: INSTRUCTIONS_MAX_BYTES });

@@ -127,10 +127,9 @@ function names(items: readonly ClientItem[]): string[] {
 
 function layout(view: Partial<ClientView> = {}): Record<string, string[]> {
   return Object.fromEntries(
-    clientSections(entriesOf(), { ...VIEW, ...view }).map((section) => [
-      section.title,
-      names(section.data),
-    ]),
+    clientSections(entriesOf(), { ...VIEW, ...view }).map(
+      (section) => [String(section.title), names(section.data)] as const,
+    ),
   );
 }
 

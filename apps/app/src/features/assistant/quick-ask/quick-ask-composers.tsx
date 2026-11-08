@@ -12,7 +12,7 @@ import { PermissionControl } from '../chats/permission-control';
 import { Composer, type ComposerProps, type MessageSender } from '../components/composer';
 import { useAreaStatus } from '../data/area-status';
 import { useAssistantName } from '../data/assistant-data';
-import { resetDraftEngine, useDraftEngine } from '../data/draft-engine';
+import { resetCoordinatorDraft, useDraftEngine } from '../data/draft-engine';
 import { useDraftKeyNeeded, useDraftExecution, useDraftReadiness } from '../data/draft-execution';
 import { useDraftRun } from '../data/draft-run';
 import { outboxSender } from '../data/outbox';
@@ -79,9 +79,9 @@ function useQuickAskGuards(
 function useContinueSend(chat: AiChatRow, delivery: QuickAskDelivery): MessageSender {
   const online = useSyncStatus().status === 'live';
   const outbox = outboxSender(chat.id, online);
-  return async (text, attachments, references, clientMessageId) => {
+  return async (text, attachments, extras) => {
     const delivered = delivery.begin();
-    const sent = await outbox(text, attachments, references, clientMessageId);
+    const sent = await outbox(text, attachments, extras);
     if (sent) delivered({ chatId: chat.id, title: chat.title, queued: !online });
     return sent;
   };
@@ -155,18 +155,18 @@ function useNewChatSend(
 ): { readonly send: MessageSender; readonly failure: string | null } {
   const run = useDraftRun(execution.engine ?? engine);
   const delivered = useRef<Delivered | null>(null);
-  const sender = useDraftSender(run.host, {
+  const sender = useDraftSender(QUICK_ASK_DRAFT_KEY, run.host, {
     resolve: execution.resolve,
     opened: (chatId): void => {
-      resetDraftEngine();
+      resetCoordinatorDraft();
       delivered.current?.({ chatId, title: null, queued: false });
     },
   });
   return {
     failure: sender.failure,
-    send: (text, attachments, references, clientMessageId): Promise<boolean> => {
+    send: (text, attachments, extras): Promise<boolean> => {
       delivered.current = delivery.begin();
-      return sender.send(text, attachments, references, clientMessageId);
+      return sender.send(text, attachments, extras);
     },
   };
 }
@@ -208,7 +208,11 @@ function NewChatFields({
           send={send}
           onSent={close}
           focusOnMount
-          accessory={<PermissionControl engine={engine} onChange={setEngine} />}
+          accessory={
+            engine.kind === 'dsh' ? (
+              <PermissionControl engine={engine} onChange={setEngine} />
+            ) : null
+          }
           rightAccessory={<ModelChip engine={engine} onChange={setEngine} anchorRef={cardRef} />}
         />
       </View>
@@ -217,7 +221,7 @@ function NewChatFields({
 }
 
 export function NewChatComposer({ delivery, close }: TargetProps): ReactNode {
-  const [engine, setEngine, ready] = useDraftEngine();
+  const [engine, setEngine, ready] = useDraftEngine(true);
   const control = useEngineControls(engine, setEngine);
   return (
     <EngineAccessoryProvider value={control}>

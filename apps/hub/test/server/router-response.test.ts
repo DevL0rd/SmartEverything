@@ -17,7 +17,7 @@ const COUNT = endpoint({
   response: z.strictObject({ count: z.number(), unit: z.string().default('items') }),
 });
 
-const RAW = { params: {}, query: {}, body: undefined, remote: 'test' } as const;
+const RAW = { params: {}, query: {}, body: undefined, remote: 'test', headers: {} } as const;
 
 let opened: TestStore;
 let caller: Caller;

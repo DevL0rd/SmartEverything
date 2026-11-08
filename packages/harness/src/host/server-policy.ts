@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import type { Context } from '@deepseek-ai/cordis';
-import { managedPluginAgentNames } from '../composition/managed-plugin-registry';
+import { SessionId } from '@deepseek-ai/dsh-session';
 import type { ToolExecution } from '@deepseek-ai/dsh-tools';
+import { AI_CODE_EXECUTION_TOOL_NAMES, AI_GOAL_TOOL_NAMES } from '@smarteverything/domain';
+import { MEMORY_TOOL } from '../plugins/memory/tool';
+import { SUBAGENT_MODELS_TOOL, SUBAGENT_TOOL_NAMES } from '../plugins/subagents';
 import { HarnessRuntimeError } from './errors';
 import { CHAT_FOLDER_TOOLS, chatFolderRefusal } from './chat-folder';
 
@@ -30,14 +33,21 @@ const LOCAL_SYSTEM_TOOLS = new Set([
   'job_list',
   'job_kill',
   'set_working_directory',
+  ...AI_CODE_EXECUTION_TOOL_NAMES,
 ]);
-const CONVERSATION_TOOLS = [
+const CONVERSATION_TOOLS: readonly string[] = [
   'ask_user_question',
   'skill',
   'web_fetch',
   'todo_write',
   'exit_plan_mode',
+  MEMORY_TOOL,
+  ...SUBAGENT_TOOL_NAMES,
+  SUBAGENT_MODELS_TOOL,
+  ...AI_GOAL_TOOL_NAMES,
 ];
+
+type ToolAgent = NonNullable<ToolExecution['agent']>;
 
 export class HarnessServerPolicy {
   private readonly authorities = new Map<string, HarnessAuthority>();
@@ -88,12 +98,13 @@ export class HarnessServerPolicy {
       );
     const names = this.access?.hubToolNames(authority) ?? [];
     return [
-      ...CONVERSATION_TOOLS,
       ...this.ctx.tools
         .schemas()
         .map((tool) => tool.name)
-        .filter((name) => this.fileTool(id, name) && !names.includes(name)),
-      ...managedPluginAgentNames(this.ctx),
+        .filter(
+          (name) =>
+            (CONVERSATION_TOOLS.includes(name) || this.fileTool(id, name)) && !names.includes(name),
+        ),
       ...names,
     ];
   }
@@ -109,18 +120,30 @@ export class HarnessServerPolicy {
     const agent = execution.agent;
     if (agent === undefined)
       return 'Server tools require an owned conversation and initiating profile.';
-    const authority = this.authorities.get(agent.id);
+    const root = this.rootOf(agent);
+    const authority = this.authorities.get(root);
     if (authority === undefined) return 'Server session authority is unavailable.';
     if (CONVERSATION_TOOLS.includes(execution.name)) return undefined;
     if (localSystemTool(execution.name) && !this.hubTool(authority, execution.name))
-      return this.localRefusal(agent, execution);
+      return this.localRefusal(root, agent, execution);
     return this.hubRefusal(authority, execution);
   }
+  private rootOf(agent: ToolAgent): string {
+    let current = agent;
+    while (!this.authorities.has(current.id)) {
+      const parent = current.session.header.parentSession;
+      const next = parent === undefined ? undefined : this.ctx.agents.get(SessionId(parent));
+      if (next === undefined) return current.id;
+      current = next;
+    }
+    return current.id;
+  }
   private localRefusal(
-    agent: NonNullable<ToolExecution['agent']>,
+    root: string,
+    agent: ToolAgent,
     execution: Readonly<ToolExecution>,
   ): string | undefined {
-    if (this.nativeAccess(agent.id)) return undefined;
+    if (this.nativeAccess(root)) return undefined;
     if (!CHAT_FOLDER_TOOLS.has(execution.name))
       return 'Machine tools on the home computer are for its owner.';
     const args = z.record(z.string(), z.unknown()).parse(execution.arguments);
@@ -134,10 +157,6 @@ export class HarnessServerPolicy {
     execution: Readonly<ToolExecution>,
   ): string | undefined {
     const access = this.access;
-    if (managedPluginAgentNames(this.ctx).includes(execution.name))
-      return access?.hubToolNames(authority).includes('subagent_run') === true
-        ? undefined
-        : 'This initiating grant does not expose helper execution.';
     if (access === undefined || !this.hubTool(authority, execution.name))
       return 'This initiating profile or trigger grant does not expose the requested hub tool.';
     return access.deny(authority, execution);

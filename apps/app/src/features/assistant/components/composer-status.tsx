@@ -19,6 +19,7 @@ const FACE: Readonly<Record<StatusKind, Face>> = {
   failedUpload: { icon: 'warning', tone: 'warning' },
   uploading: { icon: 'upload', tone: 'variant' },
   offline: { icon: 'wifiOff', tone: 'variant' },
+  helper: { icon: 'info', tone: 'variant' },
 };
 
 export function ComposerStatusLine({

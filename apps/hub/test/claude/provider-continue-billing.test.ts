@@ -100,6 +100,7 @@ async function idleJob(): Promise<ProviderJob> {
   const subject = new ProviderJob({
     turn: turn(),
     cwd: '/work',
+    claudeHome: null,
     log: new Logger('hub.claude'),
     publish: (): void => undefined,
   });
@@ -132,5 +133,27 @@ describe('continuing a Claude job after a billing refusal', () => {
     const subject = await idleJob();
     await subject.continue(turn());
     expect(subject.active).toBe(true);
+  });
+
+  it('keeps a live query and its original append when the hub updates the prompt', async () => {
+    sdk.extraUsage = false;
+    const subject = await idleJob();
+    await subject.continue({ ...turn(), system: 'Updated home instructions' });
+    expect(subject.active).toBe(true);
+    expect(subject.options.turn.system).toBe('system');
+  });
+
+  it('keeps the live tool grant immutable even when the hub updates the prompt', async () => {
+    sdk.extraUsage = false;
+    const subject = await idleJob();
+    await expect(
+      subject.continue({
+        ...turn(),
+        system: 'Updated home instructions',
+        tools: [{ name: 'home_read', description: 'Read the home', input_schema: {} }],
+      }),
+    ).rejects.toThrow('before changing its tools or runtime options');
+    expect(subject.active).toBe(false);
+    expect(subject.options.turn.tools).toEqual([]);
   });
 });

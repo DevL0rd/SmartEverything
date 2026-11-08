@@ -1,4 +1,4 @@
-import { Logger, redactText } from '@smarteverything/logging';
+import { Logger, clip } from '@smarteverything/logging';
 import type { NativeHubRouteSnapshot } from '@smarteverything/domain';
 
 export const log = new Logger('app.hub-network');
@@ -8,7 +8,7 @@ export function failureOf(error: unknown): Record<string, unknown> {
   return {
     errorName: error.name,
     ...(typeof code === 'string' || typeof code === 'number' ? { errorCode: code } : {}),
-    cause: redactText(error.message, 160),
+    cause: clip(error.message, 160),
   };
 }
 export async function timed<T>(

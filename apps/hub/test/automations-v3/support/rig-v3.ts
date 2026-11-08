@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import {
   SIGNAL_SOURCES,
   kindSpecOf,
-  type AutomationRowV3,
+  type StoredAutomationRow,
   type AutomationRunRecord,
   type AutomationV3,
   type FlowNode,
@@ -14,6 +14,7 @@ import {
   type TriggerNode,
 } from '@smarteverything/domain';
 import { assembleEngineV3 } from '../../../src/automations/engine-v3-assembly';
+import { createKindCatalog, type KindCatalog } from '../../../src/automations/plugin-kinds/catalog';
 import type { AssembledEngine } from '../../../src/automations/engine-v3-assembly';
 import type { EffectHandlers } from '../../../src/automations/engine-v3-effects';
 import type { AnswerFeed } from '../../../src/automations/questions/desk';
@@ -36,6 +37,7 @@ import { Sql } from '../../../src/store/sql';
 import { SimulatedClock as TestClock } from '../../../src/clock/simulated';
 import { closeSetups, NOW, setup } from '../../support/executor-setup';
 import { testLogger } from '../../support/logs';
+import { graphAutomation } from './graph-of';
 import type { FinishedRun } from '../../../src/automations/driver/ports';
 import type { StartedRun } from '../../../src/automations/webhooks/gateway';
 
@@ -68,6 +70,7 @@ function openV3(home: Home, clock: TestClock): { database: DatabaseSync; context
 }
 
 export interface RigOptions {
+  readonly kinds?: KindCatalog;
   readonly extraEffects?: EffectHandlers;
   readonly questions?: AnswerFeed;
 }
@@ -83,6 +86,7 @@ export class RigV3 {
   readonly functions: AutomationFunctionsRepository;
   readonly kept: KeptData;
   readonly finished: FinishedRun[] = [];
+  readonly kinds: KindCatalog;
   readonly wiring: {
     started?: (start: StartedRun) => void;
     timers?: { readonly changed: () => void };
@@ -95,6 +99,7 @@ export class RigV3 {
     readonly home: Home,
     private readonly options: RigOptions = {},
   ) {
+    this.kinds = options.kinds ?? createKindCatalog();
     const { database, context } = openV3(home, this.clock);
     this.database = database;
     this.programs = new AutomationProgramsRepository(context);
@@ -128,16 +133,19 @@ export class RigV3 {
     return this.assembled.engine;
   }
 
-  add(program: AutomationV3, name = 'Test automation'): AutomationRowV3 {
-    return this.programs.create({
-      name,
-      enabled: true,
-      program,
-      layout: LAYOUT,
-      planHash: PLACEHOLDER_HASH,
-      origin: null,
-      author: null,
-    });
+  add(program: AutomationV3, name = 'Test automation'): StoredAutomationRow {
+    return this.programs.create(
+      {
+        name,
+        enabled: true,
+        program: graphAutomation(program, this.kinds),
+        layout: LAYOUT,
+        planHash: PLACEHOLDER_HASH,
+        origin: null,
+        author: null,
+      },
+      this.kinds,
+    );
   }
 
   setEnabled(id: string, enabled: boolean): void {
@@ -209,6 +217,7 @@ export class RigV3 {
       random: seededRandom,
       memory: transientNodeMemory(),
       signals: { latest: () => [] },
+      kinds: this.kinds,
     };
   }
 

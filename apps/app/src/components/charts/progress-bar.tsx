@@ -8,7 +8,8 @@ import type { ColourRole } from '../../design/tokens';
 import { percent } from '../../format/number';
 import { useDraw } from '../use-draw';
 import { useMeasuredWidth } from '../use-measured-width';
-import { markerLeft, spanOf } from './progress-span';
+import { spanOf } from './progress-span';
+import { BarMarker } from './segment-bar';
 
 export interface ProgressBarProps {
   readonly progress: number | null;
@@ -17,52 +18,6 @@ export interface ProgressBarProps {
   readonly thick?: boolean;
   readonly from?: number;
   readonly marker?: number | null;
-}
-
-export interface SegmentBarProps {
-  readonly segments: readonly ColourRole[];
-  readonly marker: number;
-  readonly label: string;
-}
-
-const MARKER_CLASS = 'absolute top-0 rounded-full border-2 border-surface-1 bg-on-surface';
-
-function Marker({
-  share,
-  width,
-  size,
-}: {
-  readonly share: number;
-  readonly width: number;
-  readonly size: 'size-3' | 'size-4';
-}): ReactNode {
-  const left = { left: markerLeft(width, share, size === 'size-3' ? 12 : 16) };
-  return <View style={left} className={cn(MARKER_CLASS, size)} />;
-}
-
-function Segment({ colour }: { readonly colour: ColourRole }): ReactNode {
-  const fill = { backgroundColor: useColour(colour) };
-  return <View style={fill} className="h-2 flex-1 rounded-full" />;
-}
-
-export function SegmentBar({ segments, marker, label }: SegmentBarProps): ReactNode {
-  const { width, onLayout } = useMeasuredWidth();
-  return (
-    <View
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={label}
-      className="h-4 w-full justify-center"
-      onLayout={onLayout}
-    >
-      <View className="flex-row gap-1">
-        {segments.map((colour, index) => (
-          <Segment key={`${colour}-${String(index)}`} colour={colour} />
-        ))}
-      </View>
-      <Marker share={marker} width={width} size="size-4" />
-    </View>
-  );
 }
 
 interface LayersProps {
@@ -129,7 +84,7 @@ export function ProgressBar({
     >
       <Layers progress={progress} colour={colour} from={from} thick={thick} width={width} />
       {marker === null ? null : (
-        <Marker share={marker} width={width} size={thick ? 'size-4' : 'size-3'} />
+        <BarMarker share={marker} width={width} size={thick ? 'size-4' : 'size-3'} />
       )}
     </View>
   );

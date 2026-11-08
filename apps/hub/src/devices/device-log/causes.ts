@@ -2,7 +2,7 @@ import {
   COMMAND_CAUSE_WINDOW_MS,
   respondsToSignal,
   runsOnClock,
-  type AutomationRowV3,
+  type StoredAutomationRow,
   type CommandRow,
   type DeviceLogCause,
 } from '@smarteverything/domain';
@@ -43,9 +43,13 @@ export function peopleByClient(store: LogStore): ReadonlyMap<string, string> {
   );
 }
 
+function roomOf(store: LogStore, deviceId: string | null): string | null {
+  return deviceId === null ? null : (store.devices.find(deviceId)?.room_id ?? null);
+}
+
 function buttonCause(
   store: LogStore,
-  automation: AutomationRowV3,
+  automation: StoredAutomationRow,
   startedAt: string,
 ): DeviceLogCause | undefined {
   const at = Date.parse(startedAt);
@@ -56,7 +60,9 @@ function buttonCause(
       kinds: ['button'],
       limit: 50,
     })
-    .find((event) => respondsToSignal(automation.definition, signalOfEvent(event)));
+    .find((event) =>
+      respondsToSignal(automation.definition, signalOfEvent(event, roomOf(store, event.device_id))),
+    );
   if (press?.device_id === null || press === undefined) return undefined;
   const device = store.devices.find(press.device_id);
   return {
@@ -68,7 +74,7 @@ function buttonCause(
 
 function automationCause(
   store: LogStore,
-  automation: AutomationRowV3,
+  automation: StoredAutomationRow,
   startedAt: string,
 ): DeviceLogCause {
   return (

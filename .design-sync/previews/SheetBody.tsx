@@ -1,10 +1,11 @@
+import type { ReactNode } from 'react';
 import { ListRow, SheetBody, Stage } from 'smarteverything-kit';
 
 const rows = (
   <>
     <ListRow title="Living room" icon="home" />
     <ListRow title="Bedroom" icon="moon" />
-    <ListRow title="Kitchen" icon="kettle" />
+    <ListRow title="Kitchen" icon="utensils" />
   </>
 );
 const body = (
@@ -14,12 +15,12 @@ const body = (
     </SheetBody>
   </div>
 );
-export const Static = () => (
+export const Static = (): ReactNode => (
   <Stage theme="dark" width={420}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactNode => (
   <Stage theme="light" width={420}>
     {body}
   </Stage>

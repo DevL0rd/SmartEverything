@@ -4,12 +4,18 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { onlineManager, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { EVENT_KIND_LABELS, isUrgent, type LiveChange } from '@smarteverything/domain';
+import {
+  EVENT_KIND_LABELS,
+  isUrgent,
+  type LiveChange,
+  type Snapshot,
+} from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { ServerConnection } from '../api/transport';
 import { routeFor } from '../api/connection/active-route';
 import { errorFields } from '../design/log-tally';
 import { appPlatform, desktopBridge } from '../design/platform';
+import { refreshChatMeterHistory } from '../queries/chat-meter-history';
 import {
   applyToWindows,
   refreshAllWindows,
@@ -28,6 +34,7 @@ import {
   clearImageSession,
   clearUploads,
   forgetOlderMessages,
+  refreshOlderMessages,
   IMAGE_QUERY_PREFIX,
   refreshImageOperations,
   reconcileImageMessages,
@@ -91,14 +98,20 @@ interface Runtime extends StoreRuntime {
   readonly start: () => () => void;
 }
 
-function synchronized(client: QueryClient, replayed: readonly LiveChange[]): void {
+function synchronized(
+  client: QueryClient,
+  replayed: readonly LiveChange[],
+  snapshot: Snapshot,
+): void {
   log.info('runtime.synchronized', { replayed: replayed.length });
   if (!replayed.some((change) => change.table === 'device_effect_targets')) {
     refreshDeviceEffects(client);
   }
+  refreshChatMeterHistory(client, replayed);
   refreshHarness(client);
   refreshTranscriptReaders(client);
   refreshImageOperations(client);
+  refreshOlderMessages(snapshot.tables.assistant_messages ?? []);
 }
 
 function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {

@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { SheetHeader, Stage } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
@@ -7,12 +8,12 @@ const body = (
     <SheetHeader title="Move to room" onClose={() => undefined} touch />
   </Col>
 );
-export const Headers = () => (
+export const Headers = (): ReactElement => (
   <Stage theme="dark" width={480}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     {body}
   </Stage>

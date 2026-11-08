@@ -2,13 +2,13 @@ import { NATIVE_HUB_CAPABILITIES, type NativeHubCapabilities } from '@smartevery
 
 const HUB_CAPABILITIES_ARGUMENT_PREFIX = '--smarteverything-hub-capabilities=';
 
-export function hubCapabilities(authority: boolean, resources: boolean): NativeHubCapabilities {
+export function hubCapabilities(resources: boolean): NativeHubCapabilities {
   return {
     http: true,
     websocket: true,
     media: false,
-    routeAuthority: authority,
-    background: authority,
+    routeAuthority: true,
+    background: true,
     image: resources,
     httpMedia: resources,
     mse: false,

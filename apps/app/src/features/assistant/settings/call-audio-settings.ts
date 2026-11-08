@@ -1,5 +1,6 @@
 import { createElement, type ReactNode } from 'react';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { IconName } from '../../../components/icon';
 import type { SettingDefinition } from '../../../settings/types';
 import { PREFS } from '../../../store/prefs';
@@ -86,7 +87,7 @@ interface ActionSpec {
 }
 
 function startAction(spec: ActionSpec): SettingDefinition {
-  const href: Href = {
+  const href: AppHref = {
     pathname: '/assistant/call',
     params: { source: 'chat', action: spec.action },
   };

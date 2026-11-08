@@ -81,6 +81,7 @@ export class WizRuntime {
       id: 'wiz',
       start: (driver) => this.attach(driver),
       execute: (command) => this.execute(command),
+      executeTogether: (commands) => this.executeTogether(commands),
     });
     this.ctx.tools.register(
       wizTools(
@@ -146,12 +147,18 @@ export class WizRuntime {
   }
 
   private async execute(command: DeviceCommand): Promise<JsonValue> {
+    return this.executeTogether([command]);
+  }
+
+  private async executeTogether(commands: readonly DeviceCommand[]): Promise<JsonValue> {
+    const [first] = commands;
+    if (first === undefined) throw new Error('A WiZ command needs at least one control.');
     const bulb = [...this.bulbs.values()].find(
-      (entry) => wizExternalId(entry.current.mac) === command.externalId,
+      (entry) => wizExternalId(entry.current.mac) === first.externalId,
     );
     if (bulb === undefined || this.transport === null || this.stopped)
-      throw new CommandRefusedError(command.capability, 'this WiZ light is not available');
-    return bulb.execute(command, this.transport);
+      throw new CommandRefusedError(first.capability, 'this WiZ light is not available');
+    return bulb.executeTogether(commands, this.transport);
   }
 
   private readonly receive = (frame: WizFrame, address: string): void => {

@@ -80,10 +80,7 @@ function portOpen(zone: Zone, protocol: string, port: number): boolean {
   });
 }
 
-type SourceRule = Exclude<
-  PortRule,
-  { readonly purpose: 'webrtc' | 'plugin' | 'hub' | 'discovery' | 'announcement' }
->;
+type SourceRule = Extract<PortRule, { readonly purpose: 'camera' | 'device' }>;
 
 type PluginRule = Extract<
   PortRule,
@@ -97,7 +94,7 @@ function richRuleCovers(text: string, rule: SourceRule): boolean {
   return (
     source !== undefined &&
     !text.includes('source NOT') &&
-    addressIn(source, rule.source) &&
+    addressIn(source, rule.address) &&
     !portBound &&
     (protocol === undefined || protocol === rule.protocol)
   );
@@ -157,12 +154,15 @@ export async function probeFirewalld(system: FirewallSystem): Promise<Probe> {
       ? `firewalld is running and the ${name} zone only lets in what it allows.`
       : `firewalld is running and the ${name} zone accepts everything.`,
     stateOf: (rule) => firewalldStateOf(zone, rule),
-    draft: (needed) => ({
-      backend: 'firewalld',
-      zone: name,
-      rules: needed.map((opening) => opening.rule),
-      unprivilegedPortStart: null,
-    }),
+    draft: ({ needed }) =>
+      needed.length === 0
+        ? null
+        : {
+            backend: 'firewalld',
+            zone: name,
+            rules: needed.map((opening) => opening.rule),
+            unprivilegedPortStart: null,
+          },
     fixable: FIXABLE_UNLESS_DENIED,
     watch: WATCHED,
   };

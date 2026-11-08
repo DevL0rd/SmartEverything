@@ -5,15 +5,15 @@ import { Gauge, type GaugeBand } from '../../../components/charts';
 import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
 import { useMinute } from '../../../store/clock';
-import { useIsOwner } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { WideCard, WideFigure, type WideClass } from '../../../features/devices';
 import { CellGate, type CellCopy } from '../../shared/cell-gate';
+import { CellGraphSlot } from '../../shared/cell-graph';
 import { LiveCell } from '../../shared/cell-live';
-import { CellBadge, CellLine, CellWhy, LegendDot } from '../../shared/cell-parts';
-import { PluginButton } from '../../shared/plugin-action';
+import { CellBadge, CellLine, CellPluginAction, LegendDot } from '../../shared/cell-parts';
+import { cellMedallionSize } from '../../shared/medallion-model';
 import { ServiceMedallion } from '../../shared/service-medallion';
-import { ROUTER_PLUGIN, useRouterSnapshot, useSpeedTestRun, useSpeedTests } from '../router-data';
+import { ROUTER_PLUGIN, useRouterSnapshot, useSpeedTests, type SpeedTestRun } from '../router-data';
 import { RESTART_WIFI } from '../router-confirmations';
 import { useRouterActions } from '../quick-actions';
 import { routerSectionHref } from './links';
@@ -44,7 +44,7 @@ function Visual({
       tone={cell.tone}
       ratio={cell.ratio}
       live={pulse}
-      size={cls === 'm' ? 'cell' : 'hero'}
+      size={cellMedallionSize(cls)}
       label={cell.spoken}
       offline={cell.kind === 'stale'}
     />
@@ -112,14 +112,14 @@ interface ActionInput {
 function useCellActions({ device, cls, cell, owner }: ActionInput): readonly ReactNode[] {
   const actions = useRouterActions();
   if (cell.kind === 'stale') {
-    return [<CellWhy key="why" text={cell.reason ?? cell.line} critical />];
+    return [];
   }
   const restart = owner ? (
-    <PluginButton
+    <CellPluginAction
       key="wifi"
+      cls={cls}
       label="Restart Wi-Fi"
       variant={cell.kind === 'down' ? 'tonal' : 'text'}
-      size="md"
       confirmation={RESTART_WIFI}
       onPress={actions.restartWifi}
     />
@@ -128,11 +128,11 @@ function useCellActions({ device, cls, cell, owner }: ActionInput): readonly Rea
     return restart === null ? [] : [restart];
   }
   const test = (
-    <PluginButton
+    <CellPluginAction
       key="test"
+      cls={cls}
       label={cell.kind === 'testing' ? 'Testing…' : 'Speed test'}
       variant="tonal"
-      size="md"
       icon="gauge"
       loading={cell.kind === 'testing'}
       disabled={!cell.canRun}
@@ -148,31 +148,35 @@ function useCellActions({ device, cls, cell, owner }: ActionInput): readonly Rea
       href={routerSectionHref(device.id, 'clients', { filter: 'people' })}
     />
   );
-  return cls === 'm' ? [test, people] : [test, people, restart];
+  return [test, people, restart];
+}
+
+function StateLine({ cell }: { readonly cell: RouterCell }): ReactNode {
+  return cell.line === null ? null : (
+    <CellLine text={cell.line} tone={cell.kind === 'down' ? 'critical' : 'variant'} />
+  );
 }
 
 interface CellBodyProps {
   readonly device: Device;
   readonly cls: WideClass;
   readonly snapshot: RouterSnapshot;
+  readonly run: SpeedTestRun;
   readonly last: SpeedTestResult | null;
   readonly live: boolean;
+  readonly owner: boolean;
 }
 
-function CellBody({ device, cls, snapshot, last, live }: CellBodyProps): ReactNode {
-  const run = useSpeedTestRun();
-  const owner = useIsOwner();
+function CellBody({ device, cls, snapshot, run, last, live, owner }: CellBodyProps): ReactNode {
   const now = useMinute();
   const cell = routerCellOf(snapshot, run, last, now);
-  const panel = cls === 'l' || cls === 'xl';
   const actions = useCellActions({ device, cls, cell, owner });
   const stale = cell.kind === 'stale';
   const showLive = live && !stale;
   const graph = (
-    <View className="gap-1">
-      {cls === 'm' ? null : <GraphHead live={live} />}
-      <RouterGraph device={device} live={showLive} height={GRAPH_HEIGHT[cls]} faint={stale} />
-    </View>
+    <CellGraphSlot cap={GRAPH_HEIGHT[cls]} head={<GraphHead live={live} />}>
+      {(height) => <RouterGraph device={device} live={showLive} height={height} faint={stale} />}
+    </CellGraphSlot>
   );
   return (
     <WideCard
@@ -181,12 +185,12 @@ function CellBody({ device, cls, snapshot, last, live }: CellBodyProps): ReactNo
       title={device.label}
       visual={<Visual cell={cell} cls={cls} live={live} />}
       chip={<CellBadge chip={cell.chip} />}
-      state={<CellLine text={cell.line} tone={cell.kind === 'down' ? 'critical' : 'variant'} />}
+      state={<StateLine cell={cell} />}
       figures={figuresOf(cell)}
       graph={graph}
       actions={actions}
       ticker={cell.lastTest === null ? undefined : <CellLine text={cell.lastTest} />}
-      log={panel && snapshot.system !== null ? <Gauges system={snapshot.system} /> : undefined}
+      log={snapshot.system === null ? undefined : <Gauges system={snapshot.system} />}
     />
   );
 }
@@ -206,8 +210,8 @@ export function RouterCellFace({
   readonly cls: WideClass;
 }): ReactNode {
   const stream = useRouterSnapshot();
-  const tests = useSpeedTests();
-  const last = tests.state === 'ready' ? (tests.tests[0] ?? null) : null;
+  const { run, list } = useSpeedTests();
+  const last = list.state === 'ready' ? (list.tests[0] ?? null) : null;
   return (
     <CellGate
       device={device}
@@ -217,12 +221,20 @@ export function RouterCellFace({
       copy={COPY}
       stream={stream}
     >
-      {(snapshot) => (
+      {(snapshot, owner) => (
         <LiveCell>
           {(live) => (
             <>
               {live ? <RouterHold device={device} snapshot={snapshot} /> : null}
-              <CellBody device={device} cls={cls} snapshot={snapshot} last={last} live={live} />
+              <CellBody
+                device={device}
+                cls={cls}
+                snapshot={snapshot}
+                run={run}
+                last={last}
+                live={live}
+                owner={owner}
+              />
             </>
           )}
         </LiveCell>

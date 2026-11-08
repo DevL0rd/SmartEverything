@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { View } from 'react-native';
 import type { PluginOption, PluginRow } from '@smarteverything/domain';
 import { ListRow } from '../../../components/list-row';
 import { OptionPickerSheet } from './option-picker-sheet';
@@ -16,10 +17,12 @@ export function PersonPick({
   readonly picked: PluginOption | null;
   readonly onPick: (option: PluginOption) => void;
 }): ReactNode {
+  const opener = useRef<View>(null);
   const [open, setOpen] = useState(false);
   return (
     <>
       <ListRow
+        pressRef={opener}
         title={picked === null ? `Choose from ${row.manifest.name}` : picked.label}
         {...(picked?.detail === null || picked === null ? {} : { subtitle: picked.detail })}
         {...(picked === null
@@ -32,6 +35,7 @@ export function PersonPick({
       />
       {open ? (
         <OptionPickerSheet
+          opener={opener}
           row={row}
           source={source}
           title="Choose a person"

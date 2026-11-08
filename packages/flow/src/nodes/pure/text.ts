@@ -144,9 +144,9 @@ const replace: PureBody = (ports) => {
 
 function groupsOf(found: RegExpMatchArray): Record<string, JsonValue> {
   const groups: Record<string, JsonValue> = {};
-  found.slice(1).forEach((group, index) => {
-    groups[String(index + 1)] = group ?? '';
-  });
+  for (let index = 1; index < found.length; index += 1) {
+    groups[String(index)] = found[index] ?? '';
+  }
   return { ...groups, ...found.groups };
 }
 

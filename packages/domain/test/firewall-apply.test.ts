@@ -21,12 +21,24 @@ const PLAN: FirewallPlan = {
   revision: REVISION,
   unprivilegedPortStart: 80,
   rules: [
-    { rule: { purpose: 'camera', protocol: 'udp', source: '192.168.50.147' }, prepend: true },
     {
       rule: { purpose: 'hub', protocol: 'tcp', port: 7882, source: '192.168.50.0/24' },
       prepend: false,
     },
   ],
+  mac: {
+    entries: [{ mac: 'b8:88:80:d7:19:ac', protocol: 'udp', port: null }],
+    staleAddresses: ['192.168.50.147'],
+    staleRules: [
+      {
+        protocol: 'tcp',
+        port: 7882,
+        source: '192.168.50.0/24',
+        destination: '192.168.50.2',
+        interface: 'enp108s0',
+      },
+    ],
+  },
 };
 
 function stepOf(command: string, label = command): FirewallStep {
@@ -38,15 +50,23 @@ describe('firewall steps', () => {
     expect(firewallSteps(PLAN).map((step) => step.label)).toStrictEqual([
       'Save the setting that lets programs listen on ports from 80',
       'Apply the setting for ports from 80 now',
-      'SmartEverything camera: UDP from 192.168.50.147',
       'SmartEverything encrypted LAN: TCP port 7882 from 192.168.50.0/24',
+      'Allow 1 MAC address openings in ufw and remove 2 old or duplicate rules',
     ]);
     expect(ruleText({ purpose: 'webrtc', protocol: 'udp', port: 8555 })).toBe('UDP port 8555');
+    expect(
+      ruleText({
+        purpose: 'camera',
+        protocol: 'udp',
+        mac: 'b8:88:80:d7:19:ac',
+        address: '192.168.50.141',
+      }),
+    ).toBe('UDP from b8:88:80:d7:19:ac (now at 192.168.50.141)');
   });
 
   it('puts sudo before every command of the copyable block', () => {
-    const lines = manualScript({ ...PLAN, unprivilegedPortStart: null }).split('\n');
-    expect(lines).toHaveLength(2);
+    const lines = manualScript({ ...PLAN, mac: null, unprivilegedPortStart: null }).split('\n');
+    expect(lines).toHaveLength(1);
     expect(lines.every((line) => line.startsWith('sudo '))).toBe(true);
     expect(lines.at(-1)).toBe(
       "sudo ufw allow in proto tcp from 192.168.50.0/24 to any port 7882 comment 'SmartEverything encrypted LAN'",
@@ -59,7 +79,9 @@ describe('firewall steps', () => {
       revision: REVISION,
       program: 'C:\\go2rtc.exe',
       appProgram: 'C:\\app.exe',
-      rules: [{ purpose: 'camera', protocol: 'udp', source: '192.168.50.147' }],
+      rules: [
+        { purpose: 'camera', protocol: 'udp', mac: 'b8:88:80:d7:19:ac', address: '192.168.50.147' },
+      ],
     };
     expect(manualScript(windows).startsWith('New-NetFirewallRule')).toBe(true);
   });

@@ -37,6 +37,8 @@ describe('keyFor and roleOf', () => {
   it('tells the speed step keys from the single speed cycle key', () => {
     expect(roleOf('Speed up')).toBe('speed_up');
     expect(roleOf('Speed')).toBe('speed_cycle');
+    expect(roleOf('Fan')).toBe('speed_cycle');
+    expect(roleOf('Fan speed')).toBe('speed_cycle');
   });
 });
 

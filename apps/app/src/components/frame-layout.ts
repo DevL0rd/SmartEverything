@@ -1,4 +1,8 @@
+import { CONTAINER_WIDTH } from '../design/tokens';
+
 type FrameLayout = 'compact' | 'icon' | 'wide';
+
+export type FrameWidth = keyof typeof CONTAINER_WIDTH;
 
 export type RailWidth = 'icon' | 'mid' | 'wide';
 
@@ -11,12 +15,9 @@ export interface FrameBreakpoints {
 export interface FrameLayoutMath {
   readonly frameLayoutOf: (area: number) => FrameLayout;
   readonly railWidthOf: (area: number) => RailWidth;
-  readonly bodyWidthOf: (area: number) => number;
-  readonly twoColumnsAt: (area: number) => boolean;
 }
 
-const GUTTER = 16;
-const RAIL_PX: Readonly<Record<RailWidth, number>> = { icon: 96, mid: 240, wide: 260 };
+export const RAIL_PX: Readonly<Record<RailWidth, number>> = { icon: 96, mid: 240, wide: 260 };
 const TWO_COLUMNS_BODY = 640;
 const THREE_COLUMNS_FROM = 820;
 const TWO_COLUMNS_FROM = 560;
@@ -30,16 +31,28 @@ export function frameLayoutMath(breakpoints: FrameBreakpoints): FrameLayoutMath 
     if (area < breakpoints.iconRailMax) return 'icon';
     return area >= breakpoints.wideRailMin ? 'wide' : 'mid';
   };
-  const bodyWidthOf = (area: number): number => {
-    if (frameLayoutOf(area) === 'compact') return area - 2 * GUTTER;
-    return area - RAIL_PX[railWidthOf(area)] - 3 * GUTTER;
-  };
-  return {
-    frameLayoutOf,
-    railWidthOf,
-    bodyWidthOf,
-    twoColumnsAt: (area) => bodyWidthOf(area) >= TWO_COLUMNS_BODY,
-  };
+  return { frameLayoutOf, railWidthOf };
+}
+
+interface BodyGeometry {
+  readonly area: number;
+  readonly gutter: number;
+  readonly width: FrameWidth;
+  readonly scroll: boolean;
+  readonly railWidth?: RailWidth;
+}
+
+export function frameBodyWidthOf({ area, gutter, width, scroll, railWidth }: BodyGeometry): number {
+  const cap = width === 'dashboard' ? Infinity : CONTAINER_WIDTH[width];
+  const available = railWidth === undefined ? area : area - RAIL_PX[railWidth] - gutter;
+  return Math.max(
+    0,
+    scroll ? Math.min(available - 2 * gutter, cap) : Math.min(available, cap) - 2 * gutter,
+  );
+}
+
+export function twoFrameColumnsAt(bodyWidth: number): boolean {
+  return bodyWidth >= TWO_COLUMNS_BODY;
 }
 
 export function gridColumnsOf(bodyWidth: number): 1 | 2 | 3 {

@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import { Message, MessageType, systemBus } from '@jellybrick/dbus-next';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
@@ -22,10 +23,16 @@ const PROPERTIES_CHANGED = z.tuple([
 
 export interface NetworkBus {
   on(event: 'message', listener: (message: Message) => void): unknown;
-  on(event: 'error', listener: () => void): unknown;
+  on(event: 'error', listener: (cause: unknown) => void): unknown;
   removeListener(event: 'message', listener: (message: Message) => void): unknown;
   call(message: Message): Promise<Message | null>;
   disconnect(): void;
+}
+
+interface NetworkSubscription {
+  readonly bus: NetworkBus;
+  readonly abort: AbortController;
+  readonly ready: Promise<NativeHubNetworkChange>;
 }
 
 function changesRoute(message: Message): boolean {
@@ -36,9 +43,13 @@ function changesRoute(message: Message): boolean {
   return body.success && Object.keys(body.data[1]).some((name) => ROUTE_PROPERTIES.has(name));
 }
 
+function failureDetail(cause: unknown): string {
+  return cause instanceof Error ? cause.message : 'NetworkManager unavailable';
+}
+
 export class HubNetworkChanges {
   #generation = 0;
-  #bus: NetworkBus | undefined;
+  #subscription: NetworkSubscription | undefined;
   #timer: ReturnType<typeof setTimeout> | undefined;
   readonly #receive = (message: Message): void => {
     if (!changesRoute(message) || this.#timer !== undefined) return;
@@ -54,46 +65,75 @@ export class HubNetworkChanges {
     readonly connect: () => NetworkBus = systemBus,
   ) {}
   get watching(): boolean {
-    return this.#bus !== undefined;
+    return this.#subscription !== undefined;
   }
   async start(): Promise<NativeHubNetworkChange> {
-    if (this.#bus !== undefined) return this.#snapshot('watching', '');
+    if (this.#subscription !== undefined) return this.#subscription.ready;
     if (process.platform !== 'linux') {
       log.info('network.unsupported', { platform: process.platform });
       return this.#snapshot('unsupported', 'Native network events require Linux NetworkManager');
     }
-    const bus = this.connect();
-    this.#bus = bus;
+    let bus: NetworkBus;
+    try {
+      bus = this.connect();
+    } catch (cause) {
+      return this.#watchFailed(cause);
+    }
+    const abort = new AbortController();
+    const ready = Promise.resolve().then(() => this.#watch(bus, abort.signal));
+    this.#subscription = { bus, abort, ready };
     bus.on('message', this.#receive);
-    bus.on('error', () => {
-      log.warn('network.bus_error', { current: this.#bus === bus });
-      if (this.#bus === bus)
-        this.emit(this.#snapshot('unavailable', 'NetworkManager event channel unavailable'));
+    bus.on('error', (cause) => {
+      if (this.#subscription?.bus !== bus) return;
+      log.warn('network.bus_error', { reason: cause instanceof Error ? cause.name : 'unknown' });
+      const detail = 'NetworkManager event channel unavailable';
+      this.#disconnect(new Error(detail));
+      this.emit(this.#snapshot('unavailable', detail));
+    });
+    return ready;
+  }
+  async #watch(bus: NetworkBus, signal: AbortSignal): Promise<NativeHubNetworkChange> {
+    if (signal.aborted) return this.#snapshot('unavailable', failureDetail(signal.reason));
+    const stopped = once(signal, 'abort').then(() => {
+      signal.throwIfAborted();
     });
     try {
-      await this.#call(bus, 'GetNameOwner', 's', [MANAGER]);
-      for (const rule of MATCH_RULES) await this.#call(bus, 'AddMatch', 's', [rule]);
-      log.info('network.watching', { rules: MATCH_RULES.length, stillCurrent: this.#bus === bus });
-      return this.#snapshot(
-        this.#bus === bus ? 'watching' : 'unavailable',
-        this.#bus === bus ? '' : 'Network watching was stopped',
-      );
+      await Promise.race([this.#subscribe(bus, signal), stopped]);
+      signal.throwIfAborted();
+      log.info('network.watching', { rules: MATCH_RULES.length });
+      return this.#snapshot('watching', '');
     } catch (cause) {
-      log.warn('network.watch_failed', { reason: cause instanceof Error ? cause.name : 'unknown' });
-      if (this.#bus === bus) this.stop();
-      return this.#snapshot(
-        'unavailable',
-        cause instanceof Error ? cause.message : 'NetworkManager unavailable',
-      );
+      if (this.#subscription?.bus === bus) {
+        this.stop();
+        return this.#watchFailed(cause);
+      }
+      return this.#snapshot('unavailable', failureDetail(cause));
     }
   }
+  async #subscribe(bus: NetworkBus, signal: AbortSignal): Promise<void> {
+    await this.#call(bus, 'GetNameOwner', 's', [MANAGER]);
+    for (const rule of MATCH_RULES) {
+      signal.throwIfAborted();
+      await this.#call(bus, 'AddMatch', 's', [rule]);
+    }
+  }
+  #watchFailed(cause: unknown): NativeHubNetworkChange {
+    log.warn('network.watch_failed', { reason: cause instanceof Error ? cause.name : 'unknown' });
+    return this.#snapshot('unavailable', failureDetail(cause));
+  }
   stop(): void {
-    log.info('network.stopped', { watching: this.#bus !== undefined });
+    log.info('network.stopped', { watching: this.watching });
+    this.#disconnect(new Error('Network watching was stopped'));
+  }
+  #disconnect(reason: Error): void {
+    const subscription = this.#subscription;
+    this.#subscription = undefined;
     clearTimeout(this.#timer);
     this.#timer = undefined;
-    this.#bus?.removeListener('message', this.#receive);
-    this.#bus?.disconnect();
-    this.#bus = undefined;
+    if (subscription === undefined) return;
+    subscription.abort.abort(reason);
+    subscription.bus.removeListener('message', this.#receive);
+    subscription.bus.disconnect();
   }
   #snapshot(state: NativeHubNetworkChange['state'], detail: string): NativeHubNetworkChange {
     return { generation: ++this.#generation, state, detail };

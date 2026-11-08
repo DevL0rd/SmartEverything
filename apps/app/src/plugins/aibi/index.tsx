@@ -19,9 +19,7 @@ export const aibiAppPlugin: AppPlugin = {
     {
       key: 'aibi',
       applies: isRobot,
-      render: (device, size, showRoom) => (
-        <RobotTile device={device} showRoom={showRoom} compact={size === 'tile'} />
-      ),
+      render: (device, _size, showRoom) => <RobotTile device={device} showRoom={showRoom} />,
       cell: (device, frame, size) => <RobotCardFace device={device} frame={frame} size={size} />,
       quick: (device) => <RobotQuick device={device} />,
       subtitle: (device) => <RobotQuickLine device={device} />,

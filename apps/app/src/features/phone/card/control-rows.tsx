@@ -1,19 +1,17 @@
 import { memo, type ReactNode } from 'react';
-import { View } from 'react-native';
 import { Badge } from '../../../components/badge';
-import { atLeast, useSizeClass } from '../../../design/size-class';
+import { ActionBand } from '../../../components/widget-board/action-band';
 import {
-  DndButton,
   MediaSlider,
   MemberLine,
   OfflineLine,
   RingButton,
   RingerMenu,
-  RingerSegmented,
   TorchButton,
   type Layout,
 } from './face-controls';
-import type { PhoneControls } from './use-phone-face';
+import { PhoneMenu } from './face-header';
+import type { PhoneControls, PhoneFaceData } from './use-phone-face';
 
 export function AccessChip(): ReactNode {
   return <Badge label="Needs access" tone="warning" icon="warning" />;
@@ -55,24 +53,7 @@ function Ringer({
   );
 }
 
-function WideRinger({ controls }: { readonly controls: PhoneControls }): ReactNode {
-  const roomy = atLeast(useSizeClass().width, 'expanded');
-  if (!roomy || controls.access.dnd === 'needs_permission') {
-    return <Ringer controls={controls} compact={false} />;
-  }
-  return (
-    <>
-      <RingerSegmented
-        device={controls.device}
-        ringerMode={controls.ringerMode}
-        dnd={controls.dnd}
-      />
-      <DndButton device={controls.device} on={controls.dnd} blocked={false} />
-    </>
-  );
-}
-
-function OnlineRow({
+function OnlineItems({
   controls,
   layout,
 }: {
@@ -91,7 +72,7 @@ function OnlineRow({
   if (layout === 'w') {
     return (
       <>
-        <WideRinger controls={controls} />
+        <Ringer controls={controls} compact={false} />
         <MediaSlider device={controls.device} volume={controls.mediaVolume} label />
         <Ring controls={controls} compact />
         <Torch controls={controls} />
@@ -107,7 +88,7 @@ function OnlineRow({
   );
 }
 
-export const ControlRow = memo(function ControlRow({
+const ControlItems = memo(function ControlItems({
   controls,
   layout,
 }: {
@@ -115,16 +96,26 @@ export const ControlRow = memo(function ControlRow({
   readonly layout: Layout;
 }): ReactNode {
   if (!controls.access.view.canAct) return <MemberLine device={controls.device} />;
+  if (controls.online) return <OnlineItems controls={controls} layout={layout} />;
   return (
-    <View className="flex-row items-center gap-1.5" pointerEvents="box-none">
-      {controls.online ? (
-        <OnlineRow controls={controls} layout={layout} />
-      ) : (
-        <>
-          <OfflineLine />
-          <Ring controls={controls} compact />
-        </>
-      )}
-    </View>
+    <>
+      <OfflineLine />
+      <Ring controls={controls} compact />
+    </>
   );
 });
+
+export function PhoneBand({
+  data,
+  layout,
+}: {
+  readonly data: PhoneFaceData;
+  readonly layout: Layout;
+}): ReactNode {
+  return (
+    <ActionBand>
+      <ControlItems controls={data.controls} layout={layout} />
+      <PhoneMenu data={data} />
+    </ActionBand>
+  );
+}

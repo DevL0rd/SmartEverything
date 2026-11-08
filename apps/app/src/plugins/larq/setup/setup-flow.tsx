@@ -96,6 +96,7 @@ export function BottleSetupFlow(): ReactNode {
       <EmptyState
         icon="bluetooth"
         title="Use the Android app"
+        compact
         body="A bottle is added from an Android phone that can reach it over Bluetooth. Open SmartEverything on that phone and add it there."
       />
     </FlowFrame>

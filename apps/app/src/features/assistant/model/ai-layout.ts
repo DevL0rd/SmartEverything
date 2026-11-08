@@ -35,7 +35,6 @@ export interface AiLayoutInput {
   readonly nav: NavKind;
   readonly sidebarCollapsed: boolean;
   readonly listOpen: boolean;
-  readonly chatSelected: boolean;
   readonly dockOpen: boolean;
   readonly dockWidth: number;
 }
@@ -102,7 +101,7 @@ function composerClassOf(readingWidth: number): ComposerClass {
 export function aiLayout(input: AiLayoutInput): AiLayout {
   const areaWidth = areaWidthOf(input.windowWidth, input.nav, input.sidebarCollapsed);
   const mode = modeOf(areaWidth, input.idiom);
-  const wantsList = mode === 'split' && (input.listOpen || !input.chatSelected);
+  const wantsList = mode === 'split' && input.listOpen;
   const plan = planDock(input, areaWidth, wantsList);
   const listPane = wantsList && !plan.suppressesList;
   const docked = plan.dock === 'docked';

@@ -33,7 +33,7 @@ beforeEach(async () => {
   access = new AccessService({
     connections: new HubConnections({ identity: IDENTITY, key: '', cert: '' }, opened.store),
     store: opened.store,
-    dataDirectory: opened.directory,
+    ownerTokenPath: opened.layout.system.keys.ownerToken,
     now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
     clientWithdrawn: (): void => undefined,
     clientPaused: (): void => undefined,

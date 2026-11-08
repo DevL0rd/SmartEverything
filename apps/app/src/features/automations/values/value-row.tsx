@@ -40,7 +40,7 @@ function QuickControl({ row }: { readonly row: AutomationValueRow }): ReactNode 
   if (content.kind === 'choice')
     return (
       <IconButton
-        icon="chevronRight"
+        icon="repeat"
         label={`Next choice for ${content.name}`}
         onPress={() => {
           apply('next');
@@ -77,7 +77,10 @@ export function ValueRowItem({
   return (
     <ListRow
       title={row.content.name}
+      label={`Open ${row.content.name}`}
       subtitle={`${VALUE_TYPE_LABELS[row.content.kind]} · ${valueText(row.content)}`}
+      wrapTitle
+      wrapSubtitle
       trailing={<QuickControl row={row} />}
       onPress={() => {
         onOpen(row.id);

@@ -83,6 +83,29 @@ export const IR_CODE_ROW = z.object({
 
 export type IrCodeRow = z.infer<typeof IR_CODE_ROW>;
 
+export const IR_APPLIANCE_ROW = z.object({
+  id: ID,
+  blaster_id: ID.nullable(),
+  name: REMOTE_NAME,
+  category: z.string().min(1),
+  brand: z.string().min(1).nullable(),
+  encoder: z.string().min(1),
+  created_at: MOMENT,
+});
+
+export type IrApplianceRow = z.infer<typeof IR_APPLIANCE_ROW>;
+
+export const IR_APPLIANCE_KEY_ROW = z.object({
+  id: ID,
+  appliance_id: ID,
+  button: BUTTON_NAME,
+  format: IR_CODE_FORMAT,
+  code: z.string().min(1),
+  created_at: MOMENT,
+});
+
+export type IrApplianceKeyRow = z.infer<typeof IR_APPLIANCE_KEY_ROW>;
+
 export const SCENE_NAME = boundedText(80);
 
 export const SCENE_ROW = z.object({
@@ -96,7 +119,8 @@ export const SCENE_ROW = z.object({
 
 export type SceneRow = z.infer<typeof SCENE_ROW>;
 
-export const AUTOMATION_NAME = boundedText(80);
+export const AUTOMATION_NAME_LENGTH = 80;
+export const AUTOMATION_NAME = boundedText(AUTOMATION_NAME_LENGTH);
 
 export const AUTOMATION_AUTHOR = z.strictObject({
   via: z.enum(['person', 'assistant']),

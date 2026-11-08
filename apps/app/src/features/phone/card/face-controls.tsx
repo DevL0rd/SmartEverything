@@ -63,16 +63,29 @@ export function RingButton({
 }): ReactNode {
   const stoppable = ringing && offers(device, 'stop_ring');
   const control = useControl(device.id, stoppable ? 'stop_ring' : 'ring');
-  const label = stoppable ? (compact ? 'Stop' : 'Stop ringing') : 'Ring';
+  const label = stoppable ? 'Stop ringing' : 'Ring';
+  const variant = ringing ? 'filled' : 'tonal';
+  const press = (): void => {
+    background(control.set(null), 'phone.ring_failed');
+  };
+  if (compact) {
+    return (
+      <IconButton
+        icon={control.pending ? 'loader' : 'siren'}
+        label={label}
+        variant={variant}
+        selected={ringing}
+        onPress={press}
+      />
+    );
+  }
   return (
     <Button
       label={label}
       icon="siren"
-      variant={ringing ? 'filled' : 'tonal'}
+      variant={variant}
       loading={control.pending}
-      onPress={() => {
-        background(control.set(null), 'phone.ring_failed');
-      }}
+      onPress={press}
     />
   );
 }

@@ -6,6 +6,7 @@ import { useChannelMembers, useFloor, useLastMessage } from './talk-data';
 export interface ChannelActivity {
   readonly line: string;
   readonly live: boolean;
+  readonly hasMessages: boolean;
 }
 
 export function useChannelActivity(channelId: string): ChannelActivity {
@@ -15,10 +16,14 @@ export function useChannelActivity(channelId: string): ChannelActivity {
   const now = useMinute();
   if (floor !== null) {
     const verb = floor.kind === 'listen' ? 'is listening in' : 'is talking';
-    return { line: `${floor.speaker.label} ${verb}`, live: true };
+    return { line: `${floor.speaker.label} ${verb}`, live: true, hasMessages: last !== null };
   }
   if (last !== null) {
-    return { line: joinParts([last.speaker_label, relative(last.started_at, now)]), live: false };
+    return {
+      line: joinParts([last.speaker_label, relative(last.started_at, now)]),
+      live: false,
+      hasMessages: true,
+    };
   }
-  return { line: plural(members, 'member'), live: false };
+  return { line: plural(members, 'member'), live: false, hasMessages: false };
 }

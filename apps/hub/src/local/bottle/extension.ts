@@ -1,4 +1,5 @@
 import type { ExtensionContext, RunningExtension, ServerExtension } from '../../extensions';
+import { registerBottleAutomation } from './automation';
 import { bottleDriver } from './commands';
 import { bottleRoutes } from './routes';
 import { buildWiring } from './wiring';
@@ -13,6 +14,7 @@ export function bottlesExtension(now: () => Date): ServerExtension {
         wiring.stats.invalidate();
       }
     });
+    const unregisterKinds = registerBottleAutomation(context.hub.automationKinds);
     const unregister = context.hub.drivers.registry.register(
       bottleDriver(wiring.commands, (driverContext) => {
         wiring.slot.set(driverContext.sink);
@@ -40,6 +42,7 @@ export function bottlesExtension(now: () => Date): ServerExtension {
       stop: (): Promise<void> => {
         unfollow();
         unregister();
+        unregisterKinds();
         wiring.broker.stop();
         return Promise.resolve();
       },

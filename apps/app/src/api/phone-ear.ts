@@ -3,6 +3,7 @@ import {
   type ListeningClaimAnswer,
   type ListeningConfig,
   type ListeningRuntimeState,
+  type ListeningSource,
   type ListeningWakeClaim,
 } from '@smarteverything/domain';
 import { api } from './transport';
@@ -17,4 +18,9 @@ export async function claimPhoneWake(claim: ListeningWakeClaim): Promise<Listeni
 
 export async function reportPhoneEarState(state: ListeningRuntimeState | null): Promise<void> {
   await api().call(E.reportPhoneListening, { body: { kind: 'state', state } });
+}
+
+export async function readListeningSources(): Promise<readonly ListeningSource[]> {
+  const view = await api().call(E.readListening, {});
+  return view.sources;
 }

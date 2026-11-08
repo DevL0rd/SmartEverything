@@ -20,9 +20,10 @@ function ModeBody({
 }): ReactNode {
   const { env } = useValueServices();
   const { value } = request;
-  if (mode === 'wire') {
+  if (mode === 'wire' && env !== null) {
     return (
       <WirePicker
+        env={env}
         nodeKey={request.nodeKey}
         expected={request.type}
         value={value}
@@ -35,8 +36,9 @@ function ModeBody({
     <LiteralEditor
       control={request.control ?? JSON_CONTROL}
       label={request.label}
+      showLabel={request.heading === undefined}
       value={value !== undefined && 'lit' in value ? value.lit : undefined}
-      disabled={env.locked}
+      disabled={env === null || env.locked}
       onChange={(lit) => {
         request.onChange({ lit });
       }}
@@ -59,17 +61,27 @@ export function PortValueField({ request }: { readonly request: ValueRequest }):
     if (next !== undefined) request.onChange(next);
     setPending(next === undefined ? to : null);
   };
+  const toggle =
+    modes.length > 1 ? (
+      <Segmented
+        label={`How ${request.label} is set`}
+        options={modes.map((mode) => ({ value: mode, label: MODE_LABELS[mode] }))}
+        value={shown}
+        compact
+        disabled={env === null || env.locked}
+        onChange={choose}
+      />
+    ) : null;
   return (
     <View className="gap-2">
-      {modes.length > 1 ? (
-        <Segmented
-          label={`How ${request.label} is set`}
-          options={modes.map((mode) => ({ value: mode, label: MODE_LABELS[mode] }))}
-          value={shown}
-          disabled={env.locked}
-          onChange={choose}
-        />
-      ) : null}
+      {request.heading === undefined ? (
+        toggle
+      ) : (
+        <View className="flex-row items-start gap-3">
+          {request.heading}
+          {toggle}
+        </View>
+      )}
       <ModeBody request={request} mode={shown} />
       {request.message === undefined ? null : (
         <Text variant="footnote" tone="critical">

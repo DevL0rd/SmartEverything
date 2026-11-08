@@ -1,10 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  DEFAULT_ENGINE,
-  type AiChatRow,
-  type ClientRow,
-  type EndpointName,
-} from '@smarteverything/domain';
+import { type AiChatRow, type ClientRow, type EndpointName } from '@smarteverything/domain';
 import type { OperationInput } from '../src/server/operations';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { callerFor, type ActingContext } from '../src/extensions/mcp/tools/acting';
@@ -18,6 +13,7 @@ import { admitConfined } from '../src/server/confinement';
 import { chatOwnerOf, clientOf, confinedChatOf, roleOfCaller } from '../src/server/auth';
 import { captureLogs } from './support/logs';
 import { testStore, type TestStore } from './support/store';
+import { TEST_ENGINE } from './support/engine';
 
 let opened: TestStore;
 let owner: ClientRow;
@@ -38,7 +34,7 @@ function chat(profileId: string, parentId: string | null = null): AiChatRow {
     icon: null,
     parentId,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
     titleAuto: false,
   });
 }
@@ -69,6 +65,7 @@ function fileIn(chatRow: AiChatRow): string {
     steps: [],
     step_states: [],
     reply_to: null,
+    quote: null,
     chat_id: chatRow.id,
     origin: null,
     embeds: [],

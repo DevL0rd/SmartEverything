@@ -6,13 +6,13 @@ import { join } from 'node:path';
 import {
   ApiError,
   API_ENDPOINTS,
-  MACHINE_UPDATE_FOLDER,
   MACHINE_UPDATE_MANIFEST_FILE,
   MACHINE_UPDATE_OFFER,
   matchPath,
   type MachineUpdateManifest,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { hubLayout } from '../../src/data-layout';
 import { MediaLinks } from '../../src/server/media-links';
 import { MachineUpdates } from '../../src/updates/machine-updates';
 import { ReleaseFolder, ReleaseFolderInvalidError } from '../../src/updates/release-folder';
@@ -60,7 +60,7 @@ const MANIFEST: MachineUpdateManifest = {
 let data = '';
 
 async function release(manifest: unknown = MANIFEST): Promise<void> {
-  const folder = join(data, MACHINE_UPDATE_FOLDER);
+  const folder = folderPath();
   await mkdir(folder, { recursive: true });
   await writeFile(join(folder, 'SmartEverything-linux-x64-0.4.2.zip'), ZIP);
   await writeFile(join(folder, 'smarteverything-0.4.2-full.nupkg'), NUPKG);
@@ -68,8 +68,12 @@ async function release(manifest: unknown = MANIFEST): Promise<void> {
   await writeFile(join(folder, MACHINE_UPDATE_MANIFEST_FILE), JSON.stringify(manifest));
 }
 
+function folderPath(): string {
+  return hubLayout(data, {}).system.updates.machineUpdates;
+}
+
 function updates(): MachineUpdates {
-  return new MachineUpdates(new ReleaseFolder(data), new MediaLinks(() => NOW));
+  return new MachineUpdates(new ReleaseFolder(hubLayout(data, {})), new MediaLinks(() => NOW));
 }
 
 beforeEach(async () => {
@@ -82,12 +86,18 @@ afterEach(async () => {
 
 describe('the release folder of the home', () => {
   it('offers nothing while no release was stored', async () => {
-    expect(await updates().offer({ platform: 'linux', arch: 'x64' })).toBeNull();
+    expect(
+      await updates().offer({ product: 'desktop-computer', platform: 'linux', arch: 'x64' }),
+    ).toBeNull();
   });
 
   it('offers the files of the asked platform with signed links', async () => {
     await release();
-    const offer = await updates().offer({ platform: 'win32', arch: 'x64' });
+    const offer = await updates().offer({
+      product: 'desktop-computer',
+      platform: 'win32',
+      arch: 'x64',
+    });
     expect(
       MACHINE_UPDATE_OFFER.parse(offer).artifacts.map((artifact) => artifact.kind),
     ).toStrictEqual(['nupkg', 'releases']);
@@ -95,44 +105,57 @@ describe('the release folder of the home', () => {
       /^\/media\/machine-updates\/smarteverything-0\.4\.2-full\.nupkg\?expires=\d+&signature=[0-9a-f]+$/u,
     );
     expect(offer?.version).toBe('0.4.2');
+    expect(offer).not.toHaveProperty('notes');
+  });
+
+  it('includes the stored notes in the platform offer', async () => {
+    const notes = 'Faster startup.\n\n- Improved background reconnect.';
+    await release({ ...MANIFEST, notes });
+    const offer = await updates().offer({
+      product: 'desktop-computer',
+      platform: 'linux',
+      arch: 'x64',
+    });
+    expect(MACHINE_UPDATE_OFFER.parse(offer).notes).toBe(notes);
   });
 
   it('offers nothing for a platform the release does not cover', async () => {
     await release();
-    expect(await updates().offer({ platform: 'darwin', arch: 'arm64' })).toBeNull();
+    expect(
+      await updates().offer({ product: 'desktop-computer', platform: 'darwin', arch: 'arm64' }),
+    ).toBeNull();
   });
 
   it('names the file that is missing instead of offering a broken release', async () => {
     await release();
-    await rm(join(data, MACHINE_UPDATE_FOLDER, 'RELEASES'));
-    await expect(updates().offer({ platform: 'linux', arch: 'x64' })).rejects.toThrow(
-      ReleaseFolderInvalidError,
-    );
+    await rm(join(folderPath(), 'RELEASES'));
+    await expect(
+      updates().offer({ product: 'desktop-computer', platform: 'linux', arch: 'x64' }),
+    ).rejects.toThrow(ReleaseFolderInvalidError);
   });
 
   it('refuses a file whose size differs from the manifest', async () => {
     await release();
-    await writeFile(
-      join(data, MACHINE_UPDATE_FOLDER, 'SmartEverything-linux-x64-0.4.2.zip'),
-      'short',
-    );
-    await expect(updates().offer({ platform: 'linux', arch: 'x64' })).rejects.toThrow(
-      /bytes as the manifest says/u,
-    );
+    await writeFile(join(folderPath(), 'SmartEverything-linux-x64-0.4.2.zip'), 'short');
+    await expect(
+      updates().offer({ product: 'desktop-computer', platform: 'linux', arch: 'x64' }),
+    ).rejects.toThrow(/bytes as the manifest says/u);
   });
 
   it('refuses a manifest that leaves out a file of a platform', async () => {
     const [zip, nupkg] = MANIFEST.artifacts;
     await release({ version: '0.4.2', artifacts: [zip, nupkg] });
-    await expect(updates().offer({ platform: 'linux', arch: 'x64' })).rejects.toThrow(
-      /release manifest/u,
-    );
+    await expect(
+      updates().offer({ product: 'desktop-computer', platform: 'linux', arch: 'x64' }),
+    ).rejects.toThrow(/release manifest/u);
   });
 
   it('refuses a manifest that is not JSON', async () => {
     await release();
-    await writeFile(join(data, MACHINE_UPDATE_FOLDER, MACHINE_UPDATE_MANIFEST_FILE), '{nope');
-    await expect(updates().offer({ platform: 'linux', arch: 'x64' })).rejects.toThrow(/JSON/u);
+    await writeFile(join(folderPath(), MACHINE_UPDATE_MANIFEST_FILE), '{nope');
+    await expect(
+      updates().offer({ product: 'desktop-computer', platform: 'linux', arch: 'x64' }),
+    ).rejects.toThrow(/JSON/u);
   });
 
   it('only serves files the manifest names', async () => {

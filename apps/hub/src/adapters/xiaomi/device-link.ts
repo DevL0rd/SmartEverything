@@ -33,6 +33,7 @@ export interface LinkHooks {
   readonly uplink: (uplink: Uplink) => void;
   readonly childUplink?: (uplink: LegacyChildEvent) => (() => void) | null;
   readonly changed: () => void;
+  readonly subscribed?: (io: DeviceIo) => Promise<void>;
 }
 
 export interface Opened {
@@ -146,9 +147,13 @@ export class DeviceLink {
     }
   }
 
+  get pushing(): boolean {
+    return this.io.transport === 'lan' && this.lan?.push.state.kind === 'subscribed';
+  }
+
   state(): TransportState {
     const push = this.lan?.push.state ?? null;
-    const subscribed = this.io.transport === 'lan' && push?.kind === 'subscribed';
+    const subscribed = this.pushing;
     return {
       transport: this.io.transport,
       online: this.reach.online,
@@ -262,6 +267,9 @@ export class DeviceLink {
       {
         subscribed: (): void => {
           background(this.hooks.refresh('subscription'), 'hooks.refresh_failed');
+          background(this.hooks.subscribed?.(this.io), 'hooks.subscribed_failed', {
+            did: this.did,
+          });
         },
         uplink: this.hooks.uplink,
         childUplink: (uplink): (() => void) | null => this.hooks.childUplink?.(uplink) ?? null,
@@ -285,15 +293,14 @@ export class DeviceLink {
     if (lan === null) {
       return;
     }
-    const host = (await this.reach.confirm())?.host ?? null;
-    if (host !== null && host !== lan.host) {
-      await this.moveLan(lan, host);
-      return;
-    }
     this.switchTo(
       this.context.openCloud(this.did),
       `${reason}; the hub uses the Xiaomi cloud until the device answers at ${lan.host} again`,
     );
+    const host = (await this.reach.confirm())?.host ?? null;
+    if (host !== null && host !== lan.host && this.lan === lan) {
+      await this.moveLan(lan, host);
+    }
   }
 
   private lanReturned(host: string, client: MiioClient): void {

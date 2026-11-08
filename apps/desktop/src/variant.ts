@@ -12,6 +12,7 @@ export type DesktopVariantName = z.infer<typeof VARIANT_NAME>;
 export interface DesktopVariant {
   readonly name: DesktopVariantName;
   readonly productName: string;
+  readonly userDataName: string;
   readonly executableName: string;
   readonly appBundleId: string;
   readonly scheme: string;
@@ -23,6 +24,7 @@ export const DESKTOP_VARIANTS: Readonly<Record<DesktopVariantName, DesktopVarian
   release: {
     name: 'release',
     productName: 'SmartEverything',
+    userDataName: 'SmartEverything-Desktop',
     executableName: 'smarteverything',
     appBundleId: 'app.smarteverything.desktop',
     scheme: 'smarteverything',
@@ -31,6 +33,7 @@ export const DESKTOP_VARIANTS: Readonly<Record<DesktopVariantName, DesktopVarian
   development: {
     name: 'development',
     productName: 'SmartEverything Dev',
+    userDataName: 'SmartEverything-Desktop-Dev',
     executableName: 'smarteverything-dev',
     appBundleId: 'app.smarteverything.desktop.dev',
     scheme: 'smarteverything-dev',

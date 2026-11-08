@@ -1,38 +1,54 @@
 import type { EndpointName } from '../api/endpoints';
 import type { EndpointShape } from '../api/endpoint';
+import { SELF_UPDATE_RECOVERY_PATH } from '../self-update';
+import { HUB_UPDATE_SOURCE_PATH } from '../hub-update-source';
 import type { McpToolArea } from './areas';
 import { MCP_OPERATION_TOOLS, type McpCoreToolName } from './names';
 
-const STANDALONE_START =
-  'Legacy standalone start is retired; use startClaudeCliSession for an owned actual CLI turn.';
-const UNOWNED_SESSION =
-  'Legacy session IDs have no managed ownership; use controlClaudeCliSession with the owned chat, computer, session and job.';
-const UNBOUND_PROMPT =
-  'Legacy prompts have no managed chat binding; use answerClaudeCliPrompt for the exact owned current CLI request.';
-const CLI_TOOL =
-  'claude_control starts, steers and answers Claude CLI chats and fills in the operation, session and job ids itself.';
-const CONTROLLER_REGISTRATION =
-  'Desktop controller registration is replaced by owned CLI sessions and native provider execution.';
-const CONTROLLER_REMOVAL =
-  'Desktop controller management is retained only for legacy app compatibility.';
+export * from './operation-traits';
+
+const RETIRED_EXTERNAL_CHAT = 'External Claude and Codex chat controls have been removed.';
 
 export const MCP_UNAVAILABLE_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
-  startClaudeSession: STANDALONE_START,
-  startComputerClaudeSession: STANDALONE_START,
-  controlClaudeSession: UNOWNED_SESSION,
-  controlComputerClaudeSession: UNOWNED_SESSION,
-  answerClaudePrompt: UNBOUND_PROMPT,
-  answerComputerClaudePrompt: UNBOUND_PROMPT,
-  startClaudeCliSession: CLI_TOOL,
-  controlClaudeCliSession: CLI_TOOL,
-  answerClaudeCliPrompt: CLI_TOOL,
-  registerClaudeController: CONTROLLER_REGISTRATION,
-  registerComputerClaudeController: CONTROLLER_REGISTRATION,
-  removeClaudeController: CONTROLLER_REMOVAL,
-  removeComputerClaudeController: CONTROLLER_REMOVAL,
+  startClaudeSession: RETIRED_EXTERNAL_CHAT,
+  startComputerClaudeSession: RETIRED_EXTERNAL_CHAT,
+  controlClaudeSession: RETIRED_EXTERNAL_CHAT,
+  controlComputerClaudeSession: RETIRED_EXTERNAL_CHAT,
+  answerClaudePrompt: RETIRED_EXTERNAL_CHAT,
+  answerComputerClaudePrompt: RETIRED_EXTERNAL_CHAT,
+  startClaudeCliSession: RETIRED_EXTERNAL_CHAT,
+  controlClaudeCliSession: RETIRED_EXTERNAL_CHAT,
+  answerClaudeCliPrompt: RETIRED_EXTERNAL_CHAT,
+  registerClaudeController: RETIRED_EXTERNAL_CHAT,
+  registerComputerClaudeController: RETIRED_EXTERNAL_CHAT,
+  removeClaudeController: RETIRED_EXTERNAL_CHAT,
+  removeComputerClaudeController: RETIRED_EXTERNAL_CHAT,
+  listClaudeSessions: RETIRED_EXTERNAL_CHAT,
+  readClaudeSession: RETIRED_EXTERNAL_CHAT,
+  listClaudeThread: RETIRED_EXTERNAL_CHAT,
+  listClaudePrompts: RETIRED_EXTERNAL_CHAT,
+  installClaudeLink: RETIRED_EXTERNAL_CHAT,
+  listClaudeCliSessions: RETIRED_EXTERNAL_CHAT,
+  readClaudeCliSession: RETIRED_EXTERNAL_CHAT,
+  readClaudeCliHistory: RETIRED_EXTERNAL_CHAT,
+  readClaudeCliOperation: RETIRED_EXTERNAL_CHAT,
+  readClaudeCliPrompts: RETIRED_EXTERNAL_CHAT,
+  readComputerClaudeOperation: RETIRED_EXTERNAL_CHAT,
+  listComputerClaudeSessions: RETIRED_EXTERNAL_CHAT,
+  readComputerClaudeSession: RETIRED_EXTERNAL_CHAT,
+  listComputerClaudeThread: RETIRED_EXTERNAL_CHAT,
+  listComputerClaudePrompts: RETIRED_EXTERNAL_CHAT,
+  installComputerClaudeLink: RETIRED_EXTERNAL_CHAT,
+  listComputerClaudeTools: RETIRED_EXTERNAL_CHAT,
+  callComputerClaudeTool: RETIRED_EXTERNAL_CHAT,
+  postAssistantHelperArtifacts: 'Use chat_post with shareWithParent from the calling helper.',
+  executeComputerRuntime: RETIRED_EXTERNAL_CHAT,
+  readComputerRuntimeReceipt: RETIRED_EXTERNAL_CHAT,
 };
 
 export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
+  startHubUpdateSource: 'Requires explicit approval of the exact Git update in the owner app.',
+  saveHubUpdateSource: 'Requires the owner to confirm creating a local recovery branch in the app.',
   readAssistantVoiceSample:
     'Audio audition is an explicit person-operated Play control in voice settings.',
   updateComputerNativeMcpPolicy:
@@ -59,6 +75,8 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'Public untrusted discovery probe for app transport bootstrap; hubConnection provides authenticated metadata.',
   status:
     'Public health check for clients that are not signed in; readSnapshot and session cover it.',
+  unlockShare:
+    'A visitor opens a share link with its password in a browser; the link and password stay with the person who shared them.',
   claimPairing: 'A new phone exchanges its own pairing code; an assistant is never a phone.',
   proveHub: 'A new phone checks the hub it is pairing with; an assistant is never a phone.',
   startPairing: 'Creates a code that lets a new phone in; granting access stays with the person.',
@@ -75,8 +93,16 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
   readHealthOutbox: 'Phone delivery protocol (the phone’s pairing) for writing to Health Connect.',
   ackHealthOutbox: 'Phone delivery protocol (the phone’s pairing) for writing to Health Connect.',
   readBleWatch: 'The phone’s Bluetooth listener asks what to listen for.',
-  reportClientFailures:
-    'An app reports its own redacted errors for diagnosis; there is nothing for an assistant to do with it.',
+  reportClientPerf:
+    'An app reports its own performance samples; there is nothing for an assistant to do with it.',
+  ingestRuntimeLogs:
+    'An app or device ships its own redacted log records; assistants read them with the log tool.',
+  ingestDesktopRuntimeLogs:
+    'The paired desktop ships its own process logs; assistants read them with the log tool.',
+  reportRuntimeLogGap:
+    'An app reports records it had to drop; nothing for an assistant to do with it.',
+  dropRuntimeLogs: 'Deletes stored log records; only a person in the app does that.',
+  updateAiRepairSettings: 'Only the owner in the app can enable automatic AI repair.',
   watchListeningLevel:
     'A live loudness meter for the person looking at the Listening page; assistants read listening_read.',
   watchWakeTest:
@@ -91,6 +117,9 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
   answerPhoneAction: 'A phone answers an action; use phone_control to act.',
   answerAppView: 'An app answers a request to show something.',
   uploadPhoneIcon: 'A phone uploads the icon pictures of its apps for the app to show.',
+  uploadHomeMapScan: 'A person uploads the scan file in the app; assistants edit its transform.',
+  homeMapScanLink:
+    'Returns a signed link the app draws the scan from; assistants edit its transform.',
   readPhoneIcon: 'App icon pictures are shown by the app; phone_read detail lists the apps.',
   relayBleAdverts: 'The phone’s Bluetooth listener forwards raw radio adverts.',
   readPhoneWatches:
@@ -129,6 +158,7 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
   offerCamera: 'Live video needs a WebRTC peer; use camera_read to see a camera.',
   talkCamera: 'Sends microphone audio to a camera speaker; only the person talks through cameras.',
   cameraStream: 'Live video over a WebSocket; use camera_read to see a camera.',
+  openVacuumVideo: 'Live robot video needs a WebRTC peer and the video password the person types.',
   cameraSnapshot: 'Returns a signed link for a browser; camera_read returns the image.',
   recordingLinks: 'Returns signed links for a browser; camera_read returns saved images.',
   importGeminiKey:
@@ -137,6 +167,8 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
   removeGeminiKey: 'Removes the voice assistant’s credential; the person does it in Settings.',
   setOpenRouterKey: 'Stores the OpenRouter credential; the person enters it in Settings.',
   removeOpenRouterKey: 'Removes the OpenRouter credential; the person does it in Settings.',
+  setDeepSeekKey: 'Stores the DeepSeek credential; the person enters it in Settings.',
+  removeDeepSeekKey: 'Removes the DeepSeek credential; the person does it in Settings.',
   declineOutreach: 'A person declines a ringing AI call on their own device.',
   updateReachSettings:
     'The person’s own rules for how the AI may reach them; only they change them in Settings.',
@@ -169,7 +201,7 @@ const MCP_ADMIN_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
   updateAssistantSettings:
     'Changes the assistant’s instructions, models and limits for everyone; only a person in the app does that.',
   updateAiBudget: 'Sets what the AI may spend; only a person in the app does that.',
-  setOpenRouterDefaults:
+  updateAiEngineDefault:
     'Chooses the models every new chat starts with; only a person in the app does that.',
   setAiModelPrice:
     'Overrides what a model costs, which feeds the budget; only a person in the app does that.',
@@ -255,23 +287,26 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/clipboard', 'settings'],
   ['/api/push-targets', 'settings'],
   ['/api/rooms', 'home'],
+  ['/api/home-map', 'home'],
   ['/api/weather', 'home'],
   ['/api/exchange-rates', 'settings'],
   ['/api/places', 'home'],
   ['/api/providers', 'home'],
   ['/api/devices', 'devices'],
-  ['/api/device-groups', 'devices'],
-  ['/api/device-targets', 'devices'],
-  ['/api/device-effects', 'devices'],
+  ['/api/device-', 'devices'],
+  ['/api/models', 'devices'],
+  ['/api/model-', 'devices'],
   ['/api/listening', 'assistant'],
   ['/api/televisions', 'devices'],
+  ['/api/vacuums', 'devices'],
   ['/api/computers', 'computers'],
-  ['/api/device-state', 'devices'],
   ['/api/ir-', 'devices'],
   ['/api/commands', 'control'],
   ['/api/history', 'history'],
   ['/api/events', 'history'],
   ['/api/cameras', 'cameras'],
+  ['/api/planner', 'planner'],
+  ['/api/google', 'planner'],
   ['/api/camera-transcripts', 'cameras'],
   ['/api/transcript', 'cameras'],
   ['/api/recordings', 'cameras'],
@@ -281,8 +316,12 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/ai/usage', 'assistant'],
   ['/api/ai/budget', 'assistant'],
   ['/api/ai/engines', 'assistant'],
+  ['/api/ai-repair', 'system'],
   ['/api/ai', 'assistant'],
   ['/api/app-view', 'assistant'],
+  [SELF_UPDATE_RECOVERY_PATH, 'system'],
+  [HUB_UPDATE_SOURCE_PATH, 'system'],
+  ['/api/runtime-logs', 'system'],
   ['/api/scenes', 'automations'],
   ['/api/automations', 'automations'],
   ['/api/automation-', 'automations'],
@@ -291,11 +330,12 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/reach', 'assistant'],
   ['/api/claude', 'assistant'],
   ['/api/plugins', 'plugins'],
+  ['/api/drive', 'drive'],
+  ['/s/', 'drive'],
 ];
 
 export function mcpOperationArea(endpoint: Pick<EndpointShape, 'path'>): McpToolArea {
-  const found = AREA_BY_PREFIX.find(([prefix]) => endpoint.path.startsWith(prefix));
-  return found === undefined ? 'system' : found[1];
+  return AREA_BY_PREFIX.find(([prefix]) => endpoint.path.startsWith(prefix))?.[1] ?? 'system';
 }
 
 export function isHumanOnlyOperation(name: EndpointName): boolean {
@@ -304,7 +344,7 @@ export function isHumanOnlyOperation(name: EndpointName): boolean {
 
 const MCP_CORE_OPERATIONS: Readonly<Partial<Record<McpCoreToolName, EndpointName>>> = {
   list_device_groups: 'listDeviceGroups',
-  set_ai_defaults: 'setOpenRouterDefaults',
+  set_ai_defaults: 'updateAiEngineDefault',
   computer_read: 'readComputer',
   get_computer_audio: 'readComputerAudio',
   get_computer_displays: 'readComputerDisplays',
@@ -322,17 +362,6 @@ const MCP_CORE_OPERATIONS: Readonly<Partial<Record<McpCoreToolName, EndpointName
   minimise_window: 'changeComputerWindow',
   close_window: 'changeComputerWindow',
   file_edit: 'writeComputerFiles',
-  list_claude_cli_sessions: 'listClaudeCliSessions',
-  read_claude_cli_session: 'readClaudeCliSession',
-  read_claude_cli_history: 'readClaudeCliHistory',
-  read_claude_cli_operation: 'readClaudeCliOperation',
-  list_claude_cli_prompts: 'readClaudeCliPrompts',
-  start_claude_session: 'startClaudeCliSession',
-  send_claude_message: 'controlClaudeCliSession',
-  stop_claude_session: 'controlClaudeCliSession',
-  close_claude_session: 'controlClaudeCliSession',
-  configure_claude_session: 'controlClaudeCliSession',
-  answer_claude_prompt: 'answerClaudeCliPrompt',
 };
 
 const OPERATION_OF_TOOL: ReadonlyMap<string, EndpointName> = new Map<string, EndpointName>([
@@ -350,66 +379,6 @@ export function isAdminOperation(name: EndpointName): boolean {
 
 export function pluginTurnOperationReason(name: EndpointName): string | null {
   return MCP_HUMAN_ONLY_OPERATIONS[name] ?? MCP_ADMIN_OPERATIONS[name] ?? null;
-}
-
-export interface McpAnnotationHints {
-  readonly readOnlyHint?: boolean;
-  readonly destructiveHint?: boolean;
-  readonly idempotentHint?: boolean;
-  readonly openWorldHint?: boolean;
-}
-
-export interface McpOperationTraits {
-  readonly hints?: McpAnnotationHints;
-  readonly answers?: true;
-  readonly callIdentity?: string;
-  readonly householdWide?: true;
-}
-
-const READS_BY_POST: McpOperationTraits = { hints: { readOnlyHint: true, idempotentHint: true } };
-const ANSWERS: McpOperationTraits = { answers: true };
-const REACHES_OUT: McpOperationTraits = { hints: { openWorldHint: true } };
-const CLAUDE_TURN: McpOperationTraits = {
-  hints: { idempotentHint: true, destructiveHint: true, openWorldHint: true },
-};
-
-const MCP_OPERATION_TRAITS: Readonly<Partial<Record<EndpointName, McpOperationTraits>>> = {
-  searchAiChatReferences: READS_BY_POST,
-  readAiProjectFiles: READS_BY_POST,
-  readEmbeddedBrowser: READS_BY_POST,
-  prepareComputerDownload: READS_BY_POST,
-  writeAiProjectFiles: { hints: { idempotentHint: true, destructiveHint: true } },
-  removeAiProjectFiles: { hints: { destructiveHint: true, idempotentHint: true } },
-  startClaudeCliSession: CLAUDE_TURN,
-  controlClaudeCliSession: CLAUDE_TURN,
-  answerClaudeCliPrompt: { hints: { destructiveHint: true, openWorldHint: true } },
-  generateImageOperation: { hints: { openWorldHint: true }, callIdentity: 'operationId' },
-  editImageOperation: { hints: { openWorldHint: true }, callIdentity: 'operationId' },
-  cancelImageOperation: { hints: { idempotentHint: true, openWorldHint: true } },
-  listImageEndpoints: { hints: { openWorldHint: true } },
-  showInApp: { answers: true, hints: { idempotentHint: true } },
-  createProfile: { householdWide: true },
-  updateHome: { householdWide: true },
-  runSchedule: REACHES_OUT,
-  startProgramRun: REACHES_OUT,
-  refreshWeather: { hints: { idempotentHint: true, openWorldHint: true } },
-  refreshExchangeRates: { hints: { idempotentHint: true, openWorldHint: true } },
-  setAutomationSecret: { hints: { idempotentHint: true } },
-  askAiChat: ANSWERS,
-  runAiSubagent: ANSWERS,
-  callPluginTool: ANSWERS,
-  editEmbeddedBrowser: { ...ANSWERS, hints: { openWorldHint: true } },
-  closeComputerApp: { hints: { destructiveHint: true } },
-  runPhoneAction: REACHES_OUT,
-  runWatchAction: REACHES_OUT,
-  speak: REACHES_OUT,
-  callPerson: REACHES_OUT,
-  startConversation: REACHES_OUT,
-  notifyPerson: REACHES_OUT,
-};
-
-export function mcpOperationTraits(name: EndpointName): McpOperationTraits {
-  return MCP_OPERATION_TRAITS[name] ?? {};
 }
 
 export function mcpToolLine(description: string): string {

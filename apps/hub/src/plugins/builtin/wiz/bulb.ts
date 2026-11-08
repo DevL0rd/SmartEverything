@@ -1,5 +1,4 @@
 import type { DeviceCommand, JsonValue } from '@smarteverything/domain';
-import { z } from 'zod';
 import type { DeviceDriverContext } from '../../../local/device-driver';
 import type { PluginRecords } from '../contract';
 import { jsonOf } from '../json-value';
@@ -7,8 +6,6 @@ import { wizCommand } from './light';
 import { WizPublication } from './publication';
 import { WIZ_OFFLINE_MS, type WizConfig, type WizPilot, type WizSaved } from './protocol';
 import type { WizTransport } from './transport';
-
-const PILOT_ACCEPTED = z.object({ success: z.literal(true) });
 
 function observedPilot(previous: WizPilot, incoming: WizPilot): WizPilot {
   const merged = { ...previous, ...incoming };
@@ -76,14 +73,15 @@ export class WizBulb {
     this.records.put(this.saved.mac, jsonOf(this.saved));
   }
 
-  async execute(command: DeviceCommand, transport: WizTransport): Promise<JsonValue> {
-    const response = await transport.request(
-      this.saved.address,
-      'setPilot',
-      wizCommand(this.saved, command),
+  async executeTogether(
+    commands: readonly DeviceCommand[],
+    transport: WizTransport,
+  ): Promise<JsonValue> {
+    const params = commands.reduce<Readonly<Record<string, JsonValue>>>(
+      (merged, command) => ({ ...merged, ...wizCommand(this.saved, command) }),
+      {},
     );
-    PILOT_ACCEPTED.parse(response.result);
-    await transport.request(this.saved.address, 'getPilot', {});
+    await transport.send(this.saved.address, 'setPilot', params);
     return { success: true };
   }
 

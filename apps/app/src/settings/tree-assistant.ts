@@ -237,4 +237,23 @@ export const ASSISTANT_PAGES: readonly SettingsPageDefinition[] = [
     keywords: ['token', 'api key'],
     visible: ownerOnly,
   },
+  {
+    id: 'assistant/helpers',
+    title: 'Helpers',
+    icon: 'bot',
+    parent: 'assistant',
+    group: null,
+    subtitle: 'How many helpers may work at once, and how deep they may go',
+    keywords: ['helpers', 'agents', 'subagents', 'delegation', 'at once', 'depth', 'capacity'],
+    visible: ownerOnly,
+  },
+  {
+    id: 'assistant/memory',
+    title: 'What the AI remembers',
+    icon: 'lightbulb',
+    parent: 'assistant',
+    group: null,
+    subtitle: 'Facts it keeps between chats',
+    keywords: ['memory', 'remember', 'memories', 'forget', 'facts', 'learned'],
+  },
 ];

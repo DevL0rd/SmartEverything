@@ -1,24 +1,25 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../../components/text';
+import { cn } from '../../../design/cn';
 import type { Device } from '../../../store/state';
-import { offersAction } from '../data/computer-device';
 import type { ComputerStatus } from '../model/computer-view';
 import { BatteryChip, Ident, StateLine } from './card-parts';
-import { WakeIconButton } from './face-controls';
 
-function Identity({
+export function FaceHeader({
   device,
   status,
-  compact,
+  compact = false,
+  className = '',
 }: {
   readonly device: Device;
   readonly status: ComputerStatus;
-  readonly compact: boolean;
+  readonly compact?: boolean;
+  readonly className?: string;
 }): ReactNode {
   return (
-    <>
-      <Ident device={device} />
+    <View className={cn('flex-row items-center gap-2.5', className)} pointerEvents="none">
+      <Ident device={device} size="m" />
       <View className="min-w-0 flex-1">
         <Text variant="body-strong" numberOfLines={1}>
           {device.label}
@@ -26,42 +27,27 @@ function Identity({
         <StateLine deviceId={device.id} status={status} temperature={!compact} />
       </View>
       <BatteryChip deviceId={device.id} />
-    </>
+    </View>
   );
 }
 
-export function FaceHeader({
+export function FaceLine({
   device,
   status,
-  compact = false,
-  wake = false,
-  actions = null,
 }: {
   readonly device: Device;
   readonly status: ComputerStatus;
-  readonly compact?: boolean;
-  readonly wake?: boolean;
-  readonly actions?: ReactNode;
 }): ReactNode {
-  const action =
-    wake && status.offline && offersAction(device, 'wake') ? (
-      <WakeIconButton device={device} />
-    ) : status.offline ? null : (
-      actions
-    );
-  if (action === null) {
-    return (
-      <View className="flex-row items-center gap-2.5" pointerEvents="none">
-        <Identity device={device} status={status} compact={compact} />
-      </View>
-    );
-  }
   return (
-    <View className="flex-row items-center gap-2.5" pointerEvents="box-none">
-      <View className="min-w-0 flex-1 flex-row items-center gap-2.5" pointerEvents="none">
-        <Identity device={device} status={status} compact={compact} />
+    <View className="flex-row items-center gap-2" pointerEvents="none">
+      <Ident device={device} size="s" />
+      <Text variant="body-strong" numberOfLines={1} className="min-w-0 shrink">
+        {device.label}
+      </Text>
+      <View className="ml-auto shrink-0 flex-row items-center gap-2">
+        <StateLine deviceId={device.id} status={status} temperature={false} />
+        <BatteryChip deviceId={device.id} />
       </View>
-      {action}
     </View>
   );
 }

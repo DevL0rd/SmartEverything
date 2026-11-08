@@ -111,7 +111,9 @@ async function refusal(name: string, args: Record<string, unknown>): Promise<str
 
 function colourOf(value: unknown): Record<string, unknown> {
   return {
-    deviceIds: [ids['light-colour']], capability: 'color', value,
+    deviceIds: [ids['light-colour']],
+    capability: 'color',
+    value,
   };
 }
 

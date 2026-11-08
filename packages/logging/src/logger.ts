@@ -1,6 +1,6 @@
 import { assertEventName } from './event-name';
 import { passesThreshold, type LogLevel } from './levels';
-import { redact, type LogPayload } from './redaction';
+import { payloadOf, type LogPayload } from './payload';
 import { describeFailure, type LogContext, type LogRecord, type LogSink } from './record';
 import { renderJson, renderPlain, renderPretty } from './render';
 import { assertScope, runtimeOf, type Runtime } from './scope';
@@ -13,7 +13,7 @@ export interface LoggerSettings {
   readonly level: LogLevel;
   readonly style: OutputStyle;
   readonly context: LogContext;
-  readonly sink: LogSink;
+  readonly sink: LogSink | null;
   readonly tap: LogSink | null;
   readonly now: () => Date;
   readonly consoleRouting: ConsoleRouting;
@@ -32,7 +32,7 @@ export interface Operation {
   readonly failed: (cause: unknown, payload?: LogPayload) => void;
 }
 
-function writeToConsole(record: LogRecord, style: OutputStyle, routing: ConsoleRouting): void {
+export function writeLine(record: LogRecord, style: OutputStyle, routing: ConsoleRouting): void {
   const line =
     style === 'json'
       ? renderJson(record)
@@ -60,6 +60,15 @@ function writeToConsole(record: LogRecord, style: OutputStyle, routing: ConsoleR
 
 function systemClock(): Date {
   return new Date();
+}
+
+function emit(record: LogRecord): void {
+  settings.tap?.(record);
+  if (settings.sink === null) {
+    writeLine(record, settings.style, settings.consoleRouting);
+    return;
+  }
+  settings.sink(record);
 }
 
 interface Settings {
@@ -114,6 +123,18 @@ export class Logger {
 
   static get level(): LogLevel {
     return settings.level;
+  }
+
+  static get sink(): LogSink | null {
+    return settings.sink;
+  }
+
+  static write(record: LogRecord): void {
+    writeLine(record, settings.style, settings.consoleRouting);
+  }
+
+  static relay(record: LogRecord): void {
+    if (passesThreshold(record.level, settings.level)) emit(record);
   }
 
   child(context: LogContext): Logger {
@@ -191,16 +212,11 @@ export class Logger {
       runtime: this.runtime,
       scope: this.scope,
       event,
-      payload: redact(typeof payload === 'function' ? payload() : payload),
+      payload: payloadOf(typeof payload === 'function' ? payload() : payload),
       ...(durationMs === undefined ? {} : { durationMs }),
       ...(cause === undefined ? {} : { failure: describeFailure(cause) }),
     };
 
-    settings.tap?.(record);
-    if (settings.sink === null) {
-      writeToConsole(record, settings.style, settings.consoleRouting);
-      return;
-    }
-    settings.sink(record);
+    emit(record);
   }
 }

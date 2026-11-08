@@ -57,6 +57,21 @@ function unauthorized(message: string, reason: string, kind: string, length: num
   return new ApiError('unauthorized', message);
 }
 
+export function directClient(caller: Caller): ClientRow | undefined {
+  if (
+    caller.kind !== 'client' ||
+    caller.via !== undefined ||
+    caller.mcpOrigin !== undefined ||
+    caller.pluginId !== undefined ||
+    caller.pluginRequester !== undefined ||
+    caller.authority !== undefined ||
+    caller.chatId !== undefined
+  ) {
+    return undefined;
+  }
+  return caller.client;
+}
+
 export function clientForToken(store: Store, token: string | null, entry: AccessEntry): ClientRow {
   if (token === null) {
     throw unauthorized('Send the device token as a bearer token.', 'missing', 'client', 0);

@@ -1,11 +1,13 @@
 import {
   HUB_RUNTIME_CONTROL,
+  HUB_LOG_RECEIPT,
   NODE_AI_PATH,
   NODE_AI_PROTOCOL,
   NODE_RUNTIME_FRAME,
   type ComputerAiRuntime,
   type NodeFrame,
   type NodeHello,
+  type NodeLogsFrame,
   type NodeRuntimeFrame,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
@@ -13,12 +15,14 @@ import type { NodeHubTransport } from '../client-network/node-transport';
 import { z } from 'zod';
 import { HUB_COMPUTER_FRAME, NODE_COMPUTER_FRAME } from './computer-channel';
 import { NodeConnection } from './node-connection';
+import type { NodeLogShip } from './log-ship';
 
 const HUB_SOCKET_FRAME = z.discriminatedUnion('type', [
   ...HUB_RUNTIME_CONTROL.options,
   HUB_COMPUTER_FRAME,
 ]);
 export type HubSocketFrame = z.infer<typeof HUB_SOCKET_FRAME>;
+const INCOMING_FRAME = z.discriminatedUnion('type', [...HUB_SOCKET_FRAME.options, HUB_LOG_RECEIPT]);
 
 export interface NodeAiLinkOptions {
   readonly hubUrl: string;
@@ -27,6 +31,7 @@ export interface NodeAiLinkOptions {
   readonly hello: NodeHello;
   readonly log: Logger;
   readonly transport?: NodeHubTransport;
+  readonly logs?: NodeLogShip;
   readonly received: (frame: HubSocketFrame) => void;
   readonly runtimes?: readonly ComputerAiRuntime[];
   readonly disconnected: () => void;
@@ -61,6 +66,7 @@ export class NodeAiLink {
       },
       closed: (): void => {
         this.generation = null;
+        options.logs?.disconnected();
         options.disconnected();
       },
     });
@@ -80,6 +86,7 @@ export class NodeAiLink {
 
   stop(): void {
     this.generation = null;
+    this.options.logs?.disconnected();
     this.connection.stop();
   }
 
@@ -91,7 +98,11 @@ export class NodeAiLink {
 
   private receive(text: string): void {
     try {
-      const frame = HUB_SOCKET_FRAME.parse(JSON.parse(text));
+      const frame = INCOMING_FRAME.parse(JSON.parse(text));
+      if (frame.type === 'log_receipt') {
+        this.options.logs?.receive(frame);
+        return;
+      }
       this.accept(frame);
       this.options.received(frame);
     } catch (cause) {
@@ -112,6 +123,20 @@ export class NodeAiLink {
     this.connection.welcomed();
     this.connection.healthy();
     this.generation = frame.generation;
+    this.options.logs?.connected((logs) => {
+      this.sendLogs(logs);
+    });
+  }
+
+  private sendLogs(frame: NodeLogsFrame): void {
+    const socket = this.connection.socket;
+    if (socket === null || socket.readyState !== socket.OPEN || this.generation === null)
+      throw new NodeProtocolError('The node log socket is closed.');
+    socket.send(JSON.stringify(frame), (cause) => {
+      if (!(cause instanceof Error) || this.connection.socket !== socket) return;
+      this.options.logs?.disconnected();
+      this.options.log.forArea('hub.node-log-ship').warn('logs.not_sent', { reason: cause.name });
+    });
   }
 }
 class NodeProtocolError extends Error {

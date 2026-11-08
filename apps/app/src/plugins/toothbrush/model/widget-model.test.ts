@@ -7,7 +7,6 @@ import {
   liveFaceOf,
   liveKind,
   ringPxOf,
-  visualPxOf,
 } from './widget-model';
 
 describe('what the live widget shows', () => {
@@ -75,12 +74,6 @@ describe('sizes in a widget', () => {
     expect(bodyHeightOf({ width: 300, height: 200, idiom: 'touch' })).toBe(148);
     expect(bodyHeightOf({ width: 300, height: 200, idiom: 'pointer' })).toBe(156);
     expect(bodyHeightOf({ width: 300, height: 20, idiom: 'touch' })).toBe(0);
-  });
-
-  it('shrinks the illustration to what fits', () => {
-    expect(visualPxOf('panel', 200)).toBe(128);
-    expect(visualPxOf('panel', 100)).toBe(72);
-    expect(visualPxOf('panel', 40)).toBe(48);
   });
 
   it('keeps the timer ring between its smallest and biggest size', () => {

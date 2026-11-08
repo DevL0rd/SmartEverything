@@ -2,10 +2,12 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { AutomationRunSummary } from '@smarteverything/domain';
 import { Badge } from '../../../components/badge';
+import { Grid, useGridLayout } from '../../../components/grid';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { CONTAINER_WIDTH } from '../../../design/tokens';
 import { count as formatCount } from '../../../format/number';
 import { clock, dayLabel } from '../../../format/time';
 import {
@@ -20,6 +22,7 @@ import {
 
 const BAR_MAX = 96;
 const BAR_MIN = 12;
+const MAX_RUN_COLUMNS = 6;
 
 function OutcomeBar({
   run,
@@ -74,10 +77,8 @@ export function RunRow({ run, name, zone, mostSteps, onOpen }: RunRowProps): Rea
     >
       <Icon name={look.icon} size={20} tone={look.tone} />
       <View className="min-w-0 flex-1 gap-1">
-        <Text variant="body-strong" numberOfLines={1}>
-          {title}
-        </Text>
-        <Text variant="footnote" tone="variant" numberOfLines={1}>
+        <Text variant="body-strong">{title}</Text>
+        <Text variant="footnote" tone="variant">
           {name === null ? when : `${triggerText(run)} · ${when}`}
         </Text>
         {run.error === null ? null : (
@@ -104,13 +105,20 @@ export function RunRow({ run, name, zone, mostSteps, onOpen }: RunRowProps): Rea
 export interface RunDayGroupProps extends Omit<RunRowProps, 'run' | 'name'> {
   readonly day: RunDay;
   readonly now: number;
+  readonly width: number;
   readonly nameOf: (run: AutomationRunSummary) => string | null;
 }
 
-export function RunDayGroup({ day, now, nameOf, ...rest }: RunDayGroupProps): ReactNode {
+export function RunDayGroup({ day, now, width, nameOf, ...rest }: RunDayGroupProps): ReactNode {
+  const { columns } = useGridLayout(width, CONTAINER_WIDTH.reading, 'tight', MAX_RUN_COLUMNS);
+  const rows = day.runs.map((run) => (
+    <RunRow key={run.id} run={run} name={nameOf(run)} {...rest} />
+  ));
   return (
-    <View className="gap-2">
-      <View className="flex-row items-baseline justify-between gap-2 px-1">
+    <View className={cn('w-full gap-2', columns === 1 && 'max-w-reading')}>
+      <View
+        className={cn('flex-row items-baseline gap-2 px-1', columns === 1 && 'justify-between')}
+      >
         <Text variant="footnote" tone="variant" accessibilityRole="header">
           {dayLabel(day.first.created_at, now, rest.zone)}
         </Text>
@@ -120,9 +128,19 @@ export function RunDayGroup({ day, now, nameOf, ...rest }: RunDayGroupProps): Re
             : `${formatCount(day.runs.length)} runs`}
         </Text>
       </View>
-      {day.runs.map((run) => (
-        <RunRow key={run.id} run={run} name={nameOf(run)} {...rest} />
-      ))}
+      {columns === 1 ? (
+        rows
+      ) : (
+        <Grid
+          minItemWidth={CONTAINER_WIDTH.reading}
+          maxColumns={MAX_RUN_COLUMNS}
+          measuredWidth={width}
+          gap="tight"
+          cellClassName="max-w-detail"
+        >
+          {rows}
+        </Grid>
+      )}
     </View>
   );
 }

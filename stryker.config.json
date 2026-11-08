@@ -24,6 +24,8 @@
     "!packages/smartthings/src/index.ts",
     "packages/shelly/src/**/*.ts",
     "!packages/shelly/src/index.ts",
+    "packages/models/src/**/*.ts",
+    "!packages/models/src/index.ts",
     "packages/flow/src/**/*.ts"
   ],
   "thresholds": {

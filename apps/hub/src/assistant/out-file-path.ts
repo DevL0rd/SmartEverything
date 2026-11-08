@@ -1,5 +1,4 @@
 import { realpath, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { ApiError, ASSISTANT_ATTACHMENT_BYTES_MAX } from '@smarteverything/domain';
 import { isMissing } from '../fs-util';
@@ -27,10 +26,10 @@ async function realOrNull(path: string): Promise<string | null> {
   }
 }
 
-export function refusal(chatFolder: string): ApiError {
+export function refusal(chatFolder: string, tmp: string): ApiError {
   return new ApiError(
     'forbidden',
-    `A chat can attach only files inside its own folder (${join(chatFolder, 'workspace')} or ${join(chatFolder, 'temporary')}) or the system temp folder (${tmpdir()}). Copy the file into one of those, or use the upload operations (startAssistantUpload, sendAssistantUploadChunk, finishAssistantUpload) and post the returned uploadId.`,
+    `A chat can attach only files inside its own folder (${join(chatFolder, 'workspace')} or ${join(chatFolder, 'temporary')}) or the hub temp folder (${tmp}). Copy the file into one of those, or use the upload operations (startAssistantUpload, sendAssistantUploadChunk, finishAssistantUpload) and post the returned uploadId.`,
   );
 }
 
@@ -53,7 +52,7 @@ async function checkedFile(real: string): Promise<void> {
 export async function resolveOutFile(
   requested: string,
   chatFolder: string,
-  projectsRoot: string,
+  tmp: string,
 ): Promise<ResolvedOutFile> {
   const candidate = isAbsolute(requested) ? requested : join(chatFolder, requested);
   const real = await realOrNull(candidate);
@@ -70,9 +69,8 @@ export async function resolveOutFile(
     await checkedFile(real);
     return { real, home: { kind: 'chat', path: relative(join(area, '..'), real) } };
   }
-  const [temp, projects] = await Promise.all([realOrNull(tmpdir()), realOrNull(projectsRoot)]);
-  if (temp === null || !within(real, temp) || (projects !== null && within(real, projects)))
-    throw refusal(chatFolder);
+  const temp = await realOrNull(tmp);
+  if (temp === null || !within(real, temp)) throw refusal(chatFolder, tmp);
   await checkedFile(real);
   return { real, home: { kind: 'temp' } };
 }

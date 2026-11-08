@@ -28,7 +28,7 @@ function Entry({
         onItem(item.id);
       }}
       className={cn(
-        'min-h-touch-min min-w-16 items-center justify-center rounded-full px-3',
+        'min-h-touch-min min-w-14 items-center justify-center rounded-full px-2',
         item.active && 'bg-primary-container',
       )}
       layerClassName="rounded-full"

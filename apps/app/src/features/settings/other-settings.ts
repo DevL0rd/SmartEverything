@@ -11,7 +11,7 @@ export const OTHER_SETTINGS: readonly SettingDefinition[] = [
   {
     id: 'members.list',
     page: 'members',
-    title: 'Paired phones and computers',
+    title: 'Paired devices',
     keywords: ['paired', 'unpair', 'role', 'owner', 'member', 'phones', 'people'],
     scope: 'server',
     control: 'custom',

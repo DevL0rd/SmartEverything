@@ -3,12 +3,30 @@ import { ApiError } from '@smarteverything/domain';
 import type { StoreContext } from '../context';
 import type { NewChat } from './ai-chat-input';
 
-const DELETION = z.strictObject({ deletion_state: z.string().nullable() });
-function deleting(context: StoreContext, chatId: string): boolean {
-  const state = context.sql.get(DELETION, 'select deletion_state from ai_chats where id=$id', {
-    id: chatId,
-  })?.deletion_state;
-  return state !== undefined && state !== null;
+const WORK_STATE = z.strictObject({
+  deletion_state: z.string().nullable(),
+  native_admission: z.enum(['standalone', 'retired']).nullable(),
+});
+
+function workState(context: StoreContext, chatId: string): z.output<typeof WORK_STATE> | undefined {
+  return context.sql.get(
+    WORK_STATE,
+    'select deletion_state, native_admission from ai_chats where id=$id',
+    { id: chatId },
+  );
+}
+
+function assertWritable(state: z.output<typeof WORK_STATE> | undefined): void {
+  if (state?.native_admission === 'retired')
+    throw new ApiError('conflict', 'This retired chat history is read-only.');
+}
+
+export function assertChatNotRetired(context: StoreContext, chatId: string): void {
+  assertWritable(workState(context, chatId));
+}
+
+function deleting(state: z.output<typeof WORK_STATE> | undefined): boolean {
+  return state !== undefined && state.deletion_state !== null;
 }
 
 const held = new WeakMap<StoreContext, Set<string>>();
@@ -18,7 +36,8 @@ export function assertSubagentCreation(context: StoreContext, input: NewChat): v
   if (
     input.kind === 'subagent' &&
     input.parentId !== null &&
-    (held.get(context)?.has(input.parentId) === true || deleting(context, input.parentId))
+    (held.get(context)?.has(input.parentId) === true ||
+      deleting(workState(context, input.parentId)))
   )
     throw new ApiError(
       'conflict',
@@ -26,8 +45,14 @@ export function assertSubagentCreation(context: StoreContext, input: NewChat): v
     );
 }
 
-export function assertChatWork(context: StoreContext, chatId: string): void {
-  if (held.get(context)?.has(chatId) === true || deleting(context, chatId))
+export function assertChatWork(
+  context: StoreContext,
+  chatId: string,
+  mode: 'read' | 'write' = 'write',
+): void {
+  const state = workState(context, chatId);
+  if (mode === 'write') assertWritable(state);
+  if (held.get(context)?.has(chatId) === true || deleting(state))
     throw new ApiError(
       'conflict',
       'This conversation is being deleted; no native work was started.',
@@ -53,7 +78,9 @@ export async function holdChatTree(
 }
 
 export function assertQueuedChatWork(context: StoreContext, chatId: string): void {
-  if (queued.get(context)?.has(chatId) === true || deleting(context, chatId))
+  const state = workState(context, chatId);
+  assertWritable(state);
+  if (queued.get(context)?.has(chatId) === true || deleting(state))
     throw new ApiError('conflict', 'Inactive conversation cleanup is pending; no work was queued.');
 }
 

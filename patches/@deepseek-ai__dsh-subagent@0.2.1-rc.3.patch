@@ -1,0 +1,67 @@
+diff --git a/lib/index.js b/lib/index.js
+index 5f8a4a9..d33efa9 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -2050,7 +2050,17 @@ var SubagentManager = class {
+ 		try {
+ 			const parent = this.ctx.agents.get(activation.parent.id);
+ 			if (parent !== activation.parent) return;
+-			const message = createSettlementMessage(activation.childId, terminal, activationAgent(activation) !== void 0);
++			let reported = terminal;
++			if (activation.kind === "local") {
++				const events = activation.handle.agent.session.snapshotEvents(activation.outputStart);
++				const selection = this.ctx.bail("subagent/settlement-notice", events);
++				if (selection?.kind === "omit") return;
++				if (selection?.kind === "select") reported = {
++					output: finalAssistantOutput(selection.events) ?? [],
++					stopReason: epochStopReason(selection.events)
++				};
++			}
++			const message = createSettlementMessage(activation.childId, reported, activationAgent(activation) !== void 0);
+ 			if (this.closingTeardownFor(parent) !== void 0) {
+ 				parent.inject(message);
+ 				return;
+diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
+index 1d8e649..0f2632d 100644
+--- a/lib/types/index.d.ts
++++ b/lib/types/index.d.ts
+@@ -33,7 +33,7 @@ import z from '@deepseek-ai/schemastery';
+ import type { Scoped } from '@deepseek-ai/dsh-scope';
+ import type { ContentBlock, MessageId } from '@deepseek-ai/dsh-llm';
+ import type { Agent } from '@deepseek-ai/dsh-agent';
+-import type { SessionId } from '@deepseek-ai/dsh-session';
++import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session';
+ import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
+ import type { SubagentInterruptReceipt, SubagentPromptReceipt, SubagentPromptRequest } from './control-types.ts';
+ import type { SubagentActivation, SubagentActivationSpec, SubagentInterruptAuthority, SubagentProvider, SubagentRunEndInfo, SubagentRunInfo, SubagentSendMessageOptions } from './types.ts';
+@@ -62,6 +62,7 @@ declare module '@deepseek-ai/cordis' {
+         subagents: SubagentRuntime;
+     }
+     interface Events {
++        'subagent/settlement-notice'(events: readonly SessionEvent[]): { readonly kind: 'omit' } | { readonly kind: 'select'; readonly events: readonly SessionEvent[] } | undefined;
+         /**
+          * A provider became resolvable in the registry.
+          * @param provider - the registered provider.
+diff --git a/lib/types/manager.js b/lib/types/manager.js
+index 2283182..b04346d 100644
+--- a/lib/types/manager.js
++++ b/lib/types/manager.js
+@@ -1065,7 +1065,17 @@ export class SubagentManager {
+             const parent = this.ctx.agents.get(activation.parent.id);
+             if (parent !== activation.parent)
+                 return;
+-            const message = createSettlementMessage(activation.childId, terminal, activationAgent(activation) !== undefined);
++            let reported = terminal;
++            if (activation.kind === 'local') {
++                const events = activation.handle.agent.session.snapshotEvents(activation.outputStart);
++                const selection = this.ctx.bail('subagent/settlement-notice', events);
++                if (selection?.kind === 'omit') return;
++                if (selection?.kind === 'select') reported = {
++                    output: finalAssistantOutput(selection.events) ?? [],
++                    stopReason: epochStopReason(selection.events)
++                };
++            }
++            const message = createSettlementMessage(activation.childId, reported, activationAgent(activation) !== undefined);
+             if (this.closingTeardownFor(parent) !== undefined) {
+                 parent.inject(message);
+                 return;

@@ -1,10 +1,10 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../app-href';
 import type { BoardWidget, WidgetSize } from '@smarteverything/domain';
 
 export interface BoardReveal {
   readonly key: string;
   readonly member: string | null;
-  readonly pageOf: (widget: BoardWidget) => Href | null;
+  readonly pageOf: (widget: BoardWidget) => AppHref | null;
   readonly onDone: () => void;
 }
 

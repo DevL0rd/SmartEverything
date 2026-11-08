@@ -16,12 +16,18 @@ const hub = (session: string | null): Engine =>
     model: 'sonnet',
   });
 const native = ENGINE.parse({ kind: 'claude', device_id: DEVICE, model: 'opus' });
-const openrouter = ENGINE.parse({ kind: 'openrouter', model: 'openai/gpt-5' });
+const metered = ENGINE.parse({
+  kind: 'dsh',
+  execution_target: { kind: 'server' },
+  session_id: null,
+  model_route_id: ROUTE,
+  model: 'openai/gpt-5',
+});
 
 describe('choosing a model in a chat', () => {
   it('changes the engine directly while the chat has no running session', () => {
     expect(engineChangeOf(hub(null), native)).toBe('direct');
-    expect(engineChangeOf(openrouter, native)).toBe('direct');
+    expect(engineChangeOf(metered, native)).toBe('direct');
   });
 
   it('hands off when a bound chat stays on the SmartEverything runtime', () => {
@@ -30,7 +36,7 @@ describe('choosing a model in a chat', () => {
 
   it('continues in a new branch when a bound chat moves to another family', () => {
     expect(engineChangeOf(hub(SESSION), native)).toBe('branch');
-    expect(engineChangeOf(hub(SESSION), openrouter)).toBe('branch');
+    expect(engineChangeOf(hub(SESSION), native)).toBe('branch');
   });
 
   it('labels only the other-family rows of a bound chat in advance', () => {
@@ -52,6 +58,6 @@ describe('naming the model a branch continues with', () => {
   });
 
   it('uses the model id before the catalogue loads', () => {
-    expect(branchModelName(openrouter, undefined)).toBe('gpt-5');
+    expect(branchModelName(metered, undefined)).toBe('gpt-5');
   });
 });

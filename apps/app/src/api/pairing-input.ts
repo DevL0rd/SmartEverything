@@ -2,8 +2,6 @@ import { z } from 'zod';
 import { PAIRING_CODE, PAIRING_QR, type PairingQr } from '@smarteverything/domain';
 import { jsonText } from '../format/json-text';
 
-const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '[::1]']);
-
 export type PairingTarget = PairingQr;
 
 export type PairingInput =
@@ -21,7 +19,7 @@ export function serverUrlProblem(url: string, allowPlainHttp: boolean): string |
   if (address.search !== '' || address.hash !== '') {
     return 'Remove everything after the address';
   }
-  if (address.protocol === 'http:' && !allowPlainHttp && !LOOPBACK_HOSTS.has(address.hostname)) {
+  if (address.protocol === 'http:' && !allowPlainHttp) {
     return 'Use https:// for a server on another computer';
   }
   return null;

@@ -4,6 +4,7 @@ import {
   traceSubject,
   type AutomationTraceNotice,
   type ClientRow,
+  type JsonValue,
   type TraceNodeStateNotice,
   type TraceRun,
   type TraceWait,
@@ -42,11 +43,12 @@ export function traceWaitOf(wait: Wait): TraceWait {
   return { kind: wait.kind, wakeAt: due === null ? null : new Date(due).toISOString() };
 }
 
-function nodeState(
-  automationId: string,
-  runId: string,
-  step: Extract<StepRecord, { kind: 'capture' }>,
-): TraceNodeStateNotice {
+interface Previewed {
+  readonly activation: string;
+  readonly value: JsonValue;
+}
+
+function nodeState(automationId: string, runId: string, step: Previewed): TraceNodeStateNotice {
   const preview = portPreview({ value: step.value, type: { t: 'any' } });
   return {
     type: 'trace_node_state',
@@ -64,10 +66,18 @@ function parkedNotice(automationId: string, runId: string, wait: Wait): Automati
   return { type: 'trace_run_parked', automationId, runId, ...traceWaitOf(wait) };
 }
 
-function lastPerPath(records: readonly StepRecord[]): Extract<StepRecord, { kind: 'capture' }>[] {
-  const latest = new Map<string, Extract<StepRecord, { kind: 'capture' }>>();
+function previewed(step: StepRecord): Previewed | undefined {
+  if (step.kind === 'capture') return step;
+  if (step.kind === 'node' && step.outputs !== undefined)
+    return { activation: step.activation, value: step.outputs };
+  return undefined;
+}
+
+function lastPerPath(records: readonly StepRecord[]): Previewed[] {
+  const latest = new Map<string, Previewed>();
   for (const step of records) {
-    if (step.kind === 'capture') latest.set(step.activation, step);
+    const shown = previewed(step);
+    if (shown !== undefined) latest.set(shown.activation, shown);
   }
   return [...latest.values()];
 }

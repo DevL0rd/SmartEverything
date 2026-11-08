@@ -9,12 +9,13 @@ import { ActionRow, ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { moment } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
-import { useFirewall, useIsOwner, useSettings } from '../../../store/selectors';
+import { useFirewall, useIsOwner, useSettings, useSyncStatus } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
 import { BACKEND_LABELS, needsFix } from '../model/firewall';
 import { SettingsFrame } from '../../../settings/settings-frame';
-import { CamerasList, OpeningsList } from './firewall-lists';
+import { FirewallLists } from './firewall-lists';
 import { useMutationState } from '../../../store/mutation';
+import { SERVER_PANEL, ServerPanels } from './server-panels';
 
 function FixBanner({ firewall }: { readonly firewall: FirewallStatus }): ReactNode {
   const owner = useIsOwner();
@@ -75,21 +76,31 @@ function StatusRows({ firewall }: { readonly firewall: FirewallStatus }): ReactN
 
 export function FirewallScreen(): ReactNode {
   const firewall = useFirewall();
+  const unreadable = useSyncStatus().outdated.includes('firewall');
   return (
-    <SettingsFrame page="server/firewall">
-      {firewall === null ? (
+    <SettingsFrame page="server/firewall" contentWidth="full">
+      {firewall === null && unreadable ? (
+        <EmptyState
+          icon="shield"
+          title="This part could not be read"
+          body="Your server sends firewall details this app does not understand. Update the app."
+          compact
+        />
+      ) : firewall === null ? (
         <EmptyState
           icon="shield"
           title="Not checked yet"
           body="Your server checks its firewall when it starts."
+          compact
         />
       ) : (
-        <View className="gap-section-gap">
-          <FixBanner firewall={firewall} />
-          <StatusRows firewall={firewall} />
-          <OpeningsList firewall={firewall} />
-          <CamerasList firewall={firewall} />
-        </View>
+        <ServerPanels>
+          <View className={`${SERVER_PANEL} gap-section-gap`}>
+            <FixBanner firewall={firewall} />
+            <StatusRows firewall={firewall} />
+          </View>
+          <FirewallLists firewall={firewall} />
+        </ServerPanels>
       )}
     </SettingsFrame>
   );

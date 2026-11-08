@@ -57,22 +57,23 @@ function scrub(
   report: DropReporter | undefined,
   prefix: string,
 ): Record<string, unknown> {
-  const clean: Record<string, unknown> = { ...input };
-  for (const [key, field] of Object.entries(schema.shape)) {
+  const clean = new Map(Object.entries(input));
+  const fields: Readonly<Record<string, z.ZodType>> = schema.shape;
+  for (const [key, field] of Object.entries(fields)) {
     const accepts = TOLERANT.get(field);
     const value = input[key];
     if (accepts === undefined || value === undefined) continue;
     const nested = LOOSE_OBJECT.safeParse(value);
     if (accepts instanceof z.ZodObject && nested.success) {
-      clean[key] = scrub(accepts, nested.data, report, `${prefix}${key}.`);
+      clean.set(key, scrub(accepts, nested.data, report, `${prefix}${key}.`));
     }
-    const checked = accepts.safeParse(clean[key]);
+    const checked = accepts.safeParse(clean.get(key));
     if (!checked.success) {
-      delete clean[key];
+      clean.delete(key);
       report?.dropped(`${prefix}${key}`, reasonOf(checked.error));
     }
   }
-  return clean;
+  return Object.fromEntries(clean);
 }
 
 export function readSource<S extends z.ZodObject>(
@@ -90,10 +91,8 @@ export function trySource<S extends z.ZodObject>(
 ): z.ZodSafeParseResult<z.output<S>> {
   const parsed = schema.safeParse(scrub(schema, plain, report, ''));
   if (!parsed.success) {
-    report?.dropped(
-      parsed.error.issues[0]?.path.join('.') || 'record',
-      `record skipped: ${reasonOf(parsed.error)}`,
-    );
+    const path = parsed.error.issues[0]?.path.join('.') ?? '';
+    report?.dropped(path === '' ? 'record' : path, `record skipped: ${reasonOf(parsed.error)}`);
   }
   return parsed;
 }

@@ -13,7 +13,7 @@ export const AI_AGENT_STATES = [
   'failed',
   'unknown',
 ] as const;
-export const AI_AGENT_ACTION = z.enum(['interrupt', 'send', 'steer', 'open_chat']);
+export const AI_AGENT_ACTION = z.enum(['interrupt', 'send', 'steer', 'open_chat', 'delete']);
 export const AI_AGENT_USAGE = z.strictObject({
   input_tokens: z.int().nonnegative().nullable(),
   output_tokens: z.int().nonnegative().nullable(),
@@ -56,7 +56,7 @@ export const AI_AGENT_RUN = z.strictObject({
   updated_at: z.iso.datetime({ offset: true }),
   completed_at: z.iso.datetime({ offset: true }).nullable(),
   usage: AI_AGENT_USAGE.nullable(),
-  supported_actions: z.array(AI_AGENT_ACTION).max(4),
+  supported_actions: z.array(AI_AGENT_ACTION).max(AI_AGENT_ACTION.options.length),
   truncated: z.boolean(),
   harness: z
     .object({
@@ -65,8 +65,6 @@ export const AI_AGENT_RUN = z.strictObject({
       target: AI_HARNESS_TARGET,
       model_route_id: z.uuid(),
       permission: AI_HARNESS_PERMISSION,
-      operation_id: z.uuid(),
-      parent_delivery_id: z.uuid(),
       writer_epoch: z.int().positive(),
     })
     .optional(),

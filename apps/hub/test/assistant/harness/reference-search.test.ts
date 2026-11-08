@@ -76,9 +76,9 @@ beforeEach(async () => {
       });
     },
   });
-  projects = new ProjectFilesService(rig.opened.directory);
+  projects = new ProjectFilesService(rig.opened.layout, rig.opened.store.aiChats);
   references = new ReferenceService(rig.opened.store, projects);
-  references.attachNative(['dsh', 'openrouter'], harnessReferences(rig.service));
+  references.attachNative(['dsh'], harnessReferences(rig.service));
   const created = rig.newChat(rig.desk.target);
   const open = rig.service.prepare(rig.owner, created.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.desk.target, randomUUID(), open);
@@ -115,7 +115,7 @@ describe('one search over skills, device files, chat folder files and chats', ()
       kind: 'reference',
       input: {
         action: 'search',
-        search: { kinds: ['device_path', 'skill', 'plugin', 'command', 'agent'] },
+        search: { kinds: ['device_path', 'skill', 'plugin', 'command'] },
       },
     });
   });

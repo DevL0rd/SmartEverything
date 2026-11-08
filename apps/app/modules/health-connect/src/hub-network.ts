@@ -12,9 +12,15 @@ import {
   NATIVE_HUB_RESOURCE_ID,
   NATIVE_HUB_RESOURCE_DOWNLOAD,
   NATIVE_HUB_RESOURCE_DOWNLOAD_RESULT,
+  NATIVE_ANDROID_UPDATE_CANCEL,
+  NATIVE_ANDROID_UPDATE_INSTALL,
+  NATIVE_ANDROID_UPDATE_PROGRESS,
+  NATIVE_ANDROID_UPDATE_RESULT,
   NATIVE_HUB_ROUTE_CONFIGURATION,
   NATIVE_HUB_ROUTE_SNAPSHOT,
   NATIVE_HUB_TRUST,
+  type NativeAndroidUpdateCancel,
+  type NativeAndroidUpdateProgress,
   type NativeHubCapabilities,
   type NativeHubDiscovery,
   type NativeHubNetwork,
@@ -36,6 +42,9 @@ declare class HubNetworkNative extends NativeModule<HubNetworkEvents> {
   openResource(json: string): Promise<unknown>;
   releaseResource(id: string): Promise<void>;
   downloadResource(json: string): Promise<unknown>;
+  requestAndroidUpdatePermission(): Promise<unknown>;
+  installAndroidUpdate(json: string): Promise<unknown>;
+  cancelAndroidUpdate(id: string): Promise<void>;
   activateServerEnrollment(canonical: string, principal: string): Promise<unknown>;
   captureServerEnrollment(canonical: string, principal: string): Promise<unknown>;
   configureRoutes(json: string, enrollment: string): Promise<unknown>;
@@ -310,6 +319,34 @@ export const nativeHubNetwork: NativeHubNetwork = {
           NATIVE_HUB_RESOURCE_DOWNLOAD_RESULT.parse(
             await moduleForHub().downloadResource(
               JSON.stringify(NATIVE_HUB_RESOURCE_DOWNLOAD.parse(request)),
+            ),
+          ),
+        requestAndroidUpdatePermission: async () =>
+          z.boolean().parse(await moduleForHub().requestAndroidUpdatePermission()),
+        installAndroidUpdate: async (request) =>
+          NATIVE_ANDROID_UPDATE_RESULT.parse(
+            await moduleForHub().installAndroidUpdate(
+              JSON.stringify(NATIVE_ANDROID_UPDATE_INSTALL.parse(request)),
+            ),
+          ),
+        cancelAndroidUpdate: async (request: NativeAndroidUpdateCancel) =>
+          moduleForHub().cancelAndroidUpdate(NATIVE_ANDROID_UPDATE_CANCEL.parse(request).id),
+        subscribeAndroidUpdateProgress: (
+          listener: (progress: NativeAndroidUpdateProgress) => void,
+        ) =>
+          subscribe(
+            'onAndroidUpdateProgress',
+            countedListener(
+              'android_update.progress',
+              (value) => {
+                const progress = NATIVE_ANDROID_UPDATE_PROGRESS.safeParse(value);
+                return progress.success
+                  ? { stage: progress.data.stage, received: progress.data.received }
+                  : { unreadable: true };
+              },
+              (value) => {
+                listener(NATIVE_ANDROID_UPDATE_PROGRESS.parse(value));
+              },
             ),
           ),
       }

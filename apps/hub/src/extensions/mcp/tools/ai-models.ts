@@ -1,5 +1,6 @@
 import {
   AI_EFFORT,
+  AI_ENGINE_DEFAULT,
   AI_MODEL_CHOICE,
   AI_MODEL_CURSOR,
   AI_MODEL_DETAIL,
@@ -8,7 +9,7 @@ import {
   AI_MODEL_LIST,
   AI_MODEL_MAKER,
   AI_CATALOGUE_SYNC,
-  OPENROUTER_STATUS,
+  ApiError,
   type AiModelRow,
   type AiPricing,
 } from '@smarteverything/domain';
@@ -122,24 +123,29 @@ export const AI_MODEL_TOOLS: readonly Tool[] = [
     input: z.strictObject({}),
     annotations: READS,
     run: async (context) => ({
-      structured: OPENROUTER_STATUS.parse(await operate(context, 'readOpenRouter', {})),
+      structured: AI_ENGINE_DEFAULT.parse(await operate(context, 'readAiEngineDefault', {})),
     }),
   }),
   defineTool({
     name: 'set_ai_defaults',
     input: z.strictObject({
-      model: AI_MODEL_CHOICE.describe(
-        'auto:latest-gemini-flash (follows new releases) or a chat model id from model_read view list',
-      ),
+      model: AI_MODEL_CHOICE.describe('A chat model id from model_read view list'),
       thinking: AI_EFFORT.describe('Thinking level; clamped to what the model supports'),
     }),
     annotations: { ...WRITES, idempotentHint: true },
-    run: async (context, input) => ({
-      structured: OPENROUTER_STATUS.parse(
-        await operate(context, 'setOpenRouterDefaults', {
-          body: { default_model: input.model, default_effort: input.thinking },
-        }),
-      ),
-    }),
+    run: async (context, input) => {
+      const current = AI_ENGINE_DEFAULT.parse(await operate(context, 'readAiEngineDefault', {}));
+      if (current.engine?.kind !== 'dsh')
+        throw new ApiError(
+          'conflict',
+          'New chats already run on a computer or native runtime; change that in Assistant settings.',
+        );
+      const engine = { ...current.engine, model: input.model, effort: input.thinking };
+      return {
+        structured: AI_ENGINE_DEFAULT.parse(
+          await operate(context, 'updateAiEngineDefault', { body: { engine } }),
+        ),
+      };
+    },
   }),
 ];

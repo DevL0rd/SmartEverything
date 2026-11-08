@@ -8,6 +8,7 @@ import {
   startAssistantUpload,
 } from '../../../api/assistant';
 import { notify } from '../../../components/toast-store';
+import { base64Of } from '../../../format/base64';
 import { bytes } from '../../../format/number';
 import type { PickedFile } from '../../../platform/pick-files';
 import {
@@ -84,15 +85,6 @@ export function moveUploads(from: string, to: string): void {
   );
 }
 
-export function base64Of(buffer: ArrayBuffer, start: number, end: number): string {
-  const view = new Uint8Array(buffer, start, end - start);
-  let binary = '';
-  for (let index = 0; index < view.length; index += 0x8000) {
-    binary += String.fromCharCode(...view.subarray(index, index + 0x8000));
-  }
-  return btoa(binary);
-}
-
 async function send(key: string, file: PickedFile): Promise<void> {
   const data = await file.data();
   if (uploadFiles.get(key) !== file) return;
@@ -103,6 +95,7 @@ async function send(key: string, file: PickedFile): Promise<void> {
     name: file.name,
     mime: file.mime,
     bytes: data.byteLength,
+    ...(file.levels === undefined ? {} : { levels: file.levels }),
   });
   const chunks = Math.ceil(data.byteLength / upload.chunkBytes);
   for (let index = 0; index < chunks; index += 1) {

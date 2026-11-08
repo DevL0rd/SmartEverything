@@ -1,4 +1,4 @@
-import type { AiModelSearchRequest } from '@smarteverything/domain';
+import type { AiModelSearchRequest, PlannerStatsRange } from '@smarteverything/domain';
 
 export const WINDOW_PREFIX = ['window'] as const;
 
@@ -36,6 +36,14 @@ export const SERVICE_LOG_TAIL_KEY = ['window', 'service-log-tail'] as const;
 export const START_ON_LOGIN_KEY = ['window', 'start-on-login'] as const;
 
 export const WATCH_CANDIDATES_KEY = ['window', 'watch-candidates'] as const;
+
+export const IR_LIBRARY_PREFIX = ['window', 'ir-library'] as const;
+
+export function irLibraryKey(
+  ...path: readonly string[]
+): readonly ['window', 'ir-library', ...string[]] {
+  return [...IR_LIBRARY_PREFIX, ...path];
+}
 
 export function watchDaysKey(
   from: string,
@@ -86,6 +94,12 @@ export function assistantLinksKey(
 }
 
 export const AI_USAGE_PREFIX = ['window', 'ai-usage'] as const;
+
+export const CHAT_METER_HISTORY_PREFIX = ['window', 'ai-chat-meter-history'] as const;
+
+export function chatMeterHistoryKey(chatId: string): readonly string[] {
+  return [...CHAT_METER_HISTORY_PREFIX, chatId];
+}
 
 export const REACH_PREFIX = ['window', 'reach'] as const;
 
@@ -176,6 +190,109 @@ export function computerAiKey(deviceId: string): readonly string[] {
   return ['window', 'computer-ai', deviceId];
 }
 
-export function nativeSessionsKey(deviceId: string, archived: boolean): readonly string[] {
-  return [...computerAiKey(deviceId), 'sessions', String(archived)];
+export const PLANNER_PREFIX = ['window', 'planner'] as const;
+
+export type PlannerKind = 'day' | 'range' | 'stats' | 'rings';
+
+export const plannerKeys = {
+  day: (personId: string | null, date: string): readonly unknown[] => [
+    ...PLANNER_PREFIX,
+    'day',
+    personId,
+    date,
+  ],
+  range: (
+    personId: string | null,
+    from: string,
+    to: string,
+    collections: readonly string[] | null,
+  ): readonly unknown[] => [
+    ...PLANNER_PREFIX,
+    'range',
+    personId,
+    from,
+    to,
+    collections === null ? null : [...collections].sort().join(','),
+  ],
+  stats: (personId: string | null, range: PlannerStatsRange): readonly unknown[] => [
+    ...PLANNER_PREFIX,
+    'stats',
+    personId,
+    range,
+  ],
+  rings: (personId: string | null, from: string, to: string): readonly unknown[] => [
+    ...PLANNER_PREFIX,
+    'rings',
+    personId,
+    from,
+    to,
+  ],
+  preferences: (personId: string | null): readonly unknown[] => [
+    ...PLANNER_PREFIX,
+    'preferences',
+    personId,
+  ],
+  prefix: (kind: PlannerKind): readonly unknown[] => [...PLANNER_PREFIX, kind],
+};
+
+export const DRIVE_PREFIX = ['window', 'drive'] as const;
+
+export const DRIVE_WINDOW_KINDS = [
+  'folder',
+  'item',
+  'search',
+  'recent',
+  'stats',
+  'duplicates',
+  'album-items',
+  'trash',
+  'versions',
+  'item-activity',
+  'activity',
+  'shares',
+  'usage',
+  'health',
+  'conflicts',
+  'settings',
+  'quotas',
+  'backup',
+  'volumes',
+  'photo-buckets',
+  'photo-rail-counts',
+  'photo-cover',
+  'photo-month',
+  'photo-media',
+  'photo-processing',
+  'photo-memories',
+  'photo-memory-items',
+  'photo-trips',
+  'photo-places',
+  'photo-place',
+  'photo-clusters',
+  'photo-insights',
+  'photo-stacks',
+  'photo-stack',
+  'photo-sources',
+  'photo-backup',
+  'photo-search',
+  'photo-duplicates',
+  'photo-duplicate-stats',
+] as const;
+
+export type DriveWindowKind = (typeof DRIVE_WINDOW_KINDS)[number];
+
+export interface DriveWindowScope {
+  readonly rootId: string | null;
+  readonly folderId: string | null;
+  readonly albumId: string | null;
+}
+
+export const DRIVE_EVERYWHERE: DriveWindowScope = { rootId: null, folderId: null, albumId: null };
+
+export function driveKey(
+  kind: DriveWindowKind,
+  scope: DriveWindowScope | null,
+  ...params: readonly unknown[]
+): readonly unknown[] {
+  return [...DRIVE_PREFIX, kind, scope, ...params];
 }

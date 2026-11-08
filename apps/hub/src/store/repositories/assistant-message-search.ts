@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { storedRow } from '../codec';
 import type { StoreContext } from '../context';
 import { flag } from '../sql';
+import { COORDINATOR_MESSAGE_SQL } from './assistant-message-storage';
 import { MESSAGE_COLUMNS, STORED_MESSAGE } from './assistant-chat';
 
 export interface MessageHit {
@@ -36,6 +37,17 @@ const MESSAGE_HIT = storedRow(
 
 const MESSAGE_TEXT = storedRow(z.strictObject({ text: z.string() }), {});
 
+const HELPER_RECEIPT = z.strictObject({
+  parent_message_id: z.uuid(),
+  payload_hash: z.string(),
+});
+
+interface HelperMessageKey {
+  readonly chat: string;
+  readonly profile: string;
+  readonly clientMessage: string;
+}
+
 export class AssistantMessageSearchRepository {
   constructor(private readonly context: StoreContext) {}
 
@@ -46,6 +58,7 @@ export class AssistantMessageSearchRepository {
               m.id as id, m.text as text, m.created_at as at
        from assistant_messages m join ai_chats c on c.id = m.chat_id
        where c.profile_id = $profile and instr(lower(m.text), lower($text)) > 0
+         and c.native_admission is not 'retired'
          and ${chatActivitySql('m')} and ($chat is null or m.chat_id = $chat)
          and ($archived = 1 or c.archived_at is null)
        order by m.created_at desc, m.rowid desc limit $limit`,
@@ -65,6 +78,25 @@ export class AssistantMessageSearchRepository {
       `select ${MESSAGE_COLUMNS} from assistant_messages
        where chat_id = $chat and client_message_id = $clientMessage`,
       { chat: chatId, clientMessage: clientMessageId },
+    );
+  }
+
+  helperReceipt(key: HelperMessageKey): z.output<typeof HELPER_RECEIPT> | undefined {
+    return this.context.sql.get(
+      HELPER_RECEIPT,
+      `select parent_message_id, payload_hash from assistant_helper_receipts
+       where chat_id=$chat and profile_id=$profile and client_message_id=$clientMessage`,
+      { ...key },
+    );
+  }
+
+  rememberHelper(key: HelperMessageKey, receipt: z.input<typeof HELPER_RECEIPT>): void {
+    this.context.sql.run(
+      'keep the helper delivery receipt',
+      `insert into assistant_helper_receipts
+       (chat_id, profile_id, client_message_id, parent_message_id, payload_hash)
+       values ($chat,$profile,$clientMessage,$parent_message_id,$payload_hash)`,
+      { ...key, ...receipt },
     );
   }
 
@@ -88,7 +120,7 @@ export class AssistantMessageSearchRepository {
       this.context.sql.get(
         MESSAGE_TEXT,
         `select text from assistant_messages
-         where chat_id = $chat and role = $role and kind = $kind and text <> ''
+         where chat_id = $chat and role = $role and kind = $kind and text <> '' and ${COORDINATOR_MESSAGE_SQL}
          order by created_at, rowid limit 1`,
         { chat: chatId, role, kind },
       )?.text ?? null

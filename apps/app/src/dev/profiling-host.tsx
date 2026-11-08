@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { Profiler, useEffect } from 'react';
+import { Profiler, useEffect, useLayoutEffect } from 'react';
 import { useSegments } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { useDeveloperFlags } from '../developer/flags';
+import { useDeveloperFlag, useDeveloperFlags } from '../developer/flags';
 import { allOff } from '../developer/toggles';
 import { recordCommit } from './frame-probe';
 import { setQueryReader, type QueryCounts } from './leak-probe';
@@ -55,15 +55,13 @@ export function ProfilingHost(): ReactNode {
 }
 
 export function RootProfiler({ children }: { readonly children: ReactNode }): ReactNode {
-  if (!__DEV__) {
-    return children;
-  }
+  const enabled = useDeveloperFlag('perf.frames');
+  useLayoutEffect(markFirstCommit, []);
   return (
     <Profiler
       id="root"
       onRender={(_id, _phase, actualMs) => {
-        markFirstCommit();
-        recordCommit(actualMs);
+        if (enabled) recordCommit(actualMs);
       }}
     >
       {children}

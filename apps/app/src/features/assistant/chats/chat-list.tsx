@@ -1,6 +1,6 @@
-import type { ReactElement, ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import type { ReactElement, ReactNode, RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, type TextInput } from 'react-native';
 import { useIsFocused, useLocalSearchParams, router } from 'expo-router';
 import { Ambient } from '../../../components/ambient';
 import { Banner } from '../../../components/banner';
@@ -9,14 +9,14 @@ import { SearchField } from '../../../components/search-field';
 import { useAreaStatus } from '../data/area-status';
 import type { AreaStatus } from '../model/area-status';
 import type { ChatEntry } from './chat-entry';
-import { useOpenDesktop } from './open-desktop';
 import { ChatRow } from './chat-row';
 import { FilterBar } from './filter-bar';
+import { GroupHeading } from './group-heading';
 import { HitRow } from './hit-row';
 import { ListContent } from './list-groups';
 import { ListHeader, type ListHeaderKind } from './list-header';
 import { filterOfParam, type ChatFilter, type FilterCounts } from './list-filters';
-import { needingCount, runningCount, type ListItem } from './list-items';
+import { keyboardItemsOf, needingCount, runningCount, type ListItem } from './list-items';
 import { useListModel, type ListModel } from './use-list-model';
 
 export interface ChatListProps {
@@ -27,6 +27,8 @@ export interface ChatListProps {
   readonly onDeleted: (chatId: string) => void;
   readonly onNewChat: () => void;
 }
+
+const NO_COMPLETED: readonly ChatEntry[] = [];
 
 function useFilterParam(apply: (filter: ChatFilter) => void): void {
   const focused = useIsFocused();
@@ -41,7 +43,7 @@ function useFilterParam(apply: (filter: ChatFilter) => void): void {
 
 function OfflineBanner(): ReactNode {
   return (
-    <View className="px-3 pb-2">
+    <View className="px-gutter pb-2">
       <Banner tone="info" title="Offline · showing saved chats" />
     </View>
   );
@@ -54,8 +56,6 @@ interface RowContext {
   readonly onOpen: (chatId: string, messageId?: string) => void;
   readonly onToggleAgents: (chatId: string) => void;
   readonly onDeleted: (chatId: string) => void;
-  readonly onOpenDesktop: (entry: ChatEntry) => void;
-  readonly busyId: string | null;
 }
 
 function renderRow(item: ListItem, context: RowContext): ReactElement {
@@ -75,8 +75,6 @@ function renderRow(item: ListItem, context: RowContext): ReactElement {
           onOpen={context.onOpen}
           onToggleAgents={context.onToggleAgents}
           onDeleted={context.onDeleted}
-          busy={context.busyId === item.entry.id}
-          onOpenDesktop={context.onOpenDesktop}
         />
       );
     case 'hit':
@@ -99,6 +97,7 @@ function Controls({
   query,
   filter,
   counts,
+  inputRef,
   focusSearch,
   onQuery,
   onFilter,
@@ -106,15 +105,17 @@ function Controls({
   readonly query: string;
   readonly filter: ChatFilter;
   readonly counts: FilterCounts;
+  readonly inputRef: RefObject<TextInput | null>;
   readonly focusSearch: boolean;
   readonly onQuery: (query: string) => void;
   readonly onFilter: (filter: ChatFilter) => void;
 }): ReactNode {
   return (
-    <View className="gap-2 pb-2">
-      <View className="px-3">
+    <View className="gap-1 pb-1">
+      <View className="px-gutter">
         <SearchField
           value={query}
+          inputRef={inputRef}
           onChange={onQuery}
           placeholder="Search chats and messages"
           variant="field"
@@ -126,20 +127,20 @@ function Controls({
   );
 }
 
-function useExpandedAgents(): {
-  readonly expanded: ReadonlySet<string>;
+function useCollapsedAgents(): {
+  readonly collapsed: ReadonlySet<string>;
   readonly toggle: (chatId: string) => void;
 } {
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const toggle = useCallback((chatId: string): void => {
-    setExpanded((current) => {
+    setCollapsed((current) => {
       const next = new Set(current);
       if (next.has(chatId)) next.delete(chatId);
       else next.add(chatId);
       return next;
     });
   }, []);
-  return { expanded, toggle };
+  return { collapsed, toggle };
 }
 
 interface ListView {
@@ -151,20 +152,20 @@ interface ListView {
   readonly keys: readonly { readonly id: string }[];
   readonly render: (item: ListItem) => ReactElement;
   readonly activate: (key: string) => void;
-  readonly toggleAgents: (chatId: string) => void;
+  readonly completedOpen: boolean;
+  readonly toggleCompleted: () => void;
+  readonly searchInput: RefObject<TextInput | null>;
+  readonly clearSearch: () => void;
   readonly setQuery: (query: string) => void;
   readonly setFilter: (filter: ChatFilter) => void;
 }
 
 function useListKeys(
-  groups: ListModel['groups'],
+  sections: ListModel['sections'],
+  completed: readonly ChatEntry[],
   onOpen: ChatListProps['onOpen'],
-  onOpenDesktop: (entry: ChatEntry) => void,
 ): { readonly keys: ListView['keys']; readonly activate: ListView['activate'] } {
-  const items = useMemo(
-    () => groups.flatMap((group) => group.sections.flatMap((section) => section.data)),
-    [groups],
-  );
+  const items = useMemo(() => keyboardItemsOf(sections, completed), [sections, completed]);
   const keys = useMemo(() => items.map((item) => ({ id: item.key })), [items]);
   const activate = useCallback(
     (key: string): void => {
@@ -174,25 +175,40 @@ function useListKeys(
       }
       if (item.type === 'hit') {
         onOpen(item.target.chatId, item.target.messageId ?? undefined);
-      } else if (item.entry.desktop !== undefined) {
-        onOpenDesktop(item.entry);
       } else {
         onOpen(item.entry.id);
       }
     },
-    [items, onOpen, onOpenDesktop],
+    [items, onOpen],
   );
   return { keys, activate };
 }
 
+function useCompletedDisclosure(
+  query: string,
+): Pick<ListView, 'completedOpen' | 'toggleCompleted'> {
+  const [open, setOpen] = useState(false);
+  const [hiddenQuery, setHiddenQuery] = useState<string | null>(null);
+  const needle = query.trim();
+  const completedOpen = needle === '' ? open : hiddenQuery !== needle;
+  return {
+    completedOpen,
+    toggleCompleted: (): void => {
+      if (needle === '') setOpen((current) => !current);
+      else setHiddenQuery(completedOpen ? needle : null);
+    },
+  };
+}
+
 function useListView(props: ChatListProps): ListView {
   const [query, setQuery] = useState('');
+  const searchInput = useRef<TextInput>(null);
   const [filter, setFilter] = useState<ChatFilter>('all');
-  const agents = useExpandedAgents();
-  const model = useListModel(filter, query, agents.expanded);
+  const agents = useCollapsedAgents();
+  const completed = useCompletedDisclosure(query);
+  const model = useListModel(filter, query, agents.collapsed);
   const area = useAreaStatus();
   const { selected, onOpen, onDeleted } = props;
-  const { busyId, openDesktop } = useOpenDesktop(onOpen);
   useFilterParam(setFilter);
   const context = useMemo<RowContext>(
     () => ({
@@ -202,13 +218,15 @@ function useListView(props: ChatListProps): ListView {
       onOpen,
       onToggleAgents: agents.toggle,
       onDeleted,
-      onOpenDesktop: openDesktop,
-      busyId,
     }),
-    [selected, model.timeZone, query, onOpen, agents.toggle, onDeleted, openDesktop, busyId],
+    [selected, model.timeZone, query, onOpen, agents.toggle, onDeleted],
   );
   const render = useCallback((item: ListItem) => renderRow(item, context), [context]);
-  const { keys, activate } = useListKeys(model.groups, onOpen, openDesktop);
+  const { keys, activate } = useListKeys(
+    model.sections,
+    completed.completedOpen ? model.completedHelpers : NO_COMPLETED,
+    onOpen,
+  );
   return {
     query,
     filter,
@@ -218,7 +236,11 @@ function useListView(props: ChatListProps): ListView {
     keys,
     render,
     activate,
-    toggleAgents: agents.toggle,
+    ...completed,
+    searchInput,
+    clearSearch: (): void => {
+      setQuery('');
+    },
     setQuery,
     setFilter,
   };
@@ -226,33 +248,47 @@ function useListView(props: ChatListProps): ListView {
 
 export function ChatList(props: ChatListProps): ReactNode {
   const view = useListView(props);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const [controlsHeight, setControlsHeight] = useState(0);
   const { model } = view;
   const bare = !view.loading && model.total === 0 && view.filter === 'all' && view.query === '';
-  const clearSearch = (): void => {
-    view.setQuery('');
-  };
   return (
-    <View className="relative min-h-0 flex-1">
-      <Ambient />
-      <ListHeader kind={props.kind} />
-      {view.area.kind === 'offline-cached' ? <OfflineBanner /> : null}
+    <View className="relative min-h-0 flex-1 bg-bg">
+      <Ambient height={headerHeight + controlsHeight} />
+      <View
+        onLayout={(event) => {
+          setHeaderHeight(event.nativeEvent.layout.height);
+        }}
+      >
+        <ListHeader kind={props.kind} />
+        {view.area.kind === 'offline-cached' ? <OfflineBanner /> : null}
+      </View>
       <KeyboardList
         items={view.keys}
         onActivate={view.activate}
+        searchInput={view.searchInput}
         label="Chats"
         className="min-h-0 flex-1"
-        {...(view.query === '' ? {} : { onEscape: clearSearch })}
+        {...(view.query === '' ? {} : { onEscape: view.clearSearch })}
       >
-        {bare ? null : (
-          <Controls
-            query={view.query}
-            filter={view.filter}
-            counts={model.counts}
-            focusSearch={props.focusSearch === true}
-            onQuery={view.setQuery}
-            onFilter={view.setFilter}
-          />
-        )}
+        <View
+          onLayout={(event) => {
+            setControlsHeight(event.nativeEvent.layout.height);
+          }}
+        >
+          {bare ? null : (
+            <Controls
+              query={view.query}
+              filter={view.filter}
+              counts={model.counts}
+              inputRef={view.searchInput}
+              focusSearch={props.focusSearch === true}
+              onQuery={view.setQuery}
+              onFilter={view.setFilter}
+            />
+          )}
+          <GroupHeading count={model.chatCount} onNewChat={props.onNewChat} />
+        </View>
         <ListContent view={view} list={props} />
       </KeyboardList>
     </View>

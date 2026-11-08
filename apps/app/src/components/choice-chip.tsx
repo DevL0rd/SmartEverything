@@ -10,7 +10,7 @@ const SEARCHABLE_AT = 8;
 
 export interface ChoiceChipProps<T extends string> {
   readonly label: string;
-  readonly icon: IconName;
+  readonly icon?: IconName | undefined;
   readonly options: readonly SelectOption<T>[];
   readonly value: T;
   readonly all: T;
@@ -26,12 +26,16 @@ export function ChoiceChip<T extends string>({
   onChange,
 }: ChoiceChipProps<T>): ReactNode {
   const ref = useRef<View>(null);
+  const opener = useRef<View>(null);
   const [anchor, setAnchor] = useState<Rect | null>(null);
   const chosen = options.find((option) => option.value === value);
   return (
     <>
       <FilterChip
+        affordance="menu"
+        expanded={anchor !== null}
         anchorRef={ref}
+        pressRef={opener}
         label={label}
         value={chosen?.label ?? label}
         icon={icon}
@@ -45,6 +49,7 @@ export function ChoiceChip<T extends string>({
         options={options}
         value={value}
         anchor={anchor}
+        opener={opener}
         searchable={options.length > SEARCHABLE_AT}
         onClose={() => {
           setAnchor(null);

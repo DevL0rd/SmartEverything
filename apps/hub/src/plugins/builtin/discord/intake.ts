@@ -15,8 +15,9 @@ import type { Status } from './status';
 import type { Triggers } from './triggers';
 import type { Typing } from './typing';
 import type { VoiceService } from './voice/service';
+import { pluginLogger } from '../../plugin-logs';
 
-const log = new Logger('hub.discord-intake');
+const log = pluginLogger(new Logger('hub.discord-intake'), 'discord');
 
 const SEEN_LIMIT = 2000;
 const SEEN_MS = 10 * 60_000;

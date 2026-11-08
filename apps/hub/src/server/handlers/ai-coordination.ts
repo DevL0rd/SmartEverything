@@ -1,5 +1,5 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
-import type { AskSender } from '../../assistant/coordination/asks';
+import type { AskSender } from '../../assistant/delegation/delegation';
 import { pluginOriginOf } from '../../ai-tools/plugin-turn';
 import { chatOwnerOf, clientOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
@@ -25,9 +25,9 @@ function senderOf(context: ServerContext, caller: Caller): AskSender {
 export const aiCoordinationRoutes = (context: ServerContext) =>
   ({
     askAiChat: bound(E.askAiChat, ({ params, body, caller }) =>
-      context.assistant.coordination.ask(senderOf(context, caller), params.chatId, body),
+      context.assistant.delegation.ask(senderOf(context, caller), params.chatId, body),
     ),
     runAiSubagent: bound(E.runAiSubagent, ({ params, body, caller }) =>
-      context.assistant.coordination.subagent(senderOf(context, caller), params.chatId, body),
+      context.assistant.delegation.subagent(senderOf(context, caller), params.chatId, body),
     ),
   }) as const;

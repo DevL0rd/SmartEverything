@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ffmpegPath } from '../../src/media/ffmpeg-path';
 import { OpenRouterClient } from '../../src/openrouter/client';
 import { OpenRouterMediaNotes } from '../../src/openrouter/media-notes';
@@ -66,11 +66,22 @@ function sent(): { readonly client: OpenRouterClient; readonly bodies: () => str
 }
 
 describe('long media shrinks before one OpenRouter request', () => {
+  let base: string;
+  let tmp: string;
+
+  beforeEach(async () => {
+    base = await mkdtemp(join(tmpdir(), 'smarteverything-shrink-'));
+    tmp = join(base, 'tmp');
+  });
+  afterEach(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
   it('sends audio over the request limit as shrunk speech', async () => {
     const audio = wavOf(2);
     const { client, bodies } = sent();
 
-    const answer = await new OpenRouterTranscription(client, audio.byteLength / 2).transcribe({
+    const answer = await new OpenRouterTranscription(client, tmp, audio.byteLength / 2).transcribe({
       model: 'm',
       data: audio,
       format: 'wav',
@@ -80,13 +91,14 @@ describe('long media shrinks before one OpenRouter request', () => {
     const [body] = bodies();
     expect(JSON.parse(body ?? '{}')).toMatchObject({ input_audio: { format: 'ogg' } });
     expect(Buffer.byteLength(body ?? '')).toBeLessThan(audio.byteLength);
+    expect(await readdir(tmp)).toEqual([]);
   });
 
   it('sends audio under the request limit untouched', async () => {
     const audio = wavOf(1);
     const { client, bodies } = sent();
 
-    await new OpenRouterTranscription(client, audio.byteLength).transcribe({
+    await new OpenRouterTranscription(client, tmp, audio.byteLength).transcribe({
       model: 'm',
       data: audio,
       format: 'wav',
@@ -101,7 +113,7 @@ describe('long media shrinks before one OpenRouter request', () => {
     const { client, bodies } = sent();
 
     await expect(
-      new OpenRouterTranscription(client, 100).transcribe({
+      new OpenRouterTranscription(client, tmp, 100).transcribe({
         model: 'm',
         data: wavOf(2),
         format: 'wav',
@@ -114,7 +126,7 @@ describe('long media shrinks before one OpenRouter request', () => {
     const clip = await clipOf();
     const { client, bodies } = sent();
 
-    const answer = await new OpenRouterMediaNotes(client, clip.byteLength / 2).describe({
+    const answer = await new OpenRouterMediaNotes(client, tmp, clip.byteLength / 2).describe({
       model: 'm',
       prompt: 'p',
       mime: 'video/mp4',
@@ -132,7 +144,7 @@ describe('long media shrinks before one OpenRouter request', () => {
     const { client, bodies } = sent();
 
     await expect(
-      new OpenRouterMediaNotes(client, 100).describe({
+      new OpenRouterMediaNotes(client, tmp, 100).describe({
         model: 'm',
         prompt: 'p',
         mime: 'video/mp4',

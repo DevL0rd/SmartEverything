@@ -30,7 +30,7 @@ export const OPENROUTER_SETTINGS: readonly SettingDefinition[] = [
     id: BLOCK,
     page: 'assistant',
     title: 'OpenRouter',
-    description: 'API key, credit and the default model for new chats.',
+    description: 'API key, credit and the model for new chats.',
     keywords: ['openrouter', 'api key', 'credit', 'default model'],
     scope: 'server',
     control: 'custom',
@@ -46,7 +46,7 @@ export const OPENROUTER_SETTINGS: readonly SettingDefinition[] = [
   listed('remove', 'Remove the key', ['api key', 'delete key', 'disconnect'], owner),
   listed('credit', 'Credit', ['balance', 'top up', 'buy credits', 'money left'], owner),
   listed('limit', 'This key’s limit', ['key limit', 'spending limit', 'remaining'], owner),
-  listed('default', 'Default for new chats', ['default model', 'new chats', 'gemini', 'thinking']),
+  listed('default', 'Model for new chats', ['default model', 'new chats', 'gemini', 'thinking']),
   listed('spent-today', 'Spent today with this key', ['spent', 'usage', 'cost', 'today'], owner),
   listed('spent-week', 'Spent this week with this key', ['spent', 'usage', 'cost', 'week'], owner),
   listed(

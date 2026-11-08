@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement, type ReactNode } from 'react';
+import { use, useMemo, type ReactElement, type ReactNode } from 'react';
 import { RefreshControl, View } from 'react-native';
 import Animated, {
   useAnimatedRef,
@@ -6,12 +6,11 @@ import Animated, {
   useSharedValue,
   type AnimatedRef,
 } from 'react-native-reanimated';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useIsFocused, useScrollToTop } from 'expo-router';
-import { withUniwind } from 'uniwind';
 import { cn } from '../design/cn';
 import { useScreenViewport } from '../design/viewport';
 import { Ambient } from './ambient';
+import { KeyboardViewport } from './keyboard-viewport';
 import { useToastObstacle } from './toast-obstacles';
 import {
   PrimaryAction,
@@ -27,12 +26,10 @@ import {
   type ScreenValue,
 } from './screen-context';
 
-const KeyboardViewport = withUniwind(KeyboardAvoidingView);
-
 type ScreenWidth = 'dashboard' | 'detail' | 'reading' | 'full';
 
 const WIDTH: Readonly<Record<ScreenWidth, string>> = {
-  dashboard: 'max-w-dashboard',
+  dashboard: '',
   detail: 'max-w-detail',
   reading: 'max-w-reading',
   full: '',
@@ -79,8 +76,15 @@ function Body({
   readonly children: ReactNode;
 }): ReactNode {
   return (
-    <View className={cn('w-full gap-section-gap self-center', WIDTH[maxWidth])}>{children}</View>
+    <View className={cn('w-full gap-section-gap self-start', WIDTH[maxWidth])}>{children}</View>
   );
+}
+
+function useScrollLayoutEvent(): () => void {
+  const scroll = use(ScreenScrollContext);
+  return (): void => {
+    scroll?.layout.set((current) => current + 1);
+  };
 }
 
 function ScrollBody({
@@ -104,12 +108,15 @@ function ScrollBody({
 }): ReactNode {
   const { scrollY } = useScreen();
   useScrollToTop(scrollRef);
+  const onLayout = useScrollLayoutEvent();
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollY.set(event.contentOffset.y);
   });
   return (
     <Animated.ScrollView
       ref={scrollRef}
+      onLayout={onLayout}
+      onContentSizeChange={onLayout}
       onScroll={onScroll}
       scrollEventThrottle={16}
       keyboardShouldPersistTaps="handled"
@@ -120,9 +127,11 @@ function ScrollBody({
       }
       contentContainerClassName={cn('px-gutter pb-section-gap', fab && 'pb-28')}
     >
-      <View className={cn('w-full self-center', WIDTH[maxWidth])}>
+      <View className="w-full">
         <HeaderSlotContext.Provider value="large">{header}</HeaderSlotContext.Provider>
-        {banner === undefined ? null : <View className="pb-4">{banner}</View>}
+        {banner === undefined ? null : (
+          <View className={cn('pb-4', WIDTH[maxWidth])}>{banner}</View>
+        )}
       </View>
       <Body maxWidth={maxWidth}>{children}</Body>
     </Animated.ScrollView>
@@ -146,19 +155,17 @@ function StaticBody({
   header,
   banner,
   externalScroll,
-  maxWidth,
   children,
 }: {
   readonly header: ReactElement | undefined;
   readonly banner: ReactNode;
   readonly externalScroll: boolean;
-  readonly maxWidth: ScreenWidth;
   readonly children: ReactNode;
 }): ReactNode {
   return (
     <View className="flex-1">
       {externalScroll ? null : (
-        <View className={cn('w-full self-center px-gutter', WIDTH[maxWidth])}>
+        <View className="w-full px-gutter">
           <HeaderSlotContext.Provider value="large">{header}</HeaderSlotContext.Provider>
           {banner}
         </View>
@@ -177,12 +184,7 @@ function ContentBody({ scroll, externalScroll, ...content }: ContentBodyProps): 
   return scroll ? (
     <ScrollBody {...content} />
   ) : (
-    <StaticBody
-      header={content.header}
-      banner={content.banner}
-      externalScroll={externalScroll}
-      maxWidth={content.maxWidth}
-    >
+    <StaticBody header={content.header} banner={content.banner} externalScroll={externalScroll}>
       {content.children}
     </StaticBody>
   );
@@ -192,8 +194,12 @@ function useScrollAnchor(
   scroll: boolean,
   scrollRef: ScreenScroll['scrollRef'],
   scrollY: ScreenScroll['scrollY'],
+  layout: ScreenScroll['layout'],
 ): ScreenScroll | null {
-  return useMemo(() => (scroll ? { scrollRef, scrollY } : null), [scroll, scrollRef, scrollY]);
+  return useMemo(
+    () => (scroll ? { scrollRef, scrollY, layout } : null),
+    [scroll, scrollRef, scrollY, layout],
+  );
 }
 
 export function Screen({
@@ -209,6 +215,7 @@ export function Screen({
   children,
 }: ScreenProps): ReactNode {
   const scrollY = useSharedValue(0);
+  const layout = useSharedValue(0);
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const placement = usePrimaryActionPlacement();
   const fab = primaryAction !== undefined && placement === 'fab';
@@ -220,8 +227,8 @@ export function Screen({
   );
   return (
     <ScreenContext.Provider value={value}>
-      <ScreenScrollContext.Provider value={useScrollAnchor(scroll, scrollRef, scrollY)}>
-        <KeyboardViewport behavior="padding" automaticOffset className="flex-1">
+      <ScreenScrollContext.Provider value={useScrollAnchor(scroll, scrollRef, scrollY, layout)}>
+        <KeyboardViewport className="flex-1">
           <Ambient />
           {header}
           <ContentBody

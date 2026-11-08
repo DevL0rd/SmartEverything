@@ -1,6 +1,6 @@
 import { APP_PLUGINS } from '../plugins/registry';
 import type { StoreState } from '../store/state';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import {
   CAPABILITY_CATALOGUE,
   isBleObservable,
@@ -13,8 +13,9 @@ import {
 import { contributedDevicePages } from '../app-shell/device-pages';
 import { href } from '../app-shell/hrefs';
 import type { IconName } from '../components/icon';
-import { deviceModelOf } from '../features/devices';
+import { ADD_APPLIANCE_PAGE, deviceModelOf } from '../features/devices';
 import { sectionHref, sectionsOf } from '../features/devices/detail/sections';
+import { MODEL_PAGE, modelPageItem } from '../features/models';
 import {
   DEVICE_PAGE_TITLES,
   devicePlaces,
@@ -22,7 +23,7 @@ import {
   type DevicePlace,
 } from './device-places';
 import { familySearchItems } from './family-items';
-import { remoteActionsOf } from './remote-actions';
+import { remoteActionsOf, type RemoteActionPlace } from './remote-actions';
 import type { NamedDevice, SourceLinks } from './sources';
 
 export interface DeviceControl {
@@ -54,7 +55,7 @@ interface Item {
   readonly title: string;
   readonly keywords: readonly string[];
   readonly parent: string;
-  readonly link: Href;
+  readonly link: AppHref;
   readonly icon: IconName;
 }
 
@@ -93,7 +94,7 @@ function add(builder: Builder, item: Item, group: SearchEntry['group']): void {
 
 interface PageLink {
   readonly id: string;
-  readonly link: Href;
+  readonly link: AppHref;
   readonly icon: IconName;
 }
 
@@ -251,22 +252,24 @@ function addPlace(builder: Builder, place: DevicePlace): void {
   }
 }
 
+function remoteActionLink(id: string, place: RemoteActionPlace): AppHref {
+  if (place === 'add-appliance') {
+    return href.settings.device(id, ADD_APPLIANCE_PAGE);
+  }
+  return place === 'settings' ? href.settings.device(id, 'remotes') : sectionHref(id, place);
+}
+
 function addRemoteActions(builder: Builder): void {
-  const { named } = builder;
-  const id = named.device.id;
-  const page = `devpage:${id}:remote`;
-  for (const action of remoteActionsOf(named.device.kind)) {
+  const id = builder.named.device.id;
+  for (const action of remoteActionsOf(builder.named.device)) {
     add(
       builder,
       {
         id: `remote-action:${id}:${action.key}`,
         title: action.title,
         keywords: action.keywords,
-        parent: page,
-        link:
-          action.settings === true
-            ? href.settings.device(id, 'remotes')
-            : sectionHref(id, 'remote'),
+        parent: `devpage:${id}:${action.place === 'buttons' ? 'buttons' : 'remote'}`,
+        link: remoteActionLink(id, action.place),
         icon: 'remote',
       },
       'setting',
@@ -308,6 +311,16 @@ function addBluetoothObservation(builder: Builder): void {
   );
 }
 
+function addModelPage(builder: Builder): void {
+  const id = builder.named.device.id;
+  const item = modelPageItem(id);
+  add(
+    builder,
+    { ...item, id: `devpage:${id}:${MODEL_PAGE}`, parent: `devpage:${id}:settings` },
+    'page',
+  );
+}
+
 function addContributedPages(builder: Builder): void {
   const id = builder.named.device.id;
   for (const page of contributedDevicePages(builder.named.device)) {
@@ -339,7 +352,7 @@ function addFamilyItems(builder: Builder): void {
         title: item.title,
         keywords: item.keywords,
         parent: page.id,
-        link: page.link,
+        link: item.section === undefined ? page.link : sectionHref(named.device.id, item.section),
         icon: item.icon,
       },
       'action',
@@ -386,6 +399,7 @@ export function deviceSources(
     addCameraOptions(builder);
     addBluetoothObservation(builder);
     addRemoteActions(builder);
+    addModelPage(builder);
     addContributedPages(builder);
     addFamilyItems(builder);
     addPluginControls(builder, streams);

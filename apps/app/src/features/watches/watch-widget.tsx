@@ -1,50 +1,59 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { WidgetSize } from '@smarteverything/domain';
 import { href } from '../../app-shell/hrefs';
 import { Text } from '../../components/text';
-import { WidgetEmpty, WidgetFrame, type WidgetDefinition } from '../../components/widget-board';
+import {
+  ActionBand,
+  WidgetEmpty,
+  WidgetFrame,
+  type WidgetDefinition,
+} from '../../components/widget-board';
 import { allSizes, faceLayoutOf, isTile } from '../../components/widget-board/all-sizes';
 import { useWidgetFace } from '../../components/widget-board/use-widget-face';
+import { cn } from '../../design/cn';
 import { useMinute } from '../../store/clock';
 import type { Device } from '../../store/state';
-import {
-  DeviceVisual,
-  useWatchVisualState,
-  type VisualPx,
-  type WatchLive,
-} from '../device-visuals';
+import { DeviceVisual, SIZE_CLASS, useWatchVisualState, type WatchLive } from '../device-visuals';
+import { WideArt, useWideArt } from '../devices';
 import { FactChip, FactTile, SyncButton, factsOf, type Fact } from './watch-facts';
 import { useMyWatch, useWatchGlance, type WatchGlance } from './watch-glance';
 import { StepsBlock, WeekSteps } from './watch-steps-block';
 
-function Face({
-  watch,
-  live,
-  px,
-}: {
-  readonly watch: Device;
-  readonly live: WatchLive;
-  readonly px?: VisualPx;
-}): ReactNode {
+const TILE_ART_PX = 48;
+
+function Art({ watch, live }: { readonly watch: Device; readonly live: WatchLive }): ReactNode {
   const state = useWatchVisualState(watch, live);
+  const { cls } = useWidgetFace();
+  const art = useWideArt();
+  if (isTile(cls)) {
+    return (
+      <View
+        className={cn('shrink-0 items-center justify-center self-start', SIZE_CLASS[TILE_ART_PX])}
+      >
+        <DeviceVisual device={watch} size="card" px={TILE_ART_PX} state={state} />
+      </View>
+    );
+  }
   return (
-    <DeviceVisual
-      device={watch}
-      size={px === undefined ? 'card' : 'hero'}
-      state={state}
-      {...(px === undefined ? {} : { px })}
-    />
+    <WideArt cls={art.cls}>
+      <DeviceVisual device={watch} size="card" px={art.px} state={state} />
+    </WideArt>
   );
 }
 
 function Chips({ facts }: { readonly facts: readonly Fact[] }): ReactNode {
   return (
-    <View className="flex-row gap-4 overflow-hidden">
+    <View className="flex-row flex-wrap gap-x-3 gap-y-1">
       {facts.map((item) => (
         <FactChip key={item.key} fact={item} />
       ))}
     </View>
+  );
+}
+
+function rowsOf(facts: readonly Fact[], columns: number): readonly (readonly Fact[])[] {
+  return Array.from({ length: Math.ceil(facts.length / columns) }, (_, index) =>
+    facts.slice(index * columns, index * columns + columns),
   );
 }
 
@@ -55,10 +64,9 @@ function Tiles({
   readonly facts: readonly Fact[];
   readonly columns: 2 | 4;
 }): ReactNode {
-  const rows = columns === 4 ? [facts.slice(0, 4)] : [facts.slice(0, 2), facts.slice(2, 4)];
   return (
     <View className="gap-2">
-      {rows.map((row) => (
+      {rowsOf(facts, columns).map((row) => (
         <View key={row.map((item) => item.key).join()} className="flex-row gap-2">
           {row.map((item) => (
             <FactTile key={item.key} fact={item} />
@@ -72,36 +80,23 @@ function Tiles({
 interface BodyProps {
   readonly watch: Device;
   readonly glance: WatchGlance;
-  readonly live: WatchLive;
   readonly facts: readonly Fact[];
 }
 
-function Square({ watch, live }: BodyProps): ReactNode {
+function Split({ glance, facts }: BodyProps): ReactNode {
   return (
-    <View className="flex-1 items-center justify-center">
-      <Face watch={watch} live={live} />
+    <View className="min-w-0 flex-1 gap-1">
+      <StepsBlock glance={glance} size="s" />
+      <Chips facts={facts.filter((item) => item.key === 'heart' || item.key === 'battery')} />
     </View>
   );
 }
 
-function Strip({ watch, glance, live, facts }: BodyProps): ReactNode {
+function Wide({ glance, facts }: BodyProps): ReactNode {
   return (
-    <View className="flex-1 flex-row items-center gap-4">
-      <Face watch={watch} live={live} />
-      <View className="min-w-0 flex-1 gap-2">
+    <View className="min-w-0 flex-1 flex-row gap-4">
+      <View className="w-1/4">
         <StepsBlock glance={glance} size="m" />
-        <Chips facts={facts.filter((item) => item.key === 'heart' || item.key === 'battery')} />
-      </View>
-    </View>
-  );
-}
-
-function Wide({ watch, glance, live, facts }: BodyProps): ReactNode {
-  return (
-    <View className="flex-1 flex-row items-center gap-5">
-      <Face watch={watch} live={live} />
-      <View className="w-1/4 gap-2">
-        <StepsBlock glance={glance} size="l" />
       </View>
       <View className="min-w-0 flex-1">
         <Tiles facts={facts} columns={4} />
@@ -110,99 +105,83 @@ function Wide({ watch, glance, live, facts }: BodyProps): ReactNode {
   );
 }
 
-function Tall({
+function Tall({ watch, glance, facts }: BodyProps): ReactNode {
+  return (
+    <View className="min-w-0 flex-1 gap-3">
+      <StepsBlock glance={glance} size="l" />
+      <WeekSteps watch={watch} glance={glance} />
+      <Chips facts={facts} />
+    </View>
+  );
+}
+
+function Report({ watch, glance, facts }: BodyProps): ReactNode {
+  return (
+    <View className="min-w-0 flex-1 flex-row gap-4">
+      <View className="min-w-0 flex-1 gap-3">
+        <StepsBlock glance={glance} size="xl" />
+        <WeekSteps watch={watch} glance={glance} />
+      </View>
+      <View className="min-w-0 flex-1">
+        <Tiles facts={facts} columns={2} />
+      </View>
+    </View>
+  );
+}
+
+function Content(props: BodyProps): ReactNode {
+  switch (faceLayoutOf(useWidgetFace().cls)) {
+    case 'tile':
+      return null;
+    case 'split':
+      return <Split {...props} />;
+    case 'wide':
+      return <Wide {...props} />;
+    case 'tall':
+      return <Tall {...props} />;
+    case 'report':
+      return <Report {...props} />;
+  }
+}
+
+function Glance({
   watch,
   glance,
   live,
-  facts,
-  chart,
-}: BodyProps & { readonly chart: boolean }): ReactNode {
+}: {
+  readonly watch: Device;
+  readonly glance: WatchGlance;
+  readonly live: WatchLive;
+}): ReactNode {
+  const now = useMinute();
+  const { cls } = useWidgetFace();
+  const tile = isTile(cls);
   return (
-    <View className="flex-1 gap-3">
-      <View className="flex-row items-center gap-4">
-        <Face watch={watch} live={live} />
-        <View className="min-w-0 flex-1">
-          <StepsBlock glance={glance} size="l" />
+    <View className={cn('flex-1 flex-row', cls === 'm' || tile ? 'gap-3' : 'gap-4')}>
+      <Art watch={watch} live={live} />
+      {tile ? null : (
+        <View className="min-w-0 flex-1 flex-row gap-2">
+          <Content watch={watch} glance={glance} facts={factsOf(glance, now)} />
+          {glance.onThisPhone ? (
+            <ActionBand>
+              <SyncButton glance={glance} />
+            </ActionBand>
+          ) : null}
         </View>
-      </View>
-      {chart ? <WeekSteps watch={watch} glance={glance} /> : <View className="flex-1" />}
-      {chart ? (
-        <Chips facts={facts.filter((item) => item.key !== 'sleep')} />
-      ) : (
-        <Tiles facts={facts} columns={2} />
       )}
     </View>
   );
 }
 
-function Stage({ watch, glance, live, facts }: BodyProps): ReactNode {
-  return (
-    <View className="flex-1 flex-row items-center gap-6">
-      <Face watch={watch} live={live} px={168} />
-      <View className="min-w-0 flex-1 gap-3 self-stretch">
-        <StepsBlock glance={glance} size="xl" />
-        <WeekSteps watch={watch} glance={glance} />
-      </View>
-      <View className="w-2/5">
-        <Tiles facts={facts} columns={2} />
-      </View>
-    </View>
+function BatteryBadge({ glance }: { readonly glance: WatchGlance }): ReactNode {
+  return glance.battery === null ? null : (
+    <Text variant="footnote" tone={glance.battery < 20 ? 'warning' : 'variant'} className="tabular">
+      {`${String(glance.battery)}%`}
+    </Text>
   );
 }
 
-interface GlanceProps {
-  readonly watch: Device;
-  readonly glance: WatchGlance;
-  readonly live: WatchLive;
-  readonly size: WidgetSize;
-}
-
-function Glance({ watch, glance, live, size }: GlanceProps): ReactNode {
-  const now = useMinute();
-  const { cls } = useWidgetFace();
-  const props = { watch, glance, live, facts: factsOf(glance, now) };
-  switch (faceLayoutOf(cls)) {
-    case 'tile':
-      return <Square {...props} />;
-    case 'split':
-      return <Strip {...props} />;
-    case 'wide':
-      return <Wide {...props} />;
-    case 'tall':
-      return <Tall {...props} chart={size === 'XL'} />;
-    case 'report':
-      return <Stage {...props} />;
-  }
-}
-
-function HeaderAction({
-  glance,
-  tile,
-}: {
-  readonly glance: WatchGlance;
-  readonly tile: boolean;
-}): ReactNode {
-  if (tile) {
-    return glance.battery === null ? null : (
-      <Text
-        variant="footnote"
-        tone={glance.battery < 20 ? 'warning' : 'variant'}
-        className="tabular"
-      >
-        {`${String(glance.battery)}%`}
-      </Text>
-    );
-  }
-  return <SyncButton glance={glance} />;
-}
-
-function WatchFrame({
-  watch,
-  size,
-}: {
-  readonly watch: Device;
-  readonly size: WidgetSize;
-}): ReactNode {
+function WatchFrame({ watch }: { readonly watch: Device }): ReactNode {
   const { glance, live } = useWatchGlance(watch);
   const tile = isTile(useWidgetFace().cls);
   return (
@@ -211,14 +190,14 @@ function WatchFrame({
       icon="watch"
       accent="stand"
       href={href.device(watch)}
-      action={<HeaderAction glance={glance} tile={tile} />}
+      badge={tile ? <BatteryBadge glance={glance} /> : undefined}
     >
-      <Glance watch={watch} glance={glance} live={live} size={size} />
+      <Glance watch={watch} glance={glance} live={live} />
     </WidgetFrame>
   );
 }
 
-function WatchWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+function WatchWidget(): ReactNode {
   const watch = useMyWatch();
   if (watch === null) {
     return (
@@ -233,7 +212,7 @@ function WatchWidget({ size }: { readonly size: WidgetSize }): ReactNode {
       </WidgetFrame>
     );
   }
-  return <WatchFrame watch={watch} size={size} />;
+  return <WatchFrame watch={watch} />;
 }
 
 export const WATCH_WIDGET: WidgetDefinition = {
@@ -242,5 +221,5 @@ export const WATCH_WIDGET: WidgetDefinition = {
   icon: 'watch',
   sizes: allSizes('M', 'W', 'XL'),
   defaultSize: 'M',
-  render: ({ size }) => <WatchWidget size={size} />,
+  render: () => <WatchWidget />,
 };

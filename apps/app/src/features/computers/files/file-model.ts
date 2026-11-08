@@ -1,5 +1,4 @@
 import type {
-  FileEntry,
   FileProperties,
   FileUploadChunk,
   FileWriteChange,
@@ -68,15 +67,6 @@ export function chunkOf(
   return { path, start: piece.start, data, final: piece.final, replace };
 }
 
-export function base64Of(buffer: ArrayBuffer, start: number, end: number): string {
-  const view = new Uint8Array(buffer, start, end - start);
-  let binary = '';
-  for (let index = 0; index < view.length; index += 0x8000) {
-    binary += String.fromCharCode(...view.subarray(index, index + 0x8000));
-  }
-  return btoa(binary);
-}
-
 export function sourceWord(native: boolean): string {
   return native ? 'this phone' : 'this device';
 }
@@ -126,17 +116,6 @@ export function failureMessage(change: FileWriteChange, path: string, reason: st
     restore: 'restored',
   }[change.action];
   return `${baseName(path)} wasn’t ${verb}: ${reason}`;
-}
-
-const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']);
-
-export type EntryGlyph = 'folder' | 'link' | 'image' | 'fileText';
-
-export function glyphOf(entry: Pick<FileEntry, 'kind' | 'name'>): EntryGlyph {
-  if (entry.kind === 'folder') return 'folder';
-  if (entry.kind === 'link') return 'link';
-  const extension = entry.name.split('.').at(-1)?.toLowerCase() ?? '';
-  return entry.name.includes('.') && IMAGE_EXTENSIONS.has(extension) ? 'image' : 'fileText';
 }
 
 export type RowAction =

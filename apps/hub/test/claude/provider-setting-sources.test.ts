@@ -21,6 +21,17 @@ function turn(change: Partial<ProviderTurn> = {}): ProviderTurn {
 }
 
 describe('Claude settings sources in app chats', () => {
+  it('appends SmartEverything instructions to the native Claude Code preset', () => {
+    expect(
+      configuredOptions(turn({ system: 'SmartEverything home instructions' })).systemPrompt,
+    ).toEqual({
+      type: 'preset',
+      preset: 'claude_code',
+      append: 'SmartEverything home instructions',
+      snapshot: false,
+    });
+  });
+
   it('load the user and project setup for a chat in a working directory', () => {
     expect(configuredOptions(turn()).settingSources).toEqual(['user', 'project']);
     expect(nativeSourcesEnabled(turn())).toBe(true);

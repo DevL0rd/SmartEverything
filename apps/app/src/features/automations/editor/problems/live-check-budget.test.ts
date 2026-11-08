@@ -1,7 +1,7 @@
 import { FLOW_SCOPE_OUTPUTS, NODE_REGISTRY } from '@smarteverything/domain';
 import type { LintContext } from '@smarteverything/flow/check/lint';
 import { describe, expect, it } from 'vitest';
-import { automation, step } from '../../model/editor/editor-fixtures';
+import { automation, note, start } from '../../model/graph/graph-scene-fixtures';
 import { runLiveCheck } from './problem-model';
 
 const context: LintContext = {
@@ -22,18 +22,29 @@ function median(values: readonly number[]): number {
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
 }
 
-describe('live check budget', () => {
-  it('checks and lints 200 nodes inside the 16 ms budget', () => {
-    const program = automation(
-      Array.from({ length: NODES }, (_, at) =>
-        step(`step${String(at)}`, {
-          value:
-            at === 0 ? { lit: true } : { wire: { from: `step${String(at - 1)}`, port: 'value' } },
+function longChain(): ReturnType<typeof automation> {
+  const keys = Array.from({ length: NODES }, (_, at) => `step${String(at)}`);
+  return automation(
+    [
+      start(keys[0]),
+      ...keys.map((key, at) =>
+        note(key, keys[at + 1], {
+          ports: {
+            message:
+              at === 0 ? { lit: 'go' } : { wire: { from: `step${String(at - 1)}`, port: 'value' } },
+          },
         }),
       ),
-    );
-    runLiveCheck(program, context, NODE_REGISTRY);
+    ],
+    { triggers: [] },
+  );
+}
+
+describe('live check budget', () => {
+  it('checks and lints 200 nodes inside the 16 ms budget', () => {
+    runLiveCheck(longChain(), context, NODE_REGISTRY);
     const timings = Array.from({ length: RUNS }, () => {
+      const program = structuredClone(longChain());
       const started = performance.now();
       runLiveCheck(program, context, NODE_REGISTRY);
       return performance.now() - started;

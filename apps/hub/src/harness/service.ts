@@ -1,9 +1,10 @@
-import { join } from 'node:path';
-import { harnessContextPercent } from '@smarteverything/domain';
+import type { HubLayout } from '../data-layout';
 import { chatFolder, ensureChatFolder } from '../projects/paths';
 import { switchConversation } from './switch-conversation';
 import { HarnessDiscovery } from './discovery';
+import { HarnessSourceRegistry } from './sources';
 import { NativeIngest } from './native-ingest';
+import { DshUsageLedger } from './dsh-usage';
 import { HarnessSkillUpdatesService } from './skill-updates';
 import { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
@@ -18,6 +19,7 @@ import { HarnessExtensions } from './extensions';
 import { prepareConversation } from './preparation';
 import { changePermission, confirmedPermission } from './permission';
 import { ApiError, AI_HARNESS_SESSION } from '@smarteverything/domain';
+import { noteChatMeters } from './chat-meters';
 import type {
   AiChatRow,
   DshEngine,
@@ -37,6 +39,7 @@ import { ownedChat, type ChatOwner } from '../assistant/chat-directory';
 import type { HarnessAuthority } from '@smarteverything/harness';
 import { HarnessDirectory } from './directory';
 import { HarnessStorage } from './storage';
+import { admitChildRoutes } from './child-routes';
 import type { HarnessRoutes } from './routes';
 import type { DshSessionPrincipal } from '../store/repositories/dsh-session-claims';
 
@@ -54,26 +57,34 @@ export class HarnessService {
   readonly configuration: HarnessConfigurationService;
   readonly extensions: HarnessExtensions;
   readonly discovery: HarnessDiscovery;
+  readonly sources: HarnessSourceRegistry;
   readonly skillUpdates: HarnessSkillUpdatesService;
   readonly subscriptions: HarnessSubscriptions;
+  readonly dshUsage: DshUsageLedger;
   private readonly ingest: NativeIngest;
-  private readonly dataDirectory: string;
+  private readonly layout: HubLayout;
   constructor(
     readonly store: Store,
     readonly routes: HarnessRoutes,
     private readonly announce: (event: AiHarnessEvent, profileId: string) => void,
-    options: { readonly dataDirectory: string; readonly clock: Clock },
+    options: { readonly layout: HubLayout; readonly clock: Clock },
   ) {
-    const now = (): Date => options.clock.now();
-    this.dataDirectory = options.dataDirectory;
+    this.layout = options.layout;
     this.ingest = new NativeIngest(store, (event) => {
       this.publish(event);
     });
+    this.dshUsage = new DshUsageLedger(store.ledger);
     store.dshSessions.onAppend((sessionId, events) => {
       this.ingest.appended(sessionId, events);
+      this.dshUsage.appended(sessionId, events);
     });
+    admitChildRoutes(this);
     this.storage = new HarnessStorage(store, this.directory);
-    this.subscriptions = new HarnessSubscriptions(this.directory, routes);
+    this.subscriptions = new HarnessSubscriptions(
+      this.directory,
+      routes,
+      store.aiWeeklySubscriptionHistory,
+    );
     this.configuration = new HarnessConfigurationService(
       store.harnessConfiguration,
       store.harnessExtensions,
@@ -82,11 +93,17 @@ export class HarnessService {
     this.extensions = new HarnessExtensions(
       store.harnessExtensions,
       this.configuration,
-      join(options.dataDirectory, 'harness'),
-      now,
+      { state: options.layout.system.ai.harness, tmp: options.layout.tmp },
+      (): Date => options.clock.now(),
     );
     this.settleInterruptedSwitches();
-    this.discovery = new HarnessDiscovery(() => this.extensions.installed(), now);
+    this.sources = new HarnessSourceRegistry(store.settingsKv);
+    this.discovery = new HarnessDiscovery(
+      () => this.extensions.installed(),
+      () => this.sources.list().sources.map((entry) => entry.source),
+      options.layout.tmp,
+      (): Date => options.clock.now(),
+    );
     this.skillUpdates = new HarnessSkillUpdatesService(
       store.harnessSkillUpdates,
       this.configuration,
@@ -94,8 +111,8 @@ export class HarnessService {
       options.clock,
     );
   }
-  chatFolder(chatId: string): string {
-    return ensureChatFolder(chatFolder(this.dataDirectory, chatId));
+  chatFolder(chat: AiChatRow): string {
+    return ensureChatFolder(chatFolder(this.layout, chat));
   }
   own(owner: ChatOwner, chatId: string): AiChatRow {
     return ownedChat(this.store, owner, chatId);
@@ -113,7 +130,7 @@ export class HarnessService {
         'conflict',
         'This native chat has not been opened on its selected execution host.',
       );
-    const state = this.store.harnessCoordination.state(binding.session_id);
+    const state = this.store.harnessSessions.state(binding.session_id);
     if (state === undefined)
       throw new ApiError('conflict', 'Native session projection is unavailable.');
     const metadata = this.store.dshSessions.stat(binding.session_id, chat.profile_id);
@@ -127,7 +144,7 @@ export class HarnessService {
     return AI_HARNESS_SESSION.parse({
       ...state,
       metadata,
-      permission_change: this.store.harnessCoordination.permissionChange(binding.session_id),
+      permission_change: this.store.harnessSessions.permissionChange(binding.session_id),
     });
   }
   permission(
@@ -165,7 +182,7 @@ export class HarnessService {
   async answer(owner: ChatOwner, chatId: string, answer: AiHarnessAnswer): Promise<void> {
     const chat = this.own(owner, chatId);
     const id = this.boundSession(chat);
-    const receipt = this.store.harnessCoordination.begin(answer.operation_id, id, answer);
+    const receipt = this.store.harnessSessions.begin(answer.operation_id, id, answer);
     const fields = {
       chatId,
       harnessSession: id,
@@ -193,7 +210,7 @@ export class HarnessService {
       });
       throw cause;
     }
-    this.store.harnessCoordination.finish(answer.operation_id, { ok: true });
+    this.store.harnessSessions.finish(answer.operation_id, { ok: true });
     this.log.info('harness.answered', {
       ...fields,
       durationMs: Math.round(performance.now() - startedAt),
@@ -245,9 +262,9 @@ export class HarnessService {
     );
   }
   private settleInterruptedSwitches(): void {
-    for (const id of this.store.harnessCoordination.switchingSessions()) {
+    for (const id of this.store.harnessSessions.switchingSessions()) {
       this.log.warn('harness.switch_interrupted', { harnessSession: id });
-      this.store.harnessCoordination.settleSwitching(id, {
+      this.store.harnessSessions.settleSwitching(id, {
         code: 'operation_failed',
         message: 'The hub restarted during the machine change; send a message to continue.',
         retry_at: null,
@@ -289,12 +306,12 @@ export class HarnessService {
     logPublished(this.log, event);
     const policy = event.kind === 'state' ? confirmedPermission(this, event) : undefined;
     const next = {
-      ...nextProjection(event, session, (state) => this.projected(state, session)),
+      ...nextProjection(event, session, (state) => this.projected(state)),
       ...(policy === undefined ? {} : { permission: policy.permission }),
     };
     const published = event.kind === 'state' ? { ...event, session: next } : event;
     if (!streamedWithoutChange(event, session, next))
-      this.store.harnessCoordination.accept(
+      this.store.harnessSessions.accept(
         next,
         published,
         (): void => {
@@ -304,7 +321,7 @@ export class HarnessService {
               engine: { ...this.binding(chat), permission: policy.permission },
             });
           }
-          this.noteContext(published);
+          noteChatMeters(this.store, published);
         },
         policy,
       );
@@ -314,16 +331,6 @@ export class HarnessService {
     for (const listener of this.listeners) listener(event);
     this.announce(event, profileId);
   }
-  private noteContext(event: AiHarnessEvent): void {
-    if (event.kind === 'usage') {
-      if (event.context_percent !== null)
-        this.store.aiChats.noteContext(event.chat_id, Math.round(event.context_percent));
-      return;
-    }
-    if (event.kind !== 'state' || event.session.context === undefined) return;
-    const percent = harnessContextPercent(event.session.context);
-    this.store.aiChats.noteContext(event.chat_id, percent === null ? null : Math.round(percent));
-  }
   private boundSession(chat: AiChatRow): string {
     const id = this.binding(chat).session_id;
     if (id === null) throw new ApiError('conflict', 'This conversation has no native binding.');
@@ -332,7 +339,7 @@ export class HarnessService {
     return id;
   }
   private validateEvent(event: AiHarnessEvent): AiHarnessSession {
-    const session = this.store.harnessCoordination.state(event.session_id);
+    const session = this.store.harnessSessions.state(event.session_id);
     if (session?.epoch !== event.epoch || session.chat_id !== event.chat_id) {
       this.stale.warn('harness.event_stale', event.session_id, {
         chatId: event.chat_id,
@@ -346,10 +353,7 @@ export class HarnessService {
     }
     return session;
   }
-  private projected(
-    event: Extract<AiHarnessEvent, { kind: 'state' }>,
-    prior: AiHarnessSession,
-  ): AiHarnessSession {
+  private projected(event: Extract<AiHarnessEvent, { kind: 'state' }>): AiHarnessSession {
     const grant = this.storage.grant(event.session_id);
     const metadata = this.store.dshSessions.stat(event.session_id, grant.profile_id);
     if (metadata === undefined)
@@ -357,7 +361,6 @@ export class HarnessService {
     projectNativeWorkspace(this, event, grant);
     return AI_HARNESS_SESSION.parse({
       ...event.session,
-      context_request: prior.context_request,
       metadata,
       target: grant.target,
       route: grant.route,
@@ -379,7 +382,7 @@ export class HarnessService {
       this.store.aiChats.assertWorkAllowed(request.chat_id);
       return;
     }
-    const grant = this.store.harnessCoordination.grant(request.session_id);
+    const grant = this.store.harnessSessions.grant(request.session_id);
     if (grant === undefined)
       throw new ApiError('conflict', 'Native work has no admitted session grant.');
     const metadata = this.store.dshSessions.stat(request.session_id, grant.profile_id);

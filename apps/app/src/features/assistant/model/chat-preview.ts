@@ -1,5 +1,10 @@
 import type { AssistantReasonCode } from '@smarteverything/domain';
-import { parseMarkdown, type Block, type Inline } from '../components/markdown/parse';
+import {
+  inlineText,
+  parseMarkdown,
+  plainBlockText,
+  type Block,
+} from '@smarteverything/domain/markdown';
 
 const PREVIEW_MAX = 160;
 
@@ -17,24 +22,8 @@ export function failureReasonOf(code: AssistantReasonCode | null): string | null
   return code === null ? FAILURE.unknown : FAILURE[code];
 }
 
-function inlineText(inline: readonly Inline[]): string {
-  return inline.map((part) => part.text).join('');
-}
-
 function blockText(block: Block): string | null {
-  switch (block.kind) {
-    case 'paragraph':
-    case 'quote':
-      return inlineText(block.inline);
-    case 'list':
-      return block.items.map(inlineText).join(' · ');
-    case 'table':
-      return block.header.map(inlineText).join(' · ');
-    case 'code':
-      return block.code;
-    case 'heading':
-      return null;
-  }
+  return block.kind === 'heading' ? null : plainBlockText(block);
 }
 
 function headingsOf(blocks: readonly Block[]): string {

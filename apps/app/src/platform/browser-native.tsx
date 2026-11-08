@@ -20,7 +20,11 @@ import {
   nativeHtmlCurrent,
   onNativeHtmlRetired,
 } from '../../modules/health-connect/src/html-preview';
-import { nativeBrowserStatus, type NativeBrowserEvent } from './browser-native-events';
+import {
+  nativeBrowserConsole,
+  nativeBrowserStatus,
+  type NativeBrowserEvent,
+} from './browser-native-events';
 import { useBrowserDisplayed } from './browser-displayed';
 import type { BrowserHandle, BrowserSurfaceProps } from './browser-contract';
 
@@ -37,6 +41,7 @@ type NativeBrowserProps = NativeBrowserSource & {
   readonly displayed: boolean;
   readonly style: StyleProp<ViewStyle>;
   readonly onStatus: (event: NativeBrowserEvent) => void;
+  readonly onConsole: (event: NativeBrowserEvent) => void;
 };
 const NativeBrowser = requireNativeView<NativeBrowserProps>('HubNetwork');
 const STYLES = StyleSheet.create({ page: { flex: 1 }, hidden: { opacity: 0 } });
@@ -47,13 +52,17 @@ export function NativeBrowserSurface({
   visible,
   ref,
   onStatus,
+  onConsole,
 }: BrowserSurfaceProps): ReactNode {
   const view = useRef<NativeBrowserCommands>(null);
   const retired = useProjectionRetired(target, onStatus);
   useImperativeHandle(ref, () => browserHandle(view, target));
   if (retired) return <View style={STYLES.page} />;
   return (
-    <BoundNativeBrowser key={nativeSourceKey(target)} {...{ target, visible, onStatus, view }} />
+    <BoundNativeBrowser
+      key={nativeSourceKey(target)}
+      {...{ target, visible, onStatus, onConsole, view }}
+    />
   );
 }
 
@@ -61,8 +70,10 @@ function BoundNativeBrowser({
   target,
   visible,
   onStatus,
+  onConsole,
   view,
 }: Pick<BrowserSurfaceProps, 'target' | 'visible' | 'onStatus'> & {
+  readonly onConsole: BrowserSurfaceProps['onConsole'];
   readonly view: RefObject<NativeBrowserCommands | null>;
 }): ReactNode {
   const displayed = useBrowserDisplayed(visible);
@@ -74,6 +85,10 @@ function BoundNativeBrowser({
       style={visible ? STYLES.page : [STYLES.page, STYLES.hidden]}
       onStatus={(event) => {
         onStatus(nativeBrowserStatus(event, target.id));
+      }}
+      onConsole={(event) => {
+        const entry = nativeBrowserConsole(event, target.id);
+        if (entry !== null) onConsole?.(entry);
       }}
     />
   );
@@ -104,8 +119,7 @@ export function browserHandle(
   };
   return {
     navigate: (url): void => {
-      if (browserAllows(target, url))
-        run((native) => native.navigate(url));
+      if (browserAllows(target, url)) run((native) => native.navigate(url));
     },
     back: (): void => {
       run((native) => native.back());

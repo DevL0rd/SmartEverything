@@ -214,7 +214,7 @@ export class Reactions {
 
   jobNotice(notice: JobNotice): void {
     const { job } = notice;
-    const data = { pages: job.pages ?? 0, person: job.person ?? '' };
+    const data = { pages: job.pages ?? 0, person: job.person ?? '', job: job.key };
     if (notice.kind === 'job_started') {
       this.ports.emitter.emit({
         kind: 'job_started',

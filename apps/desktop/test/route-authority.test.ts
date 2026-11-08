@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { createServer, type Server } from 'node:http';
+import { createServer } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   HUB_IDENTITY_PATH,
@@ -18,11 +18,14 @@ import {
   type HubCertificate,
   type PinnedHub,
 } from '../../hub/test/support/pinned-hub';
+import { listenRemote, type RemoteHub } from '../../hub/test/support/remote-hub';
 import {
   DesktopRouteAuthority,
   preferredRoute,
   routeCandidates,
 } from '../src/hub-network/authority.js';
+
+import { desktopUpdateFetch } from '../src/updates/update-fetch.js';
 
 const SCOPE = 'desktop';
 const closers: (() => Promise<void>)[] = [];
@@ -49,25 +52,14 @@ async function nearbyHub(
   return { ...hub, identityRequests: () => requests };
 }
 
-async function homeServer(trust: () => NativeHubTrust): Promise<Server & Counted> {
+async function homeServer(trust: () => NativeHubTrust): Promise<RemoteHub & Counted> {
   let requests = 0;
-  const server = createServer((request, response) => {
+  const hub = await listenRemote((request, response) => {
     if (request.url === HUB_IDENTITY_PATH) requests += 1;
     response.end(JSON.stringify({ service: 'smarteverything', identity: trust().identity }));
   });
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  closers.push(async () => {
-    server.closeAllConnections();
-    server.close();
-    await once(server, 'close');
-  });
-  const address = server.address();
-  if (address === null || typeof address === 'string') throw new Error('no port');
-  return Object.assign(server, {
-    url: `http://127.0.0.1:${String(address.port)}`,
-    identityRequests: () => requests,
-  });
+  closers.push(hub.close);
+  return { ...hub, identityRequests: () => requests };
 }
 
 async function deadPort(): Promise<number> {
@@ -106,7 +98,7 @@ async function fixture(): Promise<{
   readonly authority: DesktopRouteAuthority;
   readonly emitted: NativeHubRouteSnapshot[];
   readonly nearby: PinnedHub & Counted;
-  readonly home: Server & Counted;
+  readonly home: RemoteHub & Counted;
   readonly configuration: NativeHubRouteConfiguration;
 }> {
   const emitted: NativeHubRouteSnapshot[] = [];
@@ -128,7 +120,7 @@ async function fixture(): Promise<{
   const trust = trustFor(certificate, nearby.port, SCOPE);
   trustRef.current = trust;
   const nearbyEndpoint: HubEndpoint = { kind: 'lan', url: nearby.url };
-  const homeEndpoint: HubEndpoint = { kind: 'loopback', url: home.url };
+  const homeEndpoint: HubEndpoint = { kind: 'remote', url: home.url };
   return {
     authority,
     emitted,
@@ -235,11 +227,11 @@ describe('desktop route authority', () => {
 
   it('says so when no address answers', async () => {
     const { authority, emitted, configuration: config } = await fixture();
-    const dead = `http://127.0.0.1:${String(await deadPort())}`;
+    const dead = `https://127.0.0.1:${String(await deadPort())}`;
     authority.configure({
       ...config,
       canonicalOrigin: dead,
-      trust: { ...config.trust, endpoints: [{ kind: 'loopback', url: dead }] },
+      trust: { ...config.trust, endpoints: [{ kind: 'remote', url: dead }] },
       bindings: config.bindings.map((binding) => ({ ...binding, canonicalOrigin: dead })),
     });
     await vi.waitFor(() => {
@@ -334,5 +326,32 @@ describe('desktop route authority', () => {
     });
     expect(lease.signal.aborted).toBe(true);
     expect(replaced).toMatchObject({ readiness: 'pending', hubId: other.identity.id });
+  });
+});
+
+describe('managed desktop download routing', () => {
+  it('uses the selected pinned LAN route when the enrolled public origin is unavailable', async () => {
+    const { authority, nearby, configuration: base } = await fixture();
+    const canonical = `https://127.0.0.1:${String(await deadPort())}`;
+    const current = configuration(
+      base.trust,
+      [
+        { kind: 'lan', url: nearby.url },
+        { kind: 'remote', url: canonical },
+      ],
+      canonical,
+    );
+    authority.configure(current);
+    await authority.refresh(SCOPE);
+    const fetchUpdate = desktopUpdateFetch(
+      () => Promise.resolve({ url: canonical, token: 'fixture' }),
+      (server, input) => authority.updateLease(server, input),
+    );
+    const answer = await fetchUpdate(`${canonical}/api/machine-update`);
+    expect(answer.ok).toBe(true);
+    expect(await answer.json()).toMatchObject({ service: 'smarteverything' });
+    await expect(fetchUpdate('https://foreign.example/api/machine-update')).rejects.toThrow(
+      'enrolled Hub origin',
+    );
   });
 });

@@ -15,7 +15,7 @@ import { useIdiom } from '../../../design/platform';
 import type { ComposerClass } from '../model/ai-layout';
 import type { SendMode } from '../model/composer-state';
 
-type Look = 'primary' | 'tonal' | 'disabled';
+type Look = 'primary' | 'disabled';
 
 const QUARTER_TURN = 90;
 
@@ -27,13 +27,11 @@ const TOUCH_SLOP = 4;
 
 const GLYPH_TONE: Readonly<Record<Look, Tone>> = {
   primary: 'onPrimary',
-  tonal: 'default',
   disabled: 'faint',
 };
 
 const DISC: Readonly<Record<Look, string>> = {
   primary: 'bg-primary',
-  tonal: 'bg-surface-3',
   disabled: 'bg-surface-3',
 };
 
@@ -156,6 +154,25 @@ function RoundButton({
 
 type Verb = 'Queue' | 'Steer';
 
+function StopPill({ onPress }: { readonly onPress: () => void }): ReactNode {
+  const pointer = useIdiom() === 'pointer';
+  return (
+    <Interactive
+      label="Stop reply"
+      onPress={onPress}
+      onTone="surface"
+      hitSlop={TOUCH_SLOP}
+      className={cn(
+        'min-w-touch-min items-center justify-center rounded-full bg-surface-3 px-3',
+        pointer ? 'h-8' : 'h-10',
+      )}
+      layerClassName="rounded-full"
+    >
+      <Text variant="label">Stop</Text>
+    </Interactive>
+  );
+}
+
 function QueuePill({
   verb,
   onPress,
@@ -225,7 +242,7 @@ function QueueControls({
   const tip = withShortcut(verb, shortcut);
   return (
     <View className="flex-row items-center gap-1">
-      <RoundButton label="Stop reply" glyph="square" look="tonal" onPress={onStop} />
+      <StopPill onPress={onStop} />
       {composerClass === 'tight' ? (
         <RoundButton
           label={`${verb} message`}
@@ -244,7 +261,7 @@ function QueueControls({
 export function SendControls(props: SendControlsProps): ReactNode {
   const { mode, ring, onSend, onStop, shortcut } = props;
   if (mode === 'stop') {
-    return <RoundButton label="Stop reply" glyph="square" look="tonal" onPress={onStop} />;
+    return <StopPill onPress={onStop} />;
   }
   if (mode === 'queue' || mode === 'steer') {
     return <QueueControls {...props} verb={mode === 'steer' ? 'Steer' : 'Queue'} />;

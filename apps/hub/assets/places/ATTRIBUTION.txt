@@ -1,0 +1,2 @@
+Place names: GeoNames (geonames.org), CC BY 4.0, https://creativecommons.org/licenses/by/4.0/.
+Changes: cities1000 reduced to id, name, region, country, latitude and longitude; region names taken from admin1CodesASCII; tab separated and gzipped.

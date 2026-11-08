@@ -5,7 +5,11 @@ import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PRINTER_KEYS, type PluginEvent, type PluginSearchEntry } from '@smarteverything/domain';
 import type { DeviceDriver } from '../../../src/local/device-driver';
-import type { PluginStop, PluginTool } from '../../../src/plugins/builtin/contract';
+import type {
+  PluginOptionProvider,
+  PluginStop,
+  PluginTool,
+} from '../../../src/plugins/builtin/contract';
 import { PrinterClient } from '../../../src/plugins/builtin/printer/client';
 import type { Converter } from '../../../src/plugins/builtin/printer/convert';
 import {
@@ -34,6 +38,7 @@ interface Fixture {
   readonly drivers: DeviceDriver[];
   readonly searches: PluginSearchEntry[][];
   readonly events: PluginEvent[];
+  readonly pickers: Map<string, PluginOptionProvider>;
 }
 
 let fixture: Fixture;
@@ -67,6 +72,14 @@ function hostOf(current: Fixture): PrinterPluginHost {
         current.tools.push(...tools);
       },
     },
+    options: {
+      register: (source, provider): (() => void) => {
+        current.pickers.set(source, provider);
+        return (): void => {
+          current.pickers.delete(source);
+        };
+      },
+    },
     search: {
       replace: (entries): void => {
         current.searches.push([...entries]);
@@ -77,12 +90,14 @@ function hostOf(current: Fixture): PrinterPluginHost {
       outbox: current.folder,
       attachmentsOf: (): readonly string[] => [],
       fromUpload: () => Promise.resolve(null),
+      fromPicture: () => Promise.resolve(null),
       fromMachine: () => Promise.resolve(null),
     },
     home: {
       timeZone: (): string => 'UTC',
       profiles: () => [],
       phone: () => ({ paired: false, place: null }),
+      presenceChanged: (): undefined => undefined,
     },
   };
 }
@@ -132,6 +147,7 @@ beforeEach(async () => {
     drivers: [],
     searches: [],
     events: [],
+    pickers: new Map(),
   };
   await launch(fixture);
 });
@@ -153,8 +169,45 @@ async function add(): Promise<string> {
 
 describe('printer plugin runtime', () => {
   it('registers the read tool, the action tool and one device driver', () => {
-    expect(fixture.tools.map((entry) => entry.name)).toStrictEqual(['printer', 'printer_action']);
+    expect(fixture.tools.map((entry) => entry.name)).toStrictEqual([
+      'printer',
+      'printer_action',
+      'printer_job',
+      'printer_pause',
+      'printer_stat',
+    ]);
     expect(fixture.drivers.map((driver) => driver.id)).toStrictEqual(['printer']);
+  });
+
+  it('registers the printers and jobs pickers and drops them when it stops', async () => {
+    expect([...fixture.pickers.keys()].sort()).toStrictEqual(['jobs', 'printers']);
+    await add();
+    const printers = await fixture.pickers.get('printers')?.({}, OWNER);
+    expect(printers).toMatchObject({
+      state: 'ready',
+      options: [{ id: fixture.printer.state.uuid, label: 'Hall' }],
+    });
+    await expect(fixture.pickers.get('jobs')?.({}, OWNER)).resolves.toMatchObject({
+      state: 'ready',
+      options: [],
+    });
+    await shutdown();
+    expect(fixture.pickers.size).toBe(0);
+  });
+
+  it('runs the stat, pause and job automation tools against a set up printer', async () => {
+    await add();
+    const uuid = fixture.printer.state.uuid;
+    const stat = await tool('printer_stat').run(
+      { printer: uuid, period: 'day', metric: 'pages' },
+      OWNER,
+    );
+    expect(stat.response).toMatchObject({ value: 0, previous: 0, change: 0 });
+    const paused = await tool('printer_pause').run({ printer: uuid, paused: true }, OWNER);
+    expect(paused.response['error']).toBeUndefined();
+    expect(fixture.printer.state.reasons).toContain('paused');
+    const missing = await tool('printer_job').run({ action: 'cancel', job: 'none' }, OWNER);
+    expect(missing.response['error']).toEqual(expect.any(String));
   });
 
   it('adds a printer, publishes it as a device and puts it in search', async () => {

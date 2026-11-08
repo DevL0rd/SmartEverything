@@ -1,5 +1,5 @@
 import { JSON_VALUE } from '@smarteverything/domain';
-import type { ErrorClass, FlowError, JsonValue } from '@smarteverything/domain';
+import type { ActionMode, ErrorClass, FlowError, JsonValue } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Plan, PlanOp } from '../compile/plan';
 import type { At, VarChange } from '../compile/plan-parts';
@@ -14,6 +14,7 @@ export type Outputs = Readonly<Record<string, JsonValue>>;
 export interface Failure {
   readonly class: ErrorClass;
   readonly message: string;
+  readonly code?: string;
 }
 
 export type Checked<T> =
@@ -76,6 +77,7 @@ export interface EffectRequest {
   readonly params: Outputs;
   readonly retry: EffectOp['retry'];
   readonly budget: EffectOp['budget'];
+  readonly mode?: ActionMode;
 }
 
 export type StepEvent =
@@ -110,6 +112,7 @@ export type StepRecord =
       readonly node: string;
       readonly status: 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
       readonly error?: FlowError;
+      readonly outputs?: Outputs;
     };
 
 export interface StepResult {
@@ -321,7 +324,9 @@ export function siteOf(env: Env): { node: string; path: string; at: number } {
 }
 
 export function errorFor(env: Env, failure: Failure): FlowError {
-  return FLOW_ERRORS[failure.class](failure.message, siteOf(env));
+  const { code } = failure;
+  const extras = code === undefined ? {} : { detail: { code } };
+  return FLOW_ERRORS[failure.class](failure.message, siteOf(env), extras);
 }
 
 export function makeEnv(
@@ -382,8 +387,13 @@ export function propagate(env: Env, completion: Completion): StepResult {
   return completeFrame(deriveEnv(env, popFrame(absorb(env, env.state))), completion);
 }
 
+export function capturesAtStep(op: PlanOp | undefined): op is Extract<PlanOp, { op: 'read' }> {
+  return op?.op === 'read' && op.capture === 'at-step';
+}
+
 export function executes(op: PlanOp | undefined): boolean {
-  return op !== undefined && 'at' in op && op.op !== 'compute' && op.op !== 'read';
+  if (op === undefined || !('at' in op)) return false;
+  return op.op === 'compute' ? false : op.op !== 'read' || capturesAtStep(op);
 }
 
 export function ownsScope(op: PlanOp | undefined): boolean {
@@ -402,6 +412,7 @@ export function traceNode(
   env: Env,
   status: Extract<StepRecord, { kind: 'node' }>['status'],
   error?: FlowError,
+  outputs?: Outputs,
 ): void {
   env.scratch.records.push({
     kind: 'node',
@@ -409,6 +420,7 @@ export function traceNode(
     node: env.at.key,
     status,
     ...(error === undefined ? {} : { error }),
+    ...(outputs === undefined ? {} : { outputs }),
   });
 }
 

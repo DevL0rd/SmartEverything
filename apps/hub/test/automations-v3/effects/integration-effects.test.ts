@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { SignalInput } from '@smarteverything/domain';
+import type { ActionMode, SignalInput } from '@smarteverything/domain';
 import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
 import type { HubTool, HubToolResult } from '../../../src/ai-tools/hub-tool';
 import type { ToolCheck } from '../../../src/ai-tools/tool-hub';
 import { AutomationComputersSlot } from '../../../src/automations/automation-computers';
 import type { CameraPictures } from '../../../src/automations/effects/camera-pictures';
-import { IntegrationError } from '../../../src/automations/effects/integration-error';
 import type {
   OneShotAnswer,
   OneShotDecision,
@@ -34,22 +33,28 @@ interface Seen {
   readonly taken: { readonly deviceId: string; readonly size: string }[];
   readonly toolCalls: { readonly name: string; readonly args: Record<string, unknown> }[];
   readonly emitted: SignalInput[];
-  readonly powered: unknown[];
   readonly replies: WebhookReplies;
 }
 
 function rig(
   options: {
     readonly toolAnswer?: Record<string, unknown>;
-    readonly snapshot?: () => Promise<{ id: string; at: string }>;
+    readonly toolFails?: Error;
+    readonly toolPictures?: HubToolResult['pictures'];
   } = {},
-): { perform: (kind: string, params: EffectRequest['params']) => Promise<NodeResult>; seen: Seen } {
+): {
+  perform: (
+    kind: string,
+    params: EffectRequest['params'],
+    mode?: ActionMode,
+  ) => Promise<NodeResult>;
+  seen: Seen;
+} {
   const seen: Seen = {
     asked: [],
     taken: [],
     toolCalls: [],
     emitted: [],
-    powered: [],
     replies: new WebhookReplies(),
   };
   const answer: OneShotAnswer = { text: 'hello', result: { a: 1 }, tokens: 7, costUsd: 0.01 };
@@ -57,18 +62,13 @@ function rig(
   const pictures: CameraPictures = {
     take: (deviceId, size) => {
       seen.taken.push({ deviceId, size });
-      return (
-        options.snapshot?.() ?? Promise.resolve({ id: 'pic-1', at: '2026-10-08T12:00:00.000Z' })
-      );
+      return Promise.resolve({ id: 'pic-1', at: '2026-10-08T12:00:00.000Z' });
     },
     load: () => Promise.resolve({ mimeType: 'image/jpeg', base64: 'QUJD' }),
   };
   const computers = new AutomationComputersSlot();
   computers.attach({
-    ask: (_viewer, _deviceId, request, schema) => {
-      seen.powered.push(request);
-      return Promise.resolve(schema.parse(null));
-    },
+    ask: (_viewer, _deviceId, _request, schema) => Promise.resolve(schema.parse(null)),
     features: () => [],
   });
   const handlers = integrationEffects({
@@ -88,10 +88,11 @@ function rig(
       check: (): ToolCheck => ({ ok: true, tool: TOOL }),
       call: (name, args): Promise<HubToolResult> => {
         seen.toolCalls.push({ name, args });
+        if (options.toolFails !== undefined) return Promise.reject(options.toolFails);
         return Promise.resolve({
           response: options.toolAnswer ?? { result: { ok: true } },
           line: '',
-          pictures: [],
+          pictures: options.toolPictures ?? [],
         });
       },
     },
@@ -103,7 +104,7 @@ function rig(
   const run = performer(handlers);
   return {
     seen,
-    perform: (kind, params) =>
+    perform: (kind, params, mode) =>
       run(
         {
           kind,
@@ -114,6 +115,7 @@ function rig(
           params,
           retry: 'external',
           budget: 'effects',
+          ...(mode === undefined ? {} : { mode }),
         },
         testRun(),
       ),
@@ -151,6 +153,20 @@ describe('AI effects', () => {
     expect(seen.taken).toEqual([{ deviceId: CAMERA, size: 'full' }]);
   });
 
+  it('looks at a computer screen through sight_look when no camera is given', async () => {
+    const { perform, seen } = rig({
+      toolPictures: [{ data: Buffer.from('ABC'), mimeType: 'image/jpeg' }],
+    });
+    const result = await perform('ai.vision', {
+      question: 'What is open?',
+      source: 'computer_screen',
+    });
+    expect(result).toMatchObject({ ok: true, value: { answer: 'hello' } });
+    expect(seen.toolCalls).toEqual([{ name: 'sight_look', args: { source: 'desktop_screen' } }]);
+    expect(seen.taken).toEqual([]);
+    expect(seen.asked[0]).toMatchObject({ pictures: [{ base64: 'QUJD' }] });
+  });
+
   it('needs either a picture or a camera for vision', async () => {
     const { perform } = rig();
     expect(await perform('ai.vision', { question: 'Who?' })).toMatchObject({
@@ -174,34 +190,6 @@ describe('AI effects', () => {
 });
 
 describe('camera and machine effects', () => {
-  it('gives back the picture id and time', async () => {
-    const { perform } = rig();
-    expect(await perform('camera.snapshot', { camera: CAMERA, size: 'thumb' })).toMatchObject({
-      ok: true,
-      value: { image: 'pic-1', at: '2026-10-08T12:00:00.000Z' },
-    });
-  });
-
-  it('reports a camera that is switched off as refused', async () => {
-    const { perform } = rig({
-      snapshot: () => Promise.reject(new IntegrationError('Refused', 'switched off for privacy')),
-    });
-    expect(await perform('camera.snapshot', { camera: CAMERA })).toMatchObject({
-      ok: false,
-      class: 'Refused',
-    });
-  });
-
-  it('powers a computer by its action', async () => {
-    const { perform, seen } = rig();
-    await perform('computer.power', { computer: 'pc-1', action: 'lock_screen' });
-    expect(seen.powered).toEqual([{ verb: 'power', action: 'lock_screen' }]);
-    expect(await perform('computer.power', { computer: 'pc-1', action: 'wake' })).toMatchObject({
-      ok: false,
-      class: 'Invalid',
-    });
-  });
-
   it('asks a phone through the phone action operation', async () => {
     const { perform, seen } = rig();
     await perform('phone.action', { phone: 'ph-1', action: { type: 'set_dnd', on: true } });
@@ -217,8 +205,37 @@ describe('camera and machine effects', () => {
   it('turns a phone that says no into a refusal', async () => {
     const { perform } = rig({ toolAnswer: { result: { ok: false, detail: 'no permission' } } });
     expect(
-      await perform('phone.action', { phone: 'ph-1', action: { type: 'set_dnd', on: true } }),
-    ).toMatchObject({ ok: false, class: 'Refused', message: 'no permission' });
+      await perform(
+        'phone.action',
+        { phone: 'ph-1', action: { type: 'set_dnd', on: true } },
+        'wait_for_result',
+      ),
+    ).toMatchObject({
+      ok: false,
+      class: 'Refused',
+      message: 'no permission',
+      code: 'phone_refused',
+    });
+  });
+});
+
+describe('waiting for the machine and unknown failures', () => {
+  it('gives an unknown failure of a phone or remote call the real message with the reason Failed', async () => {
+    const { perform } = rig({ toolFails: new Error('transport closed') });
+    expect(
+      await perform(
+        'phone.action',
+        { phone: 'ph-1', action: { type: 'set_dnd', on: true } },
+        'wait_for_result',
+      ),
+    ).toStrictEqual({ ok: false, class: 'Failed', message: 'Error: transport closed' });
+    expect(
+      await perform('device.ir_send', { remote: 'TV', button: 'Power' }, 'wait_for_result'),
+    ).toStrictEqual({
+      ok: false,
+      class: 'Failed',
+      message: 'Error: transport closed',
+    });
   });
 });
 

@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
+import { ActionBand } from '../../../components/widget-board';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { joinParts } from '../../../format/text';
@@ -32,9 +33,9 @@ export function ActivityRows({
         ))}
       </View>
       {footer ? (
-        <View className="flex-row">
+        <ActionBand>
           <Button label="See all" variant="text" href={href.activity()} />
-        </View>
+        </ActionBand>
       ) : null}
     </View>
   );

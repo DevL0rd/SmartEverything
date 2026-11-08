@@ -22,7 +22,6 @@ function summary(over: Partial<AutomationFunctionSummary> = {}): AutomationFunct
     description: 'Dims slowly',
     category: 'Lighting',
     icon: null,
-    builtin: false,
     editable: true,
     revision: 1,
     interface: {

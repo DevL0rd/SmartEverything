@@ -20,7 +20,7 @@ import { bound } from '../../server/router';
 import type { PushCommandOutcome, PushDelivery } from './commands';
 import { FcmClient, type Delivery, type PushNotification } from './fcm';
 import { notificationFor, urgentEventOf } from './messages';
-import { assistantBody, finishedReply } from './assistant-reply';
+import { finishedReply, replyNotification } from './assistant-reply';
 import { added, NOTHING, type Tally } from './tally';
 import { deviceAudience } from './device-audience';
 import {
@@ -142,8 +142,9 @@ class PushSender {
   }
 
   assistantReplied(row: AssistantMessageRow): void {
-    const { store, live, openCalls } = this.context;
+    const { store, live, openCalls, replyNotices } = this.context;
     const subject = { kind: 'assistant_reply', messageId: row.id };
+    const extras = replyNotices.take(row.id);
     const audience = replyAudience(row, {
       asker: (id) => store.assistantChat.find(id),
       profileOf: (clientId) => store.profiles.activeOf(clientId).id,
@@ -152,12 +153,7 @@ class PushSender {
     });
     this.track(
       subject,
-      () => ({
-        title: assistantLabel(store.assistantChat.settings()),
-        body: assistantBody(row),
-        data: { ...subject, chatId: row.chat_id, categoryId: 'assistant_reply' },
-        dataOnly: true,
-      }),
+      () => replyNotification(row, assistantLabel(store.assistantChat.settings()), extras),
       audience,
     );
   }

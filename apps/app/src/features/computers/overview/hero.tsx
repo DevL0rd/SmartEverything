@@ -6,7 +6,7 @@ import { Card } from '../../../components/card';
 import { Glow } from '../../../components/glow';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { clock } from '../../../format/time';
 import type { Device } from '../../../store/state';
 import { ServiceMedallion } from '../../../plugins/shared/service-medallion';
@@ -15,7 +15,6 @@ import { useComputerSelect } from '../data/computer-metrics';
 import { computerGlyph, isHub, offersAction, useComputerCommand } from '../data/computer-device';
 import { useScreenshotToChat } from '../files/screenshot';
 import { factsLine, type ComputerStatus } from '../model/computer-view';
-import { bodyWidthOf } from '../model/sections';
 
 const STACK_BELOW = 600;
 const BUSY_RING = 50;
@@ -217,7 +216,7 @@ export function ComputerHero({
   readonly device: Device;
   readonly status: ComputerStatus;
 }): ReactNode {
-  const { width, onLayout } = useMeasuredWidth(undefined, bodyWidthOf(useAreaWidth()));
+  const { width, onLayout } = useMeasuredWidth(undefined, useFrameBodyWidth());
   const stacked = width < STACK_BELOW;
   const head = <HeroHead deviceId={device.id} status={status} stacked={stacked} />;
   const details = <Details device={device} status={status} />;

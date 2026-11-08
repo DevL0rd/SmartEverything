@@ -8,13 +8,15 @@ import {
   NATIVE_HUB_ROUTE_CONFIGURATION,
   NATIVE_HUB_SOCKET_OPEN,
   NATIVE_HUB_TRUST,
+  type DesktopServer,
   type NativeHubCapabilities,
 } from '@smarteverything/domain';
-import type { HubLeasePort } from '@smarteverything/hub/client-network/lease';
-import { HubPolicies, HubTransportError } from '@smarteverything/hub/client-network/policy';
+import type { HubLease } from '@smarteverything/hub/client-network/lease';
+import { HubTransportError } from '@smarteverything/hub/client-network/policy';
 import { requestHub } from '@smarteverything/hub/client-network/request';
 import { HubSockets } from '@smarteverything/hub/client-network/sockets';
-import { Logger } from '@smarteverything/logging';
+import { HubUploads } from '@smarteverything/hub/client-network/uploads';
+import { background, Logger } from '@smarteverything/logging';
 import { configureDesktopHtml } from '../html-preview/projections.js';
 import { isAppOrigin } from '../origin.js';
 import { DesktopRouteAuthority } from './authority.js';
@@ -37,6 +39,10 @@ const CHANNELS = [
   'desktop:hub-configure-trust',
   'desktop:hub-clear-trust',
   'desktop:hub-request',
+  'desktop:hub-upload-open',
+  'desktop:hub-upload-send',
+  'desktop:hub-upload-finish',
+  'desktop:hub-upload-abort',
   'desktop:hub-discovery-start',
   'desktop:hub-discovery-stop',
   'desktop:hub-pairing-inspect',
@@ -52,49 +58,54 @@ const SCOPE = z.string().min(1);
 class HubNetworkIpc {
   #resources: DesktopHubResources | null = null;
   #closeHtml: (() => void) | undefined;
-  readonly #authority: DesktopRouteAuthority | null;
-  readonly #port: HubLeasePort;
-  readonly #policies = new HubPolicies();
+  readonly #authority: DesktopRouteAuthority;
+  readonly #routeListeners = new Set<() => void>();
   readonly #inspections = new HubPairingInspections<WebContents>();
   readonly #enrollments = new DesktopPairingEnrollments<WebContents>();
   readonly #followed = new WeakSet<WebContents>();
   readonly #owners = new Map<WebContents, Set<string>>();
   readonly #sockets: HubSockets<WebContents>;
+  readonly #uploads: HubUploads<WebContents>;
   readonly #discoverers = new Set<WebContents>();
   readonly #watchers = new Set<WebContents>();
   readonly #discovery = new HubDiscovery((state) => {
     this.#sendAll(this.#discoverers, 'desktop:hub-discovery', state);
   });
   readonly #network = new HubNetworkChanges((state) => {
-    this.#authority?.networkChanged();
+    this.#authority.networkChanged();
     this.#inspections.close();
     this.#enrollments.close();
     this.#discovery.stop();
     this.#sendAll(this.#watchers, 'desktop:hub-network', state);
   });
-  constructor(
-    readonly startUrl: string,
-    routeAuthority: boolean,
-  ) {
-    this.#authority = routeAuthority
-      ? new DesktopRouteAuthority((state): void => {
-          for (const [owner, scopes] of this.#owners)
-            if (scopes.has(state.scopeId)) this.#send(owner, 'desktop:hub-authority', state);
-        })
-      : null;
-    this.#port = this.#authority ?? this.#policies;
-    this.#sockets = new HubSockets<WebContents>(this.#port, (owner, state) => {
+  constructor(readonly startUrl: string) {
+    this.#authority = new DesktopRouteAuthority((state): void => {
+      if (state.readiness === 'ready') {
+        for (const listener of this.#routeListeners) listener();
+      }
+      for (const [owner, scopes] of this.#owners)
+        if (scopes.has(state.scopeId)) this.#send(owner, 'desktop:hub-authority', state);
+    });
+    this.#sockets = new HubSockets<WebContents>(this.#authority, (owner, state) => {
       this.#send(owner, 'desktop:hub-socket', state);
     });
+    this.#uploads = new HubUploads<WebContents>(this.#authority);
   }
+  updateLease(server: DesktopServer, input: string): HubLease {
+    return this.#authority.updateLease(server, input);
+  }
+
+  onRouteReady(listener: () => void): void {
+    this.#routeListeners.add(listener);
+  }
+
   get mediaOrigin(): string | undefined {
     return this.#resources?.broker.origin;
   }
   get capabilities(): NativeHubCapabilities {
-    return hubCapabilities(this.#authority !== null, this.#resources !== null);
+    return hubCapabilities(this.#resources !== null);
   }
   async initialize(): Promise<void> {
-    if (this.#authority === null) return;
     this.#initializeHtml(this.#authority);
     const resources = new DesktopHubResources(this.#authority, this.startUrl);
     try {
@@ -106,9 +117,7 @@ class HubNetworkIpc {
         error_name: cause instanceof Error ? cause.name : 'unknown',
       });
     }
-    const network = await this.#network.start();
-    if (network.state !== 'watching')
-      log.warn('network.events_unavailable', { state: network.state });
+    background(this.#network.start(), 'network.start_failed');
   }
   #initializeHtml(authority: DesktopRouteAuthority): void {
     this.#closeHtml = configureDesktopHtml({
@@ -137,13 +146,13 @@ class HubNetworkIpc {
       if (configuration.trust.scopeId.startsWith(HUB_PAIRING_SCOPE_PREFIX))
         throw new HubTransportError('Pairing namespace cannot configure paired routes');
       this.#claimScope(owner, configuration.trust.scopeId);
-      return this.#requireAuthority().configure(configuration);
+      return this.#authority.configure(configuration);
     });
     this.#handle('desktop:hub-authority-state', (value) =>
-      this.#requireAuthority().state(SCOPE.parse(value)),
+      this.#authority.state(SCOPE.parse(value)),
     );
     this.#handle('desktop:hub-authority-refresh', (value) =>
-      this.#requireAuthority().refresh(SCOPE.parse(value)),
+      this.#authority.refresh(SCOPE.parse(value)),
     );
     this.#handle('desktop:hub-authority-clear', (value, owner) => {
       this.#releaseScope(owner, SCOPE.parse(value));
@@ -152,10 +161,10 @@ class HubNetworkIpc {
   #registerTransport(): void {
     this.#handle('desktop:hub-configure-trust', (value, owner) => {
       const trust = NATIVE_HUB_TRUST.parse(value);
+      if (!trust.scopeId.startsWith(HUB_PAIRING_SCOPE_PREFIX))
+        throw new HubTransportError('Paired routes are configured through the route authority');
       this.#claimScope(owner, trust.scopeId);
-      if (trust.scopeId.startsWith(HUB_PAIRING_SCOPE_PREFIX))
-        this.#enrollments.configure(owner, trust);
-      else if (this.#policies.configure(trust)) this.#sockets.clear(trust.scopeId);
+      this.#enrollments.configure(owner, trust);
     });
     this.#handle('desktop:hub-clear-trust', (value, owner) => {
       this.#releaseScope(owner, SCOPE.parse(value));
@@ -164,7 +173,18 @@ class HubNetworkIpc {
       const input = NATIVE_HUB_REQUEST.parse(value);
       if (input.scopeId.startsWith(HUB_PAIRING_SCOPE_PREFIX))
         return this.#enrollments.request(owner, input);
-      return requestHub(this.#port, input);
+      return requestHub(this.#authority, input);
+    });
+    this.#registerUploads();
+  }
+  #registerUploads(): void {
+    this.#handle('desktop:hub-upload-open', (value, owner) => {
+      this.#uploads.open(owner, value);
+    });
+    this.#handle('desktop:hub-upload-send', (value, owner) => this.#uploads.send(owner, value));
+    this.#handle('desktop:hub-upload-finish', (value, owner) => this.#uploads.finish(owner, value));
+    this.#handle('desktop:hub-upload-abort', (value, owner) => {
+      this.#uploads.abort(owner, value);
     });
   }
   #registerObservers(): void {
@@ -189,7 +209,6 @@ class HubNetworkIpc {
   }
   #unwatch(owner: WebContents): void {
     this.#watchers.delete(owner);
-    if (this.#watchers.size === 0 && this.#authority === null) this.#network.stop();
   }
   #registerPairing(): void {
     this.#handle('desktop:hub-pairing-inspect', (value, owner) => {
@@ -238,16 +257,11 @@ class HubNetworkIpc {
     this.#discovery.stop();
     this.#network.stop();
     this.#sockets.stop();
+    this.#uploads.stop();
     this.#resources?.broker.close();
-    this.#policies.close();
-    this.#authority?.close();
+    this.#authority.close();
     for (const channel of CHANNELS) ipcMain.removeHandler(channel);
     this.#owners.clear();
-  }
-  #requireAuthority(): DesktopRouteAuthority {
-    if (this.#authority === null)
-      throw new HubTransportError('This service has no supported Node route authority');
-    return this.#authority;
   }
   #claimScope(owner: WebContents, scopeId: string): void {
     this.#owners.get(owner)?.add(scopeId);
@@ -264,8 +278,7 @@ class HubNetworkIpc {
     }
     this.#sockets.clear(scopeId);
     this.#resources?.broker.clearScope(scopeId);
-    this.#policies.clear(scopeId);
-    this.#authority?.clear(scopeId);
+    this.#authority.clear(scopeId);
   }
   #send(owner: WebContents, channel: string, state: unknown): void {
     if (!owner.isDestroyed() && isAppOrigin(owner.getURL(), this.startUrl))
@@ -277,6 +290,7 @@ class HubNetworkIpc {
   #release(owner: WebContents): void {
     this.#inspections.clearOwner(owner);
     this.#sockets.closeOwner(owner);
+    this.#uploads.closeOwner(owner);
     this.#resources?.broker.closeOwner(owner.id);
     const scopes = this.#owners.get(owner);
     if (scopes !== undefined) for (const scope of [...scopes]) this.#releaseScope(owner, scope);
@@ -316,19 +330,22 @@ class HubNetworkIpc {
 export interface HubNetworkRegistration {
   readonly capabilities: NativeHubCapabilities;
   readonly close: () => void;
+  readonly updateLease: (server: DesktopServer, input: string) => HubLease;
+  readonly onRouteReady: (listener: () => void) => void;
 }
 
 export async function registerHubNetworkIpc(
   startUrl: string,
-  routeAuthority: boolean,
   mediaReady?: (origin: string) => void,
 ): Promise<HubNetworkRegistration> {
-  const network = new HubNetworkIpc(startUrl, routeAuthority);
+  const network = new HubNetworkIpc(startUrl);
   await network.initialize();
   if (network.mediaOrigin !== undefined) mediaReady?.(network.mediaOrigin);
   network.register();
   return {
     capabilities: network.capabilities,
+    updateLease: (server, input) => network.updateLease(server, input),
+    onRouteReady: (listener) => network.onRouteReady(listener),
     close: (): void => {
       network.close();
     },

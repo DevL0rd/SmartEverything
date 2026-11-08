@@ -7,8 +7,7 @@ export const HARNESS_CLAUDE_PLUGINS_PACKAGE = '@smarteverything/harness-claude-p
 export const HARNESS_CLAUDE_PLUGINS_VERSION = '0.1.0-smarteverything.1';
 const SOURCE = {
   loader: 'lengdanran/dsh-claude-plugin-loader@2e7b593e715e1f945f27b4c1c9ef1b8ab0f4f8e2',
-  hooks: '@deepseek-ai/dsh-hooks-claude-code@0.2.1-alpha.2',
-  subagent: '@deepseek-ai/dsh-subagent,dsh-tool-subagent@0.2.1-alpha.2',
+  hooks: '@deepseek-ai/dsh-hooks-claude-code@0.2.1-rc.3',
   adapter: HARNESS_CLAUDE_PLUGINS_VERSION,
 } as const;
 export const HARNESS_CLAUDE_PLUGINS_METADATA = deepFreeze(
@@ -17,7 +16,7 @@ export const HARNESS_CLAUDE_PLUGINS_METADATA = deepFreeze(
     integrity: `sha256-${createHash('sha256').update(JSON.stringify(SOURCE)).digest('base64')}`,
     provenance: SOURCE.loader,
     platforms: ['linux', 'macos', 'windows'],
-    dsh_version: '0.2.1-alpha.2',
+    dsh_version: '0.2.1-rc.3',
     runtime_version: HARNESS_NATIVE_RUNTIME_REVISION,
     server_safe: true,
     adapter: { id: 'claude-plugins', version: HARNESS_CLAUDE_PLUGINS_VERSION, kind: 'tools' },

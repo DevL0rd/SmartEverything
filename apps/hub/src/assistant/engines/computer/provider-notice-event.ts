@@ -3,8 +3,12 @@ import type { ComputerEvent } from './provider-state';
 
 type JsonRecord = Readonly<Record<string, JsonValue>>;
 
+function isList(value: JsonValue): value is readonly JsonValue[] {
+  return Array.isArray(value);
+}
+
 function record(value: JsonValue | undefined): JsonRecord | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : null;
+  return typeof value === 'object' && value !== null && !isList(value) ? value : null;
 }
 
 function emptiedResult(block: JsonValue): JsonValue {

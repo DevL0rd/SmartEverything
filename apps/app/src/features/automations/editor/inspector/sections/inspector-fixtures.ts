@@ -1,33 +1,47 @@
-import type { DescribeContext } from '@smarteverything/domain';
+import type { NodeKindLookup } from '@smarteverything/domain';
+import type { DescribeContext, NodeRegistry } from '@smarteverything/domain';
 import { NODE_REGISTRY, wireScopeOf } from '@smarteverything/domain';
-import { applyPatch } from '@smarteverything/flow/ops/reducer';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
+import { applyPatch } from '@smarteverything/flow/graph/ops/reducer';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
+import { structuredOf } from '@smarteverything/flow/graph/structured-of';
+import { unstructure } from '@smarteverything/flow/graph/unstructure';
 import { indexProgram } from '@smarteverything/flow/program/lookup';
 import type { Program } from '@smarteverything/flow/program/walk';
 import type { NodeView } from './node-view';
 import { nodeView } from './node-view';
 import type { InspectorActions, InspectorEnv } from './section-types';
 
-export const DESCRIBE: DescribeContext = {
-  kinds: (id) => NODE_REGISTRY.get(id),
-  names: () => undefined,
-};
+export function describeOf(registry: NodeRegistry): DescribeContext {
+  return { kinds: (id) => registry.get(id), names: () => undefined };
+}
 
-export function viewByKey(program: Program, key: string): NodeView {
+export const DESCRIBE: DescribeContext = describeOf(NODE_REGISTRY);
+
+export function viewByKey(
+  program: Program,
+  key: string,
+  registry: NodeRegistry = NODE_REGISTRY,
+): NodeView {
   const index = indexProgram(program);
   const entry = index.byKey.get(key);
-  const view = entry === undefined ? undefined : nodeView(index, entry.node.id, NODE_REGISTRY);
+  const view = entry === undefined ? undefined : nodeView(index, entry.node.id, registry);
   if (view === undefined) throw new Error(`the fixture has no node "${key}"`);
   return view;
 }
 
-export function envOf(program: Program, extra: Partial<InspectorEnv> = {}): InspectorEnv {
+export function envOf(
+  program: Program,
+  extra: Partial<InspectorEnv> = {},
+  registry: NodeRegistry = NODE_REGISTRY,
+): InspectorEnv {
+  const describe = describeOf(registry);
   return {
+    graph: unstructure(program, registry),
     program,
     index: indexProgram(program),
-    registry: NODE_REGISTRY,
-    describe: DESCRIBE,
-    scope: wireScopeOf(program, DESCRIBE),
+    registry,
+    describe,
+    scope: wireScopeOf(program, describe),
     findings: [],
     functions: new Map(),
     exits: [],
@@ -41,10 +55,17 @@ export function envOf(program: Program, extra: Partial<InspectorEnv> = {}): Insp
   };
 }
 
-export function applied(program: Program, ops: readonly PatchOp[]): Program {
-  const result = applyPatch(program, ops);
+export function applied(program: Program, ops: readonly PatchOp[], kinds: NodeKindLookup): Program {
+  let issued = 0;
+  const result = applyPatch(unstructure(program, kinds), ops, {
+    allowProblems: true,
+    newId: () => `00000000-0000-4000-8000-${String((issued += 1)).padStart(12, '0')}`,
+    kinds,
+  });
   if (!result.ok) throw new Error(`the patch was refused: ${result.reason}`);
-  return result.program;
+  const back = structuredOf(result.program, kinds);
+  if (back.kind !== 'structured') throw new Error('the patched program no longer reads as steps');
+  return back.tree;
 }
 
 export function recordingActions(): {
@@ -54,7 +75,8 @@ export function recordingActions(): {
   const calls: string[] = [];
   const actions: InspectorActions = {
     apply: (ops) => calls.push(`apply:${JSON.stringify(ops)}`),
-    editRows: (key, edits) => calls.push(`rows:${key}:${JSON.stringify(edits)}`),
+    intent: (intent) => calls.push(`intent:${JSON.stringify(intent)}`),
+    jump: (nodeId) => calls.push(`jump:${nodeId}`),
     gesture: (run) => {
       calls.push('gesture');
       run();
@@ -65,6 +87,7 @@ export function recordingActions(): {
     setFreePosition: (id, free) => calls.push(`free:${id}:${String(free)}`),
     selectIteration: (index) => calls.push(`iteration:${String(index)}`),
     editInterface: () => calls.push('interface'),
+    deleteStep: (id) => calls.push(`delete:${id}`),
   };
   return { actions, calls };
 }

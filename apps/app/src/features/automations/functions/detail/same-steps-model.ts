@@ -1,8 +1,8 @@
-import type { AutomationFunctionDetail, AutomationRowV3 } from '@smarteverything/domain';
+import type { AutomationRow, FunctionDetail } from '../../data/graph-adapter';
 import { findSameSteps } from '@smarteverything/flow/functions/same-steps';
 import { placesText } from '../library/library-model';
 
-export type SameStepsSource = Pick<AutomationRowV3, 'id' | 'name' | 'definition'>;
+export type SameStepsSource = Pick<AutomationRow, 'id' | 'name' | 'definition'>;
 
 export interface SameStepsRow {
   readonly id: string;
@@ -12,7 +12,7 @@ export interface SameStepsRow {
 }
 
 export function sameStepsRows(
-  detail: AutomationFunctionDetail,
+  detail: FunctionDetail,
   automations: readonly SameStepsSource[],
 ): readonly SameStepsRow[] {
   const using = new Set(

@@ -43,11 +43,13 @@ export function useArchivedChats(enabled: boolean): ArchivedChats {
     getNextPageParam: nextArchivedCursor,
     enabled,
   });
-  const { previews, working, plugins } = useChatEntrySources();
+  const { previews, working, plugins, pending } = useChatEntrySources();
   const entries = useMemo(
     () =>
-      (query.data?.pages ?? []).flat().map((chat) => entryOf(chat, { previews, working, plugins })),
-    [query.data, previews, working, plugins],
+      (query.data?.pages ?? [])
+        .flat()
+        .map((chat) => entryOf(chat, { previews, working, plugins, pending })),
+    [query.data, previews, working, plugins, pending],
   );
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
   return {

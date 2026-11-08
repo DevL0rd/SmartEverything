@@ -4,7 +4,7 @@ import { laundryProgramOptions, withRole, type LaundryOption } from '@smartevery
 import { NumberStepper } from '../../../components/number-stepper';
 import { Text } from '../../../components/text';
 import { Card } from '../../../components/card';
-import { Note, Pills, RoleSwitch, SwitchRow, type PillOption } from './parts';
+import { Note, ChoiceStrip, RoleSwitch, SwitchRow, type ChoiceOption } from './parts';
 import type { DraftHandle } from './use-draft';
 import type { Laundry } from './use-laundry';
 
@@ -34,13 +34,13 @@ const ANTI_CREASE = [
   { value: '120', label: '2 h', spoken: '2 hours' },
 ] as const;
 
-function temperaturePill(raw: string): PillOption {
+function temperaturePill(raw: string): ChoiceOption {
   return raw === '0'
     ? { value: raw, label: 'Cold', spoken: 'Cold' }
     : { value: raw, label: `${raw}°`, spoken: `${raw} degrees` };
 }
 
-function spinPill(raw: string): PillOption {
+function spinPill(raw: string): ChoiceOption {
   return raw === '0'
     ? { value: raw, label: 'Off', spoken: 'No spin' }
     : { value: raw, label: raw, spoken: `${raw} revolutions per minute` };
@@ -94,31 +94,6 @@ function Stepper({
   );
 }
 
-function Choice({
-  label,
-  options,
-  value,
-  disabled,
-  onChange,
-}: {
-  readonly label: string;
-  readonly options: readonly PillOption[];
-  readonly value: string | null;
-  readonly disabled: boolean;
-  readonly onChange: (value: string) => void;
-}): ReactNode {
-  return (
-    <Pills
-      label={label}
-      options={options}
-      value={value}
-      disabled={disabled}
-      fill
-      onChange={onChange}
-    />
-  );
-}
-
 interface FieldProps {
   readonly laundry: Laundry;
   readonly draft: DraftHandle;
@@ -131,7 +106,7 @@ function HeatFields({ laundry, draft, uses, disabled }: FieldProps): ReactNode {
   return (
     <>
       {uses.has('temperature') ? (
-        <Pills
+        <ChoiceStrip
           label="Temperature"
           options={enumOptions(laundry, 'wash_temperature').map(temperaturePill)}
           value={shown.temperature === null ? null : String(shown.temperature)}
@@ -142,7 +117,7 @@ function HeatFields({ laundry, draft, uses, disabled }: FieldProps): ReactNode {
         />
       ) : null}
       {uses.has('spin') ? (
-        <Pills
+        <ChoiceStrip
           label="Spin speed (rpm)"
           options={enumOptions(laundry, 'spin_speed').map(spinPill)}
           value={shown.spin === null ? null : String(shown.spin)}
@@ -173,7 +148,7 @@ function CountFields({ laundry, draft, uses, disabled }: FieldProps): ReactNode 
         />
       ) : null}
       {uses.has('soak') ? (
-        <Choice
+        <ChoiceStrip
           label="Soak"
           options={SOAK}
           value={String(shown.soakMinutes ?? 0)}
@@ -234,7 +209,7 @@ function DryDetail({
     );
   }
   return shown.dryMode === 'Smart' ? (
-    <Choice
+    <ChoiceStrip
       label="Dryness"
       options={DRYNESS}
       value={shown.dryTarget}
@@ -257,7 +232,7 @@ function DryFields({
 }): ReactNode {
   return (
     <>
-      <Choice
+      <ChoiceStrip
         label="Drying"
         options={DRYING}
         value={draft.shown.dryMode}
@@ -317,7 +292,7 @@ function FinishFields({ laundry, draft, uses, disabled }: FieldProps): ReactNode
   return (
     <>
       {uses.has('antiCrease') ? (
-        <Choice
+        <ChoiceStrip
           label="Anti-crease after finish"
           options={ANTI_CREASE}
           value={String(draft.shown.antiCreaseMinutes ?? 0)}

@@ -9,11 +9,17 @@ interface Sent {
 const shared = vi.hoisted(() => ({
   handlers: new Map<string, Handler>(),
   sent: new Array<Sent>(),
-  network: { emit: (_state: unknown): void => undefined, stops: 0 },
+  network: {
+    emit: (_state: unknown): void => undefined,
+    stops: 0,
+    start: (): Promise<unknown> =>
+      Promise.resolve({ generation: 1, state: 'watching', detail: '' }),
+  },
   discovery: { emit: (_state: unknown): void => undefined, stops: 0 },
 }));
 
 vi.mock('electron', () => ({
+  app: { getPath: (): string => '/fake-desktop-user-data' },
   ipcMain: {
     handle: (channel: string, handler: Handler): void => {
       shared.handlers.set(channel, handler);
@@ -30,7 +36,7 @@ vi.mock('../src/hub-network/network.js', () => ({
       shared.network.emit = emit;
     }
     start(): Promise<unknown> {
-      return Promise.resolve({ generation: 1, state: 'watching', detail: '' });
+      return shared.network.start();
     }
     stop(): void {
       shared.network.stops += 1;
@@ -96,7 +102,7 @@ function openWindow(id: number): {
 }
 
 async function register(): Promise<void> {
-  const registration = await registerHubNetworkIpc(START_URL, false);
+  const registration = await registerHubNetworkIpc(START_URL);
   closers.push(registration.close);
 }
 
@@ -105,7 +111,20 @@ function windowsReceiving(channel: string): number[] {
 }
 
 describe('hub network events with several windows', () => {
-  it('delivers a network change to every watching window and stops watching with the last one', async () => {
+  it('registers the desktop bridge while the optional network monitor waits for D-Bus', async () => {
+    const pending = vi
+      .spyOn(shared.network, 'start')
+      .mockImplementationOnce(() => new Promise(() => undefined));
+    try {
+      await register();
+      expect(pending).toHaveBeenCalledOnce();
+      expect(shared.handlers.has('desktop:hub-authority-configure')).toBe(true);
+    } finally {
+      pending.mockRestore();
+    }
+  });
+
+  it('delivers a network change to every watching window and keeps watching for the route authority', async () => {
     await register();
     const first = openWindow(1);
     const second = openWindow(2);
@@ -114,9 +133,8 @@ describe('hub network events with several windows', () => {
     shared.network.emit({ generation: 2, state: 'watching', detail: 'Network changed' });
     expect(windowsReceiving('desktop:hub-network')).toStrictEqual([1, 2]);
     first.destroy();
-    expect(shared.network.stops).toBe(0);
     second.destroy();
-    expect(shared.network.stops).toBe(1);
+    expect(shared.network.stops).toBe(0);
   });
 
   it('delivers discovery to every searching window and keeps it running for the others', async () => {

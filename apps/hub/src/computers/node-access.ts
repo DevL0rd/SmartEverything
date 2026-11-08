@@ -2,7 +2,6 @@ import { createHash, randomBytes } from 'node:crypto';
 import {
   ApiError,
   NODE_AI_TOKEN,
-  createClientToken,
   createPairingCode,
   hashClientToken,
   hashPairingCode,
@@ -49,41 +48,29 @@ export class ComputerNodeAccess {
     code: string,
     hello: NodeHello,
     remote: string,
+    windowToken?: string,
   ): {
     readonly paired: {
       readonly token: string;
       readonly device_id: string;
       readonly hub_url: string;
-      readonly window_token: string;
     };
-    readonly replacedWindow: string | null;
   } {
     this.limit(remote);
-    const claimed = this.store.computerNodes.claim(hashPairingCode(code), (hubUrl) => {
-      const replacedWindow =
-        this.store.computerNodes.byMachine(hello.machineId)?.window_client_id ?? null;
-      if (replacedWindow !== null) this.store.clients.remove(replacedWindow);
+    const claimed = this.store.computerNodes.claim(hashPairingCode(code), (hubUrl, createdBy) => {
+      const windowClient = this.windowClient(windowToken, createdBy);
       const deviceId = this.device(hello);
       const token = `sen_${randomBytes(32).toString('base64url')}`;
-      const windowToken = createClientToken();
-      const windowClient = this.store.clients.create({
-        name: `${hello.hostname} desktop`.slice(0, 80),
-        platform: 'web',
-        role: 'owner',
-        tokenHash: hashClientToken(windowToken),
-      });
       this.store.computerNodes.bind({
         deviceId,
         machineId: hello.machineId,
         tokenHash: hashNodeToken(token),
         hubUrl,
-        windowClientId: windowClient.id,
+        windowClientId: windowClient,
+        profileId: this.store.clients.find(createdBy)?.profile_id ?? null,
       });
       this.store.computerAi.saveSettings(deviceId, this.store.computerAi.settings(deviceId));
-      return {
-        paired: { token, device_id: deviceId, hub_url: hubUrl, window_token: windowToken },
-        replacedWindow,
-      };
+      return { paired: { token, device_id: deviceId, hub_url: hubUrl } };
     });
     if (claimed === null)
       throw new ApiError(
@@ -93,10 +80,17 @@ export class ComputerNodeAccess {
     return claimed;
   }
 
-  revoke(deviceId: string): string | null {
-    const windowClient = this.store.computerNodes.revoke(deviceId);
-    if (windowClient !== null) this.store.clients.remove(windowClient);
-    return windowClient;
+  revoke(deviceId: string): void {
+    this.store.computerNodes.revoke(deviceId);
+  }
+
+  private windowClient(token: string | undefined, createdBy: string): string | null {
+    if (token === undefined) return null;
+    const client = this.store.clients.byTokenHash(hashClientToken(token));
+    if (client?.id !== createdBy || client.role !== 'owner' || client.platform !== 'desktop') {
+      throw new ApiError('forbidden', 'Pair this computer from the owner’s enrolled desktop.');
+    }
+    return client.id;
   }
 
   authenticate(token: string | null): ComputerNodeRow {
@@ -119,7 +113,7 @@ export class ComputerNodeAccess {
           device.provider === 'local' && device.external_id === computerExternalId(hello.machineId),
       );
     if (known !== undefined) return known.id;
-    const discovered = describeComputer(hello, 'pc', [], { power: [], machine: [] });
+    const discovered = describeComputer(hello, [], { power: [], machine: [] });
     const row = this.store.devices.upsert([
       { ...discovered, parentId: null, providerRoom: null, roomId: null, online: false },
     ])[0];

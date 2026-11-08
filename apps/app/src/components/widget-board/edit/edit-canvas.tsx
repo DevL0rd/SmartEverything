@@ -184,7 +184,7 @@ function Tiles(props: EditCanvasProps & { readonly session: EditSession }): Reac
           frame={frame}
           cell={cell}
           order={order}
-          sizes={sizeOptions(definition, board, cell)}
+          sizes={sizeOptions(definition, board)}
           drag={session.drag}
           handlers={session.handlers}
           touch={touch}

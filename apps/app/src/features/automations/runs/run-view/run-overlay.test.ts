@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { RunOverlay } from '../../model/canvas/contract';
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
+import { automation, start } from '../../model/graph/graph-scene-fixtures';
+import { projectGraphScene } from '../../model/graph/project-graph-scene';
+import { graphRunOverlay, type GraphRunOverlay } from '../../model/graph/run-overlay';
 import { clock } from '../../../../format/time';
 import { parseActivationPath, type Activation } from './run-activation';
 import { FOLLOW_OFF, followReduce } from './follow';
 import { gapText, resolveLoops, stripOf } from './run-loops';
-import { overlayOf, runningNodeOf, statusAt } from './run-overlay';
-import { boundsOf, offsetOf, timelineOf } from './run-timeline';
+import { recordsAt, runningNodeOf, statusAt } from './run-overlay';
+import { boundsOf, offsetOf, timelineOf, timelineStartsOpen } from './run-timeline';
 import { memoryLines, previewText } from './run-values';
 
 const START = Date.parse('2026-10-19T10:00:00.000Z');
@@ -42,21 +45,22 @@ function lights(count: number): readonly Activation[] {
   );
 }
 
-const NAMES = new Map([['l1', 'Light']]);
+const SCENE = projectGraphScene(automation([start()], { triggers: [] }), {
+  direction: 'ltr',
+  kinds: STATIC_KIND_LOOKUP,
+});
 
 function overlay(
   activations: readonly Activation[],
   selected = new Map<string, number>(),
   at: number | null = null,
-): RunOverlay {
-  const { loops, chosen } = resolveLoops(activations, selected);
-  return overlayOf({
-    activations,
-    chosen,
-    loops,
-    itemNames: NAMES,
-    at,
+): GraphRunOverlay {
+  return graphRunOverlay({
+    scene: SCENE,
+    records: recordsAt(activations, at),
+    selected,
     wakeAt: null,
+    live: false,
     zone: 'UTC',
   });
 }
@@ -75,11 +79,11 @@ describe('the loop stepper model', () => {
   it('names the item and its place, and follows the chosen pass', () => {
     const all = [...lights(4), act('l1', { seq: 5 })];
     const last = overlay(all);
-    expect(last['l1']?.text).toBe('Light 4 of 4');
-    expect(last['dim']).toEqual({ state: 'done', text: '40' });
+    expect(last.stepper['l1']).toEqual({ position: 4, total: 4, iteration: 4 });
+    expect(last.nodes['dim']).toEqual({ state: 'done', text: '40' });
     const second = overlay(all, new Map([['l1', 2]]));
-    expect(second['l1']?.text).toBe('Light 2 of 4');
-    expect(second['dim']).toEqual({ state: 'failed', text: 'Unreachable: Kitchen lamp' });
+    expect(second.stepper['l1']).toEqual({ position: 2, total: 4, iteration: 2 });
+    expect(second.nodes['dim']).toEqual({ state: 'failed', text: 'Unreachable: Kitchen lamp' });
   });
 
   it('falls back to the last pass when the chosen one does not exist', () => {
@@ -122,21 +126,20 @@ describe('the run overlay', () => {
       act('d', { seq: 4, status: 'skipped', startMs: null, endMs: null }),
       act('e', { seq: 5, preview: { value: 'Kitchen lamp' }, truncated: true }),
     ];
-    const { loops, chosen } = resolveLoops(records, new Map());
-    const shown = overlayOf({
-      activations: records,
-      chosen,
-      loops,
-      itemNames: NAMES,
-      at: null,
+    const shown = graphRunOverlay({
+      scene: SCENE,
+      records,
+      selected: new Map(),
       wakeAt: '2026-10-19T14:32:00.000Z',
+      live: false,
       zone: 'UTC',
-    });
+    }).nodes;
     expect(shown['a']).toEqual({ state: 'done', text: '42.46' });
     expect(shown['b']).toEqual({ state: 'failed', text: 'Timeout: no answer' });
     expect(shown['c']).toEqual({
       state: 'waiting',
       text: `wakes at ${clock('2026-10-19T14:32:00.000Z', 'UTC')}`,
+      wakeAt: '2026-10-19T14:32:00.000Z',
     });
     expect(shown['d']).toEqual({ state: 'skipped' });
     expect(shown['e']?.text).toBe('Kitchen lamp…');
@@ -147,7 +150,7 @@ describe('the run overlay', () => {
       act('x', { seq: 1, preview: { value: 1 } }),
       act('x', { seq: 2, preview: { value: 2 } }),
     ]);
-    expect(shown['x']?.text).toBe('2');
+    expect(shown.nodes['x']?.text).toBe('2');
   });
 
   it('replays states from the records at a scrubbed time and hides what has not started', () => {
@@ -158,11 +161,11 @@ describe('the run overlay', () => {
     expect(statusAt(records[1]!, START + 100)).toBeNull();
     expect(statusAt(records[1]!, START + 300)).toBe('running');
     expect(statusAt(records[1]!, START + 500)).toBe('succeeded');
-    const early = overlay(records, new Map(), START + 300);
+    const early = overlay(records, new Map(), START + 300).nodes;
     expect(early['a']?.state).toBe('done');
     expect(early['b']?.state).toBe('running');
-    expect(overlay(records, new Map(), START + 50)['a']?.state).toBe('running');
-    expect(overlay(records, new Map(), START + 50)['b']).toBeUndefined();
+    expect(overlay(records, new Map(), START + 50).nodes['a']?.state).toBe('running');
+    expect(overlay(records, new Map(), START + 50).nodes['b']).toBeUndefined();
   });
 
   it('finds the newest running node to follow', () => {
@@ -235,5 +238,13 @@ describe('follow', () => {
   it('ignores canvas events while off', () => {
     expect(followReduce(FOLLOW_OFF, { type: 'settled' })).toBe(FOLLOW_OFF);
     expect(followReduce(FOLLOW_OFF, { type: 'focused' })).toBe(FOLLOW_OFF);
+  });
+});
+
+describe('the timeline at the start', () => {
+  it('starts closed when the canvas would be under 450 px', () => {
+    expect(timelineStartsOpen(false, 900)).toBe(false);
+    expect(timelineStartsOpen(false, 1180)).toBe(true);
+    expect(timelineStartsOpen(true, 1180)).toBe(false);
   });
 });

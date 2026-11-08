@@ -1,7 +1,8 @@
+import type { ReactNode } from 'react';
 import { FeedChrome, Stage } from 'smarteverything-kit';
 
-const none = () => undefined;
-export const Feed = () => (
+const none = (): void => undefined;
+export const Feed = (): ReactNode => (
   <Stage theme="dark" width={560}>
     <FeedChrome
       words=""
@@ -11,11 +12,12 @@ export const Feed = () => (
       back={none}
       latest={none}
       controls={null}
+      inlineControls={false}
       focusSearch={false}
     />
   </Stage>
 );
-export const Context = () => (
+export const Context = (): ReactNode => (
   <Stage theme="dark" width={560}>
     <FeedChrome
       words="lights"
@@ -25,11 +27,12 @@ export const Context = () => (
       back={none}
       latest={none}
       controls={null}
+      inlineControls={false}
       focusSearch={false}
     />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactNode => (
   <Stage theme="light" width={560}>
     <FeedChrome
       words=""
@@ -39,6 +42,7 @@ export const LightTheme = () => (
       back={none}
       latest={none}
       controls={null}
+      inlineControls={false}
       focusSearch={false}
     />
   </Stage>

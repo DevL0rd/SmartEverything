@@ -335,6 +335,54 @@ describe('media request bodies', () => {
       { ...code, extra: 1 },
     ]);
   });
+
+  it('saveIrApplianceKey takes a button code without naming a remote', () => {
+    const code = { button: 'Power', format: 'pulses', code: '9000,4500' };
+    expectKept('saveIrApplianceKey', code);
+    expectRefused('saveIrApplianceKey', [
+      { ...code, remote_id: FIRST },
+      { ...code, code: 'c'.repeat(20_001) },
+      { ...code, format: 'hex' },
+    ]);
+  });
+
+  it('applyIrAppliance takes any of on, mode, temperature and fan speed within range', () => {
+    expectPatch('applyIrAppliance', { on: true, mode: 'Cool', temp: 24, speed: 2 });
+    expectKept('applyIrAppliance', { temp: 16 });
+    expectRefused('applyIrAppliance', [
+      { mode: 'Turbo' },
+      { temp: 31 },
+      { temp: 15 },
+      { speed: 0 },
+      { speed: 6 },
+      { on: true, extra: 1 },
+    ]);
+  });
+
+  it('createIrApplianceFromLibrary takes a library id, a blaster, a name and an optional room', () => {
+    const body = { library_id: 'smartir:climate:1000', blaster_id: FIRST, name: 'Bedroom AC' };
+    expectKept('createIrApplianceFromLibrary', body);
+    expectKept('createIrApplianceFromLibrary', { ...body, room_id: FIRST });
+    expectRefused('createIrApplianceFromLibrary', [
+      { ...body, library_id: '' },
+      { ...body, blaster_id: 'abc' },
+      { ...body, name: ' ' },
+      { ...body, extra: 1 },
+      { library_id: body.library_id, name: body.name },
+    ]);
+  });
+
+  it('listIrLibraryModels needs both a category and a brand', () => {
+    const query = API_ENDPOINTS.listIrLibraryModels.query;
+    expect(query.safeParse({ category: 'TV', brand: 'Samsung' }).success).toBe(true);
+    expect(query.safeParse({ category: 'TV' }).success).toBe(false);
+    expect(API_ENDPOINTS.listIrLibraryBrands.query.safeParse({}).success).toBe(false);
+  });
+
+  it('rebindIrAppliance takes only a blaster id', () => {
+    expectKept('rebindIrAppliance', { blaster_id: FIRST });
+    expectRefused('rebindIrAppliance', [{}, { blaster_id: 'b1' }, { blaster_id: FIRST, x: 1 }]);
+  });
 });
 
 describe('scene and automation request bodies', () => {
@@ -376,7 +424,19 @@ describe('client request bodies', () => {
 
   it('savePushTarget takes an Android Firebase token', () => {
     expectKept('savePushTarget', { token: 'fcm-token', platform: 'android' });
+    expectKept('savePushTarget', {
+      token: 'fcm-token',
+      platform: 'android',
+      hardware: { model: 'SM-F966B', manufacturer: 'samsung' },
+    });
     expectRefused('savePushTarget', [
+      { token: 'fcm-token', platform: 'android', hardware: { model: '', manufacturer: 'samsung' } },
+      { token: 'fcm-token', platform: 'android', hardware: { model: 'SM-F966B' } },
+      {
+        token: 'fcm-token',
+        platform: 'android',
+        hardware: { model: 'SM-F966B', manufacturer: 'samsung', extra: 1 },
+      },
       { token: 'fcm-token', platform: 'ios' },
       { token: '', platform: 'android' },
       { token: 't'.repeat(4097), platform: 'android' },
@@ -407,8 +467,16 @@ describe('health and assistant request bodies', () => {
     expectRefused('ingestHealth', [{ ...batch, records: [STEPS, STEPS] }, {}]);
   });
 
-  it('createMcpToken takes the name of the token', () => {
-    expectKept('createMcpToken', { name: 'Laptop' });
-    expectRefused('createMcpToken', [{ name: ' ' }, { name: 'Laptop', extra: 1 }]);
+  it('createMcpToken takes the name of the token and its access, control by default', () => {
+    expectKept('createMcpToken', { name: 'Laptop', access: 'read' });
+    expect(bodyOf('createMcpToken').parse({ name: 'Laptop' })).toStrictEqual({
+      name: 'Laptop',
+      access: 'control',
+    });
+    expectRefused('createMcpToken', [
+      { name: ' ' },
+      { name: 'Laptop', extra: 1 },
+      { name: 'Laptop', access: 'admin' },
+    ]);
   });
 });

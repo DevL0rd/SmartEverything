@@ -1,19 +1,19 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import {
-  NODE_REGISTRY,
   automationSentence,
-  type AutomationRowV3,
   type AutomationRunSummary,
   type FunctionLookup,
   type RefNames,
 } from '@smarteverything/domain';
+import type { AutomationRow } from '../data/graph-adapter';
 import type { LintContext } from '@smarteverything/flow/check/lint';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { Grid } from '../../../components/grid';
 import { LoadedQuery } from '../../../components/loaded-query';
+import { useAutomationsSource } from '../data/source';
 import { useAutomation } from '../data/use-automation';
 import { runLiveCheck } from '../editor/problems/problem-model';
 import { useListActions } from '../list/list-actions';
@@ -27,6 +27,7 @@ import { Uses, type UseLink } from './uses';
 import { Versions } from './versions';
 
 const PANEL_MIN_WIDTH = 320;
+const COLUMN_MIN_WIDTH = 360;
 
 export interface DetailEnvironment {
   readonly names: RefNames;
@@ -37,9 +38,9 @@ export interface DetailEnvironment {
 }
 
 export interface DetailLinks {
-  readonly list: Href;
+  readonly list: AppHref;
   readonly edit: EditAt;
-  readonly runs: Href;
+  readonly runs: AppHref;
   readonly use: UseLink;
 }
 
@@ -51,11 +52,11 @@ export interface DetailScreenProps {
 }
 
 interface LoadedProps extends Omit<DetailScreenProps, 'automationId'> {
-  readonly row: AutomationRowV3;
+  readonly row: AutomationRow;
   readonly revisions: ReturnType<typeof useAutomation>['revisions'];
 }
 
-function useSentence(row: AutomationRowV3, names: RefNames): string | null {
+function useSentence(row: AutomationRow, names: RefNames): string | null {
   const kindOf = useKindOf();
   return useMemo(
     () => automationSentence(row.definition, { kinds: kindOf, names }),
@@ -63,54 +64,74 @@ function useSentence(row: AutomationRowV3, names: RefNames): string | null {
   );
 }
 
+function useProblemGroups(
+  row: AutomationRow,
+  lint: LintContext,
+): ReturnType<typeof runLiveCheck>['groups'] {
+  const { lookup } = useAutomationsSource();
+  return useMemo(() => runLiveCheck(row.graph, lint, lookup).groups, [row.graph, lint, lookup]);
+}
+
+function Diagnostics({
+  row,
+  environment,
+  links,
+}: Pick<LoadedProps, 'row' | 'environment' | 'links'>): ReactNode {
+  const { names, functions, lint } = environment;
+  const manifest = useManifest(row, functions);
+  const groups = useProblemGroups(row, lint);
+  return (
+    <Grid minItemWidth={PANEL_MIN_WIDTH}>
+      <Uses manifest={manifest} names={names} link={links.use} />
+      <Problems groups={groups} editAt={links.edit} />
+    </Grid>
+  );
+}
+
 function Loaded({ row, revisions, environment, links, onOpenRun }: LoadedProps): ReactNode {
-  const { names, functions, lint, timeZone, person } = environment;
+  const { names, timeZone, person } = environment;
   const actions = useListActions();
   const [showAll, setShowAll] = useState(false);
   const restore = useRestoreVersion(row);
-  const manifest = useManifest(row, functions);
   const sentence = useSentence(row, names);
-  const groups = useMemo(
-    () => runLiveCheck(row.definition, lint, NODE_REGISTRY).groups,
-    [row.definition, lint],
-  );
   return (
-    <View className="gap-section-gap">
-      <Hero
-        row={row}
-        sentence={sentence}
-        timeZone={timeZone}
-        edit={links.edit(null)}
-        actions={actions}
-        onShowVersions={() => {
-          setShowAll(true);
-        }}
-      />
-      <Preview row={row} names={names} />
+    <Grid minItemWidth={COLUMN_MIN_WIDTH} maxColumns={3}>
+      <View className="gap-section-gap">
+        <Hero
+          row={row}
+          sentence={sentence}
+          timeZone={timeZone}
+          edit={links.edit(null)}
+          actions={actions}
+          onShowVersions={() => {
+            setShowAll(true);
+          }}
+        />
+        <Preview row={row} names={names} />
+      </View>
       <Activity
         automationId={row.id}
         timeZone={timeZone}
         runsHref={links.runs}
         onOpenRun={onOpenRun}
       />
-      <Grid minItemWidth={PANEL_MIN_WIDTH}>
-        <Uses manifest={manifest} names={names} link={links.use} />
-        <Problems groups={groups} editAt={links.edit} />
-      </Grid>
-      <LoadedQuery query={revisions}>
-        {(list) => (
-          <Versions
-            automationId={row.id}
-            versions={versionRows(list, row.revision, person)}
-            live={row.revision}
-            timeZone={timeZone}
-            showAll={showAll}
-            onShowAll={setShowAll}
-            onRestore={restore}
-          />
-        )}
-      </LoadedQuery>
-    </View>
+      <View className="gap-section-gap">
+        <Diagnostics row={row} environment={environment} links={links} />
+        <LoadedQuery query={revisions}>
+          {(list) => (
+            <Versions
+              automationId={row.id}
+              versions={versionRows(list, row.revision, person)}
+              live={row.revision}
+              timeZone={timeZone}
+              showAll={showAll}
+              onShowAll={setShowAll}
+              onRestore={restore}
+            />
+          )}
+        </LoadedQuery>
+      </View>
+    </Grid>
   );
 }
 

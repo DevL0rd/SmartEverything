@@ -5,6 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Device } from '../../../store/state';
 import type { PhoneReadingsInput } from '../card/phone-face-fixtures';
 
+vi.mock('../../../components/section-body', () => ({
+  useFrameBodyWidth: (): number => 380,
+}));
+
 vi.mock('react-native-reanimated', async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   const shared = (initial: unknown): object => ({

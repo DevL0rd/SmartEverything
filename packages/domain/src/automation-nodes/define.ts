@@ -1,7 +1,9 @@
+import type { ActionMode } from '../automation-v3/policy';
 import type { FlowType } from '../automation-v3/types';
 import type { PortValue } from '../automation-v3/port-value';
 import type { JsonValue } from '../values';
 import type { NodeCategoryId } from './categories';
+import type { OptionSourceId, PortEditorId } from './option-sources';
 
 export const NODE_CLASSES = ['trigger', 'pure', 'read', 'effect', 'control'] as const;
 export type NodeClass = (typeof NODE_CLASSES)[number];
@@ -27,13 +29,16 @@ export type NodeTier = (typeof NODE_TIERS)[number];
 export const SHIPPED_TIERS: readonly NodeTier[] = ['v1', 'v1.1'];
 
 export interface PortUi {
+  readonly label?: string;
   readonly min?: number;
   readonly max?: number;
   readonly step?: number;
   readonly unit?: string;
   readonly options?: readonly { readonly id: string; readonly label: string }[];
-  readonly optionsFrom?: string;
-  readonly editor?: string;
+  readonly optionsFrom?: OptionSourceId;
+  readonly editor?: PortEditorId;
+  readonly typedBy?: string;
+  readonly multiple?: boolean;
 }
 
 export interface InputPortDecl {
@@ -52,6 +57,7 @@ export interface OutputPortDecl {
   readonly name: string;
   readonly type: FlowType;
   readonly optional?: boolean;
+  readonly waitOnly?: boolean;
   readonly description: string;
 }
 
@@ -64,6 +70,24 @@ export interface ScopeShape {
 export interface EffectDecl {
   readonly retry: EffectRetryClass;
   readonly budget: EffectBudgetClass;
+  readonly mode?: ActionMode;
+  readonly timeout?: number;
+}
+
+export interface NodeModes {
+  readonly default: ActionMode;
+  readonly allowed: readonly ActionMode[];
+}
+
+export const NODE_ORIGIN_KINDS = ['plugin', 'driver', 'provider'] as const;
+export type NodeOriginKind = (typeof NODE_ORIGIN_KINDS)[number];
+
+export interface NodeOrigin {
+  readonly kind: NodeOriginKind;
+  readonly id: string;
+  readonly name: string;
+  readonly icon: string;
+  readonly version: string;
 }
 
 export type ReadKeys = (
@@ -86,6 +110,14 @@ export interface NodeKind {
   readonly summary: string;
   readonly keywords: readonly string[];
   readonly reads?: ReadKeys;
+  readonly capture?: 'at-step';
+  readonly structural?: boolean;
+  readonly fallible?: boolean;
+  readonly modes?: NodeModes;
+  readonly origin?: NodeOrigin;
+  readonly version?: number;
+  readonly replacedBy?: string;
+  readonly hidden?: boolean;
   readonly access: NodeAccess;
   readonly tier: NodeTier;
 }

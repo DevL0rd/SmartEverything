@@ -15,6 +15,18 @@ export interface PushAsk<R> {
   readonly unanswered: () => R;
 }
 
+interface Reached<R> {
+  readonly kind: 'reached';
+  readonly requestId: string;
+  readonly clients: readonly string[];
+  readonly answer: Promise<R>;
+}
+
+type Delivery<R> = Reached<R> | { readonly kind: 'unreachable'; readonly result: R };
+
+export type Dispatch<R> =
+  { readonly reached: true } | { readonly reached: false; readonly result: R };
+
 export class PushAsks<R> {
   private readonly answers: PendingAnswers<R>;
 
@@ -26,6 +38,25 @@ export class PushAsks<R> {
   }
 
   async ask(request: PushAsk<R>): Promise<R> {
+    const delivery = await this.deliver(request);
+    if (delivery.kind === 'unreachable') {
+      return delivery.result;
+    }
+    return this.collect(request, delivery);
+  }
+
+  async dispatch(request: PushAsk<R>, answered: (result: R) => void): Promise<Dispatch<R>> {
+    const delivery = await this.deliver(request);
+    if (delivery.kind === 'unreachable') {
+      return { reached: false, result: delivery.result };
+    }
+    background(this.collect(request, delivery).then(answered), 'push.answer_failed', {
+      command: request.command,
+    });
+    return { reached: true };
+  }
+
+  private async deliver(request: PushAsk<R>): Promise<Delivery<R>> {
     const requestId = randomUUID();
     const timeoutMs = request.timeoutMs ?? ANSWER_TIMEOUT_MS;
     const payload = {
@@ -42,16 +73,24 @@ export class PushAsks<R> {
     const reached = sent.filter(({ outcome }) => outcome.outcome === 'sent');
     request.sent({ asked: sent.length, reached: reached.length });
     if (reached.length === 0) {
-      return request.unreachable(sent.map(({ outcome }) => outcome));
+      return {
+        kind: 'unreachable',
+        result: request.unreachable(sent.map(({ outcome }) => outcome)),
+      };
     }
     const clients = reached.map(({ clientId }) => clientId);
-    const result = await this.answers.wait({
+    const answer = this.answers.wait({
       requestId,
       clients,
       timeoutMs,
       unanswered: request.unanswered,
     });
-    this.settled(request.settledCommand, requestId, clients);
+    return { kind: 'reached', requestId, clients, answer };
+  }
+
+  private async collect(request: PushAsk<R>, delivery: Reached<R>): Promise<R> {
+    const result = await delivery.answer;
+    this.settled(request.settledCommand, delivery.requestId, delivery.clients);
     return result;
   }
 

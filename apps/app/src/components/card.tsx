@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from './app-href';
 import { cn } from '../design/cn';
 import { Icon, type IconName } from './icon';
 import { Interactive } from './interactive';
@@ -18,8 +18,9 @@ export interface CardProps {
   readonly title?: string;
   readonly icon?: IconName;
   readonly action?: ReactNode;
+  readonly metadata?: ReactNode;
   readonly onPress?: () => void;
-  readonly href?: Href;
+  readonly href?: AppHref;
   readonly padding?: 'card' | 'none';
   readonly tone?: CardTone;
   readonly label?: string;
@@ -31,17 +32,25 @@ function CardHeader({
   title,
   icon,
   action,
+  metadata,
+  padded,
 }: {
   readonly title: string;
   readonly icon: IconName | undefined;
   readonly action: ReactNode;
+  readonly metadata: ReactNode;
+  readonly padded: boolean;
 }): ReactNode {
+  const hasAction = action !== undefined && action !== null && typeof action !== 'boolean';
   return (
-    <View className="min-h-touch-min flex-row items-center gap-2">
+    <View
+      className={cn('flex-row items-center gap-2', (!padded || hasAction) && 'min-h-touch-min')}
+    >
       {icon === undefined ? null : <Icon name={icon} size={20} />}
-      <Text variant="title-3" className="flex-1" numberOfLines={1}>
+      <Text variant="title-3" className="min-w-0 flex-1">
         {title}
       </Text>
+      {metadata}
       {action}
     </View>
   );
@@ -51,6 +60,7 @@ export function Card({
   title,
   icon,
   action,
+  metadata,
   onPress,
   href,
   padding = 'card',
@@ -59,19 +69,24 @@ export function Card({
   className,
   children,
 }: CardProps): ReactNode {
+  const interactive = onPress !== undefined || href !== undefined;
+  const padded = padding === 'card';
   const frame = cn(
     'gap-3 rounded-lg elevation-1',
-    padding === 'card' && 'p-card-pad',
+    padded && 'p-card-pad',
+    interactive && 'min-h-touch-min min-w-touch-min',
     TONE[tone],
     className,
   );
   const content = (
     <>
-      {title === undefined ? null : <CardHeader title={title} icon={icon} action={action} />}
+      {title === undefined ? null : (
+        <CardHeader title={title} icon={icon} action={action} metadata={metadata} padded={padded} />
+      )}
       {children}
     </>
   );
-  if (onPress === undefined && href === undefined) {
+  if (!interactive) {
     return <View className={frame}>{content}</View>;
   }
   return (

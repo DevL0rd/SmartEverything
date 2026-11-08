@@ -47,6 +47,7 @@ function subscriptionRoute(
   observed: string,
 ): AiSubscriptionHostStatus['route'] {
   const { request, credential, catalog } = input;
+  const usage = input.billing?.usage;
   const revision = createHash('sha256')
     .update(JSON.stringify({ generation: credential?.generation, models: catalog?.models }))
     .digest('hex');
@@ -60,6 +61,7 @@ function subscriptionRoute(
     fallback: 'none',
     background_authorized: false,
     ...(credential === undefined ? {} : { credential_generation: credential.generation }),
+    ...(usage === undefined ? {} : { usage }),
     capability_revision: revision,
     models:
       catalog === undefined

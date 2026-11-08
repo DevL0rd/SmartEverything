@@ -9,7 +9,7 @@ export function deliveryPorts(deps: {
   readonly options: Pick<AssistantServiceOptions, 'emit'>;
   readonly conversation: ConversationLog;
   readonly publisher: { readonly publish: () => void };
-  readonly coordination: () => { readonly admit: (event: StoredEvent) => boolean };
+  readonly delegation: () => { readonly admit: (event: StoredEvent) => boolean };
   readonly ended: (event: StoredEvent, text: string, ok: boolean) => void;
 }): Pick<DeliveryOptions, 'admit' | 'delivered' | 'failed' | 'retrying' | 'stopped'> {
   const { options, conversation, ended } = deps;
@@ -17,7 +17,7 @@ export function deliveryPorts(deps: {
     deps.publisher.publish();
   };
   return {
-    admit: (event) => deps.coordination().admit(event),
+    admit: (event) => deps.delegation().admit(event),
     delivered: (event): void => {
       conversation.delivered(event.id);
       publish();
@@ -31,7 +31,7 @@ export function deliveryPorts(deps: {
       options.emit(retryNotice(event, active), event.profile_id);
     },
     stopped: (event): void => {
-      conversation.failedMessage(event.message_id, STOPPED_BY_USER, 'stopped');
+      conversation.failed(event, STOPPED_BY_USER, 'stopped');
       ended(event, STOPPED_BY_USER, false);
       publish();
     },

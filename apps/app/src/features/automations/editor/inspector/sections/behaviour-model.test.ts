@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { FlowNode, NodeKind } from '@smarteverything/domain';
+import type { GraphNode, NodeKind } from '@smarteverything/domain';
 import { NODE_POLICY, NODE_REGISTRY } from '@smarteverything/domain';
 import {
   DEFAULT_RETRY,
-  ROUTE_SCOPE,
+  ROUTE_PORT,
   behaviourView,
   compactPolicy,
   evenedRetry,
   hasBehaviour,
-  routeLocked,
-  routeScopeEdit,
+  failureModeOps,
   withAcknowledgement,
   withFailureMode,
   withRetry,
@@ -22,7 +21,7 @@ function effectWith(retry: 'idempotent' | 'relative' | 'external'): NodeKind {
   return found;
 }
 
-function stepOf(kind: string, extra: Partial<FlowNode> = {}): FlowNode {
+function stepOf(kind: string, extra: Partial<GraphNode> = {}): GraphNode {
   return { id: '00000000-0000-4000-8000-000000000001', key: 'a', kind, ...extra };
 }
 
@@ -123,23 +122,35 @@ describe('policy edits stay valid and tidy', () => {
   });
 });
 
-describe('Go to On error', () => {
-  it('adds the On error lane when the mode is chosen and removes it when it is left', () => {
+describe('Follow If it fails', () => {
+  it('only changes the policy when the mode is chosen', () => {
     const plain = stepOf('device.set');
-    expect(routeScopeEdit(plain, 'route')).toEqual({ t: 'scope.add', name: ROUTE_SCOPE });
-    expect(routeScopeEdit(plain, 'continue')).toBeNull();
-    const routed = stepOf('device.set', { scopes: { [ROUTE_SCOPE]: { nodes: [] } } });
-    expect(routeScopeEdit(routed, 'route')).toBeNull();
-    expect(routeScopeEdit(routed, 'fail')).toEqual({ t: 'scope.remove', name: ROUTE_SCOPE });
+    expect(failureModeOps(plain, 'route')).toEqual([
+      { op: 'set', key: 'a', policy: { onError: 'route' } },
+    ]);
+    expect(failureModeOps(plain, 'continue')).toEqual([
+      { op: 'set', key: 'a', policy: { onError: 'continue' } },
+    ]);
   });
 
-  it('locks the other modes while the lane still holds steps', () => {
-    const empty = stepOf('device.set', { scopes: { [ROUTE_SCOPE]: { nodes: [] } } });
-    const busy = stepOf('device.set', {
-      scopes: { [ROUTE_SCOPE]: { nodes: [stepOf('device.set')] } },
+  it('cuts the On error wire when the mode is left', () => {
+    const routed = stepOf('device.set', {
+      policy: { onError: 'route' },
+      to: { [ROUTE_PORT]: 'recover' },
     });
-    expect(routeLocked(empty)).toBe(false);
-    expect(routeLocked(busy)).toBe(true);
-    expect(routeLocked(stepOf('device.set'))).toBe(false);
+    expect(failureModeOps(routed, 'fail')).toEqual([
+      { op: 'disconnect', from: 'a', port: ROUTE_PORT },
+      { op: 'set', key: 'a', policy: null },
+    ]);
+    expect(failureModeOps(routed, 'route')).toEqual([
+      { op: 'set', key: 'a', policy: { onError: 'route' } },
+    ]);
+  });
+
+  it('leaves an unwired On error lane alone when the mode is left', () => {
+    const routed = stepOf('device.set', { policy: { onError: 'route' } });
+    expect(failureModeOps(routed, 'continue')).toEqual([
+      { op: 'set', key: 'a', policy: { onError: 'continue' } },
+    ]);
   });
 });

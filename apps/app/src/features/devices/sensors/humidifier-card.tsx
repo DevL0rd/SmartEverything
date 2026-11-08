@@ -71,19 +71,18 @@ function WideHumidifier({
       tone={read.power === 'on' ? 'primary' : 'variant'}
       offline={read.power === 'offline'}
       facts={factsOf(line, read)}
-      figures={cls === 'm' || pill === null ? [] : [pill]}
+      figures={pill === null ? [] : [pill]}
       graph={
         <HumidifierGraph
           device={device}
           capability={roles.humidity.key}
           humidity={read.humidity}
           target={read.target}
-          water={read.water}
           cls={cls}
           live={visible.live}
         />
       }
-      actions={[<CardActions key="actions" device={device} cls={cls} />]}
+      actions={[<CardActions key="actions" device={device} />]}
     />
   );
 }

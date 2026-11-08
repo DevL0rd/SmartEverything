@@ -122,6 +122,21 @@ function CreateBar({
   );
 }
 
+function ChannelEditorBody({
+  fields,
+  members,
+}: {
+  readonly fields: ReactNode;
+  readonly members: ReactNode;
+}): ReactNode {
+  return (
+    <View className="flex-row flex-wrap items-start gap-section-gap">
+      <View className="min-w-0 max-w-reading grow shrink basis-80 gap-section-gap">{fields}</View>
+      <View className="min-w-0 max-w-reading grow shrink basis-80 gap-section-gap">{members}</View>
+    </View>
+  );
+}
+
 function NewChannel(): ReactNode {
   const [fields, setFields] = useState<ChannelFields>(NEW_CHANNEL);
   const [members, setMembers] = useState<readonly DraftMember[]>([]);
@@ -130,7 +145,6 @@ function NewChannel(): ReactNode {
   return (
     <Screen
       header={<PageHeader title="New channel" breadcrumbs={CRUMBS} />}
-      maxWidth="reading"
       footer={
         <CreateBar
           saving={saving}
@@ -139,25 +153,31 @@ function NewChannel(): ReactNode {
         />
       }
     >
-      <ChannelFieldsBlock
-        fields={fields}
-        onChange={(change) => {
-          setFields((current) => ({ ...current, ...change }));
-        }}
-        nameError={fields.name === '' ? null : problem}
-      />
-      <ChannelMembersBlock
-        members={members}
-        onChange={(change) => {
-          background(
-            speakerAllowed(change).then((allowed) => {
-              if (allowed) {
-                setMembers((current) => applied(current, change));
-              }
-            }),
-            'allowed.speaker_failed',
-          );
-        }}
+      <ChannelEditorBody
+        fields={
+          <ChannelFieldsBlock
+            fields={fields}
+            onChange={(change) => {
+              setFields((current) => ({ ...current, ...change }));
+            }}
+            nameError={fields.name === '' ? null : problem}
+          />
+        }
+        members={
+          <ChannelMembersBlock
+            members={members}
+            onChange={(change) => {
+              background(
+                speakerAllowed(change).then((allowed) => {
+                  if (allowed) {
+                    setMembers((current) => applied(current, change));
+                  }
+                }),
+                'allowed.speaker_failed',
+              );
+            }}
+          />
+        }
       />
     </Screen>
   );
@@ -217,25 +237,29 @@ function ExistingChannel({ channel }: { readonly channel: TalkChannelRow }): Rea
     ).catch(notifyFailure('The channel wasn’t changed'));
   };
   return (
-    <Screen header={<PageHeader title={channel.name} breadcrumbs={CRUMBS} />} maxWidth="reading">
-      <ChannelFieldsBlock
-        fields={{ ...fieldsOf(channel), name }}
-        nameError={problem}
-        onChange={(change) => {
-          if (change.name === undefined) {
-            save(change);
-          } else {
-            setName(change.name);
-          }
-        }}
-        onNameDone={() => {
-          if (problem === null && name !== channel.name) {
-            save({ name });
-          }
-        }}
+    <Screen header={<PageHeader title={channel.name} breadcrumbs={CRUMBS} titleLines="wrap" />}>
+      <ChannelEditorBody
+        fields={
+          <ChannelFieldsBlock
+            fields={{ ...fieldsOf(channel), name }}
+            nameError={problem}
+            onChange={(change) => {
+              if (change.name === undefined) {
+                save(change);
+              } else {
+                setName(change.name);
+              }
+            }}
+            onNameDone={() => {
+              if (problem === null && name !== channel.name) {
+                save({ name });
+              }
+            }}
+          />
+        }
+        members={<ChannelMembersBlock members={members} onChange={memberSaved(channel.id)} />}
       />
-      <ChannelMembersBlock members={members} onChange={memberSaved(channel.id)} />
-      <List inset>
+      <List inset className="max-w-reading">
         <ActionRow
           title="Delete channel"
           icon="trash"

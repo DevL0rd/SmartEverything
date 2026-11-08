@@ -23,7 +23,6 @@ export interface MasterOverlay {
 export interface MasterDetailProps {
   readonly master: ReactNode;
   readonly detail: ReactNode;
-  readonly masterWidth?: 'master' | 'popover';
   readonly overlay?: MasterOverlay;
   readonly split?: boolean;
 }
@@ -65,13 +64,7 @@ export function OverlayPane({
   );
 }
 
-export function MasterDetail({
-  master,
-  detail,
-  masterWidth = 'master',
-  overlay,
-  split,
-}: MasterDetailProps): ReactNode {
+export function MasterDetail({ master, detail, overlay, split }: MasterDetailProps): ReactNode {
   const size = useSizeClass();
   const wide = split ?? size.split;
   const slides =
@@ -79,14 +72,7 @@ export function MasterDetail({
   return (
     <View className={cn('flex-1', wide ? 'flex-row' : 'relative')}>
       {wide ? (
-        <View
-          className={cn(
-            'border-r border-outline-variant',
-            masterWidth === 'master' ? 'w-master' : 'w-popover',
-          )}
-        >
-          {master}
-        </View>
+        <View className="w-master shrink-0 border-r border-outline-variant">{master}</View>
       ) : null}
       <View className="min-w-0 flex-1">{detail}</View>
       {slides ? <OverlayPane {...overlay}>{master}</OverlayPane> : null}

@@ -48,3 +48,25 @@ export function useRobotLive(device: Device): RobotLive | null {
     };
   }, [base, statusValue, entries, stamp, movesValue]);
 }
+
+export function fittedCount(
+  widths: readonly (number | undefined)[],
+  menu: number | undefined,
+  room: number | null,
+  gap: number,
+): number {
+  const known = widths.filter((width): width is number => width !== undefined);
+  if (room === null || menu === undefined || known.length !== widths.length) {
+    return widths.length;
+  }
+  let used = menu;
+  let count = 0;
+  for (const width of known) {
+    used += width + gap;
+    if (used > room) {
+      return count;
+    }
+    count += 1;
+  }
+  return count;
+}

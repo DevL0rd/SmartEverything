@@ -5,6 +5,7 @@ import {
   isCleaning,
   requestCancel,
 } from '@smarteverything/flow/interpret/cancel';
+import { policyDeadline } from '@smarteverything/flow/interpret/policy';
 import { FLOW_ERRORS } from '@smarteverything/flow/state/errors';
 import { step } from '@smarteverything/flow/interpret/step';
 import { resumeResult, wakeAt, wakeResume } from '@smarteverything/flow/interpret/waits';
@@ -212,14 +213,41 @@ export class LiveRun implements Runnable {
   private dispatch(request: EffectRequest): void {
     this.phase = 'effect';
     this.effectToken += 1;
-    background(this.perform(this.effectToken, request), 'automation.effect_landing_failed', {
+    const token = this.effectToken;
+    const deadline = policyDeadline(this.state);
+    if (deadline !== undefined) {
+      this.wakers.push(
+        this.ports.clock.at(new Date(deadline), () => {
+          this.expire(token, request);
+        }),
+      );
+    }
+    background(this.perform(token, request), 'automation.effect_landing_failed', {
       runId: this.runId,
+    });
+  }
+
+  private expire(token: number, request: EffectRequest): void {
+    if (token !== this.effectToken || this.phase !== 'effect') return;
+    this.effectToken += 1;
+    this.disarm();
+    this.log.warn('automation.effect_timed_out', {
+      runId: this.runId,
+      nodePath: request.path,
+      kind: request.kind,
+    });
+    this.resolveWith({
+      ok: false,
+      class: 'Timeout',
+      message: `${request.node.key} did not finish before its timeout`,
+      code: 'timeout',
     });
   }
 
   private async perform(token: number, request: EffectRequest): Promise<void> {
     const result = await this.attempt(request);
     if (token === this.effectToken && this.phase === 'effect') {
+      this.disarm();
       this.resolveWith(result);
       return;
     }

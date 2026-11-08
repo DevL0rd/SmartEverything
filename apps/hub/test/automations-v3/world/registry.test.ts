@@ -4,6 +4,7 @@ import { AGGREGATE_FUNCTION_IDS } from '../../../src/automations/world-v3/aggreg
 import { weatherOutputName } from '../../../src/automations/world-v3/weather';
 import { readKindIds } from '../../../src/automations/world-v3/world-reads';
 import { WEATHER_METRICS } from '@smarteverything/domain';
+import { createKindCatalog } from '../../../src/automations/plugin-kinds/catalog';
 import { furnish, type Home } from './support';
 
 let home: Home;
@@ -18,7 +19,7 @@ afterEach(async () => {
 
 describe('the world reads and the node registry', () => {
   it('answers every read kind of the registry', () => {
-    const unanswered = readKindIds().filter((kind) => {
+    const unanswered = readKindIds(createKindCatalog()).filter((kind) => {
       try {
         home.read(kind);
         return false;
@@ -26,7 +27,7 @@ describe('the world reads and the node registry', () => {
         return cause instanceof Error && cause.message.includes('is not something the home');
       }
     });
-    expect(readKindIds()).toContain('device.get');
+    expect(readKindIds(createKindCatalog())).toContain('device.get');
     expect(unanswered).toEqual([]);
   });
 

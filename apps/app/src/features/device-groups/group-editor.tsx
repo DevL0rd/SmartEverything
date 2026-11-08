@@ -8,6 +8,7 @@ import { Segmented } from '../../components/segmented';
 import { Sheet } from '../../components/sheet';
 import { Text } from '../../components/text';
 import { TextField } from '../../components/text-field';
+import { cn } from '../../design/cn';
 import { plural } from '../../format/text';
 import type { Device } from '../../store/state';
 import { ArrangeList } from './arrange-list';
@@ -36,7 +37,7 @@ function Footer({
   readonly onClose: (result: EditorResult) => void;
 }): ReactNode {
   return (
-    <View className="gap-2">
+    <View className={cn('min-w-0 flex-1 gap-2', !editing && 'flex-row flex-wrap items-center')}>
       <View className="flex-row items-center justify-between gap-2">
         <Text variant="footnote" tone="variant">
           {`${plural(draft.members.length, 'device')} selected`}
@@ -53,7 +54,7 @@ function Footer({
           />
         ) : null}
       </View>
-      <View className="flex-row justify-end gap-2">
+      <View className="ml-auto flex-row justify-end gap-2">
         <Button
           label="Cancel"
           variant="tonal"
@@ -127,7 +128,7 @@ export function GroupEditor({
   };
   return (
     <Sheet
-      detents={['full']}
+      detents={['fit']}
       open
       title={group === null ? 'New group' : 'Edit group'}
       onClose={close}

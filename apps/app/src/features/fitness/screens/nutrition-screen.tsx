@@ -13,7 +13,7 @@ export function NutritionScreen(): ReactNode {
   return (
     <FitnessFrame
       tab="nutrition"
-      width="detail"
+      width="dashboard"
       toolbar={<FitnessToolbar day={day} today={today} range="day" />}
       primaryAction={
         started

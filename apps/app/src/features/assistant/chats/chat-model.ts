@@ -9,18 +9,13 @@ export interface ChatModel {
   readonly provider: string | null;
   readonly providerLabel: string | null;
   readonly effort: string | null;
-  readonly isDefault: boolean;
   readonly computer: string | null;
 }
 
 export function useChatModel(engine: Engine): ChatModel {
   const label = useModelLabel(engine);
   const loaded = label.provider !== null;
-  const name = loaded
-    ? plainModelName(label.name)
-    : engine.model === null
-      ? label.name
-      : modelIdName(engine.model);
+  const name = loaded ? plainModelName(label.name) : modelIdName(engine.model);
   return {
     name,
     computer: label.computer,
@@ -28,6 +23,5 @@ export function useChatModel(engine: Engine): ChatModel {
     provider: label.provider,
     providerLabel: label.providerLabel,
     effort: engine.effort === null ? null : effortLabel(engine.effort),
-    isDefault: loaded && engine.model === null,
   };
 }

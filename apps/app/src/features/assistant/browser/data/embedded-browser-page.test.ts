@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EMBEDDED_BROWSER_ACTION_NAMES,
@@ -36,7 +37,7 @@ class FakeSocket {
   }
 }
 
-vi.mock('expo-crypto', () => ({ randomUUID: (): string => globalThis.crypto.randomUUID() }));
+vi.mock('expo-crypto', () => ({ randomUUID: (): string => randomUUID() }));
 vi.mock('../../../../api/connection/hub-socket', () => ({
   openHubSocket: (): FakeSocket => new FakeSocket(),
 }));
@@ -90,7 +91,7 @@ async function ask(operation: unknown): Promise<ReturnType<typeof EMBEDDED_BROWS
   socket.onmessage?.({
     data: JSON.stringify({
       kind: 'perform',
-      request: { requestId: globalThis.crypto.randomUUID(), scope, operation },
+      request: { requestId: randomUUID(), scope, operation },
     }),
   });
   await vi.advanceTimersByTimeAsync(0);

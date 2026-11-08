@@ -32,6 +32,47 @@ async function parts(): Promise<Parts> {
   return { home, ports, setter: new DeviceSetter(ports) };
 }
 
+describe('device set together effect', () => {
+  it('runs one device controls in the given order through a provider with no batching', async () => {
+    const { home, setter } = await parts();
+    const result = await setter.setTogether(
+      {
+        deviceId: home.lampId,
+        changes: [
+          { control: 'brightness', value: 30 },
+          { control: 'power', value: true },
+        ],
+      },
+      testRun(),
+    );
+    expect(result).toMatchObject({ sent: [home.lampId], skipped: [] });
+    expect(home.adapter.executed.map((command) => command.capability)).toStrictEqual([
+      'brightness',
+      'power',
+    ]);
+  });
+
+  it('reports a control the device does not have as skipped and still sends the rest', async () => {
+    const { home, setter } = await parts();
+    const result = await setter.setTogether(
+      {
+        deviceId: home.lampId,
+        changes: [
+          { control: 'color', value: { hue: 1, saturation: 1, value: 1 } },
+          { control: 'brightness', value: 30 },
+        ],
+      },
+      testRun(),
+    );
+    expect(result.sent).toEqual([home.lampId]);
+    expect(result.skipped).toMatchObject([{ deviceId: home.lampId, reason: 'unsupported' }]);
+    expect(result.skipped[0]?.detail).toContain('color');
+    expect(home.adapter.executed.map((command) => command.capability)).toStrictEqual([
+      'brightness',
+    ]);
+  });
+});
+
 describe('device set effect', () => {
   it('sends the value, reports who got it and stamps the commands with the run', async () => {
     const { home, setter } = await parts();

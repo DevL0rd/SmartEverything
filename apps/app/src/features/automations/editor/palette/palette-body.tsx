@@ -11,14 +11,12 @@ import { SearchField } from '../../../../components/search-field';
 import { Text } from '../../../../components/text';
 import { useIdiom } from '../../../../design/platform';
 import { categoryColour } from '../../../../design/node-colours';
-import { SECTION_ICONS } from './category-icons';
-import type { PaletteEntry, PaletteGroup, PaletteSectionId } from './palette-categories';
-import { overviewOf } from './palette-overview';
-import { PaletteRow, sectionTitle } from './palette-row';
+import type { PaletteEntry, PaletteGroup } from './palette-categories';
+import { openGroup, overviewOf } from './palette-overview';
+import { PaletteRow } from './palette-row';
 import {
   inOrder,
   rankEntries,
-  reasonFor,
   wordsOf,
   type PaletteContext,
   type PaletteUsage,
@@ -51,11 +49,10 @@ function Rows({
 }): ReactNode {
   return (
     <View className="gap-1">
-      {rows.map(({ entry, reason }) => (
+      {rows.map(({ entry }) => (
         <PaletteRow
           key={entry.key}
           entry={entry}
-          reason={reason}
           favourite={entry.usageId !== null && actions.favourites.includes(entry.usageId)}
           onPick={actions.onPick}
           onToggleFavourite={actions.onToggleFavourite}
@@ -87,22 +84,24 @@ function CategoryRow({
   onOpen,
 }: {
   readonly group: PaletteGroup;
-  readonly onOpen: (id: PaletteSectionId) => void;
+  readonly onOpen: (key: string) => void;
 }): ReactNode {
   return (
     <Interactive
       label={`${group.name}, ${String(group.entries.length)} items`}
       onPress={() => {
-        onOpen(group.id);
+        onOpen(group.key);
       }}
       className="min-h-touch-min flex-row items-center gap-3 rounded-sm px-1"
       layerClassName="rounded-sm"
     >
-      <IconWell icon={SECTION_ICONS[group.id]} colour={categoryColour(group.name)} />
+      <IconWell icon={group.icon} colour={categoryColour(group.name)} />
       <Text variant="body" numberOfLines={1} className="flex-1">
         {group.name}
       </Text>
-      <Badge label={String(group.entries.length)} />
+      <View className="self-center">
+        <Badge label={String(group.entries.length)} />
+      </View>
       <Icon name="chevronRight" size={20} tone="faint" />
     </Interactive>
   );
@@ -117,7 +116,7 @@ function Overview({
 }: {
   readonly source: Source;
   readonly actions: RowActions;
-  readonly onOpen: (id: PaletteSectionId) => void;
+  readonly onOpen: (key: string) => void;
 }): ReactNode {
   const { entries, groups, context, usage } = source;
   const overview = useMemo(
@@ -125,7 +124,7 @@ function Overview({
     [entries, groups, context, usage],
   );
   const asRows = (list: readonly PaletteEntry[]): readonly RankedEntry[] =>
-    list.map((entry) => ({ entry, reason: reasonFor(entry, context), score: 0 }));
+    list.map((entry) => ({ entry, score: 0 }));
   return (
     <View className="gap-2">
       {overview.suggested.length === 0 ? null : (
@@ -145,7 +144,7 @@ function Overview({
       )}
       <Titled title="Categories">
         {overview.groups.map((group) => (
-          <CategoryRow key={group.id} group={group} onOpen={onOpen} />
+          <CategoryRow key={group.key} group={group} onOpen={onOpen} />
         ))}
       </Titled>
     </View>
@@ -169,7 +168,7 @@ function DrillIn({
       <View className="flex-row items-center gap-1">
         <IconButton icon="chevronLeft" label="Back to all categories" onPress={onBack} />
         <Text variant="title-3" accessibilityRole="header">
-          {sectionTitle(group.id)}
+          {group.name}
         </Text>
       </View>
       {group.id === 'reusable' ? (
@@ -190,9 +189,9 @@ function Content({
 }: {
   readonly source: Source;
   readonly query: string;
-  readonly section: PaletteSectionId | null;
+  readonly section: string | null;
   readonly actions: RowActions;
-  readonly onSection: (id: PaletteSectionId | null) => void;
+  readonly onSection: (key: string | null) => void;
 }): ReactNode {
   const { entries, groups, context, usage } = source;
   const searching = wordsOf(query).length > 0;
@@ -200,7 +199,7 @@ function Content({
     () => (searching ? rankEntries(entries, query, context, usage) : []),
     [searching, entries, query, context, usage],
   );
-  const open = groups.find((group) => group.id === section);
+  const open = openGroup(groups, section);
   if (searching) {
     return results.length === 0 ? (
       <EmptyState
@@ -236,7 +235,7 @@ export function PaletteBody({
   onToggleFavourite,
 }: PaletteBodyProps): ReactNode {
   const [query, setQuery] = useState('');
-  const [section, setSection] = useState<PaletteSectionId | null>(null);
+  const [section, setSection] = useState<string | null>(null);
   const pointer = useIdiom() === 'pointer';
   const actions: RowActions = { favourites: usage.favourites, onPick, onToggleFavourite };
   return (
@@ -245,7 +244,7 @@ export function PaletteBody({
         <SearchField
           value={query}
           onChange={setQuery}
-          placeholder="Search steps, values and triggers"
+          placeholder="Search steps and values"
           focusOnMount={pointer}
           variant="field"
         />

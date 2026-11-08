@@ -1,11 +1,22 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
-    "outDir": "./dist",
+    "rootDir": "..",
     "types": ["node"],
-    "rewriteRelativeImportExtensions": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["*.ts", "claude-hook/*.ts"],
-  "references": [{ "path": "../packages/logging" }, { "path": "../packages/domain" }]
+  "include": [
+    "*.ts",
+    "claude-hook/*.ts",
+    "../apps/desktop/packaging/web-runtime.ts",
+    "../apps/desktop/src/package-layout.ts",
+    "../apps/desktop/src/variant.ts",
+    "../apps/desktop/src/origin.ts"
+  ],
+  "references": [
+    { "path": "../packages/logging" },
+    { "path": "../packages/domain" },
+    { "path": "../apps/hub" }
+  ]
 }

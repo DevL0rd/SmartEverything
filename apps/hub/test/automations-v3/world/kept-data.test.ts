@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,6 +21,7 @@ import { AutomationValuesRepository } from '../../../src/store/repositories/auto
 import { ScenesRepository } from '../../../src/store/repositories/scenes';
 import { Sql } from '../../../src/store/sql';
 import { captureLogs, testLogger } from '../../support/logs';
+import { graphFunction } from '../support/graph-of';
 
 const NOW = '2026-10-19T09:00:00.000Z';
 const FIRST = '3a000000-0000-4000-8000-000000000001';
@@ -198,6 +200,7 @@ function runOf(automationId: string): EffectRun {
     automationId,
     signal: new AbortController().signal,
     commands: (): void => undefined,
+    late: (): void => undefined,
     trigger: null,
   };
 }
@@ -208,10 +211,10 @@ function unused(): never {
 
 function portsWith(store: KeptData): Parameters<typeof effectHandlers>[0] {
   return {
-    setter: { set: unused },
+    setter: { set: unused, setTogether: unused },
     http: { request: unused },
     toggler: { toggle: unused },
-    issuer: { issue: unused },
+    issuer: { issue: unused, confirm: unused },
     store: {
       automationValues: new AutomationValuesRepository(context),
       scenes: new ScenesRepository(context),
@@ -256,6 +259,6 @@ function functionsWith(definition: FunctionV3): FunctionDefinitions {
   return {
     find: (id: string) => (id === 'counter' ? { id } : undefined),
     findRevision: () => undefined,
-    latest: () => ({ definition }),
+    latest: () => ({ definition: graphFunction(definition, STATIC_KIND_LOOKUP) }),
   };
 }

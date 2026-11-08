@@ -4,7 +4,7 @@ import { MiotSpecError, MiotValueError } from './errors';
 import { hsvToRgb, rgbToHsv } from './color';
 import type { MiotFormat, MiotProperty } from './spec';
 
-export const TEXT_MAX_LENGTH = 4096;
+export const TEXT_MAX_LENGTH = 262144;
 
 export interface EnumOption {
   readonly label: string;

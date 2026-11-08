@@ -203,12 +203,15 @@ export async function probeWindows(system: FirewallSystem): Promise<Probe> {
         ? `Windows Defender Firewall blocks incoming connections on the active ${profiles.join(' and ')} network.`
         : 'Windows Defender Firewall does not block incoming connections on the active network.',
     stateOf: (rule) => windowsStateOf(firewall, rule),
-    draft: (needed) => ({
-      backend: 'windows',
-      program: system.go2rtcBinary,
-      appProgram: system.appBinary,
-      rules: needed.map((opening) => opening.rule),
-    }),
+    draft: ({ needed }) =>
+      needed.length === 0
+        ? null
+        : {
+            backend: 'windows',
+            program: system.go2rtcBinary,
+            appProgram: system.appBinary,
+            rules: needed.map((opening) => opening.rule),
+          },
     fixable: FIXABLE_UNLESS_DENIED,
     watch: [],
   };

@@ -41,7 +41,7 @@ describe('badgeOf', () => {
     const cases: readonly [string, string][] = [
       ['trigger.time', 'Trigger'],
       ['math.add', 'Value'],
-      ['flow.if', 'Block'],
+      ['flow.if', 'Step'],
       ['device.set', 'Step'],
       ['fn.call', 'Custom Node'],
       ['made.up', 'Step'],

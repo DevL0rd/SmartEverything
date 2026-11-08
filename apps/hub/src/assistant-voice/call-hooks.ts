@@ -27,12 +27,17 @@ import { VOICE_TOOL_NAMES } from './voice-tools';
 export interface CallHooksDeps {
   readonly options: CallDeskOptions;
   readonly outbox: Outbox;
-  readonly ended: (call: Call, reason: CallEnding, detail: string | null) => void;
+  readonly ended: (
+    call: Call,
+    reason: CallEnding,
+    detail: string | null,
+    cause: string | undefined,
+  ) => void;
 }
 
 function kitOf(options: CallDeskOptions): VoiceKit {
-  const { store, responder, tools, now } = options;
-  return { store, responder, tools, now };
+  const { store, responder, tools, memory, now } = options;
+  return { store, responder, tools, memory, now };
 }
 
 export function recordTurn(call: Call, turn: RecordedTurn): void {
@@ -79,8 +84,8 @@ function diagnosticsOf(
   call: () => Call,
 ): Pick<ConversationHooks, 'measured' | 'stalled'> {
   return {
-    measured: (event, fields): void => {
-      options.log.info(event, { callId: call().id, ...fields });
+    measured: (event, fields, level = 'info'): void => {
+      options.log[level](event, { callId: call().id, ...fields });
     },
     stalled: (step): void => {
       options.log.warn('voice.no_reply', { callId: call().id, step });
@@ -140,11 +145,15 @@ function promptHooks(options: CallDeskOptions, call: () => Call, hub: () => Tool
   return {
     system: () => systemOf(kit, hub(), who()),
     note: (known, starting) =>
-      voiceNoteOf(kit, who(), { recentSpeech: heardBefore(options, call()), known, starting }),
+      voiceNoteOf(kit, hub(), who(), {
+        recentSpeech: heardBefore(options, call()),
+        known,
+        starting,
+      }),
     history: () => historyOf(store, call().chatId),
     window: () => liveWindow(store.assistantChat.settings()),
     tools: () => declarationsOf(kit, hub(), who()),
-    webSearch: () => callSearchesWeb(hub()),
+    webSearch: () => callSearchesWeb(kit, who()),
   };
 }
 
@@ -153,14 +162,15 @@ function endedOf(
   call: () => Call,
   pause: EndOfSpeechPause | null,
 ): ConversationHooks['ended'] {
-  return (reason, detail): void => {
+  return (reason, detail, cause): void => {
     deps.options.log.info('voice.conversation_ended', {
       callId: call().id,
       reason,
+      cause,
       detail: detail === null ? undefined : detail.slice(0, 200),
     });
     pause?.close();
-    deps.ended(call(), reason, detail);
+    deps.ended(call(), reason, detail, cause);
   };
 }
 

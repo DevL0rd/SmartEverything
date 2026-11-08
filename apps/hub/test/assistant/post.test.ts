@@ -7,6 +7,7 @@ import { AssistantFiles } from '../../src/assistant/files';
 import { AssistantRequests } from '../../src/assistant/requests';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { hubLayout } from '../../src/data-layout';
 
 let opened: TestStore;
 let requests: AssistantRequests;
@@ -23,14 +24,14 @@ beforeEach(async () => {
   owner = store.profiles.activeOf(client.id).id;
   const now = (): Date => new Date('2026-10-09T10:00:00.000Z');
   const files = new AssistantFiles({
-    dataDirectory: opened.directory,
+    layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
     now,
   });
   requests = new AssistantRequests({
     store,
     files,
-    chats: new ChatDirectory(store, files, now),
+    chats: new ChatDirectory(store, files),
     conversation: new ConversationLog(store),
     delivery: (): AssistantDelivery => {
       throw new Error('posts never deliver');

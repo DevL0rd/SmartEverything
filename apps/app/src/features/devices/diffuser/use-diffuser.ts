@@ -1,3 +1,4 @@
+import { kindsOfState } from '../../automations';
 import { hoursSinceRefill } from '@smarteverything/domain';
 import { useMinuteOf } from '../../../store/clock';
 import { useDeviceDerived } from '../../../store/selectors';
@@ -18,7 +19,7 @@ export function useDiffuserRead(device: Device): DiffuserRead {
 
 export function useDiffuserSchedule(deviceId: string): ScheduleLine | null {
   return useStoreSelector(
-    (state) => scheduleOf(rowsOf(state.tables.automations), deviceId),
+    (state) => scheduleOf(rowsOf(state.tables.automations), deviceId, kindsOfState(state)),
     sameJson,
     [deviceId],
   );

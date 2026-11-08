@@ -12,7 +12,6 @@ import { useSettings } from '../../../store/selectors';
 import { ActivityRow } from '../components/activity-row';
 import { CATEGORY_LABELS, categoriesOf, useActivity } from '../data/use-activity';
 import type { ActivityCategory } from '../model/atoms';
-import type { ActivityItem } from '../model/coalesce';
 import { byDay } from '../model/days';
 
 const log = new Logger('app.activity');
@@ -20,15 +19,14 @@ const log = new Logger('app.activity');
 type Shown = ActivityCategory | 'all';
 
 function Filter({
-  items,
+  categories,
   value,
   onChange,
 }: {
-  readonly items: readonly ActivityItem[];
+  readonly categories: readonly ActivityCategory[];
   readonly value: Shown;
   readonly onChange: (value: Shown) => void;
 }): ReactNode {
-  const categories = categoriesOf(items);
   if (categories.length < 2) {
     return null;
   }
@@ -46,6 +44,9 @@ function Filter({
 export function ActivityScreen(): ReactNode {
   const items = useActivity();
   const [shown, setShown] = useState<Shown>('all');
+  const categories = categoriesOf(items);
+  const active = shown === 'all' || categories.includes(shown) ? shown : 'all';
+  if (active !== shown) setShown(active);
   const now = useMinute();
   const zone = useSettings().time_zone;
   useEffect(() => {
@@ -55,9 +56,9 @@ export function ActivityScreen(): ReactNode {
     };
   }, []);
   useEffect(() => {
-    log.debug('activity_screen.filtered', { shown, items: items.length });
-  }, [shown, items.length]);
-  const visible = shown === 'all' ? items : items.filter((item) => item.category === shown);
+    log.debug('activity_screen.filtered', { shown: active, items: items.length });
+  }, [active, items.length]);
+  const visible = active === 'all' ? items : items.filter((item) => item.category === active);
   const sections = byDay(visible, now, zone).map((day) => ({
     key: day.key,
     title: day.title,
@@ -65,21 +66,19 @@ export function ActivityScreen(): ReactNode {
   }));
   return (
     <Screen header={<PageHeader title="Activity" />} scroll={false}>
-      <View className="w-full max-w-reading flex-1 self-center">
-        <VirtualList
-          header={<Filter items={items} value={shown} onChange={setShown} />}
-          sections={sections}
-          keyOf={(item) => item.id}
-          renderItem={(item) => <ActivityRow item={item} flush />}
-          empty={
-            <EmptyState
-              icon="activity"
-              title="No activity yet"
-              body="Changes and events show up here as they happen."
-            />
-          }
-        />
-      </View>
+      <VirtualList
+        header={<Filter categories={categories} value={active} onChange={setShown} />}
+        sections={sections}
+        keyOf={(item) => item.id}
+        renderItem={(item) => <ActivityRow item={item} flush timeline />}
+        empty={
+          <EmptyState
+            icon="activity"
+            title="No activity yet"
+            body="Changes and events show up here as they happen."
+          />
+        }
+      />
     </Screen>
   );
 }

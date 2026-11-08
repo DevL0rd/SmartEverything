@@ -139,6 +139,7 @@ function run(): Running {
   const job = new ProviderJob({
     turn: turn(),
     cwd: '/work',
+    claudeHome: null,
     log: new Logger('hub.claude'),
     publish: (event): void => {
       events.push(event);

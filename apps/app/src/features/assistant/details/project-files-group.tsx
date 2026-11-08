@@ -4,6 +4,7 @@ import { useScreenInfiniteQuery } from '../../../queries/use-screen-query';
 import type { AiChatRow, AiProjectFile } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { copyText } from '../../../components/copy-button';
+import { useFocusRequest } from '../../../components/focus-request';
 import { IconWell } from '../../../components/icon-well';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
@@ -31,11 +32,12 @@ function FileToolbar({
   readonly more: {
     readonly available: boolean;
     readonly loading: boolean;
+    readonly failed: boolean;
     readonly load: () => void;
   };
 }): ReactNode {
   return (
-    <View className="flex-row gap-2">
+    <View className="flex-row flex-wrap gap-2">
       <Button
         label="Copy"
         icon="copy"
@@ -45,7 +47,12 @@ function FileToolbar({
         }}
       />
       {more.available ? (
-        <Button label="Load more" variant="text" loading={more.loading} onPress={more.load} />
+        <Button
+          label={more.failed ? 'Try again' : 'Load more'}
+          variant="text"
+          loading={more.loading}
+          onPress={more.load}
+        />
       ) : null}
     </View>
   );
@@ -64,7 +71,7 @@ function ProjectFileBody({
     queryFn: ({ pageParam }) => readProjectText(chatId, path, pageParam),
     getNextPageParam: (page) => page.next_offset ?? undefined,
   });
-  if (read.error !== null) {
+  if (read.data === undefined && read.error !== null) {
     return (
       <LoadFailed
         what={leafName(path)}
@@ -77,18 +84,27 @@ function ProjectFileBody({
   if (read.data === undefined) return <RowsSkeleton />;
   const text = read.data.pages.map((page) => page.content ?? '').join('');
   return (
-    <View className="gap-3 px-4 pb-4">
+    <View className="gap-3">
+      <Text variant="caption" tone="variant" selectable>
+        {path}
+      </Text>
       <FileToolbar
         text={text}
         name={leafName(path)}
         more={{
           available: read.hasNextPage,
           loading: read.isFetchingNextPage,
+          failed: read.isFetchNextPageError,
           load: () => {
             background(read.fetchNextPage(), 'next_page.fetch_failed');
           },
         }}
       />
+      {read.isFetchNextPageError ? (
+        <Text variant="caption" tone="critical">
+          Couldn’t load more of this file.
+        </Text>
+      ) : null}
       <Text variant="footnote" selectable className="font-mono">
         {text}
       </Text>
@@ -106,7 +122,7 @@ function ProjectFileSheet({
   readonly onClose: () => void;
 }): ReactNode {
   return (
-    <Sheet open={path !== null} onClose={onClose} title={path === null ? '' : leafName(path)}>
+    <Sheet open={path !== null} onClose={onClose} title="File preview" wide detents={['fit']}>
       {path === null ? null : <ProjectFileBody chatId={chatId} path={path} />}
     </Sheet>
   );
@@ -114,20 +130,25 @@ function ProjectFileSheet({
 
 function EntryRow({
   entry,
+  focus,
   onFolder,
   onFile,
 }: {
   readonly entry: AiProjectFile;
+  readonly focus: boolean;
   readonly onFolder: (path: string) => void;
   readonly onFile: (path: string) => void;
 }): ReactNode {
   const folder = entry.type === 'directory';
+  const pressRef = useFocusRequest(focus);
   return (
     <ListRow
       title={leafName(entry.path)}
+      wrapTitle
       {...(folder ? {} : { subtitle: bytes(entry.bytes) })}
       leading={<IconWell icon={folder ? 'folder' : 'fileText'} colour="viz-1" size="m" />}
       chevron={folder}
+      pressRef={pressRef}
       onPress={() => {
         if (folder) onFolder(entry.path);
         else onFile(entry.path);
@@ -139,15 +160,18 @@ function EntryRow({
 function FolderRows({
   entries,
   path,
+  focusPath,
   onPath,
   onFile,
 }: {
   readonly entries: readonly AiProjectFile[];
   readonly path: string;
+  readonly focusPath: string | null;
   readonly onPath: (path: string) => void;
   readonly onFile: (path: string) => void;
 }): ReactNode {
   const up = parentPath(path);
+  const backRef = useFocusRequest(up !== null && up === focusPath);
   return (
     <List title="Project files">
       {[
@@ -156,13 +180,21 @@ function FolderRows({
             key="up"
             icon="chevronLeft"
             title={`Back to ${leafName(up)}`}
+            wrapTitle
+            pressRef={backRef}
             onPress={() => {
               onPath(up);
             }}
           />
         ),
         ...entries.map((entry) => (
-          <EntryRow key={entry.path} entry={entry} onFolder={onPath} onFile={onFile} />
+          <EntryRow
+            key={entry.path}
+            entry={entry}
+            focus={entry.path === focusPath}
+            onFolder={onPath}
+            onFile={onFile}
+          />
         )),
         entries.length === 0 ? (
           <ListRow key="empty" icon="folder" title="Nothing here yet" />
@@ -173,10 +205,13 @@ function FolderRows({
 }
 
 export function ProjectFilesGroup({ chat }: { readonly chat: AiChatRow }): ReactNode {
-  const [path, setPath] = useState(PROJECT_ROOT);
+  const [{ path, focusPath }, setLocation] = useState<{ path: string; focusPath: string | null }>({
+    path: PROJECT_ROOT,
+    focusPath: null,
+  });
   const [viewing, setViewing] = useState<string | null>(null);
   const list = useProjectList(chat.id, path);
-  if (list.error !== null) {
+  if (list.data === undefined && list.error !== null) {
     return (
       <LoadFailed
         what="project files"
@@ -190,9 +225,13 @@ export function ProjectFilesGroup({ chat }: { readonly chat: AiChatRow }): React
   return (
     <>
       <FolderRows
+        key={path}
         entries={sortedProjectEntries(list.data)}
         path={path}
-        onPath={setPath}
+        focusPath={focusPath}
+        onPath={(nextPath) => {
+          setLocation({ path: nextPath, focusPath: path });
+        }}
         onFile={setViewing}
       />
       <ProjectFileSheet

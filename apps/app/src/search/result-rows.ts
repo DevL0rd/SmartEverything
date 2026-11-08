@@ -37,6 +37,13 @@ export type SearchRow =
   | (Placed & { readonly kind: 'more'; readonly target: string; readonly total: number })
   | (Placed & { readonly kind: 'query'; readonly text: string; readonly icon: 'clock' | 'search' });
 
+export function defaultResultIndex(rows: readonly SearchRow[]): number {
+  const match = rows.findIndex(
+    (row) => row.kind === 'node' && row.node.hit && row.node.item.kind !== 'phrase',
+  );
+  return match >= 0 ? match : rows.findIndex((row) => row.kind !== 'group');
+}
+
 type Unplace<Row> = Row extends Placed ? Omit<Row, 'edge'> : Row;
 
 type Unplaced = Unplace<SearchRow>;

@@ -55,10 +55,9 @@ const FRONT_MATTER = /^---\nname: ([a-z0-9-]+)\ndescription: (.+)\n---\n/u;
 const OUTSIDE_NAMES = {
   dispatcher: ['tool_call'],
   nativeAgent: ['apply_patch'],
-  nativeComputer: [
-    'read_image',
-    'set_working_directory',
-  ],
+  dshGoal: ['create_goal', 'get_goal', 'update_goal'],
+  dshSubagent: ['send_message', 'interrupt_agent', 'list_agents', 'list_subagent_models'],
+  nativeComputer: ['read_image', 'set_working_directory'],
   liveCall: ['conversation_end', 'sight_stop', 'task_start'],
   settingKey: ['claude_skills_enabled', 'call_audio', 'camera_notifications', 'health_sync'],
   capabilityKey: ['remote_control'],

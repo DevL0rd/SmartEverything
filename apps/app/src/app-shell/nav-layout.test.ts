@@ -125,9 +125,13 @@ describe('the order tabs are prewarmed in', () => {
       '(devices)',
       '(cameras)',
       '(fitness)',
+      '(planner)',
+      '(clock)',
       '(z-assistant)',
       '(talk)',
       '(automations)',
+      '(photos)',
+      '(drive)',
       '(settings)',
     ]);
   });

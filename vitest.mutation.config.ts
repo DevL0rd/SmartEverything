@@ -69,6 +69,14 @@ export default defineConfig({
       },
       {
         test: {
+          name: 'models',
+          root: './packages/models',
+          environment: 'node',
+          include: ['test/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
           name: 'flow',
           root: './packages/flow',
           environment: 'node',

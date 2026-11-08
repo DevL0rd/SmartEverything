@@ -1,5 +1,5 @@
 import type { InputPort, JsonValue, OutputPort } from '@smarteverything/domain';
-import type { HeaderOp } from '@smarteverything/flow/ops/schema';
+import type { HeaderOp } from '@smarteverything/flow/graph/ops/schema';
 import { freshName, nameProblem, optionOf, typeValueOf } from './type-choices';
 
 function inputsOp(inputs: readonly InputPort[]): HeaderOp {

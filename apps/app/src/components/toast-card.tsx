@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { AccessibilityInfo, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -17,21 +17,24 @@ import { IconButton } from './icon-button';
 import { Interactive } from './interactive';
 import { Text } from './text';
 import { useFocusHold, useToastMotion } from './toast-gesture';
-import { actOnToast, dismissToast, expandToast, UNDO_MS, type Toast } from './toast-store';
+import { actOnToast, dismissToast, setToastExpanded, UNDO_MS, type Toast } from './toast-store';
 
 const DISMISS_ACTIONS = [{ name: 'dismiss', label: 'Dismiss' }];
 
 function ToastButton({
   label,
   onPress,
+  expanded,
 }: {
   readonly label: string;
   readonly onPress: () => void;
+  readonly expanded?: boolean;
 }): ReactNode {
   return (
     <Interactive
       label={label}
       onPress={onPress}
+      expanded={expanded}
       className="min-h-touch-min justify-center rounded-sm px-3"
       layerClassName="rounded-sm"
     >
@@ -106,17 +109,16 @@ function useAnnounce(toast: Toast): void {
 }
 
 function Actions({ toast }: { readonly toast: Toast }): ReactNode {
-  const [expanded, setExpanded] = useState(false);
   const pointer = useIdiom() === 'pointer';
   return (
     <>
-      <Body toast={toast} expanded={expanded} />
-      {toast.error !== undefined && !expanded ? (
+      <Body toast={toast} expanded={toast.expanded} />
+      {toast.error !== undefined ? (
         <ToastButton
           label="Details"
+          expanded={toast.expanded}
           onPress={() => {
-            setExpanded(true);
-            expandToast(toast);
+            setToastExpanded(toast, !toast.expanded);
           }}
         />
       ) : null}

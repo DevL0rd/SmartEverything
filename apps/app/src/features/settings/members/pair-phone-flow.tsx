@@ -126,6 +126,19 @@ function useChosenRole(chosen: string | null): Role | null {
   return person === undefined ? null : deviceRoleOf(person.role);
 }
 
+function PairingProblem({ problem }: { readonly problem: ErrorText | null }): ReactNode {
+  if (problem === null) return null;
+  return (
+    <Banner
+      tone="critical"
+      title={problem.title}
+      body={problem.detail}
+      wrapBody
+      action={{ label: 'Connection setup', href: href.settings.page('server') }}
+    />
+  );
+}
+
 export function PairPhoneFlow(): ReactNode {
   const router = useRouter();
   const flow = usePairPhone();
@@ -140,8 +153,9 @@ export function PairPhoneFlow(): ReactNode {
   const showButton = !done && flow.step.kind !== 'showing';
   return (
     <FlowFrame
-      title="Pair a phone"
+      title="Pair a device"
       onCancel={close}
+      wide={flow.step.kind === 'showing' && !done}
       footer={
         <>
           <Button
@@ -164,14 +178,7 @@ export function PairPhoneFlow(): ReactNode {
         </>
       }
     >
-      {flow.problem === null ? null : (
-        <Banner
-          tone="critical"
-          title={flow.problem.title}
-          body={flow.problem.detail}
-          action={{ label: 'Connection setup', href: href.settings.page('server') }}
-        />
-      )}
+      <PairingProblem problem={flow.problem} />
       <Body flow={flow} chosen={chosen} onChoose={setPicked} />
     </FlowFrame>
   );

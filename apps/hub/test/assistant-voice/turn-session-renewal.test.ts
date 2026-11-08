@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { testVoiceMemory } from '../support/voice-memory';
 import type { LiveServerMessage } from '@google/genai';
-import { DEFAULT_ENGINE, NO_PRICES } from '@smarteverything/domain';
+import { NO_PRICES } from '@smarteverything/domain';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
 import type { ToolAnswer } from '../../src/assistant-voice/tool-answer';
 import { TurnSessions, type TurnRequest } from '../../src/assistant-voice/turn-sessions';
@@ -20,6 +21,7 @@ import {
 } from '../support/fake-gemini';
 import { captureLogs, type CapturedLogs, testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 const LOOK: ToolAnswer = {
   response: { result: 'a settings page' },
@@ -40,7 +42,7 @@ beforeEach(async () => {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   }).id;
   logs = captureLogs();
   vi.useFakeTimers();
@@ -65,6 +67,7 @@ async function openTurn(): Promise<Turn> {
   let answer: (value: ToolAnswer) => void = () => undefined;
   const turns = new TurnSessions({
     store: opened.store,
+    memory: testVoiceMemory(opened.store),
     provider: fakeGemini(sockets),
     responder: {
       ready: (): null => null,

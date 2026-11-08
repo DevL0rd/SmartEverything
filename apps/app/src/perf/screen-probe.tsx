@@ -39,9 +39,5 @@ function ProbedLayer({ route, children }: ScreenProbeArgs): ReactElement {
 }
 
 export function probedScreen(args: ScreenProbeArgs): ReactElement {
-  return __DEV__ && readDeveloperFlags()['perf.profilers'] ? (
-    <ProbedLayer {...args} />
-  ) : (
-    args.children
-  );
+  return readDeveloperFlags()['perf.profilers'] ? <ProbedLayer {...args} /> : args.children;
 }

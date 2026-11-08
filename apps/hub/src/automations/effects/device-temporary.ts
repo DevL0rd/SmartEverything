@@ -89,7 +89,7 @@ export class TemporaryDeviceChanges {
     const ids: string[] = [];
     let failure: unknown;
     try {
-      for (const member of members) ids.push(await this.start(member, change, run, expires));
+      await this.startAll({ members, change, run, expires }, ids);
       await this.wait({ change, run, ids, expires });
     } catch (cause) {
       failure = cause;
@@ -114,6 +114,24 @@ export class TemporaryDeviceChanges {
         skippedMembersNote(this.store, plan.skipped) ?? 'This target has no supported controls.',
       );
     return plan;
+  }
+
+  private async startAll(
+    starting: {
+      readonly members: readonly Member[];
+      readonly change: TemporaryChange;
+      readonly run: EffectRun;
+      readonly expires: number;
+    },
+    ids: string[],
+  ): Promise<void> {
+    const { members, change, run, expires } = starting;
+    const started = await Promise.allSettled(
+      members.map((member) => this.start(member, change, run, expires)),
+    );
+    for (const result of started) if (result.status === 'fulfilled') ids.push(result.value);
+    const failed = started.find((result) => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
   }
 
   private start(

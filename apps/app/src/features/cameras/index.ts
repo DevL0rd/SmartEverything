@@ -7,3 +7,7 @@ export { CAMERA_WIDGETS, cameraInstanceAvailable } from './live/widgets';
 export { CameraSettingsScreen } from './settings/camera-settings-screen';
 export { CamerasSettingsScreen } from './settings/cameras-settings-screen';
 export { RemoteViewingScreen } from './settings/remote-viewing-screen';
+export { createCameraPeer } from './player/rtc';
+export { VideoSurface } from './player/video-surface';
+export type { CameraPeer, MediaHandle, PeerState } from './player/peer-types';
+export { cameraTalkSessions } from './player/use-talk';

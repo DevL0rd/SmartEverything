@@ -1,11 +1,6 @@
-import type { DesktopLinger } from '@smarteverything/domain';
+import { COMPUTER_WINDOWS_RUN_VALUE, type DesktopLinger } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import {
-  WINDOWS_RUN_KEY,
-  WINDOWS_RUN_VALUE,
-  windowsLauncher,
-  windowsRunCommand,
-} from './definitions.js';
+import { WINDOWS_RUN_KEY, windowsLauncher, windowsRunCommand } from './definitions.js';
 import {
   LingerUnsupportedError,
   PRIVATE_MODE,
@@ -21,7 +16,10 @@ const REG = 'reg';
 const WSCRIPT = 'wscript.exe';
 const VALUE_MISSING_EXIT_CODE = 1;
 
-export function parseRunValue(output: string, value: string = WINDOWS_RUN_VALUE): string | null {
+export function parseRunValue(
+  output: string,
+  value: string = COMPUTER_WINDOWS_RUN_VALUE,
+): string | null {
   for (const line of output.split(/\r?\n/u).map((candidate) => candidate.trim())) {
     const match = line.startsWith(value)
       ? /^\s+REG_SZ\s+(.*)$/u.exec(line.slice(value.length))
@@ -61,7 +59,7 @@ class WindowsManager implements ServiceManager {
       'add',
       WINDOWS_RUN_KEY,
       '/v',
-      this.context.names.runValue,
+      COMPUTER_WINDOWS_RUN_VALUE,
       '/t',
       'REG_SZ',
       '/d',
@@ -113,7 +111,7 @@ class WindowsManager implements ServiceManager {
         'delete',
         WINDOWS_RUN_KEY,
         '/v',
-        this.context.names.runValue,
+        COMPUTER_WINDOWS_RUN_VALUE,
         '/f',
       ]);
     }
@@ -138,9 +136,9 @@ class WindowsManager implements ServiceManager {
         'query',
         WINDOWS_RUN_KEY,
         '/v',
-        this.context.names.runValue,
+        COMPUTER_WINDOWS_RUN_VALUE,
       ]);
-      return parseRunValue(stdout, this.context.names.runValue);
+      return parseRunValue(stdout, COMPUTER_WINDOWS_RUN_VALUE);
     } catch (error: unknown) {
       if (error instanceof CommandFailedError && error.exitCode === VALUE_MISSING_EXIT_CODE) {
         return null;

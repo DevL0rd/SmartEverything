@@ -19,21 +19,4 @@ export const FLOW_MORE_KINDS: readonly NodeKind[] = [
     access: 'member',
     tier: 'v1.1',
   }),
-  defineNodeKind({
-    id: 'flow.sequence',
-    name: 'Steps',
-    category: 'flow',
-    icon: 'rows-3',
-    class: 'control',
-    description:
-      'Groups steps under one name so a long automation stays readable. It changes nothing about how the steps run.',
-    inputs: [],
-    outputs: [],
-    exits: [],
-    scopes: { required: ['body'], optional: [] },
-    summary: 'Steps',
-    keywords: ['group', 'steps', 'section', 'folder', 'collapse'],
-    access: 'member',
-    tier: 'v1.1',
-  }),
 ];

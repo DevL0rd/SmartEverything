@@ -27,7 +27,7 @@ export function SleepPatternCard({
     <Card
       title="Sleep schedule"
       icon="clock"
-      action={<RangeLabel text={windowLabel(window, today)} />}
+      metadata={<RangeLabel text={windowLabel(window, today)} />}
     >
       <SleepWindowBars
         columns={columns}

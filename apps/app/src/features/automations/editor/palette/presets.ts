@@ -1,7 +1,9 @@
 import {
+  LIGHT_SET_PRESETS,
   TRIGGER_PRESETS,
   deviceSetPresets,
   type DeviceSetPreset,
+  type LightSetPreset,
   type TriggerPreset,
 } from '@smarteverything/domain';
 import type { PaletteEntry } from './palette-categories';
@@ -46,7 +48,6 @@ export function presetEntry(preset: DeviceSetPreset): PaletteEntry {
     kindId: PRESET_KIND_ID,
     usageId: preset.id,
     trigger: false,
-    disabled: null,
   };
 }
 
@@ -70,13 +71,40 @@ export function triggerPresetEntry(preset: TriggerPreset): PaletteEntry {
     kindId: preset.kindId,
     usageId: preset.id,
     trigger: true,
-    disabled: null,
+  };
+}
+
+export function lightPresetEntry(preset: LightSetPreset): PaletteEntry {
+  return {
+    key: `preset:${preset.id}`,
+    choice: {
+      source: 'kind-preset',
+      presetId: preset.id,
+      kindId: preset.kindId,
+      ports: preset.ports,
+    },
+    name: preset.name,
+    meaning: preset.meaning,
+    takes: 'Takes devices, rooms or groups',
+    icon: 'bulb',
+    section: 'devices',
+    keywords: preset.keywords,
+    typeWords: ['device', 'light'],
+    gives: [],
+    kindId: preset.kindId,
+    usageId: preset.id,
+    trigger: false,
   };
 }
 
 export function presetEntries(
   presets: readonly DeviceSetPreset[] = deviceSetPresets(),
   triggers: readonly TriggerPreset[] = TRIGGER_PRESETS,
+  lights: readonly LightSetPreset[] = LIGHT_SET_PRESETS,
 ): readonly PaletteEntry[] {
-  return [...presets.map(presetEntry), ...triggers.map(triggerPresetEntry)];
+  return [
+    ...presets.map(presetEntry),
+    ...lights.map(lightPresetEntry),
+    ...triggers.map(triggerPresetEntry),
+  ];
 }

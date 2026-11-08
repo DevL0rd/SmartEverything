@@ -43,12 +43,17 @@ const VIEW: ListeningView = LISTENING_VIEW.parse({
 });
 
 describe('the computer that listens for cameras, walkie channels and Discord', () => {
-  it('offers Automatic first, then only computers, marking the offline ones', () => {
+  it('offers Automatic first naming the computer it picks, then only computers', () => {
     expect(earHostOptions(VIEW)).toEqual([
-      { value: AUTOMATIC_EAR_HOST, label: 'Automatic' },
+      { value: AUTOMATIC_EAR_HOST, label: 'Automatic · Laptop' },
       { value: LAPTOP, label: 'Laptop' },
       { value: GONE, label: 'Desk (offline)' },
     ]);
+  });
+
+  it('says when Automatic has no computer to pick', () => {
+    const offline = { ...VIEW, sources: VIEW.sources.filter((source) => source.key !== LAPTOP) };
+    expect(earHostOptions(offline)[0]?.label).toBe('Automatic · no computer online');
   });
 
   it('turns the stored host into a choice and a choice back into the stored host', () => {
@@ -62,6 +67,15 @@ describe('the computer that listens for cameras, walkie channels and Discord', (
     expect(earHostHint(null, VIEW)).toContain('first online computer');
     expect(earHostHint(LAPTOP, VIEW)).toContain('Laptop listens for cameras');
     expect(earHostHint(GONE, VIEW)).toContain('Desk is offline');
+    expect(
+      earHostHint(
+        null,
+        LISTENING_VIEW.parse({
+          sources: [sourceOf(GONE, 'computer', 'Desk', 'offline')],
+          last: null,
+        }),
+      ),
+    ).toContain('no computer is online');
     expect(earHostHint('33333333-3333-4333-8333-333333333333', VIEW)).toContain('not in your home');
   });
 });

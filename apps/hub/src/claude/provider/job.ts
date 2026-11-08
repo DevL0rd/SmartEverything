@@ -52,6 +52,7 @@ import { messageOf } from '@smarteverything/logging';
 export interface ProviderJobOptions {
   readonly turn: ProviderTurn;
   readonly cwd: string;
+  readonly claudeHome: string | null;
   readonly executable?: string;
   readonly log: Logger;
   readonly publish: (event: ProviderEvent) => void;
@@ -128,9 +129,10 @@ export class ProviderJob {
         'The provider session must be idle and open before another turn.',
       );
     const previous = this.options.turn;
-    if (turnScope(previous) !== turnScope(turn))
+    const retained = { ...turn, system: previous.system };
+    if (turnScope(previous) !== turnScope(retained))
       throw new ProviderInputError(
-        'Close this provider job before changing its tools, system prompt, or runtime options; the open session owns its background tasks.',
+        'Close this provider job before changing its tools or runtime options; the open session owns its background tasks.',
       );
     const message = userMessageOf(turn);
     const model = findModel(await this.query.supportedModels(), turn.model);
@@ -142,7 +144,7 @@ export class ProviderJob {
     await this.query.applyFlagSettings(flagSettings(turn.options.flag_settings ?? {}));
     await this.refreshMcpServers();
     await requireNativeSubscriptionBilling(this.query, this.options.log);
-    this.options = { ...this.options, turn };
+    this.options = { ...this.options, turn: retained };
     this.seq = 0;
     this.interrupted = false;
     this.running = true;

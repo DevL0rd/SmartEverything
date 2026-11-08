@@ -48,4 +48,16 @@ describe('runtimeFeatureSupported', () => {
     expect(runtimeFeatureSupported('agents', undefined)).toBe(false);
     expect(runtimeFeatureSupported('agents', host(null))).toBe(false);
   });
+
+  it('requires an online host advertising both helper delivery and attachment transfer', () => {
+    const ready = host(manifestOf({ features: ['subagent-send', 'subagent-attachments'] }));
+    const textOnly = host(manifestOf({ features: ['subagent-send'] }));
+    const attachmentsOnly = host(manifestOf({ features: ['subagent-attachments'] }));
+    expect(runtimeFeatureSupported('helperAttachments', ready)).toBe(true);
+    expect(runtimeFeatureSupported('helperAttachments', textOnly)).toBe(false);
+    expect(runtimeFeatureSupported('helperAttachments', attachmentsOnly)).toBe(false);
+    expect(runtimeFeatureSupported('helperAttachments', { ...ready, online: false })).toBe(false);
+    expect(runtimeFeatureSupported('helperAttachments', host(null))).toBe(false);
+    expect(runtimeFeatureSupported('helperAttachments', undefined)).toBe(false);
+  });
 });

@@ -10,7 +10,7 @@ export type EngineComputer =
   | (AiEngineCatalogue['computers'][number] & { readonly runtime: 'claude' });
 
 export interface EngineCatalogue {
-  readonly default: Engine | null;
+  readonly default: Engine;
   readonly computers: readonly EngineComputer[];
   readonly preferences: readonly AiRuntimeEnginePreference[];
 }

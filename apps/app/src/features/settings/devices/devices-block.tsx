@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { PROVIDER_INFO } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { EmptyState } from '../../../components/empty-state';
-import { NavRow } from '../../../components/rows';
+import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { joinParts } from '../../../format/text';
 import { useListedDevices, useRooms } from '../../../store/selectors';
@@ -27,9 +27,11 @@ export function DevicesBlock(): ReactNode {
       {groups.map((group) => (
         <List key={group.id} title={group.title} inset>
           {group.devices.map(({ device, name }) => (
-            <NavRow
+            <ListRow
               key={device.id}
               title={name}
+              wrapTitle
+              chevron
               subtitle={joinParts([
                 device.hidden ? 'Hidden from Home' : null,
                 PROVIDER_INFO[device.provider].name,

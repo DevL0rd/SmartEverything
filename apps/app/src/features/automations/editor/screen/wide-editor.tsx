@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { paletteOpen } from '../palette/armed-insert';
+import { anchorOf, dockedOpen } from '../palette/armed-insert';
 import { EditorBody } from './editor-body';
-import { EditorShortcuts, EditorTopBar, OfflineBanner } from './editor-chrome';
+import { EditorBanners, EditorShortcuts, EditorTopBar } from './editor-chrome';
 import {
   InspectorDock,
   PaletteDock,
@@ -21,26 +21,31 @@ export function WideEditor({ model }: { readonly model: EditorModel }): ReactNod
       <LayoutWide
         top={<EditorTopBar model={model} />}
         sentence={<SentenceStrip text={model.props.sentence} />}
-        banner={<OfflineBanner online={model.props.online} />}
-        onBodyLayout={model.onBodyLayout}
+        banner={<EditorBanners model={model} />}
         left={
           wide ? (
             <PaletteDock
               host={model.palette}
-              open={paletteOpen(model.insertion.state)}
-              onOpen={() => {
-                model.insertion.open(null);
-              }}
+              open={dockedOpen(model.insertion.state)}
+              onOpen={model.openPalette}
               pane={pane}
             />
           ) : null
         }
         body={<EditorBody model={model} />}
-        float={wide ? null : <PaletteHost {...model.palette} />}
+        float={
+          !wide || anchorOf(model.insertion.state) !== null ? (
+            <PaletteHost {...model.palette} />
+          ) : null
+        }
         right={
           <>
             {wide ? <ProblemsDock host={model.problems} pane={pane} /> : null}
-            <InspectorDock host={{ ...model.inspector, docked: true }} pane={pane} />
+            <InspectorDock
+              host={{ ...model.inspector, docked: true }}
+              pane={pane}
+              focusRef={model.focus.inspector}
+            />
           </>
         }
       />

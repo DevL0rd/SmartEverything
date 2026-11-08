@@ -6,10 +6,28 @@ import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { notify } from '../../../components/toast-store';
 import { href } from '../../../app-shell/hrefs';
+import { removeIrAppliance } from '../../../api/ir-appliances';
 import { removeLocalDevice } from '../../../api/people';
 import type { Device } from '../../../store/state';
+import { applianceOf } from '../appliance/appliance-model';
 
 const log = new Logger('app.devices');
+
+interface Removal {
+  readonly body: string;
+  readonly run: () => Promise<void>;
+}
+
+function removalOf(device: Device): Removal {
+  const appliance = applianceOf(device);
+  if (appliance !== null) {
+    return {
+      body: 'Its learned buttons and remembered state go with it. The IR blaster stays.',
+      run: () => removeIrAppliance(appliance.id),
+    };
+  }
+  return { body: 'Its weigh-ins are removed too.', run: () => removeLocalDevice(device.id) };
+}
 
 export function RemoveSection({
   device,
@@ -22,10 +40,11 @@ export function RemoveSection({
   if (device.provider !== 'local') {
     return null;
   }
+  const removal = removalOf(device);
   const remove = async (): Promise<void> => {
     const yes = await confirm({
       title: `Remove ${name}?`,
-      body: 'Its weigh-ins are removed too.',
+      body: removal.body,
       confirmLabel: 'Remove',
       tone: 'destructive',
     });
@@ -34,7 +53,7 @@ export function RemoveSection({
       return;
     }
     try {
-      await removeLocalDevice(device.id);
+      await removal.run();
       log.info('device.removed', { deviceId: device.id });
       router.replace(href.devices());
     } catch (error: unknown) {

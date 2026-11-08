@@ -8,7 +8,7 @@ export interface RequestTrace {
   access: string | null;
   clientId: string | null;
   errorCode: string | null;
-  reason: string | null;
+  faultLogged: boolean;
 }
 
 const traces = new WeakMap<ServerResponse, RequestTrace>();
@@ -24,7 +24,7 @@ export function beginTrace(response: ServerResponse): RequestTrace {
     access: null,
     clientId: null,
     errorCode: null,
-    reason: null,
+    faultLogged: false,
   };
   traces.set(response, trace);
   return trace;
@@ -44,14 +44,15 @@ export function noteCaller(response: ServerResponse, caller: Caller): void {
   else if (caller.kind === 'service') trace.clientId = `service:${caller.profileId}`;
 }
 
-const IDENTIFIER_SEGMENT = /^(?:[0-9a-f-]{16,}|\d+)$/i;
-
-export function shapeOf(pathname: string): string {
-  return pathname
-    .split('/')
-    .slice(0, 8)
-    .map((segment) => (IDENTIFIER_SEGMENT.test(segment) ? ':id' : segment.slice(0, 40)))
-    .join('/');
+export function noteFailure(
+  response: ServerResponse,
+  errorCode: string | null,
+  faultLogged: boolean,
+): void {
+  const trace = traces.get(response);
+  if (trace === undefined) return;
+  if (errorCode !== null) trace.errorCode = errorCode;
+  if (faultLogged) trace.faultLogged = true;
 }
 
 const PRIVATE_V4 = /^(?:10\.|192\.168\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.)/;

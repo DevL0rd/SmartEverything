@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../components/app-href';
 import type {
   AutomationFunctionSummary,
   AutomationSecretEntry,
@@ -21,39 +21,39 @@ function query(params: Readonly<Record<string, string | undefined>>): Record<str
 }
 
 export const links = {
-  list: (): Href => '/automations',
-  create: (template?: string): Href =>
+  list: (): AppHref => '/automations',
+  create: (template?: string): AppHref =>
     template === undefined
       ? '/automations/new'
       : { pathname: '/automations/new', params: { template } },
-  detail: (automationId: string): Href => ({
+  detail: (automationId: string): AppHref => ({
     pathname: '/automations/[automationId]',
     params: { automationId },
   }),
-  edit: (automationId: string, focus?: string): Href => ({
+  edit: (automationId: string, focus?: string): AppHref => ({
     pathname: '/automations/[automationId]/edit',
     params: { automationId, ...query({ focus }) },
   }),
-  nodes: (): Href => '/automations/nodes',
-  node: (functionId: string): Href => ({
+  nodes: (): AppHref => '/automations/nodes',
+  node: (functionId: string): AppHref => ({
     pathname: '/automations/nodes/[functionId]',
     params: { functionId },
   }),
-  nodeEdit: (functionId: string, focus?: string): Href => ({
+  nodeEdit: (functionId: string, focus?: string): AppHref => ({
     pathname: '/automations/nodes/[functionId]/edit',
     params: { functionId, ...query({ focus }) },
   }),
-  templates: (): Href => '/automations/templates',
-  secrets: (): Href => '/automations/secrets',
-  variables: (): Href => '/automations/variables',
-  variable: (variableId: string): Href => ({
+  templates: (): AppHref => '/automations/templates',
+  secrets: (): AppHref => '/automations/secrets',
+  variables: (): AppHref => '/automations/variables',
+  variable: (variableId: string): AppHref => ({
     pathname: '/automations/variables/[variableId]',
     params: { variableId },
   }),
-  runs: (): Href => href.automationRuns(),
-  schedule: (): Href => href.automationSchedule(),
-  scheduled: (): Href => href.scheduled(),
-  scenes: (): Href => href.scenes(),
+  runs: (): AppHref => href.automationRuns(),
+  schedule: (): AppHref => href.automationSchedule(),
+  scheduled: (): AppHref => href.scheduled(),
+  scenes: (): AppHref => href.scenes(),
 };
 
 export const AUTOMATIONS_ACTIONS: NonNullable<RouteDefinition['actions']> = [
@@ -234,7 +234,7 @@ export interface AutomationSearchPage {
   readonly path: string;
   readonly title: string;
   readonly parent: string;
-  readonly to: Href;
+  readonly to: AppHref;
   readonly icon: IconName;
   readonly keywords: readonly string[];
 }

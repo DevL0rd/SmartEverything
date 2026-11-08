@@ -10,7 +10,6 @@ import { AI_MODEL_TOOLS } from './ai-models';
 import { AI_USAGE_TOOLS } from './ai-usage';
 import { ASSISTANT_TOOLS } from './assistant';
 import { CAMERA_TOOLS } from './camera';
-import { CLAUDE_TOOLS } from './claude';
 import { COMPUTER_CONTROL_TOOLS } from './computer-controls';
 import { COMPUTER_INPUT_TOOLS } from './computer-input';
 import { EDIT_FILES_TOOL } from './computer-files-tool';
@@ -18,6 +17,7 @@ import { COMPUTER_PROGRAM_TOOLS } from './computer-programs';
 import { COMPUTER_READ_TOOLS } from './computer-reads';
 import { CONTROL_TOOLS } from './control';
 import { DEVICE_TOOLS } from './devices';
+import { DRIVE_TOOLS } from './drive';
 import { HEALTH_TOOLS } from './health';
 import { HEALTH_SUMMARY_TOOL } from './health-summary';
 import { HISTORY_TOOLS } from './history';
@@ -26,6 +26,7 @@ import { NUTRITION_TOOLS } from './nutrition';
 import { OPERATION_TOOLS } from './operation-tools';
 import { PEOPLE_TOOLS } from './people';
 import { PLACE_TOOLS } from './places';
+import { PLANNER_TOOLS } from './planner';
 import { outcomeOf } from './outcome';
 import { ToolError, type Tool, type ToolOutput } from './registry';
 import { discoveryTools } from './discovery';
@@ -34,6 +35,8 @@ import { REMOTE_TOOLS } from './remotes';
 import { SEARCH_TOOL } from './search';
 import { SEE_TOOL } from './see';
 import { SETTINGS_TOOLS } from './settings';
+import { SELF_UPDATE_TOOLS } from './self-update';
+import { SHOW_IN_APP_TOOLS } from './show-in-app';
 import { WEATHER_TOOLS } from './weather';
 
 const PARTS: readonly Tool[] = [
@@ -56,19 +59,23 @@ const PARTS: readonly Tool[] = [
   ...ASSISTANT_TOOLS,
   ...AI_USAGE_TOOLS,
   ...AI_MODEL_TOOLS,
+  ...SHOW_IN_APP_TOOLS,
+  ...SELF_UPDATE_TOOLS,
   ...COMPUTER_READ_TOOLS,
   ...COMPUTER_PROGRAM_TOOLS,
   ...COMPUTER_CONTROL_TOOLS,
   ...COMPUTER_INPUT_TOOLS,
   EDIT_FILES_TOOL,
   ...OPERATION_TOOLS,
-  ...CLAUDE_TOOLS,
 ];
 
 const PART_BY_NAME: ReadonlyMap<string, Tool> = new Map(PARTS.map((tool) => [tool.name, tool]));
 
 const CUSTOM: ReadonlyMap<string, Tool> = new Map(
-  discoveryTools(() => TOOLS).map((tool) => [tool.name, tool]),
+  [...discoveryTools(() => TOOLS), ...PLANNER_TOOLS, ...DRIVE_TOOLS].map((tool) => [
+    tool.name,
+    tool,
+  ]),
 );
 
 export const TOOLS: readonly Tool[] = MCP_TOOL_NAMES.map((name) =>

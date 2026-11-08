@@ -23,11 +23,13 @@ interface SourceBarsProps {
   readonly bars: readonly BottleBar[];
   readonly range: BottleStatsRange;
   readonly goalMl: number;
+  readonly height?: number;
   readonly averages: { readonly sevenDayMl: number; readonly thirtyDayMl: number } | null;
 }
 
 interface Frame {
   readonly width: number;
+  readonly height: number;
   readonly y: (ml: number) => number;
   readonly slot: number;
   readonly left: (index: number) => number;
@@ -35,11 +37,12 @@ interface Frame {
 
 type Colours = Readonly<Record<'bottle' | 'logged' | 'other' | 'whole', string>>;
 
-function frameOf(width: number, bars: readonly BottleBar[]): Frame {
+function frameOf(width: number, height: number, bars: readonly BottleBar[]): Frame {
   const slot = Math.max(1, width - RIGHT) / Math.max(1, bars.length);
   return {
     width,
-    y: scaleLinear([0, barsPeak(bars)], [HEIGHT - BOTTOM, TOP]),
+    height,
+    y: scaleLinear([0, barsPeak(bars)], [height - BOTTOM, TOP]),
     slot,
     left: (index) => index * slot + (slot * GAP) / 2,
   };
@@ -206,7 +209,7 @@ function Labels({
         <ChartLabel
           key={bar.key}
           left={frame.left(index) - 4}
-          top={HEIGHT - BOTTOM + 2}
+          top={frame.height - BOTTOM + 2}
           width={frame.slot * (1 - GAP) + 8}
           text={barLabelOf(bar.key, range)}
           align="center"
@@ -225,7 +228,7 @@ function Plot({
   readonly width: number;
 }): ReactNode {
   const { bars, goalMl, averages } = chart;
-  const frame = frameOf(width, bars);
+  const frame = frameOf(width, chart.height ?? HEIGHT, bars);
   const colours = {
     bottle: useColour(SOURCE_COLOUR.bottle),
     logged: useColour(SOURCE_COLOUR.logged),
@@ -234,7 +237,7 @@ function Plot({
   };
   return (
     <>
-      <Svg width={width} height={HEIGHT}>
+      <Svg width={width} height={frame.height}>
         <ReferenceLine frame={frame} ml={goalMl} tone={GOAL_COLOUR} dash="6 4" />
         {averages === null ? null : (
           <>
@@ -288,7 +291,7 @@ function keyOf(
 export function SourceBars(props: SourceBarsProps): ReactNode {
   return (
     <View className="gap-2">
-      <ChartBox label={barsSummary(props.bars, props.range)} height={HEIGHT}>
+      <ChartBox label={barsSummary(props.bars, props.range)} height={props.height ?? HEIGHT}>
         {(width) => <Plot chart={props} width={width} />}
       </ChartBox>
       <ChartKey entries={keyOf(props.bars, props.averages)} />

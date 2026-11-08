@@ -1,5 +1,5 @@
-import type { AutomationV3, BudgetOverrides } from '@smarteverything/domain';
-import type { HeaderOp } from '@smarteverything/flow/ops/schema';
+import type { AutomationV4, BudgetOverrides } from '@smarteverything/domain';
+import type { HeaderOp } from '@smarteverything/flow/graph/ops/schema';
 import { BUDGET_DEFAULTS } from '@smarteverything/flow/state/budgets';
 
 export type StormName = 'startBucket' | 'feedback' | 'effects';
@@ -113,14 +113,14 @@ export function limitAction(
 ): LimitAction | null {
   if (value === null) return { label: 'Set a limit', next: row.start };
   if (!custom) return null;
-  return { label: row.fallback === null ? NO_LIMIT : 'Use default', next: null };
+  return { label: row.fallback === null ? NO_LIMIT : `Use ${String(row.fallback)}`, next: null };
 }
 
 export function stormOn(budgets: BudgetOverrides | undefined, name: StormName): boolean {
   return budgets?.[name] !== 'off';
 }
 
-export function stormAllOff(program: AutomationV3): boolean {
+export function stormAllOff(program: AutomationV4): boolean {
   const { budgets } = program;
   return STORM_SWITCHES.every((entry) => budgets?.[entry.name] === 'off');
 }

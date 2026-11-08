@@ -19,6 +19,12 @@ export interface BudgetAlert {
   readonly body: string;
 }
 
+export function roomForSpend(spend: Spend, micros: number): boolean {
+  return [spend.today, spend.month, spend.burn].every(
+    (period) => (period?.spent_micros ?? 0) + micros <= (period?.limit_micros ?? Infinity),
+  );
+}
+
 export function periodStarts(now: Date, timeZone: string): { today: string; month: string } {
   const clock = localClock(now, timeZone);
   const date = { year: clock.year, month: clock.month, day: clock.day };

@@ -6,6 +6,7 @@ import {
 } from '@smarteverything/domain';
 import type { DeviceUpsert } from '../../../src/database/port';
 import { createWorldReads } from '../../../src/automations/world-v3/world-reads';
+import { createKindCatalog } from '../../../src/automations/plugin-kinds/catalog';
 import type { WorldReadDeps } from '../../../src/automations/world-v3/deps';
 import type { PresenceReading } from '../../../src/automations/world-v3/presence';
 import type { PersistentVariable } from '../../../src/automations/world-v3/variables';
@@ -208,6 +209,7 @@ export async function furnish(): Promise<Home> {
     random: seededRandom,
     memory: transientNodeMemory(),
     signals: { latest: () => [] },
+    kinds: createKindCatalog(),
   };
   const world = createWorldReads(deps);
   return {

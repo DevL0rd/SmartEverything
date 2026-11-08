@@ -33,7 +33,7 @@ const ACTION_VALUE = z.strictObject({
   options: z.record(z.string(), z.unknown()).optional(),
 });
 
-const NOT_IN_CONVERSATION =
+export const NOT_IN_CONVERSATION =
   'AIBI is not in a conversation, and it can only be moved in answer to something it says to the server; ask it to talk, then try again';
 
 export function robotExternalId(identity: RobotIdentity): string {

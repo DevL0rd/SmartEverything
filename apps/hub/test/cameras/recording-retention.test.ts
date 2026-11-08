@@ -9,6 +9,7 @@ import {
   nextSweepAt,
 } from '../../src/cameras/recording-retention';
 import { thumbnailPathOf } from '../../src/cameras/thumbnails';
+import { hubLayout, type HubLayout } from '../../src/data-layout';
 import { recordingPathIn } from '../../src/services';
 import { FakeClock } from '../support/fake-clock';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
@@ -23,6 +24,7 @@ let logs: CapturedLogs;
 let clock: FakeClock;
 let current: Date;
 let directory: string;
+let layout: HubLayout;
 let front: DeviceRow;
 let back: DeviceRow;
 let retention: RecordingRetention;
@@ -48,7 +50,7 @@ async function remembered(
   });
   current = new Date(NOW);
   if (options.files) {
-    const path = recordingPathIn(directory)(row.storage_path);
+    const path = recordingPathIn(layout)(row.storage_path);
     await mkdir(join(path, '..'), { recursive: true });
     await writeFile(path, 'clip');
     await writeFile(thumbnailPathOf(path), 'thumb');
@@ -57,7 +59,7 @@ async function remembered(
 }
 
 async function filesOf(device: DeviceRow): Promise<string[]> {
-  return (await readdir(join(directory, 'recordings', device.id)).catch(() => [])).sort();
+  return (await readdir(layout.home.recordings(device.id)).catch(() => [])).sort();
 }
 
 const idsOf = (device: DeviceRow): string[] =>
@@ -80,10 +82,11 @@ beforeEach(async () => {
     })),
   );
   directory = await mkdtemp(join(tmpdir(), 'hub-retention-'));
+  layout = hubLayout(directory, {});
   clock = new FakeClock(NOW);
   retention = new RecordingRetention({
     store: opened.store,
-    recordingPath: recordingPathIn(directory),
+    recordingPath: recordingPathIn(layout),
     clock,
     log: testLogger('cameras'),
   });
@@ -131,7 +134,7 @@ describe('recording retention sweep', () => {
 
   it('warns loudly about a file it cannot delete and still removes the row', async () => {
     await remembered(front, 'stuck', 30);
-    const path = recordingPathIn(directory)(`${front.id}/stuck.mp4`);
+    const path = recordingPathIn(layout)(`${front.id}/stuck.mp4`);
     await rm(path);
     await mkdir(join(path, 'inside'), { recursive: true });
     const summary = await retention.sweep();

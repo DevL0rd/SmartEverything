@@ -42,33 +42,42 @@ export function output(
 const SECONDS_UI = { unit: 'ms', step: 1000, min: 0 } as const;
 
 const TIMING_PORTS: Readonly<Record<string, InputPortDecl>> = {
-  test: input('test', ANY_RECORD, 'Only fire when the value passes this test.'),
+  test: input('test', ANY_RECORD, 'Only fire when the value passes this test.', {
+    ui: { label: 'Only when the value', editor: 'condition' },
+  }),
   window: input(
     'window',
     { t: 'record', fields: { of: TEXT, seconds: { t: 'number', integer: true } } },
     'Judge a rolling window of values (average, min, max, rate or count over seconds).',
+    { ui: { label: 'Judge over a time span' } },
   ),
   hold: input('hold', DURATION, 'The test must stay true this long before it fires.', {
-    ui: SECONDS_UI,
+    ui: { ...SECONDS_UI, label: 'Only when it lasts' },
   }),
   debounce: input('debounce', DURATION, 'Decide only after no new signal for this long.', {
-    ui: SECONDS_UI,
+    ui: { ...SECONDS_UI, label: 'Ignore repeats for' },
   }),
-  cooldown: input('cooldown', DURATION, 'Fire at most once in this long.', { ui: SECONDS_UI }),
+  cooldown: input('cooldown', DURATION, 'Fire at most once in this long.', {
+    ui: { ...SECONDS_UI, label: 'Wait between alerts' },
+  }),
   silentFor: input('silentFor', DURATION, 'Fire when no matching signal arrived for this long.', {
-    ui: SECONDS_UI,
+    ui: { ...SECONDS_UI, label: 'When quiet for' },
   }),
   first: input(
     'first',
     choice(SIGNAL_FIRST_PERIODS),
     'Fire only the first time in the day, week or ever.',
+    { ui: { label: 'Only the first time' } },
   ),
   rearm: input(
     'rearm',
     NUMBER,
     'After firing, fire again only once the value has crossed back past this.',
+    { ui: { label: 'Fire again after it drops past' } },
   ),
 };
+
+export const TIMING_PORT_NAMES: ReadonlySet<string> = new Set(Object.keys(TIMING_PORTS));
 
 export function timing(names?: readonly string[]): readonly InputPortDecl[] {
   return Object.entries(TIMING_PORTS)

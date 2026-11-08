@@ -37,11 +37,12 @@ export interface TranscriptionProvider {
 export class OpenRouterTranscription implements TranscriptionProvider {
   constructor(
     private readonly client: OpenRouterClient,
+    private readonly tmp: string,
     private readonly requestBytesMax: number = REQUEST_BYTES_MAX,
   ) {}
 
   async transcribe(input: TranscriptionInput): Promise<TranscriptionAnswer> {
-    const audio = await requestAudio(input, this.requestBytesMax);
+    const audio = await requestAudio(this.tmp, input, this.requestBytesMax);
     const hints = input.hints?.slice(-HINT_CHARACTERS_MAX);
     const body = {
       model: input.model,
@@ -77,12 +78,13 @@ export class OpenRouterTranscription implements TranscriptionProvider {
 }
 
 async function requestAudio(
+  tmp: string,
   input: TranscriptionInput,
   limit: number,
 ): Promise<{ readonly data: Buffer; readonly format: z.output<typeof AUDIO_FORMAT> }> {
   const format = AUDIO_FORMAT.parse(input.format);
   if (input.data.byteLength <= limit) return { data: input.data, format };
-  const speech = await shrinkMedia(input.data, `audio/${format}`, limit);
+  const speech = await shrinkMedia(tmp, input.data, `audio/${format}`, limit);
   if (speech === undefined)
     throw openRouterError('bad_request', 'audio is too long to transcribe in one request');
   return { data: speech.data, format: 'ogg' };

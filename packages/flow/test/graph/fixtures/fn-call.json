@@ -1,0 +1,38 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "10000000-0000-4000-8000-000000000004",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "10000000-0000-4000-8000-000000000001",
+        "key": "start",
+        "kind": "debug.log",
+        "ports": { "message": { "lit": "calling" } }
+      },
+      {
+        "id": "10000000-0000-4000-8000-000000000002",
+        "key": "shine",
+        "kind": "fn.call",
+        "ports": { "fn": { "lit": "11111111-1111-4111-8111-111111111111" }, "level": { "lit": 70 } }
+      },
+      {
+        "id": "10000000-0000-4000-8000-000000000003",
+        "key": "after",
+        "kind": "notify.feed",
+        "ports": { "message": { "lit": "called" } }
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

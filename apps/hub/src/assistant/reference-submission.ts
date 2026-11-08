@@ -1,3 +1,4 @@
+import { assertOrdinaryMessageKey } from './delegation/helper-dialogue';
 import {
   ApiError,
   type AiChatRow,
@@ -6,11 +7,12 @@ import {
   type AssistantNewMessage,
 } from '@smarteverything/domain';
 import { effectiveClientById } from '../server/person-access';
-import type { Caller } from '../server/auth';
+import { chatOwnerOf, directClient, type Caller } from '../server/auth';
+import type { Delegation } from './delegation/delegation';
 import type { Store } from '../store/store';
 import type { ReferenceService } from '../references/service';
 import type { ChatDirectory } from './chat-directory';
-import type { AssistantRequests, Sender, RequestsDeps } from './requests';
+import type { AssistantRequests, RequestsDeps, Sender } from './requests';
 import type { EngineRegistry } from './engines/registry';
 
 export type ReplayActor =
@@ -18,16 +20,20 @@ export type ReplayActor =
 export function replayClient(actor: ReplayActor | undefined): string | null | undefined {
   return typeof actor === 'object' && actor !== null ? actor.clientId : actor;
 }
-interface ReferenceSubmissionDeps {
+
+interface ReferenceSubmissionDeps extends Pick<RequestsDeps, 'files'> {
   readonly store: Store;
   readonly references: ReferenceService;
   readonly chats: ChatDirectory;
   readonly engines: EngineRegistry;
   readonly requests: AssistantRequests;
+  readonly delegation: Pick<Delegation, 'sendToHelper'>;
 }
 export class ReferenceSubmissions {
   constructor(private readonly deps: ReferenceSubmissionDeps) {}
   plain(sender: Sender, body: AssistantNewMessage, chatId?: string): AssistantMessageRow {
+    if (body.helper_target !== undefined)
+      throw new ApiError('forbidden', 'Address a helper from its conversation in the app.');
     if ((body.references?.length ?? 0) > 0)
       throw new ApiError(
         'conflict',
@@ -41,8 +47,10 @@ export class ReferenceSubmissions {
     body: AssistantNewMessage,
     chatId?: string,
   ): Promise<AssistantMessageRow> {
+    if (body.helper_target !== undefined) return this.sendToHelper(caller, sender, body, chatId);
     if ((body.references?.length ?? 0) === 0) return this.plain(sender, body, chatId);
     const chat = this.chat(sender, chatId);
+    assertOrdinaryMessageKey(this.deps.store, chat, body.client_message_id);
     const sent =
       body.client_message_id === undefined
         ? undefined
@@ -55,6 +63,28 @@ export class ReferenceSubmissions {
       body.references ?? [],
     );
     return this.deps.requests.send(sender, { ...body, references }, this.chat(sender, chat.id));
+  }
+  private sendToHelper(
+    caller: Caller,
+    sender: Sender,
+    body: AssistantNewMessage,
+    chatId: string | undefined,
+  ): Promise<AssistantMessageRow> {
+    if (chatId === undefined)
+      throw new ApiError('invalid_request', 'Select the conversation containing this helper.');
+    if (directClient(caller)?.id !== sender.clientId)
+      throw new ApiError('forbidden', 'Address a helper from its conversation in the app.');
+    const owner = chatOwnerOf(this.deps.store, caller);
+    if (
+      owner.profileId !== sender.profileId ||
+      this.deps.store.profiles.activeOf(sender.clientId).id !== sender.profileId
+    )
+      throw new ApiError('forbidden', 'Use the active conversation profile to address a helper.');
+    const chat = this.deps.chats.own(owner, chatId);
+    return this.deps.delegation.sendToHelper(sender, chat, body, {
+      engines: this.deps.engines,
+      files: this.deps.files,
+    });
   }
   private chat(sender: Sender, chatId: string | undefined): AiChatRow {
     const owner = {
@@ -101,19 +131,4 @@ export class ReferenceSubmissions {
       throw new ApiError('conflict', 'Reference replay requires its current authenticated actor.');
     await this.deps.references.resolve(actor.caller, chat.id, input.text, input.references);
   }
-}
-
-export function referenceSubmissions(
-  deps: Pick<RequestsDeps, 'store' | 'chats'>,
-  references: ReferenceService,
-  engines: EngineRegistry,
-  requests: AssistantRequests,
-): ReferenceSubmissions {
-  return new ReferenceSubmissions({
-    store: deps.store,
-    chats: deps.chats,
-    references,
-    engines,
-    requests,
-  });
 }

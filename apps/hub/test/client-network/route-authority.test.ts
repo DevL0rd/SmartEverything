@@ -1,4 +1,3 @@
-import { createServer } from 'node:http';
 import os from 'node:os';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,6 +15,7 @@ import type { NetworkEventBus } from '../../src/client-network/route-events';
 import { mdnsEmitter } from '../../src/network/mdns';
 import { advertiseHub } from '../../src/network/mdns-advertise';
 import { MemoryNetwork } from '../support/memory-mdns';
+import { listenRemote, REMOTE_HOST } from '../support/remote-hub';
 import { testLogger } from '../support/logs';
 import { nextText } from '../support/stream';
 
@@ -46,7 +46,7 @@ function configurationFor(origin: string): NativeHubRouteConfiguration {
     trust: {
       scopeId,
       identity: IDENTITY,
-      endpoints: [{ kind: 'loopback', url: origin }],
+      endpoints: [{ kind: 'remote', url: origin }],
       lanAddresses: [],
     },
     bindings: [
@@ -85,8 +85,9 @@ function fakeBus(): {
 async function directory(configuration: NativeHubRouteConfiguration): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), 'hub-route-'));
   closers.push(() => rm(path, { recursive: true, force: true }));
-  await new NodeRouteStore(path, TOKEN).write(configuration);
-  return path;
+  const file = join(path, 'node-route.json');
+  await new NodeRouteStore(file, TOKEN).write(configuration);
+  return file;
 }
 
 describe('node route authority', () => {
@@ -95,7 +96,7 @@ describe('node route authority', () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const server = createServer((request, response) => {
+    const hub = await listenRemote((request, response) => {
       if (request.url === HUB_IDENTITY_PATH) {
         response.end(JSON.stringify({ service: 'smarteverything', identity: IDENTITY }));
         return;
@@ -111,14 +112,8 @@ describe('node route authority', () => {
         },
       );
     });
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-    closers.push(() => {
-      server.closeAllConnections();
-      server.close();
-    });
-    const address = server.address();
-    if (address === null || typeof address === 'string') throw new Error('no port');
-    const origin = `http://127.0.0.1:${String(address.port)}`;
+    closers.push(hub.close);
+    const origin = hub.url;
     const events = fakeBus();
     const authority = new NodeRouteAuthority({
       hubUrl: origin,
@@ -167,21 +162,15 @@ describe('node route authority', () => {
 
 describe('node route discovery', () => {
   it('asks the network again whenever no enrolled LAN endpoint answers and learns the new address', async () => {
-    const hubServer = createServer((request, response) => {
+    const hubServer = await listenRemote((request, response) => {
       response.end(
         request.url === HUB_IDENTITY_PATH
           ? JSON.stringify({ service: 'smarteverything', identity: IDENTITY })
           : '',
       );
     });
-    await new Promise<void>((resolve) => hubServer.listen(0, '127.0.0.1', resolve));
-    closers.push(() => {
-      hubServer.closeAllConnections();
-      hubServer.close();
-    });
-    const bound = hubServer.address();
-    if (bound === null || typeof bound === 'string') throw new Error('no port');
-    const origin = `http://127.0.0.1:${String(bound.port)}`;
+    closers.push(hubServer.close);
+    const origin = hubServer.url;
     vi.spyOn(os, 'networkInterfaces').mockReturnValue({
       eth0: [
         {
@@ -242,7 +231,7 @@ describe('node route discovery', () => {
 });
 
 describe('node enrollment bootstrap', () => {
-  const origin = 'https://127.0.0.1:1';
+  const origin = `https://${REMOTE_HOST}:1`;
   async function started(answer: Response): Promise<{
     readonly authority: NodeRouteAuthority;
     readonly store: NodeRouteStore;

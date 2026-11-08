@@ -10,7 +10,13 @@ import { PageHeader } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
-import { CompactBody, WideBody, type FrameWidth } from '../../../components/section-body';
+import {
+  CompactBody,
+  FrameBodyWidth,
+  WideBody,
+  type FrameWidth,
+} from '../../../components/section-body';
+import type { RailWidth } from '../../../components/frame-layout';
 import { sectionParamOf } from '../../../components/use-section-param';
 import { useAreaWidth } from '../../../design/size-class';
 import { clock } from '../../../format/time';
@@ -128,8 +134,7 @@ function FrameHeader({
   );
 }
 
-function useRail(device: Device): ReactNode {
-  const area = useAreaWidth();
+function useRail(device: Device, width: RailWidth): ReactNode {
   const features = useComputerDetail(device.id, device.online).data?.features;
   const active = sectionParamOf(useLocalSearchParams(), 'page') ?? 'overview';
   return (
@@ -139,26 +144,27 @@ function useRail(device: Device): ReactNode {
       online={device.online}
       features={features}
       os={factsOf(device).os}
-      width={railWidthOf(area)}
+      width={width}
     />
   );
 }
 
 function FrameBody({
   device,
-  rail,
   scroll,
   width,
-  compact,
+  area,
   children,
 }: {
   readonly device: Device;
   readonly scroll: boolean;
   readonly width: FrameWidth;
   readonly children: ReactNode;
-  readonly rail: ReactNode;
-  readonly compact: boolean;
+  readonly area: number;
 }): ReactNode {
+  const compact = frameLayoutOf(area) === 'compact';
+  const railWidth = railWidthOf(area);
+  const rail = useRail(device, railWidth);
   const scrolls = compact && scroll;
   return (
     <DemandRegion
@@ -171,7 +177,7 @@ function FrameBody({
           {children}
         </CompactBody>
       ) : (
-        <WideBody scroll={scroll} width={width} rail={rail}>
+        <WideBody scroll={scroll} width={width} rail={rail} railWidth={railWidth}>
           {children}
         </WideBody>
       )}
@@ -192,8 +198,8 @@ function LiveFrame({
   const menu = useComputerMenu(device, () => {
     setPair(true);
   });
-  const rail = useRail(device);
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const area = useAreaWidth();
+  const compact = frameLayoutOf(area) === 'compact';
   const scrolls = compact && scroll;
   return (
     <Screen
@@ -212,7 +218,7 @@ function LiveFrame({
         device.online ? undefined : <OfflineBanner deviceId={device.id} name={device.label} />
       }
     >
-      <FrameBody device={device} rail={rail} scroll={scroll} width={width} compact={compact}>
+      <FrameBody device={device} area={area} scroll={scroll} width={width}>
         {children}
       </FrameBody>
       <PairComputerSheet
@@ -230,7 +236,9 @@ export function ComputerFrame({ deviceId, ...frame }: ComputerFrameProps): React
   if (device === null) {
     return (
       <Screen maxWidth="reading" header={<PageHeader title={frame.title} overflow={[]} />}>
-        {frame.children}
+        <FrameBodyWidth scroll width="reading">
+          {frame.children}
+        </FrameBodyWidth>
       </Screen>
     );
   }

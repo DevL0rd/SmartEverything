@@ -3,13 +3,22 @@ import { z } from 'zod';
 import type { Logger } from '@smarteverything/logging';
 import {
   CLAUDE_BILLING_NOTICES,
+  SUBSCRIPTION_WEEK_MINUTES,
   claudeBillingReason,
   type ClaudeBillingCode,
+  type AiSubscriptionUsage,
 } from '@smarteverything/domain';
 import { ProviderInputError } from './input';
 const WINDOW = z.object({
   utilization: z.number().nonnegative().nullable(),
   resets_at: z.string().nullable().optional(),
+});
+const SPEND_POLICY = z.object({
+  rate_limits_available: z.literal(true),
+  rate_limits: z.object({
+    extra_usage: z.object({ is_enabled: z.boolean() }),
+    model_scoped: z.array(z.unknown()).optional(),
+  }),
 });
 const USAGE = z.object({
   subscription_type: z.string().min(1),
@@ -21,10 +30,10 @@ const USAGE = z.object({
     seven_day_opus: WINDOW.nullable().optional(),
     seven_day_sonnet: WINDOW.nullable().optional(),
     model_scoped: z.array(WINDOW).optional(),
-    extra_usage: z.object({ is_enabled: z.boolean() }),
   }),
 });
 type Limits = z.infer<typeof USAGE>['rate_limits'];
+const RESET = z.iso.datetime({ offset: true });
 interface ClaudeBillingBlocked {
   readonly state: 'blocked';
   readonly code: ClaudeBillingCode;
@@ -45,6 +54,7 @@ export class ClaudeSubscriptionBillingError extends ProviderInputError {
 export async function nativeSubscriptionBilling(
   runtime: Query,
   now: number = Date.now(),
+  observe?: (usage: AiSubscriptionUsage) => void,
 ): Promise<ClaudeBillingVerdict> {
   let raw: unknown;
   try {
@@ -55,18 +65,46 @@ export async function nativeSubscriptionBilling(
     if (!(cause instanceof Error)) throw cause;
     return blocked('native_billing_policy_unknown', `The usage request failed: ${cause.message}`);
   }
-  const parsed = USAGE.safeParse(raw);
+  const parsed = SPEND_POLICY.safeParse(raw);
   if (!parsed.success)
-    return blocked('native_billing_policy_unknown', 'The usage response had an unexpected shape.');
-  const limits = parsed.data.rate_limits;
-  if (limits.extra_usage.is_enabled) return blocked('native_paid_extra_usage_enabled');
-  if (exhaustedUsage(limits)) return blocked('native_quota_exhausted');
-  if (limits.five_hour.utilization === null || limits.seven_day.utilization === null)
-    return blocked('native_billing_policy_unknown', 'A subscription window reported no usage.');
-  const staleness = staleReason(limits, now);
-  return staleness === null
-    ? { state: 'eligible' }
-    : blocked('native_billing_freshness_unavailable', staleness);
+    return blocked(
+      'native_billing_policy_unknown',
+      'The usage response omitted extra usage policy.',
+    );
+  const telemetry = USAGE.safeParse(raw);
+  if (
+    telemetry.success &&
+    observe !== undefined &&
+    staleReason(telemetry.data.rate_limits, now) === null
+  )
+    observe(claudeStatusUsage(telemetry.data.rate_limits, now));
+  if (parsed.data.rate_limits.extra_usage.is_enabled)
+    return blocked('native_paid_extra_usage_enabled');
+  if (parsed.data.rate_limits.model_scoped === undefined)
+    return blocked(
+      'native_billing_freshness_unavailable',
+      'The provider did not verify current extra usage settings.',
+    );
+  return { state: 'eligible' };
+}
+
+function claudeStatusUsage(limits: Limits, observedAt: number): AiSubscriptionUsage {
+  return {
+    runtime: 'claude',
+    reported_at: new Date(observedAt).toISOString(),
+    status: 'reported',
+    windows: (['five_hour', 'seven_day'] as const).map((id) => {
+      const window = limits[id];
+      const reset = RESET.safeParse(window.resets_at);
+      return {
+        id,
+        label: id,
+        used_percent: window.utilization,
+        resets_at: reset.success ? reset.data : null,
+        window_duration_mins: id === 'seven_day' ? SUBSCRIPTION_WEEK_MINUTES : null,
+      };
+    }),
+  };
 }
 export async function requireNativeSubscriptionBilling(
   runtime: Query,
@@ -107,9 +145,4 @@ function staleReason(limits: Limits, now: number): string | null {
       return 'A usage window has a reset time that is unreadable or already past.';
   }
   return null;
-}
-function exhaustedUsage(limits: Limits): boolean {
-  return windowsOf(limits).some(
-    (window) => window.utilization !== null && window.utilization >= 100,
-  );
 }

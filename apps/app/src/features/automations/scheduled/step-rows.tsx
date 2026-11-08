@@ -86,6 +86,7 @@ function StepRow({
       <View className="min-w-0 flex-1">
         <ListRow
           title={view.title}
+          wrapTitle
           icon={view.icon}
           iconTone={view.look?.tone ?? 'variant'}
           {...(view.look === null

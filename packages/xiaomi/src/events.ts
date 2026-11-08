@@ -12,6 +12,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { parseUrn, type MiotSpec } from './spec';
+import { vacuumFault } from './vacuum/pv11gl-catalog';
 
 interface DetectionSource {
   readonly detection: CameraDetection;
@@ -110,6 +111,60 @@ function deviceEventFromLaundry(name: string, observed: ObservedEvent): DeviceEv
   return { ...observed, kind, details };
 }
 
+export const VACUUM_EVENT_FAMILY = 'vacuum';
+
+const VACUUM_SWEEP_COMPLETE = 'sweep-complete';
+const NO_FAULT_DESCRIPTION = 'No description from Xiaomi';
+
+interface VacuumActivity {
+  readonly name: string;
+  readonly summary: string;
+}
+
+const VACUUM_ACTIVITIES: Readonly<Record<string, VacuumActivity>> = {
+  'build-map-complete': { name: 'map_built', summary: 'Map built' },
+  'dust-arrest-complete': { name: 'dust_emptied', summary: 'Dust bin emptied' },
+  'mop-wash-complete': { name: 'mop_washed', summary: 'Mop washed' },
+  'dry-complete': { name: 'mop_dried', summary: 'Mop dried' },
+};
+
+function deviceEventFromVacuum(name: string, observed: ObservedEvent): DeviceEvent | null {
+  const common = { ...observed.details, family: VACUUM_EVENT_FAMILY, miotEvent: name };
+  if (name === VACUUM_SWEEP_COMPLETE) {
+    return { ...observed, kind: 'cycle_finished', details: { ...common, outcome: 'finished' } };
+  }
+  const activity = Object.hasOwn(VACUUM_ACTIVITIES, name) ? VACUUM_ACTIVITIES[name] : undefined;
+  return activity === undefined
+    ? null
+    : { ...observed, kind: 'activity', details: { ...common, ...activity } };
+}
+
+export function vacuumFaultEvent(code: number, observed: ObservedEvent): DeviceEvent {
+  const entry = vacuumFault(code);
+  const common = { ...observed.details, family: VACUUM_EVENT_FAMILY, code };
+  if (entry === null) {
+    return {
+      ...observed,
+      kind: 'fault',
+      details: { ...common, title: `Fault ${String(code)}`, message: NO_FAULT_DESCRIPTION },
+    };
+  }
+  const described = {
+    ...common,
+    title: entry.title,
+    message: entry.message,
+    ...(entry.detail === null ? {} : { detail: [...entry.detail] }),
+    ...(entry.dockVariant === null ? {} : { dock: { ...entry.dockVariant } }),
+  };
+  return entry.type === 'alert'
+    ? {
+        ...observed,
+        kind: 'activity',
+        details: { ...described, name: 'alert', summary: entry.title },
+      }
+    : { ...observed, kind: 'fault', details: described };
+}
+
 const MIOT_EVENT_FACTS: Readonly<Record<string, Readonly<Record<string, JsonValue>>>> = {
   click: { action: 'single_press' },
   'double-click': { action: 'double_press' },
@@ -149,9 +204,9 @@ export function deviceEventFromMiot(
   miotArguments: Readonly<Record<string, JsonValue>> = {},
 ): DeviceEvent {
   const merged = withArguments(observed, miotArguments);
-  const laundry = deviceEventFromLaundry(name, merged);
-  if (laundry !== null) {
-    return laundry;
+  const family = deviceEventFromLaundry(name, merged) ?? deviceEventFromVacuum(name, merged);
+  if (family !== null) {
+    return family;
   }
   const kind = miotEventKind(name);
   if (kind === null) {

@@ -1,145 +1,74 @@
 import type { ReactNode, RefObject } from 'react';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import { FlatList, Modal, View, type NativeScrollEvent } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { ThemeScope } from '../../../design/theme-scope';
-import type { AssistantAttachment } from '@smarteverything/domain';
+import { FlatList, View, type NativeScrollEvent } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Animated from 'react-native-reanimated';
+import type { Rect } from '../../../components/anchor';
 import { IconButton } from '../../../components/icon-button';
+import { useAnchoredMenu } from '../../../components/menu';
 import { Text } from '../../../components/text';
+import { ToastModal } from '../../../components/toast-modal';
 import { useEscape } from '../../../components/use-escape';
-import { isNative, useIdiom } from '../../../design/platform';
 import { useMotion } from '../../../design/motion';
-import { cn } from '../../../design/cn';
-import { useChatImages } from '../data/chat-images';
-import { canShareFiles, downloadFile, shareFile } from '../../../platform/file-actions';
-import type { SignedLink } from '../../../api/media';
+import { isNative, useIdiom } from '../../../design/platform';
+import { ThemeScope } from '../../../design/theme-scope';
+import { clock, dayLabel } from '../../../format/time';
+import { joinParts } from '../../../format/text';
+import { imageActionsOf, quoteChatImage, useChatImages, type ChatImage } from '../data/chat-images';
 import { useAttachmentLinks } from '../data/remote';
-import { useArrowKeys } from './use-arrow-keys';
-import { ZoomPage, type PageSize } from './zoom-page';
 import { ImageResultContext } from '../images/components/image-result-context';
+import { personParticipant } from '../model/participant';
+import { SpeakerAvatar } from './speaker-avatar';
+import { useArrowKeys } from './use-arrow-keys';
+import {
+  Backdrop,
+  fittedFrame,
+  openingFrom,
+  PageDots,
+  PageSteps,
+  ShownChrome,
+  useDragClose,
+  useStageStyle,
+  useViewerMotion,
+  ZoomPage,
+  type PageSize,
+  type ViewerMotion,
+} from './zoom-page';
 
-const FILL = { flex: 1 } as const;
+const NO_AREA: Rect = { x: 0, y: 0, width: 0, height: 0 };
 
-function ViewerBar({
-  image,
-  url,
-  position,
-  onClose,
-}: {
-  readonly image: AssistantAttachment;
-  readonly url: string | undefined;
-  readonly position: string | null;
-  readonly onClose: () => void;
-}): ReactNode {
-  return (
-    <View className="z-10 flex-row items-center gap-2 px-2 pt-safe-offset-2">
-      <IconButton icon="close" label="Close" variant="overlay" onPress={onClose} shortcut="Esc" />
-      <View className="min-w-0 flex-1">
-        <Text variant="label" numberOfLines={1}>
-          {image.name}
-        </Text>
-        {position === null ? null : (
-          <Text variant="caption" tone="variant">
-            {position}
-          </Text>
-        )}
-      </View>
-      {url === undefined || !canShareFiles() ? null : (
-        <IconButton
-          icon="share"
-          label={`Share ${image.name}`}
-          variant="overlay"
-          onPress={() => {
-            shareFile(url, image.name);
-          }}
-        />
-      )}
-      <IconButton
-        icon="download"
-        label={`Download ${image.name}`}
-        variant="overlay"
-        disabled={url === undefined}
-        onPress={() => {
-          if (url !== undefined) {
-            downloadFile(url, image.name);
-          }
-        }}
-      />
-    </View>
-  );
-}
-
-function Step({
-  side,
-  label,
-  onPress,
-}: {
-  readonly side: 'left' | 'right';
-  readonly label: string;
-  readonly onPress: () => void;
-}): ReactNode {
-  return (
-    <View
-      pointerEvents="box-none"
-      className={cn('absolute inset-y-0 justify-center', side === 'left' ? 'left-2' : 'right-2')}
-    >
-      <IconButton
-        icon={side === 'left' ? 'chevronLeft' : 'chevronRight'}
-        label={label}
-        variant="overlay"
-        onPress={onPress}
-      />
-    </View>
-  );
-}
-
-function useFocusRoot(): RefObject<View | null> {
-  const ref = useRef<View>(null);
-  useEffect(() => {
-    if (!isNative()) {
-      ref.current?.focus();
-    }
-  }, []);
-  return ref;
-}
+type Links = ReturnType<typeof useAttachmentLinks>['data'];
+type ListRef = RefObject<FlatList<ChatImage> | null>;
 
 interface Paging {
   readonly index: number;
+  readonly area: Rect;
   readonly size: PageSize;
   readonly zoomed: boolean;
-  readonly setSize: (size: PageSize) => void;
+  readonly setArea: (area: Rect) => void;
   readonly setZoomed: (zoomed: boolean) => void;
   readonly settle: (event: NativeScrollEvent) => void;
   readonly go: (next: number) => void;
 }
 
-function usePaging(
-  count: number,
-  first: number,
-  listRef: RefObject<FlatList<AssistantAttachment> | null>,
-): Paging {
+function usePaging(count: number, first: number, listRef: ListRef): Paging {
   const [index, setIndex] = useState(first);
-  const [size, setSize] = useState<PageSize>({ width: 0, height: 0 });
+  const [area, setArea] = useState<Rect>(NO_AREA);
   const [zoomed, setZoomed] = useState(false);
   const { reduced } = useMotion();
   const go = (next: number): void => {
-    if (next < 0 || next >= count) {
-      return;
-    }
+    if (next < 0 || next >= count) return;
     setIndex(next);
     listRef.current?.scrollToIndex({ index: next, animated: !reduced });
   };
   const settle = (event: NativeScrollEvent): void => {
-    setIndex(Math.round(event.contentOffset.x / size.width));
+    setIndex(Math.round(event.contentOffset.x / Math.max(1, area.width)));
   };
-  return { index, size, zoomed, setSize, setZoomed, settle, go };
+  const size = { width: area.width, height: area.height };
+  return { index, area, size, zoomed, setArea, setZoomed, settle, go };
 }
 
-function usePagePosition(
-  listRef: RefObject<FlatList<AssistantAttachment> | null>,
-  width: number,
-  index: number,
-): void {
+function usePagePosition(listRef: ListRef, width: number, index: number): void {
   const position = useEffectEvent(() => {
     listRef.current?.scrollToOffset({ offset: width * index, animated: false });
   });
@@ -148,19 +77,23 @@ function usePagePosition(
   }, [width, listRef]);
 }
 
-function Pages({
-  images,
-  links,
-  first,
-  paging,
-  listRef,
-}: {
-  readonly images: readonly AssistantAttachment[];
-  readonly links: Readonly<Record<string, SignedLink>> | undefined;
+function useOpenOnLayout(width: number, begin: () => void): void {
+  const run = useEffectEvent(begin);
+  const measured = width > 0;
+  useEffect(() => {
+    if (measured) run();
+  }, [measured]);
+}
+
+interface PagesProps {
+  readonly images: readonly ChatImage[];
+  readonly links: Links;
   readonly first: number;
   readonly paging: Paging;
-  readonly listRef: RefObject<FlatList<AssistantAttachment> | null>;
-}): ReactNode {
+  readonly listRef: ListRef;
+}
+
+function Pages({ images, links, first, paging, listRef }: PagesProps): ReactNode {
   const { width } = paging.size;
   usePagePosition(listRef, width, paging.index);
   return (
@@ -177,14 +110,14 @@ function Pages({
         offset: width * position,
         index: position,
       })}
-      keyExtractor={(image) => image.id}
+      keyExtractor={(image) => image.attachment.id}
       onMomentumScrollEnd={(event) => {
         paging.settle(event.nativeEvent);
       }}
       renderItem={({ item }) => (
         <ZoomPage
-          image={item}
-          url={links?.[item.id]?.url}
+          image={item.attachment}
+          url={links?.[item.attachment.id]?.url}
           size={paging.size}
           onZoomed={paging.setZoomed}
         />
@@ -194,127 +127,146 @@ function Pages({
   );
 }
 
-function Steps({ paging, count }: { readonly paging: Paging; readonly count: number }): ReactNode {
-  const pointer = useIdiom() === 'pointer';
-  const { index, go } = paging;
-  if (!pointer) {
-    return null;
-  }
+function Stage({
+  motion,
+  origin,
+  ...pages
+}: PagesProps & { readonly motion: ViewerMotion; readonly origin: Rect | null }): ReactNode {
+  const { paging, images, first } = pages;
+  const current = images[paging.index];
+  const opening = openingFrom(
+    current === undefined ? paging.area : fittedFrame(current.attachment, paging.area),
+    paging.index === first ? origin : null,
+  );
+  const stage = useStageStyle(motion, opening, paging.size.height);
+  const gesture = useDragClose(motion, paging.size, !paging.zoomed);
+  useOpenOnLayout(paging.size.width, motion.begin);
   return (
-    <>
-      {index > 0 ? (
-        <Step
-          side="left"
-          label="Previous image"
-          onPress={() => {
-            go(index - 1);
-          }}
-        />
-      ) : null}
-      {index < count - 1 ? (
-        <Step
-          side="right"
-          label="Next image"
-          onPress={() => {
-            go(index + 1);
-          }}
-        />
-      ) : null}
-    </>
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        style={stage}
+        className="flex-1"
+        onLayout={(event) => {
+          const { x, y, width, height } = event.nativeEvent.layout;
+          paging.setArea({ x, y, width: Math.round(width), height: Math.round(height) });
+        }}
+      >
+        {paging.size.width === 0 ? null : <Pages {...pages} />}
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
-function CurrentBar({
-  images,
-  links,
-  index,
-  onClose,
-}: {
-  readonly images: readonly AssistantAttachment[];
-  readonly links: Readonly<Record<string, SignedLink>> | undefined;
-  readonly index: number;
-  readonly onClose: () => void;
-}): ReactNode {
-  const current = images[index];
-  if (current === undefined) {
-    return null;
-  }
-  return (
-    <ViewerBar
-      image={current}
-      url={links?.[current.id]?.url}
-      position={images.length > 1 ? `${String(index + 1)} of ${String(images.length)}` : null}
-      onClose={onClose}
-    />
-  );
-}
-
-function PageArea({
-  images,
-  links,
-  first,
-  paging,
-  listRef,
-}: {
-  readonly images: readonly AssistantAttachment[];
-  readonly links: Readonly<Record<string, SignedLink>> | undefined;
-  readonly first: number;
-  readonly paging: Paging;
-  readonly listRef: RefObject<FlatList<AssistantAttachment> | null>;
-}): ReactNode {
-  return (
-    <View
-      className="flex-1"
-      onLayout={(event) => {
-        const { width, height } = event.nativeEvent.layout;
-        paging.setSize({ width: Math.round(width), height: Math.round(height) });
-      }}
-    >
-      {paging.size.width === 0 ? null : (
-        <Pages images={images} links={links} first={first} paging={paging} listRef={listRef} />
-      )}
-    </View>
-  );
-}
-
-function ResultFooter({
+function ViewerTop({
   image,
-  chatId,
+  url,
+  index,
+  count,
+  onClose,
+  onLeave,
 }: {
-  readonly image: AssistantAttachment | undefined;
-  readonly chatId: string | undefined;
+  readonly image: ChatImage | undefined;
+  readonly url: string | undefined;
+  readonly index: number;
+  readonly count: number;
+  readonly onClose: () => void;
+  readonly onLeave: () => void;
 }): ReactNode {
+  const items = image === undefined ? [] : imageActionsOf(image, url, onLeave);
+  const { ref, open, menu } = useAnchoredMenu(items, 'Image actions');
   return (
-    <View className="px-3 pb-safe-offset-3">
-      {image === undefined ? null : (
-        <View className="gap-2">
-          <ImageResultContext image={image} chatId={chatId} />
-        </View>
+    <View className="h-14 flex-row items-center justify-between pl-1 pr-2 pt-safe">
+      <IconButton icon="close" label="Close" onPress={onClose} shortcut="Esc" />
+      {count > 1 ? (
+        <Text variant="label" tone="variant" className="tabular">
+          {`${String(index + 1)} / ${String(count)}`}
+        </Text>
+      ) : null}
+      <View ref={ref} collapsable={false}>
+        <IconButton icon="share" label="More" disabled={items.length === 0} onPress={open} />
+        {menu}
+      </View>
+    </View>
+  );
+}
+
+function ViewerCaption({
+  image,
+  onLeave,
+}: {
+  readonly image: ChatImage;
+  readonly onLeave: () => void;
+}): ReactNode {
+  const [now] = useState(Date.now);
+  const { messageId } = image;
+  const when = `${dayLabel(image.at, now)} ${clock(image.at)}`;
+  return (
+    <View className="flex-row items-center gap-2 px-4 pb-safe-offset-5 pt-1.5">
+      <SpeakerAvatar participant={personParticipant(image.sender)} live={false} />
+      <View className="min-w-0 flex-1">
+        <Text variant="label" numberOfLines={1}>
+          {image.sender}
+        </Text>
+        <Text variant="caption" tone="variant" className="tabular" numberOfLines={1}>
+          {joinParts([when, image.caption])}
+        </Text>
+        <ImageResultContext image={image.attachment} chatId={image.chatId} />
+      </View>
+      {messageId === null ? null : (
+        <IconButton
+          icon="reply"
+          label="Quote"
+          variant="tonal"
+          onPress={() => {
+            onLeave();
+            quoteChatImage(image, messageId);
+          }}
+        />
       )}
     </View>
   );
 }
 
-function Viewer({
-  startId,
-  onClose,
-  chatId,
-}: {
+interface ViewerProps {
   readonly startId: string;
-  readonly chatId?: string | undefined;
+  readonly origin: Rect | null;
+  readonly chatId: string | undefined;
   readonly onClose: () => void;
-}): ReactNode {
+}
+
+function useFocusRoot(): RefObject<View | null> {
+  const ref = useRef<View>(null);
+  useEffect(() => {
+    if (!isNative()) ref.current?.focus();
+  }, []);
+  return ref;
+}
+
+interface ViewerState {
+  readonly images: readonly ChatImage[];
+  readonly links: Links;
+  readonly first: number;
+  readonly listRef: ListRef;
+  readonly paging: Paging;
+  readonly motion: ViewerMotion;
+  readonly current: ChatImage | undefined;
+  readonly url: string | undefined;
+}
+
+function useViewerState({ startId, chatId, onClose }: ViewerProps): ViewerState {
   const images = useChatImages(startId, chatId ?? null);
-  const links = useAttachmentLinks(images.map((image) => image.id)).data;
+  const links = useAttachmentLinks(images.map((image) => image.attachment.id)).data;
   const first = Math.max(
     0,
-    images.findIndex((image) => image.id === startId),
+    images.findIndex((image) => image.attachment.id === startId),
   );
-  const listRef = useRef<FlatList<AssistantAttachment>>(null);
+  const listRef = useRef<FlatList<ChatImage>>(null);
   const paging = usePaging(images.length, first, listRef);
-  const root = useFocusRoot();
+  const motion = useViewerMotion(onClose);
   const { index, go } = paging;
-  useEscape(true, onClose);
+  const current = images[index];
+  const url = current === undefined ? undefined : links?.[current.attachment.id]?.url;
+  useEscape(true, motion.close);
   useArrowKeys(
     !paging.zoomed,
     () => {
@@ -324,44 +276,94 @@ function Viewer({
       go(index + 1);
     },
   );
+  return { images, links, first, listRef, paging, motion, current, url };
+}
+
+function ViewerFrame({
+  onClose,
+  children,
+}: {
+  readonly onClose: () => void;
+  readonly children: ReactNode;
+}): ReactNode {
+  const root = useFocusRoot();
   return (
-    <GestureHandlerRootView style={FILL}>
+    <ToastModal
+      visible
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
       <ThemeScope theme="dark">
         <View
           ref={root}
           tabIndex={-1}
           accessibilityViewIsModal
           accessibilityLabel="Image viewer"
-          className="flex-1 bg-bg outline-none"
+          className="flex-1 web:outline-none"
         >
-          <CurrentBar images={images} links={links} index={index} onClose={onClose} />
-          <PageArea images={images} links={links} first={first} paging={paging} listRef={listRef} />
-          <Steps paging={paging} count={images.length} />
-          <ResultFooter image={images[index]} chatId={chatId} />
+          {children}
         </View>
       </ThemeScope>
-    </GestureHandlerRootView>
+    </ToastModal>
+  );
+}
+
+function Viewer(props: ViewerProps): ReactNode {
+  const { images, links, first, listRef, paging, motion, current, url } = useViewerState(props);
+  const pointer = useIdiom() === 'pointer';
+  const { index, go, size } = paging;
+  const leave = props.onClose;
+  return (
+    <ViewerFrame onClose={motion.close}>
+      <Backdrop motion={motion} height={size.height} />
+      <ShownChrome motion={motion} height={size.height}>
+        <ViewerTop
+          image={current}
+          url={url}
+          index={index}
+          count={images.length}
+          onClose={motion.close}
+          onLeave={leave}
+        />
+      </ShownChrome>
+      <Stage
+        images={images}
+        links={links}
+        first={first}
+        paging={paging}
+        listRef={listRef}
+        motion={motion}
+        origin={props.origin}
+      />
+      {pointer ? <PageSteps index={index} count={images.length} go={go} /> : null}
+      <ShownChrome motion={motion} height={size.height}>
+        <PageDots count={images.length} index={index} width={size.width} />
+        {current === undefined ? null : <ViewerCaption image={current} onLeave={leave} />}
+      </ShownChrome>
+    </ViewerFrame>
   );
 }
 
 export function ImageViewer({
   startId,
-  onClose,
+  origin,
   chatId,
+  onClose,
 }: {
   readonly startId: string | null;
+  readonly origin?: Rect | null | undefined;
   readonly chatId?: string | undefined;
   readonly onClose: () => void;
 }): ReactNode {
-  return (
-    <Modal
-      visible={startId !== null}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      {startId === null ? null : <Viewer startId={startId} onClose={onClose} chatId={chatId} />}
-    </Modal>
+  return startId === null ? null : (
+    <Viewer
+      key={startId}
+      startId={startId}
+      origin={origin ?? null}
+      chatId={chatId}
+      onClose={onClose}
+    />
   );
 }

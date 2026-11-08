@@ -60,6 +60,7 @@ function personMessage(
     steps: [],
     step_states: [],
     reply_to: null,
+    quote: null,
     chat_id: chatId,
     origin,
     embeds: [],

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { background } from '@smarteverything/logging';
 import * as Clipboard from 'expo-clipboard';
 import { usePushDeliveries } from '../../../api/diagnostics';
 import {
@@ -13,13 +14,13 @@ import { ActionRow } from '../../../components/rows';
 import { Text } from '../../../components/text';
 import { notify, notifyFailure } from '../../../components/toast-store';
 import { jsonText } from '../../../format/json-text';
-import { relative } from '../../../format/time';
 import { pickTextFile } from '../../../platform/text-file';
 import { useMinuteOf } from '../../../store/clock';
 import { useMutationState } from '../../../store/mutation';
 import { useSettings } from '../../../store/selectors';
 
 import { settingsLog, trackSetting } from '../settings-log';
+import { deliverySummary } from './push-delivery-summary';
 export const FIREBASE_PAGE = 'notifications/push-service/firebase';
 
 const KEY_FAILURE = { failure: 'The key was not saved' } as const;
@@ -47,43 +48,36 @@ async function saveKey(read: () => Promise<string | null>): Promise<boolean> {
   return true;
 }
 
-function deliverySummary(
-  status: ReturnType<typeof usePushDeliveries>,
-  now: number,
-): { readonly text: string; readonly tone: 'variant' | 'positive' | 'critical' } {
-  const data = status.data;
-  if (data === undefined) {
-    return { text: 'Checking the last alert', tone: 'variant' };
-  }
-  if (data.lastError !== null) {
-    return { text: `Last alert failed · ${data.lastError}`, tone: 'critical' };
-  }
-  if (data.lastSentAt === null) {
-    return { text: 'No alert sent yet', tone: 'variant' };
-  }
-  return { text: `Last alert sent ${relative(data.lastSentAt, now)}`, tone: 'positive' };
-}
-
 export function PushStatusRow(): ReactNode {
   const project = useSettings().push_project_id;
-  const deliveries = usePushDeliveries();
+  const deliveries = usePushDeliveries(project !== null);
   const summary = useMinuteOf(
     (now) => deliverySummary(deliveries, now),
     (left, right) => left.text === right.text && left.tone === right.tone,
   );
+  const retry = project !== null && deliveries.isError && deliveries.data === undefined;
+  const configured = project !== null;
   return (
     <ListRow
       title="Alerts when the app is closed"
-      subtitle={
-        project === null
-          ? 'Not set up · phones get alerts while the app is open'
-          : `${project} · ${summary.text}`
-      }
-      subtitleTone={project === null ? 'variant' : summary.tone}
+      {...(configured ? { overline: project } : {})}
+      subtitle={configured ? summary.text : 'Not set up · phones get alerts while the app is open'}
+      subtitleTone={configured ? summary.tone : 'variant'}
+      wrapTitle
       wrapSubtitle
-      icon={project === null ? 'bellOff' : 'bell'}
-      iconTone={project === null ? 'variant' : 'positive'}
-      value={project === null ? 'Off' : 'On'}
+      icon={configured ? 'bell' : 'bellOff'}
+      iconTone={configured ? summary.tone : 'variant'}
+      value={configured ? 'On' : 'Off'}
+      {...(retry
+        ? {
+            value: 'Retry',
+            label: `${summary.text}. Retry alert delivery status`,
+            disabled: deliveries.isFetching,
+            onPress: (): void => {
+              background(deliveries.refetch(), 'push_delivery_status.refetch_failed');
+            },
+          }
+        : {})}
     />
   );
 }

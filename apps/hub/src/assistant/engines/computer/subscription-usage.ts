@@ -1,21 +1,14 @@
 import { z } from 'zod';
-import { AI_SUBSCRIPTION_USAGE, type AiSubscriptionUsage } from '@smarteverything/domain';
+import {
+  AI_SUBSCRIPTION_USAGE,
+  type AiChatRow,
+  type AiSubscriptionUsage,
+  type ProviderMetadata,
+} from '@smarteverything/domain';
+import type { Store } from '../../../store/store';
+import { nativeSubscriptionScope } from '../../../store/repositories/ai-weekly-subscription-history';
 import type { ComputerEvent } from './provider-state';
-const WINDOW = z.object({
-  usedPercent: z.number().nonnegative(),
-  windowDurationMins: z.number().positive().nullable(),
-  resetsAt: z.number().nullable(),
-});
-const LIMIT = z.object({
-  limitId: z.string().nullable(),
-  limitName: z.string().nullable(),
-  primary: WINDOW.nullable(),
-  secondary: WINDOW.nullable(),
-});
-const RATE_LIMITS = z.object({
-  rateLimits: LIMIT.nullable(),
-  rateLimitsByLimitId: z.record(z.string(), LIMIT).nullable(),
-});
+import { codexUsage } from '../../../codex/subscription-usage';
 const CLAUDE_LIMIT = z.object({
   status: z.string(),
   rateLimitType: z.string().optional(),
@@ -25,19 +18,33 @@ const CLAUDE_LIMIT = z.object({
 export function subscriptionUsage(
   event: ComputerEvent,
   now: string,
-  previous: AiSubscriptionUsage | undefined,
-): AiSubscriptionUsage | undefined {
-  if (event.kind === 'usage' && 'usage' in event) return codexUsage(event.usage.rate_limits, now);
+  previous: () => AiSubscriptionUsage | undefined,
+): { readonly current: AiSubscriptionUsage; readonly observed: AiSubscriptionUsage } | undefined {
+  if (event.kind === 'usage' && 'usage' in event) {
+    if (event.subscription_usage === undefined) return undefined;
+    return {
+      current: codexUsage(event.usage.rate_limits, event.subscription_usage.reported_at),
+      observed: event.subscription_usage,
+    };
+  }
   if (event.kind !== 'runtime' || event.type !== 'rate_limit_event') return undefined;
   const parsed = CLAUDE_LIMIT.safeParse(event.payload['rate_limit_info']);
   if (!parsed.success) return undefined;
-  return claudeUsage(parsed.data, now, previous);
+  const observed = claudeUsage(parsed.data, now);
+  const id = parsed.data.rateLimitType ?? 'unknown';
+  const known = previous();
+  return {
+    observed,
+    current: {
+      ...observed,
+      windows: [
+        ...(known?.runtime === 'claude' ? known.windows.filter((item) => item.id !== id) : []),
+        ...observed.windows,
+      ],
+    },
+  };
 }
-function claudeUsage(
-  info: z.infer<typeof CLAUDE_LIMIT>,
-  now: string,
-  previous: AiSubscriptionUsage | undefined,
-): AiSubscriptionUsage {
+function claudeUsage(info: z.infer<typeof CLAUDE_LIMIT>, now: string): AiSubscriptionUsage {
   const id = info.rateLimitType ?? 'unknown';
   const window = {
     id,
@@ -50,44 +57,24 @@ function claudeUsage(
     runtime: 'claude',
     reported_at: now,
     status: 'reported',
-    windows: [
-      ...(previous?.runtime === 'claude' ? previous.windows.filter((item) => item.id !== id) : []),
-      window,
-    ],
-  });
-}
-export function codexUsage(raw: unknown, now: string): AiSubscriptionUsage {
-  const parsed = RATE_LIMITS.safeParse(raw);
-  if (!parsed.success)
-    return { runtime: 'codex', reported_at: now, status: 'unavailable', windows: [] };
-  const limits = reportedLimits(parsed.data);
-  const windows = limits.flatMap(([key, limit]) =>
-    ['primary', 'secondary'].flatMap((slot) => {
-      const value = slot === 'primary' ? limit.primary : limit.secondary;
-      if (value === null) return [];
-      return [
-        {
-          id: JSON.stringify([key, slot]),
-          label: `${limit.limitName ?? key} · ${slot}`,
-          used_percent: value.usedPercent,
-          resets_at: value.resetsAt === null ? null : new Date(value.resetsAt * 1000).toISOString(),
-          window_duration_mins: value.windowDurationMins,
-        },
-      ];
-    }),
-  );
-  return AI_SUBSCRIPTION_USAGE.parse({
-    runtime: 'codex',
-    reported_at: now,
-    status: windows.length === 0 ? 'unavailable' : 'reported',
-    windows,
+    windows: [window],
   });
 }
 
-function reportedLimits(
-  value: z.infer<typeof RATE_LIMITS>,
-): readonly (readonly [string, z.infer<typeof LIMIT>])[] {
-  if (value.rateLimitsByLimitId !== null) return Object.entries(value.rateLimitsByLimitId);
-  if (value.rateLimits === null) return [];
-  return [['account', value.rateLimits]];
+export function metadataSubscriptionUsage(
+  metadata: ProviderMetadata,
+): AiSubscriptionUsage | undefined {
+  const raw = metadata.initialization['subscription_usage'];
+  return raw === undefined ? undefined : AI_SUBSCRIPTION_USAGE.parse(raw);
+}
+
+export function observeNativeSubscription(
+  store: Store,
+  chat: AiChatRow,
+  usage: AiSubscriptionUsage,
+): void {
+  const engine = chat.engine;
+  if (engine.kind === 'dsh' || engine.kind !== usage.runtime) return;
+  const scope = nativeSubscriptionScope(chat.profile_id, engine.kind, engine.device_id);
+  store.aiWeeklySubscriptionHistory.observe(scope, usage);
 }

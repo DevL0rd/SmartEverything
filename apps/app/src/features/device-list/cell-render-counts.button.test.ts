@@ -1,11 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import {
-  budgetCase,
-  renderVisual,
-  useCellEnvironment,
-  type Budget,
-  type Face,
-} from './cell-budget';
+import { vi } from 'vitest';
+import { budgetCase, type Budget, type Face } from './cell-budget';
 
 vi.mock('../../queries/use-screen-query', async () => (await import('./idle-queries')).idleQueries);
 
@@ -46,24 +40,3 @@ function budgetOf(name: string): Readonly<Record<'S' | 'M', Budget>> {
 
 budgetCase(BUTTON.name, BUTTON, budgetOf(BUTTON.name));
 budgetCase(GATEWAY.name, GATEWAY, budgetOf(GATEWAY.name));
-
-const VISUAL_LIMITS = [
-  ['tile', 48, 30],
-  ['card', 96, 30],
-  ['hero', 220, 30],
-] as const;
-
-describe('button and gateway visual node budgets', () => {
-  useCellEnvironment();
-
-  for (const [size, px, limit] of VISUAL_LIMITS) {
-    it(`draws a button within ${String(limit)} nodes at ${size} size`, () => {
-      const { count } = renderVisual(BUTTON, BUTTON.values, size, px);
-      expect(count).toBeLessThanOrEqual(limit);
-    });
-    it(`draws a gateway within ${String(limit)} nodes at ${size} size`, () => {
-      const { count } = renderVisual(GATEWAY, GATEWAY.values, size, px);
-      expect(count).toBeLessThanOrEqual(limit);
-    });
-  }
-});

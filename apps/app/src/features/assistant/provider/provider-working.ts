@@ -18,10 +18,14 @@ export function useProviderWorking(chat: AiChatRow): boolean {
   const working = useChatWorking(chat.id);
   const claude = useChatProvider(chat.id, nativeEnabled(chat, owner, 'claude'));
   const codex = useCodexProvider(chat.id, nativeEnabled(chat, owner, 'codex'));
-  if (chat.engine.kind === 'dsh') return working || harnessWorking(harness.data);
-  if (chat.engine.kind === 'claude') return working || claude.data?.state === 'working';
-  if (chat.engine.kind === 'codex') return working || codexWorking(codex.data?.state);
-  return working;
+  switch (chat.engine.kind) {
+    case 'dsh':
+      return working || harnessWorking(harness.data);
+    case 'claude':
+      return working || claude.data?.state === 'working';
+    case 'codex':
+      return working || codexWorking(codex.data?.state);
+  }
 }
 
 function harnessWorking(session: AiHarnessSession | undefined): boolean {

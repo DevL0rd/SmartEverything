@@ -8,17 +8,14 @@ import { Attachments } from './attachments';
 import { useMessageActions } from './message-actions';
 import { MessageFrame } from './message-frame';
 import { ReplyMeta } from './message-meta';
-import { MessagePreview } from './message-parts';
 
 function InlineImageMessage({ item }: { readonly item: MessageItem }): ReactNode {
   const actions = useMessageActions(item);
   return (
     <MessageFrame
       actions={actions}
-      preview={<MessagePreview item={item} className="bg-surface-1" />}
       align="start"
-      bar={<ReplyMeta row={item.row} onPress={actions.openDetails} />}
-      swipeable
+      bar={<ReplyMeta item={item} onPress={actions.openDetails} />}
       onQuote={() => {
         actions.run('quote');
       }}
@@ -46,9 +43,17 @@ export function inlineMessageItem(row: AssistantMessageRow): MessageItem {
     gap: null,
     divider: false,
     latestReply: false,
-    multiParty: false,
+    group: false,
+    participant: null,
+    host: false,
+    origin: null,
+    quote: null,
+    quoted: null,
+    mentions: null,
+    stats: null,
     waiting: false,
     replied: false,
+    costPeak: null,
     segment: null,
   };
 }

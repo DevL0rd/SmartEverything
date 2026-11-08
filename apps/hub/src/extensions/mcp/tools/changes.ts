@@ -158,7 +158,8 @@ function planned(context: ToolContext, asked: Change, into: Plan): void {
 
 function nounOf(context: ToolContext, commands: readonly CommandRequest[]): ResultNoun {
   return commands.every((command) => {
-    const device = command.device_id === null ? undefined : context.store.devices.find(command.device_id);
+    const device =
+      command.device_id === null ? undefined : context.store.devices.find(command.device_id);
     return device !== undefined && deviceFamily(device) === 'light';
   })
     ? 'light'

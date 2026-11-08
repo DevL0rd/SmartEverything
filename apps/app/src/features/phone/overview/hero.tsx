@@ -6,7 +6,7 @@ import { Card } from '../../../components/card';
 import { Glow } from '../../../components/glow';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { joinParts } from '../../../format/text';
 import { relative } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
@@ -17,7 +17,6 @@ import { DeviceVisual } from '../../device-visuals';
 import { RingButton, TorchButton } from '../card/face-controls';
 import { usePhoneFace, type PhoneFaceData } from '../card/use-phone-face';
 import { useOpenLink } from '../frame/open-link';
-import { bodyWidthOf } from '../model/sections';
 import { phoneReadingsOf } from '../phone-values';
 import { CONTEXT_TEXT } from '../phone-context-text';
 import { BatteryArc } from './battery-arc';
@@ -126,7 +125,7 @@ function HeroDetails({
 
 export function PhoneHero({ device }: { readonly device: Device }): ReactNode {
   const data = usePhoneFace(device);
-  const { width, onLayout } = useMeasuredWidth(undefined, bodyWidthOf(useAreaWidth()));
+  const { width, onLayout } = useMeasuredWidth(undefined, useFrameBodyWidth());
   const stacked = width < STACK_BELOW;
   const { word, readings, online } = data;
   const { line, place } = useDeviceDerived(
@@ -148,7 +147,7 @@ export function PhoneHero({ device }: { readonly device: Device }): ReactNode {
         className={stacked ? 'gap-3.5' : 'flex-row items-center gap-5'}
       >
         <View className="items-center">
-          <DeviceVisual device={device} size="hero" />
+          <DeviceVisual device={device} size="hero" interactive />
         </View>
         {stacked ? (
           <>

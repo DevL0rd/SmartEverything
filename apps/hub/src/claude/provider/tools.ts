@@ -1,4 +1,3 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'node:crypto';
 import {
   createSdkMcpServer,
@@ -8,6 +7,10 @@ import {
 import { JSON_VALUE, type ProviderTurn, type ProviderContent } from '@smarteverything/domain';
 import { z } from 'zod';
 import { ProviderPending } from './pending';
+
+type CallToolResult = Awaited<
+  ReturnType<SdkMcpToolDefinition<Record<string, z.ZodType>>['handler']>
+>;
 
 export interface ProviderToolResult {
   readonly text: string;

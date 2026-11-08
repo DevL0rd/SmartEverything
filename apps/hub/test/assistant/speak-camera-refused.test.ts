@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DeviceRow } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { Go2rtcError } from '../../src/cameras/go2rtc-client';
 import { systemClock } from '../../src/clock';
 import { speakOnce, type AnnouncingDeps, type SpeakJob } from '../../src/reach/announcing';
-import type { Saying, SpeechSink } from '../../src/speech/one-shot-speech';
+import type { Saying, SpeechRequest, SpeechSink } from '../../src/speech/one-shot-speech';
 import { CameraSpeakers } from '../../src/talk/camera-speaker';
 import { TalkFeeds } from '../../src/talk/feeds';
 import { testStore, type TestStore } from '../support/store';
@@ -18,6 +18,7 @@ const feeds = new TalkFeeds(new Logger('hub.test'));
 let opened: TestStore;
 let camera: DeviceRow;
 let sinks: SpeechSink[];
+let requests: SpeechRequest[];
 let outcomes: (string | null)[];
 let plays: number;
 
@@ -25,6 +26,7 @@ beforeEach(async () => {
   opened = await testStore();
   camera = furnishHome(opened.store).camera;
   sinks = [];
+  requests = [];
   outcomes = [];
   plays = 0;
   await feeds.start();
@@ -40,6 +42,7 @@ function depsOver(play: () => Promise<void>, ready: () => Promise<void>): Announ
   return {
     say: (request): Promise<Saying> => {
       sinks.push(request.sink);
+      requests.push(request);
       return Promise.resolve({ end: () => Promise.resolve() });
     },
     camera: {
@@ -65,12 +68,17 @@ function depsOver(play: () => Promise<void>, ready: () => Promise<void>): Announ
   };
 }
 
-function jobOn(id: string): SpeakJob {
+function jobOn(
+  id: string,
+  style: Partial<Pick<SpeakJob, 'priority' | 'volume' | 'voice'>> = {},
+): SpeakJob {
   return {
     id,
     profileId: 'person-1',
     clientId: null,
     text: 'hello',
+    priority: 'queue',
+    ...style,
     target: { kind: 'camera', device: camera, label: 'Living room camera' },
     done: (failure) => outcomes.push(failure),
   };
@@ -135,5 +143,28 @@ describe('speaking through a camera whose speaker cannot play', () => {
     expect(outcomes).toEqual([]);
     sinks[0]?.ended('finished', null);
     expect(outcomes).toEqual([null]);
+  });
+
+  it('queues a line behind what is playing and lets an interrupting line take the speaker over', async () => {
+    const deps = depsOver(() => Promise.resolve(), ready);
+    const open = vi.spyOn(deps.camera.speakers, 'open');
+    const queued = speakOnce(deps, jobOn('speech-1'));
+    await until(() => sinks.length === 1, 'the queued line to begin');
+    await queued;
+    const interrupting = speakOnce(deps, jobOn('speech-2', { priority: 'interrupt' }));
+    await until(() => sinks.length === 2, 'the interrupting line to begin');
+    await interrupting;
+    expect(open.mock.calls.map(([, id, owner]) => [id, owner])).toEqual([
+      ['speech-1', 'speech'],
+      ['speech-2', 'assistant'],
+    ]);
+  });
+
+  it('hands the voice and volume to the speech', async () => {
+    const deps = depsOver(() => Promise.resolve(), ready);
+    const speaking = speakOnce(deps, jobOn('speech-1', { voice: 'Kore', volume: 30 }));
+    await until(() => requests.length === 1, 'the speech to begin');
+    await speaking;
+    expect(requests[0]).toMatchObject({ voice: 'Kore', volume: 30 });
   });
 });

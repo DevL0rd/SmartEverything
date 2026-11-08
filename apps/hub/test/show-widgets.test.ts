@@ -1,5 +1,4 @@
 import {
-  DEFAULT_ENGINE,
   PLUGIN_MANIFEST,
   SHOW_WIDGETS_INPUT,
   chatWidgetsOf,
@@ -18,6 +17,7 @@ import type { HubTool, HubToolResult, ToolSource } from '../src/ai-tools/hub-too
 import { ToolHub } from '../src/ai-tools/tool-hub';
 import { FakeClock } from './support/fake-clock';
 import { testStore, type TestStore } from './support/store';
+import { TEST_ENGINE } from './support/engine';
 
 const MISSING = '99999999-9999-4999-8999-999999999999';
 
@@ -45,6 +45,7 @@ function message(
     steps: [],
     step_states: [],
     reply_to: null,
+    quote: null,
     chat_id: chatId,
     origin: null,
     embeds,
@@ -118,7 +119,7 @@ beforeEach(async () => {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   }).id;
   lamp = device('lamp-1', 'light');
   camera = device('cam-1', 'camera');
@@ -281,14 +282,8 @@ describe('where widget_show is offered', () => {
     expect(
       stablePrompt({
         name: 'A',
-        profileName: 'Sam',
-        role: 'owner',
+        aliases: [],
         homeName: 'H',
-        timeZone: 'UTC',
-        now: new Date('2026-10-08T10:00:00.000Z'),
-        boardTypes: [],
-        interruption: null,
-        chat: { title: 'T', id: chatId, kind: 'chat' },
         toolIndex: '',
         catalogue: '',
         instructions: '',

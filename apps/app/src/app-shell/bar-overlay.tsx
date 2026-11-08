@@ -11,11 +11,9 @@ import type { SlotAnchor } from './bar-slot';
 
 type OverlayKind = 'folder' | 'menu';
 
-interface OpenOverlay {
-  readonly kind: OverlayKind;
-  readonly key: string;
-  readonly anchor: Rect;
-}
+type OpenOverlay =
+  | { readonly kind: 'folder'; readonly key: string }
+  | { readonly kind: 'menu'; readonly key: string; readonly anchor: Rect };
 
 export interface BarOverlayControl {
   readonly open: OpenOverlay | null;
@@ -28,6 +26,10 @@ export function useBarOverlay(): BarOverlayControl {
   return {
     open,
     show: (kind) => (slot) => {
+      if (kind === 'folder') {
+        setOpen({ kind, key: slot.node.key });
+        return;
+      }
       measureAnchor(slot.ref, (anchor) => {
         setOpen({ kind, key: slot.node.key, anchor });
       });
@@ -54,10 +56,10 @@ export function BarOverlay({ control, model, edits, go, intent }: BarOverlayProp
   const { open, close } = control;
   const node = open === null ? undefined : nodeOf(model, open.key);
   if (open === null || node === undefined) return null;
-  if (open.kind === 'folder' && node.kind === 'folder') {
-    return (
-      <FolderTray folder={node} anchor={open.anchor} go={go} intent={intent} onClose={close} />
-    );
+  if (open.kind === 'folder') {
+    return node.kind === 'folder' ? (
+      <FolderTray folder={node} go={go} intent={intent} onClose={close} />
+    ) : null;
   }
   const items = slotMenuItems(node, {
     overflow: model.overflow,

@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { activateFlags } from '../developer/flags';
-import { resolveFlags } from '../developer/toggles';
-import { startPerf, stopPerf } from './install';
+import { resolveFlags, type DeveloperFlags } from '../developer/toggles';
+import { flushTimers, startPerf, stopPerf } from './install';
 import { rememberScreen, sinkOf, type PerfSink } from './sink';
 
 const started = vi.hoisted(() => {
-  const sessions: { stop: () => void }[] = [];
+  const sessions: { flags: DeveloperFlags; stop: () => void }[] = [];
   const screen = vi.fn();
   return { sessions, screen };
 });
 
 vi.mock('./impl/start', () => ({
-  startProbe: (): { sink: Partial<PerfSink>; stop: () => void } => {
+  startProbe: (flags: DeveloperFlags): { sink: Partial<PerfSink>; stop: () => void } => {
     const stop = vi.fn();
-    started.sessions.push({ stop });
+    started.sessions.push({ flags, stop });
     return { sink: { screen: started.screen }, stop };
   },
 }));
@@ -23,7 +23,7 @@ async function settle(): Promise<void> {
 }
 
 beforeEach(() => {
-  vi.stubGlobal('__DEV__', true);
+  vi.stubGlobal('__DEV__', false);
   started.sessions.length = 0;
   started.screen.mockClear();
   stopPerf();
@@ -62,10 +62,43 @@ describe('perf session', () => {
     expect(sinkOf()).not.toBeNull();
   });
 
+  it('keeps enabled collectors through option changes and ignores unchanged flags', async () => {
+    startPerf();
+    await flushTimers();
+    const flags = resolveFlags(
+      { 'perf.sampling': true, 'perf.fanout': true, 'perf.nav': true, 'perf.upload': true },
+      true,
+    );
+    activateFlags(flags);
+    startPerf();
+    await flushTimers();
+    startPerf();
+    await flushTimers();
+    expect(started.sessions).toHaveLength(2);
+    expect(started.sessions[1]?.flags).toEqual(flags);
+  });
+
   it('drops a start that was stopped while loading', async () => {
     startPerf();
     stopPerf();
     await settle();
+    expect(sinkOf()).toBeNull();
+    expect(started.sessions).toEqual([]);
+  });
+
+  it('installs nothing while developer mode is off', async () => {
+    activateFlags(resolveFlags({}, false));
+    startPerf();
+    await settle();
+    expect(started.sessions).toEqual([]);
+    expect(sinkOf()).toBeNull();
+  });
+
+  it('installs nothing for stored options while developer mode is off', async () => {
+    activateFlags(resolveFlags({ 'perf.sampling': true, 'perf.stalls': true }, false));
+    startPerf();
+    await settle();
+    expect(started.sessions).toEqual([]);
     expect(sinkOf()).toBeNull();
   });
 });

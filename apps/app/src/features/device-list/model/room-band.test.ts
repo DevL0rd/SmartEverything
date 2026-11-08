@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { roomIconOf, roomStatusLine } from './room-band';
+import { roomIconOf } from '../../../components/room-icon';
+import { roomStatusLine, selectedRoomStatusLine } from './room-band';
 
 describe('the icon of a room', () => {
   it('follows the kind of room in its name', () => {
@@ -26,6 +27,26 @@ describe('the live line of a room', () => {
   it('says all off when nothing is on and adds the offline count', () => {
     expect(roomStatusLine({ devices: 4, on: 0, offline: 2, lightsOn: 0 })).toBe(
       'All off · 2 offline',
+    );
+  });
+});
+
+describe('the device band under a selected room summary', () => {
+  it('keeps power, offline and light counts beside the cards', () => {
+    expect(selectedRoomStatusLine({ devices: 8, on: 3, offline: 2, lightsOn: 1 }, 8)).toBe(
+      '3 of 8 on · 2 offline · 1 light on',
+    );
+  });
+
+  it('counts shown devices when the visible room summary has fewer devices', () => {
+    expect(selectedRoomStatusLine({ devices: 1, on: 0, offline: 1, lightsOn: 0 }, 2)).toBe(
+      '2 devices shown · All off · 1 offline',
+    );
+  });
+
+  it('says all off when neither devices nor lights are on', () => {
+    expect(selectedRoomStatusLine({ devices: 4, on: 0, offline: 0, lightsOn: 0 }, 4)).toBe(
+      'All off',
     );
   });
 });

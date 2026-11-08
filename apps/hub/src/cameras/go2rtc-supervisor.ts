@@ -50,6 +50,7 @@ export class Go2rtcSupervisor {
   private running: RunningGo2rtc | null = null;
   private config: Go2rtcConfig | null = null;
   private queue: Promise<void> = Promise.resolve();
+  private stopping = false;
 
   constructor(
     private readonly options: Go2rtcOptions,
@@ -58,6 +59,11 @@ export class Go2rtcSupervisor {
 
   isRunning(): boolean {
     return this.running !== null;
+  }
+
+  expectStop(): void {
+    this.stopping = true;
+    this.running?.expectStop();
   }
 
   async start(config: Go2rtcConfig): Promise<RunningGo2rtc> {
@@ -82,7 +88,18 @@ export class Go2rtcSupervisor {
     return applied;
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    this.expectStop();
+    const stop = (): Promise<void> => this.stopRunning();
+    const stopped = this.queue.then(stop, stop);
+    this.queue = stopped.then(
+      () => undefined,
+      () => undefined,
+    );
+    return stopped;
+  }
+
+  private async stopRunning(): Promise<void> {
     const running = this.running;
     if (running === null) {
       throw new Go2rtcNotRunningError();
@@ -92,6 +109,9 @@ export class Go2rtcSupervisor {
   }
 
   private async restartWith(change: Partial<Go2rtcConfig>): Promise<boolean> {
+    if (this.stopping) {
+      return false;
+    }
     const current = this.config;
     if (current === null) {
       throw new Go2rtcNotRunningError();
@@ -101,7 +121,7 @@ export class Go2rtcSupervisor {
       return false;
     }
     try {
-      await this.stop();
+      await this.stopRunning();
       await this.start(next);
     } catch (cause) {
       this.options.exited(cause instanceof Error ? cause : new Error(String(cause)));

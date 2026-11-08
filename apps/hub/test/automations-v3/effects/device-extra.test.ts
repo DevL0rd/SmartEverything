@@ -7,7 +7,11 @@ import {
 } from '../../../src/automations/effects/device-ensure';
 import { DeviceFader, fadeLevels } from '../../../src/automations/effects/device-fade';
 import { DeviceRestorer } from '../../../src/automations/effects/device-restore';
-import type { DeviceSetRequest } from '../../../src/automations/effects/device-set';
+import type {
+  DeviceSetRequest,
+  DeviceSetter,
+  DeviceSetTogetherRequest,
+} from '../../../src/automations/effects/device-set';
 import { reportedWithin } from '../../../src/automations/effects/reported-value';
 import { actionsOfSnapshot, captureScene } from '../../../src/automations/effects/scene-capture';
 import { AutomationRunCancelledError } from '../../../src/automations/effects/run-abort';
@@ -210,22 +214,42 @@ describe('device fade', () => {
 });
 
 describe('device restore', () => {
-  it('sets power last and reports a refused member as skipped', async () => {
-    const setter = recordingSetter(
-      (request) => request.target.kind === 'devices' && request.target.deviceIds[0] === 'gone',
-    );
+  function togetherSetter(refused: readonly string[] = []): {
+    readonly calls: DeviceSetTogetherRequest[];
+    readonly setTogether: (
+      request: DeviceSetTogetherRequest,
+    ) => ReturnType<DeviceSetter['setTogether']>;
+  } {
+    const calls: DeviceSetTogetherRequest[] = [];
+    return {
+      calls,
+      setTogether: (request): ReturnType<DeviceSetter['setTogether']> => {
+        calls.push(request);
+        if (refused.includes(request.deviceId))
+          return Promise.reject(new ApiError('command_refused', 'offline'));
+        return Promise.resolve({ sent: [request.deviceId], skipped: [], note: null });
+      },
+    };
+  }
+
+  it('sends one request per device with power last and reports a refused device as skipped', async () => {
+    const setter = togetherSetter(['gone']);
     const result = await new DeviceRestorer(setter).restore(
       { lamp: { power: false, brightness: 30 }, gone: { power: true } },
       STAMP,
       testRun(),
     );
-    expect(setter.calls.map((call) => call.control)).toEqual(['brightness', 'power', 'power']);
+    expect(setter.calls.map((call) => call.deviceId)).toEqual(['lamp', 'gone']);
+    expect(setter.calls[0]?.changes).toEqual([
+      { control: 'brightness', value: 30 },
+      { control: 'power', value: false },
+    ]);
     expect(result.sent).toEqual(['lamp']);
     expect(result.skipped).toMatchObject([{ deviceId: 'gone', reason: 'unsupported' }]);
   });
 
   it('fails when nothing could be restored', async () => {
-    const setter = recordingSetter(() => true);
+    const setter = togetherSetter(['lamp']);
     await expect(
       new DeviceRestorer(setter).restore({ lamp: { power: true } }, STAMP, testRun()),
     ).rejects.toMatchObject({ code: 'command_refused' });

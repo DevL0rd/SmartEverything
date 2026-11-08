@@ -83,29 +83,29 @@ export function useChatHandoff(
     });
     const { directory, onSuccess, failure = 'Model not changed' } = options;
     const startedAt = Date.now();
+    const trace = { chatId: chat.id, routeId: engine.model_route_id };
+    const finished = (): typeof trace & { readonly durationMs: number } => ({
+      ...trace,
+      durationMs: Date.now() - startedAt,
+    });
     log.info('engine.handoff_started', {
-      chatId: chat.id,
-      routeId: engine.model_route_id,
+      ...trace,
       hasDirectory: directory !== undefined,
     });
-    change.mutate(directory === undefined ? request : { ...request, directory }, {
-      onSuccess: (result): void => {
-        log.info('engine.handoff_succeeded', {
-          chatId: chat.id,
-          routeId: engine.model_route_id,
-          durationMs: Date.now() - startedAt,
-        });
-        onSuccess?.(result);
-      },
-      onError: (error): void => {
-        log.error('engine.handoff_failed', error, {
-          chatId: chat.id,
-          routeId: engine.model_route_id,
-          durationMs: Date.now() - startedAt,
-        });
-        notify({ message: failure, error, tone: 'critical' });
-      },
-    });
+    const body = directory === undefined ? request : { ...request, directory };
+    background(
+      change.mutateAsync(body).then(
+        (result): void => {
+          log.info('engine.handoff_succeeded', finished());
+          onSuccess?.(result);
+        },
+        (error: unknown): void => {
+          log.error('engine.handoff_failed', error, finished());
+          notify({ message: failure, error, tone: 'critical' });
+        },
+      ),
+      'engine.handoff_callback_failed',
+    );
   };
 }
 

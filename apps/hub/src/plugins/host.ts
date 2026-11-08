@@ -3,7 +3,6 @@ import { currentExecutionAuthority, hubOriginated } from '../assistant/turn-auth
 import { resetPluginCallAuthority, withPluginCallAuthority } from './call-authority';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
 import {
   ApiError,
   MCP_PATHS,
@@ -13,6 +12,7 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { failure, type HubToolResult, type ToolCaller } from '../ai-tools/hub-tool';
+import type { HubLayout } from '../data-layout';
 import type { Store } from '../store/store';
 import type { BuiltinPlugin, PluginConfiguration } from './builtin/contract';
 import type { BuiltinContextOptions } from './builtin-context';
@@ -22,6 +22,7 @@ import { contributionsOf, type ContributionOptions, type Contributions } from '.
 import { McpRuntime } from './mcp-runtime';
 import type { PluginSecrets } from './plugin-secrets';
 import { PluginSlot } from './plugin-slot';
+import { pluginLogger } from './plugin-logs';
 import { callbackFor } from './plugin-tokens';
 import type { PluginRuntime, RuntimeSinks, RuntimeTool } from './runtime';
 
@@ -36,7 +37,7 @@ export interface PluginHostOptions {
     change: Partial<PluginConfiguration>,
     by?: ToolCaller,
   ) => Promise<void>;
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
   readonly mcpUrl: () => string;
   readonly now: () => Date;
   readonly log: Logger;
@@ -68,7 +69,10 @@ export class PluginHost {
     const row = this.options.store.plugins.byId(id);
     const data = this.dataOf(id);
     await mkdir(data, { recursive: true, mode: 0o700 });
+    const log = pluginLogger(this.options.log, id);
     const slot = new PluginSlot({
+      id,
+      log,
       factory: (sinks): PluginRuntime =>
         this.runtimeOf(this.options.store.plugins.byId(id), data, sinks),
       contributions: (log): Contributions =>
@@ -79,7 +83,7 @@ export class PluginHost {
         ),
       status: (status, detail): void => {
         this.options.store.plugins.update(id, { status, statusDetail: detail });
-        this.options.log.info('plugin.status', {
+        log.info('plugin.status', {
           plugin: id,
           status,
           ...(detail === null ? {} : { detail }),
@@ -92,6 +96,7 @@ export class PluginHost {
     });
     this.slots.set(id, slot);
     await slot.start();
+    this.changed();
   }
 
   async halt(id: string): Promise<void> {
@@ -107,7 +112,7 @@ export class PluginHost {
   }
 
   dataOf(id: string): string {
-    return join(this.options.dataDirectory, 'plugins', id);
+    return this.options.layout.system.plugins(id);
   }
 
   applyLive(id: string, settings: Readonly<Record<string, JsonValue>>): void {
@@ -212,7 +217,12 @@ export class PluginHost {
         },
       });
     }
-    return new McpRuntime(row.manifest, () => this.connect(row, data), sinks);
+    return new McpRuntime(
+      row.manifest,
+      () => this.connect(row, data),
+      sinks,
+      (tool, args, caller) => this.call(row.id, tool, args, caller),
+    );
   }
 
   private connect(row: PluginRow, data: string): Connection {

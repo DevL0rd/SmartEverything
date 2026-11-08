@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { FilterChip, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -14,12 +15,12 @@ const body = (
     <FilterChip label="Status" value="Offline" icon="wifi" active onPress={() => undefined} />
   </Row>
 );
-export const Chips = () => (
+export const Chips = (): ReactElement => (
   <Stage theme="dark" width={520}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     {body}
   </Stage>

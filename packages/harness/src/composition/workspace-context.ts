@@ -1,5 +1,5 @@
 const MACHINE_FOLDER =
-  'Ordinary native file paths and shell workdirs refer to this selected machine and its current working directory. Use set_working_directory to change the primary folder and index context in this chat.';
+  'Ordinary native file paths and shell workdirs refer to this selected machine and its current working directory. Use set_working_directory to change the primary folder and index context in this chat. A dev server started here on localhost opens in the app with browser_control open and its port.';
 const CENTRAL_FILES =
   'Central chat-owned files are separate. Use project_read and project_edit with workspace/ or temporary/ paths, and browser_control open with a path to show a file or folder in the app. They stay on the Hub across machine changes and are deleted with the chat. Files are never copied or mounted automatically.';
 const CHAT_FOLDER =

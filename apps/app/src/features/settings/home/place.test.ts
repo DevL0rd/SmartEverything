@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sunLines, timeZoneOptions } from './place';
+import { matchingTimeZone, sunLines, timeZoneOptions } from './place';
 
 describe('sunLines', () => {
   it('gives sunrise and sunset in the clock of the home zone', () => {
@@ -34,5 +34,20 @@ describe('timeZoneOptions', () => {
 
   it('builds the list once', () => {
     expect(timeZoneOptions()).toBe(timeZoneOptions());
+  });
+});
+
+describe('matchingTimeZone', () => {
+  it.each([
+    ['America/Catamarca', 'America/Catamarca'],
+    ['America/Argentina/ComodRivadavia', 'America/Catamarca'],
+    ['US/Eastern', 'America/New_York'],
+    ['Etc/UTC', 'UTC'],
+  ])('finds the picker option for %s', (zone, expected) => {
+    expect(matchingTimeZone(zone, timeZoneOptions() ?? [])).toBe(expected);
+  });
+
+  it('keeps an unrecognized time zone unselected', () => {
+    expect(matchingTimeZone('Invalid/Zone', timeZoneOptions() ?? [])).toBeNull();
   });
 });

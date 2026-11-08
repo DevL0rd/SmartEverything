@@ -1,25 +1,51 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Skeleton } from '../../../components/skeleton';
+import Animated from 'react-native-reanimated';
+import { cn } from '../../../design/cn';
+import { useAnimationGate } from '../../../design/animation-gate';
+import { BREATHE, EASE_IN_OUT, loopStyle, type Loop } from '../../../design/loops';
+import { useScopeVisible } from '../../../design/visibility';
+
+const SHIMMER: Loop = { name: BREATHE, ms: 800, easing: EASE_IN_OUT, alternate: true };
+
+const BONE = 'bg-surface-2';
+
+const LINE = cn(BONE, 'h-3 rounded-full');
+
+function OwnBone({ className }: { readonly className: string }): ReactNode {
+  return (
+    <View className="items-end">
+      <View className={cn(BONE, 'max-w-17/20 rounded-bubble rounded-br-tail', className)} />
+    </View>
+  );
+}
+
+function ReplyBone({ widths }: { readonly widths: readonly string[] }): ReactNode {
+  return (
+    <View className="gap-1">
+      {widths.map((width) => (
+        <View key={width} className={cn(LINE, width)} />
+      ))}
+    </View>
+  );
+}
 
 export function ThreadSkeleton(): ReactNode {
+  const { moving } = useAnimationGate(true, useScopeVisible());
   return (
     <View
       accessibilityLabel="Loading messages"
-      className="w-full max-w-reading flex-1 justify-end gap-6 self-center px-gutter pb-6"
+      className="w-full flex-1 justify-end px-gutter pb-4"
     >
-      <View className="items-end pl-24">
-        <Skeleton shape="block" className="h-14 w-3/4 rounded-xl" />
-      </View>
-      <View className="gap-2">
-        <Skeleton shape="line" />
-        <Skeleton shape="line" className="w-5/6" />
-        <Skeleton shape="line" className="w-2/3" />
-      </View>
-      <View className="gap-2">
-        <Skeleton shape="line" className="w-4/5" />
-        <Skeleton shape="line" className="w-1/2" />
-      </View>
+      <Animated.View aria-hidden style={loopStyle(SHIMMER, moving)} className="gap-4">
+        <OwnBone className="h-9.5 w-45" />
+        <View className="gap-2">
+          <View className={cn(BONE, 'h-3.5 w-37.5 rounded-full')} />
+          <ReplyBone widths={['w-full', 'w-23/25', 'w-16/25']} />
+        </View>
+        <OwnBone className="h-15 w-60" />
+        <ReplyBone widths={['w-full', 'w-39/50']} />
+      </Animated.View>
     </View>
   );
 }

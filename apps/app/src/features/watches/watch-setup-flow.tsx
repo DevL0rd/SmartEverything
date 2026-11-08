@@ -39,6 +39,7 @@ function Candidates({
         <ListRow
           key={watch.address}
           title={watch.name}
+          wrapTitle
           subtitle={watch.deviceId === null ? watch.address : 'Already added'}
           icon="watch"
           disabled={watch.deviceId !== null}
@@ -106,6 +107,7 @@ function CandidatesError({
       tone="critical"
       title="Couldn’t read your watches"
       body={problemOf(error)}
+      wrapBody
       action={{
         label: 'Try again',
         onPress: () => {
@@ -144,6 +146,7 @@ function Picking({
       <EmptyState
         icon="watch"
         title="No watches found"
+        compact
         body="Bind your watch in Mi Fitness first, then try again."
       />
     );

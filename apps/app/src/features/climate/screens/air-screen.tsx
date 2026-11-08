@@ -27,7 +27,8 @@ import {
 import { useClimateModels } from '../model/climate-devices';
 import { background } from '@smarteverything/logging';
 
-const CHART_HEIGHT = 220;
+const CHART_HEIGHT = 192;
+const MIN_CHART_WIDTH = 420;
 
 function MetricChart({
   metric,
@@ -40,7 +41,7 @@ function MetricChart({
 }): ReactNode {
   const history = useAirHistory(sources, range);
   if (history.isPending) {
-    return <Skeleton shape="block" className="h-55" />;
+    return <Skeleton shape="block" className="h-48" />;
   }
   if (history.isError) {
     return (
@@ -101,21 +102,28 @@ export function AirScreen(): ReactNode {
   const header = <PageHeader title="Air history" />;
   if (metrics.length === 0) {
     return (
-      <Screen header={header} maxWidth="reading">
-        <EmptyState
-          icon="activity"
-          title="No air readings yet"
-          body="Purifiers and air sensors keep a history here."
-          action={<Button label="Back to Devices" href={href.devices()} />}
-        />
+      <Screen header={header} maxWidth="full">
+        <View className="w-full max-w-reading self-start">
+          <EmptyState
+            icon="activity"
+            title="No air readings yet"
+            body="Purifiers and air sensors keep a history here."
+            action={<Button label="Back to Devices" href={href.devices()} />}
+          />
+        </View>
       </Screen>
     );
   }
   return (
-    <Screen header={header} maxWidth="detail">
+    <Screen header={header} maxWidth="full">
       <View className="gap-section-gap">
         <Segmented label="Period" options={AIR_RANGES} value={range} onChange={setRange} />
-        <Grid minItemWidth={420} maxColumns={2}>
+        <Grid
+          minItemWidth={MIN_CHART_WIDTH}
+          maxColumns={metrics.length}
+          cellClassName="max-w-detail"
+          stretchLastRow={false}
+        >
           {metrics.map((entry) => (
             <MetricCard
               key={entry.metric}

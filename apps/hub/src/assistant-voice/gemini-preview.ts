@@ -6,13 +6,14 @@ import {
   type UsageMetadata,
 } from '@google/genai';
 import {
+  VOICE_PREVIEW_RATE,
   VOICE_PREVIEW_TEXT,
   VOICE_PREVIEW_TIMEOUT_MS,
   type CallVoice,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { MissingGeminiKeyError } from './gemini';
-import { previewWav } from './preview-audio';
+import { pcmWav } from '../speech/pcm-wav';
 import { messageOf } from '@smarteverything/logging';
 
 const PREVIEW_OUTPUT_TOKENS = 256;
@@ -94,7 +95,7 @@ class SampleRun {
   private complete(): void {
     if (this.chunks.length === 0)
       throw new VoicePreviewError('Gemini Live returned no sample audio.');
-    const wav = previewWav(Buffer.concat(this.chunks));
+    const wav = pcmWav(Buffer.concat(this.chunks), VOICE_PREVIEW_RATE);
     this.finish();
     this.resolve(wav);
   }

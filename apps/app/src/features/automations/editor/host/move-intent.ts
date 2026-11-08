@@ -1,78 +1,114 @@
-import type { Layout } from '@smarteverything/domain';
-import type { SceneNode } from '../../model/canvas/contract';
-import { programOrder } from '../../model/editor/selection';
-import type { IntentEnv } from './intent-env';
+import type { Layout, NodeLayout } from '@smarteverything/domain';
+import { layoutGraph } from '@smarteverything/flow/graph/layout';
+import { z } from 'zod';
+import {
+  plural,
+  refuse,
+  type Applied,
+  type GraphDocument,
+  type IntentRuntime,
+  type Planned,
+} from './intent-env';
 
-export interface MovePatch {
+export const MOVE_REQUEST = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('drag'),
+    moves: z.array(z.strictObject({ id: z.string().min(1), x: z.number(), y: z.number() })).min(1),
+  }),
+  z.strictObject({
+    kind: z.literal('nudge'),
+    ids: z.array(z.string().min(1)).min(1),
+    dx: z.number(),
+    dy: z.number(),
+  }),
+]);
+
+export type MoveRequest = z.infer<typeof MOVE_REQUEST>;
+
+interface Placement {
   readonly id: string;
   readonly x: number;
   readonly y: number;
 }
 
-interface Shift {
-  readonly dx: number;
-  readonly dy: number;
+export const MOVED_NOTHING = 'Nothing moved.';
+
+function spotOf(layout: Layout, id: string): { x: number; y: number } | undefined {
+  return layout.nodes[id] ?? layout.comments.find((comment) => comment.id === id);
 }
 
-const NO_SHIFT: Shift = { dx: 0, dy: 0 };
-
-function displacements(
-  patches: readonly MovePatch[],
-  byId: ReadonlyMap<string, SceneNode>,
-): ReadonlyMap<string, Shift> {
-  const total = new Map<string, Shift>();
-  for (const patch of patches) {
-    const node = byId.get(patch.id);
-    if (node !== undefined) total.set(patch.id, { dx: patch.x - node.x, dy: patch.y - node.y });
+function placementsOf(layout: Layout, request: MoveRequest): readonly Placement[] {
+  if (request.kind === 'drag') {
+    return request.moves.filter((move) => spotOf(layout, move.id) !== undefined);
   }
-  return total;
+  return request.ids.flatMap((id) => {
+    const at = spotOf(layout, id);
+    return at === undefined ? [] : [{ id, x: at.x + request.dx, y: at.y + request.dy }];
+  });
 }
 
-function inheritedShift(
-  id: string,
-  byId: ReadonlyMap<string, SceneNode>,
-  total: ReadonlyMap<string, Shift>,
-): Shift {
-  let parent = byId.get(id)?.parentId ?? null;
-  while (parent !== null) {
-    const shift = total.get(parent);
-    if (shift !== undefined) return shift;
-    parent = byId.get(parent)?.parentId ?? null;
-  }
-  return NO_SHIFT;
-}
-
-function ownShifts(
-  patches: readonly MovePatch[],
-  byId: ReadonlyMap<string, SceneNode>,
-): ReadonlyMap<string, Shift> {
-  const total = displacements(patches, byId);
-  const own = new Map<string, Shift>();
-  for (const [id, shift] of total) {
-    const inherited = inheritedShift(id, byId, total);
-    const dx = shift.dx - inherited.dx;
-    const dy = shift.dy - inherited.dy;
-    if (dx !== 0 || dy !== 0) own.set(id, { dx, dy });
-  }
-  return own;
-}
-
-function shiftLayout(layout: Layout, shifts: ReadonlyMap<string, Shift>): Layout {
+function movedLayout(layout: Layout, placements: readonly Placement[]): Layout {
   const nodes = { ...layout.nodes };
-  for (const [id, shift] of shifts) {
-    const current = layout.nodes[id] ?? { x: 0, y: 0 };
-    nodes[id] = { ...current, x: current.x + shift.dx, y: current.y + shift.dy };
+  let changed = false;
+  for (const { id, x, y } of placements) {
+    const current = layout.nodes[id];
+    if (current === undefined || (current.x === x && current.y === y)) continue;
+    nodes[id] = { ...current, x, y };
+    changed = true;
   }
-  return { ...layout, nodes };
+  const comments = layout.comments.map((comment) => {
+    const hit = placements.find((placement) => placement.id === comment.id);
+    if (hit === undefined || (hit.x === comment.x && hit.y === comment.y)) return comment;
+    changed = true;
+    return { ...comment, x: hit.x, y: hit.y };
+  });
+  return changed ? { ...layout, nodes, comments } : layout;
 }
 
-export function moveNodes(env: IntentEnv, patches: readonly MovePatch[]): void {
-  const scene = env.scene();
-  if (scene.mode === 'compact') return;
-  const known = new Set(programOrder(env.store.state.get().program));
-  const wanted = patches.filter((patch) => known.has(patch.id));
-  const byId = new Map(scene.nodes.map((node) => [node.id, node] as const));
-  const shifts = ownShifts(wanted, byId);
-  if (shifts.size === 0) return;
-  env.store.editLayout((layout) => shiftLayout(layout, shifts));
+export function planMove(doc: GraphDocument, request: MoveRequest): Planned {
+  const placements = placementsOf(doc.layout, request);
+  const count = plural(placements.length, 'step', 'steps');
+  return {
+    ok: true,
+    ops: [],
+    layout: (_applied: Applied, layout: Layout) => movedLayout(layout, placements),
+    unchanged: MOVED_NOTHING,
+    message: () => ({ announcement: `Moved ${count}.` }),
+  };
+}
+
+function sameSpot(a: NodeLayout | undefined, b: NodeLayout): boolean {
+  return a?.x === b.x && a.y === b.y && a.collapsed === b.collapsed;
+}
+
+function tidied(layout: Layout, nodes: Layout['nodes']): Layout {
+  const merged: Record<string, NodeLayout> = { ...layout.nodes };
+  let changed = false;
+  for (const [id, at] of Object.entries(nodes)) {
+    const collapsed = layout.nodes[id]?.collapsed;
+    const next = collapsed === undefined ? at : { ...at, collapsed };
+    if (sameSpot(layout.nodes[id], next)) continue;
+    merged[id] = next;
+    changed = true;
+  }
+  return changed ? { ...layout, nodes: merged } : layout;
+}
+
+export function planTidy(doc: GraphDocument, rt: IntentRuntime): Planned {
+  const result = layoutGraph(doc.program, {
+    kinds: rt.kinds,
+    direction: rt.direction,
+    density: rt.density,
+    sizes: rt.sizes,
+  });
+  if (result.problemCount > 0) {
+    return refuse(`Fix ${plural(result.problemCount, 'problem', 'problems')} to tidy everything.`);
+  }
+  return {
+    ok: true,
+    ops: [],
+    layout: (_applied, layout) => tidied(layout, result.nodes),
+    unchanged: 'Already tidy.',
+    message: () => ({ announcement: 'Tidied up the layout.' }),
+  };
 }

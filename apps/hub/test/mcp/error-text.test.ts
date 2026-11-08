@@ -85,12 +85,14 @@ describe('refusal wording', () => {
     );
   });
 
-  it('shows the class and the redacted message of an unexpected failure', () => {
+  it('shows the class and the message of an unexpected failure', () => {
     const refusal = internalRefusal(
       new TypeError('fetch failed for https://secret.example/path from 192.168.1.20'),
     );
     expect(refusal.code).toBe('internal');
-    expect(refusal.message).toBe('TypeError: fetch failed for [redacted] from [redacted]');
+    expect(refusal.message).toBe(
+      'TypeError: fetch failed for https://secret.example/path from 192.168.1.20',
+    );
   });
 
   it('cut a very long failure message', () => {

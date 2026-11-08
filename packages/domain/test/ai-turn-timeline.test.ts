@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
   CHAT_TIMELINE_EMBED,
+  CHAT_TODOS_EMBED,
+  chatTodosIn,
+  chatTodosOf,
   TIMELINE_BUDGET_CHARS,
   TIMELINE_FIELD_CHARS,
   boundedTimeline,
@@ -10,6 +13,8 @@ import {
   COMPACT_TEXT_CHARS,
   COMPACT_LINK_CHARS,
   toolResultPage,
+  PLAN_TOOL_NAME,
+  TODO_TOOL_NAME,
   type ChatTimelineEmbed,
   type ChatTimelineTool,
 } from '../src';
@@ -63,14 +68,10 @@ describe('boundedTimeline', () => {
     expect(shown.input_chars).toBeUndefined();
   });
 
-  it('reports the length of a clipped input as well', () => {
+  it('never cuts an input, however long', () => {
     const embed = embedOf(tool('a', 'y'.repeat(100), 'out'));
 
-    const shown = toolAt(boundedTimeline(embed, 10), 1);
-
-    expect(shown.input).toHaveLength(10);
-    expect(shown.input_chars).toBe(100);
-    expect(shown.output_chars).toBeUndefined();
+    expect(boundedTimeline(embed, 10)).toBe(embed);
   });
 
   it('shares the whole budget between the fields of many tool calls', () => {
@@ -149,6 +150,7 @@ describe('toolResultPage', () => {
   });
 });
 
+const TODO_INPUT = z.object({ todos: z.array(z.object({ content: z.string() })) });
 const COMPACTED = z.object({ status: z.string(), rows: z.array(z.unknown()), text: z.string() });
 const LINKED = z.object({ body: z.string() });
 
@@ -241,6 +243,63 @@ describe('compactTimeline on both fields', () => {
   });
 });
 
+describe('the wire form of a long chat', () => {
+  const todos = Array.from({ length: 120 }, (_, index) => ({
+    content: `step ${String(index)} ${'detail '.repeat(80)}`,
+    status: index < 60 ? 'completed' : 'pending',
+  }));
+  const todoInput = JSON.stringify({ todos });
+  const called = (name: string, callId: string, input: string): ChatTimelineTool => ({
+    ...tool(callId, input, 'ok'),
+    name,
+    title: name,
+  });
+  const wired = (...tools: ChatTimelineTool[]): ChatTimelineEmbed =>
+    compactTimeline(boundedTimeline(embedOf(...tools)));
+
+  it('keeps a large task list valid and whole among 300 tool calls', () => {
+    const calls = Array.from({ length: 300 }, (_, index) =>
+      tool(`call-${String(index)}`, JSON.stringify({ command: `echo ${String(index)}` }), 'z'),
+    );
+    const embed = wired(
+      ...calls.slice(0, 150),
+      called(TODO_TOOL_NAME, 'todo', todoInput),
+      ...calls.slice(150),
+    );
+
+    const shown = toolAt(embed, 151);
+
+    expect(shown.input).toBe(todoInput);
+    expect(shown.input_chars).toBeUndefined();
+    expect(TODO_INPUT.parse(JSON.parse(shown.input ?? '')).todos).toHaveLength(todos.length);
+  });
+
+  it('keeps a plan and a background command whole', () => {
+    const plan = JSON.stringify({ plan: `# Plan\n${'step\n'.repeat(2_000)}` });
+    const command = JSON.stringify({ command: 'x'.repeat(3_000), run_in_background: true });
+
+    const embed = wired(called(PLAN_TOOL_NAME, 'plan', plan), called('bash', 'job', command));
+
+    expect(toolAt(embed, 1).input).toBe(plan);
+    expect(toolAt(embed, 2).input).toBe(command);
+  });
+
+  it('still compacts the long input of an ordinary tool as valid JSON', () => {
+    const write = JSON.stringify({ path: 'a.txt', content: 'x'.repeat(5_000) });
+
+    const shown = toolAt(wired(called('write_file', 'w', write)), 1);
+
+    expect(shown.input_chars).toBe(write.length);
+    expect(JSON.parse(shown.input ?? '')).toMatchObject({ path: 'a.txt' });
+  });
+
+  it('never cuts an input that is not JSON', () => {
+    const text = 'x'.repeat(5_000);
+
+    expect(toolAt(wired(called('write_file', 'w', text)), 1).input).toBe(text);
+  });
+});
+
 describe('steer parts', () => {
   const steer = {
     kind: 'steer' as const,
@@ -257,5 +316,40 @@ describe('steer parts', () => {
 
     expect(boundedTimeline(embed)).toBe(embed);
     expect(compactTimeline(embed)).toBe(embed);
+  });
+});
+
+describe('the checklist a reply saved', () => {
+  const items = [
+    { content: 'Build the page', status: 'in_progress' },
+    { content: 'Verify it', status: 'pending' },
+  ];
+
+  it('reads the list the tool was given', () => {
+    expect(chatTodosOf('todo_write', JSON.stringify({ todos: items }))).toEqual({
+      kind: 'chat_todos',
+      version: 1,
+      items,
+    });
+    expect(chatTodosOf('todo_write', { todos: items })).toEqual({
+      kind: 'chat_todos',
+      version: 1,
+      items,
+    });
+  });
+
+  it('reads nothing from another tool, a broken list or no input', () => {
+    expect(chatTodosOf('read', JSON.stringify({ todos: items }))).toBeNull();
+    expect(chatTodosOf('todo_write', null)).toBeNull();
+    expect(chatTodosOf('todo_write', 'not json')).toBeNull();
+    expect(
+      chatTodosOf('todo_write', JSON.stringify({ todos: [{ content: 'x', status: '?' }] })),
+    ).toBeNull();
+  });
+
+  it('finds the saved checklist among a reply embed list', () => {
+    const saved = CHAT_TODOS_EMBED.parse({ kind: 'chat_todos', version: 1, items });
+    expect(chatTodosIn([{ kind: 'chat_timeline' }, saved])).toEqual(saved);
+    expect(chatTodosIn([{ kind: 'chat_timeline' }])).toBeNull();
   });
 });

@@ -1,8 +1,19 @@
 import { ApiError, API_ENDPOINTS } from '@smarteverything/domain';
-import type { ServerContext } from '../context';
+import { admitChatExecution } from '../../assistant/native-helpers';
+import type { ChatDirectory } from '../../assistant/chat-directory';
+import type { ComputerProviders } from '../../assistant/computer-providers';
+import type { Store } from '../../store/store';
 import { bound } from '../router';
-import { clientOf, profileIdOf, type Caller } from '../auth';
-export const nativeCommandRoutes = (context: ServerContext) =>
+import { directClient, profileIdOf, type Caller } from '../auth';
+export interface NativeCommandContext {
+  readonly store: Store;
+  readonly assistant: {
+    readonly chats: Pick<ChatDirectory, 'own'>;
+    readonly computerProviders: Pick<ComputerProviders, 'get'>;
+  };
+}
+
+export const nativeCommandRoutes = (context: NativeCommandContext) =>
   ({
     listAiChatNativeCommands: bound(
       API_ENDPOINTS.listAiChatNativeCommands,
@@ -36,22 +47,16 @@ export const nativeCommandRoutes = (context: ServerContext) =>
     ),
   }) as const;
 function owned(
-  context: ServerContext,
+  context: NativeCommandContext,
   caller: Caller,
   chatId: string,
 ): {
-  readonly chat: ReturnType<ServerContext['assistant']['chats']['own']>;
-  readonly commands: NonNullable<
-    ReturnType<ServerContext['assistant']['computerProviders']['get']>
-  >['commands'];
+  readonly chat: ReturnType<ChatDirectory['own']>;
+  readonly commands: NonNullable<ReturnType<ComputerProviders['get']>>['commands'];
   readonly clientId: string;
 } {
-  if (
-    caller.kind !== 'client' ||
-    caller.via !== undefined ||
-    caller.pluginId !== undefined ||
-    caller.pluginRequester !== undefined
-  )
+  const client = directClient(caller);
+  if (client === undefined)
     throw new ApiError(
       'forbidden',
       'Native commands require the owner’s direct authenticated app request.',
@@ -60,6 +65,7 @@ function owned(
     { profileId: profileIdOf(context.store, caller), role: 'owner' },
     chatId,
   );
+  admitChatExecution(chat);
   if (chat.engine.kind !== 'codex' && chat.engine.kind !== 'claude')
     throw new ApiError(
       'conflict',
@@ -67,5 +73,5 @@ function owned(
     );
   const runner = context.assistant.computerProviders.get(chat.engine.kind);
   if (runner === undefined) throw new ApiError('conflict', 'The native provider is starting.');
-  return { chat, commands: runner.commands, clientId: clientOf(caller).id };
+  return { chat, commands: runner.commands, clientId: client.id };
 }

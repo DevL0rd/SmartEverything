@@ -50,6 +50,7 @@ interface Rig {
   readonly controls: () => PeopleControls;
   readonly restart: () => void;
   readonly kinds: () => string[];
+  readonly moves: () => string[];
   readonly phone: { sighting: PhoneSighting };
   readonly state: () => { readonly clients: ClientRegistry; readonly people: PeopleRegistry };
 }
@@ -60,6 +61,7 @@ function rig(): Rig {
   const emit = (event: PluginEvent): void => {
     events.push(event);
   };
+  const moves: string[] = [];
   const phone: { sighting: PhoneSighting } = { sighting: { paired: false, place: null } };
   const clientRecords = memoryRecords();
   const peopleRecords = memoryRecords();
@@ -69,7 +71,13 @@ function rig(): Rig {
     people: new PeopleRegistry(
       peopleRecords,
       emit,
-      { profiles: () => profiles, phone: () => phone.sighting },
+      {
+        profiles: () => profiles,
+        phone: () => phone.sighting,
+        presenceChanged: (move): void => {
+          moves.push(`${move.home ? 'home' : 'away'}:${move.name}:${move.at}`);
+        },
+      },
       log,
     ),
   });
@@ -96,6 +104,7 @@ function rig(): Rig {
     restart: (): void => {
       state = build();
     },
+    moves: () => [...moves],
     kinds: () =>
       events
         .filter((event) => event.kind.startsWith('person_'))
@@ -142,6 +151,10 @@ describe('known people from network devices', () => {
     const gone = home.look([], GRACE_MS + 3_000);
     expect(gone.find((person) => person.name === 'Anna')?.home).toBe(false);
     expect(home.kinds()).toEqual(['person_arrived:Anna', 'person_left:Anna']);
+    expect(home.moves().map((move) => move.split(':').slice(0, 2).join(':'))).toEqual([
+      'home:Anna',
+      'away:Anna',
+    ]);
   });
 
   it('does not announce a false departure or arrival after a hub restart', () => {
@@ -187,6 +200,7 @@ describe('people with an account', () => {
     const maria = home.look([], 2_000).find((person) => person.id === MARIA);
     expect(maria).toMatchObject({ home: true, viaPhone: true, profile: true });
     expect(home.kinds()).toEqual(['person_arrived:Maria']);
+    expect(home.moves()).toEqual([`home:Maria:${at(2_000).toISOString()}`]);
   });
 
   it('uses devices assigned to the profile like any other person and hides profiles with nothing to sense', () => {

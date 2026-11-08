@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { Logger } from '@smarteverything/logging';
 import type { Session, WebContents } from 'electron';
 import {
   BrowserPolicyError,
@@ -10,7 +11,9 @@ import {
 } from '@smarteverything/domain';
 import { projectAsset } from './project-assets.js';
 import type { NativeHtmlPage, NativeHtmlTransportPort } from './page.js';
+import { DesktopServerRelay } from './server-relay.js';
 
+const log = new Logger('desktop.html-preview');
 interface Projection extends NativeHtmlPage {
   readonly id: string;
   readonly alias: string;
@@ -21,47 +24,57 @@ interface Projection extends NativeHtmlPage {
 interface Alias extends NativeHtmlPage {
   readonly controller: AbortController;
   readonly projections: Set<string>;
+  readonly relay: DesktopServerRelay | undefined;
+  readonly ready: Promise<void>;
 }
 export class DesktopHtmlPreviews {
   private readonly aliases = new Map<string, Alias>();
   private readonly projections = new Map<string, Projection>();
   private readonly sessions = new Set<Session>();
   constructor(private readonly port: NativeHtmlTransportPort) {}
-  open(owner: number, value: unknown): Promise<NativeHtmlProjection> {
+  async open(owner: number, value: unknown): Promise<NativeHtmlProjection> {
     const input = NATIVE_PAGE_OPEN.parse(value);
     if (input.binding.scopeId !== input.scopeId || input.binding.credentialKind !== 'client')
       throw new BrowserPolicyError('HTML pages require their independently paired client.');
     this.port.authorize(input.scopeId, input.authorization, owner);
-    const alias = createHash('sha256')
-      .update(
-        JSON.stringify([input.binding.canonicalOrigin, input.page.chatId]),
-      )
+    const server = 'server' in input.page ? [input.page.server] : [];
+    const name = createHash('sha256')
+      .update(JSON.stringify([input.binding.canonicalOrigin, input.page.chatId, ...server]))
       .digest('hex');
-    const url = `${NATIVE_HTML_SCHEME}://${alias}${encodedPagePath(input.page.path)}`;
     const id = randomBytes(32).toString('hex');
-    if (this.projections.size >= 16)
-      throw new BrowserPolicyError('Close another chat page first.');
-    this.retainAlias(alias, input, owner, id);
+    if (this.projections.size >= 16) throw new BrowserPolicyError('Close another chat page first.');
+    const alias = this.retainAlias(name, input, owner, id);
+    try {
+      await alias.ready;
+      alias.signal.throwIfAborted();
+    } catch (cause) {
+      alias.projections.delete(id);
+      throw cause;
+    }
+    const url =
+      alias.relay === undefined
+        ? `${NATIVE_HTML_SCHEME}://${name}${encodedPagePath(input.page.path)}`
+        : `${alias.relay.origin}${input.page.path}`;
     const controller = new AbortController();
     this.projections.set(id, {
       owner,
       id,
-      alias,
+      alias: name,
       url,
       input,
       controller,
       signal: controller.signal,
       contents: new Set(),
     });
-    return Promise.resolve({ id, url });
+    return { id, url };
   }
   private retainAlias(
-    alias: string,
+    name: string,
     input: NativeHtmlPage['input'],
     owner: number,
     id: string,
-  ): void {
-    const previous = this.aliases.get(alias);
+  ): Alias {
+    const previous = this.aliases.get(name);
     if (previous !== undefined) {
       if (
         previous.owner !== owner ||
@@ -70,34 +83,58 @@ export class DesktopHtmlPreviews {
       )
         throw new BrowserPolicyError('HTML page origin belongs to another enrolled owner.');
       previous.projections.add(id);
-      return;
+      return previous;
     }
     const controller = new AbortController();
-    this.aliases.set(alias, {
-      owner,
-      input,
+    const page = { owner, input, signal: controller.signal };
+    const relay =
+      'server' in input.page
+        ? new DesktopServerRelay(this.port, page, input.page.server)
+        : undefined;
+    const alias: Alias = {
+      ...page,
       controller,
-      signal: controller.signal,
       projections: new Set([id]),
+      relay,
+      ready: relay === undefined ? Promise.resolve() : relay.start(),
+    };
+    this.aliases.set(name, alias);
+    alias.ready.catch((cause: unknown) => {
+      log.error('preview.server_listener_failed', cause);
+      if (this.aliases.get(name) === alias) this.aliases.delete(name);
+      controller.abort();
     });
+    return alias;
   }
   attach(
     owner: number,
     target: Extract<BrowserTarget, { kind: 'project' }>,
     isolated: Session,
     contents: WebContents,
-  ): void {
+  ): Promise<void> {
     const entry = this.require(owner, target.projectionId);
     if (
       entry.url !== target.url ||
       JSON.stringify(target.page) !== JSON.stringify(entry.input.page)
     )
       throw new BrowserPolicyError('HTML target differs from its native page.');
-    this.configureSession(isolated, entry.input.page.chatId);
+    const alias = this.aliases.get(entry.alias);
+    if (alias === undefined) throw new BrowserPolicyError('HTML page is closed.');
+    if (alias.relay === undefined) this.configureSession(isolated, entry.input.page.chatId);
     entry.contents.add(contents);
     contents.once('destroyed', () => {
       entry.contents.delete(contents);
       if (entry.contents.size === 0) this.release(owner, entry.id);
+    });
+    if (alias.relay === undefined) return Promise.resolve();
+    const gate = alias.relay.gate;
+    return isolated.cookies.set({
+      url: gate.origin,
+      name: gate.name,
+      value: gate.value,
+      path: '/',
+      httpOnly: true,
+      sameSite: 'strict',
     });
   }
   private configureSession(isolated: Session, chatId: string): void {
@@ -156,6 +193,8 @@ export class DesktopHtmlPreviews {
   }
   close(): void {
     for (const entry of [...this.projections.values()]) this.release(entry.owner, entry.id);
+    for (const alias of this.aliases.values()) alias.controller.abort();
+    this.aliases.clear();
     for (const isolated of this.sessions) isolated.protocol.unhandle(NATIVE_HTML_SCHEME);
     this.sessions.clear();
   }

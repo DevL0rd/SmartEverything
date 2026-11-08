@@ -23,6 +23,7 @@ const API_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   firewall_blocked: 'Your computer’s firewall is blocking this camera.',
   camera_busy: 'Too many people are watching this camera.',
   claude_not_ready: 'Claude Desktop needs the SmartEverything link for this.',
+  computer_update_required: 'This computer needs a SmartEverything Desktop update to connect.',
 };
 
 export interface ErrorText {

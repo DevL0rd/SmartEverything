@@ -3,7 +3,7 @@ import type { Crumb } from '../components/breadcrumbs';
 import { PageHeader, type HeaderAction } from '../components/page-header';
 import type { MenuItem } from '../components/menu';
 import type { PrimaryActionProps } from '../components/primary-action';
-import { Screen, type ScreenProps } from '../components/screen';
+import { Screen } from '../components/screen';
 import { useSettingsOrigin } from '../app-shell/settings-navigation';
 import { useSizeClass } from '../design/size-class';
 import { useSettingsParentBack } from './settings-back';
@@ -18,7 +18,7 @@ export interface SettingsFrameProps {
   readonly overflow?: readonly MenuItem[];
   readonly search?: boolean;
   readonly banner?: ReactNode;
-  readonly maxWidth?: ScreenProps['maxWidth'];
+  readonly contentWidth?: 'reading' | 'detail' | 'full';
   readonly primaryAction?: PrimaryActionProps;
   readonly scroll?: boolean;
   readonly children: ReactNode;
@@ -62,7 +62,7 @@ export function SettingsFrame({
   detail = false,
   trail = [],
   scroll = true,
-  maxWidth = 'reading',
+  contentWidth = 'reading',
   banner,
   page,
   ...chrome
@@ -70,8 +70,8 @@ export function SettingsFrame({
   return (
     <Screen
       header={<FrameHeader page={page} detail={detail} trail={trail} chrome={chrome} />}
-      maxWidth={maxWidth}
       scroll={scroll}
+      maxWidth={contentWidth}
       {...(banner === undefined ? {} : { banner })}
       {...(primaryAction === undefined ? {} : { primaryAction })}
     >

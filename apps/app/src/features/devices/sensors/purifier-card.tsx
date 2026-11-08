@@ -75,18 +75,11 @@ function WidePurifier({
       tone={airStateTone(read.pm25, read.power)}
       offline={read.power === 'offline'}
       facts={factsOf(line, read)}
-      figures={cls === 'm' || pill === null ? [] : [pill]}
+      figures={pill === null ? [] : [pill]}
       graph={
-        <PurifierGraph
-          device={device}
-          pm={pm}
-          pm25={read.pm25}
-          filter={read.filter}
-          cls={cls}
-          live={visible.live}
-        />
+        <PurifierGraph device={device} pm={pm} pm25={read.pm25} cls={cls} live={visible.live} />
       }
-      actions={[<CardActions key="actions" device={device} cls={cls} />]}
+      actions={[<CardActions key="actions" device={device} />]}
     />
   );
 }

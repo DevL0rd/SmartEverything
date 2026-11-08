@@ -1,11 +1,19 @@
-import { FLOW_SCOPE_OUTPUTS, NODE_REGISTRY } from '@smarteverything/domain';
+import {
+  FLOW_SCOPE_OUTPUTS,
+  STATIC_KIND_LOOKUP,
+  type NodeKindLookup,
+} from '@smarteverything/domain';
 import type { LintContext } from '@smarteverything/flow/check/lint';
 
-export const PREVIEW_LINT: LintContext = {
-  kinds: (id) => NODE_REGISTRY.get(id),
-  scopeOutputs: (kind) => FLOW_SCOPE_OUTPUTS[kind] ?? [],
-  references: () => true,
-  functions: () => undefined,
-  secrets: new Set(),
-  automations: () => undefined,
-};
+export function previewLintOf(kinds: NodeKindLookup): LintContext {
+  return {
+    kinds: (id) => kinds.get(id),
+    scopeOutputs: (kind) => FLOW_SCOPE_OUTPUTS[kind] ?? [],
+    references: () => true,
+    functions: () => undefined,
+    secrets: new Set(),
+    automations: () => undefined,
+  };
+}
+
+export const PREVIEW_LINT: LintContext = previewLintOf(STATIC_KIND_LOOKUP);

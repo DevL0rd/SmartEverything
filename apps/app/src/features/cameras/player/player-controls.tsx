@@ -4,6 +4,7 @@ import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated'
 import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
 import { DURATION, useMotion } from '../../../design/motion';
 import { recordClip } from '../../../api/media';
@@ -21,6 +22,7 @@ import type { CameraZoom } from './use-camera-zoom';
 import type { Zoom } from './use-zoom';
 
 const CLIP_SECONDS = 30;
+const LABELED_TOOLBAR_MIN_WIDTH = 640;
 
 export interface PlayerControlsProps {
   readonly entry: CameraEntry;
@@ -68,10 +70,18 @@ function record(entry: CameraEntry): void {
   );
 }
 
-function SoundControls({ entry, live }: Pick<PlayerControlsProps, 'entry' | 'live'>): ReactNode {
+interface ToolbarLayout {
+  readonly compact: boolean;
+}
+
+function SoundControls({
+  entry,
+  live,
+  compact,
+}: Pick<PlayerControlsProps, 'entry' | 'live'> & ToolbarLayout): ReactNode {
   const { session } = live;
   return (
-    <View className="flex-row items-center gap-2">
+    <View className={cn('flex-row items-center', compact ? 'gap-1' : 'gap-2')}>
       {talkOffered({
         twoWayAudio: entry.camera?.two_way_audio === true,
         relay: live.relay,
@@ -80,6 +90,7 @@ function SoundControls({ entry, live }: Pick<PlayerControlsProps, 'entry' | 'liv
         talkPending: session.talkPending,
       }) ? (
         <TalkButton
+          compact={compact}
           talking={session.talking}
           pending={session.talkPending}
           setTalking={session.setTalking}
@@ -120,7 +131,7 @@ function ExtraControls({ live, onQuick }: PlayerControlsProps): ReactNode {
   );
 }
 
-function ActionControls(props: PlayerControlsProps): ReactNode {
+function ActionControls(props: PlayerControlsProps & ToolbarLayout): ReactNode {
   const { entry, live } = props;
   const source = {
     media: live.session.media,
@@ -129,7 +140,7 @@ function ActionControls(props: PlayerControlsProps): ReactNode {
     name: entry.name,
   };
   return (
-    <View className="flex-row items-center gap-1">
+    <View className={cn('flex-row items-center', props.compact ? 'gap-0.5' : 'gap-1')}>
       <IconButton
         icon="camera"
         label="Save snapshot"
@@ -193,11 +204,14 @@ function Indicators({ live, ptz }: Pick<PlayerControlsProps, 'live' | 'ptz'>): R
 
 export function PlayerControls(props: PlayerControlsProps): ReactNode {
   const fade = useFade(props.visible);
-  const compact = useSizeClass().width === 'compact';
+  const size = useSizeClass();
+  const player = useMeasuredWidth(undefined, size.area);
+  const compactToolbar = player.width < LABELED_TOOLBAR_MIN_WIDTH;
   return (
     <>
       <Indicators live={props.live} ptz={props.ptz} />
       <Animated.View
+        onLayout={player.onLayout}
         style={fade}
         pointerEvents={props.visible ? 'box-none' : 'none'}
         className="absolute inset-0"
@@ -206,7 +220,7 @@ export function PlayerControls(props: PlayerControlsProps): ReactNode {
           ptz={props.ptz}
           zoom={props.zoom}
           camera={props.camera}
-          size={padSizeOf(props.fullScreen, compact)}
+          size={padSizeOf(props.fullScreen, size.width === 'compact')}
           live={props.live.state.kind === 'live'}
         />
         {props.live.state.kind === 'live' ||
@@ -214,12 +228,13 @@ export function PlayerControls(props: PlayerControlsProps): ReactNode {
         props.live.session.talkPending ? (
           <View
             className={cn(
-              'absolute inset-x-0 bottom-0 flex-row items-center justify-between gap-2 bg-black/40 px-3 pt-2',
+              'absolute inset-x-0 bottom-0 flex-row items-center justify-between bg-black/40 pt-2',
+              compactToolbar ? 'gap-1 px-2' : 'gap-2 px-3',
               props.fullScreen ? 'pb-safe-offset-2' : 'pb-2',
             )}
           >
-            <SoundControls entry={props.entry} live={props.live} />
-            <ActionControls {...props} />
+            <SoundControls entry={props.entry} live={props.live} compact={compactToolbar} />
+            <ActionControls {...props} compact={compactToolbar} />
           </View>
         ) : null}
       </Animated.View>

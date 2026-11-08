@@ -8,7 +8,6 @@ export const METRO_START_URL = 'http://localhost:8081/';
 export const DEEP_LINK_SCHEME = 'smarteverything';
 export const HIDDEN_START_ARGUMENT = '--hidden';
 
-export const INSTALL_SERVICE_ARGUMENT = '--install-service';
 export const VERSION_ARGUMENT_PREFIX: DesktopVersionArgumentPrefix = '--smarteverything-version=';
 
 export function originOf(candidate: string): string | undefined {

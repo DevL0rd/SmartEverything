@@ -16,13 +16,14 @@ import {
 } from '@smarteverything/domain';
 import type { AssistantVoice } from '../assistant-voice/assistant-voice';
 import type { Go2rtcClient } from '../cameras/go2rtc-client';
+import { sendAssistantAttachment } from './attachment-files';
 import { Thumbnails } from '../cameras/thumbnails';
 import type { CameraSockets } from './camera-socket';
 import type { ServerContext } from './context';
-import { apiErrorFor } from './errors';
+import { httpFailureOf } from './errors';
 import { sendError } from './http';
 import { ServerObserver, log, refusals } from './http-observe';
-import { beginTrace, noteRoute, type RequestTrace } from './request-trace';
+import { beginTrace, noteRoute } from './request-trace';
 import { recordingFile, sendRecording } from './recording-files';
 import type { Router } from './router';
 
@@ -32,6 +33,12 @@ export interface RawRoute {
   readonly handle: (
     request: IncomingMessage,
     response: ServerResponse,
+    params: Readonly<Record<string, string>>,
+  ) => Promise<void>;
+  readonly upgrade?: (
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
     params: Readonly<Record<string, string>>,
   ) => Promise<void>;
 }
@@ -48,6 +55,12 @@ export interface HttpServerOptions {
 
 const ALLOWED_HEADERS = 'accept, authorization, content-type, range';
 const ALLOWED_METHODS = 'GET, POST, PUT, PATCH, DELETE';
+const DISCONNECT_CODES = new Set([
+  'ABORT_ERR',
+  'ECONNRESET',
+  'ERR_STREAM_PREMATURE_CLOSE',
+  'EPIPE',
+]);
 
 function urlOf(request: IncomingMessage): URL {
   return new URL(request.url ?? '/', 'http://server');
@@ -72,19 +85,18 @@ function corsAllowed(
     const suppressed = refusals.pass(`origin:${origin}`);
     if (suppressed !== null) {
       log.warn('origin.refused', {
-        origin,
         method: request.method ?? null,
         suppressedSince: suppressed,
         decision: 'forbidden',
       });
     }
-    sendError(response, new ApiError('forbidden', `Requests from ${origin} are not allowed.`));
+    sendError(response, new ApiError('forbidden', 'Requests from this origin are not allowed.'));
     return false;
   }
   response.setHeader('access-control-allow-origin', origin);
   response.setHeader('vary', 'origin');
   if (request.method === 'OPTIONS') {
-    log.debug('cors.preflight', { origin, decision: 'allowed' });
+    log.debug('cors.preflight', { decision: 'allowed' });
     response.writeHead(204, {
       'access-control-allow-methods': ALLOWED_METHODS,
       'access-control-allow-headers': ALLOWED_HEADERS,
@@ -182,7 +194,7 @@ const serveAssistantAttachment: PublicPath = async (options, request, response, 
   options.context.links.verify(url);
   const file = options.context.store.assistantChat.attachment(found['attachmentId'] ?? '');
   const path = options.context.assistant.files.pathOf(file);
-  await sendRecording({ path, contentType: file.mime }, request, response);
+  await sendAssistantAttachment(file, path, request, response);
   return true;
 };
 
@@ -248,24 +260,16 @@ async function serve(
     return;
   }
   throw matched === 'wrong_method'
-    ? new ApiError(
-        'method_not_allowed',
-        `${request.method ?? 'GET'} is not allowed on ${urlOf(request).pathname}.`,
-      )
-    : new ApiError('not_found', `There is nothing at ${urlOf(request).pathname}.`);
+    ? new ApiError('method_not_allowed', 'This HTTP method is not allowed on the requested route.')
+    : new ApiError('not_found', 'There is no route at this address.');
 }
 
-function failed(options: HttpServerOptions, cause: unknown, trace?: RequestTrace): ApiError {
-  const known = apiErrorFor(cause);
-  if (known !== null) {
-    return known;
-  }
-  options.context.log.exception('request.crashed', cause, {
-    requestId: trace?.id ?? null,
-    route: trace?.route ?? null,
-    clientId: trace?.clientId ?? null,
-  });
-  return new ApiError('internal', 'The server failed while handling this request; see its log.');
+function disconnected(response: ServerResponse, cause: unknown): boolean {
+  if (!response.destroyed || response.writableFinished || !(cause instanceof Error)) return false;
+  return (
+    cause.name === 'AbortError' ||
+    ('code' in cause && typeof cause.code === 'string' && DISCONNECT_CODES.has(cause.code))
+  );
 }
 
 function refuseUpgrade(socket: Duplex, error: ApiError): void {
@@ -275,6 +279,38 @@ function refuseUpgrade(socket: Duplex, error: ApiError): void {
   );
 }
 
+interface UpgradePort {
+  readonly upgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
+}
+
+function nativeSocketOf(context: ServerContext, pathname: string): UpgradePort | undefined {
+  switch (pathname) {
+    case EMBEDDED_BROWSER_PATH:
+      return context.browser.sockets;
+    case NODE_HARNESS_PATH:
+      return context.harnessSockets;
+    case NODE_AI_PATH:
+      return context.nodeSockets;
+    default:
+      return undefined;
+  }
+}
+
+function rawUpgradeOf(
+  routes: readonly RawRoute[],
+  pathname: string,
+): {
+  readonly handle: NonNullable<RawRoute['upgrade']>;
+  readonly params: Readonly<Record<string, string>>;
+} | null {
+  for (const { path, upgrade } of routes) {
+    if (upgrade === undefined) continue;
+    const params = matchPath(path, pathname);
+    if (params !== null) return { handle: upgrade, params };
+  }
+  return null;
+}
+
 async function upgrade(
   options: HttpServerOptions,
   request: IncomingMessage,
@@ -282,14 +318,7 @@ async function upgrade(
   head: Buffer,
 ): Promise<void> {
   const url = urlOf(request);
-  const native = new Map<
-    string,
-    { readonly upgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void }
-  >([
-    [EMBEDDED_BROWSER_PATH, options.context.browser.sockets],
-    [NODE_HARNESS_PATH, options.context.harnessSockets],
-    [NODE_AI_PATH, options.context.nodeSockets],
-  ]).get(url.pathname);
+  const native = nativeSocketOf(options.context, url.pathname);
   if (native !== undefined) {
     native.upgrade(request, socket, head);
     return;
@@ -306,9 +335,14 @@ async function upgrade(
     options.assistantVoice.upgrade(request, socket, head);
     return;
   }
+  const raw = rawUpgradeOf(options.rawRoutes, url.pathname);
+  if (raw !== null) {
+    await raw.handle(request, socket, head, raw.params);
+    return;
+  }
   const camera = matchPath(MEDIA_PATHS.cameraStream, url.pathname);
   if (camera === null) {
-    throw new ApiError('not_found', `There is no WebSocket at ${url.pathname}.`);
+    throw new ApiError('not_found', 'There is no WebSocket at this address.');
   }
   options.context.links.verify(url);
   const deviceId = camera['deviceId'] ?? '';
@@ -325,10 +359,11 @@ export function createHttpServer(options: HttpServerOptions, tls?: TlsOptions): 
       observer.finished(request, response, trace);
     });
     serve(serving, request, response).catch((cause: unknown) => {
-      const error = failed(options, cause, trace);
-      trace.errorCode = error.code;
-      trace.reason = error.message.slice(0, 200);
-      sendError(response, error);
+      if (disconnected(response, cause)) return;
+      const failure = httpFailureOf(cause);
+      observer.failed(request, response, trace, failure);
+      if (response.destroyed) return;
+      sendError(response, failure.error);
     });
   };
   const server = tls === undefined ? createServer(handler) : createSecureServer(tls, handler);
@@ -338,9 +373,9 @@ export function createHttpServer(options: HttpServerOptions, tls?: TlsOptions): 
   server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     observer.upgrading(request, socket);
     upgrade(options, request, socket, head).catch((cause: unknown) => {
-      const error = failed(options, cause);
-      observer.upgradeRefused(request, error);
-      refuseUpgrade(socket, error);
+      const failure = httpFailureOf(cause);
+      observer.upgradeRefused(request, failure);
+      refuseUpgrade(socket, failure.error);
     });
   });
   if (tls !== undefined) {

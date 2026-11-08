@@ -177,3 +177,65 @@ describe('camera ear feeding a remote ear', () => {
     await ear.close();
   });
 });
+
+describe('camera ear opening its microphone', () => {
+  function earOver(
+    clock: FakeClock,
+    fed: Fed,
+    open: (handlers: MicrophoneHandlers) => Promise<OpenMicrophone>,
+  ): CameraEar {
+    return new CameraEar('living', {
+      ears: fed.ears,
+      microphones: { open: (_id, handlers): Promise<OpenMicrophone> => open(handlers) },
+      sensitivity: (): WakeSensitivity => 'standard',
+      busy: (): boolean => false,
+      clock,
+      log: new Logger('hub.wake-name'),
+    });
+  }
+
+  it('waits for a camera stream that is slow to start instead of opening a second microphone', async () => {
+    const clock = new FakeClock(START);
+    let asked = 0;
+    let starts: (microphone: OpenMicrophone) => void = () => undefined;
+    const ear = earOver(clock, new Fed(), () => {
+      asked += 1;
+      return new Promise((resolve) => {
+        starts = resolve;
+      });
+    });
+    const opening = ear.open();
+    clock.advanceTo('2026-10-17T16:32:00.000Z');
+    await Promise.resolve();
+    expect(asked).toBe(1);
+    expect(payloads('wake.listen_failed')).toEqual([]);
+    starts({ stop: () => undefined });
+    await opening;
+    await ear.close();
+  });
+
+  it('feeds the remote ear from the newest microphone only and stops the one it replaced', async () => {
+    const clock = new FakeClock(START);
+    const fed = new Fed();
+    const handlers: MicrophoneHandlers[] = [];
+    const stopped: number[] = [];
+    const ear = earOver(clock, fed, (given) => {
+      const index = handlers.push(given) - 1;
+      return Promise.resolve({
+        stop: (): void => {
+          stopped.push(index);
+        },
+      });
+    });
+    await ear.open();
+    handlers[0]?.ended('the camera dropped');
+    clock.advanceTo('2026-10-17T16:30:06.000Z');
+    await Promise.resolve();
+    expect(handlers).toHaveLength(2);
+    handlers[0]?.packet(Uint8Array.of(1));
+    handlers[1]?.packet(Uint8Array.of(2));
+    expect(fed.packets).toEqual([Uint8Array.of(2)]);
+    await ear.close();
+    expect(stopped).toEqual([0, 1]);
+  });
+});

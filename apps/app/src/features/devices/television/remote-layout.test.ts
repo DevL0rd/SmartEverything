@@ -1,30 +1,40 @@
 import { describe, expect, it } from 'vitest';
-import { compactPartsOf, remoteLayoutOf } from './remote-layout';
+import { compactPartsOf, remoteLayoutOf, stackWideControls, tallRingSize } from './remote-layout';
 
 describe('television remote layout', () => {
-  it('picks the face from the real frame so nothing is clipped', () => {
-    expect(remoteLayoutOf({ width: 144, height: 190 })).toBe('tile');
-    expect(remoteLayoutOf({ width: 326, height: 140 })).toBe('compact');
-    expect(remoteLayoutOf({ width: 508, height: 120 })).toBe('compact');
-    expect(remoteLayoutOf({ width: 326, height: 180 })).toBe('card');
-    expect(remoteLayoutOf({ width: 326, height: 324 })).toBe('tall');
-    expect(remoteLayoutOf({ width: 1072, height: 296 })).toBe('tall');
-    expect(remoteLayoutOf({ width: 1072, height: 120 })).toBe('wide');
+  it('picks the face from the wide card class', () => {
+    expect(remoteLayoutOf('m')).toBe('compact');
+    expect(remoteLayoutOf('w')).toBe('wide');
+    expect(remoteLayoutOf('l')).toBe('tall');
+    expect(remoteLayoutOf('xl')).toBe('tall');
   });
 
-  it('keeps the chips row out of frames that cannot hold it', () => {
-    expect(compactPartsOf({ width: 326, height: 140 }).chips).toBe(false);
-    expect(compactPartsOf({ width: 326, height: 168 }).chips).toBe(true);
+  it('stacks wide controls while a full row would crowd out the name and inputs', () => {
+    expect(stackWideControls(560)).toBe(true);
+    expect(stackWideControls(720)).toBe(true);
+    expect(stackWideControls(900)).toBe(false);
+  });
+
+  it('uses a compact ring to leave title and wrapped controls room on narrow tall cards', () => {
+    expect(tallRingSize(256)).toBe('card');
+    expect(tallRingSize(344)).toBe('card');
+    expect(tallRingSize(346)).toBe('quick');
+  });
+
+  it('keeps playback space available when a compact card cannot send navigation keys', () => {
+    expect(compactPartsOf(302, false)).toMatchObject({ ring: false, playPair: true });
   });
 
   it('drops the play key, then the mute key, then the ring as the width shrinks', () => {
-    expect(compactPartsOf({ width: 326, height: 140 })).toMatchObject({ ring: true, play: true });
-    expect(compactPartsOf({ width: 300, height: 140 })).toMatchObject({ ring: true, play: false });
-    expect(compactPartsOf({ width: 280, height: 140 })).toMatchObject({ ring: false, play: true });
-    expect(compactPartsOf({ width: 160, height: 140 })).toMatchObject({
-      ring: false,
-      mute: false,
-      play: false,
-    });
+    expect(compactPartsOf(326, true)).toMatchObject({ ring: true, mute: true, play: false });
+    expect(compactPartsOf(300, true)).toMatchObject({ ring: true, mute: true, play: false });
+    expect(compactPartsOf(280, true)).toMatchObject({ ring: false, play: true });
+    expect(compactPartsOf(160, true)).toMatchObject({ ring: false, mute: false, play: false });
+  });
+
+  it('fits separate play and pause keys only when there is room for both', () => {
+    expect(compactPartsOf(250, false)).toMatchObject({ play: true, playPair: false });
+    expect(compactPartsOf(290, false)).toMatchObject({ play: true, playPair: true });
+    expect(compactPartsOf(302, false)).toMatchObject({ play: true, playPair: true });
   });
 });

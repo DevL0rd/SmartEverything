@@ -66,7 +66,7 @@ async function prepareSession(client: ReturnType<typeof api>, chat: AiChatRow): 
 }
 
 function ownChat(chat: AiChatRow | undefined): boolean {
-  return chat?.engine.kind === 'dsh' || chat?.engine.kind === 'openrouter';
+  return chat?.engine.kind === 'dsh';
 }
 function assertReadActive(signal: AbortSignal): void {
   if (signal.aborted) throw new CancelledError({ silent: true });

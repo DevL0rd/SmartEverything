@@ -2,7 +2,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError, CLAUDE_SESSION_ID } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
-import { FLOOR_INPUT, HOOK_INPUT, MOD_REPORT, OBSERVED_INPUT } from '../../claude/hook-events';
+import {
+  FLOOR_INPUT,
+  HOOK_INPUT,
+  MOD_REPORT,
+  NO_ANSWER,
+  OBSERVED_INPUT,
+} from '../../claude/hook-events';
 import type { LinkPlane } from '../../claude/link-plane';
 import { LINK_PATHS } from '../../claude/link-paths';
 import { bearerOf, parseJsonBody, readBody, remoteOf, sendJson } from '../http';
@@ -119,7 +125,7 @@ export function claudeLinkRoutes(options: LinkRoutesOptions): readonly RawRoute[
       path: LINK_PATHS.hooks,
       schema: HOOK_INPUT,
       problem: 'The hook event is not one the link handles.',
-      run: (input, closed) => plane.hook(input, closed),
+      run: () => NO_ANSWER,
     }),
     jsonRoute(options, {
       path: LINK_PATHS.observed,

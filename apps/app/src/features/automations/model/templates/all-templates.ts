@@ -1,4 +1,4 @@
-import { builtinV11Templates } from './builtin-v11-templates';
+import { routineTemplates } from './routine-templates';
 import { computerTemplates, type ComputerFeatures } from './computer-templates';
 import { deviceTemplates } from './device-templates';
 import { homeTemplates } from './home-templates';
@@ -22,6 +22,6 @@ export function templatesFor(
     ...computerTemplates(devices, home.computerFeatures ?? new Map()),
     ...learnTemplates(devices),
     ...signalTemplates(devices),
-    ...builtinV11Templates(devices, home.people ?? []),
+    ...routineTemplates(devices, home.people ?? []),
   ];
 }

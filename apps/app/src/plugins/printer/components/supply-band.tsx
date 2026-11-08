@@ -1,9 +1,8 @@
-import { tankEdge } from '@smarteverything/domain';
+import { TANK_BODY, tankEdge } from '@smarteverything/domain';
 import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useUniwind } from 'uniwind';
-import { useColour } from '../../../design/colour';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
@@ -15,6 +14,12 @@ import { supplyCopy } from '../model/supply-copy';
 import { SupplyTank } from './supply-tank';
 
 const WASTE_BAR = '#7a7468';
+const TANK_WIDTH = 80;
+const TANK_GAP = 8;
+
+export function tanksFit(width: number, count: number): boolean {
+  return count * TANK_WIDTH + Math.max(0, count - 1) * TANK_GAP <= width;
+}
 
 export interface SupplyBandProps {
   readonly live: PrinterLive;
@@ -48,16 +53,16 @@ export function SupplyTanks({ live, compact = false }: SupplyBandProps): ReactNo
 }
 
 export function SupplyBars({ live }: { readonly live: PrinterLive }): ReactNode {
-  const track = useColour('surface-3');
   const theme = useUniwind().theme === 'light' ? 'light' : 'dark';
+  const track = TANK_BODY[theme];
   const stacked = live.supplies.length > 4;
   return (
-    <View className="min-w-0 flex-row gap-3">
+    <View className="min-w-0 flex-row flex-wrap gap-x-3 gap-y-1.5">
       {live.supplies.map((supply) => {
         const copy = supplyCopy(supply.detail, supply.level, supply.standing);
         const colour = supply.detail.consumed ? supply.detail.colour : WASTE_BAR;
         return (
-          <View key={supply.detail.key} className="min-w-0 flex-1 gap-1">
+          <View key={supply.detail.key} className="min-w-10 flex-1 gap-1">
             {stacked ? (
               <View>
                 <Text variant="caption" tone="variant" numberOfLines={1}>

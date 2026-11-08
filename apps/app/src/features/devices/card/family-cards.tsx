@@ -8,6 +8,7 @@ import { LaundryFace } from '../laundry/faces';
 import { MicrowaveCard } from '../microwave/card';
 import { BlasterCard } from '../remote/blaster-card';
 import { TelevisionFace } from '../television/faces';
+import { VacuumFace } from '../vacuum/faces';
 import { ScaleCard } from '../scale/card';
 import { ContactSensorCard } from '../sensors/contact-card';
 import { HumidifierCard } from '../sensors/humidifier-card';
@@ -32,4 +33,5 @@ export const FAMILY_CARDS: Readonly<Partial<Record<DeviceFamily, CardFace>>> = {
   humidifier: HumidifierCard,
   microwave: MicrowaveCard,
   television: TelevisionFace,
+  vacuum: VacuumFace,
 };

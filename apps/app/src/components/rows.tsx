@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from './app-href';
 import { measureAnchor, type Rect } from './anchor';
 import type { TextRange } from './highlighted';
 import type { IconName } from './icon';
-import { ListRow } from './list-row';
+import { ListRow, type ListRowProps } from './list-row';
 import { SelectPicker, type SelectOption } from './select-picker';
 import { selectionTick } from '../platform/haptics';
 import { SwitchTrack } from './switch';
@@ -13,7 +13,9 @@ import { SwitchTrack } from './switch';
 interface RowBase {
   readonly title: string;
   readonly titleHighlight?: TextRange | null;
+  readonly wrapTitle?: boolean;
   readonly subtitle?: string;
+  readonly subtitleTone?: NonNullable<ListRowProps['subtitleTone']>;
   readonly caption?: string;
   readonly wrapSubtitle?: boolean;
   readonly icon?: IconName;
@@ -24,16 +26,19 @@ export function SwitchRow({
   value,
   onChange,
   mixed,
+  label,
   ...row
 }: RowBase & {
   readonly value: boolean;
   readonly onChange: (value: boolean) => void;
   readonly mixed?: boolean;
+  readonly label?: string;
+  readonly compact?: boolean;
 }): ReactNode {
   return (
     <ListRow
       {...row}
-      label={row.title}
+      label={label ?? row.title}
       role="switch"
       checked={value}
       onPress={() => {
@@ -52,7 +57,7 @@ export function NavRow({
   selected,
   ...row
 }: RowBase & {
-  readonly href?: Href;
+  readonly href?: AppHref;
   readonly onPress?: () => void;
   readonly value?: string;
   readonly selected?: boolean;
@@ -96,11 +101,13 @@ export function SelectRow<T extends string>({
   readonly placeholder?: string;
 }): ReactNode {
   const ref = useRef<View>(null);
+  const opener = useRef<View>(null);
   const [anchor, setAnchor] = useState<Rect | null>(null);
   const chosen = options.find((option) => option.value === value);
   return (
     <View ref={ref} collapsable={false}>
       <ListRow
+        pressRef={opener}
         {...row}
         value={chosen?.label ?? placeholder}
         chevron
@@ -113,6 +120,7 @@ export function SelectRow<T extends string>({
         options={options}
         value={value}
         anchor={anchor}
+        opener={opener}
         searchable={searchable ?? false}
         onPick={onChange}
         onClose={() => {

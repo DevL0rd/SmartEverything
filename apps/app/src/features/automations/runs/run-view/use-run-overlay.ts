@@ -4,7 +4,8 @@ import type {
   RunRecordStatus,
   TraceNodeState,
 } from '@smarteverything/domain';
-import type { RunOverlay } from '../../model/canvas/contract';
+import type { RunSource } from '../../editor/host/use-canvas-props';
+import { graphRunOverlay } from '../../model/graph/run-overlay';
 import { useRunTrace } from '../../data/use-run-trace';
 import type { TraceState } from '../../data/trace-state';
 import { isActive } from '../run-history-model';
@@ -15,7 +16,7 @@ import {
   type Activation,
 } from './run-activation';
 import { resolveLoops, sameLoops, type LoopInfo } from './run-loops';
-import { overlayOf, runningNodeOf } from './run-overlay';
+import { recordsAt, runningNodeOf } from './run-overlay';
 import { boundsOf, timelineOf, type TimelineModel } from './run-timeline';
 import type { RunRecords } from './use-run-records';
 
@@ -36,7 +37,7 @@ export interface RunOverlayModel {
   readonly activations: readonly Activation[];
   readonly chosen: ReadonlyMap<string, number>;
   readonly loops: readonly LoopInfo[];
-  readonly overlay: RunOverlay;
+  readonly overlay: RunSource;
   readonly timeline: TimelineModel | null;
   readonly running: string | null;
   readonly at: number | null;
@@ -85,6 +86,7 @@ const NO_NODES: TraceNodes = {};
 interface LoopControl {
   readonly loops: readonly LoopInfo[];
   readonly chosen: ReadonlyMap<string, number>;
+  readonly selected: ReadonlyMap<string, number>;
   readonly pick: (loopId: string, iteration: number) => void;
 }
 
@@ -95,7 +97,7 @@ function useLoopControl(activations: readonly Activation[]): LoopControl {
   }, []);
   const resolved = useMemo(() => resolveLoops(activations, selected), [activations, selected]);
   const loops = useStableLoops(resolved.loops);
-  return { loops, chosen: resolved.chosen, pick };
+  return { loops, chosen: resolved.chosen, selected, pick };
 }
 
 interface OverlayBasis {
@@ -104,15 +106,17 @@ interface OverlayBasis {
   readonly activations: readonly Activation[];
   readonly at: number | null;
   readonly wakeAt: string | null;
+  readonly live: boolean;
 }
 
-function useOverlay({ input, control, activations, at, wakeAt }: OverlayBasis): RunOverlay {
-  const { itemNames, zone } = input;
-  const { loops, chosen } = control;
-  return useMemo(
-    () => overlayOf({ activations, chosen, loops, itemNames, at, wakeAt, zone }),
-    [activations, chosen, loops, itemNames, at, wakeAt, zone],
-  );
+function useOverlay({ input, control, activations, at, wakeAt, live }: OverlayBasis): RunSource {
+  const { zone } = input;
+  const { selected } = control;
+  return useMemo(() => {
+    const records = recordsAt(activations, at);
+    return (scene): ReturnType<RunSource> =>
+      graphRunOverlay({ scene, records, selected, wakeAt, live, zone });
+  }, [activations, selected, at, wakeAt, live, zone]);
 }
 
 interface LiveRun {
@@ -153,7 +157,7 @@ export function useRunOverlay(input: RunOverlayInput): RunOverlayModel {
   const activations = useActivations(input.records, nodes);
   const control = useLoopControl(activations);
   const [at, scrub] = useState<number | null>(null);
-  const overlay = useOverlay({ input, control, activations, at, wakeAt });
+  const overlay = useOverlay({ input, control, activations, at, wakeAt, live });
   const timeline = useMemo(
     () => (run === null ? null : timelineOf(activations, input.titles, boundsOf(run, activations))),
     [run, activations, input.titles],

@@ -41,6 +41,7 @@ export const DEBUG_LOG = defineNodeKind({
   outputs: [],
   exits: ['next'],
   effect: { retry: 'idempotent', budget: 'effects' },
+  fallible: false,
   summary: 'Log {message}',
   keywords: ['print', 'trace', 'debug', 'console'],
   access: 'member',

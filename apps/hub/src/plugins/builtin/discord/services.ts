@@ -35,6 +35,8 @@ export interface DiscordServices {
   readonly assistant: PluginAssistant;
   readonly download: Downloader;
   readonly machineFile: PluginFiles['fromMachine'];
+  readonly uploadFile: PluginFiles['fromUpload'];
+  readonly pictureFile: PluginFiles['fromPicture'];
   readonly activity: ActivityVisibility;
   readonly now: () => number;
 }

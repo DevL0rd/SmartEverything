@@ -5,6 +5,7 @@ import {
   type PauseChoiceMs,
   type PushServiceAccount,
   type Role,
+  type RoomRow,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { api } from './transport';
@@ -34,9 +35,10 @@ export async function updateEarHost(computerId: string | null): Promise<void> {
   log.info('listening.ear_host_changed', { computerId });
 }
 
-export async function createRoom(name: string, position: number): Promise<void> {
-  await api().call(E.createRoom, { body: { name, position } });
+export async function createRoom(name: string, position: number): Promise<RoomRow> {
+  const room = await api().call(E.createRoom, { body: { name, position } });
   log.info('room.created');
+  return room;
 }
 
 export async function renameRoom(roomId: string, name: string): Promise<void> {

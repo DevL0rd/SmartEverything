@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http';
-import { join } from 'node:path';
+import type { VoiceMemory } from './voice-memory';
 import type { Duplex } from 'node:stream';
 import {
   SIGHT_FRAME_LIMITS,
@@ -29,6 +29,7 @@ import {
   OneShotSpeech,
   type Saying,
   type SpeechProviders,
+  type SpeechRecording,
   type SpeechRequest,
 } from '../speech/one-shot-speech';
 import { GeminiKeys } from './gemini-key';
@@ -48,12 +49,13 @@ export interface AssistantVoiceOptions {
   readonly secrets: SecretStore;
   readonly responder: VoiceResponder;
   readonly tools: ToolHub;
+  readonly memory: VoiceMemory;
   readonly prices: PriceBook;
   readonly fetch: typeof fetch;
   readonly now: () => Date;
   readonly cameras: HomeCameras;
   readonly roomMedia?: SpeakingMedia;
-  readonly dataDirectory: string;
+  readonly voiceSamples: string;
   readonly log: Logger;
   readonly provider?: VoiceProvider;
   readonly speech?: SpeechProviders;
@@ -88,6 +90,7 @@ export class AssistantVoice {
       provider,
       responder: options.responder,
       tools: options.tools,
+      memory: options.memory,
       prices: options.prices,
       now: options.now,
       log,
@@ -159,6 +162,13 @@ export class AssistantVoice {
     return sayWhileSpeaking(this.options.roomMedia, (spoken) => this.speech.say(spoken), request);
   }
 
+  recordClip(
+    request: SpeechRecording,
+    signal: AbortSignal,
+  ): ReturnType<OneShotSpeech['recordClip']> {
+    return this.speech.recordClip(request, signal);
+  }
+
   attachVideo(callId: string, source: VideoSource): () => void {
     return this.desk.attachVideo(callId, source);
   }
@@ -189,7 +199,7 @@ export class AssistantVoice {
       prices: options.prices,
       log: options.log,
       key: (): string | null => this.keys.current(),
-      directory: join(options.dataDirectory, 'voice-samples'),
+      directory: options.voiceSamples,
     });
   }
 

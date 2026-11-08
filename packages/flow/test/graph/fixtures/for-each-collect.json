@@ -1,0 +1,51 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "05000000-0000-4000-8000-000000000004",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "05000000-0000-4000-8000-000000000002",
+        "key": "each",
+        "kind": "flow.for_each",
+        "ports": {
+          "items": { "lit": [3, 6, 9] },
+          "collect": { "wire": { "from": "each", "port": "item" } }
+        },
+        "scopes": {
+          "body": {
+            "nodes": [
+              {
+                "id": "05000000-0000-4000-8000-000000000001",
+                "key": "step",
+                "kind": "device.set",
+                "ports": {
+                  "target": { "lit": { "target": "hall" } },
+                  "control": { "lit": "level" },
+                  "to": { "wire": { "from": "each", "port": "item" } }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "05000000-0000-4000-8000-000000000003",
+        "key": "after",
+        "kind": "debug.log",
+        "ports": { "message": { "lit": "looped" } }
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

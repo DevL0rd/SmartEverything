@@ -3,19 +3,36 @@ import {
   type NavigationAction,
   type NavigationState,
   type PartialState,
-  type Router,
+  type RouterConfigOptions,
 } from 'expo-router/react-navigation';
 import { Logger } from '@smarteverything/logging';
 import { prepareSettingsVisit, retainSettingsOrigin } from './settings-navigation';
 import {
   CLEAR_REPLACEMENT,
+  COMMIT_REPLACEMENT,
   REMOVE_REPLACEMENT,
   REPLACEMENT_REQUEST,
   replacementFor,
   replacementOf,
 } from './tab-replacement';
 
+export type TabNavigationAction = Omit<NavigationAction, 'payload'> & {
+  readonly payload?: NavigationAction['payload'];
+};
+
+interface ActionRouter<State extends NavigationState, Action extends TabNavigationAction> {
+  getStateForAction(
+    state: State,
+    action: Action,
+    options: RouterConfigOptions,
+  ): State | PartialState<State> | null;
+}
+
 const log = new Logger('app.nav');
+
+export function shellTabBackBehavior(native: boolean): 'none' | 'fullHistory' {
+  return native ? 'none' : 'fullHistory';
+}
 
 interface Params {
   name?: unknown;
@@ -29,7 +46,7 @@ function isParams(value: unknown): value is Params {
   return typeof value === 'object' && value !== null;
 }
 
-function nestedParamsOf(action: NavigationAction): Params | null {
+function nestedParamsOf(action: TabNavigationAction): Params | null {
   if (action.type !== 'NAVIGATE' && action.type !== 'JUMP_TO' && action.type !== 'REPLACE') {
     return null;
   }
@@ -38,7 +55,7 @@ function nestedParamsOf(action: NavigationAction): Params | null {
 }
 
 type AnyState = NavigationState | PartialState<NavigationState>;
-function replacesTab(state: NavigationState, action: NavigationAction): boolean {
+function replacesTab(state: NavigationState, action: TabNavigationAction): boolean {
   const payload: unknown = action.payload;
   return (
     action.type === 'REPLACE' &&
@@ -57,15 +74,42 @@ function anchorChain(first: Params | null): void {
   }
 }
 
-export function anchorTabRoots<State extends NavigationState, Action extends NavigationAction>(
-  original: Router<State, Action>,
-): Partial<Router<State, Action>> {
+function replaceHistory<State extends NavigationState>(
+  previous: State,
+  next: State | PartialState<State> | null,
+): State | PartialState<State> | null {
+  const history = previous.history;
+  const appended = next?.history;
+  if (next === null || history === undefined || appended?.length !== history.length + 1) {
+    return next;
+  }
+  return { ...next, history: [...history.slice(0, -1), ...appended.slice(-1)] };
+}
+
+function navigateTab<State extends NavigationState, Action extends TabNavigationAction>(
+  original: ActionRouter<State, Action>,
+  state: State,
+  action: Action,
+  options: RouterConfigOptions,
+): State | PartialState<State> | null {
+  const commit = action.type === COMMIT_REPLACEMENT;
+  const navigation = commit ? { ...action, type: 'JUMP_TO' } : action;
+  const visit = prepareSettingsVisit(state, navigation);
+  anchorChain(nestedParamsOf(navigation));
+  const next = original.getStateForAction(visit, navigation, options);
+  const replaced = commit ? replaceHistory(state, next) : next;
+  return replaced === next ? retainSettingsOrigin(state, navigation, next) : replaced;
+}
+
+export function anchorTabRoots<State extends NavigationState, Action extends TabNavigationAction>(
+  original: ActionRouter<State, Action>,
+): Partial<ActionRouter<State, Action>> {
   return {
     getStateForAction: (
       state,
       action,
       options,
-    ): ReturnType<Router<State, Action>['getStateForAction']> => {
+    ): ReturnType<ActionRouter<State, Action>['getStateForAction']> => {
       const request = replacementOf(Reflect.get(state, REPLACEMENT_REQUEST));
       const payload: unknown = action.payload;
       if (request !== null && isParams(payload) && payload.id === request.id) {
@@ -83,16 +127,13 @@ export function anchorTabRoots<State extends NavigationState, Action extends Nav
           replacement: replacement !== null,
         }));
         return replacement === null
-          ? original.getStateForAction(state, { ...action, type: 'JUMP_TO' }, options)
+          ? replaceHistory(
+              state,
+              original.getStateForAction(state, { ...action, type: 'JUMP_TO' }, options),
+            )
           : { ...state, [REPLACEMENT_REQUEST]: replacement };
       }
-      const visit = prepareSettingsVisit(state, action);
-      anchorChain(nestedParamsOf(action));
-      return retainSettingsOrigin(
-        state,
-        action,
-        original.getStateForAction(visit, action, options),
-      );
+      return navigateTab(original, state, action, options);
     },
   };
 }

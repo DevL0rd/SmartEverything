@@ -175,13 +175,14 @@ export class EarHost implements EarHostPort {
 
 export interface EarHostForOptions {
   readonly now: () => Date;
-  readonly dataDirectory: string | null;
+  readonly wakeDiagnosticsDirectory: string | null;
   readonly log: Logger;
   readonly lost: EarRuntimeLost;
 }
 
 export interface EarHosting {
   readonly factory: EarHostFactory;
+  readonly load: () => Promise<void>;
   readonly stop: () => void;
 }
 
@@ -189,10 +190,10 @@ export function earHostFor(options: EarHostForOptions): EarHosting {
   const engine = wakeEarEngine(options.lost);
   const clock = { now: options.now, at: systemClock.at };
   const diagnostics =
-    options.dataDirectory === null
+    options.wakeDiagnosticsDirectory === null
       ? null
       : new WakeDiagnostics({
-          dataDirectory: options.dataDirectory,
+          directory: options.wakeDiagnosticsDirectory,
           spotter: (): KeywordEngine => engine.spotter(),
           clock,
           log: options.log,
@@ -204,6 +205,7 @@ export function earHostFor(options: EarHostForOptions): EarHosting {
   return {
     factory: (send, scored, scoreFailed): EarHostPort =>
       new EarHost(deps, send, scored, scoreFailed),
+    load: (): Promise<void> => engine.load(),
     stop: (): void => {
       diagnostics?.stop();
     },

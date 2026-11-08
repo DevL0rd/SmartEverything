@@ -1,9 +1,10 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import type { FlowNode } from '@smarteverything/domain';
 import { NODE_REGISTRY } from '@smarteverything/domain';
 import { indexProgram } from '@smarteverything/flow/program/lookup';
 import type { Program } from '@smarteverything/flow/program/walk';
-import { Ids, automation, scope, setLight } from '../../../model/canvas/canvas-fixtures';
+import { Ids, automation, scope } from '../../../model/canvas/canvas-fixtures';
 import { applied } from './inspector-fixtures';
 import {
   DEFAULT_TOGETHER_WIDTH,
@@ -140,7 +141,7 @@ describe('loop limits', () => {
         limit: { lit: { time: 9000, onLimit: 'end' } },
       }),
     );
-    const cleared = applied(program, limitOps('lp', null));
+    const cleared = applied(program, limitOps('lp', null), STATIC_KIND_LOOKUP);
     expect(reread(cleared, 'lp').ports?.['limit']).toBeUndefined();
   });
 
@@ -153,6 +154,7 @@ describe('loop limits', () => {
         'lp',
         nextLimit(view, { time: LIMIT_START_TIME_MS, onLimit: 'end', note: 'Stopped' }),
       ),
+      STATIC_KIND_LOOKUP,
     );
     expect(reread(limited, 'lp').ports?.['limit']).toEqual({
       lit: {
@@ -161,9 +163,11 @@ describe('loop limits', () => {
         note: 'Stopped',
       },
     });
-    const gapped = applied(limited, gapOps('lp', 1500));
+    const gapped = applied(limited, gapOps('lp', 1500), STATIC_KIND_LOOKUP);
     expect(reread(gapped, 'lp').ports?.['gap']).toEqual({ lit: 1500 });
-    expect(reread(applied(gapped, gapOps('lp', null)), 'lp').ports?.['gap']).toBeUndefined();
+    expect(
+      reread(applied(gapped, gapOps('lp', null), STATIC_KIND_LOOKUP), 'lp').ports?.['gap'],
+    ).toBeUndefined();
   });
 });
 
@@ -191,9 +195,9 @@ describe('For each at the same time', () => {
 
   it('writes the width and removes the port to go back to one at a time', () => {
     const program = programWith(loop('flow.for_each', { items: { lit: [1, 2] } }));
-    const wide = applied(program, concurrencyOps('lp', DEFAULT_TOGETHER_WIDTH));
+    const wide = applied(program, concurrencyOps('lp', DEFAULT_TOGETHER_WIDTH), STATIC_KIND_LOOKUP);
     expect(reread(wide, 'lp').ports?.['concurrency']).toEqual({ lit: DEFAULT_TOGETHER_WIDTH });
-    const serial = applied(wide, concurrencyOps('lp', 1));
+    const serial = applied(wide, concurrencyOps('lp', 1), STATIC_KIND_LOOKUP);
     expect(reread(serial, 'lp').ports?.['concurrency']).toBeUndefined();
   });
 });
@@ -215,13 +219,14 @@ describe('Break and Continue target', () => {
         ...ids.next(),
         kind: 'flow.repeat',
         ports: { times: { lit: 2 } },
-        scopes: { body: scope([leave, setLight(ids, null)]) },
+        scopes: { body: scope([leave]) },
       },
     ]);
-    const targeted = applied(program, targetOps(leave.key, 'n2'));
+    const targeted = applied(program, targetOps(leave.key, 'n2'), STATIC_KIND_LOOKUP);
     expect(reread(targeted, leave.key).ports?.['target']).toEqual({ lit: 'n2' });
     expect(
-      reread(applied(targeted, targetOps(leave.key, undefined)), leave.key).ports?.['target'],
+      reread(applied(targeted, targetOps(leave.key, undefined), STATIC_KIND_LOOKUP), leave.key)
+        .ports?.['target'],
     ).toBeUndefined();
   });
 });

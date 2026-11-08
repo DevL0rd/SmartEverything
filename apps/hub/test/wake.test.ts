@@ -1,4 +1,4 @@
-import { DEFAULT_ENGINE, type RowChange, type SignalInput } from '@smarteverything/domain';
+import { type RowChange, type SignalInput } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ActionOrigin } from '../src/automations/automation-ai';
 import { SignalBus } from '../src/signals/bus';
@@ -9,6 +9,7 @@ import { FakeClock } from './support/fake-clock';
 import { node, saveAutomation, trigger } from './support/automation-fixture';
 import { testLogger } from './support/logs';
 import { testStore, type TestStore } from './support/store';
+import { TEST_ENGINE } from './support/engine';
 
 const START = '2026-10-08T10:00:00.000Z';
 
@@ -52,7 +53,7 @@ async function bench(): Promise<Bench> {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   });
   const automation = saveAutomation(opened.store, {
     name: 'Baby monitor',

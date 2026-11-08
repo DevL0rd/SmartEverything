@@ -19,7 +19,8 @@ import {
   type SmartLifeDevice,
   type SmartLifeFacts,
 } from '@smarteverything/tuya';
-import { mapBounded, type LoadOnce } from './bounded';
+import { mapBounded } from '../../providers/map-bounded';
+import type { LoadOnce } from './bounded';
 import type { SmartLifeCloud } from './smart-life-cloud';
 
 type SmartLifeCalls = Pick<SmartLifeCloud, 'call'>;

@@ -26,7 +26,10 @@ import { applyChange, type AppliedChange, type PluginChangeInput } from './plugi
 import type { PluginPeople } from './plugin-people';
 import type { PluginSecrets } from './plugin-secrets';
 import type { SettingsAuthor } from './plugin-settings';
-import { failureLine } from '@smarteverything/logging';
+import { pluginLogger, readPluginLines } from './plugin-logs';
+import { Logger } from '@smarteverything/logging';
+
+const log = new Logger('hub.plugins');
 
 export interface PluginAdminOptions {
   readonly store: Store;
@@ -46,6 +49,17 @@ export interface ToolCall {
 }
 
 const FAILED = z.looseObject({ error: z.string() });
+
+export function toolFailureOf(response: unknown): ApiError | null {
+  const failed = FAILED.safeParse(response);
+  if (!failed.success) return null;
+  const reason = failed.data['reason'];
+  return new ApiError(
+    'upstream_failed',
+    failed.data.error,
+    typeof reason === 'string' && reason !== '' ? reason : null,
+  );
+}
 
 function authorOfConfigure(row: PluginRow, by: ToolCaller | undefined): SettingsAuthor {
   if (by === undefined) {
@@ -112,7 +126,7 @@ export class PluginAdmin {
     setImmediate(() => {
       this.applyLive(applied);
       this.restartIf(applied.restart, applied.row).catch((cause: unknown) => {
-        this.options.host().slot(id)?.logs.add(failureLine(cause), new Date());
+        pluginLogger(log, id).error('plugin.restart_failed', cause);
       });
     });
   }
@@ -154,7 +168,7 @@ export class PluginAdmin {
 
   log(id: string): readonly PluginLogLine[] {
     this.options.store.plugins.byId(id);
-    return this.options.host().slot(id)?.logs.read() ?? [];
+    return readPluginLines(this.options.store, id);
   }
 
   data(id: string, stream: string | undefined, limit: number): PluginDataPoint[] {
@@ -178,19 +192,22 @@ export class PluginAdmin {
       throw new ApiError('forbidden', `Only an owner can run ${found.tool.title}.`);
     }
     const result = await this.options.host().call(id, name, call.arguments, caller);
-    const failed = FAILED.safeParse(result.response);
-    if (failed.success) {
-      throw new ApiError('upstream_failed', failed.data.error);
-    }
+    const failure = toolFailureOf(result.response);
+    if (failure !== null) throw failure;
     return { outcome: 'done', result: result.response };
   }
 
-  choices(id: string, source: string, query: PluginOptionQuery): Promise<PluginOptionPage> {
+  choices(
+    id: string,
+    source: string,
+    query: PluginOptionQuery,
+    caller: ToolCaller,
+  ): Promise<PluginOptionPage> {
     const row = this.options.store.plugins.byId(id);
     const slot = this.options.host().slot(id);
     return slot === undefined
       ? Promise.resolve({ state: 'unavailable', message: `${row.manifest.name} is switched off.` })
-      : slot.choices(source, query);
+      : slot.choices(source, query, caller);
   }
 
   people(id: string): PluginPerson[] {

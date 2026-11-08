@@ -48,7 +48,7 @@ const ENTRY_ENDPOINTS = {
     access: 'member',
     summary: 'Replace something this profile logged; phones save the new version to Health Connect',
     params: ENTRY_PARAMS,
-    query: NOTHING,
+    query: z.strictObject({ expectedVersion: z.coerce.number().int().positive().optional() }),
     body: HEALTH_ENTRY_INPUT,
     response: HEALTH_ENTRY_ROW,
   }),

@@ -134,6 +134,8 @@ export type AiModelPriceRow = z.infer<typeof AI_MODEL_PRICE_ROW>;
 
 export const AUTO_LATEST_GEMINI_FLASH = 'auto:latest-gemini-flash';
 
+export const MEMORY_MODEL_DEFAULT = '~deepseek/deepseek-flash-latest';
+
 export const DEFAULT_AI_EFFORT: AiEffort = 'low';
 
 export const AI_MODEL_CHOICE = z.union([z.literal(AUTO_LATEST_GEMINI_FLASH), AI_MODEL_ID]);
@@ -141,18 +143,14 @@ export const AI_MODEL_CHOICE = z.union([z.literal(AUTO_LATEST_GEMINI_FLASH), AI_
 export type AiModelChoice = z.infer<typeof AI_MODEL_CHOICE>;
 
 export const OPENROUTER_SETTINGS = z.strictObject({
-  default_model: AI_MODEL_CHOICE,
-  default_effort: AI_EFFORT,
   google_prices: z.record(AI_MODEL_ID, AI_PRICING),
 });
 
 export type OpenRouterSettings = z.infer<typeof OPENROUTER_SETTINGS>;
 
-export const OPENROUTER_DEFAULTS: OpenRouterSettings = {
-  default_model: 'openai/gpt-6-luna',
-  default_effort: DEFAULT_AI_EFFORT,
-  google_prices: {},
-};
+export const OPENROUTER_DEFAULTS: OpenRouterSettings = { google_prices: {} };
+
+export const AI_DEFAULT_MODEL: AiModelChoice = '~deepseek/deepseek-flash-latest';
 
 export const AI_RESOLVED_MODEL = z.strictObject({
   choice: AI_MODEL_CHOICE,
@@ -230,7 +228,7 @@ export function closestEffort(
   return closest;
 }
 
-export function displayNameOf(model: AiModelRow, choice: AiModelChoice): string {
+export function displayNameOf(model: AiModelRow, choice: string): string {
   return choice === AUTO_LATEST_GEMINI_FLASH ? `${model.name} (latest)` : model.name;
 }
 

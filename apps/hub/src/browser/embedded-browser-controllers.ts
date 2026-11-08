@@ -20,6 +20,7 @@ import type { ViewerFocus } from './viewer-focus';
 import type { EmbeddedBrowserAuthority } from './embedded-browser-authority';
 import type { ProjectFilesService } from '../projects/service';
 import { chatPagePath } from './chat-files';
+import { chatServerComputer } from './chat-server';
 export interface EmbeddedBrowserViewer {
   readonly scope: EmbeddedBrowserScope;
   readonly perform: (request: EmbeddedBrowserRequest) => Promise<EmbeddedBrowserResult>;
@@ -29,12 +30,12 @@ export class EmbeddedBrowserControllers {
   private readonly viewers = new Map<string, EmbeddedBrowserViewer>();
   private readonly stopFeed: () => void;
   constructor(
-    store: Store,
+    private readonly store: Store,
     private readonly authority: EmbeddedBrowserAuthority,
     private readonly focus: ViewerFocus,
     private readonly projects: Pick<ProjectFilesService, 'root'>,
   ) {
-    this.stopFeed = onBrowserAuthorityChange(store, () => {
+    this.stopFeed = onBrowserAuthorityChange(this.store, () => {
       this.revalidate();
     });
   }
@@ -56,13 +57,16 @@ export class EmbeddedBrowserControllers {
     selector: z.infer<typeof EMBEDDED_BROWSER_SELECTOR>,
   ): EmbeddedBrowserViewer {
     const profile = this.authority.caller(caller, chat);
+    const clientId =
+      selector.clientId ??
+      (selector.viewerId === undefined ? this.authority.initiatingClient(caller) : undefined);
     const viewer = this.focus.latest(
       [...this.viewers.values()].filter(
         (candidate) =>
           candidate.scope.chatId === chat &&
           candidate.scope.profileId === profile &&
           (selector.viewerId === undefined || selector.viewerId === candidate.scope.viewerId) &&
-          (selector.clientId === undefined || selector.clientId === candidate.scope.clientId),
+          (clientId === undefined || clientId === candidate.scope.clientId),
       ),
       (candidate) => candidate.scope.viewerId,
     );
@@ -95,7 +99,7 @@ export class EmbeddedBrowserControllers {
     input: z.infer<typeof EMBEDDED_BROWSER_EDIT>,
   ): Promise<EmbeddedBrowserResult> {
     const viewer = this.select(caller, chat, input);
-    const resolved = await this.resolve(viewer, input.action);
+    const resolved = await this.resolve(viewer, input.action, caller);
     if ('settled' in resolved) {
       this.fence(viewer);
       return resolved.settled;
@@ -113,6 +117,7 @@ export class EmbeddedBrowserControllers {
   private async resolve(
     viewer: EmbeddedBrowserViewer,
     command: EmbeddedBrowserCommand,
+    caller: Caller,
   ): Promise<
     { readonly action: EmbeddedBrowserAction } | { readonly settled: EmbeddedBrowserResult }
   > {
@@ -120,13 +125,7 @@ export class EmbeddedBrowserControllers {
       return {
         action: EMBEDDED_BROWSER_ACTION.parse({
           kind: 'open',
-          source:
-            command.path === undefined
-              ? { kind: 'public', url: command.url }
-              : {
-                  kind: 'project',
-                  path: await chatPagePath(this.projects, viewer.scope.chatId, command.path),
-                },
+          source: await this.source(viewer.scope.chatId, command, caller),
         }),
       };
     if (command.kind === 'select' || command.kind === 'reorder' || command.tabId !== undefined)
@@ -142,6 +141,24 @@ export class EmbeddedBrowserControllers {
       throw new ApiError('conflict', 'No tab is open; open one first.');
     }
     return { action: EMBEDDED_BROWSER_ACTION.parse({ ...command, tabId }) };
+  }
+  private async source(
+    chatId: string,
+    command: Extract<EmbeddedBrowserCommand, { kind: 'open' }>,
+    caller: Caller,
+  ): Promise<Extract<EmbeddedBrowserAction, { kind: 'open' }>['source']> {
+    if (command.port !== undefined)
+      return {
+        kind: 'server',
+        server: {
+          computerId: chatServerComputer(this.store, caller, chatId, command.computer),
+          port: command.port,
+        },
+      };
+    if (command.path !== undefined)
+      return { kind: 'project', path: await chatPagePath(this.projects, chatId, command.path) };
+    if (command.url !== undefined) return { kind: 'public', url: command.url };
+    throw new ApiError('invalid_request', 'Give one of url, path or port.');
   }
   private fence(viewer: EmbeddedBrowserViewer): void {
     this.authority.validate(viewer.scope);

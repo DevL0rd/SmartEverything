@@ -4,6 +4,7 @@ import { geminiDeclarationOf } from '../../src/ai-tools/tool-adapters';
 import { chatSet, toolIndex } from '../../src/ai-tools/tool-sets';
 import { toolGuide } from '../../src/ai-tools/tool-guide';
 import { liveInstructions } from '../../src/assistant-voice/instructions';
+import { MEMORY_HUB_TOOL } from '../../src/assistant-voice/voice-memory';
 import { VOICE_DEFERRED_TOOLS, voiceToolIndex } from '../../src/assistant-voice/voice-deferred';
 import { hostedSet, voiceSet } from '../../src/assistant-voice/voice-tools';
 import { REACH_TOOL_NAMES } from '../../src/reach/hosted-call';
@@ -19,21 +20,26 @@ interface Setup {
 }
 
 function setupOf(hosted: boolean): Setup {
-  const visible = hosted ? SE_TOOLS.filter((tool) => !REACH_TOOL_NAMES.has(tool.name)) : SE_TOOLS;
+  const visible = [
+    ...(hosted ? SE_TOOLS.filter((tool) => !REACH_TOOL_NAMES.has(tool.name)) : SE_TOOLS),
+    MEMORY_HUB_TOOL,
+  ];
   const declarations = hostedSet(
     voiceSet(visible, true, !hosted),
     hosted ? { hiddenTools: REACH_TOOL_NAMES } : null,
   ).map(geminiDeclarationOf);
   const system = liveInstructions({
-    names: ['Coordinator'],
-    home: 'Home',
-    style: undefined,
-    instructions: '',
+    facts: {
+      name: 'Coordinator',
+      aliases: [],
+      homeName: 'Home',
+      instructions: '',
+      toolIndex: voiceToolIndex(visible),
+      catalogue: '',
+      guide: toolGuide(visible.map((tool) => tool.name)),
+    },
     place: null,
     unavailable: null,
-    toolIndex: voiceToolIndex(visible),
-    catalogue: '',
-    guide: toolGuide(visible.map((tool) => tool.name)),
     sight: !hosted,
     stopLooking: true,
   });
@@ -76,6 +82,12 @@ describe('the tools a call reaches through tool_call', () => {
       expect(voice).not.toContain(name);
       expect(chat).toContain(name);
     }
+  });
+
+  it('include the chat voice reply, which text chats and helper chats declare directly', () => {
+    expect(VOICE_DEFERRED_TOOLS.has('chat_speak')).toBe(true);
+    expect(chatSet(tools).map((tool) => tool.name)).toContain('chat_speak');
+    expect(toolGuide(['chat_speak'])).toContain('chat_speak');
   });
 
   it('are listed in the call tool index and not in the text chat one as extra tools', () => {

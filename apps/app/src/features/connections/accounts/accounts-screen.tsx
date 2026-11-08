@@ -10,18 +10,20 @@ import { useRows } from '../../../store/selectors';
 import { PROVIDER_BRAND } from '../model/brands';
 import { isAccount, linkSummary } from '../model/problems';
 import { SettingsFrame } from '../../../settings/settings-frame';
+import { useAccountBackFocus } from './use-account-back-focus';
 
 const ADD = href.settings.page('connections/add');
 
 function AccountRows(): ReactNode {
   const accounts = useRows('provider_links').filter(isAccount);
+  const rememberFocus = useAccountBackFocus();
   if (accounts.length === 0) {
     return (
       <EmptyState
         icon="link"
         title="No accounts yet"
         body="Link Xiaomi, Smart Life or SmartThings to bring in your devices."
-        action={<Button label="Add account" icon="plus" href={ADD} />}
+        action={<Button label="Add account" icon="plus" href={ADD} onPress={rememberFocus} />}
       />
     );
   }
@@ -30,19 +32,30 @@ function AccountRows(): ReactNode {
       {[
         ...accounts.map((row) => {
           const summary = linkSummary(row);
+          const name = PROVIDER_INFO[row.provider].name;
           return (
             <ListRow
               key={row.provider}
               leading={<RowBrand brand={PROVIDER_BRAND[row.provider]} />}
-              title={PROVIDER_INFO[row.provider].name}
+              title={name}
               subtitle={summary.text}
               subtitleTone={summary.tone}
+              wrapSubtitle
+              label={`${name}, ${summary.text}`}
               href={href.settings.account(row.provider)}
+              onPress={rememberFocus}
               chevron
             />
           );
         }),
-        <ListRow key="add" icon="plus" iconTone="primary" title="Add account" href={ADD} />,
+        <ListRow
+          key="add"
+          icon="plus"
+          iconTone="primary"
+          title="Add account"
+          href={ADD}
+          onPress={rememberFocus}
+        />,
       ]}
     </List>
   );

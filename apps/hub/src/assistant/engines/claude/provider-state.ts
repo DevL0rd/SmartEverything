@@ -13,6 +13,10 @@ import {
 import { z } from 'zod';
 import type { ComputerAiDirectory } from '../../../computers/ai-directory';
 import type { Store } from '../../../store/store';
+import {
+  metadataSubscriptionUsage,
+  observeNativeSubscription,
+} from '../computer/subscription-usage';
 
 function emptyProvider(chat: AiChatRow): AiChatProvider {
   if (chat.engine.kind !== 'claude')
@@ -102,8 +106,17 @@ export class ProviderState {
         'conflict',
         'The provider job or configuration changed while metadata was being read.',
       );
-    this.store.aiProvider.save(chat.id, { ...current, metadata });
-    return { ...current, metadata };
+    const usage = metadataSubscriptionUsage(metadata);
+    const updated = {
+      ...current,
+      metadata,
+      ...(usage?.runtime === 'claude' ? { subscription_usage: usage } : {}),
+    };
+    this.store.write(() => {
+      this.store.aiProvider.save(chat.id, updated);
+      if (usage !== undefined) observeNativeSubscription(this.store, chat, usage);
+    });
+    return updated;
   }
 
   async answer(chat: AiChatRow, promptId: string, answer: ProviderAnswer): Promise<void> {

@@ -3,12 +3,14 @@ import { View } from 'react-native';
 import { Figure } from '../../../components/figure';
 import { IconWell } from '../../../components/icon-well';
 import { Text } from '../../../components/text';
-import { WidgetFrame, isTall, type WidgetSize } from '../../../components/widget-board';
+import { WidgetFrame } from '../../../components/widget-board';
 import { useRooms } from '../../../store/selectors';
 import { MetricDial } from '../components/metric-dial';
 import { useClimateSources } from '../model/climate-devices';
 import { comfortOf, INDOOR_METRICS, type MetricReading, type RoomComfort } from '../model/comfort';
 import { metricColour, metricIcon, metricShort } from '../model/metric-look';
+import { comfortDialFit, roomGridFit, rowsOf, type ComfortDialFit } from './climate-fit';
+import { useClimateBody } from './use-body-box';
 
 function Line({ reading }: { readonly reading: MetricReading }): ReactNode {
   return (
@@ -26,19 +28,21 @@ function Line({ reading }: { readonly reading: MetricReading }): ReactNode {
 
 function DialCell({
   reading,
-  tall,
+  fit,
 }: {
   readonly reading: MetricReading;
-  readonly tall: boolean;
+  readonly fit: ComfortDialFit;
 }): ReactNode {
   return (
     <View
       className={
-        tall ? 'min-w-0 flex-1 items-center gap-1' : 'min-w-0 flex-1 flex-row items-center gap-3'
+        fit.stacked
+          ? 'min-w-0 flex-1 items-center gap-1'
+          : 'min-w-0 flex-1 flex-row items-center gap-3'
       }
     >
-      <MetricDial reading={reading} size={tall ? 132 : 72} />
-      <View className={tall ? 'items-center' : 'min-w-0 flex-1'}>
+      <MetricDial reading={reading} size={fit.dial} />
+      <View className={fit.stacked ? 'min-w-0 items-center' : 'min-w-0 flex-1'}>
         <Text variant="footnote" tone="variant" numberOfLines={1}>
           {metricShort(reading.metric)}
         </Text>
@@ -50,17 +54,12 @@ function DialCell({
   );
 }
 
-function Single({
-  readings,
-  size,
-}: {
-  readonly readings: readonly MetricReading[];
-  readonly size: WidgetSize;
-}): ReactNode {
+function Single({ readings }: { readonly readings: readonly MetricReading[] }): ReactNode {
+  const fit = comfortDialFit(useClimateBody().box, readings.length);
   return (
     <View className="flex-1 flex-row items-center justify-around gap-3">
       {readings.map((reading) => (
-        <DialCell key={reading.metric} reading={reading} tall={isTall(size)} />
+        <DialCell key={reading.metric} reading={reading} fit={fit} />
       ))}
     </View>
   );
@@ -68,7 +67,7 @@ function Single({
 
 function RoomRow({ room }: { readonly room: RoomComfort }): ReactNode {
   return (
-    <View className="gap-2 rounded-md bg-surface-2 p-3">
+    <View className="min-w-0 flex-1 gap-1 rounded-md bg-surface-2 px-3 py-2">
       <Text variant="body-strong" numberOfLines={1}>
         {room.room ?? 'Your home'}
       </Text>
@@ -81,30 +80,38 @@ function RoomRow({ room }: { readonly room: RoomComfort }): ReactNode {
   );
 }
 
+function roomKey(room: RoomComfort): string {
+  return room.roomId ?? 'home';
+}
+
+function Rooms({ rooms }: { readonly rooms: readonly RoomComfort[] }): ReactNode {
+  const fit = roomGridFit(useClimateBody().box, rooms.length);
+  return (
+    <View className="flex-1 gap-2">
+      {rowsOf(rooms.slice(0, fit.shown), fit.columns).map((row) => (
+        <View key={row.map(roomKey).join()} className="flex-row gap-3">
+          {row.map((entry) => (
+            <RoomRow key={roomKey(entry)} room={entry} />
+          ))}
+          {Array.from({ length: fit.columns - row.length }, (_, index) => (
+            <View key={`gap-${String(index)}`} className="flex-1" />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function useIndoorComfort(room: string | null): readonly RoomComfort[] {
   return comfortOf(useClimateSources(room), useRooms(), INDOOR_METRICS);
 }
 
-export function ComfortWidget({
-  size,
-  room,
-}: {
-  readonly size: WidgetSize;
-  readonly room: string | null;
-}): ReactNode {
+export function ComfortWidget({ room }: { readonly room: string | null }): ReactNode {
   const comfort = useIndoorComfort(room);
   const single = comfort.length === 1 ? comfort[0] : undefined;
   return (
     <WidgetFrame title="Indoors" icon="thermometer" accent="temp-warm">
-      {single === undefined ? (
-        <View className="flex-1 gap-2 overflow-hidden">
-          {comfort.map((entry) => (
-            <RoomRow key={entry.roomId ?? 'home'} room={entry} />
-          ))}
-        </View>
-      ) : (
-        <Single readings={single.readings} size={size} />
-      )}
+      {single === undefined ? <Rooms rooms={comfort} /> : <Single readings={single.readings} />}
     </WidgetFrame>
   );
 }

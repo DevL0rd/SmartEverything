@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { RefNames } from '@smarteverything/domain';
 import type { Manifest } from '@smarteverything/flow/compile/manifest';
 import { Card } from '../../../components/card';
@@ -9,7 +9,7 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { dynamicUsage, usageGroups, type UseChip, type UseSlot } from './detail-model';
 
-export type UseLink = (slot: UseSlot, id: string) => Href | null;
+export type UseLink = (slot: UseSlot, id: string) => AppHref | null;
 
 function Chip({ chip, link }: { readonly chip: UseChip; readonly link: UseLink }): ReactNode {
   const href = link(chip.slot, chip.id);

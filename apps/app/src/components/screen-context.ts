@@ -27,6 +27,7 @@ export const ScreenContext = createContext<ScreenValue>(IDLE);
 export interface ScreenScroll {
   readonly scrollRef: AnimatedRef<Animated.ScrollView>;
   readonly scrollY: SharedValue<number>;
+  readonly layout: SharedValue<number>;
 }
 
 export const ScreenScrollContext = createContext<ScreenScroll | null>(null);

@@ -82,7 +82,7 @@ describe('syncCellOf', () => {
     expect(cell.peers).toEqual([{ id: peerOf().id, name: 'NAS', online: false }]);
   });
 
-  it('shows at most three folder rings, the ones needing attention first', () => {
+  it('shows every folder ring, the ones needing attention first', () => {
     const folders = ['a', 'b', 'c', 'd'].map((id) => folderOf({ id, label: id }));
     const cell = syncCellOf(
       snapshotOf({
@@ -90,18 +90,20 @@ describe('syncCellOf', () => {
       }),
       NOW,
     );
-    expect(cell.folders.map((folder) => folder.id)).toEqual(['z', 'a', 'b']);
+    expect(cell.folders.map((folder) => folder.id)).toEqual(['z', 'a', 'b', 'c']);
   });
 
-  it('goes stale with the reason, keeps the rings and offers no action when unreachable', () => {
+  it('names the outage once in the chip, keeps the rings and offers no action when unreachable', () => {
     const since = '2026-10-17T09:55:00+07:00';
     const cell = syncCellOf(
       snapshotOf({ connection: { state: 'unreachable', reason: 'timeout', since } }),
       NOW,
     );
     expect(cell.kind).toBe('stale');
-    expect(cell.chip).toEqual({ tone: 'neutral', label: 'Not reachable' });
-    expect(cell.reason).toContain('Can’t reach Syncthing');
+    expect(cell.chip.tone).toBe('neutral');
+    expect(cell.chip.label).toMatch(/^Offline · /);
+    expect(cell.line).toBeNull();
+    expect(cell.spoken).toMatch(/^Syncthing, Can’t reach Syncthing · /);
     expect(cell.canAct).toBe(false);
     expect(cell.folders).toHaveLength(1);
   });

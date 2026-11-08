@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
-import { AUTOMATION_ROW_V3 } from '../src/automation-v3/rows';
+import { AUTOMATION_ROW } from '../src/automation-v3/rows';
 import { DEFAULT_HISTORY_SETTINGS } from '../src/history-settings';
 import { DEFAULT_TRIGGER_SETTINGS } from '../src/trigger-settings';
 import {
@@ -280,13 +280,13 @@ const automation = {
 const automationV3 = {
   ...automation,
   definition: {
-    version: 3,
+    version: 4,
     kind: 'automation',
     triggers: [],
     inputs: [],
     outputs: [],
     variables: [],
-    body: { nodes: [] },
+    nodes: [{ id: '00000000-0000-4000-8000-0000000000f1', key: 'start', kind: 'flow.start' }],
     policy: { mode: 'single' },
   },
   draft: null,
@@ -324,6 +324,7 @@ const healthSource = {
 const mcpToken = {
   id: FIRST,
   name: 'Laptop',
+  access: 'control',
   created_at: AT,
   last_used_at: LATER,
   revoked_at: LATER,
@@ -711,6 +712,18 @@ describe('named texts', () => {
   });
 });
 
+const googleAccount = {
+  profile_id: '0b1c6a54-2f0e-4b6e-9a43-0f3b6d2b7a10',
+  email: 'person@example.com',
+  scopes: ['openid', 'email'],
+  status: 'linked',
+  problem: null,
+  calendar_ids: ['primary'],
+  list_ids: [],
+  last_sync_at: AT,
+  last_error: null,
+};
+
 const ROW_SAMPLES = {
   settings,
   clients: client,
@@ -734,6 +747,7 @@ const ROW_SAMPLES = {
   health_daily: healthDaily,
   mcp_tokens: mcpToken,
   oauth_clients: oauthClient,
+  google_accounts: googleAccount,
 } as const;
 
 const SAMPLED_TABLES = LIVE_TABLES.filter(
@@ -789,6 +803,21 @@ describe('live tables', () => {
       'plugin_streams',
       'plugin_ui',
       'ai_outreach',
+      'home_maps',
+      'model_assets',
+      'model_catalog',
+      'model_overrides',
+      'automation_plugin_kinds',
+      'drive_roots',
+      'drive_albums',
+      'drive_sync_clients',
+      'planner_collections',
+      'planner_items',
+      'planner_occurrences',
+      'planner_alarms',
+      'planner_timers',
+      'planner_stopwatches',
+      'google_accounts',
     ]);
     expect(Object.keys(TABLE_ROWS)).toStrictEqual(LIVE_TABLES);
   });
@@ -810,7 +839,7 @@ describe('live tables', () => {
       ['ir_remotes', IR_REMOTE_ROW],
       ['ir_codes', IR_CODE_ROW],
       ['scenes', SCENE_ROW],
-      ['automations', AUTOMATION_ROW_V3],
+      ['automations', AUTOMATION_ROW],
       ['layouts', LAYOUT_ROW],
       ['push_targets', PUSH_TARGET_ROW],
       ['health_sources', HEALTH_SOURCE_ROW],
@@ -847,6 +876,38 @@ describe('live tables', () => {
 
   it('ROW_OPERATIONS lists exactly insert, update and delete', () => {
     expect(ROW_OPERATIONS).toStrictEqual(['INSERT', 'UPDATE', 'DELETE']);
+  });
+});
+
+describe('planner registration', () => {
+  it('streams the planner tables and keeps rings and preferences off the socket', () => {
+    expect(LIVE_TABLES).not.toContain('planner_rings');
+    expect(LIVE_TABLES).not.toContain('planner_preferences');
+    expect(splitLiveTables(['planner_items', 'google_accounts', 'planner_rings'])).toStrictEqual({
+      known: ['planner_items', 'google_accounts'],
+      unknown: ['planner_rings'],
+    });
+  });
+
+  it('carries the planner ring and summary notices to every client', () => {
+    const ring = {
+      type: 'planner_ring',
+      ringId: '5d7b1d8e-6a43-4c1c-8d1f-2a9b3c4d5e6f',
+      kind: 'alarm',
+      refId: '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d',
+      dueAt: AT,
+    };
+    const summary = {
+      type: 'planner_summary',
+      personId: '0b1c6a54-2f0e-4b6e-9a43-0f3b6d2b7a10',
+      missed: 2,
+      left: 5,
+      nextAlarmAt: AT,
+      runningTimers: 1,
+    };
+    expect(LIVE_SERVER_MESSAGE.parse(ring)).toStrictEqual(ring);
+    expect(LIVE_SERVER_MESSAGE.parse(summary)).toStrictEqual(summary);
+    expect(LIVE_SERVER_MESSAGE.safeParse({ ...summary, missed: -1 }).success).toBe(false);
   });
 });
 

@@ -37,6 +37,7 @@ export {
 export type { ActionAddress, PropertyAddress, PropertyReading, PropertyWrite } from './miot';
 
 export {
+  MapBlobError,
   MiioDeviceError,
   MiioPacketError,
   MiotRefusedError,
@@ -131,7 +132,7 @@ export type { EnumOption, PropertyValue, ValueCodec } from './miot-values';
 
 export { hsvToRgb, rgbToHsv } from './color';
 
-export { modelFromSpec, propertyKeyOf } from './device-model';
+export { inputShapeOf, modelFromSpec, propertyKeyOf } from './device-model';
 export type {
   ActionBinding,
   ActionInput,
@@ -216,3 +217,209 @@ export {
   isBluetoothDid,
   parseBeaconKey,
 } from './bluetooth';
+
+export {
+  GRID_FIRST_ROOM,
+  GRID_LAST_ROOM,
+  cellToMillimetres,
+  decodeMapLayer,
+  decodeTrajectory,
+  decryptMapBlob,
+  mapKey,
+  millimetresToCell,
+  roomCellCounts,
+} from './vacuum/map-blob';
+export type { MapLayer } from './vacuum/map-blob';
+export { MAP_DOCUMENT, MAP_ENVELOPE } from './vacuum/map-document';
+export type { MapDocument, TrajectoryPoint } from './vacuum/map-document';
+
+export {
+  VACUUM_SERVICE_ID,
+  VacuumCatalogError,
+  findAction,
+  findEvent,
+  findProperty,
+  isAbsentOnDevice,
+  pv11glCatalog,
+  vacuumAction,
+  vacuumEvent,
+  vacuumFault,
+  vacuumFaultTable,
+  vacuumProperty,
+  vacuumStatus,
+  vacuumStatusTable,
+} from './vacuum/pv11gl-catalog';
+export type { VacuumServiceKey, VacuumStatusEntry } from './vacuum/pv11gl-catalog';
+export {
+  VACUUM_ACTION,
+  VACUUM_CATALOG,
+  VACUUM_EVENT,
+  VACUUM_FAULT,
+  VACUUM_FAULT_TABLE,
+  VACUUM_PROPERTY,
+  VACUUM_SAFETY,
+  VACUUM_SERVICE,
+} from './vacuum/catalog-schema';
+export type {
+  VacuumAction,
+  VacuumCatalog,
+  VacuumEvent,
+  VacuumFault,
+  VacuumProperty,
+  VacuumSafety,
+  VacuumService,
+} from './vacuum/catalog-schema';
+export { actionSafety, propertySafety, vacuumSafety } from './vacuum/pv11gl-safety';
+export {
+  STATION_MODES,
+  vacuumConsumables,
+  vacuumStationFunctions,
+  vacuumStationMode,
+} from './vacuum/pv11gl-station';
+export type {
+  ConsumableId,
+  StationFunctionId,
+  VacuumConsumable,
+  VacuumStationFunction,
+  VacuumStationMode,
+} from './vacuum/pv11gl-station';
+
+export { CELL_FLAG, dirtLevel, hasCellFlag } from './vacuum/map-blob';
+export { MAP_PATHS, PATH_POINT } from './vacuum/map-document';
+export type { MapPaths, PathPoint } from './vacuum/map-document';
+export {
+  ROUTE_ACTION,
+  ROUTE_DELTA,
+  decodeMapRoute,
+  mergeRouteDelta,
+  parseRouteDelta,
+  routeDeltaInput,
+} from './vacuum/route';
+export type { ActionOutput, Route, RouteMerge, RouteMode, RoutePoint } from './vacuum/route';
+export { VACUUM_EVENT_FAMILY, vacuumFaultEvent } from './events';
+
+export {
+  VacuumCodecError,
+  decodeDndWindow,
+  decodePreset,
+  decodePresetLabels,
+  decodeRestrictedAreas,
+  decodeVirtualWalls,
+  encodeDndWindow,
+  encodePreset,
+  encodeRestrictedAreas,
+  encodeVirtualWalls,
+} from './vacuum/codecs';
+export type {
+  DoNotDisturbWindow,
+  RestrictedArea,
+  RestrictedAreaDraft,
+  VacuumPreset,
+  VacuumPresetLabel,
+  VirtualWall,
+  VirtualWallDraft,
+} from './vacuum/codecs';
+export {
+  COMMAND_BUDGET,
+  FLOOR_MATERIAL,
+  VacuumCommandError,
+  ZONES_MAX,
+  closeAlert,
+  commandWire,
+  findRobot,
+  goToDock,
+  pauseCleaning,
+  resumeCleaning,
+  roomFloor,
+  roomVisibility,
+  startHouse,
+  startRooms,
+  startZones,
+  stationStart,
+  stationStop,
+  stopCleaning,
+} from './vacuum/commands';
+export type {
+  FloorMaterial,
+  StationStartId,
+  StationStopId,
+  VacuumActionCall,
+  VacuumActionInput,
+  VacuumBudget,
+  VacuumCommand,
+  VacuumExpectation,
+  VacuumPushed,
+  VacuumRunOptions,
+  VacuumWire,
+} from './vacuum/commands';
+export {
+  PRESETS_MAX,
+  RESTRICTIONS_MAX,
+  presetAdd,
+  presetDelete,
+  presetModify,
+  presetStart,
+  setRestrictions,
+} from './vacuum/commands-saved';
+
+export {
+  buildVacuumScene,
+  dockPose,
+  robotPose,
+  sceneBounds,
+  toDockPoint,
+  toDockPose,
+} from './vacuum/scene';
+export type { VacuumSceneSource } from './vacuum/scene';
+export { buildRooms } from './vacuum/scene-rooms';
+
+export {
+  NO_PUSHED_MAP_OBJECTS,
+  OPENING_KIND,
+  WALL_KIND,
+  WALL_LINE_TYPE,
+  buildCarpets,
+  buildDoors,
+  buildFurniture,
+  buildObjects,
+  buildSills,
+  buildWalls,
+  buildWallsLayer,
+  buildZones,
+  decodeAiObjects,
+  decodeFurniture,
+  decodeHiddenZones,
+  decodeSills,
+} from './vacuum/scene-walls';
+export type {
+  AiObject,
+  FurnitureItem,
+  HiddenZone,
+  PushedMapObjects,
+  Sill,
+  WallsLayer,
+} from './vacuum/scene-walls';
+
+export {
+  TRAIL_GAP_MILLIMETRES,
+  applyRoute,
+  buildTrail,
+  currentRoomId,
+  roomAt,
+  routePose,
+} from './vacuum/scene-route';
+
+export { actionInput } from './miot';
+export type { ActionInputShape } from './miot';
+
+export { XIAOMI_SMART_TOWER_FAN_2_MODEL } from './models/fan';
+export { XIAOMI_AIR_PURIFIER_4_PRO_MODEL } from './models/purifier';
+export { XIAOMI_CAMERA_083AE2_MODEL } from './models/camera';
+export { MIJIA_EVAPORATIVE_HUMIDIFIER_PRO_MODEL } from './models/humidifier';
+export { MIJIA_WASHER_DRYER_F29GL_MODEL } from './models/laundry';
+export { XIAOMI_PV11GL_ROBOT_MODEL } from './models/vacuum';
+export { XIAOMI_PV11GL_STATION_MODEL } from './models/vacuum-station';
+export { XIAOMI_WIRELESS_SWITCH_ROUND_MODEL } from './models/button';
+export { XIAOMI_SMART_SCENT_DIFFUSER_MODEL } from './models/diffuser';
+export { XIAOMI_SMART_HOME_HUB_2_MODEL } from './models/gateway';
+export { XIAOMI_WATCH_S5_46_MODEL } from './models/watch';

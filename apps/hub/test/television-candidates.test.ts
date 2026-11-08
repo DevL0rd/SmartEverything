@@ -122,7 +122,7 @@ describe('the endpoint that lists them', () => {
     );
     return routes.listTelevisionCandidates.run(
       owner,
-      { params: { deviceId }, query: {}, body: undefined, remote: '127.0.0.1' },
+      { params: { deviceId }, query: {}, body: undefined, remote: '127.0.0.1', headers: {} },
       testLogger('television'),
     );
   }

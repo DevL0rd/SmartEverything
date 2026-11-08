@@ -10,8 +10,8 @@ describe('what a member may see of a computer engine', () => {
       kind: 'codex',
       settings: {},
     });
-    const openrouter = { kind: 'openrouter', model: 'x', effort: null };
-    expect(memberEngineProjection(openrouter)).toStrictEqual(openrouter);
+    const dsh = { kind: 'dsh', model: 'x', effort: null };
+    expect(memberEngineProjection(dsh)).toStrictEqual(dsh);
   });
 
   it('projects engines nested inside rows and lists', () => {

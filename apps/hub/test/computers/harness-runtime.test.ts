@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { z } from 'zod';
@@ -131,7 +132,7 @@ beforeEach(async () => {
       node_token: `sen_${'a'.repeat(43)}`,
       device_id: randomUUID(),
     },
-    dataDirectory: directory.path,
+    stateDirectory: join(directory.path, 'harness'),
     machineId: 'a'.repeat(32),
     name: 'desk',
     log: testLogger('node'),
@@ -304,7 +305,7 @@ describe('which platform a computer harness runtime announces', () => {
         node_token: `sen_${'a'.repeat(43)}`,
         device_id: randomUUID(),
       },
-      dataDirectory: directory.path,
+      stateDirectory: join(directory.path, 'harness'),
       machineId: 'a'.repeat(32),
       name: 'desk',
       log: testLogger('node'),
@@ -326,8 +327,8 @@ describe('which platform a computer harness runtime announces', () => {
     }, WAIT);
     await windows.stop();
 
-    expect(connect()).toMatchObject({ capabilities: hostCapabilities('windows', true) });
-    expect(hostCapabilities('windows', true)).not.toContain('harness-subscriptions-v1');
+    expect(connect()).toMatchObject({ capabilities: hostCapabilities('windows') });
+    expect(hostCapabilities('windows')).not.toContain('harness-subscriptions-v1');
     expect(vi.mocked(createComputerHarness).mock.calls[0]?.[0]).toMatchObject({
       platform: 'windows',
     });
@@ -343,8 +344,8 @@ describe('which platform a computer harness runtime announces', () => {
     }, WAIT);
     await mac.stop();
 
-    expect(connect()).toMatchObject({ capabilities: hostCapabilities('macos', true) });
-    expect(hostCapabilities('macos', true)).toContain('harness-subscriptions-v1');
+    expect(connect()).toMatchObject({ capabilities: hostCapabilities('macos') });
+    expect(hostCapabilities('macos')).toContain('harness-subscriptions-v1');
     expect(vi.mocked(createComputerHarness).mock.calls[0]?.[0]).toMatchObject({
       platform: 'macos',
     });

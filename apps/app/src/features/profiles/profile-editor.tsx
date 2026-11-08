@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
-import { ACCENTS, type ProfileRow } from '@smarteverything/domain';
+import { ACCENTS, PROFILE_NAME_MAX, type ProfileRow } from '@smarteverything/domain';
 import { updateProfile } from '../../api/people';
 import { href } from '../../app-shell/hrefs';
 import { ColourSwatches } from '../../components/colour-swatches';
@@ -14,10 +13,11 @@ import { ListRow } from '../../components/list-row';
 import { PageHeader } from '../../components/page-header';
 import { Screen } from '../../components/screen';
 import { ACCENT_LABELS, ACCENT_SWATCH } from '../../design/tokens';
-import { TextEditSheet, type TextEditRequest } from '../../settings/text-edit-sheet';
+import { TextEditSheet } from '../../settings/text-edit-sheet';
 import { useProfiles } from '../../store/people';
 import { useIsOwner, useRow } from '../../store/selectors';
 import { BodyDetails, useProfileSave } from './body-details';
+import { useNameEditor } from './name-editor';
 import { ProfileAvatar } from './profile-avatar';
 import { profileRemovalOptions } from './profile-removal';
 import { background } from '@smarteverything/logging';
@@ -59,10 +59,11 @@ function Removal({ profile }: { readonly profile: ProfileRow }): ReactNode {
         title={`Remove ${profile.name}`}
         icon="trash"
         destructive
+        wrapTitle
         onPress={() => {
           background(
             confirm({
-              title: `Remove ${profile.name}?`,
+              title: 'Remove this person?',
               body: 'Their health data and weigh-ins are deleted. Their apps switch to another person.',
               confirmLabel: 'Remove',
               tone: 'destructive',
@@ -80,29 +81,26 @@ function Removal({ profile }: { readonly profile: ProfileRow }): ReactNode {
   );
 }
 
-function Editor({
-  profile,
-  extra,
-}: {
-  readonly profile: ProfileRow;
-  readonly extra: ReactNode;
-}): ReactNode {
-  const [request, setRequest] = useState<TextEditRequest | null>(null);
+function ProfileName({ profile }: { readonly profile: ProfileRow }): ReactNode {
+  const editor = useNameEditor();
   return (
     <>
       <List>
         <ListRow
           title={profile.name}
           subtitle="Name"
+          label={`Edit name for ${profile.name}`}
+          wrapTitle
+          pressRef={editor.opener}
           leading={<ProfileAvatar profile={profile} size="l" />}
           onPress={() => {
-            setRequest({
+            editor.open({
               title: 'Name',
               label: 'Name',
               initial: profile.name,
               placeholder: 'Their first name',
               confirmLabel: 'Save',
-              maxLength: 40,
+              maxLength: PROFILE_NAME_MAX,
               save: async (name) => {
                 await updateProfile(profile.id, { name });
               },
@@ -110,21 +108,34 @@ function Editor({
           }}
         />
       </List>
-      <List title="Colour">
-        <Look profile={profile} />
-      </List>
-      <List title="Body" footer="Your scale uses these to work out body fat, muscle and water.">
-        <BodyDetails profile={profile} />
-      </List>
-      {extra}
-      <Removal profile={profile} />
-      <TextEditSheet
-        request={request}
-        onClose={() => {
-          setRequest(null);
-        }}
-      />
+      <TextEditSheet request={editor.request} onClose={editor.close} />
     </>
+  );
+}
+
+function Editor({
+  profile,
+  extra,
+}: {
+  readonly profile: ProfileRow;
+  readonly extra: ReactNode;
+}): ReactNode {
+  return (
+    <View className="gap-section-gap web:flex-row web:flex-wrap web:items-start">
+      <View className="min-w-0 max-w-reading gap-section-gap web:shrink web:grow web:basis-96">
+        <ProfileName profile={profile} />
+        <List title="Colour">
+          <Look profile={profile} />
+        </List>
+        <List title="Body" footer="Your scale uses these to work out body fat, muscle and water.">
+          <BodyDetails profile={profile} />
+        </List>
+      </View>
+      <View className="min-w-0 max-w-reading gap-section-gap web:shrink web:grow web:basis-96 web:empty:hidden">
+        {extra}
+        <Removal profile={profile} />
+      </View>
+    </View>
   );
 }
 
@@ -137,7 +148,10 @@ export function ProfileEditorScreen({
 }): ReactNode {
   const profile = useRow('profiles', profileId);
   return (
-    <Screen header={<PageHeader title={profile?.name ?? 'Person'} />} maxWidth="reading">
+    <Screen
+      header={<PageHeader title={profile?.name ?? 'Person'} titleLines="wrap" />}
+      maxWidth={profile === null ? 'reading' : 'detail'}
+    >
       {profile === null ? (
         <EmptyState icon="users" title="Person not found" body="They may have been removed." />
       ) : (

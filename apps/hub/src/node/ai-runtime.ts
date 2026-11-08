@@ -17,11 +17,12 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ComputerRuntimeHost, ComputerRuntimeHostEvent } from '../computers/runtime-host';
-import { apiErrorFor } from '../server/errors';
+import { claudeApiErrorFor } from '../claude/api-errors';
 import { NodeAiLink, type HubSocketFrame } from './ai-link';
 import { NodeComputerChannel } from './computer-channel';
 import type { ComputerNode } from './computer-node';
 import type { NodeLink } from './link';
+import type { NodeLogShip } from './log-ship';
 import { background, messageOf } from '@smarteverything/logging';
 import { trimOldest } from '../trim-oldest';
 const KEPT_RECEIPTS = 1_000;
@@ -37,6 +38,7 @@ export interface NodeAiRuntimeOptions {
   readonly hello: NodeHello;
   readonly log: Logger;
   readonly transport?: NodeHubTransport;
+  readonly logs?: NodeLogShip;
   readonly createRuntimeHosts: () => Promise<readonly ComputerRuntimeHost[]>;
   readonly createComputer: (link: NodeLink) => ComputerNode | null;
   readonly runtimes?: readonly ComputerAiRuntime[];
@@ -202,7 +204,7 @@ export class NodeAiRuntime {
         throw new NodeRuntimeError('The runtime replied to a different operation.');
       return { ok: true, reply };
     } catch (cause) {
-      const known = apiErrorFor(cause);
+      const known = claudeApiErrorFor(cause);
       return failure(known?.code ?? 'upstream_failed', messageOf(cause).slice(0, 2000));
     }
   }

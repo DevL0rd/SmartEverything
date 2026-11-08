@@ -1,19 +1,15 @@
-import { useMemo, type ReactNode } from 'react';
-import type { Layout } from '@smarteverything/domain';
-import type { Program } from '@smarteverything/flow/program/walk';
+import { useMemo, type ReactNode, type RefObject } from 'react';
+import { View } from 'react-native';
+import type { Layout, ProgramV4 } from '@smarteverything/domain';
 import { DockedPane } from '../../../../components/docked-pane';
 import { usePausable } from '../../../../design/external-store';
 import type { DocumentStore } from '../../model/editor/document-store';
-import { Inspector } from '../inspector/inspector';
-import type {
-  InspectorActions,
-  InspectorEnv,
-  InspectorFinding,
-} from '../inspector/sections/section-types';
+import { Inspector, type InspectorModel } from '../inspector/inspector';
+import type { InspectorActions, InspectorFinding } from '../inspector/sections/section-types';
 import type { InsertState } from '../palette/armed-insert';
 import { Palette } from '../palette/palette';
 import type { PaletteChoice } from '../palette/palette-categories';
-import { STEP_CONTEXT } from '../palette/palette-search';
+import type { PaletteContext } from '../palette/palette-search';
 import { ProblemsDrawer } from '../problems/problems-drawer';
 import { ProblemsSheet } from '../problems/problems-sheet';
 import type { ProblemHandlers } from '../problems/problem-rows';
@@ -21,7 +17,7 @@ import { inspectorFindings, type LiveCheck } from '../problems/problem-model';
 import { PANE_LIMITS, type PaneSizes } from './screen-model';
 
 export interface InspectorEnvInput {
-  readonly program: Program;
+  readonly program: ProgramV4;
   readonly layout: Layout;
   readonly target: string | null;
   readonly findings: readonly InspectorFinding[];
@@ -29,7 +25,7 @@ export interface InspectorEnvInput {
 
 export interface InspectorBinding {
   readonly actions: Omit<InspectorActions, 'fix'>;
-  readonly buildEnv: (input: InspectorEnvInput) => InspectorEnv;
+  readonly buildEnv: (input: InspectorEnvInput) => InspectorModel;
 }
 
 export interface PaneProps {
@@ -74,6 +70,7 @@ function Docked({
 
 export interface PaletteHostProps {
   readonly state: InsertState;
+  readonly context: PaletteContext;
   readonly onChoose: (choice: PaletteChoice) => void;
   readonly onClose: () => void;
 }
@@ -82,7 +79,7 @@ export function PaletteHost(props: PaletteHostProps): ReactNode {
   return (
     <Palette
       state={props.state}
-      context={STEP_CONTEXT}
+      context={props.context}
       onChoose={props.onChoose}
       onClose={props.onClose}
     />
@@ -142,22 +139,30 @@ export function InspectorHost({
     () => (target === null ? [] : inspectorFindings(check.findings, target)),
     [check.findings, target],
   );
-  const env = useMemo(
+  const model = useMemo(
     () => binding.buildEnv({ program, layout, target, findings }),
     [binding, program, layout, target, findings],
   );
   const actions = useMemo(() => ({ ...binding.actions, fix: onFix }), [binding.actions, onFix]);
   return (
-    <Inspector selectedId={target} env={env} actions={actions} docked={docked} onClose={onClose} />
+    <Inspector
+      selectedId={target}
+      model={model}
+      actions={actions}
+      docked={docked}
+      onClose={onClose}
+    />
   );
 }
 
 export function InspectorDock({
   host,
   pane,
+  focusRef,
 }: {
   readonly host: InspectorHostProps;
   readonly pane: PaneProps;
+  readonly focusRef: RefObject<View | null>;
 }): ReactNode {
   if (host.target === null) return null;
   return (
@@ -169,7 +174,9 @@ export function InspectorDock({
       onOpenChange={host.onClose}
       sizing={pane}
     >
-      <InspectorHost {...host} docked />
+      <View ref={focusRef} className="min-h-0 flex-1">
+        <InspectorHost {...host} docked />
+      </View>
     </Docked>
   );
 }

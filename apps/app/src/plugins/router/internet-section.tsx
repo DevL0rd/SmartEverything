@@ -19,7 +19,7 @@ export function InternetSection({
 }): ReactNode {
   usePluginScreen('router', 'InternetSection');
   const stream = useRouterSnapshot();
-  const tests = useSpeedTests();
+  const tests = useSpeedTests().list;
   const last = tests.state === 'ready' ? (tests.tests[0] ?? null) : null;
   const snapshot = stream.state === 'ready' ? stream.value : null;
   return (

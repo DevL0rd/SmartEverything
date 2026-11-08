@@ -11,6 +11,7 @@ import {
   PHONE_SIGNAL_BARS_MOST,
   PHONE_THERMAL_STATES,
   type DeviceCapability,
+  type PhoneHardware,
   type PhoneFeatureSupport,
   type DiscoveredDevice,
   type MachineAction,
@@ -197,6 +198,7 @@ export interface PhoneMachine {
   readonly actions: readonly MachineActionSupport[];
   readonly permissions: readonly MachinePermissionState[];
   readonly features: readonly PhoneFeatureSupport[];
+  readonly hardware?: PhoneHardware | undefined;
 }
 
 export function phoneExternalId(clientId: string): string {
@@ -233,6 +235,12 @@ export function describePhone(phone: PhoneIdentity, machine: PhoneMachine): Disc
     details: {
       clientId: phone.clientId,
       profileId: phone.profileId,
+      ...(machine.hardware === undefined
+        ? {}
+        : {
+            hardwareModel: machine.hardware.model,
+            hardwareManufacturer: machine.hardware.manufacturer,
+          }),
       machineActions: machine.actions.map((support) => ({ ...support })),
       machinePermissions: machine.permissions.map((state) => ({ ...state })),
       phoneFeatures: machine.features.map((support) => ({ ...support })),

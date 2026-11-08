@@ -1,4 +1,5 @@
-import { ApiError, type FunctionV3 } from '@smarteverything/domain';
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
+import { ApiError, STARTER_NODES, type FunctionV3, type FunctionV4 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   automationFunctions,
@@ -14,6 +15,7 @@ import {
   step,
   type ProgramRig,
 } from './support/program-rig';
+import { graphFunction } from './support/graph-of';
 
 let rig: ProgramRig;
 let service: AutomationFunctions;
@@ -21,25 +23,28 @@ let service: AutomationFunctions;
 beforeEach(() => {
   captureLogs();
   rig = programRig();
-  service = automationFunctions({ ...rig.env, functions: rig.functions, builtins: [] });
+  service = automationFunctions({ ...rig.env, functions: rig.functions });
 });
 
 afterEach(() => {
   rig.close();
 });
 
-function functionOf(extra: Partial<FunctionV3> = {}): FunctionV3 {
-  return {
-    version: 3,
-    kind: 'function',
-    flavour: 'action',
-    inputs: [],
-    outputs: [],
-    exits: ['done'],
-    variables: [],
-    body: { nodes: [logLine('say', 'hi')] },
-    ...extra,
-  };
+function functionOf(extra: Partial<FunctionV3> = {}): FunctionV4 {
+  return graphFunction(
+    {
+      version: 3,
+      kind: 'function',
+      flavour: 'action',
+      inputs: [],
+      outputs: [],
+      exits: ['done'],
+      variables: [],
+      body: { nodes: [logLine('say', 'hi')] },
+      ...extra,
+    },
+    STATIC_KIND_LOOKUP,
+  );
 }
 
 function inputOf(name: string, required = true): FunctionV3['inputs'][number] {
@@ -56,7 +61,7 @@ function refusal(work: () => unknown): ApiError {
   throw new Error('The call was not refused.');
 }
 
-function made(definition: FunctionV3): string {
+function made(definition: FunctionV4): string {
   const result = service.create(rig.owner.caller, { name: 'Greeting', definition });
   if (result.id === null) throw new Error(`creating failed: ${result.summary}`);
   return result.id;
@@ -76,7 +81,7 @@ function usedBy(functionId: string, ports: Record<string, { lit: string }>): str
   return result.id;
 }
 
-function breaking(id: string, definition: FunctionV3, expectedRevision: number): void {
+function breaking(id: string, definition: FunctionV4, expectedRevision: number): void {
   const result = service.save(rig.owner.caller, id, {
     definition,
     expectedRevision,
@@ -86,7 +91,9 @@ function breaking(id: string, definition: FunctionV3, expectedRevision: number):
 }
 
 function callPorts(automationId: string): Record<string, unknown> {
-  const call = rig.programs.byId(automationId).definition.body.nodes[0];
+  const call = rig.programs
+    .byId(automationId)
+    .definition.nodes.find((node) => node.kind === 'fn.call');
   return call?.ports ?? {};
 }
 
@@ -167,11 +174,19 @@ describe('extracting steps into a reusable node', () => {
     const row = rig.functions.byId(result.id ?? '');
     expect(row.name).toBe('Middle');
     expect(row.created_by).toBe(rig.owner.profileId);
-    const body = rig.programs.byId(id).definition.body.nodes;
-    expect(body.map((node) => node.kind)).toStrictEqual(['debug.log', 'fn.call', 'debug.log']);
-    expect(body[1]?.ports).toMatchObject({ fn: { lit: row.id } });
-    expect(result.instanceKey).toBe(body[1]?.key);
-    expect(rig.revisions.byRevision(id, 1).definition.body.nodes).toHaveLength(3);
+    const { nodes } = rig.programs.byId(id).definition;
+    const steps = nodes.filter((node) => node.kind !== 'flow.start');
+    expect(steps.map((node) => node.kind).sort()).toStrictEqual([
+      'debug.log',
+      'debug.log',
+      'fn.call',
+    ]);
+    const call = steps.find((node) => node.kind === 'fn.call');
+    expect(call?.ports).toMatchObject({ fn: { lit: row.id } });
+    expect(result.instanceKey).toBe(call?.key);
+    expect(rig.programs.byId(id).layout.nodes[call?.id ?? '']).toBeDefined();
+    const first = rig.revisions.byRevision(id, 1).definition.nodes;
+    expect(first.filter((node) => node.kind === 'debug.log')).toHaveLength(3);
   });
 
   it('applies label edits to the ports of the new node and refuses unknown ports', () => {
@@ -181,7 +196,7 @@ describe('extracting steps into a reusable node', () => {
       service.extract(rig.owner.caller, { ...request, inputs: [{ name: 'nope', label: 'x' }] }),
     );
     expect(unknown.code).toBe('invalid_request');
-    expect(rig.functions.list()).toHaveLength(0);
+    expect(rig.functions.list()).toHaveLength(STARTER_NODES.length);
     expect(rig.programs.byId(id).revision).toBe(revision);
   });
 
@@ -194,9 +209,9 @@ describe('extracting steps into a reusable node', () => {
       name: 'Gap',
     });
     expect(result.ok).toBe(false);
-    expect(result.problems[0]?.code).toBe('scattered');
-    expect(result.suggestion.length).toBeGreaterThan(0);
-    expect(rig.functions.list()).toHaveLength(0);
+    expect(result.problems[0]?.code).toBe('disconnected');
+    expect(result.problems[0]?.message.length).toBeGreaterThan(0);
+    expect(rig.functions.list()).toHaveLength(STARTER_NODES.length);
     expect(rig.programs.byId(id).revision).toBe(revision);
   });
 
@@ -228,7 +243,7 @@ describe('extracting steps into a reusable node', () => {
       }),
     );
     expect(refused.code).toBe('forbidden');
-    expect(rig.functions.list()).toHaveLength(0);
+    expect(rig.functions.list()).toHaveLength(STARTER_NODES.length);
     expect(rig.programs.byId(saved.id ?? '').revision).toBe(1);
   });
 

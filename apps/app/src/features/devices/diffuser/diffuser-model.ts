@@ -1,3 +1,4 @@
+import type { NodeKindLookup } from '@smarteverything/domain';
 import { DIFFUSER_STRENGTH_LABELS, type SprayRhythm } from '@smarteverything/domain';
 import type { BadgeTone } from '../../../components/badge';
 import { LOW_LEVEL } from '../../../components/level-pill-model';
@@ -42,6 +43,10 @@ export function lowBattery(read: DiffuserRead): boolean {
   return read.battery !== null && read.battery <= LOW_LEVEL;
 }
 
+export function chargeWarningOf(read: DiffuserRead): string | null {
+  return lowBattery(read) && !read.charging ? 'Charge soon' : null;
+}
+
 function rhythmText(rhythm: SprayRhythm): string {
   return `every ${String(rhythm.intervalMinutes)} min · ${String(rhythm.durationSeconds)} s`;
 }
@@ -74,16 +79,19 @@ export function summaryOf({
   label,
   room,
   read,
+  announceChargeWarning = false,
 }: {
   readonly label: string;
   readonly room: string | null;
   readonly read: DiffuserRead;
+  readonly announceChargeWarning?: boolean;
 }): string {
   return [
     room === null ? label : `${label}, ${room}`,
     diffuserStatus(read).label,
     strengthLine(read),
     read.battery === null ? null : `battery ${String(read.battery)} percent`,
+    announceChargeWarning ? chargeWarningOf(read) : null,
   ]
     .filter((part): part is string => part !== null)
     .join('. ');
@@ -105,14 +113,20 @@ export function sprayTicks(
   });
 }
 
-export function refillLine(hours: number): string {
-  return hours < REFILL_DAYS_FROM_HOURS
-    ? `Running ${String(hours)} h since refill`
-    : `Running ${String(Math.floor(hours / DAY_HOURS))} days since refill`;
+export function refillLine(hours: number, compact = false): string {
+  const age =
+    hours < REFILL_DAYS_FROM_HOURS
+      ? `${String(hours)} h`
+      : `${String(Math.floor(hours / DAY_HOURS))} days`;
+  return compact ? `Refilled ${age} ago` : `Running ${age} since refill`;
 }
 
 export type { ScheduleLine };
 
-export function scheduleOf(rows: readonly unknown[], deviceId: string): ScheduleLine | null {
-  return scheduleOfRows(automationRowsOf(rows).rows, deviceId);
+export function scheduleOf(
+  rows: readonly unknown[],
+  deviceId: string,
+  kinds: NodeKindLookup,
+): ScheduleLine | null {
+  return scheduleOfRows(automationRowsOf(rows, kinds).rows, deviceId);
 }

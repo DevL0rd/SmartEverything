@@ -70,6 +70,6 @@ describe('audio model', () => {
     expect(appOutputName(app({}), OUTPUTS)).toBe('Speakers');
     expect(appOutputId(app({ outputId: 'hp' }), OUTPUTS)).toBe('hp');
     expect(appOutputName(app({ outputId: 'hp' }), OUTPUTS)).toBe('Headphones');
-    expect(appOutputName(app({}), [])).toBe('Default output');
+    expect(appOutputName(app({}), [])).toBe('No output found');
   });
 });

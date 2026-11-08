@@ -12,7 +12,7 @@ import { milliseconds } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import { moment } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
-import { useSpeedTestRun, useSpeedTests } from '../router-data';
+import { useSpeedTests } from '../router-data';
 import { canRunSpeedTest, rateParts } from './hero-model';
 import { speedHistory } from './speed-model';
 import { useSpeedTestControls } from './use-speed-test';
@@ -61,8 +61,7 @@ function subtitleOf(last: SpeedTestResult | null, now: number): string {
 }
 
 export function SpeedCard({ snapshot }: { readonly snapshot: RouterSnapshot }): ReactNode {
-  const run = useSpeedTestRun();
-  const list = useSpeedTests();
+  const { run, list } = useSpeedTests();
   const test = useSpeedTestControls();
   const now = useMinute();
   const tests = list.state === 'ready' ? list.tests : [];

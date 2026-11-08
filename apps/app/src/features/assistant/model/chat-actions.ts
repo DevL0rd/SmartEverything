@@ -1,7 +1,7 @@
-import { messageSpeaker, type AiChatRow, type AssistantMessageRow } from '@smarteverything/domain';
+import type { AiChatRow } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
 
-type ChatActionId = 'pin' | 'read' | 'branch' | 'archive' | 'delete';
+type ChatActionId = 'pin' | 'read' | 'archive' | 'delete';
 
 export interface ChatAction {
   readonly id: ChatActionId;
@@ -11,16 +11,8 @@ export interface ChatAction {
   readonly enabled: boolean;
 }
 
-export function hasIncoming(rows: readonly AssistantMessageRow[]): boolean {
-  return rows.some((row) => {
-    const kind = messageSpeaker(row).kind;
-    return kind === 'ai' || kind === 'person';
-  });
-}
-
 export function chatActionsOf(
   chat: Pick<AiChatRow, 'pinned' | 'archived_at' | 'unread_count'>,
-  context: { readonly incoming: boolean; readonly branchPoint: boolean },
 ): readonly ChatAction[] {
   const unread = chat.unread_count > 0;
   const archived = chat.archived_at !== null;
@@ -37,14 +29,7 @@ export function chatActionsOf(
       label: unread ? 'Mark read' : 'Mark unread',
       icon: unread ? 'circleCheck' : 'circle',
       destructive: false,
-      enabled: unread || context.incoming,
-    },
-    {
-      id: 'branch',
-      label: 'Branch',
-      icon: 'gitBranch',
-      destructive: false,
-      enabled: context.branchPoint,
+      enabled: true,
     },
     {
       id: 'archive',

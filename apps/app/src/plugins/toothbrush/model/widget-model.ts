@@ -1,6 +1,9 @@
 import type { BrushLiveFrame, BrushStateView } from '@smarteverything/domain';
 import type { FrameClass, WidgetFrameBox } from '../../../components/widget-board';
-import type { VisualPx } from '../../../features/device-visuals';
+import {
+  WIDGET_BODY_GAP,
+  widgetHeaderHeight,
+} from '../../../components/widget-board/widget-frame-metrics';
 import { clockText, isBrushingNow, modeLabel } from './brush-model';
 
 export type LiveWidgetKind = 'brushing' | 'recap' | 'asleep' | 'private';
@@ -42,12 +45,6 @@ export function batteryWord(view: BrushStateView): string {
 
 export type LiveFace = 'strip' | 'row' | 'panel';
 
-const HEADER_TOUCH = 40;
-const HEADER_POINTER = 32;
-const BODY_GAP = 12;
-const SMALL_VISUAL = 72;
-const SMALLEST_VISUAL = 48;
-
 export function liveFaceOf(cls: FrameClass): LiveFace {
   switch (cls) {
     case 'xs':
@@ -63,18 +60,7 @@ export function liveFaceOf(cls: FrameClass): LiveFace {
 }
 
 export function bodyHeightOf(frame: WidgetFrameBox): number {
-  const header = frame.idiom === 'touch' ? HEADER_TOUCH : HEADER_POINTER;
-  return Math.max(0, frame.height - header - BODY_GAP);
-}
-
-const VISUAL_PX: Readonly<Record<LiveFace, VisualPx>> = { strip: 72, row: 96, panel: 128 };
-
-export function visualPxOf(face: LiveFace, bodyHeight: number): VisualPx {
-  const wanted = VISUAL_PX[face];
-  if (bodyHeight >= wanted) {
-    return wanted;
-  }
-  return bodyHeight >= SMALL_VISUAL ? SMALL_VISUAL : SMALLEST_VISUAL;
+  return Math.max(0, frame.height - widgetHeaderHeight(frame.idiom) - WIDGET_BODY_GAP);
 }
 
 export function ringPxOf(bodyHeight: number): number {

@@ -6,9 +6,9 @@ import {
   type ChatReferenceTitleQuery,
 } from './ai-chat-references';
 import {
-  AI_CHAT_ROW,
   type AiChatChange,
   type AiChatKind,
+  type AiChatMeterSample,
   type AiChatRow,
   type AiHarnessTarget,
   type Engine,
@@ -22,18 +22,16 @@ import { UNKNOWN_COST_SQL } from '../../ledger/usage-queries';
 import { AFTER_CHAT_SQL, CHAT_MOMENT_SQL, pageParams } from './ai-chat-paging';
 import { PENDING_REQUESTS_SQL } from './ai-chat-requests';
 import { removeStoredChat } from './ai-chat-removal';
+import { CACHE_WINDOW_SQL, forgottenMeters, noteChatMeters } from './ai-chat-meters';
+import { readChatMeterHistory } from './ai-chat-meter-history';
 import { subagentChatIds } from './ai-chat-descendants';
 import { continuingChats, type ContinuingChat } from './ai-chat-continuations';
-import { modelKey, type NewChat } from './ai-chat-input';
+import { archivedAt, modelKey, type NewChat } from './ai-chat-input';
+import { nextHelperName, STORED_CHAT } from './ai-chat-helper-name';
 import { assertSubagentCreation, holdChatTree, assertChatWork } from './ai-chat-removal-hold';
 
-const STORED_CHAT = storedRow(AI_CHAT_ROW, {
-  json: ['engine', 'tools', 'origin', 'pending_execution_target'],
-  flags: ['pinned', 'cost_incomplete'],
-});
-
 const STORED_COLUMNS =
-  'id, profile_id, kind, title, icon, parent_id, source_key, engine, tools, pinned, archived_at, cost_micros, read_at, context_percent, branch_message_id, last_message_at, created_at, updated_at';
+  'id, profile_id, kind, title, icon, parent_id, helper_name, source_key, engine, tools, pinned, memory, archived_at, cost_micros, read_at, context_percent, branch_message_id, last_message_at, created_at, updated_at';
 
 const INCOMING_SQL = `((m.role = 'responder' and m.kind in ('text', 'update') and m.state is not 'working')
   or (m.role = 'person' and json_extract(m.origin, '$.source') not in ('app', 'voice')
@@ -41,6 +39,7 @@ const INCOMING_SQL = `((m.role = 'responder' and m.kind in ('text', 'update') an
                and coalesce(json_extract(m.origin, '$.requester'), '') = 'owner')))`;
 
 const CHAT_COLUMNS = `${STORED_COLUMNS}, pending_execution_target, deletion_state, deletion_error,
+  last_input_tokens, last_cached_tokens, ${CACHE_WINDOW_SQL} as cache_percent,
   exists(select 1 from ai_usage where chat_id = ai_chats.id and ${UNKNOWN_COST_SQL}) as cost_incomplete,
   (select m.origin from assistant_messages m
    where m.chat_id = ai_chats.id and m.origin is not null
@@ -104,7 +103,7 @@ export class AiChatsRepository {
   find(id: string): AiChatRow | undefined {
     return this.context.sql.get(
       STORED_CHAT,
-      `select ${CHAT_COLUMNS} from ai_chats where id = $id`,
+      `select ${CHAT_COLUMNS}, native_admission from ai_chats where id = $id`,
       {
         id,
       },
@@ -119,8 +118,9 @@ export class AiChatsRepository {
     const after = query.before === undefined ? undefined : this.chat(query.before);
     return this.context.sql.all(
       STORED_CHAT,
-      `select ${CHAT_COLUMNS} from ai_chats
+      `select ${CHAT_COLUMNS}, native_admission from ai_chats
        where profile_id = $profile and (archived_at is not null) = $archived
+         and native_admission is not 'retired'
          and ($unread is null or (unread_count > 0) = $unread)
          and ($pinned is null or pinned = $pinned)
          and ($source is null or coalesce(json_extract(origin, '$.source'), 'app') = $source)
@@ -150,6 +150,7 @@ export class AiChatsRepository {
               (archived_at is not null) as archived
        from ai_chats
        where profile_id = $profile and instr(lower(title), lower($text)) > 0
+         and native_admission is not 'retired'
          and ($archived = 1 or archived_at is null)
        order by at desc, id limit $limit`,
       {
@@ -172,8 +173,8 @@ export class AiChatsRepository {
   activeSince(since: string): AiChatRow[] {
     return this.context.sql.all(
       STORED_CHAT,
-      `select ${CHAT_COLUMNS} from ai_chats
-       where archived_at is null and coalesce(last_message_at, created_at) >= $since`,
+      `select ${CHAT_COLUMNS}, native_admission from ai_chats
+       where archived_at is null and coalesce(last_message_at, created_at) >= $since and native_admission is not 'retired'`,
       { since },
     );
   }
@@ -185,7 +186,7 @@ export class AiChatsRepository {
   usingEngine(kind: Engine['kind']): AiChatRow[] {
     return this.context.sql.all(
       STORED_CHAT,
-      `select ${CHAT_COLUMNS} from ai_chats where json_extract(engine, '$.kind') = $kind`,
+      `select ${CHAT_COLUMNS}, native_admission from ai_chats where json_extract(engine, '$.kind') = $kind and native_admission is not 'retired'`,
       { kind },
     );
   }
@@ -193,8 +194,10 @@ export class AiChatsRepository {
   latest(profileId: string, kind: AiChatKind = 'chat'): AiChatRow | undefined {
     return this.context.sql.get(
       STORED_CHAT,
-      `select ${CHAT_COLUMNS} from ai_chats
+      `select ${CHAT_COLUMNS}, native_admission from ai_chats
        where profile_id = $profile and kind = $kind and archived_at is null
+         and json_extract(engine, '$.kind') = 'dsh'
+         and native_admission is not 'retired'
        order by coalesce(last_message_at, created_at) desc limit 1`,
       { profile: profileId, kind },
     );
@@ -203,8 +206,9 @@ export class AiChatsRepository {
   bySource(profileId: string, sourceKey: string): AiChatRow | undefined {
     return this.context.sql.get(
       STORED_CHAT,
-      `select ${CHAT_COLUMNS} from ai_chats
+      `select ${CHAT_COLUMNS}, native_admission from ai_chats
        where profile_id = $profile and source_key = $key and archived_at is null
+         and native_admission is not 'retired' and deletion_state is null
        order by coalesce(last_message_at, created_at) desc limit 1`,
       { profile: profileId, key: sourceKey },
     );
@@ -217,9 +221,9 @@ export class AiChatsRepository {
       const now = this.context.now();
       this.context.sql.run(
         'add the AI chat',
-        `insert into ai_chats (${STORED_COLUMNS}, title_auto)
-         values ($id, $profile, $kind, $title, $icon, $parent, $source, $engine, $tools, 0, null, 0,
-                 null, null, $branch, null, $now, $now, $auto)`,
+        `insert into ai_chats (${STORED_COLUMNS}, title_auto, native_admission)
+         values ($id, $profile, $kind, $title, $icon, $parent, $helperName, $source, $engine, $tools, 0, $memory, null, 0,
+                 null, null, $branch, null, $now, $now, $auto, $nativeAdmission)`,
         {
           id,
           profile: input.profileId,
@@ -227,12 +231,16 @@ export class AiChatsRepository {
           title: input.title,
           icon: input.icon,
           parent: input.parentId,
+          helperName:
+            input.kind === 'subagent' ? nextHelperName(this.context, input.parentId) : null,
           source: input.sourceKey,
           engine: jsonText(input.engine),
           tools: input.tools === undefined || input.tools === null ? null : jsonText(input.tools),
           branch: input.branchMessageId ?? null,
           now,
           auto: flag(input.titleAuto ?? false),
+          nativeAdmission: input.nativeAdmission ?? null,
+          memory: flag(input.nativeAdmission !== 'standalone'),
         },
       );
       const row = this.chat(id);
@@ -249,6 +257,7 @@ export class AiChatsRepository {
         title_auto: change.title === undefined ? undefined : flag(false),
         icon: change.icon,
         pinned: change.pinned === undefined ? undefined : flag(change.pinned),
+        memory: change.memory === undefined ? undefined : flag(change.memory),
         archived_at: archivedAt(change.archived, this.context.now()),
         engine: change.engine === undefined ? undefined : jsonText(change.engine),
         tools:
@@ -257,10 +266,9 @@ export class AiChatsRepository {
             : change.tools === null
               ? null
               : jsonText(change.tools),
-        context_percent:
-          change.engine !== undefined && modelKey(change.engine) !== modelKey(before.engine)
-            ? null
-            : undefined,
+        ...forgottenMeters(
+          change.engine !== undefined && modelKey(change.engine) !== modelKey(before.engine),
+        ),
         updated_at: this.context.now(),
       });
       this.context.sql.run('change the AI chat', `update ai_chats set ${set.text} where id = $id`, {
@@ -318,17 +326,17 @@ export class AiChatsRepository {
   }
 
   noteContext(id: string, percent: number | null): void {
-    this.context.write(() => {
-      const before = this.chat(id);
-      if (before.context_percent === percent) {
-        return;
-      }
-      this.context.sql.run(
-        'note how full the AI chat is',
-        'update ai_chats set context_percent = $percent where id = $id',
-        { id, percent },
-      );
-      this.context.changed('ai_chats', 'UPDATE', this.chat(id), before);
+    noteChatMeters(this.context, (chat) => this.chat(chat), id, { context_percent: percent });
+  }
+
+  meterHistory(id: string): AiChatMeterSample[] {
+    return readChatMeterHistory(this.context, id);
+  }
+
+  noteCacheReads(id: string, input: number, cached: number | null): void {
+    noteChatMeters(this.context, (chat) => this.chat(chat), id, {
+      last_input_tokens: input,
+      last_cached_tokens: cached,
     });
   }
 
@@ -412,8 +420,8 @@ export class AiChatsRepository {
       }
     });
   }
-  assertWorkAllowed(id: string): void {
-    assertChatWork(this.context, id);
+  assertWorkAllowed(id: string, mode: 'read' | 'write' = 'write'): void {
+    assertChatWork(this.context, id, mode);
   }
   holdRemoval(ids: readonly string[], work: () => Promise<void>): Promise<void> {
     return holdChatTree(this.context, ids, work);
@@ -424,11 +432,4 @@ export class AiChatsRepository {
   remove(id: string): void {
     removeStoredChat(this.context, this.chat(id), (chatId) => this.chat(chatId));
   }
-}
-
-function archivedAt(archived: boolean | undefined, now: string): string | null | undefined {
-  if (archived === undefined) {
-    return undefined;
-  }
-  return archived ? now : null;
 }

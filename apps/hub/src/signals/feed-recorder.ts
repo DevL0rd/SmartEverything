@@ -12,6 +12,17 @@ export interface FeedRecorderOptions {
   readonly events: { readonly record: (event: EventInsert) => void };
 }
 
+function deviceWasRemoved(signal: SignalInput): boolean {
+  return (
+    signal.source === 'device' && signal.kind === 'lifecycle' && signal.data['change'] === 'removed'
+  );
+}
+
+function rowDeviceId(signal: SignalInput, spec: SignalKindSpec): string | null {
+  if (spec.subject !== 'device' || deviceWasRemoved(signal)) return null;
+  return signal.subject;
+}
+
 export function feedRowOf(signal: SignalInput, spec: SignalKindSpec): EventInsert {
   const details: Record<string, JsonValue> = {
     source: signal.source,
@@ -25,7 +36,7 @@ export function feedRowOf(signal: SignalInput, spec: SignalKindSpec): EventInser
   if (spec.ownerOnly === true) details['ownerOnly'] = true;
   if (Object.keys(signal.data).length > 0) details['data'] = signal.data;
   return {
-    deviceId: spec.subject === 'device' ? signal.subject : null,
+    deviceId: rowDeviceId(signal, spec),
     kind: 'signal',
     occurredAt: signal.at,
     details,

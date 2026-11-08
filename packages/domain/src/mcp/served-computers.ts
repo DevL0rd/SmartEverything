@@ -42,7 +42,10 @@ export const SERVED_COMPUTERS = [
           part: 'get_computer_tiling',
           line: 'Window tiling; operation_call changeComputerTiling changes it',
         },
-        services: { part: 'get_computer_services', line: 'Services, timers and apps that start at sign-in' },
+        services: {
+          part: 'get_computer_services',
+          line: 'Services, timers and apps that start at sign-in',
+        },
         apps: {
           part: 'list_installed_apps',
           line: 'Installed apps, the one in front and time spent in each',
@@ -136,7 +139,7 @@ export const SERVED_COMPUTERS = [
     title: 'Read computer files',
     line: 'Folders, files, search and downloads',
     description:
-      'Files on a computer, anywhere its user can read: a folder’s entries (cursor pages on), one file up to 5 MB, a search by name below a folder, one file’s details, or a download link of any size for the person (a folder or several items as one zip). Not for this chat’s project folder (project_read).',
+      'Files on a computer, anywhere its user can read: a folder’s entries (cursor pages on), one file up to 5 MB, a search by name below a folder, one file’s details, or a download link of any size for the person (a folder or several items as one zip). Not for this chat’s project folder (project_read) or library folders and photos (drive_read).',
     route: {
       key: 'view',
       branches: {
@@ -155,75 +158,7 @@ export const SERVED_COMPUTERS = [
     title: 'Edit computer files',
     line: 'Folder, rename, move, copy, trash, save',
     description:
-      'Makes a folder, renames, moves, copies, moves to Trash, restores from Trash, or saves a chat attachment onto a computer. Nothing is deleted for good and nothing is overwritten unless replace is true. Returns what was done and what failed.',
+      'Makes a folder, renames, moves, copies, moves to Trash, restores from Trash, or saves a chat attachment onto a computer. Not for library folders (drive_edit). Nothing is deleted for good and nothing is overwritten unless replace is true. Returns what was done and what failed.',
     route: { part: 'file_edit' },
-  },
-  {
-    name: 'claude_read',
-    area: 'computers',
-    access: 'read',
-    title: 'Read Claude',
-    line: 'Claude chats, history, prompts and usage',
-    description:
-      'Claude on the computers: the Claude CLI chats SmartEverything started with their history, prompts and operation receipts, and the older Claude Desktop and terminal sessions, transcripts and usage. Read cli_sessions for the chatId, cli_prompts for what a chat waits on and models for the model ids before claude_control.',
-    route: {
-      key: 'view',
-      default: 'cli_sessions',
-      branches: {
-        models: { part: 'list_claude_models', line: 'Models Claude offers on a computer' },
-        cli_sessions: {
-          part: 'list_claude_cli_sessions',
-          line: 'Claude CLI chats started on a computer',
-        },
-        cli_session: { part: 'read_claude_cli_session', line: 'One CLI chat and its saved state' },
-        cli_history: { part: 'read_claude_cli_history', line: 'The history of one CLI chat' },
-        cli_operation: {
-          part: 'read_claude_cli_operation',
-          line: 'The receipt of one CLI operation',
-        },
-        cli_prompts: {
-          part: 'list_claude_cli_prompts',
-          line: 'Permission, question and plan prompts a CLI chat waits on',
-        },
-        status: { part: 'read_claude_status', line: 'Whether Claude is installed and linked' },
-        sessions: {
-          part: 'list_claude_sessions',
-          line: 'Older Claude Desktop and terminal sessions',
-        },
-        session: { part: 'read_claude_session', line: 'One older session' },
-        thread: { part: 'read_claude_thread', line: 'The transcript of an older session' },
-        usage: { part: 'read_claude_usage', line: 'Plan usage figures' },
-        prompts: { part: 'list_claude_prompts', line: 'Prompts older sessions wait on' },
-      },
-    },
-  },
-  {
-    name: 'claude_control',
-    area: 'computers',
-    access: 'control',
-    title: 'Control Claude',
-    line: 'Start, message, stop or answer Claude',
-    description:
-      'Runs Claude CLI chats on a computer: starts one in a working directory with a first message, sends a message (also resumes a stopped chat), stops its reply, closes its process, changes its model or permission mode, or answers a permission, question or plan prompt it waits on. chatId comes from start or claude_read view cli_sessions; operation, session and job ids are filled in. Returns the chat and whether Claude accepted it.',
-    route: {
-      key: 'action',
-      branches: {
-        start: {
-          part: 'start_claude_session',
-          line: 'Start a chat with a working directory and a first message',
-        },
-        send: { part: 'send_claude_message', line: 'Send a message; steers a running reply' },
-        stop: { part: 'stop_claude_session', line: 'Stop the running reply' },
-        close: { part: 'close_claude_session', line: 'End the chat’s Claude process' },
-        configure: {
-          part: 'configure_claude_session',
-          line: 'Change the model or the permission mode',
-        },
-        answer: {
-          part: 'answer_claude_prompt',
-          line: 'Answer a waiting permission, question or plan prompt',
-        },
-      },
-    },
   },
 ] as const satisfies readonly Served[];

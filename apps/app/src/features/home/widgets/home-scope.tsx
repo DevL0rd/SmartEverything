@@ -7,7 +7,6 @@ import {
   useHomeFavourites,
   useHomeFitness,
   useHomePower,
-  useHomeReadings,
   useHomeRooms,
   useHomeScenes,
   useHomeSecurity,
@@ -30,7 +29,6 @@ function ownScope<K extends keyof HomeData>(field: K, useField: () => HomeData[K
 }
 
 const SCOPES = {
-  readings: ownScope('readings', useHomeReadings),
   favourites: ownScope('favourites', useHomeFavourites),
   rooms: ownScope('rooms', useHomeRooms),
   activity: ownScope('activity', useActivity),

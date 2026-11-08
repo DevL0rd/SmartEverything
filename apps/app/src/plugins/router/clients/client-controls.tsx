@@ -71,6 +71,48 @@ export interface ClientControlsProps {
   readonly onClearBand: () => void;
 }
 
+function ClientFilters({
+  filter,
+  onFilter,
+  counts,
+  band,
+  onClearBand,
+}: Pick<
+  ClientControlsProps,
+  'filter' | 'onFilter' | 'counts' | 'band' | 'onClearBand'
+>): ReactNode {
+  return (
+    <HScroller label="Filter devices" fade>
+      <View className="flex-row" accessibilityRole="radiogroup" accessibilityLabel="Show devices">
+        {CLIENT_FILTERS.map((value) => (
+          <FilterChip
+            key={value}
+            singleChoice
+            label="Show"
+            value={FILTER_LABEL[value]}
+            icon={FILTER_ICON[value]}
+            count={counts[value]}
+            active={filter === value}
+            onPress={() => {
+              onFilter(value);
+            }}
+          />
+        ))}
+        {band === null ? null : (
+          <FilterChip
+            affordance="remove"
+            label="Band"
+            value={band}
+            icon="wifi"
+            active
+            onPress={onClearBand}
+          />
+        )}
+      </View>
+    </HScroller>
+  );
+}
+
 export function ClientControls({
   query,
   onQuery,
@@ -83,8 +125,8 @@ export function ClientControls({
   onClearBand,
 }: ClientControlsProps): ReactNode {
   return (
-    <View className="gap-3 px-gutter pb-2 pt-2">
-      <View className="flex-row items-center gap-2">
+    <View className="gap-3 px-gutter py-2">
+      <View className="w-full max-w-reading flex-row items-center gap-2 self-start">
         <View className="flex-1">
           <SearchField
             value={query}
@@ -95,24 +137,13 @@ export function ClientControls({
         </View>
         <SortButton sort={sort} onSort={onSort} />
       </View>
-      <HScroller label="Filter devices" fade>
-        {CLIENT_FILTERS.map((value) => (
-          <FilterChip
-            key={value}
-            label="Show"
-            value={FILTER_LABEL[value]}
-            icon={FILTER_ICON[value]}
-            count={counts[value]}
-            active={filter === value}
-            onPress={() => {
-              onFilter(value);
-            }}
-          />
-        ))}
-        {band === null ? null : (
-          <FilterChip label="Band" value={band} icon="wifi" active onPress={onClearBand} />
-        )}
-      </HScroller>
+      <ClientFilters
+        filter={filter}
+        onFilter={onFilter}
+        counts={counts}
+        band={band}
+        onClearBand={onClearBand}
+      />
     </View>
   );
 }

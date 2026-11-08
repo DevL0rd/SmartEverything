@@ -10,11 +10,14 @@ const PLACEMENT = {
   below: 'top-full mt-1 self-center',
   above: 'bottom-full mb-1 self-center',
   right: 'left-full ml-2 top-0',
+  left: 'right-full mr-2 top-0',
 } as const;
+
+export type TooltipPlacement = keyof typeof PLACEMENT;
 
 export interface TooltipProps {
   readonly text: string;
-  readonly placement?: keyof typeof PLACEMENT;
+  readonly placement?: TooltipPlacement;
 }
 
 export function Tooltip({ text, placement = 'below' }: TooltipProps): ReactNode {

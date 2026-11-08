@@ -5,6 +5,7 @@ import { List } from '../../../components/section';
 import { href } from '../../../app-shell/hrefs';
 import { useDeviceValues } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
+import { MODEL_PAGE, MODEL_PAGE_ICON, MODEL_PAGE_TITLE } from '../../models';
 import { connectionOf } from '../model/connection';
 import { useDeviceModel, valueOf } from '../model/device-model';
 
@@ -21,6 +22,11 @@ export function AboutSection({ device }: { readonly device: Device }): ReactNode
       {typeof firmware === 'string' ? (
         <ValueRow title="Firmware" icon="layers" value={firmware} />
       ) : null}
+      <NavRow
+        title={MODEL_PAGE_TITLE}
+        icon={MODEL_PAGE_ICON}
+        href={href.settings.device(device.id, MODEL_PAGE)}
+      />
       <NavRow
         title="Diagnostics"
         icon="wrench"

@@ -21,15 +21,23 @@ function kept(text: string): string {
 export function dropPreviewReferences(sql: Sql): LogPayload {
   const settings = sql.all(TEXT_ROW, "select '1' as id, mcp_disabled_tools as text from settings");
   for (const row of settings)
-    sql.run('drop removed preview tools from switched-off tools', 'update settings set mcp_disabled_tools = $names', {
-      names: kept(row.text),
-    });
+    sql.run(
+      'drop removed preview tools from switched-off tools',
+      'update settings set mcp_disabled_tools = $names',
+      {
+        names: kept(row.text),
+      },
+    );
   const chats = sql.all(TEXT_ROW, 'select id, tools as text from ai_chats where tools is not null');
   for (const row of chats)
-    sql.run('drop removed preview tools from a chat tool grant', 'update ai_chats set tools = $names where id = $id', {
-      id: row.id,
-      names: kept(row.text),
-    });
+    sql.run(
+      'drop removed preview tools from a chat tool grant',
+      'update ai_chats set tools = $names where id = $id',
+      {
+        id: row.id,
+        names: kept(row.text),
+      },
+    );
   return { settings: settings.length, chats: chats.length };
 }
 

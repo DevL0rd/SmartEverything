@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { ListRow, Section, SectionAction, Stage, Text } from 'smarteverything-kit';
 
 const body = (
@@ -19,12 +20,12 @@ const body = (
     </Section>
   </>
 );
-export const Default = () => (
+export const Default = (): ReactElement => (
   <Stage theme="dark" width={460}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={460}>
     {body}
   </Stage>

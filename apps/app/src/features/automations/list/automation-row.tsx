@@ -65,10 +65,8 @@ function Body({
   const failed = entry.lastError !== null;
   return (
     <View className="min-w-0 flex-1 gap-1">
-      <Text variant="title-3" numberOfLines={1}>
-        {entry.name}
-      </Text>
-      <Text variant="callout" tone={failed ? 'critical' : 'variant'} numberOfLines={2}>
+      <Text variant="title-3">{entry.name}</Text>
+      <Text variant="callout" tone={failed ? 'critical' : 'variant'} numberOfLines={1}>
         {entry.lastError === null
           ? (entry.sentence ?? 'Not finished yet')
           : `Last run failed: ${entry.lastError}`}
@@ -104,7 +102,6 @@ function AutomationRowView({
       className={cn(
         'flex-row items-start rounded-lg border-hairline bg-surface-1 elevation-1',
         selected ? 'border-primary' : 'border-outline-variant',
-        !entry.enabled && 'opacity-80',
       )}
     >
       <Interactive

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FileEntry } from '@smarteverything/domain';
-import { NOTHING_PICKED, pickedAll, selectionLabel, toggled } from './selection-model';
+import { NOTHING_PICKED, pickedAll, toggled } from './selection-model';
 
 function entry(name: string): FileEntry {
   return {
@@ -35,10 +35,5 @@ describe('selection', () => {
     toggled(one, entry('b'));
     expect(one.size).toBe(1);
     expect(NOTHING_PICKED.size).toBe(0);
-  });
-
-  it('says how many are selected', () => {
-    expect(selectionLabel(1)).toBe('1 item selected');
-    expect(selectionLabel(3)).toBe('3 items selected');
   });
 });

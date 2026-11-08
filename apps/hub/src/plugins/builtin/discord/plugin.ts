@@ -2,6 +2,8 @@ import { DISCORD_STREAM, type PluginManifestInput } from '@smarteverything/domai
 import type { BuiltinPlugin } from '../contract';
 import { figureWidget } from '../board-widget';
 import { defineBuiltinPlugin } from '../define';
+import { DISCORD_AUTOMATION } from './automation';
+import { DISCORD_EVENT_KINDS, withAutomationEvents } from './automation-events';
 import { startDiscord, type DiscordEnvironment } from './runtime';
 import { DISCORD_SETTINGS } from './settings';
 import { DISCORD_SETTINGS_FORM } from './settings-form';
@@ -24,6 +26,8 @@ const DISCORD_MANIFEST: PluginManifestInput = {
         history: 0,
       },
     ],
+    events: [...DISCORD_EVENT_KINDS],
+    automation: DISCORD_AUTOMATION,
     widgets: [figureWidget('discord.call', 'Discord call', 'mic', DISCORD_STREAM)],
     settings: DISCORD_SETTINGS_FORM,
     peoplePicker: 'people',
@@ -34,6 +38,12 @@ export function createDiscordPlugin(environment: DiscordEnvironment): BuiltinPlu
   return defineBuiltinPlugin({
     manifest: DISCORD_MANIFEST,
     settings: DISCORD_SETTINGS,
-    start: (ctx) => startDiscord(ctx, environment),
+    start: (ctx) =>
+      startDiscord(
+        ctx,
+        withAutomationEvents(environment, ctx.events.emit, (cause) => {
+          ctx.log.error('discord.automation_event_failed', cause);
+        }),
+      ),
   });
 }

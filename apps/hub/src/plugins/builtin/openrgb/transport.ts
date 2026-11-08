@@ -14,6 +14,7 @@ interface OpenRgbZone {
 }
 
 export interface OpenRgbController {
+  readonly type: number;
   readonly name: string;
   readonly vendor?: string | undefined;
   readonly serial: string;

@@ -6,9 +6,9 @@ export async function desktopComputerIdentity(
   service: Pick<ServiceController, 'config' | 'dataDirectory'>,
 ): Promise<DesktopComputerIdentity> {
   const config = await service.config();
-  const hasMachineId = config.role === 'node' || process.platform === 'linux';
+  const hasMachineId = config !== null || process.platform === 'linux';
   return DESKTOP_COMPUTER_IDENTITY.parse({
-    device_id: config.role === 'node' ? config.node.device_id : null,
+    device_id: config?.node.device_id ?? null,
     machine_id: hasMachineId ? await computerMachineId(service.dataDirectory) : null,
   });
 }

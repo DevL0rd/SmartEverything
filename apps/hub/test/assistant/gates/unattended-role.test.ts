@@ -61,6 +61,7 @@ function unattended(profileId: string, origin: MessageOrigin | null = null): Con
           steps: [],
           step_states: [],
           reply_to: null,
+          quote: null,
           chat_id: chat.id,
           origin,
           embeds: [],

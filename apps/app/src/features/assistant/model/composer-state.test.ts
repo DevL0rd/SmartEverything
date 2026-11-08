@@ -87,7 +87,7 @@ describe('sendModeOf', () => {
   it('takes a message into a running reply for Claude chats and not for Codex', () => {
     expect(engineSteersTurns('claude')).toBe(true);
     expect(engineSteersTurns('dsh')).toBe(true);
-    expect(engineSteersTurns('openrouter')).toBe(true);
+    expect(engineSteersTurns('dsh')).toBe(true);
     expect(engineSteersTurns('codex')).toBe(false);
   });
 

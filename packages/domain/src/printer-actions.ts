@@ -30,7 +30,7 @@ export const PRINTER_PREFS_PATCH = z.strictObject({
   colorMode: z.string().min(1).optional(),
   quality: z.enum(['draft', 'normal', 'high']).optional(),
   media: z.string().min(1).optional(),
-  copies: z.int().min(1).max(999).optional(),
+  copies: z.int().min(1).optional(),
   notifyJobDone: z.boolean().optional(),
 });
 

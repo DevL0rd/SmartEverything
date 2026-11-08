@@ -10,11 +10,10 @@ import {
   voiceModelFor,
 } from '@smarteverything/domain';
 import { Icon } from '../../../../components/icon';
-import { Interactive } from '../../../../components/interactive';
+import { FlatChoice } from '../../../../components/flat-choice';
 import { NumberStepper } from '../../../../components/number-stepper';
 import { Segmented } from '../../../../components/segmented';
 import { Text } from '../../../../components/text';
-import { cn } from '../../../../design/cn';
 import { selectionTick } from '../../../../platform/haptics';
 import { clock } from '../../../../format/time';
 import { useStoreSelector } from '../../../../store/store-context';
@@ -167,15 +166,16 @@ export function LookRow(): ReactNode {
   return (
     <View className="gap-2 px-4 py-3">
       <Text variant="body">May look at on its own</Text>
-      <View className="flex-row flex-wrap gap-2" accessibilityRole="menu">
+      <View className="flex-row flex-wrap">
         {LOOK_CHOICES.map((choice) => {
           const on = pref.look.includes(choice.source);
           return (
-            <Interactive
+            <FlatChoice
               key={choice.source}
               role="checkbox"
-              checked={on}
+              active={on}
               label={choice.text}
+              icon={on ? 'check' : sourceIconOf(choice.source)}
               onPress={() => {
                 selectionTick();
                 const look = on
@@ -183,21 +183,7 @@ export function LookRow(): ReactNode {
                   : [...pref.look, choice.source];
                 change({ look }, `${choice.text} · ${on ? 'not allowed' : 'allowed'}`);
               }}
-              className={cn(
-                'min-h-touch-min flex-row items-center gap-1.5 rounded-full border-hairline px-3',
-                on ? 'border-primary bg-primary-container' : 'border-outline-variant bg-surface-1',
-              )}
-              layerClassName="rounded-full"
-            >
-              <Icon
-                name={on ? 'check' : sourceIconOf(choice.source)}
-                size={16}
-                tone={on ? 'primary' : 'variant'}
-              />
-              <Text variant="label" tone={on ? 'primary' : 'default'}>
-                {choice.text}
-              </Text>
-            </Interactive>
+            />
           );
         })}
       </View>

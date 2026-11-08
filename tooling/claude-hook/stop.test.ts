@@ -33,6 +33,7 @@ async function stop(extra: Record<string, unknown> = {}): Promise<number> {
 
 beforeEach(async () => {
   session = `hook-test-${String(process.pid)}-${String(Date.now())}`;
+  vi.stubEnv('CLAUDE_PROJECT_DIR', '/home/user/Github/SmartEverything');
   stderr = '';
   stdout = '';
   mocks.tsc.mockReset();
@@ -49,6 +50,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await removeSession(session);
 });
 

@@ -109,6 +109,7 @@ describe('the camera notification rows on the notifications page', () => {
     const none = {
       owner: true,
       platform: 'android',
+      developer: false,
       availability: { ...AVAILABILITY, hasCameras: false },
     } as const;
     expect(CAMERA_NOTIFICATION_SETTINGS.every((row) => row.visible?.(none) === false)).toBe(true);

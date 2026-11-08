@@ -3,8 +3,7 @@ import type { Store } from '../../../store/store';
 import type { ComputerEvent } from './provider-state';
 
 export function contextPercentOf(event: ComputerEvent): number | null {
-  if (event.kind !== 'usage' || !('context_percent' in event) || event.context_percent === null)
-    return null;
+  if (event.kind !== 'usage' || typeof event.context_percent !== 'number') return null;
   return Math.round(event.context_percent);
 }
 

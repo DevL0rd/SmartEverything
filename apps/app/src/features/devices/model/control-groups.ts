@@ -1,8 +1,15 @@
 import type {
+  DeviceFamily,
   DevicePresentation,
   PresentationTier,
   PresentedCapability,
 } from '@smarteverything/domain';
+
+const SELF_PLACING_FAMILIES: ReadonlySet<DeviceFamily> = new Set(['vacuum']);
+
+export function placesOwnCapabilities(family: DeviceFamily): boolean {
+  return SELF_PLACING_FAMILIES.has(family);
+}
 
 export interface ControlGroup {
   readonly label: string;

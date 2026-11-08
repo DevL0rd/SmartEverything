@@ -8,11 +8,11 @@ export interface ReferenceText {
   readonly text: string;
   readonly references: readonly AiMessageReference[];
 }
-export function adjustedReferences(
+export function adjustedReferences<T extends { readonly start: number; readonly end: number }>(
   before: string,
   after: string,
-  references: readonly AiMessageReference[],
-): readonly AiMessageReference[] {
+  references: readonly T[],
+): readonly T[] {
   if (before === after) return references;
   let start = 0;
   while (start < before.length && start < after.length && before[start] === after[start]) start++;
@@ -22,7 +22,16 @@ export function adjustedReferences(
     oldEnd--;
     newEnd--;
   }
-  const shift = newEnd - oldEnd;
+  return shiftedReferences(references, { start, end: oldEnd }, newEnd - start);
+}
+
+function shiftedReferences<T extends { readonly start: number; readonly end: number }>(
+  references: readonly T[],
+  range: { readonly start: number; readonly end: number },
+  length: number,
+): readonly T[] {
+  const { start, end: oldEnd } = range;
+  const shift = start + length - oldEnd;
   return references.flatMap((item) => {
     if (item.end <= start) return [item];
     if (item.start < oldEnd || (oldEnd === start && item.start < start)) return [];

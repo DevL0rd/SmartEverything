@@ -1,6 +1,6 @@
 import type { FlowNode, JsonValue, LoopLimit, NodeKind, PortValue } from '@smarteverything/domain';
 import { LOOP_LIMIT } from '@smarteverything/domain';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
 import { portOps } from './edits';
 
 export interface LoopLimitView {

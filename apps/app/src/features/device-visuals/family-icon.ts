@@ -1,7 +1,7 @@
 import { deviceFamily, type DeviceFamily, type PresentableDevice } from '@smarteverything/domain';
 import type { IconName } from '../../components/icon';
 
-export const FAMILY_ICONS: Readonly<Record<DeviceFamily, IconName>> = {
+const FAMILY_ICONS: Readonly<Record<DeviceFamily, IconName>> = {
   air_purifier: 'fan',
   humidifier: 'droplet',
   diffuser: 'flower',

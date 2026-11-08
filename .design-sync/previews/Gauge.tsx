@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Gauge, Stage, Text } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -17,12 +18,12 @@ const body = (
     </Gauge>
   </Row>
 );
-export const AirQuality = () => (
+export const AirQuality = (): ReactElement => (
   <Stage theme="dark" width={480}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     {body}
   </Stage>

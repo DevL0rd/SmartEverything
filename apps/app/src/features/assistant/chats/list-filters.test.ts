@@ -26,7 +26,7 @@ const POOL = [
   entry('quiet'),
   entry('asking', { requests: 2 }),
   entry('unread', { unread: 3 }),
-  entry('busy', { line: { kind: 'working', step: null } }),
+  entry('busy', { line: { kind: 'working', work: { phase: 'Working', step: null } } }),
   entry('both', { requests: 1, unread: 1 }),
 ];
 

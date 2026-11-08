@@ -1,7 +1,7 @@
 import type { BottleStats } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { BottomSheet } from '../../../components/bottom-sheet';
+import { Sheet } from '../../../components/sheet';
 import { Button } from '../../../components/button';
 import { LoadedQuery } from '../../../components/loaded-query';
 import { Text } from '../../../components/text';
@@ -80,7 +80,7 @@ function Body({
 export function DayDrill(props: DayDrillProps): ReactNode {
   const { day, onDay } = props;
   return (
-    <BottomSheet
+    <Sheet
       open={day !== null}
       onClose={() => {
         onDay(null);
@@ -91,6 +91,6 @@ export function DayDrill(props: DayDrillProps): ReactNode {
       scroll
     >
       {day === null ? null : <Body {...props} day={day} />}
-    </BottomSheet>
+    </Sheet>
   );
 }

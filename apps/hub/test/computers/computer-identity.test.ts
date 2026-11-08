@@ -1,6 +1,16 @@
-import { NODE_HELLO, type DiscoveredDevice, type NodeHello } from '@smarteverything/domain';
+import {
+  COMPUTER_ROLE_MODELS,
+  NODE_HELLO,
+  type DiscoveredDevice,
+  type NodeHello,
+} from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { computerExternalId, describeComputer } from '../../src/computers/computer-device';
+import {
+  HUB_EXTERNAL_ID,
+  computerExternalId,
+  describeComputer,
+  describeHub,
+} from '../../src/computers/computer-device';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
 import { captureLogs } from '../support/logs';
@@ -57,36 +67,24 @@ function computers(): readonly { readonly external_id: string; readonly model: s
 }
 
 function claim(access: ComputerNodeAccess, hello: NodeHello): string {
-  const { code } = access.pair('http://127.0.0.1:7880', ownerId);
+  const { code } = access.pair('https://hub.example.com', ownerId);
   return access.claim(code, hello, 'local').paired.device_id;
 }
 
 describe('one computer row per machine', () => {
-  it('uses the machine id alone for hub and pc sessions', () => {
+  it('uses the machine id alone and always the pc model for a node', () => {
     expect(computerExternalId(HELLO.machineId)).toBe(`computer:${HELLO.machineId}`);
-    const hub = describeComputer(HELLO, 'hub', [], { power: [], machine: [] });
-    const pc = describeComputer(HELLO, 'pc', [], { power: [], machine: [] });
-    expect(hub.externalId).toBe(pc.externalId);
-    expect(hub.model).not.toBe(pc.model);
+    const node = describeComputer(HELLO, [], { power: [], machine: [] });
+    expect(node.externalId).toBe(`computer:${HELLO.machineId}`);
+    expect(node.model).toBe(COMPUTER_ROLE_MODELS.pc);
   });
 
-  it('pairs onto the existing hub row and never creates a second one', () => {
-    const [host] = opened.store.devices.upsert([
-      {
-        ...describeComputer(HELLO, 'hub', [], { power: [], machine: [] }),
-        parentId: null,
-        providerRoom: null,
-        roomId: null,
-      },
-    ]);
-    const access = new ComputerNodeAccess(opened.store, () => NOW);
-
-    const first = claim(access, HELLO);
-    const second = claim(access, HELLO);
-
-    expect(first).toBe(host?.id);
-    expect(second).toBe(host?.id);
-    expect(computers()).toHaveLength(1);
+  it('describes the hub own device apart from every node', () => {
+    const hub = describeHub({ hostname: 'nas', osName: 'Linux' });
+    expect(hub.externalId).toBe(HUB_EXTERNAL_ID);
+    expect(hub.model).toBe(COMPUTER_ROLE_MODELS.hub);
+    expect(hub.name).toBe('nas');
+    expect(hub.externalId).not.toBe(computerExternalId(HELLO.machineId));
   });
 
   it('pairs a machine that was never seen into exactly one row, then reuses it', () => {
@@ -99,9 +97,26 @@ describe('one computer row per machine', () => {
     expect(computers()).toHaveLength(1);
     expect(computers()[0]?.external_id).toBe(`computer:${OTHER.machineId}`);
   });
+
+  it('pairs the hub machine as an ordinary pc beside the hub own device', () => {
+    opened.store.devices.upsert([
+      {
+        ...describeHub({ hostname: 'nas', osName: 'Linux' }),
+        parentId: null,
+        providerRoom: null,
+        roomId: null,
+      },
+    ]);
+    const access = new ComputerNodeAccess(opened.store, () => NOW);
+
+    const node = claim(access, HELLO);
+
+    expect(computers()).toHaveLength(2);
+    expect(opened.store.devices.byId(node).model).toBe(COMPUTER_ROLE_MODELS.pc);
+  });
 });
 
-describe('hub or pc follows from being the hub machine', () => {
+describe('the hub machine is guarded but is an ordinary pc device', () => {
   const WITH_INTERFACE: NodeHello = NODE_HELLO.parse({
     ...HELLO,
     interfaces: [{ name: 'eth0', mac: 'aa:bb:cc:dd:ee:ff', addresses: ['192.168.1.5'] }],
@@ -116,7 +131,7 @@ describe('hub or pc follows from being the hub machine', () => {
     return devices.at(-1)?.capabilities.map((capability) => capability.key) ?? [];
   }
 
-  it('gives the node session on the hub machine the hub role and other machines the pc role', () => {
+  it('guards the node session on the hub machine and no other machine', () => {
     const directory = new ComputerDirectory(HELLO.machineId);
     const hub = sessionRig('device', { directory });
     const client = sessionRig('other', { directory, hello: OTHER });
@@ -127,11 +142,11 @@ describe('hub or pc follows from being the hub machine', () => {
     expect(directory.isHubMachine(OTHER.machineId)).toBe(false);
   });
 
-  it('gives every machine the pc role when the hub machine is unknown', () => {
+  it('guards no machine when the hub machine is unknown', () => {
     expect(sessionRig('device').session.role).toBe('pc');
   });
 
-  it('describes the hub machine with the hub model and another machine as a pc', () => {
+  it('describes the node on the hub machine with the pc model like any other machine', () => {
     const directory = new ComputerDirectory(HELLO.machineId);
     const hubDescribed: DiscoveredDevice[] = [];
     const otherDescribed: DiscoveredDevice[] = [];
@@ -150,31 +165,8 @@ describe('hub or pc follows from being the hub machine', () => {
     expect(hubDescribed.map((device) => device.externalId)).toEqual([
       `computer:${HELLO.machineId}`,
     ]);
-    expect(hubDescribed[0]?.model).toBe(
-      describeComputer(HELLO, 'hub', [], { power: [], machine: [] }).model,
-    );
-    expect(otherDescribed.map((device) => device.externalId)).toEqual([
-      `computer:${OTHER.machineId}`,
-    ]);
-    expect(otherDescribed[0]?.model).toBe(
-      describeComputer(OTHER, 'pc', [], { power: [], machine: [] }).model,
-    );
-  });
-
-  it('tells the hub that its own machine resolved, and never a pc', () => {
-    const directory = new ComputerDirectory(HELLO.machineId);
-    const resolved: string[] = [];
-    sessionRig('hub-device', {
-      directory,
-      hubComputerResolved: (deviceId) => resolved.push(deviceId),
-    });
-    sessionRig('pc-device', {
-      directory,
-      hello: OTHER,
-      hubComputerResolved: (deviceId) => resolved.push(deviceId),
-    });
-
-    expect(resolved).toEqual(['hub-device']);
+    expect(hubDescribed[0]?.model).toBe(COMPUTER_ROLE_MODELS.pc);
+    expect(otherDescribed[0]?.model).toBe(COMPUTER_ROLE_MODELS.pc);
   });
 
   it('offers wake on LAN for a pc and never for the machine the hub runs on', () => {

@@ -8,10 +8,10 @@ import type { ConversationAuthority } from '../harness/authority-contract';
 import type { Store } from '../store/store';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import { currentRequestSignal } from '../server/request-signal';
-import { effectiveTools } from './coordination/grants';
+import { effectiveTools } from './tool-scope';
 import { computerEngine } from './engine-kind';
 
-type Origin = Pick<ConversationAuthority, 'plugin_id' | 'requester'>;
+type Origin = Pick<ConversationAuthority, 'plugin_id' | 'requester' | 'repair_origin'>;
 type Role = 'owner' | 'member';
 
 const turn = new AsyncLocalStorage<ConversationAuthority | undefined>();
@@ -40,11 +40,16 @@ export function inheritedOrigin(sources: readonly Origin[]): Origin {
   if (plugins.size > 1)
     throw new ApiError('forbidden', 'Queued work cannot combine ambiguous initiating plugins.');
   const requesters = sources.map((source) => source.requester);
+  const repairRoots = new Set(sources.flatMap((source) => source.repair_origin ?? []));
+  if (repairRoots.size > 1)
+    throw new ApiError('forbidden', 'Queued work cannot combine different repair runs.');
+  const repairRoot = [...repairRoots][0];
   return {
     plugin_id: [...plugins][0] ?? null,
     requester:
       (['unlisted', 'approved', 'owner'] as const).find((value) => requesters.includes(value)) ??
       null,
+    ...(repairRoot === undefined ? {} : { repair_origin: repairRoot }),
   };
 }
 
@@ -79,6 +84,7 @@ export function eventAuthority(
   store: Store,
   event: StoredEvent,
   source?: ConversationAuthority,
+  repairOrigin?: string,
 ): ConversationAuthority {
   const retained = store.harnessRecovery.authority(event.id);
   if (retained !== undefined) return retained;
@@ -94,15 +100,20 @@ export function eventAuthority(
   const chat = store.aiChats.chat(event.chat_id);
   const principal = initiatingPrincipal(store, event, sources);
   const origin = originOf(store, event, sources);
+  const hubSource =
+    event.message_id !== null &&
+    store.assistantChat.message(event.message_id).origin?.source === 'hub';
   const authority = CONVERSATION_AUTHORITY.parse({
     event_id: event.id,
     profile_id: event.profile_id,
     client_id: principal.client_id,
     kind: principal.kind,
     role: issuedRole(store, { principal, sources, profileId: event.profile_id, origin }),
-    hub_os_ban: providerHubOsBan() || chat.engine.kind === 'dsh' || sources.some(banned),
+    hub_os_ban:
+      hubSource || providerHubOsBan() || chat.engine.kind === 'dsh' || sources.some(banned),
     tools: intersectTools([effectiveTools(store, chat), ...sources.map((parent) => parent.tools)]),
     ...origin,
+    ...(repairOrigin === undefined ? {} : { repair_origin: repairOrigin }),
   });
   store.harnessRecovery.authorize(authority);
   return authority;

@@ -5,7 +5,7 @@ import {
   type StateRow,
 } from '@smarteverything/domain';
 import Constants from 'expo-constants';
-import { emptyState, type ListTable, type StoreState } from './state';
+import { emptyState, type ListTable, type RowOf, type StoreState, type Table } from './state';
 
 export const CACHE_VERSION = Constants.expoConfig?.version ?? null;
 export const LIST_DEBOUNCE_MS = 3000;
@@ -44,7 +44,11 @@ function stateRows(deviceValues: StoreState['deviceValues']): StateRow[] {
 }
 
 function listRows(state: StoreState, name: ListTable): readonly unknown[] {
-  const { rows } = state.tables[name];
+  const table = state.tables[name] as Table<RowOf<ListTable>> | undefined;
+  if (table === undefined) {
+    return [];
+  }
+  const { rows } = table;
   if (name === 'devices') {
     return state.tables.devices.rows.map(({ label: _label, ...row }) => row);
   }

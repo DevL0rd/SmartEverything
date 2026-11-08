@@ -1,10 +1,13 @@
+import { settledFailureContext } from './failure-context';
+import { bindHelperWriter } from './helper-writer';
+import { HelperPromptDeliveries } from './helper-prompt';
 import { submitNativePrompt } from './native-prompt';
 import { ProcessControls } from './controls';
+import { controlChild } from './child-control';
 import type { HarnessDispatcherOptions } from './dispatcher-options';
 export type { HarnessDispatcherOptions } from './dispatcher-options';
 import { isNativeCommandRequest, nativeCommandReceipt } from './commands';
 import { runtimeReceipt } from './receipts';
-import { importLegacyHistory } from './legacy-history';
 import { ProcessOpenings, openIdentity } from './openings';
 import { ProcessChildren } from './children';
 import {
@@ -46,6 +49,7 @@ export type HarnessOpenRequest = Extract<HarnessRuntimeRequest, { kind: 'open' }
 export class HarnessDispatcher {
   private readonly openings = new ProcessOpenings();
   private readonly admission = new ProcessControls();
+  private readonly helperPrompts = new HelperPromptDeliveries();
   constructor(
     readonly runtime: HarnessRuntime,
     private readonly options: HarnessDispatcherOptions,
@@ -63,22 +67,42 @@ export class HarnessDispatcher {
     );
   }
   hasSession(id: string, epoch: number): boolean {
+    if (this.options.persistence.boundClaim(id)?.epoch !== epoch) return false;
     return (
-      this.ports.opened.get(id)?.claim.epoch === epoch &&
-      this.options.persistence.boundClaim(id)?.epoch === epoch &&
-      nativeSessionPresent(this.runtime, id)
+      this.ports.children.isLive(id) ||
+      (this.ports.opened.get(id)?.claim.epoch === epoch && nativeSessionPresent(this.runtime, id))
     );
+  }
+  async loseSession(id: string, epoch: number): Promise<void> {
+    if (this.options.persistence.boundClaim(id)?.epoch !== epoch) return;
+    this.options.persistence.lose(id);
+    await this.runtime.whenOwnershipLossSettled(id);
   }
   async dispose(): Promise<void> {
     await this.admission.shutdown(async (): Promise<void> => {
+      this.ports.forward.seal();
+      await this.retireOpenPublications();
       await this.runtime.dispose();
-      await this.ports.forward.flush();
+      await this.retireOpenPublications();
     });
+  }
+  private async retireOpenPublications(): Promise<void> {
+    for (const id of this.ports.forward.openIds()) await this.retirePublication(id);
+  }
+  private async retirePublication(id: string): Promise<void> {
+    await this.ports.forward.flush(id);
+    this.ports.forward.close(id);
+    await this.ports.forward.flush(id);
   }
   private async run(id: string, request: HarnessRuntimeRequest): Promise<HarnessRuntimeReceipt> {
     if (request.kind === 'open')
       return this.openings.run(id, request, () => this.open(id, request));
-    if (request.kind === 'close' && !this.ports.opened.has(request.session_id))
+    const child = this.ports.children.liveAgent(request.session_id);
+    if (
+      request.kind === 'close' &&
+      child === undefined &&
+      !this.ports.opened.has(request.session_id)
+    )
       return this.closeUnopened(id, request);
     const claim = this.options.persistence.claim(request.session_id);
     epochMismatch(id, request, claim.epoch);
@@ -87,17 +111,45 @@ export class HarnessDispatcher {
         'ownership_lost',
         'This control belongs to another native writer epoch.',
       );
-    const session = this.runtime.get(request.session_id);
+    if (request.kind === 'prompt' && request.helper_parent !== undefined) {
+      if (this.ports.opened.has(request.session_id))
+        throw new HarnessRuntimeError(
+          'ownership_lost',
+          'This chat is open outside the original helper continuation.',
+          request.session_id,
+        );
+      await this.helperPrompts.deliver(request, {
+        ctx: this.ports.ctx,
+        persistence: this.options.persistence,
+        forward: this.ports.forward,
+        runtime: this.runtime,
+        load: this.options.loadAttachments,
+      });
+      return this.receipt(id, request.session_id, request.expected_epoch, 'accepted');
+    }
+    if (child !== undefined)
+      return controlChild(id, request, child, {
+        ...this.ports,
+        runtime: this.runtime,
+        options: this.options,
+      });
+    return this.runAttached(id, request, this.runtime.get(request.session_id));
+  }
+  private async runAttached(
+    id: string,
+    request: Exclude<HarnessRuntimeRequest, { kind: 'open' }>,
+    session: HarnessSession,
+  ): Promise<HarnessRuntimeReceipt> {
     if (isNativeCommandRequest(request))
       return nativeCommandReceipt(
         session,
         request,
-        () => this.receipt(id, request.session_id, claim.epoch, 'completed'),
+        () => this.receipt(id, request.session_id, request.expected_epoch, 'completed'),
         () => this.ports.forward.flush(request.session_id),
       );
     if (request.kind === 'reference')
       return {
-        ...(await this.receipt(id, request.session_id, claim.epoch, 'completed')),
+        ...(await this.receipt(id, request.session_id, request.expected_epoch, 'completed')),
         references: await this.runtime.referenceOperation(request.session_id, request.input),
       };
     if (request.kind === 'auxiliary') return this.auxiliary(id, request);
@@ -107,14 +159,14 @@ export class HarnessDispatcher {
         ctx: this.ports.ctx,
         options: this.options,
       });
-      return this.receipt(id, request.session_id, claim.epoch, 'accepted');
+      return this.receipt(id, request.session_id, request.expected_epoch, 'accepted');
     }
     await this.operation(session, request, id);
     await this.ports.forward.flush(request.session_id);
     const receipt = await this.receipt(
       id,
       request.session_id,
-      claim.epoch,
+      request.expected_epoch,
       lifecycleReceipt(request.kind),
     );
     return request.kind === 'interrupt'
@@ -212,6 +264,14 @@ export class HarnessDispatcher {
         'Native session claim names another execution host.',
       );
     admitRuntimeRoute(input.route, this.options.route);
+    if (input.mode === 'continue') {
+      await bindHelperWriter(input, {
+        ctx: this.ports.ctx,
+        persistence: this.options.persistence,
+        opened: this.ports.opened,
+      });
+      return this.receipt(id, input.claim.session_id, input.claim.epoch, 'ready');
+    }
     const existing = await this.settleExisting(id, input);
     if (existing !== undefined) {
       openReused(id, input.claim.session_id, input.claim.epoch);
@@ -226,10 +286,6 @@ export class HarnessDispatcher {
     this.options.persistence.bind(input.claim);
     const authority = this.options.authority?.(input.claim.session_id);
     try {
-      await importLegacyHistory(this.runtime, input, {
-        persistence: this.options.persistence,
-        load: this.options.loadAttachments,
-      });
       await this.ports.forward.open(input);
       this.ports.opened.set(input.claim.session_id, input);
       await this.runtime.resume(sessionOpenOptions(input, authority));
@@ -302,8 +358,10 @@ export async function createHarnessDispatcher(
   const childPort: { current: ProcessChildren | undefined } = { current: undefined };
   const runtime = await createHarnessRuntime({
     ...options,
+    attachmentTransfer: options.loadAttachments !== undefined,
     interactions,
     beforeStep: (id) => forward.admit(id),
+    failureContext: settledFailureContext(forward, options.failureContext),
     onEvent: (event): void => {
       forward.event(event);
       childPort.current?.event(event);
@@ -312,13 +370,17 @@ export async function createHarnessDispatcher(
       modelContext = await installDispatcherModels(ctx, options);
     },
   });
-  const children = new ProcessChildren(runtime, options.persistence, { forward, opened });
-  childPort.current = children;
   if (modelContext === undefined)
     throw new HarnessRuntimeError(
       'runtime_unavailable',
       'Native model services did not finish installation.',
     );
+  const children = new ProcessChildren(runtime, options.persistence, {
+    forward,
+    opened,
+    ctx: modelContext,
+  });
+  childPort.current = children;
   return new HarnessDispatcher(runtime, options, {
     forward,
     interactions,

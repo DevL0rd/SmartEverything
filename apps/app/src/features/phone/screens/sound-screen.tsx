@@ -66,7 +66,7 @@ export function SoundBody({ device }: { readonly device: Device }): ReactNode {
 export function PhoneSoundScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   const device = useDevice(deviceId);
   return (
-    <PhoneFrame deviceId={deviceId} title="Sound" width="detail">
+    <PhoneFrame deviceId={deviceId} title="Sound" width="dashboard">
       {device?.kind === 'phone' ? <SoundBody device={device} /> : null}
     </PhoneFrame>
   );

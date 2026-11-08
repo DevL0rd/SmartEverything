@@ -5,12 +5,6 @@ export interface NativeReferencePackage {
   readonly asset: InstalledHarnessSkillAsset;
   readonly name: string;
   readonly description: string;
-  readonly agents: readonly {
-    readonly identity: string;
-    readonly name: string;
-    readonly tool: string;
-    readonly description: string;
-  }[];
   readonly restrictedCommands: readonly string[];
 }
 const packages = new WeakMap<Context, Set<NativeReferencePackage>>();

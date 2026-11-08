@@ -16,7 +16,7 @@ export function WatchCaptureClearRow(): ReactNode {
   const subtitle = captures.data
     ? sizeText(captures.data.files, captures.data.bytes)
     : captures.isError
-      ? 'Only a developer device can see the saved files.'
+      ? 'Could not read the saved files.'
       : 'Reading the saved files.';
   return (
     <ActionRow
@@ -25,6 +25,7 @@ export function WatchCaptureClearRow(): ReactNode {
       wrapSubtitle
       icon="trash"
       destructive
+      disabled={captures.data === undefined || captures.data.files === 0}
       onPress={() => {
         background(
           clearWatchCaptures().then(() =>

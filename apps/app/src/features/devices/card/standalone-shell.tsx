@@ -3,6 +3,7 @@ import { createContext, use, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import type { ContextMenu } from '../../../components/menu';
+import { ActionBandTail } from '../../../components/widget-board/action-band';
 import { Interactive } from '../../../components/interactive';
 import type { Device } from '../../../store/state';
 import { DeviceScheduleChip } from '../../automations';
@@ -76,14 +77,13 @@ export function StandaloneShell({
         pointerEvents={editing ? 'none' : 'box-none'}
       >
         {padded ? <OpenLink /> : null}
-        <VisualVisibility visible={!editing}>{children}</VisualVisibility>
-        {editing || scheduleInFace ? null : (
-          <DeviceScheduleChip
-            deviceId={device.id}
-            compact
-            pinnedClassName="absolute bottom-2 right-2"
-          />
-        )}
+        <ActionBandTail
+          tail={
+            editing || scheduleInFace ? null : <DeviceScheduleChip deviceId={device.id} compact />
+          }
+        >
+          <VisualVisibility visible={!editing}>{children}</VisualVisibility>
+        </ActionBandTail>
         {menu.host}
       </View>
     </ShellContext>

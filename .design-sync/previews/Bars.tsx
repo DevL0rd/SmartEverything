@@ -1,12 +1,26 @@
+import type { ReactElement } from 'react';
 import { Bars, Stage } from 'smarteverything-kit';
 
-const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const steps = [6200, 8400, 10300, 7100, 9800, 12400, 5600].map((v, i) => ({
-  key: `d${i}`,
-  value: v,
-  label: days[i]!,
+const dailyActivity = [
+  { label: 'Mon', steps: 6200, energy: 4.2 },
+  { label: 'Tue', steps: 8400, energy: 5.1 },
+  { label: 'Wed', steps: 10300, energy: 3.8 },
+  { label: 'Thu', steps: 7100, energy: 6.4 },
+  { label: 'Fri', steps: 9800, energy: 5.9 },
+  { label: 'Sat', steps: 12400, energy: 7.2 },
+  { label: 'Sun', steps: 5600, energy: 4.4 },
+];
+const steps = dailyActivity.map(({ label, steps }, index) => ({
+  key: `d${String(index)}`,
+  value: steps,
+  label,
 }));
-export const Weekly = () => (
+const energy = dailyActivity.map(({ label, energy }, index) => ({
+  key: `e${String(index)}`,
+  value: energy,
+  label,
+}));
+export const Weekly = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <Bars
       bars={steps}
@@ -18,22 +32,18 @@ export const Weekly = () => (
     />
   </Stage>
 );
-export const Energy = () => (
+export const Energy = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <Bars
-      bars={[4.2, 5.1, 3.8, 6.4, 5.9, 7.2, 4.4].map((v, i) => ({
-        key: `e${i}`,
-        value: v,
-        label: days[i]!,
-      }))}
+      bars={energy}
       colour="viz-1"
       label="Energy per day"
       height={140}
-      formatValue={(v) => `${v} kWh`}
+      formatValue={(v) => `${String(v)} kWh`}
     />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     <Bars bars={steps} colour="move" label="Steps per day" height={160} highlightKey="d2" />
   </Stage>

@@ -3,6 +3,7 @@ import {
   MiioDeviceError,
   MiioPacketError,
   MiotRefusedError,
+  actionInput,
   actionParams,
   checkPropertyWrites,
   encodeRequest,
@@ -79,6 +80,14 @@ describe('MIoT payloads', () => {
       aiid: 1,
       in: [3],
     });
+  });
+
+  it('shape one action input as a plain value or a piid-tagged object', () => {
+    expect(actionInput('plain', 15, '[3]')).toBe('[3]');
+    expect(actionInput('tagged', 15, '[3]')).toStrictEqual({ piid: 15, value: '[3]' });
+    expect(
+      actionParams('42', { siid: 2, aiid: 16 }, [actionInput('tagged', 15, '[3,4]')]),
+    ).toStrictEqual({ did: '42', siid: 2, aiid: 16, in: [{ piid: 15, value: '[3,4]' }] });
   });
 
   it('parse readings, keeping failures with their code', () => {

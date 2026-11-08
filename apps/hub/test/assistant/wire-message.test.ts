@@ -23,6 +23,7 @@ function rowWith(state: AssistantMessageRow['state'], output: string): Assistant
     reason: null,
     steps: [],
     reply_to: null,
+    quote: null,
     chat_id: ID,
     origin: null,
     embeds: [

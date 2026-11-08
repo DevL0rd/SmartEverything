@@ -8,7 +8,7 @@ import {
 import { Readable } from 'node:stream';
 import { authenticate } from '../server/auth';
 import type { RawRoute } from '../server/http-server';
-import { sendBytes } from '../server/recording-files';
+import { serveBytes } from '../server/file-serve';
 import type { Store } from '../store/store';
 import { ComputerAccess, guarded, viewerOf } from './computer-access';
 import type { ComputerDirectory } from './computer-directory';
@@ -66,7 +66,7 @@ export function computerDownloadRoute({ store, directory }: Options): RawRoute {
           return FILE_RANGE.parse(await directory.byDevice(deviceId).call(call));
         });
       const head = await chunkOf(0, 1);
-      await sendBytes(
+      await serveBytes(
         {
           size: head.size,
           headers: {

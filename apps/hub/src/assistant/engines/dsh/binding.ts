@@ -2,7 +2,7 @@ import { admitUnboundEngineChange } from '../../../harness/engine-change-admissi
 import type { HarnessService } from '../../../harness/service';
 import type { EngineSelections } from '../../engine-selections';
 import { ApiError, isCodexPermissionOnlyChange } from '@smarteverything/domain';
-import type { AiChatRow, AiChatChange } from '@smarteverything/domain';
+import type { AiChatRow, AiChatChange, AiChatChangeRequest } from '@smarteverything/domain';
 import type { ChatOwner } from '../../chat-directory';
 import type { EngineRegistry } from '../registry';
 
@@ -36,21 +36,22 @@ export function selectChatEngineChange(
     readonly owner: ChatOwner;
   },
   before: AiChatRow,
-  change: AiChatChange,
+  change: AiChatChangeRequest,
 ): AiChatChange {
-  if (change.engine === undefined) return change;
+  const { engine: requested, ...rest } = change;
+  if (requested === undefined) return rest;
   if (ports.selections === null)
     throw new ApiError('conflict', 'The assistant is starting. Try again in a moment.');
-  const engine = ports.selections.select(before.profile_id, change.engine);
+  const engine = ports.selections.select(before.profile_id, requested);
   if (engine.kind === 'dsh') {
     if (ports.harness === null)
       throw new ApiError('conflict', 'SmartEverything runtime is starting.');
     return {
-      ...change,
+      ...rest,
       engine: admitUnboundEngineChange(ports.harness, ports.owner, before, engine),
     };
   }
-  return { ...change, engine };
+  return { ...rest, engine };
 }
 
 export function codexPermissionChange(before: AiChatRow, change: AiChatChange): boolean {

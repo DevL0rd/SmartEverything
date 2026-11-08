@@ -6,12 +6,16 @@ import { Button } from '../../components/button';
 import { Slider } from '../../components/slider';
 import { Switch } from '../../components/switch';
 import { Text } from '../../components/text';
+import { ActionBand } from '../../components/widget-board';
 import { useRow } from '../../store/selectors';
+import { FitBand, FitList } from '../shared/plugin-widget';
 import { usePluginTool } from '../use-plugin-tool';
 import { flagReading, numberReading } from './stream-value';
 import { useStreamValue } from './use-stream-value';
 
 const TOOL_OFF = 'Switched off in this plugin’s tools.';
+const ROW_ESTIMATE = 48;
+const ROW_GAP = 8;
 
 type Control<K extends WidgetControl['kind']> = Extract<WidgetControl, { readonly kind: K }>;
 
@@ -37,7 +41,7 @@ function Label({
         {label}
       </Text>
       {note === null ? null : (
-        <Text variant="caption" tone="faint" numberOfLines={2}>
+        <Text variant="caption" tone="variant" numberOfLines={2}>
           {note}
         </Text>
       )}
@@ -45,27 +49,24 @@ function Label({
   );
 }
 
-function ButtonRow({ control, offReason, press }: RowProps<'button'>): ReactNode {
+function ButtonControl({ control, offReason, press }: RowProps<'button'>): ReactNode {
   const [busy, setBusy] = useState(false);
   return (
-    <View className="min-h-touch-min flex-row items-center justify-between gap-3">
-      <Label label={control.label} note={offReason} />
-      <Button
-        label="Run"
-        variant="tonal"
-        loading={busy}
-        disabled={offReason !== null}
-        onPress={() => {
-          setBusy(true);
-          background(
-            press(control.args).finally(() => {
-              setBusy(false);
-            }),
-            'declared_control.failed',
-          );
-        }}
-      />
-    </View>
+    <Button
+      label={control.label}
+      variant="tonal"
+      loading={busy}
+      disabled={offReason !== null}
+      onPress={() => {
+        setBusy(true);
+        background(
+          press(control.args).finally(() => {
+            setBusy(false);
+          }),
+          'declared_control.failed',
+        );
+      }}
+    />
   );
 }
 
@@ -108,26 +109,54 @@ function SliderRow({ pluginId, control, offReason, press }: RowProps<'slider'>):
   );
 }
 
+interface Keyed {
+  readonly key: string;
+  readonly control: WidgetControl;
+  readonly offReason: string | null;
+  readonly press: Press;
+}
+
 function ControlRow({
   pluginId,
-  control,
+  row,
 }: {
   readonly pluginId: PluginId;
-  readonly control: WidgetControl;
+  readonly row: Keyed;
 }): ReactNode {
-  const ui = useRow('plugin_ui', pluginId);
-  const tools = usePluginTool(pluginId);
-  const offReason = ui?.tools_off.includes(control.tool) === true ? TOOL_OFF : null;
-  const press: Press = (args) => tools.run(control.tool, args, `${control.label} did not work`);
+  const { control, offReason, press } = row;
   const shared = { pluginId, offReason, press };
   switch (control.kind) {
     case 'button':
-      return <ButtonRow {...shared} control={control} />;
+      return <Label label={control.label} note={offReason} />;
     case 'toggle':
       return <ToggleRow {...shared} control={control} />;
     case 'slider':
       return <SliderRow {...shared} control={control} />;
   }
+}
+
+function useKeyed(pluginId: PluginId, items: readonly WidgetControl[]): readonly Keyed[] {
+  const ui = useRow('plugin_ui', pluginId);
+  const tools = usePluginTool(pluginId);
+  return items.map((control, index) => ({
+    key: `${String(index)}:${control.kind}:${control.label}`,
+    control,
+    offReason: ui?.tools_off.includes(control.tool) === true ? TOOL_OFF : null,
+    press: (args) => tools.run(control.tool, args, `${control.label} did not work`),
+  }));
+}
+
+function BandButton({
+  pluginId,
+  row,
+}: {
+  readonly pluginId: PluginId;
+  readonly row: Keyed;
+}): ReactNode {
+  const { control, offReason, press } = row;
+  return control.kind === 'button' ? (
+    <ButtonControl pluginId={pluginId} control={control} offReason={offReason} press={press} />
+  ) : null;
 }
 
 export function ControlsView({
@@ -137,15 +166,26 @@ export function ControlsView({
   readonly pluginId: PluginId;
   readonly items: readonly WidgetControl[];
 }): ReactNode {
+  const keyed = useKeyed(pluginId, items);
+  const lane = keyed.filter((row) => row.control.kind !== 'button' || row.offReason !== null);
+  const buttons = keyed.filter((row) => row.control.kind === 'button');
+  if (lane.length === 0) {
+    return (
+      <FitBand items={buttons} keyOf={(row) => row.key}>
+        {(row) => <BandButton pluginId={pluginId} row={row} />}
+      </FitBand>
+    );
+  }
   return (
-    <View className="gap-2">
-      {items.map((control, index) => (
-        <ControlRow
-          key={`${String(index)}:${control.kind}:${control.label}`}
-          pluginId={pluginId}
-          control={control}
-        />
-      ))}
-    </View>
+    <>
+      <FitList items={lane} keyOf={(row) => row.key} estimate={ROW_ESTIMATE} gap={ROW_GAP}>
+        {(row) => <ControlRow pluginId={pluginId} row={row} />}
+      </FitList>
+      <ActionBand>
+        {buttons.map((row) => (
+          <BandButton key={row.key} pluginId={pluginId} row={row} />
+        ))}
+      </ActionBand>
+    </>
   );
 }

@@ -4,32 +4,23 @@ import {
   NODE_KIND_ID,
   type AutomationFunctionSummary,
   type FlowType,
+  type NodeKind,
 } from '@smarteverything/domain';
 import {
   NEW_REUSABLE_KEY,
+  fromText,
   functionEntry,
-  nodeEntry,
   paletteGroups,
   shippedNodeEntries,
   takesText,
   type PaletteEntry,
-  type PaletteEnv,
+  type PaletteOrigin,
 } from './palette-categories';
-import { overviewOf } from './palette-overview';
-import {
-  LOOP_REASON,
-  NO_USAGE,
-  STEP_CONTEXT,
-  TRIGGER_REASON,
-  rankEntries,
-  type PaletteContext,
-} from './palette-search';
+import { openGroup, overviewOf } from './palette-overview';
+import { NO_USAGE, STEP_CONTEXT, rankEntries, type PaletteContext } from './palette-search';
 import { NEW_REUSABLE_ENTRY } from './palette-categories';
 import { presetEntries } from './presets';
 import { MAX_SUGGESTIONS, suggestedEntries } from './suggestions';
-
-const OWNER: PaletteEnv = { isOwner: true, hasComputer: true };
-const MEMBER: PaletteEnv = { isOwner: false, hasComputer: false };
 
 const NUMBER: FlowType = { t: 'number' };
 
@@ -39,7 +30,6 @@ const FUNCTION: AutomationFunctionSummary = {
   description: null,
   category: 'lights',
   icon: null,
-  builtin: false,
   editable: true,
   revision: 1,
   interface: {
@@ -57,9 +47,9 @@ const FUNCTION: AutomationFunctionSummary = {
   updatedAt: null,
 };
 
-function everything(env: PaletteEnv): readonly PaletteEntry[] {
+function everything(): readonly PaletteEntry[] {
   return [
-    ...shippedNodeEntries(ALL_NODE_KINDS, env),
+    ...shippedNodeEntries(ALL_NODE_KINDS),
     ...presetEntries(),
     functionEntry(FUNCTION),
     NEW_REUSABLE_ENTRY,
@@ -78,7 +68,7 @@ function find(entries: readonly PaletteEntry[], key: string): PaletteEntry {
 
 describe('palette entries', () => {
   it('states what a node takes in words, never bare types', () => {
-    const entries = everything(OWNER);
+    const entries = everything();
     for (const entry of entries) {
       expect(entry.takes).toMatch(entry.key.startsWith('function:') ? /^in:/ : /^(Takes|Opens)/);
       expect(entry.takes).not.toMatch(/\{|"t"|undefined/);
@@ -102,29 +92,20 @@ describe('palette entries', () => {
   });
 
   it('keeps every recordable id valid for the saved palette', () => {
-    for (const entry of everything(OWNER)) {
+    for (const entry of everything()) {
       if (entry.usageId !== null) expect(NODE_KIND_ID.safeParse(entry.usageId).success).toBe(true);
     }
   });
 
   it('keys are unique', () => {
-    const keys = everything(OWNER).map((entry) => entry.key);
+    const keys = everything().map((entry) => entry.key);
     expect(new Set(keys).size).toBe(keys.length);
-  });
-
-  it('disables owner and computer rows with the reason', () => {
-    const entries = everything(MEMBER);
-    const reasons = entries.flatMap((entry) => (entry.disabled === null ? [] : [entry.disabled]));
-    expect(reasons).toContain('Pair a computer first.');
-    const ai = ALL_NODE_KINDS.find((kind) => kind.access === 'owner' && kind.tier === 'v1');
-    if (ai !== undefined) expect(nodeEntry(ai, MEMBER).disabled).not.toBeNull();
-    expect(everything(OWNER).filter((entry) => entry.disabled !== null)).toEqual([]);
   });
 });
 
 describe('palette groups', () => {
   it('starts Custom Nodes with New Custom Node and lists the rest by name', () => {
-    const groups = paletteGroups(everything(OWNER));
+    const groups = paletteGroups(everything());
     const reusable = groups.find((group) => group.id === 'reusable');
     expect(reusable?.entries[0]?.key).toBe(NEW_REUSABLE_KEY);
     expect(reusable?.entries.some((entry) => entry.name === 'Dim the lights')).toBe(true);
@@ -137,7 +118,7 @@ describe('palette groups', () => {
   });
 
   it('puts device presets under Devices', () => {
-    const groups = paletteGroups(everything(OWNER));
+    const groups = paletteGroups(everything());
     const devices = groups.find((group) => group.id === 'devices');
     expect(devices?.entries.some((entry) => entry.key === 'preset:device.set.brightness')).toBe(
       true,
@@ -145,8 +126,21 @@ describe('palette groups', () => {
   });
 });
 
+describe('light presets', () => {
+  it('puts the light.set presets under Devices', () => {
+    const groups = paletteGroups(everything());
+    const devices = groups.find((group) => group.id === 'devices');
+    const warm = devices?.entries.find((entry) => entry.key === 'preset:light.set.warm_white');
+    expect(warm?.kindId).toBe('light.set');
+    expect(warm?.choice).toMatchObject({
+      source: 'kind-preset',
+      ports: { colorTemperature: 2700 },
+    });
+  });
+});
+
 describe('palette search', () => {
-  const entries = everything(OWNER);
+  const entries = everything();
 
   it('puts a name match before a keyword match', () => {
     const ranked = rankEntries(entries, 'wait', STEP_CONTEXT);
@@ -171,18 +165,9 @@ describe('palette search', () => {
     expect(ranked.some(({ entry }) => entry.section === 'notify')).toBe(true);
   });
 
-  it('lists everything with no query, enabled rows before disabled ones', () => {
-    const ranked = rankEntries(everything(MEMBER), '', STEP_CONTEXT);
-    const firstDisabled = ranked.findIndex(({ reason }) => reason !== null);
-    expect(firstDisabled).toBeGreaterThan(0);
-    expect(ranked.slice(firstDisabled).every(({ reason }) => reason !== null)).toBe(true);
-  });
-
   it('ranks favourites and recents higher', () => {
     const base = rankEntries(entries, 'device', STEP_CONTEXT, NO_USAGE);
-    const last = base
-      .filter(({ reason, entry }) => reason === null && entry.usageId !== null)
-      .at(-1)?.entry;
+    const last = base.filter(({ entry }) => entry.usageId !== null).at(-1)?.entry;
     expect(last?.usageId).toBeDefined();
     const pinned = rankEntries(entries, 'device', STEP_CONTEXT, {
       recents: [],
@@ -193,21 +178,12 @@ describe('palette search', () => {
     expect(after).toBeLessThan(before);
   });
 
-  it('keeps triggers disabled with a reason outside the trigger slot and hides the rest in it', () => {
+  it('offers every entry, triggers included, in the step slot', () => {
     const step = rankEntries(entries, '', STEP_CONTEXT);
-    const trigger = step.find(({ entry }) => entry.trigger);
-    expect(trigger?.reason).toBe(TRIGGER_REASON);
-    const slot: PaletteContext = { ...STEP_CONTEXT, slot: 'trigger' };
-    const only = rankEntries(entries, '', slot);
-    expect(only.length).toBeGreaterThan(0);
-    expect(only.every(({ entry, reason }) => entry.trigger && reason === null)).toBe(true);
-  });
-
-  it('disables Break outside a loop and enables it inside', () => {
-    const outside = rankEntries(entries, 'break', STEP_CONTEXT);
-    expect(outside.find(({ entry }) => entry.kindId === 'flow.break')?.reason).toBe(LOOP_REASON);
-    const inside = rankEntries(entries, 'break', { ...STEP_CONTEXT, inLoop: true });
-    expect(inside.find(({ entry }) => entry.kindId === 'flow.break')?.reason).toBeNull();
+    expect(step.map(({ entry }) => entry.key)).toEqual(
+      expect.arrayContaining(entries.map((entry) => entry.key)),
+    );
+    expect(step.some(({ entry }) => entry.trigger)).toBe(true);
   });
 
   it('ranks nodes that give the expected type first at a value port', () => {
@@ -222,7 +198,7 @@ describe('palette search', () => {
 });
 
 describe('suggestions', () => {
-  const entries = everything(OWNER);
+  const entries = everything();
 
   it('suggests Only continue if and Change device after a trigger', () => {
     const picked = suggestedEntries(entries, { ...STEP_CONTEXT, afterTrigger: true });
@@ -250,23 +226,88 @@ describe('suggestions', () => {
       'node:flow.wait',
     ]);
   });
-
-  it('never suggests a disabled row', () => {
-    const picked = suggestedEntries(entries, STEP_CONTEXT, {
-      recents: ['flow.break'],
-      favourites: [],
-    });
-    expect(picked.map((entry) => entry.kindId)).not.toContain('flow.break');
-  });
 });
 
 describe('overview', () => {
   it('drops empty categories in the trigger slot and keeps counts of what is shown', () => {
-    const entries = everything(OWNER);
+    const entries = everything();
     const groups = paletteGroups(entries);
     const slot: PaletteContext = { ...STEP_CONTEXT, slot: 'trigger' };
     const overview = overviewOf(entries, groups, slot, NO_USAGE);
     expect(overview.groups.map((group) => group.id)).toEqual(['triggers']);
     expect(find(entries, NEW_REUSABLE_KEY).trigger).toBe(false);
+  });
+});
+
+function pluginKind(id: string, name: string, owner: PaletteOrigin): NodeKind {
+  const base = ALL_NODE_KINDS.find((kind) => kind.id === 'notify.person');
+  if (base === undefined) throw new Error('missing notify.person');
+  return {
+    ...base,
+    id,
+    name,
+    category: 'plugins',
+    keywords: [],
+    origin: { kind: 'plugin', id: owner.id, name: owner.name, icon: 'messageCircle', version: '1' },
+  };
+}
+
+const DISCORD = { id: 'discord', name: 'Discord', icon: 'messageCircle' };
+const SHELLY = { id: 'shelly-presence', name: 'Shelly presence', icon: 'messageCircle' };
+
+function pluginEntries(): readonly PaletteEntry[] {
+  return shippedNodeEntries([
+    pluginKind('plugin.discord.send', 'Send a Discord message', DISCORD),
+    pluginKind('plugin.discord.ask', 'Ask on Discord', DISCORD),
+    pluginKind('plugin.shelly_presence.zone', 'Zone presence', SHELLY),
+  ]);
+}
+
+describe('plugin groups', () => {
+  it('groups plugin kinds by the plugin that adds them, sorted by plugin name', () => {
+    const groups = paletteGroups(pluginEntries()).filter((group) => group.id === 'plugins');
+    expect(groups.map((group) => [group.key, group.name])).toEqual([
+      ['plugins:discord', 'Discord'],
+      ['plugins:shelly-presence', 'Shelly presence'],
+    ]);
+    expect(groups[0]?.entries.map((entry) => entry.name)).toEqual([
+      'Ask on Discord',
+      'Send a Discord message',
+    ]);
+  });
+
+  it('shows the plugin icon on its group and the section icon on core groups', () => {
+    const groups = paletteGroups([...pluginEntries(), ...everything()]);
+    expect(groups.find((group) => group.key === 'plugins:discord')?.icon).toBe('messageCircle');
+    expect(groups.find((group) => group.key === 'devices')?.icon).toBe('plug');
+  });
+
+  it('opens each plugin group with only its own plugin nodes', () => {
+    const groups = paletteGroups([...pluginEntries(), ...everything()]);
+    expect(
+      openGroup(groups, 'plugins:shelly-presence')?.entries.map((entry) => entry.name),
+    ).toEqual(['Zone presence']);
+    expect(openGroup(groups, 'plugins:discord')?.entries.map((entry) => entry.name)).toEqual([
+      'Ask on Discord',
+      'Send a Discord message',
+    ]);
+  });
+
+  it('keeps every group key unique', () => {
+    const keys = paletteGroups([...pluginEntries(), ...everything()]).map((group) => group.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('finds plugin kinds by the plugin name and says where a hit comes from', () => {
+    const hits = rankEntries(pluginEntries(), 'discord', STEP_CONTEXT);
+    expect(names(hits)).toEqual(['Ask on Discord', 'Send a Discord message']);
+    const shelly = rankEntries(pluginEntries(), 'shelly', STEP_CONTEXT)[0]?.entry;
+    expect(shelly?.takes.startsWith(fromText(SHELLY, ''))).toBe(true);
+  });
+
+  it('leaves core rows without a plugin name', () => {
+    const entries = everything();
+    expect(entries.every((entry) => entry.origin === undefined)).toBe(true);
+    expect(entries.some((entry) => entry.takes.startsWith('From '))).toBe(false);
   });
 });

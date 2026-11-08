@@ -49,7 +49,9 @@ export function GroupEmpty({
 }): ReactNode {
   return (
     <Screen
-      header={<PageHeader title={title} subtitle="No devices" back overflow={menu} />}
+      header={
+        <PageHeader title={title} titleLines="wrap" subtitle="No devices" back overflow={menu} />
+      }
       maxWidth="reading"
     >
       {roomName !== null ? (

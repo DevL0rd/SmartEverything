@@ -4,11 +4,14 @@ import type {
   MediaNoteInput,
   MediaNoteProvider,
 } from '../transcripts/media-notes';
-import type { ContentPart } from './chat-types';
 import type { OpenRouterClient } from './client';
 import { openRouterError } from './errors';
 import { OR_USAGE } from './wire';
 import { REQUEST_BYTES_MAX, requestTimeoutMs, shrinkMedia } from './media-shrink';
+
+type ContentPart =
+  | { readonly type: 'image_url'; readonly image_url: { readonly url: string } }
+  | { readonly type: 'video_url'; readonly video_url: { readonly url: string } };
 
 const RESPONSE_BYTES_MAX = 256 * 1024;
 const MAX_ANSWER_TOKENS = 2048;
@@ -27,11 +30,12 @@ function mediaPart(media: { readonly mime: string; readonly data: Buffer }): Con
 }
 
 async function requestMedia(
+  tmp: string,
   input: MediaNoteInput,
   limit: number,
 ): Promise<{ readonly mime: string; readonly data: Buffer }> {
   if (input.data.byteLength <= limit) return input;
-  const smaller = await shrinkMedia(input.data, input.mime, limit);
+  const smaller = await shrinkMedia(tmp, input.data, input.mime, limit);
   if (smaller === undefined)
     throw openRouterError('bad_request', 'caption media is too large to describe in one request');
   return smaller;
@@ -40,11 +44,12 @@ async function requestMedia(
 export class OpenRouterMediaNotes implements MediaNoteProvider {
   constructor(
     private readonly client: OpenRouterClient,
+    private readonly tmp: string,
     private readonly requestBytesMax: number = REQUEST_BYTES_MAX,
   ) {}
 
   async describe(input: MediaNoteInput): Promise<MediaNoteAnswer> {
-    const media = await requestMedia(input, this.requestBytesMax);
+    const media = await requestMedia(this.tmp, input, this.requestBytesMax);
     const body = {
       model: input.model,
       messages: [

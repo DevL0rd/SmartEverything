@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('expo-crypto', () => ({ randomUUID: (): string => globalThis.crypto.randomUUID() }));
+vi.mock('expo-crypto', () => ({ randomUUID: (): string => randomUUID() }));
 vi.mock('./browser-tab-persistence', () => ({
   persistBrowserTabs: (): (() => void) => () => undefined,
   restoreBrowserTabs: (): { tabs: []; selectedId: null; problem: null } => ({

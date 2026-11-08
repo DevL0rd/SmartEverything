@@ -1,23 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chunk, columnsIn, gridFit, linkedCapacity, rowsThatFit, tileGrid } from './fit-math';
-
-describe('tileGrid', () => {
-  it('fits as many 156 px tiles as the touch width allows', () => {
-    expect(tileGrid(326, 'touch', 12)).toEqual({ columns: 2, gap: 12, minRow: 132 });
-    expect(tileGrid(308, 'touch', 12).columns).toBe(1);
-    expect(tileGrid(660, 'touch', 12).columns).toBe(4);
-  });
-
-  it('uses the wider 168 px tile on pointer', () => {
-    expect(tileGrid(508, 'pointer', 16)).toEqual({ columns: 2, gap: 16, minRow: 120 });
-    expect(tileGrid(1072, 'pointer', 16).columns).toBe(4);
-  });
-
-  it('never goes below one column or above four', () => {
-    expect(tileGrid(100, 'touch', 12).columns).toBe(1);
-    expect(tileGrid(3000, 'pointer', 16).columns).toBe(4);
-  });
-});
+import { chunk, columnsIn, gridFit, linkedCapacity, rowsThatFit } from './fit-math';
 
 describe('columnsIn', () => {
   it('counts only whole items plus their gaps', () => {

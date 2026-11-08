@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { View } from 'react-native';
 import { Banner } from '../../../components/banner';
 import { Card } from '../../../components/card';
@@ -96,7 +96,9 @@ function Setup({ laundry, draft }: Pick<Parts, 'laundry' | 'draft'>): ReactNode 
 function Banners({
   laundry,
   onAdvice,
+  opener,
 }: {
+  readonly opener: RefObject<View | null>;
   readonly laundry: Laundry;
   readonly onAdvice: () => void;
 }): ReactNode {
@@ -110,7 +112,7 @@ function Banners({
           title={`${fault.title} (E${String(fault.code)})`}
           body={fault.advice}
           wrapBody
-          action={{ label: 'What to do', onPress: onAdvice }}
+          action={{ label: 'What to do', onPress: onAdvice, ref: opener }}
         />
       )}
     </View>
@@ -275,9 +277,10 @@ export function LaundryPage({ device }: { readonly device: Device }): ReactNode 
   const laundry = useLaundry(device);
   const cycles = useCycles(device.id);
   const draft = useLaundryDraft(laundry);
-  const [advice, setAdvice] = useState(false);
+  const [advice, setAdvice] = useState<'action' | 'banner' | null>(null);
+  const bannerOpener = useRef<View>(null);
   const runner = useRunner(laundry, () => {
-    setAdvice(true);
+    setAdvice('action');
   });
   const { width } = useSizeClass();
   const parts: Parts = { laundry, draft, cycles, runner };
@@ -289,23 +292,25 @@ export function LaundryPage({ device }: { readonly device: Device }): ReactNode 
       banner={
         <Banners
           laundry={laundry}
+          opener={bannerOpener}
           onAdvice={() => {
-            setAdvice(true);
+            setAdvice('banner');
           }}
         />
       }
       {...(sticky ? { footer: <StartButton laundry={laundry} draft={draft} /> } : {})}
     >
       <Body width={width} parts={parts} />
-      {advice ? (
+      {advice === null ? null : (
         <AdviceSheet
           laundry={laundry}
           runner={runner}
+          opener={advice === 'banner' ? bannerOpener : runner.adviceOpener}
           onClose={() => {
-            setAdvice(false);
+            setAdvice(null);
           }}
         />
-      ) : null}
+      )}
     </Screen>
   );
 }

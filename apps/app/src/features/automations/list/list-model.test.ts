@@ -1,3 +1,6 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
+import { AUTOMATION_V4 } from '@smarteverything/domain';
+import { unstructure } from '@smarteverything/flow/graph/unstructure';
 import { describe, expect, it } from 'vitest';
 import { copyName } from './copy-name';
 import { entriesOf, entryOf, type ListEntry } from './list-entries';
@@ -75,13 +78,18 @@ describe('run stats', () => {
 describe('entries and sections', () => {
   const context = contextFor({ updates: new Set([idOf(7)]) });
   const rows = [
-    rowOf(1, timed(), { name: 'Evening' }),
-    rowOf(2, evented(), { name: 'Button', author: { via: 'assistant', profile_id: idOf(99) } }),
-    rowOf(3, called(), { name: 'Helper' }),
-    rowOf(4, evented(), { name: 'Off', enabled: false }),
-    rowOf(5, evented(), { name: 'Broken', last_error: 'No device' }),
-    rowOf(6, evented(), { name: 'Busy' }),
-    rowOf(7, roomy(), { name: 'Kitchen', draft: null }),
+    rowOf(1, timed(), { name: 'Evening' }, STATIC_KIND_LOOKUP),
+    rowOf(
+      2,
+      evented(),
+      { name: 'Button', author: { via: 'assistant', profile_id: idOf(99) } },
+      STATIC_KIND_LOOKUP,
+    ),
+    rowOf(3, called(), { name: 'Helper' }, STATIC_KIND_LOOKUP),
+    rowOf(4, evented(), { name: 'Off', enabled: false }, STATIC_KIND_LOOKUP),
+    rowOf(5, evented(), { name: 'Broken', last_error: 'No device' }, STATIC_KIND_LOOKUP),
+    rowOf(6, evented(), { name: 'Busy' }, STATIC_KIND_LOOKUP),
+    rowOf(7, roomy(), { name: 'Kitchen', draft: null }, STATIC_KIND_LOOKUP),
   ];
   const busy = stats([runOf(1, 6, 'running', '2026-10-18T11:30:00.000Z')]);
   const entries = entriesOf(rows, busy, context);
@@ -105,12 +113,17 @@ describe('entries and sections', () => {
     expect(find('Kitchen')?.rooms).toEqual([KITCHEN_ROOM]);
     expect(
       entryOf(
-        rowOf(8, evented(), {
-          draft: {
-            program: evented(),
-            layout: rows[0]?.layout ?? { nodes: {}, frames: [], comments: [] },
+        rowOf(
+          8,
+          evented(),
+          {
+            draft: {
+              program: AUTOMATION_V4.parse(unstructure(evented(), STATIC_KIND_LOOKUP)),
+              layout: rows[0]?.layout ?? { nodes: {}, frames: [], comments: [] },
+            },
           },
-        }),
+          STATIC_KIND_LOOKUP,
+        ),
         NO_STATS,
         context,
       ).chips,
@@ -144,8 +157,18 @@ describe('entries and sections', () => {
   it('sorts by most runs and last run', () => {
     const counted = entriesOf(
       [
-        rowOf(1, evented(), { run_count: 5, last_run_at: '2026-10-18T08:00:00.000Z' }),
-        rowOf(2, evented(), { run_count: 9, last_run_at: '2026-10-17T08:00:00.000Z' }),
+        rowOf(
+          1,
+          evented(),
+          { run_count: 5, last_run_at: '2026-10-18T08:00:00.000Z' },
+          STATIC_KIND_LOOKUP,
+        ),
+        rowOf(
+          2,
+          evented(),
+          { run_count: 9, last_run_at: '2026-10-17T08:00:00.000Z' },
+          STATIC_KIND_LOOKUP,
+        ),
       ],
       new Map(),
       context,

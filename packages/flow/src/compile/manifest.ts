@@ -27,7 +27,14 @@ export const REF_SLOTS = [
   'secret',
 ] as const;
 
-export const MANIFEST_SLOTS = [...REF_SLOTS, 'control', 'tool', 'host'] as const;
+export const MANIFEST_SLOTS = [
+  ...REF_SLOTS,
+  'control',
+  'tool',
+  'host',
+  'plugin',
+  'entity',
+] as const;
 
 export type ManifestSlot = (typeof MANIFEST_SLOTS)[number];
 
@@ -48,7 +55,7 @@ export const MANIFEST = z.strictObject({
 
 export type Manifest = z.infer<typeof MANIFEST>;
 
-export type ManifestKind = Pick<NodeKind, 'id' | 'inputs' | 'access'>;
+export type ManifestKind = Pick<NodeKind, 'id' | 'inputs' | 'access' | 'origin'>;
 
 export type ManifestKinds = (id: string) => ManifestKind | undefined;
 
@@ -70,6 +77,19 @@ export interface Closure {
   readonly missing: readonly string[];
 }
 
+export function entityRef(of: string, id: string): string {
+  return `${of}:${id}`;
+}
+
+export function entityPluginId(of: string): string {
+  return of.slice(0, of.indexOf('.'));
+}
+
+export function splitEntityRef(ref: string): { readonly of: string; readonly id: string } {
+  const split = ref.indexOf(':');
+  return { of: ref.slice(0, split), id: ref.slice(split + 1) };
+}
+
 export const AI_KIND = 'ai.wake';
 export const HTTP_KIND = 'http.request';
 export const HTTP_URL_PORT = 'url';
@@ -85,6 +105,8 @@ const TARGET_KEYS: Readonly<Record<string, ManifestSlot>> = {
 
 const OPTION_SLOTS: Readonly<Record<string, ManifestSlot>> = {
   'device.controls': 'control',
+  'device.writable_controls': 'control',
+  'device.actions': 'control',
   'device.operations': 'control',
   tools: 'tool',
 };
@@ -106,7 +128,9 @@ export function childOps(op: PlanOp): readonly PlanOp[] {
   if (op.op === 'seq') return op.ops;
   if (op.op === 'loop' || op.op === 'with_effect') return [op.body];
   if (op.op === 'parallel') return op.branches.map((branch) => branch.body);
-  if (op.op === 'state_op' || op.op === 'wait') return Object.values(op.scopes ?? {});
+  if (op.op === 'state_op' || op.op === 'wait' || op.op === 'effect') {
+    return Object.values(op.scopes ?? {});
+  }
   return branching(op);
 }
 
@@ -234,8 +258,16 @@ function addEntries(
   }
 }
 
+function addEntity(draft: Draft, of: string, value: JsonValue): void {
+  if (typeof value !== 'string') return;
+  idsOf(draft, 'entity').add(entityRef(of, value));
+  idsOf(draft, 'plugin').add(entityPluginId(of));
+}
+
 function addTyped(draft: Draft, type: FlowType, value: JsonValue): void {
-  if (type.t === 'ref') {
+  if (type.t === 'entity') {
+    addEntity(draft, type.of, value);
+  } else if (type.t === 'ref') {
     if (type.of === 'target') addTarget(draft, value);
     else addIds(draft, type.of, value);
   } else if (type.t === 'optional') {
@@ -248,6 +280,7 @@ function addTyped(draft: Draft, type: FlowType, value: JsonValue): void {
 }
 
 function slotsIn(type: FlowType): readonly ManifestSlot[] {
+  if (type.t === 'entity') return ['entity'];
   if (type.t === 'ref') return type.of === 'target' ? TARGET_SLOTS : [type.of];
   if (type.t === 'optional' || type.t === 'list') return slotsIn(type.of);
   if (type.t !== 'record') return [];
@@ -289,6 +322,7 @@ function scanKind(draft: Draft, kinds: ManifestKinds, kindId: string, ports: Pla
   const kind = kindOf(kinds, kindId);
   if (kind.id === AI_KIND) draft.flags.add('ai');
   if (kind.access === 'owner') draft.flags.add('owner');
+  if (kind.origin?.kind === 'plugin') idsOf(draft, 'plugin').add(kind.origin.id);
   for (const decl of kind.inputs) {
     const given = ports[decl.name];
     const value = given ?? (decl.default === undefined ? undefined : { lit: decl.default });

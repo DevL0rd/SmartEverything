@@ -1,21 +1,14 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { REUSE_CHAT_MINUTES } from '@smarteverything/domain';
 import { ValueStore, useValue } from '../../../design/external-store';
 import { useActiveProfile } from '../../../store/people';
-import { useStoreSelector } from '../../../store/store-context';
+import { appChatHistoryOnly } from '../chats/chat-visibility';
 import { useAiChats } from '../data/chat-store';
 import { setDraft } from '../data/drafts';
 import { ContinueComposer, NewChatComposer, QUICK_ASK_DRAFT_KEY } from './quick-ask-composers';
 import { useQuickAskDelivery } from './quick-ask-delivery';
 import { QuickAskFrame } from './quick-ask-frame';
-import {
-  chosenTarget,
-  continueLabel,
-  latestChat,
-  preferredChoice,
-  type QuickAskChoice,
-} from './quick-ask-model';
+import { chosenTarget, continueLabel, latestChat, type QuickAskChoice } from './quick-ask-model';
 import { TargetLine } from './quick-ask-target-line';
 
 const open = new ValueStore(false);
@@ -35,14 +28,14 @@ function close(): void {
 
 function QuickAskDialog(): ReactNode {
   const profile = useActiveProfile();
-  const latest = latestChat(useAiChats(), profile?.id ?? null);
-  const reuseMinutes = useStoreSelector(
-    (state) => state.assistant?.settings.reuse_chat_minutes ?? REUSE_CHAT_MINUTES,
+  const latest = latestChat(
+    useAiChats().filter((chat) => !appChatHistoryOnly(chat)),
+    profile?.id ?? null,
   );
   const [now] = useState(Date.now);
   const [picked, setPicked] = useState<QuickAskChoice | null>(null);
   const delivery = useQuickAskDelivery();
-  const target = chosenTarget(picked, preferredChoice(latest, reuseMinutes, now), latest !== null);
+  const target = chosenTarget(picked, latest !== null);
   return (
     <QuickAskFrame onClose={close}>
       <TargetLine

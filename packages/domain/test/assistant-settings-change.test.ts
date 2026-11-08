@@ -10,7 +10,6 @@ const stored = ASSISTANT_SETTINGS.parse({
   aliases: ['momo'],
   instructions: 'be brief',
   voice: { idle_seconds: 30, live_video: true },
-  reuse_chat_minutes: 10,
 });
 
 describe('assistant settings change', () => {
@@ -24,8 +23,9 @@ describe('assistant settings change', () => {
     });
   });
 
-  it('refuses an empty change and unknown voice keys', () => {
+  it('refuses an empty change, unknown voice keys and the removed chat reuse window', () => {
     expect(ASSISTANT_SETTINGS_CHANGE.safeParse({}).success).toBe(false);
+    expect(ASSISTANT_SETTINGS_CHANGE.safeParse({ reuse_chat_minutes: 10 }).success).toBe(false);
     expect(ASSISTANT_SETTINGS_CHANGE.safeParse({ voice: { nonsense: 1 } }).success).toBe(false);
   });
 

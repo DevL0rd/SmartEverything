@@ -27,6 +27,7 @@ const KEYS: { readonly [K in Kind]: Keys<K> } = {
   group: NONE,
   scene: NONE,
   chat: NONE,
+  drive: NONE,
 };
 
 function keysFor<K extends Kind>(target: Of<K>, focus: string | null): readonly string[] {

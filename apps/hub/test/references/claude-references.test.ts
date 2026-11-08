@@ -85,7 +85,7 @@ beforeEach(async () => {
   clientId = owner.id;
   profileId = opened.store.profiles.activeOf(owner.id).id;
   asked = [];
-  references = new ReferenceService(opened.store, new ProjectFilesService(opened.directory));
+  references = new ReferenceService(opened.store, new ProjectFilesService(opened.layout, opened.store.aiChats));
   references.attachNative(['claude'], claudeReferences(directory(undefined)));
   chat = claudeChat({ cwd: FOLDER });
 });

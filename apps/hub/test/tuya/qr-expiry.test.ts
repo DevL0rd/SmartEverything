@@ -3,6 +3,7 @@ import { Logger } from '@smarteverything/logging';
 import { describe, expect, it } from 'vitest';
 import type { ShownPrompt } from '../../src/adapters/contract';
 import { signInWithUserCode } from '../../src/adapters/tuya/smart-life-link';
+import { hubLayout } from '../../src/data-layout';
 
 const NOW = Date.parse('2026-10-16T10:00:00.000Z');
 const TIMEOUT_MS = 5 * 60_000;
@@ -47,7 +48,7 @@ describe('Smart Life QR prompt', () => {
       },
       {
         log: new Logger('tool.tuya-test'),
-        dataDirectory: '/nonexistent',
+        layout: hubLayout('/nonexistent', {}),
         ask: () => Promise.reject(new Error('never asked')),
         show: (value) => {
           shown.push(PROVIDER_PROMPT.parse(value));

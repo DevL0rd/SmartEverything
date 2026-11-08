@@ -3,6 +3,7 @@ import {
   HISTORY_ROW,
   STATE_ROW,
   isSampledCapability,
+  isUnrecordedCapability,
   jsonEquals,
   type HistoryBucket,
   type HistoryRow,
@@ -200,6 +201,7 @@ export class StateRepository {
     );
     if (
       isSampledCapability(row.capability) ||
+      isUnrecordedCapability(row.capability) ||
       (before !== undefined && jsonEquals(before.value, row.value))
     ) {
       return;

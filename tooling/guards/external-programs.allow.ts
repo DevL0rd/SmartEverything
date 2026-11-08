@@ -39,7 +39,12 @@ export const PROGRAMS: Readonly<Record<string, ProgramEntry>> = {
     kind: 'os',
     reason: 'a Windows PowerShell cmdlet, present on every supported Windows',
   },
+  flock: { kind: 'os', reason: 'serializes Linux hub releases and desktop folder installs' },
   systemctl: { kind: 'os', reason: 'systemd manages the Linux service the app installs' },
+  journalctl: {
+    kind: 'os',
+    reason: 'systemd reads prior errors from the app-owned Linux user service on startup',
+  },
   loginctl: { kind: 'os', reason: 'systemd-logind lists sessions, power actions and user linger' },
   launchctl: { kind: 'os', reason: 'launchd manages the macOS service the app installs' },
   reg: { kind: 'os', reason: 'Windows registry tool for the sign-in entry the app installs' },
@@ -219,11 +224,6 @@ export const DYNAMIC_SITES: Readonly<Record<string, ProgramEntry>> = {
     reason:
       'the service managers run systemctl, loginctl, launchctl, reg and wscript.exe through it',
   },
-  'apps/desktop/src/service/ffmpeg-binary.ts': {
-    kind: 'bundled',
-    reason:
-      'the packaging step runs the ffmpeg-static install script with the Node runtime that is already running it',
-  },
   'apps/desktop/src/squirrel-events.ts': {
     kind: 'os',
     reason: 'Update.exe of the Windows installer the user ran to install the app',
@@ -251,10 +251,6 @@ export const DYNAMIC_SITES: Readonly<Record<string, ProgramEntry>> = {
   'apps/hub/src/plugins/isolation/spawn.ts': {
     kind: 'bundled',
     reason: 'forks the plugin host script with the service’s own Node runtime',
-  },
-  'apps/hub/src/service.ts': {
-    kind: 'bundled',
-    reason: 'restarts the service with the Node runtime that is already running it',
   },
   'apps/hub/src/node/controls/linux/line-stream.ts': {
     kind: 'optional-external',

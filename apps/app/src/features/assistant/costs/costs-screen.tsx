@@ -36,7 +36,7 @@ function LedgerFooter({
   }
   if (ledger.isError) {
     return (
-      <View className="w-full self-center px-gutter pb-3 max-w-dashboard">
+      <View className="w-full px-gutter pb-3 max-w-dashboard">
         <Banner
           tone="critical"
           title="Couldn’t load requests"
@@ -119,7 +119,6 @@ function CostsFrame({
       {...(chat === null ? {} : { title: `Costs for “${chat.title}”` })}
       search={false}
       overflow={menu}
-      maxWidth="dashboard"
       scroll={false}
       banner={<CostsBanners />}
     >

@@ -90,41 +90,33 @@ function idOf(context: Limited, kind: Kind, wanted: string): string {
   const { store } = context;
   switch (kind) {
     case 'device':
-      return resolveNamed(
-        placedDevices(store, deviceScopeOfActor(context)),
-        wanted,
-        'device',
-        {
-          names: ({ name, device }) => [name, device.name, device.display_name],
-          label: ({ name }) => name,
-          id: ({ device }) => device.id,
-        },
-        'device_find',
-      ).device.id;
+      return resolveNamed(placedDevices(store, deviceScopeOfActor(context)), wanted, 'device', {
+        names: ({ name, device }) => [name, device.name, device.display_name],
+        label: ({ name }) => name,
+        id: ({ device }) => device.id,
+        lists: 'device_find',
+      }).device.id;
     case 'room':
-      return resolveNamed(
-        store.rooms.list(),
-        wanted,
-        'room',
-        { names: (row) => [row.name], label: (row) => row.name, id: (row) => row.id },
-        'home_read',
-      ).id;
+      return resolveNamed(store.rooms.list(), wanted, 'room', {
+        names: (row) => [row.name],
+        label: (row) => row.name,
+        id: (row) => row.id,
+        lists: 'home_read',
+      }).id;
     case 'group':
-      return resolveNamed(
-        store.deviceGroups.list(),
-        wanted,
-        'device group',
-        { names: (row) => [row.name], label: (row) => row.name, id: (row) => row.id },
-        'home_read',
-      ).id;
+      return resolveNamed(store.deviceGroups.list(), wanted, 'device group', {
+        names: (row) => [row.name],
+        label: (row) => row.name,
+        id: (row) => row.id,
+        lists: 'home_read',
+      }).id;
     case 'person':
-      return resolveNamed(
-        store.profiles.list(),
-        wanted,
-        'person',
-        { names: (row) => [row.name], label: (row) => row.name, id: (row) => row.id },
-        'person_read',
-      ).id;
+      return resolveNamed(store.profiles.list(), wanted, 'person', {
+        names: (row) => [row.name],
+        label: (row) => row.name,
+        id: (row) => row.id,
+        lists: 'person_read',
+      }).id;
   }
 }
 
@@ -134,7 +126,9 @@ function resolvedValue(context: Limited, field: string, value: unknown): unknown
     return idOf(context, kind, value);
   }
   if (Array.isArray(value)) {
-    return value.map((entry) => (typeof entry === 'string' ? idOf(context, kind, entry) : entry));
+    return value.map((entry: unknown) =>
+      typeof entry === 'string' ? idOf(context, kind, entry) : entry,
+    );
   }
   return value;
 }

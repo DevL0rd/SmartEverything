@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { View } from 'react-native';
 import { ValueStore } from '../design/external-store';
+import { anchorForFocus } from './highlight-keys';
 import type { ScreenScroll } from './screen-context';
 
 export interface AnchorEntry {
@@ -45,8 +46,7 @@ export class HighlightRegistry {
     };
   };
 
-  readonly present = (keys: readonly string[]): boolean =>
-    keys.some((key) => this.anchors.has(key));
+  readonly resolve = (focus: string): string | null => anchorForFocus(this.anchors.keys(), focus);
 
   readonly request = (keys: readonly string[], until: AbortSignal): Promise<boolean> => {
     const shown = this.shown.get();

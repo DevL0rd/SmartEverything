@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import {
   FILE_CHUNK_BYTES,
   FILE_TOOL_CHANGE,
@@ -9,13 +8,14 @@ import {
   type FileUploadResult,
   type FileWriteResult,
 } from '@smarteverything/domain';
+import type { HubLayout } from '../../../data-layout';
 import { operate, type OperatingContext } from './acting';
 import { readableAttachment } from './assistant';
 import { flatChange, type Chosen } from './computer-flat';
 import { computerIdOf } from './computer-target';
 import { defineTool } from './registry';
 
-export type FilesContext = OperatingContext & { readonly assistantFiles: string };
+export type FilesContext = OperatingContext & { readonly layout: HubLayout };
 
 type Upload = Extract<FileToolChange, { action: 'upload' }>;
 
@@ -25,7 +25,9 @@ async function uploaded(
   change: Upload,
 ): Promise<FileUploadResult> {
   const file = readableAttachment(context, change.attachmentId);
-  const content = await readFile(join(context.assistantFiles, file.storage_path));
+  const content = await readFile(
+    context.layout.person(file.profile_id).attachment(file.id, file.name),
+  );
   const send = async (start: number): Promise<FileUploadResult> => {
     const end = Math.min(start + FILE_CHUNK_BYTES, content.byteLength);
     const result = FILE_UPLOAD_RESULT.parse(

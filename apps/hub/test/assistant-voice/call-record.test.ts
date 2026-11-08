@@ -1,9 +1,10 @@
-import { DEFAULT_ENGINE, type CallTurn } from '@smarteverything/domain';
+import { type CallTurn } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { CallRecord } from '../../src/assistant-voice/call-record';
 import type { Store } from '../../src/store/store';
 import { FakeClock } from '../support/fake-clock';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 const START = '2026-10-08T10:00:00.000Z';
 
@@ -44,7 +45,7 @@ beforeEach(async () => {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   }).id;
   saves = vi.spyOn(opened.store.assistantChat, 'updateMessage');
 });

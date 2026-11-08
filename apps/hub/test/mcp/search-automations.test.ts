@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createKindCatalog } from '../../src/automations/plugin-kinds/catalog';
 import { automationHits } from '../../src/extensions/mcp/tools/search';
 import { node, saveAutomation, trigger } from '../support/automation-fixture';
 import { captureLogs } from '../support/logs';
@@ -16,7 +17,7 @@ afterEach(async () => {
 });
 
 function hits(query: string): ReturnType<typeof automationHits> {
-  return automationHits(opened.store, { query, limit: 10 });
+  return automationHits(opened.store, { query, limit: 10 }, createKindCatalog());
 }
 
 describe('searching automations from the assistant', () => {

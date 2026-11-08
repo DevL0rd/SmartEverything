@@ -1,5 +1,4 @@
 import { useProviderWorking } from '../provider/provider-working';
-import { ChatSubscriptionUsage } from '../provider/subscription-usage';
 import { ProviderWorkButton } from '../provider/runtime-work-sheet';
 import { isComputerEngine } from '../provider/computer-engine';
 import type { ReactNode } from 'react';
@@ -8,7 +7,7 @@ import { View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import type { AiChatRow } from '@smarteverything/domain';
 import { useComposerGuards } from './composer-guards';
-import { useToastObstacle } from '../../../components/toast-obstacles';
+import { useKeyboardVisible, useToastObstacle } from '../../../components/toast-obstacles';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
 import { Composer } from '../components/composer';
 import { counted } from '../../../perf/probe-kit';
@@ -17,36 +16,14 @@ import { startEditing } from '../data/editing';
 import { outboxSender } from '../data/outbox';
 import { useLatestEditableId } from '../data/retry';
 import { stopChat } from './chat-actions';
-import { ChatFooterStrip } from './chat-footer-strip';
 import { PermissionControl } from './permission-control';
 import { ModelChip } from './model-chip';
 import { useChatEngineChange } from './chat-engine-change';
 import { useEngineUnavailableReason } from '../provider/engine-availability';
-import { ContextRing } from '../components/context-ring';
-import { Text } from '../../../components/text';
-import { useSizeClass } from '../../../design/size-class';
-import { useContextUsage } from '../data/context-usage';
+import { ChatFooterStrip } from './chat-footer-strip';
 import { background } from '@smarteverything/logging';
 
 const READ_ONLY_REASON = 'Only the owner can work in this computer chat.';
-
-function ContextMeter({ chat }: { readonly chat: AiChatRow }): ReactNode {
-  const short = useSizeClass().height === 'compact';
-  const { percent } = useContextUsage(chat);
-  if (!short || percent === null) return null;
-  return (
-    <View
-      accessible
-      accessibilityLabel={`Context ${String(percent)} %`}
-      className="flex-row items-center gap-1.5 px-1"
-    >
-      <ContextRing percent={percent} size={16} />
-      <Text variant="footnote" tone="variant" className="tabular">
-        {`${String(percent)}%`}
-      </Text>
-    </View>
-  );
-}
 
 function ModelControls({
   chat,
@@ -60,18 +37,19 @@ function ModelControls({
   readonly anchorRef: RefObject<View | null>;
 }): ReactNode {
   return (
-    <>
-      <ContextMeter chat={chat} />
-      <ModelChip engine={chat.engine} onChange={onChange} blocked={blocked} anchorRef={anchorRef} />
-    </>
+    <ModelChip
+      engine={chat.engine}
+      onChange={onChange}
+      blocked={blocked}
+      anchorRef={anchorRef}
+      machineInHeader
+    />
   );
 }
 
 export interface ThreadFooterProps {
   readonly chat: AiChatRow;
   readonly working: boolean;
-  readonly onInfo: () => void;
-  readonly onCompose: () => void;
 }
 
 interface FooterComposerProps {
@@ -80,7 +58,6 @@ interface FooterComposerProps {
   readonly busy: boolean;
   readonly nativeWorking: boolean;
   readonly unavailable: string | null;
-  readonly onCompose: () => void;
 }
 
 function FooterComposer({
@@ -89,7 +66,6 @@ function FooterComposer({
   busy,
   nativeWorking,
   unavailable,
-  onCompose,
 }: FooterComposerProps): ReactNode {
   const name = useAssistantName();
   const change = useChatEngineChange(chat);
@@ -98,7 +74,7 @@ function FooterComposer({
   const editLatest = editAction(useLatestEditableId(chat.id), readOnly);
   const cardRef = useRef<View>(null);
   return (
-    <View ref={cardRef}>
+    <View ref={cardRef} className="shrink-0">
       <Composer
         disabled={readOnly}
         reason={unavailable ?? (readOnly ? READ_ONLY_REASON : null)}
@@ -107,11 +83,11 @@ function FooterComposer({
         draftKey={chat.id}
         queueFor={chat.id}
         commandChat={chat}
+        helperOnline={status === 'live'}
         send={outboxSender(chat.id, status === 'live')}
         stop={stopAction(chat.id, readOnly, busy)}
         onEditLatest={editLatest}
         shortcuts
-        onFocus={onCompose}
         offline={status === 'interrupted'}
         rightAccessory={
           <ModelControls
@@ -128,30 +104,37 @@ function FooterComposer({
   );
 }
 
-function ThreadFooterBase({ chat, working, onInfo, onCompose }: ThreadFooterProps): ReactNode {
+function ThreadFooterBase({ chat, working }: ThreadFooterProps): ReactNode {
   const nativeWorking = useProviderWorking(chat);
   const owner = useIsOwner();
   const unavailable = useEngineUnavailableReason(chat.engine);
   const readOnly = isComputerEngine(chat.engine) && !owner;
   const busy = working || nativeWorking;
+  const keyboardVisible = useKeyboardVisible();
   const compactBlocked = readOnly || busy || unavailable !== null;
   const { attach, onLayout } = useToastObstacle('bottom', useIsFocused());
   return (
     <View
       ref={attach}
       onLayout={counted('lay.foot', onLayout)}
-      className="w-full max-w-reading gap-2 self-center px-gutter pb-safe-offset-3 pt-2"
+      className="w-full shrink-0 gap-2 pb-safe-offset-3 pt-2"
     >
-      <ChatSubscriptionUsage chat={chat} compact />
-      <ChatFooterStrip chat={chat} blocked={compactBlocked} onPress={onInfo} />
-      <FooterComposer
+      <ChatFooterStrip
+        key={chat.id}
         chat={chat}
-        readOnly={readOnly}
-        busy={busy}
-        nativeWorking={nativeWorking}
-        unavailable={unavailable}
-        onCompose={onCompose}
+        blocked={compactBlocked}
+        working={working}
+        keyboardVisible={keyboardVisible}
       />
+      <View className="w-full px-gutter">
+        <FooterComposer
+          chat={chat}
+          readOnly={readOnly}
+          busy={busy}
+          nativeWorking={nativeWorking}
+          unavailable={unavailable}
+        />
+      </View>
     </View>
   );
 }

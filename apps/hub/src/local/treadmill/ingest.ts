@@ -271,7 +271,11 @@ export class TreadmillIngest {
       eventOf(state, {
         kind: 'activity',
         at,
-        details: { ...details, walker: this.nameOf(walker.profileId) },
+        details: {
+          ...details,
+          walker: this.nameOf(walker.profileId),
+          profileId: walker.profileId,
+        },
       }),
     );
   }

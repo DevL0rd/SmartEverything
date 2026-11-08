@@ -3,12 +3,11 @@ import type { Place } from '@smarteverything/domain';
 import { SimulatedClock as TestClock } from '../../../src/clock/simulated';
 import {
   armTimedTriggers,
-  compileTriggers,
   signalFire,
   type TriggerProblem,
 } from '../../../src/automations/triggers-v3/armers';
 import type { TriggerFire } from '../../../src/automations/triggers-v3/payload';
-import { node, signal } from './support';
+import { compileCore, node, signal } from './support';
 
 const START = '2026-06-21T00:00:30.000Z';
 const MADRID: Place = {
@@ -40,7 +39,7 @@ function rig(place: Place = MADRID): {
 
 function firstSunFire(ports: Record<string, string | number>): string {
   const { clock, fires, deps } = rig();
-  armTimedTriggers(compileTriggers('auto', [node('trigger.sun', ports)]), deps);
+  armTimedTriggers(compileCore('auto', [node('trigger.sun', ports)]), deps);
   clock.advanceTo('2026-06-21T23:59:00.000Z');
   const scheduled = fires[0]?.payload['scheduledFor'];
   if (typeof scheduled !== 'string') throw new Error('the sun trigger did not fire');
@@ -67,7 +66,7 @@ describe('sun events', () => {
   it('refuses a height crossing without a height', () => {
     const { problems, deps } = rig();
     armTimedTriggers(
-      compileTriggers('auto', [node('trigger.sun', { event: 'elevation_rising' })]),
+      compileCore('auto', [node('trigger.sun', { event: 'elevation_rising' })]),
       deps,
     );
     expect(problems[0]?.message).toContain('sun height');
@@ -82,7 +81,7 @@ describe('trigger.schedule', () => {
       { at: '22:00', days: [0, 1, 2, 3, 4, 5, 6], slot: 'night' },
     ];
     armTimedTriggers(
-      compileTriggers('auto', [node('trigger.schedule', { blocks, except: ['2026-06-22'] })]),
+      compileCore('auto', [node('trigger.schedule', { blocks, except: ['2026-06-22'] })]),
       deps,
     );
     clock.advanceTo('2026-06-23T07:00:00.000Z');
@@ -97,7 +96,7 @@ describe('trigger.schedule', () => {
 describe('signal backed triggers of the second set', () => {
   it('starts trigger.event on a sent event of that name and passes its data', () => {
     const wanted = node('trigger.event', { name: 'guest_mode_on' });
-    const compiled = compileTriggers('auto', [wanted]);
+    const compiled = compileCore('auto', [wanted]);
     const sent = signal({
       source: 'automation_event',
       kind: 'sent',
@@ -118,7 +117,7 @@ describe('signal backed triggers of the second set', () => {
   });
 
   it('compiles trigger.timer, trigger.hub_started and trigger.webhook to signal matchers', () => {
-    const compiled = compileTriggers('auto', [
+    const compiled = compileCore('auto', [
       node('trigger.timer', { timer: 'laundry' }),
       node('trigger.hub_started', {}),
       node('trigger.webhook', { path: 'k3Jq9Zr2Lm8Xv5Bn7TcWd1', method: 'POST' }),
@@ -137,7 +136,7 @@ describe('signal backed triggers of the second set', () => {
   });
 
   it('refuses a webhook path that is too short or not made of URL safe characters', () => {
-    const compiled = compileTriggers('auto', [
+    const compiled = compileCore('auto', [
       node('trigger.webhook', { path: 'abc' }),
       node('trigger.webhook', { path: 'has spaces and is long enough!!' }),
     ]);
@@ -153,7 +152,7 @@ describe('signal backed triggers of the second set', () => {
       ...node('trigger.becomes_true', {}),
       ports: { condition: { wire: { from: 'hot', port: 'result' } }, hold: { lit: 60_000 } },
     };
-    const compiled = compileTriggers('auto', [watching, { ...watching, enabled: false }]);
+    const compiled = compileCore('auto', [watching, { ...watching, enabled: false }]);
     expect(compiled.problems).toEqual([]);
     expect(compiled.signals).toEqual([]);
     expect(compiled.conditions).toEqual([

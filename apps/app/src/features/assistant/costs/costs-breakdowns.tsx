@@ -3,6 +3,7 @@ import type { UsageTotals } from '@smarteverything/domain';
 import { ErrorState } from '../../../components/error-state';
 import { Grid } from '../../../components/grid';
 import { Skeleton } from '../../../components/skeleton';
+import { SEMANTIC_SIZES } from '../../../design/tokens';
 import { BreakdownCard } from './breakdown-card';
 import { DIMENSION_INFO } from './costs-dimensions';
 import type { CostDimension, CostFilters } from './costs-params';
@@ -11,6 +12,7 @@ import type { CostWindow } from './costs-range';
 import { background } from '@smarteverything/logging';
 
 const MIN_CARD = 320;
+export const BREAKDOWN_PAIR_WIDTH = 2 * MIN_CARD + SEMANTIC_SIZES.pointer.comfortable.gridGap;
 
 const CARDS: readonly CostDimension[] = ['chat', 'person', 'model', 'work'];
 

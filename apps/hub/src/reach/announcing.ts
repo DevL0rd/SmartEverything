@@ -36,6 +36,9 @@ export interface SpeakJob {
   readonly profileId: string;
   readonly clientId: string | null;
   readonly text: string;
+  readonly priority: 'queue' | 'interrupt';
+  readonly volume?: number;
+  readonly voice?: string;
   readonly target: Exclude<ResolvedTarget, { readonly kind: 'plugin' }>;
   readonly done: (failure: string | null) => void;
 }
@@ -54,7 +57,11 @@ function refusalOf(label: string, reason: string): string {
 function sinkOf(deps: AnnouncingDeps, job: SpeakJob): SpeakerSink {
   const { target } = job;
   if (target.kind === 'camera') {
-    return deps.camera.speakers.open(target.device.id, job.id, 'speech');
+    return deps.camera.speakers.open(
+      target.device.id,
+      job.id,
+      job.priority === 'interrupt' ? 'assistant' : 'speech',
+    );
   }
   if (target.kind === 'channel') {
     const opened = deps.openLive(target.channel.id, {
@@ -206,6 +213,8 @@ export async function speakOnce(deps: AnnouncingDeps, job: SpeakJob): Promise<vo
       profileId: job.profileId,
       clientId: job.clientId,
       text: job.text,
+      ...(job.volume === undefined ? {} : { volume: job.volume }),
+      ...(job.voice === undefined ? {} : { voice: job.voice }),
       ...anchorOf(job.target),
       sink,
     })

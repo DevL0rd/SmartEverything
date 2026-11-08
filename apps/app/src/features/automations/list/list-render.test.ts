@@ -1,5 +1,7 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IconName } from '../../../components/icon';
 import type { ListActions } from './list-actions';
@@ -8,7 +10,11 @@ import type { ListLinks } from './list-links';
 import { contextFor, evented, rowOf } from './list-fixtures';
 import { DEFAULT_VIEW, sectionsOf } from './list-view';
 
-const counts = vi.hoisted(() => ({ renders: new Map<string, number>(), menus: 0 }));
+const counts = vi.hoisted(() => ({
+  renders: new Map<string, number>(),
+  textLines: new Map<string, number | undefined>(),
+  menus: 0,
+}));
 
 interface Passthrough {
   readonly children?: ReactNode;
@@ -25,7 +31,12 @@ vi.mock('react-native', async (importOriginal) => {
 vi.mock('../../../components/grid', () => ({
   Grid: ({ children }: Passthrough): ReactNode => children,
 }));
-vi.mock('../../../components/text', () => ({ Text: (): null => null }));
+vi.mock('../../../components/text', () => ({
+  Text: ({ children, numberOfLines }: Passthrough & { readonly numberOfLines?: number }): null => {
+    if (typeof children === 'string') counts.textLines.set(children, numberOfLines);
+    return null;
+  },
+}));
 vi.mock('../../../components/badge', () => ({ Badge: (): null => null }));
 vi.mock('../../../components/icon-well', () => ({ IconWell: (): null => null }));
 vi.mock('../../../components/icon', () => ({ Icon: (): null => null }));
@@ -49,6 +60,7 @@ vi.mock('./row-menu', () => ({ useRowMenu: (): readonly never[] => [] }));
 vi.mock('./run-bars', () => ({ RunBars: (): null => null }));
 
 const { Sections } = await import('./sections');
+const { TimelineBand } = await import('./timeline-band');
 
 const ICON = (): IconName => 'automations';
 const LINKS: ListLinks = {
@@ -70,7 +82,9 @@ let frames: (() => void)[] = [];
 let root: Root | null = null;
 
 function entries(): readonly ListEntry[] {
-  const rows = Array.from({ length: ROWS }, (_, index) => rowOf(index + 1, evented()));
+  const rows = Array.from({ length: ROWS }, (_, index) =>
+    rowOf(index + 1, evented(), undefined, STATIC_KIND_LOOKUP),
+  );
   return entriesOf(rows, new Map(), contextFor());
 }
 
@@ -105,6 +119,7 @@ function renders(name: string): number {
 
 beforeEach(() => {
   counts.renders.clear();
+  counts.textLines.clear();
   counts.menus = 0;
   frames = [];
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -115,6 +130,34 @@ beforeEach(() => {
   });
   vi.stubGlobal('requestAnimationFrame', (callback: () => void): number => frames.push(callback));
   vi.stubGlobal('cancelAnimationFrame', (): void => undefined);
+});
+
+it('allows a long automation name to wrap in both the card and the timeline', () => {
+  const [first] = entries();
+  if (first === undefined) throw new Error('Missing the fixture automation.');
+  const name = 'Check whether the living room needs additional lighting after sunset';
+  render([{ ...first, name }]);
+  expect(counts.textLines.has(name)).toBe(true);
+  expect(counts.textLines.get(name)).toBeUndefined();
+  counts.textLines.clear();
+  renderToStaticMarkup(
+    createElement(TimelineBand, {
+      events: [
+        {
+          key: first.id,
+          automationId: first.id,
+          name,
+          at: new Date('2026-10-18T18:30:00.000Z'),
+          kind: 'timed',
+          fraction: 0.5,
+        },
+      ],
+      links: LINKS,
+      timeZone: 'UTC',
+    }),
+  );
+  expect(counts.textLines.has(name)).toBe(true);
+  expect(counts.textLines.get(name)).toBeUndefined();
 });
 
 afterEach(() => {

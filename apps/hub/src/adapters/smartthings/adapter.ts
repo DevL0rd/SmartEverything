@@ -8,6 +8,7 @@ import {
   type StateUpdate,
   type Unsubscribe,
 } from '@smarteverything/domain';
+import type { SmartThingsCommand } from '@smarteverything/smartthings';
 import type { RunContext } from '../contract';
 import { DeviceQueue } from './device-queue';
 import { EventSubscriptions } from './event-subscriptions';
@@ -36,6 +37,11 @@ export interface AdapterParts {
   readonly webhooks: SmartThingsWebhooks;
 }
 
+interface Write {
+  readonly capability: string;
+  readonly commands: readonly SmartThingsCommand[];
+}
+
 class SmartThingsDevices {
   private readonly queues = new Map<string, DeviceQueue>();
 
@@ -47,6 +53,25 @@ class SmartThingsDevices {
 
   async execute(command: DeviceCommand): Promise<JsonValue> {
     await this.ensureInventory();
+    return this.send(command.externalId, [this.writeOf(command)]);
+  }
+
+  async executeTogether(commands: readonly DeviceCommand[]): Promise<JsonValue> {
+    const first = commands[0];
+    if (first === undefined) {
+      return [];
+    }
+    if (commands.some((command) => command.externalId !== first.externalId)) {
+      throw new CommandRefusedError(first.capability, 'together commands must target one device');
+    }
+    await this.ensureInventory();
+    return this.send(
+      first.externalId,
+      commands.map((command) => this.writeOf(command)),
+    );
+  }
+
+  private writeOf(command: DeviceCommand): Write {
     const { inventory } = this.parts;
     const binding = inventory.bindingFor(command.externalId, command.capability);
     if (binding === undefined) {
@@ -56,11 +81,19 @@ class SmartThingsDevices {
       throw new CommandRefusedError(command.capability, 'it can only be read');
     }
     inventory.validateWrite(command.externalId, binding, command.value);
-    const outcomes = await this.queueFor(command.externalId).commands(binding.write(command.value));
-    if (outcomes.some((outcome) => outcome.status === 'FAILED')) {
-      throw new SmartThingsCommandFailedError(command.externalId, command.capability);
+    return { capability: command.capability, commands: binding.write(command.value) };
+  }
+
+  private async send(externalId: string, writes: readonly Write[]): Promise<JsonValue> {
+    const queue = this.queueFor(externalId);
+    const results = await Promise.all(writes.map((write) => queue.commands(write.commands)));
+    const failed = writes.find(
+      (_, index) => results[index]?.some((outcome) => outcome.status === 'FAILED') === true,
+    );
+    if (failed !== undefined) {
+      throw new SmartThingsCommandFailedError(externalId, failed.capability);
     }
-    return outcomes.map((outcome) => outcome.status);
+    return results.flat().map((outcome) => outcome.status);
   }
 
   async refresh(externalIds: readonly string[]): Promise<readonly StateUpdate[]> {
@@ -123,6 +156,7 @@ export function createSmartThingsAdapter(parts: AdapterParts): ProviderAdapter {
     discover: () => devices.discover(),
     subscribe: (sink) => devices.subscribe(sink),
     execute: (command) => devices.execute(command),
+    executeTogether: (commands) => devices.executeTogether(commands),
     refresh: (externalIds) => devices.refresh(externalIds),
   };
 }

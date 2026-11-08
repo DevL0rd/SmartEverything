@@ -26,8 +26,17 @@ import {
   valueHiddenByTier,
 } from '../phones/phone-visibility';
 import type { Store } from '../store/store';
-import { floorsSeenBy, hiddenByAccess } from './live-access';
+import {
+  driveChange,
+  driveChangeVisible,
+  driveNoticeSeenBy,
+  floorsSeenBy,
+  hiddenByAccess,
+  type DriveStore,
+} from './live-access';
 import { profileSeenBy, readingVisibleTo, type Viewer } from './person-privacy';
+
+export { driveRowVisible } from './live-access';
 
 const OWNER_STREAMS: ReadonlySet<LiveStream> = new Set(['service_log', 'claude']);
 
@@ -104,6 +113,15 @@ function visibleUsage(
   return connection.client.role === 'owner' || ownRow(connection, row, profileOf);
 }
 
+const PERSON_OWNED_TABLES: ReadonlySet<LiveTable> = new Set([
+  'planner_collections',
+  'planner_items',
+  'planner_alarms',
+  'planner_timers',
+  'planner_stopwatches',
+  'google_accounts',
+]);
+
 const PROFILE_ROW_TABLES: ReadonlySet<LiveTable> = new Set([
   'layouts',
   'health_entries',
@@ -130,6 +148,59 @@ type ProfileScoped = Extract<
 
 function profileScoped(change: LiveChange): change is ProfileScoped {
   return PROFILE_ROW_TABLES.has(change.table);
+}
+
+type PersonOwned = Extract<
+  LiveChange,
+  {
+    table:
+      | 'planner_collections'
+      | 'planner_items'
+      | 'planner_alarms'
+      | 'planner_timers'
+      | 'planner_stopwatches'
+      | 'google_accounts';
+  }
+>;
+
+function personOwned(change: LiveChange): change is PersonOwned {
+  return PERSON_OWNED_TABLES.has(change.table);
+}
+
+function visiblePlannerOwner(
+  connection: Hearing,
+  row: { readonly profile_id: string } | null,
+  store: LiveStore,
+): boolean {
+  return (
+    row !== null &&
+    (connection.client.role === 'owner' ||
+      row.profile_id === store.profiles.activeOf(connection.client.id).id)
+  );
+}
+
+function visibleOccurrence(
+  connection: Hearing,
+  change: Extract<LiveChange, { table: 'planner_occurrences' }>,
+  store: LiveStore,
+): boolean {
+  const row = change.record ?? change.oldRecord;
+  return (
+    row !== null &&
+    (connection.client.role === 'owner' ||
+      store.plannerItems.find(row.item_id, store.profiles.activeOf(connection.client.id).id) !==
+        undefined)
+  );
+}
+
+function visiblePlanner(
+  connection: Hearing,
+  change: PersonOwned | Extract<LiveChange, { table: 'planner_occurrences' }>,
+  store: LiveStore,
+): boolean {
+  return change.table === 'planner_occurrences'
+    ? visibleOccurrence(connection, change, store)
+    : visiblePlannerOwner(connection, change.record ?? change.oldRecord, store);
 }
 
 function hiddenDevice(connection: Hearing, row: DeviceRow | null, store: LiveStore): boolean {
@@ -225,8 +296,15 @@ function hiddenChange(connection: Hearing, change: LiveChange, store: LiveStore)
 
 export type LiveStore = Pick<
   Store,
-  'devices' | 'computerNodes' | 'profiles' | 'personAccess' | 'infrared' | 'localDevices'
->;
+  | 'devices'
+  | 'computerNodes'
+  | 'profiles'
+  | 'personAccess'
+  | 'infrared'
+  | 'localDevices'
+  | 'plannerItems'
+> &
+  DriveStore;
 
 export function visible(connection: Hearing, change: LiveChange, store: LiveStore): boolean {
   if (
@@ -236,9 +314,22 @@ export function visible(connection: Hearing, change: LiveChange, store: LiveStor
   ) {
     return false;
   }
+  return rowVisible(connection, change, store);
+}
+
+function rowVisible(connection: Hearing, change: LiveChange, store: LiveStore): boolean {
+  return driveChange(change)
+    ? driveChangeVisible(connection, change, store)
+    : otherRowVisible(connection, change, store);
+}
+
+function otherRowVisible(connection: Hearing, change: LiveChange, store: LiveStore): boolean {
   const profileOf: ProfileLookup = (clientId) => store.profiles.activeOf(clientId).id;
   if (profileScoped(change)) {
     return ownRow(connection, change.record ?? change.oldRecord, profileOf);
+  }
+  if (personOwned(change) || change.table === 'planner_occurrences') {
+    return visiblePlanner(connection, change, store);
   }
   if (change.table === 'body_readings') {
     return bodyReadingVisible(connection, change, store);
@@ -251,8 +342,16 @@ export function visible(connection: Hearing, change: LiveChange, store: LiveStor
 
 type ProfileLookup = (clientId: string) => string;
 
-export function seenBy(connection: Hearing, message: LiveMessage, store: LiveStore): LiveMessage {
-  return message.type === 'talk_floors' ? floorsSeenBy(connection, message, store) : message;
+export function seenBy(
+  connection: Hearing,
+  message: LiveMessage,
+  store: LiveStore,
+): LiveMessage | null {
+  if (message.type === 'talk_floors') return floorsSeenBy(connection, message, store);
+  if (message.type === 'drive_changed' || message.type === 'drive_progress') {
+    return driveNoticeSeenBy(connection, message, store);
+  }
+  return message;
 }
 
 export interface TraceOwners {

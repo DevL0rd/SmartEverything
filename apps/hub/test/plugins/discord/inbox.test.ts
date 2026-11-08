@@ -13,6 +13,7 @@ import { SecretStore } from '../../../src/secrets/store';
 import { Transcripts } from '../../../src/transcripts/transcript-service';
 import { testLogger } from '../../support/logs';
 import { testStore, type TestStore } from '../../support/store';
+import { hubLayout } from '../../../src/data-layout';
 
 const NOW = new Date('2026-10-16T10:00:00.000Z');
 
@@ -65,8 +66,10 @@ async function hostOf(opened: TestStore): Promise<PluginHost> {
       attachments: (): string[] => [],
       machineFile: unused,
       uploadFile: unused,
-      dataDirectory: directory,
+      pictureFile: unused,
+      layout: hubLayout(directory, {}),
       submit: (): [] => [],
+      signals: { emit: nothing },
       now,
     },
     contributions: {
@@ -75,7 +78,7 @@ async function hostOf(opened: TestStore): Promise<PluginHost> {
       now,
     },
     configure: (): Promise<void> => Promise.resolve(),
-    dataDirectory: directory,
+    layout: hubLayout(directory, {}),
     mcpUrl: (): string => 'http://127.0.0.1:1',
     now,
     log: testLogger('plugins'),
@@ -103,14 +106,14 @@ async function rigged(): Promise<Rig> {
   });
   store.plugins.create({ manifest, source: 'local', location: null, trusted: true });
   const files = new AssistantFiles({
-    dataDirectory: opened.directory,
+    layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
     now: (): Date => NOW,
   });
   const handed: string[] = [];
   const requesters: (string | undefined)[] = [];
   const assistant: PluginInboxOptions['assistant'] = {
-    chats: new ChatDirectory(store, files, () => NOW),
+    chats: new ChatDirectory(store, files),
     files,
     onFinished: (): (() => void) => nothing,
     onActivity: (): (() => void) => nothing,
@@ -126,6 +129,7 @@ async function rigged(): Promise<Rig> {
     assistant,
     host: (): PluginHost => host,
     fetch,
+    tmp: opened.layout.tmp,
     now: (): Date => NOW,
     log: testLogger('inbound'),
   });

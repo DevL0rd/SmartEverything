@@ -22,13 +22,15 @@ const ENVIRONMENT_KEYS = [
   'CODEX_HOME',
   'LANG',
 ] as const;
-function environment(): NodeJS.ProcessEnv {
+function environment(home: string | null): NodeJS.ProcessEnv {
   const safe: NodeJS.ProcessEnv = {};
   for (const key of ENVIRONMENT_KEYS) if (env[key] !== undefined) safe[key] = env[key];
+  if (home !== null) safe['CODEX_HOME'] = home;
   return safe;
 }
 export async function launchCodex(
   options: CodexProcessOptions,
+  home: string | null,
   mode: 'control' | 'provider',
 ): Promise<ChildProcessWithoutNullStreams> {
   const executable = options.executable ?? 'codex';
@@ -38,7 +40,7 @@ export async function launchCodex(
     return spawn(
       executable,
       ['-c', 'model_provider="openai"', 'app-server', '--listen', 'stdio://'],
-      { shell: false, windowsHide: true, env: environment(), stdio: 'pipe' },
+      { shell: false, windowsHide: true, env: environment(home), stdio: 'pipe' },
     );
   const socket = options.controlSocket;
   if (socket === undefined)
@@ -55,7 +57,7 @@ export async function launchCodex(
   return spawn(executable, ['app-server', 'proxy', '--sock', socket], {
     shell: false,
     windowsHide: true,
-    env: environment(),
+    env: environment(home),
     stdio: 'pipe',
   });
 }

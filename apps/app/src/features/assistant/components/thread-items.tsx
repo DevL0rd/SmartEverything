@@ -1,8 +1,6 @@
 import type { ReactElement, ReactNode, RefObject } from 'react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, View, type ListRenderItem } from 'react-native';
-import type { AssistantMessageRow } from '@smarteverything/domain';
-import { ListLoader } from '../../../components/list-loader';
 import { useValue } from '../../../design/external-store';
 import { useOlderLoading } from '../data/history';
 import {
@@ -10,21 +8,23 @@ import {
   useRowTracking,
   type RowVisibility,
 } from '../../../components/virtual-list-visibility';
-import { FloatingDay, JumpPill } from './jump-pill';
+import { OlderHistoryLine } from './chat-states';
+import { FloatingDay, JumpPill, jumpOf, type Jump } from './jump-pill';
 import { MessageBubble } from './message-bubble';
 import { PendingBubble } from './pending-bubble';
 import { useListProbe } from '../../../perf/list-probe';
 import { PerfProbe } from '../../../perf/probe-kit';
-import { StatusAnnouncer } from './status-announcer';
-import { startsMessage, type MessageItem } from '../data/thread';
+import { sameMessage, startsMessage, type MessageItem } from '../data/thread';
+import { isAssistantParticipant, isAssistantReply } from '../model/speaker';
 import { initialRowCount, type RowShape } from '../model/initial-rows';
 import type { ThreadRow } from './thread-rows';
 import { ImageOperationBubble } from '../images/components/image-receipts';
 import { useFocusedMessage } from './use-focused-message';
+import { entryLedger, RowEntry, type EntryLedger } from './rise';
+import { ROW_GAP_CLASS, entryOf, rowGapOf } from './thread-rhythm';
 import {
   AWAY_PX,
   WINDOW_SIZE,
-  unseenOf,
   useIndexScroller,
   useThreadScroll,
   useTopKey,
@@ -42,7 +42,6 @@ export interface ThreadItemsProps {
   readonly exhausted: boolean;
   readonly onFocused: () => void;
   readonly onOlder: () => void;
-  readonly announced: AssistantMessageRow | null;
   readonly footer?: ReactElement | null;
 }
 
@@ -81,28 +80,8 @@ function useListWindow(rows: readonly ThreadRow[]): {
   };
 }
 
-function spacingOf(row: ThreadRow): string {
-  if (row.type !== 'message') {
-    return 'pt-2';
-  }
-  if (!startsMessage(row)) return 'pt-2.5';
-  const startOfRun = row.position === 'first' || row.position === 'only';
-  return startOfRun || row.day !== null ? 'pt-6' : 'pt-0.5';
-}
-
-function sameMessage(left: MessageItem, right: MessageItem): boolean {
-  return (
-    left.row === right.row &&
-    left.position === right.position &&
-    left.day === right.day &&
-    left.gap === right.gap &&
-    left.divider === right.divider &&
-    left.latestReply === right.latestReply &&
-    left.multiParty === right.multiParty &&
-    left.waiting === right.waiting &&
-    left.replied === right.replied &&
-    left.segment === right.segment
-  );
+function sameOptionalMessage(left: MessageItem | null, right: MessageItem | null): boolean {
+  return left === null || right === null ? left === right : sameMessage(left, right);
 }
 
 function sameRow(left: ThreadRow, right: ThreadRow): boolean {
@@ -115,9 +94,8 @@ function sameRow(left: ThreadRow, right: ThreadRow): boolean {
       return (
         right.type === 'image-operation' &&
         left.receipt === right.receipt &&
-        (left.message === null || right.message === null
-          ? left.message === right.message
-          : sameMessage(left.message, right.message))
+        left.group === right.group &&
+        sameOptionalMessage(left.message, right.message)
       );
   }
 }
@@ -155,7 +133,14 @@ function renderImageMessage(item: MessageItem, flash: boolean): ReactNode {
 function newestOf(rows: readonly ThreadRow[], readAt: string | null): Newest | null {
   const outbox = rows.find((candidate) => candidate.type === 'outbox');
   if (outbox !== undefined) {
-    return { key: outbox.key, streaming: false, unread: false, mine: true };
+    return {
+      key: outbox.key,
+      at: outbox.message.queuedAt,
+      streaming: false,
+      reply: false,
+      unread: false,
+      mine: true,
+    };
   }
   const row = rows.find((candidate) => candidate.type !== 'outbox');
   if (row?.type === 'image-operation') return newestImageOf(row, readAt);
@@ -165,11 +150,31 @@ function newestOf(rows: readonly ThreadRow[], readAt: string | null): Newest | n
   return newestMessageOf(row, readAt);
 }
 
+function newestReplyOf(rows: readonly ThreadRow[], readAt: string | null): Newest | null {
+  for (const row of rows) {
+    if (row.type === 'image-operation') return newestImageOf(row, readAt);
+    if (row.type === 'message' && isAssistantReply(row.row)) return newestMessageOf(row, readAt);
+  }
+  return null;
+}
+
+function useScrollTail(
+  rows: readonly ThreadRow[],
+  readAt: string | null,
+): Parameters<typeof useThreadScroll>[1] {
+  return useMemo(() => {
+    const newest = newestOf(rows, readAt);
+    return { newest, reply: newest?.reply === true ? newest : newestReplyOf(rows, readAt) };
+  }, [rows, readAt]);
+}
+
 function newestMessageOf(row: MessageItem, readAt: string | null): Newest {
-  const ai = row.speaker.kind === 'ai';
+  const ai = isAssistantParticipant(row.row);
   return {
     key: row.row.id,
+    at: row.row.created_at,
     streaming: row.row.state === 'working' && ai,
+    reply: isAssistantReply(row.row),
     unread: ai && readAt !== null && row.row.created_at > readAt,
     mine: row.speaker.kind === 'me' && row.row.origin?.source === 'app',
   };
@@ -181,7 +186,9 @@ function newestImageOf(
 ): Newest {
   return {
     key: row.key,
+    at: row.receipt.created_at,
     streaming: false,
+    reply: true,
     unread: readAt !== null && row.receipt.created_at > readAt,
     mine: false,
   };
@@ -193,8 +200,9 @@ interface ItemsModel {
   readonly scroller: ReturnType<typeof useIndexScroller>;
   readonly topKeys: TopKey;
   readonly flashed: string | null;
-  readonly unseen: number;
+  readonly jump: Jump | null;
   readonly dayOf: ReadonlyMap<string, string>;
+  readonly ledger: EntryLedger;
 }
 
 function messageOf(row: ThreadRow): MessageItem | null {
@@ -224,17 +232,13 @@ function useLanding(
 
 function useItemsModel(props: ThreadItemsProps, list: RefObject<FlatList | null>): ItemsModel {
   const { rows, readAt, focusId, exhausted, onFocused, onOlder } = props;
-  const newest = useMemo(() => newestOf(rows, readAt), [rows, readAt]);
-  const scroll = useThreadScroll(list, newest);
+  const scroll = useThreadScroll(list, useScrollTail(rows, readAt));
   const scroller = useIndexScroller(list);
   const topKeys = useTopKey();
   const keys = useMemo(() => rows.map((row) => row.key), [rows]);
-  const messageKeys = useMemo(
-    () =>
-      rows.flatMap((row) =>
-        row.type === 'outbox' || (row.type === 'message' && !startsMessage(row)) ? [] : [row.key],
-      ),
-    [rows],
+  const jump = useMemo(
+    () => (scroll.away ? jumpOf(rows, scroll.anchor) : null),
+    [rows, scroll.away, scroll.anchor],
   );
   const dayOf = useMemo(
     () =>
@@ -261,14 +265,16 @@ function useItemsModel(props: ThreadItemsProps, list: RefObject<FlatList | null>
     onDone: onFocused,
   });
   useLanding(rows, scroller.scrollTo);
+  const [ledger] = useState(() => entryLedger(Date.now()));
   return {
     scroll,
     newestKey: rows.find((row) => row.type !== 'outbox')?.key ?? null,
     scroller,
     topKeys,
     flashed,
-    unseen: scroll.away ? unseenOf(messageKeys, scroll.anchor) : 0,
+    jump,
     dayOf,
+    ledger,
   };
 }
 
@@ -284,33 +290,39 @@ function keyOf(row: ThreadRow): string {
   return row.key;
 }
 
-function useRenderRow(model: ItemsModel, visibility: RowVisibility): ListRenderItem<ThreadRow> {
+function useRenderRow(
+  model: ItemsModel,
+  rows: readonly ThreadRow[],
+  visibility: RowVisibility,
+): ListRenderItem<ThreadRow> {
   const { onNewestLayout } = model.scroll;
-  const { newestKey, flashed } = model;
+  const { newestKey, flashed, ledger } = model;
   return useCallback(
-    ({ item }) => (
+    ({ item, index }) => (
       <View
         {...(item.key === newestKey ? { onLayout: onNewestLayout } : {})}
-        className={`w-full max-w-reading self-center ${spacingOf(item)}`}
+        className={`w-full ${ROW_GAP_CLASS[rowGapOf(item, rows[index + 1])]}`}
       >
-        <RowScope rows={visibility} rowKey={item.key}>
-          <PerfProbe id="row">
-            <RowView row={item} flash={flashes(item, flashed)} />
-          </PerfProbe>
-        </RowScope>
+        <RowEntry ledger={ledger} {...entryOf(item)}>
+          <RowScope rows={visibility} rowKey={item.key}>
+            <PerfProbe id="row">
+              <RowView row={item} flash={flashes(item, flashed)} />
+            </PerfProbe>
+          </RowScope>
+        </RowEntry>
       </View>
     ),
-    [newestKey, flashed, onNewestLayout, visibility],
+    [newestKey, flashed, onNewestLayout, visibility, ledger, rows],
   );
 }
 
 export function ThreadItems(props: ThreadItemsProps): ReactNode {
-  const { rows, historyKey, intro, onOlder, announced, footer = null } = props;
+  const { rows, historyKey, intro, onOlder, footer = null } = props;
   const list = useRef<FlatList<ThreadRow>>(null);
   const model = useItemsModel(props, list);
   const { scroll } = model;
   const tracking = useRowTracking(model.topKeys.onViewableItemsChanged);
-  const renderItem = useRenderRow(model, tracking.rows);
+  const renderItem = useRenderRow(model, rows, tracking.rows);
   const probe = useListProbe('chat', rows.length);
   const listWindow = useListWindow(rows);
   return (
@@ -330,6 +342,7 @@ export function ThreadItems(props: ThreadItemsProps): ReactNode {
               : { minIndexForVisible: 0, autoscrollToTopThreshold: AWAY_PX }
           }
           onScroll={probe.scrollWith(scroll.onScroll)}
+          onScrollBeginDrag={scroll.onScrollBeginDrag}
           onLayout={probe.onLayout}
           CellRendererComponent={probe.cell}
           onContentSizeChange={scroll.onContentSizeChange}
@@ -345,8 +358,7 @@ export function ThreadItems(props: ThreadItemsProps): ReactNode {
         />
       </PerfProbe>
       {scroll.away ? <DayLabel model={model} /> : null}
-      {scroll.away ? <JumpPill unseen={model.unseen} onPress={scroll.toBottom} /> : null}
-      <StatusAnnouncer row={announced} />
+      {model.jump === null ? null : <JumpPill jump={model.jump} onPress={scroll.toBottom} />}
     </View>
   );
 }
@@ -368,7 +380,7 @@ function ThreadEnd({
   const loading = useOlderLoading(historyKey);
   return (
     <>
-      <ListLoader loading={loading} />
+      <OlderHistoryLine loading={loading} />
       {intro}
     </>
   );

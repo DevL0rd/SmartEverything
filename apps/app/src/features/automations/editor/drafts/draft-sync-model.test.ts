@@ -1,13 +1,28 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import type { AutomationProgramProblem, AutomationProgramReply } from '@smarteverything/domain';
 import { ApiError, EMPTY_LAYOUT } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
 import type { DraftSaveBody, RevisionRow } from '../../data/api';
+import { structureAutomation } from '../../data/graph-adapter';
 import { DocumentStore } from '../../model/editor/document-store';
-import { automation, idSource, step } from '../../model/editor/editor-fixtures';
+import { idSource } from '../../model/editor/editor-fixtures';
+import { automation, note, start } from '../../model/graph/graph-scene-fixtures';
 import { DraftSyncModel, type SyncPorts } from './draft-sync-model';
 
-const BASE = automation([step('a', { level: { lit: 1 } }), step('b'), step('c')]);
+function chain(
+  ...parts: { key: string; label?: string; level?: number }[]
+): ReturnType<typeof automation> {
+  const nodes = parts.map((part, at) =>
+    note(part.key, parts[at + 1]?.key, {
+      ...(part.label === undefined ? {} : { label: part.label }),
+      ...(part.level === undefined ? {} : { ports: { message: { lit: part.level } } }),
+    }),
+  );
+  return automation([start(parts[0]?.key), ...nodes], { triggers: [] });
+}
+
+const BASE = chain({ key: 'a', level: 1 }, { key: 'b' }, { key: 'c' });
 
 function reply(
   revision: number | null,
@@ -17,10 +32,14 @@ function reply(
 }
 
 function row(revision: number, program = BASE): RevisionRow {
+  const structure = structureAutomation(program, STATIC_KIND_LOOKUP);
+  if (structure.kind !== 'ready') throw new Error('the fixture does not structure');
   return {
     automation_id: '00000000-0000-4000-8000-000000000001',
     revision,
-    definition: program,
+    definition: structure.value.tree,
+    graph: program,
+    map: structure.value.map,
     layout: EMPTY_LAYOUT,
     plan_hash: 'hash',
     saved_at: '2026-10-19T10:00:00.000Z',
@@ -37,7 +56,7 @@ interface Rig {
 }
 
 function rig(options: { hold?: boolean } = {}): Rig {
-  const store = new DocumentStore(BASE, EMPTY_LAYOUT, { newId: idSource() });
+  const store = new DocumentStore(BASE, STATIC_KIND_LOOKUP, EMPTY_LAYOUT, { newId: idSource() });
   const saves: DraftSaveBody[] = [];
   const waiting: (() => void)[] = [];
   const ports: Rig['ports'] = {
@@ -62,7 +81,7 @@ function rig(options: { hold?: boolean } = {}): Rig {
 }
 
 const level = (value: number): PatchOp[] => [
-  { op: 'set' as const, key: 'a', ports: { level: { lit: value } } },
+  { op: 'set' as const, key: 'a', ports: { message: { lit: value } } },
 ];
 
 describe('saving', () => {
@@ -153,12 +172,7 @@ describe('conflict', () => {
         : Promise.resolve(reply(body.expectedRevision));
     };
     made.ports.latest = (): Promise<RevisionRow> =>
-      Promise.resolve(
-        row(
-          8,
-          automation([step('a', { level: { lit: 1 } }), step('b', undefined, { label: 'Theirs' })]),
-        ),
-      );
+      Promise.resolve(row(8, chain({ key: 'a', level: 1 }, { key: 'b', label: 'Theirs' })));
     return made;
   }
 
@@ -179,9 +193,10 @@ describe('conflict', () => {
     model.keepMine();
     await model.settle();
     const state = store.state.get();
-    expect(state.program.body.nodes.map((node) => node.key)).toEqual(['a', 'b']);
-    expect(state.program.body.nodes[0]?.ports?.['level']).toEqual({ lit: 5 });
-    expect(state.program.body.nodes[1]?.label).toBe('Theirs');
+    const nodes = state.program.nodes.filter((node) => node.kind !== 'flow.start');
+    expect(nodes.map((node) => node.key)).toEqual(['a', 'b']);
+    expect(nodes[0]?.ports?.['message']).toEqual({ lit: 5 });
+    expect(nodes[1]?.label).toBe('Theirs');
     expect(model.state.get().notice?.dropped.map((item) => item.summary)).toEqual(['Change "c"']);
     expect(saves.at(-1)?.expectedRevision).toBe(8);
     expect(model.state.get()).toMatchObject({ status: 'saved', revision: 8, conflict: null });
@@ -197,19 +212,26 @@ describe('conflict', () => {
     store.apply(level(5));
     await model.settle();
     await model.useTheirs();
-    expect(store.state.get().program.body.nodes.map((node) => node.label)).toEqual([
-      undefined,
-      'Theirs',
-    ]);
+    expect(
+      store.state
+        .get()
+        .program.nodes.filter((node) => node.kind !== 'flow.start')
+        .map((node) => node.label),
+    ).toEqual([undefined, 'Theirs']);
     expect(discarded).toEqual([8]);
     expect(model.state.get()).toMatchObject({ status: 'saved', revision: 8 });
   });
 
   it('adopts a newer revision at once when there is nothing unsaved', async () => {
     const { store, model, ports } = rig();
-    ports.latest = (): Promise<RevisionRow> => Promise.resolve(row(8, automation([step('z')])));
+    ports.latest = (): Promise<RevisionRow> => Promise.resolve(row(8, chain({ key: 'z' })));
     await model.noteRemote(8);
-    expect(store.state.get().program.body.nodes.map((node) => node.key)).toEqual(['z']);
+    expect(
+      store.state
+        .get()
+        .program.nodes.filter((node) => node.kind !== 'flow.start')
+        .map((node) => node.key),
+    ).toEqual(['z']);
     expect(model.state.get().revision).toBe(8);
   });
 });

@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import {
-  NODE_REGISTRY,
   atHomePlace,
   kindSpecOf,
   programReferences,
-  type AutomationRowV3,
+  type StoredAutomationRow,
   type AutomationV3,
   type FunctionV3,
+  type NodeKindLookup,
   type Place,
   type ReferenceContext,
 } from '@smarteverything/domain';
@@ -20,6 +20,7 @@ import type { SignalBus } from '../signals/bus';
 import { installedSignalSources } from '../signals/sources/installed';
 import type { EventRouter } from '../state/event-router';
 import type { StateWriter } from '../state/state-writer';
+import { flatAutomation, flatFunction } from '../store/repositories/automation-trees';
 import type { Store } from '../store/store';
 import { AutomationAiSlot } from './automation-ai';
 import { AutomationComputersSlot } from './automation-computers';
@@ -34,14 +35,28 @@ import { assembleEngineV3 } from './engine-v3-assembly';
 import type { EngineAssemblyPorts } from './engine-v3-assembly';
 import { AutomationRunCancelledError } from './effects/run-abort';
 import type { EngineV3 } from './engine-v3';
+import type { EffectHandlers } from './engine-v3-effects';
 import { hubEffectHandlers } from './hub-effects';
 import { integrationEffects } from './integration-effects';
+import { coreNodeEffects } from './effects/core-node-effects';
+import type { DriverNodes } from './plugin-kinds/driver-nodes';
+import { pluginNodeEffects } from './plugin-kinds/perform';
+import { DeviceSetter } from './effects/device-set';
+import { AutomationDriveSlot } from './effects/drive-nodes';
+import { AutomationImagesSlot } from './effects/image-nodes';
 import { CommandIssuer } from './issue-commands';
 import { automationSecrets } from './secrets-v3';
 import type { AutomationSecrets, SecretUsers } from './secrets-v3';
 import { rehearsals } from './rehearsals';
 import type { Rehearsals } from '../server/handlers/automation-runs';
 import type { WorldReadDeps } from './world-v3/deps';
+import {
+  createKindCatalog,
+  type KindCatalog,
+  type PluginKindCatalog,
+} from './plugin-kinds/catalog';
+import { kindLedger, usedKindsOf } from './plugin-kinds/ledger';
+import { persistPluginKinds } from './plugin-kinds/store';
 import { nodeMemoryFromState } from './world-v3/node-memory';
 import type { PresenceSource } from './world-v3/presence';
 import { seededRandom } from './world-v3/random';
@@ -67,30 +82,38 @@ export interface HubEngine {
   readonly ai: AutomationAiSlot;
   readonly computers: AutomationComputersSlot;
   readonly integration: AutomationIntegrationSlot;
+  readonly drive: AutomationDriveSlot;
   readonly trace: AutomationTraceSlot;
   readonly rehearsals: Rehearsals;
   readonly webhooks: WebhookGateway;
   readonly timers: TimerWakes;
   readonly questions: QuestionDesk;
+  readonly kinds: PluginKindCatalog;
 }
 
-function referenceContext(store: Store): ReferenceContext {
+function referenceContext(store: Store, kinds: NodeKindLookup): ReferenceContext {
   return {
-    kinds: (id) => NODE_REGISTRY.get(id),
+    kinds: (id) => kinds.get(id),
     functions: (id, pin): FunctionV3 | undefined => {
       const { automationFunctions: functions } = store;
-      if (pin !== undefined) return functions.findRevision(id, pin)?.definition;
-      return functions.find(id) === undefined ? undefined : functions.latest(id).definition;
+      const row =
+        pin !== undefined
+          ? functions.findRevision(id, pin)
+          : functions.find(id) === undefined
+            ? undefined
+            : functions.latest(id);
+      return row === undefined ? undefined : flatFunction(row.definition);
     },
   };
 }
 
-function programsOf(row: AutomationRowV3): readonly AutomationV3[] {
-  return row.draft === null ? [row.definition] : [row.definition, row.draft.program];
+function programsOf(row: StoredAutomationRow): readonly AutomationV3[] {
+  const programs = row.draft === null ? [row.definition] : [row.definition, row.draft.program];
+  return programs.map(flatAutomation);
 }
 
-function secretUsers(store: Store): SecretUsers {
-  const context = referenceContext(store);
+function secretUsers(store: Store, kinds: NodeKindLookup): SecretUsers {
+  const context = referenceContext(store, kinds);
   return (secretId) =>
     store.automations
       .list()
@@ -178,9 +201,10 @@ function keptDataOf(parts: HubEngineParts): KeptData {
   });
 }
 
-function worldOf(parts: HubEngineParts, kept: KeptData): WorldReadDeps {
+function worldOf(parts: HubEngineParts, kept: KeptData, kinds: KindCatalog): WorldReadDeps {
   const { store } = parts;
   return {
+    kinds,
     store,
     executor: parts.executor,
     clock: parts.clock,
@@ -220,6 +244,8 @@ interface Slots {
   readonly ai: AutomationAiSlot;
   readonly computers: AutomationComputersSlot;
   readonly integration: AutomationIntegrationSlot;
+  readonly images: AutomationImagesSlot;
+  readonly drive: AutomationDriveSlot;
   readonly trace: AutomationTraceSlot;
 }
 
@@ -229,6 +255,46 @@ interface Wiring {
   readonly world: WorldReadDeps;
   readonly kept: KeptData;
   readonly questions: QuestionDesk;
+  readonly drivers: DriverNodes;
+}
+
+function issuerOf(parts: HubEngineParts): CommandIssuer {
+  const { store, database, executor, clock } = parts;
+  return new CommandIssuer({ store, database, executor, clock });
+}
+
+function extraEffectsOf(parts: HubEngineParts, wiring: Wiring): EffectHandlers {
+  const { slots, questions } = wiring;
+  const effectPorts = {
+    store: parts.store,
+    clock: parts.clock,
+    events: parts.events,
+    ai: slots.ai,
+    computers: slots.computers,
+    questions,
+  };
+  return {
+    ...hubEffectHandlers(effectPorts),
+    ...integrationEffects(slots.integration),
+    ...pluginNodeEffects({
+      ...effectPorts,
+      signals: { subscribe: (listener) => parts.signals.subscribe(listener) },
+      tools: () => wiring.drivers.over(() => slots.ai.current().tools),
+      drivers: wiring.drivers,
+    }),
+    ...coreNodeEffects({
+      ...effectPorts,
+      integration: slots.integration,
+      images: slots.images,
+      drive: { change: (caller, change) => slots.drive.current().change(caller, change) },
+      issuer: issuerOf(parts),
+      setter: new DeviceSetter({
+        store: parts.store,
+        executor: parts.executor,
+        issuer: issuerOf(parts),
+      }),
+    }),
+  };
 }
 
 function enginePorts(parts: HubEngineParts, wiring: Wiring): EngineAssemblyPorts {
@@ -253,7 +319,7 @@ function enginePorts(parts: HubEngineParts, wiring: Wiring): EngineAssemblyPorts
         : false,
     executor,
     effects: parts.effects,
-    issuer: new CommandIssuer({ store, database: parts.database, executor, clock }),
+    issuer: issuerOf(parts),
     secrets,
     world,
     kept,
@@ -266,33 +332,34 @@ function enginePorts(parts: HubEngineParts, wiring: Wiring): EngineAssemblyPorts
     recordRun: runRecorder(parts, questions),
     questions,
     ...notices(parts),
-    extraEffects: {
-      ...hubEffectHandlers({
-        store,
-        clock,
-        events: parts.events,
-        ai: slots.ai,
-        computers: slots.computers,
-        questions,
-      }),
-      ...integrationEffects(slots.integration),
-    },
+    extraEffects: extraEffectsOf(parts, wiring),
     trace: { watched: slots.trace.watched, publish: slots.trace.publish },
     log: parts.log,
   };
 }
 
-export function assembleHubEngine(parts: HubEngineParts): HubEngine {
-  const { store, clock } = parts;
-  const slots: Slots = {
+function newSlots(): Slots {
+  return {
     ai: new AutomationAiSlot(),
     computers: new AutomationComputersSlot(),
     integration: new AutomationIntegrationSlot(),
+    images: new AutomationImagesSlot(),
+    drive: new AutomationDriveSlot(),
     trace: new AutomationTraceSlot(),
   };
-  const secrets = automationSecrets(parts.secrets, secretUsers(store), clock.now);
+}
+
+export function assembleHubEngine(parts: HubEngineParts): HubEngine {
+  const { store, clock } = parts;
+  const slots = newSlots();
+  const kinds: PluginKindCatalog = createKindCatalog(
+    undefined,
+    kindLedger(store, () => kinds),
+  );
+  persistPluginKinds(kinds, store.pluginKinds, () => usedKindsOf(store));
+  const secrets = automationSecrets(parts.secrets, secretUsers(store, kinds), clock.now);
   const kept = keptDataOf(parts);
-  const world = worldOf(parts, kept);
+  const world = worldOf(parts, kept, kinds);
   const webhooks = new WebhookGateway({
     signals: parts.signals,
     replies: new WebhookReplies(),
@@ -306,7 +373,7 @@ export function assembleHubEngine(parts: HubEngineParts): HubEngine {
   });
   const questions = new QuestionDesk({ questions: store.automationQuestions, clock });
   const assembled = assembleEngineV3({
-    ...enginePorts(parts, { slots, secrets, world, kept, questions }),
+    ...enginePorts(parts, { slots, secrets, world, kept, questions, drivers: kinds.driverNodes }),
     started: (start) => {
       webhooks.started(start);
     },
@@ -328,5 +395,6 @@ export function assembleHubEngine(parts: HubEngineParts): HubEngine {
     webhooks,
     timers,
     questions,
+    kinds,
   };
 }

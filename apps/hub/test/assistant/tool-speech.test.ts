@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_ENGINE, DEFAULT_RESPONSE_STYLE, NO_PRICES } from '@smarteverything/domain';
+import { testVoiceMemory } from '../support/voice-memory';
+import { DEFAULT_RESPONSE_STYLE, NO_PRICES } from '@smarteverything/domain';
 import { FORMAT_MANNER, TOOL_MANNER } from '../../src/ai-tools/tool-guide';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
 import { stablePrompt, type PromptFacts } from '../../src/assistant/conversation/prompt';
@@ -28,6 +29,7 @@ import { TurnSessions, type TurnRequest } from '../../src/assistant-voice/turn-s
 import { ROBOT_ENDING } from '../../src/plugins/builtin/aibi/place-instructions';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 let opened: TestStore;
 let chatId: string;
@@ -88,6 +90,7 @@ function endpointOf(id: string): {
 function deskOf(): CallDesk {
   return new CallDesk({
     store: opened.store,
+    memory: testVoiceMemory(opened.store),
     provider,
     responder,
     tools: new ToolHub([]),
@@ -102,6 +105,7 @@ function turnsOf(): TurnSessions {
   const { store } = opened;
   return new TurnSessions({
     store,
+    memory: testVoiceMemory(store),
     provider,
     responder,
     tools: new ToolHub([]),
@@ -145,7 +149,7 @@ beforeEach(async () => {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   }).id;
 });
 
@@ -156,6 +160,7 @@ afterEach(async () => {
 
 const FACTS: PromptFacts = {
   name: 'Coco',
+  aliases: [],
   profileName: 'Sam',
   role: 'owner',
   homeName: 'Home',
@@ -187,14 +192,16 @@ describe('every path that runs tools carries the one shared tool manner', () => 
 
   it('voice instructions with each ending', () => {
     const persona = {
-      names: ['Coco'],
-      home: 'Home',
-      style: undefined,
-      instructions: '',
+      facts: {
+        name: 'Coco',
+        aliases: [],
+        homeName: 'Home',
+        instructions: '',
+        toolIndex: 'home_read: Overview.',
+        catalogue: '',
+      },
       place: null,
       unavailable: null,
-      toolIndex: 'home_read: Overview.',
-      catalogue: '',
     };
     for (const ending of [undefined, STAYS_OPEN_ENDING, ROBOT_ENDING]) {
       const text = liveInstructions(ending === undefined ? persona : { ...persona, ending });

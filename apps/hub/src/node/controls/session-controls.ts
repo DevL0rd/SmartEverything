@@ -30,6 +30,11 @@ export interface SessionControl {
   readonly playback: (status: MediaStatus) => Promise<void>;
 }
 
+export interface EnvironmentControl {
+  readonly start: (onChange: () => void) => Promise<void>;
+  readonly stop: () => void;
+}
+
 export interface AppControl {
   readonly installed: () => Promise<InstalledApp[]>;
   readonly open: (appId: string) => Promise<void>;

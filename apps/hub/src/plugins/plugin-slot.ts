@@ -7,12 +7,15 @@ import type {
 import { failure, type HubToolResult, type ToolCaller } from '../ai-tools/hub-tool';
 import { Backoff } from './backoff';
 import type { Contributions } from './contributions';
-import { LogRing } from './log-ring';
+import { pluginSource } from './plugin-logs';
+import { recordProcessOutput } from '../service/process-output';
 import { MissingSecretError } from './placeholders';
 import type { PluginRuntime, RuntimeSinks, RuntimeTool } from './runtime';
-import { messageOf } from '@smarteverything/logging';
+import { messageOf, type Logger } from '@smarteverything/logging';
 
 export interface SlotOptions {
+  readonly id: string;
+  readonly log: Logger;
   readonly factory: (sinks: RuntimeSinks) => PluginRuntime;
   readonly contributions: (log: (line: string) => void) => Contributions;
   readonly status: (status: PluginStatus, detail: string | null) => void;
@@ -21,7 +24,6 @@ export interface SlotOptions {
 }
 
 export class PluginSlot {
-  readonly logs = new LogRing();
   private readonly backoff = new Backoff();
   private runtime: PluginRuntime | null = null;
   private contributed: Contributions | null = null;
@@ -63,10 +65,10 @@ export class PluginSlot {
     return this.runtime?.tools() ?? [];
   }
 
-  choices(source: string, query: PluginOptionQuery): Promise<PluginOptionPage> {
+  choices(source: string, query: PluginOptionQuery, caller: ToolCaller): Promise<PluginOptionPage> {
     return this.runtime === null
       ? Promise.resolve({ state: 'unavailable', message: 'The plugin is not running.' })
-      : this.runtime.choices(source, query);
+      : this.runtime.choices(source, query, caller);
   }
 
   call(
@@ -80,7 +82,15 @@ export class PluginSlot {
   }
 
   private readonly log = (line: string): void => {
-    this.logs.add(line, this.options.now());
+    recordProcessOutput(
+      {
+        source: pluginSource(this.options.id),
+        scope: this.options.log.scope,
+        event: 'plugin.output',
+      },
+      line,
+      this.options.now(),
+    );
   };
 
   private async release(): Promise<void> {
@@ -97,15 +107,16 @@ export class PluginSlot {
 
   private failed(cause: unknown): void {
     const reason = messageOf(cause).slice(0, 400);
-    this.log(reason);
     if (cause instanceof MissingSecretError) {
+      this.options.log.warn('plugin.needs_auth', { reason });
       this.options.status('needs_auth', reason);
       return;
     }
-    this.crashed(reason);
+    this.crashed(reason, cause);
   }
 
-  private crashed(detail: string): void {
+  private crashed(detail: string, cause: unknown = new Error(detail)): void {
+    this.options.log.error('plugin.crashed', cause);
     this.options.status('crashed', detail);
     if (!this.wanted) {
       return;

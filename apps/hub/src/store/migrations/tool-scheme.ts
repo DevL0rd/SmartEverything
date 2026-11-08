@@ -76,19 +76,14 @@ function moveMessageSteps(sql: Sql): LogPayload {
 }
 
 interface Pass {
+  readonly convert: CallConversion;
   readonly writes: (() => number)[];
   readonly left: string[];
   readonly calls: number[];
 }
 
-function planned(
-  pass: Pass,
-  convert: CallConversion,
-  owner: string,
-  text: string,
-  write: (json: string) => number,
-): void {
-  const result = rewritten(JSON_VALUE.parse(JSON.parse(text)), convert);
+function planned(pass: Pass, owner: string, text: string, write: (json: string) => number): void {
+  const result = rewritten(JSON_VALUE.parse(JSON.parse(text)), pass.convert);
   pass.left.push(...result.left.map((tool) => `${owner}: ${tool}`));
   if (result.calls === 0) return;
   pass.calls.push(result.calls);
@@ -96,9 +91,9 @@ function planned(
   pass.writes.push(() => write(json));
 }
 
-function moveSchedules(sql: Sql, pass: Pass, convert: CallConversion): void {
+function moveSchedules(sql: Sql, pass: Pass): void {
   for (const row of sql.all(SCHEDULE_ROW, 'select id, steps as text from scheduled_actions')) {
-    planned(pass, convert, `the scheduled action ${row.id}`, row.text, (steps) =>
+    planned(pass, `the scheduled action ${row.id}`, row.text, (steps) =>
       sql.run(
         'move scheduled tool steps to the current tools',
         'update scheduled_actions set steps = $steps where id = $id',
@@ -108,11 +103,11 @@ function moveSchedules(sql: Sql, pass: Pass, convert: CallConversion): void {
   }
 }
 
-function moveAutomations(sql: Sql, pass: Pass, convert: CallConversion): void {
+function moveAutomations(sql: Sql, pass: Pass): void {
   for (const source of SOURCES) {
     for (const row of sql.all(STORED, source.select)) {
       const key = source.byRevision ? { id: row.id, revision: row.revision } : { id: row.id };
-      planned(pass, convert, row.owner, row.text, (text) =>
+      planned(pass, row.owner, row.text, (text) =>
         sql.run(`move the tool calls of ${row.owner}`, source.update, { ...key, text }),
       );
     }
@@ -138,9 +133,9 @@ function movePlan(sql: Sql, hash: string, text: string): number {
   );
 }
 
-function movePlans(sql: Sql, pass: Pass, convert: CallConversion): void {
+function movePlans(sql: Sql, pass: Pass): void {
   for (const row of sql.all(PLAN_ROW, 'select hash, json as text from automation_plans')) {
-    planned(pass, convert, `a compiled automation plan ${row.hash.slice(0, 12)}`, row.text, (text) =>
+    planned(pass, `a compiled automation plan ${row.hash.slice(0, 12)}`, row.text, (text) =>
       movePlan(sql, row.hash, text),
     );
   }
@@ -150,10 +145,10 @@ export function moveStoredCalls(
   sql: Sql,
   convert: CallConversion,
 ): { readonly calls: number; readonly rows: number } {
-  const pass: Pass = { writes: [], left: [], calls: [] };
-  moveSchedules(sql, pass, convert);
-  moveAutomations(sql, pass, convert);
-  movePlans(sql, pass, convert);
+  const pass: Pass = { convert, writes: [], left: [], calls: [] };
+  moveSchedules(sql, pass);
+  moveAutomations(sql, pass);
+  movePlans(sql, pass);
   if (pass.left.length > 0) throw new ToolCallLeftError(pass.left);
   return {
     calls: pass.calls.reduce((sum, count) => sum + count, 0),

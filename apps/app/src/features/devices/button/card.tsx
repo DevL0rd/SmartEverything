@@ -17,8 +17,7 @@ import { useButtonView } from './use-button-view';
 
 const NOT_USED = 'Not used yet';
 const HUB_OFFLINE = 'The hub that hears this button is offline';
-const WIDE_STRIP = 28;
-const PANEL_STRIP = 48;
+const STRIP_PX: Readonly<Record<WideClass, number>> = { m: 16, w: 28, l: 48, xl: 48 };
 
 function stateLineOf(device: Device, line: string | null): string {
   return device.online ? (line ?? NOT_USED) : HUB_OFFLINE;
@@ -36,7 +35,6 @@ function WideButton({
   const view = useButtonView(device.id);
   const room = useRoomName(device.id);
   const line = stateLineOf(device, meaningLine(view.meaning));
-  const panel = cls === 'l' || cls === 'xl';
   return (
     <View ref={ref} onLayout={onLayout} className="flex-1" pointerEvents="box-none">
       <WideCard
@@ -46,19 +44,15 @@ function WideButton({
         title={device.label}
         chip={<RoomChip online={device.online} room={room} />}
         state={
-          <Text variant="footnote" tone="variant" numberOfLines={2}>
+          <Text variant="footnote" tone="variant" numberOfLines={cls === 'm' ? 1 : 2}>
             {line}
           </Text>
         }
-        graph={
-          <PressStrip
-            segments={view.strip}
-            window={view.window}
-            height={panel ? PANEL_STRIP : WIDE_STRIP}
-          />
-        }
+        graph={<PressStrip segments={view.strip} window={view.window} height={STRIP_PX[cls]} />}
         actions={[<PressMenu key="press" deviceId={device.id} meaning={view.meaning} />]}
-        ticker={<LogTicker deviceId={device.id} live={live} />}
+        ticker={
+          <LogTicker deviceId={device.id} live={live} lines={cls === 'l' || cls === 'xl' ? 2 : 1} />
+        }
       />
     </View>
   );

@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { GlobalTheme, Button, ListRow, Sheet, Stage, Text } from 'smarteverything-kit';
 
 const body = (
@@ -16,14 +17,14 @@ const footer = (
     <Button label="Save" />
   </div>
 );
-export const Dark = () => (
+export const Dark = (): ReactElement => (
   <Stage theme="dark">
     <Sheet open onClose={() => undefined} title="Power-on behaviour" footer={footer}>
       {body}
     </Sheet>
   </Stage>
 );
-export const Light = () => (
+export const Light = (): ReactElement => (
   <GlobalTheme theme="light">
     <Stage theme="light">
       <Sheet open onClose={() => undefined} title="Power-on behaviour" footer={footer}>

@@ -4,7 +4,7 @@ import { api } from '../../../api/transport';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { computerLive } from '../../../store/computer-live';
 
-export type StateTopic = (typeof STATE_TOPICS)[number];
+export type StateTopic = Extract<(typeof STATE_TOPICS)[number], keyof ComputerParts>;
 
 export interface StateLoad {
   readonly error: Error | null;

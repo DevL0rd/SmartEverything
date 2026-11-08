@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 import { DecisionOptions, Stage } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
@@ -7,7 +7,7 @@ const options = [
   { id: 'b', label: 'Turn off only the living room' },
   { id: 'c', label: 'Ask me each time', disabled: true },
 ];
-function Demo({ multi }: { multi: boolean }) {
+function Demo({ multi }: { multi: boolean }): ReactElement {
   const [sel, setSel] = useState<readonly string[]>(['b']);
   return (
     <DecisionOptions
@@ -15,25 +15,25 @@ function Demo({ multi }: { multi: boolean }) {
       selected={sel}
       multi={multi}
       disabled={false}
-      choose={(id) =>
-        setSel(multi ? (sel.includes(id) ? sel.filter((s) => s !== id) : [...sel, id]) : [id])
-      }
+      choose={(id) => {
+        setSel(multi ? (sel.includes(id) ? sel.filter((s) => s !== id) : [...sel, id]) : [id]);
+      }}
     />
   );
 }
-export const Single = () => (
+export const Single = (): ReactElement => (
   <Stage theme="dark" width={460}>
     <Demo multi={false} />
   </Stage>
 );
-export const Multiple = () => (
+export const Multiple = (): ReactElement => (
   <Stage theme="dark" width={460}>
     <Col>
       <Demo multi />
     </Col>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={460}>
     <Demo multi={false} />
   </Stage>

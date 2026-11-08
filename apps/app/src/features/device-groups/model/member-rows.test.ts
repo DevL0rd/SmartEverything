@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_COLUMNS,
   VIRTUAL_MEMBERS_FROM,
   columnsFor,
   groupKeyOf,
@@ -18,11 +17,12 @@ describe('member rows of a long group', () => {
     expect(isVirtual(VIRTUAL_MEMBERS_FROM + 1)).toBe(true);
   });
 
-  it('fits one to three columns from the content width', () => {
+  it('fits member columns from the available content width', () => {
     expect(columnsFor(358)).toBe(1);
     expect(columnsFor(700)).toBe(2);
-    expect(columnsFor(1036)).toBe(MAX_COLUMNS);
-    expect(columnsFor(3000)).toBe(MAX_COLUMNS);
+    expect(columnsFor(1036)).toBe(3);
+    expect(columnsFor(3096)).toBe(8);
+    expect(columnsFor(4776)).toBe(13);
     expect(columnsFor(100)).toBe(1);
   });
 

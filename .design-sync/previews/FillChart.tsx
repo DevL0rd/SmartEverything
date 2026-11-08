@@ -1,10 +1,11 @@
+import type { ReactElement } from 'react';
 import { FillChart, Stage } from 'smarteverything-kit';
 
 const vals = [62, 68, 71, null, 74, 79, 83, 80, 76, 72].map((value, i) => ({
-  key: `h${i}`,
+  key: `h${String(i)}`,
   value,
 }));
-export const Line = () => (
+export const Line = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <div style={{ height: 160, display: 'flex', flexDirection: 'column' }}>
       <FillChart
@@ -18,11 +19,11 @@ export const Line = () => (
     </div>
   </Stage>
 );
-export const BarsKind = () => (
+export const BarsKind = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <div style={{ height: 160, display: 'flex', flexDirection: 'column' }}>
       <FillChart
-        values={[3, 5, 4, 7, 6, 8, 5].map((value, i) => ({ key: `b${i}`, value }))}
+        values={[3, 5, 4, 7, 6, 8, 5].map((value, i) => ({ key: `b${String(i)}`, value }))}
         kind="bars"
         colour="exercise"
         label="Workout minutes"
@@ -30,7 +31,7 @@ export const BarsKind = () => (
     </div>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     <div style={{ height: 160, display: 'flex', flexDirection: 'column' }}>
       <FillChart

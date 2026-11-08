@@ -1,7 +1,8 @@
 import Constants from 'expo-constants';
 import { Logger } from '@smarteverything/logging';
 import { isNative } from '../design/platform';
-import { recordLog } from './crash-trail';
+import { shipLog } from './log-ship';
+import { nameUiBundle } from './ui-bundle';
 
 function releaseOfBuild(): string {
   const version = Constants.expoConfig?.version;
@@ -16,7 +17,16 @@ export function startLogging(): void {
     level: 'info',
     style: __DEV__ && isNative() ? 'pretty' : __DEV__ ? 'plain' : 'json',
     consoleRouting: __DEV__ ? 'log-only' : 'warnings-only',
-    tap: recordLog,
     context: { platform: isNative() ? 'android' : 'web', release: releaseOfBuild() },
   });
+  Logger.configure({
+    sink: (record): void => {
+      try {
+        Logger.write(record);
+      } finally {
+        shipLog(record);
+      }
+    },
+  });
+  void nameUiBundle();
 }

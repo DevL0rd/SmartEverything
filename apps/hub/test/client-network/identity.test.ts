@@ -1,7 +1,8 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { hubLayout } from '../../src/data-layout';
 import { openHubIdentity } from '../../src/network/identity';
 import { issueCertificate, newKey, newServerName, trustFor } from '../support/pinned-hub';
 
@@ -19,8 +20,10 @@ describe('persistent hub TLS identity', () => {
     });
     const directory = await mkdtemp(join(tmpdir(), 'hub-identity-'));
     directories.push(directory);
+    const { tlsIdentity } = hubLayout(directory, {}).system.keys;
+    await mkdir(dirname(tlsIdentity), { recursive: true });
     await writeFile(
-      join(directory, 'hub-tls-identity.json'),
+      tlsIdentity,
       JSON.stringify({
         version: 1,
         name: 'Test hub',
@@ -29,9 +32,18 @@ describe('persistent hub TLS identity', () => {
         cert: certificate.cert,
       }),
     );
-    const opened = await openHubIdentity(directory);
+    const opened = await openHubIdentity(tlsIdentity);
     expect(opened.identity.tls.publicKeySha256).toBe(
       trustFor(certificate, 1).identity.tls.publicKeySha256,
     );
   });
+
+  it('creates a missing identity at the layout path and reopens the same one', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'hub-identity-'));
+    directories.push(directory);
+    const { tlsIdentity } = hubLayout(directory, {}).system.keys;
+    const created = await openHubIdentity(tlsIdentity);
+    expect(JSON.parse(await readFile(tlsIdentity, 'utf8'))).toMatchObject({ version: 1 });
+    expect((await openHubIdentity(tlsIdentity)).identity.id).toBe(created.identity.id);
+  }, 60_000);
 });

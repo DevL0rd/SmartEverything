@@ -45,9 +45,13 @@ describe('liveText', () => {
     notice: { type: 'claude_session_gone', id: crypto.randomUUID() },
   });
 
-  it('keeps owner-only notices off a member connection and sends them to an owner', () => {
-    expect(liveText('member', presence)).toBeNull();
-    expect(liveText('owner', presence)).toBe(JSON.stringify(presence));
+  it.each([
+    presence,
+    LIVE_MESSAGE.parse({ type: 'hub_update_status_changed' }),
+    LIVE_MESSAGE.parse({ type: 'hub_update_source_changed' }),
+  ])('keeps $type off a member connection and sends it to an owner', (notice) => {
+    expect(liveText('member', notice)).toBeNull();
+    expect(liveText('owner', notice)).toBe(JSON.stringify(notice));
   });
 
   it('sends a member every other notice unchanged', () => {

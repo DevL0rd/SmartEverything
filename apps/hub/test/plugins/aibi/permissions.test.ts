@@ -47,7 +47,7 @@ function tools(startOver: () => Promise<boolean>): ReturnType<typeof aibiTools> 
     },
     moves: () => ({ actions: [], animations: 0 }),
     activity: { recent: () => [] },
-    desk: { result: () => ({ spoken: false }) },
+    desk: { result: () => ({ spoken: false }), playAction: () => true },
     assistant: { startOver },
   });
 }

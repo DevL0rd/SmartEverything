@@ -9,12 +9,19 @@ describe('project graph', () => {
     expect(graph.get('apps/hub')).toContain('packages/domain');
   });
 
-  it('checks the owning project of a hub edit and the desktop that embeds it', () => {
+  it('checks a hub edit against every project that consumes hub code', () => {
     const scope = scopeOf(['apps/hub/src/index.ts'], graph);
     expect(scope).toEqual({
       all: false,
-      projects: ['apps/desktop', 'apps/hub'],
-      tops: ['apps/desktop'],
+      projects: [
+        '.design-sync',
+        'apps/app',
+        'apps/desktop',
+        'apps/hub',
+        'tooling',
+        'tooling/guards',
+      ],
+      tops: ['.design-sync', 'apps/desktop', 'tooling', 'tooling/guards'],
     });
   });
 

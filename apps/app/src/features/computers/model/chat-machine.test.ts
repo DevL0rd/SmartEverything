@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ENGINE, type Engine } from '@smarteverything/domain';
 import type { Turn, Turns } from '../../../store/chat-turns';
-import { chatCounts, chatsLine, machineOf, type MachineChat } from './chat-machine';
+import { chatCounts, chatsLine, type MachineChat } from './chat-machine';
 
 const HERE = '11111111-1111-4111-8111-111111111111';
 const ELSEWHERE = '22222222-2222-4222-8222-222222222222';
@@ -42,25 +42,16 @@ function working(chatId: string): Turn {
   };
 }
 
-describe('machineOf', () => {
-  it('names the computer a Claude or device-bound chat runs on', () => {
-    expect(machineOf(claude(HERE))).toBe(HERE);
-    expect(machineOf(boundTo({ kind: 'device', device_id: ELSEWHERE }))).toBe(ELSEWHERE);
-  });
-
-  it('names no computer for hub and server chats', () => {
-    expect(machineOf(ENGINE.parse({ kind: 'openrouter' }))).toBeNull();
-    expect(machineOf(boundTo({ kind: 'server' }))).toBeNull();
-  });
-});
-
 describe('chatCounts', () => {
+  const here = boundTo({ kind: 'device', device_id: HERE });
+  const elsewhere = boundTo({ kind: 'device', device_id: ELSEWHERE });
   const chats = [
-    chat('a', claude(HERE)),
-    chat('b', claude(HERE)),
-    chat('c', claude(ELSEWHERE)),
-    chat('d', claude(HERE), { archived_at: '2026-10-01T00:00:00.000Z' }),
-    chat('e', claude(HERE), { kind: 'subagent' }),
+    chat('a', here),
+    chat('b', here),
+    chat('c', elsewhere),
+    chat('d', here, { archived_at: '2026-10-01T00:00:00.000Z' }),
+    chat('e', here, { kind: 'subagent' }),
+    chat('f', claude(HERE)),
   ];
   const turns: Turns = { a: working('a'), c: working('c') };
 

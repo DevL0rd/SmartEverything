@@ -1,4 +1,5 @@
 import type { IconName } from '../../../components/icon';
+import type { AiChatRow } from '@smarteverything/domain';
 import {
   ACCESS_LEVELS,
   accessFootnote,
@@ -29,15 +30,7 @@ export interface AccessBanner {
   readonly action: { readonly label: string; readonly onPress: () => void } | null;
 }
 
-export interface ToolsAccess {
-  readonly label: string;
-  readonly onOpen: () => void;
-}
-
-interface CloudAccess {
-  readonly intro: string;
-  readonly onComputer: () => void;
-}
+export type ToolsAccess = Pick<AiChatRow, 'id' | 'engine' | 'tools'>;
 
 export interface AccessModel {
   readonly title: string;
@@ -49,7 +42,6 @@ export interface AccessModel {
   readonly banner: AccessBanner | null;
   readonly footnote: string;
   readonly tools: ToolsAccess | null;
-  readonly cloud: CloudAccess | null;
   readonly select: (sectionId: string, value: string) => void;
 }
 

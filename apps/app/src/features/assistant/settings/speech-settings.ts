@@ -39,7 +39,7 @@ export const SPEECH_SETTINGS: readonly SettingDefinition[] = [
     section: ASSISTANT_GROUPS.voice,
     title: 'Spoken lines',
     description:
-      'What says one-off lines (announcements, speaking through a speaker without a conversation): text in, voice out, no conversation. The cheapest is the default.',
+      'What says one-off lines (announcements, speaking through a speaker without a conversation): text in, voice out, no conversation.',
     keywords: ['announce', 'speak', 'text to speech', 'tts', 'cost', 'cheap', 'voice', 'speaker'],
     scope: 'server',
     control: 'select',

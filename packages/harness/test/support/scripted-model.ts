@@ -21,13 +21,29 @@ export type ScriptedReply =
       readonly input: Readonly<Record<string, unknown>>;
     };
 
+export const DEFAULT_SESSION_TITLE = 'Scripted session title';
+
+const TITLE_SOURCE = 'dsh-session-title-llm';
+
+export function isTitleRequest(options: GenerateOptions): boolean {
+  return options.messages.some(
+    (message) => message.role === 'user' && message.source?.kind === TITLE_SOURCE,
+  );
+}
+
 export class ScriptedModel extends LlmAdapter {
   readonly requests: GenerateOptions[] = [];
+  readonly titleRequests: GenerateOptions[] = [];
   private readonly replies: ScriptedReply[] = [];
+  private readonly titleReplies: ScriptedReply[] = [];
   guard: ((options: GenerateOptions) => void) | undefined;
 
   script(...replies: readonly ScriptedReply[]): void {
     this.replies.push(...replies);
+  }
+
+  scriptTitles(...replies: readonly ScriptedReply[]): void {
+    this.titleReplies.push(...replies);
   }
 
   override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
@@ -45,9 +61,12 @@ export class ScriptedModel extends LlmAdapter {
 
   override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     await Promise.resolve();
-    this.guard?.(options);
-    this.requests.push(options);
-    const reply = this.replies.shift();
+    const title = isTitleRequest(options);
+    if (!title) this.guard?.(options);
+    (title ? this.titleRequests : this.requests).push(options);
+    const reply = title
+      ? (this.titleReplies.shift() ?? { kind: 'text' as const, text: DEFAULT_SESSION_TITLE })
+      : this.replies.shift();
     if (reply === undefined) throw new Error('The scripted model has no reply left.');
     if (reply.kind === 'hang') {
       await new Promise<void>((resolve) => {

@@ -21,6 +21,7 @@ export {
   type CompositionMetric,
 } from './composition-metrics';
 export { WhoWasThisHost } from './who-was-this';
+export { askWhoWeighed } from './weigh-in-request';
 export { BodyBadges } from './body-badges';
 export { BodyDetails } from './body-details';
 export { FitnessSetupWidget, useFitnessReady } from './fitness-ready';

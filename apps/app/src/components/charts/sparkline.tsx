@@ -18,6 +18,7 @@ export interface SparklineProps {
   readonly area?: boolean;
   readonly maxGap?: number;
   readonly domain?: readonly [number, number];
+  readonly timeDomain?: readonly [number, number];
 }
 
 const INSET = 2;
@@ -31,11 +32,21 @@ interface Shape {
 function shapesOf(
   points: readonly ChartPoint[],
   { width, height }: { readonly width: number; readonly height: number },
-  maxGap: number | undefined,
-  domain: readonly [number, number] | undefined,
+  {
+    maxGap,
+    domain,
+    timeDomain,
+  }: {
+    readonly maxGap: number | undefined;
+    readonly domain: readonly [number, number] | undefined;
+    readonly timeDomain: readonly [number, number] | undefined;
+  },
 ): Shape[] {
   const sorted = [...points].filter((point) => Number.isFinite(point.v)).sort((a, b) => a.t - b.t);
-  const times = extentOf(sorted.map((point) => point.t));
+  const times =
+    timeDomain === undefined
+      ? extentOf(sorted.map((point) => point.t))
+      : { min: timeDomain[0], max: timeDomain[1] };
   const values =
     domain === undefined
       ? extentOf(sorted.map((point) => point.v))
@@ -60,13 +71,15 @@ export const Sparkline = memo(function Sparkline({
   area = false,
   maxGap,
   domain,
+  timeDomain,
 }: SparklineProps): ReactNode {
   const { width, onLayout } = useMeasuredWidth();
   const stroke = useColour(colour);
   const reveal = useDraw(1, !useMotion().reduced);
   const box = { height };
   const clip = useAnimatedStyle(() => ({ width: width * reveal.get(), height }), [width, height]);
-  const shapes = width > 0 ? shapesOf(points, { width, height }, maxGap, domain) : [];
+  const shapes =
+    width > 0 ? shapesOf(points, { width, height }, { maxGap, domain, timeDomain }) : [];
   return (
     <View style={box} className="w-full" aria-hidden onLayout={onLayout}>
       {width > 0 ? (

@@ -6,6 +6,7 @@ export interface SpokenLine {
   readonly profileId: string;
   readonly clientId: string | null;
   readonly callId: string;
+  readonly chatId?: string;
   readonly model: string;
   readonly characters: number;
   readonly inputTokens: number;
@@ -23,6 +24,7 @@ export function recordSpeech(ledger: Ledger, prices: PriceBook, line: SpokenLine
     profile_id: line.profileId,
     client_id: line.clientId,
     call_id: line.callId,
+    chat_id: line.chatId ?? null,
     source: 'gemini',
     work: 'speak',
     model_id: modelId,

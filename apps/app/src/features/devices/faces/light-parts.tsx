@@ -100,7 +100,7 @@ export function LightNames({
   readonly short?: boolean;
 }): ReactNode {
   return (
-    <View className="min-w-0 flex-1 gap-0.5" pointerEvents="none">
+    <View className="min-w-0 gap-0.5" pointerEvents="none">
       {lines === 1 ? (
         <LightName name={light.name} variant="body-strong" />
       ) : (

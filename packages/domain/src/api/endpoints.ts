@@ -7,6 +7,8 @@ import { EMBEDDED_BROWSER_ENDPOINTS } from './endpoints-embedded-browser';
 import { AI_HARNESS_COMMAND_ENDPOINTS } from './endpoints-ai-harness-commands';
 import { IMAGE_AREA_ENDPOINTS } from './endpoints-images';
 import { AI_HARNESS_EXTENSION_ENDPOINTS } from './endpoints-ai-harness-extensions';
+import { AI_MEMORY_ENDPOINTS } from './endpoints-ai-memory';
+import { AI_DEEPSEEK_ENDPOINTS } from './endpoints-ai-deepseek';
 import { AI_HARNESS_ENDPOINTS, AI_HARNESS_CONFIGURATION_ENDPOINTS } from './endpoints-ai-harness';
 import { COMPUTER_RUNTIME_ENDPOINTS } from './endpoints-computer-runtimes';
 import { AI_AGENT_RUN_ENDPOINTS } from './endpoints-ai-agent-runs';
@@ -35,10 +37,13 @@ import { SCENE_ENDPOINTS } from './endpoints-scenes';
 import { CALL_ENDPOINTS } from './endpoints-calls';
 import { CLAUDE_CLI_ENDPOINTS } from './endpoints-claude-cli';
 import { CLAUDE_ENDPOINTS } from './endpoints-claude';
-import { CLIENT_FAILURE_ENDPOINTS } from './endpoints-client-failures';
+import { CLIENT_PERF_ENDPOINTS } from './endpoints-client-perf';
+import { RUNTIME_LOG_ENDPOINTS } from './endpoints-runtime-logs';
+import { AI_REPAIR_ENDPOINTS } from './endpoints-ai-repair';
 import { COMPUTER_AI_ENDPOINTS } from './endpoints-computer-ai';
 import { COMPUTER_NODE_ENDPOINTS } from './endpoints-computer-nodes';
 import { MACHINE_UPDATE_ENDPOINTS } from './endpoints-machine-updates';
+import { APP_UPDATE_ENDPOINTS } from './endpoints-app-updates';
 import { COMPUTER_ENDPOINTS } from './endpoints-computers';
 import { COMPUTER_SESSION_ENDPOINTS } from './endpoints-computer-session';
 import { COMPUTER_SYSTEM_ENDPOINTS } from './endpoints-computer-system';
@@ -54,9 +59,16 @@ import { SNAPSHOT_ENDPOINTS } from './snapshot';
 import { TALK_AREA_ENDPOINTS } from './endpoints-talk';
 import { WATCH_AREA_ENDPOINTS } from './endpoints-watches';
 import { DEVELOPER_ENDPOINTS } from './endpoints-developer';
+import { SELF_UPDATE_ENDPOINTS } from './endpoints-self-update';
+import { HUB_UPDATE_SOURCE_ENDPOINTS } from './endpoints-hub-update-source';
 import { TREADMILL_AREA_ENDPOINTS } from './endpoints-treadmills';
 import { BOTTLE_AREA_ENDPOINTS } from './endpoints-bottles';
 import { TOOTHBRUSH_AREA_ENDPOINTS } from './endpoints-toothbrushes';
+import { VACUUM_AREA_ENDPOINTS } from './endpoints-vacuums';
+import { HOME_MAP_AREA_ENDPOINTS } from './endpoints-home-map';
+import { HOME_MAP_SET_ENDPOINTS } from './endpoints-home-map-set';
+import { HOME_MAP_SCAN_ENDPOINTS } from './endpoints-home-map-scan';
+import { MODEL_AREA_ENDPOINTS } from './endpoints-models';
 import { WEATHER_AREA_ENDPOINTS } from './endpoints-weather';
 import { EXCHANGE_RATES_AREA_ENDPOINTS } from './endpoints-exchange-rates';
 import { PLACE_AREA_ENDPOINTS } from './endpoints-places';
@@ -69,6 +81,13 @@ import { TRANSCRIPT_ENDPOINTS } from './endpoints-transcripts';
 import { LISTENING_ENDPOINTS } from './endpoints-listening';
 import { CLIPBOARD_ENDPOINTS } from './endpoints-clipboard';
 import { APP_VIEW_ENDPOINTS } from './endpoints-app-view';
+import { DRIVE_LIBRARY_ENDPOINTS } from './endpoints-drive';
+import { DRIVE_STORAGE_ENDPOINTS } from './endpoints-drive-storage';
+import { PHOTOS_ENDPOINTS } from './endpoints-photos';
+import { GOOGLE_ENDPOINTS } from './endpoints-google';
+import { PLANNER_ENDPOINTS } from './endpoints-planner';
+import { PLANNER_ITEM_ENDPOINTS } from './endpoints-planner-items';
+import { PLANNER_CLOCK_ENDPOINTS } from './endpoints-planner-clock';
 
 const AI_ENDPOINTS = {
   ...AI_REFERENCE_ENDPOINTS,
@@ -77,6 +96,8 @@ const AI_ENDPOINTS = {
   ...EMBEDDED_BROWSER_ENDPOINTS,
   ...AI_HARNESS_COMMAND_ENDPOINTS,
   ...AI_HARNESS_EXTENSION_ENDPOINTS,
+  ...AI_MEMORY_ENDPOINTS,
+  ...AI_DEEPSEEK_ENDPOINTS,
   ...AI_HARNESS_ENDPOINTS,
   ...AI_HARNESS_CONFIGURATION_ENDPOINTS,
   ...AI_PROVIDER_ENDPOINTS,
@@ -100,6 +121,7 @@ const COMPUTER_REGISTRY = {
   ...COMPUTER_AI_ENDPOINTS,
   ...COMPUTER_NODE_ENDPOINTS,
   ...MACHINE_UPDATE_ENDPOINTS,
+  ...APP_UPDATE_ENDPOINTS,
   ...COMPUTER_SESSION_ENDPOINTS,
   ...COMPUTER_SYSTEM_ENDPOINTS,
   ...PHONE_AREA_ENDPOINTS,
@@ -130,17 +152,29 @@ const HOME_ENDPOINTS = {
   ...LISTENING_ENDPOINTS,
   ...WATCH_AREA_ENDPOINTS,
   ...DEVELOPER_ENDPOINTS,
+  ...SELF_UPDATE_ENDPOINTS,
+  ...HUB_UPDATE_SOURCE_ENDPOINTS,
   ...TREADMILL_AREA_ENDPOINTS,
   ...BOTTLE_AREA_ENDPOINTS,
   ...TOOTHBRUSH_AREA_ENDPOINTS,
+  ...VACUUM_AREA_ENDPOINTS,
+  ...HOME_MAP_AREA_ENDPOINTS,
+  ...HOME_MAP_SET_ENDPOINTS,
+  ...HOME_MAP_SCAN_ENDPOINTS,
+  ...MODEL_AREA_ENDPOINTS,
   ...TALK_AREA_ENDPOINTS,
+  ...DRIVE_LIBRARY_ENDPOINTS,
+  ...DRIVE_STORAGE_ENDPOINTS,
+  ...PHOTOS_ENDPOINTS,
 } satisfies Readonly<Record<string, EndpointShape>>;
 
 const PEOPLE_REGISTRY = {
   ...ACCESS_ENDPOINTS,
   ...PERSON_ACCESS_ENDPOINTS,
   ...CONNECTION_ENDPOINTS,
-  ...CLIENT_FAILURE_ENDPOINTS,
+  ...CLIENT_PERF_ENDPOINTS,
+  ...RUNTIME_LOG_ENDPOINTS,
+  ...AI_REPAIR_ENDPOINTS,
   ...SNAPSHOT_ENDPOINTS,
   ...SETTINGS_AREA_ENDPOINTS,
   ...CLIPBOARD_ENDPOINTS,
@@ -150,6 +184,10 @@ const PEOPLE_REGISTRY = {
   ...PEOPLE_AREA_ENDPOINTS,
   ...NUTRITION_AREA_ENDPOINTS,
   ...PLUGIN_ENDPOINTS,
+  ...PLANNER_ENDPOINTS,
+  ...PLANNER_ITEM_ENDPOINTS,
+  ...PLANNER_CLOCK_ENDPOINTS,
+  ...GOOGLE_ENDPOINTS,
 } satisfies Readonly<Record<string, EndpointShape>>;
 
 export type ApiEndpoints = typeof AI_ENDPOINTS &

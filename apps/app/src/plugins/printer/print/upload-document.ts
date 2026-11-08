@@ -4,7 +4,7 @@ import {
   sendAssistantUploadChunk,
   startAssistantUpload,
 } from '../../../api/assistant';
-import { base64Of } from '../../../features/assistant/data/uploads';
+import { base64Of } from '../../../format/base64';
 import { bytes } from '../../../format/number';
 import type { PickedFile } from '../../../platform/pick-files';
 

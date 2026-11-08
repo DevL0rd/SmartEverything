@@ -9,7 +9,7 @@ import {
   writeFileSync,
   cpSync,
 } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const REPO = resolve(dirname(new URL(import.meta.url).pathname), '..');
@@ -238,6 +238,9 @@ await build({
   },
   logLevel: 'warning',
   sourcemap: false,
+  minifyIdentifiers: true,
+  minifySyntax: true,
+  keepNames: true,
   banner: {
     js: "if(typeof globalThis.process==='undefined'){globalThis.process={env:{NODE_ENV:'development',EXPO_OS:'web'},platform:'browser',browser:true,version:'',versions:{},argv:[],cwd:function(){return '/'},nextTick:function(f){var a=Array.prototype.slice.call(arguments,1);Promise.resolve().then(function(){f.apply(null,a)})},emitWarning:function(){}}}",
   },
@@ -269,7 +272,7 @@ try {
     stdio: ['ignore', 'pipe', 'pipe'],
     cwd: APP,
   });
-} catch (e) {
+} catch {
   console.error('kit: tsc declaration emit reported diagnostics (declarations still emitted)');
 }
 const entryDts = relative(
@@ -333,6 +336,12 @@ execFileSync(join(nm, '.bin/expo'), ['export', '--platform', 'web', '--output-di
   env: { ...process.env, EXPO_OFFLINE: '1', CI: '1' },
 });
 const cssDir = join(exportDir, '_expo/static/css');
-const cssFile = readdirSync(cssDir).find((f) => f.endsWith('.css'));
+const cssFiles = readdirSync(cssDir).filter((file) => /^global-.+\.css$/.test(file));
+if (cssFiles.length !== 1) {
+  throw new Error(
+    `Expected one global-*.css stylesheet in ${cssDir}, found ${cssFiles.length}: ${cssFiles.join(', ')}`,
+  );
+}
+const [cssFile] = cssFiles;
 cpSync(join(cssDir, cssFile), join(PKG_OUT, 'dist/styles.css'));
 console.error('kit: dist/index.js and dist/styles.css built');

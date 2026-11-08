@@ -249,6 +249,20 @@ describe('the spec index', () => {
   });
 });
 
+describe('absent properties', () => {
+  it('produces no capability and no binding for a property the model reports as absent', () => {
+    const spec = specWith([
+      service('switch', [
+        property('on', { iid: 1 }),
+        property('mode', { iid: 2, format: 'uint8' }),
+      ]),
+    ]);
+    const model = modelFromSpec(spec, { absent: (siid, piid) => siid === 2 && piid === 2 });
+    expect([...model.bindings.keys()]).toStrictEqual(['power']);
+    expect(model.propertyKeys.has('2.2')).toBe(false);
+  });
+});
+
 describe('catalogue mapping', () => {
   it.each(RULES)('maps %s/%s as %s onto %s', (serviceName, propertyName, shape, key) => {
     const model = modelFromSpec(

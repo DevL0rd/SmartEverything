@@ -5,6 +5,7 @@ import { api } from '../api/transport';
 import { connectionState } from '../api/connection/connection';
 import { ValueStore, useValue } from '../design/external-store';
 import type { EntityStore } from './entity-store';
+import { sameSessionAuthority } from './session-authority';
 import { noticeHandler } from './notice-registry';
 const log = new Logger('app.assistant');
 const availability = new ValueStore<string | null>(null);
@@ -90,14 +91,12 @@ export function captureAssistantWrite(store: EntityStore): AssistantWriteScope {
   const client = api();
   const connection = connectionState.get();
   const session = store.get().session;
-  const profileId = session?.client.profile_id;
   return {
     client,
     current: (): boolean =>
       connectionState.get() === connection &&
       api() === client &&
-      store.get().session === session &&
-      store.get().session?.client.profile_id === profileId,
+      sameSessionAuthority(store.get().session, session),
   };
 }
 export function assertAssistantWriteCurrent(scope: AssistantWriteScope): void {

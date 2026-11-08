@@ -4,9 +4,10 @@ import { CARE_GLYPHS } from './icon-glyphs-care';
 import { CHAT_GLYPHS } from './icon-glyphs-chat';
 import { COMPUTER_GLYPHS } from './icon-glyphs-computer';
 import { LIGHT_GLYPHS } from './icon-glyphs-light';
+import { LINK_GLYPHS } from './icon-glyphs-link';
+import { MAP_GLYPHS } from './icon-glyphs-map';
 import { TV_GLYPHS } from './icon-glyphs-tv';
 import { EDITOR_GLYPHS } from './icon-glyphs-editor';
-import ArrowUpGlyph from 'lucide-react-native/icons/arrow-up';
 import PaperclipGlyph from 'lucide-react-native/icons/paperclip';
 import ImageGlyph from 'lucide-react-native/icons/image';
 import MessageCircleGlyph from 'lucide-react-native/icons/message-circle';
@@ -15,7 +16,6 @@ import WindGlyph from 'lucide-react-native/icons/wind';
 import VideoGlyph from 'lucide-react-native/icons/video';
 import HeartGlyph from 'lucide-react-native/icons/heart';
 import ZapGlyph from 'lucide-react-native/icons/zap';
-import Link2Glyph from 'lucide-react-native/icons/link-2';
 import MenuGlyph from 'lucide-react-native/icons/menu';
 import SearchGlyph from 'lucide-react-native/icons/search';
 import SlidersHorizontalGlyph from 'lucide-react-native/icons/sliders-horizontal';
@@ -27,6 +27,7 @@ import ChevronUpGlyph from 'lucide-react-native/icons/chevron-up';
 import ChevronDownGlyph from 'lucide-react-native/icons/chevron-down';
 import ChevronsUpDownGlyph from 'lucide-react-native/icons/chevrons-up-down';
 import PlusGlyph from 'lucide-react-native/icons/plus';
+import SmileGlyph from 'lucide-react-native/icons/face-slightly-smiling';
 import MinusGlyph from 'lucide-react-native/icons/minus';
 import LayoutGridGlyph from 'lucide-react-native/icons/layout-grid';
 import ActivityGlyph from 'lucide-react-native/icons/activity';
@@ -172,8 +173,6 @@ import PanelLeftGlyph from 'lucide-react-native/icons/panel-left';
 import KeyboardGlyph from 'lucide-react-native/icons/keyboard';
 import ArrowLeftGlyph from 'lucide-react-native/icons/arrow-left';
 import ArrowRightGlyph from 'lucide-react-native/icons/arrow-right';
-import ExternalLinkGlyph from 'lucide-react-native/icons/external-link';
-import MapPinGlyph from 'lucide-react-native/icons/map-pin';
 import Undo2Glyph from 'lucide-react-native/icons/undo-2';
 import MoveDiagonal2Glyph from 'lucide-react-native/icons/move-diagonal-2';
 import GlobeGlyph from 'lucide-react-native/icons/globe';
@@ -187,7 +186,6 @@ import CircleCheckGlyph from 'lucide-react-native/icons/circle-check';
 import CircleXGlyph from 'lucide-react-native/icons/circle-x';
 import CircleGlyph from 'lucide-react-native/icons/circle';
 import QrCodeGlyph from 'lucide-react-native/icons/qr-code';
-import LinkGlyph from 'lucide-react-native/icons/link';
 import PuzzleGlyph from 'lucide-react-native/icons/puzzle';
 import FileTextGlyph from 'lucide-react-native/icons/file-text';
 import WrenchGlyph from 'lucide-react-native/icons/wrench';
@@ -203,7 +201,6 @@ export const GLYPHS = {
   cameras: VideoGlyph,
   fitness: HeartGlyph,
   automations: ZapGlyph,
-  integrations: Link2Glyph,
   more: MenuGlyph,
   search: SearchGlyph,
   customize: SlidersHorizontalGlyph,
@@ -215,6 +212,7 @@ export const GLYPHS = {
   chevronDown: ChevronDownGlyph,
   chooser: ChevronsUpDownGlyph,
   plus: PlusGlyph,
+  smile: SmileGlyph,
   minus: MinusGlyph,
   grid: LayoutGridGlyph,
   activity: ActivityGlyph,
@@ -361,13 +359,10 @@ export const GLYPHS = {
   panelLeft: PanelLeftGlyph,
   keyboard: KeyboardGlyph,
   arrowLeft: ArrowLeftGlyph,
-  arrowUp: ArrowUpGlyph,
   paperclip: PaperclipGlyph,
   image: ImageGlyph,
   messageCircle: MessageCircleGlyph,
   arrowRight: ArrowRightGlyph,
-  externalLink: ExternalLinkGlyph,
-  mapPin: MapPinGlyph,
   globe: GlobeGlyph,
   server: ServerGlyph,
   palette: PaletteGlyph,
@@ -379,7 +374,6 @@ export const GLYPHS = {
   circleX: CircleXGlyph,
   circle: CircleGlyph,
   qr: QrCodeGlyph,
-  link: LinkGlyph,
   puzzle: PuzzleGlyph,
   fileText: FileTextGlyph,
   wrench: WrenchGlyph,
@@ -396,6 +390,8 @@ export const GLYPHS = {
   ...CHAT_GLYPHS,
   ...COMPUTER_GLYPHS,
   ...LIGHT_GLYPHS,
+  ...LINK_GLYPHS,
+  ...MAP_GLYPHS,
   ...TV_GLYPHS,
 } as const;
 

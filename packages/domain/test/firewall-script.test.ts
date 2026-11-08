@@ -2,41 +2,98 @@ import { describe, expect, it } from 'vitest';
 import {
   SOCKETFILTERFW,
   firewallScript,
+  firewallSteps,
   powershellQuoted,
   type FirewallPlan,
+  type NetworkPortRule,
   type PortRule,
 } from '../src';
 
 const REVISION = '0123456789abcdef';
-const WEBRTC: PortRule = { purpose: 'webrtc', protocol: 'tcp', port: 8555 };
-const CAMERA: PortRule = { purpose: 'camera', protocol: 'udp', source: '192.168.1.20' };
-const DEVICE: PortRule = { purpose: 'device', protocol: 'udp', source: 'fe80::1' };
-const HUB: PortRule = { purpose: 'hub', protocol: 'tcp', port: 3000, source: '192.168.1.0/24' };
+const WEBRTC: NetworkPortRule = { purpose: 'webrtc', protocol: 'tcp', port: 8555 };
+const CAMERA: PortRule = {
+  purpose: 'camera',
+  protocol: 'udp',
+  mac: 'b8:88:80:d7:19:ac',
+  address: '192.168.1.20',
+};
+const DEVICE: PortRule = {
+  purpose: 'device',
+  protocol: 'udp',
+  mac: 'b8:88:80:d7:28:57',
+  address: 'fe80::1',
+};
+const HUB: NetworkPortRule = {
+  purpose: 'hub',
+  protocol: 'tcp',
+  port: 3000,
+  source: '192.168.1.0/24',
+};
 const DISCOVERY: PortRule = {
   purpose: 'discovery',
   protocol: 'udp',
   port: 5353,
   source: '192.168.1.0/24',
 };
-const PLUGIN: PortRule = { purpose: 'plugin', protocol: 'tcp', port: 9000, source: '10.0.0.0/8' };
+const PLUGIN: PortRule = {
+  purpose: 'plugin',
+  protocol: 'tcp',
+  port: 9000,
+  source: '10.0.0.0/8',
+};
 const SYSCTL_PORT_FILE = '/etc/sysctl.d/60-smarteverything-ports.conf';
 
 describe('ufw scripts', () => {
-  it('opens a live video port to anyone and a camera to its address only', () => {
+  it('opens a live video port to anyone and the hub port to the network', () => {
     const plan: FirewallPlan = {
       backend: 'ufw',
       revision: REVISION,
       unprivilegedPortStart: null,
+      mac: null,
       rules: [
         { rule: WEBRTC, prepend: false },
-        { rule: CAMERA, prepend: true },
-        { rule: HUB, prepend: false },
+        { rule: HUB, prepend: true },
       ],
     };
     expect(firewallScript(plan)).toStrictEqual([
       "ufw allow in proto tcp from any to any port 8555 comment 'SmartEverything live video'",
-      "ufw prepend allow in proto udp from 192.168.1.20 to any comment 'SmartEverything camera'",
-      "ufw allow in proto tcp from 192.168.1.0/24 to any port 3000 comment 'SmartEverything encrypted LAN'",
+      "ufw prepend allow in proto tcp from 192.168.1.0/24 to any port 3000 comment 'SmartEverything encrypted LAN'",
+    ]);
+  });
+
+  it('allows cameras and devices by MAC address in one script that also removes the old address rules and bound duplicates', () => {
+    const [step] = firewallSteps({
+      backend: 'ufw',
+      revision: REVISION,
+      unprivilegedPortStart: null,
+      rules: [],
+      mac: {
+        entries: [
+          { mac: 'b8:88:80:d7:19:ac', protocol: 'udp', port: null },
+          { mac: 'b8:88:80:d7:28:57', protocol: 'udp', port: null },
+        ],
+        staleAddresses: ['192.168.50.147'],
+        staleRules: [
+          {
+            protocol: 'tcp',
+            port: 7882,
+            source: '192.168.50.0/24',
+            destination: '192.168.50.2',
+            interface: 'enp108s0',
+          },
+        ],
+      },
+    });
+    expect(step?.program).toBe('sh');
+    expect(step?.args.slice(2)).toStrictEqual([
+      'sh',
+      'udp,any,b8:88:80:d7:19:ac udp,any,b8:88:80:d7:28:57',
+      '192.168.50.147',
+      'tcp,7882,192.168.50.0/24,192.168.50.2,enp108s0',
+      '/etc/ufw/after.rules',
+      'ufw-after-input',
+      '/etc/ufw/after6.rules',
+      'ufw6-after-input',
     ]);
   });
 
@@ -45,13 +102,14 @@ describe('ufw scripts', () => {
       backend: 'ufw',
       revision: REVISION,
       unprivilegedPortStart: 80,
-      rules: [{ rule: DEVICE, prepend: false }],
+      mac: null,
+      rules: [{ rule: HUB, prepend: false }],
     };
     const script = firewallScript(plan);
     expect(script).toHaveLength(3);
     expect(script[0]).toContain(SYSCTL_PORT_FILE);
     expect(script[1]).toBe('sysctl -w net.ipv4.ip_unprivileged_port_start=80');
-    expect(script[2]).toContain("comment 'SmartEverything device push'");
+    expect(script[2]).toContain("comment 'SmartEverything encrypted LAN'");
   });
 });
 

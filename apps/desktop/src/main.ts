@@ -1,49 +1,63 @@
+import { mkdir } from 'node:fs/promises';
 import type {
   DesktopPlatform,
   DesktopServiceStatus,
   NativeHubCapabilities,
 } from '@smarteverything/domain';
-import { serviceUrl, type ServiceConfig } from '@smarteverything/hub/service/configuration';
-import { Logger, setBackgroundScope } from '@smarteverything/logging';
-import { app, dialog, session, shell, systemPreferences, type BrowserWindow } from 'electron';
-import { sessionAgentDirectory } from '@smarteverything/hub/node/session-agent/location';
-import { electronAgentActions } from './agent/agent-actions.js';
-import { startSessionAgent, type RunningAgent } from './agent/agent-host.js';
-import { RingWindow } from './agent/ring-window.js';
+import { background, Logger, setBackgroundScope } from '@smarteverything/logging';
+import { app, dialog, session, type BrowserWindow } from 'electron';
+import { startDesktopAgent } from './agent/desktop-agent.js';
+import { registerDeepLinkScheme } from './deep-link-scheme.js';
 import { currentCaptureMode, DisplayCapture, prepareScreenCapture } from './display-capture.js';
-import { buildContentSecurityPolicy } from './csp.js';
 import { deepLinkInArguments } from './deep-link.js';
-import { readAgentEnvironment } from './environment.js';
 import { DeepLinkInbox, type DeepLinkRefusal } from './deep-link-inbox.js';
 import { applyFirewall } from './firewall/apply.js';
 import { reportFailure } from './failure.js';
 import { registerDesktopIpc } from './ipc.js';
-import { registerHubNetworkIpc } from './hub-network/ipc.js';
-import { startLinuxSchemeRegistration } from './linux-scheme.js';
+import { registerDesktopHub } from './hub-network/desktop-hub.js';
+import { followLogs } from './logs/follow-logs.js';
+import type { DesktopLogShipping } from './logs/shipment.js';
 import { logMetroLoadFailure, showMetroUnreachable } from './metro-page.js';
-import { DEEP_LINK_SCHEME, HIDDEN_START_ARGUMENT, INSTALL_SERVICE_ARGUMENT } from './origin.js';
-import { desktopPaths } from './paths.js';
-import { enforceContentSecurityPolicy, registerAppScheme, serveWebExport } from './protocol.js';
+import { HIDDEN_START_ARGUMENT } from './origin.js';
+import { DESKTOP_PACKAGE_PROBE, desktopPackageProbe } from './package-probe.js';
+import { desktopPaths, prepareUserData } from './paths.js';
+import { registerAppScheme, serveWebExport } from './protocol.js';
 import { restrictPermissions } from './session-guards.js';
 import { squirrelEventOf, WINDOWS_APP_USER_MODEL_ID } from './squirrel.js';
 import { handleSquirrelEvent } from './squirrel-events.js';
-import { wasOpenedAtLogin } from './start-on-login.js';
+import { getStartOnLogin, setStartOnLogin, wasOpenedAtLogin } from './start-on-login.js';
 import {
   createDesktopService,
   currentPlatform,
   type DesktopService,
 } from './service/desktop-service.js';
-import { startService } from './service/startup.js';
+import { requireEnrolledPairingHub } from './service/computer-pairing-target.js';
+import { startComputer } from './service/startup.js';
 import { nodeSystem, runAwaitingApproval } from './service/system.js';
+import {
+  computerPairingArguments,
+  handleComputerPairingCommand,
+  pairComputer,
+} from './service/pair-computer.js';
 import { OverlayDesktop } from './overlay/overlay-desktop.js';
 import { registerOverlayIpc } from './overlay/overlay-ipc.js';
 import { TalkDesktop } from './talk/talk-desktop.js';
 import type { UpdateController } from './updates/update-controller.js';
-import { createDesktopUpdates, followUpdates } from './updates/update-shell.js';
-import { updateTrayItems } from './updates/update-tray.js';
-import { createTray, type DesktopTray, type TrayOptions } from './tray.js';
+import { desktopUpdateFetch } from './updates/update-fetch.js';
+import {
+  confirmBootWhenLoaded,
+  createDesktopUpdates,
+  followHubNotices,
+  followUpdates,
+  recoverDesktopBoot,
+} from './updates/update-shell.js';
+import { runShutdown, type ShutdownStep } from './shutdown.js';
+import { createTray, type DesktopTray } from './tray.js';
+import { logControlFailure, trayServiceOf } from './tray-service.js';
 import { readDesktopVariant, type DesktopVariant } from './variant.js';
 import { createMainWindow, revealWindow } from './window.js';
+import { WebUpdateShell, webUpdateWindowOf } from './web-bundles/web-update-shell.js';
+import type { RunningAgent } from './agent/agent-host.js';
 
 const log = new Logger('desktop.main');
 setBackgroundScope('desktop.background');
@@ -51,10 +65,6 @@ setBackgroundScope('desktop.background');
 process.on('unhandledRejection', (cause: unknown) => {
   log.exception('promise.unhandled', cause);
 });
-
-function logControlFailure(cause: unknown): void {
-  reportFailure('The server control did not finish', cause);
-}
 
 function refuseDeepLink(refusal: DeepLinkRefusal): void {
   log.warn('deep_link.refused', { reason: refusal.reason });
@@ -65,22 +75,9 @@ function reportInterfaceFailure(_window: BrowserWindow, error: unknown): void {
   reportFailure('SmartEverything could not load its interface', error);
 }
 
-function registerDeepLinkScheme(): void {
-  if (!app.isPackaged) {
-    return;
-  }
-  if (process.platform === 'linux') {
-    startLinuxSchemeRegistration();
-    return;
-  }
-  const registered = app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
-  log.debug('deep_link.scheme_registered', { scheme: DEEP_LINK_SCHEME, registered });
-  if (!registered) {
-    reportFailure('Sign-in links will not open SmartEverything', {
-      expected: `${DEEP_LINK_SCHEME}:// registered to this app`,
-      received: 'the operating system refused the registration',
-    });
-  }
+interface Updates {
+  readonly updates: UpdateController;
+  readonly web: WebUpdateShell;
 }
 
 class DesktopShell {
@@ -95,8 +92,10 @@ class DesktopShell {
   #quitting = false;
   #overlayStopped = false;
   #closeHubNetwork: (() => void) | undefined;
+  #closeNotices: (() => void) | undefined;
   #closeOverlayIpc: (() => void) | undefined;
   #agent: RunningAgent | undefined;
+  #logs: DesktopLogShipping | undefined;
 
   constructor(variant: DesktopVariant, capture: DisplayCapture) {
     this.#variant = variant;
@@ -110,24 +109,19 @@ class DesktopShell {
         this.#overlayStopped = true;
         event.preventDefault();
         this.#closeOverlayIpc?.();
-        this.#overlay
-          .stop()
-          .then(() => {
+        background(
+          runShutdown([
+            { name: 'overlay', run: (): Promise<void> => this.#overlay.stop() },
+            { name: 'logs', run: (): Promise<void> | undefined => this.#logs?.close() },
+          ]).then(() => {
             app.quit();
-          })
-          .catch((cause: unknown) => {
-            log.error('app.quit_failed', cause);
-          });
+          }),
+          'app.quit_failed',
+        );
         return;
       }
       log.info('app.quitting', { hadWindow: this.#window !== undefined });
-      this.#tray?.destroy();
-      this.#talk.stop();
-      this.#closeHubNetwork?.();
-      this.#service?.controller.close();
-      this.#agent?.stop().catch((cause: unknown) => {
-        log.error('agent.stop_failed', cause);
-      });
+      background(runShutdown(this.#finalSteps()), 'app.shutdown_failed');
     });
     app.on('open-url', (event, url) => {
       event.preventDefault();
@@ -145,43 +139,94 @@ class DesktopShell {
     });
   }
 
+  #finalSteps(): readonly ShutdownStep[] {
+    return [
+      {
+        name: 'tray',
+        run: (): void => {
+          this.#tray?.destroy();
+        },
+      },
+      {
+        name: 'talk',
+        run: (): void => {
+          this.#talk.stop();
+        },
+      },
+      {
+        name: 'hub network',
+        run: (): void => {
+          this.#closeHubNetwork?.();
+        },
+      },
+      {
+        name: 'update notices',
+        run: (): void => {
+          this.#closeNotices?.();
+        },
+      },
+      {
+        name: 'computer service',
+        run: (): void => {
+          this.#service?.controller.close();
+        },
+      },
+      { name: 'agent', run: () => this.#agent?.stop() },
+    ];
+  }
+
   async launch(): Promise<void> {
+    if (await recoverDesktopBoot()) return;
     const platform = currentPlatform();
     const variant = this.#variant;
-    const paths = desktopPaths(variant);
+    const paths = desktopPaths();
+    await mkdir(paths.dataDirectory, { recursive: true, mode: 0o700 });
     this.#logLaunch(platform);
     const service = createDesktopService(platform, paths, variant, (cause) => {
       log.error('desktop.service.watch_failed', cause);
     });
     this.#service = service;
-    const config = await service.controller.config();
-    serveWebExport(paths.webRoot);
+    this.#logs = followLogs(service.controller);
+    const network = await registerDesktopHub(service.controller, variant.startUrl);
+    this.#closeHubNetwork = network.close;
+    const fetchUpdates = desktopUpdateFetch(() => service.controller.server(), network.updateLease);
+    const web = await WebUpdateShell.create({
+      managedBy: variant.managedBy,
+      packaged: app.isPackaged,
+      appPath: app.getAppPath(),
+      userDataPath: app.getPath('userData'),
+      embeddedRoot: paths.webRoot,
+      server: () => service.controller.server(),
+      fetch: fetchUpdates,
+    });
+    await web.launch();
+    serveWebExport(web.root);
     this.#overlay.serve();
-    enforceContentSecurityPolicy(
-      session.defaultSession,
-      buildContentSecurityPolicy(config.role === 'node' ? config.node.hub_url : serviceUrl(config)),
-    );
     restrictPermissions(session.defaultSession, variant.startUrl);
     this.#capture.attach(session.defaultSession);
     if (variant.managedBy === undefined) {
       registerDeepLinkScheme();
+      if (platform === 'linux' && getStartOnLogin()) setStartOnLogin(true);
     }
-    const updates = await createDesktopUpdates(service);
-    this.#registerIpc(platform, service, updates);
+    const updates = await createDesktopUpdates(service, fetchUpdates);
+    this.#closeNotices = followHubNotices(
+      updates,
+      { server: () => service.controller.server(), lease: network.updateLease },
+      network.onRouteReady,
+    );
+    this.#registerIpc(platform, service, { updates, web });
     this.#closeOverlayIpc = registerOverlayIpc(this.#overlay.controller, variant.startUrl);
-    if (variant.managedBy === undefined && (await this.#serviceDeclined(platform, service))) {
-      log.info('app.launch_declined');
-      app.quit();
-      return;
+    if (variant.managedBy === undefined) {
+      startComputer(service.controller).catch(logControlFailure);
     }
     await this.#startAgent();
-    this.#open(paths, service, updates, await this.#registerHubNetwork(config));
+    this.#open(paths, service, { updates, web }, network.capabilities);
   }
 
   #registerIpc(
     platform: DesktopPlatform,
     service: DesktopService,
-    updates: UpdateController,
+    { updates, web }: Updates,
   ): void {
     const variant = this.#variant;
     registerDesktopIpc({
@@ -192,10 +237,20 @@ class DesktopShell {
         this.#reveal();
       },
       service: service.controller,
+      pairComputer: async (pairing) => {
+        const enrolled = requireEnrolledPairingHub(await service.controller.server(), pairing);
+        await pairComputer(
+          desktopPaths(),
+          variant,
+          computerPairingArguments(pairing),
+          enrolled.token,
+        );
+      },
       talk: this.#talk,
       overlay: this.#overlay,
       capture: this.#capture,
       updates,
+      webUpdates: web,
       applyFirewall: (revision) =>
         applyFirewall(
           {
@@ -211,34 +266,7 @@ class DesktopShell {
 
   async #startAgent(): Promise<void> {
     if (this.#variant.managedBy !== undefined) return;
-    const directory = sessionAgentDirectory(process.platform, {
-      ...readAgentEnvironment(),
-      home: app.getPath('home'),
-    });
-    if (directory === null) {
-      log.warn('agent.no_location', { platform: process.platform });
-      return;
-    }
-    try {
-      this.#agent = await startSessionAgent({
-        directory,
-        platform: process.platform,
-        actions: electronAgentActions({
-          shell,
-          ring: new RingWindow(),
-          screen: this.#capture,
-          access: {
-            screenRecording: () =>
-              process.platform === 'darwin'
-                ? systemPreferences.getMediaAccessStatus('screen') === 'granted'
-                : null,
-          },
-          now: () => new Date(),
-        }),
-      });
-    } catch (cause) {
-      log.error('agent.start_failed', cause);
-    }
+    this.#agent = await startDesktopAgent(this.#capture);
   }
 
   #logLaunch(platform: DesktopPlatform): void {
@@ -250,34 +278,10 @@ class DesktopShell {
     });
   }
 
-  async #registerHubNetwork(config: ServiceConfig): Promise<NativeHubCapabilities> {
-    const routeAuthority = config.role === 'node';
-    const serverUrl = config.role === 'node' ? config.node.hub_url : serviceUrl(config);
-    const registration = await registerHubNetworkIpc(
-      this.#variant.startUrl,
-      routeAuthority,
-      (origin): void => {
-        enforceContentSecurityPolicy(
-          session.defaultSession,
-          buildContentSecurityPolicy(serverUrl, origin),
-        );
-      },
-    );
-    this.#closeHubNetwork = registration.close;
-    return registration.capabilities;
-  }
-
-  async #serviceDeclined(platform: DesktopPlatform, service: DesktopService): Promise<boolean> {
-    const outcome = await startService(platform, service, {
-      unattended: process.argv.includes(INSTALL_SERVICE_ARGUMENT),
-    });
-    return outcome === 'declined';
-  }
-
   #open(
     paths: ReturnType<typeof desktopPaths>,
     service: DesktopService,
-    updates: UpdateController,
+    { updates, web }: Updates,
     capabilities: NativeHubCapabilities,
   ): void {
     const window = createMainWindow({
@@ -293,6 +297,7 @@ class DesktopShell {
       isQuitting: () => this.#quitting,
     });
     this.#window = window;
+    confirmBootWhenLoaded(window);
     log.info('window.opened', {
       startHidden: process.argv.includes(HIDDEN_START_ARGUMENT) || wasOpenedAtLogin(),
     });
@@ -307,8 +312,8 @@ class DesktopShell {
         this.#talk.send(command);
       },
       overlayItems: () => this.#overlay.menuItems(),
-      updateItems: () => updateTrayItems(updates),
-      service: this.#trayService(service),
+      updateItems: () => web.trayItems(updates),
+      service: trayServiceOf(service.controller),
       quit: () => {
         log.info('tray.quit_requested');
         app.quit();
@@ -317,34 +322,18 @@ class DesktopShell {
     this.#talk.attach(window, this.#tray);
     this.#overlay.attach(window, this.#tray);
     this.#talk.takeFirst((command) => this.#overlay.takesShortcut(command));
+    web.attach(webUpdateWindowOf(window), () => {
+      this.#tray?.refresh();
+    });
     this.#follow(window, service, updates);
     this.#receiveFromArguments(process.argv);
   }
 
-  #trayService(service: DesktopService): TrayOptions['service'] {
-    const request = (action: 'start' | 'stop' | 'restart'): void => {
-      log.info('tray.service_requested', { action });
-      void service.controller[action]().catch(logControlFailure);
-    };
-    return {
-      start: (): void => {
-        request('start');
-      },
-      stop: (): void => {
-        request('stop');
-      },
-      restart: (): void => {
-        request('restart');
-      },
-    };
-  }
-
   #follow(window: BrowserWindow, service: DesktopService, updates: UpdateController): void {
-    const onService = followUpdates(updates, window, () => {
+    followUpdates(updates, window, () => {
       this.#tray?.refresh();
     });
     const show = (status: DesktopServiceStatus | null): void => {
-      onService(status);
       log.debug('service.status_forwarded', () => ({
         health: status?.health ?? null,
         windowAlive: !window.isDestroyed(),
@@ -408,10 +397,16 @@ function main(): void {
     app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
   }
   registerAppScheme();
+  const variant = readDesktopVariant(app.getAppPath());
+  prepareUserData(variant);
+  if (app.isPackaged && process.argv.includes(DESKTOP_PACKAGE_PROBE)) {
+    desktopPackageProbe(desktopPaths());
+    return;
+  }
+  if (handleComputerPairingCommand(variant)) return;
   const captureMode = currentCaptureMode();
   prepareScreenCapture(captureMode);
   if (app.requestSingleInstanceLock()) {
-    const variant = readDesktopVariant(app.getAppPath());
     log.debug('app.variant_read', { managedBy: variant.managedBy ?? 'self' });
     start(variant, new DisplayCapture(captureMode, variant.startUrl));
   } else {

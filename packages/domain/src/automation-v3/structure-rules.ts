@@ -62,7 +62,6 @@ const SCOPE_SHAPES: ReadonlyMap<string, ScopeShape> = new Map([
   ['flow.while', LOOP_SHAPE],
   ['flow.do_until', LOOP_SHAPE],
   ['flow.forever', LOOP_SHAPE],
-  ['flow.sequence', LOOP_SHAPE],
 ]);
 
 const OUTPUT_KINDS: ReadonlySet<string> = new Set([

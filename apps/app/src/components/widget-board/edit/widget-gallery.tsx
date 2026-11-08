@@ -4,7 +4,8 @@ import { Button } from '../../button';
 import { Sheet } from '../../sheet';
 import { Text } from '../../text';
 import type { Cell } from '../board-geometry';
-import type { WidgetDefinition } from '../types';
+import { usePickerSource } from '../picker-source';
+import type { PickerState, WidgetDefinition } from '../types';
 import { BrowseStep } from './gallery-browse-step';
 import { galleryItems, type GalleryAdd, type GalleryItem } from './gallery-model';
 import { TargetStep } from './gallery-target-step';
@@ -22,18 +23,19 @@ export interface WidgetGalleryProps {
 
 interface ContentProps {
   readonly items: readonly GalleryItem[];
+  readonly pickerState: PickerState;
   readonly flow: GalleryFlow;
   readonly placed: readonly BoardWidget[];
   readonly board: BoardClass;
   readonly cell: Cell;
 }
 
-function Content({ items, flow, placed, board, cell }: ContentProps): ReactNode {
+function Content({ items, pickerState, flow, placed, board, cell }: ContentProps): ReactNode {
   const { step, size } = flow;
   if (items.length === 0) {
     return (
       <Text variant="body" tone="variant" className="py-6 text-center">
-        Everything you can add is already on this page.
+        There are no widgets to add right now.
       </Text>
     );
   }
@@ -41,7 +43,7 @@ function Content({ items, flow, placed, board, cell }: ContentProps): ReactNode 
     return (
       <TargetStep
         item={step}
-        picker={step.entry.pick}
+        pickerState={pickerState}
         placed={placed}
         board={board}
         cell={cell}
@@ -57,6 +59,7 @@ function Content({ items, flow, placed, board, cell }: ContentProps): ReactNode 
     <BrowseStep
       items={items}
       placed={placed}
+      pickerState={pickerState}
       board={board}
       cell={cell}
       query={flow.query}
@@ -67,9 +70,17 @@ function Content({ items, flow, placed, board, cell }: ContentProps): ReactNode 
   );
 }
 
-export function WidgetGallery(props: WidgetGalleryProps): ReactNode {
-  const { open, definitions, placed, board, cell } = props;
-  const flow = useGalleryFlow(board, props.onAdd, props.onClose);
+function OpenGallery({
+  definitions,
+  placed,
+  board,
+  cell,
+  onAdd,
+  onClose,
+}: WidgetGalleryProps): ReactNode {
+  const { state: pickerState, read: readPicker } = usePickerSource();
+  const items = galleryItems(definitions, placed, board, pickerState);
+  const flow = useGalleryFlow({ board, items, placed, pickerState, readPicker, onAdd });
   const picker = flow.step?.entry.pick;
   const footer =
     picker === undefined ? undefined : (
@@ -82,15 +93,16 @@ export function WidgetGallery(props: WidgetGalleryProps): ReactNode {
     );
   return (
     <Sheet
-      open={open}
-      onClose={flow.close}
+      open
+      onClose={onClose}
       title={picker === undefined ? 'Add widget' : picker.title}
       kind="inspector"
       detents={['full']}
       footer={footer}
     >
       <Content
-        items={galleryItems(definitions, placed, board)}
+        items={items}
+        pickerState={pickerState}
         flow={flow}
         placed={placed}
         board={board}
@@ -98,4 +110,8 @@ export function WidgetGallery(props: WidgetGalleryProps): ReactNode {
       />
     </Sheet>
   );
+}
+
+export function WidgetGallery(props: WidgetGalleryProps): ReactNode {
+  return props.open ? <OpenGallery {...props} /> : null;
 }

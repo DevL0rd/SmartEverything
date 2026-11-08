@@ -277,7 +277,7 @@ describe('the models a person may use', () => {
       call(suite.current.base, kid.token, {
         method: 'POST',
         path: '/api/ai/chats',
-        body: { engine: { kind: 'openrouter', model, effort: null } },
+        body: { engine: { kind: 'dsh', model, effort: null } },
       });
     expect((await start('openai/gpt-6')).status).toBe(200);
     const refused = await start('google/gemini-3');

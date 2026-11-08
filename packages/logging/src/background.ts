@@ -1,6 +1,6 @@
 import { isEventName } from './event-name';
 import { Logger } from './logger';
-import type { LogPayload } from './redaction';
+import type { LogPayload } from './payload';
 import { assertScope } from './scope';
 
 let scope = 'tool.background';

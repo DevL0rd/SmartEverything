@@ -1,6 +1,5 @@
 export const VIRTUAL_MEMBERS_FROM = 30;
 export const MIN_ROW_WIDTH = 340;
-export const MAX_COLUMNS = 3;
 export const ROW_GAP = 8;
 
 export interface RowGroup<T> {
@@ -14,7 +13,7 @@ export function isVirtual(count: number): boolean {
 
 export function columnsFor(content: number): number {
   const fits = Math.floor((content + ROW_GAP) / (MIN_ROW_WIDTH + ROW_GAP));
-  return Math.max(1, Math.min(MAX_COLUMNS, fits));
+  return Math.max(1, fits);
 }
 
 export function rowGroups<T extends { readonly id: string }>(

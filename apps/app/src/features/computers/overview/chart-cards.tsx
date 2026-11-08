@@ -3,8 +3,8 @@ import { View } from 'react-native';
 import { Card } from '../../../components/card';
 import { Segmented } from '../../../components/segmented';
 import { Text } from '../../../components/text';
-import { useAreaWidth } from '../../../design/size-class';
-import { twoColumnsAt } from '../model/sections';
+import { useFrameBodyWidth } from '../../../components/section-body';
+import { twoFrameColumnsAt } from '../../../components/frame-layout';
 import { DemandRegion } from '../../../store/demand-region';
 import { LiveSeriesChart, type LiveLine } from '../components/live-series-chart';
 import { useComputerSelect } from '../data/computer-metrics';
@@ -18,9 +18,15 @@ import {
 } from '../model/computer-charts';
 
 const CHART_HEIGHT = 150;
+const SINGLE_CHART_ROW_MIN_WIDTH = 1328;
 
-function pairsOf(kinds: readonly OverviewChart[]): readonly (readonly OverviewChart[])[] {
-  return kinds.flatMap((_, index) => (index % 2 === 0 ? [kinds.slice(index, index + 2)] : []));
+function rowsOf(
+  kinds: readonly OverviewChart[],
+  columns: number,
+): readonly (readonly OverviewChart[])[] {
+  return kinds.flatMap((_, index) =>
+    index % columns === 0 ? [kinds.slice(index, index + columns)] : [],
+  );
 }
 
 function useLines(deviceId: string, kind: OverviewChart): readonly LiveLine[] {
@@ -118,16 +124,19 @@ export function OverviewCharts({
   readonly hasGpu: boolean;
   readonly offline: boolean;
 }): ReactNode {
-  const wide = twoColumnsAt(useAreaWidth());
+  const width = useFrameBodyWidth();
   const kinds: readonly OverviewChart[] = hasGpu
     ? ['cpu', 'gpu', 'net', 'disk']
     : ['cpu', 'net', 'disk'];
-  if (!wide) return <SwitchedChart deviceId={deviceId} kinds={kinds} offline={offline} />;
+  if (!twoFrameColumnsAt(width)) {
+    return <SwitchedChart deviceId={deviceId} kinds={kinds} offline={offline} />;
+  }
+  const columns = width >= SINGLE_CHART_ROW_MIN_WIDTH ? kinds.length : 2;
   return (
     <View className="gap-4">
-      {pairsOf(kinds).map((pair) => (
-        <View key={pair.join()} className="flex-row gap-4">
-          {pair.map((kind) => (
+      {rowsOf(kinds, columns).map((row) => (
+        <View key={row.join()} className="flex-row gap-4">
+          {row.map((kind) => (
             <ChartCard key={kind} deviceId={deviceId} kind={kind} offline={offline} />
           ))}
         </View>

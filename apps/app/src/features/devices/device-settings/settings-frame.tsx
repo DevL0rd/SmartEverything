@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { useTabGroup } from '../../../app-shell/tab-group';
 import { href } from '../../../app-shell/hrefs';
 import type { Crumb } from '../../../components/breadcrumbs';
 import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { Screen, type ScreenProps } from '../../../components/screen';
 import { useDevice } from '../../../store/selectors';
 
 const ORIGINS: Readonly<Record<string, Crumb>> = {
@@ -17,7 +17,7 @@ const ORIGINS: Readonly<Record<string, Crumb>> = {
 
 const DEVICES: Crumb = { label: 'Devices', href: href.devices() };
 
-function settingsHref(deviceId: string): Href {
+function settingsHref(deviceId: string): AppHref {
   return href.settings.device(deviceId);
 }
 
@@ -36,11 +36,13 @@ export function DeviceSettingsFrame({
   deviceId,
   name,
   title,
+  maxWidth = 'reading',
   children,
 }: {
   readonly deviceId: string;
   readonly name: string;
   readonly title: string;
+  readonly maxWidth?: ScreenProps['maxWidth'];
   readonly children: ReactNode;
 }): ReactNode {
   const sub = title !== name;
@@ -54,7 +56,7 @@ export function DeviceSettingsFrame({
           breadcrumbs={crumbs}
         />
       }
-      maxWidth="reading"
+      maxWidth={maxWidth}
     >
       {children}
     </Screen>

@@ -27,7 +27,7 @@ import {
 import { sensorTransition } from './component-events';
 import { applyNotificationEffects } from './notification-effects';
 import { executeShelly, type ExecutionHost } from './execute';
-import type { ShellyOutcome, ShellyRequest } from './operate';
+import { isValueAction, type ShellyOutcome, type ShellyRequest } from './operate';
 import type { OperationPorts } from './ports';
 import { shellyDevices, projectShellyReadings } from './projector';
 import { readShellyResource, type ShellyResource } from './resources';
@@ -169,6 +169,7 @@ export class ShellySession {
   }
 
   execute(request: ShellyRequest): Promise<ShellyOutcome> {
+    if (isValueAction(request.action)) return executeShelly(this.host(), request);
     const pending = this.executing.then(() => executeShelly(this.host(), request));
     // eslint-disable-next-line local/no-swallowed-errors -- the caller receives the same failure from the request
     this.executing = pending.catch(() => undefined);

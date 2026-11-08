@@ -19,7 +19,6 @@ export function snippetEntry(snippet: Snippet): PaletteEntry {
     kindId: null,
     usageId: null,
     trigger: false,
-    disabled: null,
   };
 }
 

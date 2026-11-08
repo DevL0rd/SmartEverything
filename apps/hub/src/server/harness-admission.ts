@@ -17,7 +17,7 @@ export function admitComputerRequest(
 ): AiModelRoute | undefined {
   const { id, epoch } = requestSession(request);
   const grant = service.storage.grant(id);
-  const state = service.store.harnessCoordination.state(id);
+  const state = service.store.harnessSessions.state(id);
   if (state?.epoch !== epoch)
     throw new ApiError(
       'conflict',

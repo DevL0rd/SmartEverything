@@ -1,12 +1,14 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import {
-  AUTOMATION_ROW_V3,
+  AUTOMATION_ROW,
   EMPTY_LAYOUT,
-  type AutomationRowV3,
+  type StoredAutomationRow,
   type FlowNode,
   type JsonValue,
   type PortValue,
   type TriggerNode,
 } from '@smarteverything/domain';
+import { unstructure } from '@smarteverything/flow/graph/unstructure';
 
 const STAMP = '2026-10-16T08:00:00.000Z';
 
@@ -61,22 +63,25 @@ export interface StoredAutomation {
   readonly enabled?: boolean;
 }
 
-export function storedAutomationRow(stored: StoredAutomation): AutomationRowV3 {
-  return AUTOMATION_ROW_V3.parse({
+export function storedAutomationRow(stored: StoredAutomation): StoredAutomationRow {
+  return AUTOMATION_ROW.parse({
     id: rowId(stored.index),
     name: stored.name,
     enabled: stored.enabled ?? true,
     revision: 1,
-    definition: {
-      version: 3,
-      kind: 'automation',
-      triggers: stored.triggers,
-      inputs: [],
-      outputs: [],
-      variables: [],
-      body: { nodes: stored.nodes },
-      policy: { mode: 'single' },
-    },
+    definition: unstructure(
+      {
+        version: 3,
+        kind: 'automation',
+        triggers: [...stored.triggers],
+        inputs: [],
+        outputs: [],
+        variables: [],
+        body: { nodes: [...stored.nodes] },
+        policy: { mode: 'single' },
+      },
+      STATIC_KIND_LOOKUP,
+    ),
     draft: null,
     layout: EMPTY_LAYOUT,
     origin: null,

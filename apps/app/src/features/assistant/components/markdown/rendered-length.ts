@@ -1,5 +1,5 @@
 import { graphemeCount } from '../../model/stream-fade';
-import type { Block, Inline } from './parse';
+import type { Block, Inline } from '@smarteverything/domain/markdown';
 
 const known = new WeakMap<readonly Block[], number>();
 

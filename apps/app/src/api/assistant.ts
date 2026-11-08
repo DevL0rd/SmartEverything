@@ -35,12 +35,16 @@ export interface UploadStart {
   readonly name: string;
   readonly mime: string;
   readonly bytes: number;
+  readonly levels?: readonly number[];
 }
 
 export async function startAssistantUpload(
   file: UploadStart,
 ): Promise<{ readonly uploadId: string; readonly chunkBytes: number }> {
-  const upload = await api().call(E.startAssistantUpload, { body: { ...file } });
+  const { levels, ...metadata } = file;
+  const upload = await api().call(E.startAssistantUpload, {
+    body: { ...metadata, ...(levels === undefined ? {} : { levels: [...levels] }) },
+  });
   return { uploadId: upload.uploadId, chunkBytes: upload.chunkBytes };
 }
 

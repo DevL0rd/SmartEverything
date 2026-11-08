@@ -11,7 +11,6 @@ import { EarWatch, NEAR_SETTLE_MS, SILENT_MS, SUMMARY_MS } from '../../../src/no
 import type { WakeGrant } from '../../../src/wake-name/wake-claims';
 import {
   WAKE_CLIP_REQUEST_FILE,
-  WAKE_DIAGNOSTICS_DIRECTORY,
   WakeDiagnostics,
 } from '../../../src/node/ear/wake-diagnostics';
 import { captureLogs, type CapturedLogs } from '../../support/logs';
@@ -76,7 +75,7 @@ function bench(sensitivity: WakeSensitivity, diagnose: boolean): Bench {
   const heard = realSpotter(['Coordinator'], sensitivity);
   const diagnostics = diagnose
     ? new WakeDiagnostics({
-        dataDirectory: directory,
+        directory,
         spotter: (): KeywordSpotter => heard.engine,
         clock,
         log: new Logger('hub.wake-name'),
@@ -236,7 +235,7 @@ describe('near misses on recorded audio', () => {
     expect(heard?.['clipMs']).toBeGreaterThan(4000);
     expect(heard?.['score']).toBeGreaterThanOrEqual(0.06);
     expect(heard?.['score']).toBeLessThan(0.15);
-    const saved = await readdir(join(directory, WAKE_DIAGNOSTICS_DIRECTORY));
+    const saved = await readdir(directory);
     expect(saved).toEqual([heard?.['clip']]);
     await ear.close();
   }, 60_000);

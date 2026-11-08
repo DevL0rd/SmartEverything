@@ -2,7 +2,7 @@ import {
   AUTOMATION_REVISION_ROW,
   type AutomationAuthor,
   type AutomationRevisionRow,
-  type AutomationV3,
+  type AutomationV4,
   type Layout,
 } from '@smarteverything/domain';
 import { storedRow } from '../codec';
@@ -18,7 +18,7 @@ const COLUMNS = 'automation_id, revision, definition, layout, plan_hash, saved_a
 export interface NewAutomationRevision {
   readonly automationId: string;
   readonly revision: number;
-  readonly definition: AutomationV3;
+  readonly definition: AutomationV4;
   readonly layout: Layout;
   readonly planHash: string;
   readonly author: AutomationAuthor | null;

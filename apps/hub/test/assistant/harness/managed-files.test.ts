@@ -15,7 +15,7 @@ let refuseWrites: boolean;
 
 beforeEach(async () => {
   rig = await harnessRig();
-  files = new ProjectFilesService(rig.opened.directory);
+  files = new ProjectFilesService(rig.opened.layout, rig.opened.store.aiChats);
   const chat = rig.newChat({ kind: 'server' });
   writes = [];
   refuseWrites = false;

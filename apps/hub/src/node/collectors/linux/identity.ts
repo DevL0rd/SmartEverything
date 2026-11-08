@@ -1,5 +1,6 @@
 import {
   NODE_HELLO,
+  NODE_PROTOCOL_VERSION,
   type ComputerFeature,
   type NodeHello,
   type NodeInterface,
@@ -52,6 +53,7 @@ export function readIdentity(
   features: readonly ComputerFeature[] = [],
 ): NodeHello {
   return NODE_HELLO.parse({
+    protocol: NODE_PROTOCOL_VERSION,
     machineId: readFileSync('/etc/machine-id', 'utf8').trim(),
     hostname: hostname(),
     os: { name: osName(), kernel: release() },

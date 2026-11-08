@@ -17,7 +17,7 @@ import { background } from '@smarteverything/logging';
 const BATCH_MS = 100;
 const RATE_MS = 1_000;
 const WIRE_QUIET_MS = 10_000;
-const ACTIVITY_KEPT = 200;
+export const ACTIVITY_KEPT = 200;
 
 export interface MonitorOptions {
   readonly rest: SyncthingRest;

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
@@ -8,7 +8,8 @@ import { cn } from '../../../design/cn';
 import { stateCopy, type StateCopy } from './player-copy';
 import type { PlayerState } from './player-state';
 
-type FirewallFix = { readonly kind: 'here'; readonly href: Href } | { readonly kind: 'elsewhere' };
+type FirewallFix =
+  { readonly kind: 'here'; readonly href: AppHref } | { readonly kind: 'elsewhere' };
 
 export interface StateActions {
   readonly retry: () => void;
@@ -24,6 +25,7 @@ export interface PlayerStateViewProps {
   readonly now: number;
   readonly actions: StateActions;
   readonly compact: boolean;
+  readonly cameraNameShown: boolean;
   readonly underBar?: boolean;
   readonly muted?: boolean;
 }
@@ -31,7 +33,7 @@ export interface PlayerStateViewProps {
 interface Action {
   readonly label: string;
   readonly onPress?: () => void;
-  readonly href?: Href;
+  readonly href?: AppHref;
 }
 
 function withAction(actions: readonly (Action | null)[]): readonly Action[] {
@@ -97,10 +99,12 @@ function Copy({
   copy,
   body,
   compact,
+  shortTitle,
 }: {
   readonly copy: StateCopy;
   readonly body: string | null;
   readonly compact: boolean;
+  readonly shortTitle: string | undefined;
 }): ReactNode {
   return (
     <View className="max-w-dialog items-center gap-1">
@@ -108,8 +112,9 @@ function Copy({
         variant={compact ? 'body-strong' : 'title-3'}
         align="center"
         numberOfLines={compact ? 1 : 3}
+        accessibilityLabel={shortTitle === undefined ? undefined : copy.title}
       >
-        {copy.title}
+        {shortTitle ?? copy.title}
       </Text>
       {body === null || compact ? null : (
         <Text variant="callout" tone="variant" align="center" numberOfLines={2}>
@@ -153,6 +158,7 @@ export function PlayerStateView(props: PlayerStateViewProps): ReactNode {
     return null;
   }
   const body = bodyOf(state, copy, actions);
+  const shortTitle = props.cameraNameShown && state.kind === 'offline' ? 'Offline' : undefined;
   const buttons = compact ? [] : actionsOf(state, actions).slice(0, 2);
   const quiet = compact && state.kind === 'connecting';
   return (
@@ -165,7 +171,7 @@ export function PlayerStateView(props: PlayerStateViewProps): ReactNode {
       )}
     >
       <Mark copy={copy} compact={compact} />
-      {quiet ? null : <Copy copy={copy} body={body} compact={compact} />}
+      {quiet ? null : <Copy copy={copy} body={body} compact={compact} shortTitle={shortTitle} />}
       <Buttons buttons={buttons} />
     </View>
   );

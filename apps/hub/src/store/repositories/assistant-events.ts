@@ -21,6 +21,8 @@ const STORED_EVENT = storedRow(
     delivered_at: MOMENT.nullable(),
     answered_at: MOMENT.nullable(),
     report_to: z.uuid().nullable(),
+    helper_parent_message_id: z.uuid().nullable().optional(),
+    helper_quote_text: z.string().nullable().optional(),
     hops: z.int().min(0),
   }),
   {},
@@ -32,14 +34,12 @@ export type NewEvent = Pick<
   StoredEvent,
   'id' | 'kind' | 'chat_id' | 'message_id' | 'profile_id' | 'client_id' | 'text'
 > &
-  Partial<Pick<StoredEvent, 'report_to' | 'hops'>>;
+  Partial<
+    Pick<StoredEvent, 'report_to' | 'hops' | 'helper_parent_message_id' | 'helper_quote_text'>
+  >;
 
 const EVENT_COLUMNS =
-  'cursor, id, kind, chat_id, message_id, profile_id, client_id, text, received_at, delivered_at, answered_at, report_to, hops';
-
-const COUNT = z.strictObject({ count: z.int().min(0) });
-
-const LATEST = z.strictObject({ at: MOMENT.nullable() });
+  'cursor, id, kind, chat_id, message_id, profile_id, client_id, text, received_at, delivered_at, answered_at, report_to, hops, helper_parent_message_id, helper_quote_text';
 
 const HOPS = z.strictObject({ hops: z.int().min(0) });
 
@@ -56,9 +56,6 @@ function chatHasUnsettledWork(context: StoreContext, chatId: string): boolean {
         where s.chat_id=$chat and o.state<>'completed')
       or exists(select 1 from harness_deliveries d join dsh_sessions s using(session_id)
         where s.chat_id=$chat and d.state<>'completed')
-      or exists(select 1 from harness_children c join dsh_sessions s
-        on s.session_id=c.parent_session or s.session_id=c.child_session
-        where s.chat_id=$chat and (c.state not in ('completed','failed') or c.delivered=0))
     ) as unsettled`,
     { chat: chatId },
   );
@@ -75,8 +72,8 @@ export class AssistantEventsRepository {
       this.context.sql.run(
         'queue the assistant request',
         `insert into assistant_events
-           (id, kind, chat_id, message_id, profile_id, client_id, text, received_at, report_to, hops)
-         values ($id, $kind, $chat, $message, $profile, $client, $text, $now, $report, $hops)`,
+           (id, kind, chat_id, message_id, profile_id, client_id, text, received_at, report_to, hops, helper_parent_message_id, helper_quote_text)
+         values ($id, $kind, $chat, $message, $profile, $client, $text, $now, $report, $hops, $helperParent, $helperQuote)`,
         {
           id: input.id,
           kind: input.kind,
@@ -88,6 +85,8 @@ export class AssistantEventsRepository {
           now: this.context.now(),
           report: input.report_to ?? null,
           hops: input.hops ?? 0,
+          helperParent: input.helper_parent_message_id ?? null,
+          helperQuote: input.helper_quote_text ?? null,
         },
       );
       return this.event(input.id);
@@ -167,24 +166,18 @@ export class AssistantEventsRepository {
     );
   }
 
-  personAt(chatId: string): string | null {
-    const row = this.context.sql.get(
-      LATEST,
-      `select max(received_at) as at from assistant_events
-       where chat_id = $chat and kind in ('chat', 'voice') and hops = 0`,
-      { chat: chatId },
+  settledHelperEvents(): StoredEvent[] {
+    return this.context.sql.all(
+      STORED_EVENT,
+      `select ${EVENT_COLUMNS} from assistant_events
+       where helper_parent_message_id is not null
+       and exists (select 1 from assistant_messages
+         where id=assistant_events.helper_parent_message_id and state is null)
+       and (answered_at is not null or exists (select 1 from assistant_messages
+         where id=assistant_events.message_id and state in ('answered', 'failed'))
+       or exists (select 1 from assistant_messages
+         where reply_to=assistant_events.message_id and role='responder' and state='answered'))`,
     );
-    return row?.at ?? null;
-  }
-
-  aiArrivals(chatId: string, since: string): number {
-    const row = this.context.sql.get(
-      COUNT,
-      `select count(*) as count from assistant_events
-       where chat_id = $chat and received_at > $since and (hops > 0 or kind = 'report')`,
-      { chat: chatId, since },
-    );
-    return row?.count ?? 0;
   }
 
   currentHops(chatId: string): number {

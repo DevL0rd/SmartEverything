@@ -81,6 +81,9 @@ function sameSeen(left: LastSeen | null, right: LastSeen | null): boolean {
   return left?.at === right?.at && left?.wentOffline === right?.wentOffline;
 }
 
-export function useLastSeen(deviceId: string): LastSeen | null {
-  return useStoreSelector((state) => lastSeenIn(state, deviceId), sameSeen);
+export function useLastSeen(deviceId: string, wanted = true): LastSeen | null {
+  return useStoreSelector((state) => (wanted ? lastSeenIn(state, deviceId) : null), sameSeen, [
+    deviceId,
+    wanted,
+  ]);
 }

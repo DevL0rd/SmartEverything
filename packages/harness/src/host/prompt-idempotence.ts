@@ -2,6 +2,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { ContextFormed } from '@deepseek-ai/dsh-llm';
 import { Logger } from '@smarteverything/logging';
+import { HUB_NOTE_SOURCE } from './hub-note';
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -11,13 +12,15 @@ declare module '@deepseek-ai/dsh-llm' {
 
 const log = new Logger('hub.harness');
 
+const DELIVERED_SOURCES: ReadonlySet<string> = new Set(['user', HUB_NOTE_SOURCE.kind]);
+
 export function mountPromptIdempotence(ctx: Context): void {
   ctx.on('agent/pre-step', async ({ agent, messages }, next) => {
     const decision = await next();
     if (decision.kind === 'reject') return decision;
     const known = new Set(agent.session.deriveMessages().map((message) => message.id));
     const fresh = decision.messages.filter(
-      (message) => message.source.kind !== 'user' || !known.has(message.id),
+      (message) => !DELIVERED_SOURCES.has(message.source.kind) || !known.has(message.id),
     );
     if (fresh.length === decision.messages.length) return decision;
     log.info('session.duplicate_prompt_skipped', {

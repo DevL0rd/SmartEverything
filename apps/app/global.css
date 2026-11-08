@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 @import 'uniwind';
 
+@custom-variant input-focus-visible (&:has(> input:focus-visible));
+
 @theme {
   --breakpoint-*: initial;
   --breakpoint-medium: 600px;
@@ -16,7 +18,7 @@
   --spacing-app-bar: 64px;
   --spacing-large-app-bar: 112px;
   --spacing-page-header: 56px;
-  --spacing-master: 300px;
+  --spacing-master: 420px;
   --spacing-inspector: 420px;
   --spacing-popover: 360px;
   --spacing-picker: 560px;
@@ -32,6 +34,9 @@
   --container-dialog: 480px;
   --container-dialog-wide: 640px;
   --container-call: 420px;
+
+  --radius-bubble: 20px;
+  --radius-tail: 6px;
 
   --font-sans: 'Geist-Regular';
   --font-sans-medium: 'Geist-Medium';
@@ -150,7 +155,7 @@
       --spacing-row-h-2: 72px;
       --spacing-gutter: 16px;
       --spacing-grid-gap: 12px;
-      --spacing-section-gap: 24px;
+      --spacing-section-gap: 20px;
       --spacing-card-pad: 16px;
       --spacing-row-unit: 80px;
 
@@ -170,14 +175,14 @@
       --color-chrome: #fbfaf8;
       --color-on-surface: #18171b;
       --color-on-surface-variant: #5d5952;
-      --color-on-surface-faint: #8d887f;
+      --color-on-surface-faint: #5d5952;
       --color-outline: rgba(0, 0, 0, 0.14);
       --color-outline-variant: rgba(0, 0, 0, 0.07);
       --color-track: #7a7a86;
       --color-scrim: rgba(16, 14, 10, 0.36);
-      --color-primary: #a9620a;
+      --color-primary: #955607;
       --color-on-primary: #ffffff;
-      --color-primary-container: rgba(169, 98, 10, 0.14);
+      --color-primary-container: rgba(149, 86, 7, 0.14);
       --color-on-primary-container: #8a4f07;
       --color-orb-shine: #ffffff;
       --color-positive: #1a7a43;
@@ -185,7 +190,7 @@
       --color-caution: #9a4508;
       --color-critical: #c8321e;
       --color-info: #3159c9;
-      --color-focus: #a9620a;
+      --color-focus: #955607;
       --color-viz-1: #00808a;
       --color-viz-2: #a9620a;
       --color-viz-3: #5b47d6;
@@ -254,7 +259,7 @@
       --spacing-row-h-2: 72px;
       --spacing-gutter: 16px;
       --spacing-grid-gap: 12px;
-      --spacing-section-gap: 24px;
+      --spacing-section-gap: 20px;
       --spacing-card-pad: 16px;
       --spacing-row-unit: 80px;
 
@@ -296,4 +301,13 @@
   * {
     scrollbar-color: var(--color-primary) color-mix(in srgb, var(--color-bg) 90%, black);
   }
+}
+
+@utility shell-update-inset {
+  margin-bottom: calc(0px - env(safe-area-inset-top));
+}
+
+@utility shell-update-gutter {
+  padding-left: calc(var(--spacing-gutter) + env(safe-area-inset-left));
+  padding-right: calc(var(--spacing-gutter) + env(safe-area-inset-right));
 }

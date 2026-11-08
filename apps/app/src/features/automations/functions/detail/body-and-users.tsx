@@ -1,4 +1,5 @@
-import type { AutomationFunctionDetail, AutomationFunctionUser } from '@smarteverything/domain';
+import type { AutomationFunctionUser } from '@smarteverything/domain';
+import type { FunctionDetail } from '../../data/graph-adapter';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../../../components/badge';
@@ -9,7 +10,7 @@ import { bodyLines, usedByGroups, type BodyLine } from './detail-model';
 
 const INDENT = ['pl-0', 'pl-4', 'pl-8', 'pl-12'] as const;
 
-export function BodyPreview({ detail }: { readonly detail: AutomationFunctionDetail }): ReactNode {
+export function BodyPreview({ detail }: { readonly detail: FunctionDetail }): ReactNode {
   const lines: readonly BodyLine[] = bodyLines(detail.program);
   return (
     <Card title="Steps inside" icon="automations">
@@ -21,9 +22,7 @@ export function BodyPreview({ detail }: { readonly detail: AutomationFunctionDet
         <View className="gap-1">
           {lines.map((line, index) => (
             <View key={line.key} className={INDENT[Math.min(line.depth, INDENT.length - 1)] ?? ''}>
-              <Text variant="callout" numberOfLines={1}>
-                {`${String(index + 1)}. ${line.text}`}
-              </Text>
+              <Text variant="callout">{`${String(index + 1)}. ${line.text}`}</Text>
             </View>
           ))}
         </View>
@@ -47,7 +46,7 @@ function UserRow({
       }}
       className="min-h-touch-min flex-row items-center justify-between gap-2"
     >
-      <Text variant="body" numberOfLines={1} className="min-w-0 flex-1">
+      <Text variant="body" className="min-w-0 flex-1">
         {user.name}
       </Text>
       <Badge label={user.kind === 'automation' ? 'Automation' : 'Custom Node'} tone="neutral" />
@@ -59,7 +58,7 @@ export function UsedBy({
   detail,
   onOpen,
 }: {
-  readonly detail: AutomationFunctionDetail;
+  readonly detail: FunctionDetail;
   readonly onOpen: (user: AutomationFunctionUser) => void;
 }): ReactNode {
   const groups = usedByGroups(detail);
@@ -77,7 +76,7 @@ export function UsedBy({
   );
 }
 
-export function Versions({ detail }: { readonly detail: AutomationFunctionDetail }): ReactNode {
+export function Versions({ detail }: { readonly detail: FunctionDetail }): ReactNode {
   return (
     <Card title="Versions" icon="clock">
       <View className="min-h-touch-min flex-row items-center justify-between gap-2">

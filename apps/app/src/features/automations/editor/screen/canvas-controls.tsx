@@ -1,7 +1,7 @@
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { IconButton } from '../../../../components/icon-button';
-import type { ViewportCommand } from '../../model/canvas/contract';
+import type { ViewportCommand } from '../canvas/viewport';
 
 export type ViewportKind = ViewportCommand['type'];
 
@@ -19,13 +19,18 @@ export const CanvasControls = memo(function CanvasControls({
       accessibilityRole="toolbar"
       accessibilityLabel="Canvas view"
       pointerEvents="box-none"
-      className="absolute right-3 top-3 items-center gap-1 rounded-full border border-outline-variant bg-surface-raised p-1 elevation-2"
+      className={
+        touch
+          ? 'absolute right-2 top-2 rounded-full border border-outline-variant bg-surface-1'
+          : 'items-center gap-1 border-l border-outline-variant bg-surface-1 p-1'
+      }
     >
       {touch ? null : (
         <IconButton
           icon="plus"
           label="Zoom in"
           shortcut="+"
+          tooltip="left"
           onPress={() => {
             onCommand('zoomIn');
           }}
@@ -36,6 +41,7 @@ export const CanvasControls = memo(function CanvasControls({
           icon="minus"
           label="Zoom out"
           shortcut="-"
+          tooltip="left"
           onPress={() => {
             onCommand('zoomOut');
           }}
@@ -43,8 +49,9 @@ export const CanvasControls = memo(function CanvasControls({
       )}
       <IconButton
         icon="maximize"
-        label="Fit to screen"
+        label="Fit to view"
         shortcut="F"
+        tooltip="left"
         onPress={() => {
           onCommand('fit');
         }}

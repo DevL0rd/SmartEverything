@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Ambient, Stage, Text } from 'smarteverything-kit';
 
 const body = (
@@ -9,12 +10,12 @@ const body = (
     </div>
   </div>
 );
-export const Wash = () => (
+export const Wash = (): ReactElement => (
   <Stage theme="dark" width={560}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={560}>
     {body}
   </Stage>

@@ -10,9 +10,20 @@ import {
   nodeCatalogue,
   type NodeKind,
 } from '../../src/index';
+import { PLANNER_KINDS } from '../../src/automation-nodes/planner';
+import { APPLIANCE_TRIGGER_KINDS } from '../../src/automation-nodes/triggers-appliance';
+import { VACUUM_TRIGGER_KINDS } from '../../src/automation-nodes/triggers-vacuum';
+
+const PLANNER_TRIGGER_KINDS = PLANNER_KINDS.filter((each) => each.class === 'trigger');
 
 const LAMP = '11111111-1111-4111-8111-111111111111';
-const registry = buildRegistry([...TRIGGER_KINDS, ...TRIGGER_V11_KINDS]);
+const registry = buildRegistry([
+  ...TRIGGER_KINDS,
+  ...TRIGGER_V11_KINDS,
+  ...APPLIANCE_TRIGGER_KINDS,
+  ...VACUUM_TRIGGER_KINDS,
+  ...PLANNER_TRIGGER_KINDS,
+]);
 
 function kind(id: string): NodeKind {
   const found = registry.get(id);
@@ -60,7 +71,13 @@ describe('trigger kinds', () => {
       expect(each.access).toBe('member');
       expect(each.exits).toEqual([]);
     }
-    expect(registry.shipped()).toHaveLength(TRIGGER_KINDS.length + TRIGGER_V11_KINDS.length);
+    expect(registry.shipped()).toHaveLength(
+      TRIGGER_KINDS.length +
+        TRIGGER_V11_KINDS.length +
+        APPLIANCE_TRIGGER_KINDS.length +
+        VACUUM_TRIGGER_KINDS.length +
+        PLANNER_TRIGGER_KINDS.length,
+    );
   });
 
   it('takes only static options except the watched condition, and no filter', () => {
@@ -74,7 +91,13 @@ describe('trigger kinds', () => {
 
   it('shows up in the catalogue', () => {
     const entries = nodeCatalogue(registry, { group: 'triggers' });
-    expect(entries).toHaveLength(TRIGGER_KINDS.length + TRIGGER_V11_KINDS.length);
+    expect(entries).toHaveLength(
+      TRIGGER_KINDS.length +
+        TRIGGER_V11_KINDS.length +
+        APPLIANCE_TRIGGER_KINDS.length +
+        VACUUM_TRIGGER_KINDS.length +
+        PLANNER_TRIGGER_KINDS.length,
+    );
     expect(nodeCatalogue(registry, { query: 'baby' }).map((entry) => entry.id)).toEqual([
       'trigger.camera',
     ]);
@@ -190,6 +213,10 @@ describe('compile to matcher', () => {
         'trigger.webhook',
         'trigger.hub_started',
         'trigger.weather',
+        'trigger.appliance',
+        'trigger.safety',
+        'trigger.vacuum',
+        'trigger.planner',
       ].sort(),
     );
     for (const id of Object.keys(DEVICE_MATCHER_MAPPINGS)) expect(registry.has(id)).toBe(true);
@@ -296,11 +323,11 @@ describe('compile to matcher', () => {
   it('presence follows the event choice', () => {
     expect(compileTriggerMatcher('trigger.presence', {})).toEqual({
       ok: true,
-      matcher: { source: 'plugin_router', kind: 'person_arrived' },
+      matcher: { source: 'presence', kind: 'person_arrived' },
     });
     expect(compileTriggerMatcher('trigger.presence', { event: 'left', person: LAMP })).toEqual({
       ok: true,
-      matcher: { source: 'plugin_router', kind: 'person_left', match: { person_id: LAMP } },
+      matcher: { source: 'presence', kind: 'person_left', match: { person_id: LAMP } },
     });
     expect(compileTriggerMatcher('trigger.presence', { event: 'sideways' }).ok).toBe(false);
   });

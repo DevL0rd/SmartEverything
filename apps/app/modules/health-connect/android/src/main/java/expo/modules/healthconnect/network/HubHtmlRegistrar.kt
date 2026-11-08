@@ -77,8 +77,9 @@ class HubHtmlRegistrar(private val context: () -> Context, private val policy: (
     val alias = Alias(input)
     alias.owners.add(projection)
     val assets = HubHtmlAssets(input, policy(), alias::check)
-    try { alias.broker = HubHtmlBroker(context(), identity, input.page, alias::check, assets) }
-    catch (failure: Exception) { assets.close(); throw failure }
+    val relay = input.page.server?.let { HubServerRelay(input, policy(), alias::check) }
+    try { alias.broker = HubHtmlBroker(context(), identity, input.page, alias::check, assets, relay) }
+    catch (failure: Exception) { assets.close(); relay?.close(); throw failure }
     aliases[identity] = alias
     alias.broker
   }
@@ -95,7 +96,7 @@ class HubHtmlRegistrar(private val context: () -> Context, private val policy: (
     val browserId = input.getString("browserId")
     require(browserId.length in 1..512)
     try {
-      view.bind(browserId, broker.origin() + projection.input.page.encodedPath(), broker.origin(), broker.gate.cookie(), projection.input.page.chatId, projection::check) { projection.detach(view) }
+      view.bind(browserId, broker.origin() + projection.input.page.encodedPath(), broker.origin(), broker.gate.cookie(), projection.input.page.chatId, projection.input.page.server != null, projection::check) { projection.detach(view) }
       projection.attach(view)
       view.markAttached(json)
     } catch (failure: Exception) { view.retire(); projection.detach(view); throw failure }

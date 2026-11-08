@@ -1,18 +1,20 @@
-import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
-import { Interactive } from '../../../components/interactive';
+import { useState, type ReactNode } from 'react';
+import { View } from 'react-native';
+import { ChoiceChip } from '../../../components/choice-chip';
+import { FlatChoice } from '../../../components/flat-choice';
+import { HScroller } from '../../../components/h-scroller';
 import { SearchField } from '../../../components/search-field';
-import { Text } from '../../../components/text';
-import { cn } from '../../../design/cn';
-import { count as formatCount } from '../../../format/number';
+import { count } from '../../../format/number';
 import {
+  DEFAULT_VIEW,
   SEARCH_FROM,
   SORTS,
   type FilterChoice,
-  type FilterId,
-  type SortId,
   type View as ListView,
 } from './list-view';
+
+const INLINE_FILTER_MIN = 520;
+const SORT_OPTIONS = SORTS.map(({ id, label }) => ({ value: id, label }));
 
 export interface FiltersProps {
   readonly choices: readonly FilterChoice[];
@@ -21,73 +23,64 @@ export interface FiltersProps {
   readonly onChange: (view: ListView) => void;
 }
 
-function Chip({
-  label,
-  count,
-  active,
-  onPress,
-}: {
-  readonly label: string;
-  readonly count?: number;
-  readonly active: boolean;
-  readonly onPress: () => void;
+function StatusFilters({
+  choices,
+  view,
+  onChange,
+  narrow,
+}: Pick<FiltersProps, 'choices' | 'view' | 'onChange'> & {
+  readonly narrow: boolean;
 }): ReactNode {
+  if (narrow) {
+    return (
+      <ChoiceChip
+        label="Filter automations"
+        icon="filter"
+        options={choices.map((choice) => ({
+          value: choice.id,
+          label: `${choice.label} · ${count(choice.count)}`,
+        }))}
+        value={view.filter}
+        all={DEFAULT_VIEW.filter}
+        onChange={(filter) => {
+          onChange({ ...view, filter });
+        }}
+      />
+    );
+  }
   return (
-    <Interactive
-      role="tab"
-      label={count === undefined ? label : `${label}, ${formatCount(count)}`}
-      selected={active}
-      onPress={onPress}
-      className={cn(
-        'min-h-touch-min flex-row items-center gap-1.5 rounded-full border-hairline px-3',
-        active ? 'border-primary bg-primary-container' : 'border-outline-variant bg-surface-1',
-      )}
-      layerClassName="rounded-full"
-    >
-      <Text variant="label" tone={active ? 'primary' : 'default'} numberOfLines={1}>
-        {label}
-      </Text>
-      {count === undefined ? null : (
-        <Text variant="label" tone="variant" className="tabular">
-          {formatCount(count)}
-        </Text>
-      )}
-    </Interactive>
-  );
-}
-
-function SortRow({
-  sort,
-  onPick,
-}: {
-  readonly sort: SortId;
-  readonly onPick: (sort: SortId) => void;
-}): ReactNode {
-  return (
-    <View className="flex-row flex-wrap items-center gap-2">
-      <Text variant="caption" tone="variant">
-        Sort
-      </Text>
-      {SORTS.map((option) => (
-        <Chip
-          key={option.id}
-          label={option.label}
-          active={option.id === sort}
-          onPress={() => {
-            onPick(option.id);
-          }}
-        />
-      ))}
-    </View>
+    <HScroller label="Automation filters" fade>
+      <View
+        className="flex-row"
+        accessibilityRole="radiogroup"
+        accessibilityLabel="Filter automations"
+      >
+        {choices.map((choice) => (
+          <FlatChoice
+            key={choice.id}
+            role="radio"
+            label={choice.label}
+            count={choice.count}
+            active={choice.id === view.filter}
+            onPress={() => {
+              onChange({ ...view, filter: choice.id });
+            }}
+          />
+        ))}
+      </View>
+    </HScroller>
   );
 }
 
 export function Filters({ choices, view, total, onChange }: FiltersProps): ReactNode {
-  const pick = (filter: FilterId): void => {
-    onChange({ ...view, filter });
-  };
+  const [width, setWidth] = useState(0);
   return (
-    <View className="gap-2">
+    <View
+      className="gap-2"
+      onLayout={(event) => {
+        setWidth(event.nativeEvent.layout.width);
+      }}
+    >
       {total >= SEARCH_FROM ? (
         <SearchField
           value={view.query}
@@ -98,29 +91,28 @@ export function Filters({ choices, view, total, onChange }: FiltersProps): React
           variant="field"
         />
       ) : null}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerClassName="gap-2"
-      >
-        {choices.map((choice) => (
-          <Chip
-            key={choice.id}
-            label={choice.label}
-            count={choice.count}
-            active={choice.id === view.filter}
-            onPress={() => {
-              pick(choice.id);
+      <View className="flex-row items-center gap-1">
+        <View className="min-w-0 flex-1">
+          <StatusFilters
+            choices={choices}
+            view={view}
+            onChange={onChange}
+            narrow={width < INLINE_FILTER_MIN}
+          />
+        </View>
+        <View className="max-w-[45%] min-w-0">
+          <ChoiceChip
+            label="Sort automations"
+            icon="list"
+            options={SORT_OPTIONS}
+            value={view.sort}
+            all={DEFAULT_VIEW.sort}
+            onChange={(sort) => {
+              onChange({ ...view, sort });
             }}
           />
-        ))}
-      </ScrollView>
-      <SortRow
-        sort={view.sort}
-        onPick={(sort) => {
-          onChange({ ...view, sort });
-        }}
-      />
+        </View>
+      </View>
     </View>
   );
 }

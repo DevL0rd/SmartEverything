@@ -27,12 +27,14 @@ function DenySplit({
   readonly pending: boolean;
   readonly grow: boolean;
 }): ReactNode {
+  const opener = useRef<View>(null);
   const { ref, open, menu } = useAnchoredMenu(
     [
-      { label: 'Deny', icon: 'ban', onPress: deny },
-      { label: 'Cancel request', icon: 'close', onPress: cancel },
+      { label: 'Deny', icon: 'ban', onPress: deny, disabled: pending },
+      { label: 'Cancel request', icon: 'close', onPress: cancel, disabled: pending },
     ],
     'Deny options',
+    { withinSheet: { opener } },
   );
   return (
     <View
@@ -41,7 +43,13 @@ function DenySplit({
       className={cn('flex-row items-center gap-px', grow && 'flex-1')}
     >
       <Button label="Deny" variant="outlined" size="lg" grow disabled={pending} onPress={deny} />
-      <IconButton icon="chevronDown" label="More deny options" disabled={pending} onPress={open} />
+      <IconButton
+        ref={opener}
+        icon="chevronDown"
+        label="More deny options"
+        disabled={pending}
+        onPress={open}
+      />
       {menu}
     </View>
   );

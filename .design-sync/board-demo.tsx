@@ -1,4 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { WIDGET_SIZES } from '../packages/domain/src';
+import type {
+  BoardDefaults,
+  WidgetDefinition,
+} from '../apps/app/src/components/widget-board/types';
 import {
   Figure,
   Text,
@@ -9,18 +14,16 @@ import {
   useBoardEditor,
 } from 'smarteverything-kit';
 
-type Size = 'S' | 'M' | 'W' | 'L' | 'XL';
-
-const ALL: Record<'compact' | 'medium' | 'expanded', readonly Size[]> = {
-  compact: ['S', 'M', 'W', 'L', 'XL'],
-  medium: ['S', 'M', 'W', 'L', 'XL'],
-  expanded: ['S', 'M', 'W', 'L', 'XL'],
+const ALL: WidgetDefinition['sizes'] = {
+  compact: WIDGET_SIZES,
+  medium: WIDGET_SIZES,
+  expanded: WIDGET_SIZES,
 };
 
-function ClimateBody({ size }: { size: Size }) {
+function ClimateBody(): ReactNode {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <Figure value="21.5" unit="C" size={size === 'S' ? 'm' : 'l'} tone="primary" />
+      <Figure value="21.5" unit="C" size="l" tone="primary" />
       <Text variant="caption" tone="variant">
         Living room, 48% humidity
       </Text>
@@ -28,29 +31,31 @@ function ClimateBody({ size }: { size: Size }) {
   );
 }
 
-export const catalogue = [
-  {
-    type: 'climate',
-    title: 'Climate',
-    icon: 'thermometer' as const,
-    group: 'Home',
-    sizes: ALL,
-    defaultSize: 'M' as const,
-    render: ({ size }: { size: Size }) => (
-      <WidgetFrame title="Climate" icon="thermometer" accent="temp-warm" size={size}>
-        <ClimateBody size={size} />
-      </WidgetFrame>
-    ),
-  },
+export const climateWidget: WidgetDefinition = {
+  type: 'climate',
+  title: 'Climate',
+  icon: 'thermometer',
+  group: 'Home',
+  sizes: ALL,
+  defaultSize: 'M',
+  render: (): ReactNode => (
+    <WidgetFrame title="Climate" icon="thermometer" accent="temp-warm">
+      <ClimateBody />
+    </WidgetFrame>
+  ),
+};
+
+export const catalogue: readonly WidgetDefinition[] = [
+  climateWidget,
   {
     type: 'energy',
     title: 'Energy',
-    icon: 'power' as const,
+    icon: 'power',
     group: 'Home',
     sizes: ALL,
-    defaultSize: 'M' as const,
-    render: ({ size }: { size: Size }) => (
-      <WidgetFrame title="Energy" icon="power" accent="viz-1" size={size}>
+    defaultSize: 'M',
+    render: (): ReactNode => (
+      <WidgetFrame title="Energy" icon="power" accent="viz-1">
         <WidgetStats
           columns={1}
           stats={[
@@ -71,12 +76,12 @@ export const catalogue = [
   {
     type: 'security',
     title: 'Security',
-    icon: 'shield' as const,
+    icon: 'shield',
     group: 'Safety',
     sizes: ALL,
-    defaultSize: 'M' as const,
-    render: ({ size }: { size: Size }) => (
-      <WidgetFrame title="Security" icon="shield" accent="positive" size={size} glow="positive">
+    defaultSize: 'M',
+    render: (): ReactNode => (
+      <WidgetFrame title="Security" icon="shield" accent="positive" glow="positive">
         <WidgetStat
           icon="lock"
           colour="positive"
@@ -91,12 +96,12 @@ export const catalogue = [
   {
     type: 'health',
     title: 'Activity',
-    icon: 'fitness' as const,
+    icon: 'fitness',
     group: 'Health',
     sizes: ALL,
-    defaultSize: 'M' as const,
-    render: ({ size }: { size: Size }) => (
-      <WidgetFrame title="Activity" icon="fitness" accent="move" size={size}>
+    defaultSize: 'M',
+    render: (): ReactNode => (
+      <WidgetFrame title="Activity" icon="fitness" accent="move">
         <WidgetStat
           icon="activity"
           colour="move"
@@ -109,37 +114,37 @@ export const catalogue = [
   },
 ];
 
-const defaults = {
+const defaults: BoardDefaults = {
   compact: [
-    { key: 'climate', type: 'climate', size: 'M' as const },
-    { key: 'security', type: 'security', size: 'S' as const },
-    { key: 'energy', type: 'energy', size: 'S' as const },
+    { key: 'climate', type: 'climate', size: 'M' },
+    { key: 'security', type: 'security', size: 'M' },
+    { key: 'energy', type: 'energy', size: 'M' },
   ],
   medium: [
-    { key: 'climate', type: 'climate', size: 'M' as const },
-    { key: 'security', type: 'security', size: 'S' as const },
-    { key: 'energy', type: 'energy', size: 'S' as const },
-    { key: 'health', type: 'health', size: 'M' as const },
+    { key: 'climate', type: 'climate', size: 'M' },
+    { key: 'security', type: 'security', size: 'M' },
+    { key: 'energy', type: 'energy', size: 'M' },
+    { key: 'health', type: 'health', size: 'M' },
   ],
   expanded: [
-    { key: 'climate', type: 'climate', size: 'M' as const },
-    { key: 'security', type: 'security', size: 'S' as const },
-    { key: 'energy', type: 'energy', size: 'S' as const },
-    { key: 'health', type: 'health', size: 'M' as const },
+    { key: 'climate', type: 'climate', size: 'M' },
+    { key: 'security', type: 'security', size: 'M' },
+    { key: 'energy', type: 'energy', size: 'M' },
+    { key: 'health', type: 'health', size: 'M' },
   ],
 };
 
 export const available = new Set(catalogue.map((entry) => entry.type));
 
-export function BoardDemo({ editing }: { editing?: boolean }) {
+export function BoardDemo({ editing = false }: { readonly editing?: boolean }): ReactNode {
   const editor = useBoardEditor({
     page: 'demo',
     layout: { status: 'ready', layout: null },
-    defaults: defaults as never,
+    defaults,
     onSave: () => undefined,
   });
   useEffect(() => {
     if (editing) editor.begin();
   }, []);
-  return <WidgetBoard editor={editor} catalogue={catalogue as never} available={available} />;
+  return <WidgetBoard editor={editor} catalogue={catalogue} available={available} />;
 }

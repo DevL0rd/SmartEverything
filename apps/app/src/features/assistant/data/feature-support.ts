@@ -5,10 +5,14 @@ import {
 } from '@smarteverything/domain';
 import { useHarnessCatalogue } from './harness';
 
-type Manifest = NonNullable<AiHarnessHost['manifest']>;
-
 const RUNTIME_FEATURES = {
-  agents: (manifest: Manifest): boolean => manifest.features.includes('remote-subagents'),
+  agents: ({ manifest }: AiHarnessHost): boolean =>
+    manifest?.features.includes('remote-subagents') === true,
+  helperAttachments: ({ manifest, online }: AiHarnessHost): boolean =>
+    online &&
+    manifest !== null &&
+    manifest.features.includes('subagent-send') &&
+    manifest.features.includes('subagent-attachments'),
 } as const;
 
 export type RuntimeFeature = keyof typeof RUNTIME_FEATURES;
@@ -17,8 +21,7 @@ export function runtimeFeatureSupported(
   feature: RuntimeFeature,
   host: AiHarnessHost | undefined,
 ): boolean {
-  const manifest = host?.manifest;
-  return manifest !== undefined && manifest !== null && RUNTIME_FEATURES[feature](manifest);
+  return host !== undefined && RUNTIME_FEATURES[feature](host);
 }
 
 export function useFeatureSupport(

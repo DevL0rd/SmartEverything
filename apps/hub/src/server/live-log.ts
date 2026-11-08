@@ -1,3 +1,4 @@
+import { LIVE_HEARTBEAT_MS } from '@smarteverything/domain';
 import { Logger, passesThreshold } from '@smarteverything/logging';
 import type { Connection } from './live-visibility';
 import type { LiveTally, SocketStats } from './live-stats';
@@ -9,7 +10,6 @@ export interface LoggedConnection extends Connection {
   readonly stats: SocketStats;
 }
 
-export const HEARTBEAT_MS = 30_000;
 export const SLOW_CLIENT_BYTES = 8 * 1024 * 1024;
 const BACKLOG_WARN_BYTES = 1024 * 1024;
 const BACKLOG_CLEARED_BYTES = 64 * 1024;
@@ -125,7 +125,7 @@ export function logHeartbeatMissed(log: Logger, connection: LoggedConnection): v
     socketId: connection.id,
     clientId: connection.client.id,
     sinceLastPongMs: connection.stats.sinceLastPongMs(),
-    heartbeatMs: HEARTBEAT_MS,
+    heartbeatMs: LIVE_HEARTBEAT_MS,
     bufferedBytes: connection.socket.bufferedAmount,
     openMs: openMs(connection),
   });
@@ -142,7 +142,7 @@ export function logSummary(
   let buffered = 0;
   for (const connection of connections) buffered += connection.socket.bufferedAmount;
   log.debug('live.summary', () => ({
-    windowMs: HEARTBEAT_MS,
+    windowMs: LIVE_HEARTBEAT_MS,
     sockets: connections.size,
     owners: [...connections].filter((one) => one.client.role === 'owner').length,
     opened: tally.opened,

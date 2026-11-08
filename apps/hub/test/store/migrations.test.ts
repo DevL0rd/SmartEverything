@@ -4,13 +4,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_ENGINE } from '@smarteverything/domain';
+
 import { z } from 'zod';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
+import { TEST_ENGINE } from '../support/engine';
 
 const SESSION = '0d000000-0000-4000-8000-000000000001';
 const NOW = '2026-10-16T09:00:00.000Z';
@@ -111,13 +112,16 @@ describe('migrating a live schema-80 database', () => {
       [counts['rooms'], counts['transcript_sessions'], counts['transcript_lines']],
     );
     expect(Object.keys(counts).filter((name) => !(name in after))).toStrictEqual([
+      'ai_preview_projects',
       'automation_sequences',
       'dsh_session_claim_receipts',
       'harness_admissions',
+      'harness_children',
       'harness_consumers',
       'harness_openings',
       'harness_outbox',
       'harness_skill_presentations',
+      'preview_error_rules',
     ]);
     expect(migrated.prepare('pragma foreign_key_check').all()).toStrictEqual([]);
     expect(
@@ -243,7 +247,7 @@ describe('migrating a schema-84 database to unbounded text', () => {
       icon: null,
       parentId: null,
       sourceKey: null,
-      engine: DEFAULT_ENGINE,
+      engine: TEST_ENGINE,
     });
     const message = store.assistantChat.addMessage({
       profile_id: PROFILE,
@@ -259,6 +263,7 @@ describe('migrating a schema-84 database to unbounded text', () => {
       steps: [],
       step_states: [],
       reply_to: SECOND,
+      quote: null,
       origin: null,
       embeds: [],
       cost_micros: 0,

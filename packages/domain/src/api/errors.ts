@@ -23,6 +23,7 @@ export const API_ERROR_CODES = [
   'firewall_blocked',
   'camera_busy',
   'claude_not_ready',
+  'computer_update_required',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -50,12 +51,14 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   firewall_blocked: 503,
   camera_busy: 429,
   claude_not_ready: 503,
+  computer_update_required: 426,
 };
 
 export const API_ERROR = z.strictObject({
   error: z.strictObject({
     code: z.enum(API_ERROR_CODES),
     message: z.string().min(1),
+    reason: z.string().min(1).optional(),
   }),
 });
 
@@ -68,13 +71,20 @@ export class ApiError extends Error {
   constructor(
     readonly code: ApiErrorCode,
     message: string,
+    readonly reason: string | null = null,
   ) {
     super(message);
     this.status = API_ERROR_STATUS[code];
   }
 
   body(): ApiErrorBody {
-    return { error: { code: this.code, message: this.message } };
+    return {
+      error: {
+        code: this.code,
+        message: this.message,
+        ...(this.reason === null ? {} : { reason: this.reason }),
+      },
+    };
   }
 }
 
@@ -86,5 +96,9 @@ export function apiErrorOf(status: number, body: unknown): ApiError {
       `The server answered HTTP ${String(status)} without an error envelope: ${JSON.stringify(body)}.`,
     );
   }
-  return new ApiError(parsed.data.error.code, parsed.data.error.message);
+  return new ApiError(
+    parsed.data.error.code,
+    parsed.data.error.message,
+    parsed.data.error.reason ?? null,
+  );
 }

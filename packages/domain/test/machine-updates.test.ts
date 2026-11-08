@@ -89,9 +89,11 @@ describe('the release manifest', () => {
       artifacts: [artifact({}), artifact({ arch: 'arm64', file: 'arm.zip' })],
     });
     expect(
-      machineUpdateTarget(manifest, { platform: 'linux', arch: 'arm64' }).map(
-        (found) => found.file,
-      ),
+      machineUpdateTarget(manifest, {
+        product: 'desktop-computer',
+        platform: 'linux',
+        arch: 'arm64',
+      }).map((found) => found.file),
     ).toStrictEqual(['arm.zip']);
   });
 });

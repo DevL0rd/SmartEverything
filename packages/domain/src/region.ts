@@ -151,8 +151,12 @@ export type RegionDetection =
   | { readonly status: 'unsupported'; readonly code: string }
   | { readonly status: 'unknown' };
 
+const LOCALE_REGION = /^[a-z]{2,8}(?:-[a-z]{4})?-([a-z]{2}|[0-9]{3})(?:-|$)/iu;
+
 export function localeRegionOf(locale: string): string | null {
-  return new Intl.Locale(locale.replaceAll('_', '-')).region ?? null;
+  const [canonical] = Intl.getCanonicalLocales(locale.replaceAll('_', '-'));
+  if (canonical === undefined) throw new RangeError('A device locale is required');
+  return canonical.match(LOCALE_REGION)?.[1]?.toUpperCase() ?? null;
 }
 
 export function regionOfTimeZone(timeZone: string): RegionCode | null {

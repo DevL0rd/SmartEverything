@@ -64,7 +64,7 @@ export const PROVIDER_OPERATIONS: readonly ProviderOperation[] = [
   {
     id: 'set_thinking',
     title: 'Thinking budget and display',
-    description: 'Apply the runtime’s thinking setter. Empty budget resets to runtime default.',
+    description: 'Apply the runtime’s thinking setter. An empty budget clears the override.',
     kind: 'control',
     fields: [
       {
@@ -129,7 +129,7 @@ export const PROVIDER_OPERATIONS: readonly ProviderOperation[] = [
   {
     id: 'set_mcp_permission_mode',
     title: 'MCP permission mode',
-    description: 'Set the named server’s permission mode; default clears the override.',
+    description: 'Set the named server’s permission mode; empty clears the override.',
     kind: 'control',
     fields: [
       SERVER,

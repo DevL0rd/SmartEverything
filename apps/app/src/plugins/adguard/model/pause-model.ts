@@ -11,6 +11,18 @@ export const PAUSE_CHOICES: readonly PauseChoice[] = [
   { minutes: 1440, chip: '24 h', spoken: '24 hours' },
 ];
 
+const MINUTE_MS = 60_000;
+
+export function pauseInput(choice: PauseChoice): {
+  readonly state: 'pause';
+  readonly duration: number;
+} {
+  return { state: 'pause', duration: choice.minutes * MINUTE_MS };
+}
+
+export const RESUME_INPUT = { state: 'on' } as const;
+export const TURN_OFF_INPUT = { state: 'off' } as const;
+
 export function pausedMessage(choice: PauseChoice): string {
   return `Ad blocking paused for ${choice.spoken}`;
 }

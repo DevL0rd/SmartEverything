@@ -1,40 +1,11 @@
 import {
-  DATA_DIRECTORY_VARIABLE,
+  COMPUTER_DATA_DIRECTORY_VARIABLE,
+  COMPUTER_LAUNCH_AGENT_LABEL,
   SUPERVISE_ARGUMENT,
-} from '@smarteverything/hub/service/configuration';
+} from '@smarteverything/domain';
 
-const SYSTEMD_UNIT = 'smarteverything.service';
-const NODE_SYSTEMD_UNIT = 'smarteverything-node.service';
-const LAUNCH_AGENT_LABEL = 'app.smarteverything.server';
-const NODE_LAUNCH_AGENT_LABEL = 'app.smarteverything.node';
 export const WINDOWS_RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-export const WINDOWS_RUN_VALUE = 'SmartEverything';
-const NODE_WINDOWS_RUN_VALUE = 'SmartEverything Node';
 const RUN_AS_NODE_VARIABLE = 'ELECTRON_RUN_AS_NODE';
-
-export interface ServiceNames {
-  readonly role: 'hub' | 'node';
-  readonly unit: string;
-  readonly launchAgentLabel: string;
-  readonly runValue: string;
-  readonly keepsRunningLoggedOut: boolean;
-}
-
-export const HUB_SERVICE_NAMES: ServiceNames = {
-  role: 'hub',
-  unit: SYSTEMD_UNIT,
-  launchAgentLabel: LAUNCH_AGENT_LABEL,
-  runValue: WINDOWS_RUN_VALUE,
-  keepsRunningLoggedOut: true,
-};
-
-export const NODE_SERVICE_NAMES: ServiceNames = {
-  role: 'node',
-  unit: NODE_SYSTEMD_UNIT,
-  launchAgentLabel: NODE_LAUNCH_AGENT_LABEL,
-  runValue: NODE_WINDOWS_RUN_VALUE,
-  keepsRunningLoggedOut: false,
-};
 
 export interface ServiceLaunch {
   readonly executable: string;
@@ -90,22 +61,23 @@ function systemdExecQuoted(value: string): string {
   return systemdQuoted(value).replaceAll('$', '$$$$');
 }
 
-function unitText(description: string, launch: ServiceLaunch): string {
+export function systemdUnit(launch: ServiceLaunch): string {
   const values = launchValues(launch);
   return [
     '[Unit]',
-    `Description=${description}`,
+    'Description=SmartEverything Computer service',
     '',
     '[Service]',
     'Type=simple',
     `WorkingDirectory=${systemdPath(values.dataDirectory)}`,
     `Environment=${systemdQuoted(`${RUN_AS_NODE_VARIABLE}=1`)}`,
-    `Environment=${systemdQuoted(`${DATA_DIRECTORY_VARIABLE}=${values.dataDirectory}`)}`,
+    `Environment=${systemdQuoted(`${COMPUTER_DATA_DIRECTORY_VARIABLE}=${values.dataDirectory}`)}`,
     `Environment=${systemdQuoted(`PATH=${values.path}`)}`,
     `ExecStart=${systemdExecQuoted(values.executable)} ${systemdExecQuoted(values.entry)}`,
     'Restart=on-failure',
     'RestartSec=5',
     'TimeoutStopSec=30',
+    'KillMode=mixed',
     'UMask=0077',
     'IOSchedulingClass=best-effort',
     'IOSchedulingPriority=7',
@@ -116,14 +88,6 @@ function unitText(description: string, launch: ServiceLaunch): string {
     'WantedBy=default.target',
     '',
   ].join('\n');
-}
-
-export function systemdUnit(launch: ServiceLaunch): string {
-  return unitText('SmartEverything server', launch);
-}
-
-export function nodeSystemdUnit(launch: ServiceLaunch): string {
-  return unitText('SmartEverything computer client', launch);
 }
 
 function xmlEscaped(value: string): string {
@@ -139,22 +103,14 @@ function plistString(value: string): string {
   return `<string>${xmlEscaped(value)}</string>`;
 }
 
-export function serviceUnit(names: ServiceNames, launch: ServiceLaunch): string {
-  return names.role === 'node' ? nodeSystemdUnit(launch) : systemdUnit(launch);
-}
-
-export function launchAgent(
-  launch: ServiceLaunch,
-  outputLog: string,
-  label: string = LAUNCH_AGENT_LABEL,
-): string {
+export function launchAgent(launch: ServiceLaunch, outputLog: string): string {
   const values = launchValues(launch);
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
     '<plist version="1.0">',
     '<dict>',
-    `  <key>Label</key>${plistString(label)}`,
+    `  <key>Label</key>${plistString(COMPUTER_LAUNCH_AGENT_LABEL)}`,
     '  <key>ProgramArguments</key>',
     '  <array>',
     `    ${plistString(values.executable)}`,
@@ -164,7 +120,7 @@ export function launchAgent(
     '  <key>EnvironmentVariables</key>',
     '  <dict>',
     `    <key>${RUN_AS_NODE_VARIABLE}</key>${plistString('1')}`,
-    `    <key>${DATA_DIRECTORY_VARIABLE}</key>${plistString(values.dataDirectory)}`,
+    `    <key>${COMPUTER_DATA_DIRECTORY_VARIABLE}</key>${plistString(values.dataDirectory)}`,
     `    <key>PATH</key>${plistString(values.path)}`,
     '  </dict>',
     '  <key>RunAtLoad</key><true/>',
@@ -195,7 +151,7 @@ export function windowsLauncher(launch: ServiceLaunch): string {
     'var shell = new ActiveXObject("WScript.Shell");',
     'var environment = shell.Environment("PROCESS");',
     `environment(${JSON.stringify(RUN_AS_NODE_VARIABLE)}) = "1";`,
-    `environment(${JSON.stringify(DATA_DIRECTORY_VARIABLE)}) = ${JSON.stringify(values.dataDirectory)};`,
+    `environment(${JSON.stringify(COMPUTER_DATA_DIRECTORY_VARIABLE)}) = ${JSON.stringify(values.dataDirectory)};`,
     `environment("PATH") = ${JSON.stringify(values.path)};`,
     `shell.CurrentDirectory = ${JSON.stringify(values.dataDirectory)};`,
     `shell.Run(${JSON.stringify(command)}, 0, false);`,

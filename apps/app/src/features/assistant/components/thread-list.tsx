@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { useEffect, useEffectEvent } from 'react';
 import { ScrollView, View } from 'react-native';
-import type { AssistantMessageRow } from '@smarteverything/domain';
+import type { AiChatRow, AssistantMessageRow } from '@smarteverything/domain';
 import { useRow } from '../../../store/selectors';
 import {
   historyRevision,
@@ -14,11 +14,11 @@ import { useEntityStore, useStoreSelector } from '../../../store/store-context';
 import { useScreenPaused } from '../../../design/screen-pause';
 import { useValue } from '../../../design/external-store';
 import { ChatIntro } from './chat-intro';
+import { appChatHistoryOnly } from '../chats/chat-visibility';
 import { ThreadItems } from './thread-items';
 import { useThreadRows } from './thread-rows';
 import { ThreadSkeleton } from './thread-skeleton';
 import { useFocusParam } from './use-focused-message';
-import { TurnFeedback } from './turn-feedback';
 import { background } from '@smarteverything/logging';
 
 const FIRST_PAGE = 20;
@@ -46,22 +46,16 @@ function useFillFirstPage(
   }, [historyKey, short, store, session, revision, paused]);
 }
 
-function latestResponder(rows: readonly AssistantMessageRow[]): AssistantMessageRow | null {
-  let latest: AssistantMessageRow | null = null;
-  for (const row of rows) {
-    const newer = latest === null || row.created_at >= latest.created_at;
-    if (row.role === 'responder' && row.kind === 'text' && newer) {
-      latest = row;
-    }
-  }
-  return latest;
-}
-
 function emptyThread(model: {
   readonly data: readonly unknown[];
   readonly complete: boolean;
 }): boolean {
   return model.complete && model.data.length === 0;
+}
+
+function useLiveChat(historyKey: string): AiChatRow | null {
+  const chat = useRow('ai_chats', historyKey);
+  return chat === null || appChatHistoryOnly(chat) ? null : chat;
 }
 
 export function ThreadList({
@@ -80,36 +74,33 @@ export function ThreadList({
   readonly footer?: ReactElement | null;
 }): ReactNode {
   const model = useThreadRows(historyKey, rows);
-  const chat = useRow('ai_chats', historyKey);
+  const liveChat = useLiveChat(historyKey);
   const { focus, clearFocus } = useFocusParam();
-  const progress = (
-    <>
-      {chat === null ? null : <TurnFeedback chat={chat} rows={model.all} />}
-      {footer}
-    </>
-  );
   useFillFirstPage(historyKey, model.all, loadOlder);
   if (model.data.length === 0) {
     return emptyThread(model) ? (
-      <EmptyThread empty={empty} footer={progress} />
+      <EmptyThread empty={empty} footer={footer} />
     ) : (
-      <LoadingThread footer={progress} />
+      <LoadingThread footer={footer} />
     );
   }
   return (
     <ThreadItems
-      footer={progress}
+      footer={footer}
       rows={model.data}
       historyKey={historyKey}
       readAt={model.readAt}
-      intro={model.complete ? (intro ?? (chat === null ? null : <ChatIntro chat={chat} />)) : null}
+      intro={
+        model.complete
+          ? (intro ?? (liveChat === null ? null : <ChatIntro chat={liveChat} />))
+          : null
+      }
       focusId={focus}
       exhausted={model.complete}
       onFocused={clearFocus}
       onOlder={() => {
         background(loadOlderMessages(historyKey, model.all, loadOlder), 'older.load_failed');
       }}
-      announced={latestResponder(model.all)}
     />
   );
 }
@@ -130,11 +121,11 @@ function EmptyThread({
   );
 }
 
-function LoadingThread({ footer }: { readonly footer: ReactElement }): ReactNode {
+function LoadingThread({ footer }: { readonly footer: ReactElement | null }): ReactNode {
   return (
     <View className="flex-1">
       <ThreadSkeleton />
-      <View className="px-gutter">{footer}</View>
+      {footer === null ? null : <View className="px-gutter">{footer}</View>}
     </View>
   );
 }

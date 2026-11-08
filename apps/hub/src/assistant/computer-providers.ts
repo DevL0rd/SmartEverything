@@ -1,8 +1,7 @@
 import type { z } from 'zod';
 import type { AI_AGENT_RUN_CONTROL, AiAgentRun, AiChatRow, Engine } from '@smarteverything/domain';
 import type { ComputerRunner } from './engines/computer/runner';
-import type { Store } from '../store/store';
-import { controlAgent } from './coordination/controls';
+import { controlAgent, type AgentControlPorts } from './agent-runs/controls';
 import { computerEngine } from './engine-kind';
 export class ComputerProviders extends Map<'claude' | 'codex', ComputerRunner> {
   bindingChanged(chat: AiChatRow, engine: Engine): Promise<void> {
@@ -12,7 +11,7 @@ export class ComputerProviders extends Map<'claude' | 'codex', ComputerRunner> {
       : (this.get(bound.kind)?.bindingChanged(chat, engine) ?? Promise.resolve());
   }
   controlRun(
-    ports: { readonly store: Store; readonly interrupt: (chat: AiChatRow) => Promise<void> },
+    ports: Omit<AgentControlPorts, 'computer'>,
     run: AiAgentRun,
     control: z.infer<typeof AI_AGENT_RUN_CONTROL>,
   ): Promise<void> {

@@ -119,12 +119,12 @@ export function healthSummary(
     people: readableProfiles(store, caller)
       .filter((profile) => onlyProfileId === undefined || profile.id === onlyProfileId)
       .map((profile) => ({
-      person: profile.name,
-      days: store.health
-        .dailyRange(profile.id, input.from, input.to, input.metrics ?? HEALTH_METRICS)
-        .map((row) => ({ day: row.day, metric: row.metric, value: row.value, unit: row.unit })),
-      ...(input.records ? { records: recordsOf(store, profile.id, input) } : {}),
-    })),
+        person: profile.name,
+        days: store.health
+          .dailyRange(profile.id, input.from, input.to, input.metrics ?? HEALTH_METRICS)
+          .map((row) => ({ day: row.day, metric: row.metric, value: row.value, unit: row.unit })),
+        ...(input.records ? { records: recordsOf(store, profile.id, input) } : {}),
+      })),
   };
 }
 

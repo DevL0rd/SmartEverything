@@ -13,11 +13,15 @@ import {
   type AssistantMessageRow,
   type AssistantReasonCode,
   type ChatTimelineEmbed,
+  type ChatTodosEmbed,
+  CHAT_TODOS_KIND,
   type AssistantRequestState,
   type MessageOrigin,
+  type HelperDialogue,
+  type MessageQuote,
+  HELPER_INPUT_KIND,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { StoreNotFoundError } from '../store/context';
 import { summaryOf, type StoredAttachment } from '../store/repositories/assistant-chat';
 import type { NewAssistantMessage } from '../store/repositories/assistant-chat';
 import type { StoredEvent } from '../store/repositories/assistant-events';
@@ -32,6 +36,11 @@ export interface PersonMessage {
   readonly origin: MessageOrigin;
   readonly clientMessageId?: string;
   readonly references?: readonly AiMessageReference[];
+  readonly helperDialogue?: HelperDialogue;
+  readonly helperInput?: true;
+  readonly quote?: MessageQuote | null;
+  readonly messageId?: string;
+  readonly queued?: true;
 }
 
 export interface ResponderMessage {
@@ -42,6 +51,9 @@ export interface ResponderMessage {
   readonly kind?: 'text' | 'update';
   readonly model?: string | null;
   readonly messageId?: string;
+  readonly steps?: readonly SettledStep[];
+  readonly helperDialogue?: HelperDialogue;
+  readonly quote?: MessageQuote | null;
 }
 
 const log = new Logger('hub.assistant-conversation');
@@ -50,7 +62,11 @@ function activityLine(label: string): string {
   return label.replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
-const NO_EXTRAS = { origin: null, embeds: [], cost_micros: 0, model: null };
+const NO_EXTRAS = { origin: null, embeds: [], cost_micros: 0, model: null, quote: null };
+
+function quoteOrNull(quote: MessageQuote | null | undefined): MessageQuote | null {
+  return quote ?? null;
+}
 
 function keptSteps(steps: readonly SettledStep[]): {
   readonly steps: string[];
@@ -61,6 +77,11 @@ function keptSteps(steps: readonly SettledStep[]): {
     .filter((step) => step.title !== '')
     .slice(-ASSISTANT_STEPS_KEPT);
   return { steps: kept.map((step) => step.title), step_states: kept.map((step) => step.outcome) };
+}
+
+function personEmbeds(input: PersonMessage): NewAssistantMessage['embeds'] {
+  if (input.helperDialogue !== undefined) return [input.helperDialogue];
+  return input.helperInput === true ? [{ kind: HELPER_INPUT_KIND }] : [];
 }
 
 export class ConversationLog {
@@ -101,17 +122,20 @@ export class ConversationLog {
         text: input.text,
         attachments: input.files.map(summaryOf),
         references: [...(input.references ?? [])],
-        state: 'queued',
+        state: input.helperDialogue === undefined || input.queued === true ? 'queued' : null,
         reason: null,
         steps: [],
         step_states: [],
         reply_to: null,
+        quote: quoteOrNull(input.quote),
         origin: input.origin,
+        embeds: personEmbeds(input),
         ...(input.clientMessageId === undefined
           ? {}
           : { client_message_id: input.clientMessageId }),
       },
       input.files,
+      input.messageId,
     );
   }
 
@@ -128,14 +152,15 @@ export class ConversationLog {
         chat_id: input.chat.id,
         role: 'responder',
         kind: input.kind ?? 'text',
-        author: assistantLabel(this.messages.settings()),
+        author: input.helperDialogue?.helper_name ?? assistantLabel(this.messages.settings()),
         text: input.text,
+        embeds: input.helperDialogue === undefined ? [] : [input.helperDialogue],
         attachments: files.map(summaryOf),
         state: null,
         reason: null,
-        steps: [],
-        step_states: [],
+        ...keptSteps(input.steps ?? []),
         reply_to: input.replyTo,
+        quote: quoteOrNull(input.quote),
         model: input.model ?? null,
       },
       files,
@@ -177,6 +202,11 @@ export class ConversationLog {
 
   progress(id: string, text: string, timeline: ChatTimelineEmbed): void {
     this.messages.updateMessage(id, { text, embeds: this.withTimeline(id, timeline) });
+  }
+
+  todos(id: string, todos: ChatTodosEmbed): void {
+    const kept = this.messages.message(id).embeds.filter((embed) => embed.kind !== CHAT_TODOS_KIND);
+    this.messages.updateMessage(id, { embeds: [...kept, todos] });
   }
 
   private withTimeline(id: string, timeline: ChatTimelineEmbed): AssistantMessageRow['embeds'] {
@@ -311,40 +341,8 @@ export class ConversationLog {
     );
   }
 
-  action(chat: AiChatRow, line: string): AssistantMessageRow {
-    return this.add(
-      {
-        ...NO_EXTRAS,
-        profile_id: chat.profile_id,
-        client_id: null,
-        chat_id: chat.id,
-        role: 'system',
-        kind: 'action',
-        author: assistantLabel(this.messages.settings()),
-        text: activityLine(line),
-        attachments: [],
-        state: null,
-        reason: null,
-        steps: [],
-        step_states: [],
-        reply_to: null,
-      },
-      [],
-    );
-  }
-
   private message(id: string | null): AssistantMessageRow | null {
-    if (id === null) {
-      return null;
-    }
-    try {
-      return this.messages.message(id);
-    } catch (cause) {
-      if (!(cause instanceof StoreNotFoundError)) {
-        throw cause;
-      }
-      return null;
-    }
+    return id === null ? null : (this.messages.find(id) ?? null);
   }
 
   stateOf(
@@ -391,6 +389,7 @@ export class ConversationLog {
       this.messages.failWorking(reason, 'interrupted');
       for (const event of this.store.assistantEvents.abandoned()) {
         this.store.assistantEvents.mark(event.id, 'answered_at');
+        this.store.aiRepairInbox.markFailed(event.id);
         if (this.message(event.message_id)?.role === 'person') {
           this.failedMessage(event.message_id, reason, 'interrupted');
         }
@@ -405,7 +404,9 @@ export class ConversationLog {
     }
   }
 
-  failed(event: StoredEvent, reason: string): void {
-    this.failedMessage(event.message_id, `Assistant unavailable: ${reason}`, 'unknown');
+  failed(event: StoredEvent, reason: string, code: AssistantReasonCode = 'unknown'): void {
+    this.store.aiRepairInbox.markFailed(event.id);
+    const text = code === 'unknown' ? `Assistant unavailable: ${reason}` : reason;
+    this.failedMessage(event.message_id, text, code);
   }
 }

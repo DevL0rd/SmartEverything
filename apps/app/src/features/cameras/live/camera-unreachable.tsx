@@ -26,7 +26,7 @@ function LastSeen({ lastSeen }: { readonly lastSeen: CameraCondition['lastSeen']
   );
 }
 
-export function CameraUnreachable({
+function OfflineContent({
   entry,
   lastSeen,
 }: {
@@ -34,43 +34,63 @@ export function CameraUnreachable({
   readonly lastSeen: CameraCondition['lastSeen'];
 }): ReactNode {
   const small = useWidgetFace().cls === 's';
+  return (
+    <View className="flex-1 gap-2 bg-linear-160 from-surface-3 to-surface-2 p-card-pad">
+      <View className="flex-row items-center gap-2">
+        <Icon name="cameraOff" size={24} />
+        {small ? null : (
+          <Text variant="callout" numberOfLines={2} className="min-w-0 flex-1">
+            {MESSAGE}
+          </Text>
+        )}
+      </View>
+      {small ? (
+        <Text variant="footnote" numberOfLines={2}>
+          {MESSAGE}
+        </Text>
+      ) : null}
+      <View className="gap-0.5">
+        <Text variant="footnote" tone="variant" numberOfLines={1}>
+          {entry.name}
+        </Text>
+        <LastSeen lastSeen={lastSeen} />
+      </View>
+      {small ? null : (
+        <Text variant="label" tone="primary" numberOfLines={1} className="mt-auto self-end">
+          Check connection
+        </Text>
+      )}
+    </View>
+  );
+}
+
+export function CameraUnreachable({
+  entry,
+  lastSeen,
+  editing,
+}: {
+  readonly entry: CameraEntry;
+  readonly lastSeen: CameraCondition['lastSeen'];
+  readonly editing: boolean;
+}): ReactNode {
   const menu = useContextMenu(useCardMenu(entry), entry.name);
+  const content = <OfflineContent entry={entry} lastSeen={lastSeen} />;
   return (
     <WidgetSurface>
-      <Interactive
-        href={href.camera(entry.device.id)}
-        label={`${entry.name}. ${MESSAGE}`}
-        hint="Hold for more"
-        onLongPress={menu.onLongPress}
-        onContextMenu={menu.onContextMenu}
-        className="flex-1"
-      >
-        <View className="flex-1 justify-between gap-2 bg-linear-160 from-surface-3 to-surface-2 p-card-pad">
-          <View className="flex-row items-center gap-2">
-            <Icon name="cameraOff" size={24} />
-            {small ? null : (
-              <Text variant="callout" numberOfLines={2} className="min-w-0 flex-1">
-                {MESSAGE}
-              </Text>
-            )}
-          </View>
-          {small ? (
-            <Text variant="footnote" numberOfLines={2}>
-              {MESSAGE}
-            </Text>
-          ) : (
-            <Text variant="label" tone="primary" numberOfLines={1}>
-              Check connection
-            </Text>
-          )}
-          <View className="gap-0.5">
-            <Text variant="footnote" tone="variant" numberOfLines={1}>
-              {entry.name}
-            </Text>
-            <LastSeen lastSeen={lastSeen} />
-          </View>
-        </View>
-      </Interactive>
+      {editing ? (
+        content
+      ) : (
+        <Interactive
+          href={href.camera(entry.device.id)}
+          label={`${entry.name}. ${MESSAGE}`}
+          hint="Hold for more"
+          onLongPress={menu.onLongPress}
+          onContextMenu={menu.onContextMenu}
+          className="flex-1"
+        >
+          {content}
+        </Interactive>
+      )}
       {menu.host}
     </WidgetSurface>
   );

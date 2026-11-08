@@ -1,10 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { View } from 'react-native';
-import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
 import type { AreaStatus } from '../model/area-status';
-import { DesktopHistoryFailed, DesktopHistorySwitch } from '../../computers';
-import { GroupHeading } from './group-heading';
 import type { ChatFilter } from './list-filters';
 import { sameListItem, type ListItem } from './list-items';
 import {
@@ -15,10 +12,8 @@ import {
   MoreSkeleton,
   OfflineEmptyList,
 } from './list-states';
-import { InactiveAgents } from './subagent-rows';
-import type { ListGroup, ListModel } from './use-list-model';
-
-const MAIN_KEY = 'chats';
+import { CompletedHelpers } from './subagent-rows';
+import type { ListModel } from './use-list-model';
 
 export interface ListGroupsProps {
   readonly selected: string | null;
@@ -33,7 +28,8 @@ export interface ListGroupsView {
   readonly model: ListModel;
   readonly area: AreaStatus;
   readonly render: (item: ListItem) => ReactElement;
-  readonly toggleAgents: (chatId: string) => void;
+  readonly completedOpen: boolean;
+  readonly toggleCompleted: () => void;
   readonly setQuery: (query: string) => void;
   readonly setFilter: (filter: ChatFilter) => void;
 }
@@ -95,59 +91,17 @@ function ListFooter({
     <>
       {model.failed && model.total > 0 ? <ListFailure onRetry={model.retry} /> : null}
       {model.loadingMore ? <MoreSkeleton /> : null}
-      <InactiveAgents
-        agents={model.orphans}
+      <CompletedHelpers
+        entries={model.completedHelpers}
+        open={view.completedOpen}
+        onToggle={view.toggleCompleted}
         selected={list.selected}
         timeZone={model.timeZone}
         onOpen={list.onOpen}
-        onToggleAgents={view.toggleAgents}
         onDeleted={list.onDeleted}
       />
     </>
   );
-}
-
-function GroupList({
-  view,
-  list,
-  group,
-  main,
-}: {
-  readonly view: ListGroupsView;
-  readonly list: ListGroupsProps;
-  readonly group: ListGroup;
-  readonly main: boolean;
-}): ReactNode {
-  const { model } = view;
-  return (
-    <VirtualList
-      sections={group.sections}
-      keyOf={(item) => item.key}
-      renderItem={view.render}
-      sameItem={sameListItem}
-      onEndReached={model.loadMore}
-      {...(main
-        ? {
-            empty: (
-              <ListEmpty
-                model={model}
-                area={view.area}
-                filter={view.filter}
-                query={view.query}
-                onFilter={view.setFilter}
-                onQuery={view.setQuery}
-                onNewChat={list.onNewChat}
-              />
-            ),
-            footer: <ListFooter view={view} list={list} />,
-          }
-        : {})}
-    />
-  );
-}
-
-function collapsed(group: ListGroup, runtimeContent: boolean): boolean {
-  return group.sections.length === 0 && (group.key !== MAIN_KEY || runtimeContent);
 }
 
 export function ListContent({
@@ -157,35 +111,32 @@ export function ListContent({
   readonly view: ListGroupsView;
   readonly list: ListGroupsProps;
 }): ReactNode {
-  const { groups } = view.model;
-  const runtimeContent = groups.some(
-    (group) => group.key !== MAIN_KEY && group.sections.length > 0,
-  );
+  const { model } = view;
   return (
-    <>
-      {groups.map((group, at) => (
-        <View key={group.key} className={collapsed(group, runtimeContent) ? '' : 'min-h-0 flex-1'}>
-          <GroupHeading group={group} first={at === 0} onNewChat={list.onNewChat} />
-          {group.historyOff.map((off) => (
-            <DesktopHistorySwitch key={off.deviceId} deviceId={off.deviceId} name={off.name} />
-          ))}
-          {group.historyFailed.map((failure) => (
-            <DesktopHistoryFailed
-              key={failure.deviceId}
-              deviceId={failure.deviceId}
-              name={failure.name}
-              reason={failure.reason}
+    <View className="min-h-0 flex-1">
+      <VirtualList
+        sections={model.sections}
+        keyOf={(item) => item.key}
+        renderItem={view.render}
+        sameItem={sameListItem}
+        onEndReached={model.loadMore}
+        empty={
+          model.completedHelpers.length > 0 ? (
+            <></>
+          ) : (
+            <ListEmpty
+              model={model}
+              area={view.area}
+              filter={view.filter}
+              query={view.query}
+              onFilter={view.setFilter}
+              onQuery={view.setQuery}
+              onNewChat={list.onNewChat}
             />
-          ))}
-          {group.emptyText !== null && group.sections.length === 0 ? (
-            <Text variant="footnote" tone="variant" className="px-gutter py-2">
-              {group.emptyText}
-            </Text>
-          ) : collapsed(group, runtimeContent) ? null : (
-            <GroupList view={view} list={list} group={group} main={group.key === MAIN_KEY} />
-          )}
-        </View>
-      ))}
-    </>
+          )
+        }
+        footer={<ListFooter view={view} list={list} />}
+      />
+    </View>
   );
 }

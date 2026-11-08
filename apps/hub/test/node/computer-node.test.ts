@@ -8,6 +8,7 @@ import {
   type NodeHello,
   type ProcessWindow,
   type ServicesState,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComputerCollector } from '../../src/node/collectors/collector';
@@ -31,7 +32,7 @@ const HELLO: NodeHello = {
   actions: [],
   permissions: [],
   features: ['cpu'],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
 };
 
 const WINDOW: ProcessWindow = {

@@ -22,7 +22,7 @@ async function readOf<T>(
   return read.value;
 }
 
-async function writeOf<T extends Readonly<Record<string, unknown>>>(
+async function writeOf<T>(
   context: ToolContext,
   definition: ClientPrefDefinition<T>,
   patch: Readonly<Record<string, unknown>>,
@@ -52,9 +52,7 @@ interface PreferenceOperations {
     as: ActingAs,
   ) => Promise<unknown>;
 }
-function operations<T extends Readonly<Record<string, unknown>>>(
-  definition: ClientPrefDefinition<T>,
-): PreferenceOperations {
+function operations<T>(definition: ClientPrefDefinition<T>): PreferenceOperations {
   return {
     read: (context, as) => readOf(context, definition, as),
     write: (context, patch, as) => writeOf(context, definition, patch, as),
@@ -75,9 +73,16 @@ const PREFERENCE_OPERATIONS: Readonly<Record<ClientPrefKey, PreferenceOperations
   shared_clipboard: operations(CLIENT_PREFS.shared_clipboard),
   navigation: operations(CLIENT_PREFS.navigation),
   navigation_device: operations(CLIENT_PREFS.navigation_device),
+  developer_level: operations(CLIENT_PREFS.developer_level),
+  developer_flags: operations(CLIENT_PREFS.developer_flags),
   automations_editor: operations(CLIENT_PREFS.automations_editor),
   automations_palette: operations(CLIENT_PREFS.automations_palette),
   automations_breakpoints: operations(CLIENT_PREFS.automations_breakpoints),
+  home_map_look: operations(CLIENT_PREFS.home_map_look),
+  home_map_view: operations(CLIENT_PREFS.home_map_view),
+  photos: operations(CLIENT_PREFS.photos),
+  photos_backup: operations(CLIENT_PREFS.photos_backup),
+  drive_hints: operations(CLIENT_PREFS.drive_hints),
 };
 export function readPref(context: ToolContext, key: ClientPrefKey, as: ActingAs): Promise<unknown> {
   return PREFERENCE_OPERATIONS[key].read(context, as);

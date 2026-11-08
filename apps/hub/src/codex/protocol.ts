@@ -2,6 +2,15 @@ import { z } from 'zod';
 import { JSON_VALUE, CODEX_RPC_ID } from '@smarteverything/domain';
 export const RPC_RECORD = z.record(z.string(), JSON_VALUE);
 export type RpcRecord = z.infer<typeof RPC_RECORD>;
+export const TOKEN_USAGE = z.object({
+  total: z.object({
+    inputTokens: z.int().nonnegative(),
+    outputTokens: z.int().nonnegative(),
+    totalTokens: z.int().nonnegative(),
+  }),
+  last: z.object({ totalTokens: z.int().nonnegative() }),
+  modelContextWindow: z.int().positive().nullish(),
+});
 export type RpcId = z.infer<typeof CODEX_RPC_ID>;
 export const RPC_MESSAGE = z.union([
   z.strictObject({ id: CODEX_RPC_ID, method: z.string().min(1), params: RPC_RECORD.optional() }),
@@ -83,6 +92,7 @@ const MODEL = z.object({
   ),
   inputModalities: z.array(z.enum(['text', 'image', 'audio'])),
   serviceTiers: z.array(z.object({ id: z.string().min(1) })),
+  isDefault: z.boolean(),
 });
 export const MODEL_PAGE = z.object({
   data: z.array(MODEL).max(500),

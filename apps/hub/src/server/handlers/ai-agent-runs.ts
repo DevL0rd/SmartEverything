@@ -5,15 +5,19 @@ import type { Store } from '../../store/store';
 import { profileIdOf, roleOfCaller, type Caller } from '../auth';
 import { DONE_REPLY, bound } from '../router';
 
-function authorizeParent(store: Store, chatId: string, caller: Caller): void {
+type ClientCaller = Extract<Caller, { readonly kind: 'client' }>;
+function authorizeParent(
+  store: Store,
+  chatId: string,
+  caller: Caller,
+): asserts caller is ClientCaller {
   if (
     caller.kind !== 'client' ||
     store.aiChats.chat(chatId).profile_id !== profileIdOf(store, caller)
   )
     throw new ApiError('not_found', 'This parent chat is not available to this profile.');
 }
-function authorizeRun(store: Store, chatId: string, id: string, caller: Caller): AiAgentRun {
-  authorizeParent(store, chatId, caller);
+function authorizeRun(store: Store, chatId: string, id: string, caller: ClientCaller): AiAgentRun {
   const run = store.aiAgentRuns.read(id);
   if (
     run.parent_chat_id !== chatId ||
@@ -27,7 +31,11 @@ function authorizeRun(store: Store, chatId: string, id: string, caller: Caller):
 }
 export const aiAgentRunRoutes = (
   store: Store,
-  control?: (run: AiAgentRun, body: z.infer<typeof AI_AGENT_RUN_CONTROL>) => Promise<void>,
+  control?: (
+    run: AiAgentRun,
+    body: z.infer<typeof AI_AGENT_RUN_CONTROL>,
+    sender: { readonly clientId: string; readonly profileId: string },
+  ) => Promise<void>,
 ) =>
   ({
     listAiAgentRuns: bound(API_ENDPOINTS.listAiAgentRuns, ({ params, query, caller }) => {
@@ -43,13 +51,15 @@ export const aiAgentRunRoutes = (
       };
     }),
     readAiAgentRun: bound(API_ENDPOINTS.readAiAgentRun, ({ params, query, caller }) => {
+      authorizeParent(store, params.chatId, caller);
       authorizeRun(store, params.chatId, params.agentRunId, caller);
       return store.aiAgentRuns.detail(params.agentRunId, query.cursor, query.limit);
     }),
     controlAiAgentRun: bound(API_ENDPOINTS.controlAiAgentRun, async ({ params, caller, body }) => {
+      authorizeParent(store, params.chatId, caller);
       const run = authorizeRun(store, params.chatId, params.agentRunId, caller);
       if (control === undefined) throw new ApiError('conflict', 'Agent controls are starting.');
-      await control(run, body);
+      await control(run, body, { clientId: caller.client.id, profileId: run.profile_id });
       return DONE_REPLY;
     }),
   }) as const;

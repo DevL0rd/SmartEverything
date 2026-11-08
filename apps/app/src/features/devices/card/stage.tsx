@@ -11,6 +11,7 @@ import {
   ownsVisualState,
   useDeviceVisualState,
   visualStateOf,
+  type VisualPx,
   type VisualSize,
   type VisualState,
 } from '../../device-visuals';
@@ -37,26 +38,28 @@ function useGlowRole(device: Device): ColourRole | null {
 interface IllustrationProps {
   readonly device: Device;
   readonly size: VisualSize;
+  readonly px?: VisualPx;
 }
 
-function HostedIllustration({ device, size }: IllustrationProps): ReactNode {
-  const role = useGlowRole(device);
+function HostedIllustration(props: IllustrationProps): ReactNode {
+  const role = useGlowRole(props.device);
   return (
     <>
       {role === null ? null : <Glow colour={role} />}
-      <DeviceVisual device={device} size={size} />
+      <DeviceVisual {...props} />
     </>
   );
 }
 
-function PlainIllustration({ device, size }: IllustrationProps): ReactNode {
+function PlainIllustration(props: IllustrationProps): ReactNode {
+  const { device } = props;
   const tone = familyDefinition(useDeviceModel(device).family).glow;
   const state = useDeviceVisualState(device);
   const role = glowRoleOf(tone, state);
   return (
     <>
       {role === null ? null : <Glow colour={role} />}
-      <DeviceVisual device={device} size={size} state={state} />
+      <DeviceVisual {...props} state={state} />
     </>
   );
 }
@@ -69,22 +72,16 @@ function Illustration(props: IllustrationProps): ReactNode {
   );
 }
 
-export function Visual({
-  device,
-  size,
-}: {
-  readonly device: Device;
-  readonly size: VisualSize;
-}): ReactNode {
+export function Visual(props: IllustrationProps): ReactNode {
   return (
     <View
       pointerEvents="none"
       className={cn(
         'items-center justify-center overflow-hidden bg-surface-3',
-        size === 'tile' ? 'rounded-md' : 'rounded-lg',
+        props.size === 'tile' ? 'rounded-md' : 'rounded-lg',
       )}
     >
-      <Illustration device={device} size={size} />
+      <Illustration {...props} />
     </View>
   );
 }

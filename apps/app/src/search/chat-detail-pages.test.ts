@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { ASSISTANT_ACTIONS } from '../app-shell/assistant-actions';
-import type { PanelOperation } from '../features/assistant/details/details-scope';
-import { DETAIL_TABS } from '../features/assistant/details/details-target';
 import { chatDetailPages } from './chat-detail-pages';
 import { settingsPage } from '../settings/tree';
 import type { SearchChat, SourceLinks } from './sources';
@@ -13,6 +11,7 @@ const CHAT: SearchChat = {
   source: 'You',
   pinned: false,
   computer: false,
+  runtime: 'dsh',
 };
 
 function linksOf(): SourceLinks {
@@ -24,16 +23,24 @@ describe('the pages of a chat', () => {
   const pages = chatDetailPages(CHAT, out);
   const titles = pages.map((page) => page.title);
 
-  it('has a child node for every details tab and the browser', () => {
-    for (const tab of DETAIL_TABS) {
-      expect(out.links.get(`page:chat:chat-1#${tab}`), tab).toMatchObject({
-        pathname: '/assistant/chat/[chatId]',
-        params: { chatId: 'chat-1', sheet: 'chat', section: tab },
-      });
+  it('keeps Browser and removes the old overview, activity and branch destinations', () => {
+    for (const tab of ['overview', 'activity', 'branches', 'tools']) {
+      expect(out.links.has(`page:chat:chat-1#${tab}`), tab).toBe(false);
     }
     expect(out.links.get('page:chat:chat-1#browser')).toMatchObject({
       params: { chatId: 'chat-1', section: 'browser' },
     });
+  });
+
+  it('nests Tools under Access and Plan first under the model menu', () => {
+    const path = 'page:chat:chat-1#control:';
+    expect(out.parents.get(`${path}tools`)).toBe(`${path}access`);
+    expect(out.links.get(`${path}tools`)).toMatchObject({ params: { operation: 'access-tools' } });
+    expect(out.parents.get(`${path}plan`)).toBe(`${path}model`);
+    expect(out.links.get(`${path}plan`)).toMatchObject({ params: { operation: 'model' } });
+    expect(
+      chatDetailPages({ ...CHAT, runtime: 'codex' }, linksOf()).map((page) => page.title),
+    ).not.toContain('Plan first');
   });
 
   it('adds the model, thinking, access and queue entries', () => {
@@ -47,15 +54,25 @@ describe('the pages of a chat', () => {
     expect(operation('model')).toMatchObject({ operation: 'model' });
     expect(operation('thinking')).toMatchObject({ operation: 'model' });
     expect(operation('access')).toMatchObject({ operation: 'access' });
+    expect(operation('rename')).toMatchObject({ operation: 'rename' });
+  });
+
+  it('opens files on their own page instead of in the details sheet', () => {
+    expect(out.links.get('page:chat:chat-1#files')).toEqual({
+      pathname: '/assistant/chat/[chatId]/files',
+      params: { chatId: 'chat-1' },
+    });
+  });
+
+  it('lists files without advertising unavailable chat panels for history-only chats', () => {
+    const historyLinks = linksOf();
+    const history = { ...CHAT, computer: true, runtime: 'codex', historyOnly: true } as const;
+    expect(chatDetailPages(history, historyLinks).map((page) => page.title)).toEqual(['Files']);
+    expect([...historyLinks.links.keys()]).toEqual(['page:chat:chat-1#files']);
   });
 
   it('only links operations the chat screen consumes', () => {
-    const consumed: readonly (PanelOperation | 'rename')[] = [
-      'model',
-      'device',
-      'access',
-      'rename',
-    ];
+    const consumed = ['model', 'device', 'access', 'access-tools', 'rename'];
     const operations = [...out.links.entries()]
       .filter(([key]) => key.includes('#control:'))
       .map(([, link]) => (typeof link === 'string' ? undefined : link.params?.['operation']));

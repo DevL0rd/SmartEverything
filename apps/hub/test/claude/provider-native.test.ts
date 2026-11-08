@@ -245,6 +245,7 @@ describe('job configuration', () => {
       options: {
         turn: value,
         cwd: '/work',
+        claudeHome: null,
         log: new Logger('hub.claude'),
         publish: () => undefined,
       },

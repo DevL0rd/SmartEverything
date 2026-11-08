@@ -1,5 +1,6 @@
-import type { AutomationV3 } from '@smarteverything/domain';
-import { MINUTE_MS, automation, lit, type Maker } from './build';
+import { STARTER_NODE_IDS, type AutomationV4 } from '@smarteverything/domain';
+import { MINUTE_MS, lit } from './build';
+import { graphAutomation, type GraphMaker } from './graph-kit';
 import {
   choicesOf,
   devicesSlot,
@@ -33,7 +34,7 @@ export function lightsOffAfterMotion(devices: readonly TemplateDevice[]): Templa
         numberSlot('minutes', 'Quiet for', 5, { min: 1, max: 120, unit: 'min' }),
       ],
       make: (use, m) =>
-        automation({
+        graphAutomation({
           mode: 'restart',
           triggers: [
             stateSignal(m, 'signal1', {
@@ -44,7 +45,7 @@ export function lightsOffAfterMotion(devices: readonly TemplateDevice[]): Templa
           ],
           body: [
             m.node('quiet', 'fn.call', {
-              fn: lit('builtin.lights_off_after'),
+              fn: lit(STARTER_NODE_IDS.lightsOffAfter),
               lights: lit({ devices: [...use.texts('lights')] }),
               sensor: lit(sensor.id),
               after: lit(use.number('minutes') * MINUTE_MS),
@@ -55,8 +56,8 @@ export function lightsOffAfterMotion(devices: readonly TemplateDevice[]): Templa
   ];
 }
 
-function handsOffProgram(use: Use, m: Maker): AutomationV3 {
-  return automation({
+function handsOffProgram(use: Use, m: GraphMaker): AutomationV4 {
+  return graphAutomation({
     description:
       'Clears the automatic-on flag whenever a light in the room is changed by hand, so presence lights leave it alone.',
     variables: [

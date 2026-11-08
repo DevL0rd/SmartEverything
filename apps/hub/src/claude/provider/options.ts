@@ -22,22 +22,31 @@ const EXCLUDED_AUTH_ENVIRONMENT = new Set([
 ]);
 const LOCAL_ENVIRONMENT = z.record(z.string(), z.string().optional());
 
-export function subscriptionEnvironment(): Record<string, string | undefined> {
-  return Object.fromEntries(
+export function subscriptionEnvironment(
+  claudeHome: string | null,
+): Record<string, string | undefined> {
+  const inherited = Object.fromEntries(
     Object.entries(LOCAL_ENVIRONMENT.parse({ ...env })).filter(
       ([key]) => !EXCLUDED_AUTH_ENVIRONMENT.has(key),
     ),
   );
+  return claudeHome === null ? inherited : { ...inherited, CLAUDE_CONFIG_DIR: claudeHome };
+}
+
+export function signInInstruction(claudeHome: string | null): string {
+  if (claudeHome === null)
+    return 'Sign into the official Claude CLI locally with a Claude subscription. API-key or third-party provider authentication cannot supply this computer provider.';
+  return `Sign the hub's Claude home in once as the hub user with a Claude subscription: CLAUDE_CONFIG_DIR=${claudeHome} claude auth login --claudeai. API-key or third-party provider authentication cannot supply this provider.`;
 }
 
 const WORK_DIRECTORY_NAME = 'provider-work';
 
-export function providerWorkDirectory(dataDirectory: string): string {
-  return join(dataDirectory, WORK_DIRECTORY_NAME);
+export function providerWorkDirectory(directory: string): string {
+  return join(directory, WORK_DIRECTORY_NAME);
 }
 
 export async function workDirectory(
-  dataDirectory: string,
+  claudeDirectory: string,
   options: ClaudeProviderOptions,
 ): Promise<string> {
   const cwd = options.cwd;
@@ -49,7 +58,7 @@ export async function workDirectory(
     }
     return cwd;
   }
-  const directory = providerWorkDirectory(dataDirectory);
+  const directory = providerWorkDirectory(claudeDirectory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   return directory;
 }

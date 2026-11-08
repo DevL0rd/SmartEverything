@@ -1,10 +1,6 @@
 import { useHarnessCatalogue } from '../data/harness';
 import { harnessHostName } from '../model/harness-context';
-import {
-  isComputerEngine,
-  COMPUTER_ENGINE_LABELS,
-  type ComputerEngine,
-} from '../provider/computer-engine';
+import { COMPUTER_ENGINE_LABELS, type ComputerEngine } from '../provider/computer-engine';
 import {
   AUTO_LATEST_GEMINI_FLASH,
   AI_MODEL_CHOICE,
@@ -16,12 +12,6 @@ import { useEngineCatalogue } from '../provider/provider-data';
 import type { EngineCatalogue } from '../provider/engine-catalogue';
 import { defaultChoiceOf, type ModelChoice } from './model-choice';
 import { useModelRow, useSuggestedModels } from './model-queries';
-
-const LOADING_NAME = 'Loading model…';
-
-export function modelOrNull(model: string): string | null {
-  return model === AUTO_LATEST_GEMINI_FLASH ? null : model;
-}
 
 export function useModelChoice(model: string | null): ModelChoice | null {
   const explicit = model !== null && model !== AUTO_LATEST_GEMINI_FLASH;
@@ -42,22 +32,10 @@ export interface ModelLabel {
 }
 
 export function useModelLabel(engine: Engine): ModelLabel {
-  const model = useModelChoice(engine.kind === 'openrouter' ? engine.model : null);
-  const defaults = useSuggestedModels(
-    'chat',
-    null,
-    engine.kind === 'openrouter' && engine.model === null,
-  );
   const catalogue = useEngineCatalogue();
   const harness = useHarnessCatalogue();
   if (engine.kind === 'dsh') return harnessModelLabel(engine, harness.data);
-  if (isComputerEngine(engine)) return nativeModelLabel(engine, catalogue.data);
-  const label = openrouterModelLabel(model);
-  if (engine.model !== null || model !== null) return label;
-  return {
-    ...label,
-    name: defaultModelName(defaults),
-  };
+  return nativeModelLabel(engine, catalogue.data);
 }
 
 function nativeModelLabel(
@@ -88,19 +66,4 @@ function harnessModelLabel(
     computer:
       route === undefined ? 'Supplier unavailable' : harnessHostName(route.supplier, catalogue),
   };
-}
-
-function openrouterModelLabel(model: ModelChoice | null): ModelLabel {
-  return model === null
-    ? { name: LOADING_NAME, provider: null, providerLabel: null, computer: null }
-    : {
-        name: model.name,
-        provider: model.provider,
-        providerLabel: model.providerLabel,
-        computer: null,
-      };
-}
-
-function defaultModelName(defaults: ReturnType<typeof useSuggestedModels>): string {
-  return defaults.data?.default?.name ?? (defaults.isError ? 'Model unavailable' : LOADING_NAME);
 }

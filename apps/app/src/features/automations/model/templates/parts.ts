@@ -1,10 +1,11 @@
-import type { FlowNode, JsonValue, TriggerNode } from '@smarteverything/domain';
-import { SECOND_MS, lit, type Maker, type Ports } from './build';
+import type { GraphPiece, JsonValue, TriggerNode } from '@smarteverything/domain';
+import { SECOND_MS, lit, type Ports } from './build';
+import type { GraphMaker } from './graph-kit';
 
 export type Test = Readonly<Record<string, JsonValue>>;
 
 export function stateSignal(
-  m: Maker,
+  m: GraphMaker,
   key: string,
   watch: {
     readonly subject: string;
@@ -28,7 +29,7 @@ export function stateSignal(
 }
 
 export function eventSignal(
-  m: Maker,
+  m: GraphMaker,
   key: string,
   event: {
     readonly source: string;
@@ -47,7 +48,7 @@ export function eventSignal(
   return m.trigger(key, 'trigger.signal', ports);
 }
 
-export function notice(m: Maker, key: string, message: string): FlowNode {
+export function notice(m: GraphMaker, key: string, message: string): GraphPiece {
   return m.node(key, 'notify.feed', { message: lit(message) });
 }
 
@@ -57,7 +58,7 @@ export interface DeviceChange {
   readonly to: JsonValue;
 }
 
-export function setDevices(m: Maker, key: string, change: DeviceChange): FlowNode {
+export function setDevices(m: GraphMaker, key: string, change: DeviceChange): GraphPiece {
   return m.node(key, 'device.set', {
     target: lit({ ...change.target }),
     control: lit(change.control),

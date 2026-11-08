@@ -5,9 +5,7 @@ import type { Program } from '@smarteverything/flow/program/walk';
 import { Ids, automation, ifNode, scope, setLight } from '../../../model/canvas/canvas-fixtures';
 import { envOf, viewByKey } from './inspector-fixtures';
 import type { SectionId } from './sections-model';
-import { SECTION_IDS, sectionsFor } from './sections-model';
-import { failAgainOps } from './catch-model';
-import { applied } from './inspector-fixtures';
+import { SECTION_IDS, inspectorLayout, moreOptionsSet, sectionsFor } from './sections-model';
 import type { InspectorFinding } from './section-types';
 
 function sectionsOfKey(program: Program, key: string, extra = {}): readonly SectionId[] {
@@ -23,11 +21,13 @@ function lone(
 }
 
 describe('section order', () => {
-  it('lists header first, then notes and advanced for any step', () => {
+  it('lists header first and ends with More options: naming first, advanced last', () => {
     const program = automation([setLight(new Ids(), null)]);
-    const sections = sectionsOfKey(program, 'n1');
-    expect(sections[0]).toBe('header');
-    expect(sections.slice(-2)).toEqual(['notes', 'advanced']);
+    const view = viewByKey(program, 'n1');
+    const layout = inspectorLayout(view, envOf(program));
+    expect(layout.main[0]).toBe('header');
+    expect(layout.more[0]).toBe('naming');
+    expect(layout.more.at(-1)).toBe('advanced');
   });
 
   it('keeps every section in the order of SECTION_IDS', () => {
@@ -51,16 +51,14 @@ function runValues(): {
 }
 
 describe('sections by kind', () => {
-  it('gives a device step inputs, behaviour and no block sections', () => {
+  it('gives a device step inputs and outputs first and its failure handling under More options', () => {
     const program = automation([setLight(new Ids(), null)]);
-    expect(sectionsOfKey(program, 'n1')).toEqual([
-      'header',
-      'inputs',
-      'outputs',
-      'behaviour',
-      'notes',
-      'advanced',
-    ]);
+    const layout = inspectorLayout(viewByKey(program, 'n1'), envOf(program));
+    expect(layout).toEqual({
+      main: ['header', 'inputs', 'outputs', 'mode'],
+      wiring: ['connections', 'onError'],
+      more: ['naming', 'behaviour', 'advanced'],
+    });
   });
 
   it('gives a trigger its inputs and no behaviour', () => {
@@ -85,22 +83,37 @@ describe('sections by kind', () => {
     const each = automation([lone('flow.for_each', {}, { scopes: { body: scope([]) } })]);
     const sections = sectionsOfKey(each, 'n40');
     expect(sections).toContain('together');
+    expect(sections).toContain('collect');
     expect(sections).not.toContain('limits');
   });
 
-  it('gives If, Switch, Do together and Try their rows, and structured outputs', () => {
+  it('gives If, Switch and Try their rows and values after, and a connections section', () => {
     const ids = new Ids();
     const branch = ifNode(ids, [scope([])]);
     const program = automation([branch]);
-    const sections = sectionsOfKey(program, branch.key);
-    expect(sections).toContain('rows');
-    expect(sections).toContain('structured');
-    for (const id of ['flow.switch', 'flow.parallel', 'flow.try']) {
-      const other = automation([lone(id)]);
-      const found = sectionsOfKey(other, 'n40');
+    const layout = inspectorLayout(viewByKey(program, branch.key), envOf(program));
+    expect(layout.main).toContain('rows');
+    expect(layout.more).toContain('valuesAfter');
+    expect(layout.wiring).toContain('connections');
+    for (const id of ['flow.switch', 'flow.try']) {
+      const found = sectionsOfKey(automation([lone(id)]), 'n40');
       expect(found).toContain('rows');
-      expect(found).toContain('structured');
+      expect(found).toContain('valuesAfter');
     }
+  });
+
+  it('puts On error after the wiring for steps that can fail, and keeps Try on its own rows', () => {
+    const program = automation([setLight(new Ids(), null)]);
+    expect(inspectorLayout(viewByKey(program, 'n1'), envOf(program)).wiring.at(-1)).toBe('onError');
+    const tryLayout = sectionsOfKey(automation([lone('flow.try')]), 'n40');
+    expect(tryLayout).not.toContain('onError');
+    expect(tryLayout).not.toContain('mode');
+    expect(tryLayout).toContain('rows');
+  });
+
+  it('gives Do together its paths', () => {
+    const fork = lone('flow.parallel', {}, { scopes: { path1: scope([]), path2: scope([]) } });
+    expect(sectionsOfKey(automation([fork]), fork.key)).toContain('paths');
   });
 
   it('gives Break and Continue the loop picker and Return the exit picker', () => {
@@ -109,26 +122,19 @@ describe('sections by kind', () => {
     expect(sectionsOfKey(automation([lone('flow.return')]), 'n40')).toContain('return');
   });
 
+  it('gives Run an automation the called automation inputs right after its own inputs', () => {
+    const run = lone('automation.run', { automation: { lit: 'a1' } });
+    const { main } = inspectorLayout(viewByKey(automation([run]), 'n40'), envOf(automation([run])));
+    expect(main).toContain('calledInputs');
+    expect(main.indexOf('calledInputs')).toBe(main.indexOf('inputs') + 1);
+    expect(sectionsOfKey(automation([setLight(new Ids(), null)]), 'n1')).not.toContain(
+      'calledInputs',
+    );
+  });
+
   it('gives a Custom Node its header', () => {
     const sections = sectionsOfKey(automation([lone('fn.call', { fn: { lit: 'x' } })]), 'n40');
     expect(sections).toContain('instance');
-  });
-
-  it('offers Fail again only on a failure that rethrows a caught error', () => {
-    const ids = new Ids();
-    const caught = ids.next().id;
-    const attempt: FlowNode = {
-      ...ids.next(),
-      kind: 'flow.try',
-      scopes: { try: scope([]) },
-      catches: [{ id: caught, scope: scope([]) }],
-    };
-    const program = applied(automation([attempt]), failAgainOps(attempt.key, caught, 'same'));
-    const again = program.body.nodes[0]?.catches?.[0]?.scope.nodes[0];
-    expect(again?.kind).toBe('flow.fail');
-    expect(sectionsOfKey(program, again?.key ?? '')).toContain('failAgain');
-    const plain = automation([lone('flow.fail', { message: { lit: 'x' } })]);
-    expect(sectionsOfKey(plain, 'n40')).not.toContain('failAgain');
   });
 });
 
@@ -150,17 +156,46 @@ describe('problems and run values', () => {
   it('shows Run values last, only while a run is being viewed', () => {
     const program = automation([setLight(new Ids(), null)]);
     expect(sectionsOfKey(program, 'n1')).not.toContain('run');
-    expect(sectionsOfKey(program, 'n1', { run: runValues() }).at(-1)).toBe('run');
+    const layout = inspectorLayout(viewByKey(program, 'n1'), envOf(program, { run: runValues() }));
+    expect(layout.main.at(-1)).toBe('run');
   });
 });
 
 describe('every shipped step and value kind', () => {
-  it('gets a header, notes and advanced, each section once', () => {
+  it('gets a header, naming and advanced, each section once', () => {
     for (const kind of NODE_REGISTRY.shipped().filter((entry) => entry.class !== 'trigger')) {
       const sections = sectionsOfKey(automation([lone(kind.id)]), 'n40');
       expect(sections[0]).toBe('header');
-      expect(sections.slice(-2)).toEqual(['notes', 'advanced']);
+      expect(sections).toContain('naming');
+      expect(sections.at(-1)).toBe('advanced');
       expect(new Set(sections).size).toBe(sections.length);
     }
+  });
+});
+
+describe('More options summary', () => {
+  it('names what is set inside, and nothing when all is default', () => {
+    const plain = automation([setLight(new Ids(), null)]);
+    expect(moreOptionsSet(viewByKey(plain, 'n1'), false)).toEqual([]);
+    const busy = automation([
+      setLight(new Ids(), null, {
+        note: 'Hi',
+        enabled: false,
+        policy: { timeout: 1000 },
+      }),
+    ]);
+    expect(moreOptionsSet(viewByKey(busy, 'n1'), true)).toEqual([
+      'Note',
+      'Time limit 1 s',
+      'Off',
+      'Kept where dropped',
+    ]);
+  });
+
+  it('leaves out the run mode and a wait time limit, which the main area shows', () => {
+    const waiting = automation([
+      setLight(new Ids(), null, { policy: { mode: 'wait_for_result', timeout: 1000 } }),
+    ]);
+    expect(moreOptionsSet(viewByKey(waiting, 'n1'), false)).toEqual([]);
   });
 });

@@ -56,6 +56,7 @@ function harness(): Harness {
         call.phase = 'ended';
       }),
     },
+    overlay: { superseded: vi.fn() },
     environment: {
       onLocalNetwork: () => env.local,
       microphoneGranted: () => Promise.resolve(env.microphone),
@@ -319,12 +320,17 @@ describe('notices from the hub', () => {
     await h.ear.heard(WAKE);
     h.ear.receive({ kind: 'superseded', superseded: { winner: { source: 'camera', key: 'c1' } } });
     expect(h.ports.calls.end).toHaveBeenCalledTimes(1);
+    expect(h.ports.overlay.superseded).toHaveBeenCalledExactlyOnceWith({
+      source: 'camera',
+      key: 'c1',
+    });
   });
 
   it('keeps a call the person started themselves when a wake is superseded', () => {
     h.call.phase = 'listening';
     h.ear.receive({ kind: 'superseded', superseded: { winner: { source: 'camera', key: 'c1' } } });
     expect(h.ports.calls.end).not.toHaveBeenCalled();
+    expect(h.ports.overlay.superseded).not.toHaveBeenCalled();
   });
 
   it('starts and stops the level meter as the Listening page watches', () => {

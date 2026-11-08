@@ -2,12 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { OVERLAY_SIMPLE_ACTIONS, type OverlayAction } from '@smarteverything/domain';
 import type { CallView } from '../call/call-state';
 
-vi.mock('expo-router', () => ({ router: { navigate: vi.fn() } }));
+const navigate = vi.hoisted(() => vi.fn());
+
+vi.mock('expo-router', () => ({ router: { navigate } }));
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: { getItem: vi.fn(), setItem: vi.fn().mockResolvedValue(undefined) },
 }));
 
-const { runOverlayAction } = await import('./overlay-actions');
+const { CALL_PORTS, runOverlayAction } = await import('./overlay-actions');
+const { claimVoiceMessage, showChatOnScreen } = await import('../voice-message/voice-request');
 const { IDLE_CALL } = await import('../call/call-state');
 
 type Ports = Parameters<typeof runOverlayAction>[1];
@@ -40,6 +43,7 @@ function ports(change: Partial<CallView> = {}): { readonly set: Ports; readonly 
     volume: note('volume'),
     thinking: note('thinking'),
     answer: note('answer'),
+    voiceMessage: note('voice_message'),
   };
   return { set, calls };
 }
@@ -115,9 +119,28 @@ describe('overlay actions', () => {
     expect(run({ kind: 'voice_thinking', level: 'off' })).toEqual(['thinking:off']);
   });
 
+  it('turns the power button press into a voice message', () => {
+    expect(run({ kind: 'voice_message' })).toEqual(['voice_message']);
+  });
+
   it('handles every plain action kind the contract defines', () => {
     for (const kind of OVERLAY_SIMPLE_ACTIONS) {
       expect(run({ kind }), kind).not.toEqual([]);
     }
+  });
+
+  it('records the voice message in the chat on screen without moving', () => {
+    navigate.mockClear();
+    const hide = showChatOnScreen('chat-a');
+    CALL_PORTS.voiceMessage();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(claimVoiceMessage('chat-a')).toBe(true);
+    hide();
+  });
+
+  it('opens the conversation chat to record when no chat is on screen', () => {
+    navigate.mockClear();
+    CALL_PORTS.voiceMessage();
+    expect(navigate).toHaveBeenCalledWith('/assistant/voice-message');
   });
 });

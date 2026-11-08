@@ -1,8 +1,9 @@
+import { createElement } from 'react';
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import type { MenuItem } from '../../../components/menu';
 import { cancelScheduled } from './actions';
-import { openScheduleSheet } from './quick-sheet';
+import { openScheduleSheet, QuickSchedulePanel } from './quick-sheet';
 import { useDeviceSchedule } from './use-scheduled';
 
 export function useScheduleItems(deviceId: string, powerState: string): MenuItem[] {
@@ -14,11 +15,19 @@ export function useScheduleItems(deviceId: string, powerState: string): MenuItem
       ? []
       : [
           {
+            id: 'device-power-schedule',
             label: powered ? 'Turn off in…' : 'Turn on in…',
             icon: 'timer',
             onPress: (): void => {
               openScheduleSheet(deviceId);
             },
+            subpage: ({ back, close, opener }) =>
+              createElement(QuickSchedulePanel, {
+                deviceId,
+                onClose: back,
+                onExit: close,
+                subpage: { opener },
+              }),
           },
         ];
   const cancel: MenuItem[] =

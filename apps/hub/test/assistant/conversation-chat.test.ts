@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChatDirectory } from '../../src/assistant/chat-directory';
 import { AssistantFiles } from '../../src/assistant/files';
 import { testStore, type TestStore } from '../support/store';
+import { hubLayout } from '../../src/data-layout';
 
 const START = Date.parse('2026-10-10T10:00:00.000Z');
 
@@ -22,8 +23,7 @@ beforeEach(async () => {
   profileId = store.profiles.first().id;
   chats = new ChatDirectory(
     store,
-    new AssistantFiles({ dataDirectory: opened.directory, chat: store.assistantChat, now }),
-    now,
+    new AssistantFiles({ layout: hubLayout(opened.directory, {}), chat: store.assistantChat, now }),
   );
 });
 
@@ -32,38 +32,41 @@ afterEach(async () => {
 });
 
 describe('conversation chats', () => {
-  it('reuses the latest conversation chat while it was active within the timeout', () => {
-    const first = chats.conversationChat(profileId, 'Talking via Camera');
-    minutesLater(90);
-    opened.store.aiChats.touched(first.id, 0);
-    minutesLater(200);
-    expect(chats.conversationChat(profileId, 'Call from Coordinator').id).toBe(first.id);
+  it('keeps using the same conversation chat however long it was quiet', () => {
+    const first = chats.conversationChat(profileId);
+    minutesLater(60 * 24 * 30);
+    expect(chats.conversationChat(profileId).id).toBe(first.id);
   });
 
-  it('starts a new chat once the latest one has been quiet longer than the timeout', () => {
-    const first = chats.conversationChat(profileId, 'Talking via Camera');
-    minutesLater(121);
-    expect(chats.conversationChat(profileId, 'Talking via Camera').id).not.toBe(first.id);
-  });
-
-  it('starts a new chat every time when reuse is off', () => {
+  it('names the conversation chat after the AI and keeps the name when it is used', () => {
+    expect(chats.conversationChat(profileId)).toMatchObject({ title: 'Coordinator' });
     const settings = opened.store.assistantChat.settings();
-    opened.store.assistantChat.saveSettings({ ...settings, reuse_chat_minutes: 0 });
-    const first = chats.conversationChat(profileId, 'Talking via Camera');
-    expect(chats.conversationChat(profileId, 'Talking via Camera').id).not.toBe(first.id);
+    opened.store.assistantChat.saveSettings({ ...settings, name: 'Jarvis' });
+    chats.retitleConversations();
+    expect(chats.conversationChat(profileId).title).toBe('Jarvis');
+    expect(opened.store.aiChats.titleAuto(chats.conversationChat(profileId).id)).toBe(false);
   });
 
   it('never reuses an ordinary chat or an archived conversation chat', () => {
     const ordinary = chats.forTurn(profileId, undefined, 'Shopping list');
-    const archived = chats.conversationChat(profileId, 'Talking via Camera');
+    const archived = chats.conversationChat(profileId);
     opened.store.aiChats.update(archived.id, { archived: true });
-    const next = chats.conversationChat(profileId, 'Talking via Camera');
+    const next = chats.conversationChat(profileId);
     expect([ordinary.id, archived.id]).not.toContain(next.id);
+    expect(next.title).toBe('Coordinator');
   });
 
   it('a voice call from the app without a chat joins the conversation chat', () => {
-    const conversation = chats.conversationChat(profileId, 'Talking via Camera');
+    const conversation = chats.conversationChat(profileId);
+    minutesLater(60 * 24);
     const call = chats.chatForCall({ profileId, clientId: null, device: 'Pixel' }, null);
     expect(call.id).toBe(conversation.id);
+  });
+
+  it('keeps one chat per plugin source however long it was quiet', () => {
+    const first = chats.chatForPlugin(profileId, 'plugin:discord:1', '#general');
+    minutesLater(60 * 24 * 30);
+    expect(chats.chatForPlugin(profileId, 'plugin:discord:1', '#general').id).toBe(first.id);
+    expect(chats.chatForPlugin(profileId, 'plugin:discord:2', '#other').id).not.toBe(first.id);
   });
 });

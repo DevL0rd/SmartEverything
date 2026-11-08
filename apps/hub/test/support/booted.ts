@@ -7,6 +7,7 @@ import {
   type RunningServer,
   type ServerOptions,
 } from '../../src/main';
+import { testLayout } from './test-layout';
 import { CAMERA, LAMP, fakeModule, type FakeModule } from './fake-provider';
 import { captureLogs, testLogger } from './logs';
 import { LogLines } from '../../src/service/log-lines';
@@ -54,7 +55,7 @@ export async function bootServer(
   const clock: Clock = { ...systemClock, now: () => new Date(Date.now() + offset) };
   let base = '';
   const server = await startServer({
-    dataDirectory: directory,
+    layout: await testLayout(directory),
     port: 0,
     host: '127.0.0.1',
     go2rtcBinary: await fakeGo2rtcServer(directory),

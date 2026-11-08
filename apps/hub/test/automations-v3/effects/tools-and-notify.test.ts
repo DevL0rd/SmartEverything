@@ -150,7 +150,12 @@ describe('notify effects', () => {
     }));
     const deviceId = randomUUID();
     const result = await notify.speak(
-      { target: { kind: 'device', deviceId }, text: 'Air is bad', asProfileId: randomUUID() },
+      {
+        target: { kind: 'device', deviceId },
+        text: 'Air is bad',
+        priority: 'queue',
+        asProfileId: randomUUID(),
+      },
       ORIGIN,
     );
     expect(result).toStrictEqual({ ok: true, spokenOn: ['Living room camera'] });

@@ -1,15 +1,10 @@
 import type { ReactNode } from 'react';
 import { memo } from 'react';
-import { View } from 'react-native';
 import type { FileEntry } from '@smarteverything/domain';
-import { Icon } from '../../../components/icon';
-import { Interactive } from '../../../components/interactive';
-import { OverflowButton, type MenuItem } from '../../../components/menu';
-import { Text } from '../../../components/text';
-import { bytes } from '../../../format/number';
-import { shortDate } from '../../../format/time';
+import { EntryRow } from '../../../components/files/entry-row';
+import type { MenuItem } from '../../../components/menu';
 import { entryLine } from './path-model';
-import { glyphOf, type RowAction } from './file-model';
+import type { RowAction } from './file-model';
 
 export interface FileRowProps {
   readonly entry: FileEntry;
@@ -56,61 +51,6 @@ function captionOf(entry: FileEntry, wide: boolean, detail: string | null): stri
   return detail === null ? entryLine(entry) : `${detail} · ${entryLine(entry)}`;
 }
 
-function Leading({
-  entry,
-  selecting,
-  selected,
-}: Pick<FileRowProps, 'entry' | 'selecting' | 'selected'>): ReactNode {
-  if (selecting) {
-    return (
-      <Icon
-        name={selected ? 'circleCheck' : 'circle'}
-        size={20}
-        tone={selected ? 'primary' : 'faint'}
-      />
-    );
-  }
-  return (
-    <Icon name={glyphOf(entry)} size={20} tone={entry.kind === 'folder' ? 'primary' : 'variant'} />
-  );
-}
-
-function Cells({
-  entry,
-  wide,
-  detail,
-  selecting,
-  selected,
-}: Pick<FileRowProps, 'entry' | 'wide' | 'detail' | 'selecting' | 'selected'>): ReactNode {
-  const folder = entry.kind === 'folder';
-  const caption = captionOf(entry, wide, detail);
-  return (
-    <View className="min-w-0 flex-1 flex-row items-center gap-3">
-      <Leading entry={entry} selecting={selecting} selected={selected} />
-      <View className="min-w-0 flex-1">
-        <Text variant="callout" numberOfLines={1}>
-          {entry.name}
-        </Text>
-        {caption === null ? null : (
-          <Text variant="caption" tone="variant" numberOfLines={1}>
-            {caption}
-          </Text>
-        )}
-      </View>
-      {wide ? (
-        <>
-          <Text variant="callout" tone="variant" align="end" className="tabular w-21">
-            {folder ? '—' : bytes(entry.size)}
-          </Text>
-          <Text variant="callout" tone="variant" align="end" className="tabular w-22">
-            {shortDate(entry.modifiedAt)}
-          </Text>
-        </>
-      ) : null}
-    </View>
-  );
-}
-
 export const FileRowView = memo(function FileRowView({
   entry,
   wide,
@@ -120,33 +60,25 @@ export const FileRowView = memo(function FileRowView({
   selected,
   onAction,
 }: FileRowProps): ReactNode {
-  const folder = entry.kind === 'folder';
-  const opening = `${folder ? 'Open folder' : 'Preview'} ${entry.name}`;
+  const opening = `${entry.kind === 'folder' ? 'Open folder' : 'Preview'} ${entry.name}`;
   return (
-    <View className="h-14 flex-row items-center border-t border-outline-variant pl-4 pr-1">
-      <Interactive
-        label={selecting ? `Select ${entry.name}` : opening}
-        selected={selecting ? selected : undefined}
-        onPress={() => {
-          onAction(selecting ? 'select' : 'open', entry);
-        }}
-        onLongPress={() => {
-          onAction('select', entry);
-        }}
-        className="min-w-0 flex-1 flex-row items-center self-stretch"
-      >
-        <Cells
-          entry={entry}
-          wide={wide}
-          detail={detail}
-          selecting={selecting}
-          selected={selected}
-        />
-      </Interactive>
-      <OverflowButton
-        items={menuOf(entry, canAttach, onAction)}
-        label={`Actions for ${entry.name}`}
-      />
-    </View>
+    <EntryRow
+      name={entry.name}
+      kind={entry.kind}
+      caption={captionOf(entry, wide, detail)}
+      size={entry.kind === 'folder' ? null : entry.size}
+      modifiedAt={entry.modifiedAt}
+      wide={wide}
+      selecting={selecting}
+      selected={selected}
+      openLabel={opening}
+      menu={menuOf(entry, canAttach, onAction)}
+      onOpen={() => {
+        onAction('open', entry);
+      }}
+      onSelect={() => {
+        onAction('select', entry);
+      }}
+    />
   );
 });

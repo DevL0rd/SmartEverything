@@ -136,7 +136,9 @@ describe('connecting an assistant', () => {
         params: {
           name: 'device_control',
           arguments: {
-            deviceIds: [lamp?.id], capability: 'brightness', value: 40,
+            deviceIds: [lamp?.id],
+            capability: 'brightness',
+            value: 40,
           },
         },
       }),

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { JSON_VALUE, type AdapterSink } from '@smarteverything/domain';
 import type { ShellyDevice } from '@smarteverything/shelly';
-import { redact, redactText } from '@smarteverything/logging';
+import { clip, payloadOf } from '@smarteverything/logging';
 import type { ShellyEvent } from './notifications';
 export function componentEvent(
   sink: AdapterSink,
@@ -18,7 +18,7 @@ export function componentEvent(
     action: event.event,
     ...(event.data === undefined ? {} : { data: event.data }),
   };
-  const safe = z.record(z.string(), JSON_VALUE).parse(redact(details));
+  const safe = z.record(z.string(), JSON_VALUE).parse(payloadOf(details));
   sink.event({
     externalId: snapshot.externalId,
     kind: event.component.startsWith('button:') ? 'button' : 'activity',
@@ -46,7 +46,7 @@ export function faultTransition(
       source: 'shelly',
       component: 'presence',
       event: errors.length > 0 ? 'sensor_fault' : 'fault_cleared',
-      errors: errors.map((error) => redactText(error, 100)),
+      errors: errors.map((error) => clip(error, 100)),
     },
   });
   return true;

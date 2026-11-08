@@ -1,6 +1,8 @@
 import ArchiveGlyph from 'lucide-react-native/icons/archive';
 import ArchiveRestoreGlyph from 'lucide-react-native/icons/archive-restore';
 import ArrowDownGlyph from 'lucide-react-native/icons/arrow-down';
+import ArrowUpGlyph from 'lucide-react-native/icons/arrow-up';
+import AtSignGlyph from 'lucide-react-native/icons/at-sign';
 import CheckCheckGlyph from 'lucide-react-native/icons/check-check';
 import GitBranchGlyph from 'lucide-react-native/icons/git-branch';
 import PanelRightGlyph from 'lucide-react-native/icons/panel-right';
@@ -19,6 +21,8 @@ export const CHAT_GLYPHS = {
   reply: ReplyGlyph,
   gitBranch: GitBranchGlyph,
   arrowDown: ArrowDownGlyph,
+  arrowUp: ArrowUpGlyph,
+  atSign: AtSignGlyph,
   checkCheck: CheckCheckGlyph,
   textCursor: TextCursorGlyph,
   textWrap: TextWrapGlyph,

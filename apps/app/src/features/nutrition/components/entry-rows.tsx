@@ -70,6 +70,7 @@ export function FoodEntryRow({
   return (
     <ListRow
       title={line.name}
+      wrapTitle
       subtitle={problem ?? line.subtitle}
       subtitleTone={problem === null ? 'variant' : 'critical'}
       {...(line.value === null ? {} : { value: line.value })}

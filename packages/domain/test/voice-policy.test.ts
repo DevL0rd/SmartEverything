@@ -32,15 +32,15 @@ describe('voice detection presets', () => {
   });
 
   it('gets more eager to hear speech from less to more', () => {
-    const [less, standard, more] = VOICE_DETECTIONS.map((name) => VOICE_DETECTION[name]);
+    const { less, standard, more } = VOICE_DETECTION;
     expect(VOICE_DETECTIONS).toEqual(['less', 'standard', 'more']);
     for (const preset of [less, standard, more]) {
-      expect(preset?.negativeSpeechThreshold).toBeLessThan(preset?.positiveSpeechThreshold ?? 0);
+      expect(preset.negativeSpeechThreshold).toBeLessThan(preset.positiveSpeechThreshold);
     }
-    expect(less?.positiveSpeechThreshold).toBeGreaterThan(standard?.positiveSpeechThreshold ?? 1);
-    expect(standard?.positiveSpeechThreshold).toBeGreaterThan(more?.positiveSpeechThreshold ?? 1);
-    expect(less?.minSpeechMs).toBeGreaterThan(standard?.minSpeechMs ?? 0);
-    expect(standard?.minSpeechMs).toBeGreaterThan(more?.minSpeechMs ?? 0);
+    expect(less.positiveSpeechThreshold).toBeGreaterThan(standard.positiveSpeechThreshold);
+    expect(standard.positiveSpeechThreshold).toBeGreaterThan(more.positiveSpeechThreshold);
+    expect(less.minSpeechMs).toBeGreaterThan(standard.minSpeechMs);
+    expect(standard.minSpeechMs).toBeGreaterThan(more.minSpeechMs);
   });
 
   it('builds the detector settings from a sensitivity and a pause', () => {

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { SettingsPageScreen } from '../../../../../src/settings/settings-screen';
+import { LocationSettingsScreen } from '../../../../../src/features/settings/home/location-screen';
 
 export default function LocationSettingsRoute(): ReactNode {
-  return <SettingsPageScreen page="home/location" />;
+  return <LocationSettingsScreen />;
 }

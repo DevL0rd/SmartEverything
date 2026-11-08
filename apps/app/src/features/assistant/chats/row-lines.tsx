@@ -3,9 +3,11 @@ import { View } from 'react-native';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import type { StatusTone } from '../../../components/tone';
+import { NATIVE_CHAT_NAMES } from './native-chat-brand';
 import { TypingDots } from '../components/typing-dots';
 import type { ChatEntry, FailedChatLine, PreviewChatLine } from './chat-entry';
 import type { RowLine } from './row-status';
+import { workText, type WorkStatus } from '../../../store/chat-turns';
 
 export interface Status {
   readonly tone: StatusTone;
@@ -36,7 +38,7 @@ function stateWordOf(line: RowLine): string {
     case 'needs':
       return `Needs you, ${requestsText(line.count)}`;
     case 'working':
-      return 'Working';
+      return workText(line.work);
     case 'failed':
       return `Failed, ${line.reason}`;
     case 'waiting':
@@ -52,10 +54,12 @@ function stateWordOf(line: RowLine): string {
 export function a11yLabelOf(entry: ChatEntry, line: RowLine, agent: boolean): string {
   const unread = entry.unread > 0 ? `${String(entry.unread)} unread` : '';
   return [
-    entry.title,
+    entry.helperName === undefined ? entry.title : `${entry.helperName}, ${entry.title}`,
     agent ? 'agent' : entry.source.label,
+    entry.nativeAdmission === 'standalone' && entry.runtime !== null
+      ? NATIVE_CHAT_NAMES[entry.runtime]
+      : '',
     entry.pinned ? 'Pinned' : '',
-    entry.desktop === undefined ? '' : `Desktop session on ${entry.desktop.deviceName}`,
     unread,
     stateWordOf(line),
   ]
@@ -74,11 +78,11 @@ function NeedsLine({ count }: { readonly count: number }): ReactNode {
   );
 }
 
-function WorkingLine({ step }: { readonly step: string | null }): ReactNode {
+function WorkingLine({ work }: { readonly work: WorkStatus }): ReactNode {
   return (
     <View className="min-w-0 flex-1 flex-row items-center gap-2">
       <Text variant="footnote" tone="primary" numberOfLines={1} className="shrink">
-        {step === null ? 'Working' : `Working · ${step}`}
+        {workText(work)}
       </Text>
       <TypingDots tone="primary" />
     </View>
@@ -146,7 +150,7 @@ export function Line({
     case 'needs':
       return <NeedsLine count={line.count} />;
     case 'working':
-      return <WorkingLine step={line.step} />;
+      return <WorkingLine work={line.work} />;
     case 'failed':
       return <FailedLine line={line} />;
     case 'waiting':

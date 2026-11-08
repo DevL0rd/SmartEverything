@@ -1,5 +1,5 @@
-import type { FlowNode, NodeKind, NodePolicy } from '@smarteverything/domain';
-import type { RowEdit } from './rows-model';
+import type { GraphNode, NodeKind, NodePolicy } from '@smarteverything/domain';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
 
 export type FailureMode = 'fail' | 'continue' | 'route';
 
@@ -8,7 +8,7 @@ export type RetrySetting = NonNullable<NodePolicy['retry']>;
 export const FAILURE_MODES: readonly { readonly value: FailureMode; readonly label: string }[] = [
   { value: 'fail', label: 'Stop the run' },
   { value: 'continue', label: 'Continue' },
-  { value: 'route', label: 'Go to On error' },
+  { value: 'route', label: 'Follow If it fails' },
 ];
 
 export const DEFAULT_RETRY: RetrySetting = {
@@ -94,17 +94,15 @@ export function evenedRetry(retry: RetrySetting, change: Partial<RetrySetting>):
   return next;
 }
 
-export const ROUTE_SCOPE = 'onError';
+export const ROUTE_PORT = 'onError';
 
-export function routeScopeEdit(node: FlowNode, mode: FailureMode): RowEdit | null {
-  const present = node.scopes !== undefined && ROUTE_SCOPE in node.scopes;
-  if (mode === 'route' && !present) return { t: 'scope.add', name: ROUTE_SCOPE };
-  if (mode !== 'route' && present) return { t: 'scope.remove', name: ROUTE_SCOPE };
-  return null;
-}
-
-export function routeLocked(node: FlowNode): boolean {
-  return (node.scopes?.[ROUTE_SCOPE]?.nodes.length ?? 0) > 0;
+export function failureModeOps(node: GraphNode, mode: FailureMode): readonly PatchOp[] {
+  const leaving = node.policy?.onError === 'route' && mode !== 'route';
+  const wired = node.to?.[ROUTE_PORT] !== undefined;
+  return [
+    ...(leaving && wired ? [{ op: 'disconnect', from: node.key, port: ROUTE_PORT } as const] : []),
+    { op: 'set', key: node.key, policy: withFailureMode(node.policy, mode) },
+  ];
 }
 
 export const TIMEOUT_DEFAULT_MS = 30_000;

@@ -1,0 +1,46 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "12000000-0000-4000-8000-000000000004",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "12000000-0000-4000-8000-000000000001",
+        "key": "before",
+        "kind": "device.set",
+        "ports": {
+          "target": { "lit": { "target": "hall" } },
+          "control": { "lit": "power" },
+          "to": { "lit": "on" }
+        }
+      },
+      {
+        "id": "12000000-0000-4000-8000-000000000002",
+        "key": "pause",
+        "kind": "flow.wait",
+        "ports": { "duration": { "lit": 5000 } }
+      },
+      {
+        "id": "12000000-0000-4000-8000-000000000003",
+        "key": "later",
+        "kind": "device.set",
+        "ports": {
+          "target": { "lit": { "target": "hall" } },
+          "control": { "lit": "power" },
+          "to": { "lit": "off" }
+        }
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

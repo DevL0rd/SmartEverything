@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { ACCENTS as ACCENT_NAMES, THEMES, type AppearancePref } from '@smarteverything/domain';
 import { Badge } from '../../../components/badge';
 import { Banner } from '../../../components/banner';
-import { Button } from '../../../components/button';
+import { ButtonSample } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { ColourSwatches } from '../../../components/colour-swatches';
 import { Figure } from '../../../components/figure';
@@ -91,9 +91,9 @@ export function AppearancePreview(): ReactNode {
   return (
     <Card title="Preview" icon="palette">
       <View className="gap-4">
-        <View className="flex-row items-center gap-3">
+        <View className="flex-row items-start gap-3">
           <View className="min-w-0 flex-1 gap-1">
-            <Text variant="title-3" numberOfLines={1}>
+            <Text variant="title-3" className="web:wrap-anywhere">
               {settings.home_name}
             </Text>
             <Text variant="callout" tone="variant">
@@ -108,11 +108,12 @@ export function AppearancePreview(): ReactNode {
         </View>
         <View
           className="flex-row flex-wrap gap-2"
+          aria-hidden
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          <Button label="Filled" onPress={() => undefined} />
-          <Button label="Tonal" variant="tonal" onPress={() => undefined} />
+          <ButtonSample label="Filled" />
+          <ButtonSample label="Tonal" variant="tonal" />
         </View>
       </View>
     </Card>

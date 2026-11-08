@@ -49,6 +49,7 @@ describe('v1.1 device and state kinds', () => {
     expect(NODE_REGISTRY.get('device.ir_send')?.effect).toEqual({
       retry: 'relative',
       budget: 'effects',
+      mode: 'fire_and_forget',
     });
     expect(NODE_REGISTRY.get('device.ensure')?.effect?.retry).toBe('idempotent');
   });

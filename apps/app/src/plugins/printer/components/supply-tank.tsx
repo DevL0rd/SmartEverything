@@ -233,7 +233,7 @@ export function SupplyTank({
         {compact ? copy.code : copy.name}
       </Text>
       {compact ? null : (
-        <Text variant="caption" tone="faint" align="center" numberOfLines={2}>
+        <Text variant="caption" tone="variant" align="center" numberOfLines={2}>
           {copy.caption}
         </Text>
       )}

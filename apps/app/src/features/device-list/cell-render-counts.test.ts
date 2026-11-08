@@ -1,14 +1,7 @@
 import type { DeviceCapability } from '@smarteverything/domain';
-import { describe, expect, it, vi } from 'vitest';
+import { vi } from 'vitest';
 import { televisionFixture } from '../../store/television-fixture';
-import {
-  budgetCase,
-  renderVisual,
-  useCellEnvironment,
-  type Budget,
-  type Face,
-  type Spec,
-} from './cell-budget';
+import { budgetCase, withSettings, type Budget, type Face, type Spec } from './cell-budget';
 
 vi.mock('../../queries/use-screen-query', async () => (await import('./idle-queries')).idleQueries);
 
@@ -98,6 +91,7 @@ const FACES: readonly Face[] = [
     ],
     values: { cleaning: 'docked', battery: 90 },
     shown: ['cleaning', 'cleaning'],
+    seed: withSettings,
   },
   {
     name: 'blind',
@@ -186,12 +180,6 @@ const BUDGETS: Readonly<Record<string, Readonly<Record<'S' | 'M', Budget>>>> = {
   },
 };
 
-function faceNamed(name: string): Face {
-  const face = FACES.find((known) => known.name === name);
-  if (face === undefined) throw new Error(`Expected a face named ${name}`);
-  return face;
-}
-
 function budgetOf(name: string): Readonly<Record<'S' | 'M', Budget>> {
   const budget = BUDGETS[name];
   if (budget === undefined) throw new Error(`Expected a budget for ${name}`);
@@ -201,90 +189,3 @@ function budgetOf(name: string): Readonly<Record<'S' | 'M', Budget>> {
 for (const face of FACES) {
   budgetCase(face.name, face, budgetOf(face.name));
 }
-
-type WasherValues = Readonly<Record<string, number | boolean | string>>;
-
-const WASHER_BASE: WasherValues = {
-  power: true,
-  'raw:2.4': 'No Faults',
-  'raw:2.9': 'Closed And Can Not Be Opened',
-  'raw:2.10': 72,
-  'raw:2.7': '1400',
-};
-
-const BUSY: WasherValues = { 'raw:2.2': 'Busy' };
-
-const WASHER_STATES: Readonly<Record<string, WasherValues>> = {
-  off: { power: false, 'raw:2.2': 'Off' },
-  ready: { 'raw:2.2': 'Idle' },
-  open: { 'raw:2.2': 'Idle', 'raw:2.9': 'Open' },
-  delayed: { 'raw:2.2': 'Delay' },
-  weighing: { ...BUSY, 'raw:2.11': 'Weighing' },
-  washing: { ...BUSY, 'raw:2.11': 'Washing' },
-  soaking: { ...BUSY, 'raw:2.11': 'Soaking' },
-  rinsing: { ...BUSY, 'raw:2.11': 'Rinsing' },
-  spinning: { ...BUSY, 'raw:2.11': 'Spinning' },
-  drying: { ...BUSY, 'raw:2.11': 'Drying' },
-  steaming: { ...BUSY, 'raw:2.11': 'Steam Sterilization' },
-  paused: { 'raw:2.2': 'Paused', 'raw:2.11': 'Rinsing' },
-  finished: { 'raw:2.2': 'Completed' },
-  fault: { ...BUSY, 'raw:2.11': 'Rinsing', 'raw:2.4': 'Door Lock Malfunction' },
-};
-
-const VISUAL_SIZES = [
-  ['tile', 48, 40],
-  ['card', 96, 60],
-  ['hero', 220, 90],
-] as const;
-
-function washerVisual(
-  state: string,
-  size: 'tile' | 'card' | 'hero',
-  px: 48 | 96 | 220,
-): { readonly count: number; readonly tree: string } {
-  return renderVisual(faceNamed('washer'), { ...WASHER_BASE, ...WASHER_STATES[state] }, size, px);
-}
-
-describe('laundry visual node budgets', () => {
-  useCellEnvironment();
-
-  for (const [size, px, limit] of VISUAL_SIZES) {
-    it(`stays within ${String(limit)} nodes at ${size} size in every state`, () => {
-      for (const state of Object.keys(WASHER_STATES)) {
-        const { count } = washerVisual(state, size, px);
-        expect(count, `${state} ${size}`).toBeLessThanOrEqual(limit);
-      }
-    });
-  }
-
-  for (const state of Object.keys(WASHER_STATES)) {
-    it(`draws the ${state} card`, async () => {
-      const { tree } = washerVisual(state, 'card', 96);
-      await expect(tree).toMatchFileSnapshot(`__snapshots__/laundry-visual/${state}-card.txt`);
-    });
-  }
-
-  it('prints the node counts', () => {
-    const lines = Object.keys(WASHER_STATES).map(
-      (state) =>
-        `${state.padEnd(10)} ${VISUAL_SIZES.map(([size, px]) => `${size}=${String(washerVisual(state, size, px).count).padStart(3)}`).join(' ')}`,
-    );
-    process.stdout.write(`\nlaundry visual nodes\n${lines.join('\n')}\n`);
-    expect(lines.length).toBe(Object.keys(WASHER_STATES).length);
-  });
-
-  it('mounts no sparkle, spin blur or particles for a finished machine', () => {
-    const { tree } = washerVisual('finished', 'hero', 220);
-    expect(tree).not.toContain('M0-4L1-1L4 0');
-    expect(tree).not.toContain('strokeDasharray');
-  });
-
-  it('mounts the spin blur only while spinning', () => {
-    expect(washerVisual('spinning', 'card', 96).tree).toContain('strokeDasharray');
-    expect(washerVisual('washing', 'card', 96).tree).not.toContain('strokeDasharray');
-  });
-
-  it('draws no water in the tile', () => {
-    expect(washerVisual('washing', 'tile', 48).tree).not.toContain('transitionProperty');
-  });
-});

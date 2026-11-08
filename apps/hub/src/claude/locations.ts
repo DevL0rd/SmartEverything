@@ -18,8 +18,9 @@ export interface ClaudeLocations {
   readonly desktopIndex: string;
 }
 
-export function claudeLocations(): ClaudeLocations {
-  const claudeHome = CLAUDE_ENVIRONMENT.parse(env).CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
+export function claudeLocations(home: string | null): ClaudeLocations {
+  const claudeHome =
+    home ?? CLAUDE_ENVIRONMENT.parse(env).CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
   const desktop = join(userConfigHome(), 'Claude');
   return {
     sessions: join(claudeHome, 'sessions'),

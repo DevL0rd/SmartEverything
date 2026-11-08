@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { ChoiceChip, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -7,7 +7,7 @@ const rooms = [
   { value: 'living', label: 'Living room' },
   { value: 'bedroom', label: 'Bedroom' },
 ];
-function Demo() {
+function Demo(): ReactElement {
   const [a, setA] = useState('all');
   const [b, setB] = useState('bedroom');
   return (
@@ -17,12 +17,12 @@ function Demo() {
     </Row>
   );
 }
-export const Chips = () => (
+export const Chips = (): ReactElement => (
   <Stage theme="dark" width={460}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={460}>
     <Demo />
   </Stage>

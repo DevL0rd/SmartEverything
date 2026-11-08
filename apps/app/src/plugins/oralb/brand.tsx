@@ -4,12 +4,15 @@ import { colourFrom } from '../toothbrush/model/mode-colour';
 import { ORALB_MODE_COLOUR } from '../toothbrush/model/oralb-mode-colour';
 import { STEPS } from '../toothbrush/model/setup-model';
 import { OralbCareCards } from './components/care-cards';
+import { OralbRecap } from './components/recap';
 import { OralbHeadCard } from './components/head-card';
 import { OralbStage } from './components/live-stage';
+import { OralbRestHero } from './components/rest-hero';
 import { OralbRestStrip } from './components/rest-strip';
 import { OralbStatsExtras } from './components/stats-extras';
 import { ORALB_PRESSURE } from './model/pressure-look';
 import { ORALB_KEYWORDS, ORALB_ROWS } from './model/search-rows';
+import { OralbLiveFace } from './widgets/live-face';
 import { OralbSetupFlow } from './setup/setup-flow';
 import { OralbDiagnostics } from './settings/diagnostics';
 import { OralbHandleSettings } from './settings/handle-settings';
@@ -23,7 +26,10 @@ export const ORALB_UI: BrushBrandUi = {
   pressure: ORALB_PRESSURE,
   modelChoices: [],
   HeroStage: OralbStage,
+  RestHero: OralbRestHero,
+  WidgetFace: OralbLiveFace,
   StageExtras: null,
+  Recap: OralbRecap,
   HandleStrip: OralbRestStrip,
   HeadCard: OralbHeadCard,
   CareCards: OralbCareCards,

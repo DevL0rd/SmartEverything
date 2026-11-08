@@ -1,18 +1,14 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname } from 'node:path';
 import {
   API_ENDPOINTS,
+  COMPUTER_SERVICE_CONFIG,
   NODE_CONNECTION_PATH,
   NODE_CONNECTION_RESPONSE,
 } from '@smarteverything/domain';
 import { canonicalEndpoint, routeConfiguration } from '../client-network/route-trust';
 import { NodeRouteStore } from '../client-network/route-store';
-import {
-  NODE_SERVICE_CONFIG,
-  NODE_WINDOW,
-  NODE_WINDOW_FILE,
-  SERVICE_CONFIG_FILE,
-} from '../service/configuration';
+import type { NodeLayout } from '../data-layout';
 import { nodeIdentity } from './identity';
 import { hubFetch } from './pinned-fetch';
 
@@ -28,25 +24,26 @@ async function exchange(fetcher: Fetch, url: URL, init: Parameters<Fetch>[1]): P
     throw new NodeSetupError(`The hub refused pairing (HTTP ${String(response.status)}).`);
   return response.json();
 }
-async function protectedFile(directory: string, name: string, value: string): Promise<void> {
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  const file = join(directory, name);
+async function protectedFile(file: string, value: string): Promise<void> {
+  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
   await writeFile(`${file}.tmp`, value, { mode: 0o600 });
   await rename(`${file}.tmp`, file);
 }
 
 export async function pairNode(options: {
-  readonly dataDirectory: string;
+  readonly layout: NodeLayout;
   readonly hubUrl: string;
   readonly code: string;
   readonly pin?: string | undefined;
+  readonly windowToken?: string | undefined;
 }): Promise<void> {
   canonicalEndpoint(options.hubUrl);
   const fetcher = hubFetch(options.pin);
   const endpoint = API_ENDPOINTS.claimComputerNode;
   const body = endpoint.body.parse({
     code: options.code,
-    hello: await nodeIdentity(options.dataDirectory),
+    hello: await nodeIdentity(options.layout.computerNodeId),
+    ...(options.windowToken === undefined ? {} : { window_token: options.windowToken }),
   });
   const paired = endpoint.response.parse(
     await exchange(fetcher, new URL(endpoint.path, options.hubUrl), {
@@ -60,25 +57,15 @@ export async function pairNode(options: {
     throw new NodeSetupError('The pairing response redirected the node to a different hub origin.');
   }
   if (origin.startsWith('https:'))
-    await enrolRoute(options.dataDirectory, fetcher, paired.hub_url, paired.token);
-  const config = NODE_SERVICE_CONFIG.parse({
-    role: 'node',
+    await enrolRoute(options.layout.nodeRoute, fetcher, paired.hub_url, paired.token);
+  const config = COMPUTER_SERVICE_CONFIG.parse({
     node: { hub_url: paired.hub_url, node_token: paired.token, device_id: paired.device_id },
   });
-  await protectedFile(
-    options.dataDirectory,
-    NODE_WINDOW_FILE,
-    JSON.stringify(NODE_WINDOW.parse({ hub_url: origin, token: paired.window_token })),
-  );
-  await protectedFile(
-    options.dataDirectory,
-    SERVICE_CONFIG_FILE,
-    `${JSON.stringify(config, null, 2)}\n`,
-  );
+  await protectedFile(options.layout.config, `${JSON.stringify(config, null, 2)}\n`);
 }
 
 async function enrolRoute(
-  dataDirectory: string,
+  routeFile: string,
   fetcher: Fetch,
   hubUrl: string,
   token: string,
@@ -88,7 +75,7 @@ async function enrolRoute(
       headers: { authorization: `Bearer ${token}` },
     }),
   );
-  await new NodeRouteStore(dataDirectory, token).write(
+  await new NodeRouteStore(routeFile, token).write(
     routeConfiguration(
       { hubUrl, deviceId: answer.device_id, token },
       canonicalEndpoint(hubUrl),

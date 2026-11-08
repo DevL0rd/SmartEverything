@@ -17,11 +17,15 @@ export function AccessControl({ model }: { readonly model: AccessModel }): React
   const ref = useRef<View>(null);
   const { operation } = useLocalSearchParams<{ operation?: string }>();
   const [shown, setShown] = useState(false);
-  const routed = operation === 'access';
+  const tools = operation === 'access-tools' && model.tools !== null;
+  const routed = operation === 'access' || tools;
   const open = shown || routed;
   const hide = (): void => {
     setShown(false);
     if (routed) router.setParams({ operation: undefined });
+  };
+  const backFromTools = (): void => {
+    if (tools) router.setParams({ operation: 'access' });
   };
   const close = (): void => {
     hide();
@@ -51,7 +55,14 @@ export function AccessControl({ model }: { readonly model: AccessModel }): React
         pending={model.nextTurn}
         onPress={show}
       />
-      <AccessPanel anchorRef={ref} open={open} onClose={close} model={model} />
+      <AccessPanel
+        anchorRef={ref}
+        open={open}
+        onClose={close}
+        onToolsBack={backFromTools}
+        model={model}
+        startWithTools={tools}
+      />
     </>
   );
 }

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { TV_KEY_REASON_TEXT } from '@smarteverything/domain';
 import { IconButton } from '../../../components/icon-button';
+import type { ControlSize } from '../../../components/segmented';
 import type { Television } from './use-television';
 
 function powerLabel(tv: Television): string {
@@ -17,10 +18,17 @@ function powerLabel(tv: Television): string {
   return locks.power === undefined ? 'Turn on' : `Turn on, ${TV_KEY_REASON_TEXT[locks.power]}`;
 }
 
-export function PowerButton({ tv }: { readonly tv: Television }): ReactNode {
+export function PowerButton({
+  tv,
+  size,
+}: {
+  readonly tv: Television;
+  readonly size?: ControlSize;
+}): ReactNode {
   const { mode, locks } = tv.view;
   return (
     <IconButton
+      {...(size === undefined ? {} : { size })}
       icon={mode === 'turning_on' ? 'loader' : 'power'}
       label={powerLabel(tv)}
       variant={mode === 'on' ? 'filled' : 'tonal'}

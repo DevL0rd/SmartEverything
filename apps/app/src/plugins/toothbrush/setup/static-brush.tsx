@@ -1,7 +1,7 @@
 import type { BrushBrand } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { ToothbrushVisual } from '../../../features/device-visuals/visuals/toothbrush-visual';
+import { FamilyVisual, type VisualPx } from '../../../features/device-visuals';
 import type { ToothbrushFacts, VisualState } from '../../../features/device-visuals/types';
 import { boxStyle } from '../charts/style';
 
@@ -62,18 +62,16 @@ export function StaticBrush({
   ring = null,
 }: {
   readonly brand: BrushBrand;
-  readonly px: number;
+  readonly px: VisualPx;
   readonly ring?: string | null;
 }): ReactNode {
   return (
     <View aria-hidden className="items-center justify-center" style={boxStyle(px, px)}>
-      <ToothbrushVisual
+      <FamilyVisual
+        family="toothbrush"
         state={{ ...BASE, toothbrush: factsOf(brand, ring) }}
         size="hero"
         px={px}
-        tone="active"
-        moving={false}
-        reduced
       />
     </View>
   );

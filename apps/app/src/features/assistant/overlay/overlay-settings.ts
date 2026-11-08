@@ -25,7 +25,7 @@ export function toggleCaptions(): void {
 
 type SwitchKey = 'enabled' | 'glow' | 'captions';
 
-type ChoiceKey = 'position' | 'display' | 'whileSharing';
+type ChoiceKey = 'position' | 'display' | 'whileSharing' | 'powerButton';
 
 interface RowText {
   readonly id: string;
@@ -117,6 +117,29 @@ export const OVERLAY_CHOICES: readonly ChoiceSpec[] = [
     options: [
       { value: 'small', label: 'Small bar' },
       { value: 'hide', label: 'Hide' },
+    ],
+  },
+  {
+    id: 'assistant.power-button',
+    key: 'powerButton',
+    icon: 'mic',
+    title: 'Power button',
+    subtitle:
+      'A long press of the side key starts a call, or records a voice message in the chat on screen. With the app closed it opens your chat with the AI.',
+    keywords: [
+      'power button',
+      'side key',
+      'side button',
+      'long press',
+      'voice message',
+      'record',
+      'call',
+      'digital assistant',
+    ],
+    visible: ANDROID,
+    options: [
+      { value: 'call', label: 'Start a call' },
+      { value: 'voice_message', label: 'Record a voice message' },
     ],
   },
 ];

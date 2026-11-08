@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ServiceConfigFileError, prepareServiceConfig } from '../src/service/config-file.js';
-import {
-  Go2rtcTargetError,
-  go2rtcBuildName,
-  go2rtcShippedName,
-} from '../src/service/go2rtc-binary.js';
-import { liveUrlOf } from '../src/service/live-link.js';
+import { ServiceConfigFileError, parseComputerConfig } from '../src/service/config-file.js';
 import { serviceLocations } from '../src/service/locations.js';
 import { servicePath } from '../src/service/search-path.js';
 import { trayHealthLabel } from '../src/tray-status.js';
@@ -15,12 +9,12 @@ describe('serviceLocations', () => {
   it('keeps the service files in the data directory and the unit in the systemd user directory', () => {
     expect(LOCATIONS).toStrictEqual({
       dataDirectory: '/home/ann/.config/SmartEverything',
-      unitFile: '/home/ann/.config/systemd/user/smarteverything.service',
-      launchAgentFile: '/home/ann/Library/LaunchAgents/app.smarteverything.server.plist',
+      unitFile: '/home/ann/.config/systemd/user/smarteverything-node.service',
+      launchAgentFile: '/home/ann/Library/LaunchAgents/app.smarteverything.node.plist',
       windowsLauncherFile: '/home/ann/.config/SmartEverything/service-launch.js',
       configFile: '/home/ann/.config/SmartEverything/service.json',
       readyFile: '/home/ann/.config/SmartEverything/service-ready.json',
-      ownerTokenFile: '/home/ann/.config/SmartEverything/owner-token',
+      connectionFile: '/home/ann/.config/SmartEverything/node-window.json',
       logFile: '/home/ann/.config/SmartEverything/service.log',
       outputLogFile: '/home/ann/.config/SmartEverything/service-output.log',
       supervisorPidFile: '/home/ann/.config/SmartEverything/supervisor.pid',
@@ -29,43 +23,38 @@ describe('serviceLocations', () => {
     });
     expect(
       serviceLocations({ home: '/home/ann', dataDirectory: '/d', xdgConfigHome: '/xdg' }).unitFile,
-    ).toBe('/xdg/systemd/user/smarteverything.service');
+    ).toBe('/xdg/systemd/user/smarteverything-node.service');
     expect(
       serviceLocations({ home: '/home/ann', dataDirectory: '/d', xdgConfigHome: 'relative' })
         .unitFile,
-    ).toBe('/home/ann/.config/systemd/user/smarteverything.service');
+    ).toBe('/home/ann/.config/systemd/user/smarteverything-node.service');
   });
 });
 
-describe('prepareServiceConfig', () => {
-  it('writes the go2rtc path and keeps every other setting', () => {
-    const first = prepareServiceConfig('/d/service.json', null, '/opt/go2rtc');
-    expect(first.changed).toBe(true);
-    expect(first.text).toBe('{\n  "go2rtcBinary": "/opt/go2rtc"\n}\n');
-    expect(first.config.port).toBe(7880);
-    const kept = prepareServiceConfig(
-      '/d/service.json',
-      JSON.stringify({ port: 9000, logLevel: 'debug', go2rtcBinary: '/old/go2rtc' }),
-      '/opt/go2rtc',
-    );
-    expect(kept.config).toMatchObject({
-      port: 9000,
-      logLevel: 'debug',
-      go2rtcBinary: '/opt/go2rtc',
-    });
-    expect(prepareServiceConfig('/d/service.json', kept.text, '/opt/go2rtc').changed).toBe(false);
+describe('parseComputerConfig', () => {
+  it('leaves an unpaired computer without service configuration', () => {
+    expect(parseComputerConfig('/d/service.json', null)).toBeNull();
   });
 
-  it('refuses a file that is not a JSON object or that the server would refuse', () => {
-    expect(() => prepareServiceConfig('/d/service.json', '{', '/opt/go2rtc')).toThrow(
-      ServiceConfigFileError,
-    );
-    expect(() => prepareServiceConfig('/d/service.json', '[1]', '/opt/go2rtc')).toThrow(
+  it('rejects invalid JSON and any configuration that still carries a role', () => {
+    expect(() => parseComputerConfig('/d/service.json', '{')).toThrow(ServiceConfigFileError);
+    expect(() => parseComputerConfig('/d/service.json', '[1]')).toThrow(
       'the service settings /d/service.json must hold a JSON object; received [1]',
     );
+    expect(() => parseComputerConfig('/d/service.json', '{"role":"hub"}')).toThrow(/role/u);
     expect(() =>
-      prepareServiceConfig('/d/service.json', JSON.stringify({ port: 0 }), '/opt/go2rtc'),
-    ).toThrow(/port/u);
+      parseComputerConfig(
+        '/d/service.json',
+        JSON.stringify({
+          role: 'node',
+          node: {
+            hub_url: 'https://hub.example:7880',
+            node_token: `sen_${'b'.repeat(43)}`,
+            device_id: '5b2f6c0e-4a4e-4c1a-9a4e-3d1f0e9b7a11',
+          },
+        }),
+      ),
+    ).toThrow(/role/u);
   });
 });
 
@@ -76,18 +65,6 @@ describe('servicePath', () => {
     ).toBe('/usr/bin:/Users/ann/bin:/opt/homebrew/bin:/usr/local/bin:/bin');
     expect(servicePath('linux', '')).toBe('/usr/local/bin:/usr/bin:/bin');
     expect(servicePath('win32', 'C:\\Windows;C:\\Tools\\bin;.')).toBe('C:\\Windows;C:\\Tools\\bin');
-  });
-});
-
-describe('go2rtc binaries', () => {
-  it('maps a package target to the pinned build and refuses targets without one', () => {
-    expect(go2rtcBuildName('linux', 'x64')).toBe('go2rtc-linux-amd64');
-    expect(go2rtcBuildName('darwin', 'arm64')).toBe('go2rtc-darwin-arm64');
-    expect(go2rtcBuildName('win32', 'x64')).toBe('go2rtc-windows-amd64.exe');
-    expect(() => go2rtcBuildName('win32', 'arm64')).toThrow(Go2rtcTargetError);
-    expect(() => go2rtcBuildName('freebsd', 'x64')).toThrow('received a package for freebsd/x64');
-    expect(go2rtcShippedName('win32')).toBe('go2rtc.exe');
-    expect(go2rtcShippedName('linux')).toBe('go2rtc');
   });
 });
 
@@ -106,12 +83,5 @@ describe('trayHealthLabel', () => {
     } as const;
     expect(trayHealthLabel(status)).toBe('Server running at http://127.0.0.1:7880');
     expect(trayHealthLabel({ ...status, health: 'failed', url: null })).toBe('Server failed');
-  });
-});
-
-describe('liveUrlOf', () => {
-  it('opens the live socket on the server origin with the matching scheme', () => {
-    expect(liveUrlOf('http://127.0.0.1:7880')).toBe('ws://127.0.0.1:7880/live');
-    expect(liveUrlOf('https://home.example.com/base')).toBe('wss://home.example.com/live');
   });
 });

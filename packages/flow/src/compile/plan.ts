@@ -171,6 +171,7 @@ export interface EffectOp extends Exec {
   params: PlanPorts;
   retry: z.infer<typeof RETRY_CLASS>;
   budget: z.infer<typeof BUDGET_CLASS>;
+  scopes?: Record<string, PlanOp> | undefined;
 }
 
 export interface WithEffectOp extends Exec {
@@ -194,6 +195,7 @@ export interface ReadOp extends Exec {
   kind: string;
   ports: PlanPorts;
   reads: string[];
+  capture?: 'at-step' | undefined;
 }
 
 export interface SetVarOp extends Exec {
@@ -276,6 +278,8 @@ const OUTPUTS = z.array(STRUCTURED_OUTPUT).optional();
 
 const EFFECT_CLASSES = { retry: RETRY_CLASS, budget: BUDGET_CLASS };
 
+const EFFECT_CALL = { kind: TEXT, params: PLAN_PORTS, ...EFFECT_CLASSES };
+
 const PLAN_OP: z.ZodType<PlanOp> = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('seq'), ops: z.array(OP) }),
   z.strictObject({
@@ -356,16 +360,13 @@ const PLAN_OP: z.ZodType<PlanOp> = z.discriminatedUnion('op', [
   z.strictObject({
     op: z.literal('effect'),
     ...EXEC,
-    kind: TEXT,
-    params: PLAN_PORTS,
-    ...EFFECT_CLASSES,
+    ...EFFECT_CALL,
+    scopes: z.record(TEXT, OP).optional(),
   }),
   z.strictObject({
     op: z.literal('with_effect'),
     ...EXEC,
-    kind: TEXT,
-    params: PLAN_PORTS,
-    ...EFFECT_CLASSES,
+    ...EFFECT_CALL,
     body: OP,
   }),
   z.strictObject({ op: z.literal('compute'), at: AT, kind: TEXT, ports: PLAN_PORTS }),
@@ -375,6 +376,7 @@ const PLAN_OP: z.ZodType<PlanOp> = z.discriminatedUnion('op', [
     kind: TEXT,
     ports: PLAN_PORTS,
     reads: z.array(TEXT),
+    capture: z.literal('at-step').optional(),
   }),
   z.strictObject({
     op: z.literal('set_var'),

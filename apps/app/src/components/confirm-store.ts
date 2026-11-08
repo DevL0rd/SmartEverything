@@ -7,6 +7,7 @@ export interface ConfirmRequest {
   readonly title: string;
   readonly body?: string;
   readonly confirmLabel: string;
+  readonly cancelLabel?: string;
   readonly tone?: 'default' | 'destructive';
   readonly typed?: string;
 }

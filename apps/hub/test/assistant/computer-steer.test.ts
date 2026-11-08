@@ -86,7 +86,12 @@ function rig(
       state: options.working === false ? 'completed' : 'working',
     }),
   });
-  const turn = loose<Turn>({ jobId: JOB, steered: [], stream: { steer: recorded } });
+  const turn = loose<Turn>({
+    jobId: JOB,
+    event: { ...event, id: 'event-1' },
+    steered: [],
+    stream: { steer: recorded },
+  });
   return { deps, turn, event, chat, state, requests, recorded, stateOf, finished, failedMessage };
 }
 

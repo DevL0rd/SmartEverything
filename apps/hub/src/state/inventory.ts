@@ -74,6 +74,11 @@ export function cameraSourceOf(device: Pick<DeviceRecord, 'details'>): string | 
   return typeof source === 'string' ? source : null;
 }
 
+export function vacuumVideoSourceOf(device: Pick<DeviceRecord, 'details'>): string | null {
+  const source = device.details['vacuumVideoSource'];
+  return typeof source === 'string' ? source : null;
+}
+
 export function pushSourceOf(device: Pick<DeviceRecord, 'details'>): string | null {
   const source = device.details['pushSource'];
   return typeof source === 'string' ? source : null;

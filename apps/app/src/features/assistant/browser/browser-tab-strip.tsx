@@ -205,7 +205,7 @@ function TabScroll(props: TabScrollProps): ReactNode {
       className="min-w-0 flex-1"
       onLayout={() => {
         ref.current?.measureInWindow((x, _y, width) => {
-          drag.measure(width, x);
+          drag.measure(width, x, props.selectedId);
         });
       }}
     >
@@ -264,11 +264,7 @@ function TabSourceIcon({
   if (tab.status.loading)
     return <ActivityIndicator size="small" colorClassName="accent-primary" className="size-4" />;
   const name =
-    tab.problem !== null
-      ? 'alert'
-      : tab.source.kind === 'project'
-        ? 'fileText'
-        : 'globe';
+    tab.problem !== null ? 'alert' : tab.source.kind === 'project' ? 'fileText' : 'globe';
   return (
     <Icon
       name={name}

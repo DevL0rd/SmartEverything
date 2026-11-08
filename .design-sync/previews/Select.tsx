@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { Select, Stage } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
@@ -7,7 +7,7 @@ const rooms = [
   { value: 'bedroom', label: 'Bedroom', description: '4 devices' },
   { value: 'kitchen', label: 'Kitchen', description: '9 devices' },
 ];
-function Demo() {
+function Demo(): ReactElement {
   const [room, setRoom] = useState('living');
   const [empty, setEmpty] = useState('');
   return (
@@ -24,12 +24,12 @@ function Demo() {
     </Col>
   );
 }
-export const States = () => (
+export const States = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     <Demo />
   </Stage>

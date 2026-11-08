@@ -26,7 +26,7 @@ const MAX_PACKET_LENGTH = 4096;
 const MILLISECONDS_PER_SECOND = 1000;
 
 export class MiioTimeoutError extends Error {
-  override readonly name = 'MiioTimeoutError';
+  override readonly name: string = 'MiioTimeoutError';
 
   constructor(
     readonly host: string,
@@ -34,6 +34,47 @@ export class MiioTimeoutError extends Error {
     readonly timeoutMs: number,
   ) {
     super(`The device at ${host} did not answer ${step} within ${String(timeoutMs)} ms.`);
+  }
+}
+
+export class MiioUnreachableError extends MiioTimeoutError {
+  override readonly name = 'MiioUnreachableError';
+
+  constructor(
+    host: string,
+    step: string,
+    readonly earlier: MiioTimeoutError,
+  ) {
+    super(host, step, earlier.timeoutMs);
+    this.message = `The device at ${host} was not asked ${step}: ${earlier.message} Nothing has been heard from it since.`;
+  }
+}
+
+interface Unresponsive {
+  readonly afterTicket: number;
+  readonly cause: MiioTimeoutError;
+}
+
+export const MESSAGE_ID_SEED_BYTES = 4;
+const BITS_PER_BYTE = 8;
+
+export class MessageIds {
+  private last: number;
+
+  constructor(start: number) {
+    this.last = start;
+  }
+
+  static seeded(bytes: Uint8Array): MessageIds {
+    const seed = bytes
+      .subarray(0, MESSAGE_ID_SEED_BYTES)
+      .reduce((value, byte) => ((value << BITS_PER_BYTE) | byte) >>> 0, 0);
+    return new MessageIds(seed >>> 1);
+  }
+
+  next(): number {
+    this.last = nextMessageId(this.last);
+    return this.last;
   }
 }
 
@@ -45,6 +86,7 @@ export interface MiioClientOptions {
   readonly timing: XiaomiTiming;
   readonly now: () => number;
   readonly log: Logger;
+  readonly messageIds: MessageIds;
 }
 
 export type UplinkListener = (body: string, header: MiioHeader) => void;
@@ -63,7 +105,8 @@ export class MiioClient {
   private queue: Promise<unknown> = Promise.resolve();
   private pending: Pending | null = null;
   private clock: Clock | null = null;
-  private messageId = 0;
+  private tickets = 0;
+  private unresponsive: Unresponsive | null = null;
   private uplinks: UplinkListener | null = null;
   private readonly repeat: RepeatLog;
 
@@ -84,11 +127,16 @@ export class MiioClient {
   }
 
   async handshake(): Promise<Handshake> {
-    return this.serialized(() => this.exchangeHandshake());
+    return this.serialized(async () => {
+      const handshake = await this.exchangeHandshake();
+      this.unresponsive = null;
+      return handshake;
+    });
   }
 
   async call(method: string, params: JsonValue): Promise<JsonValue> {
-    return this.serialized(() => this.attempt(method, params, 1));
+    const ticket = ++this.tickets;
+    return this.serialized(() => this.guarded(ticket, method, params));
   }
 
   async probe(virtualDid: bigint): Promise<ProbeReply> {
@@ -97,6 +145,7 @@ export class MiioClient {
         packet.length === HANDSHAKE_LENGTH ? parseProbeReply(packet) : undefined,
       );
       this.clock = { deviceId: reply.deviceId, stamp: reply.stamp, seenAt: this.options.now() };
+      this.unresponsive = null;
       return reply;
     });
   }
@@ -120,6 +169,28 @@ export class MiioClient {
         resolve();
       });
     });
+  }
+
+  private async guarded(ticket: number, method: string, params: JsonValue): Promise<JsonValue> {
+    const down = this.unresponsive;
+    if (down !== null && ticket <= down.afterTicket) {
+      this.options.log.debug('miio.request_refused', {
+        host: this.options.host,
+        method,
+      });
+      throw new MiioUnreachableError(this.options.host, method, down.cause);
+    }
+    const attempts = down === null ? this.options.timing.requestAttempts : 1;
+    try {
+      const result = await this.attempt(method, params, 1, attempts);
+      this.unresponsive = null;
+      return result;
+    } catch (error) {
+      if (error instanceof MiioTimeoutError) {
+        this.unresponsive = { afterTicket: this.tickets, cause: error };
+      }
+      throw error;
+    }
   }
 
   private serialized<T>(task: () => Promise<T>): Promise<T> {
@@ -249,18 +320,22 @@ export class MiioClient {
     }
   }
 
-  private async attempt(method: string, params: JsonValue, attempt: number): Promise<JsonValue> {
+  private async attempt(
+    method: string,
+    params: JsonValue,
+    attempt: number,
+    attempts: number,
+  ): Promise<JsonValue> {
     try {
       const clock = await this.currentClock();
-      this.messageId = nextMessageId(this.messageId);
-      const request = { id: this.messageId, method, params };
+      const request = { id: this.options.messageIds.next(), method, params };
       const elapsed = Math.floor((this.options.now() - clock.seenAt) / MILLISECONDS_PER_SECOND);
       const header = { deviceId: clock.deviceId, stamp: clock.stamp + elapsed + 1 };
       const packet = encodeMessage(this.options.token, header, encodeRequest(request));
       const body = await this.exchange(method, packet, (reply) => this.replyTo(request.id, reply));
       return parseResponse(request, body);
     } catch (error) {
-      if (!(error instanceof MiioTimeoutError) || attempt >= this.options.timing.requestAttempts) {
+      if (!(error instanceof MiioTimeoutError) || attempt >= attempts) {
         throw error;
       }
       this.clock = null;
@@ -268,10 +343,10 @@ export class MiioClient {
         host: this.options.host,
         method,
         attempt,
-        of: this.options.timing.requestAttempts,
+        of: attempts,
         timeoutMs: this.options.timing.requestTimeoutMs,
       });
-      return this.attempt(method, params, attempt + 1);
+      return this.attempt(method, params, attempt + 1, attempts);
     }
   }
 }

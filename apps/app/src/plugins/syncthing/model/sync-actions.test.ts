@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pauseFailure, resolveFailure, unavailableReason } from './sync-actions';
+import { pauseFailure, pauseInput, resolveFailure, unavailableReason } from './sync-actions';
 
 describe('pauseFailure', () => {
   it('names what did not pause or resume', () => {
@@ -25,5 +25,21 @@ describe('unavailableReason', () => {
     expect(
       unavailableReason({ state: 'unreachable', reason: 'x', since: '2026-10-17T08:00:00+07:00' }),
     ).toBe('Can’t reach Syncthing right now');
+  });
+});
+
+describe('pauseInput', () => {
+  it('names the scope the pause tool expects', () => {
+    expect(pauseInput({ kind: 'all' }, true)).toEqual({ what: 'everything', paused: true });
+    expect(pauseInput({ kind: 'folder', id: 'docs' }, false)).toEqual({
+      what: 'folder',
+      folderId: 'docs',
+      paused: false,
+    });
+    expect(pauseInput({ kind: 'device', id: 'D1' }, true)).toEqual({
+      what: 'peer',
+      deviceId: 'D1',
+      paused: true,
+    });
   });
 });

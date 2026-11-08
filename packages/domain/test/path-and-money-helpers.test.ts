@@ -100,7 +100,12 @@ describe('airBand', () => {
 describe('firewall rule parts', () => {
   it('has no source for live video and no port for a camera', () => {
     const webrtc = { purpose: 'webrtc', protocol: 'tcp', port: 8555 } as const;
-    const camera = { purpose: 'camera', protocol: 'udp', source: '192.168.1.20' } as const;
+    const camera = {
+      purpose: 'camera',
+      protocol: 'udp',
+      mac: 'b8:88:80:d7:19:ac',
+      address: '192.168.1.20',
+    } as const;
     expect(ruleSource(webrtc)).toBeNull();
     expect(rulePort(webrtc)).toBe(8555);
     expect(ruleSource(camera)).toBe('192.168.1.20');

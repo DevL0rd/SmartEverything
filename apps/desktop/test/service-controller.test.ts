@@ -1,24 +1,43 @@
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { DesktopServiceStatus } from '@smarteverything/domain';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   ManagedByStableAppError,
   ServiceController,
-  ServiceNotRunningError,
   ServiceTimeoutError,
 } from '../src/service/controller.js';
-import type { LiveSocket } from '../src/service/live-link.js';
 import type { ManagerState, ServiceManager } from '../src/service/manager.js';
-import { OwnerTokenMissingError, ServiceFileInvalidError } from '../src/service/ready.js';
+import { serviceLocations } from '../src/service/locations.js';
+import { desktopConnectionFile, ServiceFileInvalidError } from '../src/service/ready.js';
+import { nodeSystem } from '../src/service/system.js';
 import { LOCATIONS, fakeSystem, type FakeSystem } from './support/fake-system.js';
 
 const TOKEN = `set_${'a'.repeat(64)}`;
 const URL_7880 = 'http://127.0.0.1:7880';
+const DEVICE = '5b2f6c0e-4a4e-4c1a-9a4e-3d1f0e9b7a11';
+const NODE_SETTINGS = {
+  node: { hub_url: URL_7880, node_token: `sen_${'b'.repeat(43)}`, device_id: DEVICE },
+};
+const NODE_CONFIG = JSON.stringify(NODE_SETTINGS);
+function ready(pid: number, extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    ...extra,
+    pid,
+    hub_url: URL_7880,
+    device_id: DEVICE,
+    connected: false,
+    version: '1',
+  });
+}
 
 interface ServiceShape {
   readonly installed: boolean;
   readonly current: boolean;
   readonly active: boolean;
   readonly respond: boolean;
+  readonly leavesReady: boolean;
 }
 
 class FakeService implements ServiceManager {
@@ -28,6 +47,7 @@ class FakeService implements ServiceManager {
   current: boolean;
   active: boolean;
   respond: boolean;
+  leavesReady: boolean;
   pid = 100;
 
   constructor(
@@ -38,25 +58,20 @@ class FakeService implements ServiceManager {
     this.current = shape.current ?? false;
     this.active = shape.active ?? false;
     this.respond = shape.respond ?? true;
+    this.leavesReady = shape.leavesReady ?? false;
   }
 
   serve(): void {
     this.pid += 1;
     this.active = true;
     this.system.alive.add(this.pid);
-    this.system.serving.add(URL_7880);
-    this.system.touch(LOCATIONS.ownerTokenFile, `${TOKEN}\n`);
-    this.system.touch(
-      LOCATIONS.readyFile,
-      JSON.stringify({ pid: this.pid, url: URL_7880, version: '1.0.0' }),
-    );
+    this.system.touch(LOCATIONS.readyFile, ready(this.pid));
   }
 
   halt(): void {
     this.active = false;
     this.system.alive.delete(this.pid);
-    this.system.serving.delete(URL_7880);
-    this.system.touch(LOCATIONS.readyFile, null);
+    if (!this.leavesReady) this.system.touch(LOCATIONS.readyFile, null);
   }
 
   restoreOriginal(): Promise<boolean> {
@@ -126,7 +141,6 @@ interface Harness {
   readonly system: FakeSystem;
   readonly service: FakeService;
   readonly controller: ServiceController;
-  readonly sockets: { url: string; protocols: string[]; close: () => void; closed: boolean }[];
   readonly published: DesktopServiceStatus[];
   readonly failures: unknown[];
 }
@@ -134,34 +148,16 @@ interface Harness {
 function harness(initial: Partial<ServiceShape> = {}, managedBy?: 'stable-app'): Harness {
   const system = fakeSystem();
   const service = new FakeService(system, initial);
-  const sockets: Harness['sockets'] = [];
+  system.touch(LOCATIONS.configFile, NODE_CONFIG);
+  system.touch(
+    desktopConnectionFile(LOCATIONS),
+    JSON.stringify({ hub_url: URL_7880, token: TOKEN }),
+  );
   const failures: unknown[] = [];
   const controller = new ServiceController({
     manager: service,
     locations: LOCATIONS,
     system,
-    go2rtcBinary: '/opt/go2rtc',
-    openSocket: (url, protocols): LiveSocket => {
-      const listeners: (() => void)[] = [];
-      const socket = {
-        url,
-        protocols,
-        closed: false,
-        close: (): void => {
-          socket.closed = true;
-          listeners.forEach((listener) => {
-            listener();
-          });
-        },
-      };
-      sockets.push(socket);
-      return {
-        close: socket.close,
-        addEventListener: (_type, listener): void => {
-          listeners.push(listener);
-        },
-      };
-    },
     timeoutMs: 80,
     failed: (cause): void => {
       failures.push(cause);
@@ -172,7 +168,7 @@ function harness(initial: Partial<ServiceShape> = {}, managedBy?: 'stable-app'):
   controller.onChange((status) => {
     published.push(status);
   });
-  return { system, service, controller, sockets, published, failures };
+  return { system, service, controller, published, failures };
 }
 
 function settle(): Promise<void> {
@@ -180,7 +176,7 @@ function settle(): Promise<void> {
 }
 
 describe('ServiceController.ensure', () => {
-  it('writes the settings, installs and starts the service, then hands out its address and token', async () => {
+  it('installs and starts a configured computer even while its Hub is unreachable', async () => {
     const run = harness();
     expect((await run.controller.status()).health).toBe('not-installed');
     const status = await run.controller.ensure();
@@ -189,20 +185,14 @@ describe('ServiceController.ensure', () => {
       health: 'running',
       installed: true,
       active: true,
-      url: URL_7880,
+      url: null,
       dataDirectory: LOCATIONS.dataDirectory,
       detail: 'systemd reports active (running)',
       linger: 'disabled',
     });
     expect(run.service.calls).toStrictEqual(['install', 'start']);
-    expect(run.system.stored.get(LOCATIONS.configFile)).toBe(
-      '{\n  "go2rtcBinary": "/opt/go2rtc"\n}\n',
-    );
-    expect(run.system.modes.get(LOCATIONS.configFile)).toBe(0o600);
+    expect(run.system.stored.get(LOCATIONS.configFile)).toBe(NODE_CONFIG);
     expect(await run.controller.server()).toStrictEqual({ url: URL_7880, token: TOKEN });
-    expect(run.sockets.map((socket) => [socket.url, socket.protocols])).toStrictEqual([
-      ['ws://127.0.0.1:7880/live', ['smarteverything.live.v1', `bearer.${TOKEN}`]],
-    ]);
     expect(run.published.at(-1)?.health).toBe('running');
     expect(run.system.watchers()).toBe(0);
   });
@@ -210,35 +200,39 @@ describe('ServiceController.ensure', () => {
   it('stops an outdated service before installing the new definition', async () => {
     const run = harness({ installed: true, current: false });
     run.service.serve();
-    run.system.touch(LOCATIONS.configFile, '{\n  "go2rtcBinary": "/opt/go2rtc"\n}\n');
     await run.controller.ensure();
     expect(run.service.calls).toStrictEqual(['stop', 'install', 'start']);
   });
 
-  it('restarts a current service whose settings changed and leaves an unchanged one alone', async () => {
+  it('leaves a current running service alone', async () => {
     const run = harness({ installed: true, current: true });
     run.service.serve();
     await run.controller.ensure();
-    expect(run.service.calls).toStrictEqual(['restart']);
-    await run.controller.ensure();
-    expect(run.service.calls).toStrictEqual(['restart']);
+    expect(run.service.calls).toStrictEqual([]);
   });
 
-  it('fails visibly when the server does not come up in time and reports it as failed', async () => {
+  it('does not install an unpaired computer service', async () => {
+    const run = harness();
+    run.system.touch(LOCATIONS.configFile, null);
+    await expect(run.controller.ensure()).rejects.toThrow('Pair this computer with a Hub');
+    expect(run.service.calls).toStrictEqual([]);
+  });
+
+  it('fails visibly when the Computer service does not come up in time and reports it as failed', async () => {
     const run = harness({ respond: false });
     await expect(run.controller.ensure()).rejects.toThrow(ServiceTimeoutError);
     await expect(run.controller.ensure()).rejects.toThrow(
-      'the server must be running within 0.08 seconds; systemd reports inactive (dead). Its log is in Settings.',
+      'the Computer service must be running within 0.08 seconds; systemd reports inactive (dead). Its log is in Settings.',
     );
     await settle();
     const status = await run.controller.status();
     expect(status.health).toBe('failed');
     expect(status.detail).toContain('within 0.08 seconds');
     expect(run.published.at(-1)?.health).toBe('failed');
-    await expect(run.controller.server()).rejects.toThrow(ServiceNotRunningError);
+    expect(await run.controller.server()).toStrictEqual({ url: URL_7880, token: TOKEN });
   });
 
-  it('refuses settings the server would refuse', async () => {
+  it('refuses settings the Computer service would refuse', async () => {
     const run = harness();
     run.system.touch(LOCATIONS.configFile, '{"port":"x"}');
     await expect(run.controller.ensure()).rejects.toThrow(/port/u);
@@ -255,15 +249,9 @@ describe('ServiceController controls', () => {
     expect(run.service.pid).toBe(102);
     const stopped = await run.controller.stop();
     expect(stopped.health).toBe('stopped');
-    await expect(run.controller.server()).rejects.toThrow(
-      'the SmartEverything server must be running for the window to reach it; it is stopped (systemd reports inactive (dead))',
-    );
+    expect(await run.controller.server()).toStrictEqual({ url: URL_7880, token: TOKEN });
     expect((await run.controller.start()).health).toBe('running');
-    await settle();
-    const followed = run.sockets.at(-1);
-    expect(followed?.closed).toBe(false);
     expect((await run.controller.uninstall()).health).toBe('not-installed');
-    expect(followed?.closed).toBe(true);
     expect((await run.controller.enableLinger()).linger).toBe('disabled');
     expect(run.service.calls).toStrictEqual([
       'install',
@@ -276,15 +264,13 @@ describe('ServiceController controls', () => {
     ]);
   });
 
-  it('waits for a starting server before handing out its address', async () => {
+  it('reads the saved Hub without waiting for the computer service', async () => {
     const run = harness({ installed: true, current: true, active: true });
-    const pending = run.controller.server();
-    await settle();
-    run.service.serve();
-    expect(await pending).toStrictEqual({ url: URL_7880, token: TOKEN });
+    expect(await run.controller.server()).toStrictEqual({ url: URL_7880, token: TOKEN });
+    expect(run.service.calls).toStrictEqual([]);
   });
 
-  it('notices a server that went away through its live connection and watched files', async () => {
+  it('notices the computer service starting or stopping through watched files', async () => {
     const run = harness();
     await run.controller.ensure();
     run.controller.watch();
@@ -298,11 +284,6 @@ describe('ServiceController controls', () => {
     run.system.touch(`${LOCATIONS.dataDirectory}/unrelated`, 'x');
     await settle();
     expect(run.published).toHaveLength(count);
-    run.service.active = false;
-    run.system.serving.delete(URL_7880);
-    run.sockets.at(-1)?.close();
-    await settle();
-    expect(run.published.at(-1)?.health).toBe('stopped');
     run.controller.close();
     expect(run.system.watchers()).toBe(0);
   });
@@ -330,20 +311,19 @@ describe('ready and token files', () => {
     await expect(run.controller.status()).rejects.toThrow(ServiceFileInvalidError);
     run.system.touch(LOCATIONS.readyFile, '{"pid":1}');
     await expect(run.controller.status()).rejects.toThrow(
-      'must hold the pid, URL and version of the running server',
+      'must hold the pid, URL and version of the running Computer service',
     );
-    run.system.touch(LOCATIONS.readyFile, JSON.stringify({ pid: 9, url: URL_7880, version: '1' }));
+    run.system.touch(LOCATIONS.readyFile, ready(9));
     expect((await run.controller.status()).health).toBe('starting');
     run.system.alive.add(9);
-    run.system.serving.add(URL_7880);
-    await expect(run.controller.server()).rejects.toThrow(OwnerTokenMissingError);
-    run.system.touch(LOCATIONS.ownerTokenFile, 'not a token');
-    await expect(run.controller.server()).rejects.toThrow('a file without a valid token');
+    expect((await run.controller.status()).health).toBe('running');
+    run.system.touch(desktopConnectionFile(LOCATIONS), 'not a token');
+    await expect(run.controller.server()).rejects.toThrow(ServiceFileInvalidError);
   });
 });
 
 describe('ServiceController managed by the stable app', () => {
-  it('reads the running server but refuses every change and writes nothing', async () => {
+  it('reads the running Computer service but refuses every change and writes nothing', async () => {
     const run = harness({ installed: true, current: true }, 'stable-app');
     run.service.serve();
     const changes = [
@@ -357,9 +337,71 @@ describe('ServiceController managed by the stable app', () => {
       await expect(change()).rejects.toThrow(ManagedByStableAppError);
     }
     expect(run.service.calls).toStrictEqual([]);
-    expect(run.system.stored.get(LOCATIONS.configFile)).toBeUndefined();
+    expect(run.system.stored.get(LOCATIONS.configFile)).toBe(NODE_CONFIG);
     const status = await run.controller.status();
     expect([status.health, status.managedBy]).toStrictEqual(['running', 'stable-app']);
     expect(await run.controller.server()).toStrictEqual({ url: URL_7880, token: TOKEN });
+  });
+});
+
+describe('ready file written by an earlier Computer', () => {
+  const EARLIER = ready(50, { role: 'node' });
+
+  it('is not read while the installed definition is still the earlier one', async () => {
+    const run = harness({ installed: true, current: false, active: true });
+    run.system.touch(LOCATIONS.readyFile, EARLIER);
+    run.system.alive.add(50);
+    expect((await run.controller.status()).health).toBe('starting');
+  });
+
+  it('is removed when the earlier Computer is stopped, so the new one is never judged by it', async () => {
+    const run = harness({ installed: true, current: false, active: true, leavesReady: true });
+    run.system.touch(LOCATIONS.readyFile, EARLIER);
+    const status = await run.controller.ensure();
+    expect(run.service.calls).toStrictEqual(['stop', 'install', 'start']);
+    expect(status.health).toBe('running');
+    expect(run.system.stored.get(LOCATIONS.readyFile)).toBe(ready(run.service.pid));
+  });
+});
+
+describe('ServiceController.config', () => {
+  let directory = '';
+
+  afterEach(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  async function onDisk(text: string): Promise<ServiceController> {
+    directory = await mkdtemp(join(tmpdir(), 'se-computer-'));
+    const locations = serviceLocations({
+      home: directory,
+      dataDirectory: directory,
+      xdgConfigHome: undefined,
+    });
+    await writeFile(locations.configFile, text);
+    return new ServiceController({
+      manager: new FakeService(fakeSystem(), {}),
+      locations,
+      system: nodeSystem,
+      timeoutMs: 80,
+      failed: (): void => undefined,
+    });
+  }
+
+  it('migrates a configuration that still carries role node once, before it is read', async () => {
+    const controller = await onDisk(JSON.stringify({ role: 'node', ...NODE_SETTINGS }));
+    expect((await controller.config())?.node.device_id).toBe(DEVICE);
+    const file = join(directory, 'service.json');
+    expect(JSON.parse(await readFile(file, 'utf8'))).toStrictEqual(NODE_SETTINGS);
+    const migrated = await readFile(file, 'utf8');
+    expect((await controller.config())?.node.device_id).toBe(DEVICE);
+    expect(await readFile(file, 'utf8')).toBe(migrated);
+  });
+
+  it('refuses a configuration with any other role and leaves the file as it was', async () => {
+    const text = JSON.stringify({ role: 'hub', ...NODE_SETTINGS });
+    const controller = await onDisk(text);
+    await expect(controller.config()).rejects.toThrow(/role must be node/u);
+    expect(await readFile(join(directory, 'service.json'), 'utf8')).toBe(text);
   });
 });

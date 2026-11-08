@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createKindCatalog } from '../../src/automations/plugin-kinds/catalog';
 import { saveAutomation, trigger } from '../support/automation-fixture';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
@@ -28,10 +29,10 @@ describe('removing a Value that an automation uses', () => {
       triggers: [trigger('trigger.value', { value: value.id })],
     });
     expect(() => {
-      store.automationValues.remove(value.id);
+      store.automationValues.remove(value.id, createKindCatalog());
     }).toThrow('referenced by automation Counter');
     store.automations.remove(user.id);
-    store.automationValues.remove(value.id);
+    store.automationValues.remove(value.id, createKindCatalog());
     expect(store.automationValues.list()).toEqual([]);
   });
 
@@ -44,7 +45,7 @@ describe('removing a Value that an automation uses', () => {
       bounds: { overflow: 'reject' },
     });
     saveAutomation(store, { triggers: [trigger('trigger.time', { at: '23:00' })] });
-    store.automationValues.remove(value.id);
+    store.automationValues.remove(value.id, createKindCatalog());
     expect(store.automationValues.list()).toEqual([]);
   });
 });

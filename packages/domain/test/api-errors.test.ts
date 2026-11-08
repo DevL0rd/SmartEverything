@@ -24,6 +24,7 @@ const STATUS_BY_CODE: readonly (readonly [string, number])[] = [
   ['firewall_blocked', 503],
   ['camera_busy', 429],
   ['claude_not_ready', 503],
+  ['computer_update_required', 426],
 ];
 
 describe('api error codes', () => {
@@ -72,6 +73,15 @@ describe('ApiError', () => {
     });
   });
 
+  it('adds the reason to the envelope only when it has one', () => {
+    const error = new ApiError('upstream_failed', 'Sign in.', 'not_authenticated');
+    expect(error.reason).toBe('not_authenticated');
+    expect(error.body()).toStrictEqual({
+      error: { code: 'upstream_failed', message: 'Sign in.', reason: 'not_authenticated' },
+    });
+    expect(new ApiError('internal', 'x').reason).toBeNull();
+  });
+
   it('takes the status of every code from the table', () => {
     for (const code of API_ERROR_CODES) {
       expect(new ApiError(code, 'x').status).toBe(new Map(STATUS_BY_CODE).get(code));
@@ -85,6 +95,18 @@ describe('apiErrorOf', () => {
     expect(error.code).toBe('conflict');
     expect(error.message).toBe('Taken.');
     expect(error.status).toBe(409);
+  });
+
+  it('keeps the reason of an envelope and reads an envelope without one as no reason', () => {
+    const body = {
+      error: { code: 'upstream_failed', message: 'Sign in.', reason: 'not_authorized' },
+    };
+    expect(API_ERROR.parse(body)).toStrictEqual(body);
+    expect(apiErrorOf(502, body).reason).toBe('not_authorized');
+    expect(apiErrorOf(409, { error: { code: 'conflict', message: 'Taken.' } }).reason).toBeNull();
+    expect(
+      API_ERROR.safeParse({ error: { code: 'internal', message: 'No.', reason: '' } }).success,
+    ).toBe(false);
   });
 
   it('reports a body without an envelope as an upstream failure quoting the body', () => {

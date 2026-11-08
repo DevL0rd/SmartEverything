@@ -6,7 +6,7 @@ import type {
 import type { IconName } from '../../../components/icon';
 
 export type AccessLevel =
-  'default' | 'read' | 'edits' | 'plan' | 'auto' | 'full' | 'strict' | 'sandbox' | 'tools';
+  'runtime' | 'ask' | 'read' | 'edits' | 'plan' | 'auto' | 'full' | 'strict' | 'sandbox';
 
 type AccessTone = 'neutral' | 'caution';
 
@@ -17,7 +17,8 @@ interface AccessLook {
 }
 
 export const ACCESS_LEVELS: Readonly<Record<AccessLevel, AccessLook>> = {
-  default: { pill: 'Default', icon: 'shield', tone: 'neutral' },
+  runtime: { pill: 'Runtime', icon: 'shield', tone: 'neutral' },
+  ask: { pill: 'Ask', icon: 'shield', tone: 'neutral' },
   read: { pill: 'Read only', icon: 'eye', tone: 'neutral' },
   edits: { pill: 'Edits', icon: 'pencilShield', tone: 'neutral' },
   plan: { pill: 'Plan', icon: 'listCheck', tone: 'neutral' },
@@ -25,12 +26,11 @@ export const ACCESS_LEVELS: Readonly<Record<AccessLevel, AccessLook>> = {
   full: { pill: 'Full', icon: 'shieldAlert', tone: 'caution' },
   strict: { pill: 'Strict', icon: 'shieldX', tone: 'neutral' },
   sandbox: { pill: 'Sandbox', icon: 'box', tone: 'neutral' },
-  tools: { pill: 'Tools', icon: 'wrench', tone: 'neutral' },
 };
 
 export const RUNTIME_DEFAULT = 'runtime-default';
 
-export type AccessEngine = 'harness' | 'claude' | 'codex' | 'cloud';
+export type AccessEngine = 'harness' | 'claude' | 'codex';
 
 export interface AccessOption {
   readonly value: string;
@@ -59,7 +59,9 @@ function option(
   return { value, title, description, level };
 }
 
-const RUNTIME = option(RUNTIME_DEFAULT, 'Runtime default', null, 'default');
+const RUNTIME_TITLE = 'As the runtime is set up';
+const RUNTIME_DESCRIPTION = 'Uses the runtime’s own configuration on that computer';
+const RUNTIME = option(RUNTIME_DEFAULT, RUNTIME_TITLE, RUNTIME_DESCRIPTION, 'runtime');
 const READ = option('read-only', 'Read only', 'Looks, doesn’t change anything', 'read');
 const EDITS = option(
   'workspace-write',
@@ -72,14 +74,9 @@ const ASK_FIRST = option('untrusted', 'Ask first', 'Before anything that changes
 const ASK_NEEDED = option('on-request', 'Ask when needed', 'When it wants more access', null);
 const NEVER_ASK = option('never', 'Never ask', 'Works without stopping', null);
 
-const HARNESS: readonly AccessSection[] = [
-  { id: 'access', title: 'What it can change', options: [READ, EDITS, FULL] },
-  { id: 'asking', title: 'When it asks', options: [ASK_NEEDED, NEVER_ASK] },
-];
-
 const CLAUDE_MODES: Readonly<Record<RuntimeDefault | ClaudeMode, AccessOption>> = {
   [RUNTIME_DEFAULT]: RUNTIME,
-  default: option('default', 'Ask first', 'Before anything that changes', 'default'),
+  default: option('default', 'Ask first', 'Before anything that changes', 'ask'),
   acceptEdits: option('acceptEdits', 'Allow edits', EDITS.description, 'edits'),
   plan: option('plan', 'Plan only', 'Plans first, changes nothing until you approve', 'plan'),
   auto: option('auto', 'Automatic approvals', 'Approves routine actions itself', 'auto'),
@@ -101,7 +98,7 @@ const CODEX_ACCESS: Readonly<Record<RuntimeDefault | CodexSandbox, AccessOption>
 };
 
 const CODEX_APPROVALS: Readonly<Record<RuntimeDefault | CodexApproval, AccessOption>> = {
-  [RUNTIME_DEFAULT]: option(RUNTIME_DEFAULT, 'Runtime default', null, null),
+  [RUNTIME_DEFAULT]: option(RUNTIME_DEFAULT, RUNTIME_TITLE, RUNTIME_DESCRIPTION, null),
   untrusted: ASK_FIRST,
   'on-request': ASK_NEEDED,
   never: option('never', 'No prompts', NEVER_ASK.description, null),
@@ -111,29 +108,32 @@ function listed(record: Readonly<Record<string, AccessOption>>): readonly Access
   return Object.values(record);
 }
 
-const SECTIONS: Readonly<Record<AccessEngine, readonly AccessSection[]>> = {
-  harness: HARNESS,
+type SectionedEngine = Exclude<AccessEngine, 'harness'>;
+
+const SECTIONS: Readonly<Record<SectionedEngine, readonly AccessSection[]>> = {
   claude: [{ id: 'mode', title: 'Mode', options: listed(CLAUDE_MODES) }],
   codex: [
     { id: 'access', title: 'Access', options: listed(CODEX_ACCESS) },
     { id: 'approvals', title: 'Approvals', options: listed(CODEX_APPROVALS) },
   ],
-  cloud: [],
 };
 
-export function accessSections(engine: AccessEngine): readonly AccessSection[] {
+export function accessSections(engine: SectionedEngine): readonly AccessSection[] {
   return SECTIONS[engine];
 }
 
 export type AccessSelection =
-  | { readonly kind: 'harness'; readonly permission: AiHarnessPermission }
+  | {
+      readonly kind: 'harness';
+      readonly permission: AiHarnessPermission;
+      readonly title: string | null;
+    }
   | { readonly kind: 'claude'; readonly mode: ClaudeProviderOptions['permission_mode'] }
   | {
       readonly kind: 'codex';
       readonly sandbox: CodexProviderOptions['sandbox_policy'];
       readonly approval: CodexProviderOptions['approval_policy'];
-    }
-  | { readonly kind: 'cloud'; readonly allowedTools: number };
+    };
 
 export interface AccessPill {
   readonly level: AccessLevel;
@@ -155,45 +155,39 @@ function codexAsking(policy: CodexProviderOptions['approval_policy']): string | 
   return typeof policy === 'string' ? HARNESS_ASKING[policy] : 'asks by custom rules';
 }
 
-function levelOf(opt: AccessOption): AccessLevel {
-  return opt.level ?? 'default';
+function pillOf(title: string, level: AccessLevel | null, asking: string | null): AccessPill {
+  const known = level ?? 'runtime';
+  const look = ACCESS_LEVELS[known];
+  return { level: known, label: look.pill, title, icon: look.icon, tone: look.tone, asking };
 }
 
-function pillOf(opt: AccessOption, asking: string | null): AccessPill {
-  const level = levelOf(opt);
-  const look = ACCESS_LEVELS[level];
-  return { level, label: look.pill, title: opt.title, icon: look.icon, tone: look.tone, asking };
-}
-
-const HARNESS_ACCESS: Readonly<Record<AiHarnessPermission['sandbox'], AccessOption>> = {
-  'read-only': READ,
-  'workspace-write': EDITS,
-  'danger-full-access': FULL,
+const HARNESS_LEVELS: Readonly<Record<AiHarnessPermission['sandbox'], AccessLevel>> = {
+  'read-only': 'read',
+  'workspace-write': 'edits',
+  'danger-full-access': 'full',
 };
+
+function pillFor(opt: AccessOption, asking: string | null): AccessPill {
+  return pillOf(opt.title, opt.level, asking);
+}
 
 export function accessPill(selection: AccessSelection): AccessPill {
   switch (selection.kind) {
-    case 'harness':
+    case 'harness': {
+      const level = HARNESS_LEVELS[selection.permission.sandbox];
       return pillOf(
-        HARNESS_ACCESS[selection.permission.sandbox],
+        selection.title ?? ACCESS_LEVELS[level].pill,
+        level,
         HARNESS_ASKING[selection.permission.approval],
       );
+    }
     case 'claude':
-      return pillOf(CLAUDE_MODES[selection.mode ?? RUNTIME_DEFAULT], null);
+      return pillFor(CLAUDE_MODES[selection.mode ?? RUNTIME_DEFAULT], null);
     case 'codex':
-      return pillOf(
+      return pillFor(
         CODEX_ACCESS[selection.sandbox?.type ?? RUNTIME_DEFAULT],
         codexAsking(selection.approval),
       );
-    case 'cloud':
-      return {
-        level: 'tools',
-        label: `Tools ${String(selection.allowedTools)}`,
-        title: 'Tools for this chat',
-        icon: ACCESS_LEVELS.tools.icon,
-        tone: 'neutral',
-        asking: null,
-      };
   }
 }
 

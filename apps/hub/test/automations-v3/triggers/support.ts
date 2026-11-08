@@ -1,4 +1,15 @@
 import type { JsonValue, SignalInput, TriggerNode } from '@smarteverything/domain';
+import { createKindCatalog } from '../../../src/automations/plugin-kinds/catalog';
+import {
+  compileTriggers,
+  type CompiledTriggers,
+} from '../../../src/automations/triggers-v3/armers';
+
+const CORE_KINDS = createKindCatalog();
+
+export function compileCore(automationId: string, nodes: readonly TriggerNode[]): CompiledTriggers {
+  return compileTriggers(automationId, nodes, CORE_KINDS.matcher);
+}
 
 let counter = 0;
 

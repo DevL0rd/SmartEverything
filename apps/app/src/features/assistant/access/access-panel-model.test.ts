@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { ENGINE, type AiHarnessPermission, type Engine } from '@smarteverything/domain';
+import {
+  ENGINE,
+  type AiHarnessPermission,
+  type AiPermissionPresets,
+  type Engine,
+} from '@smarteverything/domain';
 type ClaudeEngine = Extract<Engine, { kind: 'claude' }>;
 type CodexEngine = Extract<Engine, { kind: 'codex' }>;
-import { cautionIcon, rowKey } from './access-model';
-import { cloudModel } from './cloud-model';
+import { cautionIcon, rowKey, type AccessSectionView } from './access-model';
 import { accessPill, accessPillLabel, RUNTIME_DEFAULT } from './ai-access';
 import {
   applyingKey,
   harnessBlock,
   harnessChoice,
   harnessSections,
+  presetName,
   type HarnessFacts,
 } from './harness-access';
 import {
@@ -41,45 +46,83 @@ const EDITS_NEEDED: AiHarnessPermission = { sandbox: 'workspace-write', approval
 const FULL_NEVER: AiHarnessPermission = { sandbox: 'danger-full-access', approval: 'never' };
 const OFFERED = [READ_ASK, EDITS_NEEDED, FULL_NEVER];
 
-function unavailable(
-  sections: ReturnType<typeof harnessSections>,
-  id: string,
-): readonly (string | null)[] {
-  return sections.find((section) => section.id === id)?.rows.map((row) => row.unavailable) ?? [];
+const PRESETS: AiPermissionPresets = {
+  options: [
+    { value: 'read-only', name: 'Read only', description: 'Reads, never writes' },
+    { value: 'workspace-write', name: 'Workspace write', description: null },
+    { value: 'danger-full-access', name: 'Full access', description: 'Anything' },
+  ],
+  default_options: [{ value: 'read-only', name: 'Read only', description: null }],
+  default_preset: 'read-only',
+  custom: { value: 'custom', name: 'Custom', description: 'Matches no preset' },
+};
+
+function rowsOf(sections: ReturnType<typeof harnessSections>): AccessSectionView['rows'] {
+  return sections.flatMap((section) => section.rows);
 }
 
 describe('harnessSections', () => {
-  it('marks the asking options the chosen reach does not offer', () => {
-    const sections = harnessSections(OFFERED, FULL_NEVER, 'Workstation');
-    expect(unavailable(sections, 'asking')).toEqual(['Not offered by Workstation', null]);
-    expect(unavailable(harnessSections(OFFERED, EDITS_NEEDED, 'Workstation'), 'asking')).toEqual([
-      null,
-      'Not offered by Workstation',
+  it('lists the presets the runtime reports, with their names and descriptions', () => {
+    const sections = harnessSections(PRESETS, OFFERED, EDITS_NEEDED, 'Workstation');
+    expect(sections.map((section) => section.id)).toEqual(['access']);
+    expect(
+      rowsOf(sections).map((row) => [row.key, row.option.title, row.option.description]),
+    ).toEqual([
+      ['access:read-only', 'Read only', 'Reads, never writes'],
+      ['access:workspace-write', 'Workspace write', null],
+      ['access:danger-full-access', 'Full access', 'Anything'],
     ]);
+    expect(
+      rowsOf(sections)
+        .filter((row) => row.selected)
+        .map((row) => row.key),
+    ).toEqual(['access:workspace-write']);
   });
 
-  it('marks a reach the machine never offers and selects the current pair', () => {
-    const sections = harnessSections([READ_ASK, EDITS_NEEDED], READ_ASK, 'Laptop');
-    expect(unavailable(sections, 'access')).toEqual([null, null, 'Not offered by Laptop']);
-    const chosen = sections.flatMap((section) => section.rows.filter((row) => row.selected));
-    expect(chosen.map((row) => row.key)).toEqual(['access:read-only', 'asking:on-request']);
+  it('marks a preset the machine never offers', () => {
+    const rows = rowsOf(harnessSections(PRESETS, [READ_ASK, EDITS_NEEDED], READ_ASK, 'Laptop'));
+    expect(rows.map((row) => row.unavailable)).toEqual([null, null, 'Not offered by Laptop']);
+  });
+
+  it('shows the custom state, selected, when the session matches no preset', () => {
+    const rows = rowsOf(
+      harnessSections(
+        { ...PRESETS, options: PRESETS.options.slice(0, 1) },
+        OFFERED,
+        FULL_NEVER,
+        'W',
+      ),
+    );
+    expect(rows.map((row) => row.key)).toEqual(['access:read-only', 'access:custom']);
+    expect(rows.find((row) => row.selected)).toMatchObject({
+      option: { title: 'Custom', description: 'Matches no preset' },
+      unavailable: null,
+    });
+  });
+
+  it('lists nothing until the runtime has reported its presets', () => {
+    expect(harnessSections(null, OFFERED, READ_ASK, 'W')).toEqual([]);
+  });
+});
+
+describe('presetName', () => {
+  it('names the preset the session matches and falls back to Custom for any other', () => {
+    expect(presetName(PRESETS, 'workspace-write')).toBe('Workspace write');
+    expect(presetName(PRESETS, 'something-else')).toBe('Custom');
+    expect(presetName(null, 'workspace-write')).toBeNull();
   });
 });
 
 describe('harnessChoice', () => {
-  it('keeps the asking setting when the new reach supports it', () => {
-    expect(harnessChoice(OFFERED, EDITS_NEEDED, 'access', 'read-only')).toEqual(READ_ASK);
+  it('switches to the permission of the chosen preset', () => {
+    expect(harnessChoice(OFFERED, EDITS_NEEDED, 'read-only')).toEqual(READ_ASK);
+    expect(harnessChoice(OFFERED, EDITS_NEEDED, 'danger-full-access')).toEqual(FULL_NEVER);
   });
 
-  it('falls to the first pair of the reach when the asking setting is not offered', () => {
-    expect(harnessChoice(OFFERED, EDITS_NEEDED, 'access', 'danger-full-access')).toEqual(
-      FULL_NEVER,
-    );
-  });
-
-  it('refuses an asking option the current reach does not offer and the unchanged pair', () => {
-    expect(harnessChoice(OFFERED, FULL_NEVER, 'asking', 'on-request')).toBeNull();
-    expect(harnessChoice(OFFERED, EDITS_NEEDED, 'asking', 'on-request')).toBeNull();
+  it('refuses the unchanged preset, a preset the machine does not offer and custom', () => {
+    expect(harnessChoice(OFFERED, EDITS_NEEDED, 'workspace-write')).toBeNull();
+    expect(harnessChoice([READ_ASK], READ_ASK, 'workspace-write')).toBeNull();
+    expect(harnessChoice(OFFERED, EDITS_NEEDED, 'custom')).toBeNull();
   });
 });
 
@@ -93,6 +136,7 @@ describe('harnessBlock', () => {
     switching: false,
     liveChange: true,
     bound: true,
+    presets: true,
     choices: 4,
   };
 
@@ -115,6 +159,9 @@ describe('harnessBlock', () => {
       'Update Workstation to change access in a running chat',
     );
     expect(harnessBlock({ ...free, bound: false, liveChange: false })).toBeNull();
+    expect(harnessBlock({ ...free, presets: false })?.text).toBe(
+      'Access options for Workstation aren’t loaded yet',
+    );
     expect(harnessBlock({ ...free, choices: 1 })?.text).toBe(
       'Access can’t be changed on Workstation',
     );
@@ -131,19 +178,27 @@ describe('applyingKey', () => {
 
 describe('access pill', () => {
   it('reads the level, the asking setting and the next turn in the accessible name', () => {
-    const full = accessPill({ kind: 'harness', permission: FULL_NEVER });
+    const full = accessPill({
+      kind: 'harness',
+      permission: FULL_NEVER,
+      title: presetName(PRESETS, FULL_NEVER.sandbox),
+    });
     expect(full).toMatchObject({ label: 'Full', tone: 'caution', icon: 'shieldAlert' });
     expect(accessPillLabel(full, true)).toBe('Access: Full access, never asks, applies next turn');
-    const edits = accessPill({ kind: 'harness', permission: EDITS_NEEDED });
-    expect(accessPillLabel(edits, false)).toBe('Access: Allow edits, asks when needed');
+    const edits = accessPill({
+      kind: 'harness',
+      permission: EDITS_NEEDED,
+      title: presetName(PRESETS, EDITS_NEEDED.sandbox),
+    });
+    expect(accessPillLabel(edits, false)).toBe('Access: Workspace write, asks when needed');
   });
 
   it('labels every native level with its short word', () => {
     const labels = (
       ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions', 'dontAsk'] as const
     ).map((mode) => accessPill({ kind: 'claude', mode }).label);
-    expect(labels).toEqual(['Default', 'Edits', 'Plan', 'Auto', 'Full', 'Strict']);
-    expect(accessPill({ kind: 'claude', mode: undefined }).label).toBe('Default');
+    expect(labels).toEqual(['Ask', 'Edits', 'Plan', 'Auto', 'Full', 'Strict']);
+    expect(accessPill({ kind: 'claude', mode: undefined }).label).toBe('Runtime');
     expect(
       accessPill({
         kind: 'codex',
@@ -151,11 +206,10 @@ describe('access pill', () => {
         approval: 'never',
       }).label,
     ).toBe('Sandbox');
-    expect(accessPill({ kind: 'cloud', allowedTools: 31 }).label).toBe('Tools 31');
   });
 
   it('marks only full access with the caution icon on its row', () => {
-    const rows = harnessSections(OFFERED, EDITS_NEEDED, 'W').flatMap((section) => section.rows);
+    const rows = rowsOf(harnessSections(PRESETS, OFFERED, EDITS_NEEDED, 'W'));
     expect(rows.filter((row) => cautionIcon(row) !== null).map((row) => row.key)).toEqual([
       'access:danger-full-access',
     ]);
@@ -241,15 +295,5 @@ describe('codex access', () => {
     const rows = codexSections(engine, true).flatMap((section) => section.rows);
     expect(rows.some((row) => row.unavailable === WORKING_REASON)).toBe(true);
     expect(codexChange(engine, true, 'access', 'dangerFullAccess')).not.toBeNull();
-  });
-});
-
-describe('cloud access', () => {
-  it('offers no tools row for a draft chat', () => {
-    expect(cloudModel(undefined).tools).toBeNull();
-  });
-
-  it('counts the allowed tools for a saved chat', () => {
-    expect(cloudModel({ tools: null }).tools?.label).toMatch(/^Tools for this chat · \d+ of \d+$/);
   });
 });

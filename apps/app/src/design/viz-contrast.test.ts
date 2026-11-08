@@ -113,6 +113,12 @@ describe('tone text', () => {
       }
     }
   });
+
+  it.each(THEMES)('keeps the search placeholder at 4.5:1 on the %s field', (theme) => {
+    expect(
+      contrast(tokenOf(theme, 'on-surface-variant'), tokenOf(theme, 'surface-3')),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 describe('control track', () => {

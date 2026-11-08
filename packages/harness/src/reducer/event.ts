@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { helperInputId } from '../host/helper-input';
 import { JSON_VALUE } from '@smarteverything/domain';
 
 const COUNT = z.int().nonnegative();
@@ -16,6 +17,9 @@ const STREAM_RECORD = z.looseObject({
 });
 const ASSISTANT_DATA = z.object({ stream: z.array(STREAM_RECORD).optional() }).optional();
 const TOOL_BLOCK = z.looseObject({ type: z.string(), text: z.string().optional() });
+const INPUT = z
+  .object({ id: z.string(), source: z.unknown().optional() })
+  .transform((message) => ({ id: helperInputId(message) ?? message.id }));
 const BODY = z.discriminatedUnion('type', [
   z.object({ type: z.literal('turn/start') }),
   z.object({
@@ -28,10 +32,10 @@ const BODY = z.discriminatedUnion('type', [
       }),
     }),
   }),
-  z.object({ type: z.literal('user/message'), data: z.object({ id: z.string() }) }),
+  z.object({ type: z.literal('user/message'), data: INPUT }),
   z.object({
     type: z.literal('agent/inbox/spliced'),
-    data: z.object({ target: z.string(), inserted: z.array(z.object({ id: z.string() })) }),
+    data: z.object({ target: z.string(), inserted: z.array(INPUT) }),
   }),
   z.object({
     type: z.literal('llm/retry'),

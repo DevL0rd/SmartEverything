@@ -11,25 +11,32 @@ export type UpdateReading =
   | { readonly kind: 'read'; readonly status: MachineUpdateStatus }
   | { readonly kind: 'failed'; readonly problem: string };
 
-export function useUpdateStatus(bridge: DesktopBridge): {
+export function useUpdateStatus(bridge: DesktopBridge | null): {
   readonly reading: UpdateReading;
   readonly apply: (next: MachineUpdateStatus) => void;
 } {
   const [reading, setReading] = useState<UpdateReading>({ kind: 'reading' });
   useEffect(() => {
-    const stop = bridge.onUpdateStatus?.((status) => {
+    if (bridge === null) return;
+    let current = true;
+    let received = false;
+    const stop = bridge.onUpdateStatus((status) => {
+      received = true;
       setReading({ kind: 'read', status });
     });
-    bridge.updateStatus?.().then(
+    bridge.updateStatus().then(
       (status) => {
-        setReading({ kind: 'read', status });
+        if (current && !received) setReading({ kind: 'read', status });
       },
       (error: unknown) => {
         log.error('update.status_unreadable', error);
-        setReading({ kind: 'failed', problem: rawErrorText(error) });
+        if (current && !received) setReading({ kind: 'failed', problem: rawErrorText(error) });
       },
     );
-    return stop;
+    return (): void => {
+      current = false;
+      stop();
+    };
   }, [bridge]);
   return {
     reading,

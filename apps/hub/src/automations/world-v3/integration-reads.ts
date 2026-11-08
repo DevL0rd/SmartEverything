@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { JsonValue } from '@smarteverything/domain';
+import { COMPUTER_READ_CAPABILITIES, type JsonValue } from '@smarteverything/domain';
 import type { SignalBus } from '../../signals/bus';
 import type { WorldReadDeps } from './deps';
 import { parseInputs } from './inputs';
@@ -18,10 +18,9 @@ export interface SignalReads {
 const ID = z.union([
   z.string().min(1),
   z.strictObject({ computer: z.string().min(1) }).transform((ref) => ref.computer),
-  z.strictObject({ phone: z.string().min(1) }).transform((ref) => ref.phone),
 ]);
 
-const MACHINE = z.object({ computer: ID.optional(), phone: ID.optional() });
+const MACHINE = z.object({ computer: ID.optional() });
 
 const SECRET = z.object({ secret: z.string().min(1) });
 
@@ -36,26 +35,6 @@ const LATEST = z.object({
   subject: z.string().min(1).optional(),
   field: z.string().min(1).optional(),
 });
-
-const COMPUTER_KEYS: Readonly<Record<string, string>> = {
-  locked: 'locked',
-  focusedApp: 'focused_app',
-  signedInUser: 'signed_in_user',
-  charging: 'charging',
-  batteryLevel: 'battery_level',
-  cpuLoad: 'cpu_load',
-  gpuLoad: 'gpu_load',
-  downloadRate: 'download_rate',
-  uploadRate: 'upload_rate',
-};
-
-const PHONE_KEYS: Readonly<Record<string, string>> = {
-  battery: 'battery',
-  charging: 'charging',
-  ringerMode: 'ringer_mode',
-  dnd: 'dnd',
-  screenOn: 'screen_on',
-};
 
 function machineReadings(
   deps: WorldReadDeps,
@@ -122,12 +101,7 @@ export function integrationHandlers(deps: WorldReadDeps, signals: SignalReads): 
       const { computer } = parseInputs('computer.read', MACHINE, inputs);
       if (computer === undefined)
         throw new ReadFailure('Invalid', 'computer.read needs a computer');
-      return machineReadings(deps, computer, COMPUTER_KEYS);
-    },
-    'phone.read': (inputs): ReadResult => {
-      const { phone } = parseInputs('phone.read', MACHINE, inputs);
-      if (phone === undefined) throw new ReadFailure('Invalid', 'phone.read needs a phone');
-      return machineReadings(deps, phone, PHONE_KEYS);
+      return machineReadings(deps, computer, COMPUTER_READ_CAPABILITIES);
     },
     'weather.forecast': (inputs): ReadResult => forecastRead(deps, inputs),
     'signal.latest': (inputs): ReadResult => {

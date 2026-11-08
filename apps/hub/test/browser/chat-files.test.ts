@@ -32,12 +32,17 @@ beforeEach(async () => {
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
-  if (address === null || typeof address === 'string') throw new Error('The test server has no port.');
+  if (address === null || typeof address === 'string')
+    throw new Error('The test server has no port.');
   origin = `http://127.0.0.1:${String(address.port)}`;
 });
 
 afterEach(async () => {
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => {
+    server.close(() => {
+      resolve();
+    });
+  });
   rmSync(base, { recursive: true, force: true });
 });
 
@@ -85,6 +90,9 @@ describe('serving the chat project', () => {
 
   it('refuses symlink and dot-dot escapes', async () => {
     expect((await fetch(`${origin}/files/workspace/away/secret.html`)).status).toBe(403);
-    expect((await fetch(`${origin}/files/workspace/%2e%2e/%2e%2e/${OTHER}/workspace/secret.html`)).status).toBe(403);
+    expect(
+      (await fetch(`${origin}/files/workspace/%2e%2e/%2e%2e/${OTHER}/workspace/secret.html`))
+        .status,
+    ).toBe(403);
   });
 });

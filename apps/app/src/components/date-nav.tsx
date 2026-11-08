@@ -1,12 +1,12 @@
-import type { ReactNode } from 'react';
-import { useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
 import { dateFormat } from '../format/locale';
 import { dayLabel, localDayKey } from '../format/time';
 import { startOf } from './charts/scale';
-import { Icon } from './icon';
+import { FlatChoice } from './flat-choice';
 import { IconButton } from './icon-button';
 import { Interactive } from './interactive';
 import { Sheet } from './sheet';
@@ -209,16 +209,18 @@ function Calendar({ value, today, max, onPick }: CalendarProps): ReactNode {
 
 function CalendarSheet({
   open,
+  opener,
   onClose,
   onPick,
   ...calendar
 }: Omit<CalendarProps, 'onPick'> & {
   readonly open: boolean;
+  readonly opener: RefObject<View | null>;
   readonly onClose: () => void;
   readonly onPick: (day: Date) => void;
 }): ReactNode {
   return (
-    <Sheet open={open} onClose={onClose} label="Choose date" detents={['fit']}>
+    <Sheet subpage={{ opener }} open={open} onClose={onClose} label="Choose date" detents={['fit']}>
       <Calendar {...calendar} onPick={onPick} />
     </Sheet>
   );
@@ -226,26 +228,32 @@ function CalendarSheet({
 
 function DateChip({
   label,
+  opener,
+  open,
   onPress,
 }: {
   readonly label: string;
+  readonly opener: RefObject<View | null>;
+  readonly open: boolean;
   readonly onPress: () => void;
 }): ReactNode {
   return (
-    <Interactive
-      label={`${label}, choose date`}
+    <FlatChoice
+      ref={opener}
+      label={label}
+      spoken={`${label}, choose date`}
+      trailing="chevronDown"
+      menu
+      expanded={open}
+      active={false}
       onPress={onPress}
-      className="h-control-h flex-row items-center gap-1 rounded-full bg-surface-2 px-4"
-      layerClassName="rounded-full"
-    >
-      <Text variant="label">{label}</Text>
-      <Icon name="chevronDown" size={16} />
-    </Interactive>
+    />
   );
 }
 
 export function DateNav({ value, range, onChange, max }: DateNavProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
+  const opener = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState(() => new Date());
   const previous = shifted(value, range, -1);
@@ -254,18 +262,16 @@ export function DateNav({ value, range, onChange, max }: DateNavProps): ReactNod
   const go = (date: Date) => (): void => {
     onChange(date);
   };
+  const openCalendar = (): void => {
+    setToday(new Date());
+    setOpen(true);
+  };
   return (
     <View className="flex-row items-center gap-1">
       {pointer ? (
         <IconButton icon="chevronLeft" label={`Previous ${range}`} onPress={go(previous)} />
       ) : null}
-      <DateChip
-        label={label}
-        onPress={() => {
-          setToday(new Date());
-          setOpen(true);
-        }}
-      />
+      <DateChip label={label} opener={opener} open={open} onPress={openCalendar} />
       {pointer ? (
         <IconButton
           icon="chevronRight"
@@ -276,6 +282,7 @@ export function DateNav({ value, range, onChange, max }: DateNavProps): ReactNod
       ) : null}
       <CalendarSheet
         open={open}
+        opener={opener}
         value={value}
         today={today}
         max={max}

@@ -18,6 +18,7 @@ import {
   type AiRetryFrom,
   type AiMessageReference,
   type AssistantMessageRow,
+  type AssistantNewMessage,
   type MessageSource,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
@@ -88,6 +89,12 @@ export async function createAiChat(chat: AiChatNew): Promise<AiChatRow> {
   return row;
 }
 
+export async function openConversationChat(): Promise<AiChatRow> {
+  const row = await api().call(C.openConversationChat, {});
+  log.info('chat.conversation_opened', { chatId: row.id });
+  return row;
+}
+
 export async function updateAiChat(chatId: string, change: AiChatChange): Promise<AiChatRow> {
   const row = await api().call(C.updateAiChat, { params: { chatId }, body: change });
   log.info('chat.updated', { chatId, fields: Object.keys(change) });
@@ -111,26 +118,34 @@ export async function branchAiChat(
   return row;
 }
 
-export async function removeAiChat(chatId: string, expectedInactiveRunId?: string): Promise<void> {
+export async function removeAiChat(
+  chatId: string,
+  guard?: string | { readonly inactiveHelper: true },
+): Promise<void> {
   await api().call(C.removeAiChat, {
     params: { chatId },
     query:
-      expectedInactiveRunId === undefined
-        ? {}
-        : { expected_inactive_run_id: expectedInactiveRunId },
+      typeof guard === 'string'
+        ? { expected_inactive_run_id: guard }
+        : guard === undefined
+          ? {}
+          : { inactive_helper: 'true' },
   });
   log.info('chat.removed', { chatId });
 }
 
 export async function olderChatMessages(
   chatId: string,
-  before: string,
+  before: string | undefined,
 ): Promise<AssistantMessageRow[]> {
-  return api().call(C.listAiChatMessages, { params: { chatId }, query: { before, limit: 50 } });
+  return api().call(C.listAiChatMessages, {
+    params: { chatId },
+    query: before === undefined ? { limit: 50 } : { before, limit: 50 },
+  });
 }
 
 export async function latestChatMessages(chatId: string): Promise<AssistantMessageRow[]> {
-  return api().call(C.listAiChatMessages, { params: { chatId }, query: { limit: 50 } });
+  return olderChatMessages(chatId, undefined);
 }
 
 export async function sendAiChatMessage(
@@ -140,9 +155,11 @@ export async function sendAiChatMessage(
   options: {
     readonly clientMessageId?: string;
     readonly references?: readonly AiMessageReference[];
+    readonly helperTarget?: AssistantNewMessage['helper_target'];
+    readonly quoteMessageId?: string;
   } = {},
 ): Promise<AssistantMessageRow> {
-  const { clientMessageId, references = [] } = options;
+  const { clientMessageId, references = [], helperTarget, quoteMessageId } = options;
   const row = await api().call(C.sendAiChatMessage, {
     params: { chatId },
     body: {
@@ -150,6 +167,8 @@ export async function sendAiChatMessage(
       attachments: [...attachments],
       ...(references.length === 0 ? {} : { references: [...references] }),
       ...(clientMessageId === undefined ? {} : { client_message_id: clientMessageId }),
+      ...(helperTarget === undefined ? {} : { helper_target: helperTarget }),
+      ...(quoteMessageId === undefined ? {} : { quote_message_id: quoteMessageId }),
     },
   });
   log.info('chat.sent', { chatId, attachments: attachments.length });

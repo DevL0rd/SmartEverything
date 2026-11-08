@@ -42,6 +42,25 @@ describe('PhoneActionBroker', () => {
     await expect(running).resolves.toEqual({ ok: true, detail: 'Ringing.' });
   });
 
+  it('returns a plain setting once the push is delivered, without waiting for the phone answer', async () => {
+    const logs = captureLogs();
+    const running = broker.run(TARGET, { type: 'set_volume', stream: 'media', percent: 30 }, ALEX);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(running).resolves.toEqual({ ok: true, detail: 'Sent to Pixel.' });
+    expect(delivered[0]).toMatchObject({ action: { type: 'set_volume', percent: 30 } });
+    broker.answer(CLIENT, String(delivered[0]?.['requestId']), { ok: false, detail: 'refused' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(logs.events()).toContain('phone.action_failed');
+  });
+
+  it('still says a plain setting could not be sent when the push is refused', async () => {
+    outcome = { outcome: 'no_target', reason: 'no push token' };
+    await expect(broker.run(TARGET, { type: 'set_dnd', on: true }, ALEX)).resolves.toEqual({
+      ok: false,
+      detail: 'Pixel could not be reached: no push token',
+    });
+  });
+
   it('says the phone could not be reached, without waiting, when the push is refused', async () => {
     outcome = { outcome: 'no_target', reason: 'no push token' };
     await expect(broker.run(TARGET, { type: 'ring', on: false }, ALEX)).resolves.toEqual({

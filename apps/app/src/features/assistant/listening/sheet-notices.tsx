@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { href } from '../../../app-shell/hrefs';
 import { Banner, type BannerProps } from '../../../components/banner';
 import { KIND_NOUNS, type ListeningRow } from './listening-model';
 
 type Notice = Omit<BannerProps, 'action'> & {
-  readonly action?: { readonly label: string; readonly href: Href };
+  readonly action?: { readonly label: string; readonly href: AppHref };
 };
 
 function noticeOf(row: ListeningRow): Notice | null {

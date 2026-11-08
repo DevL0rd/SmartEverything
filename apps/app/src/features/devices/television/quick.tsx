@@ -4,6 +4,7 @@ import { Button } from '../../../components/button';
 import type { Device } from '../../../store/state';
 import { launchableApps, type TvApp } from './apps';
 import { ChipStrip } from './chip-strip';
+import { PlayPauseKeys, playPauseReachable } from './play-pause';
 import { Quiet } from './quiet';
 import { RemoteKey } from './remote-key';
 import { RingPad } from './ring-pad';
@@ -53,19 +54,12 @@ function QuickOn({ tv, actions, sheets, apps }: QuickProps): ReactNode {
           kind="volume"
           orientation="horizontal"
           seamButton
+          opener={sheets.openers.volume}
           onSeam={(): void => {
             sheets.open('volume');
           }}
         />
-        {tv.view.locks.play_pause === undefined ? (
-          <RemoteKey
-            tv={tv}
-            name="play_pause"
-            icon={tv.view.playing ? 'pause' : 'play'}
-            look="round"
-            label={tv.view.playing ? 'Pause' : 'Play'}
-          />
-        ) : null}
+        {playPauseReachable(tv) ? <PlayPauseKeys tv={tv} look="round" /> : null}
       </View>
       <ChipStrip tv={tv} actions={actions} sheets={sheets} apps={apps} count={QUICK_APPS} />
     </>
@@ -76,6 +70,7 @@ export function TelevisionQuick({ device }: { readonly device: Device }): ReactN
   const tv = useTelevision(device);
   const actions = useTelevisionActions(tv);
   const sheets = useTvSheets();
+  const { sleep } = sheets.openers;
   const apps = launchableApps(device);
   return (
     <View className="gap-4">
@@ -85,6 +80,7 @@ export function TelevisionQuick({ device }: { readonly device: Device }): ReactN
         <Quiet tv={tv} />
       )}
       <Button
+        ref={sleep}
         label="Sleep timer"
         icon="timer"
         variant="tonal"

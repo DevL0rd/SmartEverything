@@ -26,6 +26,7 @@ function InvitationPreview({
         <ListRow
           icon="home"
           title={target.identity.name}
+          wrapTitle
           subtitle="The invitation shares access to this home."
           wrapSubtitle
         />

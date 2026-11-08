@@ -1,16 +1,16 @@
+import type { ReactElement } from 'react';
 import { RangeBars, Stage } from 'smarteverything-kit';
 
-const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const buckets = [
-  [18.4, 23.1],
-  [17.9, 22.6],
-  [19.2, 24.8],
-  [18.1, 21.9],
-  [17.4, 22.2],
-  [18.8, 25.0],
-  [18.0, 23.4],
-].map(([min, max], i) => ({ key: days[i]!, min: min!, max: max! }));
-export const Temperature = () => (
+  { key: 'Mon', min: 18.4, max: 23.1 },
+  { key: 'Tue', min: 17.9, max: 22.6 },
+  { key: 'Wed', min: 19.2, max: 24.8 },
+  { key: 'Thu', min: 18.1, max: 21.9 },
+  { key: 'Fri', min: 17.4, max: 22.2 },
+  { key: 'Sat', min: 18.8, max: 25.0 },
+  { key: 'Sun', min: 18.0, max: 23.4 },
+];
+export const Temperature = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <RangeBars
       buckets={buckets}
@@ -21,7 +21,7 @@ export const Temperature = () => (
     />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     <RangeBars
       buckets={buckets}

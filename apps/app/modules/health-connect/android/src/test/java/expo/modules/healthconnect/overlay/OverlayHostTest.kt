@@ -58,9 +58,20 @@ class OverlayHostTest {
 
   @Test
   fun `the assist gesture opens the app when it is in front, hosts a running call and otherwise starts one`() {
-    assertEquals(SessionStart.OpenApp, OverlayHostRule.sessionStart(appForeground = true, callRunning = false, wake = false))
-    assertEquals(SessionStart.HostOnly, OverlayHostRule.sessionStart(appForeground = false, callRunning = true, wake = false))
-    assertEquals(SessionStart.HostOnly, OverlayHostRule.sessionStart(appForeground = false, callRunning = false, wake = true))
-    assertEquals(SessionStart.StartCall, OverlayHostRule.sessionStart(appForeground = false, callRunning = false, wake = false))
+    val call = PowerButton.Call
+    assertEquals(SessionStart.OpenApp, OverlayHostRule.sessionStart(appForeground = true, callRunning = false, wake = false, press = call))
+    assertEquals(SessionStart.HostOnly, OverlayHostRule.sessionStart(appForeground = false, callRunning = true, wake = false, press = call))
+    assertEquals(SessionStart.HostOnly, OverlayHostRule.sessionStart(appForeground = false, callRunning = false, wake = true, press = call))
+    assertEquals(SessionStart.StartCall, OverlayHostRule.sessionStart(appForeground = false, callRunning = false, wake = false, press = call))
+  }
+
+  @Test
+  fun `with voice messages chosen the power button records in the open app or opens the chat to record`() {
+    val voice = PowerButton.VoiceMessage
+    assertEquals(SessionStart.VoiceInApp, OverlayHostRule.sessionStart(appForeground = true, callRunning = false, wake = false, press = voice))
+    assertEquals(SessionStart.OpenVoiceMessage, OverlayHostRule.sessionStart(appForeground = false, callRunning = false, wake = false, press = voice))
+    assertEquals(SessionStart.HostOnly, OverlayHostRule.sessionStart(appForeground = false, callRunning = true, wake = false, press = voice))
+    assertEquals(SessionStart.OpenApp, OverlayHostRule.sessionStart(appForeground = true, callRunning = true, wake = false, press = voice))
+    assertEquals(SessionStart.HostOnly, OverlayHostRule.sessionStart(appForeground = false, callRunning = false, wake = true, press = voice))
   }
 }

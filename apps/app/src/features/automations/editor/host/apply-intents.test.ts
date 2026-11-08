@@ -1,380 +1,249 @@
-import type { AutomationV3, FlowNode } from '@smarteverything/domain';
-import { EMPTY_LAYOUT } from '@smarteverything/domain';
-import { describe, expect, it, vi } from 'vitest';
-import { projectScene } from '../../model/canvas/project-scene';
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
+import { EMPTY_LAYOUT, NODE_REGISTRY, type Layout, type ProgramV4 } from '@smarteverything/domain';
+import type { CheckContext } from '@smarteverything/flow/check/shapes';
+import { layoutGraph } from '@smarteverything/flow/graph/layout';
+import { applyPatch, type PatchResult } from '@smarteverything/flow/graph/ops/reducer';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
+import { describe, expect, it } from 'vitest';
+import { automation, idOf, note, start } from '../../model/graph/graph-scene-fixtures';
 import {
-  Ids,
-  WIDE,
-  add,
-  automation,
-  note,
-  scope,
-  setLight,
-  timeTrigger,
-} from '../../model/canvas/canvas-fixtures';
-import type { CanvasIntent, Scene, SceneNode } from '../../model/canvas/contract';
-import { DocumentStore } from '../../model/editor/document-store';
-import { idSource } from '../../model/editor/editor-fixtures';
-import { applyIntent, parseIntent } from './apply-intents';
+  applyGraphIntent,
+  InvalidGraphIntentError,
+  parseGraphIntent,
+  type GraphIntent,
+} from './apply-intents';
 import type { ClipboardPort } from './clipboard-port';
-import { REFUSED_ACROSS, REFUSED_BACKWARD, REFUSED_EXEC_END, REFUSED_GONE } from './connect-intent';
-import { REFUSED_PASTE } from './edit-intents';
-import { InvalidCanvasIntentError, type HostActions, type IntentEnv } from './intent-env';
-import type { MovePatch } from './move-intent';
+import type { EdgeEndRequest } from './connect-intent';
+import type { GraphEditState, GraphStore, IntentEnv, IntentOutcome } from './intent-env';
 
-interface Fixture {
-  readonly store: DocumentStore;
-  readonly env: IntentEnv;
-  readonly actions: { [Name in keyof HostActions]: ReturnType<typeof vi.fn> };
-  readonly clipboard: { text: string };
-  readonly ready: ReturnType<typeof vi.fn>;
-  readonly nodes: Record<'a' | 'b' | 'level' | 'dim' | 'each' | 'inner', FlowNode>;
-  readonly scene: () => Scene;
-  readonly send: (intent: CanvasIntent) => Promise<void>;
-}
+const check: CheckContext = {
+  kinds: (id) => NODE_REGISTRY.get(id),
+  automations: () => undefined,
+  scopeOutputs: () => [],
+  references: () => false,
+  functions: () => undefined,
+  secrets: new Set(),
+};
 
-function program(): { readonly program: AutomationV3; readonly nodes: Fixture['nodes'] } {
-  const ids = new Ids(1);
-  const a = setLight(ids, null);
-  const b = setLight(ids, null);
-  const level = add(ids, null);
-  const dim = setLight(ids, `${level.key}.result`);
-  const inner = note(ids, 'Inside');
-  const each: FlowNode = {
-    ...ids.next(),
-    kind: 'flow.for_each',
-    ports: { items: { lit: ['x', 'y'] } },
-    scopes: { body: scope([inner]) },
-  };
-  return {
-    program: automation([a, b, level, dim, each]),
-    nodes: { a, b, level, dim, each, inner },
-  };
-}
+class FakeStore implements GraphStore {
+  history = 0;
+  private program: ProgramV4;
+  private layout: Layout;
+  private selected: readonly string[] = [];
+  private depth = 0;
+  private pending = false;
+  private count = 0;
 
-function fixture(mode: Scene['mode'] = 'wide'): Fixture {
-  const built = program();
-  const store = new DocumentStore(built.program, EMPTY_LAYOUT, { newId: idSource() });
-  const scene = (): Scene =>
-    projectScene(store.state.get().program, {
-      ...WIDE,
-      mode,
-      layout: store.state.get().layout,
-      ...(mode === 'compact' ? { canvasWidth: 375 } : {}),
+  constructor(program: ProgramV4) {
+    this.program = program;
+    const laid = layoutGraph(program, {
+      kinds: STATIC_KIND_LOOKUP,
+      direction: 'ltr',
+      density: 'touch',
     });
-  const clipboard = { text: '' };
-  const port: ClipboardPort = {
-    read: () => Promise.resolve(clipboard.text),
+    this.layout = { ...EMPTY_LAYOUT, nodes: { ...laid.nodes } };
+  }
+
+  readonly state = {
+    get: (): GraphEditState => ({
+      program: this.program,
+      layout: this.layout,
+      selection: { ids: this.selected, anchor: this.selected.at(-1) ?? null },
+    }),
+  };
+
+  readonly apply = (ops: readonly PatchOp[]): PatchResult => {
+    const result = applyPatch(this.program, ops, {
+      kinds: STATIC_KIND_LOOKUP,
+      allowProblems: true,
+      newId: () => this.fresh(),
+    });
+    if (result.ok) {
+      this.program = result.program;
+      this.record();
+    }
+    return result;
+  };
+
+  readonly editLayout = (edit: (layout: Layout) => Layout): void => {
+    const next = edit(this.layout);
+    if (next === this.layout) return;
+    this.layout = next;
+    this.record();
+  };
+
+  readonly beginGesture = (): void => {
+    this.depth += 1;
+  };
+
+  readonly endGesture = (): void => {
+    this.depth -= 1;
+    if (this.depth === 0 && this.pending) this.history += 1;
+    if (this.depth === 0) this.pending = false;
+  };
+
+  readonly select = (id: string): void => {
+    this.selected = [id];
+  };
+
+  readonly toggleSelect = (id: string): void => {
+    this.selected = [...this.selected, id];
+  };
+
+  readonly clearSelected = (): void => {
+    this.selected = [];
+  };
+
+  private fresh(): string {
+    this.count += 1;
+    return `00000000-0000-4000-a000-${String(this.count).padStart(12, '0')}`;
+  }
+
+  private record(): void {
+    if (this.depth > 0) this.pending = true;
+    else this.history += 1;
+  }
+}
+
+function setup(): { store: FakeStore; env: IntentEnv; clip: { text: string } } {
+  const store = new FakeStore(automation([start('a'), note('a', 'b'), note('b', 'c'), note('c')]));
+  const clip = { text: '' };
+  const clipboard: ClipboardPort = {
+    read: () => Promise.resolve(clip.text),
     write: (text) => {
-      clipboard.text = text;
+      clip.text = text;
       return Promise.resolve();
     },
   };
-  const actions = {
-    openNode: vi.fn(),
-    insertOnEdge: vi.fn(),
-    openSlot: vi.fn(),
-    portDropEmpty: vi.fn(),
-    groupSelection: vi.fn(),
-    viewportSettled: vi.fn(),
-    refused: vi.fn(),
+  let count = 0;
+  const newId = (): string => {
+    count += 1;
+    return `00000000-0000-4000-9000-${String(count).padStart(12, '0')}`;
   };
-  const ready = vi.fn();
-  const env: IntentEnv = { store, scene, actions, clipboard: port, ready };
   return {
     store,
-    env,
-    actions,
-    clipboard,
-    ready,
-    nodes: built.nodes,
-    scene,
-    send: (intent) => applyIntent(intent, env),
+    clip,
+    env: {
+      store,
+      clipboard,
+      runtime: {
+        newId,
+        density: 'touch',
+        direction: 'ltr',
+        check,
+        kinds: NODE_REGISTRY,
+        sizes: new Map(),
+      },
+    },
   };
 }
 
-function keys(store: DocumentStore): readonly string[] {
-  return store.state.get().program.body.nodes.map((node) => node.key);
+async function run(intent: GraphIntent, env: IntentEnv): Promise<IntentOutcome> {
+  return applyGraphIntent(intent, env);
 }
 
-function sceneNode(scene: Scene, id: string): SceneNode {
-  const found = scene.nodes.find((node) => node.id === id);
-  if (found === undefined) throw new Error(`scene has no node ${id}`);
-  return found;
-}
+const end = (key: string, handle: string): EdgeEndRequest => ({ nodeId: idOf(key), handle });
 
-describe('parsing what the canvas sends', () => {
-  it('accepts an intent of the contract', () => {
-    expect(parseIntent({ type: 'select', ids: ['x'] })).toEqual({ type: 'select', ids: ['x'] });
+describe('applyGraphIntent', () => {
+  it.each<readonly [string, GraphIntent]>([
+    [
+      'insert',
+      {
+        type: 'insert',
+        request: { kind: 'flow.wait', after: { nodeId: idOf('a'), port: 'next' } },
+      },
+    ],
+    ['connect', { type: 'connect', request: { from: end('a', 'x:next'), to: end('c', 'x:in') } }],
+    ['disconnect', { type: 'disconnect', request: { kind: 'exec', from: end('b', 'x:next') } }],
+    ['wrap', { type: 'wrap', request: { ids: [idOf('b')], wrapper: 'if' } }],
+    [
+      'move',
+      { type: 'move', request: { kind: 'drag', moves: [{ id: idOf('c'), x: 700, y: 20 }] } },
+    ],
+    ['tidy', { type: 'tidy' }],
+    ['delete', { type: 'delete', request: { ids: [idOf('b')] } }],
+    ['delete owned', { type: 'delete', request: { ids: [idOf('b')], mode: 'owned' } }],
+  ])('commits %s as exactly one history step', async (_name, intent) => {
+    const { store, env } = setup();
+    store.editLayout((layout) => ({
+      ...layout,
+      nodes: { ...layout.nodes, [idOf('c')]: { x: 5, y: 2000 } },
+    }));
+    store.history = 0;
+    const outcome = await run(intent, env);
+    expect(outcome.ok).toBe(true);
+    expect(outcome.ok && outcome.changed).toBe(true);
+    expect(store.history).toBe(1);
   });
 
-  it('rejects an unknown type and an extra field, naming the problem', () => {
-    expect(() => parseIntent({ type: 'explode' })).toThrow(InvalidCanvasIntentError);
-    expect(() => parseIntent({ type: 'delete', ids: [] })).toThrow(/ids/);
-    expect(() => parseIntent({ type: 'openNode', id: 'x', extra: true })).toThrow(
-      InvalidCanvasIntentError,
+  it('commits the program and layout change of an insert as one step and selects the new node', async () => {
+    const { store, env } = setup();
+    const outcome = await run(
+      {
+        type: 'insert',
+        request: { kind: 'flow.wait', after: { nodeId: idOf('a'), port: 'next' } },
+      },
+      env,
     );
-    expect(() => parseIntent(null)).toThrow(InvalidCanvasIntentError);
-  });
-});
-
-describe('selecting', () => {
-  it('selects the program nodes it is given and drops ids the program does not hold', async () => {
-    const { send, store, nodes } = fixture();
-    await send({ type: 'select', ids: [nodes.a.id, 'lane:somewhere', nodes.b.id, nodes.a.id] });
-    expect(store.state.get().selection.ids).toEqual([nodes.a.id, nodes.b.id]);
+    const state = store.state.get();
+    const added = state.program.nodes.find((node) => node.kind === 'flow.wait');
+    expect(store.history).toBe(1);
+    expect(state.layout.nodes[added?.id ?? '']).toBeDefined();
+    expect(state.selection.ids).toEqual([added?.id]);
+    expect(outcome.ok && outcome.announcement).toBe('Added Wait after Activity feed note.');
   });
 
-  it('changes nothing, and wakes nobody, when the selection is already that set', async () => {
-    const { send, store, nodes } = fixture();
-    await send({ type: 'select', ids: [nodes.a.id, nodes.b.id] });
-    const wake = vi.fn();
-    store.state.subscribe(wake);
-    await send({ type: 'select', ids: [nodes.b.id, nodes.a.id] });
-    expect(wake).not.toHaveBeenCalled();
-  });
-
-  it('clears the selection for an empty list', async () => {
-    const { send, store, nodes } = fixture();
-    await send({ type: 'select', ids: [nodes.a.id] });
-    await send({ type: 'select', ids: [] });
-    expect(store.state.get().selection.ids).toEqual([]);
-  });
-});
-
-describe('connecting a value', () => {
-  it('writes the wire as a reference on the consumer port, one undo step', async () => {
-    const { send, store, nodes } = fixture();
-    await send({
-      type: 'connect',
-      connection: {
-        from: { nodeId: nodes.level.id, port: 'result' },
-        to: { nodeId: nodes.b.id, port: 'to' },
+  it('does not touch the history when an intent is refused or changes nothing', async () => {
+    const { store, env } = setup();
+    const refused = await run({ type: 'delete', request: { ids: [idOf('start')] } }, env);
+    expect(refused.ok).toBe(false);
+    expect(refused.ok ? '' : refused.toast).toBe(refused.ok ? '' : refused.reason);
+    const same = store.state.get().layout.nodes[idOf('b')];
+    const moved = await run(
+      {
+        type: 'move',
+        request: { kind: 'drag', moves: [{ id: idOf('b'), x: same?.x ?? 0, y: same?.y ?? 0 }] },
       },
-    });
-    const written = store.state.get().program.body.nodes.find((node) => node.key === nodes.b.key);
-    expect(written?.ports?.['to']).toEqual({ wire: { from: nodes.level.key, port: 'result' } });
-    store.undo();
-    const restored = store.state.get().program.body.nodes.find((node) => node.key === nodes.b.key);
-    expect(restored?.ports?.['to']).toEqual({ lit: 75 });
+      env,
+    );
+    expect(moved.ok && moved.changed).toBe(false);
+    expect(store.history).toBe(0);
   });
 
-  it('refuses a wire from a node that left the canvas', async () => {
-    const { send, actions, store, nodes } = fixture();
-    const before = store.state.get().program;
-    await send({
-      type: 'connect',
-      connection: {
-        from: { nodeId: 'gone', port: 'result' },
-        to: { nodeId: nodes.b.id, port: 'to' },
-      },
-    });
-    expect(actions.refused).toHaveBeenCalledWith(REFUSED_GONE);
-    expect(store.state.get().program).toBe(before);
-  });
-});
-
-describe('connecting steps', () => {
-  const link = (from: FlowNode, to: FlowNode): CanvasIntent => ({
-    type: 'connect',
-    connection: { from: { nodeId: from.id, port: 'next' }, to: { nodeId: to.id, port: 'in' } },
-  });
-
-  it('puts the target right after the source in the same lane', async () => {
-    const { send, store, nodes } = fixture();
-    await send(link(nodes.a, nodes.dim));
-    expect(keys(store)).toEqual([
-      nodes.a.key,
-      nodes.dim.key,
-      nodes.b.key,
-      nodes.level.key,
-      nodes.each.key,
-    ]);
-  });
-
-  it('refuses a wire that runs backwards', async () => {
-    const { send, store, actions, nodes } = fixture();
-    const before = store.state.get().program;
-    await send(link(nodes.dim, nodes.a));
-    expect(actions.refused).toHaveBeenCalledWith(REFUSED_BACKWARD);
-    expect(store.state.get().program).toBe(before);
-  });
-
-  it('refuses a wire into another lane', async () => {
-    const { send, actions, nodes } = fixture();
-    await send(link(nodes.a, nodes.inner));
-    expect(actions.refused).toHaveBeenCalledWith(REFUSED_ACROSS);
-  });
-
-  it('refuses a wire that does not join two steps', async () => {
-    const { send, actions, nodes } = fixture();
-    await send({
-      type: 'connect',
-      connection: {
-        from: { nodeId: timeTrigger(0).id, port: 'next' },
-        to: { nodeId: nodes.a.id, port: 'in' },
-      },
-    });
-    expect(actions.refused).toHaveBeenCalledWith(REFUSED_EXEC_END);
+  it('copies, cuts, pastes and duplicates through the clipboard port', async () => {
+    const { store, env, clip } = setup();
+    store.select(idOf('b'));
+    const copied = await run({ type: 'copy' }, env);
+    expect(copied.ok && copied.announcement).toBe(
+      'Copied 1 step. 1 wire to steps outside stayed behind.',
+    );
+    expect(store.history).toBe(0);
+    expect(clip.text).toContain('smarteverything.automation-graph');
+    const pasted = await run({ type: 'paste', at: { x: 40, y: 40 } }, env);
+    expect(pasted.ok && pasted.announcement).toBe('Pasted 1 step.');
+    expect(store.history).toBe(1);
+    store.select(idOf('c'));
+    const cut = await run({ type: 'cut' }, env);
+    expect(cut.ok && cut.announcement).toBe('Cut 1 step.');
+    expect(store.history).toBe(2);
+    expect(store.state.get().program.nodes.some((node) => node.key === 'c')).toBe(false);
+    store.select(idOf('a'));
+    await run({ type: 'duplicate' }, env);
+    expect(store.history).toBe(3);
+    clip.text = 'plain words';
+    const refused = await run({ type: 'paste' }, env);
+    expect(refused.ok).toBe(false);
+    expect(store.history).toBe(3);
   });
 });
 
-describe('moving nodes', () => {
-  const to = (node: SceneNode, dx: number, dy: number): MovePatch => ({
-    id: node.id,
-    x: node.x + dx,
-    y: node.y + dy,
-  });
-
-  it('stores the drag as an offset from the automatic position and adds the next drag', async () => {
-    const { send, store, scene, nodes } = fixture();
-    await send({ type: 'move', patches: [to(sceneNode(scene(), nodes.b.id), 12, -8)] });
-    expect(store.state.get().layout.nodes[nodes.b.id]).toEqual({ x: 12, y: -8 });
-    await send({ type: 'move', patches: [to(sceneNode(scene(), nodes.b.id), 3, 4)] });
-    expect(store.state.get().layout.nodes[nodes.b.id]).toEqual({ x: 15, y: -4 });
-    expect(sceneNode(scene(), nodes.b.id).x).toBe(sceneNode(scene(), nodes.a.id).x + 15);
-  });
-
-  it('is one undo step and leaves the program alone', async () => {
-    const { send, store, scene, nodes } = fixture();
-    const program = store.state.get().program;
-    await send({ type: 'move', patches: [to(sceneNode(scene(), nodes.a.id), 5, 5)] });
-    expect(store.state.get().program).toBe(program);
-    store.undo();
-    expect(store.state.get().layout.nodes).toEqual({});
-  });
-
-  it('gives a container the whole drag and leaves a child dragged with it alone', async () => {
-    const { send, store, scene, nodes } = fixture();
-    const shown = scene();
-    await send({
-      type: 'move',
-      patches: [
-        to(sceneNode(shown, nodes.each.id), 30, 10),
-        to(sceneNode(shown, nodes.inner.id), 30, 10),
-      ],
-    });
-    expect(store.state.get().layout.nodes).toEqual({ [nodes.each.id]: { x: 30, y: 10 } });
-    expect(sceneNode(scene(), nodes.inner.id).x).toBe(sceneNode(shown, nodes.inner.id).x + 30);
-  });
-
-  it('gives a child dragged alone its own offset', async () => {
-    const { send, store, scene, nodes } = fixture();
-    await send({ type: 'move', patches: [to(sceneNode(scene(), nodes.inner.id), 6, 0)] });
-    expect(store.state.get().layout.nodes).toEqual({ [nodes.inner.id]: { x: 6, y: 0 } });
-  });
-
-  it('ignores ids that are not program nodes and drags that did not move', async () => {
-    const { send, store, scene, nodes } = fixture();
-    const lane = scene().nodes.find((node) => node.role === 'lane');
-    if (lane === undefined) throw new Error('the fixture has no lane');
-    const undoable = store.state.get().canUndo;
-    await send({
-      type: 'move',
-      patches: [to(lane, 9, 9), to(sceneNode(scene(), nodes.a.id), 0, 0)],
-    });
-    expect(store.state.get().canUndo).toBe(undoable);
-  });
-
-  it('ignores a drag in the compact layout, which is derived and never stored', async () => {
-    const { send, store, scene, nodes } = fixture('compact');
-    await send({ type: 'move', patches: [to(sceneNode(scene(), nodes.a.id), 9, 9)] });
-    expect(store.state.get().layout.nodes).toEqual({});
-  });
-});
-
-describe('deleting', () => {
-  it('removes the nodes and the removal undoes in one step', async () => {
-    const { send, store, nodes } = fixture();
-    await send({ type: 'delete', ids: [nodes.a.id, nodes.b.id] });
-    expect(keys(store)).toEqual([nodes.level.key, nodes.dim.key, nodes.each.key]);
-    store.undo();
-    expect(keys(store)).toContain(nodes.a.key);
-  });
-
-  it('leaves the document untouched for ids that are not nodes', async () => {
-    const { send, store } = fixture();
-    await send({ type: 'delete', ids: ['lane:somewhere'] });
-    expect(store.state.get().canUndo).toBe(false);
-  });
-});
-
-describe('shortcuts', () => {
-  it('undoes and redoes through the one history', async () => {
-    const { send, store, nodes } = fixture();
-    await send({ type: 'delete', ids: [nodes.a.id] });
-    await send({ type: 'shortcut', name: 'undo' });
-    expect(keys(store)).toContain(nodes.a.key);
-    await send({ type: 'shortcut', name: 'redo' });
-    expect(keys(store)).not.toContain(nodes.a.key);
-  });
-
-  it('selects everything', async () => {
-    const { send, store } = fixture();
-    await send({ type: 'shortcut', name: 'selectAll' });
-    expect(store.state.get().selection.ids.length).toBeGreaterThan(4);
-  });
-
-  it('copies the selection to the clipboard and pastes it after the selected step', async () => {
-    const { send, store, clipboard, nodes } = fixture();
-    await send({ type: 'select', ids: [nodes.a.id] });
-    await send({ type: 'shortcut', name: 'copy' });
-    expect(clipboard.text).toContain('smarteverything.automation-nodes');
-    await send({ type: 'shortcut', name: 'paste' });
-    expect(keys(store)).toHaveLength(6);
-    expect(keys(store)[0]).toBe(nodes.a.key);
-    expect(keys(store)[1]).not.toBe(nodes.b.key);
-  });
-
-  it('says so when the clipboard holds something else', async () => {
-    const { send, store, actions, clipboard } = fixture();
-    clipboard.text = 'just some text';
-    await send({ type: 'shortcut', name: 'paste' });
-    expect(actions.refused).toHaveBeenCalledWith(REFUSED_PASTE);
-    expect(store.state.get().canUndo).toBe(false);
-  });
-
-  it('cuts: copies, then removes', async () => {
-    const { send, store, clipboard, nodes } = fixture();
-    await send({ type: 'select', ids: [nodes.b.id] });
-    await send({ type: 'shortcut', name: 'cut' });
-    expect(clipboard.text).not.toBe('');
-    expect(keys(store)).not.toContain(nodes.b.key);
-  });
-
-  it('duplicates the selection right after itself', async () => {
-    const { send, store, nodes } = fixture();
-    await send({ type: 'select', ids: [nodes.b.id] });
-    await send({ type: 'shortcut', name: 'duplicate' });
-    expect(keys(store)).toHaveLength(6);
-    expect(keys(store)[1]).toBe(nodes.b.key);
-  });
-
-  it('hands grouping to the host with the selection', async () => {
-    const { send, actions, nodes } = fixture();
-    await send({ type: 'select', ids: [nodes.a.id, nodes.b.id] });
-    await send({ type: 'shortcut', name: 'group' });
-    expect(actions.groupSelection).toHaveBeenCalledWith([nodes.a.id, nodes.b.id]);
-  });
-});
-
-describe('intents that open something', () => {
-  it('routes each to the host without touching the document', async () => {
-    const { send, actions, store, ready } = fixture();
-    const point = { x: 3, y: 4 };
-    const viewport = { x: 1, y: 2, zoom: 0.5 };
-    await send({ type: 'openNode', id: 'n' });
-    await send({ type: 'insertOnEdge', edgeId: 'e' });
-    await send({ type: 'openSlot', slotId: 's' });
-    await send({ type: 'portDropEmpty', from: { nodeId: 'n', port: 'p' }, point });
-    await send({ type: 'viewportSettled', viewport });
-    await send({ type: 'ready', metrics: { width: 800, height: 600 } });
-    expect(actions.openNode).toHaveBeenCalledWith('n');
-    expect(actions.insertOnEdge).toHaveBeenCalledWith('e');
-    expect(actions.openSlot).toHaveBeenCalledWith('s');
-    expect(actions.portDropEmpty).toHaveBeenCalledWith({ nodeId: 'n', port: 'p' }, point);
-    expect(actions.viewportSettled).toHaveBeenCalledWith(viewport);
-    expect(ready).toHaveBeenCalledWith({ width: 800, height: 600 });
-    expect(store.state.get().canUndo).toBe(false);
+describe('parseGraphIntent', () => {
+  it('accepts a known intent and rejects anything outside the contract', () => {
+    expect(parseGraphIntent({ type: 'tidy' })).toEqual({ type: 'tidy' });
+    expect(() => parseGraphIntent({ type: 'tidy', extra: true })).toThrow(InvalidGraphIntentError);
+    expect(() => parseGraphIntent({ type: 'delete', request: { ids: [] } })).toThrow(
+      InvalidGraphIntentError,
+    );
+    expect(() => parseGraphIntent('delete')).toThrow(InvalidGraphIntentError);
   });
 });

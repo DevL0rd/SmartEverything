@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { Logger, background } from '@smarteverything/logging';
 import { Uniwind } from 'uniwind';
-import { sendPerfLines } from '../../api/client-failures';
+import { sendPerfLines } from '../../api/client-perf';
 import { isIdle } from './collector';
 import { encodeWindow } from './encode';
 import { readMemory } from './globals';

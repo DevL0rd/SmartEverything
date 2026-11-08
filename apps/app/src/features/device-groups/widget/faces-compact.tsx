@@ -6,7 +6,7 @@ import { groupSummary, memberNoun, spreadText } from '../group-summary';
 import { LevelBand } from './master-band';
 import { GroupGlyph, GroupTitle } from './group-header';
 import { Notices } from './notices';
-import { ChipStrip, DotPill } from './member-parts';
+import { BandRow, ChipBand, DotPill } from './member-parts';
 import type { GroupControls } from './use-group-controls';
 import { hasIssues } from '../model/outcomes';
 import type { GroupData } from './use-group-data';
@@ -45,20 +45,19 @@ export function SmallFace({ data, controls }: FaceProps): ReactNode {
   const on = data.view.state.on > 0;
   return (
     <FillBand data={data}>
-      <View className="flex-1 justify-between gap-1.5 p-card-pad" pointerEvents="box-none">
-        <View className="flex-row items-center justify-between">
+      <View className="flex-1 gap-1.5 p-card-pad" pointerEvents="box-none">
+        <View className="flex-row items-start gap-2" pointerEvents="box-none">
           <GroupGlyph on={on} lights={data.lights} />
-          {controls.power}
+          <Interactive
+            href={data.href}
+            label={`${data.name}, ${groupSummary(data.view.state).text}`}
+            className="min-w-0 flex-1 rounded-xs"
+            layerClassName="rounded-xs"
+          >
+            <GroupTitle name={data.name} state={data.view.state} lines={2} strong />
+          </Interactive>
         </View>
-        <Interactive
-          href={data.href}
-          label={`${data.name}, ${groupSummary(data.view.state).text}`}
-          className="rounded-xs"
-          layerClassName="rounded-xs"
-        >
-          <GroupTitle name={data.name} state={data.view.state} lines={2} strong />
-        </Interactive>
-        <DotPill data={data} />
+        <BandRow lead={<DotPill data={data} />}>{controls.power}</BandRow>
       </View>
     </FillBand>
   );
@@ -72,9 +71,8 @@ export function TightFace({ data, controls }: FaceProps): ReactNode {
         <View className="flex-row items-start gap-2">
           <GroupGlyph on={on} lights={data.lights} />
           <GroupTitle name={data.name} state={data.view.state} lines={2} strong />
-          {controls.power}
         </View>
-        <DotPill data={data} />
+        <BandRow lead={<DotPill data={data} />}>{controls.power}</BandRow>
       </View>
     </FillBand>
   );
@@ -98,14 +96,17 @@ export function StripFace({
               {spreadText(state.level, ' %')}
             </Text>
           )}
-          {controls.colour}
-          {controls.power}
         </View>
-        {state.power === 'none' || hasIssues(data.master.outcomes) || data.lost > 0 ? (
-          <Notices data={data} />
-        ) : (
-          <ChipStrip data={data} width={width} />
-        )}
+        <ChipBand
+          data={data}
+          controls={controls}
+          width={width}
+          notices={
+            state.power === 'none' || hasIssues(data.master.outcomes) || data.lost > 0 ? (
+              <Notices data={data} />
+            ) : null
+          }
+        />
       </View>
     </FillBand>
   );

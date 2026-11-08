@@ -173,23 +173,22 @@ function Lock({ px, facts, silver, centre }: NoticeProps): ReactNode {
   );
 }
 
-function Lost({ px, facts }: NoticeProps): ReactNode {
+function Lost({ px, facts, silver, centre }: NoticeProps): ReactNode {
   const variant = useColour('on-surface-variant');
   if (facts.link !== 'lost' && facts.link !== 'not_linked') {
     return null;
   }
+  const x = centre.x - 50;
+  const y = centre.y - 44;
   return (
     <Plane px={px}>
-      <Slab
-        x={14}
-        y={92}
-        w={372}
-        h={272}
-        r={18}
-        fill="none"
+      <Slab x={x} y={y} w={24} h={24} r={12} fill={silver.sv5} />
+      <Circle cx={x + 12} cy={y + 12} r={6} fill="none" stroke={variant} strokeWidth={1.4} />
+      <Path
+        d={`M${String(x + 7)} ${String(y + 17)}L${String(x + 17)} ${String(y + 7)}`}
         stroke={variant}
         strokeWidth={1.4}
-        strokeDasharray="5 5"
+        strokeLinecap="round"
       />
     </Plane>
   );

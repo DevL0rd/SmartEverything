@@ -1,6 +1,6 @@
 ---
 name: smarteverything-settings
-description: "Changes SmartEverything settings: preferences, home location and time zone, the assistant’s name, voice and instructions, AI defaults and budget, switched-off tools, the firewall; reads AI costs, model prices, people and access; points at things in the app; finds the tool for an unusual job. Use for “make the assistant speak slower” or “what did the AI cost this month”. Not for device settings (smarteverything-home) or plugins (smarteverything-plugins)."
+description: 'Changes SmartEverything settings: preferences, home location and time zone, the assistant’s name, voice and instructions, AI defaults and budget, switched-off tools, the firewall; reads AI costs, model prices, people and access; points at things in the app; finds the tool for an unusual job. Use for “make the assistant speak slower” or “what did the AI cost this month”. Not for device settings (smarteverything-home) or plugins (smarteverything-plugins).'
 ---
 
 # Settings, discovery and the app

@@ -58,7 +58,13 @@ async function call(
 ): Promise<unknown> {
   return routes[name].run(
     caller,
-    { params: raw.params ?? {}, query: raw.query ?? {}, body: undefined, remote: '127.0.0.1' },
+    {
+      params: raw.params ?? {},
+      query: raw.query ?? {},
+      body: undefined,
+      remote: '127.0.0.1',
+      headers: {},
+    },
     testLogger('transcripts'),
   );
 }

@@ -24,9 +24,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54100",
           "name": "Session Data",
-          "properties": [
-            "notify"
-          ],
+          "properties": ["notify"],
           "handle": 107,
           "value_hex": null,
           "value_text": null
@@ -34,10 +32,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d540d5",
           "name": "Session Type",
-          "properties": [
-            "read",
-            "write"
-          ],
+          "properties": ["read", "write"],
           "handle": 97,
           "value_hex": "00",
           "value_text": null
@@ -45,10 +40,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d540e0",
           "name": "Active Session ID",
-          "properties": [
-            "write",
-            "notify"
-          ],
+          "properties": ["write", "notify"],
           "handle": 101,
           "value_hex": null,
           "value_text": null
@@ -56,10 +48,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d540d2",
           "name": "Session Count",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 110,
           "value_hex": "e501",
           "value_text": null
@@ -67,10 +56,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54110",
           "name": "Session Action",
-          "properties": [
-            "write",
-            "notify"
-          ],
+          "properties": ["write", "notify"],
           "handle": 104,
           "value_hex": null,
           "value_text": null
@@ -78,10 +64,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d540d0",
           "name": "Latest Session ID",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 94,
           "value_hex": "e401",
           "value_text": null
@@ -94,11 +77,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54082",
           "name": "Brushing State",
-          "properties": [
-            "read",
-            "write",
-            "notify"
-          ],
+          "properties": ["read", "write", "notify"],
           "handle": 38,
           "value_hex": "01",
           "value_text": null
@@ -106,10 +85,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d540a0",
           "name": "Unknown 40A0",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 26,
           "value_hex": "00",
           "value_text": null
@@ -117,10 +93,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54091",
           "name": "Routine Length",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 23,
           "value_hex": "a000",
           "value_text": null
@@ -128,10 +101,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54070",
           "name": "Session ID",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 13,
           "value_hex": "e501",
           "value_text": null
@@ -139,10 +109,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d540b0",
           "name": "Intensity",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 30,
           "value_hex": "01",
           "value_text": null
@@ -150,10 +117,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54090",
           "name": "Brushing Time",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 20,
           "value_hex": "0700",
           "value_text": null
@@ -161,10 +125,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d540c0",
           "name": "Unknown 40C0",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 34,
           "value_hex": "00",
           "value_text": null
@@ -172,10 +133,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54080",
           "name": "Brushing Mode",
-          "properties": [
-            "read",
-            "indicate"
-          ],
+          "properties": ["read", "indicate"],
           "handle": 17,
           "value_hex": "01",
           "value_text": null
@@ -188,9 +146,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54022",
           "name": "Available Routine IDs",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 49,
           "value_hex": "00010204",
           "value_text": null
@@ -198,9 +154,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54020",
           "name": "Available Routines",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 47,
           "value_hex": "0f00",
           "value_text": null
@@ -208,9 +162,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54040",
           "name": "Motor Runtime",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 55,
           "value_hex": "9cad0000",
           "value_text": null
@@ -218,10 +170,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54030",
           "name": "Unknown 4030",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 51,
           "value_hex": "2600",
           "value_text": null
@@ -229,10 +178,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54050",
           "name": "Handle Time",
-          "properties": [
-            "read",
-            "write"
-          ],
+          "properties": ["read", "write"],
           "handle": 57,
           "value_hex": "34d04f6a",
           "value_text": null
@@ -240,11 +186,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54010",
           "name": "Handle State",
-          "properties": [
-            "read",
-            "write",
-            "indicate"
-          ],
+          "properties": ["read", "write", "indicate"],
           "handle": 43,
           "value_hex": "02",
           "value_text": null
@@ -257,10 +199,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54140",
           "name": "Sensor Unknown 4140",
-          "properties": [
-            "write",
-            "notify"
-          ],
+          "properties": ["write", "notify"],
           "handle": 90,
           "value_hex": null,
           "value_text": null
@@ -268,9 +207,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54130",
           "name": "Sensor Data",
-          "properties": [
-            "notify"
-          ],
+          "properties": ["notify"],
           "handle": 87,
           "value_hex": null,
           "value_text": null
@@ -278,10 +215,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54120",
           "name": "Sensor Enable",
-          "properties": [
-            "read",
-            "write"
-          ],
+          "properties": ["read", "write"],
           "handle": 84,
           "value_hex": "0000",
           "value_text": null
@@ -294,9 +228,7 @@
         {
           "uuid": "a6510004-4074-4131-bce9-56d4261bc7b1",
           "name": null,
-          "properties": [
-            "write-without-response"
-          ],
+          "properties": ["write-without-response"],
           "handle": 125,
           "value_hex": null,
           "value_text": null
@@ -304,9 +236,7 @@
         {
           "uuid": "a6510005-4074-4131-bce9-56d4261bc7b1",
           "name": null,
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 128,
           "value_hex": "031414",
           "value_text": null
@@ -314,9 +244,7 @@
         {
           "uuid": "a6510002-4074-4131-bce9-56d4261bc7b1",
           "name": null,
-          "properties": [
-            "notify"
-          ],
+          "properties": ["notify"],
           "handle": 117,
           "value_hex": null,
           "value_text": null
@@ -324,9 +252,7 @@
         {
           "uuid": "a6510001-4074-4131-bce9-56d4261bc7b1",
           "name": null,
-          "properties": [
-            "write-without-response"
-          ],
+          "properties": ["write-without-response"],
           "handle": 114,
           "value_hex": null,
           "value_text": null
@@ -334,9 +260,7 @@
         {
           "uuid": "a6510003-4074-4131-bce9-56d4261bc7b1",
           "name": null,
-          "properties": [
-            "notify"
-          ],
+          "properties": ["notify"],
           "handle": 121,
           "value_hex": null,
           "value_text": null
@@ -349,9 +273,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54330",
           "name": "Diag Unknown 4330",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 171,
           "value_hex": "9507960794079707960797079f07ad07cc07c407",
           "value_text": null
@@ -359,9 +281,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54320",
           "name": "Error Volatile",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 169,
           "value_hex": "00000000",
           "value_text": null
@@ -369,9 +289,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54360",
           "name": "Diag Unknown 4360",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 173,
           "value_hex": "3d0e0000",
           "value_text": null
@@ -379,9 +297,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54310",
           "name": "Error Persistent",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 167,
           "value_hex": "00100000",
           "value_text": null
@@ -394,10 +310,7 @@
         {
           "uuid": "00002a05-0000-1000-8000-00805f9b34fb",
           "name": "Service Changed",
-          "properties": [
-            "read",
-            "indicate"
-          ],
+          "properties": ["read", "indicate"],
           "handle": 9,
           "value_hex": "00000000",
           "value_text": null
@@ -410,9 +323,7 @@
         {
           "uuid": "00002a24-0000-1000-8000-00805f9b34fb",
           "name": "Model Number",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 67,
           "value_hex": "485839393258",
           "value_text": "HX992X"
@@ -420,9 +331,7 @@
         {
           "uuid": "00002a23-0000-1000-8000-00805f9b34fb",
           "name": "System ID",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 77,
           "value_hex": "0000000000000000",
           "value_text": null
@@ -430,9 +339,7 @@
         {
           "uuid": "00002a28-0000-1000-8000-00805f9b34fb",
           "name": "Software Revision",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 75,
           "value_hex": "",
           "value_text": ""
@@ -440,9 +347,7 @@
         {
           "uuid": "00002a29-0000-1000-8000-00805f9b34fb",
           "name": "Manufacturer Name",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 65,
           "value_hex": "5068696c697073204f4843",
           "value_text": "Philips OHC"
@@ -450,9 +355,7 @@
         {
           "uuid": "00002a2a-0000-1000-8000-00805f9b34fb",
           "name": "IEEE Regulatory Cert",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 79,
           "value_hex": "00",
           "value_text": null
@@ -460,9 +363,7 @@
         {
           "uuid": "00002a26-0000-1000-8000-00805f9b34fb",
           "name": "Firmware Revision",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 73,
           "value_hex": "322e31352e3120302e362e312e30",
           "value_text": "2.15.1 0.6.1.0"
@@ -470,9 +371,7 @@
         {
           "uuid": "00002a25-0000-1000-8000-00805f9b34fb",
           "name": "Serial Number",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 69,
           "value_hex": "30303030303030303030",
           "value_text": "0000000000"
@@ -480,9 +379,7 @@
         {
           "uuid": "00002a50-0000-1000-8000-00805f9b34fb",
           "name": "PnP ID",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 81,
           "value_hex": "01000007000000",
           "value_text": null
@@ -490,9 +387,7 @@
         {
           "uuid": "00002a27-0000-1000-8000-00805f9b34fb",
           "name": "Hardware Revision",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 71,
           "value_hex": "",
           "value_text": ""
@@ -505,10 +400,7 @@
         {
           "uuid": "00002a19-0000-1000-8000-00805f9b34fb",
           "name": "Battery Level",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 60,
           "value_hex": "20",
           "value_text": " "
@@ -521,10 +413,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54410",
           "name": "Extended Unknown 4410",
-          "properties": [
-            "read",
-            "write"
-          ],
+          "properties": ["read", "write"],
           "handle": 176,
           "value_hex": "0000",
           "value_text": null
@@ -532,10 +421,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54420",
           "name": "Settings",
-          "properties": [
-            "read",
-            "write"
-          ],
+          "properties": ["read", "write"],
           "handle": 178,
           "value_hex": "01000000",
           "value_text": null
@@ -548,10 +434,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54230",
           "name": "Brushhead Serial",
-          "properties": [
-            "read",
-            "notify"
-          ],
+          "properties": ["read", "notify"],
           "handle": 136,
           "value_hex": "04091c72b81b91",
           "value_text": null
@@ -559,11 +442,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d542a6",
           "name": "Brushhead Unknown 42A6",
-          "properties": [
-            "read",
-            "write",
-            "notify"
-          ],
+          "properties": ["read", "write", "notify"],
           "handle": 159,
           "value_hex": "00",
           "value_text": null
@@ -571,9 +450,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54290",
           "name": "Brushhead Lifetime Usage",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 151,
           "value_hex": "6916",
           "value_text": null
@@ -581,9 +458,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d542a0",
           "name": "Brushhead Unknown 42A0",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 153,
           "value_hex": "01",
           "value_text": null
@@ -591,9 +466,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54270",
           "name": "Brushhead Unknown 4270",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 147,
           "value_hex": "00",
           "value_text": null
@@ -601,9 +474,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54240",
           "name": "Brushhead Date",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 139,
           "value_hex": "3234313231312037324d",
           "value_text": "241211 72M"
@@ -611,9 +482,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54254",
           "name": "Brushhead Unknown 4254",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 143,
           "value_hex": "01",
           "value_text": null
@@ -621,9 +490,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54250",
           "name": "Brushhead Unknown 4250",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 141,
           "value_hex": "01",
           "value_text": null
@@ -631,9 +498,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54260",
           "name": "Brushhead Unknown 4260",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 145,
           "value_hex": "00",
           "value_text": null
@@ -641,9 +506,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d542a2",
           "name": "Brushhead Unknown 42A2",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 155,
           "value_hex": "00",
           "value_text": null
@@ -651,9 +514,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d542a4",
           "name": "Brushhead Unknown 42A4",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 157,
           "value_hex": "00000000",
           "value_text": null
@@ -661,9 +522,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d542c0",
           "name": "Brushhead Ring ID",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 164,
           "value_hex": "1400",
           "value_text": null
@@ -671,9 +530,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54280",
           "name": "Brushhead Lifetime Limit",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 149,
           "value_hex": "6054",
           "value_text": "`T"
@@ -681,9 +538,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d542b0",
           "name": "Brushhead Payload",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 162,
           "value_hex": "68747470733a2f2f7777772e7068696c6970732e636f6d2f6e6663627275736868656164746170",
           "value_text": "https://www.philips.com/nfcbrushheadtap"
@@ -691,9 +546,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54210",
           "name": "Brushhead NFC Version",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 132,
           "value_hex": "0201",
           "value_text": null
@@ -701,9 +554,7 @@
         {
           "uuid": "477ea600-a260-11e4-ae37-0002a5d54220",
           "name": "Brushhead Type",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 134,
           "value_hex": "05",
           "value_text": null

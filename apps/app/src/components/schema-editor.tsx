@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { JsonValue } from '@smarteverything/domain';
 import { Button } from './button';
-import { ActionRow, NavRow, SelectRow } from './rows';
+import { ActionRow, SelectRow } from './rows';
+import { FieldRow, type FieldOpener, type FieldTarget } from './schema-field-row';
 import { SearchField } from './search-field';
 import { List } from './section';
 import { Scalar } from './schema-scalar';
@@ -74,17 +75,19 @@ function FieldSheet({
   save,
   close,
   title,
+  opener,
 }: {
   readonly schema: Schema;
   readonly value: JsonValue;
   readonly save: (value: JsonValue) => void;
   readonly close: () => void;
   readonly title: string;
+  readonly opener: FieldOpener;
 }): ReactNode {
   const [draft, change] = useState(value);
   const checked = z.fromJSONSchema(schema).safeParse(draft);
   return (
-    <Sheet open title={title} onClose={close} detents={['full']}>
+    <Sheet open title={title} onClose={close} detents={['full']} subpage={{ opener }}>
       <View className="gap-4">
         {typeof schema['description'] === 'string' ? (
           <Text tone="variant">{schema['description']}</Text>
@@ -120,30 +123,30 @@ function ObjectRows({
   readonly query: string;
   readonly value: Schema;
   readonly change: (value: Schema) => void;
-  readonly choose: (name: string) => void;
+  readonly choose: (target: FieldTarget<string>) => void;
 }): ReactNode {
   return (
     <List>
       {fields
         .filter((name) => name.toLowerCase().includes(query.toLowerCase()))
         .map((name) => (
-          <View key={name}>
-            <NavRow
-              title={name}
-              subtitle={valueSummary(value[name])}
-              onPress={() => {
-                choose(name);
-              }}
-            />
-            {value[name] === undefined ? null : (
-              <ActionRow
-                title={`Omit ${name}`}
-                onPress={() => {
-                  change(replaceField(value, name, undefined));
-                }}
-              />
-            )}
-          </View>
+          <FieldRow
+            key={name}
+            field={name}
+            title={name}
+            subtitle={valueSummary(value[name])}
+            choose={choose}
+            omit={
+              value[name] === undefined ? null : (
+                <ActionRow
+                  title={`Omit ${name}`}
+                  onPress={() => {
+                    change(replaceField(value, name, undefined));
+                  }}
+                />
+              )
+            }
+          />
         ))}
     </List>
   );
@@ -153,18 +156,25 @@ function NewEntry({
   add,
 }: {
   readonly value: Schema;
-  readonly add: (name: string) => void;
+  readonly add: (target: FieldTarget<string>) => void;
 }): ReactNode {
+  const opener = useRef<View>(null);
   const [name, setName] = useState('');
   return (
     <View className="gap-3">
       <TextField label="New entry name" value={name} onChange={setName} />
       <Button
+        ref={opener}
         label="Add entry"
         disabled={name.trim() === '' || Object.hasOwn(value, name)}
         onPress={() => {
-          add(name);
-          setName('');
+          add({
+            key: name,
+            opener,
+            onSave: () => {
+              setName('');
+            },
+          });
         }}
       />
     </View>
@@ -188,6 +198,38 @@ function ExclusionRows({
       </View>
     ));
 }
+function ObjectFieldEditor({
+  target,
+  schema,
+  value,
+  close,
+  change,
+}: {
+  readonly target: FieldTarget<string>;
+  readonly schema: Schema;
+  readonly value: Schema;
+  readonly close: () => void;
+  readonly change: (value: Schema) => void;
+}): ReactNode {
+  const { key, opener } = target;
+  const field = schemaOf(schemaOf(schema['properties'])[key] ?? schema['additionalProperties']);
+  const current = value[key];
+  return (
+    <FieldSheet
+      key={key}
+      opener={opener}
+      schema={field}
+      value={current === undefined ? initialValue(field) : current}
+      title={key}
+      close={close}
+      save={(next) => {
+        change(replaceField(value, key, next));
+        target.onSave?.();
+      }}
+    />
+  );
+}
+
 function ObjectFields({
   schema,
   value,
@@ -197,80 +239,102 @@ function ObjectFields({
   searchPlaceholder = 'Find a native setting',
 }: EditorProps): ReactNode {
   const [query, setQuery] = useState(initialSearch);
-  const [key, setKey] = useState<string | null>(null);
+  const [target, setTarget] = useState<FieldTarget<string> | null>(null);
   const properties = schemaOf(schema['properties']);
   const fields = Array.from(new Set([...Object.keys(properties), ...Object.keys(value)]));
   const arbitrary =
     schema['additionalProperties'] !== false && schema['additionalProperties'] !== undefined;
-  const fieldSchema =
-    key === null ? {} : schemaOf(properties[key] ?? schema['additionalProperties']);
   return (
     <View className="gap-3">
       <SearchField value={query} onChange={setQuery} placeholder={searchPlaceholder} />
-      <ObjectRows fields={fields} query={query} value={value} change={change} choose={setKey} />
-      {arbitrary ? <NewEntry value={value} add={setKey} /> : null}
+      <ObjectRows fields={fields} query={query} value={value} change={change} choose={setTarget} />
+      {arbitrary ? <NewEntry value={value} add={setTarget} /> : null}
       <ExclusionRows exclusions={exclusions} query={query} />
-      {key === null ? null : (
-        <FieldSheet
-          key={key}
-          schema={fieldSchema}
-          value={value[key] === undefined ? initialValue(fieldSchema) : value[key]}
-          title={key}
+      {target === null ? null : (
+        <ObjectFieldEditor
+          target={target}
+          schema={schema}
+          value={value}
           close={() => {
-            setKey(null);
+            setTarget(null);
           }}
-          save={(next) => {
-            change(replaceField(value, key, next));
-          }}
+          change={change}
         />
       )}
     </View>
   );
 }
+function ArrayFieldEditor({
+  chosen,
+  schema,
+  items,
+  choose,
+  change,
+}: {
+  readonly chosen: FieldTarget<number>;
+  readonly schema: Schema;
+  readonly items: readonly JsonValue[];
+  readonly choose: (target: FieldTarget<number> | null) => void;
+  readonly change: (value: JsonValue) => void;
+}): ReactNode {
+  return (
+    <FieldSheet
+      key={chosen.key}
+      opener={chosen.opener}
+      title={`Item ${String(chosen.key + 1)}`}
+      schema={schema}
+      value={items[chosen.key] ?? initialValue(schema)}
+      close={() => {
+        choose(null);
+      }}
+      save={(next) => {
+        change(items.map((entry, index) => (index === chosen.key ? next : entry)));
+      }}
+    />
+  );
+}
+
 function ArrayNode({ schema, value, change }: NodeProps): ReactNode {
   const items = arrayOf(value);
-  const [chosen, choose] = useState<number | null>(null);
+  const [chosen, choose] = useState<FieldTarget<number> | null>(null);
+  const add = useRef<View>(null);
   const itemSchema = schemaOf(schema['items']);
   return (
     <View className="gap-3">
       <List>
         {items.map((entry, index) => (
-          <View key={index}>
-            <NavRow
-              title={`Item ${String(index + 1)}`}
-              subtitle={valueSummary(entry)}
-              onPress={() => {
-                choose(index);
-              }}
-            />
-            <ActionRow
-              title={`Remove item ${String(index + 1)}`}
-              onPress={() => {
-                change(items.filter((_, at) => at !== index));
-              }}
-            />
-          </View>
+          <FieldRow
+            key={index}
+            field={index}
+            title={`Item ${String(index + 1)}`}
+            subtitle={valueSummary(entry)}
+            choose={choose}
+            omit={
+              <ActionRow
+                title={`Remove item ${String(index + 1)}`}
+                onPress={() => {
+                  change(items.filter((_, at) => at !== index));
+                }}
+              />
+            }
+          />
         ))}
       </List>
       <Button
+        ref={add}
         label="Add item"
         onPress={() => {
           change([...items, initialValue(itemSchema)]);
-          choose(items.length);
+          choose({ key: items.length, opener: add });
         }}
       />
       {chosen === null ? null : (
-        <FieldSheet
-          key={chosen}
-          title={`Item ${String(chosen + 1)}`}
+        <ArrayFieldEditor
+          chosen={chosen}
           schema={itemSchema}
-          value={items[chosen] ?? initialValue(itemSchema)}
-          close={() => {
-            choose(null);
-          }}
-          save={(next) => {
-            change(items.map((entry, index) => (index === chosen ? next : entry)));
-          }}
+          items={items}
+          choose={choose}
+          change={change}
         />
       )}
     </View>

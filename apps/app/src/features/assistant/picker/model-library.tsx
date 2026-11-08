@@ -5,7 +5,7 @@ import type { ModelPickerProps } from '../data/model-candidates';
 import type { NativeModelRequest } from '../provider/subscription-models';
 import { LibraryBody } from './library/library-body';
 import { librarySubtitle, libraryTitle } from './library/library-model';
-import { engineOf, pickOf } from './library/library-pick';
+import { pickOf } from './library/library-pick';
 import { LibrarySheet } from './library/library-sheet';
 import { useModelsRefresh, type ModelsRefresh } from './library/library-refresh';
 
@@ -39,7 +39,8 @@ function pickerOf(props: Picking | Browsing, close: () => void): ModelPickerProp
       onChange === null
         ? null
         : (pick): void => {
-            onChange(engineOf(pick));
+            if (pick.engine === undefined) return;
+            onChange(pick.engine);
             close();
           },
     onNativeNeeded:

@@ -19,6 +19,7 @@ import type {
   AudioControl,
   CaptureControl,
   DisplayControl,
+  EnvironmentControl,
   FileControl,
   InputControl,
   MachineControl,
@@ -43,6 +44,7 @@ export interface ProcessControl {
 }
 
 export interface ComputerControls {
+  readonly environment: EnvironmentControl;
   readonly power: PowerControl;
   readonly processes: ProcessControl;
   readonly links: (hello: NodeHello) => ConnectLink[];

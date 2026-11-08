@@ -1,14 +1,9 @@
 import {
-  SYNC_ACCEPT_COMMAND,
-  SYNC_IGNORE_COMMAND,
-  SYNC_PAUSE_COMMAND,
-  SYNC_RESCAN_COMMAND,
   SYNC_RESOLVE_COMMAND,
   type SyncActivity,
   type SyncthingCommand,
   type SyncthingSnapshot,
 } from '@smarteverything/domain';
-import { z } from 'zod';
 import type { HubToolResult } from '../../../ai-tools/hub-tool';
 import type { PluginTool } from '../contract';
 import { definePluginTool } from '../define';
@@ -21,6 +16,7 @@ import {
   toolResult,
   WRITE_HINTS,
 } from '../tool-kit';
+import { ACTIVITY_DEFAULT, ACTIVITY_INPUT, automationTools } from './automation-tools';
 
 interface SyncthingToolPorts {
   readonly snapshot: () => SyncthingSnapshot;
@@ -34,7 +30,7 @@ function runner(ports: SyncthingToolPorts): (command: SyncthingCommand) => Promi
 }
 
 export function syncthingTools(ports: SyncthingToolPorts): PluginTool[] {
-  return [...readTools(ports), ...controlTools(ports), ...inviteTools(ports), setupTool(ports)];
+  return [...readTools(ports), ...controlTools(ports), ...automationTools(ports), setupTool(ports)];
 }
 
 function readTools(ports: SyncthingToolPorts): PluginTool[] {
@@ -53,18 +49,16 @@ function readTools(ports: SyncthingToolPorts): PluginTool[] {
       name: 'activity',
       title: 'Recent file activity',
       description:
-        'Files added, changed or deleted and devices connecting, newest first (up to 200).',
-      input: z.strictObject({
-        limit: z.number().int().min(1).max(200).default(50),
-        folderId: z.string().min(1).nullable().default(null),
-      }),
+        'Files added, changed or deleted and devices connecting, newest first. Every entry Syncthing kept; limit defaults to 50.',
+      input: ACTIVITY_INPUT,
       annotations: READ_HINTS,
       humanOnly: false,
-      run: ({ limit, folderId }) => {
-        const entries = ports
+      run: ({ limit = ACTIVITY_DEFAULT, folderId = null }) => {
+        const shown = ports
           .activity()
-          .filter((entry) => folderId === null || entry.folderId === folderId);
-        return Promise.resolve(toolResult({ activity: entries.slice(0, limit) }));
+          .filter((entry) => folderId === null || entry.folderId === folderId)
+          .slice(0, limit);
+        return Promise.resolve(toolResult({ activity: shown, count: shown.length }));
       },
     }),
   ];
@@ -74,26 +68,6 @@ function controlTools(ports: SyncthingToolPorts): PluginTool[] {
   const run = runner(ports);
   return [
     definePluginTool({
-      name: 'set_paused',
-      title: 'Pause or resume syncing',
-      description:
-        'Pauses or resumes one folder, one device, or (target kind all) syncing with every device. Use command set_paused.',
-      input: SYNC_PAUSE_COMMAND,
-      annotations: DANGER_HINTS,
-      humanOnly: false,
-      run,
-    }),
-    definePluginTool({
-      name: 'rescan',
-      title: 'Rescan folders',
-      description:
-        'Looks for changed files now in one folder, or in every folder when folderId is null. Use command rescan.',
-      input: SYNC_RESCAN_COMMAND,
-      annotations: WRITE_HINTS,
-      humanOnly: false,
-      run,
-    }),
-    definePluginTool({
       name: 'resolve_folder',
       title: 'Override or revert a folder',
       description:
@@ -102,31 +76,6 @@ function controlTools(ports: SyncthingToolPorts): PluginTool[] {
       annotations: DANGER_HINTS,
       humanOnly: false,
       run,
-    }),
-  ];
-}
-
-function inviteTools(ports: SyncthingToolPorts): PluginTool[] {
-  const run = runner(ports);
-  return [
-    definePluginTool({
-      name: 'accept_invite',
-      title: 'Accept a Syncthing invitation',
-      description:
-        'Adds a device that asked to connect, or a folder another device offered (path null uses Syncthing’s default folder location).',
-      input: z.strictObject({ invite: SYNC_ACCEPT_COMMAND }),
-      annotations: WRITE_HINTS,
-      humanOnly: false,
-      run: ({ invite }) => run(invite),
-    }),
-    definePluginTool({
-      name: 'ignore_invite',
-      title: 'Ignore a Syncthing invitation',
-      description: 'Stops a device or an offered folder from asking again.',
-      input: z.strictObject({ invite: SYNC_IGNORE_COMMAND }),
-      annotations: DANGER_HINTS,
-      humanOnly: false,
-      run: ({ invite }) => run(invite),
     }),
   ];
 }

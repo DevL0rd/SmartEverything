@@ -1,12 +1,20 @@
 import { appendTo } from '@smarteverything/domain';
+import { MEMORY_TOOL } from '@smarteverything/harness/process';
 import type { HubTool } from '../ai-tools/hub-tool';
 import { COMMON_TOOL_NAMES, indexedTools } from '../ai-tools/tool-sets';
 
-export const VOICE_DEFERRED_TOOLS: ReadonlySet<string> = new Set(['health_read', 'food_log']);
+export const VOICE_DEFERRED_TOOLS: ReadonlySet<string> = new Set([
+  'health_read',
+  'food_log',
+  'chat_speak',
+  'weather_read',
+  'person_notify',
+]);
 
-const VOICE_DECLARED_TOOLS: ReadonlySet<string> = new Set(
-  [...COMMON_TOOL_NAMES].filter((name) => !VOICE_DEFERRED_TOOLS.has(name)),
-);
+export const VOICE_DECLARED_TOOLS: ReadonlySet<string> = new Set([
+  ...[...COMMON_TOOL_NAMES].filter((name) => !VOICE_DEFERRED_TOOLS.has(name)),
+  MEMORY_TOOL,
+]);
 
 export function voiceToolIndex(enabled: readonly HubTool[]): string {
   const areas = new Map<string, string[]>();

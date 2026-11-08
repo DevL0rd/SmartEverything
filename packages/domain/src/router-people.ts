@@ -36,9 +36,6 @@ export const PRESENCE_PERSON = z.strictObject({
 
 export type PresencePerson = z.output<typeof PRESENCE_PERSON>;
 
-export const PERSON_ARRIVED_EVENT = 'person_arrived';
-export const PERSON_LEFT_EVENT = 'person_left';
-
 export function atHomePlace(place: string | null): boolean {
   return place?.trim().toLowerCase() === HOME_PLACE_NAME;
 }

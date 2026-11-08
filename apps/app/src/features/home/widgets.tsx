@@ -4,6 +4,7 @@ import { DEVICE_GROUP_WIDGET } from '../device-groups';
 import { APP_PLUGINS } from '../../plugins/registry';
 import { CAMERA_WIDGETS } from '../cameras';
 import { CLIMATE_WIDGETS } from '../climate';
+import { PHOTOS_WIDGETS } from '../photos';
 import { HOME_WIDGET_SIZES, type HomeSizedType } from './model/widget-sizes';
 import { nutritionWidgets, useTodayKey } from '../nutrition';
 import { BODY_WIDGET } from '../fitness';
@@ -12,7 +13,6 @@ import { TALK_WIDGETS } from '../talk';
 import { STRESS_WIDGET, WATCH_WIDGET, WATCH_WORKOUT_WIDGET } from '../watches';
 import { WeatherWidget } from '../weather';
 import { FavouritesWidget } from './widgets/device-widgets';
-import { GlanceWidget } from './widgets/glance-widget';
 import { HomeScope } from './widgets/home-scope';
 import { RoomsWidget } from './widgets/rooms-widget';
 import { SPOTLIGHT_WIDGET } from './widgets/spotlight';
@@ -47,18 +47,6 @@ function checked(definition: WidgetDefinition): WidgetDefinition {
 }
 
 const HOME_CATALOGUE: readonly WidgetDefinition[] = [
-  {
-    type: 'glance',
-    title: 'Indoors',
-    icon: 'thermometer',
-    group: 'Home',
-    ...layoutOf('glance'),
-    render: () => (
-      <HomeScope field="readings">
-        <GlanceWidget />
-      </HomeScope>
-    ),
-  },
   {
     type: 'weather',
     title: 'Weather',
@@ -162,6 +150,7 @@ const HOME_CATALOGUE: readonly WidgetDefinition[] = [
   ...TALK_WIDGETS,
   { ...PHONE_WIDGET, group: 'Devices' },
   ...CLIMATE_WIDGETS,
+  ...PHOTOS_WIDGETS,
   ...APP_PLUGINS.filter((plugin) => plugin.home !== undefined).flatMap((plugin) => plugin.widgets),
 ];
 

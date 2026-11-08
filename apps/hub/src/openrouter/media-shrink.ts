@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { ffmpegPath } from '../media/ffmpeg-path';
@@ -48,13 +47,15 @@ function recipeOf(mime: string): typeof SPEECH | typeof VIDEO | typeof STILL | u
 }
 
 export async function shrinkMedia(
+  tmp: string,
   data: Buffer,
   mime: string,
   limit: number = REQUEST_BYTES_MAX,
 ): Promise<Shrunk | undefined> {
   const recipe = recipeOf(mime);
   if (recipe === undefined) return undefined;
-  const directory = await mkdtemp(join(tmpdir(), 'smarteverything-media-'));
+  await mkdir(tmp, { recursive: true, mode: 0o700 });
+  const directory = await mkdtemp(join(tmp, 'smarteverything-media-'));
   try {
     const source = join(directory, 'source');
     const target = join(directory, `shrunk.${recipe.extension}`);

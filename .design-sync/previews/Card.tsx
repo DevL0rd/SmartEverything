@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Badge, Button, Card, Stage, Text } from 'smarteverything-kit';
 
 const body = (
@@ -9,7 +10,7 @@ const body = (
   </div>
 );
 
-export const Default = () => (
+export const Default = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <Card title="Climate" icon="thermometer" action={<Button label="Adjust" variant="text" />}>
       {body}
@@ -17,7 +18,7 @@ export const Default = () => (
   </Stage>
 );
 
-export const Tones = () => (
+export const Tones = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <Card title="Front door" icon="lock" label="Front door lock">
@@ -39,7 +40,7 @@ export const Tones = () => (
   </Stage>
 );
 
-export const Pressable = () => (
+export const Pressable = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <Card title="Open the full report" icon="activity" onPress={() => undefined}>
       <Text variant="callout" tone="variant">
@@ -49,7 +50,7 @@ export const Pressable = () => (
   </Stage>
 );
 
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     <Card title="Climate" icon="thermometer" action={<Button label="Adjust" variant="text" />}>
       {body}

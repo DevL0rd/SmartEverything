@@ -13,7 +13,10 @@ import type { ConditionHost } from './triggers-v3/condition-triggers';
 import type { TriggerFire } from './triggers-v3/payload';
 import type { TriggerProblem } from './triggers-v3/trigger-types';
 
-type TriggerPorts = Pick<EngineV3Ports, 'clock' | 'place' | 'zone' | 'world' | 'watchKeys'>;
+type TriggerPorts = Pick<
+  EngineV3Ports,
+  'clock' | 'place' | 'zone' | 'world' | 'watchKeys' | 'kinds'
+>;
 
 interface TriggerOutput {
   readonly fire: (fire: TriggerFire) => void;

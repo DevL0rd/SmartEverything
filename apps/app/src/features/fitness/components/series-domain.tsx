@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import { Skeleton } from '../../../components/skeleton';
 import { useFitnessParams } from '../data/day';
 import { useHealthPresence } from '../data/presence';
@@ -31,17 +32,31 @@ export function SeriesDomain({
   return (
     <FitnessFrame
       tab={domain}
-      width="detail"
-      toolbar={<FitnessToolbar day={day} today={today} range={range} ranges={RANGES} />}
+      width="dashboard"
+      toolbar={
+        <View className="w-full max-w-detail">
+          <FitnessToolbar day={day} today={today} range={range} ranges={RANGES} />
+        </View>
+      }
     >
       {before}
-      {keys.length === 0 && !presence.loaded ? <Skeleton shape="block" className="h-72" /> : null}
-      {keys.length === 0 && presence.loaded ? (
-        <NoDataRow what={`${info.title.toLowerCase()} data`} lastDay={null} />
+      {keys.length === 0 && !presence.loaded ? (
+        <Skeleton shape="block" className="h-72 w-full max-w-detail" />
       ) : null}
-      {keys.map((key) => (
-        <MetricSection key={key} spec={seriesOf(key)} window={window} />
-      ))}
+      {keys.length === 0 && presence.loaded ? (
+        <View className="w-full max-w-detail">
+          <NoDataRow what={`${info.title.toLowerCase()} data`} lastDay={null} />
+        </View>
+      ) : null}
+      {keys.length === 0 ? null : (
+        <View className="flex-row flex-wrap items-start gap-section-gap">
+          {keys.map((key) => (
+            <View key={key} className="w-full max-w-detail">
+              <MetricSection spec={seriesOf(key)} window={window} />
+            </View>
+          ))}
+        </View>
+      )}
       {after}
     </FitnessFrame>
   );

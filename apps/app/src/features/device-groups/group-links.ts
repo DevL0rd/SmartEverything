@@ -1,8 +1,8 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../components/app-href';
 import type { DeviceTarget } from '@smarteverything/domain';
 import { href } from '../../app-shell/hrefs';
 
-export function showAllHref(target: DeviceTarget): Href {
+export function showAllHref(target: DeviceTarget): AppHref {
   switch (target.kind) {
     case 'group':
       return href.group(target.groupId);
@@ -15,6 +15,6 @@ export function showAllHref(target: DeviceTarget): Href {
   }
 }
 
-export function editHref(target: DeviceTarget): Href {
+export function editHref(target: DeviceTarget): AppHref {
   return target.kind === 'group' ? href.group(target.groupId, { edit: true }) : showAllHref(target);
 }

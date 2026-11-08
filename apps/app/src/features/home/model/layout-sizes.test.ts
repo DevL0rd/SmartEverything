@@ -47,7 +47,7 @@ describe('layout size rows', () => {
     ]);
     expect(rows.map(sourceText)).toEqual([
       'Your own arrangement',
-      'Default arrangement',
+      'Built-in arrangement',
       'Following Compact',
     ]);
   });
@@ -55,6 +55,6 @@ describe('layout size rows', () => {
   it('describes the consequences in plain words', () => {
     expect(copyConfirmBody('compact', 'medium', true)).toContain('will be replaced');
     expect(copyConfirmBody('compact', 'medium', false)).toContain('not customised');
-    expect(resetConfirmBody('medium')).toContain('built-in default');
+    expect(resetConfirmBody('medium')).toContain('built-in arrangement');
   });
 });

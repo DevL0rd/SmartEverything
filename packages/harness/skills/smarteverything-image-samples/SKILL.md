@@ -1,6 +1,6 @@
 ---
 name: smarteverything-image-samples
-description: "Worked image prompts to adapt: samples for each use case, templates and examples for website assets, game assets, wireframes and logos, and edit samples for text, identity, objects, lighting, backgrounds, style, compositing and sketches. Use it when a request matches one of these and a finished prompt helps. Not for prompt rules (smarteverything-image-prompts) or the image workflow (smarteverything-images)."
+description: 'Worked image prompts to adapt: samples for each use case, templates and examples for website assets, game assets, wireframes and logos, and edit samples for text, identity, objects, lighting, backgrounds, style, compositing and sketches. Use it when a request matches one of these and a finished prompt helps. Not for prompt rules (smarteverything-image-prompts) or the image workflow (smarteverything-images).'
 ---
 
 # Image prompt samples

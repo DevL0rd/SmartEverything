@@ -5,7 +5,6 @@ import {
   continueLabel,
   latestChat,
   newChatReason,
-  preferredChoice,
   type QuickAskCandidate,
 } from './quick-ask-model';
 
@@ -64,25 +63,19 @@ describe('the chat Quick Ask can continue', () => {
   });
 });
 
-describe('the default target follows Keep the same chat for', () => {
-  it('continues a chat that was active within the window', () => {
-    expect(preferredChoice(chat(119), 120, NOW)).toBe('continue');
-  });
-
-  it('starts a new chat once the window has passed, at the boundary included', () => {
-    expect(preferredChoice(chat(120), 120, NOW)).toBe('new');
-    expect(preferredChoice(chat(500), 120, NOW)).toBe('new');
+describe('the default target', () => {
+  it('continues the latest chat however long ago it was active', () => {
+    expect(chosenTarget(null, true)).toBe('continue');
   });
 
   it('starts a new chat when there is nothing to continue', () => {
-    expect(preferredChoice(null, 120, NOW)).toBe('new');
+    expect(chosenTarget(null, false)).toBe('new');
+    expect(chosenTarget('continue', false)).toBe('new');
   });
 
-  it('lets the person override the default, except when there is nothing to continue', () => {
-    expect(chosenTarget('new', 'continue', true)).toBe('new');
-    expect(chosenTarget('continue', 'new', true)).toBe('continue');
-    expect(chosenTarget(null, 'continue', true)).toBe('continue');
-    expect(chosenTarget('continue', 'new', false)).toBe('new');
+  it('lets the person pick a new chat instead', () => {
+    expect(chosenTarget('new', true)).toBe('new');
+    expect(chosenTarget('continue', true)).toBe('continue');
   });
 });
 

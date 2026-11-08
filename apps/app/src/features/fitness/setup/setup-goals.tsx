@@ -49,23 +49,27 @@ export function SetupGoals({
       <Text variant="callout" tone="variant">
         Suggested for you. Change any of them now or later in Fitness settings.
       </Text>
-      {FITNESS_GOAL_KEYS.map((key) => {
-        const limit = FITNESS_GOAL_LIMITS[key];
-        return (
-          <NumberStepper
-            key={key}
-            label={limit.label}
-            unit={limit.unit}
-            min={limit.min}
-            max={limit.max}
-            step={limit.step}
-            value={goals[key]}
-            onChange={(value) => {
-              onGoals({ ...goals, [key]: value });
-            }}
-          />
-        );
-      })}
+      <View className="gap-2">
+        {FITNESS_GOAL_KEYS.map((key) => {
+          const limit = FITNESS_GOAL_LIMITS[key];
+          return (
+            <View key={key} className="flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <Text variant="body">{limit.label}</Text>
+              <NumberStepper
+                label={limit.label}
+                unit={limit.unit}
+                min={limit.min}
+                max={limit.max}
+                step={limit.step}
+                value={goals[key]}
+                onChange={(value) => {
+                  onGoals({ ...goals, [key]: value });
+                }}
+              />
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 }

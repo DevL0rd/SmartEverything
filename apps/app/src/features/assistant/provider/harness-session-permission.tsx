@@ -19,14 +19,17 @@ interface SessionPermissionControl {
   readonly policies: readonly AiHarnessPermission[];
   readonly pending: AiHarnessPermissionChange | null;
 }
-export function useSessionPermission(session: AiHarnessSession): SessionPermissionControl {
+export function useSessionPermission(
+  chatId: string,
+  target: AiHarnessSession['target'],
+  pending: AiHarnessPermissionChange | null,
+): SessionPermissionControl {
   const catalogue = useHarnessCatalogue();
-  const mutation = useChangeHarnessPermission(session.chat_id);
+  const mutation = useChangeHarnessPermission(chatId);
   const host = catalogue.data?.hosts.find(
-    (row) => harnessTargetKey(row.target) === harnessTargetKey(session.target),
+    (row) => harnessTargetKey(row.target) === harnessTargetKey(target),
   );
   const policies = host?.manifest?.permissions ?? [];
-  const pending = session.permission_change ?? null;
   return {
     mutation,
     host,
@@ -92,7 +95,11 @@ export function HarnessSessionPermission({
 }: {
   readonly session: AiHarnessSession;
 }): ReactNode {
-  const control = useSessionPermission(session);
+  const control = useSessionPermission(
+    session.chat_id,
+    session.target,
+    session.permission_change ?? null,
+  );
   return (
     <View className="gap-3">
       <Text tone="variant">{permissionLabel(session.permission)}</Text>

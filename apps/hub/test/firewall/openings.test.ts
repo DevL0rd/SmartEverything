@@ -58,15 +58,16 @@ describe('cameraAddressOf', () => {
 });
 
 describe('requiredOpenings', () => {
-  it('groups devices by address, plugins by port, and always adds the WebRTC pair', () => {
+  it('groups devices by MAC address, plugin ports by network, and always adds the WebRTC pair', () => {
     const openings = requiredOpenings({
       cameras: [
-        { deviceId: 'cam-1', address: '192.168.1.50' },
-        { deviceId: 'cam-2', address: '192.168.1.50' },
+        { deviceId: 'cam-1', address: '192.168.1.50', mac: 'b8:88:80:d7:19:ac' },
+        { deviceId: 'cam-2', address: '192.168.1.77', mac: 'b8:88:80:d7:19:ac' },
       ],
-      pushing: [{ deviceId: 'lamp', address: '192.168.1.60' }],
+      pushing: [{ deviceId: 'lamp', address: '192.168.1.60', mac: 'b8:88:80:d7:28:57' }],
       plugins: [
         { pluginId: 'a', protocol: 'udp', port: 1900 },
+        { pluginId: 'a', protocol: 'tcp', port: 80 },
         { pluginId: 'b', protocol: 'udp', port: 1900 },
       ],
       networks: ['192.168.1.0/24', '10.0.0.0/8'],
@@ -75,16 +76,24 @@ describe('requiredOpenings', () => {
     });
     const byId = new Map(openings.map((opening) => [opening.id, opening]));
     expect([...byId.keys()]).toEqual([
-      'camera:192.168.1.50',
-      'device:192.168.1.60',
+      'camera:mac:b8:88:80:d7:19:ac',
+      'device:mac:b8:88:80:d7:28:57',
       'plugin:udp:1900:192.168.1.0/24',
       'plugin:udp:1900:10.0.0.0/8',
+      'plugin:tcp:80:192.168.1.0/24',
+      'plugin:tcp:80:10.0.0.0/8',
       'hub:tcp:8788:192.168.1.0/24',
       'webrtc:tcp:8555',
       'webrtc:udp:8555',
     ]);
-    expect(byId.get('camera:192.168.1.50')?.deviceIds).toEqual(['cam-1', 'cam-2']);
-    expect(byId.get('plugin:udp:1900:10.0.0.0/8')?.pluginIds).toEqual(['a', 'b']);
+    expect(byId.get('camera:mac:b8:88:80:d7:19:ac')?.deviceIds).toEqual(['cam-1', 'cam-2']);
+    expect(byId.get('plugin:udp:1900:192.168.1.0/24')?.pluginIds).toEqual(['a', 'b']);
+    expect(byId.get('plugin:tcp:80:10.0.0.0/8')?.rule).toEqual({
+      purpose: 'plugin',
+      protocol: 'tcp',
+      port: 80,
+      source: '10.0.0.0/8',
+    });
     expect(byId.get('hub:tcp:8788:192.168.1.0/24')?.rule).toEqual({
       purpose: 'hub',
       protocol: 'tcp',

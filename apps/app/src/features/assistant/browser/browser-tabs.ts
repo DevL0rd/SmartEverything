@@ -2,8 +2,11 @@ import { performBrowserTabAction } from './browser-tab-commands';
 import { BrowserTabError } from './browser-tab-errors';
 import { browserTabOperation, recoverRetiredTab } from './browser-tab-operation';
 import { BrowserTabAdmissions } from './browser-tab-admissions';
+import { BrowserRepair } from './browser-repair';
 import {
   browserTabAddress,
+  committedBrowserSource,
+  serverRoute,
   projectAddress,
   publicAddressTab,
   statusAddress,
@@ -14,6 +17,7 @@ import {
   BROWSER_RETIRED_PROBLEM,
   type EmbeddedBrowserAction,
   type BrowserStatus,
+  type ChatServer,
 } from '@smarteverything/domain';
 import { ValueStore } from '../../../design/external-store';
 import { browserCapability } from '../../../platform/browser-surface';
@@ -34,8 +38,16 @@ import {
   type BrowserTabId,
   type BrowserTabsSnapshot,
 } from './browser-tab-state';
+function samePage(tab: BrowserTab, path: string, server: ChatServer | undefined): boolean {
+  if (tab.source.kind !== 'project') return false;
+  if (server === undefined) return tab.source.server === undefined && tab.source.path === path;
+  return (
+    tab.source.server?.computerId === server.computerId && tab.source.server.port === server.port
+  );
+}
 export class BrowserTabs {
   readonly viewerId = Crypto.randomUUID();
+  readonly repair = new BrowserRepair();
   private readonly state = new ValueStore<BrowserTabsSnapshot>({
     tabs: [],
     selectedId: null,
@@ -123,32 +135,38 @@ export class BrowserTabs {
         ...tab,
         address,
         status,
-        ...(tab.selection.kind === 'public' && status.url !== ''
-          ? { source: { kind: 'public' as const, url: status.url } }
-          : {}),
+        source: committedBrowserSource(tab, status.url),
       };
     });
   }
-  projectTab(path: string): BrowserTabId | undefined {
-    return this.read().tabs.find((tab) => tab.source.kind === 'project' && tab.source.path === path)
-      ?.id;
+  projectTab(path: string, server?: ChatServer): BrowserTabId | undefined {
+    return this.read().tabs.find((tab) => samePage(tab, path, server))?.id;
   }
-  async openProject(id: BrowserTabId, path: string): Promise<void> {
+  async openProject(id: BrowserTabId, path: string, server?: ChatServer): Promise<void> {
     const tab = this.tab(id);
     this.select(id);
-    if (tab.phase === 'ready' && tab.source.kind === 'project' && tab.source.path === path) {
+    if (samePage(tab, path, server)) {
       await this.reload(id);
       return;
     }
-    await this.replaceProject(id, path);
+    await this.replaceProject(id, path, server);
   }
-  private async replaceProject(id: BrowserTabId, path: string): Promise<void> {
-    const address = projectAddress(path);
-    const title = address.split('/').at(-1) ?? address;
-    const generation = await this.begin(id, { kind: 'project', path }, title, address);
+  private async replaceProject(id: BrowserTabId, path: string, server?: ChatServer): Promise<void> {
+    const address = projectAddress(path, server);
+    const title = server === undefined ? (address.split('/').at(-1) ?? address) : address;
+    const source =
+      server === undefined
+        ? { kind: 'project' as const, path }
+        : { kind: 'project' as const, path, server };
+    const generation = await this.begin(id, source, title, address);
     if (!this.matches(id, generation)) return;
     try {
-      const selection = await admitProjectPage(this.chatId, path, `project:${Crypto.randomUUID()}`);
+      const selection = await admitProjectPage(
+        this.chatId,
+        path,
+        server,
+        `project:${Crypto.randomUUID()}`,
+      );
       if (!this.matches(id, generation)) {
         await retireBrowserSelection(selection);
         return;
@@ -173,11 +191,27 @@ export class BrowserTabs {
     const tab = this.tab(id);
     const parsed = browserTabAddress(tab, address);
     if (parsed.kind === 'document') return this.reload(id);
+    if (parsed.kind === 'server') return this.navigateServer(tab, parsed.url);
     if (parsed.kind === 'rejected') {
       this.update(id, (entry) => ({ ...entry, problem: parsed.reason }));
       throw new BrowserTabError(parsed.reason);
     }
     await this.navigatePublic(tab, parsed.url);
+  }
+  private async navigateServer(tab: BrowserTab, address: URL): Promise<void> {
+    if (tab.source.kind !== 'project' || tab.source.server === undefined)
+      throw new BrowserTabError('This tab does not have a private dev server.');
+    if (tab.phase !== 'ready')
+      return this.replaceProject(tab.id, serverRoute(address), tab.source.server);
+    const target = tab.selection.target;
+    if (target.kind !== 'project' || !('server' in target.page))
+      throw new BrowserTabError('Wait for this browser page to finish opening.');
+    const url = new URL(target.url);
+    url.pathname = address.pathname;
+    url.search = address.search;
+    url.hash = address.hash;
+    this.handle(tab.id).navigate(url.href);
+    this.update(tab.id, (entry) => ({ ...entry, problem: null, editing: false }));
   }
   private async navigatePublic(tab: BrowserTab, url: string): Promise<void> {
     const publicBrowsing = browserCapability().publicBrowsing;
@@ -238,7 +272,7 @@ export class BrowserTabs {
   async renew(id: BrowserTabId): Promise<void> {
     const { source } = this.tab(id);
     if (source.kind !== 'project') return;
-    await this.replaceProject(id, source.path);
+    await this.replaceProject(id, source.path, source.server);
   }
   async close(id: string): Promise<void> {
     const tab = this.tab(id);

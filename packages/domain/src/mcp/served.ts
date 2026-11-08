@@ -5,9 +5,12 @@ import { SERVED_ASSISTANT } from './served-assistant';
 import { SERVED_AUTOMATIONS } from './served-automations';
 import { SERVED_CAMERAS } from './served-cameras';
 import { SERVED_COMPUTERS } from './served-computers';
+import { SERVED_DRIVE } from './served-drive';
 import { SERVED_HOME } from './served-home';
 import { SERVED_IMAGES } from './served-images';
 import { SERVED_LIFE } from './served-life';
+import { SERVED_LOGS } from './served-logs';
+import { SERVED_PLANNER } from './served-planner';
 import { SERVED_PLUGINS } from './served-plugins';
 import { SERVED_PROJECTS } from './served-projects';
 import type { McpRoute } from './served-types';
@@ -19,6 +22,9 @@ const SERVED = [
   ...SERVED_CAMERAS,
   ...SERVED_AUTOMATIONS,
   ...SERVED_LIFE,
+  ...SERVED_PLANNER,
+  ...SERVED_DRIVE,
+  ...SERVED_LOGS,
   ...SERVED_PROJECTS,
   ...SERVED_IMAGES,
   ...SERVED_ASSISTANT,

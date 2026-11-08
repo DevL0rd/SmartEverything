@@ -1,20 +1,26 @@
-import { robotMoveLabel, type RobotMoves, type RobotStatus } from '@smarteverything/domain';
+import {
+  robotMoveLabel,
+  type RobotLine,
+  type RobotMoves,
+  type RobotStatus,
+} from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../components/badge';
 import { Button } from '../../components/button';
 import { Text } from '../../components/text';
-import type { WidgetSize } from '../../components/widget-board';
+import { useIdiom } from '../../design/platform';
+import { TYPE_SCALE } from '../../design/tokens';
 import { plural } from '../../format/text';
 import { useMinute } from '../../store/clock';
 import type { Device } from '../../store/state';
+import { FitBand, FitList } from '../shared/plugin-widget';
 import { useMoveControl } from './aibi-data';
 import { LINE_WHO, conversationBadge, lastContactText, lastHeard } from './aibi-text';
 import { quickMoves } from './move-model';
 import { background } from '@smarteverything/logging';
 
-const LINES_BY_SIZE: Readonly<Record<WidgetSize, number>> = { M: 2, W: 2, XL: 6 };
-const MOVES_BY_SIZE: Readonly<Record<WidgetSize, number>> = { M: 4, W: 6, XL: 10 };
+const LINE_GAP = 8;
 
 function Badges({
   status,
@@ -39,6 +45,17 @@ function Badges({
   );
 }
 
+interface StatusLine {
+  readonly key: string;
+  readonly text: string;
+}
+
+export function statusLines(status: RobotStatus, now: number): readonly StatusLine[] {
+  const firmware = status.robot?.firmware ?? null;
+  const heard = { key: 'heard', text: `Last heard from ${lastContactText(status, now)}` };
+  return firmware === null ? [heard] : [heard, { key: 'firmware', text: `Firmware ${firmware}` }];
+}
+
 export function StatusBody({
   status,
   device,
@@ -49,32 +66,45 @@ export function StatusBody({
   readonly showOnline: boolean;
 }): ReactNode {
   const now = useMinute();
-  const firmware = status.robot?.firmware ?? null;
+  const lineHeight = TYPE_SCALE[useIdiom()].footnote[1];
   return (
-    <View className="gap-2">
+    <View className="min-h-0 flex-1 gap-2">
       <Badges status={status} online={showOnline ? device?.online === true : null} />
-      <Text variant="footnote" tone="variant" numberOfLines={1}>
-        {`Last heard from ${lastContactText(status, now)}`}
-      </Text>
-      {firmware === null ? null : (
-        <Text variant="footnote" tone="variant" numberOfLines={1}>
-          {`Firmware ${firmware}`}
-        </Text>
-      )}
+      <FitList
+        items={statusLines(status, now)}
+        keyOf={(line) => line.key}
+        estimate={lineHeight}
+        gap={LINE_GAP}
+      >
+        {(line, room) => {
+          const lines = linesFor(room, lineHeight);
+          return (
+            <Text
+              variant="footnote"
+              tone="variant"
+              {...(lines === undefined ? {} : { numberOfLines: lines })}
+            >
+              {line.text}
+            </Text>
+          );
+        }}
+      </FitList>
     </View>
   );
 }
 
-export function ConversationBody({
-  status,
-  size,
-}: {
-  readonly status: RobotStatus;
-  readonly size: WidgetSize;
-}): ReactNode {
+function lineKey(line: RobotLine): string {
+  return `${line.at}:${line.who}:${line.text}`;
+}
+
+export function linesFor(room: number | null, lineHeight: number): number | undefined {
+  return room === null ? undefined : Math.max(1, Math.floor(room / lineHeight));
+}
+
+export function ConversationBody({ status }: { readonly status: RobotStatus }): ReactNode {
+  const lineHeight = TYPE_SCALE[useIdiom()].footnote[1];
   const heard = lastHeard(status);
-  const lines = status.lines.slice(-LINES_BY_SIZE[size]);
-  if (lines.length === 0) {
+  if (status.lines.length === 0) {
     return (
       <Text variant="footnote" tone="variant" numberOfLines={3}>
         {heard === null ? 'Nothing said yet' : `Heard: ${heard.text}`}
@@ -82,35 +112,40 @@ export function ConversationBody({
     );
   }
   return (
-    <View className="gap-2">
-      {lines.map((line) => (
-        <Text key={`${line.at}:${line.who}:${line.text}`} variant="footnote" numberOfLines={2}>
-          <Text variant="footnote" tone="variant">
-            {`${LINE_WHO[line.who]}: `}
+    <FitList
+      items={[...status.lines].reverse()}
+      keyOf={lineKey}
+      estimate={lineHeight}
+      gap={LINE_GAP}
+      from="end"
+    >
+      {(line, room) => {
+        const lines = linesFor(room, lineHeight);
+        return (
+          <Text variant="footnote" {...(lines === undefined ? {} : { numberOfLines: lines })}>
+            <Text variant="footnote" tone="variant">
+              {`${LINE_WHO[line.who]}: `}
+            </Text>
+            {line.text}
           </Text>
-          {line.text}
-        </Text>
-      ))}
-    </View>
+        );
+      }}
+    </FitList>
   );
 }
 
 export function QuickMoves({
   moves,
-  size,
   device,
 }: {
   readonly moves: RobotMoves;
-  readonly size: WidgetSize;
   readonly device: Device;
 }): ReactNode {
   const control = useMoveControl(device);
-  const shown = quickMoves(moves.actions, MOVES_BY_SIZE[size]);
   return (
-    <View className="flex-row flex-wrap gap-2">
-      {shown.map((move) => (
+    <FitBand items={quickMoves(moves.actions, moves.actions.length)} keyOf={(move) => move.id}>
+      {(move) => (
         <Button
-          key={move.id}
           label={robotMoveLabel(move.id)}
           variant="tonal"
           disabled={control.pending}
@@ -118,7 +153,7 @@ export function QuickMoves({
             background(control.set({ action: move.id }), 'control.set_failed');
           }}
         />
-      ))}
-    </View>
+      )}
+    </FitBand>
   );
 }

@@ -4,15 +4,13 @@ import { View } from 'react-native';
 import Animated, {
   FadeIn,
   type SharedValue,
-  SlideInDown,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { cn } from '../design/cn';
 import { DURATION, EASING, entering, useMotion } from '../design/motion';
+import { BottomSheet } from './bottom-sheet';
 import { MenuRows, QuickRow, type MenuEntry, type MenuItem } from './menu-rows';
-import { Overlay, useOverlayShown } from './overlay';
 
 const LIFT_SCALE = 1.02;
 const PREVIEW_MAX_HEIGHT = 180;
@@ -30,15 +28,7 @@ function useLiftScale(): SharedValue<number> {
   return scale;
 }
 
-export type PreviewAlign = 'start' | 'end';
-
-function Preview({
-  align,
-  children,
-}: {
-  readonly align: PreviewAlign;
-  readonly children: ReactNode;
-}): ReactNode {
+export function MenuPreview({ children }: { readonly children: ReactNode }): ReactNode {
   const motion = useMotion();
   const scale = useLiftScale();
   const lift = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
@@ -46,10 +36,7 @@ function Preview({
     <Animated.View
       {...entering(motion, FadeIn.duration(DURATION.short))}
       style={[{ maxHeight: PREVIEW_MAX_HEIGHT }, lift]}
-      className={cn(
-        'overflow-hidden rounded-xl bg-surface-1 elevation-3',
-        align === 'end' ? 'self-end' : 'self-start',
-      )}
+      className="overflow-hidden"
     >
       <View pointerEvents="none">{children}</View>
     </Animated.View>
@@ -58,53 +45,42 @@ function Preview({
 
 export interface LiftMenuProps {
   readonly label: string;
+  readonly header: ReactNode;
   readonly preview: ReactNode;
-  readonly previewAlign: PreviewAlign;
   readonly quick: readonly MenuItem[];
   readonly entries: readonly MenuEntry[];
   readonly onClose: () => void;
 }
 
-function LiftCard({
-  quick,
-  entries,
-  onClose,
-}: Pick<LiftMenuProps, 'quick' | 'entries' | 'onClose'>): ReactNode {
-  const motion = useMotion();
-  const shown = useOverlayShown();
+function LiftTop({ header, preview }: Pick<LiftMenuProps, 'header' | 'preview'>): ReactNode {
+  if (header === null && preview === null) return null;
   return (
-    <Animated.View
-      {...entering(motion, SlideInDown.duration(DURATION.medium))}
-      onLayout={shown}
-      className="mb-4 overflow-hidden rounded-xl bg-surface-raised elevation-3"
-    >
-      {quick.length === 0 ? null : <QuickRow items={quick} close={onClose} />}
-      <View className="py-1">
-        <MenuRows entries={entries} close={onClose} layout="sheet" />
-      </View>
-    </Animated.View>
+    <View pointerEvents="box-none" className="gap-2">
+      {header}
+      {preview === null ? null : <MenuPreview>{preview}</MenuPreview>}
+    </View>
   );
 }
 
 export function LiftMenu({
   label,
+  header,
   preview,
-  previewAlign,
   quick,
   entries,
   onClose,
 }: LiftMenuProps): ReactNode {
   return (
-    <Overlay open onClose={onClose} label={label} scrim className="justify-end">
-      <View
-        accessibilityViewIsModal
-        aria-modal
-        accessibilityLabel={label}
-        className="gap-3 px-4 pb-safe"
-      >
-        {preview === null ? null : <Preview align={previewAlign}>{preview}</Preview>}
-        <LiftCard quick={quick} entries={entries} onClose={onClose} />
-      </View>
-    </Overlay>
+    <BottomSheet
+      open
+      onClose={onClose}
+      label={label}
+      detents={['fit']}
+      compact
+      preview={<LiftTop header={header} preview={preview} />}
+    >
+      {quick.length === 0 ? null : <QuickRow items={quick} close={onClose} subpages />}
+      <MenuRows entries={entries} close={onClose} layout="compact" subpages />
+    </BottomSheet>
   );
 }

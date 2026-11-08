@@ -166,3 +166,23 @@ describe('paging through archived chats', () => {
     expect(reply.status).toBe(404);
   });
 });
+
+describe('the conversation chat', () => {
+  async function opened(booted: Booted, token: string): Promise<AiChatRow> {
+    const reply = await call(booted.base, token, { method: 'POST', path: `${CHATS}/conversation` });
+    expect(reply.status).toBe(200);
+    return API_ENDPOINTS.openConversationChat.response.parse(reply.body);
+  }
+
+  it('gives each person one chat named after the AI and the same one every time', async () => {
+    const booted = suite.current;
+    await verifiedPublicUrl(booted);
+    const mine = await opened(booted, booted.owner);
+    expect(mine.title).toBe('Coordinator');
+    expect((await opened(booted, booted.owner)).id).toBe(mine.id);
+    const member = await pairedPerson(booted);
+    const theirs = await opened(booted, member.token);
+    expect(theirs.id).not.toBe(mine.id);
+    expect((await opened(booted, member.token)).id).toBe(theirs.id);
+  });
+});

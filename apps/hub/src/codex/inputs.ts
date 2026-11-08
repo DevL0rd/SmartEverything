@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { CodexProviderTurn } from '@smarteverything/domain';
+import {
+  CODEX_PROVIDER_IMAGE_MAX_BYTES,
+  PROVIDER_TURN_MAX_BYTES,
+  type CodexProviderTurn,
+} from '@smarteverything/domain';
 import { CodexRuntimeError } from './errors';
 import type { RpcRecord } from './protocol';
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-const MAX_TURN_BYTES = 32 * 1024 * 1024 - 1024;
 const EXTENSIONS = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -16,7 +18,7 @@ export class CodexInputs {
   private folder: string | null = null;
   constructor(private readonly root: string) {}
   async prepare(turn: CodexProviderTurn): Promise<RpcRecord[]> {
-    if (Buffer.byteLength(JSON.stringify(turn)) > MAX_TURN_BYTES)
+    if (Buffer.byteLength(JSON.stringify(turn)) > PROVIDER_TURN_MAX_BYTES)
       throw new CodexRuntimeError(
         'content',
         'The Codex provider turn exceeds its transport byte limit.',
@@ -53,7 +55,7 @@ export class CodexInputs {
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(content.data))
       throw new CodexRuntimeError('content', 'The Codex image must contain valid base64 bytes.');
     const bytes = Buffer.from(content.data, 'base64');
-    if (bytes.length > MAX_IMAGE_BYTES || bytes.toString('base64') !== content.data)
+    if (bytes.length > CODEX_PROVIDER_IMAGE_MAX_BYTES || bytes.toString('base64') !== content.data)
       throw new CodexRuntimeError(
         'content',
         'The Codex image is oversized or is not canonical base64.',

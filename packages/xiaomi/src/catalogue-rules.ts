@@ -4,15 +4,23 @@ export interface CatalogueRule {
   readonly service: string | null;
   readonly name: string;
   readonly key: StandardCapability;
+  readonly excludedServices: readonly string[];
 }
 
-function rule(service: string | null, name: string, key: StandardCapability): CatalogueRule {
-  return { service, name, key };
+function rule(
+  service: string | null,
+  name: string,
+  key: StandardCapability,
+  excludedServices: readonly string[] = [],
+): CatalogueRule {
+  return { service, name, key, excludedServices };
 }
+
+const NOT_POWER_SERVICES: readonly string[] = ['stream-management'];
 
 export const PROPERTY_RULES: readonly CatalogueRule[] = [
   rule('indicator-light', 'on', 'status_light'),
-  rule(null, 'on', 'power'),
+  rule(null, 'on', 'power', NOT_POWER_SERVICES),
   rule('light', 'brightness', 'brightness'),
   rule('light', 'color-temperature', 'color_temperature'),
   rule('light', 'color', 'color'),
@@ -49,9 +57,12 @@ export const PROPERTY_RULES: readonly CatalogueRule[] = [
   rule('memory-card-management', 'storage-free-space', 'storage_free'),
   rule('key-call', 'key-call-status', 'call_status'),
   rule('speaker', 'volume', 'volume'),
+  rule('alarm', 'volume', 'volume'),
   rule('speaker', 'mute', 'mute'),
   rule('device-information', 'firmware-revision', 'firmware'),
   rule('arming', 'arming-mode', 'alarm'),
+  rule('vacuum', 'mode', 'suction'),
+  rule('vacuum', 'mop-water-output-level', 'mop_level'),
 ];
 
 export const ACTION_RULES: readonly CatalogueRule[] = [
@@ -66,7 +77,9 @@ export function candidateKeys(
   return rules
     .filter(
       (candidate) =>
-        candidate.name === name && (candidate.service === null || candidate.service === service),
+        candidate.name === name &&
+        (candidate.service === null || candidate.service === service) &&
+        (service === null || !candidate.excludedServices.includes(service)),
     )
     .map((candidate) => candidate.key);
 }

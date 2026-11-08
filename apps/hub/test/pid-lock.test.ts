@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pid } from 'node:process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DataDirectoryLockedError, LOCK_FILE, lockDataDirectory } from '../src/data-lock';
+import { hubLayout } from '../src/data-layout';
+import { DataDirectoryLockedError, lockDataDirectory } from '../src/data-lock';
 import { PidLockedError, pidHolder, pidLock } from '../src/pid-lock';
 
 let directory = '';
@@ -59,14 +60,15 @@ describe('pidLock', () => {
 
 describe('lockDataDirectory', () => {
   it('refuses a second hub on the same data directory and lets a later one start after release', async () => {
-    await writeFile(join(directory, LOCK_FILE), '1');
-    await expect(lockDataDirectory(directory)).rejects.toThrow(
+    const layout = hubLayout(directory, {});
+    await writeFile(layout.lock, '1');
+    await expect(lockDataDirectory(layout)).rejects.toThrow(
       new DataDirectoryLockedError(directory, 1),
     );
-    await rm(join(directory, LOCK_FILE));
-    const first = await lockDataDirectory(directory);
-    await expect(lockDataDirectory(directory)).rejects.toThrow(DataDirectoryLockedError);
+    await rm(layout.lock);
+    const first = await lockDataDirectory(layout);
+    await expect(lockDataDirectory(layout)).rejects.toThrow(DataDirectoryLockedError);
     await first.release();
-    await (await lockDataDirectory(directory)).release();
+    await (await lockDataDirectory(layout)).release();
   });
 });

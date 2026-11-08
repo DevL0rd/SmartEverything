@@ -158,7 +158,7 @@ function ServerOptions({
       )}
       <TextField
         label="Timeout in milliseconds"
-        helper="Leave empty for the default. 1,000–3,600,000 ms"
+        helper="Leave empty to let the runtime decide. 1,000–3,600,000 ms"
         kind="number"
         value={fields.timeout}
         onChange={(timeout) => {

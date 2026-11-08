@@ -1,5 +1,6 @@
+import { ApiError } from '@smarteverything/domain';
 import type { ProjectFilesService } from '../projects/service';
-import { Coordination, type CoordinationDeps } from './coordination/asks';
+import { Delegation, type DelegationDeps } from './delegation/delegation';
 import { ChatDirectory } from './chat-directory';
 import { AssistantFiles } from './files';
 import type { EngineSelections } from './engine-selections';
@@ -8,6 +9,24 @@ import type { EngineRegistry } from './engines/registry';
 import { AssistantDelivery } from './delivery';
 import type { DeliveryOptions } from './delivery';
 import type { AssistantServiceOptions } from './service-contract';
+import type { ConversationLog } from './conversation-log';
+import { RepairDispatch } from './repair-dispatch';
+
+export function assistantRepair(
+  { store }: AssistantServiceOptions,
+  conversation: ConversationLog,
+  chats: Pick<ChatDirectory, 'repairChat'>,
+  delivery: () => AssistantDelivery,
+): RepairDispatch {
+  return new RepairDispatch({
+    store,
+    conversation,
+    repairChat: (profileId) => chats.repairChat(profileId),
+    added: (): void => {
+      delivery().added();
+    },
+  });
+}
 export function assistantDelivery(
   options: AssistantServiceOptions,
   engines: EngineRegistry,
@@ -36,19 +55,24 @@ export function assistantChats(
   selections: () => EngineSelections | null,
   projects: ProjectFilesService,
 ): ChatDirectory {
-  return new ChatDirectory(options.store, files, options.now, {
+  return new ChatDirectory(options.store, files, {
     projects,
     validate: (engine, user): void => {
       selections()?.validate(engine, user);
     },
+    validateStandalone: (engine, user): void => {
+      const catalogue = selections();
+      if (catalogue === null) throw new ApiError('conflict', 'Computer AI engines are starting.');
+      catalogue.validate(engine, user);
+    },
   });
 }
 
-export function assistantCoordination(
+export function assistantDelegation(
   options: AssistantServiceOptions,
-  ports: Pick<CoordinationDeps, 'tools' | 'chats' | 'conversation' | 'added'>,
-): Coordination {
-  return new Coordination({ store: options.store, emit: options.emit, now: options.now, ...ports });
+  ports: Pick<DelegationDeps, 'tools' | 'chats' | 'conversation' | 'added'>,
+): Delegation {
+  return new Delegation({ store: options.store, now: options.now, ...ports });
 }
 
 export function assistantFiles(
@@ -56,7 +80,7 @@ export function assistantFiles(
   projects: ProjectFilesService,
 ): AssistantFiles {
   return new AssistantFiles({
-    dataDirectory: options.dataDirectory,
+    layout: options.layout,
     chat: options.store.assistantChat,
     now: options.now,
     projects,

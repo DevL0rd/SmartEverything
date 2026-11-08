@@ -1,11 +1,6 @@
 import type { JsonValue } from '@smarteverything/domain';
 import type { DataPoint } from './data-points';
-import {
-  parseHeadKey,
-  pulsesFromBase64,
-  pulsesToBase64,
-  type IrCode,
-} from './ir-codes';
+import { parseHeadKey, pulsesFromBase64, pulsesToBase64, type IrCode } from './ir-codes';
 
 export interface DataPointRef {
   readonly code: string;

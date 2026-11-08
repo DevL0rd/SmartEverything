@@ -1,4 +1,4 @@
-import type { NodeMcpTransport } from '../client-network/node-transport';
+import type { McpGrantAddress, NodeMcpTransport } from '../client-network/node-transport';
 import { readNodeMcpPolicy } from './native-mcp-policy';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -41,9 +41,16 @@ export class NodeClaudeGrant {
     if (token === null) throw new NodeGrantError('The scoped Claude MCP grant is missing.');
     await this.write(token);
     this.assertActive();
-    return this.options.mcp === undefined
-      ? valid.url
-      : this.options.mcp.endpoint('claude', valid.url, token);
+    return this.present(valid, token);
+  }
+
+  private present(address: McpGrantAddress, token: string): string {
+    if (this.options.mcp !== undefined) return this.options.mcp.endpoint('claude', address, token);
+    if (address.pin !== null)
+      throw new NodeGrantError(
+        'The hub granted a pinned address that only the guest broker serves.',
+      );
+    return address.url;
   }
 
   private async write(token: string): Promise<void> {

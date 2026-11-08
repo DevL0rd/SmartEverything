@@ -1,0 +1,269 @@
+{
+  "map_id": 101,
+  "map_type": 1,
+  "height": 130,
+  "width": 224,
+  "have_pile": true,
+  "pile_x": 0,
+  "pile_y": 1000,
+  "pile_yaw": -1571,
+  "origin_x": -1000,
+  "origin_y": -1000,
+  "resolution": 50,
+  "rotate": 0,
+  "map_data": "eJzt2wsKQjEMRNFO/OD+V+wCKiItPGw4swAlJJm5qTgGna3bhUpyX1CSx4LUp3/m0/7xF/4pH+Q7fsFn+PNkvq6q1veD+vTPfNo//sI/5YN8xy/4DH/ia/eD+6jDfev3P/1rOJ9V1Xr/1Kd/5tP+8Rf+KR/kO37BZ/gTX7sfvL90uG+9n+mf+bR//IV/yod+9+1WvueralI2NH3dbx+/9f8/9Z3dv+eFSvJakPr0z3zaP/7CP+WDfMcv+Ax/flBVteZr9emf+bR//IV/ygf5jl/wGf7E1+4H91GH+9b7rv6ZT/vHX/infOh338p3/TOf9o+/8E/5IN/xCz7Dn/j6n+8HIiKiMekN3puslw==",
+  "additional_map_data": "eJzt07ERACAMAzEXlOw/LytQOiBt4MsnAQAAAAAAAAAAAAA6rEsZ6o99e9s30x/3e/3/7MtQ7uf/mulTn830qc9m+tQnAAAAAAAAAAAAAAAAQCod5+sMsQ==",
+  "map_room_info": [
+    {
+      "grid_id": 3,
+      "room_id": 3,
+      "color": 1
+    },
+    {
+      "grid_id": 4,
+      "room_id": 4,
+      "color": 3
+    },
+    {
+      "grid_id": 5,
+      "room_id": 5,
+      "color": 3
+    },
+    {
+      "grid_id": 6,
+      "room_id": 6,
+      "color": 4
+    },
+    {
+      "grid_id": 8,
+      "room_id": 8,
+      "color": 4
+    }
+  ],
+  "room_attrs": [
+    {
+      "id": 3,
+      "room_name": "Fixture room 3",
+      "fan_level": 2,
+      "water_level": 1,
+      "clean_mode": 3,
+      "clean_times": 1,
+      "mop_mode": 1,
+      "floor": 0,
+      "name_pos_x": 1800,
+      "name_pos_y": 650,
+      "notshow": 0,
+      "on": true
+    },
+    {
+      "id": 4,
+      "room_name": "Fixture room 4",
+      "fan_level": 2,
+      "water_level": 1,
+      "clean_mode": 3,
+      "clean_times": 1,
+      "mop_mode": 1,
+      "floor": 0,
+      "name_pos_x": 5950,
+      "name_pos_y": 650,
+      "notshow": 0,
+      "on": true
+    },
+    {
+      "id": 5,
+      "room_name": "Fixture room 5",
+      "fan_level": 2,
+      "water_level": 1,
+      "clean_mode": 3,
+      "clean_times": 1,
+      "mop_mode": 1,
+      "floor": 0,
+      "name_pos_x": 8700,
+      "name_pos_y": 650,
+      "notshow": 0,
+      "on": true
+    },
+    {
+      "id": 6,
+      "room_name": "Fixture room 6",
+      "fan_level": 2,
+      "water_level": 1,
+      "clean_mode": 3,
+      "clean_times": 1,
+      "mop_mode": 1,
+      "floor": 0,
+      "name_pos_x": 1800,
+      "name_pos_y": 3750,
+      "notshow": 0,
+      "on": true
+    },
+    {
+      "id": 8,
+      "room_name": "Fixture room 8",
+      "fan_level": 2,
+      "water_level": 1,
+      "clean_mode": 3,
+      "clean_times": 1,
+      "mop_mode": 1,
+      "floor": 0,
+      "name_pos_x": 5950,
+      "name_pos_y": 3750,
+      "notshow": 0,
+      "on": true
+    }
+  ],
+  "map_3d_info": {
+    "rooms": [
+      {
+        "room_id": 3,
+        "lines": [
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [-900, -900, 4500, -900]
+          },
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [-900, -900, -900, 2250]
+          },
+          {
+            "type": 2,
+            "update": 0,
+            "segment": [4550, 700, 4550, 2250]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [4550, -200, 4550, 700]
+          },
+          {
+            "type": 2,
+            "update": 0,
+            "segment": [1500, 2300, 4500, 2300]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [600, 2300, 1500, 2300]
+          }
+        ]
+      },
+      {
+        "room_id": 4,
+        "lines": [
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [4650, -900, 7250, -900]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [4550, -200, 4550, 700]
+          },
+          {
+            "type": 2,
+            "update": 0,
+            "segment": [7300, 1650, 7300, 2250]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [7300, 850, 7300, 1650]
+          },
+          {
+            "type": 2,
+            "update": 0,
+            "segment": [6250, 2300, 7250, 2300]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [5350, 2300, 6250, 2300]
+          }
+        ]
+      },
+      {
+        "room_id": 5,
+        "lines": [
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [7400, -900, 10000, -900]
+          },
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [10000, -900, 10000, 2250]
+          },
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [7400, 2250, 10000, 2250]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [7300, 850, 7300, 1650]
+          }
+        ]
+      },
+      {
+        "room_id": 6,
+        "lines": [
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [-900, 2400, -900, 5150]
+          },
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [-900, 5150, 4500, 5150]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [600, 2300, 1500, 2300]
+          },
+          {
+            "type": 2,
+            "update": 0,
+            "segment": [4550, 3950, 4550, 5150]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [4550, 3050, 4550, 3950]
+          }
+        ]
+      },
+      {
+        "room_id": 8,
+        "lines": [
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [4650, 5150, 7250, 5150]
+          },
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [7250, 2400, 7250, 5150]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [5350, 2300, 6250, 2300]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [4550, 3050, 4550, 3950]
+          }
+        ]
+      }
+    ]
+  }
+}

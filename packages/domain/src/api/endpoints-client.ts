@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PHONE_HARDWARE } from '../phones';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, JSON_OBJECT, NOTHING } from './primitives';
 import {
@@ -51,7 +52,11 @@ export const CLIENT_ENDPOINTS = {
     summary: 'Register the calling phone’s Firebase token',
     params: NOTHING,
     query: NOTHING,
-    body: z.strictObject({ token: PUSH_TOKEN, platform: z.enum(PUSH_PLATFORMS) }),
+    body: z.strictObject({
+      token: PUSH_TOKEN,
+      platform: z.enum(PUSH_PLATFORMS),
+      hardware: PHONE_HARDWARE.optional(),
+    }),
     response: PUSH_TARGET_ROW,
   }),
   removePushTarget: endpoint({

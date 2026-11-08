@@ -1,13 +1,13 @@
 import type { OpOf, Outputs, Env, StepResult } from './frames';
 import { deriveEnv, next, setOutputs } from './frames';
-import { enterScope } from './core-ops';
+import { TIMED_OUT, enterScope } from './scope-entry';
 
 export interface Passing {
   readonly at: { readonly key: string };
   readonly scopes?: OpOf['wait']['scopes'];
 }
 
-export const TIMED_OUT = 'timedOut';
+export { TIMED_OUT };
 
 export function pass(env: Env, op: Passing, outputs: Outputs): StepResult {
   const state = setOutputs(env.state, op.at.key, outputs);

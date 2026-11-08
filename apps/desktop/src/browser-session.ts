@@ -2,20 +2,19 @@ import { desktopHtml } from './html-preview/projections.js';
 import { Logger } from '@smarteverything/logging';
 import { randomUUID } from 'node:crypto';
 import { WebContentsView, session, shell, type Session, type WebContents } from 'electron';
-import {
-  BrowserPolicyError,
-  browsableUrl,
-  browserAllows,
-  publicBrowserUrl,
-  type BrowserTarget,
-} from '@smarteverything/domain';
+import { BrowserPolicyError, browserAllows, type BrowserTarget } from '@smarteverything/domain';
 import { popupDecision } from './browser-popup.js';
+import { browserRequestAllowed } from './browser-request.js';
 
 const log = new Logger('desktop.browser-session');
 const CLIPBOARD_WRITE = 'clipboard-sanitized-write';
 const targets = new Map<number, BrowserTarget>();
 const configured = new WeakSet<Session>();
-export function createBrowserView(target: BrowserTarget, owner: number): WebContentsView {
+export interface BrowserView {
+  readonly view: WebContentsView;
+  readonly ready: Promise<void>;
+}
+export function createBrowserView(target: BrowserTarget, owner: number): BrowserView {
   const isolated = browserSession(target);
   configureSession(isolated);
   const view = new WebContentsView({
@@ -37,19 +36,17 @@ export function createBrowserView(target: BrowserTarget, owner: number): WebCont
     targets.delete(contentsId);
     log.debug('browser.view_destroyed', { contentsId, open: targets.size });
   });
-  if (target.kind === 'project') {
-    const projection = desktopHtml();
-    if (projection === null) {
-      log.warn('browser.projection_missing', { contentsId, kind: target.kind });
-      view.webContents.close();
-      throw new BrowserPolicyError('This page can’t open here. Update the desktop app.');
-    }
-    projection.attach(owner, target, isolated, view.webContents);
-  }
   view.webContents.on('will-attach-webview', (event) => {
     event.preventDefault();
   });
-  return view;
+  if (target.kind === 'public') return { view, ready: Promise.resolve() };
+  const projection = desktopHtml();
+  if (projection === null) {
+    log.warn('browser.projection_missing', { contentsId, kind: target.kind });
+    view.webContents.close();
+    throw new BrowserPolicyError('This page can’t open here. Update the desktop app.');
+  }
+  return { view, ready: projection.attach(owner, target, isolated, view.webContents) };
 }
 export function confineBrowserView(
   contents: WebContents,
@@ -100,20 +97,7 @@ function configureSession(isolated: Session): void {
   isolated.webRequest.onBeforeRequest((details, answer) => {
     const target =
       details.webContentsId === undefined ? undefined : targets.get(details.webContentsId);
-    const value = details.url.replace(/^wss:/, 'https:');
-    const inline =
-      target?.kind === 'project' &&
-      ['data:', 'blob:'].some((scheme) => value.startsWith(scheme));
-    const external =
-      target?.kind === 'project' &&
-      details.resourceType !== 'mainFrame' &&
-      publicBrowserUrl(value);
-    answer({
-      cancel:
-        target === undefined
-          ? !browsableUrl(value)
-          : !inline && !external && !browserAllows(target, value),
-    });
+    answer({ cancel: !browserRequestAllowed(target, details) });
   });
   configured.add(isolated);
 }

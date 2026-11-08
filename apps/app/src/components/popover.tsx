@@ -4,6 +4,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { cn } from '../design/cn';
 import { entering, useMotion } from '../design/motion';
 import { placeAbove, placeNear, type Rect } from './anchor';
+import { CHROME_SURFACE, COMPACT_PANEL_INSET } from './compact-panel';
 import { Overlay, useOverlayShown } from './overlay';
 
 export interface PopoverProps {
@@ -16,35 +17,39 @@ export interface PopoverProps {
   readonly scroll?: boolean;
   readonly placement?: 'auto' | 'above';
   readonly className?: string;
+  readonly chrome?: boolean;
   readonly children: ReactNode;
 }
 
 interface PanelProps {
-  readonly label: string;
   readonly frame: ViewStyle;
   readonly scroll: boolean;
   readonly className: string | undefined;
+  readonly chrome: boolean;
   readonly children: ReactNode;
 }
 
-function PopoverPanel({ label, frame, className, children, scroll }: PanelProps): ReactNode {
+function PopoverPanel({ frame, className, chrome, children, scroll }: PanelProps): ReactNode {
   const motion = useMotion();
   const shown = useOverlayShown();
   return (
     <Animated.View
       {...entering(motion, FadeIn.duration(150))}
-      accessibilityViewIsModal
-      aria-modal
-      accessibilityLabel={label}
       onLayout={shown}
       style={frame}
       className={cn(
-        'absolute overflow-hidden rounded-md border-hairline border-outline-variant bg-surface-raised elevation-2',
+        'absolute overflow-hidden elevation-2',
+        chrome
+          ? cn(CHROME_SURFACE, 'rounded-lg')
+          : 'rounded-md border-hairline border-outline-variant bg-surface-raised',
         className,
       )}
     >
       {scroll ? (
-        <ScrollView contentContainerClassName="py-1">
+        <ScrollView
+          {...(chrome ? { className: 'min-h-0 shrink' } : {})}
+          contentContainerClassName={cn('py-1', chrome && COMPACT_PANEL_INSET)}
+        >
           <View>{children}</View>
         </ScrollView>
       ) : (
@@ -60,8 +65,17 @@ export interface PopoverFrameProps {
   readonly label: string;
   readonly frame: Rect;
   readonly scrim?: boolean;
+  readonly fitContent?: boolean;
+  readonly scroll?: boolean;
+  readonly align?: 'top' | 'bottom';
   readonly className?: string;
+  readonly chrome?: boolean;
   readonly children: ReactNode;
+}
+
+function fitVertical(frame: Rect, windowHeight: number, align: 'top' | 'bottom'): ViewStyle {
+  if (align === 'top') return { top: frame.y, maxHeight: frame.height };
+  return { bottom: windowHeight - frame.y - frame.height, maxHeight: frame.height };
 }
 
 export function PopoverFrame({
@@ -70,13 +84,21 @@ export function PopoverFrame({
   label,
   frame,
   scrim = false,
+  fitContent = false,
+  scroll = fitContent,
+  align = scrim ? 'top' : 'bottom',
   className,
+  chrome = false,
   children,
 }: PopoverFrameProps): ReactNode {
-  const style = { left: frame.x, top: frame.y, width: frame.width, height: frame.height };
+  const window = useWindowDimensions();
+  const vertical = fitContent
+    ? fitVertical(frame, window.height, align)
+    : { top: frame.y, height: frame.height };
+  const style = { left: frame.x, width: frame.width, ...vertical };
   return (
     <Overlay open={open} onClose={onClose} label={label} scrim={scrim}>
-      <PopoverPanel label={label} frame={style} className={className} scroll={false}>
+      <PopoverPanel frame={style} className={className} chrome={chrome} scroll={scroll}>
         {children}
       </PopoverPanel>
     </Overlay>
@@ -93,6 +115,7 @@ export function Popover({
   scroll = true,
   placement = 'auto',
   className,
+  chrome = false,
   children,
 }: PopoverProps): ReactNode {
   const window = useWindowDimensions();
@@ -111,7 +134,7 @@ export function Popover({
   };
   return (
     <Overlay open={open} onClose={onClose} label={label} scrim={false}>
-      <PopoverPanel label={label} frame={frame} className={className} scroll={scroll}>
+      <PopoverPanel frame={frame} className={className} chrome={chrome} scroll={scroll}>
         {children}
       </PopoverPanel>
     </Overlay>

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { InputPort, OutputPort } from '@smarteverything/domain';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
 import { Button } from '../../../../components/button';
 import { IconButton } from '../../../../components/icon-button';
 import { SelectRow, SwitchRow } from '../../../../components/rows';

@@ -2,15 +2,17 @@ import { Logger, describeFailure, messageOf } from '@smarteverything/logging';
 import { z } from 'zod';
 import {
   PLUGIN_OPTION_IDS_MAX,
-  PLUGIN_OPTION_PAGE_MAX,
   type PluginOption,
   type PluginOptionPage,
   type PluginOptionQuery,
 } from '@smarteverything/domain';
 import type { PluginOptionProvider } from '../contract';
+import { UNICODE_EMOJI_OPTIONS } from './emoji-options';
 import type { RestCalls } from './link';
+import { optionPage } from '../automation-kit-pages';
+import { pluginLogger } from '../../plugin-logs';
 
-const log = new Logger('hub.discord-pickers');
+const log = pluginLogger(new Logger('hub.discord-pickers'), 'discord');
 
 const SNOWFLAKE = z.string().regex(/^\d{1,20}$/);
 const CACHE_MS = 15_000;
@@ -42,7 +44,14 @@ const MEMBER = z.looseObject({ nick: z.string().nullish(), user: USER });
 
 const THREADS = z.looseObject({ threads: z.array(CHANNEL) });
 
+const EMOJI = z.looseObject({
+  id: SNOWFLAKE,
+  name: z.string().nullish(),
+  animated: z.boolean().optional(),
+});
+
 const CHANNEL_TYPES = new Set([0, 2, 5, 13, 15, 16]);
+const VOICE_TYPES = new Set([2, 13]);
 const THREAD_TYPES = new Set([10, 11, 12]);
 const MEMBERS_FROM = 50;
 const SEARCH_LIMIT = 25;
@@ -61,38 +70,12 @@ function hexOf(color: number): string | null {
   return color === 0 ? null : `#${color.toString(16).padStart(6, '0')}`;
 }
 
-function matches(option: PluginOption, query: string): boolean {
-  const needle = query.toLocaleLowerCase();
-  return (
-    needle === '' || `${option.label} ${option.detail ?? ''}`.toLocaleLowerCase().includes(needle)
-  );
+function listedIds(query: PluginOptionQuery): readonly string[] {
+  return query.ids === undefined || query.ids === '' ? [] : query.ids.split(',');
 }
 
 function idsOf(query: PluginOptionQuery): readonly string[] {
-  return query.ids === undefined || query.ids === ''
-    ? []
-    : query.ids.split(',').filter((id) => SNOWFLAKE.safeParse(id).success);
-}
-
-function pageOf(options: readonly PluginOption[], query: PluginOptionQuery): PluginOptionPage {
-  const wanted = idsOf(query);
-  if (query.ids !== undefined) {
-    return {
-      state: 'ready',
-      options: options
-        .filter((option) => wanted.includes(option.id))
-        .slice(0, PLUGIN_OPTION_IDS_MAX),
-      next: null,
-    };
-  }
-  const found = options.filter((option) => matches(option, query.q ?? ''));
-  const start = Number(query.after ?? '0');
-  const next = start + PLUGIN_OPTION_PAGE_MAX;
-  return {
-    state: 'ready',
-    options: found.slice(start, next),
-    next: next < found.length ? String(next) : null,
-  };
+  return listedIds(query).filter((id) => SNOWFLAKE.safeParse(id).success);
 }
 
 function listed(world: PickerWorld, load: () => Promise<PluginOption[]>): PluginOptionProvider {
@@ -107,7 +90,7 @@ function listed(world: PickerWorld, load: () => Promise<PluginOption[]>): Plugin
     if (cached?.key !== key || now - cached.at > CACHE_MS) {
       cached = { at: now, options: await load(), key };
     }
-    return pageOf(cached.options, query);
+    return optionPage(cached.options, query);
   };
 }
 
@@ -185,6 +168,49 @@ async function channelsOf(
 
 function channels(world: PickerWorld): PluginOptionProvider {
   return listed(world, () => perGuild(world, (id, name) => channelsOf(world, id, name)));
+}
+
+async function voiceChannelsOf(
+  world: PickerWorld,
+  guildId: string,
+  guildName: string,
+): Promise<PluginOption[]> {
+  return z
+    .array(CHANNEL)
+    .parse(await world.rest.get(`/guilds/${guildId}/channels`))
+    .filter((channel) => VOICE_TYPES.has(channel.type))
+    .map((channel) => channelOption(channel, guildName, false));
+}
+
+function voiceChannels(world: PickerWorld): PluginOptionProvider {
+  return listed(world, () => perGuild(world, (id, name) => voiceChannelsOf(world, id, name)));
+}
+
+async function emojisOf(
+  world: PickerWorld,
+  guildId: string,
+  guildName: string,
+): Promise<PluginOption[]> {
+  return z
+    .array(EMOJI)
+    .parse(await world.rest.get(`/guilds/${guildId}/emojis`))
+    .map((emoji) => {
+      const name = emoji.name ?? emoji.id;
+      return {
+        id: `${name}:${emoji.id}`,
+        label: `:${name}:`,
+        detail: guildName,
+        color: null,
+        image: `${CDN}/emojis/${emoji.id}.${emoji.animated === true ? 'gif' : 'png'}?size=64`,
+      };
+    });
+}
+
+function emojis(world: PickerWorld): PluginOptionProvider {
+  return listed(world, async () => [
+    ...(await perGuild(world, (id, name) => emojisOf(world, id, name))),
+    ...UNICODE_EMOJI_OPTIONS,
+  ]);
 }
 
 function avatarOf(user: z.output<typeof USER>): string | null {
@@ -308,17 +334,26 @@ function sourcesOf(world: PickerWorld): Readonly<Record<string, PluginOptionProv
     channels: channels(world),
     roles: roles(world),
     people: people(world),
+    voice_channels: voiceChannels(world),
+    emojis: emojis(world),
   };
 }
 
-export const PICKER_SOURCES = ['servers', 'channels', 'roles', 'people'] as const;
+export const PICKER_SOURCES = [
+  'servers',
+  'channels',
+  'roles',
+  'people',
+  'voice_channels',
+  'emojis',
+] as const;
 
 export function discordPicker(
   source: (typeof PICKER_SOURCES)[number],
   current: () => PickerWorld | null,
 ): PluginOptionProvider {
   const built = new WeakMap<PickerWorld, Readonly<Record<string, PluginOptionProvider>>>();
-  return async (query) => {
+  return async (query, caller) => {
     const world = current();
     if (world?.ready() !== true) {
       return unavailable(NOT_CONNECTED);
@@ -326,7 +361,7 @@ export function discordPicker(
     const sources = built.get(world) ?? sourcesOf(world);
     built.set(world, sources);
     try {
-      return (await sources[source]?.(query)) ?? unavailable(NOT_CONNECTED);
+      return (await sources[source]?.(query, caller)) ?? unavailable(NOT_CONNECTED);
     } catch (cause) {
       return unavailable(`Discord would not list that: ${messageOf(cause)}`);
     }

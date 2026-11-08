@@ -1,5 +1,8 @@
-import { hubPluginAgents, hubImageDescription } from './harness-native-ports';
+import { harnessFailureContext } from '../harness/failure-context';
+import { hubImageDescription } from './harness-native-ports';
+import { SecretApiKeyVault } from '../harness/api-key-vault';
 import { resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm';
+import { CUSTOM_PRESET } from '@deepseek-ai/dsh-permission-presets';
 import type { SubscriptionInferencePort } from '@smarteverything/harness';
 import {
   authorizeHubSupplier,
@@ -13,15 +16,18 @@ import {
   RemoteSubscriptionAdapter,
 } from '@smarteverything/harness';
 import { installHubPrompt } from '../harness/prompt';
-import { bindCentralHarness, bindPluginAgents } from '../harness/central-transport';
+import { bindHubMemory } from '../memory/binding';
+import { hubMemoryOf } from '../memory/hub-memory';
+import { bindCentralHarness } from '../harness/central-transport';
 import { ordinaryModelRequest } from '@smarteverything/harness/process';
 import { meteredAccountingFetch } from '../harness/metered-accounting';
 import { HarnessAttachments } from '../harness/attachments';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
 import { homedir } from 'node:os';
 import type { Context } from '@deepseek-ai/cordis';
 import {
+  bindHomeWebSearch,
+  completeAux,
   createHarnessDispatcher,
   MeteredRouteAdapter,
   connectionDiagnosticFetch,
@@ -29,6 +35,9 @@ import {
 import type { HarnessDispatcher } from '@smarteverything/harness/process';
 import { ApiError, harnessPlatform } from '@smarteverything/domain';
 import type { AiModelRoute, HarnessPlatform } from '@smarteverything/domain';
+import { installAuxCompletions } from '../assistant/aux-completion-binding';
+import { groundedFetch } from '../assistant/web-search-citations';
+import { homeSearchProvider } from '../assistant/web-search-supplier';
 import { HarnessHubTools } from '../harness/tools';
 import { LocalHarnessPersistence } from '../harness/local-persistence';
 import type { ServerContext } from './context';
@@ -48,7 +57,6 @@ export async function startHubHarness(
   const persistence = new LocalHarnessPersistence(service);
   const access = new HarnessHubTools(service, tools);
   bindCentralHarness(service, access, () => options.clock.now());
-  bindPluginAgents(service, { assistant: context.assistant });
   const platform = harnessPlatform(process.platform);
   const runtimeInstance = randomUUID();
   const generation = randomUUID();
@@ -57,7 +65,7 @@ export async function startHubHarness(
     name: 'Home hub',
     platform,
     homeDirectory: homedir(),
-    stateDirectory: join(options.dataDirectory, 'harness'),
+    stateDirectory: options.layout.system.ai.harness,
   };
   const configuration = new HubHarnessConfiguration(service, { runtimeInstance, generation }, () =>
     options.clock.now(),
@@ -86,16 +94,13 @@ function composeHub(ports: {
   readonly configuration: HubHarnessConfiguration;
 }): Promise<HarnessDispatcher> {
   const { options, context, tools, persistence, access, host, configuration } = ports;
-  const pluginAgents = hubPluginAgents(ports);
   return createHarnessDispatcher({
     host,
     persistence,
+    failureContext: harnessFailureContext(context.store),
     desiredConfiguration: context.harness.configuration.desired(),
-    installedPlugins: installedHarnessBuiltins(
-      host,
-      context.harness.extensions.assets,
-      pluginAgents,
-    ),
+    apiKeys: new SecretApiKeyVault(context.secrets),
+    installedPlugins: installedHarnessBuiltins(host, context.harness.extensions.assets),
     configurationChanged: (): void => {
       configuration.changed();
     },
@@ -190,6 +195,7 @@ interface HubModelPorts {
   readonly access: HarnessHubTools;
   readonly tools: ToolHub;
 }
+
 function installRoutes(ctx: Context, ports: HubModelPorts): Promise<void> {
   const { context, access, options } = ports;
   bindCompactionPolicy(ctx, async (id): Promise<number> => {
@@ -212,12 +218,15 @@ function installRoutes(ctx: Context, ports: HubModelPorts): Promise<void> {
     }
   };
   access.install(ctx);
+  ctx.effect(() => bindHubMemory(ctx, context.store, access, hubMemoryOf(context).service));
+  installAuxiliaries(ctx, ports);
   installHubPrompt(ctx, context.harness, {
     tools: (id) => access.scoped(id),
     role: (id) => access.caller(id).role,
     now: () => options.clock.now(),
   });
   update();
+  attachRouteInfo(ctx, context);
   ctx.effect(() => context.harness.routes.onChange(update));
   ctx.effect(() => context.openRouter.catalogue.onChange(update));
   ctx.effect(() => context.openRouter.keys.onChange(update));
@@ -230,6 +239,38 @@ function installRoutes(ctx: Context, ports: HubModelPorts): Promise<void> {
     for (const dispose of registrations.values()) dispose();
   });
   return Promise.resolve();
+}
+
+function attachRouteInfo(ctx: Context, context: ServerContext): void {
+  ctx.effect(() =>
+    context.harness.routes.attachInfo({
+      model: (routeId, model) => ctx.llm.resolveModelInfo(routeId, model),
+      presets: () => ({
+        catalog: ctx.permissionPresets.catalog(),
+        custom: ctx.permissionPresets.optionOf(CUSTOM_PRESET),
+      }),
+    }),
+  );
+}
+
+function installAuxiliaries(ctx: Context, ports: HubModelPorts): void {
+  const { context, options } = ports;
+  ctx.effect(() =>
+    bindHomeWebSearch(
+      ctx,
+      homeSearchProvider(context.harness, (request, signal) => completeAux(ctx, request, signal)),
+    ),
+  );
+  ctx.effect(() =>
+    installAuxCompletions({
+      ctx,
+      store: context.store,
+      routes: context.harness.routes,
+      key: () => context.secrets.read().openrouterKey,
+      fetch: connectionDiagnosticFetch('hub_supplier', options.fetch),
+      attachments: { resolveAttachments: (): typeof ctx.attachments => ctx.attachments },
+    }),
+  );
 }
 
 function routeAdapter(
@@ -250,7 +291,7 @@ function routeAdapter(
       fetch: (input): typeof fetch => {
         if (input.sessionId === undefined)
           throw new ApiError('forbidden', 'Metered inference requires its native session.');
-        return accountingFetch(ports, route, input.sessionId);
+        return groundedFetch(accountingFetch(ports, route, input.sessionId));
       },
       authorize: async (input): Promise<void> => {
         if (input.sessionId === undefined)

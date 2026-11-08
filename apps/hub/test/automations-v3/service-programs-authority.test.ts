@@ -1,15 +1,18 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
 import {
   ApiError,
   TEMPLATE_SCOPES,
-  type AutomationV3,
+  type AutomationV4,
   type FunctionV3,
   type JsonValue,
 } from '@smarteverything/domain';
 import { lower } from '@smarteverything/flow/compile/lower';
+import { graphFunction } from './support/graph-of';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { withExecutionAuthority } from '../../src/assistant/turn-authority';
-import { kindOf, planValue } from '../../src/automations/service-programs-analysis';
+import { createKindCatalog } from '../../src/automations/plugin-kinds/catalog';
+import { planValue } from '../../src/automations/service-programs-analysis';
 import type { Caller } from '../../src/server/auth';
 import { captureLogs } from '../support/logs';
 import {
@@ -36,7 +39,7 @@ afterEach(() => {
 
 let counter = 0;
 
-function create(caller: Caller, definition: AutomationV3): ReturnType<typeof rig.service.create> {
+function create(caller: Caller, definition: AutomationV4): ReturnType<typeof rig.service.create> {
   counter += 1;
   return rig.service.create(caller, { name: `Test ${String(counter)}`, enabled: true, definition });
 }
@@ -51,7 +54,7 @@ function refusal(work: () => unknown): ApiError {
   throw new Error('The call was not refused.');
 }
 
-const wake = (): AutomationV3 =>
+const wake = (): AutomationV4 =>
   automationOf([step('wake', 'ai.wake', { instruction: lit('look around') })]);
 
 function reusableWake(): string {
@@ -65,19 +68,22 @@ function reusableWake(): string {
     variables: [],
     body: { nodes: [step('wake', 'ai.wake', { instruction: lit('look around') })] },
   };
-  const lowered = lower(program, { kinds: kindOf });
+  const lowered = lower(program, { kinds: (id) => createKindCatalog().get(id) });
   if (!lowered.ok) throw new Error(JSON.stringify(lowered.problems));
   const planHash = rig.env.plans.put('function', planValue(lowered.plan));
-  return rig.functions.create({
-    name: 'Wake',
-    program,
-    layout: { nodes: {}, frames: [], comments: [] },
-    interfaceHash: 'a'.repeat(64),
-    compat: 'compatible',
-    planHash,
-    createdBy: null,
-    author: null,
-  }).id;
+  return rig.functions.create(
+    {
+      name: 'Wake',
+      program: graphFunction(program, STATIC_KIND_LOOKUP),
+      layout: { nodes: {}, frames: [], comments: [] },
+      interfaceHash: 'a'.repeat(64),
+      compat: 'compatible',
+      planHash,
+      createdBy: null,
+      author: null,
+    },
+    STATIC_KIND_LOOKUP,
+  ).id;
 }
 
 describe('who may save what the manifest reaches', () => {
@@ -105,7 +111,8 @@ describe('who may save what the manifest reaches', () => {
     const program = automationOf([
       step('quiet', 'computer.audio', {
         computer: lit(rig.computer.id),
-        change: lit({ action: 'mute' }),
+        action: lit('mute'),
+        muted: lit(true),
       }),
     ]);
     const refused = refusal(() => create(rig.member.caller, program));
@@ -116,7 +123,7 @@ describe('who may save what the manifest reaches', () => {
   it('keeps a member from commanding another person’s phone and allows their own', () => {
     const ownerPhone = rig.addPhone(rig.owner, 'Owner phone');
     const ownPhone = rig.addPhone(rig.member, 'Member phone');
-    const launch = (device: string): AutomationV3 =>
+    const launch = (device: string): AutomationV4 =>
       automationOf([setPower('open', device, 'launch_app')]);
     const refused = refusal(() => create(rig.member.caller, launch(ownerPhone.id)));
     expect(refused.message).toBe('Only the person who owns this phone can do this.');
@@ -221,7 +228,7 @@ describe('signal triggers', () => {
 });
 
 describe('speech triggers', () => {
-  const speech = (phrase: JsonValue): AutomationV3 =>
+  const speech = (phrase: JsonValue): AutomationV4 =>
     automationOf([logLine('say', 'hi')], {
       triggers: [trigger('heard', 'trigger.speech', { phrase: lit(phrase) })],
     });

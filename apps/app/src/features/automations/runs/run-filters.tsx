@@ -1,9 +1,7 @@
 import type { ReactNode } from 'react';
-import { ScrollView } from 'react-native';
-import { Interactive } from '../../../components/interactive';
-import { Text } from '../../../components/text';
-import { cn } from '../../../design/cn';
-import { count as formatCount } from '../../../format/number';
+import { View } from 'react-native';
+import { FlatChoice } from '../../../components/flat-choice';
+import { HScroller } from '../../../components/h-scroller';
 import { FILTER_LABELS, RUN_FILTERS, type RunFilter } from './run-history-model';
 
 export interface RunFiltersProps {
@@ -14,31 +12,21 @@ export interface RunFiltersProps {
 
 export function RunFilters({ chosen, counts, onToggle }: RunFiltersProps): ReactNode {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
-      {RUN_FILTERS.map((filter) => {
-        const active = chosen.has(filter);
-        const label = `${FILTER_LABELS[filter]}, ${formatCount(counts[filter])}`;
-        return (
-          <Interactive
+    <HScroller label="Run filters" fade>
+      <View className="flex-row">
+        {RUN_FILTERS.map((filter) => (
+          <FlatChoice
             key={filter}
             role="checkbox"
-            label={label}
-            checked={active}
+            label={FILTER_LABELS[filter]}
+            count={counts[filter]}
+            active={chosen.has(filter)}
             onPress={() => {
               onToggle(filter);
             }}
-            className={cn(
-              'h-10 flex-row items-center gap-1.5 rounded-full border px-4',
-              active ? 'border-primary bg-primary-container' : 'border-outline-variant',
-            )}
-          >
-            <Text variant="label">{FILTER_LABELS[filter]}</Text>
-            <Text variant="caption" tone="variant" className="tabular">
-              {formatCount(counts[filter])}
-            </Text>
-          </Interactive>
-        );
-      })}
-    </ScrollView>
+          />
+        ))}
+      </View>
+    </HScroller>
   );
 }

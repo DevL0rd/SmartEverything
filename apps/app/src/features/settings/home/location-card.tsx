@@ -87,9 +87,7 @@ function SetPlace({
       <View className="flex-row items-center gap-4">
         <PlaceTile />
         <View className="min-w-0 flex-1 gap-1">
-          <Text variant="title-2" numberOfLines={2}>
-            {name ?? PLACE_UNNAMED}
-          </Text>
+          <Text variant="title-2">{name ?? PLACE_UNNAMED}</Text>
           <SunLines point={point} zone={zone} now={now} />
         </View>
       </View>

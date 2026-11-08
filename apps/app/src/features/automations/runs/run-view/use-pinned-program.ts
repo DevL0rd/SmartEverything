@@ -18,19 +18,20 @@ export interface PinnedProgram {
 export function usePinnedProgram(
   pin: { readonly automationId: string; readonly revision: number } | null,
 ): PinnedProgram {
+  const kinds = useAutomationsSource().lookup;
   const { api } = useAutomationsSource();
   const automationId = pin?.automationId ?? '';
   const revision = pin?.revision ?? 0;
   const query = useScreenQuery({
     queryKey: automationKeys.revision(automationId, revision),
-    queryFn: () => api.getRevision(automationId, revision),
+    queryFn: () => api.getRevision(automationId, revision, kinds),
     enabled: pin !== null,
     staleTime: Infinity,
   });
   const row = query.data;
   const store = useMemo(
-    () => (row === undefined ? null : new DocumentStore(row.definition, row.layout)),
-    [row],
+    () => (row === undefined ? null : new DocumentStore(row.graph, kinds, row.layout)),
+    [row, kinds],
   );
   return { query, program: row?.definition ?? null, layout: row?.layout ?? null, store };
 }

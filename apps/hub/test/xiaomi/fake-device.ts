@@ -10,6 +10,7 @@ const ADDRESS = z.object({
   piid: z.number().int(),
   value: JSON_VALUE.optional(),
 });
+const SUBSCRIPTION = z.object({ update_ts: z.number().int() });
 const ACTION = z.object({
   siid: z.number().int(),
   aiid: z.number().int(),
@@ -39,8 +40,17 @@ export class FakeMiioDevice {
   }[] = [];
   readonly properties: Map<string, JsonValue>;
   readonly acks: string[] = [];
+  readonly subscriptions: string[] = [];
   handshakes = 0;
   silent = false;
+  offersPush = false;
+  replyDelayMs = 0;
+  rejectsSeenIds = false;
+  dropsReads = false;
+  pushAfterWriteMs: number | null = null;
+  private readonly seenIds = new Set<number>();
+  private pushId = 1000;
+  private subscribedAt = 0;
   private readonly socket: Socket = createSocket('udp4');
   private readonly token: Uint8Array;
   private readonly stamp = 1000;
@@ -70,6 +80,17 @@ export class FakeMiioDevice {
     });
   }
 
+  pushProperties(changes: readonly { siid: number; piid: number; value: JsonValue }[]): void {
+    this.pushId += 1;
+    this.push(
+      JSON.stringify({
+        id: this.pushId,
+        method: 'properties_changed',
+        params: changes.map((change) => ({ did: String(this.options.deviceId), ...change })),
+      }),
+    );
+  }
+
   push(body: string): void {
     if (this.peer === null) {
       throw new Error('no client has contacted the fake device yet');
@@ -89,6 +110,13 @@ export class FakeMiioDevice {
       view.setUint32(4, 0);
       view.setUint32(8, this.options.deviceId);
       view.setUint32(12, this.stamp);
+      if (this.offersPush && Buffer.from(packet.subarray(16, 20)).toString() === 'MDID') {
+        reply.set(Buffer.from('MSUB'), 16);
+        view.setUint32(20, this.subscribedAt);
+        reply.set(Buffer.from('PUB'), 24);
+        view.setUint8(27, this.subscribedAt === 0 ? 0 : 2);
+        view.setUint8(28, 0xfe);
+      }
       this.socket.send(reply, port, host);
       return;
     }
@@ -99,6 +127,9 @@ export class FakeMiioDevice {
       return;
     }
     const request = parsed.data;
+    if (this.ignores(request)) {
+      return;
+    }
     this.requests.push({
       method: request.method,
       params: request.params,
@@ -106,7 +137,41 @@ export class FakeMiioDevice {
     });
     const body = JSON.stringify({ id: request.id, ...this.handle(request.method, request.params) });
     const header = { deviceId: this.options.deviceId, stamp: this.stamp + 1 };
-    this.socket.send(encodeMessage(this.token, header, body), port, host);
+    const reply = encodeMessage(this.token, header, body);
+    const delay = this.replyDelayMs;
+    if (delay === 0) {
+      this.socket.send(reply, port, host);
+      return;
+    }
+    setTimeout(() => {
+      this.socket.send(reply, port, host);
+    }, delay);
+  }
+
+  forgetSubscription(): void {
+    this.subscribedAt = 0;
+  }
+
+  private ignores(request: { readonly id: number; readonly method: string }): boolean {
+    if (this.dropsReads && request.method === 'get_properties') {
+      return true;
+    }
+    if (!this.rejectsSeenIds || request.method.startsWith('miIO.')) {
+      return false;
+    }
+    const seen = this.seenIds.has(request.id);
+    this.seenIds.add(request.id);
+    return seen;
+  }
+
+  private pushWrite(change: { siid: number; piid: number; value: JsonValue }): void {
+    const delay = this.pushAfterWriteMs;
+    if (delay === null || this.subscribedAt === 0) {
+      return;
+    }
+    setTimeout(() => {
+      this.pushProperties([change]);
+    }, delay);
   }
 
   private handle(method: string, params: JsonValue): Record<string, JsonValue> {
@@ -130,9 +195,17 @@ export class FakeMiioDevice {
             .parse(params)
             .map(({ siid, piid, value }) => {
               this.properties.set(`${String(siid)}.${String(piid)}`, value ?? null);
+              this.pushWrite({ siid, piid, value: value ?? null });
               return { siid, piid, code: 0 };
             }),
         };
+      case 'miIO.sub':
+        this.subscriptions.push(JSON.stringify(params));
+        this.subscribedAt = Math.max(1, SUBSCRIPTION.parse(params).update_ts);
+        return { result: { code: 0 } };
+      case 'miIO.unsub':
+        this.subscribedAt = 0;
+        return { result: { code: 0 } };
       case 'action': {
         const action = ACTION.parse(params);
         this.actions.push({ siid: action.siid, aiid: action.aiid, inputs: action.in });

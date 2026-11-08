@@ -53,6 +53,7 @@ function DiscoveryRows({
         key={candidate.url}
         icon="home"
         title={candidate.name}
+        wrapTitle
         chevron
         subtitle={repeated ? `Tap to pair · ${new URL(candidate.url).host}` : 'Tap to pair'}
         wrapSubtitle
@@ -67,17 +68,23 @@ function DiscoveryRows({
 export function DiscoveryList({ pairing }: { readonly pairing: PairingPresentation }): ReactNode {
   const discovery = useValue(pairing.controller.discovery.state);
   const [title, subtitle] = discoveryMessage(discovery.state);
-  const completion =
-    discovery.candidates.length === 0
-      ? `${title}. ${subtitle}`
-      : `${String(discovery.candidates.length)} nearby homes. Choose one to pair.`;
+  const empty = discovery.candidates.length === 0;
+  const searching = discovery.state === 'searching';
+  const completion = empty
+    ? `${title}. ${subtitle}`
+    : `${String(discovery.candidates.length)} nearby homes. Choose one to pair.`;
   return (
     <View className="gap-2">
       <List title="Nearby homes" inset>
         <DiscoveryRows discovery={discovery} pairing={pairing} />
       </List>
-      <Text variant="footnote" tone="variant" accessibilityLiveRegion="polite">
-        {discovery.state === 'searching' ? '' : completion}
+      <Text
+        variant="footnote"
+        tone="variant"
+        accessibilityLiveRegion="polite"
+        className={empty || searching ? 'absolute size-px opacity-0' : ''}
+      >
+        {searching ? '' : completion}
       </Text>
       {discovery.state === 'unsupported' || discovery.state === 'permission-required' ? null : (
         <Button

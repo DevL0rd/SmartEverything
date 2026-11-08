@@ -1,7 +1,8 @@
+import type { ReactElement } from 'react';
 import { EdgeScrim, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
-const tile = (edge: 'top' | 'bottom') => (
+const tile = (edge: 'top' | 'bottom'): ReactElement => (
   <div
     style={{
       position: 'relative',
@@ -15,7 +16,7 @@ const tile = (edge: 'top' | 'bottom') => (
     <EdgeScrim edge={edge} />
   </div>
 );
-export const Edges = () => (
+export const Edges = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <Row gap={16}>
       {tile('top')}
@@ -23,7 +24,7 @@ export const Edges = () => (
     </Row>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     <Row gap={16}>
       {tile('top')}

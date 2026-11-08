@@ -1,29 +1,40 @@
-import type { FlowNode, Layout } from '@smarteverything/domain';
-import type { Program } from '@smarteverything/flow/program/walk';
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
+import type { Layout, ProgramV4 } from '@smarteverything/domain';
 import { EMPTY_LAYOUT } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
+import { automation, idOf, note, start } from '../graph/graph-scene-fixtures';
 import { HISTORY_LIMIT, DocumentStore, pruneLayout, type DocumentState } from './document-store';
-import { automation, idSource, repeat, step, uuid } from './editor-fixtures';
+import { idSource } from './editor-fixtures';
 
-function setup(layout: Layout = EMPTY_LAYOUT): Setup {
-  const a = step('a');
-  const b = step('b');
-  const c = step('c');
-  const program = automation([a, b, c]);
-  const store = new DocumentStore(program, layout, { newId: idSource() });
-  const keys = (): string[] => store.state.get().program.body.nodes.map((node) => node.key);
-  return { a, b, c, program, store, keys, now: () => store.state.get() };
+function chain(...keys: string[]): ProgramV4 {
+  const nodes = keys.map((key, at) => note(key, keys[at + 1]));
+  return automation([start(keys[0]), ...nodes], { triggers: [] });
 }
 
 interface Setup {
-  a: FlowNode;
-  b: FlowNode;
-  c: FlowNode;
-  program: Program;
+  a: string;
+  b: string;
+  c: string;
   store: DocumentStore;
   keys: () => string[];
   now: () => DocumentState;
 }
+
+function setup(layout: Layout = EMPTY_LAYOUT): Setup {
+  const store = new DocumentStore(chain('a', 'b', 'c'), STATIC_KIND_LOOKUP, layout, {
+    newId: idSource(),
+  });
+  const keys = (): string[] =>
+    store.state
+      .get()
+      .program.nodes.filter((node) => node.kind !== 'flow.start')
+      .map((node) => node.key)
+      .sort();
+  return { a: idOf('a'), b: idOf('b'), c: idOf('c'), store, keys, now: () => store.state.get() };
+}
+
+const labelOf = (state: DocumentState, key: string): string | undefined =>
+  state.program.nodes.find((node) => node.key === key)?.label;
 
 describe('applying ops', () => {
   it('applies through the reducer and marks the document dirty', () => {
@@ -53,10 +64,17 @@ describe('applying ops', () => {
   });
 
   it('uses the default id source without options', () => {
-    const store = new DocumentStore(automation([step('a')]));
-    const result = store.apply([{ op: 'add', node: { kind: 'device.set' }, in: 'body' }]);
+    const store = new DocumentStore(chain('a'), STATIC_KIND_LOOKUP);
+    const result = store.apply([{ op: 'add', node: { kind: 'notify.feed' } }]);
     expect(result.ok).toBe(true);
     expect(store.state.get().layout).toBe(EMPTY_LAYOUT);
+  });
+
+  it('accepts an edit that leaves structure problems so the user can finish it', () => {
+    const { store, now } = setup();
+    const result = store.apply([{ op: 'disconnect', from: 'start', port: 'next' }]);
+    expect(result.ok).toBe(true);
+    expect(now().refusal).toBeNull();
   });
 });
 
@@ -107,7 +125,7 @@ describe('undo and redo', () => {
     expect(keys()).toEqual(['c']);
     store.undo();
     expect(keys()).toEqual(['a', 'b', 'c']);
-    expect(now().program.body.nodes[2]?.label).toBeUndefined();
+    expect(labelOf(now(), 'c')).toBeUndefined();
     expect(now().canUndo).toBe(false);
     store.redo();
     expect(keys()).toEqual(['c']);
@@ -138,7 +156,7 @@ describe('undo and redo', () => {
       store.apply([{ op: 'set', key: 'a', label: `L${String(n)}` }]);
     }
     for (let n = 0; n < HISTORY_LIMIT + 5; n += 1) store.undo();
-    expect(now().program.body.nodes[0]?.label).toBe('L4');
+    expect(labelOf(now(), 'a')).toBe('L4');
     expect(now().canUndo).toBe(false);
   });
 });
@@ -155,48 +173,49 @@ describe('layout', () => {
     const { store, a, now } = setup();
     store.editLayout((layout) => layout);
     expect(now().canUndo).toBe(false);
-    store.editLayout(place(a.id));
-    expect(now().layout.nodes[a.id]).toEqual({ x: 10, y: 20 });
+    store.editLayout(place(a));
+    expect(now().layout.nodes[a]).toEqual({ x: 10, y: 20 });
     store.undo();
     expect(now().layout).toEqual(EMPTY_LAYOUT);
     store.redo();
-    expect(now().layout.nodes[a.id]).toEqual({ x: 10, y: 20 });
+    expect(now().layout.nodes[a]).toEqual({ x: 10, y: 20 });
   });
 
   it('restores the layout together with the program', () => {
     const { store, a, now } = setup();
     store.beginGesture();
-    store.editLayout(place(a.id));
+    store.editLayout(place(a));
     store.apply([{ op: 'remove', key: 'a' }]);
     store.endGesture();
     expect(now().layout.nodes).toEqual({});
     store.undo();
     expect(now().layout).toEqual(EMPTY_LAYOUT);
-    expect(now().program.body.nodes).toHaveLength(3);
+    expect(now().program.nodes).toHaveLength(4);
     store.redo();
     expect(now().layout.nodes).toEqual({});
   });
 
   it('prunes layout entries and frame members of removed steps', () => {
-    const a = step('a');
-    const b = step('b');
-    const program = automation([a, b]);
-    const gone = uuid();
+    const program = chain('a', 'b');
+    const a = idOf('a');
+    const gone = idOf('gone');
     const layout: Layout = {
-      nodes: { [a.id]: { x: 1, y: 1 }, [gone]: { x: 2, y: 2 } },
-      frames: [{ id: uuid(), title: 'F', color: 'red', nodeIds: [a.id, gone], collapsed: false }],
+      nodes: { [a]: { x: 1, y: 1 }, [gone]: { x: 2, y: 2 } },
+      frames: [
+        { id: idOf('frame'), title: 'F', color: 'red', nodeIds: [a, gone], collapsed: false },
+      ],
       comments: [],
     };
     expect(pruneLayout(layout, program)).toEqual({
       ...layout,
-      nodes: { [a.id]: { x: 1, y: 1 } },
-      frames: [{ ...(layout.frames[0] ?? {}), nodeIds: [a.id] }],
+      nodes: { [a]: { x: 1, y: 1 } },
+      frames: [{ ...(layout.frames[0] ?? {}), nodeIds: [a] }],
     });
-    const clean = { ...layout, nodes: { [a.id]: { x: 1, y: 1 } }, frames: [] };
+    const clean = { ...layout, nodes: { [a]: { x: 1, y: 1 } }, frames: [] };
     expect(pruneLayout(clean, program)).toBe(clean);
     const onlyFrame: Layout = {
       ...clean,
-      frames: [{ id: uuid(), title: 'F', color: 'red', nodeIds: [gone], collapsed: false }],
+      frames: [{ id: idOf('frame'), title: 'F', color: 'red', nodeIds: [gone], collapsed: false }],
     };
     expect(pruneLayout(onlyFrame, program).frames[0]?.nodeIds).toEqual([]);
     const nodesOnly: Layout = { ...EMPTY_LAYOUT, nodes: { [gone]: { x: 0, y: 0 } } };
@@ -234,7 +253,7 @@ describe('saving', () => {
     store.apply([{ op: 'remove', key: 'a' }]);
     store.beginGesture();
     store.apply([{ op: 'remove', key: 'b' }]);
-    const fresh = automation([step('z')]);
+    const fresh = chain('z');
     store.replace(fresh, EMPTY_LAYOUT);
     expect(now()).toMatchObject({ program: fresh, dirty: false, canUndo: false, canRedo: false });
     store.endGesture();
@@ -245,17 +264,18 @@ describe('saving', () => {
 describe('selection', () => {
   it('selects, toggles, extends, selects all and clears', () => {
     const { store, a, b, c, now } = setup();
-    store.select(b.id);
-    expect(now().selection.ids).toEqual([b.id]);
-    store.select(b.id);
-    store.toggleSelect(c.id);
-    expect(now().selection.ids).toEqual([b.id, c.id]);
-    store.select(a.id);
-    store.extendSelect(c.id);
-    expect(now().selection.ids).toEqual([a.id, b.id, c.id]);
+    const start = idOf('start');
+    store.select(b);
+    expect(now().selection.ids).toEqual([b]);
+    store.select(b);
+    store.toggleSelect(c);
+    expect(now().selection.ids).toEqual([b, c]);
+    store.select(a);
+    store.extendSelect(c);
+    expect(now().selection.ids).toEqual([a, b, c]);
     store.selectEverything();
     store.selectEverything();
-    expect(now().selection.ids).toEqual([a.id, b.id, c.id]);
+    expect(now().selection.ids).toEqual([start, a, b, c]);
     store.clearSelected();
     store.clearSelected();
     expect(now().selection.ids).toEqual([]);
@@ -263,18 +283,11 @@ describe('selection', () => {
 
   it('drops removed steps from the selection and brings none back on undo', () => {
     const { store, a, b, now } = setup();
-    store.select(a.id);
-    store.toggleSelect(b.id);
+    store.select(a);
+    store.toggleSelect(b);
     store.apply([{ op: 'remove', key: 'a' }]);
-    expect(now().selection.ids).toEqual([b.id]);
+    expect(now().selection.ids).toEqual([b]);
     store.undo();
-    expect(now().selection.ids).toEqual([b.id]);
-  });
-
-  it('keeps selection inside nested steps', () => {
-    const inner = step('inner');
-    const store = new DocumentStore(automation([repeat('loop', [inner])]));
-    store.select(inner.id);
-    expect(store.state.get().selection.ids).toEqual([inner.id]);
+    expect(now().selection.ids).toEqual([b]);
   });
 });

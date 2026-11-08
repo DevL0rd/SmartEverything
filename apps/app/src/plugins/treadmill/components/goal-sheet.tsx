@@ -2,7 +2,7 @@ import type { TreadmillStateView } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { BottomSheet } from '../../../components/bottom-sheet';
+import { Sheet } from '../../../components/sheet';
 import { Button } from '../../../components/button';
 import { ChoiceChip } from '../../../components/choice-chip';
 import { NumberStepper } from '../../../components/number-stepper';
@@ -108,7 +108,7 @@ function useTargetDraft(deviceId: string, onClose: () => void): Draft {
 export function GoalSheet({ deviceId, view, open, onClose }: Props): ReactNode {
   const draft = useTargetDraft(deviceId, onClose);
   return (
-    <BottomSheet
+    <Sheet
       open={open}
       onClose={onClose}
       title="Session target"
@@ -144,6 +144,6 @@ export function GoalSheet({ deviceId, view, open, onClose }: Props): ReactNode {
           <Button label="Clear target" variant="text" onPress={draft.clear} />
         )}
       </View>
-    </BottomSheet>
+    </Sheet>
   );
 }

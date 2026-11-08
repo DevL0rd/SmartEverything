@@ -8,11 +8,11 @@ export interface ChildHandlers {
 }
 
 export interface ChildChannel {
-  readonly emit: (name: string, payload: unknown) => void;
+  readonly emit: (name: string, payload: unknown, delivered?: () => void) => void;
 }
 
-function send(frame: Frame): void {
-  process.send?.(frame);
+function send(frame: Frame, delivered?: () => void): void {
+  process.send?.(frame, undefined, undefined, delivered);
 }
 
 function die(cause: unknown): void {
@@ -67,8 +67,8 @@ export function serveChild(handlers: ChildHandlers): ChildChannel {
   process.on('uncaughtException', die);
   process.on('unhandledRejection', die);
   const channel: ChildChannel = {
-    emit: (name, payload): void => {
-      send({ kind: 'event', name, payload });
+    emit: (name, payload, delivered): void => {
+      send({ kind: 'event', name, payload }, delivered);
     },
   };
   channel.emit(READY_EVENT, null);

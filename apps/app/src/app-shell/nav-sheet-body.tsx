@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import { View, type TextInput } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { GestureDetector } from 'react-native-gesture-handler';
+import { SHEET_GRABBER } from '../components/compact-panel';
 import { SearchField } from '../components/search-field';
 import { useValue } from '../design/external-store';
 import { useIdiom } from '../design/platform';
@@ -36,8 +37,8 @@ function useFieldFocus(input: RefObject<TextInput | null>, phase: NavSheetPhase)
 
 function Grabber(): ReactNode {
   return (
-    <View className="items-center py-3">
-      <View className="h-1 w-8 rounded-full bg-on-surface-faint" />
+    <View className="items-center py-2">
+      <View className={SHEET_GRABBER} />
     </View>
   );
 }
@@ -69,7 +70,7 @@ function SheetContent({ query, settled, search, onScroll, spacer }: SheetContent
       scrollEventThrottle={16}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
-      contentContainerClassName="px-4 pb-safe-offset-6"
+      contentContainerClassName="px-4 pb-6"
     >
       <NavDirectory />
       {spacer}

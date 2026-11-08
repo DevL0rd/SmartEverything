@@ -1,6 +1,7 @@
 import { fork } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { env, execPath, versions } from 'node:process';
+import { followOutput, recordProcessOutput, type OutputOrigin } from '../../service/process-output';
 import { FRAME, ChildUnavailableError, type Frame } from './frames';
 
 export interface ChildHandle {
@@ -17,6 +18,7 @@ export type ChildSpawner = () => ChildHandle;
 export interface ForkOptions {
   readonly kind: string;
   readonly entry: string;
+  readonly output: OutputOrigin;
   readonly execArgv?: readonly string[];
 }
 
@@ -30,9 +32,14 @@ export function forkChild(options: ForkOptions): ChildSpawner {
       execPath,
       execArgv: [...execArgv],
       serialization: 'advanced',
-      stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       env: versions['electron'] === undefined ? env : { ...env, ELECTRON_RUN_AS_NODE: '1' },
     });
+    const output = (line: string): void => {
+      recordProcessOutput(options.output, line, new Date(), true);
+    };
+    followOutput(child.stdout, output);
+    followOutput(child.stderr, output);
     const invalid: ((error: Error) => void)[] = [];
     child.on('error', () => undefined);
     return {

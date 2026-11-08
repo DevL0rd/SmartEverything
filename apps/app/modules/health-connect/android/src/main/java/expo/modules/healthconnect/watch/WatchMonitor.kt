@@ -81,6 +81,7 @@ class WatchMonitor(
   private val watch: WatchConfig,
   private val scope: CoroutineScope,
   private val onChange: (WatchSnapshot) -> Unit,
+  private val onConnectionChange: (WatchPhase?, Int?) -> Unit = { _, _ -> },
   private val onFailure: (String, Boolean) -> Unit
 ) : WatchSink {
   private var lastReportAt = 0L
@@ -90,6 +91,7 @@ class WatchMonitor(
 
   override fun phase(phase: WatchPhase, detail: String) {
     val previous = WatchSnapshots.of(watch)
+    onConnectionChange(phase, previous.battery)
     if (previous.phase == phase && previous.detail == detail) {
       return
     }
@@ -113,6 +115,7 @@ class WatchMonitor(
     update("battery", "$level%${if (charging == true) ", charging" else ""}", report = changed) {
       copy(battery = level, charging = charging ?: this.charging)
     }
+    onConnectionChange(null, level)
   }
 
   override fun worn(worn: Boolean) {
@@ -202,6 +205,7 @@ class WatchMonitor(
     update("failed", reason, report = true) {
       copy(phase = WatchPhase.FAILED, detail = reason, error = reason)
     }
+    onConnectionChange(WatchPhase.FAILED, WatchSnapshots.of(watch).battery)
     onFailure(reason, retryable)
   }
 

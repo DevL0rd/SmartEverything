@@ -5,7 +5,7 @@ import { Button } from '../../components/button';
 import type { Device } from '../../store/state';
 import { findControlOf, findRequestOf, type FindRequest } from './watch-card-model';
 import { runInOrder } from './watch-config';
-import { setRinging, useRinging } from './watch-ringing';
+import { setRinging } from './watch-ringing';
 
 const log = new Logger('app.watch');
 
@@ -15,8 +15,7 @@ interface Find {
   readonly toggle: () => void;
 }
 
-function useFindWatch(device: Pick<Device, 'id'>): Find {
-  const ringing = useRinging(device.id);
+function useFindWatch(device: Pick<Device, 'id'>, ringing: boolean): Find {
   const mutation = useMutation({
     mutationFn: (request: FindRequest) => runInOrder(device.id, [request]),
     onSuccess: (_outcome, request): void => {
@@ -38,11 +37,13 @@ function useFindWatch(device: Pick<Device, 'id'>): Find {
 export function FindWatchButton({
   device,
   lastSeen,
+  ringing,
 }: {
   readonly device: Device;
   readonly lastSeen: number | null;
+  readonly ringing: boolean;
 }): ReactNode {
-  const find = useFindWatch(device);
+  const find = useFindWatch(device, ringing);
   const control = findControlOf(find.ringing, find.pending, lastSeen);
   return (
     <Button

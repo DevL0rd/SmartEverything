@@ -7,6 +7,8 @@ import {
   androidDependencies,
   androidLibraries,
   extraLicences,
+  irLibraryLicences,
+  irLibrarySources,
 } from '../licence-extras.ts';
 import { noticeFile, noticeTextOf, noticesOf } from '../licence-notices.ts';
 import { isPermitted, unusedOverrides } from '../licence-policy.ts';
@@ -66,6 +68,29 @@ describe('the Android licences', () => {
     expect(names).toContain('io.getstream:stream-video-webrtc-android');
     expect(names).toContain('electron');
     expect(extraLicences().every((one) => one.licence !== '')).toBe(true);
+  });
+});
+
+describe('the bundled infrared library', () => {
+  it('reads each source, its licence and its commit from SOURCES.txt', () => {
+    const sources = irLibrarySources(
+      'SmartIR (MIT, see SmartIR-LICENSE.txt)\n  https://github.com/smartHomeHub/SmartIR\n  commit e4df2957ad915536f41ffb39daa96886d7cfe040\n',
+    );
+    expect(sources).toEqual([
+      {
+        entry: { name: 'SmartIR', version: 'e4df295', licence: 'MIT' },
+        licenceFile: 'SmartIR-LICENSE.txt',
+      },
+    ]);
+  });
+
+  it('lists SmartIR and Flipper-IRDB with their licence texts', () => {
+    const bundled = irLibraryLicences();
+    expect(bundled.map((one) => [one.entry.name, one.entry.licence])).toEqual([
+      ['SmartIR', 'MIT'],
+      ['Flipper-IRDB', 'CC0-1.0'],
+    ]);
+    expect(bundled.every((one) => one.text.length > 0)).toBe(true);
   });
 });
 

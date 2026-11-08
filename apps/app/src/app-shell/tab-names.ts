@@ -3,8 +3,12 @@ export const TAB_NAMES = [
   '(devices)',
   '(cameras)',
   '(fitness)',
+  '(planner)',
+  '(clock)',
   '(z-assistant)',
   '(automations)',
   '(talk)',
+  '(photos)',
+  '(drive)',
   '(settings)',
 ] as const;

@@ -1,6 +1,6 @@
 ---
 name: smarteverything-communication
-description: "Notifies, speaks to, calls or voice-chats with a person, checks where someone can be reached, manages walkie-talkie channels and members, and uses Discord when its plugin is on. Use it for “tell Mom dinner is ready”, “announce on the kitchen speaker”, “call my phone”, “is Sam reachable” or “add the AI to the family channel”. Not for messages into a chat with files (chat_post in smarteverything-chats) or automations that notify (smarteverything-automations)."
+description: 'Notifies, speaks to, calls or voice-chats with a person, checks where someone can be reached, manages walkie-talkie channels and members, and uses Discord when its plugin is on. Use it for “tell Mom dinner is ready”, “announce on the kitchen speaker”, “call my phone”, “is Sam reachable” or “add the AI to the family channel”. Not for messages into a chat with files (chat_post in smarteverything-chats) or automations that notify (smarteverything-automations).'
 ---
 
 # Presence and communication

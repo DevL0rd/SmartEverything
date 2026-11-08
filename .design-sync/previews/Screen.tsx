@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import {
   Card,
   ListRow,
@@ -39,12 +40,12 @@ const page = (
     </Text>
   </Screen>
 );
-export const Dashboard = () => (
+export const Dashboard = (): ReactElement => (
   <Stage theme="dark" width={820} height={560}>
     {page}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={820} height={560}>
     {page}
   </Stage>

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../components/app-href';
 import { ADDABLE_PROVIDERS, PROVIDER_INFO } from '@smarteverything/domain';
 import { href } from '../../app-shell/hrefs';
 import { ListRow } from '../../components/list-row';
@@ -10,7 +10,7 @@ import { CONNECT_FLOW, PROVIDER_BRAND, RowBrand, isAddable } from '../connection
 
 const ACCOUNTS = ADDABLE_PROVIDERS.filter(isAddable);
 
-function targetOf(provider: (typeof ACCOUNTS)[number], linked: boolean): Href {
+function targetOf(provider: (typeof ACCOUNTS)[number], linked: boolean): AppHref {
   return linked ? href.settings.account(provider) : href.connect(CONNECT_FLOW[provider]);
 }
 

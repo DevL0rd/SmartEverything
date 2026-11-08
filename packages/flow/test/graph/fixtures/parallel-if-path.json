@@ -1,0 +1,96 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "09000000-0000-4000-8000-000000000010",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "09000000-0000-4000-8000-000000000001",
+        "key": "notify",
+        "kind": "notify.feed",
+        "ports": { "message": { "lit": "baby crying" } }
+      },
+      {
+        "id": "09000000-0000-4000-8000-000000000002",
+        "key": "saved",
+        "kind": "device.snapshot",
+        "ports": { "target": { "lit": { "target": "hall" } } }
+      },
+      {
+        "id": "09000000-0000-4000-8000-000000000008",
+        "key": "together",
+        "kind": "flow.parallel",
+        "ports": {},
+        "scopes": {
+          "lights": {
+            "nodes": [
+              {
+                "id": "09000000-0000-4000-8000-000000000003",
+                "key": "flash",
+                "kind": "device.set",
+                "ports": {
+                  "target": { "lit": { "target": "hall" } },
+                  "control": { "lit": "color" },
+                  "to": { "lit": "red" }
+                }
+              }
+            ]
+          },
+          "pause": {
+            "nodes": [
+              {
+                "id": "09000000-0000-4000-8000-000000000004",
+                "key": "is_playing",
+                "kind": "device.get",
+                "ports": { "device": { "lit": "tv" }, "control": { "lit": "power" } }
+              },
+              {
+                "id": "09000000-0000-4000-8000-000000000007",
+                "key": "if_playing",
+                "kind": "flow.if",
+                "ports": {},
+                "branches": [
+                  {
+                    "id": "09000000-0000-4000-8000-000000000005",
+                    "when": { "wire": { "from": "is_playing", "port": "available" } },
+                    "scope": {
+                      "nodes": [
+                        {
+                          "id": "09000000-0000-4000-8000-000000000006",
+                          "key": "pause_tv",
+                          "kind": "device.set",
+                          "ports": {
+                            "target": { "lit": { "target": "tv" } },
+                            "control": { "lit": "power" },
+                            "to": { "lit": "off" }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "09000000-0000-4000-8000-000000000009",
+        "key": "restore",
+        "kind": "device.restore",
+        "ports": { "snapshot": { "wire": { "from": "saved", "port": "snapshot" } } }
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

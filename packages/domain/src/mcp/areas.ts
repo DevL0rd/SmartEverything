@@ -15,6 +15,8 @@ export const MCP_TOOL_AREAS = [
   'settings',
   'people',
   'plugins',
+  'drive',
+  'planner',
   'system',
   'everything',
 ] as const;
@@ -36,6 +38,8 @@ export const MCP_TOOL_AREA_LABELS: Readonly<Record<McpToolArea, string>> = {
   settings: 'Settings',
   people: 'People',
   plugins: 'Plugins',
+  drive: 'Photos & Drive',
+  planner: 'Planner & Clock',
   system: 'Server & access',
   everything: 'Everything else',
 };

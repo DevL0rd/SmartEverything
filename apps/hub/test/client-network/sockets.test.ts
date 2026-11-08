@@ -67,7 +67,7 @@ async function echoHub(): Promise<{
       sockets.open(owner, {
         scopeId: trust.scopeId,
         id: 'live',
-        url: `wss://127.0.0.1:${String(hub.port)}/live`,
+        url: `wss://127.0.0.2:${String(hub.port)}/live`,
         protocols: [],
       });
     },

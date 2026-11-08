@@ -1,17 +1,33 @@
 import { Platform } from 'react-native';
 type BrowserFocus = 'pane' | 'services' | 'tools';
 const openers = new Map<BrowserFocus, HTMLElement>();
+export function browserInert(hidden: boolean): { readonly inert?: boolean } {
+  return Platform.OS === 'web' ? { inert: hidden } : {};
+}
+
 export function rememberBrowserFocus(key: BrowserFocus): void {
   if (Platform.OS !== 'web') return;
   const active = document.activeElement;
-  if (active instanceof HTMLElement) openers.set(key, active);
+  if (active instanceof HTMLElement && active !== document.body) openers.set(key, active);
+  else openers.delete(key);
 }
-export function restoreBrowserFocus(key: BrowserFocus): void {
+
+export function restoreBrowserFocus(key: BrowserFocus, fallback?: () => unknown): void {
   if (Platform.OS !== 'web') return;
   const opener = openers.get(key);
   openers.delete(key);
-  if (opener === undefined) return;
+  if (opener === undefined && fallback === undefined) return;
   requestAnimationFrame(() => {
-    if (opener.isConnected && opener.closest('[aria-hidden="true"]') === null) opener.focus();
+    const target = canRestore(opener) ? opener : fallback?.();
+    if (canRestore(target)) target.focus();
   });
+}
+
+function canRestore(node: unknown): node is HTMLElement {
+  return (
+    node instanceof HTMLElement &&
+    node.isConnected &&
+    node.getClientRects().length > 0 &&
+    node.closest('[inert], [aria-hidden="true"]') === null
+  );
 }

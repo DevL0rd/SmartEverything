@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import {
   API_ENDPOINTS as E,
   MCP_PATHS,
@@ -11,7 +10,7 @@ import type { OwnerAlerts } from '../owner-alerts';
 import type { RawRoute } from '../../server/http-server';
 import { DONE_REPLY, bound, type ExtensionRouteTable } from '../../server/router';
 import { recordingPathIn } from '../../services';
-import { COMMAND_WAIT_MS } from './command-waiter';
+import { COMMAND_WAIT_MS } from '../../commands/command-budgets';
 import { acceptsEventStream } from './event-stream';
 import { ApprovalCodes } from './oauth/approval';
 import { decideConsent, decideInApp, showConsent, type AuthorizeOptions } from './oauth/authorize';
@@ -150,10 +149,10 @@ function mcpRoutes(context: ExtensionContext, options: McpOptions, parts: Parts)
       clock: options.clock,
       operations: context.operations,
       commandWaitMs: COMMAND_WAIT_MS,
-      recordingPath: recordingPathIn(context.dataDirectory),
+      recordingPath: recordingPathIn(context.layout),
       caller: null,
       actor: null,
-      assistantFiles: join(context.dataDirectory, 'assistant'),
+      layout: context.layout,
       mediaNotes: context.mediaNotes,
     },
   };
@@ -161,7 +160,7 @@ function mcpRoutes(context: ExtensionContext, options: McpOptions, parts: Parts)
     {
       method: 'POST',
       path: MCP_PATHS.mcp,
-      handle: (request, response) => handleMcp(transport, request, response),
+      handle: (request, response) => handleMcp(transport, parts.toolList, request, response),
     },
     {
       method: 'GET',
@@ -171,7 +170,7 @@ function mcpRoutes(context: ExtensionContext, options: McpOptions, parts: Parts)
     {
       method: 'DELETE',
       path: MCP_PATHS.mcp,
-      handle: (request, response) => handleMcp(transport, request, response),
+      handle: (request, response) => handleMcp(transport, parts.toolList, request, response),
     },
   ];
 }

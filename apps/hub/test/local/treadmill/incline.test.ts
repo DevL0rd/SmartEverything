@@ -218,14 +218,20 @@ describe('changing the incline', () => {
   it('fails a write the belt never acknowledged, once, without resending', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     behaviour = 'silent';
-    await failsAfterTimeout(run('belt_incline', 6, OWNER_APP()), 'The belt did not change its incline');
+    await failsAfterTimeout(
+      run('belt_incline', 6, OWNER_APP()),
+      'The belt did not change its incline',
+    );
     expect(writes()).toEqual(['00', '033c00']);
   });
 
   it('fails an acknowledged write the incline never followed, once', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     behaviour = 'no_move';
-    await failsAfterTimeout(run('belt_incline', 6, OWNER_APP()), 'The belt did not change its incline');
+    await failsAfterTimeout(
+      run('belt_incline', 6, OWNER_APP()),
+      'The belt did not change its incline',
+    );
     expect(writes()).toEqual(['00', '033c00']);
   });
 

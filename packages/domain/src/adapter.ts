@@ -25,5 +25,6 @@ export interface ProviderAdapter {
   readonly discover: () => Promise<readonly DiscoveredDevice[]>;
   readonly subscribe: (sink: AdapterSink) => Promise<Unsubscribe>;
   readonly execute: (command: DeviceCommand) => Promise<JsonValue>;
+  readonly executeTogether?: (commands: readonly DeviceCommand[]) => Promise<JsonValue>;
   readonly refresh: (externalIds: readonly string[]) => Promise<readonly StateUpdate[]>;
 }

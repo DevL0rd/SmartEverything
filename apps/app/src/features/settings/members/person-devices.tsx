@@ -21,6 +21,7 @@ function DeviceRows({
     <ListRow
       key={view.client.id}
       title={view.client.name}
+      wrapTitle
       subtitle={view.detail}
       icon={platformIcon(view.client.platform)}
       {...(view.removable
@@ -52,11 +53,11 @@ export function PersonDevices({ profileId }: { readonly profileId: string }): Re
       <List
         title="Devices"
         caption={plural(views.length, 'device')}
-        footer="A phone paired for this person opens on their chats and health data."
+        footer="A device paired for this person opens on their chats and health data."
       >
         <DeviceRows views={views} onOpen={setOpen} />
         <ListRow
-          title="Pair a phone for this person"
+          title="Pair a device for this person"
           icon="qr"
           onPress={() => {
             router.push(href.pairPhone(profileId));

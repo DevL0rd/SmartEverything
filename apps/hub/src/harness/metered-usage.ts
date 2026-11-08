@@ -3,7 +3,7 @@ import { createParser } from 'eventsource-parser';
 import { Logger, messageOf } from '@smarteverything/logging';
 
 const COUNT = z.int().nonnegative();
-const SUPPLIER_USAGE = z.looseObject({
+export const SUPPLIER_USAGE = z.looseObject({
   prompt_tokens: COUNT,
   completion_tokens: COUNT,
   total_tokens: COUNT.optional(),

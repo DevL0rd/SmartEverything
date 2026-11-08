@@ -1,10 +1,13 @@
 import { BrowserOverlayOwner, coverBrowser } from '../platform/browser-overlays';
-import type { ReactNode } from 'react';
-import { use, useEffect, useEffectEvent, useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import type { ReactNode, RefObject } from 'react';
+import { use, useEffect, useEffectEvent, useRef, useState } from 'react';
+import { Pressable, View } from 'react-native';
 import { Logger } from '@smarteverything/logging';
 import { cn } from '../design/cn';
+import { isNative } from '../design/platform';
+import { focusView } from './focus-request';
+import { KeyboardRoot, KeyboardViewport } from './keyboard-viewport';
+import { ToastModal } from './toast-modal';
 import { useEscape } from './use-escape';
 
 import { createSignal, OverlayShown, type ShownSignal } from './overlay-shown';
@@ -68,18 +71,84 @@ function useOverlayLog(open: boolean, label: string, scrim: boolean, signal: Sho
 export interface OverlayProps {
   readonly open: boolean;
   readonly onClose: () => void;
+  readonly onBack?: (() => void) | undefined;
   readonly label: string;
   readonly scrim: boolean;
-  readonly className?: string;
+  readonly className?: string | undefined;
+  readonly backdropLabel?: string | undefined;
+  readonly initialFocus?: RefObject<View | null> | undefined;
+  readonly pointerBackdrop?: boolean | undefined;
   readonly children: ReactNode;
+}
+
+function OverlaySurface({
+  className,
+  signal,
+  initialFocus,
+  backdropLabel,
+  onClose,
+  scrim,
+  pointerBackdrop,
+  children,
+}: Pick<
+  OverlayProps,
+  'className' | 'initialFocus' | 'onClose' | 'scrim' | 'children' | 'pointerBackdrop'
+> & {
+  readonly signal: ShownSignal;
+  readonly backdropLabel: string;
+}): ReactNode {
+  const panel = useRef<View>(null);
+  return (
+    <KeyboardRoot>
+      <KeyboardViewport className="z-0 flex-1">
+        <View ref={panel} pointerEvents="box-none" className={cn('flex-1', className)}>
+          <OverlayShown value={signal}>{children}</OverlayShown>
+        </View>
+        {pointerBackdrop === true ? (
+          <View
+            aria-hidden
+            importantForAccessibility="no-hide-descendants"
+            onStartShouldSetResponder={() => true}
+            onResponderRelease={onClose}
+            className={cn('absolute inset-0 -z-10', scrim && 'bg-scrim')}
+          />
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={backdropLabel}
+            onFocus={() => {
+              if (!isNative()) focusView(initialFocus?.current ?? panel.current);
+            }}
+            onPress={onClose}
+            tabIndex={-1}
+            className={cn('absolute inset-0 -z-10', scrim && 'bg-scrim')}
+          />
+        )}
+      </KeyboardViewport>
+    </KeyboardRoot>
+  );
+}
+
+function focusOverlayEntry(
+  initialFocus: OverlayProps['initialFocus'],
+  staticTarget: boolean,
+): void {
+  if (initialFocus === undefined) return;
+  requestAnimationFrame(() => {
+    focusView(initialFocus.current, staticTarget);
+  });
 }
 
 export function Overlay({
   open,
   onClose,
+  onBack = onClose,
   label,
   scrim,
   className,
+  backdropLabel,
+  initialFocus,
+  pointerBackdrop,
   children,
 }: OverlayProps): ReactNode {
   const [signal] = useState(createSignal);
@@ -92,25 +161,27 @@ export function Overlay({
   useEscape(open, onClose);
   useContentWatchdog(open, label, signal, onClose);
   return (
-    <Modal
+    <ToastModal
       transparent
       visible={open}
-      onRequestClose={onClose}
+      accessibilityLabel={label}
+      onRequestClose={isNative() ? onBack : undefined}
       animationType="none"
       statusBarTranslucent
       navigationBarTranslucent
+      onShow={() => focusOverlayEntry(initialFocus, pointerBackdrop === true)}
     >
-      <GestureHandlerRootView className="flex-1">
-        <View className={cn('flex-1', className)}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Close ${label}`}
-            onPress={onClose}
-            className={cn('absolute inset-0', scrim && 'bg-scrim')}
-          />
-          <OverlayShown value={signal}>{children}</OverlayShown>
-        </View>
-      </GestureHandlerRootView>
-    </Modal>
+      <OverlaySurface
+        className={className}
+        signal={signal}
+        initialFocus={initialFocus}
+        pointerBackdrop={pointerBackdrop}
+        backdropLabel={backdropLabel ?? `Close ${label}`}
+        onClose={onClose}
+        scrim={scrim}
+      >
+        {children}
+      </OverlaySurface>
+    </ToastModal>
   );
 }

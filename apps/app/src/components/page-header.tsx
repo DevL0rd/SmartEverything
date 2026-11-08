@@ -1,7 +1,14 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
-import { router, useNavigation, type Href } from 'expo-router';
+import Animated, {
+  interpolate,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  type SharedValue,
+} from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
+import { router, useNavigation } from 'expo-router';
+import type { AppHref } from './app-href';
 import Head from 'expo-router/head';
 import { useNavigationState } from 'expo-router/react-navigation';
 import { PageSettingsButton, type PageSettingsLink } from './page-settings-button';
@@ -23,7 +30,7 @@ export interface HeaderAction {
   readonly icon: IconName;
   readonly label: string;
   readonly onPress?: () => void;
-  readonly href?: Href;
+  readonly href?: AppHref;
   readonly primary?: boolean;
   readonly selected?: boolean;
   readonly shortcut?: string;
@@ -39,6 +46,7 @@ export interface HeaderEditing {
 interface HeaderProps {
   readonly title: string;
   readonly subtitle?: string;
+  readonly wrapSubtitle?: boolean;
   readonly back?: boolean;
   readonly actions?: readonly HeaderAction[];
   readonly below?: ReactNode;
@@ -46,7 +54,7 @@ interface HeaderProps {
   readonly breadcrumbs?: readonly Crumb[];
   readonly search?: boolean;
   readonly onTitlePress?: () => void;
-  readonly titleLines?: 1 | 2;
+  readonly titleLines?: 1 | 2 | 'wrap';
 }
 
 export type PageHeaderProps = HeaderProps &
@@ -284,10 +292,23 @@ function AppBarTitle({
   );
 }
 
+function useTitleShown(large: boolean, scrollY: SharedValue<number>): boolean {
+  const [shown, setShown] = useState(!large);
+  useAnimatedReaction(
+    () => !large || scrollY.get() > COLLAPSE_AT - 16,
+    (now, before) => {
+      if (now !== before) scheduleOnRN(setShown, now);
+    },
+    [large],
+  );
+  return shown;
+}
+
 function AppBar(props: PageHeaderProps & { readonly kind: HeaderKind }): ReactNode {
   const back = useBack(props.back);
   const { scrollY, scrollable } = useScreen();
   const large = props.kind === 'large' && scrollable;
+  const shown = useTitleShown(large, scrollY);
   const titleStyle = useAnimatedStyle(() => ({
     opacity: large
       ? interpolate(scrollY.get(), [COLLAPSE_AT - 16, COLLAPSE_AT], [0, 1], 'clamp')
@@ -303,13 +324,18 @@ function AppBar(props: PageHeaderProps & { readonly kind: HeaderKind }): ReactNo
         style={surfaceStyle}
         className="absolute inset-0 border-b border-outline-variant bg-chrome"
       />
-      <View className="h-app-bar flex-row items-center gap-1 px-1">
+      <View className="h-14 flex-row items-center gap-1 px-1">
         {back === null ? (
           <View className="w-3" />
         ) : (
           <IconButton icon="arrowLeft" label="Back" onPress={back} />
         )}
-        <Animated.View style={titleStyle} className="min-w-0 flex-1 px-1">
+        <Animated.View
+          style={titleStyle}
+          aria-hidden={!shown}
+          pointerEvents={shown ? 'auto' : 'none'}
+          className="min-w-0 flex-1 px-1"
+        >
           <AppBarTitle title={props.title} onPress={props.onTitlePress} />
         </Animated.View>
         <Trailing {...props} />
@@ -320,36 +346,46 @@ function AppBar(props: PageHeaderProps & { readonly kind: HeaderKind }): ReactNo
 }
 
 function LargeTitle(props: PageHeaderProps): ReactNode {
+  const titleLines = props.titleLines === 'wrap' ? undefined : 2;
   return (
-    <View className="gap-1 pb-4 pt-2">
-      <Text variant="large-title" accessibilityRole="header" numberOfLines={2}>
+    <View className="gap-1 pb-2 pt-1">
+      <Text variant="large-title" accessibilityRole="header" numberOfLines={titleLines}>
         {props.title}
       </Text>
       {props.subtitle === undefined ? null : (
-        <Text variant="callout" tone="variant" numberOfLines={2}>
+        <Text
+          variant="callout"
+          tone="variant"
+          {...(props.wrapSubtitle === true ? {} : { numberOfLines: 2 })}
+        >
           {props.subtitle}
         </Text>
       )}
-      {props.below === undefined ? null : <View className="pt-3">{props.below}</View>}
+      {props.below === undefined ? null : <View className="pt-2">{props.below}</View>}
     </View>
   );
 }
 
 function DesktopHeader(props: PageHeaderProps): ReactNode {
   const back = useBack(props.back);
+  const titleLines = props.titleLines === 'wrap' ? undefined : (props.titleLines ?? 1);
   return (
-    <View className="gap-3 pb-2 pt-6">
-      <View className="min-h-page-header flex-row flex-wrap items-center gap-x-4 gap-y-2">
+    <View className="gap-2 pb-1 pt-2">
+      <View className="min-h-12 flex-row flex-wrap items-center gap-x-4 gap-y-2">
         {back === null ? null : (
           <IconButton icon="arrowLeft" label="Back" onPress={back} shortcut="Alt ←" />
         )}
         <View className="min-w-0 flex-1 gap-0.5">
           {props.breadcrumbs === undefined ? null : <Breadcrumbs crumbs={props.breadcrumbs} />}
-          <Text variant="title-1" accessibilityRole="header" numberOfLines={props.titleLines ?? 1}>
+          <Text variant="title-1" accessibilityRole="header" numberOfLines={titleLines}>
             {props.title}
           </Text>
           {props.subtitle === undefined ? null : (
-            <Text variant="callout" tone="variant" numberOfLines={1}>
+            <Text
+              variant="callout"
+              tone="variant"
+              {...(props.wrapSubtitle === true ? {} : { numberOfLines: 1 })}
+            >
               {props.subtitle}
             </Text>
           )}

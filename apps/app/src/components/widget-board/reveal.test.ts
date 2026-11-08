@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../app-href';
 import type { BoardWidget, WidgetSize } from '@smarteverything/domain';
 import { revealPlan, type RevealPlan } from './reveal';
 
@@ -7,14 +7,14 @@ function widgetOf(key: string, size: WidgetSize): BoardWidget {
   return { key, type: 'device-group', size };
 }
 
-const PAGE: Href = '/devices';
+const PAGE: AppHref = '/devices';
 
 const WIDGETS = [widgetOf('medium', 'M'), widgetOf('wide', 'W'), widgetOf('huge', 'XL')];
 
 function planFor(
   key: string,
   member: string | null,
-  pageOf: () => Href | null = () => PAGE,
+  pageOf: () => AppHref | null = () => PAGE,
 ): RevealPlan {
   return revealPlan(WIDGETS, { key, member, pageOf });
 }

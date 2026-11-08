@@ -3,13 +3,12 @@ import type { Place } from '@smarteverything/domain';
 import { SimulatedClock as TestClock } from '../../../src/clock/simulated';
 import {
   armTimedTriggers,
-  compileTriggers,
   signalFire,
   watchedOf,
   type TriggerProblem,
 } from '../../../src/automations/triggers-v3/armers';
 import type { TriggerFire } from '../../../src/automations/triggers-v3/payload';
-import { node, signal } from './support';
+import { compileCore, node, signal } from './support';
 
 const START = '2026-10-19T08:00:30.000Z';
 const UTC: Place = { timeZone: 'UTC', location: null };
@@ -40,7 +39,7 @@ describe('timed triggers', () => {
   it('fires a time of day on the chosen weekdays and schedules the next day', () => {
     const { clock, fires, deps } = rig();
     const trigger = node('trigger.time', { at: '09:30', days: [1, 2] });
-    armTimedTriggers(compileTriggers('auto', [trigger]), deps);
+    armTimedTriggers(compileCore('auto', [trigger]), deps);
     clock.advanceTo('2026-10-21T12:00:00.000Z');
     expect(fires.map((fire) => fire.payload['scheduledFor'])).toEqual([
       '2026-10-19T09:30:00.000Z',
@@ -56,17 +55,14 @@ describe('timed triggers', () => {
 
   it('treats an empty weekday list as every day', () => {
     const { clock, fires, deps } = rig();
-    armTimedTriggers(
-      compileTriggers('auto', [node('trigger.time', { at: '09:00', days: [] })]),
-      deps,
-    );
+    armTimedTriggers(compileCore('auto', [node('trigger.time', { at: '09:00', days: [] })]), deps);
     clock.advanceTo('2026-10-21T09:30:00.000Z');
     expect(fires).toHaveLength(3);
   });
 
   it('counts interval ticks and drifts nothing', () => {
     const { clock, fires, deps } = rig();
-    armTimedTriggers(compileTriggers('auto', [node('trigger.interval', { every: 600_000 })]), deps);
+    armTimedTriggers(compileCore('auto', [node('trigger.interval', { every: 600_000 })]), deps);
     clock.advanceTo('2026-10-19T08:35:00.000Z');
     expect(fires.map((fire) => fire.payload['tick'])).toEqual([1, 2, 3]);
     expect(fires.map((fire) => fire.payload['scheduledFor'])).toEqual([
@@ -79,7 +75,7 @@ describe('timed triggers', () => {
   it('starts an aligned interval on round clock times', () => {
     const { clock, fires, deps } = rig();
     const aligned = node('trigger.interval', { every: 900_000, alignToClock: true });
-    armTimedTriggers(compileTriggers('auto', [aligned]), deps);
+    armTimedTriggers(compileCore('auto', [aligned]), deps);
     clock.advanceTo('2026-10-19T08:46:00.000Z');
     expect(fires.map((fire) => fire.payload['scheduledFor'])).toEqual([
       '2026-10-19T08:15:00.000Z',
@@ -92,7 +88,7 @@ describe('timed triggers', () => {
     const { clock, fires, deps } = rig();
     clock.jumpTo('2026-10-19T23:50:00.000Z');
     armTimedTriggers(
-      compileTriggers('auto', [node('trigger.interval', { every: 3_600_000, alignToClock: true })]),
+      compileCore('auto', [node('trigger.interval', { every: 3_600_000, alignToClock: true })]),
       deps,
     );
     clock.advanceTo('2026-10-20T01:30:00.000Z');
@@ -105,7 +101,7 @@ describe('timed triggers', () => {
   it('fires a sun trigger with its event and reports a missing home location', () => {
     const located = rig({ timeZone: 'UTC', location: { latitude: 59.3, longitude: 18.07 } });
     armTimedTriggers(
-      compileTriggers('auto', [node('trigger.sun', { event: 'sunset', offset: -1_800_000 })]),
+      compileCore('auto', [node('trigger.sun', { event: 'sunset', offset: -1_800_000 })]),
       located.deps,
     );
     located.clock.advanceTo('2026-10-19T23:59:00.000Z');
@@ -113,24 +109,21 @@ describe('timed triggers', () => {
     expect(located.fires[0]?.payload['event']).toBe('sunset');
 
     const bare = rig();
-    armTimedTriggers(
-      compileTriggers('auto', [node('trigger.sun', { event: 'sunrise' })]),
-      bare.deps,
-    );
+    armTimedTriggers(compileCore('auto', [node('trigger.sun', { event: 'sunrise' })]), bare.deps);
     expect(bare.problems[0]?.message).toContain('latitude and longitude');
     expect(bare.clock.pending()).toEqual([]);
   });
 
   it('reports a missing place instead of staying silent', () => {
     const { deps, problems } = rig(null);
-    armTimedTriggers(compileTriggers('auto', [node('trigger.time', { at: '09:00' })]), deps);
+    armTimedTriggers(compileCore('auto', [node('trigger.time', { at: '09:00' })]), deps);
     expect(problems.map((problem) => problem.message)).toEqual(['The home has no time zone yet']);
   });
 
   it('stops everything on cancel', () => {
     const { clock, fires, deps } = rig();
     const cancel = armTimedTriggers(
-      compileTriggers('auto', [node('trigger.interval', { every: 60_000 })]),
+      compileCore('auto', [node('trigger.interval', { every: 60_000 })]),
       deps,
     );
     clock.advanceTo('2026-10-19T08:03:00.000Z');
@@ -148,14 +141,14 @@ describe('compileTriggers', () => {
       ports: { at: { wire: { from: 'trigger', port: 'at' } } },
     };
     const off = node('trigger.time', { at: '09:00' }, { enabled: false });
-    const compiled = compileTriggers('auto', [bad, dynamic, off]);
+    const compiled = compileCore('auto', [bad, dynamic, off]);
     expect(compiled.timed).toEqual([]);
     expect(compiled.problems.map((problem) => problem.triggerId)).toEqual([bad.id, dynamic.id]);
     expect(compiled.problems[1]?.message).toContain('fixed value');
   });
 
   it('rejects an interval that is not whole minutes', () => {
-    const compiled = compileTriggers('auto', [node('trigger.interval', { every: 90_000 })]);
+    const compiled = compileCore('auto', [node('trigger.interval', { every: 90_000 })]);
     expect(compiled.problems[0]?.message).toContain('whole number of minutes');
   });
 });
@@ -164,7 +157,7 @@ describe('signal triggers', () => {
   it('compiles device-flavoured kinds to matchers keyed by the node id', () => {
     const device = node('trigger.device', { device: 'lamp', control: 'power' });
     const button = node('trigger.button', { device: 'remote', press: 'long_press' });
-    const compiled = compileTriggers('auto', [device, button]);
+    const compiled = compileCore('auto', [device, button]);
     const watched = watchedOf(compiled, (matcher) => matcher.kind === 'button');
     expect(watched.automationId).toBe('auto');
     expect(watched.triggers.map((trigger) => trigger.triggerId)).toEqual([device.id, button.id]);
@@ -178,7 +171,7 @@ describe('signal triggers', () => {
   });
 
   it('reports a device trigger that names nothing', () => {
-    const compiled = compileTriggers('auto', [node('trigger.device', {})]);
+    const compiled = compileCore('auto', [node('trigger.device', {})]);
     expect(compiled.signals).toEqual([]);
     expect(compiled.problems[0]?.message).toContain('Set one of');
   });
@@ -186,7 +179,7 @@ describe('signal triggers', () => {
   it('builds the typed payload of the trigger that matches the signal', () => {
     const other = node('trigger.device', { device: 'fan' });
     const lamp = node('trigger.device', { device: 'lamp', control: 'power' });
-    const compiled = compileTriggers('auto', [other, lamp]);
+    const compiled = compileCore('auto', [other, lamp]);
     const fire = signalFire(
       compiled,
       signal({ data: { cause: 'physical', roomId: 'hall' } }),
@@ -208,19 +201,19 @@ describe('signal triggers', () => {
   it('reports the trigger whose watch fired, not the first one that matches', () => {
     const any = node('trigger.device', { device: 'lamp', control: 'power' });
     const held = node('trigger.device', { device: 'lamp', control: 'power', value: true });
-    const compiled = compileTriggers('auto', [any, held]);
+    const compiled = compileCore('auto', [any, held]);
     const fire = signalFire(compiled, signal({}), held.id);
     expect(fire).toMatchObject({ triggerId: held.id, key: held.key });
   });
 
   it('maps presence, device health and camera payloads', () => {
     const presenceNode = node('trigger.presence', { event: 'left' });
-    const presence = compileTriggers('auto', [presenceNode]);
+    const presence = compileCore('auto', [presenceNode]);
     expect(
       signalFire(
         presence,
         signal({
-          source: 'plugin_router',
+          source: 'presence',
           kind: 'person_left',
           subject: null,
           field: null,
@@ -230,7 +223,7 @@ describe('signal triggers', () => {
       )?.payload,
     ).toMatchObject({ person: 'ann', place: 'home', event: 'left' });
     const healthNode = node('trigger.device_health', { device: 'lamp' });
-    const health = compileTriggers('auto', [healthNode]);
+    const health = compileCore('auto', [healthNode]);
     expect(
       signalFire(
         health,
@@ -239,7 +232,7 @@ describe('signal triggers', () => {
       )?.payload,
     ).toMatchObject({ device: 'lamp', event: 'offline' });
     const cameraNode = node('trigger.camera', { detection: 'person' });
-    const camera = compileTriggers('auto', [cameraNode]);
+    const camera = compileCore('auto', [cameraNode]);
     const seen = signalFire(
       camera,
       signal({
@@ -258,7 +251,7 @@ describe('signal triggers', () => {
     const computerNode = node('trigger.computer', { kind: 'app_focus' });
     expect(
       signalFire(
-        compileTriggers('auto', [computerNode]),
+        compileCore('auto', [computerNode]),
         signal({
           source: 'event',
           kind: 'app_focused',
@@ -272,7 +265,7 @@ describe('signal triggers', () => {
     const phoneNode = node('trigger.phone', { kind: 'context_changed' });
     expect(
       signalFire(
-        compileTriggers('auto', [phoneNode]),
+        compileCore('auto', [phoneNode]),
         signal({
           source: 'event',
           kind: 'phone_context_changed',
@@ -286,7 +279,7 @@ describe('signal triggers', () => {
     const healthNode = node('trigger.health', {});
     expect(
       signalFire(
-        compileTriggers('auto', [healthNode]),
+        compileCore('auto', [healthNode]),
         signal({
           source: 'health',
           kind: 'sleep_ended',
@@ -302,7 +295,7 @@ describe('signal triggers', () => {
     const chatNode = node('trigger.chat', { outcome: 'answered' });
     expect(
       signalFire(
-        compileTriggers('auto', [chatNode]),
+        compileCore('auto', [chatNode]),
         signal({
           source: 'assistant',
           kind: 'reply_finished',
@@ -318,7 +311,7 @@ describe('signal triggers', () => {
   });
 
   it('watches the v1.1 signal triggers and keeps the problem free list empty', () => {
-    const compiled = compileTriggers('auto', [
+    const compiled = compileCore('auto', [
       node('trigger.computer', { app: 'Steam' }),
       node('trigger.phone', {}),
       node('trigger.health', {}),

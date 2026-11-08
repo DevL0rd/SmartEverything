@@ -7,7 +7,7 @@ import type { Device } from '../../../store/state';
 import { StreamProblem } from '../../shared/plugin-notice';
 import { ServiceHero, ServiceHeroSkeleton } from '../../shared/service-hero';
 import { ServiceMedallion } from '../../shared/service-medallion';
-import { useRouterSnapshot, useSpeedTestRun, useSpeedTests } from '../router-data';
+import { useRouterSnapshot, useSpeedTests } from '../router-data';
 import { SpeedTestSheet } from '../speed-test-sheet';
 import { heroOf, type HeroModel } from './hero-model';
 import { useMegabitSeries } from './use-router-series';
@@ -57,8 +57,7 @@ function RunButton({
 
 export function RouterHero({ device }: { readonly device: Device }): ReactNode {
   const stream = useRouterSnapshot();
-  const run = useSpeedTestRun();
-  const tests = useSpeedTests();
+  const { run, list: tests } = useSpeedTests();
   const test = useSpeedTestControls();
   if (stream.state === 'waiting') {
     return <ServiceHeroSkeleton />;

@@ -1,7 +1,7 @@
 import type {
   AutomationProgramProblem,
   AutomationProgramReply,
-  AutomationV3,
+  AutomationV4,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { createProgram, setProgramEnabled } from '../features/automations/data/api';
@@ -34,7 +34,7 @@ export async function setAutomationEnabled(automationId: string, enabled: boolea
 export interface AutomationCreate {
   readonly name: string;
   readonly enabled: boolean;
-  readonly definition: AutomationV3;
+  readonly definition: AutomationV4;
 }
 
 export async function createAutomation(create: AutomationCreate): Promise<AutomationProgramReply> {

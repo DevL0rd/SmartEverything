@@ -1,7 +1,7 @@
 import type { TreadmillStateView } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { BottomSheet } from '../../../components/bottom-sheet';
+import { Sheet } from '../../../components/sheet';
 import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
 import { useMinute } from '../../../store/clock';
@@ -25,7 +25,7 @@ export function PowerSheet({
   const stop = useStopBelt(deviceId);
   const stoppable = canStopBelt(view.link, state);
   return (
-    <BottomSheet open={open} onClose={onClose} title="Power" label="Power" detents={['fit']}>
+    <Sheet open={open} onClose={onClose} title="Power" label="Power" detents={['fit']}>
       <View className="gap-4 px-4 pb-4">
         <Text variant="title-3">{powerStateLine(view.link, state, now)}</Text>
         <Text variant="body" tone="variant">
@@ -51,6 +51,6 @@ export function PowerSheet({
           </View>
         ) : null}
       </View>
-    </BottomSheet>
+    </Sheet>
   );
 }

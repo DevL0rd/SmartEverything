@@ -1,6 +1,10 @@
 import type { ComponentType } from 'react';
+import { APP_UPDATES_PAGE, AppUpdatesScreen } from '../features/app-updates';
 import { AiExtensionsRoute } from '../features/assistant';
 import { CamerasSettingsScreen, RemoteViewingScreen } from '../features/cameras';
+import { DeveloperScreen, RuntimeLogsScreen } from '../features/developer';
+import { RootDetailScreen } from '../features/drive/settings/root-detail-screen';
+import { PhotosSettingsScreen } from '../features/photos/settings/screen';
 import { DevicesSettingsScreen } from '../features/settings/devices/devices-settings-screen';
 import { SetupScreen } from '../features/setup';
 import { ChannelEditorScreen } from '../features/talk';
@@ -14,10 +18,15 @@ export const CUSTOM_SETTINGS_SCREENS: Readonly<Record<string, ComponentType>> = 
   'assistant/skills/detail': AiExtensionsRoute,
   'assistant/skills/updates': AiExtensionsRoute,
   cameras: CamerasSettingsScreen,
+  developer: DeveloperScreen,
+  'developer/logs': RuntimeLogsScreen,
   devices: DevicesSettingsScreen,
+  'drive/roots/[rootId]': RootDetailScreen,
+  photos: PhotosSettingsScreen,
   setup: SetupScreen,
   'cameras/remote-viewing': RemoteViewingScreen,
   'talk/channels/[channelId]': ChannelEditorScreen,
+  [APP_UPDATES_PAGE]: AppUpdatesScreen,
 };
 
 export function customSettingsScreenId(id: string): string {

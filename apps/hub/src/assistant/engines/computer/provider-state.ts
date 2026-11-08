@@ -23,7 +23,7 @@ import type { ComputerAiDirectory } from '../../../computers/ai-directory';
 import type { Store } from '../../../store/store';
 import { ProviderState as ClaudeState } from '../claude/provider-state';
 import { runtimeValue } from './request';
-import { codexUsage } from './subscription-usage';
+import { metadataSubscriptionUsage, observeNativeSubscription } from './subscription-usage';
 import { updatedCodexProvider } from '../codex/provider-state';
 
 export type ComputerEvent = ProviderEvent | CodexProviderEvent;
@@ -36,7 +36,6 @@ export class ProviderState {
     private readonly store: Store,
     private readonly directory: ComputerAiDirectory,
     readonly runtime: ComputerAiRuntime,
-    private readonly now: () => Date,
   ) {
     this.claude = new ClaudeState(store, directory);
   }
@@ -110,15 +109,16 @@ export class ProviderState {
     const current = this.read(chat);
     if (current.job_id !== state.job_id || current.device_id !== state.device_id)
       throw new ApiError('conflict', 'The provider binding changed during metadata discovery.');
+    const usage = metadataSubscriptionUsage(metadata);
     const updated = {
       ...current,
       metadata,
-      subscription_usage: codexUsage(
-        metadata.initialization['rate_limits'],
-        this.now().toISOString(),
-      ),
+      ...(usage?.runtime === 'codex' ? { subscription_usage: usage } : {}),
     };
-    this.save(chat, updated);
+    this.store.write(() => {
+      this.save(chat, updated);
+      if (usage !== undefined) observeNativeSubscription(this.store, chat, usage);
+    });
     return updated;
   }
   assertSession(chat: AiChatRow, sessionId: string | undefined): void {

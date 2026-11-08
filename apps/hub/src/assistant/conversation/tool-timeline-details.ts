@@ -1,7 +1,7 @@
 import { imageOperationIdOfCall } from '../image/call-operation';
 import { z } from 'zod';
 import { IMAGE_OPERATION_RECEIPT } from '@smarteverything/domain';
-import { redact, REDACTED } from '@smarteverything/logging';
+import { payloadOf } from '@smarteverything/logging';
 import type { ChatTimelineTool } from '@smarteverything/domain';
 
 export interface ToolTimelineDetails {
@@ -36,7 +36,7 @@ function reported(value: unknown): string | null {
   if (value === undefined) return null;
   const source = decoded(value);
   if (typeof source === 'string') return source;
-  return JSON.stringify(redact({ value: source })['value'], null, 2);
+  return JSON.stringify(payloadOf({ value: source })['value'], null, 2);
 }
 
 export function toolTimelineDetails(
@@ -49,7 +49,7 @@ export function toolTimelineDetails(
   return {
     input,
     output,
-    redacted: input?.includes(REDACTED) === true,
+    redacted: false,
     image_operation_id: initiatingImageId(name, details, callId),
   };
 }

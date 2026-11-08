@@ -56,7 +56,9 @@ describe('a read-only connection', () => {
       false,
     );
     const refused = await callTool(booted.base, token, 'device_control', {
-      deviceIds: [lamp], capability: 'power', value: false,
+      deviceIds: [lamp],
+      capability: 'power',
+      value: false,
     });
     expect(refused.isError).toBe(true);
     expect(JSON.stringify(refused.content)).toContain('This connection is read only');

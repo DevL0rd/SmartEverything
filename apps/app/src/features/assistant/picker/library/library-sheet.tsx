@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { BottomSheet } from '../../../../components/bottom-sheet';
+import { floatingSheetFrame } from '../../../../components/compact-panel';
 import { IconButton } from '../../../../components/icon-button';
 import { Overlay, useOverlayShown } from '../../../../components/overlay';
 import { Text } from '../../../../components/text';
@@ -83,7 +85,9 @@ function PointerSheet(props: LibrarySheetProps): ReactNode {
 }
 
 function TouchSheet(props: LibrarySheetProps): ReactNode {
-  const { width } = useWindowDimensions();
+  const viewport = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { width } = floatingSheetFrame(viewport, insets);
   return (
     <BottomSheet
       open={props.open}

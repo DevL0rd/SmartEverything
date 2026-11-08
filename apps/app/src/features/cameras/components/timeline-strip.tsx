@@ -38,6 +38,7 @@ const TOUCH_MARK = 40;
 
 export interface TimelineStripProps {
   readonly items: readonly TrackItem[];
+  readonly hours: ZoomHours;
   readonly now: number | null;
   readonly label: string;
   readonly onOpen: (id: string) => void;
@@ -106,7 +107,7 @@ function useCentred(
   return scroll;
 }
 
-function ZoomBar({
+export function TimelineZoom({
   hours,
   setHours,
 }: {
@@ -114,8 +115,8 @@ function ZoomBar({
   readonly setHours: (hours: ZoomHours) => void;
 }): ReactNode {
   return (
-    <View className="flex-row items-center justify-end gap-1">
-      <Text variant="footnote" tone="variant" className="flex-1">
+    <View className="ml-auto flex-row items-center gap-1">
+      <Text variant="footnote" tone="variant">
         {hours === 24 ? 'Whole day' : `${String(hours)} h at a time`}
       </Text>
       <IconButton
@@ -139,7 +140,6 @@ function ZoomBar({
 }
 
 interface TrackProps extends TimelineStripProps {
-  readonly hours: ZoomHours;
   readonly head: number;
   readonly onMove: (fraction: number) => void;
   readonly onRelease: (fraction: number) => void;
@@ -187,17 +187,14 @@ function startOf({ items, now }: TimelineStripProps): number {
 }
 
 export function TimelineStrip(props: TimelineStripProps): ReactNode {
-  const [hours, setHours] = useState<ZoomHours>(24);
   const [head, setHead] = useState<number | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const shown = head ?? startOf(props);
   return (
     <View accessibilityLabel={props.label} className="gap-1">
-      <ZoomBar hours={hours} setHours={setHours} />
       {scrubbing ? <ScrubPreview items={props.items} fraction={shown} /> : null}
       <Track
         {...props}
-        hours={hours}
         head={shown}
         onMove={(fraction) => {
           setScrubbing(true);

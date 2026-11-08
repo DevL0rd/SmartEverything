@@ -16,7 +16,9 @@ function lamp(value: boolean, stopOnFailure = false): ToolStep {
     kind: 'tool',
     tool: 'device_control',
     args: {
-      deviceIds: [rig().ids.lamp], capability: 'power', value,
+      deviceIds: [rig().ids.lamp],
+      capability: 'power',
+      value,
     },
     stopOnFailure,
   };
@@ -36,7 +38,9 @@ function lampTwo(value: boolean): ToolStep {
     kind: 'tool',
     tool: 'device_control',
     args: {
-      deviceIds: [rig().ids.lampTwo], capability: 'power', value,
+      deviceIds: [rig().ids.lampTwo],
+      capability: 'power',
+      value,
     },
     stopOnFailure: false,
   };

@@ -39,6 +39,15 @@ function view(
 }
 
 describe('television view', () => {
+  it('keeps the playback unknown until the TV reports it, with play and pause both reachable', () => {
+    const unknown = view('livingRoom', true, { power: true }, { settings: DIRECT });
+    expect(unknown.playback).toBeNull();
+    expect(unknown.locks.play).toBeUndefined();
+    expect(unknown.locks.pause).toBeUndefined();
+    expect(view('livingRoom', true, { power: true, playback: 'playing' }).playback).toBe('playing');
+    expect(view('livingRoom', true, { power: true, playback: 'paused' }).playback).toBe('paused');
+  });
+
   it('shows a sleeping TV that can be woken as standby, not offline', () => {
     const asleep = view('bedroom', true, { power: false });
     expect(asleep.mode).toBe('standby');
@@ -134,7 +143,7 @@ describe('television view', () => {
     expect(monitor.locks.ch_up).toBe('not_on_this_tv');
   });
 
-  it('marks a volume older than the last power-on as a last known level', () => {
+  it('keeps the last known volume as a plain number and flags it stale', () => {
     const { device, values } = televisionFixture('livingRoom', true, { power: true, volume: 9 });
     const stale = televisionView(
       device,
@@ -146,7 +155,7 @@ describe('television view', () => {
       NOT_TURNING,
     );
     expect(stale.volume.stale).toBe(true);
-    expect(volumeText(stale.volume)).toBe('≈9');
+    expect(volumeText(stale.volume)).toBe('9');
   });
 
   it('describes the stage for each mode', () => {

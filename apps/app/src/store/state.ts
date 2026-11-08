@@ -37,6 +37,7 @@ export type ListTable = Exclude<
   | 'weather'
   | 'exchange_rates'
   | 'ai_outreach'
+  | 'home_maps'
   | 'device_effect_targets'
 >;
 
@@ -139,6 +140,7 @@ function emptyTables(): Tables {
     automations: emptyTable(),
     automation_values: emptyTable(),
     automation_runs: emptyTable(),
+    automation_plugin_kinds: emptyTable(),
     layouts: emptyTable(),
     push_targets: emptyTable(),
     health_sources: emptyTable(),
@@ -157,6 +159,20 @@ function emptyTables(): Tables {
     plugins: emptyTable(),
     plugin_streams: emptyTable(),
     plugin_ui: emptyTable(),
+    model_assets: emptyTable(),
+    model_catalog: emptyTable(),
+    model_overrides: emptyTable(),
+    planner_collections: emptyTable(),
+    planner_items: emptyTable(),
+    planner_occurrences: emptyTable(),
+    planner_alarms: emptyTable(),
+    planner_timers: emptyTable(),
+    planner_stopwatches: emptyTable(),
+    google_accounts: emptyTable(),
+    drive_roots: emptyTable(),
+    drive_albums: emptyTable(),
+    drive_sync_clients: emptyTable(),
+    drive_placements: emptyTable(),
   };
 }
 
@@ -269,6 +285,6 @@ export function deviceValuesOf(state: StoreState, deviceId: string): DeviceValue
   return values;
 }
 
-export function rowsOf<R>(table: Table<R>): readonly R[] {
-  return table.rows;
+export function rowsOf<R>(table: Table<R> | undefined): readonly R[] {
+  return table?.rows ?? [];
 }

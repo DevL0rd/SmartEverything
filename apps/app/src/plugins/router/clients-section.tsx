@@ -122,22 +122,24 @@ function renderItem(
 
 function NoMatch({ state }: { readonly state: ClientListState }): ReactNode {
   return (
-    <EmptyState
-      icon="search"
-      title="No devices here"
-      body="Try another filter or search."
-      action={
-        <Button
-          label="Clear search"
-          variant="text"
-          onPress={() => {
-            state.setQuery('');
-            state.setFilter('all');
-            state.clearBand();
-          }}
-        />
-      }
-    />
+    <View className="w-full max-w-reading self-start px-gutter">
+      <EmptyState
+        icon="search"
+        title="No devices here"
+        body="Try another filter or search."
+        action={
+          <Button
+            label="Clear search"
+            variant="text"
+            onPress={() => {
+              state.setQuery('');
+              state.setFilter('all');
+              state.clearBand();
+            }}
+          />
+        }
+      />
+    </View>
   );
 }
 
@@ -188,11 +190,13 @@ export function ClientsSection(): ReactNode {
     <PluginStreamSection stream={useRouterSnapshot()} pluginId="router" notice={routerNotice} fill>
       {(snapshot) =>
         snapshot.clients.length === 0 ? (
-          <EmptyState
-            icon="wifi"
-            title="No devices yet"
-            body="Devices show up once the router reports them."
-          />
+          <View className="w-full max-w-reading self-start">
+            <EmptyState
+              icon="wifi"
+              title="No devices yet"
+              body="Devices show up once the router reports them."
+            />
+          </View>
         ) : (
           <ClientList snapshot={snapshot} />
         )

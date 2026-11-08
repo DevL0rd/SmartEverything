@@ -1,53 +1,73 @@
 import { useEffect, useRef } from 'react';
 import { Logger } from '@smarteverything/logging';
-import { router, useGlobalSearchParams, useSegments, type Href } from 'expo-router';
+import { router, useGlobalSearchParams, useSegments } from 'expo-router';
+import type { AppHref } from '../components/app-href';
+import { parseGroupPageParams } from '../features/device-groups';
 
 const log = new Logger('app.nav');
 
-function homeHref(
-  segments: readonly string[],
-  id: string | undefined,
-  section: string | undefined,
-  settingsPage: string | undefined,
-): Href | null {
+type ColdLinkParams = Readonly<Record<string, string | string[]>> & {
+  readonly deviceId?: string;
+  readonly roomId?: string;
+  readonly section?: string;
+  readonly page?: string;
+};
+
+function homeRoomHref(subPages: readonly string[], params: ColdLinkParams): AppHref | null {
+  const { roomId } = params;
+  if (roomId === undefined || subPages.length > 1) {
+    return null;
+  }
+  const [subPage] = subPages;
+  if (subPage === 'lights') {
+    const { member, edit, focus } = parseGroupPageParams(params);
+    return {
+      pathname: '/(app)/(home)/rooms/[roomId]/lights',
+      params: { ...params, roomId, member, edit: edit ? '1' : null, focus },
+    };
+  }
+  return subPage === undefined
+    ? { pathname: '/(app)/(home)/rooms/[roomId]', params: { ...params, roomId } }
+    : null;
+}
+
+function homeHref(segments: readonly string[], params: ColdLinkParams): AppHref | null {
   const [, , page, , subPage] = segments;
   if (page === 'weather') {
     return '/(app)/(home)/weather';
   }
-  if (id === undefined) {
-    return null;
-  }
   if (page === 'rooms') {
-    return `/(app)/(home)/rooms/${encodeURIComponent(id)}`;
+    return homeRoomHref(segments.slice(4), params);
   }
-  if (page !== 'device') {
+  const { deviceId, page: settingsPage } = params;
+  if (page !== 'device' || deviceId === undefined) {
     return null;
   }
-  return subPage === 'settings' ? homeSettingsHref(id, settingsPage) : homeDeviceHref(id, section);
+  return subPage === 'settings'
+    ? homeSettingsHref(deviceId, settingsPage)
+    : homeDeviceHref(deviceId, params);
 }
 
-function homeSettingsHref(deviceId: string, page: string | undefined): Href {
+function homeSettingsHref(deviceId: string, page: string | undefined): AppHref {
   const id = encodeURIComponent(deviceId);
   return page !== undefined
     ? `/(app)/(home)/device/${id}/settings/${encodeURIComponent(page)}`
     : `/(app)/(home)/device/${id}/settings`;
 }
 
-function homeDeviceHref(deviceId: string, section: string | undefined): Href {
-  const id = encodeURIComponent(deviceId);
+function homeDeviceHref(deviceId: string, params: ColdLinkParams): AppHref {
+  const { section } = params;
   return section === undefined
-    ? `/(app)/(home)/device/${id}`
-    : `/(app)/(home)/device/${id}/${encodeURIComponent(section)}`;
+    ? { pathname: '/(app)/(home)/device/[deviceId]', params: { ...params, deviceId } }
+    : {
+        pathname: '/(app)/(home)/device/[deviceId]/[section]',
+        params: { ...params, deviceId, section },
+      };
 }
 
 export function useNaturalTabForColdLinks(): void {
-  const segments = useSegments();
-  const { deviceId, roomId, section, page } = useGlobalSearchParams<{
-    deviceId?: string;
-    roomId?: string;
-    section?: string;
-    page?: string;
-  }>();
+  const segments: readonly string[] = useSegments();
+  const params = useGlobalSearchParams<ColdLinkParams>();
   const checked = useRef(false);
   useEffect(() => {
     const group = segments[1];
@@ -55,12 +75,11 @@ export function useNaturalTabForColdLinks(): void {
       return;
     }
     checked.current = true;
-    const target =
-      group === '(home)' ? null : homeHref(segments, deviceId ?? roomId, section, page);
+    const target = group === '(home)' ? null : homeHref(segments, params);
     log.debug('coldlink.checked', { group, page: segments[2] ?? null, redirect: target !== null });
     if (target !== null) {
       router.dismissAll();
       router.replace(target, { withAnchor: true });
     }
-  }, [segments, deviceId, roomId, section, page]);
+  }, [segments, params]);
 }

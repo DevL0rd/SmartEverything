@@ -2,6 +2,7 @@ import { appendTo } from '@smarteverything/domain';
 import { Logger, type LogRecord } from '@smarteverything/logging';
 import type { ProviderPrompt } from '@smarteverything/domain';
 import type { RunContext, ShownPrompt, StoredAccount } from '../../src/adapters/contract';
+import { hubLayout } from '../../src/data-layout';
 
 export interface RecordedRequest {
   readonly method: string;
@@ -94,7 +95,7 @@ export interface ContextRecord {
   readonly logs: LogRecord[];
 }
 
-export function contextFor(dataDirectory: string): ContextRecord {
+export function contextFor(directory: string): ContextRecord {
   const saved: StoredAccount[] = [];
   const attention: string[] = [];
   const prompts: ProviderPrompt[] = [];
@@ -102,7 +103,7 @@ export function contextFor(dataDirectory: string): ContextRecord {
   Logger.configure({ sink: (record) => logs.push(record), level: 'debug' });
   const context: RunContext = {
     log: new Logger('app.hub'),
-    dataDirectory,
+    layout: hubLayout(directory, {}),
     ask: (prompt) => {
       prompts.push(prompt);
       return Promise.resolve('accepted');

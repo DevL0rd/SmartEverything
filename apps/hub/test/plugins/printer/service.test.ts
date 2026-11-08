@@ -256,6 +256,47 @@ describe('printing and its limits', () => {
     ).rejects.toMatchObject({ reason: 'not_authorized' });
   });
 
+  it('prints a camera snapshot or generated picture by its id and records who printed', async () => {
+    await added();
+    setup.pictures.set('snap-1', { profile: 'anna', name: 'Picture snap-1', data: JPEG });
+    const reply = await setup.service.act(
+      { action: 'print', source: { kind: 'picture', pictureId: 'snap-1' } },
+      ANNA,
+    );
+    expect(reply).toMatchObject({
+      format: 'image/jpeg',
+      converted: false,
+      job: { name: 'Picture snap-1', mine: true, person: 'anna' },
+    });
+    expect(Buffer.from(printer.documents[0] ?? [])).toEqual(JPEG);
+  });
+
+  it('converts a picture for a printer that takes only PWG raster', async () => {
+    await printer.stop();
+    printer = new FakeIppPrinter({ formats: ['image/pwg-raster'] });
+    await printer.start();
+    await added();
+    setup.pictures.set('gen-1', { profile: 'owner-1', name: 'Picture gen-1', data: PNG });
+    const reply = await setup.service.act(
+      { action: 'print', source: { kind: 'picture', pictureId: 'gen-1' } },
+      OWNER,
+    );
+    expect(reply).toMatchObject({ format: 'image/pwg-raster', converted: true });
+    expect(setup.converted[0]?.kind).toBe('image-raster');
+  });
+
+  it('will not print another person’s picture or one that is not there', async () => {
+    await added();
+    setup.pictures.set('snap-1', { profile: 'anna', name: 'Picture snap-1', data: JPEG });
+    await expect(
+      setup.service.act({ action: 'print', source: { kind: 'picture', pictureId: 'snap-1' } }, BEN),
+    ).rejects.toMatchObject({ reason: 'not_authorized' });
+    await expect(
+      setup.service.act({ action: 'print', source: { kind: 'picture', pictureId: 'nope' } }, OWNER),
+    ).rejects.toMatchObject({ reason: 'not_authorized' });
+    expect(printer.documents).toEqual([]);
+  });
+
   it('prints a test page', async () => {
     await added();
     const reply = await setup.service.act({ action: 'test_page' }, ANNA);

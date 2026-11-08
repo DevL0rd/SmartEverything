@@ -1,6 +1,7 @@
 import type { StoreContext } from '../../context';
 import { AccessAuditRepository } from '../access-audit';
 import { AccessRequestsRepository } from '../access-requests';
+import { AndroidBuildObservationsRepository } from '../android-build-observations';
 import { ClientsRepository } from '../clients';
 import { OAuthRepository } from '../oauth';
 import { PersonAccessRepository } from '../person-access';
@@ -12,6 +13,7 @@ import { TalkRepository } from '../talk';
 export const peopleRepositories = (context: StoreContext) =>
   ({
     clients: new ClientsRepository(context),
+    androidBuildObservations: new AndroidBuildObservationsRepository(context),
     providers: new ProvidersRepository(context),
     profiles: new ProfilesRepository(context),
     personAccess: new PersonAccessRepository(context),

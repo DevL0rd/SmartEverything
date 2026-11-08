@@ -7,13 +7,22 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { OperationInput } from '../../../server/operations';
+import { newOperationId } from '../../../assistant/call-identity';
 import { newImageOperationId } from '../../../assistant/image/call-operation';
-import { operate } from './acting';
+import { currentCentralToolAuthority } from '../../../harness/central-tool-authority';
+import { operate, type OperatingContext } from './acting';
 import { withAdapter } from './adapters';
 import { computerIdOf } from './computer-target';
-import { checkedFields, filledFields, hiddenFields, shapedFields } from './part-fields';
+import {
+  checkedFields,
+  filledFields,
+  hiddenFields,
+  shapedFields,
+  worksOutsideChat,
+} from './part-fields';
 import { REFERENCE_FIELDS, referenceField, resolveReferences } from './references';
 import { availableOperation, operationAnnotations } from './operation-details';
+import { operationView } from './operation-views';
 import {
   ACTING_FIELD,
   CALLABLE_OPERATIONS,
@@ -42,12 +51,21 @@ function withCallIdentity(
   shape: OperationShape,
   input: OperationInput,
 ): OperationInput {
-  const field = mcpOperationTraits(shape.name).callIdentity;
-  if (field === undefined) {
+  const identity = mcpOperationTraits(shape.name).callIdentity;
+  if (identity === undefined) {
     return input;
   }
+  const callId = context.actor?.callId;
+  const eventId = context.actor?.authority?.event_id;
+  const id =
+    identity.scope === 'image'
+      ? newImageOperationId(callId)
+      : newOperationId(
+          `smarteverything.${shape.name}:${eventId ?? ''}`,
+          currentCentralToolAuthority()?.callId ?? callId,
+        );
   const body = BODY_RECORD.parse(input.body);
-  return { ...input, body: { ...body, [field]: newImageOperationId(context.actor?.callId) } };
+  return { ...input, body: { ...body, [identity.field]: id } };
 }
 
 const BODY_RECORD = z.record(z.string(), z.unknown());
@@ -96,17 +114,17 @@ function inputOf(shape: OperationShape, args: Readonly<Record<string, unknown>>)
 }
 
 async function called(
-  context: ToolContext,
+  context: OperatingContext,
   shape: OperationShape,
   args: Readonly<Record<string, unknown>>,
 ): Promise<ToolOutput> {
   const personId = shape.acting ? PERSON_ID.parse(args[ACTING_FIELD]) : undefined;
   const input = withCallIdentity(context, shape, inputOf(shape, args));
-  const result = await operate(context, shape.name, input, { personId });
-  return { structured: { result: result ?? null }, action: reports(shape) };
+  const result = operationView(shape.name, await operate(context, shape.name, input, { personId }));
+  return { structured: { result: result ?? null }, action: reportsAction(shape) };
 }
 
-function reports(shape: OperationShape): boolean {
+export function reportsAction(shape: OperationShape): boolean {
   return (
     !operationAnnotations(shape.name).readOnlyHint &&
     mcpOperationTraits(shape.name).answers !== true
@@ -130,13 +148,14 @@ function listedInput(name: McpPartName, shape: OperationShape): z.ZodObject {
     ...kept,
     ...Object.fromEntries(
       references.map((field) => {
-        const original = shape.input.shape[field];
+        const original: unknown = shape.input.shape[field];
+        const schema = original instanceof z.ZodType ? original : null;
         return [
           field,
           referenceField(
             field,
-            original?.safeParse(undefined).success === true,
-            original?.safeParse(null).success === true,
+            schema?.safeParse(undefined).success === true,
+            schema?.safeParse(null).success === true,
           ),
         ];
       }),
@@ -151,26 +170,42 @@ function shownFields(name: McpPartName, args: Readonly<Record<string, unknown>>)
   }
 }
 
+function preparedArguments(
+  name: McpPartName,
+  shape: OperationShape,
+  context: OperatingContext,
+  args: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  shownFields(name, args);
+  checkedFields(name, args);
+  const filled = filledFields(
+    name,
+    context,
+    resolveReferences(context, REFERENCE_FIELDS[name], args),
+  );
+  return worksOutsideChat(name) ? filled : withCallingChat(context, shape, filled);
+}
+
+export function operationRunner(
+  name: McpPartName,
+  operation: EndpointName,
+): (context: OperatingContext, args: Readonly<Record<string, unknown>>) => Promise<ToolOutput> {
+  const shape = operationShape(operation);
+  return (context, args) => called(context, shape, preparedArguments(name, shape, context, args));
+}
+
 export function operationTool(name: McpPartName, operation: EndpointName): Tool {
   const shape = operationShape(operation);
   const input = listedInput(name, shape);
   const prepared = (
     context: ToolContext,
     args: Readonly<Record<string, unknown>>,
-  ): Readonly<Record<string, unknown>> => {
-    shownFields(name, args);
-    checkedFields(name, args);
-    return withCallingChat(
-      context,
-      shape,
-      filledFields(name, context, resolveReferences(context, REFERENCE_FIELDS[name], args)),
-    );
-  };
+  ): Readonly<Record<string, unknown>> => preparedArguments(name, shape, context, args);
   return {
     name,
     input,
     listing: listingOf(name, jsonSchemaOf(input, 'input'), operationAnnotations(operation)),
-    call: (context, args) => called(context, shape, prepared(context, args)),
+    call: operationRunner(name, operation),
     check: (context, args): string | null => {
       try {
         const resolved = prepared(context, args);

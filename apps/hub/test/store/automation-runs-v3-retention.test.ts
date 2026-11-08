@@ -7,6 +7,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { sweepRetention } from '../../src/store/retention';
 import { Sql } from '../../src/store/sql';
 import { captureLogs, testLogger } from '../support/logs';
+import { removeStarterNodes } from '../support/starter-nodes';
 
 const NOW = '2026-10-18T09:00:00.000Z';
 const HASH = 'a'.repeat(64);
@@ -23,6 +24,7 @@ function build(): void {
   const database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
   sql = new Sql(database);
   migrate(sql, MIGRATIONS, NOW, testLogger());
+  removeStarterNodes(sql);
   context = new StoreContext(sql, new ChangeFeed(testLogger('store')), () => clock);
   for (const id of [AUTOMATION, OTHER])
     database

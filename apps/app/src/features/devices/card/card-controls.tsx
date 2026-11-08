@@ -1,15 +1,18 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { View, type LayoutChangeEvent } from 'react-native';
 import type {
   CapabilityRole,
   IrCodeRow,
   IrRemoteRow,
   PresentedCapability,
 } from '@smarteverything/domain';
+import { withRole } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
 import { useIdiom } from '../../../design/platform';
+import { useThemeSetting } from '../../../design/theme';
+import { SEMANTIC_SIZES } from '../../../design/tokens';
 import { useControl } from '../../../store/control';
 import { useDeviceDerived, useIrCodes } from '../../../store/selectors';
 import { shallowEqual } from '../../../store/store-context';
@@ -25,12 +28,14 @@ import { LevelControl } from '../faces/level-control';
 import { Facts } from './card-parts';
 import { CompactControl, type LabelMode } from './compact-control';
 import { background } from '@smarteverything/logging';
+import { useOfflineHint } from '../model/offline-hint';
 
 const GAP = 12;
 const BUTTON_W = 112;
 const FACT_H = { touch: 72, pointer: 56 } as const;
 const FACT_W = 96;
-const LEVEL_BAR = 48;
+const COMPACT_FACT_HEIGHT = 28;
+const COMPACT_FACT_GAP = 4;
 
 interface Box {
   readonly width: number;
@@ -157,9 +162,18 @@ function samePlanRead(left: PlanRead, right: PlanRead): boolean {
   return left.off === right.off && shallowEqual(left.primary, right.primary);
 }
 
-function usePlan(device: Device, box: Box, max: number, inline: boolean): Plan {
+export function isActionControl(presented: PresentedCapability): boolean {
+  return presented.capability.value.kind === 'action';
+}
+
+export interface ControlCandidates {
+  readonly off: boolean;
+  readonly level: PresentedCapability | null;
+  readonly all: readonly PresentedCapability[];
+}
+
+export function useControlCandidates(device: Device): ControlCandidates {
   const model = useDeviceModel(device);
-  const pointer = useIdiom() === 'pointer';
   const read = useDeviceDerived(
     device.id,
     (values): PlanRead => ({
@@ -169,20 +183,28 @@ function usePlan(device: Device, box: Box, max: number, inline: boolean): Plan {
     [model],
     samePlanRead,
   );
-  const { off } = read;
-  const primary = cardControls(model.family, read.primary, max);
-  const level = levelOf(primary, off);
+  const primary = cardControls(model.family, read.primary, read.primary.length);
+  const level = levelOf(primary, read.off);
+  const all = [...primary, ...settingControls(model)].filter((presented) => presented !== level);
+  return { off: read.off, level, all };
+}
+
+function usePlan(device: Device, box: Box, inline: boolean): Plan {
+  const idiom = useIdiom();
+  const pointer = idiom === 'pointer';
+  const bar = SEMANTIC_SIZES[idiom][useThemeSetting('density')].controlH;
+  const candidates = useControlCandidates(device);
+  const { off, all } = candidates;
+  const level = box.height >= bar ? candidates.level : null;
   const fit: Box = {
     width: box.width,
-    height: Math.max(0, box.height - (level === null ? 0 : LEVEL_BAR + GAP)),
+    height: Math.max(0, box.height - (level === null ? 0 : bar + GAP)),
   };
   const room = capacity(fit, rowHeight(inline, pointer), controlColumnMin(inline));
-  const candidates = [...primary, ...settingControls(model)]
-    .filter((presented) => presented !== level)
-    .slice(0, max);
+  const shown = all.filter((presented) => !isActionControl(presented));
   const controls = fitting(
-    candidates,
-    Math.max(1, Math.min(room.columns, candidates.length)),
+    shown,
+    Math.max(1, Math.min(room.columns, shown.length)),
     fit.height,
     (presented) => itemHeight(presented, inline, pointer),
   );
@@ -192,18 +214,22 @@ function usePlan(device: Device, box: Box, max: number, inline: boolean): Plan {
 function StandardControls({
   device,
   box,
-  max,
   dense,
   labels = dense ? 'inline' : 'caption',
 }: AreaProps & { readonly box: Box }): ReactNode {
-  const { level, controls, columns, off } = usePlan(device, box, max, labels === 'inline');
+  const { level, controls, columns, off } = usePlan(device, box, labels === 'inline');
   if (controls.length === 0 && level === null && !off) {
     return <NoControls device={device} box={box} dense={dense} />;
   }
   return (
     <View className="gap-3" pointerEvents="box-none">
       {level === null ? null : (
-        <LevelControl device={device} presented={level} label={`${device.label} ${level.label}`} />
+        <LevelControl
+          device={device}
+          presented={level}
+          label={`${device.label} ${level.label}`}
+          className="h-control-h"
+        />
       )}
       <ControlGrid
         device={device}
@@ -224,7 +250,11 @@ function CuratedControls(props: AreaProps & { readonly box: Box }): ReactNode {
     return <StandardControls {...props} />;
   }
   return box.height < 72 ? (
-    <Button label="Cooking" variant="tonal" href={href.deviceSection(device.id, 'controls')} />
+    <Button
+      label="Cooking controls"
+      variant="tonal"
+      href={href.deviceSection(device.id, 'controls')}
+    />
   ) : (
     <Custom device={device} />
   );
@@ -273,7 +303,6 @@ function QuickRemote({ device, box }: { readonly device: Device; readonly box: B
       <View className="flex-row" pointerEvents="box-none">
         <Button
           label="Learn buttons"
-
           variant="tonal"
           href={href.settings.device(blaster.id, 'remotes')}
         />
@@ -294,8 +323,21 @@ function NoControls({
 }): ReactNode {
   const { blaster } = useRemotes(device);
   const idiom = useIdiom();
+  const { family, presentation } = useDeviceModel(device);
   if (blaster !== null || !dense) {
     return <QuickRemote device={device} box={box} />;
+  }
+  if (
+    family === 'sensor' &&
+    (withRole(presentation, 'humidity') !== undefined ||
+      withRole(presentation, 'leak') !== undefined)
+  ) {
+    const rows = Math.floor(
+      (box.height + COMPACT_FACT_GAP) / (COMPACT_FACT_HEIGHT + COMPACT_FACT_GAP),
+    );
+    return (
+      <Facts device={device} hidden={NONE} max={Math.min(rows, 2)} column large={false} compact />
+    );
   }
   const fit = capacity(box, FACT_H[idiom], FACT_W);
   if (fit.total === 0) {
@@ -304,9 +346,17 @@ function NoControls({
   return <Facts device={device} hidden={NONE} max={fit.columns} column={false} large={false} />;
 }
 
+function OfflineNote({ device }: { readonly device: Device }): ReactNode {
+  const hint = useOfflineHint(device);
+  return (
+    <Text variant="callout" tone="variant" numberOfLines={2}>
+      {`Not responding. ${hint}`}
+    </Text>
+  );
+}
+
 interface AreaProps {
   readonly device: Device;
-  readonly max: number;
   readonly dense: boolean;
   readonly labels?: LabelMode;
 }
@@ -314,24 +364,26 @@ interface AreaProps {
 export function ControlsArea({
   device,
   box,
-  max,
   dense,
   labels,
-}: AreaProps & { readonly box: Box }): ReactNode {
+  onLayout,
+}: AreaProps & {
+  readonly box: Box;
+  readonly onLayout?: (event: LayoutChangeEvent) => void;
+}): ReactNode {
   const model = useDeviceModel(device);
   const offline = !device.online && !model.sleepy;
   return (
-    <View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none">
-      {offline && !dense ? (
-        <Text variant="callout" tone="variant" numberOfLines={2}>
-          {'Not responding. Check that it’s plugged in and on Wi‑Fi.'}
-        </Text>
-      ) : null}
+    <View
+      className="min-h-0 min-w-0 flex-1 self-stretch overflow-hidden"
+      pointerEvents="box-none"
+      onLayout={onLayout}
+    >
+      {offline && !dense ? <OfflineNote device={device} /> : null}
       {offline || box.height <= 0 ? null : (
         <CuratedControls
           device={device}
           box={box}
-          max={max}
           dense={dense}
           {...(labels === undefined ? {} : { labels })}
         />

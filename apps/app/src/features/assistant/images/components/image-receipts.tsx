@@ -1,252 +1,272 @@
 import type { ReactNode } from 'react';
 import { useRef, useState } from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
 import type { AssistantAttachment, ImageOperationReceipt } from '@smarteverything/domain';
-import { Button } from '../../../../components/button';
-import { Text } from '../../../../components/text';
-import { ImagePlaceholder } from '../../../../components/image-placeholder';
-import { Interactive } from '../../../../components/interactive';
-import { notify } from '../../../../components/toast-store';
-import { useRows } from '../../../../store/selectors';
-import { errorText } from '../../../../format/errors';
-import { Attachments } from '../../components/attachments';
-import { CollapseBody, CollapseRoot, TurnChevron } from '../../../../components/disclosure';
-import type { MessageItem } from '../../data/thread';
-import { useImageActions, useImagePreview } from '../data/image-queries';
-import { imageReceiptStatus } from '../model/image-receipt';
-import { pendingImageFrame, type ImageOperationItem } from '../model/image-thread';
 import { background } from '@smarteverything/logging';
+import { Icon } from '../../../../components/icon';
+import { Text } from '../../../../components/text';
+import { notify } from '../../../../components/toast-store';
+import { errorText } from '../../../../format/errors';
+import { clock } from '../../../../format/time';
+import { ActivityAnnouncement } from '../../components/activity-announcement';
+import { Attachments } from '../../components/attachments';
+import { setDraft } from '../../data/drafts';
+import type { MessageItem } from '../../data/thread';
+import { useImageActions } from '../data/image-queries';
+import { useImageRetry } from '../data/image-retry';
+import {
+  isGenerating,
+  noticeLineOf,
+  takenSeconds,
+  type ImageLineAction,
+  type ImageNoticeLine,
+} from '../model/image-generation';
+import { imageReceiptStatus } from '../model/image-receipt';
+import type { ImageOperationItem } from '../model/image-thread';
+import { ActionGroup, PromptLine, TextAction } from './image-details';
+import { GenerationFrame, useKeptPreview, type KeptPreview } from './generation-frame';
+import { ImageRevealProvider, type ImageReveal } from './image-result-context';
 
-function PendingImage({ receipt }: { readonly receipt: ImageOperationReceipt }): ReactNode {
-  const preview = useImagePreview(receipt.id);
-  const active = receipt.state === 'reserved' || receipt.state === 'running';
-  return (
-    <View
-      style={pendingImageFrame(receipt)}
-      accessibilityLabel={imageReceiptStatus(receipt)}
-      className="max-w-full overflow-hidden rounded-xl border-hairline border-outline-variant"
-    >
-      <ImagePlaceholder active={active} />
-      {preview === null || !active ? null : (
-        <Image
-          source={{ uri: `data:${preview.mime};base64,${preview.data}` }}
-          resizeMode="contain"
-          accessibilityLabel="Intermediate image preview, not saved"
-          className="size-full"
-        />
-      )}
-    </View>
-  );
+function revealOf(receipt: ImageOperationReceipt, kept: KeptPreview | null): ImageReveal | null {
+  if (kept === null || receipt.results.length === 0) return null;
+  return {
+    preview: kept.current,
+    seen: kept.seen,
+    attachmentIds: new Set(receipt.results.map((result) => result.attachment.id)),
+  };
 }
 
 export function ImageOperationBubble({
   item,
   flash,
   renderMessage,
+  announce = true,
 }: {
   readonly item: ImageOperationItem;
   readonly flash: boolean;
   readonly renderMessage: (item: MessageItem, flash: boolean) => ReactNode;
+  readonly announce?: boolean;
 }): ReactNode {
   const { receipt, message } = item;
+  const status = imageReceiptStatus(receipt);
+  const kept = useKeptPreview(receipt.id);
+  const notice = noticeLineOf(receipt);
+  const actions = useReceiptActions(receipt);
+  const column = item.group ? 'pl-8' : undefined;
   return (
-    <View className="gap-2">
-      {message === null ? (
-        <View className="gap-2">
-          {receipt.results.length > 0 ? (
-            <Attachments
-              attachments={receipt.results.map((result) => result.attachment)}
-              chatId={receipt.chat_id}
-            />
-          ) : ['reserved', 'running'].includes(receipt.state) ? (
-            <PendingImage receipt={receipt} />
-          ) : null}
-          <Text variant="label" accessibilityLiveRegion="polite">
-            {imageReceiptStatus(receipt)}
-          </Text>
-          <Text variant="caption" tone="variant">
-            {receipt.endpoint.name}
-          </Text>
-          <TerminalImageNotice receipt={receipt} />
-          {receipt.reason === null ? null : (
-            <Text variant="footnote" tone={receipt.state === 'failed' ? 'critical' : 'variant'}>
-              {receipt.reason}
-            </Text>
-          )}
-        </View>
-      ) : (
-        renderMessage(message, flash)
-      )}
-      {receipt.state === 'completed' ||
-      (message !== null && ['reserved', 'running'].includes(receipt.state)) ? null : (
-        <ReceiptActions receipt={receipt} />
-      )}
-      <ReceiptDetails receipt={receipt} attachments={message?.row.attachments} />
+    <View className="gap-1.5">
+      {announce ? (
+        <ActivityAnnouncement
+          status={status}
+          text={status}
+          announceOnMount={isGenerating(receipt)}
+        />
+      ) : null}
+      <ImageRevealProvider reveal={revealOf(receipt, kept)}>
+        {message === null ? (
+          <View {...(column === undefined ? {} : { className: column })}>
+            <ReceiptBody receipt={receipt} kept={kept} />
+          </View>
+        ) : (
+          renderMessage(message, flash)
+        )}
+      </ImageRevealProvider>
+      <View {...(column === undefined ? {} : { className: column })}>
+        {notice === null ? (
+          <PromptLine
+            receipt={receipt}
+            attachments={message?.row.attachments}
+            actions={<PromptActions receipt={receipt} actions={actions} />}
+          />
+        ) : (
+          <NoticeLine receipt={receipt} notice={notice} actions={actions} />
+        )}
+      </View>
     </View>
   );
 }
 
-function ReceiptDetails({
+function ReceiptBody({
   receipt,
-  attachments,
+  kept,
 }: {
   readonly receipt: ImageOperationReceipt;
-  readonly attachments?: readonly AssistantAttachment[] | undefined;
+  readonly kept: KeptPreview | null;
 }): ReactNode {
-  const [open, setOpen] = useState(false);
-  return (
-    <CollapseRoot>
-      <Interactive
-        label={open ? 'Hide image details' : 'Show image details'}
-        checked={open}
-        onPress={() => {
-          setOpen(!open);
-        }}
-        className="min-h-touch-min flex-row items-center gap-2 self-start rounded-sm px-1"
-      >
-        <Text variant="footnote" tone="variant">
-          Details
-        </Text>
-        <TurnChevron open={open} />
-      </Interactive>
-      {open ? (
-        <CollapseBody className="gap-3 border-t border-outline-variant px-1 pb-2 pt-3">
-          <View className="gap-1">
-            <Text variant="caption" tone="variant">
-              Description
-            </Text>
-            <ImageDescriptions receipt={receipt} attachments={attachments} />
-          </View>
-          <View className="gap-1">
-            <Text variant="caption" tone="variant">
-              Prompt
-            </Text>
-            <Text variant="footnote" selectable>
-              {receipt.request.prompt}
-            </Text>
-          </View>
-          {receipt.state === 'completed' ? <ReceiptActions receipt={receipt} /> : null}
-        </CollapseBody>
-      ) : null}
-    </CollapseRoot>
-  );
-}
-
-function ImageDescriptions({
-  receipt,
-  attachments,
-}: {
-  readonly receipt: ImageOperationReceipt;
-  readonly attachments: readonly AssistantAttachment[] | undefined;
-}): ReactNode {
-  const rows = useRows('assistant_messages');
-  const images = attachments ?? receipt.results.map((result) => result.attachment);
-  const loaded = rows
-    .filter((row) => row.chat_id === receipt.chat_id)
-    .flatMap((row) => row.attachments);
-  if (images.length === 0)
-    return (
-      <Text variant="footnote" tone="variant">
-        No saved image to describe.
-      </Text>
+  if (receipt.results.length > 0) {
+    const attachments: readonly AssistantAttachment[] = receipt.results.map(
+      (result) => result.attachment,
     );
-  return images.map((image) => {
-    const current = loaded.find((attachment) => attachment.id === image.id) ?? image;
-    const transcript = current.transcript?.trim();
-    const available =
-      transcript !== undefined && transcript !== '' && transcript !== '(no description)';
-    return (
-      <View key={image.id} className="gap-1">
-        {images.length > 1 ? (
-          <Text variant="caption" tone="variant">
-            {image.name}
-          </Text>
-        ) : null}
-        <Text variant="footnote" tone={available ? 'default' : 'variant'} selectable={available}>
-          {available ? transcript : 'Description unavailable.'}
-        </Text>
-      </View>
-    );
-  });
+    return <Attachments attachments={attachments} chatId={receipt.chat_id} />;
+  }
+  return isGenerating(receipt) ? <GenerationFrame receipt={receipt} kept={kept} /> : null;
 }
 
-function TerminalImageNotice({ receipt }: { readonly receipt: ImageOperationReceipt }): ReactNode {
-  if (receipt.results.length > 0) return null;
-  if (receipt.state !== 'unknown' && receipt.state !== 'failed') return null;
-  return (
-    <Text variant="footnote" tone={receipt.state === 'failed' ? 'critical' : 'warning'}>
-      {receipt.state === 'failed'
-        ? 'The image request could not finish. No result was saved.'
-        : 'The image request stopped. Nothing was saved. You may still be charged; check Costs before trying again.'}
-    </Text>
-  );
-}
+type Pending = 'cancel' | 'read' | 'retry';
 
-function useReceiptActions(receipt: ImageOperationReceipt): {
-  readonly pending: 'cancel' | 'read' | null;
+interface ReceiptActions {
+  readonly pending: Pending | null;
   readonly requested: boolean;
-  readonly request: (cancel: boolean) => Promise<void>;
-} {
+  readonly run: (action: Pending) => void;
+}
+
+const FAILURE: Readonly<Record<Pending, string | null>> = {
+  cancel: 'Cancellation could not be confirmed. Refresh to see the status.',
+  read: null,
+  retry: 'The image request could not start again.',
+};
+
+function useReceiptActions(receipt: ImageOperationReceipt): ReceiptActions {
   const actions = useImageActions();
+  const retry = useImageRetry();
   const locked = useRef(false);
-  const [pending, setPending] = useState<'cancel' | 'read' | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
   const [requested, setRequested] = useState(false);
-  const request = async (cancel: boolean): Promise<void> => {
+  const perform = async (action: Pending): Promise<void> => {
+    if (action === 'retry') return retry(receipt);
+    const confirmed =
+      action === 'cancel' ? await actions.cancel(receipt.id) : await actions.read(receipt.id);
+    setRequested(confirmed.cancellation_requested);
+  };
+  const request = async (action: Pending): Promise<void> => {
     if (locked.current) return;
     locked.current = true;
-    setPending(cancel ? 'cancel' : 'read');
-    if (cancel) setRequested(true);
+    setPending(action);
+    if (action === 'cancel') setRequested(true);
     try {
-      const confirmed = cancel ? await actions.cancel(receipt.id) : await actions.read(receipt.id);
-      setRequested(confirmed.cancellation_requested);
+      await perform(action);
     } catch (error) {
-      notify({
-        message: cancel
-          ? 'Cancellation could not be confirmed. Check receipt.'
-          : errorText(error).title,
-        tone: 'critical',
-      });
+      notify({ message: FAILURE[action] ?? errorText(error).title, tone: 'critical' });
     } finally {
       setPending(null);
       locked.current = false;
     }
   };
-  return { pending, requested: requested || receipt.cancellation_requested, request };
+  return {
+    pending,
+    requested: requested || receipt.cancellation_requested,
+    run: (action): void => {
+      background(request(action), 'image_receipts.request_failed');
+    },
+  };
 }
 
-function ReceiptActions({ receipt }: { readonly receipt: ImageOperationReceipt }): ReactNode {
-  const { pending, requested, request } = useReceiptActions(receipt);
-  const active = ['running', 'reserved'].includes(receipt.state);
-  return (
-    <View className="gap-1">
-      {requested && active ? (
-        <Text variant="footnote" accessibilityLiveRegion="polite" tone="variant">
-          Cancellation requested · waiting for confirmation
-        </Text>
-      ) : null}
-      <View className="flex-row flex-wrap gap-2">
-        {active ? (
-          <Button
-            label="Cancel operation"
-            variant="outlined"
-            loading={pending === 'cancel'}
-            disabled={pending !== null || requested}
-            onPress={() => {
-              background(request(true), 'image_receipts.request_failed');
-            }}
-          />
-        ) : null}
-        {active || receipt.state === 'unknown' ? (
-          <Button
-            label="Check receipt"
-            variant="text"
-            loading={pending === 'read'}
+function PromptActions({
+  receipt,
+  actions,
+}: {
+  readonly receipt: ImageOperationReceipt;
+  readonly actions: ReceiptActions;
+}): ReactNode {
+  const { pending, requested, run } = actions;
+  if (!isGenerating(receipt))
+    return (
+      <ActionGroup>
+        {[
+          <TextAction
+            key="again"
+            label={pending === 'retry' ? 'Starting…' : 'Again'}
             disabled={pending !== null}
             onPress={() => {
-              background(request(false), 'image_receipts.request_failed');
+              run('retry');
             }}
-          />
-        ) : null}
+          />,
+        ]}
+      </ActionGroup>
+    );
+  return (
+    <ActionGroup>
+      {[
+        <TextAction
+          key="cancel"
+          label={requested ? 'Cancelling…' : 'Cancel'}
+          disabled={pending !== null || requested}
+          onPress={() => {
+            run('cancel');
+          }}
+        />,
+        <TextAction
+          key="refresh"
+          label="Refresh"
+          disabled={pending !== null}
+          onPress={() => {
+            run('read');
+          }}
+        />,
+      ]}
+    </ActionGroup>
+  );
+}
+
+const LINE_ICON = { critical: 'alert', warning: 'warning', variant: 'clock' } as const;
+
+function lineAction(
+  action: ImageLineAction,
+  receipt: ImageOperationReceipt,
+  { pending, run }: ReceiptActions,
+): ReactNode {
+  switch (action) {
+    case 'edit':
+      return (
+        <TextAction
+          key="edit"
+          label="Edit prompt"
+          primary
+          onPress={() => {
+            setDraft(receipt.chat_id, receipt.request.prompt);
+          }}
+        />
+      );
+    case 'retry':
+      return (
+        <TextAction
+          key="retry"
+          label={pending === 'retry' ? 'Starting…' : 'Retry'}
+          disabled={pending !== null}
+          onPress={() => {
+            run('retry');
+          }}
+        />
+      );
+    case 'check':
+      return (
+        <TextAction
+          key="refresh"
+          label="Refresh"
+          disabled={pending !== null}
+          onPress={() => {
+            run('read');
+          }}
+        />
+      );
+  }
+}
+
+function NoticeLine({
+  receipt,
+  notice,
+  actions,
+}: {
+  readonly receipt: ImageOperationReceipt;
+  readonly notice: ImageNoticeLine;
+  readonly actions: ReceiptActions;
+}): ReactNode {
+  return (
+    <View
+      accessibilityRole={notice.tone === 'critical' ? 'alert' : undefined}
+      className="flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5"
+    >
+      <Icon name={LINE_ICON[notice.tone]} size={16} tone={notice.tone} />
+      <Text variant="footnote" tone="variant" className="min-w-0 shrink">
+        {notice.text}
+      </Text>
+      <View className="grow flex-row items-center gap-1.5">
+        <ActionGroup>
+          {notice.actions.map((action) => lineAction(action, receipt, actions))}
+        </ActionGroup>
+        <Text variant="caption" tone="faint" numberOfLines={1} className="ml-auto tabular-nums">
+          {`${clock(receipt.updated_at)} · ${String(takenSeconds(receipt))} s`}
+        </Text>
       </View>
     </View>
   );

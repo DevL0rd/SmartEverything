@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM"],
+    "types": ["react", "node", "expo/types"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "smarteverything-kit": ["./kit-entry.ts"]
+    }
+  },
+  "include": ["*.ts", "*.tsx", "previews/**/*.tsx", "../apps/app/types/**/*.d.ts"],
+  "references": [{ "path": "../apps/app" }, { "path": "../packages/domain" }]
+}

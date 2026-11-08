@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ServiceController } from '../src/service/controller.js';
 import type { ServiceManager } from '../src/service/manager.js';
-import { nodeWindowFile } from '../src/service/ready.js';
+import { desktopConnectionFile } from '../src/service/ready.js';
 import { LOCATIONS, fakeSystem, type FakeSystem } from './support/fake-system.js';
 
 const TOKEN = `set_${'b'.repeat(64)}`;
@@ -25,8 +25,6 @@ function controllerOn(system: FakeSystem): ServiceController {
     manager,
     locations: LOCATIONS,
     system,
-    go2rtcBinary: '/opt/go2rtc',
-    openSocket: () => ({ close: () => undefined, addEventListener: () => undefined }),
     timeoutMs: 80,
     failed: () => undefined,
   });
@@ -59,11 +57,13 @@ describe('the window of a computer that runs as a node', () => {
   it('keeps the pairing the Pair screen saved, owner-only, and hands it back', async () => {
     const { system, controller } = runNode();
     await controller.setWindow({ url: `${HUB}/`, token: TOKEN });
-    expect(JSON.parse(system.stored.get(nodeWindowFile(LOCATIONS)) ?? 'null')).toStrictEqual({
-      hub_url: HUB,
-      token: TOKEN,
-    });
-    expect(system.modes.get(nodeWindowFile(LOCATIONS))).toBe(0o600);
+    expect(JSON.parse(system.stored.get(desktopConnectionFile(LOCATIONS)) ?? 'null')).toStrictEqual(
+      {
+        hub_url: HUB,
+        token: TOKEN,
+      },
+    );
+    expect(system.modes.get(desktopConnectionFile(LOCATIONS))).toBe(0o600);
     expect(await controller.server()).toStrictEqual({ url: HUB, token: TOKEN });
   });
 
@@ -71,7 +71,7 @@ describe('the window of a computer that runs as a node', () => {
     const { system, controller } = runNode();
     await controller.setWindow({ url: HUB, token: TOKEN });
     await controller.setWindow(null);
-    expect(system.stored.has(nodeWindowFile(LOCATIONS))).toBe(false);
+    expect(system.stored.has(desktopConnectionFile(LOCATIONS))).toBe(false);
     expect(await controller.server()).toBeNull();
   });
 

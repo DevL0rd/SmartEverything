@@ -38,7 +38,7 @@ function Pick({
       label={label}
       options={choicesOf(values)}
       value={value}
-      placeholder="Printer default"
+      placeholder="Printer chooses"
       onChange={onPick}
     />
   );
@@ -56,7 +56,7 @@ function Basics({ options, form, onChange }: PrintControlsProps): ReactNode {
             label="Copies"
             value={form.copies}
             min={options.copies.lower}
-            max={Math.min(options.copies.upper, 999)}
+            max={options.copies.upper}
             step={1}
             onChange={(copies) => {
               onChange({ copies });

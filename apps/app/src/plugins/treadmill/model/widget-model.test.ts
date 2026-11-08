@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bodyHeightOf,
   calendarBarsHeight,
+  calendarPlotOf,
   calendarWeeks,
   climbRingOf,
   gaugePxOf,
@@ -13,7 +14,6 @@ import {
   liveFaceOf,
   speedInclineSentence,
   stripShowsTrend,
-  visualPxOf,
 } from './widget-model';
 
 const RANGE = { min: 0, max: 20, step: 1, remoteMax: null } as const;
@@ -71,10 +71,7 @@ describe('how the treadmill widget lays itself out', () => {
     expect(bodyHeightOf({ width: 600, height: 20, idiom: 'touch' })).toBe(0);
   });
 
-  it('caps the picture and the gauge by the height of the body, never by the width', () => {
-    expect(visualPxOf('panel', 300)).toBe(128);
-    expect(visualPxOf('panel', 100)).toBe(72);
-    expect(visualPxOf('strip', 60)).toBe(48);
+  it('caps the gauge by the height of the body, never by the width', () => {
     expect(gaugePxOf(500)).toBe(200);
     expect(gaugePxOf(150)).toBe(142);
     expect(gaugePxOf(40)).toBe(112);
@@ -95,6 +92,20 @@ describe('how the treadmill widget lays itself out', () => {
     expect(calendarWeeks(100)).toBe(8);
     expect(calendarWeeks(300)).toBe(20);
     expect(calendarWeeks(2000)).toBe(53);
+  });
+
+  it('fits seven calendar rows inside a short widget without discarding available weeks', () => {
+    const short = calendarPlotOf(270, 46);
+    expect(short.height).toBe(46);
+    expect(short.width).toBeLessThanOrEqual(270);
+    expect(short.weeks).toBeGreaterThan(calendarWeeks(270));
+  });
+
+  it('fits the minimum calendar history even when the adjacent summary leaves little width', () => {
+    const narrow = calendarPlotOf(70, 58);
+    expect(narrow.height).toBeLessThanOrEqual(58);
+    expect(narrow.width).toBeLessThanOrEqual(70);
+    expect(narrow.weeks).toBe(8);
   });
 
   it('reads speed, incline and climb into one sentence and one violet track fill', () => {

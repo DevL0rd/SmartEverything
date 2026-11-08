@@ -9,7 +9,7 @@ import type {
   NodeLowering,
   ProblemDetail,
 } from './lower-effects';
-import { leafLowering, readerOf } from './lower-effects';
+import { leafLowering, readerOf, routeOnError } from './lower-effects';
 import type { Plan, PlanOp } from './plan';
 
 export interface LowerContext {
@@ -21,8 +21,6 @@ export type LowerResult =
   | { readonly ok: false; readonly problems: readonly LowerProblem[] };
 
 const ROOT: Frame = { loops: [], durable: true };
-
-const ON_ERROR_SCOPE = 'onError';
 
 function problemOf(
   node: Pick<FlowNode, 'id' | 'key'>,
@@ -48,17 +46,6 @@ function loweringOf(node: FlowNode, kind: LowerKind): NodeLowering | undefined {
   return CONTROL_LOWERING[node.kind] ?? leafLowering(kind);
 }
 
-function routed(node: FlowNode, op: PlanOp, low: Lowering): PlanOp {
-  const handler = node.scopes?.[ON_ERROR_SCOPE];
-  if (node.policy?.onError !== 'route' || handler === undefined) return op;
-  return {
-    op: 'try',
-    at: { id: node.id, key: node.key },
-    body: op,
-    catches: [{ id: node.id, then: low.scope(handler, low.frame) }],
-  };
-}
-
 function nodeOp(
   context: LowerContext,
   problems: LowerProblem[],
@@ -81,7 +68,7 @@ function nodeOp(
     });
     return undefined;
   }
-  return routed(node, lowered(readerOf(low, node, kind)), low);
+  return routeOnError(node, lowered(readerOf(low, node, kind)), low);
 }
 
 function scopeOps(

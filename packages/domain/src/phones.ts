@@ -152,6 +152,15 @@ export const PHONE_EVENT = z.discriminatedUnion('kind', [
 
 export type PhoneEvent = z.infer<typeof PHONE_EVENT>;
 
+const HARDWARE_TEXT = z.string().trim().min(1).max(120);
+
+export const PHONE_HARDWARE = z.strictObject({
+  model: HARDWARE_TEXT.describe('The hardware model code the phone reports, such as SM-F966B'),
+  manufacturer: HARDWARE_TEXT.describe('The company that made the phone, such as samsung'),
+});
+
+export type PhoneHardware = z.infer<typeof PHONE_HARDWARE>;
+
 export const PHONE_REPORT = NODE_REPORT.omit({ metrics: true }).extend({
   values: PHONE_VALUES,
   events: z.array(PHONE_EVENT),
@@ -159,6 +168,7 @@ export const PHONE_REPORT = NODE_REPORT.omit({ metrics: true }).extend({
   permissions: MACHINE_PERMISSION_STATES.optional(),
   features: PHONE_FEATURE_SUPPORTS.optional(),
   detail: z.record(z.string(), z.unknown()).optional(),
+  hardware: PHONE_HARDWARE.optional(),
 });
 
 export type PhoneReport = z.infer<typeof PHONE_REPORT>;

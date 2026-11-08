@@ -1,6 +1,13 @@
-import { DEVICE_ROW, type JsonValue, type RowChange } from '@smarteverything/domain';
+import {
+  DEVICE_ROW,
+  GOOGLE_ACCOUNT_ROW,
+  SNAPSHOT,
+  type JsonValue,
+  type RowChange,
+} from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { applyChange } from './live-reducers';
+import { applyChange, replaceWith } from './live-reducers';
+import { snapshotWire } from './snapshot-fixture';
 import { emptyState } from './state';
 
 function stateChange(value: number, observedAt: string): RowChange {
@@ -111,5 +118,41 @@ describe('applyChange device labels', () => {
     expect(renamed.tables.devices.byId[A]?.label).toBe('Lamp');
     expect(renamed.tables.devices.byId[B]?.label).toBe('Desk');
     expect(renamed.tables.devices.byId[A]).toBe(state.tables.devices.byId[A]);
+  });
+});
+
+describe('replaceWith planner tables', () => {
+  const PROFILE = '44444444-4444-4444-8444-444444444444';
+  const account = GOOGLE_ACCOUNT_ROW.parse({
+    profile_id: PROFILE,
+    email: null,
+    scopes: [],
+    status: 'unlinked',
+    problem: null,
+    calendar_ids: [],
+    list_ids: [],
+    last_sync_at: null,
+    last_error: null,
+  });
+  const wire = SNAPSHOT.parse(snapshotWire());
+  const snapshot = { ...wire, tables: { ...wire.tables, google_accounts: [account] } };
+
+  it('keeps every list table readable after a snapshot', () => {
+    const state = replaceWith(emptyState(), snapshot);
+    const names = Object.keys(emptyState().tables);
+    expect(Object.keys(state.tables).sort()).toEqual([...names].sort());
+    for (const table of Object.values(state.tables)) expect(Array.isArray(table.rows)).toBe(true);
+    expect(state.tables.google_accounts.rows).toEqual([account]);
+  });
+
+  it('applies a live change to a planner table', () => {
+    const state = applyChange(replaceWith(emptyState(), snapshot), {
+      type: 'change',
+      table: 'google_accounts',
+      operation: 'UPDATE',
+      record: { ...account, status: 'linked' },
+      oldRecord: null,
+    });
+    expect(state.tables.google_accounts.rows.map((row) => row.status)).toEqual(['linked']);
   });
 });

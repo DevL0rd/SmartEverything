@@ -49,7 +49,7 @@ const DIMMER_ONLY = light('dimmer only', [POWER, BRIGHTNESS]);
 const OFFLINE_BULB = light('offline bulb', [POWER, BRIGHTNESS, TEMPERATURE, COLOUR], offline);
 
 const FRAMES: Readonly<Record<'xs' | 'm' | 'l' | 'w' | 'xl', WidgetFrameBox>> = {
-  xs: { width: 508, height: 120, idiom: 'pointer' },
+  xs: { width: 508, height: 100, idiom: 'pointer' },
   m: { width: 326, height: 168, idiom: 'touch' },
   l: { width: 326, height: 324, idiom: 'touch' },
   w: { width: 1072, height: 120, idiom: 'pointer' },

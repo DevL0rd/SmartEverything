@@ -1,65 +1,28 @@
-import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ApiError } from '@smarteverything/domain';
 import { gitSourceOf } from '../../src/harness/extension-source';
 import { useRig, type Rig } from '../assistant/harness/support/rig';
+import { GitFixture, MARKETPLACE, SKILL, installOne, referenceOf } from './extension-fixture';
 
 let rig: Rig;
 useRig((made) => {
   rig = made;
 });
 
-let repository: string;
+let fixture: GitFixture;
 beforeEach(async () => {
-  repository = await mkdtemp(join(tmpdir(), 'extension-source-'));
+  fixture = new GitFixture(await mkdtemp(join(tmpdir(), 'extension-source-')));
 });
 afterEach(async () => {
-  await rm(repository, { recursive: true, force: true });
+  await rm(fixture.repository, { recursive: true, force: true });
 });
 
-const SKILL = (name: string, body: string): string =>
-  `---\nname: ${name}\ndescription: ${name} instructions.\nlicense: MIT\n---\n\n${body}\n`;
-
-async function put(files: Readonly<Record<string, string>>): Promise<void> {
-  for (const [path, content] of Object.entries(files)) {
-    await mkdir(dirname(join(repository, path)), { recursive: true });
-    await writeFile(join(repository, path), content);
-  }
+function here(path?: string): { url: string; path?: string } {
+  return path === undefined ? { url: fixture.repository } : { url: fixture.repository, path };
 }
-
-function git(...args: string[]): void {
-  execFileSync(
-    'git',
-    ['-C', repository, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', ...args],
-    { stdio: 'pipe' },
-  );
-}
-
-async function commit(files: Readonly<Record<string, string>>): Promise<void> {
-  await put(files);
-  git('init', '--quiet');
-  git('add', '-A');
-  git('commit', '--quiet', '-m', 'fixture');
-}
-
-const MARKETPLACE = {
-  '.claude-plugin/marketplace.json': JSON.stringify({
-    name: 'fixture-market',
-    owner: { name: 'Fixture Inc' },
-    plugins: [
-      { name: 'tools', description: 'Tools with hooks.', source: './plugins/tools' },
-      { name: 'notes', description: 'Notes only.', source: './plugins/notes', license: 'MIT' },
-    ],
-  }),
-  'plugins/tools/.claude-plugin/plugin.json': JSON.stringify({ name: 'tools' }),
-  'plugins/tools/hooks/hooks.json': JSON.stringify({ hooks: {} }),
-  'plugins/tools/skills/lint/SKILL.md': SKILL('lint', 'Run the linter.'),
-  'plugins/notes/skills/note/SKILL.md': SKILL('note', 'Write short notes.'),
-  'skills/standalone/SKILL.md': SKILL('standalone', 'Stand alone.'),
-};
 
 function installed(): readonly string[] {
   return rig.service.extensions
@@ -112,36 +75,41 @@ describe('reading a git source', () => {
 });
 
 describe('browsing a marketplace', () => {
-  it('lists the plugins of a git marketplace and what to install for each, with no network', async () => {
-    await commit(MARKETPLACE);
+  it('lists the plugins of a git marketplace with a reference to install each, with no network', async () => {
+    await fixture.commit(MARKETPLACE);
 
-    const page = await rig.service.discovery.browse({
-      kind: 'extension',
-      source: { url: repository },
-    });
+    const page = await rig.service.discovery.browse({ kind: 'plugin', source: here() });
 
-    expect(page.source.label).toBe('fixture-market');
+    expect(page.sources).toEqual([
+      expect.objectContaining({
+        source: here(),
+        label: 'fixture-market',
+        snapshot: fixture.head(),
+      }),
+    ]);
     expect(page.items.map((item) => item.name)).toEqual(['tools', 'notes']);
-    expect(page.items[0]?.install).toMatchObject({
-      source: { url: repository, path: 'plugins/tools' },
-      select: ['tools'],
+    expect(page.items[0]?.reference).toEqual({
+      source: here(),
+      snapshot: fixture.head(),
+      id: 'plugin:tools',
+      origin: { url: fixture.repository, ref: null, path: 'plugins/tools' },
     });
   });
 
   it('lists plain skills of a repository that has no marketplace', async () => {
-    await commit({ 'skills/a/SKILL.md': SKILL('a', 'A.'), 'skills/b/SKILL.md': SKILL('b', 'B.') });
-
-    const page = await rig.service.discovery.browse({
-      kind: 'skill',
-      source: { url: repository },
+    await fixture.commit({
+      'skills/a/SKILL.md': SKILL('a', 'A.'),
+      'skills/b/SKILL.md': SKILL('b', 'B.'),
     });
+
+    const page = await rig.service.discovery.browse({ kind: 'skill', source: here() });
 
     expect(page.items.map((item) => item.name)).toEqual(['a', 'b']);
   });
 
   it('says the source is unavailable, not that something changed, when git cannot reach it', async () => {
     const error = await rig.service.discovery
-      .browse({ kind: 'skill', source: { url: join(repository, 'missing') } })
+      .browse({ kind: 'skill', source: { url: join(fixture.repository, 'missing') } })
       .catch((cause: unknown) => cause);
 
     expect(error).toBeInstanceOf(ApiError);
@@ -160,30 +128,33 @@ describe('a marketplace that points outside its repository', () => {
     ['a ../ skill', { name: 'up', source: './', skills: ['../../etc'] }],
     ['a name that is a path', { name: '../up', source: './skills' }],
   ])('refuses %s and writes nothing outside it', async (_label, plugin) => {
-    await commit(market(plugin));
+    await fixture.commit(market(plugin));
 
     await expect(
-      rig.service.discovery.browse({ kind: 'extension', source: { url: repository } }),
+      rig.service.discovery.browse({ kind: 'plugin', source: here() }),
     ).rejects.toMatchObject({ code: 'invalid_request' });
-    await expect(
-      rig.service.extensions.install({ source: { url: repository }, select: ['up'] }),
-    ).rejects.toMatchObject({ code: 'invalid_request' });
+    const { results } = await rig.service.extensions.install({
+      items: [{ source: here(), snapshot: fixture.head(), id: 'plugin:up' }],
+    });
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ ok: false, error: { code: 'invalid_request' } });
     expect(installed()).toEqual([]);
   });
 
   it('refuses a symlinked folder and keeps the catalogue listing', async () => {
     const outside = await mkdtemp(join(tmpdir(), 'extension-outside-'));
     await writeFile(join(outside, 'secret.txt'), 'private');
-    await put(market({ name: 'link', source: './evil' }));
-    await symlink(outside, join(repository, 'evil'));
-    git('init', '--quiet');
-    git('add', '-A');
-    git('commit', '--quiet', '-m', 'fixture');
+    await fixture.put(market({ name: 'link', source: './evil' }));
+    await symlink(outside, join(fixture.repository, 'evil'));
+    fixture.git('init', '--quiet');
+    fixture.git('add', '-A');
+    fixture.git('commit', '--quiet', '-m', 'fixture');
 
-    await expect(
-      rig.service.extensions.install({ source: { url: repository }, select: ['link'] }),
-    ).rejects.toMatchObject({ code: 'invalid_request' });
+    const { results } = await rig.service.extensions.install({
+      items: [{ source: here(), snapshot: fixture.head(), id: 'plugin:link' }],
+    });
 
+    expect(results[0]).toMatchObject({ ok: false, error: { code: 'invalid_request' } });
     expect(installed()).toEqual([]);
     expect(rig.service.extensions.catalogue().items.length).toBeGreaterThan(0);
     await expect(stat(join(outside, '.claude-plugin'))).rejects.toThrow();
@@ -193,64 +164,51 @@ describe('a marketplace that points outside its repository', () => {
 
 describe('installing from a git source', () => {
   it('installs a skill, makes it part of the shared configuration and keeps its files on the hub', async () => {
-    await commit(MARKETPLACE);
+    await fixture.commit(MARKETPLACE);
 
-    const [item] = await rig.service.extensions.install({
-      source: { url: repository, path: 'skills/standalone' },
-    });
+    const item = await installOne(
+      rig,
+      await referenceOf(rig, 'skill:standalone', here('skills/standalone')),
+    );
 
     expect(item).toMatchObject({ id: 'skill:standalone', enabled: true, executes: false });
     expect(assetIds('skills')).toEqual(['skill:standalone']);
-    const tree = await rig.service.extensions.tree(
-      'skill',
-      'skill:standalone',
-      item?.version ?? '',
-    );
+    const tree = await rig.service.extensions.tree('skill', 'skill:standalone', item.version ?? '');
     expect(tree.files.map((file) => file.path)).toEqual(['SKILL.md']);
   });
 
   it('refuses a plugin with hooks until the owner confirms it, then runs it from the next configuration', async () => {
-    await commit(MARKETPLACE);
-    const request = { source: { url: repository }, select: ['tools'] };
+    await fixture.commit(MARKETPLACE);
+    const reference = await referenceOf(rig, 'plugin:tools', here());
 
-    await expect(rig.service.extensions.install(request)).rejects.toThrow(/Confirm to install/u);
+    await expect(installOne(rig, reference)).rejects.toThrow(/Confirm to install/u);
     expect(installed()).toEqual([]);
 
-    const [item] = await rig.service.extensions.install({ ...request, confirm_executes: true });
+    const item = await installOne(rig, reference, true);
 
     expect(item).toMatchObject({ id: 'plugin:tools', executes: true, confirmed: true });
     const desired = rig.service.configuration
       .desired()
       .entries.find((entry) => entry.id === 'claude-plugins');
     expect(desired?.metadata?.skill_assets).toEqual([
-      { id: 'plugin:tools', version: item?.version, executes: true },
+      { id: 'plugin:tools', version: item.version, executes: true },
     ]);
   });
 
   it('installs a plugin without hooks with no confirmation', async () => {
-    await commit(MARKETPLACE);
+    await fixture.commit(MARKETPLACE);
 
-    const [item] = await rig.service.extensions.install({
-      source: { url: repository },
-      select: ['notes'],
-    });
+    const item = await installOne(rig, await referenceOf(rig, 'plugin:notes', here()));
 
     expect(item).toMatchObject({ id: 'plugin:notes', executes: false, license: 'MIT' });
   });
 
-  it('asks which one to install when the source offers several', async () => {
-    await commit(MARKETPLACE);
-
-    await expect(rig.service.extensions.install({ source: { url: repository } })).rejects.toThrow(
-      /choose which to install/u,
-    );
-  });
-
   it('removes an installed skill with its files and its place in the configuration', async () => {
-    await commit(MARKETPLACE);
-    const [item] = await rig.service.extensions.install({
-      source: { url: repository, path: 'skills/standalone' },
-    });
+    await fixture.commit(MARKETPLACE);
+    const item = await installOne(
+      rig,
+      await referenceOf(rig, 'skill:standalone', here('skills/standalone')),
+    );
     const before = rig.service.configuration.desired().revision;
 
     await rig.service.extensions.remove('skill:standalone');
@@ -259,18 +217,20 @@ describe('installing from a git source', () => {
     expect(assetIds('skills')).toEqual([]);
     expect(rig.service.configuration.desired().revision).not.toBe(before);
     await expect(
-      rig.service.extensions.tree('skill', 'skill:standalone', item?.version ?? ''),
+      rig.service.extensions.tree('skill', 'skill:standalone', item.version ?? ''),
     ).rejects.toThrow(/changed on the Home Hub/u);
   });
 });
 
 describe('switching and writing skills and plugins', () => {
   it('switches one skill off and on again without touching the others', async () => {
-    await commit({
+    await fixture.commit({
       'skills/a/SKILL.md': SKILL('a', 'A.'),
       'skills/b/SKILL.md': SKILL('b', 'B.'),
     });
-    await rig.service.extensions.install({ source: { url: repository }, select: ['a', 'b'] });
+    await rig.service.extensions.install({
+      items: [await referenceOf(rig, 'skill:a', here()), await referenceOf(rig, 'skill:b', here())],
+    });
 
     await rig.service.extensions.change('skill:a', { enabled: false });
     expect(assetIds('skills')).toEqual(['skill:b']);
@@ -315,10 +275,8 @@ describe('switching and writing skills and plugins', () => {
 
 describe('updating from the source', () => {
   it('fetches a newer version of a git skill and leaves unchanged ones alone', async () => {
-    await commit({ 'skills/a/SKILL.md': SKILL('a', 'One.') });
-    const [first] = await rig.service.extensions.install({
-      source: { url: repository, path: 'skills/a' },
-    });
+    await fixture.commit({ 'skills/a/SKILL.md': SKILL('a', 'One.') });
+    const first = await installOne(rig, await referenceOf(rig, 'skill:a', here('skills/a')));
 
     expect(await rig.service.extensions.update('all')).toEqual({
       updated: 0,
@@ -326,8 +284,7 @@ describe('updating from the source', () => {
       skipped: 0,
     });
 
-    await put({ 'skills/a/SKILL.md': SKILL('a', 'Two.') });
-    git('commit', '--quiet', '-am', 'edit');
+    await fixture.change({ 'skills/a/SKILL.md': SKILL('a', 'Two.') });
 
     expect(await rig.service.extensions.update('all')).toEqual({
       updated: 1,
@@ -337,22 +294,15 @@ describe('updating from the source', () => {
     const [after] = rig.service.extensions
       .catalogue()
       .items.filter((item) => item.id === 'skill:a');
-    expect(after?.version).not.toBe(first?.version);
+    expect(after?.version).not.toBe(first.version);
     const tree = await rig.service.extensions.tree('skill', 'skill:a', after?.version ?? '');
     expect(Buffer.from(tree.files[0]?.base64 ?? '', 'base64').toString()).toContain('Two.');
   });
 
   it('updates what was installed from Browse, because it follows the branch and not the browsed snapshot', async () => {
-    await commit({ 'skills/a/SKILL.md': SKILL('a', 'One.') });
-    const page = await rig.service.discovery.browse({
-      kind: 'skill',
-      source: { url: repository },
-    });
-    const install = page.items[0]?.install;
-    if (install === undefined) throw new Error('Browse offered nothing to install.');
-    await rig.service.extensions.install(install);
-    await put({ 'skills/a/SKILL.md': SKILL('a', 'Two.') });
-    git('commit', '--quiet', '-am', 'edit');
+    await fixture.commit({ 'skills/a/SKILL.md': SKILL('a', 'One.') });
+    await installOne(rig, await referenceOf(rig, 'skill:a', here()));
+    await fixture.change({ 'skills/a/SKILL.md': SKILL('a', 'Two.') });
 
     expect(await rig.service.extensions.update('all')).toEqual({
       updated: 1,
@@ -362,7 +312,7 @@ describe('updating from the source', () => {
   });
 
   it('replaces the placeholder description of a moved plugin with the one in its manifest', async () => {
-    await commit({
+    await fixture.commit({
       'plugins/tools/.claude-plugin/plugin.json': JSON.stringify({
         name: 'tools',
         description: 'Real tools.',
@@ -370,7 +320,7 @@ describe('updating from the source', () => {
       }),
       'plugins/tools/skills/lint/SKILL.md': SKILL('lint', 'Lint.'),
     });
-    await rig.service.extensions.install({ source: { url: repository, path: 'plugins/tools' } });
+    await installOne(rig, await referenceOf(rig, 'plugin:tools', here('plugins/tools')));
     const row = rig.opened.store.harnessExtensions.find('plugin:tools');
     if (row === undefined) throw new Error('The plugin was not installed.');
     rig.opened.store.harnessExtensions.keep({
@@ -387,10 +337,9 @@ describe('updating from the source', () => {
   });
 
   it('fetches a newer version of a marketplace plugin whose folder has no manifest', async () => {
-    await commit(MARKETPLACE);
-    await rig.service.extensions.install({ source: { url: repository }, select: ['notes'] });
-    await put({ 'plugins/notes/skills/note/SKILL.md': SKILL('note', 'Changed.') });
-    git('commit', '--quiet', '-am', 'edit');
+    await fixture.commit(MARKETPLACE);
+    await installOne(rig, await referenceOf(rig, 'plugin:notes', here()));
+    await fixture.change({ 'plugins/notes/skills/note/SKILL.md': SKILL('note', 'Changed.') });
 
     expect(await rig.service.extensions.update('all')).toEqual({
       updated: 1,
@@ -400,19 +349,18 @@ describe('updating from the source', () => {
   });
 
   it('does not touch skills written in the app and keeps going when a source is gone', async () => {
-    await commit({ 'skills/a/SKILL.md': SKILL('a', 'One.') });
-    await rig.service.extensions.install({ source: { url: repository, path: 'skills/a' } });
+    await fixture.commit({ 'skills/a/SKILL.md': SKILL('a', 'One.') });
+    await installOne(rig, await referenceOf(rig, 'skill:a', here('skills/a')));
     await rig.service.extensions.write('mine', {
       files: [{ path: 'SKILL.md', content: SKILL('mine', 'Mine.') }],
     });
-    await rm(join(repository, '.git'), { recursive: true, force: true });
+    await rm(join(fixture.repository, '.git'), { recursive: true, force: true });
 
     expect(await rig.service.extensions.update('all')).toEqual({
       updated: 0,
       unchanged: 0,
       skipped: 2,
     });
-    await expect(stat(join(repository, 'skills/a/SKILL.md'))).resolves.toBeDefined();
-    expect(await readFile(join(repository, 'skills/a/SKILL.md'), 'utf8')).toContain('One.');
+    expect(await readFile(join(fixture.repository, 'skills/a/SKILL.md'), 'utf8')).toContain('One.');
   });
 });

@@ -24,7 +24,7 @@ class HubNetworkModule : Module() {
   private var connectivity: HubConnectivity? = null
   private val inspection = HubPairingInspection()
   private val enrollment by lazy { ServerEnrollment(context()) }
-  private val resources = HubResourceRegistrar(::context, { appContext.currentActivity }, ::authority)
+  private val resources = HubResourceRegistrar(::context, { appContext.currentActivity }, ::authority) { sendEvent("onAndroidUpdateProgress", it) }
   private val html = HubHtmlRegistrar(::context, ::authority, ::htmlEnrollment) { sendEvent("onHtmlRetired", mapOf("id" to it)) }
 
   private fun context(): Context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
@@ -78,7 +78,7 @@ class HubNetworkModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("HubNetwork")
-    Events("onDiscovery", "onNetwork", "onRoute", "onHtmlRetired")
+    Events("onDiscovery", "onNetwork", "onRoute", "onHtmlRetired", "onAndroidUpdateProgress")
     OnDestroy { shutdown() }
     OnCreate { NativeLog.info(SCOPE, "module.created") }
     OnActivityEntersBackground {
@@ -199,7 +199,7 @@ class HubNetworkModule : Module() {
     AsyncFunction("browserEvaluate") Coroutine { id: String, code: String -> withContext(Dispatchers.Main) { HubBrowserPage.evaluate(id, code) } }
     AsyncFunction("browserPress") Coroutine { id: String, json: String -> withContext(Dispatchers.Main) { HubBrowserPage.press(id, json) } }
     View(HubHtmlView::class) {
-      Events("onStatus")
+      Events("onStatus", "onConsole")
       Prop("target") { view: HubHtmlView, json: String -> view.bindBrowser(json) }
       Prop("displayed") { view: HubHtmlView, value: Boolean -> view.displayed(value) }
       Prop("projection") { view: HubHtmlView, json: String -> html.attach(view, json) }

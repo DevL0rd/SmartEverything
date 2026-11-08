@@ -4,7 +4,6 @@ import {
   baseName,
   doneMessage,
   failureMessage,
-  glyphOf,
   joinPath,
   nameError,
   parentOf,
@@ -92,16 +91,6 @@ describe('messages', () => {
     expect(
       doneMessage({ action: 'move', paths: ['/a'], to: '/home/dana/Docs', replace: false }, result),
     ).toBe('Moved 2 items to Docs');
-  });
-});
-
-describe('glyphOf', () => {
-  it('picks the icon from the kind and the extension', () => {
-    expect(glyphOf({ kind: 'folder', name: 'a' })).toBe('folder');
-    expect(glyphOf({ kind: 'link', name: 'a' })).toBe('link');
-    expect(glyphOf({ kind: 'file', name: 'Photo.JPG' })).toBe('image');
-    expect(glyphOf({ kind: 'file', name: 'png' })).toBe('fileText');
-    expect(glyphOf({ kind: 'file', name: 'notes.txt' })).toBe('fileText');
   });
 });
 

@@ -56,7 +56,7 @@ function Row({
         selected && 'bg-surface-2',
       )}
     >
-      <Text variant="caption" tone="variant" numberOfLines={1} className="w-24">
+      <Text variant="caption" tone="variant" className="w-2/5 max-w-56 shrink-0">
         {row.title}
       </Text>
       <View className="min-w-0 flex-1">

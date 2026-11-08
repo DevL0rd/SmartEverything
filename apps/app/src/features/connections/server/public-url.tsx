@@ -13,6 +13,7 @@ import { useMinute } from '../../../store/clock';
 import { useMutationState } from '../../../store/mutation';
 import { useIsOwner, useSettings } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
+import { SERVER_PANEL } from './server-panels';
 
 interface Verdict {
   readonly icon: IconName;
@@ -87,6 +88,7 @@ function VerifyRow({ settings }: { readonly settings: SettingsRow }): ReactNode 
       title={verdict.title}
       subtitle={check.busy ? 'Checking…' : verdict.subtitle}
       subtitleTone={verdict.tone === 'critical' ? 'critical' : 'variant'}
+      wrapSubtitle
       label="Check the public address again"
       disabled={check.busy}
       onPress={() => {
@@ -108,6 +110,7 @@ function OwnerRows({ settings }: { readonly settings: SettingsRow }): ReactNode 
             ? 'Not set. Phones only work at home.'
             : breakableUrl(settings.public_url)
         }
+        wrapSubtitle
         value={settings.public_url === null ? 'Set' : 'Change'}
         chevron
         onPress={editor.open}
@@ -125,6 +128,7 @@ export function PublicUrlSection(): ReactNode {
     <List
       inset
       title="Remote access"
+      className={SERVER_PANEL}
       footer="Phones and assistants reach your server here when you’re away."
     >
       {owner ? (
@@ -134,6 +138,7 @@ export function PublicUrlSection(): ReactNode {
           icon="globe"
           title="Public address"
           subtitle={settings.public_url === null ? 'Not set' : breakableUrl(settings.public_url)}
+          wrapSubtitle
         />
       )}
     </List>

@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, type RefObject } from 'react';
+import { createContext, use, useEffect, useEffectEvent, type RefObject } from 'react';
 import { isNative } from '../design/platform';
 
 interface EscapeHandler {
@@ -85,15 +85,18 @@ function focusInside(scope: RefObject<unknown>): boolean {
   return node instanceof Node && node.contains(document.activeElement);
 }
 
+export const EscapeScopeVisible = createContext(true);
+
 export function useEscape(active: boolean, onEscape: () => void, scope?: RefObject<unknown>): void {
+  const visible = use(EscapeScopeVisible);
   const run = useEffectEvent(onEscape);
   useEffect(() => {
-    if (!active || isNative()) {
+    if (!active || !visible || isNative()) {
       return undefined;
     }
     return enter({
       run,
       eligible: () => scope === undefined || focusInside(scope),
     });
-  }, [active, scope]);
+  }, [active, scope, visible]);
 }

@@ -4,15 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { entryOf, movesOf, reportOf, statusOf } from '../../plugins/aibi/robot-fixture';
 import { makeTable, type StoreState } from '../../store/state';
-import type { RobotFacts } from '../device-visuals';
-import {
-  budgetCase,
-  mountFace,
-  renderVisual,
-  useCellEnvironment,
-  type Budget,
-  type Face,
-} from './cell-budget';
+import { budgetCase, mountFace, useCellEnvironment, type Budget, type Face } from './cell-budget';
 
 const AT = '2026-10-18T10:00:00.000Z';
 
@@ -62,35 +54,6 @@ const BUDGETS: Readonly<Record<'S' | 'M', Budget>> = {
 
 budgetCase('robot', ROBOT, BUDGETS);
 
-const VISUAL = { kind: 'robot', specs: [] } as const;
-
-const MOODS: readonly RobotFacts[] = [
-  { mood: 'awake', onBase: true, move: null },
-  { mood: 'listening', onBase: true, move: null },
-  { mood: 'speaking', onBase: false, move: null },
-  { mood: 'worried', onBase: true, move: null },
-  { mood: 'asleep', onBase: true, move: null },
-];
-
-const VISUAL_LIMITS = [
-  ['tile', 48, 30],
-  ['card', 96, 45],
-  ['hero', 220, 70],
-] as const;
-
-describe('robot visual node budgets', () => {
-  useCellEnvironment();
-
-  for (const [size, px, limit] of VISUAL_LIMITS) {
-    for (const robot of MOODS) {
-      it(`draws a ${robot.mood} robot within ${String(limit)} nodes at ${size} size`, () => {
-        const { count } = renderVisual({ ...VISUAL, facts: { robot } }, {}, size, px);
-        expect(count).toBeLessThanOrEqual(limit);
-      });
-    }
-  }
-});
-
 const SERVER_DOWN: Face = {
   ...ROBOT,
   seed: seeded(statusOf({ server: { state: 'failed', reason: 'Port 443 is taken' } })),
@@ -123,10 +86,11 @@ describe('robot card faces', () => {
     mounted.unmount();
   });
 
-  it('keeps the quick moves and the Moves menu on one row in the narrow panel', () => {
+  it('keeps every quick move and the Moves menu in the narrow panel', () => {
     const mounted = mountFace(ROBOT, PANEL);
-    expect(mounted.tree()).toContain('accessibilityLabel="Sing"');
-    expect(mounted.tree()).not.toContain('accessibilityLabel="Animal"');
+    for (const label of ['Dance', 'Sing', 'Animal', 'Moves']) {
+      expect(mounted.tree()).toContain(`accessibilityLabel="${label}"`);
+    }
     expect(mounted.mountNodes).toBeLessThanOrEqual(73);
     mounted.unmount();
   });

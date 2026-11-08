@@ -1,5 +1,6 @@
 import type { FlowType } from '../automation-v3/types';
 import { defineNodeKind, type InputPortDecl, type NodeKind, type OutputPortDecl } from './define';
+import { ERROR_OUT } from './error-port';
 import { DEVICE_REF, TARGET_REF, controlInput } from './devices';
 
 const BOOLEAN: FlowType = { t: 'boolean' };
@@ -32,13 +33,6 @@ const SKIPPED_OUT: OutputPortDecl = {
   type: SKIPPED,
   description: 'Devices left out, each with the reason (offline or not supported).',
 };
-const ERROR_OUT: OutputPortDecl = {
-  name: 'error',
-  type: { t: 'error' },
-  optional: true,
-  description: 'Why it failed.',
-};
-
 const TARGET_INPUT: InputPortDecl = {
   name: 'target',
   type: TARGET_REF,
@@ -57,7 +51,7 @@ const deviceEnsure = defineNodeKind({
     'Sends a value, waits for the device to report it and sends again when it does not, for devices whose cloud drops commands.',
   inputs: [
     TARGET_INPUT,
-    controlInput('Which control to set.'),
+    controlInput('Which control to set.', 'device.writable_controls'),
     {
       name: 'to',
       type: ANY,
@@ -65,6 +59,7 @@ const deviceEnsure = defineNodeKind({
       live: true,
       description: 'The value the device must report.',
       summary: true,
+      ui: { typedBy: 'control' },
     },
     {
       name: 'tries',
@@ -112,7 +107,10 @@ const deviceFade = defineNodeKind({
     'Moves a number control from one level to another in small steps over a time, paced by the command budget. Cancelling stops at the current level.',
   inputs: [
     TARGET_INPUT,
-    { ...controlInput('Which number control to fade.'), default: 'brightness' },
+    {
+      ...controlInput('Which number control to fade.', 'device.writable_controls'),
+      default: 'brightness',
+    },
     {
       name: 'from',
       type: NUMBER,
@@ -165,7 +163,7 @@ const deviceFade = defineNodeKind({
     ERROR_OUT,
   ],
   exits: ['next'],
-  effect: { retry: 'idempotent', budget: 'command' },
+  effect: { retry: 'idempotent', budget: 'command', mode: 'fire_and_forget' },
   summary: 'Fade {control} of {target} to {to} over {over}',
   keywords: ['dim', 'wake up', 'sunrise', 'gradual', 'ramp', 'slowly'],
   access: 'member',
@@ -179,7 +177,7 @@ const deviceSnapshot = defineNodeKind({
   icon: 'camera',
   class: 'read',
   description:
-    'Reads the chosen controls of every device in the target so a later Restore state can put them back.',
+    'Reads the chosen controls of every device in the target at the moment the run reaches it, so a later Restore state puts back what was there then.',
   inputs: [
     TARGET_INPUT,
     {
@@ -189,6 +187,7 @@ const deviceSnapshot = defineNodeKind({
       default: [...DEFAULT_SNAPSHOT_CONTROLS],
       static: true,
       description: 'Which controls to remember.',
+      ui: { optionsFrom: 'device.controls', multiple: true },
     },
   ],
   outputs: [
@@ -202,6 +201,7 @@ const deviceSnapshot = defineNodeKind({
   summary: 'Remember {controls} of {target}',
   keywords: ['save', 'remember', 'before', 'capture', 'state'],
   reads: () => ['device'],
+  capture: 'at-step',
   access: 'member',
   tier: 'v1.1',
 });
@@ -226,7 +226,7 @@ const deviceRestore = defineNodeKind({
   ],
   outputs: [OK, SENT, SKIPPED_OUT, ERROR_OUT],
   exits: ['next'],
-  effect: { retry: 'idempotent', budget: 'command' },
+  effect: { retry: 'idempotent', budget: 'command', mode: 'fire_and_forget' },
   summary: 'Restore {snapshot}',
   keywords: ['restore', 'undo', 'back', 'after', 'previous'],
   access: 'member',
@@ -257,11 +257,12 @@ const deviceIrSend = defineNodeKind({
       static: true,
       description: 'Which button, such as Power or HDMI 2.',
       summary: true,
+      ui: { optionsFrom: 'ir.buttons' },
     },
   ],
   outputs: [OK, ERROR_OUT],
   exits: ['next'],
-  effect: { retry: 'relative', budget: 'effects' },
+  effect: { retry: 'relative', budget: 'effects', mode: 'fire_and_forget' },
   summary: 'Press {button} on {remote}',
   keywords: ['infrared', 'tv', 'remote', 'button', 'ir', 'hdmi', 'air conditioner'],
   access: 'member',

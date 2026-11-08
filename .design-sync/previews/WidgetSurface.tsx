@@ -1,7 +1,8 @@
+import type { ReactElement } from 'react';
 import { Stage, Text, WidgetSurface } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
-const tile = (glow: 'primary' | 'positive' | null) => (
+const tile = (glow: 'primary' | 'positive' | null): ReactElement => (
   <div style={{ width: 200, height: 120 }}>
     <WidgetSurface glow={glow}>
       <div style={{ padding: 16 }}>
@@ -10,7 +11,7 @@ const tile = (glow: 'primary' | 'positive' | null) => (
     </WidgetSurface>
   </div>
 );
-export const Surfaces = () => (
+export const Surfaces = (): ReactElement => (
   <Stage theme="dark" width={500}>
     <Row gap={16}>
       {tile(null)}
@@ -18,7 +19,7 @@ export const Surfaces = () => (
     </Row>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={500}>
     <Row gap={16}>
       {tile(null)}

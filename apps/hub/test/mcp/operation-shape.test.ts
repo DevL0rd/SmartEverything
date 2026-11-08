@@ -1,7 +1,7 @@
 import type { EndpointName, McpPartName } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { operationInput, operationShape } from '../../src/extensions/mcp/tools/operation-shape';
-import { operationTool } from '../../src/extensions/mcp/tools/operation-tools';
+import { operationTool, reportsAction } from '../../src/extensions/mcp/tools/operation-tools';
 
 const ID = '3f1b2c8e-6f0a-4c1e-9a52-0d1c1f4e7a10';
 
@@ -60,4 +60,21 @@ describe('the annotations of an operation tool', () => {
     });
     expect(annotations('list_models', 'listAiModels')).toMatchObject({ readOnlyHint: true });
   });
+});
+
+const WHOLE_RESULTS: readonly EndpointName[] = [
+  'discoverAiHarnessExtensions',
+  'previewAiHarnessExtensions',
+  'resolveAiHarnessSkill',
+  'installAiHarnessExtensions',
+  'readDshSessionEvents',
+];
+
+describe('operation results read by POST', () => {
+  it.each(WHOLE_RESULTS)(
+    'reach the caller whole from %s instead of as an action summary',
+    (name) => {
+      expect(reportsAction(operationShape(name))).toBe(false);
+    },
+  );
 });

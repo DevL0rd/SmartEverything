@@ -61,6 +61,14 @@ function childFigures(view: HubView, online: boolean): readonly ReactNode[] {
       ];
 }
 
+function statusOf(view: HubView, online: boolean): string {
+  if (!online || view.children.length === 0) {
+    return hubLine(view, online);
+  }
+  const offline = view.children.length - view.online;
+  return offline === 0 ? 'All online' : `${String(offline)} offline`;
+}
+
 function WideGateway({
   device,
   cls,
@@ -72,26 +80,27 @@ function WideGateway({
   const { live, onLayout } = useVisibleLive(ref);
   const view = useHubView(device.id);
   const room = useRoomName(device.id);
-  const line = hubLine(view, device.online);
-  const named = cls !== 'm';
+  const panel = cls === 'l' || cls === 'xl';
   return (
     <View ref={ref} onLayout={onLayout} className="flex-1" pointerEvents="box-none">
       <WideCard
         cls={cls}
-        summary={`${device.label}${room === null ? '' : `, ${room}`}. ${line}`}
+        summary={`${device.label}${room === null ? '' : `, ${room}`}. ${hubLine(view, device.online)}`}
         visual={<DeviceVisual device={device} size="card" px={WIDE_VISUAL_PX[cls]} />}
         title={device.label}
         chip={<RoomChip online={device.online} room={room} />}
         state={
-          <Text variant="footnote" tone="variant" numberOfLines={2}>
-            {line}
+          <Text variant="footnote" tone="variant" numberOfLines={cls === 'm' ? 1 : 2}>
+            {statusOf(view, device.online)}
           </Text>
         }
         figures={childFigures(view, device.online)}
         graph={
-          view.children.length === 0 ? undefined : <ChildStrip named={named} kids={view.children} />
+          view.children.length === 0 ? undefined : (
+            <ChildStrip named={cls !== 'm'} kids={view.children} />
+          )
         }
-        ticker={<LogTicker deviceId={device.id} live={live} />}
+        ticker={<LogTicker deviceId={device.id} live={live} lines={panel ? 2 : 1} />}
       />
     </View>
   );

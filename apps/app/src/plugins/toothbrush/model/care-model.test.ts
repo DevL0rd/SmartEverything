@@ -212,11 +212,18 @@ describe('handle', () => {
 });
 
 describe('the trend path', () => {
-  const frame = { width: 112, min: 0, max: 120 };
+  const frame = { width: 112, height: 120, min: 0, max: 120 };
 
   it('maps seconds onto the height of the plot, top for the maximum', () => {
     expect(trendY(120, frame)).toBe(6);
     expect(trendY(0, frame)).toBe(114);
+  });
+
+  it('fits the plotted scale within a short widget', () => {
+    const short = { ...frame, height: 48 };
+    expect(trendY(120, short)).toBe(6);
+    expect(trendY(60, short)).toBe(24);
+    expect(trendY(0, short)).toBe(42);
   });
 
   it('lifts the pen across a gap', () => {

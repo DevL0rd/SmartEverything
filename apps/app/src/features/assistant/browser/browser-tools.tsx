@@ -10,17 +10,21 @@ import { rememberBrowserFocus, restoreBrowserFocus } from '../../../platform/bro
 import type { BrowserHandle } from '../../../platform/browser-contract';
 import { useBrowserActionScope } from './browser-action-scope';
 import { useRequestedBrowserAction } from './browser-requested-action';
+interface BrowserToolsProps {
+  readonly controls: BrowserHandle;
+  readonly address: string | null;
+  readonly ready: boolean;
+  readonly tabActions: readonly MenuItem[];
+  readonly siteStorageAction: MenuItem | null;
+}
+
 export function BrowserTools({
   controls,
   address,
   ready,
   tabActions,
-}: {
-  readonly controls: BrowserHandle;
-  readonly address: string | null;
-  readonly ready: boolean;
-  readonly tabActions: readonly MenuItem[];
-}): ReactNode {
+  siteStorageAction,
+}: BrowserToolsProps): ReactNode {
   const active = useBrowserActionScope();
   const [menuOwner] = useState(() => Symbol('browser-options'));
   const covered = useValue(browserCovered);
@@ -45,6 +49,7 @@ export function BrowserTools({
         ...(address === null ? { description: 'This page has no address to copy.' } : {}),
         onPress: copy,
       },
+      ...(siteStorageAction === null ? [] : [siteStorageAction]),
       ...tabActions,
     ],
     'Browser options',

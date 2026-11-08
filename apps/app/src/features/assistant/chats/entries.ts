@@ -2,6 +2,7 @@ import type { AiChatRow } from '@smarteverything/domain';
 import { chatSourceOf, type PluginNames } from '../model/chat-source';
 import { isComputerEngine } from '../provider/computer-engine';
 import type { ChatEntry, ChatLine } from './chat-entry';
+import type { WorkStatus } from '../../../store/chat-turns';
 
 interface ChatFailure {
   readonly sent: boolean;
@@ -16,13 +17,14 @@ export interface ChatPreview {
 }
 
 export interface ChatWork {
-  readonly step: string | null;
+  readonly work: WorkStatus;
 }
 
 export interface EntrySources {
   readonly previews: ReadonlyMap<string, ChatPreview>;
   readonly working: ReadonlyMap<string, ChatWork>;
   readonly plugins: PluginNames;
+  readonly pending?: ReadonlySet<string>;
 }
 
 function lineOf(
@@ -31,7 +33,7 @@ function lineOf(
   work: ChatWork | undefined,
 ): ChatLine {
   if (work !== undefined) {
-    return { kind: 'working', step: work.step };
+    return { kind: 'working', work: work.work };
   }
   if (preview?.failure !== null && preview?.failure !== undefined) {
     return { kind: 'failed', ...preview.failure };
@@ -51,14 +53,17 @@ export function entryOf(chat: AiChatRow, sources: EntrySources): ChatEntry {
     id: chat.id,
     kind: chat.kind,
     title: chat.title,
+    ...(chat.helper_name === null ? {} : { helperName: chat.helper_name }),
     source: chatSourceOf(chat, sources.plugins),
     at: chat.last_message_at ?? preview?.at ?? chat.created_at,
     pinned: chat.pinned,
     archived: chat.archived_at !== null,
     unread: chat.unread_count,
     requests: chat.pending_requests,
+    pending: chat.kind === 'subagent' && sources.pending?.has(chat.id) === true,
     parentId: chat.parent_id,
     runtime: isComputerEngine(chat.engine) ? chat.engine.kind : null,
+    nativeAdmission: chat.native_admission ?? null,
     computerId: isComputerEngine(chat.engine) ? chat.engine.device_id : null,
     line: lineOf(chat, preview, sources.working.get(chat.id)),
   };
@@ -68,6 +73,7 @@ export function matchesChat(entry: ChatEntry, needle: string): boolean {
   const { line } = entry;
   return (
     entry.title.toLowerCase().includes(needle) ||
+    entry.helperName?.toLowerCase().includes(needle) === true ||
     entry.source.label.toLowerCase().includes(needle) ||
     (line.kind === 'preview' && line.text.toLowerCase().includes(needle))
   );

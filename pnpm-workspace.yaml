@@ -39,18 +39,22 @@ allowBuilds:
   usocket: false
 
 overrides:
-  '@earendil-works/pi-ai': 1.0.2
+  '@expo/cli': 57.0.33
+  '@expo/log-box': 57.0.4
+  '@expo/metro-config': 57.0.14
+  '@earendil-works/pi-ai': 1.4.0
   react-native-worklets: 0.13.0
   '@react-native/metro-config': 0.86.3
   uuid@<11.1.1: '>=11.1.1'
   qs@<6.16.0: '>=6.16.0'
   decode-uri-component@<=0.4.2: 0.5.0
   basic-ftp@<=6.2.0: 6.2.1
-  '@deepseek-ai/schemastery': 3.18.5-alpha.1
 
 patchedDependencies:
-  '@deepseek-ai/dsh-session@0.2.1-alpha.2': patches/@deepseek-ai__dsh-session@0.2.1-alpha.2.patch
-  '@deepseek-ai/dsh-working-directory@0.2.1-alpha.2': patches/@deepseek-ai__dsh-working-directory@0.2.1-alpha.2.patch
+  '@deepseek-ai/dsh-session@0.2.1-rc.3': patches/@deepseek-ai__dsh-session@0.2.1-rc.3.patch
+  '@deepseek-ai/dsh-subagent@0.2.1-rc.3': patches/@deepseek-ai__dsh-subagent@0.2.1-rc.3.patch
+  '@deepseek-ai/dsh-working-directory@0.2.1-rc.3': patches/@deepseek-ai__dsh-working-directory@0.2.1-rc.3.patch
+  '@discordjs/ws@2.0.4': patches/@discordjs__ws@2.0.4.patch
   '@shopify/flash-list@2.3.3': patches/@shopify__flash-list@2.3.3.patch
   '@stream-io/react-native-webrtc@145.4.1': patches/@stream-io__react-native-webrtc@145.4.1.patch
   braces@3.0.3: patches/braces@3.0.3.patch
@@ -59,6 +63,7 @@ patchedDependencies:
   dsh-plugin-codegraph-sqlite@0.1.6: patches/dsh-plugin-codegraph-sqlite@0.1.6.patch
   dsh-plugin-codegraph-tool@0.1.6: patches/dsh-plugin-codegraph-tool@0.1.6.patch
   dsh-plugin-codegraph-tree-sitter@0.1.6: patches/dsh-plugin-codegraph-tree-sitter@0.1.6.patch
+  expo-updates@57.0.26: patches/expo-updates@57.0.26.patch
   node-forge@1.4.0: patches/node-forge@1.4.0.patch
   openrgb-sdk@0.6.0: patches/openrgb-sdk@0.6.0.patch
   react-native@0.86.3: patches/react-native@0.86.3.patch

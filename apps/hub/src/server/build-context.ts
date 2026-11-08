@@ -1,3 +1,5 @@
+import { irAppliancesOf } from './ir-appliance-wiring';
+import { homeMapOf } from '../home-map/home-map-hub';
 import type { Logger } from '@smarteverything/logging';
 import { BrowserService } from '../browser/service';
 import { createImageRuntime, type ImageRuntime } from './image-wiring';
@@ -9,11 +11,11 @@ import { harnessTransport, type HarnessTransportPorts } from '../harness/transpo
 import { ComputerNodeAccess } from '../computers/node-access';
 import { ComputerHarnessSockets } from './harness-socket';
 import { ComputerNodeSockets } from './node-socket';
-import { join } from 'node:path';
 import type { HubStatus, PublicStatus } from '@smarteverything/domain';
 import { OpenCalls } from '../assistant-voice/open-calls';
 import { FoodLookup } from '../foods/food-lookup';
 import { PushCommandChannel } from '../extensions/push/commands';
+import { ReplyNotices } from '../extensions/push/reply-notices';
 import { WatchActionBroker } from '../local/watch-actions';
 import { MachineApprovals } from '../machines/approval';
 import { WatchDataService } from '../local/watch-data';
@@ -78,7 +80,7 @@ function talkOf(options: BuildOptions, live: LiveHub): TalkService {
     go2rtc: options.core.go2rtc,
     streamReady: (deviceId): Promise<void> => options.core.hub.streamReady(deviceId),
     rtspPort: options.core.rtspPort,
-    dataDirectory: options.dataDirectory,
+    directory: options.layout.home.talk,
     presence: (presence): void => {
       live.announce({ type: 'talk_floors', ...presence }, 'talk');
     },
@@ -96,7 +98,7 @@ function talkOf(options: BuildOptions, live: LiveHub): TalkService {
 function accessOf(options: BuildOptions, live: LiveHub, talk: TalkService): AccessService {
   return new AccessService({
     store: options.store,
-    dataDirectory: options.dataDirectory,
+    ownerTokenPath: options.layout.system.keys.ownerToken,
     now: options.clock.now,
     ...(options.connections === undefined ? {} : { connections: options.connections }),
     clientWithdrawn: (clientId): void => {
@@ -135,11 +137,11 @@ function outboundOf(
   });
   return {
     mediaNotes: new MediaNotes({
-      provider: new OpenRouterMediaNotes(openRouter.client),
-      transcriptionProvider: new OpenRouterTranscription(openRouter.client),
+      provider: new OpenRouterMediaNotes(openRouter.client, options.layout.tmp),
+      transcriptionProvider: new OpenRouterTranscription(openRouter.client, options.layout.tmp),
       chat: options.store.assistantChat,
       ledger: options.store.ledger,
-      filesRoot: join(options.dataDirectory, 'assistant'),
+      filesRoot: options.layout.system.ai.assistant,
       describeImages: (): boolean => options.store.assistantChat.settings().describe_images,
       inputModalities: (file) => modalitiesOf(options.store, file),
       log: options.log.forArea('hub.assistant'),
@@ -174,8 +176,7 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
   assistant.attachLedger(options.store.ledger);
   assistant.attachMediaNotes(outbound.mediaNotes);
   const talk = talkOf(options, live);
-  const pushCommands = new PushCommandChannel();
-  pushCommands.attachLive((clientId, notice) => live.deliver(clientId, notice));
+  const pushCommands = pushChannelOf(live);
   return {
     ...connectionContext(options),
     store: options.store,
@@ -183,7 +184,7 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
     browser: new BrowserService(options.store, assistant.projects),
     harnessSockets: harnessSocketsOf(options, computers.computerNodes, {
       harness,
-      transport: { assistant },
+      transport: { assistant, secrets: options.secrets },
     }),
     imageRuntime: imagesOf(options, live, assistant, outbound.mediaNotes),
     ...computers,
@@ -197,6 +198,7 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
     foodLookup: foodLookupOf(options, log),
     live,
     pushCommands,
+    replyNotices: new ReplyNotices(),
     openCalls: new OpenCalls(),
     talk,
     assistant,
@@ -211,11 +213,14 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
     ...statuses,
     ...cameraPartsOf(options),
     ...developerOf(options),
+    ...homePartsOf(options),
     log,
   };
 }
 
-const WATCH_CAPTURES_DIRECTORY = 'watch-captures';
+function homePartsOf(options: BuildOptions): Pick<ServerContext, 'irAppliances' | 'homeMap'> {
+  return { irAppliances: irAppliancesOf(options), homeMap: homeMapOf(options) };
+}
 
 function developerOf(
   options: BuildOptions,
@@ -223,11 +228,17 @@ function developerOf(
   return {
     developerDevices: new DeveloperDevices(options.store.settingsKv),
     watchCaptures: new WatchCaptureStore(
-      join(options.dataDirectory, WATCH_CAPTURES_DIRECTORY),
+      options.layout.system.developer.watchCaptures,
       options.clock.now,
       options.log.forArea('hub.watch-captures'),
     ),
   };
+}
+
+function pushChannelOf(live: LiveHub): PushCommandChannel {
+  const channel = new PushCommandChannel();
+  channel.attachLive((clientId, notice) => live.deliver(clientId, notice));
+  return channel;
 }
 
 function machineApprovalsOf(options: BuildOptions, push: PushCommandChannel): MachineApprovals {
@@ -243,24 +254,8 @@ function computerServicesOf(
   computerAi.onChange((status) => {
     live.announce({ type: 'computer_ai_status', status }, 'owners');
   });
-  computerAi.onEvent(({ deviceId, event, profileId }) => {
-    if (event.kind !== 'native') return;
-    const notice = { type: 'computer_claude', device_id: deviceId, notice: event.notice } as const;
-    if (profileId !== undefined) live.profileNotice(notice, profileId, 'owners');
-    else live.announce(notice, 'owners');
-  });
   computerAi.runtimes.onChange((status) => {
     live.announce({ type: 'computer_runtime_status', status }, 'owners');
-  });
-  computerAi.runtimes.onEvent(({ target, event, profileId }) => {
-    if (event.kind !== 'native' || event.runtime !== 'codex') return;
-    const notice = {
-      type: 'computer_runtime_native',
-      device_id: target.device_id,
-      payload: { runtime: event.runtime, notice: event.notice },
-    } as const;
-    if (profileId !== undefined) live.profileNotice(notice, profileId, 'owners');
-    else live.announce(notice, 'owners');
   });
   const computerNodes = new ComputerNodeAccess(options.store, options.clock.now);
   const nodeSockets = new ComputerNodeSockets(
@@ -283,7 +278,7 @@ function harnessOf(
     (event, profileId) => {
       live.profileNotice({ type: 'ai_harness', event }, profileId, 'assistant');
     },
-    { dataDirectory: options.dataDirectory, clock: options.clock },
+    { layout: options.layout, clock: options.clock },
   );
   harness.configuration.onChange((notice) => {
     live.announce(notice, 'assistant');

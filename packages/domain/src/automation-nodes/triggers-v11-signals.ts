@@ -1,6 +1,9 @@
 import { COMPUTER_ACTIONS } from '../node/node-requests';
 import { WEATHER_SIGNAL_KINDS } from '../weather/signals';
 import type { MatcherMapping, MatcherVariant } from './triggers-device';
+import { PHONE_STATE_EVENTS } from './triggers-phone';
+
+export { phoneStateEventName } from './triggers-phone';
 
 export const COMPUTER_TRIGGER_EVENTS: Readonly<Record<string, MatcherVariant>> = {
   app_open: { source: 'event', kind: 'app_opened' },
@@ -20,6 +23,7 @@ export const PHONE_TRIGGER_EVENTS: Readonly<Record<string, MatcherVariant>> = {
   unlocked: { source: 'event', kind: 'phone_unlocked' },
   context_changed: { source: 'event', kind: 'phone_context_changed' },
   parked: { source: 'event', kind: 'parked' },
+  ...PHONE_STATE_EVENTS,
 };
 
 export const HEALTH_TRIGGER_KINDS = ['sleep_ended', 'body_reading', 'today', 'logged'] as const;

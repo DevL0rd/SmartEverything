@@ -14,6 +14,7 @@ import type {
 import { ReducerContext, contextInput } from './context';
 import { TurnCorrelation } from './correlation';
 import { narrowNativeEvent } from './event';
+import { PlanTracker } from './plan';
 import type { NativeBody, NativeEvent } from './event';
 import { toolResultBody, turnEndBody } from './outcome';
 
@@ -23,6 +24,7 @@ interface SessionPorts {
 export interface SessionOpening {
   readonly session: AiHarnessSession;
   readonly history: readonly unknown[];
+  readonly nextPublicationSeq?: number;
 }
 type Body = Record<string, unknown>;
 type Kind = Exclude<HarnessNativeFrame['kind'], 'open' | 'close'>;
@@ -32,11 +34,12 @@ type Handlers = { readonly [K in Kind]: (frame: Frames[K]) => readonly AiHarness
 
 export class SessionReducer {
   private session: AiHarnessSession;
-  private seq = 0;
+  private seq: number;
   private logged: number;
   private interactions: readonly AiHarnessInteraction[] = [];
   private readonly context = new ReducerContext();
   private readonly correlation = new TurnCorrelation();
+  private readonly plan = new PlanTracker();
   private readonly tools = new Map<string, string>();
   private readonly handlers: Handlers = {
     input: (frame) => this.input(frame),
@@ -60,12 +63,13 @@ export class SessionReducer {
   ) {
     const {
       context: _context,
-      context_request: _contextRequest,
       commands_revision: _commandsRevision,
       permission_change: _permissionChange,
       reconnecting: _reconnecting,
+      plan: _plan,
       ...retained
     } = opening.session;
+    this.seq = opening.nextPublicationSeq ?? 0;
     this.session = AI_HARNESS_SESSION.parse({
       ...retained,
       metadata: ports.metadata(),
@@ -74,7 +78,11 @@ export class SessionReducer {
       work: [],
       failure: null,
     });
-    for (const raw of opening.history) this.replay(narrowNativeEvent(raw));
+    for (const raw of opening.history) {
+      this.plan.record(raw);
+      this.replay(narrowNativeEvent(raw));
+    }
+    this.session = { ...this.session, plan: this.plan.view() };
     this.logged = opening.history.length;
   }
 
@@ -92,6 +100,7 @@ export class SessionReducer {
     this.logged = native.seq + 1;
     const events: AiHarnessEvent[] = [];
     if (this.context.record(native)) events.push(this.contextState(measuring(native.body)));
+    if (this.plan.record(event)) events.push(this.planState());
     if (native.replayed) {
       this.track(native);
       return events;
@@ -265,6 +274,11 @@ export class SessionReducer {
 
   private directory(path: string): AiHarnessEvent {
     this.session = { ...this.session, directory: { target: this.session.target, path } };
+    return this.state({});
+  }
+
+  private planState(): AiHarnessEvent {
+    this.session = { ...this.session, plan: this.plan.view() };
     return this.state({});
   }
 

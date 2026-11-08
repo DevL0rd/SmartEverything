@@ -221,7 +221,7 @@ export class PairingSession {
     const body = CLAIM.body.parse(
       attempt.run.kind === 'phone'
         ? { code, name, platform: 'android', kind: handheldKind() }
-        : { code, name, platform: 'web' },
+        : { code, name, platform: attempt.run.kind === 'desktop' ? 'desktop' : 'web' },
     );
     try {
       return await attempt.transport.post(CLAIM.path, body, CLAIM.response);

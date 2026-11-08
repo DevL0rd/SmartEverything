@@ -8,7 +8,7 @@ export function attachHarnessReferences(
   service: HarnessService,
   installed: ReferenceService,
 ): HarnessService {
-  installed.attachNative(['dsh', 'openrouter'], harnessReferences(service));
+  installed.attachNative(['dsh'], harnessReferences(service));
   return service;
 }
 

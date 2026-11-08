@@ -11,7 +11,7 @@ import type { SectionProps } from './section-types';
 
 const TOGETHER_CAPTION = 'Passes can finish in any order. Collected results keep the list order.';
 
-function Together({ section }: { readonly section: SectionProps }): ReactNode {
+export function ForEachTogether(section: SectionProps): ReactNode {
   const { view, env, actions } = section;
   const node = flowNodeOf(view);
   if (node === undefined || view.kind === undefined) return null;
@@ -45,7 +45,7 @@ function Together({ section }: { readonly section: SectionProps }): ReactNode {
   );
 }
 
-function Collect({ section }: { readonly section: SectionProps }): ReactNode {
+export function ForEachCollect(section: SectionProps): ReactNode {
   const { view, env, actions } = section;
   const node = flowNodeOf(view);
   if (node === undefined || view.kind === undefined) return null;
@@ -88,14 +88,5 @@ function Collect({ section }: { readonly section: SectionProps }): ReactNode {
         </View>
       ) : null}
     </Section>
-  );
-}
-
-export function ForEachOptions(section: SectionProps): ReactNode {
-  return (
-    <>
-      <Together section={section} />
-      <Collect section={section} />
-    </>
   );
 }

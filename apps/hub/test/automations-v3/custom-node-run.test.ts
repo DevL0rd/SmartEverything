@@ -1,9 +1,12 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { FunctionV3 } from '@smarteverything/domain';
+import type { FunctionV3, FunctionV4 } from '@smarteverything/domain';
 import { lower } from '@smarteverything/flow/compile/lower';
 import { NODE_REGISTRY } from '@smarteverything/domain';
 import { jsonRecord } from '../../src/automations/engine-v3-start';
+import { structuredFunction } from '../../src/store/repositories/automation-trees';
+import { graphFunction } from './support/graph-of';
 import { closeSetups, lit, node, program, rigV3, wired } from './support/rig-v3';
 import type { RigV3 } from './support/rig-v3';
 
@@ -36,20 +39,25 @@ function keeper(lamp: string): FunctionV3 {
   };
 }
 
-function saved(rig: RigV3, definition: FunctionV3, id?: string): string {
-  const lowered = lower(definition, { kinds: (id) => NODE_REGISTRY.get(id) });
-  if (!lowered.ok) throw new Error(lowered.problems.map((found) => found.message).join('; '));
-  const row = rig.functions.create({
-    ...(id === undefined ? {} : { id }),
-    name: 'Keeper',
-    program: definition,
-    layout: { nodes: {}, frames: [], comments: [] },
-    interfaceHash: 'b'.repeat(64),
-    compat: 'compatible',
-    planHash: rig.plans.put('function', jsonRecord(lowered.plan)),
-    author: null,
-    createdBy: null,
+function saved(rig: RigV3, definition: FunctionV4, id?: string): string {
+  const lowered = lower(structuredFunction(definition, STATIC_KIND_LOOKUP), {
+    kinds: (id) => NODE_REGISTRY.get(id),
   });
+  if (!lowered.ok) throw new Error(lowered.problems.map((found) => found.message).join('; '));
+  const row = rig.functions.create(
+    {
+      ...(id === undefined ? {} : { id }),
+      name: 'Keeper',
+      program: definition,
+      layout: { nodes: {}, frames: [], comments: [] },
+      interfaceHash: 'b'.repeat(64),
+      compat: 'compatible',
+      planHash: rig.plans.put('function', jsonRecord(lowered.plan)),
+      author: null,
+      createdBy: null,
+    },
+    STATIC_KIND_LOOKUP,
+  );
   return row.id;
 }
 
@@ -79,7 +87,7 @@ function recursive(lamp: string, self: string): FunctionV3 {
 describe('Custom Nodes run on the hub', () => {
   it('runs a call, keeps its data between runs and shares nothing between two uses', async () => {
     const rig = await rigV3();
-    const id = saved(rig, keeper(rig.home.lampId));
+    const id = saved(rig, graphFunction(keeper(rig.home.lampId), STATIC_KIND_LOOKUP));
     const row = rig.add(
       program([
         node('first', 'fn.call', { fn: lit(id) }),
@@ -102,7 +110,7 @@ describe('Custom Nodes run on the hub', () => {
   it('lets a Custom Node call itself and keeps one row of data for the whole recursion', async () => {
     const rig = await rigV3();
     const self = randomUUID();
-    saved(rig, recursive(rig.home.lampId, self), self);
+    saved(rig, graphFunction(recursive(rig.home.lampId, self), STATIC_KIND_LOOKUP), self);
     const row = rig.add(program([node('start', 'fn.call', { fn: lit(self) })]));
     rig.engine.sync();
     rig.engine.start(row.id, {}, null);

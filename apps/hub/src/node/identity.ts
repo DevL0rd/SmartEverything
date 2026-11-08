@@ -1,33 +1,32 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname } from 'node:path';
 import { cpus, hostname, networkInterfaces, platform, release, totalmem, uptime } from 'node:os';
-import { NODE_HELLO, type NodeHello } from '@smarteverything/domain';
+import { NODE_HELLO, NODE_PROTOCOL_VERSION, type NodeHello } from '@smarteverything/domain';
 import { readIdentity } from './collectors/linux/identity';
 import { isMissing } from '../fs-util';
 
 const MACHINE_ID_FILE = '/etc/machine-id';
 
-async function installationId(directory: string): Promise<string> {
-  const file = join(directory, 'computer-node.id');
+async function installationId(file: string): Promise<string> {
   try {
     return (await readFile(file, 'utf8')).trim();
   } catch (cause) {
     if (!isMissing(cause)) throw cause;
     const id = randomBytes(16).toString('hex');
-    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await mkdir(dirname(file), { recursive: true, mode: 0o700 });
     await writeFile(file, `${id}\n`, { mode: 0o600, flag: 'wx' });
     return id;
   }
 }
 
-export async function computerMachineId(directory: string): Promise<string> {
+export async function computerMachineId(installationFile: string): Promise<string> {
   return platform() === 'linux'
     ? (await readFile(MACHINE_ID_FILE, 'utf8')).trim()
-    : installationId(directory);
+    : installationId(installationFile);
 }
 
-export async function nodeIdentity(directory: string): Promise<NodeHello> {
+export async function nodeIdentity(installationFile: string): Promise<NodeHello> {
   const now = new Date();
   if (platform() === 'linux') return readIdentity(false, uptime(), now);
   const processors = cpus();
@@ -47,7 +46,8 @@ export async function nodeIdentity(directory: string): Promise<NodeHello> {
         ];
   });
   return NODE_HELLO.parse({
-    machineId: await installationId(directory),
+    protocol: NODE_PROTOCOL_VERSION,
+    machineId: await installationId(installationFile),
     hostname: hostname(),
     os: { name: platform(), kernel: release() },
     hardware: { vendor: null, product: null, portable: false },

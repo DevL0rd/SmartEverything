@@ -23,9 +23,7 @@ export const treadmillAppPlugin: AppPlugin = {
     {
       key: 'treadmill',
       applies: isTreadmill,
-      render: (device, size, showRoom) => (
-        <TreadmillTile device={device} showRoom={showRoom} compact={size === 'tile'} />
-      ),
+      render: (device, _size, showRoom) => <TreadmillTile device={device} showRoom={showRoom} />,
       cell: (device, frame, size) => (
         <TreadmillCardFace device={device} frame={frame} size={size} />
       ),

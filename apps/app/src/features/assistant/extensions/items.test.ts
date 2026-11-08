@@ -1,6 +1,6 @@
 import { HARNESS_EXTENSION_ITEM, type HarnessExtensionItem } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { matchesExtension, patched } from './items';
+import { matchesExtension, pageKind, patched } from './items';
 
 function item(overrides: Partial<HarnessExtensionItem>): HarnessExtensionItem {
   return HARNESS_EXTENSION_ITEM.parse({
@@ -45,4 +45,11 @@ describe('matchesExtension', () => {
     expect(matchesExtension(item({}), 'someone')).toBe(true);
     expect(matchesExtension(item({}), 'nothing')).toBe(false);
   });
+});
+
+it('routes the included skills capability and installed skills to the Skills page', () => {
+  expect(pageKind(item({ id: 'skills', kind: 'builtin' }))).toBe('skill');
+  expect(pageKind(item({ id: 'skill:demo', kind: 'skill' }))).toBe('skill');
+  expect(pageKind(item({ id: 'claude-plugins', kind: 'builtin' }))).toBe('extension');
+  expect(pageKind(item({}))).toBe('extension');
 });

@@ -9,6 +9,7 @@ body,
 }
 
 .se-flow {
+  container: graph-canvas / inline-size;
   --se-zoom: 1;
   --se-handle-size: 12px;
   --se-handle-pad: 40px;
@@ -34,19 +35,6 @@ body,
 
 .se-flow[data-idiom='pointer'] {
   --se-handle-pad: 24px;
-}
-
-.se-flow .react-flow__attribution {
-  margin: 0 4px 4px 0;
-  padding: 1px 4px;
-  font-size: 10px;
-  line-height: 1.2;
-  color: var(--se-on-surface-faint);
-  background: transparent;
-}
-
-.se-flow .react-flow__attribution a {
-  color: inherit;
 }
 
 .se-flow .react-flow__node:focus-visible {
@@ -81,7 +69,7 @@ body,
   pointer-events: none;
 }
 
-.se-flow[data-ports='off'] .react-flow__handle {
+.se-flow[data-ports='off'] .react-flow__handle.gc-value {
   pointer-events: none;
 }
 

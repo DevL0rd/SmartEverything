@@ -1,15 +1,25 @@
 import { DeviceEffects } from './commands/effects';
 import { IrAssumedState } from './infrared/assumed-state';
+import type { HubLayout } from './data-layout';
 import { preparePassiveAdapter } from './local/passive-adapter';
-import { isPrivate, privacySwitchOf, type JsonValue, type Provider } from '@smarteverything/domain';
+import {
+  isPrivate,
+  privacySwitchOf,
+  type HubCommand,
+  type JsonValue,
+  type ProcessWindow,
+  type Provider,
+} from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { StoredAccount } from './adapters/contract';
+import { XiaomiAdapter } from './adapters/xiaomi/adapter';
 import type { AutomationAiSlot } from './automations/automation-ai';
 import type { AutomationComputersSlot } from './automations/automation-computers';
 import type { AutomationIntegrationSlot } from './automations/automation-integration';
 import type { AutomationTraceSlot } from './automations/automation-trace';
 import type { EngineV3 } from './automations/engine-v3';
 import { assembleHubEngine } from './automations/hub-engine';
+import type { PluginKindCatalog } from './automations/plugin-kinds/catalog';
 import type { QuestionDesk } from './automations/questions/desk';
 import type { TimerWakes } from './automations/timers/timer-wakes';
 import type { WebhookGateway } from './automations/webhooks/gateway';
@@ -21,6 +31,7 @@ import type { Go2rtcClient } from './cameras/go2rtc-client';
 import type { Clock } from './clock';
 import { applyDirectLinks } from './commands/television-direct-link';
 import { CommandExecutor } from './commands/executor';
+import { CommandConfirmations } from './commands/command-confirmations';
 import { televisionRouting } from './commands/television-assembly';
 import type { DeviceRecord, HubDatabase } from './database/port';
 import { DeviceDriverRegistry } from './local/device-driver';
@@ -39,6 +50,10 @@ import { EventRouter } from './state/event-router';
 import { Inventory } from './state/inventory';
 import { StateWriter } from './state/state-writer';
 import type { Store } from './store/store';
+import { Viewers } from './metrics/viewers';
+import { systemRouteTimer } from './vacuum/live-route';
+import { VacuumHub } from './vacuum/vacuum-hub';
+import type { VacuumVideoPorts } from './vacuum/video-session';
 
 export interface HubParts {
   readonly store: Store;
@@ -47,9 +62,10 @@ export interface HubParts {
   readonly registry: ModuleRegistry;
   readonly secrets: SecretStore;
   readonly go2rtc: Go2rtcClient;
+  readonly vacuumVideo: VacuumVideoPorts;
   readonly cameraRefusal: CameraRefusals;
   readonly devicesChanged: (devices: readonly DeviceRecord[]) => void;
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
   readonly clock: Clock;
   readonly logFor: (area: string) => Logger;
 }
@@ -61,6 +77,7 @@ export interface Core {
   readonly providers: ProviderManager;
   readonly outages: ProviderOutages;
   readonly executor: CommandExecutor;
+  readonly confirmations: CommandConfirmations;
   readonly effects: DeviceEffects;
   readonly engine: EngineV3;
   readonly automationSecrets: AutomationSecrets;
@@ -74,8 +91,16 @@ export interface Core {
   readonly automationWebhooks: WebhookGateway;
   readonly automationTimers: TimerWakes;
   readonly automationQuestions: QuestionDesk;
+  readonly automationKinds: PluginKindCatalog;
   readonly drivers: DeviceDriverRegistry;
   readonly irAssumed: IrAssumedState;
+  readonly vacuums: VacuumHub;
+  readonly deviceViewers: Viewers<ProcessWindow>;
+}
+
+interface Trackers {
+  readonly laundry: CycleTracker;
+  readonly vacuums: VacuumHub;
 }
 
 export function reportFailure(log: Logger, event: string): (cause: unknown) => void {
@@ -91,7 +116,7 @@ export function areaOf(parts: HubParts, name: string): Logger {
 function stateWriterOf(
   parts: HubParts,
   inventory: Inventory,
-  laundry: CycleTracker,
+  trackers: Trackers,
   deviceSignals: DeviceSignals,
 ): StateWriter {
   return new StateWriter({
@@ -100,7 +125,8 @@ function stateWriterOf(
     clock: parts.clock,
     log: areaOf(parts, 'state'),
     changed: (change): void => {
-      laundry.observe(change);
+      trackers.laundry.observe(change);
+      trackers.vacuums.observe(change);
     },
     moved: (change): void => {
       deviceSignals.moved(change);
@@ -112,16 +138,19 @@ function assembleWriters(
   parts: HubParts,
   cameras: CameraService,
   signals: SignalBus,
-  laundry: CycleTracker,
+  trackers: Trackers,
 ): Pick<Core, 'inventory' | 'state' | 'events' | 'outages'> {
   const camerasLog = areaOf(parts, 'cameras');
   const events: EventRouter = new EventRouter({
     store: parts.database,
     inventory: { deviceOf: (provider, externalId) => inventory.deviceOf(provider, externalId) },
     log: areaOf(parts, 'events'),
-    claim: (device, event) => laundry.claim(device, event),
+    claim: (device, event) =>
+      trackers.laundry.claim(device, event) || trackers.vacuums.claim(device, event),
     recorded: (event): void => {
-      signals.emit(eventSignal(event));
+      const roomId =
+        event.deviceId === null ? null : (inventory.deviceById(event.deviceId)?.roomId ?? null);
+      signals.emit(eventSignal(event, roomId));
       cameras.record(event).catch(reportFailure(camerasLog, 'recording.crashed'));
     },
   });
@@ -142,13 +171,14 @@ function assembleWriters(
     },
     devicesChanged: (devices): void => {
       cameras.sync(devices).catch(reportFailure(camerasLog, 'stream.sync_failed'));
+      trackers.vacuums.sync(inventory.all());
       parts.devicesChanged(inventory.all());
     },
     lifecycle: (change): void => {
       deviceSignals.lifecycle(change);
     },
   });
-  const state = stateWriterOf(parts, inventory, laundry, deviceSignals);
+  const state = stateWriterOf(parts, inventory, trackers, deviceSignals);
   recordFeedSignals({ signals, events });
   return { inventory, state, events, outages };
 }
@@ -175,16 +205,21 @@ function providerManager(
   parts: HubParts,
   writers: Pick<Core, 'inventory' | 'state' | 'events'>,
   cameras: CameraService,
+  vacuums: VacuumHub,
 ): ProviderManager {
   return new ProviderManager({
     prepareAdapter: (adapter): void => {
       preparePassiveAdapter(adapter, parts);
+      if (adapter instanceof XiaomiAdapter) vacuums.link.bind(adapter.vacuumLink());
+    },
+    releaseAdapter: (adapter): void => {
+      if (adapter instanceof XiaomiAdapter) vacuums.link.bind(null);
     },
     ...writers,
     registry: parts.registry,
     secrets: parts.secrets,
     store: parts.database,
-    dataDirectory: parts.dataDirectory,
+    layout: parts.layout,
     accountChanged: async (provider, account): Promise<void> => {
       if (provider === 'samsung_tv') {
         await applyDirectLinks(parts.store, writers.inventory, account);
@@ -221,6 +256,24 @@ function cameraServiceOf(
   });
 }
 
+function confirmationsOf(parts: HubParts): CommandConfirmations {
+  return new CommandConfirmations({
+    store: parts.store,
+    clock: parts.clock,
+    log: areaOf(parts, 'commands'),
+  });
+}
+
+function hubCommandOf(
+  cameras: CameraService,
+  providers: ProviderManager,
+): (command: HubCommand) => Promise<JsonValue> {
+  return (command) =>
+    command.capability === 'hub:record_clip'
+      ? cameras.recordClip(command.value.deviceId, command.value.seconds)
+      : providers.handle(command);
+}
+
 export function assemble(parts: HubParts): Core {
   const cameras = cameraServiceOf(parts, () => writers);
   const signals = signalBusOf(parts);
@@ -228,21 +281,22 @@ export function assemble(parts: HubParts): Core {
     { store: parts.store, now: parts.clock.now, log: areaOf(parts, 'laundry') },
     () => writers,
   );
-  const writers = assembleWriters(parts, cameras, signals, laundry);
-  const providers = providerManager(parts, writers, cameras);
+  const deviceViewers = new Viewers<ProcessWindow>();
+  const vacuums = vacuumHubOf(parts, deviceViewers, () => writers);
+  const writers = assembleWriters(parts, cameras, signals, { laundry, vacuums });
+  const providers = providerManager(parts, writers, cameras, vacuums);
   const drivers = new DeviceDriverRegistry();
   const effects = new DeviceEffects(parts.store, areaOf(parts, 'effects'));
+  const confirmations = confirmationsOf(parts);
   const executor = new CommandExecutor({
     effects,
+    confirmations,
     television: televisionRouting({ ...parts, ...writers, adapters: providers, signals }),
     store: parts.database,
     drivers,
     inventory: writers.inventory,
     adapters: providers,
-    hubCommand: (command): Promise<JsonValue> =>
-      command.capability === 'hub:record_clip'
-        ? cameras.recordClip(command.value.deviceId, command.value.seconds)
-        : providers.handle(command),
+    hubCommand: hubCommandOf(cameras, providers),
     log: areaOf(parts, 'commands'),
     now: parts.clock.now,
   });
@@ -258,12 +312,41 @@ export function assemble(parts: HubParts): Core {
     drivers,
     providers,
     executor,
+    confirmations,
     effects,
     ...automation,
     cameras,
     signals,
     irAssumed,
+    vacuums,
+    deviceViewers,
   };
+}
+
+function vacuumHubOf(
+  parts: HubParts,
+  viewers: Viewers<ProcessWindow>,
+  writers: () => Pick<Core, 'state' | 'events'>,
+): VacuumHub {
+  return new VacuumHub({
+    store: parts.store,
+    state: {
+      valueOf: (deviceId, key) => writers().state.valueOf(deviceId, key),
+      push: (provider, update): void => {
+        writers().state.push(provider, update);
+      },
+    },
+    events: {
+      fromProvider: (provider, event): void => {
+        writers().events.fromProvider(provider, event);
+      },
+    },
+    viewers,
+    timer: systemRouteTimer,
+    video: parts.vacuumVideo,
+    now: parts.clock.now,
+    log: areaOf(parts, 'vacuum'),
+  });
 }
 
 function assembleAutomationCore(
@@ -283,6 +366,7 @@ function assembleAutomationCore(
   | 'automationWebhooks'
   | 'automationTimers'
   | 'automationQuestions'
+  | 'automationKinds'
 > {
   const hubEngine = assembleHubEngine({
     store: parts.store,
@@ -309,5 +393,6 @@ function assembleAutomationCore(
     automationWebhooks: hubEngine.webhooks,
     automationTimers: hubEngine.timers,
     automationQuestions: hubEngine.questions,
+    automationKinds: hubEngine.kinds,
   };
 }

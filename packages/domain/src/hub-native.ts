@@ -6,6 +6,10 @@ import {
   HUB_IDENTITY,
 } from './hub-connections';
 import type {
+  NativeAndroidUpdateInstall,
+  NativeAndroidUpdateCancel,
+  NativeAndroidUpdateProgress,
+  NativeAndroidUpdateResult,
   NativeHubResourceOpen,
   NativeHubResource,
   NativeHubResourceDownload,
@@ -108,11 +112,33 @@ export const NATIVE_HUB_REQUEST = z.strictObject({
   binding: NATIVE_HUB_CREDENTIAL_BINDING.optional(),
   routeGeneration: z.int().nonnegative().optional(),
   url: z.url({ protocol: /^https?$/ }),
-  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
+  method: z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']),
   headers: z.record(z.string().min(1), z.string()),
   body: z.string().nullable(),
 });
 export type NativeHubRequest = z.infer<typeof NATIVE_HUB_REQUEST>;
+
+export const NATIVE_HUB_UPLOAD_ID = z.string().min(1);
+
+export const NATIVE_HUB_UPLOAD_OPEN = z.strictObject({
+  scopeId: SCOPE_ID,
+  binding: NATIVE_HUB_CREDENTIAL_BINDING.optional(),
+  routeGeneration: z.int().nonnegative().optional(),
+  id: NATIVE_HUB_UPLOAD_ID,
+  url: z.url({ protocol: /^https?$/ }),
+  method: z.enum(['POST', 'PUT', 'PATCH']),
+  headers: z.record(z.string().min(1), z.string()),
+  length: z.int().nonnegative(),
+});
+export type NativeHubUploadOpen = z.infer<typeof NATIVE_HUB_UPLOAD_OPEN>;
+
+export const NATIVE_HUB_UPLOAD_CHUNK = z.strictObject({
+  id: NATIVE_HUB_UPLOAD_ID,
+  data: z.instanceof(Uint8Array),
+});
+export type NativeHubUploadChunk = z.infer<typeof NATIVE_HUB_UPLOAD_CHUNK>;
+
+export const NATIVE_HUB_UPLOAD_ACCEPTING = z.boolean();
 
 export const NATIVE_HUB_RESPONSE = z.object({
   status: z.int().min(100).max(599),
@@ -188,9 +214,19 @@ export interface NativeHubNetwork extends HubPairingNetwork {
   openResource?(request: NativeHubResourceOpen): Promise<NativeHubResource>;
   releaseResource?(id: string): Promise<void>;
   downloadResource?(request: NativeHubResourceDownload): Promise<NativeHubResourceDownloadResult>;
+  requestAndroidUpdatePermission?(): Promise<boolean>;
+  installAndroidUpdate?(request: NativeAndroidUpdateInstall): Promise<NativeAndroidUpdateResult>;
+  cancelAndroidUpdate?(request: NativeAndroidUpdateCancel): Promise<void>;
+  subscribeAndroidUpdateProgress?(
+    listener: (progress: NativeAndroidUpdateProgress) => void,
+  ): () => void;
   configureTrust(trust: NativeHubTrust): Promise<void>;
   clearTrust(scopeId: string): Promise<void>;
   request?(request: NativeHubRequest): Promise<NativeHubResponse>;
+  openUpload?(request: NativeHubUploadOpen): Promise<void>;
+  sendUpload?(chunk: NativeHubUploadChunk): Promise<boolean>;
+  finishUpload?(id: string): Promise<NativeHubResponse>;
+  abortUpload?(id: string): Promise<void>;
   startDiscovery(): Promise<NativeHubDiscovery>;
   stopDiscovery(): Promise<void>;
   subscribeDiscovery(listener: (state: NativeHubDiscovery) => void): () => void;

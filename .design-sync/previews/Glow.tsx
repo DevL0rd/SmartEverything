@@ -1,7 +1,12 @@
+import type { ReactElement } from 'react';
 import { Glow, Stage, Text } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
-const tile = (colour: 'primary' | 'positive' | 'info', label: string, strength?: number) => (
+const tile = (
+  colour: 'primary' | 'positive' | 'info',
+  label: string,
+  strength?: number,
+): ReactElement => (
   <div
     style={{
       position: 'relative',
@@ -26,12 +31,12 @@ const body = (
     {tile('info', 'Cooling', 0.5)}
   </Row>
 );
-export const Colours = () => (
+export const Colours = (): ReactElement => (
   <Stage theme="dark" width={640}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={640}>
     {body}
   </Stage>

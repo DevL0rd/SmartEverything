@@ -193,7 +193,7 @@ export const PRINTER_JOB = z.strictObject({
 export type PrinterJob = z.infer<typeof PRINTER_JOB>;
 
 export const PRINTER_PRINT_OPTIONS = z.strictObject({
-  copies: z.int().min(1).max(999).optional(),
+  copies: z.int().min(1).optional(),
   sides: z.enum(['one-sided', 'two-sided-long-edge', 'two-sided-short-edge']).optional(),
   colorMode: z.string().min(1).optional(),
   quality: z.enum(['draft', 'normal', 'high']).optional(),
@@ -217,6 +217,7 @@ export type PrinterPrintOptions = z.infer<typeof PRINTER_PRINT_OPTIONS>;
 export const PRINTER_SOURCE = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('upload'), uploadId: z.string().min(1) }),
   z.strictObject({ kind: z.literal('attachment'), name: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('picture'), pictureId: z.string().min(1) }),
   z.strictObject({
     kind: z.literal('machine'),
     machine: z.string().min(1),

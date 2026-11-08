@@ -82,10 +82,10 @@ function Marks({ row, mode }: { readonly row: LibraryRow; readonly mode: Library
   const marks = marksOf(mode, selected, model.latest);
   return (
     <>
-      {marks.badge ? <Badge label="Default" tone="primary" /> : null}
+      {marks.badge ? <Badge label="Current" tone="primary" /> : null}
       {marks.latestCaption ? (
         <Text variant="caption" tone="primary">
-          Default
+          Updates to the newest
         </Text>
       ) : null}
       {marks.check ? <Icon name="check" size={16} tone="primary" /> : null}

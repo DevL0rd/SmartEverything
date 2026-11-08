@@ -12,6 +12,7 @@ import type { Device, StoreState } from '../../../store/state';
 import { sameJson } from '../../../store/same-json';
 import { useStoreSelector } from '../../../store/store-context';
 import type { VisualState } from '../types';
+import { useVacuumFinish } from './vacuum-finish';
 import { visualStateOf } from './visual-state';
 import { useTodaySteps, type StepsReading } from './watch-steps';
 
@@ -95,6 +96,15 @@ export function useDeviceVisualState(device: Device): VisualState {
     [device],
     SENSING_FAMILIES.has(deviceFamily(device)) ? sameJson : sameIgnoringStamp,
   );
+}
+
+export function useVacuumVisualState(device: Device): VisualState {
+  const state = useDeviceVisualState(device);
+  const finish = useVacuumFinish(device.id);
+  const { vacuum } = state;
+  return vacuum === undefined || vacuum.finish === finish
+    ? state
+    : { ...state, vacuum: { ...vacuum, finish } };
 }
 
 export function useScaleVisualState(device: Device): VisualState {

@@ -8,6 +8,10 @@ export interface PickedFile {
   readonly data: () => Promise<ArrayBuffer>;
 }
 
+export interface PickedBlob extends PickedFile {
+  readonly blob: () => Promise<Blob>;
+}
+
 export class PickerMissingError extends Error {
   override readonly name = 'PickerMissingError';
 }
@@ -18,21 +22,22 @@ const ACCEPT: Readonly<Record<PickSource, string>> = {
   files: '*/*',
 };
 
-function pickedOf(file: File): PickedFile {
+function pickedOf(file: File): PickedBlob {
   return {
     name: file.name,
     mime: file.type === '' ? 'application/octet-stream' : file.type,
     bytes: file.size,
     preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
     data: () => file.arrayBuffer(),
+    blob: () => Promise.resolve(file),
   };
 }
 
-function listOf(files: FileList | null | undefined): readonly PickedFile[] {
+function listOf(files: FileList | null | undefined): readonly PickedBlob[] {
   return files === null || files === undefined ? [] : Array.from(files, pickedOf);
 }
 
-export function pickFiles(source: PickSource): Promise<readonly PickedFile[]> {
+export function pickFiles(source: PickSource): Promise<readonly PickedBlob[]> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -51,6 +56,6 @@ export function pickFiles(source: PickSource): Promise<readonly PickedFile[]> {
   });
 }
 
-export function filesOfTransfer(transfer: unknown): readonly PickedFile[] {
+export function filesOfTransfer(transfer: unknown): readonly PickedBlob[] {
   return transfer instanceof DataTransfer ? listOf(transfer.files) : [];
 }

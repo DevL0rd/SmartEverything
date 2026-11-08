@@ -16,7 +16,7 @@ export function acceptPublication(
   }
   const frame = publication.frame;
   service.storage.principal(frame.session_id, input);
-  if (service.store.harnessCoordination.state(frame.session_id)?.epoch !== frame.epoch)
+  if (service.store.harnessSessions.state(frame.session_id)?.epoch !== frame.epoch)
     throw new ApiError(
       'forbidden',
       'The native frame does not belong to this profile or writer epoch.',

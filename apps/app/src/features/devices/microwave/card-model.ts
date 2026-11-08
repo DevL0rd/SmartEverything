@@ -39,10 +39,7 @@ export interface FigureSpec {
   readonly caption?: string;
 }
 
-function leftSpec(
-  run: Pick<MicrowaveRun, 'leftMinutes' | 'readyAt'>,
-  captions: boolean,
-): FigureSpec | null {
+function leftSpec(run: Pick<MicrowaveRun, 'leftMinutes' | 'readyAt'>): FigureSpec | null {
   const left = minutesLeftParts(run.leftMinutes);
   if (left === null) {
     return null;
@@ -50,30 +47,24 @@ function leftSpec(
   return {
     key: 'left',
     ...left,
-    ...(captions && run.readyAt !== null ? { caption: `ready ${run.readyAt}` } : {}),
+    ...(run.readyAt !== null ? { caption: `ready ${run.readyAt}` } : {}),
   };
 }
 
-function drawSpec(
-  run: Pick<MicrowaveRun, 'phase' | 'watts'>,
-  captions: boolean,
-): FigureSpec | null {
+function drawSpec(run: Pick<MicrowaveRun, 'phase' | 'watts'>): FigureSpec | null {
   if (run.phase !== 'running' || run.watts === null || run.watts <= 0) {
     return null;
   }
-  return { key: 'draw', ...drawParts(run.watts), ...(captions ? { caption: 'power' } : {}) };
+  return { key: 'draw', ...drawParts(run.watts), caption: 'power' };
 }
 
 export function figureSpecs(
   run: Pick<MicrowaveRun, 'phase' | 'leftMinutes' | 'readyAt' | 'watts'>,
-  captions: boolean,
 ): readonly FigureSpec[] {
   if (run.phase !== 'running' && run.phase !== 'paused') {
     return [];
   }
-  return [leftSpec(run, captions), drawSpec(run, captions)].filter(
-    (spec): spec is FigureSpec => spec !== null,
-  );
+  return [leftSpec(run), drawSpec(run)].filter((spec): spec is FigureSpec => spec !== null);
 }
 
 export function blockedReason(run: Pick<MicrowaveRun, 'phase' | 'blocked'>): string | null {

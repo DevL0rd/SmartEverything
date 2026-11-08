@@ -14,22 +14,11 @@ function titles(engine: Parameters<typeof accessSections>[0]): readonly (readonl
 }
 
 describe('accessSections', () => {
-  it('gives the SmartEverything runtime a change section and an asking section', () => {
-    expect(accessSections('harness').map((section) => section.title)).toEqual([
-      'What it can change',
-      'When it asks',
-    ]);
-    expect(titles('harness')).toEqual([
-      ['Read only', 'Allow edits', 'Full access'],
-      ['Ask when needed', 'Never ask'],
-    ]);
-  });
-
   it('gives Claude one Mode section in the designed order', () => {
     expect(accessSections('claude').map((section) => section.title)).toEqual(['Mode']);
     expect(titles('claude')).toEqual([
       [
-        'Runtime default',
+        'As the runtime is set up',
         'Ask first',
         'Allow edits',
         'Plan only',
@@ -46,17 +35,13 @@ describe('accessSections', () => {
       'Approvals',
     ]);
     expect(titles('codex')).toEqual([
-      ['Runtime default', 'Read only', 'Allow edits', 'Full access', 'External sandbox'],
-      ['Runtime default', 'Ask first', 'Ask when needed', 'No prompts'],
+      ['As the runtime is set up', 'Read only', 'Allow edits', 'Full access', 'External sandbox'],
+      ['As the runtime is set up', 'Ask first', 'Ask when needed', 'No prompts'],
     ]);
   });
 
-  it('gives cloud chats no access levels', () => {
-    expect(accessSections('cloud')).toEqual([]);
-  });
-
   it('keeps option values unique inside each section', () => {
-    for (const engine of ['harness', 'claude', 'codex'] as const) {
+    for (const engine of ['claude', 'codex'] as const) {
       for (const section of accessSections(engine)) {
         const values = section.options.map((opt) => opt.value);
         expect(new Set(values).size).toBe(values.length);
@@ -74,18 +59,26 @@ describe('accessPill', () => {
   const cases: readonly (readonly [string, AccessSelection, string, string])[] = [
     [
       'harness read only',
-      { kind: 'harness', permission: { sandbox: 'read-only', approval: 'on-request' } },
+      {
+        kind: 'harness',
+        permission: { sandbox: 'read-only', approval: 'on-request' },
+        title: null,
+      },
       'Read only',
       'eye',
     ],
     [
       'harness allow edits',
-      { kind: 'harness', permission: { sandbox: 'workspace-write', approval: 'on-request' } },
+      {
+        kind: 'harness',
+        permission: { sandbox: 'workspace-write', approval: 'on-request' },
+        title: null,
+      },
       'Edits',
       'pencilShield',
     ],
-    ['claude unset', { kind: 'claude', mode: undefined }, 'Default', 'shield'],
-    ['claude ask first', { kind: 'claude', mode: 'default' }, 'Default', 'shield'],
+    ['claude unset', { kind: 'claude', mode: undefined }, 'Runtime', 'shield'],
+    ['claude ask first', { kind: 'claude', mode: 'default' }, 'Ask', 'shield'],
     ['claude plan', { kind: 'claude', mode: 'plan' }, 'Plan', 'listCheck'],
     ['claude auto', { kind: 'claude', mode: 'auto' }, 'Auto', 'shieldCheck'],
     ['claude decline', { kind: 'claude', mode: 'dontAsk' }, 'Strict', 'shieldX'],
@@ -99,7 +92,6 @@ describe('accessPill', () => {
       'Sandbox',
       'box',
     ],
-    ['cloud', { kind: 'cloud', allowedTools: 31 }, 'Tools 31', 'wrench'],
   ];
 
   it.each(cases)('labels %s', (_name, selection, label, icon) => {
@@ -110,7 +102,11 @@ describe('accessPill', () => {
   });
 
   it.each([
-    { kind: 'harness', permission: { sandbox: 'danger-full-access', approval: 'never' } },
+    {
+      kind: 'harness',
+      permission: { sandbox: 'danger-full-access', approval: 'never' },
+      title: null,
+    },
     { kind: 'claude', mode: 'bypassPermissions' },
     { kind: 'codex', sandbox: { type: 'dangerFullAccess' }, approval: undefined },
   ] as const satisfies readonly AccessSelection[])(
@@ -139,8 +135,9 @@ describe('accessPillLabel', () => {
     const pill = accessPill({
       kind: 'harness',
       permission: { sandbox: 'workspace-write', approval: 'on-request' },
+      title: 'Workspace write',
     });
-    expect(accessPillLabel(pill, false)).toBe('Access: Allow edits, asks when needed');
+    expect(accessPillLabel(pill, false)).toBe('Access: Workspace write, asks when needed');
   });
 
   it('adds applies next turn when the change is pending', () => {
@@ -157,10 +154,13 @@ describe('accessPillLabel', () => {
     expect(accessPillLabel(pill, false)).toBe('Access: Ask first');
   });
 
-  it('names a cloud chat by its tool allowlist', () => {
-    expect(accessPillLabel(accessPill({ kind: 'cloud', allowedTools: 31 }), false)).toBe(
-      'Access: Tools for this chat',
-    );
+  it('names a harness chat by the short level word while its presets are not loaded', () => {
+    const pill = accessPill({
+      kind: 'harness',
+      permission: { sandbox: 'workspace-write', approval: 'on-request' },
+      title: null,
+    });
+    expect(accessPillLabel(pill, false)).toBe('Access: Edits, asks when needed');
   });
 });
 

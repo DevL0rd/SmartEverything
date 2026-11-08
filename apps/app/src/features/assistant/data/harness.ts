@@ -1,6 +1,6 @@
 import { Logger, background } from '@smarteverything/logging';
 import { useEffect } from 'react';
-import { CancelledError, useMutation, useQueryClient } from '@tanstack/react-query';
+import { CancelledError, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   AI_HARNESS_ENDPOINTS as E,
@@ -11,6 +11,7 @@ import {
   type AiHarnessCatalogue,
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
+import { UnreadableAnswerError } from '../../../api/connection/client';
 import type { EntityStore } from '../../../store/entity-store';
 import type { StoreState } from '../../../store/state';
 import { sameJson } from '../../../store/same-json';
@@ -21,11 +22,18 @@ import { HARNESS_CATALOGUE_KEY, harnessKey } from '../../../queries/harness-noti
 const log = new Logger('app.harness');
 export { HARNESS_CATALOGUE_KEY, harnessKey } from '../../../queries/harness-notices';
 
-export function useHarnessCatalogue(): ReturnType<typeof useScreenQuery<AiHarnessCatalogue>> {
-  return useScreenQuery({
+export function harnessCatalogueQuery(): ReturnType<
+  typeof queryOptions<AiHarnessCatalogue, Error, AiHarnessCatalogue, typeof HARNESS_CATALOGUE_KEY>
+> {
+  return queryOptions({
     queryKey: HARNESS_CATALOGUE_KEY,
     queryFn: () => api().call(E.readAiHarnessCatalogue, {}),
+    retry: (failures, error) => failures < 1 && !(error instanceof UnreadableAnswerError),
   });
+}
+
+export function useHarnessCatalogue(): ReturnType<typeof useScreenQuery<AiHarnessCatalogue>> {
+  return useScreenQuery(harnessCatalogueQuery());
 }
 function bindingOf(state: StoreState, chatId: string): readonly unknown[] {
   const chat = state.tables.ai_chats.byId[chatId];

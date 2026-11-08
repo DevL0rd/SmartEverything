@@ -23,28 +23,49 @@ export function referenceIntent(
   const start = prefix.length - query.length - 1;
   return { start, end: selection.start, query };
 }
+export function referenceInsertion(
+  before: string,
+  intent: ReferenceIntent,
+  label: string,
+): {
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
+  readonly token: string;
+  readonly selection: ComposerSelection;
+} {
+  const token = `@${label}`;
+  const suffix = before.slice(intent.end);
+  const space = suffix === '' || !/^\s/u.test(suffix) ? ' ' : '';
+  const text = before.slice(0, intent.start) + token + space + suffix;
+  const end = intent.start + token.length;
+  return {
+    text,
+    start: intent.start,
+    end,
+    token,
+    selection: { start: end + space.length, end: end + space.length },
+  };
+}
 export function selectedReference(
   input: ReferenceText,
   intent: ReferenceIntent,
   item: AiReferenceSummary,
 ): ReferenceText & { readonly selection: ComposerSelection } {
-  const token = `@${item.label}`;
-  const suffix = input.text.slice(intent.end);
-  const space = suffix === '' || !/^\s/u.test(suffix) ? ' ' : '';
-  const text = input.text.slice(0, intent.start) + token + space + suffix;
+  const { text, start, end, token, selection } = referenceInsertion(input.text, intent, item.label);
   const reference: AiMessageReference = {
     reference: item.reference,
     label: item.label,
     token,
-    start: intent.start,
-    end: intent.start + token.length,
+    start,
+    end,
   };
   return {
     text,
     references: [...adjustedReferences(input.text, text, input.references), reference].sort(
       (left, right) => left.start - right.start,
     ),
-    selection: { start: reference.end + space.length, end: reference.end + space.length },
+    selection,
   };
 }
 export function removedReference(input: ReferenceText, item: AiMessageReference): ReferenceText {

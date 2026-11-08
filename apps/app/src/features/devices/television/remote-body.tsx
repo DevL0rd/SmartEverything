@@ -6,6 +6,7 @@ import { cn } from '../../../design/cn';
 import { BODY_FILL } from './key-style';
 import { routeKeyboard, type KeyboardAction } from './keyboard';
 import { canUseNumberPad } from './numpad';
+import { PlayPauseKeys, playPauseReachable } from './play-pause';
 import { ReasonSlot } from './reason-slot';
 import { RemoteKey } from './remote-key';
 import { RingPad } from './ring-pad';
@@ -14,7 +15,7 @@ import type { TvSheets } from './sheet-state';
 import type { Television } from './use-television';
 import { useRemoteKeyboard } from './use-remote-keyboard';
 
-const PLAYBACK_KEYS: readonly TvKey[] = ['prev_track', 'rewind', 'play_pause', 'ff', 'next_track'];
+const PLAYBACK_KEYS: readonly TvKey[] = ['prev_track', 'rewind', 'ff', 'next_track'];
 
 const COLOURS: readonly {
   readonly name: TvKey;
@@ -44,10 +45,12 @@ function NumberKey({
   readonly tv: Television;
   readonly sheets: TvSheets;
 }): ReactNode {
+  const { numpad } = sheets.openers;
   return (
     <RemoteKey
       tv={tv}
       name="n0"
+      ref={numpad}
       icon="hash"
       text="123"
       label="Number pad"
@@ -67,6 +70,7 @@ function KeyGrid({
   readonly sheets: TvSheets;
 }): ReactNode {
   const { view } = tv;
+  const { inputs } = sheets.openers;
   const monitor = view.category === 'monitor';
   const muted = view.volume.muted;
   return (
@@ -87,6 +91,7 @@ function KeyGrid({
       <RemoteKey
         tv={tv}
         name="source"
+        ref={inputs}
         icon="cable"
         text="Source"
         lockText={view.mode === 'on' ? null : TV_KEY_REASON_TEXT.tv_off}
@@ -116,24 +121,19 @@ function SideRocker({
 
 function PlaybackRow({ tv }: { readonly tv: Television }): ReactNode {
   const { view } = tv;
-  const reachable = PLAYBACK_KEYS.some((name) => view.locks[name] === undefined);
+  const reachable =
+    playPauseReachable(tv) || PLAYBACK_KEYS.some((name) => view.locks[name] === undefined);
   if (view.mode === 'on' && !reachable) {
     return null;
   }
+  const look = view.playback === null ? 'disc' : 'play';
   return (
-    <View className="w-full flex-row items-center justify-between">
-      <RemoteKey tv={tv} name="prev_track" icon="skipBack" look="play" label="Previous" />
-      <RemoteKey tv={tv} name="rewind" icon="rewind" look="play" label="Rewind" />
-      <RemoteKey
-        tv={tv}
-        name="play_pause"
-        icon={view.playing ? 'pause' : 'play'}
-        look="play"
-        label={view.playing ? 'Pause' : 'Play'}
-        emphasis
-      />
-      <RemoteKey tv={tv} name="ff" icon="fastForward" look="play" label="Fast-forward" />
-      <RemoteKey tv={tv} name="next_track" icon="skipForward" look="play" label="Next" />
+    <View className="min-h-14 w-full flex-row items-center justify-between">
+      <RemoteKey tv={tv} name="prev_track" icon="skipBack" look={look} label="Previous" />
+      <RemoteKey tv={tv} name="rewind" icon="rewind" look={look} label="Rewind" />
+      <PlayPauseKeys tv={tv} look={look} emphasis />
+      <RemoteKey tv={tv} name="ff" icon="fastForward" look={look} label="Fast-forward" />
+      <RemoteKey tv={tv} name="next_track" icon="skipForward" look={look} label="Next" />
     </View>
   );
 }
@@ -149,9 +149,9 @@ function ColourRow({ tv }: { readonly tv: Television }): ReactNode {
           key={colour.name}
           tv={tv}
           name={colour.name}
-          look="pill"
+          look="colour"
           text={colour.label}
-          className={cn('h-11 w-18', colour.tint)}
+          className={colour.tint}
         />
       ))}
     </View>
@@ -174,6 +174,7 @@ function MidRow({
         kind="volume"
         orientation="vertical"
         seamButton
+        opener={sheets.openers.volume}
         onSeam={() => {
           sheets.open('volume');
         }}

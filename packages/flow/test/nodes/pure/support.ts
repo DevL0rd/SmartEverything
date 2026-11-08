@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { expect } from 'vitest';
 import { NODE_REGISTRY } from '@smarteverything/domain';
 import type { ErrorClass, JsonValue } from '@smarteverything/domain';
@@ -21,7 +22,7 @@ export function runPorts(
   get: PortThunks['get'],
   environment: PureEnvironment = HOME,
 ): NodeResult {
-  const evaluator = pureEvaluators(environment)(kind);
+  const evaluator = pureEvaluators(environment, STATIC_KIND_LOOKUP)(kind);
   if (evaluator === undefined) throw new Error(`no evaluator for ${kind}`);
   return evaluator.evaluate({
     kind,

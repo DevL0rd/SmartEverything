@@ -34,6 +34,53 @@ const ANDROID_GRADLE = join(
   'build.gradle',
 );
 
+const IR_LIBRARY_DIRECTORY = join(
+  REPOSITORY_ROOT,
+  'apps',
+  'hub',
+  'src',
+  'infrared',
+  'library',
+  'ir-library',
+);
+
+const IR_SOURCE_LINE = /^(\S+) \(([^,]+), see (\S+)\)\n\s+\S+\n\s+commit ([0-9a-f]{7,40})$/gmu;
+
+export interface IrLibrarySource {
+  readonly entry: ProductionPackage;
+  readonly licenceFile: string;
+}
+
+export interface BundledLicence {
+  readonly entry: ProductionPackage;
+  readonly text: string;
+}
+
+export function irLibrarySources(sources: string): readonly IrLibrarySource[] {
+  return [...sources.matchAll(IR_SOURCE_LINE)].flatMap((match) => {
+    const [, name, licence, licenceFile, commit] = match;
+    return name === undefined ||
+      licence === undefined ||
+      licenceFile === undefined ||
+      commit === undefined
+      ? []
+      : [{ entry: { name, version: commit.slice(0, 7), licence }, licenceFile }];
+  });
+}
+
+export function irLibraryLicences(): readonly BundledLicence[] {
+  const sources = irLibrarySources(readFileSync(join(IR_LIBRARY_DIRECTORY, 'SOURCES.txt'), 'utf8'));
+  if (sources.length === 0) {
+    throw new Error(
+      'apps/hub/src/infrared/library/ir-library/SOURCES.txt names no source in the expected form; update tooling/licence-extras.ts.',
+    );
+  }
+  return sources.map((one) => ({
+    entry: one.entry,
+    text: readFileSync(join(IR_LIBRARY_DIRECTORY, one.licenceFile), 'utf8').trim(),
+  }));
+}
+
 const WEBRTC_BINARY = 'io.getstream:stream-video-webrtc-android';
 
 const ELECTRON_MANIFEST = z.object({ version: z.string().min(1) });
@@ -96,5 +143,6 @@ export function extraLicences(): readonly ProductionPackage[] {
     ...androidLibraries(readFileSync(ANDROID_GRADLE, 'utf8')),
     webrtcBinary(),
     ...desktopRuntime(),
+    { name: 'Natural Earth admin 0 countries 110m', version: '5.1.1', licence: 'Public domain' },
   ];
 }

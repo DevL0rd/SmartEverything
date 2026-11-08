@@ -109,7 +109,6 @@ describe('IR data point writes', () => {
       { code: 'key_code', dpId: 4, value: '01@#' },
     ]);
   });
-
 });
 
 describe('learned codes', () => {

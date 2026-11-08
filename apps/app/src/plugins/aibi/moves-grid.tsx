@@ -6,7 +6,7 @@ import { Card } from '../../components/card';
 import { Grid } from '../../components/grid';
 import { Text } from '../../components/text';
 import type { Device } from '../../store/state';
-import { QuickMoveButton } from './robot-actions';
+import { QuickMoveButton, useMover } from './robot-actions';
 import { quickMoves } from './move-model';
 
 const GRID_MOVES = 8;
@@ -34,6 +34,7 @@ export function MovesGrid({
   readonly asleep: boolean;
 }): ReactNode {
   const shown = quickMoves(moves.actions, GRID_MOVES);
+  const mover = useMover(device);
   return (
     <Card title="Moves" icon="move">
       <Text variant="footnote" tone="variant">
@@ -42,7 +43,7 @@ export function MovesGrid({
       {asleep ? null : (
         <Grid minItemWidth={MIN_WIDTH} gap="tight">
           {shown.map((move) => (
-            <QuickMoveButton key={move.id} device={device} move={move} />
+            <QuickMoveButton key={move.id} move={move} mover={mover} />
           ))}
         </Grid>
       )}

@@ -50,6 +50,8 @@ function DateChip({
   return (
     <>
       <FilterChip
+        affordance="menu"
+        expanded={open}
         label="Dates"
         value={rangeLabel(state.params, window)}
         icon="calendar"

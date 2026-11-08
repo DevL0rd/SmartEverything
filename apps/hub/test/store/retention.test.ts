@@ -157,27 +157,38 @@ describe('the store sweep', () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it('sweeps at start-up and again every day', () => {
+  it('waits for the hub to start serving, then sweeps and repeats every day', () => {
     let now = DAY_ZERO;
-    const store = openStore({
-      path: join(directory, 'sweep.db'),
-      log: testLogger('store'),
-      now: () => new Date(now),
-      systemTimeZone: 'UTC',
-    });
-    const profile = store.profiles.first().id;
-    store.aiWakes.add({
-      profile_id: profile,
-      chat_id: null,
-      automation_id: null,
-      automation_name: 'Night',
-      headline: 'Woke',
-      instruction: '',
-      state: 'woke',
-      reason: null,
-    });
-    expect(store.aiWakes.recent(profile, 10)).toHaveLength(1);
+    const open = (): ReturnType<typeof openStore> =>
+      openStore({
+        path: join(directory, 'sweep.db'),
+        log: testLogger('store'),
+        now: () => new Date(now),
+        systemTimeZone: 'UTC',
+      });
+    const wake = (store: ReturnType<typeof openStore>, profile: string): void => {
+      store.aiWakes.add({
+        profile_id: profile,
+        chat_id: null,
+        automation_id: null,
+        automation_name: 'Night',
+        headline: 'Woke',
+        instruction: '',
+        state: 'woke',
+        reason: null,
+      });
+    };
+    const first = open();
+    const profile = first.profiles.first().id;
+    wake(first, profile);
+    first.close();
     now = DAY_ZERO + 91 * DAY;
+    const store = open();
+    expect(store.aiWakes.recent(profile, 10)).toHaveLength(1);
+    store.startRetention();
+    expect(store.aiWakes.recent(profile, 10)).toHaveLength(0);
+    wake(store, profile);
+    now += 91 * DAY;
     vi.advanceTimersByTime(DAY);
     expect(store.aiWakes.recent(profile, 10)).toHaveLength(0);
     store.close();

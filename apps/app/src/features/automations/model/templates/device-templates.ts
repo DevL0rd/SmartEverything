@@ -1,5 +1,6 @@
 import { MICROWAVE_KEYS, capabilityOf, presentDevice } from '@smarteverything/domain';
-import { EVERY_DAY, automation, lit, wire } from './build';
+import { EVERY_DAY, lit, wire } from './build';
+import { graphAutomation } from './graph-kit';
 import { bottleTemplates } from './bottle-templates';
 import { brushTemplates } from './brush-templates';
 import { eventTemplate, noticeTemplate } from './notice-template';
@@ -167,7 +168,7 @@ function treadmillLock(device: TemplateDevice): Template {
     devices: [device.label],
     slots: [timeSlot('at', 'Time', '23:00')],
     make: (use, m) =>
-      automation({
+      graphAutomation({
         triggers: [
           m.trigger('time1', 'trigger.time', {
             at: lit(use.text('at')),

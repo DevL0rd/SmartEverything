@@ -12,13 +12,14 @@ import { captureScene } from './effects/scene-capture';
 import { resolveTarget } from '../device-groups/commands';
 import { stampOf } from './effects/command-metadata';
 import { invalid, outputs, parsed } from './engine-v3-effects';
+import { modeOf } from './effects/action-mode';
 import { effectFailure } from './effect-failure';
 import type { EffectHandler, EffectHandlers } from './engine-v3-effects';
 import { SNAPSHOT_VALUE } from './world-v3/snapshot';
 import { TARGET_VALUE } from './world-v3/refs';
 
 export interface DeviceExtraPorts {
-  readonly setter: Pick<DeviceSetter, 'set'>;
+  readonly setter: Pick<DeviceSetter, 'set' | 'setTogether'>;
   readonly store: Store;
   readonly feed: Pick<ChangeFeed, 'subscribe'>;
   readonly clock: Pick<Clock, 'now' | 'at'>;
@@ -121,6 +122,7 @@ function deviceFade(ports: DeviceExtraPorts): EffectHandler {
           curve: ask.curve,
           ...(ask.step === undefined ? {} : { step: ask.step }),
           percent: false,
+          mode: modeOf(request),
           at: stampOf(request.path),
         },
         run,
@@ -138,7 +140,12 @@ function deviceRestore(ports: DeviceExtraPorts): EffectHandler {
     const checked = parsed(RESTORE_PARAMS, params);
     if (!checked.ok) return checked;
     try {
-      const result = await restorer.restore(checked.value.snapshot, stampOf(request.path), run);
+      const result = await restorer.restore(
+        checked.value.snapshot,
+        stampOf(request.path),
+        run,
+        modeOf(request),
+      );
       return { ok: true, value: outputs({ ok: true, ...result }) };
     } catch (cause) {
       return effectFailure(cause);

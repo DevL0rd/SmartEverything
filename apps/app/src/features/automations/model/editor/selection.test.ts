@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { automation, step, trigger } from './editor-fixtures';
+import { automation, idOf, note, start, trigger } from '../graph/graph-scene-fixtures';
 import {
   EMPTY_SELECTION,
   clearSelection,
@@ -16,10 +16,10 @@ const ORDER = ['a', 'b', 'c', 'd', 'e'];
 
 describe('selection', () => {
   it('lists triggers before body steps in program order', () => {
-    const first = trigger('t1');
-    const a = step('a');
-    const b = step('b');
-    expect(programOrder(automation([a, b], [first]))).toEqual([first.id, a.id, b.id]);
+    const program = automation([start('a'), note('a', 'b'), note('b')], {
+      triggers: [trigger('t1')],
+    });
+    expect(programOrder(program)).toEqual([idOf('t1'), idOf('start'), idOf('a'), idOf('b')]);
   });
 
   it('selects one item and keeps the same object when nothing changes', () => {

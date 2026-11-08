@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { microwaveStartable, type MicrowaveMode } from '@smarteverything/domain';
-import { Icon, type IconName } from '../../../components/icon';
-import { Interactive } from '../../../components/interactive';
+import { FlatChoice } from '../../../components/flat-choice';
+import type { IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { cn } from '../../../design/cn';
 import { microwaveModeLabel } from './model';
 
 const MODE_ICONS: Readonly<Record<string, IconName>> = {
@@ -26,45 +25,6 @@ function usableModes(modes: readonly MicrowaveMode[]): readonly MicrowaveMode[] 
   );
 }
 
-function Chip({
-  mode,
-  selected,
-  disabled,
-  onPress,
-}: {
-  readonly mode: MicrowaveMode;
-  readonly selected: boolean;
-  readonly disabled: boolean;
-  readonly onPress: () => void;
-}): ReactNode {
-  const label = microwaveModeLabel(mode.mode);
-  return (
-    <Interactive
-      label={label}
-      role="radio"
-      selected={selected}
-      checked={selected}
-      disabled={disabled}
-      onPress={onPress}
-      className={cn(
-        'min-h-touch-min flex-row items-center gap-1.5 rounded-full border-hairline px-3',
-        selected ? 'border-primary bg-primary-container' : 'border-outline-variant bg-surface-1',
-        disabled && 'opacity-50',
-      )}
-      layerClassName="rounded-full"
-    >
-      <Icon
-        name={MODE_ICONS[mode.mode] ?? DEFAULT_ICON}
-        size={16}
-        tone={selected ? 'primary' : 'variant'}
-      />
-      <Text variant="label" tone={selected ? 'primary' : 'default'} numberOfLines={1}>
-        {label}
-      </Text>
-    </Interactive>
-  );
-}
-
 function Group({
   label,
   modes,
@@ -79,16 +39,14 @@ function Group({
   readonly onChange: (mode: string) => void;
 }): ReactNode {
   return modes.length === 0 ? null : (
-    <View
-      accessibilityRole="radiogroup"
-      accessibilityLabel={label}
-      className="flex-row flex-wrap gap-2"
-    >
+    <View accessibilityRole="radiogroup" accessibilityLabel={label} className="flex-row flex-wrap">
       {modes.map((mode) => (
-        <Chip
+        <FlatChoice
           key={mode.mode}
-          mode={mode}
-          selected={mode.mode === value}
+          role="radio"
+          label={microwaveModeLabel(mode.mode)}
+          icon={MODE_ICONS[mode.mode] ?? DEFAULT_ICON}
+          active={mode.mode === value}
           disabled={disabled}
           onPress={() => {
             onChange(mode.mode);

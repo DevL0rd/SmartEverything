@@ -1,5 +1,9 @@
 import type { Query, SlashCommand } from '@anthropic-ai/claude-agent-sdk';
-import { JSON_VALUE, type ProviderMetadata } from '@smarteverything/domain';
+import {
+  JSON_VALUE,
+  type AiSubscriptionUsage,
+  type ProviderMetadata,
+} from '@smarteverything/domain';
 import { z } from 'zod';
 import { SDK_VERSION } from './options';
 import type { ProviderCommandCatalogue } from './command-catalogue';
@@ -87,11 +91,11 @@ export async function metadataOf(
   runtime: Query,
   catalogue?: ProviderCommandCatalogue,
 ): Promise<ProviderMetadata> {
-  const [initialization, commands, agents, billing] = await Promise.all([
+  const [initialization, commands, agents, status] = await Promise.all([
     runtime.initializationResult(),
     runtime.supportedCommands(),
     runtime.supportedAgents(),
-    nativeSubscriptionBilling(runtime),
+    billingStatus(runtime),
   ]);
   requireSubscription(initialization.account);
   const { account: _account, ...safe } = initialization;
@@ -130,8 +134,19 @@ export async function metadataOf(
       user_dialog:
         'The SDK exports no per-kind user-dialog response schemas; unknown kinds are cancelled explicitly.',
     },
-    initialization: metadataInitialization(JSON.parse(JSON.stringify(safe)), commands, billing),
+    initialization: metadataInitialization(JSON.parse(JSON.stringify(safe)), commands, status),
   };
+}
+
+async function billingStatus(runtime: Query): Promise<{
+  readonly billing: Awaited<ReturnType<typeof nativeSubscriptionBilling>>;
+  readonly usage: AiSubscriptionUsage | undefined;
+}> {
+  let usage: AiSubscriptionUsage | undefined;
+  const billing = await nativeSubscriptionBilling(runtime, undefined, (observed) => {
+    usage = observed;
+  });
+  return { billing, usage };
 }
 
 function discoveredSettings(
@@ -173,10 +188,11 @@ function discoveredSettings(
 function metadataInitialization(
   json: unknown,
   commands: readonly SlashCommand[],
-  billing: Awaited<ReturnType<typeof nativeSubscriptionBilling>>,
+  { billing, usage }: Awaited<ReturnType<typeof billingStatus>>,
 ): ProviderMetadata['initialization'] {
   return {
     ...z.record(z.string(), JSON_VALUE).parse(json),
+    ...(usage === undefined ? {} : { subscription_usage: usage }),
     billing_guard:
       billing.state === 'eligible'
         ? { state: 'eligible' }

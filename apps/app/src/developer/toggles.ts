@@ -1,4 +1,24 @@
 import { readBuildEnv } from '../platform/build-env';
+import { SHIP_LEVEL_FLAGS, shipLevelOf, type ShipLevelFlagId } from '../platform/ship-level';
+
+export const LOG_LEVEL_CHOICES = ['info', 'debug', 'trace'] as const;
+
+export type LogLevelChoice = (typeof LOG_LEVEL_CHOICES)[number];
+
+export type LogLevelFlagId = `log.level.${LogLevelChoice}`;
+
+export const LOG_LEVEL_FLAGS: Readonly<Record<LogLevelChoice, LogLevelFlagId>> = {
+  info: 'log.level.info',
+  debug: 'log.level.debug',
+  trace: 'log.level.trace',
+};
+
+export const LEVEL_TEXT: Readonly<Record<LogLevelChoice, string>> = {
+  info: 'Connections, saves, warnings and errors.',
+  debug: 'Adds diagnostic details, such as frames and live messages.',
+  trace: 'Includes internal steps. Use for short investigations.',
+};
+
 export type DeveloperFlagId =
   | 'perf.sampling'
   | 'perf.profilers'
@@ -10,7 +30,8 @@ export type DeveloperFlagId =
   | 'perf.nav'
   | 'perf.upload'
   | ProfilingFlagId
-  | 'log.debug'
+  | LogLevelFlagId
+  | ShipLevelFlagId
   | 'watch.capture';
 
 export type ProfilingFlagId =
@@ -29,13 +50,11 @@ export type ProfilingFlagId =
   | 'perf.heap';
 
 export interface DeveloperToggle {
-  readonly id: DeveloperFlagId;
+  readonly id: Exclude<DeveloperFlagId, LogLevelFlagId | ShipLevelFlagId>;
   readonly section: 'Performance' | 'Logging' | 'Watch';
   readonly label: string;
   readonly description: string;
   readonly cost: string;
-  readonly reload: boolean;
-  readonly release: boolean;
   readonly parent: DeveloperFlagId | null;
   readonly keywords: readonly string[];
   readonly initial?: true;
@@ -49,7 +68,7 @@ function profiling(
   id: ProfilingFlagId,
   text: Pick<DeveloperToggle, 'label' | 'description' | 'cost' | 'keywords'>,
 ): DeveloperToggle {
-  return { id, section: 'Performance', reload: false, release: false, parent: null, ...text };
+  return { id, section: 'Performance', parent: null, ...text };
 }
 
 const PROFILING_TOGGLES: readonly DeveloperToggle[] = [
@@ -57,7 +76,7 @@ const PROFILING_TOGGLES: readonly DeveloperToggle[] = [
     ...profiling('perf.frames', {
       label: 'Frames and UI thread',
       description:
-        'Logs one perf.window line every 5 seconds per screen: JavaScript and UI-thread frames, janky share, long tasks and React commits.',
+        'Measures JavaScript and UI-thread frames, long tasks, and React commits when the renderer provides timings.',
       cost: 'A 250 ms timer and the native frame-metrics listener. Requests no frames.',
       keywords: ['fps', 'frames', 'jank', 'ui thread', 'reanimated', 'long task', 'window'],
     }),
@@ -95,7 +114,7 @@ const PROFILING_TOGGLES: readonly DeveloperToggle[] = [
     label: 'Network and live messages',
     description:
       'Counts socket frames and bytes per socket, live messages per type with JSON and schema parse time, and requests with size per path.',
-    cost: 'Two clock reads per message and a wrapper around fetch.',
+    cost: 'Two clock reads per message and a wrapper around fetch and HubNetwork.request.',
     keywords: ['websocket', 'network', 'bytes', 'zod', 'json', 'parse', 'requests', 'live'],
   }),
   profiling('perf.bridge', {
@@ -132,14 +151,14 @@ const PROFILING_TOGGLES: readonly DeveloperToggle[] = [
     keywords: ['camera', 'webrtc', 'video', 'decode', 'dropped frames', 'bitrate'],
   }),
   profiling('perf.cpu', {
-    label: 'CPU profile capture',
+    label: 'CPU profile capture signal',
     description:
       'Asks the desktop capture script to record Hermes CPU profiles per screen and keep those with long tasks.',
     cost: 'Free in the app; the sampling profiler adds a few percent while the script runs.',
     keywords: ['cpu', 'profile', 'hermes', 'sampling', 'flame graph', 'call tree'],
   }),
   profiling('perf.heap', {
-    label: 'Heap allocation capture',
+    label: 'Heap allocation capture signal',
     description:
       'Asks the desktop capture script to sample JavaScript allocations per screen to find allocation-heavy code.',
     cost: 'Free in the app; heap sampling slows allocation while the script runs.',
@@ -152,10 +171,8 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
     id: 'perf.sampling',
     section: 'Performance',
     label: 'Performance sampling',
-    description: 'Collects timing samples in 10 second windows. Needed by every option below.',
-    cost: 'Small by itself (one timer, one store hook); each option below adds its own cost.',
-    reload: true,
-    release: false,
+    description: 'Collects timing samples and enables the options in this section.',
+    cost: 'One timer and one store hook; each enabled option adds its own cost.',
     parent: null,
     keywords: ['profiler', 'probe', 'lag', 'slow', 'jank', 'performance', 'samples'],
   },
@@ -165,8 +182,6 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
     label: 'React profiler wrappers',
     description: 'Wraps every screen and the chat parts in a React Profiler for commit times.',
     cost: 'One extra component layer per screen and a callback on every commit.',
-    reload: true,
-    release: false,
     parent: 'perf.sampling',
     keywords: ['react profiler', 'commits', 'render time', 'screens'],
   },
@@ -176,8 +191,6 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
     label: 'Render-storm keys',
     description: 'Walks every React commit to name the components that re-rendered and why.',
     cost: 'The heaviest option: a walk of the changed part of the tree after each commit.',
-    reload: true,
-    release: false,
     parent: 'perf.sampling',
     keywords: ['render storm', 'why did you render', 're-render', 'props', 'hooks', 'fiber'],
   },
@@ -188,8 +201,6 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
     description:
       'Measures frame gaps, dragged frames, heap and garbage collection, keyboard events.',
     cost: 'A 250 ms timer, plus a touch-move event to JavaScript while a finger is down. Requests no frames.',
-    reload: true,
-    release: false,
     parent: 'perf.sampling',
     keywords: ['stall', 'fps', 'frames', 'gc', 'garbage collection', 'heap', 'memory', 'dropped'],
   },
@@ -199,8 +210,6 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
     label: 'Network and JSON timing',
     description: 'Times every request and JSON parse and attributes store updates to them.',
     cost: 'Replaces fetch and JSON.parse with timed wrappers for the whole app.',
-    reload: true,
-    release: false,
     parent: 'perf.sampling',
     keywords: ['network', 'fetch', 'json', 'requests', 'query', 'timing'],
   },
@@ -210,8 +219,6 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
     label: 'List metrics',
     description: 'Counts mounted rows, blank area and scroll frames in the chat and model lists.',
     cost: 'Swaps in a probing list cell with a layout callback per row.',
-    reload: true,
-    release: false,
     parent: 'perf.sampling',
     keywords: ['list', 'rows', 'blank', 'scroll', 'virtualized', 'flatlist'],
   },
@@ -222,8 +229,6 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
     description:
       'Names the store slices, queries and requests that woke listeners and how many renders followed.',
     cost: 'A key comparison of the changed store slices on every store update.',
-    reload: true,
-    release: false,
     parent: 'perf.sampling',
     keywords: ['store', 'fan-out', 'listeners', 'query', 'notify', 'subscriptions'],
     initial: true,
@@ -235,8 +240,6 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
     description:
       'Times each screen change from the tap to the second frame after it, with its renders.',
     cost: 'Two animation-frame callbacks per screen change, counted as probeFrames.',
-    reload: true,
-    release: false,
     parent: 'perf.sampling',
     keywords: ['navigation', 'screen change', 'transition', 'route', 'timing'],
     initial: true,
@@ -244,27 +247,13 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
   {
     id: 'perf.upload',
     section: 'Performance',
-    label: 'Upload samples to the hub',
-    description:
-      'Sends each window to the hub as one client report. Off keeps the lines in the console only.',
+    label: 'Send performance samples to the hub',
+    description: 'Sends profiling reports to the hub. Does not control runtime log uploads.',
     cost: 'One small request every 10 seconds of activity.',
-    reload: true,
-    release: false,
     parent: 'perf.sampling',
     keywords: ['upload', 'send', 'report', 'hub', 'samples', 'telemetry'],
   },
   ...PROFILING_TOGGLES,
-  {
-    id: 'log.debug',
-    section: 'Logging',
-    label: 'Verbose logging',
-    description: 'Logs at debug level instead of info. Applies at once.',
-    cost: 'A few extra log lines for connections and live updates.',
-    reload: false,
-    release: true,
-    parent: null,
-    keywords: ['log', 'logging', 'debug', 'verbose', 'console', 'log level'],
-  },
   {
     id: 'watch.capture',
     section: 'Watch',
@@ -272,11 +261,8 @@ export const DEVELOPER_TOGGLES: readonly DeveloperToggle[] = [
     description:
       'Saves every file the watch sends during a sync, unchanged, on the hub for parser testing. The same file is kept once. Turning it off stops saving; the saved files stay until Clear.',
     cost: 'One extra upload per sync with the raw bytes of each new file, kept on the hub disk.',
-    reload: false,
-    release: false,
     parent: null,
     keywords: ['watch', 'raw', 'capture', 'files', 'sleep', 'parser', 'bytes', 'xiaomi'],
-    initial: true,
   },
 ];
 
@@ -311,12 +297,29 @@ const OFF: DeveloperFlags = {
   'perf.media': false,
   'perf.cpu': false,
   'perf.heap': false,
-  'log.debug': false,
   'watch.capture': false,
+  'log.level.info': false,
+  'log.level.debug': false,
+  'log.level.trace': false,
+  'log.ship.warn': false,
+  'log.ship.info': false,
+  'log.ship.debug': false,
+  'log.ship.trace': false,
 };
 
 export function allOff(): Record<DeveloperFlagId, boolean> {
   return { ...OFF };
+}
+
+export function storedLogLevel(stored: StoredFlags): LogLevelChoice {
+  if (stored[LOG_LEVEL_FLAGS.trace] === true) return 'trace';
+  if (stored[LOG_LEVEL_FLAGS.debug] === true) return 'debug';
+  return 'info';
+}
+
+export function withLogLevel(stored: StoredFlags, level: LogLevelChoice): StoredFlags {
+  const rest = Object.entries(stored).filter(([id]) => !id.startsWith('log.level.'));
+  return { ...Object.fromEntries(rest), [LOG_LEVEL_FLAGS[level]]: true };
 }
 
 function profilingMode(): 'on' | 'off' | null {
@@ -339,13 +342,15 @@ function wantedBy(
   return stored[toggle.id] ?? toggle.initial === true;
 }
 
-export function resolveFlags(stored: StoredFlags, development: boolean): DeveloperFlags {
+export function resolveFlags(stored: StoredFlags, developer: boolean): DeveloperFlags {
   const flags = allOff();
-  const mode = profilingMode();
+  const mode = developer ? profilingMode() : 'off';
   DEVELOPER_TOGGLES.forEach((toggle) => {
     const parentOn = toggle.parent === null || flags[toggle.parent];
-    flags[toggle.id] =
-      wantedBy(toggle, stored, mode) && parentOn && (development || toggle.release);
+    flags[toggle.id] = developer ? wantedBy(toggle, stored, mode) && parentOn : false;
   });
+  flags[LOG_LEVEL_FLAGS[storedLogLevel(stored)]] = developer;
+  const shipping = SHIP_LEVEL_FLAGS[shipLevelOf(stored)];
+  flags[shipping] = developer && stored[shipping] === true;
   return flags;
 }

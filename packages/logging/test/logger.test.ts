@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '../src/logger';
 import { InvalidEventNameError } from '../src/event-name';
 import { InvalidScopeError } from '../src/scope';
-import { REDACTED } from '../src/redaction';
 import type { LogRecord } from '../src/record';
 
 let written: LogRecord[] = [];
@@ -63,6 +62,22 @@ describe('Logger', () => {
   it('stamps an ISO timestamp in UTC', () => {
     new Logger('app.devices').info('device.paired');
     expect(written[0]?.timestamp).toBe('2026-03-01T12:00:00.000Z');
+  });
+
+  it('relays a validated record at its original time and obeys the local threshold', () => {
+    const record: LogRecord = {
+      source: 'plugin:fake',
+      timestamp: '2026-03-01T12:00:00.000Z',
+      runtime: 'hub',
+      scope: 'hub.plugins',
+      event: 'plugin.output',
+      level: 'warn',
+      payload: { line: 'example' },
+    };
+    Logger.configure({ level: 'warn' });
+    Logger.relay({ ...record, level: 'info' });
+    Logger.relay(record);
+    expect(written).toEqual([record]);
   });
 
   it('carries the payload at every level, not only the ones that report a failure', () => {
@@ -128,15 +143,15 @@ describe('Logger', () => {
     expect(written).toEqual([]);
   });
 
-  it('builds a lazy payload once when its level is on and redacts what it returns', () => {
+  it('builds a lazy payload once when its level is on and keeps what it returns', () => {
     const build = vi.fn(() => ({ rows: 3, email: 'worker@example.com' }));
     const logger = new Logger('app.devices');
     logger.debug('a.b', build);
     logger.trace('a.b', build);
     expect(build).toHaveBeenCalledTimes(2);
     expect(written.map((record) => record.payload)).toEqual([
-      { rows: 3, email: REDACTED },
-      { rows: 3, email: REDACTED },
+      { rows: 3, email: 'worker@example.com' },
+      { rows: 3, email: 'worker@example.com' },
     ]);
   });
 
@@ -146,9 +161,9 @@ describe('Logger', () => {
     expect(written.map((record) => record.event)).toEqual(['scene.run.succeeded']);
   });
 
-  it('redacts a denied field before it ever reaches the sink', () => {
+  it('hands the payload to the sink exactly as it was written', () => {
     new Logger('app.sign-in').info('sign_in.requested', { email: 'worker@example.com' });
-    expect(written[0]?.payload).toEqual({ email: REDACTED });
+    expect(written[0]?.payload).toEqual({ email: 'worker@example.com' });
   });
 
   it('describes an Error cause without losing its stack', () => {

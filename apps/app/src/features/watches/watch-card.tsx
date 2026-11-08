@@ -17,6 +17,7 @@ import { useWatchPulse } from './use-watch-heart';
 import {
   headlineOf,
   lowBattery,
+  onWristNow,
   stateLineOf,
   syncControlOf,
   type Headline,
@@ -52,6 +53,7 @@ interface WatchCardData {
   readonly line: string;
   readonly state: VisualState;
   readonly neverReported: boolean;
+  readonly ringing: boolean;
 }
 
 function useWatchCardData(device: Device): WatchCardData {
@@ -69,6 +71,7 @@ function useWatchCardData(device: Device): WatchCardData {
     sync: syncControlOf(glance, owner),
     line: stateLineOf({ facts: glance, lastSeen, owner, ringing }),
     neverReported: !glance.onThisPhone && textOf(device.details['reportedAt']) === null,
+    ringing,
   };
 }
 
@@ -77,24 +80,26 @@ function summaryOf(device: Device, data: WatchCardData): string {
   return `${device.label}, ${data.headline.label}${heart}, ${count(data.glance.steps?.value ?? 0)} steps`;
 }
 
-function figuresOf(data: WatchCardData): readonly ReactNode[] {
+function onWrist(data: WatchCardData): boolean {
+  return onWristNow(data.glance, data.lastSeen);
+}
+
+function figuresOf(device: Device, data: WatchCardData): readonly ReactNode[] {
   const stale = data.lastSeen !== null;
   return [
     data.heart === null ? null : <HeartFigure key="heart" view={data.heart} stale={stale} />,
     <StepsFigure key="steps" glance={data.glance} stale={stale} />,
+    onWrist(data) ? (
+      <BatteryAndOxygen key="battery" device={device} battery={data.glance.battery} />
+    ) : null,
   ].filter((figure) => figure !== null);
 }
 
 function graphOf(device: Device, cls: WideClass, data: WatchCardData): ReactNode {
-  const { glance } = data;
-  if (glance.worn !== true || data.lastSeen !== null || glance.charging) {
-    return <StepsGraph glance={glance} />;
-  }
-  return (
-    <>
-      <HeartGraph device={device} height={HEART_HEIGHT[cls]} />
-      {cls === 'w' ? <BatteryAndOxygen device={device} battery={glance.battery} /> : null}
-    </>
+  return onWrist(data) ? (
+    <HeartGraph device={device} cap={HEART_HEIGHT[cls]} />
+  ) : (
+    <StepsGraph glance={data.glance} />
   );
 }
 
@@ -104,7 +109,7 @@ function actionsOf(device: Device, data: WatchCardData): readonly ReactNode[] {
   }
   const sync = <SyncAction key="sync" control={data.sync} />;
   return data.lastSeen === null
-    ? [<FindWatchButton key="find" device={device} lastSeen={null} />, sync]
+    ? [<FindWatchButton key="find" device={device} lastSeen={null} ringing={data.ringing} />, sync]
     : [sync];
 }
 
@@ -120,6 +125,7 @@ function WatchWide({
     <WideCard
       cls={cls}
       title={device.label}
+      titleLines={cls === 'm' ? 1 : 2}
       summary={summaryOf(device, data)}
       visual={
         <DeviceVisual device={device} size="card" px={WIDE_VISUAL_PX[cls]} state={data.state} />
@@ -134,7 +140,7 @@ function WatchWide({
           {data.line}
         </Text>
       }
-      figures={figuresOf(data)}
+      figures={figuresOf(device, data)}
       graph={graphOf(device, cls, data)}
       actions={actionsOf(device, data)}
       {...(cls === 'l' || cls === 'xl'

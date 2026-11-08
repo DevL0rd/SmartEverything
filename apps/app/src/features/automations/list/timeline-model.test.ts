@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import type { Place } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { NOW, idOf, rowOf, runOf, timed } from './list-fixtures';
@@ -51,7 +52,7 @@ describe('timeline', () => {
     const events = timelineOf({
       rules: [],
       runs: [],
-      names: new Map([[rowOf(1, timed()).id, 'x']]),
+      names: new Map([[rowOf(1, timed(), undefined, STATIC_KIND_LOOKUP).id, 'x']]),
       now: NOW,
       place: PLACE,
     });

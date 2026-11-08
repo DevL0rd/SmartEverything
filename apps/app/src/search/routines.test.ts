@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Logger, type LogRecord } from '@smarteverything/logging';
-import type { TableRow } from '@smarteverything/domain';
+import { STATIC_KIND_LOOKUP, type TableRow } from '@smarteverything/domain';
 import { makeTable } from '../store/state';
 import { buttonTrigger, setPower, storedAutomationRow } from '../test-support/automation-rows';
 import { routinesOf } from './routines';
@@ -40,7 +40,7 @@ describe('routinesOf', () => {
   });
 
   it('indexes an automation with its trigger keywords', () => {
-    const { automations } = routinesOf(tablesOf([stored(1, 'Door')]));
+    const { automations } = routinesOf(tablesOf([stored(1, 'Door')]), STATIC_KIND_LOOKUP);
     expect(automations).toHaveLength(1);
     expect(automations[0]?.name).toBe('Door');
     expect(automations[0]?.triggerKeywords).toContain('button');
@@ -49,6 +49,7 @@ describe('routinesOf', () => {
   it('still indexes every automation when one stored program no longer parses', () => {
     const { automations } = routinesOf(
       tablesOf([stored(1, 'Door'), unreadable(2, 'Old row'), stored(3, 'Door again')]),
+      STATIC_KIND_LOOKUP,
     );
     expect(automations.map((entry) => entry.name)).toEqual(['Door', 'Old row', 'Door again']);
     expect(automations[1]?.triggerKeywords).toEqual([]);
@@ -59,9 +60,9 @@ describe('routinesOf', () => {
     const records: LogRecord[] = [];
     Logger.configure({ sink: (record) => records.push(record), level: 'error' });
     const tables = tablesOf([unreadable(1, 'Old row')]);
-    routinesOf(tables);
-    routinesOf(tables);
-    routinesOf(tables);
+    routinesOf(tables, STATIC_KIND_LOOKUP);
+    routinesOf(tables, STATIC_KIND_LOOKUP);
+    routinesOf(tables, STATIC_KIND_LOOKUP);
     expect(records.filter((record) => record.event === 'automations.row_rejected')).toHaveLength(1);
   });
 });

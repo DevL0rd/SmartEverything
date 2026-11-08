@@ -11,10 +11,12 @@ import { LinkPlane } from '../claude/link-plane';
 import { startClaudeLoopback, type ClaudeLoopback } from '../claude/loopback';
 import { claudeLocations } from '../claude/locations';
 import { ClaudeService } from '../claude/service';
+import { nodeClaudeSites } from '../claude/sites';
+import type { NodeLayout } from '../data-layout';
 import { NodeClaudeGrant } from './claude-grant';
 
 interface NodeClaudeHostOptions {
-  readonly dataDirectory: string;
+  readonly node: NodeLayout;
   readonly deviceId: string;
   readonly hubUrl: string;
   readonly token: string;
@@ -30,8 +32,9 @@ class NodeNativePlane {
   private stopped = false;
 
   constructor(private readonly options: NodeClaudeHostOptions) {
-    const directory = join(options.dataDirectory, 'claude');
-    const launch = linkLaunchOf(options.dataDirectory);
+    const sites = nodeClaudeSites(options.node);
+    const { directory } = sites;
+    const launch = linkLaunchOf(sites);
     this.grant = new NodeClaudeGrant({
       hubUrl: options.hubUrl,
       token: options.token,
@@ -55,7 +58,7 @@ class NodeNativePlane {
         url: await this.grant.endpoint(),
         headersCommand: helperCommand(launch, 'mcp-headers'),
       }),
-      pluginsDirectory: join(dirname(claudeLocations().sessions), 'plugins'),
+      pluginsDirectory: join(dirname(claudeLocations(null).sessions), 'plugins'),
       raised: (): void => undefined,
     });
   }
@@ -75,7 +78,7 @@ class NodeNativePlane {
     await this.plane.token.ensure();
     const loopback = await startClaudeLoopback({
       plane: this.plane,
-      directory: join(this.options.dataDirectory, 'claude'),
+      directory: nodeClaudeSites(this.options.node).directory,
       log: this.options.log,
     });
     if (this.stopped) {
@@ -98,10 +101,11 @@ class NodeNativePlane {
 }
 
 export function createNodeClaudeHost(options: NodeClaudeHostOptions): Promise<ComputerAiHost> {
+  const sites = nodeClaudeSites(options.node);
   const native = new NodeNativePlane(options);
   const service = new ClaudeService({
-    locations: claudeLocations(),
-    historyDirectory: join(options.dataDirectory, 'claude'),
+    locations: claudeLocations(null),
+    historyDirectory: sites.directory,
     plane: native.plane,
     clock: systemClock,
     log: options.log,
@@ -112,7 +116,7 @@ export function createNodeClaudeHost(options: NodeClaudeHostOptions): Promise<Co
     service,
     plane: native.plane,
     deviceId: options.deviceId,
-    dataDirectory: options.dataDirectory,
+    sites,
     log: options.log,
     ...(options.executable === undefined ? {} : { executable: options.executable }),
   });

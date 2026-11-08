@@ -64,6 +64,11 @@ why it is the way it is. Never edit what you have not read.
 
 - **Clock jump on non-Linux hubs** (`apps/hub/src/clock/resume-watch.ts`, `drift.ts`): Linux re-arms timers on the logind `PrepareForSleep(false)` signal. Windows and macOS hubs run as plain Node services (Run-key launcher, launchd agent) with no power event, so one unref'd 5 s interval compares wall-clock time and re-arms timers when it jumped by more than 8 s. If Linux has no system bus (containers, the fixture sandbox), the hub logs one `clock.resume_watch_unavailable` warning and does not poll.
 - **Polls where the source offers no push** (intervals are the defaults in code): Samsung TV power state (5 s), Xiaomi LAN state (10 s), cloud state (60 s) and camera events (15 s when the camera cannot push), Smart Life QR scan result (2 s), Discord typing pulse (8 s, keeps the indicator alive while a reply is written).
+- **Configured Hub update branch** (`apps/hub/src/self-update/source-watch.ts`): The Hub has no push subscription to its configured Git remote. It reads the branch tip with `git ls-remote` on startup and checks again five minutes after each completed check. One probe runs at a time. A first result, a changed tip, a failed read after a successful result or a recovered read prompts connected owner apps to refresh. Only a direct authenticated owner app can request a bound update offer.
+- **Vacuum live route** (`apps/hub/src/vacuum/live-route.ts`): the robot never pushes its position, so while a viewer holds the live map of a robot that is working the hub calls action 2.47 once per 2 s through the robot's own link and stops when the last viewer leaves or the robot stops working. Nothing polls otherwise.
+- **Xiaomi write confirmation** (`apps/hub/src/adapters/xiaomi/write-confirmations.ts`): each property write the hub pushes arms one 5 s deadline timer that is cleared when the device reports the property; if it fires it only logs `xiaomi.write_not_confirmed`. It never retries and never reads the property back.
+- **Event-loop watchdog** (`apps/hub/src/service/loop-watchdog/`): a starved loop cannot report itself, so a 1 s tick on the main thread bumps a shared counter and a separate watchdog thread reads it; the node service and the ear process each run one. After 5 s without a tick the thread logs what the main thread is running (`loop.stalled`), after the limit (30 s node service, 15 s ear process) it logs `loop.starved` and kills the process so the service manager starts it again. The same tick logs `loop.lagged` for a late tick and `loop.health` (memory, loop delay) every 5 min.
+- **Ear process liveness** (`apps/hub/src/node/ear/process/ear-process.ts`): the ear compute runs in a child process that nothing else observes, so the node pings it every 5 s and kills and restarts it when it does not answer within 15 s. The audio queued behind a hung child is dropped with the child.
 - **Camera recovery probe** (`apps/hub/src/cameras/camera-health.ts`): a camera whose stream timed out is marked down and refused at once; nothing else reaches it, so one thumbnail probe per down camera (a minute after it went down, then doubling to at most five minutes, 5 s deadline) is the only way to see it come back. The first success clears the state.
 - **Network printer** (`apps/hub/src/plugins/builtin/printer/cadence.ts`, `client.ts`, `liveness.ts`): printers that support Create-Printer-Subscription push their changes (ippget) and the hub renews the lease before it ends. Every printer, with or without push, is also read with one Get-Printer-Attributes at a time (never overlapping): every 30 s while idle (a safety net that catches changes the push missed), every 3 s while a job is active or the page is open, every 60 s while the printer sleeps, and with exponential backoff while it is unreachable. The intervals are settings on the printer, the hub never reads faster than one request in flight, and a busy answer (0x0507) backs off instead of retrying at once.
 - **Treadmill link** (`packages/ble/src/kingsmith/link-plan.ts`, Android `treadmill/TreadmillService.kt`): a WiLink belt reports only when asked, so the holder phone sends the plan's one status request every second while the belt is counting down, running or paused and none while it is idle (`statusRequest.everyMs`, `activeValues`), plus `settleRequests` requests after any command the hub wrote through the link, so a start from the app on a silent idle pad is seen. A start on the pad's own panel is seen only when the pad pushes a frame or through the pad record read after the walk. FTMS belts push their own frames and are never polled. The pauses between Bluetooth descriptor and characteristic writes (`cccdPacingMs`, `writePacingMs`, `pauseAfterMs` in the plan) are what the belt firmware needs between operations, not waiting.
@@ -89,7 +94,8 @@ A screen that is off is woken with Wake-on-LAN. A screen linked directly is woke
 
 - App and hub are released together from this repository. There are no version shims, legacy dialects or fallbacks for
   older peers: a changed message or field changes both sides in the same commit.
-- Readers ignore fields and messages they do not know; writers stay strict.
+- Readers are strict too: schemas reject unknown fields and messages. There are no aliases for old names, deprecated fields,
+  dual old and new paths or lenient readers. Stored data is migrated once by a numbered migration.
 
 ## MCP and search coverage
 
@@ -135,9 +141,10 @@ weaken or delete a test to pass a build; never mock the thing under test.
 
 ## Working on a change
 
-1. Understand the code. 2. Plan the change. 3. Make the narrowest change, with its tests. 4. Run the gates that cover it
-   (`pnpm run validate` runs them all). 5. Look at the result: run the app and view every screen and state you touched,
-   at phone and desktop sizes, light and dark, with empty, many and long content. 6. Report honestly, with real output.
+1. Understand the code. 2. Plan the change. 3. Make the narrowest change, with its tests. 4. Run the gates that cover it, scoped to the files you touched (`pnpm run validate` runs them all and is only for the
+   final run before a push). 5. Look at the result: run the app and view every screen and state you touched, at phone
+   and desktop sizes, light and dark, with empty, many and long content (once per finished UI wave; a small fix needs
+   one look at what changed). 6. Report honestly, with real output.
 
 ## Review
 

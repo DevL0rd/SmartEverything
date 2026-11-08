@@ -23,7 +23,7 @@ export interface TalkServiceOptions {
   readonly go2rtc: Pick<Go2rtcClient, 'play' | 'backchannel'>;
   readonly streamReady: (deviceId: string) => Promise<void>;
   readonly rtspPort: number;
-  readonly dataDirectory: string;
+  readonly directory: string;
   readonly presence: (presence: TalkPresence) => void;
   readonly now: () => Date;
   readonly log: Logger;
@@ -49,7 +49,7 @@ export class TalkService {
     this.membership = new TalkMembership(store);
     this.recorder = new TalkRecorder({
       store,
-      dataDirectory: options.dataDirectory,
+      directory: options.directory,
       now: options.now,
       log,
     });

@@ -6,7 +6,12 @@ import {
 } from '@smarteverything/domain';
 import { notify } from '../../../components/toast-store';
 import { aiDrafts } from '../data/ai-drafts';
-import { draftRevision, draftText, setReferenceDraft } from '../data/drafts';
+import {
+  adjustedHelperMentions,
+  draftRevision,
+  draftText,
+  setReferenceDraft,
+} from '../data/drafts';
 import { useDerived } from '../data/use-derived';
 import { ValueStore } from '../../../design/external-store';
 import { sameJson } from '../../../store/same-json';
@@ -14,6 +19,7 @@ import { NO_SUGGESTIONS, type Suggestions } from '../components/suggestion-keys'
 import { ReferencePanel } from './panel';
 import { referenceKey } from './presentation';
 import {
+  referenceInsertion,
   referenceIntent,
   selectedReference,
   type ReferenceIntent,
@@ -21,6 +27,9 @@ import {
   type ComposerSelection,
 } from './intent';
 import { useReferenceSearch } from './search';
+import { useHelperChoices, type HelperChoice } from './helper-choices';
+import { adjustedReferences } from './spans';
+import type { HelperMention } from '../model/helper-target';
 export interface ReferenceComposer {
   readonly opened: boolean;
   readonly dismiss: () => void;
@@ -30,11 +39,14 @@ export interface ReferenceComposer {
   readonly select: (selection: ComposerSelection) => void;
   readonly suggestions: Suggestions;
   readonly remove: (item: AiMessageReference) => void;
+  readonly removeHelper: (item: HelperMention) => void;
 }
 interface ComposerInput {
   readonly chat: AiChatRow | undefined;
   readonly key: string;
   readonly references: readonly AiMessageReference[];
+  readonly helperMentions: readonly HelperMention[];
+  readonly helpersEnabled: boolean;
   readonly focus: () => void;
 }
 interface Caret extends ComposerSelection {
@@ -59,7 +71,7 @@ function useReferenceIntent(
   key: string,
   caret: CaretStore,
   filter: {
-    readonly references: readonly AiMessageReference[];
+    readonly spans: readonly (AiMessageReference | HelperMention)[];
     readonly dismissed: string | null;
   },
 ): ReferenceIntent | null {
@@ -80,9 +92,7 @@ function useReferenceIntent(
       const selection = selectionOf(key, caret);
       const candidate = referenceIntent(draftText(key), selection);
       if (candidate === null || filter.dismissed === revisionOf(key, selection)) return null;
-      return filter.references.some((item) => overlapsReference(candidate, item))
-        ? null
-        : candidate;
+      return filter.spans.some((item) => overlapsReference(candidate, item)) ? null : candidate;
     },
     sameJson,
   );
@@ -121,17 +131,27 @@ function useCaretControl(key: string): CaretControl {
 }
 
 export function useReferenceComposer(input: ComposerInput): ReferenceComposer {
-  const { chat, key, references, focus } = input;
+  const { chat, key, references, helperMentions } = input;
   const caret = useCaretControl(key);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const intent = useReferenceIntent(key, caret.store, { references, dismissed });
+  const intent = useReferenceIntent(key, caret.store, {
+    spans: [...references, ...helperMentions],
+    dismissed,
+  });
   const opened = intent !== null;
   const search = useReferenceSearch(chat, intent);
+  const helpers = useHelperChoices(input.helpersEnabled ? chat : undefined, intent?.query);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const dismiss = (): void => {
     setDismissed(revisionOf(key, selectionOf(key, caret.store)));
   };
   const choose = (id: string): void => {
+    const helper = helpers.find((item) => item.id === id);
+    if (helper !== undefined) {
+      if (helper.reason === null && intent !== null)
+        caret.move(chooseHelper(input, intent, helper));
+      return;
+    }
     chooseReference(input, { search, intent, id, moveTo: caret.move });
   };
   return {
@@ -139,24 +159,73 @@ export function useReferenceComposer(input: ComposerInput): ReferenceComposer {
     dismiss,
     selection: caret.selection,
     select: caret.observe,
-    suggestions: opened
-      ? {
-          label: 'References',
-          open: true,
-          items: search.items.map((item) => ({ id: referenceKey(item.reference) })),
-          highlighted,
-          highlight: setHighlighted,
-          activate: choose,
-          dismiss,
-        }
-      : NO_SUGGESTIONS,
-    ...referencePanels(opened, { search, choose }),
+    suggestions: composerSuggestions({
+      opened,
+      helpers,
+      search,
+      highlighted,
+      setHighlighted,
+      choose,
+      dismiss,
+    }),
+    ...referencePanels(opened, { search, helpers, choose }),
     remove: (item): void => {
-      setReferenceDraft(key, removedReference({ text: draftText(key), references }, item));
-      focus();
+      removeReference(input, item);
+    },
+    removeHelper: (item): void => {
+      removeHelperMention(input, item);
     },
   };
 }
+
+function removeReference(input: ComposerInput, item: AiMessageReference): void {
+  const { key, references, focus } = input;
+  const next = removedReference({ text: draftText(key), references }, item);
+  setReferenceDraft(key, next, undefined, adjustedHelperMentions(key, next.text));
+  focus();
+}
+
+function removeHelperMention(input: ComposerInput, item: HelperMention): void {
+  const { key, references, focus } = input;
+  const before = draftText(key);
+  const text = before.slice(0, item.start) + before.slice(item.end);
+  const next = { text, references: adjustedReferences(before, text, references) };
+  setReferenceDraft(key, next, undefined, adjustedHelperMentions(key, text));
+  focus();
+}
+
+function composerSuggestions({
+  opened,
+  helpers,
+  search,
+  highlighted,
+  setHighlighted,
+  choose,
+  dismiss,
+}: {
+  readonly opened: boolean;
+  readonly helpers: readonly HelperChoice[];
+  readonly search: ReturnType<typeof useReferenceSearch>;
+  readonly highlighted: string | null;
+  readonly setHighlighted: (id: string | null) => void;
+  readonly choose: (id: string) => void;
+  readonly dismiss: () => void;
+}): Suggestions {
+  if (!opened) return NO_SUGGESTIONS;
+  return {
+    label: helpers.length > 0 ? 'Helpers and references' : 'References',
+    open: true,
+    items: [
+      ...helpers.filter((item) => item.reason === null).map(({ id }) => ({ id })),
+      ...search.items.map((item) => ({ id: referenceKey(item.reference) })),
+    ],
+    highlighted,
+    highlight: setHighlighted,
+    activate: choose,
+    dismiss,
+  };
+}
+
 function chooseReference(
   input: ComposerInput,
   choice: {
@@ -180,9 +249,29 @@ function chooseReference(
     choice.intent,
     item,
   );
-  setReferenceDraft(input.key, next);
+  setReferenceDraft(input.key, next, undefined, adjustedHelperMentions(input.key, next.text));
   choice.moveTo(next.selection);
   input.focus();
+}
+
+function chooseHelper(
+  input: ComposerInput,
+  intent: ReferenceIntent,
+  helper: HelperChoice,
+): ComposerSelection {
+  const before = draftText(input.key);
+  const { text, selection, ...span } = referenceInsertion(before, intent, helper.name);
+  setReferenceDraft(
+    input.key,
+    { text, references: adjustedReferences(before, text, input.references) },
+    undefined,
+    [
+      ...adjustedHelperMentions(input.key, text),
+      { ...span, name: helper.name, chatId: helper.chatId },
+    ],
+  );
+  input.focus();
+  return selection;
 }
 
 function referencePanels(
@@ -197,7 +286,7 @@ function referencePanels(
 
 function overlapsReference(
   intent: ReturnType<typeof referenceIntent>,
-  item: AiMessageReference,
+  item: AiMessageReference | HelperMention,
 ): boolean {
   return intent !== null && item.start < intent.end && item.end > intent.start;
 }

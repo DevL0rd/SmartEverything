@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { View } from 'react-native';
 import type { McpToolName, McpToolSummary } from '@smarteverything/domain';
 import { updateMcpTools } from '../../../api/access';
 import { ListRow } from '../../../components/list-row';
@@ -7,6 +8,7 @@ import { SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
+import { isNative } from '../../../design/platform';
 import { useSettings } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
 import { TOOL_GROUPS, groupState, withGroup, withTool, type ToolGroup } from '../model/tools';
@@ -71,7 +73,7 @@ function Group({ group, disabled, change, open }: GroupProps): ReactNode {
     <ToolRow key={tool.name} tool={tool} disabled={disabled} open={open} />
   ));
   return (
-    <List inset title={group.title}>
+    <List inset title={group.title} className="web:mb-section-gap web:break-inside-avoid">
       {group.tools.length > 1
         ? [
             <SwitchRow
@@ -95,13 +97,24 @@ export function ToolsScreen(): ReactNode {
   const { disabled, change } = useDisabledTools();
   const [shown, setShown] = useState<Tool | null>(null);
   return (
-    <SettingsFrame page="assistant/integrations/tools">
+    <SettingsFrame
+      page="assistant/integrations/tools"
+      contentWidth={isNative() ? 'reading' : 'full'}
+    >
       <Text variant="callout" tone="variant" className="px-4">
         Assistants can use these tools. New tools are on by default.
       </Text>
-      {TOOL_GROUPS.map((group) => (
-        <Group key={group.area} group={group} disabled={disabled} change={change} open={setShown} />
-      ))}
+      <View className="gap-section-gap web:block web:columns-reading">
+        {TOOL_GROUPS.map((group) => (
+          <Group
+            key={group.area}
+            group={group}
+            disabled={disabled}
+            change={change}
+            open={setShown}
+          />
+        ))}
+      </View>
       <ToolSheet
         tool={shown}
         on={shown !== null && !disabled.includes(shown.name)}

@@ -1,7 +1,9 @@
+import type { HubLayout } from './data-layout';
 import type { ComputerAiDirectory } from './computers/ai-directory';
 import type { EarsRelay } from './computers/ears-relay';
 import type { Logger } from '@smarteverything/logging';
 import type { PushCommandChannel } from './extensions/push/commands';
+import type { ReplyNotices } from './extensions/push/reply-notices';
 import type { OpenCalls } from './assistant-voice/open-calls';
 import type { RunningHub } from './hub';
 import type { MachineApprovals } from './machines/approval';
@@ -24,12 +26,13 @@ export interface ExtensionContext {
   readonly secrets: SecretStore;
   readonly live: LiveHub;
   readonly pushCommands: PushCommandChannel;
+  readonly replyNotices: ReplyNotices;
   readonly machineApprovals: MachineApprovals;
   readonly openCalls: OpenCalls;
   readonly mediaNotes: MediaNotes;
   readonly links: MediaLinks;
   readonly operations: Operations;
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
   readonly log: Logger;
 }
 

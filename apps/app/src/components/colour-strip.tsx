@@ -33,7 +33,7 @@ export interface ColourStripProps {
   readonly disabled?: boolean;
   readonly focusRef?: RefObject<View | null>;
   readonly onPick: (id: string) => void;
-  readonly onMore: () => void;
+  readonly onMore: (opener: RefObject<View | null>) => void;
 }
 
 type Idiom = 'touch' | 'pointer';
@@ -151,21 +151,31 @@ function CurrentSwatch({
   current,
   idiom,
   disabled,
+  moreOpener,
   onMore,
 }: {
   readonly current: ColourStripCurrent;
   readonly idiom: Idiom;
   readonly disabled: boolean;
-  readonly onMore: () => void;
+  readonly moreOpener: RefObject<View | null>;
+  readonly onMore: (opener: RefObject<View | null>) => void;
 }): ReactNode {
   const [first] = current.colours;
+  const opener = useRef<View>(null);
   return (
     <>
       <Tap
         role="button"
         label={`Current colour: ${current.label}. Open colour picker`}
         disabled={disabled}
-        onPress={onMore}
+        innerRef={opener}
+        onPress={() => {
+          onMore({
+            get current(): View | null {
+              return opener.current ?? moreOpener.current;
+            },
+          });
+        }}
         className={cn('items-center justify-center rounded-md', HIT[idiom])}
       >
         <View className={cn('items-center justify-center', RING[idiom])}>
@@ -201,30 +211,34 @@ function useOverflow(): {
 
 function useRoving(
   presets: readonly ColourStripSwatch[],
+  selectedId: string | null,
   active: boolean,
   pick: (id: string) => void,
 ): {
   readonly roving: number;
   readonly nodes: RefObject<(View | null)[]>;
   readonly focus: ReturnType<typeof useFocusedKeys>;
+  readonly select: (index: number) => void;
 } {
-  const count = presets.length;
-  const [roving, setRoving] = useState(0);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const nodes = useRef<(View | null)[]>([]);
+  const focusedIndex = presets.findIndex((preset) => preset.id === focusedId);
+  const selectedIndex = presets.findIndex((preset) => preset.id === selectedId);
+  const roving = focusedIndex < 0 ? Math.max(0, selectedIndex) : focusedIndex;
+  const select = (index: number): void => {
+    const swatch = presets[index];
+    if (swatch === undefined) return;
+    setFocusedId(swatch.id);
+    nodes.current[index]?.focus();
+    pick(swatch.id);
+  };
   const focus = useFocusedKeys(active, (key) => {
-    const target = stripKeyTarget(key, Math.min(roving, count - 1), count);
-    if (target === null) {
-      return false;
-    }
-    setRoving(target);
-    nodes.current[target]?.focus();
-    const swatch = presets[target];
-    if (swatch !== undefined) {
-      pick(swatch.id);
-    }
+    const target = stripKeyTarget(key, roving, presets.length);
+    if (target === null) return false;
+    select(target);
     return true;
   });
-  return { roving: Math.min(roving, Math.max(0, count - 1)), nodes, focus };
+  return { roving, nodes, focus, select };
 }
 
 function Fade({ surface }: { readonly surface: 'surface-1' | 'surface-2' }): ReactNode {
@@ -255,7 +269,7 @@ function Presets({
   onPick,
 }: PresetsProps): ReactNode {
   const overflow = useOverflow();
-  const roving = useRoving(presets, idiom === 'pointer' && !disabled, onPick);
+  const roving = useRoving(presets, selectedId, !disabled, onPick);
   return (
     <View className="min-w-0 flex-1" onLayout={overflow.onLayout}>
       <ScrollView
@@ -273,7 +287,7 @@ function Presets({
             key={swatch.id}
             swatch={swatch}
             selected={swatch.id === selectedId}
-            tabStop={index === roving.roving}
+            tabStop={isNative() || index === roving.roving}
             disabled={disabled}
             idiom={idiom}
             captioned={captioned}
@@ -282,8 +296,7 @@ function Presets({
             }}
             onPick={() => {
               selectionTick();
-              roving.nodes.current[index]?.focus();
-              onPick(swatch.id);
+              roving.select(index);
             }}
           />
         ))}
@@ -306,13 +319,15 @@ export function ColourStrip({
   onMore,
 }: ColourStripProps): ReactNode {
   const idiom = useIdiom();
+  const moreOpener = useRef<View>(null);
   const layout = stripLayout(swatches, selectedId, current !== null, density);
+  const currentControl = { idiom, disabled, moreOpener, onMore };
   const captioned =
     density === 'full' && layout.presets.some((swatch) => swatch.caption !== undefined);
   return (
     <View ref={focusRef} className="flex-row items-center">
       {layout.pinnedCurrent && current !== null ? (
-        <CurrentSwatch current={current} idiom={idiom} disabled={disabled} onMore={onMore} />
+        <CurrentSwatch current={current} {...currentControl} />
       ) : null}
       <Presets
         label={label}
@@ -328,7 +343,10 @@ export function ColourStrip({
         role="button"
         label="More colours"
         disabled={disabled}
-        onPress={onMore}
+        innerRef={moreOpener}
+        onPress={() => {
+          onMore(moreOpener);
+        }}
         className={cn('items-center justify-center rounded-md', HIT[idiom])}
       >
         <MoreDot size={DOT_PX[idiom]} />

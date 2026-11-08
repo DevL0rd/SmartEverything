@@ -4,7 +4,7 @@ import type { AutomationRunSummary } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { LoadedQuery } from '../../../components/loaded-query';
 import { Text } from '../../../components/text';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { useMinute } from '../../../store/clock';
 import { useRuns } from '../data/use-runs';
 import { RunRow } from '../runs/run-rows';
@@ -14,11 +14,11 @@ import { activityOf, ACTIVITY_DAYS, type Activity } from './detail-model';
 export interface ActivityProps {
   readonly automationId: string;
   readonly timeZone: string | null;
-  readonly runsHref: Href;
+  readonly runsHref: AppHref;
   readonly onOpenRun: (run: AutomationRunSummary) => void;
 }
 
-function Heading({ runsHref }: { readonly runsHref: Href }): ReactNode {
+function Heading({ runsHref }: { readonly runsHref: AppHref }): ReactNode {
   return (
     <View className="flex-row items-center justify-between gap-2">
       <Text variant="title-3" accessibilityRole="header">

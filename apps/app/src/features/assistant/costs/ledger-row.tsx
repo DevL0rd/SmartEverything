@@ -26,7 +26,7 @@ export function LedgerRow({ row, timeZone, showPerson, onOpen }: LedgerRowProps)
       onPress={() => {
         onOpen(row);
       }}
-      className="min-h-row-h-2 w-full flex-row items-center gap-3 self-center rounded-md py-2 max-w-dashboard"
+      className="min-h-row-h-2 w-full flex-row items-center gap-3 rounded-md py-2 max-w-dashboard"
       layerClassName="rounded-md"
     >
       <IconWell icon={partIcon('work', row.work)} colour={DIMENSION_INFO.work.colour} size="m" />

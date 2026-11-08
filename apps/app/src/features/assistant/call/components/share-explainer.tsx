@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../../components/button';
 import { Icon, type IconName } from '../../../../components/icon';
-import { Sheet } from '../../../../components/sheet';
+import { Sheet, type SheetProps } from '../../../../components/sheet';
 import { Text } from '../../../../components/text';
 
 interface Point {
@@ -20,16 +20,22 @@ const POINTS: readonly Point[] = [
 ];
 
 export interface ShareExplainerProps {
-  readonly open: boolean;
+  readonly subpage?: SheetProps['subpage'];
   readonly name: string;
   readonly onCancel: () => void;
   readonly onStart: () => void;
 }
 
-export function ShareExplainer({ open, name, onCancel, onStart }: ShareExplainerProps): ReactNode {
+export function ShareExplainer({
+  subpage,
+  name,
+  onCancel,
+  onStart,
+}: ShareExplainerProps): ReactNode {
   return (
     <Sheet
-      open={open}
+      open
+      subpage={subpage}
       onClose={onCancel}
       title="Share your screen?"
       detents={['fit']}

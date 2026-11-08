@@ -30,6 +30,7 @@ const { SETTINGS } = await import('./settings');
 const ENV: SettingEnv = {
   owner: false,
   platform: 'android',
+  developer: false,
   availability: {
     hasDevices: true,
     hasClimate: false,

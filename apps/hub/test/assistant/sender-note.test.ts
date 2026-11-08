@@ -1,4 +1,4 @@
-import { DEFAULT_ENGINE, type AiChatRow } from '@smarteverything/domain';
+import { type AiChatRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stablePrompt, turnPrompt } from '../../src/assistant/conversation/prompt';
 import { facts } from '../../src/assistant/prompt-facts';
@@ -6,6 +6,7 @@ import { senderNote } from '../../src/assistant/sender-note';
 import { toolGuide } from '../../src/ai-tools/tool-guide';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 const NOW = new Date('2026-10-08T10:00:00.000Z');
 
@@ -32,7 +33,7 @@ function chat(): AiChatRow {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   });
 }
 
@@ -106,8 +107,8 @@ describe('the per-turn prompt of every engine', () => {
     const fromDesktop = turnPrompt(
       facts(opened.store, row, tools, { now: NOW, clientId: desktop }),
     );
-    expect(fromPhone).toContain('Writing from: Pixel 9 (phone).');
-    expect(fromDesktop).toContain('Writing from: Studio PC (computer).');
+    expect(fromPhone).toContain('From: Pixel 9 (phone).');
+    expect(fromDesktop).toContain('From: Studio PC (computer).');
     expect(fromDesktop).not.toContain('Pixel 9');
   });
 
@@ -115,7 +116,7 @@ describe('the per-turn prompt of every engine', () => {
     const text = turnPrompt(
       facts(opened.store, chat(), new ToolHub([]), { now: NOW, clientId: null }),
     );
-    expect(text).not.toContain('Writing from');
+    expect(text).not.toContain('From:');
   });
 
   it('stays the same for the same device so the cached prefix is not disturbed', () => {
@@ -125,7 +126,7 @@ describe('the per-turn prompt of every engine', () => {
     const line = (now: Date): string | undefined =>
       turnPrompt(facts(opened.store, row, tools, { now, clientId: desktop }))
         .split('\n')
-        .find((entry) => entry.startsWith('Writing from'));
+        .find((entry) => entry.startsWith('From:'));
     expect(line(NOW)).toBe(line(later));
   });
 });
@@ -135,12 +136,12 @@ describe('the guidance for the sender line', () => {
     const stable = stablePrompt(
       facts(opened.store, chat(), new ToolHub([]), { now: NOW, clientId: phone }),
     );
-    expect(stable).toContain('Writing from');
+    expect(stable).toContain('The From line');
     expect(stable).toContain('this room');
     expect(stable).toContain('device_find');
   });
 
   it('keeps it out of the shared tool guide so a voice call does not pay for it', () => {
-    expect(toolGuide(['device_find'])).not.toContain('Writing from');
+    expect(toolGuide(['device_find'])).not.toContain('The From line');
   });
 });

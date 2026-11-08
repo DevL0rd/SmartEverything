@@ -1,32 +1,23 @@
-import type { Model } from '@ricky0123/vad-web/dist/models/common.js';
 import type {
   ListeningConfig,
   ListeningHubMessage,
   ListeningNodeMessage,
   ListeningRuntimeState,
-  PauseChoiceMs,
-  WakeSensitivity,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { messageOf } from '@smarteverything/logging';
-import { sileroModel } from '../../assistant-voice/silero-vad';
 import type { Cancel, Clock } from '../../clock';
 import type { SpeechSegment } from '../../listening/speech-segment';
 import type { MicHandlers, StopMic } from '../controls/linux/mic-capture';
 import { NodeFailureError } from '../node-failure';
-import { Ear } from './ear';
-import { KeywordSpotter } from './keyword-spotter';
-import type { EarRuntimeLost } from './runtime-lost';
-import { RelayedSpotter } from './relayed-spotter';
 import { CallSpeaker, type EarSpeaker } from './call-speaker';
-import { encodePcm, GrantedClaims, LevelMeter, listeningSegmentOf } from './ear-audio';
+import { encodePcm, LevelMeter, listeningSegmentOf } from './ear-audio';
+import type { EarClaim, EarPipeline, EarPipelineFactory } from './ear-pipeline';
 
 const RETRY_FIRST_MS = 5000;
 const RETRY_LONGEST_MS = 120_000;
 const FAILURES_BEFORE_REPORT = 2;
 const PREROLL_SAMPLES_PER_MS = 16;
-const CLAIMANT = { source: 'computer', key: 'node' } as const;
-const FIELDS = { source: 'computer' } as const;
 
 type RestReason = Extract<ListeningHubMessage, { readonly kind: 'rest' }>['reason'];
 
@@ -52,23 +43,18 @@ export interface ComputerEarOptions {
   readonly send: (message: ListeningNodeMessage) => void;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
-  readonly model?: () => Promise<Model>;
-  readonly lost?: EarRuntimeLost;
+  readonly pipeline: EarPipelineFactory;
 }
 
 interface Running {
   readonly config: ListeningConfig;
-  readonly ear: Ear;
-  readonly engine: KeywordSpotter;
+  readonly pipeline: EarPipeline;
 }
 
 const round = (value: number): number => Math.round(value * 10) / 10;
 
 async function release(running: Running | null): Promise<void> {
-  if (running !== null) {
-    await running.ear.close();
-    running.engine.free();
-  }
+  await running?.pipeline.close();
 }
 
 export class ComputerEar {
@@ -89,7 +75,6 @@ export class ComputerEar {
   private reported: ListeningRuntimeState | null = null;
   private readonly meter = new LevelMeter();
   private chain: Promise<void> = Promise.resolve();
-  private readonly grants = new GrantedClaims();
 
   constructor(private readonly options: ComputerEarOptions) {
     this.speaker = new CallSpeaker(options.speaker, options.log);
@@ -214,41 +199,18 @@ export class ComputerEar {
   }
 
   private async build(config: ListeningConfig): Promise<Running> {
-    const engine = new KeywordSpotter();
-    const ear = new Ear(
-      {
-        claims: this.grants.claims,
-        spotter: new RelayedSpotter(engine, config, false),
-        model: this.options.model ?? sileroModel,
-        pauseMs: (): PauseChoiceMs => config.pause_ms,
-        clock: this.options.clock,
-        log: this.options.log,
-        ...(this.options.lost === undefined ? {} : { lost: this.options.lost }),
+    const pipeline = await this.options.pipeline(config, {
+      claimed: (claim) => {
+        this.claimed(claim);
       },
-      {
-        claim: CLAIMANT,
-        fields: FIELDS,
-        sensitivity: (): WakeSensitivity => config.sensitivity,
-        resting: (): boolean => false,
-        wakes: (): boolean => config.wake,
-        wake: (phrase, words): void => {
-          this.claimed(phrase, words());
-        },
-        speech: config.transcribe
-          ? (segment): void => {
-              this.segment(segment);
-            }
-          : null,
+      segment: (segment) => {
+        this.segment(segment);
       },
-    );
-    try {
-      await ear.open();
-    } catch (cause) {
-      await ear.close();
-      engine.free();
-      throw cause;
-    }
-    return { config, ear, engine };
+      failed: (reason) => {
+        this.pipelineFailed(new Error(reason));
+      },
+    });
+    return { config, pipeline };
   }
 
   private async openMic(): Promise<void> {
@@ -301,11 +263,9 @@ export class ComputerEar {
       return;
     }
     try {
-      this.running?.ear.hear(chunk);
+      this.running?.pipeline.hear(chunk);
     } catch (cause) {
-      this.options.log.error('computer_ear.hear_failed', cause);
-      this.config = null;
-      this.queue();
+      this.pipelineFailed(cause);
       return;
     }
     if (this.watched) {
@@ -316,15 +276,25 @@ export class ComputerEar {
     }
   }
 
-  private claimed(phrase: string, words: Int16Array): void {
+  private pipelineFailed(cause: unknown): void {
+    this.options.log.error('computer_ear.hear_failed', cause);
+    this.config = null;
+    this.queue();
+  }
+
+  private claimed(claim: EarClaim): void {
     this.options.log.info('computer_ear.claimed', {
-      phrase,
-      snippetDbfs: round(this.grants.level),
-      prerollMs: Math.round(words.length / PREROLL_SAMPLES_PER_MS),
+      phrase: claim.phrase,
+      snippetDbfs: round(claim.snippetDbfs),
+      prerollMs: Math.round(claim.words.length / PREROLL_SAMPLES_PER_MS),
     });
     this.options.send({
       kind: 'claim',
-      claim: { phrase, snippetDbfs: this.grants.level, preroll: encodePcm(words) },
+      claim: {
+        phrase: claim.phrase,
+        snippetDbfs: claim.snippetDbfs,
+        preroll: encodePcm(claim.words),
+      },
     });
   }
 

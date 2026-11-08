@@ -33,6 +33,7 @@ export interface PushNotification {
   readonly data: Readonly<Record<string, string>>;
   readonly dataOnly?: boolean;
   readonly tag?: string;
+  readonly sound?: string;
   readonly silent?: boolean;
 }
 
@@ -58,7 +59,7 @@ function androidNotificationOf(notification: PushNotification): Readonly<Record<
   const tag = notification.tag === undefined ? {} : { tag: notification.tag };
   return notification.silent === true
     ? { ...tag, notification_priority: 'PRIORITY_LOW' }
-    : { ...tag, sound: 'default' };
+    : { ...tag, sound: notification.sound ?? 'default' };
 }
 
 export type Delivery =

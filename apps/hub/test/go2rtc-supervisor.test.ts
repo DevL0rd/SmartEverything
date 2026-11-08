@@ -10,26 +10,41 @@ import { captureLogs, testLogger, type CapturedLogs } from './support/logs';
 interface Launches {
   readonly started: Go2rtcLaunch[];
   readonly stopped: string[];
+  readonly expected: string[];
+}
+
+function runningOf(
+  launch: Go2rtcLaunch,
+  launches: Launches,
+  stop: () => Promise<void>,
+): RunningGo2rtc {
+  let expected = false;
+  return {
+    baseUrl: 'http://127.0.0.1:1984',
+    username: 'hub',
+    password: launch.password,
+    expectStop: (): void => {
+      if (expected) return;
+      expected = true;
+      launches.expected.push('expected');
+    },
+    stop: (): Promise<void> => {
+      launches.stopped.push('stopped');
+      return stop();
+    },
+  };
 }
 
 function launcher(launches: Launches): (launch: Go2rtcLaunch) => Promise<RunningGo2rtc> {
   return (launch) => {
     launches.started.push(launch);
-    return Promise.resolve({
-      baseUrl: 'http://127.0.0.1:1984',
-      username: 'hub',
-      password: launch.password,
-      stop: (): Promise<void> => {
-        launches.stopped.push('stopped');
-        return Promise.resolve();
-      },
-    });
+    return Promise.resolve(runningOf(launch, launches, () => Promise.resolve()));
   };
 }
 
 const OPTIONS = {
   binary: '/opt/go2rtc',
-  dataDirectory: '/data',
+  configPath: '/data/go2rtc/go2rtc.yaml',
   apiPort: 1984,
   rtspPort: 8554,
   webrtcPort: 8555,
@@ -69,7 +84,7 @@ describe('xiaomiLoginsOf', () => {
 
 describe('Go2rtcSupervisor', () => {
   it('starts go2rtc with one stable password and the given Xiaomi logins', async () => {
-    const launches: Launches = { started: [], stopped: [] };
+    const launches: Launches = { started: [], stopped: [], expected: [] };
     const supervisor = new Go2rtcSupervisor({ ...OPTIONS, log: testLogger() }, launcher(launches));
     const running = await supervisor.start(config({ '1': 'a' }));
     expect(running.password).toBe(supervisor.password);
@@ -78,7 +93,7 @@ describe('Go2rtcSupervisor', () => {
   });
 
   it('restarts only when the Xiaomi logins change, and never logs them', async () => {
-    const launches: Launches = { started: [], stopped: [] };
+    const launches: Launches = { started: [], stopped: [], expected: [] };
     const supervisor = new Go2rtcSupervisor({ ...OPTIONS, log: testLogger() }, launcher(launches));
     await supervisor.start(config({ '1': 'a' }));
     expect(await supervisor.apply({ xiaomi: { '1': 'a' } })).toBe(false);
@@ -97,7 +112,7 @@ describe('Go2rtcSupervisor', () => {
   });
 
   it('applies overlapping changes one after another', async () => {
-    const launches: Launches = { started: [], stopped: [] };
+    const launches: Launches = { started: [], stopped: [], expected: [] };
     const supervisor = new Go2rtcSupervisor({ ...OPTIONS, log: testLogger() }, launcher(launches));
     await supervisor.start(config({}));
     const results = await Promise.all([
@@ -109,7 +124,7 @@ describe('Go2rtcSupervisor', () => {
   });
 
   it('reports a failed restart as an exit and keeps applying later changes', async () => {
-    const launches: Launches = { started: [], stopped: [] };
+    const launches: Launches = { started: [], stopped: [], expected: [] };
     const start = launcher(launches);
     let fail = false;
     const exits: string[] = [];
@@ -139,7 +154,7 @@ describe('Go2rtcSupervisor', () => {
   });
 
   it('restarts with new WebRTC candidates and ICE servers, and not for the same ones', async () => {
-    const launches: Launches = { started: [], stopped: [] };
+    const launches: Launches = { started: [], stopped: [], expected: [] };
     const supervisor = new Go2rtcSupervisor({ ...OPTIONS, log: testLogger() }, launcher(launches));
     await supervisor.start(config({ '1': 'a' }));
     expect(supervisor.isRunning()).toBe(true);
@@ -163,5 +178,70 @@ describe('Go2rtcSupervisor', () => {
   it('refuses to stop when it is not running', async () => {
     const supervisor = new Go2rtcSupervisor({ ...OPTIONS, log: testLogger() });
     await expect(supervisor.stop()).rejects.toThrow('go2rtc is not running');
+  });
+
+  it('marks the running go2rtc as expected to stop without stopping it', async () => {
+    const launches: Launches = { started: [], stopped: [], expected: [] };
+    const supervisor = new Go2rtcSupervisor({ ...OPTIONS, log: testLogger() }, launcher(launches));
+    await supervisor.start(config({}));
+    supervisor.expectStop();
+    expect(launches.expected).toStrictEqual(['expected']);
+    expect(launches.stopped).toStrictEqual([]);
+    expect(supervisor.isRunning()).toBe(true);
+  });
+
+  it('drops a change requested during shutdown and still stops the running go2rtc', async () => {
+    const launches: Launches = { started: [], stopped: [], expected: [] };
+    const exits: string[] = [];
+    const supervisor = new Go2rtcSupervisor(
+      {
+        ...OPTIONS,
+        log: testLogger(),
+        exited: (cause): void => {
+          exits.push(cause.message);
+        },
+      },
+      launcher(launches),
+    );
+    await supervisor.start(config({}));
+    supervisor.expectStop();
+    expect(await supervisor.apply({ xiaomi: { '1': 'a' } })).toBe(false);
+    expect(launches.started).toHaveLength(1);
+    expect(exits).toStrictEqual([]);
+    await supervisor.stop();
+    expect(launches.stopped).toStrictEqual(['stopped']);
+    expect(launches.started).toHaveLength(1);
+    expect(supervisor.isRunning()).toBe(false);
+  });
+
+  it('stops a go2rtc that an in-flight restart started after the shutdown stop was requested', async () => {
+    const launches: Launches = { started: [], stopped: [], expected: [] };
+    let hold = false;
+    let release: () => void = () => undefined;
+    const supervisor = new Go2rtcSupervisor(
+      { ...OPTIONS, log: testLogger() },
+      (launch): Promise<RunningGo2rtc> => {
+        launches.started.push(launch);
+        const running = runningOf(launch, launches, () => Promise.resolve());
+        if (!hold) return Promise.resolve(running);
+        return new Promise<RunningGo2rtc>((resolve) => {
+          release = (): void => {
+            resolve(running);
+          };
+        });
+      },
+    );
+    await supervisor.start(config({}));
+    hold = true;
+    const applied = supervisor.apply({ xiaomi: { '1': 'a' } });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(launches.stopped).toStrictEqual(['stopped']);
+    const stopping = supervisor.stop();
+    release();
+    expect(await applied).toBe(true);
+    await stopping;
+    expect(launches.started).toHaveLength(2);
+    expect(launches.stopped).toStrictEqual(['stopped', 'stopped']);
+    expect(supervisor.isRunning()).toBe(false);
   });
 });

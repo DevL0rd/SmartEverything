@@ -1,6 +1,6 @@
-import type { AutomationV3, FlowNode } from '@smarteverything/domain';
+import type { AutomationV3 } from '@smarteverything/domain';
 import { compareText } from '../../../../format/text';
-import { activeTriggers, literalOf, recordOf, type ConsumerRow } from './row';
+import { activeTriggers, literalOf, targetsDevice, type ConsumerRow } from './row';
 
 export interface ScheduleLine {
   readonly text: string;
@@ -11,17 +11,6 @@ interface PowerChange {
   readonly at: string;
   readonly on: boolean;
   readonly automationId: string;
-}
-
-function stringsOf(value: unknown): readonly string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string')
-    : [];
-}
-
-function targetsDevice(node: FlowNode, deviceId: string): boolean {
-  const target = recordOf(literalOf(node.ports ?? {}, 'target'));
-  return target?.['device'] === deviceId || stringsOf(target?.['devices']).includes(deviceId);
 }
 
 function flipsOf(program: AutomationV3, deviceId: string): readonly boolean[] {

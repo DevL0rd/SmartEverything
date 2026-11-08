@@ -79,6 +79,11 @@ export class LiveWatchRegistry {
     this.clearTimer();
   }
 
+  sendNow(): void {
+    this.clearTimer();
+    this.flush();
+  }
+
   topicsOf(deviceId: string): ReadonlySet<string> {
     const topics = new Set<string>();
     for (const hold of this.holds) {

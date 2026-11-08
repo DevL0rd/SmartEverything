@@ -1,97 +1,122 @@
-import { useCallback, useMemo, useState } from 'react';
-import { Dimensions } from 'react-native';
-import type { Layout } from '@smarteverything/domain';
-import type { Program } from '@smarteverything/flow/program/walk';
+import { useMemo, useState } from 'react';
+import type { Layout, NodeRegistry, ProgramV4, RefNames } from '@smarteverything/domain';
 import { useAnimationGate } from '../../../../design/animation-gate';
 import { useColourResolver } from '../../../../design/colour';
 import { usePausable } from '../../../../design/external-store';
 import { useIdiom } from '../../../../design/platform';
-import type {
-  CanvasProps,
-  RunOverlay,
-  Scene,
-  SceneMode,
-  ViewportCommand,
-} from '../../model/canvas/contract';
-import { projectScene } from '../../model/canvas/project-scene';
-import type { ProjectOptions } from '../../model/canvas/tree-env';
+import { useStableCallback } from '../../../../design/use-stable-callback';
+import type { Size } from '@smarteverything/flow/graph/metrics';
 import type { DocumentStore } from '../../model/editor/document-store';
-import { sizeClassFor } from '../canvas/viewport';
-import type { CanvasMetrics } from './intent-env';
+import type { GraphRunOverlay } from '../../model/graph/run-overlay';
+import { projectGraphScene } from '../../model/graph/project-graph-scene';
+import { mergeMeasured } from '../../model/graph/scene-sizes';
+import type { GraphScene, SceneProblemEntry } from '../../model/graph/scene-contract';
+import type {
+  GraphCanvasProps,
+  GraphDropGhost,
+  GraphMeasuredSize,
+} from '../canvas/graph-canvas-types';
+import type { MeasureSizes } from './canvas-intents';
+import type { GraphFraming, ViewportCommand } from '../canvas/viewport';
 import { buildCanvasTheme } from './theme-map';
+import { useDensity } from './use-intent-runtime';
 
-export type SceneOptions = Omit<ProjectOptions, 'layout' | 'run'>;
+export interface FunctionInfo {
+  readonly name: string;
+  readonly latest: number;
+}
+
+export interface SceneOptions {
+  readonly registry: NodeRegistry;
+  readonly names: RefNames;
+  readonly functions: ReadonlyMap<string, FunctionInfo>;
+}
+
+export type RunSource = (scene: GraphScene) => GraphRunOverlay;
 
 export interface CanvasInput {
   readonly store: DocumentStore;
   readonly options: SceneOptions;
-  readonly run: RunOverlay | null;
+  readonly problems: readonly SceneProblemEntry[];
+  readonly run: RunSource | null;
   readonly focusNode: string | null;
   readonly viewportCommand: ViewportCommand | null;
   readonly onScreen: boolean;
+  readonly ghost: GraphDropGhost | null;
 }
 
 export interface CanvasHandle {
-  readonly props: CanvasProps;
-  readonly scene: Scene;
-  readonly ready: (metrics: CanvasMetrics) => void;
+  readonly props: Omit<GraphCanvasProps, 'onIntent'>;
+  readonly scene: GraphScene;
+  readonly measure: MeasureSizes;
+  readonly measured: ReadonlyMap<string, Size>;
 }
 
-interface Basis {
-  readonly mode: SceneMode;
-  readonly compactWidth: number | null;
-}
-
-function basisFor(width: number): Basis {
-  const mode = sizeClassFor(width);
-  return { mode, compactWidth: mode === 'compact' ? width : null };
-}
-
-function sameBasis(left: Basis, right: Basis): boolean {
-  return left.mode === right.mode && left.compactWidth === right.compactWidth;
-}
-
-function useBasis(): { readonly basis: Basis; readonly ready: (metrics: CanvasMetrics) => void } {
-  const [basis, setBasis] = useState(() => basisFor(Dimensions.get('window').width));
-  const ready = useCallback((metrics: CanvasMetrics): void => {
-    const next = basisFor(metrics.width);
-    setBasis((current) => (sameBasis(current, next) ? current : next));
-  }, []);
-  return { basis, ready };
-}
-
-function useScene(program: Program, layout: Layout, options: SceneOptions, basis: Basis): Scene {
+function useGraphScene(
+  input: CanvasInput,
+  program: ProgramV4,
+  layout: Layout,
+  measured: ReadonlyMap<string, Size>,
+): GraphScene {
+  const { options, problems } = input;
+  const density = useDensity();
   return useMemo(
     () =>
-      projectScene(program, {
-        ...options,
+      projectGraphScene(program, {
+        direction: 'ltr',
+        density,
         layout,
-        mode: basis.mode,
-        ...(basis.compactWidth === null ? {} : { canvasWidth: basis.compactWidth }),
+        names: options.names,
+        kinds: options.registry,
+        problems,
+        functions: options.functions,
+        measured,
       }),
-    [program, layout, options, basis],
+    [
+      program,
+      layout,
+      options.names,
+      options.registry,
+      options.functions,
+      density,
+      problems,
+      measured,
+    ],
   );
 }
 
-export function useCanvasProps(input: CanvasInput): CanvasHandle {
+export interface CanvasMode {
+  readonly readOnly: boolean;
+  readonly framing: GraphFraming;
+}
+
+export function useCanvasProps(input: CanvasInput, mode: CanvasMode): CanvasHandle {
   const { store } = input;
   const program = usePausable(store.state.subscribe, () => store.state.get().program);
   const layout = usePausable(store.state.subscribe, () => store.state.get().layout);
   const selection = usePausable(store.state.subscribe, () => store.state.get().selection.ids);
-  const { basis, ready } = useBasis();
-  const scene = useScene(program, layout, input.options, basis);
-  const theme = buildCanvasTheme(useColourResolver());
   const idiom = useIdiom();
+  const [measured, setMeasured] = useState<ReadonlyMap<string, Size>>(() => new Map());
+  const measure: MeasureSizes = useStableCallback((sizes: readonly GraphMeasuredSize[]): void => {
+    setMeasured((known) => mergeMeasured(known, sizes));
+  });
+  const scene = useGraphScene(input, program, layout, measured);
+  const { run: source } = input;
+  const run = useMemo(() => (source === null ? null : source(scene)), [source, scene]);
+  const theme = buildCanvasTheme(useColourResolver());
   const { moving } = useAnimationGate(true, input.onScreen);
-  const props: CanvasProps = {
+  const props: Omit<GraphCanvasProps, 'onIntent'> = {
     scene,
     theme,
-    run: input.run,
+    run,
     selection: [...selection],
     focusNode: input.focusNode,
     viewportCommand: input.viewportCommand,
+    ghost: input.ghost,
     active: moving,
+    readOnly: mode.readOnly,
+    framing: mode.framing,
     idiom,
   };
-  return { props, scene, ready };
+  return { props, scene, measure, measured };
 }

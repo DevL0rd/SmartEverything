@@ -71,7 +71,7 @@ export function PersonChoice({
   const roles = new Map(access.data.map((person) => [person.profile_id, person.role]));
   return (
     <>
-      <List title="Whose phone is this?" inset>
+      <List title="Whose device is this?" inset>
         <PersonRows roles={roles} chosen={chosen} onChoose={onChoose} />
         <ListRow
           title="Someone new"

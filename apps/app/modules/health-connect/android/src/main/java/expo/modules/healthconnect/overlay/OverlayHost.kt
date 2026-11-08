@@ -14,7 +14,7 @@ data class OverlayHostFacts(
   val sessionShown: Boolean,
 )
 
-enum class SessionStart { OpenApp, HostOnly, StartCall }
+enum class SessionStart { OpenApp, HostOnly, StartCall, VoiceInApp, OpenVoiceMessage }
 
 object OverlayHostRule {
   fun hostFor(facts: OverlayHostFacts): OverlayHostKind = when {
@@ -30,7 +30,9 @@ object OverlayHostRule {
 
   fun pipAutoEnter(wanted: Boolean, barAvailable: Boolean): Boolean = wanted && !barAvailable
 
-  fun sessionStart(appForeground: Boolean, callRunning: Boolean, wake: Boolean): SessionStart = when {
+  fun sessionStart(appForeground: Boolean, callRunning: Boolean, wake: Boolean, press: PowerButton): SessionStart = when {
+    press == PowerButton.VoiceMessage && !callRunning && !wake ->
+      if (appForeground) SessionStart.VoiceInApp else SessionStart.OpenVoiceMessage
     appForeground -> SessionStart.OpenApp
     callRunning || wake -> SessionStart.HostOnly
     else -> SessionStart.StartCall

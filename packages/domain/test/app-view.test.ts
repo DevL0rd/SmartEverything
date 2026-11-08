@@ -15,24 +15,32 @@ const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE = '11111111-1111-4111-8111-111111111111';
 
 describe('the show in app tool input', () => {
-  it('accepts open with a target and a focus', () => {
-    const parsed = SHOW_IN_APP_INPUT.safeParse({
-      action: 'open',
-      target: { kind: 'device', deviceId: DEVICE, focus: null },
-      focus: 'brightness',
-    });
-    expect(parsed.success).toBe(true);
-  });
-
-  it('accepts dismiss alone and a pointer at a navigation item', () => {
-    expect(SHOW_IN_APP_INPUT.safeParse({ action: 'dismiss' }).success).toBe(true);
+  it('opens a page and may point at one thing on it', () => {
     expect(
-      SHOW_IN_APP_INPUT.safeParse({ action: 'highlight', target: { kind: 'nav', node: 'lamp' } })
-        .success,
+      SHOW_IN_APP_INPUT.safeParse({
+        action: 'open',
+        target: { kind: 'setting', page: 'about/updates', setting: null },
+        focus: 'app-updates.channel',
+      }).success,
+    ).toBe(true);
+    expect(
+      SHOW_IN_APP_INPUT.safeParse({
+        action: 'open',
+        target: { kind: 'device', deviceId: DEVICE, focus: null },
+      }).success,
     ).toBe(true);
   });
 
-  it('refuses an unknown action, an unknown target and a stray field', () => {
+  it('points at one thing without opening anything, and dismisses alone', () => {
+    expect(
+      SHOW_IN_APP_INPUT.safeParse({ action: 'highlight', focus: 'app-updates.channel' }).success,
+    ).toBe(true);
+    expect(SHOW_IN_APP_INPUT.safeParse({ action: 'dismiss' }).success).toBe(true);
+  });
+
+  it('refuses a missing page to open, a pointer without a focus and a stray field', () => {
+    expect(SHOW_IN_APP_INPUT.safeParse({ action: 'open' }).success).toBe(false);
+    expect(SHOW_IN_APP_INPUT.safeParse({ action: 'highlight' }).success).toBe(false);
     expect(SHOW_IN_APP_INPUT.safeParse({ action: 'close' }).success).toBe(false);
     expect(
       SHOW_IN_APP_INPUT.safeParse({ action: 'open', target: { kind: 'planet' } }).success,
@@ -45,7 +53,7 @@ describe('the request an app receives and the answer it sends', () => {
   const request = {
     requestId: REQUEST_ID,
     action: 'open',
-    target: { kind: 'section', section: 'fitness' },
+    target: { kind: 'page', path: 'fitness-sleep' },
     focus: null,
   } as const;
 
@@ -57,7 +65,7 @@ describe('the request an app receives and the answer it sends', () => {
   });
 
   it('answers done with what was opened, or refused with a reason', () => {
-    const done = { ok: true, opened: 'Fitness', highlighted: false, reason: null };
+    const done = { ok: true, opened: 'Sleep', highlighted: false, reason: null };
     expect(APP_VIEW_ANSWER.safeParse({ requestId: REQUEST_ID, result: done }).success).toBe(true);
     const missed = { ok: true, opened: null, highlighted: false, reason: 'not_on_screen' };
     expect(APP_VIEW_ANSWER.safeParse({ requestId: REQUEST_ID, result: missed }).success).toBe(true);
@@ -88,8 +96,21 @@ describe('the show in app tool', () => {
       path: '/api/app-view',
       access: 'member',
     });
-    expect(mcpToolOperation('app_show')).toBe('showInApp');
-    expect(MCP_ROUTES.get('app_show')).toEqual({ part: 'app_show' });
+    expect(mcpToolOperation('show_in_app')).toBe('showInApp');
+    expect(MCP_ROUTES.get('app_show')).toEqual({
+      key: 'action',
+      branches: {
+        open: { part: 'show_in_app', line: 'Open a page in the person’s app' },
+        highlight: {
+          part: 'point_in_app',
+          line: 'Point at one thing on the screen it is on now',
+        },
+        dismiss: {
+          part: 'clear_app_pointer',
+          line: 'Clear the pointer and close what was opened',
+        },
+      },
+    });
   });
 
   it('reports what was opened or why nothing was', () => {

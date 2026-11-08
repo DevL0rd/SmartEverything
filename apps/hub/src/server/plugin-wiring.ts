@@ -5,8 +5,11 @@ import { deviceTarget } from '../metrics/viewers';
 import { BUILTIN_PLUGINS } from '../plugins/builtin';
 import type { Catalogue } from '../openrouter/catalogue';
 import { PluginHost } from '../plugins/host';
+import { followPluginKinds } from '../automations/plugin-kinds/contributions';
 import { machineFileReader } from '../plugins/machine-file';
 import { uploadFileReader } from '../plugins/upload-file';
+import { pictureFileReader } from '../plugins/picture-file';
+import { recordingPathIn } from '../services';
 import type { PluginFiles } from '../plugins/builtin/contract';
 import { PluginConversations, chatAttachmentPaths } from '../plugins/plugin-assistant';
 import type { PluginVoiceServices } from '../plugins/plugin-voice';
@@ -39,6 +42,7 @@ interface HostLinks {
   readonly attachments: (chatId: string) => readonly string[];
   readonly machineFile: PluginFiles['fromMachine'];
   readonly uploadFile: PluginFiles['fromUpload'];
+  readonly pictureFile: PluginFiles['fromPicture'];
 }
 
 function hostOf(options: BuildOptions, links: HostLinks): PluginHost {
@@ -55,8 +59,10 @@ function hostOf(options: BuildOptions, links: HostLinks): PluginHost {
       attachments: links.attachments,
       machineFile: links.machineFile,
       uploadFile: links.uploadFile,
-      dataDirectory: options.dataDirectory,
+      pictureFile: links.pictureFile,
+      layout: options.layout,
       submit: options.core.hub.submit,
+      signals: options.core.hub.signals,
       now: options.clock.now,
     },
     contributions: {
@@ -67,7 +73,7 @@ function hostOf(options: BuildOptions, links: HostLinks): PluginHost {
       now: options.clock.now,
     },
     configure: (pluginId, change, by) => links.admin().configure(pluginId, change, by),
-    dataDirectory: options.dataDirectory,
+    layout: options.layout,
     mcpUrl: () => localUrlOf(links.listening),
     now: options.clock.now,
     log: options.log.forArea('hub.plugins'),
@@ -107,12 +113,27 @@ function followPorts(options: BuildOptions, context: ServerContext, host: Plugin
   return host.changes(sync);
 }
 
+function followKinds(options: BuildOptions, context: ServerContext, host: PluginHost): () => void {
+  return followPluginKinds(
+    context.hub.automationKinds,
+    {
+      plugins: () => options.store.plugins.list(),
+      loaded: (pluginId) => host.slot(pluginId) !== undefined,
+      changes: (listener) => host.changes(listener),
+    },
+    (pluginId, detail) => {
+      options.store.plugins.update(pluginId, { statusDetail: detail });
+    },
+  );
+}
+
 function inboxOf(options: BuildOptions, context: ServerContext, host: PluginHost): PluginInbox {
   return new PluginInbox({
     store: options.store,
     assistant: context.assistant,
     host: (): PluginHost => host,
     fetch: options.fetch,
+    tmp: options.layout.tmp,
     now: options.clock.now,
     log: options.log.forArea('hub.plugins'),
   });
@@ -121,6 +142,23 @@ function inboxOf(options: BuildOptions, context: ServerContext, host: PluginHost
 export interface PluginLinks {
   readonly speakers: PluginSpeakers;
   readonly voice: PluginVoiceServices;
+}
+
+function fileReadersOf(
+  options: BuildOptions,
+  context: ServerContext,
+  tools: ToolHub,
+): Pick<HostLinks, 'attachments' | 'machineFile' | 'uploadFile' | 'pictureFile'> {
+  return {
+    attachments: (chatId) => chatAttachmentPaths(options.store, context.assistant.files, chatId),
+    machineFile: machineFileReader({ tools, harness: context.harness }),
+    uploadFile: uploadFileReader({ store: options.store, files: context.assistant.files }),
+    pictureFile: pictureFileReader({
+      store: options.store,
+      recordingPath: recordingPathIn(options.layout),
+      attachmentPath: (file) => context.assistant.files.pathOf(file),
+    }),
+  };
 }
 
 export function wirePlugins(
@@ -135,7 +173,6 @@ export function wirePlugins(
     store: options.store,
     assistant: context.assistant,
     catalogue: (): Catalogue => context.openRouter.catalogue,
-    dataDirectory: options.dataDirectory,
     now: options.clock.now,
   });
   const listening: Listening = { server: null };
@@ -147,14 +184,13 @@ export function wirePlugins(
     people,
     ...links,
     conversations,
-    attachments: (chatId) => chatAttachmentPaths(options.store, context.assistant.files, chatId),
-    machineFile: machineFileReader({ tools, harness: context.harness }),
-    uploadFile: uploadFileReader({ store: options.store, files: context.assistant.files }),
+    ...fileReadersOf(options, context, tools),
   });
   const inbox = inboxOf(options, context, host);
   const admin = adminOf(options, { host, inbox, secrets, people });
   const removeSource = tools.add(pluginToolSource(host));
   const unfollowPorts = followPorts(options, context, host);
+  const unfollowKinds = followKinds(options, context, host);
   return {
     admin,
     boot: (http): void => {
@@ -168,6 +204,7 @@ export function wirePlugins(
     extension: extensionOf(async (): Promise<void> => {
       removeSource();
       unfollowPorts();
+      unfollowKinds();
       inbox.stop();
       await host.shutdown();
     }),

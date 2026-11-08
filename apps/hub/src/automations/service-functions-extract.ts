@@ -1,22 +1,25 @@
 import { randomUUID } from 'node:crypto';
 import {
   ApiError,
-  AUTOMATION_V3,
+  AUTOMATION_V4,
+  FUNCTION_V4,
   EMPTY_LAYOUT,
   type AutomationFunctionExtractReply,
   type AutomationFunctionExtractRequest,
   type AutomationProgramProblem,
-  type AutomationRowV3,
-  type FunctionV3,
+  type StoredAutomationRow,
+  type AutomationV4,
+  type FunctionRow,
+  type FunctionV4,
 } from '@smarteverything/domain';
-import { extractRegion } from '@smarteverything/flow/extract/extract';
-import type { Program } from '@smarteverything/flow/program/walk';
+import { extractFromGraph } from '@smarteverything/flow/graph/extract-graph';
+import { unstructure } from '@smarteverything/flow/graph/unstructure';
 import { currentExecutionAuthority } from '../assistant/turn-authority';
 import { profileIdOf, type Caller } from '../server/auth';
 import { analyse, failure, lintContextOf, planValue } from './service-programs-analysis';
 import { authorSpeech } from './service-programs-speech';
 import { authorOf } from './service-reach';
-import { authorise, hashOf, type FunctionsEnv } from './service-functions-support';
+import { authorise, hashOf, requireFreeName, type FunctionsEnv } from './service-functions-support';
 
 class Rollback extends Error {
   override readonly name = 'Rollback';
@@ -28,10 +31,10 @@ class Rollback extends Error {
 
 interface Extraction {
   readonly request: AutomationFunctionExtractRequest;
-  readonly row: AutomationRowV3;
+  readonly row: StoredAutomationRow;
   readonly functionId: string;
-  readonly callee: FunctionV3;
-  readonly caller: Program;
+  readonly callee: FunctionV4;
+  readonly caller: AutomationV4;
   readonly instanceKey: string;
 }
 
@@ -80,6 +83,28 @@ function refusedExtract(
   };
 }
 
+function createCallee(
+  env: FunctionsEnv,
+  caller: Caller,
+  found: Extraction,
+  calleePlan: ReturnType<typeof planValue>,
+): FunctionRow {
+  return env.functions.create(
+    {
+      id: found.functionId,
+      name: found.request.name,
+      program: found.callee,
+      layout: EMPTY_LAYOUT,
+      interfaceHash: hashOf(found.callee),
+      compat: 'compatible',
+      planHash: env.plans.put('function', calleePlan),
+      author: authorOf(env.store, caller),
+      createdBy: profileIdOf(env.store, caller),
+    },
+    env.kinds,
+  );
+}
+
 function saveExtraction(
   env: FunctionsEnv,
   caller: Caller,
@@ -87,28 +112,22 @@ function saveExtraction(
   calleePlan: ReturnType<typeof planValue>,
 ): AutomationFunctionExtractReply {
   const author = authorOf(env.store, caller);
-  const created = env.functions.create({
-    id: found.functionId,
-    name: found.request.name,
-    program: found.callee,
-    layout: EMPTY_LAYOUT,
-    interfaceHash: hashOf(found.callee),
-    compat: 'compatible',
-    planHash: env.plans.put('function', calleePlan),
-    author,
-    createdBy: profileIdOf(env.store, caller),
-  });
-  const program = AUTOMATION_V3.parse(found.caller);
+  const created = createCallee(env, caller, found, calleePlan);
+  const program = found.caller;
   const analysis = analyse(env, program);
   if (analysis.built === undefined) throw new Rollback(analysis.problems);
   authorise(env, caller, program, analysis.built);
-  const saved = env.programs.replace(found.row.id, {
-    program,
-    layout: found.row.layout,
-    expectedRevision: found.row.revision,
-    planHash: env.plans.put('automation', planValue(analysis.built.plan)),
-    author,
-  });
+  const saved = env.programs.replace(
+    found.row.id,
+    {
+      program,
+      layout: found.row.layout,
+      expectedRevision: found.row.revision,
+      planHash: env.plans.put('automation', planValue(analysis.built.plan)),
+      author,
+    },
+    env.kinds,
+  );
   env.store.harnessRecovery.effects.keep('automation', saved.id, currentExecutionAuthority());
   authorSpeech(env.store, caller, saved);
   return {
@@ -149,6 +168,7 @@ export function extract(
   caller: Caller,
   request: AutomationFunctionExtractRequest,
 ): AutomationFunctionExtractReply {
+  requireFreeName(env, request.name);
   const row = env.programs.byId(request.automationId);
   if (row.revision !== request.expectedRevision) {
     throw new ApiError(
@@ -157,25 +177,27 @@ export function extract(
     );
   }
   const functionId = randomUUID();
-  const result = extractRegion(row.definition, request.keys, lintContextOf(env), {
+  const result = extractFromGraph(row.definition, request.keys, lintContextOf(env), {
     functionId,
+    newId: randomUUID,
     name: request.name,
     ...(request.expose === undefined ? {} : { expose: request.expose }),
   });
   if (!result.ok) {
     return refusedExtract(request, [failure(result.code, result.reason)], result.suggestion);
   }
+  const extracted = FUNCTION_V4.parse(unstructure(result.callee, env.kinds));
   const callee = {
-    ...result.callee,
-    inputs: edited(result.callee.inputs, request.inputs, 'input'),
-    outputs: edited(result.callee.outputs, request.outputs, 'output'),
+    ...extracted,
+    inputs: edited(extracted.inputs, request.inputs, 'input'),
+    outputs: edited(extracted.outputs, request.outputs, 'output'),
   };
   return commit(env, caller, {
     request,
     row,
     functionId,
     callee,
-    caller: result.caller,
+    caller: AUTOMATION_V4.parse(unstructure(result.caller, env.kinds)),
     instanceKey: result.instanceKey,
   });
 }

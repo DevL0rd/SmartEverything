@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../../components/text';
+import { ActionBand } from '../../../components/widget-board/action-band';
 import type { Device } from '../../../store/state';
 import type { ComputerStatus } from '../model/computer-view';
 import { BatteryChip, Ident, StateLine } from './card-parts';
-import { FaceControls } from './face-controls';
-import { FaceHeader } from './face-header';
+import { FaceBand } from './face-controls';
+import { FaceHeader, FaceLine } from './face-header';
 import { VitalLines } from './vitals';
 import { VitalRow, type TileLooks } from './vital-parts';
 
@@ -16,29 +17,33 @@ interface TileProps {
 
 export function TileFace({ device, status }: TileProps): ReactNode {
   return (
-    <View className="flex-1 justify-between gap-1" pointerEvents="none">
-      <View className="flex-row items-center justify-between">
-        <Ident device={device} />
-        <BatteryChip deviceId={device.id} />
+    <View className="flex-1 gap-1" pointerEvents="box-none">
+      <View className="min-h-0 flex-1 justify-between gap-1" pointerEvents="none">
+        <View className="flex-row items-center justify-between">
+          <Ident device={device} size="m" />
+          <BatteryChip deviceId={device.id} />
+        </View>
+        <View>
+          <Text variant="body-strong" numberOfLines={1}>
+            {device.label}
+          </Text>
+          <VitalLines deviceId={device.id} stale={status.offline} small />
+        </View>
+        <StateLine deviceId={device.id} status={status} temperature={false} />
       </View>
-      <View>
-        <Text variant="body-strong" numberOfLines={1}>
-          {device.label}
-        </Text>
-        <VitalLines deviceId={device.id} stale={status.offline} small />
-      </View>
-      <StateLine deviceId={device.id} status={status} temperature={false} />
+      <ActionBand />
     </View>
   );
 }
 
 export function ExtraSmallFace({ device, status }: TileProps): ReactNode {
   return (
-    <View className="flex-1 gap-2" pointerEvents="box-none">
-      <FaceHeader device={device} status={status} compact wake />
+    <View className="flex-1 gap-1.5" pointerEvents="box-none">
+      <FaceHeader device={device} status={status} compact />
       <View pointerEvents="none">
         <VitalLines deviceId={device.id} stale={status.offline} />
       </View>
+      <FaceBand device={device} offline={status.offline} controls="none" />
     </View>
   );
 }
@@ -52,10 +57,10 @@ const LOOKS: TileLooks = {
 export function CardFace({ device, status }: TileProps): ReactNode {
   const stale = status.offline;
   return (
-    <View className="flex-1 gap-2" pointerEvents="box-none">
-      <FaceHeader device={device} status={status} compact wake />
-      <VitalRow deviceId={device.id} stale={stale} looks={LOOKS} />
-      {stale ? null : <FaceControls device={device} offline={false} />}
+    <View className="flex-1 gap-1" pointerEvents="box-none">
+      <FaceLine device={device} status={status} />
+      <VitalRow deviceId={device.id} stale={stale} looks={LOOKS} dense />
+      <FaceBand device={device} offline={stale} controls="volume" />
     </View>
   );
 }

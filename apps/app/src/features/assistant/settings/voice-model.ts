@@ -19,8 +19,6 @@ const MODEL_NAMES: Readonly<Record<string, string>> = {
 export const VOICE_THINKING_DESCRIPTION =
   'Off is fastest. Higher levels think longer and answer later.';
 
-const DEFAULT_MARK = ' (default)';
-
 export function voiceModelName(model: string): string {
   return MODEL_NAMES[model] ?? model;
 }
@@ -28,7 +26,7 @@ export function voiceModelName(model: string): string {
 export const VOICE_THINKING_OPTIONS: readonly SelectOption<string>[] = VOICE_THINKING_LEVELS.map(
   (level) => ({
     value: level,
-    label: `${VOICE_LEVEL_NAMES[level]}${level === DEFAULT_VOICE_THINKING ? DEFAULT_MARK : ''}`,
+    label: VOICE_LEVEL_NAMES[level],
     description: VOICE_LEVEL_NOTES[level],
     wrapDescription: true,
   }),

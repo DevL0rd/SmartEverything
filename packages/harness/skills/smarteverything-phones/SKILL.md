@@ -1,6 +1,6 @@
 ---
 name: smarteverything-phones
-description: "Reads and uses a person’s phone or watch: activity, battery, ringer, volume, Do Not Disturb, flashlight, brightness, what is playing, notifications, alarms, finding a lost phone or watch, Settings pages, saving a chat file on the phone, watch workouts. Use for “ring my phone”, “turn on the flashlight”, “is my phone charging” or “start a run on my watch”. Not for computers (smarteverything-computers) or other home devices (smarteverything-home)."
+description: 'Reads and uses a person’s phone or watch: activity, battery, ringer, volume, Do Not Disturb, flashlight, brightness, what is playing, notifications, alarms, finding a lost phone or watch, Settings pages, saving a chat file on the phone, watch workouts. Use for “ring my phone”, “turn on the flashlight”, “is my phone charging” or “start a run on my watch”. Not for computers (smarteverything-computers) or other home devices (smarteverything-home).'
 ---
 
 # Phones and watches

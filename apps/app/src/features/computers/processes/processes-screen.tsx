@@ -14,12 +14,11 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useDebouncedValue } from '../../../design/use-debounced-value';
 import { useStableCallback } from '../../../design/use-stable-callback';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { ComputerFrame } from '../components/computer-frame';
 import { DemandRegion } from '../../../store/demand-region';
 import { useComputerSelect } from '../data/computer-metrics';
 import { useComputerReach } from '../data/computer-scopes';
-import { bodyWidthOf } from '../model/sections';
 import { layoutOf, type ProcessLayout } from './process-format';
 import { defaultOpen, flatLines, treeLines, type ProcessLine } from './process-lines';
 import { ProcessControls, type ProcessView } from './process-controls';
@@ -86,7 +85,7 @@ function useListState(): ListState {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<ProcessFilter>('all');
   const search = useDebouncedValue(query, SEARCH_SETTLE_MS).trim();
-  const layout = layoutOf(bodyWidthOf(useAreaWidth()));
+  const layout = layoutOf(useFrameBodyWidth());
   const flat = search !== '' || filter !== 'all';
   const gpuShown = layout !== 'phone' || ordering.sort === 'gpu' || filter === 'gpu';
   return {

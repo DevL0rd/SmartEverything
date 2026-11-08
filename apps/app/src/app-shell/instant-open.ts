@@ -1,5 +1,6 @@
 import { Logger } from '@smarteverything/logging';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 
 const log = new Logger('app.nav');
 
@@ -38,7 +39,7 @@ function sameOpen(left: PendingOpen, right: PendingOpen): boolean {
   );
 }
 
-export function openInstantly(href: Href, open: PendingOpen): void {
+export function openInstantly(href: AppHref, open: PendingOpen): void {
   if (pending !== null && sameOpen(pending, open)) {
     log.debug('open.instant_skipped', { name: open.name, reason: 'already opening' });
     return;

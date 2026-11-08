@@ -4,20 +4,16 @@ import { href } from '../../../app-shell/hrefs';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import {
-  WidgetEmpty,
-  WidgetFrame,
-  type WidgetDefinition,
-  type WidgetSize,
-} from '../../../components/widget-board';
+import { WidgetEmpty, WidgetFrame, type WidgetDefinition } from '../../../components/widget-board';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import type { TalkChannelRow } from '@smarteverything/domain';
 import { TalkButton } from '../components/talk-button';
 import { useChannelActivity } from '../data/channel-activity';
 import { useMyChannels } from '../data/talk-data';
 import { useTalkEngine } from '../engine/engine-state';
+import { FitList } from '../../../plugins/shared/plugin-widget';
+import { CHANNEL_ROW, CHANNELS_GAP, channelGrid, gridRows } from './layout';
 import { EVERY_SIZE } from './sizes';
-
-const ROWS: Readonly<Record<WidgetSize, number>> = { M: 2, W: 2, XL: 6 };
 
 function ChannelLine({
   channel,
@@ -28,12 +24,12 @@ function ChannelLine({
 }): ReactNode {
   const activity = useChannelActivity(channel.id);
   return (
-    <View className="flex-row items-center gap-3 rounded-md bg-surface-2 p-2">
+    <View className="flex-row items-center gap-1.5 rounded-md bg-surface-2 px-1.5">
       <Interactive
         href={href.talkChannel(channel.id)}
         label={`${channel.name}, ${activity.line}`}
         disabled={editing}
-        className="min-h-touch-min min-w-0 flex-1 flex-row items-center gap-3 rounded-sm"
+        className="min-h-touch-min min-w-0 flex-1 flex-row items-center gap-1.5 rounded-sm"
         layerClassName="rounded-sm"
       >
         <Icon name={channel.icon} size={20} tone={activity.live ? 'primary' : 'variant'} />
@@ -51,13 +47,37 @@ function ChannelLine({
   );
 }
 
-function ChannelsWidget({
-  size,
+function ChannelGrid({
+  channels,
   editing,
 }: {
-  readonly size: WidgetSize;
+  readonly channels: readonly TalkChannelRow[];
   readonly editing: boolean;
 }): ReactNode {
+  const { frame } = useWidgetFace();
+  const grid = channelGrid(frame.width, frame.idiom, channels.length);
+  const cell = { flexBasis: grid.itemWidth };
+  return (
+    <FitList
+      items={gridRows(channels, grid.columns)}
+      keyOf={(row) => row.map((channel) => channel.id).join()}
+      estimate={CHANNEL_ROW}
+      gap={CHANNELS_GAP}
+    >
+      {(row) => (
+        <View className="flex-row gap-2">
+          {row.map((channel) => (
+            <View key={channel.id} className="min-w-0 grow" style={cell}>
+              <ChannelLine channel={channel} editing={editing} />
+            </View>
+          ))}
+        </View>
+      )}
+    </FitList>
+  );
+}
+
+function ChannelsWidget({ editing }: { readonly editing: boolean }): ReactNode {
   const channels = useMyChannels();
   const engine = useTalkEngine();
   const glow =
@@ -73,13 +93,7 @@ function ChannelsWidget({
           action={{ label: 'Open', href: href.talk() }}
         />
       ) : (
-        <View className={size === 'W' ? 'flex-row flex-wrap gap-2' : 'gap-2'}>
-          {channels.slice(0, ROWS[size]).map((channel) => (
-            <View key={channel.id} className={size === 'W' ? 'min-w-0 flex-1 basis-80' : 'w-full'}>
-              <ChannelLine channel={channel} editing={editing} />
-            </View>
-          ))}
-        </View>
+        <ChannelGrid channels={channels} editing={editing} />
       )}
     </WidgetFrame>
   );
@@ -92,5 +106,5 @@ export const CHANNELS_WIDGET: WidgetDefinition = {
   group: 'Walkie-talkie',
   sizes: EVERY_SIZE,
   defaultSize: 'M',
-  render: ({ size, editing }) => <ChannelsWidget size={size} editing={editing} />,
+  render: ({ editing }) => <ChannelsWidget editing={editing} />,
 };

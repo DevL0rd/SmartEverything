@@ -1,5 +1,9 @@
 import { createElement } from 'react';
-import { DEFAULT_VOICE_THINKING, LIVE_CONTEXT_MINUTES } from '@smarteverything/domain';
+import {
+  DEFAULT_VOICE_THINKING,
+  LIVE_CONTEXT_MINUTES,
+  VOICE_LEVEL_NAMES,
+} from '@smarteverything/domain';
 import type { SettingDefinition } from '../../../settings/types';
 import { known, owner, writeVoice } from './assistant-write';
 import { CallVoiceSettingRow } from './call-voice-setting-row';
@@ -66,8 +70,8 @@ const MODEL_RESET: SettingDefinition = {
   ...modelBase,
   id: 'assistant.voice.model-reset',
   icon: 'reset',
-  title: 'Reset thinking to default',
-  keywords: ['reset', 'default', 'voice model', 'thinking'],
+  title: `Reset thinking to ${VOICE_LEVEL_NAMES[DEFAULT_VOICE_THINKING]}`,
+  keywords: ['reset', 'voice model', 'thinking'],
   control: 'action',
   when: (state) => state.assistant !== null && !voiceModelIsDefault(state.assistant.settings.voice),
   run: (context) => writeVoice({ thinking_level: DEFAULT_VOICE_THINKING }, context),

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { cn } from '../../../design/cn';
 import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Segmented } from '../../../components/segmented';
@@ -8,6 +9,8 @@ import { Slider } from '../../../components/slider';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { useIdiom } from '../../../design/platform';
+import { useThemeSetting } from '../../../design/theme';
+import { SEMANTIC_SIZES } from '../../../design/tokens';
 import type { Control } from '../../../store/control';
 import type { Device } from '../../../store/state';
 import { Guard } from '../controls/guard';
@@ -26,6 +29,8 @@ import { background } from '@smarteverything/logging';
 
 const LETTER_PX = { touch: 8, pointer: 7 } as const;
 const SEGMENT_CHROME_PX = { touch: 36, pointer: 26 } as const;
+const STEPPER_VALUE_WIDTH = 40;
+const STEPPER_GAP = 4;
 
 function segmentsFit(
   options: readonly { readonly label: string }[],
@@ -53,21 +58,40 @@ export type { LabelMode };
 function Labelled({
   presented,
   labels,
+  inlineLabelWrap,
+  inlineLabel,
   children,
 }: {
   readonly presented: PresentedCapability;
   readonly labels: LabelMode;
+  readonly inlineLabelWrap: boolean;
+  readonly inlineLabel: string | undefined;
   readonly children: ReactNode;
 }): ReactNode {
+  const idiom = useIdiom();
+  const touchMin = SEMANTIC_SIZES[idiom][useThemeSetting('density')].touchMin;
+  const stepperWidth = 2 * (touchMin + STEPPER_GAP) + STEPPER_VALUE_WIDTH;
   if (labels === 'caption') {
     return children;
   }
   return (
-    <View className="min-h-touch-min flex-row items-center gap-3">
-      <Text variant="callout" tone="variant" numberOfLines={1} className="w-2/5 shrink">
-        {presented.label}
+    <View
+      className={cn('min-h-touch-min flex-row items-center', inlineLabelWrap ? 'gap-2' : 'gap-3')}
+    >
+      <Text
+        variant="callout"
+        tone="variant"
+        numberOfLines={inlineLabelWrap ? 2 : 1}
+        className={cn('shrink', inlineLabelWrap ? 'min-w-0 flex-1' : 'w-2/5')}
+      >
+        {inlineLabel ?? presented.label}
       </Text>
-      <View className="min-w-0 flex-1 items-end">{children}</View>
+      <View
+        style={inlineLabelWrap ? { width: stepperWidth } : undefined}
+        className={cn('min-w-0 items-end', inlineLabelWrap ? 'shrink-0' : 'flex-1')}
+      >
+        {children}
+      </View>
     </View>
   );
 }
@@ -258,12 +282,16 @@ export function CompactControl({
   reason,
   width,
   labels: requested,
+  inlineLabelWrap = false,
+  inlineLabel,
 }: {
   readonly device: Device;
   readonly presented: PresentedCapability;
   readonly reason: string | null;
   readonly width: number;
   readonly labels: LabelMode;
+  readonly inlineLabelWrap?: boolean;
+  readonly inlineLabel?: string;
 }): ReactNode {
   const control = useDeviceControl(device, presented);
   const kind = presented.capability.value.kind;
@@ -271,7 +299,12 @@ export function CompactControl({
   const inline = labels === 'inline' && kind !== 'boolean' && kind !== 'action';
   return (
     <Guard reason={reason}>
-      <Labelled presented={presented} labels={inline ? 'inline' : 'caption'}>
+      <Labelled
+        presented={presented}
+        labels={inline ? 'inline' : 'caption'}
+        inlineLabelWrap={inlineLabelWrap}
+        inlineLabel={inlineLabel}
+      >
         <Body
           device={device}
           presented={presented}

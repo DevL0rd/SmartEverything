@@ -16,6 +16,6 @@ export function computerEngineStatus(
     ? 'The selected supplying computer is offline.'
     : !status.settings.settings.provider.enabled
       ? `The ${deps.runtime} provider is disabled on this computer.`
-      : status.capabilities.provider_reason;
+      : null;
   return { state: reason !== null ? 'unavailable' : working ? 'working' : 'ready', reason };
 }

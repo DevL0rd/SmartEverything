@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { SelectRow, Stage } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
@@ -7,7 +7,7 @@ const opts = [
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
 ];
-function Demo() {
+function Demo(): ReactElement {
   const [t, setT] = useState('system');
   return (
     <Col gap={4}>
@@ -26,12 +26,12 @@ function Demo() {
     </Col>
   );
 }
-export const Rows = () => (
+export const Rows = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     <Demo />
   </Stage>

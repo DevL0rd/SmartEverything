@@ -8,7 +8,13 @@ import type { HarnessAttachment } from './attachments';
 
 export interface HarnessDispatcherOptions extends Pick<
   HarnessRuntimeOptions,
-  'host' | 'desiredConfiguration' | 'installedPlugins' | 'configurationChanged' | 'serverToolAccess'
+  | 'host'
+  | 'desiredConfiguration'
+  | 'installedPlugins'
+  | 'apiKeys'
+  | 'configurationChanged'
+  | 'serverToolAccess'
+  | 'failureContext'
 > {
   readonly configurationPending?: NonNullable<HarnessRuntimeOptions['configurationPending']>;
   readonly persistence: HarnessControlPersistence;

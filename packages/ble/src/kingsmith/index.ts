@@ -63,3 +63,4 @@ export {
 } from './wilink';
 export type { PadRecord, Split, UnknownByte, WilinkDecoded } from './wilink';
 export { identityOf } from './identity';
+export { KINGSMITH_G15_MODEL } from './model';

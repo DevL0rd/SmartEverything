@@ -1,4 +1,5 @@
 import {
+  PRESSURE_CODE_TOO_HIGH,
   SONICARE_HEAD_LIFETIME_SECONDS,
   worthKeeping,
   wearPercentOf,
@@ -25,6 +26,7 @@ import { liveFrameOf, noticeOf } from './live';
 import type { BatchOutcome, Found } from './outcome';
 import type { Publisher } from './publisher';
 import type { MachineEvent } from './session-machine';
+import { pressureEntries } from './session-open';
 import { BrushingLog, type LogContext, type Logged } from './sessions';
 
 const RECENT_SESSION_MS = 15 * 60_000;
@@ -59,6 +61,24 @@ function earliest(first: number | null, second: number | null): number | null {
 
 function startsLink(before: BrushLinkPhase, after: BrushLinkPhase): boolean {
   return before !== after && (after === 'connecting' || after === 'linked');
+}
+
+function coverageFacts(session: BrushingSession): Record<string, JsonValue> {
+  if (session.zones.length === 0) {
+    return {};
+  }
+  const reached = session.zones.filter((seconds) => seconds > 0).length;
+  return { coverage: Math.round((reached / session.zones.length) * 100) };
+}
+
+function pressureFacts(session: BrushingSession): Record<string, JsonValue> {
+  const { pressure } = session;
+  return pressure === null
+    ? {}
+    : {
+        pressureWarnings:
+          pressure.highEvents ?? pressureEntries(pressure.strip, PRESSURE_CODE_TOO_HIGH),
+      };
 }
 
 export class BrushIngest {
@@ -247,6 +267,9 @@ export class BrushIngest {
       person,
       mode: session.mode,
       durationS: Math.round(session.durationS),
+      ...(session.personId === null ? {} : { profileId: session.personId }),
+      ...coverageFacts(session),
+      ...pressureFacts(session),
     };
   }
 

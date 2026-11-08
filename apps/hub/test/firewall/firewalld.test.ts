@@ -1,13 +1,18 @@
-import type { PortRule } from '@smarteverything/domain';
+import type { FirewallOpening, PortRule } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { firewalldRunning, probeFirewalld } from '../../src/firewall/firewalld';
 import type { FirewallSystem } from '../../src/firewall/system';
 import { fakeSystem } from './fake-system';
 
-const CAMERA: PortRule = { purpose: 'camera', protocol: 'udp', source: '192.168.1.50' };
+const CAMERA: PortRule = {
+  purpose: 'camera',
+  protocol: 'udp',
+  mac: 'b8:88:80:d7:19:ac',
+  address: '192.168.1.50',
+};
 const WEBRTC: PortRule = { purpose: 'webrtc', protocol: 'tcp', port: 8555 };
 const PLUGIN: PortRule = {
-  purpose: 'plugin',
+  purpose: 'announcement',
   protocol: 'udp',
   port: 1900,
   source: '192.168.1.0/24',
@@ -97,7 +102,7 @@ describe('probeFirewalld', () => {
       system({ rich: ['rule family="ipv4" source address="192.168.1.0/24" accept'] }),
     );
     expect(accept.stateOf(CAMERA)).toBe('open');
-    expect(accept.stateOf({ ...CAMERA, source: '192.168.2.9' })).toBe('missing');
+    expect(accept.stateOf({ ...CAMERA, address: '192.168.2.9' })).toBe('missing');
 
     const denied = await probeFirewalld(
       system({
@@ -124,7 +129,7 @@ describe('probeFirewalld', () => {
     expect(portBound.stateOf(CAMERA)).toBe('missing');
   });
 
-  it('reads plugin rich rules by source network, port and protocol', async () => {
+  it('reads network rich rules by source network, port and protocol', async () => {
     const probe = await probeFirewalld(
       system({
         rich: [
@@ -139,14 +144,16 @@ describe('probeFirewalld', () => {
 
   it('drafts the needed rules for the zone and treats only missing and unknown as fixable', async () => {
     const probe = await probeFirewalld(system({}));
-    expect(
-      probe.draft?.([{ id: 'a', deviceIds: [], pluginIds: [], rule: CAMERA, state: 'missing' }]),
-    ).toEqual({
+    const needed: FirewallOpening[] = [
+      { id: 'a', deviceIds: [], pluginIds: [], rule: CAMERA, state: 'missing' },
+    ];
+    expect(probe.draft?.({ needed, openings: needed, unlearned: [] })).toEqual({
       backend: 'firewalld',
       zone: 'public',
       rules: [CAMERA],
       unprivilegedPortStart: null,
     });
+    expect(probe.draft?.({ needed: [], openings: needed, unlearned: [] })).toBeNull();
     expect([...probe.fixable].sort()).toEqual(['missing', 'unknown']);
     expect(probe.filtering).toBe(true);
   });

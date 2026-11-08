@@ -74,8 +74,7 @@ const wait = defineNodeKind({
   category: 'flow',
   icon: 'hourglass',
   class: 'control',
-  description:
-    'Pauses the run for a length of time. The deadline is stored, so it holds across a restart.',
+  description: 'Pauses for a set time, even across a restart.',
   inputs: [
     {
       name: 'duration',
@@ -87,6 +86,7 @@ const wait = defineNodeKind({
     },
     option('ifLate', LATE_RUN, 'What to do when the hub was down past the deadline.', {
       default: 'run',
+      ui: { label: 'If the wait ends late' },
     }),
   ],
   outputs: [],
@@ -154,11 +154,18 @@ const waitEvent = defineNodeKind({
     option('source', TEXT, 'Signal source, for example device, event or weather.', {
       required: true,
       summary: true,
+      ui: { optionsFrom: 'signal.sources' },
     }),
-    option('kind', TEXT, 'Signal kind within the source.', { required: true, summary: true }),
-    option('subject', TEXT, 'Only this subject.'),
-    option('field', TEXT, 'Only this field.'),
-    option('match', { t: 'record', values: ANY }, 'Details that must match exactly.'),
+    option('kind', TEXT, 'Signal kind within the source.', {
+      required: true,
+      summary: true,
+      ui: { optionsFrom: 'signal.kinds' },
+    }),
+    option('subject', TEXT, 'Only this subject.', { ui: { optionsFrom: 'signal.subjects' } }),
+    option('field', TEXT, 'Only this field.', { ui: { optionsFrom: 'signal.fields' } }),
+    option('match', { t: 'record', values: ANY }, 'Details that must match exactly.', {
+      ui: { editor: 'field-rows', typedBy: 'kind' },
+    }),
     TIMEOUT,
   ],
   outputs: [
@@ -273,7 +280,7 @@ const tryNode = defineNodeKind({
   icon: 'life-buoy',
   class: 'control',
   description:
-    'Runs the try scope. A catch row for the error class handles a failure, and finally always runs once.',
+    'Runs some steps and lets you choose what happens if they fail. Finally always runs at the end.',
   inputs: [],
   outputs: [],
   exits: [],

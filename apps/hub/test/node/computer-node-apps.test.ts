@@ -4,6 +4,7 @@ import {
   type ComputerScopes,
   type NodeFrame,
   type WindowsState,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ComputerCollector } from '../../src/node/collectors/collector';
@@ -55,7 +56,7 @@ function rig(): Rig {
       actions: [],
       permissions: [],
       features: ['cpu', 'windows'],
-      role: 'pc',
+      protocol: NODE_PROTOCOL_VERSION,
     }),
     readers: {
       summary: () => SUMMARY,

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_ENGINE, NO_PRICES } from '@smarteverything/domain';
+import { testVoiceMemory } from '../support/voice-memory';
+import { NO_PRICES } from '@smarteverything/domain';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
 import { CallDesk } from '../../src/assistant-voice/call-desk';
 import { PLAYOUT_SLACK_MS } from '../../src/assistant-voice/call-link';
@@ -7,6 +8,7 @@ import type { LiveEvents, LiveSession, VoiceProvider } from '../../src/assistant
 import type { HostedCall, HostedListening } from '../../src/assistant-voice/outreach';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 const CHUNK = 320;
 const FRAME_SAMPLES = 480;
@@ -39,6 +41,7 @@ const provider: VoiceProvider = {
 function deskOf(): CallDesk {
   return new CallDesk({
     store: opened.store,
+    memory: testVoiceMemory(opened.store),
     provider,
     responder: {
       ready: () => null,
@@ -89,7 +92,7 @@ beforeEach(async () => {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   }).id;
 });
 

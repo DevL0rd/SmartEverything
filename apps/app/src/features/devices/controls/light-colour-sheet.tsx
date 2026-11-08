@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import type { View } from 'react-native';
 import { useState } from 'react';
 import type { PresentedCapability } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
@@ -61,13 +62,14 @@ function SheetBody({ device }: { readonly device: Device }): ReactNode {
 
 export function LightColourSheet({
   device,
-  open,
+  opener,
   onClose,
 }: {
   readonly device: Device;
-  readonly open: boolean;
+  readonly opener: RefObject<View | null> | null;
   readonly onClose: () => void;
 }): ReactNode {
+  const open = opener !== null;
   const [shown, setShown] = useState(open);
   if (open && !shown) {
     setShown(true);
@@ -77,6 +79,7 @@ export function LightColourSheet({
   }
   return (
     <Sheet
+      subpage={opener === null ? false : { opener }}
       detents={['fit', 'full']}
       footer={<Button label="Done" onPress={onClose} />}
       open={open}

@@ -1,12 +1,6 @@
 import type { IconName } from '../../../components/icon';
 
-const SETUP_STEP_IDS = [
-  'assistant',
-  'side_key',
-  'microphone',
-  'overlay',
-  'battery',
-] as const;
+const SETUP_STEP_IDS = ['assistant', 'side_key', 'microphone', 'overlay', 'battery'] as const;
 
 export type SetupStepId = (typeof SETUP_STEP_IDS)[number];
 

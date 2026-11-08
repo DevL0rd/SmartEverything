@@ -78,7 +78,7 @@ function Steps({
         <Text variant="callout" tone="variant">
           {assistant.reach}
         </Text>
-        <CopyField label="Server link" value={mcpUrl} />
+        <CopyField label="Server link" value={mcpUrl} wrapValue />
         <Button
           label={assistant.openLabel}
           icon="externalLink"

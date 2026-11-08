@@ -72,6 +72,7 @@ export function MemberList({ channelId }: { readonly channelId: string }): React
           <ListRow
             key={`${member.member_kind}/${member.member_id}`}
             title={member.label}
+            wrapTitle
             subtitle={joinParts([
               member.detail,
               statusOf(member, talking, isOnline, member.member_id === self),

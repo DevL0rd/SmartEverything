@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { foldSurface, isAppendSurfaceEvent, isSurfaceEvent } from '@deepseek-ai/dsh-session';
+import {
+  foldSurface,
+  isAppendSurfaceEvent,
+  isSurfaceEvent,
+  pluginRecordOf,
+} from '@deepseek-ai/dsh-session';
+import { imageOffloadProjection } from '@deepseek-ai/dsh-compaction-image-offload/projection';
+import type { PluginRecordMap } from '@deepseek-ai/dsh-session/types';
 import { readNativeHistory } from '@smarteverything/harness/process';
 import { ApiError, DSH_SESSION_EVENTS_WRITE, JSON_VALUE } from '@smarteverything/domain';
 import type { AiChatRow, AssistantMessageRow, DshSessionEvent } from '@smarteverything/domain';
@@ -8,17 +15,28 @@ import type { HarnessService } from './service';
 
 const DATA = z.record(z.string(), JSON_VALUE);
 const REMOVAL = z.object({ removed: z.array(z.int().nonnegative()) });
+export const SESSION_MESSAGE_PROJECTIONS = [imageOffloadProjection];
 const HISTORY_EDIT = 'plugin:smarteverything/history-edit';
+
+declare module '@deepseek-ai/dsh-session/types' {
+  interface PluginRecordMap {
+    'plugin:smarteverything/history-edit': { readonly removed: readonly number[] };
+  }
+}
+
+function editedSequences(history: ReturnType<typeof readNativeHistory>): readonly number[] {
+  return history.flatMap((event) => {
+    const record = pluginRecordOf(event);
+    return record?.type === HISTORY_EDIT ? REMOVAL.parse(record.data).removed : [];
+  });
+}
+
 export function nativeHistoryPrefix(
   history: ReturnType<typeof readNativeHistory>,
   boundary: number,
 ): readonly unknown[] {
   if (boundary >= history.length - 1) return history;
-  const removed = new Set(
-    history.flatMap((event) =>
-      hasType(event, HISTORY_EDIT) ? REMOVAL.parse(event.data).removed : [],
-    ),
-  );
+  const removed = new Set(editedSequences(history));
   for (const event of history)
     if (
       event.seq > boundary &&
@@ -40,11 +58,7 @@ export function rewriteNativeHistory(
   if (metadata?.chat_id !== chat.id)
     throw new ApiError('forbidden', 'Native history belongs to another conversation.');
   const history = nativeHistory(service, chat, id);
-  const removed = new Set(
-    history.flatMap((event) =>
-      hasType(event, HISTORY_EDIT) ? REMOVAL.parse(event.data).removed : [],
-    ),
-  );
+  const removed = new Set(editedSequences(history));
   const priorRemoved = removed.size;
   for (const row of rows)
     for (const seq of removedSequences(service, id, row, history)) removed.add(seq);
@@ -104,11 +118,20 @@ function removedSequences(
     .map((event) => event.seq);
   return [...originals, ...delivered];
 }
+function editRecord(seq: number, time: number, removed: ReadonlySet<number>): unknown {
+  return {
+    type: HISTORY_EDIT,
+    seq,
+    time,
+    ignorable: true,
+    data: { removed: [...removed] } satisfies PluginRecordMap[typeof HISTORY_EDIT],
+  };
+}
 function replacementEvents(
   history: ReturnType<typeof readNativeHistory>,
   removed: ReadonlySet<number>,
 ): readonly DshSessionEvent[] {
-  const surface = foldSurface(history).nodes;
+  const surface = foldSurface(history, SESSION_MESSAGE_PROJECTIONS).nodes;
   const nodes = history[surface[0] ?? -1]?.type === 'system/message' ? surface.slice(1) : surface;
   const first = nodes[0];
   const last = nodes.at(-1);
@@ -116,7 +139,7 @@ function replacementEvents(
   const base = history.length;
   const time = Date.now();
   const events: unknown[] = [
-    { type: HISTORY_EDIT, seq: base, time, ignorable: true, data: { removed: [...removed] } },
+    editRecord(base, time, removed),
     {
       type: 'system/message',
       seq: base + 1,

@@ -37,6 +37,8 @@ export class NodeRouteAuthority {
   private readonly events: NodeRouteEvents;
   private stateValue: NodeRouteState;
   private trustScope = new AbortController();
+  private routeScope = new AbortController();
+  private readonly settledWaiters = new Set<() => void>();
   private probes = new AbortController();
   private batch: Promise<void> | null = null;
   private pending = false;
@@ -233,8 +235,26 @@ export class NodeRouteAuthority {
       detail,
       routeGeneration: this.stateValue.routeGeneration + (changed ? 1 : 0),
     };
-    if (changed) for (const listener of this.listeners) listener(this.stateValue);
+    if (changed) {
+      this.routeScope.abort(new HubTransportError('Hub route changed'));
+      this.routeScope = new AbortController();
+      for (const listener of this.listeners) listener(this.stateValue);
+    }
     for (const listener of this.viewListeners) listener();
+    for (const release of [...this.settledWaiters]) release();
+  }
+  settled(): Promise<void> {
+    if (this.stopped) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timeout = AbortSignal.timeout(ROUTE_PROBE_TIMEOUT_MS);
+      const release = (): void => {
+        timeout.removeEventListener('abort', release);
+        this.settledWaiters.delete(release);
+        resolve();
+      };
+      timeout.addEventListener('abort', release, { once: true });
+      this.settledWaiters.add(release);
+    });
   }
   private networkChanged(): void {
     if (this.stopped) return;
@@ -292,7 +312,10 @@ export class NodeRouteAuthority {
   ownsCredential(value: unknown): boolean {
     return value === undefined || value === null || value === `Bearer ${this.options.token}`;
   }
-  lease(canonical: string): HubLease & {
+  lease(
+    canonical: string,
+    options?: { readonly routeBound?: boolean },
+  ): HubLease & {
     readonly signal: AbortSignal;
     readonly generation: number;
   } {
@@ -308,7 +331,10 @@ export class NodeRouteAuthority {
         : this.policies.lease(this.configuration.trust.scopeId, input.href);
     return {
       ...transport,
-      signal: this.trustScope.signal,
+      signal:
+        options?.routeBound === true
+          ? AbortSignal.any([this.trustScope.signal, this.routeScope.signal])
+          : this.trustScope.signal,
       generation: this.stateValue.routeGeneration,
     };
   }
@@ -322,6 +348,7 @@ export class NodeRouteAuthority {
     this.stopped = true;
     this.probes.abort();
     this.trustScope.abort(new HubTransportError('Node route authority stopped'));
+    for (const release of [...this.settledWaiters]) release();
     await this.events.stop();
     this.policies.close();
     this.listeners.clear();

@@ -381,7 +381,7 @@ describe('which messages the AI listens to', () => {
       membership,
       recorder: new TalkRecorder({
         store: test.store,
-        dataDirectory: test.directory,
+        directory: test.layout.home.talk,
         now: () => new Date(START),
         log,
       }),

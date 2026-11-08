@@ -1,10 +1,13 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Hypnogram } from '../../../components/charts';
 import { STAGE_COLOURS, type HypnogramStage } from '../../../components/charts/hypnogram-model';
 import { ProgressBar } from '../../../components/charts/progress-bar';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
+import type { WidgetFrameBox } from '../../../components/widget-board/frame-class';
+import { widgetBodyHeight } from '../../../components/widget-board/widget-frame-metrics';
+import { TYPE_SCALE } from '../../../design/tokens';
 import { useColour } from '../../../design/colour';
 import { hoursMinutes } from '../../../format/time';
 import { sleepScore } from '../model/scores';
@@ -19,6 +22,28 @@ import {
 import { SleepScoreRing } from '../components/sleep-score-ring';
 
 export type FigureScale = 's' | 'm';
+
+const LINE_GAP = 2;
+
+export interface NightFit {
+  readonly ring: number;
+  readonly scale: FigureScale;
+}
+
+function headlineHeight(frame: WidgetFrameBox, scale: FigureScale): number {
+  const type = TYPE_SCALE[frame.idiom];
+  return type[scale === 'm' ? 'figure-m' : 'figure-s'][1] + type.caption[1];
+}
+
+export function rowFitOf(frame: WidgetFrameBox): NightFit {
+  return { ring: headlineHeight(frame, 's'), scale: 's' };
+}
+
+export function columnFitOf(frame: WidgetFrameBox): NightFit {
+  const lines = 2 * (TYPE_SCALE[frame.idiom].footnote[1] + LINE_GAP);
+  const ring = Math.floor(widgetBodyHeight(frame) - lines);
+  return { ring, scale: headlineHeight(frame, 'm') <= ring ? 'm' : 's' };
+}
 
 function Swatch({ stage }: { readonly stage: HypnogramStage }): ReactNode {
   const fill = { backgroundColor: useColour(STAGE_COLOURS[stage]) };
@@ -85,30 +110,64 @@ export function TimesLine({ night }: { readonly night: SleepNight }): ReactNode 
   );
 }
 
-export function NightChart({
-  night,
-  height,
-}: {
-  readonly night: SleepNight;
-  readonly height?: number;
-}): ReactNode {
+function FillHeight({ children }: { readonly children: (height: number) => ReactNode }): ReactNode {
+  const [height, setHeight] = useState(0);
   return (
-    <Hypnogram
-      segments={timelineOf(night)}
-      label="Sleep stages"
-      compact
-      {...(height === undefined ? {} : { height })}
-      from={night.bedtime}
-      to={night.wake}
-    />
+    <View
+      className="min-h-0 w-full flex-1"
+      onLayout={(event) => {
+        setHeight(Math.floor(event.nativeEvent.layout.height));
+      }}
+    >
+      {height > 0 ? children(height) : null}
+    </View>
+  );
+}
+
+export function NightChart({ night }: { readonly night: SleepNight }): ReactNode {
+  return (
+    <FillHeight>
+      {(height) => (
+        <Hypnogram
+          segments={timelineOf(night)}
+          label="Sleep stages"
+          compact
+          height={height}
+          from={night.bedtime}
+          to={night.wake}
+        />
+      )}
+    </FillHeight>
   );
 }
 
 export function GhostChart(): ReactNode {
-  return <Hypnogram segments={[]} label="Sleep stages" compact height={28} />;
+  return (
+    <FillHeight>
+      {(height) => <Hypnogram segments={[]} label="Sleep stages" compact height={height} />}
+    </FillHeight>
+  );
 }
 
-export function LegendRow({ night }: { readonly night: SleepNight }): ReactNode {
+function LegendEntry({
+  row,
+}: {
+  readonly row: ReturnType<typeof legendRowsOf>[number];
+}): ReactNode {
+  return (
+    <View className="flex-row items-center gap-1.5">
+      <Swatch stage={row.stage} />
+      <Text variant="footnote" tone="variant" numberOfLines={1}>
+        {row.label}
+      </Text>
+      <Text variant="footnote" className="tabular font-sans-medium" numberOfLines={1}>
+        {row.minutes}
+      </Text>
+    </View>
+  );
+}
+
+export function LegendGrid({ night }: { readonly night: SleepNight }): ReactNode {
   if (!night.hasStages) {
     return (
       <Text variant="footnote" tone="variant">
@@ -116,17 +175,15 @@ export function LegendRow({ night }: { readonly night: SleepNight }): ReactNode 
       </Text>
     );
   }
+  const rows = legendRowsOf(night);
+  const half = Math.ceil(rows.length / 2);
   return (
-    <View aria-hidden className="flex-row flex-wrap gap-x-4 gap-y-1">
-      {legendRowsOf(night).map((row) => (
-        <View key={row.stage} className="flex-row items-center gap-1.5">
-          <Swatch stage={row.stage} />
-          <Text variant="footnote" tone="variant">
-            {row.label}
-          </Text>
-          <Text variant="footnote" className="tabular font-sans-medium">
-            {row.minutes}
-          </Text>
+    <View aria-hidden className="flex-row gap-3">
+      {[rows.slice(0, half), rows.slice(half)].map((column) => (
+        <View key={column.map((row) => row.stage).join()} className="gap-0.5">
+          {column.map((row) => (
+            <LegendEntry key={row.stage} row={row} />
+          ))}
         </View>
       ))}
     </View>
@@ -142,7 +199,7 @@ export function LegendColumn({ night }: { readonly night: SleepNight }): ReactNo
     );
   }
   return (
-    <View aria-hidden className="gap-1">
+    <View aria-hidden className="gap-0.5">
       {legendRowsOf(night).map((row) => (
         <View key={row.stage} className="flex-row items-center gap-2">
           <Swatch stage={row.stage} />
@@ -175,7 +232,7 @@ function NapPiece({
 
 export function NapBar({ face }: { readonly face: NapFace }): ReactNode {
   return (
-    <View aria-hidden className="gap-1">
+    <View aria-hidden className="gap-0.5">
       <View className="h-5 w-full flex-row gap-0.5">
         {face.pieces.map((piece, index) => (
           <NapPiece key={`${piece.stage}-${String(index)}`} {...piece} />

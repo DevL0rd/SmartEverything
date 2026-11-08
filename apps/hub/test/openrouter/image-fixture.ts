@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
-  DEFAULT_ENGINE,
   IMAGE_OPERATION_REQUEST,
+  type ImageDefaults,
   type ImageOperationReceipt,
 } from '@smarteverything/domain';
 import sharp from 'sharp';
@@ -12,6 +12,7 @@ import { OpenRouterClient } from '../../src/openrouter/client';
 import { OpenRouterImageCatalog } from '../../src/openrouter/image-catalog';
 import { OpenRouterImageProvider } from '../../src/openrouter/image-provider';
 import type { TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 const PNG_SIDE = 16;
 export function png(): Promise<Buffer> {
@@ -100,7 +101,7 @@ export class MemoryFiles extends AssistantFiles {
     private readonly failFrom = Infinity,
   ) {
     super({
-      dataDirectory: rig.directory,
+      layout: rig.layout,
       chat: rig.store.assistantChat,
       now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
     });
@@ -134,6 +135,7 @@ export interface ImageRig {
   readonly start: (
     options: Record<string, unknown>,
     operationId?: string,
+    model?: string,
   ) => Promise<ImageOperationReceipt>;
   readonly settle: (id: string) => Promise<ImageOperationReceipt>;
   readonly outcome: (id: string, signal?: AbortSignal) => Promise<ImageOperationReceipt>;
@@ -149,43 +151,58 @@ function newChat(rig: TestStore): { readonly profileId: string; readonly chatId:
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   });
   return { profileId, chatId: chat.id };
+}
+
+function serviceOf(
+  rig: TestStore,
+  parts: {
+    readonly client: OpenRouterClient;
+    readonly files: AssistantFiles;
+    readonly imageDefaults: ImageDefaults;
+    readonly previews: number[];
+  },
+): { readonly service: ImageOperationService; readonly catalog: OpenRouterImageCatalog } {
+  const catalog = new OpenRouterImageCatalog({
+    client: parts.client,
+    store: rig.store.aiModels,
+    now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
+  });
+  const service = new ImageOperationService({
+    store: rig.store,
+    repository: rig.store.imageOperations,
+    files: parts.files,
+    catalog,
+    provider: new OpenRouterImageProvider(parts.client),
+    imageDefaults: (): Readonly<ImageDefaults> => parts.imageDefaults,
+    now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
+    publish: (): void => undefined,
+    preview: (preview): void => {
+      parts.previews.push(preview.bytes);
+    },
+    failed: (): void => undefined,
+  });
+  return { service, catalog };
 }
 
 export function imageRig(
   rig: TestStore,
   transport: FakeOpenRouter,
   files: AssistantFiles = new MemoryFiles(rig),
+  imageDefaults: ImageDefaults = {},
 ): ImageRig {
   const client = new OpenRouterClient({ fetch: transport.fetch, key: (): string => 'key' });
-  const catalog = new OpenRouterImageCatalog({
-    client,
-    store: rig.store.aiModels,
-    now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
-  });
   const previews: number[] = [];
-  const service = new ImageOperationService({
-    store: rig.store,
-    repository: rig.store.imageOperations,
-    files,
-    catalog,
-    provider: new OpenRouterImageProvider(client),
-    now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
-    publish: (): void => undefined,
-    preview: (preview): void => {
-      previews.push(preview.bytes);
-    },
-    failed: (): void => undefined,
-  });
+  const { service, catalog } = serviceOf(rig, { client, files, imageDefaults, previews });
   const { profileId, chatId } = newChat(rig);
   const actor = { profileId, key: 'actor', authorize: (): void => undefined };
   return {
     service,
     catalog,
     previews,
-    start: (options, operationId = crypto.randomUUID()) =>
+    start: (options, operationId = crypto.randomUUID(), model = 'vendor/m1') =>
       service.start(
         actor,
         IMAGE_OPERATION_REQUEST.parse({
@@ -193,7 +210,7 @@ export function imageRig(
           operation_id: operationId,
           chat_id: chatId,
           prompt: 'a lamp',
-          model: 'vendor/m1',
+          model,
           provider_tag: 'tag',
           options,
         }),

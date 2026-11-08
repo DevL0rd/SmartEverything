@@ -6,7 +6,7 @@ import { Button } from '../../../../components/button';
 import { Icon } from '../../../../components/icon';
 import { Text } from '../../../../components/text';
 import { clock } from '../../../../format/time';
-import { RUN_LABELS, durationLabel, runLook, tookMs, triggerText } from '../run-history-model';
+import { RUN_LABELS, durationLabel, runLook, startedLine, tookMs } from '../run-history-model';
 
 const MODE_LABEL = { live: 'Live', dry: 'Dry run', simulated: 'Simulation' } as const;
 
@@ -34,7 +34,7 @@ function Summary({
   const look = runLook(status);
   const took = tookMs(run);
   return (
-    <View className="gap-1">
+    <View className="max-w-full gap-1">
       <View className="flex-row items-center gap-2">
         <Icon name={look.icon} size={20} tone={look.tone} />
         <Text variant="body-strong" tone={look.tone}>
@@ -48,7 +48,7 @@ function Summary({
         )}
       </View>
       <Text variant="footnote" tone="variant">
-        {`${triggerText(run)}, ${clock(run.created_at, zone)}`}
+        {startedLine(run, clock(run.created_at, zone))}
       </Text>
     </View>
   );
@@ -56,7 +56,7 @@ function Summary({
 
 function Actions(props: RunHeaderProps): ReactNode {
   return (
-    <View className="flex-row flex-wrap items-center gap-2">
+    <View className="max-w-full flex-row flex-wrap items-center gap-2">
       {props.canFollow ? (
         <Button
           label={props.following ? 'Following' : 'Follow'}
@@ -82,7 +82,7 @@ function Actions(props: RunHeaderProps): ReactNode {
 
 export function RunHeader(props: RunHeaderProps): ReactNode {
   return (
-    <View className="gap-3 px-4 py-3">
+    <View className="gap-3 px-gutter py-3 large:flex-row large:flex-wrap large:items-center">
       <Summary run={props.run} status={props.status} zone={props.zone} />
       <Actions {...props} />
     </View>

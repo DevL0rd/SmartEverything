@@ -7,6 +7,7 @@ import type {
   ProviderPrompt,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import type { HubLayout } from '../data-layout';
 
 export interface StoredAccount {
   readonly label: string;
@@ -31,7 +32,7 @@ export interface ShownPrompt {
 
 export interface LinkContext {
   readonly log: Logger;
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
   readonly stored?: StoredAccount;
   readonly ask: (prompt: ProviderPrompt) => Promise<string>;
   readonly show: (prompt: ProviderPrompt) => Promise<ShownPrompt>;

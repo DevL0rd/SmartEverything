@@ -1,6 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError } from '@smarteverything/domain';
-import { messageOf } from '@smarteverything/logging';
 
 export const PUBLIC_BODY_LIMIT = 64 * 1024;
 
@@ -34,16 +33,14 @@ export function parseJsonBody(request: IncomingMessage, raw: Buffer): unknown {
   }
   const type = request.headers['content-type'] ?? '';
   if (!type.toLowerCase().startsWith('application/json')) {
-    throw new ApiError(
-      'unsupported_media_type',
-      `A body must be sent as application/json; received ${type === '' ? 'no content type' : type}.`,
-    );
+    throw new ApiError('unsupported_media_type', 'Send the request body as application/json.');
   }
   try {
     const parsed: unknown = JSON.parse(raw.toString('utf8'));
     return parsed;
   } catch (error) {
-    throw new ApiError('invalid_request', `The body is not JSON: ${messageOf(error)}.`);
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new ApiError('invalid_request', 'The request body is not valid JSON.');
   }
 }
 

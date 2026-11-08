@@ -1,5 +1,7 @@
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerDMG } from '@electron-forge/maker-dmg';
@@ -11,56 +13,33 @@ import type { ForgeConfig } from '@electron-forge/shared-types';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { z } from 'zod';
 import { generateIcons, iconPaths } from './packaging/icons.js';
-import { GO2RTC_RESOURCE_DIRECTORY, stageGo2rtc } from './src/service/go2rtc-binary.js';
+import { desktopWebRuntime } from './packaging/web-runtime.js';
 import { readBuildVariant } from './src/environment.js';
-import { stageFfmpeg } from './src/service/ffmpeg-binary.js';
 import { DESKTOP_VARIANTS } from './src/variant.js';
 
 const desktopDirectory = path.dirname(fileURLToPath(import.meta.url));
 const appDirectory = path.resolve(desktopDirectory, '..', 'app');
-const hubManifestFile = path.resolve(desktopDirectory, '..', 'hub', 'package.json');
 const webExport = path.join(appDirectory, 'dist');
 const variant = DESKTOP_VARIANTS[readBuildVariant()];
 const isRelease = variant.name === 'release';
+const computerDirectory = path.join(desktopDirectory, 'dist', 'computer');
+const buildComputer = path.resolve(
+  desktopDirectory,
+  '..',
+  '..',
+  'tooling',
+  'build-desktop-client-service.ts',
+);
+const run = promisify(execFile);
 const icon = isRelease
   ? path.join(appDirectory, 'assets', 'icon.png')
   : path.join(desktopDirectory, 'packaging', variant.name, 'icon.png');
 const iconDirectory = path.join(desktopDirectory, 'dist', 'icons');
 const trayIcons = path.join(desktopDirectory, 'assets', 'tray');
 const icons = iconPaths(iconDirectory);
-const serviceDirectory = path.join(desktopDirectory, 'dist', 'service');
-const go2rtcBuilds = path.resolve(desktopDirectory, '..', '..', 'tooling', 'go2rtc', 'out');
-const go2rtcStage = path.join(desktopDirectory, 'dist', GO2RTC_RESOURCE_DIRECTORY);
 
 const PACKAGED_PATHS = ['/package.json', '/dist/src'];
 const BUILD_ONLY_FILE = /\.(?:d\.c?ts|map)$/u;
-
-const CLAUDE_SDK = '@anthropic-ai/claude-agent-sdk';
-const HUB_MANIFEST = z.object({ dependencies: z.object({ [CLAUDE_SDK]: z.string() }) });
-
-async function pinnedClaudeSdkVersion(): Promise<string> {
-  const hub = HUB_MANIFEST.parse(JSON.parse(await readFile(hubManifestFile, 'utf8')));
-  return hub.dependencies[CLAUDE_SDK];
-}
-
-async function checkClaudeRuntime(platform: string, arch: string): Promise<void> {
-  const name = `${CLAUDE_SDK}-${platform}-${arch}`;
-  const directory = path.join(serviceDirectory, 'node_modules', name);
-  const manifest = z.object({
-    name: z.literal(name),
-    version: z.literal(await pinnedClaudeSdkVersion()),
-  });
-  try {
-    manifest.parse(JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')));
-    const binary = path.join(directory, platform === 'win32' ? 'claude.exe' : 'claude');
-    if (!(await stat(binary)).isFile()) throw new Error('The installed SDK binary is missing.');
-  } catch (cause) {
-    throw new Error(
-      `Install the pinned official Claude SDK optional package ${name} for this packaging target before building its installer.`,
-      { cause },
-    );
-  }
-}
 
 function isLeftOut(file: string): boolean {
   if (file === '') {
@@ -74,13 +53,18 @@ function isLeftOut(file: string): boolean {
   );
 }
 
-async function markVariant(buildPath: string): Promise<void> {
+async function stampPackage(buildPath: string): Promise<void> {
   const manifestFile = path.join(buildPath, 'package.json');
   const manifest = z
     .record(z.string(), z.unknown())
     .parse(JSON.parse(await readFile(manifestFile, 'utf8')));
-  const marked = { ...manifest, productName: variant.productName, variant: variant.name };
-  await writeFile(manifestFile, `${JSON.stringify(marked, null, 2)}\n`);
+  const stamped = {
+    ...manifest,
+    ...(isRelease ? {} : { productName: variant.productName, variant: variant.name }),
+    webRuntime: await desktopWebRuntime(desktopDirectory),
+    webEmbedded: { createdAt: new Date().toISOString() },
+  };
+  await writeFile(manifestFile, `${JSON.stringify(stamped, null, 2)}\n`);
 }
 
 const linuxPackage = {
@@ -99,9 +83,7 @@ const config: ForgeConfig = {
     appBundleId: variant.appBundleId,
     asar: true,
     icon: icons.base,
-    extraResource: isRelease
-      ? [webExport, icon, trayIcons, serviceDirectory, go2rtcStage]
-      : [icon, trayIcons],
+    extraResource: isRelease ? [icon, trayIcons, webExport, computerDirectory] : [icon, trayIcons],
     ignore: isLeftOut,
     protocols: [{ name: variant.productName, schemes: [variant.scheme] }],
   },
@@ -114,17 +96,21 @@ const config: ForgeConfig = {
   ],
   hooks: {
     generateAssets: async (_config, platform, arch) => {
-      if (isRelease) await checkClaudeRuntime(platform, arch);
       await generateIcons(icon, iconDirectory);
       if (isRelease) {
-        await stageGo2rtc(go2rtcBuilds, go2rtcStage, platform, arch);
-        await stageFfmpeg(serviceDirectory, platform, arch);
+        await run(process.execPath, [
+          '--import',
+          'tsx',
+          buildComputer,
+          '--platform',
+          platform,
+          '--arch',
+          arch,
+        ]);
       }
     },
     packageAfterCopy: async (_config, buildPath) => {
-      if (!isRelease) {
-        await markVariant(buildPath);
-      }
+      await stampPackage(buildPath);
     },
   },
   plugins: [

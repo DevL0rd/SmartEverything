@@ -1,6 +1,7 @@
 import { rm } from 'node:fs/promises';
 import { API_ENDPOINTS as E, type RecordingRow } from '@smarteverything/domain';
 import { thumbnailPathOf } from '../../cameras/thumbnails';
+import { libraryBrands, libraryCategories, libraryModels } from '../../infrared/library/browse';
 import { clientOf } from '../auth';
 import { deviceScopeOf, reachableRows } from '../person-scope';
 import type { ServerContext } from '../context';
@@ -21,10 +22,48 @@ async function removeFiles(context: ServerContext, recording: RecordingRow): Pro
 }
 
 function requireIrRemote(store: ServerContext['store'], remoteId: string): void {
-  if (store.devices.find(remoteId)?.kind !== 'ir_remote') {
-    store.infrared.remote(remoteId);
-  }
+  if (store.devices.find(remoteId)?.kind === 'ir_remote') return;
+  if (store.irAppliances.find(remoteId) !== undefined) return;
+  store.infrared.remote(remoteId);
 }
+
+const applianceRoutes = ({ irAppliances }: ServerContext) =>
+  ({
+    listIrAppliances: bound(E.listIrAppliances, () => irAppliances.list()),
+    promoteIrRemote: bound(E.promoteIrRemote, ({ params }) =>
+      irAppliances.promote(params.remoteId),
+    ),
+    listIrLibraryCategories: bound(E.listIrLibraryCategories, () =>
+      libraryCategories(irAppliances.library),
+    ),
+    listIrLibraryBrands: bound(E.listIrLibraryBrands, ({ query }) =>
+      libraryBrands(irAppliances.library, query.category),
+    ),
+    listIrLibraryModels: bound(E.listIrLibraryModels, ({ query }) =>
+      libraryModels(irAppliances.library, query.category, query.brand),
+    ),
+    createIrApplianceFromLibrary: bound(E.createIrApplianceFromLibrary, ({ body }) =>
+      irAppliances.createFromLibrary({
+        libraryId: body.library_id,
+        blasterId: body.blaster_id,
+        name: body.name,
+        ...(body.room_id === undefined ? {} : { roomId: body.room_id }),
+      }),
+    ),
+    rebindIrAppliance: bound(E.rebindIrAppliance, ({ params, body }) =>
+      irAppliances.rebind(params.applianceId, body.blaster_id),
+    ),
+    saveIrApplianceKey: bound(E.saveIrApplianceKey, ({ params, body }) =>
+      irAppliances.saveKey(params.applianceId, body),
+    ),
+    applyIrAppliance: bound(E.applyIrAppliance, ({ params, body }) =>
+      irAppliances.apply(params.applianceId, body),
+    ),
+    removeIrAppliance: bound(E.removeIrAppliance, async ({ params }) => {
+      await irAppliances.remove(params.applianceId);
+      return DONE_REPLY;
+    }),
+  }) as const;
 
 const infraredRoutes = ({ store }: ServerContext) =>
   ({
@@ -124,4 +163,5 @@ export const mediaRoutes = (context: ServerContext) =>
     ...cameraRoutes(context),
     ...recordingRoutes(context),
     ...infraredRoutes(context),
+    ...applianceRoutes(context),
   }) as const;

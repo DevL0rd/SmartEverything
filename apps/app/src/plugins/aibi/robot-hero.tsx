@@ -47,7 +47,7 @@ export function RobotHero({ device }: { readonly device: Device }): ReactNode {
   return (
     <Card>
       <View className="items-center gap-4 py-2">
-        <DeviceVisual device={device} state={state} size="hero" />
+        <DeviceVisual device={device} state={state} size="hero" interactive />
         <View className="items-center gap-1.5">
           <View accessibilityLiveRegion="polite">
             <Badge label={view.chip.label} tone={view.chip.tone} />

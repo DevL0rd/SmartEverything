@@ -1,14 +1,14 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { z } from 'zod';
-import type {
-  AutomationFunctionDetail,
-  AutomationFunctionSummary,
-  AutomationFunctionUser,
-} from '@smarteverything/domain';
+import type { AutomationFunctionSummary, AutomationFunctionUser } from '@smarteverything/domain';
+import type { FunctionDetail } from '../data/graph-adapter';
 import { background, Logger } from '@smarteverything/logging';
 import { confirm } from '../../../components/confirm-store';
 import { LoadedQuery } from '../../../components/loaded-query';
+import { PageHeader } from '../../../components/page-header';
+import { usePrimaryActionPlacement } from '../../../components/primary-action';
+import { Screen } from '../../../components/screen';
 import { notify } from '../../../components/toast-store';
 import { useActiveProfile } from '../../../store/people';
 import { useAutomations } from '../data/use-automations';
@@ -24,7 +24,7 @@ import { LibraryScreen } from '../functions/library/library-screen';
 import { callersBehind } from '../functions/library/callers-behind';
 import { copyName } from '../list/copy-name';
 import { links } from '../routes';
-import { NotFound, PageShell } from './page-shell';
+import { NotFound } from './page-shell';
 
 const log = new Logger('app.automations');
 
@@ -71,8 +71,17 @@ export function NodesHost(): ReactNode {
   const functions = useFunctions();
   const actions = useFunctionActions();
   const [creating, setCreating] = useState(false);
+  const placement = usePrimaryActionPlacement();
+  const openCreate = (): void => {
+    setCreating(true);
+  };
   return (
-    <PageShell title="Custom Nodes">
+    <Screen
+      header={<PageHeader title="Custom Nodes" back />}
+      {...(placement === 'fab' && !functions.isError && functions.data !== undefined
+        ? { primaryAction: { label: 'New node', icon: 'plus', onPress: openCreate } }
+        : {})}
+    >
       <LoadedQuery query={functions}>
         {(entries) => (
           <Library
@@ -80,9 +89,7 @@ export function NodesHost(): ReactNode {
             onOpen={(functionId) => {
               router.push(links.node(functionId));
             }}
-            onCreate={() => {
-              setCreating(true);
-            }}
+            onCreate={openCreate}
           />
         )}
       </LoadedQuery>
@@ -98,7 +105,7 @@ export function NodesHost(): ReactNode {
           router.push(links.nodeEdit(reply.id));
         }}
       />
-    </PageShell>
+    </Screen>
   );
 }
 
@@ -111,7 +118,7 @@ interface DetailHandlers {
 }
 
 function copyNode(
-  detail: AutomationFunctionDetail,
+  detail: FunctionDetail,
   names: readonly string[],
   actions: FunctionActions,
   router: Router,
@@ -120,7 +127,7 @@ function copyNode(
     actions
       .create({
         name: copyName(detail.name, names),
-        definition: detail.program,
+        definition: detail.graph,
         layout: detail.layout,
       })
       .then((reply) => {
@@ -132,7 +139,7 @@ function copyNode(
 }
 
 async function deleteNode(
-  detail: AutomationFunctionDetail,
+  detail: FunctionDetail,
   actions: FunctionActions,
   router: Router,
 ): Promise<void> {
@@ -151,7 +158,7 @@ async function deleteNode(
   }
 }
 
-function useDetailActions(detail: AutomationFunctionDetail): DetailHandlers {
+function useDetailActions(detail: FunctionDetail): DetailHandlers {
   const router = useRouter();
   const actions = useFunctionActions();
   const names = useFunctions().data?.map((entry) => entry.name) ?? [];
@@ -174,7 +181,7 @@ function useDetailActions(detail: AutomationFunctionDetail): DetailHandlers {
   };
 }
 
-function Detail({ detail }: { readonly detail: AutomationFunctionDetail }): ReactNode {
+function Detail({ detail }: { readonly detail: FunctionDetail }): ReactNode {
   const userId = useActiveProfile()?.id ?? null;
   const handlers = useDetailActions(detail);
   return <FunctionDetailScreen detail={detail} userId={userId} {...handlers} />;
@@ -189,8 +196,11 @@ export function NodeDetailHost(): ReactNode {
     return <NotFound title="Custom Node not found" body="This link doesn’t point to a node." />;
   }
   return (
-    <PageShell title={title}>
+    <Screen
+      header={<PageHeader title={title} titleLines="wrap" back />}
+      maxWidth={query.isError || query.data === undefined ? 'reading' : 'full'}
+    >
       <LoadedQuery query={query}>{(detail) => <Detail detail={detail} />}</LoadedQuery>
-    </PageShell>
+    </Screen>
   );
 }

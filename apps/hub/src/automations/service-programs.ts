@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import {
   ApiError,
-  AUTOMATION_V3,
+  AUTOMATION_V4,
   EMPTY_LAYOUT,
   programReferences,
   type AutomationAuthor,
@@ -12,22 +13,23 @@ import {
   type AutomationProgramReply,
   type AutomationProgramRevisionSummary,
   type AutomationRevisionRow,
-  type AutomationRowV3,
+  type StoredAutomationRow,
   type AutomationV3,
+  type AutomationV4,
   type Layout,
   type PluginOrigin,
+  type ProgramV4,
   type ReferenceContext,
 } from '@smarteverything/domain';
-import type { Program } from '@smarteverything/flow/program/walk';
 import { currentExecutionAuthority } from '../assistant/turn-authority';
 import type { Caller } from '../server/auth';
 import {
   analyse,
   checked,
   failure,
-  kindOf,
   patched,
   planValue,
+  refusalText,
   refusedPatch,
   reply,
   revisionOf,
@@ -55,7 +57,10 @@ import {
   requireReachableTargets,
   requireVisibleComputers,
 } from './service-reach';
+import { flatAutomation, flatFunction } from '../store/repositories/automation-trees';
+import { freeName, requireFreeName } from './free-name';
 import { pruneKeptData } from './kept-data-prune';
+import { usedKindsOf } from './plugin-kinds/ledger';
 
 export type { ProgramEnv } from './service-programs-analysis';
 const DEFAULT_MAX = 10;
@@ -67,20 +72,20 @@ interface Stamp {
 }
 
 interface Change {
-  readonly program: AutomationV3;
+  readonly program: AutomationV4;
   readonly basis: Basis | null;
-  readonly save: (stamp: Stamp) => AutomationRowV3;
+  readonly save: (stamp: Stamp) => StoredAutomationRow;
 }
 
 interface CreateInput {
   readonly name: string;
   readonly enabled: boolean;
-  readonly definition: AutomationV3;
+  readonly definition: AutomationV4;
   readonly layout?: Layout | undefined;
 }
 
 interface UpdateInput {
-  readonly definition: AutomationV3;
+  readonly definition: AutomationV4;
   readonly layout?: Layout | undefined;
   readonly expectedRevision: number;
 }
@@ -99,6 +104,7 @@ export interface AutomationPrograms {
     request: AutomationProgramCheckRequest,
   ) => AutomationProgramReply;
   readonly setEnabled: (id: string, enabled: boolean) => AutomationProgramReply;
+  readonly rename: (id: string, name: string) => AutomationProgramReply;
   readonly remove: (id: string) => void;
   readonly draft: (id: string) => AutomationProgramDraftView;
   readonly saveDraft: (id: string, input: DraftInput) => AutomationProgramReply;
@@ -120,11 +126,11 @@ function stale(): ApiError {
   );
 }
 
-function expectRevision(row: AutomationRowV3, expected: number): void {
+function expectRevision(row: StoredAutomationRow, expected: number): void {
   if (row.revision !== expected) throw stale();
 }
 
-function withNewDefaults(program: AutomationV3): AutomationV3 {
+function withNewDefaults(program: AutomationV4): AutomationV4 {
   const { policy } = program;
   const wide = policy.mode === 'queue' || policy.mode === 'parallel';
   return {
@@ -137,12 +143,12 @@ function withNewDefaults(program: AutomationV3): AutomationV3 {
 function authorise(
   env: ProgramEnv,
   caller: Caller,
-  program: AutomationV3,
+  program: AutomationV4,
   built: Built,
 ): PluginOrigin | null {
   const { store } = env;
   requireKnownSignals(store, program);
-  requireOwnerForTriggers(caller, program);
+  requireOwnerForTriggers(caller, program, env.kinds);
   requireOwnerForManifest(caller, built.manifest);
   requireVisibleComputers(store, caller, built.manifest);
   requireReachableTargets(store, caller, built.manifest);
@@ -152,7 +158,7 @@ function authorise(
 function authorityProblems(
   env: ProgramEnv,
   caller: Caller,
-  program: Program,
+  program: ProgramV4,
   built: Built | undefined,
 ): readonly AutomationProgramProblem[] {
   if (built === undefined || program.kind !== 'automation') return [];
@@ -177,7 +183,8 @@ function commit(env: ProgramEnv, caller: Caller, change: Change): AutomationProg
   const row = env.store.write(() => {
     const planHash = env.plans.put('automation', planValue(built.plan));
     const saved = change.save({ planHash, origin, author: authorOf(env.store, caller) });
-    pruneKeptData(env.store, saved.id, saved.definition);
+    pruneKeptData(env.store, saved.id, flatAutomation(saved.definition));
+    env.store.pluginKinds.prune(usedKindsOf(env.store));
     env.store.harnessRecovery.effects.keep('automation', saved.id, currentExecutionAuthority());
     authorSpeech(env.store, caller, saved);
     return saved;
@@ -192,34 +199,41 @@ function create(env: ProgramEnv, caller: Caller, input: CreateInput): Automation
     program,
     basis: null,
     save: (stamp) =>
-      env.programs.create({
-        name: input.name,
-        enabled: input.enabled,
-        program,
-        layout: input.layout ?? EMPTY_LAYOUT,
-        planHash: stamp.planHash,
-        origin: stamp.origin,
-        author: stamp.author,
-      }),
+      env.programs.create(
+        {
+          name: freeName(env.programs, input.name),
+          enabled: input.enabled,
+          program,
+          layout: input.layout ?? EMPTY_LAYOUT,
+          planHash: stamp.planHash,
+          origin: stamp.origin,
+          author: stamp.author,
+        },
+        env.kinds,
+      ),
   });
 }
 
 function replacement(
   env: ProgramEnv,
-  row: AutomationRowV3,
-  next: { readonly program: AutomationV3; readonly layout: Layout; readonly expected: number },
+  row: StoredAutomationRow,
+  next: { readonly program: AutomationV4; readonly layout: Layout; readonly expected: number },
 ): Change {
   return {
     program: next.program,
     basis: { id: row.id, revision: row.revision },
     save: (stamp) =>
-      env.programs.replace(row.id, {
-        program: next.program,
-        layout: next.layout,
-        expectedRevision: next.expected,
-        planHash: stamp.planHash,
-        author: stamp.author,
-      }),
+      env.programs.replace(
+        row.id,
+        {
+          program: next.program,
+          layout: next.layout,
+          expectedRevision: next.expected,
+          planHash: stamp.planHash,
+          author: stamp.author,
+        },
+        env.kinds,
+      ),
   };
 }
 
@@ -250,18 +264,18 @@ function patch(
 ): AutomationProgramPatchReply {
   const row = env.programs.byId(id);
   expectRevision(row, input.expectedRevision);
-  const result = patched(row.definition, input.ops);
+  const result = patched(row.definition, input.ops, { kinds: env.kinds, newId: randomUUID });
   if (!result.ok) {
-    const problem = refusedPatch(result);
-    const summary = `Refused: ${problem.message}. Nothing was changed.`;
+    const problems = refusedPatch(result);
+    const summary = `Refused: ${refusalText(problems)}. Nothing was changed.`;
     const basis = { id, revision: row.revision };
-    return { ...reply(false, summary, basis, [problem]), created: [], detached: [] };
+    return { ...reply(false, summary, basis, problems), created: [], detached: [] };
   }
   const committed = commit(
     env,
     caller,
     replacement(env, row, {
-      program: AUTOMATION_V3.parse(result.program),
+      program: AUTOMATION_V4.parse(result.program),
       layout: row.layout,
       expected: input.expectedRevision,
     }),
@@ -273,7 +287,7 @@ function patch(
     detached: result.detached.map(({ owner, where, port, reads }) => ({
       owner,
       where,
-      ...(port === undefined ? {} : { port }),
+      port,
       reads,
     })),
   };
@@ -282,7 +296,7 @@ function patch(
 function checkProgram(
   env: ProgramEnv,
   caller: Caller,
-  program: Program,
+  program: ProgramV4,
   basis: Basis | null,
 ): AutomationProgramReply {
   const analysis = analyse(env, program);
@@ -296,11 +310,15 @@ function checkPatch(
   request: Extract<AutomationProgramCheckRequest, { ops: unknown }>,
 ): AutomationProgramReply {
   const row = env.programs.byId(request.automationId);
-  const result = patched(row.definition, request.ops);
+  const result = patched(row.definition, request.ops, {
+    allowProblems: true,
+    kinds: env.kinds,
+    newId: randomUUID,
+  });
   const basis = { id: row.id, revision: row.revision };
   return result.ok
     ? checkProgram(env, caller, result.program, basis)
-    : checked(basis, [refusedPatch(result)]);
+    : checked(basis, refusedPatch(result));
 }
 
 function check(
@@ -312,13 +330,16 @@ function check(
   return checkProgram(env, caller, request.definition, null);
 }
 
-function usedBy(env: ProgramEnv, target: AutomationRowV3): AutomationRowV3 | undefined {
+function usedBy(env: ProgramEnv, target: StoredAutomationRow): StoredAutomationRow | undefined {
   const context: ReferenceContext = {
-    kinds: kindOf,
-    functions: (id, pin) => revisionOf(env, id, pin)?.definition,
+    kinds: (id) => env.kinds.get(id),
+    functions: (id, pin) => {
+      const found = revisionOf(env, id, pin);
+      return found === undefined ? undefined : flatFunction(found.definition);
+    },
   };
-  const programsOf = (row: AutomationRowV3): readonly AutomationV3[] =>
-    row.draft === null ? [row.definition] : [row.definition, row.draft.program];
+  const programsOf = (row: StoredAutomationRow): readonly AutomationV3[] =>
+    [row.definition, ...(row.draft === null ? [] : [row.draft.program])].map(flatAutomation);
   return env.programs
     .list()
     .find(
@@ -334,6 +355,14 @@ function setEnabled(env: ProgramEnv, id: string, enabled: boolean): AutomationPr
   return reply(true, summary, { id: row.id, revision: row.revision }, []);
 }
 
+function rename(env: ProgramEnv, id: string, name: string): AutomationProgramReply {
+  const row = env.store.write(() => {
+    requireFreeName(env.programs, name, id);
+    return env.programs.rename(id, name);
+  });
+  return reply(true, `Renamed to ${row.name}.`, { id: row.id, revision: row.revision }, []);
+}
+
 function remove(env: ProgramEnv, id: string): void {
   env.store.write(() => {
     const row = env.programs.byId(id);
@@ -346,6 +375,7 @@ function remove(env: ProgramEnv, id: string): void {
     }
     env.store.automationRunRecords.forget(id);
     env.programs.remove(id);
+    env.store.pluginKinds.prune(usedKindsOf(env.store));
   });
 }
 
@@ -377,6 +407,7 @@ export function automationPrograms(env: ProgramEnv): AutomationPrograms {
     patch: (caller, id, input) => patch(env, caller, id, input),
     check: (caller, request) => check(env, caller, request),
     setEnabled: (id, enabled) => setEnabled(env, id, enabled),
+    rename: (id, name) => rename(env, id, name),
     remove: (id): void => {
       remove(env, id);
     },

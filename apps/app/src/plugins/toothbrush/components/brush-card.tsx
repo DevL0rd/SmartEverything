@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../../components/text';
 import { frameClassOf, type WidgetFrameBox } from '../../../components/widget-board';
-import { cn } from '../../../design/cn';
+import { DeviceVisual } from '../../../features/device-visuals';
 import {
   WIDE_VISUAL_PX,
   WideCard,
@@ -57,21 +57,6 @@ function Charge({ view }: { readonly view: BrushStateView }): ReactNode {
   );
 }
 
-function Figures({
-  deviceId,
-  view,
-}: {
-  readonly deviceId: string;
-  readonly view: BrushStateView;
-}): ReactNode {
-  return (
-    <View className="flex-row items-end gap-4">
-      <Live deviceId={deviceId} view={view} />
-      <Charge view={view} />
-    </View>
-  );
-}
-
 function WideBrush({
   device,
   view,
@@ -89,13 +74,17 @@ function WideBrush({
       summary={`${device.label}${room === null ? '' : `, ${room}`}. ${summaryOf(view.profile, view)}`}
       visual={<BrushVisual device={device} view={view} size="card" px={WIDE_VISUAL_PX[cls]} />}
       title={device.label}
+      titleLines={2}
       chip={<BrushStateBadge deviceId={device.id} view={view} />}
       state={
-        <Text variant="footnote" tone="variant" numberOfLines={1}>
+        <Text variant="footnote" tone="variant" numberOfLines={2}>
           {subtitleOf(view)} · {linkLine(view, now)}
         </Text>
       }
-      figures={[<Figures key="figures" deviceId={device.id} view={view} />]}
+      figures={[
+        <Live key="live" deviceId={device.id} view={view} />,
+        <Charge key="charge" view={view} />,
+      ]}
     />
   );
 }
@@ -105,23 +94,42 @@ function lineOf(view: BrushStateView): string {
   return battery.low && !battery.charging ? `Battery low · ${subtitleOf(view)}` : subtitleOf(view);
 }
 
+function Waiting({ device, cls }: { readonly device: Device; readonly cls: WideClass }): ReactNode {
+  return (
+    <WideCard
+      cls={cls}
+      summary={`${device.label}. ${WAITING}`}
+      visual={<DeviceVisual device={device} size="card" px={WIDE_VISUAL_PX[cls]} />}
+      title={device.label}
+      titleLines={2}
+      state={
+        <Text variant="footnote" tone="variant" numberOfLines={2}>
+          {WAITING}
+        </Text>
+      }
+    />
+  );
+}
+
 export function BrushTile({
   device,
   showRoom,
-  compact,
 }: {
   readonly device: Device;
   readonly showRoom: boolean;
-  readonly compact: boolean;
 }): ReactNode {
   const state = useBrushState(device.id);
   const room = useRoomName(device.id);
   const view = state.data;
   return (
-    <View className={cn('flex-1 justify-between gap-2', !compact && 'flex-row items-center')}>
-      {view === undefined ? null : <BrushVisual device={device} view={view} size="tile" />}
-      <View className="min-w-0 gap-0.5">
-        <Text variant="body-strong" numberOfLines={compact ? 2 : 1}>
+    <View className="flex-1 flex-row items-start gap-3">
+      {view === undefined ? (
+        <DeviceVisual device={device} size="tile" />
+      ) : (
+        <BrushVisual device={device} view={view} size="tile" />
+      )}
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text variant="body-strong" numberOfLines={2}>
           {device.label}
         </Text>
         {showRoom && room !== null ? (
@@ -141,7 +149,7 @@ function Wide({ device, cls }: { readonly device: Device; readonly cls: WideClas
   const state = useBrushState(device.id);
   useBrushDemand(device.id);
   return state.data === undefined ? (
-    <BrushTile device={device} showRoom compact />
+    <Waiting device={device} cls={cls} />
   ) : (
     <WideBrush device={device} view={state.data} cls={cls} />
   );
@@ -159,6 +167,6 @@ export function BrushCardFace({
   return isWideClass(cls) ? (
     <Wide device={device} cls={cls} />
   ) : (
-    <BrushTile device={device} showRoom compact />
+    <BrushTile device={device} showRoom />
   );
 }

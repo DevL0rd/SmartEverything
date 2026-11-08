@@ -1,11 +1,10 @@
 import {
+  WIDGET_FOOTPRINTS,
   WIDGET_SIZES,
   type BoardClass,
   type BoardWidget,
   type WidgetSize,
 } from '@smarteverything/domain';
-import { aspectRows, type Cell } from '../board-geometry';
-import { footprintOf } from '../footprint';
 import type { WidgetDefinition } from '../types';
 
 export const SIZE_LABELS: Readonly<Record<WidgetSize, string>> = {
@@ -24,30 +23,17 @@ function areaOf(option: SizeOption): number {
   return option.columns * option.rows;
 }
 
-function rowsFor(
-  definition: WidgetDefinition,
-  columns: number,
-  rows: number,
-  cell: Cell | undefined,
-): number {
-  return definition.aspect === undefined || cell === undefined
-    ? rows
-    : aspectRows(cell, columns, definition.aspect);
-}
-
 export function sizeOptions(
   definition: WidgetDefinition,
   board: BoardClass,
-  cell?: Cell,
 ): readonly SizeOption[] {
   const allowed = definition.sizes[board];
   const unique = new Map<string, SizeOption>();
   for (const size of WIDGET_SIZES) {
-    const footprint = footprintOf(board, size, definition);
-    const rows = rowsFor(definition, footprint.columns, footprint.rows, cell);
-    const shape = `${String(footprint.columns)}x${String(rows)}`;
+    const { columns, rows } = WIDGET_FOOTPRINTS[board][size];
+    const shape = `${String(columns)}x${String(rows)}`;
     if (allowed.includes(size) && !unique.has(shape)) {
-      unique.set(shape, { size, columns: footprint.columns, rows });
+      unique.set(shape, { size, columns, rows });
     }
   }
   return [...unique.values()].sort((a, b) => areaOf(a) - areaOf(b) || a.columns - b.columns);
@@ -60,7 +46,7 @@ export function steppedSize(
   step: 1 | -1,
 ): WidgetSize | null {
   const options = sizeOptions(definition, board);
-  const footprint = footprintOf(board, current, definition);
+  const footprint = WIDGET_FOOTPRINTS[board][current];
   const index = options.findIndex(
     (option) => option.columns === footprint.columns && option.rows === footprint.rows,
   );

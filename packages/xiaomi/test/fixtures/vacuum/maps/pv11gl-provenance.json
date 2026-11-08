@@ -1,0 +1,12 @@
+{
+  "model": "xiaomi.vacuum.pv11gl",
+  "files": ["pv11gl-current.json", "pv11gl-saved.json", "pv11gl-backup.json"],
+  "slots": {
+    "pv11gl-current.json": "current map of a simulated task (cloud object /0), with path and position",
+    "pv11gl-saved.json": "saved map (cloud object /3)",
+    "pv11gl-backup.json": "backup map (cloud object /8)"
+  },
+  "source": "Synthetic grids, walls, openings, carpet, poses and route authored for protocol tests without device captures or household data.",
+  "derivedScene": "packages/domain/test/fixtures/vacuum-scene-pv11gl.json is generated from pv11gl-current.json using the Xiaomi scene builders.",
+  "telemetry": "Room-label coordinates, carpet outlines and AI object positions in the pv11gl readings and pushes fixtures are synthetic."
+}

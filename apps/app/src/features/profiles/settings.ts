@@ -4,6 +4,8 @@ import { PeopleBlock } from './people-block';
 import { ProfileSwitcher } from './profile-switcher';
 import { ScaleBlock } from './scale-block';
 
+export const PROFILE_SCALE_SETTING = 'profiles.scale';
+
 export const SETTINGS: readonly SettingDefinition[] = [
   {
     id: 'profiles.this-app',
@@ -30,7 +32,7 @@ export const SETTINGS: readonly SettingDefinition[] = [
     render: () => createElement(PeopleBlock),
   },
   {
-    id: 'profiles.scale',
+    id: PROFILE_SCALE_SETTING,
     page: 'profiles',
     section: 'Weigh-ins',
     title: 'Bluetooth scale',

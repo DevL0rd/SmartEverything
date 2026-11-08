@@ -1,10 +1,10 @@
 import {
   automationSentence,
   programReferenceIds,
-  type AutomationRowV3,
   type DescribeContext,
   type ReferenceContext,
 } from '@smarteverything/domain';
+import type { AutomationRow } from '../data/graph-adapter';
 import { activeTriggers } from '../model/consumers/row';
 import { timedTriggersOf } from '../model/consumers/week-schedule';
 import { NO_STATS, type RunStats } from './run-stats';
@@ -62,7 +62,7 @@ export interface ListContext {
 
 const CALLED = 'trigger.called';
 
-function sectionOf(row: AutomationRowV3, stats: RunStats): SectionId {
+function sectionOf(row: AutomationRow, stats: RunStats): SectionId {
   const triggers = activeTriggers(row.definition);
   if (row.last_error !== null) return 'attention';
   if (!row.enabled) return 'paused';
@@ -72,7 +72,7 @@ function sectionOf(row: AutomationRowV3, stats: RunStats): SectionId {
   return 'events';
 }
 
-function chipsOf(row: AutomationRowV3, updates: ReadonlySet<string>): readonly ChipId[] {
+function chipsOf(row: AutomationRow, updates: ReadonlySet<string>): readonly ChipId[] {
   return [
     ...(row.draft === null ? [] : (['draft'] as const)),
     ...(updates.has(row.id) ? (['update'] as const) : []),
@@ -80,7 +80,7 @@ function chipsOf(row: AutomationRowV3, updates: ReadonlySet<string>): readonly C
   ];
 }
 
-export function entryOf(row: AutomationRowV3, stats: RunStats, context: ListContext): ListEntry {
+export function entryOf(row: AutomationRow, stats: RunStats, context: ListContext): ListEntry {
   const referenced = programReferenceIds(row.definition, context.references);
   return {
     id: row.id,
@@ -101,7 +101,7 @@ export function entryOf(row: AutomationRowV3, stats: RunStats, context: ListCont
 }
 
 export function entriesOf(
-  rows: readonly AutomationRowV3[],
+  rows: readonly AutomationRow[],
   stats: ReadonlyMap<string, RunStats>,
   context: ListContext,
 ): readonly ListEntry[] {

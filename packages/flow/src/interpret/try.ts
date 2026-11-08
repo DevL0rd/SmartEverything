@@ -20,6 +20,7 @@ import {
   topFrame,
   withTop,
 } from './frames';
+import { errorExitOutputs } from './policy';
 import { evaluate } from './step';
 
 const NORMAL: Completion = { kind: 'normal' };
@@ -79,8 +80,17 @@ function rowFor(op: OpOf['try'], error: FlowError): Found | undefined {
   return undefined;
 }
 
+function isErrorExit(op: OpOf['try']): boolean {
+  const [only, ...others] = op.catches;
+  return others.length === 0 && only?.id === op.at.id && only.classes === undefined;
+}
+
+function caught(op: OpOf['try'], error: FlowError): JsonValue {
+  return isErrorExit(op) ? errorExitOutputs(error) : { error: JSON_VALUE.parse(error) };
+}
+
 function enterCatch(env: Env, site: Site, found: Found, error: FlowError): StepResult {
-  const marked = setOutputs(env.state, site.op.at.key, { error: JSON_VALUE.parse(error) });
+  const marked = setOutputs(env.state, site.op.at.key, caught(site.op, error));
   const path = `${site.path}/catches/${String(found.index)}/then`;
   return stay(env, moveTo(marked, path, { phase: 'catch', row: found.row.id, completion: NORMAL }));
 }

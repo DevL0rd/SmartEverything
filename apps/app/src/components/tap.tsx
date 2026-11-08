@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { Pressable, type AccessibilityRole, type View } from 'react-native';
 import { cn } from '../design/cn';
+import { isNative } from '../design/platform';
+import { spaceKeyProps } from './space-key';
 
 export interface TapProps {
   readonly label: string;
@@ -9,7 +11,7 @@ export interface TapProps {
   readonly focusable?: boolean;
   readonly disabled?: boolean;
   readonly className: string;
-  readonly innerRef?: (node: View | null) => void;
+  readonly innerRef?: Ref<View> | undefined;
   readonly onPress: () => void;
   readonly children: ReactNode;
 }
@@ -25,6 +27,7 @@ export function Tap({
   onPress,
   children,
 }: TapProps): ReactNode {
+  const tabStop = focusable && !disabled;
   return (
     <Pressable
       ref={innerRef}
@@ -35,7 +38,9 @@ export function Tap({
         ...(checked === undefined ? {} : { checked, selected: checked }),
       }}
       aria-checked={checked}
-      focusable={focusable}
+      {...spaceKeyProps(role, disabled, onPress)}
+      focusable={tabStop}
+      tabIndex={isNative() ? undefined : tabStop ? 0 : -1}
       disabled={disabled}
       onPress={onPress}
       className={cn(

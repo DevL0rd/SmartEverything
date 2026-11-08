@@ -69,9 +69,26 @@ describe('native log bridge', () => {
     expect(records[0]?.payload).toMatchObject({ receivedEvent: 'Bad Name' });
   });
 
-  it('renames fields the redactor would blank and survives malformed input', () => {
-    forwardNativeLog({ level: 'debug', scope: 'hub-socket', event: 'socket.closed', code: 1006 });
-    expect(records[0]?.payload).toMatchObject({ native_code: 1006 });
+  it('forwards a native record with every field it carried, close code and all', () => {
+    forwardNativeLog({
+      level: 'debug',
+      scope: 'voice-socket',
+      event: 'socket.closed',
+      closeCode: 1006,
+      code: 123456,
+      Token: 'short',
+      nested: { apiKey: 'short' },
+    });
+    expect(records[0]?.payload).toMatchObject({
+      closeCode: 1006,
+      code: 123456,
+      Token: 'short',
+      nested: { apiKey: 'short' },
+    });
+    expect(records[0]?.payload).not.toHaveProperty('native_code');
+  });
+
+  it('survives malformed input', () => {
     expect(() => {
       forwardNativeLog('nonsense');
       forwardNativeLog(null);

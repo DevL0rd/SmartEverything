@@ -12,6 +12,7 @@ export interface OtpFieldProps {
   readonly format: 'pairing' | { readonly digits: number };
   readonly error?: string | null;
   readonly focusOnMount?: boolean;
+  readonly boxes?: boolean;
 }
 
 function normalise(raw: string, format: OtpFieldProps['format']): string {
@@ -25,6 +26,50 @@ function normalise(raw: string, format: OtpFieldProps['format']): string {
   return raw.replaceAll(/\D/g, '').slice(0, format.digits);
 }
 
+function lengthOf(format: OtpFieldProps['format']): number {
+  return format === 'pairing' ? PAIRING_LENGTH : format.digits;
+}
+
+const PAIRING_LENGTH = 9;
+
+function DigitBoxes({
+  value,
+  count,
+  error,
+}: {
+  readonly value: string;
+  readonly count: number;
+  readonly error: boolean;
+}): ReactNode {
+  return (
+    <View pointerEvents="none" className="flex-row justify-center gap-3">
+      {Array.from({ length: count }, (_, index) => (
+        <View
+          key={String(index)}
+          className={cn(
+            'h-14 w-12 items-center justify-center rounded-md border bg-surface-2',
+            error
+              ? 'border-critical'
+              : index === value.length
+                ? 'border-primary'
+                : 'border-outline',
+          )}
+        >
+          <Text variant="title-2">{index < value.length ? '•' : ''}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function inputClassOf(error: boolean, boxes: boolean): string {
+  return cn(
+    'h-14 rounded-md border bg-surface-2 px-4 text-center font-mono text-title-2 tracking-widest text-on-surface web:outline-none',
+    error ? 'border-critical' : 'border-outline',
+    boxes && 'absolute inset-0 opacity-0',
+  );
+}
+
 export function OtpField({
   label,
   value,
@@ -33,6 +78,7 @@ export function OtpField({
   format,
   error = null,
   focusOnMount = false,
+  boxes = false,
 }: OtpFieldProps): ReactNode {
   const numeric = format !== 'pairing';
   const ref = useFocusOnMount(focusOnMount);
@@ -41,26 +87,31 @@ export function OtpField({
       <Text variant="footnote" tone="variant">
         {label}
       </Text>
-      <TextInput
-        accessibilityLabel={label}
-        value={value}
-        onChangeText={(raw) => {
-          onChange(normalise(raw, format));
-        }}
-        onSubmitEditing={onSubmit}
-        ref={ref}
-        autoComplete="one-time-code"
-        textContentType="oneTimeCode"
-        keyboardType={numeric ? 'number-pad' : 'default'}
-        autoCapitalize="characters"
-        autoCorrect={false}
-        placeholder={numeric ? '' : 'ABCD-EFGH'}
-        placeholderTextColorClassName="accent-on-surface-faint"
-        className={cn(
-          'h-14 rounded-md border bg-surface-2 px-4 text-center font-mono text-title-2 tracking-widest text-on-surface outline-none',
-          error === null ? 'border-outline' : 'border-critical',
-        )}
-      />
+      <View className="relative">
+        {boxes ? (
+          <DigitBoxes value={value} count={lengthOf(format)} error={error !== null} />
+        ) : null}
+        <TextInput
+          accessibilityLabel={label}
+          value={value}
+          onChangeText={(raw) => {
+            onChange(normalise(raw, format));
+          }}
+          onSubmitEditing={onSubmit}
+          ref={ref}
+          autoComplete="one-time-code"
+          textContentType="oneTimeCode"
+          keyboardType={numeric ? 'number-pad' : 'default'}
+          maxLength={lengthOf(format)}
+          secureTextEntry={boxes}
+          caretHidden={boxes}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          placeholder={numeric ? '' : 'ABCD-EFGH'}
+          placeholderTextColorClassName="accent-on-surface-faint"
+          className={inputClassOf(error !== null, boxes)}
+        />
+      </View>
       {error === null ? null : (
         <Text variant="footnote" tone="critical">
           {error}

@@ -373,3 +373,51 @@ describe('context', () => {
     expect(rig.event('plugin:other/annotation', 3)).toStrictEqual([]);
   });
 });
+
+describe('plan mode', () => {
+  const run = (commandId: string, args: string): Record<string, unknown> => ({
+    data: { commandId, name: 'plan', args, source: 'user' },
+  });
+
+  it('opens off when the history never turned it on', () => {
+    const rig = new ReducerRig();
+
+    expect(stateOf(rig.open()).session.plan).toStrictEqual({ active: false, pending: false });
+  });
+
+  it('opens on when the last plan/mode in the history turned it on', () => {
+    const rig = new ReducerRig();
+    rig.history.push({ type: 'plan/mode', seq: 0, data: { active: true } });
+
+    expect(stateOf(rig.open()).session.plan).toStrictEqual({ active: true, pending: false });
+  });
+
+  it('shows a selection as pending until the next step logs the mode, and drops it when the command fails', () => {
+    const rig = new ReducerRig();
+    rig.open();
+
+    const asked = stateOf(rig.event('command/run', 3, run('c1', '')));
+    const settled = rig.event('command/done', 4, { data: { commandId: 'c1', kind: 'success' } });
+    const entered = stateOf(rig.event('plan/mode', 5, { data: { active: true } }));
+    const failedAsk = stateOf(rig.event('command/run', 6, run('c2', 'off')));
+    const failed = stateOf(
+      rig.event('command/done', 7, { data: { commandId: 'c2', kind: 'error' } }),
+    );
+
+    expect(asked.session.plan).toStrictEqual({ active: false, pending: true });
+    expect(settled).toStrictEqual([]);
+    expect(entered.session.plan).toStrictEqual({ active: true, pending: false });
+    expect(failedAsk.session.plan).toStrictEqual({ active: true, pending: true });
+    expect(failed.session.plan).toStrictEqual({ active: true, pending: false });
+  });
+
+  it('says nothing for a command that is not plan or a mode that did not change', () => {
+    const rig = new ReducerRig();
+    rig.open();
+
+    expect(
+      rig.event('command/run', 3, { data: { commandId: 'c1', name: 'compact', source: 'user' } }),
+    ).toStrictEqual([]);
+    expect(rig.event('plan/mode', 4, { data: { active: false } })).toStrictEqual([]);
+  });
+});

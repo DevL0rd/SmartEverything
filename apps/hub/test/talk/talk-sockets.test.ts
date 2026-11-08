@@ -58,7 +58,7 @@ beforeEach(async () => {
     },
     streamReady: (): Promise<void> => Promise.resolve(),
     rtspPort: 8554,
-    dataDirectory: test.directory,
+    directory: test.layout.home.talk,
     presence: (next): void => {
       presence = next;
     },

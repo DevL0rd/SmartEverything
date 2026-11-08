@@ -83,11 +83,17 @@ export function removePending(message: PendingMessage): void {
   });
 }
 
+interface SendInput {
+  readonly references: readonly AiMessageReference[];
+  readonly id: string;
+  readonly quoteMessageId?: string | undefined;
+}
+
 function queue(
   chatId: string,
   text: string,
   attachments: readonly string[],
-  input: { readonly references: readonly AiMessageReference[]; readonly id: string },
+  input: SendInput,
 ): void {
   const message: PendingMessage = {
     id: input.id,
@@ -96,6 +102,7 @@ function queue(
     attachments,
     queuedAt: new Date().toISOString(),
     references: input.references,
+    ...(input.quoteMessageId === undefined ? {} : { quoteMessageId: input.quoteMessageId }),
   };
   patchAiDrafts('outbox', (all) =>
     all.some((row) => row.id === message.id) ? all : [...all, message],
@@ -123,6 +130,7 @@ async function deliver(message: PendingMessage): Promise<boolean> {
     await sendAiChatMessage(message.chatId, message.text, message.attachments, {
       clientMessageId: message.id,
       references: message.references,
+      ...(message.quoteMessageId === undefined ? {} : { quoteMessageId: message.quoteMessageId }),
     });
     cancelPending(message.id);
     log.info('outbox.sent', {
@@ -177,9 +185,9 @@ async function sendNow(
   chatId: string,
   text: string,
   attachments: readonly string[],
-  input: { readonly references: readonly AiMessageReference[]; readonly id: string },
+  input: SendInput,
 ): Promise<boolean> {
-  const { references, id } = input;
+  const { references, id, quoteMessageId } = input;
   sending.update((all) => new Set([...all, chatId]));
   const operation = log.operation('chat_message.send', {
     chatId,
@@ -189,7 +197,11 @@ async function sendNow(
     references: references.length,
   });
   try {
-    await sendAiChatMessage(chatId, text, attachments, { clientMessageId: id, references });
+    await sendAiChatMessage(chatId, text, attachments, {
+      clientMessageId: id,
+      references,
+      ...(quoteMessageId === undefined ? {} : { quoteMessageId }),
+    });
     clearUploads();
     operation.succeeded();
     return true;
@@ -205,9 +217,14 @@ async function sendNow(
 }
 
 export function outboxSender(chatId: string, online: boolean): MessageSender {
-  return (text, attachments, references = [], clientMessageId) => {
+  return (text, attachments, extras = {}) => {
+    const { references = [], clientMessageId, quoteMessageId } = extras;
     const message = trimmedReferences({ text, references });
-    const input = { references: message.references, id: clientMessageId ?? randomUUID() };
+    const input: SendInput = {
+      references: message.references,
+      id: clientMessageId ?? randomUUID(),
+      quoteMessageId,
+    };
     if (online) {
       return sendNow(chatId, message.text, attachments, input);
     }

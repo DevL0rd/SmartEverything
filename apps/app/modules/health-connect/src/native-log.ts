@@ -1,5 +1,5 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
-import { Logger, isDeniedField, isEventName, type LogLevel } from '@smarteverything/logging';
+import { Logger, isEventName, type LogLevel } from '@smarteverything/logging';
 
 interface NativeLogEvents {
   readonly onLog: (payload: unknown) => void;
@@ -29,6 +29,7 @@ function nativeLevelFor(level: LogLevel): string {
 
 function payloadOf(entry: Record<string, unknown>): Record<string, unknown> {
   const payload: Record<string, unknown> = {
+    ...Object.fromEntries(Object.entries(entry).filter(([name]) => !RESERVED.has(name))),
     nativeScope: typeof entry['scope'] === 'string' ? entry['scope'] : 'unknown',
     nativeAt: entry['at'],
     nativeSeq: entry['seq'],
@@ -36,12 +37,6 @@ function payloadOf(entry: Record<string, unknown>): Record<string, unknown> {
   };
   if (typeof entry['durationMs'] === 'number') {
     payload['nativeDurationMs'] = entry['durationMs'];
-  }
-  for (const [name, value] of Object.entries(entry)) {
-    if (RESERVED.has(name)) {
-      continue;
-    }
-    payload[isDeniedField(name) ? `native_${name}` : name] = value;
   }
   return payload;
 }

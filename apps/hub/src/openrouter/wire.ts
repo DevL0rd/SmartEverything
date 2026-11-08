@@ -1,4 +1,3 @@
-import { JSON_VALUE } from '@smarteverything/domain';
 import { z } from 'zod';
 
 const PRICE = z
@@ -165,29 +164,6 @@ export const OR_ERROR = z.looseObject({
   }),
 });
 
-const TOOL_CALL_DELTA = z.looseObject({
-  index: z.number().int().min(0),
-  id: z.string().min(1).optional(),
-  function: z
-    .looseObject({ name: z.string().min(1).optional(), arguments: z.string().optional() })
-    .optional(),
-});
-
-const ANNOTATION = z.looseObject({
-  type: z.string(),
-  url_citation: z
-    .looseObject({ url: z.string().min(1), title: z.string().nullable().optional() })
-    .optional(),
-});
-
-const DELTA = z.looseObject({
-  annotations: z.array(ANNOTATION).optional(),
-  content: z.string().nullable().optional(),
-  reasoning: z.string().nullable().optional(),
-  reasoning_details: z.array(JSON_VALUE).optional(),
-  tool_calls: z.array(TOOL_CALL_DELTA).optional(),
-});
-
 export const OR_USAGE = z.looseObject({
   prompt_tokens: COUNT,
   completion_tokens: COUNT,
@@ -213,17 +189,44 @@ export const OR_USAGE = z.looseObject({
 
 export type OrUsage = z.infer<typeof OR_USAGE>;
 
-export const OR_CHUNK = z.looseObject({
-  id: z.string().min(1),
-  model: z.string().min(1),
-  choices: z.array(
-    z.looseObject({
-      delta: DELTA.optional(),
-      finish_reason: z.string().nullable().optional(),
-    }),
-  ),
-  usage: OR_USAGE.nullable().optional(),
-  error: z.looseObject({ code: z.union([z.number(), z.string()]), message: z.string() }).optional(),
-});
+export interface GenerationStats {
+  readonly id: string;
+  readonly model: string;
+  readonly totalCost: number;
+  readonly cacheDiscount: number | null;
+  readonly upstreamInferenceCost: number | null;
+  readonly tokensPrompt: number | null;
+  readonly tokensCompletion: number | null;
+  readonly nativeTokensPrompt: number | null;
+  readonly nativeTokensCompletion: number | null;
+  readonly nativeTokensReasoning: number | null;
+  readonly nativeTokensCached: number | null;
+  readonly nativeTokensCompletionImages: number | null;
+  readonly numMediaPrompt: number | null;
+  readonly numMediaCompletion: number | null;
+  readonly numInputAudioPrompt: number | null;
+  readonly numSearchResults: number | null;
+  readonly providerName: string | null;
+  readonly finishReason: string | null;
+  readonly latencyMs: number | null;
+  readonly generationTimeMs: number | null;
+  readonly createdAt: string;
+  readonly isByok: boolean;
+}
 
-export type OrChunk = z.infer<typeof OR_CHUNK>;
+export interface KeyInfo {
+  readonly label: string;
+  readonly limit: number | null;
+  readonly limitRemaining: number | null;
+  readonly limitReset: string | null;
+  readonly usage: number;
+  readonly usageDaily: number;
+  readonly usageWeekly: number;
+  readonly usageMonthly: number;
+  readonly freeTier: boolean;
+}
+
+export interface Credits {
+  readonly total: number;
+  readonly used: number;
+}

@@ -1,12 +1,23 @@
 import type { DeviceEffects } from './effects';
 import type { TelevisionRouting } from './television-routing';
+import {
+  absorbedOutcome,
+  laneKey,
+  sameRequester,
+  togetherDriver,
+  type Begun,
+  type QueuedCommand,
+  type Started,
+  type TogetherDriver,
+} from './command-queue';
+import { commandBudgetMs } from './command-budgets';
+import type { CommandConfirmations } from './command-confirmations';
+import { deviceCommandOf, executeOnDevice, stateKindOf } from './device-dispatch';
+import { IntendedValues } from './intended-values';
 import { CommandLanes } from './lanes';
 import {
-  capabilityOf,
-  CAPABILITY_KEY,
   HUB_COMMAND,
   isHubCapability,
-  validateCommand,
   type HubCommand,
   type JsonValue,
   type Provider,
@@ -32,83 +43,28 @@ export interface CommandExecutorOptions {
   readonly now: () => Date;
   readonly effects?: DeviceEffects;
   readonly television?: TelevisionRouting;
+  readonly confirmations?: Pick<CommandConfirmations, 'expect'>;
 }
 
-class CommandTargetError extends Error {
-  override readonly name = 'CommandTargetError';
-
-  constructor(commandId: string, reason: string) {
-    super(`Command ${commandId} cannot run: ${reason}.`);
-  }
-}
-
-export class ProviderNotRunningError extends Error {
-  override readonly name = 'ProviderNotRunningError';
-
-  constructor(provider: Provider) {
-    super(`The ${provider} provider is not linked or not running on this hub.`);
-  }
-}
-
-interface QueuedCommand {
-  readonly row: CommandRow;
-  readonly authorize: (() => void) | undefined;
-  absorbed: readonly QueuedCommand[];
-  replaced: boolean;
-  successor: Promise<void> | undefined;
-}
-
-function sameRequester(
-  previous: QueuedCommand,
-  row: CommandRow,
-  authorize: (() => void) | undefined,
-): boolean {
-  return (
-    previous.authorize === authorize &&
-    previous.row.source === row.source &&
-    previous.row.requested_by === row.requested_by
-  );
-}
-
-function absorbedOutcome(
-  authorize: (() => void) | undefined,
-  by: string,
-  replacement: CommandOutcome | undefined,
-): CommandOutcome {
-  try {
-    authorize?.();
-  } catch (cause) {
-    return { status: 'failed', error: failureLine(cause) };
-  }
-  if (replacement === undefined) {
-    return { status: 'failed', error: 'A newer command replaced this one and did not run.' };
-  }
-  return replacement.status === 'succeeded'
-    ? { status: 'succeeded', result: { superseded: true, by } }
-    : replacement;
-}
-
-function laneKey(deviceId: string | null, capability: string): string {
-  return JSON.stringify([deviceId, capability]);
+interface Sent {
+  readonly outcome: CommandOutcome;
+  readonly sent: readonly CommandRow[];
 }
 
 export class CommandExecutor {
   private readonly lane = new CommandLanes();
   private readonly queued = new Map<string, QueuedCommand>();
   private readonly held = new Map<string, Set<Promise<void>>>();
-  private readonly intended = new Map<
-    string,
-    { readonly value: JsonValue; readonly completedAt: number; readonly expiresAt: number }
-  >();
+  private readonly intended: IntendedValues;
   private readonly inFlight = new Map<string, Promise<void>>();
 
-  constructor(private readonly options: CommandExecutorOptions) {}
+  constructor(private readonly options: CommandExecutorOptions) {
+    this.intended = new IntendedValues(options.now);
+  }
 
   async catchUp(): Promise<number> {
     const rows = await this.options.store.pendingCommands();
-    for (const row of rows) {
-      background(this.run(row), 'executor.run_failed');
-    }
+    for (const row of rows) background(this.run(row), 'executor.run_failed');
     return rows.length;
   }
 
@@ -145,6 +101,66 @@ export class CommandExecutor {
         this.held.delete(key);
       }
     });
+  }
+
+  runsTogether(rows: readonly CommandRow[]): boolean {
+    return togetherDriver(this.options, rows) !== null;
+  }
+
+  runTogether(rows: readonly CommandRow[], authorize?: () => void): Promise<void> {
+    const work = this.together(rows, authorize);
+    for (const row of rows) {
+      this.inFlight.set(row.id, work);
+      this.held.get(laneKey(row.device_id, row.capability))?.add(work);
+    }
+    return work.finally(() => {
+      for (const row of rows) this.inFlight.delete(row.id);
+    });
+  }
+
+  private async together(rows: readonly CommandRow[], authorize?: () => void): Promise<void> {
+    const driver = togetherDriver(this.options, rows);
+    if (driver === null) {
+      await Promise.all(rows.slice(0, -1).map((row) => this.authorizedExecute(row, authorize)));
+      const last = rows.at(-1);
+      if (last !== undefined) await this.authorizedExecute(last, authorize);
+      return;
+    }
+    const started: { readonly row: CommandRow; readonly begun: Started }[] = [];
+    for (const row of rows) {
+      const begun = await this.begin(row);
+      if (!('finished' in begun)) started.push({ row, begun });
+    }
+    const { outcome, sent } = await this.togetherOutcome(
+      driver,
+      started.map(({ row }) => row),
+      authorize,
+    );
+    for (const [index, { row, begun }] of started.entries()) {
+      try {
+        await this.settle(row, outcome, begun, sent[index] ?? row);
+      } catch (cause) {
+        begun.log.error('command.not_recorded', cause, begun.fields);
+      }
+    }
+  }
+
+  private async togetherOutcome(
+    driver: TogetherDriver,
+    rows: readonly CommandRow[],
+    authorize?: () => void,
+  ): Promise<Sent> {
+    try {
+      authorize?.();
+      const sent = rows.map((row) => this.options.effects?.prepare(row) ?? row);
+      const commands = sent.map((row) => deviceCommandOf(this.options, row).command);
+      return {
+        outcome: { status: 'succeeded', result: await driver.executeTogether(commands) },
+        sent,
+      };
+    } catch (cause) {
+      return { outcome: { status: 'failed', error: failureLine(cause) }, sent: rows };
+    }
   }
 
   private runHeld(
@@ -197,28 +213,11 @@ export class CommandExecutor {
   }
 
   private coalescible(row: CommandRow): boolean {
-    if (row.device_id === null || row.status !== 'pending' || isHubCapability(row.capability)) {
-      return false;
-    }
-    const device = this.options.inventory.deviceById(row.device_id);
-    const capability = CAPABILITY_KEY.safeParse(row.capability);
-    if (device === undefined || !capability.success) return false;
-    const descriptor = capabilityOf(device, capability.data);
-    return descriptor?.access === 'read_write' && descriptor.value.kind !== 'action';
+    return row.status === 'pending' && stateKindOf(this.options, row) !== null;
   }
 
   intendedValue(deviceId: string, capability: string, observedAt?: string): JsonValue | undefined {
-    const key = laneKey(deviceId, capability);
-    const intended = this.intended.get(key);
-    if (intended === undefined) return undefined;
-    if (
-      this.options.now().getTime() >= intended.expiresAt ||
-      (observedAt !== undefined && Date.parse(observedAt) > intended.completedAt)
-    ) {
-      this.intended.delete(key);
-      return undefined;
-    }
-    return intended.value;
+    return this.intended.value(laneKey(deviceId, capability), observedAt);
   }
 
   private async authorizedExecute(
@@ -259,6 +258,20 @@ export class CommandExecutor {
     row: CommandRow,
     authorize?: () => void,
   ): Promise<CommandOutcome | undefined> {
+    const begun = await this.begin(row);
+    if ('finished' in begun) return begun.finished;
+    const { log, fields, startedAt } = begun;
+    try {
+      const { outcome, sent } = await this.outcomeOf(row, authorize);
+      await this.settle(row, outcome, { log, fields, startedAt }, sent[0] ?? row);
+      return outcome;
+    } catch (cause) {
+      log.error('command.not_recorded', cause, { ...fields, durationMs: this.since(startedAt) });
+      return undefined;
+    }
+  }
+
+  private async begin(row: CommandRow): Promise<Begun> {
     const log = this.options.log.child({ correlationId: row.id });
     const startedAt = this.options.now().getTime();
     const fields = {
@@ -273,29 +286,50 @@ export class CommandExecutor {
         const expired: CommandOutcome = { status: 'expired' };
         await this.options.store.finishCommand(row.id, expired);
         log.warn('command.expired', fields);
-        return expired;
+        return { finished: expired };
       }
       if (!(await this.options.store.claimCommand(row.id, row.status))) {
         log.debug('command.already_claimed', () => ({ ...fields, status: row.status }));
-        return undefined;
+        return { finished: undefined };
       }
       log.debug('command.started', fields);
-      const outcome = await this.outcomeOf(row, authorize);
-      const key = laneKey(row.device_id, row.capability);
-      if (outcome.status === 'succeeded')
-        this.intended.set(key, {
-          value: row.value,
-          completedAt: this.options.now().getTime(),
-          expiresAt: Date.parse(row.expires_at),
-        });
-      else this.intended.delete(key);
-      await this.options.store.finishCommand(row.id, outcome);
-      this.report(log, outcome, { ...fields, durationMs: this.since(startedAt) });
-      return outcome;
+      return { log, fields, startedAt };
     } catch (cause) {
       log.error('command.not_recorded', cause, { ...fields, durationMs: this.since(startedAt) });
-      return undefined;
+      return { finished: undefined };
     }
+  }
+
+  private async settle(
+    row: CommandRow,
+    outcome: CommandOutcome,
+    { log, fields, startedAt }: Started,
+    sent: CommandRow,
+  ): Promise<void> {
+    const key = laneKey(row.device_id, row.capability);
+    if (outcome.status === 'succeeded')
+      this.intended.record(key, {
+        value: row.value,
+        sentAt: startedAt,
+        expiresAt: Date.parse(row.expires_at),
+      });
+    else this.intended.drop(key);
+    await this.options.store.finishCommand(row.id, outcome);
+    this.report(log, outcome, { ...fields, durationMs: this.since(startedAt) });
+    if (outcome.status === 'succeeded') this.expectState(sent, startedAt);
+  }
+
+  private expectState(sent: CommandRow, sentAt: number): void {
+    const deviceKind = stateKindOf(this.options, sent);
+    if (sent.device_id === null || deviceKind === null) return;
+    this.options.confirmations?.expect({
+      commandId: sent.id,
+      deviceId: sent.device_id,
+      capability: sent.capability,
+      value: sent.value,
+      sentAt,
+      budgetMs: commandBudgetMs({ capability: sent.capability, value: sent.value, deviceKind }),
+    });
   }
 
   private since(startedAt: number): number {
@@ -308,54 +342,24 @@ export class CommandExecutor {
     else log.info(`command.${outcome.status}`, fields);
   }
 
-  private async outcomeOf(row: CommandRow, authorize?: () => void): Promise<CommandOutcome> {
+  private async outcomeOf(row: CommandRow, authorize?: () => void): Promise<Sent> {
+    let sent = row;
     try {
       authorize?.();
-      const result = isHubCapability(row.capability)
-        ? await this.options.hubCommand(
-            HUB_COMMAND.parse({ capability: row.capability, value: row.value }),
-          )
-        : await this.executeOnDevice(this.options.effects?.prepare(row) ?? row);
-      return { status: 'succeeded', result };
+      if (isHubCapability(row.capability)) {
+        const command = HUB_COMMAND.parse({ capability: row.capability, value: row.value });
+        return {
+          outcome: { status: 'succeeded', result: await this.options.hubCommand(command) },
+          sent: [row],
+        };
+      }
+      sent = this.options.effects?.prepare(row) ?? row;
+      return {
+        outcome: { status: 'succeeded', result: await executeOnDevice(this.options, sent) },
+        sent: [sent],
+      };
     } catch (cause) {
-      return { status: 'failed', error: failureLine(cause) };
+      return { outcome: { status: 'failed', error: failureLine(cause) }, sent: [sent] };
     }
-  }
-
-  private async executeOnDevice(row: CommandRow): Promise<JsonValue> {
-    if (row.device_id === null) {
-      throw new CommandTargetError(
-        row.id,
-        `the device capability ${row.capability} names no device`,
-      );
-    }
-    const device = this.options.inventory.deviceById(row.device_id);
-    if (device === undefined) {
-      throw new CommandTargetError(row.id, `device ${row.device_id} is not known to this hub`);
-    }
-    const capability = CAPABILITY_KEY.parse(row.capability);
-    const value = validateCommand(device, { capability, value: row.value });
-    const command = { commandId: row.id, externalId: device.externalId, capability, value };
-    const driver =
-      device.provider === 'local' ? this.options.drivers.forDevice(device.externalId) : null;
-    if (driver !== null) {
-      return driver.execute(command);
-    }
-    if (this.options.television?.handles(device, command) === true) {
-      return this.options.television.execute(device, command);
-    }
-    const adapter = this.options.adapters.adapterFor(device.provider);
-    this.options.log.debug('command.dispatched', {
-      correlationId: row.id,
-      provider: device.provider,
-      deviceId: device.id,
-      externalId: device.externalId,
-      capability,
-      running: adapter !== undefined,
-    });
-    if (adapter === undefined) {
-      throw new ProviderNotRunningError(device.provider);
-    }
-    return adapter.execute(command);
   }
 }

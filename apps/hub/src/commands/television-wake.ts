@@ -3,7 +3,7 @@ import {
   type JsonValue,
   type TelevisionSettingsRow,
 } from '@smarteverything/domain';
-import { failureLine, type Logger } from '@smarteverything/logging';
+import { background, failureLine, type Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import { WAKE_BOOT_MS, WAKE_RESENDS_MS } from '../network/wake-budget';
 import type { WakeOnLan } from '../network/wake-on-lan';
@@ -52,11 +52,16 @@ export interface TelevisionWakeOptions {
 }
 
 export class TelevisionWake {
+  private readonly waking = new Set<string>();
+
   constructor(private readonly options: TelevisionWakeOptions) {}
 
   async powerOn(deviceId: string, switchOn: () => Promise<JsonValue>): Promise<JsonValue> {
     if (this.options.online(deviceId)) {
       return switchOn();
+    }
+    if (this.waking.has(deviceId)) {
+      return null;
     }
     const settings = this.options.settingsOf(deviceId);
     if (settings === undefined || settings.wake_macs.length === 0) {
@@ -65,12 +70,35 @@ export class TelevisionWake {
     const burst = (): Promise<void> =>
       Promise.all(settings.wake_macs.map((mac) => this.options.wake(mac))).then(() => undefined);
     this.options.log.info('television.waking', { deviceId, macs: settings.wake_macs.length });
-    if (!(await this.cameOnline(deviceId, burst))) {
-      throw new TelevisionDidNotWakeError(deviceId);
+    this.waking.add(deviceId);
+    try {
+      await burst();
+    } catch (cause) {
+      this.waking.delete(deviceId);
+      throw new WakePacketsFailedError(deviceId, cause);
     }
-    this.options.woke(deviceId);
-    this.options.log.info('television.woke', { deviceId });
-    return switchOn();
+    background(this.finishWake(deviceId, burst, switchOn), 'television.wake_failed', { deviceId });
+    return null;
+  }
+
+  private async finishWake(
+    deviceId: string,
+    burst: () => Promise<void>,
+    switchOn: () => Promise<JsonValue>,
+  ): Promise<void> {
+    try {
+      if (!(await this.cameOnline(deviceId, burst))) {
+        this.options.log.error('television.did_not_wake', new TelevisionDidNotWakeError(deviceId), {
+          deviceId,
+        });
+        return;
+      }
+      this.options.woke(deviceId);
+      this.options.log.info('television.woke', { deviceId });
+      await switchOn();
+    } finally {
+      this.waking.delete(deviceId);
+    }
   }
 
   private cameOnline(deviceId: string, burst: () => Promise<void>): Promise<boolean> {
@@ -82,7 +110,7 @@ export class TelevisionWake {
           cancel();
         });
       };
-      const send = (): void => {
+      const resend = (): void => {
         burst().catch((cause: unknown) => {
           settle();
           reject(new WakePacketsFailedError(deviceId, cause));
@@ -103,7 +131,7 @@ export class TelevisionWake {
       );
       const start = clock.now().getTime();
       for (const after of WAKE_RESENDS_MS) {
-        cancels.push(clock.at(new Date(start + after), send));
+        cancels.push(clock.at(new Date(start + after), resend));
       }
       cancels.push(
         clock.at(new Date(start + WAKE_DEADLINE_MS), () => {
@@ -111,7 +139,6 @@ export class TelevisionWake {
           resolve(false);
         }),
       );
-      send();
     });
   }
 }

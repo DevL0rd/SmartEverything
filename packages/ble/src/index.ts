@@ -14,6 +14,7 @@ export {
   isXiaomiScale,
 } from './xiaomi-scale';
 export type { ScalePacket } from './xiaomi-scale';
+export { XIAOMI_S400_SCALE_MODEL } from './xiaomi-scale-model';
 export {
   decodeMagnetFrame,
   MagnetPacketError,
@@ -21,6 +22,7 @@ export {
   XIAOMI_MAGNET_PRODUCT,
 } from './xiaomi-magnet';
 export type { MagnetObservation } from './xiaomi-magnet';
+export { XIAOMI_MAGNET_DW2HL_MODEL } from './xiaomi-magnet-model';
 export * from './kingsmith';
 export * from './larq';
 export * from './sonicare';

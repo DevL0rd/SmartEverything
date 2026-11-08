@@ -9,7 +9,7 @@ export default function MembersRoute(): ReactNode {
     <SettingsPageScreen
       page="members"
       primaryAction={{
-        label: 'Pair a phone',
+        label: 'Pair a device',
         icon: 'qr',
         onPress: () => {
           router.push(href.pairPhone());

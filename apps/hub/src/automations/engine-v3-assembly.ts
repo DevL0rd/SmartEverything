@@ -1,5 +1,5 @@
 import type { CommandRow, Place, SignalMatcher } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import type { CommandExecutor } from '../commands/executor';
 import type { WatchStateStore } from '../signals/signal-watchers';
@@ -7,6 +7,7 @@ import type { AutomationOwnedValuesRepository } from '../store/repositories/auto
 import type { Store } from '../store/store';
 import type { DecisionLog } from './driver/decisions';
 import type { FinishedRun, RefusedStart } from './driver/ports';
+import { debugLogHandler } from './effects/debug-log';
 import { DeviceSetter } from './effects/device-set';
 import { TemporaryDeviceChanges } from './effects/device-temporary';
 import type { DeviceEffects } from '../commands/effects';
@@ -85,6 +86,7 @@ function effectPorts(ports: EngineAssemblyPorts): EffectPorts {
     kept: ports.kept,
     extra: {
       ...deviceExtraHandlers({ setter, store, feed: store.feed, clock }),
+      'debug.log': debugLogHandler(ports.log ?? new Logger('hub.automations')),
       ...ports.extraEffects,
     },
   };
@@ -104,6 +106,7 @@ export function assembleEngineV3(ports: EngineAssemblyPorts): AssembledEngine {
     place: ports.place,
     zone: ports.zone,
     repositories,
+    kinds: ports.world.kinds,
     world: {
       reads: createWorldReads(ports.world),
       persistent: ports.world.persistent,

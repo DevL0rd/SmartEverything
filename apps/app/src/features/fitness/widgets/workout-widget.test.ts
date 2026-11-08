@@ -91,17 +91,19 @@ describe('WorkoutWidget', () => {
     error: null,
   };
 
-  it('shows the latest workout facts, four on a frame at least 300 wide', () => {
+  it('shows the facts that fit one row of a phone frame', () => {
     state.read = LATEST;
+    state.width = 348;
     render();
     expect(state.empties).toHaveLength(0);
+    expect(state.stats).toHaveLength(1);
     expect(state.stats[0]).toHaveLength(4);
   });
 
-  it('shows three facts on a phone-width frame', () => {
+  it('shows fewer facts when the frame is narrower', () => {
     state.read = LATEST;
     state.width = 244;
     render();
-    expect(state.stats[0]).toHaveLength(3);
+    expect(state.stats[0]).toHaveLength(2);
   });
 });

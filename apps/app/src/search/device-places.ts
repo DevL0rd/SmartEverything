@@ -6,7 +6,12 @@ import {
   type PresentedCapability,
 } from '@smarteverything/domain';
 import { cameraSections } from '../features/cameras/settings/camera-groups';
-import { controlGroupsOf, extrasOf, settingsOf } from '../features/devices/model/control-groups';
+import {
+  controlGroupsOf,
+  extrasOf,
+  placesOwnCapabilities,
+  settingsOf,
+} from '../features/devices/model/control-groups';
 import type { Device } from '../store/state';
 
 export type DevicePage = 'overview' | 'controls' | 'settings' | 'camera' | 'diagnostics';
@@ -36,6 +41,9 @@ function tierPlace(
 function pagePlaces(device: Device): readonly DevicePlace[] {
   const presentation = presentDevice(device);
   const all = presentation.capabilities;
+  const own = placesOwnCapabilities(presentation.family);
+  const controls: DevicePage = own ? 'overview' : 'controls';
+  const settings: DevicePage = own ? 'overview' : 'settings';
   const camera = isCamera(device)
     ? cameraSections(device).map((section) => ({ page: 'camera' as const, ...section }))
     : [];
@@ -47,12 +55,12 @@ function pagePlaces(device: Device): readonly DevicePlace[] {
     },
     ...camera,
     ...controlGroupsOf(presentation).map((group) => ({
-      page: 'controls' as const,
+      page: controls,
       title: group.label,
       capabilities: group.controls,
     })),
-    { page: 'controls', title: 'More', capabilities: extrasOf(presentation) },
-    { page: 'settings', title: 'Device options', capabilities: settingsOf(presentation) },
+    { page: controls, title: 'More', capabilities: extrasOf(presentation) },
+    { page: settings, title: 'Device options', capabilities: settingsOf(presentation) },
     tierPlace(all, 'maintenance', { page: 'overview', title: 'Maintenance' }),
     { page: 'overview', title: 'Readings', capabilities: inTier(presentation, 'reading') },
     tierPlace(all, 'diagnostic', { page: 'diagnostics', title: 'Details' }),

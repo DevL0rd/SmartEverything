@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { isIP } from 'node:net';
 import type {
   CameraReach,
+  UnlearnedDevice,
   FirewallOpening,
   FirewallPlan,
   FirewallStatus,
@@ -9,15 +9,14 @@ import type {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { DeviceRecord } from '../database/port';
-import { ANNOUNCEMENT_PORTS } from '../adapters/announcements';
-import { cameraSourceOf, pushSourceOf } from '../state/inventory';
+import { announcementsOf, camerasOf, identified, pushingOf, unlearnedOf } from './device-sources';
 import { lanNetworks } from './lan-networks';
 import { probeLinux } from './linux';
 import { lowPortsOf } from './low-ports';
 import { probeMac } from './macos';
+import { neighborMacs } from './neighbors';
 import {
   always,
-  cameraAddressOf,
   requiredOpenings,
   type AnnouncementNeed,
   type ConnectionPortNeed,
@@ -38,8 +37,14 @@ const PROBES: Readonly<Record<FirewallPlatform, Prober>> = {
   win32: probeWindows,
 };
 
+export interface DeviceMacs {
+  readonly all: () => ReadonlyMap<string, string>;
+  readonly remember: (deviceId: string, mac: string) => void;
+}
+
 export interface FirewallMonitorOptions {
   readonly system: FirewallSystem;
+  readonly macs: DeviceMacs;
   readonly webrtcPort: number;
   readonly now: () => Date;
   readonly log: Logger;
@@ -51,6 +56,7 @@ interface Checked {
   readonly probe: Probe;
   readonly openings: readonly FirewallOpening[];
   readonly lowPorts: LowPorts | null;
+  readonly unlearned: readonly UnlearnedDevice[];
   readonly checkedAt: string;
 }
 
@@ -91,44 +97,6 @@ function reachOf(state: OpeningState, failedAt: string | null): CameraReach['sta
     return state;
   }
   return 'needs_rule';
-}
-
-function camerasOf(devices: readonly DeviceRecord[], log: Logger): readonly DeviceAddress[] {
-  return devices.flatMap((device) => {
-    const source = cameraSourceOf(device);
-    if (source === null) {
-      return [];
-    }
-    const address = cameraAddressOf(source);
-    if (address === null) {
-      log.warn('firewall.camera_without_address', { deviceId: device.id });
-      return [];
-    }
-    return [{ deviceId: device.id, address }];
-  });
-}
-
-function pushingOf(devices: readonly DeviceRecord[], log: Logger): readonly DeviceAddress[] {
-  return devices.flatMap((device) => {
-    const address = pushSourceOf(device);
-    if (address === null) {
-      return [];
-    }
-    if (isIP(address) === 0) {
-      log.warn('firewall.push_source_not_address', { deviceId: device.id });
-      return [];
-    }
-    return [{ deviceId: device.id, address }];
-  });
-}
-
-function announcementsOf(devices: readonly DeviceRecord[]): readonly AnnouncementNeed[] {
-  return devices.flatMap((device) =>
-    (ANNOUNCEMENT_PORTS[device.provider] ?? []).map((listen): AnnouncementNeed => ({
-      deviceId: device.id,
-      ...listen,
-    })),
-  );
 }
 
 export class FirewallMonitor {
@@ -254,16 +222,18 @@ export class FirewallMonitor {
     });
     const networks = this.needsNetworks() ? await lanNetworks(system.read) : [];
     this.warnNoLan(networks);
-    const needs = {
+    const known = await this.learnMacs();
+    const cameras = identified(this.cameras, known);
+    const pushing = identified(this.pushing, known);
+    const openings = requiredOpenings({
       connections: this.connectionNeeds,
-      cameras: this.cameras,
-      pushing: this.pushing,
+      cameras: cameras.identified,
+      pushing: pushing.identified,
       plugins: this.plugins,
       announcements: this.announcements,
       networks,
       webrtcPort,
-    };
-    const openings = requiredOpenings(needs).map((opening) => ({
+    }).map((opening) => ({
       ...opening,
       deviceIds: [...opening.deviceIds],
       pluginIds: [...opening.pluginIds],
@@ -273,14 +243,46 @@ export class FirewallMonitor {
       system,
       this.plugins.map((need) => need.port),
     );
-    const checked = { probe, openings, lowPorts, checkedAt: this.options.now().toISOString() };
+    const unlearned = unlearnedOf(cameras.unlearned, pushing.unlearned);
+    const checked = {
+      probe,
+      openings,
+      lowPorts,
+      unlearned,
+      checkedAt: this.options.now().toISOString(),
+    };
     this.checked = checked;
     this.follow(probe.watch);
     log.info('firewall.checked', {
       backend: probe.backend,
       missing: openings.filter((opening) => opening.state !== 'open').length,
+      unlearned: unlearned.length,
     });
     return this.publish(checked);
+  }
+
+  private async learnMacs(): Promise<ReadonlyMap<string, string>> {
+    const { system, macs, log } = this.options;
+    const known = new Map(macs.all());
+    const waiting = [...this.cameras, ...this.pushing].filter(
+      (device) => !known.has(device.deviceId),
+    );
+    if (waiting.length === 0) {
+      return known;
+    }
+    const neighbors = await neighborMacs(system).catch((cause: unknown) => {
+      log.warn('firewall.neighbors_unreadable', { reason: messageOf(cause) });
+      return new Map<string, string>();
+    });
+    for (const device of waiting) {
+      const mac = neighbors.get(device.address);
+      if (mac !== undefined) {
+        macs.remember(device.deviceId, mac);
+        known.set(device.deviceId, mac);
+        log.info('firewall.mac_learned', { deviceId: device.deviceId });
+      }
+    }
+    return known;
   }
 
   private needsNetworks(): boolean {
@@ -338,7 +340,8 @@ export class FirewallMonitor {
     const needed = openings.filter(
       (opening) => opening.state !== 'open' && probe.fixable.has(opening.state),
     );
-    const fixes = needed.length === 0 || probe.draft === null ? null : probe.draft(needed);
+    const fixes =
+      probe.draft === null ? null : probe.draft({ needed, openings, unlearned: checked.unlearned });
     const draft = withLowPorts(fixes, checked.lowPorts);
     return {
       checkedAt: checked.checkedAt,
@@ -347,9 +350,22 @@ export class FirewallMonitor {
       detail: probe.detail,
       openings: [...openings],
       plan: draft === null ? null : revisionOf(draft),
-      cameras: this.reach(openings),
+      cameras: [...this.reach(openings), ...this.unlearnedReach(checked.unlearned)],
+      unlearned: [...checked.unlearned],
       lowPorts: checked.lowPorts,
     };
+  }
+
+  private unlearnedReach(unlearned: readonly UnlearnedDevice[]): CameraReach[] {
+    return unlearned
+      .filter((device) => device.purpose === 'camera')
+      .map((device) => ({
+        deviceId: device.deviceId,
+        mac: null,
+        address: device.address,
+        state: 'unknown',
+        failedAt: this.failures.get(device.deviceId) ?? null,
+      }));
   }
 
   private reach(openings: readonly FirewallOpening[]): CameraReach[] {
@@ -362,7 +378,8 @@ export class FirewallMonitor {
         const failedAt = this.failures.get(deviceId) ?? null;
         return {
           deviceId,
-          address: rule.source,
+          mac: rule.mac,
+          address: rule.address,
           state: reachOf(opening.state, failedAt),
           failedAt,
         };

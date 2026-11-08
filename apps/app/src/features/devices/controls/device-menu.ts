@@ -1,3 +1,4 @@
+import { createElement } from 'react';
 import { href } from '../../../app-shell/hrefs';
 import { usePinMenuItems } from '../../../app-shell/pin-menu';
 import type { MenuItem } from '../../../components/menu';
@@ -5,6 +6,7 @@ import type { Device } from '../../../store/state';
 import { openQuickControls } from '../../../store/ui-state';
 import { useScheduleItems } from '../../automations';
 import { changeDevice } from '../data/change-device';
+import { QuickControlsPanel } from '../quick/quick-controls';
 import { usePowerAction } from './power-toggle';
 import { settingsItem } from '../../../settings/settings-item';
 
@@ -40,6 +42,13 @@ export function useDeviceMenu(
           onPress: (): void => {
             openQuickControls(device.id);
           },
+          subpage: ({ back, close, opener }) =>
+            createElement(QuickControlsPanel, {
+              device,
+              onClose: back,
+              onExit: close,
+              subpage: { opener },
+            }),
         },
       ]
     : [];

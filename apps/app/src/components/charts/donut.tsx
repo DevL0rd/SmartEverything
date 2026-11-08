@@ -35,14 +35,21 @@ function Segment({
       d={arcPath({ cx: centre, cy: centre, r: radius }, arc.from, arc.to)}
       fill="none"
       stroke={stroke}
+      strokeOpacity={arc.shade}
       strokeWidth={thickness}
       strokeLinecap="butt"
     />
   );
 }
 
-function Swatch({ colour }: { readonly colour: ColourRole }): ReactNode {
-  const fill = { backgroundColor: useColour(colour) };
+function Swatch({
+  colour,
+  shade,
+}: {
+  readonly colour: ColourRole;
+  readonly shade: number;
+}): ReactNode {
+  const fill = { backgroundColor: useColour(colour), opacity: shade };
   return <View className="size-2.5 rounded-sm" style={fill} />;
 }
 
@@ -51,7 +58,7 @@ export function DonutLegend({ arcs }: { readonly arcs: readonly DonutArc[] }): R
     <View className="gap-1">
       {arcs.map((arc) => (
         <View key={arc.key} className="flex-row items-center gap-2">
-          <Swatch colour={arc.colour} />
+          <Swatch colour={arc.colour} shade={arc.shade} />
           <Text variant="caption" tone="variant" className="tabular">
             {arc.label} {Math.round(arc.share * 100)}%
           </Text>

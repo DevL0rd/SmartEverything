@@ -37,5 +37,10 @@ object AssistantCallEvents {
     overlayFlow.tryEmit(action)
   }
 
+  fun voiceMessage() {
+    overlayFlow.tryEmit(VOICE_MESSAGE)
+  }
+
+  private const val VOICE_MESSAGE = "voice_message"
   private const val OVERLAY_BUFFER = 16
 }

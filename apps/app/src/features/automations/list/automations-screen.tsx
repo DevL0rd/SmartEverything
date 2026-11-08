@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { useIsFocused } from 'expo-router';
 import { mainPageSettings } from '../../../app-shell/main-pages';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
@@ -76,7 +77,7 @@ export function ListBody({
     );
   }
   return (
-    <View className="gap-section-gap">
+    <View className="gap-3">
       {overview ? <Overview list={list} links={links} /> : null}
       <Filters choices={list.choices} view={view} total={entries.length} onChange={list.setView} />
       {list.shown === 0 ? (
@@ -101,6 +102,7 @@ export function ListBody({
 export function AutomationsScreen({ environment, links, onNew }: ListProps): ReactNode {
   const list = useAutomationsList(environment);
   const actions = useListActions();
+  const focused = useIsFocused();
   return (
     <Screen
       header={
@@ -110,7 +112,7 @@ export function AutomationsScreen({ environment, links, onNew }: ListProps): Rea
           {...(list.entries.length === 0 ? {} : { subtitle: headerLine(list.entries) })}
         />
       }
-      maxWidth="reading"
+      maxWidth="full"
       primaryAction={{
         label: 'New automation',
         icon: 'plus',
@@ -128,13 +130,16 @@ export function AutomationsScreen({ environment, links, onNew }: ListProps): Rea
             ),
           })}
     >
-      <WorkspaceRail
-        links={links.workspace}
-        extras={links.extras}
-        active="automations"
-        orientation="row"
-      />
-      <ListBody list={list} links={links} actions={actions} onNew={onNew} overview />
+      <View className="gap-3">
+        <WorkspaceRail
+          links={links.workspace}
+          extras={links.extras}
+          active="automations"
+          orientation="row"
+          focused={focused}
+        />
+        <ListBody list={list} links={links} actions={actions} onNew={onNew} overview />
+      </View>
     </Screen>
   );
 }

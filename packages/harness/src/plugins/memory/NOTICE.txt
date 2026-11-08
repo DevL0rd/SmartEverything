@@ -1,0 +1,4 @@
+This plugin follows the structure of dsh-memory 0.1.0 (https://www.npmjs.com/package/dsh-memory):
+model tools registered through ctx.tools.register and a recall text contributed through
+ctx.systemPrompt. dsh-memory is published under the MIT licence. The storage, the person and home
+scopes and everything else here are written for SmartEverything.

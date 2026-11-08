@@ -1,11 +1,11 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { AutomationRunSummary } from '@smarteverything/domain';
 import type { DetailLinks } from '../detail/detail-screen';
 import type { UseSlot } from '../detail/detail-model';
 import type { ListLinks } from '../list/list-links';
 import { links } from '../routes';
 
-export function runHref(run: Pick<AutomationRunSummary, 'automation_id' | 'id'>): Href {
+export function runHref(run: Pick<AutomationRunSummary, 'automation_id' | 'id'>): AppHref {
   return {
     pathname: '/automations/[automationId]/runs/[runId]',
     params: { automationId: run.automation_id, runId: run.id },
@@ -41,12 +41,21 @@ export const LIST_LINKS: ListLinks = {
   ],
 };
 
-const USE_LINKS: Partial<Record<UseSlot, (id: string) => Href>> = {
+export function workspaceSectionOf(pathname: string): string {
+  const selected = [...LIST_LINKS.workspace, ...LIST_LINKS.extras].find((item) => {
+    if (item.id === 'automations') return false;
+    const target = typeof item.href === 'string' ? item.href : item.href.pathname;
+    return pathname === target || pathname.startsWith(`${target}/`);
+  });
+  return selected?.id ?? 'automations';
+}
+
+const USE_LINKS: Partial<Record<UseSlot, (id: string) => AppHref>> = {
   automation: links.detail,
   function: links.node,
 };
 
-function useLink(slot: UseSlot, id: string): Href | null {
+function useLink(slot: UseSlot, id: string): AppHref | null {
   return USE_LINKS[slot]?.(id) ?? null;
 }
 

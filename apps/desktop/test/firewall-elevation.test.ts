@@ -16,6 +16,7 @@ const UFW_PLAN: FirewallPlan = {
   backend: 'ufw',
   revision: REVISION,
   unprivilegedPortStart: 80,
+  mac: null,
   rules: [
     {
       prepend: true,
@@ -90,7 +91,9 @@ describe('elevated firewall run', () => {
       revision: REVISION,
       program: "C:\\Program Files\\go2rtc's\\go2rtc.exe",
       appProgram: 'C:\\Users\\Ann\\smarteverything.exe',
-      rules: [{ purpose: 'camera', protocol: 'udp', source: '192.168.1.20' }],
+      rules: [
+        { purpose: 'camera', protocol: 'udp', mac: 'b8:88:80:d7:19:ac', address: '192.168.1.20' },
+      ],
     };
     const run = elevatedRunOf(plan, 'win32');
     expect(run.program).toBe('powershell.exe');

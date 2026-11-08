@@ -1,22 +1,22 @@
 {
   "name": "@smarteverything/desktop",
   "productName": "SmartEverything",
-  "version": "0.1.0",
+  "version": "0.1.8",
   "description": "SmartEverything for the desktop",
   "author": "DevL0rd",
   "private": true,
   "type": "module",
   "main": "dist/src/main.js",
   "scripts": {
-    "build": "tsc -b . && esbuild src/main.ts --bundle --platform=node --format=esm --target=node24 --external:electron --outfile=dist/src/main.js '--banner:js=import { createRequire as createDesktopRequire } from \"node:module\"; const require = createDesktopRequire(import.meta.url);' && esbuild src/preload.ts --bundle --platform=node --format=cjs --target=node24 --external:electron --outfile=dist/src/preload.cjs && pnpm run build:overlay && pnpm run build:service",
-    "build:service": "tsx ../../tooling/build-service.ts",
-    "package:headless": "tsx packaging/headless-service.ts",
+    "build": "tsc -b . && pnpm run build:shell && pnpm run build:computer",
     "start": "pnpm run build && electron-forge start",
-    "package": "pnpm run build && electron-forge package",
-    "package:dev": "APP_VARIANT=development pnpm run package",
-    "make": "pnpm run build && electron-forge make",
+    "package:dev": "pnpm run build && APP_VARIANT=development electron-forge package",
     "prepare:web": "pnpm --filter @smarteverything/app run export:web && test -f ../app/dist/index.html",
-    "build:overlay": "esbuild src/overlay/overlay-preload.ts --bundle --platform=node --format=cjs --target=node24 --external:electron --outfile=dist/src/overlay/overlay-preload.cjs && esbuild src/overlay/page/overlay-page.ts --bundle --platform=browser --format=iife --target=chrome140 --outfile=dist/src/overlay/overlay-page.js && esbuild src/overlay/page/overlay.css --bundle --loader:.ttf=file --asset-names=fonts/[name] --outfile=dist/src/overlay/overlay.css && tsx packaging/overlay-assets.ts"
+    "build:overlay": "esbuild src/overlay/overlay-preload.ts --bundle --platform=node --format=cjs --target=node24 --external:electron --outfile=dist/src/overlay/overlay-preload.cjs && esbuild src/overlay/page/overlay-page.ts --bundle --platform=browser --format=iife --target=chrome140 --outfile=dist/src/overlay/overlay-page.js && esbuild src/overlay/page/overlay.css --bundle --loader:.ttf=file --asset-names=fonts/[name] --outfile=dist/src/overlay/overlay.css && tsx packaging/overlay-assets.ts",
+    "build:shell": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node24 --external:electron --outfile=dist/src/main.js '--banner:js=import { createRequire as createDesktopRequire } from \"node:module\"; const require = createDesktopRequire(import.meta.url);' && esbuild src/preload.ts --bundle --platform=node --format=cjs --target=node24 --external:electron --outfile=dist/src/preload.cjs && pnpm run build:overlay",
+    "build:computer": "tsx ../../tooling/build-desktop-client-service.ts",
+    "package:release": "pnpm run prepare:web && pnpm run build:shell && APP_VARIANT=release electron-forge package",
+    "make:release": "pnpm run prepare:web && pnpm run build:shell && APP_VARIANT=release electron-forge make"
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",
@@ -32,9 +32,13 @@
     "@smarteverything/domain": "workspace:*",
     "@smarteverything/hub": "workspace:*",
     "@smarteverything/logging": "workspace:*",
+    "@types/range-parser": "1.2.7",
     "electron": "44.7.0",
     "esbuild": "0.28.2",
     "png2icons": "2.0.1",
     "zod": "4.4.3"
+  },
+  "dependencies": {
+    "range-parser": "1.3.0"
   }
 }

@@ -4,6 +4,7 @@ import {
   type HubFrame,
   type NodeFrame,
   type NodeHello,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -31,7 +32,7 @@ const HELLO: NodeHello = {
   actions: [],
   permissions: [],
   features: ['cpu'],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
 };
 
 const COLLECTOR: ComputerCollector = {

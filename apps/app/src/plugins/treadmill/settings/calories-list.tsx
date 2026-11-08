@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { href } from '../../../app-shell/hrefs';
 import { NavRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { useMaxHeartRateSetting } from '../../../features/fitness/data/goals';
+import { useMaxHeartRateText } from '../../../features/fitness/settings-rows/max-heart-rate-row';
 import { minimumSpeedLine } from '../model/settings-model';
 import { useConfigure } from '../data/treadmill-act';
 import { StepperRow } from './rows';
@@ -13,7 +13,7 @@ const GRADE = { min: 0, max: 15, step: 0.5 } as const;
 const SWITCH_SPEED_MAX = 15;
 
 function HeartRateRow({ deviceId }: { readonly deviceId: string }): ReactNode {
-  const maxHeartRate = useMaxHeartRateSetting();
+  const maxHeartRate = useMaxHeartRateText();
   return (
     <Anchored deviceId={deviceId} id="max-heart-rate" label="Maximum heart rate">
       <NavRow
@@ -21,7 +21,7 @@ function HeartRateRow({ deviceId }: { readonly deviceId: string }): ReactNode {
         title="Maximum heart rate"
         subtitle="Sets the heart rate zones on the live band. Changed in your fitness settings"
         wrapSubtitle
-        value={maxHeartRate === null ? 'Automatic' : `${String(maxHeartRate)} bpm`}
+        value={maxHeartRate}
         href={href.settings.focus('health', 'health-max-heart-rate')}
       />
     </Anchored>

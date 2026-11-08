@@ -2,16 +2,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   API_ENDPOINTS as E,
-  CLAUDE_SESSION_LIST_MAX,
   type ComputerAiSettingsPatch,
   type ComputerAiStatus,
-  type ClaudeStatus,
-  type ClaudeListedSession,
   type ComputerAiModel,
   type ProviderMetadata,
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
-import { computerAiKey, nativeSessionsKey } from '../../../queries/keys';
+import { computerAiKey } from '../../../queries/keys';
 import { notify } from '../../../components/toast-store';
 import { background } from '@smarteverything/logging';
 
@@ -44,39 +41,6 @@ export function useComputerAiChange(
     },
     onError: (error) =>
       notify({ message: 'Claude settings weren’t changed', error, tone: 'critical' }),
-  });
-}
-
-export function useNativeStatus(
-  deviceId: string,
-  enabled: boolean,
-): ReturnType<typeof useScreenQuery<ClaudeStatus>> {
-  return useScreenQuery({
-    queryKey: [...computerAiKey(deviceId), 'native-status'],
-    queryFn: () => api().call(E.readComputerClaudeStatus, { params: { deviceId } }),
-    enabled,
-  });
-}
-
-export function useNativeSessions(
-  deviceId: string,
-  archived: boolean,
-  enabled: boolean,
-): ReturnType<typeof useScreenQuery<ClaudeListedSession[]>> {
-  return useScreenQuery({
-    queryKey: nativeSessionsKey(deviceId, archived),
-    queryFn: () => readNativeSessions(deviceId, archived),
-    enabled,
-  });
-}
-
-export function readNativeSessions(
-  deviceId: string,
-  archived: boolean,
-): Promise<ClaudeListedSession[]> {
-  return api().call(E.listComputerClaudeSessions, {
-    params: { deviceId },
-    query: { archived, limit: CLAUDE_SESSION_LIST_MAX },
   });
 }
 

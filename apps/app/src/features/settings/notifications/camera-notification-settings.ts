@@ -83,7 +83,7 @@ export const CAMERA_NOTIFICATION_SETTINGS: readonly SettingDefinition[] = [
     keywords: [...BASE_KEYWORDS, 'cooldown', 'spam', 'too many', 'rate limit', 'repeat'],
     scope: 'client',
     control: 'select',
-    options: cooldownOptions(false),
+    options: cooldownOptions(null),
     visible: hasCameras,
     read: (state) => String(camerasOf(state).cooldownMinutes),
     write: (minutes: string, context: SettingContext) =>

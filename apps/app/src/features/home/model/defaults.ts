@@ -5,7 +5,7 @@ import type { DeviceDigest } from './spotlight';
 
 export const HOME_PAGE = 'home';
 
-export const HOME_RETIRED: ReadonlySet<string> = new Set(['devices-all']);
+export const HOME_RETIRED: ReadonlySet<string> = new Set(['devices-all', 'glance']);
 
 function spotlights(digest: DeviceDigest, first: WidgetSize): readonly BoardWidget[] {
   return digest.featured.map((deviceId, index) => ({
@@ -44,7 +44,6 @@ export function homeDefaults(
 ): BoardDefaults {
   return {
     compact: [
-      widget('glance', 'W'),
       widget('weather', 'W'),
       widget('scenes', 'W'),
       ...spotlights(digest, 'XL'),
@@ -56,7 +55,6 @@ export function homeDefaults(
       ...TAIL,
     ],
     medium: [
-      widget('glance', 'M'),
       widget('weather', 'M'),
       widget('scenes', 'M'),
       ...spotlights(digest, 'XL'),
@@ -68,7 +66,6 @@ export function homeDefaults(
       ...TAIL,
     ],
     expanded: [
-      widget('glance', 'M'),
       widget('weather', 'M'),
       widget('scenes', 'M'),
       ...spotlights(digest, 'XL'),

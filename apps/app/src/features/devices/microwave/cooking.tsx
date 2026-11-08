@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { ListRow } from '../../../components/list-row';
@@ -19,12 +19,14 @@ import { useRun } from './use-run';
 function ProgramSheet({
   device,
   onClose,
+  opener,
 }: {
+  readonly opener: RefObject<View | null>;
   readonly device: Device;
   readonly onClose: () => void;
 }): ReactNode {
   return (
-    <Sheet open title="Cooking program" detents={['full']} onClose={onClose}>
+    <Sheet subpage={{ opener }} open title="Cooking program" detents={['full']} onClose={onClose}>
       <CookPanel device={device} />
     </Sheet>
   );
@@ -41,9 +43,11 @@ export function MicrowaveCooking({ device }: { readonly device: Device }): React
 
 export function MicrowaveProgramRow({ device }: { readonly device: Device }): ReactNode {
   const [open, setOpen] = useState(false);
+  const opener = useRef<View>(null);
   return (
     <>
       <ListRow
+        pressRef={opener}
         title="Cooking program"
         subtitle="Mode, duration, power and temperature"
         icon="heater"
@@ -54,6 +58,7 @@ export function MicrowaveProgramRow({ device }: { readonly device: Device }): Re
       />
       {open ? (
         <ProgramSheet
+          opener={opener}
           device={device}
           onClose={() => {
             setOpen(false);
@@ -72,6 +77,7 @@ export function MicrowaveTile({ device }: { readonly device: Device }): ReactNod
 
 export function MicrowaveQuick({ device }: { readonly device: Device }): ReactNode {
   const [open, setOpen] = useState(false);
+  const opener = useRef<View>(null);
   const run = useRun(device);
   const quick = useQuick(device, true);
   const cycles = useCycles(device.id, true);
@@ -86,6 +92,7 @@ export function MicrowaveQuick({ device }: { readonly device: Device }): ReactNo
       </View>
       {cooking ? null : (
         <Button
+          ref={opener}
           label="Cooking program"
           icon="heater"
           variant="tonal"
@@ -104,6 +111,7 @@ export function MicrowaveQuick({ device }: { readonly device: Device }): ReactNo
       )}
       {open ? (
         <ProgramSheet
+          opener={opener}
           device={device}
           onClose={() => {
             setOpen(false);

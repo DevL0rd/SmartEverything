@@ -41,6 +41,7 @@ export interface ServiceRig {
   readonly registry: PrinterRegistry;
   readonly converted: { kind: string; length: number }[];
   readonly uploads: Map<string, { profile: string; name: string; data: Buffer }>;
+  readonly pictures: Map<string, { profile: string; name: string; data: Buffer }>;
   readonly searchable: { count: number };
   readonly forgotten: string[];
   readonly announced: string[];
@@ -69,8 +70,17 @@ interface Upload {
 
 type ActionFiles = ConstructorParameters<typeof SessionActions>[0]['ports']['files'];
 
-function filesOf(uploads: ReadonlyMap<string, Upload>): ActionFiles {
+function filesOf(
+  uploads: ReadonlyMap<string, Upload>,
+  pictures: ReadonlyMap<string, Upload>,
+): ActionFiles {
   return {
+    fromPicture: (caller, id): ReturnType<ActionFiles['fromPicture']> => {
+      const picture = pictures.get(id);
+      const allowed =
+        picture !== undefined && (caller.role === 'owner' || picture.profile === caller.profileId);
+      return Promise.resolve(allowed ? { data: picture.data, name: picture.name } : null);
+    },
     fromUpload: (caller, id): ReturnType<ActionFiles['fromUpload']> => {
       const upload = uploads.get(id);
       const allowed =
@@ -100,12 +110,13 @@ export function newServiceRig(
   const registry = new PrinterRegistry();
   const converted: { kind: string; length: number }[] = [];
   const uploads = new Map<string, Upload>();
+  const pictures = new Map<string, Upload>();
   const forgotten: string[] = [];
   const announced: string[] = [];
   const actions = new SessionActions({
     now: rig.host.clock.now,
     log: testLogger('printer'),
-    ports: { converter: converterOf(converted), files: filesOf(uploads) },
+    ports: { converter: converterOf(converted), files: filesOf(uploads, pictures) },
   });
   const service = new PrinterService({
     registry,
@@ -129,6 +140,7 @@ export function newServiceRig(
     registry,
     converted,
     uploads,
+    pictures,
     searchable: { count: 0 },
     forgotten,
     announced,

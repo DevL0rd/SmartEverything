@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { z } from 'zod';
-import type { AutomationV3 } from '@smarteverything/domain';
+import type { AutomationV4 } from '@smarteverything/domain';
 import { background, Logger } from '@smarteverything/logging';
 import { notify } from '../../../components/toast-store';
 import { useProfiles } from '../../../store/people';
 import { useDevices, useRooms } from '../../../store/selectors';
+import { useAutomationsSource } from '../data/source';
 import { useAutomationActions } from '../data/use-automation';
 import { useAutomations } from '../data/use-automations';
-import { automation } from '../model/templates/build';
+import { graphAutomation } from '../model/templates/graph-kit';
 import { templatesFor } from '../model/templates/all-templates';
 import type { SlotValues, Template } from '../model/templates/parameters';
 import { takenStates } from '../model/templates/taken';
@@ -23,7 +24,7 @@ const SCRATCH_NAME = 'New automation';
 
 const PARAMS = z.object({ template: z.string().optional() });
 
-function useCreate(): (name: string, definition: AutomationV3) => Promise<void> {
+function useCreate(): (name: string, definition: AutomationV4) => Promise<void> {
   const router = useRouter();
   const actions = useAutomationActions();
   return async (name, definition) => {
@@ -51,6 +52,7 @@ function useTemplates(): readonly Template[] {
 function Gallery(): ReactNode {
   const templates = useTemplates();
   const names = useRefNames();
+  const { lookup } = useAutomationsSource();
   const { rows } = useAutomations();
   const create = useCreate();
   const taken = useMemo(
@@ -62,17 +64,18 @@ function Gallery(): ReactNode {
     [templates, rows],
   );
   return (
-    <PageShell title="Templates">
+    <PageShell title="Templates" maxWidth="full">
       <GalleryScreen
         templates={templates}
         taken={taken}
         names={names}
+        kinds={lookup}
         onCreate={(entry: Template, values: SlotValues) => {
           background(create(entry.name, entry.build(values)), 'automations.create_template');
         }}
         onScratch={() => {
           background(
-            create(SCRATCH_NAME, automation({ triggers: [], body: [] })),
+            create(SCRATCH_NAME, graphAutomation({ triggers: [], body: [] })),
             'automations.create_scratch',
           );
         }}

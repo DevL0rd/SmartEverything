@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { Logger } from '@smarteverything/logging';
@@ -13,6 +13,8 @@ const ARGUMENTS: readonly string[] = [
   '--ignore-files',
   '**/*.test.ts',
   '--ignore-files',
+  '**/*.test.tsx',
+  '--ignore-files',
   '**/*.test-d.ts',
 ];
 
@@ -26,16 +28,17 @@ function projects(): readonly string[] {
 }
 
 function measures(project: string): boolean {
-  try {
-    execFileSync('pnpm', ['exec', 'type-coverage', '-p', project, ...ARGUMENTS], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    return true;
-  } catch (cause) {
-    log.warn('type_coverage.short', { project, report: String(cause) });
-    return false;
-  }
+  const result = spawnSync('pnpm', ['exec', 'type-coverage', '-p', project, ...ARGUMENTS], {
+    stdio: ['ignore', 'inherit', 'inherit'],
+  });
+  if (result.status === 0) return true;
+  log.warn('type_coverage.short', {
+    project,
+    status: result.status,
+    signal: result.signal,
+    error: result.error?.message,
+  });
+  return false;
 }
 
 const short = projects().filter((project) => !measures(project));

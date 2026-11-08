@@ -1,0 +1,22 @@
+import type { ModelSpec } from '@smarteverything/domain';
+import { LOUNGE_CHAIR_MODEL } from './lounge-chair';
+import { BEAN_BAG_MODEL, OTTOMAN_MODEL, POUF_MODEL } from './soft';
+import { COFFEE_TABLE_RECTANGLE_MODEL, COFFEE_TABLE_ROUND_MODEL } from './tables';
+
+export {
+  BEAN_BAG_MODEL,
+  COFFEE_TABLE_RECTANGLE_MODEL,
+  COFFEE_TABLE_ROUND_MODEL,
+  LOUNGE_CHAIR_MODEL,
+  OTTOMAN_MODEL,
+  POUF_MODEL,
+};
+
+export const LIVING_LOUNGE_MODELS: readonly ModelSpec[] = [
+  LOUNGE_CHAIR_MODEL,
+  OTTOMAN_MODEL,
+  POUF_MODEL,
+  BEAN_BAG_MODEL,
+  COFFEE_TABLE_RECTANGLE_MODEL,
+  COFFEE_TABLE_ROUND_MODEL,
+];

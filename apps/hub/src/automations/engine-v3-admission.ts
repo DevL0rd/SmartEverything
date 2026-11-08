@@ -12,19 +12,23 @@ export interface AdmissionSubject {
 }
 
 function readsOf(
-  ports: Pick<EngineV3Ports, 'world' | 'clock' | 'zone'>,
+  ports: Pick<EngineV3Ports, 'world' | 'clock' | 'zone' | 'kinds'>,
   subject: AdmissionSubject,
   fire: TriggerFire,
 ): NonNullable<AdmissionParts['reads']> {
-  const { world, clock, zone } = ports;
+  const { world, clock, zone, kinds } = ports;
   return {
-    nodes: leadingReads(subject.program.body.nodes),
-    port: readPort({ reads: world.reads, persistent: world.persistent }, subject.id),
-    pure: pureEvaluators({
-      timeZone: zone(),
-      now: () => clock.now().getTime(),
-      trigger: () => fire.key,
-    }),
+    nodes: leadingReads(subject.program.body.nodes, kinds),
+    kinds,
+    port: readPort({ reads: world.reads, persistent: world.persistent, kinds }, subject.id),
+    pure: pureEvaluators(
+      {
+        timeZone: zone(),
+        now: () => clock.now().getTime(),
+        trigger: () => fire.key,
+      },
+      kinds,
+    ),
   };
 }
 
@@ -33,7 +37,7 @@ function rootsOf(ports: Pick<EngineV3Ports, 'zone'>): Readonly<Record<string, Js
 }
 
 export function admissionParts(
-  ports: Pick<EngineV3Ports, 'world' | 'clock' | 'zone'>,
+  ports: Pick<EngineV3Ports, 'world' | 'clock' | 'zone' | 'kinds'>,
   subject: AdmissionSubject,
   fire: TriggerFire,
 ): AdmissionParts {
@@ -43,7 +47,7 @@ export function admissionParts(
 }
 
 export function conditionParts(
-  ports: Pick<EngineV3Ports, 'world' | 'clock' | 'zone'>,
+  ports: Pick<EngineV3Ports, 'world' | 'clock' | 'zone' | 'kinds'>,
   subject: AdmissionSubject,
   fire: TriggerFire,
 ): AdmissionParts {

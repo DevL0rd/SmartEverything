@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { Sheet } from '../../../components/sheet';
+import { Sheet, type SheetProps } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { percent } from '../../../format/number';
 import type { LiveSession } from './use-live-session';
@@ -51,6 +51,7 @@ export interface StreamInfoSheetProps {
   readonly live: LiveSession;
   readonly open: boolean;
   readonly onClose: () => void;
+  readonly subpage?: SheetProps['subpage'];
 }
 
 const UNKNOWN = 'Not reported';
@@ -59,10 +60,10 @@ function written(value: number | null | undefined, write: (value: number) => str
   return value === null || value === undefined ? UNKNOWN : write(value);
 }
 
-export function StreamInfoSheet({ live, open, onClose }: StreamInfoSheetProps): ReactNode {
+export function StreamInfoSheet({ live, open, onClose, subpage }: StreamInfoSheetProps): ReactNode {
   const stats = useSampledStats(live, open);
   return (
-    <Sheet open={open} onClose={onClose} title="Stream info" detents={['fit']}>
+    <Sheet open={open} onClose={onClose} title="Stream info" subpage={subpage} detents={['fit']}>
       <List inset>
         <ValueRow title="Connection" value={live.relay ? 'Through your server' : 'Direct'} />
         <ValueRow

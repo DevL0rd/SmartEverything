@@ -26,7 +26,6 @@ const V11_IDS: readonly string[] = [
   'date.start_of',
   'date.sun_times',
   'flow.forever',
-  'flow.sequence',
   'list.combine',
   'list.range',
   'list.reshape',
@@ -104,7 +103,6 @@ describe('v1.1 flow, logic, math, text, list, object, date and random kinds', ()
       expect(classes.get(id), id).toBe('read');
     }
     expect(classes.get('flow.forever')).toBe('control');
-    expect(classes.get('flow.sequence')).toBe('control');
     expect(classes.get('list.sort')).toBe('pure');
   });
 
@@ -117,10 +115,7 @@ describe('v1.1 flow, logic, math, text, list, object, date and random kinds', ()
       'index',
       'position',
     ]);
-    expect(NODE_REGISTRY.get('flow.sequence')?.scopes).toEqual({
-      required: ['body'],
-      optional: [],
-    });
+    expect(NODE_REGISTRY.has('flow.sequence')).toBe(false);
   });
 
   it('declares every convertible unit once with a known dimension', () => {
@@ -131,15 +126,13 @@ describe('v1.1 flow, logic, math, text, list, object, date and random kinds', ()
     expect(offered).toEqual(ids);
   });
 
-  it('requires a body scope on the endless loop and on the steps group', () => {
+  it('requires a body scope on the endless loop', () => {
     const idOf = '00000000-0000-4000-8000-00000000000a';
     const messagesFor = (kind: string, scopes: FlowNode['scopes']): readonly string[] =>
       structuralIssues({ ...PROGRAM, body: { nodes: [{ id: idOf, key: 'n', kind, scopes }] } }).map(
         (issue) => issue.message,
       );
-    for (const kind of ['flow.forever', 'flow.sequence']) {
-      expect(messagesFor(kind, undefined).join(' ')).toContain('"body" is required');
-      expect(messagesFor(kind, { body: { nodes: [] } })).toEqual([]);
-    }
+    expect(messagesFor('flow.forever', undefined).join(' ')).toContain('"body" is required');
+    expect(messagesFor('flow.forever', { body: { nodes: [] } })).toEqual([]);
   });
 });

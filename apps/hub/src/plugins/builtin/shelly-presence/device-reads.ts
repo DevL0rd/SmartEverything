@@ -1,6 +1,6 @@
 import { ApiError, JSON_VALUE } from '@smarteverything/domain';
 import type { ShellyAction } from '@smarteverything/shelly';
-import { redactText } from '@smarteverything/logging';
+import { clip } from '@smarteverything/logging';
 import { z } from 'zod';
 import { authenticatedShellyGet, readBounded, shellyHttp } from './http';
 import type { OperationHandler, OperationPorts } from './ports';
@@ -46,7 +46,7 @@ async function logText(ports: OperationPorts, path: string): Promise<string> {
 
 const deviceLogs: OperationHandler = async (ports, params) => {
   const { lines } = LOGS.parse(params);
-  return { text: redactText(await logText(ports, `/debug/log?n=${String(lines)}&f=0`), LOG_BYTES) };
+  return { text: clip(await logText(ports, `/debug/log?n=${String(lines)}&f=0`), LOG_BYTES) };
 };
 
 function logFilesIn(page: string): readonly { readonly name: string; readonly path: string }[] {
@@ -70,7 +70,7 @@ const deviceLogFile: OperationHandler = async (ports, params) => {
   const { path } = LOG_PATH.parse(params);
   return {
     name: decodeURIComponent(path.split('/').at(-1) ?? ''),
-    text: redactText(await logText(ports, path), LOG_BYTES),
+    text: clip(await logText(ports, path), LOG_BYTES),
   };
 };
 

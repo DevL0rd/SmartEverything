@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PLUGIN_KEY, PLUGIN_TITLE } from './plugin-parts';
-import type { JsonValue } from './values';
+import { isUnknownArray, type JsonValue } from './values';
 
 export const PLUGIN_LIST_ITEMS_MAX = 1000;
 
@@ -95,7 +95,7 @@ export function listItemProblem(setting: PluginListSetting, item: string): strin
 
 function listFits(setting: PluginListSetting, value: JsonValue): boolean {
   return (
-    Array.isArray(value) &&
+    isUnknownArray(value) &&
     value.length <= setting.maxItems &&
     new Set(value).size === value.length &&
     value.every((item) => typeof item === 'string' && listItemProblem(setting, item) === null)

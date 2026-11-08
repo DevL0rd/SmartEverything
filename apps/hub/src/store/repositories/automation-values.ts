@@ -1,15 +1,14 @@
 import {
   AUTOMATION_VALUE_ROW,
   ApiError,
-  NODE_REGISTRY,
   applyAutomationValueOperation,
   programReferences,
   validateAutomationValue,
   type AutomationValueContent,
   type AutomationValueOperation,
   type AutomationValueRow,
-  type AutomationV3,
   type FunctionV3,
+  type NodeKindLookup,
   type ReferenceContext,
 } from '@smarteverything/domain';
 import { storedRow } from '../codec';
@@ -17,6 +16,7 @@ import { found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
 import { AutomationFunctionsRepository } from './automation-functions';
 import { AutomationProgramsRepository } from './automation-programs';
+import { flatAutomation, flatFunction } from './automation-trees';
 
 const STORED_VALUE = storedRow(AUTOMATION_VALUE_ROW, { json: ['content'] });
 const COLUMNS = Object.keys(AUTOMATION_VALUE_ROW.shape).join(',');
@@ -62,6 +62,7 @@ export class AutomationValuesRepository {
   update(
     id: string,
     content: AutomationValueContent,
+    kinds: NodeKindLookup,
     expectedRevision?: number,
   ): AutomationValueRow {
     return this.context.write(() => {
@@ -77,7 +78,7 @@ export class AutomationValuesRepository {
           'invalid_request',
           'A Value’s kind cannot change. Create a new Value instead.',
         );
-      this.checkRemovedChoices(before.content, validated);
+      this.checkRemovedChoices(before.content, validated, kinds);
       return this.change(before, validated);
     });
   }
@@ -89,10 +90,10 @@ export class AutomationValuesRepository {
     });
   }
 
-  remove(id: string): void {
+  remove(id: string, kinds: NodeKindLookup): void {
     this.context.write(() => {
       const before = this.byId(id);
-      this.requireUnreferenced(id);
+      this.requireUnreferenced(id, kinds);
       this.context.sql.run(
         'remove automation Value',
         'delete from automation_values where id=$id',
@@ -102,27 +103,31 @@ export class AutomationValuesRepository {
     });
   }
 
-  private referenceContext(): ReferenceContext {
+  private referenceContext(kinds: NodeKindLookup): ReferenceContext {
     const functions = new AutomationFunctionsRepository(this.context);
     return {
-      kinds: (kind) => NODE_REGISTRY.get(kind),
+      kinds: (kind) => kinds.get(kind),
       functions: (id, pin): FunctionV3 | undefined => {
-        if (pin !== undefined) return functions.findRevision(id, pin)?.definition;
-        return functions.find(id) === undefined ? undefined : functions.latest(id).definition;
+        const row =
+          pin !== undefined
+            ? functions.findRevision(id, pin)
+            : functions.find(id) === undefined
+              ? undefined
+              : functions.latest(id);
+        return row === undefined ? undefined : flatFunction(row.definition);
       },
     };
   }
 
-  private requireUnreferenced(id: string): void {
-    const context = this.referenceContext();
-    const programsOf = (row: {
-      definition: AutomationV3;
-      draft: { program: AutomationV3 } | null;
-    }): readonly AutomationV3[] =>
-      row.draft === null ? [row.definition] : [row.definition, row.draft.program];
+  private requireUnreferenced(id: string, kinds: NodeKindLookup): void {
+    const context = this.referenceContext(kinds);
     const automation = new AutomationProgramsRepository(this.context)
       .list()
-      .find((row) => programsOf(row).some((program) => programReferences(program, id, context)));
+      .find((row) =>
+        [row.definition, ...(row.draft === null ? [] : [row.draft.program])].some((program) =>
+          programReferences(flatAutomation(program), id, context),
+        ),
+      );
     if (automation !== undefined)
       throw new ApiError(
         'conflict',
@@ -130,10 +135,15 @@ export class AutomationValuesRepository {
       );
   }
 
-  private checkRemovedChoices(before: AutomationValueContent, after: AutomationValueContent): void {
+  private checkRemovedChoices(
+    before: AutomationValueContent,
+    after: AutomationValueContent,
+    kinds: NodeKindLookup,
+  ): void {
     if (before.kind !== 'choice' || after.kind !== 'choice') return;
     for (const entry of before.choices) {
-      if (!after.choices.some((next) => next.id === entry.id)) this.requireUnreferenced(entry.id);
+      if (!after.choices.some((next) => next.id === entry.id))
+        this.requireUnreferenced(entry.id, kinds);
     }
   }
 

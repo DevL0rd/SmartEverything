@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { NativeHubTrust } from '@smarteverything/domain';
+import {
+  HUB_IDENTITY_PATH,
+  NATIVE_HUB_ROUTE_CONFIGURATION,
+  type NativeHubRouteConfiguration,
+} from '@smarteverything/domain';
 import {
   issueCertificate,
   listenPinned,
@@ -13,6 +17,7 @@ type Handler = (event: unknown, value: unknown) => unknown;
 const handlers = vi.hoisted(() => new Map<string, Handler>());
 
 vi.mock('electron', () => ({
+  app: { getPath: (): string => '/fake-desktop-user-data' },
   ipcMain: {
     handle: (channel: string, handler: Handler): void => {
       handlers.set(channel, handler);
@@ -70,13 +75,37 @@ function openWindow(id: number): Window {
   };
 }
 
-async function pinnedHub(): Promise<{ readonly hub: PinnedHub; readonly trust: NativeHubTrust }> {
+async function pinnedHub(): Promise<{
+  readonly hub: PinnedHub;
+  readonly trust: NativeHubRouteConfiguration;
+}> {
   const certificate = await issueCertificate(newKey(), newServerName());
-  const hub = await listenPinned(certificate, (_request, response) => {
-    response.end('home');
+  const holder: { identity?: unknown } = {};
+  const hub = await listenPinned(certificate, (request, response) => {
+    response.end(
+      request.url === HUB_IDENTITY_PATH
+        ? JSON.stringify({ service: 'smarteverything', identity: holder.identity })
+        : 'home',
+    );
   });
   closers.push(hub.close);
-  return { hub, trust: trustFor(certificate, hub.port, 'home') };
+  const base = trustFor(certificate, hub.port, 'home');
+  holder.identity = base.identity;
+  const trust = NATIVE_HUB_ROUTE_CONFIGURATION.parse({
+    canonicalOrigin: hub.url,
+    trust: base,
+    bindings: [
+      {
+        scopeId: 'home',
+        canonicalOrigin: hub.url,
+        hubId: base.identity.id,
+        principalId: 'principal',
+        credentialKind: 'client',
+        credentialGeneration: 0,
+      },
+    ],
+  });
+  return { hub, trust };
 }
 
 async function get(window: Window, url: string): Promise<unknown> {
@@ -91,18 +120,27 @@ async function get(window: Window, url: string): Promise<unknown> {
 
 async function register(): Promise<void> {
   const { registerHubNetworkIpc } = await import('../src/hub-network/ipc.js');
-  const registration = await registerHubNetworkIpc(START_URL, false);
+  const registration = await registerHubNetworkIpc(START_URL);
   closers.push(registration.close);
 }
 
 describe('hub network with several windows', () => {
+  it('runs the route authority and the chat page projection on every desktop, the hub computer included', async () => {
+    const { registerHubNetworkIpc } = await import('../src/hub-network/ipc.js');
+    const { desktopHtml } = await import('../src/html-preview/projections.js');
+    const registration = await registerHubNetworkIpc(START_URL);
+    closers.push(registration.close);
+    expect(registration.capabilities.routeAuthority).toBe(true);
+    expect(desktopHtml()).not.toBeNull();
+  });
+
   it('keeps a home reachable for the second window when the first one closes', async () => {
     const { hub, trust } = await pinnedHub();
     await register();
     const first = openWindow(1);
     const second = openWindow(2);
-    await first.invoke('desktop:hub-configure-trust', trust);
-    await second.invoke('desktop:hub-configure-trust', trust);
+    await first.invoke('desktop:hub-authority-configure', trust);
+    await second.invoke('desktop:hub-authority-configure', trust);
     first.destroy();
     expect(await get(second, hub.url)).toMatchObject({ status: 200, body: 'home' });
   });
@@ -112,18 +150,18 @@ describe('hub network with several windows', () => {
     await register();
     const first = openWindow(1);
     const second = openWindow(2);
-    await first.invoke('desktop:hub-configure-trust', trust);
-    await second.invoke('desktop:hub-configure-trust', trust);
-    await first.invoke('desktop:hub-clear-trust', 'home');
+    await first.invoke('desktop:hub-authority-configure', trust);
+    await second.invoke('desktop:hub-authority-configure', trust);
+    await first.invoke('desktop:hub-authority-clear', 'home');
     expect(await get(second, hub.url)).toMatchObject({ status: 200 });
-    await second.invoke('desktop:hub-clear-trust', 'home');
+    await second.invoke('desktop:hub-authority-clear', 'home');
     await expect(get(second, hub.url)).rejects.toThrow('no enrolled trust');
   });
 
   it('lets a second window read a home that the first window configured', async () => {
     const { hub, trust } = await pinnedHub();
     await register();
-    await openWindow(1).invoke('desktop:hub-configure-trust', trust);
+    await openWindow(1).invoke('desktop:hub-authority-configure', trust);
     expect(await get(openWindow(2), hub.url)).toMatchObject({ status: 200 });
   });
 
@@ -131,7 +169,7 @@ describe('hub network with several windows', () => {
     const { hub, trust } = await pinnedHub();
     await register();
     const window = openWindow(1);
-    await window.invoke('desktop:hub-configure-trust', trust);
+    await window.invoke('desktop:hub-authority-configure', trust);
     window.navigate(true);
     expect(await get(window, hub.url)).toMatchObject({ status: 200, body: 'home' });
     window.navigate(false);

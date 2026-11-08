@@ -21,6 +21,7 @@ export * from './computer-tiling';
 export * from './computer-windows';
 export * from './connect-links';
 export * from './frames';
+export * from './relay-frames';
 export * from './metrics';
 export * from './node-requests';
 export * from './report';

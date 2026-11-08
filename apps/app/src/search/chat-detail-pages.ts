@@ -1,9 +1,8 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import type { SearchSources } from '@smarteverything/domain';
 import { href } from '../app-shell/hrefs';
 import type { IconName } from '../components/icon';
 import { BROWSER_ACTIONS } from '../features/assistant/browser/browser-actions';
-import { DETAIL_TABS, type DetailTab } from '../features/assistant/details/details-target';
 import type { SearchChat, SourceLinks } from './sources';
 
 interface ChatPage {
@@ -13,57 +12,14 @@ interface ChatPage {
   readonly keywords: readonly string[];
 }
 
-interface TabPage extends ChatPage {
-  readonly id: DetailTab | 'browser';
-}
-
-const TAB_PAGES: Readonly<Record<DetailTab, TabPage>> = {
-  overview: {
-    id: 'overview',
-    title: 'Overview',
-    icon: 'info',
-    keywords: [
-      'details',
-      'model',
-      'runs on',
-      'machine',
-      'access',
-      'context',
-      'compact',
-      'cost',
-      'started from',
-      'parent chat',
-      'rename',
-      'pin',
-    ],
-  },
-  activity: {
-    id: 'activity',
-    title: 'Activity',
-    icon: 'activity',
-    keywords: ['agents', 'helpers', 'runs', 'work', 'background', 'images', 'progress', 'steps'],
-  },
-  files: {
-    id: 'files',
-    title: 'Files',
-    icon: 'folder',
-    keywords: ['attachment', 'file', 'uploads', 'project files', 'workspace files'],
-  },
-  branches: {
-    id: 'branches',
-    title: 'Branches',
-    icon: 'layers',
-    keywords: ['branch', 'history', 'fork'],
-  },
-  tools: {
-    id: 'tools',
-    title: 'Tools',
-    icon: 'wrench',
-    keywords: ['allowed tools', 'allow all', 'permissions', 'mcp', 'home tools'],
-  },
+const FILES_PAGE: ChatPage = {
+  id: 'files',
+  title: 'Files',
+  icon: 'folder',
+  keywords: ['attachment', 'file', 'uploads', 'project files', 'workspace files'],
 };
 
-const BROWSER_PAGE: TabPage = {
+const BROWSER_PAGE: ChatPage = {
   id: 'browser',
   title: 'Browser',
   icon: 'globe',
@@ -85,9 +41,17 @@ const BROWSER_PAGE: TabPage = {
 
 interface ControlPage extends ChatPage {
   readonly operation?: string;
+  readonly parent?: string;
 }
 
 const CONTROL_PAGES: readonly ControlPage[] = [
+  {
+    id: 'rename',
+    title: 'Rename chat',
+    icon: 'pencil',
+    operation: 'rename',
+    keywords: ['title', 'name', 'edit name', 'change title'],
+  },
   {
     id: 'model',
     title: 'Change model',
@@ -158,10 +122,26 @@ const CONTROL_PAGES: readonly ControlPage[] = [
       'send later',
     ],
   },
+  {
+    id: 'tools',
+    title: 'Tools for this chat',
+    icon: 'wrench',
+    operation: 'access-tools',
+    parent: 'access',
+    keywords: ['allowed tools', 'allow all', 'permissions', 'mcp', 'home tools'],
+  },
+  {
+    id: 'plan',
+    title: 'Plan first',
+    icon: 'plan',
+    operation: 'model',
+    parent: 'model',
+    keywords: ['plan mode', 'turn on', 'turn off', 'approve plan'],
+  },
 ];
 
 interface Registered {
-  readonly to: Href;
+  readonly to: AppHref;
   readonly icon: IconName;
   readonly parent: string;
 }
@@ -173,55 +153,80 @@ function register(out: SourceLinks, path: string, page: Registered): void {
 }
 
 function agentPages(chat: SearchChat, out: SourceLinks): SearchSources['pages'] {
-  return (chat.agents ?? []).map((row) => {
+  return (chat.agents ?? []).flatMap((row) => {
+    if (row.child_chat_id === null) return [];
     const path = `chat:${chat.id}#agent:${row.id}`;
     register(out, path, {
-      to: href.assistantChat(row.child_chat_id ?? chat.id, { sheet: 'chat', agent: row.id }),
+      to: href.assistantChat(row.child_chat_id),
       icon: 'users',
       parent: `page:chat:${chat.id}`,
     });
-    return {
-      path,
-      title: row.title,
-      description: chat.title,
-      keywords: [
-        'agent',
-        'helper',
-        row.source,
-        row.state,
-        row.task ?? '',
-        row.progress ?? '',
-        row.result ?? '',
-      ],
-    };
+    return [
+      {
+        path,
+        title: row.title,
+        description: chat.title,
+        keywords: [
+          'agent',
+          'helper',
+          row.source,
+          row.state,
+          row.task ?? '',
+          row.progress ?? '',
+          row.result ?? '',
+        ],
+      },
+    ];
   });
 }
 
-function tabPages(chat: SearchChat, out: SourceLinks): SearchSources['pages'] {
-  return [...DETAIL_TABS.map((tab) => TAB_PAGES[tab]), BROWSER_PAGE].map((tab) => {
-    const path = `chat:${chat.id}#${tab.id}`;
-    const to =
-      tab.id === 'browser'
-        ? href.assistantChat(chat.id, { section: 'browser' })
-        : href.assistantChat(chat.id, { sheet: 'chat', section: tab.id });
-    register(out, path, { to, icon: tab.icon, parent: `page:chat:${chat.id}` });
-    return { path, title: tab.title, description: chat.title, keywords: [...tab.keywords] };
+function browserPage(chat: SearchChat, out: SourceLinks): SearchSources['pages'][number] {
+  const path = `chat:${chat.id}#${BROWSER_PAGE.id}`;
+  register(out, path, {
+    to: href.assistantChat(chat.id, { section: 'browser' }),
+    icon: BROWSER_PAGE.icon,
+    parent: `page:chat:${chat.id}`,
   });
+  return {
+    path,
+    title: BROWSER_PAGE.title,
+    description: chat.title,
+    keywords: [...BROWSER_PAGE.keywords],
+  };
+}
+
+function filesPage(chat: SearchChat, out: SourceLinks): SearchSources['pages'][number] {
+  const path = `chat:${chat.id}#${FILES_PAGE.id}`;
+  register(out, path, {
+    to: href.assistantChatFiles(chat.id),
+    icon: FILES_PAGE.icon,
+    parent: `page:chat:${chat.id}`,
+  });
+  return {
+    path,
+    title: FILES_PAGE.title,
+    description: chat.title,
+    keywords: [...FILES_PAGE.keywords],
+  };
 }
 
 function controlPages(chat: SearchChat, out: SourceLinks): SearchSources['pages'] {
-  return CONTROL_PAGES.map((control) => {
+  return CONTROL_PAGES.flatMap((control) => {
+    if (control.id === 'plan' && chat.runtime !== 'dsh') return [];
     const path = `chat:${chat.id}#control:${control.id}`;
     const to = href.assistantChat(chat.id, {
       ...(control.operation === undefined ? {} : { operation: control.operation }),
     });
-    register(out, path, { to, icon: control.icon, parent: `page:chat:${chat.id}` });
-    return {
-      path,
-      title: control.title,
-      description: chat.title,
-      keywords: ['chat', ...control.keywords],
-    };
+    const parent = control.parent === undefined ? '' : `#control:${control.parent}`;
+    register(out, path, { to, icon: control.icon, parent: `page:chat:${chat.id}${parent}` });
+    return [
+      {
+        path,
+        title: control.title,
+        description: chat.title,
+        keywords: ['chat', ...control.keywords],
+      },
+    ];
   });
 }
 
@@ -243,9 +248,11 @@ function browserActionPages(chat: SearchChat, out: SourceLinks): SearchSources['
 }
 
 export function chatDetailPages(chat: SearchChat, out: SourceLinks): SearchSources['pages'] {
+  if (chat.historyOnly === true) return [filesPage(chat, out)];
   return [
     ...agentPages(chat, out),
-    ...tabPages(chat, out),
+    browserPage(chat, out),
+    filesPage(chat, out),
     ...controlPages(chat, out),
     ...browserActionPages(chat, out),
   ];

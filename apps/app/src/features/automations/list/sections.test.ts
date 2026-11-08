@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -61,7 +62,7 @@ function nextFrame(): void {
 
 function mount(count: number, paused = 0): void {
   const rows = Array.from({ length: count }, (_, index) =>
-    rowOf(index + 1, evented(), { enabled: index >= paused }),
+    rowOf(index + 1, evented(), { enabled: index >= paused }, STATIC_KIND_LOOKUP),
   );
   const sections = sectionsOf(entriesOf(rows, new Map(), contextFor()), DEFAULT_VIEW);
   root = createRoot({

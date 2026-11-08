@@ -38,21 +38,19 @@ export function FitnessToolbar({ day, today, range, ranges }: FitnessToolbarProp
       />
     );
   return (
-    <View className="w-full gap-3">
-      <View className="flex-row flex-wrap items-center gap-2">
-        <DateNav
-          value={new Date(startOfDayKey(day))}
-          range={range}
-          max={new Date(startOfDayKey(today))}
-          onChange={(date) => {
-            router.setParams({ day: dayKeyOf(date.getTime()) });
-          }}
-        />
-        {split ? segmented : null}
-        <View className="flex-1" />
+    <View className="w-full flex-row flex-wrap items-center gap-x-2 gap-y-3">
+      <DateNav
+        value={new Date(startOfDayKey(day))}
+        range={range}
+        max={new Date(startOfDayKey(today))}
+        onChange={(date) => {
+          router.setParams({ day: dayKeyOf(date.getTime()) });
+        }}
+      />
+      {segmented}
+      <View className="ml-auto shrink-0">
         <SyncChip compact={!split} />
       </View>
-      {split ? null : segmented}
     </View>
   );
 }

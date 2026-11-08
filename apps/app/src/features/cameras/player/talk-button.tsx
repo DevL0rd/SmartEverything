@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
@@ -8,6 +8,7 @@ import { useIdiom } from '../../../design/platform';
 import { selectionTick } from '../../../platform/haptics';
 
 export interface TalkButtonProps {
+  readonly compact: boolean;
   readonly talking: boolean;
   readonly pending: boolean;
   readonly setTalking: (talking: boolean) => void;
@@ -20,10 +21,11 @@ function labelOf(talking: boolean, pending: boolean): string {
   return pending ? 'Starting… tap to cancel' : 'Tap to talk';
 }
 
-function shapeOf(touch: boolean, talking: boolean): string {
+function shapeOf(touch: boolean, talking: boolean, compact: boolean): string {
+  const normal = cn('gap-2 px-5', touch ? 'h-14' : 'h-control-h');
   return cn(
-    'flex-row items-center gap-2 rounded-full px-5',
-    touch ? 'h-14' : 'h-control-h',
+    'flex-row items-center rounded-full',
+    compact ? 'size-touch-min justify-center' : normal,
     talking ? 'bg-critical' : 'bg-white/16',
   );
 }
@@ -32,7 +34,30 @@ function hintOf(on: boolean): string {
   return on ? 'Turns your microphone off' : 'Turns your microphone on until you tap again';
 }
 
-export function TalkButton({ talking, pending, setTalking }: TalkButtonProps): ReactNode {
+function TalkIcon({
+  compact,
+  pending,
+  talking,
+  touch,
+}: Pick<TalkButtonProps, 'compact' | 'pending' | 'talking'> & {
+  readonly touch: boolean;
+}): ReactNode {
+  if (compact && pending && !talking) {
+    return <ActivityIndicator size="small" colorClassName="accent-on-surface" />;
+  }
+  return (
+    <>
+      {talking ? (
+        <View
+          className={cn('size-2.5 rounded-full bg-white', compact && 'absolute right-1 top-1')}
+        />
+      ) : null}
+      <Icon name="mic" size={touch ? 24 : 20} tone={talking ? 'onPrimary' : 'default'} />
+    </>
+  );
+}
+
+export function TalkButton({ compact, talking, pending, setTalking }: TalkButtonProps): ReactNode {
   const touch = useIdiom() === 'touch';
   const on = talking || pending;
   return (
@@ -46,13 +71,14 @@ export function TalkButton({ talking, pending, setTalking }: TalkButtonProps): R
         selectionTick();
         setTalking(!on);
       }}
-      className={shapeOf(touch, talking)}
+      className={shapeOf(touch, talking, compact)}
     >
-      {talking ? <View className="size-2.5 rounded-full bg-white" /> : null}
-      <Icon name="mic" size={touch ? 24 : 20} tone={talking ? 'onPrimary' : 'default'} />
-      <Text variant="label" tone={talking ? 'onPrimary' : 'default'}>
-        {labelOf(talking, pending)}
-      </Text>
+      <TalkIcon compact={compact} pending={pending} talking={talking} touch={touch} />
+      {compact ? null : (
+        <Text variant="label" tone={talking ? 'onPrimary' : 'default'}>
+          {labelOf(talking, pending)}
+        </Text>
+      )}
     </Interactive>
   );
 }

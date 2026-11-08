@@ -11,14 +11,20 @@ import {
   stopListening,
   watchListeningLevel,
 } from '../../../../modules/health-connect';
-import { claimPhoneWake, readPhoneEarConfig, reportPhoneEarState } from '../../../api/phone-ear';
+import {
+  claimPhoneWake,
+  readListeningSources,
+  readPhoneEarConfig,
+  reportPhoneEarState,
+} from '../../../api/phone-ear';
 import { connectionState } from '../../../api/connection/connection';
 import { onLocalNetwork } from '../../../api/connection/local-network';
 import { href } from '../../../app-shell/hrefs';
 import { callActive, callState } from '../call/call-state';
 import { callEngine } from '../call/engine/engine';
-import { recentChatId } from '../data/recent-chat';
+import { setSuperseded } from '../overlay/overlay-state';
 import { PhoneEar } from './phone-ear';
+import { announceSupersededBy } from './superseded-notice';
 
 const WAKE_CALL_SOURCE = 'assistant';
 
@@ -42,19 +48,18 @@ function paired(): { readonly url: string; readonly token: string } {
 
 function startWakeCall(): void {
   const connection = paired();
-  const chatId = recentChatId();
   if (AppState.currentState !== 'active' && overlayLinked()) {
     background(showAssistantSession(), 'phone_ear.session_failed');
   }
   callEngine.start({
     connection,
     source: WAKE_CALL_SOURCE,
-    chatId,
+    chatId: null,
     answering: null,
     device: WAKE_CALL_DEVICE,
   });
   if (AppState.currentState === 'active') {
-    router.push(href.assistantCall(WAKE_CALL_SOURCE, chatId));
+    router.push(href.assistantCall(WAKE_CALL_SOURCE));
   }
 }
 
@@ -81,6 +86,14 @@ export const phoneEar = new PhoneEar({
     start: startWakeCall,
     end: (): void => {
       callEngine.end();
+    },
+  },
+  overlay: {
+    superseded: (winner): void => {
+      background(
+        announceSupersededBy(winner, readListeningSources, setSuperseded),
+        'phone_ear.superseded_notice_failed',
+      );
     },
   },
   environment: {

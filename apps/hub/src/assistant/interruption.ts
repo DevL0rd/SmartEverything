@@ -1,4 +1,8 @@
-import { isInterruption } from '@smarteverything/domain';
+import {
+  ASSISTANT_CONTINUE_NOTE,
+  isInterruption,
+  type MessageOrigin,
+} from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import { reasonWithActions } from './failure-reason';
 
@@ -11,7 +15,16 @@ function cause(reason: string): string {
   return `Your previous turn was interrupted (${reason.replace(/\.$/u, '').toLowerCase()}).`;
 }
 
-export const CONTINUE_NOTE = 'Continue the work you were doing.';
+export const CONTINUE_NOTE = ASSISTANT_CONTINUE_NOTE;
+
+export const HUB_AUTHOR = 'SmartEverything';
+
+export const HUB_ORIGIN: MessageOrigin = {
+  source: 'hub',
+  plugin_id: null,
+  device_id: null,
+  name: HUB_AUTHOR,
+};
 
 export function interruptionNote(store: Store, chatId: string): string | null {
   const reply = store.assistantChat.latestSettledReply(chatId);

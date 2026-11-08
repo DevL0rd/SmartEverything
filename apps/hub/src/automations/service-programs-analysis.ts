@@ -1,10 +1,11 @@
 import {
   FLOW_SCOPE_OUTPUTS,
   JSON_VALUE,
-  NODE_REGISTRY,
   type AutomationProgramProblem,
   type AutomationProgramReply,
   type JsonValue,
+  type NodeKind,
+  type NodeKindLookup,
   type RefKind,
 } from '@smarteverything/domain';
 import { z } from 'zod';
@@ -22,11 +23,19 @@ import {
   interfaceOf,
   type FunctionInterface,
 } from '@smarteverything/flow/functions/interface-hash';
-import { applyPatch, type PatchResult } from '@smarteverything/flow/ops/reducer';
-import { PATCH_OPS, type PatchOp } from '@smarteverything/flow/ops/schema';
+import {
+  applyPatch,
+  type PatchOptions,
+  type PatchProblem,
+  type PatchResult,
+} from '@smarteverything/flow/graph/ops/reducer';
+import { PATCH_OPS, type PatchOp } from '@smarteverything/flow/graph/ops/schema';
+import type { GraphProblem } from '@smarteverything/flow/graph/problem-types';
+import { structuredOf } from '@smarteverything/flow/graph/structured-of';
 import type { Program } from '@smarteverything/flow/program/walk';
-import type { FunctionRevisionRow } from '@smarteverything/domain';
+import type { FunctionRevisionRow, ProgramV4 } from '@smarteverything/domain';
 import { StoreNotFoundError } from '../store/context';
+import type { KindCatalog } from './plugin-kinds/catalog';
 import type { AutomationFunctionsRepository } from '../store/repositories/automation-functions';
 import type { AutomationPlansRepository } from '../store/repositories/automation-plans';
 import type { AutomationProgramsRepository } from '../store/repositories/automation-programs';
@@ -42,6 +51,7 @@ export interface AnalysisEnv {
   readonly functions: Pick<AutomationFunctionsRepository, 'find' | 'latest' | 'findRevision'>;
   readonly plans: Pick<AutomationPlansRepository, 'find'>;
   readonly secrets: Pick<AutomationSecrets, 'list'>;
+  readonly kinds: NodeKindLookup & Pick<KindCatalog, 'availability'>;
 }
 
 export interface ProgramEnv extends AnalysisEnv {
@@ -66,9 +76,15 @@ export interface Analysis {
   readonly built: Built | undefined;
 }
 
-export const kindOf = (id: string): ReturnType<typeof NODE_REGISTRY.get> => NODE_REGISTRY.get(id);
+export function kindResolver(
+  env: Pick<AnalysisEnv, 'kinds'>,
+): (id: string) => NodeKind | undefined {
+  return (id) => env.kinds.get(id);
+}
 
 const ACTION = z.record(z.string(), JSON_VALUE);
+
+const REFUSAL_SHOWN = 5;
 
 function present(work: () => unknown): boolean {
   try {
@@ -118,9 +134,18 @@ function interfaceOfCallee(
   return row === undefined ? undefined : interfaceOf(row.definition);
 }
 
+function lintKinds(env: Pick<AnalysisEnv, 'kinds'>): LintContext['kinds'] {
+  return (id) => {
+    const kind = env.kinds.get(id);
+    const availability = env.kinds.availability(id);
+    if (kind === undefined || availability === undefined) return kind;
+    return { ...kind, availability };
+  };
+}
+
 export function lintContextOf(env: AnalysisEnv): LintContext {
   return {
-    kinds: kindOf,
+    kinds: lintKinds(env),
     automations: (id) => env.programs.find(id)?.definition,
     scopeOutputs: (kind) => FLOW_SCOPE_OUTPUTS[kind] ?? [],
     references: (kind, id) => REFERENCES[kind](env, id),
@@ -157,27 +182,46 @@ function hasErrorProblems(problems: readonly AutomationProgramProblem[]): boolea
   return problems.some((found) => found.severity === 'error');
 }
 
+function graphProblemOf(found: GraphProblem): AutomationProgramProblem {
+  return {
+    severity: 'error',
+    code: found.code,
+    ...(found.nodeId === undefined ? {} : { nodeId: found.nodeId }),
+    ...(found.key === undefined ? {} : { key: found.key }),
+    ...(found.port === undefined ? {} : { port: found.port }),
+    message: found.message,
+    fix: { summary: found.fix },
+  };
+}
+
 function lowered(env: AnalysisEnv, program: Program, problems: readonly Finding[]): Analysis {
-  const result: LowerResult = lower(program, { kinds: kindOf });
+  const kinds = kindResolver(env);
+  const result: LowerResult = lower(program, { kinds });
   const shown = problems.map(problemOf);
   if (!result.ok)
     return { problems: [...shown, ...result.problems.map(lowerProblemOf)], built: undefined };
-  const manifest = manifestOf(result.plan, kindOf, resolvePlanOf(env));
+  const manifest = manifestOf(result.plan, kinds, resolvePlanOf(env));
   return { problems: shown, built: { plan: result.plan, manifest } };
 }
 
-export function analyse(env: AnalysisEnv, program: Program): Analysis {
-  const findings = lint(program, lintContextOf(env));
+export function analyse(env: AnalysisEnv, program: ProgramV4): Analysis {
+  const structured = structuredOf(program, env.kinds);
+  if (structured.kind === 'unstructured') {
+    return { problems: structured.problems.map(graphProblemOf), built: undefined };
+  }
+  const findings = lint(structured.tree, lintContextOf(env));
   return hasErrors(findings)
     ? { problems: findings.map(problemOf), built: undefined }
-    : lowered(env, program, findings);
+    : lowered(env, structured.tree, findings);
 }
 
 export function lintProblems(
   env: AnalysisEnv,
-  program: Program,
+  program: ProgramV4,
 ): readonly AutomationProgramProblem[] {
-  return lint(program, lintContextOf(env)).map(problemOf);
+  const structured = structuredOf(program, env.kinds);
+  if (structured.kind === 'unstructured') return structured.problems.map(graphProblemOf);
+  return lint(structured.tree, lintContextOf(env)).map(problemOf);
 }
 
 export function planValue(plan: Plan): JsonValue {
@@ -190,15 +234,38 @@ function parseOps(ops: readonly unknown[]): readonly PatchOp[] {
   return parsed.data;
 }
 
-export function refusedPatch(
-  result: Extract<PatchResult, { ok: false }>,
-): AutomationProgramProblem {
-  const where = result.opIndex === undefined ? '' : ` (operation ${String(result.opIndex + 1)})`;
-  return failure(result.code, `${result.reason}${where}`);
+function patchProblemOf(found: PatchProblem): AutomationProgramProblem {
+  return {
+    severity: 'error',
+    code: found.code,
+    ...(found.key === undefined ? {} : { key: found.key }),
+    ...(found.port === undefined ? {} : { port: found.port }),
+    message: found.message,
+    ...(found.fix === undefined ? {} : { fix: { summary: found.fix } }),
+  };
 }
 
-export function patched(program: Program, ops: readonly unknown[]): PatchResult {
-  return applyPatch(program, parseOps(ops));
+export function refusedPatch(
+  result: Extract<PatchResult, { ok: false }>,
+): readonly AutomationProgramProblem[] {
+  if (result.problems.length > 0) return result.problems.map(patchProblemOf);
+  const where = result.opIndex === undefined ? '' : ` (operation ${String(result.opIndex + 1)})`;
+  return [failure(result.code, `${result.reason}${where}`)];
+}
+
+export function refusalText(problems: readonly AutomationProgramProblem[]): string {
+  return problems
+    .slice(0, REFUSAL_SHOWN)
+    .map((found) => found.message)
+    .join('; ');
+}
+
+export function patched(
+  program: ProgramV4,
+  ops: readonly unknown[],
+  options: PatchOptions,
+): PatchResult {
+  return applyPatch(program, parseOps(ops), options);
 }
 
 export function reply(

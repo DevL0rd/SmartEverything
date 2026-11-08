@@ -1,7 +1,8 @@
+import type { ReactNode } from 'react';
 import { Stage, ToastCard } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
-const base = { id: 1, count: 1, leaving: false };
+const base = { id: 1, count: 1, leaving: false, held: false, undoable: false };
 const body = (
   <Col>
     <ToastCard
@@ -25,12 +26,12 @@ const body = (
     <ToastCard toast={{ ...base, id: 3, message: 'Lamp turned off', count: 3 }} />
   </Col>
 );
-export const Tones = () => (
+export const Tones = (): ReactNode => (
   <Stage theme="dark" width={420}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactNode => (
   <Stage theme="light" width={420}>
     {body}
   </Stage>

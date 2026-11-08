@@ -1,4 +1,9 @@
-import { NODE_FRAME, type ComputerFeature, type NodeFrame } from '@smarteverything/domain';
+import {
+  NODE_FRAME,
+  type ComputerFeature,
+  type NodeFrame,
+  NODE_PROTOCOL_VERSION,
+} from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ComputerCollector } from '../../src/node/collectors/collector';
 import { ComputerNode } from '../../src/node/computer-node';
@@ -18,7 +23,7 @@ interface Rig {
   readonly stopped: () => { readonly presence: boolean; readonly control: boolean };
 }
 
-function rig(running: boolean): Rig {
+function rig(running: boolean, over: Partial<ComputerControls> = {}): Rig {
   captureLogs();
   const links = localLinks();
   const sent: NodeFrame[] = [];
@@ -42,7 +47,7 @@ function rig(running: boolean): Rig {
       actions: [],
       permissions: [],
       features: [...HELLO_FEATURES],
-      role: 'pc',
+      protocol: NODE_PROTOCOL_VERSION,
     }),
     readers: {
       summary: () => SUMMARY,
@@ -101,6 +106,7 @@ function rig(running: boolean): Rig {
         return Promise.resolve();
       },
     },
+    ...over,
   };
   const node = new ComputerNode({
     collector,
@@ -202,5 +208,73 @@ describe('what the computer node says about tiling', () => {
     await until(() => helloFeatures(test.sent).length === 1, 'the hello');
     test.node.stop();
     expect(test.stopped()).toEqual({ presence: true, control: true });
+  });
+});
+
+describe('what the computer node says when the desktop session appears after it started', () => {
+  it('sends the features again with the screens once the session variables arrive', async () => {
+    let sessionUp = false;
+    let announce = (): void => undefined;
+    const unused = unusedControls();
+    const test = rig(false, {
+      environment: {
+        start: (onChange) => {
+          announce = onChange;
+          return Promise.resolve();
+        },
+        stop: () => undefined,
+      },
+      displays: {
+        ...unused.displays,
+        features: () => Promise.resolve(sessionUp ? ['displays', 'display_modes'] : []),
+      },
+    });
+    node = test.node;
+    test.node.start();
+    await until(() => helloFeatures(test.sent).length === 1, 'the hello');
+    expect(helloFeatures(test.sent)[0]).not.toContain('displays');
+    sessionUp = true;
+    announce();
+    await until(() => featureFrames(test.sent).length === 1, 'the feature frame');
+    expect(featureFrames(test.sent)[0]).toEqual([
+      'cpu',
+      'windows',
+      'processes',
+      'files',
+      'capture',
+      'displays',
+      'display_modes',
+    ]);
+    expect(helloFeatures(test.sent)).toHaveLength(1);
+  });
+
+  it('stays quiet when the session variables change but the features do not', async () => {
+    let announce = (): void => undefined;
+    const test = rig(false, {
+      environment: {
+        start: (onChange) => {
+          announce = onChange;
+          return Promise.resolve();
+        },
+        stop: () => undefined,
+      },
+    });
+    node = test.node;
+    test.node.start();
+    await until(() => helloFeatures(test.sent).length === 1, 'the hello');
+    announce();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(featureFrames(test.sent)).toEqual([]);
+  });
+
+  it('stops watching the session variables when the node stops', async () => {
+    let stopped = false;
+    const test = rig(false, {
+      environment: { start: () => Promise.resolve(), stop: () => (stopped = true) },
+    });
+    test.node.start();
+    await until(() => helloFeatures(test.sent).length === 1, 'the hello');
+    test.node.stop();
+    expect(stopped).toBe(true);
   });
 });

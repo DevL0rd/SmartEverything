@@ -32,6 +32,7 @@ export interface TestSheetProps {
   readonly open: boolean;
   readonly automationId: string;
   readonly name: string;
+  readonly note: string | null;
   readonly fields: readonly PayloadField[];
   readonly lastEvent: LastEvent | null;
   readonly breakpoints: readonly string[];
@@ -165,6 +166,7 @@ function Footer({
 }
 
 interface BodyProps {
+  readonly note: string | null;
   readonly fields: readonly PayloadField[];
   readonly lastEvent: LastEvent | null;
   readonly automationId: string;
@@ -178,6 +180,7 @@ interface BodyProps {
 }
 
 function Body({
+  note,
   fields,
   lastEvent,
   automationId,
@@ -193,6 +196,11 @@ function Body({
   return (
     <View className="gap-5 px-4 pb-4">
       <Banner tone="info" title={TEST_BANNER.title} body={TEST_BANNER.body} wrapBody />
+      {note === null ? null : (
+        <Text variant="footnote" tone="variant">
+          {note}
+        </Text>
+      )}
       <StartWithCards last={lastEvent} value={startWith} onChange={onStartWith} />
       {startWith === 'last' && lastEvent !== null ? (
         <LastValues last={lastEvent} />
@@ -245,6 +253,7 @@ function Content(props: TestSheetProps): ReactNode {
       }
     >
       <Body
+        note={props.note}
         fields={fields}
         lastEvent={lastEvent}
         automationId={props.automationId}

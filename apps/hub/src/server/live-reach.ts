@@ -1,6 +1,7 @@
 import type { Logger } from '@smarteverything/logging';
 import type { WebSocket } from 'ws';
 import type { LoggedConnection } from './live-log';
+import { afterPendingInput, pingWhenOpen } from '../network/guarded-socket';
 
 export const LIVENESS_PROBE_MS = 3000;
 
@@ -30,7 +31,10 @@ export async function answering<C extends LoggedConnection>(
 
 export function answersPing(socket: WebSocket, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
+    let settled = false;
     const finish = (alive: boolean): void => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       socket.off('pong', onPong);
       socket.off('close', onClose);
@@ -43,15 +47,17 @@ export function answersPing(socket: WebSocket, timeoutMs: number): Promise<boole
       finish(false);
     };
     const timer = setTimeout(() => {
-      socket.terminate();
-      finish(false);
+      afterPendingInput(() => {
+        if (settled) return;
+        socket.terminate();
+        finish(false);
+      });
     }, timeoutMs);
     socket.once('pong', onPong);
     socket.once('close', onClose);
-    socket.ping(undefined, undefined, (failure?: Error) => {
-      if (failure instanceof Error) {
-        finish(false);
-      }
+    const sent = pingWhenOpen(socket, (failure?: Error) => {
+      if (failure instanceof Error) finish(false);
     });
+    if (!sent) finish(false);
   });
 }

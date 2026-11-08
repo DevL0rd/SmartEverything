@@ -13,6 +13,7 @@ import type { CameraRefusals } from './camera-health';
 import { FrameCache } from './frame-cache';
 import type { Go2rtcClient } from './go2rtc-client';
 import { CameraTalkUnsupportedError, CameraViewers, listenOnly } from './viewers';
+import { describeFailure } from '@smarteverything/logging';
 
 export const CLIP_SECONDS = 15;
 
@@ -138,16 +139,21 @@ export class CameraService {
   }
 
   private async syncStreams(devices: readonly DeviceRecord[]): Promise<number> {
-    let failed = 0;
-    for (const device of devices) {
-      try {
-        await this.syncStream(device);
-      } catch (cause) {
-        failed += 1;
-        this.options.log.error('stream.sync_failed', cause, { deviceId: device.id });
-      }
-    }
-    return failed;
+    const outcomes = await Promise.all(
+      devices.map(async (device): Promise<boolean> => {
+        try {
+          await this.syncStream(device);
+          return true;
+        } catch (cause) {
+          this.options.log.warn('stream.sync_failed', {
+            deviceId: device.id,
+            failure: describeFailure(cause),
+          });
+          return false;
+        }
+      }),
+    );
+    return outcomes.filter((registered) => !registered).length;
   }
 
   private async syncStream(device: DeviceRecord): Promise<void> {

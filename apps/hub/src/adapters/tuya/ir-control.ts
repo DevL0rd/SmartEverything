@@ -1,5 +1,11 @@
 import { CommandRefusedError, type JsonValue } from '@smarteverything/domain';
-import { IR_CODE, canonicalIrCode, irWrites, type IrCode } from '@smarteverything/tuya';
+import {
+  IR_CODE,
+  canonicalIrCode,
+  irWrites,
+  type IrCode,
+  type IrScheme,
+} from '@smarteverything/tuya';
 import { writeTo } from './writes';
 import type { DeviceRecord } from './records';
 import type { TuyaRuntime } from './runtime';
@@ -32,15 +38,19 @@ export async function learnIr(runtime: TuyaRuntime, record: DeviceRecord): Promi
     return result(await waiting.result);
   } finally {
     waiting.cancel();
-    await writeTo(runtime, record, () => irWrites(scheme, { kind: 'study_exit' })).catch(
-      (cause: unknown) => {
-        runtime.log.warn('tuya.ir_learning_not_ended', {
-          deviceId,
-          reason: messageOf(cause),
-        });
-      },
-    );
+    endLearning(runtime, record, scheme);
   }
+}
+
+function endLearning(runtime: TuyaRuntime, record: DeviceRecord, scheme: IrScheme): void {
+  writeTo(runtime, record, () => irWrites(scheme, { kind: 'study_exit' })).catch(
+    (cause: unknown) => {
+      runtime.log.warn('tuya.ir_learning_not_ended', {
+        deviceId: record.cloud.id,
+        reason: messageOf(cause),
+      });
+    },
+  );
 }
 
 export async function sendIr(

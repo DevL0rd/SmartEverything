@@ -4,7 +4,7 @@ import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeabl
 import { href } from '../../../app-shell/hrefs';
 import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
-import { ListRow } from '../../../components/list-row';
+import { ListRow, type ListRowProps } from '../../../components/list-row';
 import type { MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { useIdiom } from '../../../design/platform';
@@ -20,6 +20,7 @@ export interface EventRowProps {
   readonly thumb: string | null;
   readonly timeZone: string;
   readonly expanded?: boolean;
+  readonly fullDetails?: boolean;
   readonly onToggle?: () => void;
   readonly onDelete: (() => void) | null;
 }
@@ -37,9 +38,22 @@ export function subtitleOf(entry: EventEntry, timeZone: string): string {
   ]);
 }
 
-function rowSubtitle(entry: EventEntry, cameraName: string | null, timeZone: string): string {
+function rowText({
+  entry,
+  cameraName,
+  timeZone,
+  fullDetails,
+}: EventRowProps): Pick<
+  ListRowProps,
+  'title' | 'subtitle' | 'label' | 'wrapTitle' | 'wrapSubtitle'
+> {
+  const kind = eventLook(entry.kind, entry.details).label;
+  const title = cameraName ?? kind;
   const when = subtitleOf(entry, timeZone);
-  return cameraName === null ? when : joinParts([eventLook(entry.kind, entry.details).label, when]);
+  const subtitle = cameraName === null ? when : joinParts([kind, when]);
+  return fullDetails === true
+    ? { title, subtitle, label: joinParts([title, subtitle]), wrapTitle: true, wrapSubtitle: true }
+    : { title, subtitle };
 }
 
 function DeleteAction(): ReactNode {
@@ -80,19 +94,17 @@ function Trailing({
 }
 
 export function EventRow(props: EventRowProps): ReactNode {
-  const { entry, cameraName, onDelete } = props;
+  const { entry, onDelete } = props;
   const pointer = useIdiom() === 'pointer';
-  const look = eventLook(entry.kind, entry.details);
   const target = recordingTarget(entry);
   const burst = entry.count > 1 && props.onToggle !== undefined;
   const link = burst || target === null ? undefined : href.clip(entry.deviceId, target);
   const row = (
     <ListRow
-      title={cameraName ?? look.label}
-      subtitle={rowSubtitle(entry, cameraName, props.timeZone)}
+      {...rowText(props)}
       leading={<EventThumb uri={props.thumb} kind={entry.kind} clipMs={entry.clipMs} />}
       {...(link === undefined ? {} : { href: link })}
-      {...(burst ? { onPress: props.onToggle } : {})}
+      {...(burst ? { onPress: props.onToggle, expanded: props.expanded === true } : {})}
       contextMenu={menuOf(onDelete)}
       trailing={<Trailing burst={burst} expanded={props.expanded === true} onDelete={onDelete} />}
     />

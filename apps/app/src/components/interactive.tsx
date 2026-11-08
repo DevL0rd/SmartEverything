@@ -8,11 +8,13 @@ import {
   type AccessibilityRole,
   type PressableProps,
 } from 'react-native';
-import { Link as RouterLink, type Href } from 'expo-router';
+import { Link as RouterLink } from 'expo-router';
+import type { AppHref } from './app-href';
 import { cn } from '../design/cn';
 import { useColour } from '../design/colour';
 import { isNative, useIdiom } from '../design/platform';
 import { useLinkIntent } from './link-intent';
+import { spaceKeyProps } from './space-key';
 
 const CHECKED_ROLES: ReadonlySet<AccessibilityRole> = new Set(['checkbox', 'radio', 'switch']);
 
@@ -29,10 +31,10 @@ export interface InteractiveProps {
   readonly onPressIn?: (() => void) | undefined;
   readonly onPressOut?: (() => void) | undefined;
   readonly onContextMenu?: ((point: Point) => void) | undefined;
-  readonly href?: Href | undefined;
+  readonly href?: AppHref | undefined;
   readonly disabled?: boolean | undefined;
   readonly selected?: boolean | undefined;
-  readonly checked?: boolean | undefined;
+  readonly checked?: boolean | 'mixed' | undefined;
   readonly expanded?: boolean | undefined;
   readonly controls?: string | undefined;
   readonly label?: string | undefined;
@@ -44,6 +46,7 @@ export interface InteractiveProps {
   readonly focusInset?: boolean | undefined;
   readonly focusable?: boolean | undefined;
   readonly ref?: Ref<View> | undefined;
+  readonly 'aria-describedby'?: string | undefined;
   readonly accessibilityActions?: readonly AccessibilityActionInfo[] | undefined;
   readonly onAccessibilityAction?: ((event: AccessibilityActionEvent) => void) | undefined;
 }
@@ -115,7 +118,7 @@ function layerState(
   return hovered ? 'hovered' : 'idle';
 }
 
-function useHover(href: Href | undefined): {
+function useHover(href: AppHref | undefined): {
   readonly hovered: boolean;
   readonly boost: () => void;
   readonly enter: () => void;
@@ -143,12 +146,12 @@ function useHover(href: Href | undefined): {
 
 interface AccessibilityInput {
   readonly role: AccessibilityRole | undefined;
-  readonly href: Href | undefined;
+  readonly href: AppHref | undefined;
   readonly label: string | undefined;
   readonly hint: string | undefined;
   readonly disabled: boolean;
   readonly selected: boolean | undefined;
-  readonly checked: boolean | undefined;
+  readonly checked: InteractiveProps['checked'];
   readonly expanded: boolean | undefined;
 }
 
@@ -159,7 +162,7 @@ function accessibilityOf(input: AccessibilityInput): {
   readonly accessibilityState: {
     readonly disabled: boolean;
     readonly selected?: boolean;
-    readonly checked?: boolean;
+    readonly checked?: boolean | 'mixed';
     readonly expanded?: boolean;
   };
 } {
@@ -178,8 +181,11 @@ function accessibilityOf(input: AccessibilityInput): {
 
 function pressableClass(disabled: boolean, inset: boolean, className: string | undefined): string {
   return cn(
-    'overflow-hidden focus:outline-2 focus:outline-focus',
-    inset ? 'focus:-outline-offset-2' : 'focus:outline-offset-2',
+    'overflow-hidden native:focus:outline-2 native:focus:outline-focus',
+    'web:focus-visible:outline-2 web:focus-visible:outline-focus',
+    inset
+      ? 'native:focus:-outline-offset-2 web:focus-visible:-outline-offset-2'
+      : 'native:focus:outline-offset-2 web:focus-visible:outline-offset-2',
     disabled && 'opacity-40',
     className,
   );
@@ -214,7 +220,7 @@ function PressedContent({
 }
 
 function usePressFeedback(
-  href: Href | undefined,
+  href: AppHref | undefined,
   tone: InteractiveProps['onTone'],
   onPressIn: InteractiveProps['onPressIn'],
 ): {
@@ -238,7 +244,7 @@ function usePressFeedback(
 
 interface PressedProps extends Omit<InteractiveProps, 'href'> {
   readonly href?: string;
-  readonly intentHref?: Href | undefined;
+  readonly intentHref?: AppHref | undefined;
 }
 
 function webLinkProps(href: string | undefined, disabled: boolean): { readonly href?: string } {
@@ -273,11 +279,14 @@ function Pressed(props: PressedProps): ReactNode {
       {...forwarded}
       {...webLinkProps(href, disabled)}
       {...contextMenuProps(onContextMenu)}
+      {...spaceKeyProps(intentHref === undefined ? role : undefined, disabled, forwarded.onPress)}
       disabled={disabled}
       {...feedback.attributes}
       {...accessibilityOf(semantics)}
       aria-controls={controls}
+      aria-expanded={expanded}
       aria-checked={role !== undefined && CHECKED_ROLES.has(role) ? checked : undefined}
+      aria-selected={role === 'tab' ? selected : undefined}
       className={pressableClass(disabled, focusInset, className)}
     >
       {({ pressed }) => (

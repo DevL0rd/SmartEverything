@@ -31,7 +31,7 @@ export interface TvView {
   readonly input: string | null;
   readonly volume: TvVolume;
   readonly inputs: readonly TvInput[];
-  readonly playing: boolean;
+  readonly playback: string | null;
   readonly canSetChannel: boolean;
   readonly channelRange: ChannelRange | null;
   readonly locks: Readonly<Partial<Record<TvKey, TvKeyReason>>>;
@@ -111,7 +111,7 @@ export function televisionView(device: Device, values: DeviceValues, context: Vi
     input: reported.input,
     volume: state.volume,
     inputs: state.inputs,
-    playing: reported.playback === 'playing',
+    playback: reported.playback,
     canSetChannel: channel !== undefined && channel.access !== 'read',
     channelRange:
       channel?.value.kind === 'number' ? { min: channel.value.min, max: channel.value.max } : null,

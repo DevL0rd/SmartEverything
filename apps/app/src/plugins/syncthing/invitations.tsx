@@ -13,14 +13,14 @@ type PendingDevice = SyncthingSnapshot['pendingDevices'][number];
 type PendingFolder = SyncthingSnapshot['pendingFolders'][number];
 
 function useAnswer(): (
-  tool: 'accept_invite' | 'ignore_invite',
-  invite: Readonly<Record<string, unknown>>,
+  invite: string,
+  answer: 'accept' | 'ignore',
   failure: string,
   done: string | null,
 ) => Promise<unknown> {
   const tools = useSyncthingTools();
-  return async (tool, invite, failure, done) => {
-    const result = await tools.run(tool, { invite }, failure);
+  return async (invite, answer, failure, done) => {
+    const result = await tools.run('answer_invitation', { invite, answer }, failure);
     if (result !== null && done !== null) {
       notify({ message: done });
     }
@@ -43,20 +43,15 @@ function DeviceInvite({
       accept={{
         onPress: () =>
           answer(
-            'accept_invite',
-            { command: 'accept_device', deviceId: invite.id, name: invite.name },
+            `device:${invite.id}`,
+            'accept',
             `${invite.name} wasn’t accepted`,
             `${invite.name} connected`,
           ),
       }}
       ignore={{
         onPress: () =>
-          answer(
-            'ignore_invite',
-            { command: 'ignore_device', deviceId: invite.id },
-            `${invite.name} wasn’t ignored`,
-            null,
-          ),
+          answer(`device:${invite.id}`, 'ignore', `${invite.name} wasn’t ignored`, null),
       }}
     />
   );
@@ -85,20 +80,15 @@ function FolderInvite({
       accept={{
         onPress: () =>
           answer(
-            'accept_invite',
-            { command: 'accept_folder', folderId: invite.id, path: null },
+            `folder:${invite.id}`,
+            'accept',
             `${invite.label} wasn’t accepted`,
             `${invite.label} added`,
           ),
       }}
       ignore={{
         onPress: () =>
-          answer(
-            'ignore_invite',
-            { command: 'ignore_folder', folderId: invite.id },
-            `${invite.label} wasn’t ignored`,
-            null,
-          ),
+          answer(`folder:${invite.id}`, 'ignore', `${invite.label} wasn’t ignored`, null),
       }}
     />
   );

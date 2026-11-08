@@ -1,5 +1,6 @@
 import { TextDecoder } from 'node:util';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { z } from 'zod';
 import { JSON_VALUE } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { CodexProtocolError, CodexRuntimeError } from './errors';
@@ -171,6 +172,17 @@ export class CodexClient {
   reject(id: RpcId, message: string): void {
     this.write({ id, error: { code: -32601, message } });
   }
+  rejectInvalidRequest(method: string, id: RpcId, cause: z.ZodError): void {
+    this.options.log?.error('codex.server_request_invalid', cause, {
+      mode: this.options.mode,
+      method,
+      requestId: id,
+    });
+    this.write({
+      id,
+      error: { code: -32602, message: 'SmartEverything could not read this Codex request.' },
+    });
+  }
   stop(): void {
     this.close(
       new CodexRuntimeError(
@@ -213,6 +225,11 @@ export class CodexClient {
       if (Buffer.byteLength(this.buffer) > MAX_LINE_BYTES)
         throw new CodexProtocolError('The Codex unterminated frame exceeds its byte limit.');
     } catch (cause) {
+      if (cause instanceof z.ZodError) {
+        this.options.log?.error('codex.frame_invalid', cause, { mode: this.options.mode });
+        this.close(new CodexProtocolError('Codex sent a response SmartEverything could not read.'));
+        return;
+      }
       this.close(
         cause instanceof Error ? cause : new CodexProtocolError('Codex frame parsing failed.'),
       );

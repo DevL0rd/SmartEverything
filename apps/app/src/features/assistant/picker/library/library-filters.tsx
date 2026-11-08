@@ -8,12 +8,13 @@ import { Text } from '../../../../components/text';
 import { TextField } from '../../../../components/text-field';
 import type { ModelCandidate } from '../../data/model-candidates';
 import type { ModelSearchFilters, SearchValidation } from '../model-search-filters';
-import { LibraryChip } from './library-chip';
+import { FlatChoice } from '../../../../components/flat-choice';
 import { CONTEXT_OPTIONS, MODALITY_OPTIONS, modalityLabel } from './library-model';
 import { sourceChipLabel, type LibrarySource } from './library-sources';
 import type { LibraryState } from './library-state';
 
 const ALL_MAKERS = '';
+const MODALITY_CHOICES = MODALITY_OPTIONS.map((value) => ({ value, label: modalityLabel(value) }));
 
 function makerOptions(
   makers: readonly AiProviderCount[],
@@ -81,10 +82,11 @@ interface ChipChoiceProps {
 function ChipChoice({ title, field, options, state }: ChipChoiceProps): ReactNode {
   return (
     <Group title={title}>
-      <View className="flex-row flex-wrap gap-2">
+      <View className="flex-row flex-wrap">
         {options.map((option) => (
-          <LibraryChip
+          <FlatChoice
             key={option.value}
+            role="checkbox"
             label={option.label}
             active={state.filters[field] === option.value}
             onPress={(): void => {
@@ -148,6 +150,7 @@ function PriceGroup({
 
 export interface LibraryFiltersProps {
   readonly state: LibraryState;
+  readonly scoped: boolean;
   readonly sources: readonly LibrarySource[];
   readonly makers: readonly AiProviderCount[];
   readonly native: readonly ModelCandidate[];
@@ -156,6 +159,7 @@ export interface LibraryFiltersProps {
 
 export function LibraryFilters({
   state,
+  scoped,
   sources,
   makers,
   native,
@@ -163,38 +167,32 @@ export function LibraryFilters({
 }: LibraryFiltersProps): ReactNode {
   return (
     <ScrollView className="min-h-0 flex-1" keyboardShouldPersistTaps="handled">
-      <SourceGroup sources={sources} state={state} />
-      <Group title="Maker">
-        <Select
-          label="Maker"
-          showLabel={false}
-          searchable
-          options={makerOptions(makers, native)}
-          value={state.filters.provider}
-          onChange={(provider): void => {
-            state.setFilters({ ...state.filters, provider });
-          }}
-        />
-      </Group>
-      <ChipChoice
-        title="Input"
-        field="input"
-        options={MODALITY_OPTIONS.map((value) => ({ value, label: modalityLabel(value) }))}
-        state={state}
-      />
-      <ChipChoice
-        title="Output"
-        field="output"
-        options={MODALITY_OPTIONS.map((value) => ({ value, label: modalityLabel(value) }))}
-        state={state}
-      />
+      {scoped ? null : (
+        <>
+          <SourceGroup sources={sources} state={state} />
+          <Group title="Maker">
+            <Select
+              label="Maker"
+              showLabel={false}
+              searchable
+              options={makerOptions(makers, native)}
+              value={state.filters.provider}
+              onChange={(provider): void => {
+                state.setFilters({ ...state.filters, provider });
+              }}
+            />
+          </Group>
+        </>
+      )}
+      <ChipChoice title="Input" field="input" options={MODALITY_CHOICES} state={state} />
+      <ChipChoice title="Output" field="output" options={MODALITY_CHOICES} state={state} />
       <ChipChoice
         title="Context at least"
         field="context"
         options={CONTEXT_OPTIONS}
         state={state}
       />
-      <PriceGroup state={state} validation={validation} />
+      {scoped ? null : <PriceGroup state={state} validation={validation} />}
       <View className="flex-row p-3">
         <Button label="Reset filters" variant="outlined" grow onPress={state.reset} />
       </View>

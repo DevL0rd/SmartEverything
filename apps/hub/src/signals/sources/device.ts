@@ -104,7 +104,7 @@ export function lifecycleSignal(input: LifecycleSignalInput): SignalInput {
   };
 }
 
-export function eventSignal(event: RecordedEvent): SignalInput {
+export function eventSignal(event: RecordedEvent, roomId: string | null): SignalInput {
   return {
     source: 'event',
     kind: event.kind,
@@ -114,6 +114,6 @@ export function eventSignal(event: RecordedEvent): SignalInput {
     previous: null,
     at: event.occurredAt,
     profileId: null,
-    data: { ...event.details, eventId: event.id },
+    data: { ...event.details, eventId: event.id, roomId },
   };
 }

@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Breadcrumbs, Stage } from 'smarteverything-kit';
 
 const crumbs = [
@@ -5,12 +6,12 @@ const crumbs = [
   { label: 'Living room', href: '/rooms/living' },
   { label: 'Floor lamp' },
 ];
-export const Trail = () => (
+export const Trail = (): ReactElement => (
   <Stage theme="dark" width={520}>
     <Breadcrumbs crumbs={crumbs} />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     <Breadcrumbs crumbs={crumbs} />
   </Stage>

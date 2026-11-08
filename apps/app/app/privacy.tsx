@@ -5,7 +5,7 @@ import { PrivacyContent } from '../src/features/privacy/privacy-content';
 
 export default function PrivacyRoute(): ReactNode {
   return (
-    <Screen header={<PageHeader title="SmartEverything privacy" back={false} />} maxWidth="reading">
+    <Screen header={<PageHeader title="SmartEverything privacy" back={false} />}>
       <PrivacyContent />
     </Screen>
   );

@@ -6,8 +6,22 @@ import { useEffect } from 'react';
 import { Button } from '../components/button';
 import { ErrorState } from '../components/error-state';
 import { ColourPalette } from '../design/colour-palette';
+import { desktopBridge } from '../design/platform';
 
 const log = new Logger('app.route');
+
+export function RootRouteErrorBoundary(props: ErrorBoundaryProps): ReactNode {
+  useEffect(() => {
+    const desktop = desktopBridge();
+    if (desktop?.reportWebBundleFailure !== undefined) {
+      background(
+        desktop.reportWebBundleFailure('The app could not render its first screen.'),
+        'route_error_boundary.web_rollback_failed',
+      );
+    }
+  }, []);
+  return <RouteErrorBoundary {...props} />;
+}
 
 export function RouteErrorBoundary({ error, retry }: ErrorBoundaryProps): ReactNode {
   useEffect(() => {

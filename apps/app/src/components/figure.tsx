@@ -29,6 +29,7 @@ export interface FigureProps {
   readonly size?: FigureSize;
   readonly tone?: Tone;
   readonly stale?: boolean;
+  readonly wrap?: boolean;
 }
 
 export function FigureText({
@@ -37,6 +38,7 @@ export function FigureText({
   size,
   tone,
   stale,
+  wrap = false,
   frame,
   onLayout,
 }: {
@@ -45,13 +47,23 @@ export function FigureText({
   readonly size: FigureSize;
   readonly tone: Tone;
   readonly stale: boolean;
+  readonly wrap?: boolean;
   readonly frame?: RefObject<View | null>;
   readonly onLayout?: (() => void) | undefined;
 }): ReactNode {
   const shown: Tone = stale ? 'faint' : tone;
   return (
     <View ref={frame} onLayout={onLayout} className="flex-row items-baseline gap-1">
-      <Text className={cn('font-sans-medium tabular', SIZE[size], TONE_TEXT[shown])}>{text}</Text>
+      <Text
+        className={cn(
+          'font-sans-medium tabular',
+          SIZE[size],
+          TONE_TEXT[shown],
+          wrap && 'min-w-0 shrink',
+        )}
+      >
+        {text}
+      </Text>
       {unit === undefined ? null : (
         <Text variant={UNIT[size]} tone={stale ? 'faint' : 'variant'}>
           {unit}
@@ -67,6 +79,7 @@ function CountingFigure({
   size = 'm',
   tone = 'default',
   stale = false,
+  wrap = false,
 }: FigureProps): ReactNode {
   const frame = useRef<View>(null);
   const { reduced } = useMotion();
@@ -79,6 +92,7 @@ function CountingFigure({
       size={size}
       tone={tone}
       stale={stale}
+      wrap={wrap}
       frame={frame}
       onLayout={onLayout}
     />
@@ -94,6 +108,7 @@ export function Figure(props: FigureProps): ReactNode {
       size={props.size ?? 'm'}
       tone={props.tone ?? 'default'}
       stale={props.stale ?? false}
+      wrap={props.wrap ?? false}
     />
   );
 }

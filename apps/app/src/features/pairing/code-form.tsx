@@ -52,6 +52,7 @@ export function CodeForm({
         <ListRow
           icon="home"
           title={home}
+          wrapTitle
           subtitle={checked ? 'The pairing code confirms this home' : 'This browser’s home'}
           trailing={
             <Button

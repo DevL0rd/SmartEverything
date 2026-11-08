@@ -5,7 +5,7 @@ import type { StateClock, StateStep } from '../nodes/state/adapter';
 import { STATE_ADAPTERS } from '../nodes/state/adapters';
 import type { Checked, Env, NodeResult, OpHandlers, OpOf, StepResult } from './frames';
 import { completeFrame, deriveEnv, next, note, raise, setOutputs, stay, withTop } from './frames';
-import { enterScope } from './core-ops';
+import { enterScope } from './scope-entry';
 import { DURABLE_FROM_MS } from './policy';
 import { evaluateAll } from './step';
 import { resolutionOf } from './waits';

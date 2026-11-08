@@ -308,7 +308,7 @@ describe('default ids', () => {
     const callee = reusable([probe('a', { count: wired('inputs.n') })], {
       inputs: [{ name: 'n', type: NUMBER, required: true }],
     });
-    const result = detachInstance(program, 'c', callee);
+    const result = detachInstance(program, 'c', callee, { newId: () => crypto.randomUUID() });
     expect(result.ok).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   CLIENT_PREFS,
   REGIONS,
@@ -162,7 +162,25 @@ describe('exchange rate status', () => {
   });
 });
 
-describe('locale region through Intl.Locale', () => {
+describe('canonical locale region', () => {
+  it('detects the region on a runtime with canonical locales and no Intl.Locale', () => {
+    vi.stubGlobal('Intl', { getCanonicalLocales: Intl.getCanonicalLocales });
+    try {
+      expect(localeRegionOf('zh_Hans_CN-u-ca-gregory')).toBe('CN');
+      expect(localeRegionOf('es-419')).toBe('419');
+      expect(localeRegionOf('en-UK')).toBe('GB');
+      expect(localeRegionOf('en-u-rg-gbzzzz')).toBeNull();
+      expect(() => localeRegionOf('fr__FR')).toThrow(RangeError);
+      expect(detectRegion({ locale: 'en-x-us', timeZone: 'Asia/Tokyo' })).toStrictEqual({
+        status: 'detected',
+        region: 'JP',
+        from: 'time_zone',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('reads script-qualified, numeric and mixed-case tags', () => {
     expect(localeRegionOf('zh-Hans-CN')).toBe('CN');
     expect(localeRegionOf('es-419')).toBe('419');

@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import type { UsageSummary } from '@smarteverything/domain';
 import { Sparkline } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
+import { Grid } from '../../../components/grid';
 import type { IconName } from '../../../components/icon-glyphs';
 import { Text } from '../../../components/text';
 import { CostCard } from './cost-card';
@@ -27,8 +28,8 @@ function Tile({ title, icon, accent, value, caption, trail, extra }: TileProps):
     <CostCard title={title} icon={icon} accent={accent}>
       <View className="gap-2">
         <View className="gap-0.5">
-          <Figure value={value} size="l" />
-          <Text variant="caption" tone="variant" numberOfLines={1}>
+          <Figure value={value} size="l" wrap />
+          <Text variant="caption" tone="variant">
             {caption}
           </Text>
           {extra}
@@ -46,21 +47,27 @@ function Tile({ title, icon, accent, value, caption, trail, extra }: TileProps):
   );
 }
 
+interface SummaryTilesProps {
+  readonly summary: UsageSummary;
+  readonly window: CostWindow;
+  readonly rangeName: string;
+  readonly credits: ReactNode;
+  readonly budget: ReactNode;
+}
+
 export function SummaryTiles({
   summary,
   window,
   rangeName,
-}: {
-  readonly summary: UsageSummary;
-  readonly window: CostWindow;
-  readonly rangeName: string;
-}): ReactNode {
+  credits,
+  budget,
+}: SummaryTilesProps): ReactNode {
   const { sum } = summary.totals;
   const money = useMoney();
   const incomplete = (sum.unknown_count ?? 0) > 0;
   const trail = summary.series.points.map((point) => point.cost_micros);
   return (
-    <>
+    <Grid minItemWidth={200} maxColumns={5}>
       <Tile
         title="Total"
         icon="gauge"
@@ -89,6 +96,8 @@ export function SummaryTiles({
         value={money.cost(Math.round(sum.cost_micros / Math.max(1, window.days)))}
         caption={`${incomplete ? 'Known costs only · ' : ''}Average over ${String(window.days)} ${window.days === 1 ? 'day' : 'days'}`}
       />
-    </>
+      {credits}
+      {budget}
+    </Grid>
   );
 }

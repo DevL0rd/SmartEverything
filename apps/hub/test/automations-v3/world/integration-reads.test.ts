@@ -20,7 +20,7 @@ describe('var.secret', () => {
   });
 });
 
-describe('computer.read and phone.read', () => {
+describe('computer.read', () => {
   it('reads the figures the machine reports and leaves out the rest', () => {
     home.write(home.sensor, 'locked', true);
     home.write(home.sensor, 'battery_level', 80);
@@ -28,17 +28,23 @@ describe('computer.read and phone.read', () => {
     expect(outputs).toEqual({ locked: true, batteryLevel: 80 });
   });
 
-  it('reads a phone the same way', () => {
-    home.write(home.motion, 'ringer_mode', 'silent');
-    home.write(home.motion, 'dnd', true);
-    expect(home.read('phone.read', { phone: home.motion.id }).outputs).toEqual({
-      ringerMode: 'silent',
-      dnd: true,
+  it('reads the system figures a computer reports', () => {
+    home.write(home.sensor, 'memory_used', 62);
+    home.write(home.sensor, 'cpu_temperature', 55);
+    home.write(home.sensor, 'mic_mute', true);
+    home.write(home.sensor, 'power_mode', 'performance');
+    home.write(home.sensor, 'display_count_on', 2);
+    const { outputs } = home.read('computer.read', { computer: { computer: home.sensor.id } });
+    expect(outputs).toEqual({
+      memoryUsed: 62,
+      cpuTemperature: 55,
+      micMuted: true,
+      powerMode: 'performance',
+      displaysOn: 2,
     });
   });
 
   it('fails for a machine that does not exist', () => {
-    expect(() => home.read('phone.read', { phone: 'nope' })).toThrow(/no device nope/);
     expect(() => home.read('computer.read', {})).toThrow(/needs a computer/);
   });
 });

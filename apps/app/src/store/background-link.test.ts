@@ -1,6 +1,7 @@
 import type { LiveMessage } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackgroundLink, type BackgroundLinkPorts } from './background-link';
+import { hubAnswered } from '../api/connection/hub-answers';
 import { TOKEN_WITHDRAWN, backoffOf, type SocketHandlers, type SocketTarget } from './live-socket';
 
 const NOTIFICATION = {
@@ -34,10 +35,14 @@ interface Opened {
 function rig(failures = 0): {
   readonly link: BackgroundLink;
   readonly opened: Opened[];
+  readonly stopped: Opened[];
   readonly ports: { [K in keyof BackgroundLinkPorts]: ReturnType<typeof vi.fn> };
+  readonly closeNextOpen: () => void;
 } {
   const opened: Opened[] = [];
+  const stopped: Opened[] = [];
   let remaining = failures;
+  let closingNext = false;
   const ports = {
     open: vi.fn((target: SocketTarget, handlers: SocketHandlers): (() => void) => {
       if (remaining > 0) {
@@ -46,8 +51,15 @@ function rig(failures = 0): {
       }
       const entry: Opened = { target, handlers, closed: false };
       opened.push(entry);
+      if (closingNext) {
+        closingNext = false;
+        entry.closed = true;
+        handlers.onClose(1006, 'gone at once');
+      }
       return (): void => {
         entry.closed = true;
+        stopped.push(entry);
+        handlers.onClose(1006, 'stopped');
       };
     }),
     notification: vi.fn(),
@@ -57,7 +69,11 @@ function rig(failures = 0): {
   return {
     link: new BackgroundLink({ url: 'http://hub.test:7880', token: 'token' }, ports),
     opened,
+    stopped,
     ports,
+    closeNextOpen: (): void => {
+      closingNext = true;
+    },
   };
 }
 
@@ -65,6 +81,16 @@ function lastOpened(opened: readonly Opened[]): Opened {
   const entry = opened.at(-1);
   if (entry === undefined) throw new Error('no socket was opened');
   return entry;
+}
+
+function openSockets(opened: readonly Opened[]): readonly Opened[] {
+  return opened.filter((entry) => !entry.closed);
+}
+
+function drop(opened: readonly Opened[], code = 1006, reason = 'gone'): void {
+  const entry = lastOpened(opened);
+  entry.closed = true;
+  entry.handlers.onClose(code, reason);
 }
 
 beforeEach(() => {
@@ -107,11 +133,12 @@ describe('the connection that carries alerts while the app is in the background'
   });
 
   it('closes its connection when stopped and hears nothing from it afterwards', () => {
-    const { link, opened, ports } = rig();
+    const { link, opened, stopped, ports } = rig();
     link.start();
     const { handlers } = lastOpened(opened);
     link.stop();
     expect(lastOpened(opened).closed).toBe(true);
+    expect(stopped).toEqual([opened[0]]);
     handlers.onMessage({ kind: 'message', message: NOTIFICATION });
     handlers.onClose(1006, 'late');
     vi.advanceTimersByTime(60_000);
@@ -120,12 +147,13 @@ describe('the connection that carries alerts while the app is in the background'
   });
 
   it('starts again after being stopped', () => {
-    const { link, opened } = rig();
+    const { link, opened, stopped } = rig();
     link.start();
     link.stop();
     link.start();
     expect(opened).toHaveLength(2);
     expect(lastOpened(opened).closed).toBe(false);
+    expect(stopped).toEqual([opened[0]]);
   });
 
   it('opens a new connection after the old one drops, waiting longer after each failure', () => {
@@ -182,5 +210,82 @@ describe('the connection that carries alerts while the app is in the background'
     vi.advanceTimersByTime(60_000);
     expect(ports.refused).toHaveBeenCalledTimes(1);
     expect(opened).toHaveLength(1);
+  });
+
+  it('leaves one socket open when a hub answer arrives while a retry is waiting', () => {
+    const { link, opened } = rig();
+    link.start();
+    drop(opened);
+    drop(opened);
+    link.online();
+    vi.advanceTimersByTime(60_000);
+    expect(openSockets(opened)).toHaveLength(1);
+  });
+
+  it('schedules at most one retry however many close events arrive', () => {
+    const { link, opened } = rig();
+    link.start();
+    drop(opened);
+    drop(opened);
+    drop(opened);
+    vi.advanceTimersByTime(60_000);
+    expect(opened).toHaveLength(2);
+    expect(openSockets(opened)).toHaveLength(1);
+  });
+
+  it('ends with one open socket when the socket it replaces reports its close as it stops', () => {
+    const { link, opened, stopped, closeNextOpen } = rig();
+    link.start();
+    drop(opened);
+    closeNextOpen();
+    link.online();
+    expect(openSockets(opened)).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(1);
+    link.online();
+    expect(opened).toHaveLength(3);
+    expect(openSockets(opened)).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+    link.stop();
+    expect(stopped).toEqual([opened[1], opened[2]]);
+    expect(openSockets(opened)).toHaveLength(0);
+  });
+
+  it('closes every socket it opened when stopped and leaves no retry behind', () => {
+    const { link, opened, stopped } = rig();
+    link.start();
+    drop(opened);
+    drop(opened);
+    link.online();
+    vi.advanceTimersByTime(60_000);
+    link.stop();
+    expect(openSockets(opened)).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(stopped).toEqual([lastOpened(opened)]);
+  });
+
+  it('opens exactly one socket when started again after a stop', () => {
+    const { link, opened } = rig();
+    link.start();
+    drop(opened);
+    drop(opened);
+    link.stop();
+    link.start();
+    vi.advanceTimersByTime(60_000);
+    expect(openSockets(opened)).toHaveLength(1);
+  });
+
+  it('retries at once when a request reaches the hub, and stops listening once stopped', () => {
+    const { link, opened, stopped } = rig();
+    link.start();
+    lastOpened(opened).handlers.onClose(1006, 'gone');
+    hubAnswered();
+    expect(opened).toHaveLength(2);
+    hubAnswered();
+    expect(opened).toHaveLength(2);
+    lastOpened(opened).handlers.onClose(1006, 'gone');
+    link.stop();
+    hubAnswered();
+    expect(opened).toHaveLength(2);
+    expect(stopped).toEqual([]);
   });
 });

@@ -4,7 +4,7 @@ const LAMP = '6d000000-0000-4000-8000-000000000003';
 const PERSON = '6d000000-0000-4000-8000-000000000005';
 
 const NIGHT_LIGHT_PROGRAM = {
-  version: 3,
+  version: 4,
   kind: 'automation',
   description: 'Lamp on at 22:00.',
   triggers: [
@@ -18,25 +18,53 @@ const NIGHT_LIGHT_PROGRAM = {
   inputs: [],
   outputs: [],
   variables: [],
-  body: {
-    nodes: [
-      {
-        id: '6d000000-0000-4000-8000-000000000022',
-        key: 'lampOn',
-        kind: 'device.set',
-        ports: {
-          target: { lit: { devices: [LAMP] } },
-          control: { lit: 'power' },
-          to: { lit: true },
-        },
+  nodes: [
+    {
+      id: '6d000000-0000-4000-8000-000000000021',
+      key: 'start',
+      kind: 'flow.start',
+      to: { next: 'lampOn' },
+    },
+    {
+      id: '6d000000-0000-4000-8000-000000000022',
+      key: 'lampOn',
+      kind: 'device.set',
+      ports: {
+        target: { lit: { devices: [LAMP] } },
+        control: { lit: 'power' },
+        to: { lit: true },
       },
-    ],
-  },
+    },
+  ],
   policy: { mode: 'single' },
 };
 
+const NIGHT_LIGHT_ID = '6d000000-0000-4000-8000-000000000001';
+
 export const TOOL_EXAMPLES: Readonly<Partial<Record<McpToolName, readonly object[]>>> = {
-  automation_edit: [{ action: 'check', body: { definition: NIGHT_LIGHT_PROGRAM } }],
+  automation_edit: [
+    { action: 'check', definition: NIGHT_LIGHT_PROGRAM },
+    {
+      action: 'patch',
+      automationId: NIGHT_LIGHT_ID,
+      ops: [
+        {
+          op: 'add',
+          node: {
+            key: 'dim',
+            kind: 'device.set',
+            ports: {
+              target: { lit: { devices: [LAMP] } },
+              control: { lit: 'brightness' },
+              to: { lit: 40 },
+            },
+          },
+          after: { key: 'lampOn', port: 'next' },
+        },
+        { op: 'set', key: 'lampOn', label: 'Lamp on at night' },
+      ],
+    },
+  ],
   schedule_edit: [
     {
       action: 'create',
@@ -46,7 +74,7 @@ export const TOOL_EXAMPLES: Readonly<Partial<Record<McpToolName, readonly object
         {
           kind: 'tool',
           tool: 'device_control',
-          args: { changes: [{ target: { deviceIds: [LAMP] }, capability: 'power', value: false }] },
+          args: { deviceIds: [LAMP], capability: 'power', value: false },
         },
       ],
     },

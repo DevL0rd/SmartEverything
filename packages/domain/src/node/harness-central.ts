@@ -6,9 +6,12 @@ export const HARNESS_CENTRAL_TOOL = z.object({
   name: z.string().min(1).max(200),
   description: z.string().min(1),
   parameters: z.record(z.string(), JSON_VALUE),
+  read_only: z.boolean(),
+  read_only_targets: z.array(z.string().min(1)).optional(),
 });
 export const HARNESS_CENTRAL_CATALOGUE = z.array(HARNESS_CENTRAL_TOOL);
 export const HARNESS_CENTRAL_CONTEXT = z.object({
+  event_id: z.uuid().nullable(),
   system: z.string(),
   turn: z.string(),
   tools: HARNESS_CENTRAL_CATALOGUE,
@@ -25,14 +28,4 @@ export const HARNESS_CENTRAL_RESULT = z.object({
       }),
     )
     .max(100),
-});
-export const HARNESS_PLUGIN_AGENT_POLICY = z.strictObject({
-  persona: z.string().min(1).max(100_000),
-  tools: z.array(z.string().min(1).max(200)).max(2000).optional(),
-});
-export const HARNESS_PLUGIN_AGENT_RESULT = z.strictObject({
-  child_id: z.uuid(),
-  run_id: z.uuid(),
-  state: z.enum(['queued', 'running', 'completed', 'interrupted', 'failed']),
-  text: z.string().max(200_000).nullable(),
 });

@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { IconWell, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -11,12 +12,12 @@ const body = (
     <IconWell icon="shield" colour="positive" size="m" />
   </Row>
 );
-export const Sizes = () => (
+export const Sizes = (): ReactElement => (
   <Stage theme="dark" width={520}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     {body}
   </Stage>

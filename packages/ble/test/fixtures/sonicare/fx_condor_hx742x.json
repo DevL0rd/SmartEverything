@@ -45,20 +45,8 @@
           "HandleState": 2,
           "UserModesPos": 0,
           "PhysModes": 15,
-          "RoutineIDs": [
-            0,
-            5,
-            1,
-            2,
-            0
-          ],
-          "UserMode": [
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
+          "RoutineIDs": [0, 5, 1, 2, 0],
+          "UserMode": [0, 0, 0, 0, 0],
           "HandleTime": 18058312
         },
         "RoutineStatus": {
@@ -76,20 +64,9 @@
         },
         "SensorData.b": null,
         "BrushHead": {
-          "NfcTagVersion": [
-            2,
-            1
-          ],
+          "NfcTagVersion": [2, 1],
           "FactoryMode": 0,
-          "SerialNumber": [
-            4,
-            80,
-            109,
-            210,
-            174,
-            34,
-            145
-          ],
+          "SerialNumber": [4, 80, 109, 210, 174, 34, 145],
           "LifetimeLimit": 21600,
           "LifetimeUsage": 1962,
           "RingId": 2
@@ -107,19 +84,9 @@
         "Diagnostics": {
           "PErrors": 1073741888,
           "VErrors": 1073741824,
-          "ExternalFlash": [
-            0,
-            239,
-            64,
-            21
-          ],
+          "ExternalFlash": [0, 239, 64, 21],
           "PressureSensor": 2,
-          "InvalidCharger": [
-            227,
-            14,
-            0,
-            0
-          ]
+          "InvalidCharger": [227, 14, 0, 0]
         },
         "Extended": {
           "FeatureCtrl": 512
@@ -138,9 +105,7 @@
         {
           "uuid": "00002a05-0000-1000-8000-00805f9b34fb",
           "name": "Service Changed",
-          "properties": [
-            "indicate"
-          ],
+          "properties": ["indicate"],
           "handle": 2,
           "value_hex": null,
           "value_text": null
@@ -153,9 +118,7 @@
         {
           "uuid": "00002a2a-0000-1000-8000-00805f9b34fb",
           "name": "IEEE Regulatory Cert",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 33,
           "value_hex": "00",
           "value_text": null
@@ -163,9 +126,7 @@
         {
           "uuid": "00002a29-0000-1000-8000-00805f9b34fb",
           "name": "Manufacturer Name",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 47,
           "value_hex": "5068696c697073204f4843",
           "value_text": "Philips OHC"
@@ -173,9 +134,7 @@
         {
           "uuid": "00002a28-0000-1000-8000-00805f9b34fb",
           "name": "Software Revision",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 37,
           "value_hex": "00",
           "value_text": null
@@ -183,9 +142,7 @@
         {
           "uuid": "00002a23-0000-1000-8000-00805f9b34fb",
           "name": "System ID",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 35,
           "value_hex": "0000000000000000",
           "value_text": null
@@ -193,9 +150,7 @@
         {
           "uuid": "00002a26-0000-1000-8000-00805f9b34fb",
           "name": "Firmware Revision",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 39,
           "value_hex": "312e382e32302e30",
           "value_text": "1.8.20.0"
@@ -203,9 +158,7 @@
         {
           "uuid": "00002a24-0000-1000-8000-00805f9b34fb",
           "name": "Model Number",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 45,
           "value_hex": "485837343258",
           "value_text": "HX742X"
@@ -213,9 +166,7 @@
         {
           "uuid": "00002a50-0000-1000-8000-00805f9b34fb",
           "name": "PnP ID",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 31,
           "value_hex": "01dd0100140000",
           "value_text": null
@@ -223,9 +174,7 @@
         {
           "uuid": "00002a27-0000-1000-8000-00805f9b34fb",
           "name": "Hardware Revision",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 41,
           "value_hex": "00",
           "value_text": null
@@ -233,9 +182,7 @@
         {
           "uuid": "00002a25-0000-1000-8000-00805f9b34fb",
           "name": "Serial Number",
-          "properties": [
-            "read"
-          ],
+          "properties": ["read"],
           "handle": 43,
           "value_hex": "30303030303030303030",
           "value_text": "0000000000"
@@ -248,9 +195,7 @@
         {
           "uuid": "e50b0002-af04-4564-92ad-fef019489de6",
           "name": "Proto RX ACK",
-          "properties": [
-            "notify"
-          ],
+          "properties": ["notify"],
           "handle": 25,
           "value_hex": null,
           "value_text": null
@@ -258,9 +203,7 @@
         {
           "uuid": "e50b0001-af04-4564-92ad-fef019489de6",
           "name": "Proto RX",
-          "properties": [
-            "write-without-response"
-          ],
+          "properties": ["write-without-response"],
           "handle": 28,
           "value_hex": null,
           "value_text": null
@@ -268,9 +211,7 @@
         {
           "uuid": "e50b0006-af04-4564-92ad-fef019489de6",
           "name": "Proto Server Config",
-          "properties": [
-            "notify"
-          ],
+          "properties": ["notify"],
           "handle": 17,
           "value_hex": null,
           "value_text": null
@@ -278,9 +219,7 @@
         {
           "uuid": "e50b0004-af04-4564-92ad-fef019489de6",
           "name": "Proto TX ACK",
-          "properties": [
-            "write-without-response"
-          ],
+          "properties": ["write-without-response"],
           "handle": 20,
           "value_hex": null,
           "value_text": null
@@ -288,9 +227,7 @@
         {
           "uuid": "e50b0007-af04-4564-92ad-fef019489de6",
           "name": "Proto Client Config",
-          "properties": [
-            "write-without-response"
-          ],
+          "properties": ["write-without-response"],
           "handle": 15,
           "value_hex": null,
           "value_text": null
@@ -298,9 +235,7 @@
         {
           "uuid": "e50b0003-af04-4564-92ad-fef019489de6",
           "name": "Proto TX",
-          "properties": [
-            "notify"
-          ],
+          "properties": ["notify"],
           "handle": 22,
           "value_hex": null,
           "value_text": null

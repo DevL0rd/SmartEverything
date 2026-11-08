@@ -12,10 +12,11 @@ import {
   powerOffSteps,
   remoteUrl,
   tvDevice,
+  type InstalledApp,
   type TvAction,
   type TvIdentity,
 } from '@smarteverything/smartthings';
-import { failureLine } from '@smarteverything/logging';
+import { background, failureLine } from '@smarteverything/logging';
 import { WAKE_BOOT_MS, WAKE_RESENDS_MS } from '../../network/wake-budget';
 import type { RunContext } from '../contract';
 import { ArtModeChannel } from './art-mode';
@@ -49,6 +50,8 @@ export class TvController {
   private readonly remote = new ReusedConnection(() => this.open());
   private readonly art: ArtModeChannel | null;
   private sink: AdapterSink | null = null;
+  private waking: Promise<void> | null = null;
+  private wakeCancelled = false;
   readonly polling: PowerStatePolling;
 
   constructor(
@@ -237,13 +240,29 @@ export class TvController {
   }
 
   private async powerOn(): Promise<void> {
-    if (await this.polling.current()) {
+    if (this.waking !== null || (await this.polling.current())) {
       return;
     }
-    const resends = [...WAKE_RESENDS_MS];
     await this.sendWake();
+    this.wakeCancelled = false;
+    const watching = this.watchWake().finally(() => {
+      this.waking = null;
+    });
+    this.waking = watching;
+    background(watching, 'television.wake_watch_failed', { host: this.account.host });
+  }
+
+  cancelWake(): void {
+    this.wakeCancelled = true;
+  }
+
+  private async watchWake(): Promise<void> {
+    const resends = [...WAKE_RESENDS_MS];
     for (let waited = WAKE_CHECK_MS; waited <= WAKE_BOOT_MS; waited += WAKE_CHECK_MS) {
       await this.io.clock.sleep(WAKE_CHECK_MS);
+      if (this.wakeCancelled) {
+        return;
+      }
       if (await this.polling.checkNow()) {
         return;
       }
@@ -252,7 +271,9 @@ export class TvController {
         await this.sendWake();
       }
     }
-    throw new TvDidNotWakeError(this.account.host);
+    this.context.log.error('television.did_not_wake', new TvDidNotWakeError(this.account.host), {
+      host: this.account.host,
+    });
   }
 
   private async powerOff(): Promise<void> {
@@ -288,8 +309,10 @@ export class TvController {
   private async launch(name: string, ids: readonly string[]): Promise<void> {
     await this.refuseWhileOff('app_launch');
     const connection = await this.remote.get();
-    const installed = await connection.installedApps(APPS_TIMEOUT_MS);
-    const app = ids.flatMap((id) => installed.filter((entry) => entry.appId === id))[0];
+    const find = (installed: readonly InstalledApp[]): InstalledApp | undefined =>
+      ids.flatMap((id) => installed.filter((entry) => entry.appId === id))[0];
+    const app =
+      find(connection.knownApps ?? []) ?? find(await connection.installedApps(APPS_TIMEOUT_MS));
     if (app === undefined) {
       throw new CommandRefusedError('app_launch', `${name} is not installed on the television`);
     }

@@ -169,10 +169,14 @@ export function assertToolArea(store: Store, caller: Caller, area: McpToolArea):
   if (scopes !== null && !areaInScope(scopes, area)) throw areaRefusal(store, caller, area);
 }
 
-export function assertModelAllowed(store: Store, profileId: string, model: string): void {
+export function modelAllowed(store: Store, profileId: string, model: string): boolean {
   const standing = store.personAccess.standing(profileId);
-  if (standing.known && standing.role === 'owner') return;
-  if (modelInScope(scopesOf(store, profileId).models, model)) return;
+  if (standing.known && standing.role === 'owner') return true;
+  return modelInScope(scopesOf(store, profileId).models, model);
+}
+
+export function assertModelAllowed(store: Store, profileId: string, model: string): void {
+  if (modelAllowed(store, profileId, model)) return;
   throw refusal(
     store,
     { id: null, profile_id: profileId },

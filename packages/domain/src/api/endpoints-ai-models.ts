@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import {
   AI_CATALOGUE_SYNC,
-  AI_EFFORT,
   AI_MODEL_CHOICE,
   AI_MODEL_CURSOR,
   AI_MODEL_DETAIL,
@@ -40,13 +39,6 @@ export const AI_SUGGESTED_QUERY = z.strictObject({
 export type AiSuggestedQuery = z.input<typeof AI_SUGGESTED_QUERY>;
 
 export type AiModelQuery = z.input<typeof AI_MODEL_QUERY>;
-
-export const OPENROUTER_DEFAULTS_CHANGE = z.strictObject({
-  default_model: AI_MODEL_CHOICE,
-  default_effort: AI_EFFORT,
-});
-
-export type OpenRouterDefaultsChange = z.infer<typeof OPENROUTER_DEFAULTS_CHANGE>;
 
 export const AI_PRICE_OVERRIDE = z.strictObject({
   pricing: AI_PRICING.nullable(),
@@ -124,16 +116,6 @@ export const AI_MODEL_ENDPOINTS = {
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
-    response: OPENROUTER_STATUS,
-  }),
-  setOpenRouterDefaults: endpoint({
-    method: 'PUT',
-    path: '/api/ai/openrouter/defaults',
-    access: 'owner',
-    summary: 'Choose the model and thinking level new chats start with',
-    params: NOTHING,
-    query: NOTHING,
-    body: OPENROUTER_DEFAULTS_CHANGE,
     response: OPENROUTER_STATUS,
   }),
   setOpenRouterKey: endpoint({

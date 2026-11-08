@@ -6,10 +6,11 @@ import {
   type Provider,
   type ProviderCredentials,
   type ProviderLinkRow,
+  type StateUpdate,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ShownPrompt } from '../src/adapters/contract';
-import { ProviderManager } from '../src/providers/manager';
+import { ProviderManager, type ProviderManagerOptions } from '../src/providers/manager';
 import { linkAccount } from '../src/providers/registry-types';
 import { SecretStore } from '../src/secrets/store';
 import { EventRouter } from '../src/state/event-router';
@@ -19,6 +20,7 @@ import { testDatabase, type TestDatabase } from './support/database';
 import { FakeClock } from './support/fake-clock';
 import { LAMP, fakeModule, type FakeModule } from './support/fake-provider';
 import { captureLogs, testLogger } from './support/logs';
+import { hubLayout } from '../src/data-layout';
 
 const CREDENTIALS: ProviderCredentials = {
   provider: 'xiaomi',
@@ -50,7 +52,9 @@ async function until(condition: () => boolean): Promise<void> {
   }
 }
 
-async function setup(): Promise<Setup> {
+async function setup(
+  hooks: Pick<ProviderManagerOptions, 'prepareAdapter' | 'releaseAdapter'> = {},
+): Promise<Setup> {
   const db = await testDatabase();
   databases.push(db);
   const fake = fakeModule();
@@ -82,7 +86,8 @@ async function setup(): Promise<Setup> {
     inventory,
     state,
     events,
-    dataDirectory: directory,
+    layout: hubLayout(directory, {}),
+    ...hooks,
     accountChanged: (provider, account): Promise<void> => {
       accountChanges.push({ provider, label: account?.label ?? null });
       return Promise.resolve();
@@ -128,8 +133,9 @@ describe('ProviderManager', () => {
       device_count: 1,
       account_label: 'person@example.com',
     });
-    expect((await stat(join(directory, 'providers', 'xiaomi'))).isDirectory()).toBe(true);
-    expect(fake.started[0]?.context.dataDirectory).toBe(join(directory, 'providers', 'xiaomi'));
+    const providerFolder = hubLayout(directory, {}).system.providers('xiaomi');
+    expect((await stat(providerFolder)).isDirectory()).toBe(true);
+    expect(fake.started[0]?.context.layout.system.providers('xiaomi')).toBe(providerFolder);
   });
 
   it('hands the account already stored to a later link so it can reuse what it holds', async () => {
@@ -345,6 +351,32 @@ describe('ProviderManager', () => {
     expect(fake.adapter.unsubscribed).toBe(1);
   });
 
+  it('starts a provider before its first state read finishes and drops a read of a stopped adapter', async () => {
+    const { fake, manager, inventory, state } = await setup();
+    const reads: ((updates: readonly StateUpdate[]) => void)[] = [];
+    fake.adapter.refresh = (): Promise<readonly StateUpdate[]> =>
+      new Promise((resolve) => {
+        reads.push(resolve);
+      });
+    const brightness = (value: number): StateUpdate => ({
+      externalId: 'lamp-1',
+      capability: 'brightness',
+      value,
+      observedAt: '2026-10-08T00:00:00Z',
+    });
+    await manager.link(CREDENTIALS);
+    expect(manager.adapterFor('xiaomi')).toBe(fake.adapter);
+    const lampId = inventory.deviceOf('xiaomi', 'lamp-1')?.id ?? '';
+    reads[0]?.([brightness(40)]);
+    await until(() => state.valueOf(lampId, 'brightness') === 40);
+    await manager.startLinked();
+    await manager.handle({ capability: 'hub:unlink_provider', value: { provider: 'xiaomi' } });
+    reads[1]?.([brightness(90)]);
+    await new Promise((resolve) => setImmediate(resolve));
+    await state.settled();
+    expect(state.valueOf(lampId, 'brightness')).toBe(40);
+  });
+
   it('discovers again on request, for one provider or all, and refuses one that is not running', async () => {
     const { fake, manager, inventory } = await setup();
     await expect(
@@ -359,6 +391,29 @@ describe('ProviderManager', () => {
       await manager.handle({ capability: 'hub:discover', value: { provider: 'xiaomi' } }),
     ).toStrictEqual({ xiaomi: 2 });
     expect(inventory.devicesOf('xiaomi')).toHaveLength(2);
+  });
+
+  it('answers a discover request with the device count before the state read finishes', async () => {
+    const { fake, manager, inventory, state } = await setup();
+    await manager.link(CREDENTIALS);
+    let finish: (updates: readonly StateUpdate[]) => void = () => undefined;
+    fake.adapter.refresh = (): Promise<readonly StateUpdate[]> =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    expect(
+      await manager.handle({ capability: 'hub:discover', value: { provider: 'xiaomi' } }),
+    ).toStrictEqual({ xiaomi: 1 });
+    const lampId = inventory.deviceOf('xiaomi', 'lamp-1')?.id ?? '';
+    finish([
+      {
+        externalId: 'lamp-1',
+        capability: 'brightness',
+        value: 55,
+        observedAt: '2026-10-08T00:00:00Z',
+      },
+    ]);
+    await until(() => state.valueOf(lampId, 'brightness') === 55);
   });
 
   it('unlinks: stops the adapter, forgets the account, marks devices offline and reports it', async () => {
@@ -381,6 +436,25 @@ describe('ProviderManager', () => {
     await manager.stopAll();
   });
 
+  it('releases a prepared adapter when its provider stops and when its start fails', async () => {
+    const calls: string[] = [];
+    const { fake, manager } = await setup({
+      prepareAdapter: (): void => {
+        calls.push('prepare');
+      },
+      releaseAdapter: (): void => {
+        calls.push('release');
+      },
+    });
+    await manager.link(CREDENTIALS);
+    await manager.handle({ capability: 'hub:unlink_provider', value: { provider: 'xiaomi' } });
+    expect(calls).toStrictEqual(['prepare', 'release']);
+    fake.adapter.discover = (): Promise<never> => Promise.reject(new Error('discovery failed'));
+    await expect(manager.link(CREDENTIALS)).rejects.toThrow('discovery failed');
+    expect(calls).toStrictEqual(['prepare', 'release', 'prepare', 'release']);
+    await manager.stopAll();
+  });
+
   it('withdraws a pending question when the link is replaced', async () => {
     const { fake, manager } = await setup();
     fake.askDuringLink = true;
@@ -400,7 +474,7 @@ describe('ProviderManager', () => {
   it('links every provider through its own module', async () => {
     const context = {
       log: testLogger(),
-      dataDirectory: directory,
+      layout: hubLayout(directory, {}),
       ask: (): Promise<string> => Promise.resolve(''),
       show: (): Promise<ShownPrompt> =>
         Promise.resolve({ answer: Promise.resolve(''), dismiss: () => Promise.resolve() }),

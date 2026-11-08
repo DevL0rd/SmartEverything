@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { Stage, SwitchRow } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
-function Demo() {
+function Demo(): ReactElement {
   const [a, setA] = useState(true);
   const [b, setB] = useState(false);
   return (
@@ -33,12 +33,12 @@ function Demo() {
     </Col>
   );
 }
-export const Rows = () => (
+export const Rows = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     <Demo />
   </Stage>

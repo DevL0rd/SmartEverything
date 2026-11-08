@@ -1,5 +1,9 @@
 import type { BottleStats } from '@smarteverything/domain';
 import type { FrameClass, WidgetFrameBox } from '../../../components/widget-board';
+import {
+  WIDGET_BODY_GAP,
+  widgetHeaderHeight,
+} from '../../../components/widget-board/widget-frame-metrics';
 import { millilitres } from '../../../format/number';
 
 type FaceKind = 'strip' | 'row' | 'panel';
@@ -18,10 +22,8 @@ export function faceKindOf(cls: FrameClass): FaceKind {
   }
 }
 
-const HEADER_PX = { touch: 52, pointer: 44 } as const;
-
 export function bodyHeightOf(frame: WidgetFrameBox): number {
-  return Math.max(0, frame.height - HEADER_PX[frame.idiom]);
+  return Math.max(0, frame.height - widgetHeaderHeight(frame.idiom) - WIDGET_BODY_GAP);
 }
 
 export function monthTotalMl(heatmap: BottleStats['heatmap'], today: string): number {

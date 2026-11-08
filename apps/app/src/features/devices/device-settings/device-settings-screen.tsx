@@ -1,8 +1,12 @@
 import { BluetoothObservation } from './bluetooth-observation';
 import { Fragment, type ReactNode } from 'react';
+import { View } from 'react-native';
 import { inTier, isBleObservable, isCamera } from '@smarteverything/domain';
 import { NavRow } from '../../../components/rows';
 import { List } from '../../../components/section';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
+import { cn } from '../../../design/cn';
+import { WIDTH_BREAKPOINTS } from '../../../design/size-class';
 import { href } from '../../../app-shell/hrefs';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
@@ -10,7 +14,7 @@ import { CapabilityRow } from '../controls/capability-row';
 import { offlineReason } from '../controls/guard';
 import { MissingDevice } from '../detail/missing-device';
 import { pluginSettingsBlocksOf } from '../detail/plugin-sections';
-import { settingsOf } from '../model/control-groups';
+import { placesOwnCapabilities, settingsOf } from '../model/control-groups';
 import { useDisplayName } from '../model/display-name';
 import { useDeviceModel } from '../model/device-model';
 import { AboutSection } from './about-section';
@@ -32,7 +36,7 @@ function OptionsSection({
 }): ReactNode {
   const model = useDeviceModel(device);
   const options = settingsOf(model.presentation);
-  if (options.length === 0) {
+  if (options.length === 0 || placesOwnCapabilities(model.family)) {
     return null;
   }
   return (
@@ -90,24 +94,28 @@ function BluetoothSection({ device }: { readonly device: Device }): ReactNode {
   return isBleObservable(device) ? <BluetoothObservation device={device} /> : null;
 }
 
-function Body({
+function DeviceConfiguration({
   device,
+  name,
+  className,
   children,
 }: {
   readonly device: Device;
+  readonly name: string;
+  readonly className: string;
   readonly children?: ReactNode;
 }): ReactNode {
-  const name = useDisplayName(device.id);
   const scale = useDeviceModel(device).family === 'scale';
   const reason = device.online ? null : offlineReason(name);
   return (
-    <DeviceSettingsFrame deviceId={device.id} name={name} title={name}>
+    <View className={className}>
       <GeneralSection device={device} name={name} />
       {isCamera(device) ? (
         <List>
           <NavRow
             title="Camera options"
             subtitle="Event clips, wake sensitivity, transcripts, picture, detection, speaker and memory card"
+            wrapSubtitle
             icon="cameras"
             href={href.settings.camera(device.id)}
           />
@@ -132,8 +140,35 @@ function Body({
         <Fragment key={block.key}>{block.render(device)}</Fragment>
       ))}
       {children}
-      <AboutSection device={device} />
-      <RemoveSection device={device} name={name} />
+    </View>
+  );
+}
+
+function Body({
+  device,
+  children,
+}: {
+  readonly device: Device;
+  readonly children?: ReactNode;
+}): ReactNode {
+  const name = useDisplayName(device.id);
+  const { width, onLayout } = useMeasuredWidth();
+  const columns = width >= WIDTH_BREAKPOINTS.expanded;
+  const column = cn('min-w-0 max-w-reading gap-section-gap', columns ? 'flex-1' : 'w-full');
+  return (
+    <DeviceSettingsFrame deviceId={device.id} name={name} title={name} maxWidth="full">
+      <View
+        onLayout={onLayout}
+        className={cn('gap-section-gap', columns && 'flex-row items-start')}
+      >
+        <DeviceConfiguration device={device} name={name} className={column}>
+          {children}
+        </DeviceConfiguration>
+        <View className={column}>
+          <AboutSection device={device} />
+          <RemoveSection device={device} name={name} />
+        </View>
+      </View>
     </DeviceSettingsFrame>
   );
 }

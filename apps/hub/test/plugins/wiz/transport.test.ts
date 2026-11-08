@@ -51,7 +51,7 @@ describe('WiZ requests', () => {
     await vi.waitFor(() => {
       expect(bulb.received).toHaveLength(1);
     });
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(400);
     await expect(pending).resolves.toMatchObject({ method: 'setPilot' });
     expect(bulb.received.map((entry) => entry.id)).toEqual([
       bulb.received[0]?.id,
@@ -68,7 +68,7 @@ describe('WiZ requests', () => {
     await vi.waitFor(() => {
       expect(bulb.received).toHaveLength(1);
     });
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(1200);
     await failure;
     expect(bulb.received).toHaveLength(3);
   });

@@ -1,11 +1,16 @@
 import {
   AI_SHAPE,
+  AUDIO_ACTIONS,
+  AUDIO_KINDS,
+  DISPLAY_SIDES,
+  DISPLAY_TOOL_ACTIONS,
+  DISPLAY_VRR_POLICIES,
   JSON_VALUE,
-  MEDIA_SIZES,
+  NIGHT_LIGHT_MODES,
   PHONE_ACTION,
-  POWER_ACTIONS,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import { VISION_SOURCES } from './effects/vision-sight';
 
 function reference(kind: string): z.ZodType<string> {
   return z.union([
@@ -31,17 +36,17 @@ export const ASK_PARAMS = z.object({
   ...AI_COMMON,
 });
 
-export const VISION_PARAMS = z
-  .object({
-    question: z.string(),
-    image: z.string().min(1).optional(),
-    camera: reference('camera').optional(),
-    shape: AI_SHAPE.optional(),
-    ...AI_COMMON,
-  })
-  .refine((params) => (params.image === undefined) !== (params.camera === undefined), {
-    message: 'give either a picture or a camera',
-  });
+export const VISION_PARAMS = z.object({
+  question: z.string(),
+  image: z.string().min(1).optional(),
+  camera: reference('camera').optional(),
+  source: z.enum(VISION_SOURCES).optional(),
+  computer: reference('computer').optional(),
+  window: z.string().min(1).optional(),
+  phone: reference('phone').optional(),
+  shape: AI_SHAPE.optional(),
+  ...AI_COMMON,
+});
 
 export const DECIDE_PARAMS = z.object({
   question: z.string(),
@@ -49,14 +54,39 @@ export const DECIDE_PARAMS = z.object({
   ...AI_COMMON,
 });
 
-export const SNAPSHOT_PARAMS = z.object({
-  camera: reference('camera'),
-  size: z.enum(MEDIA_SIZES).default('full'),
+const COMPUTER = reference('computer');
+
+const NAME = z.string().min(1).optional();
+
+export const AUDIO_PARAMS = z.object({
+  computer: COMPUTER,
+  action: z.enum(AUDIO_ACTIONS),
+  kind: z.enum(AUDIO_KINDS).optional(),
+  device: NAME,
+  level: z.number().optional(),
+  muted: z.boolean().optional(),
+  app: NAME,
+  output: NAME,
 });
 
-export const POWER_PARAMS = z.object({
-  computer: reference('computer'),
-  action: z.enum(POWER_ACTIONS),
+export const DISPLAY_PARAMS = z.object({
+  computer: COMPUTER,
+  action: z.enum(DISPLAY_TOOL_ACTIONS),
+  output: NAME,
+  width: z.number().optional(),
+  height: z.number().optional(),
+  refreshHz: z.number().optional(),
+  scale: z.number().optional(),
+  rotation: z.string().transform(Number).optional(),
+  relativeTo: NAME,
+  side: z.enum(DISPLAY_SIDES).optional(),
+  mirrorOf: NAME,
+  brightness: z.number().optional(),
+  enabled: z.boolean().optional(),
+  vrr: z.enum(DISPLAY_VRR_POLICIES).optional(),
+  nightLight: z.enum(NIGHT_LIGHT_MODES).optional(),
+  temperature: z.number().optional(),
+  keep: z.boolean().default(false),
 });
 
 export const PHONE_PARAMS = z.object({ phone: reference('phone'), action: PHONE_ACTION });
@@ -83,5 +113,3 @@ export const HEALTH_ANSWER = z.looseObject({
     z.looseObject({ day: z.string(), metric: z.string(), value: z.number(), unit: z.string() }),
   ),
 });
-
-export const COMPUTER_ANSWER = z.unknown();

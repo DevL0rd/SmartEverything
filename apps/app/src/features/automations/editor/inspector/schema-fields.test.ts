@@ -11,6 +11,7 @@ import {
   formOps,
   formSchema,
   formValues,
+  isTextOnly,
 } from './schema-fields';
 
 function declared(kindId: string, port: string): InputPortDecl {
@@ -32,6 +33,7 @@ describe('controlOf', () => {
       [{ t: 'any' }, 'json'],
       [{ t: 'param', name: 'item' }, 'json'],
       [{ t: 'text' }, 'text'],
+      [{ t: 'entity', of: 'discord.channel' }, 'entity'],
     ];
     for (const [type, control] of expected) expect(controlOf(type).t).toBe(control);
   });
@@ -95,7 +97,7 @@ describe('controlOf', () => {
     });
   });
 
-  it('describes record fields and treats an open record as json', () => {
+  it('describes record fields and edits an open record as named typed values', () => {
     const control = controlOf({
       t: 'record',
       fields: { gap: { t: 'optional', of: { t: 'duration' } }, onLimit: { t: 'boolean' } },
@@ -107,7 +109,104 @@ describe('controlOf', () => {
         { name: 'onLimit', title: 'On limit', control: { t: 'switch' }, optional: false },
       ],
     });
-    expect(controlOf({ t: 'record', values: { t: 'text' } })).toEqual({ t: 'json' });
+    expect(controlOf({ t: 'record', values: { t: 'text' } })).toEqual({
+      t: 'entries',
+      item: { t: 'text' },
+    });
+    expect(controlOf({ t: 'record', values: { t: 'any' } })).toEqual({
+      t: 'entries',
+      item: { t: 'json' },
+    });
+  });
+
+  it('turns a text port with a source into a picker, many for a list or a multiple hint', () => {
+    expect(controlOf({ t: 'text' }, { optionsFrom: 'tools' })).toEqual({
+      t: 'pick',
+      source: 'tools',
+      multiple: false,
+    });
+    expect(controlOf({ t: 'list', of: { t: 'text' } }, { optionsFrom: 'tools' })).toEqual({
+      t: 'pick',
+      source: 'tools',
+      multiple: true,
+    });
+    expect(controlOf({ t: 'text' }, { optionsFrom: 'device.controls', multiple: true })).toEqual({
+      t: 'pick',
+      source: 'device.controls',
+      multiple: true,
+    });
+  });
+
+  it('wraps a port with an editor id around the control of its type', () => {
+    expect(controlOf({ t: 'record', values: { t: 'any' } }, { editor: 'phone-action' })).toEqual({
+      t: 'editor',
+      id: 'phone-action',
+      base: { t: 'entries', item: { t: 'json' } },
+    });
+  });
+
+  it('types an any or param port by another port and leaves typed ports alone', () => {
+    expect(controlOf({ t: 'any' }, { typedBy: 'control' })).toEqual({
+      t: 'typedBy',
+      port: 'control',
+      base: { t: 'json' },
+    });
+    expect(controlOf({ t: 'list', of: { t: 'param', name: 'T' } }, { typedBy: 'value' })).toEqual({
+      t: 'typedBy',
+      port: 'value',
+      base: { t: 'list', item: { t: 'json' } },
+    });
+    expect(controlOf({ t: 'boolean' }, { typedBy: 'control' })).toEqual({ t: 'switch' });
+  });
+});
+
+function namesText(type: FlowType): boolean {
+  if (type.t === 'optional' || type.t === 'list') return namesText(type.of);
+  return type.t === 'text';
+}
+
+describe('ports with sources, editors and typed values', () => {
+  it('reads the declarations of the real kinds', () => {
+    expect(fieldOf(declared('device.set', 'control')).control.t).toBe('pick');
+    expect(fieldOf(declared('device.set', 'to')).control).toMatchObject({
+      t: 'typedBy',
+      port: 'control',
+    });
+    expect(fieldOf(declared('ai.ask', 'tools')).control).toMatchObject({
+      t: 'pick',
+      source: 'tools',
+      multiple: true,
+    });
+    expect(fieldOf(declared('computer.keys', 'keys')).control).toMatchObject({
+      t: 'editor',
+      id: 'key-combo',
+    });
+    expect(fieldOf(declared('logic.compare', 'b')).control).toMatchObject({
+      t: 'typedBy',
+      port: 'a',
+    });
+  });
+
+  it('never leaves a port with a text source or an editor as a text or JSON box', () => {
+    for (const kind of NODE_REGISTRY.shipped()) {
+      for (const decl of kind.inputs) {
+        const control = fieldOf(decl).control;
+        if (decl.ui?.editor !== undefined) expect(control.t).toBe('editor');
+        else if (decl.ui?.optionsFrom !== undefined && namesText(decl.type)) {
+          expect([kind.id, decl.name, control.t]).toEqual([kind.id, decl.name, 'pick']);
+        }
+      }
+    }
+  });
+
+  it('keeps record values with an editor in the Edit as text list and pickers out of it', () => {
+    expect(isTextOnly(fieldOf(declared('device.set', 'control')).control)).toBe(false);
+    expect(isTextOnly(fieldOf(declared('device.set', 'to')).control)).toBe(true);
+  });
+
+  it('keeps pickers out of the plain form', () => {
+    const control = fieldOf(declared('device.set', 'control'));
+    expect(formKind(control)).toBeNull();
   });
 });
 
@@ -121,9 +220,9 @@ describe('fieldOf', () => {
       isStatic: true,
       isLive: false,
       fallback: 1,
-      control: { t: 'number', integer: true, min: 1, max: 64 },
+      control: { t: 'number', integer: true, min: 1 },
     });
-    expect(field.helper).toBe('How many items run at once.');
+    expect(field.helper).toBe('How many items run at once. Any number, no upper limit.');
   });
 
   it('marks a live port and a choice port', () => {
@@ -175,7 +274,7 @@ describe('the form for plain static options', () => {
     const together = fieldsOf(NODE_REGISTRY.get('flow.for_each')?.inputs ?? []);
     const schema = formSchema(together);
     expect(schema).toMatchObject({
-      properties: { concurrency: { type: 'integer', minimum: 1, maximum: 64 } },
+      properties: { concurrency: { type: 'integer', minimum: 1 } },
     });
   });
 

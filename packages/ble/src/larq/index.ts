@@ -117,3 +117,4 @@ export {
   encodeVarint,
 } from './wire';
 export { fieldsOf, readBytes, readFixed32, readMessage, readVarint } from './wire';
+export { LARQ_PUREVIS_2_MODEL } from './model';

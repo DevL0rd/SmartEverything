@@ -1,5 +1,6 @@
 import {
   NODE_HELLO,
+  NODE_PROTOCOL_VERSION,
   type Battery,
   type ComputerFeature,
   type DisksPart,
@@ -101,6 +102,7 @@ export class PortableComputer implements ComputerCollector {
     const processors = cpus();
     const hasBattery = (this.battery.read()?.value ?? null) !== null;
     return NODE_HELLO.parse({
+      protocol: NODE_PROTOCOL_VERSION,
       machineId,
       hostname: hostname(),
       os: { name: identity.osName, kernel: `${platform} ${release()} (${UNVERIFIED_NOTE})` },

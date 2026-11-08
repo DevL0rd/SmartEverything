@@ -10,7 +10,6 @@ import {
   type NodeDemand,
   type NodeHello,
   type NodeRequest,
-  type PowerAction,
   type ProcessesUpdate,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
@@ -18,21 +17,28 @@ import { background } from '@smarteverything/logging';
 import { appEventsOf, type AppEventsWatch } from './app-events-watch';
 import type { ComputerCollector } from './collectors/collector';
 import { Sampler } from './collectors/sampler';
+import {
+  earHostFeatures,
+  isRelay,
+  machineReport,
+  machineChanged,
+  powerActions,
+  sameFeatures,
+} from './computer-node-reports';
 import { controlFeatures, type ComputerControls } from './controls/controls';
 import type { EarFactory, EarPort } from './ear/computer-ear';
-import { isEarsFrame, type EarHostFactory, type EarHostPort, type EarsFrame } from './ear/ear-host';
+import { type EarHostFactory, type EarHostPort } from './ear/ear-host';
+import { receiveEars } from './ear/ear-receive';
 import type { NodeLink } from './link';
 import { failureOf, NodeFailureError } from './node-failure';
+import { PlacementLink } from './placement-link';
 import { NodeRequestHandler } from './request-handler';
+import { NodeServerRelay } from './server-relay';
 import { StateWatch } from './state-watch';
 
 const BASELINE_OWNER = 'baseline';
 const HUB_OWNER = 'hub';
 const DESKTOP_FEATURES: readonly ComputerFeature[] = ['processes', 'files', 'capture'];
-
-function pickMachine(hello: NodeHello): Pick<NodeHello, 'actions' | 'permissions'> {
-  return { actions: hello.actions, permissions: hello.permissions };
-}
 
 export interface ComputerNodeOptions {
   readonly collector: ComputerCollector;
@@ -53,6 +59,7 @@ export class ComputerNode {
   private stopMachine: (() => void) | null = null;
   private stopTiling: (() => void) | null = null;
   private hello: NodeHello | null = null;
+  private fixedFeatures: readonly ComputerFeature[] = [];
   private session: ComputerSessionState | null = null;
   private window = '';
   private requests = 0;
@@ -62,6 +69,8 @@ export class ComputerNode {
   private readonly apps: AppEventsWatch;
   private readonly ear: EarPort | null;
   private readonly earHost: EarHostPort | null;
+  private readonly relay: NodeServerRelay;
+  readonly placements: PlacementLink;
 
   constructor(private readonly options: ComputerNodeOptions) {
     this.policy = options.history ?? DEFAULT_HISTORY_POLICY;
@@ -95,6 +104,10 @@ export class ComputerNode {
         },
       ) ?? null;
     this.apps = appEventsOf(options);
+    this.placements = new PlacementLink(options.link.send);
+    this.relay = new NodeServerRelay((frame) => {
+      options.link.send(frame);
+    }, options.log);
     this.states = new StateWatch({
       controls: options.controls,
       allows: (scope): boolean => this.handler.allows(scope),
@@ -127,7 +140,10 @@ export class ComputerNode {
     this.stopMachine = null;
     this.stopTiling?.();
     this.stopTiling = null;
+    this.options.controls.environment.stop();
     this.apps.stop();
+    this.relay.stop();
+    this.placements.stop();
     background(this.options.controls.tiling.stop(), 'computer_node.tiling_stop_failed');
     this.hello = null;
     this.halt();
@@ -157,17 +173,19 @@ export class ComputerNode {
   private async greet(): Promise<void> {
     const { collector, controls, link, now } = this.options;
     const greetStartedAt = performance.now();
+    await this.watchEnvironment();
     const [features, hosting] = await Promise.all([
       controlFeatures(controls, this.options.log),
-      this.earHostFeatures(),
+      earHostFeatures(this.earHost, this.options.log),
     ]);
     const hello = await collector.hello(now());
-    const machine = await this.machineReport();
+    const machine = await machineReport(this.options.controls, this.options.log);
+    this.fixedFeatures = [...hello.features, ...DESKTOP_FEATURES, ...hosting];
     const complete = {
       ...hello,
       ...machine,
-      power: await this.powerActions(),
-      features: [...new Set([...hello.features, ...DESKTOP_FEATURES, ...features, ...hosting])],
+      power: await powerActions(this.options.controls, this.options.log),
+      features: [...new Set([...this.fixedFeatures, ...features])],
     };
     if (this.unsubscribe === null) {
       this.options.log.debug('node.greet_abandoned', { reason: 'stopped_while_greeting' });
@@ -186,29 +204,33 @@ export class ComputerNode {
     await this.watchSession();
   }
 
-  private async earHostFeatures(): Promise<readonly ComputerFeature[]> {
-    if (this.earHost === null) {
-      return [];
-    }
+  private async watchEnvironment(): Promise<void> {
     try {
-      await this.earHost.load();
-      return ['ear_host'];
-    } catch (cause) {
-      this.options.log.error('node.ear_host_unavailable', cause, {
-        consequence: 'this computer cannot listen for cameras, walkie and Discord',
+      await this.options.controls.environment.start(() => {
+        background(this.reportFeatures(), 'computer_node.features_report_failed');
+        background(this.reportMachine(), 'computer_node.machine_report_failed');
       });
-      return [];
+    } catch (cause) {
+      if (cause instanceof NodeFailureError && cause.code === 'no_session') {
+        this.options.log.warn('node.environment_unwatched', {
+          reason: cause.message,
+          consequence: 'screens and windows appear only after the node restarts in a session',
+        });
+        return;
+      }
+      this.options.log.error('node.environment_unwatched', cause);
     }
   }
 
-  private async machineReport(): Promise<Pick<NodeHello, 'actions' | 'permissions'>> {
-    try {
-      const report = await this.options.controls.machine.report();
-      return { actions: [...report.actions], permissions: [...report.permissions] };
-    } catch (cause) {
-      this.options.log.error('node.machine_unknown', cause);
-      return { actions: [], permissions: [] };
-    }
+  private async reportFeatures(): Promise<void> {
+    const hello = this.hello;
+    if (hello === null) return;
+    const controlled = await controlFeatures(this.options.controls, this.options.log);
+    const features = [...new Set([...this.fixedFeatures, ...controlled])];
+    if (this.hello !== hello || sameFeatures(features, hello.features)) return;
+    this.hello = { ...hello, features };
+    this.options.log.info('node.features_reported', { features });
+    this.options.link.send({ type: 'features', features });
   }
 
   private watchMachine(): void {
@@ -239,9 +261,8 @@ export class ComputerNode {
   private async reportMachine(): Promise<void> {
     const hello = this.hello;
     if (hello === null) return;
-    const report = await this.machineReport();
-    const signature = JSON.stringify(report);
-    if (this.hello !== hello || signature === JSON.stringify(pickMachine(hello))) return;
+    const report = await machineReport(this.options.controls, this.options.log);
+    if (this.hello !== hello || !machineChanged(hello, report)) return;
     this.hello = { ...hello, ...report };
     this.options.log.info('node.machine_reported', {
       ready: report.actions.filter((action) => action.state === 'ready').length,
@@ -285,15 +306,6 @@ export class ComputerNode {
     });
   }
 
-  private async powerActions(): Promise<PowerAction[]> {
-    try {
-      return await this.options.controls.power.available();
-    } catch (cause) {
-      this.options.log.error('node.power_unknown', cause);
-      return [];
-    }
-  }
-
   private received(frame: HubFrame): void {
     if (frame.type === 'request') {
       background(this.answer(frame.id, frame.request), 'computer_node.answer_failed');
@@ -311,24 +323,23 @@ export class ComputerNode {
       this.ear?.receive(frame.ear);
       return;
     }
-    if (isEarsFrame(frame)) {
-      this.earsReceived(frame);
+    if (receiveEars(this.earHost, frame, this.options.log) || this.placements.handle(frame)) return;
+    if (isRelay(frame)) {
+      this.relay.receive(frame);
       return;
     }
-    this.demand = frame.demand;
-    const { history } = frame.demand;
-    if (history !== undefined && JSON.stringify(history) !== JSON.stringify(this.policy)) {
-      this.setHistoryPolicy(history);
-    }
-    this.sync();
+    this.demanded(frame.demand);
   }
 
-  private earsReceived(frame: EarsFrame): void {
-    if (this.earHost === null) {
-      this.options.log.warn('node.ears_unsupported', { type: frame.type });
-      return;
+  private demanded(demand: NodeDemand): void {
+    this.demand = demand;
+    if (
+      demand.history !== undefined &&
+      JSON.stringify(demand.history) !== JSON.stringify(this.policy)
+    ) {
+      this.setHistoryPolicy(demand.history);
     }
-    this.earHost.receive(frame);
+    this.sync();
   }
 
   private sync(): void {

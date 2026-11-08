@@ -1,39 +1,67 @@
 import {
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
+  readFileSync,
   renameSync,
   rmSync,
   statfsSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { env } from 'node:process';
 import { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 
+import { hubLayout, type HubLayout as DataLayout } from '../apps/hub/src/data-layout/index.ts';
+import {
+  defaultHubInstall,
+  desktopPayloadIn,
+  HUB_SERVICE_DIRECTORY,
+  HUB_NODE_EXECUTABLE,
+  HUB_SERVICE_ENTRY,
+} from './hub-install-layout.ts';
+import {
+  hasV1Marker,
+  legacyLayoutOf,
+  rollbackScene,
+  writeBackupMeta,
+  type RollbackScene,
+  type Transition,
+  type TransitionEnvironment,
+} from './release-hub-transition.ts';
+
 const ROOT = join(import.meta.dirname, '..');
 
-export const DATABASE_FILE = 'smarteverything.db';
-export const SERVICE_ENTRY = 'service.mjs';
+export const BACKUP_DATABASE_FILE = 'smarteverything.db';
+export const SERVICE_ENTRY = HUB_SERVICE_ENTRY;
 export const SERVICE_FILES = [
   SERVICE_ENTRY,
   'voice-worker.mjs',
+  'loop-watchdog.mjs',
   'hook-helper.mjs',
   'raster-worker.mjs',
 ] as const;
 
 const STORE_MODULE = join(ROOT, 'apps', 'hub', 'src', 'store', 'store.ts');
 const FREE_SPACE_FACTOR = 3;
+const BACKUP_STATUS_FILE = 'status';
+export const KEPT_VERIFIED_BACKUPS = 2;
+export type BackupStatus = 'verified' | 'rolled-back';
 
-export interface HubLayout {
+export interface HubInstall {
   readonly service: string;
-  readonly database: string;
-  readonly data: string;
-  readonly backups: string;
+}
+
+export interface ReleaseTarget {
+  readonly install: HubInstall;
+  readonly data: DataLayout;
 }
 
 export class ReleaseStepError extends Error {
@@ -47,18 +75,39 @@ export class ReleaseStepError extends Error {
   }
 }
 
-export function hubLayout(install?: string, data?: string): HubLayout {
-  const installed = install ?? join(homedir(), '.local', 'opt', 'SmartEverything');
-  const stored = data ?? join(homedir(), '.config', 'SmartEverything');
+export function hubInstall(install?: string): HubInstall {
+  return { service: join(install ?? defaultHubInstall(), HUB_SERVICE_DIRECTORY) };
+}
+
+export function dataLayoutOf(root: string): DataLayout {
+  return hubLayout(root, env);
+}
+
+export interface ReleaseScene {
+  readonly target: ReleaseTarget;
+  readonly transition: Transition | null;
+}
+
+export function releaseSceneOf(install: string, root: string): ReleaseScene {
+  const after = dataLayoutOf(root);
+  if (hasV1Marker(root))
+    return { target: { install: hubInstall(install), data: after }, transition: null };
   return {
-    service: join(installed, 'resources', 'service'),
-    database: join(stored, DATABASE_FILE),
-    data: stored,
-    backups: join(stored, 'release-backups'),
+    target: { install: hubInstall(install), data: legacyLayoutOf(root) },
+    transition: {
+      after,
+      unit: {
+        install,
+        node: HUB_NODE_EXECUTABLE,
+        entry: `${HUB_SERVICE_DIRECTORY}/${HUB_SERVICE_ENTRY}`,
+      },
+    },
   };
 }
 
 export function builtServiceProblems(directory: string): readonly string[] {
+  const desktop = desktopPayloadIn(directory);
+  if (desktop !== undefined) return [`${directory} contains desktop content (${desktop}).`];
   return SERVICE_FILES.filter((file) => !existsSync(join(directory, file))).map(
     (file) => `${join(directory, file)} is missing; build it with tooling/build-service.ts first`,
   );
@@ -85,49 +134,140 @@ export function schemaVersionOf(database: string): number {
   }
 }
 
-export function freeSpaceProblem(layout: HubLayout): string | null {
-  const needed = statSync(layout.database).size * FREE_SPACE_FACTOR;
-  mkdirSync(layout.data, { recursive: true });
-  const stats = statfsSync(layout.data);
-  const free = stats.bavail * stats.bsize;
-  return free >= needed
-    ? null
-    : `only ${String(Math.floor(free / 1e6))} MB are free in ${layout.data}, a release needs ${String(Math.ceil(needed / 1e6))} MB`;
+export function directorySize(path: string): number {
+  const entries = readdirSync(path, { recursive: true, withFileTypes: true });
+  return entries
+    .filter((entry) => !entry.isDirectory())
+    .reduce((total, entry) => total + lstatSync(join(entry.parentPath, entry.name)).size, 0);
 }
 
-export function backUpRelease(layout: HubLayout, name: string, epoch: number): string {
-  const directory = join(layout.backups, `${name}-${String(epoch)}`);
+interface SpaceNeed {
+  readonly path: string;
+  readonly bytes: number;
+}
+
+function spaceProblems(needs: readonly SpaceNeed[]): readonly string[] {
+  const byDevice = new Map<number, { path: string; bytes: number }>();
+  for (const need of needs) {
+    mkdirSync(need.path, { recursive: true });
+    const device = statSync(need.path).dev;
+    const known = byDevice.get(device);
+    byDevice.set(device, {
+      path: known?.path ?? need.path,
+      bytes: (known?.bytes ?? 0) + need.bytes,
+    });
+  }
+  return [...byDevice.values()].flatMap(({ path, bytes }) => {
+    const stats = statfsSync(path);
+    const free = stats.bavail * stats.bsize;
+    return free >= bytes
+      ? []
+      : [
+          `only ${String(Math.floor(free / 1e6))} MB are free in ${path}, a release needs ${String(Math.ceil(bytes / 1e6))} MB`,
+        ];
+  });
+}
+
+export function freeSpaceProblem(target: ReleaseTarget, built: string): string | null {
+  const { install, data } = target;
+  const problems = spaceProblems([
+    {
+      path: data.root,
+      bytes:
+        statSync(data.system.database.file).size * FREE_SPACE_FACTOR +
+        directorySize(install.service),
+    },
+    { path: dirname(install.service), bytes: directorySize(built) },
+  ]);
+  return problems.length === 0 ? null : problems.join('; ');
+}
+
+function databaseProblem(database: string): string | null {
+  if (!existsSync(database)) return `${database} is missing from the backup`;
+  try {
+    schemaVersionOf(database);
+    return null;
+  } catch (cause) {
+    return `${database} cannot be read: ${cause instanceof Error ? cause.message : String(cause)}`;
+  }
+}
+
+export function rollbackProblems(
+  target: ReleaseTarget,
+  backup: string,
+  withDatabase: boolean,
+): readonly string[] {
+  const service = join(backup, 'service');
+  const database = join(backup, BACKUP_DATABASE_FILE);
+  const problems = [
+    ...SERVICE_FILES.filter((file) => !existsSync(join(service, file))).map(
+      (file) => `${join(service, file)} is missing from the backup`,
+    ),
+    ...(withDatabase ? [databaseProblem(database)] : []).flatMap((one) =>
+      one === null ? [] : [one],
+    ),
+  ];
+  if (problems.length > 0) return problems;
+  return spaceProblems([
+    { path: dirname(target.install.service), bytes: directorySize(service) },
+    { path: target.data.root, bytes: withDatabase ? statSync(database).size : 0 },
+  ]);
+}
+
+export interface RollbackPreflight {
+  readonly scene: RollbackScene;
+  readonly problems: readonly string[];
+}
+
+export function rollbackPreflight(
+  target: ReleaseTarget,
+  backup: string,
+  withDatabase: boolean,
+  environment: TransitionEnvironment,
+): RollbackPreflight {
+  const scene = rollbackScene(target.data.root, backup, withDatabase, environment);
+  const problems =
+    scene.problems.length > 0
+      ? scene.problems
+      : rollbackProblems(target, scene.backup, withDatabase);
+  return { scene, problems };
+}
+
+export function backUpRelease(target: ReleaseTarget, name: string, epoch: number): string {
+  const { install, data } = target;
+  const directory = join(data.backups.releases, `${name}-${String(epoch)}`);
   mkdirSync(directory, { recursive: true });
-  cpSync(layout.service, join(directory, 'service'), { recursive: true, verbatimSymlinks: true });
-  vacuumInto(layout.database, join(directory, DATABASE_FILE));
+  cpSync(install.service, join(directory, 'service'), { recursive: true, verbatimSymlinks: true });
+  vacuumInto(data.system.database.file, join(directory, BACKUP_DATABASE_FILE));
+  writeBackupMeta(directory, data.root);
   return directory;
 }
 
-export function swapService(layout: HubLayout, built: string, name: string): string {
-  const aside = `${layout.service}.old-${name}`;
+export function swapService(install: HubInstall, built: string, name: string): string {
+  const aside = `${install.service}.old-${name}`;
   rmSync(aside, { recursive: true, force: true });
-  renameSync(layout.service, aside);
+  renameSync(install.service, aside);
   try {
-    cpSync(built, layout.service, { recursive: true, verbatimSymlinks: true });
+    cpSync(built, install.service, { recursive: true, verbatimSymlinks: true });
   } catch (cause) {
-    rmSync(layout.service, { recursive: true, force: true });
-    renameSync(aside, layout.service);
+    rmSync(install.service, { recursive: true, force: true });
+    renameSync(aside, install.service);
     throw new ReleaseStepError('swap', cause instanceof Error ? cause.message : String(cause));
   }
   return aside;
 }
 
-export function restoreService(layout: HubLayout, backup: string, stamp: string): void {
-  renameSync(layout.service, `${layout.service}.rolled-back-${stamp}`);
-  cpSync(join(backup, 'service'), layout.service, { recursive: true, verbatimSymlinks: true });
+export function restoreService(install: HubInstall, backup: string, stamp: string): void {
+  renameSync(install.service, `${install.service}.rolled-back-${stamp}`);
+  cpSync(join(backup, 'service'), install.service, { recursive: true, verbatimSymlinks: true });
 }
 
-export function restoreDatabase(layout: HubLayout, backup: string, stamp: string): void {
-  for (const suffix of ['', '-wal', '-shm']) {
-    const live = `${layout.database}${suffix}`;
+export function restoreDatabase(data: DataLayout, backup: string, stamp: string): void {
+  const { file, wal, shm } = data.system.database;
+  for (const live of [file, wal, shm]) {
     if (existsSync(live)) renameSync(live, `${live}.rolled-back-${stamp}`);
   }
-  cpSync(join(backup, DATABASE_FILE), layout.database);
+  cpSync(join(backup, BACKUP_DATABASE_FILE), file);
 }
 
 const OPEN_STORE = z.object({
@@ -148,12 +288,13 @@ export interface MigrationCheck {
   readonly to: number;
 }
 
-export async function checkMigrations(layout: HubLayout): Promise<MigrationCheck> {
+export async function checkMigrations(data: DataLayout): Promise<MigrationCheck> {
   const { openStore } = OPEN_STORE.parse(await import(pathToFileURL(STORE_MODULE).href));
-  const scratch = mkdtempSync(join(tmpdir(), 'release-migration-'));
-  const copy = join(scratch, DATABASE_FILE);
+  mkdirSync(data.tmp, { recursive: true });
+  const scratch = mkdtempSync(join(data.tmp, 'release-migration-'));
+  const copy = join(scratch, BACKUP_DATABASE_FILE);
   try {
-    vacuumInto(layout.database, copy);
+    vacuumInto(data.system.database.file, copy);
     const from = schemaVersionOf(copy);
     const [first = 0, second = 0] = [1, 2].map((pass) => {
       const store = openStore({
@@ -174,5 +315,69 @@ export async function checkMigrations(layout: HubLayout): Promise<MigrationCheck
     return { from, to: first };
   } finally {
     rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+export function markBackup(backup: string, status: BackupStatus): void {
+  writeFileSync(join(backup, BACKUP_STATUS_FILE), status);
+}
+
+function statusOf(backup: string): BackupStatus | null {
+  const file = join(backup, BACKUP_STATUS_FILE);
+  if (!existsSync(file)) return null;
+  const text = readFileSync(file, 'utf8');
+  return text === 'verified' || text === 'rolled-back' ? text : null;
+}
+
+export function pruneBackups(data: DataLayout): readonly string[] {
+  const folder = data.backups.releases;
+  if (!existsSync(folder)) return [];
+  const entries = readdirSync(folder)
+    .flatMap((name) => {
+      const epoch = /-(\d+)$/u.exec(name)?.[1];
+      return epoch === undefined
+        ? []
+        : [
+            {
+              path: join(folder, name),
+              epoch: Number(epoch),
+              status: statusOf(join(folder, name)),
+            },
+          ];
+    })
+    .sort((left, right) => right.epoch - left.epoch);
+  const kept = new Set(
+    entries
+      .filter((entry) => entry.status === 'verified')
+      .slice(0, KEPT_VERIFIED_BACKUPS)
+      .map((entry) => entry.path),
+  );
+  const doomed = entries.filter(
+    (entry) =>
+      entry.status === 'rolled-back' || (entry.status === 'verified' && !kept.has(entry.path)),
+  );
+  for (const entry of doomed) rmSync(entry.path, { recursive: true, force: true });
+  return doomed.map((entry) => entry.path);
+}
+
+export function pruneReleaseLeftovers(target: ReleaseTarget, keepStamp: string | null): void {
+  const { install, data } = target;
+  const keep = keepStamp === null ? null : `.rolled-back-${keepStamp}`;
+  const databaseName = basename(data.system.database.file);
+  const databaseFolder = dirname(data.system.database.file);
+  const leftovers = [
+    ...readdirSync(dirname(install.service))
+      .filter((name) =>
+        [`${basename(install.service)}.old-`, `${basename(install.service)}.rolled-back-`].some(
+          (prefix) => name.startsWith(prefix),
+        ),
+      )
+      .map((name) => join(dirname(install.service), name)),
+    ...readdirSync(databaseFolder)
+      .filter((name) => name.startsWith(databaseName) && name.includes('.rolled-back-'))
+      .map((name) => join(databaseFolder, name)),
+  ];
+  for (const path of leftovers) {
+    if (keep === null || !path.endsWith(keep)) rmSync(path, { recursive: true, force: true });
   }
 }

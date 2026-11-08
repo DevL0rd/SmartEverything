@@ -6,8 +6,10 @@ import { cn } from '../../../../design/cn';
 import { useColour } from '../../../../design/colour';
 import { breakableUrl, hostOf } from '../../../../format/text';
 import { piecesOf, type Batch } from '../../model/stream-fade';
+import { mentionClass } from '../mention-chip';
 import { FadeSpan } from './fade-span';
-import type { Inline } from './parse';
+import { runPartsOf, type MentionMark, type MentionRule, type RunPart } from './mention-runs';
+import type { Inline } from '@smarteverything/domain/markdown';
 import { startsOf } from './rendered-length';
 import { background } from '@smarteverything/logging';
 
@@ -73,8 +75,27 @@ const LinkRun = memo(function LinkRun({
   );
 });
 
-function inlineNode(part: Inline, index: number, look: Look): ReactNode {
+function MentionRun({
+  text,
+  mark,
+  look,
+}: {
+  readonly text: string;
+  readonly mark: MentionMark;
+  readonly look: Look;
+}): ReactNode {
+  const ink = useColour(mark.ink);
+  return (
+    <NativeText className={mentionClass(mark.ink, mark.self)}>
+      {paint(look, text, mark.self ? look.colour : ink)}
+    </NativeText>
+  );
+}
+
+function inlineNode(part: RunPart, index: number, look: Look): ReactNode {
   switch (part.kind) {
+    case 'mention':
+      return <MentionRun key={index} text={part.text} mark={part.mark} look={look} />;
     case 'strong':
       return (
         <NativeText key={index} className="font-sans-semibold">
@@ -111,15 +132,17 @@ function inlineNode(part: Inline, index: number, look: Look): ReactNode {
 
 function nodesOf(
   inline: readonly Inline[],
+  mentions: MentionRule | null,
   fade: FadeSlice | null,
-  colour: string,
-  accent: string,
+  paints: Pick<Look, 'colour' | 'accent'>,
 ): readonly ReactNode[] {
+  const parts = runPartsOf(inline, mentions);
+  const { colour, accent } = paints;
   const starts = startsOf(
-    inline.map((part) => part.text),
+    parts.map((part) => part.text),
     fade?.start ?? 0,
   );
-  return inline.map((part, index) =>
+  return parts.map((part, index) =>
     inlineNode(part, index, { start: starts[index] ?? 0, fade, colour, accent }),
   );
 }
@@ -128,20 +151,22 @@ export function Runs({
   inline,
   variant = 'body',
   tone = 'default',
-  weight = 'regular',
   align = 'start',
   selectable = false,
   endMark = null,
   fade = null,
+  mentions = null,
+  tabular = false,
 }: {
   readonly inline: readonly Inline[];
   readonly variant?: TextVariant;
   readonly tone?: Tone;
-  readonly weight?: 'regular' | 'medium';
   readonly align?: 'start' | 'end';
   readonly selectable?: boolean;
   readonly endMark?: ReactNode;
   readonly fade?: FadeSlice | null;
+  readonly mentions?: MentionRule | null;
+  readonly tabular?: boolean;
 }): ReactNode {
   const colour = useColour(TONE_ROLE[tone]);
   const accent = useColour('primary');
@@ -151,9 +176,9 @@ export function Runs({
       tone={tone}
       align={align}
       selectable={selectable}
-      className={cn(weight === 'medium' && 'font-sans-medium')}
+      className={cn('web:wrap-anywhere', tabular && 'tabular')}
     >
-      {nodesOf(inline, fade, colour, accent)}
+      {nodesOf(inline, mentions, fade, { colour, accent })}
       {endMark}
     </Text>
   );

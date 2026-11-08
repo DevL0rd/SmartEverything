@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { DecisionApproval, Stage } from 'smarteverything-kit';
 
 const options = [
@@ -10,17 +11,17 @@ const options = [
   },
   { id: 'deny', label: 'Deny', effect: 'deny' as const },
 ];
-export const Choices = () => (
+export const Choices = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <DecisionApproval options={options} pending={false} answer={() => undefined} />
   </Stage>
 );
-export const Pending = () => (
+export const Pending = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <DecisionApproval options={options} pending answer={() => undefined} />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     <DecisionApproval options={options} pending={false} answer={() => undefined} />
   </Stage>

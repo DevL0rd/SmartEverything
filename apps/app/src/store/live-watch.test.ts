@@ -135,6 +135,17 @@ describe('the live demand registry', () => {
     expect(sent).toHaveLength(0);
     expect(watch.topicsOf(PC).size).toBe(0);
   });
+
+  it('sends a fresh hold at once when asked, without waiting for the debounce', () => {
+    const { watch, sent } = connected();
+    watch.hold(HUB, ['video']);
+    watch.sendNow();
+    expect(sent).toStrictEqual([
+      { type: 'watch', demands: [{ deviceId: HUB, topics: ['video'] }] },
+    ]);
+    vi.advanceTimersByTime(WATCH_DEBOUNCE_MS);
+    expect(sent).toHaveLength(1);
+  });
 });
 
 describe('holding demand only while the screen is live', () => {

@@ -1,19 +1,30 @@
 import { ROBOT_ACTIVITY_KINDS, type RobotMoves, type RobotStatus } from '@smarteverything/domain';
+import { messageOf } from '@smarteverything/logging';
 import { z } from 'zod';
-import type { HubToolResult } from '../../../ai-tools/hub-tool';
+import { failure, type HubToolResult } from '../../../ai-tools/hub-tool';
 import type { PluginAssistant, PluginTool } from '../contract';
 import { definePluginTool } from '../define';
-import { attemptTool, DANGER_HINTS, NO_INPUT, READ_HINTS, WRITE_HINTS } from '../tool-kit';
+import {
+  attemptTool,
+  DANGER_HINTS,
+  NO_INPUT,
+  READ_HINTS,
+  toolResult,
+  WRITE_HINTS,
+} from '../tool-kit';
 import type { ActivityLog } from './activity';
 import { ROBOT_CONVERSATION } from './assistant-commands';
+import { ACT_INPUT, ACT_TOOL, optionsOf, REFUSED_CODE } from './automation-tools';
+import { RobotActionNotEnabledError, RobotActionParamError } from './catalogue';
 import type { VoiceDesk } from './desk';
+import { NOT_IN_CONVERSATION } from './robot-device';
 import { REPLY_TOOL_NAME, TASK_TEXT_MAX } from './tasks';
 
 export interface AibiToolsHost {
   readonly status: () => RobotStatus;
   readonly moves: () => RobotMoves;
   readonly activity: Pick<ActivityLog, 'recent'>;
-  readonly desk: Pick<VoiceDesk, 'result'>;
+  readonly desk: Pick<VoiceDesk, 'result' | 'playAction'>;
   readonly assistant: Pick<PluginAssistant, 'startOver'>;
 }
 
@@ -99,6 +110,36 @@ function forgetTool(host: AibiToolsHost): PluginTool {
   });
 }
 
+function refused(message: string): HubToolResult {
+  return failure(message, { code: REFUSED_CODE });
+}
+
+function played(host: AibiToolsHost, input: z.output<typeof ACT_INPUT>): HubToolResult {
+  try {
+    return host.desk.playAction(input.action, optionsOf(input))
+      ? toolResult({ queued: true, action: input.action })
+      : refused(NOT_IN_CONVERSATION);
+  } catch (cause) {
+    if (cause instanceof RobotActionNotEnabledError || cause instanceof RobotActionParamError) {
+      return refused(cause.message);
+    }
+    return failure(messageOf(cause));
+  }
+}
+
+function actTool(host: AibiToolsHost): PluginTool {
+  return definePluginTool({
+    name: ACT_TOOL.name,
+    title: 'Make AIBI move or act',
+    description:
+      'Makes AIBI do one of its native actions (dance, sing, take a photo, set its volume, show a mood). It only works while AIBI is in a conversation; otherwise it is refused. volume and mood are options of the Set volume and Express a mood actions.',
+    input: ACT_INPUT,
+    annotations: WRITE_HINTS,
+    humanOnly: false,
+    run: (input): Promise<HubToolResult> => Promise.resolve(played(host, input)),
+  });
+}
+
 export function aibiTools(host: AibiToolsHost): PluginTool[] {
-  return [readTool(host), replyTool(host), forgetTool(host)];
+  return [readTool(host), replyTool(host), forgetTool(host), actTool(host)];
 }

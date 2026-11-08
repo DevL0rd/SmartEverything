@@ -18,6 +18,13 @@ const SHAPE: FlowType = {
   },
 };
 
+export const VISION_SOURCE_CHOICES = [
+  { id: 'camera', label: 'A home camera' },
+  { id: 'computer_screen', label: 'A computer screen' },
+  { id: 'computer_window', label: 'The window in front on a computer' },
+  { id: 'phone_screen', label: 'A phone screen' },
+] as const;
+
 function option(
   name: string,
   type: FlowType,
@@ -33,6 +40,7 @@ const COMMON: readonly InputPortDecl[] = [
     'model',
     { t: 'optional', of: TEXT },
     'A model id. The default model of the AI settings when left out.',
+    { ui: { optionsFrom: 'models.chat' } },
   ),
   option(
     'budget',
@@ -47,7 +55,7 @@ const TOOLS = option(
   'The assistant tools this call may use. None by default.',
   {
     default: [],
-    ui: { optionsFrom: 'tools' },
+    ui: { optionsFrom: 'tools', multiple: true },
   },
 );
 
@@ -90,7 +98,9 @@ const AI_ASK = defineNodeKind({
       description: 'Pictures to show the AI, as picture ids from Camera picture.',
     },
     option('system', { t: 'optional', of: TEXT }, 'How the AI should behave.'),
-    option('shape', SHAPE, 'Answer with these fields instead of free text.'),
+    option('shape', SHAPE, 'Answer with these fields instead of free text.', {
+      ui: { editor: 'field-rows' },
+    }),
     TOOLS,
     ...COMMON,
   ],
@@ -109,7 +119,8 @@ const AI_VISION = defineNodeKind({
   category: 'ai',
   icon: 'scan-eye',
   class: 'effect',
-  description: 'Shows the AI a picture or a camera and asks a question about it.',
+  description:
+    'Shows the AI a picture and asks a question about it. The picture is one you wire in, a new one from a home camera, or a screenshot of a computer’s screen, the window in front on a computer, or a phone’s screen.',
   inputs: [
     {
       name: 'question',
@@ -134,14 +145,55 @@ const AI_VISION = defineNodeKind({
         summary: true,
       },
     ),
-    option('shape', SHAPE, 'Answer with these fields instead of free text.'),
+    option(
+      'source',
+      { t: 'optional', of: { t: 'choice', options: [...VISION_SOURCE_CHOICES] } },
+      'What to take a new picture of when no picture is wired in. A camera when a camera is picked and this is left empty.',
+      { summary: true, ui: { label: 'Look at' } },
+    ),
+    option(
+      'computer',
+      { t: 'optional', of: { t: 'ref', of: 'computer' } },
+      'Which computer, for its screen or window. The only one when left empty.',
+    ),
+    {
+      name: 'window',
+      type: { t: 'optional', of: TEXT },
+      required: false,
+      live: true,
+      description:
+        'The window in front on the computer, by its application name or title. Needed for the window.',
+      ui: { label: 'Window' },
+    },
+    option(
+      'phone',
+      { t: 'optional', of: { t: 'ref', of: 'phone' } },
+      'Which phone, for its screen. The only one when left empty.',
+    ),
+    option('shape', SHAPE, 'Answer with these fields instead of free text.', {
+      ui: { editor: 'field-rows' },
+    }),
     ...COMMON,
   ],
   outputs: [{ name: 'answer', type: TEXT, description: 'The answer as text.' }, RESULT, ...USAGE],
   exits: ['next'],
   effect: EFFECT,
   summary: 'Look and answer {question}',
-  keywords: ['ai', 'vision', 'picture', 'camera', 'look', 'see', 'package', 'person'],
+  keywords: [
+    'ai',
+    'vision',
+    'picture',
+    'camera',
+    'look',
+    'see',
+    'package',
+    'person',
+    'screen',
+    'window',
+    'phone',
+    'computer',
+    'screenshot',
+  ],
   access: 'owner',
   tier: 'v1.1',
 });

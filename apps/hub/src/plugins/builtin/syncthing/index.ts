@@ -1,11 +1,13 @@
 import type { PluginManifestInput } from '@smarteverything/domain';
+import { entryFromSpec } from '../../../models/contributions';
 import { figureWidget } from '../board-widget';
 import { defineBuiltinPlugin } from '../define';
-import { SYNC_ALERTS } from './event-plan';
+import { SYNCTHING_AUTOMATION } from './automation';
+import { SYNCTHING_EVENTS } from './automation-events';
+import { SYNCTHING_MODEL_MATCH, SYNCTHING_MODELS } from './models';
+import { startWithPickers } from './pickers';
 import { ACTIVITY_STREAM, SNAPSHOT_STREAM, startSyncthing } from './runtime';
 import { SYNCTHING_SETTINGS, SYNCTHING_SETTINGS_FORM } from './settings';
-
-const FOLDER_FIELDS = { folder_id: 'string' } as const;
 
 const summaryOf = (field: string): { stream: string; field: string } => ({
   stream: SNAPSHOT_STREAM,
@@ -30,38 +32,8 @@ const SYNCTHING_MANIFEST: PluginManifestInput = {
       },
       { stream: ACTIVITY_STREAM, title: 'File activity', schema: { type: 'array' }, history: 0 },
     ],
-    events: [
-      {
-        kind: SYNC_ALERTS.folderError,
-        title: 'A synced folder has errors',
-        fields: { ...FOLDER_FIELDS, count: 'number' },
-      },
-      {
-        kind: SYNC_ALERTS.conflict,
-        title: 'A sync conflict appeared',
-        fields: { ...FOLDER_FIELDS, path: 'string' },
-      },
-      {
-        kind: SYNC_ALERTS.deviceInvite,
-        title: 'A device wants to sync',
-        fields: { count: 'number' },
-      },
-      {
-        kind: SYNC_ALERTS.folderInvite,
-        title: 'A folder was offered',
-        fields: { count: 'number' },
-      },
-      {
-        kind: SYNC_ALERTS.deviceOverdue,
-        title: 'A sync device has been away too long',
-        fields: { device_id: 'string', last_seen: 'string' },
-      },
-      {
-        kind: SYNC_ALERTS.failure,
-        title: 'Syncthing reported a failure',
-        fields: { message: 'string' },
-      },
-    ],
+    events: [...SYNCTHING_EVENTS],
+    automation: SYNCTHING_AUTOMATION,
     widgets: [
       figureWidget('syncthing-sync', 'Sync', 'folderSync', SNAPSHOT_STREAM),
       {
@@ -113,6 +85,9 @@ const SYNCTHING_MANIFEST: PluginManifestInput = {
 
 export const syncthingPlugin = defineBuiltinPlugin({
   manifest: SYNCTHING_MANIFEST,
+  models: SYNCTHING_MODELS.map((spec) =>
+    entryFromSpec(spec, { match: SYNCTHING_MODEL_MATCH, brands: ['Syncthing'] }),
+  ),
   settings: SYNCTHING_SETTINGS,
-  start: (ctx) => Promise.resolve(startSyncthing(ctx)),
+  start: (ctx) => startWithPickers(ctx, startSyncthing),
 });

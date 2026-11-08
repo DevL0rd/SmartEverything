@@ -1,8 +1,59 @@
 import type { ReactNode } from 'react';
-import type { AssistantAttachment } from '@smarteverything/domain';
+import { createContext, use } from 'react';
+import { Image, View } from 'react-native';
+import type { AssistantAttachment, ImageOperationPreview } from '@smarteverything/domain';
 import { Text } from '../../../../components/text';
+import { DURATION } from '../../../../design/motion';
 import { useRows } from '../../../../store/selectors';
 import { useImageOperations } from '../data/image-queries';
+import { previewBlur } from '../model/image-generation';
+
+export interface ImageReveal {
+  readonly preview: ImageOperationPreview;
+  readonly seen: number;
+  readonly attachmentIds: ReadonlySet<string>;
+}
+
+const RevealContext = createContext<ImageReveal | null>(null);
+
+export function ImageRevealProvider({
+  reveal,
+  children,
+}: {
+  readonly reveal: ImageReveal | null;
+  readonly children: ReactNode;
+}): ReactNode {
+  return <RevealContext value={reveal}>{children}</RevealContext>;
+}
+
+function useRevealFor(attachmentId: string): ImageReveal | null {
+  const reveal = use(RevealContext);
+  return reveal?.attachmentIds.has(attachmentId) === true ? reveal : null;
+}
+
+export function previewUri(preview: ImageOperationPreview): string {
+  return `data:${preview.mime};base64,${preview.data}`;
+}
+
+export function ImageRevealUnder({ attachmentId }: { readonly attachmentId: string }): ReactNode {
+  const reveal = useRevealFor(attachmentId);
+  return (
+    <View aria-hidden pointerEvents="none" className="absolute inset-0 bg-surface-3">
+      {reveal === null ? null : (
+        <Image
+          source={{ uri: previewUri(reveal.preview) }}
+          blurRadius={previewBlur(reveal.seen)}
+          resizeMode="cover"
+          className="size-full"
+        />
+      )}
+    </View>
+  );
+}
+
+export function useImageRevealMs(attachmentId: string): number {
+  return useRevealFor(attachmentId) === null ? DURATION.mediumOut : DURATION.long;
+}
 
 function ResultLineage({
   chatId,

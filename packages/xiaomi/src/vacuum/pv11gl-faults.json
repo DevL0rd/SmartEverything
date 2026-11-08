@@ -1,0 +1,1233 @@
+[
+  {
+    "code": 100006,
+    "type": "error",
+    "title": "Low battery level",
+    "message": "The robot vacuum has turned off, please check whether the robot vacuum is charging",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100007,
+    "type": "error",
+    "title": "Being in sleep mode for too long",
+    "message": "The robot vacuum has been turned off",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100020,
+    "type": "error",
+    "title": "Detergent not installed or depleted",
+    "message": "Please install or refill it in time",
+    "detail": ["Please install or refill it in time"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 100049,
+    "type": "error",
+    "title": "The detection sensor for tight spaces is dirty",
+    "message": "Please wipe it with a soft, dry cloth",
+    "detail": ["Wipe with a soft, dry cloth."],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 100052,
+    "type": "error",
+    "title": "Cliff sensor dirty",
+    "message": "Please wipe the cliff sensors.",
+    "detail": [
+      "Turn the robot vacuum upside down, wipe the cliff sensors with a soft dry cloth, and move the robot vacuum to a new location to start."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 100053,
+    "type": "error",
+    "title": "New firmware version detected",
+    "message": "Go to the upgrade page to upgrade",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210001,
+    "type": "error",
+    "title": "The robot vacuum is stuck",
+    "message": "Move the robot vacuum to a new location and activate it",
+    "detail": ["Move the robot vacuum to a new location and activate it"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210002,
+    "type": "error",
+    "title": "The robot vacuum's wheels are suspended",
+    "message": "Please place the robot vacuum on a horizontally flat surface",
+    "detail": ["Please place the robot vacuum on a horizontally flat surface"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210003,
+    "type": "error",
+    "title": "A slope is detected on the ground",
+    "message": "Please place the robot vacuum on a horizontally flat surface",
+    "detail": ["Please place the robot vacuum on a horizontally flat surface"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210004,
+    "type": "error",
+    "title": "The robot vacuum is stuck",
+    "message": "Please clear the area around it",
+    "detail": ["Please clear the area around it"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210009,
+    "type": "error",
+    "title": "Couldn't return to charge",
+    "message": "Check details, resolve, then retry",
+    "detail": [
+      "Not started from station\nThe robot vacuum cannot locate the omni station. Make sure to start the robot vacuum from the omni station for cleanup. Do not move the robot vacuum or omni station during cleanup.",
+      "Station disconnected from power\nThe station may be disconnected from power. Please check and reconnect the power cord, and make sure the station indicator lights up.",
+      "Obstacles blocking the path\nThe return path for charging may be blocked. Please clear obstacles near the station and keep the return path unobstructed."
+    ],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210013,
+    "type": "error",
+    "title": "The dust compartment is not installed",
+    "message": "Please ensure that the dust compartment is installed properly",
+    "detail": ["Please ensure that the dust compartment is installed properly"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210014,
+    "type": "error",
+    "title": "Mop pad holder fell off",
+    "message": "Install it to resume cleanup",
+    "detail": [
+      "Please install the mop pad tray to continue cleanup",
+      "Tidy up any loose cords on the floor.\nAdd restricted areas on the map where the robot vacuum may get stuck. \nAdd carpet areas on the map if there are carpets in the house."
+    ],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210017,
+    "type": "error",
+    "title": "Mop pad and water tank assembly fell off",
+    "message": "Install it to resume cleanup",
+    "detail": [
+      "Install the mop pad and water tank assembly as illustrated until hearing a \"click\" sound to ensure normal use.",
+      "Tidy up any loose cords on the floor.\nAdd restricted areas on the map where the robot vacuum may get stuck. \nAdd carpet areas on the map if there are carpets in the house."
+    ],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210018,
+    "type": "error",
+    "title": "Couldn't return to charge",
+    "message": "Check details, resolve, then retry",
+    "detail": [
+      "Not started from the charging dock\nThe robot vacuum cannot locate the charging dock. Make sure to start the robot vacuum from the charging dock for cleanup. Do not move the robot vacuum or charging dock during cleanup.",
+      "Charging dock disconnected from power\nThe charging dock may be disconnected from power. Please check and reconnect the power cord.",
+      "Obstacles blocking the path\nThe return path for charging may be blocked. Please clear obstacles near the charging dock and keep the return path unobstructed."
+    ],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210020,
+    "type": "error",
+    "title": "The water tank fell off",
+    "message": "Install the water tank to resume cleanup",
+    "detail": ["Install the water tank to resume cleanup."],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210030,
+    "type": "error",
+    "title": "The water level of the clean water tank is low",
+    "message": "Please add water in time and clean the dirty water tank",
+    "detail": ["Please add water in time and clean the dirty water tank"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210031,
+    "type": "error",
+    "title": "The clean water tank has insufficient water or is not installed",
+    "message": "Please refill the clean water tank or install it",
+    "detail": ["Please refill the clean water tank or install it"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210032,
+    "type": "error",
+    "title": "The dirty water tank is full or not installed",
+    "message": "Please empty the dirty water in time or install dirty water tank",
+    "detail": [
+      "Please empty the dirty water in time or install dirty water tank\n1. Remove the dirty water tank, open the lid, and pour out the water. \n2. Fully clean the water tank with water, and then wipe the outside of the water tank dry before reinserting it into the station."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210033,
+    "type": "error",
+    "title": "The washboard has too much water or is not installed",
+    "message": "Please remove the dirty water in time or install washboard",
+    "detail": [
+      "Please remove the dirty water in time or install washboard \nWipe dry the washboard base and the washboard with a dry cloth, and reinstall the washboard onto the omni station"
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210035,
+    "type": "error",
+    "title": "Detergent pump error",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210036,
+    "type": "error",
+    "title": "Clean water solenoid valve error",
+    "message": "Unplug and restart the station.",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210037,
+    "type": "error",
+    "title": "Dirty water solenoid valve error",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210038,
+    "type": "error",
+    "title": "Drainage pump error",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210040,
+    "type": "error",
+    "title": "The washboard is not installed",
+    "message": "Please install the washboard before use",
+    "detail": ["Please install the washboard before use"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210050,
+    "type": "error",
+    "title": "The clean water tank is not installed",
+    "message": "Please ensure that the clean water tank is installed properly",
+    "detail": ["Please ensure that the clean water tank is installed properly"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210060,
+    "type": "error",
+    "title": "The dirty water tank is full",
+    "message": "Please empty the dirty water in time",
+    "detail": [
+      "1. Remove the dirty water tank, open the lid, and pour out the water. \n2. Fully clean the water tank with water, and then wipe the outside of the water tank dry before reinserting it into the station."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210070,
+    "type": "error",
+    "title": "The dirty water tank is not installed",
+    "message": "Please ensure that the dirty water tank is installed properly",
+    "detail": ["Please ensure that the dirty water tank is installed properly."],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210080,
+    "type": "error",
+    "title": "The disposable bag is not installed",
+    "message": "Please make sure that the disposable bag is installed properly.",
+    "detail": [
+      "1. Open the dust cabinet cover.",
+      "2. Install a disposable bag.",
+      "3. Reinstall the dust cabinet cover until hearing a \"click\" sound."
+    ],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210081,
+    "type": "error",
+    "title": "Dirty water container is not installed",
+    "message": "Install dirty water container to start cleaning.",
+    "detail": ["Install dirty water container to start cleaning"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210082,
+    "type": "error",
+    "title": "Dirty water container has fallen off.",
+    "message": "Install dirty water container to resume cleaning",
+    "detail": ["Install dirty water container to resume cleaning"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210083,
+    "type": "error",
+    "title": "Roller mop pad is not installed",
+    "message": "Install roller mop pad to start cleaning",
+    "detail": ["Install roller mop pad to start cleaning"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210084,
+    "type": "error",
+    "title": "Roller mop pad has fallen off",
+    "message": "Install roller mop pad to resume cleaning",
+    "detail": ["Install roller mop pad to resume cleaning"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210085,
+    "type": "error",
+    "title": "Water tray is not installed",
+    "message": "Install water tray to start cleaning",
+    "detail": [
+      "Lift the roller mop pad, and put the water tray back in place until you hear a \"click\""
+    ],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210086,
+    "type": "error",
+    "title": "Robot vacuum error",
+    "message": "Please contact the after-sales service team",
+    "detail": ["Please contact the after-sales service team"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210087,
+    "type": "error",
+    "title": "Station error",
+    "message": "Please contact the after-sales service team",
+    "detail": ["Please contact the after-sales service team"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 210088,
+    "type": "error",
+    "title": "Blockage or drainage error detected in the robot vacuum's dirty water container",
+    "message": "Clean in time",
+    "detail": [
+      "Please check and clean the dirty water container and filter. \n1. Press the dirty water container release button and pull the dirty water container outward to remove it",
+      "2. Open the dirty water container cover, remove the filter, and rinse with clean water",
+      "3. Reinstall the filter, close the dirty water container cover, then attach the dirty water container to the back of the robot vacuum. A \"click\" means it is securely installed"
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 210089,
+    "type": "error",
+    "title": "Roller cover error",
+    "message": "Please restart the robot.",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210091,
+    "type": "error",
+    "title": "Robot hot water spray module error",
+    "message": "Please restart the robot.",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210092,
+    "type": "error",
+    "title": "Dirty water tank stirring motor error",
+    "message": "Please restart the robot.",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210093,
+    "type": "error",
+    "title": "Robot heating module error",
+    "message": "Please restart the robot.",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320001,
+    "type": "error",
+    "title": "Battery temperature error",
+    "message": "Please resume use after the battery temperature returns to normal",
+    "detail": ["Please resume use after the battery temperature returns to normal"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 320002,
+    "type": "error",
+    "title": "Brush error",
+    "message": "Please check and clean it",
+    "detail": [
+      "Check and clean the brush \n1. Turn the robot vacuum upside down and remove the brush cover. \n2. Remove the brush upwards and clean it. \n3. Reinstall the brush and the brush cover, and then clip them in place."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320003,
+    "type": "error",
+    "title": "Side brush error",
+    "message": "Please check and clean it",
+    "detail": [
+      "Check and clean the side brush. \n1. Turn the robot vacuum upside down, and remove and clean the side brush. \n2. Reinstall the side brush into the robot vacuum."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320004,
+    "type": "error",
+    "title": "Wheel error",
+    "message": "Please check and clean",
+    "detail": ["Turn the robot vacuum upside down, and check and clean the wheels."],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320005,
+    "type": "error",
+    "title": "Brush lifting mechanism error",
+    "message": "Check and clean",
+    "detail": [
+      "Check and clean the brush \n1. Turn the robot vacuum upside down and remove the brush cover. \n2. Remove the brush upwards and clean it. \n3. Reinstall the brush and the brush cover, and then clip them in place."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320006,
+    "type": "error",
+    "title": "Cliff sensor error",
+    "message": "Please wipe it clean and move the robot vacuum to a new location to start",
+    "detail": [
+      "Turn the robot vacuum upside down, wipe the cliff sensors with a soft dry cloth, and move the robot vacuum to a new location to start."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320007,
+    "type": "error",
+    "title": "Fan error",
+    "message": "Please try cleaning the filter and air duct",
+    "detail": [
+      "Try to clean the dust compartment and the filter. \n1. Tap and hold the dust compartment release button to take out the dust compartment, remove the filter from the filter clip, and empty the dust compartment. \n2. Gently tap the filter frame to remove dirt, or clean the filter with tap water. \n3. Rinse the dust compartment if needed."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320008,
+    "type": "error",
+    "title": "Bumper error",
+    "message": "Please check if the bumper can rebound properly",
+    "detail": ["Gently tap the bumper to check if it can rebound properly."],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320009,
+    "type": "error",
+    "title": "Charging error",
+    "message": "Please try cleaning the charging contacts",
+    "detail": [
+      "1. Wipe the charging contacts on the robot vacuum with a soft dry cloth \n2. Wipe the charging contacts on the station with a soft dry cloth",
+      "1. Wipe the charging contacts on the robot vacuum with a soft dry cloth. \n2. Wipe the charging contacts on the charging dock with a soft dry cloth."
+    ],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 320010,
+    "type": "error",
+    "title": "Laser radar error",
+    "message": "Check and clean",
+    "detail": ["Clean objects on the laser sensor and restart the robot vacuum"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320011,
+    "type": "error",
+    "title": "Edge sensor error",
+    "message": "Please clean the edge sensor",
+    "detail": ["Wipe the edge sensor with a soft dry cloth"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320012,
+    "type": "error",
+    "title": "Line laser sensor error",
+    "message": "Please clean the line laser sensor",
+    "detail": ["Wipe the line laser sensor with a soft dry cloth"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320013,
+    "type": "error",
+    "title": "The mop pad holder is stuck",
+    "message": "Please check and clean the mop pad holder",
+    "detail": [
+      "Turn the robot vacuum upside down, and check and clean the mop pad holder.",
+      "Tidy up any loose cords on the floor.\nAdd restricted areas on the map where the robot vacuum may get stuck. \nAdd carpet areas on the map if there are carpets in the house."
+    ],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 320014,
+    "type": "error",
+    "title": "Side brush extension error",
+    "message": "Check and clean",
+    "detail": [
+      "Check and clean the side brush. \n1. Turn the robot vacuum upside down, and remove and clean the side brush. \n2. Reinstall the side brush into the robot vacuum"
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320015,
+    "type": "error",
+    "title": "Carpet detection sensor malfunction.",
+    "message": "Check and clean it.",
+    "detail": ["Check and clean"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320016,
+    "type": "error",
+    "title": "Laser radar cover error",
+    "message": "Check if it can rebound properly",
+    "detail": ["Check if laser radar cover can rebound properly"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320018,
+    "type": "error",
+    "title": "Mop pad extension error",
+    "message": "Check and clean mop pad holder",
+    "detail": ["Check and clean mop pad holder"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 320020,
+    "type": "error",
+    "title": "High water level in washboard",
+    "message": "Please empty the dirty water in the washboard",
+    "detail": ["Please empty the dirty water in the washboard"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320021,
+    "type": "error",
+    "title": "The telescopic laser radar cannot rise",
+    "message": "Place and start the robot vacuum in an open area.",
+    "detail": ["Place and start the robot vacuum in an open area."],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 320022,
+    "type": "error",
+    "title": "The telescopic laser radar is stuck",
+    "message": "Check for any foreign objects.",
+    "detail": ["Check for any foreign objects."],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 320024,
+    "type": "error",
+    "title": "Water dispensing error",
+    "message": "Restart the robot vacuum",
+    "detail": ["Restart the robot vacuum"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 320025,
+    "type": "error",
+    "title": "Wastewater pumping error",
+    "message": "Clean the water tray and install the dirty water container and its cover in place",
+    "detail": [
+      "Lift the roller mop, push forward the water tray release buckle, and remove the water guide channel",
+      "2. Rinse the water tray thoroughly, dry it, and then reinstall it",
+      "3. Ensure the dirty water container is properly installed and its cover is securely closed."
+    ],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 320026,
+    "type": "error",
+    "title": "Robot vacuum lifted up and stuck",
+    "message": "Move the robot vacuum to a new location and activate it",
+    "detail": ["Move the robot vacuum to a new location and activate it"],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 320027,
+    "type": "error",
+    "title": "LiDAR blocked",
+    "message": "Move the robot vacuum to a new location and activate it",
+    "detail": ["Move the robot vacuum to a new location and activate it"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320033,
+    "type": "error",
+    "title": "Station malfunction.",
+    "message": "Unplug and restart the station.",
+    "detail": ["Unplug and restart the station"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320034,
+    "type": "error",
+    "title": "The dirty water filter is not installed",
+    "message": "Install the dirty water filter before use.",
+    "detail": ["Install the dirty water filter before use"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320035,
+    "type": "error",
+    "title": "LiDAR cover dirty",
+    "message": "Clean it with a soft dry cloth",
+    "detail": [
+      "Clean it with a soft dry cloth. \nIf the LiDAR is lowered, tap Settings > More functions > Remote control > LiDAR in the app plug-in to raise the LiDAR before wiping."
+    ],
+    "handledButton": false,
+    "dockVariant": null
+  },
+  {
+    "code": 320036,
+    "type": "error",
+    "title": "Water outlet system error",
+    "message": "Check and clean the water pumping outlet on the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320037,
+    "type": "error",
+    "title": "Obstacle-assist wheel error",
+    "message": "Check and clean",
+    "detail": ["Check and clean"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320038,
+    "type": "error",
+    "title": "Camera error",
+    "message": "Check if camera is obstructed or dirty",
+    "detail": ["Check if camera is obstructed or dirty"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320039,
+    "type": "error",
+    "title": "Forward sensor error",
+    "message": "Move the robot vacuum to a new location and activate it",
+    "detail": ["Move the robot vacuum to a new location and activate it"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320040,
+    "type": "error",
+    "title": "Water inlet system error",
+    "message": "Please check the water supply",
+    "detail": ["Please check the water supply"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320041,
+    "type": "error",
+    "title": "Roller mop pad error",
+    "message": "Check and clean",
+    "detail": [
+      "1. Press the roller lock button to remove the roller mop pad.",
+      "2. Check and clean the roller mop pad and the roller bin."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320042,
+    "type": "error",
+    "title": "Roller mop pad swing error",
+    "message": "Check and clean",
+    "detail": [
+      "1. Press the roller lock button to remove the roller mop pad.",
+      "2. Check and clean the roller mop pad and the roller bin."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320043,
+    "type": "error",
+    "title": "Edge-cleaning mop pad error",
+    "message": "Check and clean",
+    "detail": ["Check and clean"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320045,
+    "type": "error",
+    "title": "Dirty water pump error",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320046,
+    "type": "error",
+    "title": "Three-way valve error",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320047,
+    "type": "error",
+    "title": "Drain plunger motor error",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320048,
+    "type": "error",
+    "title": "Drying fan error",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320049,
+    "type": "error",
+    "title": "Drain plunger control timeout",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320050,
+    "type": "error",
+    "title": "Water outlet system error",
+    "message": "Check and clean the water pumping outlet on the station and the floor drain",
+    "detail": [
+      "1. Make sure the water pumping outlet at the bottom of the station is not blocked. \n2. Make sure the floor drain is not blocked."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 320051,
+    "type": "error",
+    "title": "Hot water module error",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320052,
+    "type": "error",
+    "title": "Waterway switch motor error",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320053,
+    "type": "error",
+    "title": "Waterway switch control timeout",
+    "message": "Unplug and restart the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320090,
+    "type": "error",
+    "title": "System error",
+    "message": "Please reset the system",
+    "detail": ["Please restart the robot vacuum"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 100000,
+    "type": "alert",
+    "title": "The mop pad is not installed",
+    "message": "The scheduled cleanup will only perform vacuuming",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100001,
+    "type": "alert",
+    "title": "Low battery level",
+    "message": "The scheduled task has been canceled",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100002,
+    "type": "alert",
+    "title": "Low battery level",
+    "message": "The robot vacuum has returned to charge and resume the task after being charged sufficiently",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100003,
+    "type": "alert",
+    "title": "Low battery level",
+    "message": "The robot vacuum has returned to charge, it is recommended to enable the cleanup resumption function",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100004,
+    "type": "alert",
+    "title": "Low battery level",
+    "message": "Please start the robot vacuum after the charging is completed",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100005,
+    "type": "alert",
+    "title": "Low battery level",
+    "message": "Please check whether the robot vacuum is charging",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100009,
+    "type": "alert",
+    "title": "The robot vacuum is working",
+    "message": "The scheduled task has been canceled",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100010,
+    "type": "alert",
+    "title": "Disposable bag not replaced for a long time",
+    "message": "Check it, and go to the consumables page to tap reset",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100011,
+    "type": "alert",
+    "title": "Operation error",
+    "message": "The scheduled task has been canceled",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100012,
+    "type": "alert",
+    "title": "The robot vacuum is not charging",
+    "message": "The scheduled task has been canceled",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100013,
+    "type": "alert",
+    "title": "Please check the dust compartment",
+    "message": "Clean it when necessary",
+    "detail": ["Clean dust compartment when necessary"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 100014,
+    "type": "alert",
+    "title": "Mop pad expired",
+    "message": "Replace it, and go to the consumables page to tap reset",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100015,
+    "type": "alert",
+    "title": "Filter expired",
+    "message": "Replace it, and go to the consumables page to tap reset",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100016,
+    "type": "alert",
+    "title": "Side brush expired",
+    "message": "Replace it, and go to the consumables page to tap reset",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100017,
+    "type": "alert",
+    "title": "Brush expired",
+    "message": "Replace it, and go to the consumables page to tap reset",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100018,
+    "type": "alert",
+    "title": "In DND mode",
+    "message": "The scheduled task has been canceled",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100019,
+    "type": "alert",
+    "title": "Mop pad and water tank assembly is not installed",
+    "message": "The scheduled cleanup will only perform vacuuming",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100021,
+    "type": "alert",
+    "title": "The avoidance mode is set for the carpet",
+    "message": "Could not clean the carpet area, please modify in Edit carpet",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100022,
+    "type": "alert",
+    "title": "The crossing mode is set for the carpet",
+    "message": "Could not clean the carpet area, please modify in Edit carpet",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100023,
+    "type": "alert",
+    "title": "Dirty water filter not cleaned for a long time",
+    "message": "Clean it if necessary",
+    "detail": [
+      "1. Remove the dirty water filter from the station \n2. Rinse the dirty water filter thoroughly \n3. Reinstall the dirty water filter"
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 100024,
+    "type": "alert",
+    "title": "Bottom of the station not cleaned for a long time",
+    "message": "Use station's assisted washing if necessary",
+    "detail": [
+      "In the robot vacuum plug-in, enable station‘s assisted washing in the settings, and then follow plug-in prompts to clean the bottom of the station."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 100025,
+    "type": "alert",
+    "title": "Insufficient water",
+    "message": "Refill the water tank in time",
+    "detail": ["Refill the water tank in time"],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 100026,
+    "type": "alert",
+    "title": "Water tank assembly is not installed",
+    "message": "The scheduled cleanup will only perform vacuuming",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100028,
+    "type": "alert",
+    "title": "Clean low areas last",
+    "message": "Clean low areas of the current room last. Automatically raise or lower laser radar based on the area height",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100029,
+    "type": "alert",
+    "title": "Clean low areas last",
+    "message": "Clean low areas last. Automatically raise or lower laser radar based on the area height",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100033,
+    "type": "alert",
+    "title": "The robot vacuum and station are due for maintenance",
+    "message": "Tap for details, then tap Handled when finished",
+    "detail": [
+      "After all steps are completed, please tap Handled.",
+      "Please check and clean the filter. \n1. Open the top cover of the robot vacuum, press the dust compartment release button and pull the dust compartment upward to remove it. \n2. Take out the filter, gently tap the frame of the filter to remove dirt.",
+      "If necessary, the dust compartment and filter can be washed with water. Make sure they are completely dry before reinstalling.",
+      "Please check and clean the dirty water container and filter\n1. Press the dirty water container release button and pull the dirty water container outward to remove it\n2. Open the dirty water container cover, remove the filter, and rinse with clean water\n3. Reinstall the filter, close the dirty water container cover, then attach the dirty water container to the back of the robot vacuum. A \"click\" means it is securely installed.",
+      "Please check and clean the roller bin.\nPress the roller release button to remove the roller mop pad and clean the roller bin.",
+      "Please check and clean the water tray. \n1. Flip the robot vacuum over, Lift the roller mop, push forward the water tray release buckle, and remove the water guide channel",
+      "Rinse the water tray thoroughly, dry it, and then reinstall it.",
+      "Please check and clean the washboard.\n1. Remove the washboard and its filter, then rinse them thoroughly with a brush under running water.\n2. Dry the washboard and its filter with a dry cloth.\n3. Reinstall the washboard until you hear a click to ensure it is securely in place.\n4. Ensure the station's dirty water pipe sits in the groove of the washboard to prevent it from getting lifted and affecting use."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 100036,
+    "type": "alert",
+    "title": "The robot vacuum and station are due for maintenance",
+    "message": "Tap for details, then tap Handled when finished",
+    "detail": [
+      "After all steps are completed, please tap Handled.",
+      "Please check and clean the filter. \n1. Open the top cover of the robot vacuum, press the dust compartment release button and pull the dust compartment upward to remove it. \n2. Take out the filter, gently tap the frame of the filter to remove dirt.",
+      "If necessary, the dust compartment and filter can be washed with water. Make sure they are completely dry before reinstalling.",
+      "Please check and clean the dirty water container and filter\n1. Press the dirty water container release button and pull the dirty water container outward to remove it\n2. Open the dirty water container cover, remove the filter, and rinse with clean water\n3. Reinstall the filter, close the dirty water container cover, then attach the dirty water container to the back of the robot vacuum. A \"click\" means it is securely installed.",
+      "Please check and clean the roller bin.\nPress the roller release button to remove the roller mop pad and clean the roller bin.",
+      "Please check and clean the water guide groove. \nFlip the robot vacuum over, remove the water guide groove and clean it.",
+      "Please check and clean the washboard\n1. Remove the washboard and its filter, then rinse them thoroughly with a brush under running water\n2. Dry the washboard and its filter with a dry cloth\n3. Reinstall the washboard until you hear a click to ensure it is securely in place\n4. Ensure the station's dirty water pipe sits in the groove of the washboard to prevent it from getting lifted and affecting use."
+    ],
+    "handledButton": true,
+    "dockVariant": null
+  },
+  {
+    "code": 100040,
+    "type": "alert",
+    "title": "Dirty water container is not installed",
+    "message": "This scheduled task has been canceled",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100041,
+    "type": "alert",
+    "title": "Roller mop pad is not installed",
+    "message": "This scheduled task has been canceled",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100042,
+    "type": "alert",
+    "title": "Water tray is not installed",
+    "message": "Only vacuuming will be executed in this scheduled task",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100044,
+    "type": "alert",
+    "title": "Roller mop pad has expired",
+    "message": "Replace it and go to the consumables page to tap reset",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100045,
+    "type": "alert",
+    "title": "Edge-cleaning mop pad has expired",
+    "message": "Replace it and go to the consumables page to tap reset",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100048,
+    "type": "alert",
+    "title": "Too many areas have been recognized as dirty",
+    "message": "For misrecognized areas, tap do not recognize this area",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 100051,
+    "type": "alert",
+    "title": "Carpet vacuuming starts first",
+    "message": "This avoids getting the carpet wet or dirty",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210005,
+    "type": "alert",
+    "title": "Cleaning path blocked",
+    "message": "The robot vacuum has returned to charge, please confirm path clear of obstacles or restricted areas",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210007,
+    "type": "alert",
+    "title": "Couldn't locate the robot vacuum",
+    "message": "The robot vacuum has returned to charge",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210008,
+    "type": "alert",
+    "title": "The robot vacuum cannot start",
+    "message": " please move it away from the restricted area",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 210010,
+    "type": "alert",
+    "title": "Couldn't locate the robot vacuum",
+    "message": "Please move the robot vacuum to the station",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": {
+      "title": "Couldn't reposition",
+      "message": "Please return the robot vacuum to the charging dock"
+    }
+  },
+  {
+    "code": 210039,
+    "type": "alert",
+    "title": "The clean water tank may not have enough water for the next mopping session",
+    "message": "It's recommended to refill it before your next use",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320017,
+    "type": "alert",
+    "title": "The robot vacuum cannot start",
+    "message": "Please move it away from the carpet area",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  },
+  {
+    "code": 320023,
+    "type": "alert",
+    "title": "Mixed dirt recognized",
+    "message": "Handle it in time",
+    "detail": null,
+    "handledButton": null,
+    "dockVariant": null
+  }
+]

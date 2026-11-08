@@ -1,5 +1,10 @@
-import { NODE_REGISTRY } from '@smarteverything/domain';
-import type { BudgetOverrides, FlowType, JsonValue, RefKind } from '@smarteverything/domain';
+import type {
+  BudgetOverrides,
+  FlowType,
+  JsonValue,
+  NodeKindLookup,
+  RefKind,
+} from '@smarteverything/domain';
 import type { Plan } from '@smarteverything/flow/compile/plan';
 import { CALL_FRAMES, callOps, planOwner } from '@smarteverything/flow/interpret/calls';
 import { CORE_FRAMES, CORE_OPS } from '@smarteverything/flow/interpret/core-ops';
@@ -44,6 +49,7 @@ export interface ContextPorts {
   readonly zone: () => string;
   readonly persistent: PersistentVariables;
   readonly stateMemory: StateMemoryPort;
+  readonly kinds: NodeKindLookup;
 }
 
 export interface ContextSubject {
@@ -63,8 +69,8 @@ function referenceKind(type: FlowType | undefined): RefKind | undefined {
   return type?.t === 'ref' && type.of !== 'target' ? type.of : undefined;
 }
 
-function withReferences(kind: string, inputs: Outputs): Outputs {
-  const declared = NODE_REGISTRY.get(kind)?.inputs ?? [];
+function withReferences(kinds: NodeKindLookup, kind: string, inputs: Outputs): Outputs {
+  const declared = kinds.get(kind)?.inputs ?? [];
   return Object.fromEntries(
     Object.entries(inputs).map(([name, value]): [string, JsonValue] => {
       const of =
@@ -77,7 +83,7 @@ function withReferences(kind: string, inputs: Outputs): Outputs {
 }
 
 export function readPort(
-  ports: Pick<ContextPorts, 'reads' | 'persistent'>,
+  ports: Pick<ContextPorts, 'reads' | 'persistent' | 'kinds'>,
   automationId: string,
 ): ReadPort {
   return {
@@ -85,7 +91,7 @@ export function readPort(
       try {
         const { outputs } = ports.reads.read(
           request.kind,
-          withReferences(request.kind, request.inputs),
+          withReferences(ports.kinds, request.kind, request.inputs),
           {
             automationId,
             nodeId: request.node.id,
@@ -190,11 +196,14 @@ function planFor(subject: ContextSubject): StepContext['plan'] {
 export function stepContext(subject: ContextSubject, ports: ContextPorts): StepContext {
   return {
     plan: planFor(subject),
-    pure: pureEvaluators({
-      timeZone: ports.zone(),
-      now: () => ports.clock.now().getTime(),
-      trigger: () => subject.triggerKey,
-    }),
+    pure: pureEvaluators(
+      {
+        timeZone: ports.zone(),
+        now: () => ports.clock.now().getTime(),
+        trigger: () => subject.triggerKey,
+      },
+      ports.kinds,
+    ),
     reads: readPort(ports, subject.automationId),
     changeVar: changer,
     limits: resolveBudgets(subject.budgets),

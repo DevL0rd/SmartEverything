@@ -3,16 +3,33 @@ import {
   type AssistantMessageRow,
   type CallTurn,
 } from '@smarteverything/domain';
-import { duration } from '../../../format/time';
+import { plural } from '../../../format/text';
+import { playTime } from '../../../format/time';
 
 const TOOL_PREFIX = '· ';
 const LEGACY_PERSON = 'Me';
+const LEAD_LINES = 2;
 
 type Speaker = CallTurn['who'];
 
 interface Labels {
   readonly person: readonly string[];
   readonly assistant: readonly string[];
+}
+
+export type CallLineTone = 'variant' | 'faint' | 'critical';
+
+export interface CallLine {
+  readonly speaker: string | null;
+  readonly text: string;
+  readonly tone: CallLineTone;
+}
+
+export interface CallView {
+  readonly length: string;
+  readonly lead: readonly CallLine[];
+  readonly rest: readonly CallLine[];
+  readonly failures: number;
 }
 
 function labelsOf(row: AssistantMessageRow): Labels {
@@ -75,11 +92,11 @@ function callLengthOf(row: AssistantMessageRow): string {
     1,
     Math.round((Date.parse(row.updated_at) - Date.parse(row.created_at)) / 1000),
   );
-  return duration(seconds);
+  return playTime(seconds);
 }
 
 export function callTitleOf(row: AssistantMessageRow): string {
-  return `Voice call · ${callLengthOf(row)}`;
+  return `Call · ${callLengthOf(row)}`;
 }
 
 export function callPreviewOf(row: AssistantMessageRow): string {
@@ -91,4 +108,40 @@ export function callPreviewOf(row: AssistantMessageRow): string {
 
 export function callFailuresOf(turns: readonly CallTurn[]): number {
   return turns.filter((turn) => turn.who === 'tool' && !turn.ok).length;
+}
+
+function callLineOf(turn: CallTurn, row: AssistantMessageRow): CallLine {
+  switch (turn.who) {
+    case 'tool':
+      return turn.ok
+        ? { speaker: null, text: turn.text, tone: 'faint' }
+        : {
+            speaker: null,
+            text: turn.detail === null ? turn.text : `${turn.text}: ${turn.detail}`,
+            tone: 'critical',
+          };
+    case 'person':
+      return { speaker: row.origin?.name ?? 'You', text: turn.text, tone: 'variant' };
+    case 'assistant':
+      return { speaker: row.author, text: turn.text, tone: 'variant' };
+  }
+}
+
+export function callViewOf(row: AssistantMessageRow): CallView {
+  const turns = callTurnsOf(row);
+  const lines = turns.map((turn) => callLineOf(turn, row));
+  return {
+    length: callLengthOf(row),
+    lead: lines.slice(0, LEAD_LINES),
+    rest: lines.slice(LEAD_LINES),
+    failures: callFailuresOf(turns),
+  };
+}
+
+export function moreLinesOf(count: number): string {
+  return plural(count, 'more line', 'more lines');
+}
+
+export function failedActionsOf(count: number): string {
+  return plural(count, 'action failed', 'actions failed');
 }

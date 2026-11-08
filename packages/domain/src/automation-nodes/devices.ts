@@ -1,6 +1,8 @@
 import type { FlowType } from '../automation-v3/types';
 import type { PortValue } from '../automation-v3/port-value';
 import { defineNodeKind, type InputPortDecl, type NodeKind, type OutputPortDecl } from './define';
+import { ERROR_OUT } from './error-port';
+import type { OptionSourceId } from './option-sources';
 
 export const DEVICE_REF: FlowType = { t: 'ref', of: 'device' };
 export const TARGET_REF: FlowType = { t: 'ref', of: 'target' };
@@ -14,9 +16,10 @@ const SKIPPED: FlowType = {
   of: { t: 'record', fields: { device: DEVICE_REF, reason: TEXT } },
 };
 
-const CONTROL_OPTIONS_SOURCE = 'device.controls';
-
-export function controlInput(description: string): InputPortDecl {
+export function controlInput(
+  description: string,
+  source: OptionSourceId = 'device.controls',
+): InputPortDecl {
   return {
     name: 'control',
     type: TEXT,
@@ -25,7 +28,7 @@ export function controlInput(description: string): InputPortDecl {
     static: true,
     description,
     summary: true,
-    ui: { optionsFrom: CONTROL_OPTIONS_SOURCE },
+    ui: { optionsFrom: source },
   };
 }
 
@@ -50,13 +53,6 @@ const SKIPPED_OUT: OutputPortDecl = {
   type: SKIPPED,
   description: 'Devices left out, each with the reason (offline or not supported).',
 };
-const ERROR_OUT: OutputPortDecl = {
-  name: 'error',
-  type: { t: 'error' },
-  optional: true,
-  description: 'Why the change failed.',
-};
-
 const SET_INPUTS: readonly InputPortDecl[] = [
   {
     name: 'target',
@@ -65,7 +61,7 @@ const SET_INPUTS: readonly InputPortDecl[] = [
     description: 'Which device, devices, room or group, or a wired device or list of devices.',
     summary: true,
   },
-  controlInput('Which control to change.'),
+  controlInput('Which control to change.', 'device.writable_controls'),
   {
     name: 'to',
     type: ANY,
@@ -73,6 +69,7 @@ const SET_INPUTS: readonly InputPortDecl[] = [
     live: true,
     description: 'The value to set, typed by the control.',
     summary: true,
+    ui: { typedBy: 'control' },
   },
   {
     name: 'by',
@@ -80,6 +77,7 @@ const SET_INPUTS: readonly InputPortDecl[] = [
     required: false,
     live: true,
     description: 'Change by this amount instead of setting an absolute value.',
+    ui: { label: 'Change by' },
   },
   {
     name: 'percent',
@@ -88,6 +86,7 @@ const SET_INPUTS: readonly InputPortDecl[] = [
     default: false,
     static: true,
     description: 'Read the value as a percentage of the control range.',
+    ui: { label: 'Use percent' },
   },
   {
     name: 'transition',
@@ -95,6 +94,7 @@ const SET_INPUTS: readonly InputPortDecl[] = [
     required: false,
     static: true,
     description: 'Fade time, where the device supports it.',
+    ui: { label: 'Fade over' },
   },
   {
     name: 'requireAll',
@@ -103,6 +103,7 @@ const SET_INPUTS: readonly InputPortDecl[] = [
     default: false,
     static: true,
     description: 'Fail when any member is skipped, not only when nothing was sent.',
+    ui: { label: 'Every device must answer' },
   },
 ];
 
@@ -125,7 +126,7 @@ const deviceSet = defineNodeKind({
   inputs: SET_INPUTS,
   outputs: SET_OUTPUTS,
   exits: ['next'],
-  effect: { retry: 'relative', budget: 'command' },
+  effect: { retry: 'relative', budget: 'command', mode: 'fire_and_forget' },
   summary: 'Set {control} of {target} to {to}',
   keywords: ['turn', 'switch', 'light', 'dim', 'set', 'control', 'on', 'off'],
   access: 'member',
@@ -195,7 +196,7 @@ const deviceToggle = defineNodeKind({
       description: 'Which device, devices, room or group, or a wired device or list of devices.',
       summary: true,
     },
-    controlInput('Which control to flip.'),
+    controlInput('Which control to flip.', 'device.writable_controls'),
   ],
   outputs: [
     OK,
@@ -203,7 +204,7 @@ const deviceToggle = defineNodeKind({
     ERROR_OUT,
   ],
   exits: ['next'],
-  effect: { retry: 'relative', budget: 'command' },
+  effect: { retry: 'relative', budget: 'command', mode: 'fire_and_forget' },
   summary: 'Toggle {control} of {target}',
   keywords: ['flip', 'switch', 'on', 'off'],
   access: 'member',
@@ -234,6 +235,7 @@ const deviceOperation = defineNodeKind({
       required: false,
       live: true,
       description: 'Arguments for the operation.',
+      ui: { typedBy: 'operation' },
     },
   ],
   outputs: [
@@ -266,7 +268,7 @@ const sceneRun = defineNodeKind({
   ],
   outputs: [OK, SKIPPED_OUT, ERROR_OUT],
   exits: ['next'],
-  effect: { retry: 'idempotent', budget: 'command' },
+  effect: { retry: 'idempotent', budget: 'command', mode: 'fire_and_forget' },
   summary: 'Run scene {scene}',
   keywords: ['scene', 'movie', 'mood', 'apply'],
   access: 'member',

@@ -4,7 +4,8 @@ import {
   type AutomationFunctionReply,
   type AutomationFunctionSummary,
   type AutomationProgramProblem,
-  type FunctionV3,
+  type FunctionRow,
+  type FunctionV4,
   type Layout,
 } from '@smarteverything/domain';
 import { profileIdOf, type Caller } from '../server/auth';
@@ -12,14 +13,12 @@ import { analyse, planValue } from './service-programs-analysis';
 import { authorOf } from './service-reach';
 import {
   authorise,
-  builtinOf,
-  builtinSummary,
   changesOf,
   classify,
   expectRevision,
   hashOf,
   replyOf,
-  requireCustom,
+  requireFreeName,
   requireEditable,
   summaryOf,
   usersOf,
@@ -34,16 +33,16 @@ import type {
   AutomationFunctionMapping,
 } from '@smarteverything/domain';
 
-export type { BuiltinFunction, FunctionsEnv } from './service-functions-support';
+export type { FunctionsEnv } from './service-functions-support';
 
 interface NewFunctionInput {
   readonly name: string;
-  readonly definition: FunctionV3;
+  readonly definition: FunctionV4;
   readonly layout?: Layout | undefined;
 }
 
 interface FunctionSaveInput {
-  readonly definition: FunctionV3;
+  readonly definition: FunctionV4;
   readonly layout?: Layout | undefined;
   readonly name?: string | undefined;
   readonly expectedRevision: number;
@@ -68,23 +67,13 @@ export interface AutomationFunctions {
 }
 
 function list(env: FunctionsEnv, caller: Caller): AutomationFunctionSummary[] {
-  const custom = env.functions
+  return env.functions
     .list()
-    .map((row) => summaryOf(env, caller, row, env.functions.latest(row.id)));
-  const builtins = env.builtins.map((builtin) => builtinSummary(env, builtin));
-  return [...custom, ...builtins].sort((left, right) => left.name.localeCompare(right.name));
+    .map((row) => summaryOf(env, caller, row, env.functions.latest(row.id)))
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function get(env: FunctionsEnv, caller: Caller, id: string): AutomationFunctionDetail {
-  const builtin = builtinOf(env, id);
-  if (builtin !== undefined) {
-    return {
-      ...builtinSummary(env, builtin),
-      program: builtin.program,
-      layout: EMPTY_LAYOUT,
-      usedBy: usersOf(env, id),
-    };
-  }
   const row = env.functions.byId(id);
   const latest = env.functions.latest(id);
   return {
@@ -106,21 +95,25 @@ function create(
   caller: Caller,
   input: NewFunctionInput,
 ): AutomationFunctionReply {
+  requireFreeName(env, input.name);
   const analysis = analyse(env, input.definition);
   const { built } = analysis;
   if (built === undefined) return refused(analysis.problems);
   authorise(env, caller, input.definition, built);
   const row = env.store.write(() =>
-    env.functions.create({
-      name: input.name,
-      program: input.definition,
-      layout: input.layout ?? EMPTY_LAYOUT,
-      interfaceHash: hashOf(input.definition),
-      compat: 'compatible',
-      planHash: env.plans.put('function', planValue(built.plan)),
-      author: authorOf(env.store, caller),
-      createdBy: profileIdOf(env.store, caller),
-    }),
+    env.functions.create(
+      {
+        name: input.name,
+        program: input.definition,
+        layout: input.layout ?? EMPTY_LAYOUT,
+        interfaceHash: hashOf(input.definition),
+        compat: 'compatible',
+        planHash: env.plans.put('function', planValue(built.plan)),
+        author: authorOf(env.store, caller),
+        createdBy: profileIdOf(env.store, caller),
+      },
+      env.kinds,
+    ),
   );
   return replyOf(
     { ok: true, summary: `Saved revision 1 of ${row.name}.` },
@@ -133,16 +126,28 @@ function create(
   );
 }
 
+function breakingRefusal(
+  row: FunctionRow,
+  changes: AutomationFunctionReply['changes'],
+  affected: AutomationFunctionReply['affected'],
+): AutomationFunctionReply {
+  const summary = `This breaks ${String(affected.length)} caller(s). Nothing was saved; confirm to save.`;
+  return replyOf(
+    { ok: false, summary },
+    { id: row.id, revision: row.latest_revision, compat: 'breaking', changes, affected },
+  );
+}
+
 function save(
   env: FunctionsEnv,
   caller: Caller,
   id: string,
   input: FunctionSaveInput,
 ): AutomationFunctionReply {
-  requireCustom(env, id);
   const row = env.functions.byId(id);
   requireEditable(env, caller, row);
   expectRevision(row, input.expectedRevision);
+  if (input.name !== undefined) requireFreeName(env, input.name, id);
   const analysis = analyse(env, input.definition);
   const { built } = analysis;
   if (built === undefined) return refused(analysis.problems);
@@ -150,23 +155,23 @@ function save(
   const changes = changesOf(classification);
   const affected = classification.result === 'breaking' ? usersOf(env, id) : [];
   if (classification.result === 'breaking' && !input.confirmBreaking) {
-    const summary = `This breaks ${String(affected.length)} caller(s). Nothing was saved; confirm to save.`;
-    return replyOf(
-      { ok: false, summary },
-      { id, revision: row.latest_revision, compat: 'breaking', changes, affected },
-    );
+    return breakingRefusal(row, changes, affected);
   }
   authorise(env, caller, input.definition, built);
   const saved = env.store.write(() => {
-    const revised = env.functions.revise(id, {
-      program: input.definition,
-      layout: input.layout ?? env.functions.latest(id).layout,
-      interfaceHash: hashOf(input.definition),
-      compat: classification.result,
-      planHash: env.plans.put('function', planValue(built.plan)),
-      author: authorOf(env.store, caller),
-      expectedRevision: input.expectedRevision,
-    });
+    const revised = env.functions.revise(
+      id,
+      {
+        program: input.definition,
+        layout: input.layout ?? env.functions.latest(id).layout,
+        interfaceHash: hashOf(input.definition),
+        compat: classification.result,
+        planHash: env.plans.put('function', planValue(built.plan)),
+        author: authorOf(env.store, caller),
+        expectedRevision: input.expectedRevision,
+      },
+      env.kinds,
+    );
     return input.name === undefined ? revised : env.functions.rename(id, input.name);
   });
   const summary = `Saved revision ${String(saved.latest_revision)} (${classification.result}).`;
@@ -184,7 +189,6 @@ function save(
 }
 
 function remove(env: FunctionsEnv, caller: Caller, id: string): void {
-  requireCustom(env, id);
   requireEditable(env, caller, env.functions.byId(id));
   env.functions.remove(id);
 }

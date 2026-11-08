@@ -1,9 +1,9 @@
 import type { ProjectFilesService } from '../projects/service';
 import {
-  DEFAULT_ENGINE,
   NEW_CHAT_TITLE,
   ApiError,
-  type AiChatChange,
+  assistantLabel,
+  type AiChatChangeRequest,
   type AiChatHit,
   type AiChatNew,
   type AiChatRow,
@@ -11,16 +11,18 @@ import {
   type AssistantPost,
   type Role,
   type Engine,
+  type EngineRequest,
 } from '@smarteverything/domain';
 import { NothingToMarkUnreadError } from '../store/repositories/ai-chats';
 import type { Store } from '../store/store';
 import { snippetOf } from './chat-snippet';
 import type { AssistantFiles } from './files';
 import type { StoredAttachment } from '../store/repositories/assistant-files';
-import { MINUTE_MS } from '../metrics/minute';
-import { meteredEngine } from '../openrouter/metered-engine';
+import { admitChatEngineChange, admitChatExecution, admitNativeEngine } from './native-helpers';
+import { completeEngine, defaultEngine, meteredCatalogue } from '../openrouter/metered-engine';
 
 const CONVERSATION_SOURCE = 'conversation';
+export const REPAIR_CHAT_SOURCE = 'repair:server\0hub:service';
 
 export interface ChatOwner {
   readonly profileId: string;
@@ -32,11 +34,6 @@ export interface CallPlace {
   readonly profileId: string;
   readonly clientId: string | null;
   readonly device: string;
-}
-
-function callTitle(device: string, at: Date): string {
-  const time = at.toISOString().slice(11, 16);
-  return `Voice · ${device} · ${time}`.slice(0, 80);
 }
 
 export function reachesChat(
@@ -82,30 +79,15 @@ export class ChatDirectory {
   constructor(
     private readonly store: Store,
     private readonly files: AssistantFiles,
-    private readonly now: () => Date,
     private readonly selections?: {
       readonly projects?: ProjectFilesService;
       readonly validate: (engine: Engine, user: Pick<ChatOwner, 'profileId' | 'role'>) => void;
+      readonly validateStandalone?: (engine: Engine, user: ChatOwner) => void;
     },
   ) {}
 
-  private defaultEngine(profileId: string): Engine {
-    const engine = this.store.aiEngineDefaults.read() ?? DEFAULT_ENGINE;
-    return this.resolved(
-      profileId,
-      engine.kind === 'dsh'
-        ? { ...engine, session_id: null, execution_target: { kind: 'server' } }
-        : engine,
-    );
-  }
-
-  private resolved(profileId: string, engine: Engine): Engine {
-    if (engine.kind !== 'openrouter') return engine;
-    const { aiModels } = this.store;
-    return meteredEngine(profileId, engine, {
-      defaults: aiModels.settings(),
-      row: (id) => aiModels.row(id),
-    });
+  complete(profileId: string, request: EngineRequest): Engine {
+    return completeEngine(profileId, request, meteredCatalogue(this.store));
   }
 
   own(owner: ChatOwner, chatId: string): AiChatRow {
@@ -114,6 +96,12 @@ export class ChatDirectory {
 
   validateEngine(engine: Engine, owner: Pick<ChatOwner, 'profileId' | 'role'>): void {
     this.selections?.validate(engine, owner);
+  }
+
+  validateStandalone(engine: Engine, owner: ChatOwner): void {
+    if (this.selections?.validateStandalone === undefined)
+      throw new ApiError('conflict', 'Computer AI engines are starting.');
+    this.selections.validateStandalone(engine, owner);
   }
 
   visible(owner: ChatOwner, chats: readonly AiChatRow[]): AiChatRow[] {
@@ -155,6 +143,16 @@ export class ChatDirectory {
     return this.own(owner, owner.confinedTo);
   }
 
+  private newChatEngine(profileId: string): Engine {
+    const engine = defaultEngine(this.store, profileId);
+    if (engine.kind !== 'dsh')
+      throw new ApiError(
+        'conflict',
+        'Choose a SmartEverything model for new chats in Assistant settings.',
+      );
+    return engine;
+  }
+
   defaultChat(profileId: string): AiChatRow {
     return (
       this.store.aiChats.latest(profileId) ??
@@ -165,7 +163,7 @@ export class ChatDirectory {
         icon: null,
         parentId: null,
         sourceKey: null,
-        engine: this.defaultEngine(profileId),
+        engine: this.newChatEngine(profileId),
         titleAuto: true,
       })
     );
@@ -173,15 +171,36 @@ export class ChatDirectory {
 
   chatForCall(place: CallPlace, chatId: string | null): AiChatRow {
     if (chatId !== null) {
-      return this.own({ profileId: place.profileId, role: 'owner' }, chatId);
+      const chat = this.own({ profileId: place.profileId, role: 'owner' }, chatId);
+      admitChatExecution(chat);
+      return chat;
     }
-    return this.conversationChat(place.profileId, callTitle(place.device, this.now()));
+    return this.conversationChat(place.profileId);
   }
 
-  conversationChat(profileId: string, title: string): AiChatRow {
-    return this.sourceChat(profileId, CONVERSATION_SOURCE, title, {
+  conversationChat(profileId: string): AiChatRow {
+    return this.sourceChat(profileId, CONVERSATION_SOURCE, this.assistantName(), {
       kind: 'chat',
-      titleAuto: true,
+      titleAuto: false,
+    });
+  }
+
+  retitleConversations(): void {
+    const title = this.assistantName();
+    for (const profile of this.store.profiles.list()) {
+      const chat = this.store.aiChats.bySource(profile.id, CONVERSATION_SOURCE);
+      if (chat !== undefined && chat.title !== title) this.store.aiChats.update(chat.id, { title });
+    }
+  }
+
+  private assistantName(): string {
+    return assistantLabel(this.store.assistantChat.settings());
+  }
+
+  repairChat(profileId: string): AiChatRow {
+    return this.sourceChat(profileId, REPAIR_CHAT_SOURCE, 'AI repair', {
+      kind: 'chat',
+      titleAuto: false,
     });
   }
 
@@ -195,22 +214,19 @@ export class ChatDirectory {
     title: string,
     shape: { readonly kind: AiChatRow['kind']; readonly titleAuto: boolean },
   ): AiChatRow {
-    const minutes = this.store.assistantChat.settings().reuse_chat_minutes;
-    const latest = this.store.aiChats.bySource(profileId, sourceKey);
-    const since = this.now().getTime() - minutes * MINUTE_MS;
-    if (latest !== undefined && Date.parse(latest.last_message_at ?? latest.created_at) > since) {
-      return latest;
-    }
-    return this.store.aiChats.create({
-      profileId,
-      kind: shape.kind,
-      title: title.slice(0, 80),
-      icon: null,
-      parentId: null,
-      sourceKey,
-      engine: this.defaultEngine(profileId),
-      titleAuto: shape.titleAuto,
-    });
+    return (
+      this.store.aiChats.bySource(profileId, sourceKey) ??
+      this.store.aiChats.create({
+        profileId,
+        kind: shape.kind,
+        title: title.slice(0, 80),
+        icon: null,
+        parentId: null,
+        sourceKey,
+        engine: this.newChatEngine(profileId),
+        titleAuto: shape.titleAuto,
+      })
+    );
   }
 
   forTurn(profileId: string, chatId: string | undefined, title: string | undefined): AiChatRow {
@@ -224,22 +240,17 @@ export class ChatDirectory {
       icon: null,
       parentId: null,
       sourceKey: null,
-      engine: this.defaultEngine(profileId),
+      engine: this.newChatEngine(profileId),
       titleAuto: title === undefined,
     });
   }
 
-  create(owner: ChatOwner, input: AiChatNew): AiChatRow {
-    const engine = this.resolved(
-      owner.profileId,
-      input.engine ?? this.defaultEngine(owner.profileId),
-    );
-    this.validateEngine(engine, owner);
-    if (input.parent_id !== undefined) {
-      this.own(owner, input.parent_id);
-    } else if (owner.confinedTo !== undefined) {
-      throw new ApiError('forbidden', 'Start helper chats under your own chat only.');
-    }
+  create(owner: ChatOwner, input: AiChatNew, allowStandalone = false): AiChatRow {
+    const engine =
+      input.engine === undefined
+        ? this.newChatEngine(owner.profileId)
+        : this.complete(owner.profileId, input.engine);
+    const standalone = this.admitCreation(owner, engine, input.parent_id, allowStandalone);
     return this.store.aiChats.create({
       profileId: owner.profileId,
       kind: input.parent_id === undefined ? 'chat' : 'subagent',
@@ -248,20 +259,40 @@ export class ChatDirectory {
       parentId: input.parent_id ?? null,
       sourceKey: null,
       engine,
+      ...(standalone ? { nativeAdmission: 'standalone' } : {}),
       titleAuto: input.title === undefined,
     });
   }
 
-  update(owner: ChatOwner, chatId: string, change: AiChatChange): AiChatRow {
+  private admitCreation(
+    owner: ChatOwner,
+    engine: Engine,
+    parentId: string | undefined,
+    allowStandalone: boolean,
+  ): boolean {
+    const standalone = allowStandalone && engine.kind !== 'dsh' && parentId === undefined;
+    admitNativeEngine(engine, standalone || parentId !== undefined);
+    if (parentId !== undefined) {
+      admitChatExecution(this.own(owner, parentId));
+    } else if (owner.confinedTo !== undefined) {
+      throw new ApiError('forbidden', 'Start helper chats under your own chat only.');
+    }
+    if (standalone) this.validateStandalone(engine, owner);
+    else this.validateEngine(engine, owner);
+    return standalone;
+  }
+
+  update(owner: ChatOwner, chatId: string, change: AiChatChangeRequest): AiChatRow {
     const chat = this.own(owner, chatId);
-    const engine =
-      change.engine === undefined ? undefined : this.resolved(chat.profile_id, change.engine);
-    if (engine !== undefined) this.validateEngine(engine, owner);
+    admitChatExecution(chat);
+    const { engine: requested, ...rest } = change;
+    const engine = requested === undefined ? undefined : this.complete(chat.profile_id, requested);
+    if (engine !== undefined) {
+      admitChatEngineChange(chat, engine);
+      this.validateEngine(engine, owner);
+    }
     try {
-      return this.store.aiChats.update(
-        chatId,
-        engine === undefined ? change : { ...change, engine },
-      );
+      return this.store.aiChats.update(chatId, engine === undefined ? rest : { ...rest, engine });
     } catch (cause) {
       if (cause instanceof NothingToMarkUnreadError) {
         throw new ApiError('conflict', 'This chat has no incoming message to mark unread.');

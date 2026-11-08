@@ -64,16 +64,24 @@ function rig(): Rig {
       calls.push('abort');
       return Promise.resolve();
     },
+    pause: (): void => undefined,
+    resume: (): void => undefined,
     elapsedMs: () => device.elapsed,
+    meteringDb: (): null => null,
     read: (uri) => {
       calls.push(`read ${uri}`);
       return device.readFails
         ? Promise.reject(new Error('file gone'))
-        : Promise.resolve(new Uint8Array([1, 2, 3]).buffer);
+        : Promise.resolve({ data: new Uint8Array([1, 2, 3]).buffer, mime: 'audio/mp4' });
     },
   };
   return {
-    machine: new VoiceRecorderMachine(fake, () => new Date('2026-10-18T10:20:30.000Z')),
+    machine: new VoiceRecorderMachine(
+      fake,
+      () => new Date('2026-10-18T10:20:30.000Z'),
+      { request: (): number => 1, cancel: (): void => undefined },
+      (): void => undefined,
+    ),
     calls,
     device,
   };

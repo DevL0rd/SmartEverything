@@ -1,14 +1,9 @@
-import type { DesktopServiceHealth } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
-import { appPlatform, desktopBridge } from '../../design/platform';
+import { appPlatform, type AppPlatform } from '../../design/platform';
 import { ApiClient } from './client';
 import { devServerUrl } from './dev-server';
-import { connectionPlanOf } from './plan';
 import {
-  desktopConnection,
   forgetConnection,
-  prefersRemoteServer,
-  preferRemoteServer,
   readStoredConnection,
   type ServerConnection,
   type StoredKind,
@@ -49,23 +44,11 @@ class NotPairedError extends Error {
   }
 }
 
-class OwnerCannotUnpairError extends Error {
-  override readonly name = 'OwnerCannotUnpairError';
-
-  constructor() {
-    super('The desktop app owns its server and cannot unpair from it.');
-  }
-}
-
-class LocalServerNotRunningError extends Error {
-  override readonly name = 'LocalServerNotRunningError';
-
-  constructor() {
-    super(
-      "This computer's SmartEverything server is not running. Start it under Settings → Server service.",
-    );
-  }
-}
+const STORAGE_BY_PLATFORM: Readonly<Record<AppPlatform, StoredKind>> = {
+  android: 'phone',
+  web: 'browser',
+  desktop: 'desktop',
+};
 
 function unpairedState(kind: StoredKind): ConnectionState {
   const fixedUrl =
@@ -156,34 +139,10 @@ export function api(): ApiClient {
   return cached.client;
 }
 
-async function localServerHealth(): Promise<DesktopServiceHealth | null> {
-  const bridge = desktopBridge();
-  return bridge === null ? null : (await bridge.serviceStatus()).health;
-}
-
 async function stateNow(): Promise<ConnectionState> {
-  const form = appPlatform();
-  const preferRemote = form === 'desktop' && prefersRemoteServer();
-  const localServer = form === 'desktop' && !preferRemote ? await localServerHealth() : null;
-  const plan = connectionPlanOf({ form, localServer, preferRemote });
-  log.debug('connection.planned', {
-    form,
-    preferRemote,
-    localServerChecked: form === 'desktop' && !preferRemote,
-    localServerUp: localServer !== null,
-    plan: plan.kind,
-    storage: plan.kind === 'local' ? 'desktop' : plan.storage,
-  });
-  if (plan.kind === 'local') {
-    const connection = await desktopConnection();
-    return connection === null
-      ? unpairedState('desktop')
-      : { status: 'paired', kind: 'desktop', connection };
-  }
-  const connection = await readStoredConnection(plan.storage);
-  return connection === null
-    ? unpairedState(plan.storage)
-    : { status: 'paired', kind: plan.storage, connection };
+  const kind = STORAGE_BY_PLATFORM[appPlatform()];
+  const connection = await readStoredConnection(kind);
+  return connection === null ? unpairedState(kind) : { status: 'paired', kind, connection };
 }
 
 function activateEnrollment(connection: ServerConnection, run: number): void {
@@ -269,29 +228,10 @@ export async function forgetServer(): Promise<void> {
   if (state.status !== 'paired' && state.status !== 'removed') {
     return;
   }
-  if (state.kind === 'desktop') {
-    throw new OwnerCannotUnpairError();
-  }
   connectionOperation += 1;
   if (state.status === 'paired') await clearNativeServerCredential(state.connection.token);
   await forgetConnection(state.kind);
   await forgetHubTrust();
   connectionState.set(unpairedState(state.kind));
   log.info('connection.forgotten', { kind: state.kind });
-}
-
-export async function chooseRemoteServer(): Promise<void> {
-  preferRemoteServer(true);
-  log.info('connection.remote_chosen');
-  await loadConnection();
-}
-
-export async function chooseThisComputer(): Promise<void> {
-  preferRemoteServer(false);
-  log.info('connection.local_chosen');
-  await loadConnection();
-  const state = connectionState.get();
-  if (state.status !== 'paired' || state.kind !== 'desktop') {
-    throw new LocalServerNotRunningError();
-  }
 }

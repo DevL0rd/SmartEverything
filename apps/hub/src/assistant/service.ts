@@ -16,15 +16,15 @@ import {
   assistantDelivery,
   assistantRequests,
   assistantChats,
-  assistantCoordination,
+  assistantDelegation,
+  assistantRepair,
 } from './service-routing';
 import { assistantVoice } from './service-voice';
 import {
   patchAssistantSettings,
   legacyAssistantSettings,
   RETIRED_STATUS_FIELDS,
-  type AiChatChange,
-  type AiChatBranch,
+  type AiChatChangeRequest,
   type AiChatHit,
   type AiChatNew,
   type AiChatRow,
@@ -32,6 +32,8 @@ import {
   type AiEdit,
   type AiRetryFrom,
   type AssistantMessageRow,
+  type AssistantReaction,
+  type AssistantReactionChange,
   type AssistantNewMessage,
   type AssistantPost,
   type AssistantSettings,
@@ -56,18 +58,22 @@ import { ownerProfileOf } from '../transcripts/owner';
 import { TurnListeners } from './turn-listeners';
 import { ConversationLog } from './conversation-log';
 import { HUB_RESTARTED } from './interruption';
-import type { Coordination } from './coordination/asks';
+import type { Delegation } from './delegation/delegation';
 import { costRolledUp } from './cost-rollup';
 import type { AssistantDelivery } from './delivery';
 import { removeConversationMessages } from './remove-messages';
+import { setMessageReaction } from './message-reactions';
+import type { Caller } from '../server/auth';
 import { compactChat, interruptChat } from './chat-run-control';
 import { deliveryPorts } from './delivery-ports';
 import { MessageEdits } from './message-edits';
 import type { EngineStatus } from './engines/engine';
 import { EngineRegistry } from './engines/registry';
+import type { RepairDispatch } from './repair-dispatch';
 import type { AssistantFiles } from './files';
 import type { AssistantRequests, InboundTurn, Sender } from './requests';
-import type { ChatTitles } from './titles/chat-titles';
+import type { TitleService } from './titles/title-service';
+import type { MemoryLearner } from '../memory/learner';
 import type { VoiceResponder, VoiceResultHandler } from './voice-link';
 import type {
   AssistantServiceOptions,
@@ -86,7 +92,8 @@ export class AssistantService {
   readonly branches: ChatBranches;
   readonly projects: ProjectFilesService;
   readonly references: ReferenceService;
-  readonly coordination: Coordination;
+  readonly delegation: Delegation;
+  readonly repair: RepairDispatch;
   private readonly conversation: ConversationLog;
   private readonly delivery: AssistantDelivery;
   private readonly engines: EngineRegistry;
@@ -98,7 +105,8 @@ export class AssistantService {
   readonly computerProviders = new ComputerProviders();
   private tools: ToolHub | null = null;
   private harness: HarnessService | null = null;
-  private titles: ChatTitles | null = null;
+  private titles: TitleService | null = null;
+  private learner: MemoryLearner | null = null;
   private voiceResult: VoiceResultHandler | null = null;
   private readonly publisher = new StatusPublisher(() => {
     this.options.announce(this.status());
@@ -106,12 +114,13 @@ export class AssistantService {
   private readonly listeners = new TurnListeners();
   constructor(private readonly options: AssistantServiceOptions) {
     const { store } = options;
-    this.projects = new ProjectFilesService(options.dataDirectory);
+    this.projects = new ProjectFilesService(options.layout, store.aiChats);
     this.references = new ReferenceService(store, this.projects);
     this.files = assistantFiles(options, this.projects);
     this.conversation = new ConversationLog(store);
     this.chats = assistantChats(options, this.files, () => this.selections, this.projects);
     this.branches = new ChatBranches(store, this.files, this.chats);
+    this.repair = assistantRepair(options, this.conversation, this.chats, () => this.delivery);
     this.engines = new EngineRegistry(store);
     this.delivery = assistantDelivery(
       options,
@@ -120,11 +129,11 @@ export class AssistantService {
         options,
         conversation: this.conversation,
         publisher: this.publisher,
-        coordination: () => this.coordination,
+        delegation: () => this.delegation,
         ended: this.ended.bind(this),
       }),
     );
-    this.coordination = assistantCoordination(options, {
+    this.delegation = assistantDelegation(options, {
       tools: (): ToolHub | null => this.tools,
       chats: this.chats,
       conversation: this.conversation,
@@ -138,12 +147,11 @@ export class AssistantService {
       {
         delivery: () => this.delivery,
         voiceResult: () => this.voiceResult,
-        done: (event, text, ok): void => {
-          this.ended(event, text, ok);
-        },
+        done: this.ended.bind(this),
       },
     );
-    this.submissions = this.requests.referenceSubmissions(this.references, this.engines);
+    const { requests, references, engines, delegation } = this;
+    this.submissions = requests.referenceSubmissions(references, engines, delegation);
     this.edits = new MessageEdits({
       store,
       chats: this.chats,
@@ -159,8 +167,9 @@ export class AssistantService {
       engines: this.engines,
       chats: this.chats,
       requests: this.requests,
-      afterCall: (chatId, transcript): void => {
+      afterCall: (chatId, transcript, messageId): void => {
         this.titles?.afterCall(chatId, transcript);
+        this.learner?.afterCall(chatId, messageId);
       },
     });
   }
@@ -178,24 +187,19 @@ export class AssistantService {
     this.requests.previewError(id, scope, text);
   }
   runTurn(input: TurnRequest): { chatId: string; eventId: string } {
-    const chat = this.chats.forTurn(input.profileId, input.chatId, input.title);
-    log.debug('turn.requested', {
-      chatId: chat.id,
-      profileId: input.profileId,
-      textLength: input.text.length,
-      source: input.origin.source,
-      newChat: input.chatId === undefined,
-    });
-    return { chatId: chat.id, eventId: this.requests.turn(chat, input.text, input.origin) };
+    return this.requests.runTurn(input);
   }
   admitDelivery(admit: (event: StoredEvent) => boolean): () => void {
     return this.delivery.admission(admit);
   }
   start(): void {
     log.info('service.starting', { engines: this.computerProviders.size });
-    this.coordination.restart();
+    this.delegation.restart();
     this.conversation.interrupted(HUB_RESTARTED);
     this.delivery.pump();
+    void this.files.backfillLevels().catch((cause: unknown) => {
+      log.warn('levels.backfill_failed', { cause });
+    });
   }
   attachComputerAi(directory: ComputerAiDirectory): void {
     this.selections = new EngineSelections(this.options.store, directory, this.options.log);
@@ -204,17 +208,7 @@ export class AssistantService {
       conversation: this.conversation,
       files: this.files,
       tools: (): ToolHub | null => this.tools,
-      finished: (event, text, ok): void => {
-        this.requests.finished(event, text, ok);
-      },
-      command: (chat, text): void => {
-        this.requests.turn(chat, text, {
-          source: 'app',
-          plugin_id: null,
-          device_id: null,
-          name: null,
-        });
-      },
+      requests: this.requests,
     });
     this.claude = runners.get('claude') ?? null;
     for (const [runtime, runner] of runners) this.computerProviders.set(runtime, runner);
@@ -227,7 +221,6 @@ export class AssistantService {
     service.onMachineChanged((chat, text) => {
       this.conversation.note(chat, 'SmartEverything', text, null);
     });
-    this.selections?.attachHarness(service);
     this.engines.attach(
       harnessEngine({ service, dispatcher, conversation: this.conversation }, this.options, {
         activity: (notice): void => {
@@ -256,7 +249,7 @@ export class AssistantService {
     return this.listeners.onActivity(listener);
   }
   private ended(event: StoredEvent, text: string, ok: boolean): void {
-    this.coordination.finished(event, text, ok);
+    this.delegation.finished(event, text, ok);
     this.listeners.finished(event, text, ok);
   }
   inbound(turn: InboundTurn): Promise<{ eventId: string; messageId: string }> {
@@ -268,10 +261,9 @@ export class AssistantService {
   attachTools(tools: ToolHub): void {
     this.tools = tools;
   }
-  attachAuxiliaries(parts: SideParts): void {
-    this.titles = assistantAuxiliaries(this.options, parts, (listener) =>
-      this.onFinished(listener),
-    );
+  attachAuxiliaries(parts: SideParts, learner: MemoryLearner): void {
+    this.learner = learner;
+    this.titles = assistantAuxiliaries(this.options, parts, this.onFinished.bind(this), learner);
   }
   stop(): void {
     log.info('service.stopping', { engines: this.computerProviders.size });
@@ -290,6 +282,7 @@ export class AssistantService {
   }
   update(change: AssistantSettingsChange): Promise<AssistantStatus> {
     this.options.store.assistantChat.saveSettings(patchAssistantSettings(this.settings(), change));
+    if (change.name !== undefined) this.chats.retitleConversations();
     log.info('settings.updated', { fields: Object.keys(change).join(',') });
     this.delivery.pump();
     this.publisher.publish();
@@ -298,6 +291,18 @@ export class AssistantService {
   messages(chatId: string, before: string | undefined, limit: number): AssistantMessageRow[] {
     return this.options.store.assistantChat.messages({ chatId, before, limit });
   }
+  react(
+    caller: Caller,
+    target: { readonly chatId: string; readonly messageId: string },
+    change: AssistantReactionChange,
+  ): readonly AssistantReaction[] {
+    return setMessageReaction(
+      { store: this.options.store, chats: this.chats, engines: this.engines },
+      caller,
+      target,
+      change,
+    );
+  }
   remove(owner: ChatOwner, ids: readonly string[]): Promise<void> {
     return removeConversationMessages(
       { store: this.options.store, files: this.files, engines: this.engines },
@@ -305,8 +310,8 @@ export class AssistantService {
       ids,
     );
   }
-  createChat(owner: ChatOwner, input: AiChatNew): AiChatRow {
-    return this.chats.create(owner, input);
+  createChat(owner: ChatOwner, input: AiChatNew, allowStandalone = false): AiChatRow {
+    return this.chats.create(owner, input, allowStandalone);
   }
   removeChat(
     owner: ChatOwner,
@@ -318,32 +323,36 @@ export class AssistantService {
     log.info('chat.removing', { chatId, profileId: owner.profileId, inactiveOnly });
     return removeChatTree({ chats, engines, delivery, admit, inactiveOnly }, owner, chatId);
   }
-  branchChat(owner: ChatOwner, chatId: string, body: AiChatBranch): Promise<AiChatRow> {
+  branchChat(...input: Parameters<ChatBranches['branch']>): Promise<AiChatRow> {
+    const [owner, chatId] = input;
     this.engines.forMutation(this.chats.own(owner, chatId), owner.role);
-    return this.branches.branch(owner, chatId, body);
+    return this.branches.branch(...input);
   }
   searchChats(owner: ChatOwner, query: AiChatSearch): AiChatHit[] {
     return this.chats.search(owner, query);
   }
-  updateChat(owner: ChatOwner, chatId: string, change: AiChatChange): Promise<AiChatRow> {
-    const { chats, engines, delivery, coordination, computerProviders, selections, harness } = this;
-    const ports = {
-      chats,
-      engines,
-      delivery,
-      coordination,
-      computerProviders,
-      selections,
-      harness,
-    };
-    return updateChat(ports, owner, chatId, change);
+  updateChat(owner: ChatOwner, chatId: string, change: AiChatChangeRequest): Promise<AiChatRow> {
+    const { chats, engines, delivery, delegation, computerProviders, selections, harness } = this;
+    return updateChat(
+      { chats, engines, delivery, delegation, computerProviders, selections, harness },
+      owner,
+      chatId,
+      change,
+    );
   }
 
-  controlAgentRun(run: AiAgentRun, control: z.infer<typeof AI_AGENT_RUN_CONTROL>): Promise<void> {
+  controlAgentRun(
+    run: AiAgentRun,
+    control: z.infer<typeof AI_AGENT_RUN_CONTROL>,
+    sender: Sender,
+  ): Promise<void> {
     return this.computerProviders.controlRun(
       {
         store: this.options.store,
         interrupt: (chat) => this.interrupt({ profileId: chat.profile_id, role: 'owner' }, chat.id),
+        send: (chat, text): void => {
+          this.send(sender, { text, attachments: [] }, chat.id);
+        },
       },
       run,
       control,

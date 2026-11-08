@@ -1,5 +1,6 @@
 import { DAY_MS } from '../metrics/minute';
 import { sweepBottleRetention } from './bottle-retention';
+import { sweepRuntimeLogs } from './runtime-log-retention';
 import { sweepAutomationRetention } from './retention-automations';
 import type { Sql } from './sql';
 
@@ -10,6 +11,7 @@ const AGED_TABLES = {
   ai_outreach: { column: 'created_at', days: KEPT_DAYS },
   app_sessions: { column: 'ended_at', days: KEPT_DAYS },
   access_audit: { column: 'at', days: KEPT_DAYS },
+  google_sync_log: { column: 'at', days: KEPT_DAYS },
 } as const;
 
 const TREADMILL_SAMPLE_DAYS = 400;
@@ -27,6 +29,7 @@ export function sweepRetention(sql: Sql, now: Date): Record<string, number> {
     ...swept,
     ...sweepBottleRetention(sql, now),
     ...sweepAutomationRetention(sql, now),
+    ...sweepRuntimeLogs(sql, now),
     treadmill_samples: sql.run(
       'forget old treadmill samples',
       `delete from treadmill_samples where session_id in

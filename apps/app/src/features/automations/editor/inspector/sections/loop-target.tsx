@@ -24,7 +24,7 @@ export function LoopTarget(section: SectionProps): ReactNode {
           value={node.kind}
           disabled={env.locked}
           onChange={(kind) => {
-            actions.apply(swapKindOps(view, kind));
+            actions.apply(swapKindOps(env.graph, view, { kind }, env.registry));
           }}
         />
       </View>

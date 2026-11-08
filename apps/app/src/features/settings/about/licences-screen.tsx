@@ -1,40 +1,39 @@
 import type { ReactNode } from 'react';
 import { useDeferredValue, useState } from 'react';
 import { View } from 'react-native';
-import { href } from '../../../app-shell/hrefs';
 import { ListRow } from '../../../components/list-row';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
 import { SearchField } from '../../../components/search-field';
 import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
-import { plural } from '../../../format/text';
+import { joinParts, plural } from '../../../format/text';
+import { SettingsFrame } from '../../../settings/settings-frame';
 import { matchingLicences, type Licence } from './licences';
 
 function LicenceRow({ entry }: { readonly entry: Licence }): ReactNode {
-  return <ListRow title={entry.name} subtitle={entry.version} value={entry.licence} />;
+  return (
+    <ListRow
+      title={entry.name}
+      subtitle={joinParts([entry.version, entry.licence])}
+      compact
+      wrapTitle
+      wrapSubtitle
+    />
+  );
 }
 
 export function LicencesScreen(): ReactNode {
   const [query, setQuery] = useState('');
-  const shown = matchingLicences(useDeferredValue(query));
+  const search = useDeferredValue(query).trim();
+  const shown = matchingLicences(search);
   return (
-    <Screen
-      scroll={false}
-      maxWidth="reading"
-      header={
-        <PageHeader
-          title="Open-source licences"
-          breadcrumbs={[
-            { label: 'Settings', href: href.settings.index() },
-            { label: 'About', href: href.settings.page('about') },
-          ]}
-        />
-      }
-    >
-      <View className="w-full max-w-reading flex-1 self-center">
+    <SettingsFrame page="about/licences" scroll={false}>
+      <View className="w-full max-w-detail flex-1 self-start">
         <VirtualList
-          sections={[{ key: 'all', title: plural(shown.length, 'package'), data: shown }]}
+          sections={
+            shown.length === 0
+              ? []
+              : [{ key: 'all', title: plural(shown.length, 'package'), data: shown }]
+          }
           keyOf={(entry) => `${entry.name}@${entry.version}`}
           renderItem={(entry) => <LicenceRow entry={entry} />}
           header={
@@ -46,12 +45,17 @@ export function LicencesScreen(): ReactNode {
             </View>
           }
           empty={
-            <Text variant="body" tone="variant" className="px-gutter py-6">
-              {`Nothing matches “${query.trim()}”.`}
+            <Text
+              variant="body"
+              tone="variant"
+              className="px-gutter py-6"
+              accessibilityLiveRegion="polite"
+            >
+              {search === '' ? 'No packages are listed.' : 'No packages match your search.'}
             </Text>
           }
         />
       </View>
-    </Screen>
+    </SettingsFrame>
   );
 }

@@ -23,8 +23,10 @@ import { applyValueChange } from './effects/value-ops';
 import type { HttpEffects, HttpRequest } from './effects/http';
 import { TARGET_VALUE } from './world-v3/refs';
 import { stampOf } from './effects/command-metadata';
+import { modeOf } from './effects/action-mode';
 import { effectFailure } from './effect-failure';
 import type { KeptData } from './world-v3/kept-data';
+import { PLUGIN_NODE_PREFIX } from './plugin-kinds/perform';
 
 export type EffectHandler = (
   params: Outputs,
@@ -35,11 +37,11 @@ export type EffectHandler = (
 export type EffectHandlers = Readonly<Record<string, EffectHandler>>;
 
 export interface EffectPorts {
-  readonly setter: Pick<DeviceSetter, 'set'>;
+  readonly setter: Pick<DeviceSetter, 'set' | 'setTogether'>;
   readonly temporary?: Pick<TemporaryDeviceChanges, 'run'> | undefined;
   readonly http: Pick<HttpEffects, 'request'>;
   readonly toggler: Pick<DeviceToggler, 'toggle'>;
-  readonly issuer: Pick<CommandIssuer, 'issue'>;
+  readonly issuer: Pick<CommandIssuer, 'issue' | 'confirm'>;
   readonly store: Pick<Store, 'automationValues' | 'scenes'>;
   readonly owned: Pick<AutomationOwnedValuesRepository, 'list' | 'write'>;
   readonly kept: Pick<KeptData, 'read' | 'write'>;
@@ -54,6 +56,7 @@ const SET_PARAMS = z.object({
   to: JSON_VALUE.optional(),
   by: z.number().optional(),
   percent: z.boolean().default(false),
+  transition: z.number().min(0).optional(),
   requireAll: z.boolean().default(false),
 });
 
@@ -62,6 +65,8 @@ const TEMPORARY_PARAMS = z.object({
   control: z.string().min(1),
   to: JSON_VALUE.optional(),
   by: z.number().optional(),
+  percent: z.boolean().default(false),
+  transition: z.number().min(0).optional(),
   duration: z.number().int().min(0),
   priority: z.number().int().default(0),
   holdWhile: z.boolean().optional(),
@@ -122,29 +127,58 @@ export function outputs(value: unknown): Outputs {
   return z.record(z.string(), JSON_VALUE).parse(JSON.parse(JSON.stringify(value)));
 }
 
+function fadeOf(
+  ports: EffectPorts,
+  set: z.infer<typeof SET_PARAMS>,
+): Checked<EffectHandler> | undefined {
+  const { transition } = set;
+  if (transition === undefined || transition <= 0) return undefined;
+  const fade = ports.extra['device.fade'];
+  if (fade === undefined) return invalid('Fading a device is not available in this hub.');
+  if (typeof set.to !== 'number' || set.percent)
+    return invalid(
+      'A fade needs a number to go to, without Use percent. Clear the fade time or give a number.',
+    );
+  return { ok: true, value: fade };
+}
+
 function deviceSet(ports: EffectPorts): EffectHandler {
   return async (params, request, run) => {
     const checked = parsed(SET_PARAMS, params);
     if (!checked.ok) return checked;
     const set = checked.value;
-    const { to } = set;
-    if (to === undefined) {
-      return invalid('Changing a device by an amount is not available yet; give the value to set.');
+    const { to, by } = set;
+    if (to === undefined && by === undefined) {
+      return invalid('Give the value to set or the amount to change by.');
+    }
+    const fading = fadeOf(ports, set);
+    if (fading !== undefined) {
+      if (!fading.ok) return fading;
+      return fading.value(
+        { ...params, over: Math.max(1, Math.round(set.transition ?? 1)) },
+        request,
+        run,
+      );
     }
     try {
       const sent = await ports.setter.set(
         {
           target: set.target,
           control: set.control,
-          value: () => to,
+          value: () => to ?? by ?? 0,
           percent: set.percent,
-          serialised: true,
+          serialised: false,
+          ...(to === undefined ? { relative: true } : {}),
           requireAll: set.requireAll,
+          mode: modeOf(request),
           at: stampOf(request.path),
         },
         run,
       );
-      return { ok: true, value: outputs({ ok: true, ...sent, value: to }) };
+      return {
+        ok: true,
+        value: outputs({ ok: true, ...sent, ...(to === undefined ? {} : { value: to }) }),
+      };
     } catch (cause) {
       return effectFailure(cause);
     }
@@ -166,6 +200,10 @@ function deviceTemporary(temporary: Pick<TemporaryDeviceChanges, 'run'>): Effect
     const change = checked.value;
     const operation = temporaryOperation(change);
     if (!operation.ok) return operation;
+    if ((change.transition ?? 0) > 0 || change.percent)
+      return invalid(
+        'A temporary change cannot fade or read its value as a percentage yet. Clear Fade over and Use percent.',
+      );
     try {
       const note = await temporary.run(
         {
@@ -347,7 +385,9 @@ export type Performer = (request: EffectRequest, run: EffectRun) => Promise<Node
 
 export function performer(handlers: EffectHandlers): Performer {
   return async (request, run) => {
-    const handler = handlers[request.kind];
+    const handler =
+      handlers[request.kind] ??
+      (request.kind.startsWith(PLUGIN_NODE_PREFIX) ? handlers[PLUGIN_NODE_PREFIX] : undefined);
     if (handler === undefined) {
       return {
         ok: false,

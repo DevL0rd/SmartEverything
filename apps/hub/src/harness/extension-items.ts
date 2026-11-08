@@ -29,7 +29,7 @@ export function extensionItem(row: StoredExtension): HarnessExtensionItem {
       row.kind === 'skill'
         ? ['Load the skill instructions and their resource files']
         : [
-            'Use the plugin skills, commands and agents',
+            'Use the plugin skills and commands',
             ...(row.executes ? ['Run its hooks and MCP servers once you confirm it'] : []),
           ],
     requirements: row.executes ? [] : ['Installing does not grant file, shell or account access'],

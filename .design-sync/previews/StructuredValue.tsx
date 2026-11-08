@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Stage, StructuredValue } from 'smarteverything-kit';
 
 const value = {
@@ -7,12 +8,12 @@ const value = {
   brightness: 40,
   lastRun: null,
 };
-export const Object = () => (
+export const Object = (): ReactElement => (
   <Stage theme="dark" width={460}>
     <StructuredValue title="Automation" value={value} />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={460}>
     <StructuredValue title="Automation" value={value} />
   </Stage>

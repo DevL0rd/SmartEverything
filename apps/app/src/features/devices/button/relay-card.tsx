@@ -26,8 +26,7 @@ import { deviceModelOf, powerStateOf, valueOf, type PowerState } from '../model/
 import { wattsText } from './relay-model';
 import { usePowerTimeline } from './use-power-timeline';
 
-const STRIP_HEIGHT = 28;
-const PANEL_STRIP_HEIGHT = 48;
+const STRIP_PX: Readonly<Record<WideClass, number>> = { m: 16, w: 28, l: 48, xl: 48 };
 
 interface RelayRead {
   readonly power: PowerState;
@@ -125,6 +124,10 @@ function RelayGraph({
   );
 }
 
+function tickerLines(cls: WideClass): 1 | 2 {
+  return cls === 'l' || cls === 'xl' ? 2 : 1;
+}
+
 function drawFigures(read: RelayRead): readonly ReactNode[] {
   return read.watts === null || read.power !== 'on'
     ? []
@@ -144,7 +147,6 @@ function WideRelay({
   const room = useRoomName(device.id);
   const draw = withRole(deviceModelOf(device).presentation, 'power_draw')?.key ?? null;
   const line = stateLine(read);
-  const panel = cls === 'l' || cls === 'xl';
   return (
     <View ref={ref} onLayout={onLayout} className="flex-1" pointerEvents="box-none">
       <WideCard
@@ -162,19 +164,12 @@ function WideRelay({
           </Text>
         }
         figures={drawFigures(read)}
-        graph={
-          <RelayGraph
-            device={device}
-            live={live}
-            height={panel ? PANEL_STRIP_HEIGHT : STRIP_HEIGHT}
-            draw={draw}
-          />
-        }
+        graph={<RelayGraph device={device} live={live} height={STRIP_PX[cls]} draw={draw} />}
         actions={[
           <PowerToggle key="power" device={device} />,
           <TimerButton key="timer" device={device} power={read.power} />,
         ]}
-        ticker={<LogTicker deviceId={device.id} live={live} />}
+        ticker={<LogTicker deviceId={device.id} live={live} lines={tickerLines(cls)} />}
       />
     </View>
   );

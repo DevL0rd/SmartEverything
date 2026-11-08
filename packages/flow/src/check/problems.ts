@@ -86,18 +86,25 @@ export function siteName(site: ReferenceSite): string {
   }
 }
 
-const VISIBILITY_FIXES: Readonly<Record<VisibilityReason, string>> = {
+const VISIBILITY_FIXES: Readonly<Record<Exclude<VisibilityReason, 'not_in_scope'>, string>> = {
   unknown_key: 'name a step or trigger that exists in this program',
   self: 'read the value from an earlier step instead',
   cycle: 'break the loop between these pure steps',
-  comes_later: 'move the step that gives the value above this one',
-  inside_finished_container: 'give the value out of its container with an output',
-  not_in_scope: 'move the step into a scope this one can see, or give the value out with an output',
+  comes_later: 'Wire the step that gives the value so it runs before this one.',
+  inside_finished_container:
+    'A value made inside a loop or a branch is not available after it; give it out with a value after the If, Switch, Try or Do together.',
   not_a_scope_output: 'use one of the values the container gives inside itself',
   not_an_output: 'declare an output on the container and read that',
   pure_not_visible: 'make everything the pure step reads visible here',
 };
 
-export function visibilityFix(reason: VisibilityReason): string {
+export function visibilityFix(reason: Exclude<VisibilityReason, 'not_in_scope'>): string {
   return VISIBILITY_FIXES[reason];
+}
+
+export function scopeFix(owner: string | undefined, path: string | undefined): string {
+  if (owner === undefined) return 'This value only exists inside the path that makes it.';
+  if (path === undefined)
+    return `This value only exists inside the path of ${owner} that makes it.`;
+  return `This value only exists inside the ${path} path of ${owner}.`;
 }

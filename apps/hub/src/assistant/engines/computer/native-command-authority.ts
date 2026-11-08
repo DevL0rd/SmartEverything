@@ -6,7 +6,7 @@ import {
   type AiNativeCommandWrite,
 } from '@smarteverything/domain';
 import { effectiveClientById } from '../../../server/person-access';
-import { effectiveTools } from '../../coordination/grants';
+import { effectiveTools } from '../../tool-scope';
 import type { ToolCaller } from '../../../ai-tools/hub-tool';
 import { providerGrant, type ProviderGrant } from './tool-bridge';
 import type { ComputerRunnerDeps } from './ports';

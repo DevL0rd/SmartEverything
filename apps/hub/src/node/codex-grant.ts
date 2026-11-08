@@ -5,7 +5,7 @@ import type { CodexAiSettings } from '@smarteverything/domain';
 import type { CodexNativeGrant, CodexNativeGrantResolver } from '../codex/native-grant';
 import { CodexRuntimeError } from '../codex/errors';
 export class NodeCodexGrant implements CodexNativeGrantResolver {
-  private grant: CodexNativeGrant | null = null;
+  private grant: (CodexNativeGrant & { readonly pin: string | null }) | null = null;
   private stopped = false;
   constructor(
     private readonly options: {
@@ -33,7 +33,7 @@ export class NodeCodexGrant implements CodexNativeGrantResolver {
         'mcp',
         'The hub did not issue a computer/runtime-scoped Codex MCP grant.',
       );
-    this.grant = { url: issued.url, token: issued.token };
+    this.grant = { url: issued.url, pin: issued.pin, token: issued.token };
     return this.present(this.grant);
   }
   private assertActive(): void {
@@ -49,10 +49,16 @@ export class NodeCodexGrant implements CodexNativeGrantResolver {
     await this.request({ action: 'revoke' });
     this.grant = null;
   }
-  private present(grant: CodexNativeGrant): CodexNativeGrant {
+  private present(grant: CodexNativeGrant & { readonly pin: string | null }): CodexNativeGrant {
     this.assertActive();
-    if (this.options.mcp === undefined) return grant;
-    return { ...grant, url: this.options.mcp.endpoint('codex', grant.url, grant.token) };
+    if (this.options.mcp !== undefined)
+      return { url: this.options.mcp.endpoint('codex', grant, grant.token), token: grant.token };
+    if (grant.pin !== null)
+      throw new CodexRuntimeError(
+        'mcp',
+        'The hub granted a pinned address that only the guest broker serves.',
+      );
+    return { url: grant.url, token: grant.token };
   }
   private async request(
     body:

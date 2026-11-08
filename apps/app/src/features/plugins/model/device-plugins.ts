@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { deviceFamily, type DeviceFamily } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import type { IconName } from '../../../components/icon';
@@ -26,7 +26,7 @@ export interface DevicePluginRow {
   readonly icon: IconName;
   readonly count: number;
   readonly status: string | null;
-  readonly href: Href;
+  readonly href: AppHref;
 }
 
 function statusOf(count: number): string | null {
@@ -34,7 +34,7 @@ function statusOf(count: number): string | null {
   return count === 1 ? 'Linked' : `${String(count)} linked`;
 }
 
-function targetOf(devices: readonly Device[], setup: Href): Href {
+function targetOf(devices: readonly Device[], setup: AppHref): AppHref {
   const [first] = devices;
   if (first === undefined) return setup;
   return devices.length === 1 ? href.settings.device(first.id) : href.settings.page('devices');

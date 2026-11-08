@@ -1,8 +1,9 @@
+import type { ComponentProps, ReactElement } from 'react';
 import { Sparkline, Stage, Text } from 'smarteverything-kit';
 import { Col, Row } from '../preview-helpers';
 
 const t0 = new Date(2026, 9, 14).getTime();
-const mk = (f: (i: number) => number) =>
+const mk = (f: (i: number) => number): ComponentProps<typeof Sparkline>['points'] =>
   Array.from({ length: 30 }, (_, i) => ({ t: t0 + i * 600_000, v: f(i) }));
 const heart = mk((i) => 64 + 8 * Math.sin(i / 3) + (i % 4));
 const power = mk((i) => 180 + 120 * Math.abs(Math.sin(i / 5)));
@@ -34,12 +35,12 @@ const body = (
     </Row>
   </Col>
 );
-export const Variants = () => (
+export const Variants = (): ReactElement => (
   <Stage theme="dark" width={420}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     {body}
   </Stage>

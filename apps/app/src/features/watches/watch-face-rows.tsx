@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import type { WatchFace } from '@smarteverything/domain';
 import { cn } from '../../design/cn';
@@ -17,7 +17,11 @@ import type { WatchCommand } from './watch-config';
 const FOOTER =
   'New faces and firmware updates come from Mi Fitness. Turn on Pause for Mi Fitness first.';
 
-function useFaceMenu(face: WatchFace, command: WatchCommand): ReturnType<typeof useContextMenu> {
+function useFaceMenu(
+  face: WatchFace,
+  command: WatchCommand,
+  opener: RefObject<View | null>,
+): ReturnType<typeof useContextMenu> {
   return useContextMenu(
     face.removable && !face.active
       ? [
@@ -31,6 +35,8 @@ function useFaceMenu(face: WatchFace, command: WatchCommand): ReturnType<typeof 
           },
         ]
       : [],
+    'Actions',
+    { withinSheet: { opener } },
   );
 }
 
@@ -41,9 +47,11 @@ function FaceCard({
   readonly face: WatchFace;
   readonly command: WatchCommand;
 }): ReactNode {
-  const menu = useFaceMenu(face, command);
+  const opener = useRef<View>(null);
+  const menu = useFaceMenu(face, command, opener);
   return (
     <Interactive
+      ref={opener}
       onPress={() => {
         if (!face.active) {
           command.run({ type: 'set_watch_face', id: face.id });

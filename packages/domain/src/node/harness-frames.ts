@@ -20,7 +20,7 @@ import {
   HARNESS_SUBSCRIPTION_REQUEST,
   HARNESS_SUBSCRIPTION_USE,
 } from '../ai-subscription-host';
-import { ASSISTANT_ATTACHMENT_BYTES_MAX, ASSISTANT_MESSAGE_ROW } from '../assistant';
+import { ASSISTANT_ATTACHMENT_BYTES_MAX } from '../assistant';
 import { z } from 'zod';
 import { API_ERROR } from '../api/errors';
 import {
@@ -34,6 +34,7 @@ import { AI_HARNESS_ANSWER, AI_HARNESS_INTERACTION } from '../ai-harness-session
 import { HARNESS_NATIVE_FRAME } from '../harness-native-frame';
 import { AI_MODEL_ROUTE, AI_MODEL_ROUTE_SELECTION_WRITE } from '../ai-model-route';
 import {
+  DSH_SESSION_HEADER,
   DSH_SESSION_ID,
   DSH_WRITER_CLAIM_WRITE,
   DSH_SESSION_APPEND,
@@ -74,19 +75,27 @@ export const HARNESS_RUNTIME_REQUEST = z.discriminatedUnion('kind', [
     permission: AI_HARNESS_PERMISSION_WRITE,
     cwd: z.string().min(1).max(4096),
     storage_binding: AI_HARNESS_STORAGE_BINDING.optional(),
-    mode: z.enum(['create', 'resume']),
-    history_import: z.array(ASSISTANT_MESSAGE_ROW).optional(),
-    interactions: z.array(AI_HARNESS_INTERACTION).optional(),
-    plugin_agent_policy: z
+    mode: z.enum(['create', 'resume', 'continue']),
+    continuation_parent: z
       .strictObject({
-        persona: z.string().min(1).max(100_000),
-        tools: z.array(z.string().min(1).max(200)).max(2000).optional(),
+        session_id: DSH_SESSION_ID,
+        epoch: z.int().positive(),
       })
       .optional(),
+    interactions: z.array(AI_HARNESS_INTERACTION).optional(),
   }),
   z.strictObject({
     ...SESSION,
     kind: z.literal('prompt'),
+    author: z.enum(['person', 'hub']),
+    helper_parent: z
+      .strictObject({
+        session_id: DSH_SESSION_ID,
+        epoch: z.int().positive(),
+        start_seq: z.int().nonnegative(),
+        quote: z.string().nullable(),
+      })
+      .optional(),
     references: AI_MESSAGE_REFERENCES.optional(),
     delivery_id: z.uuid(),
     text: z.string().max(200_000),
@@ -180,6 +189,12 @@ export const HARNESS_CALL_REQUEST = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('append'), input: DSH_SESSION_APPEND }),
   z.strictObject({ operation: z.literal('flush'), input: DSH_SESSION_FLUSH }),
   z.strictObject({
+    operation: z.literal('create_child'),
+    parent_claim: DSH_WRITER_CLAIM_WRITE,
+    header: DSH_SESSION_HEADER,
+    inherited_event_count: z.int().nonnegative(),
+  }),
+  z.strictObject({
     operation: z.literal('verify'),
     claim: DSH_WRITER_CLAIM_WRITE,
     subscription: HARNESS_SUBSCRIPTION_USE.optional(),
@@ -207,24 +222,13 @@ export const HARNESS_CALL_REQUEST = z.discriminatedUnion('operation', [
     id: z.string().min(1),
     version: z.string().min(1),
   }),
+  z.strictObject({ operation: z.literal('api_key'), reference: z.string().min(1) }),
   z.strictObject({ operation: z.literal('context'), claim: DSH_WRITER_CLAIM_WRITE }),
-  z.strictObject({
-    operation: z.literal('plugin_agent'),
-    claim: DSH_WRITER_CLAIM_WRITE,
-    arguments: z.record(z.string(), JSON_VALUE),
-    configuration_revision: z.string().min(1).max(200),
-    asset_id: z.string().min(1),
-    helper: z.string().min(1).max(200),
-  }),
-  z.strictObject({
-    operation: z.literal('plugin_agent_control'),
-    claim: DSH_WRITER_CLAIM_WRITE,
-    action: z.enum(['result', 'cancel']),
-    run_id: z.uuid(),
-  }),
   z.strictObject({
     operation: z.literal('tool'),
     claim: DSH_WRITER_CLAIM_WRITE,
+    event_id: z.uuid().nullable(),
+    call_id: z.string().min(1).max(200),
     name: z.string().min(1).max(200),
     arguments: z.record(z.string(), JSON_VALUE),
   }),

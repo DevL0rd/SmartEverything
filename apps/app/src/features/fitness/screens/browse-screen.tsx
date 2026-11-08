@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { PageHeader } from '../../../components/page-header';
 import { NavRow } from '../../../components/rows';
@@ -38,32 +39,39 @@ export function BrowseScreen(): ReactNode {
     ...group,
     specs: SERIES.filter((spec) => spec.group === group.group && presence.types.has(spec.type)),
   })).filter((group) => group.specs.length > 0);
-  return (
-    <Screen header={<PageHeader title="All health data" />} maxWidth="reading">
-      {presence.loaded ? null : <Skeleton shape="block" className="h-72" />}
-      {groups.map((group) => (
-        <List key={group.group} title={group.label} inset>
-          {group.specs.map((spec) => {
-            const value = latestText(spec, rows.figures, today);
-            return (
-              <NavRow
-                key={spec.key}
-                title={spec.label}
-                icon={spec.icon}
-                href={href.healthMetric(spec.key)}
-                {...(value === undefined ? {} : { value })}
-              />
-            );
-          })}
-        </List>
-      ))}
-      <List inset>
-        <NavRow title="Log health data" icon="plus" href={href.logHealth()} />
+  const lists = groups.map((group) => (
+    <View key={group.group} className="min-w-0 max-w-reading grow shrink basis-96">
+      <List title={group.label} inset>
+        {group.specs.map((spec) => {
+          const value = latestText(spec, rows.figures, today);
+          return (
+            <NavRow
+              key={spec.key}
+              title={spec.label}
+              icon={spec.icon}
+              href={href.healthMetric(spec.key)}
+              {...(value === undefined ? {} : { value })}
+            />
+          );
+        })}
       </List>
-      <MoreToAllow />
-      <Text variant="footnote" tone="variant" className="px-4">
-        {`Showing data from the last ${String(PRESENCE_DAYS)} days. More kinds appear when an app shares them with Health Connect.`}
-      </Text>
+    </View>
+  ));
+  return (
+    <Screen header={<PageHeader title="All health data" />} maxWidth="full">
+      {presence.loaded ? null : <Skeleton shape="block" className="h-72 w-full max-w-reading" />}
+      {lists.length === 0 ? null : (
+        <View className="flex-row flex-wrap items-start gap-grid-gap">{lists}</View>
+      )}
+      <View className="w-full max-w-reading gap-2">
+        <List inset>
+          <NavRow title="Log health data" icon="plus" href={href.logHealth()} />
+        </List>
+        <MoreToAllow />
+        <Text variant="footnote" tone="variant" className="px-4">
+          {`Showing data from the last ${String(PRESENCE_DAYS)} days. More kinds appear when an app shares them with Health Connect.`}
+        </Text>
+      </View>
     </Screen>
   );
 }

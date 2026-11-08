@@ -7,16 +7,23 @@ import { SuggestionPanel } from '../components/suggestion-panel';
 import { SuggestionGroup, SuggestionReason, SuggestionRow } from '../components/suggestion-rows';
 import { referenceIcon, referenceKey, REFERENCE_SECTIONS } from './presentation';
 import type { ReferenceSearch } from './search';
+import { HelperRows, type HelperChoice } from './helper-choices';
 
 const PAGE_EDGE = 80;
 
 export interface ReferencePanelProps {
   readonly search: ReferenceSearch;
+  readonly helpers: readonly HelperChoice[];
   readonly choose: (key: string) => void;
   readonly inline?: boolean;
 }
 
-export function ReferencePanel({ search, choose, inline = false }: ReferencePanelProps): ReactNode {
+export function ReferencePanel({
+  search,
+  helpers,
+  choose,
+  inline = false,
+}: ReferencePanelProps): ReactNode {
   return (
     <SuggestionPanel inline={inline}>
       <ScrollView
@@ -28,12 +35,13 @@ export function ReferencePanel({ search, choose, inline = false }: ReferencePane
             search.next();
         }}
       >
-        {search.items.length === 0 ? null : (
+        {search.items.length === 0 && helpers.length === 0 ? null : (
           <KeyboardListbox>
+            <HelperRows helpers={helpers} choose={choose} />
             <ReferenceRows search={search} choose={choose} />
           </KeyboardListbox>
         )}
-        <ReferenceStatus search={search} />
+        <ReferenceStatus search={search} hasHelpers={helpers.length > 0} />
         {search.more && !search.loadingMore ? (
           <Button label="Load more references" variant="text" onPress={search.next} />
         ) : null}
@@ -68,31 +76,22 @@ function ReferenceRows({
   ));
 }
 
-function ReferenceStatus({ search }: { readonly search: ReferenceSearch }): ReactNode {
+function ReferenceStatus({
+  search,
+  hasHelpers,
+}: {
+  readonly search: ReferenceSearch;
+  readonly hasHelpers: boolean;
+}): ReactNode {
   const unavailable = search.sources.filter((source) => source.state === 'unavailable');
   const { reason } = search;
   return (
     <View accessibilityLiveRegion="polite">
-      {reason === null ? null : (
-        <SuggestionReason
-          icon={reason.kind === 'offline' ? 'wifiOff' : 'info'}
-          text={reason.text}
-          action={
-            reason.kind === 'unsupported'
-              ? {
-                  label: 'Choose another model',
-                  onPress: (): void => {
-                    router.setParams({ operation: 'model' });
-                  },
-                }
-              : null
-          }
-        />
-      )}
+      <ReferenceAvailability reason={reason} />
       {search.pending || search.loadingMore ? (
         <SuggestionReason icon="loader" text="Finding references…" />
       ) : null}
-      {!search.pending && reason === null && search.items.length === 0 ? (
+      {!search.pending && reason === null && search.items.length === 0 && !hasHelpers ? (
         <SuggestionReason icon="search" text="No references match." />
       ) : null}
       {unavailable.map((source) => (
@@ -109,5 +108,25 @@ function ReferenceStatus({ search }: { readonly search: ReferenceSearch }): Reac
         />
       ) : null}
     </View>
+  );
+}
+
+function ReferenceAvailability({ reason }: Pick<ReferenceSearch, 'reason'>): ReactNode {
+  if (reason === null) return null;
+  return (
+    <SuggestionReason
+      icon={reason.kind === 'offline' ? 'wifiOff' : 'info'}
+      text={reason.text}
+      action={
+        reason.kind === 'unsupported'
+          ? {
+              label: 'Choose another model',
+              onPress: (): void => {
+                router.setParams({ operation: 'model' });
+              },
+            }
+          : null
+      }
+    />
   );
 }

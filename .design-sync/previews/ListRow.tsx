@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Badge, ListRow, Stage, Switch } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
@@ -33,12 +34,12 @@ const body = (
     <ListRow title="Unavailable" subtitle="Requires the hub" icon="plug" disabled />
   </Col>
 );
-export const Variants = () => (
+export const Variants = (): ReactElement => (
   <Stage theme="dark" width={480}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     {body}
   </Stage>

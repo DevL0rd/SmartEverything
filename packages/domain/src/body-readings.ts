@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BODY_COMPOSITION } from './body-composition';
+import { acceptedWeights, isOutlier, type WeighIn } from './body-outliers';
 import { CLIENT_RECORD_ID, OUTBOX_ENTRY } from './health-entries';
 import { BLUETOOTH_MAC } from './mac-address';
 import { SCALE_USER } from './profiles';
@@ -44,10 +45,12 @@ export const BODY_READINGS_SNAPSHOT = 100;
 export interface AttributionCandidate {
   readonly profileId: string;
   readonly scaleUser: number | null;
+  readonly weighIns: readonly WeighIn[];
 }
 
 export interface AttributionInput {
   readonly scaleUser: number | null;
+  readonly weightKg: number;
 }
 
 export interface AttributionResult {
@@ -57,30 +60,54 @@ export interface AttributionResult {
 
 const PENDING: AttributionResult = { profileId: null, attribution: 'pending' };
 
+function fits(input: AttributionInput, candidate: AttributionCandidate): boolean {
+  return !isOutlier(input.weightKg, acceptedWeights(candidate.weighIns));
+}
+
 function bySlot(
   input: AttributionInput,
   candidates: readonly AttributionCandidate[],
-): AttributionResult {
+): AttributionCandidate | null {
   const owners = candidates.filter(
     (candidate) => input.scaleUser !== null && candidate.scaleUser === input.scaleUser,
   );
   const [owner] = owners;
-  return owners.length === 1 && owner !== undefined
-    ? { profileId: owner.profileId, attribution: 'scale' }
-    : PENDING;
+  return owners.length === 1 && owner !== undefined && fits(input, owner) ? owner : null;
+}
+
+function byWeight(
+  input: AttributionInput,
+  candidates: readonly AttributionCandidate[],
+): AttributionCandidate | null {
+  const matches = candidates.filter(
+    (candidate) => candidate.weighIns.length > 0 && fits(input, candidate),
+  );
+  const [match] = matches;
+  return matches.length === 1 && match !== undefined ? match : null;
+}
+
+function unlinkedOnly(
+  input: AttributionInput,
+  candidates: readonly AttributionCandidate[],
+): AttributionCandidate | null {
+  const [only] = candidates;
+  const unlinked = only?.scaleUser === null || input.scaleUser === null;
+  return candidates.length === 1 && only !== undefined && unlinked && fits(input, only)
+    ? only
+    : null;
 }
 
 export function attributeReading(
   input: AttributionInput,
   candidates: readonly AttributionCandidate[],
 ): AttributionResult {
-  const [only] = candidates;
-  if (candidates.length === 1 && only !== undefined) {
-    const foreign =
-      input.scaleUser !== null && only.scaleUser !== null && only.scaleUser !== input.scaleUser;
-    return foreign ? PENDING : { profileId: only.profileId, attribution: 'only_profile' };
+  const alone = candidates.length === 1;
+  const owner = bySlot(input, candidates) ?? unlinkedOnly(input, candidates);
+  if (owner !== null) {
+    return { profileId: owner.profileId, attribution: alone ? 'only_profile' : 'scale' };
   }
-  return bySlot(input, candidates);
+  const match = byWeight(input, candidates);
+  return match === null ? PENDING : { profileId: match.profileId, attribution: 'weight' };
 }
 
 export const BLE_ADVERT = z.object({

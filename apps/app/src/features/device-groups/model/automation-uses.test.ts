@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { NODE_REGISTRY } from '@smarteverything/domain';
 import { rowId, setGroupPower, storedAutomationRow } from '../../../test-support/automation-rows';
 import { automationsUsing, referenceIdOf } from './automation-uses';
 
@@ -25,16 +26,16 @@ describe('automationsUsing', () => {
   ];
 
   it('lists the automations that reference the group or room', () => {
-    expect(automationsUsing(rows, GROUP)).toStrictEqual([
+    expect(automationsUsing(rows, GROUP, NODE_REGISTRY)).toStrictEqual([
       { id: rowId(1), name: 'Evening', enabled: true },
     ]);
   });
 
   it('keeps disabled ones and skips rows that cannot be read', () => {
-    expect(automationsUsing(rows, OTHER_GROUP)).toStrictEqual([
+    expect(automationsUsing(rows, OTHER_GROUP, NODE_REGISTRY)).toStrictEqual([
       { id: rowId(2), name: 'Other', enabled: false },
     ]);
-    expect(automationsUsing(rows, MISSING)).toStrictEqual([]);
+    expect(automationsUsing(rows, MISSING, NODE_REGISTRY)).toStrictEqual([]);
   });
 });
 

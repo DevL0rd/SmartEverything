@@ -97,8 +97,12 @@ function wiredCall(node: Json, convert: CallConversion): Rewrite | null {
   return { value: { ...node, [held.key]: ports }, calls: 1, left: args.left };
 }
 
+function isJsonArray(value: JsonValue): value is readonly JsonValue[] {
+  return Array.isArray(value);
+}
+
 function rewriteChildren(value: JsonValue, convert: CallConversion): Rewrite {
-  if (Array.isArray(value)) {
+  if (isJsonArray(value)) {
     const parts = value.map((child) => rewritten(child, convert));
     return combined(
       parts.map((part) => part.value),
@@ -108,7 +112,9 @@ function rewriteChildren(value: JsonValue, convert: CallConversion): Rewrite {
   if (!isJson(value)) {
     return { value, calls: 0, left: [] };
   }
-  const entries = Object.entries(value).map(([key, child]) => [key, rewritten(child, convert)] as const);
+  const entries = Object.entries(value).map(
+    ([key, child]) => [key, rewritten(child, convert)] as const,
+  );
   return combined(
     Object.fromEntries(entries.map(([key, part]) => [key, part.value])),
     entries.map(([, part]) => part),

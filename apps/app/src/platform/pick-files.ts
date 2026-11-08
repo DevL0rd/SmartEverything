@@ -7,7 +7,12 @@ export interface PickedFile {
   readonly mime: string;
   readonly bytes: number;
   readonly preview: string | null;
+  readonly levels?: readonly number[];
   readonly data: () => Promise<ArrayBuffer>;
+}
+
+export interface PickedBlob extends PickedFile {
+  readonly blob: () => Promise<Blob>;
 }
 
 export class PickerMissingError extends Error {
@@ -20,17 +25,18 @@ const MODULES: Readonly<Record<PickSource, string>> = {
   files: 'ExpoDocumentPicker',
 };
 
-function fromUri(uri: string, name: string, mime: string, bytes: number): PickedFile {
+function fromUri(uri: string, name: string, mime: string, bytes: number): PickedBlob {
   return {
     name,
     mime,
     bytes,
     preview: mime.startsWith('image/') ? uri : null,
     data: async () => (await fetch(uri)).arrayBuffer(),
+    blob: async () => (await fetch(uri)).blob(),
   };
 }
 
-async function pickImages(source: 'camera' | 'photos'): Promise<readonly PickedFile[]> {
+async function pickImages(source: 'camera' | 'photos'): Promise<readonly PickedBlob[]> {
   const picker = await import('expo-image-picker');
   const options = { mediaTypes: ['images' as const], quality: 0.85, allowsMultipleSelection: true };
   if (source === 'camera') {
@@ -56,7 +62,7 @@ async function pickImages(source: 'camera' | 'photos'): Promise<readonly PickedF
   );
 }
 
-async function pickDocuments(): Promise<readonly PickedFile[]> {
+async function pickDocuments(): Promise<readonly PickedBlob[]> {
   const picker = await import('expo-document-picker');
   const result = await picker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
   if (result.canceled) {
@@ -67,13 +73,13 @@ async function pickDocuments(): Promise<readonly PickedFile[]> {
   );
 }
 
-export async function pickFiles(source: PickSource): Promise<readonly PickedFile[]> {
+export async function pickFiles(source: PickSource): Promise<readonly PickedBlob[]> {
   if (requireOptionalNativeModule(MODULES[source]) === null) {
     throw new PickerMissingError('Update the app to attach files.');
   }
   return source === 'files' ? pickDocuments() : pickImages(source);
 }
 
-export function filesOfTransfer(_transfer: unknown): readonly PickedFile[] {
+export function filesOfTransfer(_transfer: unknown): readonly PickedBlob[] {
   return [];
 }

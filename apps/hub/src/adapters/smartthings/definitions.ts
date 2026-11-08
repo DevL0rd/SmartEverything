@@ -12,15 +12,12 @@ import { failureLine, messageOf } from '@smarteverything/logging';
 
 export class DefinitionCache {
   private readonly memory = new Map<string, CapabilityDefinition>();
-  private readonly directory: string;
 
   constructor(
     private readonly api: SmartThingsApi,
-    dataDirectory: string,
+    private readonly directory: string,
     private readonly log: Logger,
-  ) {
-    this.directory = join(dataDirectory, 'capabilities');
-  }
+  ) {}
 
   async load(
     references: readonly { readonly id: string; readonly version: number }[],

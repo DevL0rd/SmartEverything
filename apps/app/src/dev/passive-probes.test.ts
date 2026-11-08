@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { resolveFlags } from '../developer/toggles';
 import { rawTimers, takeFrameRequests } from './raw-timers';
 
@@ -30,15 +30,12 @@ describe('passive probes', () => {
     expect(typeof rawTimers.requestAnimationFrame).toBe('function');
   });
 
-  it('turns every performance flag off or on with the profiling environment mode', () => {
-    vi.stubEnv('EXPO_PUBLIC_PROFILING', 'off');
-    const off = resolveFlags({ 'perf.sampling': true, 'perf.frames': true }, true);
+  it('turns every performance flag off while developer mode is off', () => {
+    const off = resolveFlags({ 'perf.sampling': true, 'perf.frames': true }, false);
     expect(Object.entries(off).filter(([id, on]) => id.startsWith('perf.') && on)).toEqual([]);
-    vi.stubEnv('EXPO_PUBLIC_PROFILING', 'on');
-    const on = resolveFlags({}, true);
+    const on = resolveFlags({ 'perf.sampling': true, 'perf.stalls': true }, true);
     expect(on['perf.frames']).toBe(true);
     expect(on['perf.stalls']).toBe(true);
     expect(on['perf.upload']).toBe(false);
-    vi.unstubAllEnvs();
   });
 });

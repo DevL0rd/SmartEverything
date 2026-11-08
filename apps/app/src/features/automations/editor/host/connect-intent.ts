@@ -1,79 +1,123 @@
-import { indexProgram, siblings } from '@smarteverything/flow/program/lookup';
-import type { Entry, NodeEntry, ProgramIndex } from '@smarteverything/flow/program/lookup';
-import { formatScopePath } from '@smarteverything/flow/program/paths';
-import type { EdgeEnd, SceneNode } from '../../model/canvas/contract';
-import type { IntentEnv } from './intent-env';
+import {
+  execPortsOf,
+  wire,
+  type GraphNode,
+  type NodeKindLookup,
+  type PortValue,
+} from '@smarteverything/domain';
+import { canConnect } from '@smarteverything/flow/graph/ops/can-connect';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
+import { nodeName, portLabel } from '@smarteverything/flow/graph/problem-types';
+import { z } from 'zod';
+import { parseHandle, type HandleRef } from '../../model/graph/handle-ids';
+import {
+  holderById,
+  nodeById,
+  refuse,
+  type GraphDocument,
+  type Holder,
+  type Planned,
+} from './intent-env';
 
-export const INPUTS_KEY = 'inputs';
+export const EDGE_END_REQUEST = z.strictObject({
+  nodeId: z.string().min(1),
+  handle: z.string().min(1),
+});
 
-export const REFUSED_BACKWARD = 'Steps run top to bottom. Use a loop to repeat.';
+export const CONNECT_REQUEST = z.strictObject({ from: EDGE_END_REQUEST, to: EDGE_END_REQUEST });
 
-export const REFUSED_ACROSS = 'A step can only follow a step in the same lane.';
+export type EdgeEndRequest = z.infer<typeof EDGE_END_REQUEST>;
+export type ConnectRequest = z.infer<typeof CONNECT_REQUEST>;
 
 export const REFUSED_GONE = 'That step is no longer on the canvas.';
+export const REFUSED_PIN = 'Drag from an output pin.';
+export const REFUSED_TRIGGER = 'A trigger starts the automation. It has no wire to a step.';
+export const REFUSED_SELF = 'A value cannot feed the step that makes it.';
+export const REFUSED_TARGET = 'Drop the wire on an input pin or a step.';
 
-export const REFUSED_EXEC_END = 'A step can only follow another step.';
-
-export interface Connection {
-  readonly from: EdgeEnd;
-  readonly to: EdgeEnd;
+function currentTarget(source: GraphNode, port: string, kinds: NodeKindLookup): string | undefined {
+  return execPortsOf(source.kind, source, kinds).outputs.find((out) => out.port === port)?.target;
 }
 
-function isValueWire(source: SceneNode, from: EdgeEnd): boolean {
-  return source.outputs.some((output) => output.name === from.port);
-}
-
-function producerKey(source: SceneNode, entry: Entry | undefined): string | undefined {
-  return source.role === 'inputs' ? INPUTS_KEY : entry?.node.key;
-}
-
-function connectValue(env: IntentEnv, source: SceneNode, connection: Connection): void {
-  const index = indexProgram(env.store.state.get().program);
-  const producer = producerKey(source, index.byId.get(source.id));
-  const consumer = index.byId.get(connection.to.nodeId)?.node.key;
-  if (producer === undefined || consumer === undefined) {
-    env.actions.refused(REFUSED_GONE);
-    return;
+function connectExec(
+  doc: GraphDocument,
+  ends: { readonly from: EdgeEndRequest; readonly toId: string },
+  port: string,
+  kinds: NodeKindLookup,
+): Planned {
+  const { from, toId } = ends;
+  const source = nodeById(doc.program, from.nodeId);
+  const target = nodeById(doc.program, toId);
+  if (source === undefined) return refuse(REFUSED_GONE);
+  if (target === undefined) {
+    return refuse(holderById(doc.program, toId) === undefined ? REFUSED_GONE : REFUSED_TRIGGER);
   }
-  env.store.apply([
-    {
-      op: 'set',
-      key: consumer,
-      ports: { [connection.to.port]: { wire: { from: producer, port: connection.from.port } } },
-    },
-  ]);
+  const verdict = canConnect(doc.program, { from: source.key, port, to: target.key }, kinds);
+  if (!verdict.ok) return refuse(verdict.message);
+  const previous = currentTarget(source, port, kinds);
+  const op: PatchOp = { op: 'connect', from: source.key, port, to: target.key };
+  const label = portLabel(source, port, kinds);
+  const there = nodeName(target, kinds);
+  const text = `${label} of ${nodeName(source, kinds)} now goes to ${there}.`;
+  const replaced = `Replaced: ${label} now goes to ${there}.`;
+  return {
+    ok: true,
+    ops: previous === target.key ? [] : [op],
+    unchanged: `${label} already goes to ${there}.`,
+    message: () =>
+      previous === undefined ? { announcement: text } : { announcement: replaced, toast: replaced },
+  };
 }
 
-function refusalFor(index: ProgramIndex, from: NodeEntry, to: NodeEntry): string | null {
-  if (formatScopePath(from.scope) !== formatScopePath(to.scope)) return REFUSED_ACROSS;
-  const order = siblings(index, from.node.key).map((node) => node.key);
-  return order.indexOf(to.node.key) < order.indexOf(from.node.key) ? REFUSED_BACKWARD : null;
+function conditionOp(holder: Holder, ref: HandleRef, value: PortValue): PatchOp | undefined {
+  if (ref.kind !== 'condition') return undefined;
+  return ref.group === 'row'
+    ? { op: 'row', key: holder.key, edit: { row: 'branch', t: 'when', id: ref.id, when: value } }
+    : {
+        op: 'row',
+        key: holder.key,
+        edit: { row: 'case', t: 'match', id: ref.id, match: { when: value } },
+      };
 }
 
-function connectSteps(env: IntentEnv, connection: Connection): void {
-  const index = indexProgram(env.store.state.get().program);
-  const from = index.byId.get(connection.from.nodeId);
-  const to = index.byId.get(connection.to.nodeId);
-  if (from?.kind !== 'node' || to?.kind !== 'node') {
-    env.actions.refused(REFUSED_EXEC_END);
-    return;
-  }
-  const refusal = refusalFor(index, from, to);
-  if (refusal !== null) {
-    env.actions.refused(refusal);
-    return;
-  }
-  env.store.apply([
-    { op: 'move', key: to.node.key, in: formatScopePath(from.scope), after: from.node.key },
-  ]);
+function valueOp(target: Holder, ref: HandleRef, value: PortValue): PatchOp | undefined {
+  if (ref.kind === 'condition') return conditionOp(target, ref, value);
+  if (ref.kind !== 'valueIn') return undefined;
+  if (target.kind === 'flow.start' && ref.port === 'admit') return { op: 'header', admit: value };
+  return { op: 'set', key: target.key, ports: { [ref.port]: value } };
 }
 
-export function connectNodes(env: IntentEnv, connection: Connection): void {
-  const source = env.scene().nodes.find((node) => node.id === connection.from.nodeId);
-  if (source === undefined) {
-    env.actions.refused(REFUSED_GONE);
-    return;
+function connectValue(
+  doc: GraphDocument,
+  request: ConnectRequest,
+  out: string,
+  kinds: NodeKindLookup,
+): Planned {
+  const source = holderById(doc.program, request.from.nodeId);
+  const target = holderById(doc.program, request.to.nodeId);
+  if (source === undefined || target === undefined) return refuse(REFUSED_GONE);
+  if (source.id === target.id) return refuse(REFUSED_SELF);
+  const ref = parseHandle(request.to.handle);
+  const op = ref === undefined ? undefined : valueOp(target, ref, wire(source.key, out));
+  if (op === undefined) return refuse(REFUSED_TARGET);
+  return {
+    ok: true,
+    ops: [op],
+    message: () => ({
+      announcement: `${nodeName(target, kinds)} now reads ${out} from ${nodeName(source, kinds)}.`,
+    }),
+  };
+}
+
+export function planConnect(
+  doc: GraphDocument,
+  request: ConnectRequest,
+  kinds: NodeKindLookup,
+): Planned {
+  const from = parseHandle(request.from.handle);
+  if (from?.kind === 'execOut') {
+    return connectExec(doc, { from: request.from, toId: request.to.nodeId }, from.port, kinds);
   }
-  if (isValueWire(source, connection.from)) connectValue(env, source, connection);
-  else connectSteps(env, connection);
+  if (from?.kind === 'valueOut') return connectValue(doc, request, from.name, kinds);
+  return refuse(REFUSED_PIN);
 }

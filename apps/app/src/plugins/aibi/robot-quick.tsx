@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../components/text';
 import type { Device } from '../../store/state';
-import { QuickMoveButton } from './robot-actions';
+import { QuickMoveButton, useMover } from './robot-actions';
 import { quickMoves } from './move-model';
 import { useRobotLive } from './use-robot-card';
 
@@ -19,6 +19,7 @@ export function RobotQuickLine({ device }: { readonly device: Device }): ReactNo
 
 export function RobotQuick({ device }: { readonly device: Device }): ReactNode {
   const live = useRobotLive(device);
+  const mover = useMover(device);
   const moves = live?.moves ?? null;
   if (live === null || moves === null) {
     return null;
@@ -36,7 +37,7 @@ export function RobotQuick({ device }: { readonly device: Device }): ReactNode {
   return (
     <View className="flex-row flex-wrap gap-2">
       {quickMoves(moves.actions, QUICK_COUNT).map((move) => (
-        <QuickMoveButton key={move.id} device={device} move={move} />
+        <QuickMoveButton key={move.id} move={move} mover={mover} />
       ))}
     </View>
   );

@@ -1,11 +1,14 @@
 import type { Logger } from '@smarteverything/logging';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
-import { SideCompletion, type SideCompletionDeps } from '../side-completion';
+import { SideCompletion, type SideParts } from '../side-completion';
+import type { Store } from '../../store/store';
+import { admitsChatExecution } from '../native-helpers';
 import { exchangeSource } from '../exchange-text';
-import { callSource, cleanTitle, titleMessages } from './title-text';
+import { callSource, cleanTitle, titlePrompt } from './title-text';
 import { background, messageOf } from '@smarteverything/logging';
 
-export interface ChatTitlesDeps extends SideCompletionDeps {
+export interface ChatTitlesDeps extends SideParts {
+  readonly store: Store;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -19,8 +22,6 @@ const TITLED_EVENTS: ReadonlySet<StoredEvent['kind']> = new Set(['chat', 'plugin
 const BACKFILL_KEY = 'chat_titles_backfill';
 
 const BACKFILL_MAX = 50;
-
-const TITLE_TOKENS_MAX = 60;
 
 export class ChatTitles {
   private readonly busy = new Set<string>();
@@ -105,6 +106,8 @@ export class ChatTitles {
     }
     this.busy.add(chatId);
     try {
+      const chat = this.deps.store.aiChats.chat(chatId);
+      if (!admitsChatExecution(chat) || chat.native_admission === 'standalone') return;
       const source = this.deps.store.aiChats.titleAuto(chatId) ? sourceOf() : null;
       if (source !== null) {
         await this.generate(chatId, source);
@@ -126,8 +129,8 @@ export class ChatTitles {
     }
     const text = await this.side.complete(model, {
       chatId,
-      messages: titleMessages(source),
-      maxTokens: TITLE_TOKENS_MAX,
+      purpose: 'session-title',
+      ...titlePrompt(source),
     });
     const title = cleanTitle(text);
     if (title === null) {

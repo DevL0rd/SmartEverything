@@ -43,6 +43,7 @@ export const UTIL_KINDS: readonly NodeKind[] = [
         type: { t: 'optional', of: ANY },
         required: false,
         description: 'Used instead of failing when the conversion does not work.',
+        ui: { typedBy: 'to' },
       },
     ],
     outputs: [
@@ -75,6 +76,7 @@ export const UTIL_KINDS: readonly NodeKind[] = [
         static: true,
         summary: true,
         description: 'The table: each row has a key and a value.',
+        ui: { editor: 'lookup-table' },
       },
       {
         name: 'default',

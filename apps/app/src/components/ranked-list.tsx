@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Fragment } from 'react';
 import { View } from 'react-native';
+import { cn } from '../design/cn';
 import { Icon } from './icon';
 import { Interactive } from './interactive';
 import { Section } from './section';
@@ -18,11 +19,19 @@ export interface RankedListProps {
   readonly title?: string;
   readonly entries: readonly RankedEntry[];
   readonly onPress?: (key: string) => void;
+  readonly bar?: 'kind' | 'info';
 }
 
 const MIN_BAR = 3;
+const BAR_FILL = { kind: 'bg-viz-1', info: 'bg-info' } as const;
 
-function ShareBar({ share }: { readonly share: number }): ReactNode {
+function ShareBar({
+  share,
+  bar,
+}: {
+  readonly share: number;
+  readonly bar: NonNullable<RankedListProps['bar']>;
+}): ReactNode {
   const filled = Math.min(1, Math.max(0, share));
   const fill = { flexGrow: filled, flexBasis: 0, minWidth: MIN_BAR } as const;
   const rest = { flexGrow: 1 - filled, flexBasis: 0 } as const;
@@ -32,7 +41,7 @@ function ShareBar({ share }: { readonly share: number }): ReactNode {
       pointerEvents="none"
       className="absolute inset-x-4 bottom-1 h-0.75 flex-row rounded-full bg-surface-3"
     >
-      <View style={fill} className="rounded-full bg-viz-1 opacity-60" />
+      <View style={fill} className={cn('rounded-full opacity-60', BAR_FILL[bar])} />
       <View style={rest} />
     </View>
   );
@@ -41,9 +50,11 @@ function ShareBar({ share }: { readonly share: number }): ReactNode {
 function RankedRow({
   entry,
   onPress,
+  bar,
 }: {
   readonly entry: RankedEntry;
   readonly onPress: RankedListProps['onPress'];
+  readonly bar: NonNullable<RankedListProps['bar']>;
 }): ReactNode {
   const spoken = entry.spoken ?? `${entry.label}, ${entry.value}`;
   const content = (
@@ -57,7 +68,7 @@ function RankedRow({
         {entry.value}
       </Text>
       {onPress === undefined ? null : <Icon name="chevronRight" size={16} tone="faint" />}
-      <ShareBar share={entry.share} />
+      <ShareBar share={entry.share} bar={bar} />
     </>
   );
   const frame = 'min-h-row-h flex-row items-center gap-3 px-4 pt-2 pb-2.5';
@@ -81,14 +92,14 @@ function RankedRow({
   );
 }
 
-export function RankedList({ title, entries, onPress }: RankedListProps): ReactNode {
+export function RankedList({ title, entries, onPress, bar = 'kind' }: RankedListProps): ReactNode {
   return (
     <Section {...(title === undefined ? {} : { title })}>
       <View className="overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1">
         {entries.map((entry, index) => (
           <Fragment key={entry.key}>
             {index === 0 ? null : <View className="h-hairline bg-outline-variant" />}
-            <RankedRow entry={entry} onPress={onPress} />
+            <RankedRow entry={entry} onPress={onPress} bar={bar} />
           </Fragment>
         ))}
       </View>

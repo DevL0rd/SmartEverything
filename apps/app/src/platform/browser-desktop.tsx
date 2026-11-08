@@ -8,6 +8,7 @@ import {
 } from 'react';
 import {
   type BrowserStatus,
+  type BrowserConsoleEvent,
   type DesktopBrowser,
   type BrowserCommand,
   type BrowserTarget,
@@ -45,6 +46,7 @@ export function DesktopBrowserSurface({
   target,
   ref,
   onStatus,
+  onConsole,
   onOpenWindow,
   visible,
   bridge,
@@ -75,10 +77,30 @@ export function DesktopBrowserSurface({
       report({ kind: 'action', id: target.id, action: 'stop' });
     },
   }));
-  useDesktopPage({ bridge, target, report }, regionRef, readiness, { onStatus, onOpenWindow });
+  useDesktopConsole(bridge, target.id, onConsole);
+  useDesktopPage({ bridge, target, report }, regionRef, readiness, {
+    onStatus,
+    onOpenWindow,
+  });
   useDesktopLayout({ bridge, target, report }, regionRef, readiness, visible && !covered);
   return <div ref={regionRef} role="region" aria-label="Browser page" style={REGION_STYLE} />;
 }
+
+function useDesktopConsole(
+  bridge: DesktopBrowser,
+  id: string,
+  onConsole: BrowserSurfaceProps['onConsole'],
+): void {
+  const receive = useEffectEvent((event: BrowserConsoleEvent) => onConsole?.(event));
+  useEffect(
+    () =>
+      bridge.subscribeConsole?.((event) => {
+        if (event.id === id) receive(event);
+      }),
+    [bridge, id],
+  );
+}
+
 function useDesktopPage(
   page: DesktopPage,
   regionRef: { readonly current: HTMLDivElement | null },

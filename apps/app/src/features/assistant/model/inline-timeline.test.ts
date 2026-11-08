@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatTimelinePart, ChatTimelineTool } from '@smarteverything/domain';
-import { inlineTimeline, streamingKey } from './inline-timeline';
+import { inlineTimeline, isLoopTool, streamingKey } from './inline-timeline';
 
 function tool(id: string, imageOperationId: string | null = null): ChatTimelinePart {
   const value: ChatTimelineTool = {
@@ -48,9 +48,27 @@ describe('inlineTimeline', () => {
     ]);
   });
 
-  it('leaves thinking before the first tool as its own part', () => {
-    const parts = inlineTimeline([thought('r1'), tool('a')]);
-    expect(parts.map((part) => part.kind)).toEqual(['reasoning', 'tools']);
+  it('folds thinking before the first tool into that group so the turn has one line', () => {
+    const parts = inlineTimeline([thought('r1'), thought('r2'), tool('a'), tool('b')]);
+    expect(parts).toHaveLength(1);
+    const group = parts[0];
+    expect(group?.key).toBe('r1');
+    expect(group?.kind === 'tools' ? group.activities.map((entry) => entry.key) : []).toEqual([
+      'r1',
+      'r2',
+      'tool-a',
+      'tool-b',
+    ]);
+  });
+
+  it('keeps thinking on its own when no tool follows it', () => {
+    const parts = inlineTimeline([thought('r1'), text('t1', 'Hello')]);
+    expect(parts.map((part) => part.kind)).toEqual(['reasoning', 'text']);
+  });
+
+  it('does not pull thinking across text into a later group', () => {
+    const parts = inlineTimeline([thought('r1'), text('t1', 'Hello'), tool('a')]);
+    expect(parts.map((part) => part.kind)).toEqual(['reasoning', 'text', 'tools']);
   });
 
   it('keeps a single tool as a group of one so it renders without a wrapper', () => {
@@ -61,6 +79,32 @@ describe('inlineTimeline', () => {
   it('ends a group at an image and keeps later tools in a new group', () => {
     const parts = inlineTimeline([tool('a', '00000000-0000-4000-8000-000000000001'), tool('b')]);
     expect(parts.map((part) => part.kind)).toEqual(['tools', 'image', 'tools']);
+  });
+});
+
+function named(id: string, name: string): ChatTimelinePart {
+  const part = tool(id);
+  return part.kind === 'tool' ? { ...part, tool: { ...part.tool, name } } : part;
+}
+
+describe('loop and workflow runs', () => {
+  it('gives a workflow run its own row between other tools', () => {
+    const parts = inlineTimeline([tool('a'), named('w', 'workflow'), tool('b')]);
+    expect(
+      parts.map((part) => (part.kind === 'tools' ? part.tools.map((t) => t.callId) : [])),
+    ).toEqual([['a'], ['w'], ['b']]);
+  });
+
+  it('keeps two ralph loops in separate rows', () => {
+    const parts = inlineTimeline([named('r1', 'ralph'), named('r2', 'ralph')]);
+    expect(parts).toHaveLength(2);
+  });
+
+  it('marks only workflow and ralph as loop tools', () => {
+    const tools = [named('w', 'workflow'), named('r', 'ralph'), tool('x')].flatMap((part) =>
+      part.kind === 'tool' ? [isLoopTool(part.tool)] : [],
+    );
+    expect(tools).toEqual([true, true, false]);
   });
 });
 

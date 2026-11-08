@@ -26,6 +26,8 @@ export function ChipStrip({
     <ChipRow
       tv={tv}
       apps={shown}
+      inputOpener={sheets.openers.inputs}
+      appsOpener={sheets.openers.apps}
       lead={<DeviceScheduleChip deviceId={tv.device.id} compact />}
       onInputs={(): void => {
         sheets.open('inputs');

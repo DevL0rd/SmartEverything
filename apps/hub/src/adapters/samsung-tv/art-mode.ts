@@ -50,6 +50,7 @@ export interface ArtModeOptions {
 
 export class ArtModeChannel {
   private readonly socket = new ReusedConnection(() => this.open());
+  private readonly sets = new Map<string, string>();
 
   constructor(private readonly options: ArtModeOptions) {}
 
@@ -67,7 +68,15 @@ export class ArtModeChannel {
   }
 
   async set(on: boolean): Promise<void> {
-    await this.ask('set_artmode_status', (id) => setArtModeRequest(id, on));
+    const connection = await this.socket.get();
+    const id = randomUUID();
+    this.sets.set(id, 'set_artmode_status');
+    try {
+      await connection.send(setArtModeRequest(id, on));
+    } catch (cause) {
+      this.sets.delete(id);
+      throw cause;
+    }
   }
 
   close(): void {
@@ -104,11 +113,22 @@ export class ArtModeChannel {
   private async open(): Promise<TvConnection> {
     const { io, log } = this.options;
     const host = this.options.host();
+    this.sets.clear();
     const socket = io.openSocket(remoteUrl(host, 'art', REMOTE_APP_NAME, this.options.token()));
     const connection = await TvConnection.open(socket, host, ART_CONNECT_TIMEOUT_MS, 'ready');
     connection.onMessage((message) => {
       if (message.kind === 'art_mode') {
         this.options.onArtMode(message.on);
+      }
+      if (
+        (message.kind === 'art_mode' ||
+          message.kind === 'art_failed' ||
+          message.kind === 'art_other') &&
+        message.requestId !== null &&
+        this.sets.delete(message.requestId) &&
+        message.kind === 'art_failed'
+      ) {
+        log.warn('art.set_failed', { host, errorCode: message.errorCode });
       }
     });
     connection.onProblem((problem) => {

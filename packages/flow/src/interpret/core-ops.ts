@@ -26,14 +26,12 @@ import {
   completeFrame,
   deriveEnv,
   mismatch,
-  newFrame,
   next,
   note,
   ownsScope,
   popFrame,
   present,
   propagate,
-  pushFrame,
   raise,
   runVars,
   setOutputs,
@@ -45,8 +43,9 @@ import {
   text,
   traceNode,
 } from './frames';
-import { evaluate, evaluateAll } from './step';
+import { PRODUCER_OPS, evaluate, evaluateAll } from './step';
 import { keptParams } from './kept';
+import { enterScope, settleEffect } from './scope-entry';
 import { traceOwnerEnd } from './owner-trace';
 
 type Locals = Frame['locals'];
@@ -67,11 +66,6 @@ const STOP = z.strictObject({
 
 function ok<T>(value: T): Checked<T> {
   return { ok: true, value };
-}
-
-export function enterScope(env: Env, path: string, scope: string, extra: Locals = {}): StepResult {
-  const frame = newFrame(env.state, 'branch', path, { scope, ...extra });
-  return stay(env, pushFrame(env.state, frame));
 }
 
 function closeEmpty(
@@ -301,7 +295,7 @@ function enterFail(env: Env, op: OpOf['fail']): StepResult {
 
 export function requestOf(
   env: Env,
-  op: Pick<OpOf['effect'], 'at' | 'retry' | 'budget'>,
+  op: Pick<OpOf['effect'], 'at' | 'retry' | 'budget'> & Partial<Pick<OpOf['effect'], 'policy'>>,
   kind: string,
   params: Record<string, JsonValue>,
 ): StepResult {
@@ -314,6 +308,7 @@ export function requestOf(
     params,
     retry: op.retry,
     budget: op.budget,
+    ...(op.policy?.mode === undefined ? {} : { mode: op.policy.mode }),
   };
   return stay(env, env.state, { kind: 'effect', request });
 }
@@ -333,10 +328,6 @@ function settleRegion(env: Env, op: OpOf['with_effect'], resolved: NodeResult): 
   const state = setOutputs(env.state, op.at.key, resolved.value);
   if (op.body.op === 'seq' && op.body.ops.length === 0) return next(env, state);
   return enterScope(deriveEnv(env, state), `${env.path}/body`, 'body');
-}
-
-function skip(env: Env): StepResult {
-  return next(env, env.state);
 }
 
 function invalid(env: Env, message: string): StepResult {
@@ -434,10 +425,9 @@ export const CORE_OPS: OpHandlers = {
   branch: { enter: enterBranch },
   switch: { enter: enterSwitch },
   guard: { enter: enterGuard },
-  compute: { enter: skip },
-  read: { enter: skip },
+  ...PRODUCER_OPS,
   set_var: { enter: enterSetVar, settle: settleOutputs },
-  effect: { enter: enterEffect, settle: settleOutputs },
+  effect: { enter: enterEffect, settle: settleEffect },
   with_effect: { enter: enterEffect, settle: settleRegion },
   return: { enter: enterReturn },
   stop: { enter: enterStop },

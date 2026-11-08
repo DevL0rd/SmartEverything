@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { DayAxis, Stage } from 'smarteverything-kit';
 
 const days = [
@@ -9,12 +10,12 @@ const days = [
   '2026-10-17',
   '2026-10-18',
 ];
-export const Week = () => (
+export const Week = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <DayAxis days={days} />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     <DayAxis days={days} />
   </Stage>

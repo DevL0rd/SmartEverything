@@ -2,6 +2,7 @@ import {
   UNLOAD_PENDING_CAPABILITY,
   deviceFamily,
   type DeviceCapability,
+  type DeviceFamily,
   type DiscoveredDevice,
   type JsonValue,
 } from '@smarteverything/domain';
@@ -15,6 +16,7 @@ import {
   deviceListData,
   go2rtcSource,
   homeListData,
+  isAbsentOnDevice,
   isCameraModel,
   missUnreachable,
   modelFromSpec,
@@ -28,6 +30,7 @@ import {
   type PtzPlan,
   type Transport,
 } from '@smarteverything/xiaomi';
+import { isVacuumModel, vacuumActionKey, vacuumCapabilities } from '../../vacuum/capabilities';
 import { NO_MOTOR_ENDPOINT } from './camera-ptz';
 import type { XiaomiCloud } from './cloud-api';
 import type { SpecStore } from './spec-store';
@@ -91,7 +94,10 @@ async function entryFor(
   const room = rooms.get(device.did) ?? null;
   try {
     const spec = await specs.specFor(device.model, device.specType);
-    const model = modelFromSpec(spec);
+    const model = modelFromSpec(
+      spec,
+      isVacuumModel(device.model) ? { absent: isAbsentOnDevice } : {},
+    );
     if (model.problems.length > 0) {
       log.debug('xiaomi_device.mapping_skipped', { model: device.model, problems: model.problems });
     }
@@ -154,12 +160,42 @@ function cameraDetails(
   };
 }
 
+function vacuumVideoDetails(
+  entry: InventoryEntry,
+  account: { userId: string; region: XiaomiCloud['region'] },
+): Record<string, JsonValue> {
+  if (!isVacuumModel(entry.cloud.model) || entry.cloud.ip === null) {
+    return {};
+  }
+  return {
+    vacuumVideoSource: go2rtcSource({
+      ...account,
+      ip: entry.cloud.ip,
+      did: entry.cloud.did,
+      model: entry.cloud.model,
+    }),
+  };
+}
+
+type FamilyCapabilities = (entry: InventoryEntry) => readonly DeviceCapability[];
+
+const FAMILY_CAPABILITIES: ReadonlyMap<DeviceFamily, FamilyCapabilities> = new Map([
+  ['laundry', (): readonly DeviceCapability[] => [UNLOAD_PENDING_CAPABILITY]],
+  [
+    'vacuum',
+    (entry: InventoryEntry): readonly DeviceCapability[] =>
+      isVacuumModel(entry.cloud.model)
+        ? vacuumCapabilities(entry.model.bindings.has(vacuumActionKey('get-vacuum-route')))
+        : [],
+  ],
+]);
+
 function capabilitiesOf(entry: InventoryEntry, streams: boolean): DeviceCapability[] {
-  const laundry = deviceFamily({ kind: entry.model.kind, model: entry.cloud.model }) === 'laundry';
+  const family = deviceFamily({ kind: entry.model.kind, model: entry.cloud.model });
   return [
     ...entry.model.capabilities,
     ...(streams ? [CAMERA_STREAM] : []),
-    ...(laundry ? [UNLOAD_PENDING_CAPABILITY] : []),
+    ...(FAMILY_CAPABILITIES.get(family)?.(entry) ?? []),
   ];
 }
 
@@ -170,6 +206,7 @@ export function discoveredDevice(
   knownDids: ReadonlySet<string>,
 ): DiscoveredDevice {
   const camera = cameraDetails(entry, account);
+  const video = vacuumVideoDetails(entry, account);
   const readingsSource = entry.spec === null ? null : readingsSourceOf(entry.spec.type);
   const parent = entry.cloud.parentDid;
   return {
@@ -182,7 +219,7 @@ export function discoveredDevice(
     manufacturer: entry.cloud.model.split('.')[0] ?? entry.cloud.model,
     room: entry.room,
     online: transport.online,
-    capabilities: capabilitiesOf(entry, 'go2rtcSource' in camera),
+    capabilities: capabilitiesOf(entry, 'go2rtcSource' in camera || 'vacuumVideoSource' in video),
     details: {
       transport: transport.transport,
       transportReason: transport.reason,
@@ -195,6 +232,7 @@ export function discoveredDevice(
       unmappedSpecEntries: [...entry.model.problems],
       ...(readingsSource === null ? {} : { readingsSource }),
       ...camera,
+      ...video,
     },
   };
 }

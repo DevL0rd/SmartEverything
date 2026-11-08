@@ -11,9 +11,11 @@ import { MIGRATIONS } from './migrations';
 import { assistantRepositories } from './repositories/areas/assistant';
 import { automationRepositories } from './repositories/areas/automation';
 import { computerRepositories } from './repositories/areas/computers';
+import { driveRepositories } from './repositories/areas/drive';
 import { healthRepositories } from './repositories/areas/health';
 import { homeRepositories } from './repositories/areas/home';
 import { peopleRepositories } from './repositories/areas/people';
+import { plannerRepositories } from './repositories/areas/planner';
 import { platformRepositories } from './repositories/areas/platform';
 import { durableSessionWrite } from './repositories/dsh-session-durability';
 import { SettingsRepository } from './repositories/settings';
@@ -87,20 +89,25 @@ const repositoriesOf = (context: StoreContext, log: Logger) =>
   ({
     ...homeRepositories(context, log),
     ...computerRepositories(context),
+    ...driveRepositories(context),
     ...automationRepositories(context),
     ...healthRepositories(context),
+    ...plannerRepositories(context),
     ...assistantRepositories(context),
     ...peopleRepositories(context),
     ...platformRepositories(context),
   }) as const;
 
 export type Store = ReturnType<typeof repositoriesOf> & {
+  readonly context: StoreContext;
+  readonly database: DatabaseSync;
   readonly feed: ChangeFeed;
   readonly settings: SettingsRepository;
   readonly ledger: Ledger;
   readonly now: () => Date;
   readonly write: <T>(work: () => T) => T;
   readonly durableWrite: <T>(work: () => T) => T;
+  readonly startRetention: () => void;
   readonly close: () => void;
 };
 
@@ -110,7 +117,8 @@ function migrated(sql: Sql, options: StoreOptions): number {
   return version;
 }
 
-function startRetention(sql: Sql, options: StoreOptions): NodeJS.Timeout {
+function retentionOf(sql: Sql, options: StoreOptions): { start: () => void; stop: () => void } {
+  let timer: NodeJS.Timeout | null = null;
   const sweep = (): void => {
     const removed = sweepRetention(sql, options.now());
     options.log.debug('store.retention_swept', removed);
@@ -118,10 +126,18 @@ function startRetention(sql: Sql, options: StoreOptions): NodeJS.Timeout {
       tables: automationStorageMetrics(sql),
     }));
   };
-  sweep();
-  const timer = setInterval(sweep, RETENTION_SWEEP_MS);
-  timer.unref();
-  return timer;
+  return {
+    start: (): void => {
+      if (timer !== null) return;
+      sweep();
+      timer = setInterval(sweep, RETENTION_SWEEP_MS);
+      timer.unref();
+    },
+    stop: (): void => {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+    },
+  };
 }
 
 export function openStore(options: StoreOptions): Store {
@@ -140,13 +156,15 @@ export function openStore(options: StoreOptions): Store {
     options.log.debug('change.summary', () => ({ ...feed.drain(), windowMs: FEED_SUMMARY_MS }));
   }, FEED_SUMMARY_MS);
   feedSummary.unref();
-  const retention = startRetention(sql, options);
+  const retention = retentionOf(sql, options);
   options.log.info('store.opened', { version });
   options.log.debug('store.open_timed', () => ({
     file: basename(options.path),
     durationMs: Math.round(performance.now() - startedAt),
   }));
   return {
+    context,
+    database,
     feed,
     settings,
     ...repositoriesOf(context, options.log),
@@ -154,9 +172,10 @@ export function openStore(options: StoreOptions): Store {
     now: options.now,
     write: (work) => context.write(work),
     durableWrite: (work) => durableSessionWrite(context, work),
+    startRetention: retention.start,
     close: (): void => {
       clearInterval(feedSummary);
-      clearInterval(retention);
+      retention.stop();
       stop();
       try {
         database.close();

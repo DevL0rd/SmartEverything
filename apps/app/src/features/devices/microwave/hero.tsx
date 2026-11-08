@@ -58,7 +58,7 @@ export function MicrowaveHero({ device }: { readonly device: Device }): ReactNod
   return (
     <Card>
       <View className="items-center gap-4 py-2">
-        <DeviceVisual device={device} size="hero" />
+        <DeviceVisual device={device} size="hero" interactive />
         <View className="items-center gap-1.5">
           <View accessibilityLiveRegion="polite">
             <Badge label={chip.label} tone={chip.tone} />

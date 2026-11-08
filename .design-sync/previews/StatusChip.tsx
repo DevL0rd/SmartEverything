@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { StatusChip, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -9,12 +10,12 @@ const body = (
     ))}
   </Row>
 );
-export const AllStatuses = () => (
+export const AllStatuses = (): ReactElement => (
   <Stage theme="dark" width={520}>
     {body}
   </Stage>
 );
-export const CustomLabel = () => (
+export const CustomLabel = (): ReactElement => (
   <Stage theme="dark" width={520}>
     <Row>
       <StatusChip status="live" label="Recording" />
@@ -23,7 +24,7 @@ export const CustomLabel = () => (
     </Row>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     {body}
   </Stage>

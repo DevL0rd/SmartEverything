@@ -7,6 +7,9 @@ import {
   CameraPrivacyError,
   UnknownStreamError,
 } from '../../cameras/camera-service';
+import { imageAttachmentOf } from '../../assistant/image-attachment';
+import { StoreNotFoundError } from '../../store/context';
+import type { StoredAttachment } from '../../store/repositories/assistant-chat';
 import type { Store } from '../../store/store';
 import { IntegrationError } from './integration-error';
 import type { OneShotPicture } from './one-shot-model';
@@ -29,6 +32,8 @@ export interface StoredPicturesPorts {
   readonly snapshot: (deviceId: string, size: MediaSize) => Promise<Uint8Array>;
   readonly recordings: Pick<Store['cameras'], 'addRecording' | 'recording'>;
   readonly recordingPath: (storagePath: string) => string;
+  readonly attachments: Pick<Store['assistantChat'], 'attachment'>;
+  readonly attachmentPath: (file: Pick<StoredAttachment, 'id' | 'profile_id' | 'name'>) => string;
   readonly now: () => Date;
 }
 
@@ -74,7 +79,15 @@ export class StoredPictures implements CameraPictures {
 
   async load(pictureId: string): Promise<OneShotPicture> {
     const row = this.recordOf(pictureId);
-    const path = this.ports.recordingPath(row.storage_path);
+    if (row !== undefined)
+      return this.read(this.ports.recordingPath(row.storage_path), PICTURE_TYPE);
+    const file = imageAttachmentOf(this.ports.attachments, pictureId);
+    if (file === undefined)
+      throw new IntegrationError('NotFound', `There is no picture ${pictureId}.`);
+    return this.read(this.ports.attachmentPath(file), file.mime);
+  }
+
+  private async read(path: string, mimeType: string): Promise<OneShotPicture> {
     const { size } = await stat(path);
     if (size > PICTURE_BYTES_MAX) {
       throw new IntegrationError(
@@ -82,19 +95,19 @@ export class StoredPictures implements CameraPictures {
         `The picture is ${String(size)} bytes, more than the ${String(PICTURE_BYTES_MAX)} the AI accepts.`,
       );
     }
-    return { mimeType: PICTURE_TYPE, base64: (await readFile(path)).toString('base64') };
+    return { mimeType, base64: (await readFile(path)).toString('base64') };
   }
 
-  private recordOf(pictureId: string): ReturnType<Store['cameras']['recording']> {
+  private recordOf(pictureId: string): ReturnType<Store['cameras']['recording']> | undefined {
+    let row: ReturnType<Store['cameras']['recording']>;
     try {
-      const row = this.ports.recordings.recording(pictureId);
-      if (row.kind !== 'snapshot') {
-        throw new IntegrationError('Invalid', `${pictureId} is a video clip, not a picture.`);
-      }
-      return row;
+      row = this.ports.recordings.recording(pictureId);
     } catch (cause) {
-      if (cause instanceof IntegrationError) throw cause;
-      throw new IntegrationError('NotFound', `There is no picture ${pictureId}.`);
+      if (cause instanceof StoreNotFoundError) return undefined;
+      throw cause;
     }
+    if (row.kind !== 'snapshot')
+      throw new IntegrationError('Invalid', `${pictureId} is a video clip, not a picture.`);
+    return row;
   }
 }

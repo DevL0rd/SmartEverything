@@ -31,11 +31,11 @@ const entryRoutes = ({ store }: ServerContext) =>
         return store.healthEntries.create(profileId, body);
       }),
     ),
-    updateHealthEntry: bound(E.updateHealthEntry, ({ params, body, caller }) =>
+    updateHealthEntry: bound(E.updateHealthEntry, ({ params, query, body, caller }) =>
       store.write(() => {
         const profileId = profileIdOf(store, caller);
         noteFoodUse(store, profileId, body);
-        return store.healthEntries.update(params.entryId, profileId, body);
+        return store.healthEntries.update(params.entryId, profileId, body, query.expectedVersion);
       }),
     ),
     retryHealthEntry: bound(E.retryHealthEntry, ({ params, caller }) =>

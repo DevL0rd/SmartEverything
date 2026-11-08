@@ -1,5 +1,6 @@
 import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
 import { confirm } from '../../../components/confirm-store';
+import type { IconName } from '../../../components/icon';
 
 export function argumentsOf(presented: PresentedCapability): readonly string[] {
   const descriptor = presented.capability.value;
@@ -47,4 +48,19 @@ export async function approved(
     tone: 'destructive',
     ...(danger.tier === 'typed' ? { typed: danger.word } : {}),
   });
+}
+
+export interface ActionLook {
+  readonly icon: IconName;
+  readonly destructive: boolean;
+}
+
+const ACTION_LOOKS: Readonly<Record<PresentedCapability['danger']['tier'], ActionLook>> = {
+  none: { icon: 'play', destructive: false },
+  confirm: { icon: 'shield', destructive: false },
+  typed: { icon: 'warning', destructive: true },
+};
+
+export function actionLookOf(presented: PresentedCapability): ActionLook {
+  return ACTION_LOOKS[presented.danger.tier];
 }

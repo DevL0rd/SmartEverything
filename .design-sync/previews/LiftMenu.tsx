@@ -1,12 +1,17 @@
+import type { ComponentProps, ReactElement } from 'react';
 import { GlobalTheme, LiftMenu, Stage, StatTile } from 'smarteverything-kit';
 
-const item = (label: string, icon: 'customize' | 'home' | 'close' | 'upload', extra = {}) => ({
+const item = (
+  label: string,
+  icon: 'customize' | 'home' | 'close' | 'upload',
+  extra = {},
+): ComponentProps<typeof LiftMenu>['entries'][number] => ({
   kind: 'item' as const,
-  item: { label, icon, onPress: () => undefined, ...extra },
+  item: { label, icon, onPress: (): void => undefined, ...extra },
 });
 const quick = [
-  { label: 'Pin', icon: 'sparkles' as const, onPress: () => undefined },
-  { label: 'Share', icon: 'upload' as const, onPress: () => undefined },
+  { label: 'Pin', icon: 'sparkles' as const, onPress: (): void => undefined },
+  { label: 'Share', icon: 'upload' as const, onPress: (): void => undefined },
 ];
 const entries = [
   item('Rename', 'customize'),
@@ -15,7 +20,7 @@ const entries = [
   item('Remove', 'close', { destructive: true }),
 ];
 const preview = <StatTile label="Temperature" value="21.5" unit="C" caption="Living room" />;
-export const Dark = () => (
+export const Dark = (): ReactElement => (
   <Stage theme="dark">
     <LiftMenu
       label="Tile menu"
@@ -27,7 +32,7 @@ export const Dark = () => (
     />
   </Stage>
 );
-export const Light = () => (
+export const Light = (): ReactElement => (
   <GlobalTheme theme="light">
     <Stage theme="light">
       <LiftMenu

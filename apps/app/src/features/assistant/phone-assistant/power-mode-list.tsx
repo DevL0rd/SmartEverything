@@ -77,7 +77,7 @@ export function PowerModeList({
   readonly onSelect: (mode: ListeningPowerMode) => void;
 }): ReactNode {
   return (
-    <View accessibilityRole="radiogroup" className="gap-2">
+    <View accessibilityRole="radiogroup" accessibilityLabel="When it may listen" className="gap-2">
       {POWER_MODES.map((info) => (
         <ModeRow
           key={info.mode}

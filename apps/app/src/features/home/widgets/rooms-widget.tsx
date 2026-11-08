@@ -3,7 +3,7 @@ import { View, type ViewStyle } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { HScroller } from '../../../components/h-scroller';
-import { WidgetFrame } from '../../../components/widget-board';
+import { ActionBand, WidgetFrame, widgetBodyHeight } from '../../../components/widget-board';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import type { Idiom } from '../../../design/tokens';
 import { columnsIn, gridFit } from '../components/fit-math';
@@ -11,11 +11,8 @@ import { GridRows } from '../components/grid-rows';
 import { RoomCard } from '../components/room-card';
 import { useHome } from '../data/home-data';
 import type { RoomSummary } from '../model/rooms';
-import { bodyHeight } from '../model/widget-fit';
 
 const CARD_MIN_WIDTH = 140;
-
-const GRID_COLUMNS_MAX = 4;
 
 const GRID_ROW_HEIGHT: Readonly<Record<Idiom, number>> = { touch: 118, pointer: 112 };
 
@@ -59,11 +56,11 @@ function Strip({
 function Grid({ rooms }: { readonly rooms: readonly RoomSummary[] }): ReactNode {
   const { frame, sizes } = useWidgetFace();
   const gap = sizes.gridGap;
-  const columns = columnsIn(frame.width, CARD_MIN_WIDTH, gap, GRID_COLUMNS_MAX);
+  const columns = columnsIn(frame.width, CARD_MIN_WIDTH, gap, rooms.length);
   const rowHeight = GRID_ROW_HEIGHT[frame.idiom];
   const fit = gridFit(rooms.length, {
     columns,
-    room: bodyHeight(frame),
+    room: widgetBodyHeight(frame),
     minRow: rowHeight,
     gap,
     link: sizes.controlH,
@@ -74,17 +71,17 @@ function Grid({ rooms }: { readonly rooms: readonly RoomSummary[] }): ReactNode 
         items={rooms.slice(0, fit.shown)}
         keyOf={(room) => room.id}
         columns={columns}
-        rowHeight={rowHeight}
+        {...(fit.more ? {} : { rowHeight })}
         renderItem={(room) => <RoomCard room={room} dense={false} />}
       />
       {fit.more ? (
-        <View className="items-start">
+        <ActionBand>
           <Button
             label={`All rooms (${String(rooms.length)})`}
             href={href.devices()}
             variant="text"
           />
-        </View>
+        </ActionBand>
       ) : null}
     </View>
   );

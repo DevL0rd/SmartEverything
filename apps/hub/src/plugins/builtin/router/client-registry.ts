@@ -151,7 +151,12 @@ export class ClientRegistry {
     this.emit({
       kind,
       subject: client.name,
-      data: { mac: client.mac, name: client.name, profile_id: client.profileId },
+      data: {
+        mac: client.mac,
+        name: client.name,
+        profile_id: client.profileId,
+        person_id: client.profileId ?? client.personId,
+      },
     });
   }
 }

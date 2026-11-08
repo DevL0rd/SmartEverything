@@ -4,7 +4,7 @@ import { isEventName } from '@smarteverything/logging';
 import { describe, expect, it } from 'vitest';
 import { HttpTally } from '../../src/server/http-tally';
 import { RepeatGate } from '../../src/server/repeat-gate';
-import { remoteKind, shapeOf } from '../../src/server/request-trace';
+import { remoteKind } from '../../src/server/request-trace';
 
 describe('RepeatGate', () => {
   it('lets the first hit through and counts what it suppresses until the interval passes', () => {
@@ -71,12 +71,6 @@ describe('request trace helpers', () => {
     expect(remoteKind('172.20.0.1')).toBe('private');
     expect(remoteKind('8.8.8.8')).toBe('public');
     expect(remoteKind(undefined)).toBe('unknown');
-  });
-
-  it('replaces identifier segments of an unmatched path', () => {
-    expect(shapeOf('/api/things/123/0b1c2d3e-0000-4000-8000-000000000000/x')).toBe(
-      '/api/things/:id/:id/x',
-    );
   });
 });
 

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { isCamera, type TalkMemberKind } from '@smarteverything/domain';
 import { SwitchRow } from '../../../components/rows';
-import { List } from '../../../components/section';
+import { List, Section } from '../../../components/section';
 import { useDevices, useRows } from '../../../store/selectors';
 import { platformIcon } from '../../settings';
 import { memberKey, type DraftMember } from './channel-draft';
@@ -25,12 +25,20 @@ function lookup(members: readonly DraftMember[]): ReadonlyMap<string, DraftMembe
 function DeviceRows({ members, onChange }: ChannelMembersProps): ReactNode {
   const clients = useRows('clients');
   const byKey = lookup(members);
+  if (clients.length === 0) {
+    return (
+      <Section title="Phones and computers" footer="No phones or computers are registered.">
+        {null}
+      </Section>
+    );
+  }
   return (
     <List title="Phones and computers" inset>
       {clients.map((client) => (
         <SwitchRow
           key={client.id}
           title={client.name}
+          wrapTitle
           icon={platformIcon(client.platform)}
           value={byKey.has(memberKey('client', client.id))}
           onChange={(member) => {
@@ -60,6 +68,7 @@ function CameraRows({ members, onChange }: ChannelMembersProps): ReactNode {
           <SwitchRow
             key={camera.id}
             title={camera.label}
+            wrapTitle
             icon="camera"
             value={current !== undefined}
             onChange={(member) => {

@@ -1,34 +1,28 @@
-import { toolMediaReferences } from '@smarteverything/harness/process';
+import { bindHomeTools } from '@smarteverything/harness/process';
 import { openRouterSearchAvailable } from '../assistant/web-search-supplier';
 import { executionRole, eventAuthority } from '../assistant/turn-authority';
 import { reachesNativeBridge } from './native-bridge';
 import { z } from 'zod';
-import {
-  JSON_VALUE,
-  ApiError,
-  HARNESS_CENTRAL_RESULT,
-  MCP_DISCOVERY_TOOLS,
-} from '@smarteverything/domain';
+import { ApiError, HARNESS_CENTRAL_RESULT, MCP_DISCOVERY_TOOLS } from '@smarteverything/domain';
 import type { HARNESS_CENTRAL_CATALOGUE } from '@smarteverything/domain';
 import type { Context } from '@deepseek-ai/cordis';
-import { harnessToolSchema } from './tool-schema';
-import type { ToolCallId, ContentBlock } from '@deepseek-ai/dsh-llm';
+import { HubHomeTools } from './central-transport';
+import { withCentralToolAuthority } from './central-tool-authority';
+import { nativeMediaAuthority } from './native-media-authority';
 import type { HarnessServerToolAccess, HarnessAuthority } from '@smarteverything/harness';
 import { toolAdmission, type ToolAdmission } from '../ai-tools/tool-admission';
 import { forwardedCall, type ToolHub } from '../ai-tools/tool-hub';
-import type { ToolCaller, ToolSpec, HubToolResult } from '../ai-tools/hub-tool';
+import type { ToolCaller, HubToolResult } from '../ai-tools/hub-tool';
 import {
   centralToolSpecs,
   centralToolCatalogue,
   centralToolDeclarationNames,
 } from './tool-declarations';
-import { effectiveTools } from '../assistant/coordination/grants';
 import { META_TOOL_NAMES } from '../ai-tools/tool-sets';
-import { scopedHub } from '../assistant/coordination/scoped-tools';
+import { effectiveTools, scopedHub } from '../assistant/tool-scope';
 import type { HarnessService } from './service';
 
 const CHAT_FOLDER_TOOLS: ReadonlySet<string> = new Set(['project_read', 'project_edit']);
-const IMAGE_MIME = z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 export class HarnessHubTools implements HarnessServerToolAccess {
   private readonly admit: ToolAdmission;
   constructor(
@@ -54,74 +48,11 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     if (session.caller.profileId !== authority.profileId)
       return 'This initiating profile no longer owns the tool grant.';
     const args = z.record(z.string(), z.unknown()).parse(execution.arguments);
-    const checked = this.restricted(session).check(execution.name, args);
+    const checked = this.restricted(session).check(execution.name, args, session.caller);
     return checked.ok ? undefined : checked.reason;
   }
   install(ctx: Context): void {
-    const disposers = new Map<string, () => void>();
-    const registered = new Set<string>();
-    const contents = new Map<ToolCallId, ContentBlock[]>();
-    const update = (): void => {
-      for (const dispose of disposers.values()) dispose();
-      disposers.clear();
-      for (const tool of centralToolSpecs(this.tools)) {
-        registered.add(tool.name);
-        disposers.set(tool.name, ctx.tools.register(this.definition(ctx, tool, contents)));
-      }
-    };
-    update();
-    ctx.effect(() => this.tools.changes(update));
-    ctx.effect(() => (): void => {
-      for (const dispose of disposers.values()) dispose();
-    });
-    ctx.on('tools/result', (execution) => {
-      contents.delete(execution.callId);
-    });
-    ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
-      const result = await next();
-      if (context.agent === undefined) return result;
-      const declared = new Set(this.declarationNames(context.agent.id));
-      result.tools = result.tools.filter(
-        (tool) => !registered.has(tool.name) || declared.has(tool.name),
-      );
-      return result;
-    });
-  }
-  private definition(
-    ctx: Context,
-    tool: ToolSpec,
-    contents: Map<ToolCallId, ContentBlock[]>,
-  ): Parameters<Context['tools']['register']>[0] {
-    const parameters = harnessToolSchema(tool.inputSchema);
-    return {
-      name: tool.name,
-      description: tool.description,
-      parameters: { ...parameters },
-      output: {
-        schema: { type: 'object', additionalProperties: true },
-        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-      },
-      execute: async (raw, execution): Promise<unknown> => {
-        if (execution.agent === undefined)
-          throw new ApiError('forbidden', 'Hub tools require a native conversation.');
-        const args = z.record(z.string(), z.unknown()).parse(raw);
-        const result = await this.call(execution.agent.id, tool.name, args, execution.callId);
-        const blocks: ContentBlock[] = [{ type: 'text', text: JSON.stringify(result.response) }];
-        for (const picture of result.pictures) {
-          const admitted = await ctx.attachments.admitPromptContent([
-            {
-              type: 'image',
-              mediaType: IMAGE_MIME.parse(picture.mimeType),
-              data: picture.data.toString('base64'),
-            },
-          ]);
-          blocks.push(...admitted);
-        }
-        contents.set(execution.callId, toolMediaReferences(blocks, result.response));
-        return JSON_VALUE.parse(result.response);
-      },
-      projectContent: (execution) => contents.get(execution.callId),
-    };
+    ctx.effect(() => bindHomeTools(ctx, new HubHomeTools(this, this.tools)));
   }
   catalogue(id?: string): z.infer<typeof HARNESS_CENTRAL_CATALOGUE> {
     return centralToolCatalogue(id === undefined ? this.tools : this.scoped(id));
@@ -137,7 +68,7 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     const session = this.session(id);
     const hub = this.restricted(session);
     const target = forwardedCall(name, args);
-    const checked = hub.check(target.name, target.arguments);
+    const checked = hub.check(target.name, target.arguments, session.caller);
     if (!checked.ok) throw new HubCapabilityFailure(name, checked.reason);
     return { caller: this.admit(target.name, target.arguments, session.caller), hub };
   }
@@ -148,10 +79,17 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     callId?: string,
   ): Promise<HubToolResult> {
     const { caller, hub } = this.authorizeCall(id, name, args);
-    const result = await hub.callAdmitted(
-      name,
-      args,
-      callId === undefined ? caller : { ...caller, callId },
+    const claim = this.service.store.dshSessions.attached(id, caller.profileId);
+    const verifyWriter = (): void => {
+      if (claim?.target.kind !== 'server')
+        throw new ApiError('conflict', 'This native tool call has no active hub writer.');
+      nativeMediaAuthority(this.service, claim);
+    };
+    const result = await withCentralToolAuthority(
+      this.service,
+      id,
+      { callId, verify: verifyWriter },
+      () => hub.callAdmitted(name, args, callId === undefined ? caller : { ...caller, callId }),
     );
     if (typeof result.response['error'] === 'string')
       throw new HubCapabilityFailure(name, result.response['error']);

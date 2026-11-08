@@ -1,0 +1,33 @@
+.gc-hover-zone {
+  display: contents;
+}
+
+.se-flow .gc-exec-out.gc-error-handle {
+  --gc-pill-h: max(28px, var(--gc-hit));
+  top: auto;
+  right: 12px;
+  bottom: calc(var(--gc-pill-h) / -2);
+  z-index: 2;
+  width: auto;
+  height: var(--gc-pill-h);
+  gap: 6px;
+  padding: 0 10px 0 12px;
+  border: 1.5px dashed var(--se-critical);
+  border-radius: 999px;
+  font-family: 'SeCanvasGeist-Medium', sans-serif;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--se-on-surface-variant);
+  background: var(--se-surface-2);
+  cursor: crosshair;
+}
+
+.gc-error-handle > .gc-error-label {
+  pointer-events: none;
+}
+
+.gc-error-handle .gc-arrow {
+  fill: var(--se-surface-2);
+  stroke: var(--se-critical);
+}

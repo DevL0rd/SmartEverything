@@ -25,6 +25,7 @@ export interface CommandComposer {
 export interface CommandComposerInput {
   readonly chat: AiChatRow | undefined;
   readonly draftKey: string;
+  readonly directed?: boolean;
   readonly setText: (text: string) => void;
   readonly quote: QuoteConflict | null;
 }
@@ -41,7 +42,9 @@ function commandKeyOf(text: string): CommandKey {
 
 export function useCommandComposer(input: CommandComposerInput): CommandComposer {
   const { chat, draftKey, setText, quote } = input;
-  const { prefix, spaced } = useDraftSelected(draftKey, commandKeyOf, sameJson);
+  const key = useDraftSelected(draftKey, commandKeyOf, sameJson);
+  const { spaced } = key;
+  const prefix = input.directed === true ? null : key.prefix;
   const [dismissed, setDismissed] = useState<{
     readonly prefix: string | null;
     readonly revision: number;

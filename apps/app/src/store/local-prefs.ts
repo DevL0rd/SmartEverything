@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { z } from 'zod';
-import { DEFAULT_OVERLAY_PREFS, OVERLAY_PREFS } from '@smarteverything/domain';
+import {
+  ANDROID_APP_BUILD,
+  APP_UPDATE_CHANNELS,
+  DEFAULT_OVERLAY_PREFS,
+  OVERLAY_PREFS,
+  VACUUM_FINISH,
+} from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { loadBrowserMetadata } from './browser-metadata';
 import { jsonText } from '../format/json-text';
@@ -14,6 +20,7 @@ const LOCAL_PREFS = z.strictObject({
   sidebarCollapsed: z.boolean(),
   navFoldersOpen: z.array(z.string()),
   recentSearches: z.array(z.string()).max(12),
+  photoSearches: z.array(z.string()),
   lastFitnessTab: z.string(),
   talkEnabled: z.boolean(),
   talkMode: z.enum(['hold', 'tap']),
@@ -33,7 +40,45 @@ const LOCAL_PREFS = z.strictObject({
   sideKeyAssistant: z.boolean(),
   setupSkipped: z.array(z.string()),
   setupReach: z.enum(['home', 'away']).nullable(),
+  vacuumFinishes: z.record(z.string(), VACUUM_FINISH),
+  voiceClips: z.strictObject({
+    played: z.array(z.string()),
+    speed: z.union([z.literal(1), z.literal(1.5), z.literal(2)]),
+  }),
+  appUpdates: z.strictObject({
+    channel: z.enum(APP_UPDATE_CHANNELS),
+    launchedId: z.uuid().nullable(),
+    pendingId: z.union([z.uuid(), z.literal('built_in')]).nullable(),
+  }),
+  hubUpdateNotices: z.record(z.string(), z.array(z.string())),
+  androidInstall: z
+    .strictObject({ versionCode: ANDROID_APP_BUILD.shape.versionCode, appVersion: z.string() })
+    .nullable(),
 });
+
+const STORED_WITH_FAILED_ID = z.looseObject({
+  appUpdates: z.strictObject({
+    channel: z.enum(APP_UPDATE_CHANNELS),
+    failedId: z.uuid().nullable(),
+    pendingId: z.union([z.uuid(), z.literal('built_in')]).nullable(),
+  }),
+});
+
+export function migrateStoredPrefs(value: unknown): {
+  readonly value: unknown;
+  readonly changed: boolean;
+} {
+  const old = STORED_WITH_FAILED_ID.safeParse(value);
+  if (!old.success) return { value, changed: false };
+  const { channel, pendingId } = old.data.appUpdates;
+  return {
+    value: {
+      ...old.data,
+      appUpdates: { channel, pendingId, launchedId: pendingId === 'built_in' ? null : pendingId },
+    },
+    changed: true,
+  };
+}
 
 type Values = z.infer<typeof LOCAL_PREFS>;
 
@@ -49,6 +94,7 @@ const defaults: Values = {
   sidebarCollapsed: false,
   navFoldersOpen: [],
   recentSearches: [],
+  photoSearches: [],
   lastFitnessTab: 'today',
   talkEnabled: false,
   talkMode: 'hold',
@@ -68,6 +114,11 @@ const defaults: Values = {
   sideKeyAssistant: false,
   setupSkipped: [],
   setupReach: null,
+  vacuumFinishes: {},
+  voiceClips: { played: [], speed: 1 },
+  appUpdates: { channel: 'release', launchedId: null, pendingId: null },
+  hubUpdateNotices: {},
+  androidInstall: null,
 };
 
 const values = new ValueStore<Values>(defaults);
@@ -82,12 +133,15 @@ async function readStored(): Promise<void> {
     return;
   }
   const read = jsonText(text);
-  const parsed = read.ok ? STORED.safeParse(read.value) : null;
+  const migration = read.ok ? migrateStoredPrefs(read.value) : null;
+  const parsed = migration === null ? null : STORED.safeParse(migration.value);
   if (parsed?.success !== true) {
     log.warn('local_prefs.unreadable', { stored: text.slice(0, 200) });
     throw new Error('The preferences saved on this device are unreadable and were not applied.');
   }
   values.set(LOCAL_PREFS.parse({ ...defaults, ...parsed.data }));
+  if (migration?.changed === true)
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(values.get()));
 }
 
 async function loadOnce(): Promise<void> {

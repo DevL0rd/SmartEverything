@@ -130,14 +130,13 @@ describe('Gemini Live renewal', () => {
     speak(call.conversation);
     await call.serve(0, heard('what is on my screen'), toolCall('look-1', 'sight_look'));
     call.conversation.tune({ mode: 'live', resolution: 'medium', memorySeconds: 30 });
-    await call.serve(0, say);
-    call.answer(SCREEN);
-    await call.advance(0);
     await call.serve(0, say, done, saved('after-progress'));
     await call.advance(2000);
     expect(call.sockets).toHaveLength(1);
+    call.answer(SCREEN);
+    await call.advance(0);
     expect(call.sockets[0]?.sent.some((line) => line.includes('look-1'))).toBe(true);
-    await call.serve(0, saved(null), say, done);
+    await call.serve(0, say, done);
     await call.advance(2000);
     expect(call.sockets).toHaveLength(1);
     await call.serve(0, saved('after-answer'));

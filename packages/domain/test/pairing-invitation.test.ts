@@ -25,7 +25,6 @@ function qr(overrides: Partial<PairingQr> = {}): PairingQr {
     endpoints: [
       { kind: 'remote', url: 'https://home.example/' },
       { kind: 'lan', url: 'https://192.168.1.20:8443' },
-      { kind: 'loopback', url: 'http://localhost:8080/' },
     ],
     ...overrides,
   };
@@ -45,7 +44,7 @@ function fragmentOf(payload: unknown): string {
 }
 
 describe('pairing invitation text', () => {
-  it('carries the remote and the first usable LAN address, never the loopback one', () => {
+  it('carries the remote and the first usable LAN address', () => {
     const parsed = parsePairingInvitation(textFor());
     expect(parsed).toMatchObject({ ok: true });
     if (!parsed.ok) throw new Error('unreachable');
@@ -73,8 +72,7 @@ describe('pairing invitation text', () => {
   });
 
   it('is refused when no address in it can be reached from another device', () => {
-    const loopbackOnly = qr({ endpoints: [{ kind: 'loopback', url: 'http://localhost:8080/' }] });
-    expect(pairingInvitationText(loopbackOnly)).toBeNull();
+    expect(pairingInvitationText(qr({ endpoints: [] }))).toBeNull();
   });
 
   it('is refused when the remote address has a path, because only a bare origin can be matched', () => {

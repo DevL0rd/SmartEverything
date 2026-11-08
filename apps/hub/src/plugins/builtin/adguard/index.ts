@@ -1,7 +1,10 @@
 import type { PluginManifestInput } from '@smarteverything/domain';
+import { entryFromSpec } from '../../../models/contributions';
 import { figureWidget } from '../board-widget';
 import { defineBuiltinPlugin } from '../define';
-import { PROTECTION_CHANGED_EVENT, SNAPSHOT_STREAM, startAdGuard } from './runtime';
+import { ADGUARD_AUTOMATION, PROTECTION_CHANGED } from './automation';
+import { ADGUARD_MODEL_MATCH, ADGUARD_MODELS } from './models';
+import { SNAPSHOT_STREAM, startAdGuard } from './runtime';
 import { ADGUARD_SETTINGS, ADGUARD_SETTINGS_FORM } from './settings';
 
 const ADGUARD_MANIFEST: PluginManifestInput = {
@@ -22,22 +25,20 @@ const ADGUARD_MANIFEST: PluginManifestInput = {
         live: true,
       },
     ],
-    events: [
-      {
-        kind: PROTECTION_CHANGED_EVENT,
-        title: 'Ad blocking turned on or off',
-        fields: { enabled: 'boolean', until: 'string' },
-      },
-    ],
+    events: [PROTECTION_CHANGED],
     widgets: [figureWidget('adguard-blocking', 'Ad blocking', 'shield', SNAPSHOT_STREAM)],
     settings: ADGUARD_SETTINGS_FORM,
     search: 'push',
     deviceFamilies: ['dns_filter'],
+    automation: ADGUARD_AUTOMATION,
   },
 };
 
 export const adguardPlugin = defineBuiltinPlugin({
   manifest: ADGUARD_MANIFEST,
+  models: ADGUARD_MODELS.map((spec) =>
+    entryFromSpec(spec, { match: ADGUARD_MODEL_MATCH, brands: ['AdGuard'] }),
+  ),
   settings: ADGUARD_SETTINGS,
   start: (ctx) => Promise.resolve(startAdGuard(ctx)),
 });

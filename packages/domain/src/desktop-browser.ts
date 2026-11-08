@@ -7,8 +7,7 @@ export * from './browser-page';
 export * from './browser-page-script';
 export * from './browser-page-driver';
 
-export const BROWSER_RETIRED_PROBLEM =
-  'This page was closed. Reload to open it again.';
+export const BROWSER_RETIRED_PROBLEM = 'This page was closed. Reload to open it again.';
 const BROWSER_ID = z.string().min(1).max(512);
 
 export class BrowserPolicyError extends Error {
@@ -43,11 +42,26 @@ export const BROWSER_STATUS = z.strictObject({
   problem: z.string().nullable(),
 });
 export type BrowserStatus = z.infer<typeof BROWSER_STATUS>;
+export const BROWSER_CONSOLE_MESSAGE = z.strictObject({
+  kind: z.literal('message'),
+  id: BROWSER_ID,
+  level: z.enum(['debug', 'info', 'log', 'warning', 'error']),
+  message: z.string(),
+  source: z.string(),
+  line: z.int(),
+});
+export type BrowserConsoleMessage = z.infer<typeof BROWSER_CONSOLE_MESSAGE>;
+export const BROWSER_CONSOLE_EVENT = z.discriminatedUnion('kind', [
+  BROWSER_CONSOLE_MESSAGE,
+  z.strictObject({ kind: z.literal('navigation'), id: BROWSER_ID }),
+]);
+export type BrowserConsoleEvent = z.infer<typeof BROWSER_CONSOLE_EVENT>;
 export const BROWSER_WINDOW_REQUEST = z.strictObject({ id: BROWSER_ID, url: z.url() });
 export type BrowserWindowRequest = z.infer<typeof BROWSER_WINDOW_REQUEST>;
 export const BROWSER_COMMAND = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('open'), target: BROWSER_TARGET }),
   z.strictObject({ kind: z.literal('navigate'), id: BROWSER_ID, url: z.url() }),
+  z.strictObject({ kind: z.literal('clear-site-storage'), id: BROWSER_ID, origin: z.url() }),
   z.strictObject({
     kind: z.literal('action'),
     id: BROWSER_ID,
@@ -68,6 +82,8 @@ export const BROWSER_COMMAND = z.discriminatedUnion('kind', [
 export type BrowserCommand = z.infer<typeof BROWSER_COMMAND>;
 export interface DesktopBrowser {
   readonly page?: NativeBrowserPage;
+  readonly subscribeConsole?: (listener: (event: BrowserConsoleEvent) => void) => () => void;
+  readonly clearSiteStorage?: (id: string, origin: string) => Promise<void>;
   command(command: BrowserCommand): Promise<void>;
   subscribe(listener: (status: BrowserStatus) => void): () => void;
   subscribeWindowRequests(listener: (request: BrowserWindowRequest) => void): () => void;

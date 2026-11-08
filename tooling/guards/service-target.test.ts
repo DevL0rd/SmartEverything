@@ -1,8 +1,21 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { copyServiceAssets, WAKE_MODEL_DIRECTORY } from '../copy-voice-assets.ts';
+import {
+  copyComputerWakeAssets,
+  copyServiceAssets,
+  IR_LIBRARY_DIRECTORY,
+  WAKE_MODEL_DIRECTORY,
+} from '../copy-voice-assets.ts';
 import { elfMachine, highestGlibc, isWasmModule } from '../native-binary.ts';
 import { ServiceRuntimeError } from '../service-runtime.ts';
 import {
@@ -14,6 +27,7 @@ import {
   smokeLoadedPackages,
   verifyServiceTarget,
 } from '../service-target.ts';
+import { repositoryRoot } from './repository-files';
 
 const X64 = 62;
 const ARM64 = 183;
@@ -52,12 +66,13 @@ function bundle(machine = ARM64): void {
   put('node_modules/@snazzah/davey-linux-arm64-gnu/davey.linux-arm64-gnu.node', elf(machine));
   put('node_modules/@anthropic-ai/claude-agent-sdk-linux-arm64/claude', elf(machine));
   put('node_modules/@img/sharp-wasm32/index.cjs', 'module.exports = {};');
-  put('node_modules/sherpa-onnx/sherpa-onnx-wasm-nodejs.wasm', WASM);
   for (const file of ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx']) {
     put(join(WAKE_MODEL_DIRECTORY, file), 'model');
   }
   put(join(WAKE_MODEL_DIRECTORY, 'tokens.txt'), 'tokens');
   put(join(WAKE_MODEL_DIRECTORY, 'bpe.vocab'), 'vocab');
+  put(join(IR_LIBRARY_DIRECTORY, 'index.bin'), 'index');
+  put(join(IR_LIBRARY_DIRECTORY, 'models.bin'), 'models');
 }
 
 function problems(binaries = false): readonly string[] {
@@ -179,12 +194,8 @@ describe('a bundle for linux-arm64', () => {
 
   it('names each wake model file that is missing', () => {
     bundle();
-    rmSync(join(scratch, WAKE_MODEL_DIRECTORY, 'tokens.txt'));
-    rmSync(join(scratch, WAKE_MODEL_DIRECTORY, 'joiner.int8.onnx'));
-    expect(problems()).toStrictEqual([
-      `${WAKE_MODEL_DIRECTORY}/joiner.int8.onnx is missing`,
-      `${WAKE_MODEL_DIRECTORY}/tokens.txt is missing`,
-    ]);
+    rmSync(join(scratch, WAKE_MODEL_DIRECTORY, 'bpe.vocab'));
+    expect(problems()).toStrictEqual([`${WAKE_MODEL_DIRECTORY}/bpe.vocab is missing`]);
   });
 });
 
@@ -229,11 +240,19 @@ describe('verifying a bundle', () => {
     }).toThrow(ServiceRuntimeError);
     expect(() => {
       smokeLoadedPackages(scratch, ARM64_TARGET);
-    }).toThrow(/The shipped packages did not load \(exit 1\)[\s\S]*sherpa-onnx/u);
+    }).toThrow(/The shipped packages did not load \(exit 1\)[\s\S]*opusscript/u);
   });
 
   it('knows exactly the targets the Raspberry Pi and the laptop need', () => {
     expect(SERVICE_TARGET_NAME.options).toStrictEqual(['linux-x64', 'linux-arm64']);
+  });
+});
+
+describe('the infrared library in the service bundle', () => {
+  it('names each library file that is missing', () => {
+    bundle();
+    rmSync(join(scratch, IR_LIBRARY_DIRECTORY, 'models.bin'));
+    expect(problems()).toStrictEqual([`${IR_LIBRARY_DIRECTORY}/models.bin is missing`]);
   });
 });
 
@@ -246,12 +265,40 @@ describe('service assets for a target', () => {
       ),
     ).toBe(true);
     expect(existsSync(join(scratch, 'node_modules/@snazzah/davey-linux-x64-gnu'))).toBe(false);
-    expect(existsSync(join(scratch, WAKE_MODEL_DIRECTORY, 'tokens.txt'))).toBe(true);
+    expect(existsSync(join(scratch, WAKE_MODEL_DIRECTORY, 'bpe.vocab'))).toBe(true);
+    expect(existsSync(join(scratch, WAKE_MODEL_DIRECTORY, 'tokens.txt'))).toBe(false);
+    expect(existsSync(join(scratch, 'node_modules', 'sherpa-onnx'))).toBe(false);
+    expect(existsSync(join(scratch, IR_LIBRARY_DIRECTORY, 'models.bin'))).toBe(true);
   });
 
   it('keeps every installed voice addon when no target is named', () => {
     copyServiceAssets(scratch);
     expect(existsSync(join(scratch, 'node_modules/@snazzah/davey-linux-arm64-gnu'))).toBe(true);
     expect(existsSync(join(scratch, 'node_modules/@snazzah/davey-linux-x64-gnu'))).toBe(true);
+  });
+});
+
+describe('computer wake assets', () => {
+  it('stages the pinned keyword vocabulary alongside the spotter model', () => {
+    copyComputerWakeAssets(scratch);
+    const staged = join(scratch, WAKE_MODEL_DIRECTORY);
+    expect(readdirSync(staged).sort()).toStrictEqual([
+      'NOTICE.txt',
+      'bpe.vocab',
+      'decoder.int8.onnx',
+      'encoder.int8.onnx',
+      'joiner.int8.onnx',
+      'tokens.txt',
+    ]);
+    const vocabulary = join(
+      repositoryRoot,
+      'apps',
+      'hub',
+      'src',
+      'wake-name',
+      WAKE_MODEL_DIRECTORY,
+      'bpe.vocab',
+    );
+    expect(readFileSync(join(staged, 'bpe.vocab'))).toEqual(readFileSync(vocabulary));
   });
 });

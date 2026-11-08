@@ -10,8 +10,6 @@ import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
 import { useIsOwner } from '../../../store/selectors';
 import { ComputerFrame } from '../components/computer-frame';
-import { ControlSettings } from '../components/control-settings';
-import { NativeSetup } from '../components/native-setup';
 import { ProviderSettings } from '../components/provider-settings';
 import { PairComputerSheet } from '../components/pair-computer-sheet';
 import { QueryState } from '../components/query-state';
@@ -28,8 +26,6 @@ function OwnerBody({ status }: { readonly status: ComputerAiStatus }): ReactNode
   });
   return (
     <>
-      <ControlSettings status={status} />
-      <NativeSetup status={status} />
       <ProviderSettings status={status} />
       <SubscriptionRows deviceId={status.device_id} provider="claude" />
       <List title="Connection">
@@ -77,8 +73,6 @@ export function ComputerClaudeScreen({ deviceId }: { readonly deviceId: string }
           <Banner
             tone={status.data.online ? 'positive' : 'warning'}
             title={status.data.online ? 'Computer connected' : 'Computer offline'}
-            body="Sessions and models are set up separately."
-            wrapBody
           />
           {owner ? (
             <OwnerBody status={status.data} />

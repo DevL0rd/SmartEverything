@@ -82,7 +82,7 @@ export function StateRing({
           </Text>
         </View>
       </View>
-      <Text variant="caption" tone="faint" align="center">
+      <Text variant="caption" tone="variant" align="center">
         {legendOf(progress)}
       </Text>
     </View>

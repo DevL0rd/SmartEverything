@@ -10,6 +10,25 @@ describe('describing what went wrong', () => {
     expect(described.stack).toBeDefined();
   });
 
+  it('keeps the failure that caused an Error, so a wrapper does not hide the reason', () => {
+    const thrown = new Error('fetch failed', {
+      cause: new TypeError('connect ECONNREFUSED 192.168.1.20:8123'),
+    });
+    const described = describeFailure(thrown);
+    expect(described.message).toBe('fetch failed');
+    expect(described.cause?.name).toBe('TypeError');
+    expect(described.cause?.message).toBe('connect ECONNREFUSED 192.168.1.20:8123');
+  });
+
+  it('stops after one level of cause rather than following a chain forever', () => {
+    const deep = new Error('outermost', {
+      cause: new Error('middle', { cause: new Error('innermost') }),
+    });
+    const described = describeFailure(deep);
+    expect(described.cause?.message).toBe('middle');
+    expect(described.cause?.cause).toBeUndefined();
+  });
+
   it('reads a failure the database reported, rather than printing an object', () => {
     const described = describeFailure({
       message: 'permission denied for table to_dos',

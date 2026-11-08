@@ -34,10 +34,7 @@ export class OpenRouterImageProvider {
         : await this.buffered(body, input);
     } catch (cause) {
       if (cause instanceof OpenRouterError)
-        throw new ImageOperationError(
-          cause.status !== null || cause.code === 'no_key' ? 'provider' : 'unknown',
-          cause.message,
-        );
+        throw new ImageOperationError(failureCode(cause), cause.message);
       throw cause;
     }
   }
@@ -74,6 +71,10 @@ export class OpenRouterImageProvider {
     }
     return resultOf(decoded, usage, 'provider_event');
   }
+}
+function failureCode(cause: OpenRouterError): ImageOperationError['code'] {
+  if (cause.code === 'rate_limited') return 'quota';
+  return cause.status !== null || cause.code === 'no_key' ? 'provider' : 'unknown';
 }
 function imageRequestBody(input: ImageProviderInput): Record<string, unknown> {
   const request = input.request;

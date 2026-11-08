@@ -12,10 +12,19 @@ const ROW = {
   title: 'Trip',
   icon: null,
   parent_id: null,
+  helper_name: null,
   source_key: null,
-  engine: { kind: 'openrouter', model: null, effort: null },
+  engine: {
+    kind: 'dsh',
+    execution_target: { kind: 'server' },
+    session_id: null,
+    model_route_id: ID,
+    model: 'vendor/model',
+    effort: null,
+  },
   tools: null,
   pinned: false,
+  memory: true,
   archived_at: null,
   cost_micros: 0,
   context_percent: null,
@@ -39,21 +48,62 @@ describe('the pending requests of a chat row', () => {
   });
 });
 
+describe('the display name of a helper chat', () => {
+  it('allows named helpers and rejects a name on normal chats', () => {
+    expect(AI_CHAT_ROW.parse(ROW).helper_name).toBeNull();
+    expect(AI_CHAT_ROW.parse({ ...ROW, kind: 'subagent', helper_name: 'Nova' }).helper_name).toBe(
+      'Nova',
+    );
+    expect(AI_CHAT_ROW.safeParse({ ...ROW, helper_name: 'Nova' }).success).toBe(false);
+    expect(AI_CHAT_ROW.parse({ ...ROW, kind: 'subagent' }).helper_name).toBeNull();
+  });
+
+  it('accepts an older row without a name and rejects a blank label', () => {
+    expect(AI_CHAT_ROW.parse({ ...ROW, helper_name: undefined }).helper_name).toBeNull();
+    expect(AI_CHAT_ROW.safeParse({ ...ROW, kind: 'subagent', helper_name: ' ' }).success).toBe(
+      false,
+    );
+  });
+});
+
 describe('branching with another engine', () => {
   it('leaves the engine out by default', () => {
     expect(AI_CHAT_BRANCH.parse({ messageId: MESSAGE }).engine).toBeUndefined();
   });
 
-  it('accepts a model and thinking level for the branch', () => {
+  it('accepts a model and thinking level for the branch and leaves the route to the hub', () => {
     const body = AI_CHAT_BRANCH.parse({
       messageId: MESSAGE,
-      engine: { kind: 'openrouter', model: 'anthropic/claude-sonnet', effort: 'high' },
+      engine: { kind: 'dsh', model: 'anthropic/claude-sonnet', effort: 'high' },
     });
     expect(body.engine).toEqual({
-      kind: 'openrouter',
+      kind: 'dsh',
+      execution_target: { kind: 'server' },
+      session_id: null,
+      model_route_id: null,
       model: 'anthropic/claude-sonnet',
       effort: 'high',
+      permission: { sandbox: 'danger-full-access', approval: 'never' },
     });
+  });
+
+  it('accepts a bare dsh engine as the hub default model on the owner’s route', () => {
+    const body = AI_CHAT_BRANCH.parse({ messageId: MESSAGE, engine: { kind: 'dsh' } });
+    expect(body.engine).toMatchObject({ kind: 'dsh', model_route_id: null, model: null });
+  });
+
+  it('refuses a named route without the model that runs on it', () => {
+    expect(
+      AI_CHAT_BRANCH.safeParse({ messageId: MESSAGE, engine: { kind: 'dsh', model_route_id: ID } })
+        .success,
+    ).toBe(false);
+  });
+
+  it('refuses the removed openrouter engine kind', () => {
+    expect(
+      AI_CHAT_BRANCH.safeParse({ messageId: MESSAGE, engine: { kind: 'openrouter', model: null } })
+        .success,
+    ).toBe(false);
   });
 
   it('refuses an engine of an unknown kind', () => {

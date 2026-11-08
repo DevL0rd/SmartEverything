@@ -2,8 +2,6 @@ import { isFinished, type CommandRow } from '@smarteverything/domain';
 import type { Clock } from '../../clock';
 import type { ChangeFeed } from '../../store/feed';
 
-export const COMMAND_WAIT_MS = 20_000;
-
 export interface Outcome {
   readonly commands: readonly CommandRow[];
   readonly allFinished: boolean;

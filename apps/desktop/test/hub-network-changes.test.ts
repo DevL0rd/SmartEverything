@@ -12,10 +12,11 @@ class FakeBus extends EventEmitter implements NetworkBus {
   readonly calls: string[] = [];
   disconnected = false;
   failure: Error | null = null;
+  reply: Promise<Message | null> = Promise.resolve(null);
   call(message: Message): Promise<Message | null> {
     if (this.failure !== null) return Promise.reject(this.failure);
     this.calls.push(`${message.member}:${String(message.body[0])}`);
-    return Promise.resolve(null);
+    return this.reply;
   }
   disconnect(): void {
     this.disconnected = true;
@@ -130,5 +131,21 @@ describe.runIf(process.platform === 'linux')('HubNetworkChanges', () => {
       detail: 'The name is not owned',
     });
     expect(changes.watching).toBe(false);
+  });
+
+  it('settles a pending subscription on a bus error and can connect again', async () => {
+    const broken = bus;
+    broken.reply = new Promise(() => undefined);
+    const started = changes.start();
+    const joined = changes.start();
+    await Promise.resolve();
+    expect(broken.calls).toStrictEqual([`GetNameOwner:${MANAGER}`]);
+    broken.emit('error', new Error('No system bus'));
+    expect(await started).toMatchObject({ state: 'unavailable' });
+    expect(await joined).toMatchObject({ state: 'unavailable' });
+    expect(events).toMatchObject([{ state: 'unavailable' }]);
+    expect(broken.disconnected).toBe(true);
+    bus = new FakeBus();
+    expect(await changes.start()).toMatchObject({ state: 'watching' });
   });
 });

@@ -1,5 +1,5 @@
 import { Logger } from '@smarteverything/logging';
-import type { LiveEvents, LiveOptions } from './gemini';
+import type { LiveEvents, LiveOptions, LiveSession } from './gemini';
 
 const log = new Logger('hub.voice-gemini');
 
@@ -12,6 +12,8 @@ export class LiveTrace {
   private heardChars = 0;
   private saidChars = 0;
   private messages = 0;
+  private lastMessageAt: number | null = null;
+  private closedLocally = false;
 
   constructor(options: LiveOptions) {
     this.fields = {
@@ -36,6 +38,8 @@ export class LiveTrace {
       saidChars: this.saidChars,
       messages: this.messages,
       sinceConnectMs: Math.round(performance.now() - this.startedAt),
+      sinceMessageMs:
+        this.lastMessageAt === null ? null : Math.round(performance.now() - this.lastMessageAt),
     };
   }
 
@@ -59,6 +63,7 @@ export class LiveTrace {
 
   message(): void {
     this.messages += 1;
+    this.lastMessageAt = performance.now();
   }
 
   socketError(message: string): void {
@@ -70,8 +75,34 @@ export class LiveTrace {
       reason: close.reason === '' ? 'closed' : close.reason,
       wasClean: close.wasClean,
       closeCode: close.code,
+      closedBy: this.closedLocally ? 'hub' : 'remote',
       ...this.tally(),
     });
+  }
+
+  watching(session: LiveSession): LiveSession {
+    return {
+      ...session,
+      toolResult: (id, name, response, delivery): void => {
+        log.debug('live.tool_response_sent', () => ({
+          tool: name,
+          toolCallId: id,
+          scheduling: delivery.scheduling,
+          willContinue: delivery.more,
+          responseKeys: Object.keys(response).length,
+          ...this.tally(),
+        }));
+        session.toolResult(id, name, response, delivery);
+      },
+      text: (text, respond): void => {
+        log.debug('live.text_sent', () => ({ chars: text.length, respond, ...this.tally() }));
+        session.text(text, respond);
+      },
+      close: (): void => {
+        this.closedLocally = true;
+        session.close();
+      },
+    };
   }
 
   counting(events: LiveEvents): LiveEvents {

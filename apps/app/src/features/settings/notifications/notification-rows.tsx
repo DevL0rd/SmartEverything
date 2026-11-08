@@ -30,14 +30,22 @@ const PERMISSION_TEXT: Readonly<Record<PushPermission, string>> = {
   undetermined: 'Off',
 };
 
-function usePushPermission(): PushPermission | null {
-  const [permission, setPermission] = useState<PushPermission | null>(null);
+type PushPermissionStatus = PushPermission | 'checking' | 'unknown';
+
+function usePushPermission(): PushPermissionStatus {
+  const [permission, setPermission] = useState<PushPermissionStatus>('checking');
   useEffect(() => {
     const read = (): void => {
-      pushPermission().then((value) => {
-        settingsLog.debug('push.permission_read', { permission: value });
-        setPermission(value);
-      }, notifyFailure('Notification status unknown'));
+      pushPermission().then(
+        (value) => {
+          settingsLog.debug('push.permission_read', { permission: value });
+          setPermission(value);
+        },
+        (error: unknown) => {
+          setPermission('unknown');
+          notifyFailure('Notification status unknown')(error);
+        },
+      );
     };
     read();
     const subscription = AppState.addEventListener('change', (state) => {
@@ -52,6 +60,12 @@ function usePushPermission(): PushPermission | null {
   return permission;
 }
 
+const PHONE_STATUS: Readonly<Record<PushPermissionStatus, string>> = {
+  ...PERMISSION_TEXT,
+  checking: 'Checking…',
+  unknown: 'Unknown',
+};
+
 export function PhonePushRow(): ReactNode {
   const permission = usePushPermission();
   const registration = useMutationState();
@@ -60,7 +74,8 @@ export function PhonePushRow(): ReactNode {
       title="Alerts on this phone"
       subtitle="Doorbell, calls, leaks and alarms"
       icon="bell"
-      value={permission === null ? '…' : PERMISSION_TEXT[permission]}
+      value={PHONE_STATUS[permission]}
+      wrapTitle
       disabled={registration.busy}
       chevron
       onPress={() => {

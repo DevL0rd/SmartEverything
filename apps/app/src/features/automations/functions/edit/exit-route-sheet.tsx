@@ -1,3 +1,4 @@
+import type { InterfaceOpener } from './interface-rows';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../../components/button';
@@ -6,6 +7,7 @@ import { Text } from '../../../../components/text';
 import type { Routing } from './use-interface-panel';
 
 export interface ExitRouteSheetProps {
+  readonly opener: InterfaceOpener | null;
   readonly routing: Routing | null;
   readonly choices: readonly string[];
   readonly onPick: (exit: string) => void;
@@ -14,12 +16,18 @@ export interface ExitRouteSheetProps {
 
 export function ExitRouteSheet({
   routing,
+  opener,
   choices,
   onPick,
   onCancel,
 }: ExitRouteSheetProps): ReactNode {
   return (
-    <Sheet open={routing !== null} onClose={onCancel} title="Which exit instead?">
+    <Sheet
+      open={routing !== null}
+      onClose={onCancel}
+      title="Which exit instead?"
+      subpage={opener === null ? false : { opener }}
+    >
       <View className="gap-3">
         <Text variant="callout" tone="variant">
           {routing === null

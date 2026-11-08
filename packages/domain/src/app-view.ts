@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ID } from './api/primitives';
-import { NAV_TARGET } from './navigation-layout';
+import { NAV_OPEN_TARGET, NAV_TARGET } from './navigation-layout';
 
 export const APP_VIEW_ACTIONS = ['open', 'highlight', 'dismiss'] as const;
 
@@ -8,37 +8,58 @@ export type AppViewAction = (typeof APP_VIEW_ACTIONS)[number];
 
 export const APP_VIEW_ANSWER_SECONDS = 4;
 
-export const SHOW_IN_APP_INPUT = z.strictObject({
-  action: z
-    .enum(APP_VIEW_ACTIONS)
-    .describe(
-      'open: go to the target and, with focus, point at that element. highlight: point at something on the current screen without navigating. dismiss: clear the pointer and close what was opened; the person stays where they are',
-    ),
-  target: NAV_TARGET.optional().describe(
-    'Required for open and highlight. kind nav with node points at a navigation item',
-  ),
-  focus: z
-    .string()
-    .min(1)
-    .max(120)
-    .optional()
-    .describe('A setting id, capability key, section or step id on that page to point at'),
-  appId: ID.optional().describe(
-    'Which of the person’s apps; default the app this conversation runs in, else the one open in front',
-  ),
-});
+const APP = ID.describe(
+  'Which of the person’s apps; default the app this conversation runs in, else the one open in front',
+);
+
+export const SHOW_IN_APP_INPUT = z.discriminatedUnion('action', [
+  z.strictObject({
+    action: z.literal('open'),
+    target: NAV_OPEN_TARGET,
+    focus: z
+      .string()
+      .min(1)
+      .max(120)
+      .optional()
+      .describe('A capability key, step id or setting id on that page to point at after opening'),
+    appId: APP.optional(),
+  }),
+  z.strictObject({
+    action: z.literal('highlight'),
+    focus: z
+      .string()
+      .min(1)
+      .max(120)
+      .describe('The id of the setting, capability, step or navigation item to point at'),
+    appId: APP.optional(),
+  }),
+  z.strictObject({ action: z.literal('dismiss'), appId: APP }),
+]);
 
 export type ShowInAppInput = z.infer<typeof SHOW_IN_APP_INPUT>;
 
 export const SHOW_IN_APP_TEXT =
-  'Show the person something in their app: open a page, point at one thing on it, or clear the pointer. Only when they ask to see, open, find or be shown something, never on your own. Targets use ids from reads. It works only while the app is open in front; the result says what the app opened or why it could not. Say what you opened afterwards.';
+  'Show the person something in their app: open a page, point at one thing on it, or clear the pointer. Only when they ask to see, open, find or be shown something, never on your own. The result says what the app opened or why it could not. Say what you opened afterwards.';
 
-export const APP_VIEW_REQUEST = z.strictObject({
-  requestId: ID,
-  action: z.enum(APP_VIEW_ACTIONS),
-  target: NAV_TARGET.nullable(),
-  focus: z.string().min(1).max(120).nullable(),
-});
+export const APP_VIEW_REQUEST = z.discriminatedUnion('action', [
+  z.strictObject({
+    requestId: ID,
+    action: z.literal('open'),
+    target: z.union([NAV_OPEN_TARGET, NAV_TARGET]),
+    focus: z.string().min(1).max(120).nullable(),
+  }),
+  z.strictObject({
+    requestId: ID,
+    action: z.literal('highlight'),
+    focus: z.string().min(1).max(120),
+  }),
+  z.strictObject({
+    requestId: ID,
+    action: z.literal('dismiss'),
+    target: z.null(),
+    focus: z.null(),
+  }),
+]);
 
 export type AppViewRequest = z.infer<typeof APP_VIEW_REQUEST>;
 

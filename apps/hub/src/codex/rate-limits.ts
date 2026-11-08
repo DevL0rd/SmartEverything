@@ -1,18 +1,13 @@
 import { z } from 'zod';
-import { SUBSCRIPTION_CREDIT_BALANCE, subscriptionUsagePolicy } from '@smarteverything/domain';
+import { subscriptionQuotaExhausted } from '@smarteverything/domain';
 import type { SubscriptionQuotaPolicy } from '@smarteverything/domain';
 import type { CodexClient } from './client';
 import type { RpcRecord } from './protocol';
 import { CodexRuntimeError } from './errors';
 const WINDOW = z.object({
   usedPercent: z.number().min(0),
-  windowDurationMins: z.number().positive().nullable(),
-  resetsAt: z.number().nullable(),
-});
-const CREDITS = z.object({
-  hasCredits: z.boolean(),
-  unlimited: z.boolean(),
-  balance: SUBSCRIPTION_CREDIT_BALANCE.nullable().default(null),
+  windowDurationMins: z.number().positive().nullable().default(null),
+  resetsAt: z.number().nullable().default(null),
 });
 const INDIVIDUAL_LIMIT = z.object({
   limit: z.string(),
@@ -21,22 +16,24 @@ const INDIVIDUAL_LIMIT = z.object({
   resetsAt: z.int(),
 });
 const SNAPSHOT = z.object({
-  limitId: z.string().nullable(),
-  limitName: z.string().nullable(),
-  normalModelSlug: z.string().nullable(),
-  primary: WINDOW.nullable(),
-  secondary: WINDOW.nullable(),
-  credits: CREDITS.nullable().default(null),
+  limitId: z.string().nullable().default(null),
+  limitName: z.string().nullable().default(null),
+  normalModelSlug: z.string().nullable().default(null),
+  primary: WINDOW.nullable().default(null),
+  secondary: WINDOW.nullable().default(null),
+  credits: z.json().default(null),
   rateLimitReachedType: z.string().nullable().default(null),
   spendControlReached: z.boolean().nullable().default(null),
   individualLimit: INDIVIDUAL_LIMIT.nullable().default(null),
 });
 const RESPONSE = z.object({
-  ordinaryUsageAllowed: z.boolean().nullable(),
+  ordinaryUsageAllowed: z.boolean().nullable().default(null),
   rateLimits: SNAPSHOT,
-  rateLimitsByLimitId: z.record(z.string(), SNAPSHOT).nullable(),
+  rateLimitsByLimitId: z.record(z.string(), SNAPSHOT).nullable().default(null),
 });
-export async function readRateLimits(client: CodexClient): Promise<RpcRecord | null> {
+export async function readRateLimits(
+  client: Pick<CodexClient, 'request'>,
+): Promise<RpcRecord | null> {
   try {
     return RESPONSE.parse(
       await client.request('account/rateLimits/read', {
@@ -59,32 +56,18 @@ export function subscriptionBillingBlock(raw: RpcRecord | null): CodexBillingBlo
   if (!parsed.success || parsed.data.ordinaryUsageAllowed === null)
     return {
       code: 'native_billing_policy_unknown',
-      reason:
-        'Codex cannot verify account-bound included usage and credit policy. Subscription inference is blocked.',
+      reason: 'Codex cannot verify usage availability for this account.',
     };
   const usage = parsed.data;
   const buckets = [usage.rateLimits, ...Object.values(usage.rateLimitsByLimitId ?? {})];
-  if (usage.rateLimits.credits === null)
-    return {
-      code: 'native_billing_policy_unknown',
-      reason:
-        'Codex did not report authoritative account credits. Subscription inference is blocked.',
-    };
-  const state = subscriptionUsagePolicy(
-    buckets.flatMap((bucket) => (bucket.credits === null ? [] : [bucket.credits])),
-    buckets.map((bucket) => quotaPolicy(bucket, usage.ordinaryUsageAllowed === true)),
-  );
-  if (state === 'paid_usage_enabled')
-    return {
-      code: 'native_paid_credits_available',
-      reason:
-        'Codex reports spendable or unlimited credits. Subscription-only inference is blocked while credits are available.',
-    };
-  if (state === 'quota_exhausted')
+  if (
+    subscriptionQuotaExhausted(
+      buckets.map((bucket) => quotaPolicy(bucket, usage.ordinaryUsageAllowed === true)),
+    )
+  )
     return {
       code: 'native_quota_exhausted',
-      reason:
-        'Codex included subscription usage is exhausted or restricted. No credit, reset or API fallback will be used.',
+      reason: 'Codex reports that usage is exhausted or restricted for this account.',
     };
   return null;
 }
@@ -96,10 +79,6 @@ function quotaPolicy(bucket: z.infer<typeof SNAPSHOT>, allowed: boolean): Subscr
   return {
     allowed,
     restricted: bucket.rateLimitReachedType !== null || bucket.spendControlReached === true,
-    remainingPercent: bucket.individualLimit?.remainingPercent ?? null,
-    usedPercents: [bucket.primary, bucket.secondary].flatMap((window) =>
-      window === null ? [] : [window.usedPercent],
-    ),
   };
 }
 export function updatedRateLimits(previous: RpcRecord | null, raw: unknown): RpcRecord {

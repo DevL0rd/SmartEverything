@@ -15,6 +15,7 @@ import { bound, DONE_REPLY } from '../router';
 import type { ComputerRunner } from '../../assistant/engines/computer/runner';
 import { runtimeValue } from '../../assistant/engines/computer/request';
 import type { EngineSelections } from '../../assistant/engine-selections';
+import { admitChatExecution, admitNativeEngine } from '../../assistant/native-helpers';
 import { computerEngine } from '../../assistant/engine-kind';
 
 const MODEL_PARAMS = 'modelId';
@@ -33,6 +34,7 @@ function owned(
     { profileId: profileIdOf(context.store, caller), role: roleOfCaller(caller) },
     chatId,
   );
+  admitChatExecution(chat);
   const computer = computerEngine(chat.engine);
   const runner =
     computer === null ? undefined : context.assistant.computerProviders.get(computer.kind);
@@ -45,17 +47,19 @@ const engineRoutes = (context: ServerContext) =>
   ({
     ...runtimePreferenceRoute(context),
     readAiEngineCatalogue: bound(E.readAiEngineCatalogue, ({ caller }) =>
-      selections(context).catalogue(roleOfCaller(caller)),
+      selections(context).catalogue(profileIdOf(context.store, caller), roleOfCaller(caller)),
     ),
-    readAiEngineDefault: bound(E.readAiEngineDefault, ({ caller }) => ({
-      engine: roleOfCaller(caller) === 'owner' ? context.store.aiEngineDefaults.read() : null,
-    })),
+    readAiEngineDefault: bound(E.readAiEngineDefault, ({ caller }) => {
+      const engine = context.store.aiEngineDefaults.read();
+      return { engine: roleOfCaller(caller) === 'owner' && engine?.kind === 'dsh' ? engine : null };
+    }),
     updateAiEngineDefault: bound(E.updateAiEngineDefault, ({ body, caller }) => {
       const engine =
         body.engine === null
           ? null
           : selections(context).select(profileIdOf(context.store, caller), body.engine);
       if (engine !== null) {
+        admitNativeEngine(engine, false);
         selections(context).validate(engine, {
           role: roleOfCaller(caller),
           profileId: profileIdOf(context.store, caller),

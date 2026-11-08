@@ -9,6 +9,7 @@ import { ServiceMedallion } from '../../shared/service-medallion';
 import { useSectionParam } from '../../../components/use-section-param';
 import { useAdGuardSnapshot, useAdGuardTools } from '../adguard-data';
 import { PauseSheet } from '../pause-sheet';
+import { RESUME_INPUT } from './pause-model';
 import { heroOf, type HeroModel } from './hero-model';
 import { background } from '@smarteverything/logging';
 
@@ -85,7 +86,7 @@ function Ready({ snapshot }: { readonly snapshot: AdGuardSnapshot }): ReactNode 
     openPause(OPEN);
   };
   const resume = (): Promise<unknown> =>
-    tools.run('resume_protection', {}, 'Ad blocking didn’t switch on');
+    tools.run('set_protection', RESUME_INPUT, 'Ad blocking didn’t switch on');
   return (
     <>
       <ServiceHero

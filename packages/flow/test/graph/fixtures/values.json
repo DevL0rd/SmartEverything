@@ -1,0 +1,77 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "16000000-0000-4000-8000-000000000008",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "16000000-0000-4000-8000-000000000001",
+        "key": "warm",
+        "kind": "logic.compare",
+        "ports": {
+          "a": { "wire": { "from": "weather", "port": "temperature" } },
+          "op": { "lit": "gt" },
+          "b": { "lit": 20 }
+        }
+      },
+      {
+        "id": "16000000-0000-4000-8000-000000000002",
+        "key": "weather",
+        "kind": "weather.read",
+        "ports": {}
+      },
+      {
+        "id": "16000000-0000-4000-8000-000000000003",
+        "key": "listed",
+        "kind": "logic.in",
+        "ports": {
+          "value": { "wire": { "from": "trigger", "port": "tick" } },
+          "list": { "lit": [1, 3] }
+        }
+      },
+      {
+        "id": "16000000-0000-4000-8000-000000000004",
+        "key": "start",
+        "kind": "debug.log",
+        "ports": { "message": { "lit": "values" } }
+      },
+      {
+        "id": "16000000-0000-4000-8000-000000000007",
+        "key": "decide",
+        "kind": "flow.if",
+        "ports": {},
+        "branches": [
+          {
+            "id": "16000000-0000-4000-8000-000000000005",
+            "when": { "wire": { "from": "listed", "port": "result" } },
+            "scope": {
+              "nodes": [
+                {
+                  "id": "16000000-0000-4000-8000-000000000006",
+                  "key": "fan",
+                  "kind": "device.set",
+                  "ports": {
+                    "target": { "lit": { "target": "hall" } },
+                    "control": { "lit": "power" },
+                    "to": { "wire": { "from": "warm", "port": "result" } }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

@@ -29,9 +29,10 @@ import { recapViewOf, routineWord } from '../model/recap-model';
 import { liveQuarters } from '../model/stage-model';
 import { stepCaptionOf, widgetLayoutOf, type WidgetLayout } from '../model/widget-model';
 import { QuarterBar } from './quarter-bar';
-import { WidgetHandle } from './widget-handle';
+import { BrushArt } from '../../toothbrush/components/brush-visual';
 
 const ARCH_FRACTION = 1.5;
+const ARCH_MAX = 300;
 const COLUMN_ROW_PX = 120;
 
 function Trace({
@@ -78,6 +79,38 @@ function BrushingInfo({
   );
 }
 
+function Stage({
+  view,
+  frame,
+  layout,
+  body,
+}: Omit<WidgetFaceProps, 'device'> & {
+  readonly layout: WidgetLayout;
+  readonly body: number;
+}): ReactNode {
+  const quarters = liveQuarters(view, frame);
+  if (layout !== 'report') {
+    return <TimerRing frame={frame} size={ringPxOf(body)} />;
+  }
+  const lines = centreLines({
+    elapsedS: frame.elapsedS,
+    routineS: frame.routineS,
+    current: frame.zone,
+    finished: false,
+    quarters,
+  });
+  return (
+    <QuadrantArch
+      quarters={quarters}
+      big={lines.big}
+      small={lines.small}
+      width={Math.round(Math.min(ARCH_MAX, (body - 8) * ARCH_FRACTION))}
+      moving
+      label={archLabel(quarters, false)}
+    />
+  );
+}
+
 function Brushing({
   device,
   view,
@@ -86,44 +119,17 @@ function Brushing({
   body,
 }: WidgetFaceProps & { readonly layout: WidgetLayout; readonly body: number }): ReactNode {
   const quarters = liveQuarters(view, frame);
-  const lines = centreLines({
-    elapsedS: frame.elapsedS,
-    routineS: frame.routineS,
-    current: frame.zone,
-    finished: false,
-    quarters,
-  });
-  const archPx = Math.round(Math.min(300, (body - 8) * ARCH_FRACTION));
-  const report = layout === 'report';
   const row = layout === 'row';
+  const column = layout === 'column';
   return (
-    <View className="flex-1 gap-3">
-      <View className="flex-1 flex-row items-center gap-4">
-        <WidgetHandle device={device} view={view} body={body} />
-        {report ? (
-          <QuadrantArch
-            quarters={quarters}
-            big={lines.big}
-            small={lines.small}
-            width={archPx}
-            moving
-            label={archLabel(quarters, false)}
-          />
-        ) : (
-          <TimerRing frame={frame} size={ringPxOf(body)} />
-        )}
-        <View className="min-w-0 flex-1 gap-3">
-          <BrushingInfo view={view} frame={frame} inline={row} />
-          {row ? <QuarterBar quarters={quarters} /> : null}
-        </View>
-        {row || report ? <Trace frame={frame} view={view} deviceId={device.id} /> : null}
+    <View className={cn('min-w-0 flex-1 gap-4', !column && 'flex-row')}>
+      <Stage view={view} frame={frame} layout={layout} body={body} />
+      <View className="min-w-0 flex-1 gap-3">
+        <BrushingInfo view={view} frame={frame} inline={row} />
+        {row || column ? <QuarterBar quarters={quarters} /> : null}
+        {column ? <Trace frame={frame} view={view} deviceId={device.id} /> : null}
       </View>
-      {layout === 'column' ? (
-        <>
-          <QuarterBar quarters={quarters} />
-          <Trace frame={frame} view={view} deviceId={device.id} />
-        </>
-      ) : null}
+      {row || layout === 'report' ? <Trace frame={frame} view={view} deviceId={device.id} /> : null}
     </View>
   );
 }
@@ -166,12 +172,11 @@ function RestRing({
 }
 
 function Resting({
-  device,
   view,
   session,
   layout,
   body,
-}: Omit<WidgetFaceProps, 'frame'> & {
+}: Omit<WidgetFaceProps, 'frame' | 'device'> & {
   readonly session: BrushingSession;
   readonly layout: WidgetLayout;
   readonly body: number;
@@ -182,9 +187,8 @@ function Resting({
   const word = routineWord(session);
   const wide = layout !== 'compact';
   return (
-    <View className="flex-1 gap-3">
-      <View className="flex-1 flex-row items-center gap-4">
-        <WidgetHandle device={device} view={view} body={body} />
+    <View className="min-w-0 flex-1 gap-3">
+      <View className={cn('min-w-0 gap-4', layout !== 'column' && 'flex-row')}>
         <RestRing
           durationS={session.durationS}
           routineS={session.routineS}
@@ -216,15 +220,21 @@ function Resting({
 
 export function OralbLiveFace({ device, view, frame }: WidgetFaceProps): ReactNode {
   const { frame: box, cls } = useWidgetFace();
-  const body = bodyHeightOf(box);
   const layout = widgetLayoutOf(cls);
-  const rowBody = layout === 'column' ? COLUMN_ROW_PX : body;
+  const body = layout === 'column' ? COLUMN_ROW_PX : bodyHeightOf(box);
   const kind = liveKind(view, frame);
-  if (kind === 'brushing') {
-    return <Brushing device={device} view={view} frame={frame} layout={layout} body={rowBody} />;
-  }
   const { lastSession } = view;
-  return lastSession === null ? null : (
-    <Resting device={device} view={view} session={lastSession} layout={layout} body={rowBody} />
+  if (kind !== 'brushing' && lastSession === null) {
+    return null;
+  }
+  return (
+    <View className={cn('flex-1 flex-row', cls === 'm' ? 'gap-3' : 'gap-4')}>
+      <BrushArt device={device} view={view} />
+      {kind === 'brushing' || lastSession === null ? (
+        <Brushing device={device} view={view} frame={frame} layout={layout} body={body} />
+      ) : (
+        <Resting view={view} session={lastSession} layout={layout} body={body} />
+      )}
+    </View>
   );
 }

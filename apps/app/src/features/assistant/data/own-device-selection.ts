@@ -7,8 +7,6 @@ import type {
   Engine,
 } from '@smarteverything/domain';
 import { useHarnessCatalogue, HARNESS_CATALOGUE_KEY } from './harness';
-import { useOpenRouterStatus } from './openrouter';
-import { useSuggestedModels } from '../picker/model-queries';
 import { ownDeviceEngine } from '../model/own-device-engine';
 import { useModelPickAuthority } from '../chats/model-pick-authority';
 
@@ -22,8 +20,6 @@ export function useOwnDeviceSelection(
   const client = useQueryClient();
   const valid = useModelPickAuthority({ engine, blocked: false });
   const catalogue = useHarnessCatalogue();
-  const suggested = useSuggestedModels('chat', engine.model, engine.kind === 'openrouter');
-  const status = useOpenRouterStatus();
   return (host, requireAuthority = false, permission): DshEngine | null => {
     if (requireAuthority && !valid()) return null;
     if (client.getQueryState(HARNESS_CATALOGUE_KEY)?.isInvalidated === true) return null;
@@ -32,11 +28,6 @@ export function useOwnDeviceSelection(
     const registered = current.hosts.find((row) => row === host);
     return registered === undefined
       ? null
-      : ownDeviceEngine(engine, registered, {
-          catalogue: current,
-          suggested: suggested.data,
-          status: status.data,
-          permission,
-        });
+      : ownDeviceEngine(engine, registered, { catalogue: current, permission });
   };
 }

@@ -135,7 +135,7 @@ describe('automation secret routes', () => {
   ): Promise<unknown> =>
     routes[name].run(
       caller,
-      { params: raw.params ?? {}, query: {}, body: raw.body, remote: '127.0.0.1' },
+      { params: raw.params ?? {}, query: {}, body: raw.body, remote: '127.0.0.1', headers: {} },
       testLogger('automation-secrets'),
     );
 

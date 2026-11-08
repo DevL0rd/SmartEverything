@@ -9,12 +9,17 @@ import type {
 } from '@smarteverything/domain';
 import type { HarnessConnection, HarnessDirectory } from './directory';
 import type { HarnessRoutes } from './routes';
+import {
+  modelSubscriptionScope,
+  type AiWeeklySubscriptionHistory,
+} from '../store/repositories/ai-weekly-subscription-history';
 
 export class HarnessSubscriptions {
   private readonly statuses = new Map<string, AiSubscriptionHostStatus>();
   constructor(
     private readonly directory: HarnessDirectory,
     private readonly routes: HarnessRoutes,
+    private readonly history: AiWeeklySubscriptionHistory,
   ) {
     directory.onRegister((connection) => {
       routes.offline(connection.host.target);
@@ -108,9 +113,39 @@ export class HarnessSubscriptions {
         'forbidden',
         'Subscription advertisement differs from its supplying host, initiating profile or explicit authorization path.',
       );
+    const previous = this.statuses.get(status.route_id);
+    if (previous !== undefined && Date.parse(status.observed_at) < Date.parse(previous.observed_at))
+      return;
     this.statuses.set(status.route_id, status);
     this.routes.publish(status.route);
+    this.observeUsage(status, previous);
   }
+
+  private observeUsage(
+    status: AiSubscriptionHostStatus,
+    previous: AiSubscriptionHostStatus | undefined,
+  ): void {
+    const scope = modelSubscriptionScope(status.route);
+    const usage = status.route.usage;
+    if (
+      scope !== undefined &&
+      usage?.runtime === status.provider &&
+      this.history.observe(scope, usage)
+    )
+      return;
+    if (routeUsageChanged(previous?.route, status.route))
+      this.history.changed(status.profile_id, 'route');
+  }
+}
+
+function routeUsageChanged(
+  previous: AiSubscriptionHostStatus['route'] | undefined,
+  current: AiSubscriptionHostStatus['route'],
+): boolean {
+  return (
+    previous?.usage?.reported_at !== current.usage?.reported_at ||
+    previous?.credential_generation !== current.credential_generation
+  );
 }
 function subscriptionRouteId(
   profileId: string,

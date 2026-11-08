@@ -1,4 +1,5 @@
-import { dialog, shell, type WebContents } from 'electron';
+import { join } from 'node:path';
+import { app, dialog, shell, type WebContents } from 'electron';
 import {
   NATIVE_HUB_RESOURCE_DOWNLOAD,
   NATIVE_HUB_RESOURCE_ID,
@@ -23,7 +24,7 @@ export class DesktopHubResources {
       failed: authority.failed.bind(authority),
     };
     this.broker = new HubResourceBroker(policies, origin);
-    this.downloads = new HubResourceDownloads(policies);
+    this.downloads = new HubResourceDownloads(policies, join(app.getPath('userData'), 'media'));
   }
   open(owner: WebContents, value: unknown): NativeHubResource {
     return this.broker.open(owner.id, NATIVE_HUB_RESOURCE_OPEN.parse(value));

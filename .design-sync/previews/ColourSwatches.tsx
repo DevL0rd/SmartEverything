@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ColourSwatches, Stage } from 'smarteverything-kit';
 
 const options = [
@@ -9,7 +9,7 @@ const options = [
   { value: 'lime', label: 'Lime', swatchClassName: 'bg-viz-5' },
   { value: 'blue', label: 'Blue', swatchClassName: 'bg-viz-6' },
 ];
-function Demo({ off }: { off?: boolean }) {
+function Demo({ off = false }: { readonly off?: boolean }): ReactNode {
   const [v, setV] = useState('teal');
   return (
     <ColourSwatches
@@ -21,17 +21,17 @@ function Demo({ off }: { off?: boolean }) {
     />
   );
 }
-export const Selectable = () => (
+export const Selectable = (): ReactNode => (
   <Stage theme="dark" width={420}>
     <Demo />
   </Stage>
 );
-export const Disabled = () => (
+export const Disabled = (): ReactNode => (
   <Stage theme="dark" width={420}>
     <Demo off />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactNode => (
   <Stage theme="light" width={420}>
     <Demo />
   </Stage>

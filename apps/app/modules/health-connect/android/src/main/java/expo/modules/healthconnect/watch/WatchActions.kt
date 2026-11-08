@@ -48,7 +48,7 @@ sealed class WatchAction(val label: String) {
   class Music(val state: MusicState) : WatchAction("music state")
   class SetTime : WatchAction("set the time")
   class SetUser(val user: WatchUser) : WatchAction("send your details")
-  class Weather(val weather: WatchWeather) : WatchAction("weather for ${weather.place}")
+  class Weather(val snapshot: WatchWeatherSnapshot) : WatchAction("send weather")
   class Calendar(val events: List<CalendarEntry>) : WatchAction("${events.size} calendar events")
 }
 

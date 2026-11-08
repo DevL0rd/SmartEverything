@@ -1,9 +1,9 @@
-import type { AutomationRowV3 } from '@smarteverything/domain';
+import type { StoredAutomationRow } from '@smarteverything/domain';
 import { StoreNotFoundError } from '../store/context';
 import type { ServerContext } from './context';
 import { wireAutomationTrace } from './automation-trace-wiring';
 
-function authorOf(context: ServerContext, automationId: string): AutomationRowV3['author'] {
+function authorOf(context: ServerContext, automationId: string): StoredAutomationRow['author'] {
   return context.store.automations.find(automationId)?.author ?? null;
 }
 

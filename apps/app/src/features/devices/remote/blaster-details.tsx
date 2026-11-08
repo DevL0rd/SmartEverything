@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { IrRemoteRow } from '@smarteverything/domain';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
@@ -66,7 +66,7 @@ function RemoteRow({
   to,
 }: {
   readonly source: RemoteSource;
-  readonly to: Href;
+  readonly to: AppHref;
 }): ReactNode {
   const view = useRemoteView(source);
   return (

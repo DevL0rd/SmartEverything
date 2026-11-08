@@ -8,7 +8,6 @@ import {
   type RailGroup,
 } from '../../../components/section-rail';
 import { Text } from '../../../components/text';
-import { useChatCounts } from '../data/computer-overview';
 import { useSectionSummary } from './section-summary';
 import {
   AI_SECTIONS,
@@ -46,15 +45,6 @@ function SummaryText({
   );
 }
 
-function SessionsText({ deviceId }: { readonly deviceId: string }): ReactNode {
-  const { running } = useChatCounts(deviceId);
-  return running === 0 ? null : (
-    <Text variant="caption" tone="variant" numberOfLines={1}>
-      {`${String(running)} active`}
-    </Text>
-  );
-}
-
 function entryOf(def: SectionDef, missing: string | null, detail: ReactNode): RailEntry {
   return { id: def.id, label: def.label, short: def.short, icon: def.icon, missing, detail };
 }
@@ -79,11 +69,7 @@ export function railGroupsOf(rail: RailProps): readonly RailGroup[] {
         entryOf(
           def,
           null,
-          def.id === 'claude-sessions' ? (
-            <SessionsText deviceId={deviceId} />
-          ) : (
-            <SummaryText deviceId={deviceId} id={def.id} online={online} missing={null} />
-          ),
+          <SummaryText deviceId={deviceId} id={def.id} online={online} missing={null} />,
         ),
       ),
     },

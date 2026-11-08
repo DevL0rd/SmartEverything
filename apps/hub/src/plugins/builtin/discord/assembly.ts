@@ -23,7 +23,10 @@ export interface Assembled {
   readonly mediaIndex: MediaIndex;
 }
 
-type Context = PluginContext<DiscordSettings>;
+type Context = Pick<
+  PluginContext<DiscordSettings>,
+  'settings' | 'settingsChanged' | 'configure' | 'records' | 'people' | 'assistant' | 'files'
+> & { readonly log: Pick<PluginContext<DiscordSettings>['log'], 'warn'> };
 
 function namesOf(ctx: Context): () => readonly string[] {
   return () => {
@@ -151,6 +154,8 @@ export function assemble(
     assistant: ctx.assistant,
     download,
     machineFile: ctx.files.fromMachine,
+    uploadFile: ctx.files.fromUpload,
+    pictureFile: ctx.files.fromPicture,
     activity: activityOf(ctx),
     now: Date.now,
   };

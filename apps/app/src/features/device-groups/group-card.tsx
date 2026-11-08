@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../components/app-href';
 import type { DeviceTarget } from '@smarteverything/domain';
 import { Interactive } from '../../components/interactive';
 import { Skeleton } from '../../components/skeleton';
@@ -21,7 +21,7 @@ function CardBody({ data }: { readonly data: GroupData }): ReactNode {
     <View className="min-w-0 flex-1 gap-1.5">
       <View className="min-w-0 flex-row items-center gap-2">
         <GroupGlyph on={state.on > 0} lights={data.lights} />
-        <GroupTitle name={data.name} state={state} strong />
+        <GroupTitle name={data.name} state={state} lines={2} strong />
       </View>
       <MiniStageDots
         stage={miniStageOf(
@@ -40,11 +40,11 @@ export function DeviceGroupCard({
 }: {
   readonly target: DeviceTarget;
   readonly title?: string;
-  readonly href?: Href;
+  readonly href?: AppHref;
 }): ReactNode {
   const load = useGroupLoad(target, title);
   const touch = useIdiom() === 'touch';
-  const height = touch ? 'h-24' : 'h-20';
+  const height = touch ? 'min-h-24' : 'min-h-20';
   if (load.status === 'loading') {
     return (
       <View className={cn('justify-center gap-2 px-3', WIDGET_SURFACE, height)} style={CARD_BOUNDS}>
@@ -60,7 +60,7 @@ export function DeviceGroupCard({
     <View
       role="group"
       aria-label={data.name}
-      className={cn('flex-row items-center gap-1 pl-3 pr-1', WIDGET_SURFACE, height)}
+      className={cn('flex-1 flex-row items-center gap-1 pl-3 pr-1', WIDGET_SURFACE, height)}
       style={CARD_BOUNDS}
     >
       <Interactive

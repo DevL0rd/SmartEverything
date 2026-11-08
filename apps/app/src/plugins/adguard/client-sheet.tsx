@@ -1,7 +1,7 @@
 import { pluginLog, usePluginScreen } from '../shared/plugin-log';
 import { ADGUARD_CLIENT_INFO, MAC_ADDRESS, type AdGuardClientInfo } from '@smarteverything/domain';
 import { useScreenQuery } from '../../queries/use-screen-query';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../components/app-href';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { z } from 'zod';
@@ -111,7 +111,7 @@ function Facts({ info }: { readonly info: AdGuardClientInfo }): ReactNode {
   );
 }
 
-function routerClientsHref(routerId: string, info: AdGuardClientInfo): Href {
+function routerClientsHref(routerId: string, info: AdGuardClientInfo): AppHref {
   const mac = info.ids.map((id) => MAC_ADDRESS.safeParse(id)).find((parsed) => parsed.success);
   return {
     pathname: '/device/[deviceId]/[section]',

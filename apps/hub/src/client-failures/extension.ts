@@ -1,93 +1,29 @@
-import {
-  API_ENDPOINTS as E,
-  type ClientCrumb,
-  type ClientFailure,
-  type ClientFailureReport,
-} from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
-import { clientOf } from '../server/auth';
+import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
+import { directClient } from '../server/auth';
+import { clip } from '@smarteverything/logging';
 import { DONE_REPLY, bound, type ExtensionRouteTable } from '../server/router';
-import { PERF_SCOPE, type PerfSamples } from './perf-samples';
+import type { PerfSamples } from './perf-samples';
 
-interface Reporter {
-  readonly clientId: string;
-  readonly name: string;
-  readonly platform: string;
-  readonly release: string;
-}
+const PERF_LINE_MAX = 400;
 
-function logFailure(log: Logger, reporter: Reporter, failure: ClientFailure): void {
-  const payload = {
-    clientId: reporter.clientId,
-    client: reporter.name,
-    platform: reporter.platform,
-    release: reporter.release,
-    reportedAt: failure.at,
-    scope: failure.scope,
-    event: failure.event,
-    screen: failure.screen,
-    name: failure.name,
-    message: failure.message,
-    stack: failure.stack,
-    ...(failure.processExit === undefined ? {} : { processExit: failure.processExit }),
-  };
-  if (failure.level === 'warn') {
-    log.warn('client.failure_reported', payload);
-    return;
-  }
-  log.error('client.failure_reported', undefined, payload);
-}
-
-function recordPerf(perf: PerfSamples, reporter: Reporter, failure: ClientFailure): void {
-  perf.append({
-    at: failure.at,
-    clientId: reporter.clientId,
-    client: reporter.name,
-    platform: reporter.platform,
-    release: reporter.release,
-    screen: failure.screen,
-    message: failure.message,
-  });
-}
-
-function logCrumbs(log: Logger, reporter: Reporter, crumbs: readonly ClientCrumb[]): void {
-  if (crumbs.length === 0) {
-    return;
-  }
-  log.info('client.crumbs_reported', {
-    clientId: reporter.clientId,
-    client: reporter.name,
-    crumbs: crumbs.map(
-      (crumb) => `${crumb.at} ${crumb.scope} ${crumb.event} ${crumb.screen ?? ''}`,
-    ),
-  });
-}
-
-export function clientFailureRoutes(log: Logger, perf: PerfSamples): ExtensionRouteTable {
-  const reports = log.forArea('hub.client-reports');
+export function clientPerfRoutes(perf: PerfSamples): ExtensionRouteTable {
   return {
-    reportClientFailures: bound(E.reportClientFailures, ({ body, caller }) => {
-      const client = clientOf(caller);
-      const report: ClientFailureReport = body;
-      const reporter: Reporter = {
-        clientId: client.id,
-        name: client.name,
-        platform: report.platform,
-        release: report.release,
-      };
-      let sampled = 0;
-      report.failures.forEach((failure) => {
-        if (failure.scope === PERF_SCOPE) {
-          recordPerf(perf, reporter, failure);
-          sampled += 1;
-          return;
-        }
-        logFailure(reports, reporter, failure);
-      });
-      if (sampled > 0) {
-        reports.debug('client.perf_reported', { clientId: reporter.clientId, lines: sampled });
+    reportClientPerf: bound(E.reportClientPerf, ({ body, caller }) => {
+      const client = directClient(caller);
+      if (client === undefined) {
+        throw new ApiError('forbidden', 'Only a paired app may send its performance samples.');
       }
-      logCrumbs(reports, reporter, report.recent ?? []);
+      for (const line of body.lines) {
+        perf.append({
+          at: body.at,
+          clientId: client.id,
+          client: client.name,
+          platform: client.platform,
+          release: body.release,
+          screen: clip(body.screen, 120),
+          message: clip(line, PERF_LINE_MAX),
+        });
+      }
       return DONE_REPLY;
     }),
   };

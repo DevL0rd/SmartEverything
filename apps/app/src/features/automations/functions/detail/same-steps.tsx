@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { AutomationFunctionDetail } from '@smarteverything/domain';
+import type { FunctionDetail } from '../../data/graph-adapter';
 import { Card } from '../../../../components/card';
 import { Interactive } from '../../../../components/interactive';
 import { Text } from '../../../../components/text';
@@ -22,7 +22,7 @@ function Row({
       }}
       className="min-h-touch-min flex-row items-center justify-between gap-2"
     >
-      <Text variant="body" numberOfLines={1} className="min-w-0 flex-1">
+      <Text variant="body" className="min-w-0 flex-1">
         {row.name}
       </Text>
       <Text variant="footnote" tone="variant">
@@ -36,7 +36,7 @@ export function SameSteps({
   detail,
   onOpen,
 }: {
-  readonly detail: AutomationFunctionDetail;
+  readonly detail: FunctionDetail;
   readonly onOpen: (automationId: string) => void;
 }): ReactNode {
   const { rows: automations } = useAutomations();

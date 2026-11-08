@@ -2,12 +2,12 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { AUTOMATION_RUN_ID } from '../../src/automation-runs';
 import { EMPTY_LAYOUT } from '../../src/automation-v3/layout';
-import type { AutomationV3, FunctionV3 } from '../../src/automation-v3/program';
+import type { AutomationV4, FunctionV4 } from '../../src/automation-v3/graph';
 import {
   ACTIVE_RUN_RECORD_STATUSES,
   AUTOMATION_DECISION,
   AUTOMATION_REVISION_ROW,
-  AUTOMATION_ROW_V3,
+  AUTOMATION_ROW,
   AUTOMATION_RUN_RECORD,
   AUTOMATION_RUN_SUMMARY,
   DECISION_REASONS,
@@ -27,26 +27,26 @@ const HASH = 'a'.repeat(64);
 const MOMENT = '2026-10-18T10:00:00+07:00';
 const AUTHOR = { via: 'person', profile_id: ID } as const;
 
-const automation: AutomationV3 = {
-  version: 3,
+const automation: AutomationV4 = {
+  version: 4,
   kind: 'automation',
   triggers: [],
   inputs: [],
   outputs: [],
   variables: [],
-  body: { nodes: [] },
+  nodes: [{ id: '00000000-0000-4000-8000-0000000000f1', key: 'start', kind: 'flow.start' }],
   policy: { mode: 'single' },
 };
 
-const fn: FunctionV3 = {
-  version: 3,
+const fn: FunctionV4 = {
+  version: 4,
   kind: 'function',
   flavour: 'pure',
   inputs: [],
   outputs: [],
   exits: ['done'],
   variables: [],
-  body: { nodes: [] },
+  nodes: [{ id: '00000000-0000-4000-8000-0000000000f1', key: 'start', kind: 'flow.start' }],
 };
 
 const flowError = {
@@ -107,16 +107,22 @@ const automationRow = {
 
 describe('automation rows', () => {
   it('parses an automation row with draft and layout', () => {
-    expect(AUTOMATION_ROW_V3.parse(automationRow)).toEqual(automationRow);
-    expect(AUTOMATION_ROW_V3.parse({ ...automationRow, draft: null }).draft).toBeNull();
+    expect(AUTOMATION_ROW.parse(automationRow)).toEqual(automationRow);
+    expect(AUTOMATION_ROW.parse({ ...automationRow, draft: null }).draft).toBeNull();
   });
 
   it('rejects a V2 shaped definition and extra columns', () => {
-    expect(
-      AUTOMATION_ROW_V3.safeParse({ ...automationRow, definition: { when: [] } }).success,
-    ).toBe(false);
-    expect(AUTOMATION_ROW_V3.safeParse({ ...automationRow, extra: 1 }).success).toBe(false);
-    expect(AUTOMATION_ROW_V3.safeParse({ ...automationRow, revision: 0 }).success).toBe(false);
+    expect(AUTOMATION_ROW.safeParse({ ...automationRow, definition: { when: [] } }).success).toBe(
+      false,
+    );
+    expect(AUTOMATION_ROW.safeParse({ ...automationRow, extra: 1 }).success).toBe(false);
+    expect(AUTOMATION_ROW.safeParse({ ...automationRow, revision: 0 }).success).toBe(false);
+  });
+
+  it('refuses a program of version 3 on the wire', () => {
+    const old = { ...automation, version: 3, body: { nodes: [] } };
+    const { nodes: _nodes, ...tree } = old;
+    expect(AUTOMATION_ROW.safeParse({ ...automationRow, definition: tree }).success).toBe(false);
   });
 
   it('parses a revision row and demands a plan hash', () => {

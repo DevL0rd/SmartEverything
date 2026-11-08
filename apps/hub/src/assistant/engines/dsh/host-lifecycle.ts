@@ -1,4 +1,3 @@
-import { OwnEngineSelections } from '../../../harness/own-selection';
 import type { EngineStatus } from '../engine';
 import { ApiError, harnessTargetKey } from '@smarteverything/domain';
 import type { AiChatRow } from '@smarteverything/domain';
@@ -31,7 +30,7 @@ export function followDisconnectedTurns<T extends { readonly chat: AiChatRow }>(
         binding.session_id === null
       )
         continue;
-      const grant = service.store.harnessCoordination.grant(binding.session_id);
+      const grant = service.store.harnessSessions.grant(binding.session_id);
       if (
         grant?.generation === host.connection_generation &&
         grant.runtime_instance === host.runtime_instance
@@ -47,7 +46,7 @@ export function nativeEngineStatus(
   working: boolean,
 ): EngineStatus {
   try {
-    const engine = new OwnEngineSelections(service).select(chat.profile_id, chat.engine);
+    const { engine } = chat;
     if (engine.kind !== 'dsh')
       return { state: 'unavailable', reason: 'This chat has a different engine boundary.' };
     const connection = service.directory.get(engine.execution_target);

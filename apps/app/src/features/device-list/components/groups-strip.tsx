@@ -13,21 +13,25 @@ export function GroupsStrip(): ReactNode {
   const groups = useStoreSelector((state) => state.tables.device_groups.rows);
   return (
     <View className="gap-2">
-      <Text variant="footnote" tone="variant">
-        Groups
-      </Text>
-      <HScroller label="Groups">
-        {groups.map((group) => (
-          <View key={group.id} style={CARD_STYLE}>
-            <DeviceGroupCard
-              target={{ kind: 'group', groupId: group.id }}
-              title={group.name}
-              href={href.group(group.id)}
-            />
-          </View>
-        ))}
+      <View className="flex-row flex-wrap items-center gap-3">
+        <Text variant="footnote" tone="variant" accessibilityRole="header">
+          Groups
+        </Text>
         <Button label="New group" icon="plus" variant="tonal" size="lg" href={href.newGroup()} />
-      </HScroller>
+      </View>
+      {groups.length === 0 ? null : (
+        <HScroller label="Groups">
+          {groups.map((group) => (
+            <View key={group.id} style={CARD_STYLE}>
+              <DeviceGroupCard
+                target={{ kind: 'group', groupId: group.id }}
+                title={group.name}
+                href={href.group(group.id)}
+              />
+            </View>
+          ))}
+        </HScroller>
+      )}
     </View>
   );
 }

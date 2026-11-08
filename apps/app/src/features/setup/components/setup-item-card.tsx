@@ -52,7 +52,7 @@ function Actions({
   const { item } = entry;
   if (entry.state === 'done') return null;
   return (
-    <View className="flex-row flex-wrap gap-2 pl-13">
+    <View className="flex-row flex-wrap gap-2 medium:pl-13">
       <Button label={item.action} variant={next ? 'filled' : 'tonal'} href={item.go} />
       {entry.state === 'skipped' ? (
         <Button

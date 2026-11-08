@@ -130,14 +130,20 @@ function DayLog({
   return (
     <>
       <PrefProblem />
-      <SummaryCard
-        totals={totals}
-        prefs={pref.status === 'ready' ? pref.value : null}
-        day={day}
-        today={today}
-      />
-      <MealSections entries={rows} day={day} onEdit={edit} />
-      <OtherApps records={others} counted={rows.length === 0} />
+      <View className="gap-section-gap xlarge:flex-row xlarge:items-start">
+        <View className="min-w-0 xlarge:flex-1">
+          <SummaryCard
+            totals={totals}
+            prefs={pref.status === 'ready' ? pref.value : null}
+            day={day}
+            today={today}
+          />
+        </View>
+        <View className="min-w-0 gap-section-gap xlarge:flex-1">
+          <MealSections entries={rows} day={day} onEdit={edit} />
+          <OtherApps records={others} counted={rows.length === 0} />
+        </View>
+      </View>
       {editing === null ? null : (
         <PortionSheet
           target={editing}

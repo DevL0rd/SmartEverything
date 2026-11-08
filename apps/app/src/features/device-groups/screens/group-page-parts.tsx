@@ -245,7 +245,7 @@ export function Header({
   return (
     <PageHeader
       title={data.name}
-      titleLines={2}
+      titleLines="wrap"
       subtitle={pageSummary(data.view.state, noun)}
       back
       actions={powerAction(data, noun)}

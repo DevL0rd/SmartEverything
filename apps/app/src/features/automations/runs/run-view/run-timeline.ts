@@ -17,6 +17,14 @@ const ROW_STATE_OF: Readonly<Record<ActivationStatus, RowState>> = {
 
 const MIN_SHARE = 1 / 200;
 
+export const RUN_CANVAS_ROOM = 450;
+
+export const RUN_CHROME_HEIGHT = 520;
+
+export function timelineStartsOpen(compact: boolean, windowHeight: number): boolean {
+  return !compact && windowHeight - RUN_CHROME_HEIGHT >= RUN_CANVAS_ROOM;
+}
+
 export interface TimelineRow {
   readonly nodeId: string;
   readonly title: string;

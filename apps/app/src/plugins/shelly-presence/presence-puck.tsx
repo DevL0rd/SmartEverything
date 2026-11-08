@@ -108,14 +108,7 @@ export function PresencePuck({
   const lens = useColour('bg');
   const ink = useColour('on-surface');
   return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      opacity={offline ? 0.6 : 1}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-    >
+    <Svg width={size} height={size} viewBox="0 0 100 100" opacity={offline ? 0.6 : 1} aria-hidden>
       {offline ? null : <Fan occupied={occupied} count={count} size={size} />}
       <Ellipse cx={50} cy={36} rx={22} ry={3} fill={ink} opacity={0.08} />
       <Path d={BODY} fill={body} stroke={edge} strokeWidth={1.2} />

@@ -1,3 +1,4 @@
+import { PluginKindStore } from '../../../automations/plugin-kinds/store';
 import type { StoreContext } from '../../context';
 import { AiOutreachRepository } from '../ai-outreach';
 import { AiWakesRepository } from '../ai-wakes';
@@ -36,6 +37,7 @@ export const automationRepositories = (context: StoreContext) =>
     automationOwnedValues: new AutomationOwnedValuesRepository(context),
     speech: new SpeechRepository(context),
     automationValues: new AutomationValuesRepository(context),
+    pluginKinds: new PluginKindStore(context),
     automationRuns: new AutomationRunsRepository(context),
     signalWatchState: new SignalWatchStateRepository(context),
     schedules: new SchedulesRepository(context),

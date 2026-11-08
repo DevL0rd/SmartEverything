@@ -19,13 +19,22 @@ export const HARNESS_SKILL_PRESENTATION = z.strictObject({
   publisher: z.string().min(1),
 });
 
+export const HARNESS_GIT_ORIGIN = z.strictObject({
+  url: z.string().min(1),
+  ref: z.string().min(1).nullable(),
+  path: HARNESS_RELATIVE_PATH.nullable(),
+});
+export type HarnessGitOrigin = z.infer<typeof HARNESS_GIT_ORIGIN>;
+
+export function sameHarnessGitOrigin(left: HarnessGitOrigin, right: HarnessGitOrigin): boolean {
+  return left.url === right.url && left.ref === right.ref && left.path === right.path;
+}
+
 export const HARNESS_EXTENSION_SOURCE = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('included') }),
   z.strictObject({
     kind: z.literal('git'),
-    url: z.string().min(1),
-    ref: z.string().min(1).nullable(),
-    path: HARNESS_RELATIVE_PATH.nullable(),
+    ...HARNESS_GIT_ORIGIN.shape,
     commit: z
       .string()
       .regex(/^[a-f0-9]{40}$/u)
@@ -89,11 +98,6 @@ export const HARNESS_EXTENSION_RESOLUTION = z.object({
   candidates: z.array(HARNESS_EXTENSION_CANDIDATE),
 });
 export type HarnessExtensionResolution = z.infer<typeof HARNESS_EXTENSION_RESOLUTION>;
-export const HARNESS_EXTENSION_INSTALL = z.strictObject({
-  source: HARNESS_EXTENSION_SOURCE_REQUEST,
-  select: z.array(HARNESS_EXTENSION_NAME).optional(),
-  confirm_executes: z.boolean().default(false),
-});
 export const HARNESS_EXTENSION_PATCH = z.strictObject({
   enabled: z.boolean().optional(),
   config: z.record(z.string(), JSON_VALUE).optional(),

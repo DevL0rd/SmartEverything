@@ -15,6 +15,7 @@ const AUTOMATION = '6d000000-0000-4000-8000-000000000001';
 const FUNCTION = '6d000000-0000-4000-8000-000000000002';
 const DEVICE = '6d000000-0000-4000-8000-000000000003';
 const LAST_BEFORE = MIGRATIONS.filter((migration) => migration.version <= 132);
+const THROUGH = MIGRATIONS.filter((migration) => migration.version <= 133);
 
 const TEXT = z.object({ text: z.string() });
 const VERSION = z.object({ version: z.number() });
@@ -159,7 +160,7 @@ function prepare(to: object): void {
 describe('the migration that turns plain formulas into wires', () => {
   beforeEach(() => {
     prepare(FORMULA);
-    migrate(new Sql(database), MIGRATIONS, NOW, testLogger());
+    migrate(new Sql(database), THROUGH, NOW, testLogger());
   });
 
   it('rewrites the program, its draft and its revision to wires the new schema accepts', () => {
@@ -215,7 +216,7 @@ describe('a formula that is not a plain node.port path', () => {
   ])('stops the migration and names the automation for %j', (to, shown) => {
     prepare(to);
     const before = text('select definition as text from automations');
-    expect(() => migrate(new Sql(database), MIGRATIONS, NOW, testLogger())).toThrow(
+    expect(() => migrate(new Sql(database), THROUGH, NOW, testLogger())).toThrow(
       `the automation Scent diffusers schedule (${shown})`,
     );
     expect(text('select definition as text from automations')).toBe(before);
@@ -283,7 +284,7 @@ describe('old history whose formulas have no wire form', () => {
   });
 
   it('deletes the old revisions with a ternary formula and keeps the latest ones rewritten', () => {
-    migrate(new Sql(database), MIGRATIONS, NOW, testLogger());
+    migrate(new Sql(database), THROUGH, NOW, testLogger());
     expect(
       texts('select cast(revision as text) as text from automation_revisions order by revision'),
     ).toStrictEqual(['2']);
@@ -296,7 +297,7 @@ describe('old history whose formulas have no wire form', () => {
   });
 
   it('deletes their plans, the unused formula plan and the runs that cannot lose their plan', () => {
-    migrate(new Sql(database), MIGRATIONS, NOW, testLogger());
+    migrate(new Sql(database), THROUGH, NOW, testLogger());
     expect(texts('select hash as text from automation_plans')).toStrictEqual([NEW_PLAN]);
     expect(texts('select id as text from automation_runs')).toStrictEqual(['run-1']);
     expect(texts('select run_id as text from automation_run_commands')).toStrictEqual([]);
@@ -326,7 +327,7 @@ describe('old history whose formulas have no wire form', () => {
       UNUSED_PLAN,
       BEFORE,
     );
-    expect(() => migrate(new Sql(database), MIGRATIONS, NOW, testLogger())).toThrow(
+    expect(() => migrate(new Sql(database), THROUGH, NOW, testLogger())).toThrow(
       'the compiled plan of a run of the automation Scent diffusers schedule',
     );
     expect(

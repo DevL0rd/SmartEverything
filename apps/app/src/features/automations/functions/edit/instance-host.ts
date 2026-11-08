@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 
 export interface InstanceHost {
-  readonly detach: (instanceKey: string) => Promise<void>;
+  readonly detach?: (instanceKey: string) => Promise<void>;
   readonly openSameSteps: (functionId: string) => void;
 }
 

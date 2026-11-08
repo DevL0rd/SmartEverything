@@ -1,20 +1,22 @@
 import type { WidgetFrameBox } from '../../../components/widget-board';
-import type { Idiom } from '../../../design/tokens';
+import { tierInnerHeight } from '../../../components/widget-board/tier';
+import type { Density, Idiom } from '../../../design/tokens';
 import type { Placed } from './lane-layout';
 
 export interface LaneFrameContext {
   readonly idiom: Idiom;
+  readonly density: Density;
   readonly padding: number;
 }
 
-export const NOMINAL_CHAT_FRAME = { width: 280, height: 160 } as const;
+export const NOMINAL_CHAT_WIDTH = 280;
 
 export function frameOfPlaced(
   placed: Pick<Placed, 'width' | 'height'>,
-  { idiom, padding }: LaneFrameContext,
+  { idiom, density, padding }: LaneFrameContext,
 ): WidgetFrameBox {
   if (placed.width === null || placed.height === null) {
-    return { ...NOMINAL_CHAT_FRAME, idiom };
+    return { width: NOMINAL_CHAT_WIDTH, height: tierInnerHeight('M', idiom, density), idiom };
   }
   return {
     width: placed.width - 2 * padding,

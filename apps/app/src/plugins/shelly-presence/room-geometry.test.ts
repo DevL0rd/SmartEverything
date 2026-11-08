@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { SHELLY_DEVICE, type ShellyArea } from '@smarteverything/shelly';
 import { sensorOrigin } from './area-context';
 import {
+  AXIS_FONT_PX,
+  axisGutterPx,
+  axisMetres,
+  depthMarks,
+  heroView,
   cellsAt,
   cellsOf,
   DEFAULT_ROOM,
@@ -252,5 +257,27 @@ describe('map model', () => {
     const model = modelFor(sensorWith({}), far, false);
     expect(model.area?.bounds.right).toBeGreaterThan(8);
     expect(model.frame.view.right).toBeGreaterThan(model.area?.bounds.right ?? 0);
+  });
+});
+
+describe('the depth ruler of the sensor view', () => {
+  const room = { left: 0, top: 0, right: 8, bottom: 10 };
+  const view = { left: -0.35, top: -1.1, right: 8.35, bottom: 11 };
+
+  it('marks every second metre down the room', () => {
+    expect(depthMarks(room)).toStrictEqual([2, 4, 6, 8, 10]);
+    expect(axisMetres(10)).toBe('10 m');
+  });
+
+  it('leaves room left of the view for the widest depth label on a phone', () => {
+    const box = { width: 380, height: 520 };
+    const shown = heroView(view, room, box);
+    const { width, height } = sizeOf(shown);
+    const metresPerPixel = Math.max(width / box.width, height / box.height);
+    const labelRight = room.left - 0.12;
+    const labelLeft = labelRight - axisGutterPx(room) * metresPerPixel;
+    expect(labelLeft).toBeGreaterThanOrEqual(shown.left);
+    expect(axisGutterPx(room)).toBeGreaterThan(axisMetres(10).length * AXIS_FONT_PX * 0.5);
+    expect(shown.right).toBe(view.right);
   });
 });

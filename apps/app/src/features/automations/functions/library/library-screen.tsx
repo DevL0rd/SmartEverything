@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { Button } from '../../../../components/button';
 import { ChoiceChip } from '../../../../components/choice-chip';
 import { EmptyState } from '../../../../components/empty-state';
-import { PrimaryAction, usePrimaryActionPlacement } from '../../../../components/primary-action';
+import { usePrimaryActionPlacement } from '../../../../components/primary-action';
 import { SearchField } from '../../../../components/search-field';
 import { List } from '../../../../components/section';
 import { Text } from '../../../../components/text';
@@ -33,12 +33,9 @@ function Heading({ onCreate }: { readonly onCreate: () => void }): ReactNode {
   const placement = usePrimaryActionPlacement();
   return (
     <View className="flex-row items-center justify-between gap-3">
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant="title-2">Custom Nodes</Text>
-        <Text variant="callout" tone="variant">
-          Steps and values you make once and use in many automations.
-        </Text>
-      </View>
+      <Text variant="callout" tone="variant" className="min-w-0 flex-1">
+        Steps and values you make once and use in many automations.
+      </Text>
       {placement === 'header' ? (
         <Button label="New Custom Node" icon="plus" onPress={onCreate} />
       ) : null}
@@ -152,21 +149,23 @@ export function LibraryScreen({
   );
   const sections = useMemo(() => librarySections(rows, filter), [rows, filter]);
   const empty = libraryEmpty(rows, sections, filter);
-  const placement = usePrimaryActionPlacement();
   return (
-    <View className="relative gap-section-gap">
-      <Heading onCreate={onCreate} />
-      <Filters filter={filter} categories={categoriesOf(rows)} onChange={setFilter} />
-      {empty === 'none-yet' || empty === 'no-match' ? (
-        <Empty kind={empty} onCreate={onCreate} />
-      ) : null}
-      {empty === 'no-own' ? <NoOwn onCreate={onCreate} /> : null}
-      {sections.map((section) => (
-        <Rows key={section.id} rows={section.rows} title={section.title} onOpen={onOpen} />
-      ))}
-      {placement === 'fab' ? (
-        <PrimaryAction label="New node" icon="plus" onPress={onCreate} />
-      ) : null}
+    <View className="gap-section-gap">
+      <View className="w-full max-w-reading gap-section-gap">
+        <Heading onCreate={onCreate} />
+        <Filters filter={filter} categories={categoriesOf(rows)} onChange={setFilter} />
+        {empty === 'none-yet' || empty === 'no-match' ? (
+          <Empty kind={empty} onCreate={onCreate} />
+        ) : null}
+        {empty === 'no-own' ? <NoOwn onCreate={onCreate} /> : null}
+      </View>
+      <View className="flex-row flex-wrap gap-section-gap">
+        {sections.map((section) => (
+          <View key={section.id} className="min-w-0 max-w-reading grow shrink basis-96">
+            <Rows rows={section.rows} title={section.title} onOpen={onOpen} />
+          </View>
+        ))}
+      </View>
     </View>
   );
 }

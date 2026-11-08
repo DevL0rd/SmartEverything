@@ -19,8 +19,8 @@ export function useRouterActions(): RouterActions {
   return useMemo(
     () => ({
       speedTest: () => tools.run('run_speed_test', {}, 'The speed test didn’t start'),
-      restartWifi: () => tools.run('restart_wifi', {}, 'Wi-Fi didn’t restart'),
-      reboot: () => tools.run('reboot', {}, 'The router didn’t restart'),
+      restartWifi: () => tools.run('restart', { what: 'wifi' }, 'Wi-Fi didn’t restart'),
+      reboot: () => tools.run('restart', { what: 'router' }, 'The router didn’t restart'),
     }),
     [tools],
   );

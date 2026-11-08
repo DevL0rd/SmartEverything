@@ -69,12 +69,17 @@ export function pageAvailable(
   if (!(page.visible?.(availability.env) ?? true) || !onPlatform(page, availability.env)) {
     return false;
   }
-  if (
+  return (
     page.href !== undefined ||
     availability.built.has(page.id) ||
-    hasSettingsOn(page.id, availability.env)
-  ) {
-    return true;
-  }
-  return childrenOf(page.id).some((child) => pageAvailable(child, availability));
+    hasSettingsOn(page.id, availability.env) ||
+    childrenOf(page.id).some((child) => pageAvailable(child, availability))
+  );
+}
+
+export function pageReachable(
+  page: SettingsPageDefinition,
+  availability: PageAvailability,
+): boolean {
+  return pageAvailable(page, availability) || hasSettingsOn(page.id, availability.env);
 }

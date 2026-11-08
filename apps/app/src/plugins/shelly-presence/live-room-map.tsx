@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
+import type { AppHref } from '../../components/app-href';
 import type { ShellyDevice } from '@smarteverything/shelly';
 import { href as routes } from '../../app-shell/hrefs';
 import { Button } from '../../components/button';
@@ -53,7 +54,7 @@ function StageHeader({
   );
 }
 
-function AddZone({ target }: { readonly target: Href }): ReactNode {
+function AddZone({ target }: { readonly target: AppHref }): ReactNode {
   return (
     <View className="absolute inset-0 items-center justify-center" pointerEvents="box-none">
       <Button label="Add a zone" icon="plus" variant="tonal" href={target} />
@@ -66,7 +67,7 @@ export function LiveRoomMap({
   addZone,
 }: {
   readonly sensor: ShellyDevice;
-  readonly addZone?: Href;
+  readonly addZone?: AppHref;
 }): ReactNode {
   const { frame, onLayout, lease, sensor, trail } = useLivePresence(base);
   const { selected, choose } = useZoneSelection(sensor);

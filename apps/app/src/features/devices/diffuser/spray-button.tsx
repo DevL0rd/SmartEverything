@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
+import type { View } from 'react-native';
 import { withRole, type PresentedCapability } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import type { Device } from '../../../store/state';
@@ -12,7 +13,8 @@ function SprayNow({
   readonly device: Device;
   readonly spray: PresentedCapability;
 }): ReactNode {
-  const action = useAction(device, spray);
+  const opener = useRef<View>(null);
+  const action = useAction(device, spray, opener);
   return (
     <>
       <Button
@@ -21,6 +23,7 @@ function SprayNow({
         variant="tonal"
         loading={action.pending}
         disabled={!device.online}
+        ref={opener}
         onPress={action.run}
       />
       {action.sheet}

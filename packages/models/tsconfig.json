@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "references": [
+    {
+      "path": "../ble"
+    },
+    {
+      "path": "../domain"
+    },
+    {
+      "path": "../shelly"
+    },
+    {
+      "path": "../smartthings"
+    },
+    {
+      "path": "../tuya"
+    },
+    {
+      "path": "../xiaomi"
+    }
+  ]
+}

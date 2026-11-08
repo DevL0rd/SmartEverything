@@ -31,7 +31,7 @@ export interface RenewPorts {
   readonly open: (resume: string | null, reason: RenewReason) => Promise<LiveSession>;
   readonly talking: () => boolean;
   readonly active: () => boolean;
-  readonly end: (reason: CallEnding, detail: string) => Promise<void>;
+  readonly end: (reason: CallEnding, detail: string, cause: string) => Promise<void>;
 }
 
 interface Renewed {
@@ -61,7 +61,7 @@ export class SessionRenewer {
     }
     const plan = this.planned(reason, closing);
     if (plan === null) {
-      await this.ports.end('failed', closing?.reason ?? STOPPED_ANSWERING);
+      await this.ports.end('failed', closing?.reason ?? STOPPED_ANSWERING, 'renew_unplannable');
       return;
     }
     this.renewing = true;
@@ -129,7 +129,7 @@ export class SessionRenewer {
       return { session: await this.ports.open(null, reason), resumed: false, catchUp };
     } catch (cause) {
       trace.renewFailed(cause, false);
-      await this.ports.end('failed', messageOf(cause));
+      await this.ports.end('failed', messageOf(cause), 'renew_failed');
       return null;
     }
   }

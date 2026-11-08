@@ -5,6 +5,7 @@ import {
   type NodeHello,
   type TilingState,
   type WindowsState,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { controlFeatures, type ComputerControls } from '../../../src/node/controls/controls';
@@ -25,7 +26,7 @@ const HELLO: NodeHello = {
   actions: [],
   permissions: [],
   features: [],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
 };
 
 const AUDIO: AudioState = { outputs: [], inputs: [], apps: [] };

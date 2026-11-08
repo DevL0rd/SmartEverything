@@ -5,6 +5,8 @@ import type { ListeningView } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
+import { isNative } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { useIsOwner } from '../../../store/selectors';
 import { useAssistantName } from '../data/assistant-data';
@@ -47,9 +49,11 @@ function Sources({
   const groups = groupsOf(rows);
   if (groups.length === 0) return <Empty />;
   return (
-    <View className="gap-5">
+    <View className="gap-5 web:flex-row web:flex-wrap web:items-start">
       {groups.map((group) => (
-        <SourceGroup key={group.kind} group={group} actions={actions.rows} onAll={actions.onAll} />
+        <View key={group.kind} className="min-w-0 web:max-w-full web:basis-picker web:grow">
+          <SourceGroup group={group} actions={actions.rows} onAll={actions.onAll} />
+        </View>
       ))}
     </View>
   );
@@ -108,15 +112,17 @@ function Layout({
   rows,
   actions,
   offline,
+  width,
 }: {
   readonly view: ListeningView;
   readonly rows: readonly ListeningRow[];
   readonly actions: ListeningActions;
   readonly offline: boolean;
+  readonly width: number;
 }): ReactNode {
   const name = useAssistantName();
   const call = rows.some((row) => row.state === 'discord_call');
-  if (useAreaWidth() >= TWO_COLUMNS_FROM) {
+  if (width >= TWO_COLUMNS_FROM) {
     return (
       <View className="flex-row items-start gap-7">
         <View className="min-w-0 flex-1">
@@ -145,14 +151,22 @@ export function ListeningBody({
   readonly offline: boolean;
 }): ReactNode {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const area = useAreaWidth();
+  const { width, onLayout } = useMeasuredWidth();
   const name = useAssistantName();
   const rows = rowsOf(view, allowed);
   const actions = useListeningActions(offline, setOpenKey);
   const open = rows.find((row) => row.source.key === openKey);
   return (
-    <View className="gap-5">
+    <View className="gap-5" onLayout={isNative() ? undefined : onLayout}>
       <ListeningHero rows={rows} offline={offline} />
-      <Layout view={view} rows={rows} actions={actions} offline={offline} />
+      <Layout
+        view={view}
+        rows={rows}
+        actions={actions}
+        offline={offline}
+        width={isNative() ? area : width}
+      />
       {open === undefined ? null : (
         <SourceSheet
           row={open}

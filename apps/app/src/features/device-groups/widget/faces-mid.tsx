@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { DeviceFace } from '../../devices';
-import { listLabel, memberNoun, moreLabel } from '../group-summary';
+import { listLabel, memberNoun } from '../group-summary';
 import { planChipGrid } from '../group-layout';
 import { GroupGlyph, GroupTitle } from './group-header';
 import { LevelBand } from './master-band';
-import { ChipStrip, ShowAll } from './member-parts';
+import { BAND_GAP, moreFreed } from './band-width';
+import { ChipBand, MoreMembers, useControlHeight } from './member-parts';
+import { ActionBand } from '../../../components/widget-board/action-band';
 import { Notices } from './notices';
 import type { GroupControls } from './use-group-controls';
 import { hasIssues } from '../model/outcomes';
@@ -16,13 +18,11 @@ interface FaceProps {
   readonly controls: GroupControls;
 }
 
-function Header({ data, controls }: FaceProps): ReactNode {
+function Header({ data }: { readonly data: GroupData }): ReactNode {
   return (
     <View className="flex-row items-center gap-2">
       <GroupGlyph on={data.view.state.on > 0} lights={data.lights} />
       <GroupTitle name={data.name} state={data.view.state} strong />
-      {controls.colour}
-      {controls.power}
     </View>
   );
 }
@@ -50,10 +50,15 @@ export function MediumFace({
   width,
 }: FaceProps & { readonly width: number }): ReactNode {
   return (
-    <View className="flex-1 gap-1.5">
-      <Header data={data} controls={controls} />
+    <View className="flex-1 gap-1">
+      <Header data={data} />
       <Band data={data} />
-      {hasNotice(data) ? <Notices data={data} /> : <ChipStrip data={data} width={width} />}
+      <ChipBand
+        data={data}
+        controls={controls}
+        width={width}
+        notices={hasNotice(data) ? <Notices data={data} /> : null}
+      />
     </View>
   );
 }
@@ -64,35 +69,35 @@ export function WideFace({
   width,
   height,
 }: FaceProps & { readonly width: number; readonly height: number }): ReactNode {
-  const plan = planChipGrid(width, height, data.members.length);
-  const shown = data.members.slice(0, plan.shown);
-  const noun = memberNoun(data.lights);
-  const leftZone = { width: plan.leftWidth };
-  const chipBox = { width: plan.chipWidth };
+  const controlH = useControlHeight();
+  const grid = planChipGrid(width, height - controlH - BAND_GAP, data.members.length);
+  const plan = moreFreed(grid);
+  const leftZone = { width: grid.leftWidth };
+  const chipBox = { width: grid.chipWidth };
   return (
     <View className="flex-1 flex-row gap-4">
-      <View className="justify-center gap-1.5" style={leftZone}>
-        <Header data={data} controls={controls} />
+      <View className="gap-1.5" style={leftZone}>
+        <Header data={data} />
         <Band data={data} />
         <Notices data={data} />
       </View>
-      <View
-        role="group"
-        aria-label={listLabel(noun, data.name)}
-        className="min-w-0 flex-1 flex-row flex-wrap content-center gap-2"
-      >
-        {shown.map((member) => (
-          <View key={member.id} style={chipBox}>
-            <DeviceFace deviceId={member.id} face="chip" context="nested" />
-          </View>
-        ))}
-        {plan.hidden > 0 ? (
-          <ShowAll
-            label={`+${String(plan.hidden)} more`}
-            hint={`${moreLabel(plan.hidden, noun)} in ${data.name}`}
-            href={data.href}
-          />
-        ) : null}
+      <View className="min-w-0 flex-1" pointerEvents="box-none">
+        <View
+          role="group"
+          aria-label={listLabel(memberNoun(data.lights), data.name)}
+          className="flex-row flex-wrap gap-2"
+        >
+          {data.members.slice(0, plan.shown).map((member) => (
+            <View key={member.id} style={chipBox}>
+              <DeviceFace deviceId={member.id} face="chip" context="nested" />
+            </View>
+          ))}
+        </View>
+        <ActionBand>
+          <MoreMembers data={data} hidden={plan.hidden} />
+          {controls.colour}
+          {controls.power}
+        </ActionBand>
       </View>
     </View>
   );

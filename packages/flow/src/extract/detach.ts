@@ -15,7 +15,7 @@ import type { Mapping, WireEdit } from './values';
 import { editWires, mapNode, mapProgram, valuesOnly } from './values';
 
 export interface DetachOptions {
-  readonly newId?: () => string;
+  readonly newId: () => string;
 }
 
 export interface Detached {
@@ -34,10 +34,6 @@ interface Names {
 
 const NOTHING: PortValue = { lit: null };
 const VARIABLE_KINDS: ReadonlySet<string> = new Set(['var.get', 'var.set', 'var.change']);
-
-function randomId(): string {
-  return globalThis.crypto.randomUUID();
-}
 
 function claimId(names: Names, wanted: string): string {
   let id = wanted;
@@ -197,7 +193,7 @@ function prepare(
   const names: Names = {
     keys: new Set(usedKeys(program)),
     ids: idsOf(program),
-    newId: options.newId ?? randomId,
+    newId: options.newId,
   };
   const keys = calleeKeys(callee, names);
   const variables = variableRenames(program, callee);
@@ -247,7 +243,7 @@ export function detachInstance(
   program: Program,
   instanceKey: string,
   callee: FunctionV3,
-  options: DetachOptions = {},
+  options: DetachOptions,
 ): DetachResult {
   return attempt((): Detached => {
     const entry = indexProgram(program).byKey.get(instanceKey);

@@ -51,6 +51,15 @@ function folderOptions(known: SyncthingSnapshot | null): readonly SelectOption<s
   ];
 }
 
+interface ControlsProps {
+  readonly entries: readonly SyncActivity[];
+  readonly known: SyncthingSnapshot | null;
+  readonly filter: ActivityFilter;
+  readonly folderId: string;
+  readonly onFilter: (filter: ActivityFilter) => void;
+  readonly onFolder: (folderId: string) => void;
+}
+
 function Controls({
   entries,
   known,
@@ -58,31 +67,31 @@ function Controls({
   folderId,
   onFilter,
   onFolder,
-}: {
-  readonly entries: readonly SyncActivity[];
-  readonly known: SyncthingSnapshot | null;
-  readonly filter: ActivityFilter;
-  readonly folderId: string;
-  readonly onFilter: (filter: ActivityFilter) => void;
-  readonly onFolder: (folderId: string) => void;
-}): ReactNode {
+}: ControlsProps): ReactNode {
   const counts = filterCounts(entries, folderId);
   return (
     <View className="gap-3">
       <HScroller label="Filter activity" fade>
-        {ACTIVITY_FILTERS.map((value) => (
-          <FilterChip
-            key={value}
-            label="Show"
-            value={ACTIVITY_FILTER_LABEL[value]}
-            icon={FILTER_ICON[value]}
-            count={counts[value]}
-            active={filter === value}
-            onPress={() => {
-              onFilter(value);
-            }}
-          />
-        ))}
+        <View
+          className="flex-row"
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Filter activity"
+        >
+          {ACTIVITY_FILTERS.map((value) => (
+            <FilterChip
+              key={value}
+              singleChoice
+              label="Show"
+              value={ACTIVITY_FILTER_LABEL[value]}
+              icon={FILTER_ICON[value]}
+              count={counts[value]}
+              active={filter === value}
+              onPress={() => {
+                onFilter(value);
+              }}
+            />
+          ))}
+        </View>
       </HScroller>
       {known !== null && known.folders.length > 1 ? (
         <Select

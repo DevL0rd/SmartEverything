@@ -1,50 +1,41 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { View } from 'react-native';
-import type { AssistantAttachment } from '@smarteverything/domain';
-import { Button } from '../../../components/button';
-import { Icon, type IconName } from '../../../components/icon';
-import { IconButton } from '../../../components/icon-button';
+import { Image, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { noteKindOf, type AssistantAttachment } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
+import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
-import { ImagePlaceholder } from '../../../components/image-placeholder';
-import { LoadedImage } from '../../../components/loaded-image';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { DURATION, EASING, useMotion } from '../../../design/motion';
+import { useIdiom } from '../../../design/platform';
 import { bytes } from '../../../format/number';
-import { joinParts } from '../../../format/text';
 import { isImageAttachment } from '../data/chat-images';
 import { downloadFile, isPreviewable, previewFile } from '../../../platform/file-actions';
 import { useAttachmentLinks } from '../data/remote';
+import type { ParticipantInk } from '../model/participant';
+import { VoiceClip } from '../voice-message/voice-clip';
+import { CHAT_SURFACE, CHAT_SURFACE_IN_BUBBLE } from './chat-surface';
+import { FILE_KIND_LOOK, fileKindOf, typeTagOf } from './file-kind';
+import { gridOf, type GridRow } from './image-grid';
 import { ImageViewer } from './image-viewer';
-import { background } from '@smarteverything/logging';
 
-const IMAGE_MAX = 360;
-const FRAME = 'overflow-hidden rounded-xl border-hairline border-outline-variant bg-surface-2';
+export type AttachmentTint = 'surface' | 'bubble';
 
 type LinkState = 'loading' | 'ready' | 'failed';
 
-function fileIcon(mime: string): IconName {
-  if (mime.startsWith('audio/')) {
-    return 'audioLines';
+type Links = ReturnType<typeof useAttachmentLinks>;
+
+function stateOf(links: Links, attachment: AssistantAttachment): LinkState {
+  if (links.isError || (links.data !== undefined && links.data[attachment.id] === undefined)) {
+    return 'failed';
   }
-  if (mime.startsWith('video/')) {
-    return 'film';
-  }
-  return mime.startsWith('text/') || mime.includes('pdf') ? 'fileText' : 'box';
+  return links.data === undefined ? 'loading' : 'ready';
 }
 
-function extensionOf(name: string): string | null {
-  const dot = name.lastIndexOf('.');
-  return dot <= 0 ? null : name.slice(dot + 1).toUpperCase();
-}
-
-function frameOf(attachment: AssistantAttachment): {
-  readonly width: number;
-  readonly aspectRatio: number;
-} {
-  const { width, height } = attachment;
-  const aspectRatio = width === null || height === null ? 1 : width / height;
-  return { width: Math.round(IMAGE_MAX * Math.min(1, aspectRatio)), aspectRatio };
+function refetch(links: Links): void {
+  background(links.refetch(), 'links.refetch_failed');
 }
 
 function BrokenImage({
@@ -58,37 +49,68 @@ function BrokenImage({
     <Interactive
       label={`Retry loading ${attachment.name}`}
       onPress={onRetry}
-      className="size-full items-center justify-center gap-1 p-3"
+      className="size-full items-center justify-center gap-1 bg-surface-1"
     >
-      <Icon name="image" size={24} tone="faint" />
-      <Text variant="footnote" numberOfLines={1} className="max-w-full">
-        {attachment.name}
-      </Text>
-      <Text variant="caption" tone="primary">
-        Tap to retry
+      <Icon name="image" size={16} tone="faint" />
+      <Text variant="footnote" tone="primary">
+        Retry
       </Text>
     </Interactive>
   );
 }
 
-function ImagePicture({
+function FadeImage({
   attachment,
   url,
-  single,
-  onOpen,
+  onError,
 }: {
   readonly attachment: AssistantAttachment;
   readonly url: string;
-  readonly single: boolean;
-  readonly onOpen: () => void;
+  readonly onError: () => void;
 }): ReactNode {
+  const motion = useMotion();
+  const opacity = useSharedValue(0);
+  const reveal = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  return (
+    <Animated.View style={reveal} className="absolute inset-0">
+      <Image
+        source={{ uri: url }}
+        resizeMode="cover"
+        accessibilityLabel={attachment.name}
+        onError={onError}
+        onLoad={() => {
+          opacity.set(
+            motion.reduced
+              ? 1
+              : withTiming(1, { duration: DURATION.mediumOut, easing: EASING.fade }),
+          );
+        }}
+        className="size-full"
+      />
+    </Animated.View>
+  );
+}
+
+interface TileProps {
+  readonly attachment: AssistantAttachment;
+  readonly links: Links;
+  readonly onOpen: (id: string) => void;
+}
+
+function ImageTile({ attachment, links, onOpen }: TileProps): ReactNode {
   const [attempt, setAttempt] = useState(0);
   const [broken, setBroken] = useState(false);
-  if (broken) {
+  const state = stateOf(links, attachment);
+  const url = links.data?.[attachment.id]?.url;
+  if (state === 'failed' || broken) {
     return (
       <BrokenImage
         attachment={attachment}
         onRetry={() => {
+          if (state === 'failed') {
+            refetch(links);
+            return;
+          }
           setBroken(false);
           setAttempt(attempt + 1);
         }}
@@ -98,115 +120,236 @@ function ImagePicture({
   return (
     <Interactive
       label={`View ${attachment.name}`}
-      onPress={onOpen}
+      onPress={() => {
+        onOpen(attachment.id);
+      }}
       className="size-full"
       focusInset
     >
-      <LoadedImage
-        key={`${url}:${String(attempt)}`}
-        url={url}
-        resizeMode={single ? 'contain' : 'cover'}
-        label={attachment.name}
-        onError={() => {
-          setBroken(true);
-        }}
-      />
+      <View aria-hidden className="absolute inset-0 bg-surface-3" />
+      {url === undefined ? null : (
+        <FadeImage
+          key={`${url}:${String(attempt)}`}
+          attachment={attachment}
+          url={url}
+          onError={() => {
+            setBroken(true);
+          }}
+        />
+      )}
     </Interactive>
   );
 }
 
-function ImageTile({
-  attachment,
-  url,
-  state,
-  single,
+function ImageRow({
+  row,
+  images,
+  links,
   onOpen,
-  onRetry,
 }: {
-  readonly attachment: AssistantAttachment;
-  readonly url: string | undefined;
-  readonly state: LinkState;
-  readonly single: boolean;
-  readonly onOpen: () => void;
-  readonly onRetry: () => void;
+  readonly row: GridRow;
+  readonly images: readonly AssistantAttachment[];
+  readonly links: Links;
+  readonly onOpen: (id: string) => void;
 }): ReactNode {
-  const frame = single ? frameOf(attachment) : { aspectRatio: 1 };
   return (
-    <View style={frame} className={cn(FRAME, single ? 'max-w-full' : 'w-full')}>
-      {state === 'loading' ? <ImagePlaceholder /> : null}
-      {state === 'failed' || url === undefined ? null : (
-        <ImagePicture attachment={attachment} url={url} single={single} onOpen={onOpen} />
-      )}
-      {state === 'failed' ? <BrokenImage attachment={attachment} onRetry={onRetry} /> : null}
+    <View style={row.shape} className="w-full flex-row gap-0.5">
+      {row.cells.map((cell) => {
+        const attachment = images[cell.index];
+        return attachment === undefined ? null : (
+          <View key={attachment.id} style={cell.shape} className="h-full">
+            <ImageTile attachment={attachment} links={links} onOpen={onOpen} />
+          </View>
+        );
+      })}
     </View>
   );
 }
 
-function FileRow({
+function ImageGroup({
+  images,
+  links,
+  shape,
+  onOpen,
+}: {
+  readonly images: readonly AssistantAttachment[];
+  readonly links: Links;
+  readonly shape: string;
+  readonly onOpen: (id: string) => void;
+}): ReactNode {
+  const grid = gridOf(images);
+  return (
+    <View style={grid.shape} className={cn('max-w-full gap-0.5 overflow-hidden', shape)}>
+      {grid.rows.map((row) => (
+        <ImageRow
+          key={row.cells.map((cell) => images[cell.index]?.id).join(':')}
+          row={row}
+          images={images}
+          links={links}
+          onOpen={onOpen}
+        />
+      ))}
+    </View>
+  );
+}
+
+function openAttachment(attachment: AssistantAttachment, url: string): void {
+  if (isPreviewable(attachment.mime)) {
+    previewFile(url, attachment.name);
+    return;
+  }
+  downloadFile(url, attachment.name);
+}
+
+function FileTrail({
+  attachment,
+  state,
+}: {
+  readonly attachment: AssistantAttachment;
+  readonly state: LinkState;
+}): ReactNode {
+  const tag = typeTagOf(attachment.name);
+  if (state === 'failed') {
+    return (
+      <Text variant="caption" tone="primary">
+        Retry
+      </Text>
+    );
+  }
+  return (
+    <View className="flex-row items-center gap-1.5">
+      {tag === null ? null : (
+        <Text variant="caption" className={FILE_KIND_LOOK[fileKindOf(attachment)].text}>
+          {tag}
+        </Text>
+      )}
+      <Text variant="caption" tone="faint" className="tabular">
+        {bytes(attachment.bytes)}
+      </Text>
+    </View>
+  );
+}
+
+function FileDownload({
   attachment,
   url,
 }: {
   readonly attachment: AssistantAttachment;
-  readonly url: string | undefined;
+  readonly url: string;
 }): ReactNode {
-  const ready = url !== undefined;
+  return (
+    <Interactive
+      label={`Download ${attachment.name}`}
+      onPress={() => {
+        downloadFile(url, attachment.name);
+      }}
+      className="mr-1.5 size-8 items-center justify-center"
+      layerClassName="rounded-sm"
+    >
+      <Icon name="download" size={20} tone="variant" />
+    </Interactive>
+  );
+}
+
+function FileLine({
+  attachment,
+  links,
+  tint,
+}: {
+  readonly attachment: AssistantAttachment;
+  readonly links: Links;
+  readonly tint: AttachmentTint;
+}): ReactNode {
+  const pointer = useIdiom() === 'pointer';
+  const url = links.data?.[attachment.id]?.url;
+  const state = stateOf(links, attachment);
+  const look = FILE_KIND_LOOK[fileKindOf(attachment)];
   return (
     <View
       className={cn(
-        'min-h-touch-min w-full max-w-sm flex-row items-center gap-3 py-2 pl-2 pr-1',
-        'rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1',
+        'h-11 w-full flex-row items-center',
+        tint === 'bubble' ? CHAT_SURFACE_IN_BUBBLE : cn(CHAT_SURFACE, 'max-w-sm'),
       )}
     >
-      <View className="size-10 items-center justify-center rounded-md bg-primary/15">
-        <Icon name={fileIcon(attachment.mime)} size={20} tone="primary" />
-      </View>
-      <View className="min-w-0 flex-1">
-        <Text variant="label" numberOfLines={1}>
+      <Interactive
+        label={`Open ${attachment.name}`}
+        disabled={state === 'loading'}
+        onPress={() => {
+          if (url === undefined) {
+            refetch(links);
+            return;
+          }
+          openAttachment(attachment, url);
+        }}
+        className="h-full min-w-0 flex-1 flex-row items-center gap-2.5 pl-1.5 pr-3"
+        layerClassName="rounded-md"
+      >
+        <View className={cn('size-8 items-center justify-center rounded-sm', look.tile)}>
+          <Icon name={look.icon} size={16} colour={look.ink} />
+        </View>
+        <Text variant="label" ellipsize="middle" className="flex-1">
           {attachment.name}
         </Text>
-        <Text variant="caption" tone="variant" numberOfLines={1}>
-          {joinParts([extensionOf(attachment.name), bytes(attachment.bytes)])}
-        </Text>
-      </View>
-      {ready && isPreviewable(attachment.mime) ? (
-        <Button
-          label="Open"
-          variant="text"
-          onPress={() => {
-            previewFile(url, attachment.name);
-          }}
-        />
-      ) : null}
-      <IconButton
-        icon="download"
-        label={`Download ${attachment.name}`}
-        disabled={!ready}
-        onPress={() => {
-          if (ready) {
-            downloadFile(url, attachment.name);
-          }
-        }}
-      />
+        <FileTrail attachment={attachment} state={state} />
+      </Interactive>
+      {pointer && url !== undefined ? <FileDownload attachment={attachment} url={url} /> : null}
     </View>
   );
 }
 
-function stateOf(
-  links: ReturnType<typeof useAttachmentLinks>,
-  attachment: AssistantAttachment,
-): LinkState {
-  if (links.isError || (links.data !== undefined && links.data[attachment.id] === undefined)) {
-    return 'failed';
-  }
-  return links.data === undefined ? 'loading' : 'ready';
+function FileAttachments({
+  files,
+  links,
+  tint,
+  ink,
+}: {
+  readonly files: readonly AssistantAttachment[];
+  readonly links: Links;
+  readonly tint: AttachmentTint;
+  readonly ink: ParticipantInk | null;
+}): ReactNode {
+  return (
+    <View className="gap-1">
+      {files.map((attachment) => {
+        if (noteKindOf(attachment.mime) !== 'audio') {
+          return <FileLine key={attachment.id} attachment={attachment} links={links} tint={tint} />;
+        }
+        const url = links.data?.[attachment.id]?.url;
+        return (
+          <VoiceClip
+            key={attachment.id}
+            attachment={attachment}
+            url={url}
+            linkState={
+              links.isFetching && url === undefined ? 'loading' : stateOf(links, attachment)
+            }
+            retry={() => {
+              refetch(links);
+            }}
+            mine={tint === 'bubble'}
+            ink={ink}
+          />
+        );
+      })}
+    </View>
+  );
 }
 
 interface AttachmentsProps {
   readonly attachments: readonly AssistantAttachment[];
   readonly chatId?: string | undefined;
+  readonly tint?: AttachmentTint;
+  readonly ink?: ParticipantInk | null;
+  readonly imageShape?: string;
 }
 
-export function Attachments({ attachments, chatId }: AttachmentsProps): ReactNode {
+export function Attachments({
+  attachments,
+  chatId,
+  tint = 'surface',
+  ink = null,
+  imageShape = 'rounded-md',
+}: AttachmentsProps): ReactNode {
   const links = useAttachmentLinks(attachments.map((attachment) => attachment.id));
   const [viewed, setViewed] = useState<string | null>(null);
   const images = attachments.filter(isImageAttachment);
@@ -214,35 +357,11 @@ export function Attachments({ attachments, chatId }: AttachmentsProps): ReactNod
   return (
     <View className="gap-2">
       {images.length === 0 ? null : (
-        <View className="-m-0.5 flex-row flex-wrap">
-          {images.map((attachment) => (
-            <View
-              key={attachment.id}
-              className={cn('p-0.5', images.length === 1 ? 'max-w-full' : 'w-1/2')}
-            >
-              <ImageTile
-                attachment={attachment}
-                url={links.data?.[attachment.id]?.url}
-                state={stateOf(links, attachment)}
-                single={images.length === 1}
-                onOpen={() => {
-                  setViewed(attachment.id);
-                }}
-                onRetry={() => {
-                  background(links.refetch(), 'links.refetch_failed');
-                }}
-              />
-            </View>
-          ))}
-        </View>
+        <ImageGroup images={images} links={links} shape={imageShape} onOpen={setViewed} />
       )}
-      {files.map((attachment) => (
-        <FileRow
-          key={attachment.id}
-          attachment={attachment}
-          url={links.data?.[attachment.id]?.url}
-        />
-      ))}
+      {files.length === 0 ? null : (
+        <FileAttachments files={files} links={links} tint={tint} ink={ink} />
+      )}
       <ImageViewer
         startId={viewed}
         chatId={chatId}

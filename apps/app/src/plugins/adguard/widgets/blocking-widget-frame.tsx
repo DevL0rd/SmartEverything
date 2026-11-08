@@ -4,6 +4,7 @@ import type { IconName } from '../../../components/icon';
 import type { ColourRole } from '../../../design/tokens';
 import {
   ServiceWidgetFrame,
+  type ServiceLayout,
   type ServiceReady,
   type ServiceWidget,
 } from '../../shared/service-widget-frame';
@@ -25,8 +26,8 @@ interface BlockingWidgetFrameProps {
   readonly title: string;
   readonly icon: IconName;
   readonly accent: ColourRole;
-  readonly action?: (ready: BlockingReady) => ReactNode;
-  readonly children: (ready: BlockingReady) => ReactNode;
+  readonly actions?: (ready: BlockingReady) => ReactNode;
+  readonly children: (ready: BlockingReady, layout: ServiceLayout) => ReactNode;
 }
 
 export function BlockingWidgetFrame(props: BlockingWidgetFrameProps): ReactNode {

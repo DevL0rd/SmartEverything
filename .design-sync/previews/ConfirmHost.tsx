@@ -1,14 +1,18 @@
-import { useEffect } from 'react';
+import { background } from '@smarteverything/logging';
+import { useEffect, type ReactElement } from 'react';
 import { ConfirmHost, GlobalTheme, Stage, confirm } from 'smarteverything-kit';
 
-function Ask({ theme }: { theme: 'dark' | 'light' }) {
+function Ask({ theme }: { theme: 'dark' | 'light' }): ReactElement {
   useEffect(() => {
-    void confirm({
-      title: 'Remove Living room lamp?',
-      body: 'Its history and automations will be removed from this home.',
-      confirmLabel: 'Remove device',
-      tone: 'destructive',
-    });
+    background(
+      confirm({
+        title: 'Remove Living room lamp?',
+        body: 'Its history and automations will be removed from this home.',
+        confirmLabel: 'Remove device',
+        tone: 'destructive',
+      }),
+      'preview.confirm_failed',
+    );
   }, []);
   return (
     <GlobalTheme theme={theme}>
@@ -18,5 +22,5 @@ function Ask({ theme }: { theme: 'dark' | 'light' }) {
     </GlobalTheme>
   );
 }
-export const Dark = () => <Ask theme="dark" />;
-export const Light = () => <Ask theme="light" />;
+export const Dark = (): ReactElement => <Ask theme="dark" />;
+export const Light = (): ReactElement => <Ask theme="light" />;

@@ -1,3 +1,5 @@
+import { kindsOfState } from '../../automations';
+import type { NodeKindLookup } from '@smarteverything/domain';
 import { lastPressOf, pressesOf, type Press } from '../../device-visuals';
 import { memoOnInputs } from '../../../store/memo-selector';
 import { sameJson } from '../../../store/same-json';
@@ -22,7 +24,7 @@ export interface ButtonView {
   readonly meaning: readonly Meaning[];
 }
 
-function viewOf(state: StoreState, deviceId: string): ButtonView {
+function viewOf(state: StoreState, deviceId: string, kinds: NodeKindLookup): ButtonView {
   const events = rowsOf(state.tables.events);
   const now = Date.now();
   const window = pressDayWindow(now);
@@ -31,7 +33,7 @@ function viewOf(state: StoreState, deviceId: string): ButtonView {
     strip: stripSegments(pressesOf(events, deviceId, window.from)),
     window,
     week: weekCounts(events, deviceId, now),
-    meaning: meaningOf(rowsOf(state.tables.automations), deviceId),
+    meaning: meaningOf(rowsOf(state.tables.automations), deviceId, kinds),
   };
 }
 
@@ -43,8 +45,12 @@ function selectorFor(deviceId: string): (state: StoreState) => ButtonView {
     return known;
   }
   const selector = memoOnInputs(
-    (state) => [state.tables.events, state.tables.automations],
-    (state) => viewOf(state, deviceId),
+    (state) => [
+      state.tables.events,
+      state.tables.automations,
+      state.tables.automation_plugin_kinds,
+    ],
+    (state) => viewOf(state, deviceId, kindsOfState(state)),
   );
   SELECTORS.set(deviceId, selector);
   return selector;

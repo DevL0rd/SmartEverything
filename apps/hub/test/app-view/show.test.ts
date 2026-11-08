@@ -142,18 +142,18 @@ describe('choosing which app shows something', () => {
 });
 
 describe('what is asked of the app', () => {
-  it('needs a target to open or point and none to dismiss', async () => {
+  it('carries the target through an open and none on a dismiss', async () => {
     const dana = addPerson(test, 'Dana', 'member');
-    foreground = new Set([dana.client.id]);
-    for (const action of ['open', 'highlight'] as const) {
-      await expect(showInApp(desk(), asClient(dana.client), { action })).rejects.toMatchObject({
-        code: 'invalid_request',
-        message: `${action} needs a target.`,
-      });
-    }
-    expect(asked).toEqual([]);
-    await showInApp(desk(), asClient(dana.client), { action: 'dismiss' });
-    expect(asked[0]?.ask).toEqual({ action: 'dismiss', target: null, focus: null });
+    const tablet = secondApp('Dana tablet', dana.profileId);
+    foreground = new Set([tablet.id]);
+    await showInApp(desk(), asClient(dana.client), { ...OPEN_FITNESS, appId: tablet.id });
+    await showInApp(desk(), asClient(dana.client), { action: 'highlight', focus: 'sleep' });
+    await showInApp(desk(), asClient(dana.client), { action: 'dismiss', appId: dana.client.id });
+    expect(asked.map((entry) => entry.ask)).toEqual([
+      { action: 'open', target: OPEN_FITNESS.target, focus: null },
+      { action: 'highlight', focus: 'sleep' },
+      { action: 'dismiss', target: null, focus: null },
+    ]);
   });
 
   it('passes the focus on', async () => {

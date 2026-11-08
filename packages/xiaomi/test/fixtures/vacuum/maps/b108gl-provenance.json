@@ -1,0 +1,9 @@
+{
+  "source": "https://github.com/kanso-labs/home-assistant-robot-vacuum-map",
+  "repository": "kanso-labs/home-assistant-robot-vacuum-map",
+  "licence": "MIT",
+  "licenceFile": "LICENSE-kanso-labs.md",
+  "model": "xiaomi.vacuum.b108gl",
+  "files": ["b108gl-map.json", "b108gl-trajectories.json"],
+  "note": "Public test fixture of a decoded map and two raw trajectory captures; not a pv11gl map."
+}

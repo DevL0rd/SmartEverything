@@ -1,10 +1,12 @@
 import { act, createElement, type ReactNode } from 'react';
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveLoops, sameLoops, type LoopInfo } from './run-loops';
 import { parseActivationPath, type Activation } from './run-activation';
-import type { RunOverlay } from '../../model/canvas/contract';
-import { overlayOf } from './run-overlay';
+import { automation, start } from '../../model/graph/graph-scene-fixtures';
+import { projectGraphScene } from '../../model/graph/project-graph-scene';
+import { graphRunOverlay, type GraphRunOverlay } from '../../model/graph/run-overlay';
 
 const counts = vi.hoisted(() => ({ renders: new Map<string, number>() }));
 
@@ -120,18 +122,19 @@ describe('the run view render budget', () => {
 
   it('changes only the overlay entries whose node changed when one node state arrives', () => {
     const base = activations(1);
-    const input = (list: readonly Activation[]): RunOverlay => {
-      const { loops, chosen } = resolveLoops(list, new Map());
-      return overlayOf({
-        activations: list,
-        chosen,
-        loops,
-        itemNames: new Map(),
-        at: null,
+    const scene = projectGraphScene(automation([start()], { triggers: [] }), {
+      direction: 'ltr',
+      kinds: STATIC_KIND_LOOKUP,
+    });
+    const input = (list: readonly Activation[]): GraphRunOverlay['nodes'] =>
+      graphRunOverlay({
+        scene,
+        records: list,
+        selected: new Map(),
         wakeAt: null,
+        live: false,
         zone: null,
-      });
-    };
+      }).nodes;
     const before = input(base);
     const after = input([
       ...base,

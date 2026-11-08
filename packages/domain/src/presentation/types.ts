@@ -3,6 +3,7 @@ import type { DeviceCapability, DeviceKind } from '../devices';
 import { LAUNDRY_ROLES } from '../laundry-roles';
 import { TV_ROLES } from '../television-roles';
 import type { JsonValue } from '../values';
+import { VACUUM_ROLES } from '../vacuum-roles';
 
 export const PRESENTATION_TIERS = [
   'primary',
@@ -50,6 +51,7 @@ export const EXTRA_ROLES = [
   'cooking_state',
   ...LAUNDRY_ROLES,
   ...TV_ROLES,
+  ...VACUUM_ROLES,
 ] as const;
 
 export type ExtraRole = (typeof EXTRA_ROLES)[number];

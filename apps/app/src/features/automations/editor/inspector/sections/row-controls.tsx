@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
+import { randomUUID } from 'expo-crypto';
 import { View } from 'react-native';
 import { IconButton } from '../../../../../components/icon-button';
 import { Text } from '../../../../../components/text';
 
 export function newRowId(): string {
-  return globalThis.crypto.randomUUID();
+  return randomUUID();
 }
 
 export interface RowActionsProps {

@@ -30,6 +30,12 @@
       "path": "./packages/shelly"
     },
     {
+      "path": "./packages/google"
+    },
+    {
+      "path": "./packages/models"
+    },
+    {
       "path": "./packages/flow"
     },
     {
@@ -54,10 +60,16 @@
       "path": "./apps/app"
     },
     {
+      "path": "./.design-sync"
+    },
+    {
       "path": "./tooling"
     },
     {
       "path": "./tooling/go2rtc"
+    },
+    {
+      "path": "./tooling/drive-mount"
     }
   ]
 }

@@ -1,32 +1,81 @@
-import type { Engine } from '@smarteverything/domain';
-import { useHarnessCatalogue } from '../data/harness';
+import type { AiRouteInfo, Engine } from '@smarteverything/domain';
+import { useRouteInfo } from '../data/route-info';
+import { effortSteps, type EffortSteps } from '../model/composer-state';
+import { effortLabel } from '../picker/efforts';
 import { useEngineCatalogue } from '../provider/provider-data';
-import { isComputerEngine } from '../provider/computer-engine';
-import { useModelChoice } from '../picker/model-label';
-export function useEngineEfforts(engine: Engine): readonly string[] {
-  const model = useModelChoice(engine.kind === 'openrouter' ? engine.model : null);
-  const native = useEngineCatalogue();
-  const harness = useHarnessCatalogue();
-  if (engine.kind === 'dsh') return harnessEfforts(engine, harness.data);
-  if (isComputerEngine(engine)) return nativeEfforts(engine, native.data);
-  return model?.efforts ?? [];
+
+export interface EngineEffort {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
 }
 
-function harnessEfforts(
-  engine: Extract<Engine, { kind: 'dsh' }>,
-  catalogue: ReturnType<typeof useHarnessCatalogue>['data'],
-): readonly string[] {
-  const route = catalogue?.routes.find((row) => row.id === engine.model_route_id);
-  return route?.models.find((row) => row.id === engine.model)?.capabilities.efforts ?? [];
+export interface EngineThinking {
+  readonly efforts: readonly EngineEffort[];
+  readonly defaultEffort: string | null;
 }
-function nativeEfforts(
+
+const NO_THINKING: EngineThinking = { efforts: [], defaultEffort: null };
+
+export function routeThinking(info: AiRouteInfo | undefined): EngineThinking {
+  const reasoning = info?.reasoning ?? null;
+  if (reasoning === null) return NO_THINKING;
+  return { efforts: reasoning.efforts, defaultEffort: reasoning.default_effort };
+}
+
+export function useEngineThinking(engine: Engine): EngineThinking {
+  const native = useEngineCatalogue();
+  const route = useRouteInfo(engine);
+  if (engine.kind === 'dsh') return routeThinking(route.data);
+  return nativeThinking(engine, native.data);
+}
+
+export function useEngineEfforts(engine: Engine): readonly string[] {
+  return useEngineThinking(engine).efforts.map((effort) => effort.id);
+}
+
+function nativeThinking(
   engine: Extract<Engine, { kind: 'claude' | 'codex' }>,
   catalogue: ReturnType<typeof useEngineCatalogue>['data'],
-): readonly string[] {
+): EngineThinking {
   const computer = catalogue?.computers.find(
     (row) => row.runtime === engine.kind && row.device_id === engine.device_id,
   );
-  return computer?.models.find((row) => row.id === engine.model)?.efforts ?? [];
+  const efforts = computer?.models.find((row) => row.id === engine.model)?.efforts ?? [];
+  return {
+    efforts: efforts.map((id) => ({ id, name: effortLabel(id), description: null })),
+    defaultEffort: null,
+  };
+}
+
+function nameOf(thinking: EngineThinking, effort: string): string {
+  return thinking.efforts.find((row) => row.id === effort)?.name ?? effortLabel(effort);
+}
+
+export function effortName(thinking: EngineThinking, effort: string | null): string | null {
+  return effort === null ? null : nameOf(thinking, effort);
+}
+
+export function levelSteps(effort: string | null): EffortSteps | null {
+  return effort === null ? null : effortSteps(effortLabel(effort));
+}
+
+export function appliedEffort(thinking: EngineThinking, effort: string | null): string | null {
+  return effort ?? thinking.defaultEffort;
+}
+
+export function effortOverride(thinking: EngineThinking, level: string | null): string | null {
+  return level === thinking.defaultEffort ? null : level;
+}
+
+export function effortText(thinking: EngineThinking, effort: string | null): string | null {
+  return effortName(thinking, appliedEffort(thinking, effort));
+}
+
+export function chipLabel(name: string, effort: string | null, facts: readonly string[]): string {
+  const about = facts.length === 0 ? '' : ` ${facts.join(', ')}.`;
+  const chosen = effort === null ? name : `${name}, ${effort}`;
+  return `Model and thinking: ${chosen}.${about} Opens the model menu`;
 }
 
 export function cycleEffort(
@@ -35,10 +84,11 @@ export function cycleEffort(
   step: 1 | -1,
   wrap: boolean,
 ): string | null {
-  const levels = [null, ...efforts];
-  const at = Math.max(levels.indexOf(current), 0);
+  if (efforts.length === 0) return current;
+  const found = current === null ? -1 : efforts.indexOf(current);
+  if (found === -1) return efforts[step === 1 ? 0 : efforts.length - 1] ?? current;
   const next = wrap
-    ? (at + step + levels.length) % levels.length
-    : Math.min(Math.max(at + step, 0), levels.length - 1);
-  return levels[next] ?? null;
+    ? (found + step + efforts.length) % efforts.length
+    : Math.min(Math.max(found + step, 0), efforts.length - 1);
+  return efforts[next] ?? current;
 }

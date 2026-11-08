@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { AddTile, Stage } from 'smarteverything-kit';
 
 const body = (
@@ -5,12 +6,12 @@ const body = (
     <AddTile onPress={() => undefined} />
   </div>
 );
-export const Tile = () => (
+export const Tile = (): ReactElement => (
   <Stage theme="dark" width={260}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={260}>
     {body}
   </Stage>

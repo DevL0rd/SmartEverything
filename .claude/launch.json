@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "metro",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd apps/app && cp ../../tmp/dev-server/metro.log ../../tmp/dev-server/metro.log.prev 2>/dev/null; exec pnpm start --port 8081 > ../../tmp/dev-server/metro.log 2>&1"],
+      "port": 8081
+    }
+  ]
+}

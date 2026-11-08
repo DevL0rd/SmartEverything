@@ -6,8 +6,11 @@ import { resolveTypes } from './types';
 import { adviceRules } from './lint-advice';
 import { contractRules } from './lint-contract';
 import { effectRules } from './lint-effects';
+import { errorExitRule } from './lint-error-exit';
 import { flowRules } from './lint-flow';
+import { linkAdviceFindings } from './lint-link-advice';
 import { loopRules } from './lint-loops';
+import { pluginKindRule } from './lint-plugin-kinds';
 import type { Finding, FindingSeverity, LintContext, LintInput, LintRule } from './lint-types';
 import { fixText } from './lint-types';
 
@@ -24,6 +27,7 @@ export {
   type FindingSeverity,
   type LintAction,
   type LintContext,
+  type KindAvailability,
   type LintFix,
   type LintKind,
 } from './lint-types';
@@ -33,6 +37,9 @@ const RULES: readonly LintRule[] = [
   ...flowRules,
   ...loopRules,
   ...effectRules,
+  errorExitRule,
+  pluginKindRule,
+  linkAdviceFindings,
   ...adviceRules,
 ];
 

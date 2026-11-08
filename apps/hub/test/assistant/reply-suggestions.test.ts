@@ -1,20 +1,16 @@
-import {
-  DEFAULT_ENGINE,
-  NO_PRICES,
-  REPLY_SUGGESTIONS_KIND,
-  type AiModelRow,
-} from '@smarteverything/domain';
+import { NO_PRICES, REPLY_SUGGESTIONS_KIND, type AiModelRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChatDirectory, type ChatOwner } from '../../src/assistant/chat-directory';
 import { ConversationLog } from '../../src/assistant/conversation-log';
 import { AssistantFiles } from '../../src/assistant/files';
 import { ReplySuggestions } from '../../src/assistant/suggestions/reply-suggestions';
-import type { ChatRequest } from '../../src/openrouter/chat-types';
-import type { OrChunk } from '../../src/openrouter/wire';
+import type { AuxCompletionInput } from '../../src/assistant/side-completion';
 import type { StoredEvent } from '../../src/store/repositories/assistant-events';
 import { captureLogs } from '../support/logs';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
+import { hubLayout } from '../../src/data-layout';
 
 const MOMENT = '2026-10-01T00:00:00.000Z';
 
@@ -47,18 +43,8 @@ const MODEL: AiModelRow = {
 let opened: TestStore;
 let owner: ChatOwner;
 let chats: ChatDirectory;
-let requests: ChatRequest[];
+let requests: AuxCompletionInput[];
 let suggestions: ReplySuggestions;
-
-async function* answer(): AsyncGenerator<OrChunk> {
-  await Promise.resolve();
-  yield {
-    id: 'gen-1',
-    model: MODEL.id,
-    choices: [{ delta: { content: '- Yes please\n- Not now' }, finish_reason: 'stop' }],
-    usage: { prompt_tokens: 30, completion_tokens: 8, cost: 0.0001 },
-  };
-}
 
 beforeEach(async () => {
   captureLogs();
@@ -73,21 +59,19 @@ beforeEach(async () => {
   const now = (): Date => new Date(MOMENT);
   chats = new ChatDirectory(
     store,
-    new AssistantFiles({ dataDirectory: opened.directory, chat: store.assistantChat, now }),
-    now,
+    new AssistantFiles({ layout: hubLayout(opened.directory, {}), chat: store.assistantChat, now }),
   );
   suggestions = new ReplySuggestions({
     store,
     log: testLogger('assistant'),
-    client: {
-      chat: (request): AsyncGenerator<OrChunk> => {
-        requests.push(request);
-        return answer();
+    completions: {
+      complete: (input): Promise<string> => {
+        requests.push(input);
+        return Promise.resolve('- Yes please\n- Not now');
       },
     },
     catalogue: {
       rows: (): AiModelRow[] => [MODEL],
-      effortFor: (): null => null,
       onChange: (): (() => void) => () => undefined,
     },
   });
@@ -98,7 +82,7 @@ afterEach(async () => {
 });
 
 function exchange(): { readonly event: StoredEvent; readonly replyId: string } {
-  const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
+  const chat = chats.create(owner, { engine: TEST_ENGINE });
   const conversation = new ConversationLog(opened.store);
   const person = conversation.person({
     chat,
@@ -147,6 +131,9 @@ describe('reply suggestions', () => {
     suggestions.afterReply(event, 'They are on.', true);
     await settled();
     expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ model: MODEL.id });
+    expect(requests[0]).not.toHaveProperty('purpose');
+    expect(requests[0]?.input).toContain('Should I turn the lights off?');
     expect(embedKinds(replyId)).toContain(REPLY_SUGGESTIONS_KIND);
   });
 

@@ -1,0 +1,8 @@
+{
+  "go": "1.27.1",
+  "fuse": {
+    "module": "github.com/hanwen/go-fuse/v2",
+    "version": "v2.12.1",
+    "licence": "BSD-3-Clause"
+  }
+}

@@ -10,10 +10,11 @@ import { DEVELOPER_TOGGLES, resolveFlags } from './toggles';
 const ALL_OFF = Object.fromEntries(PROFILING_IDS.map((id) => [id, false]));
 
 describe('enable all profiling', () => {
-  it('covers every performance toggle and never the logging toggle', () => {
+  it('covers every performance toggle and nothing else', () => {
     const performance = DEVELOPER_TOGGLES.filter((toggle) => toggle.section === 'Performance');
     expect(PROFILING_IDS).toEqual(performance.map((toggle) => toggle.id));
-    expect(PROFILING_IDS).not.toContain('log.debug');
+    expect(PROFILING_IDS).not.toContain('watch.capture');
+    expect(PROFILING_IDS.every((id) => id.startsWith('perf.'))).toBe(true);
   });
 
   it('is off when every option is off', () => {
@@ -36,9 +37,12 @@ describe('enable all profiling', () => {
     expect(profilingState(withAllProfiling(on, false), true)).toBe('off');
   });
 
-  it('leaves the logging toggle as it was', () => {
-    expect(withAllProfiling({ 'log.debug': true }, false)['log.debug']).toBe(true);
-    expect(withAllProfiling({}, true)['log.debug']).toBeUndefined();
+  it('leaves the log level and the watch opt-in as they were', () => {
+    const stored = { 'log.level.trace': true, 'watch.capture': false, 'perf.gc': true };
+    const next = withAllProfiling(stored, true);
+    expect(next['log.level.trace']).toBe(true);
+    expect(next['watch.capture']).toBe(false);
+    expect(next['perf.gc']).toBe(true);
   });
 
   it('is mixed when a child is on while its parent is off', () => {
@@ -47,7 +51,11 @@ describe('enable all profiling', () => {
     expect(profilingOnCount({ ...ALL_OFF, 'perf.stalls': true }, true)).toBe(0);
   });
 
-  it('reports off in a release build, where profiling never runs', () => {
+  it('is off in a release build with developer mode off', () => {
     expect(profilingState(withAllProfiling({}, true), false)).toBe('off');
+  });
+
+  it('runs in a release build once developer mode is on', () => {
+    expect(profilingState(withAllProfiling({}, true), true)).toBe('on');
   });
 });

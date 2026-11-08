@@ -70,9 +70,24 @@ export function rpc(
   });
 }
 
+export async function messageOf(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!(response.headers.get('content-type') ?? '').includes('text/event-stream')) {
+    const parsed: unknown = JSON.parse(text);
+    return parsed;
+  }
+  const data = text
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice('data:'.length).trim());
+  expect(data).toHaveLength(1);
+  const parsed: unknown = JSON.parse(data[0] ?? '');
+  return parsed;
+}
+
 export async function resultOf(response: Response): Promise<Record<string, unknown>> {
   expect(response.status).toBe(200);
-  return RESULT.parse(await response.json()).result;
+  return RESULT.parse(await messageOf(response)).result;
 }
 
 export async function callTool(

@@ -2,19 +2,25 @@ import type { AdGuardSnapshot, AdGuardTopEntry } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Button } from '../../../components/button';
 import { useAnchoredMenu } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
 import { WideCard, WideFigure, type WideClass } from '../../../features/devices';
 import { count } from '../../../format/number';
 import { useMinute } from '../../../store/clock';
-import { useIsOwner } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { CellGate, type CellCopy } from '../../shared/cell-gate';
+import { CellGraphSlot } from '../../shared/cell-graph';
 import { LiveCell } from '../../shared/cell-live';
-import { CellBadge, CellLine, CellWhy, LegendDot } from '../../shared/cell-parts';
-import { PluginButton } from '../../shared/plugin-action';
+import {
+  CellAction,
+  CellBadge,
+  CellLine,
+  CellPluginAction,
+  LegendDot,
+  useListRoom,
+} from '../../shared/cell-parts';
+import { cellMedallionSize } from '../../shared/medallion-model';
 import { ServiceMedallion } from '../../shared/service-medallion';
 import { ADGUARD_PLUGIN, useAdGuardSnapshot } from '../adguard-data';
 import { pauseMenuItems, useAdGuardActions, type AdGuardActions } from '../quick-actions';
@@ -24,14 +30,20 @@ import { adguardSectionHref } from './links';
 
 const GRAPH_HEIGHT: Readonly<Record<WideClass, number>> = { m: 40, w: 44, l: 96, xl: 96 };
 
-function PauseMenu({ actions }: { readonly actions: AdGuardActions }): ReactNode {
+function PauseMenu({
+  cls,
+  actions,
+}: {
+  readonly cls: WideClass;
+  readonly actions: AdGuardActions;
+}): ReactNode {
   const items = pauseMenuItems(actions.pauseFor, (work) => {
     background(work, 'adguard_cell.pause_failed');
   });
   const { ref, open, menu } = useAnchoredMenu(items, 'Pause ad blocking');
   return (
     <View ref={ref} collapsable={false}>
-      <Button label="Pause" variant="tonal" size="md" icon="pause" onPress={open} />
+      <CellAction cls={cls} label="Pause" variant="tonal" icon="pause" onPress={open} />
       {menu}
     </View>
   );
@@ -44,12 +56,20 @@ function TopRows({
   readonly rows: readonly AdGuardTopEntry[];
   readonly caption: string;
 }): ReactNode {
+  const room = useListRoom();
+  const shown = room.rows === null ? rows : rows.slice(0, room.rows);
   return rows.length === 0 ? null : (
-    <View className="min-w-0 gap-0.5" aria-hidden>
-      <Text variant="caption" tone="faint">
-        {caption}
-      </Text>
-      {rows.map((row) => (
+    <View
+      onLayout={room.onLayout}
+      className="min-h-0 min-w-0 flex-1 gap-0.5 overflow-hidden"
+      aria-hidden
+    >
+      {shown.length === 0 ? null : (
+        <Text variant="caption" tone="faint" numberOfLines={1}>
+          {caption}
+        </Text>
+      )}
+      {shown.map((row) => (
         <View key={row.name} className="flex-row items-center gap-2">
           <Text variant="caption" tone="variant" numberOfLines={1} className="min-w-0 flex-1">
             {row.name}
@@ -63,27 +83,52 @@ function TopRows({
   );
 }
 
-function useCellActions(cell: AdGuardCell, owner: boolean): readonly ReactNode[] {
+function ProtectionAction({
+  cls,
+  cell,
+  actions,
+}: {
+  readonly cls: WideClass;
+  readonly cell: AdGuardCell;
+  readonly actions: AdGuardActions;
+}): ReactNode {
+  if (cell.kind === 'on') {
+    return <PauseMenu cls={cls} actions={actions} />;
+  }
+  return (
+    <CellPluginAction
+      cls={cls}
+      label={cell.kind === 'paused' ? 'Resume' : 'Turn on'}
+      variant="filled"
+      icon={cell.kind === 'paused' ? 'play' : 'shield'}
+      onPress={actions.resume}
+    />
+  );
+}
+
+function useCellActions(
+  device: Device,
+  cls: WideClass,
+  cell: AdGuardCell,
+  owner: boolean,
+): readonly ReactNode[] {
   const actions = useAdGuardActions();
   if (cell.kind === 'stale') {
-    return [<CellWhy key="why" text={cell.reason ?? cell.line} critical />];
-  }
-  if (!owner) {
     return [];
   }
-  if (cell.kind !== 'on') {
-    return [
-      <PluginButton
-        key="resume"
-        label={cell.kind === 'paused' ? 'Resume' : 'Turn on'}
-        variant="filled"
-        size="md"
-        icon={cell.kind === 'paused' ? 'play' : 'shield'}
-        onPress={actions.resume}
-      />,
-    ];
-  }
-  return [<PauseMenu key="pause" actions={actions} />];
+  const log = (
+    <CellAction
+      key="log"
+      cls={cls}
+      label="Query log"
+      variant="text"
+      icon="list"
+      href={adguardSectionHref(device.id, 'queries')}
+    />
+  );
+  return owner
+    ? [log, <ProtectionAction key="protection" cls={cls} cell={cell} actions={actions} />]
+    : [log];
 }
 
 interface BodyProps {
@@ -91,6 +136,7 @@ interface BodyProps {
   readonly cls: WideClass;
   readonly snapshot: AdGuardSnapshot;
   readonly live: boolean;
+  readonly owner: boolean;
 }
 
 function figuresOf(cell: AdGuardCell, device: Device, live: boolean): readonly ReactNode[] {
@@ -108,63 +154,54 @@ function figuresOf(cell: AdGuardCell, device: Device, live: boolean): readonly R
     : base;
 }
 
-function Extras({
-  cell,
-  device,
-}: {
-  readonly cell: AdGuardCell;
-  readonly device: Device;
-}): ReactNode {
+function Extras({ cell }: { readonly cell: AdGuardCell }): ReactNode {
   return (
-    <View className="gap-3">
-      <View className="flex-row gap-6">
-        <View className="min-w-0 flex-1">
-          <TopRows rows={cell.topBlocked} caption="Top blocked" />
-        </View>
-        <View className="min-w-0 flex-1">
-          <TopRows rows={cell.topClients} caption="Top clients" />
-        </View>
+    <View className="min-h-0 flex-1 gap-3">
+      <View className="min-h-0 flex-1 flex-row gap-6">
+        <TopRows rows={cell.topBlocked} caption="Top blocked" />
+        <TopRows rows={cell.topClients} caption="Top clients" />
       </View>
       {cell.lists === null ? null : <CellLine text={cell.lists} />}
-      <Button
-        label="Query log"
-        variant="text"
-        size="md"
-        icon="list"
-        href={adguardSectionHref(device.id, 'queries')}
-      />
+    </View>
+  );
+}
+
+function GraphHead({ live }: { readonly live: boolean }): ReactNode {
+  return (
+    <View className="flex-row items-center gap-3" aria-hidden>
+      <LegendDot swatch="bg-viz-1" label="Allowed" />
+      <LegendDot swatch="bg-viz-3" label="Blocked" />
+      <Text variant="caption" tone="faint" className="ml-auto">
+        {live ? 'Live' : 'Last 24 h'}
+      </Text>
     </View>
   );
 }
 
 function graphOf(cls: WideClass, device: Device, live: boolean, cell: AdGuardCell): ReactNode {
   const showLive = live && cell.kind !== 'stale';
-  const bars = (
-    <AdGuardGraph device={device} live={showLive} height={GRAPH_HEIGHT[cls]} bars={cell.bars} />
+  const slot = (
+    <CellGraphSlot cap={GRAPH_HEIGHT[cls]} head={<GraphHead live={live} />}>
+      {(height) => (
+        <AdGuardGraph device={device} live={showLive} height={height} bars={cell.bars} />
+      )}
+    </CellGraphSlot>
   );
-  if (cls === 'm') {
-    return bars;
+  if (cls !== 'w') {
+    return slot;
   }
   return (
-    <View className="gap-1.5">
-      {cls === 'w' ? <TopRows rows={cell.topBlocked} caption="Top blocked" /> : null}
-      <View className="flex-row items-center gap-3" aria-hidden>
-        <LegendDot swatch="bg-viz-1" label="Allowed" />
-        <LegendDot swatch="bg-viz-3" label="Blocked" />
-        <Text variant="caption" tone="faint" className="ml-auto">
-          {live ? 'Live' : 'Last 24 h'}
-        </Text>
-      </View>
-      {bars}
+    <View className="min-h-0 flex-1 gap-1.5">
+      <TopRows rows={cell.topBlocked} caption="Top blocked" />
+      {slot}
     </View>
   );
 }
 
-const LINE_TONE: Readonly<Record<AdGuardCell['kind'], Tone>> = {
+const LINE_TONE: Readonly<Record<Exclude<AdGuardCell['kind'], 'stale'>, Tone>> = {
   on: 'variant',
   paused: 'warning',
   off: 'critical',
-  stale: 'variant',
 };
 
 function Medallion({
@@ -183,7 +220,7 @@ function Medallion({
       tone={cell.tone}
       ratio={cell.ratio}
       live={pulse}
-      size={cls === 'm' ? 'cell' : 'hero'}
+      size={cellMedallionSize(cls)}
       label={cell.spoken}
       offline={cell.kind === 'stale'}
     />
@@ -197,12 +234,16 @@ function tickerOf(cls: WideClass, cell: AdGuardCell): ReactNode {
   ) : undefined;
 }
 
-function CellBody({ device, cls, snapshot, live }: BodyProps): ReactNode {
-  const owner = useIsOwner();
+function StateLine({ cell }: { readonly cell: AdGuardCell }): ReactNode {
+  return cell.kind === 'stale' || cell.line === null ? null : (
+    <CellLine text={cell.line} tone={LINE_TONE[cell.kind]} />
+  );
+}
+
+function CellBody({ device, cls, snapshot, live, owner }: BodyProps): ReactNode {
   const now = useMinute();
   const cell = adguardCellOf(snapshot, now);
-  const actions = useCellActions(cell, owner);
-  const panel = cls === 'l' || cls === 'xl';
+  const actions = useCellActions(device, cls, cell, owner);
   return (
     <WideCard
       cls={cls}
@@ -210,12 +251,12 @@ function CellBody({ device, cls, snapshot, live }: BodyProps): ReactNode {
       title={device.label}
       visual={<Medallion cell={cell} cls={cls} live={live} />}
       chip={<CellBadge chip={cell.chip} />}
-      state={<CellLine text={cell.line} tone={LINE_TONE[cell.kind]} />}
+      state={<StateLine cell={cell} />}
       figures={figuresOf(cell, device, live)}
       graph={graphOf(cls, device, live, cell)}
       actions={actions}
       ticker={tickerOf(cls, cell)}
-      log={panel && cell.kind !== 'stale' ? <Extras cell={cell} device={device} /> : undefined}
+      log={cell.kind === 'stale' ? undefined : <Extras cell={cell} />}
     />
   );
 }
@@ -244,12 +285,12 @@ export function AdGuardCellFace({
       copy={COPY}
       stream={stream}
     >
-      {(snapshot) => (
+      {(snapshot, owner) => (
         <LiveCell>
           {(live) => (
             <>
               {live ? <AdGuardHold device={device} snapshot={snapshot} /> : null}
-              <CellBody device={device} cls={cls} snapshot={snapshot} live={live} />
+              <CellBody device={device} cls={cls} snapshot={snapshot} live={live} owner={owner} />
             </>
           )}
         </LiveCell>

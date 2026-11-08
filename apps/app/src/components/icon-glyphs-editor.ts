@@ -1,4 +1,5 @@
 import { NODE_GLYPHS } from './icon-glyphs-nodes';
+import FlagGlyph from 'lucide-react-native/icons/flag';
 import ListTreeGlyph from 'lucide-react-native/icons/list-tree';
 import Redo2Glyph from 'lucide-react-native/icons/redo-2';
 import SquareMousePointerGlyph from 'lucide-react-native/icons/square-mouse-pointer';
@@ -10,4 +11,5 @@ export const EDITOR_GLYPHS = {
   workflow: WorkflowGlyph,
   listTree: ListTreeGlyph,
   squareMousePointer: SquareMousePointerGlyph,
+  flag: FlagGlyph,
 } as const;

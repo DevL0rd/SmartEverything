@@ -74,7 +74,9 @@ function prefsHex(goalType: number, goal: number): string {
   return bytesToHex(Uint8Array.from(body));
 }
 
-function events(kind: string): { phase?: unknown; distance_m?: unknown; kcal?: unknown }[] {
+function events(
+  kind: string,
+): { phase?: unknown; distance_m?: unknown; kcal?: unknown; profileId?: unknown }[] {
   return rig.events.filter((event) => event.kind === kind).map((event) => event.details);
 }
 
@@ -96,7 +98,11 @@ describe('a walk reported by the phone', () => {
     walkFor(62);
     rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 51, steps: 122 })]);
     expect(events('activity').map((details) => details.phase)).toEqual(['started', 'finished']);
-    expect(events('activity')[1]).toMatchObject({ phase: 'finished', distance_m: 510 });
+    expect(events('activity')[1]).toMatchObject({
+      phase: 'finished',
+      distance_m: 510,
+      profileId: rig.owner.profile.id,
+    });
     expect(rig.events.every((event) => !('kcal' in event.details))).toBe(true);
   });
 

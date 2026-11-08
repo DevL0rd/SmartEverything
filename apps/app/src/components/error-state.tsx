@@ -11,6 +11,7 @@ export interface ErrorStateProps {
   readonly retry?: () => void;
   readonly retryLabel?: string;
   readonly page?: boolean;
+  readonly wrapDetail?: boolean;
 }
 
 export function ErrorState({
@@ -18,6 +19,7 @@ export function ErrorState({
   retry,
   retryLabel = 'Try again',
   page = false,
+  wrapDetail,
 }: ErrorStateProps): ReactNode {
   const text = errorText(error);
   return (
@@ -37,7 +39,7 @@ export function ErrorState({
           variant="footnote"
           tone="variant"
           align={page ? 'center' : 'start'}
-          numberOfLines={3}
+          {...(wrapDetail === true ? {} : { numberOfLines: 3 })}
           selectable
         >
           {text.detail}

@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
-import type { Href } from 'expo-router';
+import type { AppHref } from './app-href';
 import { useIdiom } from '../design/platform';
 import { IconButton } from './icon-button';
 
 export interface PageSettingsLink {
-  readonly href: Href;
+  readonly href: AppHref;
   readonly label: string;
 }
 

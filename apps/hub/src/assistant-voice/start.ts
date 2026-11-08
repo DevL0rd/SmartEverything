@@ -1,4 +1,6 @@
+import type { HubLayout } from '../data-layout';
 import type { Logger } from '@smarteverything/logging';
+import type { VoiceMemory } from './voice-memory';
 import type { AssistantService } from '../assistant/service';
 import type { SecretStore } from '../secrets/store';
 import type { Store } from '../store/store';
@@ -17,11 +19,12 @@ export interface StartVoiceOptions {
   readonly fetch: typeof fetch;
   readonly now: () => Date;
   readonly tools: ToolHub;
+  readonly memory: VoiceMemory;
   readonly prices: PriceBook;
   readonly openCalls: OpenCalls;
   readonly cameras: HomeCameras;
   readonly roomMedia: SpeakingMedia;
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
   readonly log: Logger;
 }
 
@@ -31,10 +34,11 @@ export function startAssistantVoice(options: StartVoiceOptions): AssistantVoice 
     secrets: options.secrets,
     responder: options.assistant.voice,
     tools: options.tools,
+    memory: options.memory,
     prices: options.prices,
     cameras: options.cameras,
     roomMedia: options.roomMedia,
-    dataDirectory: options.dataDirectory,
+    voiceSamples: options.layout.cache.voiceSamples,
     fetch: options.fetch,
     now: options.now,
     log: options.log,

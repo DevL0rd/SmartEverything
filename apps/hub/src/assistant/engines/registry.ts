@@ -1,4 +1,6 @@
 import { admitExecutionTarget, eventAuthority, executionRole } from '../turn-authority';
+import { assertHelperDelivery } from '../delegation/helper-dialogue';
+import { admitChatExecution } from '../native-helpers';
 import {
   ApiError,
   type Role,
@@ -45,6 +47,8 @@ export class EngineRegistry {
     const chat = this.store.aiChats.chat(event.chat_id);
     try {
       const authority = eventAuthority(this.store, event);
+      admitChatExecution(chat);
+      assertHelperDelivery(this.store, chat, event);
       admitExecutionTarget(this.store, chat, authority);
       this.forMutation(chat, executionRole(authority));
     } catch (cause) {
@@ -55,8 +59,8 @@ export class EngineRegistry {
     }
     const engine = this.engineOf(chat);
     return engine === null
-      ? { kind: 'blocked', reason: NOT_READY }
-      : { kind: 'engine', engine, chat };
+      ? { kind: 'waiting' }
+      : { kind: 'engine', engine, chat, authority: eventAuthority(this.store, event) };
   }
 
   ready(chat: AiChatRow): string | null {

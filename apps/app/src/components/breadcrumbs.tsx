@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react';
 import { Fragment } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from './app-href';
 import { Icon } from './icon';
 import { Interactive } from './interactive';
 import { Text } from './text';
 
 export interface Crumb {
   readonly label: string;
-  readonly href?: Href;
+  readonly href?: AppHref;
 }
 
 export function Breadcrumbs({ crumbs }: { readonly crumbs: readonly Crumb[] }): ReactNode {

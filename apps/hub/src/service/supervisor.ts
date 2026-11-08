@@ -1,15 +1,7 @@
 import type { WriteStream } from 'node:fs';
 import { rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import type { Readable } from 'node:stream';
-import {
-  RESTART_EXIT_CODE,
-  RESTART_REQUEST_FILE,
-  SERVICE_OUTPUT_LOG_FILE,
-  SERVICE_READY_FILE,
-  STOP_REQUEST_FILE,
-  SUPERVISOR_PID_FILE,
-} from './configuration';
+import { RESTART_EXIT_CODE } from './configuration';
 import { PidLockedError, pidLock, type PidLock } from '../pid-lock';
 import { openAppendStream, watchRequest } from './files';
 import { background, failureLine } from '@smarteverything/logging';
@@ -22,8 +14,16 @@ export interface ServiceChild {
   readonly onError: (listener: (cause: Error) => void) => void;
 }
 
+export interface SupervisorFiles {
+  readonly supervisorPid: string;
+  readonly restartRequest: string;
+  readonly stopRequest: string;
+  readonly ready: string;
+  readonly output: string;
+}
+
 export interface SupervisorHost {
-  readonly dataDirectory: string;
+  readonly files: SupervisorFiles;
   readonly pid: number;
   readonly spawnService: () => ServiceChild;
   readonly isAlive: (processId: number) => boolean;
@@ -76,12 +76,10 @@ class Supervision {
       background(this.finish(), 'supervisor.finish_failed');
       return;
     }
-    writeFile(join(this.host.dataDirectory, RESTART_REQUEST_FILE), 'stop', { mode: 0o600 }).catch(
-      (cause: unknown) => {
-        note(this.output, 'supervisor.stop_request_failed', { message: failureLine(cause) });
-        child.kill();
-      },
-    );
+    writeFile(this.host.files.restartRequest, 'stop', { mode: 0o600 }).catch((cause: unknown) => {
+      note(this.output, 'supervisor.stop_request_failed', { message: failureLine(cause) });
+      child.kill();
+    });
     this.host.later(() => {
       if (this.child === child) {
         note(this.output, 'supervisor.stop_forced', {});
@@ -92,7 +90,7 @@ class Supervision {
 
   private async exited(code: number | null, signal: string | null): Promise<void> {
     this.child = null;
-    await rm(join(this.host.dataDirectory, SERVICE_READY_FILE), { force: true });
+    await rm(this.host.files.ready, { force: true });
     note(this.output, 'supervisor.service_exited', { code, signal });
     if (this.stopping || code === 0) {
       await this.finish();
@@ -113,8 +111,8 @@ class Supervision {
     }
     this.finished = true;
     this.stopWatch?.stop();
-    await rm(join(this.host.dataDirectory, STOP_REQUEST_FILE), { force: true });
-    await rm(join(this.host.dataDirectory, RESTART_REQUEST_FILE), { force: true });
+    await rm(this.host.files.stopRequest, { force: true });
+    await rm(this.host.files.restartRequest, { force: true });
     await this.lock.release();
     note(this.output, 'supervisor.stopped', {});
     await new Promise<void>((resolve) => {
@@ -125,10 +123,10 @@ class Supervision {
 }
 
 export async function runSupervisor(host: SupervisorHost): Promise<void> {
-  const output = await openAppendStream(join(host.dataDirectory, SERVICE_OUTPUT_LOG_FILE));
+  const output = await openAppendStream(host.files.output);
   let lock: PidLock;
   try {
-    lock = await pidLock(join(host.dataDirectory, SUPERVISOR_PID_FILE), {
+    lock = await pidLock(host.files.supervisorPid, {
       pid: host.pid,
       isAlive: host.isAlive,
     });
@@ -144,7 +142,7 @@ export async function runSupervisor(host: SupervisorHost): Promise<void> {
     return;
   }
   const supervision = new Supervision(host, output, lock);
-  supervision.stopWatch = await watchRequest(host.dataDirectory, STOP_REQUEST_FILE, {
+  supervision.stopWatch = await watchRequest(host.files.stopRequest, {
     requested: () => {
       supervision.requestStop();
     },

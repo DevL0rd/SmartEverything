@@ -71,13 +71,12 @@ function stopProbe(id: ProfilingFlagId, stop: () => void): void {
 
 export function reconcileProbes(flags: DeveloperFlags): void {
   log.debug('probe.reconciled', () => ({
-    dev: __DEV__,
     wanted: PROBE_IDS.filter((id) => flags[id]).length,
     running: running.size,
   }));
   PROBE_IDS.forEach((id) => {
     const stop = running.get(id);
-    const wanted = __DEV__ && flags[id];
+    const wanted = flags[id];
     if (wanted && stop === undefined) {
       startProbe(id);
     }

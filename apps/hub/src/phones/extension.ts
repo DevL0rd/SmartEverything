@@ -1,4 +1,4 @@
-import { clientFailureRoutes } from '../client-failures/extension';
+import { clientPerfRoutes } from '../client-failures/extension';
 import { PerfSamples } from '../client-failures/perf-samples';
 import type { ExtensionContext, RunningExtension, ServerExtension } from '../extensions';
 import { commandOrigin } from '../computers/computer-records';
@@ -65,7 +65,7 @@ export function phonesExtension(now: () => Date): ServerExtension {
           now,
           files: (caller, fileId) => phoneFileOf(context, caller, fileId),
         }),
-        ...clientFailureRoutes(context.log, new PerfSamples(context.dataDirectory, context.log)),
+        ...clientPerfRoutes(new PerfSamples(context.layout.system.logs.perfSamples, context.log)),
       },
       routes: [],
       stop: (): Promise<void> => {

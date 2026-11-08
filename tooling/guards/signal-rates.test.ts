@@ -1,4 +1,9 @@
-import { PLUGIN_SOURCE_PREFIX, SIGNAL_RATES, SIGNAL_SOURCES, signalRateOf } from '@smarteverything/domain';
+import {
+  PLUGIN_SOURCE_PREFIX,
+  SIGNAL_RATES,
+  SIGNAL_SOURCES,
+  signalRateOf,
+} from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 
 describe('signal rate caps', () => {

@@ -1,12 +1,17 @@
+import { messageOf } from '@smarteverything/logging';
 import { UpdateInstallError } from './update-errors.js';
+
+export interface SquirrelEvents {
+  readonly downloaded: () => void;
+  readonly notAvailable: () => void;
+  readonly failed: (error: Error) => void;
+}
 
 export interface SquirrelUpdater {
   readonly setFeedURL: (options: { readonly url: string }) => void;
   readonly checkForUpdates: () => void;
   readonly quitAndInstall: () => void;
-  readonly onceDownloaded: (listener: () => void) => void;
-  readonly onceNotAvailable: (listener: () => void) => void;
-  readonly onceFailed: (listener: (error: Error) => void) => void;
+  readonly listen: (events: SquirrelEvents) => () => void;
 }
 
 export function applySquirrelUpdate(
@@ -14,17 +19,27 @@ export function applySquirrelUpdate(
   feedDirectory: string,
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    updater.onceDownloaded(() => {
-      updater.quitAndInstall();
-      resolve();
+    const stop = updater.listen({
+      downloaded: () => {
+        stop();
+        updater.quitAndInstall();
+        resolve();
+      },
+      notAvailable: () => {
+        stop();
+        reject(new UpdateInstallError('checking the installer feed', 'it holds no newer version'));
+      },
+      failed: (error) => {
+        stop();
+        reject(new UpdateInstallError('running the installer', error.message));
+      },
     });
-    updater.onceNotAvailable(() => {
-      reject(new UpdateInstallError('checking the installer feed', 'it holds no newer version'));
-    });
-    updater.onceFailed((error) => {
-      reject(new UpdateInstallError('running the installer', error.message));
-    });
-    updater.setFeedURL({ url: feedDirectory });
-    updater.checkForUpdates();
+    try {
+      updater.setFeedURL({ url: feedDirectory });
+      updater.checkForUpdates();
+    } catch (cause) {
+      stop();
+      reject(new UpdateInstallError('starting the installer check', messageOf(cause)));
+    }
   });
 }

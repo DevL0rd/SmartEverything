@@ -6,6 +6,7 @@ export interface EffectRun {
   readonly automationId: string;
   readonly signal: AbortSignal;
   readonly commands: (rows: readonly CommandRow[]) => void;
+  readonly late: (cause: unknown) => void;
   readonly trigger: SignalInput | null;
 }
 

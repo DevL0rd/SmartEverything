@@ -21,6 +21,29 @@ const SMARTTHINGS_APP = z.object({
   clientSecret: z.string().min(1),
 });
 
+export const GOOGLE_CLIENT_KINDS = ['desktop', 'android'] as const;
+
+export const GOOGLE_CLIENT_KIND = z.enum(GOOGLE_CLIENT_KINDS);
+
+export type GoogleClientKind = z.infer<typeof GOOGLE_CLIENT_KIND>;
+
+const GOOGLE_APP = z.strictObject({
+  desktop: z
+    .strictObject({ clientId: z.string().min(1), clientSecret: z.string().min(1) })
+    .nullable(),
+  android: z.strictObject({ clientId: z.string().min(1) }).nullable(),
+});
+
+export type GoogleApp = z.infer<typeof GOOGLE_APP>;
+
+const GOOGLE_ACCOUNT_SECRET = z.strictObject({
+  refreshToken: z.string().min(1),
+  scopes: z.array(z.string().min(1)),
+  client: GOOGLE_CLIENT_KIND,
+});
+
+export type GoogleAccountSecret = z.infer<typeof GOOGLE_ACCOUNT_SECRET>;
+
 const AUTOMATION_SECRET_RECORD = z.object({
   name: z.string().min(1),
   value: z.string().min(1),
@@ -37,8 +60,11 @@ const HUB_SECRETS = z.object({
   deviceKeys: z.record(z.string(), z.string().regex(/^[0-9a-f]{32}$/)).default({}),
   geminiKey: z.string().min(1).nullable().default(null),
   openrouterKey: z.string().min(1).nullable().default(null),
+  apiKeys: z.record(z.string().min(1), z.string().min(1)).default({}),
   plugins: z.record(z.string(), z.record(z.string(), z.string())).default({}),
   automationSecrets: z.record(z.uuid(), AUTOMATION_SECRET_RECORD).optional(),
+  googleApp: GOOGLE_APP.nullable().default(null),
+  googleAccounts: z.record(z.string().min(1), GOOGLE_ACCOUNT_SECRET).default({}),
 });
 
 export type HubSecrets = z.infer<typeof HUB_SECRETS>;
@@ -57,7 +83,10 @@ const EMPTY: HubSecrets = {
   deviceKeys: {},
   geminiKey: null,
   openrouterKey: null,
+  apiKeys: {},
   plugins: {},
+  googleApp: null,
+  googleAccounts: {},
 };
 
 export class SecretStoreError extends Error {
@@ -118,6 +147,7 @@ function decrypt(path: string, key: Buffer, text: string): HubSecrets {
 export class SecretStore {
   private current: HubSecrets;
   private writing: Promise<void> = Promise.resolve();
+  private readonly apiKeyListeners = new Set<(reference: string) => void>();
 
   private constructor(
     private readonly path: string,
@@ -188,6 +218,39 @@ export class SecretStore {
     }));
   }
 
+  apiKey(reference: string): string | null {
+    return this.current.apiKeys[reference] ?? null;
+  }
+
+  async saveApiKey(reference: string, value: string): Promise<void> {
+    await this.update((secrets) => ({
+      ...secrets,
+      apiKeys: { ...secrets.apiKeys, [reference]: value },
+    }));
+    this.apiKeyChanged(reference);
+  }
+
+  async removeApiKey(reference: string): Promise<void> {
+    await this.update((secrets) => ({
+      ...secrets,
+      apiKeys: Object.fromEntries(
+        Object.entries(secrets.apiKeys).filter(([name]) => name !== reference),
+      ),
+    }));
+    this.apiKeyChanged(reference);
+  }
+
+  onApiKeyChange(listener: (reference: string) => void): () => void {
+    this.apiKeyListeners.add(listener);
+    return (): void => {
+      this.apiKeyListeners.delete(listener);
+    };
+  }
+
+  private apiKeyChanged(reference: string): void {
+    for (const listener of this.apiKeyListeners) listener(reference);
+  }
+
   async saveAutomationSecret(id: string, record: AutomationSecretRecord): Promise<void> {
     await this.update((secrets) => ({
       ...secrets,
@@ -200,6 +263,34 @@ export class SecretStore {
       ...secrets,
       automationSecrets: Object.fromEntries(
         Object.entries(secrets.automationSecrets ?? {}).filter(([name]) => name !== id),
+      ),
+    }));
+  }
+
+  googleApp(): GoogleApp | null {
+    return this.current.googleApp;
+  }
+
+  async saveGoogleApp(app: GoogleApp): Promise<void> {
+    await this.update((secrets) => ({ ...secrets, googleApp: app }));
+  }
+
+  googleAccount(profileId: string): GoogleAccountSecret | null {
+    return this.current.googleAccounts[profileId] ?? null;
+  }
+
+  async saveGoogleAccount(profileId: string, account: GoogleAccountSecret): Promise<void> {
+    await this.update((secrets) => ({
+      ...secrets,
+      googleAccounts: { ...secrets.googleAccounts, [profileId]: account },
+    }));
+  }
+
+  async removeGoogleAccount(profileId: string): Promise<void> {
+    await this.update((secrets) => ({
+      ...secrets,
+      googleAccounts: Object.fromEntries(
+        Object.entries(secrets.googleAccounts).filter(([name]) => name !== profileId),
       ),
     }));
   }

@@ -45,7 +45,7 @@ export const SERVED_AUTOMATIONS = [
     title: 'Schedule steps',
     line: 'Plan steps for later, change or cancel them',
     description:
-      'One-off steps for later (a timing and steps such as a tool call, a wait or an AI wake that continues this chat): create, change, cancel, run now or remove; scheduleId comes from schedule_find. Use it for timers and reminders. Not for anything that repeats or reacts to events (automation_edit).',
+      'One-off steps for later (a timing and steps such as a tool call, a wait or an AI wake that continues this chat): create, change, cancel, run now or remove; scheduleId comes from schedule_find. Not for timers, alarms or reminders for a person (planner_edit) and not for anything that repeats or reacts to events (automation_edit).',
     route: {
       key: 'action',
       branches: {
@@ -91,7 +91,7 @@ export const SERVED_AUTOMATIONS = [
     title: 'Read automations',
     line: 'Automations, programs, nodes, catalog',
     description:
-      'Reads automations and Custom Nodes: summary lists them with revision, trigger summary, last run and last error; full and outline return one program; functions lists Custom Nodes; catalog lists node kinds with ports and examples, read it before writing a program; secrets lists secret names and users, never values (owner only). Not for runs (automation_runs_read).',
+      'Reads automations and Custom Nodes: summary lists them with revision, trigger summary, last run and last error; full and outline return one program; functions lists Custom Nodes; catalog lists every node kind with ports, picker sources, run modes, whether it has an If it fails exit and, for plugin nodes, the plugin and availability, read it before writing a program; secrets lists secret names (owner only); revisions, revision, compare and draft read the history and the editor working copy. Not for runs (automation_runs_read).',
     route: {
       key: 'view',
       branches: {
@@ -114,11 +114,27 @@ export const SERVED_AUTOMATIONS = [
         },
         catalog: {
           part: 'list_automation_catalog',
-          line: 'Node kinds with ports, types and examples; filter by query, group or kind',
+          line: 'Node kinds with ports, picker sources, run modes, error exit and plugin availability; filter by query, group or kind',
         },
         secrets: {
           part: 'list_automation_secrets',
           line: 'Secret names, dates and the automations using them; owner only',
+        },
+        revisions: {
+          part: 'list_automation_revisions',
+          line: 'Published revisions of one automation, newest first, with date and author',
+        },
+        revision: {
+          part: 'read_automation_revision',
+          line: 'One published revision with its program and layout',
+        },
+        compare: {
+          part: 'compare_automation_revisions',
+          line: 'What differs between a revision and a later one or the draft, one row per part',
+        },
+        draft: {
+          part: 'read_automation_draft',
+          line: 'The working copy the person is editing, or the published program when none',
         },
       },
     },
@@ -130,14 +146,14 @@ export const SERVED_AUTOMATIONS = [
     title: 'Edit automations',
     line: 'Write, check or remove automations and Custom Nodes',
     description:
-      'Writes automation and Custom Node programs built only from nodes and wires (every port holds {"lit": value} or a wire); read automation_read view catalog first. check validates without saving; create, update and patch write an automation, update also switches one on or off; create_node, save_node and remove_node write a Custom Node. Replies name node, port, expected, received and a fix. Then automation_run mode dry. Not for running one (automation_run).',
+      'Writes automation and Custom Node programs made only of nodes and wires (every port holds {"lit": value} or a wire); read automation_read view catalog first and use its first-class and plugin nodes, tool.call only for assistant-only tools no node covers. check validates without saving; create, update and patch write an automation, update also switches it on or off or renames it; create_node, save_node and remove_node write a Custom Node. Its description is one short line: what starts it and what it does. Then automation_run mode dry. Not for running one (automation_run).',
     route: {
       key: 'action',
       branches: {
         create: { part: 'create_automation', line: 'Add an automation from a full program' },
         update: {
           part: 'update_automation',
-          line: 'Replace an automation program as the next revision, or switch it on or off with enabled',
+          line: 'Replace an automation program as the next revision, switch it on or off with enabled, or rename it with name',
         },
         patch: {
           part: 'patch_automation',
@@ -154,6 +170,66 @@ export const SERVED_AUTOMATIONS = [
           line: 'Save a Custom Node’s next revision; callers keep their last compatible revision',
         },
         remove_node: { part: 'remove_custom_node', line: 'Delete a Custom Node nothing uses' },
+      },
+    },
+  },
+  {
+    name: 'automation_versions_edit',
+    area: 'automations',
+    access: 'control',
+    title: 'Restore and publish versions',
+    line: 'Restore a revision, publish or discard a draft',
+    description:
+      'Works with the versions of one automation: restore makes an earlier revision (automation_read view revisions) the next published revision; publish puts the draft the person saved in the editor live after the full check; discard throws that draft away. Not for writing a program (automation_edit).',
+    route: {
+      key: 'action',
+      branches: {
+        restore: {
+          part: 'restore_automation_revision',
+          line: 'Publish an earlier revision again as the next revision, with its layout',
+        },
+        publish: { part: 'publish_automation_draft', line: 'Publish the saved editor draft' },
+        discard: { part: 'discard_automation_draft', line: 'Throw the saved editor draft away' },
+      },
+    },
+  },
+  {
+    name: 'automation_tests_edit',
+    area: 'automations',
+    access: 'control',
+    title: 'Edit automation tests',
+    line: 'Stored simulations and what they must produce',
+    description:
+      'Stored tests of one automation, the same as the Test panel in the editor: a simulation scenario plus what it must produce. create and save write one, remove deletes one, run runs every stored test on a virtual clock without sending anything and returns each pass or failure. Read them with automation_runs_read view tests.',
+    route: {
+      key: 'action',
+      branches: {
+        create: { part: 'create_automation_test', line: 'Store a new test scenario' },
+        save: { part: 'save_automation_test', line: 'Replace a stored test' },
+        remove: { part: 'remove_automation_test', line: 'Delete a stored test' },
+        run: { part: 'run_automation_tests', line: 'Run every stored test and report each result' },
+      },
+    },
+  },
+  {
+    name: 'custom_node_edit',
+    area: 'automations',
+    access: 'control',
+    title: 'Make and update Custom Node uses',
+    line: 'Turn steps into a Custom Node, move callers on',
+    description:
+      'Reshapes Custom Node uses: extract turns chosen steps of an automation into a new Custom Node and puts one call to it in their place, in one change; move_callers moves every automation and Custom Node that follows a Custom Node onto its latest revision with a mapping for renamed or new ports. Creating, saving and removing a Custom Node is automation_edit.',
+    route: {
+      key: 'action',
+      branches: {
+        extract: {
+          part: 'extract_custom_node',
+          line: 'Move chosen steps into a new Custom Node and call it in their place',
+        },
+        move_callers: {
+          part: 'update_custom_node_callers',
+          line: 'Move every caller onto the latest revision with a port mapping',
+        },
       },
     },
   },
@@ -212,7 +288,7 @@ export const SERVED_AUTOMATIONS = [
     title: 'Read automation runs',
     line: 'Runs, node records, decisions, questions',
     description:
-      'Run history of automations: the newest runs, one run with what each node did, node records of a run, why an automation did not run, and the questions automations wait on with their buttons. Use it to explain what an automation did.',
+      'Run history of automations: the newest runs, one run with what each node did, node records of a run, why an automation did not run, the questions automations wait on with their buttons, and the stored tests of one automation. Use it to explain what an automation did.',
     route: {
       key: 'view',
       branches: {
@@ -235,6 +311,10 @@ export const SERVED_AUTOMATIONS = [
         questions: {
           part: 'list_automation_questions',
           line: 'Questions waiting for an answer, with buttons and who was asked',
+        },
+        tests: {
+          part: 'list_automation_tests',
+          line: 'Stored test scenarios of one automation with what each must produce',
         },
       },
     },

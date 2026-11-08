@@ -15,11 +15,11 @@ const STRENGTH_ROLES: ReadonlySet<CapabilityRole> = new Set(['spray_interval', '
 
 export const DIFFUSER_MANAGED: ReadonlySet<string> = new Set(['raw:2.3', 'raw:2.4']);
 
-function ColourRow({ device }: { readonly device: Device }): ReactNode {
+function ColourRow({ device, lit }: { readonly device: Device; readonly lit: boolean }): ReactNode {
   return (
     <View className="flex-row items-center justify-between">
       <Text variant="callout">Colour</Text>
-      <LightSheetButton device={device} />
+      <LightSheetButton device={device} lit={lit} />
     </View>
   );
 }
@@ -27,7 +27,7 @@ function ColourRow({ device }: { readonly device: Device }): ReactNode {
 export function DiffuserControls({ device }: { readonly device: Device }): ReactNode {
   const model = useDeviceModel(device);
   const name = useDisplayName(device.id);
-  const { power } = useDiffuserRead(device);
+  const { power, light } = useDiffuserRead(device);
   const reason = !device.online
     ? offlineReason(name)
     : power === 'off'
@@ -40,7 +40,7 @@ export function DiffuserControls({ device }: { readonly device: Device }): React
         .filter((presented) => presented.role === null || !STRENGTH_ROLES.has(presented.role))
         .map((presented) =>
           presented.role === 'color' ? (
-            <ColourRow key={presented.key} device={device} />
+            <ColourRow key={presented.key} device={device} lit={light === true} />
           ) : (
             <ControlBlock
               key={presented.key}

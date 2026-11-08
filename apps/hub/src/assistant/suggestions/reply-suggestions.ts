@@ -1,15 +1,15 @@
 import { REPLY_SUGGESTIONS_KIND, type AssistantMessageRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
-import { SideCompletion, type SideCompletionDeps } from '../side-completion';
-import { cleanSuggestions, suggestionMessages } from './suggestion-text';
+import { SideCompletion, type SideParts } from '../side-completion';
+import type { Store } from '../../store/store';
+import { cleanSuggestions, suggestionPrompt } from './suggestion-text';
 import { messageOf } from '@smarteverything/logging';
 
-export interface ReplySuggestionsDeps extends SideCompletionDeps {
+export interface ReplySuggestionsDeps extends SideParts {
+  readonly store: Store;
   readonly log: Logger;
 }
-
-const SUGGESTION_TOKENS_MAX = 120;
 
 function withoutSuggestions(row: AssistantMessageRow): AssistantMessageRow['embeds'] {
   return row.embeds.filter((embed) => embed.kind !== REPLY_SUGGESTIONS_KIND);
@@ -43,8 +43,7 @@ export class ReplySuggestions {
     }
     const raw = await this.side.complete(model, {
       chatId: event.chat_id,
-      messages: suggestionMessages(person.text, text),
-      maxTokens: SUGGESTION_TOKENS_MAX,
+      ...suggestionPrompt(person.text, text),
     });
     const embed = cleanSuggestions(raw);
     if (embed !== null && this.isLatest(reply)) {

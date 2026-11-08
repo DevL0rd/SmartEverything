@@ -6,9 +6,11 @@ import {
   type AutomationAuthor,
   type FunctionRevisionRow,
   type FunctionRow,
-  type FunctionV3,
+  type FunctionV4,
   type Layout,
+  type NodeKindLookup,
 } from '@smarteverything/domain';
+import { completeLayout } from '@smarteverything/flow/graph/place-new';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
@@ -35,7 +37,7 @@ export interface FunctionUsers {
 }
 
 export interface FunctionDraft {
-  readonly program: FunctionV3;
+  readonly program: FunctionV4;
   readonly layout: Layout;
 }
 
@@ -93,7 +95,15 @@ export class AutomationFunctionsRepository {
     );
   }
 
-  create(input: NewFunction): FunctionRow {
+  findByName(name: string): FunctionRow | undefined {
+    return this.context.sql.get(
+      STORED_FUNCTION,
+      `select ${FUNCTION_COLUMNS} from automation_functions where name = $name`,
+      { name },
+    );
+  }
+
+  create(input: NewFunction, kinds: NodeKindLookup): FunctionRow {
     return this.context.write(() => {
       const id = input.id ?? this.context.newId();
       const now = this.context.now();
@@ -113,34 +123,43 @@ export class AutomationFunctionsRepository {
           now,
         },
       );
-      this.insertRevision(id, 1, input);
+      this.insertRevision(id, 1, input, kinds);
       return this.byId(id);
     });
   }
 
-  revise(id: string, change: FunctionRevisionChange): FunctionRow {
+  revise(id: string, change: FunctionRevisionChange, kinds: NodeKindLookup): FunctionRow {
     return this.context.write(() => {
       const before = this.expect(id, change.expectedRevision);
-      return this.promote(before, change, before.draft);
+      return this.promote(before, change, before.draft, kinds);
     });
   }
 
-  publish(id: string, publication: FunctionPublication): FunctionRow {
+  publish(id: string, publication: FunctionPublication, kinds: NodeKindLookup): FunctionRow {
     return this.context.write(() => {
       const before = this.expect(id, publication.expectedRevision);
       if (before.draft === null)
         throw new ApiError('conflict', 'The Custom Node has no draft to publish.');
-      return this.promote(before, { ...before.draft, ...publication }, null);
+      return this.promote(before, { ...before.draft, ...publication }, null, kinds);
     });
   }
 
-  saveDraft(id: string, draft: FunctionDraft, expectedRevision: number): FunctionRow {
+  saveDraft(
+    id: string,
+    draft: FunctionDraft,
+    expectedRevision: number,
+    kinds: NodeKindLookup,
+  ): FunctionRow {
     return this.context.write(() => {
       this.expect(id, expectedRevision);
+      const completed = {
+        ...draft,
+        layout: completeLayout(draft.program, draft.layout, { kinds, direction: 'ltr' }),
+      };
       this.context.sql.run(
         'save the Custom Node draft',
         'update automation_functions set draft = $draft, updated_at = $now where id = $id',
-        { id, draft: jsonText(draft), now: this.context.now() },
+        { id, draft: jsonText(completed), now: this.context.now() },
       );
       return this.byId(id);
     });
@@ -272,6 +291,7 @@ export class AutomationFunctionsRepository {
     before: FunctionRow,
     change: FunctionRevisionInput,
     draft: FunctionRow['draft'],
+    kinds: NodeKindLookup,
   ): FunctionRow {
     const revision = before.latest_revision + 1;
     this.context.sql.run(
@@ -290,11 +310,16 @@ export class AutomationFunctionsRepository {
         now: this.context.now(),
       },
     );
-    this.insertRevision(before.id, revision, change);
+    this.insertRevision(before.id, revision, change, kinds);
     return this.byId(before.id);
   }
 
-  private insertRevision(id: string, revision: number, input: FunctionRevisionInput): void {
+  private insertRevision(
+    id: string,
+    revision: number,
+    input: FunctionRevisionInput,
+    kinds: NodeKindLookup,
+  ): void {
     this.context.sql.run(
       'keep the Custom Node revision',
       `insert into automation_function_revisions
@@ -304,7 +329,7 @@ export class AutomationFunctionsRepository {
         id,
         revision,
         definition: jsonText(input.program),
-        layout: jsonText(input.layout),
+        layout: jsonText(completeLayout(input.program, input.layout, { kinds, direction: 'ltr' })),
         interfaceHash: input.interfaceHash,
         compat: input.compat,
         planHash: input.planHash,

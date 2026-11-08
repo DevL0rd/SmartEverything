@@ -50,7 +50,7 @@ export function createXiaomiModule(
       const specs = new SpecStore({
         fetch: dependencies.fetch,
         baseUrl: dependencies.specBaseUrl,
-        directory: context.dataDirectory,
+        directory: context.layout.system.providers('xiaomi'),
         log: context.log,
       });
       return Promise.resolve(

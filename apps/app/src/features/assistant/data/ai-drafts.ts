@@ -12,6 +12,8 @@ import { Logger, background } from '@smarteverything/logging';
 import { ValueStore, usePausable } from '../../../design/external-store';
 import { jsonText } from '../../../format/json-text';
 import type { Quote } from '../model/composer-state';
+import { HELPER_MENTION, type HelperMention } from '../model/helper-target';
+import { DRAFT_SUBMISSION_PAYLOAD, decodeDraftSubmission } from './draft-submission-content';
 
 const log = new Logger('app.ai-drafts');
 
@@ -22,6 +24,8 @@ const SAVE_DELAY_MS = 500;
 export interface DraftSubmission {
   readonly id: string;
   readonly payload: string;
+  readonly chat?: { readonly id: string; readonly sessionKey: string };
+  readonly quote?: Quote | null;
 }
 
 export interface Draft {
@@ -29,6 +33,7 @@ export interface Draft {
   readonly revision: number;
   readonly references: readonly AiMessageReference[];
   readonly submission?: DraftSubmission;
+  readonly helperMentions?: readonly HelperMention[] | undefined;
 }
 
 export interface UploadFailure {
@@ -60,6 +65,7 @@ export interface PendingMessage {
   readonly attachments: readonly string[];
   readonly queuedAt: string;
   readonly references: readonly AiMessageReference[];
+  readonly quoteMessageId?: string;
 }
 
 export interface AiDraftsState {
@@ -71,16 +77,31 @@ export interface AiDraftsState {
 
 const EMPTY: AiDraftsState = { drafts: {}, quotes: {}, uploads: [], outbox: [] };
 
+const STORED_QUOTE = z.strictObject({
+  messageId: z.uuid(),
+  who: z.string(),
+  text: z.string(),
+  helperChatId: z.uuid().optional(),
+});
+
 const STORED = z.strictObject({
   drafts: z.record(
     z.string(),
     z.strictObject({
       text: z.string(),
       references: AI_MESSAGE_REFERENCES,
-      submission: z.strictObject({ id: z.string(), payload: z.string() }).optional(),
+      helperMentions: z.array(HELPER_MENTION).optional(),
+      submission: z
+        .strictObject({
+          id: z.string(),
+          payload: DRAFT_SUBMISSION_PAYLOAD,
+          chat: z.strictObject({ id: z.string(), sessionKey: z.string() }).optional(),
+          quote: STORED_QUOTE.nullable().optional(),
+        })
+        .optional(),
     }),
   ),
-  quotes: z.record(z.string(), z.strictObject({ who: z.string(), text: z.string() })),
+  quotes: z.record(z.string(), STORED_QUOTE),
   uploads: z.array(
     z.strictObject({
       key: z.string(),
@@ -98,6 +119,7 @@ const STORED = z.strictObject({
       attachments: z.array(z.string()),
       queuedAt: z.string(),
       references: AI_MESSAGE_REFERENCES,
+      quoteMessageId: z.uuid().optional(),
     }),
   ),
 });
@@ -122,10 +144,7 @@ function serialized(state: AiDraftsState): string {
     drafts: Object.fromEntries(
       Object.entries(state.drafts)
         .filter(([, draft]) => draft.text !== '' || draft.submission !== undefined)
-        .map(([key, { text, references, submission }]) => [
-          key,
-          { text, references, ...(submission === undefined ? {} : { submission }) },
-        ]),
+        .map(([key, { revision: _revision, ...draft }]) => [key, draft]),
     ),
     quotes: state.quotes,
     uploads: state.uploads.map(({ key, draftKey, name, mime, attachment }) => ({
@@ -142,17 +161,9 @@ function serialized(state: AiDraftsState): string {
 function restored(stored: Stored): AiDraftsState {
   return {
     drafts: Object.fromEntries(
-      Object.entries(stored.drafts).map(([key, { text, references, submission }]) => [
-        key,
-        {
-          text,
-          references,
-          revision: 0,
-          ...(submission === undefined ? {} : { submission }),
-        },
-      ]),
+      Object.entries(stored.drafts).map(([key, draft]) => [key, restoredDraft(draft)]),
     ),
-    quotes: stored.quotes,
+    quotes: restoredQuotes(stored),
     uploads: stored.uploads.map((upload) => ({
       ...upload,
       preview: null,
@@ -160,8 +171,55 @@ function restored(stored: Stored): AiDraftsState {
       state: upload.attachment === null ? 'failed' : 'done',
       failure: upload.attachment === null ? INTERRUPTED_UPLOAD : null,
     })),
-    outbox: stored.outbox,
+    outbox: stored.outbox.map(({ quoteMessageId, ...message }) => ({
+      ...message,
+      ...(quoteMessageId === undefined ? {} : { quoteMessageId }),
+    })),
   };
+}
+
+function restoredSubmission(
+  stored: NonNullable<Stored['drafts'][string]['submission']>,
+): DraftSubmission {
+  const { chat, quote, ...submission } = stored;
+  return {
+    ...submission,
+    ...(chat === undefined ? {} : { chat }),
+    ...(quote === undefined ? {} : { quote }),
+  };
+}
+
+function restoredDraft(stored: Stored['drafts'][string]): Draft {
+  const { submission, ...draft } = stored;
+  const recovery =
+    draft.text === '' && submission !== undefined
+      ? decodeDraftSubmission(submission.payload)
+      : null;
+  return {
+    ...draft,
+    ...(recovery?.kind === 'ordinary'
+      ? { text: recovery.text, references: recovery.references }
+      : {}),
+    revision: 0,
+    ...(submission === undefined ? {} : { submission: restoredSubmission(submission) }),
+  };
+}
+
+function restoredQuotes(stored: Stored): Readonly<Record<string, Quote>> {
+  const recovered = Object.fromEntries(
+    Object.entries(stored.drafts).flatMap(([key, draft]) => {
+      if (draft.text !== '' || draft.submission === undefined) return [];
+      const content = decodeDraftSubmission(draft.submission.payload);
+      if (content.kind !== 'ordinary' || content.quoteMessageId === null) return [];
+      const quote = draft.submission.quote ?? {
+        messageId: content.quoteMessageId,
+        who: 'Quoted message',
+        text: '',
+      };
+      return [[key, quote]];
+    }),
+  );
+  return { ...recovered, ...stored.quotes };
 }
 
 function merged(loaded: AiDraftsState, current: AiDraftsState): AiDraftsState {

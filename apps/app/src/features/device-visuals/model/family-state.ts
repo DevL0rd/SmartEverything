@@ -14,6 +14,7 @@ import { phoneState } from './facts/phone';
 import { robotState } from './facts/robot';
 import { toothbrushState } from './facts/toothbrush';
 import { treadmillState } from './facts/treadmill';
+import { vacuumState } from './facts/vacuum';
 import { LAUNDRY_UNKNOWN, laundryFacts } from './laundry-facts';
 import { numberOf, textOf, type Lookup } from './lookup';
 
@@ -64,6 +65,7 @@ const FAMILY_STATES: Readonly<Partial<Record<DeviceFamily, Decorate>>> = {
   treadmill: treadmillState,
   bottle: bottleState,
   toothbrush: toothbrushState,
+  vacuum: vacuumState,
   sensor: sensorState,
 };
 

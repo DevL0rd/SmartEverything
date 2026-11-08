@@ -13,9 +13,10 @@ import { sentWindow } from './sent-strip';
 
 const STEP_BASE = 6;
 const STEP_RISE = 14;
+const STEP_TALLEST = STEP_BASE + STEP_RISE;
 
-function stepStyle(index: number, of: number): { readonly height: number } {
-  return { height: STEP_BASE + (index * STEP_RISE) / of };
+function stepStyle(index: number, of: number, height: number): { readonly height: number } {
+  return { height: ((STEP_BASE + (index * STEP_RISE) / of) * height) / STEP_TALLEST };
 }
 
 function StepBars({
@@ -23,11 +24,13 @@ function StepBars({
   of,
   label,
   known,
+  height,
 }: {
   readonly lit: number;
   readonly of: number;
   readonly label: string;
   readonly known: boolean;
+  readonly height: number;
 }): ReactNode {
   return (
     <View
@@ -39,7 +42,7 @@ function StepBars({
       {Array.from({ length: of }, (_, index) => (
         <View
           key={index}
-          style={stepStyle(index, of)}
+          style={stepStyle(index, of, height)}
           className={cn('flex-1 rounded-xs', index < lit ? 'bg-primary' : 'bg-surface-3')}
         />
       ))}
@@ -137,8 +140,9 @@ export function RemoteGraph({
         of={IR_SPEED_STEPS}
         label="Speed"
         known={assumed.speed !== null}
+        height={height}
       />
     );
   }
-  return <SentStrip assumed={assumed} height={height} />;
+  return assumed.recent.length === 0 ? null : <SentStrip assumed={assumed} height={height} />;
 }

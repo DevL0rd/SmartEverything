@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { AssistantMessageRow } from '@smarteverything/domain';
-import { callPreviewOf, callTitleOf, callTurnsOf } from './call-transcript';
+import {
+  callPreviewOf,
+  callTitleOf,
+  callTurnsOf,
+  callViewOf,
+  failedActionsOf,
+  moreLinesOf,
+} from './call-transcript';
 
 function callRow(text: string, embeds: AssistantMessageRow['embeds'] = []): AssistantMessageRow {
   return {
@@ -19,6 +26,7 @@ function callRow(text: string, embeds: AssistantMessageRow['embeds'] = []): Assi
     steps: [],
     step_states: [],
     reply_to: null,
+    quote: null,
     chat_id: '00000000-0000-4000-8000-000000000003',
     origin: { source: 'voice', plugin_id: null, device_id: null, name: 'Me' },
     embeds,
@@ -51,6 +59,42 @@ describe('call transcripts', () => {
     const turns = [{ who: 'person' as const, text: 'Hi', ok: true, detail: null }];
     const row = callRow(LEGACY, [{ kind: 'call_transcript', turns }]);
     expect(callTurnsOf(row)).toEqual(turns);
+  });
+
+  it('titles the call with its length', () => {
+    expect(callTitleOf(callRow(''))).toBe('Call · 3:00');
+  });
+
+  it('shows the first two lines and keeps every other line behind the trigger', () => {
+    const view = callViewOf(callRow(LEGACY));
+    expect(view.length).toBe('3:00');
+    expect(view.lead).toEqual([
+      { speaker: 'Me', text: 'Talk to me from the living room camera.', tone: 'variant' },
+      { speaker: null, text: 'List devices', tone: 'faint' },
+    ]);
+    expect(view.rest.map((line) => line.text)).toEqual([
+      'Unmute the living room camera',
+      'Done, I can hear you there.\nIt may take a second.',
+    ]);
+    expect(view.rest[1]?.speaker).toBe('Coordinator');
+    expect(moreLinesOf(view.rest.length)).toBe('2 more lines');
+    expect(moreLinesOf(1)).toBe('1 more line');
+  });
+
+  it('marks a failed action in critical with its reason and counts it', () => {
+    const turns = [
+      { who: 'person' as const, text: 'Lock the door', ok: true, detail: null },
+      { who: 'tool' as const, text: 'Lock front door', ok: false, detail: 'Device offline' },
+    ];
+    const view = callViewOf(callRow('', [{ kind: 'call_transcript', turns }]));
+    expect(view.lead[1]).toEqual({
+      speaker: null,
+      text: 'Lock front door: Device offline',
+      tone: 'critical',
+    });
+    expect(view.rest).toEqual([]);
+    expect(view.failures).toBe(1);
+    expect(failedActionsOf(view.failures)).toBe('1 action failed');
   });
 
   it('previews the last spoken line without labels or tools', () => {

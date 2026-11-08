@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { NumberStepper, Stage } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
-function Demo() {
+function Demo(): ReactElement {
   const [a, setA] = useState(21);
   const [b, setB] = useState(30);
   return (
@@ -39,12 +39,12 @@ function Demo() {
     </Col>
   );
 }
-export const Variants = () => (
+export const Variants = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     <Demo />
   </Stage>

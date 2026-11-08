@@ -42,6 +42,7 @@ function WebhookRow(): ReactNode {
       icon="activity"
       title="Live updates"
       value={value}
+      wrapSubtitle
       {...(lastError === null ? {} : { subtitle: lastError })}
     />
   );

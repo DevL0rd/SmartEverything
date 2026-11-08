@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { useRef, useState } from 'react';
 import { Keyboard, View, type ViewStyle } from 'react-native';
 import { Tap } from '../../../components/tap';
 import { cn } from '../../../design/cn';
@@ -13,14 +13,17 @@ export function ColourDot({
   device,
   colour,
   onPress,
+  opener,
 }: {
   readonly device: Device;
   readonly colour: string | null;
   readonly onPress: () => void;
+  readonly opener?: RefObject<View | null>;
 }): ReactNode {
   const fill: ViewStyle | undefined = colour === null ? undefined : { backgroundColor: colour };
   return (
     <Tap
+      innerRef={opener}
       role="button"
       label={`${device.label} colour`}
       disabled={!device.online}
@@ -47,12 +50,14 @@ export function ColourSheetDot({
   readonly colour: string | null;
 }): ReactNode {
   const [open, setOpen] = useState(false);
+  const opener = useRef<View>(null);
   if (colourAccessOf(lightPartsOf(deviceModelOf(device))) === null) {
     return null;
   }
   return (
     <>
       <ColourDot
+        opener={opener}
         device={device}
         colour={colour}
         onPress={() => {
@@ -62,7 +67,7 @@ export function ColourSheetDot({
       />
       <LightColourSheet
         device={device}
-        open={open}
+        opener={open ? opener : null}
         onClose={() => {
           setOpen(false);
         }}

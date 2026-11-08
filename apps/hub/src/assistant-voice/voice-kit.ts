@@ -1,13 +1,13 @@
 import { MCP_DISCOVERY_TOOLS } from '@smarteverything/domain';
 import type { FunctionDeclaration } from '@google/genai';
-import { toolGuide } from '../ai-tools/tool-guide';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { VoiceResponder } from '../assistant/voice-link';
 import type { Store } from '../store/store';
 import { conversationNote, liveInstructions, STAYS_OPEN_ENDING } from './instructions';
 import type { HostedSpeaking } from './outreach';
 import { noteOf, personaOf, type Caller } from './persona';
-import { voiceToolIndex } from './voice-deferred';
+import { callPrincipal, type VoiceMemory } from './voice-memory';
+import type { MemoryPrincipal } from '../memory/principal';
 import {
   hostedSet,
   voiceSet,
@@ -20,6 +20,7 @@ export interface VoiceKit {
   readonly store: Store;
   readonly responder: VoiceResponder;
   readonly tools: ToolHub;
+  readonly memory: VoiceMemory;
   readonly now: () => Date;
 }
 
@@ -40,7 +41,7 @@ export interface NoteRequest {
 
 export function voiceHub(kit: VoiceKit, who: () => VoiceWho): ToolHub {
   const allowed = kit.store.aiChats.chat(who().chatId).tools;
-  return kit.tools.restrict((tool) => {
+  const hub = kit.tools.restrict((tool) => {
     const now = who();
     return (
       (allowed === null || allowed.includes(tool.name) || MCP_DISCOVERY_TOOLS.has(tool.name)) &&
@@ -48,10 +49,17 @@ export function voiceHub(kit: VoiceKit, who: () => VoiceWho): ToolHub {
       hostedSet([tool], now.speaking).length > 0
     );
   });
+  hub.add(kit.memory.source(() => principalOf(who())));
+  return hub;
 }
 
-export function callSearchesWeb(hub: ToolHub): boolean {
-  return hub.list().some((tool) => tool.name === WEB_SEARCH_TOOL);
+function principalOf(who: VoiceWho): MemoryPrincipal {
+  return callPrincipal({ ...who.caller, chatId: who.chatId });
+}
+
+export function callSearchesWeb(kit: VoiceKit, who: VoiceWho): boolean {
+  const allowed = kit.store.aiChats.chat(who.chatId).tools;
+  return allowed === null || allowed.includes(WEB_SEARCH_TOOL);
 }
 
 function hidden(who: VoiceWho, name: string): boolean {
@@ -60,9 +68,10 @@ function hidden(who: VoiceWho, name: string): boolean {
 
 export function systemOf(kit: VoiceKit, tools: ToolHub, who: VoiceWho): string {
   const { store, responder } = kit;
-  return liveInstructions({
-    ...personaOf({
+  return liveInstructions(
+    personaOf({
       store,
+      tools,
       place: who.place,
       sight: who.canSee && !hidden(who, VOICE_TOOL_NAMES.see),
       ending: hidden(who, VOICE_TOOL_NAMES.end)
@@ -71,18 +80,22 @@ export function systemOf(kit: VoiceKit, tools: ToolHub, who: VoiceWho): string {
       unavailable: hidden(who, VOICE_TOOL_NAMES.task)
         ? 'background tasks are hidden in this call'
         : responder.ready(who.chatId),
-      toolIndex: voiceToolIndex(tools.list()),
-      catalogue: tools.catalogue(tools.list()),
+      stopLooking: !hidden(who, VOICE_TOOL_NAMES.stopLooking),
     }),
-    stopLooking: !hidden(who, VOICE_TOOL_NAMES.stopLooking),
-    guide: toolGuide(tools.list().map((tool) => tool.name)),
-  });
+  );
 }
 
-export function voiceNoteOf(kit: VoiceKit, who: VoiceWho, request: NoteRequest): string {
+export function voiceNoteOf(
+  kit: VoiceKit,
+  tools: ToolHub,
+  who: VoiceWho,
+  request: NoteRequest,
+): string {
   return conversationNote(
     noteOf({
       store: kit.store,
+      tools,
+      memory: kit.memory,
       caller: who.caller,
       chatId: who.chatId,
       place: who.place,
@@ -97,7 +110,7 @@ const ONE_TURN_NOTE: NoteRequest = { recentSpeech: null, known: null, starting: 
 export function turnSystemOf(kit: VoiceKit, tools: ToolHub, who: VoiceWho, bare: boolean): string {
   return bare
     ? (who.place ?? '')
-    : `${systemOf(kit, tools, who)}\n\n${voiceNoteOf(kit, who, ONE_TURN_NOTE)}`;
+    : `${systemOf(kit, tools, who)}\n\n${voiceNoteOf(kit, tools, who, ONE_TURN_NOTE)}`;
 }
 
 export function declarationsOf(

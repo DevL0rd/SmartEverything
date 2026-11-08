@@ -60,34 +60,24 @@ function ActionOf({ view }: { readonly view: WeatherView }): ReactNode {
 
 export function WeatherNotice({
   view,
-  compact,
 }: {
   readonly view: Exclude<WeatherView, { kind: 'ready' }>;
-  readonly compact: boolean;
 }): ReactNode {
   if (view.kind === 'loading') {
-    return (
-      <View className="flex-1 gap-2">
-        <Skeleton shape="block" className="flex-1" />
-      </View>
-    );
+    return <Skeleton shape="block" />;
   }
   const copy = copyOf(view);
   return (
-    <View
-      className={compact ? 'flex-1 justify-center gap-2' : 'flex-1 flex-row items-center gap-4'}
-    >
-      {compact ? null : (
+    <View className="flex-row flex-wrap items-start gap-4">
+      <View className="min-w-0 grow shrink basis-64 flex-row items-start gap-4">
         <Icon name={view.kind === 'no_location' ? 'mapPin' : 'weather'} size={32} />
-      )}
-      <View className="min-w-0 flex-1 gap-1">
-        <Text variant="body-strong" numberOfLines={1}>
-          {copy.title}
-        </Text>
-        <Text variant="footnote" tone="variant" numberOfLines={compact ? 2 : 3}>
-          {copy.body}
-        </Text>
-        {view.kind === 'failed' && !compact ? <Details reason={view.reason} /> : null}
+        <View className="min-w-0 flex-1 gap-1">
+          <Text variant="body-strong">{copy.title}</Text>
+          <Text variant="footnote" tone="variant">
+            {copy.body}
+          </Text>
+          {view.kind === 'failed' ? <Details reason={view.reason} /> : null}
+        </View>
       </View>
       <ActionOf view={view} />
     </View>
@@ -117,7 +107,7 @@ export function WeatherWidgetNotice({
 
 export function Details({ reason }: { readonly reason: string }): ReactNode {
   return (
-    <Text variant="caption" tone="faint" selectable>
+    <Text variant="caption" tone="variant" selectable>
       {`Details: ${reason}`}
     </Text>
   );

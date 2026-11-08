@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { Stage, TargetDial } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
-function Demo() {
+function Demo(): ReactElement {
   const [t, setT] = useState(22);
   return (
     <Row gap={32}>
@@ -33,12 +33,12 @@ function Demo() {
     </Row>
   );
 }
-export const Thermostat = () => (
+export const Thermostat = (): ReactElement => (
   <Stage theme="dark" width={520}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     <Demo />
   </Stage>

@@ -1,11 +1,14 @@
+import type { NodeKindLookup } from '@smarteverything/domain';
 import {
   ALL_NODE_KINDS,
+  AUTOMATION_ROW,
   AUTOMATION_RUN_ID,
-  type AutomationRowV3,
   type AutomationRunSummary,
   type AutomationV3,
   type NodeKind,
 } from '@smarteverything/domain';
+import { unstructure } from '@smarteverything/flow/graph/unstructure';
+import { adaptAutomationRow, type AutomationRow } from '../data/graph-adapter';
 import { lit, program, step, trigger } from '../model/consumers/consumer-fixtures';
 import type { ListContext } from './list-entries';
 
@@ -20,14 +23,15 @@ export function idOf(index: number): string {
 export function rowOf(
   index: number,
   definition: AutomationV3,
-  extra: Partial<AutomationRowV3> = {},
-): AutomationRowV3 {
-  return {
+  extra: Partial<AutomationRow> = {},
+  kinds: NodeKindLookup,
+): AutomationRow {
+  const wire = AUTOMATION_ROW.parse({
     id: idOf(index),
     name: `Rule ${String(index)}`,
     enabled: true,
     revision: 1,
-    definition,
+    definition: unstructure(definition, kinds),
     draft: null,
     layout: { nodes: {}, frames: [], comments: [] },
     origin: null,
@@ -37,8 +41,10 @@ export function rowOf(
     run_count: 0,
     created_at: '2026-10-01T00:00:00.000Z',
     updated_at: '2026-10-01T00:00:00.000Z',
-    ...extra,
-  };
+  });
+  const adapted = adaptAutomationRow(wire, kinds);
+  if (adapted.kind === 'unstructured') throw new Error('The fixture does not structure.');
+  return { ...adapted.value, ...extra };
 }
 
 export const timed = (): AutomationV3 =>

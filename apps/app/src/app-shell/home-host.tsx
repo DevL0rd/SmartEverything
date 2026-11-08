@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { useConnection } from '../api/transport';
+import { DeveloperSyncHost } from '../developer/sync-host';
+import { WidgetModelsProvider } from '../features/device-visuals';
 import { HomeStore } from '../store/home-store';
 import { LoadedGate } from './shell-gate';
 
@@ -16,7 +18,10 @@ export function HomeHost({ children }: { readonly children: ReactNode }): ReactN
       key={`${state.connection.url}:${state.connection.token}`}
       connection={state.connection}
     >
-      <LoadedGate>{children}</LoadedGate>
+      <DeveloperSyncHost />
+      <LoadedGate>
+        <WidgetModelsProvider>{children}</WidgetModelsProvider>
+      </LoadedGate>
     </HomeStore>
   );
 }

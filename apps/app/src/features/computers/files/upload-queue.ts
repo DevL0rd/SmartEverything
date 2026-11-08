@@ -1,8 +1,9 @@
 import type { FileUploadChunk, FileUploadResult } from '@smarteverything/domain';
 import { ValueStore } from '../../../design/external-store';
+import { base64Of } from '../../../format/base64';
 import { rawErrorText } from '../../../format/errors';
 import type { PickedFile } from '../../../platform/pick-files';
-import { base64Of, chunkOf, joinPath, piecesOf, uniqueName } from './file-model';
+import { chunkOf, joinPath, piecesOf, uniqueName } from './file-model';
 
 export type UploadState =
   'waiting' | 'conflict' | 'uploading' | 'done' | 'failed' | 'skipped' | 'cancelled';

@@ -1,204 +1,261 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { ChatTimelineTool } from '@smarteverything/domain';
-import { Icon, type IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import type { Tone } from '../../../components/tone';
-import { toolActionTitle } from '../model/tool-presentation';
-import { toolGroupGoal } from '../model/tool-group-goal';
-import { toolOutcome, toolResultLine } from '../model/tool-outcome';
+import { CollapseBody, CollapseRoot } from '../../../components/disclosure';
+import { SHOWN_AT_ONCE, useProgressiveCount } from '../../../design/progressive-count';
+import { useSecondOf } from '../../../store/clock';
 import { usePluginNames } from '../data/plugin-names';
-import { Disclosure } from '../../../components/disclosure';
-import { Spinner } from './work-step-list';
+import { toolActionTitle } from '../model/tool-presentation';
+import {
+  activitySummary,
+  activitySummaryLine,
+  type ActivitySummary,
+} from '../model/tool-group-goal';
+import { toolOutcome, toolResultLine } from '../model/tool-outcome';
+import { cachedToolFileDiffs } from '../model/tool-file-diffs';
 import type { InlineToolActivity } from '../model/inline-timeline';
 import type { NumberedSource } from '../model/web-sources';
 import { WebSources } from './web-sources';
-import { ToolFileDiffs } from './tool-file-diffs';
-import { useProgressiveCount } from '../../../design/progressive-count';
+import { FileDiffList } from './tool-file-diffs';
+import { ActivityAnnouncement } from './activity-announcement';
+import {
+  ActivityLine,
+  ActivityRow,
+  ActivityRows,
+  elapsedLabel,
+  useActivityOpen,
+  WaitingLine,
+  type ActivityGlyph,
+  type ActivityLineText,
+} from './work-step-list';
 
-interface ActionStatus {
-  readonly label: string;
-  readonly icon: IconName;
-  readonly tone: Tone;
+type PluginName = (id: string) => string | null;
+
+const NO_TOOLS: readonly ChatTimelineTool[] = [];
+
+function noPlugin(): null {
+  return null;
 }
-const STATUS: Readonly<Record<ChatTimelineTool['state'], ActionStatus>> = {
-  running: { label: 'Working', icon: 'loader', tone: 'primary' },
-  done: { label: 'Succeeded', icon: 'check', tone: 'variant' },
-  failed: { label: 'Failed', icon: 'alert', tone: 'critical' },
-  interrupted: { label: 'Stopped', icon: 'square', tone: 'variant' },
-  unknown: { label: 'Couldn’t confirm', icon: 'circle', tone: 'warning' },
+
+const OUTCOME_GLYPH: Readonly<Record<ChatTimelineTool['state'], ActivityGlyph>> = {
+  running: 'running',
+  done: 'done',
+  failed: 'failed',
+  interrupted: 'stopped',
+  unknown: 'unknown',
 };
 
-const FINISHED: ActionStatus = { ...STATUS.done, label: 'Finished' };
+const SUMMARY_GLYPH: Readonly<Record<ActivitySummary['tone'], ActivityGlyph>> = {
+  live: 'running',
+  done: 'done',
+  failed: 'partial',
+  stopped: 'stopped',
+};
 
-function groupStatus(tools: readonly ChatTimelineTool[], live: boolean): ActionStatus {
-  const states = tools.map((tool) => toolOutcome(tool, live));
-  if (states.includes('running')) return STATUS.running;
-  const failures = states.filter((state) => state === 'failed').length;
-  if (failures > 0) return { ...STATUS.failed, label: `${String(failures)} failed` };
-  if (states.includes('unknown')) return STATUS.unknown;
-  if (states.includes('interrupted')) return STATUS.interrupted;
-  return tools.some((tool) => tool.image_operation_id !== null) ? FINISHED : STATUS.done;
+export function activityLineOf(
+  summary: ActivitySummary,
+  tools: readonly ChatTimelineTool[],
+  pluginName: PluginName,
+): ActivityLineText {
+  const only = tools.length === 1 ? tools[0] : undefined;
+  if (summary.tone === 'done' && only !== undefined) {
+    const title = toolActionTitle(only, pluginName);
+    return { glyph: 'done', lead: title, notes: [], verbs: [], label: title };
+  }
+  return {
+    glyph: tools.length === 0 && summary.tone !== 'live' ? 'thought' : SUMMARY_GLYPH[summary.tone],
+    lead: summary.lead,
+    notes: summary.failedNote === null ? [] : [summary.failedNote],
+    verbs: summary.verbs,
+    label: activitySummaryLine(summary, summary.verbs.length),
+  };
 }
 
-const StatusIcon = memo(function StatusIcon({
-  icon,
-  tone,
-}: {
-  readonly icon: IconName;
-  readonly tone: Tone;
-}): ReactNode {
-  return icon === 'loader' ? <Spinner /> : <Icon name={icon} size={16} tone={tone} />;
-});
+export function useLiveSeconds(startedAt: string, running: boolean): string | null {
+  const started = Date.parse(startedAt);
+  return useSecondOf((now) => (running ? elapsedLabel((now - started) / 1000) : null), running);
+}
 
-const ToolAction = memo(function ToolAction({
+function ToolRow({
   tool,
-  title,
   live,
+  pluginName,
 }: {
   readonly tool: ChatTimelineTool;
-  readonly title: string;
   readonly live: boolean;
+  readonly pluginName: PluginName;
 }): ReactNode {
   const outcome = toolOutcome(tool, live);
-  const status =
-    outcome === 'done' && tool.image_operation_id !== null ? FINISHED : STATUS[outcome];
-  const result = outcome === 'done' ? null : toolResultLine(tool, live);
+  const title = toolActionTitle(tool, pluginName);
+  const result = toolResultLine(tool, live);
+  const failed = outcome === 'failed';
+  const diffs = cachedToolFileDiffs(tool, outcome);
   return (
-    <View className="gap-1 py-1.5" accessibilityLabel={`${title}. ${status.label}`}>
-      <View className="flex-row items-start gap-2">
-        <StatusIcon icon={status.icon} tone={status.tone} />
-        <Text variant="footnote" className="min-w-0 flex-1" selectable>
-          {title}
-        </Text>
-        <Text variant="caption" tone={status.tone}>
-          {status.label}
-        </Text>
-      </View>
-      {result === null || result === title ? null : (
-        <Text variant="caption" tone="variant" className="pl-6" selectable>
-          {result}
-        </Text>
-      )}
-      <ToolFileDiffs tool={tool} state={outcome} />
-    </View>
-  );
-});
-
-const GroupBody = memo(function GroupBody({
-  activities,
-  live,
-  pluginName,
-}: {
-  readonly activities: readonly InlineToolActivity[];
-  readonly live: boolean;
-  readonly pluginName: (id: string) => string | null;
-}): ReactNode {
-  const mounted = useProgressiveCount(activities.length, !live);
-  return (
-    <View className="gap-1 pl-4">
-      {activities.slice(0, mounted).map((activity) =>
-        activity.kind === 'tool' ? (
-          <ToolAction
-            key={activity.key}
-            tool={activity.tool}
-            title={toolActionTitle(activity.tool, pluginName)}
-            live={live}
-          />
-        ) : (
-          <View key={activity.key} className="gap-1 py-1.5">
-            <Text variant="caption" tone="variant">
-              Thinking
-            </Text>
-            <Text variant="footnote" tone="variant" selectable>
-              {activity.text}
-            </Text>
-          </View>
-        ),
-      )}
-    </View>
-  );
-});
-
-function groupLabel(title: string, count: number, status: ActionStatus, thinking: boolean): string {
-  const actions = `${String(count)} actions`;
-  return `${title}, ${actions}, ${status.label}${thinking ? ', thinking available' : ''}`;
-}
-
-function ThinkingMark(): ReactNode {
-  return (
-    <Text variant="caption" tone="variant">
-      · Thinking
-    </Text>
-  );
-}
-
-interface GroupProps {
-  readonly activities: readonly InlineToolActivity[];
-  readonly tools: readonly ChatTimelineTool[];
-  readonly live: boolean;
-  readonly active: boolean;
-  readonly pluginName: (id: string) => string | null;
-}
-
-const GroupDisclosure = memo(function GroupDisclosure({
-  tools,
-  live,
-  active,
-  activities,
-  pluginName,
-}: GroupProps): ReactNode {
-  const [chosen, setChosen] = useState<boolean | null>(null);
-  const body = <GroupBody activities={activities} live={live} pluginName={pluginName} />;
-  const open = chosen ?? active;
-  const thinking = useMemo(
-    () => activities.some((activity) => activity.kind === 'reasoning'),
-    [activities],
-  );
-  const status = useMemo(() => groupStatus(tools, live), [tools, live]);
-  const title = useMemo(() => toolGroupGoal(tools, pluginName), [tools, pluginName]);
-  return (
-    <Disclosure
-      label={title}
-      accessibleLabel={groupLabel(title, tools.length, status, thinking)}
-      count={tools.length}
-      status={status}
-      trailing={thinking ? <ThinkingMark /> : undefined}
-      open={open}
-      onToggle={() => {
-        setChosen(!open);
-      }}
-      hint={open ? 'Hide actions' : 'Show actions and results'}
+    <ActivityRow
+      glyph={OUTCOME_GLYPH[outcome]}
+      title={title}
+      hint={failed ? null : result}
+      reason={failed ? result : null}
+      rise={live}
     >
-      {body}
-    </Disclosure>
+      {diffs.length === 0 ? undefined : <FileDiffList diffs={diffs} />}
+    </ActivityRow>
   );
-});
+}
 
-const ToolGroup = memo(function ToolGroup(props: GroupProps): ReactNode {
-  return props.tools.length === 1 ? (
-    <GroupBody activities={props.activities} live={props.live} pluginName={props.pluginName} />
-  ) : (
-    <GroupDisclosure {...props} />
+function ThinkingRow({ text, live }: { readonly text: string; readonly live: boolean }): ReactNode {
+  const [open, setOpen] = useState(false);
+  return (
+    <ActivityRow
+      glyph="thought"
+      title="Thinking"
+      hint={null}
+      reason={null}
+      rise={live}
+      toggle={{
+        open,
+        hint: open ? 'Hide thinking' : 'Show thinking',
+        onPress: () => {
+          setOpen(!open);
+        },
+      }}
+    >
+      {open ? (
+        <Text variant="footnote" tone="variant" selectable>
+          {text}
+        </Text>
+      ) : undefined}
+    </ActivityRow>
   );
-});
+}
 
-export function InlineTool({
-  sources,
-  ...group
+const ToolRows = memo(function ToolRows({
+  activities,
+  live,
+  pluginName,
 }: {
+  readonly activities: readonly InlineToolActivity[];
+  readonly live: boolean;
+  readonly pluginName: PluginName;
+}): ReactNode {
+  const mounted = useProgressiveCount(activities.length, !live, SHOWN_AT_ONCE);
+  return (
+    <ActivityRows>
+      {activities
+        .slice(0, mounted)
+        .map((activity) =>
+          activity.kind === 'tool' ? (
+            <ToolRow key={activity.key} tool={activity.tool} live={live} pluginName={pluginName} />
+          ) : (
+            <ThinkingRow key={activity.key} text={activity.text} live={live} />
+          ),
+        )}
+    </ActivityRows>
+  );
+});
+
+export interface InlineToolProps {
   readonly activities: readonly InlineToolActivity[];
   readonly sources: readonly NumberedSource[];
   readonly tools: readonly ChatTimelineTool[];
   readonly live: boolean;
   readonly active: boolean;
-}): ReactNode {
+  readonly stopped: boolean;
+  readonly openKey: string;
+  readonly startedAt: string;
+}
+
+export function InlineTool({
+  activities,
+  sources,
+  tools,
+  live,
+  active,
+  stopped,
+  openKey,
+  startedAt,
+}: InlineToolProps): ReactNode {
   const plugins = usePluginNames();
   const pluginName = useCallback((id: string) => plugins.get(id) ?? null, [plugins]);
+  const running = live && (active || tools.some((tool) => tool.state === 'running'));
+  const text = useMemo(() => {
+    const thinking = activities.some((activity) => activity.kind === 'reasoning');
+    const input = { tools, live: running, stopped, thinking, thoughtSeconds: null, pluginName };
+    return activityLineOf(activitySummary(input), tools, pluginName);
+  }, [activities, tools, running, stopped, pluginName]);
+  const [open, toggle] = useActivityOpen(openKey, live);
+  const duration = useLiveSeconds(startedAt, running);
   return (
     <View className="min-w-0 gap-1">
-      <ToolGroup {...group} pluginName={pluginName} />
+      <ActivityAnnouncement status={text.label} text={text.label} announceOnMount={running} />
+      <CollapseRoot className="min-w-0">
+        <ActivityLine
+          text={text}
+          duration={duration}
+          live={running}
+          open={open}
+          onToggle={toggle}
+        />
+        {open ? (
+          <CollapseBody>
+            <ToolRows activities={activities} live={running} pluginName={pluginName} />
+          </CollapseBody>
+        ) : null}
+      </CollapseRoot>
       <WebSources sources={sources} />
     </View>
   );
+}
+
+export function ThinkingActivity({
+  text,
+  live,
+  openKey,
+  startedAt,
+}: {
+  readonly text: string;
+  readonly live: boolean;
+  readonly openKey: string;
+  readonly startedAt: string;
+}): ReactNode {
+  const [open, toggle] = useActivityOpen(openKey, live);
+  const duration = useLiveSeconds(startedAt, live);
+  const summary = activitySummary({
+    tools: NO_TOOLS,
+    live,
+    stopped: false,
+    thinking: true,
+    thoughtSeconds: null,
+    pluginName: noPlugin,
+  });
+  const line: ActivityLineText = {
+    ...activityLineOf(summary, NO_TOOLS, noPlugin),
+    glyph: 'thought',
+  };
+  return (
+    <CollapseRoot className="min-w-0">
+      <ActivityLine text={line} duration={duration} live={live} open={open} onToggle={toggle} />
+      {open ? (
+        <CollapseBody className="pl-6 pt-0.5">
+          <Text variant="footnote" tone="variant" selectable>
+            {text}
+          </Text>
+        </CollapseBody>
+      ) : null}
+    </CollapseRoot>
+  );
+}
+
+export function ThinkingWait({ startedAt }: { readonly startedAt: string }): ReactNode {
+  const duration = useLiveSeconds(startedAt, true);
+  const summary = activitySummary({
+    tools: NO_TOOLS,
+    live: true,
+    stopped: false,
+    thinking: true,
+    thoughtSeconds: null,
+    pluginName: noPlugin,
+  });
+  return <WaitingLine text={activityLineOf(summary, NO_TOOLS, noPlugin)} duration={duration} />;
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
-import { AppState, Modal, View } from 'react-native';
+import { AppState, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { AiOutreachRow } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
@@ -11,6 +11,7 @@ import {
   type IncomingCallRing,
 } from '../../../../modules/health-connect';
 import { href } from '../../../app-shell/hrefs';
+import { ToastModal } from '../../../components/toast-modal';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
@@ -205,7 +206,7 @@ export function AiCallHost(): ReactNode {
   }
   if (touch) {
     return (
-      <Modal
+      <ToastModal
         visible
         animationType="slide"
         statusBarTranslucent
@@ -219,7 +220,7 @@ export function AiCallHost(): ReactNode {
         >
           <Ringing ringing={ringing} name={name} />
         </View>
-      </Modal>
+      </ToastModal>
     );
   }
   return (

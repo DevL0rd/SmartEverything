@@ -80,3 +80,32 @@ describe('automation hrefs', () => {
     });
   });
 });
+
+describe('devices hrefs', () => {
+  it('keeps the offline status href', () => {
+    expect(href.devices()).toBe('/devices');
+    expect(href.devices('offline')).toStrictEqual({
+      pathname: '/devices',
+      params: { status: 'offline' },
+    });
+  });
+
+  it('opens the devices page with a room, a device or nothing selected', () => {
+    expect(href.devicesSelection({})).toBe('/devices');
+    expect(href.devicesSelection({ room: 'kitchen' })).toStrictEqual({
+      pathname: '/devices',
+      params: { room: 'kitchen' },
+    });
+    expect(href.devicesSelection({ device: 'lamp' })).toStrictEqual({
+      pathname: '/devices',
+      params: { device: 'lamp' },
+    });
+  });
+
+  it('selects the device when both are given', () => {
+    expect(href.devicesSelection({ room: 'kitchen', device: 'lamp' })).toStrictEqual({
+      pathname: '/devices',
+      params: { device: 'lamp' },
+    });
+  });
+});

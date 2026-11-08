@@ -100,14 +100,15 @@ export function RevokeRow({
     <ListRow
       title={`End ${name}'s access now`}
       subtitle="Their phones and chat accounts stop working at once. The person and their data stay."
+      wrapTitle
       wrapSubtitle
       icon="trash"
       destructive
       onPress={() => {
         background(
           confirm({
-            title: `End the access of ${name}?`,
-            body: 'Their phones are unpaired and their chat accounts stop working right away. Pick a new end time to let them in again.',
+            title: 'End access now?',
+            body: `This ends access for ${name}. Their phones are unpaired and their chat accounts stop working right away. Pick a new end time to let them in again.`,
             confirmLabel: 'End access',
             tone: 'destructive',
           }).then((yes) => {

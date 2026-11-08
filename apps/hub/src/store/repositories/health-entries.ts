@@ -1,4 +1,5 @@
 import {
+  ApiError,
   HEALTH_ENTRY_ROW,
   LOGGABLE_TYPE,
   clientRecordIdOf,
@@ -146,9 +147,17 @@ export class HealthEntriesRepository {
     });
   }
 
-  update(id: string, profileId: string, input: HealthEntryInput): HealthEntryRow {
+  update(
+    id: string,
+    profileId: string,
+    input: HealthEntryInput,
+    expectedVersion?: number,
+  ): HealthEntryRow {
     return this.context.write(() => {
       const before = this.byId(id, profileId);
+      if (expectedVersion !== undefined && before.version !== expectedVersion) {
+        throw new ApiError('conflict', 'This health entry changed. Read it again before updating.');
+      }
       this.context.sql.run(
         'change the health entry',
         `update health_entries set record_type = $record_type, start_time = $start_time,

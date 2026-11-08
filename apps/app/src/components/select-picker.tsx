@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useDeferredValue, useState } from 'react';
 import { View } from 'react-native';
 import { cn } from '../design/cn';
@@ -6,11 +6,21 @@ import { useIdiom } from '../design/platform';
 import { selectionTick } from '../platform/haptics';
 import type { Rect } from './anchor';
 import { BottomSheet } from './bottom-sheet';
+import {
+  COMPACT_DETAIL_ROW_HEIGHT,
+  COMPACT_ROW_FRAME,
+  COMPACT_ROW_HEIGHT,
+  COMPACT_ROW_ICON_SIZE,
+} from './compact-panel';
+import { focusView } from './focus-request';
 import { Icon } from './icon';
 import { Interactive } from './interactive';
 import { Popover } from './popover';
 import { SearchField } from './search-field';
+import { useSheetSubpage } from './sheet-navigation';
 import { Text } from './text';
+
+const SELECT_DETENTS = ['fit'] as const;
 
 export interface SelectOption<T extends string> {
   readonly value: T;
@@ -28,6 +38,14 @@ export interface SelectPickerProps<T extends string> {
   readonly onPick: (value: T) => void;
   readonly onClose: () => void;
   readonly searchable?: boolean;
+  readonly opener?: RefObject<View | null>;
+}
+
+interface OptionRowProps<T extends string> {
+  readonly option: SelectOption<T>;
+  readonly selected: boolean;
+  readonly touch: boolean;
+  readonly onPick: (value: T) => void;
 }
 
 function OptionRow<T extends string>({
@@ -35,43 +53,46 @@ function OptionRow<T extends string>({
   selected,
   touch,
   onPick,
-}: {
-  readonly option: SelectOption<T>;
-  readonly selected: boolean;
-  readonly touch: boolean;
-  readonly onPick: (value: T) => void;
-}): ReactNode {
+}: OptionRowProps<T>): ReactNode {
+  const rowHeight =
+    option.description === undefined ? COMPACT_ROW_HEIGHT : COMPACT_DETAIL_ROW_HEIGHT;
   return (
     <Interactive
       role="radio"
       disabled={option.disabled === true}
       label={option.label}
-      selected={selected}
+      checked={selected}
       onPress={() => {
         selectionTick();
         onPick(option.value);
       }}
       className={cn(
-        'flex-row items-center gap-3',
-        touch ? 'min-h-row-h px-4' : 'mx-1 min-h-9 rounded-sm px-3',
+        COMPACT_ROW_FRAME,
+        touch ? cn(rowHeight, 'rounded-sm py-1') : 'mx-1 min-h-9 rounded-sm px-3',
       )}
       layerClassName="rounded-sm"
     >
       <View className="min-w-0 flex-1">
-        <Text variant="body" tone={selected ? 'primary' : 'default'} numberOfLines={1}>
+        <Text
+          variant="body"
+          tone={selected ? 'primary' : 'default'}
+          {...(touch ? {} : { numberOfLines: 1 })}
+        >
           {option.label}
         </Text>
         {option.description === undefined ? null : (
           <Text
             variant="footnote"
             tone="variant"
-            {...(option.wrapDescription === true ? {} : { numberOfLines: 1 })}
+            {...(touch || option.wrapDescription === true ? {} : { numberOfLines: 1 })}
           >
             {option.description}
           </Text>
         )}
       </View>
-      {selected ? <Icon name="check" size={touch ? 24 : 16} tone="primary" /> : null}
+      {selected ? (
+        <Icon name="check" size={touch ? COMPACT_ROW_ICON_SIZE : 16} tone="primary" />
+      ) : null}
     </Interactive>
   );
 }
@@ -107,13 +128,9 @@ function Options<T extends string>({
   const [query, setQuery] = useState('');
   const shown = matching(options, useDeferredValue(query));
   return (
-    <View
-      accessibilityRole="radiogroup"
-      accessibilityLabel={label}
-      className={touch ? '-mx-4' : ''}
-    >
+    <View accessibilityRole="radiogroup" accessibilityLabel={label}>
       {searchable ? (
-        <View className={touch ? 'px-4 pb-2' : 'p-2'}>
+        <View className={touch ? 'pb-2' : 'p-2'}>
           <SearchField
             value={query}
             onChange={setQuery}
@@ -143,10 +160,19 @@ export function SelectPicker<T extends string>({
   onPick,
   onClose,
   searchable = false,
+  opener,
 }: SelectPickerProps<T>): ReactNode {
   const touch = useIdiom() === 'touch';
-  const pick = (picked: T): void => {
+  const close = (): void => {
     onClose();
+    if (!(subpage && touch) && opener !== undefined) {
+      requestAnimationFrame(() => {
+        focusView(opener.current);
+      });
+    }
+  };
+  const pick = (picked: T): void => {
+    close();
     onPick(picked);
   };
   const body = (
@@ -159,6 +185,34 @@ export function SelectPicker<T extends string>({
       pick={pick}
     />
   );
+  const subpage = useSheetSubpage(touch && anchor !== null, {
+    title: label,
+    onClose,
+    detents: SELECT_DETENTS,
+    opener,
+    children: body,
+  });
+  if (subpage && touch) return null;
+  return (
+    <SelectSurface touch={touch} anchor={anchor} label={label} onClose={close}>
+      {body}
+    </SelectSurface>
+  );
+}
+
+function SelectSurface({
+  touch,
+  anchor,
+  label,
+  onClose,
+  children,
+}: {
+  readonly touch: boolean;
+  readonly anchor: Rect | null;
+  readonly label: string;
+  readonly onClose: () => void;
+  readonly children: ReactNode;
+}): ReactNode {
   if (touch) {
     return (
       <BottomSheet
@@ -166,9 +220,10 @@ export function SelectPicker<T extends string>({
         onClose={onClose}
         title={label}
         label={label}
-        detents={searchable ? ['full'] : ['fit']}
+        detents={SELECT_DETENTS}
+        compact
       >
-        {body}
+        {children}
       </BottomSheet>
     );
   }
@@ -180,7 +235,7 @@ export function SelectPicker<T extends string>({
       label={label}
       width={Math.max(240, anchor?.width ?? 0)}
     >
-      {body}
+      {children}
     </Popover>
   );
 }

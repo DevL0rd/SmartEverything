@@ -54,3 +54,8 @@ export function hostOf(url: string): string | null {
     return null;
   }
 }
+
+export function categoryLabel(category: string): string {
+  const words = category.replace(/[-_]+/g, ' ').trim();
+  return words === '' ? category : words.charAt(0).toUpperCase() + words.slice(1);
+}

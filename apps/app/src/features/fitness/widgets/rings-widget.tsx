@@ -5,16 +5,16 @@ import { href } from '../../../app-shell/hrefs';
 import { ProgressBar, Rings } from '../../../components/charts';
 import { OverflowButton } from '../../../components/menu';
 import { Text } from '../../../components/text';
-import { WidgetFrame } from '../../../components/widget-board';
-import { faceLayoutOf, isTile } from '../../../components/widget-board/all-sizes';
+import { ActionBand, WidgetFrame } from '../../../components/widget-board';
+import { faceLayoutOf } from '../../../components/widget-board/all-sizes';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
-import { Figure } from '../../../components/figure';
+import { Figure, type FigureSize } from '../../../components/figure';
 import { count, percent } from '../../../format/number';
 import { cn } from '../../../design/cn';
 import type { ColourRole } from '../../../design/tokens';
 import { useTodayContext } from '../data/today';
 import { ringsOf, type RingValue } from '../model/today';
-import { narrowRowsOf, ringSizeOf } from './rings-size';
+import { ringSizeOf, stripFigureOf, tallRingOf } from './rings-size';
 
 const COLOUR: Readonly<Record<RingValue['key'], ColourRole>> = {
   move: 'move',
@@ -55,47 +55,34 @@ function cheerOf(rings: readonly RingValue[]): string {
   return share < 0.75 ? 'Good progress today' : 'Almost there';
 }
 
-function RingRow({
-  ring,
-  narrow = false,
-}: {
-  readonly ring: RingValue;
-  readonly narrow?: boolean;
-}): ReactNode {
-  const shown = `${amount(ring)} / ${count(ring.goal)}`;
-  const label = (
-    <View className="min-w-0 flex-row items-center gap-2">
-      <View className={cn('size-2.5 rounded-full', DOT[ring.key])} />
-      <Text variant="footnote" tone="variant" numberOfLines={1} className="flex-1">
-        {ring.label}
-      </Text>
-    </View>
-  );
+function RingRow({ ring }: { readonly ring: RingValue }): ReactNode {
   return (
-    <View className="gap-1">
-      {narrow ? (
-        <View className="gap-0.5">
-          {label}
-          <Text variant="footnote" className="tabular" numberOfLines={1}>
-            {shown}
+    <View className="gap-0.5">
+      <View className="flex-row items-baseline gap-2">
+        <View className="min-w-0 flex-1 flex-row items-center gap-2">
+          <View className={cn('size-2.5 rounded-full', DOT[ring.key])} />
+          <Text variant="footnote" tone="variant" numberOfLines={1} className="flex-1">
+            {ring.label}
           </Text>
         </View>
-      ) : (
-        <View className="flex-row items-baseline gap-2">
-          {label}
-          <Text variant="footnote" className="tabular" numberOfLines={1}>
-            {shown}
-          </Text>
-        </View>
-      )}
+        <Text variant="footnote" className="tabular" numberOfLines={1}>
+          {`${amount(ring)} / ${count(ring.goal)}`}
+        </Text>
+      </View>
       <ProgressBar progress={ring.progress} colour={COLOUR[ring.key]} label={ring.label} />
     </View>
   );
 }
 
-function RingColumn({ ring }: { readonly ring: RingValue }): ReactNode {
+function RingColumn({
+  ring,
+  figure,
+}: {
+  readonly ring: RingValue;
+  readonly figure: FigureSize;
+}): ReactNode {
   return (
-    <View className="min-w-0 flex-1 gap-1.5">
+    <View className="min-w-0 flex-1 gap-0.5">
       <View className="flex-row items-center gap-2">
         <View className={cn('size-2.5 rounded-full', DOT[ring.key])} />
         <Text variant="footnote" tone="variant" numberOfLines={1}>
@@ -103,7 +90,7 @@ function RingColumn({ ring }: { readonly ring: RingValue }): ReactNode {
         </Text>
       </View>
       <View className="flex-row items-baseline gap-1">
-        <Figure value={amount(ring)} unit={ring.unit} size="m" />
+        <Figure value={amount(ring)} unit={ring.unit} size={figure} />
         <Text variant="footnote" tone="faint" numberOfLines={1}>
           {`/ ${count(ring.goal)}`}
         </Text>
@@ -134,64 +121,57 @@ function GoalsMenu(): ReactNode {
   );
 }
 
-const TALL_RING = 136;
-
-const TILE_RING = 100;
-
-const STRIP_RING = 120;
-
-const ROW_RING = 108;
-
 type ShownRing = Parameters<typeof Rings>[0]['rings'][number];
 
-function TallRings({
-  rings,
-  shown,
-}: {
+interface RingsProps {
   readonly rings: readonly RingValue[];
   readonly shown: readonly ShownRing[];
-}): ReactNode {
+}
+
+function TallRings({ rings, shown }: RingsProps): ReactNode {
+  const { frame } = useWidgetFace();
   return (
     <View className="flex-1 justify-between gap-3">
       <View className="items-center gap-2">
-        <Rings rings={shown} size={TALL_RING} />
+        <Rings rings={shown} size={tallRingOf(frame, rings.length)} />
         <Text variant="callout" tone="variant">
           {cheerOf(rings)}
         </Text>
       </View>
-      <View className="gap-3">
-        {rings.map((ring) => (
-          <RingRow key={ring.key} ring={ring} />
-        ))}
+      <View className="flex-row gap-4">
+        <View className="min-w-0 flex-1 gap-3">
+          {rings.map((ring) => (
+            <RingRow key={ring.key} ring={ring} />
+          ))}
+        </View>
+        <ActionBand>
+          <GoalsMenu />
+        </ActionBand>
       </View>
     </View>
   );
 }
 
-function BesideRings({
-  rings,
-  shown,
-  strip,
-}: {
-  readonly rings: readonly RingValue[];
-  readonly shown: readonly ShownRing[];
-  readonly strip: boolean;
-}): ReactNode {
+function BesideRings({ rings, shown, strip }: RingsProps & { readonly strip: boolean }): ReactNode {
   const { frame } = useWidgetFace();
-  const ring = ringSizeOf(frame, strip ? STRIP_RING : ROW_RING);
-  const narrow = narrowRowsOf(frame, ring);
+  const figure = stripFigureOf(frame);
   return (
-    <View className="flex-1 flex-row items-center gap-5">
-      <Rings rings={shown} size={ring} />
-      <View className={cn('min-w-0 flex-1', strip ? 'flex-row gap-6' : 'gap-2')}>
+    <View className="flex-1 flex-row items-center gap-4">
+      <Rings rings={shown} size={ringSizeOf(frame)} />
+      <View
+        className={cn('min-w-0 flex-1 self-stretch', strip ? 'flex-row gap-6' : 'justify-between')}
+      >
         {rings.map((item) =>
           strip ? (
-            <RingColumn key={item.key} ring={item} />
+            <RingColumn key={item.key} ring={item} figure={figure} />
           ) : (
-            <RingRow key={item.key} ring={item} narrow={narrow} />
+            <RingRow key={item.key} ring={item} />
           ),
         )}
       </View>
+      <ActionBand>
+        <GoalsMenu />
+      </ActionBand>
     </View>
   );
 }
@@ -207,7 +187,7 @@ function RingsBody({ rings }: { readonly rings: readonly RingValue[] }): ReactNo
     case 'tile':
       return (
         <View className="flex-1 items-center justify-center">
-          <Rings rings={shown} size={ringSizeOf(frame, TILE_RING)} />
+          <Rings rings={shown} size={ringSizeOf(frame)} />
         </View>
       );
     case 'tall':
@@ -222,7 +202,6 @@ function RingsBody({ rings }: { readonly rings: readonly RingValue[] }): ReactNo
 
 export function RingsWidget(): ReactNode {
   const { figures, day, goals } = useTodayContext();
-  const { cls } = useWidgetFace();
   const rings = ringsOf(figures, day, goals);
   return (
     <WidgetFrame
@@ -230,7 +209,6 @@ export function RingsWidget(): ReactNode {
       icon="activity"
       accent="move"
       href={href.fitnessPage('activity', { day })}
-      action={isTile(cls) ? undefined : <GoalsMenu />}
     >
       <RingsBody rings={rings} />
     </WidgetFrame>

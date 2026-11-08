@@ -1,17 +1,14 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { withUniwind } from 'uniwind';
 import Animated, {
   LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { KeyboardViewport } from '../../../components/keyboard-viewport';
 import { cn } from '../../../design/cn';
 import { DURATION, EASING, useMotion } from '../../../design/motion';
-
-const KeyboardViewport = withUniwind(KeyboardAvoidingView);
 
 export const PANEL_SLIDE = LinearTransition.duration(DURATION.medium).easing(EASING.standard);
 
@@ -47,9 +44,7 @@ export function ListPane({
         pointerEvents={open ? 'auto' : 'none'}
         className={cn('min-h-0 flex-1', full ? 'w-full' : 'w-master pt-safe')}
       >
-        <KeyboardViewport behavior="padding" automaticOffset className="min-h-0 flex-1">
-          {children}
-        </KeyboardViewport>
+        <KeyboardViewport className="min-h-0 flex-1">{children}</KeyboardViewport>
       </Animated.View>
     </Animated.View>
   );

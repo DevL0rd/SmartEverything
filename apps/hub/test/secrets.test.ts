@@ -1,10 +1,11 @@
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { KEY_FILE_NAME, SecretKeyError, loadSecretKey } from '../src/secrets/key';
+import { hubLayout } from '../src/data-layout';
+import { SecretKeyError, loadSecretKey } from '../src/secrets/key';
 import { SecretStore, SecretStoreError } from '../src/secrets/store';
-import { SECRETS_FILE_NAME, openSecretStore } from '../src/secrets/open';
+import { openSecretStore } from '../src/secrets/open';
 import { captureLogs, testLogger } from './support/logs';
 
 let directory = '';
@@ -19,41 +20,45 @@ afterEach(async () => {
 
 describe('secret key', () => {
   it('creates a 32 byte key file readable only by its owner and reuses it', async () => {
-    const data = join(directory, 'data');
-    const first = await loadSecretKey(data, testLogger());
-    const second = await loadSecretKey(data, testLogger());
+    const { keys } = hubLayout(join(directory, 'data'), {}).system;
+    const first = await loadSecretKey(keys.secretKey, testLogger());
+    const second = await loadSecretKey(keys.secretKey, testLogger());
     expect(first.length).toBe(32);
     expect(second.equals(first)).toBe(true);
-    expect((await stat(join(data, KEY_FILE_NAME))).mode & 0o777).toBe(0o600);
+    expect((await stat(keys.secretKey)).mode & 0o777).toBe(0o600);
   });
 
   it('restricts a key file others can read to its owner and says so once, as after restoring a backup', async () => {
-    const created = await loadSecretKey(directory, testLogger());
-    const path = join(directory, KEY_FILE_NAME);
+    const path = hubLayout(directory, {}).system.keys.secretKey;
+    const created = await loadSecretKey(path, testLogger());
     await chmod(path, 0o644);
     const logs = captureLogs();
-    const reopened = await loadSecretKey(directory, testLogger());
+    const reopened = await loadSecretKey(path, testLogger());
     expect(reopened.equals(created)).toBe(true);
     expect((await stat(path)).mode & 0o777).toBe(0o600);
     expect(logs.events()).toStrictEqual(['secret_key.mode_fixed']);
-    await loadSecretKey(directory, testLogger());
+    await loadSecretKey(path, testLogger());
     expect(logs.events()).toStrictEqual(['secret_key.mode_fixed']);
   });
 
   it('refuses a key file of the wrong length', async () => {
-    await writeFile(join(directory, KEY_FILE_NAME), Buffer.alloc(16), { mode: 0o600 });
-    await expect(loadSecretKey(directory, testLogger())).rejects.toThrow(
-      new SecretKeyError(join(directory, KEY_FILE_NAME), 'expected 32 bytes, received 16'),
+    const path = hubLayout(directory, {}).system.keys.secretKey;
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, Buffer.alloc(16), { mode: 0o600 });
+    await expect(loadSecretKey(path, testLogger())).rejects.toThrow(
+      new SecretKeyError(path, 'expected 32 bytes, received 16'),
     );
   });
 
-  it('opens the store in the data directory and keeps it private', async () => {
-    const store = await openSecretStore(directory, testLogger());
+  it('opens the store at the layout key paths and keeps it private', async () => {
+    const { keys } = hubLayout(directory, {}).system;
+    const store = await openSecretStore(keys, testLogger());
     expect(store.read().accounts).toStrictEqual({});
     await store.update((secrets) => ({ ...secrets, geminiKey: 'gemini' }));
-    const reopened = await openSecretStore(directory, testLogger());
+    const reopened = await openSecretStore(keys, testLogger());
     expect(reopened.read().geminiKey).toBe('gemini');
-    expect((await stat(join(directory, SECRETS_FILE_NAME))).mode & 0o777).toBe(0o600);
+    expect((await stat(keys.secrets)).mode & 0o777).toBe(0o600);
+    expect((await stat(keys.secretKey)).mode & 0o777).toBe(0o600);
   });
 });
 
@@ -77,7 +82,10 @@ describe('secret store', () => {
       deviceKeys: {},
       geminiKey: null,
       openrouterKey: null,
+      apiKeys: {},
       plugins: {},
+      googleApp: null,
+      googleAccounts: {},
     });
     await store.update((secrets) => ({ ...secrets, pushServiceAccount }));
     await store.saveAccount('tuya', { label: 'Tuya', secrets: { refreshToken: 'very-secret' } });

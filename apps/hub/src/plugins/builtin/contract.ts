@@ -16,6 +16,7 @@ import type { Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
 import type { HubToolResult, ToolAnnotationHints, ToolCaller } from '../../ai-tools/hub-tool';
 import type { DeviceDriver, DeviceDriverContext } from '../../local/device-driver';
+import type { ModelEntry } from '../../models/contributions';
 import type { PluginNetwork } from '../plugin-listen';
 import type { PluginSpeaker } from '../plugin-speakers';
 import type { PluginVoice } from '../plugin-voice';
@@ -50,7 +51,10 @@ export interface PluginTool {
   ) => Promise<HubToolResult>;
 }
 
-export type PluginOptionProvider = (query: PluginOptionQuery) => Promise<PluginOptionPage>;
+export type PluginOptionProvider = (
+  query: PluginOptionQuery,
+  caller: ToolCaller,
+) => Promise<PluginOptionPage>;
 
 interface PluginOptions {
   readonly register: (source: string, provider: PluginOptionProvider) => Unsubscribe;
@@ -126,7 +130,6 @@ export interface PluginAssistant {
     readonly name: string | null;
     readonly aliases: readonly string[];
     readonly activitySteps: boolean;
-    readonly reuseChatMinutes: number;
     readonly compactAtPercent: number;
   };
   readonly conversation: (key: string, actor?: string) => PluginConversationState | null;
@@ -147,6 +150,7 @@ export interface PluginFiles {
   readonly outbox: string;
   readonly attachmentsOf: (chatId: string) => readonly string[];
   readonly fromUpload: (caller: ToolCaller, uploadId: string) => Promise<MachineFile | null>;
+  readonly fromPicture: (caller: ToolCaller, pictureId: string) => Promise<MachineFile | null>;
   readonly fromMachine: (
     caller: ToolCaller,
     input: { readonly machine: string; readonly path: string },
@@ -199,11 +203,19 @@ export interface PluginContext<S> {
       readonly paired: boolean;
       readonly place: string | null;
     };
+    readonly presenceChanged: (move: {
+      readonly id: string;
+      readonly name: string;
+      readonly profile: boolean;
+      readonly home: boolean;
+      readonly at: string;
+    }) => void;
   };
 }
 
 export interface BuiltinPluginDefinition<S> {
   readonly manifest: PluginManifestInput;
+  readonly models?: readonly ModelEntry[];
   readonly settings: z.ZodType<S>;
   readonly start: (context: PluginContext<S>) => Promise<PluginStop>;
 }
@@ -220,6 +232,7 @@ export type BuiltinStart =
 
 export interface BuiltinPlugin {
   readonly manifest: PluginManifestInput;
+  readonly models?: readonly ModelEntry[];
   readonly validate: (settings: Readonly<Record<string, JsonValue>>) => string | null;
   readonly start: (
     context: PluginHostContext,

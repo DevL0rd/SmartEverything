@@ -7,19 +7,29 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Store } from '../../../store/store';
-import { reported, sendAndWait } from './commanding';
+import { applianceExternalId } from '../../../infrared/appliance-devices';
+import { reported, sendAndWait, type CommandRequest } from './commanding';
 import { deviceScopeOfActor } from './person-reach';
 import { COMMANDS, READS, defineTool, type Tool } from './registry';
 import { inRooms, placedDevices, resolveNamed, type Placed } from './targets';
 
+type Button = Pick<IrCodeRow, 'button' | 'format' | 'code'>;
+
 interface Remote {
-  readonly row: IrRemoteRow;
+  readonly row: Pick<IrRemoteRow, 'id' | 'name' | 'category' | 'brand'> & {
+    readonly blaster_id: string | null;
+  };
   readonly blaster: Placed | undefined;
-  readonly buttons: readonly IrCodeRow[];
+  readonly buttons: readonly Button[];
+  readonly appliance: Placed | null;
 }
 
-function remotes(store: Store, scope: DeviceScope | null): Remote[] {
-  const blasters = new Map(placedDevices(store, scope).map((placed) => [placed.device.id, placed]));
+function learnedRemotes(
+  store: Store,
+  scope: DeviceScope | null,
+  placed: readonly Placed[],
+): Remote[] {
+  const blasters = new Map(placed.map((entry) => [entry.device.id, entry]));
   const codes = store.infrared.codes();
   return store.infrared
     .remotes()
@@ -28,7 +38,40 @@ function remotes(store: Store, scope: DeviceScope | null): Remote[] {
       row,
       blaster: blasters.get(row.blaster_id),
       buttons: codes.filter((code) => code.remote_id === row.id),
+      appliance: null,
     }));
+}
+
+function applianceRemotes(store: Store, placed: readonly Placed[]): Remote[] {
+  const byId = new Map(placed.map((entry) => [entry.device.id, entry]));
+  const byExternal = new Map(placed.map((entry) => [entry.device.external_id, entry]));
+  return store.irAppliances.list().flatMap((row) => {
+    const appliance = byExternal.get(applianceExternalId(row.id));
+    if (appliance === undefined) return [];
+    return [
+      {
+        row,
+        blaster: row.blaster_id === null ? undefined : byId.get(row.blaster_id),
+        buttons: store.irAppliances.keys(row.id),
+        appliance,
+      },
+    ];
+  });
+}
+
+function remotes(store: Store, scope: DeviceScope | null): Remote[] {
+  const placed = placedDevices(store, scope);
+  return [...learnedRemotes(store, scope, placed), ...applianceRemotes(store, placed)];
+}
+
+function ownDevice(appliance: Placed | null): Record<string, unknown> {
+  if (appliance === null) return {};
+  return {
+    device_id: appliance.device.id,
+    online: appliance.device.online,
+    room: appliance.room?.name ?? null,
+    room_id: appliance.room?.id ?? null,
+  };
 }
 
 function where(blaster: Placed | undefined): Record<string, unknown> {
@@ -44,7 +87,7 @@ function where(blaster: Placed | undefined): Record<string, unknown> {
 }
 
 function summary(
-  { row, blaster, buttons }: Remote,
+  { row, blaster, buttons, appliance }: Remote,
   assumed: IrRemoteState,
 ): Record<string, unknown> {
   return {
@@ -54,8 +97,24 @@ function summary(
     brand: row.brand,
     blaster_id: row.blaster_id,
     ...where(blaster),
+    ...ownDevice(appliance),
     buttons: buttons.map((button) => button.button),
     assumed,
+  };
+}
+
+function pressOf(remote: Remote, button: Button): CommandRequest {
+  if (remote.appliance !== null) {
+    return {
+      device_id: remote.appliance.device.id,
+      capability: 'remote_key',
+      value: button.button,
+    };
+  }
+  return {
+    device_id: remote.row.blaster_id,
+    capability: 'ir_send',
+    value: { format: button.format, code: button.code },
   };
 }
 
@@ -103,13 +162,7 @@ export const REMOTE_TOOLS: readonly Tool[] = [
         names: (code) => [code.button],
         label: (code) => code.button,
       });
-      const outcome = await sendAndWait(context, [
-        {
-          device_id: remote.row.blaster_id,
-          capability: 'ir_send',
-          value: { format: button.format, code: button.code },
-        },
-      ]);
+      const outcome = await sendAndWait(context, [pressOf(remote, button)]);
       return {
         structured: {
           remote: remote.row.name,

@@ -10,6 +10,7 @@ import {
 function facts(change: Partial<PromptFacts>): PromptFacts {
   return {
     name: 'Coordinator',
+    aliases: [],
     profileName: 'Sam',
     role: 'owner',
     homeName: 'Home',

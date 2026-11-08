@@ -1,15 +1,21 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
+import { androidHome } from './release-process.ts';
 
 const ROOT = join(import.meta.dirname, '..');
 
 const BUILD_TOOLS_TIMEOUT_MS = 120_000;
 const DEV_LAUNCHER_CLASS = 'Lexpo/modules/devlauncher/';
 const OWN_PERMISSION_SUFFIX = '.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION';
+const UPDATE_URL_KEY = 'expo.modules.updates.EXPO_UPDATE_URL';
+const RUNTIME_VERSION_KEY = 'expo.modules.updates.EXPO_RUNTIME_VERSION';
+const FINGERPRINT_PLACEHOLDER = 'file:fingerprint';
+const FINGERPRINT_ASSET = 'assets/fingerprint';
+const CODE_SIGNING_CERTIFICATE_KEY = 'expo.modules.updates.CODE_SIGNING_CERTIFICATE';
+export const UPDATE_MANIFEST_PATH = '/api/app-update/manifest';
 
 const HEALTH_PLUGIN = join(
   ROOT,
@@ -34,6 +40,14 @@ const PRIVACY_TOPICS = z.object({
   HEALTH_CONNECT_PERMISSION_PREFIX: z.string(),
 });
 
+const BADGING_HEADER =
+  /^package: name='(?<packageName>[^']+)' versionCode='(?<versionCode>\d+)' versionName='(?<versionName>[^']*)'/mu;
+const BADGING_FIELDS = z.object({
+  packageName: z.string().min(1),
+  versionCode: z.string().min(1),
+  versionName: z.string(),
+});
+
 export type ApkVariant = 'release' | 'development';
 
 export type AppIdentity = z.infer<typeof APP_IDENTITY>;
@@ -52,6 +66,8 @@ export interface ApkFacts {
   readonly signerSha256: string | null;
   readonly signatureVerifies: boolean;
   readonly includesDevLauncher: boolean;
+  readonly metaData: Readonly<Record<string, string>>;
+  readonly fingerprint: string | null;
 }
 
 export interface ApkExpectation {
@@ -60,6 +76,7 @@ export interface ApkExpectation {
   readonly signingCertificateSha256: string;
   readonly versionName: string;
   readonly versionCodeAbove: number;
+  readonly server?: string;
 }
 
 export class BuildToolsMissingError extends Error {
@@ -81,10 +98,6 @@ export class ApkReadError extends Error {
   ) {
     super(`${tool} failed: ${output.slice(0, 500)}`);
   }
-}
-
-export function androidHome(): string {
-  return process.env['ANDROID_HOME'] ?? join(homedir(), 'Android', 'Sdk');
 }
 
 export function buildTool(name: 'aapt2' | 'apksigner'): string {
@@ -115,9 +128,10 @@ function run(
 export function parseBadging(
   text: string,
 ): Pick<ApkFacts, 'packageName' | 'versionCode' | 'versionName' | 'debuggable' | 'permissions'> {
-  const header = /^package: name='([^']+)' versionCode='(\d+)' versionName='([^']*)'/mu.exec(text);
-  if (header === null) throw new ApkReadError('aapt2', 'the badging output has no package line');
-  const [, packageName = '', versionCode = '0', versionName = ''] = header;
+  const header = BADGING_HEADER.exec(text)?.groups;
+  if (header === undefined)
+    throw new ApkReadError('aapt2', 'the badging output has no package line');
+  const { packageName, versionCode, versionName } = BADGING_FIELDS.parse(header);
   return {
     packageName,
     versionCode: Number(versionCode),
@@ -131,6 +145,25 @@ export function parseBadging(
 
 export function parseSigner(text: string): string | null {
   return /^Signer #1 certificate SHA-256 digest: ([0-9a-f]{64})$/mu.exec(text)?.[1] ?? null;
+}
+
+export function parseMetaData(text: string): Readonly<Record<string, string>> {
+  const entries = text
+    .split(/^\s*E: /mu)
+    .filter((element) => element.startsWith('meta-data'))
+    .flatMap((element) => {
+      const name = /:name\(0x[0-9a-f]+\)="([^"]*)"/u.exec(element)?.[1];
+      const value =
+        /:value\(0x[0-9a-f]+\)="([^"]*)"/u.exec(element)?.[1] ??
+        /:value\(0x[0-9a-f]+\)=(@0x[0-9a-f]+)/u.exec(element)?.[1] ??
+        /:value\(0x[0-9a-f]+\)=\(type 0x[0-9a-f]+\)(0x[0-9a-f]+)/u.exec(element)?.[1] ??
+        /:value\(0x[0-9a-f]+\)=([^\s"(]+)/u.exec(element)?.[1] ??
+        /:resource\(0x[0-9a-f]+\)=(@0x[0-9a-f]+)/u.exec(element)?.[1];
+      if (name === undefined) return [];
+      if (value === undefined) throw new ApkReadError('aapt2', `meta-data ${name} has no value`);
+      return [[name, value] as const];
+    });
+  return Object.fromEntries(entries);
 }
 
 function dexFiles(apk: string): readonly string[] {
@@ -147,9 +180,27 @@ function containsDevLauncher(apk: string): boolean {
   });
 }
 
+export function parseFingerprint(text: string): string | null {
+  const fingerprint = text.trim();
+  return fingerprint === '' ? null : fingerprint;
+}
+
+function readFingerprint(apk: string): string | null {
+  const result = run('unzip', ['-p', apk, FINGERPRINT_ASSET]);
+  return result.status === 0 ? parseFingerprint(result.text) : null;
+}
+
 export function readApk(file: string): ApkFacts {
   const badging = run(buildTool('aapt2'), ['dump', 'badging', file]);
   if (badging.status !== 0) throw new ApkReadError('aapt2', badging.text);
+  const manifest = run(buildTool('aapt2'), [
+    'dump',
+    'xmltree',
+    '--file',
+    'AndroidManifest.xml',
+    file,
+  ]);
+  if (manifest.status !== 0) throw new ApkReadError('aapt2', manifest.text);
   const signature = run(buildTool('apksigner'), ['verify', '--print-certs', file]);
   return {
     file,
@@ -157,6 +208,8 @@ export function readApk(file: string): ApkFacts {
     signerSha256: parseSigner(signature.text),
     signatureVerifies: signature.status === 0,
     includesDevLauncher: containsDevLauncher(file),
+    metaData: parseMetaData(manifest.text),
+    fingerprint: readFingerprint(file),
   };
 }
 
@@ -241,6 +294,73 @@ export function releaseProblems(facts: ApkFacts, expected: ApkExpectation): read
   ];
 }
 
+function runtimeIsFingerprint(declared: string): boolean {
+  return declared === '' || declared.startsWith('@') || declared === FINGERPRINT_PLACEHOLDER;
+}
+
+export function runtimeVersionOf(facts: ApkFacts): string | null {
+  const declared = facts.metaData[RUNTIME_VERSION_KEY];
+  if (declared === undefined) return null;
+  return runtimeIsFingerprint(declared) ? facts.fingerprint : declared;
+}
+
+function runtimeProblem(facts: ApkFacts): readonly ApkProblem[] {
+  const declared = facts.metaData[RUNTIME_VERSION_KEY];
+  if (declared === undefined) {
+    return [problem('apk-identity', `the manifest has no ${RUNTIME_VERSION_KEY}`)];
+  }
+  if (runtimeVersionOf(facts) !== null) return [];
+  return [
+    problem(
+      'apk-identity',
+      `the manifest takes the runtime version from ${FINGERPRINT_ASSET} (${RUNTIME_VERSION_KEY} is ${declared || 'empty'}), but the APK has no such file or it is empty`,
+    ),
+  ];
+}
+
+function updateUrlProblem(facts: ApkFacts, expected: ApkExpectation): readonly ApkProblem[] {
+  const url = facts.metaData[UPDATE_URL_KEY];
+  if (url === undefined || url === '') {
+    return [
+      problem('apk-identity', `the manifest has no ${UPDATE_URL_KEY}, so the app cannot update`),
+    ];
+  }
+  const wanted =
+    expected.server === undefined
+      ? null
+      : `${expected.server.replace(/\/$/u, '')}${UPDATE_MANIFEST_PATH}`;
+  if (wanted === null) {
+    return url.endsWith(UPDATE_MANIFEST_PATH)
+      ? []
+      : [
+          problem(
+            'apk-identity',
+            `the update URL is ${url}, expected it to end with ${UPDATE_MANIFEST_PATH}`,
+          ),
+        ];
+  }
+  return url === wanted
+    ? []
+    : [problem('apk-identity', `the update URL is ${url}, expected ${wanted}`)];
+}
+
+export function updateProblems(facts: ApkFacts, expected: ApkExpectation): readonly ApkProblem[] {
+  if (expected.variant !== 'release') return [];
+  const certificate = facts.metaData[CODE_SIGNING_CERTIFICATE_KEY];
+  return [
+    ...updateUrlProblem(facts, expected),
+    ...runtimeProblem(facts),
+    ...(certificate === undefined || certificate === ''
+      ? [
+          problem(
+            'apk-identity',
+            `the manifest has no ${CODE_SIGNING_CERTIFICATE_KEY}, so update signatures cannot be checked`,
+          ),
+        ]
+      : []),
+  ];
+}
+
 export async function apkProblems(
   facts: ApkFacts,
   expected: ApkExpectation,
@@ -252,6 +372,7 @@ export async function apkProblems(
     ...identityProblems(facts, expected),
     ...signingProblems(facts, expected),
     ...releaseProblems(facts, expected),
+    ...updateProblems(facts, expected),
     ...(missingHealth.length === 0
       ? []
       : [

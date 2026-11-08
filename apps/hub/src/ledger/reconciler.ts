@@ -1,6 +1,6 @@
 import { microsOfUsd, type AiUsageRow, type UsageReconcile } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { GenerationStats } from '../openrouter/chat-types';
+import type { GenerationStats } from '../openrouter/wire';
 import type { OpenRouterClient } from '../openrouter/client';
 import { settledGeneration } from '../openrouter/generation';
 import type { Ledger, Unsubscribe } from './ledger';

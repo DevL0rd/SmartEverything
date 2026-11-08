@@ -1,28 +1,32 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { Pressable, View } from 'react-native';
 import { TV_KEY_LABELS, TV_KEY_REASON_TEXT, type TvKey } from '@smarteverything/domain';
 import { Icon, type IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
+import { useThemeSetting } from '../../../design/theme';
+import { controlHitSlop } from '../../../design/tokens';
 import { KEY_EDGE, KEY_FAILED, KEY_FILL, KEY_FOCUS, KEY_LIT, KEY_LOCKED_FILL } from './key-style';
 import { useHoldRepeat, type HoldHandlers } from './use-hold-repeat';
 import type { Television } from './use-television';
 
-type KeyLook = 'key' | 'pill' | 'round' | 'play' | 'segment';
+type KeyLook = 'key' | 'pill' | 'colour' | 'disc' | 'round' | 'play' | 'segment';
 
 const SHAPE: Readonly<Record<KeyLook, string>> = {
   key: 'h-12 w-13 flex-col gap-0.5 rounded-md',
   pill: 'h-12 w-24 flex-row gap-1.5 rounded-full',
-  round: 'size-11 rounded-full',
+  colour: 'h-12 w-18 flex-row rounded-full',
+  disc: 'size-12 rounded-full',
+  round: 'size-control-h rounded-full',
   play: 'size-14 rounded-full',
   segment: 'flex-1 self-stretch',
 };
 
 const FACE = cn(KEY_EDGE, KEY_FILL);
 
-const SLOP = 2;
-
 export interface RemoteKeyProps {
+  readonly ref?: Ref<View>;
   readonly tv: Television;
   readonly name: TvKey;
   readonly icon?: IconName;
@@ -126,16 +130,18 @@ function KeyFace({
   );
 }
 
-export function RemoteKey(props: RemoteKeyProps): ReactNode {
+export function RemoteKey({ ref, ...props }: RemoteKeyProps): ReactNode {
   const state = keyState(props);
   const handlers = useKeyHandlers(props, state);
+  const slop = controlHitSlop(useIdiom(), useThemeSetting('density'));
   return (
     <Pressable
+      ref={ref}
       {...handlers}
       accessibilityRole="button"
       accessibilityLabel={state.why === null ? state.spoken : `${state.spoken}, ${state.why}`}
       accessibilityState={{ disabled: state.why !== null, selected: props.selected === true }}
-      hitSlop={props.look === 'round' ? SLOP : undefined}
+      hitSlop={props.look === 'round' && slop > 0 ? slop : undefined}
       className={keyClass(props, state)}
     >
       <KeyFace icon={props.icon} text={props.text} look={props.look} marked={state.marked} />

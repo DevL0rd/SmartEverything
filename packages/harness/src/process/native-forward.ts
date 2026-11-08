@@ -1,11 +1,11 @@
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import { ApiError, DSH_SESSION_ID, HARNESS_NATIVE_FRAME } from '@smarteverything/domain';
 import type {
   AiHarnessInteraction,
   AiHarnessPermission,
   AiHarnessSession,
+  DshWriterClaim,
   HarnessNativeFrame,
-  HarnessRuntimeRequest,
 } from '@smarteverything/domain';
 import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent';
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
@@ -16,6 +16,13 @@ import type { NativeFrameBody } from './native-frames';
 
 type Work = AiHarnessSession['work'];
 
+const STATUS_TYPES: ReadonlySet<string> = new Set([
+  'command/done',
+  'compaction/end',
+  'job/registered',
+  'job/settled',
+]);
+
 function streamBodies(frame: AssistantStreamFrame): readonly NativeFrameBody[] {
   const body = streamFrame(frame);
   return body === undefined ? [] : [body];
@@ -23,9 +30,14 @@ function streamBodies(frame: AssistantStreamFrame): readonly NativeFrameBody[] {
 
 export class NativeForward {
   private readonly epochs = new Map<string, number>();
-  private readonly tails = new Map<string, Promise<void>>();
+  private readonly tails = new Map<string, Promise<boolean>>();
+  private readonly inputOutcomes = new Map<
+    string,
+    { readonly turn: number; readonly settled: Promise<boolean> }
+  >();
   private readonly refusals = new Map<string, ApiError>();
   private readonly log = new Logger('hub.harness');
+  private sealed = false;
   idle: (id: string) => Promise<void> = () => Promise.resolve();
   workFor: (id: string) => Work = () => [];
 
@@ -34,21 +46,50 @@ export class NativeForward {
     private readonly interactionsFor: (id: string) => readonly AiHarnessInteraction[],
   ) {}
 
-  async open(input: Extract<HarnessRuntimeRequest, { kind: 'open' }>): Promise<void> {
-    const id = input.claim.session_id;
+  seal(): void {
+    if (this.sealed) return;
+    this.sealed = true;
+    this.log.info('publication.sealed', { open: this.epochs.size });
+  }
+
+  async open({ claim }: { readonly claim: DshWriterClaim }): Promise<void> {
+    const id = claim.session_id;
+    if (this.sealed) {
+      this.log.warn('publication.open_refused', { session_id: id, epoch: claim.epoch });
+      return;
+    }
     await this.flush(id);
-    this.epochs.set(id, input.claim.epoch);
+    this.epochs.set(id, claim.epoch);
     await this.publish(this.frame(id, { kind: 'open' }));
   }
 
   event(event: HarnessRuntimeEvent): void {
-    this.enqueue(event.sessionId, () => this.bodies(event));
+    const settled = this.enqueue(event.sessionId, () => this.bodies(event));
+    if (event.kind !== 'input') return;
+    const prior = this.inputOutcomes.get(event.sessionId);
+    const current = settled ?? Promise.resolve(false);
+    this.inputOutcomes.set(event.sessionId, {
+      turn: event.turn,
+      settled:
+        prior?.turn === event.turn
+          ? Promise.all([prior.settled, current]).then((outcomes) => outcomes.every(Boolean))
+          : current,
+    });
+  }
+
+  settledInput(sessionId: string, turn: number): Promise<boolean> {
+    const input = this.inputOutcomes.get(sessionId);
+    return input?.turn === turn ? input.settled : Promise.resolve(false);
   }
 
   interaction = (id: string, interaction: AiHarnessInteraction | null): void => {
     const interactions = [...this.interactionsFor(id)];
-    this.enqueue(id, () =>
-      Promise.resolve([{ kind: 'interactions', interactions, added: interaction }]),
+    background(
+      this.enqueue(id, () =>
+        Promise.resolve([{ kind: 'interactions', interactions, added: interaction }]),
+      ),
+      'publication.failed',
+      { session_id: id },
     );
   };
 
@@ -56,18 +97,30 @@ export class NativeForward {
     id: string,
     binding: Extract<NativeFrameBody, { kind: 'workspace' }>['storage_binding'],
   ): void {
-    this.enqueue(id, () => Promise.resolve([{ kind: 'workspace', storage_binding: binding }]));
+    background(
+      this.enqueue(id, () => Promise.resolve([{ kind: 'workspace', storage_binding: binding }])),
+      'publication.failed',
+      { session_id: id },
+    );
   }
 
   permission(id: string, operationId: string, permission: AiHarnessPermission): void {
-    this.enqueue(id, () =>
-      Promise.resolve([{ kind: 'permission', operation_id: operationId, permission }]),
+    background(
+      this.enqueue(id, () =>
+        Promise.resolve([{ kind: 'permission', operation_id: operationId, permission }]),
+      ),
+      'publication.failed',
+      { session_id: id },
     );
   }
 
   async flush(id?: string): Promise<void> {
     const tails = id === undefined ? [...this.tails.values()] : [this.tails.get(id)];
     await Promise.all(tails.flatMap((tail) => (tail === undefined ? [] : [tail])));
+  }
+
+  openIds(): readonly string[] {
+    return [...this.epochs.keys()];
   }
 
   async admit(id: string): Promise<void> {
@@ -78,31 +131,42 @@ export class NativeForward {
 
   close(id: string): void {
     if (!this.epochs.has(id)) return;
-    this.enqueue(id, () => Promise.resolve([{ kind: 'close' }]));
+    background(
+      this.enqueue(id, () => Promise.resolve([{ kind: 'close' }])),
+      'publication.failed',
+      { session_id: id },
+    );
     this.epochs.delete(id);
     this.refusals.delete(id);
+    this.inputOutcomes.delete(id);
   }
 
-  private enqueue(id: string, produce: () => Promise<readonly NativeFrameBody[]>): void {
+  private enqueue(
+    id: string,
+    produce: () => Promise<readonly NativeFrameBody[]>,
+  ): Promise<boolean> | undefined {
     const epoch = this.epochs.get(id);
     if (epoch === undefined) return;
     const tail = (this.tails.get(id) ?? Promise.resolve()).then(() =>
       this.deliver(id, epoch, produce),
     );
     this.tails.set(id, tail);
+    return tail;
   }
 
   private async deliver(
     id: string,
     epoch: number,
     produce: () => Promise<readonly NativeFrameBody[]>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       for (const body of await produce()) await this.publish(this.frame(id, body, epoch));
+      return true;
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === 'command_refused')
         this.refusals.set(id, cause);
       else this.log.error('publication.failed', cause, { session_id: id });
+      return false;
     }
   }
 
@@ -143,7 +207,7 @@ export class NativeForward {
   ): Promise<readonly NativeFrameBody[]> {
     if (record.type === 'turn/start') this.refusals.delete(id);
     if (isProjectedType(record.type)) await this.idle(id);
-    if (record.type !== 'command/done' && record.type !== 'compaction/end') return [];
+    if (!STATUS_TYPES.has(record.type)) return [];
     const running = this.workFor(id).some((entry) => entry.kind === 'turn');
     return [await this.status(id, running ? 'running' : 'idle')];
   }

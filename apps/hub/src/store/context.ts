@@ -96,6 +96,10 @@ export class StoreContext {
     this.feed.speech(speech);
   }
 
+  afterCommit(work: () => void): void {
+    this.feed.afterCommit(work);
+  }
+
   notice(notice: CommittedNotice): void {
     this.feed.notice(notice);
   }

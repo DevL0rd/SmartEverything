@@ -72,6 +72,7 @@ const UpcomingRow = memo(function UpcomingRow({
       <View className="min-w-0 flex-1">
         <ListRow
           title={titleOf(row)}
+          wrapTitle
           subtitle={joinParts([when, runsLine(row)])}
           subtitleTone="primary"
           icon="timer"
@@ -103,6 +104,7 @@ const FinishedRow = memo(function FinishedRow({
   return (
     <ListRow
       title={titleOf(row)}
+      wrapTitle
       subtitle={joinParts([whenLine(row, now, zone), lateLine(row)])}
       subtitleTone={row.state === 'failed' ? 'critical' : 'variant'}
       icon={row.state === 'failed' ? 'alert' : 'check'}
@@ -147,7 +149,6 @@ export function ScheduledScreen(): ReactNode {
   };
   return (
     <Screen
-      maxWidth="reading"
       header={
         <PageHeader
           title="One-off timers"

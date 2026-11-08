@@ -1,9 +1,10 @@
-import { DEFAULT_ENGINE, type AiChatRow } from '@smarteverything/domain';
+import { type AiChatRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChatOwner } from '../../src/assistant/chat-directory';
 import { removeProfileChats } from '../../src/assistant/remove-profile-chats';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 let opened: TestStore;
 let mine: string;
@@ -34,7 +35,7 @@ function chat(profileId: string, parentId: string | null = null): AiChatRow {
     icon: null,
     parentId,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
     titleAuto: false,
   });
 }

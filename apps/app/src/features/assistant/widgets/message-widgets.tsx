@@ -17,6 +17,8 @@ import { frameOfPlaced, type LaneFrameContext } from './lane-frame';
 import { useLaneEntries, type LaneEntry } from './lane-entries';
 import { placeSlots, type Metrics, type Placed, type Slot } from './lane-layout';
 import { LiveCaption } from './live-caption';
+import { PhotosWidget } from './photos-widget';
+import type { PhotosChatWidget } from './photos-widget-model';
 import { UnavailableTile } from './unavailable-tile';
 import { type BoardChatWidget, type ResolvedWidget } from './widget-sources';
 
@@ -34,18 +36,14 @@ function sizeOf(widget: ResolvedWidget, shared: boolean): WidgetSize {
 
 function slotOf(entry: LaneEntry): Slot {
   if (entry.status === 'unavailable') {
-    return { kind: 'note', aspect: null, rows: 0 };
+    return { kind: 'note', rows: 0 };
   }
   const { widget } = entry;
-  const { aspect } = widget.definition;
   const rows = WIDGET_FOOTPRINTS.compact[sizeOf(widget, false)].rows;
-  if (aspect !== undefined) {
-    return { kind: 'wide', aspect, rows };
-  }
   if (widget.compact) {
-    return { kind: 'tile', aspect: null, rows };
+    return { kind: 'tile', rows };
   }
-  return { kind: widget.wide ? 'wide' : 'half', aspect: null, rows };
+  return { kind: widget.wide ? 'wide' : 'half', rows };
 }
 
 function metricsOf(sizes: SemanticSizes): Metrics {
@@ -108,12 +106,12 @@ function WidgetLane({ widgets }: { readonly widgets: readonly BoardChatWidget[] 
   const [width, setWidth] = useState(0);
   const sizes = SEMANTIC_SIZES[idiom][density];
   const metrics = metricsOf(sizes);
-  const frame: LaneFrameContext = { idiom, padding: sizes.cardPad };
+  const frame: LaneFrameContext = { idiom, density, padding: sizes.cardPad };
   const rows = width === 0 ? [] : placeSlots(entries.map(slotOf), width, metrics);
   return (
     <View
       accessibilityLabel="Live widgets"
-      className="w-full gap-2"
+      className="w-full gap-1.5"
       onLayout={(event) => {
         setWidth(Math.floor(event.nativeEvent.layout.width));
       }}
@@ -140,17 +138,35 @@ function WidgetLane({ widgets }: { readonly widgets: readonly BoardChatWidget[] 
   );
 }
 
-function isBoard(widget: ChatWidget): widget is BoardChatWidget {
-  return !isChatLink(widget);
+type LaneWidget = Exclude<BoardChatWidget, PhotosChatWidget>;
+
+function isPhotos(widget: ChatWidget): widget is PhotosChatWidget {
+  return widget.kind === 'photos';
+}
+
+function isBoard(widget: ChatWidget): widget is LaneWidget {
+  return !isChatLink(widget) && !isPhotos(widget);
+}
+
+function PhotosWidgets({ widgets }: { readonly widgets: readonly PhotosChatWidget[] }): ReactNode {
+  return widgets.length === 0 ? null : (
+    <View accessibilityLabel="Photos" className="w-full gap-2">
+      {widgets.map((widget) => (
+        <PhotosWidget key={`${widget.view}:${widget.id}`} widget={widget} />
+      ))}
+    </View>
+  );
 }
 
 export function MessageWidgets({ row }: { readonly row: AssistantMessageRow }): ReactNode {
   const widgets = chatWidgetsOf(row.embeds);
   const boards = widgets.filter(isBoard);
+  const photos = widgets.filter(isPhotos);
   const links = widgets.filter(isChatLink);
   return widgets.length === 0 ? null : (
-    <View className="w-full gap-grid-gap">
+    <View className="w-full gap-2">
       {boards.length === 0 ? null : <WidgetLane widgets={boards} />}
+      <PhotosWidgets widgets={photos} />
       <LinkCards links={links} />
     </View>
   );

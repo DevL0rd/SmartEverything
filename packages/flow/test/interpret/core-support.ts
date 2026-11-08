@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import type { ErrorClass, JsonValue, PortValue, StructuredOutput } from '@smarteverything/domain';
 import type { Plan, PlanOp } from '../../src/compile/plan';
 import type { At } from '../../src/compile/plan-parts';
@@ -168,7 +169,10 @@ export function stateOf(overrides: Partial<RunState> = {}): RunState {
   };
 }
 
-const REAL_NODES = pureEvaluators({ timeZone: 'UTC', now: () => NOW, trigger: () => null });
+const REAL_NODES = pureEvaluators(
+  { timeZone: 'UTC', now: () => NOW, trigger: () => null },
+  STATIC_KIND_LOOKUP,
+);
 
 export interface Spy {
   pure: string[];
@@ -183,6 +187,12 @@ export function spy(): Spy {
 
 function numberOf(value: Evaluated | undefined): number {
   return value?.ok === true && typeof value.value === 'number' ? value.value : 0;
+}
+
+function concatOperand(value: Evaluated | undefined): string {
+  if (value?.ok !== true) return '';
+  if (typeof value.value !== 'string') throw new Error('test.concat expects text operands');
+  return value.value;
 }
 
 type PureFn = (ports: PortThunks) => NodeResult;
@@ -207,13 +217,11 @@ function pureKinds(log: Spy): Record<string, PureFn> {
     },
     'test.fail': () => ({ ok: false, class: 'MathError', message: 'boom' }),
     'test.concat': (ports): NodeResult => {
-      const a = ports.get('a');
-      const b = ports.get('b');
+      const a = concatOperand(ports.get('a'));
+      const b = concatOperand(ports.get('b'));
       return {
         ok: true,
-        value: {
-          value: `${String(a?.ok === true ? a.value : '')}${String(b?.ok === true ? b.value : '')}`,
-        },
+        value: { value: a + b },
       };
     },
   };

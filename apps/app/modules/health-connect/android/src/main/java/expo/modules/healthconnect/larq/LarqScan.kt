@@ -149,14 +149,3 @@ class LarqScanReceiver : BroadcastReceiver() {
   }
 }
 
-class LarqRestart : BroadcastReceiver() {
-  override fun onReceive(context: Context, intent: Intent) {
-    NativeGuard.run("LarqRestart") {
-      try {
-        LarqScan.register(context, LarqStore(context).bottles())
-      } catch (failure: SyncFailure) {
-        android.util.Log.w("SmartEverythingLarq", "Listening for the bottle did not restart: ${failure.message}")
-      }
-    }
-  }
-}

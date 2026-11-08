@@ -1,4 +1,5 @@
 import { homedir } from 'node:os';
+import { env } from 'node:process';
 import { runProgram } from '../../run-program';
 import { sessionAgentDirectory } from '../../session-agent/location';
 import { SocketSessionAgent } from '../../session-agent/session-agent';
@@ -29,15 +30,17 @@ import { FileRestoreToken, restoreTokenFile } from './portal-token';
 import { PulseAudio } from './pulse-audio';
 import { DesktopRevertNotice } from './revert-notice';
 import { SessionBus } from './dbus-session';
+import { UserManagerEnvironment } from './user-manager-environment';
 import { isKdePlasma, sessionEnvironment } from './session-environment';
 import { SpectacleCapture } from './spectacle-capture';
 import { WmctrlWindows } from './wmctrl-windows';
+import { describeFailure } from '@smarteverything/logging';
 
 type PartFailure = (cause: unknown) => void;
 
 function partFailure(options: ControlOptions, part: string): PartFailure {
   return (cause): void => {
-    options.log.error('node.session_part_failed', cause, { part });
+    options.log.warn('node.session_part_failed', { part, failure: describeFailure(cause) });
   };
 }
 
@@ -76,6 +79,14 @@ function linuxWindows(
     x11Provider: () => new WmctrlWindows(runProgram, probe, spawnLines),
     schedule: systemSchedule,
     failed: partFailure(options, 'windows'),
+  });
+}
+
+function linuxEnvironment(options: ControlOptions): UserManagerEnvironment {
+  return new UserManagerEnvironment({
+    open: (onError) => SessionBus.open(onError),
+    target: env,
+    failed: partFailure(options, 'environment'),
   });
 }
 
@@ -135,6 +146,7 @@ export function linuxControls(options: ControlOptions): ComputerControls {
     isKdePlasma,
   );
   return {
+    environment: linuxEnvironment(options),
     power: new LogindPower(runProgram),
     processes: new LinuxProcesses(),
     links: linuxLinks,

@@ -1,18 +1,20 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import type { IrCodeRow, IrRemoteRow } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { useControl } from '../../../store/control';
-import { useIrCodes } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { isButtonName } from '../model/remote-layout';
-import { useIrLearning, type IrLearning } from '../model/use-ir-learning';
-import { categoryOfLearned, missingSuggestions } from '../remote/remote-category';
+import {
+  useIrLearning,
+  type IrLearning,
+  type LearnTarget,
+  type SavedButton,
+} from '../model/use-ir-learning';
 import { background } from '@smarteverything/logging';
 
 function Suggestions({
@@ -48,12 +50,14 @@ function Suggestions({
 
 function Ask({
   suggestions,
+  initial,
   onStart,
 }: {
   readonly suggestions: readonly string[];
+  readonly initial: string;
   readonly onStart: (button: string) => void;
 }): ReactNode {
-  const [button, setButton] = useState('');
+  const [button, setButton] = useState(initial);
   const start = (): void => {
     if (isButtonName(button)) {
       onStart(button.trim());
@@ -109,18 +113,19 @@ function Status({
 
 function Saved({
   blaster,
-  code,
+  saved,
   onAnother,
 }: {
   readonly blaster: Device;
-  readonly code: IrCodeRow;
+  readonly saved: SavedButton;
   readonly onAnother: () => void;
 }): ReactNode {
   const send = useControl(blaster.id, 'ir_send');
+  const { code } = saved;
   return (
     <Status
       icon={<Icon name="circleCheck" size={32} tone="positive" />}
-      title={`${code.button} is saved`}
+      title={`${saved.button} is saved`}
     >
       <View className="flex-row gap-2">
         <Button
@@ -138,13 +143,15 @@ function Saved({
 function Step({
   blaster,
   learning,
-  remote,
+  target,
   suggestions,
+  initial,
 }: {
   readonly blaster: Device;
   readonly learning: IrLearning;
-  readonly remote: IrRemoteRow;
+  readonly target: LearnTarget;
   readonly suggestions: readonly string[];
+  readonly initial: string;
 }): ReactNode {
   const phase = learning.phase;
   switch (phase.kind) {
@@ -152,8 +159,9 @@ function Step({
       return (
         <Ask
           suggestions={suggestions}
+          initial={initial}
           onStart={(button) => {
-            learning.start(remote, button);
+            learning.start(target, button);
           }}
         />
       );
@@ -167,7 +175,7 @@ function Step({
         />
       );
     case 'saved':
-      return <Saved blaster={blaster} code={phase.code} onAnother={learning.reset} />;
+      return <Saved blaster={blaster} saved={phase} onAnother={learning.reset} />;
     case 'failed':
       return (
         <Status
@@ -183,19 +191,29 @@ function Step({
 
 export function LearnSheet({
   blaster,
-  remote,
+  name,
+  target,
+  suggestions,
+  initial = '',
   onClose,
 }: {
   readonly blaster: Device;
-  readonly remote: IrRemoteRow;
+  readonly name: string;
+  readonly target: LearnTarget;
+  readonly suggestions: readonly string[];
+  readonly initial?: string;
   readonly onClose: () => void;
 }): ReactNode {
   const learning = useIrLearning(blaster);
-  const learned = useIrCodes(remote.id).map((code) => code.button);
-  const suggestions = missingSuggestions(categoryOfLearned(remote.category), learned);
   return (
-    <Sheet open onClose={onClose} title={`Learn a ${remote.name} button`} detents={['fit']}>
-      <Step blaster={blaster} learning={learning} remote={remote} suggestions={suggestions} />
+    <Sheet open onClose={onClose} title={`Learn a button for ${name}`} detents={['fit']}>
+      <Step
+        blaster={blaster}
+        learning={learning}
+        target={target}
+        suggestions={suggestions}
+        initial={initial}
+      />
     </Sheet>
   );
 }

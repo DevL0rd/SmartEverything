@@ -33,20 +33,27 @@ export function resolveFailure(command: 'override' | 'revert', label: string): s
     : `Local changes in ${label} weren’t undone`;
 }
 
+export function pauseInput(target: SyncTarget, paused: boolean): Readonly<Record<string, unknown>> {
+  switch (target.kind) {
+    case 'all':
+      return { what: 'everything', paused };
+    case 'folder':
+      return { what: 'folder', folderId: target.id, paused };
+    case 'device':
+      return { what: 'peer', deviceId: target.id, paused };
+  }
+}
+
 export function useSyncActions(): SyncActions {
   const tools = useSyncthingTools();
   return useMemo(
     () => ({
       pause: (target, paused, name) =>
-        tools.run(
-          'set_paused',
-          { command: 'set_paused', target, paused },
-          pauseFailure(paused, name),
-        ),
+        tools.run('pause_syncing', pauseInput(target, paused), pauseFailure(paused, name)),
       rescan: async (folderId): Promise<void> => {
         const done = await tools.run(
-          'rescan',
-          { command: 'rescan', folderId },
+          'rescan_folder',
+          folderId === null ? {} : { folderId },
           'Rescan didn’t start',
         );
         if (done !== null) {

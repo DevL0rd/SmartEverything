@@ -7,17 +7,6 @@ import type {
   Scope,
   TriggerNode,
 } from '@smarteverything/domain';
-import { EMPTY_LAYOUT, NODE_REGISTRY } from '@smarteverything/domain';
-import type { SceneInput } from './project-scene';
-
-export const WIDE: SceneInput = { registry: NODE_REGISTRY, layout: EMPTY_LAYOUT, mode: 'wide' };
-
-export const COMPACT_INPUT: SceneInput = {
-  registry: NODE_REGISTRY,
-  layout: EMPTY_LAYOUT,
-  mode: 'compact',
-  canvasWidth: 375,
-};
 
 export function uuid(index: number): string {
   return `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;

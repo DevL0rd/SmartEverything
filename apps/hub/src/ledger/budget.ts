@@ -19,6 +19,7 @@ import {
   limitOf,
   lowCreditsAlert,
   periodStarts,
+  roomForSpend,
   stopReasons,
   type BudgetAlert,
   type Spend,
@@ -95,6 +96,13 @@ export class Budget {
 
   settings(): AiBudgetSettings {
     return AI_BUDGET_SETTINGS.parse(this.options.settings.read(AI_BUDGET_KEY) ?? {});
+  }
+
+  canReserve(profileId: string, micros: number): boolean {
+    const settings = this.settings();
+    if (!settings.hard_stop || (settings.daily_usd === null && settings.monthly_usd === null))
+      return false;
+    return roomForSpend(this.spend(), micros) && this.people.canReserve(profileId, micros);
   }
 
   exhausted(): string | null {

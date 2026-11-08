@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import {
   COMPUTER_AI_SETTINGS,
   COMPUTER_AI_REPLY,
@@ -13,6 +12,7 @@ import type { Logger } from '@smarteverything/logging';
 import type { ComputerAiHost, ComputerAiHostEvent } from '../computers/ai-host';
 import type { ClaudeService } from './service';
 import type { LinkPlane } from './link-plane';
+import type { ClaudeSites } from './sites';
 import type { NativeTools } from './native-tools';
 import { ClaudeProviderRuntime } from './provider/runtime';
 import { ProjectFileSearch } from './provider/file-search';
@@ -30,7 +30,7 @@ export interface ClaudeHostOptions {
   readonly service: ClaudeService;
   readonly plane: LinkPlane;
   readonly deviceId: string;
-  readonly dataDirectory: string;
+  readonly sites: ClaudeSites;
   readonly log: Logger;
   readonly settings?: ComputerAiSettings;
   readonly executable?: string;
@@ -55,7 +55,8 @@ class ClaudeHost implements ComputerAiHost {
     this.settings = COMPUTER_AI_SETTINGS.parse(options.settings ?? DEFAULT_COMPUTER_AI_SETTINGS);
     this.provider = new ClaudeProviderRuntime({
       deviceId: options.deviceId,
-      directory: join(options.dataDirectory, 'claude'),
+      directory: options.sites.directory,
+      claudeHome: options.sites.home,
       log: options.log,
       publish: (event): void => {
         this.publish({ kind: 'provider', event });

@@ -1,6 +1,7 @@
+import type { ReactElement } from 'react';
 import { Button, EmptyState, Stage } from 'smarteverything-kit';
 
-export const NoDevices = () => (
+export const NoDevices = (): ReactElement => (
   <Stage theme="dark" width={460}>
     <EmptyState
       icon="plug"
@@ -10,12 +11,12 @@ export const NoDevices = () => (
     />
   </Stage>
 );
-export const NoAlerts = () => (
+export const NoAlerts = (): ReactElement => (
   <Stage theme="dark" width={460}>
     <EmptyState icon="bell" title="All quiet" body="Nothing needs your attention right now." />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={460}>
     <EmptyState
       icon="cameras"

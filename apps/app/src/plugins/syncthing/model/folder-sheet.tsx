@@ -1,5 +1,5 @@
 import type { SyncthingFolder, SyncthingSnapshot } from '@smarteverything/domain';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { ValueRow } from '../../../components/rows';
@@ -124,7 +124,7 @@ function Body({
 }: {
   readonly folder: SyncthingFolder;
   readonly snapshot: SyncthingSnapshot;
-  readonly deviceHref: (id: string) => Href;
+  readonly deviceHref: (id: string) => AppHref;
 }): ReactNode {
   const state = folderState(folder);
   const sharedWith = snapshot.peers.filter((peer) => folder.sharedWith.includes(peer.id));
@@ -161,7 +161,7 @@ export function FolderSheet({
 }: {
   readonly folder: SyncthingFolder | null;
   readonly snapshot: SyncthingSnapshot;
-  readonly deviceHref: (id: string) => Href;
+  readonly deviceHref: (id: string) => AppHref;
   readonly onClose: () => void;
 }): ReactNode {
   return (

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Keyboard, View } from 'react-native';
 import {
   readPresentedColor,
@@ -43,11 +43,16 @@ export function ColourBlock({
   compact = false,
 }: ColourProps): ReactNode {
   const [open, setOpen] = useState(false);
+  const opener = useRef<View>(null);
+  const close = (): void => {
+    setOpen(false);
+  };
   const picker = <Picker presented={presented} control={control} disabled={disabled} />;
   if (compact)
     return (
       <>
         <Button
+          ref={opener}
           label={presented.label}
           icon="palette"
           variant="tonal"
@@ -58,19 +63,11 @@ export function ColourBlock({
           }}
         />
         <Sheet
+          subpage={{ opener }}
           detents={['fit', 'full']}
-          footer={
-            <Button
-              label="Done"
-              onPress={() => {
-                setOpen(false);
-              }}
-            />
-          }
+          footer={<Button label="Done" onPress={close} />}
           open={open}
-          onClose={() => {
-            setOpen(false);
-          }}
+          onClose={close}
           title={presented.label}
         >
           {picker}

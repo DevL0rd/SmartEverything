@@ -9,6 +9,7 @@ import { modelSized } from '../model-picture';
 import { PortableMachine } from '../portable/portable-machine';
 import { PortableProcesses } from '../portable/portable-processes';
 import {
+  inheritedEnvironment,
   unsupportedAudio,
   unsupportedDisplays,
   unsupportedInput,
@@ -22,6 +23,7 @@ import { darwinPlaces } from './darwin-places';
 import { DarwinPower } from './darwin-power';
 import { DarwinProcessSource } from './darwin-processes';
 import { darwinVolume } from './darwin-volume';
+import { describeFailure } from '@smarteverything/logging';
 
 export function darwinControls(options: ControlOptions): ComputerControls {
   const agent = new SocketSessionAgent(
@@ -41,10 +43,14 @@ export function darwinControls(options: ControlOptions): ComputerControls {
       ownPid: process.pid,
       now: Date.now,
       failed: (cause): void => {
-        options.log.error('node.session_part_failed', cause, { part: 'processes' });
+        options.log.warn('node.session_part_failed', {
+          part: 'processes',
+          failure: describeFailure(cause),
+        });
       },
     }),
     links: () => [],
+    environment: inheritedEnvironment(),
     session: unsupportedSession('macOS'),
     audio: unsupportedAudio('macOS'),
     displays: unsupportedDisplays('macOS'),

@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { z } from 'zod';
 import { DSH_WRITER_CLAIM } from '@smarteverything/domain';
 import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session';
-import type { SessionHeader } from '@deepseek-ai/dsh-session';
+import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session';
 import {
   materializeCreateHeader,
   SessionAlreadyOwnedError,
@@ -26,7 +26,7 @@ import type {
   NativeSessionWriter,
 } from './port';
 import { MachineSessionHandle } from './handle';
-import { boundHeader, nativeHeader } from './validation';
+import { boundHeader, nativeEvents, nativeHeader } from './validation';
 
 export class MachineSessionPersistence extends SessionPersistence {
   private readonly handles = new Set<MachineSessionHandle>();
@@ -90,6 +90,12 @@ export class MachineSessionPersistence extends SessionPersistence {
     options?: SessionPersistenceListOptions,
   ): Promise<readonly SessionPersistenceSnapshot[]> {
     return (await this.port.list(options?.signal)).map((snapshot) => this.snapshot(snapshot));
+  }
+
+  async events(id: SessionId): Promise<readonly SessionEvent[] | undefined> {
+    const snapshot = await this.port.stat(id);
+    if (snapshot === undefined) return undefined;
+    return nativeEvents(boundHeader(id, snapshot.header), await this.port.read(id));
   }
 
   async flush(): Promise<void> {

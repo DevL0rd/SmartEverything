@@ -114,21 +114,20 @@ export class ProfilesRepository {
 
   learnScaleUser(id: string, scaleUser: number): void {
     this.context.write(() => {
-      const released = this.releaseScaleUser(id, scaleUser);
-      if (released === 0 && this.byId(id).scale_user !== scaleUser) {
+      this.releaseScaleUser(id, scaleUser);
+      if (this.byId(id).scale_user !== scaleUser) {
         this.change(id, { scale_user: scaleUser });
       }
     });
   }
 
-  private releaseScaleUser(id: string, scaleUser: number): number {
+  private releaseScaleUser(id: string, scaleUser: number): void {
     const holders = this.list().filter(
       (profile) => profile.scale_user === scaleUser && profile.id !== id,
     );
     for (const holder of holders) {
       this.change(holder.id, { scale_user: null });
     }
-    return holders.length;
   }
 
   assertRemovable(id: string): void {
@@ -156,6 +155,12 @@ export class ProfilesRepository {
       if (heir === undefined) {
         throw new StoreConflictError('remove the profile', 'the home needs at least one owner');
       }
+      this.context.sql.run(
+        'move linked Computers to another profile',
+        `update computer_nodes set profile_id = $heir
+         where revoked_at is null and window_client_id in (select id from clients where profile_id = $id)`,
+        { heir: heir.id, id },
+      );
       this.context.sql.run(
         'move the apps to another profile',
         'update clients set profile_id = $heir where profile_id = $id',

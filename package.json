@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build:go2rtc": "tsx tooling/go2rtc/build.ts",
+    "build:drive-mount": "tsx tooling/drive-mount/build.ts",
     "build:web": "pnpm --filter @smarteverything/app run export:web",
     "check:commits": "commitlint --from=HEAD~1 --to=HEAD --verbose",
     "check:cycles": "dpdm --no-warning --no-tree --exit-code circular:1 packages/*/src/index.ts 'packages/flow/src/**/*.ts' apps/hub/src/main.ts 'apps/app/app/**/*.tsx'",
@@ -36,6 +37,7 @@
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
     "@commitlint/config-conventional": "21.2.2",
+    "@electron/asar": "4.3.1",
     "@eslint/js": "10.0.1",
     "@smarteverything/domain": "workspace:*",
     "@smarteverything/logging": "workspace:*",

@@ -5,11 +5,11 @@ import {
   type WeatherForecast,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { compileTriggers, signalFire } from '../../src/automations/triggers-v3/armers';
+import { signalFire } from '../../src/automations/triggers-v3/armers';
 import { SignalBus } from '../../src/signals/bus';
 import { feedSignals } from '../../src/signals/sources/feed';
 import { feedContextOf } from '../../src/signals/sources/feed-context';
-import { node } from '../automations-v3/triggers/support';
+import { compileCore, node } from '../automations-v3/triggers/support';
 import { forecastOf } from '../automations-v3/world/forecast';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
@@ -89,7 +89,7 @@ describe('weather signals from the feed', () => {
   it('starts a rain started and a rain stopped trigger from the fetch that brings the change', () => {
     const starts = node('trigger.weather', { event: 'rain_started' });
     const stops = node('trigger.weather', { event: 'rain_stopped' });
-    const compiled = compileTriggers('rainy', [starts, stops]);
+    const compiled = compileCore('rainy', [starts, stops]);
     const fired = (): readonly string[] =>
       heard.flatMap((signal) =>
         compiled.signals

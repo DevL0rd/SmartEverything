@@ -63,9 +63,13 @@ describe('the default navigation', () => {
       'section:devices',
       'section:cameras',
       'section:fitness',
+      'section:planner',
+      'section:clock',
       'section:assistant',
       'section:talk',
       'section:automations',
+      'section:photos',
+      'section:drive',
     ]);
   });
 
@@ -83,7 +87,14 @@ describe('the default navigation', () => {
       'section:cameras',
       'section:fitness',
     ]);
-    expect(keys(resolved.overflow)).toEqual(['section:talk', 'section:automations']);
+    expect(keys(resolved.overflow)).toEqual([
+      'section:planner',
+      'section:clock',
+      'section:talk',
+      'section:automations',
+      'section:photos',
+      'section:drive',
+    ]);
     expect(resolved.barSlots).toHaveLength(NAV_BAR_SLOTS);
   });
 });
@@ -126,9 +137,13 @@ describe('a saved layout', () => {
       'section:devices',
       'section:cameras',
       'section:fitness',
+      'section:planner',
+      'section:clock',
       'section:assistant',
       'section:talk',
       'section:automations',
+      'section:photos',
+      'section:drive',
     ]);
   });
 
@@ -259,6 +274,7 @@ describe('the navigation schema', () => {
       { kind: 'group', groupId: ROOM },
       { kind: 'scene', sceneId: ROOM },
       { kind: 'automation', automationId: ROOM, focus: null },
+      { kind: 'drive', rootId: ROOM, path: '/', itemId: null, focus: null },
     ] as const;
     for (const target of targets) expect(NAV_PIN_TARGET.safeParse(target).success).toBe(true);
     expect(NAV_PIN_TARGET.options.map((option) => option.shape.kind.value)).toEqual(

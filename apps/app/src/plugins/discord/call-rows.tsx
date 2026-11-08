@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import type { DiscordCall } from '@smarteverything/domain';
 import { href } from '../../app-shell/hrefs';
 import { Badge, type BadgeTone } from '../../components/badge';
 import { ListRow } from '../../components/list-row';
 import { List } from '../../components/section';
+import { Text } from '../../components/text';
 import { count } from '../../format/number';
 import { plural } from '../../format/text';
 import { useLocalSearchParams } from 'expo-router';
@@ -14,11 +16,11 @@ export const CALL_TRANSCRIPTS = 'call-transcripts';
 export const NO_CALL_HINT =
   'It joins when an approved person enters a voice channel, or with /join.';
 
-export function callTitle(call: DiscordCall): string {
+function callTitle(call: DiscordCall): string {
   return `#${call.channelName ?? call.channelId}`;
 }
 
-export function callState(call: DiscordCall): { readonly label: string; readonly tone: BadgeTone } {
+function callState(call: DiscordCall): { readonly label: string; readonly tone: BadgeTone } {
   if (call.muted) {
     return { label: 'Muted', tone: 'warning' };
   }
@@ -27,9 +29,26 @@ export function callState(call: DiscordCall): { readonly label: string; readonly
     : { label: 'Listening', tone: 'neutral' };
 }
 
-export function callDetail(call: DiscordCall): string {
+function callDetail(call: DiscordCall): string {
   const lines = call.lines === 1 ? '1 line' : `${count(call.lines)} lines`;
   return `${plural(call.people, 'person', 'people')} in the call · ${lines} written down`;
+}
+
+export function CallLine({ call }: { readonly call: DiscordCall }): ReactNode {
+  const state = callState(call);
+  return (
+    <View className="flex-row items-center gap-2">
+      <View className="min-w-0 flex-1">
+        <Text variant="title-3" numberOfLines={2}>
+          {callTitle(call)}
+        </Text>
+        <Text variant="footnote" tone="variant" numberOfLines={2}>
+          {callDetail(call)}
+        </Text>
+      </View>
+      <Badge label={state.label} tone={state.tone} />
+    </View>
+  );
 }
 
 function CallRow({ call }: { readonly call: DiscordCall }): ReactNode {

@@ -1,7 +1,7 @@
 import {
-  DEVICE_MATCHER_MAPPINGS,
   compileTriggerMatcher,
   type JsonValue,
+  type MatcherMapping,
   type Place,
   type SignalInput,
   type SignalMatcher,
@@ -19,6 +19,7 @@ export type { TriggerProblem } from './trigger-types';
 
 interface SignalEntry extends Identity {
   readonly matcher: SignalMatcher;
+  readonly outputs?: Readonly<Record<string, string>>;
 }
 
 interface TimedEntry extends Identity {
@@ -42,6 +43,8 @@ export interface ArmDeps {
 
 type Ports = Readonly<Record<string, JsonValue>>;
 
+export type MatcherLookup = (kind: string) => MatcherMapping | undefined;
+
 function literalPorts(node: TriggerNode): Ports | string {
   const ports: Record<string, JsonValue> = {};
   for (const [name, port] of Object.entries(node.ports)) {
@@ -62,7 +65,7 @@ interface Compiled {
   readonly problem?: string;
 }
 
-function compileOne(automationId: string, node: TriggerNode): Compiled {
+function compileOne(automationId: string, node: TriggerNode, matchers: MatcherLookup): Compiled {
   if (node.kind === CONDITION_TRIGGER_KIND) return compileCondition(automationId, node);
   const ports = literalPorts(node);
   if (typeof ports === 'string') return { problem: ports };
@@ -76,23 +79,31 @@ function compileOne(automationId: string, node: TriggerNode): Compiled {
       ? { timed: { ...identity, schedule: schedule.value } }
       : { problem: schedule.error };
   }
-  if (!Object.hasOwn(DEVICE_MATCHER_MAPPINGS, node.kind)) return {};
-  const matcher = compileTriggerMatcher(node.kind, ports);
+  const mapping = matchers(node.kind);
+  if (mapping === undefined) return {};
+  const matcher = compileTriggerMatcher(node.kind, ports, mapping);
   return matcher.ok
-    ? { signal: { ...identity, matcher: matcher.matcher } }
+    ? {
+        signal: {
+          ...identity,
+          matcher: matcher.matcher,
+          ...(mapping.outputs === undefined ? {} : { outputs: mapping.outputs }),
+        },
+      }
     : { problem: matcher.error };
 }
 
 export function compileTriggers(
   automationId: string,
   nodes: readonly TriggerNode[],
+  matchers: MatcherLookup,
 ): CompiledTriggers {
   const signals: SignalEntry[] = [];
   const timed: TimedEntry[] = [];
   const conditions: ConditionEntry[] = [];
   const problems: TriggerProblem[] = [];
   for (const node of nodes.filter((entry) => entry.enabled !== false)) {
-    const compiled = compileOne(automationId, node);
+    const compiled = compileOne(automationId, node, matchers);
     if (compiled.signal !== undefined) signals.push(compiled.signal);
     if (compiled.timed !== undefined) timed.push(compiled.timed);
     if (compiled.condition !== undefined) conditions.push(compiled.condition);
@@ -127,7 +138,7 @@ export function signalFire(
     key: entry.key,
     kind: entry.kind,
     at: signal.at,
-    payload: signalPayload(entry.kind, signal),
+    payload: signalPayload(entry.kind, signal, entry.outputs),
   };
 }
 

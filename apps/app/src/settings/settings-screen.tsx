@@ -8,12 +8,12 @@ import { Screen } from '../components/screen';
 import { useSizeClass } from '../design/size-class';
 import { useSettingEnv } from './env';
 import { SettingsNav } from './settings-nav';
-import { pageAvailable, useBuiltSettingsPages } from './availability';
-import { SettingsFrame } from './settings-frame';
+import { pageReachable, useBuiltSettingsPages } from './availability';
+import { SettingsFrame, type SettingsFrameProps } from './settings-frame';
 import { href } from '../app-shell/hrefs';
 import { legacyHref } from '../app-shell/legacy-routes';
 import { retiredPageTarget } from './retired-pages';
-import { SettingsPageBody } from './settings-page';
+import { SettingsPageBody, type SettingsBlocksLayout } from './settings-page';
 import { onPlatform, settingsPage } from './tree';
 import type { SettingsPageDefinition } from './types';
 
@@ -48,33 +48,48 @@ function ElsewhereOnly({ page }: { readonly page: SettingsPageDefinition }): Rea
   );
 }
 
+function NotThere(): ReactNode {
+  return (
+    <Screen header={<PageHeader title="Settings" />} maxWidth="reading">
+      <EmptyState
+        icon="settings"
+        title="Page not found"
+        body="This settings page does not exist."
+      />
+    </Screen>
+  );
+}
+
 export function SettingsPageScreen({
   page,
   primaryAction,
+  contentWidth,
+  BlocksLayout,
 }: {
   readonly page: string;
   readonly primaryAction?: PrimaryActionProps;
-}): ReactNode {
+  readonly BlocksLayout?: SettingsBlocksLayout;
+} & Pick<SettingsFrameProps, 'contentWidth'>): ReactNode {
   const env = useSettingEnv();
   const built = useBuiltSettingsPages();
   const definition = settingsPage(page);
   if (definition !== undefined && !onPlatform(definition, env)) {
     return <ElsewhereOnly page={definition} />;
   }
-  if (definition === undefined || !pageAvailable(definition, { env, built })) {
-    return (
-      <Screen header={<PageHeader title="Settings" />} maxWidth="reading">
-        <EmptyState
-          icon="settings"
-          title="Page not found"
-          body="This settings page does not exist."
-        />
-      </Screen>
-    );
+  if (definition === undefined || !pageReachable(definition, { env, built })) {
+    return <NotThere />;
   }
   return (
-    <SettingsFrame page={page} {...(primaryAction === undefined ? {} : { primaryAction })}>
-      <SettingsPageBody key={page} page={page} />
+    <SettingsFrame
+      page={page}
+      {...(contentWidth === undefined ? {} : { contentWidth })}
+      {...(primaryAction === undefined ? {} : { primaryAction })}
+    >
+      <SettingsPageBody
+        key={page}
+        page={page}
+        {...(BlocksLayout === undefined ? {} : { BlocksLayout })}
+      />
     </SettingsFrame>
   );
 }

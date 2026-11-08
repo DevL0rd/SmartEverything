@@ -17,7 +17,7 @@ const KEY_SIZE = 12;
 function Mark({ entry }: { readonly entry: KeyEntry }): ReactNode {
   const colour = useColour(entry.colour);
   if (entry.mark === 'check') {
-    return <Icon name="check" size={KEY_SIZE + 2} tone="positive" />;
+    return <Icon name="check" size={16} tone="positive" />;
   }
   const box = {
     width: KEY_SIZE,

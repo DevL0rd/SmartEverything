@@ -129,6 +129,12 @@ export class ChangeFeed {
     this.emitter.emit('commit');
   }
 
+  afterCommit(work: () => void): void {
+    this.dispatch(() => {
+      queueMicrotask(work);
+    });
+  }
+
   emit(change: unknown, onSequence?: (seq: number) => void): void {
     const row = ROW_CHANGE.parse(change);
     this.dispatch(() => {

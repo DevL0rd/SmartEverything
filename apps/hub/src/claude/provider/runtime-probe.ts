@@ -7,6 +7,7 @@ import { subscriptionEnvironment, workDirectory } from './options';
 interface ProbeConfig {
   readonly directory: string;
   readonly options: ClaudeProviderOptions;
+  readonly claudeHome: string | null;
   readonly executable?: string;
 }
 export async function providerProbe(config: ProbeConfig): Promise<Query> {
@@ -14,7 +15,7 @@ export async function providerProbe(config: ProbeConfig): Promise<Query> {
     ...configurationOptions(config.options),
     cwd: await workDirectory(config.directory, config.options),
     tools: [],
-    env: subscriptionEnvironment(),
+    env: subscriptionEnvironment(config.claudeHome),
     permissionMode: 'default',
     ...(config.executable === undefined ? {} : { pathToClaudeCodeExecutable: config.executable }),
   };

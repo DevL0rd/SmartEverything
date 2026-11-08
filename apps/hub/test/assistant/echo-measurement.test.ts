@@ -9,7 +9,7 @@ const LIVE_CHUNK = 480;
 
 interface Logged {
   readonly event: string;
-  readonly fields: Readonly<Record<string, number | string>>;
+  readonly fields: Readonly<Record<string, number | string | boolean>>;
 }
 
 function tone(samples: number, amplitude: number): Int16Array {

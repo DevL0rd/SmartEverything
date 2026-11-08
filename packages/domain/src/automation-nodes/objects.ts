@@ -25,6 +25,7 @@ export const OBJECT_KINDS: readonly NodeKind[] = [
         type: RECORD,
         required: true,
         description: 'The named fields and their values.',
+        ui: { editor: 'field-rows' },
       },
     ],
     outputs: [{ name: 'record', type: RECORD, description: 'The record.' }],
@@ -51,6 +52,7 @@ export const OBJECT_KINDS: readonly NodeKind[] = [
         static: true,
         summary: true,
         description: 'The path, for example detection.label or items[0].',
+        ui: { optionsFrom: 'record.fields', typedBy: 'source' },
       },
       {
         name: 'default',
@@ -83,8 +85,15 @@ export const OBJECT_KINDS: readonly NodeKind[] = [
         static: true,
         summary: true,
         description: 'The path of the field to set.',
+        ui: { optionsFrom: 'record.fields', typedBy: 'source' },
       },
-      { name: 'value', type: ANY, required: true, description: 'The new value.' },
+      {
+        name: 'value',
+        type: ANY,
+        required: true,
+        description: 'The new value.',
+        ui: { typedBy: 'path' },
+      },
       {
         name: 'create',
         type: FLAG,

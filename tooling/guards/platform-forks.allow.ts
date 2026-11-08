@@ -1,5 +1,4 @@
 export const PLATFORM_FORKS: Readonly<Record<string, string>> = {
-  'src/api/client-failures.ts': 'reports which platform a client failure came from',
   'src/design/platform.ts': 'tells the browser, the desktop window and the phone apart for layout',
   'src/features/assistant/chats/chat-panel-state.ts':
     'only Android has a hardware back button to close the chat panel',

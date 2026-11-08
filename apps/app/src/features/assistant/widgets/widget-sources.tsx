@@ -10,7 +10,9 @@ import { CAMERA_WIDGETS } from '../../cameras';
 import { DayScope, FITNESS_WIDGETS, TodayScope, dailySeriesKeyOf } from '../../fitness';
 import { HOME_WIDGETS, SPOTLIGHT_WIDGET } from '../../home';
 import { nutritionWidgets, useTodayKey, type DaySource } from '../../nutrition';
+import { PLANNER_WIDGETS } from '../../planner';
 import { BOARD_CATALOGUE, definitionIn, isFitnessBoard } from './board-sources';
+import type { PhotosChatWidget } from './photos-widget-model';
 import { WidgetUnavailableError } from './unavailable';
 
 export interface ResolvedWidget {
@@ -22,7 +24,7 @@ export interface ResolvedWidget {
   readonly scope: ((children: ReactNode) => ReactNode) | null;
 }
 
-export type BoardChatWidget = Exclude<ChatWidget, ChatLink>;
+export type BoardChatWidget = Exclude<ChatWidget, ChatLink | PhotosChatWidget>;
 
 function scopeOf(day: string | undefined): (children: ReactNode) => ReactNode {
   return day === undefined
@@ -86,6 +88,37 @@ function boardWidget(
   };
 }
 
+function plannerWidget(
+  key: string,
+  widget: Extract<BoardChatWidget, { kind: 'planner' }>,
+): ResolvedWidget {
+  if (widget.view !== 'day' && widget.id === undefined) {
+    throw new WidgetUnavailableError(
+      'this planner data',
+      'This view needs the id from a Planner read.',
+    );
+  }
+  return {
+    ...plain(key, definitionIn(PLANNER_WIDGETS, `planner-${widget.view}`), {
+      ...(widget.id === undefined ? {} : { id: widget.id }),
+      ...(widget.day === undefined ? {} : { day: widget.day }),
+    }),
+    wide: true,
+  };
+}
+
+function remoteWidget(
+  key: string,
+  remoteId: string,
+  remoteDevice: (remoteId: string) => string | null,
+): ResolvedWidget {
+  const deviceId = remoteDevice(remoteId);
+  if (deviceId === null) {
+    throw new WidgetUnavailableError('this remote', 'It was removed or its blaster is gone.');
+  }
+  return { ...plain(key, SPOTLIGHT_WIDGET, { deviceId }), compact: true };
+}
+
 export function resolveWidget(
   key: string,
   widget: BoardChatWidget,
@@ -95,13 +128,8 @@ export function resolveWidget(
   switch (widget.kind) {
     case 'device':
       return { ...plain(key, SPOTLIGHT_WIDGET, { deviceId: widget.id }), compact: true };
-    case 'remote': {
-      const deviceId = remoteDevice(widget.id);
-      if (deviceId === null) {
-        throw new WidgetUnavailableError('this remote', 'It was removed or its blaster is gone.');
-      }
-      return { ...plain(key, SPOTLIGHT_WIDGET, { deviceId }), compact: true };
-    }
+    case 'remote':
+      return remoteWidget(key, widget.id, remoteDevice);
     case 'camera':
       return {
         ...plain(key, definitionIn(CAMERA_WIDGETS, 'camera'), { deviceId: widget.id }),
@@ -115,6 +143,8 @@ export function resolveWidget(
         definitionIn(nutritionWidgets(daySource(widget.day)), widget.part),
         undefined,
       );
+    case 'planner':
+      return plannerWidget(key, widget);
     case 'board':
       return boardWidget(key, widget.type, widget.options, extensions);
     case 'weather':

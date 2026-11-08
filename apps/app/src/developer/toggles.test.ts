@@ -1,13 +1,58 @@
-import { createElement } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createElement, type ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PerfProbe, counted, timed } from '../perf/probe-kit';
 import { probedScreen } from '../perf/screen-probe';
-import { activateFlags } from './flags';
-import { DEVELOPER_TOGGLES, allOff, resolveFlags } from './toggles';
+import { attachSession, detachSession, type PerfSink } from '../perf/sink';
+import { activateFlags, readDeveloperFlags } from './flags';
+import { DEVELOPER_TOGGLES, allOff, resolveFlags, withLogLevel } from './toggles';
+
+const RECORDED: string[] = [];
+
+function flagged(flags: Readonly<Record<string, boolean>>): readonly string[] {
+  return Object.entries(flags)
+    .filter(([, on]) => on)
+    .map(([id]) => id);
+}
+
+function probes(id: string): ReactNode {
+  return PerfProbe({ id, children: createElement('i', null, id) });
+}
+
+function tagOf(element: ReactNode): string {
+  return typeof element === 'object' && element !== null && 'type' in element ? 'wrapped' : 'bare';
+}
+
+function sink(): PerfSink {
+  return {
+    record: (id: string): void => {
+      RECORDED.push(id);
+    },
+    screenCommit: () => undefined,
+    screenMount: () => undefined,
+    screenUnmount: () => undefined,
+    action: () => undefined,
+    screen: () => undefined,
+    store: () => undefined,
+    touch: () => undefined,
+    listRows: () => undefined,
+    listCell: () => undefined,
+    listGone: () => undefined,
+    listViewport: () => undefined,
+    listContent: () => undefined,
+    listScroll: () => undefined,
+  };
+}
 
 beforeEach(() => {
-  vi.stubGlobal('__DEV__', true);
+  vi.stubGlobal('__DEV__', false);
+  RECORDED.length = 0;
+  detachSession();
   activateFlags(allOff());
+});
+
+afterEach(() => {
+  detachSession();
+  vi.unstubAllGlobals();
 });
 
 describe('developer toggles', () => {
@@ -46,24 +91,40 @@ describe('developer toggles', () => {
     );
   });
 
-  it('turns on only release toggles in a release build', () => {
+  it('turns everything off while developer mode is off, whatever is stored', () => {
     const all = Object.fromEntries(DEVELOPER_TOGGLES.map((toggle) => [toggle.id, true]));
-    const flags = resolveFlags(all, false);
-    DEVELOPER_TOGGLES.forEach((toggle) => {
-      expect(flags[toggle.id]).toBe(toggle.release);
-    });
+    expect(flagged(resolveFlags(all, false))).toEqual([]);
+  });
+
+  it('keeps one log level on at a time', () => {
+    expect(flagged(resolveFlags({}, true))).toEqual(['perf.frames', 'log.level.info']);
+    expect(flagged(resolveFlags(withLogLevel({}, 'trace'), true))).toEqual([
+      'perf.frames',
+      'log.level.trace',
+    ]);
+  });
+
+  it('requires an explicit opt-in to save raw watch files', () => {
+    expect(resolveFlags({}, true)['watch.capture']).toBe(false);
+    expect(resolveFlags({ 'watch.capture': true }, true)['watch.capture']).toBe(true);
+    expect(resolveFlags({ 'watch.capture': true }, false)['watch.capture']).toBe(false);
   });
 });
 
 describe('gating while off', () => {
-  it('returns children untouched', () => {
-    const child = 'child';
-    expect(PerfProbe({ id: 'x', children: child })).toBe(child);
+  it('leaves a bare tree, a plain handler and a plain result untouched', () => {
+    const chunk = createElement('i', null, 'x');
+    expect(PerfProbe({ id: 'x', children: chunk })).toBe(chunk);
+    const handler = (): void => undefined;
+    expect(counted('id', handler)).toBe(handler);
+    expect(timed('id', () => 7)).toBe(7);
     const screen = createElement('div');
     expect(probedScreen({ route: { name: 'a' }, children: screen })).toBe(screen);
   });
 
-  it('returns the same handler and work result without wrapping', () => {
+  it('returns the same handler and work result with a session while the option is off', () => {
+    attachSession({ sink: sink(), stop: () => undefined });
+    expect(readDeveloperFlags()['perf.profilers']).not.toBe(true);
     const handler = (): void => undefined;
     expect(counted('id', handler)).toBe(handler);
     expect(timed('id', () => 7)).toBe(7);
@@ -71,10 +132,20 @@ describe('gating while off', () => {
 });
 
 describe('gating while on', () => {
-  it('wraps children in a profiler', () => {
-    activateFlags(resolveFlags({ 'perf.sampling': true, 'perf.profilers': true }, true));
-    expect(PerfProbe({ id: 'x', children: 'child' })).not.toBe('child');
+  it('wraps children and handlers once the option is on', () => {
+    attachSession({ sink: sink(), stop: () => undefined });
+    activateFlags({ ...allOff(), 'perf.profilers': true });
+    expect(readDeveloperFlags()['perf.profilers']).toBe(true);
+    expect(tagOf(probes('x'))).toBe('wrapped');
     const handler = (): void => undefined;
     expect(counted('id', handler)).not.toBe(handler);
+  });
+
+  it('records through the kit once a session is attached', () => {
+    attachSession({ sink: sink(), stop: () => undefined });
+    activateFlags({ ...allOff(), 'perf.profilers': true });
+    counted('lay', () => undefined)();
+    expect(timed('parse', () => 3)).toBe(3);
+    expect(RECORDED).toEqual(['lay', 'parse']);
   });
 });

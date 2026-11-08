@@ -1,6 +1,6 @@
 import {
   NODE_CATEGORIES,
-  SHIPPED_TIERS,
+  isShippedKind,
   typeDisplayName,
   type AutomationFunctionSummary,
   type FlowType,
@@ -8,7 +8,9 @@ import {
   type NodeCategoryId,
   type NodeKind,
 } from '@smarteverything/domain';
+import { isIconName, type IconName } from '../../../../components/icon';
 import { compareText } from '../../../../format/text';
+import { SECTION_ICONS } from './category-icons';
 
 export type PaletteSectionId = NodeCategoryId | 'snippets';
 
@@ -16,6 +18,12 @@ export type PaletteChoice =
   | { readonly source: 'node'; readonly kindId: string }
   | { readonly source: 'function'; readonly functionId: string }
   | { readonly source: 'preset'; readonly presetId: string; readonly control: string }
+  | {
+      readonly source: 'kind-preset';
+      readonly presetId: string;
+      readonly kindId: string;
+      readonly ports: Readonly<Record<string, JsonValue>>;
+    }
   | {
       readonly source: 'trigger-preset';
       readonly presetId: string;
@@ -25,9 +33,10 @@ export type PaletteChoice =
   | { readonly source: 'snippet'; readonly snippetId: string }
   | { readonly source: 'new-reusable' };
 
-export interface PaletteEnv {
-  readonly isOwner: boolean;
-  readonly hasComputer: boolean;
+export interface PaletteOrigin {
+  readonly id: string;
+  readonly name: string;
+  readonly icon: string;
 }
 
 export interface PaletteEntry {
@@ -44,12 +53,14 @@ export interface PaletteEntry {
   readonly kindId: string | null;
   readonly usageId: string | null;
   readonly trigger: boolean;
-  readonly disabled: string | null;
+  readonly origin?: PaletteOrigin;
 }
 
 export interface PaletteGroup {
+  readonly key: string;
   readonly id: PaletteSectionId;
   readonly name: string;
+  readonly icon: IconName;
   readonly entries: readonly PaletteEntry[];
 }
 
@@ -100,24 +111,25 @@ export function typeWordsOf(types: readonly FlowType[]): readonly string[] {
   return [...new Set(types.map((type) => typeDisplayName(type).toLowerCase()))];
 }
 
-export function envReason(kind: NodeKind, env: PaletteEnv): string | null {
-  if (kind.access === 'owner' && !env.isOwner) {
-    return kind.category === 'ai'
-      ? 'Only the owner can use the AI.'
-      : 'Only the owner can use this.';
-  }
-  if (kind.category === 'computers' && !env.hasComputer) return 'Pair a computer first.';
-  return null;
+export function fromText(origin: PaletteOrigin, takes: string): string {
+  return `From ${origin.name} · ${takes}`;
 }
 
-export function nodeEntry(kind: NodeKind, env: PaletteEnv): PaletteEntry {
+function originOf(kind: NodeKind): PaletteOrigin | undefined {
+  const { origin } = kind;
+  return origin === undefined ? undefined : { id: origin.id, name: origin.name, icon: origin.icon };
+}
+
+export function nodeEntry(kind: NodeKind): PaletteEntry {
   const types = [...kind.inputs.map((port) => port.type), ...kind.outputs.map((port) => port.type)];
+  const origin = originOf(kind);
+  const takes = takesText(kind.inputs);
   return {
     key: `node:${kind.id}`,
     choice: { source: 'node', kindId: kind.id },
     name: kind.name,
     meaning: kind.description,
-    takes: takesText(kind.inputs),
+    takes: origin === undefined ? takes : fromText(origin, takes),
     icon: kind.icon,
     section: kind.category,
     keywords: kind.keywords,
@@ -126,7 +138,7 @@ export function nodeEntry(kind: NodeKind, env: PaletteEnv): PaletteEntry {
     kindId: kind.id,
     usageId: kind.id,
     trigger: kind.class === 'trigger',
-    disabled: envReason(kind, env),
+    ...(origin === undefined ? {} : { origin }),
   };
 }
 
@@ -157,7 +169,6 @@ export function functionEntry(fn: AutomationFunctionSummary): PaletteEntry {
     kindId: null,
     usageId: null,
     trigger: false,
-    disabled: null,
   };
 }
 
@@ -175,20 +186,54 @@ export const NEW_REUSABLE_ENTRY: PaletteEntry = {
   kindId: null,
   usageId: null,
   trigger: false,
-  disabled: null,
 };
 
-export function shippedNodeEntries(
-  kinds: readonly NodeKind[],
-  env: PaletteEnv,
-): readonly PaletteEntry[] {
-  return kinds
-    .filter((kind) => SHIPPED_TIERS.includes(kind.tier))
-    .map((kind) => nodeEntry(kind, env));
+export function shippedNodeEntries(kinds: readonly NodeKind[]): readonly PaletteEntry[] {
+  return kinds.filter(isShippedKind).map(nodeEntry);
 }
 
 function byName(left: PaletteEntry, right: PaletteEntry): number {
   return compareText(left.name, right.name);
+}
+
+const PLUGINS_SECTION: PaletteSectionId = 'plugins';
+
+function sectionGroup(
+  id: PaletteSectionId,
+  name: string,
+  members: readonly PaletteEntry[],
+): PaletteGroup {
+  const entries = id === 'reusable' ? withNewReusableFirst(members) : members;
+  return { key: id, id, name, icon: SECTION_ICONS[id], entries };
+}
+
+function originGroup(origin: PaletteOrigin, members: readonly PaletteEntry[]): PaletteGroup {
+  return {
+    key: `${PLUGINS_SECTION}:${origin.id}`,
+    id: PLUGINS_SECTION,
+    name: origin.name,
+    icon: isIconName(origin.icon) ? origin.icon : SECTION_ICONS[PLUGINS_SECTION],
+    entries: members,
+  };
+}
+
+export function pluginGroups(name: string, members: readonly PaletteEntry[]): PaletteGroup[] {
+  const origins = new Map<string, { origin: PaletteOrigin; entries: PaletteEntry[] }>();
+  const loose: PaletteEntry[] = [];
+  for (const entry of members) {
+    if (entry.origin === undefined) {
+      loose.push(entry);
+      continue;
+    }
+    const found = origins.get(entry.origin.id);
+    if (found === undefined)
+      origins.set(entry.origin.id, { origin: entry.origin, entries: [entry] });
+    else found.entries.push(entry);
+  }
+  const grouped = [...origins.values()]
+    .map(({ origin, entries }) => originGroup(origin, entries))
+    .sort((left, right) => compareText(left.name, right.name));
+  return loose.length === 0 ? grouped : [...grouped, sectionGroup(PLUGINS_SECTION, name, loose)];
 }
 
 export function paletteGroups(entries: readonly PaletteEntry[]): readonly PaletteGroup[] {
@@ -197,9 +242,11 @@ export function paletteGroups(entries: readonly PaletteEntry[]): readonly Palett
     { id: 'snippets', name: SNIPPETS_NAME },
   ];
   return sections
-    .map(({ id, name }) => {
+    .flatMap(({ id, name }) => {
       const members = entries.filter((entry) => entry.section === id).sort(byName);
-      return { id, name, entries: id === 'reusable' ? withNewReusableFirst(members) : members };
+      return id === PLUGINS_SECTION
+        ? pluginGroups(name, members)
+        : [sectionGroup(id, name, members)];
     })
     .filter((group) => group.entries.length > 0 || group.id === 'reusable');
 }

@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { useColour } from '../../../design/colour';
+import { isNative } from '../../../design/platform';
 import { useControl } from '../../../store/control';
 import { Anchored } from '../../toothbrush/settings/anchored';
 import { tintStyle } from '../../toothbrush/charts/style';
@@ -42,7 +43,10 @@ function Swatch({
         accessible
         accessibilityRole="radio"
         accessibilityLabel={label}
-        accessibilityState={{ selected: current, disabled: true }}
+        accessibilityState={{ checked: current, disabled: true }}
+        aria-checked={current}
+        aria-disabled
+        tabIndex={isNative() ? undefined : -1}
         className={frame}
       >
         {dot}
@@ -50,7 +54,7 @@ function Swatch({
     );
   }
   return (
-    <Interactive role="radio" label={label} selected={current} onPress={onPick} className={frame}>
+    <Interactive role="radio" label={label} checked={current} onPress={onPick} className={frame}>
       {dot}
     </Interactive>
   );
@@ -63,7 +67,7 @@ export function RingChoice({
 }: {
   readonly deviceId: string;
   readonly gate: Gate;
-  readonly handle: OralbHandle;
+  readonly handle: Pick<OralbHandle, 'ringColour'>;
 }): ReactNode {
   const control = useControl(deviceId, 'brush_ring_colour');
   const swatches = ringSwatches();

@@ -4,9 +4,11 @@ import {
   AUTOMATION_RUN_SUMMARY,
   ROW_CHANGE,
   RUN_RECORD_ONLY_FIELDS,
+  STATIC_KIND_LOOKUP,
   type RowChange,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { graphAutomation } from '../automations-v3/support/graph-of';
 import { node, programOf, saveAutomation, startRun, trigger } from '../support/automation-fixture';
 import { useBootedServer } from '../support/booted';
 import { captureLogs } from '../support/logs';
@@ -68,9 +70,12 @@ describe('a parked run in a snapshot', () => {
           body: {
             name: 'Waits',
             enabled: true,
-            definition: programOf(
-              [trigger('trigger.interval', { every: 604_800_000 })],
-              [node('flow.wait', { duration: 3_600_000 })],
+            definition: graphAutomation(
+              programOf(
+                [trigger('trigger.interval', { every: 604_800_000 })],
+                [node('flow.wait', { duration: 3_600_000 })],
+              ),
+              STATIC_KIND_LOOKUP,
             ),
           },
         })

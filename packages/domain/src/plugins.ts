@@ -11,6 +11,8 @@ import {
   PLUGIN_TOOL as TOOL,
   type PluginId,
 } from './plugin-parts';
+import { PLUGIN_MODEL_CONTRIBUTION } from './models/catalog';
+import { PLUGIN_AUTOMATION } from './plugin-automation';
 import { PLUGIN_SETTING } from './plugin-settings';
 import { JSON_VALUE } from './values';
 
@@ -207,6 +209,8 @@ export const PLUGIN_CONTRIBUTIONS = z.strictObject({
   peoplePicker: KEY.nullable().default(null),
   commands: z.array(PLUGIN_COMMAND).max(20).default([]),
   deviceFamilies: z.array(KEY).max(20).default([]),
+  models: z.array(PLUGIN_MODEL_CONTRIBUTION).default([]),
+  automation: PLUGIN_AUTOMATION.prefault({}),
 });
 
 export type PluginContributions = z.output<typeof PLUGIN_CONTRIBUTIONS>;

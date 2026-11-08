@@ -5,7 +5,7 @@ import {
   type CapabilityKey,
   type JsonValue,
 } from '@smarteverything/domain';
-import { toDevice, type ActionBinding } from '@smarteverything/xiaomi';
+import { actionInput, toDevice, type ActionBinding } from '@smarteverything/xiaomi';
 import { z } from 'zod';
 
 export function actionInputs(
@@ -19,10 +19,10 @@ export function actionInputs(
     if (argument === undefined) {
       throw new CommandRefusedError(capability, `the argument ${input.name} is missing`);
     }
-    return toDevice(
-      `${capability}.${input.name}`,
-      input.codec,
-      checkValue(input.descriptor, argument),
+    return actionInput(
+      binding.inputShape,
+      input.piid,
+      toDevice(`${capability}.${input.name}`, input.codec, checkValue(input.descriptor, argument)),
     );
   });
 }

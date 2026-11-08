@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Stage, WidgetStats } from 'smarteverything-kit';
 
 const stats = [
@@ -34,12 +35,12 @@ const stats = [
     unit: 'W',
   },
 ];
-export const TwoColumns = () => (
+export const TwoColumns = (): ReactElement => (
   <Stage theme="dark" width={520}>
     <WidgetStats stats={stats} columns={2} />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     <WidgetStats stats={stats} columns={2} />
   </Stage>

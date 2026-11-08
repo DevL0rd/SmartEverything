@@ -80,6 +80,7 @@ export const OVERLAY_SIMPLE_ACTIONS = [
   'settings',
   'accept_request',
   'decline_request',
+  'voice_message',
 ] as const;
 export const OVERLAY_ACTION = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.enum(OVERLAY_SIMPLE_ACTIONS) }),
@@ -188,6 +189,8 @@ export type OverlayAudio = z.infer<typeof OVERLAY_AUDIO>;
 export const OVERLAY_POSITIONS = ['centre', 'left', 'right'] as const;
 export const OVERLAY_DISPLAYS = ['active', 'primary', 'app'] as const;
 export const OVERLAY_WHILE_SHARING = ['small', 'hide'] as const;
+export const POWER_BUTTON_ACTIONS = ['call', 'voice_message'] as const;
+export type PowerButtonAction = (typeof POWER_BUTTON_ACTIONS)[number];
 export const OVERLAY_PREFS = z.strictObject({
   enabled: z.boolean().default(true),
   position: z.enum(OVERLAY_POSITIONS).default('centre'),
@@ -195,6 +198,7 @@ export const OVERLAY_PREFS = z.strictObject({
   captions: z.boolean().default(true),
   display: z.enum(OVERLAY_DISPLAYS).default('active'),
   whileSharing: z.enum(OVERLAY_WHILE_SHARING).default('small'),
+  powerButton: z.enum(POWER_BUTTON_ACTIONS).default('call'),
 });
 export type OverlayPrefs = z.infer<typeof OVERLAY_PREFS>;
 export const DEFAULT_OVERLAY_PREFS: OverlayPrefs = OVERLAY_PREFS.parse({});

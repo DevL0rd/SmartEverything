@@ -45,7 +45,13 @@ describe('the app view answer route', () => {
     const result: AppViewResult = { ok: false, reason: 'app_not_in_front' };
     const reply = await routes.answerAppView.run(
       caller,
-      { params: {}, query: {}, body: { requestId: REQUEST_ID, result }, remote: 'test' },
+      {
+        params: {},
+        query: {},
+        body: { requestId: REQUEST_ID, result },
+        remote: 'test',
+        headers: {},
+      },
       testLogger(),
     );
     expect(reply).toEqual({ ok: true });
@@ -61,7 +67,13 @@ describe('the app view answer route', () => {
     await expect(
       routes.answerAppView.run(
         { kind: 'client', client: dana.client },
-        { params: {}, query: {}, body: { requestId: REQUEST_ID, result: {} }, remote: 'test' },
+        {
+          params: {},
+          query: {},
+          body: { requestId: REQUEST_ID, result: {} },
+          remote: 'test',
+          headers: {},
+        },
         testLogger(),
       ),
     ).rejects.toMatchObject({ code: 'invalid_request' });
@@ -91,8 +103,13 @@ describe('the show in app route', () => {
       {
         params: {},
         query: {},
-        body: { action: 'open', target: { kind: 'section', section: 'fitness' } },
+        body: {
+          action: 'open',
+          target: { kind: 'section', section: 'fitness' },
+          appId: dana.client.id,
+        },
         remote: 'test',
+        headers: {},
       },
       testLogger(),
     );
@@ -114,7 +131,7 @@ describe('the show in app route', () => {
     await expect(
       routes.showInApp.run(
         { kind: 'client', client: dana.client },
-        { params: {}, query: {}, body: { action: 'close' }, remote: 'test' },
+        { params: {}, query: {}, body: { action: 'close' }, remote: 'test', headers: {} },
         testLogger(),
       ),
     ).rejects.toMatchObject({ code: 'invalid_request' });

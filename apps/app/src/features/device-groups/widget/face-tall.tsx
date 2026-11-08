@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { Idiom } from '../../../design/tokens';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
@@ -20,7 +20,7 @@ import {
 import { colourNote, listLabel, memberNoun } from '../group-summary';
 import { GroupGlyph, GroupTitle } from './group-header';
 import { LevelBand, WhiteBand } from './master-band';
-import { ShowAll } from './member-parts';
+import { BandRow, ShowAll, useControlHeight } from './member-parts';
 import { noticeCount, Notices } from './notices';
 import type { GroupControls } from './use-group-controls';
 import type { GroupData } from './use-group-data';
@@ -44,12 +44,19 @@ function columnsOf<T>(items: readonly T[], columns: number): readonly (readonly 
   );
 }
 
-function planFor(
-  data: GroupData,
-  frame: WidgetFrameBox,
-  wide: boolean,
-  expanded: string | null,
-): RowPlan {
+function planFor({
+  data,
+  frame,
+  wide,
+  expanded,
+  footer,
+}: {
+  readonly data: GroupData;
+  readonly frame: WidgetFrameBox;
+  readonly wide: boolean;
+  readonly expanded: string | null;
+  readonly footer: number;
+}): RowPlan {
   const index = data.members.findIndex((member) => member.id === expanded);
   return planRows({
     width: frame.width,
@@ -60,18 +67,16 @@ function planFor(
     expandedIndex: index < 0 ? null : index,
     expandedExtra: expansionExtra(data.members[index]),
     lines: noticeCount(data),
-    note: data.lights && colourNote(data.view.state, memberNoun(data.lights)) !== null,
+    footer,
   });
 }
 
 function Header({
   data,
-  controls,
   titleHref,
 }: {
   readonly data: GroupData;
-  readonly controls: GroupControls;
-  readonly titleHref: Href | undefined;
+  readonly titleHref: AppHref | undefined;
 }): ReactNode {
   const title = <GroupTitle name={data.name} state={data.view.state} />;
   return (
@@ -92,8 +97,6 @@ function Header({
           </View>
         </Interactive>
       )}
-      {controls.colour}
-      {controls.power}
     </View>
   );
 }
@@ -185,23 +188,25 @@ function Bands({ data }: { readonly data: GroupData }): ReactNode {
 
 function Footer({
   data,
+  controls,
   hidden,
   note,
 }: {
   readonly data: GroupData;
+  readonly controls: GroupControls;
   readonly hidden: number;
   readonly note: string | null;
 }): ReactNode {
-  if (hidden === 0 && note === null) return null;
   return (
-    <View className="flex-row items-center justify-between">
-      {note === null ? (
-        <View />
-      ) : (
-        <Text variant="footnote" tone="variant">
-          {note}
-        </Text>
-      )}
+    <BandRow
+      lead={
+        note === null ? null : (
+          <Text variant="footnote" tone="variant">
+            {note}
+          </Text>
+        )
+      }
+    >
       {hidden > 0 ? (
         <ShowAll
           label={`+${String(hidden)} more · Show all`}
@@ -209,7 +214,9 @@ function Footer({
           href={data.href}
         />
       ) : null}
-    </View>
+      {controls.colour}
+      {controls.power}
+    </BandRow>
   );
 }
 
@@ -226,18 +233,19 @@ export function TallFace({
   readonly frame: WidgetFrameBox;
   readonly wide: boolean;
   readonly allColumns: number | null;
-  readonly titleHref: Href | undefined;
+  readonly titleHref: AppHref | undefined;
 }): ReactNode {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const footer = useControlHeight();
   const plan =
     allColumns === null
-      ? planFor(data, frame, wide, expanded)
+      ? planFor({ data, frame, wide, expanded, footer })
       : { columns: allColumns, start: 0, count: data.members.length, hidden: 0 };
   const note = data.lights ? colourNote(data.view.state, memberNoun(data.lights)) : null;
   const stack = { gap: rowMetrics(frame.idiom).gap };
   return (
     <View className="flex-1" style={stack}>
-      <Header data={data} controls={controls} titleHref={titleHref} />
+      <Header data={data} titleHref={titleHref} />
       <Bands data={data} />
       <Notices data={data} />
       <Rows
@@ -248,7 +256,7 @@ export function TallFace({
         idiom={frame.idiom}
         span={allColumns !== null}
       />
-      <Footer data={data} hidden={plan.hidden} note={note} />
+      <Footer data={data} controls={controls} hidden={plan.hidden} note={note} />
     </View>
   );
 }

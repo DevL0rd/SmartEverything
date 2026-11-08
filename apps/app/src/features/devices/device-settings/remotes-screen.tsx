@@ -8,12 +8,16 @@ import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { notifyFailure } from '../../../components/toast-store';
-import { removeIrCode, removeIrRemote } from '../../../api/ir';
+import { removeIrCode, removeIrRemote, saveIrCode } from '../../../api/ir';
+import { href } from '../../../app-shell/hrefs';
 import { useDevice, useIrCodes, useIrRemotes } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { MissingDevice } from '../detail/missing-device';
 import { useDisplayName } from '../model/display-name';
 import { canLearn } from '../model/remote-layout';
+import { categoryOfLearned, missingSuggestions } from '../remote/remote-category';
+import { ADD_APPLIANCE_PAGE } from '../appliance/add-appliance-model';
+import { usePromoteRemote } from '../appliance/use-promote-remote';
 import { AddRemoteSheet } from './add-remote-sheet';
 import { LearnSheet } from './learn-sheet';
 import { DeviceSettingsFrame } from './settings-frame';
@@ -71,6 +75,7 @@ function RemoteGroup({
   readonly onLearn: () => void;
 }): ReactNode {
   const codes = useIrCodes(remote.id);
+  const promote = usePromoteRemote();
   return (
     <List title={remote.brand === null ? remote.name : `${remote.name} · ${remote.brand}`}>
       {codes.map((code) => (
@@ -91,6 +96,14 @@ function RemoteGroup({
       {canLearn(blaster.capabilities) ? (
         <ListRow title="Learn a button" icon="plus" onPress={onLearn} />
       ) : null}
+      <ListRow
+        title="Make it a device"
+        subtitle="Own page, room and controls in Devices"
+        icon="grid"
+        onPress={() => {
+          promote(remote);
+        }}
+      />
       <ListRow
         title="Remove remote"
         icon="trash"
@@ -118,7 +131,60 @@ function Sheets({
     return <AddRemoteSheet blaster={blaster} onClose={onClose} />;
   }
   return learning === null ? null : (
-    <LearnSheet blaster={blaster} remote={learning} onClose={onClose} />
+    <LearnRemoteSheet blaster={blaster} remote={learning} onClose={onClose} />
+  );
+}
+
+function LearnRemoteSheet({
+  blaster,
+  remote,
+  onClose,
+}: {
+  readonly blaster: Device;
+  readonly remote: IrRemoteRow;
+  readonly onClose: () => void;
+}): ReactNode {
+  const learned = useIrCodes(remote.id).map((code) => code.button);
+  return (
+    <LearnSheet
+      blaster={blaster}
+      name={remote.name}
+      suggestions={missingSuggestions(categoryOfLearned(remote.category), learned)}
+      target={{
+        id: remote.id,
+        save: async (button, code) => {
+          await saveIrCode({ remoteId: remote.id, button, format: code.format, code: code.code });
+        },
+      }}
+      onClose={onClose}
+    />
+  );
+}
+
+function AddRows({
+  blaster,
+  onAddRemote,
+}: {
+  readonly blaster: Device;
+  readonly onAddRemote: () => void;
+}): ReactNode {
+  return (
+    <List>
+      <ListRow
+        title="Add an appliance"
+        subtitle="Pick a known model: its buttons work without learning"
+        icon="book"
+        chevron
+        href={href.settings.device(blaster.id, ADD_APPLIANCE_PAGE)}
+      />
+      <ListRow
+        title="Add a remote"
+        subtitle="Teach it each button yourself"
+        icon="plus"
+        chevron
+        onPress={onAddRemote}
+      />
+    </List>
   );
 }
 
@@ -146,15 +212,12 @@ function Body({ blaster }: { readonly blaster: Device }): ReactNode {
           }}
         />
       ))}
-      <List>
-        <ListRow
-          title="Add a remote"
-          icon="plus"
-          onPress={() => {
-            setAdding(true);
-          }}
-        />
-      </List>
+      <AddRows
+        blaster={blaster}
+        onAddRemote={() => {
+          setAdding(true);
+        }}
+      />
       <Sheets
         blaster={blaster}
         adding={adding}

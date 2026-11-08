@@ -9,7 +9,7 @@ import type {
 import { nodeLabel, nodeSummaryText } from '@smarteverything/domain';
 import type { Entry, ProgramIndex } from '@smarteverything/flow/program/lookup';
 
-export type NodeBadge = 'Trigger' | 'Value' | 'Block' | 'Step' | 'Custom Node';
+export type NodeBadge = 'Trigger' | 'Value' | 'Step' | 'Custom Node';
 
 export const REUSABLE_CALL_KIND = 'fn.call';
 
@@ -41,8 +41,7 @@ export function badgeOf(kindId: string, kind: NodeKind | undefined): NodeBadge {
   if (kindId === REUSABLE_CALL_KIND) return 'Custom Node';
   if (kind === undefined) return 'Step';
   if (kind.class === 'trigger') return 'Trigger';
-  if (kind.class === 'pure' || kind.class === 'read') return 'Value';
-  return kind.scopes === undefined ? 'Step' : 'Block';
+  return kind.class === 'pure' || kind.class === 'read' ? 'Value' : 'Step';
 }
 
 export function nodeView(

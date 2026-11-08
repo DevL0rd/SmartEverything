@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../../components/text';
 import { frameClassOf, type WidgetFrameBox } from '../../../components/widget-board';
-import { cn } from '../../../design/cn';
+import { DeviceVisual } from '../../../features/device-visuals';
 import { WIDE_VISUAL_PX, WideCard, isWideClass, type WideClass } from '../../../features/devices';
 import { minutesOfDay } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
@@ -17,7 +17,7 @@ import { StateChip } from './state-chip';
 import { TodayRing } from './today-ring';
 
 const WAITING = 'Waiting for the bottle…';
-const RING = 88;
+const RING = { m: 72, w: 72, l: 88, xl: 88 } as const;
 
 function Wide({
   device,
@@ -36,6 +36,7 @@ function Wide({
       summary={`${device.label}${room === null ? '' : `, ${room}`}. ${levelLine(view)}. ${ageLine(view, now)}`}
       visual={<BottleFigure device={device} view={view} size="card" px={WIDE_VISUAL_PX[cls]} />}
       title={device.label}
+      titleLines={2}
       chip={<StateChip view={view} />}
       state={
         <Text variant="footnote" tone="variant" numberOfLines={1}>
@@ -47,7 +48,7 @@ function Wide({
           key="ring"
           today={view.today}
           minuteOfDay={minutesOfDay(now)}
-          size={RING}
+          size={RING[cls]}
           label={false}
         />,
       ]}
@@ -55,26 +56,43 @@ function Wide({
   );
 }
 
+function Waiting({ device, cls }: { readonly device: Device; readonly cls: WideClass }): ReactNode {
+  return (
+    <WideCard
+      cls={cls}
+      summary={`${device.label}. ${WAITING}`}
+      visual={<DeviceVisual device={device} size="card" px={WIDE_VISUAL_PX[cls]} />}
+      title={device.label}
+      titleLines={2}
+      state={
+        <Text variant="footnote" tone="variant" numberOfLines={2}>
+          {WAITING}
+        </Text>
+      }
+    />
+  );
+}
+
 export function BottleTile({
   device,
   showRoom,
-  compact,
 }: {
   readonly device: Device;
   readonly showRoom: boolean;
-  readonly compact: boolean;
 }): ReactNode {
   const status = useBottleStatus(device.id);
   const room = useRoomName(device.id);
   const now = useMinute();
   const view = status.data;
   return (
-    <View
-      className={cn('flex-1 gap-2', compact ? 'justify-between' : 'flex-row items-center gap-3')}
-    >
-      {view === undefined ? null : <BottleFigure device={device} view={view} size="tile" />}
-      <View className="min-w-0 gap-0.5">
-        <Text variant="body-strong" numberOfLines={compact ? 2 : 1}>
+    <View className="flex-1 flex-row items-start gap-3">
+      {view === undefined ? (
+        <DeviceVisual device={device} size="tile" />
+      ) : (
+        <BottleFigure device={device} view={view} size="tile" />
+      )}
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text variant="body-strong" numberOfLines={2}>
           {device.label}
         </Text>
         {showRoom && room !== null ? (
@@ -100,10 +118,13 @@ export function BottleCardFace({
 }): ReactNode {
   const view = useBottleStatus(device.id).data;
   const cls = frameClassOf(frame);
-  return view !== undefined && isWideClass(cls) ? (
-    <Wide device={device} view={view} cls={cls} />
+  if (!isWideClass(cls)) {
+    return <BottleTile device={device} showRoom />;
+  }
+  return view === undefined ? (
+    <Waiting device={device} cls={cls} />
   ) : (
-    <BottleTile device={device} showRoom compact />
+    <Wide device={device} view={view} cls={cls} />
   );
 }
 

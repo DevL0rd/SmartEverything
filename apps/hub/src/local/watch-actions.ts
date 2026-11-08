@@ -35,8 +35,16 @@ export function phonesOf(
   return bridgeClientId !== null && phones.includes(bridgeClientId) ? [bridgeClientId] : phones;
 }
 
+export type WatchOutcome =
+  | { readonly ok: true; readonly detail: string }
+  | {
+      readonly ok: false;
+      readonly reason: 'unreachable' | 'unanswered' | 'refused';
+      readonly detail: string;
+    };
+
 export class WatchActionBroker {
-  private readonly asks: PushAsks<WatchActionResult>;
+  private readonly asks: PushAsks<WatchOutcome>;
 
   constructor(
     push: PushCommandChannel,
@@ -46,11 +54,20 @@ export class WatchActionBroker {
     this.asks = new PushAsks('watch action', push);
   }
 
-  run(
+  async run(
     target: WatchActionTarget,
     action: WatchActionRequest,
     by: string,
   ): Promise<WatchActionResult> {
+    const { ok, detail } = await this.attempt(target, action, by);
+    return { ok, detail };
+  }
+
+  attempt(
+    target: WatchActionTarget,
+    action: WatchActionRequest,
+    by: string,
+  ): Promise<WatchOutcome> {
     const clients = phonesOf(this.store, target.profileId, target.bridgeClientId);
     return this.asks.ask({
       command: 'watch_action',
@@ -65,11 +82,16 @@ export class WatchActionBroker {
           reached,
         });
       },
-      unreachable: (outcomes) => ({ ok: false, detail: unreachable(target.name, outcomes) }),
+      unreachable: (outcomes) => ({
+        ok: false,
+        reason: 'unreachable',
+        detail: unreachable(target.name, outcomes),
+      }),
       unanswered: () => {
         this.log.warn('watch.action_unanswered', { device: target.deviceId, action: action.type });
         return {
           ok: false,
+          reason: 'unanswered',
           detail: `The phone did not answer within ${String(ANSWER_TIMEOUT_MS / 1000)} s.`,
         };
       },
@@ -77,11 +99,17 @@ export class WatchActionBroker {
   }
 
   answer(clientId: string, requestId: string, result: WatchActionResult): void {
-    this.asks.answer(clientId, requestId, result);
+    this.asks.answer(
+      clientId,
+      requestId,
+      result.ok
+        ? { ok: true, detail: result.detail }
+        : { ok: false, reason: 'refused', detail: result.detail },
+    );
     this.log.info('watch.action_answered', { by: clientId, ok: result.ok, detail: result.detail });
   }
 
   stop(): void {
-    this.asks.stop({ ok: false, detail: 'The hub is stopping.' });
+    this.asks.stop({ ok: false, reason: 'unreachable', detail: 'The hub is stopping.' });
   }
 }

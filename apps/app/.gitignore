@@ -11,6 +11,7 @@ expo-env.d.ts
 
 # Stray tsc output next to sources
 /src/**/*.js
+!/src/dev/require-timing.js
 /src/**/*.js.map
 /src/**/*.d.ts
 /src/**/*.d.ts.map

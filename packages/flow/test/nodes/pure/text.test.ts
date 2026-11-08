@@ -154,6 +154,12 @@ describe('text.regex', () => {
     });
   });
 
+  it('keeps an empty numbered capture when an optional group does not match', () => {
+    expect(good('text.regex', { text: 'b', pattern: '(a)?(b)' })).toMatchObject({
+      groups: { '1': '', '2': 'b' },
+    });
+  });
+
   it('reports no match and honours flags', () => {
     expect(good('text.regex', { text: 'nothing', pattern: '\\d' })).toEqual({
       matched: false,

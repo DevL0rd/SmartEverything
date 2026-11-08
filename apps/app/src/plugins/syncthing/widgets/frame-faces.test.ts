@@ -1,19 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { chipWidthOf, fitChips, fitRows, rowCapacity, syncFaceOf } from './frame-faces';
+import { chipWidthOf, devicesLineFits, fitChips, fitRows, rowCapacity } from './frame-faces';
 
 const chips = (...labels: readonly string[]): readonly { readonly label: string }[] =>
   labels.map((label) => ({ label }));
-
-describe('syncFaceOf', () => {
-  it('picks the face from the frame class, never the size letter', () => {
-    expect(syncFaceOf('s')).toBe('tile');
-    expect(syncFaceOf('xs')).toBe('compact');
-    expect(syncFaceOf('m')).toBe('compact');
-    expect(syncFaceOf('l')).toBe('rows');
-    expect(syncFaceOf('w')).toBe('wide');
-    expect(syncFaceOf('xl')).toBe('columns');
-  });
-});
 
 describe('fitChips', () => {
   it('shows every chip that fits and counts the rest', () => {
@@ -58,5 +47,17 @@ describe('rowCapacity', () => {
   it('counts the rows left after the reserved space and shows at least one', () => {
     expect(rowCapacity(300, 76, 48)).toBe(4);
     expect(rowCapacity(40, 76, 48)).toBe(1);
+  });
+});
+
+describe('devicesLineFits', () => {
+  it('keeps the devices line on a Medium widget at touch and pointer heights', () => {
+    expect(devicesLineFits(87, 'touch', false)).toBe(true);
+    expect(devicesLineFits(75, 'pointer', false)).toBe(true);
+  });
+
+  it('gives the outage line the room when a stale Medium cannot hold both', () => {
+    expect(devicesLineFits(87, 'touch', true)).toBe(false);
+    expect(devicesLineFits(271, 'touch', true)).toBe(true);
   });
 });

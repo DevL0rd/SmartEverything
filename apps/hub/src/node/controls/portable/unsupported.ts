@@ -3,6 +3,7 @@ import { NodeFailureError } from '../../node-failure';
 import type {
   AudioControl,
   DisplayControl,
+  EnvironmentControl,
   InputControl,
   SessionControl,
   TilingControl,
@@ -60,6 +61,10 @@ export function unsupportedTiling(machine: MachineName): TilingControl {
     watchPresence: NO_WATCH,
     stop: () => Promise.resolve(),
   };
+}
+
+export function inheritedEnvironment(): EnvironmentControl {
+  return { start: () => Promise.resolve(), stop: NO_WATCH() };
 }
 
 export function unsupportedInput(machine: MachineName): InputControl {

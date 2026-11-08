@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { DeviceScheduleChip } from '../../automations';
+import { ActionBand } from '../../../components/widget-board/action-band';
 import { DeviceVisual } from '../../device-visuals';
-import { CARD_APP_COUNT, type TvApp } from './apps';
+import { cn } from '../../../design/cn';
+import type { TvApp } from './apps';
 import { ChipStrip } from './chip-strip';
 import { Names } from './names';
+import { PlayPauseKeys, playPauseReachable } from './play-pause';
 import { PowerButton } from './power-button';
-import { Quiet } from './quiet';
 import { RemoteKey } from './remote-key';
-import { compactPartsOf, type CompactParts, type LayoutFrame } from './remote-layout';
+import { compactPartsOf, tallRingSize, type CompactParts } from './remote-layout';
 import { RingPad } from './ring-pad';
 import { Rocker } from './rocker';
 import type { TvSheets } from './sheet-state';
@@ -20,26 +21,31 @@ export interface MiniProps {
   readonly actions: TelevisionActions;
   readonly sheets: TvSheets;
   readonly apps: readonly TvApp[];
-  readonly frame: LayoutFrame;
+  readonly width: number;
 }
 
 const TALL_APPS = 6;
+const FULL_AUDIO: CompactParts = {
+  ring: true,
+  mute: true,
+  play: true,
+  playPair: true,
+};
 
-function resting(tv: Television): boolean {
-  return tv.view.mode === 'standby' || tv.view.mode === 'turning_on';
-}
-
-function Head({ tv, compact }: { readonly tv: Television; readonly compact: boolean }): ReactNode {
+export function Head({
+  tv,
+  power,
+}: {
+  readonly tv: Television;
+  readonly power: boolean;
+}): ReactNode {
   return (
-    <View
-      className={compact ? 'h-12 flex-row items-center gap-2' : 'h-14 flex-row items-center gap-3'}
-      pointerEvents="box-none"
-    >
-      <View className={compact ? 'size-12' : 'size-14'} pointerEvents="none">
+    <View className="flex-row items-center gap-3" pointerEvents="box-none">
+      <View className="size-12" pointerEvents="none">
         <DeviceVisual device={tv.device} size="tile" />
       </View>
       <Names tv={tv} />
-      {resting(tv) ? null : <PowerButton tv={tv} />}
+      {power ? <PowerButton tv={tv} size="control" /> : null}
     </View>
   );
 }
@@ -48,15 +54,21 @@ function Controls({
   tv,
   sheets,
   parts,
-}: Pick<MiniProps, 'tv' | 'sheets'> & { readonly parts: CompactParts }): ReactNode {
-  const playable = tv.view.locks.play_pause === undefined;
+  power = false,
+}: Pick<MiniProps, 'tv' | 'sheets'> & {
+  readonly parts: CompactParts;
+  readonly power?: boolean;
+}): ReactNode {
+  const fits = tv.view.playback === null ? parts.playPair : parts.play;
+  const playable = fits && playPauseReachable(tv);
   const muted = tv.view.volume.muted;
   return (
-    <View className="flex-row items-center gap-1.5">
+    <View className={cn('flex-row items-center gap-1.5', power && 'flex-wrap')}>
       <Rocker
         tv={tv}
         kind="volume"
         orientation="horizontal"
+        opener={sheets.openers.volume}
         onSeam={(): void => {
           sheets.open('volume');
         }}
@@ -71,88 +83,37 @@ function Controls({
           selected={muted}
         />
       ) : null}
-      {playable && parts.play ? (
-        <RemoteKey
-          tv={tv}
-          name="play_pause"
-          icon={tv.view.playing ? 'pause' : 'play'}
-          look="round"
-          label={tv.view.playing ? 'Pause' : 'Play'}
-        />
+      {playable ? <PlayPauseKeys tv={tv} look="round" /> : null}
+      {power ? (
+        <View className="ml-auto">
+          <PowerButton tv={tv} size="control" />
+        </View>
       ) : null}
     </View>
   );
 }
 
-function Bottom({
-  remote,
-  chips,
-}: {
-  readonly remote: MiniProps;
-  readonly chips: boolean;
-}): ReactNode {
-  return chips ? (
-    <ChipStrip {...remote} count={CARD_APP_COUNT} />
-  ) : (
-    <DeviceScheduleChip deviceId={remote.tv.device.id} compact />
-  );
-}
-
-export function CompactRemote(props: MiniProps): ReactNode {
-  const { tv, sheets, frame } = props;
-  const parts = compactPartsOf(frame);
-  const on = tv.view.mode === 'on';
-  const ring = on && parts.ring && tv.view.locks.up === undefined;
-  if (!on) {
-    return (
-      <View className="flex-1 gap-2" pointerEvents="box-none">
-        <Head tv={tv} compact />
-        <Quiet tv={tv} />
-      </View>
-    );
-  }
+export function CompactRemote({ tv, sheets, width }: MiniProps): ReactNode {
+  const parts = compactPartsOf(width, tv.view.locks.up === undefined);
   return (
     <View className="flex-1 flex-row items-center gap-2.5" pointerEvents="box-none">
-      <View className="min-w-0 flex-1 gap-2" pointerEvents="box-none">
-        <Head tv={tv} compact />
+      <View className="min-w-0 flex-1 gap-1.5 self-stretch" pointerEvents="box-none">
+        <Head tv={tv} power />
         <Controls tv={tv} sheets={sheets} parts={parts} />
-        <Bottom remote={props} chips={parts.chips} />
+        <ActionBand />
       </View>
-      {ring ? <RingPad tv={tv} size="card" /> : null}
+      {parts.ring ? <RingPad tv={tv} size="card" /> : null}
     </View>
   );
 }
 
-export function CardRemote(props: MiniProps): ReactNode {
-  const { tv, sheets, frame } = props;
-  const parts = compactPartsOf(frame);
-  const on = tv.view.mode === 'on';
-  const ring = on && tv.view.locks.up === undefined;
-  return (
-    <View className="flex-1 gap-3" pointerEvents="box-none">
-      <Head tv={tv} compact={false} />
-      {on ? (
-        <View className="flex-row items-center gap-2.5" pointerEvents="box-none">
-          <View className="min-w-0 flex-1 gap-3" pointerEvents="box-none">
-            <Controls tv={tv} sheets={sheets} parts={parts} />
-            <ChipStrip {...props} count={CARD_APP_COUNT} />
-          </View>
-          {ring ? <RingPad tv={tv} size="card" /> : null}
-        </View>
-      ) : (
-        <Quiet tv={tv} />
-      )}
-    </View>
-  );
-}
-
-function TallTop({ tv }: { readonly tv: Television }): ReactNode {
+function TallTop({ tv, width }: Pick<MiniProps, 'tv' | 'width'>): ReactNode {
   const ring = tv.view.locks.up === undefined;
   return (
     <View className="flex-row items-center gap-4" pointerEvents="box-none">
-      {ring ? <RingPad tv={tv} size="quick" /> : null}
+      {ring ? <RingPad tv={tv} size={tallRingSize(width)} /> : null}
       <View className="min-w-0 flex-1 gap-2" pointerEvents="box-none">
-        <View className="h-12 justify-center" pointerEvents="none">
+        <View className="flex-row" pointerEvents="none">
           <Names tv={tv} />
         </View>
         <View className="flex-row gap-2">
@@ -165,35 +126,22 @@ function TallTop({ tv }: { readonly tv: Television }): ReactNode {
 }
 
 export function TallRemote(props: MiniProps): ReactNode {
-  const { tv, sheets } = props;
-  if (tv.view.mode !== 'on') {
-    return (
-      <View className="flex-1 gap-3" pointerEvents="box-none">
-        <Head tv={tv} compact={false} />
-        <Quiet tv={tv} />
-      </View>
-    );
-  }
+  const { tv, sheets, width } = props;
   return (
-    <View className="flex-1 justify-center gap-3" pointerEvents="box-none">
-      <TallTop tv={tv} />
-      <View className="flex-row items-center justify-between gap-2" pointerEvents="box-none">
-        <Controls
-          tv={tv}
-          sheets={sheets}
-          parts={{ ring: true, mute: true, play: true, chips: true }}
-        />
-        <PowerButton tv={tv} />
+    <View className="flex-1 gap-3" pointerEvents="box-none">
+      <TallTop tv={tv} width={width} />
+      <Controls tv={tv} sheets={sheets} parts={FULL_AUDIO} power />
+      <View className="mt-auto" pointerEvents="box-none">
+        <ChipStrip {...props} count={TALL_APPS} />
       </View>
-      <ChipStrip {...props} count={TALL_APPS} />
     </View>
   );
 }
 
-export function TileRemote({ tv }: MiniProps): ReactNode {
+export function TileRemote({ tv }: { readonly tv: Television }): ReactNode {
   return (
     <View className="flex-1 justify-center" pointerEvents="box-none">
-      <Head tv={tv} compact />
+      <Head tv={tv} power={tv.view.mode !== 'standby' && tv.view.mode !== 'turning_on'} />
     </View>
   );
 }

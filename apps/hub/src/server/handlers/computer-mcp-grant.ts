@@ -31,7 +31,7 @@ export function computerMcpGrantRoute(context: ServerContext, runtimePath = fals
         response,
         200,
         COMPUTER_MCP_GRANT_RESPONSE.parse(
-          manageComputerMcpGrant(context.store, node, parsed.data, runtime),
+          manageComputerMcpGrant(context, node, parsed.data, runtime),
         ),
       );
     },

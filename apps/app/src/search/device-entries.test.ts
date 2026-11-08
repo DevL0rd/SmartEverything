@@ -12,6 +12,9 @@ vi.mock('../features/devices/detail/sections', () => ({
 }));
 vi.mock('../features/devices', async () => ({
   deviceModelOf: (await import('../features/devices/model/device-model')).deviceModelOf,
+  isAppliance: (await import('../features/devices/appliance/appliance-model')).isAppliance,
+  ADD_APPLIANCE_PAGE: (await import('../features/devices/appliance/add-appliance-model'))
+    .ADD_APPLIANCE_PAGE,
 }));
 
 function deviceOf(model: string, provider: Provider): Device {
@@ -84,6 +87,8 @@ describe('IR remote search', () => {
       { title: 'Check with a plug', parent: 'devpage:ir-1:remote' },
       { title: 'It didn’t work?', parent: 'devpage:ir-1:remote' },
       { title: 'Learn a button', parent: 'devpage:ir-1:remote' },
+      { title: 'Make it a device', parent: 'devpage:ir-1:remote' },
+      { title: 'Add an appliance', parent: 'devpage:ir-1:remote' },
     ]);
   });
 
@@ -95,7 +100,37 @@ describe('IR remote search', () => {
     ]);
   });
 
+  it('finds learning and the blaster choice of an IR appliance under its Buttons page', () => {
+    const appliance: Device = {
+      ...deviceOf('ac-2', 'local'),
+      kind: 'air_conditioner',
+      details: { irApplianceId: 'remote-1', blasterId: 'ir-1', category: 'air conditioner' },
+    };
+    expect(remoteActions(appliance)).toEqual([
+      { title: 'Learn buttons', parent: 'devpage:ac-2:buttons' },
+      { title: 'Use another blaster', parent: 'devpage:ac-2:buttons' },
+    ]);
+  });
+
   it('offers nothing on other devices', () => {
     expect(remoteActions(deviceOf('plug-1', 'tuya'))).toEqual([]);
+  });
+});
+
+describe('model and look search', () => {
+  it('offers the Model and look page under the device settings with its synonyms', () => {
+    const out: SourceLinks = {
+      links: new Map(),
+      icons: new Map(),
+      parents: new Map(),
+      plugins: new Set(),
+    };
+    const device = deviceOf('wiz.bulb', 'tuya');
+    const named = [{ device, name: device.name, room: null }];
+    const entry = deviceSources(named, out, makeTable({}, [], 0)).entries.find(
+      (found) => found.title === 'Model and look',
+    );
+    expect(entry?.keywords).toEqual(expect.arrayContaining(['3D model', 'appearance', 'upload']));
+    expect(out.parents.get(entry?.id ?? '')).toBe('devpage:wiz.bulb:settings');
   });
 });

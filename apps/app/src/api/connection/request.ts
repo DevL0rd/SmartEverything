@@ -12,6 +12,8 @@ type RequiredQueryKeys<Q extends z.ZodType> = Extract<keyof z.output<Q>, Require
 type QueryArguments<Q extends z.ZodType> = Readonly<Pick<z.output<Q>, RequiredQueryKeys<Q>>> &
   Partial<Readonly<Omit<z.output<Q>, RequiredQueryKeys<Q>>>>;
 
+type PathArguments<P extends z.ZodType> = { readonly [K in keyof z.output<P>]: string };
+
 type Slot<K extends string, T> = undefined extends T
   ? Partial<Readonly<Record<K, T>>>
   : Empty extends T
@@ -32,7 +34,7 @@ export interface TypedEndpoint<
 
 export type CallInput<P extends z.ZodType, Q extends z.ZodType, B extends z.ZodType> = Slot<
   'params',
-  z.input<P>
+  PathArguments<P>
 > &
   Slot<'query', QueryArguments<Q>> &
   Slot<'body', z.input<B>>;

@@ -13,6 +13,7 @@ import type { z } from 'zod';
 import { api } from '../../../api/transport';
 import { subscriptionInteractionIdentity } from '../model/subscription';
 import { HARNESS_CATALOGUE_KEY } from '../../../queries/harness-notices';
+import { onWindowFocus } from './window-focus';
 
 const log = new Logger('app.computers');
 type Command = z.infer<typeof AI_SUBSCRIPTION_COMMAND>;
@@ -202,10 +203,10 @@ function useSubscriptionRefresh(control: (command: Command) => Promise<void>): v
     const refresh = (): void => {
       background(latest.current({ kind: 'status' }), 'latest.current_failed');
     };
-    if (typeof window !== 'undefined') window.addEventListener('focus', refresh);
+    const stopFocus = onWindowFocus(refresh);
     return (): void => {
       listener.remove();
-      if (typeof window !== 'undefined') window.removeEventListener('focus', refresh);
+      stopFocus();
     };
   }, []);
 }

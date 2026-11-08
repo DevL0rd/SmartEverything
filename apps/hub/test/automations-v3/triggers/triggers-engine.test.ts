@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
-  AutomationRowV3,
+  StoredAutomationRow,
   FlowNode,
   PortValue,
   SignalInput,
@@ -46,7 +46,10 @@ function dimTo(rig: RigV3, value: PortValue): FlowNode {
   });
 }
 
-function watchingTemperature(rig: RigV3, extra: Record<string, PortValue> = {}): AutomationRowV3 {
+function watchingTemperature(
+  rig: RigV3,
+  extra: Record<string, PortValue> = {},
+): StoredAutomationRow {
   return rig.add(
     program(
       [

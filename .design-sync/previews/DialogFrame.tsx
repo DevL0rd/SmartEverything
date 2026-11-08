@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { GlobalTheme, Button, DialogFrame, Stage, Text } from 'smarteverything-kit';
 
 const footer = (
@@ -12,7 +13,7 @@ const body = (
     integrations page.
   </Text>
 );
-export const Dark = () => (
+export const Dark = (): ReactElement => (
   <Stage theme="dark">
     <DialogFrame
       open
@@ -26,7 +27,7 @@ export const Dark = () => (
     </DialogFrame>
   </Stage>
 );
-export const Inspector = () => (
+export const Inspector = (): ReactElement => (
   <Stage theme="dark">
     <DialogFrame
       open
@@ -39,7 +40,7 @@ export const Inspector = () => (
     </DialogFrame>
   </Stage>
 );
-export const Light = () => (
+export const Light = (): ReactElement => (
   <GlobalTheme theme="light">
     <Stage theme="light">
       <DialogFrame

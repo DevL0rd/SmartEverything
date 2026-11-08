@@ -5,6 +5,7 @@ import { headerEntries, hubCall } from './transport';
 export interface HubFetchLease extends Omit<HubLease, 'signal'> {
   readonly signal: AbortSignal;
   readonly failed?: () => void;
+  readonly idleTimeoutMs?: number;
 }
 export async function streamHubFetch(request: Request, lease: HubFetchLease): Promise<Response> {
   lease.signal.throwIfAborted();
@@ -15,6 +16,7 @@ export async function streamHubFetch(request: Request, lease: HubFetchLease): Pr
     const upstream = await hubCall(lease, {
       method: request.method,
       headers: Object.fromEntries(request.headers),
+      ...(lease.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: lease.idleTimeoutMs }),
       ...(request.body === null ? {} : { body: Readable.fromWeb(request.body) }),
     });
     const status = upstream.statusCode;

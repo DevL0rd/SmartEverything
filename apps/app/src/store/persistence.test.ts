@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { SNAPSHOT, type Snapshot } from '@smarteverything/domain';
+import { EMPTY_LATER_TABLES } from './snapshot-fixture';
 
 const disk = vi.hoisted((): { items: Map<string, string> } => ({ items: new Map() }));
 
@@ -121,8 +122,7 @@ function snapshotOf(role: 'owner' | 'member', seq: number, room = 'Kitchen'): Sn
       events: [],
       commands: [],
       recordings: [],
-      health_sources: [],
-      health_daily: [],
+      ...EMPTY_LATER_TABLES,
     },
     owner:
       role === 'owner'
@@ -193,6 +193,16 @@ describe('persistSnapshots', () => {
       expect.arrayContaining(['meta', 'device_state', 't.rooms', 'o.clients']),
     );
     expect(storedKeys()).not.toContain('t.commands');
+    stop();
+  });
+
+  it('still writes the cache while the firewall section is unreadable', () => {
+    const store = new EntityStore();
+    const stop = persistSnapshots(SERVER, store);
+    store.replace({ ...snapshotOf('owner', 5), firewall: null });
+    settle();
+    expect(storedMeta().seq).toBe(5);
+    expect(storedKeys()).toContain('t.rooms');
     stop();
   });
 

@@ -8,7 +8,7 @@ const FIELDS = [
   {
     key: 'builtin_tools',
     title: 'Built-in tools',
-    help: 'One exact runtime tool name per line. Leave empty for the default.',
+    help: 'One exact runtime tool name per line. Leave empty to keep the runtime’s own list.',
   },
   {
     key: 'additional_directories',

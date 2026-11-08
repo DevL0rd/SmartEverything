@@ -8,7 +8,6 @@ export const AI_REFERENCE_KINDS = [
   'plugin',
   'chat',
   'command',
-  'agent',
 ] as const;
 const IDENTITY = z.string().min(1).max(4096);
 const REVISION = z.string().min(1).max(300);
@@ -64,7 +63,6 @@ export const AI_REFERENCE = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('plugin'), asset_id: IDENTITY, revision: REVISION }),
   z.strictObject({ kind: z.literal('chat'), chat_id: z.uuid(), message_id: z.uuid().optional() }),
   z.strictObject({ kind: z.literal('command'), definition_id: IDENTITY, revision: REVISION }),
-  z.strictObject({ kind: z.literal('agent'), identity: IDENTITY, revision: REVISION }),
 ]);
 export type AiReference = z.output<typeof AI_REFERENCE>;
 export type AiReferenceKind = AiReference['kind'];

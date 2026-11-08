@@ -6,6 +6,7 @@ import {
   appRootIn,
   extractZip,
   siblingOf,
+  removeAppFolder,
   swapBack,
   swapIn,
   type RunCommand,
@@ -109,7 +110,8 @@ describe('swapping the app folder', () => {
   it('rolls back to the previous folder', async () => {
     const root = await app('SmartEverything', 'old');
     const replaced = await swapIn(root, await app('next', 'new'));
-    await swapBack(replaced);
+    const failed = await swapBack(replaced);
+    await removeAppFolder(failed);
     expect(await readFile(join(root, 'version'), 'utf8')).toBe('old');
     expect(await readdir(base)).toStrictEqual(['SmartEverything']);
   });

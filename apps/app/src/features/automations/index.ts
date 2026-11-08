@@ -9,6 +9,8 @@ export { valueFocusTargets } from './values/value-focus';
 export type { AutomationFocusTarget } from './values/value-focus';
 
 export { automationRowsOf } from './data/automation-rows';
+export { kindLookupOf, kindsOfState } from './data/kind-lookup';
+export { useAutomationsSource } from './data/source';
 export { automationRunAtom } from './model/consumers/activity-lines';
 export { automationsUsing } from './model/consumers/automation-uses';
 export type { AutomationUse } from './model/consumers/automation-uses';
@@ -20,3 +22,12 @@ export { routineEntryOf } from './model/consumers/search-entries';
 export { templatesFor } from './model/templates/all-templates';
 export type { Template } from './model/templates/parameters';
 export { automationSearchPages, links } from './routes';
+export { nextVacuumRun, vacuumSchedulesOf } from './model/consumers/vacuum-schedule';
+export type {
+  VacuumRoomRef,
+  VacuumScheduleClean,
+  VacuumScheduleEntry,
+  VacuumScheduleTime,
+} from './model/consumers/vacuum-schedule';
+export { vacuumScheduleAutomation } from './model/templates/vacuum-schedule';
+export type { VacuumSchedulePlan } from './model/templates/vacuum-schedule';

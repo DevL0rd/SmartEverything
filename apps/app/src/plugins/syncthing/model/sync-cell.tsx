@@ -1,17 +1,24 @@
 import type { SyncthingSnapshot } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
 import { WideCard, WideFigure, type WideClass } from '../../../features/devices';
 import { decimal } from '../../../format/number';
 import { useMinute } from '../../../store/clock';
-import { useIsOwner } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { CellGate, type CellCopy } from '../../shared/cell-gate';
+import { CellGraphSlot } from '../../shared/cell-graph';
 import { LiveCell } from '../../shared/cell-live';
-import { CellBadge, CellLine, CellWhy, LegendDot } from '../../shared/cell-parts';
-import { PluginButton } from '../../shared/plugin-action';
+import {
+  CellAction,
+  CellBadge,
+  CellLine,
+  CellPluginAction,
+  FitLine,
+  LegendDot,
+  LegendSwatch,
+} from '../../shared/cell-parts';
+import { cellMedallionSize } from '../../shared/medallion-model';
 import { ServiceMedallion } from '../../shared/service-medallion';
 import { useSyncCellActions } from '../quick-actions';
 import { SYNCTHING_PLUGIN, useSyncActivity, useSyncthingSnapshot } from '../syncthing-data';
@@ -31,81 +38,93 @@ const RING_PX = 20;
 
 function FolderRings({ folders }: { readonly folders: readonly CellFolder[] }): ReactNode {
   return (
-    <View className="flex-row items-center gap-3 overflow-hidden" aria-hidden>
-      {folders.map((folder) => (
-        <View key={folder.id} className="min-w-0 shrink flex-row items-center gap-1.5">
-          <FolderRing state={folder.state} size={RING_PX} label={folder.label} />
-          <Text variant="caption" numberOfLines={1} className="shrink">
-            {folder.state.glyph === null
-              ? `${folder.label} ${decimal(folder.state.percent)} %`
-              : folder.label}
-          </Text>
-        </View>
-      ))}
-    </View>
+    <FitLine
+      items={folders.map((folder) => ({
+        key: folder.id,
+        node: (
+          <>
+            <FolderRing state={folder.state} size={RING_PX} label={folder.label} />
+            <Text variant="caption" numberOfLines={1} className="shrink">
+              {folder.state.glyph === null
+                ? `${folder.label} ${decimal(folder.state.percent)} %`
+                : folder.label}
+            </Text>
+          </>
+        ),
+      }))}
+    />
   );
 }
 
 function Peers({ peers }: { readonly peers: readonly CellPeer[] }): ReactNode {
-  return peers.length === 0 ? null : (
-    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1" aria-hidden>
-      {peers.map((peer) => (
-        <LegendDot
-          key={peer.id}
-          swatch={peer.online ? 'bg-positive' : 'bg-outline'}
-          label={peer.name}
-        />
-      ))}
-    </View>
+  return (
+    <FitLine
+      items={peers.map((peer) => ({
+        key: peer.id,
+        node: (
+          <>
+            <LegendSwatch swatch={peer.online ? 'bg-positive' : 'bg-outline'} />
+            <Text variant="caption" tone="variant" numberOfLines={1} className="shrink">
+              {peer.name}
+            </Text>
+          </>
+        ),
+      }))}
+    />
   );
 }
 
-function figuresOf(cell: SyncCell, cls: WideClass): readonly ReactNode[] {
-  if (cell.rates.length > 0) {
-    return cell.rates.map((rate) => (
-      <WideFigure key={rate.caption} value={rate.value} unit={rate.unit} caption={rate.caption} />
-    ));
-  }
-  return [
-    <FolderRings key="rings" folders={cell.folders} />,
-    cls === 'm' ? null : <Peers key="peers" peers={cell.peers} />,
-  ];
+function figuresOf(cell: SyncCell): readonly ReactNode[] {
+  const lead =
+    cell.rates.length > 0
+      ? cell.rates.map((rate) => (
+          <WideFigure
+            key={rate.caption}
+            value={rate.value}
+            unit={rate.unit}
+            caption={rate.caption}
+          />
+        ))
+      : [<FolderRings key="rings" folders={cell.folders} />];
+  return cell.peers.length === 0 ? lead : [...lead, <Peers key="peers" peers={cell.peers} />];
 }
 
-function useCellActions(device: Device, cell: SyncCell, owner: boolean): readonly ReactNode[] {
+function useCellActions(
+  device: Device,
+  cls: WideClass,
+  cell: SyncCell,
+  owner: boolean,
+): readonly ReactNode[] {
   const actions = useSyncCellActions();
-  if (cell.kind === 'stale') {
-    return [<CellWhy key="why" text={cell.reason ?? cell.line} critical />];
-  }
   if (!owner || !cell.canAct) {
     return [];
   }
   const primary = (
-    <PluginButton
+    <CellPluginAction
       key="pause"
+      cls={cls}
       label={cell.paused ? 'Resume' : 'Pause'}
       variant={cell.paused ? 'filled' : 'tonal'}
-      size="md"
       icon={cell.paused ? 'play' : 'pause'}
       onPress={() => actions.pauseAll(!cell.paused)}
     />
   );
   const secondary =
     cell.problem === null ? (
-      <PluginButton
+      <CellPluginAction
         key="rescan"
+        cls={cls}
         label="Rescan"
         variant="text"
-        size="md"
         icon="refresh"
         onPress={actions.rescanAll}
       />
     ) : (
-      <Button
+      <CellAction
         key="conflict"
+        cls={cls}
         label="Show conflict"
         variant="filled"
-        size="md"
         icon="warning"
         href={syncSectionHref(device.id, 'folders', { folder: cell.problem.id })}
       />
@@ -118,6 +137,7 @@ interface BodyProps {
   readonly cls: WideClass;
   readonly snapshot: SyncthingSnapshot;
   readonly live: boolean;
+  readonly owner: boolean;
 }
 
 function Medallion({
@@ -136,7 +156,7 @@ function Medallion({
       tone={cell.tone}
       ratio={cell.ratio}
       live={pulse}
-      size={cls === 'm' ? 'cell' : 'hero'}
+      size={cellMedallionSize(cls)}
       label={cell.spoken}
       offline={cell.kind === 'stale'}
     />
@@ -156,30 +176,34 @@ function GraphBlock({
 }): ReactNode {
   const stale = cell.kind === 'stale';
   const showLive = live && !stale;
-  return (
-    <View className="gap-1">
-      {cls === 'm' ? null : (
-        <View className="flex-row items-center gap-3" aria-hidden>
-          <LegendDot swatch="bg-viz-1" label="In" />
-          <LegendDot swatch="bg-viz-2" label="Out" />
-          <Text variant="caption" tone="faint" className="ml-auto">
-            {live ? 'Last 2 min' : 'Last 24 h'}
-          </Text>
-        </View>
-      )}
-      <SyncGraph device={device} live={showLive} height={GRAPH_HEIGHT[cls]} faint={stale} />
+  const head = (
+    <View className="flex-row items-center gap-3" aria-hidden>
+      <LegendDot swatch="bg-viz-1" label="In" />
+      <LegendDot swatch="bg-viz-2" label="Out" />
+      <Text variant="caption" tone="faint" className="ml-auto">
+        {live ? 'Last 2 min' : 'Last 24 h'}
+      </Text>
     </View>
+  );
+  return (
+    <CellGraphSlot cap={GRAPH_HEIGHT[cls]} head={head}>
+      {(height) => <SyncGraph device={device} live={showLive} height={height} faint={stale} />}
+    </CellGraphSlot>
   );
 }
 
-function CellBody({ device, cls, snapshot, live }: BodyProps): ReactNode {
-  const owner = useIsOwner();
+function StateLine({ cell }: { readonly cell: SyncCell }): ReactNode {
+  return cell.line === null ? null : (
+    <CellLine text={cell.line} tone={cell.kind === 'error' ? 'critical' : 'variant'} />
+  );
+}
+
+function CellBody({ device, cls, snapshot, live, owner }: BodyProps): ReactNode {
   const now = useMinute();
   const activity = useSyncActivity();
   const cell = syncCellOf(snapshot, now);
-  const actions = useCellActions(device, cell, owner);
+  const actions = useCellActions(device, cls, cell, owner);
   const file = activity.state === 'ready' ? lastFileLine(activity.value, now) : null;
-  const panel = cls === 'l' || cls === 'xl';
   return (
     <WideCard
       cls={cls}
@@ -187,12 +211,11 @@ function CellBody({ device, cls, snapshot, live }: BodyProps): ReactNode {
       title={device.label}
       visual={<Medallion cell={cell} cls={cls} live={live} />}
       chip={<CellBadge chip={cell.chip} />}
-      state={<CellLine text={cell.line} tone={cell.kind === 'error' ? 'critical' : 'variant'} />}
-      figures={figuresOf(cell, cls)}
+      state={<StateLine cell={cell} />}
+      figures={figuresOf(cell)}
       graph={<GraphBlock device={device} cls={cls} cell={cell} live={live} />}
       actions={actions}
       ticker={file === null || cell.kind === 'stale' ? undefined : <CellLine text={file} />}
-      log={panel ? <Peers peers={cell.peers} /> : undefined}
     />
   );
 }
@@ -221,12 +244,12 @@ export function SyncCellFace({
       copy={COPY}
       stream={stream}
     >
-      {(snapshot) => (
+      {(snapshot, owner) => (
         <LiveCell>
           {(live) => (
             <>
               {live ? <SyncHold device={device} snapshot={snapshot} /> : null}
-              <CellBody device={device} cls={cls} snapshot={snapshot} live={live} />
+              <CellBody device={device} cls={cls} snapshot={snapshot} live={live} owner={owner} />
             </>
           )}
         </LiveCell>

@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { DateNav, Stage } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
 const base = new Date(2026, 9, 14, 12, 0);
-function Demo() {
+function Demo(): ReactElement {
   const [d, setD] = useState(base);
   const [w, setW] = useState(base);
   const [m, setM] = useState(base);
@@ -15,12 +15,12 @@ function Demo() {
     </Col>
   );
 }
-export const Ranges = () => (
+export const Ranges = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     <Demo />
   </Stage>

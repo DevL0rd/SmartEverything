@@ -74,7 +74,10 @@ function PortionStep({
 }): ReactNode {
   const form = usePortionForm(target, onDone);
   return (
-    <FlowFrame title={target.food.name} onCancel={onBack} footer={form.footer}>
+    <FlowFrame title="Choose a portion" onCancel={onBack} footer={form.footer}>
+      <Text variant="title-2" accessibilityRole="header">
+        {target.food.name}
+      </Text>
       {form.body}
     </FlowFrame>
   );

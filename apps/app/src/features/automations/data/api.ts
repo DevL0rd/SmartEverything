@@ -1,14 +1,13 @@
+import type { NodeKindLookup } from '@smarteverything/domain';
 import type { z } from 'zod';
 import {
   AUTOMATION_FUNCTION_ENDPOINTS as F,
-  type AUTOMATION_REVISION_ROW,
   AUTOMATION_PROGRAM_ENDPOINTS as P,
   AUTOMATION_QUESTION_ENDPOINTS as Q,
   AUTOMATION_RUN_ENDPOINTS as R,
   AUTOMATION_SECRET_ENDPOINTS as S,
   type AutomationDecision,
   type AutomationFunctionCallersReply,
-  type AutomationFunctionDetail,
   type AutomationFunctionExtractReply,
   type AutomationFunctionReply,
   type AutomationFunctionSummary,
@@ -27,6 +26,14 @@ import {
   type StoredTest,
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
+import {
+  adaptFunction,
+  adaptRevision,
+  type FunctionDetail,
+  type RevisionRow,
+} from './graph-adapter';
+
+export type { FunctionDetail, RevisionRow };
 
 type BodyOf<T extends { readonly body: z.ZodType }> = z.input<T['body']>;
 
@@ -48,7 +55,6 @@ export interface RunNodesQuery {
 }
 export type TestBody = BodyOf<typeof R.createProgramTest>;
 export type SecretBody = BodyOf<typeof S.setAutomationSecret>;
-export type RevisionRow = z.infer<typeof AUTOMATION_REVISION_ROW>;
 
 export function createProgram(body: ProgramCreateBody): Promise<AutomationProgramReply> {
   return api().call(P.createAutomationProgram, { body });
@@ -77,6 +83,10 @@ export function setProgramEnabled(
   enabled: boolean,
 ): Promise<AutomationProgramReply> {
   return api().call(P.setAutomationProgramEnabled, { params: { automationId }, body: { enabled } });
+}
+
+export function renameProgram(automationId: string, name: string): Promise<AutomationProgramReply> {
+  return api().call(P.renameAutomationProgram, { params: { automationId }, body: { name } });
 }
 
 export function checkProgram(body: ProgramCheckBody): Promise<AutomationProgramReply> {
@@ -122,10 +132,17 @@ export function listRevisions(automationId: string): Promise<AutomationProgramRe
   return api().call(P.listAutomationProgramRevisions, { params: { automationId } });
 }
 
-export function getRevision(automationId: string, revision: number): Promise<RevisionRow> {
-  return api().call(P.getAutomationProgramRevision, {
-    params: { automationId, revision: String(revision) },
-  });
+export async function getRevision(
+  automationId: string,
+  revision: number,
+  kinds: NodeKindLookup,
+): Promise<RevisionRow> {
+  return adaptRevision(
+    await api().call(P.getAutomationProgramRevision, {
+      params: { automationId, revision: String(revision) },
+    }),
+    kinds,
+  );
 }
 
 export function compareRevisions(
@@ -143,8 +160,14 @@ export function listFunctions(): Promise<AutomationFunctionSummary[]> {
   return api().call(F.listAutomationFunctions, {});
 }
 
-export function getFunction(functionId: string): Promise<AutomationFunctionDetail> {
-  return api().call(F.getAutomationFunction, { params: { functionId } });
+export async function getFunction(
+  functionId: string,
+  kinds: NodeKindLookup,
+): Promise<FunctionDetail> {
+  return adaptFunction(
+    await api().call(F.getAutomationFunction, { params: { functionId } }),
+    kinds,
+  );
 }
 
 export function createFunction(body: FunctionCreateBody): Promise<AutomationFunctionReply> {

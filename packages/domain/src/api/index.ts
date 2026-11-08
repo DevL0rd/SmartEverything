@@ -110,10 +110,15 @@ export type {
 
 export {
   AUTOMATION_AUTHOR,
+  AUTOMATION_NAME,
+  AUTOMATION_NAME_LENGTH,
+  BUTTON_NAME,
   CAMERA_KEEP_DAYS,
   CAMERA_ROW,
   DEFAULT_CAMERA_KEEP_DAYS,
   IR_CODE_FORMATS,
+  IR_APPLIANCE_KEY_ROW,
+  IR_APPLIANCE_ROW,
   IR_CODE_ROW,
   IR_REMOTE_ROW,
   LAYOUT_ROW,
@@ -125,6 +130,8 @@ export {
 export type {
   AutomationAuthor,
   CameraRow,
+  IrApplianceKeyRow,
+  IrApplianceRow,
   IrCodeRow,
   IrRemoteRow,
   LayoutRow,
@@ -191,12 +198,24 @@ export type { McpApprovalCode } from './endpoints-health';
 export { COMMAND_INPUT, HISTORY_BUCKET } from './endpoints-devices';
 export type { CommandInput, HistoryBucket } from './endpoints-devices';
 export { MEDIA_LINK, SESSION_DESCRIPTION } from './endpoints-media';
+export { IR_APPLIANCE, IR_APPLIANCE_APPLY } from './endpoints-ir-appliances';
+export type { IrAppliance, IrApplianceApply } from './endpoints-ir-appliances';
+export {
+  IR_LIBRARY_BRAND,
+  IR_LIBRARY_CATEGORY,
+  IR_LIBRARY_KINDS,
+  IR_LIBRARY_MODEL,
+  IR_LIBRARY_SOURCES,
+} from './endpoints-ir-library';
+export type { IrLibraryBrand, IrLibraryCategory, IrLibraryModel } from './endpoints-ir-library';
 export {
   CAMERA_REACH_STATES,
   FIREWALL_APPLY_RESULT,
   FIREWALL_BACKENDS,
+  FIREWALL_GROUP,
   FIREWALL_STATUS,
   OPENING_STATES,
+  isDeviceRule,
   rulePort,
   ruleSource,
 } from './firewall';
@@ -210,9 +229,15 @@ export type {
   FirewallPlanBackend,
   FirewallStatus,
   FirewallStepResult,
+  DeviceRule,
   LowPorts,
+  NetworkPortRule,
   PortRule,
+  UfwMacEntry,
+  UfwMacOpenings,
   UfwRule,
+  UfwStaleRule,
+  UnlearnedDevice,
 } from './firewall';
 export type { CameraChange, MediaLink } from './endpoints-media';
 export { API_ENDPOINTS } from './endpoints';
@@ -229,6 +254,7 @@ export type {
 
 export {
   LIVE_CHANGE,
+  LIVE_HEARTBEAT_MS,
   LIVE_SEQUENCE_HEADER,
   LIVE_CLIENT_MESSAGE,
   LIVE_MESSAGE,
@@ -270,6 +296,7 @@ export * from '../robot';
 export * from './endpoints-computer-ai';
 export * from './endpoints-computer-nodes';
 export * from './endpoints-machine-updates';
+export * from './endpoints-app-updates';
 
 export * from './endpoints-ai-provider';
 
@@ -298,6 +325,7 @@ export * from './endpoints-assistant-voice';
 export {
   ASSISTANT_AREA_ENDPOINTS,
   ASSISTANT_ATTACHMENT_LINK,
+  ASSISTANT_HELPER_POST,
   ASSISTANT_NEW_MESSAGE,
   ASSISTANT_OUT_FILE,
   ASSISTANT_POST,
@@ -305,7 +333,12 @@ export {
   ASSISTANT_UPLOAD_CHUNK,
   ASSISTANT_UPLOAD_START,
 } from './endpoints-assistant';
-export type { AssistantNewMessage, AssistantOutFile, AssistantPost } from './endpoints-assistant';
+export type {
+  AssistantHelperPost,
+  AssistantNewMessage,
+  AssistantOutFile,
+  AssistantPost,
+} from './endpoints-assistant';
 export {
   TALK_AREA_ENDPOINTS,
   TALK_CHANNEL_CHANGE,
@@ -315,6 +348,7 @@ export {
 } from './endpoints-talk';
 export type { TalkChannelChange, TalkNewChannel, TalkNewMember } from './endpoints-talk';
 export * from './endpoints-ai-models';
+export { AI_DEEPSEEK_ENDPOINTS } from './endpoints-ai-deepseek';
 export * from './endpoints-schedules';
 export * from './endpoints-plugins';
 export * from './endpoints-signals';

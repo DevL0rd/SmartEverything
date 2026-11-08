@@ -7,7 +7,7 @@ import {
 } from '@smarteverything/domain';
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
 import type { Store } from '../store/store';
-import type { AppViewBroker, AppViewOutcome } from './broker';
+import type { AppViewAsk, AppViewBroker, AppViewOutcome } from './broker';
 
 export interface AppViewDesk {
   readonly broker: Pick<AppViewBroker, 'ask' | 'answer'>;
@@ -95,20 +95,24 @@ function resultOf(app: ClientRow, outcome: AppViewOutcome): ShowInAppResult {
   }
 }
 
+function requestOf(input: ShowInAppInput): AppViewAsk {
+  switch (input.action) {
+    case 'open':
+      return { action: 'open', target: input.target, focus: input.focus ?? null };
+    case 'highlight':
+      return { action: 'highlight', focus: input.focus };
+    case 'dismiss':
+      return { action: 'dismiss', target: null, focus: null };
+  }
+}
+
 export async function showInApp(
   desk: AppViewDesk,
   caller: Caller,
   input: ShowInAppInput,
 ): Promise<ShowInAppResult> {
-  if (input.action !== 'dismiss' && input.target === undefined) {
-    throw new ApiError('invalid_request', `${input.action} needs a target.`);
-  }
+  const request = requestOf(input);
   const app =
     input.appId === undefined ? openApp(desk, caller) : namedApp(desk, caller, input.appId);
-  const outcome = await desk.broker.ask(app.id, {
-    action: input.action,
-    target: input.target ?? null,
-    focus: input.focus ?? null,
-  });
-  return resultOf(app, outcome);
+  return resultOf(app, await desk.broker.ask(app.id, request));
 }

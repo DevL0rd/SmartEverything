@@ -1,8 +1,8 @@
 import {
   ApiError,
   SPEECH_TRIGGER,
-  type AutomationRowV3,
-  type AutomationV3,
+  type StoredAutomationRow,
+  type AutomationV4,
   type JsonValue,
   type SpeechTrigger,
 } from '@smarteverything/domain';
@@ -33,7 +33,7 @@ function speechSource(record: Record_ | undefined): unknown {
 }
 
 function literalPort(
-  trigger: AutomationV3['triggers'][number],
+  trigger: AutomationV4['triggers'][number],
   port: string,
 ): JsonValue | undefined {
   const value = trigger.ports[port];
@@ -47,7 +47,7 @@ function literalPort(
   return value.lit;
 }
 
-function speechTriggersOf(program: AutomationV3): readonly SpeechTrigger[] {
+function speechTriggersOf(program: AutomationV4): readonly SpeechTrigger[] {
   return program.triggers
     .filter((trigger) => trigger.kind === SPEECH_KIND)
     .map((trigger) => {
@@ -68,7 +68,7 @@ function speechTriggersOf(program: AutomationV3): readonly SpeechTrigger[] {
     });
 }
 
-export function authorSpeech(store: Store, caller: Caller, row: AutomationRowV3): void {
+export function authorSpeech(store: Store, caller: Caller, row: StoredAutomationRow): void {
   const triggers = speechTriggersOf(row.definition);
   const prior = store.speech.grant(row.id);
   if (triggers.length === 0 && prior === undefined) return;

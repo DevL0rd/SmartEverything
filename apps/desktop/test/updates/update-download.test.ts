@@ -49,7 +49,12 @@ function serving(response: () => Response): { fetch: typeof fetch; urls: string[
 describe('downloading an update from the home', () => {
   it('keeps the verified file under its own name next to nothing else', async () => {
     const { fetch, urls } = serving(() => new Response(BYTES));
-    const file = await downloadArtifact(artifact(), 'https://home.example:7880', directory, fetch);
+    const file = await downloadArtifact(
+      artifact(),
+      { serverUrl: 'https://home.example:7880', directory },
+      fetch,
+      () => undefined,
+    );
     expect(file).toBe(join(directory, 'app.zip'));
     expect(await readFile(file)).toStrictEqual(BYTES);
     expect(await readdir(directory)).toStrictEqual(['app.zip']);
@@ -63,9 +68,9 @@ describe('downloading an update from the home', () => {
     await expect(
       downloadArtifact(
         artifact({ size: BYTES.length + 1 }),
-        'https://home.example',
-        directory,
+        { serverUrl: 'https://home.example', directory },
         fetch,
+        () => undefined,
       ),
     ).rejects.toThrow(UpdateVerificationError);
     expect(await readdir(directory)).toStrictEqual([]);
@@ -76,9 +81,9 @@ describe('downloading an update from the home', () => {
     await expect(
       downloadArtifact(
         artifact({ sha256: 'f'.repeat(64) }),
-        'https://home.example',
-        directory,
+        { serverUrl: 'https://home.example', directory },
         fetch,
+        () => undefined,
       ),
     ).rejects.toThrow(/checksum/u);
     expect(await readdir(directory)).toStrictEqual([]);
@@ -87,7 +92,12 @@ describe('downloading an update from the home', () => {
   it('names the status when the home refuses the download', async () => {
     const { fetch } = serving(() => new Response('gone', { status: 410 }));
     await expect(
-      downloadArtifact(artifact(), 'https://home.example', directory, fetch),
+      downloadArtifact(
+        artifact(),
+        { serverUrl: 'https://home.example', directory },
+        fetch,
+        () => undefined,
+      ),
     ).rejects.toThrow(UpdateServerRefusedError);
   });
 });

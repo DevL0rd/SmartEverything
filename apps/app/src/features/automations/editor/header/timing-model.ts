@@ -1,6 +1,6 @@
 import type { NodeKind, PortValue, TriggerNode } from '@smarteverything/domain';
 import { durationWords } from '@smarteverything/domain';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
 import { portOps } from '../inspector/sections/edits';
 
 export type TimingName = 'window' | 'debounce' | 'hold' | 'silentFor' | 'cooldown' | 'rearm';

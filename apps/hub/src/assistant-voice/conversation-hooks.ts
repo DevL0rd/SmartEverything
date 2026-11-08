@@ -21,7 +21,7 @@ export interface ConversationHooks {
   readonly record: (turn: RecordedTurn) => void;
   readonly task: (task: string, said: string | null) => string;
   readonly run: (name: string, args: Readonly<Record<string, unknown>>) => Promise<ToolAnswer>;
-  readonly ended: (reason: CallEnding, detail: string | null) => void;
+  readonly ended: (reason: CallEnding, detail: string | null, cause?: string) => void;
   readonly usage: (usage: UsageMetadata, model: string) => void;
   readonly measured: Measure;
   readonly stalled: (step: 'nudged' | 'gave_up') => void;

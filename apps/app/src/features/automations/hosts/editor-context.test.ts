@@ -5,7 +5,7 @@ import {
   type AutomationFunctionSummary,
 } from '@smarteverything/domain';
 import { PREVIEW_LINT } from '../model/fixtures/lint-context';
-import { Ids, automation, setLight } from '../model/canvas/canvas-fixtures';
+import { automation, gnode, idOf, note, start } from '../model/graph/graph-scene-fixtures';
 import { editorContextOf, inspectorEnvOf } from './editor-context';
 
 const SUMMARY: AutomationFunctionSummary = {
@@ -14,7 +14,6 @@ const SUMMARY: AutomationFunctionSummary = {
   description: null,
   category: null,
   icon: null,
-  builtin: false,
   editable: true,
   revision: 4,
   interface: { flavour: 'action', inputs: [], outputs: [], exits: ['done'] },
@@ -36,22 +35,37 @@ function context(): ReturnType<typeof editorContextOf> {
 describe('editorContextOf', () => {
   it('gives the canvas the home names and the Custom Nodes', () => {
     const { options, describe: words, functions } = context();
-    expect(options.names?.('person', 'p1')).toBe('Fynn');
+    expect(options.names('person', 'p1')).toBe('Fynn');
     expect(words.names('person', 'p1')).toBe('Fynn');
-    expect(options.functions?.get(SUMMARY.id)).toEqual({ name: 'Dim gently', latest: 4 });
+    expect(options.functions.get(SUMMARY.id)).toEqual({ name: 'Dim gently', latest: 4 });
     expect(functions.get(SUMMARY.id)?.latest).toBe(4);
   });
 });
 
 describe('inspectorEnvOf', () => {
+  const program = automation([start('a'), note('a')], { triggers: [] });
+  const layout = { ...EMPTY_LAYOUT, nodes: { [idOf('a')]: { x: 10, y: 20 } } };
+  const input = { program, layout, findings: [] };
+
   it('reads the free position of the selected step from the layout', () => {
-    const ids = new Ids();
-    const step = setLight(ids, null);
-    const program = automation([step]);
-    const layout = { ...EMPTY_LAYOUT, nodes: { [step.id]: { x: 10, y: 20 } } };
-    const input = { program, layout, findings: [] };
-    expect(inspectorEnvOf({ ...input, target: step.id }, context()).freePosition).toBe(true);
-    expect(inspectorEnvOf({ ...input, target: null }, context()).freePosition).toBe(false);
-    expect(inspectorEnvOf({ ...input, target: step.id }, context()).exits).toEqual([]);
+    const model = inspectorEnvOf({ ...input, target: idOf('a') }, context());
+    expect(model.steps?.freePosition).toBe(true);
+    expect(inspectorEnvOf({ ...input, target: null }, context()).steps?.freePosition).toBe(false);
+    expect(model.steps?.exits).toEqual([]);
+  });
+
+  it('keeps the graph for steps the structured form does not hold', () => {
+    const model = inspectorEnvOf({ ...input, target: idOf('a') }, context());
+    expect(model.graph.graph).toBe(program);
+    expect(model.steps?.graph).toBe(program);
+  });
+
+  it('offers only the graph panel while the program does not read as steps', () => {
+    const loose = automation([start('a'), note('a'), gnode('stray', 'notify.feed')], {
+      triggers: [],
+    });
+    const model = inspectorEnvOf({ ...input, program: loose, target: idOf('stray') }, context());
+    expect(model.steps).toBeNull();
+    expect(model.graph.graph).toBe(loose);
   });
 });

@@ -1,44 +1,52 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Icon } from '../../../components/icon';
-import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
+import { cn } from '../../../design/cn';
+import { plural } from '../../../format/text';
 import { clock } from '../../../format/time';
 import { cancelPending, type PendingMessage } from '../data/outbox';
+import { DeliveryGlyph } from './message-meta';
+import {
+  MetaAction,
+  MetaDot,
+  OWN_META_LINE,
+  OWN_PADDING,
+  ownBubbleClass,
+  useTimeZone,
+} from './message-parts';
+
+export function pendingBody(message: Pick<PendingMessage, 'text' | 'attachments'>): string {
+  return message.text === '' ? plural(message.attachments.length, 'file') : message.text;
+}
 
 export function PendingBubble({ message }: { readonly message: PendingMessage }): ReactNode {
-  const files = message.attachments.length;
-  const body =
-    message.text === '' ? `${String(files)} file${files === 1 ? '' : 's'}` : message.text;
+  const timeZone = useTimeZone();
+  const body = pendingBody(message);
+  const time = clock(message.queuedAt, timeZone);
   return (
-    <View
-      accessible
-      accessibilityLabel={`You, ${clock(message.queuedAt)}, waiting for connection: ${body}`}
-      className="items-end gap-1 pt-1"
-    >
-      <View className="max-w-4/5 rounded-xl rounded-br-sm bg-primary-container px-4 py-2.5 opacity-80">
+    <View className="items-end">
+      <View
+        accessible
+        accessibilityLabel={`You, ${time}, waiting for connection: ${body}`}
+        className={cn(ownBubbleClass('only'), OWN_PADDING)}
+      >
         <Text variant="body">{body}</Text>
       </View>
-      <View className="flex-row items-center gap-1.5">
-        <Text variant="caption" tone="variant" className="tabular">
-          {clock(message.queuedAt)}
-        </Text>
-        <Icon name="clock" size={16} tone="variant" />
-        <Text variant="caption" tone="variant">
-          Waiting for connection
-        </Text>
-        <Interactive
+      <View className={OWN_META_LINE}>
+        <MetaAction
+          text="Cancel"
           label="Cancel this message"
           onPress={() => {
             cancelPending(message.id);
           }}
-          className="min-h-touch-min justify-center rounded-sm px-2"
-          layerClassName="rounded-sm"
-        >
-          <Text variant="caption" tone="primary">
-            Cancel
+        />
+        <MetaDot />
+        <View aria-hidden className="flex-row items-center gap-1">
+          <Text variant="caption" tone="faint" className="tabular">
+            {time}
           </Text>
-        </Interactive>
+          <DeliveryGlyph mark="queued" />
+        </View>
       </View>
     </View>
   );

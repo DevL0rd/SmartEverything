@@ -2,33 +2,51 @@ import { useHarnessCatalogue } from '../data/harness';
 import { harnessHostName } from '../model/harness-context';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { AiChatRow, DshEngine } from '@smarteverything/domain';
+import {
+  weeklySubscriptionWindow,
+  type AiChatRow,
+  type AiHarnessCatalogue,
+  type ComputerAiRuntime,
+} from '@smarteverything/domain';
 import { ProgressBar } from '../../../components/charts';
 import { Text } from '../../../components/text';
 import { useIsOwner, useDevice } from '../../../store/selectors';
+import { useMinuteOf } from '../../../store/clock';
 import { useChatProvider } from './provider-data';
 import { useCodexProvider } from './codex-provider-data';
-import { isComputerEngine } from './computer-engine';
+import type { CodexChatProvider } from '../../../queries/codex-provider-events';
+import { COMPUTER_ENGINE_LABELS, isComputerEngine } from './computer-engine';
 import {
   codexSubscriptionWindows,
   projectedSubscriptionWindows,
+  subscriptionResetText,
+  weeklyAllowance,
+  type WeeklyAllowance,
   type SubscriptionWindow,
 } from './subscription-usage-values';
 import { dateTimeText } from '../../../format/locale';
+interface AccountUsage {
+  readonly windows: readonly SubscriptionWindow[];
+  readonly computer: string;
+  readonly provider?: string;
+  readonly reportedAt?: string;
+}
+
+export type ChatBilling =
+  | { readonly kind: 'metered' }
+  | { readonly kind: 'unknown'; readonly account: AccountUsage }
+  | {
+      readonly kind: 'subscription-only';
+      readonly account: AccountUsage;
+      readonly runtime: ComputerAiRuntime | undefined;
+    };
+
 export function SubscriptionUsageBars({
   windows,
   computer,
   provider,
-  compact = false,
   reportedAt,
-}: {
-  readonly compact?: boolean;
-  readonly reportedAt?: string;
-  readonly windows: readonly SubscriptionWindow[];
-  readonly computer: string;
-  readonly provider?: string;
-}): ReactNode {
-  if (compact) return <CompactSubscriptionWindows windows={windows} />;
+}: AccountUsage): ReactNode {
   return (
     <View className="gap-2 px-4 py-3">
       <Text variant="label">Subscription usage</Text>
@@ -41,97 +59,90 @@ export function SubscriptionUsageBars({
           Reported {dateTimeText(new Date(reportedAt))}
         </Text>
       )}
-      {windows.length === 0 ? (
-        <Text variant="caption" tone="variant">
-          Reported plan usage unavailable
-        </Text>
-      ) : (
-        <View className="gap-2">
-          {windows.map((window) => (
-            <UsageWindow key={window.key} window={window} compact={compact} />
-          ))}
-        </View>
-      )}
+      <UsageWindows windows={windows} />
     </View>
   );
 }
-function CodexUsage({
-  chat,
-  computer,
-  compact,
-}: {
-  readonly chat: AiChatRow;
-  readonly computer: string;
-  readonly compact: boolean;
-}): ReactNode {
+
+function useNativeWindows(chat: AiChatRow): readonly SubscriptionWindow[] {
   const owner = useIsOwner();
-  const provider = useCodexProvider(chat.id, owner);
-  const reported = provider.data?.events.filter((event) => event.kind === 'usage').at(-1);
-  const windows =
-    provider.data?.subscription_usage === undefined
-      ? codexSubscriptionWindows(reported?.kind === 'usage' ? reported.usage.rate_limits : null)
-      : projectedSubscriptionWindows(provider.data.subscription_usage);
-  return (
-    <SubscriptionUsageBars
-      provider="Codex"
-      compact={compact}
-      computer={computer}
-      windows={windows}
-    />
-  );
+  const { kind } = chat.engine;
+  const claude = useChatProvider(chat.id, owner && kind === 'claude').data;
+  const codex = useCodexProvider(chat.id, owner && kind === 'codex').data;
+  if (!owner) return [];
+  if (kind === 'claude') return projectedSubscriptionWindows(claude?.subscription_usage);
+  return kind === 'codex' ? codexWindows(codex) : [];
 }
 
-function ClaudeUsage({
-  chatId,
-  computer,
-  compact,
-}: {
-  readonly chatId: string;
-  readonly computer: string;
-  readonly compact: boolean;
-}): ReactNode {
-  const owner = useIsOwner();
-  const provider = useChatProvider(chatId, owner);
-  return (
-    <SubscriptionUsageBars
-      computer={computer}
-      provider="Claude"
-      compact={compact}
-      windows={projectedSubscriptionWindows(provider.data?.subscription_usage)}
-    />
-  );
-}
-export function ChatSubscriptionUsage({
-  chat,
-  compact = false,
-}: {
-  readonly chat: AiChatRow;
-  readonly compact?: boolean;
-}): ReactNode {
-  const deviceId = isComputerEngine(chat.engine) ? chat.engine.device_id : '';
-  const device = useDevice(deviceId);
-  if (chat.engine.kind === 'dsh')
-    return <HarnessSubscriptionUsage engine={chat.engine} compact={compact} />;
-  if (!isComputerEngine(chat.engine)) return null;
-  const computer = device?.label ?? 'Computer unavailable';
-  return chat.engine.kind === 'codex' ? (
-    <CodexUsage compact={compact} chat={chat} computer={computer} />
-  ) : (
-    <ClaudeUsage compact={compact} chatId={chat.id} computer={computer} />
-  );
+function codexWindows(provider: CodexChatProvider | undefined): readonly SubscriptionWindow[] {
+  if (provider?.subscription_usage !== undefined)
+    return projectedSubscriptionWindows(provider.subscription_usage);
+  const event = provider?.events.findLast((item) => item.kind === 'usage');
+  return codexSubscriptionWindows(event?.usage.rate_limits);
 }
 
-function UsageWindow({
-  window,
-  compact,
-}: {
-  readonly window: SubscriptionWindow;
-  readonly compact: boolean;
-}): ReactNode {
+function harnessBilling(catalogue: AiHarnessCatalogue | undefined, routeId: string): ChatBilling {
+  const route = catalogue?.routes.find((row) => row.id === routeId);
+  if (route === undefined) {
+    return {
+      kind: 'unknown',
+      account: { computer: 'Supplier unavailable', provider: 'SmartEverything', windows: [] },
+    };
+  }
+  if (route.billing === 'metered') return { kind: 'metered' };
+  return {
+    kind: route.billing,
+    runtime: route.usage?.runtime,
+    account: {
+      computer: harnessHostName(route.supplier, catalogue),
+      provider: route.auth.provider,
+      windows: projectedSubscriptionWindows(route.usage),
+      ...(route.usage === undefined ? {} : { reportedAt: route.usage.reported_at }),
+    },
+  };
+}
+
+export function useChatBilling(chat: AiChatRow): ChatBilling {
+  const { engine } = chat;
+  const catalogue = useHarnessCatalogue().data;
+  const device = useDevice(isComputerEngine(engine) ? engine.device_id : '');
+  const nativeWindows = useNativeWindows(chat);
+  if (isComputerEngine(engine)) {
+    return {
+      kind: 'subscription-only',
+      runtime: engine.kind,
+      account: {
+        computer: device?.label ?? 'Computer unavailable',
+        provider: COMPUTER_ENGINE_LABELS[engine.kind].name,
+        windows: nativeWindows,
+      },
+    };
+  }
+  return harnessBilling(catalogue, engine.model_route_id);
+}
+
+export function ChatSubscriptionUsage({ chat }: { readonly chat: AiChatRow }): ReactNode {
+  const billing = useChatBilling(chat);
+  return billing.kind === 'metered' ? null : <SubscriptionUsageBars {...billing.account} />;
+}
+
+function sameAllowance(left: WeeklyAllowance | null, right: WeeklyAllowance | null): boolean {
+  return left === right || (left?.text === right?.text && left?.resetAt === right?.resetAt);
+}
+
+export function useWeeklyAllowance(billing: ChatBilling): WeeklyAllowance | null {
+  const window =
+    billing.kind === 'subscription-only' && billing.runtime !== undefined
+      ? weeklySubscriptionWindow({ runtime: billing.runtime, windows: billing.account.windows })
+      : undefined;
+  return useMinuteOf((now) => weeklyAllowance(window, now), sameAllowance);
+}
+
+function UsageWindow({ window }: { readonly window: SubscriptionWindow }): ReactNode {
   return (
-    <View className={compact ? 'min-w-40 flex-1 gap-1' : 'gap-1'}>
+    <View className="gap-1">
       <View className="flex-row items-center justify-between gap-2">
-        <Text variant="caption" tone="variant" className="flex-1">
+        <Text variant="caption" tone="variant" className="min-w-0 flex-1">
           {window.label}
         </Text>
         <Text variant="caption" tone="variant" className="tabular">
@@ -142,54 +153,29 @@ function UsageWindow({
         <ProgressBar
           progress={Math.min(1, window.percent / 100)}
           colour={window.percent >= 80 ? 'warning' : 'primary'}
-          label={`${window.label}: ${String(window.percent)} percent used`}
+          label={`${window.label} used`}
         />
       )}
-      {window.reset === null ? null : (
+      {window.resetAt === null ? null : (
         <Text variant="caption" tone="variant">
-          Resets {window.reset}
+          Resets {subscriptionResetText(window.resetAt)}
         </Text>
       )}
     </View>
   );
 }
 
-function HarnessSubscriptionUsage({
-  engine,
-  compact,
-}: {
-  readonly engine: DshEngine;
-  readonly compact: boolean;
-}): ReactNode {
-  const catalogue = useHarnessCatalogue();
-  const route = catalogue.data?.routes.find((row) => row.id === engine.model_route_id);
-  if (route?.billing === 'metered') return null;
+function UsageWindows({ windows }: { readonly windows: readonly SubscriptionWindow[] }): ReactNode {
+  if (windows.length === 0)
+    return (
+      <Text variant="caption" tone="variant">
+        Reported plan usage unavailable
+      </Text>
+    );
   return (
-    <SubscriptionUsageBars
-      compact={compact}
-      computer={
-        route === undefined
-          ? 'Supplier unavailable'
-          : harnessHostName(route.supplier, catalogue.data)
-      }
-      provider={route?.auth.provider ?? 'SmartEverything'}
-      windows={projectedSubscriptionWindows(route?.usage)}
-      {...(route?.usage === undefined ? {} : { reportedAt: route.usage.reported_at })}
-    />
-  );
-}
-
-function CompactSubscriptionWindows({
-  windows,
-}: {
-  readonly windows: readonly SubscriptionWindow[];
-}): ReactNode {
-  const known = windows.filter((window) => window.percent !== null).slice(0, 2);
-  if (known.length === 0) return null;
-  return (
-    <View className="flex-row flex-wrap gap-3 px-2">
-      {known.map((window) => (
-        <UsageWindow key={window.key} window={window} compact />
+    <View className="gap-2">
+      {windows.map((window) => (
+        <UsageWindow key={window.id} window={window} />
       ))}
     </View>
   );

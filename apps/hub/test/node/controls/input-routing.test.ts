@@ -2,6 +2,7 @@ import {
   DEFAULT_COMPUTER_SCOPES,
   type ComputerInput,
   type NodeHello,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { inertControls } from './unused-controls';
@@ -20,7 +21,7 @@ const HELLO: NodeHello = {
   actions: [],
   permissions: [],
   features: [],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
 };
 
 function rig(): { handler: NodeRequestHandler; sent: ComputerInput[] } {

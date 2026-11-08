@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { SettingsPageScreen } from '../../../../../src/settings/settings-screen';
+import { ProfilesScreen } from '../../../../../src/features/profiles/profiles-screen';
 
 export default function ProfilesSettingsRoute(): ReactNode {
-  return <SettingsPageScreen page="profiles" />;
+  return <ProfilesScreen />;
 }

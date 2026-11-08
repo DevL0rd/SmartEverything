@@ -10,42 +10,7 @@ export * from './commands';
 export * from './events';
 export * from './search-triggers';
 export * from './health-source-rank';
-export * from './treadmill';
-export * from './treadmill-reading';
-export * from './treadmill-incline';
-export * from './treadmill-calories';
-export * from './treadmill-sessions';
-export * from './treadmill-machine';
-export * from './treadmill-settings';
-export * from './treadmill-days';
-export * from './treadmill-stats';
-export * from './treadmill-views';
-export * from './toothbrush';
-export * from './brushing-zones';
-export * from './brushing-session';
-export * from './brushing-stats-schema';
-export * from './brushing-stats';
-export * from './toothbrush-settings';
-export * from './toothbrush-care';
-export * from './toothbrush-views';
-export * from './printer';
-export * from './printer-forecast';
-export * from './printer-periods';
-export * from './printer-reasons';
-export * from './printer-state';
-export * from './printer-stats';
-export * from './printer-supplies';
-export * from './printer-views';
-export * from './bottle';
-export * from './bottle-capabilities';
-export * from './bottle-days';
-export * from './bottle-rows';
-export * from './bottle-settings';
-export * from './bottle-stats-types';
-export * from './bottle-stats';
-export * from './bottle-views';
-export * from './bottle-views-care';
-export * from './bottle-actions';
+export * from './device-appliances';
 
 export type { AdapterFailure, AdapterSink, ProviderAdapter, Unsubscribe } from './adapter';
 
@@ -94,50 +59,7 @@ export * from './region';
 export { PLACE, PLACES, PLACE_NAME, placeLabel, shortPlaceLabel } from './places';
 export type { PlaceMatch, Places } from './places';
 
-export {
-  HEALTH_BATCH,
-  HEALTH_BATCH_LIMIT,
-  HEALTH_BATCH_SOURCE,
-  HEALTH_INGEST_RESULT,
-  HEALTH_RECORD,
-  HEALTH_RECORD_TYPE,
-  HEALTH_RECORD_TYPES,
-  NUTRIENTS,
-  affectedDays,
-  localDayOf,
-} from './health';
-export type {
-  DayAnchor,
-  HealthBatch,
-  HealthIngestResult,
-  HealthRecord,
-  HealthRecordType,
-} from './health';
-export { hydrationAmounts } from './hydration';
-export {
-  CLIENT_RECORD_ID,
-  ENTRIES_SOURCE_APP,
-  ENTRY_SOURCE_APPS,
-  FOOD_PORTION,
-  HEALTH_ENTRY_INPUT,
-  HEALTH_ENTRY_ROW,
-  LOGGABLE_TYPE,
-  LOGGABLE_TYPES,
-  MEALS,
-  MEAL_TYPES,
-  OUTBOX_ENTRY,
-  OWN_SOURCE_PREFIX,
-  PORTION_UNITS,
-  clientRecordIdOf,
-  entryIdOfRecord,
-  entryRefOfClientRecordId,
-  entryRecord,
-  entryRecordRefs,
-  entryRecords,
-  isIntervalEntry,
-  isLoggable,
-  isOwnSource,
-} from './health-entries';
+export * from './health-exports';
 export type {
   EntryRecordRef,
   EntrySource,
@@ -267,6 +189,8 @@ export {
   partsOf,
 } from './mcp/served';
 export type { McpBranch, McpRoute, McpSelector, McpToolName, Served } from './mcp/served';
+export { DRIVE_EDIT_ACTIONS, DRIVE_READ_VIEWS } from './mcp/served-drive';
+export { PLANNER_EDIT_ACTIONS, PLANNER_READ_VIEWS } from './mcp/served-planner';
 export * from './mcp/operations';
 export {
   MCP_TOOL_DOMAINS,
@@ -278,6 +202,7 @@ export {
 export * from './mcp/endpoint-area';
 
 export {
+  DESKTOP_CLIPBOARD_CHANGED,
   DESKTOP_COMPUTER_IDENTITY,
   DESKTOP_SERVER,
   OVERLAY_LEVELS_PORT_MESSAGE,
@@ -290,6 +215,7 @@ export * from './vocabulary-people';
 
 export * from './firewall-commands';
 export * from './firewall-apply';
+export * from './firewall-ufw-mac';
 
 export { encodedPowerShell } from './firewall-plan';
 
@@ -297,9 +223,13 @@ export * from './talk';
 export * from './talk-protocol';
 export * from './talk-reducer';
 export * from './assistant';
+export * from './assistant-reactions';
+export * from './emoji/catalogue';
+export * from './assistant-attachment-mime';
 export * from './assistant-settings-patch';
 export * from './attachment-note';
 export * from './ai-chats';
+export * from './native-model-options';
 export * from './chat-steps';
 export * from './ai-usage';
 export * from './ai-budget';
@@ -342,17 +272,30 @@ export * from './phone-privacy';
 export * from './phones';
 export * from './machine-actions';
 export * from './machine-updates';
+export * from './release-notes';
+export * from './app-updates';
+export * from './android-apk-updates';
+export * from './web-updates';
 export * from './reach';
 export * from './claude-contracts';
 export * from './chat-widgets';
+export * from './chat-action-file';
+export * from './self-update';
+export * from './repair-work-claim';
+export * from './hub-update-source';
+export * from './self-update-recovery';
 export * from './client-failures';
+export * from './runtime-logs';
+export * from './ai-repair';
 export * from './ai-provider';
 export * from './computer-runtime-contracts';
 export * from './ai-subscription-usage';
 export * from './ai-harness-contracts';
+export * from './ai-goals';
 export * from './harness-platform';
 export * from './harness-native-frame';
 export * from './image-operations';
+export * from './image-defaults';
 export * from './desktop-browser';
 export * from './ai-subscription-inference';
 export * from './shelly-presence';
@@ -379,6 +322,7 @@ export * from './ai-project-files';
 export * from './ai-references';
 export * from './ai-reference-runtime';
 export * from './automation-values';
+export * from './automation-plugin-kinds';
 export * from './automation-runs';
 export * from './automation-bindings';
 export * from './health-codes';
@@ -412,3 +356,61 @@ export * from './automation-nodes/triggers-device';
 export * from './automation-nodes/triggers-v11';
 export * from './automation-nodes/triggers-v11-signals';
 export * from './automation-secrets';
+export * from './vacuum';
+export * from './vacuum-scene';
+export * from './capability-history';
+export * from './api/endpoints-vacuums';
+export { VACUUM_COUPLINGS, type VacuumCoupling } from './presentation/overrides/xiaomi-vacuum-dock';
+export * from './presentation/overrides/xiaomi-vacuum-system';
+export * from './home-map-elements';
+export * from './home-map-placement';
+export * from './home-map-source';
+export * from './home-map';
+export * from './home-map-edit-ops';
+export * from './home-map-edits';
+export * from './home-map-geometry';
+export * from './home-map-snap';
+export * from './home-map-vacuum-source';
+export * from './api/endpoints-home-map';
+export * from './home-map-auto-place';
+export * from './home-map-frames';
+export * from './home-map-visibility';
+export * from './models/spec';
+export * from './models/signals';
+export * from './models/channels';
+export * from './models/match';
+export * from './models/catalog';
+export * from './models/resolve';
+export * from './models/defaults';
+export * from './models/device-registry';
+export * from './models/placement-footprint';
+export * from './models/placement';
+export * from './api/endpoints-models';
+export * from './home-map-openings';
+export * from './home-map-wall-mount';
+export * from './home-map-manipulate-types';
+export * from './home-map-manipulate-base';
+export * from './home-map-manipulate';
+export * from './home-map-manipulate-move';
+export * from './home-map-set';
+export * from './home-map-diff';
+export * from './home-map-scan';
+export * from './api/endpoints-home-map-scan';
+export * from './api/endpoints-drive';
+export * from './api/endpoints-drive-storage';
+export * from './api/endpoints-photos';
+export * from './drive/index';
+export * from './photos/index';
+export * from './photos/prefs';
+export * from './home-map-prefs';
+export * from './ai-memory';
+export * from './ai-deepseek';
+export * from './planner/index';
+export * from './google-accounts';
+export * from './api/endpoints-google';
+export * from './api/endpoints-planner';
+export * from './api/endpoints-planner-items';
+export * from './api/endpoints-planner-clock';
+export * from './computer-service';
+
+export * from './desktop-photos';

@@ -64,5 +64,5 @@ export function appOutputId(app: AudioApp, outputs: readonly AudioDevice[]): str
 
 export function appOutputName(app: AudioApp, outputs: readonly AudioDevice[]): string {
   const id = appOutputId(app, outputs);
-  return outputs.find((device) => device.id === id)?.name ?? 'Default output';
+  return outputs.find((device) => device.id === id)?.name ?? 'No output found';
 }

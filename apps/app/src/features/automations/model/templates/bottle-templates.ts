@@ -1,4 +1,5 @@
-import { EVERY_DAY, automation, lit, wire } from './build';
+import { EVERY_DAY, lit, wire } from './build';
+import { graphAutomation } from './graph-kit';
 import { eventTemplate, noticeTemplate } from './notice-template';
 import { numberSlot, template, timeSlot, type Template, type TemplateDevice } from './parameters';
 import { setDevices } from './parts';
@@ -47,7 +48,7 @@ function bottleBedtime(device: TemplateDevice): Template {
     devices: [device.label],
     slots: [timeSlot('at', 'Time', BEDTIME)],
     make: (use, m) =>
-      automation({
+      graphAutomation({
         triggers: [
           m.trigger('time1', 'trigger.time', {
             at: lit(use.text('at')),

@@ -5,12 +5,11 @@ import { useLocalSearchParams } from 'expo-router';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { isNative, useIdiom } from '../../../design/platform';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { count } from '../../../format/number';
 import { useFileDrop } from '../../../platform/file-drop';
 import { ComputerFrame } from '../components/computer-frame';
 import { useComputerReach } from '../data/computer-scopes';
-import { bodyWidthOf } from '../model/sections';
 import { SectionGate } from '../processes/section-gate';
 import { DownloadSheet } from './download-sheet';
 import { Content } from './files-content';
@@ -149,7 +148,7 @@ function Files({
 }): ReactNode {
   const { browse, selection, downloads, actions, uploads, go } = useFilesState(deviceId, online);
   const { ref, dragging } = useDropping(uploads);
-  const wide = bodyWidthOf(useAreaWidth()) >= WIDE_FROM;
+  const wide = useFrameBodyWidth() >= WIDE_FROM;
   return (
     <View ref={ref} collapsable={false} className="min-h-0 flex-1 gap-3">
       <Top
@@ -192,7 +191,7 @@ function Files({
 export function ComputerFilesScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   const reach = useComputerReach(deviceId);
   return (
-    <ComputerFrame deviceId={deviceId} title="Files" width="detail" scroll={false}>
+    <ComputerFrame deviceId={deviceId} title="Files" width="dashboard" scroll={false}>
       <SectionGate deviceId={deviceId} section="files" scope="files">
         <Files deviceId={deviceId} name={reach.name} online={reach.online} />
       </SectionGate>

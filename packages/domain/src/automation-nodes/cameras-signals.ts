@@ -3,6 +3,8 @@ import { HEALTH_METRICS } from '../api/rows-access';
 import { MEDIA_SIZES } from '../api/access';
 import type { InputPortDecl, NodeKind, OutputPortDecl } from './define';
 import { defineNodeKind } from './define';
+import { DEVICE_REF, TARGET_REF } from './devices';
+import { ERROR_OUT } from './error-port';
 
 const TEXT: FlowType = { t: 'text' };
 const NUMBER: FlowType = { t: 'number' };
@@ -18,14 +20,23 @@ const CAMERA_SNAPSHOT = defineNodeKind({
   icon: 'camera',
   class: 'effect',
   description:
-    'Takes a picture from a camera now. A camera that is offline or switched off for privacy gives an error and no picture.',
+    'Takes a picture from a camera now, or from several cameras, a room or a group of cameras at the same time. A camera that is offline or switched off for privacy gives an error and no picture; when several are asked, the others still give theirs and the step fails only when none does.',
   inputs: [
     {
       name: 'camera',
       type: { t: 'ref', of: 'camera' },
-      required: true,
-      description: 'Which camera.',
+      required: false,
+      description: 'Which camera. Use this or Cameras.',
       summary: true,
+    },
+    {
+      name: 'target',
+      type: TARGET_REF,
+      required: false,
+      description:
+        'Several cameras, a room or a group, or a wired device or list of devices. Use this or Camera.',
+      summary: true,
+      ui: { label: 'Cameras' },
     },
     {
       name: 'size',
@@ -43,14 +54,35 @@ const CAMERA_SNAPSHOT = defineNodeKind({
     {
       name: 'image',
       type: TEXT,
-      description: 'The picture id. Give it to Look at picture or a push message.',
+      description:
+        'The picture id. Give it to Look at picture or a push message. With several cameras it is the first picture.',
     },
     { name: 'at', type: { t: 'instant' }, description: 'When the picture was taken.' },
+    {
+      name: 'images',
+      type: { t: 'list', of: TEXT },
+      optional: true,
+      description: 'The picture ids of every camera that gave one, in the order of the cameras.',
+    },
+    {
+      name: 'cameras',
+      type: { t: 'list', of: DEVICE_REF },
+      optional: true,
+      description: 'The cameras the pictures came from, in the same order as the pictures.',
+    },
+    {
+      name: 'skipped',
+      type: { t: 'list', of: { t: 'record', fields: { device: DEVICE_REF, reason: TEXT } } },
+      optional: true,
+      description:
+        'Cameras that gave no picture, each with the reason (offline, switched off for privacy or not a camera).',
+    },
+    ERROR_OUT,
   ],
   exits: ['next'],
   effect: { retry: 'idempotent', budget: 'effects' },
-  summary: 'Take a picture from {camera}',
-  keywords: ['camera', 'snapshot', 'picture', 'photo', 'image', 'doorbell'],
+  summary: 'Take a picture from {camera} {target}',
+  keywords: ['camera', 'cameras', 'snapshot', 'picture', 'photo', 'image', 'doorbell', 'room'],
   access: 'member',
   tier: 'v1.1',
 });
@@ -58,7 +90,7 @@ const CAMERA_SNAPSHOT = defineNodeKind({
 const WEATHER_FORECAST = defineNodeKind({
   id: 'weather.forecast',
   name: 'Forecast',
-  category: 'cameras',
+  category: 'weather',
   icon: 'cloud-rain',
   class: 'read',
   description:
@@ -119,7 +151,7 @@ const EVENT_NAME: InputPortDecl = {
 const SIGNAL_EMIT = defineNodeKind({
   id: 'signal.emit',
   name: 'Send event',
-  category: 'cameras',
+  category: 'automations',
   icon: 'megaphone',
   class: 'effect',
   description:
@@ -132,11 +164,13 @@ const SIGNAL_EMIT = defineNodeKind({
       required: false,
       default: {},
       description: 'Data that goes with the event.',
+      ui: { editor: 'field-rows' },
     },
   ],
   outputs: [],
   exits: ['next'],
   effect: { retry: 'external', budget: 'effects' },
+  fallible: false,
   summary: 'Send the event {name}',
   keywords: ['event', 'signal', 'emit', 'broadcast', 'tell'],
   access: 'member',
@@ -146,7 +180,7 @@ const SIGNAL_EMIT = defineNodeKind({
 const SIGNAL_LATEST = defineNodeKind({
   id: 'signal.latest',
   name: 'Latest signal value',
-  category: 'cameras',
+  category: 'automations',
   icon: 'radio-receiver',
   class: 'read',
   description:
@@ -159,6 +193,7 @@ const SIGNAL_LATEST = defineNodeKind({
       static: true,
       summary: true,
       description: 'The signal source, for example device or weather.',
+      ui: { optionsFrom: 'signal.sources' },
     },
     {
       name: 'kind',
@@ -167,6 +202,7 @@ const SIGNAL_LATEST = defineNodeKind({
       static: true,
       summary: true,
       description: 'The signal kind within the source.',
+      ui: { optionsFrom: 'signal.kinds' },
     },
     {
       name: 'subject',
@@ -174,6 +210,7 @@ const SIGNAL_LATEST = defineNodeKind({
       required: false,
       static: true,
       description: 'Only this subject.',
+      ui: { optionsFrom: 'signal.subjects' },
     },
     {
       name: 'field',
@@ -181,6 +218,7 @@ const SIGNAL_LATEST = defineNodeKind({
       required: false,
       static: true,
       description: 'Only this field.',
+      ui: { optionsFrom: 'signal.fields' },
     },
   ],
   outputs: [
@@ -201,7 +239,7 @@ const SIGNAL_LATEST = defineNodeKind({
 const HEALTH_READ = defineNodeKind({
   id: 'health.read',
   name: 'Health value',
-  category: 'cameras',
+  category: 'people',
   icon: 'heart-pulse',
   class: 'effect',
   description:

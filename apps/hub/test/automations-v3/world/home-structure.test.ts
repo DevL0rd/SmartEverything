@@ -206,6 +206,31 @@ describe('device.query', () => {
     expect(result.outputs['devices']).toEqual([ref(home.lampA.id)]);
   });
 
+  it('matches a device in any of several rooms', () => {
+    const result = query({ rooms: [room(home.kitchen.id), room(home.study.id)] });
+    expect(result.outputs['count']).toBe(5);
+    const study = query({ rooms: [room(home.study.id)] });
+    expect(study.outputs['devices']).toEqual([ref(home.lampC.id)]);
+    const both = query({ room: room(home.kitchen.id), rooms: [room(home.study.id)] });
+    expect(both.outputs['count']).toBe(5);
+    const repeated = query({ room: room(home.kitchen.id), rooms: [room(home.kitchen.id)] });
+    expect(repeated.outputs['count']).toBe(4);
+  });
+
+  it('narrows by the kind of device', () => {
+    expect(query({ kinds: ['sensor'] }).outputs['count']).toBe(2);
+    expect(query({ kinds: ['sensor', 'light'] }).outputs['count']).toBe(5);
+    expect(query({ kinds: ['light'], rooms: [room(home.kitchen.id)] }).outputs['count']).toBe(2);
+    expect(() => query({ kinds: ['toaster'] })).toThrow(ReadFailure);
+  });
+
+  it('narrows by a control the device has, by key or role', () => {
+    expect(query({ capability: 'brightness' }).outputs['count']).toBe(2);
+    expect(query({ capability: 'power' }).outputs['count']).toBe(3);
+    expect(query({ capability: 'temperature' }).outputs['devices']).toEqual([ref(home.sensor.id)]);
+    expect(query({ capability: 'nothing_like_it' }).outputs['count']).toBe(0);
+  });
+
   it('says plainly that devices carry no labels', () => {
     expect(() => query({ labels: ['hall'] })).toThrow(/no labels/);
   });

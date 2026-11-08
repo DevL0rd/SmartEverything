@@ -5,6 +5,7 @@ import type {
   JsonValue,
 } from '@smarteverything/domain';
 import type { Look } from './colour-math';
+import { OPENRGB_DEVICE_TYPE_PRODUCTS, type OpenRgbKind } from './models-kit';
 import { activeModeOf, takesColour, takesLedColours } from './modes';
 import type { OpenRgbController } from './transport';
 
@@ -38,6 +39,20 @@ export interface UnitSnapshot {
   readonly effect: string | null;
   readonly online: boolean;
   readonly at: string;
+}
+
+const DEVICE_TYPE_KINDS: ReadonlyMap<number, OpenRgbKind> = new Map([
+  [0, 'motherboard'],
+  [1, 'dram'],
+  [2, 'gpu'],
+  [3, 'cooler'],
+  [5, 'keyboard'],
+  [6, 'mouse'],
+]);
+
+export function productOf(info: OpenRgbController): string | null {
+  const kind = DEVICE_TYPE_KINDS.get(info.type);
+  return kind === undefined ? null : OPENRGB_DEVICE_TYPE_PRODUCTS[kind];
 }
 
 function slug(parts: readonly string[]): string {
@@ -120,6 +135,7 @@ export function unitCapabilities(info: OpenRgbController, unit: LightUnit): Devi
 
 export function describeUnit(snapshot: UnitSnapshot): DiscoveredDevice {
   const { unit, info } = snapshot;
+  const product = productOf(info);
   return {
     provider: 'local',
     externalId: unit.externalId,
@@ -137,6 +153,7 @@ export function describeUnit(snapshot: UnitSnapshot): DiscoveredDevice {
       ledCount: unit.count,
       zone: unit.zone,
       modes: info.modes.map((mode) => mode.name),
+      ...(product === null ? {} : { product }),
     },
   };
 }

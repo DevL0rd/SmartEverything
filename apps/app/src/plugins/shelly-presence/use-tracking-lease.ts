@@ -3,8 +3,8 @@ import { Logger } from '@smarteverything/logging';
 import { SHELLY_PLUGIN_ID, type ShellyDevice } from '@smarteverything/shelly';
 import { z } from 'zod';
 import { callPluginTool } from '../../api/plugins';
-import { useSelected } from '../../design/external-store';
-import { liveSupport, TrackingLeases, type LiveSupport } from './tracking-leases';
+import { usePausable } from '../../design/external-store';
+import { liveSupport, shownPhase, TrackingLeases, type LiveSupport } from './tracking-leases';
 import { failure } from './use-presence-operation';
 
 const log = new Logger('app.shelly-presence');
@@ -33,6 +33,16 @@ const leases = new TrackingLeases({
   },
 });
 
+export function acquireTrackingLease(externalId: string): () => void {
+  return leases.acquire(externalId);
+}
+
+export function useTrackingHeld(externalIds: readonly string[]): boolean {
+  return usePausable(leases.store.subscribe, () =>
+    externalIds.some((externalId) => leases.store.get().get(externalId)?.phase === 'held'),
+  );
+}
+
 export interface TrackingLease {
   readonly support: LiveSupport | 'unknown';
   readonly tracking: boolean;
@@ -46,14 +56,13 @@ export function useTrackingLease(sensor: ShellyDevice | null, visible: boolean):
   const wanted = visible && support === 'ready';
   useEffect(() => {
     if (!wanted) return undefined;
-    return leases.acquire(externalId);
+    return acquireTrackingLease(externalId);
   }, [wanted, externalId]);
-  const phase = useSelected(leases.store, (map) => map.get(externalId)?.phase ?? 'off');
-  const error = useSelected(leases.store, (map) => map.get(externalId)?.error ?? null);
+  const phase = usePausable(leases.store.subscribe, () => shownPhase(leases.read(externalId)));
   return {
     support,
     tracking: wanted && phase === 'held',
-    failed: wanted && phase === 'failed' ? error : null,
+    failed: wanted && phase === 'failed' ? leases.read(externalId).error : null,
     retry: (): void => {
       leases.retry(externalId);
     },

@@ -43,7 +43,7 @@ export function ReusableSection({
 }: ReusableSectionProps): ReactNode {
   return (
     <View className="gap-1">
-      {rows.map(({ entry, reason }) =>
+      {rows.map(({ entry }) =>
         entry.key === NEW_REUSABLE_KEY ? (
           <NewReusableRow
             key={entry.key}
@@ -55,7 +55,6 @@ export function ReusableSection({
           <PaletteRow
             key={entry.key}
             entry={entry}
-            reason={reason}
             favourite={entry.usageId !== null && favourites.includes(entry.usageId)}
             onPick={onPick}
             onToggleFavourite={onToggleFavourite}

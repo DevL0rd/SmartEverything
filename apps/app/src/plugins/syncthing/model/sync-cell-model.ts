@@ -40,7 +40,7 @@ export interface SyncCell {
   readonly chip: CellChip;
   readonly tone: MedallionTone;
   readonly ratio: number | null;
-  readonly line: string;
+  readonly line: string | null;
   readonly rates: readonly CellRate[];
   readonly folders: readonly CellFolder[];
   readonly peers: readonly CellPeer[];
@@ -48,11 +48,7 @@ export interface SyncCell {
   readonly paused: boolean;
   readonly canAct: boolean;
   readonly spoken: string;
-  readonly reason: string | null;
 }
-
-const RING_FOLDERS = 3;
-const MAX_PEERS = 6;
 
 const KIND_OF: Readonly<Record<SyncthingSnapshot['summary']['state'], SyncCellKind>> = {
   in_sync: 'synced',
@@ -101,40 +97,37 @@ function lineOf(
         .filter((part) => part !== null)
         .join(' · ');
     case 'synced':
-      return `${plural(folders.length, 'folder')} · ${devicesLine(summary)}`;
     case 'paused':
-      return 'Syncing is paused on this computer';
+    case 'offline':
+      return `${plural(folders.length, 'folder')} · ${devicesLine(summary)}`;
     case 'error':
       return problem === null ? devicesLine(summary) : `${problem.state.text} in ${problem.label}`;
     case 'empty':
       return 'Share a folder in Syncthing to start';
-    case 'offline':
     case 'stale':
-      return 'Not connected';
+      return devicesLine(summary);
   }
 }
 
 function staleCell(snapshot: SyncthingSnapshot, now: number): SyncCell {
   const caption = staleOf(snapshot.connection, now);
-  const line = caption?.long ?? 'Not connected';
   const connecting = snapshot.connection.state === 'connecting';
   const chip: CellChip = connecting
-    ? { tone: 'info', label: 'Connecting…' }
-    : { tone: 'neutral', label: 'Not reachable' };
+    ? { tone: 'info', label: caption?.short ?? 'Connecting…' }
+    : { tone: 'neutral', label: caption?.short ?? 'Not reachable' };
   return {
     kind: 'stale',
     chip,
     tone: 'neutral',
     ratio: null,
-    line,
+    line: null,
     rates: [],
-    folders: orderedFolders(snapshot.folders).slice(0, RING_FOLDERS).map(folderOf),
+    folders: orderedFolders(snapshot.folders).map(folderOf),
     peers: [],
     problem: null,
     paused: false,
     canAct: false,
-    spoken: `Syncthing, ${chip.label.toLowerCase()}, ${line}`,
-    reason: line,
+    spoken: `Syncthing, ${caption?.long ?? chip.label.toLowerCase()}`,
   };
 }
 
@@ -170,13 +163,12 @@ export function syncCellOf(snapshot: SyncthingSnapshot, now: number): SyncCell {
     ratio: hero.ratio,
     line,
     rates: ratesOf(snapshot, kind),
-    folders: ordered.slice(0, RING_FOLDERS),
-    peers: snapshot.peers.slice(0, MAX_PEERS).map(peerOf),
+    folders: ordered,
+    peers: snapshot.peers.map(peerOf),
     problem,
     paused: kind === 'paused',
     canAct: hero.canAct,
     spoken: `Syncthing, ${chip.label.toLowerCase()}, ${line}`,
-    reason: null,
   };
 }
 

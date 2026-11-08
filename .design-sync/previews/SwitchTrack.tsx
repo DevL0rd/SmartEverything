@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Stage, SwitchTrack } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -8,12 +9,12 @@ const body = (
     <SwitchTrack value mixed />
   </Row>
 );
-export const Tracks = () => (
+export const Tracks = (): ReactElement => (
   <Stage theme="dark" width={320}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={320}>
     {body}
   </Stage>

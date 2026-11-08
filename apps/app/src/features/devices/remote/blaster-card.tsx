@@ -19,23 +19,16 @@ import {
   WideFigure,
   type WideClass,
 } from '../card/wide-card';
+import { UNREACHABLE_REASON } from '../controls/guard';
 import { LogTicker } from '../log/log-ticker';
 import { useBlasterRemotes, type BlasterRemote } from './blaster-remotes';
 import { useClimate, type Climate } from './blaster-climate';
 import { RemoteFace } from './remote-face';
 import { useDeviceRemoteSource } from './remote-source';
 
-const MAX_CHIPS: Readonly<Record<WideClass, number>> = { m: 2, w: 3, l: 8, xl: 8 };
-const SPARK_HEIGHT = 28;
-const PANEL_SPARK_HEIGHT = 48;
+const SPARK_PX: Readonly<Record<WideClass, number>> = { m: 16, w: 28, l: 48, xl: 48 };
 
-function RemoteChips({
-  remotes,
-  cls,
-}: {
-  readonly remotes: readonly BlasterRemote[];
-  readonly cls: WideClass;
-}): ReactNode {
+function RemoteChips({ remotes }: { readonly remotes: readonly BlasterRemote[] }): ReactNode {
   if (remotes.length === 0) {
     return (
       <Text variant="caption" tone="faint" numberOfLines={1}>
@@ -43,25 +36,22 @@ function RemoteChips({
       </Text>
     );
   }
-  const shown = remotes.slice(0, MAX_CHIPS[cls]);
   return (
-    <View className="min-w-0 flex-row items-center justify-end gap-1.5" pointerEvents="none">
-      {shown.map((remote) => (
+    <View
+      className="min-w-0 flex-row flex-wrap items-center justify-end gap-1.5"
+      pointerEvents="none"
+    >
+      {remotes.map((remote) => (
         <View
           key={remote.id}
           className="min-w-0 shrink flex-row items-center gap-1 rounded-full bg-surface-3 px-2 py-0.5"
         >
           <Icon name={remote.icon} size={16} tone="variant" />
-          {cls === 'm' ? null : (
-            <Text variant="caption" tone="variant" numberOfLines={1} className="shrink">
-              {remote.name}
-            </Text>
-          )}
+          <Text variant="caption" tone="variant" numberOfLines={1} className="shrink">
+            {remote.name}
+          </Text>
         </View>
       ))}
-      {remotes.length > shown.length ? (
-        <Text variant="caption" tone="faint">{`+${String(remotes.length - shown.length)}`}</Text>
-      ) : null}
     </View>
   );
 }
@@ -73,20 +63,20 @@ function ClimateGraph({
   readonly device: Device;
   readonly cls: WideClass;
 }): ReactNode {
-  const wide = cls !== 'm';
-  const height = cls === 'l' || cls === 'xl' ? PANEL_SPARK_HEIGHT : SPARK_HEIGHT;
   return (
     <View className="gap-1">
-      <LiveSpark device={device} capability="temperature" colour="temp-warm" height={height} />
-      {wide ? (
-        <LiveSpark device={device} capability="humidity" colour="humidity" height={height} />
-      ) : null}
+      <LiveSpark
+        device={device}
+        capability="temperature"
+        colour="temp-warm"
+        height={SPARK_PX[cls]}
+      />
+      <LiveSpark device={device} capability="humidity" colour="humidity" height={SPARK_PX[cls]} />
     </View>
   );
 }
 
-function figuresOf(climate: Climate, stale: boolean, cls: WideClass): readonly ReactNode[] {
-  const captioned = cls !== 'm';
+function figuresOf(climate: Climate, stale: boolean): readonly ReactNode[] {
   return [
     climate.temperature === null ? null : (
       <WideFigure
@@ -94,7 +84,7 @@ function figuresOf(climate: Climate, stale: boolean, cls: WideClass): readonly R
         value={climate.temperature.toFixed(1)}
         unit="°C"
         stale={stale}
-        {...(captioned ? { caption: 'Temperature' } : {})}
+        caption="Temperature"
       />
     ),
     climate.humidity === null ? null : (
@@ -103,7 +93,7 @@ function figuresOf(climate: Climate, stale: boolean, cls: WideClass): readonly R
         value={climate.humidity.toFixed(0)}
         unit="%"
         stale={stale}
-        {...(captioned ? { caption: 'Humidity' } : {})}
+        caption="Humidity"
       />
     ),
   ].filter((figure) => figure !== null);
@@ -177,20 +167,19 @@ function WideBlaster({
               </Text>
             )
           ) : (
-            <Text variant="footnote" tone="critical" numberOfLines={1}>
-              Not reachable. Check its Wi‑Fi.
+            <Text variant="footnote" tone="critical" numberOfLines={2}>
+              {UNREACHABLE_REASON}
             </Text>
           )
         }
-        figures={figuresOf(climate, !device.online, cls)}
+        figures={figuresOf(climate, !device.online)}
         graph={<ClimateGraph device={device} cls={cls} />}
         actions={device.online ? [<AddRemote key="add" device={device} remotes={remotes} />] : []}
         ticker={
-          panel ? (
-            <LogTicker deviceId={device.id} live={live} />
-          ) : (
-            <RemoteChips remotes={remotes} cls={cls} />
-          )
+          <View className="min-w-0 gap-0.5">
+            <RemoteChips remotes={remotes} />
+            {panel ? <LogTicker deviceId={device.id} live={live} lines={2} /> : null}
+          </View>
         }
       />
     </View>

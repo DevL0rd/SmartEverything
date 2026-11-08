@@ -56,6 +56,8 @@ export const AI_HARNESS_FEATURES = [
   'native-resume',
   'remote-subagents',
   'subagent-send',
+  'subagent-resume',
+  'subagent-attachments',
   'subagent-steer',
 ] as const;
 export const AI_HARNESS_STORAGE_BINDING = z.discriminatedUnion('kind', [

@@ -1,6 +1,6 @@
 ---
 name: smarteverything-image-prompts
-description: "Shapes the prompt before image_gen: the use-case slugs, the shared prompt schema, how much detail to add, best practices and per-use-case tips for new images and edits. Use it after deciding to make or edit an image and before writing the prompt. Not for worked example prompts (smarteverything-image-samples) or choosing the model and calling the tool (smarteverything-images)."
+description: 'Shapes the prompt before image_gen: the use-case slugs, the shared prompt schema, how much detail to add, best practices and per-use-case tips for new images and edits. Use it after deciding to make or edit an image and before writing the prompt. Not for worked example prompts (smarteverything-image-samples) or choosing the model and calling the tool (smarteverything-images).'
 ---
 
 # Image prompts

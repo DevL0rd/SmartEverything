@@ -21,6 +21,7 @@ export interface DeviceSpotlightProps {
   readonly size: WidgetSize;
   readonly editing: boolean;
   readonly frame?: WidgetFrameBox;
+  readonly options?: unknown;
 }
 
 function Body({
@@ -28,16 +29,18 @@ function Body({
   size,
   frame,
   cls,
+  options,
 }: {
   readonly device: Device;
   readonly size: WidgetSize;
   readonly frame: WidgetFrameBox;
   readonly cls: FrameClass;
+  readonly options: unknown;
 }): ReactNode {
   const { family } = deviceModelOf(device);
   const Face = FAMILY_CARDS[family];
   if (Face !== undefined) {
-    return <Face device={device} cls={cls} frame={frame} size={size} />;
+    return <Face device={device} cls={cls} frame={frame} size={size} options={options} />;
   }
   const registered = renderFamilyFace(family, device, cls);
   if (registered !== null) {
@@ -51,6 +54,7 @@ function DeviceSpotlightCard({
   size,
   editing,
   frame,
+  options,
 }: Omit<DeviceSpotlightProps, 'deviceId' | 'frame'> & {
   readonly device: Device;
   readonly frame: WidgetFrameBox;
@@ -65,7 +69,7 @@ function DeviceSpotlightCard({
       padded
     >
       {plugin === undefined ? (
-        <Body device={device} size={size} frame={frame} cls={cls} />
+        <Body device={device} size={size} frame={frame} cls={cls} options={options} />
       ) : (
         (plugin.cell?.(device, frame, size) ?? plugin.render(device, size, true))
       )}

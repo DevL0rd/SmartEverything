@@ -70,8 +70,6 @@ function historyOf(shared: Shared, services: DiscordServices): History {
       perChannel: settings.context_per_channel,
       contentIntent: settings.message_content_intent,
     },
-    reuseMinutes: () => shared.ctx.assistant.settings().reuseChatMinutes,
-    now: Date.now,
     report: shared.report,
   });
 }
@@ -131,6 +129,7 @@ function gatewayOf(shared: Shared, base: Base): Gateway {
     guildNames,
     typing,
     post,
+    emit: ctx.events.emit,
     report,
     refused: shared.refused,
   });

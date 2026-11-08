@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { CountPill, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -9,12 +10,12 @@ const body = (
     <CountPill count={128} />
   </Row>
 );
-export const Counts = () => (
+export const Counts = (): ReactElement => (
   <Stage theme="dark" width={420}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     {body}
   </Stage>

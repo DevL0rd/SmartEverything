@@ -25,6 +25,8 @@ import { useScheduledRows } from './use-scheduled';
 import { upcomingOf } from './view';
 import { weekOf, type Day, type OneOff, type TimedRule } from './week';
 
+const DAY_MIN_WIDTH = 240;
+
 function dateOf(day: Date, timeZone: string): string {
   return dateFormat({ weekday: 'short', day: 'numeric', month: 'short', timeZone }).format(day);
 }
@@ -40,7 +42,7 @@ function RunLine({ run, place }: { readonly run: Upcoming; readonly place: Place
       <Text variant="label" tone="primary">
         {clock(run.at, place.timeZone)}
       </Text>
-      <Text variant="body" numberOfLines={1} className="flex-1">
+      <Text variant="body" numberOfLines={2} className="flex-1">
         {run.name}
       </Text>
     </Interactive>
@@ -59,7 +61,7 @@ function OneOffLine({ run, place }: { readonly run: OneOff; readonly place: Plac
         {clock(run.at, place.timeZone)}
       </Text>
       <Icon name="timer" size={16} tone="variant" />
-      <Text variant="body" tone="variant" numberOfLines={1} className="flex-1">
+      <Text variant="body" tone="variant" className="min-w-0 flex-1">
         {run.title}
       </Text>
     </Interactive>
@@ -102,11 +104,12 @@ function Week({
   readonly place: Place;
 }): ReactNode {
   const [value, setValue] = useState(() => new Date());
+  const days = weekOf(value, rules, scheduled, place);
   return (
     <>
       <DateNav value={value} range="week" onChange={setValue} />
-      <Grid minItemWidth={180}>
-        {weekOf(value, rules, scheduled, place).map((day) => (
+      <Grid minItemWidth={DAY_MIN_WIDTH} maxColumns={days.length} stretchLastRow={false}>
+        {days.map((day) => (
           <DayCard key={day.key} day={day} place={place} />
         ))}
       </Grid>
@@ -150,7 +153,7 @@ function ScheduleBody(): ReactNode {
 
 export function ScheduleScreen(): ReactNode {
   return (
-    <Screen maxWidth="dashboard" header={<PageHeader title="Week view" />}>
+    <Screen header={<PageHeader title="Week view" />}>
       <ScheduleBody />
     </Screen>
   );

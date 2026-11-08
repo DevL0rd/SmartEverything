@@ -7,13 +7,13 @@ import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { SwitchRow } from '../../../components/rows';
 import { SearchField } from '../../../components/search-field';
-import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
-import { plural } from '../../../format/text';
+import { joinParts, plural } from '../../../format/text';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { changePlugin } from '../data/plugin-actions';
 import { usePluginTools } from '../data/plugin-queries';
+import { PluginListLoading } from './plugin-list-loading';
 import { MissingPlugin, usePluginParam } from './plugin-screen';
 import { background } from '@smarteverything/logging';
 
@@ -43,10 +43,13 @@ function ToolRow({
   readonly row: PluginRow;
   readonly tool: PluginToolRow;
 }): ReactNode {
+  const reach = reachOf(tool);
   return (
     <SwitchRow
       title={tool.title}
-      subtitle={reachOf(tool)}
+      wrapTitle
+      label={joinParts([tool.title, reach, tool.name === tool.title ? null : tool.name])}
+      subtitle={reach}
       value={tool.enabled}
       onChange={(on) => {
         background(
@@ -69,21 +72,24 @@ function ToolList({ row }: { readonly row: PluginRow }): ReactNode {
   }
   if (tools.isError) {
     return (
-      <ErrorState
-        error={tools.error}
-        retry={() => {
-          background(tools.refetch(), 'tools.refetch_failed');
-        }}
-      />
+      <View className="mx-gutter">
+        <ErrorState
+          error={tools.error}
+          retry={() => {
+            background(tools.refetch(), 'tools.refetch_failed');
+          }}
+        />
+      </View>
     );
   }
   if (tools.data === undefined) {
-    return <Skeleton shape="block" className="mx-gutter h-56" />;
+    return <PluginListLoading label="Loading plugin tools" />;
   }
   const shown = matching(tools.data, deferred);
+  const title = shown.length === 0 ? null : plural(shown.length, 'tool');
   return (
     <VirtualList
-      sections={[{ key: 'all', title: plural(shown.length, 'tool'), data: shown }]}
+      sections={[{ key: 'all', title, data: shown }]}
       keyOf={(tool) => tool.name}
       renderItem={(tool) => <ToolRow row={row} tool={tool} />}
       header={
@@ -122,7 +128,9 @@ export function PluginToolsScreen({
       scroll={false}
       trail={[{ label: row.manifest.name, href: href.pluginSettings(row.id) }]}
     >
-      <ToolList row={row} />
+      <View className="w-full max-w-reading flex-1 self-start">
+        <ToolList row={row} />
+      </View>
     </SettingsFrame>
   );
 }

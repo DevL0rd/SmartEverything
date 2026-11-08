@@ -1,6 +1,6 @@
 ---
 name: smarteverything-computers
-description: "Reads and controls a computer: load and temperatures, sound, screens, power, Wi-Fi, Bluetooth, services, apps and windows, tiling, running programs, files and downloads, pointer and keyboard. Use for “what is using my CPU”, “turn the volume down on my PC”, “close Firefox” or “find that PDF on my laptop”. Not for code (smarteverything-coding-process), the app’s browser pane (smarteverything-browser) or chats and machines (smarteverything-chats)."
+description: 'Reads and controls a computer: load and temperatures, sound, screens, power, Wi-Fi, Bluetooth, services, apps and windows, tiling, running programs, files and downloads, pointer and keyboard. Use for “what is using my CPU”, “turn the volume down on my PC”, “close Firefox” or “find that PDF on my laptop”. Not for code (smarteverything-coding-process), the app’s browser pane (smarteverything-browser) or chats and machines (smarteverything-chats).'
 ---
 
 # Computers
@@ -33,6 +33,6 @@ Names, actions and fields come from `tool_read`; the reads give the values to us
 
 When a computer runs Konveyor, `computer_read` view tiling shows its screens, workspaces, columns and every window with its numeric `windowId` (not the string id of the windows view). Arrange them with the `changeComputerTiling` operation through `operation_call` (read its input with `tool_read`); a workspace is its position on the focused screen or its name, and the column actions act on the focused column, so focus a window of that column first. The answer is the layout after the change.
 
-## The hub's own shell
+## File and shell access
 
-The owner's chats can use native file and shell tools on the hub's machine without selecting a computer. That shell can do anything the owner could, including stopping the hub; only the typed computer tools refuse, and nothing inspects shell commands. Do not use the shell to stop, restart or kill the hub's own service or process: the person does that from the hub's page. For code load `smarteverything-coding-process`; for webpages and showing pages load `smarteverything-browser`.
+In the SmartEverything harness, local file and shell tools run on the chat's current execution machine when the owner has enabled access. In a Claude or Codex chat, local tools use the selected native runtime and follow its permissions. A central managed project uses the granted project tools for file access. The person stops or restarts the hub's own service from the hub's page. For code load `smarteverything-coding-process`. For webpages and showing pages load `smarteverything-browser`.

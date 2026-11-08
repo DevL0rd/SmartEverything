@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import type { AutomationRowV3, AutomationV3, TriggerNode } from '@smarteverything/domain';
+import type { AutomationV3, FlowNode, TriggerNode } from '@smarteverything/domain';
+import type { AutomationRow } from '../../data/graph-adapter';
 
-export type ConsumerRow = Pick<AutomationRowV3, 'id' | 'name' | 'enabled' | 'definition'>;
+export type ConsumerRow = Pick<AutomationRow, 'id' | 'name' | 'enabled' | 'definition'>;
 
 export function activeTriggers(program: AutomationV3): readonly TriggerNode[] {
   return program.triggers.filter((trigger) => trigger.enabled !== false);
@@ -20,4 +21,15 @@ const RECORD = z.record(z.string(), z.unknown());
 export function recordOf(value: unknown): Readonly<Record<string, unknown>> | undefined {
   const parsed = RECORD.safeParse(value);
   return parsed.success ? parsed.data : undefined;
+}
+
+function stringsOf(value: unknown): readonly string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
+export function targetsDevice(node: FlowNode, deviceId: string): boolean {
+  const target = recordOf(literalOf(node.ports ?? {}, 'target'));
+  return target?.['device'] === deviceId || stringsOf(target?.['devices']).includes(deviceId);
 }

@@ -81,7 +81,7 @@ function SaveBar({
 }): ReactNode {
   const { width } = useSizeClass();
   return (
-    <View className="w-full max-w-reading flex-row justify-end self-center">
+    <View className="w-full flex-row justify-end">
       <Button
         label={label}
         icon="check"
@@ -107,10 +107,10 @@ function Editor({
   const saveLabel = savedId === null ? 'Schedule' : 'Save';
   return (
     <Screen
-      maxWidth="reading"
       header={
         <PageHeader
           title={title}
+          titleLines="wrap"
           actions={
             touch ? [] : [{ icon: 'check', label: saveLabel, primary: true, onPress: editor.save }]
           }
@@ -118,14 +118,20 @@ function Editor({
       }
       {...(touch ? { footer: <SaveBar editor={editor} label={saveLabel} /> } : {})}
     >
-      <TextField
-        label="Name (optional)"
-        value={editor.draft.label}
-        placeholder="Fan off after my shower"
-        onChange={editor.setLabel}
-      />
-      <WhenBlock editor={editor} />
-      <StepsBlock editor={editor} />
+      <View className="flex-row flex-wrap gap-section-gap">
+        <View className="min-w-0 max-w-reading grow shrink basis-80 gap-section-gap">
+          <TextField
+            label="Name (optional)"
+            value={editor.draft.label}
+            placeholder="Fan off after my shower"
+            onChange={editor.setLabel}
+          />
+          <WhenBlock editor={editor} />
+        </View>
+        <View className="min-w-0 max-w-reading grow shrink basis-80">
+          <StepsBlock editor={editor} />
+        </View>
+      </View>
     </Screen>
   );
 }

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useDeferredValue, useState } from 'react';
 import { View } from 'react-native';
 import type { PluginOption, PluginRow } from '@smarteverything/domain';
@@ -12,7 +12,7 @@ import { Sheet } from '../../../components/sheet';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { selectionTick } from '../../../platform/haptics';
-import { useOptionPages } from '../data/option-queries';
+import { pluginOptionFeed, useOptionPages } from '../data/option-queries';
 import { OptionVisual } from './option-visual';
 
 export interface OptionPickerProps {
@@ -24,6 +24,7 @@ export interface OptionPickerProps {
   readonly multiple: boolean;
   readonly onPick: (option: PluginOption) => void;
   readonly onClose: () => void;
+  readonly opener?: RefObject<View | null>;
 }
 
 function OptionRow({
@@ -65,10 +66,12 @@ function OptionRow({
   );
 }
 
-type ResultsProps = Omit<OptionPickerProps, 'title' | 'onClose'> & { readonly search: string };
+type ResultsProps = Omit<OptionPickerProps, 'title' | 'onClose' | 'opener'> & {
+  readonly search: string;
+};
 
 function Results({ row, source, noun, chosen, multiple, onPick, search }: ResultsProps): ReactNode {
-  const pages = useOptionPages(row, source, search, true);
+  const pages = useOptionPages(pluginOptionFeed(row, source), search, true);
   if (pages.unavailable !== null) {
     return (
       <EmptyState
@@ -118,6 +121,7 @@ export function OptionPickerSheet(props: OptionPickerProps): ReactNode {
       open
       onClose={props.onClose}
       title={props.title}
+      subpage={props.opener === undefined ? false : { opener: props.opener }}
       detents={['half', 'full']}
       footer={<Button label="Done" onPress={props.onClose} />}
     >

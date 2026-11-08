@@ -53,6 +53,10 @@ export interface PrintPorts {
       caller: ToolCaller,
       id: string,
     ) => Promise<{ data: Buffer; name: string } | null>;
+    readonly fromPicture: (
+      caller: ToolCaller,
+      pictureId: string,
+    ) => Promise<{ data: Buffer; name: string } | null>;
     readonly attachmentsOf: (chatId: string) => readonly string[];
     readonly fromMachine: (
       caller: ToolCaller,
@@ -97,6 +101,12 @@ async function rawFile(
       throw new PrinterError('not_authorized', 'That upload is not yours to print.');
     return file;
   }
+  if (source.kind === 'picture') {
+    const file = await ports.files.fromPicture(caller, source.pictureId);
+    if (file === null)
+      throw new PrinterError('not_authorized', 'That picture does not exist or is not yours.');
+    return file;
+  }
   if (source.kind === 'machine') {
     const file = await ports.files.fromMachine(caller, {
       machine: source.machine,
@@ -106,22 +116,30 @@ async function rawFile(
       throw new PrinterError('not_authorized', 'That computer cannot be read for printing.');
     return file;
   }
+  return attachmentFile(ports, caller, source.name);
+}
+
+async function attachmentFile(
+  ports: PrintPorts,
+  caller: ToolCaller,
+  name: string,
+): Promise<{ data: Uint8Array; name: string }> {
   if (caller.chatId === null)
     throw new PrinterError('not_authorized', 'There is no chat to take an attachment from.');
   const matches = ports.files
     .attachmentsOf(caller.chatId)
-    .filter((candidate) => basename(candidate) === source.name);
+    .filter((candidate) => basename(candidate) === name);
   const [path] = matches;
   if (path === undefined)
-    throw new PrinterError('not_authorized', `This chat has no attachment named ${source.name}.`);
+    throw new PrinterError('not_authorized', `This chat has no attachment named ${name}.`);
   if (matches.length > 1) {
     throw new PrinterError(
       'ambiguous_file',
-      `This chat has ${String(matches.length)} attachments named ${source.name}..`,
-      { name: source.name, matches: matches.length },
+      `This chat has ${String(matches.length)} attachments named ${name}..`,
+      { name, matches: matches.length },
     );
   }
-  return { data: await ports.files.readAttachment(path), name: source.name };
+  return { data: await ports.files.readAttachment(path), name };
 }
 
 function sizeOf(name: string): { widthPoints: number; heightPoints: number } {

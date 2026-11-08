@@ -13,9 +13,7 @@ export function browserCapability(): BrowserCapability {
 }
 export function BrowserSurface(props: BrowserSurfaceProps): ReactNode {
   const available =
-    props.target.kind === 'project'
-      ? androidHtmlPreview.supported()
-      : androidBrowserProfileReady();
+    props.target.kind === 'project' ? androidHtmlPreview.supported() : androidBrowserProfileReady();
   if (!available) return <Text>{LIMITATION}</Text>;
   return <NativeBrowserSurface {...props} />;
 }

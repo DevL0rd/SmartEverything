@@ -4,6 +4,7 @@ import {
   ipcMain,
   type BrowserWindow,
   type IpcMainInvokeEvent,
+  type WebContents,
   type WebContentsView,
 } from 'electron';
 import {
@@ -12,6 +13,7 @@ import {
   BrowserPolicyError,
   browserAllows,
   type BrowserCommand,
+  type BrowserConsoleEvent,
   type BrowserPageDriver,
   type BrowserTarget,
 } from '@smarteverything/domain';
@@ -19,6 +21,7 @@ import { NATIVE_BROWSER_PAGE_REQUEST } from '@smarteverything/domain';
 import { electronPageDriver, performPageOperation } from './browser-page.js';
 import { confineBrowserView, createBrowserView } from './browser-session.js';
 import { isAppOrigin } from './origin.js';
+import { clearBrowserSiteStorage } from './browser-site-storage.js';
 
 const log = new Logger('desktop.browser');
 const failures = new WeakMap<WebContentsView, string>();
@@ -27,13 +30,14 @@ interface Page {
   readonly view: WebContentsView;
   readonly target: BrowserTarget;
   readonly driver: BrowserPageDriver;
+  readonly ready: Promise<void>;
 }
 export function registerBrowser(window: BrowserWindow, startUrl: string): void {
   registerHtmlPreviewIpc(window, startUrl);
   const pages = new Map<string, Page>();
   ipcMain.handle('desktop:browser', (event, value: unknown) => {
     assertMainFrame(event, window, startUrl, 'Browser commands');
-    apply(window, pages, BROWSER_COMMAND.parse(value));
+    return apply(window, pages, BROWSER_COMMAND.parse(value), startUrl);
   });
   ipcMain.handle('desktop:browser-page', async (event, value: unknown) => {
     assertMainFrame(event, window, startUrl, 'Page actions');
@@ -84,18 +88,23 @@ function emit(window: BrowserWindow, page: Page, problem: string | null): void {
     problem,
   });
 }
-function create(window: BrowserWindow, target: BrowserTarget): Page {
+function create(window: BrowserWindow, target: BrowserTarget, startUrl: string): Page {
   if (!browserAllows(target, target.url))
     throw new BrowserPolicyError('Browser target has an invalid origin.');
-  const view = createBrowserView(target, window.webContents.id);
+  const { view, ready } = createBrowserView(target, window.webContents.id);
   const page = {
     target,
     view,
+    ready,
     driver: electronPageDriver(view.webContents),
   };
   page.view.setVisible(false);
   window.contentView.addChildView(page.view);
   const contents = page.view.webContents;
+  captureConsole(contents, target.id, (event) => {
+    if (window.isDestroyed() || !isAppOrigin(window.webContents.getURL(), startUrl)) return;
+    window.webContents.send('desktop:browser-console', event);
+  });
   confineBrowserView(contents, target, {
     blocked: (problem) => {
       emit(window, page, problem);
@@ -127,6 +136,19 @@ function create(window: BrowserWindow, target: BrowserTarget): Page {
   openPage(window, page);
   return page;
 }
+
+function captureConsole(
+  contents: WebContents,
+  id: string,
+  publish: (event: BrowserConsoleEvent) => void,
+): void {
+  contents.on('console-message', ({ level, message, sourceId, lineNumber }) => {
+    publish({ kind: 'message', id, level, message, source: sourceId, line: lineNumber });
+  });
+  contents.on('did-start-navigation', ({ isMainFrame, isSameDocument }) => {
+    if (isMainFrame && !isSameDocument) publish({ kind: 'navigation', id });
+  });
+}
 function announceRetired(window: BrowserWindow, id: string): void {
   window.webContents.send('desktop:browser-status', {
     id,
@@ -140,22 +162,36 @@ function announceRetired(window: BrowserWindow, id: string): void {
 function openPage(window: BrowserWindow, page: Page): void {
   const contents = page.view.webContents;
   const target = page.target;
-  void contents
-    .loadURL(target.url)
+  void page.ready
+    .then(() => contents.loadURL(target.url))
     .catch((cause: unknown) => {
       log.error('browser.load_failed', cause);
       emit(window, page, 'The page could not be loaded.');
     });
 }
-function apply(window: BrowserWindow, pages: Map<string, Page>, command: BrowserCommand): void {
+function apply(
+  window: BrowserWindow,
+  pages: Map<string, Page>,
+  command: BrowserCommand,
+  startUrl: string,
+): void | Promise<void> {
   if (command.kind === 'open') {
     if (pages.has(command.target.id))
       throw new BrowserPolicyError('Browser context already exists.');
-    pages.set(command.target.id, create(window, command.target));
+    pages.set(command.target.id, create(window, command.target, startUrl));
     return;
   }
   const page = pages.get(command.id);
   if (page === undefined) throw new BrowserPolicyError('Browser context is no longer available.');
+  if (command.kind === 'clear-site-storage') {
+    const contents = page.view.webContents;
+    return clearBrowserSiteStorage(
+      page.target,
+      contents.getURL(),
+      command.origin,
+      contents.session,
+    );
+  }
   if (command.kind === 'layout') {
     page.view.setBounds(command.bounds);
     page.view.setVisible(command.visible);
@@ -173,6 +209,7 @@ function apply(window: BrowserWindow, pages: Map<string, Page>, command: Browser
   action(window, page, command.action);
   if (command.action === 'destroy') pages.delete(command.id);
 }
+
 function action(
   window: BrowserWindow,
   page: Page,

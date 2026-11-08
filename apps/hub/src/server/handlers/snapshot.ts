@@ -9,6 +9,7 @@ import {
   type ClientRow,
   type EventRow,
   type OwnerSnapshotTables,
+  type DriveRoot,
   type SnapshotTables,
 } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
@@ -21,6 +22,7 @@ import { bound } from '../router';
 import { channelHidden, presenceInScope, scopesOfClient } from '../person-scope';
 import { bodyTables } from '../person-privacy';
 import { reachableSnapshot } from '../snapshot-reach';
+import { driveScopeVisible } from '../live-access';
 import { wireMessages } from '../../assistant/wire-message';
 import { DAY_MS } from '../../metrics/minute';
 
@@ -53,6 +55,10 @@ function homeTables(
   };
 }
 
+function visibleDriveRoots(store: Store, { client, profileId }: Viewer): DriveRoot[] {
+  return store.driveRoots.list().filter((root) => driveScopeVisible(client.role, profileId, root));
+}
+
 interface Viewer {
   readonly client: ClientRow;
   readonly profileId: string;
@@ -64,6 +70,36 @@ function snapshotEvents(store: Store, { client, profileId }: Viewer): EventRow[]
     { role: client.role, profileId },
     store.events.list({ limit: SNAPSHOT_WINDOWS.events }),
   );
+}
+
+type PlannerSnapshot = Pick<
+  SnapshotTables,
+  | 'planner_collections'
+  | 'planner_items'
+  | 'planner_occurrences'
+  | 'planner_alarms'
+  | 'planner_timers'
+  | 'planner_stopwatches'
+  | 'google_accounts'
+>;
+
+function present<Row>(row: Row | undefined): Row[] {
+  return row === undefined ? [] : [row];
+}
+
+export function plannerTablesOf(store: Store, { client, profileId }: Viewer): PlannerSnapshot {
+  const people =
+    client.role === 'owner' ? store.profiles.list().map((profile) => profile.id) : [profileId];
+  const items = people.flatMap((person) => store.plannerItems.list(person));
+  return {
+    planner_collections: people.flatMap((person) => store.plannerCollections.list(person)),
+    planner_items: items,
+    planner_occurrences: store.plannerOccurrences.forItems(items.map((item) => item.id)),
+    planner_alarms: people.flatMap((person) => store.plannerAlarms.list(person)),
+    planner_timers: people.flatMap((person) => store.plannerTimers.list(person)),
+    planner_stopwatches: people.flatMap((person) => present(store.plannerStopwatch.find(person))),
+    google_accounts: people.flatMap((person) => present(store.googleAccounts.find(person))),
+  };
 }
 
 interface SnapshotExtras {
@@ -88,6 +124,7 @@ function unfilteredTablesOf(
     scenes: store.scenes.list(),
     automations: store.automations.list(),
     automation_values: store.automationValues.list(),
+    automation_plugin_kinds: store.pluginKinds.all(),
     automation_runs: store.automationRunRecords.summaries(null, SNAPSHOT_WINDOWS.automationRuns),
     provider_links: store.providers.list(),
     ir_remotes: store.infrared.remotes(),
@@ -108,9 +145,14 @@ function unfilteredTablesOf(
       ),
     ),
     ...bodyTables(store, { role: client.role, profileId }),
+    ...plannerTablesOf(store, { client, profileId }),
     scheduled_actions: store.schedules.list(),
     plugin_streams: store.pluginData.streams(),
     plugin_ui: store.plugins.ui(),
+    drive_roots: visibleDriveRoots(store, { client, profileId }),
+    model_assets: store.modelAssets.all(),
+    model_catalog: store.modelCatalog.all(),
+    model_overrides: store.modelOverrides.all(),
     exchange_rates: store.exchangeRates.read(),
     ...(extras.weather ? { weather: store.weather.read() } : {}),
   };

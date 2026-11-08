@@ -1,14 +1,13 @@
 import {
   ApiError,
-  NODE_REGISTRY,
   targetCapability,
-  programNodes,
   signalTriggerError,
   type AutomationAuthor,
-  type AutomationV3,
+  type AutomationV4,
   type DeviceRow,
-  type FlowNode,
+  type GraphNode,
   type JsonValue,
+  type NodeKindLookup,
   type PluginOrigin,
 } from '@smarteverything/domain';
 import type { Manifest } from '@smarteverything/flow/compile/manifest';
@@ -26,7 +25,7 @@ import type { Store } from '../store/store';
 const SIGNAL_KIND = 'trigger.signal';
 const TOOL_KIND = 'tool.call';
 
-function literalOf(node: Pick<FlowNode, 'ports'>, port: string): JsonValue | undefined {
+function literalOf(node: Pick<GraphNode, 'ports'>, port: string): JsonValue | undefined {
   const value = node.ports?.[port];
   return value !== undefined && 'lit' in value ? value.lit : undefined;
 }
@@ -44,10 +43,14 @@ export function requireOwnerForManifest(caller: Caller, manifest: Manifest): voi
   }
 }
 
-export function requireOwnerForTriggers(caller: Caller, program: AutomationV3): void {
+export function requireOwnerForTriggers(
+  caller: Caller,
+  program: AutomationV4,
+  kinds: NodeKindLookup,
+): void {
   if (roleOfCaller(caller) === 'owner') return;
   const [owned] = program.triggers.flatMap((trigger) => {
-    const kind = NODE_REGISTRY.get(trigger.kind);
+    const kind = kinds.get(trigger.kind);
     return kind?.access === 'owner' ? [kind.name] : [];
   });
   if (owned !== undefined) {
@@ -101,7 +104,7 @@ export function requireReachableTargets(store: Store, caller: Caller, manifest: 
   requirePhoneAccess(store, caller, devices, manifest.uses.control);
 }
 
-export function requireKnownSignals(store: Store, program: AutomationV3): void {
+export function requireKnownSignals(store: Store, program: AutomationV4): void {
   const sources = installedSignalSources(store);
   for (const trigger of program.triggers) {
     const source = literalOf(trigger, 'source');
@@ -128,11 +131,11 @@ export function authorOf(store: Store, caller: Caller): AutomationAuthor {
 export function originOf(
   tools: Pick<ToolHub, 'pluginTurnRefusal'>,
   caller: Caller,
-  program: AutomationV3,
+  program: AutomationV4,
 ): PluginOrigin | null {
   const plugin = caller.kind === 'client' ? pluginOriginOf(caller) : null;
   if (plugin === null) return null;
-  for (const node of programNodes(program).filter((candidate) => candidate.kind === TOOL_KIND)) {
+  for (const node of program.nodes.filter((candidate) => candidate.kind === TOOL_KIND)) {
     const name = literalOf(node, 'tool');
     const args = literalOf(node, 'args');
     const refusal =

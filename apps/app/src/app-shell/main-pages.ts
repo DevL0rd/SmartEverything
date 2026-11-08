@@ -7,9 +7,13 @@ export const MAIN_PAGES = [
   { tab: 'devices', settings: 'devices', title: 'Devices' },
   { tab: 'cameras', settings: 'cameras', title: 'Cameras' },
   { tab: 'fitness', settings: 'health', title: 'Fitness' },
+  { tab: 'planner', settings: 'planner', title: 'Planner' },
+  { tab: 'clock', settings: 'planner', title: 'Clock' },
   { tab: 'assistant', settings: 'assistant', title: 'Assistant' },
   { tab: 'talk', settings: 'talk', title: 'Walkie-talkie' },
   { tab: 'automations', settings: 'automations', title: 'Automations' },
+  { tab: 'photos', settings: 'photos', title: 'Photos' },
+  { tab: 'drive', settings: 'drive', title: 'Drive' },
 ] as const;
 
 export type MainPageKey = (typeof MAIN_PAGES)[number]['tab'];

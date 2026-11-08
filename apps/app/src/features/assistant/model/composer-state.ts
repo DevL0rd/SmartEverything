@@ -2,15 +2,17 @@ import type { EngineKind } from '@smarteverything/domain';
 
 export type SendMode = 'idle' | 'send' | 'uploading' | 'stop' | 'queue' | 'steer' | 'blocked';
 
-const STEERING_ENGINES: ReadonlySet<EngineKind> = new Set(['dsh', 'openrouter', 'claude']);
+const STEERING_ENGINES: ReadonlySet<EngineKind> = new Set(['dsh', 'claude']);
 
 export function engineSteersTurns(kind: EngineKind): boolean {
   return STEERING_ENGINES.has(kind);
 }
 
 export interface Quote {
+  readonly messageId: string;
   readonly who: string;
   readonly text: string;
+  readonly helperChatId?: string | undefined;
 }
 
 export interface SendFacts {
@@ -28,7 +30,7 @@ export interface UploadFacts {
 }
 
 export type StatusKind =
-  'engine' | 'profile' | 'attachment' | 'failedUpload' | 'uploading' | 'offline';
+  'engine' | 'profile' | 'attachment' | 'failedUpload' | 'uploading' | 'offline' | 'helper';
 
 export interface ComposerStatus {
   readonly kind: StatusKind;
@@ -45,8 +47,6 @@ export interface StatusFacts {
 }
 
 export const OFFLINE_STATUS = 'Offline · Messages send when your hub is back';
-
-const QUOTE_LINES_MAX = 6;
 
 const EXPAND_LINES = 4;
 
@@ -111,15 +111,6 @@ export function statusOf(facts: StatusFacts): ComposerStatus | null {
     return { kind: 'uploading', text: armedText(facts.armedUploads) };
   }
   return facts.offline ? { kind: 'offline', text: OFFLINE_STATUS } : null;
-}
-
-export function quotedText(text: string, quote: Quote | null): string {
-  if (quote === null) {
-    return text;
-  }
-  const lines = quote.text.trim().split('\n').slice(0, QUOTE_LINES_MAX);
-  const block = lines.map((line) => `> ${line}`).join('\n');
-  return `${block}\n\n${text}`;
 }
 
 export interface SendEffects {

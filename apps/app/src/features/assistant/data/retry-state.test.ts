@@ -28,6 +28,7 @@ function message(
     steps: [],
     step_states: [],
     reply_to: null,
+    quote: null,
     chat_id: chat,
     origin: null,
     embeds: [],

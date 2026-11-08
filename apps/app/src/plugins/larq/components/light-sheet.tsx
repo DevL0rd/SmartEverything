@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { BottomSheet } from '../../../components/bottom-sheet';
+import { Sheet } from '../../../components/sheet';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { useColour } from '../../../design/colour';
@@ -44,7 +44,7 @@ export function LightSheet({
   readonly onClose: () => void;
 }): ReactNode {
   return (
-    <BottomSheet
+    <Sheet
       open={open}
       onClose={onClose}
       title="The light on the cap"
@@ -56,6 +56,6 @@ export function LightSheet({
           <Row key={`${item.colour}-${item.pattern}-${item.meaning}`} item={item} />
         ))}
       </View>
-    </BottomSheet>
+    </Sheet>
   );
 }

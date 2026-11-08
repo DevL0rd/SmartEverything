@@ -3,6 +3,7 @@ import type { CameraReach } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { settingsTrail } from '../../../settings/tree';
 import { EmptyState } from '../../../components/empty-state';
+import { ListRow } from '../../../components/list-row';
 import { PageHeader } from '../../../components/page-header';
 import { NavRow } from '../../../components/rows';
 import { Screen } from '../../../components/screen';
@@ -71,9 +72,11 @@ export function CamerasSettingsScreen(): ReactNode {
       ) : (
         <List title="Your cameras" inset>
           {entries.map((entry) => (
-            <NavRow
+            <ListRow
               key={entry.device.id}
               title={entry.name}
+              wrapTitle
+              chevron
               subtitle={summaryOf(entry)}
               icon="cameras"
               href={href.settings.camera(entry.device.id)}

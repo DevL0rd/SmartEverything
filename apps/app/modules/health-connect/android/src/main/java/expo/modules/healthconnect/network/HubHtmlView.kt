@@ -4,6 +4,7 @@ import android.content.Context
 import android.webkit.WebView
 import android.webkit.WebSettings
 import android.webkit.CookieManager
+import android.webkit.ConsoleMessage
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 import expo.modules.kotlin.viewevent.EventDispatcher
@@ -11,6 +12,7 @@ import expo.modules.kotlin.viewevent.EventDispatcher
 class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   override val shouldUseAndroidLayout = true
   private val onStatus by EventDispatcher<Map<String, Any?>>()
+  private val onConsole by EventDispatcher<Map<String, Any?>>()
   private val page = WebView(context)
   private var policy: HubBrowserPolicy? = null
   @Volatile private var projectProfile: HubHtmlProfile? = null
@@ -19,6 +21,7 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
   @Volatile private var authorizedUrl = ""
   @Volatile private var fence: (() -> Unit)? = null
   @Volatile private var projectOrigin: String? = null
+  @Volatile private var serverPage = false
   private var browserId = ""
   @Volatile private var source: String? = null
   private var detach: (() -> Unit)? = null
@@ -40,10 +43,10 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     }
     CookieManager.getInstance().setAcceptThirdPartyCookies(page, false)
     page.webViewClient = HubHtmlViewClient(this)
-    page.webChromeClient = HubHtmlViewChrome()
+    page.webChromeClient = HubHtmlViewChrome(::console)
     page.setDownloadListener { _, _, _, _, _ -> status(false, "Downloads are blocked in this browser.") }
   }
-  fun bind(id: String, url: String, origin: String, cookie: String, profileId: String, check: () -> Unit, detached: () -> Unit) {
+  fun bind(id: String, url: String, origin: String, cookie: String, profileId: String, server: Boolean, check: () -> Unit, detached: () -> Unit) {
     check(!active) { "HTML view is already bound" }
     check.invoke()
     check(projectProfile == null) { "Project preview profile is already owned" }
@@ -55,6 +58,7 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
       access.bind(id)
       authorizedUrl = url
       projectOrigin = origin
+      serverPage = server
       fence = check
       detach = detached
       active = true
@@ -88,7 +92,7 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
   }
   fun displayed(value: Boolean) { page.visibility = if (value) android.view.View.VISIBLE else android.view.View.INVISIBLE }
   fun allowsRequest(url: String, method: String, mainFrame: Boolean): Boolean {
-    if (allows(url)) return policy != null || method in listOf("GET", "HEAD")
+    if (allows(url)) return policy != null || serverPage || method in listOf("GET", "HEAD")
     if (!active || mainFrame || projectOrigin == null || method !in listOf("GET", "HEAD")) return false
     return runCatching {
       (projectProfile ?: error("HTML page has no owned profile")).check()
@@ -140,8 +144,23 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
   fun forward() { owned(); if (page.canGoForward()) page.goForward() }
   fun status(loading: Boolean, problem: String?) {
     if (browserId.isEmpty()) return
-    onStatus(mapOf("id" to browserId, "url" to (if (policy == null) authorizedUrl else (page.url ?: authorizedUrl)), "loading" to loading,
+    onStatus(mapOf("id" to browserId, "url" to (if (policy != null || serverPage) page.url ?: authorizedUrl else authorizedUrl), "loading" to loading,
       "back" to (active && page.canGoBack()), "forward" to (active && page.canGoForward()), "problem" to problem))
+  }
+  fun consoleNavigation() {
+    if (active) onConsole(mapOf("kind" to "navigation", "id" to browserId))
+  }
+  private fun console(entry: ConsoleMessage) {
+    if (!active) return
+    val level = when (entry.messageLevel()) {
+      ConsoleMessage.MessageLevel.TIP -> "info"
+      ConsoleMessage.MessageLevel.LOG -> "log"
+      ConsoleMessage.MessageLevel.WARNING -> "warning"
+      ConsoleMessage.MessageLevel.ERROR -> "error"
+      ConsoleMessage.MessageLevel.DEBUG -> "debug"
+    }
+    onConsole(mapOf("kind" to "message", "id" to browserId, "level" to level,
+      "message" to entry.message(), "source" to entry.sourceId(), "line" to entry.lineNumber()))
   }
   fun retire() {
     access.close()

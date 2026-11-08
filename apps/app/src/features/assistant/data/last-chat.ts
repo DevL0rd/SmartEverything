@@ -2,6 +2,7 @@ import type { AiChatRow } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { localPref, setLocalPref, useLocalPref } from '../../../store/local-prefs';
 import { useSyncStatus } from '../../../store/selectors';
+import { appChatHistoryOnly } from '../chats/chat-visibility';
 import { useAiChat } from './chat-store';
 
 const log = new Logger('app.assistant');
@@ -13,7 +14,7 @@ export type LastChat =
   | { readonly kind: 'gone'; readonly chatId: string };
 
 export function isOpenChat(chat: AiChatRow | null): chat is AiChatRow {
-  return chat !== null && chat.archived_at === null;
+  return chat !== null && chat.archived_at === null && !appChatHistoryOnly(chat);
 }
 
 export function useLastChat(): LastChat {

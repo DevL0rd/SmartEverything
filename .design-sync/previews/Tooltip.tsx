@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Button, Stage, Tooltip } from 'smarteverything-kit';
 
 const nativeClassOrder = <style>{'.text-bg{color:var(--color-bg) !important}'}</style>;
@@ -8,12 +9,12 @@ const body = (
     <Tooltip text="Rename this device" placement="below" />
   </div>
 );
-export const Below = () => (
+export const Below = (): ReactElement => (
   <Stage theme="dark" width={320}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={320}>
     {body}
   </Stage>

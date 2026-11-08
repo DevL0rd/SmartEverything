@@ -1,5 +1,7 @@
 import { createContext, useContext } from 'react';
+import type { OptionSourceId } from '@smarteverything/domain';
 import type { InspectorEnv } from '../sections/section-types';
+import type { DeviceScope } from './literal-model';
 
 export interface ReferenceOption {
   readonly id: string;
@@ -8,7 +10,7 @@ export interface ReferenceOption {
 }
 
 export interface ReferenceCatalogue {
-  readonly options: (of: string) => readonly ReferenceOption[];
+  readonly options: (of: string, capabilities?: readonly string[]) => readonly ReferenceOption[];
 }
 
 export interface SecretAccess {
@@ -17,10 +19,16 @@ export interface SecretAccess {
   readonly onAdd: () => void;
 }
 
+export type DeviceChoices =
+  | { readonly status: 'ready'; readonly options: readonly ReferenceOption[] }
+  | { readonly status: 'loading' }
+  | { readonly status: 'unavailable'; readonly reason: string };
+
 export interface ValueServices {
-  readonly env: InspectorEnv;
+  readonly env: InspectorEnv | null;
   readonly references: ReferenceCatalogue;
   readonly secrets: SecretAccess;
+  readonly deviceOptions: (source: OptionSourceId, scope: DeviceScope) => DeviceChoices;
 }
 
 export const ValueServicesContext = createContext<ValueServices | null>(null);

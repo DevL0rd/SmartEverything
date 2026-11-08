@@ -11,7 +11,7 @@ import { useScreen } from '../../../components/screen-context';
 import { View } from 'react-native';
 import type { Device } from '../../../store/state';
 import { DeviceFace } from '../../devices';
-import { MAX_COLUMNS, MIN_ROW_WIDTH } from '../model/member-rows';
+import { MIN_ROW_WIDTH } from '../model/member-rows';
 
 export interface Reveal {
   readonly id: string;
@@ -108,7 +108,12 @@ export function MemberRows({
   readonly onToggle: (deviceId: string) => void;
 }): ReactNode {
   return (
-    <Grid minItemWidth={MIN_ROW_WIDTH} maxColumns={MAX_COLUMNS} gap="tight">
+    <Grid
+      minItemWidth={MIN_ROW_WIDTH}
+      maxColumns={Number.POSITIVE_INFINITY}
+      gap="tight"
+      stretchLastRow={false}
+    >
       {members.map((member) => (
         <MemberRow
           key={member.id}

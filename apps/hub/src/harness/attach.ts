@@ -62,6 +62,17 @@ export async function readSession(
   const switching =
     binding.session_id !== null &&
     service.state(context.owner, context.chatId).state === 'switching';
-  if (host?.online !== true || switching) return service.state(context.owner, context.chatId);
+  if (
+    host?.online !== true ||
+    switching ||
+    managedHelper(service, chat.profile_id, binding.session_id)
+  )
+    return service.state(context.owner, context.chatId);
   return ensureAttached(service, context);
+}
+
+function managedHelper(service: HarnessService, profileId: string, id: string | null): boolean {
+  if (id === null) return false;
+  const header = service.store.dshSessions.stat(id, profileId)?.header;
+  return header?.origin === 'subagent' && header.parentSession !== undefined;
 }

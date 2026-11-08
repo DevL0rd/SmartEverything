@@ -52,7 +52,7 @@ describe('computer screens', () => {
     }).map((item) => item.href);
     const ids = SECTIONS.map((section) => section.id);
     for (const target of pages) {
-      const page = typeof target === 'object' && 'params' in target ? target.params.page : '';
+      const page = typeof target === 'object' && 'params' in target ? target.params['page'] : '';
       expect(ids).toContain(page);
     }
   });

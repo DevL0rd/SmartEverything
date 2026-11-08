@@ -125,7 +125,7 @@ function pluginVoiceOf(
     turn: (request): Promise<TurnSession> => voice.turn(request),
     chat: (profileId, title, source): string =>
       (source === null
-        ? context.assistant.chats.conversationChat(profileId, title)
+        ? context.assistant.chats.conversationChat(profileId)
         : context.assistant.chats.chatForPlugin(profileId, source, title)
       ).id,
     keys: { changes: (listener) => voice.keys.changes(listener) },
@@ -169,7 +169,7 @@ export function startTranscribing(
   const transcripts = new Transcripts({ store, clock, log });
   transcripts.start();
   const transcriber = new Transcriber({
-    provider: new OpenRouterTranscription(context.openRouter.client),
+    provider: new OpenRouterTranscription(context.openRouter.client, options.layout.tmp),
     ledger: store.ledger,
     log,
   });

@@ -36,11 +36,11 @@ export function clientViews(
   me: string,
   now: number,
 ): readonly ClientView[] {
-  return [...clients]
+  return clients
+    .filter((client) => !client.built_in)
     .sort(
       (left, right) =>
         Number(right.id === me) - Number(left.id === me) ||
-        Number(right.built_in) - Number(left.built_in) ||
         compareText(left.created_at, right.created_at),
     )
     .map((client) => {

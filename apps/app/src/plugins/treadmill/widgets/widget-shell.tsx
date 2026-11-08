@@ -14,7 +14,6 @@ interface Props {
   readonly title: string;
   readonly icon: IconName;
   readonly live?: boolean;
-  readonly action?: (device: Device, view: TreadmillStateView) => ReactNode;
   readonly children: (device: Device, view: TreadmillStateView) => ReactNode;
 }
 
@@ -47,15 +46,7 @@ function WithDevice({ device, ...props }: Props & { readonly device: Device }): 
   useTreadmillDemand(device.id, props.live !== false);
   const view = state.data;
   return (
-    <WidgetFrame
-      title={props.title}
-      icon={props.icon}
-      accent="primary"
-      href={href.device(device)}
-      action={
-        view === undefined || props.action === undefined ? undefined : props.action(device, view)
-      }
-    >
+    <WidgetFrame title={props.title} icon={props.icon} accent="primary" href={href.device(device)}>
       {view === undefined ? <Waiting /> : props.children(device, view)}
     </WidgetFrame>
   );

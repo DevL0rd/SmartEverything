@@ -8,7 +8,7 @@ const SERVER_CONNECTION = z
   .strictObject({
     url: z.url({ protocol: /^https?$/ }),
     token: CLIENT_TOKEN,
-    canonicalKind: z.enum(['loopback', 'lan', 'remote']).optional(),
+    canonicalKind: z.enum(['lan', 'remote']).optional(),
     trustedMetadata: HUB_CONNECTION_METADATA.optional(),
   })
   .refine(
@@ -19,6 +19,16 @@ const SERVER_CONNECTION = z
       ),
     'Saved hub credentials, canonical endpoint kind and trusted metadata must belong to one enrollment',
   );
+
+const DESKTOP_SOURCE = z.object({
+  url: z.string(),
+  token: z.string(),
+  trustedMetadata: HUB_CONNECTION_METADATA.optional(),
+});
+
+type DesktopSource = z.infer<typeof DESKTOP_SOURCE>;
+
+type DesktopStored = NonNullable<Awaited<ReturnType<DesktopBridge['server']>>>;
 
 const DESKTOP_CONNECTION = SERVER_CONNECTION.strip();
 
@@ -34,8 +44,6 @@ function serializeWrite(action: () => Promise<void>): Promise<void> {
   writing = next;
   return next;
 }
-
-const REMOTE_KEY = 'smarteverything.server.remote';
 
 class StoredConnectionError extends Error {
   override readonly name = 'StoredConnectionError';
@@ -74,26 +82,22 @@ function jsonOf(where: string, text: string): unknown {
   return read.value;
 }
 
-function parsedConnection(where: string, text: string | null): ServerConnection | null {
-  if (text === null) {
-    return null;
-  }
+function issuesOf(error: z.ZodError): string {
+  return error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`).join('; ');
+}
+
+function readPersisted(where: string, text: string | null): ServerConnection | null {
+  if (text === null) return null;
   const parsed = SERVER_CONNECTION.safeParse(jsonOf(where, text));
-  if (!parsed.success) {
-    throw new StoredConnectionError(
-      where,
-      parsed.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`).join('; '),
-    );
-  }
+  if (!parsed.success) throw new StoredConnectionError(where, issuesOf(parsed.error));
   return parsed.data;
 }
 
 export async function readStoredConnection(kind: StoredKind): Promise<ServerConnection | null> {
   if (kind === 'desktop') return desktopConnection();
-  if (kind === 'phone') {
-    return parsedConnection('secure storage', await SecureStore.getItemAsync(STORAGE_KEY));
-  }
-  return parsedConnection('this browser', window.localStorage.getItem(STORAGE_KEY));
+  if (kind === 'phone')
+    return readPersisted('secure storage', await SecureStore.getItemAsync(STORAGE_KEY));
+  return readPersisted('this browser', window.localStorage.getItem(STORAGE_KEY));
 }
 
 export async function storeConnection(
@@ -105,7 +109,13 @@ export async function storeConnection(
   await serializeWrite(async (): Promise<void> => {
     if (!isCurrent()) return;
     if (kind === 'desktop')
-      await requiredBridge().setWindow({ url: connection.url, token: connection.token });
+      await requiredBridge().setWindow({
+        url: connection.url,
+        token: connection.token,
+        ...(connection.trustedMetadata === undefined
+          ? {}
+          : { connection: connection.trustedMetadata }),
+      });
     else if (kind === 'phone') await SecureStore.setItemAsync(STORAGE_KEY, text);
     else window.localStorage.setItem(STORAGE_KEY, text);
   });
@@ -138,32 +148,33 @@ export async function forgetConnection(kind: StoredKind): Promise<void> {
   await serializeWrite(() => removeStored(kind));
 }
 
-export function prefersRemoteServer(): boolean {
-  return window.localStorage.getItem(REMOTE_KEY) === 'true';
+function desktopSource(stored: DesktopStored): DesktopSource {
+  const source = DESKTOP_SOURCE.safeParse({
+    url: stored.url,
+    token: stored.token,
+    ...(stored.connection === undefined ? {} : { trustedMetadata: stored.connection }),
+  });
+  if (!source.success) throw new DesktopServerError(issuesOf(source.error));
+  return source.data;
 }
 
-export function preferRemoteServer(remote: boolean): void {
-  if (remote) {
-    window.localStorage.setItem(REMOTE_KEY, 'true');
-    return;
-  }
-  window.localStorage.removeItem(REMOTE_KEY);
+function desktopParsed(server: DesktopSource): ServerConnection {
+  const canonical = server.trustedMetadata?.endpoints.find(
+    (endpoint) => new URL(endpoint.url).origin === new URL(server.url).origin,
+  );
+  const parsed = DESKTOP_CONNECTION.safeParse({
+    url: canonical?.url ?? server.url,
+    token: server.token,
+    ...(server.trustedMetadata === undefined
+      ? {}
+      : { trustedMetadata: server.trustedMetadata, canonicalKind: canonical?.kind }),
+  });
+  if (!parsed.success) throw new DesktopServerError(issuesOf(parsed.error));
+  return { ...parsed.data, url: parsed.data.url.replace(/\/+$/, '') };
 }
 
-export async function desktopConnection(): Promise<ServerConnection | null> {
+async function desktopConnection(): Promise<ServerConnection | null> {
   const bridge = desktopBridge();
-  if (bridge === null) {
-    return null;
-  }
-  const server = await bridge.server();
-  if (server === null) {
-    return null;
-  }
-  const parsed = DESKTOP_CONNECTION.safeParse(server);
-  if (!parsed.success) {
-    throw new DesktopServerError(
-      parsed.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`).join('; '),
-    );
-  }
-  return { url: parsed.data.url.replace(/\/+$/, ''), token: parsed.data.token };
+  const stored = bridge === null ? null : await bridge.server();
+  return stored === null ? null : desktopParsed(desktopSource(stored));
 }

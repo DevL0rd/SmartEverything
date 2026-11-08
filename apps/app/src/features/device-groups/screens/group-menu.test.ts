@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DeviceGroupRow, DeviceTarget } from '@smarteverything/domain';
+import { router } from 'expo-router';
 import { pageMenu } from './group-menu';
 
 vi.mock('expo-router', () => ({ router: { push: vi.fn(), replace: vi.fn() } }));
@@ -71,5 +72,17 @@ describe('the group page menu', () => {
         addToHome: vi.fn(),
       }),
     ).toStrictEqual([]);
+  });
+
+  it('opens the devices page on the room through the selection href', () => {
+    const items = pageMenu({
+      target: { kind: 'room', roomId: 'r1', families: ['light'] },
+      group: null,
+      uses: [],
+      onEdit: vi.fn(),
+      addToHome: vi.fn(),
+    });
+    items.find((item) => item.label === 'Choose room for lights')?.onPress();
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/devices', params: { room: 'r1' } });
   });
 });

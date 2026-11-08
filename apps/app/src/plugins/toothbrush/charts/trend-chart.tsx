@@ -6,10 +6,12 @@ import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useColour } from '../../../design/colour';
 import { clockText } from '../model/brush-model';
 import type { Trend } from '../model/stats-model';
-import { TREND_HEIGHT, trendPath, trendY, type TrendFrame } from '../model/trend-path';
+import { trendPath, trendY, type TrendFrame } from '../model/trend-path';
 import { boxStyle } from './style';
 
+const TREND_HEIGHT = 120;
 const LABEL_WIDTH = 34;
+const LABEL_HEIGHT = 16;
 
 function Guides({
   ticks,
@@ -60,7 +62,7 @@ function Plot({
   const line = useColour('primary');
   const ghost = useColour('on-surface-faint');
   return (
-    <Svg width={frame.width} height={TREND_HEIGHT}>
+    <Svg width={frame.width} height={frame.height}>
       <Guides ticks={trend.ticks} target={target} frame={frame} />
       <Path
         d={trendPath(trend.points, (point) => point.before, frame)}
@@ -86,27 +88,34 @@ export function TrendChart({
   trend,
   target,
   label,
+  height = TREND_HEIGHT,
 }: {
   readonly trend: Trend;
   readonly target: number;
   readonly label: string;
+  readonly height?: number;
 }): ReactNode {
   const { width, onLayout } = useMeasuredWidth();
   const inner = Math.max(0, width - LABEL_WIDTH);
-  const frame: TrendFrame = { width: inner, min: trend.min, max: trend.max };
+  const frame: TrendFrame = { width: inner, height, min: trend.min, max: trend.max };
+  const last = trend.ticks.length - 1;
+  const ticks =
+    height >= trend.ticks.length * LABEL_HEIGHT
+      ? trend.ticks
+      : trend.ticks.filter((_, index) => index === 0 || index === last);
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label} className="gap-1">
       <View className="flex-row" onLayout={onLayout}>
-        <View style={boxStyle(LABEL_WIDTH, TREND_HEIGHT)} className="justify-between">
-          {[...trend.ticks].reverse().map((tick) => (
-            <Text key={tick} variant="caption" tone="faint" className="tabular">
+        <View style={boxStyle(LABEL_WIDTH, height)} className="justify-between">
+          {[...ticks].reverse().map((tick) => (
+            <Text key={tick} variant="caption" tone="variant" className="tabular">
               {clockText(tick)}
             </Text>
           ))}
         </View>
         {inner > 0 ? <Plot trend={trend} target={target} frame={frame} /> : null}
       </View>
-      <Text variant="caption" tone="faint">
+      <Text variant="caption" tone="variant">
         Solid line: this period. Dotted line: the period before. Green dashes: the routine target.
       </Text>
     </View>

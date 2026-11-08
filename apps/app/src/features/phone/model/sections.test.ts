@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  PHONE_SECTIONS,
-  PHONE_SECTION_IDS,
-  bodyWidthOf,
-  frameLayoutOf,
-  railWidthOf,
-  twoColumnsAt,
-} from './sections';
+import { PHONE_SECTIONS, PHONE_SECTION_IDS, frameLayoutOf, railWidthOf } from './sections';
 
 describe('phone sections', () => {
   it('lists the ten pages in the design order', () => {
@@ -41,12 +34,5 @@ describe('phone sections', () => {
     expect(railWidthOf(720)).toBe('mid');
     expect(railWidthOf(1023)).toBe('mid');
     expect(railWidthOf(1024)).toBe('wide');
-  });
-
-  it('measures the body next to the rail', () => {
-    expect(bodyWidthOf(412)).toBe(412 - 32);
-    expect(bodyWidthOf(1440)).toBe(1440 - 260 - 48);
-    expect(twoColumnsAt(1440)).toBe(true);
-    expect(twoColumnsAt(760)).toBe(false);
   });
 });

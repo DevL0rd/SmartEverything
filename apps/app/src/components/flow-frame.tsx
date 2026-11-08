@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Head from 'expo-router/head';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
 import { IconButton } from './icon-button';
+import { KeyboardViewport } from './keyboard-viewport';
 import { ProgressSteps, type ProgressStep } from './progress-steps';
 import { Text } from './text';
 import { useEscape } from './use-escape';
@@ -35,7 +35,7 @@ function FlowBody({
 
 function TouchFlow({ title, steps, footer, onCancel, children }: FlowFrameProps): ReactNode {
   return (
-    <KeyboardAvoidingView behavior="padding" className="flex-1 bg-bg">
+    <KeyboardViewport className="flex-1 bg-bg">
       <View className="h-app-bar mt-safe flex-row items-center gap-1 px-1">
         <IconButton icon="close" label="Cancel" onPress={onCancel} />
         <Text variant="title-3" accessibilityRole="header" numberOfLines={1} className="flex-1">
@@ -56,7 +56,7 @@ function TouchFlow({ title, steps, footer, onCancel, children }: FlowFrameProps)
           <View className="w-full max-w-reading flex-row gap-3 self-center">{footer}</View>
         </View>
       )}
-    </KeyboardAvoidingView>
+    </KeyboardViewport>
   );
 }
 

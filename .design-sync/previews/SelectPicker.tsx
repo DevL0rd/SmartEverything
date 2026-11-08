@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { GlobalTheme, SelectPicker, Stage, Text } from 'smarteverything-kit';
 
 const options = [
@@ -7,7 +8,7 @@ const options = [
   { value: 'office', label: 'Office', description: '3 devices' },
 ];
 const anchor = { x: 80, y: 90, width: 300, height: 44 };
-export const Dark = () => (
+export const Dark = (): ReactElement => (
   <Stage theme="dark">
     <Text>Room</Text>
     <SelectPicker
@@ -20,7 +21,7 @@ export const Dark = () => (
     />
   </Stage>
 );
-export const Light = () => (
+export const Light = (): ReactElement => (
   <GlobalTheme theme="light">
     <Stage theme="light">
       <Text>Room</Text>

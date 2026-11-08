@@ -1,77 +1,64 @@
+import { useAutomationsSource } from '../../data/source';
 import { useMemo } from 'react';
-import { Dimensions } from 'react-native';
-import type { Layout } from '@smarteverything/domain';
-import type { Program } from '@smarteverything/flow/program/walk';
 import { notify } from '../../../../components/toast-store';
 import { useStableCallback } from '../../../../design/use-stable-callback';
-import type { InsertPoint, Scene } from '../../model/canvas/contract';
-import { projectScene } from '../../model/canvas/project-scene';
-import { TRIGGER_GROUP_ID } from '../../model/canvas/tree-draft';
 import type { DocumentStore } from '../../model/editor/document-store';
-import { sizeClassFor } from '../canvas/viewport';
-import type { HostActions } from '../host/intent-env';
-import type { SceneOptions } from '../host/use-canvas-props';
-import { findInsertPoint, SPOT_GONE, type InsertTarget } from './insert-point';
+import type { EdgeEnd } from '../../model/graph/scene-contract';
+import type { GraphPoint } from '../canvas/graph-canvas-types';
+import type { HostActions } from '../host/host-actions';
+import type { InsertPoint, ScreenPoint } from '../palette/armed-insert';
+import { dropPinOf } from '../palette/pin-filter';
 
 export interface HostActionsInput {
   readonly store: DocumentStore;
-  readonly options: SceneOptions;
-  readonly canvasWidth: () => number;
   readonly selecting: () => boolean;
-  readonly onInsertPoint: (point: InsertPoint | null) => void;
+  readonly onInsertPoint: (point: InsertPoint, anchor: ScreenPoint | null) => void;
   readonly onGroupSelection: (ids: readonly string[]) => void;
-  readonly onHeader: () => void;
+  readonly onAddTrigger: () => void;
+  readonly onOpened: () => void;
+  readonly onEscape: () => void;
 }
 
-function sceneAt(program: Program, layout: Layout, options: SceneOptions, width: number): Scene {
-  const mode = sizeClassFor(width);
-  return projectScene(program, {
-    ...options,
-    layout,
-    mode,
-    ...(mode === 'compact' ? { canvasWidth: width } : {}),
-  });
-}
+export const DROP_REFUSED = 'That pin cannot start a new step. Drag from another pin.';
 
-export function windowWidth(): number {
-  return Dimensions.get('window').width;
-}
+export const SPOT_GONE = 'That spot is not there any more. Pick another one.';
 
 export function useHostActions(input: HostActionsInput): HostActions {
-  const { store, options, canvasWidth, selecting, onInsertPoint, onGroupSelection, onHeader } =
-    input;
-  const insertAt = useStableCallback((target: InsertTarget): void => {
-    const { program, layout } = store.state.get();
-    const point = findInsertPoint(sceneAt(program, layout, options, canvasWidth()), target);
-    if (point === null) {
-      notify({ message: SPOT_GONE });
-      return;
-    }
-    onInsertPoint(point);
-  });
+  const kinds = useAutomationsSource().lookup;
+  const { store, selecting, onInsertPoint } = input;
+  const group = useStableCallback(input.onGroupSelection);
+  const addTrigger = useStableCallback(input.onAddTrigger);
+  const opened = useStableCallback(input.onOpened);
+  const escape = useStableCallback(input.onEscape);
   const openNode = useStableCallback((id: string): void => {
-    if (id === TRIGGER_GROUP_ID) onHeader();
-    else if (!selecting()) store.select(id);
+    if (selecting()) return;
+    store.select(id);
+    opened();
   });
-  const group = useStableCallback(onGroupSelection);
+  const open = useStableCallback(
+    (from: EdgeEnd, at: GraphPoint | null, anchor: ScreenPoint | null, refused: string): void => {
+      const pin = dropPinOf(store.state.get().program, from, kinds);
+      if (pin === undefined) {
+        notify({ message: refused });
+        return;
+      }
+      onInsertPoint({ pin, at, filtered: true }, anchor);
+    },
+  );
   return useMemo<HostActions>(
     () => ({
       openNode,
-      insertOnEdge: (edgeId): void => {
-        insertAt({ kind: 'edge', edgeId });
+      dropEmpty: (from, point, screen): void => {
+        open(from, point, screen, DROP_REFUSED);
       },
-      openSlot: (slotId): void => {
-        insertAt({ kind: 'slot', slotId });
+      insertOnWire: (from): void => {
+        open(from, null, null, SPOT_GONE);
       },
-      portDropEmpty: (): void => {
-        onInsertPoint(null);
-      },
+      stepPass: (): void => undefined,
       groupSelection: group,
-      viewportSettled: (): void => undefined,
-      refused: (reason): void => {
-        notify({ message: reason });
-      },
+      addTrigger,
+      escape,
     }),
-    [openNode, insertAt, group, onInsertPoint],
+    [openNode, open, group, addTrigger, escape],
   );
 }

@@ -1,7 +1,9 @@
+import { createElement } from 'react';
 import { href } from '../../app-shell/hrefs';
 import type { SettingDefinition, SettingEnv } from '../../settings/types';
 import { ASSISTANTS } from './model/assistants';
 import { toolsSummary } from './model/tools';
+import { ThisComputerRows } from './server/this-computer';
 
 const owner = (env: SettingEnv): boolean => env.owner;
 
@@ -115,8 +117,31 @@ const SERVER: readonly SettingDefinition[] = [
   },
 ];
 
+const THIS_COMPUTER: readonly SettingDefinition[] = [
+  {
+    id: 'this-computer.service',
+    page: 'this-computer',
+    title: 'Computer service',
+    icon: 'server',
+    keywords: [
+      'computer service',
+      'start',
+      'stop',
+      'restart',
+      'open when I log in',
+      'keep running when logged out',
+      'uninstall',
+      'installer',
+    ],
+    scope: 'device-local',
+    control: 'custom',
+    render: () => createElement(ThisComputerRows),
+  },
+];
+
 export const SETTINGS: readonly SettingDefinition[] = [
   ...ACCOUNTS,
   ...ASSISTANT_SETTINGS,
   ...SERVER,
+  ...THIS_COMPUTER,
 ];

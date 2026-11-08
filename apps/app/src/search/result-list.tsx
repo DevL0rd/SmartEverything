@@ -41,6 +41,7 @@ interface RowProps {
   readonly row: SearchRow;
   readonly first: boolean;
   readonly model: SearchListModel;
+  readonly wrapTitles: boolean;
 }
 
 function GroupRow({ row, first, model }: RowProps): ReactNode {
@@ -59,7 +60,7 @@ function GroupRow({ row, first, model }: RowProps): ReactNode {
   );
 }
 
-function RowBody({ row, model }: RowProps): ReactNode {
+function RowBody({ row, model, wrapTitles }: RowProps): ReactNode {
   switch (row.kind) {
     case 'node':
       return (
@@ -69,6 +70,7 @@ function RowBody({ row, model }: RowProps): ReactNode {
           parent={row.parent}
           expandable={row.expandable}
           expanded={row.expanded}
+          wrapTitle={wrapTitles}
           picking={model.picking}
           catalogue={model.catalogue}
           onOpen={model.onOpen}
@@ -91,6 +93,7 @@ function RowBody({ row, model }: RowProps): ReactNode {
       return (
         <ListRow
           title={row.text}
+          wrapTitle={wrapTitles}
           icon={row.icon}
           onPress={() => {
             model.onQuery(row.text);
@@ -135,6 +138,7 @@ function sameView(left: ViewProps, right: ViewProps): boolean {
   return (
     left.selected === right.selected &&
     left.first === right.first &&
+    left.wrapTitles === right.wrapTitles &&
     sameRow(left.row, right.row) &&
     sameModel(left.model, right.model)
   );
@@ -152,13 +156,19 @@ const ResultRowView = memo(function ResultRowView(props: ViewProps): ReactNode {
   );
 }, sameView);
 
-function NoMatches({ query }: { readonly query: string }): ReactElement | null {
+function NoMatches({
+  query,
+  rowWidthClassName,
+}: {
+  readonly query: string;
+  readonly rowWidthClassName: string | undefined;
+}): ReactElement | null {
   if (query === '') {
     return null;
   }
   return (
-    <View className="items-center gap-1 px-6 py-10">
-      <Text variant="body-strong" align="center">
+    <View className={cn('items-center gap-1 px-6 py-10', rowWidthClassName)}>
+      <Text variant="body-strong" align="center" className="max-w-full">
         {`No matches for “${query}”`}
       </Text>
       <Text variant="callout" tone="variant" align="center">
@@ -189,6 +199,7 @@ function useScrollToSelected(
 interface ResultListProps {
   readonly model: SearchListModel;
   readonly contentClassName?: string;
+  readonly fullPage?: boolean;
   readonly onScroll?: ReturnType<typeof useAnimatedScrollHandler>;
   readonly footer?: ReactElement;
   readonly grow?: boolean;
@@ -197,6 +208,7 @@ interface ResultListProps {
 export function ResultList({
   model,
   contentClassName,
+  fullPage = false,
   onScroll,
   footer,
   grow = true,
@@ -204,15 +216,20 @@ export function ResultList({
   const list = useRef<FlashListRef<SearchRow>>(null);
   useScrollToSelected(list, model);
   const padding = useResolveClassNames(contentClassName ?? '');
-  const renderRow: ListRenderItem<SearchRow> = ({ item, index }) => (
-    <ResultRowView
-      key={item.key}
-      row={item}
-      first={index === 0}
-      model={model}
-      selected={model.keyboard ? model.selectedKey === item.key : false}
-    />
-  );
+  const rowWidthClassName = fullPage ? 'w-full max-w-detail' : undefined;
+  const renderRow: ListRenderItem<SearchRow> = ({ item, index }) => {
+    const row = (
+      <ResultRowView
+        key={item.key}
+        row={item}
+        first={index === 0}
+        model={model}
+        wrapTitles={fullPage}
+        selected={model.keyboard ? model.selectedKey === item.key : false}
+      />
+    );
+    return rowWidthClassName === undefined ? row : <View className={rowWidthClassName}>{row}</View>;
+  };
   return (
     <View className={grow ? 'flex-1' : 'shrink grow-0'}>
       <AnimatedRows
@@ -222,7 +239,7 @@ export function ResultList({
         getItemType={rowType}
         drawDistance={RESULT_DRAW_DISTANCE}
         renderItem={renderRow}
-        ListEmptyComponent={<NoMatches query={model.query} />}
+        ListEmptyComponent={<NoMatches query={model.query} rowWidthClassName={rowWidthClassName} />}
         contentContainerStyle={padding}
         {...(footer === undefined ? {} : { ListFooterComponent: footer })}
         {...(onScroll === undefined ? {} : { onScroll })}

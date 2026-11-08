@@ -21,7 +21,7 @@ export function polar(centre: number, radius: number, degrees: number): XY {
   return pointOn({ cx: centre, cy: centre, r: radius }, degrees);
 }
 
-export function formatPoint(point: XY): string {
+function formatPoint(point: XY): string {
   return `${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
 }
 

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { COMPUTER_NODE_PAIRED, COMPUTER_NODE_PAIRING } from '../computer-nodes';
 import { NODE_HELLO } from '../node/frames';
-import { PAIRING_CODE } from './access';
+import { CLIENT_TOKEN, PAIRING_CODE } from './access';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, NOTHING } from './primitives';
 
@@ -24,7 +24,11 @@ export const COMPUTER_NODE_ENDPOINTS = {
       'Consume a computer pairing code and bind a dedicated node token to its machine identity',
     params: NOTHING,
     query: NOTHING,
-    body: z.strictObject({ code: PAIRING_CODE, hello: NODE_HELLO }),
+    body: z.strictObject({
+      code: PAIRING_CODE,
+      hello: NODE_HELLO,
+      window_token: CLIENT_TOKEN.optional(),
+    }),
     response: COMPUTER_NODE_PAIRED,
   }),
   revokeComputerNode: endpoint({

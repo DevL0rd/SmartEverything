@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { CORE_FRAMES, CORE_OPS } from '@smarteverything/flow/interpret/core-ops';
+import { withPolicy } from '@smarteverything/flow/interpret/policy';
 import type { Plan, PlanOp } from '@smarteverything/flow/compile/plan';
 import type { Evaluated, NodeResult, StepContext } from '@smarteverything/flow/interpret/frames';
 import { rootFrame } from '@smarteverything/flow/interpret/frames';
@@ -87,11 +88,11 @@ function contextOf(body: PlanOp): StepContext {
     changeVar: () => ({ ok: true, value: { value: 0, wrapped: false } }),
     limits: resolveBudgets(),
     home: {},
-    ops: {
+    ops: withPolicy({
       ...CORE_OPS,
       ...TRY_OPS,
       ...waitOps({ nextOccurrence: () => ({ ok: true, value: 0 }) }),
-    },
+    }),
     frames: { ...CORE_FRAMES, ...TRY_FRAMES },
   };
 }

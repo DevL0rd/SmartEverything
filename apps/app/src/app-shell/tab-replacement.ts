@@ -5,6 +5,7 @@ import {
   type PartialState,
 } from 'expo-router/react-navigation';
 import { z } from 'zod';
+import type { TabNavigationAction } from './tab-router';
 
 export type RouterState = NavigationState | PartialState<NavigationState>;
 
@@ -12,6 +13,7 @@ export const REPLACEMENT_REQUEST = '__tabReplacementRequest';
 export const REPLACEMENT_COMPLETE = '__tabReplacementComplete';
 export const REMOVE_REPLACEMENT = 'TAB_REPLACEMENT_REMOVE';
 export const CLEAR_REPLACEMENT = 'TAB_REPLACEMENT_CLEAR';
+export const COMMIT_REPLACEMENT = 'TAB_REPLACEMENT_COMMIT';
 
 const REQUEST = z.object({
   id: z.string(),
@@ -62,7 +64,7 @@ function removableStack(state: RouterState | undefined): RouterState | null {
 
 export function replacementFor(
   state: NavigationState,
-  action: NavigationAction,
+  action: TabNavigationAction,
 ): ReplacementRequest | null {
   const payload = z.object({ name: z.string(), params: z.unknown().optional() }).loose();
   const parsed = payload.safeParse(action.payload);

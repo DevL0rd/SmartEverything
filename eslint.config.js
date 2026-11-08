@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
@@ -5,6 +6,16 @@ import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import local from './tooling/eslint/rules.js';
+
+const separationExceptions = JSON.parse(
+  readFileSync(
+    new URL('./tooling/guards/hub-desktop-separation-exceptions.json', import.meta.url),
+    'utf8',
+  ),
+);
+
+const separationIgnores = (rule) =>
+  separationExceptions.filter((entry) => entry.rule === rule).map((entry) => entry.path);
 
 export default tseslint.config(
   {
@@ -30,7 +41,11 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['vitest.config.ts', 'vitest.mutation.config.ts'],
+          allowDefaultProject: [
+            'vitest.config.ts',
+            'vitest.mutation.config.ts',
+            'vitest.mutation.core.config.ts',
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -211,7 +226,7 @@ export default tseslint.config(
         {
           patterns: [
             {
-              regex: `^(\\.\\./){${depth + 1}}(activity|automations|cameras|climate|connections|devices|device-visuals|fitness|health-log|home|more|nutrition|pairing|privacy|profiles${depth === 0 ? '|settings' : ''})/(?!index$)`,
+              regex: `^(\\.\\./){${depth + 1}}(activity|automations|cameras|climate|connections|devices|device-visuals|fitness|health-log|home|models|more|nutrition|pairing|privacy|profiles${depth === 0 ? '|settings' : ''})/(?!index$)`,
               message: 'Import another feature only through its public features/<name>/index.ts.',
             },
           ],
@@ -219,6 +234,43 @@ export default tseslint.config(
       ],
     },
   })),
+  {
+    files: ['apps/desktop/**/*.{ts,tsx,js,mjs,cjs}', 'apps/computer/**/*.{ts,tsx,js,mjs,cjs}'],
+    ignores: separationIgnores('desktop-imports-hub'),
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '^@smarteverything/hub(/|$)|^(\\.\\./)+hub(/|$)|(^|/)apps/hub(/|$)',
+              message:
+                'Desktop and the Computer never import the hub; they meet it over the network.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['apps/hub/**/*.{ts,tsx,js,mjs,cjs}'],
+    ignores: separationIgnores('hub-imports-desktop'),
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex:
+                '^@smarteverything/(desktop|computer)(/|$)|^(\\.\\./)+(desktop|computer)(/|$)|(^|/)apps/(desktop|computer)(/|$)',
+              message:
+                'The hub never imports Desktop or the Computer; they meet it over the network.',
+            },
+          ],
+        },
+      ],
+    },
+  },
   {
     files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
     ...tseslint.configs.disableTypeChecked,
@@ -264,7 +316,10 @@ export default tseslint.config(
     rules: { 'local/frame-budget': 'off' },
   },
   {
-    files: ['apps/app/src/features/cameras/player/video-surface.web.tsx'],
+    files: [
+      'apps/app/src/features/cameras/player/video-surface.web.tsx',
+      'apps/app/src/features/drive/quick-look/media-player.web.tsx',
+    ],
     rules: { 'jsx-a11y/media-has-caption': 'off' },
   },
 );

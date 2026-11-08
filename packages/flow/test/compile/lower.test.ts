@@ -238,19 +238,6 @@ describe('routed errors', () => {
     });
   });
 
-  it('leaves a node alone when it does not route', () => {
-    expect(
-      opOf(
-        make(
-          's',
-          'device.set',
-          {},
-          { policy: { onError: 'continue' }, scopes: { onError: handler } },
-        ),
-      ),
-    ).toMatchObject({ op: 'effect' });
-  });
-
   it('keeps the error scope out of the branches of a parallel node', () => {
     const routed = make(
       'p',

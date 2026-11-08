@@ -18,9 +18,13 @@ const ROOM_TARGET = z.looseObject({
   families: z.array(z.string()).optional(),
 });
 const GROUP_TARGET = z.looseObject({ kind: z.literal('group'), groupId: z.string() });
-const DEVICES_TARGET = z.looseObject({ kind: z.literal('devices'), deviceIds: z.array(z.string()) });
+const DEVICES_TARGET = z.looseObject({
+  kind: z.literal('devices'),
+  deviceIds: z.array(z.string()),
+});
 const TEXT_ROW = z.object({ id: z.string(), text: z.string() });
 const NAMES = z.array(z.string());
+const TARGET_RECORD = z.record(z.string(), z.unknown());
 
 function flatTarget(target: Args): Args {
   const room = ROOM_TARGET.safeParse(target);
@@ -44,7 +48,8 @@ function flatChange(change: Args, target: Args): Args {
 export function flatControl(call: StoredCall): StoredCall | null {
   if (call.tool === OLD_CONTROL) {
     const { target, ...rest } = call.args;
-    const kept = typeof target === 'object' && target !== null ? flatTarget(target) : {};
+    const record = TARGET_RECORD.safeParse(target);
+    const kept = record.success ? flatTarget(record.data) : {};
     return { tool: CONTROL, args: { ...kept, ...rest } };
   }
   if (call.tool !== CONTROL || !('changes' in call.args)) {

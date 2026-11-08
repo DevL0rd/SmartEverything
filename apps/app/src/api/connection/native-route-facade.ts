@@ -123,7 +123,8 @@ export class NativeRouteFacade implements RouteAuthority {
         );
       }, READINESS_TIMEOUT_MS);
       this.readinessListeners.add(changed);
-      changed();
+      if (this.current?.readiness === 'unavailable' && !this.stopped) this.refresh();
+      else changed();
     });
   }
   private async configure(): Promise<void> {
@@ -236,9 +237,7 @@ export class NativeRouteFacade implements RouteAuthority {
       ...(changed ? { generation: this.host.current().generation + 1 } : {}),
       problem: state.detail === '' ? null : state.detail,
     });
-    this.readinessListeners.forEach((listener) => {
-      listener();
-    });
+    this.wakeReadiness();
     if (state.readiness === 'ready') this.host.connected(state.endpoint);
   }
   invalidate(): void {
@@ -286,7 +285,9 @@ export class NativeRouteFacade implements RouteAuthority {
       }
     });
   }
-
+  private wakeReadiness(): void {
+    for (const listener of this.readinessListeners) listener();
+  }
   refresh(): void {
     if (this.stopped || this.binding === null) {
       log.debug('route.refresh_skipped', () => ({
@@ -330,6 +331,7 @@ export class NativeRouteFacade implements RouteAuthority {
           elapsedMs: nowMs() - startedAt,
           ...failureFacts(error),
         });
+        this.wakeReadiness();
       })
       .finally(() => {
         this.refreshing = null;
@@ -387,9 +389,7 @@ export class NativeRouteFacade implements RouteAuthority {
       routeGeneration: this.current?.routeGeneration ?? null,
     });
     this.stopped = true;
-    this.readinessListeners.forEach((listener) => {
-      listener();
-    });
+    this.wakeReadiness();
     this.operation += 1;
     this.unsubscribe?.();
     this.unsubscribe = null;

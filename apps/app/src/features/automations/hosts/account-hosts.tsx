@@ -36,7 +36,7 @@ export function SecretsHost(): ReactNode {
   const now = useMinute();
   const entries = useMemo(() => secrets.data ?? [], [secrets.data]);
   return (
-    <PageShell title="Secrets">
+    <PageShell title="Secrets" maxWidth={owner && entries.length > 0 ? 'full' : 'reading'}>
       <SecretsScreen
         owner={owner}
         entries={entries}

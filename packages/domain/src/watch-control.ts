@@ -60,6 +60,22 @@ export const WATCH_FACE = z.strictObject({
 
 export type WatchFace = z.infer<typeof WATCH_FACE>;
 
+export const WATCH_CALENDAR_LIMIT = 50;
+
+export const WATCH_CALENDAR_EVENT = z.strictObject({
+  title: z.string().min(1).max(60),
+  description: z.string().max(120),
+  location: z.string().max(60),
+  start: z.int().min(0),
+  end: z.int().min(0),
+  allDay: z.boolean(),
+  remindMinutes: z.int().min(0).max(40_320).nullable(),
+});
+
+export type WatchCalendarEvent = z.infer<typeof WATCH_CALENDAR_EVENT>;
+
+export const WATCH_CALENDAR = z.array(WATCH_CALENDAR_EVENT).max(WATCH_CALENDAR_LIMIT);
+
 export const WATCH_ACTION = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('find_watch'), on: z.boolean() }),
   z.strictObject({ type: z.literal('sync') }),
@@ -69,6 +85,7 @@ export const WATCH_ACTION = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('delete_alarm'), id: z.int().min(0) }),
   z.strictObject({ type: z.literal('set_watch_face'), id: WATCH_FACE.shape.id }),
   z.strictObject({ type: z.literal('delete_watch_face'), id: WATCH_FACE.shape.id }),
+  z.strictObject({ type: z.literal('set_calendar'), events: WATCH_CALENDAR }),
   z.strictObject({ type: z.literal('start_workout'), sport: WATCH_SPORT }),
   z.strictObject({ type: z.literal('pause_workout') }),
   z.strictObject({ type: z.literal('resume_workout') }),
@@ -115,22 +132,6 @@ export const WATCH_CONFIG = z.strictObject({
 });
 
 export type WatchConfig = z.infer<typeof WATCH_CONFIG>;
-
-export const WATCH_CALENDAR_LIMIT = 50;
-
-export const WATCH_CALENDAR_EVENT = z.strictObject({
-  title: z.string().min(1).max(60),
-  description: z.string().max(120),
-  location: z.string().max(60),
-  start: z.int().min(0),
-  end: z.int().min(0),
-  allDay: z.boolean(),
-  remindMinutes: z.int().min(0).max(40_320).nullable(),
-});
-
-export type WatchCalendarEvent = z.infer<typeof WATCH_CALENDAR_EVENT>;
-
-export const WATCH_CALENDAR = z.array(WATCH_CALENDAR_EVENT).max(WATCH_CALENDAR_LIMIT);
 
 export const WATCH_CONFIG_REPORT = z.strictObject({
   deviceId: z.uuid(),

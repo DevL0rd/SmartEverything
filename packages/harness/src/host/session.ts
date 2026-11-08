@@ -18,6 +18,10 @@ import type { HarnessCleanup } from './job-cleanup';
 import { setSessionPermission } from './permission';
 import type { HarnessInteractions } from './interactions';
 import { assertDrained, sessionWork } from './work';
+import { reportInterruptedHelpers } from './helper-restarts';
+import { HUB_NOTE_SOURCE } from './hub-note';
+import { SessionId } from '@deepseek-ai/dsh-session';
+import { queueHostSubagentPrompt } from '@deepseek-ai/dsh-subagent/internal';
 import type { HarnessWork } from './work';
 
 const log = new Logger('hub.harness');
@@ -57,6 +61,28 @@ export class HarnessSession {
 
   work(): HarnessWork {
     return sessionWork(this.ctx, this.handle.agent, this.interactions, this.cleanup);
+  }
+
+  async reportInterruptedHelpers(): Promise<void> {
+    const { agent } = this.handle;
+    const reported = await reportInterruptedHelpers(agent, {
+      live: (id) => this.ctx.agents.get(SessionId(id)) !== undefined,
+      read: (id) => this.persistence.events(SessionId(id)),
+      resume: (id, content) => {
+        const subagents = this.ctx.get('subagents');
+        if (subagents === undefined)
+          throw new HarnessRuntimeError('runtime_unavailable', 'Helpers are not available here.');
+        return queueHostSubagentPrompt(
+          subagents,
+          agent,
+          SessionId(id),
+          content,
+          HUB_NOTE_SOURCE,
+          new AbortController().signal,
+        );
+      },
+    });
+    if (reported > 0) log.info('session.helpers_reported', { session_id: this.id, reported });
   }
 
   quiet(): boolean {
@@ -334,6 +360,7 @@ export class HarnessSession {
       redispose: this.nativeDisposal !== undefined,
     });
     if (this.nativeDisposal === undefined) {
+      await this.ctx.get('subagents')?.drainDescendants([this.handle.agent]);
       await this.stop({ kind: 'disposed' }, 'Session is closing.');
       this.nativeDisposal = this.handle.dispose();
       await this.nativeDisposal;

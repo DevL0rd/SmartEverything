@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useValue } from '../design/external-store';
 import { warningBuzz } from '../platform/haptics';
@@ -13,15 +13,18 @@ function Footer({
   pending,
   blocked,
   close,
+  cancel,
 }: {
   readonly pending: PendingConfirm;
   readonly blocked: boolean;
   readonly close: (accepted: boolean) => void;
+  readonly cancel: RefObject<View | null>;
 }): ReactNode {
   return (
     <>
       <Button
-        label="Cancel"
+        ref={cancel}
+        label={pending.cancelLabel ?? 'Cancel'}
         variant="text"
         onPress={() => {
           close(false);
@@ -41,6 +44,7 @@ function Footer({
 
 function ConfirmDialog({ pending }: { readonly pending: PendingConfirm }): ReactNode {
   const [typed, setTyped] = useState('');
+  const cancel = useRef<View>(null);
   const blocked = pending.typed !== undefined && typed.trim() !== pending.typed;
   const close = (accepted: boolean): void => {
     if (accepted && pending.tone === 'destructive') {
@@ -57,7 +61,8 @@ function ConfirmDialog({ pending }: { readonly pending: PendingConfirm }): React
       label={pending.title}
       title={pending.title}
       kind="dialog"
-      footer={<Footer pending={pending} blocked={blocked} close={close} />}
+      {...(pending.typed === undefined ? { initialFocus: cancel } : {})}
+      footer={<Footer pending={pending} blocked={blocked} close={close} cancel={cancel} />}
     >
       <View className="gap-4">
         {pending.body === undefined ? null : (

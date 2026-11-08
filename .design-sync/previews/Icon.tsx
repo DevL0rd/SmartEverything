@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Icon, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -15,7 +16,7 @@ const names = [
   'bell',
   'vacuum',
 ] as const;
-export const Gallery = () => (
+export const Gallery = (): ReactElement => (
   <Stage theme="dark" width={520}>
     <Row gap={20}>
       {names.map((n) => (
@@ -24,7 +25,7 @@ export const Gallery = () => (
     </Row>
   </Stage>
 );
-export const SizesAndTones = () => (
+export const SizesAndTones = (): ReactElement => (
   <Stage theme="dark" width={520}>
     <Row gap={20}>
       {([16, 20, 24, 32, 40] as const).map((s) => (
@@ -37,7 +38,7 @@ export const SizesAndTones = () => (
     </Row>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     <Row gap={20}>
       {names.map((n) => (

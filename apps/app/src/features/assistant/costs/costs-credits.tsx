@@ -99,7 +99,7 @@ export function CreditsWidget(): ReactNode {
     />
   );
   return (
-    <CostCard title="Credit left" icon="gauge" accent="positive" href={link} action={topUpButton}>
+    <CostCard title="Credit left" icon="gauge" accent="positive" href={link} actions={topUpButton}>
       <WidgetBody link={link} />
     </CostCard>
   );

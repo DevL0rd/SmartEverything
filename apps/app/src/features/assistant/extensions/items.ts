@@ -2,6 +2,7 @@ import type { HarnessExtensionItem, HarnessExtensionPatch } from '@smarteverythi
 import type { IconName } from '../../../components/icon';
 
 export type ExtensionPlatform = HarnessExtensionItem['platforms'][number];
+export const SKILLS_EXTENSION_ID = 'skills';
 
 const PLATFORM_LABELS: Readonly<Record<ExtensionPlatform, string>> = {
   linux: 'Linux',
@@ -14,12 +15,12 @@ export function platformLabel(platform: ExtensionPlatform): string {
   return PLATFORM_LABELS[platform];
 }
 
-export function pageKind(item: HarnessExtensionItem): 'skill' | 'extension' {
-  return item.kind === 'skill' ? 'skill' : 'extension';
+export function pageKind(item: Pick<HarnessExtensionItem, 'kind' | 'id'>): 'skill' | 'extension' {
+  return item.kind === 'skill' || item.id === SKILLS_EXTENSION_ID ? 'skill' : 'extension';
 }
 
 export function extensionIcon(item: HarnessExtensionItem): IconName {
-  return item.kind === 'skill' ? 'fileText' : 'puzzle';
+  return pageKind(item) === 'skill' ? 'fileText' : 'puzzle';
 }
 
 export function matchesExtension(item: HarnessExtensionItem, query: string): boolean {

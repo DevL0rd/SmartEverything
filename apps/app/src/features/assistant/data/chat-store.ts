@@ -6,20 +6,35 @@ import {
   workingTurns,
 } from '../../../store/subscriptions';
 import { useEffect, useMemo, useState } from 'react';
-import { isChatActivity, type AiChatRow, type AssistantMessageRow } from '@smarteverything/domain';
+import {
+  helperDialogueOf,
+  isChatActivity,
+  type AiChatRow,
+  type AssistantMessageRow,
+} from '@smarteverything/domain';
 import { memoOnInputs } from '../../../store/memo-selector';
 import { useRow, useRows } from '../../../store/selectors';
 import type { StoreState } from '../../../store/state';
 import { useEntityStore, useStoreSelector } from '../../../store/store-context';
-import { entryOf, type ChatPreview, type ChatWork } from '../chats/entries';
+import { entryOf, type ChatPreview, type ChatWork, type EntrySources } from '../chats/entries';
 import type { ChatEntry } from '../chats/chat-entry';
-import { footerFacts, type FooterFacts } from '../model/chat-footer';
+import { appChatHistoryOnly } from '../chats/chat-visibility';
+import { footerFacts, helperRuns, type FooterFacts } from '../model/chat-footer';
 import { previewTextOf, failureReasonOf } from '../model/chat-preview';
 import type { PluginNames } from '../model/chat-source';
-import { isWorking, liveTurnOf, stepOf, type Turns } from '../../../store/chat-turns';
+import {
+  isWorking,
+  liveTurnOf,
+  workStatusOf,
+  workText,
+  workingTurnOf,
+  type Turns,
+} from '../../../store/chat-turns';
 import { callPreviewOf } from './call-transcript';
 import { StreamParser, type StreamView } from '../model/stream-view';
 import { useScreenPaused } from '../../../design/screen-pause';
+import { speakerOf as messageSpeakerOf } from '../model/speaker';
+import { selectAssistantName } from './assistant-data';
 
 const SELF_SOURCES: ReadonlySet<string> = new Set(['app', 'voice']);
 
@@ -68,6 +83,7 @@ function sameFacts(left: FooterFacts | null, right: FooterFacts | null): boolean
   }
   return (
     left.costMicros === right.costMicros &&
+    left.costIncomplete === right.costIncomplete &&
     left.context === right.context &&
     left.replies === right.replies &&
     left.files === right.files
@@ -78,7 +94,13 @@ export function useFooterFacts(chatId: string): FooterFacts | null {
   return useStoreSelector(
     (state) => {
       const chat = state.tables.ai_chats.byId[chatId];
-      return chat === undefined ? null : footerFacts(chat, messagesOfChat(state, chatId));
+      return chat === undefined
+        ? null
+        : footerFacts(
+            chat,
+            messagesOfChat(state, chatId),
+            helperRuns(state.tables.ai_chats.rows, chatId),
+          );
     },
     sameFacts,
     [chatId],
@@ -155,12 +177,16 @@ export function useLiveTurn(chatId: string, intervalMs: number, enabled: boolean
 
 export function useChatWorking(chatId: string): boolean {
   return useStoreSelector((state) => {
-    const turn = liveTurnOf(turnsOfChat(state, chatId), chatId);
-    return turn !== null && turn.state !== 'failed';
+    return workingTurnOf(turnsOfChat(state, chatId), chatId) !== null;
   });
 }
 
-function speakerOf(row: AssistantMessageRow): string | null {
+function speakerOf(row: AssistantMessageRow, assistantName: string): string | null {
+  const dialogue = helperDialogueOf(row);
+  if (dialogue !== undefined) {
+    const speaker = messageSpeakerOf(row, assistantName);
+    return speaker.kind === 'me' ? 'You' : speaker.name;
+  }
   if (row.role !== 'person') {
     return null;
   }
@@ -175,22 +201,23 @@ function failureOf(row: AssistantMessageRow): ChatPreview['failure'] {
   return reason === null ? null : { sent: row.role !== 'person', reason };
 }
 
-function previewOf(row: AssistantMessageRow): ChatPreview {
+function previewOf(row: AssistantMessageRow, assistantName: string): ChatPreview {
   return {
     text: row.kind === 'call' ? callPreviewOf(row) : previewTextOf(row.text),
     at: row.created_at,
-    speaker: row.kind === 'call' ? null : speakerOf(row),
+    speaker: row.kind === 'call' ? null : speakerOf(row, assistantName),
     failure: failureOf(row),
   };
 }
 
 const previewsOfState = memoOnInputs(
-  (state: StoreState) => [state.tables.assistant_messages],
+  (state: StoreState) => [state.tables.assistant_messages, selectAssistantName(state)],
   (state): ReadonlyMap<string, ChatPreview> => {
     const previews = new Map<string, ChatPreview>();
+    const assistantName = selectAssistantName(state);
     for (const row of state.tables.assistant_messages.rows) {
       if (!previews.has(row.chat_id) && row.text.trim() !== '' && isChatActivity(row)) {
-        previews.set(row.chat_id, previewOf(row));
+        previews.set(row.chat_id, previewOf(row, assistantName));
       }
     }
     return previews;
@@ -228,7 +255,7 @@ function workingOf(turns: Turns): ReadonlyMap<string, ChatWork> {
   const working = new Map<string, ChatWork>();
   for (const turn of Object.values(turns)) {
     if (isWorking(turn)) {
-      working.set(turn.chatId, { step: stepOf(turn) });
+      working.set(turn.chatId, { work: workStatusOf(turn) });
     }
   }
   return working;
@@ -249,42 +276,59 @@ function usePluginNames(): PluginNames {
   return useStoreSelector(pluginNamesOf, (left, right) => sameMap(left, right, (a, b) => a === b));
 }
 
-export function useChatEntrySources(): {
-  readonly previews: ReadonlyMap<string, ChatPreview>;
-  readonly working: ReadonlyMap<string, ChatWork>;
-  readonly plugins: PluginNames;
-} {
+const pendingChatsOf = memoOnInputs(
+  (state: StoreState) => [state.tables.assistant_messages],
+  (state): ReadonlySet<string> => {
+    const pending = new Set<string>();
+    for (const row of state.tables.assistant_messages.rows) {
+      if (row.state === 'queued' || row.state === 'delivered' || row.state === 'working')
+        pending.add(row.chat_id);
+    }
+    return pending;
+  },
+);
+
+export function useChatEntrySources(): EntrySources & { readonly pending: ReadonlySet<string> } {
   return {
     previews: useStoreSelector(previewsOfState, (left, right) => sameMap(left, right, samePreview)),
     working: useStoreSelector(workingOfState, (left, right) =>
-      sameMap(left, right, (a, b) => a.step === b.step),
+      sameMap(left, right, (a, b) => workText(a.work) === workText(b.work)),
     ),
     plugins: usePluginNames(),
+    pending: useStoreSelector(
+      pendingChatsOf,
+      (left, right) => left.size === right.size && [...left].every((id) => right.has(id)),
+    ),
   };
 }
 
 export function useChatEntries(): readonly ChatEntry[] {
   const chats = useAiChats();
-  const { previews, working, plugins } = useChatEntrySources();
+  const { previews, working, plugins, pending } = useChatEntrySources();
   return useMemo(
     () =>
       chats
         .filter((chat) => chat.archived_at === null)
-        .map((chat) => entryOf(chat, { previews, working, plugins })),
-    [chats, previews, working, plugins],
+        .map((chat) => entryOf(chat, { previews, working, plugins, pending })),
+    [chats, previews, working, plugins, pending],
   );
 }
 
 export function useLatestChatId(): string | null {
   const chats = useAiChats();
-  return chats.find((chat) => chat.archived_at === null && chat.kind !== 'subagent')?.id ?? null;
+  return (
+    chats.find(
+      (chat) => chat.archived_at === null && chat.kind !== 'subagent' && !appChatHistoryOnly(chat),
+    )?.id ?? null
+  );
 }
 
 const unreadCountOf = memoOnInputs(
   (state: StoreState) => [state.tables.ai_chats],
   (state): number =>
-    state.tables.ai_chats.rows.filter((chat) => chat.archived_at === null && chat.unread_count > 0)
-      .length,
+    state.tables.ai_chats.rows.filter(
+      (chat) => chat.archived_at === null && chat.unread_count > 0 && !appChatHistoryOnly(chat),
+    ).length,
 );
 
 export function useUnreadChatCount(): number {

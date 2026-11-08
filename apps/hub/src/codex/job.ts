@@ -4,10 +4,11 @@ import {
   JSON_VALUE,
   type CodexProviderTurn,
   type CodexProviderEvent,
+  type AiSubscriptionUsage,
   type CodexProviderOptions,
   type CODEX_USAGE,
 } from '@smarteverything/domain';
-import { TURN, type RpcRecord, type RpcId } from './protocol';
+import { TOKEN_USAGE, TURN, type RpcRecord, type RpcId } from './protocol';
 import { CodexAgents } from './agents';
 import { CodexPrompts } from './prompts';
 import type { CodexClient } from './client';
@@ -25,11 +26,6 @@ const DYNAMIC = z.object({
   namespace: z.string().nullable(),
   tool: z.string(),
   arguments: z.record(z.string(), z.json()),
-});
-const BREAKDOWN = z.object({
-  inputTokens: z.int().nonnegative(),
-  outputTokens: z.int().nonnegative(),
-  totalTokens: z.int().nonnegative(),
 });
 export class CodexJob {
   readonly generation: string;
@@ -98,7 +94,7 @@ export class CodexJob {
       },
     });
   }
-  accepted(): void {
+  accepted(subscriptionUsage?: AiSubscriptionUsage): void {
     this.emit({ kind: 'accepted', session_id: this.threadId });
     this.emit({
       kind: 'context',
@@ -111,8 +107,16 @@ export class CodexJob {
         workspace_roots: [this.cwd, ...this.roots],
       },
     });
-    this.emit({ kind: 'usage', usage: this.usage });
+    this.emit({
+      kind: 'usage',
+      usage: this.usage,
+      ...(subscriptionUsage === undefined ? {} : { subscription_usage: subscriptionUsage }),
+    });
     this.lifecycle('working');
+  }
+  publishRateObservation(rateLimits: RpcRecord, observation: AiSubscriptionUsage): void {
+    this.usage = { ...this.usage, rate_limits: rateLimits };
+    this.emit({ kind: 'usage', usage: this.usage, subscription_usage: observation });
   }
   emit(payload: RpcRecord): void {
     this.publish(
@@ -214,21 +218,21 @@ export class CodexJob {
   lost(reason: string): void {
     this.agents.lost(reason);
     if (!this.active) return;
-    this.cleanup();
-    this.active = false;
-    this.prompts.expire();
-    this.tools.clear();
+    this.deactivate();
     this.lifecycle('unknown', reason);
     this.emit({ kind: 'failed', code: 'transport_lost', message: reason.slice(0, 2000) });
   }
   rejected(reason: string): void {
     if (!this.active) return;
+    this.deactivate();
+    this.lifecycle('failed', reason);
+    this.emit({ kind: 'failed', code: 'command_failed', message: reason.slice(0, 2000) });
+  }
+  private deactivate(): void {
     this.cleanup();
     this.active = false;
     this.prompts.expire();
     this.tools.clear();
-    this.lifecycle('failed', reason);
-    this.emit({ kind: 'failed', code: 'command_failed', message: reason.slice(0, 2000) });
   }
   private request(method: string, params: RpcRecord, id: RpcId): void {
     if (!this.active) {
@@ -310,14 +314,22 @@ export class CodexJob {
     });
   }
   private tokenUsage(params: RpcRecord): void {
-    const total = z.object({ total: BREAKDOWN }).parse(params['tokenUsage']).total;
+    const { total, last, modelContextWindow } = TOKEN_USAGE.parse(params['tokenUsage']);
     this.usage = {
       ...this.usage,
       input_tokens: total.inputTokens,
       output_tokens: total.outputTokens,
       total_tokens: total.totalTokens,
     };
-    this.emit({ kind: 'usage', usage: this.usage });
+    const contextPercent =
+      typeof modelContextWindow === 'number'
+        ? Math.min(100, (last.totalTokens / modelContextWindow) * 100)
+        : undefined;
+    this.emit({
+      kind: 'usage',
+      usage: this.usage,
+      ...(contextPercent === undefined ? {} : { context_percent: contextPercent }),
+    });
   }
   private item(params: RpcRecord, phase: 'started' | 'completed'): void {
     const item = ITEM.parse(params['item']);
@@ -360,10 +372,7 @@ export class CodexJob {
     const turn = TURN.parse(params['turn']);
     if (this.turnId !== null && turn.id !== this.turnId) return;
     this.turnId = turn.id;
-    this.cleanup();
-    this.active = false;
-    this.prompts.expire();
-    this.tools.clear();
+    this.deactivate();
     if (turn.status === 'completed' || turn.status === 'interrupted') {
       this.lifecycle(turn.status);
       this.emit({
@@ -374,12 +383,9 @@ export class CodexJob {
       return;
     }
     if (turn.status === 'failed') {
-      this.lifecycle('failed', turn.error?.message ?? 'Codex turn failed.');
-      this.emit({
-        kind: 'failed',
-        code: 'turn_failed',
-        message: turn.error?.message ?? 'Codex turn failed.',
-      });
+      const message = turn.error?.message ?? 'Codex turn failed.';
+      this.lifecycle('failed', message);
+      this.emit({ kind: 'failed', code: 'turn_failed', message });
     } else {
       this.lifecycle('unknown', 'Codex sent a nonterminal turn completion notice.');
       this.emit({

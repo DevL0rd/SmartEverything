@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from './app-href';
 import { cn } from '../design/cn';
 import { Figure } from './figure';
 import { Interactive } from './interactive';
@@ -17,7 +17,7 @@ export interface StatTileProps {
   readonly stale?: boolean;
   readonly compact?: boolean;
   readonly onPress?: () => void;
-  readonly href?: Href;
+  readonly href?: AppHref;
 }
 
 type TileBodyProps = Pick<

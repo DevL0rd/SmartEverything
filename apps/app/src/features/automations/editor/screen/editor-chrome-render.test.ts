@@ -51,11 +51,12 @@ const { BottomBar } = await import('./bottom-bar');
 const NO_OP = (): void => undefined;
 
 const TOP: TopBarProps = {
-  layout: 'phone',
+  layout: 'tablet',
   name: 'Night air',
   status: 'Saved',
   reusable: false,
   online: true,
+  empty: false,
   counts: { errors: 0, warnings: 1, hints: 0 },
   canUndo: false,
   canRedo: false,
@@ -70,7 +71,13 @@ const TOP: TopBarProps = {
   onShortcuts: NO_OP,
 };
 
-const BOTTOM = { reusable: false, selecting: false } as const;
+const BOTTOM = {
+  reusable: false,
+  selecting: false,
+  empty: false,
+  canUndo: false,
+  canRedo: false,
+} as const;
 
 function mount(): ReturnType<typeof createRoot> {
   return createRoot({

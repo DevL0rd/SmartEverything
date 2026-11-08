@@ -21,12 +21,12 @@ const SLANT = 'rotate(7 280 108)';
 const TRAY =
   'M252 110Q252 101 265 101L342 104Q364 106 364 116V119Q364 126 354 126L268 123Q252 122 252 113Z';
 
-export function clock(seconds: number): string {
+function clock(seconds: number): string {
   const whole = Math.floor(seconds);
   return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, '0')}`;
 }
 
-export function waistOf(tilt: number, lean: number): Point {
+function waistOf(tilt: number, lean: number): Point {
   const beta = (tilt + lean + tilt * 0.5) * RADIANS;
   return { x: WALKER_X + WAIST_REACH * Math.sin(beta), y: BELT_Y - WAIST_RISE * Math.cos(beta) };
 }

@@ -1,49 +1,77 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { MACHINE_UPDATE_MANIFEST } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  MACHINE_UPDATE_MANIFEST,
+  MACHINE_UPDATE_NOTICE,
+  type AppUpdateNotice,
+} from '@smarteverything/domain';
+import { describe, expect, it } from 'vitest';
+import { watchMachineUpdates } from '../../apps/hub/src/updates/machine-update-watch';
+import { startMachineUpdateHub } from '../../apps/hub/test/support/machine-update-hub';
+import {
+  PublisherAddressError,
+  PublisherPinError,
+  PublisherTokenError,
+  publisherTarget,
+  rollbackRelease,
+  withdrawRelease,
+} from '../machine-update-client.ts';
 import {
   ReleaseFileArgumentError,
   publishMachineUpdate,
   releaseFileOf,
 } from '../release-machine-update.ts';
+import {
+  FIXTURE_ARCHIVES,
+  NOTES,
+  PUBLICATION,
+  WEB_PAYLOAD,
+  built,
+  deferred,
+  publisherFor,
+  releaseHub,
+  useReleaseHub,
+  useReleaseWorkspace,
+  workspace,
+} from './release-machine-update-fixture.ts';
 
-let base = '';
+useReleaseWorkspace();
+useReleaseHub();
 
-beforeEach(async () => {
-  base = await mkdtemp(join(tmpdir(), 'release-machine-update-'));
-});
+const LINUX = { platform: 'linux', arch: 'x64', kind: 'zip' } as const;
 
-afterEach(async () => {
-  await rm(base, { recursive: true, force: true });
-});
-
-async function built(name: string, content: string): Promise<string> {
-  const file = join(base, 'out', name);
-  await mkdir(join(base, 'out'), { recursive: true });
-  await writeFile(file, content);
-  return file;
+async function offered(): Promise<string | undefined> {
+  const offer = await releaseHub().hub.updates.offer({
+    product: 'desktop-computer',
+    platform: 'linux',
+    arch: 'x64',
+  });
+  return offer?.version;
 }
 
-describe('publishing a desktop release into the hub data folder', () => {
-  it('copies the files, writes checksums and sizes and swaps the folder in', async () => {
-    const zip = await built('SmartEverything-linux-x64-0.4.2.zip', 'zip bytes');
-    const data = join(base, 'data');
-    await mkdir(data);
-    const manifest = await publishMachineUpdate(data, '0.4.2', [
-      { platform: 'linux', arch: 'x64', kind: 'zip', path: zip },
-    ]);
-    expect(manifest.artifacts[0]).toStrictEqual({
-      platform: 'linux',
-      arch: 'x64',
-      kind: 'zip',
-      file: 'SmartEverything-linux-x64-0.4.2.zip',
-      sha256: createHash('sha256').update('zip bytes').digest('hex'),
-      size: 9,
+async function absent(path: string): Promise<boolean> {
+  return stat(path).then(
+    () => false,
+    () => true,
+  );
+}
+
+describe('publishing a desktop release to a hub over the network', () => {
+  it('uploads the verified files and publishes the complete multiline notes together', async () => {
+    const zip = await built('SmartEverything-linux-x64-0.4.2.zip', '0.4.2');
+    const { hub, target } = releaseHub();
+    const manifest = await publishMachineUpdate(target, '0.4.2', [{ ...LINUX, path: zip }], {
+      notes: ` ${NOTES} \n`,
     });
-    const stored = join(data, 'machine-updates');
+    const bytes = await readFile(zip);
+    expect(manifest.artifacts[0]).toStrictEqual({
+      ...LINUX,
+      file: 'SmartEverything-linux-x64-0.4.2.zip',
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      size: bytes.length,
+    });
+    const stored = hub.layout.system.updates.machineUpdates;
     expect((await readdir(stored)).sort()).toStrictEqual([
       'SmartEverything-linux-x64-0.4.2.zip',
       'manifest.json',
@@ -51,35 +79,221 @@ describe('publishing a desktop release into the hub data folder', () => {
     expect(
       MACHINE_UPDATE_MANIFEST.parse(
         JSON.parse(await readFile(join(stored, 'manifest.json'), 'utf8')),
-      ).version,
-    ).toBe('0.4.2');
+      ),
+    ).toStrictEqual({ ...manifest, version: '0.4.2', notes: NOTES });
+    expect(await offered()).toBe('0.4.2');
   });
 
-  it('keeps the earlier release as .previous', async () => {
-    const data = join(base, 'data');
-    await mkdir(data);
-    const first = await built('a-1.zip', 'one');
-    await publishMachineUpdate(data, '0.4.1', [
-      { platform: 'linux', arch: 'x64', kind: 'zip', path: first },
-    ]);
-    const second = await built('a-2.zip', 'two!');
-    await publishMachineUpdate(data, '0.4.2', [
-      { platform: 'linux', arch: 'x64', kind: 'zip', path: second },
-    ]);
-    expect(await readdir(join(data, 'machine-updates.previous'))).toContain('a-1.zip');
-    expect(await readdir(join(data, 'machine-updates'))).toContain('a-2.zip');
-  });
-
-  it('stores nothing when a windows release lacks its RELEASES file', async () => {
-    const data = join(base, 'data');
-    await mkdir(data);
-    const nupkg = await built('smarteverything-0.4.2-full.nupkg', 'pkg');
+  it('keeps the active release if the next ZIP embeds a different version than its label', async () => {
+    const { target } = releaseHub();
+    const active = await built('desktop-0.4.1.zip', '0.4.1');
+    const wrong = await built('desktop-0.4.2.zip', '0.4.1');
+    await publishMachineUpdate(target, '0.4.1', [{ ...LINUX, path: active }], PUBLICATION);
     await expect(
-      publishMachineUpdate(data, '0.4.2', [
-        { platform: 'win32', arch: 'x64', kind: 'nupkg', path: nupkg },
-      ]),
-    ).rejects.toThrow();
-    expect(await readdir(data)).toStrictEqual([]);
+      publishMachineUpdate(target, '0.4.2', [{ ...LINUX, path: wrong }], PUBLICATION),
+    ).rejects.toThrow('embeds version 0.4.1; expected 0.4.2');
+    expect(await offered()).toBe('0.4.1');
+  });
+
+  it.each([
+    { resources: 'SmartEverything-linux-x64/nested/resources' },
+    { resources: 'SmartEverything-linux-x64/Resources' },
+    { extra: ['another-root/readme.txt'] },
+  ])('refuses a Linux ZIP whose files are outside the canonical layout (%j)', async (fixture) => {
+    const { hub, target } = releaseHub();
+    const path = await built('desktop.zip', '0.4.2', fixture);
+    await expect(
+      publishMachineUpdate(target, '0.4.2', [{ ...LINUX, path }], PUBLICATION),
+    ).rejects.toThrow('Desktop installer');
+    expect(await absent(`${hub.layout.system.updates.machineUpdates}.next`)).toBe(true);
+  });
+
+  it('keeps the active ZIP when a matching candidate has a corrupt non-ASAR member', async () => {
+    const { target } = releaseHub();
+    const active = await built('desktop-0.4.1.zip', '0.4.1');
+    const corrupt = await built('desktop-0.4.2.zip', '0.4.2');
+    const bytes = await readFile(corrupt);
+    const offset = bytes.indexOf(WEB_PAYLOAD);
+    expect(offset).toBeGreaterThan(0);
+    bytes.writeUInt8(0, offset);
+    await writeFile(corrupt, bytes);
+    await publishMachineUpdate(target, '0.4.1', [{ ...LINUX, path: active }], PUBLICATION);
+    await expect(
+      publishMachineUpdate(target, '0.4.2', [{ ...LINUX, path: corrupt }], PUBLICATION),
+    ).rejects.toThrow('valid ZIP member checksums');
+    expect(await offered()).toBe('0.4.1');
+  });
+
+  it.each([
+    { platform: 'linux', kind: 'zip' },
+    { platform: 'darwin', kind: 'zip' },
+    { platform: 'win32', kind: 'nupkg' },
+  ] as const)(
+    'refuses a $platform package missing the wake vocabulary',
+    async ({ platform, kind }) => {
+      const omit = 'computer/wake-name-model/bpe.vocab';
+      const path = await built(`SmartEverything.${kind}`, '0.4.2', { platform, omit });
+      await expect(
+        publishMachineUpdate(
+          releaseHub().target,
+          '0.4.2',
+          [{ platform, arch: 'x64', kind, path }],
+          PUBLICATION,
+        ),
+      ).rejects.toThrow(`is missing ${FIXTURE_ARCHIVES[platform].resources}/${omit}`);
+      expect(await offered()).toBeUndefined();
+    },
+  );
+
+  it.each([
+    {
+      platform: 'linux',
+      kind: 'zip',
+      entry: 'SmartEverything-linux-x64/resources/service/service.mjs',
+    },
+    { platform: 'win32', kind: 'nupkg', entry: 'lib/net45/resources/go2rtc/go2rtc.exe' },
+  ] as const)(
+    'refuses hub resources in a $platform desktop installer before uploading',
+    async (file) => {
+      const { hub, target } = releaseHub();
+      const path = await built(`SmartEverything.${file.kind}`, '0.4.2', {
+        platform: file.platform,
+        extra: [file.entry],
+      });
+      await expect(
+        publishMachineUpdate(
+          target,
+          '0.4.2',
+          [{ platform: file.platform, arch: 'x64', kind: file.kind, path }],
+          PUBLICATION,
+        ),
+      ).rejects.toThrow('contains the hub resource');
+      expect(await absent(`${hub.layout.system.updates.machineUpdates}.next`)).toBe(true);
+    },
+  );
+
+  it('announces an atomic installer publish with the packaged Web runtime', async () => {
+    const { hub, target } = releaseHub();
+    const zip = await built('SmartEverything-linux-x64-0.4.2.zip', '0.4.2');
+    const runtimeVersion = '9724ce88e713205c662d9dfd3284b029';
+    const { promise, resolve } = deferred<AppUpdateNotice>();
+    const stop = watchMachineUpdates(hub.layout, hub.folder, resolve);
+    try {
+      await publishMachineUpdate(target, '0.4.2', [{ ...LINUX, path: zip }], {
+        notes: NOTES,
+        runtimeVersion,
+      });
+      const notice = MACHINE_UPDATE_NOTICE.parse(
+        JSON.parse(
+          await readFile(join(hub.layout.system.updates.machineUpdates, 'notice.json'), 'utf8'),
+        ),
+      );
+      await expect(promise).resolves.toStrictEqual({
+        type: 'app_update',
+        platform: 'desktop',
+        channel: 'release',
+        id: notice.id,
+        runtimeVersion,
+      });
+    } finally {
+      await stop();
+    }
+  });
+
+  it('announces a withdrawal once, without a transient withdrawal during a swap', async () => {
+    const { hub, target } = releaseHub();
+    const earlier = await built('SmartEverything-linux-x64-0.4.1.zip', '0.4.1');
+    const later = await built('SmartEverything-linux-x64-0.4.2.zip', '0.4.2');
+    const runtimeVersion = '9724ce88e713205c662d9dfd3284b029';
+    const first = deferred<null>();
+    const next = deferred<null>();
+    const withdrawn = deferred<null>();
+    const ids: (string | null)[] = [];
+    const stop = watchMachineUpdates(hub.layout, hub.folder, (notice) => {
+      ids.push(notice.id);
+      if (ids.length === 1) first.resolve(null);
+      if (ids.length === 2) next.resolve(null);
+      if (notice.id === null) withdrawn.resolve(null);
+    });
+    try {
+      const metadata = { notes: NOTES, runtimeVersion };
+      await publishMachineUpdate(target, '0.4.1', [{ ...LINUX, path: earlier }], metadata);
+      await first.promise;
+      await publishMachineUpdate(target, '0.4.2', [{ ...LINUX, path: later }], metadata);
+      await next.promise;
+      expect(ids).toHaveLength(2);
+      expect(ids).not.toContain(null);
+      await withdrawRelease(target);
+      await withdrawn.promise;
+      expect(ids).toHaveLength(3);
+      expect(ids[2]).toBeNull();
+      expect(await offered()).toBeUndefined();
+    } finally {
+      await stop();
+    }
+  });
+
+  it('keeps the earlier release as the previous one and rolls back to it', async () => {
+    const { hub, target } = releaseHub();
+    const first = await built('a-1.zip', '0.4.1');
+    const second = await built('a-2.zip', '0.4.2');
+    await publishMachineUpdate(target, '0.4.1', [{ ...LINUX, path: first }], PUBLICATION);
+    await publishMachineUpdate(target, '0.4.2', [{ ...LINUX, path: second }], PUBLICATION);
+    expect(await readdir(hub.layout.system.updates.machineUpdatesPrevious)).toContain('a-1.zip');
+    expect(await readdir(hub.layout.system.updates.machineUpdates)).toContain('a-2.zip');
+    expect((await rollbackRelease(target)).version).toBe('0.4.1');
+    expect(await offered()).toBe('0.4.1');
+  });
+});
+
+describe('the publisher client', () => {
+  it('is refused by the hub when its token belongs to a member', async () => {
+    const { hub } = releaseHub();
+    const member = await publisherFor(hub, 'member');
+    const path = await built('desktop-0.4.2.zip', '0.4.2');
+    await expect(
+      publishMachineUpdate(member.target, '0.4.2', [{ ...LINUX, path }], PUBLICATION),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+    expect(await offered()).toBeUndefined();
+  });
+
+  it('refuses a hub certificate that does not match the pin, without sending the token', async () => {
+    const { hub, tokenFile } = releaseHub();
+    const wrong = await publisherTarget({
+      hub: hub.url.href,
+      pin: '0'.repeat(64),
+      tokenFile,
+    });
+    const failure = await rollbackRelease(wrong).catch((cause: unknown) => cause);
+    expect(failure).toBeInstanceOf(PublisherPinError);
+    expect(String(failure)).not.toContain(wrong.token);
+  });
+
+  it('refuses a plain http address and a token file that holds anything else', async () => {
+    const { hub, tokenFile } = releaseHub();
+    await expect(
+      publisherTarget({ hub: 'http://127.0.0.1:7880', pin: undefined, tokenFile }),
+    ).rejects.toThrow(PublisherAddressError);
+    const other = join(workspace.base, 'other.token');
+    await writeFile(other, 'not a token');
+    await expect(
+      publisherTarget({ hub: hub.url.href, pin: hub.pin, tokenFile: other }),
+    ).rejects.toThrow(PublisherTokenError);
+  });
+
+  it('refuses an untrusted certificate when no pin is given', async () => {
+    const plain = await startMachineUpdateHub({ tls: true });
+    try {
+      const unpinned = await publisherFor(plain, 'owner');
+      const target = await publisherTarget({
+        hub: plain.url.href,
+        pin: undefined,
+        tokenFile: unpinned.tokenFile,
+      });
+      await expect(rollbackRelease(target)).rejects.toThrow(/self[- ]signed/u);
+    } finally {
+      await plain.close();
+    }
   });
 });
 

@@ -1,10 +1,14 @@
 import { AUTOMATIONS_ACTIONS, ROUTES as AUTOMATIONS } from '../features/automations/routes';
 import { ROUTES as CAMERAS, preloadCameras, TRANSCRIPT_ACTIONS } from '../features/cameras/routes';
+import { ROUTES as CLOCK } from '../features/clock/routes';
 import { ROUTES as DEVICE_LIST } from '../features/device-list/routes';
+import { ROUTES as DRIVE } from '../features/drive/routes';
 import { preloadToday } from '../features/fitness/data/preload';
 import { ROUTES as FITNESS } from '../features/fitness/routes';
 import { ROUTES as HOME } from '../features/home/routes';
 import { ROUTES as NUTRITION } from '../features/nutrition/routes';
+import { ROUTES as PHOTOS } from '../features/photos/routes';
+import { ROUTES as PLANNER } from '../features/planner/routes';
 import { ROUTES as SETTINGS } from '../features/settings/routes';
 import { talkAvailable } from '../features/talk';
 import { ROUTES as WEATHER } from '../features/weather/routes';
@@ -85,6 +89,28 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
     searchable: true,
   },
   {
+    key: 'planner',
+    href: '/planner',
+    title: 'Planner',
+    icon: 'calendar',
+    tab: 'planner',
+    parent: null,
+    keywords: ['calendar', 'tasks', 'reminders', 'schedule', 'agenda'],
+    available: always,
+    searchable: true,
+  },
+  {
+    key: 'clock',
+    href: '/clock',
+    title: 'Clock',
+    icon: 'alarmClock',
+    tab: 'clock',
+    parent: null,
+    keywords: ['alarm', 'timer', 'stopwatch', 'world clock', 'wake', 'snooze'],
+    available: always,
+    searchable: true,
+  },
+  {
     key: 'automations',
     href: '/automations',
     title: 'Automations',
@@ -122,6 +148,28 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
     searchable: true,
   },
   {
+    key: 'photos',
+    href: '/photos',
+    title: 'Photos',
+    icon: 'image',
+    tab: 'photos',
+    parent: null,
+    keywords: ['pictures', 'images', 'videos', 'gallery', 'camera roll', 'memories', 'albums'],
+    available: always,
+    searchable: true,
+  },
+  {
+    key: 'drive',
+    href: '/drive',
+    title: 'Drive',
+    icon: 'folder',
+    tab: 'drive',
+    parent: null,
+    keywords: ['files', 'folders', 'documents', 'storage', 'sync', 'my drive'],
+    available: always,
+    searchable: true,
+  },
+  {
     key: 'settings',
     href: '/settings',
     title: 'Settings',
@@ -141,6 +189,10 @@ const PAGES: readonly RouteDefinition[] = [
   ...DEVICE_LIST,
   ...CAMERAS,
   ...FITNESS,
+  ...PLANNER,
+  ...CLOCK,
+  ...DRIVE,
+  ...PHOTOS,
   ...NUTRITION,
   ...AUTOMATIONS,
   ...SETTINGS,

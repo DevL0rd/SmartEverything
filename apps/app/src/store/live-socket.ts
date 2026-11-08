@@ -1,4 +1,5 @@
 import {
+  LIVE_HEARTBEAT_MS,
   LIVE_MESSAGE,
   MEDIA_PATHS,
   liveProtocols,
@@ -14,10 +15,10 @@ import { markJsonParsed, timedRead } from '../dev/wire-probe';
 
 export const TOKEN_WITHDRAWN = 4001;
 
-const BACKOFF_MS: readonly number[] = [1000, 2000, 4000, 8000, 16_000, 30_000];
+const FIRST_RETRY_MS = 1000;
 
 export function backoffOf(attempt: number): number {
-  return BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 30_000;
+  return Math.min(LIVE_HEARTBEAT_MS, FIRST_RETRY_MS * 2 ** attempt);
 }
 
 export type Received =

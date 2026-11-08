@@ -4,6 +4,7 @@ import { messageOf } from '@smarteverything/logging';
 import type { DeviceDriverContext } from '../../../local/device-driver';
 import { Backoff } from '../../backoff';
 import type { PluginContext, PluginStop } from '../contract';
+import { OPENRGB_STATUS_STREAM, openRgbStatus } from './automation';
 import { DeviceMirror } from '../device-mirror';
 import { ControllerModel, type PreparedCommand } from './controller-model';
 import {
@@ -25,7 +26,7 @@ import {
 
 export type OpenRgbHost = Pick<
   PluginContext<OpenRgbSettings>,
-  'settings' | 'signal' | 'log' | 'tools' | 'records'
+  'settings' | 'signal' | 'log' | 'tools' | 'records' | 'data'
 > & {
   readonly devices: Pick<PluginContext<OpenRgbSettings>['devices'], 'register'>;
 };
@@ -90,6 +91,7 @@ export class OpenRgbRuntime {
   private sink: DeviceDriverContext['sink'] | null = null;
   private link: OpenRgbLink | null = null;
   private online = false;
+  private published: string | null = null;
   private reading: Promise<void> | null = null;
   private readAgain = false;
 
@@ -114,6 +116,7 @@ export class OpenRgbRuntime {
         saveProfile: (name) => this.saveProfile(name),
       }),
     );
+    this.publishStatus(0);
     const running = this.run();
     return async () => {
       unregister();
@@ -244,9 +247,21 @@ export class OpenRgbRuntime {
     this.publish();
   }
 
+  private publishStatus(lights: number): void {
+    const status = openRgbStatus(this.online, lights);
+    const serialised = JSON.stringify(status);
+    if (serialised === this.published) {
+      return;
+    }
+    this.published = serialised;
+    this.ctx.data.publish(OPENRGB_STATUS_STREAM, status);
+  }
+
   private publish(): void {
     const at = new Date().toISOString();
-    for (const snapshot of this.model.snapshots(this.online, at)) {
+    const snapshots = this.model.snapshots(this.online, at);
+    this.publishStatus(this.online ? snapshots.length : 0);
+    for (const snapshot of snapshots) {
       const id = snapshot.unit.externalId;
       let mirror = this.mirrors.get(id);
       if (mirror === undefined) {
@@ -278,13 +293,25 @@ export class OpenRgbRuntime {
 
   private async perform(link: OpenRgbLink, prepared: PreparedCommand): Promise<void> {
     try {
-      for (const step of prepared.steps) {
-        await perform(link, prepared.index, step);
+      const last = prepared.steps.length - 1;
+      for (const [position, step] of prepared.steps.entries()) {
+        if (position === last && step.kind === 'mode')
+          this.sendLastMode(link, prepared.index, step);
+        else await perform(link, prepared.index, step);
       }
     } catch (cause) {
       this.reload(link);
       throw cause;
     }
+  }
+
+  private sendLastMode(link: OpenRgbLink, controller: number, step: LightStep): void {
+    perform(link, controller, step).catch((cause: unknown) => {
+      if (!this.stopped()) {
+        this.ctx.log.warn('openrgb.mode_failed', { reason: messageOf(cause) });
+      }
+      this.reload(link);
+    });
   }
 
   private async status(): Promise<Readonly<Record<string, JsonValue>>> {

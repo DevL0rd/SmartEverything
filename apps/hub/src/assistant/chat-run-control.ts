@@ -1,3 +1,4 @@
+import { admitChatExecution } from './native-helpers';
 import { ApiError } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { ChatDirectory, ChatOwner } from './chat-directory';
@@ -19,6 +20,7 @@ export async function compactChat(
   clientId?: string,
 ): Promise<boolean> {
   const chat = chats.own(owner, chatId);
+  admitChatExecution(chat);
   const engine = engines.forMutation(chat, owner.role);
   if (engine?.status(chat).state === 'working') {
     log.warn('compact.refused', { chatId, profileId: owner.profileId, reason: 'working' });
@@ -51,6 +53,7 @@ export async function interruptChat(
   chatId: string,
 ): Promise<void> {
   const chat = chats.own(owner, chatId);
+  admitChatExecution(chat);
   const engine = engines.forMutation(chat, owner.role);
   if (delivery.stopChat(chatId)) {
     log.info('interrupt.delivery_retry_stopped', { chatId, profileId: owner.profileId });

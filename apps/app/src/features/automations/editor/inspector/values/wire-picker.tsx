@@ -4,19 +4,19 @@ import { View } from 'react-native';
 import type { FlowType, PortValue, Wire } from '@smarteverything/domain';
 import { categoryName } from '@smarteverything/domain';
 import { Badge } from '../../../../../components/badge';
+import { Button } from '../../../../../components/button';
 import { Icon, isIconName } from '../../../../../components/icon';
 import { IconWell } from '../../../../../components/icon-well';
 import { Interactive } from '../../../../../components/interactive';
 import { SearchField } from '../../../../../components/search-field';
 import { Text } from '../../../../../components/text';
 import { categoryColour } from '../../../../../design/node-colours';
+import type { InspectorEnv } from '../sections/section-types';
 import type { WireChoice, WireGroup } from './wire-model';
 import { currentWire, filterGroups, wireGroups, wireLabel, wireValue } from './wire-model';
-import { useValueServices } from './value-services';
-
-const SEARCH_FROM = 12;
 
 export interface WirePickerProps {
+  readonly env: InspectorEnv;
   readonly nodeKey: string;
   readonly expected: FlowType | undefined;
   readonly value: PortValue | undefined;
@@ -106,39 +106,100 @@ function Groups({
   ));
 }
 
-export function WirePicker({
-  nodeKey,
-  expected,
+function Current({
+  text,
+  open,
+  onToggle,
+}: {
+  readonly text: string;
+  readonly open: boolean;
+  readonly onToggle: () => void;
+}): ReactNode {
+  return (
+    <View className="flex-row items-center gap-2 rounded-md border border-outline-variant bg-surface-2 pl-3">
+      <Icon name="route" size={16} tone="primary" />
+      <Text variant="body" className="min-w-0 flex-1" numberOfLines={2}>
+        {text}
+      </Text>
+      <Button
+        label={open ? 'Done' : 'Change'}
+        spoken={open ? 'Close the list of earlier steps' : `Change the wire from ${text}`}
+        variant="text"
+        onPress={onToggle}
+      />
+    </View>
+  );
+}
+
+function Choices({
+  all,
   value,
   disabled,
   onPick,
-}: WirePickerProps): ReactNode {
-  const { env } = useValueServices();
+}: {
+  readonly all: readonly WireGroup[];
+  readonly value: PortValue | undefined;
+  readonly disabled: boolean;
+  readonly onPick: (value: PortValue) => void;
+}): ReactNode {
   const [query, setQuery] = useState('');
-  const all = wireGroups({ index: env.index, registry: env.registry, ownerKey: nodeKey, expected });
   const groups = filterGroups(all, query);
-  const currentText = wireLabel(value, env.scope);
-  const total = all.reduce((sum, group) => sum + group.choices.length, 0);
   return (
     <View className="gap-1">
-      {currentText === undefined ? null : <Text variant="callout">{`Now: ${currentText}`}</Text>}
-      {total > SEARCH_FROM ? (
-        <SearchField
-          value={query}
-          onChange={setQuery}
-          placeholder="Search earlier steps"
-          variant="field"
-        />
-      ) : null}
-      <Text variant="footnote" tone="variant">
-        From earlier steps
-      </Text>
+      <SearchField
+        value={query}
+        onChange={setQuery}
+        placeholder="Search earlier steps"
+        variant="field"
+      />
       {groups.length === 0 ? (
         <Text variant="callout" tone="variant">
           Nothing earlier fits here yet.
         </Text>
       ) : null}
       <Groups groups={groups} current={currentWire(value)} disabled={disabled} onPick={onPick} />
+    </View>
+  );
+}
+
+export function WirePicker({
+  env,
+  nodeKey,
+  expected,
+  value,
+  disabled,
+  onPick,
+}: WirePickerProps): ReactNode {
+  const [open, setOpen] = useState(false);
+  const all = wireGroups({ index: env.index, registry: env.registry, ownerKey: nodeKey, expected });
+  const currentText = wireLabel(value, env.scope);
+  const listed = currentText === undefined || open;
+  return (
+    <View className="gap-2">
+      {currentText === undefined ? (
+        <Text variant="footnote" tone="variant">
+          Pick a value from an earlier step
+        </Text>
+      ) : (
+        <Current
+          text={currentText}
+          open={open}
+          onToggle={() => {
+            setOpen(!open);
+          }}
+        />
+      )}
+      {listed ? (
+        <Choices
+          all={all}
+          value={value}
+          disabled={disabled}
+          onPick={(picked) => {
+            setOpen(false);
+            onPick(picked);
+          }}
+        />
+      ) : null}
     </View>
   );
 }

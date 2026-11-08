@@ -1,13 +1,14 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
-import type { ProfileRow } from '@smarteverything/domain';
+import { PROFILE_NAME_MAX, type ProfileRow } from '@smarteverything/domain';
 import { href } from '../../app-shell/hrefs';
 import { createProfile } from '../../api/people';
 import { ListRow } from '../../components/list-row';
+import { Text } from '../../components/text';
 import { joinParts } from '../../format/text';
 import { TextEditSheet, type TextEditRequest } from '../../settings/text-edit-sheet';
 import { useActiveProfile, useProfiles } from '../../store/people';
 import { useIsOwner } from '../../store/selectors';
+import { useNameEditor } from './name-editor';
 import { ProfileAvatar } from './profile-avatar';
 
 function summaryOf(profile: ProfileRow, active: boolean): string | null {
@@ -28,35 +29,52 @@ const ADD_PERSON: Omit<TextEditRequest, 'save'> = {
   initial: '',
   placeholder: 'Their first name',
   confirmLabel: 'Add',
-  maxLength: 40,
+  maxLength: PROFILE_NAME_MAX,
 };
+
+function PersonRow({
+  profile,
+  active,
+}: {
+  readonly profile: ProfileRow;
+  readonly active: boolean;
+}): ReactNode {
+  const summary = summaryOf(profile, active);
+  return (
+    <ListRow
+      title={profile.name}
+      wrapTitle
+      wrapSubtitle
+      {...(summary === null ? {} : { subtitle: summary })}
+      leading={<ProfileAvatar profile={profile} />}
+      href={href.settings.profile(profile.id)}
+      chevron
+    />
+  );
+}
 
 export function PeopleBlock(): ReactNode {
   const profiles = useProfiles();
   const active = useActiveProfile();
   const owner = useIsOwner();
-  const [request, setRequest] = useState<TextEditRequest | null>(null);
+  const editor = useNameEditor();
   return (
     <>
-      {profiles.map((profile) => {
-        const summary = summaryOf(profile, profile.id === active?.id);
-        return (
-          <ListRow
-            key={profile.id}
-            title={profile.name}
-            {...(summary === null ? {} : { subtitle: summary })}
-            leading={<ProfileAvatar profile={profile} />}
-            href={href.settings.profile(profile.id)}
-            chevron
-          />
-        );
-      })}
+      {profiles.length === 0 ? (
+        <Text variant="callout" tone="variant" className="px-4 py-3">
+          No people yet.
+        </Text>
+      ) : null}
+      {profiles.map((profile) => (
+        <PersonRow key={profile.id} profile={profile} active={profile.id === active?.id} />
+      ))}
       {owner ? (
         <ListRow
           title="Add a person"
           icon="plus"
+          pressRef={editor.opener}
           onPress={() => {
-            setRequest({
+            editor.open({
               ...ADD_PERSON,
               save: async (name) => {
                 await createProfile({ name });
@@ -65,12 +83,7 @@ export function PeopleBlock(): ReactNode {
           }}
         />
       ) : null}
-      <TextEditSheet
-        request={request}
-        onClose={() => {
-          setRequest(null);
-        }}
-      />
+      <TextEditSheet request={editor.request} onClose={editor.close} />
     </>
   );
 }

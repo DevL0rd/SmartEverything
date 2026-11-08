@@ -3,7 +3,7 @@ import { Fragment } from 'react';
 import { View } from 'react-native';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
-import type { Href } from 'expo-router';
+import type { AppHref } from './app-href';
 import { Interactive } from './interactive';
 import { rowsOf, separatorInset } from './list-rows';
 import { Text } from './text';
@@ -45,17 +45,18 @@ function SectionTitle({
 
 export function SectionAction({
   label,
+  spoken,
   href,
   onPress,
 }: {
   readonly label: string;
-  readonly href?: Href;
+  readonly spoken?: string;
+  readonly href?: AppHref;
   readonly onPress?: () => void;
 }): ReactNode {
   return (
     <Interactive
-      role="link"
-      label={label}
+      label={spoken ?? label}
       href={href}
       onPress={onPress}
       className="-mr-2 min-h-touch-min justify-end rounded-sm px-2 pb-1"

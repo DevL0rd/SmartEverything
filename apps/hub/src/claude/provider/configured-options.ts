@@ -74,6 +74,6 @@ export function configurationOptions(options: ClaudeProviderOptions): Options {
 export function configuredOptions(turn: ProviderTurn): Options {
   return {
     ...configurationOptions(managedConfiguration(turn)),
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: turn.system },
+    systemPrompt: { type: 'preset', preset: 'claude_code', append: turn.system, snapshot: false },
   };
 }

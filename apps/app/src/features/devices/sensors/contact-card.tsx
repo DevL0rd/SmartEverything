@@ -4,6 +4,7 @@ import { withRole } from '@smarteverything/domain';
 import { StateTimeline } from '../../../components/charts';
 import { ReasonLine } from '../../../components/reason-line';
 import { Text } from '../../../components/text';
+import { cn } from '../../../design/cn';
 import { useDeviceDerived } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import type { CardFaceProps } from '../card/card-face';
@@ -13,6 +14,7 @@ import { usePowerTimeline } from '../button/use-power-timeline';
 import { deviceModelOf } from '../model/device-model';
 import { OFFLINE_REASON } from '../model/offline';
 import { contactStateText, openingsText, openingsToday, openSince } from './contact-model';
+import { TIMELINE_CAPTIONS_PX, emptyStripPx, trackPx, useGraphRoom } from './layout';
 import { levelPercent, numberAt } from './reading';
 import { SensorFrame, useVisibleFrame } from './sensor-frame';
 import { levelPill } from './state-line';
@@ -47,23 +49,31 @@ function useContactRead(device: Device): ContactRead {
 
 function ContactStrip({
   timeline,
-  height,
+  track,
+  dim,
 }: {
   readonly timeline: ReturnType<typeof usePowerTimeline>;
-  readonly height: number;
+  readonly track: number;
+  readonly dim: boolean;
 }): ReactNode {
+  const { room, onLayout } = useGraphRoom(track + TIMELINE_CAPTIONS_PX);
+  const height = timeline.segments.length === 0 ? emptyStripPx(track, room) : trackPx(track, room);
   return (
-    <StateTimeline
-      segments={timeline.segments}
-      colours={{ on: 'warning' }}
-      label="Open in the last 24 hours"
-      height={height}
-      from={timeline.from}
-      to={timeline.to}
-      captions={['24 h ago', 'Now']}
-      empty="No data yet"
-      track="surface-2"
-    />
+    <View onLayout={onLayout} className={cn('min-h-0 flex-1 justify-end', dim && 'opacity-60')}>
+      {height === null ? null : (
+        <StateTimeline
+          segments={timeline.segments}
+          colours={{ on: 'warning' }}
+          label="Open in the last 24 hours"
+          height={height}
+          from={timeline.from}
+          to={timeline.to}
+          captions={['24 h ago', 'Now']}
+          empty="No data yet"
+          track="surface-2"
+        />
+      )}
+    </View>
   );
 }
 
@@ -99,12 +109,6 @@ function WideContact({
   const offline = !device.online;
   const count = openingsToday(timeline.segments, timeline);
   const line = contactStateText(read.open, openSince(timeline.segments, timeline, read.open));
-  const strip = (
-    <ContactStrip
-      timeline={timeline}
-      height={cls === 'l' || cls === 'xl' ? PANEL_STRIP_HEIGHT : STRIP_HEIGHT}
-    />
-  );
   return (
     <SensorFrame
       device={device}
@@ -115,7 +119,13 @@ function WideContact({
       offline={offline}
       facts={factsOf(line, count, read.battery)}
       figures={figuresOf(cls, count, read.battery)}
-      graph={offline ? <View className="opacity-60">{strip}</View> : strip}
+      graph={
+        <ContactStrip
+          timeline={timeline}
+          track={cls === 'l' || cls === 'xl' ? PANEL_STRIP_HEIGHT : STRIP_HEIGHT}
+          dim={offline}
+        />
+      }
       actions={offline ? [<ReasonLine key="why" icon="wifi" text={OFFLINE_REASON} />] : []}
     />
   );

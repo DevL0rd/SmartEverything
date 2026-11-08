@@ -1,16 +1,16 @@
-import { DEFAULT_ENGINE, NO_PRICES, type AiModelRow } from '@smarteverything/domain';
+import { NO_PRICES, type AiModelRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChatDirectory, type ChatOwner } from '../../src/assistant/chat-directory';
 import { ConversationLog } from '../../src/assistant/conversation-log';
 import { AssistantFiles } from '../../src/assistant/files';
 import { ChatTitles } from '../../src/assistant/titles/chat-titles';
 import { cleanTitle } from '../../src/assistant/titles/title-text';
-import type { SideParts } from '../../src/assistant/side-completion';
-import type { ChatRequest } from '../../src/openrouter/chat-types';
-import type { OrChunk } from '../../src/openrouter/wire';
+import type { AuxCompletionInput, SideParts } from '../../src/assistant/side-completion';
 import type { StoredEvent } from '../../src/store/repositories/assistant-events';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
+import { hubLayout } from '../../src/data-layout';
 
 const MOMENT = '2026-10-01T00:00:00.000Z';
 
@@ -42,28 +42,18 @@ function model(id: string): AiModelRow {
   };
 }
 
-async function* answer(text: string): AsyncGenerator<OrChunk> {
-  await Promise.resolve();
-  if (broken) throw new Error('The connection dropped.');
-  yield {
-    id: 'gen-1',
-    model: 'google/gemini-3.5-flash-lite',
-    choices: [{ delta: { content: text }, finish_reason: 'stop' }],
-    usage: { prompt_tokens: 40, completion_tokens: 6, cost: 0.00012 },
-  };
-}
-
 function parts(): SideParts {
   return {
-    client: {
-      chat: (request): AsyncGenerator<OrChunk> => {
-        requests.push(request);
-        return answer(replies.shift() ?? '');
+    completions: {
+      complete: (input): Promise<string> => {
+        requests.push(input);
+        return broken
+          ? Promise.reject(new Error('The connection dropped.'))
+          : Promise.resolve(replies.shift() ?? '');
       },
     },
     catalogue: {
       rows: () => rows,
-      effortFor: () => null,
       onChange: (listener) => {
         listeners.push(listener);
         return () => {
@@ -78,7 +68,7 @@ let opened: TestStore;
 let chats: ChatDirectory;
 let owner: ChatOwner;
 let replies: string[];
-let requests: ChatRequest[];
+let requests: AuxCompletionInput[];
 let rows: AiModelRow[];
 let listeners: (() => void)[];
 let broken: boolean;
@@ -108,11 +98,10 @@ beforeEach(async () => {
   chats = new ChatDirectory(
     store,
     new AssistantFiles({
-      dataDirectory: opened.directory,
+      layout: hubLayout(opened.directory, {}),
       chat: store.assistantChat,
       now,
     }),
-    now,
   );
   titles = new ChatTitles({ store, ...parts(), now, log: testLogger('assistant') });
 });
@@ -157,42 +146,37 @@ async function settled(): Promise<void> {
 
 describe('chat titles', () => {
   it('names a new chat from its first exchange', async () => {
-    const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
+    const chat = chats.create(owner, { engine: TEST_ENGINE });
     replies.push('"Planning the garden lights 🌙."');
     titles.afterReply(exchange(chat.id, 'Turn on the garden lights at dusk'), 'Done.', true);
     await settled();
     expect(opened.store.aiChats.chat(chat.id).title).toBe('Planning the garden lights');
     expect(opened.store.aiChats.titleAuto(chat.id)).toBe(false);
     expect(requests).toHaveLength(1);
-    expect(JSON.stringify(requests[0]?.messages)).toContain('Turn on the garden lights at dusk');
+    expect(requests[0]?.input).toContain('Turn on the garden lights at dusk');
   });
 
-  it('records the title request in the usage ledger against the chat', async () => {
-    const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
+  it('asks the small model for the title of this chat and records nothing itself', async () => {
+    const chat = chats.create(owner, { engine: TEST_ENGINE });
     replies.push('Garden lights');
     titles.afterReply(exchange(chat.id, 'Turn on the garden lights'), 'Done.', true);
     await settled();
-    const usage = opened.store.ledger.pendingGenerations();
-    expect(usage).toHaveLength(1);
-    expect(usage[0]).toMatchObject({
-      chat_id: chat.id,
-      source: 'openrouter',
-      work: 'chat',
-      model_id: 'google/gemini-3.5-flash-lite',
-      generation_id: 'gen-1',
-      tokens_in: 40,
-      tokens_out: 6,
-      cost_micros: 120,
-      cost_state: 'reported',
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      chatId: chat.id,
+      model: 'google/gemini-3.5-flash-lite',
+      purpose: 'session-title',
     });
+    expect(requests[0]?.system).toContain('You name conversations');
+    expect(opened.store.ledger.pendingGenerations()).toHaveLength(0);
   });
 
   it('never renames a chat the person named or renamed', async () => {
     const named = chats.create(owner, {
       title: 'Holiday',
-      engine: DEFAULT_ENGINE,
+      engine: TEST_ENGINE,
     });
-    const renamed = chats.create(owner, { engine: DEFAULT_ENGINE });
+    const renamed = chats.create(owner, { engine: TEST_ENGINE });
     chats.update(owner, renamed.id, { title: 'My list' });
     titles.afterReply(exchange(named.id, 'Hi'), 'Hello', true);
     titles.afterReply(exchange(renamed.id, 'Hi'), 'Hello', true);
@@ -202,7 +186,7 @@ describe('chat titles', () => {
   });
 
   it('keeps the default title when the answer is unusable or there is no small model yet', async () => {
-    const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
+    const chat = chats.create(owner, { engine: TEST_ENGINE });
     replies.push('  🌙 ');
     titles.afterReply(exchange(chat.id, 'Hi'), 'Hello', true);
     await settled();
@@ -216,7 +200,7 @@ describe('chat titles', () => {
   });
 
   it('keeps the default title and logs when the completion fails', async () => {
-    const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
+    const chat = chats.create(owner, { engine: TEST_ENGINE });
     broken = true;
     titles.afterReply(exchange(chat.id, 'Hi'), 'Hello', true);
     await settled();
@@ -225,7 +209,7 @@ describe('chat titles', () => {
   });
 
   it('skips failed replies and voice tasks, and names call chats from the transcript', async () => {
-    const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
+    const chat = chats.create(owner, { engine: TEST_ENGINE });
     titles.afterReply(exchange(chat.id, 'Hi'), 'Oops', false);
     titles.afterReply({ ...exchange(chat.id, 'Hi'), kind: 'voice' }, 'Sure', true);
     await settled();
@@ -237,7 +221,7 @@ describe('chat titles', () => {
   });
 
   it('backfills the untitled chats once', async () => {
-    const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
+    const chat = chats.create(owner, { engine: TEST_ENGINE });
     for (const [role, text] of [
       ['person', 'Water the plants'],
       ['responder', 'Will do'],
@@ -255,6 +239,7 @@ describe('chat titles', () => {
         steps: [],
         step_states: [],
         reply_to: null,
+        quote: null,
         chat_id: chat.id,
         origin: null,
         embeds: [],
@@ -274,7 +259,7 @@ describe('chat titles', () => {
 
 describe('title backfill', () => {
   it('waits for the small model to appear in the model list before naming old chats', async () => {
-    const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
+    const chat = chats.create(owner, { engine: TEST_ENGINE });
     for (const [role, text] of [
       ['person', 'Water the plants'],
       ['responder', 'Will do'],
@@ -292,6 +277,7 @@ describe('title backfill', () => {
         steps: [],
         step_states: [],
         reply_to: null,
+        quote: null,
         chat_id: chat.id,
         origin: null,
         embeds: [],

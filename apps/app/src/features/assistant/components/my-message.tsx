@@ -1,56 +1,74 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
-import { Text } from '../../../components/text';
+import { Text, View } from 'react-native';
 import { cn } from '../../../design/cn';
 import { useIsEditing } from '../data/editing';
 import type { MessageItem } from '../data/thread';
+import { deliveryOf } from '../model/delivery';
 import { isEmojiOnly } from '../model/message-text';
-import { viaLabelOf, type RunPosition } from '../model/speaker';
+import { voiceClipOf } from '../voice-message/voice-pill-transcript-state';
 import { EditBubble } from './edit-bubble';
-import { useMessageActions } from './message-actions';
+import { useMessageActions, type MessageActions } from './message-actions';
 import { MessageFrame } from './message-frame';
 import { MyMeta } from './message-meta';
-import { deliveryOf } from '../model/delivery';
-import { BarTime, BubbleContent, MessagePreview, messageLabel, useTimeZone } from './message-parts';
-import { TurnNotice } from './turn-notice';
+import { Attachments } from './attachments';
+import {
+  BubbleContent,
+  OWN_PADDING,
+  hasBubbleContent,
+  messageLabel,
+  ownBubbleClass,
+  ownImagesClass,
+  ownImagesOf,
+  shownText,
+  useTimeZone,
+} from './message-parts';
 
-const TAIL: Readonly<Record<RunPosition, string>> = {
-  only: '',
-  first: 'rounded-br-sm',
-  middle: 'rounded-r-sm',
-  last: 'rounded-tr-sm',
-};
+export function showsAsEmoji(item: MessageItem): boolean {
+  return item.quote === null && item.row.attachments.length === 0 && isEmojiOnly(shownText(item));
+}
 
-function ownBubble(item: MessageItem, shown: boolean): string {
-  return cn(
-    'max-w-4/5 gap-2 rounded-xl bg-primary-container px-4 py-2.5',
-    TAIL[item.position],
-    item.waiting && 'opacity-70',
-    shown && 'border border-critical/55',
-  );
+export function showsOwnMeta(item: MessageItem): boolean {
+  const endOfRun = item.position === 'last' || item.position === 'only';
+  const voice = voiceClipOf(item.row.attachments) !== null;
+  return endOfRun || voice || deliveryOf(item.row, item.waiting) === 'failed';
 }
 
 function Bubble({
   item,
   actions,
-  failedShown,
 }: {
   readonly item: MessageItem;
-  readonly actions: ReturnType<typeof useMessageActions>;
-  readonly failedShown: boolean;
+  readonly actions: MessageActions;
 }): ReactNode {
   const timeZone = useTimeZone();
-  const { row } = item;
-  if (row.attachments.length === 0 && isEmojiOnly(row.text)) {
+  if (showsAsEmoji(item)) {
     return (
-      <Text variant="large-title" accessibilityLabel={messageLabel(item, timeZone)}>
-        {row.text.trim()}
+      <Text
+        accessibilityLabel={messageLabel(item, timeZone)}
+        className="font-sans text-figure-l text-on-surface"
+      >
+        {item.row.text.trim()}
       </Text>
     );
   }
+  const images = ownImagesOf(item);
+  const captioned = hasBubbleContent(item);
   return (
-    <View className={ownBubble(item, failedShown)}>
-      <BubbleContent item={item} actions={actions} fades={['bg', 'primary-container']} />
+    <View className="w-full items-end gap-0.5">
+      {images.length === 0 ? null : (
+        <View className="max-w-17/20">
+          <Attachments
+            attachments={images}
+            chatId={item.row.chat_id}
+            imageShape={ownImagesClass(item.position, captioned)}
+          />
+        </View>
+      )}
+      {captioned ? (
+        <View className={cn(ownBubbleClass(item.position, images.length > 0), OWN_PADDING)}>
+          <BubbleContent item={item} actions={actions} tint="bubble" />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -64,35 +82,24 @@ export function MyMessage({
 }): ReactNode {
   const actions = useMessageActions(item);
   const editing = useIsEditing(item.row.id);
-  const { row, position, multiParty, waiting } = item;
-  const failed = row.state === 'failed' && !replied;
-  const endOfRun = position === 'last' || position === 'only';
-  const mark = deliveryOf(row, waiting);
   return (
     <MessageFrame
       actions={actions}
-      preview={<MessagePreview item={item} className="bg-primary-container" />}
       align="end"
-      bar={endOfRun ? null : <BarTime item={item} />}
-      swipeable
+      bar={null}
       onQuote={() => {
         actions.run('quote');
       }}
     >
       <View className="items-end">
         {editing ? (
-          <EditBubble row={row} hasReply={replied} />
+          <EditBubble row={item.row} position={item.position} hasReply={replied} />
         ) : (
-          <Bubble item={item} actions={actions} failedShown={failed} />
+          <>
+            <Bubble item={item} actions={actions} />
+            {showsOwnMeta(item) ? <MyMeta item={item} /> : null}
+          </>
         )}
-        {endOfRun && !editing ? (
-          <MyMeta row={row} mark={mark} via={multiParty ? viaLabelOf(row) : null} />
-        ) : null}
-        {failed && !editing ? (
-          <View className="mt-2 w-full max-w-dialog self-end">
-            <TurnNotice row={row} subject="request" />
-          </View>
-        ) : null}
       </View>
     </MessageFrame>
   );

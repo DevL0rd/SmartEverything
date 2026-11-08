@@ -1,5 +1,5 @@
-import type { AutomationV3, RunMode, RunPolicy } from '@smarteverything/domain';
-import type { HeaderOp } from '@smarteverything/flow/ops/schema';
+import type { AutomationV4, RunMode, RunPolicy } from '@smarteverything/domain';
+import type { HeaderOp } from '@smarteverything/flow/graph/ops/schema';
 
 export const DEFAULT_MAX = 10;
 
@@ -77,7 +77,7 @@ export function maxSummary(policy: RunPolicy): string {
   return policy.max === undefined ? 'No limit' : `Up to ${String(policy.max)}`;
 }
 
-export function needsButtonHint(program: AutomationV3): boolean {
+export function needsButtonHint(program: AutomationV4): boolean {
   if (program.policy.mode !== 'single') return false;
   return program.triggers.some(
     (trigger) => trigger.kind === 'trigger.button' && trigger.enabled !== false,

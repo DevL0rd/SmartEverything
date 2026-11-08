@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react';
 import { CardGrid as KitCardGrid } from '../../../components/card-grid';
 import { gridColumnsOf } from '../../../components/frame-layout';
-import { useAreaWidth } from '../../../design/size-class';
-import { bodyWidthOf } from '../model/sections';
+import { useFrameBodyWidth } from '../../../components/section-body';
 
-export function columnsOfArea(area: number): 1 | 2 {
-  return gridColumnsOf(bodyWidthOf(area)) === 1 ? 1 : 2;
+export function columnsOfBody(bodyWidth: number): 1 | 2 {
+  return gridColumnsOf(bodyWidth) === 1 ? 1 : 2;
 }
 
 export function CardGrid<T>({
@@ -20,7 +19,7 @@ export function CardGrid<T>({
   return (
     <KitCardGrid
       items={items}
-      columns={columnsOfArea(useAreaWidth())}
+      columns={columnsOfBody(useFrameBodyWidth())}
       keyOf={keyOf}
       render={render}
     />

@@ -1,0 +1,1 @@
+export { DuplicatesScreen } from './screen';

@@ -1,5 +1,6 @@
-import type { ComputerFeature, FlowNode, JsonValue } from '@smarteverything/domain';
-import { automation, lit, type Maker } from './build';
+import type { ComputerFeature, GraphPiece } from '@smarteverything/domain';
+import { lit } from './build';
+import { graphAutomation, type GraphMaker } from './graph-kit';
 import {
   numberSlot,
   template,
@@ -19,12 +20,8 @@ interface ComputerIdea {
   readonly title: (label: string) => string;
   readonly why: string;
   readonly slots: readonly Slot[];
-  readonly when: (m: Maker, use: Use) => ReturnType<Maker['trigger']>;
-  readonly step: (m: Maker, computer: string, use: Use) => FlowNode;
-}
-
-function change(value: Readonly<Record<string, JsonValue>>): ReturnType<typeof lit> {
-  return lit({ ...value });
+  readonly when: (m: GraphMaker, use: Use) => ReturnType<GraphMaker['trigger']>;
+  readonly step: (m: GraphMaker, computer: string, use: Use) => GraphPiece;
 }
 
 const IDEAS: readonly ComputerIdea[] = [
@@ -42,7 +39,9 @@ const IDEAS: readonly ComputerIdea[] = [
     step: (m, computer, use) =>
       m.node('volume', 'computer.audio', {
         computer: lit(computer),
-        change: change({ action: 'volume', level: use.number('level'), kind: 'output' }),
+        action: lit('volume'),
+        kind: lit('output'),
+        level: lit(use.number('level')),
       }),
   },
   {
@@ -59,7 +58,8 @@ const IDEAS: readonly ComputerIdea[] = [
     step: (m, computer, use) =>
       m.node('brightness', 'computer.display', {
         computer: lit(computer),
-        change: change({ action: 'brightness', level: use.number('level') }),
+        action: lit('brightness'),
+        brightness: lit(use.number('level')),
       }),
   },
   {
@@ -73,11 +73,9 @@ const IDEAS: readonly ComputerIdea[] = [
     step: (m, computer, use) =>
       m.node('warm', 'computer.display', {
         computer: lit(computer),
-        change: change({
-          action: 'night_light',
-          mode: 'on',
-          temperatureKelvin: use.number('kelvin'),
-        }),
+        action: lit('night_light'),
+        nightLight: lit('on'),
+        temperature: lit(use.number('kelvin')),
       }),
   },
 ];
@@ -110,7 +108,7 @@ export function computerTemplates(
           devices: [computer.label],
           slots: idea.slots,
           make: (use, m) =>
-            automation({
+            graphAutomation({
               triggers: [idea.when(m, use)],
               body: [idea.step(m, computer.id, use)],
             }),

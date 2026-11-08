@@ -1,11 +1,25 @@
 import { useState } from 'react';
 import type { SourceScope } from './model/call-sources';
 
+export type CallPage =
+  | { readonly kind: 'explainer' }
+  | { readonly kind: 'picker'; readonly scope: SourceScope; readonly still: boolean };
+
+export const HOME_PICKER = {
+  kind: 'picker',
+  scope: 'home',
+  still: false,
+} as const satisfies CallPage;
+export const WINDOW_PICKER = {
+  kind: 'picker',
+  scope: 'window',
+  still: false,
+} as const satisfies CallPage;
+
 type CallLayer =
   | { readonly kind: 'settings' }
-  | { readonly kind: 'explainer' }
   | { readonly kind: 'menu'; readonly which: 'camera' | 'share' }
-  | { readonly kind: 'picker'; readonly scope: SourceScope; readonly still: boolean };
+  | CallPage;
 
 export interface CallLayers {
   readonly layer: CallLayer | null;

@@ -1,6 +1,6 @@
 ---
 name: smarteverything-wellness-devices
-description: "Reads and controls the Kingsmith G15 treadmill (speed, incline, sessions, remote start rules), the Oral-B iO or Sonicare toothbrush (modes, head wear, sessions) and the LARQ PureVis bottle (level, drinks, reminders, UV clean, filter). Use for “start the treadmill at 4 km/h”, “raise the incline”, “how far did I walk this week”, “when should I change my brush head” or “how much water is in my bottle”. Not for health records and meals (smarteverything-health) or other devices (smarteverything-home)."
+description: 'Reads and controls the Kingsmith G15 treadmill (speed, incline, sessions), the Oral-B iO or Sonicare toothbrush (modes, head wear, sessions) and the LARQ PureVis bottle (level, drinks, reminders, UV clean, filter). Use for “start the treadmill at 4 km/h”, “raise the incline”, “how far did I walk this week” or “when should I change my brush head”. Not for health records and meals (smarteverything-health) or other devices (smarteverything-home).'
 ---
 
 # Treadmill, toothbrush and water bottle

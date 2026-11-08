@@ -28,15 +28,15 @@ export async function nativeReferenceCatalogue(
       }));
       return { items, revision: referenceHash(items) };
     });
-  const items = await relatedReferences(ctx, agent, kind, readiness);
+  const items = relatedReferences(ctx, agent, kind, readiness);
   return { items, revision: referenceHash(items) };
 }
-async function relatedReferences(
+function relatedReferences(
   ctx: Context,
   agent: Agent,
   kind: AiReferenceKind,
   readiness: readonly HarnessPluginReadiness[],
-): Promise<readonly AiReferenceSummary[]> {
+): readonly AiReferenceSummary[] {
   const packages = nativeReferencePackages(ctx);
   if (kind === 'plugin') {
     return packages.map((entry) => ({
@@ -50,21 +50,6 @@ async function relatedReferences(
       description: entry.description.slice(0, 1000),
     }));
   }
-  if (kind === 'agent')
-    return packages.flatMap((entry) =>
-      entry.agents
-        .filter((helper) => ctx.tools.get(helper.tool, agent) !== undefined)
-        .map((helper) => ({
-          reference: {
-            kind: 'agent' as const,
-            identity: helper.identity,
-            revision: referenceHash({ asset: entry.asset.asset, helper }),
-          },
-          label: helper.name,
-          subtitle: entry.name,
-          description: helper.description.slice(0, 1000),
-        })),
-    );
   if (kind === 'command') return commandReferences(ctx, agent, readiness);
   return [];
 }
@@ -82,8 +67,6 @@ function referenceKey(reference: AiReference): string {
       return `skill|${reference.identity}`;
     case 'plugin':
       return `plugin|${reference.asset_id}`;
-    case 'agent':
-      return `agent|${reference.identity}`;
     case 'command':
       return `command|${reference.definition_id}`;
     case 'managed_path':

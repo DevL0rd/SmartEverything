@@ -22,6 +22,9 @@ function pictures(snapshot: () => Promise<Uint8Array>): StoredPictures {
     snapshot,
     recordings: home.test.store.cameras,
     recordingPath: (path) => join(home.test.directory, 'recordings', path),
+    attachments: home.test.store.assistantChat,
+    attachmentPath: (file) =>
+      home.test.layout.person(file.profile_id).attachment(file.id, file.name),
     now: () => home.clock.current,
   });
 }

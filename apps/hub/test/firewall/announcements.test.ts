@@ -3,7 +3,7 @@ import { Logger } from '@smarteverything/logging';
 import { FirewallMonitor } from '../../src/firewall/monitor';
 import { requiredOpenings } from '../../src/firewall/openings';
 import type { DeviceRecord } from '../../src/database/port';
-import { fakeSystem } from './fake-system';
+import { UFW_FILES, fakeSystem, memoryMacs } from './fake-system';
 
 vi.mock('../../src/network/lan', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -34,13 +34,9 @@ function device(id: string, provider: DeviceRecord['provider']): DeviceRecord {
 function monitor(): FirewallMonitor {
   return new FirewallMonitor({
     system: fakeSystem({
-      files: {
-        '/etc/ufw/ufw.conf': 'ENABLED=yes\n',
-        '/etc/default/ufw': 'DEFAULT_INPUT_POLICY="DROP"\n',
-        '/etc/ufw/user.rules': '',
-        '/etc/ufw/user6.rules': '',
-      },
+      files: UFW_FILES,
     }),
+    macs: memoryMacs(),
     webrtcPort: 8555,
     now: () => new Date('2026-10-18T00:00:00Z'),
     log: new Logger('hub.firewall'),

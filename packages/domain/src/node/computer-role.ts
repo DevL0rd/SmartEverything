@@ -60,7 +60,7 @@ export const HUB_GUARD_MESSAGE =
 export const HUB_AI_REFUSAL =
   'This machine runs the hub, and this would stop the hub itself in the middle of this request. The person has to do it from this hub\u2019s page in the app.';
 
-const HUB_OWN_UNIT = /^smarteverything(?:[-_.@]|$)/i;
+const HUB_OWN_UNIT = /^smarteverything(?:\.service)?$/i;
 
 export function isHubOwnUnit(unit: string): boolean {
   return HUB_OWN_UNIT.test(unit.trim());

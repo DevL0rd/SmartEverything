@@ -1,12 +1,14 @@
-import type { Href } from 'expo-router';
+import { z } from 'zod';
+import type { AppHref } from '../components/app-href';
 import type { RouteParams } from './stack-handles';
 
 export interface LeafRoute {
   readonly group: string;
   readonly route: string;
   readonly keys: readonly string[];
+  readonly optionalKeys?: readonly string[];
   readonly nested: boolean;
-  readonly href: (params: RouteParams) => Href;
+  readonly href: (params: RouteParams) => AppHref;
 }
 
 function segment(params: RouteParams, key: string): string {
@@ -19,6 +21,17 @@ export const DEVICE: LeafRoute = {
   keys: ['deviceId'],
   nested: false,
   href: (params) => `/(app)/(home)/device/${segment(params, 'deviceId')}`,
+};
+export const DRIVE: LeafRoute = {
+  group: '(drive)',
+  route: 'drive/root/[rootId]',
+  keys: ['rootId', 'folder', 'path', 'item'],
+  optionalKeys: ['folder', 'path', 'item'],
+  nested: false,
+  href: (params) => ({
+    pathname: '/(app)/(drive)/drive/root/[rootId]',
+    params: { ...params, rootId: z.uuid().parse(params['rootId']) },
+  }),
 };
 export const CAMERA: LeafRoute = {
   group: '(cameras)',
@@ -64,7 +77,7 @@ export const AUTOMATION: LeafRoute = {
   href: (params) => `/(app)/(automations)/automations/${segment(params, 'automationId')}`,
 };
 
-function staticPage(group: string, route: string, href: Href): LeafRoute {
+function staticPage(group: string, route: string, href: AppHref): LeafRoute {
   return { group, route, keys: [], nested: false, href: () => href };
 }
 
@@ -86,6 +99,7 @@ export const STATIC_PAGES: ReadonlyMap<string, LeafRoute> = new Map([
 export const LEAF_ROUTES: readonly LeafRoute[] = [
   DEVICE,
   CAMERA,
+  DRIVE,
   ROOM,
   GROUP,
   PLUGIN_PAGE,
@@ -106,7 +120,9 @@ export function singularIdOf(
   leaf: LeafRoute,
 ): (name: string, params: Readonly<Record<string, unknown>>) => string | undefined {
   return (_name, params) => {
-    const values = leaf.keys.map((key) => params[key]);
+    const values = leaf.keys.map((key) =>
+      params[key] === undefined && leaf.optionalKeys?.includes(key) === true ? '' : params[key],
+    );
     return values.every((value) => typeof value === 'string') ? values.join('/') : undefined;
   };
 }

@@ -273,10 +273,10 @@ describe('service bundle externals', () => {
   it('lists the packages to ship without optional or asset-copied ones', () => {
     const names = runtimePackageNames([
       { imports: ['@scope/web/lib/a.js', 'jose'], requires: ['x11', 'sherpa-onnx', 'jose'] },
-      { imports: ['@snazzah/davey-linux-x64-gnu'], requires: ['opusscript'] },
+      { imports: ['@snazzah/davey-linux-x64-gnu'], requires: ['@snazzah/davey', 'opusscript'] },
     ]);
 
-    expect(names).toEqual(['@scope/web', 'jose', 'opusscript']);
+    expect(names).toEqual(['@scope/web', '@snazzah/davey', 'jose', 'opusscript']);
   });
 
   it('reports every external package missing from the built service folder', () => {

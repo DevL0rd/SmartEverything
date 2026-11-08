@@ -12,6 +12,7 @@ import {
 } from '../../src/transcripts/media-notes';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { hubLayout } from '../../src/data-layout';
 
 let test: TestStore;
 let files: AssistantFiles;
@@ -54,7 +55,7 @@ beforeEach(async () => {
   modalities = null;
   behaviour = (): Promise<MediaNoteAnswer> => Promise.resolve({ text: 'a clip', usage: null });
   files = new AssistantFiles({
-    dataDirectory: test.directory,
+    layout: hubLayout(test.directory, {}),
     chat: test.store.assistantChat,
     now: (): Date => new Date(),
   });

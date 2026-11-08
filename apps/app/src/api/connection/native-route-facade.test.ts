@@ -28,6 +28,7 @@ const order: string[] = [];
 let activation: Promise<void> = Promise.resolve();
 const listeners: ((state: NativeHubRouteSnapshot) => void)[] = [];
 const configurations: NativeHubRouteConfiguration[] = [];
+let refreshedGeneration = 1;
 
 function snapshot(routeGeneration: number, endpoint: HubEndpoint): NativeHubRouteSnapshot {
   return {
@@ -51,7 +52,7 @@ const authority: NativeHubRouteAuthority = {
   clear: () => Promise.resolve(),
   refresh: () => {
     order.push('refresh');
-    return Promise.resolve(snapshot(1, LAN));
+    return Promise.resolve(snapshot(refreshedGeneration, LAN));
   },
   state: () => Promise.resolve(snapshot(1, LAN)),
   subscribe: (listener) => {
@@ -114,6 +115,7 @@ beforeEach(() => {
   listeners.length = 0;
   configurations.length = 0;
   activation = Promise.resolve();
+  refreshedGeneration = 1;
 });
 
 describe('the native route authority', () => {
@@ -166,6 +168,27 @@ describe('the native route authority', () => {
     });
     expect(configurations[1]?.trust.endpoints).toEqual([MOVED]);
     expect(lease?.isCurrent()).toBe(true);
+  });
+
+  it('asks the native authority to probe again when a reconnect finds every route unavailable', async () => {
+    const facade = nativeRouteFacade(host().host);
+    facade?.start();
+    await facade?.ready();
+    listeners[0]?.({
+      scopeId: 'scope',
+      canonicalOrigin: 'https://192.168.1.20:7880',
+      hubId: ID,
+      routeGeneration: 2,
+      networkGeneration: 1,
+      detail: 'No enrolled hub endpoint is reachable.',
+      readiness: 'unavailable',
+    });
+    expect(() => facade?.lease()).toThrow();
+    order.length = 0;
+    refreshedGeneration = 3;
+    await facade?.ready();
+    expect(order).toEqual(['refresh']);
+    expect(facade?.lease().endpoint).toEqual(LAN);
   });
 
   it('asks the native authority to probe again when a direct request or socket on a lease fails', async () => {

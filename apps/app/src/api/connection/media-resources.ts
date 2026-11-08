@@ -1,5 +1,8 @@
 import {
   nativeHubResourceIdentity,
+  type NativeAndroidUpdateInstall,
+  type NativeAndroidUpdateProgress,
+  type NativeAndroidUpdateResult,
   type NativeHubResource,
   type NativeHubResourceOpen,
   type NativeHubResourcePurpose,
@@ -205,6 +208,50 @@ export async function nativeMediaFile(
   )
     throw new NativeMediaPresentationError('This link expired. Open the media again.');
   return 'external';
+}
+
+export function requestAndroidUpdatePermission(): Promise<boolean> {
+  const network = hubNetwork();
+  if (network.requestAndroidUpdatePermission === undefined)
+    throw new NativeMediaPresentationError('Android install permission settings are unavailable.');
+  return network.requestAndroidUpdatePermission();
+}
+
+export async function installNativeAndroidUpdate(
+  url: string,
+  update: Omit<NativeAndroidUpdateInstall, 'id'>,
+  onProgress: (progress: Omit<NativeAndroidUpdateProgress, 'id'>) => void,
+): Promise<NativeAndroidUpdateResult> {
+  const network = hubNetwork();
+  const resource = await currentPresentation(url);
+  if (resource === undefined)
+    throw new NativeMediaPresentationError(
+      'The Android installer requires a secure hub connection.',
+    );
+  if (!resource.isCurrent() || resource.expiresAt <= Date.now())
+    throw new NativeMediaPresentationError('This installer link expired. Check for updates again.');
+  if (
+    network.installAndroidUpdate === undefined ||
+    network.subscribeAndroidUpdateProgress === undefined
+  )
+    throw new NativeMediaPresentationError('The Android package installer is unavailable.');
+  const unsubscribe = network.subscribeAndroidUpdateProgress(({ id, ...progress }) => {
+    if (id === resource.id) onProgress(progress);
+  });
+  try {
+    return await network.installAndroidUpdate({ ...update, id: resource.id });
+  } finally {
+    unsubscribe();
+  }
+}
+
+export async function cancelNativeAndroidUpdate(url: string): Promise<void> {
+  const resource = presentations.get(url);
+  if (resource === undefined) return;
+  const network = hubNetwork();
+  if (network.cancelAndroidUpdate === undefined)
+    throw new NativeMediaPresentationError('The Android package installer is unavailable.');
+  await network.cancelAndroidUpdate({ id: resource.id });
 }
 
 export async function cancelNativeMediaFile(url: string): Promise<void> {

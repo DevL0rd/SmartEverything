@@ -10,7 +10,8 @@ vi.mock(import('../use-plugin-tool'), async (importOriginal) => ({
 
 import type { SpeedTestPhase } from './router-data';
 
-const { SPEED_TESTS_KEY, settledRun, speedTestsQuery } = await import('./router-data');
+const { SPEED_TESTS_KEY, settledRun, speedTestRunOf, speedTestsQuery } =
+  await import('./router-data');
 
 const TEST = {
   id: '2f8f2c0e-4f4a-4c37-9d5b-0d8c1e5a7b11',
@@ -63,14 +64,14 @@ describe('speedTestsQuery', () => {
   });
 });
 
-describe('settledRun', () => {
-  const row = (phase: SpeedTestPhase) =>
-    ({
-      state: 'ready',
-      at: 'T',
-      value: { phase, mbps: 0, pingMs: null, downloadMbps: null, reason: null },
-    }) as const;
+const row = (phase: SpeedTestPhase) =>
+  ({
+    state: 'ready',
+    at: 'T',
+    value: { phase, mbps: 0, pingMs: null, downloadMbps: null, reason: null },
+  }) as const;
 
+describe('settledRun', () => {
   it('is null while waiting and while a run is measuring', () => {
     expect(settledRun({ state: 'waiting' })).toBeNull();
     expect(settledRun(row('ping'))).toBeNull();
@@ -80,5 +81,21 @@ describe('settledRun', () => {
   it('names each finished run so the next one refreshes again', () => {
     expect(settledRun(row('done'))).toBe('T:done');
     expect(settledRun(row('failed'))).toBe('T:failed');
+  });
+});
+
+describe('speedTestRunOf', () => {
+  it('is idle until progress arrives', () => {
+    expect(speedTestRunOf({ state: 'waiting' })).toMatchObject({ running: false, phase: null });
+  });
+
+  it('runs while measuring and stops when the run finishes or fails', () => {
+    expect(speedTestRunOf(row('download'))).toMatchObject({ running: true, failed: false });
+    expect(speedTestRunOf(row('done'))).toMatchObject({ running: false, failed: false });
+    expect(speedTestRunOf(row('failed'))).toMatchObject({
+      running: false,
+      failed: true,
+      line: 'The speed test failed',
+    });
   });
 });

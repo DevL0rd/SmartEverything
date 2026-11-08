@@ -28,7 +28,7 @@ function embeddedTab(tab: BrowserTab, mounted: boolean): EmbeddedBrowserTab {
 }
 
 function sourceAddress(tab: BrowserTab): string {
-  if (tab.source.kind === 'project') return projectAddress(tab.source.path);
+  if (tab.source.kind === 'project') return projectAddress(tab.source.path, tab.source.server);
   return tab.source.kind === 'public' ? tab.source.url : '';
 }
 

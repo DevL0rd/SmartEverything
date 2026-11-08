@@ -2,9 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "../..",
-    "outDir": "./dist",
     "types": ["node"],
-    "rewriteRelativeImportExtensions": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "typeRoots": ["../../node_modules/@types", "./types"]
   },
   "include": [
@@ -12,8 +12,13 @@
     "../*.ts",
     "../claude-hook/*.ts",
     "../../apps/app/app.config.ts",
+    "../../apps/desktop/packaging/web-runtime.ts",
     "../../apps/app/app-identity.json",
     "../../apps/app/package.json"
   ],
-  "references": [{ "path": "../../packages/logging" }, { "path": "../../packages/domain" }]
+  "references": [
+    { "path": "../../packages/logging" },
+    { "path": "../../packages/domain" },
+    { "path": "../../apps/hub" }
+  ]
 }

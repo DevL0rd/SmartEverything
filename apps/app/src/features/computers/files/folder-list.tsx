@@ -1,10 +1,11 @@
-import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import type { ReactElement, ReactNode } from 'react';
+import { FlatList, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import type { FileEntry, FileList } from '@smarteverything/domain';
 import { cn } from '../../../design/cn';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
+import { glyphOf } from '../../../components/files/file-kind';
 import { ListRow } from '../../../components/list-row';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
@@ -22,19 +23,17 @@ export type FolderView =
   | { readonly kind: 'error'; readonly error: unknown; readonly retry: () => void }
   | { readonly kind: 'ready'; readonly list: FileList; readonly stale: boolean };
 
-function glyph(entry: FileEntry): 'folder' | 'fileText' | 'link' {
-  if (entry.kind === 'folder') return 'folder';
-  return entry.kind === 'link' ? 'link' : 'fileText';
-}
-
 function Separator(): ReactNode {
   return <View className="ml-16 h-hairline bg-outline-variant" />;
 }
 
-function Loading(): ReactNode {
+function Loading({ compact }: { readonly compact: boolean }): ReactNode {
   return (
-    <View className="gap-3 px-4 py-3" accessibilityLabel="Reading this folder">
-      {[0, 1, 2, 3, 4, 5].map((slot) => (
+    <View
+      className={cn('gap-3 py-3', compact ? 'px-2' : 'px-4')}
+      accessibilityLabel="Reading this folder"
+    >
+      {(compact ? [0, 1] : [0, 1, 2, 3, 4, 5]).map((slot) => (
         <Skeleton key={slot} shape="line" className="h-10" />
       ))}
     </View>
@@ -50,53 +49,67 @@ function Footnote({ list }: { readonly list: FileList }): ReactNode {
   );
 }
 
-function Rows({
-  list,
-  entries,
-  mode,
-  stale,
-  picked,
-  onOpen,
-}: {
+interface FolderRowsProps {
   readonly list: FileList;
   readonly entries: readonly FileEntry[];
   readonly mode: PickerMode;
   readonly stale: boolean;
   readonly picked: string | null;
   readonly onOpen: (entry: FileEntry) => void;
-}): ReactNode {
+  readonly compact: boolean;
+}
+
+function Rows({ list, entries, mode, stale, picked, onOpen, compact }: FolderRowsProps): ReactNode {
+  const renderItem = ({ item }: { readonly item: FileEntry }): ReactElement => (
+    <ListRow
+      compact={compact}
+      title={item.name}
+      subtitle={entryLine(item)}
+      icon={glyphOf(item)}
+      chevron={item.kind === 'folder'}
+      selected={picked === item.path}
+      disabled={!entryEnabled(mode, item)}
+      onPress={() => {
+        onOpen(item);
+      }}
+    />
+  );
+  const rows = {
+    data: entries,
+    keyExtractor: (entry: FileEntry): string => entry.path,
+    ListFooterComponent: <Footnote list={list} />,
+    renderItem,
+  };
+  if (compact) {
+    return (
+      <FlatList
+        key={list.path}
+        {...rows}
+        className={cn('min-h-0 grow-0 shrink', stale && 'opacity-60')}
+        contentContainerClassName="px-1.5"
+      />
+    );
+  }
   return (
     <View className={cn('min-h-0 flex-1', stale && 'opacity-60')}>
-      <FlashList
-        data={entries}
-        keyExtractor={(entry) => entry.path}
-        ItemSeparatorComponent={Separator}
-        ListFooterComponent={<Footnote list={list} />}
-        renderItem={({ item }) => (
-          <ListRow
-            title={item.name}
-            subtitle={entryLine(item)}
-            icon={glyph(item)}
-            chevron={item.kind === 'folder'}
-            selected={picked === item.path}
-            disabled={!entryEnabled(mode, item)}
-            onPress={() => {
-              onOpen(item);
-            }}
-          />
-        )}
-      />
+      <FlashList {...rows} ItemSeparatorComponent={Separator} />
     </View>
   );
 }
 
-function Message({ view }: { readonly view: Exclude<FolderView, { kind: 'ready' }> }): ReactNode {
+export function FolderMessage({
+  view,
+  compact,
+}: {
+  readonly view: Exclude<FolderView, { kind: 'ready' }>;
+  readonly compact: boolean;
+}): ReactNode {
   if (view.kind === 'blocked') {
-    return <EmptyState icon={view.icon} title={view.title} body={view.body} />;
+    return <EmptyState compact={compact} icon={view.icon} title={view.title} body={view.body} />;
   }
-  if (view.kind === 'loading') return <Loading />;
+  if (view.kind === 'loading') return <Loading compact={compact} />;
   return (
-    <View className="px-4 py-3">
+    <View className={cn('py-3', compact ? 'px-2' : 'px-4')}>
       <ErrorState error={view.error} retry={view.retry} />
     </View>
   );
@@ -108,18 +121,21 @@ export function FolderList({
   showHidden,
   picked,
   onOpen,
+  compact,
 }: {
   readonly view: FolderView;
   readonly mode: PickerMode;
   readonly showHidden: boolean;
   readonly picked: string | null;
   readonly onOpen: (entry: FileEntry) => void;
+  readonly compact: boolean;
 }): ReactNode {
-  if (view.kind !== 'ready') return <Message view={view} />;
+  if (view.kind !== 'ready') return <FolderMessage view={view} compact={compact} />;
   const entries = orderEntries(view.list.entries, showHidden);
   if (entries.length === 0) {
     return (
       <EmptyState
+        compact={compact}
         icon="folder"
         title="This folder is empty"
         body={
@@ -138,6 +154,7 @@ export function FolderList({
       stale={view.stale}
       picked={picked}
       onOpen={onOpen}
+      compact={compact}
     />
   );
 }

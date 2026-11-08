@@ -1,4 +1,4 @@
-import { createContext, use, type ReactNode } from 'react';
+import { use, type ReactNode } from 'react';
 import { View, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import Svg, {
@@ -13,6 +13,7 @@ import Svg, {
 } from 'react-native-svg';
 import type { LoopStyle } from '../../../../design/loops';
 import { useSvgId } from '../../parts/frame';
+import { ORIGIN, ParentContext } from './parent-context';
 import { FLOOR_Y, VIEW, type Point } from './geometry';
 import type { Silver } from './palette';
 import { Gradient, Slab, type Ramp } from './shapes';
@@ -24,10 +25,7 @@ export interface Local {
   readonly h: number;
 }
 
-const ORIGIN: Point = { x: 0, y: 0 };
-const Parent = createContext<Point>(ORIGIN);
-
-export function stageHeight(px: number): number {
+function stageHeight(px: number): number {
   return (px * VIEW.h) / VIEW.w;
 }
 
@@ -71,7 +69,7 @@ export function Part({
   readonly shape?: ReactNode;
   readonly children?: ReactNode;
 }): ReactNode {
-  const parent = use(Parent);
+  const parent = use(ParentContext);
   const s = px / VIEW.w;
   const frame: ViewStyle = {
     position: 'absolute',
@@ -93,7 +91,7 @@ export function Part({
           {shape}
         </Svg>
       )}
-      <Parent value={{ x: box.x, y: box.y }}>{children}</Parent>
+      <ParentContext value={{ x: box.x, y: box.y }}>{children}</ParentContext>
     </Animated.View>
   );
 }
@@ -125,7 +123,7 @@ export function Tilting({
   );
 }
 
-export const FULL_STAGE: Local = { x: 0, y: 0, w: VIEW.w, h: VIEW.h };
+const FULL_STAGE: Local = { x: 0, y: 0, w: VIEW.w, h: VIEW.h };
 
 export function Plane({
   px,

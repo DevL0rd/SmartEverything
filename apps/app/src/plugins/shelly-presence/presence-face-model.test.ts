@@ -1,6 +1,15 @@
 import { HISTORY_ROW } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { chipOf, lineOf, occupancyWindow, occupiedSegments } from './presence-face-model';
+import {
+  chipOf,
+  faceShown,
+  faceSwitchOf,
+  lineOf,
+  nextFace,
+  occupancyWindow,
+  occupiedSegments,
+  presenceFaces,
+} from './presence-face-model';
 import { presenceFixture } from './presence-fixture';
 
 const MAIN = 0;
@@ -79,6 +88,33 @@ describe('presence face copy', () => {
       connection: { state: 'offline' as const, reason: null },
     };
     expect(lineOf(sensor, sensor.zones[MAIN] ?? null, 'offline', false).text).toContain('Offline');
+  });
+});
+
+describe('presence face order', () => {
+  it('leads with the home map face when the sensor is placed, the sensor view next', () => {
+    const faces = presenceFaces(true);
+    expect(faces).toStrictEqual(['map', 'room']);
+    expect(faceShown(faces, null)).toBe('map');
+    expect(nextFace(faces, 'map')).toBe('room');
+    expect(nextFace(faces, 'room')).toBe('map');
+  });
+
+  it('keeps only the sensor view without a map or a placement, with nothing to switch to', () => {
+    const faces = presenceFaces(false);
+    expect(faces).toStrictEqual(['room']);
+    expect(faceShown(faces, null)).toBe('room');
+    expect(faceShown(faces, 'map')).toBe('room');
+    expect(nextFace(faces, 'room')).toBeNull();
+  });
+
+  it('keeps the face the user picked while it is still offered', () => {
+    expect(faceShown(presenceFaces(true), 'room')).toBe('room');
+  });
+
+  it('labels each switch by the face it opens', () => {
+    expect(faceSwitchOf('map')).toMatchObject({ label: 'Home map', icon: 'house' });
+    expect(faceSwitchOf('room')).toMatchObject({ label: 'Sensor view', icon: 'motion' });
   });
 });
 

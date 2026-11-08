@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { SettingsPageScreen } from '../../../../../src/settings/settings-screen';
+import { AboutScreen } from '../../../../../src/features/settings/about/about-screen';
 
 export default function AboutRoute(): ReactNode {
-  return <SettingsPageScreen page="about" />;
+  return <AboutScreen />;
 }

@@ -31,26 +31,37 @@ interface ChatTarget {
   readonly messageId: string | null;
 }
 
-function familyItems(family: ChatFamily, expanded: ReadonlySet<string>): readonly ListItem[] {
-  const open = family.agents.length > 0 && (family.matchedAgents || expanded.has(family.entry.id));
+function agentItem(entry: ChatEntry): ListItem {
+  return { type: 'agent', key: entry.id, entry };
+}
+
+function familyItems(family: ChatFamily, collapsed: ReadonlySet<string>): readonly ListItem[] {
+  if (family.entry.kind === 'subagent') return [agentItem(family.entry)];
+  const open =
+    family.agents.length > 0 && (family.matchedAgents || !collapsed.has(family.entry.id));
   return [
     { type: 'chat', key: family.entry.id, entry: family.entry, agents: family.agents, open },
-    ...(open
-      ? family.agents.map((entry): ListItem => ({ type: 'agent', key: entry.id, entry }))
-      : []),
+    ...(open ? family.agents.map(agentItem) : []),
   ];
+}
+
+export function keyboardItemsOf(
+  sections: readonly VirtualSection<ListItem>[],
+  completed: readonly ChatEntry[],
+): readonly ListItem[] {
+  return [...sections.flatMap((section) => section.data), ...completed.map(agentItem)];
 }
 
 export function itemsOf(
   sections: readonly ChatSection[],
   hits: readonly AiChatHit[],
-  expanded: ReadonlySet<string>,
+  collapsed: ReadonlySet<string>,
   entries: ReadonlyMap<string, ChatEntry>,
 ): readonly VirtualSection<ListItem>[] {
   const chats = sections.map((section): VirtualSection<ListItem> => ({
     key: section.key,
     title: section.title,
-    data: section.data.flatMap((family) => familyItems(family, expanded)),
+    data: section.data.flatMap((family) => familyItems(family, collapsed)),
   }));
   if (hits.length === 0) {
     return chats;

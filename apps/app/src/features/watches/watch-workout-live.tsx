@@ -4,6 +4,7 @@ import { WATCH_SPORT_LABELS, type WatchWorkout } from '@smarteverything/domain';
 import { Button } from '../../components/button';
 import { confirm } from '../../components/confirm-store';
 import { Figure } from '../../components/figure';
+import { IconButton } from '../../components/icon-button';
 import { Text } from '../../components/text';
 import { count, kilometres } from '../../format/number';
 import { playTime } from '../../format/time';
@@ -28,6 +29,15 @@ export function workoutFigures(workout: WatchWorkout): string {
   ]);
 }
 
+function readingsOf(workout: WatchWorkout): string {
+  const figures = workoutFigures(workout);
+  return figures === '' ? 'Waiting for the watch’s readings' : figures;
+}
+
+function statusOf(workout: WatchWorkout): string {
+  return joinParts([WATCH_SPORT_LABELS[workout.sport], STATE_TEXT[workout.state]]);
+}
+
 export function WorkoutClock({
   workout,
   compact,
@@ -36,20 +46,30 @@ export function WorkoutClock({
   readonly compact: boolean;
 }): ReactNode {
   const elapsed = useSecondOf((now) => playTime(elapsedSeconds(workout, now)));
+  const tone = workout.state === 'paused' ? 'variant' : 'default';
+  if (compact) {
+    return (
+      <View className="flex-row items-center gap-3">
+        <Figure value={elapsed} size="m" tone={tone} />
+        <View className="min-w-0 flex-1">
+          <Text variant="footnote" tone="variant" numberOfLines={1}>
+            {statusOf(workout)}
+          </Text>
+          <Text variant="footnote" numberOfLines={1}>
+            {readingsOf(workout)}
+          </Text>
+        </View>
+      </View>
+    );
+  }
   return (
     <View className="gap-0.5">
       <Text variant="footnote" tone="variant" numberOfLines={1}>
-        {joinParts([WATCH_SPORT_LABELS[workout.sport], STATE_TEXT[workout.state]])}
+        {statusOf(workout)}
       </Text>
-      <Figure
-        value={elapsed}
-        size={compact ? 'l' : 'xl'}
-        tone={workout.state === 'paused' ? 'variant' : 'default'}
-      />
+      <Figure value={elapsed} size="xl" tone={tone} />
       <Text variant="callout" numberOfLines={1}>
-        {workoutFigures(workout) === ''
-          ? 'Waiting for the watch’s readings'
-          : workoutFigures(workout)}
+        {readingsOf(workout)}
       </Text>
     </View>
   );
@@ -66,34 +86,83 @@ async function finish(command: WatchCommand): Promise<void> {
   }
 }
 
-export function WorkoutControls({
-  workout,
-  command,
-}: {
+interface ControlProps {
   readonly workout: WatchWorkout;
   readonly command: WatchCommand;
-}): ReactNode {
+}
+
+function PauseResume({
+  workout,
+  command,
+  icon,
+}: ControlProps & { readonly icon: boolean }): ReactNode {
   const paused = workout.state === 'paused';
+  const label = paused ? 'Resume' : 'Pause';
+  const onPress = (): void => {
+    command.run({ type: paused ? 'resume_workout' : 'pause_workout' });
+  };
+  return icon ? (
+    <IconButton
+      icon={paused ? 'play' : 'pause'}
+      label={label}
+      variant="tonal"
+      disabled={command.busy}
+      onPress={onPress}
+    />
+  ) : (
+    <Button
+      label={label}
+      icon={paused ? 'play' : 'pause'}
+      variant="tonal"
+      loading={command.busy}
+      onPress={onPress}
+    />
+  );
+}
+
+function Finish({
+  command,
+  icon,
+}: Pick<ControlProps, 'command'> & { readonly icon: boolean }): ReactNode {
+  const onPress = (): void => {
+    background(finish(command), 'watch_workout_live.finish_failed');
+  };
+  return icon ? (
+    <IconButton
+      icon="square"
+      label="Finish"
+      variant="raised"
+      disabled={command.busy}
+      onPress={onPress}
+    />
+  ) : (
+    <Button
+      label="Finish"
+      icon="square"
+      variant="outlined"
+      disabled={command.busy}
+      onPress={onPress}
+    />
+  );
+}
+
+export function WorkoutActions({
+  workout,
+  command,
+  icons,
+}: ControlProps & { readonly icons: boolean }): ReactNode {
+  return (
+    <>
+      <PauseResume workout={workout} command={command} icon={icons} />
+      <Finish command={command} icon={icons} />
+    </>
+  );
+}
+
+export function WorkoutControls({ workout, command }: ControlProps): ReactNode {
   return (
     <View className="flex-row flex-wrap gap-2">
-      <Button
-        label={paused ? 'Resume' : 'Pause'}
-        icon={paused ? 'play' : 'pause'}
-        variant="tonal"
-        loading={command.busy}
-        onPress={() => {
-          command.run({ type: paused ? 'resume_workout' : 'pause_workout' });
-        }}
-      />
-      <Button
-        label="Finish"
-        icon="square"
-        variant="outlined"
-        disabled={command.busy}
-        onPress={() => {
-          background(finish(command), 'watch_workout_live.finish_failed');
-        }}
-      />
+      <WorkoutActions workout={workout} command={command} icons={false} />
     </View>
   );
 }

@@ -1,22 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
-import { SessionId } from '@deepseek-ai/dsh-session';
 import { LlmError } from '@deepseek-ai/dsh-llm';
 import type { StreamChunk } from '@deepseek-ai/dsh-llm';
 import {
-  ASSISTANT_MESSAGE_ROW,
   DSH_SESSION_ID,
-  type AssistantMessageRow,
   type DshSessionId,
   type HarnessRuntimeReceipt,
   type HarnessRuntimeRequest,
 } from '@smarteverything/domain';
-import { nativeHeader } from '../src/persistence/validation';
 import { liveCleanup, workDrained } from '../src/host/work';
 import type { HarnessWork } from '../src/host/work';
 import { ProcessControls } from '../src/process/controls';
-import { importLegacyHistory } from '../src/process/legacy-history';
 import { bootDispatcher } from './support/dispatcher';
 import type { DispatcherFixture } from './support/dispatcher';
 
@@ -116,69 +110,6 @@ describe('cleanup that could not be proved', () => {
 
     expect(liveCleanup(unknown, busy)).toBe(unknown);
     expect(workDrained({ ...work(unknown), shells: ['job-1'] })).toBe(false);
-  });
-});
-
-function historyRow(chat: string, profile: string, text: string): AssistantMessageRow {
-  return ASSISTANT_MESSAGE_ROW.parse({
-    id: randomUUID(),
-    profile_id: profile,
-    client_id: null,
-    role: 'person',
-    kind: 'text',
-    author: 'Person',
-    text,
-    attachments: [],
-    state: null,
-    reason: null,
-    steps: [],
-    reply_to: null,
-    chat_id: chat,
-    origin: null,
-    embeds: [],
-    cost_micros: 0,
-    model: null,
-    created_at: '2026-10-01T09:00:00.000Z',
-    updated_at: '2026-10-01T09:00:00.000Z',
-  });
-}
-
-describe('importing a chat that predates the native history', () => {
-  it('imports once and never compares an already imported chat with a rebuilt import', async () => {
-    const host = await bootDispatcher();
-    fixture = host;
-    const sessionId = DSH_SESSION_ID.parse(randomUUID());
-    const chatId = randomUUID();
-    const cwd = join(host.directory, 'home');
-    const claim = host.persistence.admit(
-      nativeHeader({
-        version: 4,
-        id: sessionId,
-        createdAt: Date.now(),
-        cwd,
-        isSeeded: false,
-        agentPreset: 'smarteverything',
-      }),
-      chatId,
-    );
-    const open = (text: string): Extract<HarnessRuntimeRequest, { kind: 'open' }> => ({
-      kind: 'open',
-      chat_id: chatId,
-      claim,
-      route: host.route,
-      permission: { sandbox: 'danger-full-access', approval: 'never' },
-      cwd,
-      mode: 'resume',
-      history_import: [historyRow(chatId, host.persistence.profile, text)],
-    });
-    const ports = { persistence: host.persistence, load: undefined };
-
-    await importLegacyHistory(host.dispatcher.runtime, open('first wording'), ports);
-    const stored = await host.persistence.read(SessionId(sessionId));
-    await importLegacyHistory(host.dispatcher.runtime, open('reworded later'), ports);
-
-    expect(stored).not.toHaveLength(0);
-    expect(await host.persistence.read(SessionId(sessionId))).toStrictEqual(stored);
   });
 });
 

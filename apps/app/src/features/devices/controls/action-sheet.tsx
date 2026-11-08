@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
@@ -8,15 +8,14 @@ import { TextField } from '../../../components/text-field';
 import { humanizeEnum } from '@smarteverything/domain';
 import { argumentValue, argumentsOf } from './run-action';
 
-export function ActionSheet({
-  presented,
-  onClose,
-  onRun,
-}: {
+interface ActionSheetProps {
   readonly presented: PresentedCapability;
+  readonly opener: RefObject<View | null>;
   readonly onClose: () => void;
   readonly onRun: (value: JsonValue) => void;
-}): ReactNode {
+}
+
+export function ActionSheet({ presented, opener, onClose, onRun }: ActionSheetProps): ReactNode {
   const names = argumentsOf(presented);
   const [given, setGiven] = useState<Readonly<Record<string, string>>>({});
   const ready = names.every((name) => (given[name] ?? '').trim() !== '');
@@ -29,6 +28,7 @@ export function ActionSheet({
   };
   return (
     <Sheet
+      subpage={{ opener }}
       open
       onClose={onClose}
       title={presented.label}

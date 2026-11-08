@@ -28,6 +28,7 @@ const ITEM_TEST: readonly InputPortDecl[] = [
     required: false,
     static: true,
     description: 'For a list of records: the field of each item to test, such as online.',
+    ui: { optionsFrom: 'record.fields', typedBy: 'list' },
   },
   {
     name: 'test',
@@ -45,17 +46,20 @@ const ITEM_TEST: readonly InputPortDecl[] = [
     default: true,
     summary: true,
     description: 'The value each item (or its field) is compared with.',
+    ui: { typedBy: 'field' },
   },
 ];
 
-function itemTest(
-  id: string,
-  name: string,
-  icon: string,
-  description: string,
-  outputs: NodeKind['outputs'],
-  words: readonly string[],
-): NodeKind {
+interface ItemTestSpec {
+  readonly id: string;
+  readonly name: string;
+  readonly icon: string;
+  readonly description: string;
+  readonly outputs: NodeKind['outputs'];
+  readonly words: readonly string[];
+}
+
+function itemTest({ id, name, icon, description, outputs, words }: ItemTestSpec): NodeKind {
   return defineNodeKind({
     id,
     name,
@@ -250,24 +254,25 @@ export const LIST_KINDS: readonly NodeKind[] = [
     access: 'member',
     tier: 'v1',
   }),
-  itemTest(
-    'list.filter',
-    'Keep where',
-    'filter',
-    'Splits a list in two: the items (or the field of each record) that pass the test against the value, and the rest.',
-    [
+  itemTest({
+    id: 'list.filter',
+    name: 'Keep where',
+    icon: 'filter',
+    description:
+      'Splits a list in two: the items (or the field of each record) that pass the test against the value, and the rest.',
+    outputs: [
       { name: 'kept', type: ITEMS, description: 'The items that passed.' },
       { name: 'rejected', type: ITEMS, description: 'The items that did not.' },
       { name: 'count', type: INDEX, description: 'How many items were kept.' },
     ],
-    ['filter', 'where', 'select', 'keep'],
-  ),
-  itemTest(
-    'list.find',
-    'Find',
-    'search',
-    'Finds the first item (or record whose field) passes the test against the value.',
-    [
+    words: ['filter', 'where', 'select', 'keep'],
+  }),
+  itemTest({
+    id: 'list.find',
+    name: 'Find',
+    icon: 'search',
+    description: 'Finds the first item (or record whose field) passes the test against the value.',
+    outputs: [
       { name: 'found', type: FLAG, description: 'Whether an item passed.' },
       { name: 'item', type: { t: 'optional', of: ITEM }, optional: true, description: 'The item.' },
       {
@@ -277,24 +282,26 @@ export const LIST_KINDS: readonly NodeKind[] = [
         description: 'Where it was.',
       },
     ],
-    ['find', 'search', 'first', 'contains'],
-  ),
-  itemTest(
-    'list.any',
-    'Any item',
-    'list-checks',
-    'True when at least one item (or the field of one record) passes the test against the value. False for an empty list.',
-    [{ name: 'result', type: FLAG, description: 'Whether any item passed.' }],
-    ['any', 'some', 'at least one', 'exists'],
-  ),
-  itemTest(
-    'list.all',
-    'Every item',
-    'badge-check',
-    'True when every item (or the field of every record) passes the test against the value. True for an empty list.',
-    [{ name: 'result', type: FLAG, description: 'Whether every item passed.' }],
-    ['all', 'every', 'each', 'none'],
-  ),
+    words: ['find', 'search', 'first', 'contains'],
+  }),
+  itemTest({
+    id: 'list.any',
+    name: 'Any item',
+    icon: 'list-checks',
+    description:
+      'True when at least one item (or the field of one record) passes the test against the value. False for an empty list.',
+    outputs: [{ name: 'result', type: FLAG, description: 'Whether any item passed.' }],
+    words: ['any', 'some', 'at least one', 'exists'],
+  }),
+  itemTest({
+    id: 'list.all',
+    name: 'Every item',
+    icon: 'badge-check',
+    description:
+      'True when every item (or the field of every record) passes the test against the value. True for an empty list.',
+    outputs: [{ name: 'result', type: FLAG, description: 'Whether every item passed.' }],
+    words: ['all', 'every', 'each', 'none'],
+  }),
   defineNodeKind({
     id: 'list.field',
     name: 'Field of each',
@@ -312,6 +319,7 @@ export const LIST_KINDS: readonly NodeKind[] = [
         static: true,
         summary: true,
         description: 'The field to take, such as name.',
+        ui: { optionsFrom: 'record.fields', typedBy: 'list' },
       },
     ],
     outputs: [

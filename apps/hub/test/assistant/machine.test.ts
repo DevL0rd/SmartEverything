@@ -1,9 +1,11 @@
-import { DEFAULT_ENGINE } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { machineLabel, ownScreenOf, ownScreenRule } from '../../src/assistant/machine';
 import { conversationNote } from '../../src/assistant-voice/instructions';
 import { callerOf, hostedCallerOf, noteOf } from '../../src/assistant-voice/persona';
+import { ToolHub } from '../../src/ai-tools/tool-hub';
 import { testStore, type TestStore } from '../support/store';
+import { testVoiceMemory } from '../support/voice-memory';
+import { TEST_ENGINE } from '../support/engine';
 
 const NOW = new Date('2026-10-18T01:36:00.000Z');
 
@@ -25,11 +27,13 @@ function noteText(caller: ReturnType<typeof callerOf>): string {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   });
   return conversationNote(
     noteOf({
       store: opened.store,
+      tools: new ToolHub([]),
+      memory: testVoiceMemory(opened.store),
       caller,
       chatId: chat.id,
       place: null,
@@ -59,26 +63,26 @@ function clientOf(
 describe('which machine a call comes from', () => {
   it('tells a phone call that my screen is the phone screen', () => {
     const text = noteText(clientOf('Pixel 9', 'android'));
-    expect(text).toContain('talking through Pixel 9 (phone).');
+    expect(text).toContain('From: Pixel 9 (phone).');
     expect(text).toContain('they mean the screen of Pixel 9: look at phone_screen');
     expect(text).toContain('only when they name that device');
   });
 
   it('tells a tablet call that it is a tablet and that my screen is its screen', () => {
     const text = noteText(clientOf('Tab S9', 'android', 'tablet'));
-    expect(text).toContain('talking through Tab S9 (tablet).');
+    expect(text).toContain('From: Tab S9 (tablet).');
     expect(text).toContain('they mean the screen of Tab S9: look at phone_screen');
   });
 
   it('tells a computer call that my screen is the computer screen', () => {
     const text = noteText(clientOf('Studio PC', 'desktop'));
-    expect(text).toContain('talking through Studio PC (computer).');
+    expect(text).toContain('From: Studio PC (computer).');
     expect(text).toContain('look at desktop_screen');
   });
 
   it('tells a web browser call that my screen is the browser machine screen', () => {
     const text = noteText(clientOf('Browser', 'web'));
-    expect(text).toContain('talking through Browser (web browser).');
+    expect(text).toContain('From: Browser (web browser).');
     expect(text).toContain('look at desktop_screen');
   });
 
@@ -91,7 +95,7 @@ describe('which machine a call comes from', () => {
       machine: { name: 'Office PC', kind: 'computer', room: null },
     });
     const text = noteText(caller);
-    expect(text).toContain('talking through Office PC (computer).');
+    expect(text).toContain('From: Office PC (computer).');
     expect(text).toContain('look at desktop_screen');
   });
 
@@ -107,7 +111,7 @@ describe('which machine a call comes from', () => {
     const text = noteText(
       hostedCallerOf(opened.store, { profileId: profile.id, role: 'owner', label: 'Discord' }),
     );
-    expect(text).toContain('talking through Discord.');
+    expect(text).toContain('From: Discord.');
     expect(text).not.toContain('my screen');
   });
 });

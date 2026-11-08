@@ -3,12 +3,14 @@ import { Gesture, type PanGesture } from 'react-native-gesture-handler';
 import {
   cancelAnimation,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withDelay,
   withRepeat,
   withSequence,
   withSpring,
   withTiming,
+  type DerivedValue,
   type SharedValue,
 } from 'react-native-reanimated';
 import type { ViewStyle } from 'react-native';
@@ -87,15 +89,20 @@ export function useWidgetStyle(
   motion: WidgetMotion,
   drag: DragState,
   rotation: SharedValue<number>,
-): ReturnType<typeof useAnimatedStyle<ViewStyle>> {
-  return useAnimatedStyle<ViewStyle>(() => {
+): {
+  readonly style: ReturnType<typeof useAnimatedStyle<ViewStyle>>;
+  readonly top: DerivedValue<number>;
+} {
+  const top = useDerivedValue(() =>
+    drag.key.get() === key
+      ? draggedPosition(drag.point.get(), drag.scrollY.get()).top
+      : motion.top.get(),
+  );
+  const style = useAnimatedStyle<ViewStyle>(() => {
     const lifted = drag.key.get() === key;
-    const at = lifted
-      ? draggedPosition(drag.point.get(), drag.scrollY.get())
-      : { left: motion.left.get(), top: motion.top.get() };
     return {
-      left: at.left,
-      top: at.top,
+      left: lifted ? draggedPosition(drag.point.get(), drag.scrollY.get()).left : motion.left.get(),
+      top: top.get(),
       width: motion.width.get(),
       height: placedHeight(motion.height.get()),
       zIndex: lifted ? 10 : 1,
@@ -105,6 +112,7 @@ export function useWidgetStyle(
       ],
     };
   });
+  return { style, top };
 }
 
 export interface MoveGestureInput {

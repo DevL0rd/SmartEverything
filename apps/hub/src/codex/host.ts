@@ -20,19 +20,19 @@ import { CodexProvider } from './provider';
 import { CodexNative } from './native';
 import { CodexRuntimeError } from './errors';
 import type { CodexProcessOptions } from './process';
+import type { CodexSites } from './sites';
 import type { CodexNativeGrantResolver } from './native-grant';
 import { CODEX_SKILLS_CAPABILITY_REVISION } from './provider-commands';
 import { messageOf } from '@smarteverything/logging';
 export interface CodexHostOptions extends CodexProcessOptions {
   readonly deviceId: string;
-  readonly dataDirectory: string;
+  readonly sites: CodexSites;
   readonly settings?: CodexAiSettings;
   readonly nativeMcpGrant?: CodexNativeGrantResolver;
   readonly log: Logger;
   readonly now?: () => string;
 }
 const NATIVE_OPERATIONS = [
-  'models',
   'sessions',
   'session',
   'thread',
@@ -51,7 +51,6 @@ const NATIVE_OPERATIONS = [
   'answer',
 ] as const;
 const PROVIDER_OPERATIONS = [
-  'models',
   'provider_metadata',
   'provider_read',
   'provider_start',
@@ -60,6 +59,20 @@ const PROVIDER_OPERATIONS = [
   'provider_answer',
   'provider_tool_result',
 ] as const;
+function runtimeOperations(
+  control: boolean,
+  providerEnabled: boolean,
+  models: boolean,
+): ComputerRuntimeCapabilities['operations'] {
+  return [
+    'status',
+    'configure',
+    'native_operation',
+    ...(models ? ['models' as const] : []),
+    ...(control ? NATIVE_OPERATIONS : []),
+    ...(providerEnabled ? PROVIDER_OPERATIONS : []),
+  ];
+}
 class CodexHost implements ComputerRuntimeHost {
   readonly runtime = 'codex';
   private readonly listeners = new Set<(event: ComputerRuntimeHostEvent) => void>();
@@ -267,18 +280,11 @@ class CodexHost implements ComputerRuntimeHost {
   private capabilities(): ComputerRuntimeCapabilities {
     const control = this.settings.control.enabled && this.controlReason === null;
     const provider = this.settings.provider.enabled && this.providerReason === null;
+    const models = this.settings.provider.enabled ? provider : control;
     return COMPUTER_RUNTIME_CAPABILITIES.parse({
       runtime_version: control || provider ? '0.162.1' : null,
       capability_revision: CODEX_SKILLS_CAPABILITY_REVISION,
-      operations: [
-        ...new Set([
-          'status',
-          'configure',
-          'native_operation',
-          ...(control ? NATIVE_OPERATIONS : []),
-          ...(provider ? PROVIDER_OPERATIONS : []),
-        ]),
-      ],
+      operations: runtimeOperations(control, this.settings.provider.enabled, models),
       settings: [
         {
           kind: 'enum',

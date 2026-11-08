@@ -6,20 +6,20 @@ export const IR_TEMP_RANGE = { min: 16, max: 30 } as const;
 export const IR_TEMP_START = 24;
 export const IR_SPEED_STEPS = 5;
 export const IR_RECENT_WINDOW_MS = 86_400_000;
-const AC_MODES = ['Cool', 'Heat', 'Dry', 'Fan', 'Auto'] as const;
+export const IR_AC_MODES = ['Cool', 'Heat', 'Dry', 'Fan', 'Auto'] as const;
 
 const MOMENT = z.iso.datetime({ offset: true });
 
 const ON = z
   .boolean()
   .describe('Whether the appliance is on, as last sent or corrected; IR cannot report back');
-const TEMP = z
+export const IR_TEMP = z
   .int()
   .min(IR_TEMP_RANGE.min)
   .max(IR_TEMP_RANGE.max)
   .describe('The air conditioner target in °C, counted from the keys sent');
 const MODE = z.string().min(1).describe('The mode last chosen, such as Cool or Heat');
-const SPEED = z
+export const IR_SPEED = z
   .int()
   .min(1)
   .max(IR_SPEED_STEPS)
@@ -34,9 +34,9 @@ const CHECK_DEVICE = z
 
 export const IR_REMOTE_STATE = z.strictObject({
   on: ON.nullable(),
-  temp: TEMP.nullable(),
+  temp: IR_TEMP.nullable(),
   mode: MODE.nullable(),
-  speed: SPEED.nullable(),
+  speed: IR_SPEED.nullable(),
   muted: MUTED.nullable(),
   sentKey: z.string().min(1).nullable().describe('The last key sent to it'),
   sentAt: MOMENT.nullable().describe('When the last key was sent'),
@@ -52,9 +52,9 @@ export type IrRemoteStates = z.infer<typeof IR_REMOTE_STATES>;
 
 export const IR_REMOTE_CHANGE = somethingToChange({
   on: ON.nullable(),
-  temp: TEMP.nullable(),
+  temp: IR_TEMP.nullable(),
   mode: MODE.nullable(),
-  speed: SPEED.nullable(),
+  speed: IR_SPEED.nullable(),
   muted: MUTED.nullable(),
   checkDeviceId: CHECK_DEVICE.nullable(),
 });
@@ -78,8 +78,8 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function nextMode(current: string | null): string {
-  const at = AC_MODES.findIndex((mode) => mode === current);
-  return AC_MODES[at + 1] ?? AC_MODES[0];
+  const at = IR_AC_MODES.findIndex((mode) => mode === current);
+  return IR_AC_MODES[at + 1] ?? IR_AC_MODES[0];
 }
 
 function warmer(state: IrRemoteState, step: number): Partial<IrRemoteState> {

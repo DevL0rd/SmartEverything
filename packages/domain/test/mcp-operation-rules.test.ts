@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { API_ENDPOINTS } from '../src/api/endpoints';
+import { MCP_ROUTES, partsOf } from '../src/mcp/served';
 import {
   MCP_HUMAN_ONLY_OPERATIONS,
   isAdminOperation,
@@ -39,6 +41,22 @@ describe('operations only a person may run', () => {
 });
 
 describe('mcpToolOperation', () => {
+  it('resolves every served tool operation to an existing endpoint', () => {
+    const endpoints = new Map(Object.entries(API_ENDPOINTS));
+    for (const [tool, route] of MCP_ROUTES) {
+      for (const part of partsOf(route)) {
+        const operation = mcpToolOperation(part);
+        if (operation !== undefined)
+          expect(endpoints.has(operation), `${tool}: ${part} -> ${operation}`).toBe(true);
+      }
+    }
+  });
+
+  it('uses the engine default endpoint for model settings and retains its admin restriction', () => {
+    expect(mcpToolOperation('set_ai_defaults')).toBe('updateAiEngineDefault');
+    expect(isAdminOperation('updateAiEngineDefault')).toBe(true);
+  });
+
   it('finds the operation behind an operation tool', () => {
     expect(mcpToolOperation('list_device_effects')).toBe('listDeviceEffects');
   });

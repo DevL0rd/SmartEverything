@@ -7,7 +7,7 @@ export function recordingRetentionExtension(clock: Clock): ServerExtension {
   return (context): Promise<RunningExtension> => {
     const retention = new RecordingRetention({
       store: context.store,
-      recordingPath: recordingPathIn(context.dataDirectory),
+      recordingPath: recordingPathIn(context.layout),
       clock,
       log: context.log,
     });

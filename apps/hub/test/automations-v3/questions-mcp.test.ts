@@ -1,8 +1,10 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import { callTool, structured } from '../mcp/client';
 import { useRig } from '../automations/support/use-rig';
 import { node, programOf } from '../support/automation-fixture';
+import { graphAutomation } from './support/graph-of';
 
 const rig = useRig();
 
@@ -35,16 +37,19 @@ describe('MCP parity for automation questions', () => {
     const reply = await call('automation_edit', {
       action: 'create',
       name: 'Door',
-      definition: programOf(
-        [],
-        [
-          node('notify.ask', {
-            person: rig().profileId,
-            question: 'Lock the door?',
-            options: ['Yes', 'No'],
-          }),
-          node('device.set', { target: { device: rig().ids.lamp }, control: 'power', to: true }),
-        ],
+      definition: graphAutomation(
+        programOf(
+          [],
+          [
+            node('notify.ask', {
+              person: rig().profileId,
+              question: 'Lock the door?',
+              options: ['Yes', 'No'],
+            }),
+            node('device.set', { target: { device: rig().ids.lamp }, control: 'power', to: true }),
+          ],
+        ),
+        STATIC_KIND_LOOKUP,
       ),
     });
     const created = CREATED.parse(reply);

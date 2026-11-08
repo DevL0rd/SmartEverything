@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BoardWidget, WidgetSize } from '@smarteverything/domain';
-import { fittedCell, pack, rowsOf } from './packer';
+import { boardColumnsOf, cellOf, frameOf } from './board-geometry';
+import { boardHeightOf, pack } from './packer';
 
 function widgets(...sizes: WidgetSize[]): BoardWidget[] {
   return sizes.map((size, index) => ({ key: `w${String(index)}`, type: 'w', size }));
@@ -52,6 +53,31 @@ describe('pack', () => {
     ]);
   });
 
+  it('fits more widgets across wide boards without stretching their saved footprints', () => {
+    const sizes = widgets('XL', 'M', 'M', 'W', 'M');
+    const columns = boardColumnsOf('expanded', 3440);
+    const placed = pack('expanded', sizes, columns);
+    expect(placed.map(({ widget, col, row, cols }) => [widget.key, col, row, cols])).toEqual([
+      ['w0', 0, 0, 12],
+      ['w1', 12, 0, 6],
+      ['w2', 18, 0, 6],
+      ['w3', 12, 2, 12],
+      ['w4', 24, 0, 6],
+    ]);
+    expect(boardColumnsOf('compact', 412)).toBe(4);
+    expect(boardColumnsOf('medium', 900)).toBe(8);
+    expect(boardColumnsOf('expanded', 1440)).toBe(12);
+    expect(boardColumnsOf('expanded', 5120)).toBe(42);
+  });
+
+  it('gives every widget of a tier the same height on every board', () => {
+    const cell = cellOf(380, 4, 'touch', 'comfortable');
+    const heights = pack('compact', widgets('M', 'W', 'XL', 'M')).map(
+      (tile) => frameOf(cell, tile).height,
+    );
+    expect(heights).toEqual([172, 172, 356, 172]);
+  });
+
   it('keeps the order of the widgets and gives no overlapping cells', () => {
     const placed = pack('expanded', widgets('M', 'M', 'XL', 'W', 'M', 'W', 'M'));
     expect(placed.map((p) => p.widget.key)).toEqual(['w0', 'w1', 'w2', 'w3', 'w4', 'w5', 'w6']);
@@ -66,45 +92,12 @@ describe('pack', () => {
       }
     }
   });
-
-  it('gives a widget with a fixed aspect its height from the width it spans', () => {
-    const sizing = {
-      cell: { width: 100, height: 50, gap: 10, pad: 8 },
-      aspectOf: (type: string): number | undefined => (type === 'camera' ? 2 : undefined),
-    };
-    const placed = pack(
-      'compact',
-      [
-        { key: 'a', type: 'camera', size: 'M' },
-        { key: 'b', type: 'plain', size: 'M' },
-      ],
-      sizing,
-    );
-    expect(placed[0]).toMatchObject({ cols: 4, rows: 4, height: 215 });
-    expect(placed[1]).toMatchObject({ cols: 4, rows: 2, col: 0, row: 4 });
-    expect(placed[1]?.height).toBeUndefined();
-  });
 });
 
-describe('rowsOf', () => {
-  it('is the number of rows the placements reach', () => {
-    expect(rowsOf([])).toBe(0);
-    expect(rowsOf(pack('compact', widgets('M', 'M', 'XL')))).toBe(8);
-  });
-});
-
-describe('fittedCell', () => {
-  const cell = { width: 100, height: 50, gap: 10, pad: 8 };
-
-  it('leaves the cell alone when no widget has a fixed aspect', () => {
-    const sizing = { cell, aspectOf: (): undefined => undefined };
-    expect(fittedCell('compact', widgets('M'), sizing)).toBe(cell);
-  });
-
-  it('stretches the row height so the first fixed-aspect widget fills whole rows', () => {
-    const sizing = { cell, aspectOf: (): number => 2 };
-    const fitted = fittedCell('compact', widgets('M'), sizing);
-    expect(fitted.height).toBeCloseTo(46.25);
-    expect(4 * fitted.height + 3 * fitted.gap).toBeCloseTo(215);
+describe('boardHeightOf', () => {
+  it('ends at the lowest frame without a trailing gap', () => {
+    const cell = { width: 100, height: 50, gap: 10, pad: 8 };
+    expect(boardHeightOf([], cell)).toBe(0);
+    expect(boardHeightOf(pack('compact', widgets('M', 'M', 'XL')), cell)).toBe(470);
   });
 });

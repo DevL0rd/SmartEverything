@@ -31,7 +31,11 @@ export function createSmartThingsModule(
       });
       tokens.schedule();
       const api = new SmartThingsApi(io, tokens);
-      const definitions = new DefinitionCache(api, context.dataDirectory, context.log);
+      const definitions = new DefinitionCache(
+        api,
+        context.layout.cache.smartthingsCapabilities,
+        context.log,
+      );
       const inventory = new Inventory(api, definitions, context.log);
       return Promise.resolve(
         createSmartThingsAdapter({ api, io, tokens, inventory, context, webhooks }),

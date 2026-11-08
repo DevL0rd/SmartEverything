@@ -202,7 +202,9 @@ export const AUTOMATION_RUN_ENDPOINTS = {
         .int()
         .min(-1)
         .default(-1)
-        .describe('Sequence number to continue after, from the last item of the previous page; -1 starts at the first'),
+        .describe(
+          'Sequence number to continue after, from the last item of the previous page; -1 starts at the first',
+        ),
       limit: queryLimit(100, 500),
       nodeId: ID.optional(),
       iteration: z.coerce.number().int().min(0).optional(),

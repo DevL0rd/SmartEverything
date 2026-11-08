@@ -23,6 +23,7 @@ export interface Turn {
   readonly chat: AiChatRow & {
     readonly engine: ComputerEngine;
   };
+  executionEngine: ComputerEngine | null;
   readonly replies: ProviderReplies;
   readonly stream: TurnStream;
   readonly grant: ProviderGrant;

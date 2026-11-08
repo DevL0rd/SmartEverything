@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   API_ENDPOINTS,
+  GOOGLE_SCOPE,
+  GOOGLE_SCOPES,
   LIVE_TABLES,
   MCP_TOOL_AREAS,
   OPEN_OPERATIONS,
   OWNER_TABLES,
   SNAPSHOT_ONLY_AREAS,
   TABLE_AREAS,
+  TEMPLATE_SCOPES,
   endpointAccessArea,
   mcpOperationArea,
 } from '../src';
+import { SERVED_PLANNER } from '../src/mcp/served-planner';
 
 const DECIDED_AS_SYSTEM = [
   'readFirewall',
@@ -39,11 +43,38 @@ const DECIDED_AS_SYSTEM = [
   'checkFirewall',
   'applyFirewall',
   'readMachineUpdate',
+  'readHubUpdateRecovery',
+  'checkHubUpdateSource',
+  'startHubUpdateSource',
+  'saveHubUpdateSource',
+  'recoverHubUpdate',
   'readDeveloperDevice',
   'setDeveloperDevice',
   'saveWatchCaptures',
   'readWatchCaptures',
   'clearWatchCaptures',
+  'dropRuntimeLogs',
+  'ingestDesktopRuntimeLogs',
+  'readRuntimeLogComponents',
+  'readRuntimeLogGaps',
+  'readRuntimeLogPlatforms',
+  'readRuntimeLogSignatures',
+  'readRuntimeLogSources',
+  'readRuntimeLogsAround',
+  'searchRuntimeLogs',
+  'listAiRepairGroups',
+  'dismissAiRepairGroups',
+  'diagnoseAiRepairGroup',
+  'proposeAiRepairPatch',
+  'readAppUpdate',
+  'readAppUpdateKey',
+  'readAndroidAppBuild',
+  'readAndroidAppBuilds',
+  'readAndroidApkOffer',
+  'readAndroidUpdateHistory',
+  'listAppUpdates',
+  'reportAppUpdate',
+  'reportAndroidAppBuild',
 ];
 
 describe('the area every app call belongs to', () => {
@@ -85,5 +116,46 @@ describe('the area every live table belongs to', () => {
       .filter((table) => !OWNER_TABLES.has(table))
       .sort();
     expect(outside).toStrictEqual(['exchange_rates', 'layouts', 'profiles', 'settings']);
+  });
+});
+
+describe('the planner area', () => {
+  const PLANNER_TABLES = [
+    'planner_collections',
+    'planner_items',
+    'planner_occurrences',
+    'planner_alarms',
+    'planner_timers',
+    'planner_stopwatches',
+    'google_accounts',
+  ] as const;
+
+  it('puts every planner and Google call, the planner tables and both planner tools in it', () => {
+    const planner = Object.values(API_ENDPOINTS).filter(
+      (endpoint) =>
+        endpoint.path.startsWith('/api/planner') || endpoint.path.startsWith('/api/google'),
+    );
+    expect(planner.length).toBeGreaterThan(0);
+    for (const endpoint of planner) {
+      expect(endpointAccessArea(endpoint)).toBe('planner');
+    }
+    for (const table of PLANNER_TABLES) {
+      expect(TABLE_AREAS[table]).toBe('planner');
+    }
+    expect(SERVED_PLANNER.map((tool) => tool.area)).toStrictEqual(['planner', 'planner']);
+  });
+
+  it('gives every template that is not refused the planner', () => {
+    for (const template of ['owner', 'adult', 'child', 'guest'] as const) {
+      expect(TEMPLATE_SCOPES[template].areas).toContain('planner');
+    }
+  });
+
+  it('accepts only the Calendar and Tasks scopes of the link', () => {
+    for (const scope of GOOGLE_SCOPES) {
+      expect(GOOGLE_SCOPE.safeParse(scope).success).toBe(true);
+    }
+    expect(GOOGLE_SCOPE.safeParse('https://www.googleapis.com/auth/drive').success).toBe(false);
+    expect(GOOGLE_SCOPE.safeParse('https://www.googleapis.com/auth/calendar').success).toBe(false);
   });
 });

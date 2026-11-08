@@ -1,5 +1,5 @@
 import type { AiChatRow } from '@smarteverything/domain';
-import { MINUTE_MS, relative } from '../../../format/time';
+import { relative } from '../../../format/time';
 import type { AreaStatus } from '../model/area-status';
 
 export type QuickAskChoice = 'new' | 'continue';
@@ -33,22 +33,8 @@ export function latestChat<T extends QuickAskCandidate>(
   return latest;
 }
 
-export function preferredChoice(
-  latest: QuickAskCandidate | null,
-  reuseMinutes: number,
-  now: number,
-): QuickAskChoice {
-  return latest !== null && now - activityOf(latest) < reuseMinutes * MINUTE_MS
-    ? 'continue'
-    : 'new';
-}
-
-export function chosenTarget(
-  picked: QuickAskChoice | null,
-  preferred: QuickAskChoice,
-  hasLatest: boolean,
-): QuickAskChoice {
-  return hasLatest ? (picked ?? preferred) : 'new';
+export function chosenTarget(picked: QuickAskChoice | null, hasLatest: boolean): QuickAskChoice {
+  return hasLatest ? (picked ?? 'continue') : 'new';
 }
 
 export function continueLabel(

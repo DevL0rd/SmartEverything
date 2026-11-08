@@ -9,14 +9,17 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { ToolCaller } from '../../src/ai-tools/hub-tool';
+import { hubLayout } from '../../src/data-layout';
 import { PluginHost } from '../../src/plugins/host';
 import { PluginPeople } from '../../src/plugins/plugin-people';
 import { PluginSpeakers } from '../../src/plugins/plugin-speakers';
 import { PluginSecrets } from '../../src/plugins/plugin-secrets';
+import { readPluginLines } from '../../src/plugins/plugin-logs';
 import { SecretStore } from '../../src/secrets/store';
+import { ingestOwnLogs } from '../../src/server/hub-log-sink';
 import { Transcripts } from '../../src/transcripts/transcript-service';
 import type { Store } from '../../src/store/store';
-import { captureLogs, testLogger } from '../support/logs';
+import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 import { writeFakePlugin } from './fake-plugin';
 
@@ -49,6 +52,8 @@ interface Rig {
 
 let opened: TestStore | null = null;
 let rig: Rig | null = null;
+let logs: CapturedLogs;
+let stopLogs: () => void;
 
 function storeOf(): Store {
   if (opened === null) {
@@ -135,8 +140,10 @@ async function rigged(): Promise<Rig> {
       attachments: (): string[] => [],
       machineFile: (): Promise<null> => Promise.resolve(null),
       uploadFile: (): Promise<null> => Promise.resolve(null),
-      dataDirectory: directory,
+      pictureFile: (): Promise<null> => Promise.resolve(null),
+      layout: hubLayout(directory, {}),
       submit: (): [] => [],
+      signals: { emit: nothing },
       now,
     },
     contributions: {
@@ -147,7 +154,7 @@ async function rigged(): Promise<Rig> {
       now,
     },
     configure: (): Promise<void> => Promise.resolve(),
-    dataDirectory: directory,
+    layout: hubLayout(directory, {}),
     mcpUrl: (): string => 'http://127.0.0.1:1',
     now,
     log: testLogger('plugins'),
@@ -157,11 +164,14 @@ async function rigged(): Promise<Rig> {
 
 beforeEach(async () => {
   opened = await testStore();
+  logs = captureLogs();
+  stopLogs = ingestOwnLogs({ store: opened.store, log: testLogger('service') });
   rig = await rigged();
 });
 
 afterEach(async () => {
   await rig?.host.shutdown();
+  stopLogs();
   await opened?.close();
   rig = null;
   opened = null;
@@ -204,14 +214,10 @@ describe('plugin host', () => {
     const id = await addPlugin(false);
     await hostOf().host.launch(id);
     await expect
-      .poll(() =>
-        hostOf()
-          .host.slot(id)
-          ?.logs.read()
-          .map((entry) => entry.line)
-          .join('\n'),
-      )
+      .poll(() => readPluginLines(storeOf(), id).map((entry) => entry.line))
       .toContain('ready');
+    await hostOf().host.halt(id);
+    expect(readPluginLines(storeOf(), id).map((entry) => entry.line)).toContain('ready');
     expect(hostOf().messages).toStrictEqual([]);
   });
 
@@ -229,7 +235,6 @@ describe('plugin host', () => {
   });
 
   it('logs why a plugin crashed', async () => {
-    const logs = captureLogs();
     const id = await addPlugin(true);
     await hostOf().host.launch(id);
     const crashed = reaches(id, 'crashed');
@@ -241,6 +246,18 @@ describe('plugin host', () => {
       (entry) => entry.event === 'plugin.status' && entry.payload['status'] === 'crashed',
     );
     expect(record?.payload['detail']).toBe('Fake stopped unexpectedly');
+  });
+
+  it('tells its followers once a plugin has started and when it stops', async () => {
+    const id = await addPlugin(true);
+    const seen: boolean[] = [];
+    hostOf().host.changes(() => {
+      seen.push(hostOf().host.slot(id) !== undefined);
+    });
+    await hostOf().host.launch(id);
+    expect(seen.at(-1)).toBe(true);
+    await hostOf().host.halt(id);
+    expect(seen.at(-1)).toBe(false);
   });
 
   it('stops the plugin and drops its key when switched off', async () => {

@@ -51,7 +51,9 @@ function leaf(key: string, ports: Record<string, PortValue> = {}, kind = 'device
 function reads(key: string, sources: string, kind = 'device.set'): FlowNode {
   const ports = sources
     .split(' + ')
-    .map((source, index) => [index === 0 ? 'value' : `value${String(index)}`, wired(source)]);
+    .map(
+      (source, index) => [index === 0 ? 'value' : `value${String(index)}`, wired(source)] as const,
+    );
   return leaf(key, Object.fromEntries(ports), kind);
 }
 

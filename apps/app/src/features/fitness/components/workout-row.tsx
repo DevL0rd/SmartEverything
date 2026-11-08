@@ -27,11 +27,15 @@ export function WorkoutRow({
   const facts = workoutFacts(workout)
     .slice(0, 2)
     .map((fact) => fact.text);
+  const title = workout.title ?? workout.name;
+  const subtitle = joinParts([dayLabel(workout.start, startOfDayKey(today)), ...facts]);
   return (
     <ListRow
       leading={<WorkoutIcon workout={workout} />}
-      title={workout.title ?? workout.name}
-      subtitle={joinParts([dayLabel(workout.start, startOfDayKey(today)), ...facts])}
+      title={title}
+      label={joinParts([title, subtitle])}
+      wrapTitle
+      subtitle={subtitle}
       href={href.workout(workout.recordId)}
       chevron
     />

@@ -14,6 +14,7 @@ const GONE = '6a000000-0000-4000-8000-000000000003';
 const PROFILE = '6c000000-0000-4000-8000-000000000001';
 const HASH = 'a'.repeat(64);
 const LAST_BEFORE = MIGRATIONS.filter((migration) => migration.version <= 130);
+const THROUGH = MIGRATIONS.filter((migration) => migration.version <= 131);
 
 const COUNT = z.object({ count: z.number() });
 const ID = z.object({ id: z.string() });
@@ -127,7 +128,7 @@ beforeEach(() => {
   database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
   migrate(new Sql(database), LAST_BEFORE, BEFORE, testLogger());
   seed();
-  migrate(new Sql(database), MIGRATIONS, NOW, testLogger());
+  migrate(new Sql(database), THROUGH, NOW, testLogger());
 });
 
 describe('the migration that drops the old automations', () => {
@@ -169,7 +170,7 @@ describe('the migration that drops the old automations', () => {
   });
 
   it('runs once and changes nothing on the next start', () => {
-    migrate(new Sql(database), MIGRATIONS, NOW, testLogger());
+    migrate(new Sql(database), THROUGH, NOW, testLogger());
     expect(ids('select id from automations')).toStrictEqual([NEW]);
     expect(MIGRATIONS.find((migration) => migration.version === 131)).toMatchObject({
       name: 'drop_old_automations',

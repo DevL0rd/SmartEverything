@@ -2,6 +2,7 @@ import { MCP_TOOLS } from '@smarteverything/domain';
 import { switchedOffTools } from '../../../ai-tools/tool-discovery';
 import { reachableAreas } from './person-reach';
 import { readOnlyCaller } from './read-only';
+import { OWNER_CHAT_UPDATE_TOOL, ownerUpdateChat } from './self-update-owner';
 import type { Tool, ToolContext } from './registry';
 
 const SCOPED_DISPATCH_TOOLS: ReadonlySet<string> = new Set([
@@ -32,6 +33,7 @@ export function visibleTools(tools: readonly Tool[], context: ToolContext): read
     (tool) =>
       !off.has(tool.name) &&
       toolInScope(context, tool.name) &&
+      (tool.name !== OWNER_CHAT_UPDATE_TOOL || ownerUpdateChat(context) !== null) &&
       (!readOnly || tool.listing.annotations.readOnlyHint),
   );
 }

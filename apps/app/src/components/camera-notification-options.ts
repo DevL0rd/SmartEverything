@@ -31,12 +31,18 @@ function minutesLabel(minutes: number): string {
   return minutes === 0 ? 'No limit' : plural(minutes, 'minute');
 }
 
-export function cooldownOptions(withDefault: boolean): readonly SelectOption<string>[] {
+export function followLabel(resolved: string): string {
+  return `Default · ${resolved}`;
+}
+
+export function cooldownOptions(follow: number | null): readonly SelectOption<string>[] {
   const choices = CAMERA_COOLDOWN_CHOICES.map((minutes) => ({
     value: String(minutes),
     label: minutesLabel(minutes),
   }));
-  return withDefault ? [{ value: FOLLOW_DEFAULT, label: 'Same as default' }, ...choices] : choices;
+  return follow === null
+    ? choices
+    : [{ value: FOLLOW_DEFAULT, label: followLabel(minutesLabel(follow)) }, ...choices];
 }
 
 export function clockOptions(): readonly SelectOption<string>[] {
@@ -66,12 +72,15 @@ function quietLabel(quiet: CameraQuietHours): string {
   return `${quiet.from} to ${quiet.to}`;
 }
 
-export function quietOptions(current: CameraQuietHours | null): readonly SelectOption<string>[] {
+export function quietOptions(
+  current: CameraQuietHours | null,
+  follow: CameraQuietHours | null,
+): readonly SelectOption<string>[] {
   const custom =
     current !== null && !QUIET_PRESETS.some((preset) => quietValue(preset) === quietValue(current));
   const presets = custom ? [current, ...QUIET_PRESETS] : QUIET_PRESETS;
   return [
-    { value: FOLLOW_DEFAULT, label: 'Same as default' },
+    { value: FOLLOW_DEFAULT, label: followLabel(follow === null ? 'None' : quietLabel(follow)) },
     { value: NO_QUIET_HOURS, label: 'None' },
     ...presets.map((quiet) => ({ value: quietValue(quiet), label: quietLabel(quiet) })),
   ];

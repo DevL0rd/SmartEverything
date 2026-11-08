@@ -11,9 +11,11 @@ import type { LintContext } from '@smarteverything/flow/check/lint';
 import { indexProgram } from '@smarteverything/flow/program/lookup';
 import { useAutomationsSource } from '../data/source';
 import { useFunctions } from '../data/use-functions';
-import type { FunctionChoice, InspectorEnv } from '../editor/inspector/sections/section-types';
+import type { InspectorModel } from '../editor/inspector/inspector';
+import type { FunctionChoice, GraphEnv } from '../editor/inspector/sections/section-types';
 import { renderPortValue } from '../editor/inspector/values/render-port-value';
 import type { SceneOptions } from '../editor/host/use-canvas-props';
+import { structuredFor } from '../model/editor/structured';
 import { interfaceLine } from '../editor/palette/palette-categories';
 import type { InspectorEnvInput } from '../editor/screen/editor-panes';
 import { useLintContext, useRefNames } from './use-environment';
@@ -29,23 +31,34 @@ export interface EditorContext {
   readonly options: SceneOptions;
 }
 
-export function inspectorEnvOf(input: InspectorEnvInput, context: EditorContext): InspectorEnv {
+export function inspectorEnvOf(input: InspectorEnvInput, context: EditorContext): InspectorModel {
+  const kinds = context.registry;
   const { program, layout, target, findings } = input;
-  return {
-    program,
-    index: indexProgram(program),
+  const graph: GraphEnv = {
+    graph: program,
     registry: context.registry,
-    describe: context.describe,
-    scope: wireScopeOf(program, context.describe),
     findings,
-    functions: context.functions,
-    exits: program.kind === 'function' ? program.exits : [],
-    breakpoint: false,
-    freePosition: target !== null && layout.nodes[target] !== undefined,
-    run: null,
     subjectChoices: undefined,
     renderValue: renderPortValue,
     locked: false,
+  };
+  const structured = structuredFor(program, kinds);
+  if (structured.kind === 'unstructured') return { graph, steps: null };
+  const tree = structured.tree;
+  return {
+    graph,
+    steps: {
+      ...graph,
+      program: tree,
+      index: indexProgram(tree),
+      describe: context.describe,
+      scope: wireScopeOf(tree, context.describe),
+      functions: context.functions,
+      exits: tree.kind === 'function' ? tree.exits : [],
+      breakpoint: false,
+      freePosition: target !== null && layout.nodes[target] !== undefined,
+      run: null,
+    },
   };
 }
 
@@ -55,6 +68,7 @@ function choiceOf(summary: AutomationFunctionSummary): FunctionChoice {
     name: summary.name,
     interfaceLine: interfaceLine(summary),
     latest: summary.revision,
+    inputs: summary.interface.inputs,
   };
 }
 

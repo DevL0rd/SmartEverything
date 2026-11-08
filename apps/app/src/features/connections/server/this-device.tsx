@@ -1,26 +1,19 @@
 import type { ReactNode } from 'react';
-import {
-  chooseRemoteServer,
-  chooseThisComputer,
-  useConnection,
-  type ConnectionState,
-} from '../../../api/transport';
+import { useConnection, type ConnectionState } from '../../../api/transport';
 import { confirm } from '../../../components/confirm-store';
+import { ListRow } from '../../../components/list-row';
 import { ActionRow, ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { notifyFailure } from '../../../components/toast-store';
-import { appPlatform } from '../../../design/platform';
 import { useSettings } from '../../../store/selectors';
 import { forgetPairing } from './forget-pairing';
+import { SERVER_PANEL } from './server-panels';
 
 import { trackConnection } from '../connections-log';
 import { background } from '@smarteverything/logging';
 type Paired = Extract<ConnectionState, { status: 'paired' }>;
 
 function howConnected(state: Paired, publicUrl: string | null): string {
-  if (state.kind === 'desktop') {
-    return 'This computer';
-  }
   return state.connection.url === publicUrl ? 'Public address' : 'Home network';
 }
 
@@ -42,33 +35,6 @@ function unpair(): void {
   );
 }
 
-function switchRow(state: Paired): ReactNode {
-  if (appPlatform() !== 'desktop') {
-    return null;
-  }
-  return state.kind === 'desktop' ? (
-    <ActionRow
-      icon="server"
-      title="Use another server"
-      onPress={() => {
-        trackConnection('server.choose_remote', {}, chooseRemoteServer).catch(
-          notifyFailure('The server wasn’t switched'),
-        );
-      }}
-    />
-  ) : (
-    <ActionRow
-      icon="monitor"
-      title="Use this computer’s server"
-      onPress={() => {
-        trackConnection('server.choose_this_computer', {}, chooseThisComputer).catch(
-          notifyFailure('The server wasn’t switched'),
-        );
-      }}
-    />
-  );
-}
-
 export function ThisDeviceSection(): ReactNode {
   const state = useConnection();
   const publicUrl = useSettings().public_url;
@@ -76,13 +42,15 @@ export function ThisDeviceSection(): ReactNode {
     return null;
   }
   return (
-    <List inset title="This device">
+    <List inset title="This device" className={SERVER_PANEL}>
       <ValueRow icon="link" title="Connected" value={howConnected(state, publicUrl)} />
-      <ValueRow icon="server" title="Server" value={new URL(state.connection.url).host} />
-      {switchRow(state)}
-      {state.kind === 'desktop' ? null : (
-        <ActionRow icon="signOut" title="Unpair this device" destructive onPress={unpair} />
-      )}
+      <ListRow
+        icon="server"
+        title="Server"
+        subtitle={new URL(state.connection.url).host}
+        wrapSubtitle
+      />
+      <ActionRow icon="signOut" title="Unpair this device" destructive onPress={unpair} />
     </List>
   );
 }

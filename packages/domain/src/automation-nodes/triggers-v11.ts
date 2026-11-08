@@ -53,11 +53,13 @@ const COMPUTER = trigger({
   description:
     'Starts when an app opens or comes to the front on a computer, or its power changes.',
   inputs: [
-    input('computer', ref('device'), 'One computer; empty means any computer.'),
+    input('computer', ref('device'), 'One computer; empty means any computer.', {
+      ui: { optionsFrom: 'computers' },
+    }),
     input('kind', choice(Object.keys(COMPUTER_TRIGGER_EVENTS)), 'What happened.', {
       default: 'app_open',
     }),
-    input('app', TEXT, 'Only this app, by name.'),
+    input('app', TEXT, 'Only this app, by name.', { ui: { optionsFrom: 'computer.apps' } }),
     input('title', TEXT, 'Only this window title.'),
     ...timing(['cooldown']),
   ],
@@ -77,14 +79,19 @@ const PHONE = trigger({
   id: 'trigger.phone',
   name: 'Phone event',
   icon: 'smartphone',
-  description: 'Starts when a phone is unlocked, changes what it is doing, or parks.',
+  description:
+    'Starts when a phone is unlocked, changes what it is doing, parks, is plugged in or unplugged, starts or ends a call, or its notification count changes.',
   inputs: [
     input('phone', ref('device'), 'One phone; empty means any phone.'),
     input('kind', choice(Object.keys(PHONE_TRIGGER_EVENTS)), 'What happened.', {
       default: 'unlocked',
     }),
-    input('to', TEXT, 'For a change of activity, only when it became this.'),
-    input('from', TEXT, 'For a change of activity, only when it was this before.'),
+    input('to', TEXT, 'For a change of activity, only when it became this.', {
+      ui: { optionsFrom: 'phone.contexts' },
+    }),
+    input('from', TEXT, 'For a change of activity, only when it was this before.', {
+      ui: { optionsFrom: 'phone.contexts' },
+    }),
     ...timing(['cooldown']),
   ],
   outputs: [
@@ -94,7 +101,20 @@ const PHONE = trigger({
     AT,
   ],
   summary: 'When {phone} is {kind}',
-  keywords: ['phone', 'unlock', 'unlocked', 'driving', 'walking', 'parked', 'context'],
+  keywords: [
+    'phone',
+    'unlock',
+    'unlocked',
+    'driving',
+    'walking',
+    'parked',
+    'context',
+    'charger',
+    'plugged',
+    'unplugged',
+    'call',
+    'notification',
+  ],
 });
 
 const HEALTH = trigger({
@@ -107,7 +127,9 @@ const HEALTH = trigger({
       default: 'sleep_ended',
     }),
     input('person', ref('person'), 'One person; empty means anyone.'),
-    input('metric', TEXT, 'Which reading, total or logged type, for example weight_kg.'),
+    input('metric', TEXT, 'Which reading, total or logged type, for example weight_kg.', {
+      ui: { optionsFrom: 'health.metrics' },
+    }),
     ...timing(['test', 'window', 'cooldown', 'first']),
   ],
   outputs: [
@@ -131,8 +153,12 @@ const WEATHER = trigger({
   inputs: [
     input('event', choice(WEATHER_TRIGGER_EVENTS), 'What changed.', { default: 'changed' }),
     input('metric', choice(WEATHER_SIGNAL_METRICS), 'Which value, for changed and band.'),
-    input('to', TEXT, 'For band or condition, only when it became this.'),
-    input('from', TEXT, 'For band or condition, only when it was this before.'),
+    input('to', TEXT, 'For band or condition, only when it became this.', {
+      ui: { optionsFrom: 'weather.conditions' },
+    }),
+    input('from', TEXT, 'For band or condition, only when it was this before.', {
+      ui: { optionsFrom: 'weather.conditions' },
+    }),
     input('falling', choice([...WET_KINDS]), 'For rain started, only this kind of weather.'),
     input('within', choice(RAIN_HORIZONS), 'For rain expected, how soon.'),
     ...timing(['test', 'rearm', 'hold', 'debounce', 'cooldown']),
@@ -167,7 +193,7 @@ const CHAT = trigger({
   icon: 'message-square',
   description: 'Starts when the AI finishes a reply in a chat.',
   inputs: [
-    input('chat', TEXT, 'One chat; empty means any chat.'),
+    input('chat', TEXT, 'One chat; empty means any chat.', { ui: { optionsFrom: 'chats' } }),
     input('outcome', choice(CHAT_OUTCOMES), 'How the reply ended; empty means either.'),
     ...timing(['cooldown']),
   ],
@@ -192,7 +218,10 @@ const EVENT = trigger({
   icon: 'megaphone',
   description: 'Starts when an automation sends a named event with the Send event step.',
   inputs: [
-    input('name', TEXT, 'The name of the event, for example guest_mode_on.', { required: true }),
+    input('name', TEXT, 'The name of the event, for example guest_mode_on.', {
+      required: true,
+      ui: { optionsFrom: 'events.emitted' },
+    }),
     ...timing(['cooldown']),
   ],
   outputs: [
@@ -209,7 +238,12 @@ const TIMER = trigger({
   name: 'Timer finished',
   icon: 'alarm-clock',
   description: 'Starts when a named timer ends. The timer is started with the Timer step.',
-  inputs: [input('timer', TEXT, 'The name of the timer.', { required: true })],
+  inputs: [
+    input('timer', TEXT, 'The name of the timer.', {
+      required: true,
+      ui: { optionsFrom: 'timers.this' },
+    }),
+  ],
   outputs: [output('timer', TEXT, 'The name of the timer.'), AT],
   summary: 'When the timer {timer} ends',
   keywords: ['timer', 'countdown', 'alarm', 'finished', 'done', 'laundry'],
@@ -265,9 +299,11 @@ const SCHEDULE = trigger({
       'blocks',
       { t: 'list', of: ANY_RECORD },
       'The blocks, each with a time (at), weekdays (days) and any data (slot).',
-      { required: true },
+      { required: true, ui: { editor: 'week-grid' } },
     ),
-    input('except', { t: 'list', of: TEXT }, 'Dates to skip, as YYYY-MM-DD.'),
+    input('except', { t: 'list', of: TEXT }, 'Dates to skip, as YYYY-MM-DD.', {
+      ui: { editor: 'date-list' },
+    }),
   ],
   outputs: [
     output('slot', ANY, 'The data of the block that started.', true),

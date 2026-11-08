@@ -1,10 +1,18 @@
+import type { NodeKindLookup } from '@smarteverything/domain';
+import { execClassOf, type ProgramV4 } from '@smarteverything/domain';
 import type { IconName } from '../../../../components/icon';
 import type { WidthClass } from '../../../../design/size-class';
-import type { ProblemCounts } from '../problems/problem-model';
+import { countsText, type ProblemCounts } from '../problems/problem-model';
 
 export type EditorLayout = 'phone' | 'tablet' | 'wide';
 
 export const OFFLINE_PUBLISH_REASON = 'Reconnect to publish';
+
+export const OFFLINE_TEST = 'Test needs the Home Hub. Reconnect, then test again.';
+
+export const EMPTY_PUBLISH_REASON = 'Add the first step to publish';
+
+export const EMPTY_TEST_REASON = 'Add what starts it and a step to test';
 
 export const OFFLINE_BANNER = {
   title: 'Can’t reach the Home Hub',
@@ -12,6 +20,10 @@ export const OFFLINE_BANNER = {
 } as const;
 
 export const SHEET_HALF_SHARE = 0.5;
+
+export function hasNoSteps(program: ProgramV4, kinds: NodeKindLookup): boolean {
+  return program.nodes.every((node) => execClassOf(node.kind, kinds) === 'start');
+}
 
 export function editorLayoutOf(width: WidthClass): EditorLayout {
   if (width === 'compact') return 'phone';
@@ -22,6 +34,7 @@ export interface TopBarInput {
   readonly layout: EditorLayout;
   readonly online: boolean;
   readonly reusable: boolean;
+  readonly empty: boolean;
   readonly counts: ProblemCounts;
 }
 
@@ -33,15 +46,14 @@ export interface TopBarModel {
   readonly problemTone: 'critical' | 'warning' | 'info' | null;
   readonly sentence: boolean;
   readonly testButton: boolean;
+  readonly testDisabled: boolean;
+  readonly undoButtons: boolean;
   readonly addButton: boolean;
   readonly breadcrumb: boolean;
 }
 
 export function problemText(counts: ProblemCounts): string | null {
-  if (counts.errors > 0) return `${String(counts.errors)} to fix`;
-  if (counts.warnings > 0) return `${String(counts.warnings)} to know`;
-  if (counts.hints > 0) return `${String(counts.hints)} to improve`;
-  return null;
+  return countsText(counts);
 }
 
 function problemTone(counts: ProblemCounts): TopBarModel['problemTone'] {
@@ -50,22 +62,30 @@ function problemTone(counts: ProblemCounts): TopBarModel['problemTone'] {
   return counts.hints > 0 ? 'info' : null;
 }
 
-export function topBarModel({ layout, online, reusable, counts }: TopBarInput): TopBarModel {
+function publishNameOf(input: TopBarInput, label: string): string {
+  if (!input.online) return OFFLINE_PUBLISH_REASON;
+  return input.empty ? EMPTY_PUBLISH_REASON : label;
+}
+
+export function topBarModel(input: TopBarInput): TopBarModel {
+  const { layout, online, reusable, empty, counts } = input;
   const publishLabel = reusable ? 'Publish node' : 'Publish';
   return {
     publishLabel,
-    publishName: online ? publishLabel : OFFLINE_PUBLISH_REASON,
-    publishDisabled: !online,
+    publishName: publishNameOf(input, publishLabel),
+    publishDisabled: !online || empty,
     problemText: problemText(counts),
     problemTone: problemTone(counts),
     sentence: layout !== 'phone',
     testButton: layout !== 'phone',
+    testDisabled: empty,
+    undoButtons: layout !== 'phone',
     addButton: layout === 'tablet',
     breadcrumb: layout === 'wide',
   };
 }
 
-export type BottomItemId = 'add' | 'select' | 'test' | 'runs' | 'interface';
+export type BottomItemId = 'undo' | 'redo' | 'add' | 'select' | 'test' | 'runs' | 'interface';
 
 export interface BottomItem {
   readonly id: BottomItemId;
@@ -78,10 +98,21 @@ export interface BottomItem {
 export interface BottomBarInput {
   readonly reusable: boolean;
   readonly selecting: boolean;
+  readonly empty: boolean;
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
 }
 
-export function bottomBarItems({ reusable, selecting }: BottomBarInput): readonly BottomItem[] {
+export function bottomBarItems({
+  reusable,
+  selecting,
+  empty,
+  canUndo,
+  canRedo,
+}: BottomBarInput): readonly BottomItem[] {
   return [
+    { id: 'undo', label: 'Undo', icon: 'undo', active: false, disabled: !canUndo },
+    { id: 'redo', label: 'Redo', icon: 'redo', active: false, disabled: !canRedo },
     { id: 'add', label: 'Add', icon: 'plus', active: false, disabled: false },
     {
       id: 'select',
@@ -90,7 +121,7 @@ export function bottomBarItems({ reusable, selecting }: BottomBarInput): readonl
       active: selecting,
       disabled: false,
     },
-    { id: 'test', label: 'Test', icon: 'play', active: false, disabled: false },
+    { id: 'test', label: 'Test', icon: 'play', active: false, disabled: empty },
     reusable
       ? { id: 'interface', label: 'Interface', icon: 'puzzle', active: false, disabled: false }
       : { id: 'runs', label: 'Runs', icon: 'activity', active: false, disabled: false },

@@ -5,7 +5,7 @@ import {
   type ImageOperationOrigin,
 } from '@smarteverything/domain';
 import { currentExecutionAuthority } from '../assistant/turn-authority';
-import { effectiveTools } from '../assistant/coordination/grants';
+import { effectiveTools } from '../assistant/tool-scope';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import type { ImageActor, ImageEffect } from '../assistant/image/contract';
 import type { Budget } from '../ledger/budget';

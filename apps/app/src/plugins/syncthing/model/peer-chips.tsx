@@ -1,5 +1,5 @@
 import type { SyncthingPeer } from '@smarteverything/domain';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Icon } from '../../../components/icon';
@@ -12,7 +12,7 @@ export function PeerChips({
   href,
 }: {
   readonly peers: readonly SyncthingPeer[];
-  readonly href: (id: string) => Href;
+  readonly href: (id: string) => AppHref;
 }): ReactNode {
   return (
     <Section title="Shared with">

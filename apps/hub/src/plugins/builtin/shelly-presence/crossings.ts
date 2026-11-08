@@ -23,6 +23,7 @@ export class ShellyCrossings {
       occurrence,
       details: {
         component: zone.key,
+        zone: zone.externalId,
         parentExternalId: snapshot.externalId,
         source: 'shelly',
         generation: zone.generation,

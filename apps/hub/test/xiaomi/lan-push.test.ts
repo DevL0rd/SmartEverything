@@ -3,7 +3,7 @@ import { Logger } from '@smarteverything/logging';
 import { parseToken } from '@smarteverything/xiaomi';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LanPush, type PushListener } from '../../src/adapters/xiaomi/lan-push';
-import { MiioClient } from '../../src/adapters/xiaomi/miio-client';
+import { MessageIds, MiioClient } from '../../src/adapters/xiaomi/miio-client';
 import { until } from '../support/wait';
 import { FakeMiioDevice } from './fake-device';
 import { dependencies, routedFetch } from './harness';
@@ -62,6 +62,7 @@ beforeEach(async () => {
     timing,
     now: (): number => Date.now(),
     log: new Logger('tool.xiaomi-test'),
+    messageIds: new MessageIds(0),
   });
   push = new LanPush(
     {

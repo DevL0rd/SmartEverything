@@ -137,7 +137,10 @@ export class ImageOperationsRepository {
       },
     );
     if (row === undefined)
-      throw new ApiError('not_found', 'This chat has no image to use: source and references need an image already in this chat (an upload or an earlier result) or an attachmentId from chat_read view messages; use generate to make a new one.');
+      throw new ApiError(
+        'not_found',
+        'This chat has no image to use: source and references need an image already in this chat (an upload or an earlier result) or an attachmentId from chat_read view messages; use generate to make a new one.',
+      );
     return row;
   }
   recover(record?: (receipt: ImageOperationReceipt) => ImageOperationReceipt): void {

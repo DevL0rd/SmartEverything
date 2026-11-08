@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Sheet } from '../../../../components/sheet';
-import type { LiveCheck } from './problem-model';
+import { countsText, type LiveCheck } from './problem-model';
 import type { ProblemHandlers } from './problem-rows';
 import { ProblemList } from './problem-rows';
 
@@ -11,14 +11,8 @@ export interface ProblemsSheetProps extends ProblemHandlers {
 }
 
 export function problemsTitle(check: LiveCheck): string {
-  const { errors, warnings, hints } = check.counts;
-  if (errors + warnings + hints === 0) return 'Problems';
-  const parts = [
-    errors === 0 ? null : `${String(errors)} to fix`,
-    warnings === 0 ? null : `${String(warnings)} to know`,
-    hints === 0 ? null : `${String(hints)} to improve`,
-  ];
-  return `Problems · ${parts.filter((part) => part !== null).join(', ')}`;
+  const text = countsText(check.counts);
+  return text === null ? 'Problems' : `Problems · ${text}`;
 }
 
 export function ProblemsSheet({

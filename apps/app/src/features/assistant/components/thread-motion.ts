@@ -1,11 +1,11 @@
-import { FadeIn, FadeOut } from 'react-native-reanimated';
+import { FadeOut } from 'react-native-reanimated';
 import { DURATION, EASING } from '../../../design/motion';
 
-export const RISE_PX = { send: 16, reply: 8, step: 6, bar: 4, pill: 12 } as const;
+export const ROW_RISE = { px: 6, ms: 180 } as const;
 
-export const RISE_MS = { send: 200, reply: DURATION.medium, step: DURATION.short } as const;
+export const RISE_PX = { step: 6, pill: 12 } as const;
 
-export const MESSAGE_FADE = FadeIn.duration(180);
+export const RISE_MS = { step: DURATION.short } as const;
 
 export const REPLY_SINK = FadeOut.duration(DURATION.short).easing(EASING.accelerate);
 

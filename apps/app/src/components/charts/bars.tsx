@@ -79,7 +79,7 @@ export const Bars = memo(function Bars({
   const hasLabels = bars.some((bar) => bar.label !== undefined);
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label} className="gap-1">
-      <Text variant="caption" tone="faint" className="tabular">
+      <Text variant="caption" tone="variant" className="tabular">
         {formatValue(peak)}
       </Text>
       <View style={box} onLayout={onLayout}>

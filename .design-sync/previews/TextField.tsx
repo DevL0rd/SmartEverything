@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { Stage, TextField } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
-function Demo() {
+function Demo(): ReactElement {
   const [name, setName] = useState('Living room lamp');
   const [email, setEmail] = useState('dana@example.com');
   const [note, setNote] = useState('');
@@ -32,12 +32,12 @@ function Demo() {
     </Col>
   );
 }
-export const States = () => (
+export const States = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     <Demo />
   </Stage>

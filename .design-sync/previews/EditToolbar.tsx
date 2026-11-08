@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { EditToolbar, Stage } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
@@ -19,12 +20,12 @@ const body = (
     />
   </Col>
 );
-export const Toolbars = () => (
+export const Toolbars = (): ReactElement => (
   <Stage theme="dark" width={620}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={620}>
     {body}
   </Stage>

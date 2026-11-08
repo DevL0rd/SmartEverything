@@ -154,3 +154,8 @@ describe('hubFetch', () => {
     expect(requests[0]?.url).toBe('https://hub.local:7880/x');
   });
 });
+
+it('passes tus HEAD probes to the pinned request bridge', async () => {
+  await pinnedFetch('scope', 'https://hub.local:7880/drive/uploads/session', { method: 'HEAD' });
+  expect(requests).toMatchObject([{ method: 'HEAD', scopeId: 'scope', body: null }]);
+});

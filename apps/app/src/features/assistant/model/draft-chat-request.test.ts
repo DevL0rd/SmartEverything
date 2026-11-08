@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   AI_MODEL_ROUTE,
-  DEFAULT_ENGINE,
   DSH_ENGINE,
   type AiModelRoute,
   type Engine,
@@ -11,15 +10,20 @@ import {
   MACHINE_UNAVAILABLE_NOTICE,
   draftNeedsChat,
   draftStatusOf,
-  draftSuggestions,
   engineUsesOpenRouter,
-  runLineOf,
   sendFailureNotice,
   startChatWithMessage,
+  createDraftChatStarter,
   type StartSteps,
 } from './draft-chat-request';
 
-const OPENROUTER = DEFAULT_ENGINE;
+const OPENROUTER: Engine = DSH_ENGINE.parse({
+  kind: 'dsh',
+  execution_target: { kind: 'server' },
+  session_id: null,
+  model_route_id: '11111111-1111-4111-8111-111111111111',
+  model: 'm',
+});
 
 describe('a new chat draft asking for a started chat', () => {
   it('does for a slash command on an own engine', () => {
@@ -64,45 +68,6 @@ describe('a new chat draft asking for a started chat', () => {
   });
 });
 
-const HOME = { climate: true, health: true, cameras: true, computer: false };
-
-describe('draft suggestions', () => {
-  it('offers four home suggestions on the hub', () => {
-    expect(draftSuggestions(HOME)).toEqual([
-      'How’s the air at home?',
-      'Dim the living room at sunset',
-      'What did the door camera see today?',
-      'What can you do?',
-    ]);
-  });
-
-  it('puts one computer suggestion first and keeps four', () => {
-    const list = draftSuggestions({ ...HOME, computer: true });
-    expect(list).toEqual([
-      'Summarise what changed in ~/repo today',
-      'How’s the air at home?',
-      'Dim the living room at sunset',
-      'What can you do?',
-    ]);
-  });
-
-  it('swaps what the home cannot answer for something it can', () => {
-    const bare = draftSuggestions({
-      climate: false,
-      health: false,
-      cameras: false,
-      computer: false,
-    });
-    expect(bare).toEqual([
-      'What’s on at home right now?',
-      'Dim the living room at sunset',
-      'Make a bedtime routine',
-      'What can you do?',
-    ]);
-    expect(draftSuggestions({ ...HOME, cameras: false })[2]).toBe('Log my dinner');
-  });
-});
-
 describe('draft status line', () => {
   const idle = { loading: false, runtimeStopped: false, needsKey: false, blocked: null };
 
@@ -113,7 +78,9 @@ describe('draft status line', () => {
   it('says the real cause in order of importance', () => {
     const all = { loading: true, runtimeStopped: true, needsKey: true, blocked: 'offline' };
     expect(draftStatusOf(all)).toBe('This computer’s runtime isn’t running');
-    expect(draftStatusOf({ ...all, runtimeStopped: false })).toBe('Loading your default model…');
+    expect(draftStatusOf({ ...all, runtimeStopped: false })).toBe(
+      'Loading the model for new chats…',
+    );
     expect(draftStatusOf({ ...all, runtimeStopped: false, loading: false })).toBe(
       KEY_NEEDED_STATUS,
     );
@@ -123,18 +90,7 @@ describe('draft status line', () => {
   });
 });
 
-describe('run line', () => {
-  it('names the machine and the access when there is one', () => {
-    expect(runLineOf('Workstation', 'Allow edits')).toBe('Running on Workstation · Allow edits');
-    expect(runLineOf('Home Hub', null)).toBe('Running on Home Hub');
-  });
-});
-
 describe('which engines need the OpenRouter key', () => {
-  it('needs it for the cloud engine only when no route says otherwise', () => {
-    expect(engineUsesOpenRouter(OPENROUTER, [])).toBe(true);
-  });
-
   it('does not for a native computer engine', () => {
     const native: Engine = {
       kind: 'claude',
@@ -186,7 +142,8 @@ describe('starting a chat with its first message', () => {
     return {
       create: overrides.create ?? vi.fn(() => Promise.resolve({ id: 'chat-1' })),
       send: overrides.send ?? vi.fn(() => Promise.resolve(null)),
-      remove: vi.fn(() => Promise.resolve()),
+      chatId: null,
+      created: vi.fn(),
     };
   }
 
@@ -194,14 +151,19 @@ describe('starting a chat with its first message', () => {
     const run = steps({});
     expect(await startChatWithMessage(run)).toEqual({ kind: 'sent', chatId: 'chat-1' });
     expect(run.send).toHaveBeenCalledWith('chat-1');
-    expect(run.remove).not.toHaveBeenCalled();
+    expect(run.created).toHaveBeenCalledWith('chat-1');
   });
 
-  it('deletes the empty chat when the send fails so the draft can come back', async () => {
+  it('preserves the created chat identity when the send acknowledgement is lost', async () => {
     const cause = new Error('no answer');
     const run = steps({ send: () => Promise.reject(cause) });
-    expect(await startChatWithMessage(run)).toEqual({ kind: 'failed', stage: 'send', cause });
-    expect(run.remove).toHaveBeenCalledWith('chat-1');
+    expect(await startChatWithMessage(run)).toEqual({
+      kind: 'failed',
+      stage: 'send',
+      cause,
+      chatId: 'chat-1',
+    });
+    expect(run.created).toHaveBeenCalledWith('chat-1');
   });
 
   it('has nothing to delete when the chat was never created', async () => {
@@ -209,7 +171,37 @@ describe('starting a chat with its first message', () => {
     const run = steps({ create: () => Promise.reject(cause) });
     expect(await startChatWithMessage(run)).toEqual({ kind: 'failed', stage: 'create', cause });
     expect(run.send).not.toHaveBeenCalled();
-    expect(run.remove).not.toHaveBeenCalled();
+    expect(run.created).not.toHaveBeenCalled();
+  });
+
+  it('shares overlapping submissions of the same first-message request', async () => {
+    const start = createDraftChatStarter();
+    let finishCreate = (_chat: { id: string }): void => {
+      throw new Error('Expected a pending chat creation');
+    };
+    const created = new Promise<{ id: string }>((resolve) => {
+      finishCreate = resolve;
+    });
+    const run = steps({ create: vi.fn(() => created) });
+    const first = start('request-1', run);
+    const second = start('request-1', run);
+    expect(first).toBe(second);
+    expect(run.create).toHaveBeenCalledTimes(1);
+    finishCreate({ id: 'chat-1' });
+    expect(await first).toEqual({ kind: 'sent', chatId: 'chat-1' });
+    expect(run.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an explicit retry on its original chat without replaying automatically', async () => {
+    const start = createDraftChatStarter();
+    const cause = new Error('acknowledgement lost');
+    const run = steps({ send: vi.fn(() => Promise.reject(cause)) });
+    await start('request-1', run);
+    expect(run.send).toHaveBeenCalledTimes(1);
+    const retry = { ...steps({}), chatId: 'chat-1' };
+    expect(await start('request-1', retry)).toEqual({ kind: 'sent', chatId: 'chat-1' });
+    expect(retry.create).not.toHaveBeenCalled();
+    expect(retry.send).toHaveBeenCalledExactlyOnceWith('chat-1');
   });
 
   it('tells the person their message is still there', () => {

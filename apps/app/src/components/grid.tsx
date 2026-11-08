@@ -2,29 +2,45 @@ import type { ReactNode } from 'react';
 import { Children, isValidElement, useState } from 'react';
 import { View } from 'react-native';
 import { cn } from '../design/cn';
+import { useIdiom } from '../design/platform';
+import { useThemeSetting } from '../design/theme';
+import { gridLayoutOf, type GridGap, type GridLayout } from './grid-layout';
 
 export interface GridProps {
   readonly minItemWidth: number;
-  readonly gap?: 'grid' | 'tight';
+  readonly gap?: GridGap;
   readonly maxColumns?: number;
+  readonly measuredWidth?: number;
+  readonly cellClassName?: string;
+  readonly stretchLastRow?: boolean;
   readonly children: ReactNode;
 }
 
-const GAP_PX = { grid: 12, tight: 8 } as const;
-
-function columnsFor(width: number, minItemWidth: number, gap: number, maxColumns: number): number {
-  return Math.max(1, Math.min(maxColumns, Math.floor((width + gap) / (minItemWidth + gap))));
+export function useGridLayout(
+  width: number,
+  minItemWidth: number,
+  gap: GridGap,
+  maxColumns: number,
+): GridLayout {
+  const idiom = useIdiom();
+  const density = useThemeSetting('density');
+  return gridLayoutOf({ width, minItemWidth, maxColumns, gap, idiom, density });
 }
 
 export function Grid({
   minItemWidth,
   gap = 'grid',
   maxColumns = 6,
+  measuredWidth,
+  cellClassName,
+  stretchLastRow = true,
   children,
 }: GridProps): ReactNode {
-  const [width, setWidth] = useState(0);
+  const [layoutWidth, setLayoutWidth] = useState(0);
+  const width = measuredWidth ?? layoutWidth;
   const items = Children.toArray(children).filter(isValidElement);
-  const columns = columnsFor(width, minItemWidth, GAP_PX[gap], maxColumns);
+  const { columns, cellWidth } = useGridLayout(width, minItemWidth, gap, maxColumns);
+  const gapClass = gap === 'grid' ? 'gap-grid-gap' : 'gap-2';
   const rows: (typeof items)[] = [];
   for (let index = 0; index < items.length; index += columns) {
     rows.push(items.slice(index, index + columns));
@@ -32,19 +48,20 @@ export function Grid({
   return (
     <View
       onLayout={(event) => {
-        setWidth(event.nativeEvent.layout.width);
+        if (measuredWidth === undefined) setLayoutWidth(event.nativeEvent.layout.width);
       }}
-      className={cn(gap === 'grid' ? 'gap-grid-gap' : 'gap-2')}
+      className={gapClass}
     >
       {width === 0
         ? null
         : rows.map((row, index) => (
-            <View
-              key={String(index)}
-              className={cn('flex-row items-stretch', gap === 'grid' ? 'gap-grid-gap' : 'gap-2')}
-            >
+            <View key={String(index)} className={cn('flex-row items-stretch', gapClass)}>
               {row.map((item, column) => (
-                <View key={item.key ?? column} className="min-w-0 flex-1">
+                <View
+                  key={item.key ?? column}
+                  className={cn('min-w-0', stretchLastRow && 'flex-1', cellClassName)}
+                  style={stretchLastRow ? undefined : { width: cellWidth }}
+                >
                   {item}
                 </View>
               ))}

@@ -67,8 +67,6 @@ function coreOf(input: VoiceInput): Core {
     calls: new CallText({
       people: callPeople(roster, occupancy),
       contextMinutes: ctx.settings.voice_context_minutes,
-      reuseMinutes: (): number => ctx.assistant.settings().reuseChatMinutes,
-      now: Date.now,
     }),
   };
 }

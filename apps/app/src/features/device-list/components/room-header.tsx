@@ -10,13 +10,15 @@ import { cn } from '../../../design/cn';
 import { joinParts, plural } from '../../../format/text';
 import { useRoomSummary, type RoomSummary } from '../../home';
 import { NO_ROOM } from '../model/device-filter';
-import { roomIconOf, roomStatusLine } from '../model/room-band';
+import { roomIconOf } from '../../../components/room-icon';
+import { roomStatusLine, selectedRoomStatusLine } from '../model/room-band';
 
 export interface RoomHeaderEntry {
   readonly key: string;
   readonly title: string;
   readonly count: number;
   readonly status: boolean;
+  readonly selected: boolean;
   readonly alone: boolean;
 }
 
@@ -49,23 +51,30 @@ function OnBar({ on, total }: { readonly on: number; readonly total: number }): 
 function Details({
   entry,
   summary,
+  compact = false,
 }: {
   readonly entry: RoomHeaderEntry;
   readonly summary: RoomSummary | null;
+  readonly compact?: boolean;
 }): ReactNode {
-  const line = joinParts([
-    plural(entry.count, 'device'),
-    summary !== null && roomStatusLine(summary),
-  ]);
+  const devices = plural(entry.count, 'device');
+  const line =
+    compact && summary !== null
+      ? selectedRoomStatusLine(summary, entry.count)
+      : joinParts([devices, summary !== null && roomStatusLine(summary)]);
   return (
-    <View className="min-w-0 flex-1 gap-1">
-      <Text variant="title-3" numberOfLines={1} accessibilityRole="header">
-        {entry.title}
-      </Text>
+    <View className={cn('min-w-0 gap-1', !compact && 'flex-1')}>
+      {compact ? null : (
+        <Text variant="title-3" accessibilityRole="header" className="web:wrap-anywhere">
+          {entry.title}
+        </Text>
+      )}
       <Text
         variant="footnote"
         tone={summary !== null && summary.offline > 0 ? 'warning' : 'variant'}
-        numberOfLines={1}
+        accessibilityRole={compact ? 'header' : undefined}
+        accessibilityLabel={compact ? `${entry.title}, ${line}` : undefined}
+        numberOfLines={compact ? undefined : 1}
       >
         {line}
       </Text>
@@ -76,8 +85,12 @@ function Details({
   );
 }
 
-function Body({ entry }: { readonly entry: RoomHeaderEntry }): ReactNode {
-  const summary = useRoomSummary(entry.status ? entry.key : '');
+interface RoomHeaderProps {
+  readonly entry: RoomHeaderEntry;
+  readonly summary: RoomSummary | null;
+}
+
+function Body({ entry, summary }: RoomHeaderProps): ReactNode {
   const lights = summary?.lightsOn ?? 0;
   return (
     <View className="flex-row items-center gap-3 p-3">
@@ -93,7 +106,17 @@ function Body({ entry }: { readonly entry: RoomHeaderEntry }): ReactNode {
 
 const FRAME = 'rounded-t-xl border border-b-0 border-outline-variant bg-surface-1';
 
-function Header({ entry }: { readonly entry: RoomHeaderEntry }): ReactNode {
+function SelectedHeader({ entry, summary }: RoomHeaderProps): ReactNode {
+  return (
+    <View className="pt-2">
+      <View className={cn(FRAME, 'px-3 py-2', entry.alone && 'rounded-b-xl border-b')}>
+        <Details entry={entry} summary={summary} compact />
+      </View>
+    </View>
+  );
+}
+
+function LinkedHeader({ entry, summary }: RoomHeaderProps): ReactNode {
   const linked = entry.key !== NO_ROOM;
   const menu = usePinContextMenu({ kind: 'room', roomId: entry.key }, entry.title);
   const frame = cn(FRAME, entry.alone && 'rounded-b-xl border-b');
@@ -108,15 +131,25 @@ function Header({ entry }: { readonly entry: RoomHeaderEntry }): ReactNode {
           className={frame}
           layerClassName="rounded-t-xl"
         >
-          <Body entry={entry} />
+          <Body entry={entry} summary={summary} />
         </Interactive>
       ) : (
         <View className={frame}>
-          <Body entry={entry} />
+          <Body entry={entry} summary={summary} />
         </View>
       )}
       {menu.host}
     </View>
+  );
+}
+
+function Header({ entry }: { readonly entry: RoomHeaderEntry }): ReactNode {
+  const room = useRoomSummary(entry.status || entry.selected ? entry.key : '');
+  const summary = entry.status ? room : null;
+  return entry.selected && room !== null ? (
+    <SelectedHeader entry={entry} summary={summary} />
+  ) : (
+    <LinkedHeader entry={entry} summary={summary} />
   );
 }
 
@@ -127,6 +160,7 @@ export const RoomHeader = memo(Header, (left, right) => {
     a.title === b.title &&
     a.count === b.count &&
     a.status === b.status &&
+    a.selected === b.selected &&
     a.alone === b.alone
   );
 });

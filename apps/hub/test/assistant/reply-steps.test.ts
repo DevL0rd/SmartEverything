@@ -1,10 +1,11 @@
-import { DEFAULT_ENGINE } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChatDirectory } from '../../src/assistant/chat-directory';
 import { ConversationLog } from '../../src/assistant/conversation-log';
 import { AssistantFiles } from '../../src/assistant/files';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
+import { hubLayout } from '../../src/data-layout';
 
 let opened: TestStore;
 
@@ -26,11 +27,11 @@ function newChatLog(): { readonly log: ConversationLog; readonly chatId: string 
   const owner = { profileId: store.profiles.activeOf(client.id).id, role: 'owner' as const };
   const now = (): Date => new Date();
   const files = new AssistantFiles({
-    dataDirectory: opened.directory,
+    layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
     now,
   });
-  const chat = new ChatDirectory(store, files, now).create(owner, { engine: DEFAULT_ENGINE });
+  const chat = new ChatDirectory(store, files).create(owner, { engine: TEST_ENGINE });
   return { log: new ConversationLog(store), chatId: chat.id };
 }
 

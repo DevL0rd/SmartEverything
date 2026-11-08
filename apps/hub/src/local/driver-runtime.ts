@@ -3,7 +3,7 @@ import type { ProcessWindow } from '@smarteverything/domain';
 import { MetricHistory } from '../metrics/history';
 import { sourcePolicyOf } from '../metrics/history-policy';
 import { SourceHistory } from '../metrics/source-history';
-import { Viewers } from '../metrics/viewers';
+import type { Viewers } from '../metrics/viewers';
 import type { DeviceDriverRegistry } from './device-driver';
 import { DriverHost } from './driver-host';
 import { localDriverSink } from './driver-sink';
@@ -19,7 +19,7 @@ export interface RunningDrivers {
 
 export function startDrivers(
   parts: Pick<HubParts, 'store' | 'logFor' | 'clock'>,
-  core: Pick<Core, 'drivers' | 'state' | 'events' | 'inventory'>,
+  core: Pick<Core, 'drivers' | 'state' | 'events' | 'inventory' | 'deviceViewers'>,
 ): RunningDrivers {
   const log = parts.logFor('drivers');
   const host = new DriverHost({
@@ -47,7 +47,7 @@ export function startDrivers(
       log: parts.logFor('metrics'),
       now: parts.clock.now,
     }),
-    viewers: new Viewers<ProcessWindow>(),
+    viewers: core.deviceViewers,
     sources,
     deviceIdOf: (externalId) => core.inventory.deviceOf('local', externalId)?.id,
     stop: (): Promise<void> => {

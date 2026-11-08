@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { RowChange } from '@smarteverything/domain';
@@ -71,7 +72,7 @@ async function start(before: (store: Store) => void = () => undefined): Promise<
   const accountChanges: string[] = [];
   const hub = await startHub({
     store,
-    database: storeDatabase(store, recordingPathIn(opened.directory)),
+    database: storeDatabase(store, recordingPathIn(opened.layout)),
     accountChanged: (provider) => {
       accountChanges.push(provider);
       return Promise.resolve(false);
@@ -79,9 +80,10 @@ async function start(before: (store: Store) => void = () => undefined): Promise<
     registry: { xiaomi: fake.module },
     secrets,
     go2rtc: fakeGo2rtc(go2rtcCalls),
+    vacuumVideo: { client: fakeGo2rtc(go2rtcCalls), blockingAddress: () => null },
     cameraRefusal: () => null,
     devicesChanged: () => undefined,
-    dataDirectory: opened.directory,
+    layout: opened.layout,
     clock: new FakeClock('2026-10-08T10:00:00.000Z'),
     logFor: (area) => testLogger(area),
   });
@@ -296,7 +298,7 @@ describe('hub core on the SQLite store', () => {
     const snapshot = recordings.find((recording) => recording.kind === 'snapshot');
     expect(snapshot?.storage_path).toBe(`${camera}/20261008T100002000Z.jpg`);
     expect(
-      await readFile(recordingPathIn(opened.directory)(snapshot?.storage_path ?? '')),
+      await readFile(recordingPathIn(opened.layout)(snapshot?.storage_path ?? '')),
     ).toStrictEqual(Buffer.from([1]));
     store.cameras.change(camera, { record_events: false });
     fake.adapter.sink?.event({
@@ -331,7 +333,12 @@ describe('hub core on the SQLite store', () => {
       lastError: null,
       lastRunAt: '2026-10-08T10:00:00.000Z',
     });
-    store.automations.saveLayout(automation.id, EMPTY_LAYOUT, automation.revision);
+    store.automations.saveLayout(
+      automation.id,
+      EMPTY_LAYOUT,
+      automation.revision,
+      STATIC_KIND_LOOKUP,
+    );
     store.rooms.create('Attic', 0);
     await hub.settled();
     expect(reload).toHaveBeenCalledTimes(1);

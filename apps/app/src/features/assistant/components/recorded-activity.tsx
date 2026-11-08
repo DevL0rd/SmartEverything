@@ -1,30 +1,46 @@
-import { useState, type ReactNode } from 'react';
-import { Text } from '../../../components/text';
+import type { ReactNode } from 'react';
+import { CollapseBody, CollapseRoot } from '../../../components/disclosure';
+import { plural } from '../../../format/text';
 import { useAssistantStatus } from '../data/assistant-data';
 import { summaryOfSteps, type WorkStep } from '../model/work-steps';
-import { Disclosure } from '../../../components/disclosure';
-import { WorkStepList } from './work-step-list';
+import {
+  ActivityLine,
+  WorkStepList,
+  useActivityOpen,
+  type ActivityLineText,
+} from './work-step-list';
 
-export function RecordedActivity({ steps }: { readonly steps: readonly WorkStep[] }): ReactNode {
-  const [open, setOpen] = useState(false);
+export function recordedLineOf(steps: readonly WorkStep[]): ActivityLineText {
+  const summary = summaryOfSteps(steps, false, false);
+  const failed = summary.tone === 'failed';
+  const lead = failed ? summary.title : `Used ${plural(steps.length, 'step')}`;
+  return { glyph: failed ? 'partial' : 'done', lead, notes: [], verbs: [], label: lead };
+}
+
+export function RecordedActivity({
+  messageId,
+  steps,
+}: {
+  readonly messageId: string;
+  readonly steps: readonly WorkStep[];
+}): ReactNode {
+  const [open, toggle] = useActivityOpen(messageId, false);
   const shown = useAssistantStatus()?.settings.activity_steps !== false;
   if (!shown || steps.length === 0) return null;
-  const summary = summaryOfSteps(steps, false, false);
   return (
-    <Disclosure
-      label="Recorded activity"
-      status={{ label: summary.note, tone: summary.tone === 'failed' ? 'critical' : 'variant' }}
-      open={open}
-      onToggle={() => {
-        setOpen(!open);
-      }}
-      hint={open ? 'Hide recorded activity' : 'Show recorded activity'}
-      bodyClassName="gap-1 pl-4"
-    >
-      <Text variant="caption" tone="variant">
-        Tool positions weren’t saved in this older reply.
-      </Text>
-      <WorkStepList steps={steps} />
-    </Disclosure>
+    <CollapseRoot className="min-w-0">
+      <ActivityLine
+        text={recordedLineOf(steps)}
+        duration={null}
+        live={false}
+        open={open}
+        onToggle={toggle}
+      />
+      {open ? (
+        <CollapseBody>
+          <WorkStepList steps={steps} />
+        </CollapseBody>
+      ) : null}
+    </CollapseRoot>
   );
 }

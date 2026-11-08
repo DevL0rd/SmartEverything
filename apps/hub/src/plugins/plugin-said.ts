@@ -1,29 +1,33 @@
 import type { AssistantVoiceServerMessage } from '@smarteverything/domain';
 
+function endsTurn(message: Exclude<AssistantVoiceServerMessage, { type: 'caption' }>): boolean {
+  switch (message.type) {
+    case 'call_state':
+      return message.state === 'listening';
+    case 'interrupted':
+    case 'ended':
+      return true;
+    case 'ready':
+    case 'capabilities':
+    case 'sight_state':
+    case 'sight_request':
+    case 'sight_capture':
+    case 'sight_looked':
+      return false;
+  }
+}
+
 export class SaidTurns {
   private pending = '';
 
   constructor(private readonly said: (text: string) => void) {}
 
   message(message: AssistantVoiceServerMessage): void {
-    switch (message.type) {
-      case 'caption':
-        if (message.who === 'assistant') {
-          this.caption(message.text);
-        }
-        return;
-      case 'call_state':
-        if (message.state === 'listening') {
-          this.flush();
-        }
-        return;
-      case 'interrupted':
-      case 'ended':
-        this.flush();
-        return;
-      case 'ready':
-        return;
+    if (message.type === 'caption') {
+      if (message.who === 'assistant') this.caption(message.text);
+      return;
     }
+    if (endsTurn(message)) this.flush();
   }
 
   private caption(text: string): void {

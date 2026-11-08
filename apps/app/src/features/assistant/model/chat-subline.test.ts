@@ -8,8 +8,7 @@ import {
 } from './chat-subline';
 
 const idle: SublineInput = {
-  working: false,
-  step: null,
+  work: null,
   needsYou: false,
   waiting: 0,
   queued: 0,
@@ -32,14 +31,14 @@ describe('sublineOf', () => {
   });
 
   it('shows the working step', () => {
-    expect(sublineOf({ ...idle, working: true, step: 'Running tests' })).toEqual({
-      kind: 'working',
-      step: 'Running tests',
-    });
+    const work = { phase: 'Working', step: 'Running tests' };
+    expect(sublineOf({ ...idle, work })).toEqual({ kind: 'working', work });
   });
 
   it('puts a request that needs the person ahead of the work it is blocking', () => {
-    expect(sublineOf({ ...idle, working: true, needsYou: true, waiting: 2 })).toEqual({
+    expect(
+      sublineOf({ ...idle, work: { phase: 'Working', step: null }, needsYou: true, waiting: 2 }),
+    ).toEqual({
       kind: 'needs-you',
     });
   });

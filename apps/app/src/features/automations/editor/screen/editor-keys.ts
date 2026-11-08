@@ -1,22 +1,21 @@
-import type { KeyLike } from '../canvas/shortcuts';
-import { shortcutFor } from '../canvas/shortcuts';
+import { shortcutOf, type ShortcutEvent } from '../canvas/keyboard/shortcut-keys';
 
 export type EditorKey = 'undo' | 'redo' | 'publish' | 'test' | 'help' | 'palette';
 
-function commandHeld(event: KeyLike): boolean {
+function commandHeld(event: ShortcutEvent): boolean {
   return event.ctrlKey || event.metaKey;
 }
 
-function commandKey(event: KeyLike, editable: boolean): EditorKey | null {
+function commandKey(event: ShortcutEvent, editable: boolean): EditorKey | null {
   if (event.key === 'Enter') return 'test';
   const key = event.key.toLowerCase();
   if (key === 's') return 'publish';
   if (key === 'k') return 'palette';
-  const shortcut = editable ? null : shortcutFor(event);
+  const shortcut = editable ? null : shortcutOf(event);
   return shortcut === 'undo' || shortcut === 'redo' ? shortcut : null;
 }
 
-export function editorKeyFor(event: KeyLike, editable: boolean): EditorKey | null {
+export function editorKeyFor(event: ShortcutEvent, editable: boolean): EditorKey | null {
   if (commandHeld(event)) return commandKey(event, editable);
   if (editable || event.altKey) return null;
   if (event.key === '?') return 'help';

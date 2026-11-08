@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   API_ENDPOINTS,
   DEFAULT_COMPUTER_SCOPES,
@@ -17,6 +17,7 @@ import {
   type TilingState,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { hubLayout, type HubLayout } from '../../src/data-layout';
 import type { OperatingContext } from '../../src/extensions/mcp/tools/acting';
 import { FILES_INPUT, changeFiles } from '../../src/extensions/mcp/tools/computer-files-tool';
 import {
@@ -37,7 +38,7 @@ import type { Caller } from '../../src/server/auth';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
-const DEVICE = randomUUID();
+let DEVICE = '';
 
 interface Call {
   readonly name: EndpointName;
@@ -215,7 +216,9 @@ const ANSWERS: Partial<Record<EndpointName, unknown>> = {
   },
   changeComputerService: { services: [], timers: [] },
   readComputer: {
-    deviceId: DEVICE,
+    get deviceId() {
+      return DEVICE;
+    },
     online: true,
     at: '2026-10-17T12:00:00.000Z',
     features: [],
@@ -262,7 +265,7 @@ let opened: TestStore;
 let calls: Call[];
 let owner: ClientRow;
 let ownerProfile: ProfileRow;
-let context: OperatingContext & { readonly assistantFiles: string };
+let context: OperatingContext & { readonly layout: HubLayout };
 let directory: string;
 
 function operating(client: ClientRow, profile: ProfileRow): typeof context {
@@ -270,7 +273,7 @@ function operating(client: ClientRow, profile: ProfileRow): typeof context {
     store: opened.store,
     caller: null,
     actor: { clientId: client.id, profileId: profile.id, chatId: null },
-    assistantFiles: directory,
+    layout: hubLayout(directory, {}),
     operations: {
       run: (name, caller, input): Promise<unknown> => {
         const endpoint = API_ENDPOINTS[name];
@@ -295,6 +298,23 @@ beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'computer-tools-'));
   calls = [];
   ownerProfile = opened.store.profiles.first();
+  const [desk] = opened.store.devices.upsert([
+    {
+      provider: 'local',
+      externalId: 'computer-desk',
+      parentId: null,
+      kind: 'computer',
+      name: 'Desk',
+      model: 'smarteverything.computer',
+      manufacturer: 'Linux',
+      providerRoom: null,
+      roomId: null,
+      online: true,
+      capabilities: [],
+      details: {},
+    },
+  ]);
+  DEVICE = desk?.id ?? '';
   owner = opened.store.clients.create({
     name: 'Owner phone',
     platform: 'android',
@@ -454,7 +474,9 @@ describe('windows, programs and files', () => {
 
   it('saves a chat attachment onto the computer', async () => {
     const id = randomUUID();
-    await writeFile(join(directory, 'up.txt'), 'hello');
+    const stored = context.layout.person(ownerProfile.id).attachment(id, 'up.txt');
+    await mkdir(dirname(stored), { recursive: true });
+    await writeFile(stored, 'hello');
     opened.store.assistantChat.addAttachment({
       id,
       profile_id: ownerProfile.id,
@@ -505,7 +527,7 @@ describe('the served tools', () => {
       output: 'Dell',
     });
     expect(parsed?.success).toBe(false);
-    expect(parsed?.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['width', 'height']);
+    expect(parsed?.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['resolution']);
   });
 
   it('marks reads as reads and destructive tools as destructive', () => {
@@ -525,7 +547,7 @@ describe('the served tools', () => {
     expect(MCP_ROUTES.get('computer_read')).toMatchObject({
       branches: {
         audio: { part: 'get_computer_audio' },
-        startup: { part: 'get_computer_startup' },
+        services: { part: 'get_computer_services' },
       },
     });
     expect(MCP_ROUTES.get('computer_app_control')).toMatchObject({

@@ -8,6 +8,7 @@ import {
   type VisualPx,
   type VisualSize,
 } from '../../../features/device-visuals';
+import { WideArt, useWideArt } from '../../../features/devices/card/wide-card';
 import { Interactive } from '../../../components/interactive';
 import type { Device } from '../../../store/state';
 
@@ -99,5 +100,20 @@ export function BottleFigure({
       {visual}
       <CapSpot trim={trim} onPress={onCapPress} />
     </View>
+  );
+}
+
+export function BottleArt({
+  device,
+  view,
+}: {
+  readonly device: Device;
+  readonly view: BottleStatusView;
+}): ReactNode {
+  const art = useWideArt();
+  return (
+    <WideArt cls={art.cls}>
+      <BottleFigure device={device} view={view} size="card" px={art.px} />
+    </WideArt>
   );
 }

@@ -1,10 +1,10 @@
-import { type ReactNode } from 'react';
+import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { IconButton } from '../../../components/icon-button';
-import { useIdiom } from '../../../design/platform';
+import { isNative, useIdiom } from '../../../design/platform';
 import { useScreenPaused } from '../../../design/screen-pause';
 import type { CameraEntry } from '../logic/cameras';
 import { PlayerStage } from '../player/player-stage';
@@ -21,7 +21,7 @@ function HoverControls({
 }): ReactNode {
   const { session } = live;
   return (
-    <View className="absolute right-2 top-2 flex-row gap-1">
+    <View className="absolute bottom-0 right-0 flex-row gap-2 p-card-pad">
       <IconButton
         icon={session.listening ? 'volume' : 'muted'}
         label={session.listening ? 'Mute sound' : 'Listen'}
@@ -41,14 +41,12 @@ function HoverControls({
   );
 }
 
-function usePictureGesture(
-  entry: CameraEntry,
+type OpenPicture = (mode: 'full' | null) => void;
+
+function pictureGesture(
+  open: OpenPicture,
   onMenu: (() => void) | undefined,
 ): ReturnType<typeof Gesture.Exclusive> {
-  const router = useRouter();
-  const open = (mode: 'full' | null): void => {
-    router.navigate(href.camera(entry.device.id, mode));
-  };
   return Gesture.Exclusive(
     Gesture.LongPress()
       .runOnJS(true)
@@ -69,26 +67,86 @@ function usePictureGesture(
   );
 }
 
+function pictureShortcut(
+  { key, shiftKey }: KeyboardEvent,
+  open: OpenPicture,
+  onMenu: (() => void) | undefined,
+): (() => void) | undefined {
+  if (key === 'Enter' && shiftKey) {
+    return (): void => {
+      open('full');
+    };
+  }
+  return key === 'ContextMenu' || (key === 'F10' && shiftKey) ? onMenu : undefined;
+}
+
+function pictureKeys(
+  open: OpenPicture,
+  onMenu: (() => void) | undefined,
+): {
+  readonly 'aria-keyshortcuts'?: string;
+  readonly onClick?: (event: MouseEvent) => void;
+  readonly onKeyDownCapture?: (event: KeyboardEvent) => void;
+} {
+  if (isNative()) return {};
+  return {
+    'aria-keyshortcuts': onMenu === undefined ? 'Shift+Enter' : 'Shift+Enter Shift+F10 ContextMenu',
+    onClick: (event): void => {
+      if (event.detail !== 0) return;
+      event.stopPropagation();
+      open(null);
+    },
+    onKeyDownCapture: (event): void => {
+      if (event.target !== event.currentTarget) return;
+      const shortcut = pictureShortcut(event, open, onMenu);
+      if (event.key !== 'Enter' && event.key !== ' ' && shortcut === undefined) return;
+      event.stopPropagation();
+      if (event.repeat || shortcut !== undefined) event.preventDefault();
+      if (!event.repeat) shortcut?.();
+    },
+  };
+}
+
 export interface CardPictureProps {
   readonly entry: CameraEntry;
-  readonly live: boolean;
   readonly hovered: boolean;
   readonly onMenu: (() => void) | undefined;
+  readonly editing: boolean;
 }
 
 function Surface({
   entry,
   onMenu,
   children,
-}: Omit<CardPictureProps, 'live' | 'hovered'> & { readonly children: ReactNode }): ReactNode {
+}: Pick<CardPictureProps, 'entry' | 'onMenu'> & { readonly children: ReactNode }): ReactNode {
+  const router = useRouter();
+  const native = isNative();
+  const open: OpenPicture = (mode) => {
+    router.navigate(href.camera(entry.device.id, mode));
+  };
   return (
-    <GestureDetector gesture={usePictureGesture(entry, onMenu)}>
+    <GestureDetector gesture={pictureGesture(open, onMenu)} touchAction="pan-y">
       <View
+        {...pictureKeys(open, onMenu)}
         accessible
+        tabIndex={native ? undefined : 0}
+        accessibilityActions={[
+          { name: 'activate' },
+          { name: 'fullScreen', label: 'Full screen' },
+          ...(onMenu === undefined ? [] : [{ name: 'menu', label: 'Options' }]),
+        ]}
+        onAccessibilityAction={(event): void => {
+          const action = event.nativeEvent.actionName;
+          if (action === 'activate') open(null);
+          if (action === 'fullScreen') open('full');
+          if (action === 'menu') onMenu?.();
+        }}
         accessibilityRole="button"
         accessibilityLabel={`Open ${entry.name}`}
-        accessibilityHint="Double-tap the picture for full screen"
-        className="absolute inset-0"
+        accessibilityHint={
+          native ? 'Full screen is available in actions' : 'Double-tap for full screen'
+        }
+        className="absolute inset-0 web:focus-visible:outline-2 web:focus-visible:outline-focus web:focus-visible:-outline-offset-2"
       >
         {children}
       </View>
@@ -96,7 +154,7 @@ function Surface({
   );
 }
 
-function LiveCardPicture({ entry, hovered, onMenu }: Omit<CardPictureProps, 'live'>): ReactNode {
+function LiveCardPicture({ entry, hovered, onMenu }: Omit<CardPictureProps, 'editing'>): ReactNode {
   const { attach, onLayout, visible } = useOnScreen();
   const paused = useScreenPaused();
   const live = useScreenSession(entry, {
@@ -107,28 +165,22 @@ function LiveCardPicture({ entry, hovered, onMenu }: Omit<CardPictureProps, 'liv
   });
   const pointer = useIdiom() === 'pointer';
   return (
-    <View
-      ref={attach}
-      onLayout={onLayout}
-      className="aspect-video w-full overflow-hidden bg-surface-2"
-    >
+    <View ref={attach} onLayout={onLayout} className="h-full w-full overflow-hidden bg-surface-2">
       <Surface entry={entry} onMenu={onMenu}>
-        <PlayerStage entry={entry} live={live} compact />
+        <PlayerStage entry={entry} live={live} compact videoFit="cover" />
       </Surface>
       {hovered && pointer ? <HoverControls entry={entry} live={live} /> : null}
     </View>
   );
 }
 
-export function CardPicture({ entry, live, hovered, onMenu }: CardPictureProps): ReactNode {
-  if (live) {
+export function CardPicture({ entry, hovered, onMenu, editing }: CardPictureProps): ReactNode {
+  if (!editing) {
     return <LiveCardPicture entry={entry} hovered={hovered} onMenu={onMenu} />;
   }
   return (
-    <View className="aspect-video w-full overflow-hidden bg-surface-2">
-      <Surface entry={entry} onMenu={onMenu}>
-        <CameraSnapshot deviceId={entry.device.id} label={entry.name} />
-      </Surface>
+    <View className="h-full w-full overflow-hidden bg-surface-2">
+      <CameraSnapshot deviceId={entry.device.id} label={entry.name} fit="cover" />
     </View>
   );
 }

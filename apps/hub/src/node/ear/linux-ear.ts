@@ -6,13 +6,14 @@ import { MicCapture } from '../controls/linux/mic-capture';
 import { cachedProbe, programAvailable } from '../controls/linux/program-probe';
 import { SpeakerPlayback } from '../controls/linux/speaker-playback';
 import { runProgram } from '../run-program';
-import type { EarRuntimeLost } from './runtime-lost';
+import type { EarPipelineFactory } from './ear-pipeline';
 import { ComputerEar, type EarFactory } from './computer-ear';
+import { describeFailure } from '@smarteverything/logging';
 
 export interface ComputerEarForOptions {
   readonly now: () => Date;
   readonly log: Logger;
-  readonly lost: EarRuntimeLost;
+  readonly pipeline: EarPipelineFactory;
 }
 
 export function computerEarFor(
@@ -32,12 +33,15 @@ export function computerEarFor(
         probe,
         lines: spawnLines,
         failed: (cause): void => {
-          options.log.error('node.session_part_failed', cause, { part: 'discord_mic' });
+          options.log.warn('node.session_part_failed', {
+            part: 'discord_mic',
+            failure: describeFailure(cause),
+          });
         },
       }),
       send,
       clock: { now: options.now, at: systemClock.at },
       log: options.log,
-      lost: options.lost,
+      pipeline: options.pipeline,
     });
 }

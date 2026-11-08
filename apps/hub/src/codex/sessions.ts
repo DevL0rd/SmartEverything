@@ -17,9 +17,9 @@ const RECORD = z.strictObject({
 const RECORDS = z.array(RECORD).max(10_000);
 export type CodexSessionBinding = z.infer<typeof RECORD>;
 export class CodexSessions {
-  private records: CodexSessionBinding[] = [];
+  private records: readonly CodexSessionBinding[] = [];
   private readonly loaded: Promise<void>;
-  private writing: Promise<void> = Promise.resolve();
+  private writing: Promise<unknown> = Promise.resolve();
   constructor(private readonly directory: string) {
     this.loaded = this.load();
     void this.loaded.catch((cause: unknown): void => {
@@ -73,40 +73,41 @@ export class CodexSessions {
       (entry) => entry.chat_id === chatId && entry.profile_id === profileId,
     );
   }
-  remember(record: CodexSessionBinding): Promise<void> {
-    return this.mutate((): void => {
+  async remember(raw: CodexSessionBinding): Promise<void> {
+    const record = RECORD.parse(raw);
+    const saved = await this.enqueue(async (): Promise<CodexSessionBinding> => {
       const known = this.records.find((entry) => entry.session_id === record.session_id);
-      if (known !== undefined) {
-        if (JSON.stringify(known) !== JSON.stringify(record))
-          throw new CodexRuntimeError(
-            'session',
-            'Codex returned a session already bound to different input.',
-          );
-        return;
-      }
+      if (known !== undefined) return known;
       if (this.records.length >= 10_000)
         throw new CodexRuntimeError('session', 'Codex provider session capacity reached.');
-      this.records.push(RECORD.parse(record));
+      await this.save([...this.records, record]);
+      return record;
     });
+    if (canonicalRuntimeInput(saved) !== canonicalRuntimeInput(record))
+      throw new CodexRuntimeError(
+        'session',
+        'Codex returned a session already bound to different input.',
+      );
   }
   forget(sessionId: string): Promise<void> {
-    return this.mutate((): void => {
-      this.records = this.records.filter((entry) => entry.session_id !== sessionId);
-    });
+    return this.enqueue(() =>
+      this.save(this.records.filter((entry) => entry.session_id !== sessionId)),
+    );
   }
-  private mutate(change: () => void): Promise<void> {
-    this.writing = this.writing.then(async (): Promise<void> => {
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const writing = this.writing.then(async (): Promise<T> => {
       await this.loaded;
-      change();
-      await this.save();
+      return operation();
     });
-    return this.writing;
+    this.writing = writing;
+    return writing;
   }
-  private async save(): Promise<void> {
+  private async save(records: readonly CodexSessionBinding[]): Promise<void> {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const path = join(this.directory, 'provider-bindings.json');
-    await writeFile(`${path}.tmp`, `${JSON.stringify(this.records)}\n`, { mode: 0o600 });
+    await writeFile(`${path}.tmp`, `${JSON.stringify(records)}\n`, { mode: 0o600 });
     await rename(`${path}.tmp`, path);
+    this.records = records;
   }
   private async load(): Promise<void> {
     try {

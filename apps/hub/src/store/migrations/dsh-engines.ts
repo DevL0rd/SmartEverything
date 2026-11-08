@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AI_EFFORT, OPENROUTER_DEFAULTS, OPENROUTER_SETTINGS } from '@smarteverything/domain';
+import { AI_EFFORT } from '@smarteverything/domain';
 import type { LogPayload } from '@smarteverything/logging';
 import type { Sql } from '../sql';
 import { meteredEngine, type MeteredCatalogue } from '../../openrouter/metered-engine';
@@ -51,20 +51,13 @@ const OPENROUTER_ENGINE = z.object({
 const CHAT = z.strictObject({ id: z.string(), profile_id: z.string(), engine: z.string() });
 const DEFAULT = z.strictObject({ engine: z.string() });
 const PROFILE = z.strictObject({ id: z.string() });
-const SETTINGS = z.strictObject({ settings: z.string() });
 const MODEL = z.strictObject({
   reasoning: z.enum(['none', 'optional', 'mandatory']),
   efforts: z.string(),
 });
 
 function catalogueOf(sql: Sql): MeteredCatalogue {
-  const stored = sql.get(SETTINGS, "select settings from ai_settings where key = 'openrouter'");
-  const settings =
-    stored === undefined
-      ? OPENROUTER_DEFAULTS
-      : OPENROUTER_SETTINGS.parse(JSON.parse(stored.settings));
   return {
-    defaults: settings,
     row: (id): ReturnType<MeteredCatalogue['row']> => {
       const row = sql.get(MODEL, 'select reasoning, efforts from ai_models where id = $id', { id });
       return row === undefined

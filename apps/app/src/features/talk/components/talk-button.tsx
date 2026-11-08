@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
+import { useBandHitSlop } from '../../../components/widget-board/band-context';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { playTime } from '../../../format/time';
@@ -41,7 +42,7 @@ const GLYPH: Readonly<Record<PushState, IconName>> = {
 const SIZE: Readonly<Record<TalkButtonSize, { face: string; ring: string; icon: 24 | 40 }>> = {
   hero: { face: 'size-44', ring: 'size-44', icon: 40 },
   compact: { face: 'size-16', ring: 'size-16', icon: 24 },
-  row: { face: 'size-12', ring: 'size-12', icon: 24 },
+  row: { face: 'size-control-h', ring: 'size-control-h', icon: 24 },
 };
 
 function useElapsed(startedAt: number | null): number {
@@ -129,6 +130,7 @@ export function TalkButton({
   const shortcut = useTalkShortcutLabel();
   const dims = SIZE[size];
   const onFace = onFaceOf(push.state);
+  const hitSlop = useBandHitSlop(size === 'row');
   return (
     <View className="items-center gap-3">
       <View className={cn('items-center justify-center', dims.ring)}>
@@ -148,6 +150,7 @@ export function TalkButton({
           onPressIn={push.onPressIn}
           onPressOut={push.onPressOut}
           onPress={push.onPress}
+          hitSlop={hitSlop}
           className={cn(
             'items-center justify-center rounded-full elevation-2',
             dims.face,

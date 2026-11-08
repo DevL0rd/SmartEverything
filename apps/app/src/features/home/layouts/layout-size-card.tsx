@@ -76,7 +76,7 @@ function followItemsOf(row: LayoutSizeRow, context: LayoutSizeContext): readonly
       },
     })),
     {
-      label: 'Use the default',
+      label: 'Use the built-in arrangement',
       icon: 'reset' as const,
       onPress: (): void => {
         followLayoutSize(context, row.board, null);
@@ -97,7 +97,8 @@ function Summary({
       <View className="gap-1">
         <Text variant="title-2">{plural(row.count, 'widget')}</Text>
         <Text variant="footnote" tone="variant">
-          {sourceText(row)} · {row.range} · {String(row.columns)} columns
+          {sourceText(row)} · {row.range} · {String(row.columns)}
+          {row.board === 'expanded' ? '+' : ''} columns
         </Text>
       </View>
       <ProgressBar

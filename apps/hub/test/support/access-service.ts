@@ -27,7 +27,7 @@ export function accessServiceFor(opened: TestStore, now: () => Date): AccessServ
       opened.store,
     ),
     store: opened.store,
-    dataDirectory: opened.directory,
+    ownerTokenPath: opened.layout.system.keys.ownerToken,
     now,
     clientWithdrawn: (): void => undefined,
     clientPaused: (): void => undefined,

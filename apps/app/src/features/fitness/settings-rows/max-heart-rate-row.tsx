@@ -84,18 +84,26 @@ function Editor({
   );
 }
 
+function useHighestHeartRate(): number | null {
+  const best = useBestDay('heart_rate_maximum', false).data;
+  return best === undefined || best === null ? null : maxHeartRateFromData([best.value]);
+}
+
+export function maxHeartRateText(setting: number | null, highest: number | null): string {
+  if (setting !== null) return `${String(setting)} bpm`;
+  return highest === null ? 'Not set' : `${String(highest)} bpm · from your data`;
+}
+
+export function useMaxHeartRateText(): string {
+  return maxHeartRateText(useMaxHeartRateSetting(), useHighestHeartRate());
+}
+
 export function MaxHeartRateRow(): ReactNode {
   const setting = useMaxHeartRateSetting();
-  const best = useBestDay('heart_rate_maximum', false).data;
-  const highest = best === undefined || best === null ? null : maxHeartRateFromData([best.value]);
+  const highest = useHighestHeartRate();
   const save = useSave();
   const [open, setOpen] = useState(false);
-  const value =
-    setting !== null
-      ? `${String(setting)} bpm`
-      : highest === null
-        ? 'Not set'
-        : `${String(highest)} bpm · auto`;
+  const value = maxHeartRateText(setting, highest);
   return (
     <>
       <ListRow

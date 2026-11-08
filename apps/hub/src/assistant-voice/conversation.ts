@@ -19,9 +19,12 @@ import type { RecordedTurn } from './call-record';
 import { speechInput, type SpeechInput } from './speech-input';
 import { TurnRecorder, TurnText, isFarewell } from './turn-text';
 import { TurnTimer } from './turn-timing';
+import { TurnTrace } from './turn-trace';
 import type { SpeechGateEvents } from './speech-gate';
 import type { VideoFrame } from './video';
 import { background } from '@smarteverything/logging';
+import { conversationEvents } from './conversation-events';
+import { tracedLink } from './turn-trace-link';
 
 const STOP_GRACE_MS = 5000;
 const TICK_MS = 100;
@@ -53,6 +56,8 @@ export class Conversation {
   private readonly tools: VoiceTools;
   private readonly meter: MicMeter;
   private readonly timing: TurnTimer;
+  private readonly turnTrace: TurnTrace;
+  private readonly link: CallLink;
   private readonly trace: ConversationTrace;
   private readonly renewer: SessionRenewer;
   private readonly replies: ModelReplies;
@@ -60,7 +65,7 @@ export class Conversation {
 
   constructor(
     private readonly line: VoiceLine,
-    private readonly link: CallLink,
+    link: CallLink,
     private readonly hooks: ConversationHooks,
     private readonly now: () => number = Date.now,
   ) {
@@ -68,6 +73,8 @@ export class Conversation {
     this.idle = new IdleClock(now);
     this.meter = new MicMeter(now, hooks.measured);
     this.timing = new TurnTimer(now, hooks.measured, () => this.meter.sinceVoiceMs);
+    this.turnTrace = new TurnTrace(now, hooks.measured, line.warmKey ?? 'none');
+    this.link = tracedLink(link, this.turnTrace);
     this.replies = new ModelReplies(this.watchdog, this.renewal, this.trace, now);
     this.recorder = new TurnRecorder(this.text, this.record);
     this.tools = new VoiceTools({
@@ -75,8 +82,10 @@ export class Conversation {
       record: this.record,
       renewal: this.renewal,
       timing: this.timing,
+      turns: this.turnTrace,
+      answerOwed: this.replies.owed.bind(this.replies),
       now,
-      link,
+      link: this.link,
       watchdog: this.watchdog,
       text: this.text,
       session: (): LiveSession | null => this.session,
@@ -109,7 +118,7 @@ export class Conversation {
       open: (resume, reason): Promise<LiveSession> => this.open(resume, reason),
       talking: (): boolean => this.talking,
       active: (): boolean => this.active,
-      end: (reason, detail): Promise<void> => this.end(reason, detail),
+      end: (reason, detail, cause): Promise<void> => this.end(reason, detail, cause),
     });
   }
 
@@ -182,6 +191,7 @@ export class Conversation {
         this.session?.picture(picture);
       }
       this.session?.text(text, respond);
+      this.turnTrace.note(respond);
       if (respond) {
         this.watchdog.asked(this.now());
       }
@@ -192,6 +202,7 @@ export class Conversation {
     if (!this.closed) {
       this.idle.model();
       this.session?.text(`${SAY_NOW} ${text}`, true);
+      this.turnTrace.note(true);
       this.watchdog.asked(this.now());
     }
   }
@@ -200,7 +211,7 @@ export class Conversation {
     return this.tools.taskUpdate(eventId, text);
   }
 
-  async end(reason: CallEnding, detail: string | null = null): Promise<void> {
+  async end(reason: CallEnding, detail: string | null = null, cause?: string): Promise<void> {
     if (this.closed) {
       return;
     }
@@ -209,7 +220,9 @@ export class Conversation {
     clearTimeout(this.stopTimer ?? undefined);
     this.cut();
     this.codec.free();
-    this.hooks.ended(reason, detail);
+    this.meter.summarize();
+    this.turnTrace.callEnded(reason, cause, this.meter);
+    this.hooks.ended(reason, detail, cause);
     this.line.release(this.session, this.hooks.history());
     await this.input?.release();
   }
@@ -243,10 +256,11 @@ export class Conversation {
         this.talking = false;
         this.idle.person(false);
         this.watchdog.turnEnded(this.now());
+        this.turnTrace.speechEnded();
         this.session?.speaking(false);
       },
       failed: (reason): void => {
-        background(this.end('failed', reason), 'conversation.end_failed');
+        background(this.end('failed', reason, 'speech_input_failed'), 'conversation.end_failed');
       },
     };
   }
@@ -258,6 +272,7 @@ export class Conversation {
     this.openedWith = this.tuning;
     this.renewal.opening(reason, resume !== null, this.now());
     const options = liveOptionsOf(this.hooks, this.tuning, resume);
+    this.turnTrace.opened(options.model);
     this.watchdog.turnsDecidedByGemini(options.automatic);
     return connectWithin(this.line.live(options, this.events(current, options.model))).then(
       (session) =>
@@ -274,46 +289,27 @@ export class Conversation {
   }
 
   private events(current: () => boolean, model: string): LiveEvents {
-    return currentEvents(current, this.renewal, {
-      audio: (pcm) => {
-        this.replies.output();
-        this.play(pcm);
-      },
-      said: (text) => {
-        this.replies.output();
-        this.link.caption('assistant', this.text.said(text));
-      },
-      heard: (text) => {
-        if (!this.replies.answering) {
-          this.watchdog.heard();
-        }
-        this.idle.heard();
-        this.timing.heard();
-        this.link.caption('person', this.text.heard(text));
-      },
-      interrupted: () => {
-        this.cut();
-      },
-      turnComplete: () => {
-        this.finishTurn();
-      },
-      tool: (id, name, args) => {
-        this.replies.output();
-        this.tools.handle(id, name, args);
-      },
-      resumable: (handle) => {
-        this.renewal.resumable(handle);
-      },
-      goAway: () => {
-        this.renewal.want('go_away');
-      },
-      usage: (usage) => {
-        this.hooks.usage(usage, model);
-      },
-      closed: (reason, code) => {
-        background(this.renewer.renew('dropped', { reason, code }), 'conversation.renew_failed');
-      },
-    });
+    return currentEvents(
+      current,
+      this.renewal,
+      conversationEvents({
+        model,
+        hooks: this.hooks,
+        link: this.link,
+        renewal: this.renewal,
+        renewer: this.renewer,
+        replies: this.replies,
+        watchdog: this.watchdog,
+        idle: this.idle,
+        timing: this.timing,
+        text: this.text,
+        tools: this.tools,
+        turns: this.turnTrace,
+        play: this.play.bind(this),
+        cut: this.cut.bind(this),
+        finishTurn: this.finishTurn.bind(this),
+      }),
+    );
   }
 
   private play(pcm: Int16Array): void {
@@ -346,6 +342,7 @@ export class Conversation {
     this.replies.cut();
     this.recorder.heard();
     this.recorder.said();
+    this.turnTrace.cut();
   }
 
   private finishTurn(): void {
@@ -390,7 +387,7 @@ export class Conversation {
     } else if (step === 'give_up') {
       this.hooks.stalled('gave_up');
       if (!this.hooks.staysOpenWhenQuiet()) {
-        background(this.end('failed', STOPPED_ANSWERING), 'conversation.end_failed');
+        background(this.end('failed', STOPPED_ANSWERING, 'no_reply'), 'conversation.end_failed');
       }
     }
   }

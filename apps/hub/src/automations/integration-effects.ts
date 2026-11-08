@@ -9,32 +9,30 @@ import type { SignalBus } from '../signals/bus';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import { currentExecutionAuthority, executionRole } from '../assistant/turn-authority';
 import type { Clock } from '../clock';
-import type { ComputerViewer } from '../computers/computer-access';
 import type { AutomationComputersSlot } from './automation-computers';
 import type { EffectHandler, EffectHandlers } from './engine-v3-effects';
 import { outputs, parsed } from './engine-v3-effects';
 import { effectFailure } from './effect-failure';
 import type { CameraPictures } from './effects/camera-pictures';
-import { runViewer } from './effects/computer';
 import { runDeviceOperation } from './effects/device-operation';
 import { IntegrationError } from './effects/integration-error';
 import type { OneShotModel, OneShotPicture } from './effects/one-shot-model';
 import { sendIrButton } from './effects/ir-send';
 import { callTool } from './effects/tool';
+import { visionPicture } from './effects/vision-sight';
 import type { WebhookReplies } from './effects/webhook-replies';
 import { awaitRun } from './effects/run-abort';
+import { modeOf } from './effects/action-mode';
+import { deliver } from './effects/deliver';
 import {
   ASK_PARAMS,
   VISION_PARAMS,
   DECIDE_PARAMS,
-  SNAPSHOT_PARAMS,
-  POWER_PARAMS,
   PHONE_PARAMS,
   HEALTH_PARAMS,
   EMIT_PARAMS,
   RESPOND_PARAMS,
   HEALTH_ANSWER,
-  COMPUTER_ANSWER,
 } from './integration-params';
 
 export interface IntegrationPorts {
@@ -61,10 +59,6 @@ function identityOf(ports: IntegrationPorts, person: string | undefined): Identi
     throw new IntegrationError('Forbidden', 'Members can only run AI calls as themselves.');
   }
   return { profileId: person ?? own, role };
-}
-
-function viewerOf(): ComputerViewer {
-  return runViewer();
 }
 
 function aiOutputs(answer: {
@@ -110,15 +104,6 @@ function aiAsk(ports: IntegrationPorts): EffectHandler {
   };
 }
 
-async function takeFrom(
-  ports: IntegrationPorts,
-  camera: string | undefined,
-): Promise<{ readonly id: string }> {
-  if (camera === undefined)
-    throw new IntegrationError('Invalid', 'Give either a picture or a camera.');
-  return await ports.pictures.take(camera, 'full');
-}
-
 function aiVision(ports: IntegrationPorts): EffectHandler {
   return async (params, _request, run) => {
     const checked = parsed(VISION_PARAMS, params);
@@ -126,13 +111,12 @@ function aiVision(ports: IntegrationPorts): EffectHandler {
     const call = checked.value;
     try {
       const identity = identityOf(ports, call.person);
-      const pictureId = call.image ?? (await takeFrom(ports, call.camera)).id;
       const answer = await ports.model.ask({
         ...identity,
         automationId: run.automationId,
         system: null,
         prompt: call.question,
-        pictures: [await ports.pictures.load(pictureId)],
+        pictures: [await visionPicture(ports, call, identity)],
         shape: call.shape ?? null,
         tools: [],
         model: call.model ?? null,
@@ -179,65 +163,31 @@ function aiDecide(ports: IntegrationPorts): EffectHandler {
   };
 }
 
-function cameraSnapshot(ports: IntegrationPorts): EffectHandler {
-  return async (params, _request, run) => {
-    const checked = parsed(SNAPSHOT_PARAMS, params);
-    if (!checked.ok) return checked;
-    try {
-      const taken = await awaitRun(
-        ports.pictures.take(checked.value.camera, checked.value.size),
-        run,
-      );
-      return { ok: true, value: outputs({ image: taken.id, at: taken.at }) };
-    } catch (cause) {
-      return effectFailure(cause);
-    }
-  };
-}
-
-function computerPower(ports: IntegrationPorts): EffectHandler {
-  return async (params, _request, run) => {
-    const checked = parsed(POWER_PARAMS, params);
-    if (!checked.ok) return checked;
-    try {
-      await awaitRun(
-        ports.computers
-          .current()
-          .ask(
-            viewerOf(),
-            checked.value.computer,
-            { verb: 'power', action: checked.value.action },
-            COMPUTER_ANSWER,
-          ),
-        run,
-      );
-      return { ok: true, value: outputs({ ok: true }) };
-    } catch (cause) {
-      return effectFailure(cause);
-    }
-  };
-}
-
 function phoneAction(ports: IntegrationPorts): EffectHandler {
-  return async (params, _request, run) => {
+  return async (params, request, run) => {
     const checked = parsed(PHONE_PARAMS, params);
     if (!checked.ok) return checked;
     try {
       const identity = identityOf(ports, undefined);
-      const answer = await awaitRun(
-        runDeviceOperation(
-          ports.tools,
-          {
-            operation: 'runPhoneAction',
-            args: { deviceId: checked.value.phone, body: JSON_VALUE.parse(checked.value.action) },
-            profileId: identity.profileId,
-          },
-          { plugin: null },
-        ),
+      const body = JSON_VALUE.parse(checked.value.action);
+      await deliver({
+        kind: request.kind,
+        mode: modeOf(request),
         run,
-      );
-      const refusal = phoneRefusal(answer);
-      if (refusal !== null) throw new IntegrationError('Refused', refusal);
+        work: async () => {
+          const answer = await runDeviceOperation(
+            ports.tools,
+            {
+              operation: 'runPhoneAction',
+              args: { deviceId: checked.value.phone, body },
+              profileId: identity.profileId,
+            },
+            { plugin: null },
+          );
+          const refusal = phoneRefusal(answer);
+          if (refusal !== null) throw new IntegrationError('Refused', refusal, 'phone_refused');
+        },
+      });
       return { ok: true, value: outputs({ ok: true }) };
     } catch (cause) {
       return effectFailure(cause);
@@ -328,19 +278,22 @@ function httpRespond(ports: IntegrationPorts): EffectHandler {
 const IR_PARAMS = z.object({ remote: z.string().min(1), button: z.string().min(1) });
 
 function irSend(ports: IntegrationPorts): EffectHandler {
-  return async (params, _request, run) => {
+  return async (params, request, run) => {
     const checked = parsed(IR_PARAMS, params);
     if (!checked.ok) return checked;
     try {
       const identity = identityOf(ports, undefined);
-      await awaitRun(
-        sendIrButton(
-          ports.tools,
-          { ...checked.value, profileId: identity.profileId },
-          { plugin: null },
-        ),
+      await deliver({
+        kind: request.kind,
+        mode: modeOf(request),
         run,
-      );
+        work: () =>
+          sendIrButton(
+            ports.tools,
+            { ...checked.value, profileId: identity.profileId },
+            { plugin: null },
+          ),
+      });
       return { ok: true, value: outputs({ ok: true }) };
     } catch (cause) {
       return effectFailure(cause);
@@ -353,8 +306,6 @@ export function integrationEffects(ports: IntegrationPorts): EffectHandlers {
     'ai.ask': aiAsk(ports),
     'ai.vision': aiVision(ports),
     'ai.decide': aiDecide(ports),
-    'camera.snapshot': cameraSnapshot(ports),
-    'computer.power': computerPower(ports),
     'phone.action': phoneAction(ports),
     'health.read': healthRead(ports),
     'device.ir_send': irSend(ports),

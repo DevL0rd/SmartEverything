@@ -15,6 +15,7 @@ import type { RunContext, ShownPrompt, StoredAccount } from '../../src/adapters/
 import type { XiaomiDependencies } from '../../src/adapters/xiaomi/dependencies';
 import type { FetchLike } from '../../src/plugins/builtin/fetch-like';
 import { requestOf, type Route } from './fake-http';
+import { hubLayout } from '../../src/data-layout';
 
 export interface Recorded {
   readonly states: StateUpdate[];
@@ -63,6 +64,7 @@ export function dependencies(fetch: FetchLike, miioPort: number): XiaomiDependen
       cameraPollMs: 80,
       requestTimeoutMs: 150,
       requestAttempts: 2,
+      writeConfirmMs: 300,
       handshakeMaxAgeMs: 60_000,
       lanFailuresBeforeCloud: 2,
       cameraFollowUps: { delaysMs: [], gridMs: 80 },
@@ -83,13 +85,13 @@ export async function harness(answers: (prompt: ProviderPrompt) => string): Prom
   const logs: LogRecord[] = [];
   Logger.reset();
   Logger.configure({ level: 'trace', sink: (record) => logs.push(record) });
-  const dataDirectory = await mkdtemp(join(tmpdir(), 'xiaomi-adapter-'));
+  const directory = await mkdtemp(join(tmpdir(), 'xiaomi-adapter-'));
   const prompts: ProviderPrompt[] = [];
   const saved: StoredAccount[] = [];
   const attention: string[] = [];
   const context: RunContext = {
     log: new Logger('tool.xiaomi-test'),
-    dataDirectory,
+    layout: hubLayout(directory, {}),
     ask: (prompt): Promise<string> => {
       prompts.push(prompt);
       return Promise.resolve(answers(prompt));
@@ -116,7 +118,7 @@ export async function harness(answers: (prompt: ProviderPrompt) => string): Prom
     saved,
     attention,
     logs,
-    cleanup: () => rm(dataDirectory, { recursive: true, force: true }),
+    cleanup: () => rm(directory, { recursive: true, force: true }),
   };
 }
 

@@ -3,10 +3,9 @@ import { View } from 'react-native';
 import { Card } from '../../../components/card';
 import { ProgressBar, Sparkline } from '../../../components/charts';
 import { Text } from '../../../components/text';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { hoursMinutes } from '../../../format/time';
 import type { TodayApp } from '../model/apps-model';
-import { bodyWidthOf } from '../model/sections';
 import { AppIcon } from './app-icon';
 
 const SPARK_HEIGHT = 22;
@@ -53,7 +52,7 @@ export function AppsToday({
   readonly apps: readonly TodayApp[];
   readonly front: string | null;
 }): ReactNode {
-  const trend = bodyWidthOf(useAreaWidth()) >= WIDE_BODY;
+  const trend = useFrameBodyWidth() >= WIDE_BODY;
   return (
     <Card title="Used today" icon="activity">
       <View className="gap-1">

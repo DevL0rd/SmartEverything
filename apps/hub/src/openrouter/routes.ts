@@ -155,10 +155,6 @@ export function aiModelRoutes(context: ServerContext): AiModelRoutes {
       catalogue.setGooglePrice(params.id, body.pricing),
     ),
     readOpenRouter: bound(E.readOpenRouter, () => statusOf(platform)),
-    setOpenRouterDefaults: bound(E.setOpenRouterDefaults, ({ body }) => {
-      catalogue.saveDefaults(body.default_model, body.default_effort);
-      return statusOf(platform);
-    }),
     setOpenRouterKey: bound(E.setOpenRouterKey, async ({ body }) => {
       await upstream(() => keys.save(body.key));
       return statusOf(platform);

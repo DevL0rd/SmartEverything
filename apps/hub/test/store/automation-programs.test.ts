@@ -1,10 +1,13 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   EMPTY_LAYOUT,
   type AutomationV3,
+  type AutomationV4,
   type FunctionV3,
+  type FunctionV4,
   type JsonValue,
 } from '@smarteverything/domain';
 import { StoreContext } from '../../src/store/context';
@@ -23,8 +26,10 @@ import {
 } from '../../src/store/repositories/automation-programs';
 import { AutomationRevisionsRepository } from '../../src/store/repositories/automation-revisions';
 import { Sql, StoreConflictError } from '../../src/store/sql';
+import { graphAutomation, graphFunction } from '../automations-v3/support/graph-of';
 import { TEST_AUTHOR } from '../support/automation-author';
 import { captureLogs, testLogger } from '../support/logs';
+import { removeStarterNodes } from '../support/starter-nodes';
 
 const NODE_A = '3d000000-0000-4000-8000-00000000000a';
 const HASH_A = 'a'.repeat(64);
@@ -41,7 +46,7 @@ let revisions: AutomationRevisionsRepository;
 let functions: AutomationFunctionsRepository;
 let plans: AutomationPlansRepository;
 
-function automation(description?: string): AutomationV3 {
+function treeAutomation(description?: string): AutomationV3 {
   return {
     version: 3,
     kind: 'automation',
@@ -55,23 +60,28 @@ function automation(description?: string): AutomationV3 {
   };
 }
 
-function callOf(functionId: string): AutomationV3 {
+function automation(description?: string): AutomationV4 {
+  return graphAutomation(treeAutomation(description), STATIC_KIND_LOOKUP);
+}
+
+function callScope(functionId: string): AutomationV3['body'] {
   return {
-    ...automation(),
-    body: {
-      nodes: [
-        {
-          id: NODE_A,
-          key: 'call',
-          kind: 'fn.call',
-          ports: { fn: { lit: { function: functionId } } },
-        },
-      ],
-    },
+    nodes: [
+      {
+        id: NODE_A,
+        key: 'call',
+        kind: 'fn.call',
+        ports: { fn: { lit: { function: functionId } } },
+      },
+    ],
   };
 }
 
-function reusable(description?: string): FunctionV3 {
+function callOf(functionId: string): AutomationV4 {
+  return graphAutomation({ ...treeAutomation(), body: callScope(functionId) }, STATIC_KIND_LOOKUP);
+}
+
+function treeReusable(description?: string): FunctionV3 {
   return {
     version: 3,
     kind: 'function',
@@ -85,7 +95,11 @@ function reusable(description?: string): FunctionV3 {
   };
 }
 
-function newFunction(name: string, program: FunctionV3 = reusable()): NewFunction {
+function reusable(description?: string): FunctionV4 {
+  return graphFunction(treeReusable(description), STATIC_KIND_LOOKUP);
+}
+
+function newFunction(name: string, program: FunctionV4 = reusable()): NewFunction {
   return {
     name,
     program,
@@ -113,7 +127,7 @@ function revise(
   };
 }
 
-function newAutomation(name: string, program: AutomationV3 = automation()): NewAutomationProgram {
+function newAutomation(name: string, program: AutomationV4 = automation()): NewAutomationProgram {
   return {
     name,
     enabled: true,
@@ -135,6 +149,7 @@ beforeEach(() => {
   database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
   const sql = new Sql(database);
   migrate(sql, MIGRATIONS, clock.toISOString(), testLogger());
+  removeStarterNodes(sql);
   context = new StoreContext(sql, new ChangeFeed(testLogger('store')), () => clock);
   programs = new AutomationProgramsRepository(context);
   revisions = new AutomationRevisionsRepository(context);
@@ -144,10 +159,12 @@ beforeEach(() => {
 
 describe('the automation program repository', () => {
   it('creates a row at revision 1 with its first revision row', () => {
-    const row = programs.create(newAutomation('Lamp'));
+    const row = programs.create(newAutomation('Lamp'), STATIC_KIND_LOOKUP);
     expect(row.revision).toBe(1);
     expect(row.draft).toBeNull();
-    expect(row.layout).toStrictEqual(EMPTY_LAYOUT);
+    expect(Object.keys(row.layout.nodes)).toStrictEqual(
+      row.definition.nodes.map((node) => node.id),
+    );
     expect(row.definition).toStrictEqual(automation());
     const kept = revisions.byRevision(row.id, 1);
     expect(kept.plan_hash).toBe(HASH_A);
@@ -155,34 +172,57 @@ describe('the automation program repository', () => {
     expect(programs.list().map((item) => item.name)).toEqual(['Lamp']);
   });
 
+  it('finds an automation by name and renames it without moving the revision', () => {
+    const row = programs.create(newAutomation('Lamp'), STATIC_KIND_LOOKUP);
+    programs.create(newAutomation('Fan'), STATIC_KIND_LOOKUP);
+    expect(programs.findByName('Lamp')?.id).toBe(row.id);
+    expect(programs.findByName('Nothing')).toBeUndefined();
+    const renamed = programs.rename(row.id, 'Reading lamp');
+    expect(renamed).toMatchObject({ name: 'Reading lamp', revision: 1 });
+    expect(programs.findByName('Lamp')).toBeUndefined();
+    expect(() => programs.rename(row.id, 'Fan')).toThrow(StoreConflictError);
+  });
+
   it('keeps a draft without moving the revision and checks the expected revision', () => {
-    const row = programs.create(newAutomation('Lamp'));
+    const row = programs.create(newAutomation('Lamp'), STATIC_KIND_LOOKUP);
     const drafted = programs.saveDraft(
       row.id,
       { program: automation('changed'), layout: EMPTY_LAYOUT },
       1,
+      STATIC_KIND_LOOKUP,
     );
     expect(drafted.revision).toBe(1);
     expect(drafted.draft?.program.description).toBe('changed');
     expect(drafted.definition.description).toBeUndefined();
     expect(() =>
-      programs.saveDraft(row.id, { program: automation(), layout: EMPTY_LAYOUT }, 2),
+      programs.saveDraft(
+        row.id,
+        { program: automation(), layout: EMPTY_LAYOUT },
+        2,
+        STATIC_KIND_LOOKUP,
+      ),
     ).toThrow(/changed since it was read/);
     expect(programs.discardDraft(row.id, 1).draft).toBeNull();
   });
 
   it('moves a layout without a new revision', () => {
-    const row = programs.create(newAutomation('Lamp'));
+    const row = programs.create(newAutomation('Lamp'), STATIC_KIND_LOOKUP);
     const layout = { nodes: { [NODE_A]: { x: 10, y: 20 } }, frames: [], comments: [] };
-    const moved = programs.saveLayout(row.id, layout, 1);
+    const moved = programs.saveLayout(row.id, layout, 1, STATIC_KIND_LOOKUP);
     expect(moved.revision).toBe(1);
-    expect(moved.layout).toStrictEqual(layout);
+    expect(moved.layout.nodes[NODE_A]).toStrictEqual({ x: 10, y: 20 });
+    for (const node of moved.definition.nodes) expect(moved.layout.nodes[node.id]).toBeDefined();
     expect(count('automation_revisions')).toBe(1);
   });
 
   it('publishes the draft as the next revision in one write and clears the draft', () => {
-    const row = programs.create(newAutomation('Lamp'));
-    programs.saveDraft(row.id, { program: automation('v2'), layout: EMPTY_LAYOUT }, 1);
+    const row = programs.create(newAutomation('Lamp'), STATIC_KIND_LOOKUP);
+    programs.saveDraft(
+      row.id,
+      { program: automation('v2'), layout: EMPTY_LAYOUT },
+      1,
+      STATIC_KIND_LOOKUP,
+    );
     const published = programs.publish(row.id, {
       expectedRevision: 1,
       planHash: HASH_B,
@@ -198,10 +238,15 @@ describe('the automation program repository', () => {
   });
 
   it('refuses to publish without a draft or with a stale revision and changes nothing', () => {
-    const row = programs.create(newAutomation('Lamp'));
+    const row = programs.create(newAutomation('Lamp'), STATIC_KIND_LOOKUP);
     const publication = { expectedRevision: 1, planHash: HASH_B, author: null };
     expect(() => programs.publish(row.id, publication)).toThrow(/no draft/);
-    programs.saveDraft(row.id, { program: automation('v2'), layout: EMPTY_LAYOUT }, 1);
+    programs.saveDraft(
+      row.id,
+      { program: automation('v2'), layout: EMPTY_LAYOUT },
+      1,
+      STATIC_KIND_LOOKUP,
+    );
     expect(() => programs.publish(row.id, { ...publication, expectedRevision: 3 })).toThrow(
       /changed since it was read/,
     );
@@ -210,8 +255,13 @@ describe('the automation program repository', () => {
   });
 
   it('rolls the whole publish back when the revision row cannot be written', () => {
-    const row = programs.create(newAutomation('Lamp'));
-    programs.saveDraft(row.id, { program: automation('v2'), layout: EMPTY_LAYOUT }, 1);
+    const row = programs.create(newAutomation('Lamp'), STATIC_KIND_LOOKUP);
+    programs.saveDraft(
+      row.id,
+      { program: automation('v2'), layout: EMPTY_LAYOUT },
+      1,
+      STATIC_KIND_LOOKUP,
+    );
     expect(() =>
       programs.publish(row.id, { expectedRevision: 1, planHash: 'not a hash', author: null }),
     ).toThrow(StoreConflictError);
@@ -222,16 +272,25 @@ describe('the automation program repository', () => {
   });
 
   it('replaces a published program directly, keeps an open draft and clears the last error', () => {
-    const row = programs.create(newAutomation('Lamp'));
-    programs.saveDraft(row.id, { program: automation('mine'), layout: EMPTY_LAYOUT }, 1);
+    const row = programs.create(newAutomation('Lamp'), STATIC_KIND_LOOKUP);
+    programs.saveDraft(
+      row.id,
+      { program: automation('mine'), layout: EMPTY_LAYOUT },
+      1,
+      STATIC_KIND_LOOKUP,
+    );
     database.prepare("update automations set last_error = 'broke' where id = ?").run(row.id);
-    const replaced = programs.replace(row.id, {
-      program: automation('ai'),
-      layout: EMPTY_LAYOUT,
-      expectedRevision: 1,
-      planHash: HASH_C,
-      author: { via: 'assistant', profile_id: TEST_AUTHOR.profile_id },
-    });
+    const replaced = programs.replace(
+      row.id,
+      {
+        program: automation('ai'),
+        layout: EMPTY_LAYOUT,
+        expectedRevision: 1,
+        planHash: HASH_C,
+        author: { via: 'assistant', profile_id: TEST_AUTHOR.profile_id },
+      },
+      STATIC_KIND_LOOKUP,
+    );
     expect(replaced.revision).toBe(2);
     expect(replaced.last_error).toBeNull();
     expect(replaced.draft?.program.description).toBe('mine');
@@ -239,7 +298,7 @@ describe('the automation program repository', () => {
   });
 
   it('removes the row and its revisions', () => {
-    const row = programs.create(newAutomation('Lamp'));
+    const row = programs.create(newAutomation('Lamp'), STATIC_KIND_LOOKUP);
     programs.remove(row.id);
     expect(programs.find(row.id)).toBeUndefined();
     expect(count('automation_revisions')).toBe(0);
@@ -247,7 +306,7 @@ describe('the automation program repository', () => {
   });
 
   it('refuses a row that does not match the v3 contract', () => {
-    const row = programs.create(newAutomation('Lamp'));
+    const row = programs.create(newAutomation('Lamp'), STATIC_KIND_LOOKUP);
     database
       .prepare('update automations set definition = \'{"version":2}\' where id = ?')
       .run(row.id);
@@ -257,47 +316,62 @@ describe('the automation program repository', () => {
 
 describe('the Custom Node repository', () => {
   it('creates a function with revision 1 and the description taken from the program', () => {
-    const row = functions.create(newFunction('Dim', reusable('Dims a lamp')));
+    const row = functions.create(newFunction('Dim', reusable('Dims a lamp')), STATIC_KIND_LOOKUP);
     expect(row.latest_revision).toBe(1);
     expect(row.description).toBe('Dims a lamp');
     expect(functions.latest(row.id).interface_hash).toBe(HASH_A);
-    expect(() => functions.create(newFunction('Dim'))).toThrow(StoreConflictError);
+    expect(() => functions.create(newFunction('Dim'), STATIC_KIND_LOOKUP)).toThrow(
+      StoreConflictError,
+    );
   });
 
   it('promotes a draft to the next revision', () => {
-    const row = functions.create(newFunction('Dim'));
+    const row = functions.create(newFunction('Dim'), STATIC_KIND_LOOKUP);
     expect(() =>
-      functions.publish(row.id, {
+      functions.publish(
+        row.id,
+        {
+          expectedRevision: 1,
+          interfaceHash: HASH_C,
+          compat: 'compatible',
+          planHash: HASH_B,
+          author: null,
+        },
+        STATIC_KIND_LOOKUP,
+      ),
+    ).toThrow(/no draft/);
+    functions.saveDraft(
+      row.id,
+      { program: reusable('second'), layout: EMPTY_LAYOUT },
+      1,
+      STATIC_KIND_LOOKUP,
+    );
+    const published = functions.publish(
+      row.id,
+      {
         expectedRevision: 1,
         interfaceHash: HASH_C,
         compat: 'compatible',
         planHash: HASH_B,
-        author: null,
-      }),
-    ).toThrow(/no draft/);
-    functions.saveDraft(row.id, { program: reusable('second'), layout: EMPTY_LAYOUT }, 1);
-    const published = functions.publish(row.id, {
-      expectedRevision: 1,
-      interfaceHash: HASH_C,
-      compat: 'compatible',
-      planHash: HASH_B,
-      author: TEST_AUTHOR,
-    });
+        author: TEST_AUTHOR,
+      },
+      STATIC_KIND_LOOKUP,
+    );
     expect(published.latest_revision).toBe(2);
     expect(published.draft).toBeNull();
     expect(published.description).toBe('second');
     expect(functions.revision(row.id, 2).definition.description).toBe('second');
     expect(functions.revisions(row.id).map((item) => item.revision)).toEqual([2, 1]);
-    expect(() => functions.revise(row.id, revise('compatible', 1))).toThrow(
+    expect(() => functions.revise(row.id, revise('compatible', 1), STATIC_KIND_LOOKUP)).toThrow(
       /changed since it was read/,
     );
   });
 
   it('resolves the followed revision across compatible saves and stops before a breaking one', () => {
-    const row = functions.create(newFunction('Dim'));
-    functions.revise(row.id, revise('compatible', 1));
-    functions.revise(row.id, revise('breaking', 2));
-    functions.revise(row.id, revise('compatible', 3));
+    const row = functions.create(newFunction('Dim'), STATIC_KIND_LOOKUP);
+    functions.revise(row.id, revise('compatible', 1), STATIC_KIND_LOOKUP);
+    functions.revise(row.id, revise('breaking', 2), STATIC_KIND_LOOKUP);
+    functions.revise(row.id, revise('compatible', 3), STATIC_KIND_LOOKUP);
     expect(functions.latest(row.id).revision).toBe(4);
     expect(functions.followed(row.id, 1).revision).toBe(2);
     expect(functions.followed(row.id, 2).revision).toBe(2);
@@ -306,40 +380,52 @@ describe('the Custom Node repository', () => {
   });
 
   it('lists the automations, drafts and other functions that use a function', () => {
-    const used = functions.create(newFunction('Dim'));
-    const caller = functions.create(newFunction('Wrap'));
+    const used = functions.create(newFunction('Dim'), STATIC_KIND_LOOKUP);
+    const caller = functions.create(newFunction('Wrap'), STATIC_KIND_LOOKUP);
     expect(functions.users(used.id)).toStrictEqual({ automations: [], functions: [] });
-    programs.create(newAutomation('Direct', callOf(used.id)));
-    const drafted = programs.create(newAutomation('Drafted'));
-    programs.saveDraft(drafted.id, { program: callOf(used.id), layout: EMPTY_LAYOUT }, 1);
-    programs.create(newAutomation('Other', callOf(caller.id)));
-    functions.revise(caller.id, {
-      ...revise('compatible', 1),
-      program: {
-        ...reusable(),
-        body: callOf(used.id).body,
+    programs.create(newAutomation('Direct', callOf(used.id)), STATIC_KIND_LOOKUP);
+    const drafted = programs.create(newAutomation('Drafted'), STATIC_KIND_LOOKUP);
+    programs.saveDraft(
+      drafted.id,
+      { program: callOf(used.id), layout: EMPTY_LAYOUT },
+      1,
+      STATIC_KIND_LOOKUP,
+    );
+    programs.create(newAutomation('Other', callOf(caller.id)), STATIC_KIND_LOOKUP);
+    functions.revise(
+      caller.id,
+      {
+        ...revise('compatible', 1),
+        program: graphFunction({ ...treeReusable(), body: callScope(used.id) }, STATIC_KIND_LOOKUP),
       },
-    });
+      STATIC_KIND_LOOKUP,
+    );
     const users = functions.users(used.id);
     expect(users.automations.map((user) => user.name)).toEqual(['Direct', 'Drafted']);
     expect(users.functions.map((user) => user.name)).toEqual(['Wrap']);
   });
 
   it('refuses to remove a function in use and removes an unused one with its revisions', () => {
-    const used = functions.create(newFunction('Dim'));
-    programs.create(newAutomation('Direct', callOf(used.id)));
+    const used = functions.create(newFunction('Dim'), STATIC_KIND_LOOKUP);
+    programs.create(newAutomation('Direct', callOf(used.id)), STATIC_KIND_LOOKUP);
     expect(() => {
       functions.remove(used.id);
     }).toThrow(/Direct uses this Custom Node/);
-    const spare = functions.create(newFunction('Spare'));
+    const spare = functions.create(newFunction('Spare'), STATIC_KIND_LOOKUP);
     functions.remove(spare.id);
     expect(functions.find(spare.id)).toBeUndefined();
     expect(count('automation_function_revisions')).toBe(1);
   });
 
+  it('finds a function by name', () => {
+    const row = functions.create(newFunction('Dim'), STATIC_KIND_LOOKUP);
+    expect(functions.findByName('Dim')?.id).toBe(row.id);
+    expect(functions.findByName('Bright')).toBeUndefined();
+  });
+
   it('renames a function and reports a clash', () => {
-    const row = functions.create(newFunction('Dim'));
-    functions.create(newFunction('Bright'));
+    const row = functions.create(newFunction('Dim'), STATIC_KIND_LOOKUP);
+    functions.create(newFunction('Bright'), STATIC_KIND_LOOKUP);
     expect(functions.rename(row.id, 'Softer').name).toBe('Softer');
     expect(() => functions.rename(row.id, 'Bright')).toThrow(StoreConflictError);
   });
@@ -364,8 +450,11 @@ describe('the compiled plan repository', () => {
     const keptByFunction = plans.put('function', { n: 2 });
     const keptByRun = plans.put('automation', { n: 3 });
     const orphan = plans.put('automation', { n: 4 });
-    programs.create({ ...newAutomation('Lamp'), planHash: kept });
-    const fn = functions.create({ ...newFunction('Dim'), planHash: keptByFunction });
+    programs.create({ ...newAutomation('Lamp'), planHash: kept }, STATIC_KIND_LOOKUP);
+    const fn = functions.create(
+      { ...newFunction('Dim'), planHash: keptByFunction },
+      STATIC_KIND_LOOKUP,
+    );
     expect(fn.latest_revision).toBe(1);
     database
       .prepare(

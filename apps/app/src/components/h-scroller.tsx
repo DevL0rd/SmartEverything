@@ -1,8 +1,15 @@
 import { Children, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import {
+  ScrollView,
+  View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
 import { scrollStepOf } from './h-scroller-step';
+import { EndFade, type FadeSurface } from './end-fade';
 import { IconButton } from './icon-button';
 
 function Arrows({
@@ -38,29 +45,49 @@ function Arrows({
   );
 }
 
-function EdgeFade(): ReactNode {
-  return (
-    <View
-      pointerEvents="none"
-      className="absolute inset-y-0 right-0 w-8 bg-linear-to-r from-surface-1/0 to-surface-1"
-    />
-  );
+interface ScrollMetrics {
+  viewport: number;
+  content: number;
+  offset: number;
+  edges: { readonly overflow: boolean; readonly end: boolean };
 }
 
 function useScrollBy(): {
   readonly ref: RefObject<ScrollView | null>;
-  readonly track: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  readonly onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  readonly onLayout: (event: LayoutChangeEvent) => void;
+  readonly onContentSizeChange: (width: number) => void;
   readonly scrollBy: (delta: number) => void;
+  readonly edges: ScrollMetrics['edges'];
 } {
   const ref = useRef<ScrollView>(null);
-  const offset = useRef(0);
+  const [edges, setEdges] = useState({ overflow: false, end: false });
+  const metrics = useRef<ScrollMetrics>({ viewport: 0, content: 0, offset: 0, edges });
+  const updateEdges = (): void => {
+    const current = metrics.current;
+    const overflow = current.content > current.viewport + 2;
+    const end = overflow && current.content > current.viewport + current.offset + 2;
+    if (current.edges.overflow === overflow && current.edges.end === end) return;
+    current.edges = { overflow, end };
+    setEdges(current.edges);
+  };
   return {
     ref,
-    track: (event): void => {
-      offset.current = event.nativeEvent.contentOffset.x;
+    edges,
+    onScroll: (event): void => {
+      metrics.current.offset = event.nativeEvent.contentOffset.x;
+      updateEdges();
+    },
+    onLayout: (event): void => {
+      metrics.current.viewport = event.nativeEvent.layout.width;
+      updateEdges();
+    },
+    onContentSizeChange: (width): void => {
+      metrics.current.content = width;
+      updateEdges();
     },
     scrollBy: (delta): void => {
-      ref.current?.scrollTo({ x: Math.max(0, offset.current + delta), animated: true });
+      ref.current?.scrollTo({ x: Math.max(0, metrics.current.offset + delta), animated: true });
     },
   };
 }
@@ -90,26 +117,62 @@ function Snapped({
     : Children.map(children, (child) => <View className="web:snap-start">{child}</View>);
 }
 
-export function HScroller({
-  children,
-  label,
-  fill = false,
-  snapTo,
-  fade = false,
-}: {
+const SCROLLER_LAYOUT = {
+  fill: ['relative flex-1', 'flex-1', 'h-full gap-grid-gap'],
+  fit: ['relative', 'grow-0', 'gap-grid-gap'],
+} as const;
+
+interface HScrollerProps {
   readonly children: ReactNode;
   readonly label: string;
   readonly fill?: boolean;
   readonly snapTo?: number;
   readonly fade?: boolean;
+  readonly fadeSurface?: FadeSurface;
+  readonly arrows?: boolean;
+  readonly scrollStep?: number;
+}
+
+function ScrollEdges({
+  edges,
+  fade,
+  fadeSurface = 'card',
+  arrows = true,
+  pointerHover,
+  scrollStep,
+  snapTo,
+  scrollBy,
+}: Pick<HScrollerProps, 'fade' | 'fadeSurface' | 'arrows' | 'scrollStep'> & {
+  readonly edges: ScrollMetrics['edges'];
+  readonly pointerHover: boolean;
+  readonly snapTo: number | undefined;
+  readonly scrollBy: (delta: number) => void;
 }): ReactNode {
+  return (
+    <>
+      {fade === true && edges.end ? <EndFade surface={fadeSurface} /> : null}
+      {arrows && pointerHover && edges.overflow ? (
+        <Arrows scrollBy={scrollBy} step={scrollStep ?? scrollStepOf(snapTo)} />
+      ) : null}
+    </>
+  );
+}
+
+export function HScroller({
+  children,
+  label,
+  fill = false,
+  snapTo,
+  ...appearance
+}: HScrollerProps): ReactNode {
+  const [frame, scroller, content] = SCROLLER_LAYOUT[fill ? 'fill' : 'fit'];
   const pointer = useIdiom() === 'pointer';
-  const { ref, track, scrollBy } = useScrollBy();
+  const { edges, scrollBy, ...scrollerProps } = useScrollBy();
   const [hovered, setHovered] = useState(false);
   return (
     <View
       accessibilityLabel={label}
-      className={fill ? 'relative flex-1' : 'relative'}
+      className={frame}
       onPointerEnter={() => {
         setHovered(true);
       }}
@@ -118,20 +181,24 @@ export function HScroller({
       }}
     >
       <ScrollView
-        ref={ref}
+        {...scrollerProps}
         horizontal
         showsHorizontalScrollIndicator={false}
         decelerationRate="fast"
         {...snapPropsOf(snapTo)}
         scrollEventThrottle={64}
-        onScroll={track}
-        className={cn(fill ? 'flex-1' : 'grow-0', snapClassOf(snapTo))}
-        contentContainerClassName={fill ? 'h-full gap-grid-gap' : 'gap-grid-gap'}
+        className={cn(scroller, snapClassOf(snapTo))}
+        contentContainerClassName={content}
       >
         <Snapped snapTo={snapTo}>{children}</Snapped>
       </ScrollView>
-      {fade ? <EdgeFade /> : null}
-      {pointer && hovered ? <Arrows scrollBy={scrollBy} step={scrollStepOf(snapTo)} /> : null}
+      <ScrollEdges
+        {...appearance}
+        edges={edges}
+        pointerHover={pointer && hovered}
+        snapTo={snapTo}
+        scrollBy={scrollBy}
+      />
     </View>
   );
 }

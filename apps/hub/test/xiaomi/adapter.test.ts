@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { CommandRefusedError, DISCOVERED_DEVICE } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { USER_ID } from './fake-account';
+import { waitFor } from './harness';
 import { createWorld, destroyWorld, startAdapter, subscribe, type World } from './world';
 
 let world: World;
@@ -80,7 +81,9 @@ describe('the Xiaomi inventory', () => {
     await (await startAdapter(world)).discover();
     const downloads = world.cloud.specDownloads.length;
     expect(downloads).toBe(5);
-    const cached = await readdir(join(world.harness.context.dataDirectory, 'miot-specs'));
+    const cached = await readdir(
+      join(world.harness.context.layout.system.providers('xiaomi'), 'miot-specs'),
+    );
     expect(cached).toHaveLength(4);
     await (await startAdapter(world)).discover();
     expect(world.cloud.specDownloads.slice(downloads)).toStrictEqual([
@@ -125,10 +128,11 @@ describe('reading and writing Xiaomi devices', () => {
       }),
     ).resolves.toBe('Sleep');
     expect(world.purifier.properties.get('2.4')).toBe(1);
-    expect(recorded.states.map((state) => [state.capability, state.value])).toContainEqual([
-      'purifier_mode',
-      'Sleep',
-    ]);
+    await waitFor(() =>
+      recorded.states.some(
+        (state) => state.capability === 'purifier_mode' && state.value === 'Sleep',
+      ),
+    );
   });
 
   it('runs actions with their named arguments', async () => {

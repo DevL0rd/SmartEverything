@@ -7,28 +7,28 @@ import {
 import { z } from 'zod';
 import type { StoreContext } from '../context';
 
-const PAIRING = z.strictObject({ hub_url: z.string(), expires_at: z.string() });
-const STORED = COMPUTER_NODE_ROW.extend({
-  token_hash: z.string().min(1),
-  window_client_id: z.string().nullable(),
+const PAIRING = z.strictObject({
+  hub_url: z.string(),
+  expires_at: z.string(),
+  created_by: z.string(),
 });
-
 export class ComputerNodesRepository {
   constructor(private readonly context: StoreContext) {}
+
+  activeDeviceIds(): readonly string[] {
+    return this.context.sql
+      .all(
+        z.strictObject({ device_id: z.string() }),
+        'select device_id from computer_nodes where revoked_at is null order by device_id',
+      )
+      .map((row) => row.device_id);
+  }
 
   byToken(tokenHash: string): ComputerNodeRow | undefined {
     return this.context.sql.get(
       COMPUTER_NODE_ROW,
       'select device_id, machine_id, hub_url, paired_at, revoked_at from computer_nodes where token_hash = $tokenHash and revoked_at is null',
       { tokenHash },
-    );
-  }
-
-  byMachine(machineId: string): z.infer<typeof STORED> | undefined {
-    return this.context.sql.get(
-      STORED,
-      'select * from computer_nodes where machine_id = $machineId',
-      { machineId },
     );
   }
 
@@ -45,11 +45,11 @@ export class ComputerNodesRepository {
     );
   }
 
-  claim<T>(codeHash: string, bind: (hubUrl: string) => T): T | null {
+  claim<T>(codeHash: string, bind: (hubUrl: string, createdBy: string) => T): T | null {
     return this.context.write(() => {
       const row = this.context.sql.get(
         PAIRING,
-        'select hub_url, expires_at from computer_node_pairings where code_hash = $codeHash',
+        'select hub_url, expires_at, created_by from computer_node_pairings where code_hash = $codeHash',
         { codeHash },
       );
       if (row === undefined || row.expires_at <= this.context.now()) return null;
@@ -58,7 +58,7 @@ export class ComputerNodesRepository {
         'delete from computer_node_pairings where code_hash = $codeHash',
         { codeHash },
       );
-      return bind(row.hub_url);
+      return bind(row.hub_url, row.created_by);
     });
   }
 
@@ -67,17 +67,22 @@ export class ComputerNodesRepository {
     readonly machineId: string;
     readonly tokenHash: string;
     readonly hubUrl: string;
-    readonly windowClientId: string;
+    readonly windowClientId: string | null;
+    readonly profileId?: string | null;
   }): void {
     this.clearRuntimeGrants(binding.deviceId);
     this.context.sql.run(
       'bind computer service identity',
-      `insert into computer_nodes(device_id, machine_id, token_hash, hub_url, paired_at, revoked_at, window_client_id)
-       values($deviceId, $machineId, $tokenHash, $hubUrl, $now, null, $windowClientId)
+      `insert into computer_nodes(device_id, machine_id, token_hash, hub_url, paired_at, revoked_at, window_client_id, profile_id)
+       values($deviceId, $machineId, $tokenHash, $hubUrl, $now, null, $windowClientId, $profileId)
        on conflict(device_id) do update set machine_id = excluded.machine_id, token_hash = excluded.token_hash,
        hub_url = excluded.hub_url, paired_at = excluded.paired_at, revoked_at = null,
-       window_client_id = excluded.window_client_id`,
-      { ...binding, now: this.context.now() },
+       window_client_id = excluded.window_client_id,
+       profile_id = case
+         when excluded.window_client_id is not null then excluded.profile_id
+         else coalesce(computer_nodes.profile_id, excluded.profile_id)
+       end`,
+      { ...binding, profileId: binding.profileId ?? null, now: this.context.now() },
     );
   }
 
@@ -113,6 +118,18 @@ export class ComputerNodesRepository {
     this.setRuntimeMcpToken(deviceId, 'claude', tokenHash);
   }
 
+  ownsWindow(deviceId: string, clientId: string, profileId: string): boolean {
+    return (
+      this.context.sql.get(
+        z.strictObject({ device_id: z.string() }),
+        `select device_id from computer_nodes
+       where device_id = $deviceId and window_client_id = $clientId
+         and profile_id = $profileId and revoked_at is null`,
+        { deviceId, clientId, profileId },
+      ) !== undefined
+    );
+  }
+
   roomOfWindow(clientId: string): string | null {
     return (
       this.context.sql.get(
@@ -130,8 +147,7 @@ export class ComputerNodesRepository {
     return (
       this.context.sql.get(
         z.strictObject({ profile_id: z.string().nullable() }),
-        `select c.profile_id from computer_nodes n join clients c on c.id = n.window_client_id
-         where n.device_id = $deviceId and n.revoked_at is null`,
+        'select profile_id from computer_nodes where device_id = $deviceId and revoked_at is null',
         { deviceId },
       )?.profile_id ?? null
     );

@@ -40,23 +40,23 @@ function SearchBody({ initial }: { readonly initial: string }): ReactNode {
   });
   return (
     <View className="flex-1 bg-bg">
-      <View className="w-full max-w-reading self-center flex-row items-center gap-1 px-1 pt-safe-offset-2 pb-2">
-        <IconButton icon="arrowLeft" label="Back" onPress={leave} />
-        <View className="flex-1 pr-3">
-          <SearchField
-            inputRef={input}
-            value={query}
-            onChange={setQuery}
-            {...(panel.submit === null ? {} : { onSubmit: panel.submit })}
-            placeholder="Search your home"
-            focusOnMount
-            variant="bar"
-          />
+      <View className="px-gutter pt-safe-offset-2 pb-2">
+        <View className="w-full max-w-reading flex-row items-center gap-1">
+          <IconButton icon="arrowLeft" label="Back" onPress={leave} />
+          <View className="min-w-0 flex-1">
+            <SearchField
+              inputRef={input}
+              value={query}
+              onChange={setQuery}
+              {...(panel.submit === null ? {} : { onSubmit: panel.submit })}
+              placeholder="Search your home"
+              focusOnMount
+              variant="bar"
+            />
+          </View>
         </View>
       </View>
-      <View className="w-full max-w-reading flex-1 self-center">
-        <ResultList model={panel.model} contentClassName="px-gutter pt-2 pb-safe-offset-6" />
-      </View>
+      <ResultList model={panel.model} contentClassName="px-gutter pt-2 pb-safe-offset-6" fullPage />
     </View>
   );
 }

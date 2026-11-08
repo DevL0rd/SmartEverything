@@ -11,6 +11,7 @@ import {
   MACHINE_PERMISSION_STATES,
   NODE_HELLO,
   NODE_FRAME,
+  NODE_PROTOCOL_VERSION,
   NODE_REQUEST,
   NODE_VERB_SCOPES,
   PHONE_ACTION,
@@ -27,6 +28,7 @@ import {
 } from '../src';
 
 const HELLO = {
+  protocol: NODE_PROTOCOL_VERSION,
   machineId: 'a'.repeat(32),
   hostname: 'desk',
   os: { name: 'Linux', kernel: '6' },

@@ -5,15 +5,15 @@ import {
   type AutomationProgramReply,
   type AutomationProgramRevisionSummary,
   type AutomationRevisionRow,
-  type AutomationRowV3,
-  type AutomationV3,
+  type StoredAutomationRow,
+  type AutomationV4,
   type Layout,
 } from '@smarteverything/domain';
 import { lintProblems, reply, tally, type ProgramEnv } from './service-programs-analysis';
 import { comparePrograms } from './service-programs-compare';
 
 export interface DraftInput {
-  readonly program: AutomationV3;
+  readonly program: AutomationV4;
   readonly layout: Layout;
   readonly expectedRevision: number;
 }
@@ -35,6 +35,7 @@ export function saveDraft(env: ProgramEnv, id: string, input: DraftInput): Autom
     id,
     { program: input.program, layout: input.layout },
     input.expectedRevision,
+    env.kinds,
   );
   const problems = lintProblems(env, input.program);
   return reply(true, `Draft saved. ${tally(problems)}.`, { id, revision: row.revision }, problems);
@@ -63,7 +64,7 @@ export function revision(env: ProgramEnv, id: string, number: number): Automatio
   return env.revisions.byRevision(id, number);
 }
 
-function draftOf(row: AutomationRowV3): AutomationV3 {
+function draftOf(row: StoredAutomationRow): AutomationV4 {
   if (row.draft === null) throw new ApiError('conflict', 'The automation has no draft to compare.');
   return row.draft.program;
 }
@@ -77,5 +78,5 @@ export function compare(
   const earlier = env.revisions.byRevision(id, from).definition;
   const later =
     to === 'draft' ? draftOf(env.programs.byId(id)) : env.revisions.byRevision(id, to).definition;
-  return { from, to, changes: [...comparePrograms(earlier, later)] };
+  return { from, to, changes: [...comparePrograms(earlier, later, env.kinds)] };
 }

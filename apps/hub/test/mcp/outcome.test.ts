@@ -44,6 +44,17 @@ describe('the compact answer to a write or action tool', () => {
     expect(answer).toMatchObject({ ok: false, problems: [problem] });
   });
 
+  it('keeps the key of the call an extract put in place of the steps', () => {
+    const answer = outcomeOf('extract_custom_node', {
+      id: '00000000-0000-4000-8000-000000000001',
+      ok: true,
+      revision: 1,
+      instanceKey: 'use_study_level',
+      automationId: '00000000-0000-4000-8000-000000000002',
+    });
+    expect(answer).toMatchObject({ ok: true, instanceKey: 'use_study_level' });
+  });
+
   it('keeps what a dry run would send and why it failed', () => {
     const command = {
       at: '2026-10-19T12:00:00.000Z',

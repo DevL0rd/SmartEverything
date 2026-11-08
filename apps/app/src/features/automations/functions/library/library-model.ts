@@ -4,7 +4,7 @@ import type {
 } from '@smarteverything/domain';
 import { compareText } from '../../../../format/text';
 
-export type LibrarySectionId = 'mine' | 'builtin' | 'shared';
+export type LibrarySectionId = 'mine' | 'shared';
 
 export interface LibraryRow {
   readonly id: string;
@@ -15,7 +15,6 @@ export interface LibraryRow {
   readonly interfaceLine: string;
   readonly usersLabel: string;
   readonly versionLabel: string;
-  readonly builtin: boolean;
   readonly needsMapping: boolean;
   readonly section: LibrarySectionId;
 }
@@ -40,11 +39,10 @@ export const EMPTY_FILTER: LibraryFilter = { query: '', category: null };
 
 const SECTION_TITLES: Readonly<Record<LibrarySectionId, string>> = {
   mine: 'My nodes',
-  builtin: 'Built in',
   shared: 'Shared by others',
 };
 
-const SECTION_ORDER: readonly LibrarySectionId[] = ['mine', 'builtin', 'shared'];
+const SECTION_ORDER: readonly LibrarySectionId[] = ['mine', 'shared'];
 
 export function kindLabel(flavour: AutomationFunctionInterface['flavour']): string {
   return flavour === 'pure' ? 'Value node' : 'Step node';
@@ -67,7 +65,6 @@ export function usersLabel(count: number): string {
 }
 
 function sectionOf(entry: AutomationFunctionSummary, userId: string | null): LibrarySectionId {
-  if (entry.builtin) return 'builtin';
   return userId !== null && entry.createdBy === userId ? 'mine' : 'shared';
 }
 
@@ -84,7 +81,6 @@ export function libraryRows(
     interfaceLine: interfaceLine(entry.interface),
     usersLabel: usersLabel(entry.users),
     versionLabel: `Version ${String(entry.revision)}`,
-    builtin: entry.builtin,
     needsMapping: context.needsMapping.has(entry.id),
     section: sectionOf(entry, context.userId),
   }));

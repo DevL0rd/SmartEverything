@@ -1,4 +1,8 @@
-export type Measure = (event: string, fields: Readonly<Record<string, number | string>>) => void;
+export type MeasureLevel = 'info' | 'warn' | 'debug';
+
+export type MeasureFields = Readonly<Record<string, number | string | boolean>>;
+
+export type Measure = (event: string, fields: MeasureFields, level?: MeasureLevel) => void;
 
 export class TurnTimer {
   private lastHeardAt: number | null = null;

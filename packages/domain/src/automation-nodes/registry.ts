@@ -5,6 +5,7 @@ import type { NodeCategoryId } from './categories';
 import { NODE_CATEGORY_IDS, categoryName, categoryOrder } from './categories';
 import type { NodeAccess, NodeClass, NodeKind, NodeTier } from './define';
 import { SHIPPED_TIERS } from './define';
+import { isOptionSourceId, isPortEditorId } from './option-sources';
 import { summaryProblems } from './summary-template';
 
 export interface KindProblem {
@@ -41,6 +42,51 @@ function portProblems(kind: NodeKind): readonly string[] {
     }
     if (port.static === true && port.live === true) {
       problems.push(`input "${port.name}" cannot be both static and live`);
+    }
+  }
+  return problems;
+}
+
+function uiProblems(kind: NodeKind): readonly string[] {
+  const problems: string[] = [];
+  const names = kind.inputs.map((port) => port.name);
+  for (const port of kind.inputs) {
+    const ui = port.ui;
+    if (ui === undefined) continue;
+    const source: string | undefined = ui.optionsFrom;
+    const editor: string | undefined = ui.editor;
+    if (source !== undefined && !isOptionSourceId(source)) {
+      problems.push(`input "${port.name}" uses the unknown picker source "${source}"`);
+    }
+    if (editor !== undefined && !isPortEditorId(editor)) {
+      problems.push(`input "${port.name}" uses the unknown editor "${editor}"`);
+    }
+    const typedBy = ui.typedBy;
+    if (typedBy !== undefined && (typedBy === port.name || !names.includes(typedBy))) {
+      problems.push(`input "${port.name}" is typed by "${typedBy}", which is not another input`);
+    }
+  }
+  return problems;
+}
+
+function metadataProblems(kind: NodeKind): readonly string[] {
+  const problems: string[] = [];
+  const { modes, origin } = kind;
+  if (modes !== undefined) {
+    if (modes.allowed.length === 0) problems.push('modes allow no mode');
+    if (!modes.allowed.includes(modes.default)) {
+      problems.push(`the default mode "${modes.default}" is not an allowed mode`);
+    }
+    if (duplicates(modes.allowed).length > 0) problems.push('a mode is allowed twice');
+  }
+  if (origin !== undefined) {
+    for (const [label, text] of Object.entries({
+      id: origin.id,
+      name: origin.name,
+      icon: origin.icon,
+      version: origin.version,
+    })) {
+      if (text.trim() === '') problems.push(`the origin ${label} is empty`);
     }
   }
   return problems;
@@ -99,6 +145,8 @@ export function kindProblems(kind: NodeKind): readonly string[] {
   if (kind.keywords.some((word) => word.trim() === '')) problems.push('a keyword is empty');
   problems.push(
     ...portProblems(kind),
+    ...uiProblems(kind),
+    ...metadataProblems(kind),
     ...shapeProblems(kind),
     ...classProblems(kind),
     ...summaryProblems(
@@ -120,6 +168,14 @@ export function registryProblems(kinds: readonly NodeKind[]): readonly KindProbl
   return problems;
 }
 
+export function isListedKind(kind: NodeKind): boolean {
+  return kind.structural !== true && kind.hidden !== true;
+}
+
+export function isShippedKind(kind: NodeKind): boolean {
+  return isListedKind(kind) && SHIPPED_TIERS.includes(kind.tier);
+}
+
 export interface NodeRegistry {
   readonly kinds: readonly NodeKind[];
   readonly get: (id: string) => NodeKind | undefined;
@@ -139,7 +195,7 @@ export function buildRegistry(kinds: readonly NodeKind[]): NodeRegistry {
     kinds,
     get: (id) => byId.get(id),
     has: (id) => byId.has(id),
-    shipped: () => kinds.filter((kind) => SHIPPED_TIERS.includes(kind.tier)),
+    shipped: () => kinds.filter(isShippedKind),
   };
 }
 
@@ -174,7 +230,7 @@ export interface NodeCatalogueEntry {
   readonly outputs: readonly NodeCataloguePort[];
   readonly exits: readonly string[];
   readonly scopes: readonly string[];
-  readonly effect?: { readonly retry: string; readonly budget: string };
+  readonly effect?: { readonly retry: string; readonly budget: string; readonly mode?: string };
   readonly access: NodeAccess;
   readonly available: boolean;
   readonly tier: NodeTier;
@@ -230,7 +286,14 @@ function project(kind: NodeKind, caller: NodeAccess): NodeCatalogueEntry {
   };
   return kind.effect === undefined
     ? base
-    : { ...base, effect: { retry: kind.effect.retry, budget: kind.effect.budget } };
+    : {
+        ...base,
+        effect: {
+          retry: kind.effect.retry,
+          budget: kind.effect.budget,
+          ...(kind.effect.mode === undefined ? {} : { mode: kind.effect.mode }),
+        },
+      };
 }
 
 export function nodeCatalogue(
@@ -238,7 +301,8 @@ export function nodeCatalogue(
   filter: NodeCatalogueFilter = {},
 ): readonly NodeCatalogueEntry[] {
   const caller = filter.caller ?? 'member';
-  const pool = filter.includeUnshipped === true ? registry.kinds : registry.shipped();
+  const pool =
+    filter.includeUnshipped === true ? registry.kinds.filter(isListedKind) : registry.shipped();
   return [...pool]
     .filter((kind) => filter.kind === undefined || kind.id === filter.kind)
     .filter((kind) => filter.group === undefined || kind.category === filter.group)

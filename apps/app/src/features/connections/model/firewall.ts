@@ -71,15 +71,16 @@ export function openingTitle(opening: FirewallOpening, names: readonly string[])
       return 'Server discovery';
     case 'announcement':
       return 'Device announcements';
+    case 'plugin':
+      return names.length === 0 ? 'Plugin' : names.join(', ');
     case 'camera':
     case 'device':
-    case 'plugin':
       return namedOpeningTitle(opening.rule, names);
   }
 }
 
 function namedOpeningTitle(
-  rule: Extract<PortRule, { readonly purpose: 'camera' | 'device' | 'plugin' }>,
+  rule: Extract<PortRule, { readonly purpose: 'camera' | 'device' }>,
   names: readonly string[],
 ): string {
   const who = names.length === 0 ? null : names.join(', ');
@@ -88,8 +89,6 @@ function namedOpeningTitle(
       return who ?? 'Camera';
     case 'device':
       return who === null ? 'Device updates' : `${who} updates`;
-    case 'plugin':
-      return who ?? 'Plugin';
   }
 }
 

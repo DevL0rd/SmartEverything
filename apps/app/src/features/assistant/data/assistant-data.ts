@@ -6,7 +6,7 @@ export function useAssistantStatus(): AssistantStatus | null {
   return useStoreSelector((state) => state.assistant);
 }
 
-const selectAssistantName = (state: StoreState): string =>
+export const selectAssistantName = (state: StoreState): string =>
   state.assistant === null ? 'Assistant' : assistantLabel(state.assistant.settings);
 
 export function useAssistantName(): string {

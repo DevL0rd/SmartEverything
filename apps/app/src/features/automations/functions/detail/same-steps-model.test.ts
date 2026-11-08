@@ -1,4 +1,12 @@
-import type { AutomationFunctionDetail, AutomationV3, FlowNode } from '@smarteverything/domain';
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
+import {
+  FUNCTION_V4,
+  type AutomationFunctionDetail,
+  type AutomationV3,
+  type FlowNode,
+} from '@smarteverything/domain';
+import { unstructure } from '@smarteverything/flow/graph/unstructure';
+import { adaptFunction, type FunctionDetail } from '../../data/graph-adapter';
 import { describe, expect, it } from 'vitest';
 import { sameStepsRows, sameStepsSummary } from './same-steps-model';
 
@@ -27,34 +35,41 @@ function automation(...nodes: FlowNode[]): AutomationV3 {
   };
 }
 
-function detail(usedBy: AutomationFunctionDetail['usedBy'] = []): AutomationFunctionDetail {
-  return {
-    id: 'fn',
-    name: 'Dim lights',
-    description: null,
-    category: null,
-    icon: null,
-    builtin: false,
-    editable: true,
-    revision: 1,
-    interface: { flavour: 'action', inputs: [], outputs: [], exits: ['done'] },
-    interfaceHash: 'h',
-    users: usedBy.length,
-    createdBy: null,
-    updatedAt: null,
-    program: {
-      version: 3,
-      kind: 'function',
-      flavour: 'action',
-      inputs: [],
-      outputs: [],
-      exits: ['done'],
-      variables: [],
-      body: { nodes: [step('dim', 'light.dim', 20), step('wait', 'flow.wait', 5)] },
+function detail(usedBy: AutomationFunctionDetail['usedBy'] = []): FunctionDetail {
+  return adaptFunction(
+    {
+      id: 'fn',
+      name: 'Dim lights',
+      description: null,
+      category: null,
+      icon: null,
+      editable: true,
+      revision: 1,
+      interface: { flavour: 'action', inputs: [], outputs: [], exits: ['done'] },
+      interfaceHash: 'h',
+      users: usedBy.length,
+      createdBy: null,
+      updatedAt: null,
+      program: FUNCTION_V4.parse(
+        unstructure(
+          {
+            version: 3,
+            kind: 'function',
+            flavour: 'action',
+            inputs: [],
+            outputs: [],
+            exits: ['done'],
+            variables: [],
+            body: { nodes: [step('dim', 'light.dim', 20), step('wait', 'flow.wait', 5)] },
+          },
+          STATIC_KIND_LOOKUP,
+        ),
+      ),
+      layout: { nodes: {}, frames: [], comments: [] },
+      usedBy,
     },
-    layout: { nodes: {}, frames: [], comments: [] },
-    usedBy,
-  };
+    STATIC_KIND_LOOKUP,
+  );
 }
 
 const SAME = [step('a', 'light.dim', 20), step('b', 'flow.wait', 5)];

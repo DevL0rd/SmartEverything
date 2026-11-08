@@ -77,9 +77,8 @@ export function settledRun(
     : null;
 }
 
-export function useSpeedTests(): SpeedTestList {
+function useSpeedTestList(settled: string | null): SpeedTestList {
   const client = useQueryClient();
-  const settled = settledRun(useSpeedTestProgress());
   useEffect(() => {
     if (settled !== null) {
       pluginLog.info('plugin_query.invalidated', {
@@ -144,8 +143,9 @@ function lineOf(phase: SpeedTestPhase, mbps: number, reason: string | null): str
   }
 }
 
-export function useSpeedTestRun(): SpeedTestRun {
-  const progress = useSpeedTestProgress();
+export function speedTestRunOf(
+  progress: PluginStream<z.output<typeof SPEED_TEST_PROGRESS>>,
+): SpeedTestRun {
   if (progress.state !== 'ready') {
     return IDLE_RUN;
   }
@@ -159,6 +159,20 @@ export function useSpeedTestRun(): SpeedTestRun {
     reason,
     line: lineOf(phase, mbps, reason),
   };
+}
+
+export function useSpeedTestRun(): SpeedTestRun {
+  return speedTestRunOf(useSpeedTestProgress());
+}
+
+export interface SpeedTests {
+  readonly run: SpeedTestRun;
+  readonly list: SpeedTestList;
+}
+
+export function useSpeedTests(): SpeedTests {
+  const progress = useSpeedTestProgress();
+  return { run: speedTestRunOf(progress), list: useSpeedTestList(settledRun(progress)) };
 }
 
 export function routerNotice(snapshot: RouterSnapshot): PluginNoticeText | null {

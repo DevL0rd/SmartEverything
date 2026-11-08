@@ -27,7 +27,7 @@ export function inputRenameRequest(
     confirmLabel: 'Rename',
     maxLength: INPUT_NAME_MAX_LENGTH,
     allowEmpty: true,
-    helper: 'Leave it empty to use the default name.',
+    helper: `Leave it empty to use ${inputLabel(input.id)}.`,
     save: (value) => rename(input.id, value),
   };
 }

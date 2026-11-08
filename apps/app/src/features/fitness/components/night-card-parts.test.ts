@@ -1,4 +1,4 @@
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { recordsOfType } from '../model/records';
@@ -21,7 +21,7 @@ vi.mock('../../../components/charts/progress-bar', () => ({
 }));
 
 const { StageLegend, StageSummary } = await import('./stage-summary');
-const { NapStrip } = await import('./nap-strip');
+const { NapSection, NapStrip, useNapReveal } = await import('./nap-strip');
 const { ScoreParts } = await import('./sleep-score-ring');
 await import('./night-card');
 await import('./sleep-empty');
@@ -36,6 +36,11 @@ function nightOn(start: Date, end: Date, stages: readonly object[]): ReturnType<
     'SleepSession',
   );
   return nightOf(record!);
+}
+
+function NapLayout({ naps }: { readonly naps: readonly ReturnType<typeof nightOf>[] }): ReactNode {
+  const { ref } = useNapReveal();
+  return createElement(NapSection, { naps, target: ref });
 }
 
 const STAGED = nightOn(at(7, 23), at(8, 7), [
@@ -77,6 +82,14 @@ describe('night card parts', () => {
     expect(markup).toContain('Nap · 29m asleep');
     expect(markup).toContain('Awake 5m');
     expect(markup).toContain('Light 29m');
+  });
+
+  it('adds a nap section to the card only when a nap is recorded', () => {
+    expect(renderToStaticMarkup(createElement(NapLayout, { naps: [] }))).toBe('');
+    const nap = nightOn(at(8, 13, 20), at(8, 13, 54), []);
+    expect(renderToStaticMarkup(createElement(NapLayout, { naps: [nap] }))).toContain(
+      'Nap · 34m asleep',
+    );
   });
 
   it('lists each score part with what it counts for', () => {

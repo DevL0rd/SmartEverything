@@ -226,6 +226,11 @@ describe('media paths', () => {
       talkMessage: '/media/talk/:messageId',
       computerDownload: '/media/computers/:deviceId/downloads/:ticketId',
       machineUpdate: '/media/machine-updates/:file',
+      appUpdateBlob: '/media/app-updates/:sha256',
+      homeMapScan: '/media/home-maps/:mapId/scans/:hash',
+      driveThumb: '/media/drive/:itemId/thumb/:size',
+      driveFile: '/media/drive/:itemId/file',
+      driveShare: '/s/:token',
     });
   });
 });

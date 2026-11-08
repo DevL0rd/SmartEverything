@@ -3,9 +3,9 @@ import { Dimensions } from 'react-native';
 import { ValueStore, useValue } from './external-store';
 import { SharedSource } from './shared-source';
 import { appPlatform, useIdiom, type AppPlatform } from './platform';
-import type { Idiom, WidthClass } from './tokens';
+import { WIDTH_BREAKPOINTS, type Idiom, type WidthClass } from './tokens';
 
-export type { WidthClass } from './tokens';
+export { WIDTH_BREAKPOINTS, type WidthClass } from './tokens';
 
 type HeightClass = 'compact' | 'medium' | 'expanded';
 
@@ -31,15 +31,13 @@ export interface SizeClass {
   readonly sheet: SheetKind;
 }
 
-export const WIDTH_BREAKPOINTS = { medium: 600, expanded: 840, large: 1200, xlarge: 1600 } as const;
-
 const HEIGHT_BREAKPOINTS = { medium: 480, expanded: 900 } as const;
 
 const NAV_WIDTH: Readonly<Record<NavKind, number>> = { bar: 0, rail: 80, sidebar: 264 };
 
 const SIDEBAR_COLLAPSED_WIDTH = 72;
 
-export const MASTER_WIDTH = 300;
+export const MASTER_WIDTH = 420;
 
 export const DETAIL_MIN_WIDTH = 560;
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CHAT_TOOL_ITEM } from './ai-chats';
+import { isUnknownArray } from './values';
 
 export const CHAT_TIMELINE_TOOL = CHAT_TOOL_ITEM.extend({
   state: z.enum(['running', 'done', 'failed', 'interrupted', 'unknown']),
@@ -25,10 +26,47 @@ export const CHAT_TIMELINE_EMBED = z.object({
 });
 export type ChatTimelineEmbed = z.infer<typeof CHAT_TIMELINE_EMBED>;
 
+export const CHAT_TODO_STATUSES = ['pending', 'in_progress', 'completed'] as const;
+export const CHAT_TODO_ITEM = z.object({
+  content: z.string().trim().min(1),
+  status: z.enum(CHAT_TODO_STATUSES),
+});
+export type ChatTodoItem = z.infer<typeof CHAT_TODO_ITEM>;
+export const CHAT_TODOS_KIND = 'chat_todos';
+export const CHAT_TODOS_EMBED = z.object({
+  kind: z.literal(CHAT_TODOS_KIND),
+  version: z.literal(1),
+  items: z.array(CHAT_TODO_ITEM),
+});
+export type ChatTodosEmbed = z.infer<typeof CHAT_TODOS_EMBED>;
+const TODO_WRITE_INPUT = z.object({ todos: z.array(CHAT_TODO_ITEM) });
+
+export function chatTodosOf(toolName: string, input: unknown): ChatTodosEmbed | null {
+  if (toolName !== TODO_TOOL_NAME) return null;
+  const text =
+    typeof input === 'string' ? input : input === undefined ? null : JSON.stringify(input);
+  if (text === null) return null;
+  const parsed = TODO_WRITE_INPUT.safeParse(parsedRecord(text));
+  return parsed.success ? { kind: CHAT_TODOS_KIND, version: 1, items: parsed.data.todos } : null;
+}
+
+export function chatTodosIn(embeds: readonly { readonly kind: string }[]): ChatTodosEmbed | null {
+  for (const embed of embeds) {
+    if (embed.kind !== CHAT_TODOS_KIND) continue;
+    const parsed = CHAT_TODOS_EMBED.safeParse(embed);
+    if (parsed.success) return parsed.data;
+  }
+  return null;
+}
+
 export const TIMELINE_FIELD_CHARS = 64_000;
 export const TIMELINE_BUDGET_CHARS = 512_000;
 
 export const TOOL_RESULT_PAGE_CHARS = 64_000;
+
+export const TODO_TOOL_NAME = 'todo_write';
+export const PLAN_TOOL_NAME = 'exit_plan_mode';
+export const SHELL_TOOL_NAMES: ReadonlySet<string> = new Set(['bash', 'pwsh']);
 
 export const AI_TOOL_RESULT_FIELDS = ['output', 'input'] as const;
 export const AI_TOOL_RESULT_PAGE = z.strictObject({
@@ -46,10 +84,6 @@ function clipped(value: string, limit: number): string {
   if (value.length <= limit) return value;
   const splitsPair = /[\uD800-\uDBFF]/.test(value.charAt(limit - 1));
   return value.slice(0, splitsPair ? (limit > 1 ? limit - 1 : 2) : limit);
-}
-
-function clippedField(value: string | null, limit: number): string | null {
-  return value === null ? null : clipped(value, limit);
 }
 
 export function toolResultPage(
@@ -77,12 +111,9 @@ function fullLength(value: string | null, shown: string | null): number | undefi
   return value === null || value === shown ? undefined : value.length;
 }
 
-function toolFieldCount(parts: readonly ChatTimelinePart[]): number {
+function toolOutputCount(parts: readonly ChatTimelinePart[]): number {
   return parts.reduce(
-    (count, part) =>
-      part.kind === 'tool'
-        ? count + Number(part.tool.input !== null) + Number(part.tool.output !== null)
-        : count,
+    (count, part) => (part.kind === 'tool' ? count + Number(part.tool.output !== null) : count),
     0,
   );
 }
@@ -94,25 +125,15 @@ export function boundedTimeline(
 ): ChatTimelineEmbed {
   const limit = Math.min(
     fieldChars,
-    Math.floor(budgetChars / Math.max(toolFieldCount(embed.parts), 1)),
+    Math.floor(budgetChars / Math.max(toolOutputCount(embed.parts), 1)),
   );
   const parts = embed.parts.map((part): ChatTimelinePart => {
     if (part.kind !== 'tool') return part;
-    const input = clippedField(part.tool.input, limit);
-    const output = clippedField(part.tool.output, limit);
-    if (input === part.tool.input && output === part.tool.output) return part;
-    const input_chars = fullLength(part.tool.input, input);
-    const output_chars = fullLength(part.tool.output, output);
-    return {
-      ...part,
-      tool: {
-        ...part.tool,
-        input,
-        output,
-        ...(input_chars === undefined ? {} : { input_chars }),
-        ...(output_chars === undefined ? {} : { output_chars }),
-      },
-    };
+    const full = part.tool.output;
+    if (full === null) return part;
+    const output = clipped(full, limit);
+    if (output === full) return part;
+    return { ...part, tool: { ...part.tool, output, output_chars: full.length } };
   });
   return parts.some((part, index) => part !== embed.parts[index]) ? { ...embed, parts } : embed;
 }
@@ -130,9 +151,10 @@ function clippedLeaf(value: string): string {
 
 function clippedLeaves(value: unknown): unknown {
   if (typeof value === 'string') return clippedLeaf(value);
-  if (Array.isArray(value)) return value.map(clippedLeaves);
+  if (isUnknownArray(value)) return value.map(clippedLeaves);
   if (value === null || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value).map(([key, leaf]) => [key, clippedLeaves(leaf)]));
+  const entries: readonly (readonly [string, unknown])[] = Object.entries(value);
+  return Object.fromEntries(entries.map(([key, leaf]) => [key, clippedLeaves(leaf)]));
 }
 
 function parsedRecord(text: string): unknown {
@@ -159,15 +181,30 @@ function compactField(
 ): string | null {
   if (value === null || value.length <= COMPACT_FIELD_CHARS) return value;
   const record = parsedRecord(value);
-  if (record === undefined) return clipped(value, COMPACT_FIELD_CHARS);
+  if (record === undefined) return field === 'input' ? value : clipped(value, COMPACT_FIELD_CHARS);
   if (field === 'output' && carriesFileEvidence(record)) return value;
   const text = JSON.stringify(clippedLeaves(record));
   return text.length < value.length ? text : value;
 }
 
+function isBackgroundShell(record: unknown): boolean {
+  return (
+    record !== null &&
+    typeof record === 'object' &&
+    'run_in_background' in record &&
+    record.run_in_background === true
+  );
+}
+
+function keepsInputWhole(tool: ChatTimelineTool): boolean {
+  if (tool.name === TODO_TOOL_NAME || tool.name === PLAN_TOOL_NAME) return true;
+  if (!SHELL_TOOL_NAMES.has(tool.name) || tool.input === null) return false;
+  return isBackgroundShell(parsedRecord(tool.input));
+}
+
 function compactTool(tool: ChatTimelineTool): ChatTimelineTool {
   if (tool.state === 'running') return tool;
-  const input = compactField(tool.input, 'input');
+  const input = keepsInputWhole(tool) ? tool.input : compactField(tool.input, 'input');
   const output = compactField(tool.output, 'output');
   if (input === tool.input && output === tool.output) return tool;
   const input_chars = fullLength(tool.input, input);

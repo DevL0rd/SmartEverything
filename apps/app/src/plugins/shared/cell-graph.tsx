@@ -1,8 +1,31 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { EmptyGraph, Sparkline, type ChartPoint } from '../../components/charts';
 import type { ColourRole } from '../../design/tokens';
-import { domainOf, MIN_LINE_POINTS } from './cell-graph-model';
+import { roomWithin } from '../../features/devices/sensors/layout';
+import { domainOf, GRAPH_HEAD_PX, graphFit, MIN_LINE_POINTS } from './cell-graph-model';
+
+export interface CellGraphSlotProps {
+  readonly cap: number;
+  readonly head: ReactNode;
+  readonly children: (height: number) => ReactNode;
+}
+
+export function CellGraphSlot({ cap, head, children }: CellGraphSlotProps): ReactNode {
+  const [room, setRoom] = useState<number | null>(null);
+  const fit = graphFit(cap, room);
+  return (
+    <View
+      onLayout={(event) => {
+        setRoom(roomWithin(cap + GRAPH_HEAD_PX, event.nativeEvent.layout.height));
+      }}
+      className="min-h-0 flex-1 justify-end gap-1"
+    >
+      {fit.head ? head : null}
+      {fit.height === null ? null : children(fit.height)}
+    </View>
+  );
+}
 
 interface GraphLine {
   readonly points: readonly ChartPoint[];

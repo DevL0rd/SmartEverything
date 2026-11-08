@@ -81,7 +81,7 @@ describe('the V3 engine end to end', () => {
     expect(rig.owned.list(row.id).map((value) => value.content.value)).toStrictEqual([50]);
   });
 
-  it('stores a node record for each value a run reads', async () => {
+  it('stores a node record with the value a run reads and the outputs a step resolves with', async () => {
     const rig = await rigV3();
     const row = rig.add(
       program([
@@ -102,7 +102,10 @@ describe('the V3 engine end to end', () => {
       status: 'succeeded',
       output_preview: { value: { value: 10 } },
     });
-    expect(stored[1]).toMatchObject({ status: 'succeeded', output_preview: null });
+    expect(stored[1]).toMatchObject({
+      status: 'succeeded',
+      output_preview: { value: { ok: true } },
+    });
     expect(stored[1]?.node_id).not.toBe(stored[0]?.node_id);
   });
 

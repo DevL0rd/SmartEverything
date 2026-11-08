@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Logger } from '@smarteverything/logging';
-import { CHAT_PAGE_PATH } from '@smarteverything/domain';
+import { CHAT_PAGE_PATH, CHAT_SERVER, SERVER_PAGE_PATH } from '@smarteverything/domain';
 import {
   browserMetadata,
   setBrowserMetadata,
@@ -17,10 +17,11 @@ import type { BrowserTabs } from './browser-tabs';
 
 const log = new Logger('app.browser-tabs');
 const TABS_KEY = z.tuple([z.string(), z.string(), z.string(), z.string()]);
-const SAVED_SOURCE = z.discriminatedUnion('kind', [
+const SAVED_SOURCE = z.union([
   z.strictObject({ kind: z.literal('blank') }),
   z.strictObject({ kind: z.literal('public'), url: z.url() }),
   z.strictObject({ kind: z.literal('project'), path: CHAT_PAGE_PATH }),
+  z.strictObject({ kind: z.literal('project'), path: SERVER_PAGE_PATH, server: CHAT_SERVER }),
 ]);
 const SAVED_TABS = z
   .strictObject({

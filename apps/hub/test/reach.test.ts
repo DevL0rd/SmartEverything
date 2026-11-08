@@ -1,6 +1,6 @@
 import { systemClock } from '../src/clock';
 import {
-  DEFAULT_ENGINE,
+  API_ENDPOINTS,
   type AiOutreachRow,
   type AiSpeechNotice,
   type ClientRow,
@@ -15,8 +15,9 @@ import { CameraFraming } from '../src/reach/camera-framing';
 import { ReachRefusedError } from '../src/reach/reach-errors';
 import type { Asker } from '../src/reach/reach-guards';
 import { ReachRules, insideQuiet } from '../src/reach/reach-rules';
-import { ReachService } from '../src/reach/reach-service';
+import { ReachService, type PersonNotice } from '../src/reach/reach-service';
 import type { PushCommandOutcome } from '../src/extensions/push/commands';
+import { toolNamed } from '../src/extensions/mcp/tools';
 import { ringTransports } from '../src/reach/ring-transports';
 import type { RingTransport } from '../src/reach/ringing';
 import { CameraMicrophones } from '../src/talk/camera-microphone';
@@ -28,6 +29,7 @@ import { idleHostedCall } from './support/hosted-call';
 import { FakeClock } from './support/fake-clock';
 import { testLogger } from './support/logs';
 import { testStore, type TestStore } from './support/store';
+import { TEST_ENGINE } from './support/engine';
 
 const START = '2026-10-08T10:00:00.000Z';
 
@@ -44,6 +46,7 @@ interface Bench {
   readonly cancelled: string[];
   readonly hosted: HostedCallRequest[];
   readonly announced: SpeechRequest[];
+  readonly notices: { personId: string; notice: PersonNotice }[];
   readonly delivered: AiSpeechNotice[];
   readonly computerSent: ListeningHubMessage[];
   reachable: boolean;
@@ -107,7 +110,7 @@ async function bench(): Promise<Bench> {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   });
   const phone = store.clients.create({
     name: 'Pixel',
@@ -122,6 +125,7 @@ async function bench(): Promise<Bench> {
       turns: [],
       hosted: [],
       announced: [],
+      notices: [],
       delivered: [],
       computerSent: [],
       reachable: true,
@@ -146,7 +150,10 @@ async function bench(): Promise<Bench> {
       turn: (chatId, text): void => {
         parts.turns.push({ chatId, text });
       },
-      message: (): Promise<string> => Promise.resolve(chat.id),
+      message: (_asker, personId, notice): Promise<string> => {
+        parts.notices.push({ personId, notice });
+        return Promise.resolve(chat.id);
+      },
       aiName: (): string => 'Coordinator',
       liveVideo: (): boolean => false,
       muteMic: (): boolean => false,
@@ -362,6 +369,71 @@ describe('voice_speak', () => {
       }),
     ).rejects.toThrow(/No camera or app has that id/);
     expect(current.announced).toHaveLength(0);
+  });
+});
+
+describe('person_notify and voice_speak through the tool path', () => {
+  const PICTURE = '2f4c7d1e-6b1a-4a5e-9c1d-0a2b3c4d5e6f';
+
+  it('person_notify takes the picture, tag, link and sound and the notification gets them', async () => {
+    const args = {
+      personId: current.asker.profileId,
+      text: 'Door open',
+      urgent: true,
+      image: PICTURE,
+      tag: 'door',
+      link: '/cameras',
+      sound: 'chime',
+    };
+    expect(toolNamed('person_notify')?.input?.safeParse(args).success).toBe(true);
+    await current.service.notify(current.asker, API_ENDPOINTS.notifyPerson.body.parse(args));
+    expect(current.notices).toStrictEqual([
+      {
+        personId: current.asker.profileId,
+        notice: {
+          text: 'Door open',
+          image: PICTURE,
+          tag: 'door',
+          link: '/cameras',
+          sound: 'chime',
+        },
+      },
+    ]);
+  });
+
+  it('person_notify without the extras still sends only the text', async () => {
+    const args = { personId: current.asker.profileId, text: 'Hello' };
+    await current.service.notify(current.asker, API_ENDPOINTS.notifyPerson.body.parse(args));
+    expect(current.notices[0]?.notice).toStrictEqual({
+      text: 'Hello',
+      image: undefined,
+      tag: undefined,
+      link: undefined,
+      sound: undefined,
+    });
+  });
+
+  it('voice_speak takes the priority, volume and voice and the speech gets the voice and volume', async () => {
+    const args = {
+      target: { kind: 'device', deviceId: current.phone.id },
+      text: 'Dinner',
+      priority: 'interrupt',
+      volume: 40,
+      voice: 'Kore',
+    };
+    expect(toolNamed('voice_speak')?.input?.safeParse(args).success).toBe(true);
+    await current.service.speak(current.asker, API_ENDPOINTS.speak.body.parse(args));
+    expect(spoken()).toMatchObject({ text: 'Dinner', voice: 'Kore', volume: 40 });
+  });
+
+  it('voice_speak refuses a volume above 100 and a voice that does not exist', () => {
+    const target = { kind: 'device', deviceId: current.phone.id };
+    expect(API_ENDPOINTS.speak.body.safeParse({ target, text: 'x', volume: 101 }).success).toBe(
+      false,
+    );
+    expect(API_ENDPOINTS.speak.body.safeParse({ target, text: 'x', voice: 'Nobody' }).success).toBe(
+      false,
+    );
   });
 });
 

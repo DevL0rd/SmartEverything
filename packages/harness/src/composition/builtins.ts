@@ -14,7 +14,6 @@ import {
   HARNESS_CLAUDE_PLUGINS_VERSION,
 } from './claude-plugin-metadata';
 import { mountManagedPlugins } from './claude-plugins';
-import type { PluginAgentPort } from './plugin-agent-port';
 import { mountNativeSkills, SKILLS_CONFIG } from './skills';
 import { builtinMetadata, HARNESS_DSH_VERSION } from './builtin-metadata';
 import { mountHeadlessBrowser } from './browser';
@@ -130,7 +129,6 @@ export function desiredHarnessConfiguration(
 export function installedHarnessBuiltins(
   host: HarnessHost,
   assets?: HarnessSkillAssets,
-  pluginAgents?: PluginAgentPort,
 ): readonly InstalledHarnessPlugin[] {
   return [
     {
@@ -140,7 +138,7 @@ export function installedHarnessBuiltins(
       mount: mountCodeIndexer,
     },
     installedSkills(host, assets),
-    installedManagedPlugins(host, assets, pluginAgents),
+    installedManagedPlugins(host, assets),
     {
       ...installed(BROWSER),
       platforms: ['linux'],
@@ -192,19 +190,18 @@ function installedSkills(
 function installedManagedPlugins(
   host: HarnessHost,
   assets: HarnessSkillAssets | undefined,
-  pluginAgents?: PluginAgentPort,
 ): InstalledHarnessPlugin {
   return {
     ...installed(CLAUDE_PLUGINS),
     platforms: ALL_PLATFORMS,
     serverSafe: true,
-    mount: (ctx, config) => mountManagedPlugins(ctx, config, [], pluginAgents),
+    mount: (ctx, config) => mountManagedPlugins(ctx, config, []),
     resolve: async (entry): Promise<InstalledHarnessPlugin> => {
       const acquired = await acquire(assets, 'plugin', entry);
       return {
-        ...installedManagedPlugins(host, assets, pluginAgents),
+        ...installedManagedPlugins(host, assets),
         metadata: withAssets(CLAUDE_PLUGINS, acquired),
-        mount: (ctx, config) => mountManagedPlugins(ctx, config, acquired, pluginAgents),
+        mount: (ctx, config) => mountManagedPlugins(ctx, config, acquired),
       };
     },
   };

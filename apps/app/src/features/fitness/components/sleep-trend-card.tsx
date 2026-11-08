@@ -44,7 +44,11 @@ export function SleepTrendCard({
   }
   const span: BarsSpan = window.range === 'day' ? 'week' : window.range;
   return (
-    <Card title="Time asleep" icon="moon" action={<RangeLabel text={windowLabel(window, today)} />}>
+    <Card
+      title="Time asleep"
+      icon="moon"
+      metadata={<RangeLabel text={windowLabel(window, today)} />}
+    >
       <Figure value={hoursMinutes(trend.average.minutes)} unit="average per night" size="l" />
       <StageMixBars
         columns={mixColumnsOf(trend, months)}

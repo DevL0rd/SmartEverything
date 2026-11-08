@@ -1,5 +1,5 @@
 import type { SyncthingFolder } from '@smarteverything/domain';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { ReactNode } from 'react';
 import { Badge } from '../../../components/badge';
 import { ListRow } from '../../../components/list-row';
@@ -18,7 +18,7 @@ export function FolderRow({
 }: {
   readonly folder: SyncthingFolder;
   readonly onPress?: () => void;
-  readonly href?: Href;
+  readonly href?: AppHref;
 }): ReactNode {
   const state = folderState(folder);
   const kind = kindChip(folder);

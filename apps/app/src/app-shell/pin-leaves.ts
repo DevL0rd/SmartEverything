@@ -1,10 +1,11 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import { parsePluginPageRoute, type NavPinTarget } from '@smarteverything/domain';
 import { navTargetHref, pathnameOf } from './nav-targets';
 import {
   AUTOMATION,
   CAMERA,
   DEVICE,
+  DRIVE,
   GROUP,
   leafIdOf,
   PLUGIN_PAGE,
@@ -20,7 +21,7 @@ export interface PinLeaf {
   readonly group: string;
   readonly route: string;
   readonly params: RouteParams;
-  readonly href: Href;
+  readonly href: AppHref;
 }
 
 function made(leaf: LeafRoute, params: RouteParams): PinLeaf {
@@ -43,10 +44,21 @@ function leafOfPage(target: Extract<NavPinTarget, { readonly kind: 'page' }>): P
   return found === undefined ? null : made(found, {});
 }
 
+function leafOfDrive(target: Extract<NavPinTarget, { readonly kind: 'drive' }>): PinLeaf {
+  return made(DRIVE, {
+    rootId: target.rootId,
+    path: target.path,
+    ...(target.itemId === null ? {} : { item: target.itemId }),
+    ...(target.focus === null ? {} : { focus: target.focus }),
+  });
+}
+
 export function pinLeafOf(target: NavPinTarget): PinLeaf | null {
   switch (target.kind) {
     case 'device':
       return made(DEVICE, { deviceId: target.deviceId });
+    case 'drive':
+      return leafOfDrive(target);
     case 'camera':
       return made(CAMERA, { cameraId: target.deviceId });
     case 'room':

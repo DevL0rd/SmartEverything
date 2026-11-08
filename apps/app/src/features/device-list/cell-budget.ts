@@ -2,6 +2,7 @@ import { act, createElement, Profiler, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   LIVE_CHANGE,
+  SETTINGS_ROW,
   type DeviceCapability,
   type DeviceKind,
   type DeviceRow,
@@ -11,7 +12,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CommandLedger,
   DeviceSpotlightWidget,
-  DeviceVisual,
   EntityStore,
   LIGHTING,
   LightingContext,
@@ -21,17 +21,15 @@ import {
   deviceFixture,
   cellNodes as nodes,
   stateFixture,
-  visualStateOf,
 } from './cell-mocks';
-import type { VisualState } from '../device-visuals';
 import type { StoreState } from '../../store/state';
 import { startClock } from '../../store/clock';
 import type { WidgetFrameBox } from '../../components/widget-board';
 import { treeOf } from './cell-tree';
 
-const DEVICE = '00000000-0000-4000-8000-000000000001';
+export const DEVICE = '00000000-0000-4000-8000-000000000001';
 const OTHER = '00000000-0000-4000-8000-000000000002';
-const STAMP = '2026-10-16T08:00:00.000Z';
+export const STAMP = '2026-10-16T08:00:00.000Z';
 const LATER = '2026-10-16T08:05:00.000Z';
 
 export type Spec = readonly [DeviceCapability['key'], DeviceCapability['value']];
@@ -58,9 +56,28 @@ const FRAMES = {
   M: { width: 300, height: 190, idiom: 'touch' },
 } as const;
 
+const SETTINGS = SETTINGS_ROW.parse({
+  home_name: 'Home',
+  time_zone: 'UTC',
+  latitude: null,
+  longitude: null,
+  public_url: null,
+  public_url_checked_at: null,
+  public_url_verified_at: null,
+  public_url_error: null,
+  ice_servers: [],
+  webrtc_candidates: [],
+  push_project_id: null,
+  updated_at: STAMP,
+});
+
+export function withSettings(state: StoreState): StoreState {
+  return { ...state, settings: SETTINGS };
+}
+
 const SIGNAL: Spec = ['signal_strength', { kind: 'number', min: 0, max: 100, step: 1 }];
 
-function capabilities(specs: readonly Spec[]): DeviceCapability[] {
+export function capabilities(specs: readonly Spec[]): DeviceCapability[] {
   return [...specs, SIGNAL].map(([key, value]) => ({
     key,
     label: key,
@@ -104,7 +121,7 @@ let frames: (() => void)[] = [];
 let hookCalls: Readonly<Record<string, number>> = {};
 let breakdown: Readonly<Record<string, number>> = {};
 
-function flushFrames(): void {
+export function flushFrames(): void {
   const due = frames;
   frames = [];
   for (const callback of due) callback();
@@ -132,7 +149,7 @@ function storeOf(face: Face): {
   return { id: device.id, store };
 }
 
-function containerOf(): object {
+export function containerOf(): object {
   return {
     nodeType: 1,
     tagName: 'DIV',
@@ -324,56 +341,4 @@ export function budgetCase(
       });
     }
   });
-}
-
-export interface VisualCase {
-  readonly kind: DeviceKind;
-  readonly model?: string;
-  readonly specs: readonly Spec[];
-  readonly facts?: Partial<VisualState>;
-}
-
-export function renderVisual(
-  visual: VisualCase,
-  values: Readonly<Record<string, number | boolean | string>>,
-  size: 'tile' | 'card' | 'hero',
-  px: 48 | 96 | 220,
-): { readonly count: number; readonly tree: string } {
-  const device = deviceFixture(0, {
-    id: DEVICE,
-    kind: visual.kind,
-    model: visual.model ?? 'test.model',
-    capabilities: capabilities(visual.specs),
-  });
-  const observed = Object.fromEntries(
-    Object.entries(values).map(([key, value]) => [key, { value, observedAt: STAMP }]),
-  );
-  const container = containerOf();
-  const root = createRoot(container);
-  nodes.count = 0;
-  act(() => {
-    root.render(
-      createElement(
-        PaletteContext,
-        { value: PALETTE },
-        createElement(
-          LightingContext,
-          { value: LIGHTING.light },
-          createElement(DeviceVisual, {
-            device,
-            size,
-            px,
-            state: { ...visualStateOf({ ...device, online: true }, observed), ...visual.facts },
-          }),
-        ),
-      ),
-    );
-  });
-  flushFrames();
-  const count = nodes.count;
-  const tree = treeOf(container);
-  act(() => {
-    root.unmount();
-  });
-  return { count, tree };
 }

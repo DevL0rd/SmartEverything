@@ -16,7 +16,7 @@ import { AutomationsScreen } from '../list/automations-screen';
 import { AutomationsMaster, AutomationsOverviewPane } from '../list/master';
 import type { ListEnvironment } from '../list/use-list';
 import { links } from '../routes';
-import { isEditorPath, LIST_LINKS } from './host-links';
+import { isEditorPath, LIST_LINKS, workspaceSectionOf } from './host-links';
 import { useFunctionLookup, usePlace, useRefNames } from './use-environment';
 
 const NO_UPDATES: ReadonlySet<string> = new Set();
@@ -51,21 +51,23 @@ export function AutomationsMasterHost(): ReactNode {
   const environment = useListEnvironment();
   const onNew = useCreate();
   const { automationId } = useGlobalSearchParams<{ automationId?: string }>();
+  const section = workspaceSectionOf(usePathname());
   return (
     <AutomationsMaster
       environment={environment}
       links={LIST_LINKS}
       onNew={onNew}
       selectedId={automationId ?? null}
+      section={section}
     />
   );
 }
 
 export function AutomationsIndexHost(): ReactNode {
   const environment = useListEnvironment();
-  const { width } = useSizeClass();
+  const { split } = useSizeClass();
   const onNew = useCreate();
-  return width === 'large' || width === 'xlarge' ? (
+  return split ? (
     <AutomationsOverviewPane environment={environment} links={LIST_LINKS} />
   ) : (
     <AutomationsScreen environment={environment} links={LIST_LINKS} onNew={onNew} />
@@ -73,10 +75,10 @@ export function AutomationsIndexHost(): ReactNode {
 }
 
 export function AutomationsLayoutHost(): ReactNode {
-  const { width } = useSizeClass();
+  const size = useSizeClass();
   const options = useStackOptions();
   const editing = isEditorPath(usePathname());
-  const split = !editing && (width === 'large' || width === 'xlarge');
+  const split = !editing && size.split;
   const stack = (
     <Stack
       initialRouteName="index"
@@ -92,7 +94,6 @@ export function AutomationsLayoutHost(): ReactNode {
   return (
     <MasterDetail
       split={split}
-      masterWidth="popover"
       master={<AutomationsMasterHost />}
       detail={<View className="flex-1">{stack}</View>}
     />

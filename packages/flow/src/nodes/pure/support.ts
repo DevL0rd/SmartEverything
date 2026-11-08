@@ -1,4 +1,4 @@
-import { NODE_REGISTRY } from '@smarteverything/domain';
+import type { NodeKindLookup } from '@smarteverything/domain';
 import type { ErrorClass, JsonValue } from '@smarteverything/domain';
 import type { NodeResult, Outputs, PureEvaluator, PureRequest } from '../../interpret/frames';
 
@@ -69,16 +69,16 @@ export interface Ports {
   readonly record: (name: string) => JsonRecord;
 }
 
-function declaredDefault(kind: string, name: string): JsonValue | undefined {
-  return NODE_REGISTRY.get(kind)?.inputs.find((port) => port.name === name)?.default;
+function declaredDefault(kinds: NodeKindLookup, kind: string, name: string): JsonValue | undefined {
+  return kinds.get(kind)?.inputs.find((port) => port.name === name)?.default;
 }
 
-export function readPorts(request: PureRequest): Ports {
+export function readPorts(request: PureRequest, kinds: NodeKindLookup): Ports {
   const { kind } = request;
   const raw = (name: string): JsonValue | undefined => {
     const got = request.ports.get(name);
     if (got !== undefined && !got.ok) return fail(got.class, got.message);
-    return got?.value === undefined ? declaredDefault(kind, name) : got.value;
+    return got?.value === undefined ? declaredDefault(kinds, kind, name) : got.value;
   };
   const need = (name: string): JsonValue => {
     const value = raw(name);
@@ -116,11 +116,15 @@ export type PureBody = (ports: Ports, environment: PureEnvironment) => Outputs;
 
 export type PureBodies = Readonly<Record<string, PureBody>>;
 
-export function evaluatorOf(body: PureBody, environment: PureEnvironment): PureEvaluator {
+export function evaluatorOf(
+  body: PureBody,
+  environment: PureEnvironment,
+  kinds: NodeKindLookup,
+): PureEvaluator {
   return {
     evaluate: (request): NodeResult => {
       try {
-        return { ok: true, value: body(readPorts(request), environment) };
+        return { ok: true, value: body(readPorts(request, kinds), environment) };
       } catch (error) {
         if (error instanceof PureFailure) {
           return { ok: false, class: error.errorClass, message: error.message };

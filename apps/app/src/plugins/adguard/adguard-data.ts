@@ -89,7 +89,7 @@ export function adguardNotice(snapshot: AdGuardSnapshot): PluginNoticeText | nul
   }
 }
 
-const PAGE_REPLY = z.strictObject({ page: QUERY_LOG_PAGE });
+const PAGE_REPLY = z.object({ page: QUERY_LOG_PAGE });
 
 const PAGE_SIZE = 50;
 
@@ -120,18 +120,18 @@ export function queryLogOptions(search: string, filter: QueryLogFilter): QueryLo
     queryFn: async ({ pageParam }): Promise<QueryLogPage> => {
       const page = parsePluginReply(
         ADGUARD_PLUGIN,
-        'query_log',
+        'find_lookups',
         PAGE_REPLY,
-        await readPluginTool(ADGUARD_PLUGIN, 'query_log', {
+        await readPluginTool(ADGUARD_PLUGIN, 'find_lookups', {
           search,
-          filter,
+          outcome: filter,
           olderThan: pageParam,
           limit: PAGE_SIZE,
         }),
       ).page;
       pluginLog.debug('plugin_query.fetched', {
         pluginId: ADGUARD_PLUGIN,
-        query: 'query_log',
+        query: 'find_lookups',
         filter,
         searchLength: search.length,
         firstPage: pageParam === FIRST_PAGE,

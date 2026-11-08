@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { View } from 'react-native';
 import type { PresentedCapability, JsonValue } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
@@ -97,6 +97,7 @@ function Field({
   );
 }
 interface FormProps {
+  readonly opener: RefObject<View | null>;
   readonly device: Device;
   readonly presented: PresentedCapability;
   readonly spec: MicrowaveFormSpec;
@@ -114,7 +115,7 @@ function buildFailure(device: Device, presented: PresentedCapability, cause: unk
   return reason;
 }
 
-function StructuredSheet({ device, presented, spec, onClose }: FormProps): ReactNode {
+function StructuredSheet({ device, presented, spec, onClose, opener }: FormProps): ReactNode {
   const control = useControl(device.id, presented.key);
   const [given, setGiven] = useState(initialValues(spec, control.value));
   const [error, setError] = useState<string | null>(null);
@@ -127,15 +128,14 @@ function StructuredSheet({ device, presented, spec, onClose }: FormProps): React
     try {
       const payload = spec.build(given);
       setError(null);
-      if (await control.set(payload)) {
-        onClose();
-      }
+      if (await control.set(payload)) onClose();
     } catch (cause) {
       setError(buildFailure(device, presented, cause));
     }
   };
   return (
     <Sheet
+      subpage={{ opener }}
       open
       title={presented.label}
       detents={['full']}
@@ -172,6 +172,7 @@ export function MicrowaveStructuredRow({
   readonly presented: PresentedCapability;
 }): ReactNode {
   const [open, setOpen] = useState(false);
+  const opener = useRef<View>(null);
   const values = useDeviceValues(device.id);
   const spec = MICROWAVE_FORM_SPECS[presented.key];
   if (spec === undefined || (!spec.cooking && values[UPDATE_AVAILABLE_KEY]?.value !== true)) {
@@ -180,6 +181,7 @@ export function MicrowaveStructuredRow({
   return (
     <>
       <ListRow
+        pressRef={opener}
         title={presented.label}
         icon="customize"
         chevron
@@ -189,6 +191,7 @@ export function MicrowaveStructuredRow({
       />
       {open ? (
         <StructuredSheet
+          opener={opener}
           device={device}
           presented={presented}
           spec={spec}

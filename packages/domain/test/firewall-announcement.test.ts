@@ -15,6 +15,7 @@ describe('device announcement rules', () => {
       backend: 'ufw',
       revision: REVISION,
       rules: [{ rule: ANNOUNCEMENT, prepend: false }],
+      mac: null,
       unprivilegedPortStart: null,
     };
     expect(firewallScript(plan)).toEqual([

@@ -75,7 +75,7 @@ const ROWS: readonly (readonly [string, z.ZodType, Readonly<Record<string, unkno
   [
     'MCP_TOKEN_ROW',
     MCP_TOKEN_ROW,
-    { id: ID, name: 'Agent', created_at: AT, last_used_at: null, revoked_at: null },
+    { id: ID, name: 'Agent', access: 'read', created_at: AT, last_used_at: null, revoked_at: null },
   ],
   [
     'PLUGIN_STREAM_ROW',

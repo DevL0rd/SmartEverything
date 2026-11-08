@@ -1,0 +1,175 @@
+import { z } from 'zod';
+import {
+  API_ENDPOINTS as E,
+  ApiError,
+  type DriveItemLink,
+  type DriveRoot,
+  type DriveTrashEntry,
+} from '@smarteverything/domain';
+import { listHostFoldersOf } from '../../drive/host-folders';
+import { decodeCursor, encodeCursor } from '../../drive/search';
+import { DRIVE_PAGE_SIZE, type DriveActor } from '../../drive/service-read';
+import type { Store } from '../../store/store';
+import { driveFileLink } from '../drive-files';
+import { DONE_REPLY, bound, type Routes } from '../router';
+import { refusing } from './drive-errors';
+import {
+  actorOf,
+  callerOf,
+  viewerOf,
+  type DrivePage,
+  type DriveServices,
+  type RootPageQuery,
+} from './drive-services';
+import { listVolumes } from './drive-volumes';
+
+type DriveLibraryRoute =
+  | 'addRoot'
+  | 'updateRoot'
+  | 'removeRoot'
+  | 'scanRoot'
+  | 'listVolumes'
+  | 'listHostFolders'
+  | 'itemLinks'
+  | 'searchDrive'
+  | 'changeDrive'
+  | 'readDriveStats'
+  | 'listDuplicates'
+  | 'listTrash';
+
+const TRASH_CURSOR = z.strictObject({
+  rootId: z.uuid(),
+  after: z.strictObject({ deletedAt: z.string().min(1), itemId: z.string().min(1) }).nullable(),
+});
+
+function linksOf(
+  services: DriveServices,
+  actor: DriveActor,
+  itemIds: readonly string[],
+): DriveItemLink[] {
+  return itemIds.map((itemId) => {
+    const item = services.read.readItem(actor, itemId);
+    const file = driveFileLink(services.files, actor, itemId);
+    const ready = item.kind !== 'folder' && item.thumb.state === 'ready';
+    const { links } = services.files;
+    return {
+      itemId,
+      rev: item.rev,
+      file,
+      thumb: ready ? links.driveThumb(itemId, 'thumb', item.rev) : null,
+      preview: ready ? links.driveThumb(itemId, 'preview', item.rev) : null,
+    };
+  });
+}
+
+function trashRoots(
+  services: DriveServices,
+  actor: DriveActor,
+  query: RootPageQuery,
+): readonly DriveRoot[] {
+  const roots =
+    query.rootId === undefined
+      ? services.read.listRoots(actor)
+      : [services.read.rootFor(actor, query.rootId)];
+  return roots.toSorted((left, right) => left.id.localeCompare(right.id));
+}
+
+function trashStart(
+  roots: readonly DriveRoot[],
+  cursor: z.infer<typeof TRASH_CURSOR> | null,
+): number {
+  if (cursor === null) return 0;
+  const start = roots.findIndex((root) => root.id === cursor.rootId);
+  if (start < 0) throw new ApiError('invalid_request', 'The cursor is not one this list gave out.');
+  return start;
+}
+
+function trashPage(
+  store: Store,
+  services: DriveServices,
+  actor: DriveActor,
+  query: RootPageQuery,
+): DrivePage<DriveTrashEntry> {
+  const roots = trashRoots(services, actor, query);
+  const cursor = query.cursor === undefined ? null : decodeCursor(TRASH_CURSOR, query.cursor);
+  const first = trashStart(roots, cursor);
+  const items: DriveTrashEntry[] = [];
+  for (let index = first; index < roots.length; index += 1) {
+    const root = roots[index];
+    if (root === undefined) break;
+    const after = index === first && cursor !== null ? cursor.after : null;
+    const window = store.driveTrash.inRoot(root.id, after, DRIVE_PAGE_SIZE - items.length);
+    items.push(...window.entries);
+    if (window.next !== null) {
+      return { items, next: encodeCursor({ rootId: root.id, after: window.next }) };
+    }
+    const following = roots[index + 1];
+    if (items.length >= DRIVE_PAGE_SIZE) {
+      return {
+        items,
+        next: following === undefined ? null : encodeCursor({ rootId: following.id, after: null }),
+      };
+    }
+  }
+  return { items, next: null };
+}
+
+function hostFoldersRoute(
+  store: Store,
+  services: DriveServices,
+): Routes<'listHostFolders'>['listHostFolders'] {
+  return bound(E.listHostFolders, ({ query }) =>
+    refusing(() =>
+      listHostFoldersOf(() => listVolumes(services.probe, store.driveRoots.list()), query.path),
+    ),
+  );
+}
+
+export function driveLibraryRoutes(
+  store: Store,
+  services: DriveServices,
+): Routes<DriveLibraryRoute> {
+  const { write } = services;
+  return {
+    addRoot: bound(E.addRoot, ({ body, caller }) =>
+      refusing(() => write.addRoot(callerOf(store, caller), body)),
+    ),
+    updateRoot: bound(E.updateRoot, ({ params, body, caller }) =>
+      refusing(() => write.updateRoot(callerOf(store, caller), params.rootId, body)),
+    ),
+    removeRoot: bound(E.removeRoot, ({ params, caller }) =>
+      refusing(async () => {
+        await write.removeRoot(callerOf(store, caller), params.rootId);
+        return DONE_REPLY;
+      }),
+    ),
+    scanRoot: bound(E.scanRoot, ({ params, caller }) =>
+      refusing(() => {
+        write.scanRoot(callerOf(store, caller), params.rootId);
+        return DONE_REPLY;
+      }),
+    ),
+    listVolumes: bound(E.listVolumes, () => listVolumes(services.probe, store.driveRoots.list())),
+    listHostFolders: hostFoldersRoute(store, services),
+    itemLinks: bound(E.itemLinks, ({ body, caller }) =>
+      refusing(() => linksOf(services, actorOf(store, caller), body.itemIds)),
+    ),
+    searchDrive: bound(E.searchDrive, ({ body, caller }) =>
+      refusing(() =>
+        store.driveSearch.search(viewerOf(actorOf(store, caller)), body, DRIVE_PAGE_SIZE),
+      ),
+    ),
+    changeDrive: bound(E.changeDrive, ({ body, caller }) =>
+      refusing(() => write.change(callerOf(store, caller), body)),
+    ),
+    readDriveStats: bound(E.readDriveStats, ({ caller }) =>
+      store.driveStats.read(viewerOf(actorOf(store, caller)), services.probe.space),
+    ),
+    listDuplicates: bound(E.listDuplicates, ({ query, caller }) =>
+      refusing(() => services.listings.duplicates(actorOf(store, caller), query)),
+    ),
+    listTrash: bound(E.listTrash, ({ query, caller }) =>
+      refusing(() => trashPage(store, services, actorOf(store, caller), query)),
+    ),
+  };
+}

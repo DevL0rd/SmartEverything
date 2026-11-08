@@ -141,6 +141,7 @@ export class Operations {
           query: queryOf(input.query ?? {}),
           body: input.body,
           remote: 'mcp',
+          headers: {},
         },
         this.log,
       );

@@ -1,17 +1,21 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Keyboard, View } from 'react-native';
 import { withRole, type CapabilityRole } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { IconButton } from '../../../components/icon-button';
 import { Sheet } from '../../../components/sheet';
 import { SplitRing } from '../../../components/split-ring';
+import { useInActionBand } from '../../../components/widget-board/band-context';
+import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
+import { useThemeSetting } from '../../../design/theme';
+import { SEMANTIC_SIZES } from '../../../design/tokens';
 import type { Device } from '../../../store/state';
 import { useDeviceColour } from '../../device-visuals';
 import { ControlBlock } from '../controls/control-block';
 import { useDeviceModel } from '../model/device-model';
-import { useDiffuserRead } from './use-diffuser';
 
-const RING_SIZE = 38;
+const RING_INSET = 8;
 const RING_EDGE = 2;
 const LIGHT_ROLES: readonly CapabilityRole[] = ['ambient_light', 'color', 'brightness'];
 
@@ -29,10 +33,20 @@ function LightControls({ device }: { readonly device: Device }): ReactNode {
   );
 }
 
-function Swatch({ device, label }: { readonly device: Device; readonly label: string }): ReactNode {
+function Swatch({
+  device,
+  lit,
+  label,
+  box,
+}: {
+  readonly device: Device;
+  readonly lit: boolean;
+  readonly label: string;
+  readonly box: number;
+}): ReactNode {
   const colour = useDeviceColour(device);
-  const { light } = useDiffuserRead(device);
-  const ring = { width: RING_SIZE + RING_EDGE, height: RING_SIZE + RING_EDGE };
+  const outer = box - RING_INSET;
+  const ring = { width: outer, height: outer };
   return (
     <>
       <View
@@ -42,8 +56,8 @@ function Swatch({ device, label }: { readonly device: Device; readonly label: st
       />
       <View className="absolute" pointerEvents="none">
         <SplitRing
-          colours={colour === null || light !== true || !device.online ? [] : [colour]}
-          size={RING_SIZE}
+          colours={colour === null || !lit || !device.online ? [] : [colour]}
+          size={outer - RING_EDGE}
           label={label}
         />
       </View>
@@ -51,14 +65,61 @@ function Swatch({ device, label }: { readonly device: Device; readonly label: st
   );
 }
 
-export function LightSheetButton({ device }: { readonly device: Device }): ReactNode {
+function LightSheet({
+  device,
+  label,
+  opener,
+  open,
+  onOpen,
+}: {
+  readonly device: Device;
+  readonly label: string;
+  readonly opener: RefObject<View | null>;
+  readonly open: boolean;
+  readonly onOpen: (open: boolean) => void;
+}): ReactNode {
+  const close = (): void => {
+    onOpen(false);
+  };
+  return (
+    <Sheet
+      subpage={{ opener }}
+      detents={['fit', 'full']}
+      footer={<Button label="Done" onPress={close} />}
+      open={open}
+      onClose={close}
+      title={label}
+    >
+      <LightControls device={device} />
+    </Sheet>
+  );
+}
+
+export function LightSheetButton({
+  device,
+  lit,
+}: {
+  readonly device: Device;
+  readonly lit: boolean;
+}): ReactNode {
   const [open, setOpen] = useState(false);
+  const opener = useRef<View>(null);
   const label = `${device.label} light`;
+  const banded = useInActionBand();
+  const sizes = SEMANTIC_SIZES[useIdiom()][useThemeSetting('density')];
   return (
     <>
-      <View className="size-touch-min items-center justify-center">
-        <Swatch device={device} label={label} />
+      <View
+        className={cn('items-center justify-center', banded ? 'size-control-h' : 'size-touch-min')}
+      >
+        <Swatch
+          device={device}
+          lit={lit}
+          label={label}
+          box={banded ? sizes.controlH : sizes.touchMin}
+        />
         <IconButton
+          ref={opener}
           icon="palette"
           label={label}
           disabled={!device.online}
@@ -68,24 +129,7 @@ export function LightSheetButton({ device }: { readonly device: Device }): React
           }}
         />
       </View>
-      <Sheet
-        detents={['fit', 'full']}
-        footer={
-          <Button
-            label="Done"
-            onPress={() => {
-              setOpen(false);
-            }}
-          />
-        }
-        open={open}
-        onClose={() => {
-          setOpen(false);
-        }}
-        title={label}
-      >
-        <LightControls device={device} />
-      </Sheet>
+      <LightSheet device={device} label={label} opener={opener} open={open} onOpen={setOpen} />
     </>
   );
 }

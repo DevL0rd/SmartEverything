@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { buttonLabel } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
@@ -37,10 +37,13 @@ function FixMenu({ source }: { readonly source: RemoteSource }): ReactNode {
       },
     },
   ];
-  const { ref, open, menu } = useAnchoredMenu(items, 'It didn’t work?');
+  const opener = useRef<View>(null);
+  const { ref, open, menu } = useAnchoredMenu(items, 'It didn’t work?', {
+    withinSheet: { opener },
+  });
   return (
     <View ref={ref} collapsable={false}>
-      <Button label="It didn’t work?" variant="text" icon="info" onPress={open} />
+      <Button ref={opener} label="It didn’t work?" variant="text" icon="info" onPress={open} />
       {menu}
     </View>
   );
@@ -71,7 +74,8 @@ function CheckMenu({ remoteId }: { readonly remoteId: string }): ReactNode {
     })),
     ...stop,
   ];
-  const { ref, open, menu } = useAnchoredMenu(items, 'Check with');
+  const opener = useRef<View>(null);
+  const { ref, open, menu } = useAnchoredMenu(items, 'Check with', { withinSheet: { opener } });
   if (candidates.length === 0) {
     return null;
   }
@@ -79,6 +83,7 @@ function CheckMenu({ remoteId }: { readonly remoteId: string }): ReactNode {
   return (
     <View ref={ref} collapsable={false}>
       <Button
+        ref={opener}
         label={chosen === undefined ? 'Check with a plug' : `Check with ${chosen.label}`}
         variant="text"
         icon="plug"

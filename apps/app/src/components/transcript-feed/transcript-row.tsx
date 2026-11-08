@@ -11,6 +11,7 @@ export interface TranscriptRowProps {
   readonly hit: TranscriptHit;
   readonly timeZone: string;
   readonly showSource: boolean;
+  readonly compact: boolean;
   readonly highlighted: boolean;
   readonly ready: (() => void) | undefined;
   readonly open: (() => void) | undefined;
@@ -24,10 +25,16 @@ function rowMeta(hit: TranscriptHit, time: string, showSource: boolean): string 
     .join(' · ');
 }
 
+function rowSpacing(compact: boolean, hasActions: boolean): string {
+  if (compact) return 'min-h-touch-min justify-center py-1';
+  return hasActions ? 'py-3' : 'py-2';
+}
+
 export function TranscriptRow({
   hit,
   timeZone,
   showSource,
+  compact,
   highlighted,
   ready,
   open,
@@ -35,6 +42,7 @@ export function TranscriptRow({
 }: TranscriptRowProps): ReactNode {
   const time = transcriptTime(hit.line.at, timeZone);
   const meta = rowMeta(hit, time, showSource);
+  const spacing = rowSpacing(compact, open !== undefined || remove !== undefined);
   return (
     <View
       onLayout={ready}
@@ -49,7 +57,7 @@ export function TranscriptRow({
         role={open === undefined ? 'text' : 'button'}
         label={`${meta}. ${hit.line.text}`}
         hint={open === undefined ? undefined : 'Open this exact line in its transcript'}
-        className="min-w-0 flex-1 gap-1 px-4 py-3"
+        className={cn('min-w-0 flex-1 gap-1 px-4', spacing)}
       >
         <Text variant="caption" tone={highlighted ? 'primary' : 'variant'}>
           {meta}

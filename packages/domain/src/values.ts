@@ -3,6 +3,10 @@ import { z } from 'zod';
 export type JsonValue =
   string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
+export function isUnknownArray(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
 function isJsonArray(value: readonly unknown[]): boolean {
   for (const item of value) {
     if (!isJsonValue(item)) return false;
@@ -13,7 +17,8 @@ function isJsonArray(value: readonly unknown[]): boolean {
 function isJsonRecord(value: object): boolean {
   if (!z.core.util.isPlainObject(value)) return false;
   for (const key of Reflect.ownKeys(value)) {
-    if (key === '__proto__' || !Object.prototype.propertyIsEnumerable.call(value, key)) continue;
+    if (key === '__proto__' || Reflect.getOwnPropertyDescriptor(value, key)?.enumerable !== true)
+      continue;
     if (typeof key !== 'string' || !isJsonValue(Reflect.get(value, key))) return false;
   }
   return true;

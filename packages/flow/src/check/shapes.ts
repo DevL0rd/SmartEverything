@@ -20,7 +20,7 @@ export type OutputMap = ReadonlyMap<string, PortTypes>;
 
 export type RootTypes = Readonly<Partial<Record<ReservedRoot, FlowType>>>;
 
-export type CheckKind = Pick<NodeKind, 'id' | 'class' | 'inputs' | 'outputs'>;
+export type CheckKind = NodeKind;
 
 export interface AutomationInterface {
   readonly inputs: readonly InputPort[];

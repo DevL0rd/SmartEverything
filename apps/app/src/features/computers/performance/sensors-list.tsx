@@ -6,7 +6,7 @@ import { LiveFigure } from '../../../components/live-figure';
 import { Section } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { decimal } from '../../../format/number';
 import { plural } from '../../../format/text';
 import { sameJson } from '../../../store/same-json';
@@ -16,7 +16,6 @@ import { useComputerSelect } from '../data/computer-metrics';
 import { Spare } from './spare';
 import { sensorWord, sensorsByGroup } from '../model/performance';
 import { packRows, spareColumns } from '../model/performance-layout';
-import { bodyWidthOf } from '../model/sections';
 import { spokenFact } from '../model/spoken-unit';
 
 const TOPICS = ['sensors'] as const;
@@ -90,7 +89,7 @@ export function SensorsList({
   readonly offline: boolean;
 }): ReactNode {
   const sensors = useComputerSelect(deviceId, (parts) => parts.sensors?.sensors, sameJson);
-  const columns = gridColumnsOf(bodyWidthOf(useAreaWidth()));
+  const columns = gridColumnsOf(useFrameBodyWidth());
   return (
     <DemandRegion deviceId={deviceId} topics={TOPICS}>
       {sensors === undefined || sensors.length === 0 ? null : (

@@ -26,6 +26,10 @@ function input(name: string, type: FlowType, description: string, required = tru
   return { name, type, required, description };
 }
 
+function typedBy(port: InputPortDecl, by: string): InputPortDecl {
+  return { ...port, ui: { ...port.ui, typedBy: by } };
+}
+
 function result(description: string): OutputPortDecl {
   return { name: 'result', type: FLAG, description };
 }
@@ -49,7 +53,7 @@ const compare = defineNodeKind({
   description: 'Compares two values of the same type.',
   inputs: [
     input('a', GENERIC, 'The left value.'),
-    input('b', GENERIC, 'The right value.'),
+    typedBy(input('b', GENERIC, 'The right value.'), 'a'),
     option(
       'op',
       choice([
@@ -88,8 +92,8 @@ const between = defineNodeKind({
   description: 'Tells whether a number, instant, duration or time of day lies between two limits.',
   inputs: [
     input('value', GENERIC, 'The value to test.'),
-    input('min', GENERIC, 'The lower limit.'),
-    input('max', GENERIC, 'The upper limit.'),
+    typedBy(input('min', GENERIC, 'The lower limit.'), 'value'),
+    typedBy(input('max', GENERIC, 'The upper limit.'), 'value'),
     option('inclusive', FLAG, 'The limits themselves count as inside.', { default: true }),
   ],
   outputs: [result('Whether the value is between the limits.')],
@@ -109,7 +113,7 @@ const isOneOf = defineNodeKind({
   description: 'Tells whether a value is in a list.',
   inputs: [
     input('value', GENERIC, 'The value to look for.'),
-    input('list', { t: 'list', of: GENERIC }, 'The allowed values.'),
+    typedBy(input('list', { t: 'list', of: GENERIC }, 'The allowed values.'), 'value'),
     option('negate', FLAG, 'Tell whether the value is not in the list.', { default: false }),
   ],
   outputs: [result('Whether the value is in the list.')],
@@ -217,10 +221,10 @@ const coalesce = defineNodeKind({
     'Takes the first of a, b, c and d that has a value. Fails with NotFound when none has one and there is no fallback.',
   inputs: [
     input('a', { t: 'optional', of: GENERIC }, 'The first candidate.', false),
-    input('b', { t: 'optional', of: GENERIC }, 'The second candidate.', false),
-    input('c', { t: 'optional', of: GENERIC }, 'A third candidate.', false),
-    input('d', { t: 'optional', of: GENERIC }, 'A fourth candidate.', false),
-    option('default', GENERIC, 'Used when no candidate has a value.'),
+    typedBy(input('b', { t: 'optional', of: GENERIC }, 'The second candidate.', false), 'a'),
+    typedBy(input('c', { t: 'optional', of: GENERIC }, 'A third candidate.', false), 'a'),
+    typedBy(input('d', { t: 'optional', of: GENERIC }, 'A fourth candidate.', false), 'a'),
+    typedBy(option('default', GENERIC, 'Used when no candidate has a value.'), 'a'),
     option('message', { t: 'text' }, 'The error message when no value is available.'),
   ],
   outputs: [{ name: 'value', type: GENERIC, description: 'The first present value.' }],
@@ -242,7 +246,10 @@ const select = defineNodeKind({
   inputs: [
     input('condition', FLAG, 'The condition.'),
     input('whenTrue', GENERIC, 'The value when the condition is true (then).'),
-    input('whenFalse', GENERIC, 'The value when the condition is false (else).'),
+    typedBy(
+      input('whenFalse', GENERIC, 'The value when the condition is false (else).'),
+      'whenTrue',
+    ),
   ],
   outputs: [{ name: 'value', type: GENERIC, description: 'The chosen value.' }],
   exits: [],
@@ -331,6 +338,7 @@ const triggerIs = defineNodeKind({
     option('source', { t: 'text' }, 'Id of the trigger node.', {
       required: true,
       summary: true,
+      ui: { optionsFrom: 'triggers.this' },
     }),
   ],
   outputs: [result('Whether the run came from that trigger.')],

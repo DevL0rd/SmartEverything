@@ -22,7 +22,9 @@ export function BrowserSurface(props: BrowserSurfaceProps): ReactNode {
   if (bridge?.browser === undefined)
     return (
       <Text>
-        {bridge === null ? WEB_LIMITATION : 'Update the desktop app to enable its built-in browser.'}
+        {bridge === null
+          ? WEB_LIMITATION
+          : 'Update the desktop app to enable its built-in browser.'}
       </Text>
     );
   return <DesktopBrowserSurface {...props} bridge={bridge.browser} />;

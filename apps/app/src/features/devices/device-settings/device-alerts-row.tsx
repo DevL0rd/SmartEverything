@@ -22,6 +22,7 @@ export function DeviceAlertsRow({ deviceId }: { readonly deviceId: string }): Re
     <SwitchRow
       title="Alerts"
       subtitle="Doorbell, calls, alarms and leaks from this device reach your phones"
+      wrapSubtitle
       icon="bell"
       value={deviceAlertsOn(pref.value, deviceId)}
       onChange={(on) => {

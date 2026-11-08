@@ -30,7 +30,13 @@ function write(client: ClientRow): Promise<unknown> {
   });
   return route.run(
     { kind: 'client', client },
-    { params: {}, query: {}, body: { voice: { thinking_level: 'high' } }, remote: 'test' },
+    {
+      params: {},
+      query: {},
+      body: { voice: { thinking_level: 'high' } },
+      remote: 'test',
+      headers: {},
+    },
     testLogger(),
   );
 }

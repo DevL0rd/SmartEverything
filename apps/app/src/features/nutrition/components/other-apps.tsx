@@ -47,6 +47,7 @@ export function OtherApps({
             key={record.recordId}
             icon={record.type === 'Hydration' ? 'glassWater' : 'apple'}
             title={shown.title}
+            wrapTitle
             subtitle={joinParts([appName(record.sourceApp), clock(record.startTime)])}
             {...(shown.value === null ? {} : { value: shown.value })}
           />

@@ -19,6 +19,8 @@ import {
   retryAfterMs,
   withTransientFailures,
 } from '../providers/transient-retry';
+import { MeteredRefusals } from './metered-refusal';
+import { piUsageChunks } from '../providers/pi-usage';
 
 export interface MeteredRouteTransport {
   readonly key: () => Promise<string>;
@@ -51,7 +53,10 @@ export class MeteredRouteAdapter extends LlmAdapter {
     signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
     this.check(provider);
-    return hubEfforts(await this.delegate().resolveModel(provider, model, signal));
+    const resolved = await this.delegate().resolveModel(provider, model, signal);
+    const configured = this.route.models.find((entry) => entry.id === model)?.capabilities
+      .default_effort;
+    return hubEfforts(resolved, configured);
   }
   override async prepareCall(
     provider: string,
@@ -65,17 +70,25 @@ export class MeteredRouteAdapter extends LlmAdapter {
   }
   override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.check(options.provider);
-    await this.transport.authorize(options);
-    const fetcher = this.transport.fetch(options);
+    const refusals = new MeteredRefusals({ route_id: this.route.id, model: options.model });
+    await this.transport.authorize(options).catch((cause: unknown) => {
+      throw refusals.refused(cause);
+    });
     let retryAfter: number | undefined;
     const meteredFetch: typeof fetch = async (input, init): Promise<Response> => {
-      const response = await fetcher(input, init);
+      const response = await refusals.observed(() => this.transport.fetch(options)(input, init));
       retryAfter = retryAfterMs(response.headers.get('retry-after'));
       return response;
     };
-    yield* withTransientFailures(
-      this.delegate(meteredFetch).stream(harnessEffort(options)),
-      () => retryAfter,
+    yield* refusals.surfaced(
+      withTransientFailures(
+        piUsageChunks(
+          this.delegate(meteredFetch, () => refusals.observed(() => this.transport.key())).stream(
+            harnessEffort(options),
+          ),
+        ),
+        () => retryAfter,
+      ),
     );
   }
   private check(provider: string): void {
@@ -87,7 +100,10 @@ export class MeteredRouteAdapter extends LlmAdapter {
     )
       throw new LlmError('Explicit metered route is unavailable.', 'ROUTE_UNAVAILABLE');
   }
-  private delegate(fetcher: typeof fetch = fetch): PiAiAdapter {
+  private delegate(
+    fetcher: typeof fetch = fetch,
+    key: () => Promise<string> = () => this.transport.key(),
+  ): PiAiAdapter {
     const provider = this.provider(fetcher, routeModels(this.route));
     const profile: ResolvedPiAiProviderProfile = {
       provider: this.route.id,
@@ -103,7 +119,7 @@ export class MeteredRouteAdapter extends LlmAdapter {
     };
     return new PiAiAdapter({
       profiles: () => new Map([[this.route.id, profile]]),
-      resolveApiKey: () => this.transport.key(),
+      resolveApiKey: key,
       auth: {
         credentials: {
           read: () => Promise.resolve(undefined),
@@ -154,17 +170,21 @@ const HARNESS_NO_EFFORT = 'off';
 function hubEffortId(id: ReasoningEffortId): ReasoningEffortId {
   return id === HARNESS_NO_EFFORT ? ReasoningEffortId(HUB_NO_EFFORT) : id;
 }
-function hubEfforts(info: LlmResolvedModelInfo): LlmResolvedModelInfo {
+function hubEfforts(
+  info: LlmResolvedModelInfo,
+  configured: string | null | undefined,
+): LlmResolvedModelInfo {
   const { reasoning } = info;
   if (reasoning === undefined) return info;
+  const efforts = reasoning.efforts.map((effort) => ({ ...effort, id: hubEffortId(effort.id) }));
+  const reported = reasoning.defaultEffort;
+  const wanted = configured ?? (reported === undefined ? undefined : hubEffortId(reported));
+  const defaultEffort = efforts.find((effort) => effort.id === wanted)?.id;
   return {
     ...info,
     reasoning: {
-      ...reasoning,
-      efforts: reasoning.efforts.map((effort) => ({ ...effort, id: hubEffortId(effort.id) })),
-      ...(reasoning.defaultEffort === undefined
-        ? {}
-        : { defaultEffort: hubEffortId(reasoning.defaultEffort) }),
+      efforts,
+      ...(defaultEffort === undefined ? {} : { defaultEffort }),
     },
   };
 }
@@ -194,25 +214,54 @@ function thinkingLevels(efforts: readonly string[]): ThinkingLevels {
   }
   return levels;
 }
+type RouteModel = AiModelRoute['models'][number];
+type RouteCapabilities = RouteModel['capabilities'];
+type KnownModel = ReturnType<ReturnType<typeof openrouterProvider>['getModels']>[number];
+function reasoningOf(
+  capabilities: RouteCapabilities,
+): Pick<Model<'openai-completions'>, 'reasoning' | 'thinkingLevelMap'> {
+  return {
+    reasoning: capabilities.reasoning,
+    ...(capabilities.reasoning && capabilities.efforts.length > 0
+      ? { thinkingLevelMap: thinkingLevels(capabilities.efforts) }
+      : {}),
+  };
+}
+function limitsOf(
+  capabilities: RouteCapabilities,
+  known: KnownModel | undefined,
+): Pick<Model<'openai-completions'>, 'contextWindow' | 'maxTokens'> {
+  return {
+    contextWindow: capabilities.context_tokens ?? known?.contextWindow ?? UNKNOWN_CONTEXT_TOKENS,
+    maxTokens: capabilities.max_output_tokens ?? known?.maxTokens ?? 0,
+  };
+}
+function routeModel(
+  route: AiModelRoute,
+  model: RouteModel,
+  known: KnownModel | undefined,
+): Model<'openai-completions'> {
+  const { capabilities } = model;
+  return {
+    id: model.id,
+    name: model.name,
+    api: 'openai-completions',
+    provider: route.id,
+    baseUrl: 'https://openrouter.ai/api/v1',
+    input: capabilities.input_modalities.includes('image') ? ['text', 'image'] : ['text'],
+    ...reasoningOf(capabilities),
+    ...limitsOf(capabilities, known),
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    ...(known?.compat === undefined ? {} : { compat: known.compat }),
+  };
+}
 function routeModels(route: AiModelRoute): readonly Model<'openai-completions'>[] {
   const catalogue = openrouterProvider().getModels();
-  return route.models.map((model): Model<'openai-completions'> => {
-    const known = catalogue.find((entry) => entry.id === model.id);
-    const capabilities = model.capabilities;
-    return {
-      id: model.id,
-      name: model.name,
-      api: 'openai-completions',
-      provider: route.id,
-      baseUrl: 'https://openrouter.ai/api/v1',
-      input: capabilities.input_modalities.includes('image') ? ['text', 'image'] : ['text'],
-      reasoning: capabilities.reasoning,
-      ...(capabilities.reasoning && capabilities.efforts.length > 0
-        ? { thinkingLevelMap: thinkingLevels(capabilities.efforts) }
-        : {}),
-      contextWindow: capabilities.context_tokens ?? known?.contextWindow ?? UNKNOWN_CONTEXT_TOKENS,
-      maxTokens: capabilities.max_output_tokens ?? known?.maxTokens ?? 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    };
-  });
+  return route.models.map((model) =>
+    routeModel(
+      route,
+      model,
+      catalogue.find((entry) => entry.id === model.id),
+    ),
+  );
 }

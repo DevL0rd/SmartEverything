@@ -157,8 +157,9 @@ export class TurnStream {
 
   tool(item: ChatToolItem, details: ToolTimelineDetails = {}): void {
     this.timeline.tool(item, details);
+    const toolRan = [...this.tools.values()].some((tool) => tool.state === 'running');
     this.tools.set(item.callId, item);
-    this.push({ kind: 'tool', ...item });
+    this.push({ kind: 'tool', ...item }, toolRan);
     this.snapshot('tool', null, null);
   }
 
@@ -231,7 +232,7 @@ export class TurnStream {
     }
   }
 
-  private push(part: ChatStreamPart): void {
+  private push(part: ChatStreamPart, toolRan = false): void {
     const now = performance.now();
     if (this.firstPartMs === null) {
       this.firstPartMs = Math.round(now - this.openedAt);
@@ -240,7 +241,7 @@ export class TurnStream {
         kind: part.kind,
         firstPartMs: this.firstPartMs,
       }));
-    } else if (now - this.lastPartAt > STALL_MS) {
+    } else if (!toolRan && now - this.lastPartAt > STALL_MS) {
       this.stalls += 1;
       log.warn('stream.resumed_after_stall', {
         ...this.ids(),

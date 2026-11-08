@@ -1,16 +1,15 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Icon, type IconName } from '../../../components/icon';
-import { Interactive } from '../../../components/interactive';
+import { FlatChoice } from '../../../components/flat-choice';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
-import { cn } from '../../../design/cn';
 import { useRoleControl, type ControlRole } from './use-role-control';
 import type { Laundry } from './use-laundry';
 import { background } from '@smarteverything/logging';
 
-export interface PillOption {
+export interface ChoiceOption {
   readonly value: string;
   readonly label: string;
   readonly spoken?: string;
@@ -24,53 +23,17 @@ export function FieldLabel({ text }: { readonly text: string }): ReactNode {
   );
 }
 
-function Pill({
-  option,
-  selected,
-  disabled = false,
-  fill,
-  onPress,
-}: {
-  readonly option: PillOption;
-  readonly selected: boolean;
-  readonly disabled?: boolean;
-  readonly fill: boolean;
-  readonly onPress: () => void;
-}): ReactNode {
-  return (
-    <Interactive
-      role="radio"
-      checked={selected}
-      disabled={disabled}
-      label={option.spoken ?? option.label}
-      onPress={onPress}
-      className={cn(
-        'min-h-touch-min min-w-14 items-center justify-center rounded-full border px-3.5',
-        fill && 'grow',
-        selected ? 'border-primary bg-primary-container' : 'border-outline-variant bg-surface-2',
-      )}
-      layerClassName="rounded-full"
-    >
-      <Text variant="body-strong" tone={selected ? 'primary' : 'default'} className="tabular">
-        {option.label}
-      </Text>
-    </Interactive>
-  );
-}
-
-export function Pills({
+export function ChoiceStrip({
   label,
   options,
   value,
   disabled = false,
-  fill = false,
   onChange,
 }: {
   readonly label: string;
-  readonly options: readonly PillOption[];
+  readonly options: readonly ChoiceOption[];
   readonly value: string | null;
   readonly disabled?: boolean;
-  readonly fill?: boolean;
   readonly onChange: (value: string) => void;
 }): ReactNode {
   return (
@@ -79,15 +42,16 @@ export function Pills({
       <View
         accessibilityRole="radiogroup"
         accessibilityLabel={label}
-        className="flex-row flex-wrap gap-2"
+        className="flex-row flex-wrap"
       >
         {options.map((option) => (
-          <Pill
+          <FlatChoice
             key={option.value}
-            option={option}
-            selected={option.value === value}
+            role="radio"
+            label={option.label}
+            spoken={option.spoken}
+            active={option.value === value}
             disabled={disabled}
-            fill={fill}
             onPress={() => {
               onChange(option.value);
             }}
@@ -182,19 +146,18 @@ export function RoleChoice({
   readonly laundry: Laundry;
   readonly source: ControlRole;
   readonly label: string;
-  readonly options: readonly PillOption[];
+  readonly options: readonly ChoiceOption[];
 }): ReactNode {
   const { key, control } = useRoleControl(laundry, source);
   if (key === undefined) {
     return null;
   }
   return (
-    <Pills
+    <ChoiceStrip
       label={label}
       options={options}
       value={typeof control.value === 'string' ? control.value : null}
       disabled={!laundry.device.online || control.pending}
-      fill
       onChange={(next) => {
         background(control.set(next), 'laundry.choice_failed');
       }}

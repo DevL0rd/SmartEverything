@@ -24,7 +24,6 @@ export function harnessFeedback(
   if (session.interactions.some((interaction) => interaction.kind === 'permission'))
     return { label: APPROVAL_LABEL, moving: false };
   if (session.interactions.length > 0) return { label: ANSWER_LABEL, moving: false };
-  if (session.state === 'waiting') return { label: 'Waiting for the machine…', moving: false };
   if (session.state === 'switching') return { label: SWITCHING_LABEL, moving: true };
   return null;
 }

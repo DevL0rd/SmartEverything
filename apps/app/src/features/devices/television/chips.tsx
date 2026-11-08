@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { Pressable, View } from 'react-native';
 import { HScroller } from '../../../components/h-scroller';
 import { Icon, type IconName } from '../../../components/icon';
@@ -6,12 +6,11 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { selectionTick } from '../../../platform/haptics';
 import { TONE_CLASS, type TvApp } from './apps';
-import { KEY_EDGE, KEY_FOCUS } from './key-style';
+import { KEY_FOCUS } from './key-style';
 import type { Television } from './use-television';
 
 const CHIP = cn(
-  'min-h-touch-min flex-row items-center gap-2 rounded-full bg-surface-2 active:scale-95 active:bg-surface-3',
-  KEY_EDGE,
+  'min-h-touch-min flex-row items-center gap-1.5 rounded-sm active:scale-95 active:bg-surface-3',
   KEY_FOCUS,
 );
 
@@ -37,9 +36,11 @@ function Monogram({ app, size }: { readonly app: TvApp; readonly size: 'sm' | 'm
 }
 
 function InputChip({
+  opener,
   tv,
   onPress,
 }: {
+  readonly opener: RefObject<View | null>;
   readonly tv: Television;
   readonly onPress: () => void;
 }): ReactNode {
@@ -47,6 +48,7 @@ function InputChip({
   const text = tv.view.app === null ? (current?.label ?? 'Input') : 'Input';
   return (
     <Pressable
+      ref={opener}
       accessibilityRole="button"
       accessibilityLabel={
         tv.view.app === null && current !== undefined
@@ -54,7 +56,7 @@ function InputChip({
           : 'Input. Change input'
       }
       onPress={onPress}
-      className={cn(CHIP, 'pl-3.5 pr-3')}
+      className={cn(CHIP, 'bg-surface-2 px-2')}
     >
       <Text variant="label">{text}</Text>
       <Icon name="chevronDown" size={16} />
@@ -80,7 +82,7 @@ function AppChip({
         selectionTick();
         onOpen(app.name);
       }}
-      className={cn(CHIP, 'pl-2 pr-3.5', current && 'border-primary bg-primary-container')}
+      className={cn(CHIP, 'px-2', current && 'bg-primary-container')}
     >
       <Monogram app={app} size="sm" />
       <Text variant="label" numberOfLines={1}>
@@ -90,13 +92,20 @@ function AppChip({
   );
 }
 
-function MoreChip({ onPress }: { readonly onPress: () => void }): ReactNode {
+function MoreChip({
+  opener,
+  onPress,
+}: {
+  readonly opener: RefObject<View | null>;
+  readonly onPress: () => void;
+}): ReactNode {
   return (
     <Pressable
+      ref={opener}
       accessibilityRole="button"
       accessibilityLabel="More apps"
       onPress={onPress}
-      className={cn(CHIP, 'pl-3 pr-3.5')}
+      className={cn(CHIP, 'px-2')}
     >
       <Icon name="plus" size={16} />
       <Text variant="label">More</Text>
@@ -108,12 +117,16 @@ export function ChipRow({
   tv,
   apps,
   lead = null,
+  inputOpener,
+  appsOpener,
   onInputs,
   onMore,
   onOpen,
 }: {
   readonly tv: Television;
   readonly lead?: ReactNode;
+  readonly inputOpener: RefObject<View | null>;
+  readonly appsOpener: RefObject<View | null>;
   readonly apps: readonly TvApp[];
   readonly onInputs: () => void;
   readonly onMore: (() => void) | null;
@@ -121,17 +134,19 @@ export function ChipRow({
 }): ReactNode {
   return (
     <HScroller label="Input and apps" fade>
-      {lead}
-      <InputChip tv={tv} onPress={onInputs} />
-      {apps.map((app) => (
-        <AppChip
-          key={app.name}
-          app={app}
-          current={tv.view.watching.kind === 'app' && tv.view.watching.label === app.name}
-          onOpen={onOpen}
-        />
-      ))}
-      {onMore === null ? null : <MoreChip onPress={onMore} />}
+      <View className="flex-row items-center gap-1">
+        {lead}
+        <InputChip tv={tv} opener={inputOpener} onPress={onInputs} />
+        {apps.map((app) => (
+          <AppChip
+            key={app.name}
+            app={app}
+            current={tv.view.watching.kind === 'app' && tv.view.watching.label === app.name}
+            onOpen={onOpen}
+          />
+        ))}
+        {onMore === null ? null : <MoreChip opener={appsOpener} onPress={onMore} />}
+      </View>
     </HScroller>
   );
 }
@@ -186,7 +201,7 @@ export function InputPills({
 }): ReactNode {
   const off = tv.view.mode !== 'on';
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <View className="flex-row flex-wrap gap-1">
       {tv.view.inputs.map((input) => {
         const current = input.id === tv.view.input && tv.view.app === null;
         return (
@@ -200,12 +215,7 @@ export function InputPills({
               selectionTick();
               onChoose(input.id);
             }}
-            className={cn(
-              CHIP,
-              'px-4',
-              current && 'border-primary bg-primary-container',
-              off && 'opacity-60',
-            )}
+            className={cn(CHIP, 'px-2', current && 'bg-primary-container', off && 'opacity-60')}
           >
             <Icon name={inputIcon(input.id)} size={16} />
             <Text variant="label">{input.label}</Text>

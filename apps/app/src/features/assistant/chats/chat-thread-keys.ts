@@ -9,6 +9,7 @@ import { useStoreSelector } from '../../../store/store-context';
 import { useChatEntries } from '../data/chat-store';
 import { latestReplyText } from '../model/latest-reply';
 import { sectionsOf } from './chat-entry';
+import { visibleAppChats } from './chat-visibility';
 import { NEW_CHAT_ID } from './draft-thread';
 import type { PanelState } from './chat-panel-state';
 import { toggleChatList } from './chat-list-toggle';
@@ -22,13 +23,12 @@ function useListOrder(): readonly string[] {
   const entries = useChatEntries();
   const now = useMinute();
   const zone = useStoreSelector((state) => state.settings?.time_zone ?? null);
-  return useMemo(
-    () =>
-      sectionsOf(entries, entries, { now, timeZone: zone }).flatMap((section) =>
-        section.data.map((item) => item.entry.id),
-      ),
-    [entries, now, zone],
-  );
+  return useMemo(() => {
+    const visible = visibleAppChats(entries);
+    return sectionsOf(visible, visible, { now, timeZone: zone }).flatMap((section) =>
+      section.data.map((item) => item.entry.id),
+    );
+  }, [entries, now, zone]);
 }
 
 export function useThreadKeys(
@@ -61,10 +61,6 @@ export function useThreadKeys(
 function shiftedKey(key: string, rows: readonly AssistantMessageRow[]): boolean {
   if (key === 'o') {
     router.navigate(href.assistantChat(NEW_CHAT_ID));
-    return true;
-  }
-  if (key === 'd') {
-    router.setParams({ sheet: 'chat' });
     return true;
   }
   const reply = latestReplyText(rows);

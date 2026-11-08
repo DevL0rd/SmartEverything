@@ -1,4 +1,5 @@
-import { automation, lit } from './build';
+import { lit } from './build';
+import { graphAutomation } from './graph-kit';
 import { noticeTemplate } from './notice-template';
 import { messageSlot, template, textSlot, type Template, type TemplateDevice } from './parameters';
 import { notice } from './parts';
@@ -39,7 +40,7 @@ function sleepEnded(): Template {
     devices: [],
     slots: [messageSlot('Good morning.')],
     make: (use, m) =>
-      automation({
+      graphAutomation({
         triggers: [m.trigger('health1', 'trigger.health', { kind: lit('sleep_ended') })],
         body: [notice(m, 'note', use.text('message'))],
       }),
@@ -58,7 +59,7 @@ function replyFailed(): Template {
     devices: [],
     slots: [messageSlot('The AI could not finish a reply.')],
     make: (use, m) =>
-      automation({
+      graphAutomation({
         triggers: [m.trigger('chat1', 'trigger.chat', { outcome: lit('failed') })],
         body: [notice(m, 'note', use.text('message'))],
       }),

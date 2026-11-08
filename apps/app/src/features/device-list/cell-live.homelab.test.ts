@@ -125,7 +125,7 @@ describe('homelab cells', () => {
         routerFace(routerSnapshot({ state: 'unreachable', reason: 'timeout', since }), true),
         'w',
       );
-      expect(tree).toContain('Router, not reachable');
+      expect(tree).toContain('Router, Can’t reach the router');
       expect(tree).not.toContain('accessibilityLabel="Speed test"');
     });
 
@@ -155,14 +155,14 @@ describe('homelab cells', () => {
         status: statusFixture({ protection: false, pausedUntil: '2026-10-16T09:30:00.000Z' }),
       });
       const tree = treeAt(adguardFace(paused, true), 'm');
-      expect(tree).toContain('AdGuard Home, paused, Paused · resumes');
+      expect(tree).toContain('AdGuard Home, paused, Resumes');
       expect(tree).toContain('accessibilityLabel="Resume"');
     });
 
     it('adguard: says blocking is off and offers Turn on', () => {
       const off = snapshotFixture({ status: statusFixture({ protection: false }) });
       const tree = treeAt(adguardFace(off, true), 'm');
-      expect(tree).toContain('Ad blocking is off');
+      expect(tree).toContain('AdGuard Home, off, Ads and trackers are not blocked');
       expect(tree).toContain('accessibilityLabel="Turn on"');
     });
 
@@ -207,7 +207,7 @@ describe('homelab cells', () => {
         },
       });
       const tree = treeAt(syncthingFace(lost, true), 'm');
-      expect(tree).toContain('Syncthing, not reachable');
+      expect(tree).toContain('Syncthing, Can’t reach Syncthing');
       expect(tree).not.toContain('accessibilityLabel="Pause"');
     });
   });

@@ -45,6 +45,12 @@ export function setPropertiesParams(did: string, writes: readonly PropertyWrite[
   return writes.map(({ siid, piid, value }) => ({ did, siid, piid, value }));
 }
 
+export type ActionInputShape = 'plain' | 'tagged';
+
+export function actionInput(shape: ActionInputShape, piid: number, value: JsonValue): JsonValue {
+  return shape === 'tagged' ? { piid, value } : value;
+}
+
 export function actionParams(
   did: string,
   action: ActionAddress,

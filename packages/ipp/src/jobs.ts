@@ -112,7 +112,10 @@ export function readJob(plain: PlainObject, report?: DropReporter): PrinterJob |
   const source = parsed.data;
   const state = JOB_STATES.get(source['job-state']);
   if (state === undefined) {
-    report?.dropped('job-state', `record skipped: unknown job state ${String(source['job-state'])}`);
+    report?.dropped(
+      'job-state',
+      `record skipped: unknown job state ${String(source['job-state'])}`,
+    );
     return null;
   }
   const col = source['job-impressions-completed-col'];

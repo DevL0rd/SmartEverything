@@ -1,20 +1,20 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { presentCapability, type PresentedCapability } from '@smarteverything/domain';
+import { presentCapability, ptzPresetsOf, type PresentedCapability } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { HScroller } from '../../../components/h-scroller';
 import { Section } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { useLedger } from '../../../store/store-context';
 import { RecentEvents } from '../components/recent-events';
-import { presetsOf, type CameraEntry } from '../logic/cameras';
+import type { CameraEntry } from '../logic/cameras';
 import type { Viewer } from './use-viewer';
 import { background } from '@smarteverything/logging';
 
 export function PresetsRow({ viewer }: { readonly viewer: Viewer }): ReactNode {
   const ledger = useLedger();
-  const presets = presetsOf(viewer.entry);
+  const presets = ptzPresetsOf(viewer.entry.device);
   if (!viewer.ptz.supported && presets.length === 0) {
     return null;
   }

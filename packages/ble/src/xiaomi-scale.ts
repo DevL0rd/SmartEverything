@@ -9,6 +9,7 @@ export const SCALE_MEASUREMENT_OBJECT = 0x6e16;
 
 const OBJECT_BYTES = 9;
 const NO_HEART_RATE = 127;
+const NO_WEIGHT = 0x7ff;
 const HEART_RATE_OFFSET = 50;
 
 export type ScalePacket =
@@ -42,7 +43,8 @@ export function decodeScaleObject(object: MiBeaconObject): ScalePacket {
   }
   const scaleUser = uint8(object.data, 0);
   const packed = uint32(object.data, 1);
-  const weight = packed & 0x7ff;
+  const rawWeight = packed & 0x7ff;
+  const weight = rawWeight === NO_WEIGHT ? 0 : rawWeight;
   const heart = (packed >>> 11) & 0x7f;
   const impedance = packed >>> 18;
   if (weight === 0 && heart === 0 && impedance === 0) {

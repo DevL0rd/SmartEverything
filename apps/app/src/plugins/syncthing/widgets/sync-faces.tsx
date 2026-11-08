@@ -5,7 +5,8 @@ import { Text } from '../../../components/text';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { cn } from '../../../design/cn';
 import { ServiceMedallion } from '../../shared/service-medallion';
-import { bodyHeightOf, fitChips, fitRows, rowCapacity, syncFaceOf } from './frame-faces';
+import type { ServiceLayout } from '../../shared/service-widget-frame';
+import { devicesLineFits, fitChips, fitRows, rowCapacity } from './frame-faces';
 import {
   FolderChip,
   FolderLink,
@@ -27,6 +28,7 @@ const CHIP_LINES_WIDE = 2;
 
 export interface SyncFaceProps {
   readonly ready: SyncReady;
+  readonly layout: ServiceLayout;
   readonly status: SyncStatus;
   readonly stale: StaleCaption | null;
   readonly folders: readonly SyncthingFolder[];
@@ -100,8 +102,11 @@ function Chips({
   );
 }
 
-function Compact({ ready, status, stale, folders }: SyncFaceProps): ReactNode {
-  const { frame, cls } = useWidgetFace();
+function Compact({ ready, layout, status, stale, folders }: SyncFaceProps): ReactNode {
+  const { frame } = useWidgetFace();
+  const devices = devicesLine(ready.snapshot.summary);
+  const showDevices =
+    devices !== status.left && devicesLineFits(layout.room, layout.idiom, stale !== null);
   return (
     <View className="gap-1.5">
       <View className={cn('gap-1.5', stale !== null && 'opacity-60')}>
@@ -112,9 +117,9 @@ function Compact({ ready, status, stale, folders }: SyncFaceProps): ReactNode {
           </Text>
         </View>
         <Chips folders={folders} width={frame.width} lines={1} />
-        {cls === 'm' ? (
+        {showDevices ? (
           <Text variant="footnote" tone="variant" numberOfLines={1}>
-            {devicesLine(ready.snapshot.summary)}
+            {devices}
           </Text>
         ) : null}
       </View>
@@ -143,10 +148,10 @@ function FolderRows({
   );
 }
 
-function Rows({ ready, status, stale, folders }: SyncFaceProps): ReactNode {
-  const { frame, sizes } = useWidgetFace();
+function Rows({ ready, layout, status, stale, folders }: SyncFaceProps): ReactNode {
+  const { sizes } = useWidgetFace();
   const reserved = HEADLINE_HEIGHT + sizes.touchMin + (stale === null ? 0 : STALE_RESERVE);
-  const capacity = rowCapacity(bodyHeightOf(frame), reserved, sizes.touchMin);
+  const capacity = rowCapacity(layout.room, reserved, sizes.touchMin);
   return (
     <View className="flex-1 gap-1">
       <View className={cn('flex-row items-baseline gap-2', stale !== null && 'opacity-60')}>
@@ -188,10 +193,10 @@ function Wide({ ready, status, stale, folders }: SyncFaceProps): ReactNode {
   );
 }
 
-function Columns({ ready, status, stale, folders }: SyncFaceProps): ReactNode {
-  const { frame, sizes } = useWidgetFace();
+function Columns({ ready, layout, status, stale, folders }: SyncFaceProps): ReactNode {
+  const { sizes } = useWidgetFace();
   const reserved = 2 * HEADLINE_HEIGHT + (stale === null ? 0 : STALE_RESERVE);
-  const capacity = rowCapacity(bodyHeightOf(frame), reserved, sizes.touchMin);
+  const capacity = rowCapacity(layout.room, reserved, sizes.touchMin);
   const peers = fitRows(ready.snapshot.peers, capacity);
   return (
     <View className="flex-1 gap-1">
@@ -226,17 +231,16 @@ function Columns({ ready, status, stale, folders }: SyncFaceProps): ReactNode {
 }
 
 export function SyncFace(props: SyncFaceProps): ReactNode {
-  const { cls } = useWidgetFace();
-  switch (syncFaceOf(cls)) {
+  switch (props.layout.face) {
     case 'tile':
       return <Tile {...props} />;
     case 'compact':
       return <Compact {...props} />;
-    case 'rows':
+    case 'tall':
       return <Rows {...props} />;
     case 'wide':
       return <Wide {...props} />;
-    case 'columns':
+    case 'wide-tall':
       return <Columns {...props} />;
   }
 }

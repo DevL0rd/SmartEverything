@@ -1,4 +1,5 @@
 import { AI_MODEL_SEARCH_SORT, type AiModelSearchSort } from '@smarteverything/domain';
+import { CONTAINER_WIDTH } from '../../../../design/tokens';
 import { activeModelFilters, type ModelSearchFilters } from '../model-search-filters';
 
 export type LibraryMode = 'pick' | 'default' | 'browse';
@@ -12,9 +13,9 @@ interface ModeFacts {
 const MODES: Readonly<Record<LibraryMode, ModeFacts>> = {
   pick: { title: 'Model library', subtitle: null, action: 'Use in this chat' },
   default: {
-    title: 'Default for new chats',
+    title: 'Model for new chats',
     subtitle: 'Used when you start a chat',
-    action: 'Set as default',
+    action: 'Use for new chats',
   },
   browse: { title: 'Model library', subtitle: null, action: null },
 };
@@ -53,15 +54,24 @@ export function marksOf(mode: LibraryMode, selected: boolean, latest: boolean): 
 
 export type LibraryLayout = 'three' | 'two' | 'one';
 
-const DIALOG_MAX_WIDTH = 960;
+export const LIBRARY_DIALOG_MAX_WIDTH = 960;
+export const IMAGE_LIBRARY_DIALOG_MAX_WIDTH = 640;
+export const LIBRARY_DIALOG_MAX_HEIGHT = 760;
 const DIALOG_MARGIN = 48;
 const THREE_COLUMNS_AT = 900;
 const TWO_COLUMNS_AT = 760;
+export const LIBRARY_FILTER_WIDTH = 240;
+export const LIBRARY_DETAIL_WIDTH = 320;
+
+export function browseColumns(width: number): number {
+  const resultsWidth = width - LIBRARY_FILTER_WIDTH - LIBRARY_DETAIL_WIDTH;
+  return Math.max(1, Math.floor(resultsWidth / CONTAINER_WIDTH.reading));
+}
 
 export const ROW_HEIGHT = { pointer: 72, touch: 88 } as const;
 
 export function dialogWidth(windowWidth: number): number {
-  return Math.min(DIALOG_MAX_WIDTH, windowWidth - DIALOG_MARGIN);
+  return Math.min(LIBRARY_DIALOG_MAX_WIDTH, windowWidth - DIALOG_MARGIN);
 }
 
 export function libraryLayout(width: number, touch: boolean): LibraryLayout {

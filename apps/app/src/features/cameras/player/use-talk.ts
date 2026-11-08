@@ -5,9 +5,12 @@ import { Logger } from '@smarteverything/logging';
 import { answerTalkOffer } from '../../../api/media';
 import { notify } from '../../../components/toast-store';
 import { createCameraPeer } from './rtc';
+import { ValueStore } from '../../../design/external-store';
 import { rawErrorText } from '../../../format/errors';
 
 const log = new Logger('app.camera-talk');
+
+export const cameraTalkSessions = new ValueStore<number>(0);
 
 function talkFailed(error: unknown): void {
   log.warn('camera.talk_failed', {
@@ -85,8 +88,10 @@ export function useTalkSession(target: TalkTarget, onLimit: () => void): TalkSes
     close.current = openTalk({ deviceId, iceServers, active, client }, () => {
       setLive(true);
     });
+    cameraTalkSessions.update((count) => count + 1);
     const limit = setTimeout(onLimit, TALK_LIMIT_MS);
     return (): void => {
+      cameraTalkSessions.update((count) => count - 1);
       clearTimeout(limit);
       close.current?.();
       close.current = null;

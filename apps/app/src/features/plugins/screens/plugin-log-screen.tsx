@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import type { PluginLogLine, PluginRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { CodeBlock } from '../../../components/code';
@@ -15,8 +16,7 @@ function textOf(lines: readonly PluginLogLine[]): string {
   return lines.map((entry) => `${clock(entry.at)}  ${entry.line}`).join('\n');
 }
 
-function LogBody({ row }: { readonly row: PluginRow }): ReactNode {
-  const log = usePluginLog(row);
+function LogStatus({ log }: { readonly log: ReturnType<typeof usePluginLog> }): ReactNode {
   if (log.isError) {
     return (
       <ErrorState
@@ -28,18 +28,27 @@ function LogBody({ row }: { readonly row: PluginRow }): ReactNode {
     );
   }
   if (log.data === undefined) {
-    return <Skeleton shape="block" className="h-56" />;
-  }
-  if (log.data.length === 0) {
     return (
-      <EmptyState
-        icon="fileText"
-        title="Nothing yet"
-        body="Lines the plugin writes show up here."
-      />
+      <View accessibilityRole="progressbar" accessibilityLabel="Loading plugin log">
+        <Skeleton shape="block" />
+      </View>
     );
   }
-  return <CodeBlock code={textOf(log.data)} label={`${row.manifest.name} log`} />;
+  return (
+    <EmptyState icon="fileText" title="Nothing yet" body="Lines the plugin writes show up here." />
+  );
+}
+
+function LogBody({ row }: { readonly row: PluginRow }): ReactNode {
+  const log = usePluginLog(row);
+  if (!log.isError && log.data !== undefined && log.data.length > 0) {
+    return <CodeBlock code={textOf(log.data)} label={`${row.manifest.name} log`} />;
+  }
+  return (
+    <View className="w-full max-w-reading">
+      <LogStatus log={log} />
+    </View>
+  );
 }
 
 export function PluginLogScreen({
@@ -56,6 +65,7 @@ export function PluginLogScreen({
       page="plugins"
       title="Log"
       detail
+      contentWidth="detail"
       trail={[{ label: row.manifest.name, href: href.pluginSettings(row.id) }]}
     >
       <LogBody row={row} />

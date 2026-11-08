@@ -4,7 +4,7 @@ import type { RefKind } from './types';
 
 export type DescribeKind = Pick<
   NodeKind,
-  'id' | 'name' | 'summary' | 'keywords' | 'inputs' | 'outputs' | 'class'
+  'id' | 'name' | 'summary' | 'keywords' | 'inputs' | 'outputs' | 'class' | 'structural' | 'scopes'
 >;
 
 export type KindLookup = (id: string) => DescribeKind | undefined;

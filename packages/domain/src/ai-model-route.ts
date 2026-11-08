@@ -19,6 +19,7 @@ export const AI_MODEL_ROUTE_CAPABILITIES = z.object({
   output_modalities: z.array(z.literal('text')).min(1).max(1),
   reasoning: z.boolean(),
   efforts: z.array(z.string().min(1).max(32)).max(20),
+  default_effort: z.string().min(1).max(32).nullable().optional(),
   local_tools: z.boolean(),
   context_tokens: z.int().positive().nullable(),
   max_output_tokens: z.int().positive().nullable().optional(),

@@ -3,7 +3,7 @@ import type { ListeningView } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { updateEarHost } from '../../../api/settings';
 import { Card } from '../../../components/card';
-import { Segmented } from '../../../components/segmented';
+import { Select } from '../../../components/select';
 import { Text } from '../../../components/text';
 import { useStoreSelector } from '../../../store/store-context';
 import { earHostOf } from './ear-host-pref';
@@ -17,15 +17,19 @@ export function EarHostCard({
   readonly offline: boolean;
 }): ReactNode {
   const hostId = useStoreSelector(earHostOf);
+  const value = earHostValue(hostId);
   return (
     <Card title="Listens for cameras, walkie and Discord" icon="monitor">
-      <Segmented
-        label="Computer that listens for cameras, walkie channels and Discord"
+      <Select
+        label="Listening computer"
         options={earHostOptions(view)}
-        value={earHostValue(hostId)}
+        value={value}
+        showLabel={false}
         disabled={offline}
-        onChange={(value) => {
-          background(updateEarHost(earHostOfValue(value)), 'listening.ear_host_failed');
+        onChange={(next) => {
+          if (next !== value) {
+            background(updateEarHost(earHostOfValue(next)), 'listening.ear_host_failed');
+          }
         }}
       />
       <Text variant="footnote" tone="variant">

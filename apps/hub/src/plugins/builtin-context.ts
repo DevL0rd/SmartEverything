@@ -1,8 +1,9 @@
 import { commandPorts } from './plugin-device-command';
 import type { CommandRow } from '@smarteverything/domain';
 import type { NewCommand } from '../store/repositories/commands';
-import type { HealthRecord, PluginManifest } from '@smarteverything/domain';
+import type { HealthRecord, PluginManifest, SignalInput } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import type { HubLayout } from '../data-layout';
 import type { ToolCaller } from '../ai-tools/hub-tool';
 import type { Store } from '../store/store';
 import type {
@@ -22,6 +23,8 @@ import type { PluginSpeakers } from './plugin-speakers';
 import { voiceOf, type PluginVoiceServices } from './plugin-voice';
 import type { PluginSecrets } from './plugin-secrets';
 import type { ContributionSinks } from './runtime';
+import { presenceSignal } from '../automations/world-v3/presence';
+import { pluginLogger } from './plugin-logs';
 
 export interface BuiltinContextOptions {
   readonly store: Store;
@@ -34,13 +37,15 @@ export interface BuiltinContextOptions {
   readonly attachments: (chatId: string) => readonly string[];
   readonly machineFile: PluginFiles['fromMachine'];
   readonly uploadFile: PluginFiles['fromUpload'];
-  readonly dataDirectory: string;
+  readonly pictureFile: PluginFiles['fromPicture'];
+  readonly layout: HubLayout;
   readonly configure: (
     pluginId: string,
     change: Partial<PluginConfiguration>,
     by?: ToolCaller,
   ) => Promise<void>;
   readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
+  readonly signals: { readonly emit: (signal: SignalInput) => void };
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -144,13 +149,19 @@ function devicesOf(
   };
 }
 
-function homeOf(store: Store): PluginHostContext['home'] {
+function homeOf(
+  store: Store,
+  signals: BuiltinContextOptions['signals'],
+): PluginHostContext['home'] {
   return {
     timeZone: (): string => store.settings.read().time_zone,
     profiles: () => store.profiles.list().map(({ id, name }) => ({ id, name })),
     phone: (profileId): { readonly paired: boolean; readonly place: string | null } => {
       const entry = store.phoneContexts.latestOf(profileId);
       return { paired: entry !== undefined, place: entry?.place ?? null };
+    },
+    presenceChanged: (move): void => {
+      signals.emit(presenceSignal(move));
     },
   };
 }
@@ -160,7 +171,7 @@ export function builtinContext(
   session: BuiltinSession,
 ): PluginHostContext {
   const id = session.manifest.id;
-  const log = options.log.child({ actorId: `plugin:${id}` });
+  const log = pluginLogger(options.log, id);
   const { sinks, track } = session;
   const ownDrivers = new Set<string>();
   return {
@@ -193,13 +204,12 @@ export function builtinContext(
     network: networkOf(track),
     voice: voiceOf(options.voice, { pluginId: id, track }, session.manifest.permissions.voice),
     assistant: options.conversations.forPlugin(id),
-    files: pluginFiles(
-      options.dataDirectory,
-      id,
-      options.attachments,
-      options.machineFile,
-      options.uploadFile,
-    ),
-    home: homeOf(options.store),
+    files: pluginFiles(options.layout.system.plugins(id), {
+      attachmentsOf: options.attachments,
+      fromMachine: options.machineFile,
+      fromUpload: options.uploadFile,
+      fromPicture: options.pictureFile,
+    }),
+    home: homeOf(options.store, options.signals),
   };
 }

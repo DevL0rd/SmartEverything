@@ -1,4 +1,4 @@
-import { Logger, passesThreshold, redactText } from '@smarteverything/logging';
+import { Logger, passesThreshold, clip } from '@smarteverything/logging';
 import type { HubRouteLease } from './active-route';
 
 const log = new Logger('app.api');
@@ -39,7 +39,7 @@ export function pathShape(url: string): string {
 }
 
 export function safeText(text: string): string {
-  return redactText(text, TEXT_LIMIT);
+  return clip(text, TEXT_LIMIT);
 }
 
 export function failureFacts(error: unknown): Record<string, unknown> {
@@ -175,20 +175,20 @@ export class RequestTrace {
       signal: this.signal,
     });
   }
-}
+  unauthorized(): void {
+    if (this.route === null) return;
+    log.warn('api.unauthorized', { route: this.route, status: this.status });
+  }
 
-export function noteSendFailure(
-  method: string,
-  lease: HubRouteLease | undefined,
-  signal: AbortSignal | undefined,
-  error: unknown,
-): void {
-  log.debug('api.send_failed', () => ({
-    method,
-    routeKind: lease?.endpoint.kind ?? 'direct',
-    ...abortFacts(signal),
-    ...failureFacts(error),
-  }));
+  sendFailed(error: unknown): void {
+    if (this.route === null) return;
+    log.debug('api.send_failed', () => ({
+      method: this.method,
+      routeKind: this.lease?.endpoint.kind ?? 'direct',
+      ...abortFacts(this.signal),
+      ...failureFacts(error),
+    }));
+  }
 }
 
 export function noteRequest(outcome: RequestOutcome): void {

@@ -5,7 +5,7 @@ import { useEngineAccessory } from '../../chats/engine-accessories';
 import { useModelPickAuthority } from '../../chats/model-pick-authority';
 import { useChatWorking } from '../../data/chat-store';
 import { isComputerEngine } from '../../provider/computer-engine';
-import { engineOf, pickOf } from '../library/library-pick';
+import { pickOf } from '../library/library-pick';
 import type { ModelPickerProps } from '../../data/model-candidates';
 import { usePickerSession } from '../model-search-session';
 import { panelReasonOf, type PanelReason } from './panel-reason';
@@ -20,6 +20,7 @@ export interface PanelPickerInput {
   readonly blocked: boolean;
   readonly close: () => void;
   readonly onStale: () => void;
+  readonly onMachine: () => void;
 }
 
 export interface PanelPicker {
@@ -45,10 +46,11 @@ interface PickerParts {
   readonly guarded: (action: () => void) => void;
   readonly onChange: (engine: Engine) => void;
   readonly close: () => void;
+  readonly onMachine: () => void;
 }
 
 function usePicker(parts: PickerParts): ModelPickerProps {
-  const { engine, editable, guarded, onChange, close } = parts;
+  const { engine, editable, guarded, onChange, close, onMachine } = parts;
   const accessory = useEngineAccessory();
   const recent = useRecentModels();
   if (!editable) return { picked: pickOf(engine), onPick: null };
@@ -56,8 +58,9 @@ function usePicker(parts: PickerParts): ModelPickerProps {
     picked: pickOf(engine),
     onPick: (pick): void => {
       guarded(() => {
+        if (pick.engine === undefined) return;
         recent.record(recentIdOf(pick));
-        onChange(engineOf(pick));
+        onChange(pick.engine);
         close();
       });
     },
@@ -67,24 +70,25 @@ function usePicker(parts: PickerParts): ModelPickerProps {
         : (request): void => {
             guarded(() => {
               accessory.request(request);
-              close();
+              onMachine();
             });
           },
   };
 }
 
 export function usePanelPicker(input: PanelPickerInput): PanelPicker {
-  const { engine, onChange, blocked, close, onStale } = input;
+  const { engine, onChange, blocked, close, onStale, onMachine } = input;
   const valid = useModelPickAuthority({ engine, blocked });
   const owner = useIsOwner();
   const session = usePickerSession();
-  const readOnly = isComputerEngine(engine) && !owner;
+  const draft = useEngineAccessory()?.host.draft === true;
+  const readOnly = isComputerEngine(engine) && !draft && !owner;
   const editable = !blocked && !readOnly && session.ready;
   const guarded = (action: () => void): void => {
     if (valid()) action();
     else onStale();
   };
-  const picker = usePicker({ engine, editable, guarded, onChange, close });
+  const picker = usePicker({ engine, editable, guarded, onChange, close, onMachine });
   const stop = useStop(blocked);
   return {
     picker,

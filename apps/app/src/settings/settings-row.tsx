@@ -1,8 +1,10 @@
 import { Logger, background } from '@smarteverything/logging';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { confirm } from '../components/confirm-store';
+import { anchorKey } from '../components/highlight-keys';
+import { useHighlightAnchor } from '../components/use-highlight-anchor';
 import { NumberStepper } from '../components/number-stepper';
 import { ListRow } from '../components/list-row';
 import { ActionRow, NavRow, SelectRow, SwitchRow } from '../components/rows';
@@ -51,13 +53,16 @@ function useWrite(): (title: string, write: (context: SettingContext) => Promise
 interface RowBase {
   readonly title: string;
   readonly subtitle?: string;
+  readonly wrapSubtitle?: boolean;
   readonly icon?: IconName;
 }
 
 function baseOf(setting: SettingDefinition): RowBase {
   return {
     title: setting.title,
-    ...(setting.description === undefined ? {} : { subtitle: setting.description }),
+    ...(setting.description === undefined
+      ? {}
+      : { subtitle: setting.description, wrapSubtitle: true }),
     ...(setting.icon === undefined ? {} : { icon: setting.icon }),
   };
 }
@@ -70,10 +75,12 @@ function TextRow({
   const store = useEntityStore();
   const stored = useStoreSelector(setting.read);
   const [editing, setEditing] = useState(false);
+  const opener = useRef<View>(null);
   return (
     <>
       <ListRow
         {...baseOf(setting)}
+        pressRef={opener}
         value={stored}
         chevron
         onPress={() => {
@@ -85,6 +92,7 @@ function TextRow({
           editing
             ? {
                 title: setting.title,
+                opener,
                 label: setting.title,
                 initial: stored,
                 placeholder: setting.placeholder,
@@ -248,4 +256,17 @@ export function SettingsRow({ setting }: { readonly setting: SettingDefinition }
     case 'custom':
       return setting.render();
   }
+}
+
+export function AnchoredSettingRow({
+  setting,
+}: {
+  readonly setting: SettingDefinition;
+}): ReactNode {
+  const anchor = useHighlightAnchor(anchorKey.setting(setting.id), setting.title);
+  return (
+    <View {...anchor} className="gap-section-gap">
+      <SettingsRow setting={setting} />
+    </View>
+  );
 }

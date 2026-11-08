@@ -8,7 +8,7 @@ import {
   type LiveChange,
 } from '@smarteverything/domain';
 import { ConversationLog } from '../../../src/assistant/conversation-log';
-import { NativeDeliveryStreams } from '../../../src/assistant/engines/dsh/delivery-streams';
+import { ConversationProjector } from '../../../src/assistant/engines/dsh/projector';
 import { useRig, type Rig } from './support/rig';
 import { addMessage } from './support/native-conversation';
 
@@ -35,7 +35,7 @@ async function streaming(): Promise<Streaming> {
   const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
   const current = store.aiChats.chat(chat.id);
-  const streams = new NativeDeliveryStreams(
+  const streams = new ConversationProjector(
     {
       service: rig.service,
       conversation: new ConversationLog(store),

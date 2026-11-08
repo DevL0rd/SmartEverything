@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { TextInput, View, type TextInputSelectionChangeEvent } from 'react-native';
 import { Button } from '../../../components/button';
 import { copyText } from '../../../components/copy-button';
-import { Sheet } from '../../../components/sheet';
+import { Sheet, type SheetProps } from '../../../components/sheet';
 import { useColour } from '../../../design/colour';
 
 interface Selected {
@@ -13,28 +13,37 @@ interface Selected {
 
 const NONE: Selected = { start: 0, end: 0 };
 
-function SelectionBar({
+export function selectedExcerpt(text: string, selected: Selected): string {
+  return text.slice(Math.min(selected.start, selected.end), Math.max(selected.start, selected.end));
+}
+
+function Footer({
   text,
-  selected,
+  excerpt,
+  onSelectAll,
   onAsk,
 }: {
   readonly text: string;
-  readonly selected: Selected;
+  readonly excerpt: string;
+  readonly onSelectAll: () => void;
   readonly onAsk: (excerpt: string) => void;
 }): ReactNode {
-  const excerpt = text.slice(selected.start, selected.end);
   if (excerpt === '') {
-    return null;
+    return (
+      <View className="flex-row justify-end gap-2 px-4 pb-3">
+        <Button label="Select all" variant="text" onPress={onSelectAll} />
+        <Button
+          label="Copy all"
+          variant="tonal"
+          onPress={() => {
+            copyText(text, 'Message');
+          }}
+        />
+      </View>
+    );
   }
   return (
-    <View className="flex-row gap-1 self-start rounded-full bg-on-surface px-1">
-      <Button
-        label="Copy"
-        variant="text"
-        onPress={() => {
-          copyText(excerpt, 'Selection');
-        }}
-      />
+    <View className="flex-row justify-end gap-2 px-4 pb-3">
       <Button
         label="Ask about this"
         variant="text"
@@ -42,21 +51,13 @@ function SelectionBar({
           onAsk(excerpt);
         }}
       />
-    </View>
-  );
-}
-
-function Footer({
-  onSelectAll,
-  onCopyAll,
-}: {
-  readonly onSelectAll: () => void;
-  readonly onCopyAll: () => void;
-}): ReactNode {
-  return (
-    <View className="flex-row justify-end gap-2 px-4 pb-3">
-      <Button label="Select all" variant="text" onPress={onSelectAll} />
-      <Button label="Copy all" variant="tonal" onPress={onCopyAll} />
+      <Button
+        label="Copy"
+        variant="tonal"
+        onPress={() => {
+          copyText(excerpt, 'Selection');
+        }}
+      />
     </View>
   );
 }
@@ -83,9 +84,18 @@ function Field({
       onSelectionChange={(event: TextInputSelectionChangeEvent) => {
         onSelect(event.nativeEvent.selection);
       }}
-      className="rounded-lg border-hairline border-outline-variant p-3 font-sans text-body text-on-surface"
+      className="p-0 font-sans text-body text-on-surface"
     />
   );
+}
+
+interface SelectTextSheetProps {
+  readonly text: string;
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly onAsk: (excerpt: string) => void;
+  readonly onComplete?: () => void;
+  readonly subpage?: SheetProps['subpage'];
 }
 
 export function SelectTextSheet({
@@ -93,37 +103,33 @@ export function SelectTextSheet({
   open,
   onClose,
   onAsk,
-}: {
-  readonly text: string;
-  readonly open: boolean;
-  readonly onClose: () => void;
-  readonly onAsk: (excerpt: string) => void;
-}): ReactNode {
+  onComplete = onClose,
+  subpage,
+}: SelectTextSheetProps): ReactNode {
   const [selected, setSelected] = useState<Selected>(NONE);
   const [forced, setForced] = useState<Selected | null>(null);
-  const ask = (excerpt: string): void => {
-    onAsk(excerpt);
-    onClose();
-  };
   return (
     <Sheet
       open={open}
       onClose={onClose}
       title="Select text"
+      subpage={subpage}
       detents={['half', 'full']}
       footer={
         <Footer
+          text={text}
+          excerpt={selectedExcerpt(text, selected)}
           onSelectAll={() => {
             setForced({ start: 0, end: text.length });
           }}
-          onCopyAll={() => {
-            copyText(text, 'Message');
+          onAsk={(excerpt) => {
+            onAsk(excerpt);
+            onComplete();
           }}
         />
       }
     >
-      <View className="gap-3 pb-2">
-        <SelectionBar text={text} selected={selected} onAsk={ask} />
+      <View className="pb-2">
         <Field
           text={text}
           forced={forced}

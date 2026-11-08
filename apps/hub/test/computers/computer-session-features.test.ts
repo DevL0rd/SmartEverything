@@ -5,6 +5,7 @@ import {
   type DeviceCommand,
   type FileList,
   type NodeRequest,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { chmod, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -75,6 +76,7 @@ describe('media commands (fake node)', () => {
     const context: ComputerCommandContext = {
       directory: {
         byExternalId: () => ({
+          protocol: NODE_PROTOCOL_VERSION,
           role: 'pc',
           machineActions: () => [],
           call: (request: NodeRequest): Promise<null> => {

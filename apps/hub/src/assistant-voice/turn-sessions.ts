@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { VoiceMemory } from './voice-memory';
 import type { Logger } from '@smarteverything/logging';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { VoiceResponder } from '../assistant/voice-link';
@@ -29,6 +30,7 @@ export interface TurnSessionsOptions {
   readonly provider: VoiceProvider;
   readonly responder: VoiceResponder;
   readonly tools: ToolHub;
+  readonly memory: VoiceMemory;
   readonly prices: PriceBook;
   readonly now: () => Date;
   readonly roomMedia?: SpeakingMedia;
@@ -64,11 +66,11 @@ export class TurnSessions {
   constructor(private readonly options: TurnSessionsOptions) {}
 
   async open(request: TurnRequest): Promise<TurnSession> {
-    const { store, provider, responder, tools, prices, now, log } = this.options;
+    const { store, provider, responder, tools, memory, prices, now, log } = this.options;
     const id = randomUUID();
     const session: TurnSession = new TurnSession({
       id,
-      kit: { store, responder, tools, now, prices, log },
+      kit: { store, responder, tools, memory, now, prices, log },
       provider,
       who: {
         caller: hostedCallerOf(store, request.caller),

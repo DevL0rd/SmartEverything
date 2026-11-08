@@ -1,6 +1,9 @@
 import {
+  assistantLabel,
+  helperDialogueOf,
   messageSpeaker,
   type AssistantMessageRow,
+  type HelperDialogue,
   type MessageSource,
   type MessageSpeaker,
 } from '@smarteverything/domain';
@@ -8,7 +11,7 @@ import { MINUTE_MS } from '../../../format/time';
 
 export type { MessageSpeaker } from '@smarteverything/domain';
 
-const RUN_MS = 5 * MINUTE_MS;
+const DEFAULT_ASSISTANT_NAME = assistantLabel({ name: null });
 
 export const TIME_GAP_MS = 60 * MINUTE_MS;
 
@@ -16,28 +19,36 @@ export type PluginNames = ReadonlyMap<string, string>;
 
 export type RunPosition = 'only' | 'first' | 'middle' | 'last';
 
-type Speakable = Pick<AssistantMessageRow, 'role' | 'author' | 'origin'>;
+export type Speakable = Pick<AssistantMessageRow, 'role' | 'author' | 'origin' | 'embeds'>;
 
-export function speakerOf(row: Speakable): MessageSpeaker {
-  return messageSpeaker(row);
-}
-
-function sameVoice(left: MessageSpeaker, right: MessageSpeaker): boolean {
-  if (left.kind !== right.kind || left.kind === 'system') {
-    return false;
-  }
-  return left.kind === 'person' ? left.name === right.name : true;
-}
-
-export function continuesRun(
-  previous: AssistantMessageRow | undefined,
-  row: AssistantMessageRow,
+export function isCoordinatorDialogue(
+  row: Speakable,
+  dialogue: HelperDialogue | undefined,
 ): boolean {
-  if (previous === undefined || previous.kind === 'call' || row.kind === 'call') {
-    return false;
+  const source = row.origin?.source;
+  return dialogue?.direction === 'to_helper' && (source === 'chat' || source === 'subagent');
+}
+
+export function isAssistantParticipant(row: Speakable): boolean {
+  if (row.role === 'responder') return true;
+  const dialogue = helperDialogueOf(row);
+  return dialogue?.direction === 'from_helper' || isCoordinatorDialogue(row, dialogue);
+}
+
+export function isAssistantReply(row: Speakable): boolean {
+  const dialogue = helperDialogueOf(row);
+  return dialogue === undefined ? row.role === 'responder' : dialogue.direction === 'from_helper';
+}
+
+export function speakerOf(row: Speakable, assistant = DEFAULT_ASSISTANT_NAME): MessageSpeaker {
+  const speaker = messageSpeaker(row);
+  const dialogue = helperDialogueOf(row);
+  if (dialogue?.direction === 'from_helper') {
+    return { ...speaker, kind: 'person', name: dialogue.helper_name };
   }
-  const near = Date.parse(row.created_at) - Date.parse(previous.created_at) <= RUN_MS;
-  return near && sameVoice(speakerOf(previous), speakerOf(row));
+  return isCoordinatorDialogue(row, dialogue)
+    ? { ...speaker, name: assistant, via: null }
+    : speaker;
 }
 
 export function positionOf(continuesBefore: boolean, continuesAfter: boolean): RunPosition {
@@ -52,45 +63,49 @@ const SOURCE_LABEL: Readonly<Partial<Record<MessageSource, string>>> = {
   schedule: 'Scheduled',
   subagent: 'Sub-agent',
   chat: 'Another chat',
+  hub: 'SmartEverything',
 };
 
 export function sourceLabelOf(row: Speakable, plugins: PluginNames): string | null {
   const { origin } = row;
-  if (origin === null) {
+  const dialogue = helperDialogueOf(row);
+  if (
+    origin === null ||
+    dialogue?.direction === 'from_helper' ||
+    isCoordinatorDialogue(row, dialogue)
+  ) {
     return null;
   }
-  if (origin.source === 'plugin') {
-    const named = origin.plugin_id === null ? undefined : plugins.get(origin.plugin_id);
-    return named ?? origin.plugin_id ?? 'Plugin';
-  }
+  if (origin.source === 'plugin') return pluginLabel(origin.plugin_id, plugins);
   if (origin.source === 'wake') {
     return origin.name ?? 'Camera';
   }
   return SOURCE_LABEL[origin.source] ?? null;
 }
 
-export function viaLabelOf(row: Speakable): string | null {
-  switch (row.origin?.source) {
-    case 'app':
-      return 'From the app';
-    case 'voice':
-      return 'By voice';
-    case 'plugin':
-    case 'wake':
-    case 'schedule':
-    case 'subagent':
-    case 'chat':
-    case undefined:
-      return null;
-  }
+function pluginLabel(id: string | null, plugins: PluginNames): string {
+  return id === null ? 'Plugin' : (plugins.get(id) ?? id);
 }
 
-const PALETTE_SIZE = 6;
+const VIA_LABEL: Readonly<Partial<Record<MessageSource, string>>> = {
+  app: 'From the app',
+  voice: 'By voice',
+};
 
-export function paletteSlotOf(name: string): number {
+export function viaLabelOf(row: Speakable): string | null {
+  return row.origin === null ? null : (VIA_LABEL[row.origin.source] ?? null);
+}
+
+const PALETTE_SLOTS = [1, 2, 3, 5, 6] as const;
+
+export function paletteIndexOf(name: string): number {
   let hash = 0;
   for (const letter of name) {
     hash = (hash * 31 + (letter.codePointAt(0) ?? 0)) % 9973;
   }
-  return (hash % PALETTE_SIZE) + 1;
+  return hash % PALETTE_SLOTS.length;
+}
+
+export function paletteSlotOf(name: string): number {
+  return PALETTE_SLOTS[paletteIndexOf(name)] ?? PALETTE_SLOTS[0];
 }

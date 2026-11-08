@@ -35,7 +35,7 @@ function hasDaily(
 
 type IdWidget = Exclude<
   Extract<ChatWidget, { readonly id: unknown }>,
-  { readonly kind: 'page_link' | 'device' | 'camera' }
+  { readonly kind: 'page_link' | 'device' | 'camera' | 'photos' }
 >;
 
 type Exists = (store: Store, id: string) => boolean;
@@ -120,7 +120,32 @@ function dataReason(store: Store, widget: ChatWidget, viewer: WidgetViewer): str
   return null;
 }
 
+const PHOTOS_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function photosKnown(store: Store, widget: Extract<ChatWidget, { kind: 'photos' }>): boolean {
+  switch (widget.view) {
+    case 'item':
+      return store.driveItems.find(widget.id) !== undefined;
+    case 'album':
+      return store.driveAlbums.find(widget.id) !== undefined;
+    case 'month':
+      return PHOTOS_MONTH.test(widget.id);
+    case 'memory':
+      return true;
+  }
+}
+
+function photosReason(
+  store: Store,
+  widget: Extract<ChatWidget, { kind: 'photos' }>,
+): string | null {
+  return photosKnown(store, widget) ? null : `There is no photos ${widget.view} ${widget.id}`;
+}
+
 function targetReason(store: Store, widget: ChatWidget): string | null {
+  if (widget.kind === 'photos') {
+    return photosReason(store, widget);
+  }
   if (widget.kind === 'board') {
     return boardReason(store, widget.type);
   }

@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
-import { Modal, View, useWindowDimensions } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
+import { ToastModal } from '../../../components/toast-modal';
 import { IconButton } from '../../../components/icon-button';
-import { OverflowButton } from '../../../components/menu';
+import { OverflowButton, type MenuSubpageNavigation } from '../../../components/menu';
 import { CameraDots } from './camera-dots';
 import { EdgeScrim } from '../../../components/edge-scrim';
 import { Text } from '../../../components/text';
@@ -92,6 +93,12 @@ function ViewerSheets({ viewer }: { readonly viewer: Viewer }): ReactNode {
   );
 }
 
+function streamInfoSubpage(live: Viewer['live']): (navigation: MenuSubpageNavigation) => ReactNode {
+  return function StreamInfoSubpage({ back, opener }: MenuSubpageNavigation): ReactNode {
+    return <StreamInfoSheet live={live} open onClose={back} subpage={{ opener }} />;
+  };
+}
+
 function TopBar({ viewer, immersive }: TopBarProps): ReactNode {
   const router = useRouter();
   const { entry } = viewer;
@@ -124,6 +131,7 @@ function TopBar({ viewer, immersive }: TopBarProps): ReactNode {
             onPress: (): void => {
               viewer.setInfo(true);
             },
+            subpage: streamInfoSubpage(viewer.live),
           },
           {
             label: 'Camera settings',
@@ -205,7 +213,7 @@ export function ViewerOverlays({ viewer }: { readonly viewer: Viewer }): ReactNo
   const focused = useIsFocused();
   return (
     <>
-      <Modal
+      <ToastModal
         visible={focused ? fullScreen.immersive : false}
         animationType="fade"
         supportedOrientations={['portrait', 'landscape']}
@@ -219,7 +227,7 @@ export function ViewerOverlays({ viewer }: { readonly viewer: Viewer }): ReactNo
           </View>
           {fullScreen.immersive ? <ViewerSheets viewer={viewer} /> : null}
         </GestureHandlerRootView>
-      </Modal>
+      </ToastModal>
       {fullScreen.immersive ? null : <ViewerSheets viewer={viewer} />}
     </>
   );

@@ -9,6 +9,7 @@ import type { ExtensionContext, RunningExtension, ServerExtension } from '../../
 import { scopesOfClient } from '../../server/person-scope';
 import { ownsSessions } from './access';
 import { isBrushEntry } from './brands';
+import { registerToothbrushAutomation } from './automation';
 import { brushDrivers } from './commands';
 import { entrySettingsOf } from './config';
 import { liveFrameOf, noticeOf } from './live';
@@ -68,7 +69,10 @@ export function toothbrushesExtension(clock: Clock): ServerExtension {
         return Promise.resolve();
       });
     });
-    const unregisters = drivers.map((driver) => context.hub.drivers.registry.register(driver));
+    const unregisters = [
+      ...drivers.map((driver) => context.hub.drivers.registry.register(driver)),
+      registerToothbrushAutomation(context.hub.automationKinds),
+    ];
     return Promise.resolve({
       endpoints: brushRoutes({
         store: context.store,

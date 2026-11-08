@@ -18,10 +18,17 @@ describe('camera notification options', () => {
   });
 
   it('offers following the default only where a camera can override it', () => {
-    expect(cooldownOptions(true)[0]?.value).toBe(FOLLOW_DEFAULT);
-    expect(cooldownOptions(false).map((option) => option.value)).not.toContain(FOLLOW_DEFAULT);
-    expect(cooldownOptions(false).map((option) => option.label)).toContain('2 minutes');
-    expect(cooldownOptions(false).map((option) => option.label)).toContain('No limit');
+    expect(cooldownOptions(5)[0]).toEqual({ value: FOLLOW_DEFAULT, label: 'Default · 5 minutes' });
+    expect(cooldownOptions(null).map((option) => option.value)).not.toContain(FOLLOW_DEFAULT);
+    expect(cooldownOptions(null).map((option) => option.label)).toContain('2 minutes');
+    expect(cooldownOptions(null).map((option) => option.label)).toContain('No limit');
+  });
+
+  it('names the quiet hours a camera follows', () => {
+    expect(quietOptions(null, null)[0]?.label).toBe('Default · None');
+    expect(quietOptions(null, { from: '22:00', to: '07:00' })[0]?.label).toBe(
+      'Default · 22:00 to 07:00',
+    );
   });
 
   it('lists every half hour of the day once', () => {
@@ -34,8 +41,10 @@ describe('camera notification options', () => {
 
   it('keeps a quiet window the AI set in the list so the row can show it', () => {
     const custom = { from: '20:15', to: '05:45' };
-    expect(quietOptions(null).map((option) => option.value)).not.toContain(quietValue(custom));
-    expect(quietOptions(custom).map((option) => option.value)).toContain(quietValue(custom));
+    expect(quietOptions(null, null).map((option) => option.value)).not.toContain(
+      quietValue(custom),
+    );
+    expect(quietOptions(custom, null).map((option) => option.value)).toContain(quietValue(custom));
     expect(quietFromValue(quietValue(custom))).toEqual(custom);
   });
 });

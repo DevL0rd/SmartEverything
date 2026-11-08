@@ -174,7 +174,7 @@ export function resetNavigation(store: EntityStore): void {
   const { scope, layout } = activeLayoutOf(store.get());
   confirm({
     title: 'Reset navigation?',
-    body: 'Your pins, folders and hidden pages go back to the default.',
+    body: 'Your pins, folders and hidden pages go back to the built-in layout.',
     confirmLabel: 'Reset',
     tone: 'destructive',
   })

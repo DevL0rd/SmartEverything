@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ENGINE } from '@smarteverything/domain';
 import { nativeModelKey } from '../../provider/computer-engine';
-import { RECENT_MAX, recentIdOf, recentIdOfEngine, withRecent } from './panel-recent';
+import { RECENT_MAX, recentIdOf, withRecent } from './panel-recent';
 
 describe('the recent models list', () => {
   it('puts the newest pick first and drops its earlier place', () => {
@@ -28,14 +28,15 @@ describe('the recent models list', () => {
     expect(recentIdOf({ model: 'openai/gpt-5', effort: null })).toBe('openai/gpt-5');
   });
 
-  it('identifies an engine chosen in the library the same way as a panel pick', () => {
-    const native = ENGINE.parse({
-      kind: 'claude',
-      model: 'sonnet',
-      device_id: '0b3f4c1e-5d7a-4e0b-9a41-6a6d2f0c8a11',
+  it('identifies a metered engine chosen in the library by model id', () => {
+    const metered = ENGINE.parse({
+      kind: 'dsh',
+      execution_target: { kind: 'server' },
+      session_id: null,
+      model_route_id: '0e000000-0000-4000-8000-0000000000a1',
+      model: 'openai/gpt-5',
     });
-    expect(recentIdOfEngine(native)).toBe(nativeModelKey('claude', 'sonnet'));
-    expect(recentIdOfEngine(ENGINE.parse({ kind: 'openrouter', model: 'openai/gpt-5' }))).toBe(
+    expect(recentIdOf({ model: metered.model, effort: null, engine: metered })).toBe(
       'openai/gpt-5',
     );
   });

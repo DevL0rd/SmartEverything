@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { PortThunks } from '../../../src/interpret/frames';
 import { HOME, NOW, bad, good, runPorts } from './support';
 
 describe('logic.compare', () => {
@@ -191,11 +192,13 @@ describe('logic.and, logic.or, logic.not', () => {
 
   it('stop at the first deciding flag without reading the rest', () => {
     const read: string[] = [];
-    const lazy = (values: Readonly<Record<string, boolean>>) => (name: string) => {
-      read.push(name);
-      const value = values[name];
-      return value === undefined ? undefined : { ok: true as const, value };
-    };
+    const lazy =
+      (values: Readonly<Record<string, boolean>>): PortThunks['get'] =>
+      (name) => {
+        read.push(name);
+        const value = values[name];
+        return value === undefined ? undefined : { ok: true, value };
+      };
     runPorts('logic.and', ['a', 'b'], lazy({ a: false, b: true }));
     expect(read).toEqual(['a']);
     read.length = 0;

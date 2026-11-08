@@ -1,5 +1,4 @@
-import { randomBytes } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pipeline } from 'node:stream/promises';
 import {
   NATIVE_HUB_RESOURCE_OPEN,
@@ -9,64 +8,42 @@ import {
 } from '@smarteverything/domain';
 import type { HubLeasePort } from './lease';
 import { HubRefusalError, HubTransportError } from './policy';
-import { refuseLoopbackRequest } from './refusal';
+import { LoopbackListener, type LoopbackEntry } from './loopback-listener';
 import { resourceRequestHeaders, resourceResponseHeaders } from './resource-contract';
 import { openHubResource } from './transport';
 
 interface ResourceGrant {
-  readonly owner: number;
   readonly input: NativeHubResourceOpen;
-  readonly controller: AbortController;
   readonly identity: string;
-  readonly removeAbort: () => void;
 }
 export interface ResourceAdmission {
   readonly input: NativeHubResourceOpen;
   readonly signal: AbortSignal;
 }
 export class HubResourceBroker {
-  private server: Server | null = null;
-  private host = '';
   private readonly resources = new Map<string, string>();
-  private readonly grants = new Map<string, ResourceGrant>();
+  private readonly listener = new LoopbackListener<number, ResourceGrant>({
+    name: 'Resource listener',
+    event: 'resource.refused',
+    idPattern: /^\/resource\/([0-9a-f]{64})$/,
+    unknownMessage: 'Resource grant is unknown or was released',
+    retiredMessage: 'Resource grant released',
+    serve: (request, response, id, entry): Promise<void> =>
+      this.serve(request, response, id, entry),
+  });
   constructor(
     readonly policies: HubLeasePort,
     readonly appOrigin: string,
   ) {}
   get origin(): string | undefined {
-    return this.host === '' ? undefined : `http://${this.host}`;
+    return this.listener.origin;
   }
   async start(): Promise<void> {
-    if (this.server !== null) throw new HubTransportError('Resource listener already started');
-    const server = createServer((request, response) => {
-      void this.serve(request, response).catch((cause: unknown) => {
-        refuseLoopbackRequest(response, cause, 'resource.refused');
-      });
-    });
-    server.on('connect', (_request, socket) => {
-      socket.destroy();
-    });
-    server.on('upgrade', (_request, socket) => {
-      socket.destroy();
-    });
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(0, '127.0.0.1', () => {
-        server.removeListener('error', reject);
-        resolve();
-      });
-    });
-    const address = server.address();
-    if (address === null || typeof address === 'string') {
-      server.close();
-      throw new HubTransportError('Resource listener has no TCP address');
-    }
-    this.host = `127.0.0.1:${String(address.port)}`;
-    this.server = server;
+    await this.listener.start();
   }
   open(owner: number, value: unknown): NativeHubResource {
     const input = NATIVE_HUB_RESOURCE_OPEN.parse(value);
-    if (this.server === null) throw new HubTransportError('Resource listener is unavailable');
+    if (!this.listener.running) throw new HubTransportError('Resource listener is unavailable');
     const lease = this.policies.lease(
       input.scopeId,
       input.url,
@@ -76,79 +53,66 @@ export class HubResourceBroker {
     if (lease.signal?.aborted === true) throw new HubTransportError('Resource scope was withdrawn');
     const identity = JSON.stringify([owner, nativeHubResourceIdentity(input)]);
     const existing = this.resources.get(identity);
-    const grant = existing === undefined ? undefined : this.grants.get(existing);
+    const grant = existing === undefined ? undefined : this.listener.get(existing);
     if (existing !== undefined && grant !== undefined) {
-      this.grants.set(existing, { ...grant, input });
+      this.listener.replace(existing, { identity, input });
       return this.presentation(existing, input);
     }
-    return this.create(owner, input, identity, lease.signal);
-  }
-  private create(
-    owner: number,
-    input: NativeHubResourceOpen,
-    identity: string,
-    signal: AbortSignal | undefined,
-  ): NativeHubResource {
-    const id = randomBytes(32).toString('hex');
-    const abort = (): void => {
-      this.release(owner, id);
-    };
-    signal?.addEventListener('abort', abort, { once: true });
-    this.grants.set(id, {
-      owner,
-      input,
-      identity,
-      controller: new AbortController(),
-      removeAbort: (): void => {
-        signal?.removeEventListener('abort', abort);
-      },
+    const id = this.listener.add(owner, { identity, input }, lease.signal, (retired) => {
+      this.release(owner, retired);
     });
     this.resources.set(identity, id);
     return this.presentation(id, input);
   }
   private presentation(id: string, input: NativeHubResourceOpen): NativeHubResource {
-    return { id, localUrl: `http://${this.host}/resource/${id}`, expiresAt: input.expiresAt };
+    return {
+      id,
+      localUrl: `http://${this.listener.host}/resource/${id}`,
+      expiresAt: input.expiresAt,
+    };
   }
   admit(owner: number, id: string): ResourceAdmission {
-    const grant = this.grants.get(id);
-    if (grant?.owner !== owner || grant.controller.signal.aborted)
+    const entry = this.listener.get(id);
+    if (entry?.owner !== owner || entry.controller.signal.aborted)
       throw new HubRefusalError(
         'Resource grant is absent, released or belongs to another owner',
         409,
       );
-    return { input: grant.input, signal: grant.controller.signal };
+    return { input: entry.value.input, signal: entry.controller.signal };
   }
   release(owner: number, id: string): void {
-    const grant = this.grants.get(id);
-    if (grant === undefined) return;
-    if (grant.owner !== owner)
+    const entry = this.listener.get(id);
+    if (entry === undefined) return;
+    if (entry.owner !== owner)
       throw new HubRefusalError('Resource grant belongs to another owner', 403);
-    this.grants.delete(id);
-    this.resources.delete(grant.identity);
-    grant.removeAbort();
-    grant.controller.abort(new HubTransportError('Resource grant released'));
+    this.resources.delete(entry.value.identity);
+    this.listener.release(id);
   }
   clearScope(scopeId: string): void {
-    for (const [id, grant] of this.grants)
-      if (grant.input.scopeId === scopeId) this.release(grant.owner, id);
+    this.releaseWhere((entry) => entry.value.input.scopeId === scopeId);
   }
   closeOwner(owner: number): void {
-    for (const [id, grant] of this.grants) if (grant.owner === owner) this.release(owner, id);
+    this.releaseWhere((entry) => entry.owner === owner);
   }
   close(): void {
-    for (const [id, grant] of this.grants) this.release(grant.owner, id);
-    this.server?.closeAllConnections();
-    this.server?.close();
-    this.server = null;
-    this.host = '';
+    this.releaseWhere(() => true);
+    this.listener.close();
   }
-  private async serve(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  private releaseWhere(match: (entry: LoopbackEntry<number, ResourceGrant>) => boolean): void {
+    this.listener.releaseWhere((entry) => {
+      if (!match(entry)) return false;
+      this.resources.delete(entry.value.identity);
+      return true;
+    });
+  }
+  private async serve(
+    request: IncomingMessage,
+    response: ServerResponse,
+    id: string,
+    entry: LoopbackEntry<number, ResourceGrant>,
+  ): Promise<void> {
     const headers = resourceRequestHeaders(request);
-    const id = /^\/resource\/([0-9a-f]{64})$/.exec(request.url ?? '')?.[1];
-    const grant = id === undefined ? undefined : this.grants.get(id);
-    if (grant === undefined || id === undefined)
-      throw new HubRefusalError('Resource grant is unknown or was released', 409);
-    const admission = this.admit(grant.owner, id);
+    const admission = this.admit(entry.owner, id);
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, admission.signal]);
     const cancel = (): void => {

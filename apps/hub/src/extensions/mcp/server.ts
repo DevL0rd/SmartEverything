@@ -1,14 +1,11 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
-  CallToolRequestSchema,
-  ErrorCode,
-  ListResourcesRequestSchema,
-  ListToolsRequestSchema,
-  McpError,
-  ReadResourceRequestSchema,
-  ToolSchema,
+  McpServer,
+  ProtocolError,
+  ProtocolErrorCode,
+  specTypeSchemas,
   type CallToolResult,
-} from '@modelcontextprotocol/sdk/types.js';
+  type Tool,
+} from '@modelcontextprotocol/server';
 import type { Logger } from '@smarteverything/logging';
 import { SERVER_INFO, serverInstructions } from './instructions';
 import { enabledTools, runTool } from './dispatch';
@@ -35,7 +32,26 @@ export function listedFor(userAgent: string): (name: string) => boolean {
   return searches ? (): boolean => true : (name): boolean => EXTERNAL_CORE.has(name);
 }
 
-const LISTED = TOOLS.map((tool) => ({ name: tool.name, listing: ToolSchema.parse(tool.listing) }));
+class ToolListingError extends Error {
+  override readonly name = 'ToolListingError';
+
+  constructor(tool: string, issues: string) {
+    super(`The listing of tool ${tool} is not a valid MCP tool: ${issues}`);
+  }
+}
+
+function validListing(name: string, listing: unknown): Tool {
+  const checked = specTypeSchemas.Tool['~standard'].validate(listing);
+  if (checked.issues !== undefined) {
+    throw new ToolListingError(name, checked.issues.map((issue) => issue.message).join('; '));
+  }
+  return checked.value;
+}
+
+const LISTED = TOOLS.map((tool) => ({
+  name: tool.name,
+  listing: validListing(tool.name, tool.listing),
+}));
 
 function contentOf(output: ToolOutput): CallToolResult['content'] {
   return [
@@ -57,7 +73,7 @@ async function called(
   const run = await runTool(context, name, args, log);
   switch (run.kind) {
     case 'unknown':
-      throw new McpError(ErrorCode.InvalidParams, `Unknown tool: ${name}`);
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown tool: ${name}`);
     case 'refused':
       return {
         content: [{ type: 'text', text: `${run.refusal.code}: ${run.refusal.message}` }],
@@ -87,7 +103,7 @@ export function createMcpServer(context: ToolContext, log: Logger, userAgent: st
   server.onerror = (cause): void => {
     log.warn('request.rejected', { message: cause.message });
   };
-  server.setRequestHandler(ListToolsRequestSchema, () => {
+  server.setRequestHandler('tools/list', () => {
     const enabled = new Set(
       enabledTools(context)
         .map((tool) => tool.name)
@@ -103,18 +119,18 @@ export function createMcpServer(context: ToolContext, log: Logger, userAgent: st
       tools: LISTED.filter(({ name }) => enabled.has(name)).map(({ listing }) => listing),
     };
   });
-  server.setRequestHandler(CallToolRequestSchema, ({ params }) =>
+  server.setRequestHandler('tools/call', ({ params }) =>
     called(context, log, params.name, params.arguments ?? {}),
   );
-  server.setRequestHandler(ListResourcesRequestSchema, () => {
+  server.setRequestHandler('resources/list', () => {
     log.trace('resources.listed', { via: context.caller?.via });
     return resourceList();
   });
-  server.setRequestHandler(ReadResourceRequestSchema, ({ params }) => {
+  server.setRequestHandler('resources/read', ({ params }) => {
     const read = resourceRead(params.uri, enabledTools(context));
     log.debug('resource.read', { found: read !== null, via: context.caller?.via });
     if (read === null) {
-      throw new McpError(ErrorCode.InvalidParams, 'Unknown resource');
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Unknown resource');
     }
     return read;
   });

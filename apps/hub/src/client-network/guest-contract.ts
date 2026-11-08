@@ -1,14 +1,18 @@
 import type { IncomingMessage } from 'node:http';
 import { HubRefusalError } from './policy';
 
-const FORWARD_HEADERS = [
+const FORWARD_HEADERS: ReadonlySet<string> = new Set([
   'authorization',
   'accept',
+  'user-agent',
   'content-type',
   'mcp-protocol-version',
   'mcp-session-id',
+  'mcp-method',
+  'mcp-name',
   'last-event-id',
-] as const;
+]);
+const FORWARD_HEADER_PREFIX = 'mcp-param-';
 const RESPONSE_HEADERS = new Set([
   'content-type',
   'content-length',
@@ -37,10 +41,12 @@ export function guestRequestTarget(
   if (!['GET', 'POST', 'DELETE'].includes(method))
     throw new HubRefusalError('MCP grant accepts only GET, POST and DELETE', 403);
   const headers: Record<string, string> = {};
-  for (const name of FORWARD_HEADERS) {
-    const value = request.headers[name];
-    if (typeof value === 'string') headers[name] = value;
-  }
+  for (const [name, value] of Object.entries(request.headers))
+    if (
+      typeof value === 'string' &&
+      (FORWARD_HEADERS.has(name) || name.startsWith(FORWARD_HEADER_PREFIX))
+    )
+      headers[name] = value;
   return { url: grant.url, method, headers };
 }
 export function guestResponseHeaders(

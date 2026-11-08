@@ -98,7 +98,7 @@ export function NetworkBody({ device }: { readonly device: Device }): ReactNode 
 export function PhoneNetworkScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   const device = useDevice(deviceId);
   return (
-    <PhoneFrame deviceId={deviceId} title="Network" width="detail">
+    <PhoneFrame deviceId={deviceId} title="Network" width="dashboard">
       {device?.kind === 'phone' ? <NetworkBody device={device} /> : null}
     </PhoneFrame>
   );

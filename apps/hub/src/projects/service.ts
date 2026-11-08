@@ -11,6 +11,8 @@ import {
   type AiProjectResult,
 } from '@smarteverything/domain';
 import { HarnessLocalFileSystem } from '@smarteverything/harness';
+import type { HubLayout } from '../data-layout';
+import type { Store } from '../store/store';
 import { chatFolder, ensureChatFolder } from './paths';
 import { ProjectQueue } from './queue';
 import {
@@ -32,14 +34,17 @@ export class ProjectFilesService {
   private readonly fs: HarnessLocalFileSystem;
   private readonly changes = new Set<(chat: string, path: string) => void>();
   private readonly deleting = new Set<(chat: string) => void>();
-  constructor(private readonly dataDirectory: string) {
+  constructor(
+    private readonly layout: HubLayout,
+    private readonly chats: Pick<Store['aiChats'], 'chat'>,
+  ) {
     this.fs = new HarnessLocalFileSystem(new Context(), {
-      cwd: dataDirectory,
+      cwd: layout.root,
       diffBasisMaxBytes: AI_PROJECT_CHUNK_BYTES,
     });
   }
   root(chat: string): string {
-    return chatFolder(this.dataDirectory, chat);
+    return chatFolder(this.layout, this.chats.chat(chat));
   }
   ensure(chat: string): string {
     return ensureChatFolder(this.root(chat));

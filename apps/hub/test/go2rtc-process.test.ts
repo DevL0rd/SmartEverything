@@ -29,6 +29,8 @@ async function fakeBinary(body: string): Promise<string> {
   return path;
 }
 
+const DEATH_CHECK_DELAY_MS = 1200;
+
 const READY = [
   "echo 'plain text line'",
   "echo '{broken'",
@@ -51,7 +53,7 @@ function launch(
 ): Parameters<typeof startGo2rtc>[0] {
   return {
     binary,
-    dataDirectory: directory,
+    configPath: join(directory, 'go2rtc', 'go2rtc.yaml'),
     apiPort: 1984,
     rtspPort: 8554,
     webrtcPort: 8555,
@@ -154,6 +156,60 @@ describe('startGo2rtc', () => {
     expect(running.baseUrl).toBe('http://127.0.0.1:1984');
     process.kill(Number(await readFile(pidFile, 'utf8')), 'SIGUSR1');
     expect((await exited).message).toBe('go2rtc exited unexpectedly with code 4 and signal null.');
+  });
+
+  it('logs a death and reports it when go2rtc exits while nobody is stopping it', async () => {
+    const pidFile = join(directory, 'dying-pid');
+    const binary = await fakeBinary(
+      [
+        `echo $$ > "${pidFile}"`,
+        `trap 'kill $child; exit 7' USR1`,
+        READY,
+        'sleep 30 &',
+        'child=$!',
+        'wait $child',
+      ].join('\n'),
+    );
+    let report: (cause: Error) => void = () => undefined;
+    const exited = new Promise<Error>((resolve) => {
+      report = resolve;
+    });
+    await startGo2rtc(
+      launch(binary, (cause) => {
+        report(cause);
+      }),
+    );
+    process.kill(Number(await readFile(pidFile, 'utf8')), 'SIGUSR1');
+    const cause = await exited;
+    expect(cause.name).toBe('Go2rtcExitedError');
+    expect(cause.message).toBe('go2rtc exited unexpectedly with code 7 and signal null.');
+    const deaths = logs.records.filter((record) => record.event === 'go2rtc.died');
+    expect(deaths.map((record) => record.level)).toStrictEqual(['error']);
+    expect(deaths.map((record) => record.failure?.name)).toStrictEqual(['Go2rtcExitedError']);
+  });
+
+  it('treats an exit as expected after expectStop and never reports a death', async () => {
+    const pidFile = join(directory, 'expected-pid');
+    const binary = await fakeBinary([`echo $$ > "${pidFile}"`, READY, 'exec sleep 30'].join('\n'));
+    let reports = 0;
+    const running = await startGo2rtc(
+      launch(binary, () => {
+        reports += 1;
+      }),
+    );
+    running.expectStop();
+    expect(logs.records.filter((record) => record.event === 'go2rtc.stopping')).toHaveLength(1);
+    process.kill(Number(await readFile(pidFile, 'utf8')), 'SIGTERM');
+    await new Promise((resolve) => setTimeout(resolve, DEATH_CHECK_DELAY_MS));
+    await running.stop();
+    expect(reports).toBe(0);
+    expect(logs.events()).not.toContain('go2rtc.died');
+    expect(
+      logs.records
+        .filter((record) => record.event === 'go2rtc.exited')
+        .map((record) => record.payload['expected']),
+    ).toStrictEqual([true]);
+    expect(logs.records.filter((record) => record.event === 'go2rtc.stopping')).toHaveLength(1);
   });
 
   it('fails visibly when the binary cannot be started', async () => {

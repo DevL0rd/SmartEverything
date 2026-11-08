@@ -1,160 +1,139 @@
-import { centralCallKey } from './central-call-key';
-import { CentralToolFailures } from './central-failures';
-import { toolMediaReferences } from './media-reference';
 import * as trace from './central-trace';
-import { z } from 'zod';
 import type { Context } from '@deepseek-ai/cordis';
-import type { ContentBlock } from '@deepseek-ai/dsh-llm';
-import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
 import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools';
+import { z } from 'zod';
 import {
   HARNESS_CENTRAL_CATALOGUE,
   HARNESS_CENTRAL_CONTEXT,
   HARNESS_CENTRAL_RESULT,
-  JSON_VALUE,
 } from '@smarteverything/domain';
 import type { HarnessHub } from './http';
 import type { HarnessControlPersistence } from './contracts';
-import { HarnessRuntimeError } from '../host/errors';
 import { bindCompactionPolicy } from '../composition/compaction-policy';
+import { bindHomeTools } from '../plugins/home-tools';
+import { HarnessRuntimeError } from '../host/errors';
+import type {
+  HomeTool,
+  HomeToolCall,
+  HomeToolResult,
+  HomeToolSession,
+  HomeToolTransport,
+} from '../plugins/home-tools';
 
 type CentralTool = z.infer<typeof HARNESS_CENTRAL_CATALOGUE>[number];
-export class CentralHarnessTools {
-  private readonly failures = new CentralToolFailures();
-  private readonly registrations = new Map<
-    string,
-    { readonly signature: string; readonly dispose: () => void }
-  >();
-  private readonly contents = new Map<string, ContentBlock[]>();
+
+const FORWARDED = z.looseObject({ name: z.string().trim() });
+
+function concurrencySafe(tool: CentralTool): HomeTool['concurrencySafe'] {
+  const targets = tool.read_only_targets;
+  if (targets === undefined) return () => tool.read_only;
+  const readOnly = new Set(targets);
+  return (args) => {
+    const forwarded = FORWARDED.safeParse(args);
+    return forwarded.success && readOnly.has(forwarded.data.name);
+  };
+}
+
+function homeTool(tool: CentralTool): HomeTool {
+  const parameters = tool.parameters;
+  assertObjectJsonSchema(parameters);
+  return {
+    name: tool.name,
+    description: tool.description,
+    parameters,
+    concurrencySafe: concurrencySafe(tool),
+  };
+}
+
+export class CentralHarnessTools implements HomeToolTransport {
+  private catalogue: readonly HomeTool[] = [];
   private readonly compactAt = new Map<string, number>();
+
   constructor(
     private readonly http: HarnessHub,
     private readonly persistence: Pick<HarnessControlPersistence, 'claim'>,
   ) {}
+
   async install(ctx: Context): Promise<void> {
-    this.failures.install(ctx);
     bindCompactionPolicy(ctx, (id, signal) => this.compactionPercent(id, signal));
     const catalogue = await this.http.call({ operation: 'tools' }, HARNESS_CENTRAL_CATALOGUE);
     trace.catalogueLoaded(catalogue.length);
-    this.update(ctx, catalogue);
-    ctx.on('tools/result', (execution) => {
-      this.contents.delete(centralCallKey(execution));
-    });
-    ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
-      if (context.agent === undefined) return next();
-      const startedAt = performance.now();
-      const current = await this.http.call(
-        { operation: 'context', claim: this.persistence.claim(context.agent.id) },
-        HARNESS_CENTRAL_CONTEXT,
-        context.signal,
-      );
-      this.compactAt.set(context.agent.id, current.compact_at_percent);
-      trace.contextFetched(context.agent.id, current, startedAt);
-      this.update(ctx, current.tools);
-      const result = await next();
-      const allowed = new Set(current.declared_tool_names);
-      result.tools = ctx.tools
-        .schemas(context.agent)
-        .filter((tool) => !this.registrations.has(tool.name) || allowed.has(tool.name));
-      result.sections.push({
-        name: 'smarteverything-conversation',
-        text: current.system,
-        interpolate: false,
-      });
-      result.contexts.push({
-        name: 'smarteverything-conversation',
-        text: current.turn,
-        interpolate: false,
-      });
-      return result;
-    });
+    this.catalogue = catalogue.map(homeTool);
+    ctx.effect(() => bindHomeTools(ctx, this));
     ctx.effect(() => (): void => {
-      for (const entry of this.registrations.values()) entry.dispose();
-      this.registrations.clear();
-      this.contents.clear();
       this.compactAt.clear();
     });
   }
-  private async compactionPercent(id: string, signal: AbortSignal): Promise<number> {
-    const known = this.compactAt.get(id);
-    if (known !== undefined) return known;
-    const context = await this.http.call(
-      { operation: 'context', claim: this.persistence.claim(id) },
-      HARNESS_CENTRAL_CONTEXT,
-      signal,
-    );
-    this.compactAt.set(id, context.compact_at_percent);
-    return context.compact_at_percent;
+
+  tools(): readonly HomeTool[] {
+    return this.catalogue;
   }
-  private update(ctx: Context, tools: readonly CentralTool[]): void {
-    for (const tool of tools) {
-      if (tool.name === 'ask_user_question') continue;
-      const signature = JSON.stringify(tool);
-      const existing = this.registrations.get(tool.name);
-      if (existing?.signature === signature) continue;
-      trace.toolRegistered(tool.name, existing !== undefined);
-      existing?.dispose();
-      if (ctx.tools.get(tool.name) !== undefined)
-        throw new HarnessRuntimeError(
-          'composition_incompatible',
-          `Central tool ${tool.name} collides with a native tool.`,
-        );
-      this.registrations.set(tool.name, {
-        signature,
-        dispose: ctx.tools.register(this.definition(ctx, tool)),
-      });
-    }
+
+  changes(): () => void {
+    return (): void => undefined;
   }
-  private definition(ctx: Context, tool: CentralTool): Parameters<Context['tools']['register']>[0] {
-    const parameters = tool.parameters;
-    assertObjectJsonSchema(parameters);
+
+  async session(sessionId: string, signal?: AbortSignal): Promise<HomeToolSession> {
+    const startedAt = performance.now();
+    const current = await this.context(sessionId, signal);
+    this.compactAt.set(sessionId, current.compact_at_percent);
+    trace.contextFetched(sessionId, current, startedAt);
+    this.catalogue = current.tools.map(homeTool);
     return {
-      ...tool,
-      parameters,
-      output: {
-        schema: { type: 'object', additionalProperties: true },
-        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-      },
-      execute: (raw, execution) => this.execute(ctx, tool.name, raw, execution),
-      projectContent: (execution) => this.contents.get(centralCallKey(execution)),
+      tools: this.catalogue,
+      declared: current.declared_tool_names,
+      eventId: current.event_id,
+      prompt: { system: current.system, turn: current.turn },
     };
   }
-  private async execute(
-    ctx: Context,
-    name: string,
-    raw: unknown,
-    execution: ToolRunContext,
-  ): Promise<unknown> {
-    const agent = execution.agent;
-    if (agent === undefined)
-      throw new HarnessRuntimeError(
-        'operation_failed',
-        'Central tools require a native conversation.',
-      );
-    const args = z.record(z.string(), JSON_VALUE).parse(raw);
+
+  async call(request: HomeToolCall): Promise<HomeToolResult> {
+    const { sessionId, eventId, name, signal } = request;
+    if (eventId === undefined)
+      throw new HarnessRuntimeError('operation_failed', 'The home tool has no authenticated turn.');
     const startedAt = performance.now();
-    trace.toolSent(agent.id, name, Object.keys(args).length);
+    trace.toolSent(sessionId, name, Object.keys(request.arguments).length);
     let result: z.infer<typeof HARNESS_CENTRAL_RESULT>;
     try {
       result = await this.http.call(
-        { operation: 'tool', claim: this.persistence.claim(agent.id), name, arguments: args },
+        {
+          operation: 'tool',
+          claim: this.persistence.claim(sessionId),
+          event_id: eventId,
+          call_id: request.callId,
+          name,
+          arguments: request.arguments,
+        },
         HARNESS_CENTRAL_RESULT,
-        execution.signal,
+        signal,
       );
     } catch (cause) {
-      trace.toolFailed(agent.id, name, cause, { aborted: execution.signal.aborted, startedAt });
+      trace.toolFailed(sessionId, name, cause, { aborted: signal.aborted, startedAt });
       throw cause;
     }
-    trace.toolAnswered(agent.id, name, result, startedAt);
-    const blocks: ContentBlock[] = [{ type: 'text', text: JSON.stringify(result.response) }];
-    for (const picture of result.pictures)
-      blocks.push(
-        ...(await ctx.attachments.admitPromptContent([
-          { type: 'image', mediaType: picture.mime, data: picture.data },
-        ])),
-      );
-    this.contents.set(centralCallKey(execution), toolMediaReferences(blocks, result.response));
-    this.failures.capture(execution, result.response);
-    return result.response;
+    trace.toolAnswered(sessionId, name, result, startedAt);
+    return {
+      response: result.response,
+      pictures: result.pictures.map((picture) => ({ mediaType: picture.mime, data: picture.data })),
+    };
+  }
+
+  private context(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<z.infer<typeof HARNESS_CENTRAL_CONTEXT>> {
+    return this.http.call(
+      { operation: 'context', claim: this.persistence.claim(sessionId) },
+      HARNESS_CENTRAL_CONTEXT,
+      signal,
+    );
+  }
+
+  private async compactionPercent(sessionId: string, signal: AbortSignal): Promise<number> {
+    const known = this.compactAt.get(sessionId);
+    if (known !== undefined) return known;
+    const context = await this.context(sessionId, signal);
+    this.compactAt.set(sessionId, context.compact_at_percent);
+    return context.compact_at_percent;
   }
 }

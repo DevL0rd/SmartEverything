@@ -8,6 +8,7 @@ import {
 import WebSocket from 'ws';
 import type { ShellyDevice } from '@smarteverything/shelly';
 import { messageOf } from '@smarteverything/logging';
+import { afterPendingInput, pingWhenOpen } from '../../../network/guarded-socket';
 
 const OPEN_MS = 10000;
 const KEEPALIVE_MS = 30000;
@@ -30,19 +31,26 @@ function socketUrl(address: string): string {
 
 function keepAlive(socket: WebSocket, dead: () => void): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
+  const unanswered = (): void => {
+    const waiting = timer;
+    afterPendingInput(() => {
+      if (timer === waiting) dead();
+    });
+  };
   const arm = (): void => {
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
-      socket.ping();
-      timer = setTimeout(dead, OPEN_MS);
+      if (!pingWhenOpen(socket)) return;
+      timer = setTimeout(unanswered, OPEN_MS);
       timer.unref();
     }, KEEPALIVE_MS);
     timer.unref();
   };
   socket.on('pong', arm);
-  arm();
+  socket.once('open', arm);
   return (): void => {
     if (timer !== null) clearTimeout(timer);
+    timer = null;
   };
 }
 

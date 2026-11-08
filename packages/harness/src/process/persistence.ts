@@ -1,5 +1,8 @@
 import {
+  ApiError,
+  DSH_SESSION_HEADER,
   DSH_SESSION_METADATA,
+  DSH_SESSION_OPENED,
   DSH_SESSION_PAGE,
   DSH_WRITER_CLAIM,
   DSH_SESSION_EVENTS_WRITE,
@@ -30,19 +33,37 @@ export class HubSessionLog implements NativeSessionPersistencePort {
     this.claims.set(claim.session_id, DSH_WRITER_CLAIM.parse(claim));
     this.known.delete(claim.session_id);
   }
-  create(_header: SessionHeader, _inheritedEventCount: number): Promise<NativeSessionWriter> {
-    return Promise.reject(
-      new HarnessRuntimeError(
+  async create(header: SessionHeader, inheritedEventCount: number): Promise<NativeSessionWriter> {
+    const native = DSH_SESSION_HEADER.parse(header);
+    if (native.origin !== 'subagent' || native.parentSession === undefined)
+      throw new HarnessRuntimeError(
         'ownership_lost',
-        'Native creation requires an explicit central chat grant.',
-      ),
+        'A machine starts only helper sessions of a conversation it is writing.',
+        native.id,
+      );
+    const opened = await this.http.call(
+      {
+        operation: 'create_child',
+        parent_claim: this.claim(native.parentSession),
+        header: native,
+        inherited_event_count: inheritedEventCount,
+      },
+      DSH_SESSION_OPENED,
     );
+    this.bind(opened.claim);
+    this.remember(native.id, opened.metadata);
+    return { ...snapshot(opened.metadata), claim: opened.claim };
   }
   async acquire(id: SessionId, signal?: AbortSignal): Promise<NativeSessionWriter> {
     return { ...snapshot(await this.metadata(id, signal)), claim: this.claim(id) };
   }
-  async stat(id: SessionId, signal?: AbortSignal): Promise<NativeSessionSnapshot> {
-    return snapshot(await this.metadata(id, signal));
+  async stat(id: SessionId, signal?: AbortSignal): Promise<NativeSessionSnapshot | undefined> {
+    try {
+      return snapshot(await this.metadata(id, signal));
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === 'not_found') return undefined;
+      throw cause;
+    }
   }
   async list(): Promise<readonly NativeSessionSnapshot[]> {
     return Promise.all(
@@ -78,25 +99,23 @@ export class HubSessionLog implements NativeSessionPersistencePort {
     operationId: string,
     events: readonly SessionEvent[],
   ): Promise<void> {
-    const id = claim.session_id;
     const input = {
-      claim: this.claim(id),
+      claim: this.writeClaim(claim),
       operation_id: operationId,
       events: DSH_SESSION_EVENTS_WRITE.parse(events),
     };
-    this.remember(
-      id,
-      await this.fenced(id, () =>
+    this.rememberWriter(
+      claim,
+      await this.fenced(claim, () =>
         this.http.call({ operation: 'append', input }, DSH_SESSION_METADATA),
       ),
     );
   }
   async flush(claim: DshWriterClaim, expectedNextSeq: number): Promise<void> {
-    const id = claim.session_id;
-    const input = { claim: this.claim(id), expected_next_seq: expectedNextSeq };
-    this.remember(
-      id,
-      await this.fenced(id, () =>
+    const input = { claim: this.writeClaim(claim), expected_next_seq: expectedNextSeq };
+    this.rememberWriter(
+      claim,
+      await this.fenced(claim, () =>
         this.http.call({ operation: 'flush', input }, DSH_SESSION_METADATA),
       ),
     );
@@ -130,25 +149,56 @@ export class HubSessionLog implements NativeSessionPersistencePort {
       );
     return claim;
   }
+  private writeClaim(claim: DshWriterClaim): DshWriterClaim {
+    const current = this.claim(claim.session_id);
+    if (
+      claim.epoch !== current.epoch ||
+      claim.runtime_instance !== current.runtime_instance ||
+      claim.connection_generation !== current.connection_generation
+    )
+      throw new HarnessRuntimeError(
+        'ownership_lost',
+        'A stale native handle cannot write under a replacement claim.',
+        claim.session_id,
+      );
+    return claim;
+  }
   async metadata(id: string, signal?: AbortSignal): Promise<DshSessionMetadata> {
     const known = this.known.get(id);
     if (known !== undefined) return known;
+    const claim = this.boundClaim(id);
     const fetched = await this.http.call(
       { operation: 'stat', session_id: DSH_SESSION_METADATA.shape.header.shape.id.parse(id) },
       DSH_SESSION_METADATA,
       signal,
     );
-    this.remember(id, fetched);
+    if (claim !== undefined) this.rememberWriter(claim, fetched);
     return fetched;
   }
   private remember(id: string, metadata: DshSessionMetadata): void {
     if (this.claims.has(id)) this.known.set(id, metadata);
   }
-  private async fenced<T>(id: string, work: () => Promise<T>): Promise<T> {
+  private writerStillBound(claim: DshWriterClaim): boolean {
+    const current = this.claims.get(claim.session_id);
+    return (
+      current?.epoch === claim.epoch &&
+      current.runtime_instance === claim.runtime_instance &&
+      current.connection_generation === claim.connection_generation
+    );
+  }
+  private rememberWriter(claim: DshWriterClaim, metadata: DshSessionMetadata): void {
+    if (this.writerStillBound(claim)) this.remember(claim.session_id, metadata);
+  }
+  private async fenced<T>(claim: DshWriterClaim, work: () => Promise<T>): Promise<T> {
     try {
       return await work();
     } catch (cause) {
-      if (cause instanceof HarnessRuntimeError && cause.code === 'ownership_lost') this.lose(id);
+      if (
+        cause instanceof HarnessRuntimeError &&
+        cause.code === 'ownership_lost' &&
+        this.writerStillBound(claim)
+      )
+        this.lose(claim.session_id);
       throw cause;
     }
   }

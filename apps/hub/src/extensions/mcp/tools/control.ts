@@ -50,13 +50,12 @@ export const CONTROL_TOOLS: readonly Tool[] = [
     }),
     annotations: COMMANDS,
     run: async (context, input) => {
-      const scene = resolveNamed(
-        context.store.scenes.list(),
-        input.sceneId,
-        'scene',
-        { names: (row) => [row.name], label: (row) => row.name, id: (row) => row.id },
-        'scene_find',
-      );
+      const scene = resolveNamed(context.store.scenes.list(), input.sceneId, 'scene', {
+        names: (row) => [row.name],
+        label: (row) => row.name,
+        id: (row) => row.id,
+        lists: 'scene_find',
+      });
       const outcome = await waitFor(context, 'runScene', { params: { sceneId: scene.id } });
       return {
         structured: { scene: { id: scene.id, name: scene.name }, ...reported(context, outcome) },

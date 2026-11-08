@@ -174,6 +174,7 @@ export function addMessage(rig: Rig, chatId: string, line: Line, at?: string): A
       steps: [],
       step_states: [],
       reply_to: null,
+      quote: null,
       chat_id: chatId,
       origin: null,
       embeds: [],

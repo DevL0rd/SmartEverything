@@ -1,6 +1,6 @@
-import { join } from 'node:path';
 import {
   CODEX_COMMAND_CONFIGURATION,
+  NATIVE_DEFAULT_MODEL,
   type CodexCommandConfiguration,
   type AiNativeCommandDispatch,
   type AiNativeCommandDescriptor,
@@ -82,7 +82,7 @@ export class CodexSkillInvocation {
       const models = await this.ports.models();
       validateModel(turn, models);
       await this.ports.check(previous, turn);
-      inputs = new CodexInputs(join(this.ports.dataDirectory, 'codex', 'inputs'));
+      inputs = new CodexInputs(this.ports.sites.inputs);
       const input = await inputs.prepare(turn);
       const final = selectSkill(await this.ports.fresh(previous), operation.input.definition_id);
       this.ports.bound(operation.input);
@@ -192,12 +192,11 @@ export class CodexSkillInvocation {
       previous !== prepared.previous ||
       canonicalRuntimeInput(selected) !== canonicalRuntimeInput(prepared.selected) ||
       prepared.configured !== canonicalRuntimeInput(this.ports.configured()) ||
-      prepared.models !== canonicalRuntimeInput(this.ports.observedModels()) ||
-      !this.ports.ordinaryAllowed()
+      prepared.models !== canonicalRuntimeInput(this.ports.observedModels())
     )
       throw new CodexRuntimeError(
         'provider_command',
-        'The prepared native skill, model, execution options or subscription availability changed.',
+        'The prepared native skill, model or execution options changed.',
       );
     validateModel(prepared.turn, this.ports.observedModels());
   }
@@ -240,6 +239,7 @@ function skillTurn(
   return {
     ...previous.turn,
     ...configuration,
+    model: configuration.model === NATIVE_DEFAULT_MODEL ? previous.turn.model : configuration.model,
     job_id: input.command_job_id,
     session_id: previous.threadId,
     messages: [{ role: 'user', content }],

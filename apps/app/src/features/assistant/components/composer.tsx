@@ -13,32 +13,38 @@ import { DEFAULT_DRAFT_KEY } from '../data/ai-drafts';
 import { draftText, setReferenceDraft, useDraftSelected } from '../data/drafts';
 import { attachFiles } from '../data/uploads';
 import { useAiLayout } from '../shell/use-ai-layout';
-import { AccessoryRow, ComposerSend } from './composer-accessories';
+import { AccessoryRow } from './composer-accessories';
 import { ComposerClassProvider } from './composer-accessory-layout';
 import { ComposerEditor } from './composer-editor';
 import { ComposerField } from './composer-field';
 import { ComposerStatusLine } from './composer-status';
 import { SuggestionKeys, suggestionKey } from './suggestion-keys';
-import { AttachButton, QuoteChip } from './composer-extras';
+import { QuoteChip } from './composer-extras';
 import { QueueTray } from './queue-tray';
 import { ReferenceChips } from '../references/chips';
 import { UploadChips } from './upload-chips';
+import { HelperMentionChips } from './helper-mention-chips';
+
+export interface SendExtras {
+  readonly references?: readonly AiMessageReference[];
+  readonly clientMessageId?: string;
+  readonly quoteMessageId?: string;
+}
 
 export type MessageSender = (
   text: string,
   attachments: readonly string[],
-  references?: readonly AiMessageReference[],
-  clientMessageId?: string,
+  extras?: SendExtras,
 ) => Promise<boolean>;
 
 export interface ComposerProps {
   readonly commandChat?: AiChatRow;
+  readonly helperOnline?: boolean;
   readonly disabled: boolean;
   readonly reason?: string | null;
   readonly attachmentReason?: string | null;
   readonly placeholder: string;
   readonly focusOnMount?: boolean;
-  readonly onFocus?: () => void;
   readonly onSent?: () => void;
   readonly draftKey?: string;
   readonly send: MessageSender;
@@ -58,8 +64,6 @@ export interface ComposerProps {
     readonly attachment?: readonly ReasonAction[];
   };
 }
-
-const NO_UPLOADS: ReadonlySet<string> = new Set();
 
 function useFocusShortcut(input: RefObject<TextInput | null>, enabled: boolean): void {
   useKeyboard((press: KeyPress) => {
@@ -84,7 +88,6 @@ function Field({ config, state }: PartProps): ReactNode {
       draftKey={state.draftKey}
       disabled={config.disabled}
       placeholder={config.placeholder}
-      onFocus={config.onFocus}
       selection={state.mentions.selection}
       onSelection={state.mentions.select}
       onCommandKey={(key): boolean => suggestionKey(key, state.suggestions)}
@@ -102,26 +105,13 @@ function Field({ config, state }: PartProps): ReactNode {
 }
 
 function Controls({ config, state }: PartProps): ReactNode {
-  const plain =
-    (config.accessory ?? null) === null &&
-    (config.tools ?? null) === null &&
-    (config.rightAccessory ?? null) === null;
-  if (!plain) {
-    return (
-      <>
-        <View className="flex-row px-2">
-          <Field config={config} state={state} />
-        </View>
-        <AccessoryRow config={config} state={state} />
-      </>
-    );
-  }
   return (
-    <View className="flex-row items-end gap-1">
-      <AttachButton disabled={config.disabled} reason={config.reason ?? null} />
-      <Field config={config} state={state} />
-      <ComposerSend config={config} state={state} />
-    </View>
+    <>
+      <View className="flex-row px-2">
+        <Field config={config} state={state} />
+      </View>
+      <AccessoryRow config={config} state={state} />
+    </>
   );
 }
 
@@ -139,8 +129,9 @@ function ComposerCard({ config, state }: PartProps): ReactNode {
           }}
         />
       )}
-      <UploadChips unsupported={config.unsupportedUploads ?? NO_UPLOADS} />
+      <UploadChips unsupported={state.unsupportedUploads} />
       <ReferenceChips references={state.references} remove={state.mentions.remove} />
+      <HelperMentionChips mentions={state.helperMentions} remove={state.mentions.removeHelper} />
       <Controls config={config} state={state} />
     </View>
   );
@@ -156,9 +147,17 @@ function EditorHost({ config, state }: PartProps): ReactNode {
       draftKey={state.draftKey}
       placeholder={config.placeholder}
       ready={state.ready}
+      disabled={config.disabled}
       onSend={state.send}
       mentions={state.mentions}
       references={state.references}
+      helperMentions={state.helperMentions}
+      quote={state.quote}
+      onRemoveQuote={() => {
+        state.setQuote(null);
+      }}
+      status={state.status}
+      unsupportedUploads={state.unsupportedUploads}
     />
   );
 }

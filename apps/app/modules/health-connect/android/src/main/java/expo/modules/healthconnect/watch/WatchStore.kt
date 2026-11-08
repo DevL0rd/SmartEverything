@@ -28,6 +28,14 @@ class WatchStore(context: Context) {
     preferences.edit().putString(WATCHES, sealed).apply()
   }
 
+  fun watchConfigurationChanges(onChange: () -> Unit): () -> Unit {
+    val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+      if (key == WATCHES || key == null) onChange()
+    }
+    preferences.registerOnSharedPreferenceChangeListener(listener)
+    return { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+  }
+
   fun watches(): List<WatchConfig> {
     val sealed = preferences.getString(WATCHES, null) ?: return emptyList()
     return HubJson.decode(box.open(sealed))

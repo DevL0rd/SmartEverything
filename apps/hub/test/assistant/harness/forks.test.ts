@@ -1,19 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import type { AiChatRow } from '@smarteverything/domain';
+import { z } from 'zod';
+import { DSH_SESSION_EVENTS_WRITE, type AiChatRow } from '@smarteverything/domain';
 import { nativeForkIntent, nativeForkSeed } from '../../../src/harness/forks';
+import { rewriteNativeHistory } from '../../../src/harness/history-mutation';
+import { appendOffloadedImage } from './support/offloaded-image';
 import { useRig, type Rig } from './support/rig';
 import {
   addMessage,
   nativeConversation,
   reread,
   seedConversation,
+  storedHistory,
   TWO_EXCHANGES,
   visibleTexts,
   type Line,
   type SeededConversation,
 } from './support/native-conversation';
 
+const FORKED_END = z.object({ reason: z.object({ kind: z.literal('forked') }) });
 const LATE_LINE: Line = { role: 'person', text: 'typed outside the import' };
 
 let rig: Rig;
@@ -99,6 +104,72 @@ describe('branching a native conversation', () => {
     expect(() => {
       nativeForkIntent(rig.opened.store, seeded.chat, child, earlier.id);
     }).toThrow(/no admitted native event identity/u);
+  });
+});
+
+describe('the history a branch inherits', () => {
+  it('marks where the inherited history ends and closes a turn still running in the parent', () => {
+    const seeded = seedConversation(rig, TWO_EXCHANGES);
+    const reopened = rig.service.prepare(rig.owner, seeded.chat.id, rig.authority, rig.clientId);
+    const next = storedHistory(rig, seeded.sessionId).length;
+    rig.opened.store.dshSessions.append(
+      {
+        claim: reopened.claim,
+        operation_id: randomUUID(),
+        events: DSH_SESSION_EVENTS_WRITE.parse([
+          { type: 'turn/start', seq: next, time: 9_000, data: { turn: 9 } },
+          { type: 'step/start', seq: next + 1, time: 9_001, data: { turn: 9, step: 0 } },
+        ]),
+      },
+      rig.service.hostPrincipal(
+        rig.owner.profileId,
+        rig.service.directory.get({ kind: 'server' }).host,
+      ),
+    );
+    const child = branchOf(seeded.chat);
+
+    nativeForkIntent(rig.opened.store, seeded.chat, child, rowOf(seeded, 3).id);
+    const events = reread(
+      rig,
+      seeded.sessionId,
+      nativeForkSeed(rig.opened.store, child)?.events ?? [],
+    );
+
+    const marker = events.findIndex((event) => event.type === 'session/end-seed');
+    expect(marker).toBe(next + 2);
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'turn/end' &&
+          event.seq > marker &&
+          FORKED_END.safeParse(event.data).success,
+      ),
+    ).toBe(true);
+  });
+
+  it('branches from a conversation whose images were offloaded', () => {
+    const seeded = seedConversation(rig, TWO_EXCHANGES);
+    appendOffloadedImage(rig, seeded);
+    const child = branchOf(seeded.chat);
+
+    nativeForkIntent(rig.opened.store, seeded.chat, child, rowOf(seeded, 3).id);
+
+    const seed = nativeForkSeed(rig.opened.store, child);
+    expect(seed?.events.some((event) => event.type === 'image/offload')).toBe(true);
+  });
+
+  it('keeps an earlier edit applied inside the branch', () => {
+    const seeded = seedConversation(rig, TWO_EXCHANGES);
+    rewriteNativeHistory(rig.service, seeded.chat, [rowOf(seeded, 0)]);
+    const child = branchOf(seeded.chat);
+
+    nativeForkIntent(rig.opened.store, seeded.chat, child, rowOf(seeded, 3).id);
+
+    expect(seedOf(seeded, child)).toStrictEqual([
+      'first answer',
+      'second question',
+      'second answer',
+    ]);
   });
 });
 

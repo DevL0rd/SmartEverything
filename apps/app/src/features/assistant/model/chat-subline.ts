@@ -1,11 +1,12 @@
 import type { AssistantMessageRow } from '@smarteverything/domain';
+import type { WorkStatus } from '../../../store/chat-turns';
 
 export const CONTEXT_WARNS_AT = 80;
 
 export const CONTEXT_COMPACTS_AT = 85;
 
 export type Subline =
-  | { readonly kind: 'working'; readonly step: string | null }
+  | { readonly kind: 'working'; readonly work: WorkStatus }
   | { readonly kind: 'needs-you' }
   | { readonly kind: 'waiting'; readonly count: number }
   | { readonly kind: 'queued'; readonly count: number }
@@ -16,8 +17,7 @@ export type Subline =
   | { readonly kind: 'none' };
 
 export interface SublineInput {
-  readonly working: boolean;
-  readonly step: string | null;
+  readonly work: WorkStatus | null;
   readonly needsYou: boolean;
   readonly waiting: number;
   readonly queued: number;
@@ -29,7 +29,7 @@ export interface SublineInput {
 
 export function sublineOf(input: SublineInput): Subline {
   if (input.needsYou) return { kind: 'needs-you' };
-  if (input.working) return { kind: 'working', step: input.step };
+  if (input.work !== null) return { kind: 'working', work: input.work };
   if (input.waiting > 0) return { kind: 'waiting', count: input.waiting };
   if (input.queued > 0) return { kind: 'queued', count: input.queued };
   if (input.switching) return { kind: 'switching' };

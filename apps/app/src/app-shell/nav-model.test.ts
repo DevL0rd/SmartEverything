@@ -15,9 +15,13 @@ const { tabRoutes, allRoutes } = vi.hoisted(() => {
     'devices',
     'cameras',
     'fitness',
+    'planner',
+    'clock',
     'assistant',
     'talk',
     'automations',
+    'photos',
+    'drive',
     'settings',
   ] as const;
   const available = (): boolean => true;
@@ -53,7 +57,7 @@ vi.mock('../features/device-visuals', () => ({ deviceIcon: (): string => 'bulb' 
 
 const { navModel, leafEntries, routeNameOfTab } = await import('./nav-model');
 const { TAB_NAMES } = await import('./tab-names');
-const { navTargetKey, leafKeyOfPath } = await import('./nav-targets');
+const { navTargetKey, leafKeyOfPath, sectionCountsOf } = await import('./nav-targets');
 
 const DEVICE = '11111111-1111-4111-8111-111111111111';
 const ROOM = '22222222-2222-4222-8222-222222222222';
@@ -86,6 +90,7 @@ const pin = (id: string, target: NavPinTarget, title: string | null = null): Nav
 });
 
 const FACTS = new Map<string, TargetFacts>([
+  ['section:planner', { exists: true, title: 'planner', icon: 'calendar', count: 0 }],
   [navTargetKey(lamp), { exists: true, title: 'Bedroom lamp', icon: 'bulb', count: 0 }],
   [navTargetKey(room), { exists: true, title: 'Kitchen', icon: 'grid', count: 0 }],
   [navTargetKey(sleep), { exists: true, title: 'Sleep', icon: 'moon', count: 0 }],
@@ -97,6 +102,7 @@ interface Scene {
   readonly leaf?: string;
   readonly openFolders?: readonly string[];
   readonly unread?: number;
+  readonly missed?: number;
   readonly gone?: readonly string[];
 }
 
@@ -110,7 +116,10 @@ function modelOf(scene: Scene = {}): ReturnType<typeof navModel> {
     resolved,
     facts: FACTS,
     availability: AVAILABILITY,
-    unread: scene.unread ?? 0,
+    counts: sectionCountsOf([
+      ['assistant', scene.unread ?? 0],
+      ['planner', scene.missed ?? 0],
+    ]),
     current: scene.current ?? 'home',
     leaf: scene.leaf ?? '',
     openFolders: scene.openFolders ?? [],
@@ -124,7 +133,14 @@ describe('the default navigation', () => {
   it('puts the first four pages in the bar and the rest in the sheet', () => {
     const model = modelOf();
     expect(titles(model.bar)).toEqual(['home', 'devices', 'cameras', 'fitness']);
-    expect(titles(model.overflow)).toEqual(['talk', 'automations']);
+    expect(titles(model.overflow)).toEqual([
+      'planner',
+      'clock',
+      'talk',
+      'automations',
+      'photos',
+      'drive',
+    ]);
   });
 
   it('lists every page, the Assistant included, in the sidebar order', () => {
@@ -133,9 +149,13 @@ describe('the default navigation', () => {
       'devices',
       'cameras',
       'fitness',
+      'planner',
+      'clock',
       'assistant',
       'talk',
       'automations',
+      'photos',
+      'drive',
     ]);
   });
 
@@ -209,9 +229,13 @@ describe('pins', () => {
       'devices',
       'cameras',
       'fitness',
+      'planner',
+      'clock',
       'assistant',
       'talk',
       'automations',
+      'photos',
+      'drive',
     ]);
   });
 
@@ -287,5 +311,22 @@ describe('the fixed tab navigator', () => {
   it('has a screen for every tab, whatever the layout hides or reorders', () => {
     const names: readonly string[] = TAB_NAMES;
     expect(tabRoutes.map((route) => routeNameOfTab(route.tab)).sort()).toEqual([...names].sort());
+  });
+});
+
+describe('Planner section badges', () => {
+  it('shows missed tasks on normal and pinned Planner sections', () => {
+    const layout: NavigationLayout = {
+      items: [pin('planner-pin', { kind: 'section', section: 'planner' })],
+      hidden: [],
+    };
+    const model = modelOf({ layout, missed: 2, unread: 3 });
+    expect(
+      leafEntries(model.nodes)
+        .filter((entry) => entry.title === 'planner')
+        .map((entry) => entry.count),
+    ).toEqual([2, 2]);
+    expect(model.orb?.count).toBe(3);
+    expect(leafEntries(model.nodes).find((entry) => entry.title === 'clock')?.count).toBe(0);
   });
 });

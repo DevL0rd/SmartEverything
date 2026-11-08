@@ -48,8 +48,10 @@ function openBrowserTab(
     const id = tabs.blank();
     return tabs.guardAdmission(id, () => tabs.navigate(id, source.url), signal);
   }
-  const id = tabs.projectTab(source.path) ?? tabs.blank();
-  return tabs.guardAdmission(id, () => tabs.openProject(id, source.path), signal);
+  const path = source.kind === 'server' ? '/' : source.path;
+  const server = source.kind === 'server' ? source.server : undefined;
+  const id = tabs.projectTab(path, server) ?? tabs.blank();
+  return tabs.guardAdmission(id, () => tabs.openProject(id, path, server), signal);
 }
 
 function closeBrowserTab(tabs: BrowserTabs, id: string): Promise<void> {

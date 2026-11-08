@@ -1,5 +1,4 @@
-import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { deviceFamily, type JsonValue, type PresentedCapability } from '@smarteverything/domain';
 import { Highlighted, type TextRange } from '../../../components/highlighted';
@@ -21,6 +20,7 @@ import { ColourBlock } from './colour-block';
 import { TimeRow } from './time-row';
 import { Guard } from './guard';
 import { usesStepper, type NumberDescriptor } from './number-kind';
+import { actionLookOf } from './run-action';
 import { useAction } from './use-action';
 import { background } from '@smarteverything/logging';
 
@@ -99,11 +99,13 @@ function NumberRow(props: RowProps & { readonly descriptor: NumberDescriptor }):
 
 function TextRow({ presented, control, disabled, highlight }: RowProps): ReactNode {
   const [request, setRequest] = useState<TextEditRequest | null>(null);
+  const opener = useRef<View>(null);
   const current = typeof control.value === 'string' ? control.value : '';
   const descriptor = presented.capability.value;
   return (
     <>
       <ListRow
+        pressRef={opener}
         title={presented.label}
         titleHighlight={highlight}
         value={current === '' ? 'Not set' : current}
@@ -111,6 +113,7 @@ function TextRow({ presented, control, disabled, highlight }: RowProps): ReactNo
         disabled={disabled}
         onPress={() => {
           setRequest({
+            opener,
             title: presented.label,
             label: presented.label,
             initial: current,
@@ -134,15 +137,18 @@ function TextRow({ presented, control, disabled, highlight }: RowProps): ReactNo
 }
 
 function ActionRowFor({ device, presented, disabled, highlight }: RowProps): ReactNode {
-  const action = useAction(device, presented);
+  const opener = useRef<View>(null);
+  const action = useAction(device, presented, opener);
+  const look = actionLookOf(presented);
   return (
     <>
       <ListRow
         title={action.pending ? `${presented.label}…` : presented.label}
         titleHighlight={action.pending ? null : highlight}
-        icon={presented.danger.tier === 'none' ? 'play' : 'warning'}
-        destructive={presented.danger.tier !== 'none'}
+        icon={look.icon}
+        destructive={look.destructive}
         disabled={disabled || action.pending}
+        pressRef={opener}
         onPress={action.run}
       />
       {action.sheet}

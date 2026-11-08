@@ -19,13 +19,24 @@ export const VOICE_ASSET_PACKAGE_NAMES: readonly string[] = Object.values(VOICE_
 
 export const WAKE_MODEL_DIRECTORY = 'wake-name-model';
 
-const WAKE_MODEL_SOURCES: readonly string[] = [
-  join(root, 'apps', 'hub', 'src', 'wake-name', WAKE_MODEL_DIRECTORY),
-  join(root, 'apps', 'hub', 'src', 'node', 'ear', WAKE_MODEL_DIRECTORY),
-];
+const HUB_WAKE_MODEL = join(root, 'apps', 'hub', 'src', 'wake-name', WAKE_MODEL_DIRECTORY);
+const EAR_WAKE_MODEL = join(root, 'apps', 'hub', 'src', 'node', 'ear', WAKE_MODEL_DIRECTORY);
+
+export const IR_LIBRARY_DIRECTORY = 'ir-library';
+
+const IR_LIBRARY_SOURCE = join(
+  root,
+  'apps',
+  'hub',
+  'src',
+  'infrared',
+  'library',
+  IR_LIBRARY_DIRECTORY,
+);
 
 const DAVEY_SCOPE = '@snazzah';
 const DAVEY_PREFIX = 'davey-';
+export const DAVEY_PACKAGE = `${DAVEY_SCOPE}/davey`;
 export const VOICE_ASSET_PREFIX = `${DAVEY_SCOPE}/${DAVEY_PREFIX}`;
 
 const WEB_FILES = {
@@ -71,25 +82,31 @@ function copyPackage(name: string, directory: string, files: readonly string[], 
   for (const file of files) copy(join(directory, file), join(to, 'node_modules', name, file));
 }
 
+function copyWakeModel(source: string, service: string): void {
+  for (const file of readdirSync(source)) {
+    copy(join(source, file), join(service, WAKE_MODEL_DIRECTORY, file));
+  }
+}
+
+export function copyComputerWakeAssets(service: string): void {
+  copyWakeModel(HUB_WAKE_MODEL, service);
+  copyWakeModel(EAR_WAKE_MODEL, service);
+}
+
 export interface AssetTarget {
   readonly platform: string;
   readonly arch: string;
 }
 
 export function copyServiceAssets(
-  service = join(root, 'apps', 'desktop', 'dist', 'service'),
+  service = join(root, 'tmp', 'hub-service'),
   target?: AssetTarget,
 ): void {
   for (const key of ['ort', 'vad'] as const) {
     const name = VOICE_ASSET_PACKAGES[key];
     copyPackage(name, packageDirectory(name), SERVICE_FILES[key], service);
   }
-  const sherpa = packageDirectory(VOICE_ASSET_PACKAGES.sherpa);
-  const sherpaFiles = readdirSync(sherpa).filter(
-    (file) => file === 'package.json' || /\.(js|wasm)$/.test(file),
-  );
-  copyPackage(VOICE_ASSET_PACKAGES.sherpa, sherpa, sherpaFiles, service);
-  const scope = join(packageDirectory(`${DAVEY_SCOPE}/davey`), '..');
+  const scope = join(packageDirectory(DAVEY_PACKAGE), '..');
   const daveyPrefix =
     target === undefined ? DAVEY_PREFIX : `${DAVEY_PREFIX}${target.platform}-${target.arch}`;
   for (const name of readdirSync(scope).filter((entry) => entry.startsWith(daveyPrefix))) {
@@ -99,11 +116,10 @@ export function copyServiceAssets(
     );
     copyPackage(`${DAVEY_SCOPE}/${name}`, directory, files, service);
   }
-  for (const wakeModel of WAKE_MODEL_SOURCES) {
-    for (const file of readdirSync(wakeModel)) {
-      copy(join(wakeModel, file), join(service, WAKE_MODEL_DIRECTORY, file));
-    }
+  for (const file of readdirSync(IR_LIBRARY_SOURCE)) {
+    copy(join(IR_LIBRARY_SOURCE, file), join(service, IR_LIBRARY_DIRECTORY, file));
   }
+  copyWakeModel(HUB_WAKE_MODEL, service);
 }
 
 if (import.meta.main) {

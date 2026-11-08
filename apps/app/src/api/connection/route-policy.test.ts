@@ -17,7 +17,6 @@ const { usableEndpoints, usableEndpointsForMedia, HubRouteUnavailableError } =
   await import('./route-policy');
 
 const LAN: HubEndpoint = { kind: 'lan', url: 'https://192.168.1.20:7880' };
-const LOOPBACK: HubEndpoint = { kind: 'loopback', url: 'https://127.0.0.1:7880' };
 const REMOTE: HubEndpoint = { kind: 'remote', url: 'https://home.example.com' };
 
 function metadataOf(endpoints: readonly HubEndpoint[]): HubConnectionMetadata {
@@ -44,11 +43,12 @@ beforeEach(() => {
 });
 
 describe('bootstrap endpoint kind', () => {
-  it('reads addresses, .local names and domains as lan, loopback and remote', () => {
+  it('reads addresses, .local names and domains as lan or remote, never loopback', () => {
     expect(bootstrapEndpoint('https://192.168.1.20:7880').kind).toBe('lan');
     expect(bootstrapEndpoint('https://[fd00::1]:7880').kind).toBe('lan');
     expect(bootstrapEndpoint('https://hub.local:7880').kind).toBe('lan');
-    expect(bootstrapEndpoint('https://127.0.0.1:7880').kind).toBe('loopback');
+    expect(bootstrapEndpoint('https://127.0.0.1:7880').kind).not.toBe('loopback');
+    expect(bootstrapEndpoint('https://localhost:7880').kind).not.toBe('loopback');
     expect(bootstrapEndpoint('https://home.example.com').kind).toBe('remote');
   });
 
@@ -67,14 +67,11 @@ describe('first contact from outside the home', () => {
     expect(trustedBootstrap(LAN.url)).toBe(false);
   });
 
-  it('trusts loopback only inside the desktop app', () => {
-    expect(trustedBootstrap('https://localhost:7880')).toBe(false);
+  it.each(['android', 'web', 'desktop'] as const)('never trusts a local address on %s', (name) => {
+    platform = name;
     expect(trustedBootstrap('http://127.0.0.1:7880')).toBe(false);
-    platform = 'web';
-    expect(trustedBootstrap('https://localhost:7880')).toBe(false);
-    platform = 'desktop';
-    expect(trustedBootstrap('https://localhost:7880')).toBe(true);
-    expect(trustedBootstrap('http://localhost:7880')).toBe(true);
+    expect(trustedBootstrap('http://localhost:7880')).toBe(false);
+    expect(trustedBootstrap('https://127.0.0.1:7880')).toBe(false);
   });
 
   it('refuses a LAN bootstrap with a pairing instruction and allows a remote one', () => {
@@ -102,11 +99,15 @@ describe('endpoint candidates', () => {
     expect(usableEndpoints(metadataOf([LAN, REMOTE]), REMOTE)).toEqual([REMOTE]);
   });
 
-  it('leaves out loopback except on the desktop', () => {
-    expect(usableEndpoints(metadataOf([LOOPBACK, REMOTE]), REMOTE)).toEqual([REMOTE]);
-    platform = 'desktop';
-    expect(usableEndpoints(metadataOf([REMOTE, LOOPBACK]), REMOTE)[0]).toEqual(LOOPBACK);
-  });
+  it.each(['android', 'web', 'desktop'] as const)(
+    'never yields a loopback endpoint on %s',
+    (name) => {
+      platform = name;
+      const list = usableEndpoints(metadataOf([REMOTE, LAN]), REMOTE);
+      expect(list.map((endpoint) => endpoint.kind)).toEqual(['lan', 'remote']);
+      expect(list.map((endpoint) => new URL(endpoint.url).hostname)).not.toContain('127.0.0.1');
+    },
+  );
 });
 
 describe('media route when away from home', () => {

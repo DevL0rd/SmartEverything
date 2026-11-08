@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import type { FileEntry } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
+import { SelectionBar, type SelectionAction } from '../../../components/files/selection-bar';
+import type { IconName } from '../../../components/icon';
 import { ReasonLine } from '../../../components/reason-line';
 import { isNative } from '../../../design/platform';
 import { SearchBar } from './file-search';
@@ -8,12 +10,51 @@ import { FileToolbar } from './file-toolbar';
 import { parentOf, sourceWord } from './file-model';
 import { breadcrumbs } from './path-model';
 import { PlacesBar } from './places-bar';
-import { SelectionBar } from './selection-bar';
 import type { Browse } from './use-browse';
 import type { Downloads } from './use-downloads';
 import type { FileActions } from './use-file-actions';
 import type { Selection } from './use-selection';
 import type { Uploads } from './use-uploads';
+
+function pickedActions(
+  selection: Selection,
+  actions: FileActions,
+  downloads: Downloads,
+  disabled: boolean,
+): readonly SelectionAction[] {
+  const act = (
+    label: string,
+    icon: IconName,
+    variant: SelectionAction['variant'],
+    run: () => void,
+  ): SelectionAction => ({
+    label,
+    icon,
+    variant,
+    disabled,
+    onPress: (): void => {
+      run();
+      selection.clear();
+    },
+  });
+  return [
+    act('Download', 'download', 'tonal', () => {
+      downloads.flow.start(selection.entries);
+    }),
+    act('Move to…', 'move', 'tonal', () => {
+      actions.show({ kind: 'transfer', entries: selection.entries, mode: 'move' });
+    }),
+    act('Copy to…', 'copy', 'tonal', () => {
+      actions.show({ kind: 'transfer', entries: selection.entries, mode: 'copy' });
+    }),
+    act('Move to Trash', 'trash', 'destructive', () => {
+      background(
+        actions.ops.run({ action: 'trash', paths: [...selection.paths] }),
+        'files.trash_failed',
+      );
+    }),
+  ];
+}
 
 function Picked({
   selection,
@@ -30,32 +71,16 @@ function Picked({
 }): ReactNode {
   return (
     <SelectionBar
-      count={selection.entries.length}
-      total={entries.length}
-      disabled={disabled}
-      onDownload={() => {
-        downloads.flow.start(selection.entries);
-        selection.clear();
+      summary={{
+        kind: 'count',
+        count: selection.entries.length,
+        total: entries.length,
+        onClear: selection.clear,
+        onSelectAll: () => {
+          selection.selectAll(entries);
+        },
       }}
-      onMove={() => {
-        actions.show({ kind: 'transfer', entries: selection.entries, mode: 'move' });
-        selection.clear();
-      }}
-      onCopy={() => {
-        actions.show({ kind: 'transfer', entries: selection.entries, mode: 'copy' });
-        selection.clear();
-      }}
-      onSelectAll={() => {
-        selection.selectAll(entries);
-      }}
-      onTrash={() => {
-        background(
-          actions.ops.run({ action: 'trash', paths: [...selection.paths] }),
-          'files.trash_failed',
-        );
-        selection.clear();
-      }}
-      onClear={selection.clear}
+      actions={pickedActions(selection, actions, downloads, disabled)}
     />
   );
 }

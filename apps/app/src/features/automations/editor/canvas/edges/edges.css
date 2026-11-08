@@ -1,0 +1,45 @@
+.gc-flow .gc-insert {
+  position: absolute;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1.5px solid var(--gc-exec);
+  border-radius: 999px;
+  font-family: 'SeCanvasGeist-SemiBold', sans-serif;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--se-on-surface-variant);
+  background: var(--se-surface-1);
+  pointer-events: all;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.gc-flow .gc-insert::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+.gc-flow:hover .gc-insert,
+.gc-flow[data-idiom='touch'] .gc-insert,
+.gc-flow .gc-insert:focus-visible {
+  opacity: 1;
+}
+
+.gc-flow[data-lod='mid'] .gc-insert,
+.gc-flow[data-lod='far'] .gc-insert {
+  display: none;
+}
+
+.gc-flow .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--gc-select);
+  stroke-width: 3;
+}

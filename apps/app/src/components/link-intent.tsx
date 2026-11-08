@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import { createContext, useContext } from 'react';
-import type { Href } from 'expo-router';
+import type { AppHref } from './app-href';
 
-export type LinkIntent = (href: Href) => void;
+export type LinkIntent = (href: AppHref) => void;
 
 const LinkIntentContext = createContext<LinkIntent>(() => undefined);
 

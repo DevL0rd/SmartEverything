@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_ENGINE, NO_PRICES } from '@smarteverything/domain';
+import { testVoiceMemory } from '../support/voice-memory';
+import { NO_PRICES } from '@smarteverything/domain';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
 import { CallDesk } from '../../src/assistant-voice/call-desk';
 import type { LiveOptions, LiveSession, VoiceProvider } from '../../src/assistant-voice/gemini';
 import { STAYS_OPEN_ENDING } from '../../src/assistant-voice/instructions';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 let opened: TestStore;
 let systems: string[];
@@ -33,6 +35,7 @@ function deskOf(): CallDesk {
   const { store } = opened;
   return new CallDesk({
     store,
+    memory: testVoiceMemory(store),
     provider,
     responder: {
       ready: () => null,
@@ -75,7 +78,7 @@ beforeEach(async () => {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   }).id;
 });
 

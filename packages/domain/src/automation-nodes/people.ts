@@ -1,4 +1,5 @@
 import type { FlowType } from '../automation-v3/types';
+import { DEVICE_KINDS } from '../devices';
 import { defineNodeKind, type NodeKind } from './define';
 import { DEVICE_REF } from './devices';
 
@@ -7,6 +8,10 @@ const BOOLEAN: FlowType = { t: 'boolean' };
 const TEXT: FlowType = { t: 'text' };
 const INTEGER: FlowType = { t: 'number', integer: true };
 const DEVICE_LIST: FlowType = { t: 'list', of: DEVICE_REF };
+const DEVICE_KIND_CHOICE: FlowType = {
+  t: 'choice',
+  options: DEVICE_KINDS.map((id) => ({ id, label: id.replaceAll('_', ' ') })),
+};
 
 const deviceQuery = defineNodeKind({
   id: 'device.query',
@@ -15,7 +20,7 @@ const deviceQuery = defineNodeKind({
   icon: 'scan-search',
   class: 'read',
   description:
-    'Lists the devices that match a room, group, family, role, label or control test. New devices are included automatically.',
+    'Lists the devices that match rooms, a group, families, kinds, roles, a control they have, labels or a control test. New devices are included automatically.',
   inputs: [
     {
       name: 'room',
@@ -23,6 +28,14 @@ const deviceQuery = defineNodeKind({
       required: false,
       description: 'Limit to a room.',
       summary: true,
+    },
+    {
+      name: 'rooms',
+      type: { t: 'list', of: { t: 'ref', of: 'room' } },
+      required: false,
+      static: true,
+      description: 'Limit to several rooms; a device in any of them matches.',
+      ui: { optionsFrom: 'rooms', multiple: true },
     },
     {
       name: 'group',
@@ -36,6 +49,7 @@ const deviceQuery = defineNodeKind({
       required: false,
       static: true,
       description: 'Device families to include.',
+      ui: { optionsFrom: 'device.families', multiple: true },
     },
     {
       name: 'roles',
@@ -43,6 +57,23 @@ const deviceQuery = defineNodeKind({
       required: false,
       static: true,
       description: 'Device roles to include.',
+      ui: { optionsFrom: 'device.roles', multiple: true },
+    },
+    {
+      name: 'kinds',
+      type: { t: 'list', of: DEVICE_KIND_CHOICE },
+      required: false,
+      static: true,
+      description: 'Provider device kinds to include, coarser than families.',
+      ui: { multiple: true },
+    },
+    {
+      name: 'capability',
+      type: TEXT,
+      required: false,
+      static: true,
+      description: 'Only devices that have this control, by its key or role.',
+      ui: { optionsFrom: 'device.controls' },
     },
     {
       name: 'labels',
@@ -50,6 +81,7 @@ const deviceQuery = defineNodeKind({
       required: false,
       static: true,
       description: 'Labels the device must have.',
+      ui: { optionsFrom: 'device.labels', multiple: true },
     },
     {
       name: 'where',

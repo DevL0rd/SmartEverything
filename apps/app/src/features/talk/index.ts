@@ -13,3 +13,4 @@ export {
   useDesktopTalk,
   type DesktopTalkStatus,
 } from './desktop/use-talk-shortcuts';
+export { engineState as talkEngineState } from './engine/engine-state';

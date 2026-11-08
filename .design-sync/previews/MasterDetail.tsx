@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { ListRow, MasterDetail, Stage, Text } from 'smarteverything-kit';
 
 const master = (
@@ -15,12 +16,12 @@ const detail = (
     </Text>
   </div>
 );
-export const Split = () => (
+export const Split = (): ReactElement => (
   <Stage theme="dark" width={880} height={300}>
     <MasterDetail master={master} detail={detail} />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={880} height={300}>
     <MasterDetail master={master} detail={detail} />
   </Stage>

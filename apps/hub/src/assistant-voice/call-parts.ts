@@ -1,4 +1,5 @@
 import type { UsageMetadata } from '@google/genai';
+import type { VoiceMemory } from './voice-memory';
 import type { CallSource } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ToolHub } from '../ai-tools/tool-hub';
@@ -25,6 +26,7 @@ export interface CallDeskOptions {
   readonly provider: VoiceProvider;
   readonly responder: VoiceResponder;
   readonly tools: ToolHub;
+  readonly memory: VoiceMemory;
   readonly prices: PriceBook;
   readonly cameras: HomeCameras;
   readonly roomMedia?: SpeakingMedia;

@@ -8,7 +8,7 @@ import { TONE_ROLE, type Tone } from './tone';
 export type { IconName } from './icon-glyphs';
 export { isIconName } from './icon-glyphs';
 
-type IconSize = 16 | 20 | 24 | 32 | 40;
+type IconSize = 12 | 14 | 16 | 18 | 20 | 24 | 28 | 32 | 40;
 
 export interface IconProps {
   readonly name: IconName;

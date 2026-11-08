@@ -4,6 +4,7 @@ import {
   NODE_REGISTRY,
   SHIPPED_TIERS,
   kindProblems,
+  nodeCatalogue,
   registryProblems,
 } from '../../src/automation-nodes';
 
@@ -168,9 +169,26 @@ describe('node registry assembly', () => {
 
   it('ships every registered kind, the listed v1 kinds among them', () => {
     const shipped = NODE_REGISTRY.shipped().map((kind) => kind.id);
-    expect([...shipped].sort()).toEqual(NODE_REGISTRY.kinds.map((kind) => kind.id).sort());
+    const listed = NODE_REGISTRY.kinds.filter((kind) => kind.structural !== true);
+    expect([...shipped].sort()).toEqual(listed.map((kind) => kind.id).sort());
     expect(shipped).toEqual(expect.arrayContaining([...V1_IDS]));
     expect(ALL_NODE_KINDS.filter((kind) => kind.tier === 'v1')).toHaveLength(V1_IDS.length);
+  });
+
+  it('registers the structural kinds hidden, found by id and in no list', () => {
+    const ids = ['flow.start', 'flow.on_failure', 'flow.join'];
+    expect(
+      ALL_NODE_KINDS.filter((kind) => kind.structural === true).map((kind) => kind.id),
+    ).toEqual(ids);
+    const shippedIds = NODE_REGISTRY.shipped().map((kind) => kind.id);
+    const catalogueIds = nodeCatalogue(NODE_REGISTRY, { includeUnshipped: true }).map(
+      (entry) => entry.id,
+    );
+    for (const id of ids) {
+      expect(NODE_REGISTRY.get(id)?.structural).toBe(true);
+      expect(shippedIds).not.toContain(id);
+      expect(catalogueIds).not.toContain(id);
+    }
   });
 
   it('ships no kind outside the shipped tiers', () => {

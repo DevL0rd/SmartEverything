@@ -1,5 +1,5 @@
 import type { AdGuardSnapshot, AdGuardStats } from '@smarteverything/domain';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { MetricItem } from '../../../components/metric-strip';
 import { count, decimal, percent } from '../../../format/number';
 import { clock } from '../../../format/time';
@@ -7,7 +7,7 @@ import { clock } from '../../../format/time';
 export function stripItems(
   snapshot: AdGuardSnapshot,
   stats: AdGuardStats,
-  filtersHref: Href,
+  filtersHref: AppHref,
 ): readonly MetricItem[] {
   const stale = snapshot.connection.state !== 'online';
   const note = (fresh?: string): Pick<MetricItem, 'caption' | 'stale'> => {

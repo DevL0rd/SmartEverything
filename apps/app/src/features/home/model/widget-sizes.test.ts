@@ -13,10 +13,6 @@ describe('home size registry', () => {
     }
   });
 
-  it('offers Indoors in medium and wide', () => {
-    expect(HOME_WIDGET_SIZES.glance.sizes).toEqual(['M', 'W']);
-  });
-
   it('keeps Weather in every wide size', () => {
     expect(HOME_WIDGET_SIZES.weather.sizes).toEqual(['M', 'W', 'XL']);
   });
@@ -38,7 +34,7 @@ describe('home size registry', () => {
 });
 
 describe('home tiles by window width', () => {
-  const tiles = (['glance', 'weather', 'scenes'] as const).map((type) => ({
+  const tiles = (['rooms', 'weather', 'scenes'] as const).map((type) => ({
     key: type,
     type,
     size: HOME_WIDGET_SIZES[type].defaultSize,

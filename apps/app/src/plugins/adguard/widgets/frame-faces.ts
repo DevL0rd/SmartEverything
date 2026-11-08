@@ -1,26 +1,5 @@
-import type {
-  BoardClass,
-  FrameClass,
-  WidgetFrameBox,
-  WidgetSize,
-} from '../../../components/widget-board';
-
-export type BlockingFace = 'tile' | 'compact' | 'tall' | 'wide';
-
-export function blockingFaceOf(cls: FrameClass): BlockingFace {
-  switch (cls) {
-    case 's':
-      return 'tile';
-    case 'xs':
-    case 'm':
-      return 'compact';
-    case 'l':
-      return 'tall';
-    case 'w':
-    case 'xl':
-      return 'wide';
-  }
-}
+import type { BoardClass, WidgetSize } from '../../../components/widget-board';
+import { TYPE_SCALE, type Idiom } from '../../../design/tokens';
 
 export const BLOCKING_WIDGET_SIZES: Readonly<Record<BoardClass, readonly WidgetSize[]>> = {
   compact: ['M', 'XL'],
@@ -28,48 +7,25 @@ export const BLOCKING_WIDGET_SIZES: Readonly<Record<BoardClass, readonly WidgetS
   expanded: ['M', 'W', 'XL'],
 };
 
-const HEADER_TOUCH = 40;
-const HEADER_POINTER = 32;
-const BODY_GAP = 12;
-const FIGURE_L = 44;
-const FIGURE_M = 32;
-const CAPTION = 18;
-const ROW_GAP = 6;
-const BARS_MIN = 16;
-const BARS_MAX = 40;
-const WIDE_BARS_MIN = 24;
-const WIDE_BARS_MAX = 120;
-const TOP_LABEL = 16;
 const TOP_ROW = 24;
-const TOP_ROWS = 5;
+const TOP_GAP = 4;
 
-export function bodyHeightOf(frame: WidgetFrameBox): number {
-  const header = frame.idiom === 'touch' ? HEADER_TOUCH : HEADER_POINTER;
-  return Math.max(0, frame.height - header - BODY_GAP);
+export function topRowsOf(height: number, idiom: Idiom): number {
+  const label = TYPE_SCALE[idiom].label[1];
+  return Math.max(0, Math.floor((height - label) / (TOP_ROW + TOP_GAP)));
 }
 
-export interface CompactLayout {
-  readonly figure: 'l' | 'm';
-  readonly bars: number | null;
+export interface StoppedLines {
+  readonly headline: number;
+  readonly detail: number;
 }
 
-function barsFor(body: number, figure: number): number | null {
-  const rest = body - figure - CAPTION - 2 * ROW_GAP;
-  return rest >= BARS_MIN ? Math.min(BARS_MAX, rest) : null;
-}
-
-export function compactLayoutOf(body: number): CompactLayout {
-  const large = barsFor(body, FIGURE_L);
-  return large === null
-    ? { figure: 'm', bars: barsFor(body, FIGURE_M) }
-    : { figure: 'l', bars: large };
-}
-
-export function wideBarsHeightOf(body: number): number {
-  return Math.min(WIDE_BARS_MAX, Math.max(WIDE_BARS_MIN, body));
-}
-
-export function topRowsOf(body: number): number {
-  const rest = body - FIGURE_L - CAPTION - BARS_MAX - TOP_LABEL - 4 * ROW_GAP;
-  return Math.max(0, Math.min(TOP_ROWS, Math.floor(rest / TOP_ROW)));
+export function stoppedLinesOf(room: number, idiom: Idiom): StoppedLines {
+  const headline = TYPE_SCALE[idiom]['title-3'][1];
+  const detail = TYPE_SCALE[idiom].footnote[1];
+  const lines = room >= 2 * headline + detail ? 2 : 1;
+  return {
+    headline: lines,
+    detail: Math.max(1, Math.floor((room - lines * headline) / detail)),
+  };
 }

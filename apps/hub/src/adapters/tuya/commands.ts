@@ -5,6 +5,9 @@ import { writeTo } from './writes';
 import { TuyaDeviceUnknownError, reportOf, stateUpdates, type DeviceRecord } from './records';
 import type { TuyaRuntime } from './runtime';
 import { messageOf } from '@smarteverything/logging';
+import { mapBounded } from '../../providers/map-bounded';
+
+export const LOCAL_REFRESH_CONCURRENCY = 8;
 
 export async function executeCommand(
   runtime: TuyaRuntime,
@@ -69,10 +72,11 @@ export async function refreshStates(
     .filter((record): record is DeviceRecord => record !== undefined);
   const local = records.filter((record) => runtime.choiceOf(record.cloud.id).transport === 'local');
   const cloud = records.filter((record) => runtime.choiceOf(record.cloud.id).transport === 'cloud');
-  const updates: StateUpdate[] = [];
-  for (const record of local) {
-    updates.push(...(await refreshLocal(runtime, record, observedAt)));
-  }
-  updates.push(...(await refreshCloud(runtime, cloud, observedAt)));
-  return updates;
+  const [localUpdates, cloudUpdates] = await Promise.all([
+    mapBounded(local, LOCAL_REFRESH_CONCURRENCY, (record) =>
+      refreshLocal(runtime, record, observedAt),
+    ),
+    refreshCloud(runtime, cloud, observedAt),
+  ]);
+  return [...localUpdates.flat(), ...cloudUpdates];
 }

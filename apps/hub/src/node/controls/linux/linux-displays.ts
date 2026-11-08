@@ -65,7 +65,10 @@ function nightLightChange(change: DisplayChange): change is NightLightChange {
 }
 
 export class LinuxDisplays implements DisplayControl {
-  private selected: Promise<DisplayBackend | null> | null = null;
+  private selected: {
+    readonly key: string;
+    readonly backend: Promise<DisplayBackend | null>;
+  } | null = null;
   private readonly ddc: DdcBrightness;
   private readonly listeners = new Set<(state: DisplayState) => void>();
   private stopDrm: (() => void) | null = null;
@@ -171,12 +174,15 @@ export class LinuxDisplays implements DisplayControl {
   }
 
   private backend(): Promise<DisplayBackend | null> {
-    this.selected ??= this.select();
-    return this.selected;
+    const environment = this.options.environment();
+    const key = JSON.stringify(environment);
+    if (this.selected?.key !== key) {
+      this.selected = { key, backend: this.select(environment) };
+    }
+    return this.selected.backend;
   }
 
-  private async select(): Promise<DisplayBackend | null> {
-    const { kde, wayland, x11 } = this.options.environment();
+  private async select({ kde, wayland, x11 }: DisplayEnvironment): Promise<DisplayBackend | null> {
     const { run, probe } = this.options;
     if (kde && (await probe('kscreen-doctor'))) {
       return new KscreenDisplays(run);

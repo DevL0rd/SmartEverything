@@ -37,16 +37,19 @@ function CallSelector({
   calls,
   selected,
   select,
+  restoreFocus,
 }: {
   readonly calls: readonly TranscriptSession[];
   readonly selected: string | null;
   readonly select: (id: string) => void;
+  readonly restoreFocus: boolean;
 }): ReactNode {
   const { time_zone: timeZone } = useSettings();
   return (
     <View className="gap-2">
       <Select
         label="Call"
+        focusOnMount={restoreFocus}
         value={selected}
         onChange={select}
         searchable
@@ -66,9 +69,11 @@ function CallSelector({
 function CallFeed({
   call,
   selector,
+  focusSelector,
 }: {
   readonly call: TranscriptSession;
   readonly selector: ReactNode;
+  readonly focusSelector: boolean;
 }): ReactNode {
   const { focus } = useLocalSearchParams<{ focus?: string }>();
   const feed = useFeedController({ sessionId: call.id }, useIsFocused());
@@ -82,8 +87,9 @@ function CallFeed({
       {...(remove === undefined ? {} : { remove })}
       header={selector}
       pageHeader={<TranscriptHeader />}
-      maxWidth="detail"
-      focusSearch={focus === 'transcript-search'}
+      headerWidth="detail"
+      inlineControls
+      focusSearch={focus === 'transcript-search' && !focusSelector}
       controls={
         <Text variant="footnote" tone="variant">
           Search this call. Recognition can contain mistakes.
@@ -131,9 +137,11 @@ function Reader(): ReactNode {
   const calls = useTranscriptSessions('plugin', DISCORD_PLUGIN, useIsFocused());
   const [selected, select] = useState<string | null>(null);
   const call = calls.data?.find((item) => item.id === selected) ?? calls.data?.[0];
+  const focusSelector = selected === call?.id;
   return (
     <Screen
       header={<TranscriptHeader />}
+      maxWidth="reading"
       scroll={call === undefined}
       externalScroll={call !== undefined}
     >
@@ -149,7 +157,15 @@ function Reader(): ReactNode {
         <CallFeed
           key={call.id}
           call={call}
-          selector={<CallSelector calls={calls.data ?? []} selected={call.id} select={select} />}
+          focusSelector={focusSelector}
+          selector={
+            <CallSelector
+              calls={calls.data ?? []}
+              selected={call.id}
+              select={select}
+              restoreFocus={focusSelector}
+            />
+          }
         />
       )}
     </Screen>
@@ -164,7 +180,7 @@ export function DiscordTranscriptScreen({
   usePluginScreen('discord', 'DiscordTranscriptScreen');
   if (pluginId !== DISCORD_PLUGIN) {
     return (
-      <Screen header={<TranscriptHeader />}>
+      <Screen header={<TranscriptHeader />} maxWidth="reading">
         <EmptyState
           icon="messageCircle"
           title="Transcripts unavailable"

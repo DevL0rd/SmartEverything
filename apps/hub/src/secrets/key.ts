@@ -1,12 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { chmod, mkdir, open, readFile, stat } from 'node:fs/promises';
 import { platform } from 'node:os';
-import { join } from 'node:path';
+import { dirname } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import { isMissing } from '../fs-util';
 
 const KEY_BYTES = 32;
-export const KEY_FILE_NAME = 'secret.key';
 
 export class SecretKeyError extends Error {
   override readonly name = 'SecretKeyError';
@@ -40,9 +39,8 @@ async function createKeyFile(path: string): Promise<Buffer> {
   return key;
 }
 
-export async function loadSecretKey(dataDirectory: string, log: Logger): Promise<Buffer> {
-  await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
-  const path = join(dataDirectory, KEY_FILE_NAME);
+export async function loadSecretKey(path: string, log: Logger): Promise<Buffer> {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const status = await stat(path).catch((error: unknown) => {
     if (isMissing(error)) {
       return null;

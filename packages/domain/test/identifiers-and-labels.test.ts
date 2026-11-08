@@ -131,8 +131,11 @@ describe('danger of an action', () => {
 describe('guards on the hub computer', () => {
   it('recognises the hub own units by name', () => {
     expect(isHubOwnUnit('smarteverything')).toBe(true);
-    expect(isHubOwnUnit(' smarteverything-hub.service ')).toBe(true);
-    expect(isHubOwnUnit('smarteverything@1')).toBe(true);
+    expect(isHubOwnUnit(' smarteverything.service ')).toBe(true);
+    expect(isHubOwnUnit('SmartEverything.service')).toBe(true);
+    expect(isHubOwnUnit('smarteverything-node.service')).toBe(false);
+    expect(isHubOwnUnit('smarteverything-hub.service')).toBe(false);
+    expect(isHubOwnUnit('smarteverything@1')).toBe(false);
     expect(isHubOwnUnit('smarteverythingelse')).toBe(false);
     expect(isHubOwnUnit('nginx')).toBe(false);
   });

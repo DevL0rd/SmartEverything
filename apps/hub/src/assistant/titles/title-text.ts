@@ -1,5 +1,5 @@
 import { AI_CHAT_TITLE_MAX } from '@smarteverything/domain';
-import type { ChatMessage } from '../../openrouter/chat-types';
+import type { SidePrompt } from '../side-completion';
 import { cut } from '../exchange-text';
 
 const TITLE_WORDS_MAX = 6;
@@ -18,11 +18,8 @@ export function callSource(transcript: string): string {
   return `Voice call transcript:\n${cut(transcript, SOURCE_CHARS)}`;
 }
 
-export function titleMessages(source: string): ChatMessage[] {
-  return [
-    { role: 'system', content: INSTRUCTIONS },
-    { role: 'user', content: source },
-  ];
+export function titlePrompt(source: string): SidePrompt {
+  return { system: INSTRUCTIONS, input: source };
 }
 
 export function cleanTitle(raw: string): string | null {

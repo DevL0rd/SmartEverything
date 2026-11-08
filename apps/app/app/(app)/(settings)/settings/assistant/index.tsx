@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { SettingsPageScreen } from '../../../../../src/settings/settings-screen';
+import { AssistantSettingsScreen } from '../../../../../src/features/assistant/settings/assistant-settings-screen';
 
 export default function AssistantSettingsRoute(): ReactNode {
-  return <SettingsPageScreen page="assistant" />;
+  return <AssistantSettingsScreen />;
 }

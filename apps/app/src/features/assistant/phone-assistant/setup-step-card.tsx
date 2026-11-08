@@ -71,7 +71,7 @@ export function SetupStepCard({
         <View className="flex-row flex-wrap gap-2 pl-13">
           {step.actions.map((action, index) => (
             <Button
-              key={action.kind}
+              key={action.kind === 'undo_side_key' ? 'confirm_side_key' : action.kind}
               label={action.label}
               variant={index === 0 ? (next ? 'filled' : 'tonal') : 'text'}
               onPress={() => {

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { repositoryRoot } from './repository-files';
 
 const hubSource = join(repositoryRoot, 'apps', 'hub', 'src');
-const hubEntry = join(hubSource, 'start.ts');
+const hubEntry = join(hubSource, 'service.ts');
 
 const IMPORT =
   /(?:^(?:import|export)\s+(?!type\b)[^;'"]*?\bfrom\s+|^import\s+|\bimport\s*\(\s*)'([^']+)'/gm;

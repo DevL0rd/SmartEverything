@@ -1,0 +1,76 @@
+diff --git a/dist/defaultWorker.js b/dist/defaultWorker.js
+index c540e31..0fda262 100644
+--- a/dist/defaultWorker.js
++++ b/dist/defaultWorker.js
+@@ -574,7 +574,13 @@ var WebSocketShard = class extends import_async_event_emitter.AsyncEventEmitter
+         await promise;
+         this.emit("closed" /* Closed */, options.code);
+       }
+-      this.connection.onerror = null;
++      this.connection.onerror = (event) => {
++        this.debug([`Destroyed connection reported an error: ${event.message}`]);
++      };
++      if (!shouldClose) {
++        if ("terminate" in this.connection) this.connection.terminate();
++        else this.connection.close();
++      }
+     } else {
+       this.debug(["Destroying a shard that has no connection; please open an issue on GitHub"]);
+     }
+diff --git a/dist/defaultWorker.mjs b/dist/defaultWorker.mjs
+index 0a6f68d..af78edf 100644
+--- a/dist/defaultWorker.mjs
++++ b/dist/defaultWorker.mjs
+@@ -556,7 +556,13 @@ var WebSocketShard = class extends AsyncEventEmitter {
+         await promise;
+         this.emit("closed" /* Closed */, options.code);
+       }
+-      this.connection.onerror = null;
++      this.connection.onerror = (event) => {
++        this.debug([`Destroyed connection reported an error: ${event.message}`]);
++      };
++      if (!shouldClose) {
++        if ("terminate" in this.connection) this.connection.terminate();
++        else this.connection.close();
++      }
+     } else {
+       this.debug(["Destroying a shard that has no connection; please open an issue on GitHub"]);
+     }
+diff --git a/dist/index.js b/dist/index.js
+index 1f6eed7..7e449fc 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -809,7 +809,13 @@ var WebSocketShard = class extends import_async_event_emitter.AsyncEventEmitter
+         await promise;
+         this.emit("closed" /* Closed */, options.code);
+       }
+-      this.connection.onerror = null;
++      this.connection.onerror = (event) => {
++        this.debug([`Destroyed connection reported an error: ${event.message}`]);
++      };
++      if (!shouldClose) {
++        if ("terminate" in this.connection) this.connection.terminate();
++        else this.connection.close();
++      }
+     } else {
+       this.debug(["Destroying a shard that has no connection; please open an issue on GitHub"]);
+     }
+diff --git a/dist/index.mjs b/dist/index.mjs
+index c538c94..e4fe4e3 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -770,7 +770,13 @@ var WebSocketShard = class extends AsyncEventEmitter {
+         await promise;
+         this.emit("closed" /* Closed */, options.code);
+       }
+-      this.connection.onerror = null;
++      this.connection.onerror = (event) => {
++        this.debug([`Destroyed connection reported an error: ${event.message}`]);
++      };
++      if (!shouldClose) {
++        if ("terminate" in this.connection) this.connection.terminate();
++        else this.connection.close();
++      }
+     } else {
+       this.debug(["Destroying a shard that has no connection; please open an issue on GitHub"]);
+     }

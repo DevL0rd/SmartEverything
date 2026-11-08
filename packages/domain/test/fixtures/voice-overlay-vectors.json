@@ -72,7 +72,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -140,7 +141,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -208,7 +210,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -276,7 +279,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -450,7 +454,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -624,7 +629,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -798,7 +804,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -972,7 +979,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -1146,7 +1154,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -1233,7 +1242,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -1320,7 +1330,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -1406,7 +1417,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -1489,7 +1501,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -1572,7 +1585,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -1655,7 +1669,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -1829,7 +1844,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -2006,7 +2022,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "phone",
@@ -2165,7 +2182,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "phone",
@@ -2247,7 +2265,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "phone",
@@ -2406,7 +2425,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "phone",
@@ -2572,7 +2592,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -2736,7 +2757,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -2905,7 +2927,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -3079,7 +3102,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "desktop",
@@ -3253,7 +3277,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "phone",
@@ -3412,7 +3437,8 @@
           "glow": true,
           "captions": true,
           "display": "active",
-          "whileSharing": "small"
+          "whileSharing": "small",
+          "powerButton": "call"
         },
         "surface": {
           "platform": "phone",

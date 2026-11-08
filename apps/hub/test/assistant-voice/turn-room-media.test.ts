@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_ENGINE, NO_PRICES } from '@smarteverything/domain';
+import { testVoiceMemory } from '../support/voice-memory';
+import { NO_PRICES } from '@smarteverything/domain';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
 import type { LiveEvents, LiveSession, VoiceProvider } from '../../src/assistant-voice/gemini';
 import { TurnSessions, type TurnRequest } from '../../src/assistant-voice/turn-sessions';
 import type { SpeakingCall, SpeakingMedia } from '../../src/reach/room-media';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 let opened: TestStore;
 let events: LiveEvents | null;
@@ -39,6 +41,7 @@ const roomMedia: SpeakingMedia = {
 async function openTurn(): Promise<Awaited<ReturnType<TurnSessions['open']>>> {
   const turns = new TurnSessions({
     store: opened.store,
+    memory: testVoiceMemory(opened.store),
     provider,
     responder: {
       ready: (): null => null,
@@ -93,7 +96,7 @@ beforeEach(async () => {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
   }).id;
 });
 

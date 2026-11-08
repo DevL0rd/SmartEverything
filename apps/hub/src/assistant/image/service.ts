@@ -10,11 +10,13 @@ import { Logger, messageOf } from '@smarteverything/logging';
 import pLimit from 'p-limit';
 import type { ImageActor, ImageServiceOptions } from './contract';
 import { ImageOperationError } from './errors';
+import { Generation } from './generation';
 import { ownedChat, readInputs, resolveInputs, type ResolvedImage } from './inputs';
 import { keepResults } from './results';
 import { imagePreview } from './preview';
 import { recordImageUsage } from './usage';
-import { admitOptions, withBestSettings } from '../../openrouter/image-options';
+import { withDefaults } from '../../openrouter/image-defaults';
+import { admitOptions } from '../../openrouter/image-options';
 
 const log = new Logger('hub.assistant');
 const PROVIDER_CONCURRENCY = 4;
@@ -50,7 +52,7 @@ export class ImageOperationService {
     const asked = IMAGE_OPERATION_REQUEST.parse(value);
     ownedChat(this.options, actor, asked.chat_id);
     const endpoint = await this.options.catalog.endpointFor(asked);
-    const request = withBestSettings(endpoint, asked);
+    const request = withDefaults(endpoint, asked, this.options.imageDefaults());
     const replay = this.options.repository.replay(actor.key, request);
     if (replay !== undefined) return replay;
     actor.signal?.throwIfAborted();
@@ -193,35 +195,27 @@ export class ImageOperationService {
     inputs: readonly ResolvedImage[],
     signal: AbortSignal,
   ): Promise<ImageOperationReceipt> {
-    let receipt = initial;
-    let submitted = false;
+    const run = new Generation(this.options, {
+      initial,
+      inputs,
+      publish: (next): void => {
+        this.publish(next);
+      },
+      preview: (next, content): Promise<ImageOperationReceipt> =>
+        this.preview(next, content, signal),
+    });
     try {
       signal.throwIfAborted();
       const images = await readInputs(this.options, inputs, signal);
-      receipt = this.options.repository.update({ ...receipt, state: 'running' });
-      this.publish(receipt);
-      const result = await this.options.provider.generate({
-        request: receipt.request,
-        endpoint: receipt.endpoint,
-        inputs: images,
-        signal,
-        submitted: () => {
-          submitted = true;
-        },
-        usage: (usage, source) => {
-          receipt = this.options.repository.update({ ...receipt, usage, usage_source: source });
-          this.publish(receipt);
-        },
-        preview: async (content) => {
-          receipt = await this.preview(receipt, content, signal);
-        },
-      });
-      receipt = await keepResults(this.options, receipt, { result, signal });
+      run.receipt = this.options.repository.update({ ...run.receipt, state: 'running' });
+      this.publish(run.receipt);
+      const result = await run.produce(images, signal);
+      run.receipt = await keepResults(this.options, run.receipt, { result, signal });
     } catch (cause) {
-      receipt = this.failure(receipt, cause, signal, submitted);
+      run.receipt = this.failure(run.receipt, cause, signal, run.submitted);
     }
-    this.publish(receipt);
-    return receipt;
+    this.publish(run.receipt);
+    return run.receipt;
   }
   private async preview(
     receipt: ImageOperationReceipt,
@@ -250,7 +244,8 @@ export class ImageOperationService {
     const shutdown =
       signal.reason instanceof ImageOperationError && signal.reason.code === 'unknown';
     const cancelled = signal.aborted && !shutdown;
-    const definitive = cause instanceof ImageOperationError && cause.code === 'provider';
+    const definitive =
+      cause instanceof ImageOperationError && (cause.code === 'provider' || cause.code === 'quota');
     const state = failureState(cancelled, submitted, definitive);
     const reason = reasonOf(state, cause, submitted);
     this.options.failed(

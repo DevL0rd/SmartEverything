@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { ApiError } from '@smarteverything/domain';
+import { KNOWN_SESSION_EVENT_TYPES, pluginRecordOf } from '@deepseek-ai/dsh-session';
+import { ApiError, ENGINE } from '@smarteverything/domain';
 import { closeNativeHistory } from '../../../src/assistant/engines/dsh/history-change';
 import { nativeHistoryPrefix, rewriteNativeHistory } from '../../../src/harness/history-mutation';
+import { appendOffloadedImage } from './support/offloaded-image';
 import { useRig, type Rig } from './support/rig';
 import {
   nativeConversation,
@@ -34,6 +36,30 @@ describe('native history after an edit or a retry', () => {
       'first question',
       'first answer',
     ]);
+  });
+
+  it('records each edit as an ignorable plugin record and every unknown type as ignorable', () => {
+    const seeded = seedConversation(rig, TWO_EXCHANGES);
+    const [first] = seeded.rows;
+
+    rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
+    const history = storedHistory(rig, seeded.sessionId);
+
+    const records = history.flatMap((event) => pluginRecordOf(event) ?? []);
+    expect(records.map((record) => record.type)).toContain('plugin:smarteverything/history-edit');
+    const unknown = history.filter((event) => !KNOWN_SESSION_EVENT_TYPES.has(event.type));
+    expect(unknown.every((event) => event.ignorable === true)).toBe(true);
+  });
+
+  it('edits a conversation whose images were offloaded', () => {
+    const seeded = seedConversation(rig, TWO_EXCHANGES);
+    appendOffloadedImage(rig, seeded);
+    const [first] = seeded.rows;
+    const before = storedHistory(rig, seeded.sessionId).length;
+
+    rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
+
+    expect(storedHistory(rig, seeded.sessionId).length).toBeGreaterThan(before);
   });
 
   it('keeps every other message exactly as it was', () => {
@@ -93,7 +119,11 @@ describe('native history after an edit or a retry', () => {
   it('leaves chats that are not native conversations alone', () => {
     const seeded = seedConversation(rig, TWO_EXCHANGES);
     const plain = rig.opened.store.aiChats.update(seeded.chat.id, {
-      engine: { kind: 'openrouter', model: 'model-a', effort: null },
+      engine: ENGINE.parse({
+        kind: 'claude',
+        device_id: '11111111-1111-4111-8111-111111111111',
+        model: 'model-a',
+      }),
     });
     const before = storedHistory(rig, seeded.sessionId).length;
 
@@ -245,7 +275,7 @@ describe('changing the history of a chat whose machine is away', () => {
     const chat = rig.newChat(rig.desk.target);
     const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
     await rig.service.directory.execute(rig.desk.target, randomUUID(), open);
-    rig.opened.store.harnessCoordination.markSwitching(open.claim.session_id);
+    rig.opened.store.harnessSessions.markSwitching(open.claim.session_id);
 
     await expect(
       closeNativeHistory(rig.service, rig.opened.store.aiChats.chat(chat.id), rig.owner, false),

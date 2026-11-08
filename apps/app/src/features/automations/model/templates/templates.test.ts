@@ -1,28 +1,40 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import {
   AUTOMATION_V3,
-  BUILTIN_FUNCTIONS,
+  AUTOMATION_V4,
   FLOW_SCOPE_OUTPUTS,
   NODE_REGISTRY,
+  STARTER_NODES,
+  STARTER_NODE_IDS,
   type AutomationV3,
   type FlowNode,
 } from '@smarteverything/domain';
 import type { LintContext } from '@smarteverything/flow/check/lint';
 import { lint } from '@smarteverything/flow/check/lint';
+import { structuredOf } from '@smarteverything/flow/graph/structured-of';
 import { describe, expect, it } from 'vitest';
 import { templatesFor } from './all-templates';
 import { automation } from './build';
 import { clockOf, clockText, previewLines } from './preview';
 import { snippetsFor } from './snippets';
+import { templateTree } from './structured';
 import { takenStates, unusedTemplates } from './taken';
 import { APPLIANCES, HOME, ROOMS } from './template-fixtures';
 
 function context(): LintContext {
-  const builtins = new Map(BUILTIN_FUNCTIONS.map((entry) => [entry.id, entry.program]));
+  const starters = new Map(
+    STARTER_NODES.flatMap((entry) => {
+      const structured = structuredOf(entry.program, STATIC_KIND_LOOKUP);
+      return structured.kind === 'structured' && structured.tree.kind === 'function'
+        ? [[entry.id, structured.tree] as const]
+        : [];
+    }),
+  );
   return {
     kinds: (id) => NODE_REGISTRY.get(id),
     scopeOutputs: (kind) => FLOW_SCOPE_OUTPUTS[kind] ?? [],
     references: () => true,
-    functions: (id) => builtins.get(id),
+    functions: (id) => starters.get(id),
     secrets: new Set(),
     automations: () => undefined,
   };
@@ -58,15 +70,14 @@ function nodesOf(program: AutomationV3): FlowNode[] {
 function find(id: string): AutomationV3 {
   const found = ALL.find((entry) => entry.id === id);
   if (found === undefined) throw new Error(`no template ${id}`);
-  return found.build();
+  return templateTree(found, undefined, STATIC_KIND_LOOKUP);
 }
 
 describe('every template', () => {
   it('is a valid program that checks without errors', () => {
     for (const entry of ALL) {
-      const program = entry.build();
-      expect(AUTOMATION_V3.safeParse(program).success, entry.id).toBe(true);
-      expect(errorsOf(program), entry.id).toEqual([]);
+      expect(AUTOMATION_V4.safeParse(entry.build()).success, entry.id).toBe(true);
+      expect(errorsOf(templateTree(entry, undefined, STATIC_KIND_LOOKUP)), entry.id).toEqual([]);
     }
   });
 
@@ -74,7 +85,7 @@ describe('every template', () => {
     expect(new Set(ALL.map((entry) => entry.id)).size).toBe(ALL.length);
     expect(new Set(ALL.map((entry) => entry.name.toLowerCase())).size).toBe(ALL.length);
     for (const entry of ALL) {
-      const program = entry.build();
+      const program = templateTree(entry, undefined, STATIC_KIND_LOOKUP);
       const ids = [...program.triggers, ...nodesOf(program)].map((node) => node.id);
       expect(new Set(ids).size, entry.id).toBe(ids.length);
     }
@@ -145,25 +156,25 @@ describe('the new and changed ideas', () => {
     const kinds = nodesOf(find('air:air')).map((node) => node.kind);
     expect(kinds).toContain('timing.hysteresis');
     expect(kinds.filter((kind) => kind === 'device.set')).toHaveLength(2);
-    const calls = ALL.flatMap((entry) => nodesOf(entry.build()))
-      .filter((node) => node.kind === 'fn.call')
-      .map((node) => node.ports?.['fn']);
-    expect(calls).not.toContainEqual({ lit: 'builtin.threshold_pair' });
-    expect(calls).not.toContainEqual({ lit: 'builtin.manual_override_latch' });
+    expect(kinds).not.toContain('fn.call');
   });
 
-  it('uses built-in Custom Nodes where they fit', () => {
-    const called = ALL.flatMap((entry) => nodesOf(entry.build()))
+  it('uses the starter Custom Nodes where they fit', () => {
+    const called = ALL.flatMap((entry) =>
+      nodesOf(templateTree(entry, undefined, STATIC_KIND_LOOKUP)),
+    )
       .filter((node) => node.kind === 'fn.call')
       .map((node) => node.ports?.['fn']);
-    expect(called).toContainEqual({ lit: 'builtin.lights_off_after' });
-    expect(called).toContainEqual({ lit: 'builtin.timed_devices' });
+    expect(called).toContainEqual({ lit: STARTER_NODE_IDS.lightsOffAfter });
+    expect(called).toContainEqual({ lit: STARTER_NODE_IDS.switchDevices });
   });
 
   it('offers a Learn example for each new construct', () => {
     const learn = ALL.filter((entry) => entry.category === 'learn');
     const kinds = new Set(
-      learn.flatMap((entry) => nodesOf(entry.build()).map((node) => node.kind)),
+      learn.flatMap((entry) =>
+        nodesOf(templateTree(entry, undefined, STATIC_KIND_LOOKUP)).map((node) => node.kind),
+      ),
     );
     for (const kind of ['flow.for_each', 'flow.while', 'flow.try', 'flow.parallel', 'fn.call']) {
       expect(kinds.has(kind), kind).toBe(true);
@@ -202,11 +213,10 @@ describe('the v1.1 trigger ideas', () => {
 describe('filling a template', () => {
   it('writes the chosen values into the program', () => {
     const entry = ALL.find((candidate) => candidate.id === 'sunset-lights');
-    const program = entry?.build({ lights: ['lamp2'], offset: -30 });
-    expect(program?.triggers[0]?.ports).toMatchObject({ offset: { lit: -1_800_000 } });
-    expect(nodesOf(program ?? find('sunset-lights'))[0]?.ports?.['target']).toEqual({
-      lit: { devices: ['lamp2'] },
-    });
+    if (entry === undefined) throw new Error('no sunset template');
+    const program = templateTree(entry, { lights: ['lamp2'], offset: -30 }, STATIC_KIND_LOOKUP);
+    expect(program.triggers[0]?.ports).toMatchObject({ offset: { lit: -1_800_000 } });
+    expect(nodesOf(program)[0]?.ports?.['target']).toEqual({ lit: { devices: ['lamp2'] } });
   });
 
   it('offers a slot with the home defaults for every choice', () => {
@@ -285,7 +295,7 @@ describe('previews', () => {
 
   it('read like a short outline of the program', () => {
     const lines = ALL.filter((candidate) => candidate.id === 'sunset-lights').flatMap((entry) =>
-      previewLines(entry, names),
+      previewLines(entry, names, NODE_REGISTRY),
     );
     expect(lines.length).toBeGreaterThan(0);
     expect(lines.length).toBeLessThanOrEqual(5);
@@ -294,7 +304,7 @@ describe('previews', () => {
 
   it('stay within five lines for every template', () => {
     for (const entry of ALL) {
-      const lines = previewLines(entry, names);
+      const lines = previewLines(entry, names, NODE_REGISTRY);
       expect(lines.length, entry.id).toBeGreaterThan(0);
       expect(lines.length, entry.id).toBeLessThanOrEqual(5);
     }
@@ -307,7 +317,7 @@ describe('previews', () => {
   });
 });
 
-describe('the v1.1 built-in Custom Node ideas', () => {
+describe('the routine templates that call starter Custom Nodes', () => {
   function callOf(program: AutomationV3): FlowNode {
     const call = nodesOf(program).find((node) => node.kind === 'fn.call');
     if (call === undefined) throw new Error('no Custom Node call');
@@ -321,7 +331,7 @@ describe('the v1.1 built-in Custom Node ideas', () => {
       ports: { at: { lit: '06:30' } },
     });
     expect(callOf(program).ports).toMatchObject({
-      fn: { lit: 'builtin.wake_up_light' },
+      fn: { lit: STARTER_NODE_IDS.wakeUpLight },
       over: { lit: 15 * 60_000 },
     });
   });
@@ -333,7 +343,7 @@ describe('the v1.1 built-in Custom Node ideas', () => {
       ports: { camera: { lit: 'cam' }, detection: { lit: 'doorbell' } },
     });
     expect(callOf(program).ports).toMatchObject({
-      fn: { lit: 'builtin.doorbell_flash' },
+      fn: { lit: STARTER_NODE_IDS.flashTheLights },
       times: { lit: 3 },
     });
   });
@@ -345,7 +355,7 @@ describe('the v1.1 built-in Custom Node ideas', () => {
       ports: { event: { lit: 'left' }, when: { lit: 'everyone_left' } },
     });
     expect(callOf(program).ports).toMatchObject({
-      fn: { lit: 'builtin.leave_home_check' },
+      fn: { lit: STARTER_NODE_IDS.leaveHomeCheck },
       people: { lit: ['sam'] },
       openings: { lit: { devices: ['door'] } },
     });

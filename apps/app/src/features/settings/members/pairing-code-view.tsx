@@ -38,14 +38,18 @@ function InvitationActions({ pairing }: { readonly pairing: Pairing }): ReactNod
 
 export function PairingCodeView({ pairing }: { readonly pairing: Pairing }): ReactNode {
   return (
-    <View className="gap-4">
-      <QrCode text={pairingQrText(pairing.qr)} size={232} label="Pairing code to scan" />
-      <Text variant="callout" tone="variant" align="center">
-        {`On the phone, open SmartEverything and scan this. Expires at ${clock(pairing.expiresAt)}.`}
-      </Text>
-      <CopyField label="Server address" value={pairing.qr.url} />
-      <CopyField label="Or enter this code" value={pairing.code} />
-      <InvitationActions pairing={pairing} />
+    <View className="flex-row flex-wrap items-start gap-4">
+      <View className="min-w-0 grow shrink basis-60 gap-4">
+        <QrCode text={pairingQrText(pairing.qr)} size={232} label="Pairing code to scan" />
+        <Text variant="callout" tone="variant" align="center">
+          {`On the new device, open SmartEverything and scan this QR code or enter the pairing code. Expires at ${clock(pairing.expiresAt)}.`}
+        </Text>
+      </View>
+      <View className="min-w-0 grow shrink basis-64 gap-4">
+        <CopyField label="Server address" value={pairing.qr.url} wrapValue />
+        <CopyField label="Or enter this code" value={pairing.code} />
+        <InvitationActions pairing={pairing} />
+      </View>
     </View>
   );
 }

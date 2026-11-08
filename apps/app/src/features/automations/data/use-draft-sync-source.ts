@@ -20,6 +20,7 @@ export interface DraftSyncSource {
 }
 
 export function useDraftSyncSource(automationId: string): DraftSyncSource {
+  const kinds = useAutomationsSource().lookup;
   const { api } = useAutomationsSource();
   const client = useQueryClient();
   const draft = useScreenQuery({
@@ -47,11 +48,11 @@ export function useDraftSyncSource(automationId: string): DraftSyncSource {
       revision: (revision: number) =>
         client.query({
           queryKey: automationKeys.revision(automationId, revision),
-          queryFn: () => api.getRevision(automationId, revision),
+          queryFn: () => api.getRevision(automationId, revision, kinds),
           staleTime: Infinity,
         }),
       compare: (from: number, to: number | 'draft') => api.compareRevisions(automationId, from, to),
     };
-  }, [api, client, automationId]);
+  }, [api, client, automationId, kinds]);
   return { draft, ...actions };
 }

@@ -2,12 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   AI_SECTIONS,
   SECTIONS,
-  bodyWidthOf,
   frameLayoutOf,
   notAvailableOn,
   offersSection,
   railWidthOf,
-  twoColumnsAt,
   type SectionDef,
 } from './sections';
 
@@ -27,11 +25,7 @@ describe('sections', () => {
       'storage',
       'system',
     ]);
-    expect(AI_SECTIONS.map((section) => section.id)).toEqual([
-      'claude',
-      'codex',
-      'claude-sessions',
-    ]);
+    expect(AI_SECTIONS.map((section) => section.id)).toEqual(['claude', 'codex']);
   });
 
   it('offers a section only when the computer offers its feature, and everything while loading', () => {
@@ -51,7 +45,5 @@ describe('sections', () => {
   it('keeps the computer frame at a compact page to 600, an icon rail to 900 and a full rail beyond', () => {
     expect([599, 600, 899, 900].map(frameLayoutOf)).toEqual(['compact', 'icon', 'icon', 'wide']);
     expect([840, 960, 1440].map(railWidthOf)).toEqual(['icon', 'mid', 'wide']);
-    expect([390, 800, 1440].map(bodyWidthOf)).toEqual([358, 800 - 96 - 48, 1440 - 260 - 48]);
-    expect([599, 800, 1440].map(twoColumnsAt)).toEqual([false, true, true]);
   });
 });

@@ -61,10 +61,10 @@ export function sourceText(row: LayoutSizeRow): string {
       return 'Your own arrangement';
     case 'following':
       return row.follows === null
-        ? 'Default arrangement'
+        ? 'Built-in arrangement'
         : `Following ${BOARD_LABELS[row.follows]}`;
     case 'default':
-      return 'Default arrangement';
+      return 'Built-in arrangement';
   }
 }
 
@@ -76,5 +76,5 @@ export function copyConfirmBody(from: BoardClass, to: BoardClass, hadOwn: boolea
 }
 
 export function resetConfirmBody(board: BoardClass): string {
-  return `Your ${BOARD_LABELS[board]} arrangement will be removed and the built-in default will be used again. Other sizes are not changed. You can undo this once.`;
+  return `Your ${BOARD_LABELS[board]} arrangement will be removed and the built-in arrangement will be used again. Other sizes are not changed. You can undo this once.`;
 }

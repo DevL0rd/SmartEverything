@@ -87,6 +87,7 @@ describe('what the hub sees of a turn', () => {
 
     await host.dispatcher.execute(randomUUID(), {
       kind: 'prompt',
+      author: 'person',
       session_id: opened.sessionId,
       expected_epoch: opened.claim.epoch,
       delivery_id: delivery,

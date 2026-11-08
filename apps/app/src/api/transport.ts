@@ -1,7 +1,5 @@
 export {
   api,
-  chooseRemoteServer,
-  chooseThisComputer,
   connectionRefused,
   forgetServer,
   loadConnection,

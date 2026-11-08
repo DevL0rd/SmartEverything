@@ -1,4 +1,3 @@
-export { ComfortStrip } from './components/comfort-strip';
 export { preloadAirHistory } from './data/air-history';
 export { comfortSelector, sameReadings, useComfortReadings } from './data/use-readings';
 export type { ComfortMetric, MetricReading } from './model/comfort';

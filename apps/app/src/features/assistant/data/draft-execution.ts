@@ -1,3 +1,7 @@
+import { useIsOwner } from '../../../store/selectors';
+import { usePickerSession } from '../picker/model-search-session';
+import { NATIVE_OWNER_REASON } from '../provider/provider-access';
+import { draftNativeIsCurrent } from './draft-engine';
 import { harnessTargetKey, type Engine } from '@smarteverything/domain';
 import { useDesktopHarness } from './desktop-harness';
 import { useHarnessCatalogue } from './harness';
@@ -9,8 +13,7 @@ import { isComputerEngine } from '../provider/computer-engine';
 import { useEngineUnavailableReason } from '../provider/engine-availability';
 import { useEngineCatalogue } from '../provider/provider-data';
 
-const DRAFT_EXECUTION_REASON =
-  'The selected machine, model or permissions are unavailable. Check Machine before sending.';
+const DRAFT_EXECUTION_REASON = 'This chat setup isn’t available.';
 
 export interface DraftExecution {
   readonly engine: Engine | null;
@@ -18,13 +21,31 @@ export interface DraftExecution {
   readonly resolve: () => Engine | null;
 }
 export function useDraftExecution(engine: Engine): DraftExecution {
+  const native = useNativeExecution(engine);
+  const coordinator = useCoordinatorExecution(engine);
+  return native ?? coordinator;
+}
+
+function useNativeExecution(engine: Engine): DraftExecution | null {
+  const owner = useIsOwner();
+  const session = usePickerSession();
+  if (!isComputerEngine(engine)) return null;
+  const reason = owner ? null : NATIVE_OWNER_REASON;
+  return {
+    engine: owner ? engine : null,
+    reason,
+    resolve: (): Engine | null =>
+      owner && session.valid() && draftNativeIsCurrent(engine) ? engine : null,
+  };
+}
+
+function useCoordinatorExecution(engine: Engine): DraftExecution {
   const accessory = useEngineAccessory();
   const catalogue = useHarnessCatalogue();
   const select = useOwnDeviceSelection(engine);
   const local = useDesktopHarness();
   const choice = accessory?.host;
-  if (isComputerEngine(engine) || (choice?.draft !== true && engine.kind !== 'openrouter'))
-    return { engine, reason: null, resolve: (): Engine => engine };
+  if (choice?.draft !== true) return { engine, reason: null, resolve: (): Engine => engine };
   const target = local.desktop ? local.target : ({ kind: 'server' } as const);
   const key = selectedKey(choice, target);
   const host = catalogue.data?.hosts.find((row) => harnessTargetKey(row.target) === key);
@@ -70,6 +91,6 @@ export function useDraftReadiness(draft: {
     loading: !draft.ready,
     runtimeStopped: !draft.ready && loaded && local.desktop && local.target === null,
     needsKey: draft.needsKey,
-    blocked: unavailable ?? draft.execution.reason,
+    blocked: draft.execution.reason ?? unavailable,
   };
 }

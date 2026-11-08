@@ -1,7 +1,7 @@
 import {
-  NODE_REGISTRY,
   type FlowNode,
   type JsonValue,
+  type NodeKindLookup,
   type PortValue,
 } from '@smarteverything/domain';
 import type {
@@ -19,6 +19,7 @@ interface AdmissionReads {
   readonly nodes: readonly FlowNode[];
   readonly port: ReadPort;
   readonly pure: (kind: string) => PureEvaluator | undefined;
+  readonly kinds: NodeKindLookup;
 }
 
 export interface AdmissionParts {
@@ -70,7 +71,7 @@ function inputsOf(node: FlowNode, snapshot: Snapshot): Checked<Record<string, Js
 
 function nodeResult(node: FlowNode, reads: AdmissionReads, snapshot: Snapshot): NodeResult {
   const at = { id: node.id, key: node.key };
-  if (NODE_REGISTRY.get(node.kind)?.class === 'pure') {
+  if (reads.kinds.get(node.kind)?.class === 'pure') {
     const evaluator = reads.pure(node.kind);
     if (evaluator === undefined) {
       return { ok: false, class: 'NotFound', message: `${node.kind} cannot be evaluated` };
@@ -110,8 +111,11 @@ function withReads(reads: AdmissionReads | undefined, snapshot: Snapshot): Check
   return { ok: true, value: current };
 }
 
-export function leadingReads(body: readonly FlowNode[]): readonly FlowNode[] {
-  const end = body.findIndex((node) => !LEADING.has(NODE_REGISTRY.get(node.kind)?.class ?? ''));
+export function leadingReads(
+  body: readonly FlowNode[],
+  kinds: NodeKindLookup,
+): readonly FlowNode[] {
+  const end = body.findIndex((node) => !LEADING.has(kinds.get(node.kind)?.class ?? ''));
   return end < 0 ? body : body.slice(0, end);
 }
 

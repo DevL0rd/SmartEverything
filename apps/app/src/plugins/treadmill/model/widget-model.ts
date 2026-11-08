@@ -1,6 +1,9 @@
 import type { InclineScale, TreadmillLiveFrame, TreadmillStateView } from '@smarteverything/domain';
 import type { FrameClass, WidgetFrameBox } from '../../../components/widget-board';
-import type { VisualPx } from '../../../features/device-visuals';
+import {
+  WIDGET_BODY_GAP,
+  widgetHeaderHeight,
+} from '../../../components/widget-board/widget-frame-metrics';
 import { count } from '../../../format/number';
 import { inclineText } from './counters-model';
 import { movingLine, unitWord } from './incline-model';
@@ -9,14 +12,13 @@ import { speedText } from './treadmill-model';
 
 export type LiveFace = 'strip' | 'stack' | 'row' | 'panel';
 
-const HEADER_TOUCH = 40;
-const HEADER_POINTER = 32;
-const BODY_GAP = 12;
 const GAUGE_PAD = 8;
 const GAUGE_MIN = 112;
 const GAUGE_MAX = 200;
-const CELL = 12;
-const CELL_GAP = 3;
+export const CALENDAR_CELL = 12;
+const CALENDAR_GAP = 3;
+export const CALENDAR_STEP = CALENDAR_CELL + CALENDAR_GAP;
+export const CALENDAR_GRID_HEIGHT = 7 * CALENDAR_STEP - CALENDAR_GAP;
 const MIN_WEEKS = 8;
 const MAX_WEEKS = 53;
 const STRIP_TREND_FROM = 440;
@@ -37,41 +39,47 @@ export function liveFaceOf(cls: FrameClass): LiveFace {
 }
 
 export function bodyHeightOf(frame: WidgetFrameBox): number {
-  const header = frame.idiom === 'touch' ? HEADER_TOUCH : HEADER_POINTER;
-  return Math.max(0, frame.height - header - BODY_GAP);
+  return Math.max(0, frame.height - widgetHeaderHeight(frame.idiom) - WIDGET_BODY_GAP);
 }
 
 export function gaugePxOf(bodyHeight: number): number {
   return Math.min(GAUGE_MAX, Math.max(GAUGE_MIN, bodyHeight - GAUGE_PAD));
 }
 
-const VISUAL_PX: Readonly<Record<LiveFace, VisualPx>> = {
-  strip: 72,
-  stack: 72,
-  row: 96,
-  panel: 128,
-};
-
 export function stripShowsTrend(width: number): boolean {
   return width >= STRIP_TREND_FROM;
-}
-
-export function visualPxOf(face: LiveFace, bodyHeight: number): VisualPx {
-  const wanted = VISUAL_PX[face];
-  if (bodyHeight >= wanted) {
-    return wanted;
-  }
-  return bodyHeight >= 72 ? 72 : 48;
 }
 
 export function calendarWeeks(width: number): number {
   return Math.min(
     MAX_WEEKS,
-    Math.max(MIN_WEEKS, Math.floor((width + CELL_GAP) / (CELL + CELL_GAP))),
+    Math.max(MIN_WEEKS, Math.floor((width + CALENDAR_GAP) / CALENDAR_STEP)),
   );
 }
 
-const HEATMAP_BLOCK = 7 * (CELL + CELL_GAP) + 20;
+function gridWidthOf(weeks: number): number {
+  return weeks * CALENDAR_STEP - CALENDAR_GAP;
+}
+
+export function calendarPlotOf(
+  width: number,
+  maxHeight = CALENDAR_GRID_HEIGHT,
+): {
+  readonly width: number;
+  readonly height: number;
+  readonly gridWidth: number;
+  readonly weeks: number;
+} {
+  const scale = Math.max(
+    0,
+    Math.min(1, maxHeight / CALENDAR_GRID_HEIGHT, width / gridWidthOf(MIN_WEEKS)),
+  );
+  const weeks = calendarWeeks(scale === 0 ? 0 : width / scale);
+  const gridWidth = gridWidthOf(weeks);
+  return { width: gridWidth * scale, height: CALENDAR_GRID_HEIGHT * scale, gridWidth, weeks };
+}
+
+const HEATMAP_BLOCK = CALENDAR_GRID_HEIGHT + CALENDAR_GAP + 20;
 const CALENDAR_FOOTER_ONE_LINE = 20;
 const CALENDAR_FOOTER_TWO_LINES = 40;
 const CALENDAR_GAPS = 36;

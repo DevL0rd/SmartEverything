@@ -1,31 +1,15 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 import { View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import type { AssistantMessageRow } from '@smarteverything/domain';
 import { exiting, useMotion } from '../../../design/motion';
 import type { MessageItem } from '../data/thread';
-import { AiMessage } from './ai-message';
+import { isAssistantParticipant } from '../model/speaker';
 import { CallCard } from './call-card';
-import { BoundedSet } from '../../../design/bounded-map';
 import { MyMessage } from './my-message';
-import { PersonMessage } from './person-message';
+import { ParticipantMessage } from './participant-message';
 import { SystemEvent, systemEventOf } from './system-event';
-import { Rise } from './rise';
-import { MESSAGE_FADE, REPLY_SINK, RISE_MS, RISE_PX, ROW_EXIT } from './thread-motion';
-import { DayChip, TimeGap, UnreadDivider } from './thread-markers';
-
-const OPENED_AT = Date.now();
-
-const animated = new BoundedSet<string>(2000);
-
-function isFresh(row: AssistantMessageRow): boolean {
-  if (Date.parse(row.created_at) <= OPENED_AT || animated.has(row.id)) {
-    return false;
-  }
-  animated.add(row.id);
-  return true;
-}
+import { REPLY_SINK, ROW_EXIT } from './thread-motion';
+import { ThreadMarkers } from './thread-markers';
 
 function Row({
   item,
@@ -46,9 +30,8 @@ function Row({
     case 'me':
       return <MyMessage item={item} replied={item.replied} />;
     case 'person':
-      return <PersonMessage item={item} />;
     case 'ai':
-      return <AiMessage item={item} hideText={hideText} />;
+      return <ParticipantMessage item={item} hideText={hideText} />;
     case 'system':
       return <SystemEvent event={{ kind: 'note', icon: 'sparkles', text: row.text }} />;
   }
@@ -65,49 +48,16 @@ function Flash(): ReactNode {
   );
 }
 
-function Markers({ item }: { readonly item: MessageItem }): ReactNode {
-  return (
-    <>
-      {item.day === null ? null : <DayChip label={item.day} />}
-      {item.divider ? <UnreadDivider /> : null}
-      {item.gap === null ? null : <TimeGap label={item.gap} />}
-    </>
-  );
-}
-
-function Entry({
+function Exit({
   item,
-  fresh,
   children,
 }: {
   readonly item: MessageItem;
-  readonly fresh: boolean;
   readonly children: ReactNode;
 }): ReactNode {
   const motion = useMotion();
-  const { speaker, row } = item;
-  if (!fresh || motion.reduced) {
-    return (
-      <Animated.View {...exiting(motion, speaker.kind === 'ai' ? REPLY_SINK : ROW_EXIT)}>
-        {children}
-      </Animated.View>
-    );
-  }
-  if (speaker.kind === 'me' && row.origin?.source === 'app') {
-    return (
-      <Rise from={RISE_PX.send} duration={RISE_MS.send}>
-        {children}
-      </Rise>
-    );
-  }
-  if (speaker.kind === 'ai') {
-    return (
-      <Rise from={RISE_PX.reply} duration={RISE_MS.reply}>
-        {children}
-      </Rise>
-    );
-  }
-  return <Animated.View entering={MESSAGE_FADE}>{children}</Animated.View>;
+  const sink = isAssistantParticipant(item.row) ? REPLY_SINK : ROW_EXIT;
+  return <Animated.View {...exiting(motion, sink)}>{children}</Animated.View>;
 }
 
 export function MessageBubble({
@@ -119,14 +69,13 @@ export function MessageBubble({
   readonly flash: boolean;
   readonly hideText?: boolean;
 }): ReactNode {
-  const [fresh] = useState(() => isFresh(item.row));
   return (
-    <Entry item={item} fresh={fresh}>
-      <Markers item={item} />
+    <Exit item={item}>
+      <ThreadMarkers item={item} />
       <View className="relative">
         {flash ? <Flash /> : null}
         <Row item={item} hideText={hideText} />
       </View>
-    </Entry>
+    </Exit>
   );
 }

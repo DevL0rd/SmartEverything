@@ -1,19 +1,21 @@
 import {
   ApiError,
-  AUTOMATION_V3,
-  FUNCTION_V3,
+  AUTOMATION_V4,
+  FUNCTION_V4,
   type AutomationFunctionCallersReply,
   type AutomationFunctionMapping,
   type AutomationFunctionUser,
   type AutomationProgramProblem,
-  type AutomationRowV3,
+  type StoredAutomationRow,
   type FunctionRevisionRow,
+  type ProgramV4,
 } from '@smarteverything/domain';
 import { applyUpdateMapping } from '@smarteverything/flow/functions/mapping';
 import { interfaceOf } from '@smarteverything/flow/functions/interface-hash';
-import type { Program } from '@smarteverything/flow/program/walk';
+import { unstructure } from '@smarteverything/flow/graph/unstructure';
 import { currentExecutionAuthority } from '../assistant/turn-authority';
 import { type Caller } from '../server/auth';
+import { structuredProgram } from '../store/repositories/automation-trees';
 import { analyse, failure, planValue, type Built } from './service-programs-analysis';
 import { authorSpeech } from './service-programs-speech';
 import { authorOf } from './service-reach';
@@ -28,10 +30,10 @@ import {
 
 interface Target {
   readonly user: AutomationFunctionUser;
-  readonly program: Program;
+  readonly program: ProgramV4;
   readonly built: Built;
   readonly calls: readonly string[];
-  readonly automation: AutomationRowV3 | undefined;
+  readonly automation: StoredAutomationRow | undefined;
   readonly function: FunctionRevisionRow | undefined;
 }
 
@@ -52,10 +54,10 @@ function mappedTarget(
 ): { target?: Omit<Target, 'built'>; problems: AutomationProgramProblem[] } {
   const row = user.kind === 'automation' ? env.programs.byId(user.id) : undefined;
   const callee = user.kind === 'function' ? env.functions.latest(user.id) : undefined;
-  const program = row?.definition ?? callee?.definition;
-  if (program === undefined) return { problems: [] };
+  const stored = row?.definition ?? callee?.definition;
+  if (stored === undefined) return { problems: [] };
   const next = interfaceOf(env.functions.latest(id).definition);
-  const result = applyUpdateMapping(program, id, next, mapping);
+  const result = applyUpdateMapping(structuredProgram(stored, env.kinds), id, next, mapping);
   const problems = result.issues.map((issue) =>
     failure('mapping_incomplete', `${user.name}: ${issue.message}`),
   );
@@ -64,7 +66,7 @@ function mappedTarget(
     problems,
     target: {
       user,
-      program: result.program,
+      program: unstructure(result.program, env.kinds),
       calls: result.touched,
       automation: row,
       function: callee,
@@ -77,10 +79,7 @@ function built(
   caller: Caller,
   target: Omit<Target, 'built'>,
 ): { target?: Target; problems: AutomationProgramProblem[] } {
-  const analysis =
-    target.function === undefined
-      ? analyse(env, target.program)
-      : analyse(env, FUNCTION_V3.parse(target.program));
+  const analysis = analyse(env, target.program);
   if (analysis.built === undefined) return { problems: problemsOf(target.user, analysis.problems) };
   authorise(env, caller, target.program, analysis.built);
   return { target: { ...target, built: analysis.built }, problems: [] };
@@ -93,29 +92,37 @@ function saveTarget(env: FunctionsEnv, caller: Caller, target: Target): number {
     planValue(target.built.plan),
   );
   if (target.automation !== undefined) {
-    const saved = env.programs.replace(target.automation.id, {
-      program: AUTOMATION_V3.parse(target.program),
-      layout: target.automation.layout,
-      expectedRevision: target.automation.revision,
-      planHash,
-      author,
-    });
+    const saved = env.programs.replace(
+      target.automation.id,
+      {
+        program: AUTOMATION_V4.parse(target.program),
+        layout: target.automation.layout,
+        expectedRevision: target.automation.revision,
+        planHash,
+        author,
+      },
+      env.kinds,
+    );
     env.store.harnessRecovery.effects.keep('automation', saved.id, currentExecutionAuthority());
     authorSpeech(env.store, caller, saved);
     return saved.revision;
   }
   const before = target.function;
   if (before === undefined) throw new ApiError('internal', 'The caller has no stored revision.');
-  const next = FUNCTION_V3.parse(target.program);
-  return env.functions.revise(before.function_id, {
-    program: next,
-    layout: before.layout,
-    interfaceHash: hashOf(next),
-    compat: classify(before.definition, next).result,
-    planHash,
-    author,
-    expectedRevision: before.revision,
-  }).latest_revision;
+  const next = FUNCTION_V4.parse(target.program);
+  return env.functions.revise(
+    before.function_id,
+    {
+      program: next,
+      layout: before.layout,
+      interfaceHash: hashOf(next),
+      compat: classify(before.definition, next).result,
+      planHash,
+      author,
+      expectedRevision: before.revision,
+    },
+    env.kinds,
+  ).latest_revision;
 }
 
 function failed(

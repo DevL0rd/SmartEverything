@@ -9,6 +9,7 @@ import { useIdiom } from '../../../design/platform';
 import { plural } from '../../../format/text';
 import { colourNames, groupSummary, memberNoun, type MemberNoun } from '../group-summary';
 import type { Master } from '../use-master';
+import { colourShown } from './band-width';
 
 export function GroupGlyph({
   on,
@@ -27,10 +28,11 @@ export function GroupGlyph({
   );
 }
 
-export function powerLabel(state: TargetState, name: string, noun: MemberNoun): string {
+export function powerLabel(state: TargetState, name: string | null, noun: MemberNoun): string {
   if (state.power === 'none') return `No ${noun}s can be reached`;
   const all = plural(state.members, noun);
-  return state.on > 0 ? `Turn off all ${all} in ${name}` : `Turn on all ${all} in ${name}`;
+  const target = name === null ? all : `${all} in ${name}`;
+  return state.on > 0 ? `Turn off all ${target}` : `Turn on all ${target}`;
 }
 
 export function MasterPower({
@@ -69,7 +71,7 @@ export function ColourButton({
   readonly name: string;
   readonly onPress: () => void;
 }): ReactNode {
-  if ((state.support.color ?? 0) + (state.support.color_temperature ?? 0) === 0) return null;
+  if (!colourShown(state)) return null;
   const mixed = state.colours.length > 1;
   return (
     <View className="items-center justify-center">

@@ -1,9 +1,11 @@
+import { OWNER_TOKEN_FILE } from '../owner-token-file';
 import type { HubConnections } from '../network/connections';
 import { randomBytes } from 'node:crypto';
-import { readFile, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import {
   ApiError,
+  CLIENT_KIND_OF_PLATFORM,
   CLIENT_TOKEN,
   createClientToken,
   createPairingCode,
@@ -28,7 +30,7 @@ import type { Store } from '../store/store';
 import { isMissing } from '../fs-util';
 import type { KnownStanding } from '../store/repositories/person-access';
 
-export const OWNER_TOKEN_FILE = 'owner-token';
+export { OWNER_TOKEN_FILE };
 
 const log = new Logger('hub.pairing');
 
@@ -42,7 +44,7 @@ const CLAIM_WINDOW_MS = 60_000;
 export interface AccessOptions {
   readonly connections?: HubConnections;
   readonly store: Store;
-  readonly dataDirectory: string;
+  readonly ownerTokenPath: string;
   readonly now: () => Date;
   readonly clientWithdrawn: (clientId: string) => void;
   readonly clientPaused: (clientId: string) => void;
@@ -59,13 +61,10 @@ export interface Claim {
 }
 
 function kindOfClaim(claim: Claim): ClientRow['kind'] {
-  if (claim.platform === 'web') {
-    if (claim.kind !== undefined) {
-      throw new ApiError('invalid_request', 'Only an Android client can be a phone or a tablet.');
-    }
-    return 'browser';
+  if (claim.platform !== 'android' && claim.kind !== undefined) {
+    throw new ApiError('invalid_request', 'Only an Android client can be a phone or a tablet.');
   }
-  return claim.kind ?? 'phone';
+  return claim.kind ?? CLIENT_KIND_OF_PLATFORM[claim.platform];
 }
 
 export class AccessService {
@@ -96,7 +95,7 @@ export class AccessService {
   }
 
   get ownerTokenPath(): string {
-    return join(this.options.dataDirectory, OWNER_TOKEN_FILE);
+    return this.options.ownerTokenPath;
   }
 
   async ensureOwner(): Promise<string> {
@@ -371,6 +370,7 @@ export class AccessService {
 
   private async writeToken(token: string): Promise<void> {
     const temporary = `${this.ownerTokenPath}.${randomBytes(6).toString('hex')}.tmp`;
+    await mkdir(dirname(this.ownerTokenPath), { recursive: true, mode: 0o700 });
     await writeFile(temporary, `${token}\n`, { mode: 0o600, flag: 'wx' });
     await rename(temporary, this.ownerTokenPath);
   }

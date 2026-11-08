@@ -152,10 +152,18 @@ export function durationLabel(ms: number): string {
   return ms < MS_PER_SECOND ? `${String(Math.round(ms))} ms` : duration(ms / MS_PER_SECOND);
 }
 
+const BY_TRIGGER = 'trigger';
+
 export function triggerText(run: AutomationRunSummary): string {
-  if (run.started_by === null) return 'Started by its trigger';
+  if (run.started_by === null || run.started_by === BY_TRIGGER) return 'Started by its trigger';
   if (run.started_by === 'manual') return 'Started by hand';
   return run.started_by;
+}
+
+export function startedLine(run: AutomationRunSummary, time: string): string {
+  if (run.started_by === null || run.started_by === BY_TRIGGER) return `Fired ${time}`;
+  if (run.started_by === 'manual') return `Started by hand at ${time}`;
+  return `Started by ${run.started_by} at ${time}`;
 }
 
 export interface NodeOutcomes {

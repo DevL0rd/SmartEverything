@@ -8,9 +8,9 @@ import {
 } from './voice-model';
 
 describe('voice thinking settings', () => {
-  it('offers one picker of four levels with off as the default', () => {
+  it('offers one picker of four plain levels', () => {
     expect(VOICE_THINKING_OPTIONS.map((option) => option.label)).toEqual([
-      'Off (default)',
+      'Off',
       'Low',
       'Medium',
       'High',

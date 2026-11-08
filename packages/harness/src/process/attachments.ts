@@ -41,7 +41,7 @@ const IMAGE_MEDIA_TYPE = z.enum(['image/png', 'image/jpeg', 'image/webp', 'image
 export async function nativeAttachmentParts(
   runtime: HarnessRuntime,
   file: HarnessAttachment,
-  mode: 'current' | 'history' | 'text' = 'current',
+  mode: 'current' | 'text' = 'current',
 ): Promise<readonly AttachmentAdmissionPart[]> {
   if (
     /^(image|audio|video)\//.test(file.mime) &&

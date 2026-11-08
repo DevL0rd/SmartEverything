@@ -1,4 +1,5 @@
 import { Logger } from '@smarteverything/logging';
+import { describeFailure } from '@smarteverything/logging';
 
 const log = new Logger('hub.harness');
 
@@ -47,7 +48,7 @@ export class InferenceTrace {
   }
 
   failed(cause: unknown): void {
-    log.error('harness.inference_failed', cause, this.fields({}));
+    log.warn('harness.inference_failed', this.fields({ failure: describeFailure(cause) }));
   }
 
   private fields(extra: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {

@@ -9,7 +9,7 @@ import {
   seq,
   stateOf,
 } from '../interpret/loops-support';
-import { codesOf, lit, make, opOf, opsOf, scope } from './support';
+import { lit, make, opOf, scope } from './support';
 
 const STOP = make('halt', 'flow.stop');
 
@@ -52,36 +52,5 @@ describe('flow.forever', () => {
     const driven = drive(loopContext(plan), stateOf());
     expect(driven.outcome.kind).toBe('done');
     expect(driven.requests).toHaveLength(3);
-  });
-});
-
-describe('flow.sequence', () => {
-  it('compiles away into its body', () => {
-    const grouped = make('grp', 'flow.sequence', {}, { scopes: { body: scope(STOP, STOP) } });
-    expect(opsOf([grouped])).toEqual([{ op: 'seq', ops: [expect.anything(), expect.anything()] }]);
-    expect(JSON.stringify(opsOf([grouped]))).not.toContain('flow.sequence');
-  });
-
-  it('keeps the loop around it for a break inside', () => {
-    const grouped = make(
-      'grp',
-      'flow.sequence',
-      {},
-      { scopes: { body: scope(make('out', 'flow.break')) } },
-    );
-    const op = opOf(forever({}, grouped));
-    expect(op).toMatchObject({
-      body: { ops: [{ op: 'seq', ops: [{ op: 'break', target: 'fv' }] }] },
-    });
-  });
-
-  it('still refuses a break outside any loop', () => {
-    const grouped = make(
-      'grp',
-      'flow.sequence',
-      {},
-      { scopes: { body: scope(make('out', 'flow.break')) } },
-    );
-    expect(codesOf([grouped])).toEqual(['break_outside_loop']);
   });
 });

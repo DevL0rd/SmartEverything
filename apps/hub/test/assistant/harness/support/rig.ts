@@ -6,10 +6,12 @@ import {
   type AiHarnessHost,
   type AiHarnessTarget,
   type AiModelRoute,
+  type AiModelRow,
   type AiModelRouteSelection,
   type HarnessRuntimeReceipt,
   type HarnessRuntimeRequest,
   type NodeHello,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import type { HarnessAuthority } from '@smarteverything/harness';
 import { describeComputer } from '../../../../src/computers/computer-device';
@@ -21,6 +23,7 @@ import { OpenRouterClient } from '../../../../src/openrouter/client';
 import { systemClock } from '../../../../src/clock';
 import { testLogger } from '../../../support/logs';
 import { testStore, type TestStore } from '../../../support/store';
+import { hubLayout } from '../../../../src/data-layout';
 
 const HELLO: NodeHello = {
   machineId: 'a'.repeat(32),
@@ -32,7 +35,7 @@ const HELLO: NodeHello = {
   interfaces: [],
   bootedAt: '2026-10-08T09:00:00.000Z',
   features: [],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
   power: [],
   actions: [],
   permissions: [],
@@ -100,9 +103,24 @@ function manifest(): NonNullable<AiHarnessHost['manifest']> {
   };
 }
 
-export async function harnessRig(): Promise<Rig> {
+export interface RigOptions {
+  readonly metered?: boolean;
+  readonly openRouterModels?: readonly AiModelRow[];
+}
+
+function seedModels(store: TestStore['store'], rows: readonly AiModelRow[]): void {
+  store.aiModels.replace([...rows], 'openrouter');
+  store.aiModels.saveSyncState({
+    synced_at: '2026-10-08T10:00:00.000Z',
+    error: null,
+    error_at: null,
+  });
+}
+
+export async function harnessRig(options: RigOptions = {}): Promise<Rig> {
   const opened = await testStore(() => new Date());
   const { store } = opened;
+  if (options.openRouterModels !== undefined) seedModels(store, options.openRouterModels);
   const owner = store.clients.create(
     { name: 'Pixel', platform: 'android', role: 'owner', tokenHash: 'a'.repeat(64) },
     true,
@@ -114,10 +132,14 @@ export async function harnessRig(): Promise<Rig> {
     clock: systemClock,
     log: testLogger('catalogue'),
   });
-  const routes = new HarnessRoutes(catalogue, () => false);
+  if (options.openRouterModels !== undefined) {
+    catalogue.start();
+    catalogue.stop();
+  }
+  const routes = new HarnessRoutes(catalogue, () => options.metered === true);
   const route = ready(profileId);
   const service = new HarnessService(store, routes, () => undefined, {
-    dataDirectory: opened.directory,
+    layout: hubLayout(opened.directory, {}),
     clock: systemClock,
   });
   const device = computerDevice(store);
@@ -141,7 +163,7 @@ export async function harnessRig(): Promise<Rig> {
 }
 
 function computerDevice(store: TestStore['store']): string {
-  const discovered = describeComputer(HELLO, 'pc', [], { power: [], machine: [] });
+  const discovered = describeComputer(HELLO, [], { power: [], machine: [] });
   const [row] = store.devices.upsert([
     { ...discovered, parentId: null, providerRoom: null, roomId: null, online: true },
   ]);

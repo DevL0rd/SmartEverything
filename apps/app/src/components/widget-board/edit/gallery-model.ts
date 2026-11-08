@@ -60,10 +60,23 @@ function isRepeatable(item: GalleryItem): boolean {
   return item.entry.pick !== undefined || item.definition.instanceOptions !== undefined;
 }
 
+export function sectionsOf(
+  { definition, entry }: GalleryItem,
+  state: PickerState,
+  placed: readonly BoardWidget[],
+): readonly TargetSection[] {
+  if (entry.pick === undefined) {
+    return [];
+  }
+  const ofType = placed.filter((widget) => widget.type === definition.type);
+  return entry.pick.sections(state, ofType);
+}
+
 export function galleryItems(
   definitions: readonly WidgetDefinition[],
   placed: readonly BoardWidget[],
   board: BoardClass,
+  state: PickerState,
 ): readonly GalleryItem[] {
   const used = new Set(placed.map((widget) => widget.type));
   return definitions
@@ -74,7 +87,25 @@ export function galleryItems(
         entry,
       })),
     )
-    .filter((item) => isRepeatable(item) || !used.has(item.definition.type));
+    .filter(
+      (item) =>
+        (isRepeatable(item) || !used.has(item.definition.type)) &&
+        (item.entry.pick === undefined ||
+          sectionsOf(item, state, placed).some((section) => section.rows.length > 0)),
+    );
+}
+
+export function targetByKey(
+  item: GalleryItem,
+  state: PickerState,
+  placed: readonly BoardWidget[],
+  key: string,
+): TargetRow | null {
+  return (
+    sectionsOf(item, state, placed)
+      .flatMap((section) => section.rows)
+      .find((row) => row.key === key) ?? null
+  );
 }
 
 function matches(query: string, ...texts: readonly string[]): boolean {

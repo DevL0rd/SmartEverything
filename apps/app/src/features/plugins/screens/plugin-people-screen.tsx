@@ -7,15 +7,15 @@ import { Badge } from '../../../components/badge';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { ListRow } from '../../../components/list-row';
-import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
-import { plural } from '../../../format/text';
+import { joinParts, plural } from '../../../format/text';
 import { useProfiles } from '../../../store/people';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { usePluginPeopleActions } from '../data/plugin-people-actions';
 import { usePluginPeople } from '../data/plugin-queries';
 import { PersonSheet, type PersonRequest } from './plugin-person-sheet';
+import { PluginListLoading } from './plugin-list-loading';
 import { MissingPlugin, usePluginParam } from './plugin-screen';
 import { background } from '@smarteverything/logging';
 
@@ -27,18 +27,16 @@ function PersonRow({
   readonly onEdit: () => void;
 }): ReactNode {
   const home = useProfiles().find((profile) => profile.id === person.profile_id);
+  const status = person.status === 'owner' ? 'Owner' : 'Approved';
   return (
     <ListRow
       title={person.name}
+      wrapTitle
+      label={joinParts([person.name, person.external_id, home?.name, status])}
       subtitle={home === undefined ? person.external_id : `${person.external_id}, ${home.name}`}
       onPress={onEdit}
       chevron
-      trailing={
-        <Badge
-          label={person.status === 'owner' ? 'Owner' : 'Approved'}
-          tone={person.status === 'owner' ? 'primary' : 'neutral'}
-        />
-      }
+      trailing={<Badge label={status} tone={person.status === 'owner' ? 'primary' : 'neutral'} />}
     />
   );
 }
@@ -49,12 +47,14 @@ function PeopleError({
   readonly people: ReturnType<typeof usePluginPeople>;
 }): ReactNode {
   return (
-    <ErrorState
-      error={people.error}
-      retry={() => {
-        background(people.refetch(), 'people.refetch_failed');
-      }}
-    />
+    <View className="mx-gutter">
+      <ErrorState
+        error={people.error}
+        retry={() => {
+          background(people.refetch(), 'people.refetch_failed');
+        }}
+      />
+    </View>
   );
 }
 
@@ -70,7 +70,7 @@ function People({
     return <PeopleError people={people} />;
   }
   if (people.data === undefined) {
-    return <Skeleton shape="block" className="mx-gutter h-40" />;
+    return <PluginListLoading label="Loading plugin people" />;
   }
   if (people.data.length === 0) {
     return (
@@ -125,7 +125,7 @@ function Page({ row }: { readonly row: PluginRow }): ReactNode {
         },
       }}
     >
-      <View className="w-full max-w-reading flex-1 self-center">
+      <View className="w-full max-w-reading flex-1 self-start">
         <People row={row} open={setRequest} />
       </View>
       <PersonSheet

@@ -18,7 +18,7 @@ import { PluginFirewallBanner } from './plugin-firewall-banner';
 function Header({ row }: { readonly row: PluginRow }): ReactNode {
   const { manifest } = row;
   return (
-    <View className="flex-row items-start gap-4 px-1">
+    <View className="max-w-reading flex-row items-start gap-4 px-1">
       <IconWell icon={pluginIcon(manifest)} colour="primary" size="l" />
       <View className="min-w-0 flex-1 gap-1">
         <Text variant="body">{manifest.description}</Text>
@@ -59,18 +59,46 @@ function CustomSettings({ row }: { readonly row: PluginRow }): ReactNode {
   return custom === null ? null : custom();
 }
 
-function Plugin({ row }: { readonly row: PluginRow }): ReactNode {
+function PluginControls({ row }: { readonly row: PluginRow }): ReactNode {
   return (
-    <SettingsFrame page="plugins" title={row.manifest.name} detail>
-      <Header row={row} />
+    <>
       <StatusBanner row={row} />
       <SwitchRows row={row} />
       <PluginFirewallBanner row={row} />
       <PowerRows row={row} />
       <ToolRows row={row} />
       <CustomSettings row={row} />
-      <PluginSettingsForm row={row} />
-      <UpkeepRows row={row} />
+    </>
+  );
+}
+
+function PluginLayout({ row }: { readonly row: PluginRow }): ReactNode {
+  if (Object.keys(row.manifest.contributes.settings).length === 0) {
+    return (
+      <View className="max-w-reading gap-section-gap">
+        <PluginControls row={row} />
+        <UpkeepRows row={row} />
+      </View>
+    );
+  }
+  return (
+    <View className="flex-row flex-wrap items-start gap-section-gap">
+      <View className="min-w-0 max-w-reading grow shrink basis-96 gap-section-gap">
+        <PluginControls row={row} />
+      </View>
+      <View className="min-w-0 max-w-reading grow shrink basis-96 gap-section-gap">
+        <PluginSettingsForm row={row} />
+        <UpkeepRows row={row} />
+      </View>
+    </View>
+  );
+}
+
+function Plugin({ row }: { readonly row: PluginRow }): ReactNode {
+  return (
+    <SettingsFrame page="plugins" title={row.manifest.name} detail contentWidth="full">
+      <Header row={row} />
+      <PluginLayout row={row} />
     </SettingsFrame>
   );
 }

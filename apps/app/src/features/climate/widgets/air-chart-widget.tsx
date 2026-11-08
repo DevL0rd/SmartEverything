@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
-import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
+import { Button } from '../../../components/button';
 import { Sparkline, TimeSeriesChart, type ChartSeries } from '../../../components/charts';
 import { ErrorState } from '../../../components/error-state';
 import { Skeleton } from '../../../components/skeleton';
@@ -15,6 +14,7 @@ import {
 } from '../data/air-history';
 import { useClimateModels } from '../model/climate-devices';
 import { background } from '@smarteverything/logging';
+import { useClimateBody } from './use-body-box';
 
 const MIN_CHART = 96;
 
@@ -40,50 +40,25 @@ function CompactTrend({
   return <Sparkline points={first.points} colour={first.colour} height={height} area />;
 }
 
-function Chart({
-  metric,
-  room,
+function Trend({
+  series,
+  unit,
 }: {
-  readonly metric: AirMetric;
-  readonly room: string | null;
+  readonly series: readonly ChartSeries[];
+  readonly unit: string | null;
 }): ReactNode {
-  const sources = metricSources(useClimateModels(room), metric);
-  const history = useAirHistory(sources, '24h');
-  const [height, setHeight] = useState(0);
-  if (history.isPending) {
-    return <Skeleton shape="block" className="flex-1" />;
-  }
-  if (history.isError) {
-    return (
-      <ErrorState
-        error={history.error}
-        retry={() => {
-          background(history.refetch(), 'history.refetch_failed');
-        }}
-      />
-    );
-  }
-  const unit = sources[0]?.presented.unit ?? null;
-  const series = seriesOf(history.data, sources, metric, '24h');
-  return (
-    <View
-      className="flex-1"
-      onLayout={(event) => {
-        setHeight(Math.round(event.nativeEvent.layout.height));
-      }}
-    >
-      {height < MIN_CHART ? (
-        <CompactTrend series={series} height={height} />
-      ) : (
-        <TimeSeriesChart
-          series={series}
-          range="24h"
-          fit={shouldFit(series, '24h')}
-          height={height}
-          {...(unit === null ? {} : { unit })}
-        />
-      )}
-    </View>
+  const { height } = useClimateBody().box;
+  const fitted = Math.floor(height);
+  return fitted < MIN_CHART ? (
+    <CompactTrend series={series} height={fitted} />
+  ) : (
+    <TimeSeriesChart
+      series={series}
+      range="24h"
+      fit={shouldFit(series, '24h')}
+      height={fitted}
+      {...(unit === null ? {} : { unit })}
+    />
   );
 }
 
@@ -94,14 +69,42 @@ export function AirChartWidget({
   readonly metric: AirMetric;
   readonly room: string | null;
 }): ReactNode {
+  const sources = metricSources(useClimateModels(room), metric);
+  const history = useAirHistory(sources, '24h');
+  const frame = {
+    title: AIR_CHART_TITLES[metric],
+    icon: 'activity',
+    accent: 'viz-1',
+    href: href.devicesPage('air'),
+  } as const;
+  if (history.isError) {
+    return (
+      <WidgetFrame
+        {...frame}
+        actions={
+          <Button
+            label="Try again"
+            variant="tonal"
+            onPress={() => {
+              background(history.refetch(), 'history.refetch_failed');
+            }}
+          />
+        }
+      >
+        <ErrorState error={history.error} />
+      </WidgetFrame>
+    );
+  }
   return (
-    <WidgetFrame
-      title={AIR_CHART_TITLES[metric]}
-      icon="activity"
-      accent="viz-1"
-      href={href.devicesPage('air')}
-    >
-      <Chart metric={metric} room={room} />
+    <WidgetFrame {...frame}>
+      {history.isPending ? (
+        <Skeleton shape="block" className="flex-1" />
+      ) : (
+        <Trend
+          series={seriesOf(history.data, sources, metric, '24h')}
+          unit={sources[0]?.presented.unit ?? null}
+        />
+      )}
     </WidgetFrame>
   );
 }

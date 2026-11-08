@@ -1,7 +1,7 @@
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseServiceConfigText } from '@smarteverything/hub/service/configuration';
+import { parseComputerConfig } from '../src/service/config-file.js';
 import { computerMachineId } from '@smarteverything/hub/node/identity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { desktopComputerIdentity } from '../src/service/computer-identity.js';
@@ -15,7 +15,6 @@ const NODE_CONFIG = JSON.stringify({
     device_id: DEVICE_ID,
   },
 });
-const HUB_CONFIG = JSON.stringify({ role: 'hub', go2rtcBinary: '/opt/go2rtc' });
 let directory: string;
 
 beforeEach(async () => {
@@ -26,9 +25,9 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-function serviceWith(text: string): Parameters<typeof desktopComputerIdentity>[0] {
+function serviceWith(text: string | null): Parameters<typeof desktopComputerIdentity>[0] {
   return {
-    config: () => Promise.resolve(parseServiceConfigText('test', text)),
+    config: () => Promise.resolve(parseComputerConfig('test', text)),
     dataDirectory: directory,
   };
 }
@@ -49,8 +48,8 @@ describe('desktopComputerIdentity', () => {
     expect(second).toStrictEqual(first);
   });
 
-  it('has no device for a computer that runs the home itself', async () => {
-    const identity = await desktopComputerIdentity(serviceWith(HUB_CONFIG));
+  it('has no device for an unpaired computer', async () => {
+    const identity = await desktopComputerIdentity(serviceWith(null));
     expect(identity.device_id).toBeNull();
     if (process.platform !== 'linux') {
       expect(identity.machine_id).toBeNull();

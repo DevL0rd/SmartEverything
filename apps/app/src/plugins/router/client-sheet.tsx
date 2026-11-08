@@ -154,7 +154,7 @@ function InternetRow({
         disabled={disabled}
         onPress={() =>
           tools.run(
-            'update_client',
+            'client_access',
             { client: { action: 'unblock', mac } },
             'The device wasn’t allowed',
           )
@@ -171,7 +171,7 @@ function InternetRow({
       confirmation={blockInternet(client.name)}
       onPress={() =>
         tools.run(
-          'cut_off_client',
+          'client_access',
           { client: { action: 'block', mac } },
           'The device wasn’t blocked',
         )
@@ -213,7 +213,7 @@ function Actions({
           disabled={disabled}
           onPress={() =>
             tools.run(
-              'cut_off_client',
+              'client_access',
               { client: { action: 'disconnect', mac } },
               'The device wasn’t disconnected',
             )

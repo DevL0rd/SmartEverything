@@ -1,12 +1,16 @@
-import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { useWindowDimensions, type LayoutChangeEvent } from 'react-native';
+import { useAutomationsSource } from '../../data/source';
+import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useWindowDimensions } from 'react-native';
 import { notify } from '../../../../components/toast-store';
 import { usePausable } from '../../../../design/external-store';
 import { useIdiom } from '../../../../design/platform';
 import { useSizeClass } from '../../../../design/size-class';
 import { useStableCallback } from '../../../../design/use-stable-callback';
-import type { HostActions } from '../host/intent-env';
-import type { SceneOptions } from '../host/use-canvas-props';
+import type { HostActions } from '../host/host-actions';
+import { filterPinOf, type InsertPoint, type ScreenPoint } from '../palette/armed-insert';
+import { usePaletteEntries } from '../palette/palette';
+import { STEP_CONTEXT } from '../palette/palette-search';
+import { filterEntriesForPin, pinContext } from '../palette/pin-filter';
 import { applyFix } from '../problems/fix-actions';
 import { findingById, type LiveCheck } from '../problems/problem-model';
 import { useLiveCheck } from '../problems/use-live-check';
@@ -15,6 +19,7 @@ import type { InspectorHostProps, PaletteHostProps, ProblemsHostProps } from './
 import {
   bottomBarItems,
   editorLayoutOf,
+  hasNoSteps,
   inspectorTarget,
   sheetInset,
   type BottomItem,
@@ -33,24 +38,27 @@ import {
   type PaneControl,
   type ViewportControl,
 } from './use-editor-panels';
-import { useHostActions, windowWidth } from './use-host-actions';
+import { insertStartOf } from './insert-start';
+import { useHostActions } from './use-host-actions';
+import { useEditorFocus, type EditorFocus } from './use-editor-focus';
 
 export interface EditorModel {
   readonly props: EditorScreenProps;
   readonly layout: EditorLayout;
   readonly touch: boolean;
   readonly check: LiveCheck;
-  readonly options: SceneOptions;
   readonly flags: {
     readonly canUndo: boolean;
     readonly canRedo: boolean;
     readonly ids: readonly string[];
+    readonly empty: boolean;
   };
   readonly insertion: InsertionControl;
   readonly selection: SelectionMode;
   readonly panes: PaneControl;
   readonly viewport: ViewportControl;
   readonly actions: HostActions;
+  readonly focus: EditorFocus;
   readonly focusNode: string | null;
   readonly inset: number;
   readonly items: readonly BottomItem[];
@@ -59,16 +67,20 @@ export interface EditorModel {
   readonly inspector: Omit<InspectorHostProps, 'docked'>;
   readonly shortcuts: boolean;
   readonly setShortcuts: Dispatch<SetStateAction<boolean>>;
-  readonly onBodyLayout: (event: LayoutChangeEvent) => void;
   readonly onProblems: () => void;
   readonly onBottomItem: (id: BottomItemId) => void;
+  readonly openPalette: () => void;
 }
 
 function useFlags(store: EditorScreenProps['store']): EditorModel['flags'] {
+  const kinds = useAutomationsSource().lookup;
   const canUndo = usePausable(store.state.subscribe, () => store.state.get().canUndo);
   const canRedo = usePausable(store.state.subscribe, () => store.state.get().canRedo);
   const ids = usePausable(store.state.subscribe, () => store.state.get().selection.ids);
-  return { canUndo, canRedo, ids };
+  const empty = usePausable(store.state.subscribe, () =>
+    hasNoSteps(store.state.get().program, kinds),
+  );
+  return { canUndo, canRedo, ids, empty };
 }
 
 interface ProblemState {
@@ -83,6 +95,7 @@ function useProblems(
   check: LiveCheck,
   layout: EditorLayout,
 ): ProblemState {
+  const kinds = useAutomationsSource().lookup;
   const { store } = props;
   const [open, setOpen] = useState(false);
   const [goTo, setGoTo] = useState<string | null>(null);
@@ -94,7 +107,7 @@ function useProblems(
   const onFix = useStableCallback((findingId: string): void => {
     const found = findingById(check, findingId);
     if (found === undefined) return;
-    if (applyFix(store.apply, store.state.get().program, found) === null) {
+    if (applyFix(store.apply, store.state.get().program, found, kinds) === null) {
       notify({ message: 'That problem has no one-tap fix.' });
     }
   });
@@ -116,23 +129,31 @@ interface Controls {
 
 function useControls(
   props: EditorScreenProps,
-  parts: { readonly selection: SelectionMode; readonly insertion: InsertionControl },
+  parts: {
+    readonly selection: SelectionMode;
+    readonly openPalette: () => void;
+    readonly flags: EditorModel['flags'];
+  },
 ): Controls {
   const { store } = props;
-  const { selection, insertion } = parts;
+  const { selection, openPalette, flags } = parts;
+  const { empty, canUndo, canRedo } = flags;
   const [shortcuts, setShortcuts] = useState(false);
   const runKey = useStableCallback((key: EditorKey): void => {
     if (key === 'undo') store.undo();
     else if (key === 'redo') store.redo();
     else if (key === 'publish') {
-      if (props.online) props.onPublish();
-    } else if (key === 'test') props.onTest();
-    else if (key === 'help') setShortcuts(true);
-    else insertion.open(null);
+      if (props.online && !empty) props.onPublish();
+    } else if (key === 'test') {
+      if (!empty) props.onTest();
+    } else if (key === 'help') setShortcuts(true);
+    else openPalette();
   });
   useEditorKeys(runKey, !shortcuts);
   const onBottomItem = useStableCallback((id: BottomItemId): void => {
-    if (id === 'add') insertion.open(null);
+    if (id === 'undo') store.undo();
+    else if (id === 'redo') store.redo();
+    else if (id === 'add') openPalette();
     else if (id === 'select') selection.toggle();
     else if (id === 'test') props.onTest();
     else if (id === 'runs') props.onRuns();
@@ -143,33 +164,13 @@ function useControls(
       bottomBarItems({
         reusable: props.reusable,
         selecting: selection.selecting,
+        empty,
+        canUndo,
+        canRedo,
       }),
-    [props.reusable, selection.selecting],
+    [props.reusable, selection.selecting, empty, canUndo, canRedo],
   );
   return { onBottomItem, items, shortcuts, setShortcuts };
-}
-
-function useCanvasWidth(): {
-  readonly width: () => number;
-  readonly onBodyLayout: (event: LayoutChangeEvent) => void;
-} {
-  const width = useRef(windowWidth());
-  const onBodyLayout = useCallback((event: LayoutChangeEvent): void => {
-    width.current = event.nativeEvent.layout.width;
-  }, []);
-  return { width: () => width.current, onBodyLayout };
-}
-
-function useSceneOptions(props: EditorScreenProps): {
-  readonly check: LiveCheck;
-  readonly options: SceneOptions;
-} {
-  const check = useLiveCheck(props.store, props.lint, props.options.registry);
-  const options = useMemo<SceneOptions>(
-    () => ({ ...props.options, problems: check.scene }),
-    [props.options, check.scene],
-  );
-  return { check, options };
 }
 
 function useCanvasChrome(layout: EditorLayout): {
@@ -195,49 +196,92 @@ function useInspectorPane(
   return { store, binding: props.inspector, onClose, ...parts };
 }
 
+function usePaletteHost(
+  store: EditorScreenProps['store'],
+  insertion: InsertionControl,
+): PaletteHostProps {
+  const kinds = useAutomationsSource().lookup;
+  const program = usePausable(store.state.subscribe, () => store.state.get().program);
+  const pin = filterPinOf(insertion.state);
+  const context = useMemo(
+    () => (pin === null ? STEP_CONTEXT : pinContext(program, pin, kinds)),
+    [program, pin, kinds],
+  );
+  return { state: insertion.state, context, onChoose: insertion.choose, onClose: insertion.cancel };
+}
+
+function useStartPalette(
+  store: EditorScreenProps['store'],
+  insertion: InsertionControl,
+): () => void {
+  const kinds = useAutomationsSource().lookup;
+  return useStableCallback((): void => {
+    const point: InsertPoint = insertStartOf(store.state.get(), kinds);
+    insertion.open(point);
+  });
+}
+
+function useDropInsert(
+  insertion: InsertionControl,
+): (point: InsertPoint, anchor: ScreenPoint | null) => void {
+  const kinds = useAutomationsSource().lookup;
+  const entries = usePaletteEntries();
+  return useStableCallback((point: InsertPoint, anchor: ScreenPoint | null): void => {
+    const fits =
+      point.pin === null
+        ? []
+        : filterEntriesForPin(entries, point.pin, kinds).map((entry) => entry.choice);
+    insertion.drop(point, anchor, fits);
+  });
+}
+
 export function useEditorModel(props: EditorScreenProps): EditorModel {
   const { store } = props;
   const layout = editorLayoutOf(useSizeClass().width);
   const { height } = useWindowDimensions();
   const flags = useFlags(store);
-  const { check, options } = useSceneOptions(props);
+  const check = useLiveCheck(store, props.lint, props.options.registry);
   const insertion = useInsertion(props.onInsert);
   const selection = useSelectionMode(store);
   const problems = useProblems(props, check, layout);
-  const controls = useControls(props, { selection, insertion });
-  const canvas = useCanvasWidth();
+  const openPalette = useStartPalette(store, insertion);
+  const controls = useControls(props, { selection, openPalette, flags });
   const { touch, panes, viewport } = useCanvasChrome(layout);
   useRefusalNotices(store);
   const target = inspectorTarget({ ids: flags.ids, selecting: selection.selecting });
+  const focus = useEditorFocus(target, () => {
+    store.clearSelected();
+  });
   const actions = useHostActions({
     store,
-    options,
-    canvasWidth: canvas.width,
     selecting: () => selection.selecting,
-    onInsertPoint: insertion.open,
+    onInsertPoint: useDropInsert(insertion),
     onGroupSelection: props.onGroupSelection,
-    onHeader: props.onRename,
+    onAddTrigger: props.onInterface,
+    onOpened: focus.toInspector,
+    onEscape: focus.toTopBar,
   });
   const inspector = useInspectorPane(props, { check, target, onFix: problems.handlers.onFix });
+  const palette = usePaletteHost(store, insertion);
   return {
     props,
     layout,
     touch,
     check,
-    options,
     flags,
     insertion,
     selection,
     panes,
     viewport,
     actions,
+    focus,
     focusNode: layout === 'phone' ? target : problems.goTo,
     inset: sheetInset(layout, target !== null, height),
-    palette: { state: insertion.state, onChoose: insertion.choose, onClose: insertion.cancel },
+    palette,
     problems: { check, ...problems.handlers },
     inspector,
-    onBodyLayout: canvas.onBodyLayout,
     onProblems: problems.toggle,
+    openPalette,
     ...controls,
   };
 }

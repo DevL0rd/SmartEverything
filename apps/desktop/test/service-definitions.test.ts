@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   ServiceDefinitionError,
   launchAgent,
-  nodeSystemdUnit,
   systemdUnit,
   windowsLauncher,
   windowsRunCommand,
@@ -14,18 +13,19 @@ describe('systemdUnit', () => {
     expect(systemdUnit(LAUNCH)).toBe(
       [
         '[Unit]',
-        'Description=SmartEverything server',
+        'Description=SmartEverything Computer service',
         '',
         '[Service]',
         'Type=simple',
         'WorkingDirectory=/home/ann/.config/SmartEverything',
         'Environment="ELECTRON_RUN_AS_NODE=1"',
-        'Environment="SMARTEVERYTHING_DATA_DIRECTORY=/home/ann/.config/SmartEverything"',
+        'Environment="SMARTEVERYTHING_COMPUTER_DIRECTORY=/home/ann/.config/SmartEverything"',
         'Environment="PATH=/usr/local/bin:/usr/bin"',
         'ExecStart="/opt/SmartEverything/smarteverything" "/opt/SmartEverything/resources/service/service.mjs"',
         'Restart=on-failure',
         'RestartSec=5',
         'TimeoutStopSec=30',
+        'KillMode=mixed',
         'UMask=0077',
         'IOSchedulingClass=best-effort',
         'IOSchedulingPriority=7',
@@ -38,6 +38,14 @@ describe('systemdUnit', () => {
     );
   });
 
+  it('passes the Computer folder only through its own variable, never the Hub one', () => {
+    const unit = systemdUnit(LAUNCH);
+    expect(unit).toContain('SMARTEVERYTHING_COMPUTER_DIRECTORY=');
+    expect(unit).not.toContain('SMARTEVERYTHING_DATA_DIRECTORY');
+    expect(launchAgent(LAUNCH, '/log')).not.toContain('SMARTEVERYTHING_DATA_DIRECTORY');
+    expect(windowsLauncher(LAUNCH)).not.toContain('SMARTEVERYTHING_DATA_DIRECTORY');
+  });
+
   it('pins the service to the efficiency cores of a hybrid CPU', () => {
     const unit = systemdUnit({ ...LAUNCH, efficiencyCores: '16-31' });
     expect(unit).toContain('CPUAffinity=16-31\n');
@@ -48,7 +56,7 @@ describe('systemdUnit', () => {
     expect(unit).not.toContain('CPUAffinity');
   });
 
-  it('gives the server and the computer client a high CPU weight and no nice value so a busy machine cannot starve live audio', () => {
+  it('gives the Computer service a high CPU weight and no nice value so a busy machine cannot starve live audio', () => {
     const unit = systemdUnit({ ...LAUNCH, efficiencyCores: '16-31' });
     expect(unit).not.toContain('Nice=');
     expect(unit).toContain('CPUWeight=1000\n');
@@ -69,7 +77,7 @@ describe('systemdUnit', () => {
     });
     expect(unit).toContain('ExecStart="/opt/100%% \\"real\\"/$$HOME\\\\app"');
     expect(unit).toContain('WorkingDirectory=/data/50%%');
-    expect(unit).toContain('Environment="SMARTEVERYTHING_DATA_DIRECTORY=/data/50%%"');
+    expect(unit).toContain('Environment="SMARTEVERYTHING_COMPUTER_DIRECTORY=/data/50%%"');
   });
 
   it('refuses values that would add a line to the unit', () => {
@@ -82,47 +90,19 @@ describe('systemdUnit', () => {
   });
 });
 
-describe('nodeSystemdUnit', () => {
-  const NODE_LAUNCH = {
-    ...LAUNCH,
-    dataDirectory: '/home/ann/.config/SmartEverything-node',
-    efficiencyCores: '16-31',
-  };
-
-  it('is the server unit with the computer client description, so no unit is edited by hand', () => {
-    const node = nodeSystemdUnit(NODE_LAUNCH);
-    expect(node).toContain('Description=SmartEverything computer client\n');
-    expect(node).toContain('WorkingDirectory=/home/ann/.config/SmartEverything-node\n');
-    expect(node.replace('SmartEverything computer client', 'SmartEverything server')).toBe(
-      systemdUnit(NODE_LAUNCH),
-    );
-  });
-
-  it('pins the computer client to the efficiency cores only on a hybrid CPU', () => {
-    expect(nodeSystemdUnit(NODE_LAUNCH)).toContain('CPUAffinity=16-31\n');
-    expect(nodeSystemdUnit({ ...NODE_LAUNCH, efficiencyCores: null })).not.toContain('CPUAffinity');
-  });
-
-  it('keeps the same priority as the server', () => {
-    const unit = nodeSystemdUnit({ ...NODE_LAUNCH, efficiencyCores: null });
-    expect(unit).not.toContain('Nice=');
-    expect(unit).toContain('CPUWeight=1000\n');
-  });
-});
-
 describe('launchAgent', () => {
   it('keeps the agent alive, starts it at load and logs into the data directory', () => {
     const plist = launchAgent(
       { ...LAUNCH, dataDirectory: '/Users/ann/Library/Application Support/SmartEverything' },
       '/Users/ann/Library/Application Support/SmartEverything/service-output.log',
     );
-    expect(plist).toContain('<key>Label</key><string>app.smarteverything.server</string>');
+    expect(plist).toContain('<key>Label</key><string>app.smarteverything.node</string>');
     expect(plist).toContain(
       '    <string>/opt/SmartEverything/smarteverything</string>\n    <string>/opt/SmartEverything/resources/service/service.mjs</string>',
     );
     expect(plist).toContain('<key>ELECTRON_RUN_AS_NODE</key><string>1</string>');
     expect(plist).toContain(
-      '<key>SMARTEVERYTHING_DATA_DIRECTORY</key><string>/Users/ann/Library/Application Support/SmartEverything</string>',
+      '<key>SMARTEVERYTHING_COMPUTER_DIRECTORY</key><string>/Users/ann/Library/Application Support/SmartEverything</string>',
     );
     expect(plist).toContain('<key>RunAtLoad</key><true/>');
     expect(plist).toContain('<dict><key>SuccessfulExit</key><false/></dict>');
@@ -154,7 +134,7 @@ describe('windowsLauncher', () => {
       'var shell = new ActiveXObject("WScript.Shell");',
       'var environment = shell.Environment("PROCESS");',
       'environment("ELECTRON_RUN_AS_NODE") = "1";',
-      'environment("SMARTEVERYTHING_DATA_DIRECTORY") = "C:\\\\Users\\\\Ann\\\\AppData\\\\Roaming\\\\SmartEverything";',
+      'environment("SMARTEVERYTHING_COMPUTER_DIRECTORY") = "C:\\\\Users\\\\Ann\\\\AppData\\\\Roaming\\\\SmartEverything";',
       'environment("PATH") = "C:\\\\Windows\\\\system32;C:\\\\Tools\\\\bin";',
       'shell.CurrentDirectory = "C:\\\\Users\\\\Ann\\\\AppData\\\\Roaming\\\\SmartEverything";',
       'shell.Run("\\"C:\\\\Users\\\\Ann\\\\AppData\\\\Local\\\\smarteverything\\\\app-1.0.0\\\\smarteverything.exe\\" \\"C:\\\\Users\\\\Ann\\\\AppData\\\\Local\\\\smarteverything\\\\app-1.0.0\\\\resources\\\\service\\\\service.mjs\\" --supervise", 0, false);',

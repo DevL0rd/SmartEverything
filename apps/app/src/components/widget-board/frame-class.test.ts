@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { WIDGET_FOOTPRINTS, type BoardClass, type WidgetSize } from '@smarteverything/domain';
 import { cellOf, frameOf } from './board-geometry';
 import { frameBoxOf, frameClassOf, type FrameClass } from './frame-class';
+import { SHORTEST_TIER_INNER, tierInnerHeight } from './tier';
 
 function contentFrame(
   board: BoardClass,
@@ -31,11 +32,21 @@ describe('frameClassOf over the board geometry', () => {
     expect(classes).toStrictEqual(['m', 'w', 'xl']);
   });
 
-  it('maps the desktop board sizes to xs for the short box, w and xl', () => {
+  it('maps the desktop board sizes to m, w and xl', () => {
     const classes = (['M', 'W', 'XL'] as const).map((size) =>
       contentFrame('expanded', size, 1112, 'pointer'),
     );
-    expect(classes).toStrictEqual(['xs', 'w', 'xl']);
+    expect(classes).toStrictEqual(['m', 'w', 'xl']);
+  });
+
+  it.each([
+    ['touch', 'comfortable'],
+    ['touch', 'compact'],
+    ['pointer', 'comfortable'],
+    ['pointer', 'compact'],
+  ] as const)('gives every %s %s tier M frame the m class', (idiom, density) => {
+    const box = { width: 400, height: tierInnerHeight('M', idiom, density), idiom };
+    expect(frameClassOf(box)).toBe('m');
   });
 });
 
@@ -53,11 +64,12 @@ describe('frameClassOf thresholds', () => {
     expect(frameClassOf(box(560, 200))).toBe('xl');
   });
 
-  it('switches to narrow below 200 and to short below 128', () => {
+  it('switches to narrow below 200 and to short below the shortest tier', () => {
+    expect(SHORTEST_TIER_INNER).toBe(120);
     expect(frameClassOf(box(199, 200))).toBe('s');
     expect(frameClassOf(box(200, 200))).toBe('l');
-    expect(frameClassOf(box(300, 127))).toBe('xs');
-    expect(frameClassOf(box(300, 128))).toBe('m');
+    expect(frameClassOf(box(300, SHORTEST_TIER_INNER - 1))).toBe('xs');
+    expect(frameClassOf(box(300, SHORTEST_TIER_INNER))).toBe('m');
   });
 });
 

@@ -1,4 +1,5 @@
-import { Arc, Stage, Text } from 'smarteverything-kit';
+import type { ReactNode } from 'react';
+import { Arc, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
 const body = (
@@ -16,12 +17,12 @@ const body = (
     />
   </Row>
 );
-export const Progress = () => (
+export const Progress = (): ReactNode => (
   <Stage theme="dark" width={480}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactNode => (
   <Stage theme="light" width={480}>
     {body}
   </Stage>

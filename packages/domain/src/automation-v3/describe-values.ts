@@ -132,7 +132,7 @@ function scalarText(type: FlowType, value: JsonValue): string | undefined {
 }
 
 export function literalText(type: FlowType | undefined, value: JsonValue, names: RefNames): string {
-  if (type === undefined || type.t === 'any') return looseText(value, names);
+  if (type === undefined || type.t === 'any' || type.t === 'param') return looseText(value, names);
   if (type.t === 'optional') return literalText(type.of, value, names);
   return (
     refValueText(type, value, names) ??

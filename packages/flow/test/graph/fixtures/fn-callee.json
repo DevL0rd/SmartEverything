@@ -1,0 +1,29 @@
+{
+  "version": 3,
+  "kind": "function",
+  "flavour": "action",
+  "inputs": [{ "name": "level", "type": { "t": "number" }, "required": true }],
+  "outputs": [],
+  "exits": ["done"],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "17000000-0000-4000-8000-000000000001",
+        "key": "shine",
+        "kind": "device.set",
+        "ports": {
+          "target": { "lit": { "target": "hall" } },
+          "control": { "lit": "level" },
+          "to": { "wire": { "from": "inputs", "port": "level" } }
+        }
+      },
+      {
+        "id": "17000000-0000-4000-8000-000000000002",
+        "key": "done",
+        "kind": "flow.return",
+        "ports": {}
+      }
+    ]
+  }
+}

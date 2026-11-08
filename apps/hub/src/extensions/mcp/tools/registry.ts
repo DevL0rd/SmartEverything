@@ -1,9 +1,10 @@
 import { scopedToolCall } from './authority';
 import type { ConversationAuthority } from '../../../harness/authority-contract';
 import type { McpPartName, PluginRequester } from '@smarteverything/domain';
-import { describeFailure, redactText } from '@smarteverything/logging';
+import { describeFailure, clip } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { Clock } from '../../../clock';
+import type { HubLayout } from '../../../data-layout';
 import type { RunningHub } from '../../../hub';
 import type { Operations } from '../../../server/operations';
 import type { Store } from '../../../store/store';
@@ -35,7 +36,7 @@ export interface ToolContext {
   readonly commandWaitMs: number;
   readonly recordingPath: (storagePath: string) => string;
   readonly caller: AcceptedCaller | null;
-  readonly assistantFiles: string;
+  readonly layout: HubLayout;
   readonly mediaNotes: MediaNotes;
   readonly actor: ToolActor | null;
   readonly visibleTools?: () => readonly Tool[];
@@ -112,7 +113,7 @@ export function reachRefusal(caller: AcceptedCaller, what: string, area: string)
 
 export function internalRefusal(cause: unknown): ToolError {
   const { name, message } = describeFailure(cause);
-  return new ToolError(`${name}: ${redactText(message, INTERNAL_MESSAGE_SHOWN)}`, 'internal');
+  return new ToolError(`${name}: ${clip(message, INTERNAL_MESSAGE_SHOWN)}`, 'internal');
 }
 
 export const READS: ToolAnnotations = {

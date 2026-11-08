@@ -41,6 +41,21 @@ export class HarnessDeliveriesRepository {
       project();
     });
   }
+  requeue(id: string, project: () => void): void {
+    durableSessionWrite(this.context, () => {
+      this.context.sql.run(
+        'forget native delivery the host never received',
+        'delete from harness_deliveries where delivery_id=$id',
+        { id },
+      );
+      this.context.sql.run(
+        'queue unreceived native input again',
+        'update assistant_events set delivered_at=null, answered_at=null where id=$id',
+        { id },
+      );
+      project();
+    });
+  }
   pending(sessionId?: string): HarnessDelivery[] {
     return this.context.sql.all(
       DELIVERY,

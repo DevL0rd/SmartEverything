@@ -1,17 +1,11 @@
 import { Fragment, type ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
-import type { Href } from 'expo-router';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import type { AppHref } from './app-href';
 import { cn } from '../design/cn';
-import type { RailWidth } from './frame-layout';
+import { RAIL_PX, type RailWidth } from './frame-layout';
 import { Icon, type IconName } from './icon';
 import { Interactive } from './interactive';
 import { Text } from './text';
-
-const WIDTH: Readonly<Record<RailWidth, string>> = {
-  icon: 'w-24',
-  mid: 'w-60',
-  wide: 'w-65',
-};
 
 export interface RailEntry {
   readonly id: string;
@@ -20,6 +14,7 @@ export interface RailEntry {
   readonly icon: IconName;
   readonly missing: string | null;
   readonly detail: ReactNode;
+  readonly count?: string | undefined;
 }
 
 export interface RailGroup {
@@ -31,8 +26,17 @@ export interface SectionRailProps {
   readonly groups: readonly RailGroup[];
   readonly active: string;
   readonly width: RailWidth;
-  readonly hrefOf: (id: string) => Href;
+  readonly hrefOf: (id: string) => AppHref;
+  readonly footer?: ReactNode;
 }
+
+const RAIL_WIDTH_STYLE = StyleSheet.create({
+  frame: { flexGrow: 0, flexShrink: 0 },
+  list: { flexGrow: 1, flexShrink: 1, flexBasis: 0 },
+  icon: { width: RAIL_PX.icon },
+  mid: { width: RAIL_PX.mid },
+  wide: { width: RAIL_PX.wide },
+});
 
 function IconLabel({
   entry,
@@ -54,14 +58,27 @@ function IconLabel({
   );
 }
 
+export function railEntryLabel(entry: RailEntry): string {
+  const count = entry.count === undefined || entry.count === '' ? [] : [entry.count];
+  const missing = entry.missing === null ? [] : [entry.missing];
+  return [entry.label, ...count, ...missing].join(', ');
+}
+
 function WideLabel({ entry }: { readonly entry: RailEntry }): ReactNode {
   return (
-    <View className="min-w-0 flex-1">
-      <Text variant="callout" numberOfLines={1}>
-        {entry.label}
-      </Text>
-      {entry.detail}
-    </View>
+    <>
+      <View className="min-w-0 flex-1">
+        <Text variant="callout" numberOfLines={1}>
+          {entry.label}
+        </Text>
+        {entry.detail}
+      </View>
+      {entry.count === undefined || entry.count === '' ? null : (
+        <Text variant="caption" tone="faint" numberOfLines={1} className="tabular">
+          {entry.count}
+        </Text>
+      )}
+    </>
   );
 }
 
@@ -78,7 +95,7 @@ function RailItem({
     <Interactive
       href={rail.hrefOf(entry.id)}
       selected={selected}
-      label={entry.missing === null ? entry.label : `${entry.label}, ${entry.missing}`}
+      label={railEntryLabel(entry)}
       className={cn(
         'rounded-md',
         icon
@@ -111,12 +128,12 @@ function GroupHeading({
   );
 }
 
-export function SectionRail(rail: SectionRailProps): ReactNode {
+function RailList(rail: SectionRailProps): ReactNode {
   return (
     <ScrollView
       accessibilityRole="list"
       accessibilityLabel="Sections"
-      className={cn('shrink-0 grow-0', WIDTH[rail.width])}
+      style={RAIL_WIDTH_STYLE.list}
       contentContainerClassName={cn(
         'gap-1 pb-4 pr-2 pt-2',
         rail.width === 'icon' && 'items-center',
@@ -131,5 +148,14 @@ export function SectionRail(rail: SectionRailProps): ReactNode {
         </Fragment>
       ))}
     </ScrollView>
+  );
+}
+
+export function SectionRail(rail: SectionRailProps): ReactNode {
+  return (
+    <View style={[RAIL_WIDTH_STYLE.frame, RAIL_WIDTH_STYLE[rail.width]]}>
+      <RailList {...rail} />
+      {rail.footer === undefined ? null : <View className="pb-4 pr-2">{rail.footer}</View>}
+    </View>
   );
 }

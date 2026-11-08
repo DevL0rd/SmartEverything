@@ -1,7 +1,7 @@
 import { remoteRefusal, resolveOutFile } from './out-file-path';
 import mime from 'mime-types';
+import type { HubLayout } from '../data-layout';
 import type { ProjectFilesService } from '../projects/service';
-import { chatFolder } from '../projects/paths';
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
@@ -16,9 +16,12 @@ import type {
   StoredAttachment,
 } from '../store/repositories/assistant-chat';
 import { imageSize } from './image/dimensions';
+import { audioLevels } from '../media/audio-levels';
 import { attachmentNote } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import { mediaKindOf, type MediaNotes } from '../transcripts/media-notes';
 
+const log = new Logger('hub.assistant-files');
 const UPLOAD_LIFETIME_MS = 10 * 60_000;
 const UNATTACHED_KEPT_MS = 24 * 60 * 60_000;
 
@@ -28,6 +31,7 @@ interface Upload {
   readonly name: string;
   readonly mime: string;
   readonly bytes: number;
+  readonly levels: readonly number[] | null;
   readonly expiresAt: number;
   received: number;
   nextIndex: number;
@@ -38,10 +42,11 @@ export interface UploadStart {
   readonly name: string;
   readonly mime: string;
   readonly bytes: number;
+  readonly levels?: readonly number[] | null | undefined;
 }
 
 export interface FilesOptions {
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
   readonly chat: AssistantChatRepository;
   readonly now: () => Date;
   readonly projects?: ProjectFilesService;
@@ -54,12 +59,13 @@ function safeName(name: string): string {
   return cleaned === '' || cleaned.startsWith('.') ? `file${cleaned}` : cleaned.slice(0, 120);
 }
 
-function mimeOf(name: string): string {
+export function attachmentMimeOf(name: string): string {
   const type = mime.lookup(name);
   return type === false ? 'application/octet-stream' : type;
 }
 
 export class AssistantFiles {
+  private readonly preparing = new Set<string>();
   private readonly uploads = new Map<string, Upload>();
   private notes: Pick<MediaNotes, 'ensure' | 'later' | 'wants'> | undefined;
 
@@ -88,12 +94,8 @@ export class AssistantFiles {
     return file;
   }
 
-  get root(): string {
-    return join(this.options.dataDirectory, 'assistant');
-  }
-
-  pathOf(file: Pick<StoredAttachment, 'storage_path'>): string {
-    return join(this.root, file.storage_path);
+  pathOf(file: Pick<StoredAttachment, 'id' | 'profile_id' | 'name'>): string {
+    return this.options.layout.person(file.profile_id).attachment(file.id, file.name);
   }
 
   async start(
@@ -102,8 +104,15 @@ export class AssistantFiles {
     await this.forgetStale();
     const id = randomUUID();
     const expiresAt = this.options.now().getTime() + UPLOAD_LIFETIME_MS;
-    this.uploads.set(id, { id, ...input, expiresAt, received: 0, nextIndex: 0 });
-    await mkdir(join(this.root, 'uploads'), { recursive: true, mode: 0o700 });
+    this.uploads.set(id, {
+      id,
+      ...input,
+      levels: input.levels ?? null,
+      expiresAt,
+      received: 0,
+      nextIndex: 0,
+    });
+    await mkdir(this.options.layout.tmp, { recursive: true, mode: 0o700 });
     return {
       uploadId: id,
       chunkBytes: ASSISTANT_UPLOAD_CHUNK_BYTES,
@@ -149,6 +158,7 @@ export class AssistantFiles {
       name: upload.name,
       mime: upload.mime,
       content,
+      levels: upload.levels,
     });
     await rm(this.partPath(uploadId), { force: true });
     return file;
@@ -166,8 +176,8 @@ export class AssistantFiles {
     scope.authorize();
     const resolved = await resolveOutFile(
       file.path,
-      chatFolder(this.options.dataDirectory, scope.chatId),
-      join(this.options.dataDirectory, 'assistant', 'projects'),
+      this.projectsService().root(scope.chatId),
+      this.options.layout.tmp,
     );
     const content =
       resolved.home.kind === 'chat'
@@ -178,10 +188,16 @@ export class AssistantFiles {
       profileId,
       authorize: scope.authorize,
       name,
-      mime: mimeOf(name),
+      mime: attachmentMimeOf(name),
       content,
       signal: new AbortController().signal,
     });
+  }
+
+  private projectsService(): ProjectFilesService {
+    if (this.options.projects === undefined)
+      throw new ApiError('conflict', 'Chat folder storage is unavailable.');
+    return this.options.projects;
   }
 
   private managedFile(
@@ -189,9 +205,7 @@ export class AssistantFiles {
     scope: { readonly chatId: string; readonly authorize: () => void },
     path: string,
   ): Promise<Buffer> {
-    if (this.options.projects === undefined)
-      throw new ApiError('conflict', 'Chat folder storage is unavailable.');
-    return this.options.projects.readFile(
+    return this.projectsService().readFile(
       { chatId: scope.chatId, profileId, validate: scope.authorize },
       path,
       ASSISTANT_ATTACHMENT_BYTES_MAX,
@@ -199,14 +213,56 @@ export class AssistantFiles {
   }
 
   async copy(file: StoredAttachment): Promise<StoredAttachment> {
+    return this.noted(await this.prepareCopy(file));
+  }
+
+  async bytesOf(file: StoredAttachment): Promise<Buffer> {
     const content = await readFile(this.pathOf(file));
-    return this.keep({
-      id: randomUUID(),
-      profileId: file.profile_id,
-      name: file.name,
-      mime: file.mime,
-      content,
-      transcript: this.options.chat.attachment(file.id).transcript,
+    if (
+      content.length !== file.bytes ||
+      createHash('sha256').update(content).digest('hex') !== file.sha256
+    )
+      throw new ApiError('conflict', `The stored bytes for ${file.name} could not be verified.`);
+    return content;
+  }
+
+  async prepareCopy(file: StoredAttachment): Promise<StoredAttachment> {
+    const content = await this.bytesOf(file);
+    const id = randomUUID();
+    const name = safeName(file.name);
+    const copy = this.options.chat.addAttachment({
+      ...this.options.chat.attachment(file.id),
+      id,
+      name,
+      storage_path: join('files', id, name),
+    });
+    this.preparing.add(copy.id);
+    try {
+      await this.writeBytes(this.pathOf(copy), content);
+      return copy;
+    } catch (cause) {
+      await this.discardCopies([copy]);
+      throw cause;
+    } finally {
+      this.preparing.delete(copy.id);
+    }
+  }
+
+  async discardCopies(files: readonly StoredAttachment[]): Promise<void> {
+    try {
+      await this.discardUnattached(files);
+    } catch (cause) {
+      log.warn('copy.cleanup_failed', { cause, copies: files.length });
+    }
+  }
+
+  private discardUnattached(files: readonly StoredAttachment[]): Promise<void> {
+    const unbound = files.filter(
+      (file) => this.options.chat.findAttachment(file.id)?.message_id === null,
+    );
+    return this.options.chat.attachmentCleanup.discard(unbound, async (file) => {
+      await this.remove([file]);
+      this.options.chat.removeAttachments([file.id]);
     });
   }
 
@@ -218,6 +274,7 @@ export class AssistantFiles {
     readonly mime: string;
     readonly content: Buffer;
     readonly signal: AbortSignal;
+    readonly transcript?: string;
   }): Promise<StoredAttachment> {
     if (input.content.length === 0 || input.content.length > ASSISTANT_ATTACHMENT_BYTES_MAX)
       throw new ApiError('invalid_request', 'Output bytes exceed the supported attachment bound.');
@@ -239,13 +296,14 @@ export class AssistantFiles {
     readonly mime: string;
     readonly content: Buffer;
     readonly transcript?: string | null;
+    readonly levels?: readonly number[] | null;
   }): Promise<StoredAttachment> {
     const name = safeName(input.name);
     const storagePath = join('files', input.id, name);
-    await mkdir(join(this.root, 'files', input.id), { recursive: true, mode: 0o700 });
-    const temporary = join(this.root, 'files', input.id, `.${name}.part`);
-    await writeFile(temporary, input.content, { mode: 0o600 });
-    await rename(temporary, join(this.root, storagePath));
+    await this.writeBytes(
+      this.options.layout.person(input.profileId).attachment(input.id, name),
+      input.content,
+    );
     const size = input.mime.startsWith('image/') ? await imageSize(input.content) : null;
     const file = this.options.chat.addAttachment({
       id: input.id,
@@ -257,12 +315,45 @@ export class AssistantFiles {
       height: size?.height ?? null,
       storage_path: storagePath,
       sha256: createHash('sha256').update(input.content).digest('hex'),
+      levels: input.levels ?? (await this.levelsOf(input.mime, input.content)),
     });
     if (input.transcript !== undefined && input.transcript !== null) {
       this.options.chat.setTranscript(file.id, input.transcript);
       return { ...file, transcript: input.transcript };
     }
     return this.noted(file);
+  }
+
+  private async levelsOf(mime: string, content: Buffer): Promise<number[] | null> {
+    if (!mime.startsWith('audio/')) return null;
+    try {
+      return await audioLevels(content);
+    } catch (cause) {
+      log.warn('levels.decode_failed', { cause, mime, bytes: content.length });
+      return null;
+    }
+  }
+
+  async backfillLevels(): Promise<void> {
+    const pending = this.options.chat.unleveledAudio();
+    let kept = 0;
+    for (const file of pending) {
+      try {
+        this.options.chat.setLevels(file.id, await audioLevels(await this.bytesOf(file)));
+        kept += 1;
+      } catch (cause) {
+        log.warn('levels.backfill_failed', { cause, attachmentId: file.id });
+      }
+    }
+    log.info('levels.backfilled', { pending: pending.length, kept });
+  }
+
+  private async writeBytes(path: string, content: Buffer): Promise<void> {
+    const directory = dirname(path);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const temporary = join(directory, `.${basename(path)}.part`);
+    await writeFile(temporary, content, { mode: 0o600 });
+    await rename(temporary, path);
   }
 
   private upload(profileId: string, uploadId: string): Upload {
@@ -274,7 +365,7 @@ export class AssistantFiles {
   }
 
   private partPath(uploadId: string): string {
-    return join(this.root, 'uploads', `${uploadId}.part`);
+    return join(this.options.layout.tmp, `upload-${uploadId}.part`);
   }
 
   private async forgetStale(): Promise<void> {
@@ -285,7 +376,6 @@ export class AssistantFiles {
     const stale = this.options.chat.unattachedBefore(
       new Date(now - UNATTACHED_KEPT_MS).toISOString(),
     );
-    await this.remove(stale);
-    this.options.chat.removeAttachments(stale.map((file) => file.id));
+    await this.discardUnattached(stale.filter((file) => !this.preparing.has(file.id)));
   }
 }

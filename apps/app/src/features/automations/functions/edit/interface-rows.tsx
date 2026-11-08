@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode, type RefObject } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../../../components/badge';
 import { Button } from '../../../../components/button';
@@ -8,15 +8,17 @@ import { Text } from '../../../../components/text';
 import type { PortLine } from '../detail/detail-model';
 import type { EditSide } from './use-interface-panel';
 
+export type InterfaceOpener = RefObject<View | null>;
+
 export interface InterfaceRowsProps {
   readonly side: EditSide;
   readonly title: string;
   readonly addLabel: string;
   readonly lines: readonly PortLine[];
   readonly editable: boolean;
-  readonly onAdd: (side: EditSide) => void;
-  readonly onEdit: (side: 'inputs' | 'outputs', name: string) => void;
-  readonly onRemove: (side: EditSide, name: string) => void;
+  readonly onAdd: (side: EditSide, opener: InterfaceOpener) => void;
+  readonly onEdit: (side: 'inputs' | 'outputs', name: string, opener: InterfaceOpener) => void;
+  readonly onRemove: (side: EditSide, name: string, opener: InterfaceOpener) => void;
   readonly onReorder: (side: EditSide, order: readonly string[]) => void;
 }
 
@@ -25,10 +27,12 @@ type RowProps = Pick<InterfaceRowsProps, 'side' | 'editable' | 'onEdit' | 'onRem
 };
 
 function Row({ line, side, editable, onEdit, onRemove }: RowProps): ReactNode {
+  const edit = useRef<View>(null);
+  const remove = useRef<View>(null);
   return (
     <View className="min-h-touch-min flex-row items-center gap-2 border-b border-outline-variant py-1.5">
       <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant="body-strong" numberOfLines={1}>
+        <Text variant="body-strong">
           {line.title}
         </Text>
         <View className="flex-row flex-wrap items-center gap-1.5">
@@ -43,19 +47,21 @@ function Row({ line, side, editable, onEdit, onRemove }: RowProps): ReactNode {
       </View>
       {editable && side !== 'exits' ? (
         <IconButton
+          ref={edit}
           icon="pencil"
           label={`Edit ${line.title}`}
           onPress={() => {
-            onEdit(side, line.name);
+            onEdit(side, line.name, edit);
           }}
         />
       ) : null}
       {editable ? (
         <IconButton
+          ref={remove}
           icon="trash"
           label={`Remove ${line.title}`}
           onPress={() => {
-            onRemove(side, line.name);
+            onRemove(side, line.name, remove);
           }}
         />
       ) : null}
@@ -64,6 +70,7 @@ function Row({ line, side, editable, onEdit, onRemove }: RowProps): ReactNode {
 }
 
 export function InterfaceRows(props: InterfaceRowsProps): ReactNode {
+  const add = useRef<View>(null);
   return (
     <View className="gap-1">
       <Text variant="label" tone="variant">
@@ -89,11 +96,12 @@ export function InterfaceRows(props: InterfaceRowsProps): ReactNode {
       {props.editable ? (
         <View className="flex-row">
           <Button
+            ref={add}
             label={props.addLabel}
             icon="plus"
             variant="text"
             onPress={() => {
-              props.onAdd(props.side);
+              props.onAdd(props.side, add);
             }}
           />
         </View>

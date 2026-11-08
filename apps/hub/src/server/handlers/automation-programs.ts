@@ -16,6 +16,9 @@ export const automationProgramRoutes = (programs: AutomationPrograms) =>
     setAutomationProgramEnabled: bound(E.setAutomationProgramEnabled, ({ params, body }) =>
       programs.setEnabled(params.automationId, body.enabled),
     ),
+    renameAutomationProgram: bound(E.renameAutomationProgram, ({ params, body }) =>
+      programs.rename(params.automationId, body.name),
+    ),
     checkAutomationProgram: bound(E.checkAutomationProgram, ({ body, caller }) =>
       programs.check(caller, body),
     ),

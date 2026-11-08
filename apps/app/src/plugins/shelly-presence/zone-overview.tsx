@@ -16,7 +16,7 @@ import { RoomMap } from './room-map';
 import { zoneName } from './room-map-legend';
 
 function delay(seconds: number | null | undefined): string {
-  return seconds === null || seconds === undefined ? 'Sensor default' : duration(seconds);
+  return seconds === null || seconds === undefined ? 'Set by the sensor' : duration(seconds);
 }
 
 function areaOf(sensor: ShellyDevice, zone: ShellyZone): string | null {

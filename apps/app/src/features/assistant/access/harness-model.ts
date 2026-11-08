@@ -1,10 +1,11 @@
-import type { AiHarnessPermission } from '@smarteverything/domain';
+import type { AiHarnessPermission, AiPermissionPresets } from '@smarteverything/domain';
 import { accessFootnoteText, type AccessModel, type ToolsAccess } from './access-model';
-import { harnessSections, type AccessBlock } from './harness-access';
+import { harnessSections, presetName, type AccessBlock } from './harness-access';
 import { accessPill } from './ai-access';
 
 export interface HarnessModelInput {
   readonly host: string;
+  readonly presets: AiPermissionPresets | null;
   readonly permissions: readonly AiHarnessPermission[];
   readonly current: AiHarnessPermission;
   readonly block: AccessBlock | null;
@@ -19,9 +20,13 @@ export function harnessModel(input: HarnessModelInput): AccessModel {
   const { block, onCheck } = input;
   return {
     title: `Access on ${input.host}`,
-    pill: accessPill({ kind: 'harness', permission: input.current }),
+    pill: accessPill({
+      kind: 'harness',
+      permission: input.current,
+      title: presetName(input.presets, input.current.sandbox),
+    }),
     nextTurn: false,
-    sections: harnessSections(input.permissions, input.current, input.host),
+    sections: harnessSections(input.presets, input.permissions, input.current, input.host),
     applying: input.applying,
     blocked: block !== null,
     banner:
@@ -37,7 +42,6 @@ export function harnessModel(input: HarnessModelInput): AccessModel {
           },
     footnote: accessFootnoteText('harness', false, input.memberNote),
     tools: input.tools,
-    cloud: null,
     select: input.select,
   };
 }

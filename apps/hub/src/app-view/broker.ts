@@ -8,7 +8,11 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import { PendingAnswers } from '../local/pending-answers';
 
-export type AppViewAsk = Omit<AppViewRequest, 'requestId'>;
+export type AppViewAsk = AppViewRequest extends infer Variant
+  ? Variant extends AppViewRequest
+    ? Omit<Variant, 'requestId'>
+    : never
+  : never;
 
 export type AppViewOutcome =
   | { readonly kind: 'answered'; readonly result: AppViewResult }

@@ -4,11 +4,13 @@ import type { CallView } from '../call-state';
 import type { EngineCapabilities } from '../engine/call-engine';
 import { sharingOf } from './call-controls';
 
+export type CallMenuAction = Pick<MenuItem, 'onPress' | 'subpage'>;
+
 export interface CameraMenuHandlers {
   readonly onFacing: (facing: 'front' | 'back') => void;
   readonly onPause: (paused: boolean) => void;
   readonly onLight: (on: boolean) => void;
-  readonly onHome: () => void;
+  readonly home: CallMenuAction;
   readonly onStop: () => void;
 }
 
@@ -56,16 +58,16 @@ export function cameraMenuOf(
     });
   }
   items.push(
-    { label: 'Show a home camera…', icon: 'house', onPress: handlers.onHome },
+    { label: 'Show a home camera…', icon: 'house', ...handlers.home },
     { label: 'Turn camera off', icon: 'cameraOff', destructive: true, onPress: handlers.onStop },
   );
   return items;
 }
 
 export interface ShareMenuHandlers {
-  readonly onScreen: () => void;
-  readonly onWindow: () => void;
-  readonly onHome: () => void;
+  readonly screen: CallMenuAction;
+  readonly window: CallMenuAction;
+  readonly home: CallMenuAction;
   readonly onStop: () => void;
 }
 
@@ -77,15 +79,16 @@ export function shareMenuOf(
 ): readonly MenuItem[] {
   const items: MenuItem[] = [
     {
+      id: 'share-screen',
       label: sharingOf(call) ? 'Share a different screen' : 'Share screen',
       icon: 'screenShare',
-      onPress: handlers.onScreen,
+      ...handlers.screen,
     },
   ];
   if (platform !== 'android' && windows) {
-    items.push({ label: 'Share a window', icon: 'appWindow', onPress: handlers.onWindow });
+    items.push({ label: 'Share a window', icon: 'appWindow', ...handlers.window });
   }
-  items.push({ label: 'Show a home camera…', icon: 'house', onPress: handlers.onHome });
+  items.push({ label: 'Show a home camera…', icon: 'house', ...handlers.home });
   if (sharingOf(call)) {
     items.push({
       label: 'Stop sharing',

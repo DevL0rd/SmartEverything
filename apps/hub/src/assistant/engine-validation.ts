@@ -1,9 +1,10 @@
 import {
   ApiError,
-  type ComputerRuntimeModel,
-  type Engine,
+  nativeModelOptionReason,
+  type ComputerRuntimeStatus,
   type Role,
 } from '@smarteverything/domain';
+import { effectiveProviderEngine } from './engines/computer/options';
 import type { ComputerEngine } from './engine-kind';
 import type { ComputerAiDirectory } from '../computers/ai-directory';
 import type { Store } from '../store/store';
@@ -16,49 +17,32 @@ export function validateComputerEngine(
   if (role !== 'owner')
     throw new ApiError('forbidden', 'Only the home owner can use Claude or Codex on computers.');
   const target = { device_id: engine.device_id, runtime: engine.kind };
+  if (store.devices.find(engine.device_id)?.kind !== 'computer')
+    throw new ApiError('invalid_request', 'Select a computer registered on this hub.');
   const status = directory.runtimeStatus(target);
-  if (!status.settings.settings.provider.enabled)
-    throw new ApiError(
-      'claude_not_ready',
-      `The ${engine.kind} provider is disabled on this computer.`,
-    );
+  const effective = effectiveProviderEngine(engine, status.settings);
+  validateProjectPath(effective.settings.cwd);
   const model = store.computerRuntimes
     .models(target)
     .find((row) => row.id === engine.model || row.resolved_model === engine.model);
-  if (model === undefined)
-    throw new ApiError(
-      'invalid_request',
-      'This model has not been discovered on the selected supplying computer.',
-    );
-  if (status.online && !model.available)
-    throw new ApiError(
-      'claude_not_ready',
-      model.reason ?? 'This model is unavailable on the selected computer.',
-    );
-  validateModelOptions(engine, model);
+  if (model === undefined) return;
+  const reason = nativeModelOptionReason(effective, model);
+  if (reason !== null) throw new ApiError('invalid_request', reason);
 }
-function validateModelOptions(engine: ComputerEngine, model: ComputerRuntimeModel): void {
-  if (engine.effort !== null && !model.efforts.includes(engine.effort))
-    throw new ApiError('invalid_request', 'The selected model does not support this effort.');
-  if (engine.kind === 'codex') {
-    if (
-      engine.settings.service_tier !== undefined &&
-      model.service_tiers?.includes(engine.settings.service_tier) !== true
-    )
-      throw new ApiError(
-        'invalid_request',
-        'This model has not reported the requested service tier.',
-      );
-    return;
-  }
-  validateClaudeOptions(engine, model);
+const WINDOWS_ABSOLUTE = /^(?:[a-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)/i;
+
+function validateProjectPath(cwd: string | undefined): void {
+  if (cwd === undefined) return;
+  if ((!cwd.startsWith('/') && !WINDOWS_ABSOLUTE.test(cwd)) || cwd.includes('\0'))
+    throw new ApiError('invalid_request', 'Select an absolute project folder on this computer.');
 }
-function validateClaudeOptions(
-  engine: Extract<Engine, { kind: 'claude' }>,
-  model: ComputerRuntimeModel,
-): void {
-  if (engine.settings.thinking === 'adaptive' && !model.adaptive_thinking)
-    throw new ApiError('invalid_request', 'The model does not support adaptive thinking.');
-  if (engine.settings.fast === true && !model.fast)
-    throw new ApiError('invalid_request', 'The model does not support fast mode.');
+
+export function computerProviderReadiness(status: ComputerRuntimeStatus): string | null {
+  if (!status.online) return 'The supplying computer is offline.';
+  if (!status.settings.settings.provider.enabled)
+    return 'The provider is disabled on this computer.';
+  if (status.capabilities.provider_reason !== null) return status.capabilities.provider_reason;
+  return status.capabilities.operations.includes('provider_start')
+    ? null
+    : 'The selected computer cannot start provider chats.';
 }

@@ -1,6 +1,7 @@
 import { Activity, use, useLayoutEffect, useState, type ReactElement } from 'react';
 import { z } from 'zod';
 import { ScreenPause, ScreenPausedContext } from '../design/screen-pause';
+import { ScreenRouteContext } from '../design/screen-route';
 import { probedScreen } from '../perf/screen-probe';
 import { ScreenLifecycleLog, type ScreenNavigation } from './screen-log';
 import { noteStackChanged, registerStack, type HeldRoute } from './stack-handles';
@@ -149,7 +150,9 @@ function ScreenPauseLayer(args: ScreenPauseArgs): ReactElement {
         routeKey={args.route.key}
         navigation={args.navigation}
       />
-      <Activity mode={cover === 'frozen' ? 'hidden' : 'visible'}>{args.children}</Activity>
+      <ScreenRouteContext value={args.route.key}>
+        <Activity mode={cover === 'frozen' ? 'hidden' : 'visible'}>{args.children}</Activity>
+      </ScreenRouteContext>
     </ScreenPausedContext>
   );
 }

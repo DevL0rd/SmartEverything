@@ -30,7 +30,9 @@ describe('migration 138 drops the publication system', () => {
       .all()
       .map((row) => NAME.parse(row).name);
     expect(tables).toStrictEqual(['ai_chats', 'settings']);
-    const disabled = TEXT.parse(db.prepare('select mcp_disabled_tools as text from settings').get());
+    const disabled = TEXT.parse(
+      db.prepare('select mcp_disabled_tools as text from settings').get(),
+    );
     expect(JSON.parse(disabled.text)).toStrictEqual(['device_control']);
     const grant = TEXT.parse(db.prepare("select tools as text from ai_chats where id = 'a'").get());
     expect(JSON.parse(grant.text)).toStrictEqual(['browser_control']);

@@ -1,6 +1,6 @@
 import type { LogLevel } from './levels';
 import { FOREGROUND, RESET, type Colour } from './palette';
-import type { LogPayload } from './redaction';
+import type { LogPayload } from './payload';
 import type { LogRecord } from './record';
 
 const LEVEL_COLOUR: Readonly<Record<LogLevel, Colour>> = {

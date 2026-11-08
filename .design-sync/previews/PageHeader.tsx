@@ -1,11 +1,12 @@
+import type { ReactElement } from 'react';
 import { PageHeader, Screen, Stage, Text } from 'smarteverything-kit';
 
 const actions = [
-  { icon: 'plus' as const, label: 'Add device', primary: true, onPress: () => undefined },
-  { icon: 'search' as const, label: 'Search', onPress: () => undefined },
+  { icon: 'plus' as const, label: 'Add device', primary: true, onPress: (): void => undefined },
+  { icon: 'search' as const, label: 'Search', onPress: (): void => undefined },
 ];
 const content = <Text tone="variant">Page content sits below the header.</Text>;
-export const WithActions = () => (
+export const WithActions = (): ReactElement => (
   <Stage theme="dark" width={760} height={200}>
     <Screen
       header={
@@ -21,7 +22,7 @@ export const WithActions = () => (
     </Screen>
   </Stage>
 );
-export const Detail = () => (
+export const Detail = (): ReactElement => (
   <Stage theme="dark" width={760} height={200}>
     <Screen
       header={
@@ -31,8 +32,8 @@ export const Detail = () => (
           back
           breadcrumbs={[{ label: 'Devices', href: '/devices' }, { label: 'Living room' }]}
           overflow={[
-            { label: 'Rename', icon: 'customize', onPress: () => undefined },
-            { label: 'Remove', icon: 'close', destructive: true, onPress: () => undefined },
+            { label: 'Rename', icon: 'customize', onPress: (): void => undefined },
+            { label: 'Remove', icon: 'close', destructive: true, onPress: (): void => undefined },
           ]}
         />
       }
@@ -41,7 +42,7 @@ export const Detail = () => (
     </Screen>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={760} height={200}>
     <Screen
       header={

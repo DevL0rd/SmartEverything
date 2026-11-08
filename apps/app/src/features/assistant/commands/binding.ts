@@ -11,7 +11,7 @@ export function useCommandBinding(chat: AiChatRow | undefined, opened: boolean):
   const live = useSyncStatus().status === 'live';
   const dsh = useDshCommandBinding(chat, opened);
   const native = useNativeCommandBinding(chat);
-  if (chat?.engine.kind === 'dsh' || chat?.engine.kind === 'openrouter') return harnessBinding(dsh);
+  if (chat?.engine.kind === 'dsh') return harnessBinding(dsh);
   const key = JSON.stringify([connectionId(live), profile?.id, chat?.id, native.key]);
   return otherBinding(chat, native, key, live);
 }

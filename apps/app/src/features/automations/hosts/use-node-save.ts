@@ -1,9 +1,6 @@
 import { useState } from 'react';
-import type {
-  AutomationFunctionDetail,
-  AutomationFunctionMapping,
-  AutomationFunctionReply,
-} from '@smarteverything/domain';
+import type { AutomationFunctionMapping, AutomationFunctionReply } from '@smarteverything/domain';
+import type { FunctionDetail } from '../data/graph-adapter';
 import { background, Logger } from '@smarteverything/logging';
 import { notify } from '../../../components/toast-store';
 import { useFunctionActions, type FunctionActions } from '../data/use-functions';
@@ -22,7 +19,7 @@ export interface NodeSave {
 }
 
 interface SaveInput {
-  readonly detail: AutomationFunctionDetail;
+  readonly detail: FunctionDetail;
   readonly store: DocumentStore;
   readonly name: string;
   readonly actions: FunctionActions;
@@ -95,11 +92,7 @@ async function updateCallers(
   notify({ message: callers.summary, tone: 'positive' });
 }
 
-export function useNodeSave(
-  detail: AutomationFunctionDetail,
-  store: DocumentStore,
-  name: string,
-): NodeSave {
+export function useNodeSave(detail: FunctionDetail, store: DocumentStore, name: string): NodeSave {
   const actions = useFunctionActions();
   const [breaking, setBreaking] = useState<AutomationFunctionReply | null>(null);
   const [busy, setBusy] = useState(false);

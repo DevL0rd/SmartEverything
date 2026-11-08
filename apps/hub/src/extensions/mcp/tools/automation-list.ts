@@ -1,4 +1,4 @@
-import type { AutomationRowV3, RoomRow } from '@smarteverything/domain';
+import type { StoredAutomationRow, RoomRow } from '@smarteverything/domain';
 import { z } from 'zod';
 import { CURSOR, moreOf, paged } from '../../../ai-tools/paging';
 import { deviceScopeOfActor } from './person-reach';
@@ -32,7 +32,7 @@ function stringsIn(value: unknown, into: Set<string>): Set<string> {
 }
 
 function roomsOf(
-  automation: AutomationRowV3,
+  automation: StoredAutomationRow,
   roomOfDevice: ReadonlyMap<string, RoomRow>,
 ): RoomRow[] {
   const rooms = new Map<string, RoomRow>();
@@ -43,7 +43,11 @@ function roomsOf(
   return [...rooms.values()];
 }
 
-function wanted(filter: AutomationFilter, automation: AutomationRowV3, rooms: RoomRow[]): boolean {
+function wanted(
+  filter: AutomationFilter,
+  automation: StoredAutomationRow,
+  rooms: RoomRow[],
+): boolean {
   return (
     (filter.automationId === undefined || automation.id === filter.automationId) &&
     (filter.search === undefined || matches(filter.search, automation.name)) &&

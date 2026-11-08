@@ -8,10 +8,9 @@ import {
   installedHarnessBuiltins,
 } from '../src';
 import { HARNESS_CLAUDE_PLUGINS_PACKAGE } from '../src/composition/claude-plugin-metadata';
+import { SUBAGENT_TOOL_NAMES } from '../src/plugins/subagents';
 import { HarnessSkillAssets } from '../src/composition/skill-assets';
 import type { HarnessDesiredEntry } from '../src/composition/configuration';
-import type { PluginAgentPort } from '../src/composition/plugin-agent-port';
-import { readHarnessPluginAgent } from '../src/composition/plugin-agent-source';
 import { bootRuntime, spoken, turnsFinished } from './support/runtime';
 import type { RuntimeFixture } from './support/runtime';
 import { builtinEntry, extensionSource, pluginFixture } from './support/plugin-assets';
@@ -39,10 +38,7 @@ const FEATURE_DEV = pluginFixture('feature-dev', {
     '---\ndescription: Guided feature development\nargument-hint: feature\n---\n\nPlan and build this feature step by step: $ARGUMENTS\n',
 });
 
-async function withPlugins(
-  fixtures: readonly ExtensionFixture[],
-  port?: PluginAgentPort,
-): Promise<RuntimeFixture> {
+async function withPlugins(fixtures: readonly ExtensionFixture[]): Promise<RuntimeFixture> {
   cache = await mkdtemp(join(tmpdir(), 'plugin-cache-'));
   const assets = new HarnessSkillAssets(cache, extensionSource(fixtures));
   fixture = await bootRuntime({
@@ -51,7 +47,7 @@ async function withPlugins(
       entries: [skillsEntry(), builtinEntry('claude-plugins', fixtures)],
     },
     installedPlugins: (host) =>
-      installedHarnessBuiltins(host, assets, port).filter(
+      installedHarnessBuiltins(host, assets).filter(
         (plugin) =>
           plugin.package === HARNESS_SKILLS_PACKAGE ||
           plugin.package === HARNESS_CLAUDE_PLUGINS_PACKAGE,
@@ -122,61 +118,26 @@ describe('a plugin skill', () => {
   });
 });
 
-describe('a plugin agent', () => {
-  it('is offered to the model as a helper tool', async () => {
+describe('a plugin agent file', () => {
+  it('adds no tool of its own; delegation stays with the subagent tools of the hub', async () => {
+    const bare = await bootRuntime();
+    bare.model.script({ kind: 'text', text: 'ok' });
+    const bareSession = await bare.runtime.create(bare.sessionOptions());
+    bareSession.text('hello');
+    await turnsFinished(bare, bareSession, 1);
+    const baseline = toolNames(bare);
+    await bare.dispose();
+    fixture = undefined;
+
     const host = await withPlugins([CODE_SIMPLIFIER]);
     host.model.script({ kind: 'text', text: 'ok' });
     const session = await host.runtime.create(host.sessionOptions());
-
     session.text('hello');
     await turnsFinished(host, session, 1);
 
-    expect(toolNames(host)).toContain('subagent_code-simplifier');
-  });
-
-  it('hands the task to the durable helper port with the helper name and prompt', async () => {
-    const calls: { readonly helper: string; readonly raw: unknown }[] = [];
-    const port: PluginAgentPort = {
-      start: (_ctx, call) => {
-        calls.push({ helper: call.helper, raw: call.raw });
-        return Promise.reject(new Error('helper port reached'));
-      },
-    };
-    const host = await withPlugins([CODE_SIMPLIFIER], port);
-    host.model.script(
-      {
-        kind: 'tool',
-        id: 'c1',
-        name: 'subagent_code-simplifier',
-        input: { prompt: 'Tidy src/index.ts' },
-      },
-      { kind: 'text', text: 'done' },
-    );
-    const session = await host.runtime.create(host.sessionOptions());
-
-    session.text('simplify my code');
-    await turnsFinished(host, session, 1);
-
-    expect(calls).toStrictEqual([
-      { helper: 'code-simplifier', raw: { prompt: 'Tidy src/index.ts' } },
-    ]);
-    const result = host.model.requests[1]?.messages.at(-1);
-    expect(spoken(result === undefined ? [] : [result])[0]?.text).toContain('helper port reached');
-  });
-
-  it('refuses to run a helper when the host has no durable helper port', async () => {
-    const host = await withPlugins([CODE_SIMPLIFIER]);
-    host.model.script(
-      { kind: 'tool', id: 'c1', name: 'subagent_code-simplifier', input: { prompt: 'Tidy it' } },
-      { kind: 'text', text: 'done' },
-    );
-    const session = await host.runtime.create(host.sessionOptions());
-
-    session.text('simplify my code');
-    await turnsFinished(host, session, 1);
-
-    const result = host.model.requests[1]?.messages.at(-1);
-    expect(spoken(result === undefined ? [] : [result])[0]?.text).toMatch(/^Error:/u);
+    expect(baseline).toEqual(expect.arrayContaining([...SUBAGENT_TOOL_NAMES]));
+    const added = toolNames(host).filter((name) => !baseline.includes(name));
+    expect(added).toStrictEqual(['skill']);
   });
 });
 
@@ -218,26 +179,6 @@ describe('Claude-format plugin files', () => {
     expect(spoken(loaded === undefined ? [] : [loaded])[0]?.text).toContain(
       'Pick one bold visual direction.',
     );
-  });
-
-  it('reads a plugin agent that declares tools, color and double-brace text', async () => {
-    const fixtures = pluginFixture('code-simplifier', {
-      'agents/code-simplifier.md':
-        '---\nname: code-simplifier\ndescription: Simplifies code\ntools: Read, Edit, Grep\ncolor: blue\nmodel: opus\n---\n\nKeep templates like {{name}} unchanged.\n',
-    });
-    cache = await mkdtemp(join(tmpdir(), 'plugin-cache-'));
-    const assets = new HarnessSkillAssets(cache, extensionSource([fixtures]));
-
-    const [installed] = await assets.acquireAll('plugin', [fixtures.asset]);
-    if (installed === undefined) throw new Error('The plugin was not fetched.');
-    const helper = await readHarnessPluginAgent(installed, 'code-simplifier');
-
-    expect(helper).toMatchObject({
-      name: 'code-simplifier',
-      description: 'Simplifies code',
-      model: 'opus',
-      body: 'Keep templates like {{name}} unchanged.',
-    });
   });
 });
 

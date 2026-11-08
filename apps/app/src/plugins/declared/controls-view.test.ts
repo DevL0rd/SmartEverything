@@ -161,6 +161,37 @@ describe('ControlsView', () => {
     expect(ui.texts).toContain('Switched off in this plugin’s tools.');
   });
 
+  it('puts each button in the action band under its own label and keeps the other controls in the lane', () => {
+    ui.values['pump'] = { state: 'ready', value: true, at: AT };
+    render([
+      { kind: 'button', label: 'Water now', tool: 'water', args: {} },
+      {
+        kind: 'toggle',
+        label: 'Pump',
+        tool: 'set_pump',
+        args: {},
+        value: { stream: 'pump', field: null },
+        arg: 'on',
+      },
+      { kind: 'button', label: 'Drain', tool: 'drain', args: {} },
+    ]);
+    expect(ui.buttons.map((props) => props['label'])).toStrictEqual(['Water now', 'Drain']);
+    expect(ui.buttons.every((props) => props['disabled'] === false)).toBe(true);
+    expect(ui.switchProps).toHaveLength(1);
+    expect(ui.texts).toStrictEqual(['Pump']);
+    expect(ui.tables).toStrictEqual(['plugin_ui']);
+  });
+
+  it('names a switched-off button in the lane while its band button stays disabled', () => {
+    ui.off = ['drain'];
+    render([
+      { kind: 'button', label: 'Water now', tool: 'water', args: {} },
+      { kind: 'button', label: 'Drain', tool: 'drain', args: {} },
+    ]);
+    expect(ui.buttons.map((props) => props['disabled'])).toStrictEqual([false, true]);
+    expect(ui.texts).toStrictEqual(['Drain', 'Switched off in this plugin’s tools.']);
+  });
+
   it('disables a toggle and a slider that have no reading and says so', () => {
     render([
       {

@@ -1,51 +1,71 @@
 import { useState } from 'react';
-import type { BoardClass, WidgetSize } from '@smarteverything/domain';
-import type { TargetRow } from '../types';
-import { entrySize, type GalleryAdd, type GalleryItem, type TargetOption } from './gallery-model';
+import type { BoardClass, BoardWidget, WidgetSize } from '@smarteverything/domain';
+import type { PickerState, TargetRow } from '../types';
+import { entrySize, targetByKey, type GalleryAdd, type GalleryItem } from './gallery-model';
 
 interface Browsing {
   readonly query: string;
-  readonly step: GalleryItem | null;
-  readonly picked: TargetOption | null;
+  readonly stepId: string | null;
+  readonly pickedKey: string | null;
   readonly size: WidgetSize | null;
 }
 
-const START: Browsing = { query: '', step: null, picked: null, size: null };
+const START: Browsing = { query: '', stepId: null, pickedKey: null, size: null };
 
 export interface GalleryFlow {
   readonly query: string;
   readonly step: GalleryItem | null;
-  readonly picked: TargetOption | null;
+  readonly picked: TargetRow | null;
   readonly size: WidgetSize | null;
   readonly setQuery: (query: string) => void;
   readonly open: (item: GalleryItem) => void;
-  readonly pick: (row: TargetOption) => void;
+  readonly pick: (row: TargetRow) => void;
   readonly resize: (size: WidgetSize) => void;
   readonly back: () => void;
   readonly add: (item: GalleryItem, row: TargetRow | null) => void;
   readonly addPicked: () => void;
-  readonly close: () => void;
 }
 
-function requestOf(item: GalleryItem, row: TargetRow | null, size: WidgetSize): GalleryAdd {
-  return row === null
-    ? { type: item.definition.type, size }
-    : { type: item.definition.type, size, options: row.options };
+interface GalleryInput {
+  readonly board: BoardClass;
+  readonly items: readonly GalleryItem[];
+  readonly placed: readonly BoardWidget[];
+  readonly pickerState: PickerState;
+  readonly readPicker: () => PickerState;
+  readonly onAdd: (request: GalleryAdd) => void;
 }
 
-export function useGalleryFlow(
-  board: BoardClass,
-  onAdd: (request: GalleryAdd) => void,
-  onClose: () => void,
-): GalleryFlow {
+function currentRequest(
+  input: GalleryInput,
+  item: GalleryItem,
+  key: string | null,
+  size: WidgetSize | null,
+): GalleryAdd | null {
+  if (size === null) return null;
+  const type = item.definition.type;
+  if (key === null) return item.entry.pick === undefined ? { type, size } : null;
+  const row = targetByKey(item, input.readPicker(), input.placed, key);
+  return row === null ? null : { type, size, options: row.options };
+}
+
+export function useGalleryFlow(input: GalleryInput): GalleryFlow {
   const [browsing, setBrowsing] = useState(START);
-  const { step, picked } = browsing;
+  const { board, items, placed, pickerState, onAdd } = input;
+  const step = items.find((item) => item.id === browsing.stepId) ?? null;
+  const { pickedKey } = browsing;
+  const picked =
+    step === null || pickedKey === null ? null : targetByKey(step, pickerState, placed, pickedKey);
+  if (browsing.stepId !== null && step === null) {
+    setBrowsing(START);
+  } else if (pickedKey !== null && picked === null) {
+    setBrowsing({ ...browsing, pickedKey: null });
+  }
   const size = step === null ? null : (browsing.size ?? entrySize(step, board));
-  const add = (item: GalleryItem, row: TargetRow | null): void => {
-    const chosen = entrySize(item, board);
-    if (chosen !== null) {
+  const add = (item: GalleryItem, key: string | null, chosen: WidgetSize | null): void => {
+    const request = currentRequest(input, item, key, chosen);
+    if (request !== null) {
       setBrowsing(START);
-      onAdd(requestOf(item, row, chosen));
+      onAdd(request);
     }
   };
   return {
@@ -57,10 +77,10 @@ export function useGalleryFlow(
       setBrowsing((previous) => ({ ...previous, query }));
     },
     open: (item): void => {
-      setBrowsing({ ...START, step: item });
+      setBrowsing({ ...START, stepId: item.id });
     },
     pick: (row): void => {
-      setBrowsing((previous) => ({ ...previous, picked: row }));
+      setBrowsing((previous) => ({ ...previous, pickedKey: row.key }));
     },
     resize: (next): void => {
       setBrowsing((previous) => ({ ...previous, size: next }));
@@ -68,16 +88,13 @@ export function useGalleryFlow(
     back: (): void => {
       setBrowsing(START);
     },
-    add,
-    addPicked: (): void => {
-      if (step !== null && picked !== null && size !== null) {
-        setBrowsing(START);
-        onAdd(requestOf(step, picked, size));
-      }
+    add: (item, row): void => {
+      add(item, row?.key ?? null, entrySize(item, board));
     },
-    close: (): void => {
-      setBrowsing(START);
-      onClose();
+    addPicked: (): void => {
+      if (step !== null && picked !== null) {
+        add(step, picked.key, size);
+      }
     },
   };
 }

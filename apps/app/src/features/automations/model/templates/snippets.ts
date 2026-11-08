@@ -1,4 +1,4 @@
-import type { FlowNode } from '@smarteverything/domain';
+import { STARTER_NODE_IDS, type FlowNode } from '@smarteverything/domain';
 import { MINUTE_MS, lit, maker, wire, type Maker } from './build';
 import {
   choicesOf,
@@ -86,7 +86,7 @@ function speakOrPush(devices: readonly TemplateDevice[]): Snippet | null {
     ],
     nodes: (use, m) => [
       m.node('say', 'fn.call', {
-        fn: lit('builtin.speak_or_push'),
+        fn: lit(STARTER_NODE_IDS.speakOrPush),
         speaker: lit({ device: use.text('speaker') }),
         people: lit([]),
         text: lit(use.text('text')),
@@ -114,7 +114,7 @@ function lightsOffAfterNoMotion(devices: readonly TemplateDevice[]): Snippet | n
     ],
     nodes: (use, m) => [
       m.node('quiet', 'fn.call', {
-        fn: lit('builtin.lights_off_after'),
+        fn: lit(STARTER_NODE_IDS.lightsOffAfter),
         lights: lit({ devices: [...use.texts('lights')] }),
         sensor: lit(use.text('sensor')),
         after: lit(use.number('minutes') * MINUTE_MS),

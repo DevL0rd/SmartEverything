@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { roomLightsName, type DeviceTarget } from '@smarteverything/domain';
 import { useLoaded, useRoom } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
@@ -12,7 +12,7 @@ import { useTargetView, type TargetView } from '../use-target-state';
 export interface GroupData {
   readonly target: DeviceTarget;
   readonly name: string;
-  readonly href: Href;
+  readonly href: AppHref;
   readonly members: readonly Device[];
   readonly lights: boolean;
   readonly view: TargetView;

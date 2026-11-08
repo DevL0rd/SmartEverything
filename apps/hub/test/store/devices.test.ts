@@ -185,6 +185,46 @@ describe('devices', () => {
     ).toStrictEqual([]);
   });
 
+  it('keeps the unrecorded vacuum keys out of the state history but stores their latest value', () => {
+    const { store } = opened;
+    const [plug] = store.devices.upsert([discovered()]);
+    const id = plug?.id ?? '';
+    store.state.write([
+      {
+        deviceId: id,
+        capability: 'raw:vacuum_pose',
+        value: '1:2:3',
+        observedAt: '2026-10-08T08:00:00Z',
+      },
+      {
+        deviceId: id,
+        capability: 'raw:vacuum_map',
+        value: '7:current',
+        observedAt: '2026-10-08T08:00:00Z',
+      },
+      { deviceId: id, capability: 'power', value: true, observedAt: '2026-10-08T08:00:00Z' },
+    ]);
+    store.state.write([
+      {
+        deviceId: id,
+        capability: 'raw:vacuum_pose',
+        value: '4:5:6',
+        observedAt: '2026-10-08T08:00:01Z',
+      },
+    ]);
+    expect(store.state.value(id, 'raw:vacuum_pose')).toBe('4:5:6');
+    expect(
+      store.state
+        .history({
+          capabilities: ['raw:vacuum_pose', 'raw:vacuum_map', 'power'],
+          from: '2026-10-08T00:00:00Z',
+          order: 'asc',
+          limit: 10,
+        })
+        .map((row) => row.capability),
+    ).toStrictEqual(['power']);
+  });
+
   it('aggregates numeric history into buckets and keeps the last value of each', () => {
     const { store } = opened;
     const [plug] = store.devices.upsert([discovered()]);

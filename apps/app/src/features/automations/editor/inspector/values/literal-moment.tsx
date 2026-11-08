@@ -20,6 +20,7 @@ export function MomentLiteral({
   control,
   label,
   value,
+  disabled,
   onChange,
 }: LiteralProps<MomentControl>): ReactNode {
   const showsDay = control.of !== 'timeOfDay';
@@ -35,6 +36,7 @@ export function MomentLiteral({
           range="day"
           value={control.of === 'date' ? dateOfKey(value) : instantDay(value)}
           onChange={(day) => {
+            if (disabled) return;
             onChange(control.of === 'date' ? dayKey(day) : instantWith(value, day, null));
           }}
         />
@@ -44,6 +46,7 @@ export function MomentLiteral({
           label={label}
           value={timeOfDayParts(time)}
           onChange={(next) => {
+            if (disabled) return;
             const text = timeOfDayText(next.hour, next.minute);
             onChange(control.of === 'instant' ? instantWith(value, null, text) : text);
           }}

@@ -1,14 +1,19 @@
 import { z } from 'zod';
 import {
-  HARNESS_DISCOVERY_REQUEST,
   HARNESS_DISCOVERY_PAGE,
+  HARNESS_DISCOVERY_REFERENCES,
+  HARNESS_DISCOVERY_REQUEST,
+  HARNESS_EXTENSION_INSTALL,
+  HARNESS_INSTALL_RESULTS,
+  HARNESS_PREVIEW_RESULTS,
+  HARNESS_SOURCE_ADD,
+  HARNESS_SOURCES,
   HARNESS_SKILL_UPDATES,
   HARNESS_SKILL_UPDATES_WRITE,
   HARNESS_SKILL_UPDATE_RESULT,
 } from '../ai-harness-discovery';
 import {
   AI_HARNESS_EXTENSIONS,
-  HARNESS_EXTENSION_INSTALL,
   HARNESS_EXTENSION_NAME,
   HARNESS_EXTENSION_ITEM,
   HARNESS_EXTENSION_PATCH,
@@ -21,6 +26,7 @@ import { DONE, NOTHING } from './primitives';
 
 const EXTENSION = z.strictObject({ id: z.string().min(1) });
 const SKILL = z.strictObject({ name: HARNESS_EXTENSION_NAME });
+const SOURCE = z.strictObject({ id: z.string().min(1) });
 
 export const AI_HARNESS_EXTENSION_ENDPOINTS = {
   discoverAiHarnessExtensions: endpoint({
@@ -28,11 +34,52 @@ export const AI_HARNESS_EXTENSION_ENDPOINTS = {
     path: '/api/ai/harness/extensions/discover',
     access: 'owner',
     summary:
-      'Search the skills or plugins of an online marketplace (a git URL, or the official ones) without installing anything',
+      'Search skills and plugins without installing anything. When searching every known git source, report unavailable sources alongside results',
     params: NOTHING,
     query: NOTHING,
     body: HARNESS_DISCOVERY_REQUEST,
     response: HARNESS_DISCOVERY_PAGE,
+  }),
+  previewAiHarnessExtensions: endpoint({
+    method: 'POST',
+    path: '/api/ai/harness/extensions/preview',
+    access: 'owner',
+    summary:
+      'Show what discovered items would install (manifest, files, license, hooks, MCP servers and scripts) without writing anything',
+    params: NOTHING,
+    query: NOTHING,
+    body: HARNESS_DISCOVERY_REFERENCES,
+    response: HARNESS_PREVIEW_RESULTS,
+  }),
+  readAiHarnessSources: endpoint({
+    method: 'GET',
+    path: '/api/ai/harness/sources',
+    access: 'member',
+    summary: 'List the known skill and plugin sources that discovery searches by default',
+    params: NOTHING,
+    query: NOTHING,
+    body: NO_BODY,
+    response: HARNESS_SOURCES,
+  }),
+  addAiHarnessSource: endpoint({
+    method: 'POST',
+    path: '/api/ai/harness/sources',
+    access: 'owner',
+    summary: 'Add a git source to the known skill and plugin sources, or rename one already known',
+    params: NOTHING,
+    query: NOTHING,
+    body: HARNESS_SOURCE_ADD,
+    response: HARNESS_SOURCES,
+  }),
+  removeAiHarnessSource: endpoint({
+    method: 'DELETE',
+    path: '/api/ai/harness/sources/:id',
+    access: 'owner',
+    summary: 'Remove one known skill and plugin source',
+    params: SOURCE,
+    query: NOTHING,
+    body: NO_BODY,
+    response: HARNESS_SOURCES,
   }),
   readAiHarnessSkillUpdates: endpoint({
     method: 'GET',
@@ -91,11 +138,11 @@ export const AI_HARNESS_EXTENSION_ENDPOINTS = {
     path: '/api/ai/harness/extensions/install',
     access: 'owner',
     summary:
-      'Install skills or plugins from a git URL, GitHub link or marketplace to the Home Hub store for every machine',
+      'Install discovered skills or plugins at the snapshot they were discovered at, to the Home Hub store for every machine, with one result per item',
     params: NOTHING,
     query: NOTHING,
     body: HARNESS_EXTENSION_INSTALL,
-    response: z.array(HARNESS_EXTENSION_ITEM),
+    response: HARNESS_INSTALL_RESULTS,
   }),
   changeAiHarnessExtension: endpoint({
     method: 'PATCH',

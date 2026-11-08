@@ -39,7 +39,7 @@ function PolicySelects({
         value={tool.permission_policy ?? ''}
         options={['', 'always_allow', 'always_ask', 'always_deny'].map((value) => ({
           value,
-          label: value === '' ? 'Server default' : value,
+          label: value === '' ? 'As the server is set up' : value,
         }))}
         onChange={(value) => {
           change(permissionOf(tool, value));
@@ -50,7 +50,7 @@ function PolicySelects({
         value={tool.org_max_permission ?? ''}
         options={['', 'allow', 'ask', 'blocked'].map((value) => ({
           value,
-          label: value === '' ? 'Server default' : value,
+          label: value === '' ? 'As the server is set up' : value,
         }))}
         onChange={(value) => {
           change(maximumOf(tool, value));

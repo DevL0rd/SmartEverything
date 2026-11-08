@@ -1,18 +1,28 @@
 import type { ReactNode } from 'react';
 import type { IconName } from '../../components/icon';
 import type { WideClass } from '../../features/devices';
-import { useIsOwner } from '../../store/selectors';
-import type { Device } from '../../store/state';
+import { selectIsOwner } from '../../store/selectors';
+import type { Device, StoreState } from '../../store/state';
+import { useStoreSelector } from '../../store/store-context';
 import { SetUpButton } from './cell-parts';
 import { PendingCell } from './pending-cell';
 import type { PluginStream } from './use-plugin-stream';
-import { usePluginOff } from './use-plugin-off';
+import { pluginOffIn } from './use-plugin-off';
 
 export interface CellCopy {
   readonly subject: string;
   readonly off: string;
   readonly waiting: string;
   readonly notSetUp: string;
+}
+
+export type CellAccess = 'off' | 'owner' | 'member';
+
+export function cellAccessOf(state: StoreState, pluginId: string): CellAccess {
+  if (pluginOffIn(state, pluginId)) {
+    return 'off';
+  }
+  return selectIsOwner(state) ? 'owner' : 'member';
 }
 
 export function CellGate<T extends { readonly connection: { readonly state: string } }>({
@@ -30,10 +40,10 @@ export function CellGate<T extends { readonly connection: { readonly state: stri
   readonly glyph: IconName;
   readonly copy: CellCopy;
   readonly stream: PluginStream<T>;
-  readonly children: (snapshot: T) => ReactNode;
+  readonly children: (snapshot: T, owner: boolean) => ReactNode;
 }): ReactNode {
-  const off = usePluginOff(pluginId);
-  const owner = useIsOwner();
+  const access = useStoreSelector((state) => cellAccessOf(state, pluginId), Object.is, [pluginId]);
+  const owner = access === 'owner';
   const pending = (line: string, action: ReactNode): ReactNode => (
     <PendingCell
       device={device}
@@ -44,14 +54,17 @@ export function CellGate<T extends { readonly connection: { readonly state: stri
       action={action}
     />
   );
-  if (off) {
+  if (access === 'off') {
     return pending(copy.off, null);
   }
   if (stream.state !== 'ready') {
     return pending(copy.waiting, null);
   }
   if (stream.value.connection.state === 'not_set_up') {
-    return pending(copy.notSetUp, owner ? <SetUpButton key="setup" pluginId={pluginId} /> : null);
+    return pending(
+      copy.notSetUp,
+      owner ? <SetUpButton key="setup" pluginId={pluginId} cls={cls} /> : null,
+    );
   }
-  return children(stream.value);
+  return children(stream.value, owner);
 }

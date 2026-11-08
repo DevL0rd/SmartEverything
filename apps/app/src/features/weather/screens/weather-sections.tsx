@@ -153,7 +153,7 @@ export function Attribution({
   readonly timeZone: string;
 }): ReactNode {
   return (
-    <Text variant="caption" tone="faint" align="center">
+    <Text variant="caption" tone="variant" align="center">
       {`Updated ${clock(fetchedAt, timeZone)} · Weather by Open-Meteo.com (CC BY 4.0) · Air quality by Copernicus CAMS`}
     </Text>
   );

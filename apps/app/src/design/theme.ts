@@ -8,7 +8,7 @@ import { widthClassOf } from './size-class';
 import {
   ACCENTS,
   CORNER_SCALE,
-  GUTTER,
+  gutterOf,
   PRIMARY_CONTAINER_ALPHA,
   RADII,
   SEMANTIC_SIZES,
@@ -60,7 +60,7 @@ function sizeVariables(settings: ThemeSettings, idiom: Idiom, width: number): Va
     '--spacing-control-h': sizes.controlH,
     '--spacing-row-h': sizes.rowH,
     '--spacing-row-h-2': sizes.rowH2,
-    '--spacing-gutter': GUTTER[widthClassOf(width)] - sizes.gutterShrink,
+    '--spacing-gutter': gutterOf(widthClassOf(width), idiom, settings.density),
     '--spacing-grid-gap': sizes.gridGap,
     '--spacing-section-gap': sizes.sectionGap,
     '--spacing-card-pad': sizes.cardPad,

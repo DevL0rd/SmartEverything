@@ -113,9 +113,8 @@ export class NativeCommandOutput {
     this.stream.tool(item, { input: event.input });
     if ('origin' in event && event.origin !== 'hub') return;
     void this.route(event)
-      .then(({ line, failed, output }) => {
+      .then(({ failed, output }) => {
         if (this.closed) return;
-        if (line !== '') this.deps.conversation.action(this.chat, line);
         this.stream.tool({ ...item, state: failed ? 'failed' : 'done' }, { output });
       })
       .catch((cause: unknown) => {

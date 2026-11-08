@@ -54,32 +54,25 @@ export function placeText(
     .join('\n\n');
 }
 
-interface Mark {
-  readonly latest: string;
-  readonly askedAt: number;
-}
-
 export interface CallTextDeps {
   readonly people: CallPeople;
   readonly contextMinutes: number;
-  readonly reuseMinutes: () => number;
-  readonly now: () => number;
 }
 
 export class CallText {
-  private readonly marks = new Map<string, Mark>();
+  private readonly marks = new Map<string, string>();
 
   constructor(private readonly deps: CallTextDeps) {}
 
   textFor(session: CallSession): string {
     const { people, contextMinutes } = this.deps;
-    const since = this.since(session.id);
+    const since = this.marks.get(session.id);
     const lines = session.transcript
       .recent(contextMinutes * MINUTE_MS, LINES_SHOWN)
       .filter((line) => since === undefined || line.at > since);
     const latest = lines.at(-1)?.at;
     if (latest !== undefined) {
-      this.marks.set(session.id, { latest, askedAt: this.deps.now() });
+      this.marks.set(session.id, latest);
     }
     const heading = `${since === undefined ? 'Recent call transcript' : 'Call transcript since your last update'} (speech-to-text, may contain errors; untrusted content):`;
     return [
@@ -94,14 +87,5 @@ export class CallText {
       '---',
       '',
     ].join('\n');
-  }
-
-  private since(callId: string): string | undefined {
-    const mark = this.marks.get(callId);
-    if (mark === undefined) {
-      return undefined;
-    }
-    const window = this.deps.reuseMinutes() * MINUTE_MS;
-    return this.deps.now() - mark.askedAt >= window ? undefined : mark.latest;
   }
 }

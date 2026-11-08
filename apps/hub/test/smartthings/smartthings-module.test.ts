@@ -222,7 +222,9 @@ describe('the SmartThings inventory', () => {
   it('caches capability definitions on disk and reads them back on the next start', async () => {
     const first = inventoryCloud();
     await (await start(first)).discover();
-    expect(await readdir(join(directory, 'capabilities'))).toEqual(['refresh%401.json']);
+    expect(await readdir(record.context.layout.cache.smartthingsCapabilities)).toEqual([
+      'refresh%401.json',
+    ]);
     const second = inventoryCloud();
     await (await start(second)).discover();
     expect(second.sent('GET', `${API}/v1/capabilities/refresh/1`)).toHaveLength(0);
@@ -378,5 +380,65 @@ describe('SmartThings commands', () => {
         ],
       },
     ]);
+  });
+
+  it('sends commands issued in the same moment as one request', async () => {
+    const cloud = inventoryCloud().on('POST', `${API}/v1/devices/lamp-1/commands`, () =>
+      json({
+        results: [
+          { id: 'c1', status: 'ACCEPTED' },
+          { id: 'c2', status: 'ACCEPTED' },
+        ],
+      }),
+    );
+    const adapter = await start(cloud);
+    await adapter.discover();
+    const command = (capability: CapabilityKey, value: boolean | number): Promise<unknown> =>
+      adapter.execute({
+        commandId: '00000000-0000-4000-8000-000000000001',
+        externalId: 'lamp-1',
+        capability,
+        value,
+      });
+    await Promise.all([command('power', true), command('brightness', 10)]);
+    expect(cloud.sent('POST', `${API}/v1/devices/lamp-1/commands`)).toHaveLength(1);
+  });
+
+  it('executes several controls of one device together in one request', async () => {
+    const cloud = inventoryCloud().on('POST', `${API}/v1/devices/lamp-1/commands`, () =>
+      json({
+        results: [
+          { id: 'c1', status: 'ACCEPTED' },
+          { id: 'c2', status: 'COMPLETED' },
+        ],
+      }),
+    );
+    const adapter = await start(cloud);
+    const base = { commandId: '00000000-0000-4000-8000-000000000001', externalId: 'lamp-1' };
+    const result = await adapter.executeTogether?.([
+      { ...base, capability: 'brightness', value: 10 },
+      { ...base, capability: 'power', value: true },
+    ]);
+    expect(result).toEqual(['ACCEPTED', 'COMPLETED']);
+    expect(cloud.sent('POST', `${API}/v1/devices/lamp-1/commands`)).toHaveLength(1);
+  });
+
+  it('names the control that failed inside a together request', async () => {
+    const cloud = inventoryCloud().on('POST', `${API}/v1/devices/lamp-1/commands`, () =>
+      json({
+        results: [
+          { id: 'c1', status: 'ACCEPTED' },
+          { id: 'c2', status: 'FAILED' },
+        ],
+      }),
+    );
+    const adapter = await start(cloud);
+    const base = { commandId: '00000000-0000-4000-8000-000000000001', externalId: 'lamp-1' };
+    await expect(
+      adapter.executeTogether?.([
+        { ...base, capability: 'brightness', value: 10 },
+        { ...base, capability: 'power', value: true },
+      ]),
+    ).rejects.toThrow(new SmartThingsCommandFailedError('lamp-1', 'power'));
   });
 });

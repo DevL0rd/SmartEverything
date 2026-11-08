@@ -80,17 +80,26 @@ const UPDATE_ENTRY: Adapter = {
     z
       .strictObject({
         entryId: z.uuid(),
-        startTime: MOMENT_ARGUMENT.optional().describe('The new start; the logged one stays when left out'),
-        endTime: MOMENT_ARGUMENT.optional().describe('The new end of a session; the logged one stays when left out'),
+        startTime: MOMENT_ARGUMENT.optional().describe(
+          'The new start; the logged one stays when left out',
+        ),
+        endTime: MOMENT_ARGUMENT.optional().describe(
+          'The new end of a session; the logged one stays when left out',
+        ),
         data: z
           .record(z.string(), z.unknown())
           .optional()
-          .describe('Fields of the record to change, shaped as health_read view types gives; the other fields stay'),
+          .describe(
+            'Fields of the record to change, shaped as health_read view types gives; the other fields stay',
+          ),
         personId: PERSON,
       })
-      .refine((input) => [input.startTime, input.endTime, input.data].some((part) => part !== undefined), {
-        message: 'give startTime, endTime or data to change',
-      }),
+      .refine(
+        (input) => [input.startTime, input.endTime, input.data].some((part) => part !== undefined),
+        {
+          message: 'give startTime, endTime or data to change',
+        },
+      ),
   run: async (context, raw, base) => {
     const change = ENTRY_CHANGE.parse(raw);
     const as = { personId: change.personId };
@@ -112,6 +121,7 @@ const UPDATE_ENTRY: Adapter = {
           );
     return base.call(context, {
       entryId: change.entryId,
+      expectedVersion: entry.version,
       ...(change.personId === undefined ? {} : { personId: change.personId }),
       body: {
         type: entry.record_type,

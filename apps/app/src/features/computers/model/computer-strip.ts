@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { ComputerMetric, ComputerSummary } from '@smarteverything/domain';
 import type { DeviceValues } from '../../../store/state';
 import type { ChartPoint } from '../../../components/charts';
@@ -67,7 +67,7 @@ export interface StripInput {
   readonly readings: StripReadings | undefined;
   readonly series: StripSeries;
   readonly offline: boolean;
-  readonly target: (page: string) => Href;
+  readonly target: (page: string) => AppHref;
 }
 
 interface Tile {

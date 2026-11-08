@@ -29,6 +29,22 @@ import {
   type ToolContext,
 } from './registry';
 import { minuteSpan } from './spans';
+import { NUTRITION_ENTRY_TOOLS } from './nutrition-entry-edits';
+
+const INLINE_FOOD = FOOD_CANDIDATE.extend({
+  brand: FOOD_CANDIDATE.shape.brand.default(null).describe('Brand only if known'),
+  barcode: FOOD_CANDIDATE.shape.barcode.default(null).describe('Barcode only if verified'),
+  serving: FOOD_CANDIDATE.shape.serving.default(null),
+  kcal: FOOD_CANDIDATE.shape.kcal.default(null).describe('Kilocalories per basis, if known'),
+  grams: FOOD_CANDIDATE.shape.grams
+    .default({})
+    .describe(
+      'Known nutrients per basis, in grams, using the named fields (e.g. protein, totalCarbohydrate, totalFat, dietaryFiber, sodium)',
+    ),
+  water_percent: FOOD_CANDIDATE.shape.water_percent
+    .default(0)
+    .describe('Water explicitly counted toward hydration, as a percent; defaults to zero'),
+});
 
 const LOG_FOOD = z
   .strictObject({
@@ -36,20 +52,20 @@ const LOG_FOOD = z
     barcode: BARCODE.optional().describe(
       'A packaged product’s barcode: the person’s saved food with it, else Open Food Facts',
     ),
-    food: FOOD_CANDIDATE.optional().describe('Nutrition facts given inline, per basis amount'),
+    food: INLINE_FOOD.optional().describe('Known nutrition facts inline, per basis amount'),
     save: z.boolean().default(false).describe('Also save an inline food to the person’s foods'),
     amount: z
       .number()
       .positive()
       .max(10_000)
       .optional()
-      .describe(
-        'Total grams or ml eaten, for example 150 for 1.5 servings of 100 g; one serving when left out',
-      ),
+      .describe('Total grams or ml eaten; defaults to one serving or the inline label basis'),
     meal: z
       .enum(MEALS)
       .optional()
-      .describe('Which meal it was; breakfast, lunch, dinner or snack by the time of day when left out'),
+      .describe(
+        'Which meal it was; breakfast, lunch, dinner or snack by the time of day when left out',
+      ),
     at: MOMENT_ARGUMENT.optional().describe(
       'When it was eaten or drunk, an ISO time that may be in the past, for example last night; now when left out',
     ),
@@ -132,7 +148,7 @@ async function foodLogged(context: ToolContext, input: LogFood): Promise<unknown
   const entry = foodEntryOf({
     food,
     foodId,
-    amount: input.amount ?? defaultAmount(food),
+    amount: input.amount ?? food.serving?.amount ?? input.food?.basis.amount ?? defaultAmount(food),
     mealType: MEAL_TYPES[input.meal ?? mealAt(context, start)],
     span: minuteSpan(context, start),
   });
@@ -228,6 +244,7 @@ export const NUTRITION_TOOLS: readonly Tool[] = [
     name: 'food_log',
     input: LOG_FOOD,
     annotations: WRITES,
+    answer: true,
     run: async (context, input) => ({ structured: { entry: await foodLogged(context, input) } }),
   }),
   defineTool({
@@ -242,4 +259,5 @@ export const NUTRITION_TOOLS: readonly Tool[] = [
     annotations: { ...READS, openWorldHint: true },
     run: async (context, input) => ({ structured: await found(context, input) }),
   }),
+  ...NUTRITION_ENTRY_TOOLS,
 ];

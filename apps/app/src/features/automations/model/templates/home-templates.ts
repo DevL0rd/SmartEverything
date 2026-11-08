@@ -1,5 +1,6 @@
 import { capabilityOf, isCamera } from '@smarteverything/domain';
-import { MINUTE_MS, automation, lit, wire } from './build';
+import { MINUTE_MS, lit, wire } from './build';
+import { graphAutomation } from './graph-kit';
 import {
   choicesOf,
   deviceSlot,
@@ -46,7 +47,7 @@ function purifierAtBedtime(devices: readonly TemplateDevice[]): Template[] {
         devices: [device.label],
         slots: [timeSlot('at', 'Time', '22:30')],
         make: (use, m) =>
-          automation({
+          graphAutomation({
             triggers: [m.trigger('time1', 'trigger.time', { at: lit(use.text('at')) })],
             body: [
               setDevices(m, 'mode', {
@@ -98,7 +99,7 @@ function lightsAtSunset(devices: readonly TemplateDevice[]): Template[] {
         numberSlot('offset', 'Minutes after sunset', 0, { min: -120, max: 120, unit: 'min' }),
       ],
       make: (use, m) =>
-        automation({
+        graphAutomation({
           triggers: [
             m.trigger('sun1', 'trigger.sun', {
               event: lit('sunset'),
@@ -133,7 +134,7 @@ function alarmTemplates(
       devices: [sensor.label],
       slots: [messageSlot(`${sensor.label} detected ${words.noun}.`)],
       make: (use, m) =>
-        automation({
+        graphAutomation({
           triggers: [
             stateSignal(m, 'signal1', {
               subject: sensor.id,
@@ -170,7 +171,7 @@ function nightLight(devices: readonly TemplateDevice[]): Template[] {
         timeSlot('before', 'Until', '06:00'),
       ],
       make: (use, m) =>
-        automation({
+        graphAutomation({
           triggers: [
             stateSignal(m, 'signal1', {
               subject: sensor.id,
@@ -221,7 +222,7 @@ function airBoost(devices: readonly TemplateDevice[]): Template[] {
       ],
       make: (use, m) => {
         const target = { device: use.text('purifier') };
-        return automation({
+        return graphAutomation({
           triggers: [
             stateSignal(m, 'signal1', {
               subject: sensor.id,
@@ -265,7 +266,7 @@ function humidifierWhenDry(devices: readonly TemplateDevice[]): Template[] {
         devices: [device.label],
         slots: [numberSlot('below', 'Humidity below', 40, { min: 10, max: 80, unit: '%' })],
         make: (use, m) =>
-          automation({
+          graphAutomation({
             triggers: [
               stateSignal(m, 'signal1', {
                 subject: device.id,

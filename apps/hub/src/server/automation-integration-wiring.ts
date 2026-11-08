@@ -1,5 +1,7 @@
 import type { PersonBudget } from '@smarteverything/domain';
+import type { HubLayout } from '../data-layout';
 import type { ToolHub } from '../ai-tools/tool-hub';
+import { HarnessAgentHost } from '../automations/effects/harness-agent-host';
 import { OneShotModel } from '../automations/effects/one-shot-model';
 import { StoredPictures } from '../automations/effects/camera-pictures';
 import { PersonBudgets } from '../ledger/person-budget';
@@ -10,7 +12,7 @@ import type { ServerContext } from './context';
 
 export interface AutomationIntegrationWiring {
   readonly store: Store;
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
   readonly clock: Clock;
 }
 
@@ -20,7 +22,7 @@ export function attachAutomationIntegration(
   options: AutomationIntegrationWiring,
 ): void {
   const { store, clock } = options;
-  const { openRouter, hub } = context;
+  const { assistant, harness, hub } = context;
   const budgets = new PersonBudgets({
     ledger: store.ledger,
     people: {
@@ -32,16 +34,24 @@ export function attachAutomationIntegration(
   });
   hub.automationIntegration.attach({
     model: new OneShotModel({
-      chat: openRouter.client,
-      catalogue: openRouter.catalogue,
-      ledger: store.ledger,
+      agents: new HarnessAgentHost({
+        assistant,
+        store,
+        interactions: (listener): (() => void) =>
+          harness.onEvent((event) => {
+            if (event.kind === 'interaction') listener(event.chat_id);
+          }),
+        tmp: options.layout.tmp,
+      }),
       tools,
       budgets,
     }),
     pictures: new StoredPictures({
       snapshot: (deviceId, size): Promise<Uint8Array> => hub.snapshot(deviceId, size),
       recordings: store.cameras,
-      recordingPath: recordingPathIn(options.dataDirectory),
+      recordingPath: recordingPathIn(options.layout),
+      attachments: store.assistantChat,
+      attachmentPath: (file): string => assistant.files.pathOf(file),
       now: clock.now,
     }),
     computers: hub.automationComputers,

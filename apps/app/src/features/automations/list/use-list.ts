@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import type {
-  AutomationRowV3,
   AutomationRunSummary,
   FunctionLookup,
   NodeKind,
   Place,
   RefNames,
 } from '@smarteverything/domain';
+import type { AutomationRow } from '../data/graph-adapter';
 import type { IconName } from '../../../components/icon';
 import { isIconName } from '../../../components/icon';
 import { localDayKey } from '../../../format/time';
@@ -58,7 +58,7 @@ function kindLookup(kinds: readonly NodeKind[]): ReadonlyMap<string, NodeKind> {
 }
 
 function useEntries(
-  rows: readonly AutomationRowV3[],
+  rows: readonly AutomationRow[],
   runs: readonly AutomationRunSummary[],
   today: string,
   environment: ListEnvironment,
@@ -79,7 +79,7 @@ function useEntries(
 }
 
 function useEvents(
-  rows: readonly AutomationRowV3[],
+  rows: readonly AutomationRow[],
   runs: readonly AutomationRunSummary[],
   now: number,
   place: Place,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STICK_PX, finishedStreaming, shouldFollowContent, stuckAfterScroll } from './thread-stick';
+import { STICK_PX, pinTransition, shouldFollowContent, stuckAfterScroll } from './thread-stick';
 
 const AT_END = { offset: 0, contentHeight: 1000 };
 
@@ -36,13 +36,19 @@ describe('shouldFollowContent', () => {
   });
 });
 
-describe('finishedStreaming', () => {
-  it('is true only when the same message stops streaming', () => {
-    const live = { key: 'a', streaming: true };
-    expect(finishedStreaming(live, { key: 'a', streaming: false })).toBe(true);
-    expect(finishedStreaming(live, { key: 'b', streaming: false })).toBe(false);
-    expect(finishedStreaming(live, live)).toBe(false);
-    expect(finishedStreaming(null, live)).toBe(false);
+describe('pinTransition', () => {
+  const coordinator = { key: 'coordinator', at: '2026-11-06T10:00:00.000Z', streaming: true, reply: true };
+  const helper = { key: 'helper', at: '2026-11-06T10:01:00.000Z', streaming: false, reply: true };
+
+  it('follows a newer helper reply when the Coordinator held the pin', () => {
+    expect(pinTransition(coordinator, helper)).toBe('follow');
+    expect(pinTransition(null, helper)).toBe('keep');
+  });
+
+  it('releases the pin without following an older row or a settled update', () => {
+    expect(pinTransition(coordinator, { ...helper, at: '2026-11-06T09:59:00.000Z' })).toBe('release');
+    expect(pinTransition(coordinator, { ...coordinator, streaming: false })).toBe('release');
+    expect(pinTransition(coordinator, coordinator)).toBe('keep');
   });
 });
 

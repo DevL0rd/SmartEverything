@@ -15,11 +15,28 @@ import { z } from 'zod';
 import { CURSOR, moreOf, paged, type Paged } from '../../../ai-tools/paging';
 import type { PhoneViewer } from '../../../phones/phone-detail';
 import { visibleRows } from '../../../phones/phone-visibility';
+import { modelRouteServices } from '../../../server/handlers/model-assets';
+import {
+  modelViewOf,
+  resolveDeviceModel,
+  type ModelRouteServices,
+} from '../../../server/handlers/models';
 import type { Store } from '../../../store/store';
+import {
+  NO_PREPARED_PARTS,
+  definePart,
+  partsOf,
+  preparedPartsOf,
+  type DevicePart,
+  type PartContext,
+  type PartSource,
+  type PreparedParts,
+} from './device-parts';
 import { DEVICE_REFERENCE } from './references';
 import { deviceScopeOfActor, phoneViewerOfActor, type Limited } from './person-reach';
 import { READS, defineTool, matches, type Tool } from './registry';
 import { formatOf } from './value-format';
+import { VACUUM_PART } from './vacuum-part';
 import { inRooms, placedDevice, placedDevices, findCapability, type Placed } from './targets';
 
 export const DEVICE_FILTER = z.strictObject({
@@ -166,6 +183,8 @@ function described(
     role: presented.role,
     group: presented.groupLabel,
     tier: presented.tier,
+    danger: presented.danger.tier,
+    destructive: presented.danger.tier !== 'none',
     access: presented.capability.access,
     writable: presented.writable,
     value_type: presented.capability.value,
@@ -186,8 +205,8 @@ function directLinkOf(
   return host === null || mac === null ? null : { address: host, mac };
 }
 
-function televisionOf(store: Store, { device }: Placed): Record<string, unknown> {
-  const settings = store.televisionSettings.find(device.id);
+function televisionOf({ store, placed }: PartSource): Record<string, unknown> {
+  const settings = store.televisionSettings.find(placed.device.id);
   return {
     direct_link: directLinkOf(settings),
     wake_address: settings?.wake_macs[0] ?? null,
@@ -200,11 +219,8 @@ function assumedState(store: Store, remoteId: string): IrRemoteState {
   return store.settings.read().ir_remotes[remoteId] ?? EMPTY_IR_REMOTE_STATE;
 }
 
-function infraredOf(
-  store: Store,
-  scope: DeviceScope | null,
-  { device }: Placed,
-): Record<string, unknown> {
+function infraredOf({ store, scope, placed }: PartSource): Record<string, unknown> {
+  const { device } = placed;
   if (device.kind === 'ir_remote') {
     return { assumed: assumedState(store, device.id) };
   }
@@ -223,7 +239,37 @@ function infraredOf(
   };
 }
 
-const IR_KINDS: ReadonlySet<string> = new Set(['ir_blaster', 'ir_remote']);
+const DEVICE_PARTS: readonly DevicePart[] = [
+  definePart({
+    part: 'television',
+    kinds: ['television'],
+    unloaded: null,
+    read: (source) => televisionOf(source),
+  }),
+  definePart({
+    part: 'infrared',
+    kinds: ['ir_blaster', 'ir_remote'],
+    unloaded: null,
+    read: (source) => infraredOf(source),
+  }),
+  VACUUM_PART,
+];
+
+const MODEL_SERVICES = new WeakMap<Store, ModelRouteServices>();
+
+function modelOf(store: Store, placed: Placed): ReturnType<typeof modelViewOf> {
+  const services = MODEL_SERVICES.get(store) ?? modelRouteServices(store);
+  MODEL_SERVICES.set(store, services);
+  return modelViewOf(resolveDeviceModel(services, placed.device).resolution);
+}
+
+interface DetailRequest {
+  readonly store: Store;
+  readonly scope: DeviceScope | null;
+  readonly viewer: PhoneViewer;
+  readonly placed: Placed;
+  readonly prepared: PreparedParts;
+}
 
 export function deviceDetails(
   store: Store,
@@ -231,6 +277,16 @@ export function deviceDetails(
   viewer: PhoneViewer,
   placed: Placed,
 ): Record<string, unknown> {
+  return preparedDetails({ store, scope, viewer, placed, prepared: NO_PREPARED_PARTS });
+}
+
+function preparedDetails({
+  store,
+  scope,
+  viewer,
+  placed,
+  prepared,
+}: DetailRequest): Record<string, unknown> {
   const states = new Map(
     visibleRows(store, viewer, store.state.ofDevice(placed.device.id)).map((row) => [
       row.capability,
@@ -238,18 +294,17 @@ export function deviceDetails(
     ]),
   );
   const camera = store.cameras.find(placed.device.id);
+  const presented = presentDevice(placed.device).capabilities;
   return {
     device: {
       ...deviceSummary(placed),
       details: placed.device.details,
       updated_at: placed.device.updated_at,
       camera: camera ?? null,
-      ...(placed.device.kind === 'television' ? { television: televisionOf(store, placed) } : {}),
-      ...(IR_KINDS.has(placed.device.kind) ? { infrared: infraredOf(store, scope, placed) } : {}),
+      model: modelOf(store, placed),
+      ...partsOf(DEVICE_PARTS, { store, scope, placed, states, presented }, prepared),
     },
-    capabilities: presentDevice(placed.device).capabilities.map((presented) =>
-      described(presented, states.get(presented.key)),
-    ),
+    capabilities: presented.map((capability) => described(capability, states.get(capability.key))),
   };
 }
 
@@ -299,6 +354,21 @@ export function listDevices(context: Limited, input: DeviceFind): Record<string,
   );
 }
 
+export async function readDevice(
+  context: PartContext & Limited,
+  reference: string,
+): Promise<Record<string, unknown>> {
+  const scope = deviceScopeOfActor(context);
+  const placed = placedDevice(context.store, scope, reference);
+  return preparedDetails({
+    store: context.store,
+    scope,
+    viewer: phoneViewerOfActor(context),
+    placed,
+    prepared: await preparedPartsOf(DEVICE_PARTS, context, placed),
+  });
+}
+
 export const DEVICE_TOOLS: readonly Tool[] = [
   defineTool({
     name: 'list_devices',
@@ -310,16 +380,6 @@ export const DEVICE_TOOLS: readonly Tool[] = [
     name: 'device_read',
     input: z.strictObject({ deviceId: DEVICE_REFERENCE }),
     annotations: READS,
-    run: (context, input) => {
-      const scope = deviceScopeOfActor(context);
-      return {
-        structured: deviceDetails(
-          context.store,
-          scope,
-          phoneViewerOfActor(context),
-          placedDevice(context.store, scope, input.deviceId),
-        ),
-      };
-    },
+    run: async (context, input) => ({ structured: await readDevice(context, input.deviceId) }),
   }),
 ];

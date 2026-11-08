@@ -1,5 +1,6 @@
 import BatteryChargingGlyph from 'lucide-react-native/icons/battery-charging';
 import GpuGlyph from 'lucide-react-native/icons/gpu';
+import ChartPieGlyph from 'lucide-react-native/icons/chart-pie';
 import HardDriveGlyph from 'lucide-react-native/icons/hard-drive';
 import LaptopGlyph from 'lucide-react-native/icons/laptop';
 import MemoryStickGlyph from 'lucide-react-native/icons/memory-stick';
@@ -11,6 +12,7 @@ import UsbGlyph from 'lucide-react-native/icons/usb';
 export const COMPUTER_GLYPHS = {
   gpu: GpuGlyph,
   memoryStick: MemoryStickGlyph,
+  chartPie: ChartPieGlyph,
   hardDrive: HardDriveGlyph,
   monitorOff: MonitorOffGlyph,
   batteryCharging: BatteryChargingGlyph,

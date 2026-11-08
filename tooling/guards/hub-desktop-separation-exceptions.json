@@ -1,0 +1,162 @@
+[
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/packaging/computer/entry.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/packaging/computer/supervise.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/agent/desktop-agent.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/drive-mount/broker-continue.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/drive-mount/broker-families.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/drive-mount/broker-grants.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/html-preview/page.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/html-preview/server-relay.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/hub-network/authority.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/hub-network/discovery.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/hub-network/ipc.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/hub-network/pairing-enrollment.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/hub-network/pairing-inspection.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/hub-network/resources.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/service/computer-identity.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/service/config-file.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/service/controller.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/service/definitions.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/service/locations.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/service/pair-computer.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/service/ready.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/updates/update-fetch.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/src/updates/update-notices.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/test/computer-identity.test.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/test/drive-mount/broker.test.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/test/drive-sync/hub-harness.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/test/drive-sync/spike/runtime-spike.test.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/test/hub-discovery.test.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/test/hub-network-windows.test.ts"
+  },
+  {
+    "rule": "desktop-imports-hub",
+    "path": "apps/desktop/test/route-authority.test.ts"
+  },
+  {
+    "rule": "desktop-depends-on-hub",
+    "path": "apps/desktop/package.json"
+  },
+  {
+    "rule": "hub-data-literal",
+    "path": "apps/desktop/test/service-definitions.test.ts"
+  },
+  {
+    "rule": "hub-data-literal",
+    "path": "apps/desktop/test/service-helpers.test.ts"
+  },
+  {
+    "rule": "hub-data-literal",
+    "path": "apps/desktop/test/service/linux-unit.test.ts"
+  },
+  {
+    "rule": "hub-data-literal",
+    "path": "apps/desktop/test/support/fake-system.ts"
+  },
+  {
+    "rule": "loopback-endpoint-kind",
+    "path": "apps/app/src/api/connection/pairing-destination.ts"
+  },
+  {
+    "rule": "loopback-endpoint-kind",
+    "path": "apps/app/src/api/connection/route-policy.test.ts"
+  },
+  {
+    "rule": "loopback-endpoint-kind",
+    "path": "apps/app/src/api/connection/route-policy.ts"
+  },
+  {
+    "rule": "loopback-endpoint-kind",
+    "path": "apps/app/src/api/connection/storage.ts"
+  },
+  {
+    "rule": "loopback-endpoint-kind",
+    "path": "packages/domain/src/hub-connections.ts"
+  }
+]

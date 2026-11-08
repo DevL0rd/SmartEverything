@@ -2,7 +2,7 @@ import { withRequestSignal } from './request-signal';
 import { assertOwnerRoute } from './owner-route';
 import { assertScopeRoute } from './person-scope';
 import { withControlCaller } from './local-control-context';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http';
 import {
   API_ENDPOINTS,
   ApiError,
@@ -24,8 +24,9 @@ import { beginHandler, type HandlerRun } from './handlers/handler-log';
 import { memberEngineProjection } from './member-engine';
 import { RouteIndex, type Found } from './route-index';
 import { authenticate, roleOfCaller, type Caller } from './auth';
-import { invalid, issuesOf } from './errors';
+import { InvalidResponseError, invalid } from './errors';
 import { noteCaller, noteRoute } from './request-trace';
+import { sendTagged } from './entity-tag';
 import { BODY_LIMIT, PUBLIC_BODY_LIMIT, parseJsonBody, readBody, remoteOf, sendJson } from './http';
 
 export interface HandlerInput<P extends z.ZodType, Q extends z.ZodType, B extends z.ZodType> {
@@ -34,6 +35,7 @@ export interface HandlerInput<P extends z.ZodType, Q extends z.ZodType, B extend
   readonly body: z.output<B>;
   readonly caller: Caller;
   readonly remote: string;
+  readonly headers: IncomingHttpHeaders;
 }
 
 interface Typed<
@@ -53,11 +55,20 @@ interface RawInput {
   readonly query: unknown;
   readonly body: unknown;
   readonly remote: string;
+  readonly headers: IncomingHttpHeaders;
 }
 
 export interface Bound<S extends EndpointShape = EndpointShape> {
   readonly endpoint: S;
   readonly run: (caller: Caller, raw: RawInput, log: Logger) => Promise<unknown>;
+  readonly entityTag?: (response: unknown) => string;
+}
+
+export function tagged<S extends EndpointShape>(
+  route: Bound<S>,
+  entityTag: (response: unknown) => string,
+): Bound<S> {
+  return { ...route, entityTag };
 }
 
 function roleFor(caller: Caller, access: EndpointShape['access']): ClientRow['role'] | null {
@@ -67,14 +78,10 @@ function roleFor(caller: Caller, access: EndpointShape['access']): ClientRow['ro
   return role;
 }
 
-function validResponse(endpoint: EndpointShape, result: unknown, log: Logger): unknown {
+function validResponse(endpoint: EndpointShape, result: unknown): unknown {
   const response = endpoint.response.safeParse(result);
   if (response.success) return response.data;
-  log.error('response.invalid', undefined, {
-    path: endpoint.path,
-    issues: issuesOf(response.error),
-  });
-  throw new ApiError('internal', `The server built an invalid response for ${endpoint.path}.`);
+  throw new InvalidResponseError(endpoint.path, response.error);
 }
 
 function validated<P extends z.ZodType, Q extends z.ZodType, B extends z.ZodType>(
@@ -112,16 +119,16 @@ export function bound<
 ): Bound<S> {
   return {
     endpoint,
-    run: async (caller, raw, log): Promise<unknown> => {
+    run: async (caller, raw): Promise<unknown> => {
       const run = beginHandler(`${endpoint.method} ${endpoint.path}`, endpoint.access, caller);
       try {
         const role = roleFor(caller, endpoint.access);
         const input = validated(endpoint, raw, run);
         const startedAt = performance.now();
         const result = await withControlCaller(caller, () =>
-          handler({ ...input, caller, remote: raw.remote }),
+          handler({ ...input, caller, remote: raw.remote, headers: raw.headers }),
         );
-        const response = validResponse(endpoint, result, log);
+        const response = validResponse(endpoint, result);
         run.finished(Math.round((performance.now() - startedAt) * 100) / 100);
         return caller.kind === 'client' && role !== 'owner'
           ? memberEngineProjection(response)
@@ -149,8 +156,30 @@ type ExtensionEndpointName =
   | TreadmillEndpointName
   | BrushEndpointName
   | BottleEndpointName
-  | 'reportClientFailures'
+  | 'reportClientPerf'
   | 'readMachineUpdate'
+  | 'publishMachineUpdate'
+  | 'rollbackMachineUpdate'
+  | 'withdrawMachineUpdate'
+  | 'readAppUpdate'
+  | 'listAppUpdates'
+  | 'publishAppUpdate'
+  | 'promoteAppUpdate'
+  | 'rollbackAppUpdate'
+  | 'withdrawAppUpdate'
+  | 'pruneAppUpdateBlobs'
+  | 'readAppUpdateKey'
+  | 'readAndroidAppBuild'
+  | 'readAndroidAppBuilds'
+  | 'readAndroidApkOffer'
+  | 'readAndroidUpdateHistory'
+  | 'reportAppUpdate'
+  | 'reportAndroidAppBuild'
+  | 'uploadModelAsset'
+  | 'readModelAsset'
+  | 'uploadHomeMapScan'
+  | 'homeMapScanLink'
+  | 'removeHomeMapScan'
   | ComputerEndpointName;
 
 export type RouteOf<N extends EndpointName> = Bound<ApiEndpoints[N]>;
@@ -214,10 +243,16 @@ export class Router {
           query: Object.fromEntries(url.searchParams),
           body,
           remote: remoteOf(request),
+          headers: request.headers,
         },
         this.log,
       ),
     );
-    sendJson(response, 200, result);
+    const { entityTag } = matched.value;
+    if (entityTag === undefined) {
+      sendJson(response, 200, result);
+      return;
+    }
+    sendTagged(request, response, result, entityTag(result));
   }
 }

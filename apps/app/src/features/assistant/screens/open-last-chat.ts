@@ -3,7 +3,7 @@ import { useNavigation } from 'expo-router';
 import { Logger } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { openInstantly } from '../../../app-shell/instant-open';
-import { useAiLayoutFor } from '../shell/use-ai-layout';
+import { useAiLayout } from '../shell/use-ai-layout';
 import { useLatestChatId } from '../data/chat-store';
 import { forgetGoneChat, useLastChat } from '../data/last-chat';
 import { localPref, setLocalPref } from '../../../store/local-prefs';
@@ -67,7 +67,7 @@ export function useOpenLastChat(wide: boolean, paused: boolean): void {
 }
 
 export function usePrewarmChat(): () => string | null {
-  const wide = useAiLayoutFor(false).mode !== 'stack';
+  const wide = useAiLayout().mode !== 'stack';
   const last = useLastChat();
   const latest = useLatestChatId();
   return (): string | null => {

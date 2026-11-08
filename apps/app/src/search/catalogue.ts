@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import {
   appendTo,
   buildSearchIndex,
@@ -9,12 +9,16 @@ import {
 import { href } from '../app-shell/hrefs';
 import type { IconName } from '../components/icon';
 import {
+  appChatHistoryOnly,
   chatSourceOf,
   useExtensions,
   useExtensionConfiguration,
   useHarnessCatalogue,
 } from '../features/assistant';
 import { deviceIcon } from '../features/device-visuals';
+import { useHomeMapSet } from '../features/home-map/data/map-set-query';
+import { categoriesOf, furnitureRows } from '../features/home-map/editor/tools/furniture-model';
+import type { MapSearchItem } from '../features/home-map/search-maps';
 import { useSettingEnv } from '../settings/env';
 import type { SettingEnv } from '../settings/types';
 import { memoOnInputs } from '../store/memo-selector';
@@ -36,7 +40,7 @@ import { sameSearchDevices, sameSearchStreams } from './table-equality';
 export interface SearchCatalogue {
   readonly index: SearchIndex;
   readonly entries: ReadonlyMap<string, SearchEntry>;
-  readonly links: ReadonlyMap<string, Href>;
+  readonly links: ReadonlyMap<string, AppHref>;
   readonly icons: ReadonlyMap<string, IconName>;
   readonly devices: ReadonlyMap<string, NamedDevice>;
   readonly parents: ReadonlyMap<string, string>;
@@ -60,7 +64,7 @@ export function deviceIdOf(entry: SearchEntry): string | null {
   return 'deviceId' in target ? target.deviceId : null;
 }
 
-function routineLink(entry: SearchEntry): Href {
+function routineLink(entry: SearchEntry): AppHref {
   if (entry.open.kind === 'room') {
     return href.room(entry.open.roomId);
   }
@@ -71,7 +75,7 @@ function routineLink(entry: SearchEntry): Href {
   return target?.kind === 'automation' ? href.automation(target.automationId) : href.home();
 }
 
-function linkOf(entry: SearchEntry, devices: ReadonlyMap<string, NamedDevice>): Href {
+function linkOf(entry: SearchEntry, devices: ReadonlyMap<string, NamedDevice>): AppHref {
   const deviceId = deviceIdOf(entry);
   const named = deviceId === null ? undefined : devices.get(deviceId);
   if (named === undefined) {
@@ -188,10 +192,13 @@ function catalogueFor(tables: SearchTables, env: SettingEnv): SearchCatalogue {
     tables.scenes,
     tables.automations,
     tables.automationValues,
+    tables.automationPluginKinds,
     tables.scheduled,
     tables.plugins,
     tables.pluginStreams,
     tables.chats,
+    tables.homeMaps,
+    tables.modelCategories,
     tables.extensions,
     tables.configuration,
     tables.inventory,
@@ -216,11 +223,8 @@ const searchChatsOf = memoOnInputs(
         source: chatSourceOf(chat, names).label,
         pinned: chat.pinned,
         computer: chat.engine.kind === 'claude' || chat.engine.kind === 'codex',
-        ...(chat.engine.kind === 'claude' ||
-        chat.engine.kind === 'codex' ||
-        chat.engine.kind === 'dsh'
-          ? { runtime: chat.engine.kind }
-          : {}),
+        runtime: chat.engine.kind,
+        historyOnly: appChatHistoryOnly(chat),
       }));
   },
 );
@@ -236,22 +240,33 @@ function sameChats(left: readonly SearchChat[], right: readonly SearchChat[]): b
         other.source === chat.source &&
         other.pinned === chat.pinned &&
         other.computer === chat.computer &&
-        other.runtime === chat.runtime
+        other.runtime === chat.runtime &&
+        other.historyOnly === chat.historyOnly
       );
     })
   );
 }
 
+const modelCategoriesOf = memoOnInputs(
+  (state: StoreState) => [state.tables.model_catalog],
+  (state): readonly string[] => categoriesOf(furnitureRows(state.tables.model_catalog.rows)),
+);
+
+const NO_MAPS: readonly MapSearchItem[] = [];
+
 function searchTablesOf(state: StoreState): SearchTables {
   const t = state.tables;
   return {
     chats: searchChatsOf(state),
+    homeMaps: NO_MAPS,
+    modelCategories: modelCategoriesOf(state),
     devices: t.devices,
     rooms: t.rooms,
     deviceGroups: t.device_groups,
     scenes: t.scenes,
     automations: t.automations,
     automationValues: t.automation_values,
+    automationPluginKinds: t.automation_plugin_kinds,
     scheduled: t.scheduled_actions,
     plugins: t.plugins,
     pluginStreams: t.plugin_streams,
@@ -270,17 +285,25 @@ function samePlugins(left: SearchTables, right: SearchTables): boolean {
   );
 }
 
+function sameAutomationTables(left: SearchTables, right: SearchTables): boolean {
+  return (
+    left.automations === right.automations &&
+    left.automationValues === right.automationValues &&
+    left.automationPluginKinds === right.automationPluginKinds &&
+    left.scheduled === right.scheduled
+  );
+}
+
 function sameTables(left: SearchTables, right: SearchTables): boolean {
   return (
     sameSearchDevices(left.devices, right.devices) &&
     left.rooms === right.rooms &&
     left.deviceGroups === right.deviceGroups &&
     left.scenes === right.scenes &&
-    left.automations === right.automations &&
-    left.automationValues === right.automationValues &&
-    left.scheduled === right.scheduled &&
+    sameAutomationTables(left, right) &&
     samePlugins(left, right) &&
-    sameChats(left.chats, right.chats)
+    sameChats(left.chats, right.chats) &&
+    shallowEqual(left.modelCategories, right.modelCategories)
   );
 }
 
@@ -291,5 +314,6 @@ export function useSearchCatalogue(): SearchCatalogue {
   const extensions = useExtensions().data;
   const configuration = useExtensionConfiguration().data;
   const inventory = useHarnessCatalogue().data;
-  return catalogueFor({ ...tables, chats, extensions, configuration, inventory }, env);
+  const homeMaps = useHomeMapSet().maps ?? NO_MAPS;
+  return catalogueFor({ ...tables, chats, homeMaps, extensions, configuration, inventory }, env);
 }

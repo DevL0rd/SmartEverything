@@ -1,9 +1,22 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import type { ReactElement } from 'react';
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { FlowNode } from '@smarteverything/domain';
+import { NODE_REGISTRY, type FlowNode, type ProgramV4 } from '@smarteverything/domain';
+import { structuredOf } from '@smarteverything/flow/graph/structured-of';
 import { Ids, automation, ifNode, scope, setLight } from '../../model/canvas/canvas-fixtures';
+import {
+  automation as graphAutomation,
+  forkProgram,
+  gnode,
+  idOf,
+  note,
+  start,
+} from '../../model/graph/graph-scene-fixtures';
 import { envOf, recordingActions, viewByKey } from './sections/inspector-fixtures';
+import { ValueServicesContext, type ValueServices } from './values/value-services';
+import type { InspectorModel } from './inspector';
 import type { InspectorEnv, ValueRequest } from './sections/section-types';
 
 vi.mock('../../../../design/colour', () => ({
@@ -15,7 +28,28 @@ vi.mock('../../../../components/switch', () => ({
   SwitchTrack: (): null => null,
 }));
 
+const SERVICES: ValueServices = {
+  env: null,
+  references: { options: () => [] },
+  secrets: { options: [], owner: false, onAdd: (): void => undefined },
+  deviceOptions: () => ({ status: 'ready', options: [{ id: 'brightness', label: 'Brightness' }] }),
+};
+
+function renderToStaticMarkup(element: ReactElement): string {
+  return renderMarkup(createElement(ValueServicesContext, { value: SERVICES }, element));
+}
+
 const { NodeSections } = await import('./sections');
+const { setMoreOptionsOpen } = await import('./sections/more-options-state');
+
+function opened<T>(run: () => T): T {
+  setMoreOptionsOpen(true);
+  try {
+    return run();
+  } finally {
+    setMoreOptionsOpen(false);
+  }
+}
 const { Inspector } = await import('./inspector');
 
 function render(
@@ -38,21 +72,49 @@ function lone(kind: string, extra: Partial<FlowNode> = {}): FlowNode {
 }
 
 describe('inspector sections render', () => {
-  it('shows the header with the class badge, the label and no key', () => {
+  it('shows the kind and its description in the header, with no key and no name field', () => {
     const light = setLight(new Ids(), null, { label: 'Dim the lamp' });
     const html = render(automation([light]), light.key, { breakpoint: true });
-    expect(html).toContain('Dim the lamp');
-    expect(html).toContain('Step');
+    expect(html).toContain('Change device');
     expect(html).toContain('Pauses here');
+    expect(html).not.toContain('Dim the lamp');
     expect(html).not.toContain(`>${light.key}<`);
   });
 
-  it('keeps the key, Step is on and Free position inside Advanced', () => {
-    const light = setLight(new Ids(), null);
+  it('keeps name, note, failure handling, key, Step is on and Free position inside More options', () => {
+    const light = setLight(new Ids(), null, { label: 'Dim the lamp' });
+    const closed = render(automation([light]), light.key);
+    expect(closed).toContain('More options');
+    for (const hidden of ['Keep where I drop it', 'Step is on', 'Stop the run', 'Dim the lamp']) {
+      expect(closed).not.toContain(hidden);
+    }
+    const open = opened(() => render(automation([light]), light.key));
+    for (const shown of [
+      'Keep where I drop it',
+      'Step is on',
+      'When it fails',
+      'Stop the run',
+      'Dim the lamp',
+      'Note',
+    ]) {
+      expect(open).toContain(shown);
+    }
+  });
+
+  it('says what is set inside More options while it is closed', () => {
+    const light = setLight(new Ids(), null, { note: 'Careful', policy: { timeout: 5000 } });
     const html = render(automation([light]), light.key);
-    expect(html).toContain('Advanced');
-    expect(html).not.toContain('Free position');
-    expect(html).not.toContain('Step is on');
+    expect(html).toContain('Note, Time limit 5 s');
+  });
+
+  it('offers Delete step and says what happens to the steps around it', () => {
+    const ids = new Ids();
+    const light = setLight(ids, null);
+    const html = render(automation([light]), light.key);
+    expect(html).toContain('Delete step');
+    expect(html).toContain('joined up');
+    const branch = ifNode(new Ids(10), [scope([setLight(new Ids(20), null)])]);
+    expect(render(automation([branch]), branch.key)).toContain('Delete step');
   });
 
   it('shows the problems of the node with a fix button', () => {
@@ -76,7 +138,7 @@ describe('inspector sections render', () => {
 
   it('shows Loop limits with the caption of the loop kind', () => {
     const loop = lone('flow.while', { scopes: { body: scope([]) } });
-    const html = render(automation([loop]), loop.key);
+    const html = opened(() => render(automation([loop]), loop.key));
     expect(html).toContain('Loop limits');
     expect(html).toContain('Before checking again');
     expect(html).toContain('Stops the loop even in the middle of a pass');
@@ -89,13 +151,14 @@ describe('inspector sections render', () => {
       scopes: { body: scope([]) },
       ports: { limit: { lit: { iterations: 500, onLimit: 'fail' } } },
     });
-    const html = render(automation([loop]), loop.key);
+    const html = opened(() => render(automation([loop]), loop.key));
     expect(html).toContain('Most passes');
   });
 
   it('shows For each at the same time and the collect switch', () => {
     const loop = lone('flow.for_each', { scopes: { body: scope([]) } });
-    const html = render(automation([loop]), loop.key);
+    expect(render(automation([loop]), loop.key)).not.toContain('At the same time');
+    const html = opened(() => render(automation([loop]), loop.key));
     expect(html).toContain('At the same time');
     expect(html).toContain('Passes can finish in any order');
     expect(html).toContain('Collect a value from each pass');
@@ -105,7 +168,6 @@ describe('inspector sections render', () => {
   it('shows the cases of an If with an add button', () => {
     const branch = ifNode(new Ids(), [scope([]), scope([])]);
     const html = render(automation([branch]), branch.key);
-    expect(html).toContain('Otherwise if');
     expect(html).toContain('Add a case');
     expect(html).toContain('Otherwise');
   });
@@ -131,13 +193,18 @@ describe('inspector sections render', () => {
     expect(render(automation([node]), node.key)).not.toContain('Add all options');
   });
 
-  it('shows Do together with its join, failure policy and branches', () => {
-    const node = lone('flow.parallel', { scopes: { branch1: scope([]), branch2: scope([]) } });
+  it('shows Do together with its paths and the Wait for all options', () => {
+    const node = lone('flow.parallel', { scopes: { path1: scope([]), path2: scope([]) } });
     const html = render(automation([node]), node.key);
-    expect(html).toContain('Finishes when');
-    expect(html).toContain('If one branch fails');
-    expect(html).toContain('Add a branch');
-    expect(html).toContain('Branch 2');
+    expect(html).toContain('Paths');
+    expect(html).toContain('Add a path');
+    expect(html).toContain('Path 2');
+  });
+
+  it('shows where each exit of a step leads and what leads into it', () => {
+    const light = setLight(new Ids(), null);
+    const html = render(automation([light]), light.key);
+    expect(html).toContain('Comes from');
   });
 
   it('shows Which loop with the loops around a Break', () => {
@@ -190,6 +257,11 @@ describe('inspector sections render', () => {
   });
 });
 
+function modelOf(program: ReturnType<typeof automation>): InspectorModel {
+  const env = envOf(program);
+  return { graph: env, steps: env };
+}
+
 describe('Inspector', () => {
   it('renders nothing for a missing selection and the sections for a docked panel', () => {
     const light = setLight(new Ids(), null);
@@ -198,7 +270,7 @@ describe('Inspector', () => {
     const empty = renderToStaticMarkup(
       createElement(Inspector, {
         selectedId: null,
-        env: envOf(program),
+        model: modelOf(program),
         actions,
         docked: true,
         onClose: (): undefined => undefined,
@@ -208,7 +280,7 @@ describe('Inspector', () => {
     const docked = renderToStaticMarkup(
       createElement(Inspector, {
         selectedId: light.id,
-        env: envOf(program),
+        model: modelOf(program),
         actions,
         docked: true,
         onClose: (): undefined => undefined,
@@ -216,5 +288,77 @@ describe('Inspector', () => {
     );
     expect(docked).toContain('Step options');
     expect(docked).toContain('Inputs');
+  });
+});
+
+describe('Inspector for steps the structured form does not hold', () => {
+  const noop = (): undefined => undefined;
+
+  function docked(program: ProgramV4, selectedId: string, structured: boolean): string {
+    const tree = structuredOf(program, STATIC_KIND_LOOKUP);
+    if (tree.kind !== 'structured') throw new Error('the fixture does not read as steps');
+    const env = envOf(tree.tree, { graph: program });
+    const { actions } = recordingActions();
+    return renderToStaticMarkup(
+      createElement(Inspector, {
+        selectedId,
+        model: { graph: env, steps: structured ? env : null },
+        actions,
+        docked: true,
+        onClose: noop,
+      }),
+    );
+  }
+
+  it('shows the options of Wait for all when it is selected', () => {
+    const program = forkProgram('all');
+    const joinId = program.nodes.find((node) => node.kind === 'flow.join')?.id ?? '';
+    const html = docked(program, joinId, true);
+    expect(html).toContain('Wait for all');
+    expect(html).toContain('Finishes when');
+    expect(html).toContain('Comes from');
+  });
+
+  it('shows Then of Start so the first wire can be changed', () => {
+    const html = docked(forkProgram('all'), idOf('start'), true);
+    expect(html).toContain('Start');
+    expect(html).toContain('Goes to');
+    expect(html).toContain('Do together');
+    expect(html).toContain('Only start if');
+    expect(html).toContain('Check before every run');
+  });
+
+  it('still offers wires and rows when the program does not read as steps', () => {
+    const program = graphAutomation(
+      [
+        start('a'),
+        gnode('a', 'flow.parallel', { paths: [{ name: 'one' }, { name: 'two' }] }),
+        note('b'),
+      ],
+      { triggers: [] },
+    );
+    const tree = structuredOf(program, STATIC_KIND_LOOKUP);
+    expect(tree.kind).toBe('unstructured');
+    const { actions } = recordingActions();
+    const html = renderToStaticMarkup(
+      createElement(Inspector, {
+        selectedId: idOf('b'),
+        model: {
+          graph: {
+            graph: program,
+            registry: NODE_REGISTRY,
+            findings: [],
+            subjectChoices: undefined,
+            renderValue: () => null,
+            locked: false,
+          },
+          steps: null,
+        },
+        actions,
+        docked: true,
+        onClose: noop,
+      }),
+    );
+    expect(html).toContain('Comes from');
   });
 });

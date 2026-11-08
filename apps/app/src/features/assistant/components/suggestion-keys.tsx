@@ -21,11 +21,8 @@ export const NO_SUGGESTIONS: Suggestions = {
   dismiss: (): void => undefined,
 };
 
-const OWNED_KEYS: ReadonlySet<string> = new Set(['Enter', 'ArrowUp', 'ArrowDown']);
-
 export function suggestionKey(key: string, suggestions: Suggestions): boolean {
   if (suggestions.items.length === 0) return false;
-  if (OWNED_KEYS.has(key)) return true;
   if (key !== 'Tab' || suggestions.highlighted === null) return false;
   suggestions.activate(suggestions.highlighted);
   return true;

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaListener, SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Uniwind } from 'uniwind';
@@ -55,45 +56,47 @@ export function AppRoot({ children }: { readonly children: ReactNode }): ReactNo
   useStartup();
   return (
     <GestureHandlerRootView className="flex-1 bg-bg">
-      <SafeAreaProvider>
-        <SafeAreaListener
-          onChange={({ insets }) => {
-            Uniwind.updateInsets(insets);
-          }}
-        >
-          <ColourPalette>
-            <LightingScope>
-              <QueryClientProvider client={client}>
-                <ConnectionProvider>
-                  <LinkIntentProvider
-                    onIntent={(target) => {
-                      preloader.boost(target);
-                    }}
-                  >
-                    <View
-                      className="flex-1 bg-bg"
-                      onTouchStart={touchStarted}
-                      onTouchEnd={touchFinished}
-                      onTouchCancel={touchFinished}
-                      {...(probeTouchMoves
-                        ? {
-                            onTouchMove: (): void => {
-                              perfTouch('move');
-                            },
-                          }
-                        : {})}
+      <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
+        <SafeAreaProvider>
+          <SafeAreaListener
+            onChange={({ insets }) => {
+              Uniwind.updateInsets(insets);
+            }}
+          >
+            <ColourPalette>
+              <LightingScope>
+                <QueryClientProvider client={client}>
+                  <ConnectionProvider>
+                    <LinkIntentProvider
+                      onIntent={(target) => {
+                        preloader.boost(target);
+                      }}
                     >
-                      <HomeHost>{children}</HomeHost>
-                      <Toasts />
-                      <ConfirmHost />
-                    </View>
-                  </LinkIntentProvider>
-                </ConnectionProvider>
-              </QueryClientProvider>
-            </LightingScope>
-          </ColourPalette>
-        </SafeAreaListener>
-      </SafeAreaProvider>
+                      <View
+                        className="flex-1 bg-bg"
+                        onTouchStart={touchStarted}
+                        onTouchEnd={touchFinished}
+                        onTouchCancel={touchFinished}
+                        {...(probeTouchMoves
+                          ? {
+                              onTouchMove: (): void => {
+                                perfTouch('move');
+                              },
+                            }
+                          : {})}
+                      >
+                        <HomeHost>{children}</HomeHost>
+                        <Toasts />
+                        <ConfirmHost />
+                      </View>
+                    </LinkIntentProvider>
+                  </ConnectionProvider>
+                </QueryClientProvider>
+              </LightingScope>
+            </ColourPalette>
+          </SafeAreaListener>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

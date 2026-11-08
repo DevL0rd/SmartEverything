@@ -22,8 +22,7 @@ export class DesktopPairingEnrollments<Owner> {
     if (
       !trust.scopeId.startsWith(HUB_PAIRING_SCOPE_PREFIX) ||
       trust.endpoints.length !== 1 ||
-      endpoint === undefined ||
-      endpoint.kind === 'loopback'
+      endpoint === undefined
     )
       throw new HubTransportError('Pairing requires one encrypted endpoint');
     this.clear(trust.scopeId);

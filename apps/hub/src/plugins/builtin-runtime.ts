@@ -102,7 +102,11 @@ export class BuiltinRuntime implements PluginRuntime {
       : tool.run(args, caller);
   }
 
-  async choices(source: string, query: PluginOptionQuery): Promise<PluginOptionPage> {
+  async choices(
+    source: string,
+    query: PluginOptionQuery,
+    caller: ToolCaller,
+  ): Promise<PluginOptionPage> {
     const provider = this.providers.get(source);
     if (provider === undefined && this.controller === null) {
       return { state: 'unavailable', message: 'The plugin is not running. Check its status.' };
@@ -110,7 +114,7 @@ export class BuiltinRuntime implements PluginRuntime {
     if (provider === undefined) {
       throw new ApiError('not_found', `The plugin has no list named ${source}.`);
     }
-    return await provider(query);
+    return await provider(query, caller);
   }
 
   private provide(source: string, provider: PluginOptionProvider): Unsubscribe {

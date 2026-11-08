@@ -4,6 +4,7 @@ import {
   type CompactionEmbed,
 } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
+import { isHelperDialogueMirror } from '../delegation/relay-speaker';
 
 export interface ChatContext {
   readonly summary: string | null;
@@ -35,6 +36,6 @@ export function chatContext(store: Store, chatId: string): ChatContext {
     summary: latest?.text ?? null,
     rows: store.assistantChat
       .since(chatId, marker?.through_at ?? null)
-      .filter((row) => compactionOf(row) === null),
+      .filter((row) => !isHelperDialogueMirror(row) && compactionOf(row) === null),
   };
 }

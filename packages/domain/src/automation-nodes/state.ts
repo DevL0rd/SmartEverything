@@ -86,7 +86,7 @@ const deviceAggregate = defineNodeKind({
   icon: 'chart-no-axes-column',
   class: 'read',
   description:
-    'Combines one control across many devices: any, all, none, a count, an average and more.',
+    'Combines one control across many devices: any, all, none, a count, an average and more. Devices that are offline are left out and listed in offline.',
   inputs: [
     {
       name: 'target',
@@ -114,12 +114,18 @@ const deviceAggregate = defineNodeKind({
       required: false,
       live: true,
       description: 'The value that counts as a match for any, all, none and count.',
+      ui: { typedBy: 'control' },
     },
   ],
   outputs: [
     { name: 'value', type: ANY, description: 'The combined result.' },
     { name: 'count', type: INTEGER, description: 'How many devices matched.' },
     { name: 'matching', type: DEVICE_LIST, description: 'The devices that matched.' },
+    {
+      name: 'offline',
+      type: DEVICE_LIST,
+      description: 'The devices left out because they are offline.',
+    },
   ],
   exits: [],
   summary: '{fn} of {control} across {target}',
@@ -285,6 +291,7 @@ const stateHistory = defineNodeKind({
       required: false,
       live: true,
       description: 'Count the time the control held this value.',
+      ui: { typedBy: 'control' },
     },
   ],
   outputs: [

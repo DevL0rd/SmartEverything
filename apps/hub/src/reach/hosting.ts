@@ -21,7 +21,7 @@ export interface HostingOptions {
   readonly computer: ComputerParts;
   readonly framing: CameraFraming;
   readonly openLive: OpenLive;
-  readonly chatFor: (asker: Asker, label: string) => string;
+  readonly chatFor: (asker: Asker) => string;
   readonly aiName: () => string;
   readonly liveVideo: () => boolean;
   readonly muteMic: () => boolean;
@@ -168,7 +168,7 @@ export class Hosting {
   private live(asker: Asker, spec: LiveSpec): AiOutreachRow {
     return this.options.store.aiOutreach.add({
       profile_id: asker.profileId,
-      chat_id: this.options.chatFor(asker, `Talking via ${spec.label}`.slice(0, 80)),
+      chat_id: this.options.chatFor(asker),
       from_chat_id: asker.chatId,
       how: spec.how,
       target: spec.target,

@@ -1,9 +1,16 @@
-import { ApiError, type AutomationV3, type FunctionV3 } from '@smarteverything/domain';
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
+import { randomUUID } from 'node:crypto';
+import {
+  ApiError,
+  STARTER_NODES,
+  type AutomationV4,
+  type FunctionV3,
+  type FunctionV4,
+} from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   automationFunctions,
   type AutomationFunctions,
-  type BuiltinFunction,
 } from '../../src/automations/service-functions';
 import type { Caller } from '../../src/server/auth';
 import { captureLogs } from '../support/logs';
@@ -12,20 +19,15 @@ import {
   lit,
   logLine,
   programRig,
+  setPower,
   step,
   type ProgramRig,
 } from './support/program-rig';
+import { graphFunction } from './support/graph-of';
 
 let rig: ProgramRig;
 let service: AutomationFunctions;
 let member: Caller;
-
-const BUILTIN: BuiltinFunction = {
-  id: 'builtin.demo',
-  revision: 3,
-  name: 'Demo',
-  program: functionOf(),
-};
 
 beforeEach(() => {
   captureLogs();
@@ -35,25 +37,28 @@ beforeEach(() => {
     client: rig.member.client,
     profileId: rig.store.profiles.create({ name: 'Robin' }).id,
   };
-  service = automationFunctions({ ...rig.env, functions: rig.functions, builtins: [BUILTIN] });
+  service = automationFunctions({ ...rig.env, functions: rig.functions });
 });
 
 afterEach(() => {
   rig.close();
 });
 
-function functionOf(extra: Partial<FunctionV3> = {}): FunctionV3 {
-  return {
-    version: 3,
-    kind: 'function',
-    flavour: 'action',
-    inputs: [],
-    outputs: [],
-    exits: ['done'],
-    variables: [],
-    body: { nodes: [logLine('say', 'hi')] },
-    ...extra,
-  };
+function functionOf(extra: Partial<FunctionV3> = {}): FunctionV4 {
+  return graphFunction(
+    {
+      version: 3,
+      kind: 'function',
+      flavour: 'action',
+      inputs: [],
+      outputs: [],
+      exits: ['done'],
+      variables: [],
+      body: { nodes: [logLine('say', 'hi')] },
+      ...extra,
+    },
+    STATIC_KIND_LOOKUP,
+  );
 }
 
 const REQUIRED = { name: 'note', type: { t: 'text' }, required: true } as const;
@@ -75,7 +80,7 @@ function made(caller: Caller, name: string, definition = functionOf()): string {
   return result.id;
 }
 
-function callerOf(functionId: string, name = 'User'): { id: string; definition: AutomationV3 } {
+function callerOf(functionId: string, name = 'User'): { id: string; definition: AutomationV4 } {
   const definition = automationOf([step('use', 'fn.call', { fn: lit(functionId) })]);
   const result = rig.service.create(rig.owner.caller, { name, enabled: true, definition });
   if (result.id === null) throw new Error(`creating ${name} failed: ${result.summary}`);
@@ -89,7 +94,6 @@ describe('listing and reading', () => {
       name: 'Greeting',
       revision: 1,
       users: 0,
-      builtin: false,
       interface: { flavour: 'action', exits: ['done'], inputs: [OPTIONAL] },
     });
     callerOf(id);
@@ -100,12 +104,13 @@ describe('listing and reading', () => {
     ]);
   });
 
-  it('lists the built-ins read only next to the custom ones, and every person sees all', () => {
-    made(rig.owner.caller, 'Zed');
-    const rows = service.list(member);
-    expect(rows.map((row) => row.name)).toStrictEqual(['Demo', 'Zed']);
-    expect(rows[0]).toMatchObject({ builtin: true, editable: false, revision: 3, createdBy: null });
-    expect(service.get(member, 'builtin.demo').program.kind).toBe('function');
+  it('lists every Custom Node by name for every person', () => {
+    made(member, 'Zed');
+    made(rig.owner.caller, 'Alpha');
+    const names = ['Alpha', 'Zed', ...STARTER_NODES.map((node) => node.name)];
+    expect(service.list(member).map((row) => row.name)).toStrictEqual(
+      names.sort((left, right) => left.localeCompare(right)),
+    );
   });
 
   it('marks a reusable node editable only for its maker and the owner', () => {
@@ -164,7 +169,7 @@ describe('saving a revision', () => {
       }),
     );
     expect(stale.code).toBe('conflict');
-    const broken = functionOf({ body: { nodes: [step('bad', 'no.such.kind', {})] } });
+    const broken = functionOf({ body: { nodes: [setPower('bad', randomUUID())] } });
     const result = service.save(rig.owner.caller, id, {
       definition: broken,
       expectedRevision: 1,
@@ -231,20 +236,7 @@ describe('who may change what', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('keeps built-ins read only and an owner-only body away from members', () => {
-    expect(
-      refusal(() => {
-        service.remove(rig.owner.caller, 'builtin.demo');
-      }).code,
-    ).toBe('forbidden');
-    const saved = refusal(() =>
-      service.save(rig.owner.caller, 'builtin.demo', {
-        definition: functionOf(),
-        expectedRevision: 3,
-        confirmBreaking: false,
-      }),
-    );
-    expect(saved.code).toBe('forbidden');
+  it('keeps an owner-only body away from members', () => {
     const wake = functionOf({
       body: { nodes: [step('wake', 'ai.wake', { instruction: lit('look') })] },
     });

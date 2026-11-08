@@ -1,17 +1,17 @@
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import {
-  NODE_REGISTRY,
   nodeLabel,
-  programNodes,
   type AutomationProgramChange,
-  type AutomationV3,
-  type FlowNode,
+  type AutomationV4,
+  type GraphNode,
+  type NodeKindLookup,
+  type TriggerNode,
 } from '@smarteverything/domain';
 
 type Fields = Readonly<Record<string, unknown>>;
 
-const HEADER_SKIPPED: ReadonlySet<string> = new Set(['triggers', 'body', 'onFailure']);
+const HEADER_SKIPPED: ReadonlySet<string> = new Set(['triggers', 'nodes']);
 
 const FIELDS = z.record(z.string(), z.unknown());
 
@@ -19,19 +19,7 @@ function plain(value: unknown): Fields {
   return FIELDS.parse(JSON.parse(JSON.stringify(value)));
 }
 
-function withoutScope(rows: readonly { readonly scope: unknown }[] | undefined): unknown {
-  return rows?.map(({ scope: _scope, ...row }) => row);
-}
-
-function fieldsOf(node: FlowNode): Fields {
-  return plain({
-    ...node,
-    scopes: node.scopes === undefined ? undefined : Object.keys(node.scopes),
-    branches: withoutScope(node.branches),
-    cases: withoutScope(node.cases),
-    catches: withoutScope(node.catches),
-  });
-}
+type Compared = GraphNode | TriggerNode;
 
 function differing(before: Fields, after: Fields): readonly string[] {
   const names = new Set([...Object.keys(before), ...Object.keys(after)]);
@@ -44,31 +32,33 @@ function portChanges(before: Fields, after: Fields): readonly string[] {
   return differing(left, right);
 }
 
-function partsChanged(before: FlowNode, after: FlowNode): readonly string[] {
-  const left = fieldsOf(before);
-  const right = fieldsOf(after);
+function partsChanged(before: Compared, after: Compared): readonly string[] {
+  const left = plain(before);
+  const right = plain(after);
   return differing(left, right).flatMap((name) =>
     name === 'ports' ? portChanges(left, right) : [name],
   );
 }
 
-function nodesOf(program: AutomationV3): ReadonlyMap<string, FlowNode> {
-  return new Map([...program.triggers, ...programNodes(program)].map((node) => [node.id, node]));
+function nodesOf(program: AutomationV4): ReadonlyMap<string, Compared> {
+  return new Map([...program.triggers, ...program.nodes].map((node) => [node.id, node]));
 }
 
 function change(
-  node: FlowNode,
+  kinds: NodeKindLookup,
+  node: Compared,
   kind: AutomationProgramChange['change'],
   detail = '',
 ): AutomationProgramChange {
-  const label = nodeLabel(node, (id) => NODE_REGISTRY.get(id));
+  const label = nodeLabel(node, (id) => kinds.get(id));
   const verb = { added: 'Added', removed: 'Removed', changed: 'Changed' }[kind];
   return { id: node.id, key: node.key, change: kind, summary: `${verb} ${label}${detail}` };
 }
 
 function nodeChanges(
-  before: AutomationV3,
-  after: AutomationV3,
+  kinds: NodeKindLookup,
+  before: AutomationV4,
+  after: AutomationV4,
 ): readonly AutomationProgramChange[] {
   const left = nodesOf(before);
   const right = nodesOf(after);
@@ -77,18 +67,18 @@ function nodeChanges(
   const changed = [...right.values()].flatMap((node) => {
     const earlier = left.get(node.id);
     const parts = earlier === undefined ? [] : partsChanged(earlier, node);
-    return parts.length === 0 ? [] : [change(node, 'changed', `: ${parts.join(', ')}`)];
+    return parts.length === 0 ? [] : [change(kinds, node, 'changed', `: ${parts.join(', ')}`)];
   });
   return [
-    ...added.map((node) => change(node, 'added')),
-    ...removed.map((node) => change(node, 'removed')),
+    ...added.map((node) => change(kinds, node, 'added')),
+    ...removed.map((node) => change(kinds, node, 'removed')),
     ...changed,
   ];
 }
 
 function headerChanges(
-  before: AutomationV3,
-  after: AutomationV3,
+  before: AutomationV4,
+  after: AutomationV4,
 ): readonly AutomationProgramChange[] {
   const keep = (name: string): boolean => !HEADER_SKIPPED.has(name);
   const left = plain(before);
@@ -104,8 +94,9 @@ function headerChanges(
 }
 
 export function comparePrograms(
-  before: AutomationV3,
-  after: AutomationV3,
+  before: AutomationV4,
+  after: AutomationV4,
+  kinds: NodeKindLookup,
 ): readonly AutomationProgramChange[] {
-  return [...headerChanges(before, after), ...nodeChanges(before, after)];
+  return [...headerChanges(before, after), ...nodeChanges(kinds, before, after)];
 }

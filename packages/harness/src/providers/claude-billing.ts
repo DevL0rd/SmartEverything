@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AiSubscriptionUsage } from '@smarteverything/domain';
 import { CLAUDE_SUBSCRIPTION_CREDENTIAL } from '../credentials/contracts';
 import type { ClaudeSubscriptionCredential } from '../credentials/contracts';
 import { assertClaudeProfile } from '../authorization/claude-profile';
@@ -8,6 +9,11 @@ import { SubscriptionProviderError } from './errors';
 import type { SubscriptionBillingSnapshot } from './billing';
 
 const USAGE_TIMEOUT_MS = 5_000;
+const CLAUDE_RESET = z.iso.datetime({ offset: true }).nullable().catch(null);
+const CLAUDE_WINDOWS = [
+  { id: 'five_hour', label: '5-hour window', window_duration_mins: 300 },
+  { id: 'seven_day', label: 'Weekly window', window_duration_mins: 10_080 },
+] as const;
 const CLAUDE_WINDOW = z.object({
   utilization: z.number().min(0),
   resets_at: z.string().nullable(),
@@ -22,7 +28,7 @@ export async function claudeBilling(
   signal: AbortSignal,
   profile: ClaudeProfilePort,
   fetcher: typeof fetch,
-): Promise<Pick<SubscriptionBillingSnapshot, 'state' | 'message' | 'identity'>> {
+): Promise<Pick<SubscriptionBillingSnapshot, 'state' | 'message' | 'identity' | 'usage'>> {
   const frozen = Object.freeze(CLAUDE_SUBSCRIPTION_CREDENTIAL.parse(credential));
   if (frozen.identity === undefined)
     throw new SubscriptionProviderError(
@@ -50,7 +56,23 @@ export async function claudeBilling(
   const afterUsage = Date.now();
   const after = assertClaudeProfile(frozen, await profile.read(frozen, signal), afterUsage);
   signal.throwIfAborted();
-  return { ...claudeAssessment(usage), identity: after.identity };
+  return {
+    ...claudeAssessment(usage),
+    identity: after.identity,
+    usage: claudeUsage(usage, afterUsage),
+  };
+}
+function claudeUsage(usage: z.infer<typeof CLAUDE_USAGE>, observedAt: number): AiSubscriptionUsage {
+  return {
+    runtime: 'claude',
+    reported_at: new Date(observedAt).toISOString(),
+    status: 'reported',
+    windows: CLAUDE_WINDOWS.map((window) => ({
+      ...window,
+      used_percent: usage[window.id].utilization,
+      resets_at: CLAUDE_RESET.parse(usage[window.id].resets_at),
+    })),
+  };
 }
 function claudeAssessment(
   usage: z.infer<typeof CLAUDE_USAGE>,

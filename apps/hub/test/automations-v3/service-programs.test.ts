@@ -32,6 +32,13 @@ function created(
   return { id: result.id, result };
 }
 
+function logNodes(id: string): string[] {
+  return rig.programs
+    .byId(id)
+    .definition.nodes.filter((node) => node.kind === 'debug.log')
+    .map((node) => node.key);
+}
+
 function refusal(work: () => unknown): ApiError {
   try {
     work();
@@ -141,14 +148,22 @@ describe('patching a program', () => {
     const result = rig.service.patch(rig.owner.caller, id, {
       expectedRevision: 1,
       ops: [
-        { op: 'add', node: { kind: 'debug.log', ports: { message: lit('two') } }, in: 'body' },
-        { op: 'add', node: { kind: 'debug.log', ports: { message: lit('three') } }, in: 'body' },
+        {
+          op: 'add',
+          node: { key: 'two', kind: 'debug.log', ports: { message: lit('two') } },
+          after: { key: 'say', port: 'next' },
+        },
+        {
+          op: 'add',
+          node: { key: 'three', kind: 'debug.log', ports: { message: lit('three') } },
+          after: { key: 'two', port: 'next' },
+        },
       ],
     });
     expect(result.ok).toBe(true);
     expect(result.revision).toBe(2);
-    expect(result.created).toHaveLength(2);
-    expect(rig.programs.byId(id).definition.body.nodes).toHaveLength(3);
+    expect(result.created.map((made) => made.key)).toEqual(['two', 'three']);
+    expect(logNodes(id)).toEqual(['say', 'two', 'three']);
   });
 
   it('changes nothing when one operation is refused and says which', () => {
@@ -156,7 +171,11 @@ describe('patching a program', () => {
     const result = rig.service.patch(rig.owner.caller, id, {
       expectedRevision: 1,
       ops: [
-        { op: 'add', node: { kind: 'debug.log', ports: { message: lit('two') } }, in: 'body' },
+        {
+          op: 'add',
+          node: { key: 'two', kind: 'debug.log', ports: { message: lit('two') } },
+          after: { key: 'say', port: 'next' },
+        },
         { op: 'remove', key: 'nothing' },
       ],
     });
@@ -164,7 +183,7 @@ describe('patching a program', () => {
     expect(result.revision).toBe(1);
     expect(result.summary).toMatch(/operation 2/);
     expect(rig.programs.byId(id).revision).toBe(1);
-    expect(rig.programs.byId(id).definition.body.nodes).toHaveLength(1);
+    expect(logNodes(id)).toEqual(['say']);
   });
 
   it('refuses a result with errors and saves nothing', () => {
@@ -175,7 +194,7 @@ describe('patching a program', () => {
         {
           op: 'add',
           node: { kind: 'device.set', ports: { target: lit({ device: randomUUID() }) } },
-          in: 'body',
+          after: { key: 'say', port: 'next' },
         },
       ],
     });
@@ -192,7 +211,7 @@ describe('patching a program', () => {
     const { id } = created('Chain', automationOf([setPower('lamp', rig.lamp.id), reader]));
     const result = rig.service.patch(rig.owner.caller, id, {
       expectedRevision: 1,
-      ops: [{ op: 'remove', key: 'lamp', cascade: true }],
+      ops: [{ op: 'remove', key: 'lamp', cascade: true, heal: true }],
     });
     expect(result.ok).toBe(true);
     expect(result.detached).toStrictEqual([

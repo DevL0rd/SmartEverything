@@ -22,6 +22,7 @@ export interface DeviceQuery {
   readonly room: string;
   readonly kind: string;
   readonly offline: boolean;
+  readonly device?: string | undefined;
 }
 
 export interface LightsCard {
@@ -37,8 +38,23 @@ export interface DeviceSection {
   readonly devices: readonly Device[];
 }
 
+export function selectedDevice(query: DeviceQuery): string | null {
+  return query.device === undefined || query.device === '' ? null : query.device;
+}
+
+export function selectedRoom(query: DeviceQuery): string | null {
+  return selectedDevice(query) !== null || query.room === ANY || query.room === NO_ROOM
+    ? null
+    : query.room;
+}
+
 export function isFiltering(query: DeviceQuery): boolean {
-  return query.text.trim() !== '' || query.kind !== ANY || query.offline;
+  return (
+    query.text.trim() !== '' ||
+    query.kind !== ANY ||
+    query.offline ||
+    selectedDevice(query) !== null
+  );
 }
 
 type Rooms = readonly TableRow<'rooms'>[];
@@ -99,13 +115,13 @@ function sectionOf(group: RoomGroup<Device>, nested: boolean): DeviceSection {
   };
 }
 
-export function groupedDevices(
-  devices: readonly Device[],
-  rooms: Rooms,
-  query: DeviceQuery,
-): readonly DeviceSection[] {
+function shownDevices(devices: readonly Device[], rooms: Rooms, query: DeviceQuery): Device[] {
+  const picked = selectedDevice(query);
+  if (picked !== null) {
+    return devices.filter((device) => device.id === picked);
+  }
   const needle = query.text.trim().toLowerCase();
-  const shown = devices.filter(
+  return devices.filter(
     (device) =>
       (needle !== '' || !isDirectoryChild(device)) &&
       roomMatches(device, query.room, rooms) &&
@@ -113,6 +129,14 @@ export function groupedDevices(
       (!query.offline || isOffline(device)) &&
       textMatches(device, needle, rooms),
   );
+}
+
+export function groupedDevices(
+  devices: readonly Device[],
+  rooms: Rooms,
+  query: DeviceQuery,
+): readonly DeviceSection[] {
+  const shown = shownDevices(devices, rooms, query);
   const nested = !isFiltering(query);
   return roomGroupsOf(ordered(shown), rooms, (device) => device.room_id).map((group) =>
     sectionOf(group, nested),

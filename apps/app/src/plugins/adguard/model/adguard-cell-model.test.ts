@@ -30,7 +30,7 @@ describe('adguardCellOf', () => {
     );
     expect(cell.kind).toBe('paused');
     expect(cell.chip).toEqual({ tone: 'warning', label: 'Paused' });
-    expect(cell.line).toBe(`Paused · resumes ${clock(until)}`);
+    expect(cell.line).toBe(`Resumes ${clock(until)}`);
     expect(cell.tone).toBe('warning');
   });
 
@@ -41,7 +41,7 @@ describe('adguardCellOf', () => {
     );
     expect(cell.kind).toBe('off');
     expect(cell.chip).toEqual({ tone: 'critical', label: 'Off' });
-    expect(cell.line).toBe('Ad blocking is off');
+    expect(cell.line).toBe('Ads and trackers are not blocked');
   });
 
   it('keeps the totals out of the line when no stats came in yet', () => {
@@ -52,15 +52,17 @@ describe('adguardCellOf', () => {
     expect(cell.bars).toEqual([]);
   });
 
-  it('goes stale with the reason and no figures when AdGuard Home is unreachable', () => {
+  it('names the outage once in the chip and speaks the reason when unreachable', () => {
     const since = '2026-10-17T13:25:00.000Z';
     const cell = adguardCellOf(
       snapshotFixture({ connection: { state: 'unreachable', reason: 'timeout', since } }),
       NOW,
     );
     expect(cell.kind).toBe('stale');
-    expect(cell.chip).toEqual({ tone: 'neutral', label: 'Not reachable' });
-    expect(cell.reason).toContain('Can’t reach AdGuard Home');
+    expect(cell.chip.tone).toBe('neutral');
+    expect(cell.chip.label).toMatch(/^Offline · /);
+    expect(cell.line).toBeNull();
+    expect(cell.spoken).toMatch(/^AdGuard Home, Can’t reach AdGuard Home · /);
     expect(cell.figures).toEqual([]);
   });
 
@@ -69,7 +71,14 @@ describe('adguardCellOf', () => {
       snapshotFixture({ connection: { state: 'refused', reason: 'bad' } }),
       NOW,
     );
-    expect(cell.chip).toEqual({ tone: 'critical', label: 'Sign-in needed' });
+    expect(cell.chip).toEqual({ tone: 'critical', label: 'Sign-in refused' });
+    expect(cell.spoken).toBe('AdGuard Home, AdGuard Home refused the sign-in');
+  });
+
+  it('keeps every top entry for the measured list', () => {
+    const cell = adguardCellOf(snapshotFixture(), NOW);
+    expect(cell.topBlocked).toHaveLength(snapshotFixture().stats?.topBlocked.length ?? 0);
+    expect(cell.topClients).toHaveLength(snapshotFixture().stats?.topClients.length ?? 0);
   });
 
   it('counts enabled filter lists and their rules', () => {

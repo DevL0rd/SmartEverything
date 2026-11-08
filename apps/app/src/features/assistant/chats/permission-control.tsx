@@ -8,13 +8,13 @@ import {
   type AiHarnessPermission,
   type AiHarnessPermissionChange,
   type AiHarnessSession,
+  type AiPermissionPresets,
   type DshEngine,
   type Engine,
 } from '@smarteverything/domain';
 import { notify } from '../../../components/toast-store';
 import { useIsOwner } from '../../../store/selectors';
 import { AccessControl } from '../access/access-control';
-import { cloudModel } from '../access/cloud-model';
 import {
   applyingKey,
   harnessBlock,
@@ -22,8 +22,8 @@ import {
   type AccessBlock,
 } from '../access/harness-access';
 import { harnessModel } from '../access/harness-model';
-import { toolsAccess } from '../access/tools-access';
 import { useChatHarness, useHarnessCatalogue } from '../data/harness';
+import { useRouteInfo } from '../data/route-info';
 import { useOwnDeviceSelection } from '../data/own-device-selection';
 import { harnessHostName, harnessHostReason } from '../model/harness-context';
 import { isComputerEngine } from '../provider/computer-engine';
@@ -32,6 +32,10 @@ import { NativePermissionControl } from './native-permission-control';
 import { useEngineAccessory } from './engine-accessories';
 
 const HUB = 'server';
+
+function usePresets(engine: Engine): AiPermissionPresets | null {
+  return useRouteInfo(engine).data?.permission_presets ?? null;
+}
 
 export function PermissionControl({
   engine,
@@ -53,7 +57,6 @@ export function PermissionControl({
     );
   if (chat === undefined && accessory?.host.draft === true)
     return <DraftAccess engine={engine} onChange={onChange} />;
-  if (engine.kind !== 'dsh') return <AccessControl model={cloudModel(chat)} />;
   if (chat !== undefined && engine.session_id !== null)
     return <SessionAccess chat={chat} engine={engine} />;
   return (
@@ -66,6 +69,7 @@ interface DraftContext {
   readonly key: string;
   readonly host: AiHarnessHost | undefined;
   readonly name: string;
+  readonly presets: AiPermissionPresets | null;
   readonly permissions: readonly AiHarnessPermission[];
   readonly current: AiHarnessPermission;
   readonly accessory: ReturnType<typeof useEngineAccessory>;
@@ -85,6 +89,7 @@ function useDraftContext(engine: Engine): DraftContext {
   const catalogue = useHarnessCatalogue();
   const accessory = useEngineAccessory();
   const resolve = useOwnDeviceSelection(engine);
+  const presets = usePresets(engine);
   const key = draftKey(engine, accessory);
   const host = catalogue.data?.hosts.find((row) => harnessTargetKey(row.target) === key);
   return {
@@ -92,6 +97,7 @@ function useDraftContext(engine: Engine): DraftContext {
     key,
     host,
     name: hostLabel(host, key),
+    presets,
     permissions: host?.manifest?.permissions ?? [],
     current: engine.kind === 'dsh' ? engine.permission : DEFAULT_AI_HARNESS_PERMISSION,
     accessory,
@@ -110,6 +116,7 @@ function draftBlock(context: DraftContext): AccessBlock | null {
     switching: false,
     liveChange: true,
     bound: false,
+    presets: context.presets !== null,
     choices: context.permissions.length,
   });
 }
@@ -130,8 +137,8 @@ function draftSelect(
   block: AccessBlock | null,
   onChange: (engine: Engine) => void,
 ): (sectionId: string, value: string) => void {
-  return (sectionId, value): void => {
-    const next = harnessChoice(context.permissions, context.current, sectionId, value);
+  return (_section, value): void => {
+    const next = harnessChoice(context.permissions, context.current, value);
     if (next === null || context.host === undefined || block !== null) return;
     const chosen = draftEngine(context, context.host, next);
     if (chosen === null) return;
@@ -155,12 +162,13 @@ function DraftAccess({
     <AccessControl
       model={harnessModel({
         host: context.name,
+        presets: context.presets,
         permissions: context.permissions,
         current: context.current,
         block,
         applying: null,
         memberNote: context.key === HUB && !owner,
-        tools: chat === undefined ? null : toolsAccess(chat),
+        tools: chat ?? null,
         onCheck: null,
         select: draftSelect(context, block, onChange),
       })}
@@ -176,40 +184,61 @@ function SessionAccess({
   readonly engine: DshEngine;
 }): ReactNode {
   const query = useChatHarness(chat.id, true);
-  if (query.data !== undefined) return <BoundAccess chat={chat} session={query.data} />;
-  return <CheckingAccess chat={chat} engine={engine} error={query.error?.message ?? null} />;
-}
-
-function CheckingAccess({
-  chat,
-  engine,
-  error,
-}: {
-  readonly chat: AiChatRow;
-  readonly engine: DshEngine;
-  readonly error: string | null;
-}): ReactNode {
+  const session = query.data;
+  const target = session?.target ?? engine.execution_target;
+  const control = useSessionPermission(chat.id, target, session?.permission_change ?? null);
   const catalogue = useHarnessCatalogue();
   const owner = useIsOwner();
-  const target = engine.execution_target;
-  const host = catalogue.data?.hosts.find(
-    (row) => harnessTargetKey(row.target) === harnessTargetKey(target),
-  );
+  const presets = usePresets(engine);
+  const name = control.host?.name ?? harnessHostName(target, catalogue.data);
+  const access = sessionAccessOf({ session, control, name, presets, error: query.error?.message });
   return (
     <AccessControl
       model={harnessModel({
-        host: harnessHostName(target, catalogue.data),
-        permissions: host?.manifest?.permissions ?? [],
-        current: engine.permission,
-        block: { kind: 'blocked', icon: 'info', text: error ?? 'Checking current permissions…' },
-        applying: null,
+        ...access,
+        host: name,
+        presets,
+        permissions: control.policies,
+        current: session?.permission ?? engine.permission,
         memberNote: target.kind === 'server' && !owner,
-        tools: toolsAccess(chat),
-        onCheck: null,
-        select: (): void => undefined,
+        tools: chat,
       })}
     />
   );
+}
+
+function sessionAccessOf({
+  session,
+  control,
+  name,
+  presets,
+  error,
+}: {
+  readonly session: AiHarnessSession | undefined;
+  readonly control: SessionControl;
+  readonly name: string;
+  readonly presets: AiPermissionPresets | null;
+  readonly error: string | undefined;
+}): Pick<Parameters<typeof harnessModel>[0], 'block' | 'applying' | 'onCheck' | 'select'> {
+  if (session === undefined) {
+    return {
+      block: checkingBlock(error),
+      applying: null,
+      onCheck: null,
+      select: (): void => undefined,
+    };
+  }
+  const block = boundBlock(session, control, name, presets);
+  return {
+    block,
+    applying: applyingPermission(session, control),
+    onCheck: retryPermission(control),
+    select: boundSelect(session, control, block),
+  };
+}
+
+function checkingBlock(error: string | undefined): AccessBlock {
+  return { kind: 'blocked', icon: 'info', text: error ?? 'Checking current permissions…' };
 }
 
 type SessionControl = ReturnType<typeof useSessionPermission>;
@@ -226,6 +255,7 @@ function boundBlock(
   session: AiHarnessSession,
   control: SessionControl,
   name: string,
+  presets: AiPermissionPresets | null,
 ): AccessBlock | null {
   return harnessBlock({
     host: name,
@@ -236,6 +266,7 @@ function boundBlock(
     switching: session.state === 'switching',
     liveChange: control.host?.manifest?.permission_change === true,
     bound: true,
+    presets: presets !== null,
     choices: control.policies.length,
   });
 }
@@ -245,48 +276,27 @@ function boundSelect(
   control: SessionControl,
   block: AccessBlock | null,
 ): (sectionId: string, value: string) => void {
-  return (sectionId, value): void => {
-    const next = harnessChoice(control.policies, session.permission, sectionId, value);
+  return (_section, value): void => {
+    const next = harnessChoice(control.policies, session.permission, value);
     if (next === null || block !== null || session.epoch === null) return;
     const change = { operation_id: randomUUID(), expected_epoch: session.epoch, permission: next };
     submitChange(control, change);
   };
 }
 
-function BoundAccess({
-  chat,
-  session,
-}: {
-  readonly chat: AiChatRow;
-  readonly session: AiHarnessSession;
-}): ReactNode {
-  const control = useSessionPermission(session);
-  const catalogue = useHarnessCatalogue();
-  const owner = useIsOwner();
-  const name = control.host?.name ?? harnessHostName(session.target, catalogue.data);
-  const block = boundBlock(session, control, name);
-  const { pending, mutation } = control;
-  return (
-    <AccessControl
-      model={harnessModel({
-        host: name,
-        permissions: control.policies,
-        current: session.permission,
-        block,
-        applying: applyingKey(
-          session.permission,
-          mutation.isPending ? mutation.variables.permission : undefined,
-        ),
-        memberNote: session.target.kind === 'server' && !owner,
-        tools: toolsAccess(chat),
-        onCheck:
-          pending === null
-            ? null
-            : (): void => {
-                submitChange(control, pending);
-              },
-        select: boundSelect(session, control, block),
-      })}
-    />
+function applyingPermission(session: AiHarnessSession, control: SessionControl): string | null {
+  const { mutation } = control;
+  return applyingKey(
+    session.permission,
+    mutation.isPending ? mutation.variables.permission : undefined,
   );
+}
+
+function retryPermission(control: SessionControl): (() => void) | null {
+  const { pending } = control;
+  return pending === null
+    ? null
+    : (): void => {
+        submitChange(control, pending);
+      };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nodeSystemdUnit } from '../../src/service/definitions.js';
+import { systemdUnit } from '../../src/service/definitions.js';
 import {
   ORIGINAL_SUFFIX,
   restoreOriginalUnit,
@@ -11,7 +11,7 @@ const UNIT = '/home/ann/.config/systemd/user/smarteverything-node.service';
 const DATA = '/home/ann/.config/SmartEverything-node';
 const ORIGINAL = `${UNIT}${ORIGINAL_SUFFIX}`;
 
-const NEW = nodeSystemdUnit(LAUNCH);
+const NEW = systemdUnit(LAUNCH);
 const HAND_WRITTEN = NEW.replace('PATH=/usr/local/bin:/usr/bin', 'PATH=/usr/bin:/bin');
 
 function target(system: ReturnType<typeof fakeSystem>): Parameters<typeof writeManagedUnit>[0] {

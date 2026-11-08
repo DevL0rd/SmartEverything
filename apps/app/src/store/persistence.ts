@@ -121,12 +121,7 @@ function sameRefs(left: readonly unknown[], right: readonly unknown[]): boolean 
 }
 
 function ready(state: StoreState): boolean {
-  return (
-    state.settings !== null &&
-    state.session !== null &&
-    state.firewall !== null &&
-    state.sync.seq !== null
-  );
+  return state.settings !== null && state.session !== null && state.sync.seq !== null;
 }
 
 class SnapshotWriter {

@@ -11,6 +11,7 @@ import { List } from '../../../components/section';
 import { Segmented } from '../../../components/segmented';
 import { Select } from '../../../components/select';
 import { Skeleton } from '../../../components/skeleton';
+import { useSectionParam } from '../../../components/use-section-param';
 import type { ColourRole } from '../../../design/tokens';
 import { useDeviceSeries } from '../../../queries/history';
 import type { Device } from '../../../store/state';
@@ -68,7 +69,7 @@ export function HistorySection({ device }: { readonly device: Device }): ReactNo
   const [extras, setExtras] = useState(false);
   const [range, setRange] = useState<HistoryRangeKey>('24h');
   const metrics = historyMetrics(model.presentation, extras);
-  const [chosen, setChosen] = useState<string | null>(null);
+  const [chosen, setChosen] = useSectionParam('metric');
   const metric = metrics.find((candidate) => candidate.key === chosen) ?? metrics[0];
   if (metric === undefined) {
     return (
@@ -83,7 +84,7 @@ export function HistorySection({ device }: { readonly device: Device }): ReactNo
     <View className="gap-section-gap">
       <Card>
         <View className="gap-4">
-          <View className="flex-row flex-wrap items-center justify-between gap-3">
+          <View className="w-full max-w-reading flex-row flex-wrap items-center justify-between gap-3">
             <View className="min-w-48 flex-1">
               <Select
                 label="Metric"
@@ -100,7 +101,7 @@ export function HistorySection({ device }: { readonly device: Device }): ReactNo
           <MetricChart device={device} metric={metric} range={range} />
         </View>
       </Card>
-      <List>
+      <List className="w-full max-w-reading self-start">
         <SwitchRow
           title="Show provider metrics"
           subtitle="Adds the extra numbers your provider reports"

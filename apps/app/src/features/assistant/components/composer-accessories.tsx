@@ -3,17 +3,20 @@ import { View } from 'react-native';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { useComposerClass } from './composer-accessory-layout';
-import { AttachButton, ExpandButton } from './composer-extras';
+import { AttachButton, ExpandButton, VoiceMessageButton } from './composer-extras';
 import { SendControls } from './composer-send';
 import type { ComposerProps } from './composer';
 import type { ComposerState } from './use-composer-state';
 
 interface PartProps {
   readonly config: ComposerProps;
-  readonly state: ComposerState;
+  readonly state: Pick<
+    ComposerState,
+    'draftKey' | 'expandable' | 'setEditor' | 'mode' | 'ring' | 'send'
+  >;
 }
 
-export function ComposerSend({ config, state }: PartProps): ReactNode {
+function ComposerSend({ config, state }: PartProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   return (
     <SendControls
@@ -47,6 +50,12 @@ export function AccessoryRow({ config, state }: PartProps): ReactNode {
       {tight ? null : config.tools}
       <View className="min-w-0 flex-1" />
       {config.rightAccessory}
+      <VoiceMessageButton
+        key={state.draftKey}
+        draftKey={state.draftKey}
+        disabled={config.disabled}
+        onSend={state.send}
+      />
       <ComposerSend config={config} state={state} />
     </View>
   );

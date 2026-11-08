@@ -96,6 +96,12 @@ export const MEDIA_PATHS = {
   assistantAttachment: '/media/assistant/:attachmentId',
   computerDownload: '/media/computers/:deviceId/downloads/:ticketId',
   machineUpdate: '/media/machine-updates/:file',
+  appUpdateBlob: '/media/app-updates/:sha256',
+  androidApk: '/media/android-apks/:channel/:scope/:id',
+  homeMapScan: '/media/home-maps/:mapId/scans/:hash',
+  driveThumb: '/media/drive/:itemId/thumb/:size',
+  driveFile: '/media/drive/:itemId/file',
+  driveShare: '/s/:token',
   live: '/live',
   publicUrlProbe: '/.well-known/smarteverything/:nonce',
 } as const;

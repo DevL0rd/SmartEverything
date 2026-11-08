@@ -1,5 +1,5 @@
-import { FLOW_ERROR, JSON_VALUE } from '@smarteverything/domain';
-import type { ErrorClass, FlowError, NodePolicy } from '@smarteverything/domain';
+import { FLOW_ERROR, JSON_VALUE, errorValueOf } from '@smarteverything/domain';
+import type { ErrorClass, FlowError, JsonValue, NodePolicy } from '@smarteverything/domain';
 import { z } from 'zod';
 import { FLOW_ERRORS, isCatchable } from '../state/errors';
 import type { RunState, Wait } from '../state/run-state';
@@ -56,6 +56,16 @@ export function backoffMs(retry: Retry, attempt: number, seed: number): number {
   const capped = retry.max === undefined ? grown : Math.min(grown, retry.max);
   const spread = retry.jitter === true ? 0.5 + 0.5 * unit(seed, attempt) : 1;
   return Math.max(1, Math.round(capped * spread));
+}
+
+function codeOf(error: FlowError): string | undefined {
+  const code = error.detail?.['code'];
+  return typeof code === 'string' ? code : undefined;
+}
+
+export function errorExitOutputs(error: FlowError): JsonValue {
+  const value = errorValueOf(error.class, error.message, codeOf(error));
+  return JSON_VALUE.parse({ error, ...value });
 }
 
 function effectClass(op: PolicyOp): 'idempotent' | 'relative' | 'external' {

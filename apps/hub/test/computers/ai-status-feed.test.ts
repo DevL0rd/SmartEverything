@@ -1,11 +1,15 @@
-import type {
-  ComputerAiCapabilities,
-  ComputerAiReply,
-  ComputerAiStatus,
+import {
+  DEFAULT_CODEX_AI_SETTINGS,
+  type ComputerAiCapabilities,
+  type ComputerAiReply,
+  type ComputerAiStatus,
+  type ComputerRuntimeCapabilities,
+  type ComputerRuntimeModel,
 } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComputerAiDirectory } from '../../src/computers/ai-directory';
 import type { ComputerAiHost, ComputerAiHostEvent } from '../../src/computers/ai-host';
+import { unavailableRuntime } from '../../src/computers/runtime-status';
 import { captureLogs, testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
@@ -117,4 +121,56 @@ describe('computer AI status notices', () => {
     emit({ kind: 'capabilities', capabilities: { ...CAPABILITIES, runtime_version: '1.0.1' } });
     expect(sent.length).toBe(settled + 1);
   });
+});
+
+it('lists cached Codex models without a native read when the connected host cannot discover models', async () => {
+  const target = { device_id: computerId(), runtime: 'codex' } as const;
+  const reason = 'This Codex runtime requires an inspected protocol version.';
+  const capabilities: ComputerRuntimeCapabilities = {
+    ...unavailableRuntime('codex'),
+    operations: ['status', 'configure'],
+    provider_reason: reason,
+  };
+  const model: ComputerRuntimeModel = {
+    ...target,
+    id: 'test-model',
+    resolved_model: null,
+    name: 'Test model',
+    description: '',
+    efforts: [],
+    adaptive_thinking: false,
+    fast: false,
+    input_modalities: [],
+    available: true,
+    reason: null,
+  };
+  opened.store.computerRuntimes.saveSettings(target, {
+    runtime: 'codex',
+    settings: {
+      ...DEFAULT_CODEX_AI_SETTINGS,
+      provider: { ...DEFAULT_CODEX_AI_SETTINGS.provider, enabled: true },
+    },
+  });
+  opened.store.computerRuntimes.cache(target, capabilities, [model]);
+  const directory = new ComputerAiDirectory(opened.store, testLogger('computers'));
+  const read = vi.fn().mockRejectedValue(new Error('Unexpected native read'));
+  directory.runtimes.attach(
+    target,
+    {
+      runtime: 'codex',
+      read,
+      execute: vi.fn().mockRejectedValue(new Error('Unexpected native mutation')),
+      onEvent: (listener) => {
+        listener({ kind: 'capabilities', runtime: 'codex', capabilities });
+        return (): void => undefined;
+      },
+      stop: (): void => undefined,
+    },
+    false,
+  );
+
+  await expect(directory.runtimeModels(target)).resolves.toEqual([
+    { ...model, available: false, reason },
+  ]);
+  expect(read).not.toHaveBeenCalled();
 });

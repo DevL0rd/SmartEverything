@@ -56,8 +56,3 @@ export function neighbourOf(
   }
   return entries[(index + step + entries.length) % entries.length] ?? null;
 }
-
-export function presetsOf(entry: CameraEntry): readonly string[] {
-  const preset = entry.device.capabilities.find((capability) => capability.key === 'ptz_preset');
-  return preset?.value.kind === 'enum' ? preset.value.options : [];
-}

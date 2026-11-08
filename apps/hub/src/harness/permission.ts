@@ -24,17 +24,17 @@ export async function changePermission(
   input: AiHarnessPermissionChange,
 ): Promise<AiHarnessSession> {
   const session = admitPermission(service, owner, chatId, input);
-  const prior = service.store.harnessCoordination.operation(input.operation_id);
+  const prior = service.store.harnessSessions.operation(input.operation_id);
   const request: unknown =
     prior === undefined ? { kind: 'permission', ...input } : JSON.parse(prior.request);
-  const receipt = service.store.harnessCoordination.begin(
+  const receipt = service.store.harnessSessions.begin(
     input.operation_id,
     session.session_id,
     request,
   );
   if (receipt.state === 'completed') return service.state(owner, chatId);
   if (isDeepStrictEqual(session.permission, input.permission)) {
-    service.store.harnessCoordination.finish(input.operation_id, session);
+    service.store.harnessSessions.finish(input.operation_id, session);
     return service.state(owner, chatId);
   }
   await service.directory.execute(session.target, input.operation_id, {
@@ -54,7 +54,7 @@ export function ownSettled(service: HarnessService, owner: ChatOwner, chatId: st
   const chat = service.own(owner, chatId);
   const sessionId = chat.engine.kind === 'dsh' ? chat.engine.session_id : null;
   const pending =
-    sessionId === null ? null : service.store.harnessCoordination.permissionChange(sessionId);
+    sessionId === null ? null : service.store.harnessSessions.permissionChange(sessionId);
   if (pending === null) return chat;
   settlePermission(service, owner, chatId, pending);
   return service.own(owner, chatId);
@@ -67,7 +67,7 @@ function settlePermission(
   input: AiHarnessPermissionChange,
 ): AiHarnessSession {
   const session = service.state(owner, chatId);
-  service.store.harnessCoordination.recoverPermission(
+  service.store.harnessSessions.recoverPermission(
     { ...session, permission: input.permission, permission_change: null },
     input,
     () => {
@@ -93,7 +93,7 @@ function admitPermission(
       'conflict',
       'Permission changes require the current stable native writer epoch.',
     );
-  const pending = service.store.harnessCoordination.permissionChange(session.session_id);
+  const pending = service.store.harnessSessions.permissionChange(session.session_id);
   if (pending?.operation_id !== undefined && pending.operation_id !== input.operation_id)
     throw new ApiError(
       'conflict',
@@ -121,7 +121,7 @@ export function confirmedPermission(
 ): AiHarnessPermissionChange | undefined {
   const operationId = event.permission_operation_id;
   if (operationId === undefined) return undefined;
-  const receipt = service.store.harnessCoordination.operation(operationId);
+  const receipt = service.store.harnessSessions.operation(operationId);
   if (receipt?.session_id !== event.session_id)
     throw new ApiError(
       'forbidden',
@@ -145,7 +145,7 @@ export function confirmedPermissionRequest(
   service: HarnessService,
   request: Extract<HarnessRuntimeRequest, { kind: 'permission' }>,
 ): void {
-  const receipt = service.store.harnessCoordination.operation(request.operation_id);
+  const receipt = service.store.harnessSessions.operation(request.operation_id);
   if (receipt?.session_id !== request.session_id)
     throw new ApiError(
       'forbidden',

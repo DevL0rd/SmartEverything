@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { ownerProfileOf } from '../transcripts/owner';
 import {
   AI_MODEL_CHOICE,
+  DSH_ENGINE_REQUEST,
   ENGINE_WRITE,
   ApiError,
   turnRoleOf,
@@ -33,21 +34,16 @@ export interface PluginConversationsOptions {
     'settings' | 'updateChat' | 'interrupt' | 'compact' | 'engineStatus'
   >;
   readonly catalogue: () => Pick<Catalogue, 'resolve'>;
-  readonly dataDirectory: string;
   readonly now: () => Date;
 }
 
 const PLUGIN_OUTBOX = 'outbox';
 
 export function pluginFiles(
-  dataDirectory: string,
-  pluginId: string,
-  attachmentsOf: PluginFiles['attachmentsOf'],
-  fromMachine: PluginFiles['fromMachine'],
-  fromUpload: PluginFiles['fromUpload'],
+  folder: string,
+  readers: Omit<PluginFiles, 'folder' | 'outbox'>,
 ): PluginFiles {
-  const folder = join(dataDirectory, 'plugins', pluginId);
-  return { folder, outbox: join(folder, PLUGIN_OUTBOX), attachmentsOf, fromMachine, fromUpload };
+  return { folder, outbox: join(folder, PLUGIN_OUTBOX), ...readers };
 }
 
 export function chatAttachmentPaths(
@@ -98,7 +94,6 @@ export class PluginConversations {
       name: settings.name,
       aliases: settings.aliases,
       activitySteps: settings.activity_steps,
-      reuseChatMinutes: settings.reuse_chat_minutes,
       compactAtPercent: settings.compact_at_percent,
     };
   }
@@ -224,7 +219,13 @@ export class PluginConversations {
     await this.options.assistant.updateChat(
       { profileId: chat.profile_id, role: asker.role },
       chat.id,
-      { engine: { kind: 'openrouter', model: choice, effort: chat.engine.effort } },
+      {
+        engine: DSH_ENGINE_REQUEST.parse({
+          kind: 'dsh',
+          model: resolved.model_id,
+          effort: chat.engine.effort,
+        }),
+      },
     );
     return resolved.name;
   }

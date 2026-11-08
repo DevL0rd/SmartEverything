@@ -1,6 +1,5 @@
 import { Logger, background } from '@smarteverything/logging';
 import {
-  NEW_CHAT_TITLE,
   type AiChatChange,
   type AiChatNew,
   type AiChatRow,
@@ -117,7 +116,7 @@ export function chatStarter(
   opened: (chatId: string) => void,
   resolve?: () => Engine | null,
 ): MessageSender {
-  return async (text, attachments, references = [], clientMessageId) => {
+  return async (text, attachments, extras) => {
     const selected = resolve === undefined ? engine : resolve();
     if (selected === null) {
       log.warn('chat.start_blocked', { reason: 'machine-offline', requested: engine.kind });
@@ -127,12 +126,12 @@ export function chatStarter(
       });
       return false;
     }
-    const chat = await newChat({ title: NEW_CHAT_TITLE, engine: selected });
+    const chat = await newChat({ engine: selected });
     if (chat === null) {
       return false;
     }
     log.info('chat.started', { chatId: chat.id, engineKind: selected.kind });
-    const sent = await outboxSender(chat.id, true)(text, attachments, references, clientMessageId);
+    const sent = await outboxSender(chat.id, true)(text, attachments, extras);
     opened(chat.id);
     return sent;
   };

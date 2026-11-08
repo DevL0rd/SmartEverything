@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  WEEKDAY_LETTERS,
+  WEEKDAY_ROWS,
   calendarBlocks,
   calendarCells,
   heatSummary,
@@ -41,13 +41,16 @@ describe('calendar cells', () => {
   });
 
   it('describes the year in words with the days that were not recorded', () => {
-    expect(heatSummary(days('2026-10-01', 7))).toBe(
-      '3 printing days, busiest 2026-10-01 with 5 pages, 1 days not recorded',
+    expect(heatSummary(days('2026-10-01', 7), 'pages printed')).toBe(
+      '3 days with pages printed, busiest 2026-10-01 with 5 pages printed, 1 days not recorded',
     );
-    expect(heatSummary([])).toBe('No days recorded');
-    expect(heatSummary(days('2026-10-02', 1).map((entry) => ({ ...entry, pages: 0 })))).toBe(
-      '0 printing days, 0 days not recorded',
-    );
+    expect(heatSummary([], 'photos')).toBe('No days recorded');
+    expect(
+      heatSummary(
+        days('2026-10-02', 1).map((entry) => ({ ...entry, pages: 0 })),
+        'photos',
+      ),
+    ).toBe('0 days with photos, 0 days not recorded');
   });
 });
 
@@ -69,8 +72,10 @@ describe('weekday by hour cells', () => {
   });
 
   it('names the busiest time in words', () => {
-    expect(hourSummary(matrix)).toBe('Busiest time Wed 18:00 with 20 pages');
-    expect(hourSummary([[0]])).toBe('No printing by hour yet');
-    expect(WEEKDAY_LETTERS).toHaveLength(7);
+    expect(hourSummary(matrix, WEEKDAY_ROWS, 'pages printed')).toBe(
+      'Busiest time Wednesday 18:00 with 20 pages printed',
+    );
+    expect(hourSummary([[0]], WEEKDAY_ROWS, 'photos')).toBe('No photos by hour yet');
+    expect(WEEKDAY_ROWS).toHaveLength(7);
   });
 });

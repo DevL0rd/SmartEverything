@@ -33,7 +33,7 @@ export const PRINTER_PREFS = z.strictObject({
   colorMode: z.string().nullable().default(null),
   quality: z.enum(['draft', 'normal', 'high']).nullable().default(null),
   media: z.string().nullable().default(null),
-  copies: z.int().min(1).max(999).nullable().default(null),
+  copies: z.int().min(1).nullable().default(null),
   notifyJobDone: z.boolean().default(true),
 });
 

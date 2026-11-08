@@ -1,11 +1,15 @@
 import electron from 'electron';
+import { photos } from './photos/preload';
 import { z } from 'zod';
 import {
+  BROWSER_CONSOLE_EVENT,
   BROWSER_STATUS,
   BROWSER_WINDOW_REQUEST,
+  DESKTOP_CLIPBOARD_CHANGED,
   FIREWALL_APPLY_RESULT,
   MACHINE_UPDATE_STATUS,
   OVERLAY_ACTION,
+  WEB_UPDATE_STATUS,
 } from '@smarteverything/domain';
 import { htmlPreview } from './html-preview/preload';
 import * as hubPreload from './hub-network/preload';
@@ -15,6 +19,7 @@ import { OVERLAY_LEVELS_PORT_CHANNEL } from './overlay/overlay-messages';
 import type {
   DesktopBrowser,
   DesktopCaptureSource,
+  DesktopClipboard,
   DesktopGlobalName,
   DesktopInvokeChannel,
   DesktopInvokeChannels,
@@ -154,7 +159,7 @@ const talkShortcutsFrom = (
 ): Promise<DesktopTalkShortcuts> => invokeFor(channel, TALK_SHORTCUTS, undefined);
 
 const invokeForUpdate = (
-  channel: 'desktop:update-status' | 'desktop:update-check' | 'desktop:update-install',
+  channel: 'desktop:update-status' | 'desktop:update-check',
 ): Promise<MachineUpdateStatus> => invokeFor(channel, MACHINE_UPDATE_STATUS, undefined);
 
 const invokeForBoolean = (
@@ -164,6 +169,17 @@ const invokeForBoolean = (
 
 const browser: DesktopBrowser = {
   page: browserPage,
+  clearSiteStorage: async (id, origin) => {
+    await electron.ipcRenderer.invoke('desktop:browser', {
+      kind: 'clear-site-storage',
+      id,
+      origin,
+    });
+  },
+  subscribeConsole: (listener) =>
+    listen('desktop:browser-console', (value) => {
+      listener(answerOf('desktop:browser-console', BROWSER_CONSOLE_EVENT, value));
+    }),
   command: async (command) => {
     await electron.ipcRenderer.invoke('desktop:browser', command);
   },
@@ -177,8 +193,22 @@ const browser: DesktopBrowser = {
     }),
 };
 
+const clipboardBridge: DesktopClipboard = {
+  readText: () => invokeFor('desktop:clipboard-read', z.string().nullable(), undefined),
+  writeText: async (text) => {
+    await invoke('desktop:clipboard-write', text);
+  },
+  onChange: (listener) =>
+    listen(DESKTOP_CLIPBOARD_CHANGED, (value) => {
+      const parsed = z.string().safeParse(value);
+      if (parsed.success) listener(parsed.data);
+    }),
+};
+
 const desktop: SmartEverythingDesktop = {
+  photos,
   browser,
+  clipboard: clipboardBridge,
   computerIdentity: hubPreload.computerIdentity,
   htmlPreview,
   hubNetwork: hubPreload.hubNetwork,
@@ -200,6 +230,9 @@ const desktop: SmartEverythingDesktop = {
     await invoke('desktop:set-window', window);
   },
   serviceStatus: () => invokeForStatus('desktop:service-status'),
+  pairComputer: async (pairing) => {
+    await invoke('desktop:computer-pair', pairing);
+  },
   startService: () => invokeForStatus('desktop:service-start'),
   stopService: () => invokeForStatus('desktop:service-stop'),
   restartService: () => invokeForStatus('desktop:service-restart'),
@@ -251,11 +284,31 @@ const desktop: SmartEverythingDesktop = {
   captureStill: (sourceId) => invokeFor('desktop:capture-still', STILL, sourceId),
   updateStatus: () => invokeForUpdate('desktop:update-status'),
   checkForUpdate: () => invokeForUpdate('desktop:update-check'),
-  installUpdate: () => invokeForUpdate('desktop:update-install'),
+  installUpdate: (expectedOfferId) =>
+    invokeFor('desktop:update-install', MACHINE_UPDATE_STATUS, expectedOfferId),
   onUpdateStatus: (listener) =>
     listen('desktop:update-status-changed', (status) => {
       listener(answerOf('desktop:update-status-changed', MACHINE_UPDATE_STATUS, status));
     }),
+  webUpdateStatus: () => invokeFor('desktop:web-update-status', WEB_UPDATE_STATUS, undefined),
+  checkWebUpdate: (channel) => invokeFor('desktop:web-update-check', WEB_UPDATE_STATUS, channel),
+  downloadWebUpdate: (expectedId) =>
+    invokeFor('desktop:web-update-download', WEB_UPDATE_STATUS, expectedId),
+  applyWebUpdate: (target) => invokeFor('desktop:web-update-apply', WEB_UPDATE_STATUS, target),
+  onWebUpdateStatus: (listener) =>
+    listen('desktop:web-update-status-changed', (status) => {
+      listener(answerOf('desktop:web-update-status-changed', WEB_UPDATE_STATUS, status));
+    }),
+  onWebUpdateConfirmRequested: (listener) =>
+    listen('desktop:web-update-confirm-requested', () => {
+      listener();
+    }),
+  confirmWebBundle: async () => {
+    await invoke('desktop:web-update-confirm', undefined);
+  },
+  reportWebBundleFailure: async (reason) => {
+    await invoke('desktop:web-update-report-failure', reason);
+  },
 };
 
 declare const window: MessageTarget;

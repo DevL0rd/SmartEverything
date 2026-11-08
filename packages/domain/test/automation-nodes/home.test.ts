@@ -80,14 +80,26 @@ describe('home kinds', () => {
 describe('device kinds', () => {
   it('classes effects per the effect table', () => {
     expect(kind('device.get').class).toBe('read');
-    expect(kind('device.set').effect).toEqual({ retry: 'relative', budget: 'command' });
-    expect(kind('device.toggle').effect).toEqual({ retry: 'relative', budget: 'command' });
+    expect(kind('device.set').effect).toEqual({
+      retry: 'relative',
+      budget: 'command',
+      mode: 'fire_and_forget',
+    });
+    expect(kind('device.toggle').effect).toEqual({
+      retry: 'relative',
+      budget: 'command',
+      mode: 'fire_and_forget',
+    });
     expect(kind('device.set_temporarily').effect).toEqual({
       retry: 'idempotent',
       budget: 'command',
     });
     expect(kind('device.operation').effect).toEqual({ retry: 'external', budget: 'effects' });
-    expect(kind('scene.run').effect).toEqual({ retry: 'idempotent', budget: 'command' });
+    expect(kind('scene.run').effect).toEqual({
+      retry: 'idempotent',
+      budget: 'command',
+      mode: 'fire_and_forget',
+    });
   });
 
   it('gives set_temporarily a body region that is never checkpointed', () => {

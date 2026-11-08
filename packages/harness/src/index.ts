@@ -1,4 +1,5 @@
 export type { NativeInputHistory } from './host/input-history';
+export type { ApiKeyVault } from './plugins/providers';
 export { createHarnessRuntime, HarnessRuntime } from './host/runtime';
 export { bindCompactionPolicy } from './composition/compaction-policy';
 export type { HarnessRuntimeOptions } from './host/runtime';
@@ -88,6 +89,8 @@ export {
   HARNESS_CLAUDE_PLUGINS_METADATA,
 } from './composition/claude-plugin-metadata';
 export { loadPlugin, parseMarkdownFile } from './composition/claude-plugin-manifest';
-export { readHarnessPluginAgent } from './composition/plugin-agent-source';
-export type { PluginAgentPort } from './composition/plugin-agent-port';
+export type { LoadedPlugin } from './composition/claude-plugin-manifest';
 export { RETRY_CEILING_MS, TRANSIENT_MESSAGE, transientDelayMs } from './providers/transient-retry';
+export { foldSessionInfo } from './plugins/session-info';
+export { SUBAGENT_MODEL_POLICY_EVENT, type SubagentModelRoute } from './plugins/subagents';
+export { catalogedHelpers, deliveredIds, interruptedHelper } from './host/helper-restarts';

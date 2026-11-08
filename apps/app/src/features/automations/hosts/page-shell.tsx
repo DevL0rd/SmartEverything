@@ -2,20 +2,22 @@ import type { ReactNode } from 'react';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { Screen, type ScreenProps } from '../../../components/screen';
 import { links } from '../routes';
 
 export function PageShell({
   title,
   back = true,
+  maxWidth = 'reading',
   children,
 }: {
   readonly title: string;
   readonly back?: boolean;
+  readonly maxWidth?: ScreenProps['maxWidth'];
   readonly children: ReactNode;
 }): ReactNode {
   return (
-    <Screen maxWidth="reading" header={<PageHeader title={title} back={back} />}>
+    <Screen maxWidth={maxWidth} header={<PageHeader title={title} back={back} />}>
       {children}
     </Screen>
   );

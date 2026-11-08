@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { NO_BODY, endpoint } from './endpoint';
 import { PLUGIN_ID } from '../plugins';
+import { MAC_ADDRESS } from '../mac-address';
 import { ID, MOMENT, NOTHING } from './primitives';
 
 export const FIREWALL_BACKENDS = [
@@ -45,7 +46,8 @@ const ZONE_NAME = z.string().regex(/^[A-Za-z0-9_-]{1,32}$/);
 const CAMERA_RULE = z.strictObject({
   purpose: z.literal('camera'),
   protocol: z.literal('udp'),
-  source: FIREWALL_ADDRESS,
+  mac: MAC_ADDRESS,
+  address: FIREWALL_ADDRESS,
 });
 
 const WEBRTC_RULE = z.strictObject({
@@ -57,33 +59,47 @@ const WEBRTC_RULE = z.strictObject({
 const DEVICE_RULE = z.strictObject({
   purpose: z.literal('device'),
   protocol: z.literal('udp'),
-  source: FIREWALL_ADDRESS,
+  mac: MAC_ADDRESS,
+  address: FIREWALL_ADDRESS,
 });
 
-const PLUGIN_RULE = z.strictObject({
-  purpose: z.literal('plugin'),
+const NETWORK_SOURCE_RULE = z.strictObject({
   protocol: z.enum(FIREWALL_PROTOCOLS),
   port: PORT,
   source: FIREWALL_NETWORK,
 });
 
-const HUB_RULE = PLUGIN_RULE.extend({ purpose: z.literal('hub') });
-const DISCOVERY_RULE = PLUGIN_RULE.extend({ purpose: z.literal('discovery') });
-const ANNOUNCEMENT_RULE = PLUGIN_RULE.extend({ purpose: z.literal('announcement') });
+const PLUGIN_RULE = NETWORK_SOURCE_RULE.extend({ purpose: z.literal('plugin') });
+const HUB_RULE = NETWORK_SOURCE_RULE.extend({ purpose: z.literal('hub') });
+const DISCOVERY_RULE = NETWORK_SOURCE_RULE.extend({ purpose: z.literal('discovery') });
+const ANNOUNCEMENT_RULE = NETWORK_SOURCE_RULE.extend({ purpose: z.literal('announcement') });
 
-const PORT_RULE = z.discriminatedUnion('purpose', [
-  CAMERA_RULE,
+const NETWORK_RULES = [
   WEBRTC_RULE,
-  DEVICE_RULE,
   PLUGIN_RULE,
   HUB_RULE,
   DISCOVERY_RULE,
   ANNOUNCEMENT_RULE,
-]);
+] as const;
+
+const NETWORK_PORT_RULE = z.discriminatedUnion('purpose', NETWORK_RULES);
+
+export type NetworkPortRule = z.infer<typeof NETWORK_PORT_RULE>;
+
+const PORT_RULE = z.discriminatedUnion('purpose', [CAMERA_RULE, DEVICE_RULE, ...NETWORK_RULES]);
 
 export type PortRule = z.infer<typeof PORT_RULE>;
 
+export type DeviceRule = Extract<PortRule, { readonly purpose: 'camera' | 'device' }>;
+
+export function isDeviceRule(rule: PortRule): rule is DeviceRule {
+  return rule.purpose === 'camera' || rule.purpose === 'device';
+}
+
 export function ruleSource(rule: PortRule): string | null {
+  if (isDeviceRule(rule)) {
+    return rule.address;
+  }
   return rule.purpose === 'webrtc' ? null : rule.source;
 }
 
@@ -101,7 +117,36 @@ const FIREWALL_OPENING = z.strictObject({
 
 export type FirewallOpening = z.infer<typeof FIREWALL_OPENING>;
 
-const UFW_RULE = z.strictObject({ rule: PORT_RULE, prepend: z.boolean() });
+const UFW_RULE = z.strictObject({ rule: NETWORK_PORT_RULE, prepend: z.boolean() });
+
+const UFW_MAC_ENTRY = z.strictObject({
+  mac: MAC_ADDRESS,
+  protocol: z.enum(FIREWALL_PROTOCOLS),
+  port: PORT.nullable(),
+});
+
+export type UfwMacEntry = z.infer<typeof UFW_MAC_ENTRY>;
+
+const UFW_STALE_RULE = z.strictObject({
+  protocol: z.enum(FIREWALL_PROTOCOLS),
+  port: PORT,
+  source: FIREWALL_NETWORK,
+  destination: z.union([FIREWALL_ADDRESS, z.literal('any')]),
+  interface: z
+    .string()
+    .regex(/^[A-Za-z0-9_.:-]{1,32}$/)
+    .nullable(),
+});
+
+export type UfwStaleRule = z.infer<typeof UFW_STALE_RULE>;
+
+const UFW_MAC_OPENINGS = z.strictObject({
+  entries: z.array(UFW_MAC_ENTRY),
+  staleAddresses: z.array(FIREWALL_ADDRESS),
+  staleRules: z.array(UFW_STALE_RULE),
+});
+
+export type UfwMacOpenings = z.infer<typeof UFW_MAC_OPENINGS>;
 
 export type UfwRule = z.infer<typeof UFW_RULE>;
 
@@ -125,6 +170,7 @@ const FIREWALL_PLAN = z.discriminatedUnion('backend', [
     backend: z.literal('ufw'),
     revision: REVISION,
     rules: z.array(UFW_RULE),
+    mac: UFW_MAC_OPENINGS.nullable(),
     unprivilegedPortStart: UNPRIVILEGED_PORT_START,
   }),
   z.strictObject({
@@ -159,12 +205,21 @@ export type FirewallPlanBackend = FirewallPlan['backend'];
 
 const CAMERA_REACH = z.strictObject({
   deviceId: ID,
+  mac: MAC_ADDRESS.nullable(),
   address: FIREWALL_ADDRESS,
   state: z.enum(CAMERA_REACH_STATES),
   failedAt: MOMENT.nullable(),
 });
 
 export type CameraReach = z.infer<typeof CAMERA_REACH>;
+
+const UNLEARNED_DEVICE = z.strictObject({
+  deviceId: ID,
+  purpose: z.enum(['camera', 'device']),
+  address: FIREWALL_ADDRESS,
+});
+
+export type UnlearnedDevice = z.infer<typeof UNLEARNED_DEVICE>;
 
 export const FIREWALL_STATUS = z.strictObject({
   checkedAt: MOMENT,
@@ -174,6 +229,7 @@ export const FIREWALL_STATUS = z.strictObject({
   openings: z.array(FIREWALL_OPENING),
   plan: FIREWALL_PLAN.nullable(),
   cameras: z.array(CAMERA_REACH),
+  unlearned: z.array(UNLEARNED_DEVICE).default([]),
   lowPorts: LOW_PORTS.nullable().default(null),
 });
 
@@ -220,7 +276,7 @@ export const FIREWALL_ENDPOINTS = {
     path: '/api/firewall',
     access: 'member',
     summary:
-      'The active firewall, the openings cameras and pushing devices need, which are missing and the fix',
+      'The active firewall, the openings cameras (matched by MAC address), pushing devices, plugins and announcements need, which are missing and the fix',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,

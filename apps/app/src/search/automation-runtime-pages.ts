@@ -1,7 +1,7 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import {
-  NODE_REGISTRY,
   type AutomationValueRow,
+  type NodeKindLookup,
   type SearchSources,
 } from '@smarteverything/domain';
 import {
@@ -19,7 +19,7 @@ interface RuntimePage {
   readonly path: string;
   readonly title: string;
   readonly parent: string;
-  readonly to: Href;
+  readonly to: AppHref;
   readonly icon: IconName;
   readonly keywords: readonly string[];
 }
@@ -27,7 +27,7 @@ interface FocusPages {
   readonly base: string;
   readonly parent: string;
   readonly targets: readonly AutomationFocusTarget[];
-  readonly link: (focus: string) => Href;
+  readonly link: (focus: string) => AppHref;
 }
 function focusPages({ base, parent, targets, link }: FocusPages): readonly RuntimePage[] {
   return targets.map((target) => ({
@@ -72,27 +72,28 @@ function valuePages(row: AutomationValueRow): readonly RuntimePage[] {
     }),
   ];
 }
-function automationPages(tables: SearchTables): readonly RuntimePage[] {
+function automationPages(tables: SearchTables, kinds: NodeKindLookup): readonly RuntimePage[] {
   return automationSearchPages({
-    automations: automationRowsOf(rowsOf(tables.automations)).rows,
+    automations: automationRowsOf(rowsOf(tables.automations), kinds).rows,
     functions: [],
     secrets: [],
-    kinds: NODE_REGISTRY.get,
+    kinds: (id) => kinds.get(id),
   });
 }
-function runtimePages(tables: SearchTables): readonly RuntimePage[] {
+function runtimePages(tables: SearchTables, kinds: NodeKindLookup): readonly RuntimePage[] {
   return [
     ...(tables.automationValues === undefined
       ? []
       : rowsOf(tables.automationValues).flatMap(valuePages)),
-    ...automationPages(tables),
+    ...automationPages(tables, kinds),
   ];
 }
 export function automationRuntimePages(
   tables: SearchTables,
   out: SourceLinks,
+  kinds: NodeKindLookup,
 ): SearchSources['pages'] {
-  return runtimePages(tables).map(({ path, title, parent, to, icon, keywords }) => {
+  return runtimePages(tables, kinds).map(({ path, title, parent, to, icon, keywords }) => {
     out.links.set(`page:${path}`, to);
     out.icons.set(`page:${path}`, icon);
     out.parents.set(`page:${path}`, parent);

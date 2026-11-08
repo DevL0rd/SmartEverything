@@ -7,15 +7,19 @@ export const SERVED_ASSISTANT = [
     area: 'assistant',
     access: 'read',
     title: 'Read chats',
-    line: 'Chats, search, messages and files',
+    line: 'Chats, search, messages, files and meters',
     description:
-      'The caller’s AI chats (filtered by unread, pinned, archived or source), a search through titles and message text, the messages of one chat, their default chat, or one attached file. Returns the chatId other chat tools take.',
+      'The caller’s AI chats, a search through titles and messages, one chat’s messages or meter history, their default chat, or one attached file. Returns the chatId other chat tools take.',
     route: {
       key: 'view',
       branches: {
         list: { part: 'chats_list', line: 'Chats, newest first, with filters' },
         search: { part: 'chats_search', line: 'Chats whose title or messages match words' },
         messages: { part: 'chat_read', line: 'The messages of one chat' },
+        meters: {
+          part: 'chat_meter_history',
+          line: 'One chat’s recent context and cache and observed weekly subscription usage',
+        },
         history: { part: 'assistant_history', line: 'The person’s default chat' },
         attachment: {
           part: 'read_assistant_attachment',
@@ -31,7 +35,7 @@ export const SERVED_ASSISTANT = [
     title: 'Edit chats',
     line: 'Start, rename, pin, archive, branch, stop or delete',
     description:
-      'Manages chats: starts a new one, changes one (title, icon, pin, archive, read, engine, model, tools), branches it, regenerates a reply, stops its run, deletes it or one message. Not for sending a chat work (chat_send) or starting a helper on a task (subagent_run).',
+      'Manages chats: starts a new one, changes one (title, icon, pin, archive, read, engine, model, tools), branches it, regenerates a reply, stops its run, deletes it or one message, or adds or removes the assistant’s emoji reaction in its current chat or on a delivered helper input’s parent copy. Not for sending a chat work (chat_send) or starting a helper on a task (subagent_run).',
     route: {
       key: 'action',
       branches: {
@@ -41,6 +45,10 @@ export const SERVED_ASSISTANT = [
           line: 'Title, icon, pinned, archived, read, engine or tools',
         },
         branch: { part: 'chat_branch', line: 'Copy a chat up to one message into a new chat' },
+        react: {
+          part: 'chat_react',
+          line: 'React in this chat or to the parent copy of a delivered helper input',
+        },
         retry: { part: 'chat_retry', line: 'Regenerate the reply to one message' },
         stop: { part: 'chat_stop', line: 'Stop the chat’s running reply' },
         delete: { part: 'chat_delete', line: 'Delete a chat' },
@@ -55,7 +63,7 @@ export const SERVED_ASSISTANT = [
     title: 'Message another chat',
     line: 'Its AI answers back by itself',
     description:
-      'Sends a message from your chat to another of the person’s chats (chatId from chat_read); that chat’s AI works on it and its answer comes back to you, waited for or as a report later. Not for managing chats (chat_edit).',
+      'Messages another of the person’s chats (chatId from chat_read). Messages between a parent and its direct helper appear in the parent thread. Wait for the answer or receive it as a report later. Set quoteMessageId to a message in that chat (from chat_read) to reply to it as a quote, and write @Name to mention a helper or person.',
     route: { part: 'chat_send' },
   },
   {
@@ -65,7 +73,7 @@ export const SERVED_ASSISTANT = [
     title: 'Run a subagent',
     line: 'A helper chat works on a task',
     description:
-      'Starts a helper chat on one task with its own engine, model and tools and returns its answer, waited for or as a report later. It sees only the task text, so include everything it needs. Not for messaging an existing chat (chat_send).',
+      'Starts a helper chat on one task and returns its answer or a later report. In a SmartEverything conversation, use the local agent tools for ordinary helpers and this tool only for an explicitly selected Claude or Codex harness and computer. The helper sees only the task text. Use its returned chatId with chat_send for follow-up.',
     route: { part: 'subagent_run' },
   },
   {
@@ -73,9 +81,9 @@ export const SERVED_ASSISTANT = [
     area: 'assistant',
     access: 'control',
     title: 'Post to a chat',
-    line: 'A message with files in their chat',
+    line: 'A message with files in their chat or a helper’s parent',
     description:
-      'Posts a message with optional files into a person’s AI chat, with or without a notification, for results they should keep. Not for a short alert (person_notify).',
+      'Posts a message with optional files into a person’s AI chat; set quoteMessageId to a message in that chat (from chat_read) to reply to it as a quote, and write @Name to mention a helper or person. In an admitted helper, shareWithParent posts selected saved attachments or the results of a completed image operation privately into its direct parent without starting a turn.',
     route: { part: 'chat_post' },
   },
   {
@@ -93,9 +101,52 @@ export const SERVED_ASSISTANT = [
     area: 'assistant',
     access: 'control',
     title: 'Show in the app',
-    line: 'Open or point at something in their app',
+    line: 'Open a page, point at one thing or clear the pointer',
     description: SHOW_IN_APP_TEXT,
-    route: { part: 'app_show' },
+    route: {
+      key: 'action',
+      branches: {
+        open: { part: 'show_in_app', line: 'Open a page in the person’s app' },
+        highlight: {
+          part: 'point_in_app',
+          line: 'Point at one thing on the screen it is on now',
+        },
+        dismiss: {
+          part: 'clear_app_pointer',
+          line: 'Clear the pointer',
+        },
+      },
+    },
+  },
+  {
+    name: 'self_update',
+    area: 'system',
+    access: 'control',
+    title: 'Update SmartEverything itself',
+    line: 'Update the hub, Android app and desktop UI, or share a file',
+    description:
+      'For the owner’s own chat or its trusted automatic repair chat. Check status before updating the hub. Hub returns a run ID and posts its verified result later; recover resumes an interrupted hub update. When enabled, app offers a signed Android installer for native changes; ui publishes compatible Android and desktop UI offers. Desktop native changes require the canonical machine release workflow. Test requires a paired Android device. Release offers target compatible devices on that channel. Check status with the publication run ID after interruption; partial means a platform is missing and can be resumed with that same request. Historical Android-only UI publications remain partial without replay. Published means offered, never installed. File attaches privately in this chat by default.',
+    route: {
+      key: 'action',
+      branches: {
+        status: {
+          part: 'self_update_status',
+          line: 'Read a hub or app publication outcome by run ID',
+        },
+        hub: { part: 'self_update_hub', line: 'Prepare a hub release with automatic recovery' },
+        app: { part: 'self_update_app', line: 'Offer a signed Android installer when enabled' },
+        ui: {
+          part: 'self_update_ui',
+          line: 'Offer compatible Android and desktop UI updates when enabled',
+        },
+        recover: { part: 'recover_hub_update', line: 'Resume an interrupted hub update' },
+        file: { part: 'send_chat_file', line: 'Send a file as an attachment in this chat' },
+        claim: {
+          part: 'claim_repair_work',
+          line: 'Route repair alerts for a component to this chat',
+        },
+      },
+    },
   },
   {
     name: 'model_read',
@@ -170,6 +221,16 @@ export const SERVED_ASSISTANT = [
     description:
       'Sends a person (personId from person_read) a short message in their newest chat with a phone notification, urgent when it must break through. Not for saying it out loud (voice_speak).',
     route: { part: 'person_notify' },
+  },
+  {
+    name: 'chat_speak',
+    area: 'assistant',
+    access: 'control',
+    title: 'Send a voice reply',
+    line: 'A playable voice message in this chat',
+    description:
+      'Answers in the current AI chat with a voice message when the person asks for a voice reply: speaks the supplied text with the configured speech model and voice and posts it as a playable clip with its transcript; set quoteMessageId to reply to a message in this chat as a quote. Works in helper chats too. It does not play on devices or start a call.',
+    route: { part: 'chat_speak' },
   },
   {
     name: 'voice_speak',

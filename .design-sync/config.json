@@ -19,6 +19,10 @@
     "Axes": null,
     "DrawnStroke": null,
     "Extremes": null,
+    "Grid": null,
+    "Overlay": null,
+    "LayoutGrid": "../../../apps/app/src/components/grid.tsx",
+    "ModalOverlay": "../../../apps/app/src/components/overlay.tsx",
     "Frame": null,
     "KeyboardViewport": null,
     "LinkIntentProvider": null,
@@ -51,7 +55,7 @@
       "primaryStory": "Dark",
       "viewport": "800x520"
     },
-    "Overlay": {
+    "ModalOverlay": {
       "cardMode": "single",
       "primaryStory": "Dark",
       "viewport": "800x520"
@@ -290,7 +294,7 @@
     "Segmented": {
       "cardMode": "column"
     },
-    "StageTimeline": {
+    "Hypnogram": {
       "cardMode": "column"
     },
     "TimeSeriesChart": {
@@ -338,7 +342,7 @@
     "Ambient": {
       "cardMode": "column"
     },
-    "Grid": {
+    "LayoutGrid": {
       "cardMode": "column"
     },
     "DecisionStatus": {

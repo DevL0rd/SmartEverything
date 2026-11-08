@@ -5,6 +5,7 @@ import expo.modules.healthconnect.watch.ProtoWriter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,8 +63,9 @@ class LarqFramesTest {
   @Test
   fun `a not supported answer is a clean end and anything else that is not a page says why`() {
     assertSame(PageRead.Unsupported, LarqFrames.scanPage(hex("0d 09 00 00 00 10 02")))
-    assertEquals("the bottle answered with failure code 0", reasonOf(hex("0d 09 00 00 00 10")))
+    assertEquals("the bottle answered with failure code 0", reasonOf(hex("0d 09 00 00 00")))
     assertEquals("the bottle answered with failure code 3", reasonOf(hex("0d 09 00 00 00 10 03")))
+    assertEquals("the reply is not a valid frame", reasonOf(hex("0d 09 00 00 00 10")))
     assertEquals("the reply is not a valid frame", reasonOf(hex("1a ff")))
     assertFalse(LarqFrames.isSuccess(hex("0d 09 00 00 00 10 02")))
     assertTrue(LarqFrames.isSuccess(hex("0d 02 00 00 00 10 01")))
@@ -103,6 +105,18 @@ class LarqFramesTest {
     assertNull(LarqFrames.serialOfName("LARQ_0000000000-"))
     assertNull(LarqFrames.serialOfName("Other_00000000001"))
     assertNull(LarqFrames.serialOfName("LARQ_zzzzzzzzzzz"))
+  }
+
+  private fun pageOf(frame: ByteArray): LarqPage {
+    val read = LarqFrames.scanPage(frame)
+    check(read is PageRead.Page) { "Expected a log page, got ${read.javaClass.simpleName}" }
+    return read.page
+  }
+
+  private fun reasonOf(frame: ByteArray): String {
+    val read = LarqFrames.scanPage(frame)
+    check(read is PageRead.Unreadable) { "Expected an unreadable page, got ${read.javaClass.simpleName}" }
+    return read.reason
   }
 
   private fun accelerometer(x: Float, y: Float, z: Float): ByteArray {

@@ -11,5 +11,12 @@ class OverlayPrefsTest {
     )
     assertEquals(OverlayTheme.Light, prefs.theme)
     assertEquals(OverlayPrefsData(enabled = false, position = OverlayPosition.Left, glow = false), prefs.data)
+    assertEquals(PowerButton.Call, prefs.powerButton)
+  }
+
+  @Test
+  fun `the phone prefs carry the power button choice`() {
+    val prefs = OverlayPrefs.parse("""{"theme":"dark","powerButton":"voice_message"}""")
+    assertEquals(PowerButton.VoiceMessage, prefs.powerButton)
   }
 }

@@ -7,6 +7,7 @@ import {
 import { beforeEach, describe, expect, it } from 'vitest';
 import { CallSight } from '../../src/assistant-voice/call-sight';
 import type { HubToolResult } from '../../src/ai-tools/hub-tool';
+import type { OwnScreen } from '../../src/assistant-voice/call-look';
 import type { Picture } from '../../src/assistant-voice/gemini';
 import { SightError } from '../../src/assistant-voice/sight-error';
 import type { SightTuning } from '../../src/assistant-voice/live-window';
@@ -75,7 +76,7 @@ beforeEach(() => {
   detached = 0;
   sight = new CallSight({
     callId: CALL,
-    own: () => ({ source: null, computerId: null }),
+    own: (): OwnScreen => ({ source: null, computerId: null }),
     send: (message): void => {
       sent.push(message);
     },

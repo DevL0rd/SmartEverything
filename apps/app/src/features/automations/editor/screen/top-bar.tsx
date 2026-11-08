@@ -1,4 +1,4 @@
-import { memo, useState, type ReactNode } from 'react';
+import { memo, useState, type ReactNode, type RefObject } from 'react';
 import { View } from 'react-native';
 import { cn } from '../../../../design/cn';
 import { useIdiom } from '../../../../design/platform';
@@ -10,7 +10,12 @@ import { OverflowButton, type MenuItem } from '../../../../components/menu';
 import { Text } from '../../../../components/text';
 import { Tooltip } from '../../../../components/tooltip';
 import type { ProblemCounts } from '../problems/problem-model';
-import { topBarModel, type EditorLayout, type TopBarModel } from './screen-model';
+import {
+  EMPTY_TEST_REASON,
+  topBarModel,
+  type EditorLayout,
+  type TopBarModel,
+} from './screen-model';
 
 export interface TopBarProps {
   readonly layout: EditorLayout;
@@ -18,6 +23,7 @@ export interface TopBarProps {
   readonly status: string;
   readonly reusable: boolean;
   readonly online: boolean;
+  readonly empty: boolean;
   readonly counts: ProblemCounts;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
@@ -30,6 +36,7 @@ export interface TopBarProps {
   readonly onAdd: () => void;
   readonly onProblems: () => void;
   readonly onShortcuts: () => void;
+  readonly focusRef?: RefObject<View | null>;
 }
 
 function PublishButton({
@@ -74,21 +81,26 @@ function PublishButton({
 
 function ProblemChip({
   model,
+  counts,
+  compact,
   onPress,
 }: {
   readonly model: TopBarModel;
+  readonly counts: ProblemCounts;
+  readonly compact: boolean;
   readonly onPress: () => void;
 }): ReactNode {
   const { problemText, problemTone } = model;
   if (problemText === null || problemTone === null) return null;
+  const total = counts.errors + counts.warnings + counts.hints;
   return (
     <Interactive
       label={`Problems: ${problemText}`}
       hint="Opens the problems list"
       onPress={onPress}
-      className="min-h-touch-min justify-center rounded-full"
+      className="min-h-touch-min min-w-touch-min items-center justify-center rounded-full"
     >
-      <Badge label={problemText} tone={problemTone} icon="warning" />
+      <Badge label={compact ? String(total) : problemText} tone={problemTone} icon="warning" />
     </Interactive>
   );
 }
@@ -100,9 +112,8 @@ function Title({
   readonly bar: TopBarProps;
   readonly model: TopBarModel;
 }): ReactNode {
-  const { layout, name, status, reusable, onRename, onProblems } = bar;
+  const { layout, name, status, reusable, onRename } = bar;
   const compact = layout !== 'wide';
-  const statusLine = compact ? [status, model.problemText] : [status];
   return (
     <View className="min-w-0 shrink flex-1">
       {model.breadcrumb ? (
@@ -111,25 +122,19 @@ function Title({
         </Text>
       ) : null}
       <Interactive
-        label={`Name: ${name}. Rename`}
+        label={compact ? `Name: ${name}, ${status}. Rename` : `Name: ${name}. Rename`}
         onPress={onRename}
-        className="min-h-6 justify-center"
+        className={cn('justify-center', compact ? 'min-h-touch-min' : 'min-h-6')}
       >
         <Text variant="body-strong" numberOfLines={1}>
           {name}
         </Text>
-      </Interactive>
-      {compact ? (
-        <Interactive
-          label={statusLine.filter((part) => part !== null).join(', ')}
-          onPress={model.problemText === null ? undefined : onProblems}
-          className="min-h-6 justify-center"
-        >
-          <Text variant="caption" tone={model.problemTone ?? 'variant'} numberOfLines={1}>
-            {statusLine.filter((part) => part !== null).join(' · ')}
+        {compact ? (
+          <Text variant="caption" tone="variant" numberOfLines={1}>
+            {status}
           </Text>
-        </Interactive>
-      ) : null}
+        ) : null}
+      </Interactive>
     </View>
   );
 }
@@ -137,7 +142,7 @@ function Title({
 function moreItems(bar: TopBarProps, model: TopBarModel): readonly MenuItem[] {
   const test: readonly MenuItem[] = model.testButton
     ? []
-    : [{ label: 'Test', icon: 'play', onPress: bar.onTest }];
+    : [{ label: 'Test', icon: 'play', disabled: model.testDisabled, onPress: bar.onTest }];
   return [
     ...test,
     { label: 'Rename', icon: 'pencil', onPress: bar.onRename },
@@ -145,15 +150,9 @@ function moreItems(bar: TopBarProps, model: TopBarModel): readonly MenuItem[] {
   ];
 }
 
-function Actions({
-  bar,
-  model,
-}: {
-  readonly bar: TopBarProps;
-  readonly model: TopBarModel;
-}): ReactNode {
+function UndoRedo({ bar }: { readonly bar: TopBarProps }): ReactNode {
   return (
-    <View className="shrink-0 flex-row items-center gap-1">
+    <>
       <IconButton
         icon="undo"
         label="Undo"
@@ -168,6 +167,20 @@ function Actions({
         disabled={!bar.canRedo}
         onPress={bar.onRedo}
       />
+    </>
+  );
+}
+
+function Actions({
+  bar,
+  model,
+}: {
+  readonly bar: TopBarProps;
+  readonly model: TopBarModel;
+}): ReactNode {
+  return (
+    <View className="shrink-0 flex-row items-center gap-1">
+      {model.undoButtons ? <UndoRedo bar={bar} /> : null}
       {model.addButton ? (
         <Button label="Add" icon="plus" variant="outlined" hint="Add a step" onPress={bar.onAdd} />
       ) : null}
@@ -176,7 +189,8 @@ function Actions({
           label="Test"
           icon="play"
           variant="tonal"
-          hint="Test run. Ctrl+Enter"
+          hint={model.testDisabled ? EMPTY_TEST_REASON : 'Test run. Ctrl+Enter'}
+          disabled={model.testDisabled}
           onPress={bar.onTest}
         />
       ) : null}
@@ -186,10 +200,11 @@ function Actions({
   );
 }
 
-export const TopBar = memo(function TopBar(props: TopBarProps): ReactNode {
+export const TopBar = memo(function TopBar({ focusRef, ...props }: TopBarProps): ReactNode {
   const model = topBarModel(props);
   return (
     <View
+      ref={focusRef}
       accessibilityRole="toolbar"
       accessibilityLabel="Editor"
       className="flex-row items-center gap-1 border-b border-outline-variant bg-surface-1 px-2 py-1"
@@ -201,7 +216,12 @@ export const TopBar = memo(function TopBar(props: TopBarProps): ReactNode {
           <Badge label={props.status} tone="neutral" />
         </View>
       )}
-      {props.layout !== 'wide' ? null : <ProblemChip model={model} onPress={props.onProblems} />}
+      <ProblemChip
+        model={model}
+        counts={props.counts}
+        compact={props.layout !== 'wide'}
+        onPress={props.onProblems}
+      />
       <Actions bar={props} model={model} />
     </View>
   );

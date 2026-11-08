@@ -8,11 +8,7 @@ import { ComputerModelRoutes } from './computer-models';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { Logger } from '@smarteverything/logging';
-import {
-  NODE_HARNESS_FRAME,
-  HARNESS_PUBLICATION,
-  HARNESS_PLUGIN_AGENT_RESULT,
-} from '@smarteverything/domain';
+import { NODE_HARNESS_FRAME, HARNESS_PUBLICATION } from '@smarteverything/domain';
 import type {
   AiModelRoute,
   AiModelRouteSelection,
@@ -33,8 +29,8 @@ import { ProcessHarnessConfiguration } from './configuration';
 import { installedHarnessBuiltins } from '../composition/builtins';
 import { HarnessSkillAssets } from '../composition/skill-assets';
 import { hubExtensionSource } from './extension-source';
-import { DurablePluginAgents } from './plugin-agents';
 import { CentralHarnessTools } from './central-tools';
+import { HubApiKeyVault } from './api-key-vault';
 import { HubSessionLog } from './persistence';
 import { transferAttachments } from './attachments';
 import { createHarnessDispatcher, type HarnessDispatcher } from './dispatcher';
@@ -83,8 +79,6 @@ export class ComputerHarness {
   ): Promise<void> {
     if (
       route?.id !== selection.route_id ||
-      route.capability_revision !== selection.capability_revision ||
-      route.credential_generation !== selection.credential_generation ||
       !route.models.some((model) => model.id === selection.model)
     )
       throw new HarnessRuntimeError(
@@ -133,12 +127,9 @@ export class ComputerHarness {
     this.assertConnected();
     await this.ports.configuration.configure(configuration);
   }
-  async lose(id: string): Promise<void> {
-    const epoch = this.sessions.get(id);
-    const present = epoch !== undefined && this.dispatcher.hasSession(id, epoch);
-    this.sessions.delete(id);
-    this.persistence.lose(id);
-    if (present) await this.dispatcher.runtime.whenOwnershipLossSettled(id);
+  async lose(id: string, epoch: number): Promise<void> {
+    if (this.sessions.get(id) === epoch) this.sessions.delete(id);
+    await this.dispatcher.loseSession(id, epoch);
   }
   async stop(): Promise<void> {
     if (this.stopped) return;
@@ -226,22 +217,19 @@ function composeComputer(input: {
 }): Promise<HarnessDispatcher> {
   const { boot, http, persistence, models, configuration } = input;
   const host = processHarnessHost(boot);
-  const pluginAgents = new DurablePluginAgents(persistence, (request, signal) =>
-    http.call(request, HARNESS_PLUGIN_AGENT_RESULT, signal),
-  );
   return createHarnessDispatcher({
     host,
     persistence,
     loadAttachments: (id, ids) => transferAttachments(http, persistence, id, ids),
     describeImage: (input) => transferNativeImageNote(http, persistence, input),
     desiredConfiguration: boot.configuration ?? { revision: 'initial', entries: [] },
+    apiKeys: new HubApiKeyVault(http),
     installedPlugins: installedHarnessBuiltins(
       host,
       new HarnessSkillAssets(
         join(host.stateDirectory, 'shared-skill-assets'),
         hubExtensionSource(http),
       ),
-      pluginAgents,
     ),
     configurationChanged: configuration.changed,
     configurationPending: configuration.pending,

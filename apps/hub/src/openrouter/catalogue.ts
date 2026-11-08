@@ -1,7 +1,9 @@
 import {
+  AI_DEFAULT_MODEL,
   ApiError,
   AUTO_LATEST_GEMINI_FLASH,
   closestEffort,
+  DEFAULT_AI_EFFORT,
   displayNameOf,
   googleModelOf,
   latestGeminiFlash,
@@ -194,23 +196,8 @@ export class Catalogue {
     return this.options.models.settings();
   }
 
-  saveDefaults(choice: AiModelChoice, effort: AiEffort): OpenRouterSettings {
-    if (choice !== AUTO_LATEST_GEMINI_FLASH) {
-      this.chatModel(choice);
-    }
-    const next = {
-      ...this.settings(),
-      default_model: choice,
-      default_effort: effort,
-    };
-    this.options.models.saveSettings(next);
-    this.changed();
-    return next;
-  }
-
   resolve(choice: AiModelChoice | null, effort: AiEffort | null): AiResolvedModel {
-    const settings = this.settings();
-    const wanted = choice ?? settings.default_model;
+    const wanted = choice ?? AI_DEFAULT_MODEL;
     const model =
       wanted === AUTO_LATEST_GEMINI_FLASH ? latestGeminiFlash(this.loaded) : this.chatModel(wanted);
     if (model === null) {
@@ -223,12 +210,12 @@ export class Catalogue {
       choice: wanted,
       model_id: model.id,
       name: displayNameOf(model, wanted),
-      effort: this.effortFor(model, effort ?? settings.default_effort),
+      effort: this.effortFor(model, effort ?? DEFAULT_AI_EFFORT),
     };
   }
 
   defaultModel(): AiResolvedModel | null {
-    const wanted = this.settings().default_model;
+    const wanted = AI_DEFAULT_MODEL;
     const available =
       wanted === AUTO_LATEST_GEMINI_FLASH
         ? latestGeminiFlash(this.loaded) !== null

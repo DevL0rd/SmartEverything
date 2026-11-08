@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import { href } from '../app-shell/hrefs';
 import type { Crumb } from '../components/breadcrumbs';
 import { ACCENT_LABELS } from '../design/tokens';
@@ -6,15 +6,20 @@ import { joinParts, plural } from '../format/text';
 import { zoneLabel } from '../format/time';
 import { talkLinked } from '../../modules/health-connect';
 import { PREFS, prefOf } from '../store/prefs';
-import type { StoreState } from '../store/state';
+import { rowsOf, type StoreState } from '../store/state';
 import { ASSISTANT_PAGES } from './tree-assistant';
 import { NAVIGATION_PAGES } from './tree-navigation';
 import { PLUGIN_PAGES } from './tree-plugins';
 import { SETUP_PAGES } from './tree-setup';
 import { DEVELOPER_PAGES } from './tree-developer';
 import { CLIPBOARD_PAGES } from './tree-clipboard';
-import { HOME_LAYOUT_PAGES } from './tree-home-layouts';
+import { HOME_SUB_PAGES } from './tree-home-map';
 import { REGION_PAGES } from './tree-region';
+import { SERVER_PAGES } from './tree-server';
+import { APP_UPDATE_PAGES } from './tree-app-updates';
+import { DRIVE_PAGES } from './tree-drive';
+import { PHOTOS_PAGES } from './tree-photos';
+import { PLANNER_PAGES } from './tree-planner';
 import type { SettingEnv, SettingsPageDefinition } from './types';
 
 const THEME_LABELS = { system: 'System theme', light: 'Light', dark: 'Dark' } as const;
@@ -72,14 +77,18 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     summary: (state) => countOf(state.tables.rooms.ids.length, 'room'),
     keywords: ['room', 'areas'],
   },
-  ...HOME_LAYOUT_PAGES,
+  ...HOME_SUB_PAGES,
   {
     id: 'members',
     title: 'Paired devices',
     icon: 'smartphone',
     parent: null,
     group: 'Home',
-    summary: (state) => countOf(state.tables.clients.ids.length, 'paired device'),
+    summary: (state) =>
+      countOf(
+        rowsOf(state.tables.clients).filter((client) => !client.built_in).length,
+        'paired device',
+      ),
     keywords: ['paired', 'phones', 'members', 'clients', 'pair'],
     visible: ownerOnly,
   },
@@ -257,6 +266,9 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     group: 'App',
     keywords: ['rules', 'schedule', 'scheduled', 'history'],
   },
+  ...PLANNER_PAGES,
+  ...PHOTOS_PAGES,
+  ...DRIVE_PAGES,
   {
     id: 'this-phone',
     title: 'This phone',
@@ -265,6 +277,15 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     group: 'App',
     platform: 'android',
     keywords: ['phone', 'context', 'driving', 'walking', 'car', 'screen time', 'background'],
+  },
+  {
+    id: 'this-computer',
+    title: 'This computer',
+    icon: 'monitor',
+    parent: null,
+    group: 'App',
+    platform: 'desktop',
+    keywords: ['computer service', 'service', 'start on login', 'installer', 'keep running'],
   },
   {
     id: 'appearance',
@@ -306,30 +327,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     visible: ownerOnly,
   },
   ...DEVELOPER_PAGES,
-  {
-    id: 'server',
-    title: 'Server & remote access',
-    icon: 'server',
-    parent: null,
-    group: 'System',
-    keywords: ['public url', 'remote', 'switch server', 'unpair', 'service'],
-  },
-  {
-    id: 'server/firewall',
-    title: 'Firewall',
-    icon: 'shield',
-    parent: 'server',
-    group: null,
-    keywords: ['ports', 'blocked', 'rules'],
-  },
-  {
-    id: 'server/diagnostics',
-    title: 'Diagnostics',
-    icon: 'activity',
-    parent: 'server',
-    group: null,
-    keywords: ['logs', 'version', 'uptime'],
-  },
+  ...SERVER_PAGES,
   {
     id: 'about',
     title: 'About',
@@ -354,6 +352,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     group: null,
     keywords: ['privacy'],
   },
+  ...APP_UPDATE_PAGES,
 ];
 
 export const SETTINGS_GROUPS = ['Home', 'Connections', 'App', 'System'] as const;
@@ -382,7 +381,7 @@ export function onPlatform(page: SettingsPageDefinition, env: SettingEnv): boole
   return page.platform === undefined || page.platform === env.platform;
 }
 
-export function pageHref(page: SettingsPageDefinition): Href {
+export function pageHref(page: SettingsPageDefinition): AppHref {
   return page.href ?? href.settings.page(page.id);
 }
 

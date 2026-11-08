@@ -58,7 +58,7 @@ export function ImageDetail({ endpoint, isDefault, action }: ImageDetailProps): 
               {endpoint.name}
             </Text>
             <Text variant="footnote" tone="variant">
-              {isDefault ? `${maker} · Default image model` : maker}
+              {isDefault ? `${maker} · In use` : maker}
             </Text>
           </View>
         </View>

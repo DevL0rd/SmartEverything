@@ -32,6 +32,7 @@ const RAW = {
   query: {},
   body: undefined,
   remote: 'test',
+  headers: {},
 } as const;
 
 function service(

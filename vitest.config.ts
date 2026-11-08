@@ -160,6 +160,14 @@ export default defineConfig({
       },
       {
         test: {
+          name: 'models',
+          root: './packages/models',
+          environment: 'node',
+          include: ['test/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
           name: 'flow',
           root: './packages/flow',
           environment: 'node',
@@ -190,6 +198,10 @@ export default defineConfig({
         resolve: {
           alias: [
             { find: /^react-native$/, replacement: reactNative },
+            {
+              find: /^@react-native-community\/netinfo$/,
+              replacement: moduleBuild('@react-native-community/netinfo'),
+            },
             { find: /^@shopify\/flash-list$/, replacement: flashList },
             { find: /^expo-notifications$/, replacement: expoNotifications },
             { find: /^react-native-webrtc$/, replacement: reactNativeWebrtc },
@@ -223,6 +235,7 @@ export default defineConfig({
           server: {
             deps: {
               inline: [
+                '@react-native-community/netinfo',
                 'react-native-reanimated',
                 'react-native-worklets',
                 'uniwind',
@@ -273,7 +286,9 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
       reportsDirectory: './coverage',
-      include: ['packages/{logging,domain,xiaomi,ble,ipp,tuya,smartthings,shelly,flow}/src/**/*.ts'],
+      include: [
+        'packages/{logging,domain,xiaomi,ble,ipp,tuya,smartthings,shelly,models,flow}/src/**/*.ts',
+      ],
       exclude: ['**/*.d.ts', '**/index.ts'],
       thresholds: {
         branches: 100,

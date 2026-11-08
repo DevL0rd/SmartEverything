@@ -12,7 +12,7 @@ const LEARNED_CODE = z.object({
   code: z.string().min(1),
 });
 
-type LearnedCode = z.infer<typeof LEARNED_CODE>;
+export type LearnedCode = z.infer<typeof LEARNED_CODE>;
 
 export type LearnOutcome =
   | { readonly kind: 'waiting' }

@@ -1,5 +1,5 @@
 import { formatByteRate, type SyncthingPeer } from '@smarteverything/domain';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../../components/badge';
@@ -51,7 +51,7 @@ export function PeerRow({
   readonly now: number;
   readonly stale: boolean;
   readonly onPress?: () => void;
-  readonly href?: Href;
+  readonly href?: AppHref;
 }): ReactNode {
   const status = peerStatus(peer, now, stale);
   const live = !stale && peer.connected && peer.inBytesPerSecond > 0;

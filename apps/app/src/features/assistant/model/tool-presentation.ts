@@ -7,55 +7,84 @@ import {
   reportedRecord,
   toolKey,
 } from './tool-presentation-text';
+import { mcpToolVerb } from './tool-verbs';
 
 interface ToolAction {
   readonly title: string;
-  readonly goal: string;
+  readonly verb: string;
   readonly fileVerb?: string;
 }
 const ACTIONS: ReadonlyMap<string, ToolAction> = new Map([
-  ['bash', { title: 'Run a command', goal: 'Running commands' }],
-  ['pwsh', { title: 'Run a command', goal: 'Running commands' }],
-  ['exec_command', { title: 'Run a command', goal: 'Running commands' }],
-  ['shell', { title: 'Run a command', goal: 'Running commands' }],
-  ['read', { title: 'Read a file', goal: 'Reading files', fileVerb: 'Read' }],
-  ['read_file', { title: 'Read a file', goal: 'Reading files', fileVerb: 'Read' }],
-  ['write', { title: 'Write a file', goal: 'Updating files', fileVerb: 'Write' }],
-  ['write_file', { title: 'Write a file', goal: 'Updating files', fileVerb: 'Write' }],
-  ['edit', { title: 'Edit a file', goal: 'Updating files', fileVerb: 'Edit' }],
-  ['edit_file', { title: 'Edit a file', goal: 'Updating files', fileVerb: 'Edit' }],
-  ['apply_patch', { title: 'Update files', goal: 'Updating files' }],
-  ['grep', { title: 'Search file contents', goal: 'Searching files' }],
-  ['glob', { title: 'Find files', goal: 'Searching files' }],
-  ['home_read', { title: 'Read the home’s rooms and devices', goal: 'Checking devices' }],
-  ['device_control', { title: 'Change device settings', goal: 'Updating devices' }],
-  ['image_gen', { title: 'Make an image', goal: 'Working with images' }],
-  ['web_search', { title: 'Search the web', goal: 'Searching the web' }],
-  ['search_web', { title: 'Search the web', goal: 'Searching the web' }],
-  ['websearch', { title: 'Search the web', goal: 'Searching the web' }],
-  ['web_run', { title: 'Browse the web', goal: 'Browsing the web' }],
-  ['ask_user_question', { title: 'Ask for your input', goal: 'Getting your input' }],
+  ['bash', { title: 'Run a command', verb: 'run commands' }],
+  ['pwsh', { title: 'Run a command', verb: 'run commands' }],
+  ['exec_command', { title: 'Run a command', verb: 'run commands' }],
+  ['shell', { title: 'Run a command', verb: 'run commands' }],
+  ['read', { title: 'Read a file', verb: 'read files', fileVerb: 'Read' }],
+  ['read_file', { title: 'Read a file', verb: 'read files', fileVerb: 'Read' }],
+  ['write', { title: 'Write a file', verb: 'edit files', fileVerb: 'Write' }],
+  ['write_file', { title: 'Write a file', verb: 'edit files', fileVerb: 'Write' }],
+  ['edit', { title: 'Edit a file', verb: 'edit files', fileVerb: 'Edit' }],
+  ['edit_file', { title: 'Edit a file', verb: 'edit files', fileVerb: 'Edit' }],
+  ['apply_patch', { title: 'Update files', verb: 'edit files' }],
+  ['grep', { title: 'Search file contents', verb: 'search files' }],
+  ['glob', { title: 'Find files', verb: 'search files' }],
+  ['home_read', { title: 'Read the home’s rooms and devices', verb: 'read the home' }],
+  ['device_control', { title: 'Change device settings', verb: 'control devices' }],
+  ['image_gen', { title: 'Make an image', verb: 'make images' }],
+  ['web_search', { title: 'Search the web', verb: 'search the web' }],
+  ['search_web', { title: 'Search the web', verb: 'search the web' }],
+  ['websearch', { title: 'Search the web', verb: 'search the web' }],
+  ['web_fetch', { title: 'Read a web page', verb: 'read web pages' }],
+  ['webfetch', { title: 'Read a web page', verb: 'read web pages' }],
+  ['web_run', { title: 'Browse the web', verb: 'browse the web' }],
+  ['ask_user_question', { title: 'Ask for your input', verb: 'ask for input' }],
 ]);
-const COMMAND_GOALS: readonly (readonly [RegExp, string])[] = [
-  [/^\s*(?:(?:pnpm|npm|yarn|bun)\s+(?:exec\s+|run\s+)?)?(?:eslint|lint)\b/, 'Check code style'],
-  [/^\s*(?:(?:pnpm|npm|yarn|bun)\s+(?:exec\s+|run\s+)?)?(?:tsc|typecheck)\b/, 'Check code types'],
-  [/^\s*(?:(?:pnpm|npm|yarn|bun)\s+(?:exec\s+|run\s+)?)?prettier\b/, 'Check formatting'],
-  [/^\s*(?:(?:pnpm|npm|yarn|bun)\s+(?:exec\s+|run\s+)?)?(?:test|vitest|pytest)\b/, 'Run checks'],
-  [/^\s*(?:(?:pnpm|npm|yarn|bun)\s+(?:exec\s+|run\s+)?)?(?:build|bundle)\b/, 'Build the app'],
-  [/^\s*(?:cat|head|tail|sed)\b/, 'Read file contents'],
-  [/^\s*(?:rg|grep|find)\b/, 'Search files'],
-  [/^\s*(?:ls|pwd)\b/, 'Inspect the working folder'],
-  [/^\s*git\s+(?:status|diff|log)\b/, 'Inspect code changes'],
+
+interface CommandGoal {
+  readonly pattern: RegExp;
+  readonly title: string;
+  readonly verb: string;
+}
+
+const TOOL_PREFIX = String.raw`^\s*(?:(?:pnpm|npm|yarn|bun)\s+(?:exec\s+|run\s+)?)?`;
+
+function toolCommand(tools: string, title: string, verb: string): CommandGoal {
+  return { pattern: new RegExp(`${TOOL_PREFIX}(?:${tools})\\b`), title, verb };
+}
+
+const COMMAND_GOALS: readonly CommandGoal[] = [
+  toolCommand('eslint|lint', 'Check code style', 'check code'),
+  toolCommand('tsc|typecheck', 'Check code types', 'check code'),
+  toolCommand('prettier', 'Check formatting', 'check code'),
+  toolCommand('test|vitest|pytest', 'Run checks', 'run checks'),
+  toolCommand('build|bundle', 'Build the app', 'build the app'),
+  { pattern: /^\s*(?:cat|head|tail|sed)\b/, title: 'Read file contents', verb: 'read files' },
+  { pattern: /^\s*(?:rg|grep|find)\b/, title: 'Search files', verb: 'search files' },
+  {
+    pattern: /^\s*(?:ls|pwd)\b/,
+    title: 'Inspect the working folder',
+    verb: 'inspect the workspace',
+  },
+  {
+    pattern: /^\s*git\s+(?:status|diff|log)\b/,
+    title: 'Inspect code changes',
+    verb: 'inspect the workspace',
+  },
 ];
+
+function commandOf(input: Readonly<Record<string, unknown>> | null): string | null {
+  const command = input?.['command'] ?? input?.['cmd'];
+  return typeof command === 'string' ? command : null;
+}
 
 function commandTitle(input: Readonly<Record<string, unknown>> | null): string | null {
   if (input === null) return null;
   const description = reportedLine(input, ['description', 'title']);
   if (description !== null) return description;
-  const command = input['command'] ?? input['cmd'];
-  if (typeof command !== 'string') return null;
-  const known = COMMAND_GOALS.find(([pattern]) => pattern.test(command));
-  if (known !== undefined) return known[1];
+  const command = commandOf(input);
+  if (command === null) return null;
+  const known = COMMAND_GOALS.find((goal) => goal.pattern.test(command));
+  if (known !== undefined) return known.title;
   const program = /^\s*([a-z][a-z0-9.-]*)\b/i.exec(command)?.[1];
   return program === undefined ? null : `Run ${program}`;
 }
@@ -100,6 +129,13 @@ function actionTitle(action: ToolAction, input: Readonly<Record<string, unknown>
     : action.title;
 }
 
-export function toolActivityGoal(tool: ChatTimelineTool): string | null {
-  return ACTIONS.get(toolKey(tool.name))?.goal ?? null;
+export function toolVerb(tool: ChatTimelineTool): string | null {
+  const key = toolKey(tool.name);
+  const action = ACTIONS.get(key);
+  if (action === undefined) return mcpToolVerb(key);
+  if (action.title !== 'Run a command') return action.verb;
+  const command = commandOf(inputRecord(tool));
+  const known =
+    command === null ? undefined : COMMAND_GOALS.find((goal) => goal.pattern.test(command));
+  return known?.verb ?? action.verb;
 }

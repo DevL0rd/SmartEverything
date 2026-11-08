@@ -4,7 +4,13 @@ import type { ShellyDevice } from '@smarteverything/shelly';
 import { rounded } from '../../features/device-visuals';
 import { zoneState } from './presence-model';
 import { zoneName } from './room-map-legend';
-import type { MapModel, ZoneShape } from './room-geometry';
+import {
+  AXIS_FONT_PX,
+  axisMetres,
+  depthMarks,
+  type MapModel,
+  type ZoneShape,
+} from './room-geometry';
 import type { Paint } from './room-map-layers';
 
 function range(from: number, to: number): readonly number[] {
@@ -26,7 +32,7 @@ function AxisLabel({
     <SvgText
       transform={[{ translateX: at.x }, { translateY: at.y }]}
       textAnchor={anchor}
-      fontSize={10 * paint.u}
+      fontSize={AXIS_FONT_PX * paint.u}
       fill={paint.c.variant}
     >
       {text}
@@ -46,7 +52,7 @@ function AxisLabels({
   const across = range(Math.ceil(room.left - sx), Math.floor(room.right - sx)).filter(
     (metre) => metre % 2 === 0,
   );
-  const down = range(1, Math.floor(room.bottom)).filter((metre) => metre % 2 === 0);
+  const down = depthMarks(room);
   return (
     <>
       {across.map((metre) => (
@@ -62,7 +68,7 @@ function AxisLabels({
         <AxisLabel
           key={`y${String(metre)}`}
           at={{ x: room.left - 0.12, y: metre + 3 * paint.u }}
-          text={`${String(metre)} m`}
+          text={axisMetres(metre)}
           anchor="end"
           paint={paint}
         />

@@ -1,11 +1,12 @@
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { Engine } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import type { ReasonAction } from '../../../components/reason-line';
 
 export type PanelRequest = 'model' | 'device';
 
-export type PanelDestination = (request: PanelRequest) => Href;
+export type PanelDestination = (request: PanelRequest) => AppHref;
 
 export function chatPanel(chatId: string): PanelDestination {
   return (operation) => href.assistantChat(chatId, { operation });

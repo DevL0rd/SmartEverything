@@ -10,6 +10,13 @@ export const ASSISTANT_ACTIONS: NonNullable<RouteDefinition['actions']> = [
     keywords: ['start', 'ask', 'conversation', 'compose', 'message', 'write'],
   },
   {
+    key: 'new-chat-engine',
+    title: 'Choose chat engine',
+    icon: 'monitor',
+    href: href.assistantChat('new', { operation: 'engine' }),
+    keywords: ['coordinator', 'Claude Code', 'Codex', 'runtime', 'computer'],
+  },
+  {
     key: 'model-library',
     title: 'Model library',
     icon: 'brain',

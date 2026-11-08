@@ -1,6 +1,9 @@
 import type { AiAgentRun, AiAgentState } from '@smarteverything/domain';
+import { duration } from '../../../format/time';
 
-type RunFacts = Pick<AiAgentRun, 'state' | 'last_known_state' | 'progress'>;
+type RunFacts = Pick<AiAgentRun, 'state' | 'last_known_state' | 'progress' | 'updated_at'>;
+
+const MINUTE_MS = 60_000;
 
 const LABEL: Readonly<Record<AiAgentState, string>> = {
   queued: 'Queued',
@@ -27,8 +30,18 @@ export function runStateLabel(run: Pick<AiAgentRun, 'state' | 'last_known_state'
   return LABEL[run.state];
 }
 
-export function runSummary(run: RunFacts): string {
+export function quietHint(
+  run: Pick<AiAgentRun, 'state' | 'updated_at'>,
+  now: number,
+): string | null {
+  if (!isActiveRun(run)) return null;
+  const minutes = Math.floor((now - Date.parse(run.updated_at)) / MINUTE_MS);
+  return minutes < 1 ? null : `No activity for ${duration(minutes * 60)}`;
+}
+
+export function runSummary(run: RunFacts, now: number): string {
   const state = runStateLabel(run);
   const progress = run.progress?.trim() ?? '';
-  return progress === '' ? state : `${state} · ${progress}`;
+  const parts = [state, progress === '' ? null : progress, quietHint(run, now)];
+  return parts.filter((part) => part !== null).join(' · ');
 }

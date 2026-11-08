@@ -89,3 +89,4 @@ export {
   ringColourPayload,
 } from './control';
 export type { OralbConfigKey, OralbConfigWrite, OralbPrefixRule } from './control';
+export { ORALB_IO9_MODEL } from './model';

@@ -22,7 +22,7 @@ import {
 import { CAMERA_NOTIFICATIONS_PREF, DEFAULT_CAMERA_NOTIFICATIONS } from './camera-notifications';
 import { DEVICE_ALERTS_PREF } from './device-alerts';
 import { SHARED_CLIPBOARD_PREF } from './shared-clipboard';
-import { AUTOMATION_CLIENT_PREFS } from './automation-v3/prefs';
+import { FEATURE_CLIENT_PREFS } from './feature-client-prefs';
 import {
   clientPref,
   noLegacy,
@@ -198,6 +198,18 @@ function legacyCameras(stored: unknown): CamerasPref | null {
   return { muted: parsed.data.version === 1 ? true : parsed.data.value.muted };
 }
 
+export const DEVELOPER_LEVEL = z
+  .enum(['off', 'on'])
+  .describe(
+    'Developer mode for this app, chosen in Settings › Developer and off until the person turns it on. On opens the developer page in any build, including a release app, and lets the performance options run; the assistant may read it and never turns it on',
+  );
+
+export type DeveloperLevel = z.infer<typeof DEVELOPER_LEVEL>;
+
+export const DEVELOPER_FLAGS_PREF = z.strictObject({ flags: z.record(z.string(), z.boolean()) });
+
+export type DeveloperFlagsPref = z.infer<typeof DEVELOPER_FLAGS_PREF>;
+
 export const HEALTH_SYNC_INTERVALS = [0, 15, 30, 60] as const;
 
 export const HEALTH_SYNC_PREF = z.strictObject({
@@ -356,7 +368,23 @@ export const CLIENT_PREFS = {
     schema: NAVIGATION_DEVICE_PREF,
     legacy: noLegacy,
   }),
-  ...AUTOMATION_CLIENT_PREFS,
+  developer_level: clientPref({
+    storageKey: 'developer-level',
+    scope: 'client',
+    version: 2,
+    defaultValue: 'off',
+    schema: DEVELOPER_LEVEL,
+    legacy: noLegacy,
+  }),
+  developer_flags: clientPref({
+    storageKey: 'developer-flags',
+    scope: 'client',
+    version: 1,
+    defaultValue: { flags: {} },
+    schema: DEVELOPER_FLAGS_PREF,
+    legacy: noLegacy,
+  }),
+  ...FEATURE_CLIENT_PREFS,
 } as const;
 
 export type ClientPrefKey = keyof typeof CLIENT_PREFS;
@@ -379,9 +407,16 @@ export const CLIENT_PREF_KEYS: readonly ClientPrefKey[] = [
   'shared_clipboard',
   'navigation',
   'navigation_device',
+  'developer_level',
+  'developer_flags',
   'automations_editor',
   'automations_palette',
   'automations_breakpoints',
+  'home_map_look',
+  'home_map_view',
+  'photos',
+  'photos_backup',
+  'drive_hints',
 ];
 
 export const RESERVED_LAYOUT_KEYS: ReadonlySet<string> = new Set(

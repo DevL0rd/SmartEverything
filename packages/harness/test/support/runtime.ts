@@ -9,7 +9,7 @@ import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval';
 import type { ApprovalRequestEvent } from '@deepseek-ai/dsh-user-approval/types';
 import type { HarnessPlatform } from '@smarteverything/domain';
 import type { HarnessHost } from '../../src/host/contracts';
-import type { HarnessRuntime } from '../../src/host/runtime';
+import type { HarnessRuntime, HarnessRuntimeOptions } from '../../src/host/runtime';
 import type { HarnessRuntimeEvent } from '../../src/host/events';
 import type {
   HarnessDesiredConfiguration,
@@ -18,6 +18,7 @@ import type {
 import type { HarnessServerToolAccess } from '../../src/host/server-policy';
 import type { HarnessInteractionPort } from '../../src/host/interactions';
 import { createHarnessRuntime } from '../../src/host/create-runtime';
+import { MemoryApiKeyVault } from './api-key-vault';
 import { MemoryPersistence } from './memory-persistence';
 import { SCRIPTED_MODEL, SCRIPTED_PROVIDER, ScriptedModel } from './scripted-model';
 
@@ -45,6 +46,8 @@ export const EMPTY_CONFIGURATION: HarnessDesiredConfiguration = {
 
 export interface BootOptions {
   readonly target?: HarnessHost['target'];
+  readonly failureContext?: HarnessRuntimeOptions['failureContext'];
+  readonly onEvent?: HarnessRuntimeOptions['onEvent'];
   readonly platform?: HarnessPlatform;
   readonly approval?: ApprovalOutcome;
   readonly interactions?: HarnessInteractionPort;
@@ -53,6 +56,7 @@ export interface BootOptions {
   readonly desiredConfiguration?: HarnessDesiredConfiguration;
   readonly mount?: (ctx: Context) => void;
   readonly installedPlugins?: (host: HarnessHost) => readonly InstalledHarnessPlugin[];
+  readonly persistence?: MemoryPersistence;
 }
 
 interface Scratch {
@@ -104,25 +108,36 @@ function installRoutes(
   };
 }
 
+function optionalRuntimePorts(
+  boot: BootOptions,
+): Pick<HarnessRuntimeOptions, 'failureContext' | 'serverToolAccess' | 'configurationPending'> {
+  return {
+    ...(boot.failureContext === undefined ? {} : { failureContext: boot.failureContext }),
+    ...(boot.serverToolAccess === undefined ? {} : { serverToolAccess: boot.serverToolAccess }),
+    ...(boot.configurationPending === undefined
+      ? {}
+      : { configurationPending: boot.configurationPending }),
+  };
+}
+
 export async function bootRuntime(boot: BootOptions = {}): Promise<RuntimeFixture> {
   const { directory, workspace, host } = await scratch(boot);
-  const persistence = new MemoryPersistence();
+  const persistence = boot.persistence ?? new MemoryPersistence();
   const model = new ScriptedModel();
   const events: HarnessRuntimeEvent[] = [];
   const approvals: ApprovalRequestEvent[] = [];
   const runtime = await createHarnessRuntime({
     host,
-    ...(boot.serverToolAccess === undefined ? {} : { serverToolAccess: boot.serverToolAccess }),
+    ...optionalRuntimePorts(boot),
     persistence,
     interactions: boot.interactions ?? interactionsOf(boot.approval ?? 'allowed-once', approvals),
     desiredConfiguration: boot.desiredConfiguration ?? EMPTY_CONFIGURATION,
     installedPlugins: boot.installedPlugins?.(host) ?? [],
+    apiKeys: new MemoryApiKeyVault(),
     configurationChanged: (): void => undefined,
-    ...(boot.configurationPending === undefined
-      ? {}
-      : { configurationPending: boot.configurationPending }),
     onEvent: (event) => {
       events.push(event);
+      boot.onEvent?.(event);
     },
     installModelRoutes: installRoutes(model, boot.mount),
   });

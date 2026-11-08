@@ -1,3 +1,4 @@
+import type { InterfaceOpener } from './interface-rows';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../../components/button';
@@ -18,6 +19,7 @@ import {
 import type { EditSide } from './use-interface-panel';
 
 export interface RowEditorProps {
+  readonly opener: InterfaceOpener | null;
   readonly side: EditSide | null;
   readonly draft: PortDraft;
   readonly issues: DraftIssues;
@@ -126,6 +128,7 @@ export function RowEditor(props: RowEditorProps): ReactNode {
       open={side !== null}
       onClose={props.onCancel}
       title={title}
+      subpage={props.opener === null ? false : { opener: props.opener }}
       footer={
         <View className="flex-row items-center justify-end gap-2">
           <Button label="Cancel" variant="text" onPress={props.onCancel} />

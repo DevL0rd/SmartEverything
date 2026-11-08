@@ -12,7 +12,7 @@ import { desktopBridge, type DesktopBridge } from '../../../design/platform';
 import { START_ON_LOGIN_KEY } from '../../../queries/keys';
 
 import { connectionsLog, trackConnection } from '../connections-log';
-import { AppUpdateRows } from './app-update-rows';
+import { DesktopInstallerRows } from '../../app-updates';
 import { background } from '@smarteverything/logging';
 const HEALTH: Readonly<Record<DesktopServiceStatus['health'], string>> = {
   'not-installed': 'Not installed',
@@ -76,14 +76,14 @@ function StartOnLogin({ bridge }: { readonly bridge: DesktopBridge }): ReactNode
 function uninstall(bridge: DesktopBridge, act: Act): void {
   background(
     confirm({
-      title: 'Uninstall the server?',
-      body: 'Your home stops working until you start it again.',
+      title: 'Uninstall the computer service?',
+      body: 'This computer’s tools stop until you start its service again.',
       confirmLabel: 'Uninstall',
       tone: 'destructive',
       typed: 'uninstall',
     }).then((accepted) => {
       if (accepted) {
-        act(() => bridge.uninstallService(), 'The server wasn’t uninstalled');
+        act(() => bridge.uninstallService(), 'The computer service wasn’t uninstalled');
       }
     }),
     'this_computer.confirm_failed',
@@ -117,7 +117,7 @@ function LaterRows({
       {status.installed ? (
         <ActionRow
           icon="trash"
-          title="Uninstall the server"
+          title="Uninstall the computer service"
           destructive
           onPress={() => {
             uninstall(bridge, act);
@@ -132,7 +132,7 @@ function HealthRow({ status }: { readonly status: DesktopServiceStatus }): React
   return (
     <ValueRow
       icon="server"
-      title="Server"
+      title="Status"
       value={HEALTH[status.health]}
       {...(status.health === 'failed' ? { subtitle: status.detail } : {})}
     />
@@ -150,7 +150,7 @@ function ServiceRows({
 }): ReactNode {
   if (status.managedBy === 'stable-app') {
     return (
-      <List inset title="This computer" footer="Managed by the stable app.">
+      <List inset title="Computer service" footer="Managed by the stable app.">
         <HealthRow status={status} />
       </List>
     );
@@ -158,30 +158,30 @@ function ServiceRows({
   return (
     <List
       inset
-      title="This computer"
-      footer="Your server keeps running when this window is closed."
+      title="Computer service"
+      footer="The computer service keeps running when this window is closed."
     >
       <HealthRow status={status} />
       <ActionRow
         icon={status.active ? 'power' : 'play'}
-        title={status.active ? 'Stop the server' : 'Start the server'}
+        title={status.active ? 'Stop the computer service' : 'Start the computer service'}
         onPress={() => {
           act(
             () => (status.active ? bridge.stopService() : bridge.startService()),
-            'The server didn’t respond',
+            'The computer service didn’t respond',
           );
         }}
       />
       <ActionRow
         icon="refresh"
-        title="Restart the server"
+        title="Restart the computer service"
         disabled={!status.installed}
         onPress={() => {
-          act(() => bridge.restartService(), 'The server wasn’t restarted');
+          act(() => bridge.restartService(), 'The computer service wasn’t restarted');
         }}
       />
       <StartOnLogin bridge={bridge} />
-      <AppUpdateRows bridge={bridge} />
+      <DesktopInstallerRows bridge={bridge} />
       <LaterRows bridge={bridge} status={status} act={act} />
     </List>
   );
@@ -194,10 +194,10 @@ function Service({ bridge }: { readonly bridge: DesktopBridge }): ReactNode {
     return <ServiceRows bridge={bridge} status={reading.status} act={act} />;
   }
   return (
-    <List inset title="This computer">
+    <List inset title="Computer service">
       <ValueRow
         icon="server"
-        title="Server"
+        title="Status"
         value={reading.kind === 'failed' ? 'Unreadable' : 'Reading…'}
         {...(reading.kind === 'failed' ? { subtitle: reading.problem } : {})}
       />
@@ -205,7 +205,7 @@ function Service({ bridge }: { readonly bridge: DesktopBridge }): ReactNode {
   );
 }
 
-export function ThisComputerSection(): ReactNode {
+export function ThisComputerRows(): ReactNode {
   const bridge = desktopBridge();
   return bridge === null ? null : <Service bridge={bridge} />;
 }

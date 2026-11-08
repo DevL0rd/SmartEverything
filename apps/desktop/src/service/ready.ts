@@ -1,17 +1,13 @@
-import { join } from 'node:path';
-import { CLIENT_TOKEN, type DesktopServer } from '@smarteverything/domain';
-import { Logger } from '@smarteverything/logging';
 import {
-  NODE_WINDOW,
-  NODE_WINDOW_FILE,
-  RUNNING_SERVICE_READY,
-  type ServiceReady,
-} from '@smarteverything/hub/service/configuration';
+  COMPUTER_SERVICE_READY,
+  COMPUTER_WINDOW_CONNECTION,
+  type ComputerServiceReady,
+  type DesktopServer,
+} from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import type { ServiceLocations } from './locations.js';
 import { PRIVATE_MODE } from './manager.js';
 import type { ServiceSystem } from './system.js';
-
-const STATUS_TIMEOUT_MS = 3000;
 
 const log = new Logger('desktop.service');
 
@@ -28,7 +24,7 @@ export class ServiceFileInvalidError extends Error {
 export async function readReady(
   system: ServiceSystem,
   locations: ServiceLocations,
-): Promise<ServiceReady | null> {
+): Promise<ComputerServiceReady | null> {
   const text = await system.files.read(locations.readyFile);
   if (text === null) {
     return null;
@@ -39,11 +35,11 @@ export async function readReady(
   } catch (error: unknown) {
     throw new ServiceFileInvalidError(locations.readyFile, 'JSON', String(error));
   }
-  const parsed = RUNNING_SERVICE_READY.safeParse(json);
+  const parsed = COMPUTER_SERVICE_READY.safeParse(json);
   if (!parsed.success) {
     throw new ServiceFileInvalidError(
       locations.readyFile,
-      'the pid, URL and version of the running server',
+      'the pid, URL and version of the running Computer service',
       text.trim(),
     );
   }
@@ -52,62 +48,15 @@ export async function readReady(
   return alive ? parsed.data : null;
 }
 
-export async function answers(system: ServiceSystem, url: string): Promise<boolean> {
-  try {
-    const response = await system.fetch(new URL('/status', url), {
-      signal: AbortSignal.timeout(STATUS_TIMEOUT_MS),
-    });
-    log.trace('service.status_answered', { status: response.status });
-    return response.ok;
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      log.debug('service.status_unanswered', { reason: error.name });
-      return false;
-    }
-    throw error;
-  }
+export function desktopConnectionFile(locations: ServiceLocations): string {
+  return locations.connectionFile;
 }
 
-export class OwnerTokenMissingError extends Error {
-  readonly file: string;
-
-  constructor(file: string, received: string) {
-    super(
-      `the server writes the desktop's owner token to ${file} when it starts; received ${received}`,
-    );
-    this.name = 'OwnerTokenMissingError';
-    this.file = file;
-  }
-}
-
-export async function readOwnerToken(
-  system: ServiceSystem,
-  locations: ServiceLocations,
-): Promise<string> {
-  const text = await system.files.read(locations.ownerTokenFile);
-  if (text === null) {
-    throw new OwnerTokenMissingError(locations.ownerTokenFile, 'no file');
-  }
-  const parsed = CLIENT_TOKEN.safeParse(text.trim());
-  if (!parsed.success) {
-    throw new OwnerTokenMissingError(locations.ownerTokenFile, 'a file without a valid token');
-  }
-  return parsed.data;
-}
-
-export function readyUrl(ready: ServiceReady): string {
-  return 'role' in ready ? ready.hub_url : ready.url;
-}
-
-export function nodeWindowFile(locations: ServiceLocations): string {
-  return join(locations.dataDirectory, NODE_WINDOW_FILE);
-}
-
-export async function readNodeWindow(
+export async function readDesktopConnection(
   system: ServiceSystem,
   locations: ServiceLocations,
 ): Promise<DesktopServer | null> {
-  const file = nodeWindowFile(locations);
+  const file = desktopConnectionFile(locations);
   const text = await system.files.read(file);
   if (text === null) return null;
   let json: unknown;
@@ -116,20 +65,21 @@ export async function readNodeWindow(
   } catch (error: unknown) {
     throw new ServiceFileInvalidError(file, 'JSON', String(error));
   }
-  const paired = NODE_WINDOW.parse(json);
-  return { url: paired.hub_url, token: paired.token };
+  const { hub_url: url, ...connection } = COMPUTER_WINDOW_CONNECTION.parse(json);
+  return { url, ...connection };
 }
 
-export async function writeNodeWindow(
+export async function writeDesktopConnection(
   system: ServiceSystem,
   locations: ServiceLocations,
   window: DesktopServer | null,
 ): Promise<void> {
-  const file = nodeWindowFile(locations);
+  const file = desktopConnectionFile(locations);
   if (window === null) {
     await system.files.remove(file);
     return;
   }
-  const paired = NODE_WINDOW.parse({ hub_url: new URL(window.url).origin, token: window.token });
+  const { url, ...connection } = window;
+  const paired = COMPUTER_WINDOW_CONNECTION.parse({ ...connection, hub_url: new URL(url).origin });
   await system.files.write(file, JSON.stringify(paired), PRIVATE_MODE);
 }

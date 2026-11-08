@@ -9,6 +9,7 @@ import {
 } from 'expo-router/react-navigation';
 import {
   CLEAR_REPLACEMENT,
+  COMMIT_REPLACEMENT,
   REMOVE_REPLACEMENT,
   REPLACEMENT_COMPLETE,
   completionIn,
@@ -139,7 +140,7 @@ function handleReplacement(navigation: ReplacementNavigation, state: RouterState
     clearCompletion(navigation, state, request);
     if (!tabIsCurrent(state, request)) return;
     cleanSource(navigation, state, request);
-    navigation.dispatch(request.destination);
+    navigation.dispatch({ ...request.destination, type: COMMIT_REPLACEMENT });
     return;
   }
   if (!sourceIsCurrent(state, request)) {

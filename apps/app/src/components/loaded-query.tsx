@@ -11,9 +11,11 @@ interface LoadableQuery<Data> {
 
 export function LoadedQuery<Data>({
   query,
+  loading,
   children,
 }: {
   readonly query: LoadableQuery<Data>;
+  readonly loading?: ReactNode;
   readonly children: (data: Data) => ReactNode;
 }): ReactNode {
   if (query.isError) {
@@ -27,7 +29,7 @@ export function LoadedQuery<Data>({
     );
   }
   if (query.data === undefined) {
-    return <Skeleton shape="line" className="h-12" />;
+    return loading ?? <Skeleton shape="line" className="h-12" />;
   }
   return children(query.data);
 }

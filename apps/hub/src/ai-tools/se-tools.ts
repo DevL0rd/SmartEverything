@@ -86,11 +86,20 @@ export class SeTools implements ToolSource {
     });
   }
 
-  validate(tool: HubTool, args: Readonly<Record<string, unknown>>): string | null {
+  validate(
+    tool: HubTool,
+    args: Readonly<Record<string, unknown>>,
+    caller?: ToolCaller,
+  ): string | null {
     const found = toolNamed(tool.name);
     return found === undefined
       ? `There is no tool named ${tool.name}`
-      : found.check(this.options.context, args);
+      : found.check(
+          caller === undefined
+            ? this.options.context
+            : { ...this.options.context, actor: actorOf(caller) },
+          args,
+        );
   }
 
   async call(

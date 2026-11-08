@@ -4,6 +4,7 @@ import type { IconName } from '../../../components/icon';
 import type { ColourRole } from '../../../design/tokens';
 import {
   ServiceWidgetFrame,
+  type ServiceLayout,
   type ServiceReady,
   type ServiceWidget,
 } from '../../shared/service-widget-frame';
@@ -25,7 +26,7 @@ interface SyncWidgetFrameProps {
   readonly title: string;
   readonly icon: IconName;
   readonly accent: ColourRole;
-  readonly children: (ready: SyncReady) => ReactNode;
+  readonly children: (ready: SyncReady, layout: ServiceLayout) => ReactNode;
 }
 
 export function SyncWidgetFrame(props: SyncWidgetFrameProps): ReactNode {

@@ -85,21 +85,34 @@ export function calendarBlocks(
   }).filter((block) => block.cells.length > 0);
 }
 
-export function heatSummary(days: readonly HeatDay[]): string {
+export function heatSummary(days: readonly HeatDay[], unit: string): string {
   if (days.length === 0) return 'No days recorded';
-  const printed = days.filter((entry) => entry.pages > 0);
+  const active = days.filter((entry) => entry.pages > 0);
   const gaps = days.filter((entry) => !entry.covered).length;
   const busiest = days.reduce(
     (best, entry) => (entry.pages > best.pages ? entry : best),
     days[0] ?? { day: '', pages: 0, level: 0, covered: true },
   );
-  const quiet = `${String(printed.length)} printing days`;
+  const quiet = `${String(active.length)} days with ${unit}`;
   const peak =
-    busiest.pages > 0 ? `, busiest ${busiest.day} with ${String(busiest.pages)} pages` : '';
+    busiest.pages > 0 ? `, busiest ${busiest.day} with ${String(busiest.pages)} ${unit}` : '';
   return `${quiet}${peak}, ${String(gaps)} days not recorded`;
 }
 
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+export interface HeatRow {
+  readonly short: string;
+  readonly name: string;
+}
+
+export const WEEKDAY_ROWS: readonly HeatRow[] = [
+  { short: 'M', name: 'Monday' },
+  { short: 'T', name: 'Tuesday' },
+  { short: 'W', name: 'Wednesday' },
+  { short: 'T', name: 'Thursday' },
+  { short: 'F', name: 'Friday' },
+  { short: 'S', name: 'Saturday' },
+  { short: 'S', name: 'Sunday' },
+];
 
 export interface HourCell {
   readonly row: number;
@@ -123,16 +136,19 @@ export function hourCells(matrix: readonly (readonly number[])[], levels = 4): r
   );
 }
 
-export function hourSummary(matrix: readonly (readonly number[])[]): string {
+export function hourSummary(
+  matrix: readonly (readonly number[])[],
+  rows: readonly HeatRow[],
+  unit: string,
+): string {
   let best = { row: 0, column: 0, pages: 0 };
   matrix.forEach((row, rowIndex) => {
     row.forEach((pages, column) => {
       if (pages > best.pages) best = { row: rowIndex, column, pages };
     });
   });
-  if (best.pages === 0) return 'No printing by hour yet';
+  if (best.pages === 0) return `No ${unit} by hour yet`;
   const hour = String(best.column).padStart(2, '0');
-  return `Busiest time ${WEEKDAYS[best.row] ?? ''} ${hour}:00 with ${String(best.pages)} pages`;
+  const name = rows[best.row]?.name ?? '';
+  return `Busiest time ${name} ${hour}:00 with ${String(best.pages)} ${unit}`;
 }
-
-export const WEEKDAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;

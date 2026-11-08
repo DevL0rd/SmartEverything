@@ -15,8 +15,8 @@ function isInside(directory: string, path: string): boolean {
   return step === '' || (!step.startsWith('..') && !isAbsolute(step));
 }
 
-export function ownedSessions(sessions: ProviderSessions, dataDirectory: string): OwnedSessions {
-  const work = providerWorkDirectory(dataDirectory);
+export function ownedSessions(sessions: ProviderSessions, directory: string): OwnedSessions {
+  const work = providerWorkDirectory(directory);
   return {
     settled: (): Promise<void> => sessions.settled(),
     owns: (session): boolean =>

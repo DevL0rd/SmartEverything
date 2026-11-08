@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { Logger } from '@smarteverything/logging';
 import {
+  isHelperDialogueMessage,
   isChatActivity,
   type AiChatRow,
   type AssistantMessageRow,
@@ -22,7 +23,11 @@ export interface BranchOptions {
 
 export function latestBranchPoint(rows: readonly AssistantMessageRow[]): string | null {
   const settled = rows.filter(
-    (row) => isChatActivity(row) && row.state !== 'queued' && row.state !== 'working',
+    (row) =>
+      !isHelperDialogueMessage(row) &&
+      isChatActivity(row) &&
+      row.state !== 'queued' &&
+      row.state !== 'working',
   );
   const latest = settled.reduce<AssistantMessageRow | null>(
     (best, row) => (best === null || row.created_at > best.created_at ? row : best),

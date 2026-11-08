@@ -36,6 +36,10 @@ async function handlers(): Promise<{
           calls.push(request.control);
           return Promise.resolve({ sent: [home.lampId], skipped: [], note: null });
         },
+        setTogether: (request) => {
+          calls.push(...request.changes.map((change) => change.control));
+          return Promise.resolve({ sent: [home.lampId], skipped: [], note: null });
+        },
       },
       store: home.db.store,
       feed: home.db.store.feed,

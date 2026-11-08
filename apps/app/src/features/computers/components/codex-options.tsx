@@ -79,7 +79,7 @@ function Sandbox({ value, change, permissionControls = true }: ValueProps): Reac
           title="Sandbox"
           value={policy?.type ?? 'default'}
           options={[
-            { value: 'default', label: 'Default' },
+            { value: 'default', label: 'As Codex is set up' },
             { value: 'readOnly', label: 'Read only' },
             { value: 'workspaceWrite', label: 'Workspace write' },
             { value: 'dangerFullAccess', label: 'Full access' },
@@ -127,7 +127,7 @@ function Approvals({ value, change, permissionControls = true }: ValueProps): Re
             typeof policy === 'string' ? policy : policy === undefined ? 'default' : 'granular'
           }
           options={[
-            { value: 'default', label: 'Default' },
+            { value: 'default', label: 'As Codex is set up' },
             { value: 'untrusted', label: 'Untrusted commands' },
             { value: 'on-request', label: 'On request' },
             { value: 'never', label: 'Never' },

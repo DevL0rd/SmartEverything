@@ -57,9 +57,7 @@ function matchesRoute(url: URL, payload: PairingInvitation): boolean {
   );
 }
 function validEndpoints(payload: PairingInvitation): boolean {
-  return payload.endpoints.every(
-    (endpoint) => exactOrigin(endpoint.url) !== null && endpoint.kind !== 'loopback',
-  );
+  return payload.endpoints.every((endpoint) => exactOrigin(endpoint.url) !== null);
 }
 function boundedInvitation(text: string): boolean {
   return text.length <= PAIRING_INVITATION_MAX_LENGTH && URL.canParse(text);

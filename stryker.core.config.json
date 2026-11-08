@@ -7,5 +7,18 @@
   "tempDirName": ".stryker-tmp-core",
   "cleanTempDir": true,
   "plugins": ["@stryker-mutator/vitest-runner"],
-  "ignorePatterns": [".claude", ".agents", ".cache", "apps/app", "apps/desktop", "dist", "dist-types", "coverage", "reports", "tmp", "tooling", "node_modules/.cache"]
+  "ignorePatterns": [
+    ".claude",
+    ".agents",
+    ".cache",
+    "apps/app",
+    "apps/desktop",
+    "dist",
+    "dist-types",
+    "coverage",
+    "reports",
+    "tmp",
+    "tooling",
+    "node_modules/.cache"
+  ]
 }

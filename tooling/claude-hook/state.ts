@@ -1,13 +1,16 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute, join, relative } from 'node:path';
+import { env } from 'node:process';
 import { z } from 'zod';
 import { HookError, parseJson, type AgentInput } from './input.ts';
 import { GIT_MS, nonEmptyLines, ROOT, run } from './process.ts';
 import type { Snapshot } from './types.ts';
 
 const STATE = join(ROOT, '.cache', 'claude-hooks');
+const AGENT_CHECKOUTS = join(homedir(), 'Github', 'SmartEverything-work');
 const DEPENDENCY_FILES = ['*package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'patches/**'];
 const snapshotFile = z.union([
   z.object({ failed: z.string() }),
@@ -20,6 +23,14 @@ const manifestHashes = z.record(z.string(), z.string());
 
 export function agentName(input: AgentInput): string {
   return input.agent_id ?? 'main';
+}
+
+export function isAgentSession(input: AgentInput): boolean {
+  if (input.agent_id !== undefined) return true;
+  const project = env['CLAUDE_PROJECT_DIR'];
+  if (project === undefined) return false;
+  const rel = relative(AGENT_CHECKOUTS, project);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
 }
 
 export function agentFile(session: string, agent: string, suffix: string): string {

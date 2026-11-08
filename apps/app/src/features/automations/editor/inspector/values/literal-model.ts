@@ -1,8 +1,24 @@
-import type { JsonValue } from '@smarteverything/domain';
+import { createContext } from 'react';
+import type { JsonValue, PortEditorId, PortValue } from '@smarteverything/domain';
 import type { FieldControl } from '../schema-fields';
+import { controlTypingOf, type ControlTyping } from './control-model';
 
-const FALLBACK_MIN = -1_000_000;
-const FALLBACK_MAX = 1_000_000;
+export interface DeviceScope {
+  readonly target: readonly string[];
+  readonly wholeHome: boolean;
+}
+
+export interface PortScope extends DeviceScope {
+  readonly ports: Readonly<Record<string, PortValue>>;
+  readonly controls: Readonly<Record<string, FieldControl>>;
+}
+
+export const NO_PORT_SCOPE: PortScope = { ports: {}, controls: {}, target: [], wholeHome: false };
+
+export const PortScopeContext = createContext<PortScope>(NO_PORT_SCOPE);
+
+const FALLBACK_MIN = -Number.MAX_SAFE_INTEGER;
+const FALLBACK_MAX = Number.MAX_SAFE_INTEGER;
 
 export function numberBounds(control: Extract<FieldControl, { t: 'number' }>): {
   readonly min: number;
@@ -16,7 +32,9 @@ export type ScalarControl = Extract<
   { t: 'switch' | 'number' | 'text' | 'choice' | 'duration' }
 >;
 
-export type StructuredControl = Exclude<FieldControl, ScalarControl>;
+export type AnnotatedControl = Extract<FieldControl, { t: 'pick' | 'editor' | 'typedBy' }>;
+
+export type StructuredControl = Exclude<FieldControl, ScalarControl | AnnotatedControl>;
 
 const SCALAR_TAGS: ReadonlySet<string> = new Set([
   'switch',
@@ -28,6 +46,17 @@ const SCALAR_TAGS: ReadonlySet<string> = new Set([
 
 export function isScalarControl(control: FieldControl): control is ScalarControl {
   return SCALAR_TAGS.has(control.t);
+}
+
+const ANNOTATED_TAGS: ReadonlySet<string> = new Set(['pick', 'editor', 'typedBy']);
+
+export function isAnnotatedControl(control: FieldControl): control is AnnotatedControl {
+  return ANNOTATED_TAGS.has(control.t);
+}
+
+function annotatedDefault(control: AnnotatedControl): JsonValue {
+  if (control.t === 'pick') return control.multiple ? [] : null;
+  return defaultLiteral(control.base);
 }
 
 function scalarDefault(control: ScalarControl): JsonValue {
@@ -56,6 +85,8 @@ function structuredDefault(control: StructuredControl): JsonValue {
       return momentDefault(control.of);
     case 'list':
       return [];
+    case 'entries':
+      return {};
     case 'record':
       return Object.fromEntries(
         control.fields
@@ -65,6 +96,7 @@ function structuredDefault(control: StructuredControl): JsonValue {
     case 'colour':
       return { hue: 0, saturation: 0, value: 100 };
     case 'reference':
+    case 'entity':
     case 'json':
     case 'wire':
       return null;
@@ -72,6 +104,7 @@ function structuredDefault(control: StructuredControl): JsonValue {
 }
 
 export function defaultLiteral(control: FieldControl): JsonValue {
+  if (isAnnotatedControl(control)) return annotatedDefault(control);
   return isScalarControl(control) ? scalarDefault(control) : structuredDefault(control);
 }
 
@@ -143,4 +176,84 @@ export function instantTimeText(value: JsonValue | undefined): string {
 
 export function instantDay(value: JsonValue | undefined): Date {
   return instantOf(value);
+}
+
+const EDITOR_CONTROLS: Readonly<Partial<Record<PortEditorId, FieldControl>>> = {
+  duration: { t: 'duration' },
+  colour: { t: 'colour' },
+  'time-of-day': { t: 'moment', of: 'timeOfDay' },
+};
+
+export function editorControl(control: Extract<FieldControl, { t: 'editor' }>): FieldControl {
+  return EDITOR_CONTROLS[control.id] ?? control.base;
+}
+
+const OPEN_NUMBER: FieldControl = {
+  t: 'number',
+  integer: false,
+  min: undefined,
+  max: undefined,
+  step: 1,
+  unit: undefined,
+};
+
+function isRecordValue(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isListValue(value: JsonValue): value is readonly JsonValue[] {
+  return Array.isArray(value);
+}
+
+function isHsv(value: JsonValue): boolean {
+  if (!isRecordValue(value)) return false;
+  return ['hue', 'saturation', 'value'].every((key) => typeof value[key] === 'number');
+}
+
+export function sampleControl(value: JsonValue): FieldControl | null {
+  if (typeof value === 'boolean') return { t: 'switch' };
+  if (typeof value === 'number') return OPEN_NUMBER;
+  if (typeof value === 'string') return { t: 'text' };
+  if (isListValue(value)) {
+    const first = value[0];
+    return {
+      t: 'list',
+      item: (first === undefined ? null : sampleControl(first)) ?? { t: 'json' },
+    };
+  }
+  if (value === null) return null;
+  return isHsv(value) ? { t: 'colour' } : { t: 'entries', item: { t: 'json' } };
+}
+
+function isGenericControl(control: FieldControl): boolean {
+  return control.t === 'json' || control.t === 'typedBy';
+}
+
+function shapedLike(base: FieldControl, sample: FieldControl): FieldControl {
+  return base.t === 'list' ? { t: 'list', item: shapedLike(base.item, sample) } : sample;
+}
+
+function sampledControl(
+  control: Extract<FieldControl, { t: 'typedBy' }>,
+  scope: PortScope,
+): FieldControl {
+  const typing = scope.controls[control.port];
+  const given = scope.ports[control.port];
+  if (typing === undefined || !isGenericControl(typing)) return control.base;
+  if (given === undefined || !('lit' in given)) return control.base;
+  const sample = sampleControl(given.lit);
+  return sample === null ? control.base : shapedLike(control.base, sample);
+}
+
+export type TypedEditor =
+  | { readonly t: 'control'; readonly typing: ControlTyping }
+  | { readonly t: 'field'; readonly control: FieldControl };
+
+export function typedControl(
+  control: Extract<FieldControl, { t: 'typedBy' }>,
+  scope: PortScope,
+): TypedEditor {
+  const typing = controlTypingOf(control, scope);
+  if (typing !== null) return { t: 'control', typing };
+  return { t: 'field', control: sampledControl(control, scope) };
 }

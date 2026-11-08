@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { usePinAction } from '../../../app-shell/pin-menu';
 import { renameRoom } from '../../../api/settings';
@@ -10,12 +11,15 @@ import type { MenuItem } from '../../../components/menu';
 import { PageHeader } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { Section } from '../../../components/section';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
+import { CONTAINER_WIDTH } from '../../../design/tokens';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
-import { useDevices, useRoom } from '../../../store/selectors';
+import { isPhysicalDevice, useDevices, useRoom } from '../../../store/selectors';
 import { roomLightsTarget, type TableRow } from '@smarteverything/domain';
 import { LightGroupCard } from '../../device-groups';
 import { RoomDeviceGrid, splitRoomLights } from '../../device-list';
 import { useRoomClimate } from '../components/room-card';
+import { RoomMapHeader } from '../components/room-map-header';
 import { RoomScenes } from '../components/room-scenes';
 import { useTurnOff } from '../data/turn-off';
 
@@ -73,8 +77,41 @@ function RoomLightsCard({
   );
 }
 
+function RoomOverview({
+  room,
+  covered,
+  lightCount,
+}: {
+  readonly room: Room;
+  readonly covered: boolean;
+  readonly lightCount: number | null;
+}): ReactNode {
+  const { width, onLayout } = useMeasuredWidth(Math.round);
+  const sideBySide = lightCount !== null && width > CONTAINER_WIDTH.dashboard;
+  const map = (
+    <RoomMapHeader
+      roomId={room.id}
+      roomName={room.name}
+      covered={covered}
+      sideBySide={sideBySide}
+    />
+  );
+  if (lightCount === null) return map;
+  return (
+    <View
+      onLayout={onLayout}
+      className={sideBySide ? 'flex-row items-start gap-section-gap' : 'gap-section-gap'}
+    >
+      {map}
+      <View className={sideBySide ? 'min-w-0 max-w-dashboard flex-1' : 'w-full'}>
+        <RoomLightsCard room={room} count={lightCount} />
+      </View>
+    </View>
+  );
+}
+
 function RoomBody({ room }: { readonly room: Room }): ReactNode {
-  const devices = useDevices({ room: room.id });
+  const devices = useDevices({ room: room.id }).filter(isPhysicalDevice);
   const [renaming, setRenaming] = useState<TextEditRequest | null>(null);
   const overflow = useOverflow(room, () => {
     setRenaming(renameRequest(room));
@@ -88,12 +125,18 @@ function RoomBody({ room }: { readonly room: Room }): ReactNode {
       header={
         <PageHeader
           title={room.name}
+          titleLines="wrap"
           {...(climate === undefined ? {} : { subtitle: climate })}
           actions={[pin]}
           overflow={overflow}
         />
       }
     >
+      <RoomOverview
+        room={room}
+        covered={renaming !== null}
+        lightCount={split === null ? null : split.lights.length}
+      />
       {devices.length === 0 ? (
         <EmptyState
           icon="grid"
@@ -101,15 +144,11 @@ function RoomBody({ room }: { readonly room: Room }): ReactNode {
           body="Choose a room for a device in its settings."
           action={<Button label="All devices" href={href.devices()} variant="tonal" />}
         />
-      ) : (
-        <>
-          {split === null ? null : <RoomLightsCard room={room} count={split.lights.length} />}
-          {tiles.length === 0 ? null : (
-            <Section title="Devices">
-              <RoomDeviceGrid devices={tiles} />
-            </Section>
-          )}
-        </>
+      ) : null}
+      {tiles.length === 0 ? null : (
+        <Section title="Devices">
+          <RoomDeviceGrid devices={tiles} />
+        </Section>
       )}
       <RoomScenes devices={devices} />
       <TextEditSheet

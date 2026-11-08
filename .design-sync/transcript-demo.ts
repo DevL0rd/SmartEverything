@@ -1,3 +1,6 @@
+import type { TranscriptHit } from '@smarteverything/domain';
+import type { TranscriptFeedState } from '../apps/app/src/components/transcript-feed/state';
+
 const session = {
   id: '3f6a2b1c-8d4e-4a90-b1c2-7e5d9a0f1234',
   source: 'camera' as const,
@@ -12,7 +15,7 @@ const session = {
   participants: ['Dana', 'Sam'],
 };
 
-function line(id: number, at: string, speaker: string, text: string) {
+function line(id: number, at: string, speaker: string, text: string): TranscriptHit {
   return {
     session,
     line: {
@@ -55,10 +58,10 @@ export const hits = [
     'Sure. Evening lights, please, and close the blinds in the bedroom.',
   ),
   line(5, '2026-10-14T18:09:40Z', 'Dana', 'Thanks, that looks much better.'),
-];
+] as const;
 
-export function feedState(overrides: Record<string, unknown> = {}) {
-  const none = () => undefined;
+export function feedState(overrides: Partial<TranscriptFeedState> = {}): TranscriptFeedState {
+  const none = (): void => undefined;
   return {
     rows: hits,
     words: '',
@@ -68,11 +71,9 @@ export function feedState(overrides: Record<string, unknown> = {}) {
     missingAnchor: false,
     error: null,
     loading: false,
-    fetching: false,
     older: false,
     newer: false,
     loadingOlder: false,
-    loadingNewer: false,
     loadOlder: none,
     loadNewer: none,
     refresh: none,

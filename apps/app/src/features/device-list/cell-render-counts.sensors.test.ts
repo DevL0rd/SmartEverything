@@ -1,14 +1,8 @@
 import type { DeviceCapability } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
 import { makeTable, type StoreState } from '../../store/state';
-import {
-  budgetCase,
-  mountFace,
-  renderVisual,
-  useCellEnvironment,
-  type Budget,
-  type Face,
-} from './cell-budget';
+import { budgetCase, mountFace, useCellEnvironment, type Budget, type Face } from './cell-budget';
+import { renderVisual } from './visual-budget';
 
 vi.mock('../../queries/use-screen-query', async () => (await import('./idle-queries')).idleQueries);
 
@@ -81,31 +75,6 @@ for (const face of [CONTACT, PURIFIER, HUMIDIFIER]) {
   budgetCase(face.name, face, budgetOf(face.name));
 }
 
-const VISUAL_LIMITS = [
-  ['tile', 48, 40],
-  ['card', 96, 40],
-  ['hero', 220, 40],
-] as const;
-
-describe('contact sensor visual node budgets', () => {
-  useCellEnvironment();
-
-  for (const [size, px, limit] of VISUAL_LIMITS) {
-    for (const open of [true, false]) {
-      it(`draws a ${open ? 'open' : 'closed'} door within ${String(limit)} nodes at ${size} size`, () => {
-        const { count } = renderVisual(CONTACT, { ...CONTACT.values, contact: open }, size, px);
-        expect(count).toBeLessThanOrEqual(limit);
-      });
-    }
-  }
-
-  it('shows an open door differently from a closed one', () => {
-    const open = renderVisual(CONTACT, { ...CONTACT.values, contact: true }, 'card', 96).tree;
-    const closed = renderVisual(CONTACT, { ...CONTACT.values, contact: false }, 'card', 96).tree;
-    expect(open).not.toBe(closed);
-  });
-});
-
 const FACE_NODES_WITHOUT_VISUAL = 60;
 
 describe('sensor faces without their visual', () => {
@@ -114,7 +83,7 @@ describe('sensor faces without their visual', () => {
   for (const face of [CONTACT, PURIFIER, HUMIDIFIER]) {
     it(`draws the ${face.name} at m within ${String(FACE_NODES_WITHOUT_VISUAL)} nodes besides its visual`, () => {
       const mounted = mountFace(face, 'M');
-      const visual = renderVisual(face, face.values, 'card', 96).count;
+      const visual = renderVisual(face, face.values, 'card', 96);
       mounted.unmount();
       expect(mounted.mountNodes - visual).toBeLessThanOrEqual(FACE_NODES_WITHOUT_VISUAL);
     });

@@ -65,7 +65,7 @@ export function ScreenBody({ device }: { readonly device: Device }): ReactNode {
 export function PhoneScreenScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   const device = useDevice(deviceId);
   return (
-    <PhoneFrame deviceId={deviceId} title="Screen" width="detail">
+    <PhoneFrame deviceId={deviceId} title="Screen" width="dashboard">
       {device?.kind === 'phone' ? <ScreenBody device={device} /> : null}
     </PhoneFrame>
   );

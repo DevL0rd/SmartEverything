@@ -55,7 +55,7 @@ function HeroBody({
     <Card>
       <View className="gap-4">
         <View className={cn('items-center gap-4', wide && 'flex-row justify-center gap-8')}>
-          <DeviceVisual device={device} size="hero" />
+          <DeviceVisual device={device} size="hero" interactive />
           <StateRing
             tone={status.tone}
             progress={status.progress}
@@ -83,12 +83,32 @@ function HeroBody({
   );
 }
 
-export function PrinterHero({ device }: { readonly device: Device }): ReactNode {
-  const live = usePrinterLive(device);
+function VisualOnly({ device }: { readonly device: Device }): ReactNode {
+  return (
+    <Card>
+      <View className="items-center">
+        <DeviceVisual device={device} size="hero" interactive />
+      </View>
+    </Card>
+  );
+}
+
+function LiveHero({
+  device,
+  live,
+}: {
+  readonly device: Device;
+  readonly live: PrinterLive;
+}): ReactNode {
   const overview = usePrinterView(device, 'overview');
   return (
     <LoadedQuery query={overview}>
-      {(view) => (live === null ? null : <HeroBody device={device} live={live} overview={view} />)}
+      {(view) => <HeroBody device={device} live={live} overview={view} />}
     </LoadedQuery>
   );
+}
+
+export function PrinterHero({ device }: { readonly device: Device }): ReactNode {
+  const live = usePrinterLive(device);
+  return live === null ? <VisualOnly device={device} /> : <LiveHero device={device} live={live} />;
 }

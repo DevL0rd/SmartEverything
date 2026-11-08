@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { IconButton, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -11,12 +12,12 @@ const body = (
     <IconButton icon="power" label="Power" variant="tonal" disabled />
   </Row>
 );
-export const Variants = () => (
+export const Variants = (): ReactElement => (
   <Stage theme="dark" width={520}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     {body}
   </Stage>

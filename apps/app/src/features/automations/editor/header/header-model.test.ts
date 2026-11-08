@@ -1,14 +1,15 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import type {
-  AutomationV3,
+  AutomationV4,
   InputPort,
   OutputPort,
   TriggerNode,
   Variable,
 } from '@smarteverything/domain';
-import { AUTOMATION_V3, NODE_REGISTRY } from '@smarteverything/domain';
-import { applyPatch } from '@smarteverything/flow/ops/reducer';
-import type { PatchOp } from '@smarteverything/flow/ops/schema';
+import { AUTOMATION_V4, NODE_REGISTRY } from '@smarteverything/domain';
+import { applyPatch } from '@smarteverything/flow/graph/ops/reducer';
+import type { PatchOp } from '@smarteverything/flow/graph/ops/schema';
 import {
   LIMIT_ROWS,
   isCustom,
@@ -70,24 +71,27 @@ function trigger(kind: string, ports: TriggerNode['ports'] = {}): TriggerNode {
   return { id: TRIGGER_ID, key: 'when', kind, ports };
 }
 
-function automation(extra: Partial<AutomationV3> = {}): AutomationV3 {
+function automation(extra: Partial<AutomationV4> = {}): AutomationV4 {
   return {
-    version: 3,
+    version: 4,
     kind: 'automation',
     triggers: [],
     inputs: [],
     outputs: [],
     variables: [],
-    body: { nodes: [] },
+    nodes: [{ id: '00000000-0000-4000-8000-0000000000a9', key: 'start', kind: 'flow.start' }],
     policy: { mode: 'single' },
     ...extra,
   };
 }
 
-function applied(program: AutomationV3, op: PatchOp | readonly PatchOp[]): AutomationV3 {
-  const result = applyPatch(program, Array.isArray(op) ? op : [op]);
+function applied(program: AutomationV4, op: PatchOp | readonly PatchOp[]): AutomationV4 {
+  const result = applyPatch(program, Array.isArray(op) ? op : [op], {
+    kinds: STATIC_KIND_LOOKUP,
+    newId: () => crypto.randomUUID(),
+  });
   if (!result.ok) throw new Error(result.reason);
-  return AUTOMATION_V3.parse(result.program);
+  return AUTOMATION_V4.parse(result.program);
 }
 
 describe('run behaviour', () => {
@@ -169,14 +173,14 @@ describe('limits without arbitrary defaults', () => {
     expect(rate?.fallback).toBe(600);
   });
 
-  it('sets a limit from no limit and goes back to no limit or the default', () => {
+  it('sets a limit from no limit and goes back to no limit or the built-in rate', () => {
     const [steps] = LIMIT_ROWS;
     const rate = LIMIT_ROWS.find((row) => row.name === 'commandsPerMinute');
     if (steps === undefined || rate === undefined) throw new Error('no limit rows');
     expect(limitAction(steps, null, false)).toEqual({ label: 'Set a limit', next: steps.start });
     expect(limitAction(steps, 500, true)).toEqual({ label: 'No limit', next: null });
     expect(limitAction(rate, 600, false)).toBeNull();
-    expect(limitAction(rate, 30, true)).toEqual({ label: 'Use default', next: null });
+    expect(limitAction(rate, 30, true)).toEqual({ label: 'Use 600', next: null });
   });
 });
 

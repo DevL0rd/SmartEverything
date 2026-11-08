@@ -1,4 +1,4 @@
-import type { AutomationV3, Layout } from '@smarteverything/domain';
+import type { AutomationV4, Layout } from '@smarteverything/domain';
 import type { FunctionExtractBody, ProgramUpdateBody } from '../../data/api';
 import type { FunctionActions } from '../../data/use-functions';
 import { failureText } from './dialog-model';
@@ -11,7 +11,7 @@ export interface CommitDeps {
 }
 
 export interface Before {
-  readonly program: AutomationV3;
+  readonly program: AutomationV4;
   readonly layout: Layout;
 }
 

@@ -10,18 +10,21 @@ import { clipToPass, interruptPass, passExpired } from './pass-deadline';
 import { sizeGuarded } from './size-guard';
 import type { Checked, Env, Evaluated, NodeResult, Outputs, StepContext } from './frames';
 import { keptFor, keptScope, keptStart } from './kept';
-import type { OpName, OpOf, StepEvent, StepResult } from './frames';
+import type { OpHandlers, OpName, OpOf, StepEvent, StepResult } from './frames';
 import {
   InterpreterError,
   asRecord,
   completeFrame,
   deriveEnv,
+  capturesAtStep,
   executes,
   lookupOutput,
   ownsScope,
   makeEnv,
+  next,
   raise,
   runVars,
+  setOutputs,
   setRunVar,
   siteOf,
   stay,
@@ -105,6 +108,10 @@ function nodeRoot(env: Env, key: string): Evaluated {
   indexes.set(env.plan, index);
   const producer = index.producers.get(key);
   if (producer === undefined) return { ok: true, value: lookupOutput(env.state, key) };
+  if (capturesAtStep(producer)) {
+    const stored = lookupOutput(env.state, key);
+    if (stored !== undefined) return { ok: true, value: stored };
+  }
   const produced = env.scratch.memo.get(key) ?? produce(env, producer);
   env.scratch.memo.set(key, produced);
   return produced.ok ? { ok: true, value: produced.value } : produced;
@@ -153,6 +160,18 @@ function read(env: Env, producer: Extract<PlanOp, { op: 'read' }>): NodeResult {
   if (!fresh.ok) return fresh;
   return { ok: true, value: asRecord(capture(env, producer.at.key, fresh.value)) };
 }
+
+function enterRead(env: Env, op: Extract<PlanOp, { op: 'read' }>): StepResult {
+  if (op.capture !== 'at-step') return next(env, env.state);
+  const produced = read(env, op);
+  if (!produced.ok) return raise(env, produced);
+  return next(env, setOutputs(env.state, op.at.key, produced.value));
+}
+
+export const PRODUCER_OPS: Pick<OpHandlers, 'compute' | 'read'> = {
+  compute: { enter: (env) => next(env, env.state) },
+  read: { enter: enterRead },
+};
 
 function isFields(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -205,7 +224,7 @@ function begin(env: Env): StepResult {
   return stay(env, state);
 }
 
-function traced(env: Env, from: number, result: StepResult): StepResult {
+function traced(env: Env, from: number, result: StepResult, outputs?: Outputs): StepResult {
   if (
     !executes(env.op) ||
     tracesAtEnd(env.op) ||
@@ -218,7 +237,7 @@ function traced(env: Env, from: number, result: StepResult): StepResult {
   if (known) return result;
   const { kind } = result.outcome;
   const status = kind === 'effect' ? 'running' : kind === 'park' ? 'waiting' : 'succeeded';
-  traceNode(env, status);
+  traceNode(env, status, undefined, status === 'succeeded' ? outputs : undefined);
   return result;
 }
 
@@ -241,7 +260,7 @@ function settle<K extends OpName>(env: Env, kind: K, op: OpOf[K], result: NodeRe
   const handler = env.ctx.ops[kind]?.settle;
   if (handler === undefined) return unsupported(env, `settling the operation ${kind}`);
   const from = env.scratch.records.length;
-  return traced(env, from, handler(env, op, result));
+  return traced(env, from, handler(env, op, result), result.ok ? result.value : undefined);
 }
 
 function tick(env: Env): StepResult {

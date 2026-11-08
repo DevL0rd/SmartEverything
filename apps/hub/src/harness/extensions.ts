@@ -2,16 +2,20 @@ import { mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
   ApiError,
+  HARNESS_DISCOVERY_REFERENCES,
   HARNESS_EXTENSION_INSTALL,
   HARNESS_EXTENSION_PATCH,
   HARNESS_EXTENSION_SOURCE_REQUEST,
   HARNESS_SKILL_FILES,
+  sameHarnessGitOrigin,
   type AiHarnessExtensions,
   type HarnessExtensionItem,
   type HarnessExtensionPatch,
+  type HarnessExtensionPreview,
   type HarnessExtensionResolution,
-  type HarnessExtensionSourceRequest,
   type HarnessExtensionTree,
+  type HarnessInstallResults,
+  type HarnessPreviewResults,
 } from '@smarteverything/domain';
 import {
   HARNESS_BUILTIN_IDS,
@@ -30,16 +34,20 @@ import type {
   StoredExtension,
 } from '../store/repositories/harness-extensions';
 import type { HarnessConfigurationService } from './configuration';
+import type { InstalledVersion } from './discovery';
 import {
-  choose,
+  candidateTree,
+  checkedPlugin,
   inspect,
-  prepared,
   refreshed,
   resolved,
   type Candidate,
 } from './extension-inspect';
 import { builtinSelection, extensionItem, publisherOf } from './extension-items';
+import { previewOf } from './extension-preview';
+import { eachReference, type Located, type Settled } from './extension-references';
 import {
+  gitFolder,
   gitSourceOf,
   withCheckout,
   type CheckedOutSource,
@@ -61,14 +69,18 @@ export class HarnessExtensions {
   readonly assets: HarnessSkillAssets;
   private readonly log = new Logger('hub.harness-extensions');
   private tail: Promise<unknown> = Promise.resolve();
+  private readonly directory: string;
+  private readonly tmp: string;
 
   constructor(
     private readonly repository: HarnessExtensionsRepository,
     private readonly configuration: HarnessConfigurationService,
-    private readonly directory: string,
+    directories: { readonly state: string; readonly tmp: string },
     private readonly now: () => Date,
   ) {
-    this.assets = new HarnessSkillAssets(join(directory, 'shared-skill-assets'), {
+    this.directory = directories.state;
+    this.tmp = directories.tmp;
+    this.assets = new HarnessSkillAssets(join(this.directory, 'shared-skill-assets'), {
       read: (kind, asset): Promise<HarnessExtensionTree> =>
         this.tree(kind, asset.id, asset.version),
     });
@@ -87,30 +99,53 @@ export class HarnessExtensions {
     };
   }
 
-  installed(): ReadonlySet<string> {
-    return new Set(this.repository.list().map((row) => row.id));
+  installed(): ReadonlyMap<string, InstalledVersion> {
+    return new Map(
+      this.repository
+        .list()
+        .map((row) => [
+          row.id,
+          { version: row.version, origin: row.source.kind === 'git' ? row.source : null },
+        ]),
+    );
   }
 
   async resolve(input: unknown): Promise<HarnessExtensionResolution> {
     const source = gitSourceOf(HARNESS_EXTENSION_SOURCE_REQUEST.parse(input));
-    return withCheckout(source, async (checkout) => ({
+    return withCheckout(this.tmp, source, async (checkout) => ({
       url: source.url,
       ref: source.ref,
       commit: checkout.commit,
-      candidates: [...(await inspect(checkout.directory, source.path))],
+      candidates: [...(await inspect(checkout, source.path))],
     }));
   }
 
-  install(input: unknown): Promise<HarnessExtensionItem[]> {
+  async preview(input: unknown): Promise<HarnessPreviewResults> {
+    const request = HARNESS_DISCOVERY_REFERENCES.parse(input);
+    const settled = await eachReference(
+      this.tmp,
+      request.items,
+      async ({ checkout, source, candidate }) =>
+        previewOf(await resolved(checkout.directory, candidate.path), candidate, {
+          url: source.url,
+          commit: checkout.commit,
+        }),
+      this.log,
+    );
+    return { results: settled.map(previewed) };
+  }
+
+  install(input: unknown): Promise<HarnessInstallResults> {
     const request = HARNESS_EXTENSION_INSTALL.parse(input);
     return this.serial(async () => {
-      const items = await this.installFrom(
-        request.source,
-        request.select ?? [],
-        request.confirm_executes,
+      const settled = await eachReference(
+        this.tmp,
+        request.items,
+        (located) => this.installCandidate(located, request.confirm_executes),
+        this.log,
       );
       this.configuration.refresh();
-      return items;
+      return { results: settled.map(installedOne) };
     });
   }
 
@@ -203,6 +238,7 @@ export class HarnessExtensions {
   ): Promise<keyof ExtensionUpdateCounts> {
     try {
       return await withCheckout(
+        this.tmp,
         { url: source.url, ref: source.ref, path: source.path },
         async (checkout) => {
           const candidate = await refreshed(checkout.directory, source.path, row);
@@ -222,30 +258,11 @@ export class HarnessExtensions {
     }
   }
 
-  private async installFrom(
-    request: HarnessExtensionSourceRequest,
-    select: readonly string[],
-    confirm: boolean,
-  ): Promise<HarnessExtensionItem[]> {
-    const source = gitSourceOf(request);
-    return withCheckout(source, async (checkout) => {
-      const chosen = choose(await inspect(checkout.directory, source.path), select);
-      const items: HarnessExtensionItem[] = [];
-      for (const candidate of chosen)
-        items.push(
-          ...(candidate.source === undefined
-            ? [await this.installCandidate(candidate, { checkout, source, confirm })]
-            : await this.installFrom(candidate.source, [], confirm)),
-        );
-      return items;
-    });
-  }
-
   private async installCandidate(
-    candidate: Candidate,
-    from: { checkout: CheckedOutSource; source: GitSource; confirm: boolean },
+    { checkout, source, candidate }: Located,
+    confirm: boolean,
   ): Promise<HarnessExtensionItem> {
-    const staged = await this.stage(candidate, from);
+    const staged = await this.stage(candidate, { checkout, source, confirm });
     if (staged.row.executes && !staged.row.confirmed)
       throw new ApiError(
         'invalid_request',
@@ -259,16 +276,24 @@ export class HarnessExtensions {
     candidate: Candidate,
     from: { checkout: CheckedOutSource; source: GitSource; confirm: boolean },
   ): Promise<Staged> {
-    const folder = await resolved(from.checkout.directory, candidate.path);
-    if (candidate.kind === 'plugin') await prepared(folder, candidate);
-    const tree = await readHarnessTree(folder);
+    const origin = gitFolder(from.source, candidate.path);
     const previous = this.repository.find(`${candidate.kind}:${candidate.name}`);
+    if (
+      previous !== undefined &&
+      (previous.source.kind !== 'git' || !sameHarnessGitOrigin(previous.source, origin))
+    )
+      throw new ApiError(
+        'conflict',
+        `Another source already provides ${candidate.name}. Remove it before adding this source.`,
+        'extension_name_conflict',
+      );
+    const folder = await resolved(from.checkout.directory, candidate.path);
+    const tree = await candidateTree(folder, candidate);
+    if (candidate.kind === 'plugin') await checkedPlugin(folder);
     const row = this.row(candidate, {
       source: {
         kind: 'git',
-        url: from.source.url,
-        ref: from.source.ref,
-        path: candidate.path === '' ? null : candidate.path,
+        ...origin,
         commit: from.checkout.commit,
       },
       publisher: publisherOf(from.source.url),
@@ -364,4 +389,16 @@ export class HarnessExtensions {
     this.tail = next.catch(() => undefined);
     return next;
   }
+}
+
+function previewed(
+  result: Settled<HarnessExtensionPreview>,
+): HarnessPreviewResults['results'][number] {
+  return result.ok ? { reference: result.reference, ok: true, preview: result.value } : result;
+}
+
+function installedOne(
+  result: Settled<HarnessExtensionItem>,
+): HarnessInstallResults['results'][number] {
+  return result.ok ? { reference: result.reference, ok: true, item: result.value } : result;
 }

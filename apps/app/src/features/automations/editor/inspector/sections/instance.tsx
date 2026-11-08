@@ -4,7 +4,7 @@ import { background } from '@smarteverything/logging';
 import { ActionRow, SelectRow, ValueRow } from '../../../../../components/rows';
 import { confirm } from '../../../../../components/confirm-store';
 import { Segmented } from '../../../../../components/segmented';
-import { List } from '../../../../../components/section';
+import { List, Section } from '../../../../../components/section';
 import { Text } from '../../../../../components/text';
 import { useInstanceHost, type InstanceHost } from '../../../functions/edit/instance-host';
 import {
@@ -15,8 +15,11 @@ import {
   type FollowMode,
   type InstanceState,
 } from '../../../functions/edit/instance-model';
+import { outputLabel } from '@smarteverything/domain';
+import { controlOf } from '../schema-fields';
+import { portOps } from './edits';
 import { flowNodeOf } from './node-view';
-import type { SectionProps } from './section-types';
+import type { FunctionChoice, SectionProps } from './section-types';
 
 const MODES = [
   { value: 'follow', label: 'Follow latest' },
@@ -49,20 +52,25 @@ function Mode({
   );
 }
 
-async function detach(host: InstanceHost, key: string, name: string): Promise<void> {
+async function detach(
+  run: NonNullable<InstanceHost['detach']>,
+  key: string,
+  name: string,
+): Promise<void> {
   const accepted = await confirm({
     title: `Detach from ${name}?`,
     body: 'The steps are copied into this automation and no longer follow the Custom Node. Data it kept for this step starts again from its start value.',
     confirmLabel: 'Detach',
     tone: 'destructive',
   });
-  if (accepted) await host.detach(key);
+  if (accepted) await run(key);
 }
 
 function Detach({ keyName, name }: { readonly keyName: string; readonly name: string }): ReactNode {
   const host = useInstanceHost();
   const [busy, setBusy] = useState(false);
-  if (host === null) return null;
+  const run = host?.detach;
+  if (run === undefined) return null;
   return (
     <ActionRow
       title="Detach"
@@ -73,7 +81,7 @@ function Detach({ keyName, name }: { readonly keyName: string; readonly name: st
       onPress={() => {
         setBusy(true);
         background(
-          detach(host, keyName, name).finally(() => {
+          detach(run, keyName, name).finally(() => {
             setBusy(false);
           }),
           'automations.instance.detach_failed',
@@ -88,8 +96,8 @@ function UseElsewhere({ functionId }: { readonly functionId: string }): ReactNod
   if (host === null) return null;
   return (
     <ActionRow
-      title="Use it elsewhere"
-      subtitle="Find automations with the same steps"
+      title="Open the Custom Node"
+      subtitle="See its steps and where else it is used"
       icon="search"
       onPress={() => {
         host.openSameSteps(functionId);
@@ -128,6 +136,55 @@ function PinRow({
   );
 }
 
+function CallInputs({
+  choice,
+  section,
+}: {
+  readonly choice: FunctionChoice;
+  readonly section: SectionProps;
+}): ReactNode {
+  const { view, env, actions } = section;
+  if (choice.inputs.length === 0) return null;
+  return (
+    <Section title="Inputs">
+      <View className="gap-5 py-2">
+        {choice.inputs.map((input) => {
+          const title = input.label ?? outputLabel(input.name);
+          return (
+            <View key={input.name} className="px-4">
+              {env.renderValue({
+                nodeKey: view.key,
+                slot: input.name,
+                label: title,
+                helper: input.description,
+                type: input.type,
+                control: controlOf(input.type),
+                isStatic: false,
+                required: input.required,
+                value: view.node.ports?.[input.name],
+                message: env.findings.find((found) => found.port === input.name)?.message,
+                heading: (
+                  <View className="min-w-0 flex-1 gap-0.5">
+                    <Text variant="body-strong">{title}</Text>
+                    {input.description === undefined ? null : (
+                      <Text variant="footnote" tone="variant">
+                        {input.description}
+                      </Text>
+                    )}
+                  </View>
+                ),
+                onChange: (value) => {
+                  actions.apply(portOps(view.key, input.name, value));
+                },
+              })}
+            </View>
+          );
+        })}
+      </View>
+    </Section>
+  );
+}
+
 export function Instance({ view, env, actions }: SectionProps): ReactNode {
   const node = flowNodeOf(view);
   const port = node?.ports?.['fn'];
@@ -139,7 +196,7 @@ export function Instance({ view, env, actions }: SectionProps): ReactNode {
   const change = (mode: FollowMode): void => {
     actions.apply(mode === 'pin' ? pinOps(node.key, choice.latest) : followOps(node.key));
   };
-  return (
+  const list = (
     <List title="Custom Node">
       <ValueRow
         title={choice.name}
@@ -157,5 +214,11 @@ export function Instance({ view, env, actions }: SectionProps): ReactNode {
       <UseElsewhere functionId={choice.id} />
       {env.locked ? null : <Detach keyName={node.key} name={choice.name} />}
     </List>
+  );
+  return (
+    <>
+      {list}
+      <CallInputs choice={choice} section={{ view, env, actions }} />
+    </>
   );
 }

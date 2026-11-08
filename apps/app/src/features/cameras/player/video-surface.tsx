@@ -15,13 +15,14 @@ export interface VideoSurfaceProps {
   readonly onWheel: ((deltaY: number) => void) | null;
   readonly onFrame: () => void;
   readonly onSoundBlocked: () => void;
+  readonly fit?: 'contain' | 'cover';
 }
 
 export function surfaceReportsFrames(): boolean {
   return false;
 }
 
-export function VideoSurface({ media }: VideoSurfaceProps): ReactNode {
+export function VideoSurface({ media, fit }: VideoSurfaceProps): ReactNode {
   if (!(media.source instanceof MediaStream)) {
     return null;
   }
@@ -29,7 +30,7 @@ export function VideoSurface({ media }: VideoSurfaceProps): ReactNode {
     <StyledRTCView
       accessibilityLabel="Live camera picture"
       streamURL={media.source.toURL()}
-      objectFit="contain"
+      objectFit={fit}
       className="absolute inset-0"
     />
   );

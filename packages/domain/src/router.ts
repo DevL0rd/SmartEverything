@@ -140,9 +140,7 @@ const RENAME = z.strictObject({
 });
 const RESERVE = z.strictObject({ action: z.literal('reserve'), mac: MAC_ADDRESS, ip: IPV4 });
 
-export const ROUTER_CLIENT_CUTOFF = z.discriminatedUnion('action', [DISCONNECT, BLOCK]);
-
-export const ROUTER_CLIENT_UPDATE = z.discriminatedUnion('action', [UNBLOCK, RENAME, RESERVE]);
+export const ROUTER_CLIENT_UPDATE = z.discriminatedUnion('action', [RENAME, RESERVE]);
 
 const ROUTER_CLIENT_ACTION = z.discriminatedUnion('action', [
   DISCONNECT,

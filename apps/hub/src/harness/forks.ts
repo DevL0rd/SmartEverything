@@ -1,12 +1,28 @@
 import { z } from 'zod';
-import { isSurfaceEvent } from '@deepseek-ai/dsh-session';
-import { forkNativeHistory, readNativeHistory } from '@smarteverything/harness/process';
+import { Context } from '@deepseek-ai/cordis';
+import SessionStore, {
+  isSurfaceEvent,
+  SessionId,
+  SessionLogOffset,
+  SessionSeq,
+} from '@deepseek-ai/dsh-session';
+import type { CreateSessionOptions, SessionEvent } from '@deepseek-ai/dsh-session';
+import SessionProjection from '@deepseek-ai/dsh-session-projection';
+import { readNativeHistory } from '@smarteverything/harness/process';
 import { ApiError } from '@smarteverything/domain';
 import type { Store } from '../store/store';
-import type { AiChatRow } from '@smarteverything/domain';
-import { nativeHistoryPrefix } from './history-mutation';
+import type { AiChatRow, DshSessionMetadata } from '@smarteverything/domain';
+import { nativeHistoryPrefix, SESSION_MESSAGE_PROJECTIONS } from './history-mutation';
 
 const SELECTION = z.object({ boundary: z.int().nonnegative() });
+const FORK_TAIL = 'smarteverything/fork-tail';
+const FORK_TAIL_STATE = z.object({ events: z.array(z.custom<SessionEvent>()) });
+
+declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionStateMap {
+    'smarteverything/fork-tail': z.infer<typeof FORK_TAIL_STATE>;
+  }
+}
 
 export function nativeForkIntent(
   store: Store,
@@ -24,9 +40,9 @@ export function nativeForkIntent(
   const history = readHistory(store, id, parent.profile_id, checkpoint);
   const boundary = forkBoundary(store, { id: parent.id, session_id: id }, message, history);
   const operation = `fork:${child.id}`;
-  store.harnessCoordination.begin(operation, id, { kind: 'fork', boundary });
+  store.harnessSessions.begin(operation, id, { kind: 'fork', boundary });
   store.harnessRecovery.fork(child.id, id, checkpoint);
-  store.harnessCoordination.finish(operation, { kind: 'fork', boundary });
+  store.harnessSessions.finish(operation, { kind: 'fork', boundary });
 }
 
 export function nativeForkSeed(
@@ -36,7 +52,7 @@ export function nativeForkSeed(
   | {
       readonly parent: string;
       readonly inherited: number;
-      readonly events: ReturnType<typeof forkNativeHistory>;
+      readonly events: readonly SessionEvent[];
     }
   | undefined {
   const fork = store.harnessRecovery.forkOf(chat.id);
@@ -45,7 +61,7 @@ export function nativeForkSeed(
   if (metadata === undefined || metadata.next_seq <= fork.boundary)
     throw new ApiError('conflict', 'Native fork lost its complete committed parent checkpoint.');
   const history = readHistory(store, fork.parent_session, chat.profile_id, fork.boundary);
-  const events = forkNativeHistory(metadata.header, history, fork.boundary);
+  const events = forkedPrefix(metadata, history, fork.boundary);
   const selection = forkSelection(store, chat);
   const projected = nativeHistoryPrefix(
     readNativeHistory(metadata.header, events),
@@ -58,8 +74,58 @@ export function nativeForkSeed(
   };
 }
 
+function forkedPrefix(
+  metadata: DshSessionMetadata,
+  history: ReturnType<typeof readNativeHistory>,
+  boundary: number,
+): readonly SessionEvent[] {
+  const ctx = forkContext(boundary);
+  const parent = ctx.sessions.create(SessionId(metadata.header.id), {
+    seed: history,
+    inheritedEventCount: SessionLogOffset(metadata.inherited_event_count),
+    meta: parentLineage(metadata.header),
+  });
+  const child = ctx.sessions.fork(parent, SessionSeq(boundary));
+  const tail = ctx.sessionProjections.stateOf(child, FORK_TAIL);
+  if (tail === undefined)
+    throw new ApiError('conflict', 'Native fork lost its inherited history closers.');
+  return [...history.slice(0, boundary + 1), ...tail.events];
+}
+
+function forkContext(boundary: number): Context {
+  const ctx = new Context();
+  new SessionStore(ctx);
+  new SessionProjection(ctx);
+  for (const projection of SESSION_MESSAGE_PROJECTIONS)
+    ctx.sessions.registerMessageProjection(projection);
+  ctx.sessionProjections.register({
+    key: FORK_TAIL,
+    stateVersion: 1,
+    stateSchema: FORK_TAIL_STATE,
+    init: () => ({ events: [] }),
+    apply: (state, event) => (event.seq <= boundary ? state : { events: [...state.events, event] }),
+  });
+  return ctx;
+}
+
+function parentLineage(
+  header: DshSessionMetadata['header'],
+): NonNullable<CreateSessionOptions['meta']> {
+  return {
+    createdAt: header.createdAt,
+    isSeeded: header.isSeeded,
+    ...(header.cwd === undefined ? {} : { cwd: header.cwd }),
+    ...(header.parentSession === undefined
+      ? {}
+      : { parentSession: SessionId(header.parentSession) }),
+    ...(header.origin === undefined ? {} : { origin: header.origin }),
+    ...(header.delegationDepth === undefined ? {} : { delegationDepth: header.delegationDepth }),
+    ...(header.agentPreset === undefined ? {} : { agentPreset: header.agentPreset }),
+  };
+}
+
 function forkSelection(store: Store, chat: AiChatRow): z.infer<typeof SELECTION> {
-  const receipt = store.harnessCoordination.operation(`fork:${chat.id}`);
+  const receipt = store.harnessSessions.operation(`fork:${chat.id}`);
   if (receipt === undefined)
     throw new ApiError('conflict', 'Native fork lost its admitted branch point.');
   return SELECTION.parse(JSON.parse(receipt.request));

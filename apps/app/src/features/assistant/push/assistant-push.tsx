@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import * as Notifications from 'expo-notifications';
 import { z } from 'zod';
 import { Logger, background } from '@smarteverything/logging';
@@ -15,11 +16,14 @@ const REPLY_CATEGORY = 'assistant_reply';
 
 const REPLY_ACTION = 'reply';
 
-const REPLY_TAP = z.object({
-  kind: z.literal('assistant_reply'),
-  messageId: z.uuid(),
-  chatId: z.uuid().optional(),
-});
+const CHAT_TAP = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('assistant_reply'),
+    messageId: z.uuid(),
+    chatId: z.uuid().optional(),
+  }),
+  z.object({ kind: z.literal('assistant_prompt'), chatId: z.uuid() }),
+]);
 
 function registerCategory(): void {
   Notifications.setNotificationCategoryAsync(REPLY_CATEGORY, [
@@ -34,8 +38,8 @@ function registerCategory(): void {
   });
 }
 
-function chatHref(store: EntityStore, tap: z.infer<typeof REPLY_TAP>): Href {
-  if (tap.chatId !== undefined) {
+function chatHref(store: EntityStore, tap: z.infer<typeof CHAT_TAP>): AppHref {
+  if (tap.kind === 'assistant_prompt' || tap.chatId !== undefined) {
     return href.assistantChat(tap.chatId);
   }
   const { messageId } = tap;
@@ -48,12 +52,16 @@ function chatHref(store: EntityStore, tap: z.infer<typeof REPLY_TAP>): Href {
 }
 
 function handle(response: Notifications.NotificationResponse, store: EntityStore): void {
-  const tap = REPLY_TAP.safeParse(response.notification.request.content.data);
+  const tap = CHAT_TAP.safeParse(response.notification.request.content.data);
   if (!tap.success) {
     return;
   }
   const text = response.userText?.trim() ?? '';
-  if (response.actionIdentifier === REPLY_ACTION && text !== '') {
+  if (
+    tap.data.kind === 'assistant_reply' &&
+    response.actionIdentifier === REPLY_ACTION &&
+    text !== ''
+  ) {
     log.info('push.inline_reply', {});
     background(sendMessage(text, []), 'message.send_failed');
   }

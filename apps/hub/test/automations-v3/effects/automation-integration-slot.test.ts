@@ -18,8 +18,6 @@ describe('AutomationIntegrationSlot', () => {
       'ai.ask',
       'ai.decide',
       'ai.vision',
-      'camera.snapshot',
-      'computer.power',
       'device.ir_send',
       'health.read',
       'http.respond',

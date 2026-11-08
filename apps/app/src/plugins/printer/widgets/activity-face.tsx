@@ -1,10 +1,9 @@
-import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useColour } from '../../../design/colour';
 import { cn } from '../../../design/cn';
-import { atLeast, useSizeClass } from '../../../design/size-class';
-import { CalendarHeatmap, HourHeatmap } from '../../../components/charts';
+import { CalendarHeatmap, HourHeatmap, WEEKDAY_ROWS } from '../../../components/charts';
 import type { HeatDay } from '../../../components/charts/heatmap-model';
 import { Icon } from '../../../components/icon';
 import { LoadedQuery } from '../../../components/loaded-query';
@@ -18,10 +17,39 @@ import { usePrinterView } from '../data/use-printer-view';
 import { streakLine } from '../model/stats-view';
 
 const STRIP_DAYS = 28;
-const STRIP_HEIGHT = 28;
 const STRIP_STEP = 10;
+const SHORTEST_BAR = 3;
 
-function Strip({ days }: { readonly days: readonly HeatDay[] }): ReactNode {
+export function FitPlot({
+  className,
+  children,
+}: {
+  readonly className?: string;
+  readonly children: (plot: number) => ReactNode;
+}): ReactNode {
+  const [room, setRoom] = useState(0);
+  const [chrome, setChrome] = useState(0);
+  const plot = Math.max(0, Math.floor(room - chrome));
+  const onRoom = (event: LayoutChangeEvent): void => {
+    setRoom(event.nativeEvent.layout.height);
+  };
+  const onContent = (event: LayoutChangeEvent): void => {
+    setChrome(Math.max(0, Math.ceil(event.nativeEvent.layout.height - plot)));
+  };
+  return (
+    <View className={cn('min-h-0 min-w-0 flex-1', className)} onLayout={onRoom}>
+      <View onLayout={onContent}>{children(plot)}</View>
+    </View>
+  );
+}
+
+function Strip({
+  days,
+  height,
+}: {
+  readonly days: readonly HeatDay[];
+  readonly height: number;
+}): ReactNode {
   const recent = days.slice(-STRIP_DAYS);
   const top = Math.max(1, ...recent.map((day) => day.pages));
   const primary = useColour('primary');
@@ -32,20 +60,20 @@ function Strip({ days }: { readonly days: readonly HeatDay[] }): ReactNode {
       accessibilityRole="image"
       accessibilityLabel="Pages printed on each of the last 28 days"
       width="100%"
-      height={STRIP_HEIGHT}
-      viewBox={`0 0 ${String(recent.length * STRIP_STEP)} ${String(STRIP_HEIGHT)}`}
+      height={height}
+      viewBox={`0 0 ${String(recent.length * STRIP_STEP)} ${String(height)}`}
       preserveAspectRatio="none"
     >
       {recent.map((day, index) => {
-        const height = Math.max(3, (day.pages / top) * STRIP_HEIGHT);
+        const bar = Math.min(height, Math.max(SHORTEST_BAR, (day.pages / top) * height));
         return (
           <Path
             key={day.day}
             d={rounded({
               x: index * STRIP_STEP,
-              y: STRIP_HEIGHT - height,
+              y: height - bar,
               w: STRIP_STEP - 2,
-              h: height,
+              h: bar,
               r: 2,
             })}
             fill={day.covered ? primary : quiet}
@@ -54,6 +82,10 @@ function Strip({ days }: { readonly days: readonly HeatDay[] }): ReactNode {
       })}
     </Svg>
   );
+}
+
+function FitStrip({ days }: { readonly days: readonly HeatDay[] }): ReactNode {
+  return <FitPlot>{(plot) => (plot > 0 ? <Strip days={days} height={plot} /> : null)}</FitPlot>;
 }
 
 function Maps({
@@ -65,23 +97,49 @@ function Maps({
   readonly today: string;
   readonly calendar: boolean;
 }): ReactNode {
-  const wide = atLeast(useSizeClass().width, 'medium');
+  const hours = (
+    <HourHeatmap
+      matrix={view.stats.weekdayHour}
+      rows={WEEKDAY_ROWS}
+      unit="pages printed"
+      label="Pages printed by weekday and hour"
+    />
+  );
   return (
-    <View className={cn('min-h-0 gap-3', wide && 'flex-row gap-6')}>
-      <View className={cn('min-w-0', wide && 'flex-1')}>
-        {calendar ? (
-          <CalendarHeatmap
-            days={view.stats.heatmap}
-            today={today}
-            label="Pages printed on each day"
-          />
-        ) : (
-          <Strip days={view.stats.heatmap} />
-        )}
+    <View className="min-h-0 flex-1 gap-3">
+      <FitStrip days={view.stats.heatmap} />
+      {calendar ? (
+        <View className="flex-row items-start gap-6">
+          <View className="w-1/5 min-w-0">
+            <CalendarHeatmap
+              days={view.stats.heatmap}
+              today={today}
+              unit="pages printed"
+              label="Pages printed on each day"
+            />
+          </View>
+          <View className="min-w-0 flex-1">{hours}</View>
+        </View>
+      ) : (
+        hours
+      )}
+    </View>
+  );
+}
+
+function Footer({ view }: { readonly view: ViewOf<'stats'> }): ReactNode {
+  return (
+    <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
+      <View className="flex-row items-center gap-1.5">
+        <Icon name="flame" size={16} tone={view.stats.printing.current > 0 ? 'warning' : 'faint'} />
+        <Text variant="caption" numberOfLines={1}>
+          {streakLine(view.stats.printing.current, view.stats.printing.longest, 'printing')}
+        </Text>
       </View>
-      <View className={cn('min-w-0', wide && 'flex-1')}>
-        <HourHeatmap matrix={view.stats.weekdayHour} label="Pages printed by weekday and hour" />
-      </View>
+      <Text variant="caption" tone="variant" className="tabular">
+        This month: {String(Math.round(view.stats.totals.pages))} pages,{' '}
+        {String(view.stats.totals.jobs)} jobs
+      </Text>
     </View>
   );
 }
@@ -93,28 +151,13 @@ export function ActivityFace({ device }: { readonly device: Device }): ReactNode
   return (
     <LoadedQuery query={stats}>
       {(view) => (
-        <View className="flex-1 justify-between gap-3">
+        <View className="flex-1 gap-3">
           {cls === 'xl' || cls === 'l' ? (
             <Maps view={view} today={today} calendar={cls === 'xl'} />
           ) : (
-            <Strip days={view.stats.heatmap} />
+            <FitStrip days={view.stats.heatmap} />
           )}
-          <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
-            <View className="flex-row items-center gap-1.5">
-              <Icon
-                name="flame"
-                size={16}
-                tone={view.stats.printing.current > 0 ? 'warning' : 'faint'}
-              />
-              <Text variant="caption" numberOfLines={1}>
-                {streakLine(view.stats.printing.current, view.stats.printing.longest, 'printing')}
-              </Text>
-            </View>
-            <Text variant="caption" tone="variant" className="tabular">
-              This month: {String(Math.round(view.stats.totals.pages))} pages,{' '}
-              {String(view.stats.totals.jobs)} jobs
-            </Text>
-          </View>
+          <Footer view={view} />
         </View>
       )}
     </LoadedQuery>

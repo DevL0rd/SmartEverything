@@ -1,4 +1,4 @@
-import type { ListResourcesResult, ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
+import type { ListResourcesResult, ReadResourceResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { catalogueText } from '../../ai-tools/catalogue-text';
 import type { Tool } from './tools/registry';

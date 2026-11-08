@@ -13,7 +13,7 @@ import {
   type OpenRgbOptions,
 } from '../../../src/plugins/builtin/openrgb/runtime';
 import type { Rgb } from '../../../src/plugins/builtin/openrgb/colour-math';
-import { testLogger } from '../../support/logs';
+import { captureLogs, testLogger } from '../../support/logs';
 import { memoryRecords } from '../memory-records';
 import {
   OFF,
@@ -74,6 +74,7 @@ function launch(server: FakeServer, records: PluginRecords = memoryRecords()): F
       },
     },
     records: () => records,
+    data: { publish: () => undefined },
     devices: {
       register: (driver) => {
         drivers.push(driver);
@@ -245,6 +246,20 @@ describe('OpenRGB plugin lights', () => {
     await execute(command(STRIP_ID, 'power', true));
     expect(link().calls[2]).toEqual(leds({ red: 0, green: 0, blue: 255 }));
     expect(latest(STRIP_ID, 'power')).toBe(true);
+  });
+
+  it('answers a final mode change when it is sent and logs a write that fails later', async () => {
+    const logs = captureLogs();
+    link().failModes(new Error('write refused'));
+    await expect(execute(command(STRIP_ID, 'light_effect', 'Rainbow'))).resolves.toEqual({
+      success: true,
+    });
+    await vi.waitFor(() => {
+      expect(logs.events()).toContain('openrgb.mode_failed');
+    });
+    await vi.waitFor(() => {
+      expect(latest(STRIP_ID, 'light_effect')).toBe('Direct');
+    });
   });
 
   it('treats a colour with no brightness as turning off', async () => {

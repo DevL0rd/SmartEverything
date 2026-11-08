@@ -1,3 +1,4 @@
+import { randomUUID } from 'expo-crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BROWSER_TAB_ID } from './browser-tab-state';
@@ -39,7 +40,7 @@ describe('browser tab operations', () => {
   });
 
   it('opens a link that asked for a new window as its own tab at that address', () => {
-    const tabId = BROWSER_TAB_ID.parse(globalThis.crypto.randomUUID());
+    const tabId = BROWSER_TAB_ID.parse(randomUUID());
     const opened: string[] = [];
     openBrowserAddress(
       {

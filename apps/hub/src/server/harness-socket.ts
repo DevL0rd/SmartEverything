@@ -151,6 +151,13 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
         (cause: unknown): HarnessCallResult => ({ ok: false, error: this.failure(cause) }),
       )
       .then((result) => {
+        if (
+          result.ok &&
+          request.operation === 'publish' &&
+          request.frame.type === 'harness_native' &&
+          (request.frame.frame.kind === 'open' || request.frame.frame.kind === 'close')
+        )
+          connection.residence?.remote.acceptedChildFrame(request.frame.frame);
         this.log.debug('harness.call_finished', () => ({
           socketId: connection.id,
           callId: id,

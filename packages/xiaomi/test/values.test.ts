@@ -66,7 +66,7 @@ describe('value descriptors', () => {
         maxLength: TEXT_MAX_LENGTH,
       });
     }
-    expect(TEXT_MAX_LENGTH).toBe(4096);
+    expect(TEXT_MAX_LENGTH).toBe(262144);
   });
 
   it('turn a value-range into a number with step and readable unit', () => {

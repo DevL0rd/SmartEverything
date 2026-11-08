@@ -1,21 +1,23 @@
 import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { ApiError, type HarnessExtensionSourceRequest } from '@smarteverything/domain';
+import {
+  ApiError,
+  HARNESS_GIT_ORIGIN,
+  type HarnessExtensionCandidate,
+  type HarnessExtensionSourceRequest,
+  type HarnessGitOrigin,
+} from '@smarteverything/domain';
 
 const run = promisify(execFile);
 const GITHUB_SHORTHAND = /^[\w.-]+\/[\w.-]+$/u;
-export interface GitSource {
-  readonly url: string;
-  readonly ref: string | null;
-  readonly path: string | null;
-}
+export type GitSource = Readonly<HarnessGitOrigin>;
 
 export interface CheckedOutSource {
   readonly directory: string;
   readonly commit: string;
+  readonly files: readonly string[];
 }
 
 export function gitSourceOf(request: HarnessExtensionSourceRequest): GitSource {
@@ -25,6 +27,18 @@ export function gitSourceOf(request: HarnessExtensionSourceRequest): GitSource {
     ref: request.ref ?? base.ref,
     path: request.path ?? base.path,
   };
+}
+
+export function gitFolder(source: GitSource, path: string): GitSource {
+  return { ...source, path: path === '' ? null : path };
+}
+
+export function offerOrigin(source: GitSource, candidate: HarnessExtensionCandidate): GitSource {
+  return HARNESS_GIT_ORIGIN.parse(
+    candidate.source === undefined
+      ? gitFolder(source, candidate.path)
+      : gitSourceOf(candidate.source),
+  );
 }
 
 function locate(text: string): GitSource {
@@ -58,7 +72,11 @@ function directoryOf(parts: readonly string[]): string | null {
   return root.length === 0 ? null : root.join('/');
 }
 
-async function checkOut(source: GitSource, directory: string): Promise<CheckedOutSource> {
+async function checkOut(
+  source: GitSource,
+  directory: string,
+  commit: string | null,
+): Promise<CheckedOutSource> {
   await mkdir(directory, { recursive: true });
   await git(directory, ['init', '--quiet']);
   await git(directory, [
@@ -68,19 +86,25 @@ async function checkOut(source: GitSource, directory: string): Promise<CheckedOu
     '1',
     '--',
     source.url,
-    source.ref ?? 'HEAD',
+    commit ?? source.ref ?? 'HEAD',
   ]);
   await git(directory, ['checkout', '--quiet', '--force', 'FETCH_HEAD']);
-  return { directory, commit: (await git(directory, ['rev-parse', 'HEAD'])).trim() };
+  const files = (await git(directory, ['ls-files', '-z']))
+    .split('\0')
+    .filter((file) => file !== '');
+  return { directory, commit: (await git(directory, ['rev-parse', 'HEAD'])).trim(), files };
 }
 
 export async function withCheckout<T>(
+  tmp: string,
   source: GitSource,
   use: (checkout: CheckedOutSource) => Promise<T>,
+  commit: string | null = null,
 ): Promise<T> {
-  const directory = await mkdtemp(join(tmpdir(), 'smarteverything-source-'));
+  await mkdir(tmp, { recursive: true, mode: 0o700 });
+  const directory = await mkdtemp(join(tmp, 'smarteverything-source-'));
   try {
-    return await use(await checkOut(source, directory));
+    return await use(await checkOut(source, directory, commit));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

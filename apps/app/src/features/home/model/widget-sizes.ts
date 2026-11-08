@@ -6,7 +6,6 @@ interface SizeChoice {
 }
 
 export const HOME_WIDGET_SIZES = {
-  glance: { sizes: ['M', 'W'], defaultSize: 'M' },
   weather: { sizes: ['M', 'W', 'XL'], defaultSize: 'M' },
   favourites: { sizes: ['XL'], defaultSize: 'XL' },
   rooms: { sizes: ['M', 'W', 'XL'], defaultSize: 'M' },

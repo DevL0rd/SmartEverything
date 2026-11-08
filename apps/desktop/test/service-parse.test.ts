@@ -68,15 +68,15 @@ describe('loginctl and pid files', () => {
 });
 
 describe('reg query output', () => {
-  it('finds the SmartEverything value', () => {
+  it('finds the SmartEverything Node value', () => {
     const output = [
       '',
       'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
-      '    SmartEverything    REG_SZ    wscript.exe //B //Nologo "C:\\Data\\service-launch.js"',
+      '    SmartEverything Node    REG_SZ    wscript.exe //B //Nologo "C:\\Data\\service-launch.js"',
       '',
     ].join('\r\n');
     expect(parseRunValue(output)).toBe('wscript.exe //B //Nologo "C:\\Data\\service-launch.js"');
-    expect(parseRunValue('    SmartEverythingElse    REG_SZ    x')).toBeNull();
-    expect(parseRunValue('    SmartEverything    REG_DWORD    0x1')).toBeNull();
+    expect(parseRunValue('    SmartEverything NodeElse    REG_SZ    x')).toBeNull();
+    expect(parseRunValue('    SmartEverything Node    REG_DWORD    0x1')).toBeNull();
   });
 });

@@ -9,16 +9,15 @@ import {
   TIMEOUT_DEFAULT_MS,
   behaviourView,
   evenedRetry,
-  routeLocked,
-  routeScopeEdit,
+  failureModeOps,
   withAcknowledgement,
-  withFailureMode,
   withRetry,
   withTimeout,
 } from './behaviour-model';
 import { DurationRow } from './duration-row';
 import { policyOps } from './edits';
 import { RetryFields } from './retry-fields';
+import { runModeOwnsTimeout } from './run-mode-model';
 import { flowNodeOf } from './node-view';
 import type { SectionProps } from './section-types';
 
@@ -26,15 +25,9 @@ function setPolicy(section: SectionProps, policy: NodePolicy | null): void {
   section.actions.apply(policyOps(section.view.key, policy));
 }
 
-function chooseMode(section: SectionProps, node: FlowNode, mode: FailureMode): void {
-  const policy = withFailureMode(node.policy, mode);
-  const rows = routeScopeEdit(node, mode);
-  const leaving = node.policy?.onError === 'route';
-  section.actions.gesture(() => {
-    if (leaving && rows !== null) section.actions.editRows(node.key, [rows]);
-    setPolicy(section, policy);
-    if (!leaving && rows !== null) section.actions.editRows(node.key, [rows]);
-  });
+function chooseMode(section: SectionProps, mode: FailureMode): void {
+  const wired = section.env.graph.nodes.find((item) => item.id === section.view.id);
+  if (wired !== undefined) section.actions.apply(failureModeOps(wired, mode));
 }
 
 function RetryRows({
@@ -52,7 +45,7 @@ function RetryRows({
     <>
       {behaviour.needsAcknowledgement ? (
         <SwitchRow
-          title="Repeat-safe? I accept repeats"
+          title="Safe to run twice"
           subtitle="This step is not safe to repeat on its own. A retry may do it twice."
           value={behaviour.acknowledged}
           disabled={section.env.locked}
@@ -84,30 +77,17 @@ function RetryRows({
   );
 }
 
-export function Behaviour(section: SectionProps): ReactNode {
-  const node = flowNodeOf(section.view);
-  const { kind } = section.view;
-  if (node === undefined || kind === undefined) return null;
-  const behaviour = behaviourView(kind, node.policy);
+function TimeLimitRows({
+  behaviour,
+  section,
+  node,
+}: {
+  readonly behaviour: BehaviourView;
+  readonly section: SectionProps;
+  readonly node: FlowNode;
+}): ReactNode {
   return (
-    <List title="Behaviour">
-      <SelectRow
-        title="When it fails"
-        value={behaviour.onError}
-        disabled={section.env.locked}
-        options={FAILURE_MODES.map((mode) => ({
-          value: mode.value,
-          label: mode.label,
-          disabled: mode.value !== 'route' && routeLocked(node),
-          ...(mode.value !== 'route' && routeLocked(node)
-            ? { description: 'Remove the steps in On error first.' }
-            : {}),
-        }))}
-        onChange={(mode) => {
-          chooseMode(section, node, mode);
-        }}
-      />
-      <RetryRows behaviour={behaviour} section={section} node={node} />
+    <>
       <SwitchRow
         title="Time limit"
         value={behaviour.timeout !== undefined}
@@ -125,6 +105,31 @@ export function Behaviour(section: SectionProps): ReactNode {
             setPolicy(section, withTimeout(node.policy, timeout));
           }}
         />
+      )}
+    </>
+  );
+}
+
+export function Behaviour(section: SectionProps): ReactNode {
+  const node = flowNodeOf(section.view);
+  const { kind } = section.view;
+  if (node === undefined || kind === undefined) return null;
+  const behaviour = behaviourView(kind, node.policy);
+  const waitLimitAbove = runModeOwnsTimeout(kind, node.policy);
+  return (
+    <List title={waitLimitAbove ? 'Failures' : 'Failures and time limit'}>
+      <SelectRow
+        title="When it fails"
+        value={behaviour.onError}
+        disabled={section.env.locked}
+        options={FAILURE_MODES.map((mode) => ({ value: mode.value, label: mode.label }))}
+        onChange={(mode) => {
+          chooseMode(section, mode);
+        }}
+      />
+      <RetryRows behaviour={behaviour} section={section} node={node} />
+      {waitLimitAbove ? null : (
+        <TimeLimitRows behaviour={behaviour} section={section} node={node} />
       )}
     </List>
   );

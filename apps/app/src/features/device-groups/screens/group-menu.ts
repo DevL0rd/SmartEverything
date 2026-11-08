@@ -19,7 +19,7 @@ export function powerAction(data: GroupData, noun: 'light' | 'device'): readonly
   return [
     {
       icon: 'power',
-      label: powerLabel(state, data.name, noun),
+      label: powerLabel(state, null, noun),
       primary: state.on > 0,
       onPress: data.master.togglePower,
     },
@@ -87,7 +87,7 @@ export function pageMenu({
       label: 'Choose room for lights',
       icon: 'grid',
       onPress: (): void => {
-        router.push({ pathname: '/devices', params: { room: target.roomId } });
+        router.push(href.devicesSelection({ room: target.roomId }));
       },
     },
   ];

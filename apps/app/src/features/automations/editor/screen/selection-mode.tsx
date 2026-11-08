@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { Button } from '../../../../components/button';
 import { Text } from '../../../../components/text';
 import type { DocumentStore } from '../../model/editor/document-store';
-import { selectIds } from '../host/edit-intents';
+import { selectIds } from '../host/intent-env';
 import { selectedText } from './screen-model';
 
 export function accumulateTap(

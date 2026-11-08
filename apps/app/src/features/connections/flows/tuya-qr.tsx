@@ -16,7 +16,7 @@ import { qrMinutesLeft, qrShareLeft } from '../model/qr-expiry';
 import { SCAN_STEPS } from '../model/tuya-link';
 
 const QR_SIZE = 192;
-const RING_SIZE = 296;
+const RING_SIZE = 280;
 const RING_THICKNESS = 8;
 const LOW_SHARE = 0.2;
 

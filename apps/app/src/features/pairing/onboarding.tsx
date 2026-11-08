@@ -1,61 +1,21 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 import { View } from 'react-native';
 import type { PairingState } from '../../api/connection/pairing-session';
-import { chooseThisComputer, type StoredKind } from '../../api/transport';
+import type { StoredKind } from '../../api/transport';
 import { Banner } from '../../components/banner';
 import { Button } from '../../components/button';
 import { Text } from '../../components/text';
 import { ListRow } from '../../components/list-row';
 import { List } from '../../components/section';
 import { useValue } from '../../design/external-store';
-import { appPlatform } from '../../design/platform';
 import { CodeForm } from './code-form';
 import { DiscoveryList } from './discovery-list';
-import { Logger, background } from '@smarteverything/logging';
+import { background } from '@smarteverything/logging';
 import { InvitationForm } from './invitation-form';
 import { PairingFrame } from './pairing-frame';
 import type { PairingPresentation } from './pairing-actions';
 import { usePairing } from './pairing';
 import { QrScanner } from './qr-scanner';
-
-const log = new Logger('app.pairing');
-
-function ThisComputerButton({ pairing }: { readonly pairing: PairingPresentation }): ReactNode {
-  const [busy, setBusy] = useState(false);
-  return (
-    <Button
-      label="Use this computer"
-      icon="monitor"
-      size="lg"
-      loading={busy}
-      onPress={() => {
-        if (busy) return;
-        setBusy(true);
-        log.info('onboarding.this_computer_chosen');
-        background(
-          pairing
-            .stop()
-            .then(chooseThisComputer)
-            .then(
-              () => {
-                log.info('onboarding.this_computer_ready');
-                setBusy(false);
-              },
-              (error: unknown) => {
-                log.warn('onboarding.this_computer_failed', {
-                  error: error instanceof Error ? error.name : typeof error,
-                });
-                setBusy(false);
-                pairing.cleanupFailed(error);
-              },
-            ),
-          'pairing.stop_failed',
-        );
-      }}
-    />
-  );
-}
 
 function Choices({ pairing }: { readonly pairing: PairingPresentation }): ReactNode {
   return (
@@ -143,7 +103,7 @@ function EnrollmentProblem({
     >
       <View className="gap-4">
         <List inset>
-          <ListRow title={state.home} icon="home" />
+          <ListRow title={state.home} icon="home" wrapTitle />
         </List>
         <Banner tone="critical" title={state.problem} />
         {state.status === 'failed' ? (
@@ -215,37 +175,12 @@ function Choosing({ pairing }: { readonly pairing: PairingPresentation }): React
 }
 
 function WelcomeChoices({ pairing }: { readonly pairing: PairingPresentation }): ReactNode {
-  const mode = useValue(pairing.mode);
   return (
     <PairingFrame
       title="Welcome to SmartEverything"
-      body={
-        appPlatform() === 'desktop'
-          ? 'Run your home from this computer, or join one that runs elsewhere.'
-          : 'Find your home nearby, or scan the pairing code on your desktop.'
-      }
+      body="Find your Hub nearby or pair with a code."
     >
-      {appPlatform() === 'desktop' && mode === 'welcome' ? (
-        <View className="gap-3">
-          <ThisComputerButton pairing={pairing} />
-          <Button
-            label="Connect to another home"
-            variant="text"
-            onPress={() => {
-              background(pairing.change('nearby'), 'pairing.change_failed');
-            }}
-          />
-          <Button
-            label="Use invitation"
-            variant="text"
-            onPress={() => {
-              background(pairing.change('invitation'), 'pairing.change_failed');
-            }}
-          />
-        </View>
-      ) : (
-        <Choices pairing={pairing} />
-      )}
+      <Choices pairing={pairing} />
     </PairingFrame>
   );
 }

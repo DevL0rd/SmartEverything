@@ -87,6 +87,7 @@ export function LogFields({
   readonly values: LogValues;
   readonly onChange: (values: LogValues) => void;
 }): ReactNode {
+  if (form.fields.length === 0) return null;
   return (
     <View className="gap-4">
       {form.fields.map((field) => (

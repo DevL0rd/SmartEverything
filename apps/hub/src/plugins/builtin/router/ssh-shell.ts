@@ -2,8 +2,10 @@ import { Logger, describeFailure } from '@smarteverything/logging';
 import { createHash } from 'node:crypto';
 import { Client, type ClientChannel } from 'ssh2';
 import type { RouterShell, RunResult } from './router-shell';
+import { pluginLogger } from '../../plugin-logs';
+import { reportErrors } from '../../../network/guarded-socket';
 
-const log = new Logger('hub.router-ssh');
+const log = pluginLogger(new Logger('hub.router-ssh'), 'router');
 
 const DONE_MARKER = '__LRM_DONE__';
 const COLLECT_TIMEOUT_MS = 20_000;
@@ -107,7 +109,9 @@ export class SshRouterShell implements RouterShell {
       client.once('ready', () => {
         this.#openLoop(client).then(resolve, reject);
       });
-      client.once('error', (error) => {
+      reportErrors(client, (error) => {
+        log.debug('connection.failed', () => ({ error: error.message }));
+        client.end();
         reject(this.#mismatch ? new HostKeyMismatchError() : new RouterShellError(error.message));
       });
       client.once('close', () => {

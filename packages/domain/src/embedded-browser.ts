@@ -7,7 +7,7 @@ import {
   BROWSER_PAGE_SCROLL,
   BROWSER_PAGE_TYPE,
 } from './browser-page';
-import { CHAT_PAGE_PATH } from './chat-pages';
+import { CHAT_PAGE_PATH, CHAT_SERVER, SERVER_PORT } from './chat-pages';
 
 export const EMBEDDED_BROWSER_PROTOCOL = 'smarteverything.embedded-browser.v1';
 export const EMBEDDED_BROWSER_PATH = '/api/embedded-browser';
@@ -28,6 +28,7 @@ export const EMBEDDED_BROWSER_ACTION = z.discriminatedUnion('kind', [
     source: z.discriminatedUnion('kind', [
       z.strictObject({ kind: z.literal('public'), url: z.url().max(8192) }),
       z.strictObject({ kind: z.literal('project'), path: CHAT_PAGE_PATH }),
+      z.strictObject({ kind: z.literal('server'), server: CHAT_SERVER }),
     ]),
   }),
   z.strictObject({ kind: z.literal('select'), tabId: TAB_ID }),
@@ -100,16 +101,38 @@ export const EMBEDDED_BROWSER_COMMAND = z.discriminatedUnion('kind', [
   z
     .strictObject({
       kind: z.literal('open'),
-      url: z.url().max(8192).optional().describe('An http or https address the device can reach'),
+      url: z
+        .url()
+        .max(8192)
+        .optional()
+        .describe(
+          'An http or https address the device can reach; a server on a computer’s localhost opens with port instead',
+        ),
       path: z
         .string()
         .min(1)
         .max(4096)
         .optional()
         .describe('A file or folder of this chat’s project, such as workspace/site'),
+      port: SERVER_PORT.optional().describe(
+        'A server running on localhost of a computer, such as 5173 for Vite; it opens through the app, at home or away',
+      ),
+      computer: z
+        .string()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe(
+          'With port: the computer’s name or deviceId; leave out for the computer this chat runs on or the only one',
+        ),
     })
-    .refine((open) => (open.url === undefined) !== (open.path === undefined), {
-      message: 'Give either url or path',
+    .refine(
+      (open) =>
+        [open.url, open.path, open.port].filter((value) => value !== undefined).length === 1,
+      { message: 'Give one of url, path or port' },
+    )
+    .refine((open) => open.computer === undefined || open.port !== undefined, {
+      message: 'computer goes with port',
     }),
   z.strictObject({ kind: z.literal('select'), tabId: TAB_ID }),
   z.strictObject({ kind: z.literal('reload'), ...OPTIONAL_TAB }),

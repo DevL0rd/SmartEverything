@@ -2,23 +2,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AUTOMATION_PROGRAM_ENDPOINTS as P,
   type AutomationProgramReply,
-  type AutomationV3,
+  type AutomationV4,
 } from '@smarteverything/domain';
 
 const call = vi.hoisted(() => vi.fn());
 
 vi.mock('./transport', () => ({ api: (): unknown => ({ call }) }));
 
+import { renameProgram } from '../features/automations/data/api';
 import { AutomationRefusedError, createAutomation, setAutomationEnabled } from './automations';
 
-const DEFINITION: AutomationV3 = {
-  version: 3,
+const DEFINITION: AutomationV4 = {
+  version: 4,
   kind: 'automation',
   triggers: [],
   inputs: [],
   outputs: [],
   variables: [],
-  body: { nodes: [] },
+  nodes: [{ id: '00000000-0000-4000-8000-0000000000a1', key: 'start', kind: 'flow.start' }],
   policy: { mode: 'single' },
 };
 
@@ -85,5 +86,21 @@ describe('setAutomationEnabled', () => {
   it('raises the refusal when the hub will not switch it', async () => {
     call.mockResolvedValue(REFUSED);
     await expect(setAutomationEnabled('a1', true)).rejects.toBeInstanceOf(AutomationRefusedError);
+  });
+});
+
+describe('renameProgram', () => {
+  beforeEach(() => {
+    call.mockReset();
+  });
+
+  it('sends the new name to the rename endpoint of that automation', async () => {
+    call.mockResolvedValue(ACCEPTED);
+    const reply = await renameProgram(ACCEPTED.id ?? '', 'Evening');
+    expect(call).toHaveBeenCalledWith(P.renameAutomationProgram, {
+      params: { automationId: ACCEPTED.id },
+      body: { name: 'Evening' },
+    });
+    expect(reply.ok).toBe(true);
   });
 });

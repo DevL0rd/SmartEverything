@@ -165,3 +165,4 @@ export const PALETTE: Palette = new Proxy(COLOUR_VARIABLE, {
 export const { DeviceSpotlightWidget } = await import('../devices');
 export const { DeviceVisual } = await import('../device-visuals');
 export const { visualStateOf } = await import('../device-visuals/model/visual-state');
+export const { toneOf } = await import('../device-visuals/device-visual');

@@ -5,11 +5,13 @@ import type { EffectRun } from '../../../src/automations/effects/effect-run';
 export interface TestRun extends EffectRun {
   readonly controller: AbortController;
   readonly recorded: CommandRow[];
+  readonly lateCauses: unknown[];
 }
 
 export function testRun(trigger: SignalInput | null = null): TestRun {
   const controller = new AbortController();
   const recorded: CommandRow[] = [];
+  const lateCauses: unknown[] = [];
   return {
     runId: randomUUID(),
     automationId: randomUUID(),
@@ -20,6 +22,10 @@ export function testRun(trigger: SignalInput | null = null): TestRun {
     commands: (rows): void => {
       recorded.push(...rows);
     },
+    late: (cause): void => {
+      lateCauses.push(cause);
+    },
+    lateCauses,
   };
 }
 

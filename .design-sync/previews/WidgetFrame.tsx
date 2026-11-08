@@ -1,12 +1,12 @@
+import type { ReactNode } from 'react';
 import { Figure, Stage, Text, WidgetFrame } from 'smarteverything-kit';
 
-const card = (size: 'S' | 'M' | 'L', theme: 'dark' | 'light') => (
+const card = (size: 'M' | 'L', theme: 'dark' | 'light'): ReactNode => (
   <div style={{ width: 280, height: size === 'L' ? 240 : 150 }}>
     <WidgetFrame
       title="Climate"
       icon="thermometer"
       accent="temp-warm"
-      size={size}
       href="/climate"
       glow={theme === 'dark' ? 'temp-warm' : null}
     >
@@ -19,7 +19,7 @@ const card = (size: 'S' | 'M' | 'L', theme: 'dark' | 'light') => (
     </WidgetFrame>
   </div>
 );
-export const Sizes = () => (
+export const Sizes = (): ReactNode => (
   <Stage theme="dark" width={620}>
     <div style={{ display: 'flex', gap: 16 }}>
       {card('M', 'dark')}
@@ -27,7 +27,7 @@ export const Sizes = () => (
     </div>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactNode => (
   <Stage theme="light" width={620}>
     <div style={{ display: 'flex', gap: 16 }}>
       {card('M', 'light')}

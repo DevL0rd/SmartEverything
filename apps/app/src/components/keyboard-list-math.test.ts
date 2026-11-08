@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { edgeHighlight, keepHighlight, stepHighlight, type ListEntry } from './keyboard-list-math';
+import {
+  acceptsListKey,
+  acceptsSearchNavigationKey,
+  edgeHighlight,
+  keepHighlight,
+  stepHighlight,
+  type ListEntry,
+} from './keyboard-list-math';
 
 const rows: readonly ListEntry[] = [
   { id: 'a' },
@@ -54,5 +61,49 @@ describe('keyboard list highlight', () => {
       current = stepHighlight(many, current, 1, false);
     }
     expect(current).toBe('row-299');
+  });
+});
+
+const KEY = {
+  keyCode: 0,
+  defaultPrevented: false,
+  isComposing: false,
+  altKey: false,
+  ctrlKey: false,
+  metaKey: false,
+  shiftKey: false,
+};
+
+describe('search result navigation', () => {
+  it.each(['ArrowDown', 'ArrowUp', 'Enter'])(
+    'captures unmodified %s on the search input',
+    (key) => {
+      expect(acceptsSearchNavigationKey({ ...KEY, key })).toBe(true);
+    },
+  );
+
+  it.each(['Tab', 'Home', 'End', 'ArrowLeft', 'ArrowRight', 'Escape', 'a'])(
+    'leaves %s to the input or its normal handler',
+    (key) => {
+      expect(acceptsSearchNavigationKey({ ...KEY, key })).toBe(false);
+    },
+  );
+
+  it.each(['altKey', 'ctrlKey', 'metaKey', 'shiftKey', 'isComposing', 'defaultPrevented'] as const)(
+    'leaves ArrowDown and Enter alone when %s is set',
+    (flag) => {
+      expect(acceptsSearchNavigationKey({ ...KEY, key: 'ArrowDown', [flag]: true })).toBe(false);
+      expect(acceptsSearchNavigationKey({ ...KEY, key: 'Enter', [flag]: true })).toBe(false);
+    },
+  );
+
+  it('leaves the legacy IME Enter event alone', () => {
+    expect(acceptsSearchNavigationKey({ ...KEY, key: 'Enter', keyCode: 229 })).toBe(false);
+  });
+
+  it('keeps the existing modifier behavior for ordinary list and combobox events', () => {
+    const modified = { ...KEY, shiftKey: true };
+    expect(acceptsListKey(modified, false)).toBe(true);
+    expect(acceptsListKey(modified, true)).toBe(false);
   });
 });

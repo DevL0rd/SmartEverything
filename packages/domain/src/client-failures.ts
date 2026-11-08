@@ -1,15 +1,15 @@
 import { z } from 'zod';
 import { MOMENT } from './api/primitives';
 
-export const CLIENT_FAILURES_MAX = 40;
-
-export const CLIENT_CRUMBS_MAX = 12;
-
-export const CLIENT_FAILURE_LEVELS = ['warn', 'error', 'exception'] as const;
-
 export const CLIENT_NATIVE_TRACE = z.discriminatedUnion('state', [
   z.object({
     state: z.enum(['not_native', 'unsupported', 'unavailable', 'too_large', 'unreadable']),
+  }),
+  z.object({
+    state: z.literal('java'),
+    name: z.string().min(1).max(120),
+    message: z.string().max(240).nullable(),
+    frame: z.string().max(240).nullable(),
   }),
   z.object({
     state: z.literal('captured'),
@@ -36,34 +36,11 @@ export const CLIENT_PROCESS_EXIT = z.object({
   nativeTrace: CLIENT_NATIVE_TRACE.optional(),
 });
 
-export const CLIENT_FAILURE = z.object({
+export type ClientProcessExit = z.output<typeof CLIENT_PROCESS_EXIT>;
+
+export const CLIENT_PERF_REPORT = z.strictObject({
   at: MOMENT,
-  level: z.enum(CLIENT_FAILURE_LEVELS),
-  scope: z.string().min(1).max(60),
-  event: z.string().min(1).max(80),
-  screen: z.string().max(120).nullable(),
-  name: z.string().max(80).nullable(),
-  message: z.string().max(400).nullable(),
-  stack: z.string().max(1200).nullable(),
-  processExit: CLIENT_PROCESS_EXIT.optional(),
-});
-
-export type ClientFailure = z.output<typeof CLIENT_FAILURE>;
-
-const CLIENT_CRUMB = z.object({
-  at: MOMENT,
-  scope: z.string().min(1).max(60),
-  event: z.string().min(1).max(80),
-  screen: z.string().max(120).nullable(),
-});
-
-export type ClientCrumb = z.output<typeof CLIENT_CRUMB>;
-
-export const CLIENT_FAILURE_REPORT = z.object({
   release: z.string().min(1).max(40),
-  platform: z.enum(['android', 'ios', 'web']),
-  failures: z.array(CLIENT_FAILURE).min(1).max(CLIENT_FAILURES_MAX),
-  recent: z.array(CLIENT_CRUMB).max(CLIENT_CRUMBS_MAX).default([]),
+  screen: z.string().max(120),
+  lines: z.array(z.string().max(400)).min(1).max(40),
 });
-
-export type ClientFailureReport = z.input<typeof CLIENT_FAILURE_REPORT>;

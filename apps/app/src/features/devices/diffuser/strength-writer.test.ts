@@ -1,17 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { withRole, type PresentedCapability } from '@smarteverything/domain';
-import type { Control } from '../../../store/control';
 import { deviceModelOf } from '../model/device-model';
 import { diffuserDevice } from './fixture';
 
 const calls = vi.hoisted((): string[] => []);
 const outcome = vi.hoisted(() => ({ intervalSent: true }));
 
-vi.mock('../../../store/control', () => ({
-  useControl: (_device: string, capability: string): Pick<Control, 'set'> => ({
-    set: (value): Promise<boolean> => {
+vi.mock('../../../store/store-context', () => ({
+  useLedger: (): {
+    send: (device: unknown, capability: string, value: unknown) => Promise<{ sent: boolean }>;
+  } => ({
+    send: (_device, capability, value): Promise<{ sent: boolean }> => {
       calls.push(`${capability}=${JSON.stringify(value)}`);
-      return Promise.resolve(capability === 'raw:2.4' ? outcome.intervalSent : true);
+      return Promise.resolve({ sent: capability === 'raw:2.4' ? outcome.intervalSent : true });
     },
   }),
 }));

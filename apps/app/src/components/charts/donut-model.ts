@@ -4,6 +4,7 @@ export interface DonutSlice {
   readonly key: string;
   readonly value: number;
   readonly colour: ColourRole;
+  readonly shade?: number;
   readonly label: string;
 }
 
@@ -13,6 +14,7 @@ export interface DonutArc {
   readonly to: number;
   readonly share: number;
   readonly colour: ColourRole;
+  readonly shade: number;
   readonly label: string;
 }
 
@@ -31,7 +33,15 @@ export function donutArcs(slices: readonly DonutSlice[]): DonutArc[] {
     const from = cursor + gap / 2;
     const to = Math.max(from, cursor + sweep - gap / 2);
     cursor += sweep;
-    return { key: slice.key, from, to, share, colour: slice.colour, label: slice.label };
+    return {
+      key: slice.key,
+      from,
+      to,
+      share,
+      colour: slice.colour,
+      shade: slice.shade ?? 1,
+      label: slice.label,
+    };
   });
 }
 

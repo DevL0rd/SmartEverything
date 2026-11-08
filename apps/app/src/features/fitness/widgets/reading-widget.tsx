@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { FillChart } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import type { IconName } from '../../../components/icon';
@@ -17,7 +17,7 @@ import type { MetricGlance } from '../model/glance';
 export interface ReadingWidgetProps {
   readonly title: string;
   readonly icon: IconName;
-  readonly href: Href;
+  readonly href: AppHref;
   readonly day: string;
   readonly glance: MetricGlance;
   readonly format: (value: number) => string;
@@ -54,7 +54,7 @@ function Headline({
     return null;
   }
   return (
-    <View className="gap-1">
+    <View className="gap-0.5">
       <Figure
         value={widget.format(latest.value)}
         unit={widget.unit}
@@ -108,7 +108,7 @@ function Body({
     case 'split':
       return (
         <View className="flex-1 flex-row gap-4">
-          <View className="min-w-0 shrink justify-between">
+          <View className="min-w-0 shrink">
             <Headline widget={widget} big />
           </View>
           <Chart widget={widget} />
@@ -117,11 +117,11 @@ function Body({
     case 'wide':
       return (
         <View className="flex-1 flex-row gap-6">
-          <View className="w-1/4 justify-center">
+          <View className="w-1/4">
             <Headline widget={widget} big />
           </View>
           <Chart widget={widget} />
-          <View className="w-1/5 justify-center">
+          <View className="w-1/5">
             <QuickStats stats={statsOf(widget)} vertical />
           </View>
         </View>
@@ -147,7 +147,7 @@ export function ReadingWidget(widget: ReadingWidgetProps): ReactNode {
       icon={widget.icon}
       accent={widget.colour}
       href={widget.href}
-      action={latest === null ? undefined : <AgeBadge day={latest.day} selected={day} />}
+      badge={latest === null ? undefined : <AgeBadge day={latest.day} selected={day} />}
     >
       {latest === null ? (
         <Text variant="callout" tone="variant">

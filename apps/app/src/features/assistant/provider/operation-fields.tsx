@@ -43,6 +43,8 @@ export function OperationFields({
   );
 }
 
+const OPTION_NAMES: Readonly<Record<string, string>> = { default: 'Ask first' };
+
 export function OperationFieldInput({
   field,
   value,
@@ -56,8 +58,11 @@ export function OperationFieldInput({
     return <SwitchRow title={field.label} value={value === true} onChange={change} />;
   if (field.kind === 'enum') {
     const options = [
-      ...(field.nullable === true ? [{ value: '', label: 'Runtime default' }] : []),
-      ...(field.options ?? []).map((option) => ({ value: option, label: option })),
+      ...(field.nullable === true ? [{ value: '', label: 'Clear the override' }] : []),
+      ...(field.options ?? []).map((option) => ({
+        value: option,
+        label: OPTION_NAMES[option] ?? option,
+      })),
     ];
     return (
       <SelectRow
@@ -95,7 +100,7 @@ function TextOperationField({
       {...(field.optional === true
         ? { helper: 'Optional' }
         : field.nullable === true
-          ? { helper: 'Empty follows the runtime default' }
+          ? { helper: 'Empty clears the override' }
           : {})}
       onChange={(text) => {
         if (text === '' && field.optional === true) change(undefined);

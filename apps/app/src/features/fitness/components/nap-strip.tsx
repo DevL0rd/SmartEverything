@@ -121,6 +121,9 @@ export function NapSection({
   readonly naps: readonly SleepNight[];
   readonly target: ReturnType<typeof useNapReveal>['ref'];
 }): ReactNode {
+  if (naps.length === 0) {
+    return null;
+  }
   return (
     <Animated.View ref={target} collapsable={false} className="gap-4">
       {naps.map((nap) => (

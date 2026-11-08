@@ -1,4 +1,5 @@
 import WebSocket from 'ws';
+import { pingWhenOpen } from '../network/guarded-socket';
 
 export type Ping = (withinMs: number) => Promise<boolean>;
 
@@ -10,9 +11,6 @@ function socketOf(wire: object): WebSocket | null {
 }
 
 function pinged(socket: WebSocket, withinMs: number): Promise<boolean> {
-  if (socket.readyState !== WebSocket.OPEN) {
-    return Promise.resolve(false);
-  }
   return new Promise((resolve) => {
     const done = (alive: boolean): void => {
       clearTimeout(timer);
@@ -27,7 +25,7 @@ function pinged(socket: WebSocket, withinMs: number): Promise<boolean> {
     }, withinMs);
     timer.unref();
     socket.once('pong', pong);
-    socket.ping();
+    if (!pingWhenOpen(socket)) done(false);
   });
 }
 

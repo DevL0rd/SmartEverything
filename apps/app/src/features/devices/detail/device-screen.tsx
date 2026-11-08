@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ScrollView, View } from 'react-native';
-import { Redirect } from 'expo-router';
-import { isCamera } from '@smarteverything/domain';
+import { Redirect, useRouter } from 'expo-router';
+import { isCamera, type DeviceFamily } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { AfterPaint } from '../../../components/after-paint';
+import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { Screen } from '../../../components/screen';
 import { TabsBar } from '../../../components/tabs-bar';
@@ -14,12 +15,11 @@ import { cn } from '../../../design/cn';
 import { atLeast, useSizeClass } from '../../../design/size-class';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
-import { useDeviceModel } from '../model/device-model';
+import { useDeviceModel, type DeviceModel } from '../model/device-model';
 import { DeviceHeader } from './device-header';
 import { DeviceBanner, Hero, PrimaryCard } from './device-overview';
 import {
-  findSection,
-  sectionOf,
+  sectionHref,
   sectionsOf,
   useHasOverviewDetails,
   OverviewDetails,
@@ -29,12 +29,26 @@ import { MissingDevice } from './missing-device';
 import { Shortcuts } from './shortcuts';
 import { LaundryPage } from '../laundry/page';
 import { TelevisionLead } from '../television/lead';
+import { VacuumPage } from '../vacuum/page';
 
 const log = new Logger('app.devices');
 
+interface FamilyPage {
+  readonly page?: (props: { readonly device: Device }) => ReactNode;
+  readonly lead?: (props: { readonly device: Device }) => ReactNode;
+  readonly singleColumn?: true;
+}
+
+const FAMILY_PAGES: Readonly<Partial<Record<DeviceFamily, FamilyPage>>> = {
+  laundry: { page: LaundryPage },
+  television: { lead: TelevisionLead, singleColumn: true },
+  vacuum: { page: VacuumPage },
+};
+
 function Lead({ device }: { readonly device: Device }): ReactNode {
-  if (useDeviceModel(device).family === 'television') {
-    return <TelevisionLead device={device} />;
+  const Custom = FAMILY_PAGES[useDeviceModel(device).family]?.lead;
+  if (Custom !== undefined) {
+    return <Custom device={device} />;
   }
   return (
     <>
@@ -56,10 +70,10 @@ function Overview({
   const side = cn('gap-section-gap', columns && 'flex-1');
   return (
     <Screen
-      header={<DeviceHeader device={device} sectionTitle={null} />}
+      header={<DeviceHeader device={device} sectionTitle={null} titleLines="wrap" />}
       maxWidth={narrow ? 'reading' : 'detail'}
-      banner={<DeviceBanner device={device} />}
     >
+      <DeviceBanner device={device} />
       <View className={cn('gap-section-gap', columns && 'flex-row items-start')}>
         <View className={side}>
           <Lead device={device} />
@@ -91,28 +105,51 @@ function BesideBody({
   );
 }
 
+function StaticDetailBody({
+  className,
+  children,
+}: {
+  readonly className?: string;
+  readonly children: ReactNode;
+}): ReactNode {
+  return <View className={cn('w-full flex-1 px-gutter', className)}>{children}</View>;
+}
+
+function useOpenSection(device: Device, active: string): (next: string) => void {
+  const router = useRouter();
+  return (next): void => {
+    if (next === active) return;
+    if (next === 'overview') {
+      router.dismissTo(href.device(device));
+      return;
+    }
+    const target = sectionHref(device.id, next);
+    if (active === 'overview') {
+      router.push(target);
+    } else {
+      router.replace(target);
+    }
+  };
+}
+
 function Split({
   device,
-  initial,
+  shown,
+  sections,
 }: {
   readonly device: Device;
-  readonly initial: string;
+  readonly shown: DeviceSection;
+  readonly sections: readonly DeviceSection[];
 }): ReactNode {
-  const model = useDeviceModel(device);
-  const sections = sectionsOf(model);
-  const [active, setActive] = useState(initial);
+  const { key: active } = shown;
+  const openSection = useOpenSection(device, active);
   const deviceId = device.id;
   useEffect(() => {
     log.info('section.changed', { deviceId, section: active, layout: 'split' });
   }, [deviceId, active]);
-  const shown = sections.find((section) => section.key === active) ?? sectionOf('overview');
   return (
-    <Screen
-      header={<DeviceHeader device={device} sectionTitle={null} />}
-      maxWidth="detail"
-      scroll={false}
-    >
-      <View className="w-full max-w-detail flex-1 flex-row gap-section-gap self-center px-gutter">
+    <Screen header={<DeviceHeader device={device} sectionTitle={null} />} scroll={false}>
+      <StaticDetailBody className="flex-row gap-section-gap">
         <ScrollView
           className="max-w-140 flex-1"
           contentContainerClassName="gap-section-gap pb-section-gap pt-2"
@@ -120,21 +157,21 @@ function Split({
           <DeviceBanner device={device} />
           <Lead device={device} />
         </ScrollView>
-        <View className="flex-1">
+        <View className="min-w-0 flex-1">
           <TabsBar
             label="Device pages"
-            active={shown.key}
+            active={active}
             items={sections.map((section) => ({
               key: section.key,
               label: section.key === 'controls' ? 'Controls' : section.title,
               onPress: (): void => {
-                setActive(section.key);
+                openSection(section.key);
               },
             }))}
           />
           <BesideBody device={device} section={shown} />
         </View>
-      </View>
+      </StaticDetailBody>
     </Screen>
   );
 }
@@ -142,13 +179,15 @@ function Split({
 function SubPage({
   device,
   section,
+  shown,
 }: {
   readonly device: Device;
   readonly section: string;
+  readonly shown: DeviceSection | undefined;
 }): ReactNode {
-  const shown = findSection(useDeviceModel(device), section);
   const deviceId = device.id;
   const found = shown !== undefined;
+  const scroll = shown?.scrolls !== true;
   useEffect(() => {
     if (found) {
       log.info('section.changed', { deviceId, section, layout: 'page' });
@@ -162,23 +201,47 @@ function SubPage({
         <DeviceHeader device={device} sectionTitle={shown === undefined ? null : shown.title} />
       }
       maxWidth="detail"
-      scroll={shown?.scrolls !== true}
-      banner={<DeviceBanner device={device} />}
+      scroll={scroll}
+      banner={scroll ? undefined : <DeviceBanner device={device} />}
     >
+      {scroll ? <DeviceBanner device={device} /> : null}
       {shown === undefined ? (
         <EmptyState
           icon="puzzle"
           title="This page isn’t here"
-          body="The plugin that adds it may be off or removed."
+          body="This page may have moved or its plugin may be unavailable."
+          action={<Button label="Back to device" href={href.device(device)} />}
         />
       ) : shown.scrolls === true ? (
-        <View className="w-full max-w-detail flex-1 self-center px-gutter">
-          {shown.render(device, false)}
-        </View>
+        <StaticDetailBody>{shown.render(device, false)}</StaticDetailBody>
       ) : (
         shown.render(device, false)
       )}
     </Screen>
+  );
+}
+
+function GenericPage({
+  model,
+  section,
+}: {
+  readonly model: DeviceModel;
+  readonly section: string;
+}): ReactNode {
+  const { device, family } = model;
+  const { width } = useSizeClass();
+  const details = useHasOverviewDetails(device);
+  const split = atLeast(width, 'expanded') && details;
+  if (section === 'overview' && !split) {
+    const columns = details && width === 'medium' && FAMILY_PAGES[family]?.singleColumn !== true;
+    return <Overview device={device} columns={columns} narrow={!details && width !== 'compact'} />;
+  }
+  const sections = sectionsOf(model);
+  const shown = sections.find(({ key }) => key === section);
+  return split && shown !== undefined ? (
+    <Split device={device} shown={shown} sections={sections} />
+  ) : (
+    <SubPage device={device} section={section} shown={shown} />
   );
 }
 
@@ -189,22 +252,12 @@ function DevicePage({
   readonly device: Device;
   readonly section: string;
 }): ReactNode {
-  const { width } = useSizeClass();
-  const details = useHasOverviewDetails(device);
-  const { family } = useDeviceModel(device);
-  if (family === 'laundry' && section === 'overview') {
-    return <LaundryPage device={device} />;
+  const model = useDeviceModel(device);
+  const Page = FAMILY_PAGES[model.family]?.page;
+  if (Page !== undefined && section === 'overview') {
+    return <Page device={device} />;
   }
-  if (section !== 'overview' && !(atLeast(width, 'expanded') && details)) {
-    return <SubPage device={device} section={section} />;
-  }
-  if (!details) {
-    return <Overview device={device} columns={false} narrow={width !== 'compact'} />;
-  }
-  if (atLeast(width, 'expanded')) {
-    return <Split device={device} initial={section} />;
-  }
-  return <Overview device={device} columns={width === 'medium' && family !== 'television'} />;
+  return <GenericPage model={model} section={section} />;
 }
 
 export function DeviceScreen({

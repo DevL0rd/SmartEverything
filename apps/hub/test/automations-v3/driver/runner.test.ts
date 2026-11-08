@@ -141,6 +141,34 @@ describe('LiveRun through the driver', () => {
     expect(h.requests.map((request) => request.node.key)).toEqual(['slow']);
   });
 
+  it('fails a pending effect with Timeout at its policy deadline', async () => {
+    const h = new Harness();
+    const slow = deferred();
+    h.perform = (): Promise<NodeResult> => slow.promise;
+    const timed = { ...effect('slow'), policy: { timeout: 5000 } };
+    h.driver.submit(occurrence({ body: seq(timed, effect('never')) }));
+    await h.settle();
+    await h.advance(4999);
+    expect(h.finished).toHaveLength(0);
+    await h.advance(1);
+    await h.settle();
+    expect(h.finished[0]?.ending.error).toMatchObject({ class: 'Timeout' });
+    expect(h.clock.pending()).toHaveLength(0);
+    slow.settle({ ok: true, value: {} });
+    await h.settle();
+    expect(h.afterCancel.map((request) => request.node.key)).toEqual(['slow']);
+    expect(h.requests.map((request) => request.node.key)).toEqual(['slow']);
+  });
+
+  it('clears the deadline when the effect answers in time', async () => {
+    const h = new Harness();
+    const timed = { ...effect('quick'), policy: { timeout: 5000 } };
+    h.driver.submit(occurrence({ body: seq(timed) }));
+    await h.settle();
+    expect(h.finished[0]?.ending.status).toBe('succeeded');
+    expect(h.clock.pending()).toHaveLength(0);
+  });
+
   it('reports a cancel on a finished run as not applied', async () => {
     const h = new Harness();
     const submission = h.driver.submit(occurrence({ body: seq(effect('a')) }));

@@ -10,12 +10,24 @@ import { SearchField } from '../../../../components/search-field';
 import { StatusChip } from '../../../../components/status-chip';
 import { useIdiom } from '../../../../design/platform';
 import { useMoney } from '../../../region';
-import { LibraryBack, SelectionBar } from '../library/library-pages';
+import { CatalogueMeasure } from '../library/catalogue-fit';
+import {
+  LibraryBack,
+  LibraryOriginFocus,
+  LibrarySelectionBar,
+  useLibraryBack,
+} from '../library/library-pages';
 import { LibraryList, type LibraryListApi } from '../library/library-list';
 import { ROW_HEIGHT, type PrimaryAction } from '../library/library-model';
 import { selectedRow, libraryView, type LibraryRow } from '../library/library-rows';
 import { LibraryProblem } from '../library/library-states';
-import { CountLine, SortSelect } from '../library/library-tools';
+import {
+  CountLine,
+  modelCount,
+  SortSelect,
+  SourceCountRow,
+  useCountAtSources,
+} from '../library/library-tools';
 import { ImageDetail } from './image-detail';
 import { ImageFiltersColumn } from './image-filters';
 import {
@@ -118,16 +130,25 @@ function ImageTools({
   tools,
   data,
   touch,
+  compact,
 }: {
   readonly tools: Tools;
   readonly data: Data;
   readonly touch: boolean;
+  readonly compact: boolean;
 }): ReactNode {
+  const { countAtSources, onLayout } = useCountAtSources(touch, 320);
+  const count = modelCount(data.rows.length, compact ? 'model' : 'image model');
   const sort = (
-    <SortSelect options={IMAGE_SORT_OPTIONS} sort={tools.sort} onChange={tools.setSort} />
+    <SortSelect
+      options={IMAGE_SORT_OPTIONS}
+      sort={tools.sort}
+      onChange={tools.setSort}
+      compact={compact}
+    />
   );
   return (
-    <View className="gap-2 pt-2">
+    <View className="gap-2 pt-2" onLayout={onLayout}>
       <View className="gap-2 px-4">
         <View className="flex-row items-center gap-2">
           <View className="min-w-0 flex-1">
@@ -148,18 +169,34 @@ function ImageTools({
             tools.setPage('filters');
           }}
           sort={touch ? sort : null}
-          count={`${String(data.rows.length)} image models`}
+          count={countAtSources ? null : count}
         />
       </View>
-      <HScroller label="Model sources">
-        <StatusChip status={data.problem === null ? 'live' : 'attention'} label={SOURCE_LABEL} />
-      </HScroller>
-      {data.problem === null ? null : (
+      <ImageSource problem={data.problem} count={countAtSources ? count : null} />
+    </View>
+  );
+}
+
+function ImageSource({
+  problem,
+  count,
+}: {
+  readonly problem: string | null;
+  readonly count: string | null;
+}): ReactNode {
+  return (
+    <>
+      <SourceCountRow count={count}>
+        <HScroller label="Model sources">
+          <StatusChip status={problem === null ? 'live' : 'attention'} label={SOURCE_LABEL} />
+        </HScroller>
+      </SourceCountRow>
+      {problem === null ? null : (
         <View className="px-4">
-          <ReasonLine text={data.problem} icon="warning" tone="warning" />
+          <ReasonLine text={problem} icon="warning" tone="warning" />
         </View>
       )}
-    </View>
+    </>
   );
 }
 
@@ -172,7 +209,7 @@ function actionOf(
   const { selected, pick } = row.candidate;
   if (selected) {
     return {
-      label: 'Clear default',
+      label: 'Stop using it',
       run: (): void => {
         change(null);
         close();
@@ -180,7 +217,7 @@ function actionOf(
     };
   }
   return {
-    label: 'Set as default',
+    label: 'Use this model',
     run:
       pick === null
         ? null
@@ -202,15 +239,17 @@ interface RowsProps {
 function ResultRows({ tools, data, list, select, touch }: RowsProps): ReactNode {
   if (data.view !== 'ready') {
     return (
-      <LibraryProblem
-        view={data.view}
-        retry={data.retry}
-        reset={(): void => {
-          tools.setFilters(NO_IMAGE_FILTERS);
-        }}
-        noun="image models"
-        single="image model"
-      />
+      <CatalogueMeasure part="results">
+        <LibraryProblem
+          view={data.view}
+          retry={data.retry}
+          reset={(): void => {
+            tools.setFilters(NO_IMAGE_FILTERS);
+          }}
+          noun="image models"
+          single="image model"
+        />
+      </CatalogueMeasure>
     );
   }
   return (
@@ -233,11 +272,12 @@ interface ResultsProps {
   readonly tools: Tools;
   readonly data: Data;
   readonly action: PrimaryAction | null;
+  readonly compact: boolean;
   readonly select: (key: string) => void;
   readonly touch: boolean;
 }
 
-function Results({ tools, data, action, select, touch }: ResultsProps): ReactNode {
+function Results({ tools, data, action, select, touch, compact }: ResultsProps): ReactNode {
   const list = useRef<LibraryListApi>(null);
   const revealed = useRef<string | null>(null);
   const row = data.selected;
@@ -259,13 +299,15 @@ function Results({ tools, data, action, select, touch }: ResultsProps): ReactNod
           list.current?.reveal(index);
         }}
       >
-        <ImageTools tools={tools} data={data} touch={touch} />
+        <CatalogueMeasure part="tools">
+          <ImageTools tools={tools} data={data} touch={touch} compact={compact} />
+        </CatalogueMeasure>
         <View className="mt-2 min-h-0 flex-1 border-t border-outline-variant">
           <ResultRows tools={tools} data={data} list={list} select={select} touch={touch} />
         </View>
       </KeyboardList>
       {row === null ? null : (
-        <SelectionBar
+        <LibrarySelectionBar
           name={row.candidate.model.name}
           source={`${row.candidate.model.providerLabel} · ${row.where ?? ''}`}
           action={action}
@@ -293,7 +335,7 @@ function FiltersPage({
       onBack={back}
       footer={
         <View className="flex-row border-t border-outline-variant p-3">
-          <Button label={`Show ${String(data.rows.length)} models`} size="lg" grow onPress={back} />
+          <Button label={`Show ${modelCount(data.rows.length)}`} size="lg" grow onPress={back} />
         </View>
       }
     >
@@ -306,7 +348,12 @@ function FiltersPage({
   );
 }
 
-export function ImageLibraryBody({ onClose }: { readonly onClose: () => void }): ReactNode {
+interface ImageLibraryBodyProps {
+  readonly onClose: () => void;
+  readonly compact: boolean;
+}
+
+export function ImageLibraryBody({ onClose, compact }: ImageLibraryBodyProps): ReactNode {
   const touch = useIdiom() === 'touch';
   const change = useImageModelChange();
   const [text, setText] = useState('');
@@ -319,10 +366,11 @@ export function ImageLibraryBody({ onClose }: { readonly onClose: () => void }):
   });
   const action = actionOf(data.selected, change, onClose);
   const tools = { text, setText, sort, setSort, filters, setFilters, setPage };
-  const back = (): void => {
-    setPage('results');
-  };
   const endpoint = data.endpoints.find((item) => favouriteKey(item) === data.selected?.key);
+  const shownPage = page === 'detail' && endpoint === undefined ? 'results' : page;
+  const { back, origin } = useLibraryBack(shownPage, (): void => {
+    setPage('results');
+  });
   if (page === 'filters') {
     return <FiltersPage tools={tools} data={data} back={back} />;
   }
@@ -337,5 +385,16 @@ export function ImageLibraryBody({ onClose }: { readonly onClose: () => void }):
       </LibraryBack>
     );
   }
-  return <Results tools={tools} data={data} action={action} select={select} touch={touch} />;
+  return (
+    <LibraryOriginFocus value={origin}>
+      <Results
+        tools={tools}
+        data={data}
+        action={action}
+        select={select}
+        touch={touch}
+        compact={compact}
+      />
+    </LibraryOriginFocus>
+  );
 }

@@ -10,8 +10,7 @@ import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { CollapseBody, CollapseRoot, TurnChevron } from '../../../components/disclosure';
-import { Markdown } from './markdown/markdown';
-import { Overline } from './overline';
+import { readableText } from '@smarteverything/domain/markdown';
 
 export type SystemEventView =
   | { readonly kind: 'compaction'; readonly summary: string }
@@ -25,7 +24,10 @@ const SOURCE_ICON: Readonly<Record<MessageSource, IconName>> = {
   subagent: 'sparkles',
   schedule: 'timer',
   chat: 'messageCircle',
+  hub: 'server',
 };
+
+const COMPACTED = 'Context compacted';
 
 export function systemEventOf(row: AssistantMessageRow): SystemEventView | null {
   for (const embed of row.embeds) {
@@ -43,106 +45,52 @@ export function systemEventOf(row: AssistantMessageRow): SystemEventView | null 
   };
 }
 
-function Panel({ children }: { readonly children: ReactNode }): ReactNode {
-  return <View className="w-full gap-2 rounded-xl bg-surface-2 px-4 py-3">{children}</View>;
-}
-
-function EventBody({ event }: { readonly event: SystemEventView }): ReactNode {
-  if (event.kind === 'compaction') {
-    return (
-      <Panel>
-        <Overline>Summary</Overline>
-        <Markdown text={event.summary} />
-      </Panel>
-    );
-  }
-  return null;
-}
-
-function labelOf(event: SystemEventView): string {
-  switch (event.kind) {
-    case 'compaction':
-      return 'Earlier messages summarized';
-    case 'note':
-      return event.text;
-  }
-}
-
-function iconOf(event: SystemEventView): IconName {
-  switch (event.kind) {
-    case 'compaction':
-      return 'layers';
-    case 'note':
-      return event.icon;
-  }
-}
-
-function Rule(): ReactNode {
-  return <View className="h-px flex-1 bg-outline-variant" />;
-}
-
-function EventLine({
-  event,
-  open,
-  onToggle,
-}: {
-  readonly event: SystemEventView;
-  readonly open: boolean;
-  readonly onToggle: () => void;
-}): ReactNode {
-  const expandable = event.kind !== 'note';
-  const label = labelOf(event);
-  const content = (
+function Caption({ icon, text }: { readonly icon: IconName; readonly text: string }): ReactNode {
+  return (
     <>
-      <Icon name={iconOf(event)} size={16} tone="variant" />
-      <Text variant="footnote" tone="variant" className="shrink">
-        {label}
+      <Icon name={icon} size={16} tone="faint" />
+      <Text variant="caption" tone="faint" align="center" className="tabular min-w-0 shrink">
+        {text}
       </Text>
-      {expandable ? <TurnChevron open={open} /> : null}
     </>
   );
+}
+
+function Compaction({ summary }: { readonly summary: string }): ReactNode {
+  const [open, setOpen] = useState(false);
   return (
-    <View className="w-full flex-row items-center gap-2">
-      {event.kind === 'compaction' ? <Rule /> : <View className="flex-1" />}
-      {expandable ? (
+    <CollapseRoot className="my-2 w-full">
+      <View className="items-center">
         <Interactive
-          label={`${label}, ${open ? 'hide' : 'show'} details`}
-          checked={open}
-          onPress={onToggle}
-          className="min-h-touch-min max-w-full flex-row items-center gap-1.5 rounded-full px-3"
-          layerClassName="rounded-full"
+          label={`${COMPACTED}, ${open ? 'hide' : 'show'} summary`}
+          expanded={open}
+          hitSlop={8}
+          onPress={() => {
+            setOpen(!open);
+          }}
+          className="h-5 max-w-full flex-row items-center gap-1.5 px-1"
+          layerClassName="rounded-sm"
         >
-          {content}
+          <Caption icon="minimize" text={COMPACTED} />
+          <TurnChevron open={open} />
         </Interactive>
-      ) : (
-        <View
-          role="note"
-          className="min-h-8 max-w-full flex-row items-center gap-1.5 rounded-full px-3"
-        >
-          {content}
-        </View>
-      )}
-      {event.kind === 'compaction' ? <Rule /> : <View className="flex-1" />}
-    </View>
+      </View>
+      {open ? (
+        <CollapseBody className="mt-0.5 px-6">
+          <Text variant="footnote" tone="variant" selectable>
+            {readableText(summary)}
+          </Text>
+        </CollapseBody>
+      ) : null}
+    </CollapseRoot>
   );
 }
 
 export function SystemEvent({ event }: { readonly event: SystemEventView }): ReactNode {
-  const [open, setOpen] = useState(false);
+  if (event.kind === 'compaction') return <Compaction summary={event.summary} />;
   return (
-    <CollapseRoot className="w-full items-center gap-2">
-      <EventLine
-        event={event}
-        open={open}
-        onToggle={() => {
-          setOpen(!open);
-        }}
-      />
-      {open ? (
-        <CollapseBody className="w-full">
-          <EventBody event={event} />
-        </CollapseBody>
-      ) : null}
-    </CollapseRoot>
+    <View role="note" className="my-2 min-h-5 w-full flex-row items-center justify-center gap-1.5">
+      <Caption icon={event.icon} text={event.text} />
+    </View>
   );
 }

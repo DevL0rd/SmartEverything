@@ -2,7 +2,7 @@ import { useState, type ReactNode, type ReactElement } from 'react';
 import { useIsFocused, useLocalSearchParams } from 'expo-router';
 import { List } from '../../../components/section';
 import { Select } from '../../../components/select';
-import { TranscriptFeed } from '../../../components/transcript-feed';
+import { TranscriptFeed, type TranscriptFeedProps } from '../../../components/transcript-feed';
 import { useFeedController } from '../../../queries/transcript-reader/use-feed-controller';
 import type { TranscriptSelection } from '../../../queries/transcript-reader/selection';
 import { useTranscriptRemoval } from '../../../queries/transcript-reader/use-transcript-removal';
@@ -48,13 +48,13 @@ export function CameraTranscriptFeed({
   header,
   pageHeader,
   banner,
-  maxWidth = 'dashboard',
+  headerWidth = 'full',
 }: {
   readonly entry?: CameraEntry;
   readonly header: ReactNode;
   readonly pageHeader?: ReactElement;
   readonly banner?: ReactNode;
-  readonly maxWidth?: 'dashboard' | 'detail';
+  readonly headerWidth?: TranscriptFeedProps['headerWidth'];
 }): ReactNode {
   const { focus } = useLocalSearchParams<{ focus?: string }>();
   const [filter, filterCamera] = useState(ALL_CAMERAS);
@@ -76,7 +76,9 @@ export function CameraTranscriptFeed({
       {...(pageHeader === undefined ? {} : { pageHeader })}
       banner={banner}
       controls={<CameraControls entry={entry} filter={filter} filterCamera={filterCamera} />}
-      maxWidth={maxWidth}
+      inlineControls={entry === undefined}
+      compactRows
+      headerWidth={headerWidth}
       focus={focus === 'transcripts' || focus === 'transcript-search'}
       focusSearch={focus === 'transcript-search'}
     />

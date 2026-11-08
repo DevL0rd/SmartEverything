@@ -9,6 +9,7 @@ import {
   type HubFrame,
   type NodeHello,
   type ProcessWindow,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
@@ -28,7 +29,7 @@ const HELLO: NodeHello = {
   bootedAt: '2026-10-08T09:00:00.000Z',
   power: ['shut_down', 'lock_screen'],
   features: ['cpu', 'memory'],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
   actions: [],
   permissions: [],
 };
@@ -128,7 +129,6 @@ function start(
     deviceIdOf: (): string => 'device-1',
     scopesOf: (): ComputerScopes => options.scopes ?? DEFAULT_COMPUTER_SCOPES,
     directory: new ComputerDirectory(options.hubMachine === true ? HELLO.machineId : null),
-    hubComputerResolved: (): void => undefined,
     recordAppTime: (): void => undefined,
     signals: { emit: (): void => undefined },
     personOf: (): null => null,
@@ -238,7 +238,7 @@ describe('computer session', () => {
     expect(session.view()?.parts).toEqual({});
   });
 
-  it('describes the hub and pc roles of one machine under one id with their own models', () => {
+  it('describes the node on the hub machine and any other node under one id scheme with the pc model', () => {
     const hub = start(new Viewers(), { hubMachine: true });
     hub.send({ type: 'hello', hello: HELLO });
     const pc = start(new Viewers());
@@ -247,7 +247,7 @@ describe('computer session', () => {
     hub.send(sample(AT, summary(10)));
     const hubDevice = hub.recorded.devices.at(-1);
     const pcDevice = pc.recorded.devices.at(-1);
-    expect(hubDevice?.model).toBe('smarteverything.computer.hub');
+    expect(hubDevice?.model).toBe('smarteverything.computer');
     expect(pcDevice?.model).toBe('smarteverything.computer');
     expect(hubDevice?.externalId).toBe(pcDevice?.externalId);
   });

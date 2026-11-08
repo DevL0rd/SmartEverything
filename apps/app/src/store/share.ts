@@ -1,5 +1,6 @@
 import { DeviceValueIndex } from './device-values';
 import { makeTable, type DeviceValues, type Table, type Tables } from './state';
+import type { PlannerTables } from './planner-tables';
 import { sameJson } from './same-json';
 
 function shareTable<R>(previous: Table<R>, table: Table<R>): Table<R> {
@@ -30,6 +31,24 @@ export function shareValues(previous: DeviceValueIndex, next: DeviceValueIndex):
   return reused ? previous : DeviceValueIndex.from(merged);
 }
 
+function shareModelAndPlannerTables(
+  previous: Tables,
+  next: Tables,
+): PlannerTables & Pick<Tables, 'model_assets' | 'model_catalog' | 'model_overrides'> {
+  return {
+    model_assets: shareTable(previous.model_assets, next.model_assets),
+    model_catalog: shareTable(previous.model_catalog, next.model_catalog),
+    model_overrides: shareTable(previous.model_overrides, next.model_overrides),
+    planner_collections: shareTable(previous.planner_collections, next.planner_collections),
+    planner_items: shareTable(previous.planner_items, next.planner_items),
+    planner_occurrences: shareTable(previous.planner_occurrences, next.planner_occurrences),
+    planner_alarms: shareTable(previous.planner_alarms, next.planner_alarms),
+    planner_timers: shareTable(previous.planner_timers, next.planner_timers),
+    planner_stopwatches: shareTable(previous.planner_stopwatches, next.planner_stopwatches),
+    google_accounts: shareTable(previous.google_accounts, next.google_accounts),
+  };
+}
+
 export function shareTables(previous: Tables, next: Tables): Tables {
   const shared: Tables = {
     clients: shareTable(previous.clients, next.clients),
@@ -48,6 +67,10 @@ export function shareTables(previous: Tables, next: Tables): Tables {
     automations: shareTable(previous.automations, next.automations),
     automation_values: shareTable(previous.automation_values, next.automation_values),
     automation_runs: shareTable(previous.automation_runs, next.automation_runs),
+    automation_plugin_kinds: shareTable(
+      previous.automation_plugin_kinds,
+      next.automation_plugin_kinds,
+    ),
     layouts: shareTable(previous.layouts, next.layouts),
     push_targets: shareTable(previous.push_targets, next.push_targets),
     health_sources: shareTable(previous.health_sources, next.health_sources),
@@ -66,6 +89,11 @@ export function shareTables(previous: Tables, next: Tables): Tables {
     plugins: shareTable(previous.plugins, next.plugins),
     plugin_streams: shareTable(previous.plugin_streams, next.plugin_streams),
     plugin_ui: shareTable(previous.plugin_ui, next.plugin_ui),
+    ...shareModelAndPlannerTables(previous, next),
+    drive_roots: shareTable(previous.drive_roots, next.drive_roots),
+    drive_albums: shareTable(previous.drive_albums, next.drive_albums),
+    drive_sync_clients: shareTable(previous.drive_sync_clients, next.drive_sync_clients),
+    drive_placements: shareTable(previous.drive_placements, next.drive_placements),
   };
   return Object.keys(shared).every(
     (name) => Reflect.get(shared, name) === Reflect.get(previous, name),

@@ -2,8 +2,9 @@ import { Logger, describeFailure } from '@smarteverything/logging';
 import { randomUUID } from 'node:crypto';
 import type { SpeedTestProgress, SpeedTestResult } from '@smarteverything/domain';
 import { roundTo } from './frame-math';
+import { pluginLogger } from '../../plugin-logs';
 
-const log = new Logger('hub.router-speed-test');
+const log = pluginLogger(new Logger('hub.router-speed-test'), 'router');
 
 const BASE_URL = 'https://speed.cloudflare.com';
 const DOWNLOAD_BYTES = 50_000_000;

@@ -1,9 +1,18 @@
+import { isAppliance } from '../features/devices';
+import type { Device } from '../store/state';
+
+export type RemoteActionPlace = 'remote' | 'buttons' | 'settings' | 'add-appliance';
+
 export interface RemoteAction {
   readonly key: string;
   readonly title: string;
   readonly keywords: readonly string[];
-  readonly kinds: readonly string[];
-  readonly settings?: true;
+  readonly applies: (device: Device) => boolean;
+  readonly place: RemoteActionPlace;
+}
+
+function ofKinds(...kinds: readonly Device['kind'][]): (device: Device) => boolean {
+  return (device) => kinds.includes(device.kind);
 }
 
 const REMOTE_ACTIONS: readonly RemoteAction[] = [
@@ -11,7 +20,8 @@ const REMOTE_ACTIONS: readonly RemoteAction[] = [
     key: 'scene',
     title: 'Make a scene',
     keywords: ['scene', 'record', 'sequence', 'several keys', 'macro', 'routine', 'ir'],
-    kinds: ['ir_blaster'],
+    applies: ofKinds('ir_blaster'),
+    place: 'remote',
   },
   {
     key: 'check',
@@ -26,23 +36,64 @@ const REMOTE_ACTIONS: readonly RemoteAction[] = [
       'assumed',
       'really on',
     ],
-    kinds: ['ir_blaster', 'ir_remote'],
+    applies: ofKinds('ir_blaster', 'ir_remote'),
+    place: 'remote',
   },
   {
     key: 'wrong',
     title: 'It didn’t work?',
     keywords: ['mark as on', 'mark as off', 'press again', 'correct', 'wrong state', 'assumed'],
-    kinds: ['ir_blaster', 'ir_remote'],
+    applies: ofKinds('ir_blaster', 'ir_remote'),
+    place: 'remote',
   },
   {
     key: 'learn',
     title: 'Learn a button',
     keywords: ['learn', 'teach', 'record a button', 'add a remote', 'infrared', 'ir', 'copy'],
-    kinds: ['ir_blaster'],
-    settings: true,
+    applies: ofKinds('ir_blaster'),
+    place: 'settings',
+  },
+  {
+    key: 'promote',
+    title: 'Make it a device',
+    keywords: ['promote', 'own device', 'appliance', 'convert', 'air conditioner', 'remote', 'ir'],
+    applies: ofKinds('ir_blaster'),
+    place: 'settings',
+  },
+  {
+    key: 'add-appliance',
+    title: 'Add an appliance',
+    keywords: [
+      'add appliance',
+      'air conditioner',
+      'tv',
+      'fan',
+      'library',
+      'known model',
+      'brand',
+      'smartir',
+      'flipper',
+      'ir',
+    ],
+    applies: ofKinds('ir_blaster'),
+    place: 'add-appliance',
+  },
+  {
+    key: 'learn-buttons',
+    title: 'Learn buttons',
+    keywords: ['learn', 'teach', 'buttons', 'power', 'temp up', 'temp down', 'mode', 'fan', 'ir'],
+    applies: isAppliance,
+    place: 'buttons',
+  },
+  {
+    key: 'rebind',
+    title: 'Use another blaster',
+    keywords: ['blaster', 're-bind', 'rebind', 'switch blaster', 'offline', 'send through', 'ir'],
+    applies: isAppliance,
+    place: 'buttons',
   },
 ];
 
-export function remoteActionsOf(kind: string): readonly RemoteAction[] {
-  return REMOTE_ACTIONS.filter((candidate) => candidate.kinds.includes(kind));
+export function remoteActionsOf(device: Device): readonly RemoteAction[] {
+  return REMOTE_ACTIONS.filter((candidate) => candidate.applies(device));
 }

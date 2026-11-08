@@ -1,9 +1,14 @@
-import type { PortRule } from '@smarteverything/domain';
+import type { FirewallOpening, PortRule } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { probeWindows } from '../../src/firewall/windows';
 import type { FirewallSystem } from '../../src/firewall/system';
 
-const CAMERA: PortRule = { purpose: 'camera', protocol: 'udp', source: '192.168.1.50' };
+const CAMERA: PortRule = {
+  purpose: 'camera',
+  protocol: 'udp',
+  mac: 'b8:88:80:d7:19:ac',
+  address: '192.168.1.50',
+};
 const WEBRTC: PortRule = { purpose: 'webrtc', protocol: 'tcp', port: 8555 };
 const HUB: PortRule = { purpose: 'hub', protocol: 'tcp', port: 8788, source: '192.168.1.0/24' };
 
@@ -176,9 +181,10 @@ describe('probeWindows', () => {
 
   it('drafts a plan for the openings asked for and can fix all but denied ones', async () => {
     const probe = await probeWindows(system({}));
-    expect(
-      probe.draft?.([{ id: 'x', deviceIds: [], pluginIds: [], rule: WEBRTC, state: 'missing' }]),
-    ).toEqual({
+    const needed: FirewallOpening[] = [
+      { id: 'x', deviceIds: [], pluginIds: [], rule: WEBRTC, state: 'missing' },
+    ];
+    expect(probe.draft?.({ needed, openings: needed, unlearned: [] })).toEqual({
       backend: 'windows',
       program: 'C:\\go2rtc.exe',
       appProgram: 'C:\\app.exe',

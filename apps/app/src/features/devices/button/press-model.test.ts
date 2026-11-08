@@ -1,3 +1,4 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import type { EventRow } from '@smarteverything/domain';
 import {
@@ -49,29 +50,40 @@ describe('what a button does', () => {
   ];
 
   it('reads press and hold of the kitchen switch from stored rows', () => {
-    const meaning = meaningOf(ROWS, KITCHEN);
+    const meaning = meaningOf(ROWS, KITCHEN, STATIC_KIND_LOOKUP);
     expect(meaning.map((entry) => entry.gestures)).toEqual([['single'], ['long']]);
     expect(meaning.map((entry) => entry.automationId)).toEqual([rowId(1), rowId(2)]);
     expect(meaningLine(meaning)).toBe('Press: cycles brightness · Hold: off');
   });
 
   it('keeps one button apart from another', () => {
-    expect(meaningOf(ROWS, LIVING)).toEqual([]);
+    expect(meaningOf(ROWS, LIVING, STATIC_KIND_LOOKUP)).toEqual([]);
   });
 
   it('leaves out switched-off automations', () => {
-    expect(meaningOf([pressRow(1, 'Kitchen - press', 'single_press', false)], KITCHEN)).toEqual([]);
+    expect(
+      meaningOf(
+        [pressRow(1, 'Kitchen - press', 'single_press', false)],
+        KITCHEN,
+        STATIC_KIND_LOOKUP,
+      ),
+    ).toEqual([]);
   });
 
   it('leaves out a stored row that no longer reads as a program', () => {
-    expect(meaningOf([{ id: 'old', name: 'Old', enabled: true, definition: {} }], KITCHEN)).toEqual(
-      [],
-    );
+    expect(
+      meaningOf(
+        [{ id: 'old', name: 'Old', enabled: true, definition: {} }],
+        KITCHEN,
+        STATIC_KIND_LOOKUP,
+      ),
+    ).toEqual([]);
   });
 
   it('counts every gesture when a trigger names no action', () => {
     expect(
-      meaningOf([pressRow(1, 'Kitchen - any press', undefined)], KITCHEN)[0]?.gestures,
+      meaningOf([pressRow(1, 'Kitchen - any press', undefined)], KITCHEN, STATIC_KIND_LOOKUP)[0]
+        ?.gestures,
     ).toEqual(['single', 'double', 'long']);
   });
 
@@ -81,10 +93,10 @@ describe('what a button does', () => {
       pressRow(2, 'Kitchen - double press lights', 'double_press'),
       pressRow(3, 'Kitchen - long press lights', 'long_press'),
     ];
-    expect(meaningLine(meaningOf(many, KITCHEN))).toBe(
+    expect(meaningLine(meaningOf(many, KITCHEN, STATIC_KIND_LOOKUP))).toBe(
       'Press: lights · Double-press: lights · +1 more',
     );
-    expect(meaningFor(meaningOf(many, KITCHEN), 'long')).toHaveLength(1);
+    expect(meaningFor(meaningOf(many, KITCHEN, STATIC_KIND_LOOKUP), 'long')).toHaveLength(1);
   });
 
   it('shows nothing when the button does nothing', () => {

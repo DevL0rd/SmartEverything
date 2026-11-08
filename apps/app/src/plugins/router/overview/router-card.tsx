@@ -128,7 +128,7 @@ export function RouterCard({ snapshot }: { readonly snapshot: RouterSnapshot }):
         icon="refresh"
         disabled={!reachable}
         confirmation={RESTART_WIFI}
-        onPress={() => tools.run('restart_wifi', {}, 'Wi-Fi didn’t restart')}
+        onPress={() => tools.run('restart', { what: 'wifi' }, 'Wi-Fi didn’t restart')}
       />
       <PluginActionRow
         title="Restart router"
@@ -137,7 +137,7 @@ export function RouterCard({ snapshot }: { readonly snapshot: RouterSnapshot }):
         destructive
         disabled={!reachable}
         confirmation={RESTART_ROUTER}
-        onPress={() => tools.run('reboot', {}, 'The router didn’t restart')}
+        onPress={() => tools.run('restart', { what: 'router' }, 'The router didn’t restart')}
       />
     </List>
   );

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { href } from '../../../app-shell/hrefs';
 import { MetricStrip, type MetricItem } from '../../../components/metric-strip';
 import { bytes } from '../../../format/number';
@@ -32,7 +32,7 @@ function stripReadingsOf(readings: PhoneReadings): StripReadings {
   };
 }
 
-type Link = (page: string) => Href;
+type Link = (page: string) => AppHref;
 
 function batteryItem(
   readings: StripReadings,
@@ -70,7 +70,7 @@ interface PlainInput {
   readonly label: string;
   readonly value: string | null;
   readonly stale: boolean;
-  readonly target: Href;
+  readonly target: AppHref;
   readonly caption?: string;
 }
 

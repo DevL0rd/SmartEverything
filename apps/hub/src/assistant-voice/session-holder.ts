@@ -3,6 +3,7 @@ import { Logger, messageOf } from '@smarteverything/logging';
 import type { LiveEvents, LiveOptions, LiveSession, VoiceProvider } from './gemini';
 import { connectWithin } from './live-connect';
 import type { VoiceLine } from './voice-line';
+import { WarmLog } from './warm-log';
 import { answers, leasedSession, routedEvents, WarmTenant } from './warm-wire';
 import {
   changedParts,
@@ -60,9 +61,12 @@ export class SessionHolder {
   private stopped = false;
   private createdAt = 0;
   private idleSince = 0;
+  private readonly warmLog: WarmLog;
   private previous: WarmParts | null = null;
 
-  constructor(private readonly deps: HolderDeps) {}
+  constructor(private readonly deps: HolderDeps) {
+    this.warmLog = new WarmLog(deps.key, deps.now);
+  }
 
   get leased(): boolean {
     return this.tenant !== null;
@@ -79,7 +83,9 @@ export class SessionHolder {
     const tenant = new WarmTenant(callId);
     this.tenant = tenant;
     this.base = base;
+    this.warmLog.leased(callId, this.connecting !== null, this.wire !== null, this.idleSince);
     return {
+      warmKey: this.deps.key,
       live: (options, events) => this.live(tenant, options, events),
       known: () => (this.tenant === tenant ? this.context : null),
       release: (_session, lines): void => {
@@ -93,7 +99,7 @@ export class SessionHolder {
     this.cancelRetry();
     this.pending = null;
     this.closeWire();
-    log.info('voice.warm_stopped', { key: this.deps.key, reason });
+    this.warmLog.stopped(reason, this.tenant !== null, this.createdAt);
   }
 
   private async live(
@@ -156,10 +162,7 @@ export class SessionHolder {
 
   private created(held: Held): void {
     this.createdAt = held.connectedAt;
-    log.info('voice.warm_created', {
-      key: this.deps.key,
-      durationMs: held.connectedAt - held.startedAt,
-    });
+    this.warmLog.created(held.connectedAt - held.startedAt);
   }
 
   private renew(options: LiveOptions): Promise<Held> {
@@ -176,7 +179,7 @@ export class SessionHolder {
         if (cause instanceof WarmSupersededError || refusedFor(cause) !== null) {
           throw cause;
         }
-        log.warn('voice.warm_handle_rejected', { key: this.deps.key, cause: messageOf(cause) });
+        this.warmLog.handleRejected(cause);
       }
     }
     this.handle = null;
@@ -223,10 +226,10 @@ export class SessionHolder {
       current: () => this.wire?.id === id || this.pending?.id === id,
       sink: () => this.tenant?.sink ?? null,
       idleOutput: (kind): void => {
-        log.warn('voice.warm_idle_output', { key: this.deps.key, kind });
+        this.idleOutput(kind);
       },
       idleTool: (callId, name): void => {
-        log.warn('voice.warm_idle_output', { key: this.deps.key, kind: 'tool' });
+        this.idleOutput('tool', name);
         this.wire?.session.toolResult(callId, name, IDLE_TOOL_ANSWER, IDLE_TOOL_DELIVERY);
       },
       resumable: (handle): void => {
@@ -243,6 +246,12 @@ export class SessionHolder {
         this.closed(id, reason, code);
       },
     });
+  }
+
+  private idleOutput(kind: string, tool?: string): void {
+    const wire = this.wire;
+    const sinceConnectMs = wire === null ? null : this.deps.now() - wire.connectedAt;
+    this.warmLog.idleOutput(kind, this.idleSince, { wire: wire !== null, sinceConnectMs }, tool);
   }
 
   private goAway(timeLeft: string | null): void {
@@ -278,13 +287,7 @@ export class SessionHolder {
       return;
     }
     const sinceConnectMs = this.deps.now() - wire.connectedAt;
-    log.info('voice.warm_dropped', {
-      key: this.deps.key,
-      closeCode: code,
-      reason,
-      goAway,
-      sinceConnectMs,
-    });
+    this.warmLog.dropped({ code, reason, goAway, sinceConnectMs });
     this.closeWire();
     const refused = goAway ? null : refusedFor(new WarmConnectClosedError(reason, code));
     if (refused !== null) {
@@ -305,7 +308,7 @@ export class SessionHolder {
     this.context = new Set(lines);
     this.idleSince = this.deps.now();
     const normalize = this.wire !== null && this.drifted();
-    log.info('voice.warm_released', { key: this.deps.key, callId: tenant.callId, normalize });
+    this.warmLog.released(tenant.callId, normalize, this.wire !== null);
     if (this.stopped) {
       return;
     }
@@ -326,6 +329,7 @@ export class SessionHolder {
   private reconnectSoon(): void {
     this.cancelRetry();
     const delay = this.attempt === 0 ? 0 : retryDelayMs(this.attempt - 1, this.deps.random);
+    this.warmLog.reconnectScheduled(this.attempt, delay);
     this.attempt += 1;
     if (delay === 0) {
       this.reconnect();
@@ -365,12 +369,7 @@ export class SessionHolder {
   private reconnected(opened: Opened, attempt: number): void {
     const { held, resumed } = opened;
     this.createdAt = resumed ? this.createdAt : held.connectedAt;
-    log.info('voice.warm_reconnected', {
-      key: this.deps.key,
-      resumed,
-      durationMs: held.connectedAt - held.startedAt,
-      attempt,
-    });
+    this.warmLog.reconnected(resumed, held.connectedAt - held.startedAt, attempt);
   }
 
   private failed(cause: unknown, attempt: number): void {
@@ -386,12 +385,7 @@ export class SessionHolder {
       return;
     }
     const nextMs = retryDelayMs(this.attempt - 1, this.deps.random);
-    log.warn('voice.warm_reconnect_failed', {
-      key: this.deps.key,
-      attempt,
-      nextMs,
-      cause: messageOf(cause),
-    });
+    this.warmLog.reconnectFailed(cause, attempt, nextMs);
     this.reconnectSoon();
   }
 
@@ -424,6 +418,14 @@ export class SessionHolder {
       () => this.tenant === tenant && this.wire?.id === held.id,
       () => {
         this.closeWire();
+      },
+      (what): void => {
+        this.warmLog.sendDropped(
+          tenant.callId,
+          what,
+          this.tenant === tenant,
+          this.wire?.id === held.id,
+        );
       },
     );
   }

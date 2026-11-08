@@ -5,7 +5,8 @@ import type {
   MediaSize,
   RowChange,
 } from '@smarteverything/domain';
-import { ApiError, jsonEquals } from '@smarteverything/domain';
+import { isDeepStrictEqual } from 'node:util';
+import { ApiError } from '@smarteverything/domain';
 import { XiaomiAdapter } from './adapters/xiaomi';
 import { xiaomiLocalHooks } from './adapters/xiaomi/local-hooks';
 import { areaOf, assemble, reportFailure, type Core, type HubParts } from './hub-assembly';
@@ -18,6 +19,7 @@ import type { AutomationTraceSlot } from './automations/automation-trace';
 import type { QuestionDesk } from './automations/questions/desk';
 import type { WebhookGateway } from './automations/webhooks/gateway';
 import type { EngineV3 } from './automations/engine-v3';
+import type { PluginKindCatalog } from './automations/plugin-kinds/catalog';
 import type { AutomationSecrets } from './automations/secrets-v3';
 import type { Rehearsals } from './server/handlers/automation-runs';
 import type { SignalBus } from './signals/bus';
@@ -31,6 +33,7 @@ import { phoneNodesOf, type PhoneNodes } from './phones/phone-nodes';
 import type { DeviceRecord, EventInsert } from './database/port';
 import type { ProviderManager } from './providers/manager';
 import type { NewCommand } from './store/repositories/commands';
+import type { VacuumRouteServices } from './server/handlers/vacuums';
 import { background } from '@smarteverything/logging';
 
 export type { HubParts };
@@ -55,6 +58,7 @@ export interface RunningHub {
   readonly watches: LocalWatches;
   readonly readings: ScaleReadings;
   readonly drivers: RunningDrivers;
+  readonly vacuums: VacuumRouteServices;
   readonly phones: PhoneNodes;
   readonly signals: SignalBus;
   readonly automationAi: AutomationAiSlot;
@@ -63,6 +67,7 @@ export interface RunningHub {
   readonly automationTrace: AutomationTraceSlot;
   readonly automationWebhooks: WebhookGateway;
   readonly automationQuestions: QuestionDesk;
+  readonly automationKinds: PluginKindCatalog;
   readonly automationEngine: EngineV3;
   readonly automationSecrets: AutomationSecrets;
   readonly automationRehearsals: Rehearsals;
@@ -83,7 +88,9 @@ function placeChanged(change: Extract<RowChange, { table: 'settings' }>): boolea
 
 function pluginSignalsChanged(change: Extract<RowChange, { table: 'plugins' }>): boolean {
   const { record, oldRecord } = change;
-  return record === null || oldRecord === null || !jsonEquals(record.manifest, oldRecord.manifest);
+  return (
+    record === null || oldRecord === null || !isDeepStrictEqual(record.manifest, oldRecord.manifest)
+  );
 }
 
 function engineConcerned(change: Extract<RowChange, { table: 'automations' }>): boolean {
@@ -116,6 +123,7 @@ function reacting(parts: HubParts, core: Core): (change: RowChange) => void {
     }
     core.irAssumed.observe(change);
     core.outages.observe(change);
+    core.vacuums.rowChanged(change);
     const now = parts.clock.now();
     const moment = feedContextOf(
       now,
@@ -187,7 +195,10 @@ async function flushWrites(core: Core, closing: boolean): Promise<void> {
     closing ? core.state.close() : core.state.settled(),
     closing ? core.events.close() : core.events.settled(),
   ]);
-  if (closing) core.signals.close();
+  if (closing) {
+    core.signals.close();
+    core.confirmations.close();
+  }
 }
 
 function sharedParts(
@@ -203,6 +214,7 @@ function sharedParts(
   | 'automationTrace'
   | 'automationWebhooks'
   | 'automationQuestions'
+  | 'automationKinds'
   | 'automationEngine'
   | 'automationSecrets'
   | 'automationRehearsals'
@@ -218,6 +230,7 @@ function sharedParts(
     automationTrace: core.automationTrace,
     automationWebhooks: core.automationWebhooks,
     automationQuestions: core.automationQuestions,
+    automationKinds: core.automationKinds,
     automationEngine: core.engine,
     automationSecrets: core.automationSecrets,
     automationRehearsals: core.automationRehearsals,
@@ -267,7 +280,8 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
   const core = assemble(parts);
   await core.inventory.load();
   await Promise.all([core.state.load(), core.cameras.load()]);
-  await core.cameras.sync(core.inventory.all());
+  core.vacuums.start(core.inventory.all());
+  background(core.cameras.sync(core.inventory.all()), 'stream.sync_failed');
   parts.devicesChanged(core.inventory.all());
   core.engine.sync();
   core.engine.boot();
@@ -298,18 +312,27 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
     watches,
     readings,
     drivers,
+    vacuums: core.vacuums.routes(),
     phones,
     ...sharedParts(parts, core),
-    stop: async (): Promise<void> => {
-      quiet(parts, core, unsubscribe);
-      core.engine.shutdown();
-      await core.engine.driver.settled();
-      await core.effects.stop();
-      core.automationAi.stop();
-      core.automationIntegration.stop();
-      await drivers.stop();
-      await core.providers.stopAll();
-      await flushWrites(core, true);
-    },
+    stop: () => stopHub(parts, core, unsubscribe, drivers),
   };
+}
+
+async function stopHub(
+  parts: HubParts,
+  core: Core,
+  unsubscribe: () => void,
+  drivers: RunningDrivers,
+): Promise<void> {
+  quiet(parts, core, unsubscribe);
+  core.engine.shutdown();
+  await core.engine.driver.settled();
+  await core.effects.stop();
+  core.automationAi.stop();
+  core.automationIntegration.stop();
+  await drivers.stop();
+  await core.vacuums.stop();
+  await core.providers.stopAll();
+  await flushWrites(core, true);
 }

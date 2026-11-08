@@ -1,14 +1,18 @@
 import type { PrinterOverview } from '@smarteverything/domain';
-import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { View, type LayoutChangeEvent } from 'react-native';
 import { Badge } from '../../../components/badge';
 import { ProgressBar } from '../../../components/charts';
 import { Text } from '../../../components/text';
+import type { FrameClass } from '../../../components/widget-board';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
+import { cn } from '../../../design/cn';
+import { WideArt, useWideArt } from '../../../features/devices';
 import { DeviceVisual, usePrinterLive, type PrinterLive } from '../../../features/device-visuals';
 import type { Device } from '../../../store/state';
+import { WAITING } from '../components/printer-card';
 import { RING_TONE, StateRing } from '../components/state-ring';
-import { SupplyBars, SupplyTanks } from '../components/supply-band';
+import { SupplyBars, SupplyTanks, tanksFit } from '../components/supply-band';
 import { usePrinterView } from '../data/use-printer-view';
 import { lowestLine } from '../model/chips';
 import { countLabel } from '../model/format';
@@ -33,7 +37,7 @@ function Headline({ live }: { readonly live: PrinterLive }): ReactNode {
         ) : null}
       </View>
       {line === null ? null : (
-        <Text variant="callout" tone="warning" numberOfLines={1}>
+        <Text variant="callout" tone="warning" numberOfLines={2}>
           {line}
         </Text>
       )}
@@ -53,7 +57,7 @@ function Week({ today }: { readonly today: PrinterOverview['today'] }): ReactNod
         colour={today.pagesWeek > today.weeklyBudget ? 'warning' : 'primary'}
         label={text}
       />
-      <Text variant="caption" tone="variant" className="tabular" numberOfLines={1}>
+      <Text variant="caption" tone="variant" className="tabular" numberOfLines={2}>
         {text}
       </Text>
     </View>
@@ -73,48 +77,80 @@ function Ring({ live }: { readonly live: PrinterLive }): ReactNode {
   );
 }
 
-export function StatusFace({ device }: { readonly device: Device }): ReactNode {
-  const { cls } = useWidgetFace();
-  const live = usePrinterLive(device);
-  const overview = usePrinterView(device, 'overview', {}, cls === 'xl' || cls === 'l');
-  if (live === null) return null;
-  const visual = <DeviceVisual device={device} size="card" />;
+function Supplies({ live }: { readonly live: PrinterLive }): ReactNode {
+  const [width, setWidth] = useState<number | null>(null);
+  const onLayout = (event: LayoutChangeEvent): void => {
+    setWidth(event.nativeEvent.layout.width);
+  };
+  return (
+    <View className="min-w-0 flex-1" onLayout={onLayout}>
+      {width === null || tanksFit(width, live.supplies.length) ? (
+        <SupplyTanks live={live} compact />
+      ) : (
+        <SupplyBars live={live} />
+      )}
+    </View>
+  );
+}
+
+function Art({ device }: { readonly device: Device }): ReactNode {
+  const art = useWideArt();
+  return (
+    <WideArt cls={art.cls}>
+      <DeviceVisual device={device} size="card" px={art.px} />
+    </WideArt>
+  );
+}
+
+function Lane({
+  cls,
+  live,
+  week,
+}: {
+  readonly cls: FrameClass;
+  readonly live: PrinterLive;
+  readonly week: PrinterOverview['today'] | undefined;
+}): ReactNode {
+  const weekRow = week === undefined || cls === 'w' ? null : <Week today={week} />;
   if (cls === 'xl') {
     return (
-      <View className="flex-1 flex-row items-center gap-4">
-        {visual}
+      <View className="min-w-0 flex-1 flex-row items-start gap-4">
         <View className="min-w-0 flex-1 gap-2">
           <Headline live={live} />
-          {overview.data === undefined ? null : <Week today={overview.data.today} />}
+          {weekRow}
         </View>
         <Ring live={live} />
-        <SupplyTanks live={live} compact />
-      </View>
-    );
-  }
-  if (cls === 'w') {
-    return (
-      <View className="flex-1 flex-row items-center gap-4">
-        {visual}
-        <View className="min-w-0 flex-1 gap-2">
-          <Headline live={live} />
-        </View>
-        <View className="w-1/2">
-          <SupplyBars live={live} />
-        </View>
+        <Supplies live={live} />
       </View>
     );
   }
   return (
-    <View className="flex-1 justify-between gap-3">
-      <View className="flex-row items-center gap-4">
-        {visual}
-        <View className="min-w-0 flex-1 gap-2">
-          <Headline live={live} />
-        </View>
+    <View className={cn('min-w-0 flex-1 gap-2', cls === 'w' && 'flex-row items-start gap-4')}>
+      <View className="min-w-0 flex-1 gap-2">
+        <Headline live={live} />
       </View>
-      <SupplyBars live={live} />
-      {cls === 'l' && overview.data !== undefined ? <Week today={overview.data.today} /> : null}
+      <View className="min-w-0 flex-1 gap-2">
+        <SupplyBars live={live} />
+        {weekRow}
+      </View>
+    </View>
+  );
+}
+
+export function StatusFace({ device }: { readonly device: Device }): ReactNode {
+  const { cls } = useWidgetFace();
+  const live = usePrinterLive(device);
+  const overview = usePrinterView(device, 'overview', {}, cls === 'xl' || cls === 'l');
+  return (
+    <View className={cn('flex-1 flex-row', cls === 'm' ? 'gap-3' : 'gap-4')}>
+      <Art device={device} />
+      {live === null ? (
+        <Text variant="footnote" tone="variant" numberOfLines={2} className="min-w-0 flex-1">
+          {WAITING}
+        </Text>
+      ) : (
+        <Lane cls={cls} live={live} week={overview.data?.today} />
+      )}
     </View>
   );
 }

@@ -106,9 +106,10 @@ export function modSource(launch: LinkLaunch): string {
   const head = [
     `const COMMAND = ${JSON.stringify(launch.command)};`,
     `const SCRIPT = ${JSON.stringify(launch.script)};`,
-    `const DATA = ${JSON.stringify(launch.dataDirectory)};`,
+    `const CLAUDE = ${JSON.stringify(launch.directory)};`,
+    `const READY = ${JSON.stringify(launch.ready)};`,
     `const ENVIRONMENT = { ELECTRON_RUN_AS_NODE: '1' };`,
-    `const argv = (subcommand, extra) => [COMMAND, SCRIPT, subcommand, '--data', DATA].concat(extra);`,
+    `const argv = (subcommand, extra) => [COMMAND, SCRIPT, subcommand, '--claude', CLAUDE, '--ready', READY].concat(extra);`,
   ];
   return `${head.join('\n')}\n${MOD_BODY}`;
 }

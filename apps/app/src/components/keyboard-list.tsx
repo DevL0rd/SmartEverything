@@ -14,6 +14,8 @@ import { cn } from '../design/cn';
 import { ValueStore, useSelected } from '../design/external-store';
 import { isNative } from '../design/platform';
 import {
+  acceptsListKey,
+  acceptsSearchNavigationKey,
   edgeHighlight,
   keepHighlight,
   stepHighlight,
@@ -127,6 +129,7 @@ export interface KeyboardListProps {
   readonly wrap?: boolean;
   readonly focusable?: boolean;
   readonly combobox?: boolean;
+  readonly searchInput?: RefObject<unknown>;
   readonly label: string;
   readonly className?: string;
   readonly children: ReactNode;
@@ -203,10 +206,46 @@ interface Behaviour {
   readonly onActivate: (id: string) => void;
   readonly onHighlight: ((id: string, index: number) => void) | undefined;
   readonly wrap: boolean;
+  readonly capture: boolean;
+  readonly searchInput: RefObject<unknown> | undefined;
 }
 
 function activation(event: KeyboardEvent, current: string | null, inside: boolean): string | null {
   return event.key === 'Enter' && !event.shiftKey && inside ? current : null;
+}
+
+function claimKey(event: KeyboardEvent, capture: boolean): void {
+  event.preventDefault();
+  if (capture) event.stopPropagation();
+}
+
+function listenToListKeys(
+  root: HTMLElement,
+  capture: boolean,
+  searchInput: RefObject<unknown> | undefined,
+  move: (event: KeyboardEvent, intercept: boolean) => void,
+): () => void {
+  const listen = (event: Event): void => {
+    if (!(event instanceof KeyboardEvent)) return;
+    if (
+      event.target instanceof Node &&
+      root.contains(event.target) &&
+      acceptsListKey(event, capture)
+    )
+      move(event, capture);
+  };
+  const fromSearch = (event: KeyboardEvent): void => {
+    if (event.target === searchInput?.current && acceptsSearchNavigationKey(event))
+      move(event, true);
+  };
+  const source = capture ? root : document;
+  source.addEventListener('keydown', listen, { capture });
+  const capturesSearch = !capture && searchInput !== undefined;
+  if (capturesSearch) root.addEventListener('keydown', fromSearch, true);
+  return (): void => {
+    source.removeEventListener('keydown', listen, { capture });
+    if (capturesSearch) root.removeEventListener('keydown', fromSearch, true);
+  };
 }
 
 function useListKeys(
@@ -215,13 +254,14 @@ function useListKeys(
   active: boolean,
   behaviour: Behaviour,
 ): void {
-  const move = useEffectEvent((event: KeyboardEvent, root: HTMLElement) => {
+  const { capture, searchInput } = behaviour;
+  const move = useEffectEvent((event: KeyboardEvent, root: HTMLElement, intercept: boolean) => {
     const { items, onActivate, onHighlight, wrap } = behaviour;
     const textEntry = isTextEntry(event.target);
     const current = control.highlighted.get();
     const activate = activation(event, current, textEntry || event.target === root);
     if (activate !== null) {
-      event.preventDefault();
+      claimKey(event, intercept);
       onActivate(activate);
       return;
     }
@@ -229,7 +269,7 @@ function useListKeys(
     if (next === undefined) {
       return;
     }
-    event.preventDefault();
+    claimKey(event, intercept);
     control.highlighted.set(next);
     const index = items.findIndex((entry) => entry.id === next);
     if (next !== null && index >= 0) {
@@ -242,16 +282,10 @@ function useListKeys(
     if (isNative() || !active || !(root instanceof HTMLElement)) {
       return undefined;
     }
-    const listen = (event: KeyboardEvent): void => {
-      if (event.target instanceof Node && root.contains(event.target) && !event.isComposing) {
-        move(event, root);
-      }
-    };
-    document.addEventListener('keydown', listen);
-    return (): void => {
-      document.removeEventListener('keydown', listen);
-    };
-  }, [container, active]);
+    return listenToListKeys(root, capture, searchInput, (event, intercept) => {
+      move(event, root, intercept);
+    });
+  }, [container, active, capture, searchInput]);
 }
 
 function useHighlightReset(
@@ -283,6 +317,7 @@ export function KeyboardList({
   wrap = true,
   focusable = false,
   combobox = false,
+  searchInput,
   label,
   className,
   children,
@@ -299,7 +334,8 @@ export function KeyboardList({
     [base, listId, label, active],
   );
   useHighlightReset(control, items, autoHighlight, onHighlight);
-  useListKeys(container, control, active, { items, onActivate, onHighlight, wrap });
+  const behaviour = { items, onActivate, onHighlight, wrap, capture: combobox, searchInput };
+  useListKeys(container, control, active, behaviour);
   useActiveDescendant(container, control, active && !combobox);
   useEscape(
     onEscape !== undefined,

@@ -65,7 +65,7 @@ describe('slash commands on a native conversation', () => {
     });
 
     expect(outcome).toStrictEqual(SETTLED);
-    expect(rig.opened.store.harnessCoordination.operation(operation)).toBeUndefined();
+    expect(rig.opened.store.harnessSessions.operation(operation)).toBeUndefined();
   });
 
   it('shows the error when the machine fails instead of recording an unknown outcome', async () => {

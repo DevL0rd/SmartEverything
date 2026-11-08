@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ApiError, RUN_CAUSE } from '@smarteverything/domain';
-import type { AutomationRowV3, JsonValue, SignalInput } from '@smarteverything/domain';
+import type { StoredAutomationRow, JsonValue, SignalInput } from '@smarteverything/domain';
 import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
 import { RUN_AUTOMATION_KIND } from '@smarteverything/flow/interpret/run-automation';
 import { resolveBudgets } from '@smarteverything/flow/state/budgets';
@@ -19,6 +19,7 @@ import type { DriverPorts, FinishedRun, RunScope, RunSink, RunStart } from './dr
 import { calledFire, childCall, childOutcome, effectRun, Finishes } from './engine-v3-children';
 import type { RunOutputs } from './engine-v3-children';
 import { admissionParts } from './engine-v3-admission';
+import { structuredAutomation } from '../store/repositories/automation-trees';
 import { armTriggers, listensOnWebhook } from './engine-v3-triggers';
 import { PlanBook } from './engine-v3-plans';
 import { engineSink } from './engine-v3-sink';
@@ -59,7 +60,7 @@ export class EngineV3 {
 
   constructor(private readonly ports: EngineV3Ports) {
     this.log = ports.log ?? new Logger('hub.automations');
-    this.book = new PlanBook(ports.repositories, this.log);
+    this.book = new PlanBook(ports.repositories, this.log, ports.kinds);
     this.parks = new RunParkStore(ports.repositories.records, ports.clock);
     this.watchers = new SignalWatchers({
       clock: ports.clock,
@@ -183,7 +184,7 @@ export class EngineV3 {
     this.driver.shutdown(this.parks.kept);
   }
 
-  private apply(row: AutomationRowV3): 'loaded' | 'unchanged' | 'refused' {
+  private apply(row: StoredAutomationRow): 'loaded' | 'unchanged' | 'refused' {
     if (!row.enabled) {
       this.unload(row.id, 'disabled');
       return 'unchanged';
@@ -196,7 +197,7 @@ export class EngineV3 {
       return 'refused';
     }
     held?.disarm();
-    const compiled = compileTriggers(row.id, subject.program.triggers);
+    const compiled = compileTriggers(row.id, subject.program.triggers, this.ports.kinds.matcher);
     this.loaded.set(row.id, {
       subject,
       signature: signatureOf(row, this.ports.place()),
@@ -317,8 +318,9 @@ export class EngineV3 {
     }
     const plan = this.book.stored(ref.hash);
     this.triggers.set(state.runId, state.trigger);
-    this.nodeKeys.set(state.runId, nodeKeys(row.definition));
-    const subject = restartedSubject(row, state, ref.hash, { plan, lookup: this.book });
+    const program = structuredAutomation(row.definition, this.ports.kinds);
+    this.nodeKeys.set(state.runId, nodeKeys(program));
+    const subject = restartedSubject(row, state, ref.hash, { plan, lookup: this.book, program });
     return this.runStart(subject, state, null);
   }
 
@@ -327,6 +329,7 @@ export class EngineV3 {
       state,
       context: contextOf(subject, triggerKeyOf(state), {
         ...this.ports.world,
+        kinds: this.ports.kinds,
         clock: this.ports.clock,
         zone: this.ports.zone,
       }),
@@ -393,7 +396,7 @@ export class EngineV3 {
       );
     }
     const trigger = this.triggers.get(scope.runId) ?? null;
-    return this.ports.effects(request, effectRun(scope, trigger, this.ports.retain));
+    return this.ports.effects(request, effectRun(scope, trigger, request, this.ports));
   }
 
   private async callChild(params: Readonly<Record<string, JsonValue>>): Promise<NodeResult> {

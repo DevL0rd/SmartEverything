@@ -2,6 +2,7 @@ import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import {
   API_ENDPOINTS,
+  API_ERROR,
   ApiError,
   HUB_HARNESS_CONTROL,
   HUB_RUNTIME_CONTROL,
@@ -9,6 +10,7 @@ import {
   NODE_HARNESS_PROTOCOL,
   type HubHarnessControl,
   type NodeHello,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
@@ -27,12 +29,13 @@ const HELLO: NodeHello = {
   interfaces: [],
   bootedAt: '2026-10-01T00:00:00.000Z',
   features: [],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
   power: [],
   actions: [],
   permissions: [],
 };
 const REVOKED = 4001;
+const UPDATE_REQUIRED = 4003;
 
 let directory: { path: string; remove: () => Promise<void> };
 let booted: Booted;
@@ -129,6 +132,24 @@ describe('the computer runtime socket', () => {
     socket.send(JSON.stringify({ type: 'hello', protocol: 2, hello: HELLO, runtimes: ['claude'] }));
     await welcome;
 
+    const apps = await call(booted.base, booted.owner, {
+      method: 'GET',
+      path: `/api/computers/${deviceId}/apps`,
+    });
+    expect(apps.status).toBe(409);
+  });
+
+  it.each([
+    ['another number', { ...HELLO, protocol: NODE_PROTOCOL_VERSION + 1 }],
+    ['no number', Object.fromEntries(Object.entries(HELLO).filter(([key]) => key !== 'protocol'))],
+  ])('refuses a hello with %s and closes the socket', async (_name, hello) => {
+    const { token, deviceId } = await pair();
+    const socket = await open('/api/nodes/socket', NODE_AI_PROTOCOL, token);
+    const refusal = nextText(socket);
+    const closed = once(socket, 'close');
+    socket.send(JSON.stringify({ type: 'hello', protocol: 2, hello, runtimes: ['claude'] }));
+    expect(API_ERROR.parse(await refusal).error.code).toBe('computer_update_required');
+    expect((await closed)[0]).toBe(UPDATE_REQUIRED);
     const apps = await call(booted.base, booted.owner, {
       method: 'GET',
       path: `/api/computers/${deviceId}/apps`,

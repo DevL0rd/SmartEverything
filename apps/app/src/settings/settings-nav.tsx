@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { useDeferredValue, useState } from 'react';
 import { View } from 'react-native';
-import { useNavigation, usePathname, useRouter, type Href } from 'expo-router';
+import { useNavigation, usePathname, useRouter } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import { StackActions, useRoute } from 'expo-router/react-navigation';
 import { MAIN_PAGES } from '../app-shell/main-pages';
 import { href } from '../app-shell/hrefs';
@@ -12,7 +13,7 @@ import { List } from '../components/section';
 import { Text } from '../components/text';
 import { useStoreSelector } from '../store/store-context';
 import { useSettingEnv } from './env';
-import { pageAvailable, useBuiltSettingsPages } from './availability';
+import { pageReachable, useBuiltSettingsPages } from './availability';
 import { visibleSettings } from './registry';
 import { SETTINGS_GROUPS, SETTINGS_TREE, pageHref, settingsTrail } from './tree';
 import type { SettingEnv, SettingsPageDefinition } from './types';
@@ -25,7 +26,7 @@ function currentPage(pathname: string): string | null {
   return match?.[1] ?? null;
 }
 
-function useOpenSection(): (target: Href) => void {
+function useOpenSection(): (target: AppHref) => void {
   const router = useRouter();
   const navigation = useNavigation();
   const route = useRoute();
@@ -93,7 +94,7 @@ function Groups({
       {SETTINGS_GROUPS.map((group) => {
         const pages = orderedGroupPages(
           SETTINGS_TREE.filter(
-            (page) => page.group === group && pageAvailable(page, { env, built }),
+            (page) => page.group === group && pageReachable(page, { env, built }),
           ),
           group,
         );
@@ -134,7 +135,7 @@ function Results({ env, query }: { readonly env: SettingEnv; readonly query: str
   const built = useBuiltSettingsPages();
   const pages = SETTINGS_TREE.filter(
     (page) =>
-      pageAvailable(page, { env, built }) &&
+      pageReachable(page, { env, built }) &&
       [page.title, ...page.keywords].some((word) => matches(word, needle)),
   );
   const settings = visibleSettings(env).filter((setting) =>

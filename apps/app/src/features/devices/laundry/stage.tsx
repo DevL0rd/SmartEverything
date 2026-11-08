@@ -28,15 +28,20 @@ import type { Laundry } from './use-laundry';
 export function PhaseStrip({
   strip,
   colour,
+  start = false,
 }: {
   readonly strip: Strip;
   readonly colour: string;
+  readonly start?: boolean;
 }): ReactNode {
   return (
     <View
       accessibilityRole="list"
       accessibilityLabel="Planned phases"
-      className="flex-row flex-wrap items-center justify-center gap-y-1.5"
+      className={cn(
+        'flex-row flex-wrap items-center gap-y-1.5',
+        start ? 'justify-start' : 'justify-center',
+      )}
     >
       {strip.steps.map((step, index) => {
         const done = index < strip.current;
@@ -87,6 +92,7 @@ export function StageActions({
         {laundry.actions.map((entry) => (
           <Button
             key={entry.id}
+            {...(entry.id === 'advice' ? { ref: runner.adviceOpener } : {})}
             label={entry.label}
             variant={entry.look}
             size="lg"
@@ -289,9 +295,7 @@ export function LaundryStage({
       )}
     >
       <Glow colour={role} y="30%" strength={0.16} />
-      <View pointerEvents="none">
-        <DeviceVisual device={laundry.device} size="hero" state={visual} />
-      </View>
+      <DeviceVisual device={laundry.device} size="hero" state={visual} interactive />
       <View className={cn('min-w-0 items-center gap-3', wide && 'flex-1')}>
         <StageBody
           laundry={laundry}

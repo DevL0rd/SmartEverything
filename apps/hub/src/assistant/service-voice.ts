@@ -8,7 +8,7 @@ export function assistantVoice(deps: {
   readonly engines: EngineRegistry;
   readonly chats: ChatDirectory;
   readonly requests: AssistantRequests;
-  readonly afterCall: (chatId: string, transcript: string) => void;
+  readonly afterCall: (chatId: string, transcript: string, messageId: string) => void;
 }): VoiceResponder {
   return {
     ready: (chatId?: string): string | null =>

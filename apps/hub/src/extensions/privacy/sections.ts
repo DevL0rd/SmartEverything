@@ -12,6 +12,7 @@ const LOCATION = 'Location';
 const CALLS = 'Phone, contacts and calls';
 const PHONE_ACCESS = 'Notifications, apps and accessibility';
 const BLUETOOTH = 'Bluetooth devices';
+const MEDIA = 'Photos, videos and music';
 const BACKGROUND = 'Phone settings and background running';
 const SERVICES = 'Other services that receive data';
 const DELETING = 'Deleting data';
@@ -78,10 +79,17 @@ export const PRIVACY_SECTIONS: readonly PrivacySection[] = [
     ],
   },
   {
+    title: MEDIA,
+    paragraphs: [
+      'With your permission the Android app reads the photos, videos and audio files on your phone that you allow, so you can see them in Drive and Photos and back them up. Backed up files are stored on your server.',
+    ],
+  },
+  {
     title: BACKGROUND,
     paragraphs: [
-      'Running in the background, starting after a restart, staying awake, showing alerts over other apps and ignoring battery optimisation keep wake listening, calls, sync and your watch working. Changing system settings, such as volume and ringer, lets the assistant do that when you ask.',
+      'Running in the background, starting after a restart, staying awake, showing alerts over other apps and ignoring battery optimisation keep wake listening, calls, sync and your watch working. Exact alarms let Clock alarms and timers and Planner reminders go off on time. Changing system settings, such as volume and ringer, lets the assistant do that when you ask.',
       'Storage permissions let you save and share files and recordings on older Android versions, multicast lets the app find your server on the local network, biometric permissions let you protect saved items with your fingerprint or face, and badge permissions let your launcher show unread counts on the app icon.',
+      'Android asks you to allow SmartEverything to install its own signed updates. When you tap Install, Android may apply the update without another prompt. You can turn off this access in Android settings.',
       'Notifications and commands reach this phone through Google’s push service (Firebase Cloud Messaging), so the text of a notification passes through Google on its way to your phone.',
     ],
   },
@@ -107,6 +115,8 @@ export const PRIVACY_SECTIONS: readonly PrivacySection[] = [
 
 export const PRIVACY_PERMISSION_TOPICS: Readonly<Record<string, string>> = {
   'android.permission.INTERNET': BACKGROUND,
+  'android.permission.REQUEST_INSTALL_PACKAGES': BACKGROUND,
+  'android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION': BACKGROUND,
   'android.permission.ACCESS_NETWORK_STATE': BACKGROUND,
   'android.permission.ACCESS_WIFI_STATE': BACKGROUND,
   'android.permission.ACCESS_FINE_LOCATION': LOCATION,
@@ -145,6 +155,11 @@ export const PRIVACY_PERMISSION_TOPICS: Readonly<Record<string, string>> = {
   'android.permission.MODIFY_AUDIO_SETTINGS': BACKGROUND,
   'android.permission.WAKE_LOCK': BACKGROUND,
   'android.permission.CAMERA': SIGHT,
+  'android.permission.READ_MEDIA_IMAGES': MEDIA,
+  'android.permission.READ_MEDIA_VIDEO': MEDIA,
+  'android.permission.READ_MEDIA_AUDIO': MEDIA,
+  'android.permission.READ_MEDIA_VISUAL_USER_SELECTED': MEDIA,
+  'android.permission.USE_EXACT_ALARM': BACKGROUND,
   'android.permission.READ_EXTERNAL_STORAGE': BACKGROUND,
   'android.permission.WRITE_EXTERNAL_STORAGE': BACKGROUND,
   'android.permission.CHANGE_WIFI_MULTICAST_STATE': BACKGROUND,

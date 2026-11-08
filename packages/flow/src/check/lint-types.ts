@@ -1,4 +1,4 @@
-import type { NodeKind } from '@smarteverything/domain';
+import type { NodeKind, PluginKindStatus } from '@smarteverything/domain';
 import { PORT_VALUE } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { ProgramIndex } from '../program/lookup';
@@ -21,6 +21,9 @@ export const LINT_ERROR_CODES = [
   'stateful_in_reusable',
   'read_in_function',
   'unit_mismatch',
+  'error_exit_not_fallible',
+  'wait_only_in_send',
+  'plugin_kind_retired',
 ] as const;
 
 export const LINT_WARNING_CODES = [
@@ -38,9 +41,10 @@ export const LINT_WARNING_CODES = [
   'long_delay_single',
   'if_chain_over_variable',
   'ai_tools_untrusted',
+  'plugin_off',
 ] as const;
 
-export const LINT_HINT_CODES = ['notify_feed_upgrade'] as const;
+export const LINT_HINT_CODES = ['notify_feed_upgrade', 'link_advice'] as const;
 
 export const FINDING_CODES = [
   ...PROBLEM_CODES,
@@ -68,6 +72,11 @@ export const LINT_ACTION = z.discriminatedUnion('action', [
     action: z.literal('cycle_variable'),
     key: z.string().min(1),
     variable: z.string().min(1),
+  }),
+  z.strictObject({
+    action: z.literal('set_run_mode'),
+    key: z.string().min(1),
+    mode: z.literal('wait_for_result'),
   }),
   z.strictObject({
     action: z.literal('lookup_table'),
@@ -103,8 +112,16 @@ export type FindingSeverity = Finding['severity'];
 
 export type FindingCode = Finding['code'];
 
+export interface KindAvailability {
+  readonly status: PluginKindStatus;
+  readonly plugin: string;
+  readonly replacedBy?: string;
+}
+
 export type LintKind = CheckKind &
-  Partial<Pick<NodeKind, 'effect' | 'stateful' | 'exits' | 'scopes'>>;
+  Partial<Pick<NodeKind, 'effect' | 'stateful' | 'exits' | 'scopes' | 'fallible' | 'modes'>> & {
+    readonly availability?: KindAvailability;
+  };
 
 export interface LintContext extends CheckContext {
   readonly kinds: (id: string) => LintKind | undefined;

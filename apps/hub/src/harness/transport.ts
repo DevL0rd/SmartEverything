@@ -1,4 +1,5 @@
 import { subscriptionConsumerRoute } from './subscription-consumer';
+import { SecretApiKeyVault } from './api-key-vault';
 import { authenticate } from './transport-actor';
 import { HarnessAttachments } from './attachments';
 import { centralCatalogue, centralTransport } from './central-transport';
@@ -8,11 +9,7 @@ import { harnessTargetKey } from '@smarteverything/domain';
 import { once } from 'node:events';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import {
-  ApiError,
-  DSH_WRITER_CLAIM_WRITE,
-  JSON_VALUE,
-} from '@smarteverything/domain';
+import { ApiError, DSH_WRITER_CLAIM_WRITE, JSON_VALUE } from '@smarteverything/domain';
 import type { HarnessTransportRequest } from '@smarteverything/domain';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { RawRoute } from '../server/http-server';
@@ -71,7 +68,7 @@ export function harnessTransportRoutes(
     },
   ];
 }
-export type HarnessTransportPorts = Pick<ServerContext, 'assistant'>;
+export type HarnessTransportPorts = Pick<ServerContext, 'assistant' | 'secrets'>;
 export async function harnessTransport(
   context: HarnessTransportPorts,
   service: HarnessService,
@@ -106,6 +103,10 @@ async function dispatchTransport(
 ): Promise<unknown> {
   const request = input.request;
   if (request.operation === 'tools') return centralCatalogue(service);
+  if (request.operation === 'api_key')
+    return {
+      value: (await new SecretApiKeyVault(context.secrets).read(request.reference)) ?? null,
+    };
   if (request.operation === 'extension_tree')
     return service.extensions.tree(request.kind, request.id, request.version);
   if (request.operation === 'configuration_report')
@@ -114,8 +115,7 @@ async function dispatchTransport(
       request.manifest,
       service.directory.bound(input.device_id, input.generation, input.runtime_instance),
     );
-  if (['context', 'tool', 'plugin_agent', 'plugin_agent_control'].includes(request.operation))
-    return centralTransport(service, input);
+  if (['context', 'tool'].includes(request.operation)) return centralTransport(service, input);
   if (request.operation === 'attachment') return attachment(context, service, input);
   if (request.operation === 'native_media_note') return mediaNote(context, service, input);
   if (request.operation === 'publish') return acceptPublication(service, input);
@@ -234,6 +234,17 @@ interface InferenceBody {
   readonly ordinaryRequest: boolean;
 }
 
+export const TOOL_CALL_BROKEN_PROVIDERS: readonly string[] = ['wafer'];
+
+export function upstreamBody(request: InferenceBody['request'], sessionId: string): object {
+  return {
+    ...request,
+    session_id: sessionId,
+    usage: { include: true },
+    provider: { ignore: TOOL_CALL_BROKEN_PROVIDERS },
+  };
+}
+
 function forwardUpstream(
   ports: InferencePorts,
   body: InferenceBody,
@@ -250,7 +261,7 @@ function forwardUpstream(
   return meteredFetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ ...body.request, usage: { include: true } }),
+    body: JSON.stringify(upstreamBody(body.request, body.claim.session_id)),
     redirect: 'error',
     signal,
   });

@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Stage, ValueRow } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
@@ -8,12 +9,12 @@ const body = (
     <ValueRow title="Last sync" value="2 minutes ago" caption="Xiaomi cloud" />
   </Col>
 );
-export const Rows = () => (
+export const Rows = (): ReactElement => (
   <Stage theme="dark" width={480}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     {body}
   </Stage>

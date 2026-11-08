@@ -1,10 +1,12 @@
-import { ApiError, type AiChatRow } from '@smarteverything/domain';
+import { randomUUID } from 'node:crypto';
+import { ApiError, type AiChatRow, type HarnessRuntimeReceipt } from '@smarteverything/domain';
 import { effectiveClientById } from '../../../server/person-access';
 import type { HarnessService } from '../../../harness/service';
 import { OwnEngineSelections } from '../../../harness/own-selection';
 import { openConversation } from '../../../harness/opening';
 import { sessionAttached } from '../../../harness/attach';
 import { currentControlCaller } from '../../../server/local-control-context';
+import { controlFailed, controlFinished, controlRefused, controlSent } from './runner-trace';
 
 export async function ensureNativeControlSession(
   service: HarnessService,
@@ -44,4 +46,33 @@ function controlClientId(
     .since(original.id, null)
     .toReversed()
     .find((row) => row.client_id !== null)?.client_id;
+}
+
+export async function nativeControl(
+  service: HarnessService,
+  chat: AiChatRow,
+  request:
+    { readonly kind: 'interrupt' | 'compact' } | { readonly kind: 'steer'; readonly text: string },
+): Promise<HarnessRuntimeReceipt> {
+  const { kind } = request;
+  const startedAt = performance.now();
+  const admitted = await ensureNativeControlSession(service, chat);
+  const state = service.state({ profileId: admitted.profile_id, role: 'member' }, admitted.id);
+  if (state.epoch === null) {
+    controlRefused(chat.id, kind);
+    throw new ApiError('conflict', 'Native writer authority is unavailable.');
+  }
+  controlSent(chat.id, kind, state.session_id, state.epoch);
+  try {
+    const receipt = await service.directory.execute(state.target, randomUUID(), {
+      ...request,
+      session_id: state.session_id,
+      expected_epoch: state.epoch,
+    });
+    controlFinished(chat.id, kind, startedAt);
+    return receipt;
+  } catch (cause) {
+    controlFailed(chat.id, kind, cause, startedAt);
+    throw cause;
+  }
 }

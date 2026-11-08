@@ -3,8 +3,8 @@ import { placeSlots, rowsHeight, type Metrics, type Slot } from './lane-layout';
 
 const metrics: Metrics = { gap: 12, line: 80 };
 
-const half = (rows: number): Slot => ({ kind: 'half', aspect: null, rows });
-const wide = (rows: number): Slot => ({ kind: 'wide', aspect: null, rows });
+const half = (rows: number): Slot => ({ kind: 'half', rows });
+const wide = (rows: number): Slot => ({ kind: 'wide', rows });
 
 describe('rowsHeight', () => {
   it('spans the board rows and the gaps between them', () => {
@@ -15,7 +15,7 @@ describe('rowsHeight', () => {
 
 describe('placeSlots', () => {
   it('gives a lone tile and a shared tile the full footprint height, never a short strip', () => {
-    const tile: Slot = { kind: 'tile', aspect: null, rows: 2 };
+    const tile: Slot = { kind: 'tile', rows: 2 };
     const [lone] = placeSlots([tile], 358, metrics);
     const [pair] = placeSlots([tile, tile], 358, metrics);
     expect(lone?.[0]?.height).toBe(172);
@@ -38,8 +38,10 @@ describe('placeSlots', () => {
     expect(rows[0]?.map((placed) => placed.height)).toStrictEqual([172, 172]);
   });
 
-  it('sizes an aspect widget from its width', () => {
-    const [row] = placeSlots([{ kind: 'wide', aspect: 2, rows: 2 }], 400, metrics);
-    expect(row?.[0]?.height).toBe(200);
+  it('gives a wide widget its tier height whatever its width', () => {
+    const [narrow] = placeSlots([wide(2)], 400, metrics);
+    const [broad] = placeSlots([wide(2)], 900, metrics);
+    expect(narrow?.[0]?.height).toBe(172);
+    expect(broad?.[0]?.height).toBe(172);
   });
 });

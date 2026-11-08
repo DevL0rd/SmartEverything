@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { basename, join, sep } from 'node:path';
 import type { AssistantOutFile, InboundMessage, PluginRow } from '@smarteverything/domain';
 
@@ -16,6 +15,7 @@ class InboundFileError extends Error {
 export interface InboundFileOptions {
   readonly plugin: PluginRow;
   readonly folder: string;
+  readonly tmp: string;
   readonly fetch: typeof fetch;
 }
 
@@ -60,7 +60,7 @@ async function saved(
   attachment: Attachment,
   options: InboundFileOptions,
   folder: string,
-): Promise<AssistantOutFile> {
+): Promise<InboundFile> {
   const own = join(folder, randomUUID());
   await mkdir(own, { mode: 0o700 });
   const path = join(own, basename(attachment.name));
@@ -68,8 +68,10 @@ async function saved(
   return { path };
 }
 
+export type InboundFile = Extract<AssistantOutFile, { readonly path: string }>;
+
 export interface InboundFiles {
-  readonly files: AssistantOutFile[];
+  readonly files: InboundFile[];
   readonly discard: () => Promise<void>;
 }
 
@@ -80,7 +82,7 @@ export async function inboundFiles(
   if (attachments.length === 0) {
     return { files: [], discard: () => Promise.resolve() };
   }
-  const folder = await mkdtemp(join(tmpdir(), 'smarteverything-inbound-'));
+  const folder = await mkdtemp(join(options.tmp, 'smarteverything-inbound-'));
   const discard = (): Promise<void> => rm(folder, { recursive: true, force: true });
   try {
     const files = await Promise.all(

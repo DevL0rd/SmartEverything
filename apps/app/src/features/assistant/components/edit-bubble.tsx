@@ -2,14 +2,18 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { TextInput, View, type TextInputKeyPressEvent } from 'react-native';
 import { type AssistantMessageRow, type AiMessageReference } from '@smarteverything/domain';
-import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
 import { useFocusOnMount } from '../../../components/use-focus-on-mount';
+import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { stopEditing } from '../data/editing';
 import { adjustedReferences } from '../references/spans';
 import { editMessage } from '../data/send';
+import type { RunPosition } from '../model/speaker';
 import { background } from '@smarteverything/logging';
+import { MetaAction, MetaDot, OWN_META_LINE, ownBubbleClass } from './message-parts';
+
+const EDIT_FRAME = 'min-w-55 border border-primary px-3 py-1.75';
 
 function enterPressed(event: TextInputKeyPressEvent): boolean {
   const native = event.nativeEvent;
@@ -78,16 +82,51 @@ function EditField({
           stopEditing();
         }
       }}
-      className="max-h-48 min-h-touch-min resize-none px-1 font-sans text-body text-on-surface outline-none"
+      className="max-h-48 resize-none p-0 font-sans text-body text-on-surface web:outline-none"
     />
+  );
+}
+
+function EditActions({
+  hasReply,
+  saving,
+  canSave,
+  save,
+}: {
+  readonly hasReply: boolean;
+  readonly saving: boolean;
+  readonly canSave: boolean;
+  readonly save: () => void;
+}): ReactNode {
+  return (
+    <View className={OWN_META_LINE}>
+      {hasReply ? (
+        <>
+          <Text variant="caption" tone="faint" numberOfLines={1} className="min-w-0 shrink">
+            Resends and replaces the reply
+          </Text>
+          <MetaDot />
+        </>
+      ) : null}
+      <MetaAction text="Cancel" onPress={stopEditing} />
+      <MetaDot />
+      <MetaAction
+        text={saving ? 'Saving' : 'Save'}
+        primary
+        disabled={saving || !canSave}
+        onPress={save}
+      />
+    </View>
   );
 }
 
 export function EditBubble({
   row,
+  position,
   hasReply,
 }: {
   readonly row: AssistantMessageRow;
+  readonly position: RunPosition;
   readonly hasReply: boolean;
 }): ReactNode {
   const [draft, setDraft] = useState({ text: row.text, references: row.references ?? [] });
@@ -100,23 +139,11 @@ export function EditBubble({
   };
   const { saving, save } = useSave(row, text, references);
   return (
-    <View className="w-full gap-2 rounded-xl bg-primary-container p-3">
-      <EditField text={text} setText={setText} saving={saving} save={save} />
-      {hasReply ? (
-        <Text variant="footnote" tone="variant">
-          Saving sends it again and replaces the reply below.
-        </Text>
-      ) : null}
-      <View className="flex-row justify-end gap-2">
-        <Button label="Cancel" variant="text" onPress={stopEditing} />
-        <Button
-          label="Save"
-          variant="filled"
-          disabled={text.trim() === ''}
-          loading={saving}
-          onPress={save}
-        />
+    <>
+      <View className={cn(ownBubbleClass(position), EDIT_FRAME)}>
+        <EditField text={text} setText={setText} saving={saving} save={save} />
       </View>
-    </View>
+      <EditActions hasReply={hasReply} saving={saving} canSave={text.trim() !== ''} save={save} />
+    </>
   );
 }

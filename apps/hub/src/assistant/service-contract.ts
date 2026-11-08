@@ -7,6 +7,7 @@ import type {
   MessageOrigin,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import type { HubLayout } from '../data-layout';
 import type { Store } from '../store/store';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { StreamEmit } from './conversation/stream';
@@ -24,7 +25,7 @@ export type TurnEnded = (event: StoredEvent, text: string, ok: boolean) => void;
 
 export interface AssistantServiceOptions {
   readonly store: Store;
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
   readonly announce: (status: AssistantStatus) => void;
   readonly emit: StreamEmit;
   readonly runtimeNotice?: (

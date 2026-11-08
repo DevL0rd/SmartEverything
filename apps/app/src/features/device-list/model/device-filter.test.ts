@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { DeviceKind, TableRow } from '@smarteverything/domain';
 import { deviceOf, type Device } from '../../../store/state';
-import { ANY, groupedDevices, isFiltering, kindOptions, type DeviceQuery } from './device-filter';
+import {
+  ANY,
+  NO_ROOM,
+  groupedDevices,
+  isFiltering,
+  kindOptions,
+  selectedRoom,
+  type DeviceQuery,
+} from './device-filter';
 
 const LIVING = 'room-living';
 const STUDY = 'room-study';
@@ -127,6 +135,18 @@ describe('devices grouped into room sections', () => {
     expect(idsOf(sections[0]?.devices ?? [])).toEqual(['strip']);
   });
 
+  it('shows only the selected device as one tile, whatever the other filters say', () => {
+    const query = { ...SHOW_ALL, device: 'lamp', text: 'fan', kind: 'Fan', offline: true };
+    const sections = groupedDevices(DEVICES, ROOMS, query);
+    expect(sections.map((section) => section.key)).toEqual([LIVING]);
+    expect(sections[0]?.lights).toBeNull();
+    expect(idsOf(sections[0]?.devices ?? [])).toEqual(['lamp']);
+  });
+
+  it('shows nothing when the selected device is not in the list', () => {
+    expect(groupedDevices(DEVICES, ROOMS, { ...SHOW_ALL, device: 'gone' })).toEqual([]);
+  });
+
   it('keeps long room names whole in the section title', () => {
     expect(sectionOf(SHOW_ALL, STUDY).title).toBe(LONG_NAME);
   });
@@ -145,6 +165,16 @@ describe('what counts as filtering', () => {
     expect(isFiltering({ ...SHOW_ALL, text: '   ' })).toBe(false);
     expect(isFiltering({ ...SHOW_ALL, kind: 'Fan' })).toBe(true);
     expect(isFiltering({ ...SHOW_ALL, offline: true })).toBe(true);
+    expect(isFiltering({ ...SHOW_ALL, device: 'lamp' })).toBe(true);
+  });
+});
+
+describe('the room selected on the map', () => {
+  it('is a real room only, never the any or no-room filter, and never while a device is picked', () => {
+    expect(selectedRoom({ ...SHOW_ALL, room: LIVING })).toBe(LIVING);
+    expect(selectedRoom(SHOW_ALL)).toBeNull();
+    expect(selectedRoom({ ...SHOW_ALL, room: NO_ROOM })).toBeNull();
+    expect(selectedRoom({ ...SHOW_ALL, room: LIVING, device: 'lamp' })).toBeNull();
   });
 });
 

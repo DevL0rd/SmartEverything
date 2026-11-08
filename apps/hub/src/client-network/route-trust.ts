@@ -27,8 +27,8 @@ export function canonicalEndpoint(hubUrl: string): HubEndpoint {
   if (url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '')
     throw new HubTransportError('Canonical hub URL contains credentials, query or fragment');
   if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
-    return { kind: 'loopback', url: url.origin };
-  if (url.protocol !== 'https:') throw new HubTransportError('A remote node hub requires HTTPS');
+    throw new HubTransportError('A computer cannot reach its hub over loopback');
+  if (url.protocol !== 'https:') throw new HubTransportError('A node hub requires HTTPS');
   return { kind: 'remote', url: url.origin };
 }
 async function confirmsRevocation(response: Response): Promise<boolean> {
@@ -40,7 +40,6 @@ export async function bootstrapNodeTrust(
   identity: NodeRouteIdentity,
 ): Promise<NativeHubRouteConfiguration | null> {
   const canonical = canonicalEndpoint(identity.hubUrl);
-  if (new URL(canonical.url).protocol !== 'https:') return null;
   const response = await fetch(new URL(NODE_CONNECTION_PATH, canonical.url), {
     headers: { authorization: `Bearer ${identity.token}` },
     redirect: 'error',
@@ -65,9 +64,10 @@ export function routeConfiguration(
   const scopeId = `node:${identity.deviceId}`;
   const endpoints = new Map<string, HubEndpoint>([
     [canonical.url, canonical],
-    ...answer.connection.endpoints
-      .filter((endpoint) => endpoint.kind !== 'loopback')
-      .map((endpoint): [string, HubEndpoint] => [new URL(endpoint.url).origin, endpoint]),
+    ...answer.connection.endpoints.map((endpoint): [string, HubEndpoint] => [
+      new URL(endpoint.url).origin,
+      endpoint,
+    ]),
   ]);
   return NATIVE_HUB_ROUTE_CONFIGURATION.parse({
     canonicalOrigin: canonical.url,

@@ -62,16 +62,20 @@ function failureOf(error: Error): string {
 }
 
 const commandRunner =
-  (timeout: number): RunCommand =>
+  (timeout: number | null): RunCommand =>
   (file, args) =>
     new Promise((resolve, reject) => {
       const startedAt = Date.now();
       const program = path.basename(file);
-      log.debug('command.started', { program, argumentCount: args.length, timeoutMs: timeout });
+      log.debug('command.started', () => ({
+        program,
+        argumentCount: args.length,
+        ...(timeout === null ? {} : { timeoutMs: timeout }),
+      }));
       execFile(
         file,
         [...args],
-        { timeout, windowsHide: true, encoding: 'utf8' },
+        { ...(timeout === null ? {} : { timeout }), windowsHide: true, encoding: 'utf8' },
         (error, stdout, stderr) => {
           const durationMs = Date.now() - startedAt;
           if (error !== null) {
@@ -102,6 +106,8 @@ const commandRunner =
 const runCommand = commandRunner(COMMAND_TIMEOUT_MS);
 
 export const runAwaitingApproval = commandRunner(APPROVAL_TIMEOUT_MS);
+
+export const runUntilExit = commandRunner(null);
 
 function errorNameOf(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;

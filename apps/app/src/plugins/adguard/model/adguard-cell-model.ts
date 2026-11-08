@@ -21,22 +21,20 @@ export interface AdGuardCell {
   readonly chip: CellChip;
   readonly tone: MedallionTone;
   readonly ratio: number | null;
-  readonly line: string;
+  readonly line: string | null;
   readonly figures: readonly CellFigure[];
   readonly topBlocked: readonly AdGuardTopEntry[];
   readonly topClients: readonly AdGuardTopEntry[];
   readonly lists: string | null;
   readonly bars: readonly HourBar[];
   readonly spoken: string;
-  readonly reason: string | null;
 }
 
-const TOP_ROWS = 3;
 const LIVE_BARS = 40;
 const RATE_WINDOW = 30;
 const SECONDS_PER_MINUTE = 60;
 
-function staleChip(connection: AdGuardSnapshot['connection']): CellChip {
+function staleChipOf(connection: AdGuardSnapshot['connection']): CellChip {
   switch (connection.state) {
     case 'paused':
       return { tone: 'warning', label: 'Paused' };
@@ -50,6 +48,11 @@ function staleChip(connection: AdGuardSnapshot['connection']): CellChip {
     case 'unreachable':
       return { tone: 'neutral', label: 'Not reachable' };
   }
+}
+
+function staleChip(connection: AdGuardSnapshot['connection'], label: string | null): CellChip {
+  const chip = staleChipOf(connection);
+  return label === null ? chip : { tone: chip.tone, label };
 }
 
 function listsOf(snapshot: AdGuardSnapshot): string | null {
@@ -93,32 +96,34 @@ function spokenOf(chip: CellChip, line: string): string {
 }
 
 function staleCell(snapshot: AdGuardSnapshot, now: number): AdGuardCell {
-  const chip = staleChip(snapshot.connection);
-  const line = staleCaptionOf(snapshot.connection, now)?.long ?? 'Not reachable';
+  const caption = staleCaptionOf(snapshot.connection, now);
+  const chip = staleChip(snapshot.connection, caption?.short ?? null);
+  const line = caption?.long ?? null;
   return {
     kind: 'stale',
     chip,
     tone: 'neutral',
     ratio: null,
-    line,
+    line: null,
     figures: [],
     topBlocked: [],
     topClients: [],
     lists: null,
     bars: [],
-    spoken: spokenOf(chip, line),
-    reason: line,
+    spoken: ['AdGuard Home', line ?? chip.label.toLowerCase()].join(', '),
   };
 }
+
+const NOT_BLOCKING = 'Ads and trackers are not blocked';
 
 function lineOf(snapshot: AdGuardSnapshot, kind: AdGuardCellKind): string {
   const { stats, status } = snapshot;
   if (kind === 'off') {
-    return 'Ad blocking is off';
+    return NOT_BLOCKING;
   }
   if (kind === 'paused') {
     const until = status?.pausedUntil;
-    return until === null || until === undefined ? 'Paused' : `Paused · resumes ${clock(until)}`;
+    return until === null || until === undefined ? NOT_BLOCKING : `Resumes ${clock(until)}`;
   }
   return stats === null
     ? 'Ad blocking is on'
@@ -154,11 +159,10 @@ export function adguardCellOf(snapshot: AdGuardSnapshot, now: number): AdGuardCe
     ratio: stats === null ? null : stats.blockedPercent / 100,
     line,
     figures,
-    topBlocked: stats?.topBlocked.slice(0, TOP_ROWS) ?? [],
-    topClients: stats?.topClients.slice(0, TOP_ROWS) ?? [],
+    topBlocked: stats?.topBlocked ?? [],
+    topClients: stats?.topClients ?? [],
     lists: listsOf(snapshot),
     bars: stats === null ? [] : hourlyStack(stats, snapshot.at),
     spoken: spokenOf(chip, line),
-    reason: null,
   };
 }

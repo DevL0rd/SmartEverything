@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { Pressable, View, type AccessibilityActionEvent, type ViewProps } from 'react-native';
 import type { IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
@@ -59,10 +59,12 @@ function Seam({
   kind,
   vertical,
   onPress,
+  opener,
 }: {
   readonly tv: Television;
   readonly kind: RockerKind;
   readonly vertical: boolean;
+  readonly opener: RefObject<View | null> | undefined;
   readonly onPress: (() => void) | null;
 }): ReactNode {
   const text = seamText(tv, kind);
@@ -85,6 +87,7 @@ function Seam({
   }
   return (
     <Pressable
+      ref={opener}
       disabled={tv.view.mode !== 'on'}
       onPress={onPress}
       hitSlop={SEAM_SLOP}
@@ -131,6 +134,7 @@ export function Rocker({
   onSeam,
   seamButton = false,
   onHeld,
+  opener,
 }: {
   readonly tv: Television;
   readonly kind: RockerKind;
@@ -138,6 +142,7 @@ export function Rocker({
   readonly onSeam: (() => void) | null;
   readonly seamButton?: boolean;
   readonly onHeld?: () => void;
+  readonly opener?: RefObject<View | null>;
 }): ReactNode {
   const pair = PAIRS[kind];
   const vertical = orientation === 'vertical';
@@ -145,21 +150,25 @@ export function Rocker({
   const first = vertical ? { name: pair.up, icon: plus } : { name: pair.down, icon: minus };
   const last = vertical ? { name: pair.down, icon: minus } : { name: pair.up, icon: plus };
   const held = onHeld === undefined ? {} : { onHeld };
+  const native = isNative();
+  const [group, seam] = native ? [opener, undefined] : [undefined, opener];
+  const press = seamButton ? onSeam : null;
   return (
     <View
+      ref={group}
       {...groupProps(tv, kind, onSeam)}
       className={cn(
         'overflow-hidden rounded-full bg-surface-3',
         KEY_EDGE,
-        vertical ? 'h-42 w-14' : 'h-12 w-30',
+        vertical ? 'h-42 w-14' : 'h-control-h w-32',
       )}
     >
       <View
-        {...(isNative() ? HIDDEN_FROM_READERS : {})}
+        {...(native ? HIDDEN_FROM_READERS : {})}
         className={cn('flex-1', vertical ? 'flex-col' : 'flex-row')}
       >
         <RemoteKey tv={tv} look="segment" {...first} {...held} />
-        <Seam tv={tv} kind={kind} vertical={vertical} onPress={seamButton ? onSeam : null} />
+        <Seam tv={tv} kind={kind} vertical={vertical} onPress={press} opener={seam} />
         <RemoteKey tv={tv} look="segment" {...last} {...held} />
       </View>
     </View>

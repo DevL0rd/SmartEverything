@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import {
+  computerRoleOfModel,
   isCamera,
   isClimateDevice,
   isScale,
@@ -99,7 +100,7 @@ export function useSession(): Session {
   return session;
 }
 
-const selectIsOwner = (state: StoreState): boolean => state.session?.client.role === 'owner';
+export const selectIsOwner = (state: StoreState): boolean => state.session?.client.role === 'owner';
 
 export function useIsOwner(): boolean {
   return useStoreSelector(selectIsOwner);
@@ -140,14 +141,18 @@ export function useDevices(filter: DeviceFilter = {}): readonly Device[] {
   return useStoreSelector(deviceSelector(filter), shallowEqual);
 }
 
-const listedIn = memoOnInputs(devicesTable, (state): readonly Device[] => {
+export function isPhysicalDevice(device: Pick<Device, 'model'>): boolean {
+  return computerRoleOfModel(device.model) !== 'hub';
+}
+
+export const listedDevicesIn = memoOnInputs(devicesTable, (state): readonly Device[] => {
   const devices = rowsOf(state.tables.devices);
   const replaced = replacedIds(devices);
-  return devices.filter((device) => !replaced.has(device.id));
+  return devices.filter((device) => isPhysicalDevice(device) && !replaced.has(device.id));
 });
 
 export function useListedDevices(): readonly Device[] {
-  return useStoreSelector(listedIn, shallowEqual);
+  return useStoreSelector(listedDevicesIn, shallowEqual);
 }
 
 export function useDevice(deviceId: string): Device | null {

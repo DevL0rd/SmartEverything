@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
 import {
   CODEX_PROVIDER_TURN,
+  NATIVE_DEFAULT_MODEL,
   type CodexProviderTurn,
   type CodexAiExecute,
   type CodexAiRead,
@@ -13,6 +13,7 @@ import type { Logger } from '@smarteverything/logging';
 import { CodexSessions, toolSignature } from './sessions';
 import { CodexClient } from './client';
 import { CodexJob } from './job';
+import type { CodexSites } from './sites';
 import { launchCodex, type CodexProcessOptions } from './process';
 import { requireSubscription, requireSubscriptionInference } from './account';
 import { modelsOf } from './models';
@@ -23,7 +24,8 @@ import { CodexRuntimeError } from './errors';
 import { providerRead, providerControl } from './provider-controls';
 import { CodexInputs } from './inputs';
 import { providerMetadata } from './provider-metadata';
-import { readRateLimits, updatedRateLimits, subscriptionBillingBlock } from './rate-limits';
+import { readRateLimits } from './rate-limits';
+import { CodexSubscriptionUsage } from './subscription-usage';
 import { ProviderLog } from './provider-log';
 import { openThread } from './provider-thread';
 import { CodexAdmission } from './provider-admission';
@@ -33,7 +35,7 @@ import { codexNotificationJob } from './provider-routing';
 import { messageOf } from '@smarteverything/logging';
 export interface CodexProviderRuntimeOptions extends CodexProcessOptions {
   readonly deviceId: string;
-  readonly dataDirectory: string;
+  readonly sites: CodexSites;
   readonly log: Logger;
   readonly publish: (event: CodexProviderEvent) => void;
   readonly changed: (reason: string | null) => void;
@@ -47,7 +49,8 @@ export class CodexProvider {
   private generation = randomUUID();
   private configuredOptions: TurnOptions = {};
   private observedModels: readonly ComputerRuntimeModel[] = [];
-  private rateLimits: RpcRecord | null = null;
+  private defaultModel: string | null = null;
+  private readonly usage: CodexSubscriptionUsage;
   private readonly admission: CodexAdmission;
   private readonly commands: CodexProviderCommands;
   private readonly jobs = new Map<string, CodexJob>();
@@ -55,7 +58,8 @@ export class CodexProvider {
   readonly sessions: CodexSessions;
   constructor(private readonly options: CodexProviderRuntimeOptions) {
     this.trace = new ProviderLog(options.log);
-    this.sessions = new CodexSessions(join(options.dataDirectory, 'codex'));
+    this.usage = new CodexSubscriptionUsage(options.now);
+    this.sessions = new CodexSessions(options.sites.directory);
     this.admission = new CodexAdmission(options.deviceId, this.jobs);
     this.commands = new CodexProviderCommands({
       ...options,
@@ -63,7 +67,6 @@ export class CodexProvider {
       admission: this.admission,
       models: (): Promise<readonly ComputerRuntimeModel[]> => this.models(),
       observedModels: (): readonly ComputerRuntimeModel[] => this.observedModels,
-      ordinaryAllowed: (): boolean => subscriptionBillingBlock(this.rateLimits) === null,
       cleanupFailed: (cause): void => {
         this.options.log.error('input.cleanup_failed', cause);
       },
@@ -102,17 +105,20 @@ export class CodexProvider {
     const startedAt = performance.now();
     const client = await this.ready();
     await requireSubscription(client);
-    this.rateLimits = await readRateLimits(client);
-    this.observedModels = await modelsOf(client, this.options.deviceId);
-    const blocked = subscriptionBillingBlock(this.rateLimits);
-    this.trace.models(this.observedModels.length, blocked !== null, startedAt);
-    if (blocked !== null)
-      return this.observedModels.map((model) => ({
-        ...model,
-        available: false,
-        reason: blocked.reason,
-      }));
+    await this.loadModels(client);
+    this.trace.models(this.observedModels.length, startedAt);
     return [...this.observedModels];
+  }
+  private async loadModels(client: CodexClient): Promise<void> {
+    const { models, defaultModel } = await modelsOf(client, this.options.deviceId);
+    this.observedModels = models;
+    this.defaultModel = defaultModel;
+  }
+  private resolveModel(turn: CodexProviderTurn): CodexProviderTurn {
+    if (turn.model !== NATIVE_DEFAULT_MODEL) return turn;
+    if (this.defaultModel === null)
+      throw new CodexRuntimeError('model', 'Choose a Codex model for this computer.');
+    return { ...turn, model: this.defaultModel };
   }
   modalities(): ComputerRuntimeModel['input_modalities'] {
     return [...new Set(this.observedModels.flatMap((model) => model.input_modalities))];
@@ -140,17 +146,20 @@ export class CodexProvider {
     }
   }
   private async submit(
-    turn: CodexProviderTurn,
+    request: CodexProviderTurn,
   ): Promise<{ readonly job_id: string; readonly session_id: string }> {
     const client = await this.ready();
     const location = await executionOptions(
-      turn.options,
-      join(this.options.dataDirectory, 'codex', 'workspaces', turn.chat_id),
+      request.options,
+      this.options.sites.chatWorkspace(request.profile_id, request.chat_id),
     );
-    await requireSubscriptionInference(client, location.cwd);
-    validateModel(turn, await this.models());
+    const rates = await requireSubscriptionInference(client, location.cwd);
+    this.usage.observe(rates);
+    const models = await this.models();
+    const turn = this.resolveModel(request);
+    validateModel(turn, models);
     await this.sessions.checkTurn(turn, location.cwd, location.roots);
-    const inputs = new CodexInputs(join(this.options.dataDirectory, 'codex', 'inputs'));
+    const inputs = new CodexInputs(this.options.sites.inputs);
     try {
       const input = await inputs.prepare(turn);
       const thread = await openThread(turn, client, location);
@@ -195,9 +204,9 @@ export class CodexProvider {
         });
       },
     });
-    job.usage = { ...job.usage, rate_limits: this.rateLimits };
+    job.usage = { ...job.usage, rate_limits: this.usage.raw };
     this.retain(job);
-    job.accepted();
+    job.accepted(this.usage.observation);
     return job;
   }
   private async startTurn(
@@ -205,10 +214,13 @@ export class CodexProvider {
     turn: CodexProviderTurn,
     input: RpcRecord[],
   ): Promise<void> {
-    await requireSubscriptionInference(job.client, job.cwd).catch((cause: unknown): never => {
-      job.rejected(messageOf(cause));
-      throw cause;
-    });
+    const rates = await requireSubscriptionInference(job.client, job.cwd).catch(
+      (cause: unknown): never => {
+        job.rejected(messageOf(cause));
+        throw cause;
+      },
+    );
+    if (rates !== null) job.publishRateObservation(rates, this.usage.observe(rates));
     try {
       const result = TURN_REPLY.parse(
         await job.client.request('turn/start', {
@@ -223,6 +235,10 @@ export class CodexProvider {
       job.started(result.turn.id);
       this.trace.turnStarted(turn, job.threadId, result.turn.id);
     } catch (cause) {
+      if (cause instanceof CodexRuntimeError && !cause.uncertain) {
+        job.rejected(cause.message);
+        throw cause;
+      }
       this.trace.turnUnconfirmed(turn, job.threadId, cause);
       job.lost('The Codex turn submission was not confirmed; explicit reconciliation is required.');
       throw cause;
@@ -281,9 +297,10 @@ export class CodexProvider {
       return this.commands.read(request.scope, request.operation_id);
     if (request.operation === 'provider_read')
       return providerRead(this.job(request.job_id), request.query, this.sessions);
-    await this.ready();
-    await this.models();
-    return providerMetadata(this.rateLimits, this.commands.revision());
+    const client = await this.ready();
+    await requireSubscription(client);
+    await this.refreshRates(client);
+    return providerMetadata(this.usage.raw, this.commands.revision(), this.usage.observation);
   }
   stop(): void {
     this.trace.stopping(this.jobs.size, this.client !== null, this.epoch);
@@ -305,7 +322,7 @@ export class CodexProvider {
       this.job(event.job_id).emit({
         kind: 'work_item',
         type: 'nativeSkillCatalogue',
-        payload: { metadata: providerMetadata(this.rateLimits, this.commands.revision()) },
+        payload: { metadata: providerMetadata(this.usage.raw, this.commands.revision()) },
       });
   }
   private retain(job: CodexJob): void {
@@ -322,7 +339,7 @@ export class CodexProvider {
     const epoch = this.epoch;
     this.trace.initializing(epoch);
     const client = new CodexClient({
-      process: await launchCodex(this.options, 'provider'),
+      process: await launchCodex(this.options, this.options.sites.home, 'provider'),
       log: this.options.log,
       mode: 'provider',
       received: (method, params, id): void => {
@@ -340,8 +357,7 @@ export class CodexProvider {
       this.requireEpoch(epoch);
       await client.initialize();
       await requireSubscription(client);
-      this.observedModels = await modelsOf(client, this.options.deviceId);
-      this.rateLimits = await readRateLimits(client);
+      await this.loadModels(client);
       this.requireEpoch(epoch);
       this.generation = randomUUID();
       this.client = client;
@@ -370,17 +386,12 @@ export class CodexProvider {
     if (current !== undefined) current.receive(method, params, id);
     else if (id !== null)
       this.client?.reject(id, 'No authorized SmartEverything job owns this Codex request.');
-    if (method === 'account/rateLimits/updated') this.updateRates(params);
+    if (method === 'account/rateLimits/updated')
+      this.usage.update(params['rateLimits'], this.jobs.values());
   }
-  private updateRates(params: RpcRecord): void {
-    this.rateLimits = updatedRateLimits(this.rateLimits, params['rateLimits']);
-    for (const job of this.jobs.values())
-      if (job.active) {
-        job.usage = {
-          ...job.usage,
-          rate_limits: updatedRateLimits(job.usage.rate_limits, params['rateLimits']),
-        };
-        job.emit({ kind: 'usage', usage: job.usage });
-      }
+  private async refreshRates(client: CodexClient): Promise<void> {
+    const limits = await readRateLimits(client);
+    if (this.client !== client) return;
+    this.usage.observe(limits);
   }
 }

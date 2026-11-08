@@ -27,7 +27,7 @@ export function projectCallerAuthority(
     const chat = store.aiChats.chat(chatId);
     if (chat.profile_id !== profileId)
       throw new ApiError('forbidden', 'The managed project belongs to a different profile.');
-    store.aiChats.assertWorkAllowed(chatId);
+    store.aiChats.assertWorkAllowed(chatId, write ? 'write' : 'read');
     validateCaller(caller, chatId);
     if (write && chat.engine.kind === 'dsh' && chat.engine.permission.sandbox === 'read-only')
       throw new ApiError(

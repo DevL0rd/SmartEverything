@@ -52,6 +52,37 @@ describe('the server domain typed on the connect screen', () => {
   });
 });
 
+describe('a server address that points at this device', () => {
+  it.each(['http://127.0.0.1:7880', 'http://localhost:7880', 'http://[::1]:7880'])(
+    'is refused like any plain http address: %s',
+    (typed) => {
+      expect(serverAddressOf(typed, false)).toEqual({
+        ok: false,
+        problem: 'Use https:// for a server on another computer',
+      });
+    },
+  );
+
+  it('is refused in a scanned pairing code', () => {
+    const scanned = JSON.stringify({
+      url: 'http://127.0.0.1:7880',
+      code: 'ABCD-2345',
+      identity: {
+        id: 'a'.repeat(64),
+        protocolVersion: 1,
+        name: 'Home',
+        tls: {
+          serverName: `smarteverything-${'b'.repeat(32)}.local`,
+          certificateSha256: 'c'.repeat(64),
+          publicKeySha256: 'a'.repeat(64),
+        },
+      },
+      endpoints: [{ kind: 'lan', url: 'http://127.0.0.1:7880' }],
+    });
+    expect(pairingFromScan(scanned).ok).toBe(false);
+  });
+});
+
 describe('a typed pairing code', () => {
   it('accepts a code typed in any case, with or without the dash', () => {
     expect(pairingCodeFrom('abcd efgh')).toEqual({ ok: true, code: 'ABCD-EFGH' });
@@ -68,11 +99,13 @@ describe('a typed pairing code', () => {
 });
 
 describe('a server address', () => {
-  it('refuses plain http except for this machine or a development build', () => {
+  it('refuses plain http except for a development build', () => {
     expect(serverUrlProblem('http://home.example.com', false)).toBe(
       'Use https:// for a server on another computer',
     );
-    expect(serverUrlProblem('http://127.0.0.1:47321', false)).toBeNull();
+    expect(serverUrlProblem('http://127.0.0.1:47321', false)).toBe(
+      'Use https:// for a server on another computer',
+    );
     expect(serverUrlProblem('http://192.168.1.4:47321', true)).toBeNull();
   });
 

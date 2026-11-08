@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toolTimelineDetails } from '../../src/assistant/conversation/tool-timeline-details';
 
 describe('tool timeline details', () => {
-  it('shows the input of a settings tool and hides only its secret fields', () => {
+  it('shows the input of a settings tool exactly as the tool received it', () => {
     const details = toolTimelineDetails(
       'settings_edit',
       {
@@ -12,9 +12,8 @@ describe('tool timeline details', () => {
     );
 
     expect(details.input).toContain('"theme": "dark"');
-    expect(details.input).toContain('"apiKey": "[redacted]"');
-    expect(details.input).not.toContain('sk-live-value');
-    expect(details.redacted).toBe(true);
+    expect(details.input).toContain('"apiKey": "sk-live-value"');
+    expect(details.redacted).toBe(false);
   });
 
   it('leaves a tool input without secret fields untouched', () => {

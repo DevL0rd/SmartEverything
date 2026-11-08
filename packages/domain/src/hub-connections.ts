@@ -33,12 +33,6 @@ const ENDPOINT_URL = z.url({ protocol: /^https?$/ }).refine((value) => {
 
 export const HUB_ENDPOINT = z.discriminatedUnion('kind', [
   z.object({
-    kind: z.literal('loopback'),
-    url: ENDPOINT_URL.refine((value) =>
-      ['127.0.0.1', '[::1]', 'localhost'].includes(new URL(value).hostname),
-    ),
-  }),
-  z.object({
     kind: z.literal('lan'),
     url: ENDPOINT_URL.refine((value) => new URL(value).protocol === 'https:'),
   }),

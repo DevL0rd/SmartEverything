@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { BrowserStatus } from '@smarteverything/domain';
+import type { BrowserStatus, ChatServer } from '@smarteverything/domain';
 import type { BrowserSelection } from './browser-selection';
 
 export const BROWSER_TAB_ID = z.uuid().brand<'BrowserTabId'>();
@@ -16,7 +16,7 @@ export const EMPTY_BROWSER_STATUS: BrowserStatus = {
 type BrowserTabSource =
   | { readonly kind: 'blank' }
   | { readonly kind: 'public'; readonly url: string }
-  | { readonly kind: 'project'; readonly path: string };
+  | { readonly kind: 'project'; readonly path: string; readonly server?: ChatServer };
 interface BrowserTabBase {
   readonly id: BrowserTabId;
   readonly title: string;

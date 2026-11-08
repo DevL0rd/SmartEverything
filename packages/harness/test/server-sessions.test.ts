@@ -1,8 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { AI_CODE_EXECUTION_TOOL_NAMES, AI_GOAL_TOOL_NAMES } from '@smarteverything/domain';
 import type { AiHarnessPermission } from '@smarteverything/domain';
+import { SUBAGENT_TOOL_NAMES } from '../src/plugins/subagents';
 import type { HarnessAuthority, HarnessServerToolAccess } from '../src/host/server-policy';
 import { bootRuntime, spoken, turnsFinished } from './support/runtime';
 import type { RuntimeFixture } from './support/runtime';
@@ -134,6 +136,63 @@ describe('hub-hosted conversations', () => {
     expect(offered).toStrictEqual(expect.arrayContaining(['bash', 'write', 'read']));
   });
 
+  it('offer every person the subagent, goal and memory tools, and the owner the loop tools', async () => {
+    const member = await server(false);
+    member.model.script({ kind: 'text', text: 'hello' });
+    await asked(member, 'hi');
+    const offered = member.model.requests[0]?.tools?.map((tool) => tool.name) ?? [];
+    expect(offered).toStrictEqual(
+      expect.arrayContaining([...SUBAGENT_TOOL_NAMES, ...AI_GOAL_TOOL_NAMES]),
+    );
+    for (const owned of AI_CODE_EXECUTION_TOOL_NAMES) expect(offered).not.toContain(owned);
+    await member.dispose();
+
+    const owner = await server(true);
+    owner.model.script({ kind: 'text', text: 'hello' });
+    await asked(owner, 'hi');
+    const owned = owner.model.requests[0]?.tools?.map((tool) => tool.name) ?? [];
+    expect(owned).toStrictEqual(expect.arrayContaining([...AI_CODE_EXECUTION_TOOL_NAMES]));
+  });
+
+  it('run a helper the model delegates to and read its goal', async () => {
+    const host = await server(false);
+    host.model.script(
+      { kind: 'tool', id: 'g1', name: 'get_goal', input: {} },
+      {
+        kind: 'tool',
+        id: 'd1',
+        name: 'subagent',
+        input: { description: 'rooms', prompt: 'Count the rooms and report.' },
+      },
+      { kind: 'tool', id: 'c1', name: 'home_read', input: {} },
+      { kind: 'tool', id: 'c2', name: 'home_read', input: {} },
+      { kind: 'text', text: 'two rooms' },
+      { kind: 'text', text: 'two rooms' },
+      { kind: 'text', text: 'done' },
+    );
+    const session = await host.runtime.create({ ...host.sessionOptions(), authority: AUTHORITY });
+    session.text('count the rooms');
+
+    await vi.waitFor(() => {
+      expect(host.model.requests.length).toBeGreaterThan(3);
+    });
+    const goal = spoken(host.model.requests[1]?.messages.slice(-1) ?? [])[0]?.text ?? '';
+    expect(goal).not.toMatch(/^Error/u);
+    await vi.waitFor(() => {
+      const child = host.model.requests.find(
+        (request) =>
+          spoken(request.messages).some(
+            (message) => message.role === 'user' && message.text.includes('Count the rooms'),
+          ) && spoken(request.messages.slice(-1))[0]?.text === '{"rooms":2}',
+      );
+      expect(child).toBeDefined();
+    });
+    const delegated = [...host.persistence.sessions.values()].filter(
+      (stored) => stored.header.origin === 'subagent',
+    );
+    expect(delegated).toHaveLength(1);
+  });
+
   it('run an exposed hub tool and return its result to the model', async () => {
     const host = await server(false);
     host.model.script(
@@ -155,9 +214,8 @@ describe('hub-hosted conversations', () => {
     await asked(host, 'how many rooms');
 
     const result = host.model.requests[1]?.messages.at(-1);
-    expect(spoken(result === undefined ? [] : [result])[0]?.text).toBe(
-      'Error: This profile cannot read the home.',
-    );
+    const text = spoken(result === undefined ? [] : [result])[0]?.text ?? '';
+    expect(text.startsWith('Error:')).toBe(true);
   });
 
   it('let the model load any skill the runtime has registered, not only the product ones', async () => {

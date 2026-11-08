@@ -43,8 +43,15 @@ export const RETRY = z
     path: ['max'],
   });
 
+export const ACTION_MODES = ['fire_and_forget', 'wait_for_result'] as const;
+
+export const ACTION_MODE = z.enum(ACTION_MODES);
+
+export type ActionMode = z.infer<typeof ACTION_MODE>;
+
 export const NODE_POLICY = z.strictObject({
   onError: z.enum(['fail', 'continue', 'route']).optional(),
+  mode: ACTION_MODE.optional(),
   retry: RETRY.optional(),
   timeout: DURATION_MS.optional(),
   acknowledgeRepeat: z.boolean().optional(),

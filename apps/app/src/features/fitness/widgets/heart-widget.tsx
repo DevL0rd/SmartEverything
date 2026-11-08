@@ -36,7 +36,7 @@ function Baseline({ view, big }: { readonly view: HeartView; readonly big: boole
     return null;
   }
   return (
-    <View className="gap-0.5">
+    <View>
       <Text variant="footnote" tone="variant" numberOfLines={1}>
         {view.resting ? 'Resting' : 'Average'}
       </Text>
@@ -57,7 +57,7 @@ function TodayRange({ view }: { readonly view: HeartView }): ReactNode {
   const { range } = view;
   const resting = view.trend.latest?.value ?? null;
   return (
-    <View className="gap-1.5">
+    <View className="gap-0.5">
       <Text variant="footnote" tone="variant" numberOfLines={1}>
         {range.day === view.day ? 'Range today' : 'Range'}
       </Text>
@@ -124,11 +124,11 @@ function Tall({ view }: { readonly view: HeartView }): ReactNode {
 function Row({ view, wide }: { readonly view: HeartView; readonly wide: boolean }): ReactNode {
   return (
     <View className="flex-1 flex-row gap-5">
-      <View className={wide ? 'w-1/4 justify-center' : 'min-w-0 shrink justify-center'}>
+      <View className={wide ? 'w-1/4' : 'min-w-0 shrink'}>
         <Baseline view={view} big />
       </View>
       {wide ? <Trend view={view} /> : null}
-      <View className={wide ? 'w-1/3 justify-center' : 'min-w-0 flex-1 justify-center'}>
+      <View className={wide ? 'w-1/3' : 'min-w-0 flex-1'}>
         <TodayRange view={view} />
       </View>
     </View>
@@ -165,7 +165,7 @@ export function HeartWidget(): ReactNode {
       icon="heartPulse"
       accent="heart"
       href={href.fitnessPage('heart', { day })}
-      action={range === null ? undefined : <AgeBadge day={range.day} selected={day} />}
+      badge={range === null ? undefined : <AgeBadge day={range.day} selected={day} />}
     >
       {range === null ? (
         <Text variant="callout" tone="variant">

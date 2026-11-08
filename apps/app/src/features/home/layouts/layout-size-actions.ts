@@ -52,7 +52,7 @@ export async function resetLayoutSize(
 ): Promise<void> {
   const before = context.layout ?? EMPTY;
   const accepted = await confirm({
-    title: `Reset ${BOARD_LABELS[board]} to the default?`,
+    title: `Reset ${BOARD_LABELS[board]} to the built-in arrangement?`,
     body: resetConfirmBody(board),
     confirmLabel: 'Reset layout',
     tone: 'destructive',
@@ -61,7 +61,7 @@ export async function resetLayoutSize(
   log.info('home.layouts.reset', { board });
   context.save(withDefaultArrangement(before, board));
   notify({
-    message: `${BOARD_LABELS[board]} is back to the default`,
+    message: `${BOARD_LABELS[board]} is back to the built-in arrangement`,
     undo: () => {
       context.save(before);
     },

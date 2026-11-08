@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { View } from 'react-native';
 import type { Idiom } from '../design/tokens';
+import { floatingSheetFrame } from './compact-panel';
 
 export interface Rect {
   readonly x: number;
@@ -93,11 +94,13 @@ export interface Insets {
 
 export interface PanelSize {
   readonly width: number;
+  readonly dialogWidth?: number;
   readonly maxHeight: number;
   readonly minHeight: number;
 }
 
 export type PanelPresentation = 'popover' | 'dialog' | 'sheet';
+export type PointerPanelPlacement = 'above' | 'below' | 'center';
 
 export interface PanelPlacement {
   readonly presentation: PanelPresentation;
@@ -107,7 +110,6 @@ export interface PanelPlacement {
 export const PANEL_SIZE: PanelSize = { width: 400, maxHeight: 560, minHeight: 360 };
 
 const DIALOG_WIDTH = 480;
-const SHEET_MAX_WIDTH = 560;
 const SHORT_WINDOW_HEIGHT = 480;
 const MIN_FRAME = 1;
 
@@ -125,26 +127,31 @@ function centred(width: number, height: number, window: WindowSize): Rect {
 }
 
 function dialogFrame(size: PanelSize, window: WindowSize): Rect {
-  const width = Math.max(MIN_FRAME, Math.min(DIALOG_WIDTH, window.width - 2 * MARGIN));
+  const width = Math.max(
+    MIN_FRAME,
+    Math.min(size.dialogWidth ?? DIALOG_WIDTH, window.width - 2 * MARGIN),
+  );
   const height = Math.max(MIN_FRAME, Math.min(size.maxHeight, window.height - 2 * MARGIN));
   return centred(width, height, window);
 }
 
 function sheetFrame(size: PanelSize, window: WindowSize, safeArea: Insets): Rect {
-  const width = Math.min(SHEET_MAX_WIDTH, window.width);
-  const height = Math.max(
-    MIN_FRAME,
-    Math.min(size.maxHeight, window.height - safeArea.top - MARGIN),
-  );
-  return { x: (window.width - width) / 2, y: window.height - height, width, height };
+  const { left, width, bottom, maxHeight } = floatingSheetFrame(window, safeArea);
+  const height = Math.min(size.maxHeight, maxHeight);
+  return { x: left, y: window.height - bottom - height, width, height };
 }
 
-function popoverFrame(anchor: Rect, size: PanelSize, window: WindowSize, space: number): Rect {
+function popoverFrame(
+  anchor: Rect,
+  size: PanelSize,
+  window: WindowSize,
+  { space, below }: { readonly space: number; readonly below: boolean },
+): Rect {
   const width = Math.max(MIN_FRAME, Math.min(size.width, window.width - 2 * MARGIN));
   const height = Math.max(MIN_FRAME, Math.min(size.maxHeight, space));
   return {
     x: clamp(anchor.x + anchor.width - width, MARGIN, window.width - width - MARGIN),
-    y: anchor.y - GAP - height,
+    y: below ? anchor.y + anchor.height + GAP : anchor.y - GAP - height,
     width,
     height,
   };
@@ -154,30 +161,42 @@ export interface PanelContext {
   readonly window: WindowSize;
   readonly safeArea: Insets;
   readonly idiom: Idiom;
+  readonly pointerPlacement?: PointerPanelPlacement;
 }
 
 export function placePanel(
   anchor: Rect,
   size: PanelSize,
-  { window, safeArea, idiom }: PanelContext,
+  { window, safeArea, idiom, pointerPlacement = 'above' }: PanelContext,
 ): PanelPlacement {
   if (idiom === 'touch') {
     return { presentation: 'sheet', frame: sheetFrame(size, window, safeArea) };
   }
-  const space = anchor.y - safeArea.top - MARGIN - GAP;
-  if (window.height < SHORT_WINDOW_HEIGHT || space < size.minHeight) {
+  const below = pointerPlacement === 'below';
+  const space = below
+    ? window.height - anchor.y - anchor.height - safeArea.bottom - MARGIN - GAP
+    : anchor.y - safeArea.top - MARGIN - GAP;
+  if (
+    pointerPlacement === 'center' ||
+    window.height < SHORT_WINDOW_HEIGHT ||
+    space < size.minHeight
+  ) {
     return { presentation: 'dialog', frame: dialogFrame(size, window) };
   }
-  return { presentation: 'popover', frame: popoverFrame(anchor, size, window, space) };
+  return { presentation: 'popover', frame: popoverFrame(anchor, size, window, { space, below }) };
 }
 
-export function settlePanel(previous: PanelPlacement | null, next: PanelPlacement): PanelPlacement {
+export function settlePanel(
+  previous: PanelPlacement | null,
+  next: PanelPlacement,
+  pointerPlacement: PointerPanelPlacement = 'above',
+): PanelPlacement {
   if (previous === null) {
     return next;
   }
   const kept =
     previous.presentation === 'popover' && next.presentation === 'popover'
-      ? shrunk(previous.frame, next.frame)
+      ? shrunk(previous.frame, next.frame, pointerPlacement === 'below')
       : next.frame;
   const same =
     previous.presentation === next.presentation &&
@@ -188,7 +207,7 @@ export function settlePanel(previous: PanelPlacement | null, next: PanelPlacemen
   return same ? previous : { presentation: next.presentation, frame: kept };
 }
 
-function shrunk(previous: Rect, next: Rect): Rect {
+function shrunk(previous: Rect, next: Rect, below: boolean): Rect {
   const height = Math.min(previous.height, next.height);
-  return { ...next, height, y: next.y + next.height - height };
+  return { ...next, height, y: below ? next.y : next.y + next.height - height };
 }

@@ -6,9 +6,12 @@ import { usePausable } from '../../../design/external-store';
 import { notify } from '../../../components/toast-store';
 import { Text } from '../../../components/text';
 import { useAnchoredMenu } from '../../../components/menu';
+import { BrowserActionScope } from '../browser/browser-action-scope';
+import type { BrowserAction } from '../browser/browser-actions';
 import { useRequestedBrowserAction } from '../browser/browser-requested-action';
 import { IconButton } from '../../../components/icon-button';
 import { BrowserTabStrip } from '../browser/browser-tab-strip';
+import { BrowserConsole } from '../browser/browser-console';
 import { BrowserTabPage } from '../browser/browser-tab-page';
 import { BrowserBlankPage } from '../browser/browser-blank-page';
 import { BrowserToolbar } from '../browser/browser-toolbar';
@@ -34,6 +37,7 @@ export function HarnessBrowser(props: HarnessBrowserProps): ReactNode {
 }
 function ChatBrowser({ chat, visible, tabs }: HarnessBrowserProps): ReactNode {
   const snapshot = usePausable(tabs.subscribe, tabs.read);
+  const target = snapshot.tabs.find((tab) => tab.id === snapshot.selectedId)?.selection?.target;
   const onNew = (): void => {
     newBrowserTab(tabs);
   };
@@ -56,7 +60,9 @@ function ChatBrowser({ chat, visible, tabs }: HarnessBrowserProps): ReactNode {
       />
       <View className="relative min-h-0 flex-1 overflow-hidden">
         {snapshot.tabs.length === 0 ? (
-          <EmptyBrowser tabs={tabs} onNew={onNew} />
+          <BrowserActionScope value={visible}>
+            <EmptyBrowser tabs={tabs} onNew={onNew} />
+          </BrowserActionScope>
         ) : (
           snapshot.tabs.map((tab) => (
             <BrowserTabPage
@@ -71,6 +77,9 @@ function ChatBrowser({ chat, visible, tabs }: HarnessBrowserProps): ReactNode {
           ))
         )}
       </View>
+      {target === undefined ? null : (
+        <BrowserConsole chat={chat} targetId={target.id} visible={visible} repair={tabs.repair} />
+      )}
     </View>
   );
 }
@@ -80,12 +89,22 @@ function EmptyBrowser({
 }: Pick<HarnessBrowserProps, 'tabs'> & { readonly onNew: () => void }): ReactNode {
   const [address, setAddress] = useState('');
   const inputRef = useRef<TextInput>(null);
+  const { ref, open, menu } = useAnchoredMenu(
+    [{ label: 'New tab', icon: 'plus', onPress: onNew }],
+    'Browser options',
+  );
   useRequestedBrowserAction({
     'new-tab': onNew,
+    'close-tab': notifyTabRequired,
+    'tab-earlier': notifyTabRequired,
+    'tab-later': notifyTabRequired,
     address: (): void => {
       inputRef.current?.focus();
     },
-  });
+    menu: open,
+    reload: notifyTabRequired,
+    copy: notifyTabRequired,
+  } satisfies Readonly<Record<BrowserAction, () => void>>);
   const noop = (): void => undefined;
   const controls = { navigate: noop, back: noop, forward: noop, reload: noop, stop: noop };
   return (
@@ -101,11 +120,20 @@ function EmptyBrowser({
         status={EMPTY_BROWSER_STATUS}
         controls={controls}
         ready={false}
-        tools={<EmptyBrowserTools onNew={onNew} />}
+        tools={
+          <View ref={ref} collapsable={false}>
+            <IconButton icon="ellipsisVertical" label="Browser options" onPress={open} />
+            {menu}
+          </View>
+        }
       />
       <BrowserBlankPage />
     </>
   );
+}
+
+function notifyTabRequired(): void {
+  notify({ message: 'Open a browser tab first.', tone: 'default' });
 }
 
 function newBrowserTab(tabs: BrowserTabs): void {
@@ -117,18 +145,4 @@ function newBrowserTab(tabs: BrowserTabs): void {
       tone: 'default',
     });
   }
-}
-
-function EmptyBrowserTools({ onNew }: { readonly onNew: () => void }): ReactNode {
-  const { ref, open, menu } = useAnchoredMenu(
-    [{ label: 'New tab', icon: 'plus', onPress: onNew }],
-    'Browser options',
-  );
-  useRequestedBrowserAction({ menu: open });
-  return (
-    <View ref={ref} collapsable={false}>
-      <IconButton icon="ellipsisVertical" label="Browser options" onPress={open} />
-      {menu}
-    </View>
-  );
 }

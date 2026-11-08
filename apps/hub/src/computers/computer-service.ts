@@ -1,5 +1,6 @@
 import {
   ApiError,
+  computerRoleOfModel,
   COMPUTER_ACTIONS,
   HUB_AI_REFUSAL,
   HUB_GUARD_MESSAGE,
@@ -71,7 +72,7 @@ export class ComputerService {
     const view = this.options.directory.online(deviceId)?.view() ?? null;
     return {
       deviceId,
-      online: device.online,
+      online: computerRoleOfModel(device.model) === 'hub' ? device.online : view !== null,
       at: view?.at ?? null,
       features: [...(view?.hello.features ?? [])],
       parts: view?.parts ?? {},

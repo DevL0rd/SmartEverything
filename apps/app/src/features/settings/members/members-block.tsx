@@ -5,6 +5,7 @@ import { ROLES, type ClientRow } from '@smarteverything/domain';
 import { changeClientRole, removeClient } from '../../../api/settings';
 import { Button } from '../../../components/button';
 import { confirm } from '../../../components/confirm-store';
+import { EmptyState } from '../../../components/empty-state';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { Segmented } from '../../../components/segmented';
@@ -116,14 +117,25 @@ export function MembersBlock(): ReactNode {
   const now = useMinute();
   const [open, setOpen] = useState<string | null>(null);
   const views = clientViews(clients, me, now);
+  if (views.length === 0) {
+    return (
+      <EmptyState
+        icon="smartphone"
+        title="No paired devices"
+        body="Pair a device to connect it to this home."
+        compact
+      />
+    );
+  }
   const selected = views.find((view) => view.client.id === open) ?? null;
   return (
     <>
-      <List inset footer="Owners can change settings and pair other phones.">
+      <List inset footer="Owners can change settings and pair other devices.">
         {views.map((view) => (
           <ListRow
             key={view.client.id}
             title={view.client.name}
+            wrapTitle
             subtitle={view.detail}
             icon={platformIcon(view.client.platform)}
             {...(view.removable

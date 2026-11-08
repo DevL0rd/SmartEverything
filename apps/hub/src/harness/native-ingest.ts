@@ -36,7 +36,7 @@ export class NativeIngest {
   }
 
   private profile(id: string): string {
-    const grant = this.store.harnessCoordination.grant(id);
+    const grant = this.store.harnessSessions.grant(id);
     if (grant === undefined)
       throw new ApiError('forbidden', 'This native session has no active conversation grant.');
     return grant.profile_id;
@@ -50,10 +50,14 @@ export class NativeIngest {
   }
 
   private opening(id: string): SessionOpening {
-    const session = this.store.harnessCoordination.state(id);
-    if (session === undefined)
+    const publication = this.store.harnessSessions.publication(id);
+    if (publication === undefined)
       throw new ApiError('conflict', 'Native session projection is unavailable.');
-    return { session, history: this.history(id) };
+    return {
+      session: publication.projection,
+      history: this.history(id),
+      nextPublicationSeq: publication.event_seq,
+    };
   }
 
   private history(id: string): readonly unknown[] {

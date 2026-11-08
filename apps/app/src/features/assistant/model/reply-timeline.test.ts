@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AssistantMessageRow, ChatTimelinePart } from '@smarteverything/domain';
-import { replyParts, replyTimeline } from './reply-timeline';
+import { hasReplyTimeline, replyParts, replyTimeline, visibleReplyParts } from './reply-timeline';
 
 function tool(id: string, state: 'running' | 'done'): ChatTimelinePart {
   return {
@@ -37,6 +37,7 @@ function reply(id: string, parts: readonly ChatTimelinePart[]): AssistantMessage
     steps: [],
     step_states: [],
     reply_to: null,
+    quote: null,
     chat_id: '00000000-0000-4000-8000-000000000003',
     origin: { source: 'app', plugin_id: null, device_id: null, name: 'Me' },
     embeds: [{ kind: 'chat_timeline', version: 1, parts: structuredClone(parts) }],
@@ -48,6 +49,37 @@ function reply(id: string, parts: readonly ChatTimelinePart[]): AssistantMessage
 }
 
 describe('replyParts', () => {
+  it('removes hidden tool groups while keeping thinking, image slots, and text in order', () => {
+    const image = tool('image', 'running');
+    if (image.kind !== 'tool') throw new Error('Expected an image tool call.');
+    const turn = reply('visible', [
+      { kind: 'text', key: 'before', text: 'Before' },
+      tool('hidden', 'done'),
+      { kind: 'text', key: 'between', text: 'Between' },
+      {
+        ...image,
+        tool: { ...image.tool, image_operation_id: '00000000-0000-5000-8000-000000000001' },
+      },
+      { kind: 'reasoning', key: 'thinking', text: 'Think' },
+      { kind: 'text', key: 'after', text: 'After' },
+    ]);
+    expect(visibleReplyParts(turn, false)?.map((part) => part.kind)).toEqual([
+      'text',
+      'text',
+      'image',
+      'reasoning',
+      'text',
+    ]);
+    expect(visibleReplyParts(turn, true)?.map((part) => part.kind)).toEqual([
+      'text',
+      'tools',
+      'text',
+      'tools',
+      'image',
+      'reasoning',
+      'text',
+    ]);
+  });
   it('keeps unchanged parts identical when a later version of the reply arrives', () => {
     const first = reply('shared-1', [tool('a', 'done'), { kind: 'text', key: 't', text: 'One' }]);
     const next = reply('shared-1', [
@@ -66,5 +98,14 @@ describe('replyParts', () => {
     const left = replyParts(reply('shared-2', [tool('a', 'done')]));
     const right = replyParts(reply('shared-3', [tool('a', 'done')]));
     expect(left?.[0]).not.toBe(right?.[0]);
+  });
+});
+
+describe('hasReplyTimeline', () => {
+  it('is true for a readable timeline and false for an unreadable one', () => {
+    const readable = reply('has-1', [tool('a', 'done')]);
+    expect(hasReplyTimeline(readable)).toBe(true);
+    const broken = { ...readable, id: 'has-2', embeds: [{ kind: 'chat_timeline', version: 9 }] };
+    expect(hasReplyTimeline(broken)).toBe(false);
   });
 });

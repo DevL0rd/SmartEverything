@@ -1,0 +1,74 @@
+{
+  "version": 3,
+  "kind": "automation",
+  "triggers": [
+    {
+      "id": "13000000-0000-4000-8000-000000000008",
+      "key": "tick",
+      "kind": "trigger.interval",
+      "ports": { "every": { "lit": 60000 } }
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "variables": [],
+  "body": {
+    "nodes": [
+      {
+        "id": "13000000-0000-4000-8000-000000000001",
+        "key": "start",
+        "kind": "debug.log",
+        "ports": { "message": { "lit": "checking" } }
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000002",
+        "key": "quiet",
+        "kind": "logic.compare",
+        "ports": {
+          "a": { "wire": { "from": "trigger", "port": "tick" } },
+          "op": { "lit": "lt" },
+          "b": { "lit": 2 }
+        }
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000006",
+        "key": "decide",
+        "kind": "flow.if",
+        "ports": {},
+        "branches": [
+          {
+            "id": "13000000-0000-4000-8000-000000000003",
+            "when": { "wire": { "from": "quiet", "port": "result" } },
+            "scope": {
+              "nodes": [
+                {
+                  "id": "13000000-0000-4000-8000-000000000004",
+                  "key": "hush",
+                  "kind": "notify.feed",
+                  "ports": { "message": { "lit": "quiet" } }
+                },
+                {
+                  "id": "13000000-0000-4000-8000-000000000005",
+                  "key": "leave",
+                  "kind": "flow.return",
+                  "ports": {}
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000007",
+        "key": "loud",
+        "kind": "device.set",
+        "ports": {
+          "target": { "lit": { "target": "hall" } },
+          "control": { "lit": "level" },
+          "to": { "lit": 100 }
+        }
+      }
+    ]
+  },
+  "policy": { "mode": "single" }
+}

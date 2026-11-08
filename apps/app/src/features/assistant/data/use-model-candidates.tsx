@@ -13,7 +13,7 @@ import { useModelChoice } from '../picker/model-label';
 import { useModelPages, useSuggestedModels, type ModelPages } from '../picker/model-queries';
 import { ModelRow } from '../picker/model-row';
 import { usePickerSession } from '../picker/model-search-session';
-import { isComputerEngine, nativeModelKey } from '../provider/computer-engine';
+import { isComputerEngine, nativeModelKey, type ComputerEngine } from '../provider/computer-engine';
 import { useHarnessPicker } from '../provider/harness-picker';
 import { useSubscriptionPicker } from '../provider/subscription-models';
 import { useFavouriteModels } from './favourites';
@@ -46,7 +46,7 @@ function catalogueCandidates(
   props: ModelPickerProps,
   favourites: Favourites,
 ): readonly ModelCandidate[] {
-  const native = props.picked?.engine !== undefined && props.picked.engine.kind !== 'openrouter';
+  const native = props.picked?.engine !== undefined;
   return models.map((model) => {
     const selected = !native && props.picked?.model === model.id;
     const favourite = favourites.status === 'ready' && favourites.favourites.has(model.id);
@@ -99,7 +99,7 @@ function unknownModel(picked: ModelPick, billing?: string): ModelChoice {
 }
 
 function isCatalogueEngine(picked: ModelPick | null): boolean {
-  return picked?.engine === undefined || picked.engine.kind === 'openrouter';
+  return picked?.engine === undefined;
 }
 
 function catalogueModelId(picked: ModelPick | null): string | null {
@@ -211,33 +211,66 @@ function useCataloguePages(context: ModelCandidatesContext, ready: boolean): Mod
   return catalogue ?? own;
 }
 
+export function useNativeModelScope(picked: ModelPick | null): ComputerEngine | undefined {
+  const accessory = useEngineAccessory();
+  const engine = picked?.engine;
+  if (engine === undefined || !isComputerEngine(engine)) return undefined;
+  return accessory?.host.draft === true || accessory?.chat?.native_admission === 'standalone'
+    ? engine
+    : undefined;
+}
+
+function useNativeCandidates(
+  props: ModelPickerProps,
+  valid: () => boolean,
+): {
+  readonly native: ReturnType<typeof useSubscriptionPicker>;
+  readonly scoped: boolean;
+} {
+  const accessory = useEngineAccessory();
+  const scope = useNativeModelScope(props.picked);
+  const native = useSubscriptionPicker(
+    {
+      ...props,
+      valid,
+      onNativeNeeded:
+        scope === undefined ? (props.onNativeNeeded ?? accessory?.request) : undefined,
+      ...(scope === undefined ? {} : { scope }),
+    },
+    (props.kind ?? 'chat') === 'chat' &&
+      (scope !== undefined || accessory?.chat?.kind === 'subagent'),
+  );
+  return { native, scoped: scope !== undefined };
+}
+
 export function useModelCandidates(context: ModelCandidatesContext): ModelCandidatesResult {
   const session = usePickerSession();
   const props = guarded(context.props, session.valid);
   const { kind = 'chat', picked } = props;
   const current = useCurrentChoice(picked);
   const favourites = guardedFavourites(useFavouriteModels(), session.valid);
-  const suggested = useSuggestedModels(kind, catalogueModelId(picked));
-  const pages = useCataloguePages(context, session.ready);
-  const accessory = useEngineAccessory();
-  const native = useSubscriptionPicker(
-    {
-      ...props,
-      valid: session.valid,
-      onNativeNeeded: props.onNativeNeeded ?? accessory?.request,
-    },
-    kind === 'chat',
-  );
+  const { native, scoped } = useNativeCandidates(props, session.valid);
+  const suggested = useSuggestedModels(kind, catalogueModelId(picked), !scoped);
+  const pages = useCataloguePages(context, session.ready && !scoped);
   const models = catalogueModels(picked, current, suggested.data, pages.models);
-  const routes = useHarnessPicker({ ...props, models, valid: session.valid }, kind === 'chat');
-  const catalogue = catalogueCandidates(
-    catalogueSourceModels(kind, models),
-    kind === 'chat' ? { ...props, onPick: null } : props,
-    favourites,
+  const routes = useHarnessPicker(
+    { ...props, models, valid: session.valid },
+    kind === 'chat' && !scoped,
   );
+  const catalogue = scoped
+    ? []
+    : catalogueCandidates(
+        catalogueSourceModels(kind, models),
+        kind === 'chat' ? { ...props, onPick: null } : props,
+        favourites,
+      );
   return {
     candidates: retainCurrent(
-      mergeCandidates({ native: native.candidates, routes: routes.candidates, catalogue }),
+      mergeCandidates({
+        native: native.candidates,
+        routes: routes.candidates,
+        catalogue,
+      }),
       picked,
       current,
     ),

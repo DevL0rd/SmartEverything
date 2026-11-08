@@ -1,4 +1,5 @@
-import { webSearchSource } from '../assistant/web-search-supplier';
+import { auxCompletionsOf } from '../assistant/aux-completion-binding';
+import { startMemoryLearning, type RunningMemoryLearning } from '../memory/lifecycle';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Logger } from '@smarteverything/logging';
@@ -7,6 +8,7 @@ import type { ToolHub } from '../ai-tools/tool-hub';
 import { AssistantService } from '../assistant/service';
 import type { Clock } from '../clock';
 import type { AiTurns } from '../schedules/steps';
+import type { HubLayout } from '../data-layout';
 import type { Store } from '../store/store';
 import type { ServerContext } from './context';
 import type { LiveHub } from './live';
@@ -17,7 +19,7 @@ export interface Listening {
 
 export interface AssistantWiring {
   readonly store: Store;
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
   readonly clock: Clock;
   readonly log: Logger;
 }
@@ -37,7 +39,7 @@ export function assistantOf(
 ): AssistantService {
   const service = new AssistantService({
     store: options.store,
-    dataDirectory: options.dataDirectory,
+    layout: options.layout,
     announce: (status): void => {
       live.announce({ type: 'assistant_status', status }, 'assistant');
     },
@@ -58,10 +60,21 @@ export function assistantOf(
   return service;
 }
 
-export function attachAssistant(context: ServerContext, tools: ToolHub): void {
-  tools.add(webSearchSource(context.harness, context.openRouter.client));
+export function attachAssistant(
+  context: ServerContext,
+  tools: ToolHub,
+  clock: Clock,
+): RunningMemoryLearning {
+  const memory = startMemoryLearning(context, clock);
   context.assistant.attachTools(tools);
-  context.assistant.attachAuxiliaries(context.openRouter);
+  context.assistant.attachAuxiliaries(
+    {
+      completions: auxCompletionsOf(context.store),
+      catalogue: context.openRouter.catalogue,
+    },
+    memory.learner,
+  );
+  return memory;
 }
 
 export function aiTurnsOf(context: ServerContext): AiTurns {

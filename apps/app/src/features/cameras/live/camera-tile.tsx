@@ -13,11 +13,11 @@ import type { CameraCondition } from '../player/player-state';
 
 export interface CameraTileProps {
   readonly entry: CameraEntry;
-  readonly live: boolean;
+  readonly editing: boolean;
   readonly condition: CameraCondition;
 }
 
-export function CameraTile({ entry, live, condition }: CameraTileProps): ReactNode {
+export function CameraTile({ entry, condition, editing }: CameraTileProps): ReactNode {
   const status = cameraStatusOf(condition);
   const menu = useContextMenu(useCardMenu(entry), entry.name);
   const [hovered, setHovered] = useState(false);
@@ -31,13 +31,13 @@ export function CameraTile({ entry, live, condition }: CameraTileProps): ReactNo
       }}
       className="h-full w-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-2 elevation-1"
     >
-      <CardPicture entry={entry} live={live} hovered={hovered} onMenu={menu.onLongPress} />
+      <CardPicture entry={entry} hovered={hovered} onMenu={menu.onLongPress} editing={editing} />
       <ThemeScope theme="dark">
         <View
           pointerEvents="none"
-          className="absolute inset-x-0 bottom-0 flex-row items-end gap-2 px-3 pb-2 pt-10"
+          className="absolute inset-x-0 top-0 flex-row items-start gap-2 px-card-pad pb-10 pt-card-pad"
         >
-          <EdgeScrim edge="bottom" />
+          <EdgeScrim edge="top" />
           <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
             {entry.name}
           </Text>

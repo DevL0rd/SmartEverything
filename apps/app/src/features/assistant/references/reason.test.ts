@@ -13,7 +13,7 @@ const PROBLEMS: readonly BindingProblem[] = [
 
 describe('searchReason', () => {
   it('is offline when the session is not ready', () => {
-    expect(searchReason('openrouter', false, null)?.kind).toBe('offline');
+    expect(searchReason('dsh', false, null)?.kind).toBe('offline');
   });
 
   it('waits for the chat', () => {
@@ -36,11 +36,11 @@ describe('searchReason', () => {
   });
 
   it('allows searching when nothing blocks', () => {
-    expect(searchReason('openrouter', true, null)).toBeNull();
+    expect(searchReason('dsh', true, null)).toBeNull();
   });
 
   it.each(PROBLEMS)('words the %s binding problem as references copy', (problem) => {
-    const reason = searchReason('openrouter', true, problem);
+    const reason = searchReason('dsh', true, problem);
     expect(reason?.text).toMatch(/reference/i);
     expect(reason?.text.toLowerCase()).not.toContain('command');
     expect(reason?.kind).toBe(problem === 'offline' ? 'offline' : 'other');

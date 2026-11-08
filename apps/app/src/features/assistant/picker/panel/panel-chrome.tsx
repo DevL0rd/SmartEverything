@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import type { ReactNode, Ref } from 'react';
+import { View } from 'react-native';
 import { usePanelFrame } from '../../../../components/adaptive-panel';
 import { Button } from '../../../../components/button';
 import { Icon, type IconName } from '../../../../components/icon';
@@ -13,21 +13,22 @@ export function PanelHead({
   title,
   onBack,
   onClose,
+  backLabel = 'Back to models and thinking',
+  backRef = null,
 }: {
   readonly title: string;
   readonly onBack: (() => void) | null;
   readonly onClose: () => void;
+  readonly backLabel?: string | undefined;
+  readonly backRef?: Ref<View>;
 }): ReactNode {
   const sheet = usePanelFrame().presentation === 'sheet';
-  if (sheet && onBack === null) return null;
   return (
-    <View className="min-h-touch-min flex-row items-center gap-1 pl-1 pr-1">
-      {onBack === null ? (
-        <View className="w-4" />
-      ) : (
-        <IconButton icon="chevronLeft" label="Back to model list" onPress={onBack} />
+    <View className="min-h-touch-min flex-row items-center gap-1">
+      {onBack === null ? null : (
+        <IconButton ref={backRef} icon="chevronLeft" label={backLabel} onPress={onBack} />
       )}
-      <Text variant="title-3" accessibilityRole="header" numberOfLines={1} className="flex-1">
+      <Text variant="title-3" accessibilityRole="header" className="min-w-0 flex-1">
         {title}
       </Text>
       {sheet ? null : <IconButton icon="close" label="Close" onPress={onClose} shortcut="Esc" />}
@@ -80,20 +81,6 @@ export function KeyedRow({
   );
 }
 
-export function usePanelFill(): string {
-  return usePanelFrame().presentation === 'sheet' ? '' : 'min-h-0 flex-1';
-}
-
-export function PanelScroll({ children }: { readonly children: ReactNode }): ReactNode {
-  const fill = usePanelFill();
-  if (fill === '') return <View>{children}</View>;
-  return <ScrollView className={fill}>{children}</ScrollView>;
-}
-
-export function PanelCard({ children }: { readonly children: ReactNode }): ReactNode {
-  return <View className="overflow-hidden rounded-lg border border-outline">{children}</View>;
-}
-
 export function PanelSection({
   title,
   children,
@@ -102,7 +89,7 @@ export function PanelSection({
   readonly children: ReactNode;
 }): ReactNode {
   return (
-    <View className="gap-2 px-4 pt-4">
+    <View className="gap-2 py-2">
       <Text variant="caption" tone="variant" accessibilityRole="header">
         {title}
       </Text>

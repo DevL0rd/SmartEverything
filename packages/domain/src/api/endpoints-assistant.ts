@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   ASSISTANT_ATTACHMENT,
   ASSISTANT_ATTACHMENT_BYTES_MAX,
+  ASSISTANT_LEVELS,
   ASSISTANT_MESSAGE_ROW,
   ASSISTANT_SETTINGS_CHANGE,
   ASSISTANT_STATUS,
@@ -15,11 +16,19 @@ import { DONE, ID, MOMENT, NOTHING, queryLimit } from './primitives';
 
 const ATTACHMENT_IDS = z.array(ID).default([]);
 
+const HELPER_TARGET = z.strictObject({
+  chat_id: ID,
+});
+
 export const ASSISTANT_NEW_MESSAGE = z
   .strictObject({
     text: z.string().trim().default(''),
     attachments: ATTACHMENT_IDS,
     references: AI_MESSAGE_REFERENCES.optional(),
+    helper_target: HELPER_TARGET.optional(),
+    quote_message_id: ID.optional().describe(
+      'A message in this chat to reply to; the message is stored with a copy of its sender and words',
+    ),
     client_message_id: ID.optional().describe(
       'An id the sender makes up for this message; sending the same id again returns the first message instead of adding another',
     ),
@@ -29,7 +38,13 @@ export const ASSISTANT_NEW_MESSAGE = z
   })
   .refine((message) => referencesMatchText(message.text, message.references ?? []), {
     message: 'Reference spans must match the submitted text.',
-  });
+  })
+  .refine(
+    (message) => message.helper_target === undefined || message.client_message_id !== undefined,
+    {
+      message: 'A message addressed to a helper requires a client message ID.',
+    },
+  );
 
 export type AssistantNewMessage = z.output<typeof ASSISTANT_NEW_MESSAGE>;
 
@@ -54,14 +69,37 @@ export const ASSISTANT_POST = z.strictObject({
     'Whose chat: a person’s profile id from person_read (not a device or client id); the owner’s when left out',
   ),
   notify: z.boolean().default(true).describe('false to skip the phone notification'),
+  quoteMessageId: ID.optional().describe(
+    'A message in the chat being posted to, from chat_read, to quote as the one this post replies to',
+  ),
 });
 
 export type AssistantPost = z.output<typeof ASSISTANT_POST>;
+
+const HELPER_ARTIFACT_SOURCE = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('attachments'),
+    attachmentIds: z.array(ID).min(1).describe('Attachment IDs already saved in this helper chat'),
+  }),
+  z.strictObject({
+    kind: z.literal('image_operation'),
+    operationId: ID.describe('Completed image operation ID from this helper chat'),
+  }),
+]);
+
+export const ASSISTANT_HELPER_POST = z.strictObject({
+  requestId: ID.describe('A new UUID for this share. Reuse it if the outcome is uncertain.'),
+  source: HELPER_ARTIFACT_SOURCE,
+  text: ASSISTANT_POST.shape.text,
+});
+
+export type AssistantHelperPost = z.output<typeof ASSISTANT_HELPER_POST>;
 
 export const ASSISTANT_UPLOAD_START = z.strictObject({
   name: z.string().trim().min(1).max(200),
   mime: z.string().trim().min(3).max(120),
   bytes: z.int().min(1).max(ASSISTANT_ATTACHMENT_BYTES_MAX),
+  levels: ASSISTANT_LEVELS.nullable().optional(),
 });
 
 export const ASSISTANT_UPLOAD = z.strictObject({
@@ -192,8 +230,7 @@ const SETTINGS_ENDPOINTS = {
     method: 'PATCH',
     path: '/api/assistant/settings',
     access: 'owner',
-    summary:
-      'Change assistant settings: name, instructions, working steps, compaction, voice and how long conversations keep using the same chat',
+    summary: 'Change assistant settings: name, instructions, working steps, compaction and voice',
     params: NOTHING,
     query: NOTHING,
     body: ASSISTANT_SETTINGS_CHANGE,
@@ -210,6 +247,16 @@ const POST_ENDPOINTS = {
     params: NOTHING,
     query: NOTHING,
     body: ASSISTANT_POST,
+    response: ASSISTANT_MESSAGE_ROW,
+  }),
+  postAssistantHelperArtifacts: endpoint({
+    method: 'POST',
+    path: '/api/assistant/helper-artifacts',
+    access: 'member',
+    summary: 'Share selected artifacts privately from a helper into its direct parent chat',
+    params: NOTHING,
+    query: NOTHING,
+    body: ASSISTANT_HELPER_POST,
     response: ASSISTANT_MESSAGE_ROW,
   }),
 } as const;

@@ -1,25 +1,23 @@
-import { useCallback, useState, type ReactNode } from 'react';
-import { Logger } from '@smarteverything/logging';
+import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import { usePausable } from '../../../../design/external-store';
-import { useStableCallback } from '../../../../design/use-stable-callback';
-import FlowCanvas from '../../editor/canvas/flow-canvas';
-import { parseIntent } from '../../editor/host/apply-intents';
-import { useCanvasProps, type SceneOptions } from '../../editor/host/use-canvas-props';
-import type { RunOverlay } from '../../model/canvas/contract';
+import { useIdiom } from '../../../../design/platform';
+import { CanvasControls } from '../../editor/screen/canvas-controls';
+import { useViewportCommand } from '../../editor/screen/use-editor-panels';
+import { ViewCanvas } from '../../editor/host/canvas-host';
+import type { RunSource, SceneOptions } from '../../editor/host/use-canvas-props';
 import type { DocumentStore } from '../../model/editor/document-store';
-import { applyReadOnly } from './read-only-intents';
 
-const log = new Logger('app.automations');
-
-const FILL = { flex: 1 } as const;
+const NO_PROBLEMS: readonly never[] = [];
 
 export interface RunCanvasProps {
   readonly store: DocumentStore;
   readonly options: SceneOptions;
-  readonly overlay: RunOverlay;
+  readonly overlay: RunSource;
   readonly focusNode: string | null;
   readonly onScreen: boolean;
   readonly onSettled: () => void;
+  readonly onStepPass: (nodeId: string, delta: -1 | 1) => void;
 }
 
 export function useSelectedNode(store: DocumentStore): string | null {
@@ -27,38 +25,33 @@ export function useSelectedNode(store: DocumentStore): string | null {
 }
 
 export function RunCanvas(props: RunCanvasProps): ReactNode {
-  const { store, onSettled } = props;
-  const [generation, setGeneration] = useState(0);
-  const canvas = useCanvasProps({
-    store,
-    options: props.options,
-    run: props.overlay,
-    focusNode: props.focusNode,
-    viewportCommand: null,
-    onScreen: props.onScreen,
-  });
-  const remount = useCallback((cause: string): void => {
-    log.warn('run_canvas.webview_lost', { cause });
-    setGeneration((current) => current + 1);
-  }, []);
-  const onIntent = useStableCallback((raw: unknown): Promise<void> => {
-    applyReadOnly(parseIntent(raw), { store, ready: canvas.ready, settled: onSettled });
-    return Promise.resolve();
-  });
+  const { store, onSettled, onStepPass } = props;
+  const viewport = useViewportCommand();
+  const touch = useIdiom() === 'touch';
+  const actions = {
+    openNode: (id: string): void => {
+      store.select(id);
+    },
+    stepPass: onStepPass,
+    settled: onSettled,
+  };
   return (
-    <FlowCanvas
-      key={generation}
-      {...canvas.props}
-      onIntent={onIntent}
-      dom={{
-        style: FILL,
-        onContentProcessDidTerminate: () => {
-          remount('content_process_terminated');
-        },
-        onRenderProcessGone: () => {
-          remount('render_process_gone');
-        },
-      }}
-    />
+    <View className="min-h-0 flex-1 flex-row">
+      <View className="relative min-h-0 min-w-0 flex-1">
+        <ViewCanvas
+          store={store}
+          options={props.options}
+          problems={NO_PROBLEMS}
+          run={props.overlay}
+          focusNode={props.focusNode}
+          viewportCommand={viewport.command}
+          ghost={null}
+          onScreen={props.onScreen}
+          actions={actions}
+          framing="opening"
+        />
+      </View>
+      <CanvasControls touch={touch} onCommand={viewport.issue} />
+    </View>
   );
 }

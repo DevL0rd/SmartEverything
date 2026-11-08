@@ -55,7 +55,10 @@ const GENERIC_NAMES: Readonly<Record<ListeningSourceKind, string>> = {
 
 type ContestClaim = WakeArbitrated['claims'][number];
 
-function nameOf(claim: ContestClaim, sources: readonly ListeningSource[]): string {
+export function nameOf(
+  claim: Pick<ContestClaim, 'source' | 'key'>,
+  sources: readonly ListeningSource[],
+): string {
   const kind = listeningKindOf(claim.source);
   const key = listeningKeyOf(claim.source, claim.key);
   const found = sources.find((source) => source.key === key);

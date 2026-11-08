@@ -1,8 +1,9 @@
+import type { ReactElement } from 'react';
 import { Stage, Text } from 'smarteverything-kit';
 
 const col = { display: 'flex', flexDirection: 'column' as const, gap: 6 };
 
-export const TypeScale = () => (
+export const TypeScale = (): ReactElement => (
   <Stage theme="dark" width={520}>
     <div style={col}>
       <Text variant="large-title">Good evening, Dana</Text>
@@ -21,7 +22,7 @@ export const TypeScale = () => (
   </Stage>
 );
 
-export const Tones = () => (
+export const Tones = (): ReactElement => (
   <Stage theme="dark" width={520}>
     <div style={col}>
       <Text>Default text on the page surface</Text>
@@ -36,7 +37,7 @@ export const Tones = () => (
   </Stage>
 );
 
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     <div style={col}>
       <Text variant="title-1">Home overview</Text>

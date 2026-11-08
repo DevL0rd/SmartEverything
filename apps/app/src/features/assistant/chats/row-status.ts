@@ -2,6 +2,7 @@ import { isWorking } from '../../../store/chat-turns';
 import { memoOnInputs } from '../../../store/memo-selector';
 import { useStoreSelector } from '../../../store/store-context';
 import { workingTurns } from '../../../store/subscriptions';
+import { useAgentActivity } from '../data/agent-runs';
 import { useAiDrafts } from '../data/ai-drafts';
 import type { ChatEntry, ChatLine } from './chat-entry';
 
@@ -38,12 +39,16 @@ export function rowLineOf(entry: ChatEntry, waiting: number, queued: number): Ro
   return queued > 0 ? { kind: 'queued', count: queued } : line;
 }
 
-export function useRowLine(entry: ChatEntry): RowLine {
+export function useRowLine(entry: ChatEntry, agent: boolean): RowLine {
+  const activity = useAgentActivity(agent ? entry.parentId : null, entry.id);
   const waiting = useAiDrafts(
     (state) => state.outbox.filter((message) => message.chatId === entry.id).length,
   );
   const queued = useStoreSelector((state) => queuedByChat(state).get(entry.id) ?? 0);
-  return rowLineOf(entry, waiting, queued);
+  const line = rowLineOf(entry, waiting, queued);
+  return activity === null || line.kind === 'needs' || line.kind === 'failed'
+    ? line
+    : { kind: 'working', work: { phase: 'Working', step: activity } };
 }
 
 export function useAnyChatWorking(): boolean {

@@ -13,6 +13,7 @@ export function chatProviderPages(
   owner: boolean,
 ): SearchSources['pages'] {
   const details = chatDetailPages(chat, out);
+  if (chat.historyOnly === true) return details;
   if (chat.runtime === 'dsh') return [...details, ...harnessPages(chat, out)];
   if (!chat.computer || !owner) return details;
   const pages = [
@@ -22,7 +23,7 @@ export function chatProviderPages(
       title: tab.label,
       work: tab.value,
       operation: undefined,
-      description: `${chat.runtime ?? 'claude'} on your computer`,
+      description: `${chat.runtime} on your computer`,
     })),
     ...(chat.runtime === 'codex' ? CODEX_OPERATIONS : PROVIDER_OPERATIONS)
       .filter((operation) => chat.metadata?.operations.includes(operation.id) === true)
@@ -51,7 +52,7 @@ export function chatProviderPages(
         path,
         title: page.title,
         description: chat.title,
-        keywords: [chat.runtime ?? 'claude', 'computer', 'subscription', page.description],
+        keywords: [chat.runtime, 'computer', 'subscription', page.description],
       };
     }),
   ];

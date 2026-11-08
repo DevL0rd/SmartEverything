@@ -7,10 +7,10 @@ import {
 } from '../../../harness/pending-machine';
 import type { HarnessService } from '../../../harness/service';
 import type { AiChatRow } from '@smarteverything/domain';
-import type { NativeCompletion } from './completion';
+import type { NativeCompletion } from './projector-completion';
+import { CONTINUE_NOTE } from '../../interruption';
 
 const log = new Logger('hub.harness');
-const CONTINUE = 'Continue the work you were doing.';
 
 export interface MovableTurn {
   readonly chat: Pick<AiChatRow, 'id' | 'profile_id'>;
@@ -85,10 +85,11 @@ export class TurnMachineMoves<T extends MovableTurn> {
     if (session.epoch === null) throw new Error('The chat has no open session to continue.');
     await this.service.directory.execute(session.target, randomUUID(), {
       kind: 'prompt',
+      author: 'hub',
       session_id: session.session_id,
       expected_epoch: session.epoch,
       delivery_id: deliveryId,
-      text: `${outcome.note} ${CONTINUE}`,
+      text: `${outcome.note} ${CONTINUE_NOTE}`,
       attachments: [],
     });
   }

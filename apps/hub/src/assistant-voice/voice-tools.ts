@@ -1,8 +1,8 @@
 import type { HubTool, ToolSpec } from '../ai-tools/hub-tool';
-import { chatSet } from '../ai-tools/tool-sets';
+import { META_TOOLS } from '../ai-tools/tool-sets';
 import { SIGHT_SOURCES } from '@smarteverything/domain';
 import type { HostedSpeaking } from './outreach';
-import { VOICE_DEFERRED_TOOLS } from './voice-deferred';
+import { VOICE_DECLARED_TOOLS } from './voice-deferred';
 import { voiceSpecOf } from './voice-shapes';
 
 export const WEB_SEARCH_TOOL = 'web_search';
@@ -93,9 +93,10 @@ export function voiceSet(
   sight: boolean,
 ): ToolSpec[] {
   return [
-    ...chatSet(withoutChatOnly(enabled, sight))
-      .filter((tool) => !VOICE_DEFERRED_TOOLS.has(tool.name))
-      .map(voiceSpecOf),
+    ...[
+      ...withoutChatOnly(enabled, sight).filter((tool) => VOICE_DECLARED_TOOLS.has(tool.name)),
+      ...META_TOOLS,
+    ].map(voiceSpecOf),
     ...(responder ? [DO_TASK] : []),
     ...(sight ? [SEE, STOP_LOOKING] : []),
     END,

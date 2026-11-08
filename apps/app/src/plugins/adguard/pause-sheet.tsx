@@ -8,7 +8,13 @@ import { Text } from '../../components/text';
 import { notify } from '../../components/toast-store';
 import { PluginActionRow } from '../shared/plugin-action';
 import { useAdGuardTools } from './adguard-data';
-import { PAUSE_CHOICES, pausedMessage, type PauseChoice } from './model/pause-model';
+import {
+  PAUSE_CHOICES,
+  pauseInput,
+  pausedMessage,
+  TURN_OFF_INPUT,
+  type PauseChoice,
+} from './model/pause-model';
 import { background } from '@smarteverything/logging';
 
 function usePauseFor(onClose: () => void, onReopen: () => void): (choice: PauseChoice) => void {
@@ -16,16 +22,14 @@ function usePauseFor(onClose: () => void, onReopen: () => void): (choice: PauseC
   return (choice) => {
     onClose();
     background(
-      tools
-        .run('pause_protection', { minutes: choice.minutes }, 'Ad blocking wasn’t paused')
-        .then((done) => {
-          if (done !== null) {
-            notify({
-              message: pausedMessage(choice),
-              action: { label: 'Change', onPress: onReopen },
-            });
-          }
-        }),
+      tools.run('set_protection', pauseInput(choice), 'Ad blocking wasn’t paused').then((done) => {
+        if (done !== null) {
+          notify({
+            message: pausedMessage(choice),
+            action: { label: 'Change', onPress: onReopen },
+          });
+        }
+      }),
       'tools.run_failed',
     );
   };
@@ -80,7 +84,7 @@ export function PauseSheet({
             destructive
             onPress={() => {
               onClose();
-              return tools.run('turn_off_protection', {}, 'Ad blocking wasn’t switched off');
+              return tools.run('set_protection', TURN_OFF_INPUT, 'Ad blocking wasn’t switched off');
             }}
           />
         </List>

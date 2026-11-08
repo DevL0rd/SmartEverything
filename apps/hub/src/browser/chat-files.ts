@@ -6,6 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import mime from 'mime-types';
 import parseRange from 'range-parser';
 import { AI_PROJECT_PATH, ApiError, CHAT_FILES_PATH, chatFilesUrl } from '@smarteverything/domain';
+import { messageOf } from '@smarteverything/logging';
 import { isMissing } from '../fs-util';
 import { projectCallerAuthority } from '../projects/authority';
 import type { ProjectFilesService } from '../projects/service';
@@ -62,8 +63,12 @@ export async function chatPagePath(
 function decodedPath(raw: string): string {
   try {
     return raw.split('/').map(decodeURIComponent).join('/');
-  } catch {
-    throw new ApiError('invalid_request', 'The page path is not valid URL encoding.');
+  } catch (cause) {
+    throw new ApiError(
+      'invalid_request',
+      'The page path is not valid URL encoding.',
+      messageOf(cause),
+    );
   }
 }
 
@@ -77,14 +82,31 @@ async function serveFile(
   response: ServerResponse,
   file: { readonly real: string; readonly size: number },
 ): Promise<void> {
-  const ranges = request.headers.range === undefined ? -2 : parseRange(file.size, request.headers.range);
+  const ranges =
+    request.headers.range === undefined ? -2 : parseRange(file.size, request.headers.range);
   if (ranges === -1) {
-    response.writeHead(416, { 'content-range': `bytes */${String(file.size)}`, 'content-length': 0 });
+    response.writeHead(416, {
+      'content-range': `bytes */${String(file.size)}`,
+      'content-length': 0,
+    });
     response.end();
     return;
   }
-  const range =
-    ranges === -2 || ranges.type !== 'bytes' || ranges.length !== 1 ? undefined : ranges[0];
+  await streamFile(request, response, file, byteRange(ranges));
+}
+
+function byteRange(ranges: ReturnType<typeof parseRange>): parseRange.Range | undefined {
+  return typeof ranges !== 'number' && ranges.type === 'bytes' && ranges.length === 1
+    ? ranges[0]
+    : undefined;
+}
+
+async function streamFile(
+  request: IncomingMessage,
+  response: ServerResponse,
+  file: { readonly real: string; readonly size: number },
+  range: parseRange.Range | undefined,
+): Promise<void> {
   const start = range?.start ?? 0;
   const end = range?.end ?? file.size - 1;
   response.writeHead(range === undefined ? 200 : 206, {

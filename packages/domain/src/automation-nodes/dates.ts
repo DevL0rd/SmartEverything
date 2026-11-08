@@ -118,6 +118,7 @@ export const DATE_KINDS: readonly NodeKind[] = [
         required: false,
         static: true,
         description: 'The time zone when the text has none; empty means the home zone.',
+        ui: { optionsFrom: 'time_zones' },
       },
     ],
     outputs: [
@@ -161,6 +162,7 @@ export const DATE_KINDS: readonly NodeKind[] = [
         required: false,
         static: true,
         description: 'The language; empty means the home language.',
+        ui: { optionsFrom: 'locales' },
       },
     ],
     outputs: [{ name: 'text', type: TEXT, description: 'The text.' }],

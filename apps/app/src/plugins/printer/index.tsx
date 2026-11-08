@@ -24,9 +24,7 @@ export const printerAppPlugin: AppPlugin = {
     {
       key: 'printer',
       applies: isPrinter,
-      render: (device, size, showRoom) => (
-        <PrinterTile device={device} showRoom={showRoom} compact={size === 'tile'} />
-      ),
+      render: (device, _size, showRoom) => <PrinterTile device={device} showRoom={showRoom} />,
       cell: (device, frame, size) => <PrinterCardFace device={device} frame={frame} size={size} />,
       hero: (device) => <PrinterHero device={device} />,
     },

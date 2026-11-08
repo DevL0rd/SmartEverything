@@ -37,10 +37,9 @@ export class ProviderLog {
     this.log.warn('codex.initialize_failed', { mode: 'provider', ...failure(cause) });
   }
 
-  models(count: number, billingBlocked: boolean, startedAt: number): void {
+  models(count: number, startedAt: number): void {
     this.log.debug('codex.models_read', () => ({
       models: count,
-      billingBlocked,
       durationMs: Math.round(performance.now() - startedAt),
     }));
   }

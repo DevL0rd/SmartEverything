@@ -130,6 +130,8 @@ function operateTool(ports: ShellyToolPorts): PluginTool {
 function holderOf(caller: ToolCaller, name: string | undefined): string {
   if (caller.via === 'app' && caller.clientId !== null)
     return appHolder(caller.clientId, caller.profileId, name);
+  if (caller.via === 'automation' && caller.automationId !== undefined)
+    return ['automation', caller.automationId, name ?? ''].join(':');
   return [caller.via, caller.clientId ?? caller.chatId ?? '', caller.profileId, name ?? ''].join(
     ':',
   );

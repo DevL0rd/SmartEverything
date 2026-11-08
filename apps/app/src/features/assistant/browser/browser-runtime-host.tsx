@@ -7,12 +7,12 @@ import { useValue } from '../../../design/external-store';
 import { connectionState } from '../../../api/connection/connection';
 import { useStoreSelector } from '../../../store/store-context';
 import { useLocalPref } from '../../../store/local-prefs';
-import { browserSurfaces, type RetainedBrowserSurface } from './browser-surfaces';
 import {
-  browserTabVisible,
-  retainBrowserAuthority,
-  ownBrowserRuntime,
-} from './browser-runtime';
+  browserSurfaces,
+  recordBrowserSurfaceConsole,
+  type RetainedBrowserSurface,
+} from './browser-surfaces';
+import { browserTabVisible, retainBrowserAuthority, ownBrowserRuntime } from './browser-runtime';
 export function BrowserRuntimeHost(): ReactNode {
   useBrowserAuthority();
   const surfaces = useValue(browserSurfaces);
@@ -70,7 +70,11 @@ function RetainedPage({
       importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}
       style={frame}
     >
-      <BrowserSurface {...surface.props} visible={visible} />
+      <BrowserSurface
+        {...surface.props}
+        visible={visible}
+        onConsole={recordBrowserSurfaceConsole}
+      />
     </View>
   );
 }

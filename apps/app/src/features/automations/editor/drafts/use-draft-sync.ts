@@ -26,12 +26,12 @@ export function useDraftLoad(automationId: string): {
   readonly query: UseQueryResult;
 } {
   const source = useDraftSyncSource(automationId);
-  const { api } = useAutomationsSource();
+  const { api, lookup: kinds } = useAutomationsSource();
   const view = source.draft.data;
   const drafted = view?.drafted === true;
   const baseRow = useScreenQuery({
     queryKey: automationKeys.revision(automationId, view?.revision ?? 0),
-    queryFn: () => source.revision(view?.revision ?? 0),
+    queryFn: () => api.getRevision(automationId, view?.revision ?? 0, kinds),
     enabled: drafted,
     staleTime: Infinity,
   });
@@ -56,7 +56,7 @@ export function useDraftLoad(automationId: string): {
   }
   if (baseRow.data === undefined) return { load: null, query: baseRow };
   const base = {
-    program: baseRow.data.definition,
+    program: baseRow.data.graph,
     layout: baseRow.data.layout,
     revision: baseRow.data.revision,
   };

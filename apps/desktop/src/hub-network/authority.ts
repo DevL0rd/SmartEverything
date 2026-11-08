@@ -1,5 +1,6 @@
 import { isIP } from 'node:net';
 import {
+  type DesktopServer,
   type HubEndpoint,
   type NativeHubRouteConfiguration,
   type NativeHubRouteSnapshot,
@@ -190,6 +191,18 @@ export class DesktopRouteAuthority implements HubLeasePort {
     if (endpoint === null) throw new HubTransportError('Your home is not reachable right now.');
     const url = new URL(input);
     return this.lease(scopeId, `${new URL(endpoint.url).origin}${url.pathname}${url.search}`);
+  }
+  updateLease(server: DesktopServer, input: string): Lease {
+    const canonical = new URL(server.url).origin;
+    const identity = server.connection?.identity.id;
+    const ready = [...this.scopes.values()].find(
+      (scope) =>
+        scope.endpoint !== null &&
+        scope.configuration.canonicalOrigin === canonical &&
+        (identity === undefined || scope.configuration.trust.identity.id === identity),
+    );
+    if (ready === undefined) throw new HubTransportError('Your enrolled Hub route is not ready.');
+    return this.resourceLease(ready.configuration.trust.scopeId, input);
   }
   close(): void {
     this.closed = true;

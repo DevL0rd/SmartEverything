@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import type { Href } from 'expo-router';
+import { View } from 'react-native';
+import type { AppHref } from '../../../components/app-href';
 import { entryIdOfRecord, type HealthRecord } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import type { HeaderAction } from '../../../components/page-header';
@@ -10,6 +11,8 @@ import { ListRow } from '../../../components/list-row';
 import { PageHeader } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
+import { cn } from '../../../design/cn';
 import { joinParts } from '../../../format/text';
 import { FitnessToolbar } from '../components/fitness-toolbar';
 import { MetricCard } from '../components/metric-section';
@@ -24,6 +27,7 @@ import { clock, dayKeyOf, dayLabel, startOfDayKey } from '../../../format/time';
 import { RANGES, windowOf } from '../model/window';
 
 const SHOWN_RECORDS = 30;
+const MIN_METRIC_SPLIT_WIDTH = 1080;
 
 function RecordRow({
   record,
@@ -37,6 +41,8 @@ function RecordRow({
   return (
     <ListRow
       title={recordSummary(record)}
+      wrapTitle
+      wrapSubtitle
       subtitle={joinParts([
         `${dayLabel(at, startOfDayKey(today))} ${clock(at)}`,
         appName(record.sourceApp),
@@ -46,7 +52,7 @@ function RecordRow({
   );
 }
 
-function editHref(record: HealthRecord, at: number): Href | null {
+function editHref(record: HealthRecord, at: number): AppHref | null {
   const entryId = entryIdOfRecord(record.recordId);
   if (entryId === null) {
     return null;
@@ -76,9 +82,6 @@ function Records({
   readonly today: string;
 }): ReactNode {
   const shown = newestFirst(records).slice(0, SHOWN_RECORDS);
-  if (shown.length === 0) {
-    return null;
-  }
   return (
     <List title="Entries" inset>
       {shown.map((record) => (
@@ -91,11 +94,22 @@ function Records({
 function MetricBody({ spec }: { readonly spec: SeriesSpec }): ReactNode {
   const { day, today, range } = useFitnessParams(spec.daily === null ? 'month' : 'week');
   const view = useSeries(spec, windowOf(range, day), true);
+  const { width, onLayout } = useMeasuredWidth();
+  const hasRecords = view.records.length > 0;
+  const split = hasRecords && width >= MIN_METRIC_SPLIT_WIDTH;
   return (
     <>
       <FitnessToolbar day={day} today={today} range={range} ranges={RANGES} />
-      <MetricCard spec={spec} view={view} link={false} />
-      <Records records={view.records} today={today} />
+      <View onLayout={onLayout} className={cn('gap-section-gap', split && 'flex-row items-start')}>
+        <View className={cn('min-w-0', split && 'flex-2')}>
+          <MetricCard spec={spec} view={view} link={false} />
+        </View>
+        {hasRecords ? (
+          <View className={cn('min-w-0', split && 'flex-1')}>
+            <Records records={view.records} today={today} />
+          </View>
+        ) : null}
+      </View>
     </>
   );
 }
@@ -112,7 +126,6 @@ export function MetricScreen(): ReactNode {
           actions={log === null ? [] : [log]}
         />
       }
-      maxWidth="detail"
     >
       {known ? (
         <MetricBody spec={seriesOf(metric)} />

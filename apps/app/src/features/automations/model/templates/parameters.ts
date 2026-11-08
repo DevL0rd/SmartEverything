@@ -1,6 +1,6 @@
-import type { AutomationV3, JsonValue } from '@smarteverything/domain';
+import type { AutomationV4, JsonValue } from '@smarteverything/domain';
 import type { Device } from '../../../../store/state';
-import { maker, type Maker } from './build';
+import { graphMaker, type GraphMaker } from './graph-kit';
 
 export type TemplateDevice = Pick<Device, 'id' | 'label' | 'kind' | 'model' | 'capabilities'> & {
   readonly room_id?: string | null | undefined;
@@ -75,11 +75,11 @@ export interface TemplateSpec {
   readonly category: Category;
   readonly devices: readonly string[];
   readonly slots: readonly Slot[];
-  readonly make: (use: Use, m: Maker) => AutomationV3;
+  readonly make: (use: Use, m: GraphMaker) => AutomationV4;
 }
 
 export interface Template extends Omit<TemplateSpec, 'make'> {
-  readonly build: (values?: SlotValues) => AutomationV3;
+  readonly build: (values?: SlotValues) => AutomationV4;
 }
 
 export function readerOf(owner: string, slots: readonly Slot[], given: SlotValues): Use {
@@ -116,7 +116,7 @@ export function template(spec: TemplateSpec): Template {
   const { make, ...rest } = spec;
   return {
     ...rest,
-    build: (values = {}) => make(readerOf(spec.id, spec.slots, values), maker(spec.id)),
+    build: (values = {}) => make(readerOf(spec.id, spec.slots, values), graphMaker(spec.id)),
   };
 }
 

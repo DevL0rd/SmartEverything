@@ -1,4 +1,5 @@
 import { turnsOfChat } from '../../../store/subscriptions';
+import { workingTurnOf } from '../../../store/chat-turns';
 import type { AiChatRow, AssistantMessageRow } from '@smarteverything/domain';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
@@ -22,11 +23,7 @@ export function useTurnFeedback(
   const codex = useCodexProvider(chat.id, owner && chat.engine.kind === 'codex');
   const sync = useSyncStatus();
   const sending = useSendingMessage(chat.id);
-  const turn = useStoreSelector(
-    (state) =>
-      Object.values(turnsOfChat(state, chat.id)).findLast((entry) => entry.chatId === chat.id) ??
-      null,
-  );
+  const turn = useStoreSelector((state) => workingTurnOf(turnsOfChat(state, chat.id), chat.id));
   const native = chat.engine.kind === 'codex' ? codex.data : claude.data;
   const supplied = owner ? nativeFeedback(chat, native) : null;
   const provider = chat.engine.kind === 'dsh' ? harnessFeedback(chat, session.data) : supplied;

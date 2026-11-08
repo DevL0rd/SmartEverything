@@ -1,4 +1,4 @@
-import { CLIENT_PREFS, type Engine } from '@smarteverything/domain';
+import { CLIENT_PREFS } from '@smarteverything/domain';
 import { notify } from '../../../../components/toast-store';
 import { usePref } from '../../../../store/prefs';
 import { isComputerEngine, nativeModelKey } from '../../provider/computer-engine';
@@ -7,18 +7,10 @@ import type { ModelPick } from '../model-choice';
 
 export const RECENT_MAX = 5;
 
-function idOf(engine: Engine | undefined, model: string): string {
+export function recentIdOf({ engine, model }: ModelPick): string {
   return engine !== undefined && isComputerEngine(engine)
     ? nativeModelKey(engine.kind, model)
     : model;
-}
-
-export function recentIdOfEngine(engine: Engine): string | null {
-  return engine.model === null ? null : idOf(engine, engine.model);
-}
-
-export function recentIdOf(pick: ModelPick): string {
-  return idOf(pick.engine, pick.model);
 }
 
 export function recentIdOfNative(request: NativeModelRequest): string {

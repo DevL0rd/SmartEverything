@@ -7,6 +7,8 @@ import {
   categoryName,
   categoryOrder,
   defineNodeKind,
+  isListedKind,
+  isShippedKind,
   kindProblems,
   portValueText,
   registryProblems,
@@ -102,9 +104,9 @@ function variant(change: object): NodeKind {
 
 describe('categories', () => {
   it('lists the palette order', () => {
-    expect(NODE_CATEGORIES).toHaveLength(22);
+    expect(NODE_CATEGORIES).toHaveLength(24);
     expect(NODE_CATEGORY_IDS[0]).toBe('triggers');
-    expect(categoryOrder('utilities')).toBe(21);
+    expect(categoryOrder('utilities')).toBe(23);
     expect(categoryName('state')).toBe('State and timing');
   });
 });
@@ -280,6 +282,22 @@ describe('registry', () => {
     expect(registry.has('trigger.time')).toBe(true);
     expect(registry.has('none.here')).toBe(false);
     expect(registry.shipped().map((kind) => kind.id)).toEqual(['device.set_level', 'trigger.time']);
+  });
+
+  it('hides structural kinds from every list and still finds them by id', () => {
+    const hidden = variant({ id: 'flow.start', stateful: false, structural: true, tier: 'v1' });
+    const registry = buildRegistry([hidden, START]);
+    expect(isListedKind(hidden)).toBe(false);
+    expect(isShippedKind(hidden)).toBe(false);
+    expect(isShippedKind(START)).toBe(true);
+    expect(registry.get('flow.start')).toBe(hidden);
+    expect(registry.has('flow.start')).toBe(true);
+    expect(registry.kinds).toHaveLength(2);
+    expect(registry.shipped().map((kind) => kind.id)).toEqual(['trigger.time']);
+    expect(nodeCatalogue(registry).map((entry) => entry.id)).toEqual(['trigger.time']);
+    const everything = nodeCatalogue(registry, { includeUnshipped: true });
+    expect(everything.map((entry) => entry.id)).toEqual(['trigger.time']);
+    expect(nodeCatalogue(registry, { includeUnshipped: true, kind: 'flow.start' })).toEqual([]);
   });
 
   it('builds an empty registry', () => {

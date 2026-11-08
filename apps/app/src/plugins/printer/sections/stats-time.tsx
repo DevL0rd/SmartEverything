@@ -1,7 +1,7 @@
 import type { PrinterStatsView } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Arc, Bars, CalendarHeatmap, HourHeatmap } from '../../../components/charts';
+import { Arc, Bars, CalendarHeatmap, HourHeatmap, WEEKDAY_ROWS } from '../../../components/charts';
 import { Card } from '../../../components/card';
 import { Text } from '../../../components/text';
 
@@ -18,6 +18,7 @@ export function Calendar({
         days={view.stats.heatmap}
         today={today}
         split={2}
+        unit="pages printed"
         label="Pages printed on each of the last 365 days; hatched days were not recorded"
       />
     </Card>
@@ -27,7 +28,12 @@ export function Calendar({
 export function WeekdayHours({ view }: { readonly view: PrinterStatsView }): ReactNode {
   return view.stats.weekdayHour.every((row) => row.every((value) => value === 0)) ? null : (
     <Card title="Busy hours" icon="clock">
-      <HourHeatmap matrix={view.stats.weekdayHour} label="Pages printed by weekday and hour" />
+      <HourHeatmap
+        matrix={view.stats.weekdayHour}
+        rows={WEEKDAY_ROWS}
+        unit="pages printed"
+        label="Pages printed by weekday and hour"
+      />
     </Card>
   );
 }

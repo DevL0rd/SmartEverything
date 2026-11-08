@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { presentValue } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
@@ -45,7 +45,8 @@ function ActionButton({
   readonly item: Pick<ActionItem, 'presented'>;
   readonly reason: string | null;
 }): ReactNode {
-  const action = useAction(device, item.presented);
+  const opener = useRef<View>(null);
+  const action = useAction(device, item.presented, opener);
   return (
     <Guard reason={reason}>
       <Button
@@ -55,6 +56,7 @@ function ActionButton({
         variant="tonal"
         loading={action.pending}
         disabled={reason !== null}
+        ref={opener}
         onPress={action.run}
       />
       {action.sheet}

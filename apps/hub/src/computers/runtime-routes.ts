@@ -9,6 +9,7 @@ import { bound, type RouteOf, type RouteTable } from '../server/router';
 import type { ComputerAiDirectory } from './ai-directory';
 import { computerMcpPolicyRoutes } from './mcp-policy-routes';
 import { assertPublicRuntimeRequest } from './runtime-access';
+import { externalChatRetired } from './external-chat';
 
 function target(params: {
   readonly deviceId: string;
@@ -54,7 +55,10 @@ export function computerRuntimeRoutes(
         return directory.nativeRuntimeRequest(target(params), body, COMPUTER_RUNTIME_REPLY, caller);
       },
     ),
-    readComputerRuntimeReceipt: receiptRoute(directory),
+    readComputerRuntimeReceipt: bound(
+      API_ENDPOINTS.readComputerRuntimeReceipt,
+      externalChatRetired,
+    ),
   };
 }
 
@@ -70,32 +74,5 @@ function preferenceRoute(
     if (!models.some((model) => model.id === params.modelId))
       throw new ApiError('invalid_request', 'The selected runtime has not reported this model.');
     return store.aiRuntimeProvider.prefer(params.runtime, params.modelId, body.device_id);
-  });
-}
-
-function receiptRoute(directory: ComputerAiDirectory): RouteOf<'readComputerRuntimeReceipt'> {
-  return bound(API_ENDPOINTS.readComputerRuntimeReceipt, async ({ params, caller }) => {
-    const request =
-      params.runtime === 'claude'
-        ? ({
-            runtime: 'claude',
-            request: { operation: 'native_operation', operation_id: params.operationId },
-          } as const)
-        : ({
-            runtime: 'codex',
-            request: { operation: 'native_operation', operation_id: params.operationId },
-          } as const);
-    const result = await directory.nativeRuntimeRequest(
-      target(params),
-      request,
-      COMPUTER_RUNTIME_REPLY,
-      caller,
-    );
-    if (result.reply.operation !== 'native_operation')
-      throw new ApiError('upstream_failed', 'Expected native operation receipt.');
-    return API_ENDPOINTS.readComputerRuntimeReceipt.response.parse({
-      runtime: result.runtime,
-      operation: result.reply.value,
-    });
   });
 }

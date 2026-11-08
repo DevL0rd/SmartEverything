@@ -1,9 +1,12 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import type { AiChatRow, HistoryRow, LiveChange, LiveTable } from '@smarteverything/domain';
+import type { HistoryRow, LiveChange, LiveTable } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
 import { LogTally } from '../design/log-tally';
+import { applyHomeMapChanges } from '../features/home-map/data/live';
+import { applyDriveChanges } from '../features/nas/data/live';
 import { patchCameraDays, refreshSnapshots } from './camera-day';
+import { invalidateChatMeterHistory } from './chat-meter-history';
 import { invalidateDeviceLogs } from './device-log';
 import { entryChanges } from './health-entries';
 import {
@@ -14,9 +17,10 @@ import {
   DEVICE_EFFECTS_KEY,
   HEALTH_PREFIX,
   HISTORY_PREFIX,
-  nativeSessionsKey,
   OPENROUTER_ACCOUNT_KEY,
   PLUGIN_PREFIX,
+  plannerKeys,
+  type PlannerKind,
   REACH_PREFIX,
   WINDOW_PREFIX,
 } from './keys';
@@ -52,32 +56,41 @@ const HEALTH_TABLES: ReadonlySet<LiveTable> = new Set([
   'watch_days',
 ]);
 
-function continuedDevice(chat: AiChatRow | null): string | null {
-  return chat?.engine.kind === 'claude' && chat.engine.continued_from !== undefined
-    ? chat.engine.device_id
-    : null;
+const PLANNER_DEPENDENTS: Readonly<Record<PlannerKind, readonly LiveTable[]>> = {
+  day: [
+    'planner_items',
+    'planner_occurrences',
+    'planner_collections',
+    'planner_alarms',
+    'planner_timers',
+    'google_accounts',
+  ],
+  range: ['planner_items', 'planner_occurrences', 'planner_collections', 'google_accounts'],
+  stats: [
+    'planner_items',
+    'planner_occurrences',
+    'planner_collections',
+    'planner_alarms',
+    'planner_timers',
+  ],
+  rings: ['planner_alarms', 'planner_timers'],
+};
+
+const PLANNER_KINDS: readonly PlannerKind[] = ['day', 'range', 'stats', 'rings'];
+
+export function plannerKindsChanged(tables: ReadonlySet<LiveTable>): readonly PlannerKind[] {
+  return PLANNER_KINDS.filter((kind) =>
+    PLANNER_DEPENDENTS[kind].some((table) => tables.has(table)),
+  );
 }
 
-function invalidateContinuedSessions(client: QueryClient, changes: readonly LiveChange[]): void {
-  const devices = new Set<string>();
-  for (const change of changes) {
-    if (change.table !== 'ai_chats') continue;
-    const before = change.oldRecord;
-    const after = change.record;
-    const removed = after === null;
-    const archivedChanged =
-      before !== null &&
-      after !== null &&
-      (before.archived_at === null) !== (after.archived_at === null);
-    if (!removed && !archivedChanged) continue;
-    const device = continuedDevice(before ?? after);
-    if (device !== null) devices.add(device);
-  }
-  for (const device of devices)
+function invalidatePlanner(client: QueryClient, tables: ReadonlySet<LiveTable>): void {
+  for (const kind of plannerKindsChanged(tables)) {
     background(
-      client.invalidateQueries({ queryKey: nativeSessionsKey(device, false) }),
+      client.invalidateQueries({ queryKey: plannerKeys.prefix(kind) }),
       'queries.invalidate_failed',
     );
+  }
 }
 
 function invalidateAi(client: QueryClient, tables: ReadonlySet<LiveTable>): void {
@@ -147,7 +160,7 @@ export function applyToWindows(client: QueryClient, changes: readonly LiveChange
     background(client.invalidateQueries({ queryKey: HEALTH_PREFIX }), 'queries.invalidate_failed');
   }
   invalidateAi(client, tables);
-  invalidateContinuedSessions(client, changes);
+  invalidateChatMeterHistory(client, changes);
   if (tables.has('device_effect_targets')) {
     refreshDeviceEffects(client);
   }
@@ -155,12 +168,15 @@ export function applyToWindows(client: QueryClient, changes: readonly LiveChange
     background(client.invalidateQueries({ queryKey: PLUGIN_PREFIX }), 'queries.invalidate_failed');
   }
   invalidateAccess(client, tables);
+  invalidatePlanner(client, tables);
   if (tables.has('health_entries')) {
     entryChanges.update((count) => count + 1);
   }
   invalidateDeviceLogs(client, changes);
   patchCameraDays(client, changes);
   refreshSnapshots(client, changes);
+  applyHomeMapChanges(client, changes);
+  applyDriveChanges(client, changes);
 }
 
 export function refreshAllWindows(client: QueryClient): void {

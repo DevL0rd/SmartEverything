@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { ListRow, ReorderableList, Stage } from 'smarteverything-kit';
 
 const items = [
@@ -15,12 +16,12 @@ const list = (
     onReorder={() => undefined}
   />
 );
-export const Devices = () => (
+export const Devices = (): ReactElement => (
   <Stage theme="dark" width={440}>
     {list}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={440}>
     {list}
   </Stage>

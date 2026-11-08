@@ -1,9 +1,13 @@
+import { kindLookupOf } from '../features/automations';
 import { routinesOf } from './routines';
 import { automationRuntimePages } from './automation-runtime-pages';
 import { deviceGroupPages } from './device-group-pages';
 import { cameraTranscriptPages } from './camera-transcript-pages';
+import { homeMapPages } from '../features/home-map/search';
+import type { MapSearchItem } from '../features/home-map/search-maps';
+import { isPhysicalPresence } from '../plugins/shelly-presence/presence-data';
 import { APP_PLUGINS } from '../plugins/registry';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import {
   baseNameOf,
   CAMERA_EVENT_SEARCH_WORDS,
@@ -36,11 +40,14 @@ export interface SearchTables extends ExtensionSearchData {
   readonly scenes: StoreState['tables']['scenes'];
   readonly automations: StoreState['tables']['automations'];
   readonly automationValues?: StoreState['tables']['automation_values'];
+  readonly automationPluginKinds: StoreState['tables']['automation_plugin_kinds'];
   readonly scheduled: StoreState['tables']['scheduled_actions'];
   readonly plugins: StoreState['tables']['plugins'];
   readonly pluginStreams: StoreState['tables']['plugin_streams'];
   readonly pluginUi: StoreState['tables']['plugin_ui'];
   readonly chats: readonly SearchChat[];
+  readonly homeMaps: readonly MapSearchItem[];
+  readonly modelCategories: readonly string[];
 }
 
 export interface SearchChat {
@@ -49,13 +56,14 @@ export interface SearchChat {
   readonly source: string;
   readonly pinned: boolean;
   readonly computer: boolean;
-  readonly runtime?: 'claude' | 'codex' | 'dsh';
+  readonly runtime: 'claude' | 'codex' | 'dsh';
+  readonly historyOnly?: boolean;
   readonly metadata?: ProviderMetadata | null;
   readonly agents?: readonly AiAgentRun[];
 }
 
 export interface SourceLinks {
-  readonly links: Map<string, Href>;
+  readonly links: Map<string, AppHref>;
   readonly icons: Map<string, IconName>;
   readonly parents: Map<string, string>;
   readonly plugins: Set<string>;
@@ -169,7 +177,7 @@ interface PluginPage {
   readonly title: string;
   readonly description: string;
   readonly keywords: readonly string[];
-  readonly to: Href;
+  readonly to: AppHref;
 }
 
 function settingPage(
@@ -346,6 +354,7 @@ export function sourcesOf(
   env: SettingEnv,
   out: SourceLinks,
 ): SearchSources {
+  const kinds = kindLookupOf(rowsOf(tables.automationPluginKinds));
   return {
     devices: devices.map(deviceOf),
     rooms: rowsOf(tables.rooms).map((room) => ({
@@ -356,7 +365,17 @@ export function sourcesOf(
     pages: [
       ...pagesOf(env, out),
       ...deviceGroupPages(tables, out),
-      ...automationRuntimePages(tables, out),
+      ...homeMapPages(
+        {
+          rooms: rowsOf(tables.rooms),
+          maps: tables.homeMaps,
+          categories: tables.modelCategories,
+          devices,
+          presenceSensor: isPhysicalPresence,
+        },
+        out,
+      ),
+      ...automationRuntimePages(tables, out, kinds),
       ...cameraTimelinePages(devices, out),
       ...cameraTranscriptPages(devices, out),
       ...extensionPages(tables, env.owner, out),
@@ -367,7 +386,7 @@ export function sourcesOf(
       ...tables.chats.flatMap((chat) => chatProviderPages(chat, out, env.owner)),
     ],
     settings: settingsOf(env, out),
-    ...routinesOf(tables),
+    ...routinesOf(tables, kinds),
     irRemotes: [],
     cameras: [],
   };

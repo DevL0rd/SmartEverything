@@ -1,41 +1,26 @@
 import type { ReactNode } from 'react';
-import { DEFAULT_ENGINE, type Engine } from '@smarteverything/domain';
+import type { Engine } from '@smarteverything/domain';
 import { ListRow } from '../../../components/list-row';
 import { useIsOwner } from '../../../store/selectors';
-import { useModelLabel, modelOrNull } from '../picker/model-label';
+import { useModelLabel } from '../picker/model-label';
 import { ModelLibrary, useLibraryDisclosure } from '../picker/model-library';
-import { useSuggestedModels } from '../picker/model-queries';
 import { useEngineCatalogue, useEngineDefaultChange } from '../provider/provider-data';
 
-const OWNER_ONLY = 'Only the owner can change the default.';
+const OWNER_ONLY = 'Only the owner can change the model for new chats.';
+const LOADING = 'Loading model…';
 
-function useDefaultEngine(): { readonly engine: Engine; readonly save: (engine: Engine) => void } {
-  const catalogue = useEngineCatalogue();
-  const legacy = useSuggestedModels('chat', null, true);
-  const change = useEngineDefaultChange();
-  const resolved = legacy.data?.default;
-  const legacyEngine: Engine =
-    resolved === undefined || resolved === null
-      ? DEFAULT_ENGINE
-      : { kind: 'openrouter', model: modelOrNull(resolved.choice), effort: resolved.effort };
-  return {
-    engine: catalogue.data?.default ?? legacyEngine,
-    save: (engine): void => {
-      change.mutate(engine);
-    },
-  };
-}
-
-export function DefaultModelRow(): ReactNode {
+function LoadedDefaultRow({ engine }: { readonly engine: Engine }): ReactNode {
   const library = useLibraryDisclosure();
   const owner = useIsOwner();
-  const current = useDefaultEngine();
-  const label = useModelLabel(current.engine);
+  const change = useEngineDefaultChange();
+  const label = useModelLabel(engine);
+  const name = label.computer === null ? label.name : `${label.name} · ${label.computer}`;
+  const subtitle = engine.kind === 'dsh' ? name : 'Choose a model for new chats';
   return (
     <>
       <ListRow
-        title="Default for new chats"
-        subtitle={`${label.name}${label.computer === null ? '' : ` · ${label.computer}`}`}
+        title="Model for new chats"
+        subtitle={subtitle}
         icon="star"
         chevron
         onPress={() => {
@@ -46,10 +31,23 @@ export function DefaultModelRow(): ReactNode {
         open={library.query !== null}
         onClose={library.close}
         mode="default"
-        engine={current.engine}
-        onChange={owner ? current.save : null}
+        engine={engine}
+        onChange={
+          owner
+            ? (next): void => {
+                change.mutate(next);
+              }
+            : null
+        }
         note={owner ? null : OWNER_ONLY}
       />
     </>
   );
+}
+
+export function DefaultModelRow(): ReactNode {
+  const catalogue = useEngineCatalogue();
+  if (catalogue.data === undefined)
+    return <ListRow title="Model for new chats" subtitle={LOADING} icon="star" />;
+  return <LoadedDefaultRow engine={catalogue.data.default} />;
 }

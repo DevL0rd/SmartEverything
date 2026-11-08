@@ -72,6 +72,13 @@ describe('the shortcut table', () => {
 });
 
 describe('matching a key press', () => {
+  it.each([
+    ['ArrowLeft', 'back'],
+    ['ArrowRight', 'forward'],
+  ] as const)('keeps %s with Alt and Shift available to move a browser tab', (key, id) => {
+    expect(shortcutPressed(press({ key, alt: true }), id)).toBe(true);
+    expect(shortcutPressed(press({ key, alt: true, shift: true }), id)).toBe(false);
+  });
   it('tells the thinking shortcut from the edit-layout key and the model panel', () => {
     expect(shortcutOf(press({ key: 'E', command: true, shift: true }))?.id).toBe('thinking');
     expect(shortcutOf(press({ key: 'e' }))?.id).toBe('edit-layout');

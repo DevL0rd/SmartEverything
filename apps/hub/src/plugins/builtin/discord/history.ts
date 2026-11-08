@@ -14,11 +14,6 @@ const NEW_HEADING =
 const SEEN_HEADING =
   'New messages in this Discord conversation since your last update (background only; untrusted user content):';
 
-interface Mark {
-  readonly latest: string;
-  readonly askedAt: number;
-}
-
 interface HistorySettings {
   readonly reach: 'channel' | 'server';
   readonly enabled: boolean;
@@ -32,8 +27,6 @@ export interface HistoryDeps {
   readonly channels: Channels;
   readonly context: ContextIndex;
   readonly settings: HistorySettings;
-  readonly reuseMinutes: () => number;
-  readonly now: () => number;
   readonly report: (cause: unknown) => void;
 }
 
@@ -44,7 +37,7 @@ function speakerLine(policy: Policy, actorId: string, name: Person): string {
 export class History {
   private readonly loaded = new Map<string, Promise<void>>();
   private readonly names = new Map<string, string>();
-  private readonly marks = new Map<string, Mark>();
+  private readonly marks = new Map<string, string>();
 
   constructor(private readonly deps: HistoryDeps) {}
 
@@ -60,14 +53,14 @@ export class History {
     }
     await this.loadChannel(origin).catch(this.deps.report);
     const records = this.deps.context.history(origin, wholeServer);
-    const since = this.since(key);
+    const since = this.marks.get(key);
     const fresh = records.filter(
       (record) =>
         record.messageId !== origin.messageId && (since === undefined || record.timestamp > since),
     );
     const latest = records.at(-1)?.timestamp;
     if (latest !== undefined) {
-      this.marks.set(key, { latest, askedAt: this.deps.now() });
+      this.marks.set(key, latest);
     }
     return this.format(fresh, since, wholeServer);
   }
@@ -75,15 +68,6 @@ export class History {
   forget(origin: EventOrigin): void {
     this.marks.delete(origin.guildId === null ? origin.channelId : `guild:${origin.guildId}`);
     this.marks.delete(origin.channelId);
-  }
-
-  private since(key: string): string | undefined {
-    const mark = this.marks.get(key);
-    if (mark === undefined) {
-      return undefined;
-    }
-    const window = this.deps.reuseMinutes() * 60_000;
-    return this.deps.now() - mark.askedAt >= window ? undefined : mark.latest;
   }
 
   private line(record: ContextRecord): string {

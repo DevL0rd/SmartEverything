@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import type { ChatLink, ChatLinkPage } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import type { IconName } from '../../../components/icon';
@@ -13,7 +13,7 @@ interface PageKind {
   readonly icon: IconName;
   readonly trail: string;
   readonly title: (tables: Tables, id: string | null) => string | null;
-  readonly to: (id: string | null) => Href;
+  readonly to: (id: string | null) => AppHref;
 }
 
 function titled<T>(row: T | undefined, name: (row: T) => string): string | null {

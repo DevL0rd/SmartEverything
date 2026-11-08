@@ -1,174 +1,160 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { CapabilityRole } from '@smarteverything/domain';
-import type { FrameClass, WidgetFrameBox, WidgetSize } from '../../../components/widget-board';
+import type { FrameClass } from '../../../components/widget-board';
+import { ActionBand } from '../../../components/widget-board/action-band';
+import { cn } from '../../../design/cn';
 import type { Device } from '../../../store/state';
-import { useVisualPx } from '../../device-visuals';
+import { DeviceBandItems } from '../faces/band-actions';
+import { useSlot } from '../faces/use-slot';
+import { columnCount } from '../model/control-columns';
 import { ControlsArea } from './card-controls';
-import { Corner, Facts, Header, Names, Trend } from './card-parts';
+import { Facts, Header, Names, OfflineChip, Trend } from './card-parts';
 import { Visual } from './stage';
-
-const MAX_CONTROLS: Readonly<Record<FrameClass, number>> = {
-  s: 1,
-  xs: 2,
-  m: 2,
-  w: 4,
-  l: 6,
-  xl: 8,
-};
+import { WIDE_VISUAL_PX, WideArt, type WideClass } from './wide-card';
 
 export interface GenericFaceProps {
   readonly device: Device;
-  readonly box: WidgetFrameBox;
-  readonly size: WidgetSize;
+  readonly cls: FrameClass;
 }
 
 const NONE: ReadonlySet<CapabilityRole> = new Set();
-const ROW_STAGE = 96;
-const ROW_GAP = 16;
-const ROW_HEADER = 64;
-const TILE_CHROME = 116;
-const STACK_CHROME = 176;
-const STACK_HERO_CHROME = 80;
-const SIDE_ROOM = 480;
-const SIDE_CHROME = 200;
+const FACT_WIDTH = 96;
+const FACT_GAP = 8;
 
-function room(
-  box: WidgetFrameBox,
-  taken: { readonly width?: number; readonly height: number },
-): {
-  readonly width: number;
-  readonly height: number;
-} {
-  return {
-    width: Math.max(0, box.width - (taken.width ?? 0)),
-    height: Math.max(0, box.height - taken.height),
-  };
+function Lower({
+  device,
+  beside,
+  dense,
+  caption = false,
+}: {
+  readonly device: Device;
+  readonly beside: boolean;
+  readonly dense: boolean;
+  readonly caption?: boolean;
+}): ReactNode {
+  const { slot, onLayout } = useSlot();
+  return (
+    <View
+      className={cn('min-h-0 flex-1', beside ? 'flex-row items-end gap-2' : 'gap-3')}
+      pointerEvents="box-none"
+    >
+      <ControlsArea
+        device={device}
+        box={slot}
+        dense={dense}
+        onLayout={onLayout}
+        {...(caption ? { labels: 'caption' as const } : {})}
+      />
+      <View className={cn(beside && 'min-w-0 shrink')} pointerEvents="box-none">
+        <ActionBand>
+          <DeviceBandItems device={device} />
+        </ActionBand>
+      </View>
+    </View>
+  );
 }
 
-function TileFace({ device, box }: GenericFaceProps): ReactNode {
+function Art({ device, cls }: { readonly device: Device; readonly cls: WideClass }): ReactNode {
+  return (
+    <WideArt cls={cls}>
+      <Visual device={device} size="card" px={WIDE_VISUAL_PX[cls]} />
+    </WideArt>
+  );
+}
+
+function TileFace({ device }: { readonly device: Device }): ReactNode {
   return (
     <View className="flex-1 gap-2" pointerEvents="box-none">
-      <View className="flex-row items-start justify-between" pointerEvents="box-none">
+      <View className="flex-row items-start justify-between" pointerEvents="none">
         <Visual device={device} size="tile" />
-        <Corner device={device} />
+        <OfflineChip device={device} />
       </View>
       <Names device={device} look="tile" />
-      <ControlsArea
-        device={device}
-        box={room(box, { height: TILE_CHROME })}
-        max={MAX_CONTROLS.m}
-        dense
-        labels="caption"
-      />
+      <Lower device={device} beside dense caption />
     </View>
   );
 }
 
-function RowFace({ device, box, size }: GenericFaceProps): ReactNode {
+function RowFace({ device, cls }: { readonly device: Device; readonly cls: WideClass }): ReactNode {
+  return (
+    <View
+      className={cn('flex-1 flex-row', cls === 'm' ? 'gap-3' : 'gap-4')}
+      pointerEvents="box-none"
+    >
+      <Art device={device} cls={cls} />
+      <View className="min-w-0 flex-1 gap-1.5" pointerEvents="box-none">
+        <Header device={device} large={false} />
+        <Lower device={device} beside dense />
+      </View>
+    </View>
+  );
+}
+
+function FactsRow({
+  device,
+  wide,
+}: {
+  readonly device: Device;
+  readonly wide: boolean;
+}): ReactNode {
+  const { slot, onLayout } = useSlot();
+  return (
+    <View className={cn('min-w-0', wide && 'flex-1')} onLayout={onLayout} pointerEvents="none">
+      {slot.width === 0 ? null : (
+        <Facts
+          device={device}
+          hidden={NONE}
+          max={columnCount(slot.width, FACT_WIDTH, FACT_GAP)}
+          column={false}
+          large={false}
+        />
+      )}
+    </View>
+  );
+}
+
+function Details({ device, wide }: { readonly device: Device; readonly wide: boolean }): ReactNode {
+  return (
+    <View className={cn(wide ? 'flex-row items-end gap-6' : 'gap-2')} pointerEvents="none">
+      <FactsRow device={device} wide={wide} />
+      <View className={cn(wide && 'min-w-40 flex-1')}>
+        <Trend device={device} />
+      </View>
+    </View>
+  );
+}
+
+function PanelFace({
+  device,
+  cls,
+}: {
+  readonly device: Device;
+  readonly cls: WideClass;
+}): ReactNode {
   return (
     <View className="flex-1 flex-row gap-4" pointerEvents="box-none">
-      <View className="self-start">
-        <Visual device={device} size="card" />
-      </View>
+      <Art device={device} cls={cls} />
       <View className="min-w-0 flex-1 gap-3" pointerEvents="box-none">
-        <Header device={device} large={false} />
-        <ControlsArea
-          device={device}
-          box={room(box, { width: ROW_STAGE + ROW_GAP, height: ROW_HEADER })}
-          max={MAX_CONTROLS[size === 'W' ? 'w' : 'm']}
-          dense
-        />
-      </View>
-    </View>
-  );
-}
-
-function StackFace({ device, box }: GenericFaceProps): ReactNode {
-  return (
-    <View className="flex-1 gap-3" pointerEvents="box-none">
-      <Header device={device} large />
-      <View className="flex-row items-start gap-3" pointerEvents="box-none">
-        <Visual device={device} size="card" />
-        <View className="min-w-0 flex-1 gap-2" pointerEvents="none">
-          <Facts device={device} hidden={NONE} max={2} column={false} large={false} />
-          <Trend device={device} />
-        </View>
-      </View>
-      <ControlsArea
-        device={device}
-        box={room(box, { height: STACK_CHROME })}
-        max={MAX_CONTROLS.l}
-        dense={false}
-      />
-    </View>
-  );
-}
-
-function StackHeroFace({ device, box }: GenericFaceProps): ReactNode {
-  const hero = useVisualPx('hero');
-  return (
-    <View className="flex-1 gap-3" pointerEvents="box-none">
-      <Header device={device} large />
-      <View className="flex-row items-start gap-3" pointerEvents="box-none">
-        <View className="min-w-0 flex-1 justify-between gap-2" pointerEvents="none">
-          <Facts device={device} hidden={NONE} max={3} column large={false} />
-          <Trend device={device} />
-        </View>
-        <Visual device={device} size="hero" />
-      </View>
-      <ControlsArea
-        device={device}
-        box={room(box, { height: hero + STACK_HERO_CHROME })}
-        max={MAX_CONTROLS.l}
-        dense={false}
-      />
-    </View>
-  );
-}
-
-function SideFace({ device, box }: GenericFaceProps): ReactNode {
-  const hero = useVisualPx('hero');
-  return (
-    <View className="flex-1 flex-row items-start gap-6" pointerEvents="box-none">
-      <Visual device={device} size="hero" />
-      <View className="min-w-0 flex-1 gap-4" pointerEvents="box-none">
         <Header device={device} large />
-        <View className="flex-row items-end gap-6" pointerEvents="none">
-          <Facts device={device} hidden={NONE} max={4} column={false} large />
-          <View className="min-w-40 flex-1">
-            <Trend device={device} />
-          </View>
-        </View>
-        <ControlsArea
-          device={device}
-          box={room(box, { width: hero + 24, height: SIDE_CHROME })}
-          max={MAX_CONTROLS.xl}
-          dense={false}
-        />
+        <Details device={device} wide={cls === 'xl'} />
+        <Lower device={device} beside={false} dense={false} />
       </View>
     </View>
   );
 }
 
-function PanelFace(props: GenericFaceProps): ReactNode {
-  const hero = useVisualPx('hero');
-  const { box } = props;
-  if (box.width >= hero + SIDE_ROOM && box.height >= hero) {
-    return <SideFace {...props} />;
+export function GenericFace({ device, cls }: GenericFaceProps): ReactNode {
+  switch (cls) {
+    case 's':
+      return <TileFace device={device} />;
+    case 'xs':
+    case 'm':
+      return <RowFace device={device} cls="m" />;
+    case 'w':
+      return <RowFace device={device} cls="w" />;
+    case 'l':
+    case 'xl':
+      return <PanelFace device={device} cls={cls} />;
   }
-  return box.height >= hero + STACK_CHROME ? (
-    <StackHeroFace {...props} />
-  ) : (
-    <StackFace {...props} />
-  );
 }
-
-export const GENERIC_FACES: Readonly<Record<FrameClass, (props: GenericFaceProps) => ReactNode>> = {
-  s: TileFace,
-  xs: RowFace,
-  m: RowFace,
-  w: RowFace,
-  l: PanelFace,
-  xl: PanelFace,
-};

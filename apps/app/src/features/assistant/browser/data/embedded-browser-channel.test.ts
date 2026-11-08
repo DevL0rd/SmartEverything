@@ -1,8 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import type { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EMBEDDED_BROWSER_MESSAGE, type EmbeddedBrowserScope } from '@smarteverything/domain';
 
 const hub = vi.hoisted((): { sockets: unknown[] } => ({ sockets: [] }));
+const route = vi.hoisted(
+  (): { generation: number; readonly listeners: Set<() => void> } => ({
+    generation: 1,
+    listeners: new Set(),
+  }),
+);
 
 class FakeSocket {
   readyState = 1;
@@ -23,15 +30,31 @@ class FakeSocket {
   }
 }
 
-vi.mock('expo-crypto', () => ({ randomUUID: (): string => globalThis.crypto.randomUUID() }));
+vi.mock('expo-crypto', () => ({ randomUUID: (): string => randomUUID() }));
+vi.mock('../../../../platform/browser-surface', () => ({
+  browserCapability: (): { readonly publicBrowsing: boolean } => ({ publicBrowsing: true }),
+}));
 vi.mock('../../../../api/connection/hub-socket', () => ({
   openHubSocket: (): FakeSocket => new FakeSocket(),
 }));
 vi.mock('../../../../api/connection/active-route', () => ({
-  routeFor: (): { readonly state: { readonly subscribe: () => () => void } } => ({
-    state: { subscribe: (): (() => void) => () => undefined },
+  routeFor: () => ({
+    state: {
+      get: (): { readonly generation: number } => ({ generation: route.generation }),
+      subscribe: (listener: () => void): (() => void) => {
+        route.listeners.add(listener);
+        return (): void => {
+          route.listeners.delete(listener);
+        };
+      },
+    },
   }),
 }));
+
+function routeSettled(generation: number): void {
+  route.generation = generation;
+  for (const listener of route.listeners) listener();
+}
 
 const { EmbeddedBrowserChannel } = await import('./embedded-browser-channel');
 const { BrowserTabs } = await import('../browser-tabs');
@@ -72,7 +95,7 @@ function readRequest(scope: EmbeddedBrowserScope): {
   readonly scope: EmbeddedBrowserScope;
   readonly operation: { readonly kind: 'read' };
 } {
-  return { requestId: globalThis.crypto.randomUUID(), scope, operation: { kind: 'read' } };
+  return { requestId: randomUUID(), scope, operation: { kind: 'read' } };
 }
 async function settled(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0);
@@ -83,16 +106,44 @@ function results(socket: FakeSocket): readonly z.output<typeof EMBEDDED_BROWSER_
 
 describe('embedded browser channel', () => {
   let channel: InstanceType<typeof EmbeddedBrowserChannel>;
+  let tabs: InstanceType<typeof BrowserTabs>;
+  const reveal = vi.fn<() => void>();
   beforeEach(() => {
     vi.useFakeTimers();
     hub.sockets.length = 0;
-    channel = new EmbeddedBrowserChannel(
-      CONNECTION,
-      OWNER,
-      new BrowserTabs(OWNER.chatId, OWNER.profileId),
-      () => undefined,
-    );
+    reveal.mockClear();
+    tabs = new BrowserTabs(OWNER.chatId, OWNER.profileId);
+    channel = new EmbeddedBrowserChannel(CONNECTION, OWNER, tabs, reveal);
   });
+
+  it.each(['navigate', 'reload'] as const)(
+    'reveals the tab an AI successfully asks to %s',
+    async (kind) => {
+      const { socket, scope } = connected();
+      const tabId = tabs.blank();
+      await tabs.navigate(tabId, 'https://preview.example');
+      tabs.attach(tabId, {
+        navigate: vi.fn(),
+        reload: vi.fn(),
+        back: vi.fn(),
+        forward: vi.fn(),
+        stop: vi.fn(),
+      });
+      tabs.blank();
+      const action =
+        kind === 'reload'
+          ? { kind, tabId }
+          : { kind, tabId, address: 'https://preview.example/updated' };
+      receive(socket, {
+        kind: 'perform',
+        request: { requestId: randomUUID(), scope, operation: { kind: 'edit', action } },
+      });
+      await settled();
+      expect(results(socket)[0]).toMatchObject({ kind: 'result', reason: null, result: { tabId } });
+      expect(tabs.read().selectedId).toBe(tabId);
+      expect(reveal).toHaveBeenCalledExactlyOnceWith();
+    },
+  );
   afterEach(() => {
     channel.dispose();
     vi.useRealTimers();
@@ -112,11 +163,11 @@ describe('embedded browser channel', () => {
 
   it('answers closing a tab that is already gone with an already-closed notice', async () => {
     const { socket, scope } = connected();
-    const tabId = globalThis.crypto.randomUUID();
+    const tabId = randomUUID();
     receive(socket, {
       kind: 'perform',
       request: {
-        requestId: globalThis.crypto.randomUUID(),
+        requestId: randomUUID(),
         scope,
         operation: { kind: 'edit', action: { kind: 'close', tabId } },
       },
@@ -141,7 +192,7 @@ describe('embedded browser channel', () => {
 
   it('refuses one request that does not match the registration and stays connected', async () => {
     const { socket, scope } = connected();
-    const stranger = { ...scope, generation: globalThis.crypto.randomUUID() };
+    const stranger = { ...scope, generation: randomUUID() };
     receive(socket, { kind: 'perform', request: readRequest(stranger) });
     receive(socket, { kind: 'perform', request: readRequest(scope) });
     await settled();
@@ -176,5 +227,24 @@ describe('embedded browser channel', () => {
       await vi.advanceTimersByTimeAsync(30_000);
     }
     expect(sockets().length).toBeGreaterThan(8);
+  });
+
+  it('waits out its backoff when the same route only settles again after a failure', () => {
+    for (let settle = 0; settle < 5; settle += 1) {
+      latest().onerror?.();
+      routeSettled(route.generation);
+    }
+    expect(sockets()).toHaveLength(1);
+    vi.advanceTimersByTime(250);
+    expect(sockets()).toHaveLength(2);
+  });
+
+  it('tries again at once when the route itself changes', () => {
+    latest().onerror?.();
+    vi.advanceTimersByTime(250);
+    latest().onerror?.();
+    const opened = sockets().length;
+    routeSettled(route.generation + 1);
+    expect(sockets()).toHaveLength(opened + 1);
   });
 });

@@ -8,6 +8,7 @@ import { ApiError, HUB_HARNESS_CONTROL } from '@smarteverything/domain';
 import type {
   HarnessRuntimeRequest,
   HarnessRuntimeReceipt,
+  HarnessNativeFrame,
   HubHarnessControl,
   NodeHarnessFrame,
   AiModelRoute,
@@ -100,6 +101,24 @@ export class RemoteHarness {
   hasSession(id: string, epoch: number): boolean {
     return !this.stopped && this.sessions.get(id) === epoch;
   }
+  acceptedChildFrame(frame: HarnessNativeFrame): void {
+    if (this.stopped) return;
+    const child = this.service.store.dshSessions.ownerOf(frame.session_id);
+    if (child?.header.origin !== 'subagent') return;
+    if (frame.kind === 'open' && !this.openPending(frame.session_id, frame.epoch))
+      this.sessions.set(frame.session_id, frame.epoch);
+    if (frame.kind === 'close' && this.hasSession(frame.session_id, frame.epoch))
+      this.sessions.delete(frame.session_id);
+  }
+  private openPending(id: string, epoch: number): boolean {
+    return [...this.pending.values()].some(
+      ({ request }) =>
+        request.kind === 'open' &&
+        request.mode !== 'continue' &&
+        request.claim.session_id === id &&
+        request.claim.epoch === epoch,
+    );
+  }
   execute(id: string, request: HarnessRuntimeRequest): Promise<HarnessRuntimeReceipt> {
     if (this.stopped)
       throw new ApiError(
@@ -182,7 +201,7 @@ export class RemoteHarness {
         'forbidden',
         'Computer receipt does not match the admitted operation, session, epoch and state.',
       );
-    if (request.kind === 'open') this.sessions.set(session, epoch);
+    if (request.kind === 'open' && request.mode !== 'continue') this.sessions.set(session, epoch);
     if (request.kind === 'close') this.sessions.delete(session);
   }
   private admit(request: HarnessRuntimeRequest): AiModelRoute | undefined {

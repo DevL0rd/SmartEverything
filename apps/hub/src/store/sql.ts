@@ -183,7 +183,20 @@ export function inList(column: string, name: string, values: readonly string[]):
   };
 }
 
+export class SqlFilterMissingError extends Error {
+  override readonly name = 'SqlFilterMissingError';
+
+  constructor(readonly received: unknown) {
+    super(`A SQL filter was not a clause but ${String(received)}.`);
+  }
+}
+
 export function allOf(filters: readonly SqlFilter[]): SqlFilter {
+  for (const filter of filters) {
+    if (filter.text.trim() === '') {
+      throw new SqlFilterMissingError(filter);
+    }
+  }
   return {
     text: filters.map((filter) => filter.text).join(' and '),
     parameters: Object.fromEntries(filters.flatMap((filter) => Object.entries(filter.parameters))),

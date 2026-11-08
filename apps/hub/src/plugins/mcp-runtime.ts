@@ -1,4 +1,3 @@
-import type { Stream } from 'node:stream';
 import { Client } from '@modelcontextprotocol/client';
 import {
   ApiError,
@@ -6,16 +5,20 @@ import {
   PLUGIN_DATA_POINT,
   PLUGIN_EVENT,
   PLUGIN_NOTIFICATIONS,
+  PLUGIN_OPTION_PAGE,
   PLUGIN_SEARCH_ENTRY,
   type PluginManifest,
   type PluginOptionPage,
+  type PluginOptionQuery,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { failure, type HubToolResult } from '../ai-tools/hub-tool';
+import { failure, type HubToolResult, type ToolCaller } from '../ai-tools/hub-tool';
 import type { Connection } from './connection';
+import { toolFailureOf } from './plugin-admin';
 import type { PluginRuntime, RuntimeSinks, RuntimeTool } from './runtime';
 import { hubResultOf } from './tool-results';
 import { failureLine } from '@smarteverything/logging';
+import { followOutput } from '../service/process-output';
 
 const CALL_TIMEOUT_MS = 120_000;
 
@@ -61,14 +64,12 @@ function runtimeTool(raw: unknown, log: (line: string) => void): RuntimeTool[] {
   ];
 }
 
-function followLines(stream: Stream | null, sink: (line: string) => void): void {
-  let partial = '';
-  stream?.on('data', (chunk: unknown) => {
-    const text = partial + (Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk));
-    const lines = text.split('\n');
-    partial = lines.pop() ?? '';
-    lines.forEach(sink);
-  });
+function listArguments(query: PluginOptionQuery): Readonly<Record<string, unknown>> {
+  return {
+    ...(query.q === undefined ? {} : { q: query.q }),
+    ...(query.after === undefined ? {} : { after: query.after }),
+    ...(query.ids === undefined ? {} : { ids: query.ids === '' ? [] : query.ids.split(',') }),
+  };
 }
 
 class McpSettingsNotLiveError extends Error {
@@ -79,6 +80,12 @@ class McpSettingsNotLiveError extends Error {
   }
 }
 
+export type AuthorisedCall = (
+  name: string,
+  args: Readonly<Record<string, unknown>>,
+  caller: ToolCaller,
+) => Promise<HubToolResult>;
+
 export class McpRuntime implements PluginRuntime {
   private client: Client | null = null;
   private listed: readonly RuntimeTool[] = [];
@@ -88,6 +95,7 @@ export class McpRuntime implements PluginRuntime {
     private readonly manifest: PluginManifest,
     private readonly connect: () => Connection,
     private readonly sinks: RuntimeSinks,
+    private readonly authorised: AuthorisedCall,
   ) {}
 
   async start(): Promise<void> {
@@ -95,7 +103,7 @@ export class McpRuntime implements PluginRuntime {
     const connection = this.connect();
     const client = new Client(CLIENT_INFO, { capabilities: {} });
     this.listen(client);
-    followLines(connection.stderr, this.sinks.log);
+    followOutput(connection.stderr, this.sinks.log);
     client.onclose = (): void => {
       this.closed(client);
     };
@@ -120,10 +128,25 @@ export class McpRuntime implements PluginRuntime {
     return this.listed;
   }
 
-  choices(source: string): Promise<PluginOptionPage> {
-    return Promise.reject(
-      new ApiError('not_found', `${this.manifest.name} has no list named ${source}.`),
-    );
+  async choices(
+    source: string,
+    query: PluginOptionQuery,
+    caller: ToolCaller,
+  ): Promise<PluginOptionPage> {
+    if (!this.listed.some((tool) => tool.name === source)) {
+      throw new ApiError('not_found', `${this.manifest.name} has no list named ${source}.`);
+    }
+    const result = await this.authorised(source, listArguments(query), caller);
+    const failed = toolFailureOf(result.response);
+    if (failed !== null) return { state: 'unavailable', message: failed.message };
+    const page = PLUGIN_OPTION_PAGE.safeParse(result.response);
+    if (!page.success) {
+      throw new ApiError(
+        'upstream_failed',
+        `${this.manifest.name} answered the list ${source} in a shape SmartEverything does not understand.`,
+      );
+    }
+    return page.data;
   }
 
   async call(name: string, args: Readonly<Record<string, unknown>>): Promise<HubToolResult> {

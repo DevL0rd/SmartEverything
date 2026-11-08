@@ -65,7 +65,6 @@ export const SECTIONS: readonly SectionDef[] = [
 export const AI_SECTIONS: readonly SectionDef[] = [
   { id: 'claude', label: 'Claude', icon: 'sparkles', feature: null, missing: null },
   { id: 'codex', label: 'Codex', icon: 'bot', feature: null, missing: null },
-  { id: 'claude-sessions', label: 'Sessions', icon: 'terminal', feature: null, missing: null },
 ];
 
 export function offersSection(
@@ -79,7 +78,7 @@ export function notAvailableOn(os: string | null): string {
   return os === null ? 'Not available yet' : `Not available on ${os} yet`;
 }
 
-export const { frameLayoutOf, railWidthOf, bodyWidthOf, twoColumnsAt } = frameLayoutMath({
+export const { frameLayoutOf, railWidthOf } = frameLayoutMath({
   compactMax: 600,
   iconRailMax: 900,
   wideRailMin: 1024,

@@ -7,7 +7,13 @@ import type { Device } from '../../store/state';
 import { PluginActionRow } from '../shared/plugin-action';
 import { useAdGuardSnapshot, useAdGuardTools } from './adguard-data';
 import { adguardSectionHref } from './model/links';
-import { PAUSE_CHOICES, pausedMessage, type PauseChoice } from './model/pause-model';
+import {
+  PAUSE_CHOICES,
+  pauseInput,
+  pausedMessage,
+  RESUME_INPUT,
+  type PauseChoice,
+} from './model/pause-model';
 import { protectionOf } from './model/protection';
 
 export interface AdGuardActions {
@@ -21,8 +27,8 @@ export function useAdGuardActions(): AdGuardActions {
     () => ({
       pauseFor: async (choice): Promise<unknown> => {
         const done = await tools.run(
-          'pause_protection',
-          { minutes: choice.minutes },
+          'set_protection',
+          pauseInput(choice),
           'Ad blocking wasn’t paused',
         );
         if (done !== null) {
@@ -30,7 +36,7 @@ export function useAdGuardActions(): AdGuardActions {
         }
         return done;
       },
-      resume: () => tools.run('resume_protection', {}, 'Ad blocking didn’t switch on'),
+      resume: () => tools.run('set_protection', RESUME_INPUT, 'Ad blocking didn’t switch on'),
     }),
     [tools],
   );

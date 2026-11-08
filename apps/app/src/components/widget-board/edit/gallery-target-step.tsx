@@ -8,11 +8,11 @@ import { SearchField } from '../../search-field';
 import { Segmented } from '../../segmented';
 import { Text } from '../../text';
 import type { Cell } from '../board-geometry';
-import { usePickerState } from '../picker-source';
-import type { TargetPicker } from '../types';
+import type { PickerState, TargetRow } from '../types';
 import { SIZE_LABELS, sizeOptions } from './edit-model';
 import {
   targetGroups,
+  sectionsOf,
   type GalleryItem,
   type TargetGroup,
   type TargetOption,
@@ -22,12 +22,12 @@ import { GroupTitle, PreviewRow, usePreviewWidth } from './gallery-rows';
 
 export interface TargetStepProps {
   readonly item: GalleryItem;
-  readonly picker: TargetPicker;
+  readonly pickerState: PickerState;
   readonly placed: readonly BoardWidget[];
   readonly board: BoardClass;
   readonly cell: Cell;
   readonly size: WidgetSize;
-  readonly picked: TargetOption | null;
+  readonly picked: TargetRow | null;
   readonly onPick: (row: TargetOption) => void;
   readonly onSize: (size: WidgetSize) => void;
   readonly onBack: () => void;
@@ -100,11 +100,10 @@ function TargetGroups({
 }
 
 export function TargetStep(props: TargetStepProps): ReactNode {
-  const { item, picker, placed, picked, onBack } = props;
-  const state = usePickerState();
+  const { item, pickerState, placed, picked, onBack } = props;
   const [query, setQuery] = useState('');
   const ofType = placed.filter((widget) => widget.type === item.definition.type);
-  const groups = targetGroups(picker.sections(state, ofType), ofType, query);
+  const groups = targetGroups(sectionsOf(item, pickerState, placed), ofType, query);
   return (
     <View className="gap-4 pt-2">
       <View className="flex-row items-center gap-1">

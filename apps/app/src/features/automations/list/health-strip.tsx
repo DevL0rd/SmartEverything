@@ -53,17 +53,19 @@ export function HealthStrip({
   health,
   next,
   timeZone,
+  paired = false,
   onFilter,
 }: {
   readonly health: Health;
   readonly next: TimelineEvent | null;
   readonly timeZone: string | null;
+  readonly paired?: boolean;
   readonly onFilter?: (filter: FilterId) => void;
 }): ReactNode {
   return (
     <MetricStrip
       items={healthItems(health, next, timeZone, onFilter)}
-      columns={{ compact: 1, medium: 2, expanded: 4 }}
+      columns={{ compact: 1, medium: 2, expanded: paired ? 2 : 4 }}
     />
   );
 }

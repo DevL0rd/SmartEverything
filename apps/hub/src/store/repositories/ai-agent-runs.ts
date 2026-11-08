@@ -54,6 +54,17 @@ export class AiAgentRunsRepository {
       { chat: chatId },
     )?.projection;
   }
+  currentOfSession(sessionId: string): AiAgentRun | undefined {
+    return this.context.sql.get(
+      ROW,
+      `select candidate.projection from ai_agent_runs candidate
+       join assistant_events event on event.id=json_extract(candidate.projection,'$.source_id')
+       where json_extract(candidate.projection,'$.session_id')=$session
+       and json_extract(candidate.projection,'$.source')='smarteverything'
+       order by event.cursor desc limit 1`,
+      { session: sessionId },
+    )?.projection;
+  }
   ofChat(chatId: string): AiAgentRun[] {
     return this.context.sql
       .all(

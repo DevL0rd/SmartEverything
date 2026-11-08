@@ -12,6 +12,7 @@ const GESTURE_COLOURS: Readonly<Record<ButtonGesture, ColourRole>> = {
 
 const HOURS_AGO = '24 h ago';
 const NOW = 'Now';
+const EMPTY = 'No presses in the last 24 h';
 
 export function PressStrip({
   segments,
@@ -31,7 +32,7 @@ export function PressStrip({
       from={window.from}
       to={window.to}
       captions={[HOURS_AGO, NOW]}
-      empty="No presses yet"
+      empty={EMPTY}
       track="surface-2"
     />
   );

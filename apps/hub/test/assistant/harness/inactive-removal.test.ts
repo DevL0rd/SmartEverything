@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { AiAgentRun, AiChatRow } from '@smarteverything/domain';
-import { admitInactiveRemoval } from '../../../src/assistant/coordination/inactive-removal';
+import { admitInactiveRemoval } from '../../../src/assistant/agent-runs/inactive-removal';
 import type { EngineStatus } from '../../../src/assistant/engines/engine';
 import { useRig, type Rig } from './support/rig';
 
@@ -42,7 +42,7 @@ function run(parent: AiChatRow, child: AiChatRow, state: AiAgentRun['state']): A
     updated_at: '2026-10-17T09:00:00.000Z',
     completed_at: null,
     usage: null,
-    supported_actions: [],
+    supported_actions: ['open_chat', 'delete'],
     truncated: false,
   };
 }

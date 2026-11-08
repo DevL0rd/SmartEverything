@@ -13,7 +13,7 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useIsOwner } from '../../../store/selectors';
 import { BudgetMeter } from './budget-meter';
-import { CostBreakdowns } from './costs-breakdowns';
+import { BREAKDOWN_PAIR_WIDTH, CostBreakdowns } from './costs-breakdowns';
 import { CostChart } from './costs-chart';
 import { CreditsWidget } from './costs-credits';
 import { useCostChoices } from './costs-data';
@@ -21,6 +21,7 @@ import { CostFilters } from './costs-filters';
 import { isFiltered, type CostParamsState } from './costs-params';
 import { rangeLabel, type CostWindow } from './costs-range';
 import { SummaryTiles } from './costs-summary';
+import { TokenStrip } from './costs-tokens';
 import { UntrackedNote } from './untracked-note';
 
 export interface CostsHeaderProps {
@@ -72,24 +73,27 @@ function Body({
   const owner = useIsOwner();
   return (
     <>
-      <Grid minItemWidth={200} maxColumns={5}>
-        <SummaryTiles
-          summary={summary}
-          window={window}
-          rangeName={rangeLabel(state.params, window)}
-        />
-        {owner ? <CreditsWidget /> : null}
-        <BudgetMeter />
-      </Grid>
-      {owner ? <UntrackedNote /> : null}
-      <CostChart series={summary.series} window={window} />
-      <CostBreakdowns
+      <SummaryTiles
+        summary={summary}
         window={window}
-        filters={state.params}
-        onFilter={(dimension, key) => {
-          state.set({ [dimension]: key });
-        }}
+        rangeName={rangeLabel(state.params, window)}
+        credits={owner ? <CreditsWidget /> : null}
+        budget={<BudgetMeter />}
       />
+      {owner ? <UntrackedNote /> : null}
+      <Grid minItemWidth={BREAKDOWN_PAIR_WIDTH} maxColumns={2}>
+        <View className="gap-section-gap">
+          <TokenStrip sum={summary.totals.sum} rangeName={rangeLabel(state.params, window)} />
+          <CostChart series={summary.series} window={window} />
+        </View>
+        <CostBreakdowns
+          window={window}
+          filters={state.params}
+          onFilter={(dimension, key) => {
+            state.set({ [dimension]: key });
+          }}
+        />
+      </Grid>
       <Text variant="title-3" className="pt-2">
         Requests
       </Text>
@@ -129,7 +133,7 @@ export function CostsHeader(props: CostsHeaderProps): ReactNode {
       ) === index,
   );
   return (
-    <View className="w-full gap-section-gap self-center px-gutter pb-3 max-w-dashboard">
+    <View className="w-full gap-section-gap px-gutter pb-3">
       <CostFilters
         state={props.state}
         choices={choices.data}

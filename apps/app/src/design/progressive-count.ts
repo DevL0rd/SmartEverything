@@ -7,6 +7,8 @@ export interface Progressive {
 
 const DEFAULT: Progressive = { first: 24, batch: 24 };
 
+export const SHOWN_AT_ONCE: Progressive = { first: 6, batch: 6 };
+
 export function useProgressiveCount(
   total: number,
   enabled = true,

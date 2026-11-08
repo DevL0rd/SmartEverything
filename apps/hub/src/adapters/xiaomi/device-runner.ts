@@ -1,5 +1,6 @@
 import {
   CommandRefusedError,
+  deviceFamily,
   validateCommand,
   type AdapterSink,
   type CameraDetection,
@@ -13,17 +14,9 @@ import {
 } from '@smarteverything/domain';
 import {
   callEventName,
-  deviceEventFromMiot,
-  deviceEventFromLegacyButton,
   fromDevice,
-  isCameraModel,
-  miotDetection,
-  miotEventDetails,
-  miotEventOf,
   propertyKeyOf,
   toDevice,
-  supportsLegacyButton,
-  unspecifiedMiotEvent,
   XiaomiCloudError,
   type PropertyBinding,
   type PropertyReading,
@@ -36,6 +29,14 @@ import { actionInputs } from './action-inputs';
 import type { CameraMotor } from './camera-motor';
 import { CameraPtz } from './camera-ptz';
 import type { DeviceIo } from './device-io';
+import {
+  familyHooks,
+  type FamilyCommands,
+  type FamilyHooks,
+  type ReadableBinding,
+} from './family-hooks';
+import { WriteConfirmations } from './write-confirmations';
+import { CALL_STATUS, DeviceEvents } from './device-events';
 import { DeviceLink, type LinkContext, type Opened, type RefreshTrigger } from './device-link';
 import type { InventoryEntry, TransportState } from './inventory';
 import { MiioTimeoutError } from './miio-client';
@@ -49,9 +50,6 @@ export interface RunnerContext extends LinkContext {
   readonly cameraDetected: (event: DeviceEvent, detection: CameraDetection) => void;
 }
 
-const CALL_STATUS = 'key-call-status';
-const CALL_START = 'key-call-start';
-
 export class DeviceRunner {
   private readonly values = new Map<CapabilityKey, JsonValue>();
   private readonly raw = new Map<CapabilityKey, JsonValue>();
@@ -62,6 +60,10 @@ export class DeviceRunner {
   private readonly ptz: CameraPtz | null;
   private readonly link: DeviceLink;
   private readonly repeat: RepeatLog;
+  private readonly hooks: FamilyHooks;
+  private readonly commands: FamilyCommands | null;
+  private readonly events: DeviceEvents;
+  private readonly confirmations: WriteConfirmations;
 
   constructor(
     readonly entry: InventoryEntry,
@@ -69,6 +71,15 @@ export class DeviceRunner {
     private readonly context: RunnerContext,
   ) {
     this.repeat = new RepeatLog(context.log);
+    this.events = new DeviceEvents(entry, context);
+    this.hooks = familyHooks(deviceFamily({ kind: entry.model.kind, model: entry.cloud.model }));
+    this.commands = this.hooks.commands(entry);
+    this.confirmations = new WriteConfirmations({
+      did: entry.cloud.did,
+      windowMs: context.timing.writeConfirmMs,
+      now: context.now,
+      log: context.log,
+    });
     this.ptz =
       entry.ptz === null
         ? null
@@ -90,6 +101,7 @@ export class DeviceRunner {
       },
       childUplink: (uplink): (() => void) | null => context.childEvent?.(this, uplink) ?? null,
       changed: context.devicesChanged,
+      subscribed: (io): Promise<void> => this.hooks.subscribed(io),
     });
   }
 
@@ -101,7 +113,11 @@ export class DeviceRunner {
     return this.link.current;
   }
 
-  get readable(): readonly (PropertyBinding & { readonly key: CapabilityKey })[] {
+  get vacuumIo(): DeviceIo {
+    return this.link.current;
+  }
+
+  get readable(): readonly ReadableBinding[] {
     return [...this.entry.model.bindings].flatMap(([key, binding]) =>
       binding.kind === 'property' && binding.readable ? [{ ...binding, key }] : [],
     );
@@ -140,15 +156,17 @@ export class DeviceRunner {
 
   private async refresh(trigger: RefreshTrigger): Promise<void> {
     try {
-      await this.publishAll();
+      await this.publishAll(trigger);
       this.lanFailures = 0;
     } catch (error) {
       await this.refreshFailed(error, trigger);
     }
   }
 
-  private async publishAll(): Promise<void> {
-    const { all, changed } = await this.readAll();
+  private async publishAll(trigger: RefreshTrigger): Promise<void> {
+    const bindings =
+      trigger === 'subscription' ? this.hooks.subscriptionBindings(this.readable) : this.readable;
+    const { all, changed } = await this.read(bindings);
     this.publish(changed);
     this.answered(all.length > 0);
   }
@@ -172,6 +190,11 @@ export class DeviceRunner {
     if (this.ptz?.handles(command.capability) === true) {
       return this.ptz.execute(command.capability, value, this.io);
     }
+    if (this.commands?.handles(command.capability) === true) {
+      return this.commands.execute(command.capability, value, this.io, (key) =>
+        this.values.get(key),
+      );
+    }
     const binding = this.entry.model.bindings.get(command.capability);
     if (binding === undefined) {
       throw new CommandRefusedError(
@@ -185,23 +208,47 @@ export class DeviceRunner {
         actionInputs(command.capability, binding, value),
       );
     }
-    const key = command.capability;
+    await this.writeProperty(command.capability, binding, value);
+    return value;
+  }
+
+  private async writeProperty(
+    key: CapabilityKey,
+    binding: PropertyBinding,
+    value: JsonValue,
+  ): Promise<void> {
     const write = {
       siid: binding.siid,
       piid: binding.piid,
       value: toDevice(key, binding.codec, value),
     };
+    const pushing = this.link.pushing;
+    if (binding.readable && pushing && this.differs(key, write.value)) {
+      this.confirmations.expect(key);
+    }
     this.advance(key);
     try {
       await this.io.write([write]);
+    } catch (error) {
+      this.confirmations.arrived(key);
+      throw error;
     } finally {
       this.advance(key);
     }
-    if (binding.readable) {
-      const { changed } = await this.read([{ ...binding, key }]);
-      this.publish(changed);
+    if (binding.readable && !pushing) {
+      background(this.readBack({ ...binding, key }), 'xiaomi_device.read_back_failed', {
+        did: this.did,
+      });
     }
-    return value;
+  }
+
+  private differs(key: CapabilityKey, written: JsonValue): boolean {
+    return JSON.stringify(this.raw.get(key)) !== JSON.stringify(written);
+  }
+
+  private async readBack(binding: ReadableBinding): Promise<void> {
+    const { changed } = await this.read([binding]);
+    this.publish(changed);
   }
 
   private advance(key: CapabilityKey): number {
@@ -211,11 +258,12 @@ export class DeviceRunner {
   }
 
   async close(): Promise<void> {
+    this.confirmations.close();
     await this.link.stop();
   }
 
   private async read(
-    bindings: readonly (PropertyBinding & { readonly key: CapabilityKey })[],
+    bindings: readonly ReadableBinding[],
   ): Promise<{ readonly all: StateUpdate[]; readonly changed: StateUpdate[] }> {
     if (bindings.length === 0) {
       return { all: [], changed: [] };
@@ -241,14 +289,24 @@ export class DeviceRunner {
     }
     for (const reading of current) {
       const update = this.accept(reading, observedAt, generations === undefined);
-      if (update !== null) {
-        all.push(update.state);
-        if (update.changed) {
-          changed.push(update.state);
+      for (const accepted of update === null ? [] : [update, ...this.derive(update.state)]) {
+        all.push(accepted.state);
+        if (accepted.changed) {
+          changed.push(accepted.state);
         }
       }
     }
     return { all, changed };
+  }
+
+  private derive(state: StateUpdate): { readonly state: StateUpdate; readonly changed: boolean }[] {
+    return (this.commands?.derive(state.capability, state.value) ?? []).map(
+      ({ capability, value }) => {
+        const changed = JSON.stringify(this.values.get(capability)) !== JSON.stringify(value);
+        this.values.set(capability, value);
+        return { state: { ...state, capability, value }, changed };
+      },
+    );
   }
 
   private currentReading(
@@ -290,6 +348,7 @@ export class DeviceRunner {
     try {
       const value = fromDevice(key, binding.codec, reading.value);
       if (pushed) this.advance(key);
+      this.confirmations.arrived(key);
       this.observeCall(binding, key, reading.value, observedAt);
       const changed = JSON.stringify(this.values.get(key)) !== JSON.stringify(value);
       this.values.set(key, value);
@@ -314,7 +373,7 @@ export class DeviceRunner {
     this.raw.set(key, raw);
     const name = binding.name === CALL_STATUS ? callEventName(previous, raw) : null;
     if (name !== null) {
-      this.emit(name, observedAt, { source: 'key-call-status' });
+      this.events.emit(name, observedAt, { source: 'key-call-status' });
     }
   }
 
@@ -338,7 +397,7 @@ export class DeviceRunner {
     if (this.io.transport === 'cloud' && error instanceof XiaomiCloudError) {
       background(this.link.reach.disputed(false), 'reach.disputed_failed');
     }
-    if (this.io.transport !== 'lan' || !(error instanceof MiioTimeoutError)) {
+    if (!this.countsAgainstLan(error, trigger)) {
       return;
     }
     this.lanFailures += 1;
@@ -349,18 +408,15 @@ export class DeviceRunner {
     }
   }
 
-  legacyChildDelivery(gatewayDid: string, uplink: LegacyChildEvent): (() => void) | null {
-    if (this.entry.cloud.model !== uplink.model || !supportsLegacyButton(uplink.model)) {
-      return null;
+  private countsAgainstLan(error: unknown, trigger: RefreshTrigger): error is MiioTimeoutError {
+    if (this.io.transport !== 'lan' || !(error instanceof MiioTimeoutError)) {
+      return false;
     }
-    return (): void => {
-      const event = deviceEventFromLegacyButton(uplink.method, {
-        externalId: this.did,
-        occurredAt: new Date(this.context.now()).toISOString(),
-        details: { source: 'lan-push', gatewayExternalId: gatewayDid, messageId: uplink.id },
-      });
-      this.context.sink()?.event(event);
-    };
+    return !(trigger === 'subscription' && this.link.pushing);
+  }
+
+  legacyChildDelivery(gatewayDid: string, uplink: LegacyChildEvent): (() => void) | null {
+    return this.events.legacyChildDelivery(gatewayDid, uplink);
   }
 
   private uplink(uplink: Uplink): void {
@@ -372,43 +428,6 @@ export class DeviceRunner {
       this.publish(this.accepted(uplink.readings).changed);
       return;
     }
-    const shape =
-      (this.entry.spec === null ? null : miotEventOf(this.entry.spec, uplink.siid, uplink.eiid)) ??
-      unspecifiedMiotEvent(uplink.siid, uplink.eiid);
-    if (shape.name === CALL_START && this.watchesCallStatus()) {
-      return;
-    }
-    const occurredAt = new Date(this.context.now()).toISOString();
-    this.emit(
-      shape.name,
-      occurredAt,
-      { source: 'lan-push' },
-      miotEventDetails(shape, uplink.arguments),
-    );
-  }
-
-  private emit(
-    name: string,
-    occurredAt: string,
-    details: Record<string, JsonValue>,
-    miotArguments: Record<string, JsonValue> = {},
-  ): void {
-    const event = deviceEventFromMiot(
-      name,
-      { externalId: this.did, occurredAt, details },
-      miotArguments,
-    );
-    const detection = isCameraModel(this.entry.cloud.model) ? miotDetection(name) : null;
-    if (detection === null) {
-      this.context.sink()?.event(event);
-      return;
-    }
-    this.context.cameraDetected(event, detection);
-  }
-
-  private watchesCallStatus(): boolean {
-    return [...this.entry.model.bindings.values()].some(
-      (binding) => binding.kind === 'property' && binding.name === CALL_STATUS,
-    );
+    this.events.uplinkEvent(uplink);
   }
 }

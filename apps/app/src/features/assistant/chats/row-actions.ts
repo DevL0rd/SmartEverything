@@ -3,13 +3,17 @@ import type { AssistantMessageRow } from '@smarteverything/domain';
 import { latestChatMessages, removeAiChat } from '../../../api/ai';
 import { href } from '../../../app-shell/hrefs';
 import { confirm } from '../../../components/confirm-store';
+import { plural } from '../../../format/text';
 import type { MenuItem } from '../../../components/menu';
 import type { SwipeAction } from '../../../components/swipe-row';
 import { notify } from '../../../components/toast-store';
 import { branchChat, latestBranchPoint } from './branch';
-import type { ChatEntry } from './chat-entry';
+import { completedHelpersOf, type ChatEntry } from './chat-entry';
 import { deleteChat, setChatArchived, setChatPinned, setChatRead } from './chat-actions';
-import { background } from '@smarteverything/logging';
+import { closeChatListSlideOver } from './chat-list-toggle';
+import { Logger, background } from '@smarteverything/logging';
+
+const log = new Logger('app.chat-rows');
 
 export type ChatRowTarget = Pick<ChatEntry, 'id' | 'title' | 'pinned' | 'archived' | 'unread'>;
 
@@ -40,24 +44,11 @@ function archiveAction(entry: ChatRowTarget): SwipeAction {
   };
 }
 
-function swipeActionsOf(entry: ChatRowTarget): {
+export function rowSwipeOf(entry: ChatRowTarget): {
   readonly leading: SwipeAction | undefined;
   readonly trailing: SwipeAction;
 } {
   return { leading: entry.archived ? undefined : pinAction(entry), trailing: archiveAction(entry) };
-}
-
-export function rowSwipeOf(entry: ChatEntry): {
-  readonly leading: SwipeAction | undefined;
-  readonly trailing: SwipeAction | undefined;
-} {
-  return entry.desktop === undefined
-    ? swipeActionsOf(entry)
-    : { leading: undefined, trailing: undefined };
-}
-
-export function desktopMenuOf(open: () => void): readonly MenuItem[] {
-  return [{ label: 'Open in app', icon: 'externalLink', onPress: open }];
 }
 
 function toMenuItem(action: SwipeAction): MenuItem {
@@ -69,6 +60,11 @@ export async function resolveBranchPoint(
   stored: readonly AssistantMessageRow[],
 ): Promise<string | null> {
   return latestBranchPoint(stored) ?? latestBranchPoint(await latestChatMessages(chatId));
+}
+
+function openRename(entry: ChatRowTarget): void {
+  closeChatListSlideOver();
+  router.push(href.assistantChat(entry.id, { operation: 'rename' }));
 }
 
 async function branchLatest(chatId: string, stored: readonly AssistantMessageRow[]): Promise<void> {
@@ -85,7 +81,7 @@ async function branchLatest(chatId: string, stored: readonly AssistantMessageRow
 }
 
 export function menuOf(entry: ChatRowTarget, handlers: RowHandlers): readonly MenuItem[] {
-  const { leading, trailing } = swipeActionsOf(entry);
+  const { leading, trailing } = rowSwipeOf(entry);
   const unread = entry.unread > 0;
   return [
     ...(leading === undefined ? [] : [toMenuItem(leading)]),
@@ -100,7 +96,7 @@ export function menuOf(entry: ChatRowTarget, handlers: RowHandlers): readonly Me
       label: 'Rename',
       icon: 'pencil',
       onPress: (): void => {
-        router.push(href.assistantChat(entry.id, { sheet: 'chat', operation: 'rename' }));
+        openRename(entry);
       },
     },
     {
@@ -111,13 +107,6 @@ export function menuOf(entry: ChatRowTarget, handlers: RowHandlers): readonly Me
       },
     },
     toMenuItem(trailing),
-    {
-      label: 'Chat details',
-      icon: 'info',
-      onPress: (): void => {
-        router.push(href.assistantChat(entry.id, { sheet: 'chat' }));
-      },
-    },
     {
       label: 'Delete',
       icon: 'trash',
@@ -130,26 +119,54 @@ export function menuOf(entry: ChatRowTarget, handlers: RowHandlers): readonly Me
   ];
 }
 
-export async function deleteInactiveAgents(entries: readonly ChatEntry[]): Promise<void> {
-  const stale = entries.filter((entry) => entry.line.kind !== 'working');
-  const count = String(stale.length);
+function childFirst(entries: readonly ChatEntry[]): readonly ChatEntry[] {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const depth = (entry: ChatEntry): number => {
+    let level = 0;
+    let parent = entry.parentId;
+    while (parent !== null) {
+      const found = byId.get(parent);
+      if (found === undefined) break;
+      level += 1;
+      parent = found.parentId;
+    }
+    return level;
+  };
+  return [...entries].sort((left, right) => depth(right) - depth(left));
+}
+
+export async function deleteInactiveAgents(
+  entries: readonly ChatEntry[],
+  onDeleted: (chatId: string) => void,
+): Promise<void> {
+  const stale = completedHelpersOf(entries);
+  if (stale.length === 0) return;
+  const chats = plural(stale.length, 'completed helper chat');
   const sure = await confirm({
-    title: `Delete ${count} inactive agent chats?`,
+    title: `Delete ${chats}?`,
     body: 'Their messages and results are deleted. Running agents are kept.',
-    confirmLabel: `Delete ${count} chats`,
+    confirmLabel: `Delete ${plural(stale.length, 'chat')}`,
     tone: 'destructive',
   });
   if (!sure) {
     return;
   }
-  const results = await Promise.allSettled(stale.map((entry) => removeAiChat(entry.id)));
-  const failed = results.filter((result) => result.status === 'rejected');
-  if (failed.length > 0) {
+  let failed = 0;
+  for (const entry of childFirst(stale)) {
+    try {
+      await removeAiChat(entry.id, { inactiveHelper: true });
+      onDeleted(entry.id);
+    } catch (error) {
+      failed += 1;
+      log.warn('inactive_agent.kept', { chatId: entry.id, error });
+    }
+  }
+  if (failed > 0) {
     notify({
-      message: `${String(failed.length)} of ${count} agent chats not deleted`,
+      message: `${String(failed)} of ${chats} kept`,
       tone: 'critical',
     });
     return;
   }
-  notify({ message: `${count} inactive agent chats deleted` });
+  notify({ message: `${chats} deleted` });
 }

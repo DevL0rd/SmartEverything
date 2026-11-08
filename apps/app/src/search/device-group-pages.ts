@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import {
   deviceFamily,
   groupTargets,
@@ -14,11 +14,11 @@ import type { SearchTables, SourceLinks } from './sources';
 import { rowsOf, type Device } from '../store/state';
 
 interface GroupPage extends SearchPage {
-  readonly to: Href;
+  readonly to: AppHref;
   readonly parent: string;
 }
 
-type PageLink = (focus?: string) => Href;
+type PageLink = (focus?: string) => AppHref;
 
 const CONTROL_KEYWORDS = [
   'all',

@@ -119,3 +119,7 @@ export type {
 } from './webhook-messages';
 
 export { validateRawWrite } from './raw-refinement';
+
+export { SAMSUNG_S95B_65_MODEL } from './models/screens';
+export { SAMSUNG_G9_OLED_49_MODEL } from './models/screens-2';
+export { SAMSUNG_MICROWAVE_MODEL } from './models/microwave';

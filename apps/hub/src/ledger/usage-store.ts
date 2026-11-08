@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { storedRow } from '../store/codec';
 import { found, type StoreContext } from '../store/context';
 import { jsonText } from '../store/sql';
+import { trackCacheMeter } from '../store/repositories/ai-chat-meters';
 import type { LedgerPosition } from './ledger-page';
 import { whereOf } from './usage-filter';
 
@@ -63,30 +64,52 @@ export class UsageStore {
   }
 
   insert(row: AiUsageRow): void {
-    this.context.sql.run('record AI usage', `insert into ai_usage (${LIST}) values (${VALUES})`, {
-      ...row,
-      meta: jsonText(row.meta),
+    trackCacheMeter(this.context, row.tokens_in > 0 ? row.chat_id : null, () => {
+      this.context.sql.run('record AI usage', `insert into ai_usage (${LIST}) values (${VALUES})`, {
+        ...row,
+        meta: jsonText(row.meta),
+      });
     });
   }
 
-  replace(row: AiUsageRow): void {
-    this.context.sql.run(
-      'update AI usage',
-      `update ai_usage set tokens_in = $tokens_in, tokens_out = $tokens_out,
-        tokens_cached = $tokens_cached, tokens_reasoning = $tokens_reasoning,
-        cost_micros = $cost_micros, cost_state = $cost_state, generation_id = $generation_id, meta = $meta where id = $id`,
-      {
-        id: row.id,
-        tokens_in: row.tokens_in,
-        tokens_out: row.tokens_out,
-        tokens_cached: row.tokens_cached,
-        tokens_reasoning: row.tokens_reasoning,
-        cost_micros: row.cost_micros,
-        cost_state: row.cost_state,
-        generation_id: row.generation_id,
-        meta: jsonText(row.meta),
-      },
+  replace(before: AiUsageRow, row: AiUsageRow): void {
+    const changesMeter =
+      before.tokens_in !== row.tokens_in || before.tokens_cached !== row.tokens_cached;
+    trackCacheMeter(this.context, changesMeter ? row.chat_id : null, () => {
+      this.context.sql.run(
+        'update AI usage',
+        `update ai_usage set tokens_in = $tokens_in, tokens_out = $tokens_out,
+          tokens_cached = $tokens_cached, tokens_reasoning = $tokens_reasoning,
+          cost_micros = $cost_micros, cost_state = $cost_state, generation_id = $generation_id, meta = $meta where id = $id`,
+        {
+          id: row.id,
+          tokens_in: row.tokens_in,
+          tokens_out: row.tokens_out,
+          tokens_cached: row.tokens_cached,
+          tokens_reasoning: row.tokens_reasoning,
+          cost_micros: row.cost_micros,
+          cost_state: row.cost_state,
+          generation_id: row.generation_id,
+          meta: jsonText(row.meta),
+        },
+      );
+    });
+  }
+
+  reattribute(fromChat: string, toChat: string): readonly AiUsageRow[] {
+    const moved = this.context.sql.all(
+      STORED,
+      `select ${LIST} from ai_usage where chat_id = $from`,
+      { from: fromChat },
     );
+    trackCacheMeter(this.context, toChat, () => {
+      this.context.sql.run(
+        'move AI usage to the surviving chat',
+        'update ai_usage set chat_id = $to where chat_id = $from',
+        { from: fromChat, to: toChat },
+      );
+    });
+    return moved;
   }
 
   get(id: string): AiUsageRow {

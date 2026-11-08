@@ -42,8 +42,10 @@ describe('pill width', () => {
 });
 
 describe('thinking chip fit', () => {
-  const layout = (statusWidth: number) => (iconOnly: boolean) =>
-    pillWidth({ mode: 'compact', fixed: iconOnly ? 200 : 300, statusWidth, captionWidth: 0 });
+  const layout =
+    (statusWidth: number) =>
+    (iconOnly: boolean): ReturnType<typeof pillWidth> =>
+      pillWidth({ mode: 'compact', fixed: iconOnly ? 200 : 300, statusWidth, captionWidth: 0 });
 
   it('keeps the chip label while the status fits next to it', () => {
     const fit = fitChip(layout(150));

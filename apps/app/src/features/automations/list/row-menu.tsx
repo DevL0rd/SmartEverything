@@ -1,11 +1,11 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
 import { useRouter } from 'expo-router';
 import type { MenuItem } from '../../../components/menu';
 import type { ListActions } from './list-actions';
 import type { ListEntry } from './list-entries';
 import type { ListLinks } from './list-links';
 
-type Go = (href: Href) => void;
+type Go = (href: AppHref) => void;
 
 function openItems(entry: ListEntry, links: ListLinks, go: Go): readonly MenuItem[] {
   return [

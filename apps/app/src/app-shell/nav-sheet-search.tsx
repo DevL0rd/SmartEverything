@@ -39,7 +39,7 @@ export function NavSheetSearch({
     <ResultList
       model={panel.model}
       onScroll={onScroll}
-      contentClassName="px-4 pb-safe-offset-6"
+      contentClassName="px-4 pb-6"
       footer={spacer}
     />
   );

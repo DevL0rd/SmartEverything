@@ -1,8 +1,10 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AutomationRowV3, AutomationV3, FlowNode } from '@smarteverything/domain';
+import type { StoredAutomationRow, AutomationV3, FlowNode } from '@smarteverything/domain';
 import { stopAutomation } from '../../src/automations/engine-v3-stop';
+import { graphAutomation } from './support/graph-of';
 import { closeSetups, lit, node, program, rigV3 } from './support/rig-v3';
 import type { RigV3 } from './support/rig-v3';
 
@@ -26,7 +28,7 @@ afterEach(async () => {
 
 const FLAG = { name: 'flag', type: { t: 'number' }, initial: lit(0), persist: true } as const;
 
-function stopper(rig: RigV3, target: string): AutomationRowV3 {
+function stopper(rig: RigV3, target: string): StoredAutomationRow {
   return rig.add(
     program([node('stop', 'automation.stop', { automation: lit(target) })]),
     'Stopper',
@@ -142,16 +144,23 @@ describe('the stop automation effect', () => {
       'Bystander',
     );
     const self = rig.add(program([node('pause', 'flow.wait', { duration: lit(1) })]), 'Self');
-    rig.programs.replace(self.id, {
-      program: program([
-        node('stop', 'automation.stop', { automation: lit(self.id) }),
-        node('after', 'flow.wait', { duration: lit(900_000) }),
-      ]),
-      layout: self.layout,
-      expectedRevision: self.revision,
-      planHash: 'b'.repeat(64),
-      author: null,
-    });
+    rig.programs.replace(
+      self.id,
+      {
+        program: graphAutomation(
+          program([
+            node('stop', 'automation.stop', { automation: lit(self.id) }),
+            node('after', 'flow.wait', { duration: lit(900_000) }),
+          ]),
+          STATIC_KIND_LOOKUP,
+        ),
+        layout: self.layout,
+        expectedRevision: self.revision,
+        planHash: 'b'.repeat(64),
+        author: null,
+      },
+      STATIC_KIND_LOOKUP,
+    );
     rig.engine.sync();
     startedRun(rig, other.id);
     startedRun(rig, self.id);

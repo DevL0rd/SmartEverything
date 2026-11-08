@@ -1,7 +1,8 @@
-import { API_ENDPOINTS } from '@smarteverything/domain';
+import { API_ENDPOINTS, NODE_CONNECTION_PATH } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import type { NodeAiRuntime } from '../../src/node/ai-runtime';
 import type { ComputerControls } from '../../src/node/controls/controls';
+import { verifiedPublicUrl } from '../support/booted';
 import { stubControls, useComputerHub, type Paired } from '../support/paired-computer';
 import { call } from '../support/server';
 import { until } from '../support/wait';
@@ -35,6 +36,23 @@ async function appsOf(deviceId: string): Promise<number> {
   if (reply.status === 200)
     expect(API_ENDPOINTS.listComputerApps.response.parse(reply.body).installed).toEqual([APP]);
   return reply.status;
+}
+
+async function enrollDesktop(): Promise<string> {
+  const booted = hub.booted();
+  await verifiedPublicUrl(booted);
+  const issued = await call(booted.base, booted.owner, {
+    method: 'POST',
+    path: '/api/pair/start',
+    body: { role: 'owner' },
+  });
+  const { code } = API_ENDPOINTS.startPairing.response.parse(issued.body);
+  const claimed = await call(booted.base, null, {
+    method: 'POST',
+    path: '/api/pair/claim',
+    body: { code, name: 'Desk', platform: 'desktop' },
+  });
+  return API_ENDPOINTS.claimPairing.response.parse(claimed.body).token;
 }
 
 describe('a paired computer', () => {
@@ -136,29 +154,35 @@ describe('a paired computer', () => {
     await until(async () => (await online()) === true, 'the computer to come back online');
   });
 
-  it('gives its desktop window an owner credential with the same pairing', async () => {
-    const paired = await hub.pair();
-    const session = await call(hub.booted().base, paired.windowToken, {
+  it('associates a Computer with its separately enrolled owner Desktop', async () => {
+    const desktop = await enrollDesktop();
+    await hub.pair(desktop);
+    const session = await call(hub.booted().base, desktop, {
       method: 'GET',
       path: '/api/session',
     });
-    expect(API_ENDPOINTS.session.response.parse(session.body).client.role).toBe('owner');
+    expect(API_ENDPOINTS.session.response.parse(session.body).client).toMatchObject({
+      role: 'owner',
+      platform: 'desktop',
+      kind: 'computer',
+    });
   });
 
-  it('is replaced by pairing it again, and revoking removes both credentials', async () => {
+  it('revokes replaced and removed Computer credentials while keeping the enrolled Desktop', async () => {
+    const desktop = await enrollDesktop();
     const first = await hub.pair();
-    const second = await hub.pair();
+    const second = await hub.pair(desktop);
 
     expect(second.deviceId).toBe(first.deviceId);
     expect(second.token).not.toBe(first.token);
-    const old = await call(hub.booted().base, first.windowToken, {
+    const old = await call(hub.booted().base, first.token, {
       method: 'GET',
-      path: '/api/session',
+      path: NODE_CONNECTION_PATH,
     });
     expect(old.status).toBe(401);
-    const current = await call(hub.booted().base, second.windowToken, {
+    const current = await call(hub.booted().base, second.token, {
       method: 'GET',
-      path: '/api/session',
+      path: NODE_CONNECTION_PATH,
     });
     expect(current.status).toBe(200);
 
@@ -166,11 +190,16 @@ describe('a paired computer', () => {
       method: 'DELETE',
       path: `/api/computers/${second.deviceId}/node`,
     });
-    const revoked = await call(hub.booted().base, second.windowToken, {
+    const revoked = await call(hub.booted().base, second.token, {
+      method: 'GET',
+      path: NODE_CONNECTION_PATH,
+    });
+    expect(revoked.status).toBe(401);
+    const session = await call(hub.booted().base, desktop, {
       method: 'GET',
       path: '/api/session',
     });
-    expect(revoked.status).toBe(401);
+    expect(session.status).toBe(200);
   });
 
   it('closes the old pairing’s connection when it is paired again', async () => {

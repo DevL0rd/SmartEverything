@@ -71,18 +71,16 @@ function ChannelGroup({
   );
 }
 
+function openChannel(channelId: string): void {
+  router.push(href.talkChannel(channelId));
+}
+
 function ChannelLists({ split }: { readonly split: boolean }): ReactNode {
   const all = useTalkChannels();
   const mine = useMyChannels();
   const selected = useTalkChannelId();
   const others = all.filter((channel) => !mine.some((own) => own.id === channel.id));
-  const open = (channelId: string): void => {
-    if (split) {
-      chooseTalkChannel(channelId);
-    } else {
-      router.push(href.talkChannel(channelId));
-    }
-  };
+  const open = split ? chooseTalkChannel : openChannel;
   if (all.length === 0) {
     return <NoChannels />;
   }
@@ -94,7 +92,7 @@ function ChannelLists({ split }: { readonly split: boolean }): ReactNode {
         selected={split ? selected : null}
         open={open}
       />
-      <ChannelGroup title="Other channels" channels={others} selected={null} open={open} />
+      <ChannelGroup title="Other channels" channels={others} selected={null} open={openChannel} />
     </>
   );
 }
@@ -153,9 +151,5 @@ function SelectedChannel(): ReactNode {
 
 export function TalkScreen(): ReactNode {
   const { split } = useSizeClass();
-  return split ? (
-    <MasterDetail master={<Master />} detail={<SelectedChannel />} masterWidth="popover" />
-  ) : (
-    <ListScreen />
-  );
+  return split ? <MasterDetail master={<Master />} detail={<SelectedChannel />} /> : <ListScreen />;
 }

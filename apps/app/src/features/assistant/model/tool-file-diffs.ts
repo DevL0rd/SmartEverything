@@ -1,8 +1,9 @@
 import type { ChatTimelineTool } from '@smarteverything/domain';
 import { diffLines } from 'diff/lib/diff/line.js';
 import { recordedFiles, type RecordedFile, type FileToolEvidence } from './tool-file-records';
+import type { FileDiffLine } from '../../../components/diff-line';
+import { diffLanguage } from '../../../components/diff-language';
 import { retainDiffHunks } from './diff-hunks';
-import { diffLanguage } from './diff-language';
 import { recordedDiffSource, recordedDiffLanguage, type RecordedDiffSource } from './diff-source';
 
 const SOURCE_CHARACTERS = 131072;
@@ -11,13 +12,6 @@ const MAX_EDIT_LENGTH = 2000;
 const DIFF_TIMEOUT_MS = 25;
 export const DIFF_PREVIEW_LINES = 12;
 export const DIFF_RENDER_LINES = 200;
-export const DIFF_LINE_CHARACTERS = 8192;
-export interface FileDiffLine {
-  readonly kind: 'context' | 'add' | 'remove';
-  readonly text: string;
-  readonly oldLine: number | null;
-  readonly newLine: number | null;
-}
 export interface ToolFileDiff {
   readonly path: string;
   readonly operation: RecordedFile['operation'];

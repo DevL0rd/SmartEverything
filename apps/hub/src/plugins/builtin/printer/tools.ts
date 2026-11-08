@@ -1,4 +1,8 @@
-import { PRINTER_ACTION_TOOL_INPUT, PRINTER_READ_INPUT, PrinterError } from '@smarteverything/domain';
+import {
+  PRINTER_ACTION_TOOL_INPUT,
+  PRINTER_READ_INPUT,
+  PrinterError,
+} from '@smarteverything/domain';
 import { messageOf } from '@smarteverything/logging';
 import { failure, type HubToolResult } from '../../../ai-tools/hub-tool';
 import type { PluginTool } from '../contract';

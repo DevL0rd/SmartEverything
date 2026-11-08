@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { ComposedGesture } from 'react-native-gesture-handler';
 import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
+import { ptzPresetsOf } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { useKeyboard, type KeyPress } from '../../../app-shell/shortcuts';
 import { useMotion } from '../../../design/motion';
 import { useLedger } from '../../../store/store-context';
 import { useCameraEntries } from '../data/use-cameras';
-import { neighbourOf, presetsOf, type CameraEntry } from '../logic/cameras';
+import { neighbourOf, type CameraEntry } from '../logic/cameras';
 import { useAutoHide, type AutoHide } from '../player/use-auto-hide';
 import { useScreenSession, type LiveSession } from '../player/use-live-session';
 import { usePlayerGestures } from '../player/use-player-gestures';
@@ -65,7 +66,7 @@ function useSwitcher(entry: CameraEntry): ((step: 1 | -1) => void) | null {
 function useViewerKeys(viewer: Omit<Viewer, 'gesture'>): void {
   const focused = useIsFocused();
   const ledger = useLedger();
-  const presets = presetsOf(viewer.entry);
+  const presets = ptzPresetsOf(viewer.entry.device);
   useKeyboard((press: KeyPress): boolean => {
     if (!focused || press.typing || press.command || press.alt) {
       return false;

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../../components/app-href';
+import { cn } from '../../../design/cn';
 import type { DeviceTarget } from '@smarteverything/domain';
 import { Skeleton } from '../../../components/skeleton';
 import {
@@ -54,8 +55,16 @@ function Empty({ data }: { readonly data: GroupData }): ReactNode {
   );
 }
 
-function Pad({ children }: { readonly children: ReactNode }): ReactNode {
-  return <View className="flex-1 p-card-pad">{children}</View>;
+function Pad({
+  children,
+  compact = false,
+}: {
+  readonly children: ReactNode;
+  readonly compact?: boolean;
+}): ReactNode {
+  return (
+    <View className={cn('flex-1 px-card-pad', compact ? 'py-2' : 'py-card-pad')}>{children}</View>
+  );
 }
 
 function Strip({
@@ -85,7 +94,7 @@ function Face({
   readonly controls: GroupControls;
   readonly frame: WidgetFrameBox;
   readonly allColumns: number | null;
-  readonly titleHref: Href | undefined;
+  readonly titleHref: AppHref | undefined;
 }): ReactNode {
   const shape = allColumns === null ? frameClassOf(frame) : 'l';
   const props = { data, controls };
@@ -96,7 +105,7 @@ function Face({
       return <Strip {...props} width={frame.width} />;
     case 'm':
       return (
-        <Pad>
+        <Pad compact>
           <MediumFace {...props} width={frame.width} />
         </Pad>
       );
@@ -131,7 +140,7 @@ function Ready({
   readonly data: GroupData;
   readonly frame: WidgetFrameBox;
   readonly allColumns: number | null;
-  readonly titleHref: Href | undefined;
+  readonly titleHref: AppHref | undefined;
 }): ReactNode {
   const controls = useGroupControls(data);
   return (
@@ -165,7 +174,7 @@ export function LightGroup({
   readonly frame: WidgetFrameBox;
   readonly allColumns?: number;
   readonly title?: string;
-  readonly titleHref?: Href;
+  readonly titleHref?: AppHref;
 }): ReactNode {
   const load = useGroupLoad(target, title);
   if (load.status === 'loading') return <Loading frame={frame} />;

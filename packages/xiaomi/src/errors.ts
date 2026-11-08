@@ -85,3 +85,15 @@ export class MiotValueError extends Error {
     );
   }
 }
+
+export class MapBlobError extends Error {
+  override readonly name = 'MapBlobError';
+
+  constructor(
+    readonly step: string,
+    readonly expected: string,
+    readonly received: string,
+  ) {
+    super(`The vacuum map failed at ${step}: expected ${expected}, received ${received}.`);
+  }
+}

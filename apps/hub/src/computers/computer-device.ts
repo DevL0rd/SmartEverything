@@ -2,7 +2,6 @@ import {
   CAPABILITY_CATALOGUE,
   COMPUTER_ROLE_MODELS,
   type ComputerAction,
-  type ComputerRole,
   type DeviceCapability,
   type DiscoveredDevice,
   type MachineAction,
@@ -12,6 +11,13 @@ import { driverDeviceId } from '../local/device-driver';
 import { machineCapabilities } from '../machines/machine-capabilities';
 
 export const COMPUTER_DRIVER = 'computer';
+
+export const HUB_EXTERNAL_ID = driverDeviceId(COMPUTER_DRIVER, 'hub');
+
+export interface HubMachine {
+  readonly hostname: string;
+  readonly osName: string;
+}
 
 export function computerExternalId(machineId: string): string {
   return driverDeviceId(COMPUTER_DRIVER, machineId);
@@ -33,7 +39,6 @@ export interface ComputerControlSet {
 
 export function describeComputer(
   hello: NodeHello,
-  role: ComputerRole,
   readings: readonly DeviceCapability[],
   controls: ComputerControlSet,
 ): DiscoveredDevice {
@@ -43,7 +48,7 @@ export function describeComputer(
     parentExternalId: null,
     kind: 'computer',
     name: hello.hostname,
-    model: COMPUTER_ROLE_MODELS[role],
+    model: COMPUTER_ROLE_MODELS.pc,
     manufacturer: hello.hardware.vendor ?? hello.os.name,
     room: null,
     online: true,
@@ -62,5 +67,21 @@ export function describeComputer(
       memoryBytes: hello.memoryBytes,
       interfaces: hello.interfaces.map((item) => ({ name: item.name, mac: item.mac })),
     },
+  };
+}
+
+export function describeHub(machine: HubMachine): DiscoveredDevice {
+  return {
+    provider: 'local',
+    externalId: HUB_EXTERNAL_ID,
+    parentExternalId: null,
+    kind: 'computer',
+    name: machine.hostname,
+    model: COMPUTER_ROLE_MODELS.hub,
+    manufacturer: machine.osName,
+    room: null,
+    online: true,
+    capabilities: [],
+    details: { os: machine.osName },
   };
 }

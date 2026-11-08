@@ -19,7 +19,7 @@ async function answer(request: AppViewRequest, store: EntityStore): Promise<void
     navigate: (target) => {
       router.navigate(target);
     },
-    highlight: { present: highlights.present, show: highlights.request, clear: highlights.clear },
+    highlight: { resolve: highlights.resolve, show: highlights.request, clear: highlights.clear },
   });
   log.info('app_view.handled', {
     action: request.action,

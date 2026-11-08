@@ -1,6 +1,7 @@
 import { DEVICE_GROUP_ROW } from '../device-groups';
 import { AUTOMATION_VALUE_ROW } from '../automation-values';
-import { AUTOMATION_ROW_V3, AUTOMATION_RUN_SUMMARY } from '../automation-v3/rows';
+import { AUTOMATION_PLUGIN_KIND_ROW } from '../automation-plugin-kinds';
+import { AUTOMATION_ROW, AUTOMATION_RUN_SUMMARY } from '../automation-v3/rows';
 import { z } from 'zod';
 import { BODY_READING_ROW } from '../body-readings';
 import { PROFILE_ROW } from '../profiles';
@@ -9,9 +10,19 @@ import { PLUGIN_ROW, PLUGIN_STREAM_ROW, PLUGIN_UI_ROW } from '../plugins';
 import { TALK_CHANNEL_ROW, TALK_MEMBER_ROW, TALK_MESSAGE_ROW, TALK_PRESENCE } from '../talk';
 import { WEATHER_ROW } from '../weather/forecast';
 import { EXCHANGE_RATES_ROW } from '../exchange-rates';
+import { GOOGLE_ACCOUNT_ROW } from '../google-accounts';
+import { DRIVE_ROOT } from '../drive/root';
+import { PLANNER_ALARM_ROW } from '../planner/alarms';
+import { PLANNER_COLLECTION_ROW } from '../planner/collections';
+import { PLANNER_ITEM_ROW } from '../planner/items';
+import { PLANNER_OCCURRENCE_ROW } from '../planner/occurrences';
+import { PLANNER_STOPWATCH_ROW } from '../planner/stopwatch';
+import { PLANNER_TIMER_ROW } from '../planner/timers';
 import { AI_CHAT_ROW, CHAT_ACTIVITY_NOTICE } from '../ai-chats';
 import { ASSISTANT_MESSAGE_ROW, ASSISTANT_STATUS } from '../assistant';
 import { NO_BODY, endpoint } from './endpoint';
+import { MODEL_ASSET_ROW } from './live';
+import { MODEL_CATALOG_ROW, MODEL_OVERRIDE_ROW } from '../models/catalog';
 import { SESSION } from './endpoints-access';
 import { FIREWALL_STATUS } from './firewall';
 import { NOTHING, QUERY_FLAG, SEQ } from './primitives';
@@ -59,9 +70,10 @@ export const SNAPSHOT_TABLES = z.object({
   device_state: z.array(STATE_ROW),
   cameras: z.array(CAMERA_ROW),
   scenes: z.array(SCENE_ROW),
-  automations: z.array(AUTOMATION_ROW_V3),
+  automations: z.array(AUTOMATION_ROW),
   automation_values: z.array(AUTOMATION_VALUE_ROW).optional(),
   automation_runs: z.array(AUTOMATION_RUN_SUMMARY).optional(),
+  automation_plugin_kinds: z.array(AUTOMATION_PLUGIN_KIND_ROW).optional(),
   provider_links: z.array(PROVIDER_LINK_ROW),
   ir_remotes: z.array(IR_REMOTE_ROW),
   ir_codes: z.array(IR_CODE_ROW),
@@ -86,6 +98,17 @@ export const SNAPSHOT_TABLES = z.object({
   scheduled_actions: z.array(SCHEDULE_ROW).optional(),
   plugin_streams: z.array(PLUGIN_STREAM_ROW).optional(),
   plugin_ui: z.array(PLUGIN_UI_ROW).optional(),
+  model_assets: z.array(MODEL_ASSET_ROW).optional(),
+  model_catalog: z.array(MODEL_CATALOG_ROW).optional(),
+  model_overrides: z.array(MODEL_OVERRIDE_ROW).optional(),
+  drive_roots: z.array(DRIVE_ROOT).optional(),
+  planner_collections: z.array(PLANNER_COLLECTION_ROW),
+  planner_items: z.array(PLANNER_ITEM_ROW),
+  planner_occurrences: z.array(PLANNER_OCCURRENCE_ROW),
+  planner_alarms: z.array(PLANNER_ALARM_ROW),
+  planner_timers: z.array(PLANNER_TIMER_ROW),
+  planner_stopwatches: z.array(PLANNER_STOPWATCH_ROW),
+  google_accounts: z.array(GOOGLE_ACCOUNT_ROW),
 });
 
 export type SnapshotTables = z.infer<typeof SNAPSHOT_TABLES>;
@@ -103,7 +126,7 @@ export type OwnerSnapshotTables = z.infer<typeof OWNER_SNAPSHOT_TABLES>;
 export const SNAPSHOT = z.object({
   seq: SEQ,
   session: SESSION,
-  firewall: FIREWALL_STATUS,
+  firewall: FIREWALL_STATUS.nullable(),
   tables: SNAPSHOT_TABLES,
   owner: OWNER_SNAPSHOT_TABLES.nullable(),
 });

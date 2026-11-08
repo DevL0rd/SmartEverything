@@ -30,6 +30,10 @@ export class ModelReplies {
     this.begun = false;
   }
 
+  owed(): void {
+    this.begun = false;
+  }
+
   cut(): void {
     this.begun = false;
   }

@@ -10,6 +10,7 @@ import { modelSized } from '../model-picture';
 import { PortableMachine } from '../portable/portable-machine';
 import { PortableProcesses } from '../portable/portable-processes';
 import {
+  inheritedEnvironment,
   unsupportedAudio,
   unsupportedDisplays,
   unsupportedInput,
@@ -26,6 +27,7 @@ import { WindowsProcessSource } from './windows-processes';
 import { windowsVolume } from './windows-volume';
 import { WAKE_DISPLAY_SCRIPT } from './windows-wake';
 import { z } from 'zod';
+import { describeFailure } from '@smarteverything/logging';
 
 export function windowsControls(options: ControlOptions): ComputerControls {
   const agent = new SocketSessionAgent(
@@ -45,10 +47,14 @@ export function windowsControls(options: ControlOptions): ComputerControls {
       ownPid: process.pid,
       now: Date.now,
       failed: (cause): void => {
-        options.log.error('node.session_part_failed', cause, { part: 'processes' });
+        options.log.warn('node.session_part_failed', {
+          part: 'processes',
+          failure: describeFailure(cause),
+        });
       },
     }),
     links: () => [],
+    environment: inheritedEnvironment(),
     session: unsupportedSession('Windows'),
     audio: unsupportedAudio('Windows'),
     displays: unsupportedDisplays('Windows'),

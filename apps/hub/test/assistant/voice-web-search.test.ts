@@ -1,14 +1,10 @@
-import { DEFAULT_ENGINE } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { testVoiceMemory } from '../support/voice-memory';
 import type { HubTool } from '../../src/ai-tools/hub-tool';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
-import {
-  callSearchesWeb,
-  voiceHub,
-  type VoiceKit,
-  type VoiceWho,
-} from '../../src/assistant-voice/voice-kit';
+import { callSearchesWeb, type VoiceKit, type VoiceWho } from '../../src/assistant-voice/voice-kit';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
 
 let opened: TestStore;
 
@@ -40,6 +36,7 @@ function toolOf(name: string): HubTool {
 function kitOf(tools: readonly string[]): VoiceKit {
   return {
     store: opened.store,
+    memory: testVoiceMemory(opened.store),
     responder: {
       ready: () => null,
       chatForCall: () => '',
@@ -66,7 +63,7 @@ function whoOf(granted: readonly string[] | null): VoiceWho {
     icon: null,
     parentId: null,
     sourceKey: null,
-    engine: DEFAULT_ENGINE,
+    engine: TEST_ENGINE,
     tools: granted,
   });
   return {
@@ -88,16 +85,16 @@ function whoOf(granted: readonly string[] | null): VoiceWho {
 describe('call web search follows the chat tool grants', () => {
   it('searches the web when the chat may use every tool', () => {
     const who = whoOf(null);
-    expect(callSearchesWeb(voiceHub(kitOf(['web_search', 'light_on']), () => who))).toBe(true);
+    expect(callSearchesWeb(kitOf(['web_search', 'light_on']), who)).toBe(true);
   });
 
   it('searches the web when the chat grants web search', () => {
     const who = whoOf(['web_search']);
-    expect(callSearchesWeb(voiceHub(kitOf(['web_search', 'light_on']), () => who))).toBe(true);
+    expect(callSearchesWeb(kitOf(['web_search', 'light_on']), who)).toBe(true);
   });
 
   it('does not search the web when the chat withholds it', () => {
     const who = whoOf(['light_on']);
-    expect(callSearchesWeb(voiceHub(kitOf(['web_search', 'light_on']), () => who))).toBe(false);
+    expect(callSearchesWeb(kitOf(['web_search', 'light_on']), who)).toBe(false);
   });
 });

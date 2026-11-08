@@ -13,6 +13,17 @@ describe('the node records of a run', () => {
     ]);
   });
 
+  it('carry the outputs an effect resolved with on its succeeded record', () => {
+    const plan = planOf(seq(effect('first')));
+    const trace = run(contextOf(plan), stateOf(), {
+      resolve: () => ({ ok: true, value: { text: 'The lights are off.' } }),
+    });
+    expect(trace.nodes.map((entry) => entry.outputs)).toEqual([
+      undefined,
+      { text: 'The lights are off.' },
+    ]);
+  });
+
   it('close an effect as failed with its error when it fails', () => {
     const plan = planOf(seq(effect('first')));
     const trace = run(contextOf(plan), stateOf(), {

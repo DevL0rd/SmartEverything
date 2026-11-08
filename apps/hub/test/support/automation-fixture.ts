@@ -1,7 +1,8 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
 import type {
   AutomationAuthor,
-  AutomationRowV3,
+  StoredAutomationRow,
   AutomationRunRecord,
   AutomationV3,
   FlowNode,
@@ -12,6 +13,7 @@ import type {
 } from '@smarteverything/domain';
 import type { Store } from '../../src/store/store';
 import { TEST_AUTHOR } from './automation-author';
+import { graphAutomation } from '../automations-v3/support/graph-of';
 
 let counter = 0;
 
@@ -71,16 +73,19 @@ export interface AutomationFixture {
 export function saveAutomation(
   store: Pick<Store, 'automations'>,
   fixture: AutomationFixture = {},
-): AutomationRowV3 {
-  return store.automations.create({
-    name: fixture.name ?? `Test automation ${String(nextCount())}`,
-    enabled: fixture.enabled ?? true,
-    program: programOf(fixture.triggers, fixture.body),
-    layout: EMPTY_LAYOUT,
-    planHash: PLACEHOLDER_HASH,
-    origin: fixture.origin ?? null,
-    author: fixture.author === undefined ? TEST_AUTHOR : fixture.author,
-  });
+): StoredAutomationRow {
+  return store.automations.create(
+    {
+      name: fixture.name ?? `Test automation ${String(nextCount())}`,
+      enabled: fixture.enabled ?? true,
+      program: graphAutomation(programOf(fixture.triggers, fixture.body), STATIC_KIND_LOOKUP),
+      layout: EMPTY_LAYOUT,
+      planHash: PLACEHOLDER_HASH,
+      origin: fixture.origin ?? null,
+      author: fixture.author === undefined ? TEST_AUTHOR : fixture.author,
+    },
+    STATIC_KIND_LOOKUP,
+  );
 }
 
 export function startRun(

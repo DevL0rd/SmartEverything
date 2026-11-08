@@ -16,6 +16,7 @@ import {
 } from '@smarteverything/domain';
 import { canonicalRuntimeInput } from '../computers/runtime-receipts';
 import type { CodexClient } from './client';
+import type { CodexSites } from './sites';
 import { CodexJob } from './job';
 import type { CodexAdmission } from './provider-admission';
 import type { CodexSessions } from './sessions';
@@ -39,10 +40,9 @@ interface Operation {
   readonly configuration?: CodexCommandConfiguration;
 }
 export interface CommandPorts {
-  readonly dataDirectory: string;
+  readonly sites: CodexSites;
   readonly models: () => Promise<readonly ComputerRuntimeModel[]>;
   readonly observedModels: () => readonly ComputerRuntimeModel[];
-  readonly ordinaryAllowed: () => boolean;
   readonly cleanupFailed: (cause: unknown) => void;
   readonly deviceId: string;
   readonly admission: CodexAdmission;

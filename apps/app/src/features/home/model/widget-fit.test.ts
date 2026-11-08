@@ -1,35 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { SEMANTIC_SIZES } from '../../../design/tokens';
-import {
-  activityRowCount,
-  bodyHeight,
-  consumerRowCount,
-  sceneGrid,
-  securityRowCount,
-} from './widget-fit';
+import { activityRowCount, consumerRowCount, sceneGrid, securityRowCount } from './widget-fit';
 
 const TOUCH = SEMANTIC_SIZES.touch.comfortable;
 const POINTER = SEMANTIC_SIZES.pointer.comfortable;
 
-describe('bodyHeight', () => {
-  it('takes the header and its gap off the frame', () => {
-    expect(bodyHeight({ width: 326, height: 324, idiom: 'touch' })).toBe(272);
-    expect(bodyHeight({ width: 508, height: 296, idiom: 'pointer' })).toBe(252);
-  });
-});
-
 describe('activityRowCount', () => {
   it('fits two-line rows into the body', () => {
-    expect(activityRowCount(272, TOUCH, false)).toBe(3);
-    expect(activityRowCount(252, POINTER, false)).toBe(4);
+    expect(activityRowCount(272, 'touch', TOUCH, false)).toBe(3);
+    expect(activityRowCount(252, 'pointer', POINTER, false)).toBe(4);
   });
 
   it('reserves the See all footer', () => {
-    expect(activityRowCount(272, TOUCH, true)).toBe(2);
+    expect(activityRowCount(272, 'touch', TOUCH, true)).toBe(2);
+  });
+
+  it('keeps the footer visible when the pointer text is taller than the compact row token', () => {
+    expect(activityRowCount(248, 'pointer', SEMANTIC_SIZES.pointer.compact, true)).toBe(3);
   });
 
   it('always shows at least one row', () => {
-    expect(activityRowCount(40, TOUCH, true)).toBe(1);
+    expect(activityRowCount(40, 'touch', TOUCH, true)).toBe(1);
   });
 });
 

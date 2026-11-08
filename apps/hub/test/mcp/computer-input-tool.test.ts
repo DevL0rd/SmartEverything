@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   API_ENDPOINTS,
   mcpToolOperation,
@@ -17,7 +16,7 @@ import { pictureSizeOf } from '../../src/extensions/mcp/tools/see';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
-const DEVICE = randomUUID();
+let DEVICE = '';
 const PICTURE = Buffer.from('jpeg').toString('base64');
 
 interface Call {
@@ -69,6 +68,23 @@ beforeEach(async () => {
   calls = [];
   captureFails = false;
   pictureBytes = 0;
+  const [desk] = opened.store.devices.upsert([
+    {
+      provider: 'local',
+      externalId: 'computer-desk',
+      parentId: null,
+      kind: 'computer',
+      name: 'Desk',
+      model: 'smarteverything.computer',
+      manufacturer: 'Linux',
+      providerRoom: null,
+      roomId: null,
+      online: true,
+      capabilities: [],
+      details: {},
+    },
+  ]);
+  DEVICE = desk?.id ?? '';
   owner = opened.store.clients.create({
     name: 'Owner phone',
     platform: 'android',

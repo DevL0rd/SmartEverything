@@ -1,6 +1,6 @@
 import {
   NODE_CATEGORIES,
-  SHIPPED_TIERS,
+  isShippedKind,
   type AutomationFunctionSummary,
   type NodeAccess,
   type NodeCategoryId,
@@ -60,10 +60,7 @@ export function catalogOf(
   kinds: readonly NodeKind[],
   functions: readonly AutomationFunctionSummary[],
 ): readonly CatalogGroup[] {
-  const entries = [
-    ...kinds.filter((kind) => SHIPPED_TIERS.includes(kind.tier)).map(nodeEntry),
-    ...functions.map(functionEntry),
-  ];
+  const entries = [...kinds.filter(isShippedKind).map(nodeEntry), ...functions.map(functionEntry)];
   return NODE_CATEGORIES.map(({ id, name }) => ({
     id,
     name,

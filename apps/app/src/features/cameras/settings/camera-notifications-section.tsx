@@ -89,7 +89,7 @@ function TimingRows({
       <SelectRow
         title="One notice per kind every"
         icon="timer"
-        options={cooldownOptions(true)}
+        options={cooldownOptions(pref.cooldownMinutes)}
         value={cooldownValue(pref, deviceId)}
         onChange={(choice) => {
           save(
@@ -100,7 +100,7 @@ function TimingRows({
       <SelectRow
         title="Quiet hours"
         icon="moon"
-        options={quietOptions(cameraQuietHours(pref, deviceId))}
+        options={quietOptions(cameraQuietHours(pref, deviceId), pref.quiet)}
         value={quietChoice(pref, deviceId)}
         onChange={(choice) => {
           save(withQuietChoice(pref, deviceId, choice));

@@ -59,43 +59,6 @@ export function testBars(tests: readonly SpeedTestResult[]): readonly Bar[] {
     }));
 }
 
-const FIGURE_L = 44;
-const FIGURE_M = 32;
-const CAPTION = 18;
-const ROW_GAP = 6;
-const TIGHT_GAP = 4;
-const TREND_MIN = 16;
-const TREND_MAX = 40;
-const PAIR_GAP = 8;
-const PAIR_MIN = 20;
-const PAIR_MAX = 48;
-
-export interface CompactLayout {
-  readonly figure: 'l' | 'm';
-  readonly tight: boolean;
-  readonly trend: number | null;
-}
-
-function trendFor(body: number, figure: number, gap: number): number | null {
-  const rest = body - figure - CAPTION - 2 * gap;
-  return rest >= TREND_MIN ? Math.min(TREND_MAX, rest) : null;
-}
-
-export function compactLayoutOf(body: number): CompactLayout {
-  const large = trendFor(body, FIGURE_L, ROW_GAP);
-  if (large !== null) {
-    return { figure: 'l', tight: false, trend: large };
-  }
-  const medium = trendFor(body, FIGURE_M, ROW_GAP);
-  return medium === null
-    ? { figure: 'm', tight: true, trend: trendFor(body, FIGURE_M, TIGHT_GAP) }
-    : { figure: 'm', tight: false, trend: medium };
-}
-
-export function pairHeightOf(body: number): number {
-  return Math.min(PAIR_MAX, Math.max(PAIR_MIN, Math.floor((body - PAIR_GAP) / 2)));
-}
-
 export function latestSample(
   snapshot: RouterSnapshot,
   pick: 'downloadMbps' | 'uploadMbps',

@@ -1,11 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createMcpHandler } from '@modelcontextprotocol/server';
+import { toNodeHandler, type NodeIncomingMessageLike } from '@modelcontextprotocol/node';
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../../clock';
 import { bearerOf } from '../../server/http';
 import { withRequestSignal } from '../../server/request-signal';
 import type { Store } from '../../store/store';
 import { callerFor, challenge, type AcceptedCaller, type McpCaller } from './bearer';
-import { statelessHttp } from './http-transport';
 import { replyJson } from './respond';
 import { createMcpServer } from './server';
 import { siteOf } from './site';
@@ -77,8 +78,18 @@ function authorized(
   return null;
 }
 
+function nodeRequestOf(request: IncomingMessage): NodeIncomingMessageLike {
+  return {
+    ...(request.method === undefined ? {} : { method: request.method }),
+    ...(request.url === undefined ? {} : { url: request.url }),
+    headers: request.headers,
+    [Symbol.asyncIterator]: () => request[Symbol.asyncIterator](),
+  };
+}
+
 export async function handleMcp(
   options: TransportOptions,
+  feed: ToolListFeed,
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
@@ -86,22 +97,27 @@ export async function handleMcp(
   if (caller === null) {
     return;
   }
-  const mcp = createMcpServer(
-    { ...options.tools, caller },
-    options.log,
-    request.headers['user-agent'] ?? '',
+  const userAgent = request.headers['user-agent'] ?? '';
+  const handler = createMcpHandler(
+    () => createMcpServer({ ...options.tools, caller }, options.log, userAgent),
+    {
+      bus: feed.bus,
+      onerror: (cause): void => {
+        options.log.warn('request.rejected', { message: cause.message });
+      },
+    },
   );
-  const http = statelessHttp(true);
   response.once('close', () => {
-    mcp.close().catch((cause: unknown) => {
+    handler.close().catch((cause: unknown) => {
       options.log.error('request.close_failed', cause);
     });
   });
   const startedAt = performance.now();
   options.log.debug('request.started', { via: caller.via, method: request.method });
-  await mcp.connect(http.transport);
   try {
-    await withRequestSignal(request, response, () => http.handle(request, response));
+    await withRequestSignal(request, response, () =>
+      toNodeHandler(handler)(nodeRequestOf(request), response),
+    );
     options.log.debug('request.finished', () => ({
       via: caller.via,
       status: response.statusCode,

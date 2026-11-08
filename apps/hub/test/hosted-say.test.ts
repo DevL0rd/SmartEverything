@@ -91,6 +91,45 @@ describe('saying something once', () => {
     expect(usage?.audio_out_ms).toBe(Math.round((SPEECH.length * 1000) / SPEECH_SAMPLE_RATE));
   });
 
+  it('speaks in the asked voice and scales the level to the asked volume', async () => {
+    const heard: SpeechOptions[] = [];
+    const speech = new OneShotSpeech({
+      store: opened.store,
+      providers: { gemini: fakeProvider(heard) },
+      prices: { priceOf: (): typeof NO_PRICES => NO_PRICES },
+      log: testLogger('say-style'),
+    });
+    const profileId = opened.store.profiles.first().id;
+    const peakOf = async (id: string, volume: number | undefined): Promise<number> => {
+      const packets: Uint8Array[] = [];
+      const saying = await speech.say({
+        id,
+        profileId,
+        clientId: null,
+        text: 'Dinner',
+        voice: 'Kore',
+        ...(volume === undefined ? {} : { volume }),
+        sink: {
+          audio: (packet): void => {
+            packets.push(packet);
+          },
+          said: () => undefined,
+          ended: () => undefined,
+        },
+      });
+      await saying.end('finished');
+      const codec = opusCodec();
+      const decoded = packets.flatMap((packet) => Array.from(codec.decode(packet)));
+      codec.free();
+      return Math.max(...decoded.map(Math.abs));
+    };
+    const full = await peakOf('1d000000-0000-4000-8000-000000000042', undefined);
+    const quiet = await peakOf('1d000000-0000-4000-8000-000000000043', 25);
+    expect(heard.map((options) => options.voice)).toEqual(['Kore', 'Kore']);
+    expect(quiet / full).toBeGreaterThan(0.15);
+    expect(quiet / full).toBeLessThan(0.35);
+  });
+
   it('hides the reach tools from hosted conversations', () => {
     const set: ToolSpec[] = ['device_read', 'voice_speak', 'call_start', 'call_end'].map(
       (name) => ({

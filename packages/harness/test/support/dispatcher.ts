@@ -23,7 +23,7 @@ import {
   type HarnessRuntimeReceipt,
   type HarnessRuntimeRequest,
 } from '@smarteverything/domain';
-import { nativeHeader } from '../../src/persistence/validation';
+import { nativeEvents, nativeHeader } from '../../src/persistence/validation';
 import { HarnessReducer } from '../../src/reducer';
 import type { SessionOpening } from '../../src/reducer';
 import { createHarnessDispatcher } from '../../src/process/dispatcher';
@@ -32,6 +32,7 @@ import type { HarnessDispatcherOptions } from '../../src/process/dispatcher-opti
 import type { HarnessControlPersistence } from '../../src/process/contracts';
 import { MemoryPersistence, StoredSession } from './memory-persistence';
 import { ScriptedModel } from './scripted-model';
+import { MemoryApiKeyVault } from './api-key-vault';
 import { EMPTY_CONFIGURATION } from './runtime';
 
 export class ControlPersistence extends MemoryPersistence implements HarnessControlPersistence {
@@ -53,8 +54,25 @@ export class ControlPersistence extends MemoryPersistence implements HarnessCont
     this.appended(claim.session_id, events);
   }
 
-  admit(header: SessionHeader, chatId: string): DshWriterClaim {
+  override create(
+    header: SessionHeader,
+    inherited: number,
+  ): ReturnType<MemoryPersistence['create']> {
+    const stored = new StoredSession(header, inherited);
+    const claim = stored.claimFor(this.target);
+    this.sessions.set(header.id, stored);
+    this.chats.set(header.id, randomUUID());
+    this.bind(claim);
+    return Promise.resolve({ ...stored.snapshot(), claim });
+  }
+
+  admit(
+    header: SessionHeader,
+    chatId: string,
+    initialEvents: readonly unknown[] = [],
+  ): DshWriterClaim {
     const stored = new StoredSession(header, 0);
+    stored.events.push(...nativeEvents(header, initialEvents));
     this.sessions.set(header.id, stored);
     this.chats.set(header.id, chatId);
     return stored.claimFor(this.target);
@@ -105,6 +123,7 @@ export class ControlPersistence extends MemoryPersistence implements HarnessCont
   }
 
   lose(id: string): void {
+    this.bound.delete(id);
     this.loseOwnership(id);
   }
 
@@ -123,6 +142,7 @@ export interface Opened {
 
 const ROUTE_ID = randomUUID();
 const FULL_ACCESS = { sandbox: 'danger-full-access', approval: 'never' } as const;
+const WAIT_TIMEOUT_MS = 15_000;
 
 function modelRoute(profile: string): AiModelRoute {
   return {
@@ -166,8 +186,12 @@ interface Booted {
   readonly workspace: string;
 }
 
-export interface DispatcherExtras extends Pick<HarnessDispatcherOptions, 'describeImage'> {
+export interface DispatcherExtras extends Pick<
+  HarnessDispatcherOptions,
+  'describeImage' | 'loadAttachments'
+> {
   readonly intercept?: (frame: HarnessNativeFrame) => void;
+  readonly beforePublish?: (frame: HarnessNativeFrame) => Promise<void>;
 }
 
 function hubReducer(
@@ -177,7 +201,20 @@ function hubReducer(
   return new HarnessReducer({
     metadata: (id): DshSessionMetadata => persistence.statSync(id),
     opening: (id): SessionOpening => {
-      const session = openings.get(id);
+      const metadata = persistence.statSync(id);
+      const parent = metadata.header.parentSession;
+      const known = parent === undefined ? undefined : openings.get(parent);
+      const session =
+        openings.get(id) ??
+        (known === undefined
+          ? undefined
+          : AI_HARNESS_SESSION.parse({
+              ...known,
+              chat_id: metadata.chat_id,
+              session_id: id,
+              metadata,
+              epoch: persistence.claim(id).epoch,
+            }));
       if (session === undefined) throw new Error(`Session ${id} was not admitted by the test hub.`);
       return { session, history: persistence.history(id) };
     },
@@ -211,6 +248,7 @@ async function boot(
     },
     desiredConfiguration: EMPTY_CONFIGURATION,
     installedPlugins: [],
+    apiKeys: new MemoryApiKeyVault(),
     configurationChanged: () => undefined,
     persistence,
     installModelRoutes: async (ctx: Context): Promise<void> => {
@@ -220,15 +258,16 @@ async function boot(
       });
       await install?.(ctx, persistence);
     },
-    publish: (frame) => {
+    publish: async (frame) => {
+      await extras.beforePublish?.(frame);
       extras.intercept?.(frame);
       frames.push(frame);
       published.push(...reducer.apply(frame));
-      return Promise.resolve();
     },
     route: () => modelRoute(persistence.profile),
     authority: () => ({ kind: 'manual', profileId: persistence.profile }),
     ...(extras.describeImage === undefined ? {} : { describeImage: extras.describeImage }),
+    ...(extras.loadAttachments === undefined ? {} : { loadAttachments: extras.loadAttachments }),
   });
   return { dispatcher, persistence, model, published, frames, openings, directory, workspace };
 }
@@ -275,7 +314,10 @@ export class DispatcherFixture {
     return this.parts.directory;
   }
 
-  async open(permission: HarnessOpen['permission'] = FULL_ACCESS): Promise<Opened> {
+  async open(
+    permission: HarnessOpen['permission'] = FULL_ACCESS,
+    initialEvents?: readonly unknown[],
+  ): Promise<Opened> {
     const sessionId = DSH_SESSION_ID.parse(randomUUID());
     const chatId = randomUUID();
     const claim = this.parts.persistence.admit(
@@ -288,6 +330,7 @@ export class DispatcherFixture {
         agentPreset: 'smarteverything',
       }),
       chatId,
+      initialEvents,
     );
     const cwd = join(this.parts.directory, 'home');
     this.parts.openings.set(
@@ -346,6 +389,7 @@ export class DispatcherFixture {
   send(opened: Opened, text: string): Promise<HarnessRuntimeReceipt> {
     return this.parts.dispatcher.execute(randomUUID(), {
       kind: 'prompt',
+      author: 'person',
       session_id: opened.sessionId,
       expected_epoch: opened.claim.epoch,
       delivery_id: randomUUID(),
@@ -363,11 +407,14 @@ export class DispatcherFixture {
   }
 
   async finished(count: number): Promise<void> {
-    await vi.waitFor(() => {
-      expect(this.parts.published.filter((event) => event.kind === 'completed')).toHaveLength(
-        count,
-      );
-    });
+    await vi.waitFor(
+      () => {
+        expect(this.parts.published.filter((event) => event.kind === 'completed')).toHaveLength(
+          count,
+        );
+      },
+      { timeout: WAIT_TIMEOUT_MS },
+    );
   }
 
   async dispose(): Promise<void> {

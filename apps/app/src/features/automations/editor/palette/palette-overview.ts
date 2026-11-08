@@ -1,5 +1,5 @@
 import type { PaletteEntry, PaletteGroup } from './palette-categories';
-import { isShown, reasonFor, type PaletteContext, type PaletteUsage } from './palette-search';
+import { isShown, type PaletteContext, type PaletteUsage } from './palette-search';
 import { suggestedEntries } from './suggestions';
 
 export interface Overview {
@@ -16,9 +16,7 @@ function byUsage(
 ): readonly PaletteEntry[] {
   return ids.flatMap((id) => {
     const entry = entries.find((candidate) => candidate.usageId === id);
-    const usable =
-      entry !== undefined && isShown(entry, context) && reasonFor(entry, context) === null;
-    return usable ? [entry] : [];
+    return entry !== undefined && isShown(entry, context) ? [entry] : [];
   });
 }
 
@@ -46,4 +44,11 @@ export function overviewOf(
     recents: byUsage(entries, usage.recents, context).slice(0, 6),
     groups: visibleGroups(groups, context),
   };
+}
+
+export function openGroup(
+  groups: readonly PaletteGroup[],
+  key: string | null,
+): PaletteGroup | undefined {
+  return key === null ? undefined : groups.find((group) => group.key === key);
 }

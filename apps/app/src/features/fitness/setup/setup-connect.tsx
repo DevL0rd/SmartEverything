@@ -59,6 +59,7 @@ function ScaleRow(): ReactNode {
   ) : (
     <ListRow
       title={scale.display_name ?? scale.name}
+      wrapTitle
       subtitle="Set up · weigh-ins arrive by themselves"
       icon="scale"
     />

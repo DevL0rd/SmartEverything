@@ -1,13 +1,10 @@
 import type { ReactNode } from 'react';
-import { memo, useEffect, useMemo } from 'react';
-import { Pressable, View, useWindowDimensions } from 'react-native';
+import { useEffect } from 'react';
+import { Pressable, View } from 'react-native';
 import { useIsFocused } from 'expo-router';
-import { BOARD_COLUMNS, type BoardClass } from '@smarteverything/domain';
+import type { BoardClass } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { LogTally } from '../../design/log-tally';
 import { useIdiom } from '../../design/platform';
-import { TileViewport } from '../../design/visibility';
-import type { Idiom } from '../../design/tokens';
 import { useSizeClass } from '../../design/size-class';
 import { useThemeSetting } from '../../design/theme';
 import { heavyThud } from '../../platform/haptics';
@@ -16,23 +13,20 @@ import { ErrorState } from '../error-state';
 import { notify } from '../toast-store';
 import { useMeasuredWidth } from '../use-measured-width';
 import { useStableValue } from '../use-stable-value';
-import { boardClassOf, cellOf, frameOf, type Cell } from './board-geometry';
-import { footprintOf, type Footprint } from './footprint';
-import { frameBoxOf } from './frame-class';
-import { RevealedMember, renderWidget } from './widget-scope';
-import { RevealRing } from './edit/reveal-ring';
+import { boardClassOf, boardColumnsOf, cellOf, type Cell } from './board-geometry';
+import type { BoardRowLayer } from './board-row-layers';
+import { StaticTiles } from './static-tiles';
 import type { BoardReveal } from './reveal';
 import { useBoardReveal } from './use-board-reveal';
 import { ADD_TILE, EditCanvas } from './edit/edit-canvas';
 import { isShown, type InstanceCheck } from './edit/edit-model';
-import { useEditorHandle, widgetActions, type EditorHandle } from './edit/widget-actions';
+import { useEditorHandle } from './edit/widget-actions';
 import { useDocumentKeys } from './edit/keys';
 import type { BoardEditor } from './edit/use-board-editor';
 import { fittedWidgets } from './fit-sizes';
-import { fittedCell, pack, rowsOf, type Placement } from './packer';
-import { mountOrder, useBoardStagger } from './stagger';
+import { boardHeightOf, pack, type Placement } from './packer';
 import { SkeletonBoard } from './skeleton-board';
-import type { BoardWidget, WidgetDefinition, WidgetSize } from './types';
+import type { BoardWidget, WidgetDefinition } from './types';
 
 const log = new Logger('app.widget-board');
 
@@ -44,6 +38,7 @@ export interface WidgetBoardProps {
   readonly available: ReadonlySet<string>;
   readonly instanceAvailable?: InstanceCheck;
   readonly reveal?: BoardReveal;
+  readonly rowLayer?: BoardRowLayer;
 }
 
 function useUnknownWidgets(
@@ -73,123 +68,8 @@ function useKnownWidgets(
   return fittedWidgets(widgets, catalogue, board);
 }
 
-function aspectLookup(
-  catalogue: readonly WidgetDefinition[],
-): (type: string) => number | undefined {
-  return (type) => catalogue.find((entry) => entry.type === type)?.aspect;
-}
-
-function footprintLookup(
-  catalogue: readonly WidgetDefinition[],
-): (type: string, board: BoardClass, size: WidgetSize) => Footprint {
-  return (type, board, size) =>
-    footprintOf(
-      board,
-      size,
-      catalogue.find((entry) => entry.type === type),
-    );
-}
-
-interface StaticTileProps {
-  readonly placement: Placement;
-  readonly cell: Cell;
-  readonly definition: WidgetDefinition;
-  readonly board: BoardClass;
-  readonly handle: EditorHandle;
-  readonly idiom: Idiom;
-  readonly reveal: BoardReveal | null;
-}
-
-const tiles = new LogTally(log, 'board.tiles_summarised', 5000);
-
-const StaticTile = memo(function StaticTile({
-  placement,
-  cell,
-  definition,
-  board,
-  handle,
-  idiom,
-  reveal,
-}: StaticTileProps): ReactNode {
-  const frame = frameOf(cell, placement);
-  const props = {
-    size: placement.widget.size,
-    options: placement.widget.options,
-    editing: false,
-    frame: frameBoxOf(frame, cell.pad, idiom),
-  };
-  const actions = useMemo(
-    () => widgetActions(handle, board, placement.widget.key),
-    [handle, board, placement.widget.key],
-  );
-  const widgetType = placement.widget.type;
-  useEffect(() => {
-    tiles.bump('mounted');
-    tiles.bump(`mounted_${widgetType}`);
-    return (): void => {
-      tiles.bump('unmounted');
-    };
-  }, [widgetType]);
-  return (
-    <TileViewport style={frame}>
-      <RevealedMember member={reveal?.member ?? null}>
-        {renderWidget(definition, props, actions)}
-      </RevealedMember>
-      {reveal === null ? null : (
-        <RevealRing label={`Showing ${definition.title}`} onDone={reveal.onDone} />
-      )}
-    </TileViewport>
-  );
-});
-
-function StaticTiles({
-  page,
-  placements,
-  cell,
-  catalogue,
-  handle,
-  board,
-  reveal,
-}: {
-  readonly page: string;
-  readonly placements: readonly Placement[];
-  readonly cell: Cell;
-  readonly catalogue: readonly WidgetDefinition[];
-  readonly handle: EditorHandle;
-  readonly board: BoardClass;
-  readonly reveal: BoardReveal | null;
-}): ReactNode {
-  const idiom = useIdiom();
-  const { height } = useWindowDimensions();
-  const mounted = useBoardStagger(page, placements, cell.height + cell.gap, height);
-  const order = mountOrder(placements);
-  return placements.map((placement) => {
-    if ((order.get(placement.widget.key) ?? 0) >= mounted) {
-      return null;
-    }
-    const definition = catalogue.find((entry) => entry.type === placement.widget.type);
-    return definition === undefined ? null : (
-      <StaticTile
-        key={placement.widget.key}
-        placement={placement}
-        cell={cell}
-        definition={definition}
-        board={board}
-        handle={handle}
-        idiom={idiom}
-        reveal={reveal?.key === placement.widget.key ? reveal : null}
-      />
-    );
-  });
-}
-
-function heightOf(placements: readonly Placement[], cell: Cell): number {
-  const rows = rowsOf(placements);
-  return rows === 0 ? 0 : rows * cell.height + (rows - 1) * cell.gap;
-}
-
 function boxOf(placements: readonly Placement[], cell: Cell): { readonly height: number } {
-  return { height: heightOf(placements, cell) };
+  return { height: boardHeightOf(placements, cell) };
 }
 
 function sameWidget(left: BoardWidget, right: BoardWidget): boolean {
@@ -203,8 +83,7 @@ function samePlacement(left: Placement, right: Placement | undefined): boolean {
     left.col === right.col &&
     left.row === right.row &&
     left.cols === right.cols &&
-    left.rows === right.rows &&
-    left.height === right.height
+    left.rows === right.rows
   );
 }
 
@@ -226,6 +105,7 @@ function StaticBoard({
   cell: nextCell,
   catalogue,
   reveal,
+  rowLayer,
 }: {
   readonly editor: BoardEditor;
   readonly board: BoardClass;
@@ -233,6 +113,7 @@ function StaticBoard({
   readonly cell: Cell;
   readonly catalogue: readonly WidgetDefinition[];
   readonly reveal: BoardReveal | null;
+  readonly rowLayer: BoardRowLayer | undefined;
 }): ReactNode {
   const touch = useIdiom() === 'touch';
   const placements = useStableValue(nextPlacements, samePlacements);
@@ -256,6 +137,7 @@ function StaticBoard({
         handle={handle}
         board={board}
         reveal={reveal}
+        rowLayer={rowLayer}
       />
     </Pressable>
   );
@@ -297,38 +179,28 @@ function Arranged(
   const known = useKnownWidgets(editor, board, catalogue);
   const visible = known.filter((widget) => isShown(widget, availability));
   useArrangedLog({ editor, board, width, known: known.length, visible: visible.length });
-  const aspectOf = aspectLookup(catalogue);
-  const cell = fittedCell(board, visible, {
-    cell: cellOf(width, BOARD_COLUMNS[board], idiom, density),
-    aspectOf,
-  });
-  const sizing = { cell, aspectOf, footprintOf: footprintLookup(catalogue) };
+  const columns = boardColumnsOf(board, width);
+  const cell = cellOf(width, columns, idiom, density);
   const reveal = useBoardReveal(visible, props.reveal);
+  const shared = { editor, board, cell, catalogue, reveal };
   if (!editor.editing) {
     return (
       <StaticBoard
-        editor={editor}
-        board={board}
-        placements={pack(board, visible, sizing)}
-        cell={cell}
-        catalogue={catalogue}
-        reveal={reveal}
+        {...shared}
+        placements={pack(board, visible, columns)}
+        rowLayer={props.rowLayer}
       />
     );
   }
-  const placements = pack(board, [...visible, ADD_TILE], sizing);
+  const placements = pack(board, [...visible, ADD_TILE], columns);
   return (
     <EditCanvas
-      editor={editor}
-      board={board}
-      cell={cell}
-      height={heightOf(placements, cell)}
+      {...shared}
+      height={boardHeightOf(placements, cell)}
       placements={placements}
       visible={visible}
-      catalogue={catalogue}
       availability={availability}
       active={active}
-      reveal={reveal}
     />
   );
 }
@@ -364,13 +236,7 @@ export function WidgetBoard(props: WidgetBoardProps): ReactNode {
     }
   }, [page, board, status, reason]);
   if (layout.status === 'loading') {
-    return (
-      <SkeletonBoard
-        board={board}
-        widgets={defaults[board]}
-        aspectOf={aspectLookup(props.catalogue)}
-      />
-    );
+    return <SkeletonBoard board={board} widgets={defaults[board]} />;
   }
   if (layout.status === 'invalid') {
     return (

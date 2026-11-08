@@ -82,13 +82,13 @@ export const SHORTCUTS: readonly Shortcut[] = [
     id: 'back',
     label: 'Back',
     scope: 'Anywhere',
-    chords: [{ key: 'ArrowLeft', label: '←', alt: true }],
+    chords: [{ key: 'ArrowLeft', label: '←', alt: true, shift: false }],
   },
   {
     id: 'forward',
     label: 'Forward',
     scope: 'Anywhere',
-    chords: [{ key: 'ArrowRight', label: '→', alt: true }],
+    chords: [{ key: 'ArrowRight', label: '→', alt: true, shift: false }],
   },
   { id: 'help', label: 'Show shortcuts', scope: 'Anywhere', chords: [{ key: '?' }] },
   {
@@ -158,15 +158,6 @@ export const SHORTCUTS: readonly Shortcut[] = [
     chords: [{ key: 'l', ...modShift }],
     isNew: true,
     alternative: 'Access button in the message field',
-    reserved: true,
-  },
-  {
-    id: 'details',
-    label: 'Chat details',
-    scope: 'Conversation',
-    chords: [{ key: 'd', ...modShift }],
-    isNew: true,
-    alternative: 'The strip above the message field',
     reserved: true,
   },
   {

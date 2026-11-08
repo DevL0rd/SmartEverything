@@ -26,7 +26,7 @@ export interface ExtractOptions {
   readonly functionId: string;
   readonly name: string;
   readonly expose?: readonly ExposedPort[];
-  readonly newId?: () => string;
+  readonly newId: () => string;
 }
 
 export interface Extraction {
@@ -47,10 +47,6 @@ interface Build {
   readonly ctx: CheckContext;
   readonly newId: () => string;
   readonly exposed: ReadonlyMap<string, string>;
-}
-
-function randomId(): string {
-  return globalThis.crypto.randomUUID();
 }
 
 function variableReturns(boundary: Boundary): Record<string, PortValue> {
@@ -267,7 +263,7 @@ export function extractRegion(
       boundary,
       ctx,
       exposed,
-      newId: options.newId ?? randomId,
+      newId: options.newId,
     };
     const callee = calleeOf(build);
     const { caller: raw, key } = callerOf(build, options);

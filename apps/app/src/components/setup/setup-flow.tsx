@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../app-href';
 import { Button } from '../button';
 import { FlowFrame } from '../flow-frame';
 import { Text } from '../text';
@@ -10,7 +10,7 @@ import { StepBar, type StepBarStep } from './step-bar';
 export interface SetupAction {
   readonly label: string;
   readonly onPress?: () => void;
-  readonly href?: Href;
+  readonly href?: AppHref;
   readonly loading?: boolean;
   readonly disabled?: boolean;
 }

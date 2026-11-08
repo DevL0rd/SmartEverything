@@ -23,6 +23,7 @@ import type { PlaceFinder } from '../places/place-finder';
 import type { WeatherService } from '../weather/weather-service';
 import type { ExchangeRateService } from '../exchange-rates/exchange-rate-service';
 import type { PushCommandChannel } from '../extensions/push/commands';
+import type { ReplyNotices } from '../extensions/push/reply-notices';
 import type { OpenCalls } from '../assistant-voice/open-calls';
 import type { EarsRelay } from '../computers/ears-relay';
 import type { LiveHub } from './live';
@@ -34,6 +35,8 @@ import type { OpenRouterPlatform } from '../openrouter/platform';
 import type { MediaNotes } from '../transcripts/media-notes';
 import type { WatchCaptureStore } from '../watch-captures/capture-store';
 import type { DeveloperDevices } from '../watch-captures/developer-devices';
+import type { IrApplianceService } from '../infrared/appliance-service';
+import type { HomeMapRuntime } from '../home-map/home-map-hub';
 
 export interface ServerContext {
   readonly connections?: HubConnections;
@@ -57,6 +60,7 @@ export interface ServerContext {
   readonly foodLookup: FoodLookup;
   readonly live: LiveHub;
   readonly pushCommands: PushCommandChannel;
+  readonly replyNotices: ReplyNotices;
   readonly openCalls: OpenCalls;
   readonly watchActions: WatchActionBroker;
   readonly machineApprovals: MachineApprovals;
@@ -73,5 +77,7 @@ export interface ServerContext {
   readonly recordingPath: (storagePath: string) => string;
   readonly developerDevices: DeveloperDevices;
   readonly watchCaptures: WatchCaptureStore;
+  readonly irAppliances: IrApplianceService;
+  readonly homeMap: HomeMapRuntime;
   readonly log: Logger;
 }

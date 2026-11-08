@@ -169,7 +169,7 @@ function toolFields(fields: Fields, query: boolean): Fields {
 }
 
 function withoutHubFilled(name: EndpointName, fields: Fields): Fields {
-  const filled = mcpOperationTraits(name).callIdentity;
+  const filled = mcpOperationTraits(name).callIdentity?.field;
   return Object.fromEntries(Object.entries(fields).filter(([key]) => key !== filled));
 }
 
@@ -194,7 +194,8 @@ function shapeOf(name: EndpointName): OperationShape {
   };
   const named = Object.keys({ ...fields.params, ...fields.query, ...fields.body });
   const personal =
-    PERSONAL_AREAS.has(mcpOperationArea(endpoint)) && mcpOperationTraits(name).householdWide !== true;
+    PERSONAL_AREAS.has(mcpOperationArea(endpoint)) &&
+    mcpOperationTraits(name).householdWide !== true;
   return {
     name,
     endpoint,

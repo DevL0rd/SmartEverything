@@ -1,5 +1,7 @@
 import type { FlowType } from './types';
 
+export { typeDisplayName, type EntityTitleOf } from './type-names';
+
 type Comparer = (from: FlowType, to: FlowType) => boolean;
 
 export type AssignContext = 'port' | 'template';
@@ -10,7 +12,9 @@ export type ImplicitCoercionId =
   | 'deviceNarrowing'
   | 'devicesToTarget'
   | 'listToListOfAny'
-  | 'renderToText';
+  | 'renderToText'
+  | 'entityToText'
+  | 'textToEntity';
 
 export type ExplicitConversionId =
   'textToNumber' | 'numberToDuration' | 'unwrapOptional' | 'narrowAny' | 'choiceToLabel';
@@ -27,6 +31,8 @@ export const IMPLICIT_COERCIONS = [
     to: 'text',
     where: 'template',
   },
+  { id: 'entityToText', from: 'plugin entity', to: 'text', where: 'everywhere' },
+  { id: 'textToEntity', from: 'text', to: 'plugin entity', where: 'everywhere' },
 ] as const satisfies readonly {
   readonly id: ImplicitCoercionId;
   readonly from: string;
@@ -72,6 +78,7 @@ const RENDERABLE_TAGS: ReadonlySet<FlowType['t']> = new Set([
   'date',
   'choice',
   'ref',
+  'entity',
 ]);
 
 function isSecret(type: FlowType): boolean {
@@ -132,10 +139,29 @@ function fillsTarget(from: FlowType, to: FlowType): boolean {
   return isTarget(to) && (isDevice(from) || (from.t === 'list' && isDevice(from.of)));
 }
 
+type RefType = Extract<FlowType, { readonly t: 'ref' }>;
+
+function familiesHold(from: RefType, to: RefType): boolean {
+  if (to.families === undefined) return true;
+  const allowed = new Set(to.families);
+  return from.families?.every((family) => allowed.has(family)) === true;
+}
+
 function refComparer(from: FlowType, to: FlowType): boolean {
   if (from.t !== 'ref' || to.t !== 'ref' || from.of !== to.of) return false;
   const held = new Set(from.capabilities ?? []);
-  return (to.capabilities ?? []).every((capability) => held.has(capability));
+  return (
+    (to.capabilities ?? []).every((capability) => held.has(capability)) && familiesHold(from, to)
+  );
+}
+
+function textComparer(from: FlowType, to: FlowType): boolean {
+  return from.t === 'text' && (to.t === 'text' || to.t === 'entity');
+}
+
+function entityComparer(from: FlowType, to: FlowType): boolean {
+  if (from.t !== 'entity') return false;
+  return to.t === 'text' || (to.t === 'entity' && to.of === from.of);
 }
 
 function paramComparer(from: FlowType, to: FlowType): boolean {
@@ -186,7 +212,7 @@ function recordComparer(from: FlowType, to: FlowType): boolean {
 const COMPARERS: Readonly<Record<FlowType['t'], Comparer>> = {
   boolean: sameTag,
   number: numberComparer,
-  text: sameTag,
+  text: textComparer,
   duration: sameTag,
   instant: sameTag,
   timeOfDay: sameTag,
@@ -200,6 +226,7 @@ const COMPARERS: Readonly<Record<FlowType['t'], Comparer>> = {
   optional: sameTag,
   any: sameTag,
   param: paramComparer,
+  entity: entityComparer,
 };
 
 function structurallyAssignable(from: FlowType, to: FlowType, context: AssignContext): boolean {
@@ -238,6 +265,12 @@ function widensList(from: FlowType, to: FlowType): boolean {
   return from.t === 'list' && to.t === 'list' && to.of.t === 'any' && from.of.t !== 'any';
 }
 
+function shapeCoercionOf(from: FlowType, to: FlowType): ImplicitCoercionId | null {
+  if (from.t === 'entity' && to.t === 'text') return 'entityToText';
+  if (from.t === 'text' && to.t === 'entity') return 'textToEntity';
+  return widensList(from, to) ? 'listToListOfAny' : null;
+}
+
 export function implicitCoercionOf(
   from: FlowType,
   to: FlowType,
@@ -249,7 +282,7 @@ export function implicitCoercionOf(
   if (refinesNumber(from, to)) return 'integerToNumber';
   if (narrowsDevice(from, to)) return 'deviceNarrowing';
   if (fillsTarget(from, to)) return 'devicesToTarget';
-  return widensList(from, to) ? 'listToListOfAny' : null;
+  return shapeCoercionOf(from, to);
 }
 
 const CONVERSION_RULES: readonly {
@@ -265,6 +298,18 @@ const CONVERSION_RULES: readonly {
   { id: 'narrowAny', applies: (from, to) => from.t === 'any' && to.t !== 'optional' },
   { id: 'choiceToLabel', applies: (from, to) => from.t === 'choice' && to.t === 'text' },
 ];
+
+export const TEXT_TO_ENTITY_ADVICE =
+  'This text is used as a plugin entity id. Pick the entity, or make sure the wired text is an id the plugin knows.';
+
+function unwrapped(type: FlowType): FlowType {
+  return type.t === 'optional' ? unwrapped(type.of) : type;
+}
+
+export function assignmentAdvice(from: FlowType, to: FlowType): string | null {
+  const coercion = implicitCoercionOf(unwrapped(from), unwrapped(to));
+  return coercion === 'textToEntity' && isAssignable(from, to) ? TEXT_TO_ENTITY_ADVICE : null;
+}
 
 export function conversionsOffered(from: FlowType, to: FlowType): readonly ExplicitConversionId[] {
   if (isSecret(from) || isSecret(to) || isAssignable(from, to)) return [];
@@ -364,60 +409,4 @@ export function hasUnresolvedGenerics(type: FlowType): boolean {
     Object.values(type.fields ?? {}).some(hasUnresolvedGenerics) ||
     (type.values !== undefined && hasUnresolvedGenerics(type.values))
   );
-}
-
-function rangePhrase(type: NumberType): string {
-  if (type.min !== undefined && type.max !== undefined) {
-    return ` from ${String(type.min)} to ${String(type.max)}`;
-  }
-  if (type.min !== undefined) return ` of at least ${String(type.min)}`;
-  return type.max === undefined ? '' : ` of at most ${String(type.max)}`;
-}
-
-function numberPhrase(type: NumberType): string {
-  const base = type.integer === true ? 'whole number' : 'number';
-  return `${base}${rangePhrase(type)}${type.unit === undefined ? '' : ` in ${type.unit}`}`;
-}
-
-function recordPhrase(type: Extract<FlowType, { readonly t: 'record' }>): string {
-  const fields = Object.entries(type.fields ?? {}).map(
-    ([name, field]) => `${name}: ${phrase(field)}`,
-  );
-  const rest = type.values === undefined ? [] : [`other fields: ${phrase(type.values)}`];
-  const parts = [...fields, ...rest];
-  return parts.length === 0 ? 'record' : `record with ${parts.join(', ')}`;
-}
-
-function refPhrase(type: Extract<FlowType, { readonly t: 'ref' }>): string {
-  const needs = type.capabilities ?? [];
-  return needs.length === 0 ? type.of : `${type.of} that can ${needs.join(', ')}`;
-}
-
-const SCALAR_PHRASES = {
-  boolean: 'on/off',
-  text: 'text',
-  duration: 'duration',
-  instant: 'date and time',
-  timeOfDay: 'time of day',
-  date: 'date',
-  color: 'color',
-  error: 'error',
-  any: 'any value',
-} as const;
-
-function phrase(type: FlowType): string {
-  if (type.t === 'number') return numberPhrase(type);
-  if (type.t === 'list') return `list of ${phrase(type.of)}`;
-  if (type.t === 'optional') return `optional ${phrase(type.of)}`;
-  if (type.t === 'record') return recordPhrase(type);
-  if (type.t === 'choice')
-    return `choice of ${type.options.map((option) => option.label).join(', ')}`;
-  if (type.t === 'ref') return refPhrase(type);
-  if (type.t === 'param') return type.name;
-  return SCALAR_PHRASES[type.t];
-}
-
-export function typeDisplayName(type: FlowType): string {
-  const text = phrase(type);
-  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }

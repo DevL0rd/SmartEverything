@@ -13,7 +13,6 @@ import type { HubTlsIdentity } from './identity';
 const log = new Logger('hub.network');
 
 export class HubConnections {
-  private loopback: string | null = null;
   private listener: AddressInfo | null = null;
   private discovery: HubDiscoveryStatus = { state: 'disabled', detail: 'Discovery is disabled.' };
 
@@ -22,11 +21,9 @@ export class HubConnections {
     private readonly store: Store,
   ) {}
 
-  listening(loopback: string, lan: AddressInfo | null): void {
-    this.loopback = loopback;
+  listening(lan: AddressInfo | null): void {
     this.listener = lan;
     log.info('listeners.changed', {
-      loopbackHost: new URL(loopback).host,
       lanPort: lan?.port ?? null,
       lanFamily: lan?.family ?? null,
       lanBound: lan !== null,
@@ -50,11 +47,6 @@ export class HubConnections {
     const remoteAvailable =
       settings.public_url !== null && settings.public_url_verified_at !== null;
     const endpoints: HubEndpoint[] = [];
-    if (
-      this.loopback !== null &&
-      ['127.0.0.1', '[::1]', 'localhost'].includes(new URL(this.loopback).hostname)
-    )
-      endpoints.push({ kind: 'loopback', url: this.loopback });
     if (this.listener !== null) {
       const lan = lanEndpoints(this.listener);
       if (lan.length > 0)

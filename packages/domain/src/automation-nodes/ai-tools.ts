@@ -63,6 +63,7 @@ export const TOOL_CALL = defineNodeKind({
       required: false,
       default: {},
       description: 'The arguments of the tool.',
+      ui: { typedBy: 'tool' },
     },
     {
       name: 'person',
@@ -79,7 +80,7 @@ export const TOOL_CALL = defineNodeKind({
   exits: ['next'],
   effect: { retry: 'external', budget: 'effects' },
   summary: 'Use the tool {tool}',
-  keywords: ['tool', 'mcp', 'function call', 'speak'],
+  keywords: ['tool', 'mcp', 'function call'],
   access: 'owner',
   tier: 'v1',
 });

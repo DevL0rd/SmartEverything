@@ -1,5 +1,4 @@
 import {
-  DEFAULT_ENGINE,
   WEB_SOURCES_KIND,
   chatWidgetsOf,
   type AiChatRow,
@@ -11,6 +10,8 @@ import { ConversationLog } from '../../src/assistant/conversation-log';
 import { AssistantFiles } from '../../src/assistant/files';
 import { attachWidgets } from '../../src/chat-widgets/attach-widgets';
 import { testStore, type TestStore } from '../support/store';
+import { TEST_ENGINE } from '../support/engine';
+import { hubLayout } from '../../src/data-layout';
 
 let opened: TestStore;
 let conversation: ConversationLog;
@@ -38,12 +39,12 @@ beforeEach(async () => {
   );
   const owner = { profileId: store.profiles.activeOf(client.id).id, role: 'owner' as const };
   const files = new AssistantFiles({
-    dataDirectory: opened.directory,
+    layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
     now: (): Date => new Date(),
   });
-  chat = new ChatDirectory(store, files, (): Date => new Date()).create(owner, {
-    engine: DEFAULT_ENGINE,
+  chat = new ChatDirectory(store, files).create(owner, {
+    engine: TEST_ENGINE,
   });
   conversation = new ConversationLog(store);
 });

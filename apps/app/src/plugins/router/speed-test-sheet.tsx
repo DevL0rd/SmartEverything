@@ -11,7 +11,6 @@ import { LastResult, SpeedHistory } from './overview/speed-history';
 import { SpeedGauge, SpeedSteps } from './overview/speed-gauge';
 import {
   useRouterTools,
-  useSpeedTestRun,
   useSpeedTests,
   type SpeedTestList,
   type SpeedTestRun,
@@ -57,8 +56,7 @@ export function SpeedTestSheet({
   readonly onClose: () => void;
 }): ReactNode {
   const tools = useRouterTools();
-  const run = useSpeedTestRun();
-  const list = useSpeedTests();
+  const { run, list } = useSpeedTests();
   const last = list.state === 'ready' ? (list.tests[0] ?? null) : null;
   return (
     <Sheet open={open} onClose={onClose} title="Speed test" scroll>

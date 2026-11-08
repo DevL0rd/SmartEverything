@@ -1,0 +1,428 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overscroll-behavior: none;
+  background: transparent;
+}
+
+.vacuum-map3d {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+
+.vacuum-map3d-frame {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  font-family: 'Geist-Medium', system-ui, sans-serif;
+}
+
+.vacuum-map3d-pill {
+  fill: var(--map-pill);
+}
+
+.vacuum-map3d-text,
+.vacuum-map3d-chip-text {
+  fill: var(--edit-on-surface);
+  font-size: 12px;
+}
+
+.vacuum-map3d-chip-text {
+  font-size: 11px;
+}
+
+.vacuum-map3d-badge,
+.vacuum-map3d-now {
+  fill: var(--map-mark);
+}
+
+.vacuum-map3d-badge-text {
+  fill: var(--edit-on-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.vacuum-map3d-robot {
+  fill: none;
+  stroke: var(--map-mark);
+  stroke-width: 2px;
+}
+
+.vacuum-map3d-robot-halo {
+  fill: none;
+  stroke: rgba(242, 180, 94, 0.28);
+  stroke-width: 6px;
+}
+
+.vacuum-map3d-chip-dot[data-tone='info'] {
+  fill: var(--edit-info);
+}
+
+.vacuum-map3d-chip-dot[data-tone='positive'] {
+  fill: var(--map-positive);
+}
+
+.vacuum-map3d-chip-dot[data-tone='warning'] {
+  fill: var(--map-mark);
+}
+
+.vacuum-map3d-chip-dot[data-tone='critical'] {
+  fill: var(--edit-danger);
+}
+
+.vacuum-map3d-chip-faded {
+  opacity: 0.4;
+}
+
+.vacuum-map3d-frame {
+  --map-pill: rgba(20, 20, 22, 0.82);
+  --map-mark: #f2b45e;
+  --map-positive: #5fc07f;
+  --edit-axis-x: #ff7a66;
+  --edit-axis-y: #5ed3cf;
+  --edit-axis-z: #8eaeff;
+  --edit-primary: #f2b45e;
+  --edit-primary-container: rgba(242, 180, 94, 0.16);
+  --edit-info: #6fb3ef;
+  --edit-info-container: rgba(111, 179, 239, 0.16);
+  --edit-halo: #0b0b0d;
+  --edit-on-surface: #f2f0ec;
+  --edit-on-primary: #2a1a05;
+  --edit-handle-fill: #ffffff;
+  --edit-warn: #f2b45e;
+  --edit-danger: #ef5a4f;
+  --edit-neutral: #c9c5bd;
+  --map-loupe-ground: #0b0b0d;
+}
+
+.vacuum-map3d-frame[data-theme='light'] {
+  --map-pill: rgba(255, 255, 255, 0.9);
+  --map-mark: #a9620a;
+  --map-positive: #3f8f5a;
+  --edit-axis-x: #c8321e;
+  --edit-axis-y: #00808a;
+  --edit-axis-z: #3159c9;
+  --edit-primary: #955607;
+  --edit-primary-container: rgba(149, 86, 7, 0.14);
+  --edit-info: #2f6fd0;
+  --edit-info-container: rgba(47, 111, 208, 0.14);
+  --edit-halo: #ffffff;
+  --edit-on-surface: #1d1b18;
+  --edit-on-primary: #ffffff;
+  --edit-handle-fill: #ffffff;
+  --edit-warn: #a9620a;
+  --edit-danger: #d0382d;
+  --edit-neutral: #5d5a54;
+  --map-loupe-ground: #ffffff;
+}
+
+.vacuum-map3d-marks,
+.map3d-edit,
+.map3d-edit-svg,
+.map3d-edit-pills,
+.map3d-loupe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.map3d-edit-path .map3d-edit-halo {
+  fill: none;
+  stroke: var(--edit-halo);
+  stroke-width: 7px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map3d-edit-path .map3d-edit-line {
+  fill: none;
+  stroke: var(--edit-primary);
+  stroke-width: 3px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map3d-edit-path[data-look='shaft-x'] .map3d-edit-line {
+  stroke: var(--edit-axis-x);
+}
+
+.map3d-edit-path[data-look='shaft-y'] .map3d-edit-line {
+  stroke: var(--edit-axis-y);
+}
+
+.map3d-edit-path[data-look='shaft-z'] .map3d-edit-line,
+.map3d-edit-path[data-look='stalk'] .map3d-edit-line {
+  stroke: var(--edit-axis-z);
+}
+
+.map3d-edit-path[data-look='stalk'] .map3d-edit-line,
+.map3d-edit-path[data-look='frame'] .map3d-edit-line,
+.map3d-edit-path[data-look='frame-grown'] .map3d-edit-line,
+.map3d-edit-path[data-look='tick'] .map3d-edit-line {
+  stroke-width: 1.5px;
+}
+
+.map3d-edit-path[data-look='stalk'] .map3d-edit-halo,
+.map3d-edit-path[data-look='frame'] .map3d-edit-halo,
+.map3d-edit-path[data-look='frame-grown'] .map3d-edit-halo,
+.map3d-edit-path[data-look='tick'] .map3d-edit-halo,
+.map3d-edit-path[data-look='link'] .map3d-edit-halo,
+.map3d-edit-path[data-look='axis-guide'] .map3d-edit-halo,
+.map3d-edit-path[data-look='ghost'] .map3d-edit-halo,
+.map3d-edit-path[data-look='ghost-area'] .map3d-edit-halo,
+.map3d-edit-path[data-look='face'] .map3d-edit-halo,
+.map3d-edit-path[data-look='tint'] .map3d-edit-halo,
+.map3d-edit-path[data-look='place'] .map3d-edit-halo,
+.map3d-edit-path[data-look='landing'] .map3d-edit-halo {
+  stroke-width: 4px;
+}
+
+.map3d-edit-path[data-look='tick-major'] .map3d-edit-line {
+  stroke-width: 2.5px;
+}
+
+.map3d-edit-path[data-look='frame-grown'] .map3d-edit-line,
+.map3d-edit-path[data-look='axis-guide'] .map3d-edit-line,
+.map3d-edit-path[data-look='ghost'][data-tone='snap'] .map3d-edit-line,
+.map3d-edit-path[data-look='place'] .map3d-edit-line,
+.map3d-edit-path[data-look='landing'] .map3d-edit-line {
+  stroke-dasharray: 6 5;
+}
+
+.map3d-edit-path[data-look='link'] .map3d-edit-line {
+  stroke-width: 1.5px;
+  stroke-dasharray: 1 4;
+}
+
+.map3d-edit-path[data-look='axis-guide'] .map3d-edit-line,
+.map3d-edit-path[data-look='ghost'] .map3d-edit-line,
+.map3d-edit-path[data-look='ghost-area'] .map3d-edit-line {
+  stroke-width: 1.5px;
+}
+
+.map3d-edit-path[data-look='wedge'] .map3d-edit-halo {
+  stroke: none;
+}
+
+.map3d-edit-path[data-look='wedge'] .map3d-edit-line,
+.map3d-edit-path[data-look='ghost-area'] .map3d-edit-line {
+  fill: var(--edit-primary-container);
+  stroke-width: 1px;
+}
+
+.map3d-edit-path[data-look='face'] .map3d-edit-line,
+.map3d-edit-path[data-look='tint'] .map3d-edit-line,
+.map3d-edit-path[data-look='place'] .map3d-edit-line,
+.map3d-edit-path[data-look='landing'] .map3d-edit-line {
+  fill: var(--edit-primary-container);
+  stroke-width: 2px;
+}
+
+.map3d-edit-path[data-tone='info'] .map3d-edit-line {
+  stroke: var(--edit-info);
+}
+
+.map3d-edit-path[data-tone='info'][data-look$='area'] .map3d-edit-line,
+.map3d-edit-path[data-tone='info'][data-look='face'] .map3d-edit-line {
+  fill: var(--edit-info-container);
+}
+
+.map3d-edit-touch {
+  fill: var(--edit-primary-container);
+  stroke: var(--edit-primary);
+  stroke-width: 1.5px;
+}
+
+.vacuum-map3d-frame:has(> .map3d-edit[data-cursor='grab']) > .vacuum-map3d {
+  cursor: grab;
+}
+
+.vacuum-map3d-frame:has(> .map3d-edit[data-cursor='grabbing']) > .vacuum-map3d {
+  cursor: grabbing;
+}
+
+.map3d-edit-path[data-tone='neutral'] .map3d-edit-line {
+  stroke: var(--edit-neutral);
+}
+
+.map3d-edit-path[data-tone='warn'] .map3d-edit-line {
+  stroke: var(--edit-warn);
+}
+
+.map3d-edit-path[data-tone='danger'] .map3d-edit-line {
+  stroke: var(--edit-danger);
+}
+
+.map3d-edit-path[data-state='faded'],
+.map3d-edit-handle[data-state='faded'] {
+  opacity: 0.28;
+}
+
+.map3d-edit-target {
+  fill: transparent;
+  stroke: none;
+}
+
+.map3d-edit-handle .map3d-edit-halo {
+  fill: var(--edit-halo);
+  stroke: var(--edit-halo);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.map3d-edit-handle .map3d-edit-body {
+  fill: var(--edit-handle-fill);
+  stroke: var(--edit-primary);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
+.map3d-edit-handle[data-kind='axis-x'] .map3d-edit-body {
+  fill: var(--edit-axis-x);
+  stroke: var(--edit-axis-x);
+}
+
+.map3d-edit-handle[data-kind='axis-y'] .map3d-edit-body {
+  fill: var(--edit-axis-y);
+  stroke: var(--edit-axis-y);
+}
+
+.map3d-edit-handle[data-kind='axis-z'] .map3d-edit-body,
+.map3d-edit-handle[data-kind='top'] .map3d-edit-body,
+.map3d-edit-handle[data-kind='cone-pitch'] .map3d-edit-body {
+  fill: var(--edit-axis-z);
+  stroke: var(--edit-axis-z);
+}
+
+.map3d-edit-handle[data-kind='plane'] .map3d-edit-body {
+  fill: var(--edit-primary-container);
+  stroke: var(--edit-primary);
+}
+
+.map3d-edit-handle[data-kind='uniform'] .map3d-edit-body {
+  fill: none;
+  stroke-width: 3px;
+}
+
+.map3d-edit-handle[data-kind='uniform'] .map3d-edit-halo {
+  fill: none;
+  stroke-width: 7px;
+}
+
+.map3d-edit-handle[data-kind='ring'] .map3d-edit-body,
+.map3d-edit-handle[data-kind='cone-yaw'] .map3d-edit-body {
+  fill: var(--edit-primary);
+}
+
+.map3d-edit-handle[data-state='active'] .map3d-edit-body {
+  fill: var(--edit-primary);
+  stroke: var(--edit-primary);
+}
+
+.map3d-edit-pulse {
+  fill: none;
+  stroke: var(--edit-primary);
+  stroke-width: 2px;
+  opacity: 0;
+  animation: map3d-edit-pulse 700ms ease-out 1 both;
+}
+
+@keyframes map3d-edit-pulse {
+  from {
+    opacity: 0.9;
+    transform: scale(0.6);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map3d-edit-pulse {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.map3d-edit-pill {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.map3d-edit-pill[data-look='live'] {
+  background: var(--edit-on-surface);
+  color: var(--edit-halo);
+  font-family: 'GeistMono-Regular', ui-monospace, monospace;
+}
+
+.map3d-edit-pill[data-look='snap'],
+.map3d-edit-pill[data-look='tip'] {
+  height: 26px;
+  border-radius: 13px;
+  background: var(--edit-primary);
+  color: var(--edit-on-primary);
+  font-size: 12px;
+}
+
+.map3d-edit-pill[data-look='label'] {
+  height: 24px;
+  border-radius: 12px;
+  background: var(--edit-halo);
+  color: var(--edit-on-surface);
+  font-size: 12px;
+}
+
+.map3d-edit-pill[data-look='label'][data-tone='info'] {
+  color: var(--edit-info);
+}
+
+[data-loupe='on'] {
+  --loupe-mask: radial-gradient(
+    circle at var(--loupe-x) var(--loupe-y),
+    transparent var(--loupe-r),
+    #000 calc(var(--loupe-r) + 1px)
+  );
+}
+
+[data-loupe='on'] > .vacuum-map3d-marks,
+[data-loupe='on'] .map3d-edit-svg,
+[data-loupe='on'] .map3d-edit-pills {
+  -webkit-mask-image: var(--loupe-mask);
+  mask-image: var(--loupe-mask);
+}
+
+.map3d-loupe-rim,
+.map3d-loupe-halo,
+.map3d-loupe-cross {
+  fill: none;
+  stroke: var(--edit-primary);
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+
+.map3d-loupe-halo {
+  stroke: var(--edit-halo);
+  stroke-width: 5px;
+}

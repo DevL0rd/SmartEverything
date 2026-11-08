@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
 import { CLAUDE_BILLING_NOTICES, claudeBillingReason } from '@smarteverything/domain';
 import {
@@ -62,9 +62,15 @@ describe('native subscription billing gate', () => {
   it('allows inference when the answer is live, extra usage is off and no window is exhausted', async () => {
     const verdict = await nativeSubscriptionBilling(answering(usage(limits())), NOW);
     expect(verdict).toEqual({ state: 'eligible' });
-    await expect(
-      requireNativeSubscriptionBilling(answering(usage(limits()))),
-    ).resolves.toBeUndefined();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      await expect(
+        requireNativeSubscriptionBilling(answering(usage(limits()))),
+      ).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('allows an account with no model-scoped windows when the endpoint answered with an empty list', async () => {
@@ -88,22 +94,21 @@ describe('native subscription billing gate', () => {
     ['seven_day', { seven_day: window(100) }],
     ['seven_day_sonnet', { seven_day_sonnet: window(101) }],
     ['model_scoped', { model_scoped: [window(0), window(100)] }],
-  ])('blocks as exhausted when %s is full', async (_name, overrides) => {
+  ])('allows the provider to handle the limit when %s is full', async (_name, overrides) => {
     const verdict = await nativeSubscriptionBilling(answering(usage(limits(overrides))), NOW);
-    expect(verdict).toMatchObject(blockedWith('native_quota_exhausted'));
+    expect(verdict).toEqual({ state: 'eligible' });
   });
 
-  it('blocks as unknown when a main window reports no utilization', async () => {
+  it('allows inference when a main window reports no utilization and extra usage is off', async () => {
     const verdict = await nativeSubscriptionBilling(
       answering(usage(limits({ five_hour: window(null, null) }))),
       NOW,
     );
-    expect(verdict).toMatchObject(blockedWith('native_billing_policy_unknown'));
+    expect(verdict).toEqual({ state: 'eligible' });
   });
 
   it.each([
     ['plan limits not available', usage(null)],
-    ['no subscription type', usage(limits(), { subscription_type: null })],
     ['missing extra usage', usage(limits({ extra_usage: null }))],
   ])('blocks as unknown when %s', async (_name, value) => {
     const verdict = await nativeSubscriptionBilling(answering(value), NOW);
@@ -137,13 +142,16 @@ describe('native subscription billing gate', () => {
   it.each([
     ['already past', PAST],
     ['unreadable', 'soon'],
-  ])('blocks as stale when a reset time is %s', async (_name, resetsAt) => {
-    const verdict = await nativeSubscriptionBilling(
-      answering(usage(limits({ seven_day: window(12, resetsAt) }))),
-      NOW,
-    );
-    expect(verdict).toMatchObject(blockedWith('native_billing_freshness_unavailable'));
-  });
+  ])(
+    'allows inference while ignoring a display window whose reset time is %s',
+    async (_name, resetsAt) => {
+      const verdict = await nativeSubscriptionBilling(
+        answering(usage(limits({ seven_day: window(12, resetsAt) }))),
+        NOW,
+      );
+      expect(verdict).toEqual({ state: 'eligible' });
+    },
+  );
 
   it('throws a billing error carrying the short reason and the technical detail', async () => {
     const failure = await requireNativeSubscriptionBilling(

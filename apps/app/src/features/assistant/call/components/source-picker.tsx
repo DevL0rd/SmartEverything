@@ -2,14 +2,14 @@ import type { ReactNode } from 'react';
 import { Image, View } from 'react-native';
 import { Icon } from '../../../../components/icon';
 import { Interactive } from '../../../../components/interactive';
-import { Sheet } from '../../../../components/sheet';
+import { Sheet, type SheetProps } from '../../../../components/sheet';
 import { Text } from '../../../../components/text';
 import { useIdiom } from '../../../../design/platform';
 import { cn } from '../../../../design/cn';
 import { groupsOf, type SourceChoice } from '../model/call-sources';
 
 export interface SourcePickerProps {
-  readonly open: boolean;
+  readonly subpage?: SheetProps['subpage'];
   readonly title: string;
   readonly subtitle: string;
   readonly choices: readonly SourceChoice[];
@@ -114,11 +114,11 @@ function PickerNotice({
 }
 
 export function SourcePicker(props: SourcePickerProps): ReactNode {
-  const { open, title, subtitle, choices, status, problem, footnote, empty, onPick, onClose } =
+  const { subpage, title, subtitle, choices, status, problem, footnote, empty, onPick, onClose } =
     props;
   const big = useIdiom() === 'pointer';
   return (
-    <Sheet open={open} onClose={onClose} title={title} wide detents={['half', 'full']}>
+    <Sheet open subpage={subpage} onClose={onClose} title={title} wide detents={['half', 'full']}>
       <View className="-mx-4 gap-2">
         <Text variant="callout" tone="variant" className="px-4">
           {subtitle}

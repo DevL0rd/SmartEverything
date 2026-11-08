@@ -7,7 +7,6 @@ export const REFERENCE_SECTIONS: Readonly<Record<AiReferenceKind, string>> = {
   plugin: 'Plugins',
   chat: 'Chats',
   command: 'Commands',
-  agent: 'Agents',
 };
 export function referenceKey(reference: AiReference): string {
   return JSON.stringify(reference);
@@ -25,8 +24,6 @@ export function referenceIcon(reference: AiReference): IconName {
       return 'messageCircle';
     case 'command':
       return 'terminal';
-    case 'agent':
-      return 'users';
   }
 }
 
@@ -37,7 +34,6 @@ export const REFERENCE_ORDER: Readonly<Record<AiReferenceKind, number>> = {
   plugin: 2,
   chat: 3,
   command: 4,
-  agent: 5,
 };
 
 export function referenceLocation(reference: AiReference): string {
@@ -54,7 +50,5 @@ export function referenceLocation(reference: AiReference): string {
       return `Chat ${reference.chat_id}`;
     case 'command':
       return reference.definition_id;
-    case 'agent':
-      return reference.identity;
   }
 }

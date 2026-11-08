@@ -5,7 +5,6 @@ import { useEngineCatalogue, useModelMachineChange } from '../provider/provider-
 import { useIsOwner } from '../../../store/selectors';
 import {
   nativeSupplies,
-  nativeSupplyReady,
   nativeSupplyEngine,
   type NativeModelRequest,
 } from '../provider/subscription-models';
@@ -30,7 +29,6 @@ export interface MachineView {
   readonly choices: readonly MachineChoice[];
   readonly empty: string;
   readonly pending: boolean;
-  readonly cancel: (() => void) | null;
 }
 
 const EMPTY_CHOICES = 'No machines available';
@@ -44,6 +42,11 @@ export function MachineSource({
 }): ReactNode {
   const accessory = useEngineAccessory();
   if (accessory === null) return null;
+  if (
+    isComputerEngine(engine) &&
+    (accessory.host.draft || accessory.chat?.native_admission === 'standalone')
+  )
+    return <BoundNativeSource engine={engine}>{children}</BoundNativeSource>;
   if (accessory.pending !== null || isComputerEngine(engine)) {
     return <NativeSource engine={engine}>{children}</NativeSource>;
   }
@@ -79,7 +82,6 @@ function ChatSource({
     choices,
     empty: EMPTY_CHOICES,
     pending: false,
-    cancel: null,
   });
 }
 
@@ -122,7 +124,24 @@ function DraftSource({
     engine.kind === 'dsh'
       ? harnessHostName(engine.execution_target, catalogue.data)
       : (hostOf(key ?? '')?.name ?? (key === 'server' ? 'Home hub' : 'Machine unavailable'));
-  return children({ name, choices, empty: EMPTY_CHOICES, pending: false, cancel: null });
+  return children({ name, choices, empty: EMPTY_CHOICES, pending: false });
+}
+
+function BoundNativeSource({
+  engine,
+  children,
+}: {
+  readonly engine: Engine;
+  readonly children: (machine: MachineView) => ReactNode;
+}): ReactNode {
+  const catalogue = useEngineCatalogue();
+  const name = nativeDeviceName(engine, catalogue.data);
+  return children({
+    name,
+    choices: [],
+    empty: `This chat runs on ${name}.`,
+    pending: false,
+  });
 }
 
 function NativeSource({
@@ -140,17 +159,16 @@ function NativeSource({
   const supplies = request === null ? [] : nativeSupplies(catalogue.data, request);
   const pending = accessory !== null && accessory.pending !== null;
   const choices = supplies.map((supply): MachineChoice => {
-    const ready = nativeSupplyReady(supply);
     const current = isComputerEngine(engine) && engine.device_id === supply.computer.device_id;
     return {
       key: `${supply.computer.runtime}:${supply.computer.device_id}`,
       label: supply.computer.name,
-      reason: ready ? null : (supply.model.reason ?? supply.computer.reason ?? 'Unavailable'),
+      reason: null,
       note: null,
       selected: current,
-      disabled: !owner || !ready,
+      disabled: !owner,
       onPress: (): void => {
-        if (!owner || !ready || accessory === null) return;
+        if (!owner || accessory === null) return;
         preference.mutate({
           runtime: supply.computer.runtime,
           model: supply.model.id,
@@ -165,7 +183,6 @@ function NativeSource({
     choices,
     empty: catalogue.error?.message ?? EMPTY_CHOICES,
     pending,
-    cancel: pending ? accessory.cancel : null,
   });
 }
 

@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
-import { CardGrid } from '../../../components/card-grid';
+import { Fragment } from 'react';
+import { Grid } from '../../../components/grid';
 import { ReasonLine } from '../../../components/reason-line';
 import { Skeleton } from '../../../components/skeleton';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { useRow } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
-import { bodyWidthOf, twoColumnsAt } from '../model/sections';
+
+const CARD_MIN_WIDTH = 320;
 
 export function NeedLine({ text }: { readonly text: string }): ReactNode {
   return <ReasonLine icon="warning" tone="warning" text={text} />;
@@ -24,19 +25,13 @@ export function usePersonName(device: Device): string {
 
 export function PendingCards(): ReactNode {
   return (
-    <View className="gap-4">
-      <Skeleton shape="block" />
-      <Skeleton shape="block" />
-    </View>
+    <PageCards
+      cards={[
+        { key: 'first', node: <Skeleton shape="block" /> },
+        { key: 'second', node: <Skeleton shape="block" /> },
+      ]}
+    />
   );
-}
-
-export function useBodyWidth(): number {
-  return bodyWidthOf(useAreaWidth());
-}
-
-export function useTwoColumns(): boolean {
-  return twoColumnsAt(useAreaWidth());
 }
 
 export interface PageCard {
@@ -45,14 +40,19 @@ export interface PageCard {
 }
 
 export function PageCards({ cards }: { readonly cards: readonly (PageCard | null)[] }): ReactNode {
-  const two = useTwoColumns();
+  const width = useFrameBodyWidth();
   const shown = cards.filter((card): card is PageCard => card !== null);
   return (
-    <CardGrid
-      items={shown}
-      columns={two ? 2 : 1}
-      keyOf={(card) => card.key}
-      render={(card) => card.node}
-    />
+    <Grid
+      measuredWidth={width}
+      minItemWidth={CARD_MIN_WIDTH}
+      maxColumns={shown.length}
+      cellClassName="max-w-reading"
+      stretchLastRow={false}
+    >
+      {shown.map((card) => (
+        <Fragment key={card.key}>{card.node}</Fragment>
+      ))}
+    </Grid>
   );
 }

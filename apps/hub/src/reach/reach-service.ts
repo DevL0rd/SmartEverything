@@ -30,10 +30,12 @@ import { Ringing, type RingDevice, type RingPlan, type RingTransport } from './r
 import { appOwner, resolveTarget, type ResolvedTarget } from './targets';
 import { messageOf } from '@smarteverything/logging';
 
+export type PersonNotice = Pick<NotifyPerson, 'text' | 'image' | 'tag' | 'link' | 'sound'>;
+
 export interface ReachAssistant {
-  readonly conversationChat: (profileId: string, title: string) => string;
+  readonly conversationChat: (profileId: string) => string;
   readonly turn: (chatId: string, text: string, origin: PluginOrigin | null) => void;
-  readonly message: (personId: string, text: string) => Promise<string>;
+  readonly message: (asker: Asker, personId: string, notice: PersonNotice) => Promise<string>;
   readonly aiName: () => string;
   readonly liveVideo: () => boolean;
   readonly muteMic: () => boolean;
@@ -64,6 +66,10 @@ interface Ring {
   readonly urgent: boolean;
 }
 
+type SpokenLine = Pick<Speak, 'text' | 'priority' | 'volume' | 'voice'> & {
+  readonly clientId: string | null;
+};
+
 const RING_DEVICES: Readonly<Record<CallPerson['device'], readonly RingDevice[]>> = {
   phone: ['phone'],
   desktop: ['desktop'],
@@ -87,7 +93,7 @@ export class ReachService implements OutreachDesk {
     });
     this.hosting = new Hosting({
       ...options,
-      chatFor: (asker, label): string => this.chatFor(asker, asker.profileId, label),
+      chatFor: (asker): string => this.chatFor(asker, asker.profileId),
       aiName: options.assistant.aiName,
       liveVideo: options.assistant.liveVideo,
       muteMic: options.assistant.muteMic,
@@ -200,7 +206,7 @@ export class ReachService implements OutreachDesk {
       origin: asker.origin ?? null,
     });
     const outcome = { returned: false };
-    await this.announce(row, target, { clientId: asker.clientId, text: body.text }, outcome);
+    await this.announce(row, target, { clientId: asker.clientId, ...body }, outcome);
     outcome.returned = true;
     const after = store.aiOutreach.byId(row.id);
     if (after.state === 'failed') {
@@ -212,7 +218,14 @@ export class ReachService implements OutreachDesk {
   async notify(asker: Asker, body: NotifyPerson): Promise<AiOutreachRow> {
     const { store } = this.options;
     const name = this.mayDisturb(asker, body.personId, body.urgent);
-    const chatId = await this.options.assistant.message(body.personId, body.text);
+    const { text, image, tag, link, sound } = body;
+    const chatId = await this.options.assistant.message(asker, body.personId, {
+      text,
+      image,
+      tag,
+      link,
+      sound,
+    });
     return store.aiOutreach.add({
       profile_id: body.personId,
       chat_id: chatId,
@@ -280,7 +293,7 @@ export class ReachService implements OutreachDesk {
     const name = this.mayDisturb(asker, ring.personId, ring.urgent);
     return this.ringing.start(ring.plan, {
       profile_id: ring.personId,
-      chat_id: this.chatFor(asker, ring.personId, `Call from ${this.options.assistant.aiName()}`),
+      chat_id: this.chatFor(asker, ring.personId),
       from_chat_id: asker.chatId,
       how: ring.how,
       target: ring.personId,
@@ -295,10 +308,10 @@ export class ReachService implements OutreachDesk {
   private async announce(
     row: AiOutreachRow,
     target: ResolvedTarget,
-    line: { readonly clientId: string | null; readonly text: string },
+    line: SpokenLine,
     outcome: { returned: boolean },
   ): Promise<void> {
-    const { text } = line;
+    const { text, priority, volume, voice } = line;
     const { store, log } = this.options;
     const done = (failure: string | null): void => {
       store.aiOutreach.step(
@@ -316,7 +329,17 @@ export class ReachService implements OutreachDesk {
       } else {
         await speakOnce(
           { ...this.options, aiName: this.options.assistant.aiName },
-          { id: row.id, profileId: row.profile_id, clientId: line.clientId, text, target, done },
+          {
+            id: row.id,
+            profileId: row.profile_id,
+            clientId: line.clientId,
+            text,
+            priority: priority ?? 'queue',
+            ...(volume === undefined ? {} : { volume }),
+            ...(voice === undefined ? {} : { voice }),
+            target,
+            done,
+          },
         );
       }
     } catch (cause) {
@@ -349,10 +372,10 @@ export class ReachService implements OutreachDesk {
     }
   }
 
-  private chatFor(asker: Asker, personId: string, title: string): string {
+  private chatFor(asker: Asker, personId: string): string {
     return asker.chatId !== null && asker.profileId === personId
       ? asker.chatId
-      : this.options.assistant.conversationChat(personId, title);
+      : this.options.assistant.conversationChat(personId);
   }
 }
 

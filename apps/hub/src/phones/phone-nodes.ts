@@ -3,10 +3,12 @@ import {
   MACHINE_ACTION_SUPPORTS,
   MACHINE_PERMISSION_STATES,
   PHONE_FEATURE_SUPPORTS,
+  PHONE_HARDWARE,
   type DeviceEvent,
   type DeviceRow,
   type DiscoveredDevice,
   type MachineAction,
+  type PhoneHardware,
   type PhoneActionOrigin,
   type PhoneContext,
   type PhoneDetail,
@@ -61,11 +63,25 @@ function reportedOrStored<T>(
   return kept.success ? kept.data : [];
 }
 
+function hardwareOf(
+  reported: PhoneHardware | undefined,
+  known: DeviceRow | undefined,
+): PhoneHardware | undefined {
+  if (reported !== undefined) return reported;
+  const kept = PHONE_HARDWARE.safeParse({
+    model: known?.details['hardwareModel'],
+    manufacturer: known?.details['hardwareManufacturer'],
+  });
+  return kept.success ? kept.data : undefined;
+}
+
 function machineOf(
   report: Pick<PhoneReport, 'actions' | 'permissions' | 'features'>,
   known: DeviceRow | undefined,
+  hardware: PhoneHardware | undefined,
 ): PhoneMachine {
   return {
+    hardware: hardwareOf(hardware, known),
     actions: reportedOrStored(
       report.actions,
       MACHINE_ACTION_SUPPORTS,
@@ -94,9 +110,13 @@ function isCurrent(device: DeviceRow, wanted: DiscoveredDevice): boolean {
       .join(',');
   return (
     shapes(device.capabilities) === shapes(wanted.capabilities) &&
-    ['machineActions', 'machinePermissions', 'phoneFeatures'].every(
-      (name) => JSON.stringify(device.details[name]) === JSON.stringify(wanted.details[name]),
-    )
+    [
+      'machineActions',
+      'machinePermissions',
+      'phoneFeatures',
+      'hardwareModel',
+      'hardwareManufacturer',
+    ].every((name) => JSON.stringify(device.details[name]) === JSON.stringify(wanted.details[name]))
   );
 }
 
@@ -136,8 +156,12 @@ export class PhoneNodes {
     await this.ensure(phone, {});
   }
 
+  async registerHardware(phone: PhoneIdentity, hardware: PhoneHardware): Promise<void> {
+    await this.ensure(phone, {}, hardware);
+  }
+
   async report(phone: PhoneIdentity, report: PhoneReport): Promise<void> {
-    const device = await this.ensure(phone, report);
+    const device = await this.ensure(phone, report, report.hardware);
     const externalId = phoneExternalId(phone.clientId);
     Object.entries(report.values).forEach(([capability, value]) => {
       if (isPhoneCapability(capability) && value !== undefined) {
@@ -239,10 +263,11 @@ export class PhoneNodes {
   private async ensure(
     phone: PhoneIdentity,
     report: Pick<PhoneReport, 'actions' | 'permissions' | 'features'>,
+    hardware?: PhoneHardware,
   ): Promise<DeviceRow> {
     const externalId = phoneExternalId(phone.clientId);
     const known = this.deviceOf(externalId);
-    const wanted = describePhone(phone, machineOf(report, known));
+    const wanted = describePhone(phone, machineOf(report, known, hardware));
     if (
       known?.name === phone.name &&
       detailText(known, 'profileId') === phone.profileId &&

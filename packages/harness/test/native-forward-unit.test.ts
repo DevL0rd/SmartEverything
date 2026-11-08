@@ -8,7 +8,7 @@ import type {
   HarnessNativeFrame,
   HarnessRuntimeRequest,
 } from '@smarteverything/domain';
-import { describeFailure } from '@smarteverything/logging';
+import { Logger, describeFailure } from '@smarteverything/logging';
 import { nativeEvents, nativeHeader } from '../src/persistence/validation';
 import { NativeForward } from '../src/process/native-forward';
 
@@ -164,6 +164,42 @@ describe('what the forwarder does on its own', () => {
     expect(flushed).toHaveLength(3);
   });
 
+  it('sends the background jobs that still run when a job starts and when it settles', async () => {
+    const { forward, sent, session } = forwarder();
+    const shell: AiHarnessSession['work'][number] = {
+      kind: 'shell',
+      id: 'bash-4baada7e099b4efe',
+      reason: 'A native background process has not stopped.',
+    };
+    let jobs: AiHarnessSession['work'] = [shell];
+    forward.workFor = (): AiHarnessSession['work'] => jobs;
+    await forward.open(openRequest(session));
+    const header = nativeHeader({ version: 4, id: session, createdAt: 1, isSeeded: false });
+    const job = { jobId: shell.id, owner: session, kind: 'bash', label: 'sleep 20', startedAt: 1 };
+    const [registered, settled] = nativeEvents(header, [
+      { type: 'job/registered', seq: 0, time: 1, data: job },
+      {
+        type: 'job/settled',
+        seq: 1,
+        time: 2,
+        data: { ...job, status: 'completed', finishedAt: 2, awaited: false },
+      },
+    ]);
+    if (registered === undefined || settled === undefined)
+      throw new Error('Events were not built.');
+
+    forward.event({ kind: 'session', sessionId: session, event: registered });
+    await forward.flush(session);
+    jobs = [];
+    forward.event({ kind: 'session', sessionId: session, event: settled });
+    await forward.flush(session);
+
+    expect(sent.slice(1)).toMatchObject([
+      { kind: 'status', status: 'idle', work: [shell] },
+      { kind: 'status', status: 'idle', work: [] },
+    ]);
+  });
+
   it('makes the log durable after the events the hub reduces and after no others', async () => {
     const { forward, sent, session } = forwarder();
     await forward.open(openRequest(session));
@@ -212,10 +248,69 @@ describe('what the forwarder does on its own', () => {
     expect(kinds(sent)).toStrictEqual(['open', 'close', 'open']);
   });
 
+  it('retains exact input publication outcomes across multiple claims without reusing another turn', async () => {
+    const refused = randomUUID();
+    const forward = new NativeForward(
+      (frame) => {
+        return frame.kind === 'input' && frame.message_id === refused
+          ? Promise.reject(new Error('Input publication failed'))
+          : Promise.resolve();
+      },
+      () => [],
+    );
+    const session = DSH_SESSION_ID.parse(randomUUID());
+    await forward.open(openRequest(session));
+    forward.event({ kind: 'input', sessionId: session, messageId: randomUUID(), turn: 4 });
+    forward.event({ kind: 'input', sessionId: session, messageId: refused, turn: 4 });
+    const previous = forward.settledInput(session, 4);
+    forward.event({ kind: 'input', sessionId: session, messageId: randomUUID(), turn: 5 });
+    await expect(previous).resolves.toBe(false);
+    await expect(forward.settledInput(session, 5)).resolves.toBe(true);
+    await expect(forward.settledInput(session, 4)).resolves.toBe(false);
+    forward.close(session);
+    await forward.flush();
+    await expect(forward.settledInput(session, 5)).resolves.toBe(false);
+  });
+
   it('has nothing to wait for when no session ever forwarded anything', async () => {
     const { forward, session } = forwarder();
 
     await expect(forward.flush(session)).resolves.toBeUndefined();
     await expect(forward.admit(session)).resolves.toBeUndefined();
+  });
+
+  it('lists the sessions that still hold an open epoch', async () => {
+    const { forward, session } = forwarder();
+    const second = DSH_SESSION_ID.parse(randomUUID());
+    await forward.open(openRequest(session));
+    await forward.open(openRequest(second));
+    expect(forward.openIds()).toStrictEqual([session, second]);
+
+    forward.close(session);
+    await forward.flush(session);
+
+    expect(forward.openIds()).toStrictEqual([second]);
+  });
+
+  it('refuses a new epoch once sealed and logs the seal and the refusal it caused', async () => {
+    const { forward, sent, session } = forwarder();
+    const events: string[] = [];
+    const sink = Logger.sink;
+    Logger.configure({
+      sink: (record): void => {
+        events.push(record.event);
+      },
+    });
+    try {
+      forward.seal();
+      forward.seal();
+      await forward.open(openRequest(session));
+
+      expect(forward.openIds()).toStrictEqual([]);
+      expect(sent).toStrictEqual([]);
+      expect(events).toStrictEqual(['publication.sealed', 'publication.open_refused']);
+    } finally {
+      Logger.configure({ sink });
+    }
   });
 });

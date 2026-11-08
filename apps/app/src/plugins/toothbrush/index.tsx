@@ -25,9 +25,7 @@ export const toothbrushAppPlugin: AppPlugin = {
     {
       key: 'toothbrush',
       applies: isToothbrush,
-      render: (device, size, showRoom) => (
-        <BrushTile device={device} showRoom={showRoom} compact={size === 'tile'} />
-      ),
+      render: (device, _size, showRoom) => <BrushTile device={device} showRoom={showRoom} />,
       cell: (device, frame, size) => <BrushCardFace device={device} frame={frame} size={size} />,
       quick: (device) => <BrushQuick device={device} />,
       hero: (device) => <BrushHero device={device} />,

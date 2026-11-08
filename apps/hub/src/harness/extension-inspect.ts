@@ -2,27 +2,46 @@ import type { Dirent } from 'node:fs';
 import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, posix, relative } from 'node:path';
 import { z } from 'zod';
-import { HarnessRuntimeError, loadPlugin, parseMarkdownFile } from '@smarteverything/harness';
+import {
+  HarnessRuntimeError,
+  loadPlugin,
+  parseMarkdownFile,
+  harnessTreeHash,
+  readHarnessTree,
+  type LoadedPlugin,
+} from '@smarteverything/harness';
 import {
   ApiError,
   HARNESS_EXTENSION_NAME,
   HARNESS_RELATIVE_PATH,
   type HarnessExtensionCandidate,
   type HarnessExtensionSourceRequest,
+  type HarnessExtensionTree,
 } from '@smarteverything/domain';
 import { isMissing } from '../fs-util';
+import type { CheckedOutSource } from './extension-source';
 
 const PLUGIN_MANIFEST = join('.claude-plugin', 'plugin.json');
-const PLUGIN_PARTS = ['commands', 'agents', 'hooks', '.mcp.json', '.claude-plugin'];
+const LISTED_MANIFEST = '.claude-plugin/plugin.json';
+const SKILL_FILE = 'SKILL.md';
+const PLUGIN_PARTS = ['commands', 'hooks', '.mcp.json', '.claude-plugin'];
+const GIT_REVISION = {
+  ref: z.string().optional(),
+  sha: z
+    .string()
+    .regex(/^[a-f0-9]{40}$/u)
+    .optional(),
+};
 const MARKETPLACE_SOURCE = z.union([
   z.string(),
-  z.object({ source: z.literal('github'), repo: z.string(), ref: z.string().optional() }),
+  z.object({ source: z.literal('github'), repo: z.string(), ...GIT_REVISION }),
   z.object({
     source: z.enum(['url', 'git-subdir']),
     url: z.string(),
-    ref: z.string().optional(),
     path: z.string().optional(),
+    ...GIT_REVISION,
   }),
+  z.object({ source: z.literal('command'), command: z.string(), mode: z.string().optional() }),
 ]);
 const MARKETPLACE = z.object({
   name: z.string(),
@@ -52,22 +71,59 @@ export interface Marketplace {
   readonly candidates: readonly Candidate[];
 }
 
-export async function inspect(root: string, path: string | null): Promise<readonly Candidate[]> {
+export async function inspect(
+  checkout: Pick<CheckedOutSource, 'directory' | 'files'>,
+  path: string | null,
+): Promise<readonly Candidate[]> {
+  const root = checkout.directory;
   const marketplace = await readMarketplace(root, path);
   if (marketplace !== undefined) return marketplace.candidates;
   const here = relativePath(path ?? '');
   const directory = await resolved(root, here);
-  if (await isFile(join(directory, 'SKILL.md')))
+  if (await isFile(join(directory, SKILL_FILE)))
     return [await skillAt(directory, here, basename(directory))];
   const plugin = await pluginAt(directory, here);
   if (plugin !== undefined) return [plugin];
-  const skills = await skillsBelow(directory, here);
-  if (skills.length === 0)
+  const found = await nested(root, checkout.files, here);
+  if (found.length === 0)
     throw new ApiError(
       'invalid_request',
-      'Nothing installable here: expected a SKILL.md, a plugin or a marketplace.json.',
+      'Nothing installable here: expected a SKILL.md, a plugin (.claude-plugin/plugin.json, commands, hooks or .mcp.json) or a .claude-plugin/marketplace.json. Other formats such as AGENTS.md or .cursor/rules are not supported.',
     );
-  return skills;
+  return found;
+}
+
+async function nested(
+  root: string,
+  files: readonly string[],
+  here: string,
+): Promise<readonly Candidate[]> {
+  const below = files.filter((file) => here === '' || file.startsWith(`${here}/`));
+  const plugins = folders(below, LISTED_MANIFEST).map((folder) => posix.dirname(folder));
+  const skills = folders(below, SKILL_FILE).filter(
+    (folder) => !plugins.some((plugin) => inside(folder, plugin)),
+  );
+  const outermost = (list: readonly string[]): readonly string[] =>
+    list.filter((folder) => !list.some((other) => other !== folder && inside(folder, other)));
+  const found: Candidate[] = [];
+  for (const folder of [...outermost(plugins), ...outermost(skills)].sort()) {
+    const directory = await resolved(root, folder);
+    const plugin = plugins.includes(folder) ? await pluginAt(directory, folder) : undefined;
+    found.push(plugin ?? (await skillAt(directory, folder, posix.basename(folder))));
+  }
+  return found;
+}
+
+function folders(files: readonly string[], name: string): readonly string[] {
+  return files
+    .filter((file) => file === name || file.endsWith(`/${name}`))
+    .map((file) => posix.dirname(file))
+    .map((folder) => (folder === '.' ? '' : folder))
+    .filter((folder) => folder !== '');
+}
+
+function inside(folder: string, parent: string): boolean {
+  return folder.startsWith(`${parent}/`);
 }
 
 export async function readMarketplace(
@@ -87,6 +143,7 @@ async function marketplaceEntry(
   root: string,
   entry: MarketplaceEntry,
 ): Promise<readonly Candidate[]> {
+  if (typeof entry.source !== 'string' && entry.source.source === 'command') return [];
   requireName('plugin', entry.name);
   const remote = remoteSource(entry.source);
   const path = typeof entry.source === 'string' ? relativePath(entry.source) : '';
@@ -133,11 +190,12 @@ export async function resolved(root: string, path: string): Promise<string> {
 }
 
 function remoteSource(
-  source: z.infer<typeof MARKETPLACE_SOURCE>,
+  source: Exclude<z.infer<typeof MARKETPLACE_SOURCE>, { source: 'command' }>,
 ): HarnessExtensionSourceRequest | undefined {
   if (typeof source === 'string') return undefined;
-  if (source.source === 'github') return request(source.repo, source.ref);
-  return request(source.url, source.ref, source.path);
+  const revision = source.sha ?? source.ref;
+  if (source.source === 'github') return request(source.repo, revision);
+  return request(source.url, revision, source.path);
 }
 
 function request(url: string, ref?: string, path?: string): HarnessExtensionSourceRequest {
@@ -198,21 +256,6 @@ async function listFolder(folder: string): Promise<readonly Dirent[]> {
   }
 }
 
-async function skillsBelow(directory: string, path: string): Promise<readonly Candidate[]> {
-  for (const parent of ['skills', '']) {
-    const folder = join(directory, parent);
-    const entries = await listFolder(folder);
-    const found: Candidate[] = [];
-    for (const entry of entries) {
-      if (!entry.isDirectory() || !(await isFile(join(folder, entry.name, 'SKILL.md')))) continue;
-      const at = [path, parent, entry.name].filter((part) => part !== '').join('/');
-      found.push(await skillAt(join(folder, entry.name), at, entry.name));
-    }
-    if (found.length > 0) return found;
-  }
-  return [];
-}
-
 export async function refreshed(
   root: string,
   path: string | null,
@@ -267,42 +310,60 @@ async function isFile(path: string): Promise<boolean> {
   );
 }
 
-export async function prepared(folder: string, candidate: Candidate): Promise<void> {
+export async function candidateTree(
+  folder: string,
+  candidate: Candidate,
+): Promise<HarnessExtensionTree> {
   const manifest = join(folder, PLUGIN_MANIFEST);
-  if (
-    !(await stat(manifest).then(
-      () => true,
-      () => false,
-    ))
-  ) {
+  if (candidate.kind === 'plugin' && !(await isFile(manifest))) {
     await mkdir(dirname(manifest), { recursive: true });
     await writeFile(
       manifest,
       JSON.stringify({ name: candidate.name, description: candidate.description }),
     );
   }
+  return readHarnessTree(folder);
+}
+
+export async function availableVersion(root: string, candidate: Candidate): Promise<string | null> {
+  if (candidate.source !== undefined) return null;
+  const folder = await resolved(root, candidate.path);
+  if (!(await isDirectory(folder))) return null;
+  return harnessTreeHash(await candidateTree(folder, candidate));
+}
+
+export async function checkedPlugin(folder: string): Promise<LoadedPlugin> {
   try {
-    await loadPlugin(folder);
+    return await loadPlugin(folder);
   } catch (cause) {
     if (cause instanceof HarnessRuntimeError) throw new ApiError('invalid_request', cause.message);
     throw cause;
   }
 }
 
-export function choose(
+export function offered(
   candidates: readonly Candidate[],
-  select: readonly string[],
-): readonly Candidate[] {
-  if (select.length > 0) {
-    const chosen = candidates.filter((candidate) => select.includes(candidate.name));
-    const missing = select.filter((name) => !chosen.some((candidate) => candidate.name === name));
-    if (missing.length > 0)
-      throw new ApiError('invalid_request', `Not offered by this source: ${missing.join(', ')}.`);
-    return chosen;
-  }
-  if (candidates.length === 1) return candidates;
-  throw new ApiError(
-    'invalid_request',
-    `This source offers ${candidates.map((candidate) => candidate.name).join(', ')}; choose which to install.`,
+  id: string,
+  matchesOrigin?: (candidate: Candidate) => boolean,
+): Candidate {
+  const matching = candidates.filter(
+    (candidate) =>
+      `${candidate.kind}:${candidate.name}` === id && (matchesOrigin?.(candidate) ?? true),
   );
+  const [only] = matching;
+  if (only === undefined)
+    throw new ApiError('not_found', `${id} is not offered by this source at that snapshot.`);
+  if (matchesOrigin === undefined && matching.length > 1)
+    throw new ApiError('conflict', `This source offers several items called ${id}.`);
+  return only;
+}
+
+export function sole(candidates: readonly Candidate[]): Candidate {
+  const [only] = candidates;
+  if (only === undefined || candidates.length > 1)
+    throw new ApiError(
+      'invalid_request',
+      `The linked source offers ${candidates.map((candidate) => candidate.name).join(', ')}; it must offer exactly one.`,
+    );
+  return only;
 }

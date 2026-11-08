@@ -24,6 +24,7 @@ export function LibraryRowView({ row, onOpen }: LibraryRowViewProps): ReactNode 
       title={row.name}
       subtitle={row.interfaceLine}
       caption={`${row.usersLabel} · ${row.versionLabel}`}
+      wrapTitle
       wrapSubtitle
       icon="automations"
       trailing={<Chips row={row} />}

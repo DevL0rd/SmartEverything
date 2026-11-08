@@ -81,7 +81,7 @@ const UPDATE_FIELDS: readonly MicrowaveField[] = [
     label: 'Update module',
     kind: 'text',
     optional: true,
-    helper: 'Leave blank for the appliance’s default update.',
+    helper: 'Leave blank to let the appliance choose.',
   },
 ];
 const DISPLAY_FIELDS: readonly MicrowaveField[] = [

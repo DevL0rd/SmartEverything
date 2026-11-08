@@ -1,61 +1,61 @@
 import { describe, expect, it } from 'vitest';
-import type { InsertPoint } from '../../model/canvas/contract';
 import {
   CLOSED,
-  armedPointId,
+  FREE_POINT,
   cancel,
   choose,
-  highlightsAllPoints,
   insertPointText,
   openPalette,
   paletteOpen,
-  placeAt,
+  filterPinOf,
+  type InsertPoint,
 } from './armed-insert';
 import type { PaletteChoice } from './palette-categories';
 
-const POINT: InsertPoint = {
-  id: '00000000-0000-4000-8000-000000000001',
-  scope: 'root',
-  index: 1,
-  placement: 'edge',
-  edgeId: null,
-  slotId: null,
-  after: null,
-  before: null,
-  x: 0,
-  y: 0,
+const WIRE: InsertPoint = {
+  pin: {
+    kind: 'exec',
+    nodeId: '00000000-0000-4000-8000-000000000001',
+    nodeKey: 'check',
+    port: 'next',
+  },
+  at: { x: 10, y: 20 },
+  filtered: true,
 };
-const OTHER: InsertPoint = { ...POINT, id: '00000000-0000-4000-8000-000000000002' };
 const CHOICE: PaletteChoice = { source: 'node', kindId: 'flow.if' };
 
 describe('armed insert', () => {
-  it('inserts at the armed point as soon as a node is chosen', () => {
-    const opened = openPalette(POINT);
+  it('inserts at the armed wire as soon as a node is chosen', () => {
+    const opened = openPalette(WIRE, null);
     expect(paletteOpen(opened.state)).toBe(true);
-    expect(armedPointId(opened.state)).toBe(POINT.id);
+    expect(filterPinOf(opened.state)).toBe(WIRE.pin);
+    expect(insertPointText(opened.state)).toBe('Adding at the spot you picked.');
     const chosen = choose(opened.state, CHOICE);
-    expect(chosen.insertion).toEqual({ choice: CHOICE, point: POINT });
+    expect(chosen.insertion).toEqual({ choice: CHOICE, point: WIRE });
     expect(chosen.state).toEqual(CLOSED);
   });
 
-  it('waits for a tapped insert point when nothing is armed', () => {
-    const opened = openPalette(null);
+  it('keeps the whole palette when the wire is only a suggestion', () => {
+    const suggested = { ...WIRE, filtered: false };
+    const opened = openPalette(suggested, null);
+    expect(filterPinOf(opened.state)).toBeNull();
     expect(insertPointText(opened.state)).toBeNull();
-    const chosen = choose(opened.state, CHOICE);
-    expect(chosen.insertion).toBeNull();
-    expect(highlightsAllPoints(chosen.state)).toBe(true);
-    expect(paletteOpen(chosen.state)).toBe(false);
-    expect(insertPointText(chosen.state)).toBe('Tap a highlighted spot to place it.');
-    const placed = placeAt(chosen.state, OTHER);
-    expect(placed.insertion).toEqual({ choice: CHOICE, point: OTHER });
-    expect(placed.state).toEqual(CLOSED);
+    expect(choose(opened.state, CHOICE).insertion).toEqual({ choice: CHOICE, point: suggested });
   });
 
-  it('cancels from any phase and ignores out-of-phase events', () => {
-    const placing = choose(openPalette(null).state, CHOICE).state;
-    expect(cancel(placing).state).toEqual(CLOSED);
-    expect(cancel(CLOSED).state).toEqual(CLOSED);
+  it('adds a free step when no wire is armed', () => {
+    const opened = openPalette(FREE_POINT, null);
+    expect(filterPinOf(opened.state)).toBeNull();
+    expect(insertPointText(opened.state)).toBeNull();
+    expect(choose(opened.state, CHOICE).insertion).toEqual({ choice: CHOICE, point: FREE_POINT });
+  });
+
+  it('ignores a choice while closed and closes on cancel', () => {
     expect(choose(CLOSED, CHOICE)).toEqual({ state: CLOSED, insertion: null });
-    expect(placeAt(openPalette(POINT).state, OTHER).insertion).toBeNull();
+    const opened = openPalette(WIRE, null);
+    expect(cancel(opened.state).state).toEqual(CLOSED);
+    expect(cancel(CLOSED).state).toBe(CLOSED);
+    expect(paletteOpen(CLOSED)).toBe(false);
+    expect(filterPinOf(CLOSED)).toBeNull();
   });
 });

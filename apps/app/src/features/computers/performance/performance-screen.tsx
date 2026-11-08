@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { gridColumnsOf } from '../../../components/frame-layout';
 import { Segmented } from '../../../components/segmented';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/section-body';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { ComputerFrame } from '../components/computer-frame';
@@ -13,7 +13,6 @@ import {
   spareColumns,
   type PerformanceCard,
 } from '../model/performance-layout';
-import { bodyWidthOf } from '../model/sections';
 import { RANGE_OPTIONS, type ViewRange } from '../model/performance';
 import { CpuCard } from './cpu-card';
 import { GpuCard } from './gpu-card';
@@ -69,13 +68,12 @@ function Grid({
   readonly device: Device;
   readonly range: ViewRange;
 }): ReactNode {
-  const area = useAreaWidth();
   const gpuIds = useComputerSelect(device.id, (parts) =>
     (parts.gpu?.gpus ?? []).map((gpu) => gpu.id).join('\n'),
   );
   const features = useComputerDetail(device.id, device.online).data?.features;
   const ids = gpuIds === '' ? [] : gpuIds.split('\n');
-  const cols = gridColumnsOf(bodyWidthOf(area));
+  const cols = gridColumnsOf(useFrameBodyWidth());
   const rows = packRows(performanceCards(ids, cols), cols);
   const permitted = features === undefined || features.includes('cpu_power');
   return (

@@ -3,7 +3,11 @@ import {
   SHELLY_SNAPSHOT_STREAM,
   SHELLY_TRACKS_STREAM,
 } from '@smarteverything/shelly';
+import { SHELLY_PRESENCE_GEN4_MODEL } from '@smarteverything/shelly';
+import { entryFromSpec } from '../../../models/contributions';
 import { defineBuiltinPlugin } from '../define';
+import { SHELLY_AUTOMATION, SHELLY_ZONES_STREAM } from './automation';
+import { startWithPickers } from './pickers';
 import { startShelly } from './runtime';
 import { SHELLY_SETTINGS, SHELLY_SETTINGS_FORM } from './settings';
 export const shellyPresencePlugin = defineBuiltinPlugin({
@@ -30,12 +34,25 @@ export const shellyPresencePlugin = defineBuiltinPlugin({
           history: 0,
           live: true,
         },
+        {
+          stream: SHELLY_ZONES_STREAM,
+          title: 'Zone readings',
+          schema: { type: 'object' },
+          history: 0,
+        },
       ],
+      automation: SHELLY_AUTOMATION,
       settings: SHELLY_SETTINGS_FORM,
       search: 'push',
-      deviceFamilies: ['presence'],
+      deviceFamilies: ['sensor'],
     },
   },
+  models: [
+    entryFromSpec(SHELLY_PRESENCE_GEN4_MODEL, {
+      match: { exact: ['S4SN-0U61X'] },
+      brands: ['Shelly'],
+    }),
+  ],
   settings: SHELLY_SETTINGS,
-  start: startShelly,
+  start: (ctx) => startWithPickers(ctx, startShelly),
 });

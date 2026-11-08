@@ -157,11 +157,18 @@ export const VAR_KINDS: readonly NodeKind[] = [
       'Sets a run variable, an automation variable or a home Value. The value must match the variable type, and a Value keeps its bounds and overflow rule.',
     inputs: [
       ...SOURCE_INPUTS,
-      { name: 'to', type: VALUE, required: true, description: 'The new value.' },
+      {
+        name: 'to',
+        type: VALUE,
+        required: true,
+        description: 'The new value.',
+        ui: { typedBy: 'name' },
+      },
     ],
     outputs: [{ name: 'value', type: VALUE, description: 'The value now stored.' }],
     exits: ['next'],
     effect: { retry: 'idempotent', budget: 'effects_if_durable' },
+    fallible: false,
     summary: 'Set {name} to {to}',
     keywords: ['variable', 'value', 'set', 'write', 'store', 'state'],
     reads: variableKeys,
@@ -191,6 +198,7 @@ export const VAR_KINDS: readonly NodeKind[] = [
         type: { t: 'optional', of: VALUE },
         required: false,
         description: 'The amount, item or field value the operation needs.',
+        ui: { typedBy: 'name' },
       },
       {
         name: 'field',
@@ -198,6 +206,7 @@ export const VAR_KINDS: readonly NodeKind[] = [
         required: false,
         static: true,
         description: 'The field name for "set field".',
+        ui: { optionsFrom: 'record.fields', typedBy: 'name' },
       },
       {
         name: 'edge',
@@ -213,6 +222,7 @@ export const VAR_KINDS: readonly NodeKind[] = [
         required: false,
         static: true,
         description: 'The values to step through when the variable is not a choice.',
+        ui: { typedBy: 'name' },
       },
     ],
     outputs: [
@@ -226,6 +236,7 @@ export const VAR_KINDS: readonly NodeKind[] = [
     ],
     exits: ['next'],
     effect: { retry: 'relative', budget: 'effects_if_durable' },
+    fallible: false,
     summary: '{op} {name}',
     keywords: ['variable', 'value', 'change', 'increment', 'toggle', 'cycle', 'counter', 'next'],
     reads: variableKeys,

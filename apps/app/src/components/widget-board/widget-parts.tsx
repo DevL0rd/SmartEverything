@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from '../app-href';
 import type { ColourRole } from '../../design/tokens';
 import { Button } from '../button';
 import { Figure, type FigureSize } from '../figure';
@@ -8,6 +8,7 @@ import type { IconName } from '../icon';
 import { IconWell } from '../icon-well';
 import { Text } from '../text';
 import type { Tone } from '../tone';
+import { ActionBand } from './action-band';
 import type { WidgetSize } from './types';
 import { WidgetSurface } from './widget-frame';
 import { useWidgetActions } from './widget-scope';
@@ -103,25 +104,29 @@ export interface WidgetEmptyProps {
   readonly colour: ColourRole;
   readonly title: string;
   readonly body?: string;
-  readonly action?: { readonly label: string; readonly href: Href };
+  readonly action?: { readonly label: string; readonly href: AppHref };
 }
 
 export function WidgetEmpty({ icon, colour, title, body, action }: WidgetEmptyProps): ReactNode {
   return (
-    <View className="flex-1 flex-row items-center gap-4">
-      <IconWell icon={icon} colour={colour} size="l" />
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant="body-strong" numberOfLines={2}>
-          {title}
-        </Text>
-        {body === undefined ? null : (
-          <Text variant="footnote" tone="variant" numberOfLines={2}>
-            {body}
+    <View className="flex-1 gap-2">
+      <View className="flex-row items-center gap-4">
+        <IconWell icon={icon} colour={colour} size="l" />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text variant="body-strong" numberOfLines={2}>
+            {title}
           </Text>
-        )}
+          {body === undefined ? null : (
+            <Text variant="footnote" tone="variant" numberOfLines={2}>
+              {body}
+            </Text>
+          )}
+        </View>
       </View>
       {action === undefined ? null : (
-        <Button label={action.label} href={action.href} variant="tonal" />
+        <ActionBand>
+          <Button label={action.label} href={action.href} variant="tonal" />
+        </ActionBand>
       )}
     </View>
   );
@@ -137,7 +142,7 @@ export function WidgetGone({ icon, title, body }: WidgetGoneProps): ReactNode {
   const actions = useWidgetActions();
   return (
     <WidgetSurface>
-      <View className="flex-1 justify-center gap-3 p-card-pad">
+      <View className="flex-1 gap-3 p-card-pad">
         <View className="flex-row items-center gap-3">
           <IconWell icon={icon} colour="warning" size="m" />
           <View className="min-w-0 flex-1 gap-0.5">
@@ -150,10 +155,10 @@ export function WidgetGone({ icon, title, body }: WidgetGoneProps): ReactNode {
           </View>
         </View>
         {actions === null ? null : (
-          <View className="flex-row flex-wrap gap-2">
+          <ActionBand>
             <Button label="Choose another" variant="tonal" onPress={actions.choose} />
             <Button label="Remove" variant="text" onPress={actions.remove} />
-          </View>
+          </ActionBand>
         )}
       </View>
     </WidgetSurface>

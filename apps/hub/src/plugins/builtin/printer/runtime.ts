@@ -24,6 +24,8 @@ import {
   type ClientSetup,
   type SessionHost,
 } from './session-host';
+import { printerAutomationTools } from './automation-tools';
+import { registerPrinterPickers } from './pickers';
 import { printerTools } from './tools';
 
 export type PrinterPluginHost = Pick<
@@ -37,6 +39,7 @@ export type PrinterPluginHost = Pick<
   | 'events'
   | 'devices'
   | 'tools'
+  | 'options'
   | 'search'
   | 'files'
   | 'home'
@@ -77,6 +80,7 @@ export class PrinterRuntime {
         converter: options.converter(host.files.folder, host.signal, host.log),
         files: {
           fromUpload: host.files.fromUpload,
+          fromPicture: host.files.fromPicture,
           fromMachine: host.files.fromMachine,
           attachmentsOf: host.files.attachmentsOf,
           readAttachment: (path): Promise<Buffer> => readFile(path),
@@ -88,7 +92,12 @@ export class PrinterRuntime {
   start(): Promise<PluginStop> {
     const sessionHost = this.#sessionHost();
     this.#restore(sessionHost);
-    this.host.tools.register(printerTools(this.#service(sessionHost)));
+    const service = this.#service(sessionHost);
+    this.host.tools.register(printerTools(service));
+    this.host.tools.register(
+      printerAutomationTools({ registry: this.#registry, service, now: this.options.now }),
+    );
+    const unregisterPickers = registerPrinterPickers(this.host, { registry: this.#registry });
     const unregister = this.host.devices.register(
       printerDriver({
         registry: this.#registry,
@@ -101,6 +110,7 @@ export class PrinterRuntime {
     this.#refreshSearch();
     return Promise.resolve(async (): Promise<void> => {
       unregister();
+      unregisterPickers();
       for (const session of this.#registry.list()) session.stop();
       await this.#discovery?.stop();
     });

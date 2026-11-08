@@ -2,9 +2,10 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Banner } from '../../../components/banner';
 import { Card } from '../../../components/card';
-import { Grid } from '../../../components/grid';
+import { Grid, useGridLayout } from '../../../components/grid';
 import { PageHeader, type HeaderAction } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { refreshWeather } from '../../../api/weather';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
@@ -14,6 +15,7 @@ import { SunTimes } from '../components/sun-times';
 import { AirChip, WeatherHero } from '../components/weather-hero';
 import { Details, WeatherNotice } from '../components/weather-notice';
 import { useWeather, type WeatherView } from '../data/use-weather';
+import { sunOf, todayOf } from '../model/present';
 import { AirSection } from './air-section';
 import {
   Attribution,
@@ -24,6 +26,9 @@ import {
 } from './weather-sections';
 
 type Ready = Extract<WeatherView, { kind: 'ready' }>;
+
+const FORECAST_COLUMN_MIN = 320;
+const FORECAST_COLUMNS = 4;
 
 function Warnings({ view, now }: { readonly view: Ready; readonly now: number }): ReactNode {
   if (view.problem !== null) {
@@ -58,23 +63,59 @@ function Hero({ view, now }: { readonly view: Ready; readonly now: number }): Re
   );
 }
 
+function ForecastDetails({ view, now }: { readonly view: Ready; readonly now: number }): ReactNode {
+  const { width, onLayout } = useMeasuredWidth();
+  const { columns } = useGridLayout(width, FORECAST_COLUMN_MIN, 'grid', FORECAST_COLUMNS);
+  const { forecast } = view;
+  const air =
+    forecast.air === null && view.airError === null ? null : (
+      <AirSection air={forecast.air} problem={view.airError} />
+    );
+  const sun =
+    sunOf(todayOf(forecast, now)) === null ? null : <SunSection forecast={forecast} now={now} />;
+  const groupAirAndSun = air !== null && sun !== null && columns < FORECAST_COLUMNS;
+  return (
+    <View onLayout={onLayout}>
+      <Grid
+        measuredWidth={width}
+        minItemWidth={FORECAST_COLUMN_MIN}
+        maxColumns={FORECAST_COLUMNS}
+        cellClassName="max-w-detail"
+      >
+        <DailySection forecast={forecast} now={now} />
+        {groupAirAndSun ? (
+          <View className="gap-grid-gap">
+            {air}
+            {sun}
+          </View>
+        ) : (
+          air
+        )}
+        {groupAirAndSun ? null : sun}
+        <DetailsSection forecast={forecast} now={now} />
+      </Grid>
+    </View>
+  );
+}
+
 function Forecast({ view }: { readonly view: Ready }): ReactNode {
   const now = useMinute();
   const { forecast } = view;
   return (
     <View className="gap-section-gap">
       <Warnings view={view} now={now} />
-      <Hero view={view} now={now} />
-      <HourlySection forecast={forecast} now={now} />
-      <Grid minItemWidth={320} maxColumns={2}>
-        <DailySection forecast={forecast} now={now} />
-        <View className="gap-grid-gap">
-          <AirSection air={forecast.air} problem={view.airError} />
-          <SunSection forecast={forecast} now={now} />
+      <View className="flex-row flex-wrap items-start gap-grid-gap">
+        <View className="min-w-0 max-w-reading grow shrink basis-80">
+          <Hero view={view} now={now} />
         </View>
-      </Grid>
-      <DetailsSection forecast={forecast} now={now} />
-      <Attribution fetchedAt={view.fetchedAt} timeZone={forecast.timeZone} />
+        <View className="min-w-0 max-w-detail grow shrink basis-96">
+          <HourlySection forecast={forecast} now={now} />
+        </View>
+      </View>
+      <ForecastDetails view={view} now={now} />
+      <View className="w-full max-w-detail">
+        <Attribution fetchedAt={view.fetchedAt} timeZone={forecast.timeZone} />
+      </View>
     </View>
   );
 }
@@ -100,15 +141,12 @@ export function WeatherScreen(): ReactNode {
   const actions = useRefreshAction(view);
   const place = useSettings().home_name;
   return (
-    <Screen
-      maxWidth="detail"
-      header={<PageHeader title="Weather" subtitle={place} actions={actions} />}
-    >
+    <Screen header={<PageHeader title="Weather" subtitle={place} wrapSubtitle actions={actions} />}>
       {view.kind === 'ready' ? (
         <Forecast view={view} />
       ) : (
-        <Card>
-          <WeatherNotice view={view} compact={false} />
+        <Card className="w-full max-w-reading">
+          <WeatherNotice view={view} />
         </Card>
       )}
     </Screen>

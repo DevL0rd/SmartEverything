@@ -2,6 +2,7 @@ import { API_ENDPOINTS as E, DEFAULT_RESPONSE_STYLE } from '@smarteverything/dom
 import { chatOwnerOf, clientOf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound } from '../router';
+import { postHelperArtifacts } from '../../assistant/delegation/helper-artifact-post';
 import { wireMessages } from '../../assistant/wire-message';
 
 function local(caller: Caller): boolean {
@@ -67,6 +68,7 @@ const fileRoutes = ({ store, assistant, links }: ServerContext) =>
         bytes: file.bytes,
         width: file.width,
         height: file.height,
+        levels: file.levels,
       };
     }),
     assistantAttachmentLinks: bound(E.assistantAttachmentLinks, ({ body, caller }) => {
@@ -85,6 +87,9 @@ const settingsRoutes = ({ assistant, store }: ServerContext) =>
       () => assistant.settings().response_style ?? DEFAULT_RESPONSE_STYLE,
     ),
     updateAssistantSettings: bound(E.updateAssistantSettings, ({ body }) => assistant.update(body)),
+    postAssistantHelperArtifacts: bound(E.postAssistantHelperArtifacts, ({ body, caller }) =>
+      postHelperArtifacts({ store, files: assistant.files }, caller, body),
+    ),
     postAssistant: bound(E.postAssistant, ({ body, caller }) => {
       const owner = chatOwnerOf(store, caller);
       return assistant.post(body, local(caller) && owner.role === 'owner', owner);

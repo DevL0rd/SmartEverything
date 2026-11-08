@@ -6,32 +6,46 @@ import { ReasonLine } from '../../../../components/reason-line';
 import { useIdiom } from '../../../../design/platform';
 import { useFavouriteModels } from '../../data/favourites';
 import type { ModelPickerProps } from '../../data/model-candidates';
+import { CatalogueMeasure } from './catalogue-fit';
 import { useLibraryData, type LibraryData } from './library-data';
 import { LibraryDetail } from './library-detail';
 import { LibraryFilters } from './library-filters';
 import { LibraryList, type LibraryListApi } from './library-list';
 import {
+  LIBRARY_DETAIL_WIDTH,
+  LIBRARY_FILTER_WIDTH,
   ROW_HEIGHT,
+  browseColumns,
   libraryLayout,
   primaryAction,
   type LibraryLayout,
   type LibraryMode,
   type PrimaryAction,
 } from './library-model';
-import { LibraryBack, SelectionBar } from './library-pages';
+import {
+  LibraryBack,
+  LibraryOriginFocus,
+  LibrarySelectionBar,
+  useLibraryBack,
+} from './library-pages';
 import { LibraryProblem } from './library-states';
 import { useLibraryState, type LibraryState } from './library-state';
 import { LibraryTools } from './library-tools';
+
+const FILTER_COLUMN_STYLE = { width: LIBRARY_FILTER_WIDTH };
+const DETAIL_COLUMN_STYLE = { width: LIBRARY_DETAIL_WIDTH };
 
 export interface LibraryBodyProps {
   readonly mode: LibraryMode;
   readonly width: number;
   readonly picker: ModelPickerProps;
   readonly note: string | null;
+  readonly compact?: boolean;
 }
 
 function resultsCount(data: LibraryData): string {
-  const { pages, rows } = data.search;
+  const { pages, rows, scoped } = data.search;
+  if (scoped) return `${String(data.rows.length)} on this computer`;
   return pages.total === null
     ? 'Loading models'
     : `${String(pages.total)} catalogue matches · ${String(rows.nativeCount)} on your computers`;
@@ -49,7 +63,7 @@ function Footer({
   const row = data.selected;
   if (row === null) return null;
   return (
-    <SelectionBar
+    <LibrarySelectionBar
       name={row.candidate.model.name}
       source={row.where ?? row.candidate.model.providerLabel}
       action={action}
@@ -80,14 +94,25 @@ function Rows({
   data,
   list,
   rowHeight,
+  columns,
 }: Pick<ResultsProps, 'body' | 'state' | 'data'> & {
   readonly list: RefObject<LibraryListApi | null>;
   readonly rowHeight: number;
+  readonly columns: number;
 }): ReactNode {
   const onFavourite = useFavourite();
   const { pages } = data.search;
   if (data.view !== 'ready') {
-    return <LibraryProblem view={data.view} retry={pages.retry} reset={state.reset} />;
+    return (
+      <CatalogueMeasure part="results">
+        <LibraryProblem
+          view={data.view}
+          retry={data.search.sources.native?.retry ?? pages.retry}
+          reset={state.reset}
+          {...(body.mode === 'browse' ? { loadingLayout: { columns, rowHeight } } : {})}
+        />
+      </CatalogueMeasure>
+    );
   }
   return (
     <LibraryList
@@ -96,6 +121,7 @@ function Rows({
       rows={data.rows}
       mode={body.mode}
       rowHeight={rowHeight}
+      columns={columns}
       shownKey={data.selected?.key ?? null}
       onSelect={state.select}
       onFavourite={onFavourite}
@@ -111,6 +137,8 @@ function Results({ body, state, data, filtersInline, touch }: ResultsProps): Rea
   const list = useRef<LibraryListApi>(null);
   const revealed = useRef<string | null>(null);
   const rowHeight = touch ? ROW_HEIGHT.touch : ROW_HEIGHT.pointer;
+  const columns = body.mode === 'browse' && !touch ? browseColumns(body.width) : 1;
+  const rows = { body, state, data, list, rowHeight, columns };
   return (
     <KeyboardList
       items={data.rows.map((row) => ({ id: row.key }))}
@@ -128,23 +156,26 @@ function Results({ body, state, data, filtersInline, touch }: ResultsProps): Rea
         list.current?.reveal(index);
       }}
     >
-      <LibraryTools
-        state={state}
-        data={data}
-        filtersInline={filtersInline}
-        touch={touch}
-        details={details}
-        toggleDetails={(): void => {
-          setDetails(!details);
-        }}
-      />
-      {body.note === null ? null : (
-        <View className="px-4 pt-2">
-          <ReasonLine text={body.note} />
-        </View>
-      )}
+      <CatalogueMeasure part="tools">
+        <LibraryTools
+          state={state}
+          data={data}
+          filtersInline={filtersInline}
+          compact={body.compact === true}
+          touch={touch}
+          details={details}
+          toggleDetails={(): void => {
+            setDetails((open) => !open);
+          }}
+        />
+        {body.note === null ? null : (
+          <View className="px-4 pt-2">
+            <ReasonLine text={body.note} />
+          </View>
+        )}
+      </CatalogueMeasure>
       <View className="mt-2 min-h-0 flex-1 border-t border-outline-variant">
-        <Rows body={body} state={state} data={data} list={list} rowHeight={rowHeight} />
+        <Rows {...rows} />
       </View>
     </KeyboardList>
   );
@@ -174,30 +205,28 @@ function FiltersColumn({
     <LibraryFilters
       state={state}
       sources={data.sources}
-      makers={data.search.makers.data ?? []}
+      makers={data.search.makers}
+      scoped={data.search.scoped}
       native={data.search.sources.candidates}
       validation={data.search.validation}
     />
   );
 }
 
-function FiltersPage({ state, data }: Pick<ResultsProps, 'state' | 'data'>): ReactNode {
+function FiltersPage({
+  state,
+  data,
+  back,
+}: Pick<ResultsProps, 'state' | 'data'> & {
+  readonly back: () => void;
+}): ReactNode {
   return (
     <LibraryBack
       title="Filters"
-      onBack={(): void => {
-        state.setPage('results');
-      }}
+      onBack={back}
       footer={
         <View className="flex-row border-t border-outline-variant p-3">
-          <Button
-            label={`Show ${String(data.rows.length)} models`}
-            size="lg"
-            grow
-            onPress={(): void => {
-              state.setPage('results');
-            }}
-          />
+          <Button label={`Show ${String(data.rows.length)} models`} size="lg" grow onPress={back} />
         </View>
       }
     >
@@ -219,7 +248,7 @@ function Columns({
   return (
     <View className="min-h-0 flex-1 flex-row">
       {layout === 'one' ? null : (
-        <View className="w-60 border-r border-outline-variant">
+        <View className="border-r border-outline-variant" style={FILTER_COLUMN_STYLE}>
           <FiltersColumn state={state} data={data} />
         </View>
       )}
@@ -234,7 +263,9 @@ function Columns({
         {layout === 'three' ? null : <Footer data={data} action={action} state={state} />}
       </View>
       {layout === 'three' ? (
-        <View className="w-80 border-l border-outline-variant">{detailOf(data, action)}</View>
+        <View className="border-l border-outline-variant" style={DETAIL_COLUMN_STYLE}>
+          {detailOf(data, action)}
+        </View>
       ) : null}
     </View>
   );
@@ -245,20 +276,23 @@ export function LibraryBody(body: LibraryBodyProps): ReactNode {
   const layout = libraryLayout(body.width, touch);
   const state = useLibraryState(body.picker.initialQuery ?? '');
   const data = useLibraryData(body.picker, state);
-  if (state.page === 'filters' && layout === 'one')
-    return <FiltersPage state={state} data={data} />;
-  if (state.page === 'detail' && layout !== 'three') {
+  const filters = state.page === 'filters' && layout === 'one';
+  const detail = state.page === 'detail' && layout !== 'three';
+  const { back, origin } = useLibraryBack(filters || detail ? state.page : 'results', (): void => {
+    state.setPage('results');
+  });
+  if (filters) return <FiltersPage state={state} data={data} back={back} />;
+  if (detail) {
     const action = primaryAction(body.mode, data.selected?.candidate ?? null);
     return (
-      <LibraryBack
-        title="Details"
-        onBack={(): void => {
-          state.setPage('results');
-        }}
-      >
+      <LibraryBack title="Details" onBack={back}>
         {detailOf(data, action)}
       </LibraryBack>
     );
   }
-  return <Columns body={body} state={state} data={data} layout={layout} touch={touch} />;
+  return (
+    <LibraryOriginFocus value={origin}>
+      <Columns body={body} state={state} data={data} layout={layout} touch={touch} />
+    </LibraryOriginFocus>
+  );
 }

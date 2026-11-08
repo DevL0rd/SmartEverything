@@ -1,6 +1,7 @@
 import { appendTo } from '@smarteverything/domain';
-import type { AiChatKind, ClaudeListedSession, ComputerAiRuntime } from '@smarteverything/domain';
+import type { AiChatKind, ComputerAiRuntime } from '@smarteverything/domain';
 import { DAY_MS, dayRelationOf } from '../../../format/time';
+import { workText, type WorkStatus } from '../../../store/chat-turns';
 import { sameSource, type ChatSource } from '../model/chat-source';
 import { compareText } from '../../../format/text';
 
@@ -20,30 +21,26 @@ export type ChatLine =
   | { readonly kind: 'empty' }
   | { readonly kind: 'archived' }
   | PreviewChatLine
-  | { readonly kind: 'working'; readonly step: string | null }
+  | { readonly kind: 'working'; readonly work: WorkStatus }
   | FailedChatLine;
-
-export interface DesktopRef {
-  readonly deviceId: string;
-  readonly deviceName: string;
-  readonly session: ClaudeListedSession;
-}
 
 export interface ChatEntry {
   readonly id: string;
   readonly kind: AiChatKind;
   readonly title: string;
+  readonly helperName?: string;
   readonly source: ChatSource;
   readonly at: string;
   readonly pinned: boolean;
   readonly archived: boolean;
   readonly unread: number;
   readonly requests: number;
+  readonly pending?: boolean;
   readonly parentId: string | null;
   readonly runtime: ComputerAiRuntime | null;
+  readonly nativeAdmission?: 'standalone' | 'retired' | null;
   readonly computerId: string | null;
   readonly line: ChatLine;
-  readonly desktop?: DesktopRef;
 }
 
 export interface ChatFamily {
@@ -91,6 +88,10 @@ function isAgent(entry: ChatEntry): boolean {
   return entry.kind === 'subagent';
 }
 
+export function helperActive(entry: ChatEntry): boolean {
+  return entry.line.kind === 'working' || entry.requests > 0 || entry.pending === true;
+}
+
 type EntryIndex = ReadonlyMap<string, ChatEntry>;
 
 export function rootEntryOf(entry: ChatEntry, index: EntryIndex): ChatEntry | null {
@@ -111,7 +112,7 @@ function agentsByRoot(
 ): ReadonlyMap<string, readonly ChatEntry[]> {
   const grouped = new Map<string, ChatEntry[]>();
   for (const entry of pool) {
-    const root = isAgent(entry) ? rootIdOf(entry, index) : null;
+    const root = isAgent(entry) && helperActive(entry) ? rootIdOf(entry, index) : null;
     if (root !== null) {
       appendTo(grouped, root, entry);
     }
@@ -119,11 +120,8 @@ function agentsByRoot(
   return new Map([...grouped].map(([root, agents]) => [root, agents.sort(runningFirst)]));
 }
 
-export function orphanAgentsOf(pool: readonly ChatEntry[]): readonly ChatEntry[] {
-  const index: EntryIndex = new Map(pool.map((entry) => [entry.id, entry]));
-  return pool
-    .filter((entry) => isAgent(entry) && rootIdOf(entry, index) === null)
-    .sort(newestFirst);
+export function completedHelpersOf(entries: readonly ChatEntry[]): readonly ChatEntry[] {
+  return entries.filter((entry) => isAgent(entry) && !helperActive(entry)).sort(newestFirst);
 }
 
 function rootsOf(
@@ -133,10 +131,10 @@ function rootsOf(
 ): ReadonlyMap<string, boolean> {
   const roots = new Map<string, boolean>();
   for (const entry of matched) {
-    const root = rootIdOf(entry, index);
-    if (root !== null) {
-      roots.set(root, (roots.get(root) ?? false) || (narrowed && isAgent(entry)));
-    }
+    const agent = isAgent(entry);
+    if (agent && !helperActive(entry)) continue;
+    const root = rootIdOf(entry, index) ?? entry.id;
+    roots.set(root, (roots.get(root) ?? false) || (narrowed && agent));
   }
   return roots;
 }
@@ -178,7 +176,7 @@ function lineKey(line: ChatLine): string {
     case 'preview':
       return `preview|${line.speaker ?? ''}|${line.text}`;
     case 'working':
-      return `working|${line.step ?? ''}`;
+      return `working|${workText(line.work)}`;
     case 'failed':
       return `failed|${String(line.sent)}|${line.reason}`;
     case 'empty':
@@ -191,13 +189,16 @@ const ENTRY_KEYS = [
   'id',
   'kind',
   'title',
+  'helperName',
   'at',
   'pinned',
   'archived',
   'unread',
   'requests',
+  'pending',
   'parentId',
   'runtime',
+  'nativeAdmission',
   'computerId',
 ] as const;
 

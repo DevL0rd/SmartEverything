@@ -1,13 +1,13 @@
-import type { RefNames } from '@smarteverything/domain';
+import type { NodeKindLookup, RefNames } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { Grid } from '../../../components/grid';
-import { Interactive } from '../../../components/interactive';
-import { Text } from '../../../components/text';
+import { TabsBar } from '../../../components/tabs-bar';
 import { cn } from '../../../design/cn';
+import { atLeast, useSizeClass } from '../../../design/size-class';
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -24,6 +24,7 @@ export interface GalleryScreenProps {
   readonly templates: readonly Template[];
   readonly taken: readonly (TakenIdea | null)[];
   readonly names: RefNames;
+  readonly kinds: NodeKindLookup;
   readonly onCreate: (entry: Template, values: SlotValues) => void;
   readonly onScratch: () => void;
 }
@@ -47,25 +48,18 @@ function CategoryRail({
     ...shown.map((category) => ({ id: category, label: CATEGORY_LABELS[category] })),
   ];
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
-      {options.map((option) => (
-        <Interactive
-          key={option.id}
-          role="tab"
-          label={option.label}
-          selected={option.id === active}
-          onPress={() => {
-            onPick(option.id);
-          }}
-          className={cn(
-            'h-10 justify-center rounded-full border px-4',
-            option.id === active ? 'border-primary bg-primary-container' : 'border-outline-variant',
-          )}
-        >
-          <Text variant="label">{option.label}</Text>
-        </Interactive>
-      ))}
-    </ScrollView>
+    <TabsBar
+      compact
+      items={options.map((option) => ({
+        key: option.id,
+        label: option.label,
+        onPress: () => {
+          onPick(option.id);
+        },
+      }))}
+      active={active}
+      label="Template categories"
+    />
   );
 }
 
@@ -83,10 +77,12 @@ interface Row {
 function Cards({
   rows,
   names,
+  kinds,
   onUse,
 }: {
   readonly rows: readonly Row[];
   readonly names: RefNames;
+  readonly kinds: NodeKindLookup;
   readonly onUse: (entry: Template) => void;
 }): ReactNode {
   if (rows.length === 0) {
@@ -99,12 +95,12 @@ function Cards({
     );
   }
   return (
-    <Grid minItemWidth={CARD_MIN_WIDTH}>
+    <Grid minItemWidth={CARD_MIN_WIDTH} stretchLastRow={false}>
       {rows.map((row) => (
         <TemplateCard
           key={row.entry.id}
           entry={row.entry}
-          preview={previewLines(row.entry, names)}
+          preview={previewLines(row.entry, names, kinds)}
           taken={row.taken}
           onUse={onUse}
         />
@@ -117,9 +113,11 @@ export function GalleryScreen({
   templates,
   taken,
   names,
+  kinds,
   onCreate,
   onScratch,
 }: GalleryScreenProps): ReactNode {
+  const wide = atLeast(useSizeClass().width, 'expanded');
   const [filter, setFilter] = useState<Filter>('all');
   const [chosen, setChosen] = useState<Template | null>(null);
   const counts = useMemo(() => countsOf(templates), [templates]);
@@ -128,12 +126,17 @@ export function GalleryScreen({
   );
   return (
     <View className="gap-section-gap">
-      <View className="flex-row items-center justify-between gap-3">
-        <Text variant="title-2">Templates</Text>
-        <Button label="Start from scratch" icon="plus" variant="outlined" onPress={onScratch} />
+      <View
+        className={cn('gap-2', wide && 'w-full max-w-reading flex-row-reverse items-center gap-3')}
+      >
+        <View className="self-end">
+          <Button label="Start from scratch" icon="plus" variant="outlined" onPress={onScratch} />
+        </View>
+        <View className={cn(wide && 'min-w-0 flex-1')}>
+          <CategoryRail active={filter} counts={counts} onPick={setFilter} />
+        </View>
       </View>
-      <CategoryRail active={filter} counts={counts} onPick={setFilter} />
-      <Cards rows={rows} names={names} onUse={setChosen} />
+      <Cards rows={rows} names={names} kinds={kinds} onUse={setChosen} />
       <FillSheet
         entry={chosen}
         onClose={() => {

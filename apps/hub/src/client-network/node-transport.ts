@@ -1,6 +1,7 @@
 import WebSocket, { type ClientOptions } from 'ws';
-import type { ComputerAiRuntime } from '@smarteverything/domain';
+import { HUB_STREAM_IDLE_TIMEOUT_MS, type ComputerAiRuntime } from '@smarteverything/domain';
 import type { NodeRouteAuthority, NodeRouteState } from './route-authority';
+import { HubTransportError } from './policy';
 import { streamHubFetch } from './stream-fetch';
 
 const locallyRetiredSockets = new WeakSet<WebSocket>();
@@ -10,14 +11,25 @@ export function retireNodeHubSocket(socket: WebSocket): void {
   socket.terminate();
 }
 
+export interface McpGrantAddress {
+  readonly url: string;
+  readonly pin: string | null;
+}
 export interface NodeMcpTransport {
-  endpoint(runtime: ComputerAiRuntime, url: string, token: string): string;
+  endpoint(runtime: ComputerAiRuntime, address: McpGrantAddress, token: string): string;
   revoke(runtime: ComputerAiRuntime): void;
+}
+
+export interface RouteBoundResponse {
+  readonly response: Response;
+  readonly routeGeneration: number;
 }
 
 export interface NodeHubTransport {
   readonly mcp?: NodeMcpTransport;
   readonly fetch: typeof fetch;
+  readonly byteStream: (request: Request) => Promise<RouteBoundResponse>;
+  readonly settled: () => Promise<void>;
   readonly socket: (url: URL, protocols: string | string[], options: ClientOptions) => WebSocket;
   readonly subscribe: (listener: (state: NodeRouteState) => void) => () => void;
   readonly ready: () => boolean;
@@ -30,6 +42,8 @@ export function nodeHubTransport(
   return {
     ...(mcp === undefined ? {} : { mcp }),
     fetch: routedNodeFetch(authority, new URL(canonical).origin),
+    byteStream: (request) => routedByteStream(authority, new URL(canonical).origin, request),
+    settled: () => authority.settled(),
     socket: (input, protocols, options): WebSocket =>
       routedNodeSocket(authority, input, protocols, options),
     subscribe: (listener) => authority.subscribe(listener),
@@ -55,6 +69,27 @@ function routedNodeFetch(authority: NodeRouteAuthority, canonicalOrigin: string)
       },
     });
   };
+}
+async function routedByteStream(
+  authority: NodeRouteAuthority,
+  canonicalOrigin: string,
+  request: Request,
+): Promise<RouteBoundResponse> {
+  if (
+    new URL(request.url).origin !== canonicalOrigin ||
+    !authority.ownsCredential(request.headers.get('authorization'))
+  )
+    throw new HubTransportError('Byte streams are only routed to the canonical node hub');
+  const lease = authority.lease(request.url, { routeBound: true });
+  const response = await streamHubFetch(request, {
+    ...lease,
+    signal: AbortSignal.any([lease.signal, request.signal]),
+    idleTimeoutMs: HUB_STREAM_IDLE_TIMEOUT_MS,
+    failed: (): void => {
+      authority.failed(lease.generation);
+    },
+  });
+  return { response, routeGeneration: lease.generation };
 }
 function routedNodeSocket(
   authority: NodeRouteAuthority,
@@ -89,7 +124,7 @@ function routedNodeSocket(
     if (code === 1006 && !lease.signal.aborted && !locallyRetiredSockets.has(socket))
       authority.failed(lease.generation);
   });
-  socket.once('error', () => {
+  socket.on('error', () => {
     if (!lease.signal.aborted && !locallyRetiredSockets.has(socket))
       authority.failed(lease.generation);
   });

@@ -1,0 +1,285 @@
+{
+  "map_id": 101,
+  "map_type": 1,
+  "height": 127,
+  "width": 219,
+  "have_pile": true,
+  "pile_x": 0,
+  "pile_y": 1000,
+  "pile_yaw": -1571,
+  "origin_x": -1000,
+  "origin_y": -1000,
+  "resolution": 50,
+  "rotate": 0,
+  "map_data": "eJzt2wsOwjAMg+E6PLT7n5gDTEJQpm4tnw8wFCWx/2yiNZpRt4FKcu9Qksd3UpquGUi7xkY4pFwT2WgEaGHIE/G4qlalEaXpmoG0a2yEQ8o1kY1GgBaGhMeOGvea72tHyafDP+paVSlN1wykXWMjHFKuiWw0ArQwJDx21FzwXlv4FFWarhlIu8ZGOKRcE9lz0kjeqnbKD9r93GeP7/3/mtJm7NpzoJJsHVKarhlIu8ZGOKRcE9loBGityJBVtSoeK03XDKRdYyMcUq6JbDQCtDAkPHbUuNe80TpKvq/NeGXrmq4ZSLvGRjjkSu9G5JquGUi7xkY4pFwT2WgEaF2cIYmoDdALhhumcA==",
+  "additional_map_data": "eJzt07ERACAMAzEXlOw/LytQJj5pA18+CQAAAAAAAAAAAADMcj5ln/pp95q2Sf3Vin/NtF1cza+NIkhBjiJIQY4iSEECAAAAAAAAAAAAAACkzgPRwgyx",
+  "map_room_info": [
+    {
+      "grid_id": 3,
+      "room_id": 3,
+      "color": 1
+    },
+    {
+      "grid_id": 4,
+      "room_id": 4,
+      "color": 3
+    },
+    {
+      "grid_id": 5,
+      "room_id": 5,
+      "color": 3
+    },
+    {
+      "grid_id": 6,
+      "room_id": 6,
+      "color": 4
+    },
+    {
+      "grid_id": 8,
+      "room_id": 8,
+      "color": 4
+    }
+  ],
+  "room_attrs": [
+    {
+      "id": 3,
+      "room_name": "Fixture room 3",
+      "fan_level": 2,
+      "water_level": 1,
+      "clean_mode": 3,
+      "clean_times": 1,
+      "mop_mode": 1,
+      "floor": 0,
+      "name_pos_x": 1800,
+      "name_pos_y": 650,
+      "notshow": 0,
+      "on": true
+    },
+    {
+      "id": 4,
+      "room_name": "Fixture room 4",
+      "fan_level": 2,
+      "water_level": 1,
+      "clean_mode": 3,
+      "clean_times": 1,
+      "mop_mode": 1,
+      "floor": 0,
+      "name_pos_x": 5950,
+      "name_pos_y": 650,
+      "notshow": 0,
+      "on": true
+    },
+    {
+      "id": 5,
+      "room_name": "Fixture room 5",
+      "fan_level": 2,
+      "water_level": 1,
+      "clean_mode": 3,
+      "clean_times": 1,
+      "mop_mode": 1,
+      "floor": 0,
+      "name_pos_x": 8550,
+      "name_pos_y": 650,
+      "notshow": 0,
+      "on": true
+    },
+    {
+      "id": 6,
+      "room_name": "Fixture room 6",
+      "fan_level": 2,
+      "water_level": 1,
+      "clean_mode": 3,
+      "clean_times": 1,
+      "mop_mode": 1,
+      "floor": 0,
+      "name_pos_x": 1800,
+      "name_pos_y": 3750,
+      "notshow": 0,
+      "on": true
+    },
+    {
+      "id": 8,
+      "room_name": "Fixture room 8",
+      "fan_level": 2,
+      "water_level": 1,
+      "clean_mode": 3,
+      "clean_times": 1,
+      "mop_mode": 1,
+      "floor": 0,
+      "name_pos_x": 5950,
+      "name_pos_y": 3750,
+      "notshow": 0,
+      "on": true
+    }
+  ],
+  "map_3d_info": {
+    "rooms": [
+      {
+        "room_id": 3,
+        "lines": [
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [-900, -900, 4500, -900]
+          },
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [-900, -900, -900, 2250]
+          },
+          {
+            "type": 2,
+            "update": 0,
+            "segment": [4550, 700, 4550, 2250]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [4550, -200, 4550, 700]
+          },
+          {
+            "type": 2,
+            "update": 0,
+            "segment": [1500, 2300, 4500, 2300]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [600, 2300, 1500, 2300]
+          }
+        ]
+      },
+      {
+        "room_id": 4,
+        "lines": [
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [4650, -900, 7250, -900]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [4550, -200, 4550, 700]
+          },
+          {
+            "type": 2,
+            "update": 0,
+            "segment": [7300, 1650, 7300, 2250]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [7300, 850, 7300, 1650]
+          },
+          {
+            "type": 2,
+            "update": 0,
+            "segment": [6250, 2300, 7250, 2300]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [5350, 2300, 6250, 2300]
+          }
+        ]
+      },
+      {
+        "room_id": 5,
+        "lines": [
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [7400, -900, 9750, -900]
+          },
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [9750, -900, 9750, 2250]
+          },
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [7400, 2250, 9750, 2250]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [7300, 850, 7300, 1650]
+          }
+        ]
+      },
+      {
+        "room_id": 6,
+        "lines": [
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [-900, 2400, -900, 5150]
+          },
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [-900, 5150, 4500, 5150]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [600, 2300, 1500, 2300]
+          },
+          {
+            "type": 2,
+            "update": 0,
+            "segment": [4550, 3950, 4550, 5150]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [4550, 3050, 4550, 3950]
+          }
+        ]
+      },
+      {
+        "room_id": 8,
+        "lines": [
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [4650, 5150, 7250, 5150]
+          },
+          {
+            "type": 0,
+            "update": 0,
+            "segment": [7250, 2400, 7250, 5150]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [5350, 2300, 6250, 2300]
+          },
+          {
+            "type": 1,
+            "update": 0,
+            "segment": [4550, 3050, 4550, 3950]
+          }
+        ]
+      }
+    ],
+    "carpets": [
+      {
+        "p": [500, 1500, 2500, 1500, 2500, 2500, 500, 2500],
+        "d": "0_200",
+        "p_3d": [
+          500, 1500, 2500, 1500, 2500, 2500, 500, 2500, 500, 1500, 2500, 1500, 2500, 2500, 500,
+          2500, 500, 1500, 2500, 1500
+        ]
+      }
+    ]
+  },
+  "carpets": [
+    {
+      "p": [500, 1500, 2500, 1500, 2500, 2500, 500, 2500],
+      "d": "0_200"
+    }
+  ]
+}

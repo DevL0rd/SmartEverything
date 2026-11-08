@@ -1,3 +1,4 @@
+import type { NodeKindLookup } from '@smarteverything/domain';
 import type { PureEvaluator } from '../../interpret/frames';
 import { DATE_BODIES } from './dates';
 import { DATE_MORE_BODIES } from './dates-more';
@@ -35,9 +36,13 @@ export const PURE_BODIES: PureBodies = {
 
 export function pureEvaluators(
   environment: PureEnvironment,
+  kinds: NodeKindLookup,
 ): (kind: string) => PureEvaluator | undefined {
   const evaluators = new Map(
-    Object.entries(PURE_BODIES).map(([kind, body]) => [kind, evaluatorOf(body, environment)]),
+    Object.entries(PURE_BODIES).map(([kind, body]) => [
+      kind,
+      evaluatorOf(body, environment, kinds),
+    ]),
   );
   return (kind) => evaluators.get(kind);
 }

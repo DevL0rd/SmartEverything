@@ -2,6 +2,7 @@ import { DEVICE_FAMILIES } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { LaundryFace } from '../laundry/faces';
 import { TelevisionFace } from '../television/faces';
+import { VacuumFace } from '../vacuum/faces';
 import { FAMILY_CARDS } from './family-cards';
 import { LightCardFace } from './light-card-face';
 
@@ -31,6 +32,10 @@ describe('the face of each device family on a Devices cell', () => {
     expect(FAMILY_CARDS.light).toBe(LightCardFace);
     expect(FAMILY_CARDS.laundry).toBe(LaundryFace);
     expect(FAMILY_CARDS.television).toBe(TelevisionFace);
+  });
+
+  it('gives the vacuum its own face', () => {
+    expect(FAMILY_CARDS.vacuum).toBe(VacuumFace);
   });
 
   it('has an entry for every family a richness slice fills in', () => {

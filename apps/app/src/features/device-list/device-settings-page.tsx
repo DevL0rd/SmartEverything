@@ -6,15 +6,20 @@ import { PageHeader } from '../../components/page-header';
 import { Screen } from '../../components/screen';
 import {
   ComputerClaudeScreen,
-  ComputerSessionsScreen,
   ComputerProviderScreen,
   ComputerCodexScreen,
-  ComputerCodexSessionsScreen,
   ComputerCodexProviderScreen,
   COMPUTER_SCREENS,
 } from '../computers';
 import { CameraSettingsScreen } from '../cameras';
-import { DeviceDiagnosticsScreen, DeviceRemotesScreen } from '../devices';
+import {
+  ADD_APPLIANCE_PAGE,
+  AddApplianceScreen,
+  DeviceDiagnosticsScreen,
+  DeviceRemotesScreen,
+  ModelSettingsScreen,
+} from '../devices';
+import { MODEL_PAGE } from '../models';
 import { PHONE_SCREENS } from '../phone';
 
 type DeviceScreenOf = (props: { readonly deviceId: string }) => ReactNode;
@@ -22,13 +27,13 @@ type DeviceScreenOf = (props: { readonly deviceId: string }) => ReactNode;
 const PAGES: Readonly<Record<string, DeviceScreenOf>> = {
   claude: ComputerClaudeScreen,
   codex: ComputerCodexScreen,
-  'codex-sessions': ComputerCodexSessionsScreen,
   'codex-provider': ComputerCodexProviderScreen,
-  'claude-sessions': ComputerSessionsScreen,
   'claude-provider': ComputerProviderScreen,
   remotes: DeviceRemotesScreen,
+  [ADD_APPLIANCE_PAGE]: AddApplianceScreen,
   diagnostics: DeviceDiagnosticsScreen,
   camera: CameraSettingsScreen,
+  [MODEL_PAGE]: ModelSettingsScreen,
 };
 
 const KIND_SCREENS: Readonly<Record<string, Readonly<Record<string, DeviceScreenOf>>>> = {

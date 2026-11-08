@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { Stage, TimeField } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
-function Demo() {
+function Demo(): ReactElement {
   const [a, setA] = useState({ hour: 18, minute: 30 });
   const [b, setB] = useState({ hour: 7, minute: 5 });
   return (
@@ -12,12 +12,12 @@ function Demo() {
     </Col>
   );
 }
-export const Fields = () => (
+export const Fields = (): ReactElement => (
   <Stage theme="dark" width={420}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={420}>
     <Demo />
   </Stage>

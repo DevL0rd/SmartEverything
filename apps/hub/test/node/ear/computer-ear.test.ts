@@ -10,6 +10,7 @@ import type { SpeakerStream } from '../../../src/node/controls/linux/speaker-pla
 import type { MicHandlers } from '../../../src/node/controls/linux/mic-capture';
 import { ComputerEar } from '../../../src/node/ear/computer-ear';
 import { pcmOf } from '../../../src/node/ear/ear-audio';
+import { localEarPipeline } from '../../../src/node/ear/ear-pipeline';
 import { NodeFailureError } from '../../../src/node/node-failure';
 import { WakeKeywords } from '../../../src/wake-name/keyword-lines';
 import { FakeClock } from '../../support/fake-clock';
@@ -97,6 +98,7 @@ class Bench {
     },
     clock: this.clock,
     log: new Logger('hub.node-ear'),
+    pipeline: localEarPipeline({ clock: this.clock, log: new Logger('hub.node-ear') }),
   });
   private readonly speaker: SpeakerStream = {
     write: (pcm): void => {

@@ -1,20 +1,23 @@
 import type { LogLevel } from './levels';
-import type { LogPayload } from './redaction';
+import type { LogPayload } from './payload';
 import type { Runtime } from './scope';
 
 export interface LogContext {
+  readonly source?: string;
   readonly correlationId?: string;
   readonly requestId?: string;
   readonly deviceId?: string;
   readonly actorId?: string;
   readonly platform?: 'ios' | 'android' | 'web' | 'server';
   readonly release?: string;
+  readonly bundle?: string;
 }
 
 export interface FailureDetail {
   readonly name: string;
   readonly message: string;
   readonly stack?: string;
+  readonly cause?: FailureDetail;
 }
 
 export interface LogRecord extends LogContext {
@@ -62,12 +65,20 @@ function describeReported(cause: unknown): FailureDetail | null {
   };
 }
 
-export function describeFailure(cause: unknown): FailureDetail {
+function innerCause(cause: unknown, depth: number): FailureDetail | undefined {
+  if (depth >= 1 || cause === undefined || cause === null) return undefined;
+  if (!(cause instanceof Error)) return undefined;
+  return describeFailure(cause, depth + 1);
+}
+
+export function describeFailure(cause: unknown, depth = 0): FailureDetail {
   if (cause instanceof Error) {
+    const inner = innerCause(cause.cause, depth);
     return {
       name: cause.name,
       message: cause.message,
       ...(cause.stack === undefined ? {} : { stack: cause.stack }),
+      ...(inner === undefined ? {} : { cause: inner }),
     };
   }
 

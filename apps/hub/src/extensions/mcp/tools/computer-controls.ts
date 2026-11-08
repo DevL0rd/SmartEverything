@@ -2,6 +2,7 @@ import {
   AUDIO_CHANGE,
   AUDIO_STATE,
   DISPLAY_CHANGE,
+  DISPLAY_MODE_CHANGE,
   DISPLAY_STATE,
   DISPLAY_TOOL_ACTIONS,
   SERVICES_STATE,
@@ -68,7 +69,9 @@ const PERCENT = z
   .number()
   .min(0)
   .max(400)
-  .describe('Percent: the scale for action scale (50 to 400, 100 is normal) or the brightness for action brightness (0 to 100)');
+  .describe(
+    'Percent: the scale for action scale (50 to 400, 100 is normal) or the brightness for action brightness (0 to 100)',
+  );
 
 const NEEDS_SCREEN: ReadonlySet<string> = new Set([
   'enable',
@@ -90,7 +93,7 @@ function displayOption(option: z.ZodObject): z.ZodObject {
       action: z.literal('mode'),
       output: SCREEN,
       resolution: RESOLUTION,
-      refreshHz: option.shape['refreshHz'] ?? z.never(),
+      refreshHz: DISPLAY_MODE_CHANGE.shape.refreshHz,
     });
   }
   if (action === 'brightness') {

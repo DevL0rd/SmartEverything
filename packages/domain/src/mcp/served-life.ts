@@ -29,12 +29,15 @@ export const SERVED_LIFE = [
     title: 'Edit health entries',
     line: 'Add, change or delete a logged record',
     description:
-      'Adds, changes or deletes a measurement or session a person logged (weight, blood pressure, a workout and other types from health_read view types); entryId comes from health_read view entries. Not for food or water (food_log). Returns the entry.',
+      'Adds, changes or deletes logged measurements and sessions; entryId comes from health_read view entries. Use food_log to log food or water, correct a meal, or remove food or water. To edit standalone water, update its liters here.',
     route: {
       key: 'action',
       branches: {
         add: { part: 'health_edit', line: 'Log a measurement or session' },
-        update: { part: 'update_health_entry', line: 'Change the time or data fields of one logged entry' },
+        update: {
+          part: 'update_health_entry',
+          line: 'Change the time or data fields of one logged entry',
+        },
         remove: { part: 'delete_health_entry', line: 'Delete one logged entry' },
       },
     },
@@ -77,14 +80,19 @@ export const SERVED_LIFE = [
     area: 'nutrition',
     access: 'control',
     title: 'Log food or water',
-    line: 'A portion or a drink',
+    line: 'Log, correct or remove meals and water',
     description:
-      'Logs a portion of food (foodId or barcode from food_find, or a new food inline; the meal follows the time of day) or a drink of water for a person (personId from person_read; you when left out). A linked water bottle logs its own drinks. Returns the entry with its energy.',
+      'Logs a food portion or water, corrects a meal in place, or removes a food or water entry. For corrections use the returned entryId or health_read view entries, then update or remove. For a food label, log the known facts inline. Defaults to your profile.',
     route: {
       key: 'action',
       branches: {
         food: { part: 'food_log', line: 'Log a portion of a food' },
         water: { part: 'log_water', line: 'Log a drink of water in millilitres or glasses' },
+        update: {
+          part: 'update_logged_food',
+          line: 'Correct a logged meal without adding another',
+        },
+        remove: { part: 'remove_logged_food', line: 'Remove a logged meal or water entry' },
       },
     },
   },

@@ -17,16 +17,17 @@ import {
   USER_INPUT,
 } from './prompt-schemas';
 import { codexAnswerResult } from './prompt-answers';
+const DEFAULT_COMMAND_DECISIONS = ['accept', 'acceptForSession', 'decline', 'cancel'] as const;
 interface Pending {
   readonly prompt: CodexPrompt;
 }
 export class CodexPrompts {
   private readonly pending = new Map<string, Pending>();
   constructor(
-    private readonly client: CodexClient,
+    private readonly client: Pick<CodexClient, 'reject' | 'rejectInvalidRequest' | 'respond'>,
     private readonly publish: (prompt: CodexPrompt) => void,
   ) {}
-  receive(method: string, params: RpcRecord, id: RpcId): CodexPrompt {
+  receive(method: string, params: RpcRecord, id: RpcId): void {
     if (this.pending.size >= 500)
       throw new CodexRuntimeError('prompt', 'Codex pending prompt capacity reached.');
     if (
@@ -35,15 +36,21 @@ export class CodexPrompts {
       )
     )
       throw new CodexRuntimeError('prompt', 'Codex repeated a pending server request ID.');
-    const prompt = normalizePrompt(method, params, id);
+    let prompt: CodexPrompt;
+    try {
+      prompt = normalizePrompt(method, params, id);
+    } catch (cause) {
+      if (!(cause instanceof z.ZodError)) throw cause;
+      this.client.rejectInvalidRequest(method, id, cause);
+      return;
+    }
     if (prompt.kind === 'unsupported') {
       this.client.reject(id, prompt.reason);
       this.publish({ ...prompt, status: 'expired' });
-      return prompt;
+      return;
     }
     this.pending.set(prompt.id, { prompt });
     this.publish(prompt);
-    return prompt;
   }
   list(threadId?: string): CodexPrompt[] {
     return [...this.pending.values()]
@@ -131,21 +138,24 @@ function normalizePrompt(method: string, params: RpcRecord, id: RpcId): CodexPro
 }
 function commandPrompt(common: Omit<CodexPrompt, 'kind'>, params: RpcRecord): CodexPrompt {
   const request = COMMAND_APPROVAL.parse(params);
-  const decisions = request.availableDecisions ?? [
-    'accept',
-    'acceptForSession',
-    'decline',
-    'cancel',
-  ];
+  const decisions = request.availableDecisions ?? DEFAULT_COMMAND_DECISIONS;
   return CODEX_PROMPT.parse({
     ...common,
     kind: 'command_approval',
     choices: decisions.map((value, index) => ({
       id: String(index),
-      label: typeof value === 'string' ? value : JSON.stringify(value),
+      label: commandDecisionLabel(value),
       value,
     })),
   });
+}
+function commandDecisionLabel(
+  value: NonNullable<z.infer<typeof COMMAND_APPROVAL>['availableDecisions']>[number],
+): string {
+  if (typeof value === 'string') return value;
+  return 'acceptWithExecpolicyAmendment' in value
+    ? 'Allow matching commands'
+    : 'Change network policy';
 }
 function permissionPrompt(common: Omit<CodexPrompt, 'kind'>, params: RpcRecord): CodexPrompt {
   const requested = PERMISSION_APPROVAL.parse(params).permissions;

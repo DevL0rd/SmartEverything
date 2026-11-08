@@ -4,11 +4,13 @@ import {
   AI_CHAT_BRANCH,
   AI_CHAT_CHANGE,
   AI_CHAT_HIT,
+  AI_CHAT_METER_SAMPLE,
   AI_CHAT_NEW,
   AI_CHAT_ROW,
   MESSAGE_SOURCES,
 } from '../ai-chats';
 import { ASSISTANT_MESSAGE_ROW } from '../assistant';
+import { ASSISTANT_REACTION, ASSISTANT_REACTION_CHANGE } from '../assistant-reactions';
 import {
   AI_TOOL_RESULT_FIELDS,
   AI_TOOL_RESULT_PAGE,
@@ -111,6 +113,17 @@ const CHAT_ENDPOINTS = {
     body: NO_BODY,
     response: z.array(AI_CHAT_HIT),
   }),
+  readAiChatMeterHistory: endpoint({
+    method: 'GET',
+    path: '/api/ai/chats/:chatId/meter-history',
+    access: 'member',
+    summary:
+      'Context and cache percentages from the last hour and observed subscription percentages from the current weekly allowance',
+    params: CHAT_PARAMS,
+    query: NOTHING,
+    body: NO_BODY,
+    response: z.array(AI_CHAT_METER_SAMPLE),
+  }),
   createAiChat: endpoint({
     method: 'POST',
     path: '/api/ai/chats',
@@ -121,12 +134,23 @@ const CHAT_ENDPOINTS = {
     body: AI_CHAT_NEW,
     response: AI_CHAT_ROW,
   }),
+  openConversationChat: endpoint({
+    method: 'POST',
+    path: '/api/ai/chats/conversation',
+    access: 'member',
+    summary:
+      'The caller’s one conversation chat, named after the AI, that calls, wake words, the phone’s power button and voice messages use; it is made when the caller has none',
+    params: NOTHING,
+    query: NOTHING,
+    body: NO_BODY,
+    response: AI_CHAT_ROW,
+  }),
   updateAiChat: endpoint({
     method: 'PATCH',
     path: '/api/ai/chats/:chatId',
     access: 'member',
     summary:
-      'Rename, pin, archive or mark read or unread an AI chat, or change its engine, model, thinking or tools',
+      'Rename, pin, archive or mark read or unread an AI chat, turn its memory on or off, or change its engine, model, thinking or tools',
     params: CHAT_PARAMS,
     query: NOTHING,
     body: AI_CHAT_CHANGE,
@@ -161,6 +185,10 @@ const CHAT_ENDPOINTS = {
     summary: 'Delete an AI chat with its messages, files and spawned subagent descendants',
     params: CHAT_PARAMS,
     query: z.strictObject({
+      inactive_helper: z
+        .literal('true')
+        .optional()
+        .describe('Delete only a helper whose conversation and descendants remain inactive'),
       expected_inactive_run_id: ID.optional().describe(
         'Delete only if this exact child run and its spawned descendants remain inactive',
       ),
@@ -211,6 +239,16 @@ const MESSAGE_ENDPOINTS = {
     query: NOTHING,
     body: ASSISTANT_NEW_MESSAGE,
     response: ASSISTANT_MESSAGE_ROW,
+  }),
+  setAiChatMessageReaction: endpoint({
+    method: 'PUT',
+    path: '/api/ai/chats/:chatId/messages/:messageId/reaction',
+    access: 'member',
+    summary: 'Add or remove your Unicode emoji reaction to one saved chat message',
+    params: RETRY_PARAMS,
+    query: NOTHING,
+    body: ASSISTANT_REACTION_CHANGE,
+    response: z.array(ASSISTANT_REACTION),
   }),
   retryAiChatMessage: endpoint({
     method: 'POST',

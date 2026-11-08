@@ -12,7 +12,14 @@ import type {
 } from '../../src/interpret/frames';
 import { completeFrame, makeEnv, next, stay } from '../../src/interpret/frames';
 import { step } from '../../src/interpret/step';
-import { backoffMs, policyDeadline, repeatAllowed, withPolicy } from '../../src/interpret/policy';
+import {
+  backoffMs,
+  errorExitOutputs,
+  policyDeadline,
+  repeatAllowed,
+  withPolicy,
+} from '../../src/interpret/policy';
+import { FLOW_ERRORS } from '../../src/state/errors';
 import type { RunState, Wait } from '../../src/state/run-state';
 import {
   NOW,
@@ -29,7 +36,7 @@ import {
 } from './core-support';
 import { context, row, tryOp } from './errors-support';
 
-type Step = ErrorClass | 'ok';
+type Step = ErrorClass | 'ok' | NodeResult;
 
 interface Drive {
   readonly outcome: Outcome;
@@ -41,6 +48,11 @@ interface Drive {
 
 function down(errorClass: ErrorClass): NodeResult {
   return { ok: false, class: errorClass, message: 'it failed' };
+}
+
+function resultOf(next: Step): NodeResult {
+  if (next === 'ok') return { ok: true, value: {} };
+  return typeof next === 'string' ? down(next) : next;
 }
 
 function drive(body: PlanOp, script: readonly Step[], clockStep = 1000): Drive {
@@ -65,7 +77,7 @@ function drive(body: PlanOp, script: readonly Step[], clockStep = 1000): Drive {
       event = {
         kind: 'resolved',
         now,
-        result: next === 'ok' ? { ok: true, value: {} } : down(next),
+        result: resultOf(next),
       };
     } else if (outcome.kind === 'park') {
       waits.push(outcome.wait);
@@ -509,5 +521,99 @@ describe('backoffMs', () => {
     }
     expect(new Set(values).size).toBeGreaterThan(1);
     expect(backoffMs(jittered, 2, 9)).toBe(backoffMs(jittered, 2, 9));
+  });
+});
+
+describe('action mode on the effect request', () => {
+  it('carries the node mode to the performer and leaves it out when the node has none', () => {
+    const result = drive(
+      seq(effect('fx', {}, { policy: { mode: 'wait_for_result' } }), effect('after')),
+      [],
+    );
+    expect(result.requests.map((request) => request.mode)).toStrictEqual([
+      'wait_for_result',
+      undefined,
+    ]);
+    expect(result.requests[1]).not.toHaveProperty('mode');
+  });
+});
+
+describe('error exit', () => {
+  const site = { node: '00000000-0000-4000-8000-000000000001', path: 'fx', attempt: 1, at: NOW };
+
+  it('gives the error value with reason, message and code next to the error', () => {
+    const error = { ...FLOW_ERRORS.Refused('the lamp said no', site), detail: { code: 'E42' } };
+    expect(errorExitOutputs(error)).toEqual({
+      error,
+      reason: 'Refused',
+      message: 'the lamp said no',
+      code: 'E42',
+    });
+  });
+
+  it('leaves out the code when the failure gave none', () => {
+    const error = FLOW_ERRORS.Unreachable('no answer', site);
+    expect(errorExitOutputs(error)).toEqual({ error, reason: 'Unreachable', message: 'no answer' });
+  });
+
+  function errorExit(key: string, body: PlanOp, then: PlanOp): PlanOp {
+    const exitAt = at(key);
+    return { op: 'try', at: exitAt, body, catches: [{ id: exitAt.id, then }] };
+  }
+
+  const reading = {
+    reason: wired('fx.reason'),
+    message: wired('fx.message'),
+    code: wired('fx.code'),
+  };
+
+  it('lets the If it fails steps read reason, message and code of the failure', () => {
+    const body = seq(
+      errorExit(
+        'fx',
+        effect('fx', {}, { policy: { onError: 'route' } }),
+        seq(effect('handled', reading)),
+      ),
+      effect('after'),
+    );
+    const refused: NodeResult = {
+      ok: false,
+      class: 'Refused',
+      message: 'the lamp said no',
+      code: 'E42',
+    };
+    const result = drive(body, [refused]);
+    expect(keysOf(result)).toEqual(['fx', 'handled', 'after']);
+    expect(result.requests[1]?.params).toEqual({
+      reason: 'Refused',
+      message: 'the lamp said no',
+      code: 'E42',
+    });
+    expect(result.outcome).toMatchObject({ kind: 'done', status: 'succeeded' });
+  });
+
+  it('reaches the If it fails path with Timeout when the policy deadline runs out', () => {
+    const policy: NodePolicy = {
+      onError: 'route',
+      timeout: 1500,
+      mode: 'wait_for_result',
+      ...retry({ initial: 1000 }),
+    };
+    const body = seq(
+      errorExit('fx', effect('fx', {}, { policy }), seq(effect('handled', reading))),
+      effect('after'),
+    );
+    const result = drive(body, ['Unreachable', 'Unreachable']);
+    expect(keysOf(result)).toEqual(['fx', 'fx', 'handled', 'after']);
+    expect(result.requests[2]?.params).toMatchObject({ reason: 'Timeout' });
+    expect(result.outcome).toMatchObject({ kind: 'done', status: 'succeeded' });
+  });
+
+  it('keeps the error output of a user try that catches the same failure', () => {
+    const body = seq(
+      tryOp('t', effect('fx'), [row('r', seq(effect('handled', { e: wired('t.error') })))]),
+    );
+    const result = drive(body, ['Refused']);
+    expect(result.requests[1]?.params['e']).toMatchObject({ class: 'Refused' });
   });
 });

@@ -2,11 +2,12 @@ import type { RouterSnapshot, SpeedTestResult } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { ProgressBar, Sparkline } from '../../../components/charts';
-import { Figure, type FigureSize } from '../../../components/figure';
+import { Figure } from '../../../components/figure';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import type { ColourRole } from '../../../design/tokens';
 import type { HeroFigure } from '../../shared/service-hero';
+import type { FigureFit } from '../../shared/service-widget-frame';
 import type { HeroModel } from '../overview/hero-model';
 import { withLatest } from '../overview/traffic-model';
 import { useMegabitSeries } from '../overview/use-router-series';
@@ -27,16 +28,18 @@ export function StaleLine({
   text,
   spoken,
   critical,
+  variant = 'footnote',
 }: {
   readonly text: string;
   readonly spoken: string;
   readonly critical: boolean;
+  readonly variant?: FigureFit['caption'];
 }): ReactNode {
   return (
     <View className="flex-row items-center gap-1">
       {critical ? <Icon name="warning" size={16} tone="critical" /> : null}
       <Text
-        variant="footnote"
+        variant={variant}
         tone={critical ? 'critical' : 'variant'}
         numberOfLines={1}
         className="shrink"
@@ -64,16 +67,21 @@ export function Figures({
   size,
 }: {
   readonly hero: HeroModel;
-  readonly size: FigureSize;
+  readonly size: FigureFit['figure'];
 }): ReactNode {
   if (isDown(hero)) {
     return <DownNotice size="body" />;
   }
   const [download, upload] = hero.figures;
   return (
-    <View className="flex-row items-baseline gap-4">
+    <View className="flex-row flex-wrap items-baseline gap-x-4">
       <Figure value={download.value} unit={unitOf(download, '↓')} size={size} stale={hero.stale} />
-      <Figure value={upload.value} unit={unitOf(upload, '↑')} size="m" stale={hero.stale} />
+      <Figure
+        value={upload.value}
+        unit={unitOf(upload, '↑')}
+        size={size === 'l' ? 'm' : size}
+        stale={hero.stale}
+      />
     </View>
   );
 }
@@ -83,19 +91,28 @@ export function Caption({
   hero,
   last,
   now,
+  variant,
 }: {
   readonly snapshot: RouterSnapshot;
   readonly hero: HeroModel;
   readonly last: SpeedTestResult | null;
   readonly now: number;
+  readonly variant: FigureFit['caption'];
 }): ReactNode {
   const stale = staleCaptionOf(snapshot.connection, now);
   if (stale !== null) {
-    return <StaleLine text={stale.long} spoken={stale.long} critical={stale.critical} />;
+    return (
+      <StaleLine
+        text={stale.long}
+        spoken={stale.long}
+        critical={stale.critical}
+        variant={variant}
+      />
+    );
   }
   const line = isDown(hero) ? (hero.facts[0] ?? null) : readingLine(snapshot, last);
   return line === null ? null : (
-    <Text variant="footnote" tone="variant" numberOfLines={1}>
+    <Text variant={variant} tone="variant" numberOfLines={1}>
       {line}
     </Text>
   );

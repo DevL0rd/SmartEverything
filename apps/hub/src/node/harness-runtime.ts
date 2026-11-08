@@ -5,7 +5,6 @@ import { isSupplierInferenceControl, supplierInferenceControl } from './harness-
 import { NodeHarnessError, NodeHarnessBinding } from './harness-binding';
 import { randomUUID } from 'node:crypto';
 import { homedir, platform } from 'node:os';
-import { join } from 'node:path';
 import type { WebSocket } from 'ws';
 import {
   DEFAULT_AI_HARNESS_PERMISSION,
@@ -18,6 +17,7 @@ import {
 } from '@smarteverything/domain';
 import type {
   AiSubscriptionHostStatus,
+  ComputerServiceConfig,
   HarnessPlatform,
   HubHarnessControl,
   NodeHarnessFrame,
@@ -29,7 +29,6 @@ import {
 } from '@smarteverything/harness/process';
 import { harnessFailure } from './harness-failure';
 import type { Logger } from '@smarteverything/logging';
-import type { NodeServiceConfig } from '../service/configuration';
 import { subscriptionFailureCategory } from './harness-subscription-failure';
 
 type Welcome = Extract<HubHarnessControl, { type: 'harness_welcome' }>;
@@ -50,8 +49,8 @@ export class NodeHarnessRuntime {
   private readonly os: HarnessPlatform;
   constructor(
     private readonly options: {
-      readonly node: NodeServiceConfig['node'];
-      readonly dataDirectory: string;
+      readonly node: ComputerServiceConfig['node'];
+      readonly stateDirectory: string;
       readonly machineId: string;
       readonly name: string;
       readonly log: Logger;
@@ -98,7 +97,7 @@ export class NodeHarnessRuntime {
           device_id: this.options.node.device_id,
           runtime_instance: this.instance,
           machine_id: this.options.machineId,
-          capabilities: hostCapabilities(this.os, true),
+          capabilities: hostCapabilities(this.os),
         }),
       ),
     );
@@ -170,7 +169,7 @@ export class NodeHarnessRuntime {
         hub_url: this.options.node.hub_url,
         token: this.options.node.node_token,
         home_directory: homedir(),
-        state_directory: join(this.options.dataDirectory, 'harness'),
+        state_directory: this.options.stateDirectory,
         platform: os,
         permission: DEFAULT_AI_HARNESS_PERMISSION,
         ...(frame.configuration === undefined ? {} : { configuration: frame.configuration }),
@@ -239,7 +238,7 @@ export class NodeHarnessRuntime {
       return;
     }
     if (frame.type === 'harness_ownership_lost') {
-      await harness.lose(frame.session_id);
+      await harness.lose(frame.session_id, frame.epoch);
       return;
     }
     await this.request(harness, frame);

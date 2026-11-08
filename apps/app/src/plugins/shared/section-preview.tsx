@@ -1,4 +1,4 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../../components/app-href';
 import type { ReactNode } from 'react';
 import { SectionAction, List } from '../../components/section';
 import { count } from '../../format/number';
@@ -13,7 +13,7 @@ export function SectionPreview({
   readonly title: string;
   readonly caption?: string;
   readonly total?: number;
-  readonly href: Href;
+  readonly href: AppHref;
   readonly children: ReactNode;
 }): ReactNode {
   const label = total === undefined ? 'See all' : `See all (${count(total)})`;

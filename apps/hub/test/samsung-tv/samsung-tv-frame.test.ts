@@ -1,8 +1,6 @@
 import { CommandRefusedError, type ProviderAdapter } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TvArtModeError } from '../../src/adapters/samsung-tv/art-mode';
-import { TvConnectionError } from '../../src/adapters/samsung-tv/connection';
 import { createSamsungTvModule } from '../../src/adapters/samsung-tv/index';
 import { contextFor, type ContextRecord } from '../smartthings/fake-cloud';
 import { FakeTv, subscribe, until } from './fake-tv';
@@ -181,14 +179,15 @@ describe('the Frame TV adapter', () => {
     expect(tv.artRequests).toHaveLength(asked);
   });
 
-  it('fails visibly when the TV answers an art request with an error', async () => {
+  it('sends an art mode change without waiting and logs a refusal that arrives', async () => {
     tv.artAnswers = 'error';
     const adapter = await start();
-    await expect(
-      adapter.execute({ ...COMMAND, capability: 'art_mode', value: true }),
-    ).rejects.toThrow(
-      new TvArtModeError('tv.test', 'set_artmode_status', 'the TV answered with error -7'),
-    );
+    await adapter.execute({ ...COMMAND, capability: 'art_mode', value: true });
+    await until(() => record.logs.some((line) => line.event === 'art.set_failed'));
+    expect(record.logs.find((line) => line.event === 'art.set_failed')?.payload).toEqual({
+      host: 'tv.test',
+      errorCode: '-7',
+    });
     tv.artAnswers = 'error_without_code';
     await expect(adapter.refresh([COMMAND.externalId])).rejects.toThrow(
       'The Frame TV at tv.test did not complete the art mode request get_artmode_status: the TV answered with an error without a code.',
@@ -207,17 +206,11 @@ describe('the Frame TV adapter', () => {
     await stop();
   });
 
-  it('gives up on an art request the TV never answers', async () => {
+  it('does not wait for an art mode answer the TV never sends', async () => {
     tv.artAnswers = 'silent';
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const adapter = await start();
-    const setting = adapter.execute({ ...COMMAND, capability: 'art_mode', value: true });
-    const failure = expect(setting).rejects.toThrow(
-      new TvConnectionError('tv.test', 'the TV did not answer set_artmode_status in time'),
-    );
+    await adapter.execute({ ...COMMAND, capability: 'art_mode', value: true });
     await until(() => tv.artRequests.some((request) => request.request === 'set_artmode_status'));
-    await vi.advanceTimersByTimeAsync(5000);
-    await failure;
   });
 
   it('logs art messages it cannot read, and keeps the art connection', async () => {

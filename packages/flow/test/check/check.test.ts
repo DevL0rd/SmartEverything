@@ -114,8 +114,25 @@ describe('check', () => {
         port: 'message',
         code: 'invisible_reference',
         received: 'b.out',
-        fix: 'move the step that gives the value above this one',
+        fix: 'Wire the step that gives the value so it runs before this one.',
       }),
+    );
+  });
+
+  it('names the container and the path that really make an out-of-scope value', () => {
+    const program = automation(
+      [
+        node(
+          'lights',
+          'flow.for_each',
+          { items: lit(['a']) },
+          { scopes: { body: scope(node('inner', 'probe.take', { need: lit('x') })) } },
+        ),
+      ],
+      { onFailure: { nodes: [node('h', 'notify.feed', { message: wired('inner.out') })] } },
+    );
+    expect(check(program, context()).map((found) => found.fix)).toContain(
+      'This value only exists inside the Each item path of For each.',
     );
   });
 

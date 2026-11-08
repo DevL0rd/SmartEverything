@@ -213,7 +213,7 @@ describe('the endpoint that finds a television', () => {
     );
     return routes.findTelevision.run(
       owner,
-      { params: { deviceId }, query: {}, body: undefined, remote: '127.0.0.1' },
+      { params: { deviceId }, query: {}, body: undefined, remote: '127.0.0.1', headers: {} },
       testLogger('television'),
     );
   }

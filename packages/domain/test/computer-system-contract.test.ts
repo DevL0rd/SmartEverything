@@ -16,6 +16,7 @@ import {
   LIVE_SERVER_MESSAGE,
   NODE_FRAME,
   NODE_HELLO,
+  NODE_PROTOCOL_VERSION,
   NODE_REQUEST,
   NODE_VERB_SCOPES,
   PROCESS_QUERY,
@@ -58,6 +59,7 @@ const SUMMARY = {
 };
 
 const HELLO = {
+  protocol: NODE_PROTOCOL_VERSION,
   machineId: 'a'.repeat(32),
   hostname: 'workstation',
   os: { name: 'Linux', kernel: '7.2' },

@@ -78,7 +78,7 @@ function GroupRow({
       className="min-h-8 gap-1"
     >
       <View className="flex-row items-baseline gap-2">
-        <Text variant="caption" numberOfLines={1} className="min-w-0 shrink">
+        <Text variant="caption" className="min-w-0 flex-1">
           {group.name}
         </Text>
         <Text variant="caption" tone="variant" numberOfLines={1} className="ml-auto shrink-0">
@@ -108,7 +108,7 @@ export function TimelineBand({
           {`Next ${String(TIMELINE_HOURS)} hours`}
         </Text>
         {events.length === 0 ? (
-          <Text variant="caption" tone="faint">
+          <Text variant="caption" tone="variant">
             Nothing is scheduled
           </Text>
         ) : null}

@@ -3,6 +3,8 @@ import { ExchangeRatesRepository } from '../exchange-rates';
 import { PluginDataRepository } from '../plugin-data';
 import { PluginPeopleRepository } from '../plugin-people';
 import { PluginsRepository } from '../plugins';
+import { RuntimeLogsRepository } from '../runtime-logs';
+import { AiRepairInboxRepository } from '../ai-repair-inbox';
 import { SettingsKvRepository } from '../settings-kv';
 import { TranscriptsRepository } from '../transcripts';
 import { WeatherRepository } from '../weather';
@@ -16,4 +18,6 @@ export const platformRepositories = (context: StoreContext) =>
     pluginData: new PluginDataRepository(context),
     pluginPeople: new PluginPeopleRepository(context),
     transcripts: new TranscriptsRepository(context),
+    runtimeLogs: new RuntimeLogsRepository(context),
+    aiRepairInbox: new AiRepairInboxRepository(context),
   }) as const;

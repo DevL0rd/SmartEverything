@@ -1,25 +1,4 @@
-import { formatPoint, pointOn } from '../../../components/charts/geometry';
-
 export { arcPath, circlePath, type Ring } from '../../../components/charts/geometry';
-
-const CENTRE = 50;
-
-function point(r: number, degrees: number): string {
-  return formatPoint(pointOn({ cx: CENTRE, cy: CENTRE, r }, degrees));
-}
-
-export function bladesPath(count: number, radius: number, hub: number, curve = 26): string {
-  const step = 360 / count;
-  return Array.from({ length: count }, (_, index) => {
-    const angle = index * step;
-    const tip = point(radius, angle + curve * 0.35);
-    const lead = point(radius * 0.72, angle + curve);
-    const back = point(radius * 0.55, angle - step * 0.12);
-    const root = point(hub, angle - step * 0.25);
-    const rootEnd = point(hub, angle + step * 0.25);
-    return `M${root} Q${back} ${tip} Q${lead} ${rootEnd} Z`;
-  }).join(' ');
-}
 
 export interface Bounds {
   readonly x: number;

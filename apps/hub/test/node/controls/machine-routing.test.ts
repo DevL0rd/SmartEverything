@@ -1,4 +1,8 @@
-import { DEFAULT_COMPUTER_SCOPES, type NodeHello } from '@smarteverything/domain';
+import {
+  DEFAULT_COMPUTER_SCOPES,
+  type NodeHello,
+  NODE_PROTOCOL_VERSION,
+} from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import type { ComputerControls } from '../../../src/node/controls/controls';
 import { NodeRequestHandler } from '../../../src/node/request-handler';
@@ -18,7 +22,7 @@ const HELLO: NodeHello = {
   actions: [],
   permissions: [],
   features: [],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
 };
 
 function handler(seen: string[]): NodeRequestHandler {

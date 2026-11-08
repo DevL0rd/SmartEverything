@@ -78,7 +78,11 @@ describe('reach kinds as a registry', () => {
 
 describe('notify kinds', () => {
   it('sends to phones within the person budget', () => {
-    expect(NOTIFY_PERSON.effect).toEqual({ retry: 'external', budget: 'effects_person' });
+    expect(NOTIFY_PERSON.effect).toEqual({
+      retry: 'external',
+      budget: 'effects_person',
+      mode: 'fire_and_forget',
+    });
     expect(input(NOTIFY_PERSON, 'people')?.required).toBe(true);
     expect(input(NOTIFY_PERSON, 'priority')?.default).toBe('normal');
     expect(NOTIFY_PERSON.outputs.map((port) => port.name)).toEqual(['sent', 'failed']);
@@ -86,13 +90,20 @@ describe('notify kinds', () => {
   });
 
   it('writes the feed note against the effect budget', () => {
-    expect(NOTIFY_FEED.effect).toEqual({ retry: 'external', budget: 'effects' });
+    expect(NOTIFY_FEED.effect).toEqual({
+      retry: 'external',
+      budget: 'effects',
+      mode: 'fire_and_forget',
+    });
     expect(NOTIFY_FEED.inputs.map((port) => port.name)).toEqual(['message']);
   });
 
   it('speaks to a target within the person budget', () => {
     expect(NOTIFY_SPEAK.effect?.budget).toBe('effects_person');
-    expect(input(NOTIFY_SPEAK, 'target')?.type).toEqual({ t: 'ref', of: 'target' });
+    expect(input(NOTIFY_SPEAK, 'target')?.type).toEqual({
+      t: 'optional',
+      of: { t: 'ref', of: 'target' },
+    });
     expect(input(NOTIFY_SPEAK, 'priority')?.default).toBe('queue');
     expect(NOTIFY_SPEAK.outputs.map((port) => port.name)).toEqual(['ok', 'spokenOn']);
   });
@@ -102,7 +113,7 @@ describe('computer kinds', () => {
   it('changes sound and screen as static changes', () => {
     for (const kind of [COMPUTER_AUDIO, COMPUTER_DISPLAY]) {
       expect(input(kind, 'computer')?.type).toEqual({ t: 'ref', of: 'computer' });
-      expect(input(kind, 'change')?.static).toBe(true);
+      expect(input(kind, 'action')?.static).toBe(true);
       expect(kind.effect).toEqual({ retry: 'idempotent', budget: 'effects' });
     }
     expect(input(COMPUTER_DISPLAY, 'keep')?.default).toBe(false);

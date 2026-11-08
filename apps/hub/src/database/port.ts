@@ -110,7 +110,7 @@ export interface ProviderLinkChange {
 }
 
 export interface CommandInsert {
-  readonly deviceId: string;
+  readonly deviceId: string | null;
   readonly capability: CapabilityKey;
   readonly value: JsonValue;
   readonly source: 'automation' | 'scene';

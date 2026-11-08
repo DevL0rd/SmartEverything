@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import type { AutomationV3 } from '@smarteverything/domain';
+import type { AutomationV4 } from '@smarteverything/domain';
 import { HEADER_ANCHOR, headerAnchorKey } from './anchor-model';
 
-function automation(triggers: AutomationV3['triggers']): AutomationV3 {
+function automation(triggers: AutomationV4['triggers']): AutomationV4 {
   return {
-    version: 3,
+    version: 4,
     kind: 'automation',
     triggers,
     inputs: [],
     outputs: [],
     variables: [],
-    body: { nodes: [] },
+    nodes: [],
     policy: { mode: 'single' },
   };
 }

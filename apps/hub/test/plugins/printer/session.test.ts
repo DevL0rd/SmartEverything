@@ -165,7 +165,13 @@ describe('a printer session reading a printer', () => {
     printer.state.state = 3;
     await session.poll();
     await session.poll();
-    expect(rig.events.filter((event) => event.kind === 'job_finished')).toHaveLength(1);
+    const started = rig.events.filter((event) => event.kind === 'job_started');
+    const finished = rig.events.filter((event) => event.kind === 'job_finished');
+    expect(finished).toHaveLength(1);
+    const key = session.ledger.jobs()[0]?.key;
+    expect(key).toBeTruthy();
+    expect(started[0]?.data).toMatchObject({ job: key });
+    expect(finished[0]?.data).toMatchObject({ job: key, result: 'completed' });
     expect(session.ledger.day('2026-10-18')).toMatchObject({ jobs: 1, pages: 4 });
     expect(valueOf(PRINTER_KEYS.pagesToday)).toBe(4);
   });

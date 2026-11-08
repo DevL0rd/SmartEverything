@@ -7,19 +7,23 @@ import {
   type VisualPx,
   type VisualSize,
 } from '../../../features/device-visuals';
+import { WideArt, useWideArt } from '../../../features/devices/card/wide-card';
 import type { Device } from '../../../store/state';
 import { useLiveSelect } from '../data/treadmill-data';
 import { useMaxHeartRateSetting } from '../../../features/fitness/data/goals';
 import { treadmillFactsOf, treadmillLabel, treadmillVisualState } from '../model/live-visual';
+
+interface BeltProps {
+  readonly device: Device;
+  readonly view: TreadmillStateView;
+}
 
 export function BeltVisual({
   device,
   view,
   size = 'hero',
   px,
-}: {
-  readonly device: Device;
-  readonly view: TreadmillStateView;
+}: BeltProps & {
   readonly size?: VisualSize;
   readonly px?: VisualPx;
 }): ReactNode {
@@ -36,5 +40,14 @@ export function BeltVisual({
         {...(px === undefined ? {} : { px })}
       />
     </View>
+  );
+}
+
+export function BeltArt({ device, view }: BeltProps): ReactNode {
+  const art = useWideArt();
+  return (
+    <WideArt cls={art.cls}>
+      <BeltVisual device={device} view={view} size="card" px={art.px} />
+    </WideArt>
   );
 }

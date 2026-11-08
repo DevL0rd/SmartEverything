@@ -38,7 +38,14 @@ const HANDLERS: Partial<Record<ShellyAction, OperationHandler>> = {
   live_track: (ports) => startLiveTrack(ports.call),
 };
 
+const VALUE_ACTIONS: ReadonlySet<ShellyAction> = new Set([
+  'virtual_set',
+  'virtual_button',
+  'set_detection',
+]);
+
 const WITHOUT_CONFIRMATION: ReadonlySet<ShellyAction> = new Set([
+  ...VALUE_ACTIONS,
   'refresh',
   'reconnect',
   'script_library',
@@ -72,6 +79,10 @@ const WRITES: Partial<Record<ShellyAction, ShellyResource>> = {
 
 export function writtenResource(action: ShellyAction): ShellyResource | undefined {
   return WRITES[action];
+}
+
+export function isValueAction(action: ShellyAction): boolean {
+  return VALUE_ACTIONS.has(action);
 }
 
 export function confirmsAfter(action: ShellyAction): boolean {

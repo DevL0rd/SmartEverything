@@ -1,14 +1,9 @@
 import { createWriteStream, watch, type FSWatcher, type WriteStream } from 'node:fs';
-import { rename, rm, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { basename, dirname } from 'node:path';
+import type { ComputerServiceReady } from '@smarteverything/domain';
 import { renderJson, type LogSink } from '@smarteverything/logging';
-import {
-  RESTART_REQUEST_FILE,
-  SERVICE_LOG_FILE,
-  SERVICE_PID_FILE,
-  SERVICE_READY_FILE,
-  type ServiceReady,
-} from './configuration';
+import type { ServiceReady } from './configuration';
 import { LogLines } from './log-lines';
 import { isMissing } from '../fs-util';
 
@@ -32,19 +27,21 @@ export interface LogFile {
 }
 
 export async function openAppendStream(path: string): Promise<WriteStream> {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   if ((await sizeOf(path)) > LOG_ROTATE_BYTES) {
     await rename(path, `${path}.1`);
   }
   return createWriteStream(path, { flags: 'a', mode: 0o600 });
 }
 
-export async function openLogFile(dataDirectory: string): Promise<LogFile> {
-  const stream = await openAppendStream(join(dataDirectory, SERVICE_LOG_FILE));
+export async function openLogFile(path: string): Promise<LogFile> {
+  const stream = await openAppendStream(path);
   const lines = new LogLines();
   return {
     sink: (record): void => {
       const line = renderJson(record);
       stream.write(`${line}\n`);
+      lines.record(record);
       lines.write(line);
     },
     lines,
@@ -59,8 +56,8 @@ export interface PidFile {
   readonly remove: () => Promise<void>;
 }
 
-export async function writePidFile(dataDirectory: string, processId: number): Promise<PidFile> {
-  const path = join(dataDirectory, SERVICE_PID_FILE);
+export async function writePidFile(path: string, processId: number): Promise<PidFile> {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await writeFile(path, `${String(processId)}\n`, { mode: 0o600 });
   return { remove: () => rm(path, { force: true }) };
 }
@@ -70,10 +67,10 @@ export interface ReadyFile {
 }
 
 export async function writeReadyFile(
-  dataDirectory: string,
-  ready: ServiceReady,
+  path: string,
+  ready: ServiceReady | ComputerServiceReady,
 ): Promise<ReadyFile> {
-  const path = join(dataDirectory, SERVICE_READY_FILE);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const staged = `${path}.${String(ready.pid)}`;
   await writeFile(staged, `${JSON.stringify(ready)}\n`, { mode: 0o600 });
   await rename(staged, path);
@@ -101,15 +98,13 @@ export interface RequestHandlers {
   readonly failed: (cause: unknown) => void;
 }
 
-export async function watchRequest(
-  dataDirectory: string,
-  file: string,
-  handlers: RequestHandlers,
-): Promise<RequestWatch> {
-  const path = join(dataDirectory, file);
+export async function watchRequest(path: string, handlers: RequestHandlers): Promise<RequestWatch> {
+  const directory = dirname(path);
+  const file = basename(path);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
   await rm(path, { force: true });
   let fired = false;
-  const watcher: FSWatcher = watch(dataDirectory, (_event, name) => {
+  const watcher: FSWatcher = watch(directory, (_event, name) => {
     if (name !== file || fired) {
       return;
     }
@@ -128,13 +123,6 @@ export async function watchRequest(
   };
 }
 
-export function watchRestartRequests(
-  dataDirectory: string,
-  handlers: RequestHandlers,
-): Promise<RequestWatch> {
-  return watchRequest(dataDirectory, RESTART_REQUEST_FILE, handlers);
-}
-
-export function clearRequest(dataDirectory: string, file: string): Promise<void> {
-  return rm(join(dataDirectory, file), { force: true });
+export function clearRequest(path: string): Promise<void> {
+  return rm(path, { force: true });
 }

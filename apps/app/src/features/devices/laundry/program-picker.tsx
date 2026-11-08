@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { ScrollView, View, type LayoutChangeEvent } from 'react-native';
 import { formatLaundryMinutes, type LaundryProgram } from '@smarteverything/domain';
 import { Icon } from '../../../components/icon';
@@ -54,10 +54,10 @@ function Chip({
           onPick(program);
         }}
         className={cn(
-          'min-h-touch-min max-w-44 flex-row items-center gap-2 rounded-full border py-1 pl-2.5 pr-3.5',
-          selected ? 'border-primary bg-primary-container' : 'border-outline-variant bg-surface-2',
+          'min-h-touch-min max-w-44 flex-row items-center gap-1.5 rounded-sm py-1 px-2',
+          selected && 'bg-primary-container',
         )}
-        layerClassName="rounded-full"
+        layerClassName="rounded-sm"
       >
         <Icon name={PROGRAM_ICON[program.icon]} size={20} tone={selected ? 'default' : 'variant'} />
         <View className="min-w-0 shrink">
@@ -113,7 +113,7 @@ function ChipRow({
           viewport(event.nativeEvent.layout.width);
           edges.onViewport(event.nativeEvent.layout.width);
         }}
-        contentContainerClassName="gap-2 py-0.5"
+        contentContainerClassName="gap-1 py-0.5"
         accessibilityRole="radiogroup"
         accessibilityLabel="Programs on your machine"
       >
@@ -185,7 +185,9 @@ function ProgramSheet({
   disabled,
   onPick,
   onClose,
+  opener,
 }: {
+  readonly opener: RefObject<View | null>;
   readonly dial: readonly LaundryProgram[];
   readonly selected: LaundryProgram | undefined;
   readonly disabled: boolean;
@@ -194,7 +196,14 @@ function ProgramSheet({
 }): ReactNode {
   const [query, setQuery] = useState('');
   return (
-    <Sheet open title="All programs" detents={['full']} scroll={false} onClose={onClose}>
+    <Sheet
+      subpage={{ opener }}
+      open
+      title="All programs"
+      detents={['full']}
+      scroll={false}
+      onClose={onClose}
+    >
       <View className="gap-3 px-1 pb-2">
         <SearchField
           value={query}
@@ -220,14 +229,17 @@ function ProgramSheet({
 }
 
 function MoreLink({
+  opener,
   count,
   onPress,
 }: {
+  readonly opener: RefObject<View | null>;
   readonly count: number;
   readonly onPress: () => void;
 }): ReactNode {
   return (
     <Interactive
+      ref={opener}
       label={`More programs, ${String(count)}`}
       onPress={onPress}
       className="min-h-touch-min justify-center self-start"
@@ -267,12 +279,14 @@ function More({
   readonly draft: DraftHandle;
 }): ReactNode {
   const [open, setOpen] = useState(false);
+  const opener = useRef<View>(null);
   if (dial.length === 0) {
     return null;
   }
   return (
     <>
       <MoreLink
+        opener={opener}
         count={morePrograms(dial).length}
         onPress={() => {
           setOpen(true);
@@ -280,6 +294,7 @@ function More({
       />
       {open ? (
         <ProgramSheet
+          opener={opener}
           dial={dial}
           selected={selected}
           disabled={draft.locked}

@@ -31,12 +31,17 @@ const COMMAND_REASONS: Readonly<Record<BindingProblem, string>> = {
   failed: 'Couldn’t load commands.',
 };
 
-export interface DshCommandBinding {
+interface CommandTarget {
   readonly key: string;
-  readonly chatId: string | null;
   readonly scope: AiHarnessCommandScope | null;
-  readonly problem: BindingProblem | null;
   readonly reason: string | null;
+}
+
+export interface DshCommandBinding extends CommandTarget {
+  readonly chatId: string | null;
+  readonly session: AiHarnessSession | undefined;
+  readonly problem: BindingProblem | null;
+  readonly prepare: () => Promise<CommandTarget>;
   readonly retry: () => void;
 }
 export function useDshCommandBinding(
@@ -65,13 +70,28 @@ export function useDshCommandBinding(
     key: scopeKey(input, scope),
     chatId: chat?.id ?? null,
     scope,
+    session: session.data,
     problem,
     reason: problem === null ? null : COMMAND_REASONS[problem],
+    prepare: async (): Promise<CommandTarget> => {
+      const result = await preparation.refetch();
+      return preparedTarget({ ...input, state: result.data }, result.error);
+    },
     retry: (): void => {
       background(preparation.refetch(), 'preparation.refetch_failed');
       if (hasSession(own)) background(session.refetch(), 'session.refetch_failed');
       background(catalogue.refetch(), 'catalogue.refetch_failed');
     },
+  };
+}
+
+function preparedTarget(input: BindingInput, error: Error | null): CommandTarget {
+  const scope = boundScope(input);
+  const problem = bindingProblem(input, scope, error, null);
+  return {
+    key: scopeKey(input, scope),
+    scope: problem === null ? scope : null,
+    reason: problem === null ? null : COMMAND_REASONS[problem],
   };
 }
 function boundScope(input: BindingInput): AiHarnessCommandScope | null {
@@ -82,11 +102,6 @@ function boundScope(input: BindingInput): AiHarnessCommandScope | null {
   return { session_id: state.session_id, expected_epoch: state.epoch };
 }
 function sameSelection(engine: Engine, state: AiHarnessSession): boolean {
-  if (engine.kind === 'openrouter')
-    return (
-      state.target.kind === 'server' &&
-      (engine.model === null || engine.model === state.route.model)
-    );
   if (engine.kind !== 'dsh') return false;
   if (engine.session_id !== null && state.session_id !== engine.session_id) return false;
   return (
@@ -126,7 +141,7 @@ function unavailable(
   const { chat, host, state } = input;
   if (!input.live) return 'offline';
   if (chat === undefined) return 'preparing';
-  if (chat.engine.kind !== 'dsh' && chat.engine.kind !== 'openrouter') return 'preparing';
+  if (chat.engine.kind !== 'dsh') return 'preparing';
   if (host === undefined || state === undefined) return 'preparing';
   return hostUnavailable(host) ?? sessionUnavailable(state, scope);
 }

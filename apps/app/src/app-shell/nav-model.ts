@@ -1,8 +1,15 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import type { NavPin, ResolvedEntry, ResolvedNav, ResolvedNode } from '@smarteverything/domain';
 import type { IconName } from '../components/icon';
 import type { Availability } from '../store/selectors';
-import { navTargetHref, navTargetKey, type TargetFacts } from './nav-targets';
+import {
+  navTargetHref,
+  navTargetKey,
+  sectionCountOf,
+  targetCountOf,
+  type SectionCounts,
+  type TargetFacts,
+} from './nav-targets';
 import { TAB_ROUTES } from './routes';
 import type { RouteDefinition, TabKey } from './route-types';
 
@@ -20,14 +27,14 @@ interface NavEntryFace {
 export interface NavSectionEntry extends NavEntryFace {
   readonly kind: 'section';
   readonly node: Extract<ResolvedEntry, { readonly kind: 'section' }> | null;
-  readonly href: Href;
+  readonly href: AppHref;
   readonly tab: TabKey;
 }
 
 export interface NavPinEntry extends NavEntryFace {
   readonly kind: 'pin';
   readonly node: Extract<ResolvedEntry, { readonly kind: 'pin' }>;
-  readonly href: Href | null;
+  readonly href: AppHref | null;
   readonly tab: null;
 }
 
@@ -59,7 +66,7 @@ export interface NavModelInput {
   readonly resolved: ResolvedNav;
   readonly facts: ReadonlyMap<string, TargetFacts>;
   readonly availability: Availability;
-  readonly unread: number;
+  readonly counts: SectionCounts;
   readonly current: TabKey;
   readonly leaf: string;
   readonly openFolders: readonly string[];
@@ -110,7 +117,7 @@ function sectionEntry(
     tab,
     active: !pinned && tab === input.current,
     badge: definition.badge?.(input.availability) ?? null,
-    count: tab === ORB ? input.unread : 0,
+    count: sectionCountOf(input.counts, tab),
     missing: false,
   };
 }
@@ -124,11 +131,12 @@ function pinActive(pin: NavPin, input: NavModelInput): boolean {
 function pinFace(
   pin: NavPin,
   facts: TargetFacts | undefined,
+  counts: SectionCounts,
 ): Pick<NavEntryFace, 'title' | 'icon' | 'count'> {
   return {
     title: pin.title ?? facts?.title ?? REMOVED_TITLE,
     icon: pin.icon ?? facts?.icon ?? 'info',
-    count: facts?.count ?? 0,
+    count: targetCountOf(pin.target, facts, counts),
   };
 }
 
@@ -136,7 +144,7 @@ function pinEntry(node: NavPinEntry['node'], input: NavModelInput): NavPinEntry 
   const { pin } = node;
   const href = navTargetHref(pin.target);
   const missing = node.missing || href === null;
-  const face = pinFace(pin, input.facts.get(navTargetKey(pin.target)));
+  const face = pinFace(pin, input.facts.get(navTargetKey(pin.target)), input.counts);
   return {
     kind: 'pin',
     key: node.key,

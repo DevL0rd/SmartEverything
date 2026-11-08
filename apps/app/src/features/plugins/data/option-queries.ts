@@ -1,13 +1,29 @@
-import { type InfiniteData, type UseQueryResult } from '@tanstack/react-query';
+import { skipToken, type InfiniteData, type UseQueryResult } from '@tanstack/react-query';
 import { useScreenInfiniteQuery, useScreenQuery } from '../../../queries/use-screen-query';
-import type { PluginOption, PluginOptionPage, PluginRow } from '@smarteverything/domain';
+import type {
+  PluginOption,
+  PluginOptionPage,
+  PluginOptionQuery,
+  PluginRow,
+} from '@smarteverything/domain';
 import { readPluginOptions } from '../../../api/plugin-admin';
 import { pluginOptionsKey } from '../../../queries/keys';
 import { background } from '@smarteverything/logging';
 import { readChosen } from '../model/chosen-pages';
 
-const PAGES_MAX = 40;
 const CHOSEN_STALE_MS = 30_000;
+
+export interface OptionFeed {
+  readonly key: readonly string[];
+  readonly read: (query: PluginOptionQuery) => Promise<PluginOptionPage>;
+}
+
+export function pluginOptionFeed(row: PluginRow, source: string): OptionFeed {
+  return {
+    key: pluginOptionsKey(row.id, source, []),
+    read: (query) => readPluginOptions(row.id, source, query),
+  };
+}
 
 export interface OptionPages {
   readonly options: readonly PluginOption[];
@@ -28,12 +44,7 @@ function unavailableOf(pages: readonly PluginOptionPage[] | undefined): string |
   return first?.state === 'unavailable' ? first.message : null;
 }
 
-export function useOptionPages(
-  row: PluginRow,
-  source: string,
-  search: string,
-  enabled: boolean,
-): OptionPages {
+export function useOptionPages(feed: OptionFeed, search: string, enabled: boolean): OptionPages {
   const result = useScreenInfiniteQuery<
     PluginOptionPage,
     Error,
@@ -41,15 +52,14 @@ export function useOptionPages(
     readonly string[],
     string | null
   >({
-    queryKey: pluginOptionsKey(row.id, source, ['page', search]),
+    queryKey: [...feed.key, 'page', search],
     queryFn: ({ pageParam }) =>
-      readPluginOptions(row.id, source, {
+      feed.read({
         ...(search === '' ? {} : { q: search }),
         ...(pageParam === null ? {} : { after: pageParam }),
       }),
     initialPageParam: null,
-    getNextPageParam: (last, all) =>
-      last.state === 'ready' && all.length < PAGES_MAX ? last.next : null,
+    getNextPageParam: (last) => (last.state === 'ready' ? last.next : null),
     enabled,
     staleTime: 0,
   });
@@ -71,15 +81,15 @@ export function useOptionPages(
 }
 
 export function useChosenOptions(
-  row: PluginRow,
-  source: string,
+  feed: OptionFeed | null,
   ids: readonly string[],
 ): UseQueryResult<PluginOptionPage> {
-  const key = ids.join(',');
   return useScreenQuery({
-    queryKey: pluginOptionsKey(row.id, source, ['chosen', key]),
-    queryFn: () => readChosen((query) => readPluginOptions(row.id, source, query), ids),
-    enabled: ids.length > 0 && source !== '',
+    queryKey: [...(feed?.key ?? []), 'chosen', ids.join(',')],
+    queryFn:
+      feed === null || ids.length === 0
+        ? skipToken
+        : (): Promise<PluginOptionPage> => readChosen(feed.read, ids),
     staleTime: CHOSEN_STALE_MS,
   });
 }

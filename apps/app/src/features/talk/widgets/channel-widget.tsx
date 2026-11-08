@@ -5,17 +5,21 @@ import type { TalkChannelRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Select } from '../../../components/select';
 import { Text } from '../../../components/text';
+import { cn } from '../../../design/cn';
 import {
+  widgetBodyHeight,
   WidgetEmpty,
   WidgetFrame,
   type WidgetDefinition,
   type WidgetSize,
 } from '../../../components/widget-board';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { useIsOwner } from '../../../store/selectors';
 import { TalkButton } from '../components/talk-button';
-import { useChannelActivity } from '../data/channel-activity';
+import { useChannelActivity, type ChannelActivity } from '../data/channel-activity';
 import { useMyChannels, useTalkChannel, useTalkChannels } from '../data/talk-data';
 import { useTalkEngine } from '../engine/engine-state';
+import { channelLayout, type ChannelLayout } from './layout';
 import { MemberStrip } from './member-strip';
 import { RecentMessages } from './recent-messages';
 import { EVERY_SIZE } from './sizes';
@@ -52,38 +56,25 @@ function useGlow(channelId: string): 'critical' | 'primary' | null {
   return engine.receive?.channelId === channelId ? 'primary' : null;
 }
 
-function Medium({
+function ChannelOverview({
   channel,
-  editing,
+  activity,
+  layout,
 }: {
   readonly channel: TalkChannelRow;
-  readonly editing: boolean;
-}): ReactNode {
-  const activity = useChannelActivity(channel.id);
-  return (
-    <View className="flex-1 flex-row items-center gap-4">
-      <TalkButton channelId={channel.id} size="compact" editing={editing} />
-      <View className="min-w-0 flex-1 gap-2">
-        <Text variant="callout" tone={activity.live ? 'primary' : 'variant'} numberOfLines={2}>
-          {activity.line}
-        </Text>
-        <MemberStrip channelId={channel.id} />
-      </View>
-    </View>
-  );
-}
-
-function Large({
-  channel,
-  editing,
-}: {
-  readonly channel: TalkChannelRow;
-  readonly editing: boolean;
+  readonly activity: ChannelActivity;
+  readonly layout: ChannelLayout;
 }): ReactNode {
   return (
-    <View className="flex-1 gap-3">
-      <Medium channel={channel} editing={editing} />
-      <RecentMessages channelId={channel.id} limit={3} editing={editing} />
+    <View className={cn('min-w-0 gap-1', layout.inline && 'flex-1')}>
+      <Text
+        variant="callout"
+        tone={activity.live ? 'primary' : 'variant'}
+        numberOfLines={layout.activityLines}
+      >
+        {activity.line}
+      </Text>
+      {layout.members ? <MemberStrip channelId={channel.id} width={layout.memberWidth} /> : null}
     </View>
   );
 }
@@ -97,10 +88,26 @@ function ChannelBody({
   readonly size: WidgetSize;
   readonly editing: boolean;
 }): ReactNode {
-  return size === 'M' ? (
-    <Medium channel={channel} editing={editing} />
-  ) : (
-    <Large channel={channel} editing={editing} />
+  const { frame, sizes } = useWidgetFace();
+  const activity = useChannelActivity(channel.id);
+  const layout = channelLayout(
+    size,
+    { width: frame.width, height: widgetBodyHeight(frame), idiom: frame.idiom },
+    sizes.touchMin,
+    activity.hasMessages,
+  );
+  return (
+    <View className={layout.inline ? 'flex-row items-start gap-3' : 'gap-3'}>
+      <ChannelOverview channel={channel} activity={activity} layout={layout} />
+      {layout.messages === 0 ? null : (
+        <RecentMessages
+          channelId={channel.id}
+          limit={layout.messages}
+          editing={editing}
+          inline={layout.inline}
+        />
+      )}
+    </View>
   );
 }
 
@@ -143,6 +150,7 @@ function ChannelWidget({
       accent="primary"
       glow={glow}
       href={href.talkChannel(channel.id)}
+      actions={<TalkButton channelId={channel.id} size="row" editing={editing} />}
     >
       <ChannelBody channel={channel} size={size} editing={editing} />
     </WidgetFrame>

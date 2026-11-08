@@ -7,9 +7,15 @@ export interface CodeBlockProps {
   readonly code: string;
   readonly label: string;
   readonly className?: string;
+  readonly wrapLines?: boolean;
 }
 
-export function CodeBlock({ code, label, className }: CodeBlockProps): ReactNode {
+export function CodeBlock({ code, label, className, wrapLines = false }: CodeBlockProps): ReactNode {
+  const body = (
+    <NativeText selectable className="font-mono text-footnote text-on-surface">
+      {code}
+    </NativeText>
+  );
   return (
     <View
       className={cn(
@@ -18,16 +24,24 @@ export function CodeBlock({ code, label, className }: CodeBlockProps): ReactNode
       )}
     >
       <View className="flex-row items-center justify-between pl-3 pr-1">
-        <NativeText className="font-sans-medium text-caption text-on-surface-variant">
+        <NativeText
+          className={cn(
+            'font-sans-medium text-caption text-on-surface-variant',
+            wrapLines && 'min-w-0 flex-1',
+          )}
+          selectable={wrapLines}
+        >
           {label}
         </NativeText>
         <CopyButton value={code} label={`Copy ${label}`} />
       </View>
-      <ScrollView horizontal className="grow-0" contentContainerClassName="px-3 pb-3">
-        <NativeText selectable className="font-mono text-footnote text-on-surface">
-          {code}
-        </NativeText>
-      </ScrollView>
+      {wrapLines ? (
+        <View className="px-3 pb-3">{body}</View>
+      ) : (
+        <ScrollView horizontal className="grow-0" contentContainerClassName="px-3 pb-3">
+          {body}
+        </ScrollView>
+      )}
     </View>
   );
 }

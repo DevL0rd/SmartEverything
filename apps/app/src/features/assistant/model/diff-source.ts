@@ -1,5 +1,5 @@
 import type { RecordedFile } from './tool-file-records';
-import { diffLanguage } from './diff-language';
+import { diffLanguage } from '../../../components/diff-language';
 
 export interface RecordedDiffSource {
   readonly label: 'Before' | 'After' | 'Patch' | 'Result';

@@ -9,7 +9,11 @@ export function holdCall(call: Call, log: Logger): void {
   call.endpoint.detach();
   const timer = setTimeout(() => {
     background(
-      call.conversation.end('disconnected', 'The connection to your home dropped.'),
+      call.conversation.end(
+        'disconnected',
+        'The connection to your home dropped.',
+        'connection_lost',
+      ),
       'conversation.end_failed',
     );
   }, RESUME_GRACE_MS);

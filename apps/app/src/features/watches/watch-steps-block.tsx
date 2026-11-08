@@ -31,7 +31,7 @@ export function StepsBlock({
 }): ReactNode {
   const steps = glance.steps;
   return (
-    <View className="gap-1.5">
+    <View className={size === 's' ? 'gap-1' : 'gap-1.5'}>
       <Figure value={steps === null ? '0' : count(steps.value)} unit="steps" size={size} />
       <ProgressBar
         progress={steps === null ? 0 : steps.value / glance.stepsGoal}

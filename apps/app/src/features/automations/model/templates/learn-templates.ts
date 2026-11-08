@@ -1,4 +1,6 @@
-import { MINUTE_MS, automation, lit, wire, type Maker } from './build';
+import { STARTER_NODE_IDS } from '@smarteverything/domain';
+import { MINUTE_MS, lit, wire } from './build';
+import { graphAutomation, type GraphMaker } from './graph-kit';
 import {
   choicesOf,
   devicesSlot,
@@ -13,7 +15,7 @@ import {
 import { notice, setDevices, stateSignal } from './parts';
 import { allLights, idsOf, isReadable, lightsOf, withCapability } from './picks';
 
-function clockTrigger(m: Maker, use: Use): ReturnType<Maker['trigger']> {
+function clockTrigger(m: GraphMaker, use: Use): ReturnType<GraphMaker['trigger']> {
   return m.trigger('time1', 'trigger.time', { at: lit(use.text('at')) });
 }
 
@@ -28,7 +30,7 @@ function forEachLight(): Template {
     devices: [],
     slots: [timeSlot('at', 'Time', '23:00')],
     make: (use, m) =>
-      automation({
+      graphAutomation({
         triggers: [clockTrigger(m, use)],
         body: [
           m.node('lights', 'device.query', { families: lit(['light']) }),
@@ -69,7 +71,7 @@ function whileLimit(door: TemplateDevice): Template {
       numberSlot('times', 'At most', 5, { min: 1, max: 20, unit: 'times' }),
     ],
     make: (use, m) =>
-      automation({
+      graphAutomation({
         triggers: [
           stateSignal(m, 'signal1', {
             subject: door.id,
@@ -113,7 +115,7 @@ function tryFallback(devices: readonly TemplateDevice[], first: TemplateDevice):
     devices: [first.label],
     slots: [timeSlot('at', 'Time', '07:00'), LIGHTS_SLOT(devices)],
     make: (use, m) =>
-      automation({
+      graphAutomation({
         triggers: [clockTrigger(m, use)],
         body: [
           m.attempt(
@@ -144,7 +146,7 @@ function doTogether(devices: readonly TemplateDevice[], first: TemplateDevice): 
     devices: [first.label],
     slots: [timeSlot('at', 'Time', '07:00'), LIGHTS_SLOT(devices)],
     make: (use, m) =>
-      automation({
+      graphAutomation({
         triggers: [clockTrigger(m, use)],
         body: [
           m.node('together', 'flow.parallel', undefined, {
@@ -177,11 +179,11 @@ function reusableNode(devices: readonly TemplateDevice[], first: TemplateDevice)
     devices: [first.label],
     slots: [timeSlot('at', 'Time', '23:30'), LIGHTS_SLOT(devices)],
     make: (use, m) =>
-      automation({
+      graphAutomation({
         triggers: [clockTrigger(m, use)],
         body: [
           m.node('switch', 'fn.call', {
-            fn: lit('builtin.timed_devices'),
+            fn: lit(STARTER_NODE_IDS.switchDevices),
             devices: lit({ devices: [...use.texts('lights')] }),
             on: lit(false),
           }),

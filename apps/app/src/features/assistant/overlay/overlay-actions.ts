@@ -5,6 +5,7 @@ import type {
   OverlayAction,
   VoiceThinkingLevel,
 } from '@smarteverything/domain';
+import { href } from '../../../app-shell/hrefs';
 import { desktopBridge } from '../../../design/platform';
 import {
   answerRequest,
@@ -20,6 +21,7 @@ import { callActive, callState, type CallView } from '../call/call-state';
 import { callEngine } from '../call/engine/engine';
 import type { SourcePick } from '../call/model/call-sources';
 import { startCall } from '../call/start-call';
+import { chatOnScreen, requestVoiceMessage } from '../voice-message/voice-request';
 import { dismissKeyOf, wakeKeyOf } from './overlay-driver';
 import { clearWake, dismissOverlay, overlayExtras } from './overlay-state';
 
@@ -45,6 +47,7 @@ export interface OverlayActionPorts {
   readonly volume: (value: number) => void;
   readonly thinking: (level: VoiceThinkingLevel) => void;
   readonly answer: (accepted: boolean) => void;
+  readonly voiceMessage: () => void;
 }
 
 const SYSTEM_SCREEN: SourcePick = {
@@ -124,6 +127,9 @@ const HANDLERS: Readonly<Record<SimpleKind, Handler>> = {
   decline_request: (ports) => {
     ports.answer(false);
   },
+  voice_message: (ports) => {
+    ports.voiceMessage();
+  },
 };
 
 export function runOverlayAction(action: OverlayAction, ports: OverlayActionPorts): void {
@@ -180,6 +186,15 @@ function fixMicrophone(): void {
   });
 }
 
+function voiceMessage(): void {
+  const chatId = chatOnScreen();
+  if (chatId === null) {
+    router.navigate(href.assistantVoiceMessage());
+  } else {
+    requestVoiceMessage(chatId);
+  }
+}
+
 export const CALL_PORTS = {
   call: callState.get,
   mute: callEngine.mute,
@@ -202,4 +217,5 @@ export const CALL_PORTS = {
       answerRequest(request, accepted, 'external', false);
     }
   },
+  voiceMessage,
 } as const;

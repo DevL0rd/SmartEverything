@@ -1,5 +1,5 @@
 export const WORK_TABS = [
-  { value: 'overview', label: 'Commands, agents and tools' },
+  { value: 'overview', label: 'Overview' },
   { value: 'events', label: 'Native activity and usage' },
   { value: 'mcp', label: 'Manage native MCP servers' },
   { value: 'prompts', label: 'Permissions and questions' },

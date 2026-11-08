@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import type {
+  DesktopPhotos,
+  DesktopPhotoLibrary,
+  DESKTOP_PHOTO_HASH,
+  DESKTOP_PHOTO_HASH_REQUEST,
+} from './desktop-photos';
+import type {
   NativeHubNetwork,
   NativeHubTrust,
   NativeHubRequest,
@@ -12,8 +18,11 @@ import type {
 import { HUB_CONNECTION_METADATA, type HubConnectionMetadata } from './hub-connections';
 import type { FirewallApplyResult } from './api/firewall';
 import type { NativeHtmlPreview } from './chat-pages';
+import type { ComputerNodePairing } from './computer-nodes';
 import type { DesktopBrowser } from './desktop-browser';
+import type { AppUpdateChannel } from './app-updates';
 import type { MachineUpdateStatus } from './machine-updates';
+import type { WebUpdateApplyTarget, WebUpdateStatus } from './web-updates';
 import type { OverlayAction, OverlayHostView } from './voice-overlay';
 export const DESKTOP_COMPUTER_IDENTITY = z.object({
   device_id: z.uuid().nullable(),
@@ -123,14 +132,24 @@ export interface DesktopStill {
   readonly dataBase64: string;
 }
 
+export interface DesktopClipboard {
+  readText(): Promise<string | null>;
+  writeText(text: string): Promise<void>;
+  onChange(listener: (text: string) => void): () => void;
+}
+
 export const OVERLAY_LEVELS_PORT_MESSAGE = 'smarteverything:overlay-levels';
+
+export const DESKTOP_CLIPBOARD_CHANGED = 'desktop:clipboard-changed';
 
 export type DesktopOverlayHelper =
   | { readonly kind: 'unused' | 'ready' | 'absent' }
   | { readonly kind: 'failed'; readonly reason: string };
 
 export interface SmartEverythingDesktop {
+  readonly photos?: DesktopPhotos;
   readonly browser?: DesktopBrowser;
+  readonly clipboard?: DesktopClipboard;
   readonly htmlPreview?: NativeHtmlPreview;
   readonly hubNetwork?: NativeHubNetwork;
   computerIdentity?(): Promise<DesktopComputerIdentity>;
@@ -144,6 +163,7 @@ export interface SmartEverythingDesktop {
   server(): Promise<DesktopServer | null>;
   setWindow(window: DesktopServer | null): Promise<void>;
   serviceStatus(): Promise<DesktopServiceStatus>;
+  pairComputer?(pairing: ComputerNodePairing): Promise<void>;
   startService(): Promise<DesktopServiceStatus>;
   stopService(): Promise<DesktopServiceStatus>;
   restartService(): Promise<DesktopServiceStatus>;
@@ -166,13 +186,31 @@ export interface SmartEverythingDesktop {
   listCaptureSources?(): Promise<readonly DesktopCaptureSource[]>;
   chooseCaptureSource?(sourceId: string | null): Promise<void>;
   captureStill?(sourceId: string | null): Promise<DesktopStill>;
-  updateStatus?(): Promise<MachineUpdateStatus>;
-  checkForUpdate?(): Promise<MachineUpdateStatus>;
-  installUpdate?(): Promise<MachineUpdateStatus>;
-  onUpdateStatus?(listener: (status: MachineUpdateStatus) => void): () => void;
+  updateStatus(): Promise<MachineUpdateStatus>;
+  checkForUpdate(): Promise<MachineUpdateStatus>;
+  installUpdate(expectedOfferId: string): Promise<MachineUpdateStatus>;
+  onUpdateStatus(listener: (status: MachineUpdateStatus) => void): () => void;
+  webUpdateStatus(): Promise<WebUpdateStatus>;
+  checkWebUpdate(channel: AppUpdateChannel): Promise<WebUpdateStatus>;
+  downloadWebUpdate(expectedId: string): Promise<WebUpdateStatus>;
+  applyWebUpdate(target: WebUpdateApplyTarget): Promise<WebUpdateStatus>;
+  onWebUpdateStatus(listener: (status: WebUpdateStatus) => void): () => void;
+  onWebUpdateConfirmRequested(listener: () => void): () => void;
+  confirmWebBundle(): Promise<void>;
+  reportWebBundleFailure(reason: string): Promise<void>;
 }
 
 export interface DesktopInvokeChannels {
+  readonly 'desktop:photos-list': {
+    readonly request: undefined;
+    readonly response: DesktopPhotoLibrary;
+  };
+  readonly 'desktop:photos-hash': {
+    readonly request: z.infer<typeof DESKTOP_PHOTO_HASH_REQUEST>;
+    readonly response: z.infer<typeof DESKTOP_PHOTO_HASH>;
+  };
+  readonly 'desktop:photos-cancel': { readonly request: string; readonly response: undefined };
+  readonly 'desktop:photos-charging': { readonly request: undefined; readonly response: boolean };
   readonly 'desktop:hub-configure-trust': {
     readonly request: NativeHubTrust;
     readonly response: undefined;
@@ -232,6 +270,10 @@ export interface DesktopInvokeChannels {
     readonly request: DesktopServer | null;
     readonly response: undefined;
   };
+  readonly 'desktop:computer-pair': {
+    readonly request: ComputerNodePairing;
+    readonly response: undefined;
+  };
   readonly 'desktop:service-status': ServiceCall;
   readonly 'desktop:service-start': ServiceCall;
   readonly 'desktop:service-stop': ServiceCall;
@@ -282,7 +324,42 @@ export interface DesktopInvokeChannels {
   };
   readonly 'desktop:update-status': UpdateCall;
   readonly 'desktop:update-check': UpdateCall;
-  readonly 'desktop:update-install': UpdateCall;
+  readonly 'desktop:update-install': {
+    readonly request: string;
+    readonly response: MachineUpdateStatus;
+  };
+  readonly 'desktop:web-update-status': {
+    readonly request: undefined;
+    readonly response: WebUpdateStatus;
+  };
+  readonly 'desktop:web-update-check': {
+    readonly request: AppUpdateChannel;
+    readonly response: WebUpdateStatus;
+  };
+  readonly 'desktop:web-update-download': {
+    readonly request: string;
+    readonly response: WebUpdateStatus;
+  };
+  readonly 'desktop:web-update-apply': {
+    readonly request: WebUpdateApplyTarget;
+    readonly response: WebUpdateStatus;
+  };
+  readonly 'desktop:web-update-confirm': {
+    readonly request: undefined;
+    readonly response: undefined;
+  };
+  readonly 'desktop:web-update-report-failure': {
+    readonly request: string;
+    readonly response: undefined;
+  };
+  readonly 'desktop:clipboard-read': {
+    readonly request: undefined;
+    readonly response: string | null;
+  };
+  readonly 'desktop:clipboard-write': {
+    readonly request: string;
+    readonly response: undefined;
+  };
 }
 
 interface UpdateCall {
@@ -301,6 +378,8 @@ export type DesktopEventChannel =
   | 'desktop:deep-link'
   | 'desktop:service-status-changed'
   | 'desktop:update-status-changed'
+  | 'desktop:web-update-status-changed'
+  | 'desktop:web-update-confirm-requested'
   | 'desktop:talk-command'
   | 'desktop:overlay-action'
   | 'desktop:overlay-hold'

@@ -122,7 +122,7 @@ describe('the number of requests a chat is waiting on the person for', () => {
         seen.push(change.record.pending_requests);
     });
     const session = rig.service.state(rig.owner, chat.id);
-    rig.opened.store.harnessCoordination.project(
+    rig.opened.store.harnessSessions.project(
       { ...session, epoch: epoch + 1, state: 'idle', interactions: [] },
       0,
     );

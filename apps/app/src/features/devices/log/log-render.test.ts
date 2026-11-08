@@ -27,7 +27,7 @@ vi.mock('../../../store/clock', () => ({
   useMinute: (): number => Date.parse('2026-10-18T12:00:00.000Z'),
 }));
 
-const { DeviceLog } = await import('./device-log');
+const { DeviceLogCard } = await import('./device-log');
 const { LogTicker } = await import('./log-ticker');
 
 const PRESS: DeviceLogEntry = {
@@ -72,7 +72,7 @@ beforeEach(() => {
 describe('the device log list', () => {
   it('lists each entry with its time, value, cause and what a press did', () => {
     hooks.pages = pages({ entries: [PRESS, CHANGE] });
-    const shown = html(createElement(DeviceLog, { deviceId: 'd' }));
+    const shown = html(createElement(DeviceLogCard, { deviceId: 'd' }));
     expect(shown).toContain('role="list"');
     expect(shown.split('role="listitem"')).toHaveLength(3);
     expect(shown).toContain('30 min');
@@ -84,27 +84,27 @@ describe('the device log list', () => {
 
   it('says so when nothing happened yet', () => {
     hooks.pages = pages({});
-    expect(html(createElement(DeviceLog, { deviceId: 'd' }))).toContain('Nothing yet');
+    expect(html(createElement(DeviceLogCard, { deviceId: 'd' }))).toContain('Nothing yet');
   });
 
   it('keeps the same shape while loading', () => {
     hooks.pages = pages({ loading: true });
-    const shown = html(createElement(DeviceLog, { deviceId: 'd' }));
+    const shown = html(createElement(DeviceLogCard, { deviceId: 'd' }));
     expect(shown).toContain('aria-busy="true"');
     expect(shown).not.toContain('role="list"');
   });
 
   it('shows the reason and a retry when the first read fails', () => {
     hooks.pages = pages({ failure: new Error('Hub unreachable') });
-    const shown = html(createElement(DeviceLog, { deviceId: 'd' }));
+    const shown = html(createElement(DeviceLogCard, { deviceId: 'd' }));
     expect(shown).toContain('Try again');
   });
 
   it('offers more only while the hub has older entries', () => {
     hooks.pages = pages({ entries: [CHANGE], more: true });
-    expect(html(createElement(DeviceLog, { deviceId: 'd' }))).toContain('Show more');
+    expect(html(createElement(DeviceLogCard, { deviceId: 'd' }))).toContain('Show more');
     hooks.pages = pages({ entries: [CHANGE] });
-    expect(html(createElement(DeviceLog, { deviceId: 'd' }))).not.toContain('Show more');
+    expect(html(createElement(DeviceLogCard, { deviceId: 'd' }))).not.toContain('Show more');
   });
 });
 

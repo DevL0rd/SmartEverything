@@ -1,7 +1,5 @@
 import {
   KNOWN_PERSON,
-  PERSON_ARRIVED_EVENT,
-  PERSON_LEFT_EVENT,
   atHomePlace,
   type KnownClient,
   type KnownPerson,
@@ -10,6 +8,7 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { PluginRecords } from '../contract';
+import { PERSON_ARRIVED_EVENT, PERSON_LEFT_EVENT } from './people-events';
 
 export interface PhoneSighting {
   readonly paired: boolean;
@@ -19,6 +18,13 @@ export interface PhoneSighting {
 export interface PeopleHome {
   readonly profiles: () => readonly { readonly id: string; readonly name: string }[];
   readonly phone: (profileId: string) => PhoneSighting;
+  readonly presenceChanged: (move: {
+    readonly id: string;
+    readonly name: string;
+    readonly profile: boolean;
+    readonly home: boolean;
+    readonly at: string;
+  }) => void;
 }
 
 export class UnknownPersonError extends Error {
@@ -173,6 +179,13 @@ export class PeopleRegistry {
         name: moved.name,
         profile_id: moved.profile ? moved.id : null,
       },
+    });
+    this.home.presenceChanged({
+      id: moved.id,
+      name: moved.name,
+      profile: moved.profile,
+      home,
+      at,
     });
     return moved;
   }

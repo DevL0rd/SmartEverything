@@ -32,7 +32,7 @@ export function jobOptions(context: JobContext): Options {
     cwd,
     model: turn.model,
     abortController: context.abort,
-    env: subscriptionEnvironment(),
+    env: subscriptionEnvironment(context.options.claudeHome),
     includePartialMessages: true,
     enableFileCheckpointing: turn.managed_project === undefined,
     tools: baseTools(turn, builtin),

@@ -11,7 +11,11 @@ import {
   type McpToolArea,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
+import type { HubConnections } from '../network/connections';
 import type { Store } from '../store/store';
+
+type GrantResponse = z.infer<typeof COMPUTER_MCP_GRANT_RESPONSE>;
+type GrantAddress = Pick<GrantResponse, 'url' | 'pin'>;
 
 function hashComputerMcpToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -43,22 +47,41 @@ export function computerMcpGrant(
     areas: policy.areas ?? MCP_TOOL_AREAS,
   };
 }
-export function manageComputerMcpGrant(
+function computerMcpGrantAddress(
   store: Store,
+  connections: HubConnections | undefined,
+  node: ComputerNodeRow,
+): GrantAddress {
+  const settings = store.settings.read();
+  if (settings.public_url !== null && settings.public_url_verified_at !== null)
+    return { url: new URL('/mcp', settings.public_url).href, pin: null };
+  if (connections === undefined)
+    throw new ApiError(
+      'upstream_failed',
+      'This hub has no public address and no connection identity to pin its own address.',
+    );
+  return {
+    url: new URL('/mcp', node.hub_url).href,
+    pin: connections.publicIdentity().identity.id,
+  };
+}
+export function manageComputerMcpGrant(
+  context: { readonly store: Store; readonly connections?: HubConnections | undefined },
   node: ComputerNodeRow,
   request: z.infer<typeof COMPUTER_MCP_GRANT_REQUEST>,
   runtime: ComputerAiRuntime = 'claude',
-): z.infer<typeof COMPUTER_MCP_GRANT_RESPONSE> {
-  const url = new URL('/mcp', node.hub_url).toString();
+): GrantResponse {
+  const { store } = context;
+  const address = computerMcpGrantAddress(store, context.connections, node);
   if (request.action === 'revoke') {
     store.computerNodes.setRuntimeMcpToken(node.device_id, runtime, null);
-    return { token: null, url, valid: false };
+    return { token: null, ...address, valid: false };
   }
   if (request.action === 'verify') {
     const grant = computerMcpGrant(store, request.token);
     return {
       token: null,
-      url,
+      ...address,
       valid: grant?.deviceId === node.device_id && grant.runtime === runtime,
     };
   }
@@ -70,5 +93,5 @@ export function manageComputerMcpGrant(
     );
   const token = `scg_${randomBytes(32).toString('base64url')}`;
   store.computerNodes.setRuntimeMcpToken(node.device_id, runtime, hashComputerMcpToken(token));
-  return { token, url, valid: true };
+  return { token, ...address, valid: true };
 }

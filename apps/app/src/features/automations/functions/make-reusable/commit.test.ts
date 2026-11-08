@@ -2,7 +2,7 @@ import type { AutomationFunctionExtractReply } from '@smarteverything/domain';
 import { EMPTY_LAYOUT } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
 import type { FunctionExtractBody } from '../../data/api';
-import { automation, step } from '../../model/editor/editor-fixtures';
+import { automation, note, start } from '../../model/graph/graph-scene-fixtures';
 import { commitExtraction, type CommitDeps } from './commit';
 
 const BODY: FunctionExtractBody = {
@@ -12,7 +12,10 @@ const BODY: FunctionExtractBody = {
   name: 'Dim lights',
 };
 
-const BEFORE = { program: automation([step('first', {})]), layout: EMPTY_LAYOUT };
+const BEFORE = {
+  program: automation([start('first'), note('first')], { triggers: [] }),
+  layout: EMPTY_LAYOUT,
+};
 
 function reply(change: Partial<AutomationFunctionExtractReply>): AutomationFunctionExtractReply {
   return {

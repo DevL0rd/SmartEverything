@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Href } from 'expo-router';
+import type { AppHref } from './app-href';
 import { cn } from '../design/cn';
 import { useSizeClass } from '../design/size-class';
 import { Sparkline } from './charts/sparkline';
@@ -25,7 +25,7 @@ export interface MetricItem {
   readonly series?: readonly ChartPoint[];
   readonly stale?: boolean;
   readonly onPress?: () => void;
-  readonly href?: Href;
+  readonly href?: AppHref;
 }
 
 export interface MetricStripProps {

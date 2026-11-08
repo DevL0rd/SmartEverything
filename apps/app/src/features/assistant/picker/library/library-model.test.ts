@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   activeCount,
+  browseColumns,
   dialogWidth,
   libraryLayout,
   librarySubtitle,
@@ -23,8 +24,8 @@ describe('primaryAction', () => {
     });
   });
 
-  it('says Set as default in default mode', () => {
-    expect(primaryAction('default', pickable)?.label).toBe('Set as default');
+  it('says Use for new chats in default mode', () => {
+    expect(primaryAction('default', pickable)?.label).toBe('Use for new chats');
   });
 
   it('has no primary action while browsing', () => {
@@ -72,7 +73,7 @@ describe('marksOf', () => {
 describe('mode copy', () => {
   it('titles each mode', () => {
     expect(libraryTitle('pick')).toBe('Model library');
-    expect(libraryTitle('default')).toBe('Default for new chats');
+    expect(libraryTitle('default')).toBe('Model for new chats');
     expect(libraryTitle('browse')).toBe('Model library');
     expect(librarySubtitle('default')).toBe('Used when you start a chat');
     expect(librarySubtitle('pick')).toBeNull();
@@ -93,6 +94,12 @@ describe('libraryLayout', () => {
 
   it('is one column on touch whatever the width', () => {
     expect(libraryLayout(1200, true)).toBe('one');
+  });
+});
+
+describe('browseColumns', () => {
+  it('adds columns when the results pane fits them beside the filters and details', () => {
+    expect([412, 876, 2876, 4556].map(browseColumns)).toEqual([1, 1, 3, 5]);
   });
 });
 

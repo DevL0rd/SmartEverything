@@ -8,6 +8,7 @@ import android.os.Handler
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 
 interface ByteLink {
@@ -37,14 +38,22 @@ class SppLink(
   }
 
   override fun send(bytes: ByteArray) {
-    writer.execute {
-      val current = socket ?: return@execute
-      try {
-        current.outputStream.write(bytes)
-        current.outputStream.flush()
-      } catch (failure: IOException) {
-        end("write failed: ${failure.message}")
-      }
+    if (closing.get()) return
+    try {
+      writer.execute { write(bytes) }
+    } catch (failure: RejectedExecutionException) {
+      if (!closing.get()) throw failure
+    }
+  }
+
+  private fun write(bytes: ByteArray) {
+    if (closing.get()) return
+    val current = socket ?: return
+    try {
+      current.outputStream.write(bytes)
+      current.outputStream.flush()
+    } catch (failure: IOException) {
+      end("write failed: ${failure.message}")
     }
   }
 

@@ -29,7 +29,7 @@ async function start(): Promise<RunningGo2rtc> {
   await chmod(binary, 0o700);
   return startGo2rtc({
     binary,
-    dataDirectory: directory,
+    configPath: join(directory, 'go2rtc', 'go2rtc.yaml'),
     apiPort: 1984,
     rtspPort: 8554,
     webrtcPort: 8555,

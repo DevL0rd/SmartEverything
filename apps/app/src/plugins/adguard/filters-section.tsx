@@ -27,8 +27,8 @@ function FilterRow({
       onChange={(enabled) => {
         background(
           tools.run(
-            enabled ? 'enable_filter' : 'disable_filter',
-            { filterId: filter.id },
+            'set_filter',
+            { filter: String(filter.id), enabled },
             `${filter.name} wasn’t ${enabled ? 'switched on' : 'switched off'}`,
           ),
           'tools.run_failed',

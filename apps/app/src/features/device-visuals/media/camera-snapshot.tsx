@@ -11,6 +11,7 @@ export interface CameraSnapshotProps {
   readonly label: string;
   readonly size?: MediaSize;
   readonly placeholder?: boolean;
+  readonly fit?: 'contain' | 'cover';
 }
 
 function Placeholder(): ReactNode {
@@ -26,6 +27,7 @@ export function CameraSnapshot({
   label,
   size = 'thumb',
   placeholder = true,
+  fit = 'cover',
 }: CameraSnapshotProps): ReactNode {
   const online = useDevice(deviceId)?.online === true;
   const link = useSnapshotLink(deviceId, size, online);
@@ -35,12 +37,14 @@ export function CameraSnapshot({
     return placeholder ? <Placeholder /> : null;
   }
   return (
-    <View className="absolute inset-0 bg-surface-2">
+    <View
+      className={fit === 'contain' ? 'absolute inset-0 bg-black' : 'absolute inset-0 bg-surface-2'}
+    >
       <Image
         resizeMethod="resize"
         source={{ uri }}
         accessibilityLabel={`Latest picture from ${label}`}
-        resizeMode="cover"
+        resizeMode={fit}
         className="absolute inset-0 h-full w-full"
         onError={() => {
           setBroken(uri);

@@ -1,11 +1,11 @@
-import type { Href } from 'expo-router';
+import type { AppHref } from '../components/app-href';
 import type { IconName } from '../components/icon';
 import { href } from './hrefs';
 
 export interface HomeAction {
   readonly label: string;
   readonly icon: IconName;
-  readonly href: Href;
+  readonly href: AppHref;
 }
 
 export const HOME_ACTIONS: readonly HomeAction[] = [

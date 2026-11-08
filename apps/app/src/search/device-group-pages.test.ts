@@ -41,6 +41,8 @@ function tablesOf(devices: readonly Device[], groups: readonly DeviceGroupRow[])
   const { tables } = emptyState();
   return {
     chats: [],
+    homeMaps: [],
+    modelCategories: [],
     devices: makeTable(
       Object.fromEntries(devices.map((device) => [device.id, device])),
       devices.map((device) => device.id),
@@ -58,6 +60,7 @@ function tablesOf(devices: readonly Device[], groups: readonly DeviceGroupRow[])
     plugins: tables.plugins,
     pluginStreams: tables.plugin_streams,
     pluginUi: tables.plugin_ui,
+    automationPluginKinds: tables.automation_plugin_kinds,
     extensions: undefined,
     configuration: undefined,
     inventory: undefined,

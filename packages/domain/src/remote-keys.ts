@@ -37,7 +37,7 @@ const ROLE_WORDS: Readonly<Record<RemoteRole, readonly string[]>> = {
   swing: ['swing', 'air_swing', 'key_swing'],
   speed_up: ['speed_up', 'fan_up', 'fan_speed_up', 'wind_up', 'faster'],
   speed_down: ['speed_down', 'fan_down', 'fan_speed_down', 'wind_down', 'slower'],
-  speed_cycle: ['speed', 'fan_speed', 'wind_speed'],
+  speed_cycle: ['speed', 'fan', 'fan_speed', 'wind_speed'],
   oscillate: ['oscillate', 'oscillation', 'rotate', 'swing_fan'],
   vol_up: ['vol_up', 'volume_up', 'key_volumeup', 'key_volume_up', 'volup', 'volumeup'],
   vol_down: ['vol_down', 'volume_down', 'key_volumedown', 'key_volume_down', 'voldown'],

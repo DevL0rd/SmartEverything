@@ -7,7 +7,7 @@ export function volumeText(volume: TvVolume): string | null {
   if (volume.muted) {
     return 'Muted';
   }
-  return volume.level === null ? null : `${volume.stale ? '≈' : ''}${String(volume.level)}`;
+  return volume.level === null ? null : String(volume.level);
 }
 
 export function televisionLine(view: TvView): string {

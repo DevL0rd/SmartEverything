@@ -4,8 +4,9 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { EmptyState } from '../../../components/empty-state';
 import { LoadedQuery } from '../../../components/loaded-query';
-import { Segmented } from '../../../components/segmented';
 import { PAGE_SIZE, ShowMore } from '../../../components/show-more';
+import { TabsBar } from '../../../components/tabs-bar';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useMinute } from '../../../store/clock';
 import { useAutomations } from '../data/use-automations';
 import { useDecisions, useRuns } from '../data/use-runs';
@@ -22,7 +23,7 @@ import {
   type RunDay,
   type RunFilter,
 } from './run-history-model';
-import { RunDayGroup } from './run-rows';
+import { RunDayGroup, type RunDayGroupProps } from './run-rows';
 import { RunsChart } from './runs-chart';
 
 type Tab = 'runs' | 'why';
@@ -76,24 +77,43 @@ function modelOf(
 
 function Empty({ any }: { readonly any: boolean }): ReactNode {
   return (
-    <EmptyState
-      icon="activity"
-      title={any ? 'No runs match' : 'No runs yet'}
-      body={
-        any
-          ? 'Turn a filter off to see more runs.'
-          : 'Runs appear here as soon as an automation starts.'
-      }
-    />
+    <View className="w-full max-w-reading">
+      <EmptyState
+        icon="activity"
+        title={any ? 'No runs match' : 'No runs yet'}
+        body={
+          any
+            ? 'Turn a filter off to see more runs.'
+            : 'Runs appear here as soon as an automation starts.'
+        }
+      />
+    </View>
   );
 }
 
-function RunList({
-  runs,
-  automationId,
-  timeZone,
-  onOpenRun,
-}: RunsScreenProps & { readonly runs: readonly AutomationRunSummary[] }): ReactNode {
+function RunDays({
+  any,
+  days,
+  ...props
+}: Omit<RunDayGroupProps, 'day' | 'width'> & {
+  readonly any: boolean;
+  readonly days: readonly RunDay[];
+}): ReactNode {
+  const { width, onLayout } = useMeasuredWidth();
+  if (days.length === 0) return <Empty any={any} />;
+  return (
+    <View className="gap-section-gap" onLayout={onLayout}>
+      {days.map((day) => (
+        <RunDayGroup key={day.key} day={day} width={width} {...props} />
+      ))}
+    </View>
+  );
+}
+
+function RunList(
+  props: RunsScreenProps & { readonly runs: readonly AutomationRunSummary[] },
+): ReactNode {
+  const { runs, automationId, timeZone, onOpenRun } = props;
   const now = useMinute();
   const { byId } = useAutomations();
   const [chosen, setChosen] = useState<ReadonlySet<RunFilter>>(new Set());
@@ -104,35 +124,38 @@ function RunList({
   );
   const nameOf = (run: AutomationRunSummary): string | null =>
     automationId === null ? (byId.get(run.automation_id)?.name ?? 'A removed automation') : null;
+  const showMore = (): void => {
+    setLimit(limit + PAGE_SIZE);
+  };
   return (
     <View className="gap-section-gap">
-      <RunsChart summary={model.summary} />
-      <RunFilters
-        chosen={chosen}
-        counts={model.counts}
-        onToggle={(filter) => {
-          setChosen((current) => toggled(current, filter));
-          setLimit(PAGE_SIZE);
-        }}
-      />
-      {model.days.length === 0 ? <Empty any={runs.length > 0} /> : null}
-      {model.days.map((day) => (
-        <RunDayGroup
-          key={day.key}
-          day={day}
-          now={now}
-          zone={timeZone}
-          mostSteps={model.mostSteps}
-          nameOf={nameOf}
-          onOpen={onOpenRun}
+      <View className="w-full max-w-detail">
+        <RunsChart summary={model.summary} />
+      </View>
+      <View className="w-full max-w-reading">
+        <RunFilters
+          chosen={chosen}
+          counts={model.counts}
+          onToggle={(filter) => {
+            setChosen((current) => toggled(current, filter));
+            setLimit(PAGE_SIZE);
+          }}
         />
-      ))}
-      <ShowMore
-        remaining={model.remaining}
-        onPress={() => {
-          setLimit(limit + PAGE_SIZE);
-        }}
+      </View>
+      <RunDays
+        any={runs.length > 0}
+        days={model.days}
+        now={now}
+        zone={timeZone}
+        mostSteps={model.mostSteps}
+        nameOf={nameOf}
+        onOpen={onOpenRun}
       />
+      {model.remaining > 0 ? (
+        <View className="w-full max-w-reading">
+          <ShowMore remaining={model.remaining} onPress={showMore} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -141,9 +164,11 @@ function Decisions({ automationId }: { readonly automationId: string }): ReactNo
   const query = useDecisions(automationId);
   const now = useMinute();
   return (
-    <LoadedQuery query={query}>
-      {(decisions) => <DecisionsTab rows={decisionRows(decisions, now)} />}
-    </LoadedQuery>
+    <View className="w-full max-w-reading">
+      <LoadedQuery query={query}>
+        {(decisions) => <DecisionsTab rows={decisionRows(decisions, now)} />}
+      </LoadedQuery>
+    </View>
   );
 }
 
@@ -154,7 +179,19 @@ export function RunsScreen(props: RunsScreenProps): ReactNode {
   return (
     <View className="gap-section-gap">
       {automationId === null ? null : (
-        <Segmented options={TABS} value={tab} onChange={setTab} label="Run history view" />
+        <TabsBar
+          items={TABS.map(({ value, label, icon }) => ({
+            key: value,
+            label,
+            icon,
+            onPress: () => {
+              setTab(value);
+            },
+          }))}
+          active={tab}
+          label="Run history view"
+          compact
+        />
       )}
       {tab === 'why' && automationId !== null ? (
         <Decisions automationId={automationId} />

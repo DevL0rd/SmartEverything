@@ -3,39 +3,16 @@ import { View } from 'react-native';
 import { SHELLY_PAGES } from '@smarteverything/shelly';
 import type { ShellyDevice, ShellyZone } from '@smarteverything/shelly';
 import { href } from '../../app-shell/hrefs';
-import { Card } from '../../components/card';
 import { EmptyState } from '../../components/empty-state';
 import { ListRow } from '../../components/list-row';
 import { NavRow } from '../../components/rows';
 import { List } from '../../components/section';
-import { Skeleton } from '../../components/skeleton';
-import { Text } from '../../components/text';
 import { useDevices } from '../../store/selectors';
 import type { Device } from '../../store/state';
-import { LiveRoomMap } from './live-room-map';
 import { usePresence } from './presence-data';
 import { ReauthPrompt } from './reauth-prompt';
 import { lightText, zoneCount, zoneState } from './presence-model';
 import { lightWord, Swatch, useZoneColours, zoneName } from './room-map-legend';
-
-export function PresenceHero({ device }: { readonly device: Device }): ReactNode {
-  const stream = usePresence(device);
-  if (stream.state === 'ready')
-    return (
-      <LiveRoomMap
-        sensor={stream.value}
-        addZone={href.settings.device(device.id, 'presence-room')}
-      />
-    );
-  return (
-    <Card>
-      <Skeleton shape="block" className="h-60" />
-      <Text variant="callout" tone="variant">
-        {stream.state === 'invalid' ? stream.reason : 'Waiting for the sensor'}
-      </Text>
-    </Card>
-  );
-}
 
 function zoneSubtitle(sensor: ShellyDevice, zone: ShellyZone): string {
   const state = zoneState(sensor, zone);

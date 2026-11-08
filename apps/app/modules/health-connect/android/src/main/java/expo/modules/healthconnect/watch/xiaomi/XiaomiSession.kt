@@ -6,12 +6,16 @@ import expo.modules.healthconnect.watch.WatchAction
 import expo.modules.healthconnect.watch.WatchRequest
 import expo.modules.healthconnect.watch.WatchUserStore
 import expo.modules.healthconnect.watch.WatchWeather
+import expo.modules.healthconnect.watch.WatchWeatherRequests
+import expo.modules.healthconnect.watch.WatchHubData
 import expo.modules.healthconnect.watch.WatchCalendar
 import expo.modules.healthconnect.watch.WatchContext
 import expo.modules.healthconnect.watch.WatchPhase
 import expo.modules.healthconnect.watch.WatchSnapshots
 import java.security.MessageDigest
 import java.security.SecureRandom
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.android.asCoroutineDispatcher
 
 class XiaomiSession(
   private val watch: WatchContext,
@@ -20,6 +24,12 @@ class XiaomiSession(
   private val send: (XiaomiChannel, ByteArray) -> Unit
 ) : XiaomiSppSink {
   private val sink = watch.sink
+  private val weatherRequests = WatchWeatherRequests(
+    CoroutineScope(watch.handler.asCoroutineDispatcher()),
+    { WatchHubData.weather(watch.context) },
+    { sink.note("weather_not_sent", "the watch asked for weather, but none is available") },
+    ::sendWeather
+  )
   private var phoneNonce = ByteArray(NONCE_BYTES)
   private val ignoredKinds = mutableSetOf<Pair<Int, Int>>()
   var authenticated = false
@@ -83,6 +93,7 @@ class XiaomiSession(
   fun dispose() {
     watch.handler.removeCallbacks(authTimeout)
     sync.stop()
+    weatherRequests.cancel()
     authenticated = false
   }
 
@@ -92,7 +103,7 @@ class XiaomiSession(
       return false
     }
     if (action is WatchAction.Weather) {
-      return sendWeather(action.weather)
+      return weatherRequests.deliver(action.snapshot)
     }
     send(XiaomiChannel.COMMAND, XiaomiActions.encode(action, watch.context))
     sink.note("action_sent", action.label)
@@ -104,7 +115,7 @@ class XiaomiSession(
 
   private fun sendWeather(weather: WatchWeather): Boolean = try {
     XiaomiWeather.commands(weather).forEach { send(XiaomiChannel.COMMAND, it) }
-    sink.note("weather_sent", "${weather.place}: ${weather.days.size} days, ${weather.hours.size} hours")
+    sink.note("weather_sent", "published ${weather.publishedAt}: ${weather.days.size} days, ${weather.hours.size} hours")
     true
   } catch (unmapped: UnmappedWeather) {
     sink.note("weather_not_sent", unmapped.message.orEmpty())
@@ -191,7 +202,7 @@ class XiaomiSession(
     request(XiaomiCommands.TYPE_SYSTEM, XiaomiWorkouts.SYSTEM_WORKOUT_TYPES_GET)
     act(WatchAction.SetTime())
     WatchUserStore.read(watch.context)?.let { act(WatchAction.SetUser(it)) }
-    WatchWeather.latest(watch.context)?.let { sendWeather(it) }
+    weatherRequests.deliver(WatchHubData.cachedWeather(watch.context))
     WatchCalendar.latest(watch.context)?.let { act(WatchAction.Calendar(it)) }
     refresh()
     if (live) {
@@ -233,14 +244,8 @@ class XiaomiSession(
   }
 
   private fun weatherRequest(command: XiaomiCommand) {
-    if (command.subtype != XiaomiWeather.CONDITIONS_WANTED) {
-      return
-    }
-    val latest = WatchWeather.latest(watch.context)
-    if (latest == null) {
-      sink.note("weather_not_sent", "the watch asked for weather, but none has reached this phone yet")
-    } else {
-      sendWeather(latest)
+    if (authenticated && command.subtype == XiaomiWeather.CONDITIONS_WANTED) {
+      weatherRequests.request()
     }
   }
 

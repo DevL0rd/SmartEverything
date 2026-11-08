@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { actOnBottle, readBottleView } from '../../../api/bottles';
-import { BottomSheet } from '../../../components/bottom-sheet';
+import { Sheet } from '../../../components/sheet';
 import { Button } from '../../../components/button';
 import { notify } from '../../../components/toast-store';
 import { ActionRow, ValueRow } from '../../../components/rows';
@@ -187,7 +187,7 @@ export function CalibrationList({ view }: { readonly view: BottleSettingsView })
         />
       </Anchored>
       <CalibrationRows view={view} />
-      <BottomSheet
+      <Sheet
         open={open}
         onClose={() => {
           setOpen(false);
@@ -204,7 +204,7 @@ export function CalibrationList({ view }: { readonly view: BottleSettingsView })
             }}
           />
         ) : null}
-      </BottomSheet>
+      </Sheet>
     </List>
   );
 }

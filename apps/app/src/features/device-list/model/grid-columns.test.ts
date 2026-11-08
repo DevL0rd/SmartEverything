@@ -5,7 +5,10 @@ const WINDOWS = [
   { window: 390, gutter: 16, touch: 1, pointer: 1 },
   { window: 700, gutter: 24, touch: 2, pointer: 1 },
   { window: 1000, gutter: 24, touch: 2, pointer: 2 },
-  { window: 1700, gutter: 40, touch: 3, pointer: 3 },
+  { window: 1440, gutter: 40, touch: 3, pointer: 3 },
+  { window: 1700, gutter: 40, touch: 4, pointer: 4 },
+  { window: 3440, gutter: 40, touch: 7, pointer: 7 },
+  { window: 5120, gutter: 40, touch: 10, pointer: 10 },
 ] as const;
 
 describe('device grid columns', () => {
@@ -23,8 +26,8 @@ describe('device grid columns', () => {
     expect(tile).toBeLessThanOrEqual(520);
   });
 
-  it('never measures wider than the dashboard container', () => {
-    expect(contentWidth(2600, 40)).toBe(1440);
+  it('measures the available width between the gutters', () => {
+    expect(contentWidth(5120, 40)).toBe(5040);
     expect(contentWidth(390, 16)).toBe(358);
   });
 

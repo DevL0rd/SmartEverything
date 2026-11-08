@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import type { ScheduleRow } from '@smarteverything/domain';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -102,21 +102,31 @@ function useSleepSet(
   };
 }
 
+interface SleepTimerSheetProps {
+  readonly deviceId: string;
+  readonly name: string;
+  readonly open: boolean;
+  readonly opener?: RefObject<View | null> | undefined;
+  readonly onClose: () => void;
+}
+
 export function SleepTimerSheet({
   deviceId,
   name,
   open,
+  opener,
   onClose,
-}: {
-  readonly deviceId: string;
-  readonly name: string;
-  readonly open: boolean;
-  readonly onClose: () => void;
-}): ReactNode {
+}: SleepTimerSheetProps): ReactNode {
   const { busy, set } = useSleepSet(deviceId, name, onClose);
   const [choosingTime, setChoosingTime] = useState(false);
   return (
-    <Sheet open={open} onClose={onClose} title="Sleep timer" detents={['fit']}>
+    <Sheet
+      subpage={opener === undefined ? true : { opener }}
+      open={open}
+      onClose={onClose}
+      title="Sleep timer"
+      detents={['fit']}
+    >
       <View className="gap-4">
         <ActiveTimer deviceId={deviceId} />
         <Text variant="footnote" tone="variant">

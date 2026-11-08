@@ -46,7 +46,11 @@ export function useFocusedMessage({
   const handled = useRef<string | null>(null);
   const timeout = useTimeout();
   useEffect(() => {
-    if (focusId === null || handled.current === focusId) {
+    if (focusId === null) {
+      handled.current = null;
+      return;
+    }
+    if (handled.current === focusId) {
       return;
     }
     const index = keys.indexOf(focusId);

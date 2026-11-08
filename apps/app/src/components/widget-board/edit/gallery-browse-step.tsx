@@ -4,8 +4,7 @@ import type { BoardClass, BoardWidget } from '@smarteverything/domain';
 import { EmptyState } from '../../empty-state';
 import { SearchField } from '../../search-field';
 import type { Cell } from '../board-geometry';
-import { usePickerState } from '../picker-source';
-import type { TargetRow } from '../types';
+import type { PickerState, TargetRow } from '../types';
 import {
   entrySize,
   galleryGroups,
@@ -19,6 +18,7 @@ import { GroupTitle, PreviewRow, usePreviewWidth } from './gallery-rows';
 export interface BrowseStepProps {
   readonly items: readonly GalleryItem[];
   readonly placed: readonly BoardWidget[];
+  readonly pickerState: PickerState;
   readonly board: BoardClass;
   readonly cell: Cell;
   readonly query: string;
@@ -55,14 +55,16 @@ function Preview({
 function Suggested({
   items,
   placed,
+  pickerState,
   board,
   cell,
   onAdd,
 }: Shared & {
   readonly items: readonly GalleryItem[];
   readonly placed: readonly BoardWidget[];
+  readonly pickerState: PickerState;
 }): ReactNode {
-  const suggestions = suggestionsOf(items, usePickerState(), placed);
+  const suggestions = suggestionsOf(items, pickerState, placed);
   if (suggestions.length === 0) {
     return null;
   }

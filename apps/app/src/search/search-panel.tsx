@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
+import { useIsFocused } from 'expo-router';
 import type { NavPinTarget } from '@smarteverything/domain';
 import { keyPressOf, type KeyPress } from '../design/keyboard';
 import { isNative, useIdiom } from '../design/platform';
@@ -6,11 +7,13 @@ import { useDebouncedValue } from '../design/use-debounced-value';
 import { useStableCallback } from '../design/use-stable-callback';
 import { inlineOf, useSearchActions, type SearchActions } from './actions';
 import { useSearchCatalogue, type SearchCatalogue } from './catalogue';
+import { DriveResults } from './drive-results';
 import { useResultNavigation, type ResultNavigation } from './navigation';
 import { useRecentSearches } from './recent';
 import type { SearchListModel } from './result-list';
 import { suggestionRows, treeRows, type Expansion, type SearchRow } from './result-rows';
 import type { ResultsLook } from './row-frame';
+import { handleSearchKey } from './search-keys';
 import { favouritesOf, roomsOf, triesOf } from './suggestions';
 import { treeOf } from './tree';
 
@@ -51,59 +54,22 @@ function activate(keys: Keys): boolean {
   }
 }
 
-function enter(press: KeyPress, keys: Keys): boolean {
-  if (press.command && keys.props.onSeeAll !== undefined) {
-    keys.props.onSeeAll();
-    return true;
-  }
-  return activate(keys);
-}
-
-function tab(keys: Keys): boolean {
+function runInline(keys: Keys): boolean {
   const row = keys.navigation.selected;
-  if (row?.kind !== 'node' || inlineOf(row.node, keys.catalogue) === null) {
+  if (
+    keys.props.pick !== undefined ||
+    row?.kind !== 'node' ||
+    inlineOf(row.node, keys.catalogue) === null
+  ) {
     return false;
   }
   keys.actions.inline(row.node);
   return true;
 }
 
-function move(press: KeyPress, keys: Keys): boolean {
-  switch (press.key) {
-    case 'ArrowDown':
-      keys.navigation.move(1);
-      return true;
-    case 'ArrowUp':
-      keys.navigation.move(-1);
-      return true;
-    case 'ArrowRight':
-      return keys.navigation.navigating && keys.navigation.right();
-    case 'ArrowLeft':
-      return keys.navigation.navigating && keys.navigation.left();
-    default:
-      return false;
-  }
-}
-
 function pinSelected(keys: Keys): boolean {
   const row = keys.navigation.selected;
   return row?.kind === 'node' && keys.actions.pin(row.node);
-}
-
-function handle(press: KeyPress, keys: Keys): boolean {
-  switch (press.key) {
-    case 'Enter':
-      return enter(press, keys);
-    case 'Tab':
-      return tab(keys);
-    case 'Escape':
-      keys.props.onEscape();
-      return true;
-    case 'p':
-      return press.command && pinSelected(keys);
-    default:
-      return move(press, keys);
-  }
 }
 
 function useCapturedKeys(active: boolean, handler: (press: KeyPress) => boolean): void {
@@ -112,7 +78,7 @@ function useCapturedKeys(active: boolean, handler: (press: KeyPress) => boolean)
       return undefined;
     }
     const listen = (event: KeyboardEvent): void => {
-      if (handler(keyPressOf(event))) {
+      if (!event.defaultPrevented && !event.isComposing && handler(keyPressOf(event))) {
         event.preventDefault();
       }
     };
@@ -121,6 +87,24 @@ function useCapturedKeys(active: boolean, handler: (press: KeyPress) => boolean)
       document.removeEventListener('keydown', listen, true);
     };
   }, [active, handler]);
+}
+
+function useSearchKeys(pointer: boolean, settled: boolean, keys: Keys): void {
+  const focused = useIsFocused();
+  const { navigation, props } = keys;
+  const handle = useStableCallback((press: KeyPress) =>
+    handleSearchKey(press, settled, {
+      open: () => activate(keys),
+      runInline: () => runInline(keys),
+      close: props.onEscape,
+      seeAll: props.onSeeAll,
+      pin: () => pinSelected(keys),
+      step: navigation.move,
+      right: () => navigation.navigating && navigation.right(),
+      left: () => navigation.navigating && navigation.left(),
+    }),
+  );
+  useCapturedKeys(pointer && focused, handle);
 }
 
 function useRowBuilder(
@@ -159,6 +143,7 @@ export function useSettledSearchPanel(
 ): {
   readonly model: SearchListModel;
   readonly submit: (() => void) | null;
+  readonly drive: ReactElement | null;
 } {
   const pointer = useIdiom() === 'pointer';
   const catalogue = useSearchCatalogue();
@@ -166,7 +151,8 @@ export function useSettledSearchPanel(
   const navigation = useResultNavigation(query, useRowBuilder(catalogue, query, recent));
   const actions = useSearchActions(catalogue, query, props.onDone, props.pick ?? null);
   const keys: Keys = { navigation, actions, catalogue, props };
-  useCapturedKeys(pointer, (press) => handle(press, keys));
+  const settled = query === props.query.trim();
+  useSearchKeys(pointer, settled, keys);
   const onOpen = useStableCallback(actions.open);
   const onToggle = useStableCallback(navigation.toggle);
   const onShowAll = useStableCallback(navigation.showAll);
@@ -187,9 +173,15 @@ export function useSettledSearchPanel(
     onClearRecent: clear,
   };
   const submit = (): void => {
-    activate(keys);
+    if (settled) {
+      activate(keys);
+    }
   };
-  return { model, submit: pointer ? null : submit };
+  const drive =
+    query === '' || props.pick !== undefined ? null : (
+      <DriveResults query={query} look={props.look} onDone={props.onDone} />
+    );
+  return { model, submit: pointer ? null : submit, drive };
 }
 
 export function useSearchPanel(props: SearchPanelProps): ReturnType<typeof useSettledSearchPanel> {

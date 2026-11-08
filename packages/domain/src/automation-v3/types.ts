@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CAPABILITY_KEY } from '../capabilities';
+import { DEVICE_FAMILIES } from '../presentation/types';
 import { IDENT } from './ident';
 
 export const REF_KINDS = [
@@ -27,6 +28,13 @@ const TEXT = z.string().min(1);
 
 const CHOICE_OPTION = z.strictObject({ id: TEXT, label: TEXT });
 
+export const ENTITY_TYPE_OF = z
+  .string()
+  .regex(
+    /^[a-z][a-z0-9-]*\.[a-z][a-z0-9_.-]*$/,
+    'an entity type is the plugin id and the entity id, such as discord.channel',
+  );
+
 const LEAF_TYPE = z.discriminatedUnion('t', [
   z.strictObject({ t: z.literal('boolean') }),
   z.strictObject({
@@ -46,7 +54,9 @@ const LEAF_TYPE = z.discriminatedUnion('t', [
     t: z.literal('ref'),
     of: REF_KIND,
     capabilities: z.array(CAPABILITY_KEY).optional(),
+    families: z.array(z.enum(DEVICE_FAMILIES)).optional(),
   }),
+  z.strictObject({ t: z.literal('entity'), of: ENTITY_TYPE_OF }),
   z.strictObject({ t: z.literal('color') }),
   z.strictObject({ t: z.literal('error') }),
   z.strictObject({ t: z.literal('any') }),

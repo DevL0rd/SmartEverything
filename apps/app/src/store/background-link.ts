@@ -1,6 +1,7 @@
 import type { LiveNotificationNotice, PushCommandNotice } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { errorFields } from '../design/log-tally';
+import { onHubAnswered } from '../api/connection/hub-answers';
 import {
   TOKEN_WITHDRAWN,
   backoffOf,
@@ -24,6 +25,7 @@ export class BackgroundLink {
   private attempt = 0;
   private run = 0;
   private running = false;
+  private stopAnswers: (() => void) | null = null;
 
   constructor(
     private readonly connection: { readonly url: string; readonly token: string },
@@ -35,27 +37,31 @@ export class BackgroundLink {
     this.running = true;
     this.attempt = 0;
     log.info('background.starting');
+    this.stopAnswers = onHubAnswered(() => {
+      this.online();
+    });
     this.open();
   }
 
   stop(): void {
-    if (!this.running) return;
-    log.info('background.stopping');
+    if (this.running) log.info('background.stopping');
     this.running = false;
     this.run += 1;
+    this.stopAnswers?.();
+    this.stopAnswers = null;
     this.clearRetry();
-    this.stopSocket?.();
-    this.stopSocket = null;
+    this.closeSocket();
   }
 
   online(): void {
     if (!this.running || this.retry === null) return;
     log.info('background.online_hint', { attempt: this.attempt });
-    this.clearRetry();
     this.open();
   }
 
   private open(): void {
+    this.closeSocket();
+    this.clearRetry();
     this.run += 1;
     const run = this.run;
     try {
@@ -98,6 +104,8 @@ export class BackgroundLink {
     log.info('background.closed', { code, reason });
     if (code === TOKEN_WITHDRAWN) {
       this.running = false;
+      this.stopAnswers?.();
+      this.stopAnswers = null;
       this.ports.refused();
       return;
     }
@@ -105,6 +113,7 @@ export class BackgroundLink {
   }
 
   private scheduleRetry(): void {
+    this.clearRetry();
     const wait = backoffOf(this.attempt);
     this.attempt += 1;
     log.info('background.retry_scheduled', { inMs: wait });
@@ -112,6 +121,12 @@ export class BackgroundLink {
       this.retry = null;
       this.open();
     }, wait);
+  }
+
+  private closeSocket(): void {
+    const stop = this.stopSocket;
+    this.stopSocket = null;
+    stop?.();
   }
 
   private clearRetry(): void {

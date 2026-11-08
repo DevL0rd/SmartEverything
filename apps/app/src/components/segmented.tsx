@@ -7,6 +7,8 @@ import { Icon, type IconName } from './icon';
 import { Interactive } from './interactive';
 import { Text } from './text';
 
+export type ControlSize = 'touch' | 'control';
+
 export interface SegmentedOption<T extends string> {
   readonly value: T;
   readonly label: string;
@@ -21,13 +23,33 @@ export interface SegmentedProps<T extends string> {
   readonly label: string;
   readonly disabled?: boolean;
   readonly fill?: boolean;
+  readonly compact?: boolean;
+  readonly size?: ControlSize;
 }
 
-function segmentClass(pointer: boolean, selected: boolean, fill: boolean): string {
+function touchPadding(compact: boolean): string {
+  return compact ? 'h-12 rounded-full px-2' : 'h-12 rounded-full px-2 medium:px-4';
+}
+
+function pointerHeight(size: ControlSize): string {
+  return size === 'control' ? 'h-control-h' : 'h-8';
+}
+
+interface SegmentLook {
+  readonly fill: boolean;
+  readonly compact: boolean;
+  readonly size: ControlSize;
+}
+
+function segmentClass(
+  pointer: boolean,
+  selected: boolean,
+  { fill, compact, size }: SegmentLook,
+): string {
   return cn(
     'min-w-0 shrink flex-row items-center justify-center gap-1.5',
-    fill && 'flex-1',
-    pointer ? 'h-8 rounded-xs px-3' : 'h-12 rounded-full px-2 medium:px-4',
+    fill && 'flex-auto',
+    pointer ? cn(pointerHeight(size), 'rounded-xs px-3') : touchPadding(compact),
     selected ? 'border border-primary bg-primary-container' : 'border border-transparent',
   );
 }
@@ -36,15 +58,17 @@ function SegmentIcon<T extends string>({
   option,
   selected,
   pointer,
+  compact,
 }: {
   readonly option: SegmentedOption<T>;
   readonly selected: boolean;
   readonly pointer: boolean;
+  readonly compact: boolean;
 }): ReactNode {
   if (option.icon !== undefined) {
     return <Icon name={option.icon} size={16} tone={selected ? 'primary' : 'variant'} />;
   }
-  return selected && !pointer ? (
+  return selected && !pointer && !compact ? (
     <View className="hidden medium:flex">
       <Icon name="check" size={16} tone="primary" />
     </View>
@@ -57,6 +81,8 @@ function Segment<T extends string>({
   disabled,
   pointer,
   fill,
+  compact,
+  size,
   onChange,
 }: {
   readonly option: SegmentedOption<T>;
@@ -64,6 +90,8 @@ function Segment<T extends string>({
   readonly disabled: boolean;
   readonly pointer: boolean;
   readonly fill: boolean;
+  readonly compact: boolean;
+  readonly size: ControlSize;
   readonly onChange: (value: T) => void;
 }): ReactNode {
   return (
@@ -71,6 +99,7 @@ function Segment<T extends string>({
       role="radio"
       label={option.spoken ?? option.label}
       selected={selected}
+      checked={selected}
       disabled={disabled}
       onPress={() => {
         if (!selected) {
@@ -78,10 +107,10 @@ function Segment<T extends string>({
           onChange(option.value);
         }
       }}
-      className={segmentClass(pointer, selected, fill)}
+      className={segmentClass(pointer, selected, { fill, compact, size })}
       layerClassName={pointer ? 'rounded-xs' : 'rounded-full'}
     >
-      <SegmentIcon option={option} selected={selected} pointer={pointer} />
+      <SegmentIcon option={option} selected={selected} pointer={pointer} compact={compact} />
       <Text variant="label" tone="default" numberOfLines={1}>
         {option.label}
       </Text>
@@ -96,6 +125,8 @@ export function Segmented<T extends string>({
   label,
   disabled = false,
   fill = false,
+  compact = false,
+  size = 'touch',
 }: SegmentedProps<T>): ReactNode {
   const pointer = useIdiom() === 'pointer';
   return (
@@ -116,6 +147,8 @@ export function Segmented<T extends string>({
           disabled={disabled}
           pointer={pointer}
           fill={fill}
+          compact={compact}
+          size={size}
           onChange={onChange}
         />
       ))}

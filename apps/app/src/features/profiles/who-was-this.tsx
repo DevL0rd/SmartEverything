@@ -15,6 +15,8 @@ import { usePendingReadings, useProfiles, type WeighedReading } from '../../stor
 import { useSettings } from '../../store/selectors';
 import { ProfileAvatar } from './profile-avatar';
 import { useMutationState } from '../../store/mutation';
+import { useForeground } from '../../design/animation-gate';
+import { settleWeighIn, useAskedWeighIn, weighInToAsk } from './weigh-in-request';
 
 function PersonChoice({
   profile,
@@ -118,9 +120,11 @@ function ReadingSheet({
 
 export function WhoWasThisHost(): ReactNode {
   const now = useMinute();
+  const foreground = useForeground();
+  const asked = useAskedWeighIn();
   const [dismissed, setDismissed] = useState<readonly string[]>([]);
-  const reading = usePendingReadings(now).find((item) => !dismissed.includes(item.id));
-  if (reading === undefined) {
+  const reading = weighInToAsk(usePendingReadings(now), asked, dismissed);
+  if (reading === undefined || !foreground) {
     return null;
   }
   return (
@@ -128,6 +132,7 @@ export function WhoWasThisHost(): ReactNode {
       key={reading.id}
       reading={reading}
       onClose={() => {
+        settleWeighIn(reading.id);
         setDismissed([...dismissed, reading.id]);
       }}
     />

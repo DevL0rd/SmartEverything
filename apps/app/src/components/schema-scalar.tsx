@@ -78,6 +78,7 @@ export function Scalar(props: ScalarProps): ReactNode {
         onChange={change}
       />
     );
-  if (type === 'null') return <Text tone="variant">Reset this flag to the runtime default.</Text>;
+  if (type === 'null')
+    return <Text tone="variant">Clears this flag so the runtime uses its own setting.</Text>;
   return <TextValue {...props} />;
 }

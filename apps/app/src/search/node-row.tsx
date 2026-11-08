@@ -29,6 +29,7 @@ interface NodeRowProps {
   readonly parent: string | null;
   readonly expandable: boolean;
   readonly expanded: boolean;
+  readonly wrapTitle: boolean;
   readonly picking: boolean;
   readonly catalogue: SearchCatalogue;
   readonly onOpen: (node: ResultNode) => void;
@@ -120,6 +121,7 @@ function DeviceNode(props: NodeRowProps & { readonly named: NamedDevice }): Reac
       row={
         <ListRow
           title={props.named.name}
+          wrapTitle={props.wrapTitle}
           titleHighlight={props.node.range}
           subtitle={subtitle}
           icon={props.catalogue.icons.get(props.node.key) ?? 'cpu'}
@@ -154,6 +156,7 @@ function EntryNode(
       row={
         <ListRow
           title={props.title}
+          wrapTitle={props.wrapTitle}
           titleHighlight={props.node.range}
           {...(detail === undefined ? {} : { subtitle: detail })}
           {...(icon === null ? {} : { icon })}
@@ -194,6 +197,7 @@ function DeviceChild(
       row={
         <ListRow
           title={props.item.phrase}
+          wrapTitle={props.wrapTitle}
           titleHighlight={props.node.range}
           {...(reason === null ? {} : { subtitle: reason })}
           disabled={reason !== null}

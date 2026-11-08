@@ -9,6 +9,7 @@ import {
 } from '@smarteverything/domain';
 import { ACTION_RULES, PROPERTY_RULES, candidateKeys } from './catalogue-rules';
 import { MiotSpecError } from './errors';
+import type { ActionInputShape } from './miot';
 import {
   describeColor,
   describeProperty,
@@ -47,6 +48,7 @@ export interface ActionBinding {
   readonly siid: number;
   readonly aiid: number;
   readonly name: string;
+  readonly inputShape: ActionInputShape;
   readonly inputs: readonly ActionInput[];
 }
 
@@ -168,7 +170,22 @@ function actionInputs(service: MiotService, action: MiotAction): ActionInput[] {
   );
 }
 
-function addAction(builder: Builder, service: MiotService, action: MiotAction): void {
+const TAGGED_INPUT_VENDOR = 'xiaomi-';
+const MODEL_SEGMENT = 5;
+
+export function inputShapeOf(deviceType: string): ActionInputShape {
+  const model = deviceType.split(':')[MODEL_SEGMENT] ?? '';
+  return deviceKindOf(deviceType) === 'vacuum' && model.startsWith(TAGGED_INPUT_VENDOR)
+    ? 'tagged'
+    : 'plain';
+}
+
+function addAction(
+  builder: Builder,
+  service: MiotService,
+  action: MiotAction,
+  inputShape: ActionInputShape,
+): void {
   const inputs = actionInputs(service, action);
   const candidates = candidateKeys(
     ACTION_RULES,
@@ -188,6 +205,7 @@ function addAction(builder: Builder, service: MiotService, action: MiotAction): 
     siid: service.iid,
     aiid: action.iid,
     name: nameOf(action.type),
+    inputShape,
     inputs,
   });
 }
@@ -203,22 +221,28 @@ function attempt(builder: Builder, subject: string, add: () => void): void {
   }
 }
 
-export function modelFromSpec(spec: MiotSpec): DeviceModel {
+export interface ModelOptions {
+  readonly absent?: (siid: number, piid: number) => boolean;
+}
+
+export function modelFromSpec(spec: MiotSpec, options: ModelOptions = {}): DeviceModel {
   const builder: Builder = {
     capabilities: [],
     bindings: new Map(),
     propertyKeys: new Map(),
     problems: [],
   };
+  const inputShape = inputShapeOf(spec.type);
   for (const service of spec.services) {
     for (const property of service.properties) {
+      if (options.absent?.(service.iid, property.iid) === true) continue;
       attempt(builder, property.type, () => {
         addProperty(builder, service, property);
       });
     }
     for (const action of service.actions) {
       attempt(builder, action.type, () => {
-        addAction(builder, service, action);
+        addAction(builder, service, action, inputShape);
       });
     }
   }

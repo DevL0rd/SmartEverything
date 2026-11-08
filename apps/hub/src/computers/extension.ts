@@ -1,3 +1,6 @@
+import { hostname, type as osType } from 'node:os';
+import { dirname, join } from 'node:path';
+import { serverRelayRoutes } from './server-relay';
 import type { ComputerLiveNotice } from '@smarteverything/domain';
 import { effectiveClientById } from '../server/person-access';
 import type { ExtensionContext, RunningExtension, ServerExtension } from '../extensions';
@@ -5,6 +8,7 @@ import { computerPolicyOf } from '../metrics/history-policy';
 import { wakeOnLan } from '../network/wake-on-lan';
 import { viewerOfClient } from './computer-access';
 import { ComputerDirectory } from './computer-directory';
+import { resetComputerPresence } from './computer-presence';
 import { commandOrigin, computerMacs } from './computer-records';
 import { computerSessionRoutes } from './computer-session-routes';
 import { computerRoutes } from './computer-routes';
@@ -14,6 +18,13 @@ import { ComputerDownloads } from './computer-downloads';
 import { computerDownloadRoute } from './file-download';
 import { computerDriver, type ComputerDriverOptions } from './computer-driver';
 import { computerMachineId } from '../node/identity';
+import type { HubLayout } from '../data-layout';
+
+const HUB_MACHINE_ID_NAME = 'hub-machine.id';
+
+function hubMachineIdFile(layout: Pick<HubLayout, 'system'>): string {
+  return join(dirname(layout.system.keys.secretKey), HUB_MACHINE_ID_NAME);
+}
 
 interface Wiring {
   readonly context: ExtensionContext;
@@ -61,7 +72,8 @@ function driverOptions({ context, directory, service, now }: Wiring): ComputerDr
     personOf: (deviceId) => store.computerNodes.personOf(deviceId),
     ears: context.computerEars,
     earHosts: context.computerEars,
-    hubComputerResolved: (deviceId): void => {
+    hub: { hostname: hostname(), osName: osType() },
+    bindHubDevice: (deviceId): void => {
       context.computerAi.bindLocalDevice(deviceId);
     },
     now,
@@ -95,7 +107,10 @@ function watchLive(wiring: Wiring): () => void {
 export function computersExtension(now: () => Date): ServerExtension {
   return async (context): Promise<RunningExtension> => {
     const { store } = context;
-    const directory = new ComputerDirectory(await computerMachineId(context.dataDirectory));
+    await resetComputerPresence(store, context.hub.setDeviceOnline);
+    const directory = new ComputerDirectory(
+      await computerMachineId(hubMachineIdFile(context.layout)),
+    );
     const service = new ComputerService({ store, directory, log: context.log });
     const wiring: Wiring = { context, directory, service, now };
     const driver = computerDriver(driverOptions(wiring));
@@ -115,7 +130,11 @@ export function computersExtension(now: () => Date): ServerExtension {
         ...computerSessionRoutes({ ...routes, now }),
         ...computerSystemRoutes({ ...routes, downloads, sources: context.hub.drivers.sources }),
       },
-      routes: [computerDownloadRoute({ store, directory }), downloads.route()],
+      routes: [
+        computerDownloadRoute({ store, directory }),
+        downloads.route(),
+        ...serverRelayRoutes(routes),
+      ],
       stop: (): Promise<void> => {
         detach();
         unwatch();

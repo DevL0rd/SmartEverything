@@ -12,7 +12,7 @@ import { VirtualList } from '../../../components/virtual-list';
 import { plural } from '../../../format/text';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
-import { chosenLabels, useChosenOptions } from '../data/option-queries';
+import { chosenLabels, pluginOptionFeed, useChosenOptions } from '../data/option-queries';
 import { savePlugin } from '../data/plugin-actions';
 import { useListEdit, type ListEdit } from '../data/use-list-edit';
 import { withToggled, without } from '../model/list-edits';
@@ -63,11 +63,12 @@ function ItemRow({
   const title = option?.label ?? item;
   const remove = <IconButton icon="trash" label={`Remove ${title}`} onPress={onRemove} />;
   if (known === null) {
-    return <ListRow title={item} trailing={remove} />;
+    return <ListRow title={item} wrapTitle trailing={remove} />;
   }
   return (
     <ListRow
       title={title}
+      wrapTitle
       {...subtitleOf(item, option)}
       leading={
         <OptionVisual option={option ?? { id: item, label: item, color: null, image: null }} />
@@ -164,16 +165,19 @@ function Items({
   readonly list: ListEdit;
 }): ReactNode {
   const { items } = list;
-  const known = chosenLabels(useChosenOptions(row, setting.picker ?? '', items));
+  const known = chosenLabels(
+    useChosenOptions(setting.picker === null ? null : pluginOptionFeed(row, setting.picker), items),
+  );
   const [query, setQuery] = useState('');
   const deferred = useDeferredValue(query).trim().toLowerCase();
   const shown = shownItems(items, known, deferred);
   if (items.length === 0) {
     return <EmptyList setting={setting} />;
   }
+  const title = shown.length === 0 ? null : plural(shown.length, 'item');
   return (
     <VirtualList
-      sections={[{ key: 'items', title: plural(shown.length, 'item'), data: shown }]}
+      sections={[{ key: 'items', title, data: shown }]}
       keyOf={(item) => item}
       renderItem={(item) => (
         <ItemRow
@@ -263,7 +267,7 @@ function PluginListPage({
       trail={[{ label: row.manifest.name, href: href.pluginSettings(row.id) }]}
       primaryAction={{ label: 'Add', icon: 'plus', onPress: add }}
     >
-      <View className="w-full max-w-reading flex-1 self-center">
+      <View className="w-full max-w-reading flex-1 self-start">
         <Items row={row} setting={setting} list={list} />
       </View>
       {sheets}

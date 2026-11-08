@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { AiChatRow, AiAgentRun } from '@smarteverything/domain';
 import type { ComputerRunnerDeps } from '../computer/ports';
 import type { ComputerEvent } from '../computer/provider-state';
-import { agentProjection } from '../../coordination/agent-projection';
+import { blankAgentRun } from '../../agent-runs/run-rows';
 import {
   CLAUDE_AGENT_TASK,
   CLAUDE_AGENT_ENVELOPE,
@@ -29,7 +29,7 @@ export function claudeAgents(
   if (!candidates.success) return;
   for (const task of candidates.data) {
     const base = {
-      ...agentProjection(
+      ...blankAgentRun(
         chat,
         'claude',
         JSON.stringify([task.task_id, task.run_id ?? null]),

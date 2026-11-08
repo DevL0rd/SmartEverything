@@ -1,14 +1,23 @@
+import type { ComponentProps, ReactNode } from 'react';
 import { MenuRows, Stage } from 'smarteverything-kit';
 
-const item = (label: string, icon: 'customize' | 'home' | 'close' | 'grid', extra = {}) => ({
-  kind: 'item' as const,
-  item: { label, icon, onPress: () => undefined, ...extra },
+type Entry = ComponentProps<typeof MenuRows>['entries'][number];
+type Item = Extract<Entry, { kind: 'item' }>['item'];
+
+const close = (): void => undefined;
+const item = (
+  label: string,
+  icon: NonNullable<Item['icon']>,
+  extra: Partial<Item> = {},
+): Entry => ({
+  kind: 'item',
+  item: { label, icon, onPress: close, ...extra },
 });
-const entries = [
+const entries: readonly Entry[] = [
   item('Rename', 'customize'),
   item('Move to room', 'home', { description: 'Living room' }),
   item('Copy device ID', 'grid', { shortcut: 'Ctrl+C' }),
-  { kind: 'divider' as const, key: 'd' },
+  { kind: 'divider', key: 'd' },
   item('Remove device', 'close', { destructive: true }),
 ];
 const box = {
@@ -18,24 +27,24 @@ const box = {
   border: '1px solid var(--color-outline-variant)',
   padding: '4px 0',
 };
-export const Popover = () => (
+export const Popover = (): ReactNode => (
   <Stage theme="dark" width={320}>
     <div style={box}>
-      <MenuRows entries={entries} close={() => undefined} layout="popover" />
+      <MenuRows entries={entries} close={close} layout="popover" />
     </div>
   </Stage>
 );
-export const Sheet = () => (
+export const Sheet = (): ReactNode => (
   <Stage theme="dark" width={360}>
     <div style={{ ...box, width: 340 }}>
-      <MenuRows entries={entries} close={() => undefined} layout="sheet" />
+      <MenuRows entries={entries} close={close} layout="compact" />
     </div>
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactNode => (
   <Stage theme="light" width={320}>
     <div style={box}>
-      <MenuRows entries={entries} close={() => undefined} layout="popover" />
+      <MenuRows entries={entries} close={close} layout="popover" />
     </div>
   </Stage>
 );

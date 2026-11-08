@@ -1,8 +1,6 @@
 package expo.modules.healthconnect.phone
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import expo.modules.healthconnect.NativeGuard
 
@@ -56,12 +54,3 @@ object PhoneNode {
   }
 }
 
-class PhoneBootReceiver : BroadcastReceiver() {
-  override fun onReceive(context: Context, intent: Intent) {
-    NativeGuard.run("PhoneBootReceiver") {
-      if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-        PhoneNode.watch(context)
-      }
-    }
-  }
-}

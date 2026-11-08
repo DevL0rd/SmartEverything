@@ -11,6 +11,7 @@ import { runScene } from './effects/scene';
 import type { CommandIssuer } from './issue-commands';
 import { TARGET_VALUE } from './world-v3/refs';
 import { effectFailure } from './effect-failure';
+import { modeOf } from './effects/action-mode';
 
 const TOGGLE_PARAMS = z.object({ target: TARGET_VALUE, control: z.string().min(1) });
 const SCENE_PARAMS = z.object({ scene: z.string().min(1) });
@@ -39,7 +40,7 @@ export function toggleHandler(toggler: Pick<DeviceToggler, 'toggle'>): EffectHan
     }
     try {
       const { values, sent, skipped, note } = await toggler.toggle(
-        { ...checked.data, at: stampOf(request.path) },
+        { ...checked.data, mode: modeOf(request), at: stampOf(request.path) },
         run,
       );
       const value = values[0]?.value;
@@ -61,7 +62,7 @@ export function toggleHandler(toggler: Pick<DeviceToggler, 'toggle'>): EffectHan
 
 export function sceneHandler(
   store: Pick<Store, 'scenes'>,
-  issuer: Pick<CommandIssuer, 'issue'>,
+  issuer: Pick<CommandIssuer, 'issue' | 'confirm'>,
 ): EffectHandler {
   return async (params, request, run) => {
     const checked = SCENE_PARAMS.safeParse(params);
@@ -74,6 +75,7 @@ export function sceneHandler(
         {
           sceneId: checked.data.scene,
           actions: sceneActions(store, checked.data.scene),
+          mode: modeOf(request),
           at: stampOf(request.path),
         },
         run,

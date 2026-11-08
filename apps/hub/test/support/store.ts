@@ -1,12 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { hubLayout, type HubLayout } from '../../src/data-layout';
 import { openStore, type Store } from '../../src/store/store';
 import { testLogger } from './logs';
 
 export interface TestStore {
   readonly store: Store;
   readonly directory: string;
+  readonly layout: HubLayout;
   readonly close: () => Promise<void>;
 }
 
@@ -23,6 +25,7 @@ export async function testStore(
   return {
     store,
     directory,
+    layout: hubLayout(directory, {}),
     close: async (): Promise<void> => {
       store.close();
       await rm(directory, { recursive: true, force: true });

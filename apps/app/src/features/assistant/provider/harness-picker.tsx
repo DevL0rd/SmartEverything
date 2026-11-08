@@ -100,7 +100,7 @@ function candidate(
   const engine = candidateEngine(route, model, context);
   const selected =
     previous === null
-      ? (props.picked?.engine === undefined || props.picked.engine.kind === 'openrouter') &&
+      ? props.picked?.engine === undefined &&
         props.picked?.model === model.id &&
         route.auth.provider === 'openrouter'
       : previous.model_route_id === route.id && previous.model === model.id;

@@ -200,6 +200,13 @@ describe('the Samsung TV adapter', () => {
     expect(tv.messages[3]).toMatchObject({
       params: { data: { action_type: 'NATIVE_LAUNCH', appId: '11101200001' } },
     });
+    const lookups = (): number =>
+      tv.messages.filter((message) => JSON.stringify(message).includes('ed.installedApp.get'))
+        .length;
+    const before = lookups();
+    await adapter.execute({ ...COMMAND, capability: 'app_launch', value: 'Netflix' });
+    await adapter.execute({ ...COMMAND, capability: 'app_launch', value: 'Netflix' });
+    expect(lookups()).toBe(before);
     await expect(
       adapter.execute({ ...COMMAND, capability: 'app_launch', value: 'Plex' }),
     ).rejects.toThrow(
@@ -248,6 +255,8 @@ describe('the Samsung TV adapter', () => {
     await expect(
       adapter.execute({ ...COMMAND, capability: 'power', value: true }),
     ).resolves.toBeNull();
+    expect(tv.packets).toHaveLength(1);
+    await until(() => states.length === 2);
     expect(tv.sleeps).toEqual([1000]);
     expect([...(tv.packets[0] ?? [])].slice(0, 12)).toEqual([
       255, 255, 255, 255, 255, 255, 0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6,
@@ -258,15 +267,18 @@ describe('the Samsung TV adapter', () => {
     await stop();
   });
 
-  it('resends the packets inside the wake budget and says so when the TV does not wake up', async () => {
+  it('resends the packets inside the wake budget and logs it when the TV does not wake up', async () => {
     tv.power = 'off';
     tv.wakesOnPacket = false;
     const adapter = await createSamsungTvModule(tv.io).start(ACCOUNT, record.context);
-    await expect(adapter.execute({ ...COMMAND, capability: 'power', value: true })).rejects.toThrow(
-      new TvDidNotWakeError('tv.test'),
-    );
+    await expect(
+      adapter.execute({ ...COMMAND, capability: 'power', value: true }),
+    ).resolves.toBeNull();
+    await until(() => tv.sleeps.length === WAKE_BOOT_MS / 1000);
     expect(tv.packets).toHaveLength(1 + WAKE_RESENDS_MS.length);
     expect(tv.sleeps).toEqual(Array.from({ length: WAKE_BOOT_MS / 1000 }, () => 1000));
+    await until(() => record.logs.some((entry) => entry.event === 'television.did_not_wake'));
+    expect(JSON.stringify(record.logs)).toContain(new TvDidNotWakeError('tv.test').message);
   });
 
   it('follows the TV into standby and back, closing and reopening the socket', async () => {

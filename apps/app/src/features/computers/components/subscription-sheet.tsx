@@ -69,7 +69,10 @@ function Enrollment(props: Props): ReactNode {
         {state.error === null ? null : <Text tone="critical">{state.error}</Text>}
       </View>
       <Text variant="footnote" tone="variant">
-        Uses your plan only, never pay-as-you-go. Pick this computer with Switch machine to use it.
+        {props.provider === 'chatgpt-codex'
+          ? 'Uses your signed-in Codex account and checks usage availability before each request.'
+          : 'Uses your plan only, never pay-as-you-go.'}{' '}
+        Pick this computer with Switch machine to use it.
       </Text>
     </View>
   );

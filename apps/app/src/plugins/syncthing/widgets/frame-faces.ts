@@ -1,27 +1,5 @@
-import type {
-  BoardClass,
-  FrameClass,
-  WidgetFrameBox,
-  WidgetSize,
-} from '../../../components/widget-board';
-
-export type SyncFace = 'tile' | 'compact' | 'rows' | 'wide' | 'columns';
-
-export function syncFaceOf(cls: FrameClass): SyncFace {
-  switch (cls) {
-    case 's':
-      return 'tile';
-    case 'xs':
-    case 'm':
-      return 'compact';
-    case 'l':
-      return 'rows';
-    case 'w':
-      return 'wide';
-    case 'xl':
-      return 'columns';
-  }
-}
+import type { BoardClass, WidgetSize } from '../../../components/widget-board';
+import { TYPE_SCALE, type Idiom } from '../../../design/tokens';
 
 export const SYNC_WIDGET_SIZES: Readonly<Record<BoardClass, readonly WidgetSize[]>> = {
   compact: ['M', 'XL'],
@@ -29,18 +7,19 @@ export const SYNC_WIDGET_SIZES: Readonly<Record<BoardClass, readonly WidgetSize[
   expanded: ['M', 'W', 'XL'],
 };
 
-const HEADER_TOUCH = 40;
-const HEADER_POINTER = 32;
-const BODY_GAP = 12;
 const CHIP_CHROME = 46;
 const CHAR_WIDTH = 6.5;
 const CHIP_MAX = 150;
 const CHIP_GAP = 6;
 const MORE_RESERVE = 28;
+const CHIP_ROW = 24;
+const COMPACT_GAP = 6;
 
-export function bodyHeightOf(frame: WidgetFrameBox): number {
-  const header = frame.idiom === 'touch' ? HEADER_TOUCH : HEADER_POINTER;
-  return Math.max(0, frame.height - header - BODY_GAP);
+export function devicesLineFits(room: number, idiom: Idiom, stale: boolean): boolean {
+  const type = TYPE_SCALE[idiom];
+  const lines = stale ? 2 : 1;
+  const gaps = lines + 1;
+  return type.body[1] + CHIP_ROW + lines * type.footnote[1] + gaps * COMPACT_GAP <= room;
 }
 
 export function rowCapacity(body: number, reserved: number, rowHeight: number): number {

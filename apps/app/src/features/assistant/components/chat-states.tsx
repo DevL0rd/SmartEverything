@@ -1,36 +1,27 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
+import type { AiChatRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
-import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { entering, useMotion } from '../../../design/motion';
 import { useAvailability } from '../../../store/selectors';
 import { AssistantOrb } from '../call/orb';
+import { useChatWorking } from '../data/chat-store';
+import { setDraft } from '../data/drafts';
 import type { BlockedAreaStatus } from '../model/area-status';
-
-interface Suggestion {
-  readonly icon: IconName;
-  readonly text: string;
-}
-
-function useSuggestions(): readonly Suggestion[] {
-  const availability = useAvailability();
-  return [
-    availability.hasClimate
-      ? { icon: 'airVent', text: 'What’s the air like at home?' }
-      : { icon: 'home', text: 'What’s on at home right now?' },
-    availability.hasHealth
-      ? { icon: 'utensils', text: 'Log my dinner' }
-      : { icon: 'automations', text: 'Make a bedtime routine' },
-    { icon: 'bulb', text: 'Turn off the lights in 10 minutes' },
-    availability.hasCameras
-      ? { icon: 'cameras', text: 'Is anyone in the living room?' }
-      : { icon: 'sparkles', text: 'What can you do for me?' },
-  ];
-}
+import {
+  EMPTY_GREETING,
+  helperIntroOf,
+  introSuggestionsOf,
+  type HelperIntro,
+} from '../model/chat-intro';
+import { assistantParticipant, helperParticipant } from '../model/participant';
+import { INK_TEXT } from './chat-surface';
+import { SpeakerAvatar } from './speaker-avatar';
+import { Spinner } from './work-step-list';
 
 function Hero({
   title,
@@ -48,7 +39,7 @@ function Hero({
       className="w-full max-w-dialog items-center gap-4 self-center px-gutter"
     >
       <AssistantOrb state="idle" size={72} />
-      <View className="items-center gap-1">
+      <View className="max-w-dialog items-center gap-1">
         <Text variant="title-2" align="center">
           {title}
         </Text>
@@ -61,36 +52,112 @@ function Hero({
   );
 }
 
-export function EmptyChat({
-  name,
-  onSuggest,
+function IntroChip({
+  chatId,
+  text,
 }: {
-  readonly name: string;
-  readonly onSuggest: (text: string) => void;
+  readonly chatId: string;
+  readonly text: string;
 }): ReactNode {
-  const suggestions = useSuggestions();
   return (
-    <Hero
-      title={`What can ${name} do for you?`}
-      body="Ask about your home, your health or anything on your computer. Tap a suggestion to start from it."
+    <Interactive
+      label={text}
+      hint="Fills the message field without sending"
+      onPress={() => {
+        setDraft(chatId, text);
+      }}
+      className="h-7.5 max-w-full justify-center rounded-full border border-outline px-3"
+      layerClassName="rounded-full"
     >
-      <View className="w-full flex-row flex-wrap justify-center gap-2 pt-2">
-        {suggestions.map((suggestion) => (
-          <Interactive
-            key={suggestion.text}
-            label={suggestion.text}
-            onPress={() => {
-              onSuggest(suggestion.text);
-            }}
-            className="min-h-touch-min flex-row items-center gap-2 rounded-full border-hairline border-outline-variant bg-surface-2 px-4"
-            layerClassName="rounded-full"
-          >
-            <Icon name={suggestion.icon} size={16} tone="primary" />
-            <Text variant="callout">{suggestion.text}</Text>
-          </Interactive>
+      <Text variant="footnote" numberOfLines={1}>
+        {text}
+      </Text>
+    </Interactive>
+  );
+}
+
+function MainEmpty({
+  chatId,
+  name,
+  live,
+}: {
+  readonly chatId: string;
+  readonly name: string;
+  readonly live: boolean;
+}): ReactNode {
+  const motion = useMotion();
+  const suggestions = introSuggestionsOf(useAvailability());
+  return (
+    <Animated.View
+      {...entering(motion, FadeInUp.duration(300))}
+      className="w-full max-w-dialog-wide flex-1 justify-end self-center px-gutter"
+    >
+      <View className="mb-7 items-center gap-2.5">
+        <SpeakerAvatar participant={assistantParticipant(name)} live={live} size={40} />
+        <Text variant="body" align="center">
+          {EMPTY_GREETING}
+        </Text>
+      </View>
+      <View className="flex-row flex-wrap justify-center gap-1.5">
+        {suggestions.map((text) => (
+          <IntroChip key={text} chatId={chatId} text={text} />
         ))}
       </View>
-    </Hero>
+    </Animated.View>
+  );
+}
+
+function HelperEmpty({
+  chatId,
+  helper,
+  live,
+}: {
+  readonly chatId: string;
+  readonly helper: HelperIntro;
+  readonly live: boolean;
+}): ReactNode {
+  const motion = useMotion();
+  const participant = helperParticipant({ helper_chat_id: chatId, helper_name: helper.name });
+  return (
+    <Animated.View
+      {...entering(motion, FadeInUp.duration(300))}
+      className="w-full flex-1 items-center justify-center gap-2 px-gutter"
+    >
+      <SpeakerAvatar participant={participant} live={live} size={40} />
+      <Text variant="label" align="center" className={INK_TEXT[participant.ink]}>
+        {helper.name}
+      </Text>
+      {helper.goal === null ? null : (
+        <Text variant="footnote" tone="faint" align="center" className="max-w-70">
+          {helper.goal}
+        </Text>
+      )}
+    </Animated.View>
+  );
+}
+
+export function EmptyChat({
+  chat,
+  name,
+}: {
+  readonly chat: AiChatRow;
+  readonly name: string;
+}): ReactNode {
+  const live = useChatWorking(chat.id);
+  const helper = helperIntroOf(chat);
+  if (helper === null) return <MainEmpty chatId={chat.id} name={name} live={live} />;
+  return <HelperEmpty chatId={chat.id} helper={helper} live={live} />;
+}
+
+export function OlderHistoryLine({ loading }: { readonly loading: boolean }): ReactNode {
+  if (!loading) return null;
+  return (
+    <View
+      accessibilityLabel="Loading older messages"
+      className="my-2 h-5 flex-row items-center justify-center"
+    >
+      <Spinner tone="faint" />
+    </View>
   );
 }
 

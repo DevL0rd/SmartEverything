@@ -1,9 +1,11 @@
+import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { ALL_NODE_KINDS, API_ENDPOINTS } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { callTool, resultOf, rpc, structured } from '../mcp/client';
 import { useRig } from '../automations/support/use-rig';
 import { node, programOf, trigger } from '../support/automation-fixture';
+import { graphAutomation } from './support/graph-of';
 
 const rig = useRig();
 
@@ -20,6 +22,8 @@ const RUN = z.object({ result: z.object({ run: z.object({ status: z.string() }) 
 const RUN_LIST = z.object({ result: z.array(z.object({ id: z.string(), status: z.string() })) });
 const VALUE = z.object({ id: z.string(), revision: z.number() });
 const CREATED = z.object({ ok: z.boolean(), id: z.string(), revision: z.number() });
+const PATCHED = z.object({ ok: z.boolean(), revision: z.number() });
+const OUTLINE = z.object({ result: z.object({ outline: z.string() }) });
 const CATALOG = z.object({ result: z.object({ nodes: z.array(z.object({ kind: z.string() })) }) });
 
 const TOOLS = z.array(
@@ -37,11 +41,14 @@ const AUTOMATION_TOOLS: Readonly<Record<string, Kind>> = {
   automation_run: 'write',
   automation_runs_read: 'read',
   automation_stop: 'write',
+  automation_versions_edit: 'destructive',
+  automation_tests_edit: 'destructive',
+  custom_node_edit: 'write',
   value_read: 'read',
   value_edit: 'destructive',
   scene_find: 'read',
   scene_edit: 'destructive',
-  scene_run: 'destructive',
+  scene_run: 'write',
   schedule_find: 'read',
   schedule_edit: 'destructive',
 };
@@ -50,8 +57,12 @@ async function call(name: string, args: Record<string, unknown>): Promise<Record
   return structured(await callTool(rig().booted.base, await rig().mcp(), name, args));
 }
 
-function turnOn(): ReturnType<typeof programOf> {
-  return programOf(
+function graphOf(...args: Parameters<typeof programOf>): ReturnType<typeof graphAutomation> {
+  return graphAutomation(programOf(...args), STATIC_KIND_LOOKUP);
+}
+
+function turnOn(): ReturnType<typeof graphOf> {
+  return graphOf(
     [],
     [node('device.set', { target: { device: rig().ids.lamp }, control: 'power', to: true })],
   );
@@ -104,14 +115,71 @@ describe('MCP parity for automations', () => {
   });
 
   it('checks a program without saving it and refuses an unknown node kind', async () => {
-    const good = await call('automation_edit', { action: 'check', body: { definition: turnOn() } });
+    const good = await call('automation_edit', { action: 'check', definition: turnOn() });
     expect(good).toMatchObject({ ok: true });
+    const wired = turnOn();
     const bad = await call('automation_edit', {
       action: 'check',
-      body: { definition: programOf([], [node('no.such.kind')]) },
+      definition: {
+        ...wired,
+        nodes: wired.nodes.map((entry) =>
+          entry.kind === 'flow.start' ? entry : { ...entry, kind: 'no.such.kind' },
+        ),
+      },
     });
     expect(bad).toMatchObject({ ok: false });
     expect(await stored()).toHaveLength(0);
+  });
+
+  it('patches a stored graph with add after and reads it back as an outline', async () => {
+    const id = await create('Patched');
+    const lamp = rig().ids.lamp;
+    const before = OUTLINE.parse(
+      await call('automation_read', { view: 'outline', automationId: id }),
+    ).result.outline;
+    const first = /^(\w+) · Set /m.exec(before)?.[1];
+    expect(first).toBeDefined();
+    const patched = PATCHED.parse(
+      await call('automation_edit', {
+        action: 'patch',
+        automationId: id,
+        ops: [
+          {
+            op: 'add',
+            node: {
+              key: 'dimmed',
+              kind: 'device.set',
+              ports: {
+                target: { lit: { device: lamp } },
+                control: { lit: 'power' },
+                to: { lit: false },
+              },
+            },
+            after: { key: first, port: 'next' },
+          },
+        ],
+      }),
+    );
+    expect(patched).toMatchObject({ ok: true, revision: 2 });
+    const outline = OUTLINE.parse(
+      await call('automation_read', { view: 'outline', automationId: id }),
+    ).result.outline;
+    expect(outline).toContain(`${first ?? ''} · `);
+    expect(outline).toContain(`→ then dimmed`);
+    expect(outline.indexOf('dimmed ·')).toBeGreaterThan(outline.indexOf(`${first ?? ''} ·`));
+  });
+
+  it('refuses a patch operation that leaves the graph invalid and keeps the revision', async () => {
+    const id = await create('Refused');
+    const refused = await call('automation_edit', {
+      action: 'patch',
+      automationId: id,
+      ops: [{ op: 'connect', from: 'start', port: 'next', to: 'nowhere' }],
+    });
+    expect(refused).toMatchObject({ ok: false });
+    expect(JSON.stringify(refused)).toContain('nowhere');
+    const [row] = await stored();
+    expect(row).toBeDefined();
   });
 
   it('reads the node catalog before a program is written', async () => {
@@ -139,7 +207,7 @@ describe('MCP parity for automations', () => {
     const change = trigger('trigger.device', { device: lamp, control: 'power' });
     const chosen = node('logic.compare', { op: 'eq', b: button.key });
     const held = node('device.set', { target: { device: lamp }, control: 'power' });
-    const program = programOf(
+    const program = graphOf(
       [button, change],
       [
         { ...chosen, ports: { ...chosen.ports, a: { wire: { from: 'trigger', port: 'key' } } } },
@@ -183,7 +251,7 @@ describe('MCP parity for automations', () => {
     const change = trigger('trigger.device', { device: lamp, control: 'power' });
     const which = node('logic.trigger_is', { source: button.key });
     const held = node('device.set', { target: { device: lamp }, control: 'power' });
-    const program = programOf(
+    const program = graphOf(
       [button, change],
       [
         which,
@@ -204,7 +272,7 @@ describe('MCP parity for automations', () => {
   });
 
   it('starts a run that can be read and stopped', async () => {
-    const id = await create('Slow', programOf([], [node('flow.wait', { duration: 600_000 })]));
+    const id = await create('Slow', graphOf([], [node('flow.wait', { duration: 600_000 })]));
     const { id: runId } = STARTED.parse(await call('automation_run', { automationId: id }));
     const statusOf = async (): Promise<string> =>
       RUN.parse(await call('automation_runs_read', { view: 'run', runId })).result.run.status;
@@ -222,7 +290,8 @@ describe('MCP parity for automations', () => {
     await call('value_edit', {
       action: 'apply',
       valueId,
-      body: { kind: 'number', operation: { type: 'add', value: 3 } },
+      operation: 'add',
+      value: 3,
     });
     const [value] = await rig().request(API_ENDPOINTS.listAutomationValues);
     expect(value?.content).toMatchObject({ value: 7 });

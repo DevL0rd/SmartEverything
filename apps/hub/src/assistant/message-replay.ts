@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Logger } from '@smarteverything/logging';
 import {
   ApiError,
+  isHelperDialogueMessage,
   type AiChatRow,
   type AiEdit,
   type AiRetryFrom,
@@ -14,16 +15,19 @@ import {
 } from '../store/repositories/assistant-chat';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
-import { CONTINUE_NOTE } from './interruption';
+import { CONTINUE_NOTE, HUB_AUTHOR, HUB_ORIGIN } from './interruption';
 import type { AssistantDelivery } from './delivery';
+import type { ConversationLog } from './conversation-log';
 import type { AssistantFiles } from './files';
 import { ownedUploads, queueEvent } from './request-events';
+import { admitChatExecution } from './native-helpers';
 import { eventAuthority } from './turn-authority';
 
 const log = new Logger('hub.assistant-replay');
 
 export interface ReplayDeps {
   readonly store: Store;
+  readonly conversation: ConversationLog;
   readonly files: AssistantFiles;
   readonly delivery: () => AssistantDelivery;
 }
@@ -50,6 +54,7 @@ export class MessageReplay {
     from: AiRetryFrom,
     clientId?: string | null,
   ): Promise<AssistantMessageRow> {
+    admitChatExecution(chat);
     return this.replayed('retry', chat.id, messageId, () =>
       this.continued(chat, messageId, from, clientId),
     );
@@ -61,6 +66,7 @@ export class MessageReplay {
     body: AiEdit,
     clientId?: string | null,
   ): Promise<AssistantMessageRow> {
+    admitChatExecution(chat);
     return this.replayed('edit', chat.id, messageId, () =>
       this.reword(chat, messageId, body, clientId),
     );
@@ -104,13 +110,14 @@ export class MessageReplay {
       reason: null,
       reason_code: null,
     });
+    const note = this.deps.conversation.note(chat, HUB_AUTHOR, CONTINUE_NOTE, HUB_ORIGIN);
     queueEvent(
       this.deps.store,
       {
         id: randomUUID(),
         kind: event.kind,
         chat_id: chat.id,
-        message_id: null,
+        message_id: note.id,
         profile_id: event.profile_id,
         client_id: clientId === undefined ? event.client_id : clientId,
         text: CONTINUE_NOTE,
@@ -165,6 +172,11 @@ export class MessageReplay {
   ): { readonly message: AssistantMessageRow; readonly event: StoredEvent } {
     const { assistantChat: messages, assistantEvents: events } = this.deps.store;
     const message = messages.message(messageId);
+    if (message.chat_id === chat.id && isHelperDialogueMessage(message))
+      throw new ApiError(
+        'conflict',
+        'Send a new message from the parent chat to follow up with this helper.',
+      );
     const event = events.ofMessage(messageId);
     if (message.chat_id !== chat.id || message.role !== 'person' || event === undefined) {
       throw new ApiError(

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { View } from 'react-native';
 import { Card } from '../../../components/card';
 import { ErrorState } from '../../../components/error-state';
 import { List } from '../../../components/section';
@@ -36,15 +37,25 @@ function recordValue(record: PersonalRecord): string {
 function Records({ workouts }: { readonly workouts: readonly Workout[] }): ReactNode {
   const records = personalRecords(workouts);
   const activities = [...new Set(records.map((record) => record.activity))];
-  return activities.map((activity) => (
-    <Card key={activity} title={`${activity} bests`} icon="trophy">
-      <StatList
-        stats={records
-          .filter((record) => record.activity === activity)
-          .map((record) => ({ label: record.label, value: recordValue(record) }))}
-      />
-    </Card>
-  ));
+  return (
+    <View className="flex-row flex-wrap gap-3">
+      {activities.map((activity) => (
+        <Card
+          key={activity}
+          title={`${activity} bests`}
+          icon="trophy"
+          className="min-w-0 grow shrink basis-64"
+        >
+          <StatList
+            wrap
+            stats={records
+              .filter((record) => record.activity === activity)
+              .map((record) => ({ label: record.label, value: recordValue(record) }))}
+          />
+        </Card>
+      ))}
+    </View>
+  );
 }
 
 export function WorkoutsScreen(): ReactNode {
@@ -59,14 +70,14 @@ export function WorkoutsScreen(): ReactNode {
   return (
     <FitnessFrame
       tab="workouts"
-      width="detail"
+      width="dashboard"
       toolbar={<FitnessToolbar day={day} today={today} range={window.range} ranges={RANGES} />}
       primaryAction={workout.action}
     >
       {workout.sheet}
       {list.error === null ? null : <ErrorState error={list.error} />}
-      {list.loaded ? null : <Skeleton shape="block" className="h-72" />}
-      {list.loaded && list.workouts.length === 0 ? (
+      {!list.loaded && list.error === null ? <Skeleton shape="block" /> : null}
+      {list.loaded && list.error === null && list.workouts.length === 0 ? (
         <NoDataRow what="workouts in this period" lastDay={null} />
       ) : null}
       {list.workouts.length === 0 ? null : (

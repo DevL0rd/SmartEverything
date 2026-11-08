@@ -1,0 +1,375 @@
+{
+  "index": 7,
+  "slot": "current",
+  "name": "Fixture",
+  "fetchedAt": "2026-10-24T10:00:00.000Z",
+  "bounds": { "minX": 9.749, "minY": -8.799, "maxX": 18.549, "maxY": -0.9489999999999998 },
+  "rooms": [
+    {
+      "id": 3,
+      "name": "Fixture room 3",
+      "colour": 1,
+      "floor": 0,
+      "hidden": false,
+      "areaM2": 16.690000000000005,
+      "label": { "x": 12.664, "y": -7.228 },
+      "rings": [
+        [
+          { "x": 9.799, "y": -8.749 },
+          { "x": 14.999, "y": -8.749 },
+          { "x": 14.999, "y": -7.149 },
+          { "x": 15.999, "y": -7.149 },
+          { "x": 15.999, "y": -5.799 },
+          { "x": 9.799, "y": -5.799 }
+        ]
+      ],
+      "settings": { "suction": 2, "water": 1, "mode": 3, "repeats": 1 }
+    },
+    {
+      "id": 4,
+      "name": "Fixture room 4",
+      "colour": 3,
+      "floor": 0,
+      "hidden": false,
+      "areaM2": 5.347500000000001,
+      "label": { "x": 16.64, "y": -8.063 },
+      "rings": [
+        [
+          { "x": 15.049, "y": -8.749 },
+          { "x": 18.499, "y": -8.749 },
+          { "x": 18.499, "y": -7.199 },
+          { "x": 15.049, "y": -7.199 }
+        ]
+      ],
+      "settings": { "suction": 2, "water": 1, "mode": 3, "repeats": 1 }
+    },
+    {
+      "id": 5,
+      "name": "Fixture room 5",
+      "colour": 3,
+      "floor": 0,
+      "hidden": false,
+      "areaM2": 10.835000000000003,
+      "label": { "x": 16.163, "y": -4.243 },
+      "rings": [
+        [
+          { "x": 14.349, "y": -5.749 },
+          { "x": 15.999, "y": -5.749 },
+          { "x": 15.999, "y": -5.549 },
+          { "x": 18.499, "y": -5.549 },
+          { "x": 18.499, "y": -2.799 },
+          { "x": 14.899, "y": -2.799 },
+          { "x": 14.899, "y": -4.449 },
+          { "x": 14.349, "y": -4.449 }
+        ]
+      ],
+      "settings": { "suction": 2, "water": 1, "mode": 3, "repeats": 1 }
+    },
+    {
+      "id": 6,
+      "name": "Fixture room 6",
+      "colour": 4,
+      "floor": 0,
+      "hidden": false,
+      "areaM2": 3.7975000000000008,
+      "label": { "x": 17.403, "y": -6.462 },
+      "rings": [
+        [
+          { "x": 16.049, "y": -7.149 },
+          { "x": 18.499, "y": -7.149 },
+          { "x": 18.499, "y": -5.599 },
+          { "x": 16.049, "y": -5.599 }
+        ]
+      ],
+      "settings": { "suction": 2, "water": 1, "mode": 3, "repeats": 1 }
+    },
+    {
+      "id": 8,
+      "name": "Fixture room 8",
+      "colour": 4,
+      "floor": 0,
+      "hidden": false,
+      "areaM2": 19.625000000000004,
+      "label": { "x": 12.215, "y": -3.646 },
+      "rings": [
+        [
+          { "x": 9.799, "y": -5.749 },
+          { "x": 14.299, "y": -5.749 },
+          { "x": 14.299, "y": -4.499 },
+          { "x": 13.799, "y": -4.499 },
+          { "x": 13.799, "y": -0.999 },
+          { "x": 9.799, "y": -0.999 }
+        ]
+      ],
+      "settings": { "suction": 2, "water": 1, "mode": 3, "repeats": 1 }
+    }
+  ],
+  "walls": [
+    {
+      "from": { "x": 15, "y": -8.8 },
+      "to": { "x": 15, "y": -7.3 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 15, "y": -7.3 },
+      "to": { "x": 15, "y": -7.2 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 16, "y": -6.35 },
+      "to": { "x": 16, "y": -5.8 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 16, "y": -5.8 },
+      "to": { "x": 15.8, "y": -5.8 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 15.1, "y": -5.8 },
+      "to": { "x": 14.2, "y": -5.8 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 13.4, "y": -5.8 },
+      "to": { "x": 9.75, "y": -5.8 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 9.75, "y": -5.8 },
+      "to": { "x": 9.75, "y": -8.8 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 9.75, "y": -8.8 },
+      "to": { "x": 15, "y": -8.8 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 18.5, "y": -8.8 },
+      "to": { "x": 18.5, "y": -7.2 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 18.5, "y": -7.2 },
+      "to": { "x": 16, "y": -7.2 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 15, "y": -7.2 },
+      "to": { "x": 15, "y": -7.35 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 15, "y": -7.35 },
+      "to": { "x": 15, "y": -8.8 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 15, "y": -8.8 },
+      "to": { "x": 18.5, "y": -8.8 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 16, "y": -5.8 },
+      "to": { "x": 16, "y": -5.6 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 16, "y": -5.6 },
+      "to": { "x": 18.5, "y": -5.6 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 18.5, "y": -5.6 },
+      "to": { "x": 18.5, "y": -2.8 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 18.5, "y": -2.8 },
+      "to": { "x": 14.85, "y": -2.8 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 14.85, "y": -2.8 },
+      "to": { "x": 14.85, "y": -4.45 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 14.85, "y": -4.45 },
+      "to": { "x": 14.3, "y": -4.45 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 14.3, "y": -4.45 },
+      "to": { "x": 14.3, "y": -4.5 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 14.3, "y": -4.5 },
+      "to": { "x": 14.3, "y": -5.8 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 14.3, "y": -5.8 },
+      "to": { "x": 15.15, "y": -5.8 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 15.85, "y": -5.8 },
+      "to": { "x": 16, "y": -5.8 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 18.5, "y": -7.2 },
+      "to": { "x": 18.5, "y": -5.6 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 18.5, "y": -5.6 },
+      "to": { "x": 16, "y": -5.6 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 16, "y": -5.6 },
+      "to": { "x": 16, "y": -6.4 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 16, "y": -7.05 },
+      "to": { "x": 16, "y": -7.2 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 16, "y": -7.2 },
+      "to": { "x": 16.05, "y": -7.2 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 16.05, "y": -7.2 },
+      "to": { "x": 18.5, "y": -7.2 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 14.3, "y": -5.8 },
+      "to": { "x": 14.3, "y": -4.5 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 14.3, "y": -4.5 },
+      "to": { "x": 13.8, "y": -4.5 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 13.8, "y": -4.5 },
+      "to": { "x": 13.8, "y": -1 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 13.8, "y": -1 },
+      "to": { "x": 9.75, "y": -1 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 9.75, "y": -1 },
+      "to": { "x": 9.75, "y": -5.8 },
+      "kind": "exterior",
+      "height": null
+    },
+    {
+      "from": { "x": 9.75, "y": -5.8 },
+      "to": { "x": 13.45, "y": -5.8 },
+      "kind": "interior",
+      "height": null
+    },
+    {
+      "from": { "x": 14.25, "y": -5.8 },
+      "to": { "x": 14.3, "y": -5.8 },
+      "kind": "interior",
+      "height": null
+    }
+  ],
+  "doors": [
+    {
+      "from": { "x": 15, "y": -7.2 },
+      "to": { "x": 16, "y": -7.2 },
+      "kind": "opening",
+      "rooms": [3, 4]
+    },
+    {
+      "from": { "x": 16, "y": -7.2 },
+      "to": { "x": 16, "y": -7 },
+      "kind": "opening",
+      "rooms": [3, 6]
+    },
+    {
+      "from": { "x": 16, "y": -7 },
+      "to": { "x": 16, "y": -6.35 },
+      "kind": "opening",
+      "rooms": [3, 6]
+    },
+    {
+      "from": { "x": 15.8, "y": -5.8 },
+      "to": { "x": 15.1, "y": -5.8 },
+      "kind": "opening",
+      "rooms": [3, 5]
+    },
+    {
+      "from": { "x": 14.2, "y": -5.8 },
+      "to": { "x": 13.4, "y": -5.8 },
+      "kind": "opening",
+      "rooms": [3, 8]
+    }
+  ],
+  "carpets": [
+    {
+      "id": 0,
+      "kind": "ai",
+      "ring": [
+        { "x": 12.938, "y": -7.675 },
+        { "x": 12.938, "y": -8.697 },
+        { "x": 11.046, "y": -8.697 },
+        { "x": 11.046, "y": -7.675 }
+      ]
+    }
+  ],
+  "furniture": [],
+  "objects": [],
+  "zones": [],
+  "dock": { "x": 10.765, "y": -6.404, "yaw": -1.571 },
+  "robot": { "x": 11.072, "y": -8.022, "yaw": 3.12 },
+  "trail": []
+}

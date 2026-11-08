@@ -60,6 +60,7 @@ function refusal(host: string, message: TvMessage): Error | null {
 export class TvConnection {
   private readonly messages = new Listeners<TvMessage>();
   private readonly problems = new Listeners<Error>();
+  private apps: readonly InstalledApp[] | null = null;
 
   private constructor(
     private readonly socket: WebSocket,
@@ -71,6 +72,9 @@ export class TvConnection {
       if (message instanceof Error) {
         this.report(message);
         return;
+      }
+      if (message.kind === 'installed_apps') {
+        this.apps = message.apps;
       }
       this.messages.emit(message);
     });
@@ -181,6 +185,10 @@ export class TvConnection {
         reject(new TvConnectionError(this.host, missing));
       }, timeoutMs);
     });
+  }
+
+  get knownApps(): readonly InstalledApp[] | null {
+    return this.apps;
   }
 
   async installedApps(timeoutMs: number): Promise<readonly InstalledApp[]> {

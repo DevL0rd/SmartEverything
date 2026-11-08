@@ -40,7 +40,7 @@ export function claudeCapabilities(
   }
   if (settings.provider.enabled) {
     operations.push(...PROVIDER_OPERATIONS);
-    if (providerReason === null) operations.push('provider_start');
+    operations.push('provider_start');
   }
   return {
     runtime_version: SDK_VERSION,

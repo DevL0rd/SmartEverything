@@ -12,20 +12,26 @@ export interface Stat {
   readonly tone?: Tone;
 }
 
-export function StatList({ stats }: { readonly stats: readonly Stat[] }): ReactNode {
+export function StatList({
+  stats,
+  wrap = false,
+}: {
+  readonly stats: readonly Stat[];
+  readonly wrap?: boolean;
+}): ReactNode {
   const { split } = useSizeClass();
   return (
-    <View className={cn(split ? 'gap-3' : 'flex-row flex-wrap gap-x-6 gap-y-3')}>
+    <View className={cn(split && !wrap ? 'gap-3' : 'flex-row flex-wrap gap-x-4 gap-y-2')}>
       {stats.map((stat) => (
-        <View key={stat.label} className={cn('gap-0.5', !split && 'min-w-32')}>
-          <Text variant="footnote" tone="variant" numberOfLines={1}>
+        <View key={stat.label} className="max-w-full gap-0.5">
+          <Text variant="footnote" tone="variant">
             {stat.label}
           </Text>
-          <Text variant="body-strong" className="tabular" numberOfLines={1}>
+          <Text variant="body-strong" className="tabular">
             {stat.value}
           </Text>
           {stat.note === undefined ? null : (
-            <Text variant="footnote" tone={stat.tone ?? 'faint'} numberOfLines={1}>
+            <Text variant="footnote" tone={stat.tone ?? 'faint'}>
               {stat.note}
             </Text>
           )}

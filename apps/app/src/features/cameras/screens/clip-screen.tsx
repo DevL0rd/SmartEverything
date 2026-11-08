@@ -36,12 +36,14 @@ function Picture({
   const url = links.data?.[recording.id]?.url ?? null;
   if (links.error !== null) {
     return (
-      <ErrorState
-        error={links.error}
-        retry={() => {
-          background(links.refetch(), 'links.refetch_failed');
-        }}
-      />
+      <View className="w-full px-3">
+        <ErrorState
+          error={links.error}
+          retry={() => {
+            background(links.refetch(), 'links.refetch_failed');
+          }}
+        />
+      </View>
     );
   }
   if (url === null) {
@@ -106,16 +108,12 @@ function StepButton({
   );
 }
 
-function ClipActions({ recording }: { readonly recording: RecordingRow }): ReactNode {
+function ClipFileActions({ recording }: { readonly recording: RecordingRow }): ReactNode {
   const router = useRouter();
   const deleting = useDeleteWithUndo();
   const links = useRecordingLinks([recording.id], 'full');
-  const { older, newer } = useNeighbours(recording);
   return (
-    <View className="flex-row flex-wrap items-center gap-2">
-      <StepButton label="Newer" icon="chevronLeft" target={newer} />
-      <StepButton label="Older" icon="chevronRight" target={older} />
-      <View className="flex-1" />
+    <View className="flex-row items-center gap-2">
       <Button
         label="Save"
         icon="download"
@@ -145,6 +143,19 @@ function ClipActions({ recording }: { readonly recording: RecordingRow }): React
   );
 }
 
+function ClipActions({ recording }: { readonly recording: RecordingRow }): ReactNode {
+  const { older, newer } = useNeighbours(recording);
+  return (
+    <View className="flex-row flex-wrap items-center justify-between gap-2">
+      <View className="flex-row items-center gap-2">
+        <StepButton label="Newer" icon="chevronLeft" target={newer} />
+        <StepButton label="Older" icon="chevronRight" target={older} />
+      </View>
+      <ClipFileActions recording={recording} />
+    </View>
+  );
+}
+
 function ClipView({
   recording,
   cameraName,
@@ -167,7 +178,7 @@ function ClipView({
     recording.duration_ms === null ? null : duration(recording.duration_ms / 1000),
   ]);
   return (
-    <Screen header={<PageHeader title={what} subtitle={subtitle} />} maxWidth="detail">
+    <Screen header={<PageHeader title={what} subtitle={subtitle} wrapSubtitle />} maxWidth="detail">
       <View className="aspect-video w-full items-center justify-center overflow-hidden rounded-lg bg-black">
         <Picture recording={recording} label={`${what} from ${cameraName}`} />
       </View>

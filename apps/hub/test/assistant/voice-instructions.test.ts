@@ -9,25 +9,39 @@ import {
   type Persona,
   type VoiceNote,
 } from '../../src/assistant-voice/instructions';
+import type { PromptFacts, StableFacts } from '../../src/assistant/conversation/prompt';
 
-const PERSONA: Persona = {
-  names: ['Coordinator', 'Coco'],
-  home: 'Home',
-  style: undefined,
+const FACTS: StableFacts = {
+  name: 'Coordinator',
+  aliases: ['Coco'],
+  homeName: 'Home',
   instructions: '',
-  place: null,
-  unavailable: null,
   toolIndex: 'weather_read: The weather now.',
   catalogue: 'fan_boost(speed: integer): Boosts the fan.',
 };
 
-const NOTE: VoiceNote = {
-  person: 'Sam',
+const PERSONA: Persona = { facts: FACTS, place: null, unavailable: null };
+
+function styled(change: Partial<StableFacts>): Persona {
+  return { ...PERSONA, facts: { ...FACTS, ...change } };
+}
+
+const CONTEXT: PromptFacts = {
+  ...FACTS,
+  profileName: 'Sam',
   role: 'owner',
-  device: 'the phone',
-  screenRule: null,
   timeZone: 'Europe/Berlin',
   now: new Date('2026-10-10T08:00:00.000Z'),
+  boardTypes: [],
+  interruption: null,
+  sender: 'the phone',
+  chat: { id: 'chat-1', title: 'Kitchen', kind: 'chat' },
+};
+
+const NOTE: VoiceNote = {
+  context: CONTEXT,
+  screenRule: null,
+  memories: '',
   place: 'You are in the kitchen.',
   recentSpeech: 'Heard just before: is the fan on?',
   history: ['Summary of the earlier part: lights are off.', 'Sam: and the fan?'],
@@ -48,7 +62,14 @@ describe('voice instructions', () => {
 
   it('keep the person, time, place, recent speech and chat out of the held instruction', () => {
     const text = liveInstructions({ ...PERSONA, place: NOTE.place });
-    for (const volatile of ['Sam is', 'Local time', 'kitchen', 'is the fan on', 'and the fan?']) {
+    for (const volatile of [
+      'Sam',
+      'Local time',
+      'chat-1',
+      'kitchen',
+      'is the fan on',
+      'and the fan?',
+    ]) {
       expect(text).not.toContain(volatile);
     }
   });
@@ -57,8 +78,10 @@ describe('voice instructions', () => {
 describe('the conversation note', () => {
   it('carries the person, device, time, place, recent speech and the whole chat at a fresh start', () => {
     const text = conversationNote(NOTE);
-    expect(text).toContain('Sam is the owner of the home, talking through the phone.');
-    expect(text).toContain('Local time: Saturday, October 10, 2026 at 10:00 AM (Europe/Berlin)');
+    expect(text).toContain('Person: Sam, the owner of the home.');
+    expect(text).toContain('From: the phone.');
+    expect(text).toContain('Chat: "Kitchen" (chatId chat-1).');
+    expect(text).toContain('Local time: Saturday, 10 October 2026 at 10:00 (Europe/Berlin)');
     expect(text).toContain('You are in the kitchen.');
     expect(text).toContain('Heard just before: is the fan on?');
     expect(text).toContain('This chat so far (calls are speech-to-text):');
@@ -122,18 +145,20 @@ describe('the voice personality', () => {
   it('is warm, witty and playful when no personality is set', () => {
     expect(liveInstructions(PERSONA)).toContain('Warm, witty and playful');
     const empty = { ...DEFAULT_RESPONSE_STYLE, personality: 'custom' as const };
-    expect(liveInstructions({ ...PERSONA, style: empty })).toContain('Warm, witty and playful');
+    expect(liveInstructions(styled({ responseStyle: empty }))).toContain('Warm, witty and playful');
   });
 
   it('uses the chosen preset, custom text and owner instructions', () => {
     const wry = { ...DEFAULT_RESPONSE_STYLE, personality: 'wry' as const };
-    expect(liveInstructions({ ...PERSONA, style: wry })).toContain('Wry: dry, deadpan humour');
+    expect(liveInstructions(styled({ responseStyle: wry }))).toContain('Wry: dry, deadpan humour');
     const custom = {
       ...DEFAULT_RESPONSE_STYLE,
       personality: 'custom' as const,
       custom_personality: 'A cheeky pirate.',
     };
-    const text = liveInstructions({ ...PERSONA, style: custom, instructions: 'Call me captain.' });
+    const text = liveInstructions(
+      styled({ responseStyle: custom, instructions: 'Call me captain.' }),
+    );
     expect(text).toContain('A cheeky pirate.');
     expect(text).toContain('Owner instructions:\nCall me captain.');
   });

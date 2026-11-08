@@ -2,7 +2,7 @@ import type { BottleReadingRow, BottleSession } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { BottomSheet } from '../../../components/bottom-sheet';
+import { Sheet } from '../../../components/sheet';
 import { Card } from '../../../components/card';
 import { Sparkline } from '../../../components/charts';
 import { LoadedQuery } from '../../../components/loaded-query';
@@ -107,7 +107,7 @@ export function SessionRow({
         ) : null}
         <Facts card={card} />
       </Card>
-      <BottomSheet
+      <Sheet
         open={open}
         onClose={() => {
           setOpen(false);
@@ -118,7 +118,7 @@ export function SessionRow({
         scroll
       >
         <Readings deviceId={deviceId} session={session} />
-      </BottomSheet>
+      </Sheet>
     </>
   );
 }

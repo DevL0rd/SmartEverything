@@ -1,4 +1,4 @@
-import { automation } from './build';
+import { graphAutomation } from './graph-kit';
 import { eventTemplate, noticeTemplate } from './notice-template';
 import {
   choicesOf,
@@ -29,7 +29,7 @@ function brushLight(device: TemplateDevice, devices: readonly TemplateDevice[]):
       devices: [device.label],
       slots: [devicesSlot('lights', 'Lights', idsOf(lights), choicesOf(allLights(devices)))],
       make: (use, m) =>
-        automation({
+        graphAutomation({
           triggers: [
             stateSignal(m, 'signal1', {
               subject: device.id,

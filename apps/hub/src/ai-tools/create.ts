@@ -1,7 +1,7 @@
-import { join } from 'node:path';
+import type { HubLayout } from '../data-layout';
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
-import { COMMAND_WAIT_MS } from '../extensions/mcp/command-waiter';
+import { COMMAND_WAIT_MS } from '../commands/command-budgets';
 import type { RunningHub } from '../hub';
 import type { Operations } from '../server/operations';
 import { recordingPathIn } from '../services';
@@ -15,7 +15,7 @@ export interface ToolHubOptions {
   readonly store: Store;
   readonly hub: RunningHub;
   readonly operations: Operations;
-  readonly dataDirectory: string;
+  readonly layout: HubLayout;
   readonly clock: Clock;
   readonly mediaNotes: MediaNotes;
   readonly log: Logger;
@@ -45,10 +45,10 @@ export function createToolHub(options: ToolHubOptions): ToolHub {
           clock: options.clock,
           operations: options.operations,
           commandWaitMs: COMMAND_WAIT_MS,
-          recordingPath: recordingPathIn(options.dataDirectory),
+          recordingPath: recordingPathIn(options.layout),
           caller: null,
           actor: null,
-          assistantFiles: join(options.dataDirectory, 'assistant'),
+          layout: options.layout,
           mediaNotes: options.mediaNotes,
         },
         deviceName: (id): string | null => deviceLabel(store, id),

@@ -1,7 +1,8 @@
-import type { FileDiffLine } from './tool-file-diffs';
+import type { FileDiffLine } from '../../../components/diff-line';
 
 const PREVIEW_CONTEXT = 3;
 const EXPANDED_CONTEXT = 16;
+
 export interface RetainedDiffHunks {
   readonly changed: readonly FileDiffLine[];
   readonly context: readonly FileDiffLine[];

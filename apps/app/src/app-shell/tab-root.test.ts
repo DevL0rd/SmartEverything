@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { NavigationAction } from 'expo-router/react-navigation';
-import { popTabToRoot } from './tab-router';
+import type { NavigationAction, NavigationState } from 'expo-router/react-navigation';
+import { TabRouter } from '../../../../node_modules/expo-router/build/react-navigation/routers';
+import { reduce } from './router-kit.test-util';
+import { COMMIT_REPLACEMENT } from './tab-replacement';
+import { anchorTabRoots, popTabToRoot, shellTabBackBehavior } from './tab-router';
 
 function actionsFor(state: Parameters<typeof popTabToRoot>[0]['state']): NavigationAction[] {
   const sent: NavigationAction[] = [];
@@ -61,5 +64,88 @@ describe('pressing the shown tab again', () => {
       routes: [{ key: 's', name: 'fitness/(sections)', state: sections(0) }],
     };
     expect(actionsFor(stack)).toEqual([]);
+  });
+});
+
+const HISTORY_CONFIG = {
+  routeNames: ['(home)', '(devices)', '(automations)'],
+  routeParamList: {},
+  routeGetIdList: {},
+};
+const ACTIVITY_STACK: NavigationState = {
+  key: 'home-stack',
+  type: 'stack',
+  index: 1,
+  routeNames: ['index', 'activity'],
+  routes: [
+    { key: 'home', name: 'index' },
+    { key: 'activity', name: 'activity' },
+  ],
+  stale: false,
+};
+
+describe('cross-tab back history', () => {
+  it.each([
+    { native: false, history: 2, back: { name: '(home)', state: ACTIVITY_STACK } },
+    { native: true, history: 1, back: null },
+  ])('opens Automations with the native=$native back policy', ({ native, history, back }) => {
+    const router = TabRouter({
+      initialRouteName: '(home)',
+      backBehavior: shellTabBackBehavior(native),
+    });
+    const initial = router.getInitialState(HISTORY_CONFIG);
+    const activity = {
+      ...initial,
+      routes: initial.routes.map((route) =>
+        route.name === '(home)' ? { ...route, state: ACTIVITY_STACK } : route,
+      ),
+    };
+    const destination = router.getStateForAction(
+      activity,
+      { type: 'NAVIGATE', payload: { name: '(automations)' } },
+      HISTORY_CONFIG,
+    );
+    if (destination === null) throw new Error('Automations did not open');
+    const opened =
+      destination.stale === false
+        ? destination
+        : router.getRehydratedState(destination, HISTORY_CONFIG);
+    expect(opened.routes[opened.index]?.name).toBe('(automations)');
+    expect(opened.history).toHaveLength(history);
+
+    const returned = router.getStateForAction(opened, { type: 'GO_BACK' }, HISTORY_CONFIG);
+    if (back === null) {
+      expect(returned).toBeNull();
+    } else {
+      expect(returned?.routes[returned.index ?? 0]).toMatchObject(back);
+    }
+  });
+
+  it.each(['REPLACE', COMMIT_REPLACEMENT])('retains older browser visits after %s', (type) => {
+    const base = TabRouter({ backBehavior: shellTabBackBehavior(false) });
+    const router = { ...base, ...anchorTabRoots(base) };
+    const activity = router.getInitialState(HISTORY_CONFIG);
+    const next = reduce(
+      router,
+      activity,
+      { type: 'NAVIGATE', payload: { name: '(devices)' } },
+      HISTORY_CONFIG,
+    );
+    if (next === null) throw new Error('Devices did not open');
+    const devices = next.stale === false ? next : router.getRehydratedState(next, HISTORY_CONFIG);
+    const replaced = reduce(
+      router,
+      devices,
+      { type, payload: { name: '(automations)' } },
+      HISTORY_CONFIG,
+    );
+    if (replaced === null) throw new Error('Automations did not replace Devices');
+    const automations =
+      replaced.stale === false ? replaced : router.getRehydratedState(replaced, HISTORY_CONFIG);
+    expect(automations.routes[automations.index]?.name).toBe('(automations)');
+    expect(automations.history).toHaveLength(devices.history.length);
+
+    const returned = reduce(router, automations, { type: 'GO_BACK' }, HISTORY_CONFIG);
+    expect(returned?.routes[returned.index ?? 0]?.name).toBe('(home)');
   });
 });

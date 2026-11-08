@@ -1,42 +1,24 @@
 import { deviceFamily, type DeviceFamily } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
+import { use } from 'react';
 import { View } from 'react-native';
-import { Logger } from '@smarteverything/logging';
 import { cn } from '../../design/cn';
-import { LogTally } from '../../design/log-tally';
 import type { Device } from '../../store/state';
 import { useButtonVisualState, useHubVisualState } from './model/use-button-facts';
 import {
   useDeviceVisualState,
   useScaleVisualState,
+  useVacuumVisualState,
   useWatchVisualState,
 } from './model/use-visual-state';
-import { useOnScreenGate } from '../../design/visibility';
 import { usePrinterFacts } from './model/use-printer-live';
-import { VISUALS } from './registry';
+import { ModelFrame } from './model-frame';
+import { WidgetModelsContext } from './widget-models-context';
 import type { VisualSize, VisualState, VisualTone } from './types';
 import { FIXED_PX, SIZE_CLASS, useVisualPx, type VisualPx } from './visual-size';
 import { CameraMedia } from './visuals/camera-media';
 
-const log = new Logger('app.device-visuals');
-
-let mountedVisuals = 0;
-
-const tally = new LogTally(log, 'visual.summarised', 10_000, () => ({ mountedVisuals }));
-
-function useVisualTally(family: DeviceFamily): void {
-  useEffect(() => {
-    mountedVisuals += 1;
-    tally.bump(`mounted_${family}`);
-    return (): void => {
-      mountedVisuals -= 1;
-      tally.bump(`unmounted_${family}`);
-    };
-  }, [family]);
-}
-
-function toneOf(state: VisualState): VisualTone {
+export function toneOf(state: VisualState): VisualTone {
   if (!state.online) {
     return 'offline';
   }
@@ -45,9 +27,11 @@ function toneOf(state: VisualState): VisualTone {
 
 interface VisualViewProps {
   readonly family: DeviceFamily;
+  readonly device: Device | null;
   readonly state: VisualState;
   readonly size: VisualSize;
   readonly px?: VisualPx;
+  readonly interactive: boolean;
 }
 
 function HeroVisualView(props: VisualViewProps): ReactNode {
@@ -64,73 +48,93 @@ function VisualView(props: VisualViewProps): ReactNode {
   );
 }
 
+function EmptyVisual({ px }: { readonly px: VisualPx }): ReactNode {
+  return <View aria-hidden pointerEvents="none" className={cn('shrink-0', SIZE_CLASS[px])} />;
+}
+
 function SizedVisualView({
   family,
+  device,
   state,
   size,
   px,
+  interactive,
 }: VisualViewProps & { readonly px: VisualPx }): ReactNode {
-  const frame = useRef<View>(null);
-  const tone = toneOf(state);
-  const animated = tone === 'active' || (state.online && state.ambientLight === true);
-  const { moving, reduced, onLayout } = useOnScreenGate(frame, animated);
-  useVisualTally(family);
-  const Visual = VISUALS[family];
+  const models = use(WidgetModelsContext);
+  const plan = models === null ? null : models.planFor(device, family);
+  if (plan === null) return <EmptyVisual px={px} />;
   return (
-    <View
-      ref={frame}
-      onLayout={onLayout}
-      aria-hidden
-      pointerEvents="none"
-      className={cn('relative shrink-0', SIZE_CLASS[px], tone === 'offline' && 'opacity-60')}
-    >
-      <Visual state={state} size={size} px={px} tone={tone} moving={moving} reduced={reduced} />
-    </View>
+    <ModelFrame
+      family={family}
+      device={device}
+      state={state}
+      size={size}
+      px={px}
+      tone={toneOf(state)}
+      plan={plan}
+      interactive={interactive}
+    />
   );
 }
 
 interface HostProps {
   readonly device: Device;
   readonly size: VisualSize;
+  readonly interactive: boolean;
+  readonly px?: VisualPx;
 }
 
-function PlainVisual({ device, size }: HostProps): ReactNode {
+function PlainVisual(props: HostProps): ReactNode {
+  const { device } = props;
   return (
-    <VisualView family={deviceFamily(device)} state={useDeviceVisualState(device)} size={size} />
+    <VisualView {...props} family={deviceFamily(device)} state={useDeviceVisualState(device)} />
   );
 }
 
-function ScaleVisual({ device, size }: HostProps): ReactNode {
-  return <VisualView family="scale" state={useScaleVisualState(device)} size={size} />;
+function ScaleVisual(props: HostProps): ReactNode {
+  return <VisualView {...props} family="scale" state={useScaleVisualState(props.device)} />;
 }
 
-function WatchVisual({ device, size }: HostProps): ReactNode {
-  return <VisualView family="wearable" state={useWatchVisualState(device)} size={size} />;
+function WatchVisual(props: HostProps): ReactNode {
+  return <VisualView {...props} family="wearable" state={useWatchVisualState(props.device)} />;
 }
 
-function ButtonHost({ device, size }: HostProps): ReactNode {
-  return <VisualView family="button" state={useButtonVisualState(device)} size={size} />;
+function VacuumHost(props: HostProps): ReactNode {
+  return <VisualView {...props} family="vacuum" state={useVacuumVisualState(props.device)} />;
 }
 
-function PrinterHost({ device, size }: HostProps): ReactNode {
+function ButtonHost(props: HostProps): ReactNode {
+  return <VisualView {...props} family="button" state={useButtonVisualState(props.device)} />;
+}
+
+function PrinterHost(props: HostProps): ReactNode {
+  const { device } = props;
   const base = useDeviceVisualState(device);
   const printer = usePrinterFacts(device);
   const state: VisualState =
     printer === null ? base : { ...base, online: device.online, power: 'on', printer };
-  return <VisualView family="printer" state={state} size={size} />;
+  return <VisualView {...props} family="printer" state={state} />;
 }
 
-function HubHost({ device, size }: HostProps): ReactNode {
-  return <VisualView family="gateway" state={useHubVisualState(device)} size={size} />;
+function HubHost(props: HostProps): ReactNode {
+  return <VisualView {...props} family="gateway" state={useHubVisualState(props.device)} />;
+}
+
+function CameraHost(props: HostProps): ReactNode {
+  const { device, size } = props;
+  const models = use(WidgetModelsContext);
+  const modelled = !device.online && (models?.planFor(device, 'camera') ?? null) !== null;
+  return modelled ? <PlainVisual {...props} /> : <CameraMedia device={device} size={size} />;
 }
 
 const HOSTS: Partial<Readonly<Record<DeviceFamily, (props: HostProps) => ReactNode>>> = {
   scale: ScaleVisual,
   wearable: WatchVisual,
   button: ButtonHost,
+  vacuum: VacuumHost,
   gateway: HubHost,
   printer: PrinterHost,
-  camera: CameraMedia,
+  camera: CameraHost,
 };
 
 export function ownsVisualState(device: Device): boolean {
@@ -149,7 +153,14 @@ export function FamilyVisual({
   readonly px?: VisualPx;
 }): ReactNode {
   return (
-    <VisualView family={family} state={state} size={size} {...(px === undefined ? {} : { px })} />
+    <VisualView
+      family={family}
+      device={null}
+      state={state}
+      size={size}
+      interactive={false}
+      {...(px === undefined ? {} : { px })}
+    />
   );
 }
 
@@ -158,15 +169,36 @@ export interface DeviceVisualProps {
   readonly size: VisualSize;
   readonly state?: VisualState;
   readonly px?: VisualPx;
+  readonly interactive?: boolean;
 }
 
-export function DeviceVisual({ device, size, state, px }: DeviceVisualProps): ReactNode {
+export function DeviceVisual({
+  device,
+  size,
+  state,
+  px,
+  interactive = false,
+}: DeviceVisualProps): ReactNode {
   const family = deviceFamily(device);
   if (state !== undefined) {
     return (
-      <VisualView family={family} state={state} size={size} {...(px === undefined ? {} : { px })} />
+      <VisualView
+        family={family}
+        device={device}
+        state={state}
+        size={size}
+        interactive={interactive}
+        {...(px === undefined ? {} : { px })}
+      />
     );
   }
   const Host = HOSTS[family] ?? PlainVisual;
-  return <Host device={device} size={size} />;
+  return (
+    <Host
+      device={device}
+      size={size}
+      interactive={interactive}
+      {...(px === undefined ? {} : { px })}
+    />
+  );
 }

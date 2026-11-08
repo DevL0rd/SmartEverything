@@ -20,6 +20,7 @@ const RAINBOW: OpenRgbMode = { name: 'Rainbow', flagList: ['speed'], colors: [] 
 
 export function strip(overrides: Partial<OpenRgbController> = {}): OpenRgbController {
   return {
+    type: 4,
     name: 'Fake strip',
     vendor: 'Acme',
     serial: 'SERIAL-1',
@@ -75,6 +76,7 @@ export class FakeLink implements OpenRgbLink {
   private readonly updates = new Set<() => void>();
   private readonly closers = new Set<() => void>();
   private failing: Error | null = null;
+  private failingModes: Error | null = null;
 
   constructor(public controllerList: readonly OpenRgbController[]) {}
 
@@ -94,7 +96,7 @@ export class FakeLink implements OpenRgbLink {
 
   setMode(controller: number, mode: string, colours: readonly Rgb[] | null): Promise<void> {
     this.calls.push({ kind: 'mode', controller, mode, colours });
-    return Promise.resolve();
+    return this.failingModes === null ? Promise.resolve() : Promise.reject(this.failingModes);
   }
 
   profiles(): Promise<readonly string[]> {
@@ -136,6 +138,10 @@ export class FakeLink implements OpenRgbLink {
     for (const listener of this.updates) {
       listener();
     }
+  }
+
+  failModes(cause: Error): void {
+    this.failingModes = cause;
   }
 
   failReads(cause: Error): void {

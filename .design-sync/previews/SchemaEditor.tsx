@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactElement, type ComponentProps } from 'react';
 import { SchemaEditor, Stage } from 'smarteverything-kit';
 
 const schema = {
@@ -10,21 +10,21 @@ const schema = {
     mode: { enum: ['comfort', 'eco', 'away'] },
   },
 };
-function Demo() {
-  const [v, setV] = useState<Record<string, unknown>>({
+function Demo(): ReactElement {
+  const [v, setV] = useState<ComponentProps<typeof SchemaEditor>['value']>({
     name: 'Evening lights',
     enabled: true,
     brightness: 40,
     mode: 'eco',
   });
-  return <SchemaEditor schema={schema} value={v as never} change={setV as never} />;
+  return <SchemaEditor schema={schema} value={v} change={setV} />;
 }
-export const Editor = () => (
+export const Editor = (): ReactElement => (
   <Stage theme="dark" width={480}>
     <Demo />
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={480}>
     <Demo />
   </Stage>

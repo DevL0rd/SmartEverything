@@ -24,15 +24,15 @@ function Header({
   row,
 }: {
   readonly provider: Provider;
-  readonly row: ProviderLinkRow | null;
+  readonly row: ProviderLinkRow;
 }): ReactNode {
   const info = PROVIDER_INFO[provider];
-  const summary = row?.status === 'linked' ? linkSummary(row) : null;
+  const summary = row.status === 'linked' ? linkSummary(row) : null;
   return (
     <View className="flex-row items-center gap-4 px-1">
       <BrandMark brand={PROVIDER_BRAND[provider]} size={40} />
       <Text variant="body" tone={summary?.tone ?? 'variant'} className="min-w-0 flex-1">
-        {summary?.text ?? row?.account_label ?? info.summary}
+        {summary?.text ?? row.account_label ?? info.summary}
       </Text>
     </View>
   );
@@ -83,11 +83,11 @@ function Account({ provider }: { readonly provider: Provider }): ReactNode {
   const row = useProviderLink(provider);
   return (
     <SettingsFrame page="connections" title={PROVIDER_INFO[provider].name} detail>
-      <Header provider={provider} row={row} />
       {row === null || row.status === 'unlinked' ? (
         <NotConnected provider={provider} />
       ) : (
         <>
+          <Header provider={provider} row={row} />
           <StatusBanner provider={provider} row={row} />
           <AccountRows row={row} />
         </>

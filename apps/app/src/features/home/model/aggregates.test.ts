@@ -98,20 +98,21 @@ function referenceSecurity(state: StoreState): readonly SecurityLine[] {
     visible(state).flatMap((device) => {
       const { presentation } = deviceModelOf(device);
       const role = roles.find((candidate) => withRole(presentation, candidate) !== undefined);
-      const presented = role === undefined ? undefined : withRole(presentation, role);
-      const value =
-        presented === undefined
-          ? undefined
-          : state.deviceValues.get(device.id)?.[presented.key]?.value;
-      if (role === undefined || presented === undefined || typeof value !== 'boolean') return [];
-      const shown =
-        role === 'lock' ? (value ? 'Locked' : 'Unlocked') : presentValue(presented, value);
+      if (role === undefined) return [];
+      const presented = withRole(presentation, role);
+      if (presented === undefined) return [];
+      const value = state.deviceValues.get(device.id)?.[presented.key]?.value;
+      if (typeof value !== 'boolean') return [];
+      const { shown, alert } =
+        role === 'lock'
+          ? { shown: value ? 'Locked' : 'Unlocked', alert: !value }
+          : { shown: presentValue(presented, value), alert: false };
       return [
         {
           deviceId: device.id,
           name: device.label,
           state: device.online ? shown : 'Offline',
-          alert: device.online && role === 'lock' && !value,
+          alert: device.online && alert,
         },
       ];
     }),

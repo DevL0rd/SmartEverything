@@ -13,6 +13,7 @@
     "app-identity.json",
     "package.json",
     "assets/licences.json",
+    "assets/maps/countries-110m.json",
     "app.config.ts",
     "plugins/**/*.ts",
     "types/**/*.d.ts",
@@ -34,6 +35,9 @@
     },
     {
       "path": "../../packages/shelly"
+    },
+    {
+      "path": "../../packages/models"
     },
     {
       "path": "../hub"

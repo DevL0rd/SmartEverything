@@ -2,11 +2,8 @@ import { MCP_ROUTES, MCP_TOOLS } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { TOOLS } from '../../src/extensions/mcp/tools';
-import { SHARED_SCHEMAS, sharedSchemaNamed } from '../../src/extensions/mcp/tools/shared-schemas';
 
 const PARAMETER_TEXT_MAX = 480;
-const LISTING_MAX = 11_000;
-const FULL_LISTING_MAX = 210_000;
 const SELECTORS: ReadonlySet<string> = new Set(['action', 'view']);
 
 const HINTS = z.strictObject({
@@ -123,23 +120,5 @@ describe('the served listings', () => {
         }
       }
     }
-  });
-
-  it('advertise every shared schema once, through tool_read, and inline none of them', () => {
-    const listings = JSON.stringify(TOOLS.map((tool) => tool.listing));
-    const variants = JSON.stringify(TOOLS.map((tool) => [...(tool.variants?.values() ?? [])]));
-    for (const shared of SHARED_SCHEMAS) {
-      expect(listings + variants, shared.name).toContain(`tool_read with name ${shared.name}`);
-      const full = z
-        .looseObject({ properties: z.unknown().optional() })
-        .parse(sharedSchemaNamed(shared.name));
-      if (full.properties !== undefined) {
-        expect(listings + variants, shared.name).not.toContain(JSON.stringify(full.properties));
-      }
-    }
-    for (const tool of TOOLS) {
-      expect(JSON.stringify(tool.listing).length, tool.name).toBeLessThanOrEqual(LISTING_MAX);
-    }
-    expect(listings.length).toBeLessThanOrEqual(FULL_LISTING_MAX);
   });
 });

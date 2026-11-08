@@ -5,6 +5,28 @@ export interface ListEntry {
 
 export type HighlightStep = 1 | -1;
 
+type ListKey = Pick<
+  KeyboardEvent,
+  'defaultPrevented' | 'isComposing' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'
+>;
+
+const IME_KEY_CODE = 229;
+
+export function acceptsListKey(event: ListKey, capture: boolean): boolean {
+  if (event.defaultPrevented || event.isComposing) return false;
+  return !capture || !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
+}
+
+export function acceptsSearchNavigationKey(
+  event: ListKey & Pick<KeyboardEvent, 'key'> & { readonly keyCode?: number },
+): boolean {
+  return (
+    acceptsListKey(event, true) &&
+    event.keyCode !== IME_KEY_CODE &&
+    (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter')
+  );
+}
+
 function enabledIndexes(entries: readonly ListEntry[]): readonly number[] {
   return entries.flatMap((entry, index) => (entry.disabled === true ? [] : [index]));
 }

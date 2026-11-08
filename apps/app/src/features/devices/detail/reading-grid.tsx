@@ -29,7 +29,7 @@ export function ReadingGrid({ device }: { readonly device: Device }): ReactNode 
     return null;
   }
   return (
-    <Section title="Readings">
+    <Section title="Readings" className="w-full max-w-reading self-start">
       <Grid minItemWidth={156} maxColumns={4}>
         {readings.map((presented, position) =>
           trendable(presented, position) ? (

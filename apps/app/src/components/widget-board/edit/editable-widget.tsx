@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
 import { Pressable, View, type AccessibilityActionEvent } from 'react-native';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
-import Animated from 'react-native-reanimated';
+import Animated, { useAnimatedRef } from 'react-native-reanimated';
 import type { WidgetSize } from '@smarteverything/domain';
 import { useAnimationGate } from '../../../design/animation-gate';
 import { cn } from '../../../design/cn';
 import type { Cell, Frame } from '../board-geometry';
 import { frameBoxOf } from '../frame-class';
-import { renderWidget } from '../widget-scope';
+import { renderWidget, WidgetMotionFrameContext } from '../widget-scope';
 import type { BoardWidget, WidgetDefinition } from '../types';
 import type { DragState } from './drag-state';
 import { SIZE_LABELS, type SizeOption } from './edit-model';
@@ -145,7 +145,8 @@ export function EditableWidget(props: EditableWidgetProps): ReactNode {
   const motion = useWidgetMotion(frame, reduced);
   const jiggling = useAnimationGate(!reduced && !props.resizing, true).moving;
   const rotation = useJiggle(jiggling, order);
-  const style = useWidgetStyle(widget.key, motion, drag, rotation);
+  const { style, top } = useWidgetStyle(widget.key, motion, drag, rotation);
+  const ref = useAnimatedRef<View>();
   const move = useMoveGesture({
     key: widget.key,
     touch,
@@ -165,10 +166,12 @@ export function EditableWidget(props: EditableWidgetProps): ReactNode {
     onEnd: handlers.resizeEnd,
   });
   return (
-    <Animated.View style={style} className="absolute">
+    <Animated.View ref={ref} style={style} className="absolute" collapsable={false}>
       <GestureDetector gesture={move}>
         <View className="h-full">
-          <Body {...props} />
+          <WidgetMotionFrameContext value={{ ref, top }}>
+            <Body {...props} />
+          </WidgetMotionFrameContext>
         </View>
       </GestureDetector>
       <Chrome {...props} resize={resize} />

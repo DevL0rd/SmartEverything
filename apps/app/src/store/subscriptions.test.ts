@@ -84,7 +84,7 @@ describe('changedSlices', () => {
     };
     const next = { ...state, turns: { t1: turn(CHAT_A, 't1', 'ab') } };
     expect([...changedSlices(state, next)].sort()).toStrictEqual(
-      [`turns/${CHAT_A}`, `turns/${CHAT_B}`, 'turns', 'turnWork'].sort(),
+      [`turns/${CHAT_A}`, `turns/${CHAT_B}`, 'turnWork'].sort(),
     );
   });
 
@@ -228,6 +228,7 @@ function message(id: string, chat: string): AssistantMessageRow {
     author: 'x',
     text: 'hello',
     attachments: [],
+    quote: null,
     state: 'answered',
     reason: null,
     reason_code: null,

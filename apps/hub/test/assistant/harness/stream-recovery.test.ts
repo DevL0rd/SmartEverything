@@ -6,7 +6,8 @@ import {
   type DshSessionEvent,
 } from '@smarteverything/domain';
 import { ConversationLog } from '../../../src/assistant/conversation-log';
-import { reconcileNativeReplies } from '../../../src/assistant/engines/dsh/reconciliation';
+import { reconcileNativeReplies } from '../../../src/assistant/engines/dsh/projector-replay';
+import { projectorOf } from './support/projector';
 import { useRig, type Rig } from './support/rig';
 import { addMessage } from './support/native-conversation';
 
@@ -23,7 +24,7 @@ function text(
   return { id: randomUUID(), role, source, content: [{ type: 'text', text: value }] };
 }
 
-function logOf(delivery: string, answered: string | null): DshSessionEvent[] {
+function logOf(delivery: string, answered: string | null, received: boolean): DshSessionEvent[] {
   const events: DshSessionEvent[] = [
     {
       type: 'system/message',
@@ -34,14 +35,15 @@ function logOf(delivery: string, answered: string | null): DshSessionEvent[] {
     },
     { type: 'turn/start', seq: 1, time: 2, data: { turn: 1 } },
     { type: 'step/start', seq: 2, time: 3, data: { turn: 1, step: 0 } },
-    {
+  ];
+  if (received)
+    events.push({
       type: 'user/message',
       seq: 3,
       time: 4,
       surfaceOp: 'append',
       data: { ...text('user', { kind: 'user' }, 'work'), id: delivery },
-    },
-  ];
+    });
   if (answered !== null)
     events.push({
       type: 'assistant/message',
@@ -65,12 +67,13 @@ function logOf(delivery: string, answered: string | null): DshSessionEvent[] {
 interface Killed {
   readonly reply: AssistantMessageRow;
   readonly delivery: string;
+  readonly question: AssistantMessageRow;
   readonly finished: boolean[];
   readonly recover: () => void;
   readonly store: Rig['opened']['store'];
 }
 
-function killedMidReply(answered: string | null, persisted: string): Killed {
+function killedMidReply(answered: string | null, persisted: string, received = true): Killed {
   const { store } = rig.opened;
   const chat = rig.newChat(rig.hub.target);
   const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
@@ -88,6 +91,7 @@ function killedMidReply(answered: string | null, persisted: string): Killed {
     text: 'work',
   });
   store.harnessDeliveries.admit(delivery, open.claim.session_id, () => reply.id);
+  const base = store.dshSessions.stat(open.claim.session_id, rig.owner.profileId)?.next_seq ?? 0;
   const principal = rig.service.hostPrincipal(
     rig.owner.profileId,
     rig.service.directory.get(rig.hub.target).host,
@@ -96,7 +100,9 @@ function killedMidReply(answered: string | null, persisted: string): Killed {
     {
       claim: open.claim,
       operation_id: randomUUID(),
-      events: DSH_SESSION_EVENTS_WRITE.parse(logOf(delivery, answered)),
+      events: DSH_SESSION_EVENTS_WRITE.parse(
+        logOf(delivery, answered, received).map((event) => ({ ...event, seq: event.seq + base })),
+      ),
     },
     principal,
   );
@@ -104,11 +110,13 @@ function killedMidReply(answered: string | null, persisted: string): Killed {
   conversation.progress(reply.id, persisted, { kind: 'chat_timeline', version: 1, parts: [] });
   const finished: boolean[] = [];
   const recover = (): void => {
-    reconcileNativeReplies(store, conversation, (_event, _text, ok): void => {
-      finished.push(ok);
-    });
+    reconcileNativeReplies(
+      projectorOf(rig, (_event, _text, ok): void => {
+        finished.push(ok);
+      }),
+    );
   };
-  return { reply, delivery, finished, recover, store };
+  return { reply, delivery, question, finished, recover, store };
 }
 
 describe('a reply cut off when the hub stopped mid-stream', () => {
@@ -140,5 +148,32 @@ describe('a reply cut off when the hub stopped mid-stream', () => {
 
     expect(killed.finished).toStrictEqual([false]);
     expect(killed.store.harnessDeliveries.find(killed.delivery)?.state).toBe('unknown');
+  });
+});
+
+describe('a message the hub admitted but never got to the host before it stopped', () => {
+  it('goes back to the queue to be delivered after the restart instead of failing', () => {
+    const killed = killedMidReply(null, '', false);
+    killed.store.assistantChat.updateMessage(killed.question.id, {
+      state: 'failed',
+      reason: 'The hub restarted.',
+      reason_code: 'interrupted',
+    });
+    killed.store.assistantEvents.mark(killed.delivery, 'delivered_at');
+    killed.store.assistantEvents.mark(killed.delivery, 'answered_at');
+
+    killed.recover();
+
+    expect(killed.store.harnessDeliveries.find(killed.delivery)).toBeUndefined();
+    expect(killed.store.assistantEvents.pending().map((event) => event.id)).toContain(
+      killed.delivery,
+    );
+    expect(killed.store.assistantChat.message(killed.question.id)).toMatchObject({
+      state: 'queued',
+      reason: null,
+      reason_code: null,
+    });
+    expect(killed.store.assistantChat.find(killed.reply.id)).toBeUndefined();
+    expect(killed.finished).toStrictEqual([]);
   });
 });

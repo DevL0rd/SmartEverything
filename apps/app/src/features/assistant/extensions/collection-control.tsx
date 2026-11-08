@@ -5,10 +5,11 @@ import { SwitchRow } from '../../../components/rows';
 import { Banner } from '../../../components/banner';
 import { useExtensions } from './queries';
 import { useExtensionActions } from './change';
+import { SKILLS_EXTENSION_ID } from './items';
 
 const COLLECTIONS = {
   skill: {
-    id: 'skills',
+    id: SKILLS_EXTENSION_ID,
     subtitle:
       'Turn all installed Claude skills on or off. Included, custom and workspace skills stay available.',
     setting: 'claude_skills_enabled',

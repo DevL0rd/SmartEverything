@@ -9,16 +9,19 @@ import type {
 import { mountManagedPackageExecution } from '../composition/plugin-execution';
 import { projectWorkspaceContext } from '../composition/workspace-context';
 import { HarnessRuntimeError } from './errors';
+import { stopObservedWork } from './observed-work';
+import { sessionWork, type HarnessWork } from './work';
 import type { AiHarnessStorageBinding } from '@smarteverything/domain';
 import { nativePendingInput, type NativeInputHistory } from './input-history';
 import type { Context } from '@deepseek-ai/cordis';
+import type { ApiKeyVault } from '../plugins/providers';
 import type {
   AdmittedPromptContentPart,
   AttachmentAdmissionPart,
   EncodedFileAttachment,
   FileAttachmentRef,
 } from '@deepseek-ai/dsh-attachment';
-import type { AgentHandle, Agent } from '@deepseek-ai/dsh-agent';
+import type { AgentHandle, Agent, AgentCancelCause } from '@deepseek-ai/dsh-agent';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import { harnessManifest } from './manifest';
 import type { AiHarnessManifest } from '@smarteverything/domain';
@@ -37,7 +40,7 @@ import { HarnessSession } from './session';
 import { setSessionPermission } from './permission';
 import type { HarnessServerPolicy } from './server-policy';
 import type { HarnessServerToolAccess } from './server-policy';
-import type { HarnessRuntimeEvent } from './events';
+import type { HarnessRuntimeEvent, HarnessFailureContext } from './events';
 import { HarnessAdmission } from './admission';
 import { HarnessRuntimeConfiguration } from './runtime-configuration';
 import type {
@@ -51,16 +54,20 @@ export interface HarnessRuntimeOptions {
   readonly interactions: HarnessInteractionPort;
   readonly desiredConfiguration: HarnessDesiredConfiguration;
   readonly installedPlugins: readonly InstalledHarnessPlugin[];
+  readonly apiKeys: ApiKeyVault;
   readonly configurationChanged: () => void;
   readonly configurationPending?: HarnessConfigurationPending;
   readonly serverToolAccess?: HarnessServerToolAccess;
   readonly onEvent: (event: HarnessRuntimeEvent) => void;
+  readonly attachmentTransfer?: boolean;
   readonly beforeStep?: (id: string) => Promise<void>;
+  readonly failureContext?: HarnessFailureContext;
   readonly installModelRoutes: (ctx: Context) => Promise<void>;
 }
 
 export class HarnessRuntime {
   private readonly sessions = new Map<string, HarnessSession>();
+  private readonly observedLoss = new Map<string, Promise<void>>();
   private readonly opening = new Set<string>();
   private readonly storage = new Map<string, AiHarnessStorageBinding>();
   private readonly admission = new HarnessAdmission();
@@ -77,6 +84,7 @@ export class HarnessRuntime {
       readonly dispose: () => Promise<void>;
       readonly serverPolicy: HarnessServerPolicy;
       readonly generation: string;
+      readonly attachmentTransfer: boolean;
       readonly notify: (event: HarnessRuntimeEvent) => void;
       readonly configurationPending?: HarnessConfigurationPending;
     },
@@ -100,7 +108,7 @@ export class HarnessRuntime {
   }
 
   resolveReferences(id: string, references: readonly AiReference[]): Promise<void> {
-    this.get(id);
+    if (this.ctx.agents.get(SessionId(id)) === undefined) this.get(id);
     return this.references.resolve(id, references);
   }
 
@@ -151,17 +159,47 @@ export class HarnessRuntime {
     return session;
   }
 
+  observedWork(id: string): HarnessWork | undefined {
+    const session = this.sessions.get(id);
+    if (session !== undefined) return session.work();
+    const agent = this.ctx.agents.get(SessionId(id));
+    if (agent !== undefined)
+      return sessionWork(this.ctx, agent, this.lifecycle.interactions, { state: 'idle' });
+    return undefined;
+  }
+
   ownershipLost(id: string): void {
     const session = this.sessions.get(id);
-    if (session === undefined) return;
-    void session.ownershipLost().catch((error: unknown) => {
+    const settlement = session?.ownershipLost() ?? this.loseObserved(id);
+    if (settlement === undefined) return;
+    void settlement.catch((error: unknown) => {
       this.log.error('session.cleanup_failed', error, { session_id: id });
       this.lifecycle.notify({ kind: 'error', sessionId: id, failure: describeFailure(error) });
     });
   }
 
   whenOwnershipLossSettled(id: string): Promise<void> {
-    return this.get(id).whenOwnershipLossSettled();
+    return (
+      this.sessions.get(id)?.whenOwnershipLossSettled() ??
+      this.observedLoss.get(id) ??
+      Promise.resolve()
+    );
+  }
+
+  private loseObserved(id: string): Promise<void> | undefined {
+    const running = this.observedLoss.get(id);
+    if (running !== undefined) return running;
+    const agent = this.ctx.agents.get(SessionId(id));
+    if (agent === undefined) return undefined;
+    const pending = this.stopObserved(agent, { kind: 'disposed' }).finally(() => {
+      this.observedLoss.delete(id);
+    });
+    this.observedLoss.set(id, pending);
+    return pending;
+  }
+
+  stopObserved(agent: Agent, cause: AgentCancelCause): Promise<void> {
+    return stopObservedWork(this.ctx, agent, cause, () => this.observedWork(agent.id));
   }
 
   async close(id: string): Promise<void> {
@@ -240,7 +278,7 @@ export class HarnessRuntime {
   }
 
   manifest(): AiHarnessManifest {
-    return harnessManifest(this.ctx, this.configuration);
+    return harnessManifest(this.ctx, this.configuration, this.lifecycle.attachmentTransfer);
   }
 
   pendingInput(input: NativeInputHistory): readonly string[] {
@@ -315,7 +353,6 @@ export class HarnessRuntime {
     this.log.debug('session.opening', () => ({
       ...fields,
       hasStorageBinding: options.storageBinding !== undefined,
-      helper: options.pluginAgentPolicy !== undefined,
       opening: this.opening.size,
     }));
     try {
@@ -328,6 +365,7 @@ export class HarnessRuntime {
         this.settleConfiguration();
       });
       this.sessions.set(options.sessionId, session);
+      if (resume) await session.reportInterruptedHelpers();
       this.log.info('session.opened', {
         ...fields,
         open: this.sessions.size,
@@ -364,7 +402,6 @@ export class HarnessRuntime {
         directory: this.ctx.workingDirectory.get(agent.session),
         native: this.lifecycle.serverPolicy.nativeAvailable(options.sessionId),
       });
-      this.setupHelper(agentCtx, options);
     };
     const shared = { agentOptions: agentOptions(options), setup };
     const handle = resume
@@ -384,19 +421,6 @@ export class HarnessRuntime {
       await handle.dispose();
       throw error;
     }
-  }
-
-  private setupHelper(agentCtx: Context, options: HarnessSessionOptions): void {
-    const policy = options.pluginAgentPolicy;
-    if (policy === undefined) return;
-    if (policy.tools !== undefined) agentCtx.tools.restrict({ allow: policy.tools });
-    agentCtx.systemPrompt.context({
-      name: 'smarteverything-helper',
-      order: 10,
-      required: true,
-      interpolate: false,
-      text: policy.persona,
-    });
   }
 
   private hostContext(agent: Agent): string {

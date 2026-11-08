@@ -70,13 +70,15 @@ export function BarLabels({
 }): ReactNode {
   const shown = new Set(thinned(bars, width, LABEL_GAP).map((bar) => bar.key));
   return (
-    <View className="flex-row">
+    <View className="h-4 flex-row">
       {bars.map((bar) => (
         <View key={bar.key} className="flex-1 items-center">
           {shown.has(bar.key) && bar.label !== undefined ? (
-            <Text variant="caption" tone="faint" numberOfLines={1} className="tabular">
-              {bar.label}
-            </Text>
+            <View className="absolute -inset-x-5 top-0 items-center">
+              <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
+                {bar.label}
+              </Text>
+            </View>
           ) : null}
         </View>
       ))}

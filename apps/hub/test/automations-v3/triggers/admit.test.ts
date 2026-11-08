@@ -8,6 +8,7 @@ import {
   leadingReads,
 } from '../../../src/automations/triggers-v3/admit';
 import type { AdmissionParts } from '../../../src/automations/triggers-v3/admit';
+import { createKindCatalog } from '../../../src/automations/plugin-kinds/catalog';
 import { triggerScope, type TriggerFire } from '../../../src/automations/triggers-v3/payload';
 
 const fire: TriggerFire = {
@@ -33,9 +34,12 @@ const notEvaluator: PureEvaluator = {
   },
 };
 
+const CORE_KINDS = createKindCatalog();
+
 function withReads(nodes: readonly FlowNode[]): AdmissionParts['reads'] {
   return {
     nodes,
+    kinds: CORE_KINDS,
     port: {
       node: (request): NodeResult => ({
         ok: true,
@@ -102,8 +106,8 @@ describe('trigger admission', () => {
       step('c', 'device.set'),
       step('d', 'device.get'),
     ];
-    expect(leadingReads(body).map((node) => node.key)).toEqual(['a', 'b']);
-    expect(leadingReads(body.slice(0, 2)).map((node) => node.key)).toEqual(['a', 'b']);
+    expect(leadingReads(body, CORE_KINDS).map((node) => node.key)).toEqual(['a', 'b']);
+    expect(leadingReads(body.slice(0, 2), CORE_KINDS).map((node) => node.key)).toEqual(['a', 'b']);
   });
 
   it('builds the driver admit callback from the same verdicts', () => {

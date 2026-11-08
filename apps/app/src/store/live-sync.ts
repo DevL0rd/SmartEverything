@@ -1,13 +1,13 @@
 import {
-  API_ENDPOINTS as E,
   LIVE_TABLES,
   type LiveChange,
   type LiveMessage,
   type LiveTable,
 } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
-import { api, connectionRefused, type ServerConnection } from '../api/transport';
+import { connectionRefused, type ServerConnection } from '../api/transport';
 import { noticeTo } from './live-notices';
+import { readLiveSnapshot } from './live-snapshot';
 import { platformStreams } from './live-streams';
 import type { EntityStore } from './entity-store';
 import { loadOwnerConsents } from './live-consents';
@@ -19,16 +19,13 @@ import { rawErrorText } from '../format/errors';
 import type { LiveSyncHooks } from './live-sync-hooks';
 export type { LiveSyncHooks } from './live-sync-hooks';
 import { routeFor } from '../api/connection/active-route';
+import { onHubAnswered } from '../api/connection/hub-answers';
 import { followLiveRouteReadiness } from './live-route-readiness';
 import { recordNotice } from '../dev/frame-probe';
 import { RearmTimer } from '../design/rearm-timer';
 import { LogTally, logEnabled } from '../design/log-tally';
 
 const log = new Logger('app.live');
-const SNAPSHOT_ROOTS: readonly string[] = ['tables', 'owner'];
-const SNAPSHOT_REQUEST = {
-  query: { nutrition: true, watch: true, weather: true, talk: true, assistant: true },
-};
 export const LINK_DEADLINE_MS = 20_000;
 type Phase = 'closed' | 'buffering' | 'live';
 const traffic = new LogTally(log, 'live.summarised', 5000);
@@ -38,6 +35,7 @@ export class LiveSync {
   private readonly snapshotCommands: NonNullable<LiveSyncHooks['onSnapshotCommands']>;
   private retryRoute: (() => boolean) | null = null;
   private stopRoute: (() => void) | null = null;
+  private stopAnswers: (() => void) | null = null;
   private socketRun = 0;
   private stopSocket: (() => void) | null = null;
   private retry: ReturnType<typeof setTimeout> | null = null;
@@ -84,6 +82,9 @@ export class LiveSync {
 
   start(): void {
     log.info('live.starting', this.ids());
+    this.stopAnswers = onHubAnswered(() => {
+      this.answered();
+    });
     const manager = routeFor(this.connection);
     let generation = manager.state.get().generation;
     this.stopRoute = manager.state.subscribe(() => {
@@ -117,6 +118,8 @@ export class LiveSync {
     this.retryRoute = null;
     this.stopRoute?.();
     this.stopRoute = null;
+    this.stopAnswers?.();
+    this.stopAnswers = null;
     this.socketRun += 1;
     this.batch = [];
     this.activityBuffer = [];
@@ -157,6 +160,13 @@ export class LiveSync {
       clearTimeout(this.retry);
       this.open();
     }
+  }
+
+  private answered(): void {
+    if (this.suspended || this.retry === null) return;
+    log.info('live.hub_answered', { ...this.ids(), retryPending: true });
+    clearTimeout(this.retry);
+    this.open();
   }
 
   refresh(): void {
@@ -338,8 +348,7 @@ export class LiveSync {
     this.deadline.rearm(LINK_DEADLINE_MS);
     this.store.setSync({ status: this.store.get().loaded ? 'interrupted' : 'loading' });
     try {
-      const read = await api().callTables(E.readSnapshot, SNAPSHOT_REQUEST, SNAPSHOT_ROOTS);
-      const snapshot = read.data;
+      const { snapshot, outdated } = await readLiveSnapshot();
       if (run !== this.snapshotRun || this.phase === 'closed') {
         log.info('live.snapshot_discarded', { ...this.ids(), run, durationMs: Date.now() - begun });
         return;
@@ -347,7 +356,7 @@ export class LiveSync {
       const readMs = Date.now() - begun;
       this.store.replace(snapshot);
       this.snapshotCommands(snapshot.tables.commands);
-      this.outdated = new Set(read.skipped);
+      this.outdated = new Set(outdated);
       const replay = this.buffer.filter((change) => change.seq > snapshot.seq);
       this.buffer = [];
       this.enter('live');
@@ -355,13 +364,13 @@ export class LiveSync {
       this.applyAll(replay);
       this.replayActivity();
       this.attempt = 0;
-      this.store.setSync({ status: 'live', problem: null, outdated: read.skipped });
-      this.hooks.onSynchronized?.(replay);
+      this.store.setSync({ status: 'live', problem: null, outdated });
+      this.hooks.onSynchronized?.(replay, snapshot);
       log.info('live.ready', {
         ...this.ids(),
         seq: snapshot.seq,
         replayed: replay.length,
-        skippedTables: read.skipped.length,
+        outdated: outdated.length,
         durationMs: readMs,
       });
       loadOwnerConsents(
@@ -371,14 +380,15 @@ export class LiveSync {
       );
     } catch (error) {
       if (run !== this.snapshotRun) return;
-      log.error('live.snapshot_failed', error, { ...this.ids(), durationMs: Date.now() - begun });
-      this.store.setSync({
-        status: 'interrupted',
-        problem: rawErrorText(error),
-      });
-      this.stopSocket?.();
-      this.closed(0, 'snapshot failed');
+      this.snapshotFailed(error, begun);
     }
+  }
+
+  private snapshotFailed(error: unknown, begun: number): void {
+    log.error('live.snapshot_failed', error, { ...this.ids(), durationMs: Date.now() - begun });
+    this.store.setSync({ status: 'interrupted', problem: rawErrorText(error) });
+    this.stopSocket?.();
+    this.closed(0, 'snapshot failed');
   }
 
   private replayActivity(): void {

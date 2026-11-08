@@ -9,6 +9,7 @@ import {
   type HubFrame,
   type NodeHello,
   type ProcessWindow,
+  NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import type { AppTime } from '../../src/computers/app-focus';
@@ -29,7 +30,7 @@ export const HELLO: NodeHello = {
   actions: [],
   permissions: [],
   features: [],
-  role: 'pc',
+  protocol: NODE_PROTOCOL_VERSION,
 };
 
 export interface SessionRig {
@@ -44,7 +45,6 @@ export interface SessionRigOptions {
   readonly hello?: NodeHello;
   readonly appTime?: (time: AppTime) => void;
   readonly devices?: (devices: readonly DiscoveredDevice[]) => void;
-  readonly hubComputerResolved?: (deviceId: string) => void;
   readonly scopes?: ComputerScopes;
   readonly event?: (event: DeviceEvent) => void;
   readonly signal?: (signal: SignalInput) => void;
@@ -90,7 +90,6 @@ export function sessionRig(deviceId: string, options: SessionRigOptions = {}): S
     deviceIdOf: (): string => deviceId,
     scopesOf: (): ComputerScopes => options.scopes ?? DEFAULT_COMPUTER_SCOPES,
     directory: options.directory ?? new ComputerDirectory(),
-    hubComputerResolved: options.hubComputerResolved ?? ((): void => undefined),
     recordAppTime: options.appTime ?? ((): void => undefined),
     signals: { emit: (signal): void => options.signal?.(signal) },
     personOf: (): string | null => options.personId ?? null,

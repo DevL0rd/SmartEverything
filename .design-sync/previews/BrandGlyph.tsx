@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { BrandGlyph, Stage } from 'smarteverything-kit';
 import { Row } from '../preview-helpers';
 
@@ -19,12 +20,12 @@ const body = (
     ))}
   </Row>
 );
-export const Glyphs = () => (
+export const Glyphs = (): ReactElement => (
   <Stage theme="dark" width={520}>
     {body}
   </Stage>
 );
-export const LightTheme = () => (
+export const LightTheme = (): ReactElement => (
   <Stage theme="light" width={520}>
     {body}
   </Stage>
