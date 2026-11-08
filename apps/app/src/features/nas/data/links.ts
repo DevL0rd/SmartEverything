@@ -13,7 +13,7 @@ const log = new Logger('app.drive');
 
 export const LINK_RENEW_LEAD_MS = 60_000;
 
-export type DriveLinkSize = 'file' | 'thumb' | 'preview';
+export type DriveLinkSize = 'file' | 'thumb' | 'preview' | 'playable';
 
 interface Entry {
   readonly generation: number;
@@ -58,6 +58,7 @@ function subscribeGeneration(listener: () => void): () => void {
 
 const PURPOSE: Readonly<Record<DriveLinkSize, NativeHubResourcePurpose>> = {
   file: 'attachment',
+  playable: 'attachment',
   thumb: 'image',
   preview: 'image',
 };
@@ -81,12 +82,13 @@ export async function readRoutedDriveLinks(
     link === null ? Promise.resolve(null) : present(link, size);
   return Promise.all(
     links.map(async (link) => {
-      const [file, thumb, preview] = await Promise.all([
+      const [file, thumb, preview, playable] = await Promise.all([
         present(link.file, 'file'),
         optional(link.thumb, 'thumb'),
         optional(link.preview, 'preview'),
+        optional(link.playable, 'playable'),
       ]);
-      return { ...link, file, thumb, preview };
+      return { ...link, file, thumb, preview, playable };
     }),
   );
 }
@@ -153,6 +155,7 @@ export class DriveLinkCache {
       this.put(link, 'file', link.file, generation);
       if (link.thumb !== null) this.put(link, 'thumb', link.thumb, generation);
       if (link.preview !== null) this.put(link, 'preview', link.preview, generation);
+      if (link.playable !== null) this.put(link, 'playable', link.playable, generation);
     }
   }
 

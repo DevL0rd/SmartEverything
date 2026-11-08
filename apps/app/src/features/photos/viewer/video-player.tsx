@@ -100,7 +100,6 @@ export function followPlayable(
     const next = playableProgressOf(notice, itemId);
     if (next === null) return;
     onProgress(next);
-    if (next.done !== next.total) return;
     background(
       client.invalidateQueries({ queryKey: photoKeys.media(itemId) }),
       'photos.viewer.playable_refresh_failed',

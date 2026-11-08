@@ -152,16 +152,18 @@ weaken or delete a test to pass a build; never mock the thing under test.
   `https://smarteverything.devl0rd.com`. This desktop is a development, build and test machine;
   its Hub service stays disabled by default. Start a test Hub only on demand with isolated scratch data;
   never reuse production or the retired desktop Hub data. Check the selected machine and target Hub before publishing or restarting.
-- The integration checkout is `main` on either machine. Workers and reviewers use private worktrees with
-  disjoint ownership; only the coordinator integrates accepted changes. Do not share a dirty working tree
-  between agents or copy source changes between machines with rsync. Git is the handoff in both directions.
+- All development workers and reviewers share the existing checkout and workspace on `main` on the
+  selected machine; never create separate agent checkouts or worktrees. Assign disjoint file ownership
+  and coordinate or serialize shared-file edits. Preserve staged, unstaged and untracked work; never
+  overwrite, reset, stash, switch branches or stage another task's changes. Do not copy source changes
+  between machines with rsync. Git is the handoff in both directions.
 - The owner authorizes SmartEverything issue repairs to commit and push their verified fixes, and local
   SmartEverything development to commit and push at every stable point, without another approval. This is
-  project-specific standing authorization, not permission to include unrelated work. Workers return patches;
-  the coordinator owns integration, commits and pushes under the existing DevL0rd Git identity, without attribution.
+  project-specific standing authorization, not permission to include unrelated work. Workers report scoped changes and check evidence;
+  the coordinator owns review, commits and pushes under the existing DevL0rd Git identity, without attribution.
 - Before editing, fetch and pull/merge the latest `origin/main` into the integration checkout. Protect existing
   uncommitted work; never discard or stash it automatically. If a dirty tree prevents the merge, reconcile the
-  accepted changes in isolation and integrate without overwriting it. At every stable point, fetch again,
+  accepted changes in the shared workspace without overwriting other work. At every stable point, fetch again,
   merge any newer `origin/main`, resolve conflicts, review the final combined diff and run the required checks
   (including `pnpm run validate` before pushing unless the owner explicitly waives it). Stage only accepted
   task files, commit and push `main`. A stable point has completed review and verification with no half-landed

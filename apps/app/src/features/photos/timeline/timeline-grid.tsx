@@ -27,6 +27,7 @@ import type { Thumbnail } from '../../../components/media-grid/tile';
 import { dayIds } from './timeline-model';
 import { tileMenu, type TileMenuActions } from './tile-menu';
 import type { MediaActions } from './use-media-actions';
+import { ThumbnailWarmup } from './thumbnail-warmup';
 
 export interface TimelineGridProps {
   readonly tiles: readonly MediaTile[];
@@ -174,6 +175,7 @@ export function TimelineGrid(props: TimelineGridProps): ReactNode {
   const [opened, setOpened] = useState<Opened | null>(null);
   const decor = useDecor(selection, props.headText);
   const today = useDayKey();
+  const [upcoming, setUpcoming] = useState<readonly MediaTile[]>([]);
   return (
     <GestureDetector gesture={zoom}>
       <View ref={frame} collapsable={false} className="min-h-0 flex-1">
@@ -188,6 +190,7 @@ export function TimelineGrid(props: TimelineGridProps): ReactNode {
           onEndReached={onEnd}
           probe="photos.timeline"
           resolveThumb={resolveThumb}
+          onPrefetchTiles={setUpcoming}
           onOpen={(tile) => {
             if (!selection.press(tile.id, { shift: false })) openViewer(tile);
           }}
@@ -196,6 +199,7 @@ export function TimelineGrid(props: TimelineGridProps): ReactNode {
             setOpened({ tile, anchor: anchorOf(point), mode: 'actions' });
           }}
         />
+        <ThumbnailWarmup tiles={upcoming} />
         <TileMenuHost opened={opened} media={media} selection={selection} onOpened={setOpened} />
       </View>
     </GestureDetector>

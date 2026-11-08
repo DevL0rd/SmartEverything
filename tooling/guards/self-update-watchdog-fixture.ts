@@ -303,6 +303,7 @@ export function world(start: Start): World {
       schema: schemaOf,
     },
     storage: storageOf(machine),
+    migrations: { restore: () => false, clear: () => undefined },
     note: () => undefined,
   };
   record(flow, releaseOf(start.phase));

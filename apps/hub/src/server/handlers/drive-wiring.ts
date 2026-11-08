@@ -1,3 +1,4 @@
+import { PhotoPipeline } from '../../photos/pipeline/runtime';
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
@@ -56,6 +57,7 @@ export interface DriveDeps {
 }
 
 export interface DriveRuntime {
+  readonly media: PhotoPipeline;
   readonly services: DriveServices;
   readonly env: ConflictEnv;
   readonly queue: WorkQueue<DriveJob>;
@@ -139,7 +141,11 @@ function conflictEnvOf(deps: DriveDeps, rearm: () => void): ConflictEnv {
   };
 }
 
-function queueOf(deps: DriveDeps, availability: DriveRuntime['availability']): WorkQueue<DriveJob> {
+function queueOf(
+  deps: DriveDeps,
+  availability: DriveRuntime['availability'],
+  media: PhotoPipeline,
+): WorkQueue<DriveJob> {
   const handlers = driveJobHandlers({
     store: deps.store,
     context: deps.parts.context,
@@ -153,6 +159,7 @@ function queueOf(deps: DriveDeps, availability: DriveRuntime['availability']): W
     keyOf: handlers.keyOf,
     run: async (job, signal): Promise<void> => {
       await handlers.run(job, signal);
+      if (job.kind === 'metadata' && !signal.aborted) media.reconcile();
       if (job.kind === 'scan' && !signal.aborted) {
         queue.enqueue({ kind: 'hash', rootId: job.rootId });
         queue.enqueue({ kind: 'metadata', rootId: job.rootId });
@@ -288,7 +295,8 @@ export function createDrive(deps: DriveDeps): DriveRuntime {
     }),
   );
   const env = conflictEnvOf(deps, purge.rearm);
-  const queue = queueOf(deps, availability);
+  const media = new PhotoPipeline(deps);
+  const queue = queueOf(deps, availability, media);
   const core: Core = {
     env,
     queue,
@@ -302,6 +310,7 @@ export function createDrive(deps: DriveDeps): DriveRuntime {
   };
   return {
     env,
+    media,
     queue,
     watchers: core.watchers,
     scrubber: core.scrubber,

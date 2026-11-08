@@ -42,6 +42,8 @@ import {
   type TransitionEnvironment,
 } from './release-hub-transition.ts';
 
+import { syncDirectory } from './release-photo-paths.ts';
+
 const ROOT = join(import.meta.dirname, '..');
 
 export const BACKUP_DATABASE_FILE = 'smarteverything.db';
@@ -57,7 +59,6 @@ export const SERVICE_FILES = [
 const STORE_MODULE = join(ROOT, 'apps', 'hub', 'src', 'store', 'store.ts');
 const FREE_SPACE_FACTOR = 3;
 const BACKUP_STATUS_FILE = 'status';
-export const KEPT_VERIFIED_BACKUPS = 2;
 export type BackupStatus = 'verified' | 'rolled-back';
 
 export interface HubInstall {
@@ -263,14 +264,19 @@ export function swapService(install: HubInstall, built: string, name: string): s
 }
 
 export function restoreService(install: HubInstall, backup: string, stamp: string): void {
-  renameSync(install.service, `${install.service}.rolled-back-${stamp}`);
+  const aside = `${install.service}.rolled-back-${stamp}`;
+  if (existsSync(aside)) rmSync(install.service, { recursive: true, force: true });
+  else if (existsSync(install.service)) renameSync(install.service, aside);
   cpSync(join(backup, 'service'), install.service, { recursive: true, verbatimSymlinks: true });
 }
 
 export function restoreDatabase(data: DataLayout, backup: string, stamp: string): void {
   const { file, wal, shm } = data.system.database;
   for (const live of [file, wal, shm]) {
-    if (existsSync(live)) renameSync(live, `${live}.rolled-back-${stamp}`);
+    if (!existsSync(live)) continue;
+    const aside = `${live}.rolled-back-${stamp}`;
+    if (existsSync(aside)) rmSync(live);
+    else renameSync(live, aside);
   }
   cpSync(join(backup, BACKUP_DATABASE_FILE), file);
 }
@@ -324,7 +330,8 @@ export async function checkMigrations(data: DataLayout): Promise<MigrationCheck>
 }
 
 export function markBackup(backup: string, status: BackupStatus): void {
-  writeFileSync(join(backup, BACKUP_STATUS_FILE), status);
+  writeFileSync(join(backup, BACKUP_STATUS_FILE), status, { flush: true });
+  syncDirectory(backup);
 }
 
 function statusOf(backup: string): BackupStatus | null {
@@ -351,16 +358,7 @@ export function pruneBackups(data: DataLayout): readonly string[] {
           ];
     })
     .sort((left, right) => right.epoch - left.epoch);
-  const kept = new Set(
-    entries
-      .filter((entry) => entry.status === 'verified')
-      .slice(0, KEPT_VERIFIED_BACKUPS)
-      .map((entry) => entry.path),
-  );
-  const doomed = entries.filter(
-    (entry) =>
-      entry.status === 'rolled-back' || (entry.status === 'verified' && !kept.has(entry.path)),
-  );
+  const doomed = entries.filter((entry) => entry.status !== null);
   for (const entry of doomed) rmSync(entry.path, { recursive: true, force: true });
   return doomed.map((entry) => entry.path);
 }

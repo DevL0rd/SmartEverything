@@ -6,6 +6,7 @@ import {
 } from '@smarteverything/domain';
 import type { SQLInputValue } from 'node:sqlite';
 import { z } from 'zod';
+import { invalidateDerivedRevision } from './drive-media-revision';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { flag } from '../sql';
@@ -365,6 +366,8 @@ export class DriveItemsRepository {
       }
       const bumped = this.candidate(input, existing.item.rev + 1, existing.item.openedAt);
       this.save(false, bumped, input.identity);
+      if (bumped.kind === 'image' || bumped.kind === 'video')
+        invalidateDerivedRevision(this.context, bumped.id);
       return { item: this.byId(bumped.id), changed: true };
     });
   }

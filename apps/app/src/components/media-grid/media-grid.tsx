@@ -20,6 +20,7 @@ import {
   type TileRow,
 } from './justify';
 import { MediaTileView, type TileActions } from './tile';
+import { useThumbnailWindow } from './thumbnail-window';
 import { groupTiles, type MediaDay, type MediaGrouping, type MediaTile } from './tiles';
 
 export interface DayDecor {
@@ -39,6 +40,7 @@ export interface MediaGridProps extends TileActions {
   readonly footer?: ReactElement;
   readonly onEndReached?: () => void;
   readonly probe?: string;
+  readonly onPrefetchTiles?: (tiles: readonly MediaTile[]) => void;
 }
 
 interface RowProps {
@@ -153,13 +155,14 @@ export function MediaGrid({
   footer,
   onEndReached,
   probe,
+  onPrefetchTiles,
   resolveThumb,
   onOpen,
   onMenu,
 }: MediaGridProps): ReactNode {
   const measured = useMeasuredWidth();
-  const { rows, pairs } = useRowTracking();
   const gridRows = useGridRows(tiles, step, grouping, measured.width);
+  const { rows, pairs } = useRowTracking(useThumbnailWindow(gridRows, onPrefetchTiles));
   const sticky = useMemo(() => headIndices(gridRows), [gridRows]);
   const actions = useMemo(
     (): TileActions => ({ resolveThumb, onOpen, ...(onMenu === undefined ? {} : { onMenu }) }),

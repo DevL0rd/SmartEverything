@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { withHubReleaseLock } from '../apps/hub/src/self-update/release-lock.ts';
 import {
   captureBackup,
+  cleanVerifiedBackup,
   checksOf,
   current,
   ledgerOf,
@@ -50,12 +51,14 @@ async function kept(flow: Flow): Promise<HubUpdateRelease> {
   flow.storage.makeDirectory(dirname(flow.options.health));
   flow.storage.write(flow.options.health, 'healthy\n');
   flow.note('hub_update.done', {});
-  return transition(flow, 'done', {
+  const release = transition(flow, 'done', {
     reason: null,
     checks: [...verdict.checks],
     changedDatabase: flow.health.schema(flow.options.database) !== flow.options.startingSchema,
     failedChecks: [],
   });
+  cleanVerifiedBackup(flow);
+  return release;
 }
 
 function verifyBuild(flow: Flow, release: HubUpdateRelease): void {
@@ -87,7 +90,9 @@ async function backupOrResume(flow: Flow, release: HubUpdateRelease): Promise<Hu
     const hub = await verifyNew(flow, null);
     if (!hub.ok)
       throw new Error(`Could not start the unchanged hub: ${failedBecause(hub.checks)}`, { cause });
-    return transition(flow, 'failed', { reason });
+    const failed = transition(flow, 'failed', { reason });
+    flow.storage.removeAny(flow.options.backup);
+    return failed;
   }
 }
 
@@ -126,7 +131,10 @@ export async function handle(flow: Flow): Promise<HubUpdateRelease> {
   const release = current(flow);
   const reason = recoveryReason(flow, release);
   if (reason !== null) return await revert(flow, reason);
-  if (hubUpdateFinished(release)) return release;
+  if (hubUpdateFinished(release)) {
+    if (release.phase === 'done' || release.phase === 'reverted') cleanVerifiedBackup(flow);
+    return release;
+  }
   if (release.phase === 'planned' || (release.phase === 'built' && release.backup === null))
     return transition(flow, 'failed', { reason: 'the update stopped before a backup was ready' });
   return await finishPrepared(flow, release);

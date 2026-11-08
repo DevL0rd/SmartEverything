@@ -25,19 +25,15 @@ import type {
   DriveBackupRepository,
 } from '../store/repositories/drive-backup';
 import type { DevicesRepository } from '../store/repositories/devices';
-import type { ProfilesRepository } from '../store/repositories/profiles';
 import { inList, type Sql } from '../store/sql';
 
 import { LOCAL_MONTH } from './timeline';
 
-export const CAMERA_ROLL = 'Camera roll';
-
-export const UPLOADS = 'Uploads';
+export const PHOTOS_FOLDER = 'Photos';
 
 export interface BackupStore extends ChangeStore {
   readonly driveBackup: DriveBackupRepository;
   readonly devices: Pick<DevicesRepository, 'find'>;
-  readonly profiles: Pick<ProfilesRepository, 'byId'>;
 }
 
 export interface BackupEnv extends ChangeEnv {
@@ -66,16 +62,6 @@ function asRow(row: DriveBackupDeviceRow): BackupDevice {
     lastSeenAt: row.last_seen_at,
     settings: BACKUP_SETTINGS.parse(row.settings),
   });
-}
-
-function folderName(name: string, fallback: string): string {
-  const cleaned = Array.from(name.normalize('NFC'))
-    .map((character) =>
-      character === '/' || character === '\\' || character === '\0' ? '-' : character,
-    )
-    .join('')
-    .trim();
-  return cleaned === '' || cleaned === '.' || cleaned === '..' ? fallback : cleaned;
 }
 
 export class BackupService {
@@ -194,7 +180,7 @@ export class BackupService {
   }
 
   state(profileId: string): BackupState[] {
-    const target = `${CAMERA_ROLL}/${this.personFolder(profileId)}`;
+    const target = PHOTOS_FOLDER;
     return this.env.store.driveBackup.devicesOf(profileId).map((row) => {
       const counts = new Map(
         this.env.store.driveBackup.coverage(row.id).map((entry) => [entry.state, entry.total]),
@@ -212,21 +198,14 @@ export class BackupService {
     });
   }
 
-  async backupTarget(profileId: string, deviceId: string, takenAt: string): Promise<BackupTarget> {
+  async backupTarget(profileId: string, deviceId: string): Promise<BackupTarget> {
     const device = this.deviceOf(profileId, deviceId);
     this.env.store.driveBackup.touchDevice(device.id, this.env.now().toISOString());
-    return await this.serialized(() =>
-      this.ensure(profileId, [
-        CAMERA_ROLL,
-        this.personFolder(profileId),
-        takenAt.slice(0, 4),
-        takenAt.slice(0, 7),
-      ]),
-    );
+    return await this.manualTarget(profileId);
   }
 
   manualTarget(profileId: string): Promise<BackupTarget> {
-    return this.serialized(() => this.ensure(profileId, [UPLOADS, this.personFolder(profileId)]));
+    return this.serialized(() => this.ensure(profileId, [PHOTOS_FOLDER]));
   }
 
   private announceProfile(profileId: string, itemIds: readonly string[] = []): void {
@@ -265,10 +244,6 @@ export class BackupService {
     return row;
   }
 
-  private personFolder(profileId: string): string {
-    return folderName(this.env.store.profiles.byId(profileId).name, profileId);
-  }
-
   private heldItems(profileId: string, hashes: readonly string[]): Map<string, string> {
     const filter = inList('i.sha256', 'hashes', [...new Set(hashes)]);
     const rows = this.env.sql.all(
@@ -295,11 +270,10 @@ export class BackupService {
         `select coalesce(sum(u.length - u.offset), 0) as left
            from drive_uploads u join drive_items f on f.id = u.target_id
           where u.profile_id = $profileId and u.state = 'open' and u.target_kind = 'folder'
-            and substr(f.rel_path, 1, $prefixLength) = $prefix`,
+            and f.rel_path = $folder`,
         {
           profileId,
-          prefix: `${CAMERA_ROLL}/`,
-          prefixLength: CAMERA_ROLL.length + 1,
+          folder: PHOTOS_FOLDER,
         },
       )?.left ?? 0
     );

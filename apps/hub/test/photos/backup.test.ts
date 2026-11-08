@@ -1,5 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -16,14 +25,17 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fileDraft, folderDraft, recordItem, type ChangeEnv } from '../../src/drive/changes';
-import { commitTrash } from '../../src/drive/trash-purge';
+import { commitRestore, commitTrash } from '../../src/drive/trash-purge';
 import { removeTrashEntry } from '../../src/drive/trash';
+import { identityOf, isoOf } from '../../src/drive/changes';
+import { migratePhotosFolder } from '../../src/photos/folder-migration';
+import { PHOTO_FOLDER_RECEIPT, PHOTO_FOLDER_RECEIPTS } from '../../src/photos/folder-receipts';
+import { PHOTOS_FOLDER_MIGRATION } from '../../src/store/migrations/photos-folder';
 import { physicalRoot } from '../../src/drive/intents';
 import { nodeFiles } from '../../src/drive/versions';
 import {
   BackupService,
-  CAMERA_ROLL,
-  UPLOADS,
+  PHOTOS_FOLDER,
   type BackupEnv,
   type BackupStore,
 } from '../../src/photos/backup';
@@ -217,7 +229,6 @@ beforeEach(async () => {
     write: <T>(work: () => T): T => context.write(work),
     driveBackup: new DriveBackupRepository(context),
     devices: new DevicesRepository(context),
-    profiles,
   };
   alice = profiles.create({ name: 'Alice' }).id;
   bob = profiles.create({ name: 'Bob' }).id;
@@ -410,7 +421,7 @@ describe('coverage per phone', () => {
       state: 'failed',
       at: NOW,
     });
-    const target = await service.backupTarget(alice, alicePhone, '2026-11-03T10:00:00+07:00');
+    const target = await service.backupTarget(alice, alicePhone);
     insertUpload({
       profileId: alice,
       folderId: target.folderId,
@@ -434,7 +445,7 @@ describe('coverage per phone', () => {
       failed: 1,
       bytesLeft: 1100,
       lastBackupAt: NOW,
-      targetFolder: `${CAMERA_ROLL}/Alice`,
+      targetFolder: PHOTOS_FOLDER,
     });
     expect(state?.device.name).toBe('Alice Pixel');
   });
@@ -462,80 +473,52 @@ describe('target folders', () => {
     service.registerDevice(alice, register(alicePhone));
   });
 
-  it('makes Camera roll/<person>/<yyyy>/<yyyy-mm> on disk and in the index, parents first', async () => {
-    const target = await service.backupTarget(alice, alicePhone, '2026-11-03T10:00:00+07:00');
-    expect(target.path).toBe('Camera roll/Alice/2026/2026-11');
-    const chain = ['Camera roll', 'Camera roll/Alice', 'Camera roll/Alice/2026', target.path];
-    const items = chain.map((path) => store.driveItems.byPath(aliceRoot, path));
-    expect(items.map((item) => item?.kind)).toEqual(['folder', 'folder', 'folder', 'folder']);
-    expect(items.map((item) => item?.parentId)).toEqual([
-      null,
-      items[0]?.id,
-      items[1]?.id,
-      items[2]?.id,
-    ]);
-    expect(items[3]?.id).toBe(target.folderId);
-    expect(await readdir(join(base, 'alice', 'Camera roll', 'Alice', '2026'))).toEqual(['2026-11']);
-  });
-
-  it('takes the month from the time on the phone, not from the hub clock', async () => {
-    const late = await service.backupTarget(alice, alicePhone, '2025-12-31T23:30:00-08:00');
-    expect(late.path).toBe('Camera roll/Alice/2025/2025-12');
+  it('uses one Photos folder for every backup date and manual photo or video upload', async () => {
+    const target = await service.backupTarget(alice, alicePhone);
+    expect(target.path).toBe('Photos');
+    expect(store.driveItems.byPath(aliceRoot, 'Photos')).toMatchObject({
+      id: target.folderId,
+      kind: 'folder',
+      parentId: null,
+    });
+    expect(await service.manualTarget(alice)).toEqual(target);
+    expect(await readdir(join(base, 'alice'))).toEqual(['Photos']);
   });
 
   it('gives the same folder to repeated and simultaneous requests', async () => {
     const results = await Promise.all([
-      service.backupTarget(alice, alicePhone, '2026-01-05T09:00:00+00:00'),
-      service.backupTarget(alice, alicePhone, '2026-01-20T09:00:00+00:00'),
-      service.backupTarget(alice, alicePhone, '2026-02-01T09:00:00+00:00'),
+      service.backupTarget(alice, alicePhone),
+      service.backupTarget(alice, alicePhone),
+      service.manualTarget(alice),
     ]);
     expect(results[0]).toEqual(results[1]);
-    expect(results[2].path).toBe('Camera roll/Alice/2026/2026-02');
-    const roll = store.driveItems.children(aliceRoot, null, null, 50);
-    expect(roll.entries.filter((entry) => entry.item.name === CAMERA_ROLL)).toHaveLength(1);
-    expect(await readdir(join(base, 'alice', 'Camera roll', 'Alice', '2026'))).toEqual([
-      '2026-01',
-      '2026-02',
-    ]);
+    expect(results[0]).toEqual(results[2]);
+    expect(store.driveItems.children(aliceRoot, null, null, 50).entries).toHaveLength(1);
   });
 
-  it('adopts a folder that exists on disk but is not indexed yet', async () => {
-    await mkdir(join(base, 'alice', 'Camera roll', 'Alice'), { recursive: true });
-    const target = await service.backupTarget(alice, alicePhone, '2026-03-01T00:00:00+00:00');
-    expect(target.path).toBe('Camera roll/Alice/2026/2026-03');
-    expect(store.driveItems.byPath(aliceRoot, 'Camera roll/Alice')?.kind).toBe('folder');
+  it('adopts a Photos folder that exists on disk but is not indexed yet', async () => {
+    await mkdir(join(base, 'alice', 'Photos'));
+    expect((await service.backupTarget(alice, alicePhone)).path).toBe('Photos');
   });
 
-  it('refuses when a file sits where a folder must go', async () => {
-    addItem(aliceRoot, CAMERA_ROLL, sha('x'), alice);
-    await writeFile(join(base, 'alice', CAMERA_ROLL), 'x');
-    await expect(
-      service.backupTarget(alice, alicePhone, '2026-03-01T00:00:00+00:00'),
-    ).rejects.toThrow(/in the way/);
+  it('refuses when a file sits where Photos must go', async () => {
+    addItem(aliceRoot, PHOTOS_FOLDER, sha('x'), alice);
+    await writeFile(join(base, 'alice', PHOTOS_FOLDER), 'x');
+    await expect(service.backupTarget(alice, alicePhone)).rejects.toThrow(/in the way/);
   });
 
-  it('keeps a person name with slashes inside one folder', async () => {
+  it('does not insert the person name into their own Drive folder', async () => {
     const slashed = new ProfilesRepository(context).create({ name: 'A/B' }).id;
     await addRoot('slashed', 'person', slashed);
-    const target = await service.manualTarget(slashed);
-    expect(target.path).toBe(`${UPLOADS}/A-B`);
-  });
-
-  it('makes Uploads/<person> for manual uploads and never the camera roll', async () => {
-    const target = await service.manualTarget(alice);
-    expect(target.path).toBe('Uploads/Alice');
-    expect(store.driveItems.byPath(aliceRoot, CAMERA_ROLL)).toBeUndefined();
-    expect(await service.manualTarget(alice)).toEqual(target);
+    expect((await service.manualTarget(slashed)).path).toBe('Photos');
   });
 
   it('puts each person in their own root and refuses a phone that is not theirs', async () => {
     service.registerDevice(bob, register(bobPhone));
-    const mine = await service.backupTarget(bob, bobPhone, '2026-03-01T00:00:00+00:00');
+    const mine = await service.backupTarget(bob, bobPhone);
     expect(store.driveItems.byPath(bobRoot, mine.path)?.id).toBe(mine.folderId);
     expect(store.driveItems.byPath(aliceRoot, mine.path)).toBeUndefined();
-    await expect(
-      service.backupTarget(alice, bobPhone, '2026-03-01T00:00:00+00:00'),
-    ).rejects.toThrow(/not registered/);
+    await expect(service.backupTarget(alice, bobPhone)).rejects.toThrow(/not registered/);
   });
 
   it('says so when the person has no library folder yet', async () => {
@@ -624,13 +607,13 @@ describe('routes', () => {
       raw({ kind: 'backup', deviceId: alicePhone, takenAt: '2026-05-02T10:00:00+00:00' }),
       log,
     );
-    expect(PHOTO_UPLOAD_TARGET.parse(backup).path).toBe('Camera roll/Alice/2026/2026-05');
+    expect(PHOTO_UPLOAD_TARGET.parse(backup).path).toBe('Photos');
     const manual = await bound.resolvePhotoUploadTarget.run(
       caller(alice),
       raw({ kind: 'manual' }),
       log,
     );
-    expect(PHOTO_UPLOAD_TARGET.parse(manual).path).toBe('Uploads/Alice');
+    expect(PHOTO_UPLOAD_TARGET.parse(manual).path).toBe('Photos');
   });
 
   it('rejects another phone credential and a reassigned profile without transferring the backup owner', async () => {
@@ -816,5 +799,297 @@ describe('committed backup invalidation', () => {
     expect(store.driveBackup.assetsOf(device.id)).toEqual([]);
     expect(notices).toEqual([]);
     unsubscribe();
+  });
+});
+
+describe('existing photo and video folder migration', () => {
+  async function legacy(rootId: string, path: string, content: string): Promise<DriveItem> {
+    const root = physicalRoot(store.driveRoots.byId(rootId));
+    const absolute = join(root.path, path);
+    await mkdir(join(absolute, '..'), { recursive: true });
+    await writeFile(absolute, content);
+    const stamp = await nodeFiles.stamp(absolute);
+    if (stamp === null) throw new Error('fixture missing');
+    return recordItem(env, {
+      draft: fileDraft(
+        {
+          rootId,
+          parentId: null,
+          relPath: path,
+          modifiedAt: isoOf(stamp.mtimeNs),
+          addedAt: NOW,
+          outside: false,
+          addedByProfileId: store.driveRoots.byId(rootId).ownerProfileId,
+        },
+        { bytes: Buffer.byteLength(content), sha256: sha(content) },
+      ),
+      identity: identityOf(stamp),
+      op: 'create',
+      actor: { actorProfileId: alice, via: 'app', deviceId: null },
+    });
+  }
+
+  function enqueue(): void {
+    for (const statement of PHOTOS_FOLDER_MIGRATION.statements.filter((statement) =>
+      statement.startsWith('insert'),
+    ))
+      database.exec(statement);
+  }
+
+  async function oldFolder(path: string): Promise<DriveItem> {
+    const absolute = join(base, 'alice', path);
+    await mkdir(absolute, { recursive: true });
+    const stamp = await nodeFiles.stamp(absolute);
+    if (stamp === null) throw new Error('fixture missing');
+    return recordItem(env, {
+      draft: folderDraft(
+        {
+          rootId: aliceRoot,
+          parentId: null,
+          relPath: path,
+          modifiedAt: isoOf(stamp.mtimeNs),
+          addedAt: NOW,
+          outside: false,
+          addedByProfileId: alice,
+        },
+        0,
+      ),
+      identity: identityOf(stamp),
+      op: 'create',
+      actor: { actorProfileId: alice, via: 'app', deviceId: null },
+    });
+  }
+
+  it('retargets pending media uploads without changing uploaded offsets or non-media destinations', async () => {
+    const folder = await oldFolder('Camera roll/Alice/2026/2026-01');
+    insertUpload({
+      profileId: alice,
+      folderId: folder.id,
+      rootId: aliceRoot,
+      length: 1000,
+      offset: 400,
+    });
+    insertUpload({
+      profileId: alice,
+      folderId: folder.id,
+      rootId: aliceRoot,
+      length: 500,
+      offset: 200,
+    });
+    database.exec("update drive_uploads set name = 'notes.txt' where length = 500");
+    enqueue();
+    await migratePhotosFolder(env);
+    const target = await service.manualTarget(alice);
+    expect(
+      database.prepare('select name, target_id, offset from drive_uploads order by length').all(),
+    ).toEqual([
+      { name: 'notes.txt', target_id: folder.id, offset: 200 },
+      { name: 'a.jpg', target_id: target.folderId, offset: 400 },
+    ]);
+    expect(store.driveItems.find(folder.id)).toBeDefined();
+  });
+
+  it('removes only empty former folders and preserves nonempty unindexed content', async () => {
+    const empty = await oldFolder('Camera roll');
+    const retained = await oldFolder('Uploads');
+    await writeFile(join(base, 'alice', 'Uploads', 'notes.txt'), 'keep');
+    enqueue();
+    await migratePhotosFolder(env);
+    expect(store.driveItems.find(empty.id)).toBeUndefined();
+    expect(await nodeFiles.stamp(join(base, 'alice', 'Camera roll'))).toBeNull();
+    expect(store.driveItems.find(retained.id)).toBeDefined();
+    expect(await readdir(join(base, 'alice', 'Uploads'))).toEqual(['notes.txt']);
+  });
+
+  it('keeps deleted media deleted while changing its eventual restore destination to Photos', async () => {
+    const item = await legacy(aliceRoot, 'Camera roll/Alice/2026/2026-01/a.mp4', 'video');
+    const root = physicalRoot(store.driveRoots.byId(aliceRoot));
+    await commitTrash(env, root, item.id, { actorProfileId: alice, via: 'app', deviceId: null });
+    enqueue();
+    await migratePhotosFolder(env);
+    expect(store.driveItems.find(item.id)).toBeUndefined();
+    expect(store.driveTrash.byId(item.id).originalRelPath).toBe('Photos/a.mp4');
+    const restored = await commitRestore(env, root, item.id, {
+      actorProfileId: alice,
+      via: 'app',
+      deviceId: null,
+    });
+    expect(restored.item.id).toBe(item.id);
+    expect(restored.item.relPath).toBe('Photos/a.mp4');
+  });
+
+  it('moves existing photos and videos with IDs, receipts, metadata and separate personal roots intact', async () => {
+    service.registerDevice(alice, register(alicePhone));
+    const image = await legacy(aliceRoot, 'Camera roll/Alice/2026/2026-01/a.jpg', 'image');
+    const video = await legacy(aliceRoot, 'Uploads/Alice/a.mp4', 'video');
+    const other = await legacy(bobRoot, 'Camera roll/Bob/2025/2025-01/a.jpg', 'other');
+    service.checkHashes(alice, {
+      deviceId: alicePhone,
+      assets: [{ localId: 'original', sha256: sha('image') }],
+    });
+    enqueue();
+    await migratePhotosFolder(env);
+    for (const item of [image, video, other]) {
+      const moved = store.driveItems.byId(item.id);
+      expect(moved).toMatchObject({
+        ...item,
+        relPath: `Photos/${item.name}`,
+        parentId: store.driveItems.byPath(item.rootId, 'Photos')?.id,
+        rev: item.rev + 1,
+        etag: moved.etag,
+      });
+      expect(moved.etag).not.toBe(item.etag);
+      expect(
+        await nodeFiles.stamp(join(store.driveRoots.byId(item.rootId).path ?? '', item.relPath)),
+      ).toBeNull();
+      expect(
+        await nodeFiles.stamp(join(store.driveRoots.byId(item.rootId).path ?? '', moved.relPath)),
+      ).not.toBeNull();
+    }
+    expect(
+      service.checkHashes(alice, {
+        deviceId: alicePhone,
+        assets: [{ localId: 'original', sha256: sha('image') }],
+      }).have,
+    ).toEqual([{ localId: 'original', itemId: image.id }]);
+    await migratePhotosFolder(env);
+    expect(store.driveItems.byId(image.id).rev).toBe(image.rev + 1);
+    const receipt: unknown = JSON.parse(
+      await readFile(join(base, 'alice', PHOTO_FOLDER_RECEIPTS, `${image.id}.json`), 'utf8'),
+    );
+    expect(PHOTO_FOLDER_RECEIPT.parse(receipt)).toMatchObject({
+      kind: 'file',
+      itemId: image.id,
+      rootId: aliceRoot,
+      fromPath: image.relPath,
+      toPath: 'Photos/a.jpg',
+      sha256: sha('image'),
+    });
+    expect(database.prepare('select * from drive_photo_relocations').all()).toEqual([]);
+  });
+
+  it('keeps same-name files from different devices and an existing Photos file without overwriting', async () => {
+    const held = await legacy(aliceRoot, 'Photos/a.jpg', 'held');
+    const first = await legacy(aliceRoot, 'Camera roll/Alice/2025/2025-01/a.jpg', 'one');
+    const second = await legacy(aliceRoot, 'Camera roll/Alice/2026/2026-01/a.jpg', 'two');
+    enqueue();
+    await migratePhotosFolder(env);
+    const paths = [held, first, second].map((item) => store.driveItems.byId(item.id).relPath);
+    expect(new Set(paths).size).toBe(3);
+    expect(paths[0]).toBe('Photos/a.jpg');
+    expect(paths.every((path) => path.startsWith('Photos/'))).toBe(true);
+  });
+
+  it('resumes a crash after the filesystem move using its persisted destination and original file identity', async () => {
+    const item = await legacy(aliceRoot, 'Camera roll/Alice/2026/2026-01/a.mp4', 'video');
+    enqueue();
+    let crashed = false;
+    const crashing: BackupEnv = {
+      ...env,
+      files: {
+        ...nodeFiles,
+        syncDirectory: async (path) => {
+          if (!crashed && path === join(base, 'alice', 'Camera roll/Alice/2026/2026-01')) {
+            crashed = true;
+            throw new Error('simulated power loss');
+          }
+          await nodeFiles.syncDirectory(path);
+        },
+      },
+    };
+    await expect(migratePhotosFolder(crashing)).rejects.toThrow('simulated power loss');
+    await migratePhotosFolder(env);
+    expect(store.driveItems.byId(item.id).relPath).toBe('Photos/a.mp4');
+    expect(database.prepare('select * from drive_photo_relocations').all()).toEqual([]);
+  });
+
+  it('persists receipt ancestors and the new file link before unlinking the original', async () => {
+    const item = await legacy(aliceRoot, 'Camera roll/Alice/2026/2026-01/a.jpg', 'image');
+    enqueue();
+    const events: string[] = [];
+    const observed: BackupEnv = {
+      ...env,
+      files: {
+        ...nodeFiles,
+        syncDirectory: async (path) => {
+          await nodeFiles.syncDirectory(path);
+          events.push(`sync:${path}`);
+        },
+        writeDurable: async (path, temporary, text) => {
+          await nodeFiles.writeDurable(path, temporary, text);
+          events.push('receipt');
+        },
+        link: async (from, to) => {
+          await nodeFiles.link(from, to);
+          events.push('link');
+        },
+        unlink: async (path) => {
+          events.push('unlink');
+          await nodeFiles.unlink(path);
+        },
+      },
+    };
+    await migratePhotosFolder(observed);
+    const receipt = events.indexOf('receipt');
+    const link = events.indexOf('link');
+    const targetSync = events.indexOf(`sync:${join(base, 'alice', 'Photos')}`, link);
+    const targetRootSync = events.indexOf(`sync:${join(base, 'alice')}`, targetSync);
+    expect(events.slice(0, receipt)).toEqual([
+      `sync:${join(base, 'alice', PHOTO_FOLDER_RECEIPTS)}`,
+      `sync:${join(base, 'alice', '.smarteverything/migrations')}`,
+      `sync:${join(base, 'alice', '.smarteverything')}`,
+      `sync:${join(base, 'alice')}`,
+    ]);
+    expect(receipt).toBeLessThan(link);
+    expect(link).toBeLessThan(targetSync);
+    expect(targetSync).toBeLessThan(targetRootSync);
+    expect(targetRootSync).toBeLessThan(events.indexOf('unlink'));
+    expect(store.driveItems.byId(item.id).relPath).toBe('Photos/a.jpg');
+  });
+
+  it.each(['receipt-parent', 'target-parent'])(
+    'keeps the original on a %s durability failure and resumes without duplication',
+    async (phase) => {
+      const item = await legacy(aliceRoot, 'Camera roll/Alice/2026/2026-01/a.jpg', 'image');
+      enqueue();
+      const source = join(base, 'alice', item.relPath);
+      const target = join(base, 'alice', 'Photos/a.jpg');
+      const failing: BackupEnv = {
+        ...env,
+        files: {
+          ...nodeFiles,
+          syncDirectory: async (path) => {
+            const receiptFailure =
+              phase === 'receipt-parent' && path === join(base, 'alice', '.smarteverything');
+            const targetFailure =
+              phase === 'target-parent' && path === join(base, 'alice', 'Photos');
+            if (receiptFailure || targetFailure) throw new Error('simulated fsync failure');
+            await nodeFiles.syncDirectory(path);
+          },
+        },
+      };
+      await expect(migratePhotosFolder(failing)).rejects.toThrow('simulated fsync failure');
+      expect(await nodeFiles.stamp(source)).not.toBeNull();
+      if (phase === 'receipt-parent') expect(await nodeFiles.stamp(target)).toBeNull();
+      else expect(await nodeFiles.stamp(target)).not.toBeNull();
+      await migratePhotosFolder(env);
+      expect(await nodeFiles.stamp(source)).toBeNull();
+      expect(store.driveItems.byId(item.id).relPath).toBe('Photos/a.jpg');
+      expect(await readdir(join(base, 'alice', 'Photos'))).toEqual(['a.jpg']);
+    },
+  );
+
+  it('refuses damaged bytes and leaves their original file and pending migration intact', async () => {
+    const item = await legacy(aliceRoot, 'Camera roll/Alice/2026/2026-01/a.jpg', 'image');
+    enqueue();
+    await writeFile(join(base, 'alice', item.relPath), 'wrong');
+    await utimes(
+      join(base, 'alice', item.relPath),
+      new Date(NOW),
+      new Date('2026-11-09T00:00:00Z'),
+    );
+    await expect(migratePhotosFolder(env)).rejects.toThrow(/does not match/);
+    expect(store.driveItems.byId(item.id).relPath).toBe(item.relPath);
+    expect(database.prepare('select * from drive_photo_relocations').all()).toHaveLength(1);
   });
 });

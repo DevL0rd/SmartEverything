@@ -15,7 +15,16 @@ export function sourceLinksOf(
   return ids.flatMap((id): DriveItemLink[] => {
     const file = files[id];
     if (file === undefined) return [];
-    return [{ itemId: id, rev: SOURCE_REV, file, thumb: thumbs[id] ?? null, preview: null }];
+    return [
+      {
+        itemId: id,
+        rev: SOURCE_REV,
+        file,
+        thumb: thumbs[id] ?? null,
+        preview: null,
+        playable: null,
+      },
+    ];
   });
 }
 

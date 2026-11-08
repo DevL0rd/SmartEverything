@@ -1,3 +1,4 @@
+import { clearPhotoFolderReceipts } from './release-photo-folders.ts';
 import { rmSync } from 'node:fs';
 import { Logger } from '@smarteverything/logging';
 import {
@@ -38,6 +39,7 @@ export function describe(cause: unknown): string {
 }
 
 export function finishRelease(target: ReleaseTarget, name: string): void {
+  clearPhotoFolderReceipts(target.data.system.database.file);
   rmSync(`${target.install.service}.old-${name}`, { recursive: true, force: true });
   pruneReleaseLeftovers(target, null);
   const removed = pruneBackups(target.data);

@@ -1,5 +1,5 @@
 import { open } from 'node:fs/promises';
-import mediaInfoFactory from 'mediainfo.js';
+import { openProbe } from '../../drive/metadata-read';
 import { z } from 'zod';
 
 const TRACK = z.record(z.string(), z.unknown());
@@ -116,7 +116,7 @@ export function readVideoProbe(result: unknown): VideoProbe {
 
 export async function probeVideo(path: string): Promise<VideoProbe> {
   const handle = await open(path, 'r');
-  const info = await mediaInfoFactory({ format: 'object' });
+  const info = await openProbe();
   try {
     const { size } = await handle.stat();
     const result = await info.analyzeData(size, async (length, offset) => {

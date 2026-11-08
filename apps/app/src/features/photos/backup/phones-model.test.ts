@@ -30,7 +30,7 @@ function stateOf(patch: Partial<BackupState> = {}, enabled = true): BackupState 
     failed: 0,
     bytesLeft: 400_000_000,
     lastBackupAt: '2026-11-07T09:40:00.000Z',
-    targetFolder: 'Camera roll/Alex',
+    targetFolder: 'Photos',
     ...patch,
   };
 }

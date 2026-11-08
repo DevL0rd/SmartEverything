@@ -270,7 +270,7 @@ export function routeOf(head: Buffer): Route {
 
 const WASM = createRequire(import.meta.url).resolve('mediainfo.js/MediaInfoModule.wasm');
 
-function openProbe(): Promise<MediaInfo> {
+export function openProbe(): Promise<MediaInfo> {
   return mediaInfoFactory({ format: 'object', locateFile: () => WASM });
 }
 

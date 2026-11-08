@@ -5,9 +5,7 @@ import type { BadgeTone } from '../../../components/badge';
 import type { BackupStatus } from '../backup/model/status';
 import { PAUSE_LABELS } from '../backup/model/conditions';
 
-export const FOLDER_TEMPLATE_TAIL = '<year>/<year-month>';
-
-export const PERSON_FOLDER_TEMPLATE = `Camera roll/<person>/${FOLDER_TEMPLATE_TAIL}`;
+export const PERSON_FOLDER_TEMPLATE = 'Photos';
 
 function counted(value: number, one: string): string {
   return `${count(value)} ${value === 1 ? one : `${one}s`}`;
@@ -47,9 +45,7 @@ export function phoneConditions(settings: BackupSettings, platform = 'android'):
 
 export function folderOf(states: readonly BackupState[]): string {
   const first = states[0];
-  return first === undefined
-    ? PERSON_FOLDER_TEMPLATE
-    : `${first.targetFolder}/${FOLDER_TEMPLATE_TAIL}`;
+  return first === undefined ? PERSON_FOLDER_TEMPLATE : first.targetFolder;
 }
 
 export function summaryText(items: number | null, phones: number | null): string | null {

@@ -17,6 +17,7 @@ function link(itemId: string, rev: number, issuedAt: number, thumb: boolean): Dr
       ? { url: `/media/t-${itemId}-${String(rev)}-${String(issuedAt)}`, expiresAt }
       : null,
     preview: null,
+    playable: null,
   };
 }
 
@@ -119,4 +120,16 @@ describe('drive link cache', () => {
     await cache.resolve(ITEM, 1, 'file');
     expect(read).toHaveBeenCalledTimes(2);
   });
+});
+
+it('keeps a playable video link separate from downloading the phone original', async () => {
+  const original = link(ITEM, 1, START, true);
+  const playable = { url: '/media/video-playable', expiresAt: original.file.expiresAt };
+  const cache = new DriveLinkCache(
+    () => Promise.resolve([{ ...original, playable }]),
+    () => START,
+    () => 1,
+  );
+  expect(await cache.resolve(ITEM, 1, 'playable')).toBe(playable.url);
+  expect(await cache.resolve(ITEM, 1, 'file')).toBe(original.file.url);
 });

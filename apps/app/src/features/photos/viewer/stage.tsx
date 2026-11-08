@@ -7,6 +7,8 @@ import type { MediaInfo } from '@smarteverything/domain';
 import { IconButton } from '../../../components/icon-button';
 import { cn } from '../../../design/cn';
 import type { MediaTile } from '../../../components/media-grid/tiles';
+import { ViewerVideo } from './video-player';
+import { useDriveLink } from '../../nas/data/links';
 import { ViewerPhoto } from './photo';
 import type { MediaItem } from './info-model';
 import { useSwipe, type SwipeChoice } from './swipe';
@@ -50,6 +52,14 @@ function Step({
   );
 }
 
+function usePlayableLink(item: MediaItem, media: MediaInfo | null): string | null {
+  return useDriveLink(
+    item.kind === 'video' && media?.playable.state === 'ready' ? item.id : null,
+    item.rev,
+    'playable',
+  );
+}
+
 export function ViewerStage({
   item,
   media,
@@ -63,6 +73,7 @@ export function ViewerStage({
   readonly moves: StageMoves;
   readonly touch: boolean;
 }): ReactNode {
+  const source = usePlayableLink(item, media);
   const [zoomed, setZoomed] = useState(false);
   const swipe = useSwipe(touch && !zoomed, (choice) => {
     chosen(moves, choice);
@@ -79,7 +90,18 @@ export function ViewerStage({
             swipe.measure(width, height);
           }}
         >
-          <ViewerPhoto item={item} media={media} tile={tile} onZoomed={setZoomed} />
+          {item.kind === 'video' ? (
+            <ViewerVideo
+              item={item}
+              media={media}
+              source={source}
+              available
+              phone={touch}
+              onScrubbing={setZoomed}
+            />
+          ) : (
+            <ViewerPhoto item={item} media={media} tile={tile} onZoomed={setZoomed} />
+          )}
         </Animated.View>
       </GestureDetector>
       {touch ? null : <Step side="next" tile={moves.next} onGo={moves.onGo} />}

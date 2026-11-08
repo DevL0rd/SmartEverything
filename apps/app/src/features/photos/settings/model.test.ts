@@ -39,7 +39,7 @@ function stateOf(patch: Partial<BackupState> = {}, enabled = true): BackupState 
     failed: 0,
     bytesLeft: 0,
     lastBackupAt: null,
-    targetFolder: 'Camera roll/Alex',
+    targetFolder: 'Photos',
     ...patch,
   };
 }
@@ -64,7 +64,7 @@ describe('photos settings backup rows', () => {
   });
 
   it('shows the hub backup folder with the year and month template', () => {
-    expect(folderOf([stateOf()])).toBe('Camera roll/Alex/<year>/<year-month>');
+    expect(folderOf([stateOf()])).toBe('Photos');
     expect(folderOf([])).toBe(PERSON_FOLDER_TEMPLATE);
   });
 

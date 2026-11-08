@@ -84,7 +84,10 @@ const resolveThumb = vi.fn((tile: MediaTile): Promise<string> =>
   Promise.resolve(`https://hub.test/t/${tile.id}?sig=1`),
 );
 
-function render(tiles: readonly MediaTile[]): void {
+function render(
+  tiles: readonly MediaTile[],
+  onPrefetchTiles?: (tiles: readonly MediaTile[]) => void,
+): void {
   act(() => {
     root?.render(
       createElement(MediaGrid, {
@@ -92,6 +95,7 @@ function render(tiles: readonly MediaTile[]): void {
         step: 'days',
         today: '2026-11-07',
         resolveThumb,
+        ...(onPrefetchTiles === undefined ? {} : { onPrefetchTiles }),
         onOpen: (): void => undefined,
         decor: {
           placeOf: (): string => 'Lisbon',
@@ -175,6 +179,33 @@ describe('the media grid', () => {
     await settle();
     expect(resolveThumb).not.toHaveBeenCalled();
     expect(images.at(-1)?.source).toEqual({ thumbhash: ready.thumbhash });
+  });
+
+  it('reports the next viewport for opt-in prefetch without resolving invisible tile views', async () => {
+    const upcoming = vi.fn<(tiles: readonly MediaTile[]) => void>();
+    const tiles = fixtureTiles(50, 50);
+    render(tiles, upcoming);
+    await settle();
+    const list = lastList();
+    const [shown, next] = list.data.filter((row) => row.kind === 'tiles');
+    if (shown === undefined || next === undefined) throw new Error('two rows are required');
+    act(() => {
+      list.viewabilityConfigCallbackPairs[0]?.onViewableItemsChanged({
+        viewableItems: [{ key: shown.key, index: 1, isViewable: true }],
+      });
+    });
+    const selected = upcoming.mock.calls.at(-1)?.[0] ?? [];
+    expect(selected[0]?.id).toBe(next.tiles[0]?.tile.id);
+    expect(
+      selected.some((tile) => shown.tiles.some(({ tile: visible }) => visible.id === tile.id)),
+    ).toBe(false);
+    const count = upcoming.mock.calls.length;
+    act(() => {
+      list.viewabilityConfigCallbackPairs[0]?.onViewableItemsChanged({
+        viewableItems: [{ key: shown.key, index: 1, isViewable: true }],
+      });
+    });
+    expect(upcoming).toHaveBeenCalledTimes(count);
   });
 
   it('loads only the rows the list reports as visible', async () => {

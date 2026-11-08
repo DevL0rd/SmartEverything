@@ -5,6 +5,8 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
+  statSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -23,7 +25,6 @@ import {
   directorySize,
   freeSpaceProblem,
   hubInstall,
-  KEPT_VERIFIED_BACKUPS,
   markBackup,
   pruneBackups,
   pruneReleaseLeftovers,
@@ -54,6 +55,7 @@ let data: HubLayout;
 let server: Server;
 let url = '';
 let devicesReply = '[1,2,3]';
+let devicesResponses: string[] = [];
 
 function writeService(directory: string, marker: string): void {
   mkdirSync(directory, { recursive: true });
@@ -94,6 +96,7 @@ function fakeUnits(calls: string[], active = true, startEvent = 'service.started
 
 beforeEach(async () => {
   devicesReply = '[1,2,3]';
+  devicesResponses = [];
   scratch = mkdtempSync(join(tmpdir(), 'release-hub-'));
   data = await testLayout(join(scratch, 'data'));
   environment = {
@@ -116,7 +119,7 @@ beforeEach(async () => {
     const authorised = request.headers.authorization === 'Bearer secret-token';
     if (request.url === '/privacy') response.writeHead(200).end('page');
     else if (request.url === '/api/devices' && authorised)
-      response.writeHead(200).end(devicesReply);
+      response.writeHead(200).end(devicesResponses.shift() ?? devicesReply);
     else response.writeHead(401).end();
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -203,7 +206,7 @@ describe('swapping the service', () => {
 });
 
 describe('rolling back', () => {
-  it('restores the service and, when asked, the database, keeping what it replaced', async () => {
+  it('restores and verifies the service and database then removes temporary backups', async () => {
     const backup = backUpRelease(target, 'release18', 1);
     writeService(target.install.service, 'broken');
     writeDatabase(join(scratch, 'newer.db'), 9);
@@ -223,8 +226,9 @@ describe('rolling back', () => {
       'old service.mjs',
     );
     expect(schemaVersionOf(data.system.database.file)).toBe(5);
-    expect(existsSync(`${data.system.database.file}.rolled-back-s`)).toBe(true);
-    expect(existsSync(`${target.install.service}.rolled-back-s`)).toBe(true);
+    expect(existsSync(`${data.system.database.file}.rolled-back-s`)).toBe(false);
+    expect(existsSync(backup)).toBe(false);
+    expect(existsSync(`${target.install.service}.rolled-back-s`)).toBe(false);
     expect(calls).toEqual([`stop ${HUB_UNIT}`, `start ${HUB_UNIT}`]);
   });
 
@@ -315,8 +319,8 @@ describe('the release plan', () => {
     });
     expect(plan.map((step) => step.title.split(' ')[0])).toEqual([
       'check',
-      'back',
       'run',
+      'back',
       'swap',
       'restart',
       'verify',
@@ -346,7 +350,7 @@ describe('the release plan', () => {
     expect(readFileSync(join(target.install.service, 'service.mjs'), 'utf8')).toBe(
       'new service.mjs',
     );
-    devicesReply = '{';
+    devicesResponses = ['{'];
     await expect(plan.find((step) => step.title.startsWith('verify'))?.run()).rejects.toThrow(
       SyntaxError,
     );
@@ -403,15 +407,14 @@ function backupWith(
 }
 
 describe('pruning after a release', () => {
-  it('keeps the newest verified backups, unmarked backups and drops rolled-back and older verified ones', () => {
+  it('removes all verified release backups while preserving unmarked manual backups', () => {
     const verified = [1, 2, 3, 4].map((epoch) => backupWith('release', epoch, 'verified'));
     const rolledBack = backupWith('release', 5, 'rolled-back');
     const manual = backupWith('manual', 6, null);
     const removed = pruneBackups(data);
-    expect(KEPT_VERIFIED_BACKUPS).toBe(2);
-    expect(new Set(removed)).toEqual(new Set([verified[0], verified[1], rolledBack]));
-    expect(existsSync(verified[3] ?? '')).toBe(true);
-    expect(existsSync(verified[2] ?? '')).toBe(true);
+    expect(new Set(removed)).toEqual(new Set([...verified, rolledBack]));
+    expect(existsSync(verified[3] ?? '')).toBe(false);
+    expect(existsSync(verified[2] ?? '')).toBe(false);
     expect(existsSync(manual)).toBe(true);
   });
 
@@ -450,14 +453,15 @@ describe('pruning after a release', () => {
       schema: 5,
       epoch: 10,
     });
-    for (const step of plan.slice(0, 2)) await step.run();
+    await plan[0]?.run();
+    await plan.find((step) => step.title.startsWith('back up'))?.run();
     await plan[3]?.run();
     await plan[5]?.run();
     expect(readFileSync(join(data.backups.releases, 'release18-10', 'status'), 'utf8')).toBe(
       'verified',
     );
     await plan[6]?.run();
-    expect(readdirSync(data.backups.releases).sort()).toEqual(['older-2', 'release18-10']);
+    expect(readdirSync(data.backups.releases)).toEqual([]);
     expect(existsSync(`${target.install.service}.old-release18`)).toBe(false);
   });
 });
@@ -492,7 +496,7 @@ describe('a failed rollback', () => {
       schema: 5,
       epoch: 1,
     });
-    await plan[1]?.run();
+    await plan.find((step) => step.title.startsWith('back up'))?.run();
     await plan[3]?.run();
     devicesReply = '{';
     const failure = await plan[5]?.run().then(
@@ -518,12 +522,12 @@ describe('a failed rollback', () => {
       schema: 5,
       epoch: 1,
     });
-    await plan[1]?.run();
+    await plan.find((step) => step.title.startsWith('back up'))?.run();
     await plan[3]?.run();
     const database = new DatabaseSync(data.system.database.file);
     database.exec("insert into schema_version values (5000, 'live write', 'now')");
     database.close();
-    devicesReply = '{';
+    devicesResponses = ['{'];
     await expect(plan[5]?.run()).rejects.toThrow(SyntaxError);
     expect(schemaVersionOf(data.system.database.file)).toBe(5000);
     expect(existsSync(`${data.system.database.file}.rolled-back-1`)).toBe(false);
@@ -554,5 +558,118 @@ describe('the rollback rehearsal', () => {
       }),
     ).rejects.toThrow(ReleaseStepError);
     expect(calls).toEqual([]);
+  });
+});
+
+function photoRelocation(): {
+  readonly original: string;
+  readonly moved: string;
+  readonly move: () => void;
+} {
+  const rootId = '11111111-1111-4111-8111-111111111111';
+  const itemId = '22222222-2222-4222-8222-222222222222';
+  const root = join(scratch, 'personal-drive');
+  const original = join(root, 'Camera Roll', 'owner', 'video.mp4');
+  const moved = join(root, 'Photos', 'video.mp4');
+  mkdirSync(dirname(original), { recursive: true });
+  mkdirSync(dirname(moved), { recursive: true });
+  writeFileSync(original, 'original video bytes');
+  const database = new DatabaseSync(data.system.database.file);
+  database.exec(`delete from schema_version; insert into schema_version values (201, 'photos', 'now');
+    create table drive_roots(id text, path text, kind text, scope text);
+    create table drive_items(id text, root_id text, rel_path text);`);
+  database
+    .prepare('insert into drive_roots values(?, ?, ?, ?)')
+    .run(rootId, root, 'managed', 'person');
+  database
+    .prepare('insert into drive_items values(?, ?, ?)')
+    .run(itemId, rootId, 'Camera Roll/owner/video.mp4');
+  database.close();
+  return {
+    original,
+    moved,
+    move: (): void => {
+      const stat = statSync(original, { bigint: true });
+      const receipt = join(root, '.smarteverything/migrations/photos-folder-201', `${itemId}.json`);
+      mkdirSync(dirname(receipt), { recursive: true });
+      writeFileSync(
+        receipt,
+        JSON.stringify({
+          kind: 'file',
+          rootId,
+          itemId,
+          fromPath: 'Camera Roll/owner/video.mp4',
+          toPath: 'Photos/video.mp4',
+          dev: String(stat.dev),
+          ino: String(stat.ino),
+          bytes: Number(stat.size),
+          mtimeNs: String(stat.mtimeNs),
+          sha256: null,
+        }),
+      );
+      renameSync(original, moved);
+      const live = new DatabaseSync(data.system.database.file);
+      live.prepare('update drive_items set rel_path=? where id=?').run('Photos/video.mp4', itemId);
+      live.close();
+    },
+  };
+}
+
+function expectPhotoRestored(paths: { readonly original: string; readonly moved: string }): void {
+  expect(readFileSync(paths.original, 'utf8')).toBe('original video bytes');
+  expect(existsSync(paths.moved)).toBe(false);
+  const database = new DatabaseSync(data.system.database.file, { readOnly: true });
+  try {
+    expect(database.prepare('select rel_path from drive_items').get()).toEqual({
+      rel_path: 'Camera Roll/owner/video.mp4',
+    });
+  } finally {
+    database.close();
+  }
+  expect(schemaVersionOf(data.system.database.file)).toBe(201);
+}
+
+describe('same-schema Photos rollback', () => {
+  it('restores retained201 filesystem receipts and database paths on automatic release failure', async () => {
+    const photos = photoRelocation();
+    const built = join(scratch, 'built');
+    writeService(built, 'new');
+    const plan = releasePlan({
+      environment,
+      transition: null,
+      target,
+      units: fakeUnits([]),
+      name: 'photos',
+      built,
+      url,
+      schema: 201,
+      epoch: 12,
+    });
+    await plan.find((step) => step.title.startsWith('back up'))?.run();
+    photos.move();
+    await plan.find((step) => step.title.startsWith('swap'))?.run();
+    devicesResponses = ['{'];
+    await expect(plan.find((step) => step.title.startsWith('verify'))?.run()).rejects.toThrow(
+      SyntaxError,
+    );
+    expectPhotoRestored(photos);
+    expect(existsSync(join(data.backups.releases, 'photos-12'))).toBe(false);
+  });
+
+  it('restores matching database paths for filesystem receipts even without the manual database flag', async () => {
+    const photos = photoRelocation();
+    const backup = backUpRelease(target, 'photos', 12);
+    photos.move();
+    await rollbackWith({
+      target,
+      environment,
+      units: fakeUnits([]),
+      backup,
+      url,
+      withDatabase: false,
+      stamp: 'photos',
+    });
+    expectPhotoRestored(photos);
+    expect(existsSync(backup)).toBe(false);
   });
 });

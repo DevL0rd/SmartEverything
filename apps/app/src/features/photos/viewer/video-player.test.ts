@@ -72,7 +72,7 @@ describe('viewer video', () => {
     expect(playableShare(null)).toBe(0);
   });
 
-  it('reloads the media state when the notice says the copy landed and stops when released', () => {
+  it('reloads each completed video while other videos remain pending and stops when released', () => {
     const client = new QueryClient();
     client.setQueryData(photoKeys.media(ITEM), mediaWith({ state: 'processing' }));
     const heard: PlayableProgress[] = [];
@@ -84,7 +84,8 @@ describe('viewer video', () => {
     const playable = { type: 'photos_progress', kind: 'playable' } as const;
     receivePhotosProgress({ ...playable, itemId: ITEM, done: 2, total: 5 });
     receivePhotosProgress({ ...playable, itemId: OTHER, done: 5, total: 5 });
-    expect(stale()).toBe(false);
+    expect(stale()).toBe(true);
+    client.setQueryData(photoKeys.media(ITEM), mediaWith({ state: 'ready' }));
     receivePhotosProgress({ ...playable, itemId: ITEM, done: 5, total: 5 });
     expect(stale()).toBe(true);
     release();

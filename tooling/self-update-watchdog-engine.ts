@@ -68,6 +68,10 @@ export interface Flow {
     readonly removeFile: (path: string) => void;
     readonly removeAny: (path: string) => void;
   };
+  readonly migrations: {
+    readonly restore: (database: string) => boolean;
+    readonly clear: (database: string) => void;
+  };
   readonly recordLedger?: (ledger: HubUpdateLedger) => void;
   readonly note: (event: string, fields: Readonly<Record<string, unknown>>) => void;
 }
@@ -233,8 +237,9 @@ function restoreDatabase(flow: Flow): void {
 }
 
 function restoreData(flow: Flow): void {
+  const movedFiles = flow.migrations.restore(`${flow.options.backup}/${HUB_UPDATE_DATABASE_FILE}`);
   flow.storage.replaceTree(`${flow.options.backup}/service`, flow.options.service);
-  if (sameSchema(flow)) return;
+  if (sameSchema(flow) && !movedFiles) return;
   restoreDatabase(flow);
   if (!sameSchema(flow)) throw new Error('the database could not be restored from the backup');
 }
@@ -281,10 +286,23 @@ export async function revert(flow: Flow, reason: string): Promise<HubUpdateRelea
   const failure = await restoreService(flow);
   if (failure === null) {
     flow.note('hub_update.reverted', {});
-    return transition(flow, 'reverted', { reason });
+    const release = transition(flow, 'reverted', { reason });
+    cleanVerifiedBackup(flow);
+    return release;
   }
   flow.note('hub_update.unrecoverable', { reason, failure });
   return transition(flow, 'unrecoverable', {
     reason: `${reason}; restoring the saved release failed: ${failure}`,
   });
+}
+
+export function cleanVerifiedBackup(flow: Flow): void {
+  if (!flow.storage.exists(flow.options.backup)) return;
+  try {
+    flow.migrations.clear(`${flow.options.backup}/${HUB_UPDATE_DATABASE_FILE}`);
+    flow.storage.removeAny(flow.options.backup);
+    flow.note('hub_update.backup_removed', {});
+  } catch (cause) {
+    flow.note('hub_update.cleanup_failed', { reason: message(cause) });
+  }
 }

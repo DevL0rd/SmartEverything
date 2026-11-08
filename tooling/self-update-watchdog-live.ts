@@ -1,3 +1,4 @@
+import { clearPhotoFolderReceipts, restorePhotoFolders } from './release-photo-folders.ts';
 import { serviceIdentity } from './self-update-service-identity.ts';
 import { spawn, spawnSync } from 'node:child_process';
 import {
@@ -182,6 +183,7 @@ export function flowOf(options: WatchdogOptions): Flow {
       schema: schemaOf,
     },
     storage,
+    migrations: { restore: restorePhotoFolders, clear: clearPhotoFolderReceipts },
     recordLedger: (ledger: Parameters<typeof writeLedger>[1]): void => {
       writeLedger(options.ledger, ledger);
     },

@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { syncDirectory } from './release-photo-paths.ts';
 import { dirname } from 'node:path';
 import {
   HUB_UPDATE_LEDGER,
@@ -15,8 +16,12 @@ export function readLedger(file: string): HubUpdateLedger {
 export function writeLedger(file: string, ledger: HubUpdateLedger): HubUpdateLedger {
   const checked = HUB_UPDATE_LEDGER.parse(ledger);
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(`${file}.next`, `${JSON.stringify(checked, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(`${file}.next`, `${JSON.stringify(checked, null, 2)}\n`, {
+    mode: 0o600,
+    flush: true,
+  });
   renameSync(`${file}.next`, file);
+  syncDirectory(dirname(file));
   return checked;
 }
 

@@ -56,7 +56,7 @@ export function photoBackupRoutes(store: Store, service: BackupService): PhotoBa
     readBackupState: bound(E.readBackupState, ({ caller }) => service.state(profileOf(caller))),
     resolvePhotoUploadTarget: bound(E.resolvePhotoUploadTarget, ({ body, caller }) =>
       body.kind === 'backup'
-        ? service.backupTarget(deviceOf(caller, body.deviceId), body.deviceId, body.takenAt)
+        ? service.backupTarget(deviceOf(caller, body.deviceId), body.deviceId)
         : service.manualTarget(profileOf(caller)),
     ),
   };

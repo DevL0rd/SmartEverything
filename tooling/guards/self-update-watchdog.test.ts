@@ -21,6 +21,7 @@ describe('the hub update watchdog', { timeout: 60_000 }, () => {
     expect(test.actions).toEqual([`stop ${HUB_UNIT}`, `start ${HUB_UNIT}`]);
     expect(release.finishedAt).not.toBeNull();
     expect(test.ledger()?.backup).toBe(paths().backup);
+    expect(existsSync(paths().backup)).toBe(false);
   });
 
   it('refuses a modified staged artifact before stopping the hub', async () => {
@@ -103,7 +104,7 @@ describe('the hub update watchdog', { timeout: 60_000 }, () => {
       },
     });
     expect(release.phase).toBe('reverted');
-    expect(readFileSync(join(backup, 'smarteverything.db'), 'utf8')).toBe(acknowledged);
+    expect(existsSync(backup)).toBe(false);
     expect(test.database()).toBe(acknowledged);
   });
 
@@ -205,6 +206,7 @@ describe('the hub update watchdog', { timeout: 60_000 }, () => {
     const test = world({ phase: 'built', up: true, devices: null, oldUp: false });
     const release = await handle(test.flow);
     expect(release.phase).toBe('unrecoverable');
+    expect(existsSync(paths().backup)).toBe(true);
     expect(release.reason).not.toBeNull();
     expect(release.finishedAt).not.toBeNull();
     expect(test.service()).toBe(OLD);
@@ -254,7 +256,7 @@ describe('the hub update watchdog', { timeout: 60_000 }, () => {
     });
     expect(release.phase).toBe('reverted');
     expect(test.database()).toBe(EXPECTED);
-    expect(readFileSync(saved, 'utf8')).toBe(EXPECTED);
+    expect(existsSync(saved)).toBe(false);
   });
 
   it('settles after a transient malformed health response', async () => {
@@ -293,5 +295,78 @@ describe('the hub update watchdog', { timeout: 60_000 }, () => {
     expect(release.phase).toBe('unrecoverable');
     expect(waited).toBeLessThanOrEqual(2 * HUB_STARTUP_DEADLINE_MS + 2);
     expect(test.actions.filter((action) => action === `stop ${HUB_UNIT}`)).toHaveLength(1);
+  });
+  it('restores filesystem migration paths before the saved database and old service boot', async () => {
+    const test = world({ phase: 'built', up: true, migrates: 9 });
+    const order: string[] = [];
+    const act = test.flow.units.act;
+    const release = await handle({
+      ...test.flow,
+      migrations: {
+        restore: () => {
+          order.push('files');
+          expect(test.database()).toBe('schema:9');
+          return true;
+        },
+        clear: () => {
+          order.push('cleanup');
+          expect(test.ledger()?.phase).toBe('reverted');
+        },
+      },
+      units: {
+        ...test.flow.units,
+        act: (verb, unit) => {
+          if (verb === 'start' && test.service() === OLD) {
+            order.push('old boot');
+            expect(test.database()).toBe(EXPECTED);
+          }
+          act(verb, unit);
+        },
+      },
+    });
+    expect(release.phase).toBe('reverted');
+    expect(order).toEqual(['files', 'old boot', 'cleanup']);
+  });
+
+  it('retains rollback inputs when file restoration fails and resumes the same restore', async () => {
+    const test = world({ phase: 'applying', up: false });
+    write(paths().database, 'schema:9');
+    const broken = await handle({
+      ...test.flow,
+      migrations: {
+        restore: () => {
+          throw new Error('photo file changed');
+        },
+        clear: () => undefined,
+      },
+    });
+    expect(broken.phase).toBe('unrecoverable');
+    expect(existsSync(paths().backup)).toBe(true);
+    expect(test.database()).toBe('schema:9');
+    const restored = await handle({
+      ...test.flow,
+      options: { ...test.flow.options, retryUnrecoverable: true },
+    });
+    expect(restored.phase).toBe('reverted');
+    expect(existsSync(paths().backup)).toBe(false);
+  });
+
+  it('resumes cleanup after the terminal healthy phase was durably recorded', async () => {
+    const test = world({ phase: 'built', up: true });
+    const release = await handle({
+      ...test.flow,
+      migrations: {
+        restore: () => false,
+        clear: () => {
+          throw new Error('cleanup interrupted');
+        },
+      },
+    });
+    expect(release.phase).toBe('done');
+    expect(existsSync(paths().backup)).toBe(true);
+    const again = await handle(test.flow);
+    expect(again.phase).toBe('done');
+    expect(existsSync(paths().backup)).toBe(false);
+    expect(test.actions).toEqual([`stop ${HUB_UNIT}`, `start ${HUB_UNIT}`]);
   });
 });

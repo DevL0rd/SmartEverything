@@ -1,3 +1,4 @@
+import { DriveMediaRepository } from '../../store/repositories/drive-media';
 import { z } from 'zod';
 import {
   API_ENDPOINTS as E,
@@ -46,6 +47,7 @@ function linksOf(
   services: DriveServices,
   actor: DriveActor,
   itemIds: readonly string[],
+  store: Store,
 ): DriveItemLink[] {
   return itemIds.map((itemId) => {
     const item = services.read.readItem(actor, itemId);
@@ -57,6 +59,11 @@ function linksOf(
       rev: item.rev,
       file,
       thumb: ready ? links.driveThumb(itemId, 'thumb', item.rev) : null,
+      playable:
+        item.kind === 'video' &&
+        new DriveMediaRepository(store.context).find(item.id)?.playable_state === 'ready'
+          ? links.driveThumb(itemId, 'playable', item.rev)
+          : null,
       preview: ready ? links.driveThumb(itemId, 'preview', item.rev) : null,
     };
   });
@@ -152,7 +159,7 @@ export function driveLibraryRoutes(
     listVolumes: bound(E.listVolumes, () => listVolumes(services.probe, store.driveRoots.list())),
     listHostFolders: hostFoldersRoute(store, services),
     itemLinks: bound(E.itemLinks, ({ body, caller }) =>
-      refusing(() => linksOf(services, actorOf(store, caller), body.itemIds)),
+      refusing(() => linksOf(services, actorOf(store, caller), body.itemIds, store)),
     ),
     searchDrive: bound(E.searchDrive, ({ body, caller }) =>
       refusing(() =>

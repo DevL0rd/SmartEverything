@@ -21,6 +21,7 @@ describe('source links', () => {
         file: { url: 'file-a', expiresAt: LATER },
         thumb: { url: 'thumb-a', expiresAt: LATER },
         preview: null,
+        playable: null,
       },
       {
         itemId: 'b',
@@ -28,6 +29,7 @@ describe('source links', () => {
         file: { url: 'file-b', expiresAt: LATER },
         thumb: null,
         preview: null,
+        playable: null,
       },
     ]);
   });

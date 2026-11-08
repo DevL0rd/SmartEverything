@@ -1,3 +1,4 @@
+import { PHOTOS_FOLDER_MIGRATION } from './photos-folder';
 import { PHOTOS_LIBRARY_MIGRATION } from './photos-library';
 import { PHOTOS_DESKTOP_BACKUP_MIGRATION } from './photos-desktop-backup';
 import { AI_REPAIR_CHAT_MIGRATION } from './ai-repair-chat';
@@ -143,4 +144,5 @@ export const LATEST_MIGRATIONS: readonly Migration[] = [
   UPLOAD_RESULTS_MIGRATION,
   PHOTOS_DESKTOP_BACKUP_MIGRATION,
   PHOTOS_LIBRARY_MIGRATION,
+  PHOTOS_FOLDER_MIGRATION,
 ];

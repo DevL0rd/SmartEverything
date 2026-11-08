@@ -1,5 +1,6 @@
 import { MEDIA_PATHS } from '@smarteverything/domain';
 import { UPLOADS_PATH } from '../../drive/uploads-tus-wire';
+import { serveDriveDerived } from '../drive-derived';
 import { serveDriveFile } from '../drive-files';
 import type { RawRoute } from '../http-server';
 import { shareRoutes } from '../share-route';
@@ -41,6 +42,17 @@ export function driveRawRoutes(
   return [
     ...uploadRoutes(runtime, sweeper),
     fileRoute(runtime),
+    {
+      method: 'GET',
+      path: MEDIA_PATHS.driveThumb,
+      handle: (request, response, params) =>
+        serveDriveDerived(
+          deps,
+          runtime.media,
+          { request, response, url: new URL(request.url ?? '/', 'http://drive') },
+          { itemId: params['itemId'] ?? '', size: params['size'] ?? '' },
+        ),
+    },
     ...shareRoutes({
       shares: runtime.services.shares,
       layout: deps.layout,

@@ -120,6 +120,7 @@ export const DRIVE_ITEM_LINK = z
     file: MEDIA_LINK,
     thumb: MEDIA_LINK.nullable(),
     preview: MEDIA_LINK.nullable(),
+    playable: MEDIA_LINK.nullable(),
   })
   .readonly();
 

@@ -70,7 +70,11 @@ function Picture({
   readonly zoomed: boolean;
 }): ReactNode {
   const preview = useDriveLink(item.id, item.rev, look === 'image' ? 'preview' : 'thumb');
-  const original = useDriveLink(zoomed && showsOriginal(item) ? item.id : null, item.rev, 'file');
+  const original = useDriveLink(
+    (zoomed || look === 'processing') && showsOriginal(item) ? item.id : null,
+    item.rev,
+    'file',
+  );
   const uri = original ?? preview;
   return (
     <Image

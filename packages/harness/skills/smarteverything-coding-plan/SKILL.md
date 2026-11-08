@@ -1,6 +1,6 @@
 ---
 name: smarteverything-coding-plan
-description: "Plans coding work and writes helper briefs: research through explorers, the plan, just-in-time briefs, big efforts with a living tracker, UI design with a prototype and pixel review, and fixes inside the person's own uncommitted working tree returned as patches. Use it before starting a feature, a redesign, an audit or a fix that touches uncommitted work. Not for choosing dependency-driven waves (smarteverything-coding-waves), reviewing finished work (smarteverything-coding-review) or reading or controlling a computer (smarteverything-computers)."
+description: 'Plans coding work and writes helper briefs: research through explorers, the plan, just-in-time briefs, big efforts with a living tracker, UI design with a prototype and pixel review, and fixes directly inside the shared project workspace while preserving existing uncommitted work. Use it before starting a feature, a redesign, an audit or a fix that touches uncommitted work. Not for choosing dependency-driven waves (smarteverything-coding-waves), reviewing finished work (smarteverything-coding-review) or reading or controlling a computer (smarteverything-computers).'
 ---
 
 # Plan and build
@@ -36,10 +36,10 @@ Many tasks with ordering between them run as described in `smarteverything-codin
 
 For code holding the person's uncommitted changes (this hub too):
 
-1. `git worktree add --detach tmp/fix-<name> HEAD`, copy the uncommitted and untracked files in.
-2. There `git add -A` and `git write-tree` record the baseline uncommitted. Fix and check there.
-3. Patch: `git add -A`, then `git diff --binary --cached <baseline-tree>`; return the task diff and check evidence to the coordinator.
-4. The coordinator integrates accepted changes three-way beside existing work, never overwriting unrelated edits; remove the private worktree only after its consumers finish.
+1. All development workers and reviewers use the existing project checkout on `main`; never create separate agent checkouts or worktrees.
+2. Record the relevant starting state without staging it. Assign disjoint file ownership, coordinate or serialize shared-file edits, and preserve existing staged, unstaged and untracked work.
+3. Fix and check the assigned files in place. Never overwrite, reset, stash, switch branches or stage another task's changes.
+4. Report scoped changes and check evidence to the coordinator, who reviews the combined workspace and handles authorized commits, pushes and releases.
 
 For SmartEverything issue fixes and local development, follow the owner-authorized stable-point commit/push process in `docs/STANDARDS.md`, section “Git handoff and releases”. Fetch and pull/merge remote `main`, resolve conflicts and verify the combined work before committing and pushing; pull it on the other machine before continuing. NAS is production, the desktop is development/build/test. Workers never commit or push. Other projects require their own explicit authorization.
 

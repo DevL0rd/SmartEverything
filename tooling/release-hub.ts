@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { clearPhotoFolderReceipts, restorePhotoFolders } from './release-photo-folders.ts';
 import { parseArgs } from 'node:util';
 import { withIdleHubRelease } from '../apps/hub/src/self-update/release-lock.ts';
 import { defaultHubInstall, HUB_INSTALL_DIRECTORY } from './hub-install-layout.ts';
@@ -6,14 +9,13 @@ import { Logger } from '@smarteverything/logging';
 import {
   backUpRelease,
   checkMigrations,
-  KEPT_VERIFIED_BACKUPS,
   markBackup,
-  pruneReleaseLeftovers,
   ReleaseStepError,
   restoreDatabase,
   restoreService,
   releaseSceneOf,
   rollbackPreflight,
+  schemaVersionOf,
   swapService,
   type ReleaseTarget,
 } from './release-hub-files.ts';
@@ -95,7 +97,6 @@ async function rollbackAfter(
       withDatabase: state.schemaMoved || (transition !== null && hasV1Marker(target.data.root)),
       stamp: String(epoch),
     });
-    markBackup(locateBackup(target.data.root, state.backup), 'rolled-back');
   } catch (rollbackCause) {
     log.error('release.rollback_failed', rollbackCause);
     throw new AggregateError(
@@ -148,6 +149,9 @@ export function releasePlan(options: ReleaseOptions): readonly Plan[] {
           checkBuild(target, built);
         }),
     },
+    migrationStep(target, (moved) => {
+      state.schemaMoved = moved;
+    }),
     {
       title: `back up ${install.service} and ${data.system.database.file} into ${data.backups.releases}`,
       run: () =>
@@ -157,9 +161,6 @@ export function releasePlan(options: ReleaseOptions): readonly Plan[] {
           log.info('release.backed_up', { backup: state.backup });
         }),
     },
-    migrationStep(target, (moved) => {
-      state.schemaMoved = moved;
-    }),
     {
       title: `swap ${install.service} for ${built}`,
       run: () =>
@@ -177,7 +178,7 @@ export function releasePlan(options: ReleaseOptions): readonly Plan[] {
       run: () => verifyRelease(options, state),
     },
     {
-      title: `delete the replaced service ${install.service}.old-${name}, earlier rolled-back leftovers and backups beyond the newest ${String(KEPT_VERIFIED_BACKUPS)} verified`,
+      title: `delete the replaced service ${install.service}.old-${name}, earlier rolled-back leftovers and verified release backups`,
       run: () =>
         settled(() => {
           finishRelease({ install, data: transition?.after ?? data }, name);
@@ -204,13 +205,26 @@ export async function rollbackWith(options: RollbackOptions): Promise<void> {
   units.stop(HUB_UNIT);
   const data = scene.undo ? legacyLayoutOf(target.data.root) : target.data;
   const restored = scene.undo ? await undoV1(data.root, scene.backup, environment) : scene.backup;
+  const savedDatabase = join(restored, 'smarteverything.db');
+  const movedFiles = existsSync(savedDatabase) && restorePhotoFolders(savedDatabase);
+  const restoreSavedDatabase = withDatabase || movedFiles;
   restoreService(install, restored, stamp);
-  if (withDatabase) restoreDatabase(data, restored, stamp);
+  if (restoreSavedDatabase) restoreDatabase(data, restored, stamp);
   const since = new Date();
   units.start(HUB_UNIT);
   await awaitHub(data.system.logs.service, url, since);
-  pruneReleaseLeftovers({ install, data }, stamp);
-  log.info('release.rolled_back', { backup: restored, withDatabase });
+  const expected = restoreSavedDatabase ? schemaVersionOf(savedDatabase) : null;
+  const checked = await verifyHub(data, url, units, expected);
+  const failed = failedChecks(checked);
+  if (failed.length > 0)
+    throw new ReleaseStepError(
+      'rollback verification',
+      failed.map((check) => check.detail).join('; '),
+    );
+  markBackup(restored, 'rolled-back');
+  clearPhotoFolderReceipts(join(restored, 'smarteverything.db'));
+  finishRelease({ install, data }, stamp);
+  log.info('release.rolled_back', { backup: restored, withDatabase: restoreSavedDatabase });
 }
 
 async function execute(plan: readonly Plan[], dryRun: boolean): Promise<void> {

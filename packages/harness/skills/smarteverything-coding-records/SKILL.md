@@ -48,7 +48,7 @@ Overall   ▓▓▓▓▓▓▓░░░ 70%
 ## Tokens and hand-off
 
 - Spend tokens like money, your own context too: search first, trace relevant code as far as the task requires and reuse verified evidence. Keep briefs and replies concise while preserving the facts needed to act. Work to stable points with all needed to continue written down. Compaction runs by itself; then re-read this skill, `STATE.md` and the code.
-- Hand-off: `STATE.md` plus a handoff file, the new chat in the main project folder (no fresh worktree while work is uncommitted or git-ignored), later additions sent to it. At project start agree how to reach the person.
+- Hand-off: `STATE.md` plus a handoff file, the new chat in the same shared project checkout on `main` (never a separate agent checkout or worktree), later additions sent to it. At project start agree how to reach the person.
 
 ## Report
 

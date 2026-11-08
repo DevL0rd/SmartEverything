@@ -1,3 +1,5 @@
+import { migratePhotosFolder } from '../../photos/folder-migration';
+import { DriveBackupRepository } from '../../store/repositories/drive-backup';
 import type { DriveRoot } from '@smarteverything/domain';
 import { finishCommitFromDisk } from '../../drive/changes';
 import { physicalRoot, recoverIntents } from '../../drive/intents';
@@ -100,6 +102,12 @@ export async function startDrive(deps: DriveDeps): Promise<RunningDrive> {
   const follower = new RootFollower(deps, runtime);
   await ensureManagedRoots(deps.store, deps.layout, deps.store.profiles.list());
   await recoverFiles(deps, runtime);
+  await migratePhotosFolder({
+    ...runtime.env,
+    store: { ...deps.store, driveBackup: new DriveBackupRepository(deps.store.context) },
+    sql: deps.store.context.sql,
+  });
+  runtime.media.start();
   runtime.purge.start();
   await runtime.uploads.sweepExpired();
   const sweeper = new UploadSweeper(runtime.uploads, deps.now, deps.log);
@@ -118,6 +126,7 @@ export async function startDrive(deps: DriveDeps): Promise<RunningDrive> {
       runtime.watchers.close();
       runtime.scrubber.stop();
       await runtime.queue.stop();
+      await runtime.media.stop();
       await runtime.scrubber.settled();
       await runtime.purge.settled();
     },
