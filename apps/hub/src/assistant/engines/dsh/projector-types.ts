@@ -9,7 +9,6 @@ export interface ActiveTurn extends NativeCompletionTurn {
   readonly restored: boolean;
   readonly steered: StoredEvent[];
   replyId: string;
-  after: string | null;
 }
 
 export interface ProjectorOptions {

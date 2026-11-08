@@ -301,7 +301,8 @@ export function InlineReply({
   const associated = timelineSources(showSteps ? parts : NO_PARTS, sources);
   const { segment } = item;
   const shown = segment === null ? parts : parts.slice(segment.from, segment.to);
-  if (live && parts.length === 0) return <ThinkingWait startedAt={row.created_at} />;
+  if (live && shown.length === 0 && endsMessage(item))
+    return <ThinkingWait startedAt={row.created_at} />;
   return (
     <View className="w-full gap-2">
       {shown.map((part) => (

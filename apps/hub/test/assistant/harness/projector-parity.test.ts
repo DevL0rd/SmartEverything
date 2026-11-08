@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   DSH_SESSION_EVENTS_WRITE,
+  CHAT_TIMELINE_EMBED,
   HARNESS_NATIVE_FRAME,
   type AiChatRow,
   type AssistantMessageRow,
@@ -272,6 +273,46 @@ describe('a turn shown live and the same turn rebuilt from the log', () => {
 });
 
 describe('a turn rebuilt from the log after the hub stopped', () => {
+  it('retains persisted message boundaries through real native-log reconciliation', async () => {
+    const { store } = rig.opened;
+    const replayed = await conversation();
+    const log = records(replayed.event.id, { kind: 'completed' });
+    for (const part of ['claim', 'prompt', 'first', 'second', 'end'])
+      replayed.append(log[part] ?? []);
+    const user = addMessage(rig, replayed.chat.id, {
+      role: 'person',
+      text: 'While the tool was running',
+    });
+    const conversationLog = new ConversationLog(store);
+    conversationLog.timeline(
+      replayed.reply.id,
+      CHAT_TIMELINE_EMBED.parse({
+        kind: 'chat_timeline',
+        version: 1,
+        parts: [
+          { kind: 'reasoning', key: 'reasoning:0', text: 'Thinking. ' },
+          { kind: 'text', key: 'text:1', text: 'Looking. ' },
+          { kind: 'steer', key: `steer:${user.id}`, message_id: user.id },
+        ],
+      }),
+    );
+    reconcileNativeReplies(projectorOf(rig));
+    const row = store.assistantChat.message(replayed.reply.id);
+    const timeline = CHAT_TIMELINE_EMBED.parse(
+      row.embeds.find((embed) => embed.kind === 'chat_timeline'),
+    );
+    expect(timeline.parts.map((part) => part.kind)).toEqual([
+      'reasoning',
+      'text',
+      'steer',
+      'tool',
+      'text',
+    ]);
+    expect(timeline.parts[2]).toMatchObject({ message_id: user.id });
+    expect(timeline.parts[3]).toMatchObject({ tool: { callId: 'call-1', state: 'done' } });
+    expect(row.text).toBe('Looking. Done.');
+  });
+
   it('keeps the reason the turn failed with', async () => {
     const replayed = await replayedTurn({ kind: 'error', error: { message: 'No credit left' } });
 

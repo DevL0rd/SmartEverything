@@ -6,7 +6,7 @@ import {
 } from '@smarteverything/harness/process';
 import type { DeliveryProjection } from '@smarteverything/harness/process';
 import type { NativeInputHistory } from '@smarteverything/harness';
-import { ApiError } from '@smarteverything/domain';
+import { ApiError, CHAT_TIMELINE_EMBED } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Store } from '../../../store/store';
 import type { HarnessDelivery } from '../../../store/repositories/harness-deliveries';
@@ -121,6 +121,8 @@ function replayReply(
   const { store } = projector.options.service;
   const reply = store.assistantChat.message(replyId);
   const model = z.string().parse(reply.model);
+  const saved = reply.embeds.find((embed) => embed.kind === 'chat_timeline');
+  const timeline = saved === undefined ? undefined : CHAT_TIMELINE_EMBED.parse(saved);
   background(
     projector.start(event, store.aiChats.chat(event.chat_id), replyId, true),
     'turns.replay_failed',
@@ -132,6 +134,7 @@ function replayReply(
     kept: reply.text,
     model,
     interruption: HUB_RESTARTED,
+    ...(timeline === undefined ? {} : { timeline }),
   });
 }
 

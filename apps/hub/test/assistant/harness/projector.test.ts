@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CHAT_RETRYING_REASON,
+  CHAT_TIMELINE_EMBED,
   type ChatActivityNotice,
   type ChatStreamNotice,
   type AiChatRow,
@@ -269,56 +270,82 @@ describe('messages the person sent while the turn worked', () => {
   });
 });
 
-describe('output after a steered message', () => {
-  it('goes to a new reply row that follows the message, earlier output stays above it', async () => {
+describe('output after an interleaved message', () => {
+  it('observes committed inserts from other producers, excludes rollback, and detaches after completion', async () => {
     const mine = await startedTurn();
-    const { assistantChat } = rig.opened.store;
+    const { store } = rig.opened;
+    const other = new ConversationLog(store);
+    mine.deliver(mine.text(1, 'Before'));
+    const report = other.responderInChat({ chat: mine.chat, replyTo: null, text: 'Helper report' });
+    expect(() =>
+      store.write(() => {
+        other.responderInChat({ chat: mine.chat, replyTo: null, text: 'Rolled back' });
+        throw new Error('Rollback fixture');
+      }),
+    ).toThrow('Rollback fixture');
+    mine.deliver(mine.text(2, 'After'));
+    mine.deliver(mine.event('completed', 3));
+    const saved = store.assistantChat.message(mine.turn.replyId);
+    const timeline = CHAT_TIMELINE_EMBED.parse(
+      saved.embeds.find((embed) => embed.kind === 'chat_timeline'),
+    );
+    expect(timeline.parts.filter((part) => part.kind === 'steer')).toEqual([
+      { kind: 'steer', key: `steer:${report.id}`, message_id: report.id },
+    ]);
+    other.responderInChat({ chat: mine.chat, replyTo: null, text: 'After completion' });
+    expect(store.assistantChat.message(mine.turn.replyId).embeds).toEqual(saved.embeds);
+  });
+
+  it('persists text on both sides of the real message without rotating the live turn', async () => {
+    const mine = await startedTurn();
     const firstReply = mine.turn.replyId;
     mine.deliver(mine.text(1, 'before. '));
     const steered = mine.addSteered();
-    mine.turn.steered.push(steered);
-    mine.turn.after = steered.message_id;
-
     mine.deliver(mine.text(2, 'after.'));
-
-    const nextReply = mine.turn.replyId;
     mine.deliver(mine.event('completed', 3));
-    expect(nextReply).not.toBe(firstReply);
-    expect(assistantChat.message(firstReply).text).toBe('before.');
-    expect(assistantChat.message(firstReply).state).toBe('answered');
-    expect(assistantChat.message(nextReply).text).toBe('after.');
-    expect(assistantChat.message(nextReply).reply_to).toBe(steered.message_id);
-    const order = assistantChat
-      .messages({ chatId: mine.chat.id, limit: 50 })
-      .reverse()
-      .map((row) => row.id)
-      .filter((id) => [firstReply, steered.message_id, nextReply].includes(id));
-    expect(order).toStrictEqual([firstReply, steered.message_id, nextReply]);
+
+    const reply = rig.opened.store.assistantChat.message(firstReply);
+    const timeline = CHAT_TIMELINE_EMBED.parse(
+      reply.embeds.find((embed) => embed.kind === 'chat_timeline'),
+    );
+    expect(mine.turn.replyId).toBe(firstReply);
+    expect(reply.text).toBe('before. after.');
+    expect(timeline.parts.map((part) => part.kind)).toEqual(['text', 'steer', 'text']);
+    expect(timeline.parts[1]).toMatchObject({ message_id: steered.message_id });
   });
 
-  it('waits for a running tool to finish before moving to the new row', async () => {
+  it('records the boundary while a tool is running and updates the same call when it completes', async () => {
     const mine = await startedTurn();
     const firstReply = mine.turn.replyId;
     mine.deliver(mine.event('tool', 1));
     const steered = mine.addSteered();
-    mine.turn.steered.push(steered);
-    mine.turn.after = steered.message_id;
-
     mine.deliver(mine.text(2, 'still running.'));
-    expect(mine.turn.replyId).toBe(firstReply);
     const running = mine.event('tool', 1);
     mine.deliver(running.kind === 'tool' ? { ...running, seq: 3, state: 'completed' } : running);
-    mine.deliver(mine.text(4, 'now.'));
+    mine.deliver(mine.event('tool', 5));
+    mine.deliver(mine.text(6, 'now.'));
+    mine.deliver(mine.event('completed', 7));
 
-    expect(mine.turn.replyId).not.toBe(firstReply);
-    mine.deliver(mine.event('completed', 5));
+    const reply = rig.opened.store.assistantChat.message(firstReply);
+    const timeline = CHAT_TIMELINE_EMBED.parse(
+      reply.embeds.find((embed) => embed.kind === 'chat_timeline'),
+    );
+    expect(timeline.parts.map((part) => part.kind)).toEqual([
+      'tool',
+      'steer',
+      'text',
+      'tool',
+      'text',
+    ]);
+    expect(timeline.parts[0]).toMatchObject({ tool: { callId: 'call-1', state: 'done' } });
+    expect(timeline.parts[1]).toMatchObject({ message_id: steered.message_id });
+    expect(mine.turn.replyId).toBe(firstReply);
   });
 
-  it('moves to the new row when the next assistant attempt starts, not after the turn', async () => {
+  it('retains committed message boundaries when an open assistant attempt is discarded', async () => {
     const mine = await startedTurn();
-    const { assistantChat } = rig.opened.store;
     const session = rig.service.state(rig.owner, mine.chat.id);
-    const attempt = (seq: number, id: string, state: 'started' | 'committed'): AiHarnessEvent => ({
+    const attempt = (seq: number, state: 'started' | 'discarded'): AiHarnessEvent => ({
       session_id: session.session_id,
       chat_id: mine.chat.id,
       epoch: session.epoch ?? 1,
@@ -327,28 +354,27 @@ describe('output after a steered message', () => {
       kind: 'state',
       session,
       seq,
-      assistant_attempt: { id, state },
+      assistant_attempt: { id: 'step:1', state },
     });
-    const firstReply = mine.turn.replyId;
-    mine.deliver(attempt(1, 'step:1', 'started'));
-    mine.deliver(mine.text(2, 'before. '));
+    mine.deliver(mine.text(1, 'committed.'));
+    mine.deliver(attempt(2, 'started'));
+    mine.deliver(mine.text(3, 'discard me.'));
     const steered = mine.addSteered();
-    mine.turn.steered.push(steered);
-    mine.turn.after = steered.message_id;
-    mine.deliver(mine.text(3, 'same step.'));
-    mine.deliver(attempt(4, 'step:1', 'committed'));
-    expect(mine.turn.replyId).toBe(firstReply);
+    mine.deliver(mine.text(4, 'discard me too.'));
+    mine.deliver(attempt(5, 'discarded'));
+    mine.deliver(mine.text(6, 'replacement.'));
+    mine.deliver(mine.event('completed', 7));
 
-    mine.deliver(attempt(5, 'step:2', 'started'));
-    mine.deliver(mine.text(6, 'noted.'));
-
-    const nextReply = mine.turn.replyId;
-    mine.deliver(attempt(7, 'step:2', 'committed'));
-    mine.deliver(mine.event('completed', 8));
-    expect(nextReply).not.toBe(firstReply);
-    expect(assistantChat.message(firstReply).text).toBe('before. same step.');
-    expect(assistantChat.message(nextReply).text).toBe('noted.');
-    expect(assistantChat.message(nextReply).reply_to).toBe(steered.message_id);
+    const reply = rig.opened.store.assistantChat.message(mine.turn.replyId);
+    const timeline = CHAT_TIMELINE_EMBED.parse(
+      reply.embeds.find((embed) => embed.kind === 'chat_timeline'),
+    );
+    expect(reply.text).toBe('committed.replacement.');
+    expect(timeline.parts).toEqual([
+      { kind: 'text', key: 'text:0', text: 'committed.' },
+      { kind: 'steer', key: `steer:${String(steered.message_id)}`, message_id: steered.message_id },
+      { kind: 'text', key: 'text:2', text: 'replacement.' },
+    ]);
   });
 });
 

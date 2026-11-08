@@ -47,7 +47,8 @@ class AssistantAttemptProjectionError extends Error {
 }
 export class TurnStream {
   private readonly timeline = new TurnTimeline();
-  private messageId: string | null;
+  private stopMessages: (() => void) | null = null;
+  private readonly messageId: string | null;
   private attempt: AssistantAttempt | null = null;
   private seq = 0;
   private parts: ChatStreamPart[] = [];
@@ -76,28 +77,6 @@ export class TurnStream {
       messageId: this.messageId,
       profileId: this.target.profileId,
     };
-  }
-
-  get quiet(): boolean {
-    return (
-      this.attempt === null && ![...this.tools.values()].some((tool) => tool.state === 'running')
-    );
-  }
-
-  endSegment(): void {
-    this.flush();
-    this.timeline.finish(false);
-    this.timeline.flush();
-  }
-
-  beginSegment(messageId: string): void {
-    this.messageId = messageId;
-    this.timeline.clear();
-    this.tools.clear();
-    this.draft = '';
-    this.reasoningText = '';
-    this.seq += 1;
-    this.snapshot('thinking', null, null);
   }
 
   text(delta: string): void {
@@ -134,6 +113,10 @@ export class TurnStream {
     this.seq += 1;
     this.snapshot('thinking', null, null);
   }
+  replayBoundaries(saved: ChatTimelineEmbed): void {
+    this.timeline.replayBoundaries(saved);
+  }
+
   get spoken(): string {
     return this.draft.trim();
   }
@@ -163,8 +146,16 @@ export class TurnStream {
     this.snapshot('tool', null, null);
   }
 
-  bindTimeline(persist: (timeline: ChatTimelineEmbed) => void): void {
+  bindTimeline(
+    persist: (timeline: ChatTimelineEmbed) => void,
+    subscribe?: (listener: (messageId: string) => void) => () => void,
+  ): void {
     this.timeline.bind(persist);
+    this.stopMessages?.();
+    this.stopMessages =
+      subscribe?.((messageId) => {
+        this.steer(messageId);
+      }) ?? null;
   }
 
   private state: ChatActivityNotice['state'] = 'thinking';
@@ -194,7 +185,11 @@ export class TurnStream {
 
   snapshot(state: ChatActivityNotice['state'], finish: string | null, reason: string | null): void {
     this.flush();
-    if (state === 'idle' || state === 'failed') this.timeline.finish(finish === 'stopped');
+    if (state === 'idle' || state === 'failed') {
+      this.stopMessages?.();
+      this.stopMessages = null;
+      this.timeline.finish(finish === 'stopped');
+    }
     this.timeline.flush();
     if (this.state !== state) {
       log.debug('stream.state_changed', () => ({

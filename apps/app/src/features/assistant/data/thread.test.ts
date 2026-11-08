@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ASSISTANT_CONTINUE_NOTE,
+  ASSISTANT_MESSAGE_ROW,
   HELPER_DIALOGUE,
   type AssistantMessageRow,
 } from '@smarteverything/domain';
@@ -531,5 +532,112 @@ describe('threadOf participants', () => {
     const [second] = threadOf(rows, OPTIONS);
     if (first === undefined || second === undefined) throw new Error('Expected an item.');
     expect(sameMessage(first, second)).toBe(true);
+  });
+});
+
+describe('interleaved reply chronology', () => {
+  const FIRST = '10000000-0000-4000-8000-000000000001';
+  const SECOND = '10000000-0000-4000-8000-000000000002';
+  const REPLY = '10000000-0000-4000-8000-000000000003';
+  const HELPER = '10000000-0000-4000-8000-000000000004';
+  const running = {
+    kind: 'tool',
+    key: 'call-1',
+    tool: {
+      callId: 'call-1',
+      name: 'bash',
+      title: 'Build page',
+      state: 'running',
+      detail: null,
+      input: 'work',
+      output: null,
+      redacted: false,
+      image_operation_id: null,
+    },
+  } as const;
+  const timeline = (
+    parts: readonly unknown[],
+    state: AssistantMessageRow['state'] = 'working',
+  ): AssistantMessageRow => ({
+    ...row(REPLY, 'responder', state, { at: '1' }),
+    text: 'Before.After.Last.',
+    embeds: [{ kind: 'chat_timeline', version: 1, parts }],
+  });
+  const first = row(FIRST, 'person', 'delivered', { at: '2' });
+  const second = row(SECOND, 'person', 'queued', { at: '3' });
+  const before = { kind: 'text', key: 'before', text: 'Before.' } as const;
+  const after = { kind: 'text', key: 'after', text: 'After.' } as const;
+  const steer = (id: string): unknown => ({ kind: 'steer', key: `steer:${id}`, message_id: id });
+  const order = (rows: readonly AssistantMessageRow[]): readonly string[] =>
+    [...threadOf(rows, OPTIONS)].reverse().map((item) => item.key);
+
+  it('splits an active tool group around each real user row and preserves its original identity', () => {
+    const reply = timeline([
+      before,
+      running,
+      steer(FIRST),
+      after,
+      steer(SECOND),
+      {
+        kind: 'text',
+        key: 'last',
+        text: 'Last.',
+      },
+    ]);
+    const expected = [REPLY, FIRST, `${REPLY}#after:${FIRST}`, SECOND, `${REPLY}#after:${SECOND}`];
+    expect(order([second, reply, first])).toEqual(expected);
+    const items = [...threadOf([second, reply, first], OPTIONS)].reverse();
+    expect(items.filter((item) => item.row.id === REPLY).every((item) => item.row === reply)).toBe(
+      true,
+    );
+    expect(items.filter((item) => item.row.id === FIRST)).toHaveLength(1);
+    expect(items.find((item) => item.row.id === FIRST)?.position).toBe('only');
+    expect(items.find((item) => item.row.id === SECOND)?.position).toBe('only');
+    const restored = ASSISTANT_MESSAGE_ROW.parse(JSON.parse(JSON.stringify(reply)));
+    expect(order([second, restored, first])).toEqual(expected);
+  });
+
+  it('keeps a terminal tool update in the original range without duplicating it', () => {
+    const completed = { ...running, tool: { ...running.tool, state: 'done' } };
+    const reply = timeline([before, completed, steer(FIRST), after], 'answered');
+    const items = [...threadOf([reply, first], OPTIONS)].reverse();
+    const tools = items.flatMap((item) => {
+      const parts = replyParts(item.row);
+      const range = item.segment;
+      const shown = range === null ? parts : parts?.slice(range.from, range.to);
+      return shown?.flatMap((part) => (part.kind === 'tools' ? part.tools : [])) ?? [];
+    });
+    expect(tools).toMatchObject([{ callId: 'call-1', state: 'done' }]);
+    expect(order([reply, first])).toEqual([REPLY, FIRST, `${REPLY}#after:${FIRST}`]);
+    expect(items.filter((item) => item.row.id === REPLY && item.stats !== null)).toHaveLength(1);
+  });
+
+  it('interleaves helper/assistant messages using the same persisted boundary', () => {
+    const helper = { ...row(HELPER, 'responder', 'answered', { at: '2' }), text: 'Helper report' };
+    expect(order([timeline([before, steer(HELPER), after]), helper])).toEqual([
+      REPLY,
+      HELPER,
+      `${REPLY}#after:${HELPER}`,
+    ]);
+  });
+
+  it('honors canonical boundaries even if imported message timestamps tie', () => {
+    const tied = {
+      ...first,
+      created_at: row(REPLY, 'responder', 'working', { at: '1' }).created_at,
+    };
+    expect(order([timeline([before, steer(FIRST), after]), tied])).toEqual([
+      REPLY,
+      FIRST,
+      `${REPLY}#after:${FIRST}`,
+    ]);
+  });
+
+  it('keeps missing anchors inline and keeps hidden activity boundaries around actual user messages', () => {
+    const reply = timeline([before, running, steer(FIRST), after]);
+    expect(order([reply])).toEqual([REPLY]);
+    const quiet = [...threadOf([reply, first], { ...OPTIONS, showSteps: false })].reverse();
+    expect(quiet.map((item) => item.key)).toEqual([REPLY, FIRST, `${REPLY}#after:${FIRST}`]);
+    expect(quiet[2]?.segment).toMatchObject({ from: 2, to: 3 });
   });
 });

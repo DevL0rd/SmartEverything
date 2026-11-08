@@ -1,7 +1,6 @@
 import { helperParentMessageId } from '../../delegation/helper-dialogue';
 import { Logger, messageOf } from '@smarteverything/logging';
 import type { ProjectedOp } from '@smarteverything/harness/process';
-import { savedWebSources } from '../../web-search-supplier';
 import { retainInputRefusal } from '../../../harness/input-refusal';
 import {
   completeNativeTurn,
@@ -25,11 +24,6 @@ import type { HarnessService } from '../../../harness/service';
 import type { ConversationLog } from '../../conversation-log';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 const log = new Logger('hub.assistant-engine');
-function beginsWork(event: AiHarnessEvent): boolean {
-  if (event.kind === 'state') return event.assistant_attempt?.state === 'started';
-  return event.kind === 'text' || event.kind === 'reasoning' || event.kind === 'tool';
-}
-
 export type { ActiveTurn, ProjectorOptions };
 export class ConversationProjector {
   readonly active = new Map<string, ActiveTurn>();
@@ -114,7 +108,6 @@ export class ConversationProjector {
       done: finish,
       restored,
       steered: [],
-      after: null,
     };
     this.active.set(event.id, turn);
     log.debug('dsh.stream_opened', {
@@ -124,9 +117,12 @@ export class ConversationProjector {
       restored,
       activeTurns: this.active.size,
     });
-    stream.bindTimeline((timeline): void => {
-      this.conversation.progress(turn.replyId, stream.spoken, timeline);
-    });
+    stream.bindTimeline(
+      (timeline): void => {
+        this.conversation.progress(turn.replyId, stream.spoken, timeline);
+      },
+      (listener) => this.conversation.onMessage(chat.id, listener),
+    );
     stream.snapshot('thinking', null, null);
     return completed;
   }
@@ -149,7 +145,6 @@ export class ConversationProjector {
       });
       return;
     }
-    this.placeSteered(turn, event);
     if (event.kind === 'state' && event.delivery_id !== undefined) this.admitClaim(turn, event);
     if (
       event.delivery_id === undefined &&
@@ -160,20 +155,6 @@ export class ConversationProjector {
       this.admitted.add(turn.event.id);
     }
     this.activeEvent(turn, event);
-  }
-  private placeSteered(turn: ActiveTurn, event: AiHarnessEvent): void {
-    if (turn.after === null || !beginsWork(event) || !turn.stream.quiet) return;
-    const model = this.service.binding(turn.chat).model;
-    const reply = this.conversation.startReply(turn.chat, turn.after, model);
-    const text = turn.stream.spoken;
-    turn.stream.endSegment();
-    this.conversation.finishReply(turn.replyId, text, {
-      model,
-      steps: turn.stream.settled(),
-      sources: savedWebSources(this.service, turn.replyId),
-    });
-    Object.assign(turn, { replyId: reply.id, after: null });
-    turn.stream.beginSegment(reply.id);
   }
   private swallowed(turn: ActiveTurn, event: AiHarnessEvent): boolean {
     return this.held.has(turn.event.id) && (event.kind === 'completed' || event.kind === 'failed');
@@ -317,6 +298,7 @@ export class ConversationProjector {
       const todos = chatTodosOf(op.tool.name, op.tool.input);
       if (todos !== null) this.conversation.todos(turn.replyId, todos);
     }
+    if (reply.timeline !== undefined) turn.stream.replayBoundaries(reply.timeline);
     this.complete(turn, event, false, reply);
   }
   complete(

@@ -252,7 +252,7 @@ export class DshRunner {
     });
     steered(event, chat.id, state.session_id, state.epoch);
     turn.steered.push(event);
-    turn.after = event.message_id;
+    if (event.message_id !== null) turn.stream.steer(event.message_id);
     this.conversation.stateOf(event.message_id, 'delivered');
     return true;
   }

@@ -10,7 +10,7 @@ import { useAssistantName, useAssistantStatus } from '../data/assistant-data';
 import { usePendingMessages, type PendingMessage } from '../data/outbox';
 import { isFooter, threadOf, type MessageItem } from '../data/thread';
 import { castOf, type Cast } from '../model/participant';
-import { imageTimelineIds, steeredMessageIds } from '../model/reply-timeline';
+import { imageTimelineIds } from '../model/reply-timeline';
 import { useImageOperations } from '../images/data/image-queries';
 import { attachImageOperations, type ImageOperationItem } from '../images/model/image-thread';
 
@@ -44,13 +44,6 @@ function withOutbox(
   return [...items.slice(0, at), ...outbox, ...items.slice(at)];
 }
 
-function withoutSteered(
-  items: readonly MessageItem[],
-  steered: ReadonlySet<string>,
-): readonly MessageItem[] {
-  return steered.size === 0 ? items : items.filter((item) => !steered.has(item.row.id));
-}
-
 function useCast(historyKey: string, chat: AiChatRow | null): Cast {
   const assistantName = useAssistantName();
   const kind = chat?.kind ?? null;
@@ -82,7 +75,6 @@ export function useThreadRows(
   const operations = useImageOperations(historyKey);
   const all = useMemo(() => mergedRows(rows, olderRows), [rows, olderRows]);
   const boundImages = useMemo(() => imageTimelineIds(all), [all]);
-  const steered = useMemo(() => steeredMessageIds(all), [all]);
   const items = useMemo(
     () =>
       timed('items', () =>
@@ -101,14 +93,14 @@ export function useThreadRows(
   const data = useMemo<readonly ThreadRow[]>(
     () =>
       withOutbox(
-        attachImageOperations(withoutSteered(items, steered), operations.data ?? [], {
+        attachImageOperations(items, operations.data ?? [], {
           boundImages,
           hidden,
           replyStartedAt: items.find(isFooter)?.row.created_at ?? null,
         }),
         outboxOf(pending),
       ),
-    [pending, items, operations.data, hidden, boundImages, steered],
+    [pending, items, operations.data, hidden, boundImages],
   );
   return { data, all, readAt: opened.readAt, complete };
 }

@@ -155,8 +155,11 @@ function providerOutput(
     event.message_id,
     bound.engine.model,
   );
-  stream.bindTimeline((timeline): void => {
-    replies.timeline(timeline);
-  });
+  stream.bindTimeline(
+    (timeline): void => {
+      replies.timeline(timeline);
+    },
+    (listener) => deps.conversation.onMessage(bound.id, listener),
+  );
   return { stream, replies };
 }

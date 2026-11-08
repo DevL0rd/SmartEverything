@@ -1,6 +1,6 @@
 import { savedWebSources } from '../../web-search-supplier';
 import { Logger } from '@smarteverything/logging';
-import type { AiChatRow, AiHarnessEvent } from '@smarteverything/domain';
+import type { AiChatRow, AiHarnessEvent, ChatTimelineEmbed } from '@smarteverything/domain';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import type { ConversationLog } from '../../conversation-log';
 import type { HarnessService } from '../../../harness/service';
@@ -20,6 +20,7 @@ export interface NativeCompletionTurn {
   readonly stream: TurnStream;
 }
 export interface ReplayedReply {
+  readonly timeline?: ChatTimelineEmbed;
   readonly kept: string;
   readonly model: string;
   readonly interruption: string;

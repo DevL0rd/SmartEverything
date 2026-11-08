@@ -27,12 +27,16 @@ function rowsOf(run: readonly RunItem[]): readonly AssistantMessageRow[] {
 }
 
 export function withTurnStats<T extends RunItem>(items: readonly T[]): readonly T[] {
-  const runs = runsOf(items).map((run) => ({ run, stats: runStatsOf(rowsOf(run)) }));
+  const last = new Map(items.map((item) => [item.row.id, item]));
+  const runs = runsOf(items).map((run) => {
+    const rows = rowsOf(run).filter((row) => run.some((item) => item === last.get(row.id)));
+    return { run, stats: runStatsOf(rows), hasRows: rows.length > 0 };
+  });
   const costPeak = costPeakOf(runs.map(({ stats }) => stats.cost));
-  return runs.flatMap(({ run, stats }) =>
+  return runs.flatMap(({ run, stats, hasRows }) =>
     run.map((item, index) => ({
       ...item,
-      stats: index === run.length - 1 ? stats : null,
+      stats: hasRows && index === run.length - 1 ? stats : null,
       costPeak,
     })),
   );

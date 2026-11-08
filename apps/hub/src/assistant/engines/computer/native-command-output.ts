@@ -50,9 +50,12 @@ export class NativeCommandOutput {
       { chatId: chat.id, turnId: input.operation_id, messageId, profileId: chat.profile_id },
       deps.emit,
     );
-    this.stream.bindTimeline((timeline): void => {
-      this.replies.timeline(timeline);
-    });
+    this.stream.bindTimeline(
+      (timeline): void => {
+        this.replies.timeline(timeline);
+      },
+      (listener) => deps.conversation.onMessage(chat.id, listener),
+    );
   }
   event(event: ComputerEvent): void {
     if (this.closed || event.job_id !== this.input.command_job_id) return;

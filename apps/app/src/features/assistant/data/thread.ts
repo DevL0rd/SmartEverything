@@ -36,6 +36,7 @@ import { replyTimeline, visibleReplyParts } from '../model/reply-timeline';
 import { replySegments, type ReplySegment } from '../model/reply-segments';
 import { dayFactsOf, sameDay } from './thread-days';
 import { withTurnStats } from './thread-turns';
+import { interleavedReplies } from '../model/interleaved-replies';
 
 export interface MessageItem {
   readonly type: 'message';
@@ -303,7 +304,12 @@ function messageItem(entry: Entry, index: number, context: Context): MessageItem
 
 function segmented(item: MessageItem, showSteps: boolean): readonly MessageItem[] {
   const { row } = item;
-  if (helperDialogueOf(row) !== undefined || row.role !== 'responder' || row.state === 'working')
+  if (
+    item.segment !== null ||
+    helperDialogueOf(row) !== undefined ||
+    row.role !== 'responder' ||
+    row.state === 'working'
+  )
     return [item];
   const parts = visibleReplyParts(row, showSteps);
   const segments = parts === null ? [] : replySegments(parts);
@@ -313,7 +319,7 @@ function segmented(item: MessageItem, showSteps: boolean): readonly MessageItem[
       ? { ...item, segment }
       : {
           ...item,
-          key: continuationKey(row.id, segment.index),
+          key: `${row.id}#${String(segment.index)}`,
           position: 'middle',
           day: null,
           gap: null,
@@ -321,10 +327,6 @@ function segmented(item: MessageItem, showSteps: boolean): readonly MessageItem[
           segment,
         },
   );
-}
-
-function continuationKey(id: string, index: number): string {
-  return `${id}#${String(index)}`;
 }
 
 export function startsMessage(item: MessageItem): boolean {
@@ -372,9 +374,16 @@ export function threadOf(
     byId: new Map(entries.map((entry) => [entry.row.id, entry])),
     busySince: visible.find(isWorkingRow)?.created_at ?? null,
   };
-  const items = entries.flatMap((entry, index) =>
-    segmented(messageItem(entry, index, context), showSteps),
-  );
+  const items = interleavedReplies(
+    entries.map((entry, index) => messageItem(entry, index, context)),
+    showSteps,
+    (left, right) =>
+      left !== undefined &&
+      right !== undefined &&
+      !right.divider &&
+      sameDay(left.row, right.row, options) &&
+      continuesRun(left, right),
+  ).flatMap((item) => segmented(item, showSteps));
   return [...withTurnStats(items)].reverse();
 }
 

@@ -150,7 +150,7 @@ function RunHeader({
       </ParticipantTrigger>
       {item.group ? (
         <Text variant="caption" tone="faint" className="shrink-0 tabular">
-          {clock(item.row.created_at, timeZone)}
+          {startsMessage(item) ? clock(item.row.created_at, timeZone) : 'Continued'}
         </Text>
       ) : null}
       <OriginMark origin={item.origin} sender={participant.name} />

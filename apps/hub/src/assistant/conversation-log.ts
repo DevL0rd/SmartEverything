@@ -91,6 +91,18 @@ export class ConversationLog {
     return this.store.assistantChat;
   }
 
+  onMessage(chatId: string, listener: (messageId: string) => void): () => void {
+    return this.store.feed.subscribe((change) => {
+      if (
+        change.table === 'assistant_messages' &&
+        change.operation === 'INSERT' &&
+        change.record !== null &&
+        change.record.chat_id === chatId
+      )
+        listener(change.record.id);
+    });
+  }
+
   private add(
     row: NewAssistantMessage,
     files: readonly StoredAttachment[],

@@ -5,6 +5,7 @@ import type {
   ChatToolItem,
 } from '@smarteverything/domain';
 import { REDACTED } from '@smarteverything/logging';
+import { replayBoundaries } from './replay-boundaries';
 import { toolTimelineDetails, type ToolTimelineDetails } from './tool-timeline-details';
 
 export class TurnTimeline {
@@ -35,28 +36,22 @@ export class TurnTimeline {
     else this.parts[index] = part;
   }
   steer(messageId: string): void {
+    if (this.parts.some((part) => part.kind === 'steer' && part.message_id === messageId)) return;
     this.dirty = true;
     this.parts.push({ kind: 'steer', key: `steer:${messageId}`, message_id: messageId });
   }
   restore(timeline: ChatTimelineEmbed): void {
     this.dirty = true;
-    const tools = this.parts.filter((part) => part.kind === 'tool');
-    this.parts = timeline.parts.map((part) =>
-      part.kind === 'tool'
-        ? (tools.find((current) => current.tool.callId === part.tool.callId) ?? part)
-        : part,
-    );
-    for (const part of tools)
-      if (
-        !this.parts.some(
-          (current) => current.kind === 'tool' && current.tool.callId === part.tool.callId,
-        )
-      )
-        this.parts.push(part);
+    const saved = new Map(timeline.parts.map((part) => [part.key, part]));
+    this.parts = this.parts.flatMap((part): ChatTimelinePart[] => {
+      if (part.kind === 'tool' || part.kind === 'steer') return [part];
+      const previous = saved.get(part.key);
+      return previous === undefined ? [] : [previous];
+    });
   }
-  clear(): void {
+  replayBoundaries(saved: ChatTimelineEmbed): void {
+    this.parts = replayBoundaries(saved, this.current()).parts;
     this.dirty = true;
-    this.parts = [];
   }
   finish(interrupted: boolean): void {
     if (!this.parts.some(running)) return;
