@@ -6,7 +6,8 @@ import type { HubLayout } from '../data-layout';
 import { fsCode } from '../fs-code';
 import { isMissing } from '../fs-util';
 
-export type DrivePathFailure = 'invalid' | 'escape' | 'missing' | 'changed' | 'not-directory';
+export type DrivePathFailure =
+  'invalid' | 'escape' | 'missing' | 'changed' | 'not-directory' | 'denied';
 
 export class DrivePathError extends Error {
   override readonly name = 'DrivePathError';
@@ -115,6 +116,9 @@ async function realpathWithTail(
     const code = fsCode(cause);
     if (code === 'ENOTDIR') {
       throw new DrivePathError('not-directory', 'A parent of the path is not a directory.');
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      throw new DrivePathError('denied', 'The path cannot be read.', cause);
     }
     if (code !== 'ENOENT') {
       throw cause;

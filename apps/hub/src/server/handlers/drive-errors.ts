@@ -8,7 +8,7 @@ import {
 } from '../../drive/albums';
 import { ConflictError } from '../../drive/conflicts';
 import { DriveWriteError, type DriveWriteFailure } from '../../drive/intents';
-import { DrivePathError, RootPlacementError } from '../../drive/paths';
+import { DrivePathError, RootPlacementError, type DrivePathFailure } from '../../drive/paths';
 import { DriveFreeSpaceError, DriveQuotaExceededError } from '../../drive/quotas';
 import { RootMarkerError } from '../../drive/root-marker';
 import { DriveCursorError, DriveFolderRequiredError } from '../../drive/search';
@@ -30,6 +30,15 @@ const CONFLICT_CODES: Readonly<Record<ConflictError['failure'], ApiErrorCode>> =
   'copy-missing': 'not_found',
 };
 
+const PATH_CODES: Readonly<Record<DrivePathFailure, ApiErrorCode>> = {
+  invalid: 'invalid_request',
+  escape: 'invalid_request',
+  missing: 'invalid_request',
+  changed: 'invalid_request',
+  'not-directory': 'invalid_request',
+  denied: 'forbidden',
+};
+
 const CODES: readonly (readonly [ErrorClass, ApiErrorCode])[] = [
   [DriveAlbumAccessError, 'not_found'],
   [DriveAlbumItemError, 'invalid_request'],
@@ -37,7 +46,6 @@ const CODES: readonly (readonly [ErrorClass, ApiErrorCode])[] = [
   [DriveAlbumKindError, 'invalid_request'],
   [DriveCursorError, 'invalid_request'],
   [DriveFolderRequiredError, 'invalid_request'],
-  [DrivePathError, 'invalid_request'],
   [RootPlacementError, 'invalid_request'],
   [RootMarkerError, 'conflict'],
   [VolumeError, 'invalid_request'],
@@ -48,6 +56,7 @@ const CODES: readonly (readonly [ErrorClass, ApiErrorCode])[] = [
 export function driveErrorCode(cause: unknown): ApiErrorCode | null {
   if (cause instanceof DriveWriteError) return WRITE_CODES[cause.failure];
   if (cause instanceof ConflictError) return CONFLICT_CODES[cause.failure];
+  if (cause instanceof DrivePathError) return PATH_CODES[cause.failure];
   for (const [type, code] of CODES) {
     if (cause instanceof type) return code;
   }

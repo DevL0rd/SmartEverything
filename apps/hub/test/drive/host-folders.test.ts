@@ -1,13 +1,15 @@
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DrivePathError } from '../../src/drive/paths';
 import { listHostFolders } from '../../src/drive/host-folders';
+import { driveErrorCode } from '../../src/server/handlers/drive-errors';
 
 let base = '';
 let disk = '';
 let outside = '';
+const lockedFolders: string[] = [];
 
 beforeEach(async () => {
   base = await realpath(await mkdtemp(join(tmpdir(), 'hub-host-folders-')));
@@ -23,6 +25,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  for (const path of lockedFolders.splice(0)) {
+    await chmod(path, 0o755);
+  }
   await rm(base, { recursive: true, force: true });
 });
 
@@ -95,5 +100,59 @@ describe('listing hub host folders', () => {
 
   it('allows nothing when no disk is mounted', async () => {
     expect(await refusal(listHostFolders([], disk))).toMatchObject({ failure: 'escape' });
+  });
+});
+
+async function unreadableFolder(root: string): Promise<string> {
+  const path = join(root, 'locked');
+  await mkdir(join(path, 'child'), { recursive: true });
+  await chmod(path, 0o000);
+  lockedFolders.push(path);
+  return path;
+}
+
+describe('listing hub host folders under a folder the hub cannot read', () => {
+  it('refuses the unreadable folder itself as denied', async () => {
+    if (process.getuid?.() === 0) return;
+    const root = join(base, 'readable');
+    const path = await unreadableFolder(root);
+    const cause = await refusal(listHostFolders([root], path));
+    expect(cause).toBeInstanceOf(DrivePathError);
+    expect(cause).toMatchObject({ failure: 'denied' });
+  });
+
+  it('still lists the unreadable folder in its parent', async () => {
+    if (process.getuid?.() === 0) return;
+    const root = join(base, 'readable');
+    const path = await unreadableFolder(root);
+    expect(await listHostFolders([root], root)).toEqual({
+      path: root,
+      parent: null,
+      folders: [{ name: 'locked', path, hidden: false }],
+    });
+  });
+
+  it('refuses a path inside the unreadable folder as denied', async () => {
+    if (process.getuid?.() === 0) return;
+    const root = join(base, 'readable');
+    const path = await unreadableFolder(root);
+    const cause = await refusal(listHostFolders([root], join(path, 'child')));
+    expect(cause).toBeInstanceOf(DrivePathError);
+    expect(cause).toMatchObject({ failure: 'denied' });
+  });
+
+  it('answers a denied path with forbidden and leaves the other failures alone', () => {
+    expect(driveErrorCode(new DrivePathError('denied', 'The folder cannot be read.'))).toBe(
+      'forbidden',
+    );
+    expect(driveErrorCode(new DrivePathError('missing', 'The folder does not exist.'))).toBe(
+      'invalid_request',
+    );
+    expect(driveErrorCode(new DrivePathError('escape', 'The path leaves its root.'))).toBe(
+      'invalid_request',
+    );
+    expect(driveErrorCode(new DrivePathError('not-directory', 'The path is not a folder.'))).toBe(
+      'invalid_request',
+    );
   });
 });

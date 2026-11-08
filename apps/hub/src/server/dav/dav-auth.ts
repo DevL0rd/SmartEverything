@@ -73,6 +73,7 @@ export function authenticateDav(deps: DavDeps, request: IncomingMessage): DavCal
 const PATH_STATUS: Readonly<Record<DrivePathFailure, number>> = {
   invalid: 400,
   escape: 403,
+  denied: 403,
   missing: 404,
   changed: 409,
   'not-directory': 409,

@@ -34,6 +34,9 @@ async function resolvedInside(requested: string, roots: readonly string[]): Prom
     if (code === 'ENOTDIR') {
       throw new DrivePathError('not-directory', 'The path is not a folder.', cause);
     }
+    if (code === 'EACCES' || code === 'EPERM') {
+      throw new DrivePathError('denied', 'The folder cannot be read.', cause);
+    }
     throw cause;
   }
   if (!roots.some((root) => isInside(root, real))) {
@@ -50,8 +53,12 @@ async function childFolders(
   try {
     entries = await readdir(real, { withFileTypes: true });
   } catch (cause) {
-    if (fsCode(cause) === 'ENOTDIR') {
+    const code = fsCode(cause);
+    if (code === 'ENOTDIR') {
       throw new DrivePathError('not-directory', 'The path is not a folder.', cause);
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      throw new DrivePathError('denied', 'The folder cannot be read.', cause);
     }
     throw cause;
   }
