@@ -1,3 +1,4 @@
+import { renewHelperWriter as renewWriter } from '../../../harness/helper-writer-renewal';
 import { randomUUID } from 'node:crypto';
 import {
   HELPER_SETTLEMENT_PROOF,
@@ -256,43 +257,15 @@ function renewHelperWriter(
   const { store } = service;
   const { child, parent, host, grant } = binding;
   return store.durableWrite(() => {
-    const principal = service.hostPrincipal(grant.profile_id, host);
-    store.dshSessions.verifyWriter(parent, principal);
+    store.dshSessions.verifyWriter(parent, service.hostPrincipal(grant.profile_id, host));
     const retained = store.dshSessions.attached(child.session_id, grant.profile_id);
     if (retained?.epoch !== child.epoch)
       throw new ApiError('conflict', 'A different writer already holds this helper.');
-    const previous = store.harnessSessions.state(child.session_id);
-    if (previous === undefined)
-      throw new ApiError('conflict', 'The helper has no retained native projection.');
-    const { claim, metadata } = store.dshSessions.acquire(
-      {
-        target: host.target,
-        runtime_instance: host.runtime_instance,
-        connection_generation: host.connection_generation,
-        session_id: child.session_id,
-      },
-      principal,
-    );
-    if (metadata.next_seq !== settlement.nextSeq)
+    const principal = service.hostPrincipal(grant.profile_id, host);
+    const { claim, metadata: renewed } = renewWriter(store, child, principal, grant);
+    if (renewed.next_seq !== settlement.nextSeq)
       throw new ApiError('conflict', 'The helper log changed before writer renewal.');
     rememberHelperRenewal(store, { previousEpoch: child.epoch, parent, child: claim, settlement });
-    store.harnessSessions.issue({
-      ...grant,
-      runtime_instance: claim.runtime_instance,
-      generation: claim.connection_generation,
-    });
-    store.harnessSessions.project(
-      {
-        ...previous,
-        metadata,
-        epoch: claim.epoch,
-        state: 'idle',
-        interactions: [],
-        work: [],
-        failure: null,
-      },
-      0,
-    );
     return claim;
   });
 }

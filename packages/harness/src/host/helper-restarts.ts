@@ -1,3 +1,4 @@
+import { Logger } from '@smarteverything/logging';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { Agent } from '@deepseek-ai/dsh-agent';
@@ -17,6 +18,7 @@ const TEXT = z.object({ type: z.literal('text'), text: z.string().min(1) });
 const ASSISTANT = z.object({ message: z.object({ content: z.array(z.unknown()) }) });
 const IDENTIFIED = z.object({ id: z.string() });
 const SPLICED = z.object({ inserted: z.array(IDENTIFIED) });
+const log = new Logger('hub.harness');
 
 export interface InterruptedHelper {
   readonly childId: string;
@@ -164,6 +166,14 @@ export async function reportInterruptedHelpers(
     const helper = interruptedHelper(childId, childEvents, delivered);
     if (helper === undefined) continue;
     const outcome = await resumed(ports.resume, childId);
+    if (!outcome.ok) {
+      log.warn('session.helper_resume_failed', {
+        session_id: agent.id,
+        child_id: childId,
+        reason: outcome.reason,
+      });
+      continue;
+    }
     agent.send(
       helperNotice(helper, outcome),
       agent.status === 'idle' ? 'next-turn' : 'next-step',

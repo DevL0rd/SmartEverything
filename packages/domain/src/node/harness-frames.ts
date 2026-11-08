@@ -195,6 +195,11 @@ export const HARNESS_CALL_REQUEST = z.discriminatedUnion('operation', [
     inherited_event_count: z.int().nonnegative(),
   }),
   z.strictObject({
+    operation: z.literal('resume_child'),
+    parent_claim: DSH_WRITER_CLAIM_WRITE,
+    session_id: DSH_SESSION_ID,
+  }),
+  z.strictObject({
     operation: z.literal('verify'),
     claim: DSH_WRITER_CLAIM_WRITE,
     subscription: HARNESS_SUBSCRIPTION_USE.optional(),

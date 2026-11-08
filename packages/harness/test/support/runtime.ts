@@ -1,3 +1,4 @@
+import type { NativeSessionPersistencePort } from '../../src/persistence/port';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,6 +58,7 @@ export interface BootOptions {
   readonly mount?: (ctx: Context) => void;
   readonly installedPlugins?: (host: HarnessHost) => readonly InstalledHarnessPlugin[];
   readonly persistence?: MemoryPersistence;
+  readonly nativePersistence?: NativeSessionPersistencePort;
 }
 
 interface Scratch {
@@ -129,7 +131,7 @@ export async function bootRuntime(boot: BootOptions = {}): Promise<RuntimeFixtur
   const runtime = await createHarnessRuntime({
     host,
     ...optionalRuntimePorts(boot),
-    persistence,
+    persistence: boot.nativePersistence ?? persistence,
     interactions: boot.interactions ?? interactionsOf(boot.approval ?? 'allowed-once', approvals),
     desiredConfiguration: boot.desiredConfiguration ?? EMPTY_CONFIGURATION,
     installedPlugins: boot.installedPlugins?.(host) ?? [],

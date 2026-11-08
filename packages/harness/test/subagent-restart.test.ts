@@ -1,6 +1,7 @@
+import { RestartedHub } from './support/restarted-hub';
 import { randomUUID } from 'node:crypto';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import { Session, SessionId } from '@deepseek-ai/dsh-session';
+import { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session';
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
 import { helperInputSource } from '../src/host/helper-input';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,7 +9,7 @@ import type { GenerateOptions } from '@deepseek-ai/dsh-llm';
 import { bootRuntime, spoken, turnsFinished } from './support/runtime';
 import type { RuntimeFixture } from './support/runtime';
 import { MemoryPersistence, StoredSession } from './support/memory-persistence';
-import { HELPER_RESUME_TEXT, interruptedHelper } from '../src/host/helper-restarts';
+import { HELPER_RESUME_TEXT, interruptedHelper, helperNotice } from '../src/host/helper-restarts';
 
 const fixtures: RuntimeFixture[] = [];
 afterEach(async () => {
@@ -178,4 +179,122 @@ it('continues to recover an ordinary helper turn with a directed input queued be
     child.append('agent/inbox/spliced', { target: 'next-turn', start: 0, inserted: [message] }),
   ];
   expect(interruptedHelper(child.id, events, new Set())).toMatchObject({ childId: child.id });
+});
+
+async function remoteHost(hub: RestartedHub): Promise<RuntimeFixture> {
+  const fixture = await bootRuntime({ nativePersistence: hub.persistence });
+  fixtures.push(fixture);
+  fixture.model.guard = (request): void => {
+    fixture.model.script(
+      isChild(request)
+        ? { kind: 'text', text: 'Original worker finished.' }
+        : { kind: 'text', text: 'Worker result received.' },
+    );
+  };
+  return fixture;
+}
+
+function rememberFailedNotice(source: MemoryPersistence, parentId: string, childId: string): void {
+  const parent = source.sessions.get(parentId);
+  const child = source.sessions.get(childId);
+  if (parent === undefined || child === undefined) throw new Error('Missing original transcript.');
+  const helper = interruptedHelper(childId, child.events, new Set());
+  if (helper === undefined) throw new Error('Missing interrupted helper.');
+  parent.events.push({
+    type: 'user/message',
+    seq: SessionSeq(parent.events.length),
+    time: 1,
+    data: helperNotice(helper, { ok: false, reason: 'subagent unavailable' }),
+    surfaceOp: 'append',
+  });
+}
+
+describe('cold helpers with real machine writer admission', () => {
+  it('automatically rebinds the original child on a replacement Hub generation', async () => {
+    const { host, options, childId } = await parentWithRunningHelper();
+    const hub = new RestartedHub(crashCopy(host.persistence), options.sessionId);
+    const next = await remoteHost(hub);
+    await next.runtime.resume({ ...options, directory: next.workspace });
+    await vi.waitFor(() => {
+      expect(next.model.requests.filter(isChild)).toHaveLength(1);
+    });
+    expect(hub.renewed).toEqual([childId]);
+    expect(hub.persistence.claim(childId)).toMatchObject({
+      epoch: 2,
+      runtime_instance: hub.runtime,
+      connection_generation: hub.generation,
+    });
+    await vi.waitFor(() => {
+      expect(next.runtime.get(options.sessionId).quiet()).toBe(true);
+    });
+    expect(
+      next.model.requests
+        .filter((request) => !isChild(request))
+        .map(texts)
+        .join('\n'),
+    ).toContain('Original worker finished.');
+  });
+
+  it('preserves legacy receipts and admits an explicitly chosen native send_message continuation', async () => {
+    const { host, options, childId } = await parentWithRunningHelper();
+    const source = crashCopy(host.persistence);
+    rememberFailedNotice(source, options.sessionId, childId);
+    const hub = new RestartedHub(source, options.sessionId);
+    const next = await remoteHost(hub);
+    const session = await next.runtime.resume({ ...options, directory: next.workspace });
+    expect(hub.renewed).toEqual([]);
+    expect(next.model.requests).toHaveLength(0);
+    let sent = false;
+    next.model.guard = (request): void => {
+      if (isChild(request)) next.model.script({ kind: 'text', text: 'Chosen worker continued.' });
+      else if (!sent) {
+        sent = true;
+        next.model.script({
+          kind: 'tool',
+          id: 'continue-worker',
+          name: 'send_message',
+          input: { agent_id: childId, message: 'Continue your original task.' },
+        });
+      } else next.model.script({ kind: 'text', text: 'Continuation accepted.' });
+    };
+    session.text('Continue the original selected worker.');
+    await vi.waitFor(() => {
+      expect(next.model.requests.filter(isChild)).toHaveLength(1);
+    });
+    expect(hub.renewed).toEqual([childId]);
+    expect(hub.persistence.claim(childId).epoch).toBe(2);
+  });
+
+  it('does not consume recovery on failure and retries on the next parent reopening', async () => {
+    const { host, options, childId } = await parentWithRunningHelper();
+    const source = crashCopy(host.persistence);
+    const unavailable = new RestartedHub(source, options.sessionId);
+    unavailable.failResume = true;
+    const first = await remoteHost(unavailable);
+    await first.runtime.resume({ ...options, directory: first.workspace });
+    expect(first.model.requests).toHaveLength(0);
+    expect(unavailable.renewed).toEqual([]);
+    await first.runtime.dispose();
+    const hub = new RestartedHub(source, options.sessionId);
+    const next = await remoteHost(hub);
+    await next.runtime.resume({ ...options, directory: next.workspace });
+    await vi.waitFor(() => {
+      expect(next.model.requests.filter(isChild)).toHaveLength(1);
+    });
+    expect(hub.renewed).toEqual([childId]);
+  });
+});
+
+it('concurrent cold acquires retain one renewed child epoch and normal acquires reuse it', async () => {
+  const { host, options, childId } = await parentWithRunningHelper();
+  const hub = new RestartedHub(crashCopy(host.persistence), options.sessionId);
+  const writers = await Promise.all([
+    hub.persistence.acquire(SessionId(childId)),
+    hub.persistence.acquire(SessionId(childId)),
+  ]);
+  expect(writers[0].claim).toEqual(writers[1].claim);
+  expect(writers[0].claim.epoch).toBe(2);
+  const calls = hub.renewed.length;
+  expect((await hub.persistence.acquire(SessionId(childId))).claim).toEqual(writers[0].claim);
+  expect(hub.renewed).toHaveLength(calls);
 });

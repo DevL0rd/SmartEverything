@@ -1,6 +1,7 @@
 import {
   ApiError,
   DSH_SESSION_HEADER,
+  DSH_SESSION_ID,
   DSH_SESSION_METADATA,
   DSH_SESSION_OPENED,
   DSH_SESSION_PAGE,
@@ -55,7 +56,32 @@ export class HubSessionLog implements NativeSessionPersistencePort {
     return { ...snapshot(opened.metadata), claim: opened.claim };
   }
   async acquire(id: SessionId, signal?: AbortSignal): Promise<NativeSessionWriter> {
-    return { ...snapshot(await this.metadata(id, signal)), claim: this.claim(id) };
+    const metadata = await this.metadata(id, signal);
+    if (
+      this.boundClaim(id) === undefined &&
+      metadata.header.origin === 'subagent' &&
+      metadata.header.parentSession !== undefined
+    ) {
+      const parent = this.claim(metadata.header.parentSession);
+      const opened = await this.http.call(
+        { operation: 'resume_child', parent_claim: parent, session_id: DSH_SESSION_ID.parse(id) },
+        DSH_SESSION_OPENED,
+        signal,
+      );
+      if (
+        !this.writerStillBound(parent) ||
+        (this.boundClaim(id) !== undefined && !this.writerStillBound(opened.claim))
+      )
+        throw new HarnessRuntimeError(
+          'ownership_lost',
+          'The helper or its parent changed while renewing its writer.',
+          id,
+        );
+      this.bind(opened.claim);
+      this.remember(id, opened.metadata);
+      return { ...snapshot(opened.metadata), claim: opened.claim };
+    }
+    return { ...snapshot(metadata), claim: this.claim(id) };
   }
   async stat(id: SessionId, signal?: AbortSignal): Promise<NativeSessionSnapshot | undefined> {
     try {

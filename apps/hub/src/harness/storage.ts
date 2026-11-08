@@ -1,3 +1,4 @@
+import { resumeHelperWriter } from './helper-writer-renewal';
 import { ApiError, DSH_SESSION_HEADER, harnessTargetKey } from '@smarteverything/domain';
 import type {
   DshSessionOpened,
@@ -87,6 +88,16 @@ export class HarnessStorage {
       return this.verify(request.claim, input, request.subscription);
     if (request.operation === 'append' || request.operation === 'flush')
       return writtenOrFenced(() => this.write(input, request));
+    if (request.operation === 'resume_child')
+      return writtenOrFenced(() => {
+        const parent = this.verify(request.parent_claim, input);
+        return resumeHelperWriter(this.store, {
+          id: request.session_id,
+          parent,
+          principal: this.principal(parent.session_id, input),
+          grant: this.grant(request.session_id),
+        });
+      });
     if (request.operation === 'create_child')
       return writtenOrFenced(() => {
         const parentClaim = this.verify(request.parent_claim, input);
