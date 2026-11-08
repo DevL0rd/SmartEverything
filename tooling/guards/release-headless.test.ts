@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { dataLayoutOf } from '../release-hub-files.ts';
 import {
   HeadlessPackageError,
   installDataScript,
@@ -173,6 +174,10 @@ describe('the systemd unit', () => {
       rootId,
       state: 'active',
     });
+    const layout = dataLayoutOf(data);
+    expect(layout.system.config.service).toBe(config);
+    expect(layout.system.database.file).toBe(join(data, 'system', 'database', 'smarteverything.db'));
+    expect(layout.backups.releases).toBe(join(data, 'backups', 'releases'));
     for (const directory of ['system/database', 'system/keys', 'system/run', 'tmp'])
       expect(statSync(join(data, directory)).isDirectory()).toBe(true);
     expect(existsSync(`${unit}.d`)).toBe(false);
@@ -218,6 +223,10 @@ describe('the systemd unit', () => {
     expect(existsSync(join(data, 'layout.json'))).toBe(false);
     expect(existsSync(join(data, 'system'))).toBe(false);
     expect(existsSync(join(data, 'service.json'))).toBe(true);
+    const layout = dataLayoutOf(data);
+    expect(layout.system.config.service).toBe(join(data, 'service.json'));
+    expect(layout.system.database.file).toBe(join(data, 'smarteverything.db'));
+    expect(layout.backups.releases).toBe(join(data, 'release-backups'));
   });
 
   it('refuses a folder that carries another rootId marker', () => {

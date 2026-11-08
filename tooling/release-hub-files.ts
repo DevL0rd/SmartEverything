@@ -19,7 +19,12 @@ import { pathToFileURL } from 'node:url';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 
-import { hubLayout, type HubLayout as DataLayout } from '../apps/hub/src/data-layout/index.ts';
+import {
+  layoutFromNames,
+  LEGACY_NAMES,
+  V1_NAMES,
+  type HubLayout as DataLayout,
+} from '../apps/hub/src/data-layout/index.ts';
 import {
   defaultHubInstall,
   desktopPayloadIn,
@@ -80,7 +85,7 @@ export function hubInstall(install?: string): HubInstall {
 }
 
 export function dataLayoutOf(root: string): DataLayout {
-  return hubLayout(root, env);
+  return layoutFromNames(root, hasV1Marker(root) ? V1_NAMES : LEGACY_NAMES, env);
 }
 
 export interface ReleaseScene {

@@ -13,12 +13,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname } from 'node:path';
-import { env } from 'node:process';
 import { DatabaseSync } from 'node:sqlite';
 import { HUB_UNIT } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import { hubLayout, type HubLayout } from '../apps/hub/src/data-layout/index.ts';
+import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
+import { dataLayoutOf } from './release-hub-files.ts';
 import { message, type Flow, type WatchdogOptions } from './self-update-watchdog-engine.ts';
 import { writeLedger } from './self-update-ledger.ts';
 
@@ -165,7 +165,7 @@ function subscribe(layout: HubLayout): Flow['events'] {
 }
 
 export function flowOf(options: WatchdogOptions): Flow {
-  const layout = hubLayout(options.data, env);
+  const layout = dataLayoutOf(options.data);
   return {
     options,
     now: () => new Date(),

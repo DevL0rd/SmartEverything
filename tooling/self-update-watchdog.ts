@@ -22,8 +22,7 @@ import { WATCHDOG_OPTIONS } from './self-update-watchdog-contract.ts';
 import { HUB_SERVICE_DIRECTORY } from './hub-install-layout.ts';
 import { assertStandaloneHubUnit } from './release-hub-verify.ts';
 import { flowOf } from './self-update-watchdog-live.ts';
-import { hubLayout } from '../apps/hub/src/data-layout/index.ts';
-import { env } from 'node:process';
+import { dataLayoutOf } from './release-hub-files.ts';
 
 async function failed(flow: Flow, verdict: Verdict): Promise<HubUpdateRelease> {
   transition(flow, 'verifying', { failedChecks: verdict.checks.filter((check) => !check.ok) });
@@ -135,7 +134,7 @@ export async function handle(flow: Flow): Promise<HubUpdateRelease> {
 
 export async function resume(text: string): Promise<void> {
   const options = WATCHDOG_OPTIONS.parse(JSON.parse(text));
-  await withHubReleaseLock(hubLayout(options.data, env), true, async () => {
+  await withHubReleaseLock(dataLayoutOf(options.data), true, async () => {
     const flow = flowOf(options);
     try {
       if (ledgerOf(flow).releases.at(-1)?.runId !== options.runId) {
