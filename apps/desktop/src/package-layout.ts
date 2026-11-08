@@ -26,3 +26,15 @@ export const DESKTOP_PACKAGE_RESOURCES = [
 ] as const;
 
 export const COMPUTER_PAIRING_WINDOW_TOKEN = 'SMARTEVERYTHING_COMPUTER_PAIRING_WINDOW_TOKEN';
+
+export function computerNodeExecutable(platform: string): string {
+  return platform === 'win32' ? 'node/node.exe' : 'node/bin/node';
+}
+
+export function desktopPackageResources(platform: string): readonly string[] {
+  return [
+    ...DESKTOP_PACKAGE_RESOURCES,
+    `${COMPUTER_DIRECTORY}/${computerNodeExecutable(platform)}`,
+    `${COMPUTER_DIRECTORY}/node/LICENSE`,
+  ];
+}

@@ -141,7 +141,7 @@ describe('the Computer service runtime for the Drive sync engine', () => {
     .catch('')
     .parse(createRequire(import.meta.url)('electron'));
   it.skipIf(electronPath === '' || !existsSync(electronPath))(
-    'runs node:sqlite, WAL, nanosecond integers and a hashing worker in Electron as Node, the way the service launches',
+    'compares node:sqlite, WAL, nanosecond integers and a hashing worker in Electron as Node',
     async () => {
       const report = REPORT.parse(await runProbe(electronPath, { ELECTRON_RUN_AS_NODE: '1' }));
       expectedReport(report);

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DESKTOP_PACKAGE_RESOURCES } from '../../src/package-layout.js';
+import { desktopPackageResources } from '../../src/package-layout.js';
 import { createUpdates, type DesktopUpdatePorts } from '../../src/updates/update-desktop.js';
 
 const ZIP = Buffer.from('the zipped new app');
@@ -25,7 +25,7 @@ afterEach(async () => {
 async function writeComputer(directory: string): Promise<void> {
   await mkdir(directory, { recursive: true });
   await writeFile(join(directory, 'smarteverything'), 'desktop executable');
-  for (const entry of DESKTOP_PACKAGE_RESOURCES) {
+  for (const entry of desktopPackageResources('linux')) {
     const file = join(directory, 'resources', entry);
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, 'desktop package resource');

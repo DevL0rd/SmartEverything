@@ -15,7 +15,7 @@ import {
   type RunCommand,
 } from './update-install.js';
 
-import { DESKTOP_INSTALLATION_RESOURCES, DESKTOP_PACKAGE_RESOURCES } from '../package-layout.js';
+import { DESKTOP_INSTALLATION_RESOURCES, desktopPackageResources } from '../package-layout.js';
 import { UpdateInstallError } from './update-errors.js';
 
 const log = new Logger('desktop.update');
@@ -83,7 +83,7 @@ async function prepareReplacement(options: FolderUpdateOptions, zip: string): Pr
   try {
     await extractZip(options.run, platform, zip, unpacked);
     const candidate = await appRootIn(unpacked);
-    await validateDesktopFolder(candidate, options, DESKTOP_PACKAGE_RESOURCES);
+    await validateDesktopFolder(candidate, options, desktopPackageResources(platform));
     await removeAppFolder(profile);
     await mkdir(profile, { mode: 0o700 });
     await options.verifyCandidate(join(candidate, options.executable), profile, options.version);

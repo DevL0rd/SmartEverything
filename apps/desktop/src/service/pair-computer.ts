@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { env, execPath } from 'node:process';
+import { env } from 'node:process';
 import { Logger } from '@smarteverything/logging';
 import { app } from 'electron';
 import {
@@ -32,10 +32,9 @@ export async function pairComputer(
   const { controller } = createDesktopService(currentPlatform(), paths, variant, (error) => {
     throw error;
   });
-  await run(execPath, [paths.serviceEntry, ...args], {
+  await run(paths.serviceExecutable, [paths.serviceEntry, ...args], {
     env: {
       ...env,
-      ELECTRON_RUN_AS_NODE: '1',
       [COMPUTER_DATA_DIRECTORY_VARIABLE]: paths.dataDirectory,
       [COMPUTER_PAIRING_WINDOW_TOKEN]: windowToken,
     },

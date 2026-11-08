@@ -6,10 +6,16 @@ import {
   windowsLauncher,
   windowsRunCommand,
 } from '../src/service/definitions.js';
-import { LAUNCH } from './support/fake-system.js';
+import { LAUNCH as FIXTURE_LAUNCH } from './support/fake-system.js';
+
+const LAUNCH = {
+  ...FIXTURE_LAUNCH,
+  executable: '/opt/SmartEverything/resources/computer/node/bin/node',
+  entry: '/opt/SmartEverything/resources/computer/computer.mjs',
+};
 
 describe('systemdUnit', () => {
-  it('runs the app binary as Node with the service entry, restarting it on failure', () => {
+  it('runs the packaged Node binary with the service entry, restarting it on failure', () => {
     expect(systemdUnit(LAUNCH)).toBe(
       [
         '[Unit]',
@@ -18,10 +24,9 @@ describe('systemdUnit', () => {
         '[Service]',
         'Type=simple',
         'WorkingDirectory=/home/ann/.config/SmartEverything',
-        'Environment="ELECTRON_RUN_AS_NODE=1"',
         'Environment="SMARTEVERYTHING_COMPUTER_DIRECTORY=/home/ann/.config/SmartEverything"',
         'Environment="PATH=/usr/local/bin:/usr/bin"',
-        'ExecStart="/opt/SmartEverything/smarteverything" "/opt/SmartEverything/resources/service/service.mjs"',
+        'ExecStart="/opt/SmartEverything/resources/computer/node/bin/node" "/opt/SmartEverything/resources/computer/computer.mjs"',
         'Restart=on-failure',
         'RestartSec=5',
         'TimeoutStopSec=30',
@@ -42,6 +47,8 @@ describe('systemdUnit', () => {
     const unit = systemdUnit(LAUNCH);
     expect(unit).toContain('SMARTEVERYTHING_COMPUTER_DIRECTORY=');
     expect(unit).not.toContain('SMARTEVERYTHING_DATA_DIRECTORY');
+    expect(unit).not.toContain('ELECTRON_RUN_AS_NODE');
+    expect(windowsLauncher(LAUNCH)).not.toContain('ELECTRON_RUN_AS_NODE');
     expect(launchAgent(LAUNCH, '/log')).not.toContain('SMARTEVERYTHING_DATA_DIRECTORY');
     expect(windowsLauncher(LAUNCH)).not.toContain('SMARTEVERYTHING_DATA_DIRECTORY');
   });
@@ -98,9 +105,9 @@ describe('launchAgent', () => {
     );
     expect(plist).toContain('<key>Label</key><string>app.smarteverything.node</string>');
     expect(plist).toContain(
-      '    <string>/opt/SmartEverything/smarteverything</string>\n    <string>/opt/SmartEverything/resources/service/service.mjs</string>',
+      '    <string>/opt/SmartEverything/resources/computer/node/bin/node</string>\n    <string>/opt/SmartEverything/resources/computer/computer.mjs</string>',
     );
-    expect(plist).toContain('<key>ELECTRON_RUN_AS_NODE</key><string>1</string>');
+    expect(plist).not.toContain('ELECTRON_RUN_AS_NODE');
     expect(plist).toContain(
       '<key>SMARTEVERYTHING_COMPUTER_DIRECTORY</key><string>/Users/ann/Library/Application Support/SmartEverything</string>',
     );
@@ -121,9 +128,10 @@ describe('launchAgent', () => {
 
 describe('windowsLauncher', () => {
   const windows = {
-    executable: 'C:\\Users\\Ann\\AppData\\Local\\smarteverything\\app-1.0.0\\smarteverything.exe',
+    executable:
+      'C:\\Users\\Ann\\AppData\\Local\\smarteverything\\app-1.0.0\\resources\\computer\\node\\node.exe',
     entry:
-      'C:\\Users\\Ann\\AppData\\Local\\smarteverything\\app-1.0.0\\resources\\service\\service.mjs',
+      'C:\\Users\\Ann\\AppData\\Local\\smarteverything\\app-1.0.0\\resources\\computer\\computer.mjs',
     dataDirectory: 'C:\\Users\\Ann\\AppData\\Roaming\\SmartEverything',
     path: 'C:\\Windows\\system32;C:\\Tools\\bin',
     efficiencyCores: null,
@@ -133,11 +141,10 @@ describe('windowsLauncher', () => {
     expect(windowsLauncher(windows).split('\r\n')).toStrictEqual([
       'var shell = new ActiveXObject("WScript.Shell");',
       'var environment = shell.Environment("PROCESS");',
-      'environment("ELECTRON_RUN_AS_NODE") = "1";',
       'environment("SMARTEVERYTHING_COMPUTER_DIRECTORY") = "C:\\\\Users\\\\Ann\\\\AppData\\\\Roaming\\\\SmartEverything";',
       'environment("PATH") = "C:\\\\Windows\\\\system32;C:\\\\Tools\\\\bin";',
       'shell.CurrentDirectory = "C:\\\\Users\\\\Ann\\\\AppData\\\\Roaming\\\\SmartEverything";',
-      'shell.Run("\\"C:\\\\Users\\\\Ann\\\\AppData\\\\Local\\\\smarteverything\\\\app-1.0.0\\\\smarteverything.exe\\" \\"C:\\\\Users\\\\Ann\\\\AppData\\\\Local\\\\smarteverything\\\\app-1.0.0\\\\resources\\\\service\\\\service.mjs\\" --supervise", 0, false);',
+      'shell.Run("\\"C:\\\\Users\\\\Ann\\\\AppData\\\\Local\\\\smarteverything\\\\app-1.0.0\\\\resources\\\\computer\\\\node\\\\node.exe\\" \\"C:\\\\Users\\\\Ann\\\\AppData\\\\Local\\\\smarteverything\\\\app-1.0.0\\\\resources\\\\computer\\\\computer.mjs\\" --supervise", 0, false);',
       '',
     ]);
   });

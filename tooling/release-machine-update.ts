@@ -22,7 +22,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 
-import { DESKTOP_PACKAGE_RESOURCES } from '../apps/desktop/src/package-layout.ts';
+import { desktopPackageResources } from '../apps/desktop/src/package-layout.ts';
 import { DESKTOP_VARIANTS } from '../apps/desktop/src/variant.ts';
 import {
   publisherTarget,
@@ -181,7 +181,7 @@ async function archiveApp(file: ReleaseFile): Promise<string> {
   }
   const required = [
     layout.executable,
-    ...DESKTOP_PACKAGE_RESOURCES.map((resource) => `${layout.resources}/${resource}`),
+    ...desktopPackageResources(file.platform).map((resource) => `${layout.resources}/${resource}`),
   ];
   for (const entry of required) {
     if (!files.has(entry)) throw new DesktopPackageIncompleteError(file.path, entry);

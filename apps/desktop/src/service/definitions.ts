@@ -5,7 +5,6 @@ import {
 } from '@smarteverything/domain';
 
 export const WINDOWS_RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-const RUN_AS_NODE_VARIABLE = 'ELECTRON_RUN_AS_NODE';
 
 export interface ServiceLaunch {
   readonly executable: string;
@@ -70,7 +69,6 @@ export function systemdUnit(launch: ServiceLaunch): string {
     '[Service]',
     'Type=simple',
     `WorkingDirectory=${systemdPath(values.dataDirectory)}`,
-    `Environment=${systemdQuoted(`${RUN_AS_NODE_VARIABLE}=1`)}`,
     `Environment=${systemdQuoted(`${COMPUTER_DATA_DIRECTORY_VARIABLE}=${values.dataDirectory}`)}`,
     `Environment=${systemdQuoted(`PATH=${values.path}`)}`,
     `ExecStart=${systemdExecQuoted(values.executable)} ${systemdExecQuoted(values.entry)}`,
@@ -119,7 +117,6 @@ export function launchAgent(launch: ServiceLaunch, outputLog: string): string {
     `  <key>WorkingDirectory</key>${plistString(values.dataDirectory)}`,
     '  <key>EnvironmentVariables</key>',
     '  <dict>',
-    `    <key>${RUN_AS_NODE_VARIABLE}</key>${plistString('1')}`,
     `    <key>${COMPUTER_DATA_DIRECTORY_VARIABLE}</key>${plistString(values.dataDirectory)}`,
     `    <key>PATH</key>${plistString(values.path)}`,
     '  </dict>',
@@ -150,7 +147,6 @@ export function windowsLauncher(launch: ServiceLaunch): string {
   return [
     'var shell = new ActiveXObject("WScript.Shell");',
     'var environment = shell.Environment("PROCESS");',
-    `environment(${JSON.stringify(RUN_AS_NODE_VARIABLE)}) = "1";`,
     `environment(${JSON.stringify(COMPUTER_DATA_DIRECTORY_VARIABLE)}) = ${JSON.stringify(values.dataDirectory)};`,
     `environment("PATH") = ${JSON.stringify(values.path)};`,
     `shell.CurrentDirectory = ${JSON.stringify(values.dataDirectory)};`,

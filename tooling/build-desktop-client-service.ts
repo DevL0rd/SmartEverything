@@ -6,6 +6,8 @@ import { parseArgs } from 'node:util';
 import { build } from 'esbuild';
 import { z } from 'zod';
 import { COMPUTER_DATA_DIRECTORY_VARIABLE } from '@smarteverything/domain';
+import { computerNodeExecutable } from '../apps/desktop/src/package-layout.ts';
+import { copyComputerNodeRuntime } from './computer-node-runtime.ts';
 import { Logger } from '@smarteverything/logging';
 import {
   assertIsolated,
@@ -118,11 +120,15 @@ function checkClaudeRuntime(stage: string, platform: string, arch: string): void
 function checkPairing(out: string): void {
   const scratch = mkdtempSync(join(tmpdir(), 'computer-smoke-'));
   try {
-    const result = spawnSync(process.execPath, [join(out, MAIN.file), '--pair-node'], {
-      cwd: scratch,
-      encoding: 'utf8',
-      env: { HOME: scratch, [COMPUTER_DATA_DIRECTORY_VARIABLE]: scratch },
-    });
+    const result = spawnSync(
+      join(out, computerNodeExecutable(process.platform)),
+      [join(out, MAIN.file), '--pair-node'],
+      {
+        cwd: scratch,
+        encoding: 'utf8',
+        env: { HOME: scratch, [COMPUTER_DATA_DIRECTORY_VARIABLE]: scratch },
+      },
+    );
     if (result.status !== 1 || !result.stderr.includes('NodeSetupArgumentsError')) {
       throw new ServiceRuntimeError(
         `Computer pairing did not reach argument validation. ${result.stderr}`,
@@ -154,6 +160,12 @@ async function main(): Promise<void> {
       arch,
       omitPath: (path) => otherTargetPrebuild(path, platform, arch),
     });
+    await copyComputerNodeRuntime(
+      stage,
+      join(root, 'tmp', 'computer-node-runtime'),
+      platform,
+      arch,
+    );
     copyComputerWakeAssets(stage);
     checkClaudeRuntime(stage, platform, arch);
     const missing = missingFromOutput(found, stage);

@@ -4,7 +4,7 @@ import { registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DESKTOP_PACKAGE_RESOURCES } from '../../src/package-layout.js';
+import { desktopPackageResources } from '../../src/package-layout.js';
 import {
   applyFolderUpdate,
   confirmBoot,
@@ -66,7 +66,7 @@ function rig(restart: () => Promise<void> = () => Promise.resolve()): Rig {
 async function writeComputer(directory: string): Promise<void> {
   await mkdir(directory, { recursive: true });
   await writeFile(join(directory, 'smarteverything'), 'desktop executable');
-  for (const entry of DESKTOP_PACKAGE_RESOURCES) {
+  for (const entry of desktopPackageResources('linux')) {
     const file = join(directory, 'resources', entry);
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, 'desktop package resource');
@@ -94,6 +94,34 @@ async function withElectronFilesystem(
 }
 
 describe('applying a downloaded app folder', () => {
+  it('upgrades an Electron-hosted installation to the packaged Node runtime', async () => {
+    await rm(join(root, 'resources', 'computer', 'node'), { recursive: true });
+    await applyFolderUpdate(rig().options, '/tmp/app.zip');
+    expect(await readFile(join(root, 'resources/computer/node/bin/node'), 'utf8')).toBe(
+      'desktop package resource',
+    );
+  });
+
+  it('rejects a candidate missing its standalone Node runtime before restarting', async () => {
+    const { options, events } = rig();
+    await expect(
+      applyFolderUpdate(
+        {
+          ...options,
+          run: async (file, args) => {
+            await options.run(file, args);
+            await rm(join(args.at(-1) ?? '', 'SmartEverything-linux-x64/resources/computer/node'), {
+              recursive: true,
+            });
+          },
+        },
+        '/tmp/app.zip',
+      ),
+    ).rejects.toThrow('computer/node/bin/node');
+    expect(events).toStrictEqual(['run unzip']);
+    expect(await readFile(join(root, 'version'), 'utf8')).toBe('old');
+  });
+
   it('swaps the folder, restarts the services on the new files and starts the new app', async () => {
     const { options, events } = rig();
     await applyFolderUpdate(options, '/tmp/app.zip');

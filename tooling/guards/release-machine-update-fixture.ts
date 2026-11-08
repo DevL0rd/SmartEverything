@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createPackage } from '@electron/asar';
-import { DESKTOP_PACKAGE_RESOURCES } from '../../apps/desktop/src/package-layout.ts';
+import { desktopPackageResources } from '../../apps/desktop/src/package-layout.ts';
 import { afterEach, beforeEach } from 'vitest';
 import {
   startMachineUpdateHub,
@@ -116,9 +116,9 @@ export async function built(
   const resources = fixture.resources ?? layout.resources;
   const entries = [
     layout.executable,
-    ...DESKTOP_PACKAGE_RESOURCES.filter((entry) => entry !== fixture.omit).map(
-      (entry) => `${resources}/${entry}`,
-    ),
+    ...desktopPackageResources(fixture.platform ?? 'linux')
+      .filter((entry) => entry !== fixture.omit)
+      .map((entry) => `${resources}/${entry}`),
     ...(fixture.extra ?? []),
   ];
   await mkdir(join(workspace.base, 'out'), { recursive: true });

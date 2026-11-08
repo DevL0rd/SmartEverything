@@ -58,7 +58,7 @@ export function createDesktopService(
 ): DesktopService {
   const dataDirectory = paths.dataDirectory;
   const launch: ServiceLaunch = {
-    executable: process.execPath,
+    executable: paths.serviceExecutable,
     entry: paths.serviceEntry,
     dataDirectory,
     path: servicePath(platform, readSearchPath()),

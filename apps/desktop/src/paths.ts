@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { app } from 'electron';
 import { DESKTOP_VARIANTS, type DesktopVariant } from './variant.js';
-import { COMPUTER_DIRECTORY, COMPUTER_ENTRY } from './package-layout.js';
+import { COMPUTER_DIRECTORY, COMPUTER_ENTRY, computerNodeExecutable } from './package-layout.js';
 import { WINDOW_STATE_FILE } from './window-state.js';
 
 const WEB_EXPORT_DIRECTORY = 'dist';
@@ -16,9 +16,13 @@ export interface DesktopPaths {
   readonly windowState: string;
   readonly dataDirectory: string;
   readonly serviceEntry: string;
+  readonly serviceExecutable: string;
 }
 
-type Resources = Pick<DesktopPaths, 'webRoot' | 'icon' | 'trayIcons' | 'serviceEntry'>;
+type Resources = Pick<
+  DesktopPaths,
+  'webRoot' | 'icon' | 'trayIcons' | 'serviceEntry' | 'serviceExecutable'
+>;
 
 function packagedResources(): Resources {
   return {
@@ -26,6 +30,11 @@ function packagedResources(): Resources {
     icon: path.join(process.resourcesPath, ICON_FILE),
     trayIcons: path.join(process.resourcesPath, TRAY_DIRECTORY),
     serviceEntry: path.join(process.resourcesPath, COMPUTER_DIRECTORY, COMPUTER_ENTRY),
+    serviceExecutable: path.join(
+      process.resourcesPath,
+      COMPUTER_DIRECTORY,
+      computerNodeExecutable(process.platform),
+    ),
   };
 }
 
@@ -37,6 +46,12 @@ function workspaceResources(): Resources {
     icon: path.join(appWorkspace, 'assets', ICON_FILE),
     trayIcons: path.join(desktopWorkspace, 'assets', TRAY_DIRECTORY),
     serviceEntry: path.join(desktopWorkspace, 'dist', COMPUTER_DIRECTORY, COMPUTER_ENTRY),
+    serviceExecutable: path.join(
+      desktopWorkspace,
+      'dist',
+      COMPUTER_DIRECTORY,
+      computerNodeExecutable(process.platform),
+    ),
   };
 }
 
