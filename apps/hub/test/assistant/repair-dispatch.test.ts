@@ -271,6 +271,8 @@ describe('repair through the selected chat engine', () => {
     repair.admit({ ...request, patch });
     expect(queuedEvent().text).toContain(source.text.replace(/\n/gu, '\\n'));
     expect(queuedEvent().text).toContain(patch.revision);
+    expect(queuedEvent().text).toContain('propose a source correction for review');
+    expect(queuedEvent().text).not.toContain('commit and push the accepted SmartEverything fix');
     const approval = { requestId: randomUUID(), revision: patch.revision, paths: [source.path] };
     expect(repair.existingPatch(request.id, profileId, approval)).toMatchObject({
       kind: 'existing',
@@ -350,6 +352,11 @@ describe('repair through the selected chat engine', () => {
     expect(queuedEvent().text).toContain('smarteverything-coding-checks');
     expect(queuedEvent().text).toContain('smarteverything-coding-review');
     expect(queuedEvent().text).toContain('smarteverything-self-update');
+    expect(queuedEvent().text).toContain('commit and push the accepted SmartEverything fix');
+    expect(queuedEvent().text).toContain('fetching and pulling/merging remote main');
+    expect(queuedEvent().text).toContain('resolving conflicts');
+    expect(queuedEvent().text).toContain('the NAS is the production Hub');
+    expect(queuedEvent().text).toContain('one release at a time');
     expect(queuedEvent().text).toContain(
       'release all needed Hub, Android, desktop native and UI updates',
     );

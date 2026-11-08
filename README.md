@@ -18,7 +18,8 @@ into a single application, and lets each of them drive the others.
 > [!IMPORTANT]
 > **Read [docs/STANDARDS.md](docs/STANDARDS.md) in full before you do anything else.** It is the operating manual: the
 > code rules, logging, tests, how to work on a change and how changes are reviewed. It overrides habit and preference.
-> The code is the documentation; there are no other docs, except [docs/IOS-READINESS.md](docs/IOS-READINESS.md), the iOS plan kept by the owner's order.
+> The Git handoff, production target and release process live in [docs/STANDARDS.md](docs/STANDARDS.md#git-handoff-and-releases).
+> The code is the documentation; the other retained plan is [docs/IOS-READINESS.md](docs/IOS-READINESS.md), the iOS plan kept by the owner's order.
 
 In the owner's checkout `AGENT-BRIEF.md` (git-ignored) holds the working process for every agent and `tmp/howto.md` the command cheat sheet.
 
@@ -73,7 +74,7 @@ pnpm --filter @smarteverything/desktop start
 pnpm run validate
 ```
 
-`validate` runs every gate that needs neither git history, a browser nor a device. The full list is in `package.json`. It runs before a push the owner asked for; while developing, run only the scoped checks of the files you touched.
+`validate` runs every gate that needs neither git history, a browser nor a device. The full list is in `package.json`. It runs before each stable-point push under the owner’s standing project authorization unless explicitly waived; while developing, run only the scoped checks of the files you touched.
 
 ## Install the standalone Hub on Linux
 
@@ -103,6 +104,11 @@ installer refuses a folder that holds another data folder's marker. A small poin
 folder. `SMARTEVERYTHING_HUB_HOME` names a different pointer folder for containers and custom
 launches; unset it for the systemd install. The data folder can be moved later in Settings.
 Run `loginctl enable-linger "$(id -un)"` to start the Hub at boot without signing in.
+
+The owner’s production Hub runs on the NAS (`ssh nas`, `192.168.50.254`), at
+`https://smarteverything.devl0rd.com`. This desktop’s Hub stays disabled by default; start a test Hub only on demand with isolated scratch data.
+Use Git to exchange accepted changes between the machines and follow the production release
+process in [docs/STANDARDS.md](docs/STANDARDS.md#git-handoff-and-releases).
 
 For an installed standalone Hub, review releases in the Hub section of the app's **Updates**
 settings. The Hub checks its configured Git source and applies updates to its own service.

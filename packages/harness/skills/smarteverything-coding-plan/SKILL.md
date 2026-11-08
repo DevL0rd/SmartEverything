@@ -38,9 +38,9 @@ For code holding the person's uncommitted changes (this hub too):
 
 1. `git worktree add --detach tmp/fix-<name> HEAD`, copy the uncommitted and untracked files in.
 2. There `git add -A` and `git write-tree` record the baseline uncommitted. Fix and check there.
-3. Patch: `git add -A`, then `git diff --binary --cached <baseline-tree>`; show it as the pending fix, apply nothing.
-4. The person applies it three-way beside their changes, never overwriting; then `git worktree remove --force`.
+3. Patch: `git add -A`, then `git diff --binary --cached <baseline-tree>`; return the task diff and check evidence to the coordinator.
+4. The coordinator integrates accepted changes three-way beside existing work, never overwriting unrelated edits; remove the private worktree only after its consumers finish.
 
-Nothing is committed or pushed by you unless the person explicitly orders it.
+For SmartEverything issue fixes and local development, follow the owner-authorized stable-point commit/push process in `docs/STANDARDS.md`, section “Git handoff and releases”. Fetch and pull/merge remote `main`, resolve conflicts and verify the combined work before committing and pushing; pull it on the other machine before continuing. NAS is production, the desktop is development/build/test. Workers never commit or push. Other projects require their own explicit authorization.
 
 A release of the owner's hub is never batched: each fix goes out alone with backup, migration check on a copy, build, release, verify, rollback on trouble. Nothing else touches live data.

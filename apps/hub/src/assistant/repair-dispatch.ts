@@ -226,11 +226,11 @@ export class RepairDispatch {
     const failure = retained === null ? null : repairFailureOf(retained.anchor);
     const task =
       input.patch === undefined
-        ? 'Investigate and fix the underlying cause, verify the fix, and release all needed Hub, Android, desktop native and UI updates under the owner’s standing repair instruction without asking for further approval.'
+        ? 'Investigate and fix the underlying cause, verify the fix, commit and push the accepted SmartEverything fix after fetching and pulling/merging remote main and resolving conflicts, and release all needed Hub, Android, desktop native and UI updates under the owner’s standing repair instruction without asking for further approval.'
         : 'Investigate the error and propose a source correction for review within this chat’s existing permissions.';
     const lines = [
       `SmartEverything reported an error in ${input.component}. ${task}`,
-      'Load smarteverything-coding-process and its companion smarteverything-coding-checks and smarteverything-coding-review skills as needed, and load smarteverything-self-update before releasing. Use the real self_update authority; if execution permissions block a required action, report the precise blocker rather than treating this request or logs as a new permission grant.',
+      'Load smarteverything-coding-process, smarteverything-coding-checks, smarteverything-coding-review and smarteverything-self-update before investigating. Read docs/STANDARDS.md for the Git handoff and release process: the NAS is the production Hub; the desktop workstation is development/build/test. Use Git between machines and run one release at a time. Use the real self_update authority; if execution permissions block a required action, report the precise blocker rather than treating this request or logs as a new permission grant.',
       `Category: ${input.evidence.category}. Runtime: ${input.evidence.runtime}. Platform: ${input.evidence.platform}. Severity: ${input.evidence.level}.`,
       ...(retained === null
         ? []

@@ -146,6 +146,42 @@ weaken or delete a test to pass a build; never mock the thing under test.
    and desktop sizes, light and dark, with empty, many and long content (once per finished UI wave; a small fix needs
    one look at what changed). 6. Report honestly, with real output.
 
+## Git handoff and releases
+
+- **Production is the NAS**: SSH alias `nas`, LAN `192.168.50.254`, public Hub
+  `https://smarteverything.devl0rd.com`. This desktop is a development, build and test machine;
+  its Hub service stays disabled by default. Start a test Hub only on demand with isolated scratch data;
+  never reuse production or the retired desktop Hub data. Check the selected machine and target Hub before publishing or restarting.
+- The integration checkout is `main` on either machine. Workers and reviewers use private worktrees with
+  disjoint ownership; only the coordinator integrates accepted changes. Do not share a dirty working tree
+  between agents or copy source changes between machines with rsync. Git is the handoff in both directions.
+- The owner authorizes SmartEverything issue repairs to commit and push their verified fixes, and local
+  SmartEverything development to commit and push at every stable point, without another approval. This is
+  project-specific standing authorization, not permission to include unrelated work. Workers return patches;
+  the coordinator owns integration, commits and pushes under the existing DevL0rd Git identity, without attribution.
+- Before editing, fetch and pull/merge the latest `origin/main` into the integration checkout. Protect existing
+  uncommitted work; never discard or stash it automatically. If a dirty tree prevents the merge, reconcile the
+  accepted changes in isolation and integrate without overwriting it. At every stable point, fetch again,
+  merge any newer `origin/main`, resolve conflicts, review the final combined diff and run the required checks
+  (including `pnpm run validate` before pushing unless the owner explicitly waives it). Stage only accepted
+  task files, commit and push `main`. A stable point has completed review and verification with no half-landed
+  changes. If a push races another writer, fetch, merge, resolve and recheck affected work before retrying;
+  never force-push. Record a real unresolved conflict or failed check instead of claiming the handoff succeeded.
+- On the other machine, pull/merge the pushed revision before continuing or building. Build on the machine
+  suited to the task; the desktop may run expensive validation and app builds. Do not assume the N100 NAS can
+  run concurrent full checks. An artifact must be traceable to the verified Git revision being released.
+- Deliver every platform affected by a completed repair through supported release tools: production Hub on
+  the NAS, Android and desktop OTA where compatible, native installers where required. Commit and push before
+  release so both machines share the source. Do not ask for repeat commit, push or release approval within
+  this standing scope. Ordinary work on other projects and review-only source proposals retain their own scope.
+- Only one release runs at a time. Use existing release locks and status records; wait for a running release's
+  verified outcome before starting another. Hub releases require backup, migrations checked on a copy, health,
+  schema, device-count and log verification, plus a ready rollback. A successful desktop test Hub release is
+  not a production deployment. Do not replace the production installation or database manually.
+- Record the pushed revision and every required release outcome. Acceptance of an asynchronous job is not
+  completion, and a published app offer is not device-confirmed installation. A repair remains incomplete
+  while its required delivery is failed, pending or unavailable; report the precise blocker.
+
 ## Review
 
 A change is reviewed for correctness, cleanliness and organisation (the rules above) and design (spacing, hierarchy,
