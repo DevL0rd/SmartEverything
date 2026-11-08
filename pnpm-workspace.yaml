@@ -31,6 +31,7 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+  exifreader: false
   ffmpeg-static: true
   koffi: true
   node-pty: true
