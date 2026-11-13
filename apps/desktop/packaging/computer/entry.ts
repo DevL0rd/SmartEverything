@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { nodeLayout, type NodeLayout } from '../../../hub/src/data-layout';
 import { startNode } from '../../../hub/src/node/bootstrap';
 import { pairNode } from '../../../hub/src/node/setup';
+import { configureComputerHttp } from '../../../hub/src/node/http-runtime';
 import {
   clearRequest,
   openLogFile,
@@ -133,6 +134,7 @@ async function shutdownComputer(parts: ComputerShutdown, code: number): Promise<
 }
 
 async function main(): Promise<void> {
+  configureComputerHttp();
   const node = nodeLayout(COMPUTER_DIRECTORY.parse(env[COMPUTER_DATA_DIRECTORY_VARIABLE]));
   if (argv.includes('--pair-node')) return pair(node);
   if (argv.includes(SUPERVISE_ARGUMENT)) return supervise(node.root);
