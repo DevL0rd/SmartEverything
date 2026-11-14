@@ -9,6 +9,7 @@
   "include": [
     "*.ts",
     "claude-hook/*.ts",
+    "drive-mount/*.ts",
     "../apps/desktop/packaging/web-runtime.ts",
     "../apps/desktop/src/package-layout.ts",
     "../apps/desktop/src/variant.ts",

@@ -17,6 +17,7 @@ import {
   runtimePackageNames,
   type Bundle,
 } from './build-service.ts';
+import { DRIVE_MOUNT_BUILD_OUTPUT, stageDriveMount } from './drive-mount/build.ts';
 import { copyComputerWakeAssets, VOICE_ASSET_PACKAGE_NAMES } from './copy-voice-assets.ts';
 import {
   copyRuntimePackages,
@@ -167,6 +168,9 @@ async function main(): Promise<void> {
       arch,
     );
     copyComputerWakeAssets(stage);
+    if (platform === 'linux') {
+      await stageDriveMount(DRIVE_MOUNT_BUILD_OUTPUT, join(stage, 'drive-mount'), platform, arch);
+    }
     checkClaudeRuntime(stage, platform, arch);
     const missing = missingFromOutput(found, stage);
     if (missing.length > 0)

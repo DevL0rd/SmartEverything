@@ -190,7 +190,13 @@ export function flowOf(options: WatchdogOptions): Flow {
         return Promise.resolve();
       }),
     prepareData: () => prepareHubData(options.install, options.data),
-    migrations: { restore: restorePhotoFolders, clear: clearPhotoFolderReceipts },
+    migrations: {
+      restore: (database): boolean =>
+        restorePhotoFolders(database, (profileId) => layout.person(profileId).drive),
+      clear: (database): void => {
+        clearPhotoFolderReceipts(database, (profileId) => layout.person(profileId).drive);
+      },
+    },
     recordLedger: (ledger: Parameters<typeof writeLedger>[1]): void => {
       writeLedger(options.ledger, ledger);
     },

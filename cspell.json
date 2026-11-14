@@ -545,6 +545,8 @@
     "minimizable",
     "maximizable",
     "fullscreenable",
+    "fusermount",
+    "winfsp",
     "unmutes",
     "davey",
     "snazzah",
@@ -604,7 +606,10 @@
     "bavail",
     "countertop",
     "aircon",
-    "Pantip"
+    "Pantip",
+    "locoff",
+    "geonames",
+    "freeable"
   ],
   "ignorePaths": [
     "node_modules/**",
