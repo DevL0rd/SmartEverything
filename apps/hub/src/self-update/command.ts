@@ -59,6 +59,11 @@ function runChild(
       stdio: ['ignore', 'pipe', options.stderr],
     });
     const chunks: Buffer[] = [];
+    if (child.stdout === null) {
+      child.kill();
+      reject(new Error(`${executable} started without an output pipe`));
+      return;
+    }
     child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
     child.once('error', reject);
     child.once('close', (code) => {

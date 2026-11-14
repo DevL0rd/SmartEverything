@@ -145,7 +145,7 @@ function assistantConversationRoutes(
 > {
   return {
     ...runtimeLogRoutes(context, now),
-    ...aiRepairRoutes(context.store, context.assistant.repair),
+    ...aiRepairRoutes(context.store, layout, context.assistant.repair),
     ...assistantMediaRoutes(context),
     ...aiConversationRoutes(context, layout),
     ...hubMemoryRoutes(context),
