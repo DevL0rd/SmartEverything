@@ -11,7 +11,7 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-const SEARCH_TOOL = 'web_search';
+export const SEARCH_TOOL = 'web_search';
 
 export interface HomeWebSearchRequest {
   readonly sessionId: string;

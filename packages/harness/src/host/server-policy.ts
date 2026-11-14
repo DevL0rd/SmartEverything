@@ -6,6 +6,7 @@ import { AI_CODE_EXECUTION_TOOL_NAMES, AI_GOAL_TOOL_NAMES } from '@smarteverythi
 import { MEMORY_TOOL } from '../plugins/memory/tool';
 import { SUBAGENT_MODELS_TOOL, SUBAGENT_TOOL_NAMES } from '../plugins/subagents';
 import { HarnessRuntimeError } from './errors';
+import { HomeWebSearch, SEARCH_TOOL } from '../plugins/home-web-search';
 import { CHAT_FOLDER_TOOLS, chatFolderRefusal } from './chat-folder';
 
 export const HARNESS_AUTHORITY = z.discriminatedUnion('kind', [
@@ -103,12 +104,19 @@ export class HarnessServerPolicy {
         .map((tool) => tool.name)
         .filter(
           (name) =>
-            (CONVERSATION_TOOLS.includes(name) || this.fileTool(id, name)) && !names.includes(name),
+            (this.conversationTool(id, name) || this.fileTool(id, name)) && !names.includes(name),
         ),
       ...names,
     ];
   }
 
+  private conversationTool(id: string, name: string): boolean {
+    return name === SEARCH_TOOL ? this.searchOffered(id) : CONVERSATION_TOOLS.includes(name);
+  }
+  private searchOffered(id: string): boolean {
+    const home = this.ctx.get('homeWebSearch');
+    return home instanceof HomeWebSearch && home.offered(id);
+  }
   private fileTool(id: string, name: string): boolean {
     return this.nativeAccess(id) ? localSystemTool(name) : CHAT_FOLDER_TOOLS.has(name);
   }
@@ -124,6 +132,8 @@ export class HarnessServerPolicy {
     const authority = this.authorities.get(root);
     if (authority === undefined) return 'Server session authority is unavailable.';
     if (CONVERSATION_TOOLS.includes(execution.name)) return undefined;
+    if (execution.name === SEARCH_TOOL && !this.hubTool(authority, execution.name))
+      return this.searchOffered(root) ? undefined : 'Web search is not available in this chat.';
     if (localSystemTool(execution.name) && !this.hubTool(authority, execution.name))
       return this.localRefusal(root, agent, execution);
     return this.hubRefusal(authority, execution);
