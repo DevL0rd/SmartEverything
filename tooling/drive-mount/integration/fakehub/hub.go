@@ -51,6 +51,7 @@ func New(t testing.TB) *Hub {
 		"GET /drive/fs/{root}/list":      h.list,
 		"GET /drive/fs/{root}/stat":      h.stat,
 		"GET /drive/fs/{root}/read/{id}": h.read,
+		"GET /drive/fs/{root}/space":     h.space,
 		"POST /drive/fs/{root}/mkdir":    h.mkdir,
 		"POST /drive/fs/{root}/rename":   h.rename,
 		"POST /drive/fs/{root}/unlink":   h.remove(false),
@@ -67,6 +68,17 @@ func New(t testing.TB) *Hub {
 	h.URL = h.server.URL
 	t.Cleanup(h.server.Close)
 	return h
+}
+
+const (
+	SpaceTotal = 200 << 30
+	SpaceUsed  = 50 << 30
+	SpaceFree  = 150 << 30
+)
+
+func (h *Hub) space(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"totalBytes":%d,"usedBytes":%d,"freeBytes":%d}`, SpaceTotal, SpaceUsed, SpaceFree)
 }
 
 func (h *Hub) guarded(next http.HandlerFunc) http.HandlerFunc {

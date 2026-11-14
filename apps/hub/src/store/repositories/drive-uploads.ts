@@ -9,7 +9,7 @@ const COLUMNS = `id, root_id, target_kind, target_id, base_rev, name, length, of
 const UPLOAD_COLUMNS = z.strictObject({
   id: z.string(),
   root_id: z.string(),
-  target_kind: z.enum(['folder', 'item']),
+  target_kind: z.enum(['drive', 'folder', 'item']),
   target_id: z.string(),
   base_rev: z.number().nullable(),
   name: z.string(),
@@ -24,14 +24,35 @@ const UPLOAD_COLUMNS = z.strictObject({
   expires_at: z.string(),
 });
 
+type UploadRow = z.infer<typeof UPLOAD_COLUMNS>;
+
+function storedTargetOf(row: UploadRow): unknown {
+  switch (row.target_kind) {
+    case 'drive':
+      return { kind: 'drive', rootId: row.target_id };
+    case 'folder':
+      return { kind: 'folder', folderId: row.target_id };
+    case 'item':
+      return { kind: 'item', itemId: row.target_id, baseRev: row.base_rev };
+  }
+}
+
+function targetIdOf(target: DriveUpload['target']): string {
+  switch (target.kind) {
+    case 'drive':
+      return target.rootId;
+    case 'folder':
+      return target.folderId;
+    case 'item':
+      return target.itemId;
+  }
+}
+
 const STORED_UPLOAD = UPLOAD_COLUMNS.transform((row): DriveUpload => {
   return DRIVE_UPLOAD.parse({
     id: row.id,
     rootId: row.root_id,
-    target:
-      row.target_kind === 'folder'
-        ? { kind: 'folder', folderId: row.target_id }
-        : { kind: 'item', itemId: row.target_id, baseRev: row.base_rev },
+    target: storedTargetOf(row),
     name: row.name,
     length: row.length,
     offset: row.offset,
@@ -102,7 +123,7 @@ export class DriveUploadsRepository {
           id: upload.id,
           rootId: upload.rootId,
           targetKind: upload.target.kind,
-          targetId: upload.target.kind === 'folder' ? upload.target.folderId : upload.target.itemId,
+          targetId: targetIdOf(upload.target),
           baseRev: upload.target.kind === 'item' ? upload.target.baseRev : null,
           name: upload.name,
           length: upload.length,

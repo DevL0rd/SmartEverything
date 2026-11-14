@@ -4,7 +4,7 @@ import type { HistoryRow, LiveChange, LiveTable } from '@smarteverything/domain'
 import { Logger, background } from '@smarteverything/logging';
 import { LogTally } from '../design/log-tally';
 import { applyHomeMapChanges } from '../features/home-map/data/live';
-import { applyDriveChanges } from '../features/nas/data/live';
+import { applyDriveChanges } from '../features/drive';
 import { patchCameraDays, refreshSnapshots } from './camera-day';
 import { invalidateChatMeterHistory } from './chat-meter-history';
 import { invalidateDeviceLogs } from './device-log';

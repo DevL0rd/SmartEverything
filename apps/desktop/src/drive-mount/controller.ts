@@ -9,7 +9,6 @@ import type { HelperPort, LinkPort, PlacementsController, PlacementsPorts } from
 export type MountCommand =
   | { readonly kind: 'again' }
   | { readonly kind: 'clear-cache' }
-  | { readonly kind: 'limit'; readonly mount: string; readonly bytes: number }
   | { readonly kind: 'pin' | 'unpin'; readonly mount: string; readonly path: string };
 
 export interface HelperHandle extends HelperPort {
@@ -86,11 +85,7 @@ export class MountController {
     command: Exclude<MountCommand, { readonly kind: 'again' | 'clear-cache' }>,
   ): void {
     if (this.placements === null) throw new MountNotRunningError(command.kind);
-    if (command.kind === 'limit') {
-      this.ports.helper.send({ op: 'limit', mount: command.mount, bytes: command.bytes });
-    } else {
-      this.ports.helper.send({ op: command.kind, mount: command.mount, path: command.path });
-    }
+    this.ports.helper.send({ op: command.kind, mount: command.mount, path: command.path });
   }
 
   private async up(): Promise<void> {

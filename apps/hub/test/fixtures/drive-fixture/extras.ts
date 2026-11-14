@@ -53,15 +53,12 @@ export function buildVersions(
 
 export function buildTrash(random: Random, entry: BuiltRoot): readonly DriveTrashEntry[] {
   const { plan } = entry;
-  if (plan.readOnly) {
-    return [];
-  }
   const files = entry.items.filter((item) => item.kind !== 'folder').length;
   return Array.from({ length: Math.ceil(files * TRASH_SHARE) }, (_, index) => {
     const id = random.uuid();
     const name = `Old ${String(index + 1)}.pdf`;
     const deletedAt = NOW_MS - (index === 0 ? 29 * DAY_MS : random.int(25 * DAY_MS));
-    const person = plan.adders === null ? null : cycle(plan.adders, index);
+    const person = cycle(plan.adders, index);
     return {
       itemId: id,
       rootId: plan.id,
@@ -83,9 +80,6 @@ export function buildShares(
   entry: BuiltRoot,
   owner: string,
 ): readonly DriveShare[] {
-  if (entry.plan.readOnly) {
-    return [];
-  }
   const files = entry.items.filter((item) => item.kind !== 'folder');
   return files.slice(0, Math.ceil(files.length * SHARES_SHARE)).map((item, index) => ({
     id: random.uuid(),
@@ -160,13 +154,13 @@ function manualSpecs(
       title: 'Holidays 2025',
       scope: 'person' as const,
       owner: owner.id,
-      pool: imagesOf(built, (plan) => plan.owner === owner.id && plan.kind === 'managed'),
+      pool: imagesOf(built, (plan) => plan.owner === owner.id),
     },
     {
       title: 'Family',
       scope: 'home' as const,
       owner: null,
-      pool: imagesOf(built, (plan) => plan.scope === 'home' && plan.kind !== 'cameras'),
+      pool: imagesOf(built, (plan) => plan.scope === 'home'),
     },
     {
       title: 'Sam favourites',
@@ -259,8 +253,14 @@ export function buildUsage(
       (total, row) => (row.addedByProfileId === profileId ? total + row.bytes : total),
       0,
     );
+  const counted = (profileId: string | null): { items: number; folders: number } => {
+    const mine = items.filter((item) => item.addedByProfileId === profileId);
+    const folders = mine.filter((item) => item.kind === 'folder').length;
+    return { items: mine.length - folders, folders };
+  };
   return profiles.map((profileId) => ({
     profileId,
+    ...counted(profileId),
     live: sum(files, profileId),
     versions: sum(versions, profileId),
     trash: sum(trash, profileId),

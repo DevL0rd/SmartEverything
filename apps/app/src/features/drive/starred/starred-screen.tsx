@@ -5,21 +5,26 @@ import { Logger } from '@smarteverything/logging';
 import { FilterChip } from '../../../components/filter-chip';
 import type { PrimaryActionProps } from '../../../components/primary-action';
 import { useLifecycleLog } from '../../../components/use-lifecycle-log';
-import { useSectionParam } from '../../../components/use-section-param';
 import { VirtualList } from '../../../components/virtual-list';
 import { useAreaWidth } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
-import { flattenPages, useDriveRoots, useDriveSearch } from '../../nas/data';
-import { ChipRow } from '../../nas/frame';
-import { libraryLayoutOf } from '../../nas/frame/sections';
+import { flattenPages, useDriveChips, useDriveSearch } from '../data';
+import { ChipRow } from '../../../components/library-frame';
+import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { DriveFilterChips } from '../components/drive-chip';
 import { DriveFrame } from '../components/drive-frame';
 import { runChange } from '../folder/folder-footer';
-import { whereOf } from '../recent/recent-model';
+import {
+  driveFilterCounts,
+  folderTrailOf,
+  inDrive,
+  type DriveChipOf,
+  type DriveFilter,
+} from '../model/drive-chip';
 import { recentStale } from '../recent/recent-states';
 import { useSaveSmartFolder } from './save-smart-folder';
 import { SectionHead, StarredColumns } from './section-head';
 import { useSmartFolders } from './smart-data';
-import { SmartFolderScreen } from './smart-folder-screen';
 import { SmartFolders, type RenameSmartFolder } from './smart-folders';
 import type { SmartFolder } from './smart-model';
 import {
@@ -69,6 +74,12 @@ function useStarredFeed(chip: StarredChip): StarredFeed {
   return { pages, items: shown.items, counts };
 }
 
+interface DriveScope {
+  readonly drive: DriveFilter;
+  readonly onDrive: (drive: DriveFilter) => void;
+  readonly chipOf: DriveChipOf;
+}
+
 function StarredChips({
   chip,
   counts,
@@ -106,10 +117,14 @@ interface TopProps {
   readonly chip: StarredChip;
   readonly counts: ChipCounts;
   readonly onChip: (chip: StarredChip) => void;
+  readonly items: readonly DriveItem[];
+  readonly scope: DriveScope;
   readonly compact: boolean;
 }
 
-function ListTop({ folders, onRename, chip, counts, onChip, compact }: TopProps): ReactNode {
+function ListTop(props: TopProps): ReactNode {
+  const { folders, onRename, chip, counts, onChip, items, scope, compact } = props;
+  const driveCounts = driveFilterCounts(items, (item) => scope.chipOf(item.rootId));
   return (
     <View>
       <View className="gap-4 px-gutter pb-2">
@@ -117,6 +132,11 @@ function ListTop({ folders, onRename, chip, counts, onChip, compact }: TopProps)
         <View className="gap-2">
           <SectionHead title="Starred" note={STAR_NOTE} />
           <StarredChips chip={chip} counts={counts} onChip={onChip} />
+          {items.length === 0 ? null : (
+            <ChipRow label="Starred files by drive">
+              <DriveFilterChips value={scope.drive} counts={driveCounts} onChange={scope.onDrive} />
+            </ChipRow>
+          )}
         </View>
       </View>
       {compact ? null : <StarredColumns />}
@@ -129,15 +149,17 @@ function unstar(item: DriveItem): void {
 }
 
 function renderItem(
-  roots: ReadonlyMap<string, string>,
+  chipOf: DriveChipOf,
   wide: boolean,
   live: boolean,
 ): (item: DriveItem) => ReactElement {
   return function RenderedStarred(item: DriveItem): ReactElement {
+    const chip = chipOf(item.rootId);
     return (
       <StarredRow
         item={item}
-        where={whereOf(item, roots.get(item.rootId) ?? null)}
+        chip={chip}
+        where={folderTrailOf(chip, item.relPath)}
         wide={wide}
         live={live}
         onUnstar={unstar}
@@ -159,24 +181,33 @@ function primaryOf(open: () => void): PrimaryActionProps {
 
 interface ListProps {
   readonly feed: StarredFeed;
+  readonly items: readonly DriveItem[];
+  readonly scope: DriveScope;
   readonly top: ReactElement;
   readonly chip: StarredChip;
   readonly compact: boolean;
   readonly live: boolean;
 }
 
-function StarredList({ feed, top, chip, compact, live }: ListProps): ReactNode {
-  const roots = new Map(useDriveRoots().map((root) => [root.id, root.label]));
+function StarredList({ feed, items, scope, top, chip, compact, live }: ListProps): ReactNode {
   return (
     <View className="-mx-gutter flex-1">
       <VirtualList
-        sections={
-          feed.items.length === 0 ? [] : [{ key: 'starred', title: null, data: feed.items }]
-        }
+        sections={items.length === 0 ? [] : [{ key: 'starred', title: null, data: items }]}
         keyOf={(item) => item.id}
-        renderItem={renderItem(roots, !compact, live)}
+        renderItem={renderItem(scope.chipOf, !compact, live)}
         header={top}
-        empty={<StarredEmpty pages={feed.pages} chip={chip} live={live} />}
+        empty={
+          <StarredEmpty
+            pages={feed.pages}
+            chip={chip}
+            drive={scope.drive}
+            onAllDrives={() => {
+              scope.onDrive('all');
+            }}
+            live={live}
+          />
+        }
         footer={<StarredFooter pages={feed.pages} />}
         onEndReached={() => {
           loadMoreStarred(feed.pages);
@@ -187,9 +218,13 @@ function StarredList({ feed, top, chip, compact, live }: ListProps): ReactNode {
   );
 }
 
-function StarredHome(): ReactNode {
+export function StarredScreen(): ReactNode {
   const [chip, setChip] = useState<StarredChip>('all');
+  const [drive, setDrive] = useState<DriveFilter>('all');
   const feed = useStarredFeed(chip);
+  const chipOf = useDriveChips();
+  const scope: DriveScope = { drive, onDrive: setDrive, chipOf };
+  const items = inDrive(feed.items, drive, (item) => chipOf(item.rootId));
   const folders = useSmartFolders();
   const saver = useSaveSmartFolder();
   const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
@@ -210,6 +245,8 @@ function StarredHome(): ReactNode {
     >
       <StarredList
         feed={feed}
+        items={items}
+        scope={scope}
         live={live}
         top={
           <ListTop
@@ -218,6 +255,8 @@ function StarredHome(): ReactNode {
             chip={chip}
             counts={feed.counts}
             onChip={setChip}
+            items={feed.items}
+            scope={scope}
             compact={compact}
           />
         }
@@ -227,9 +266,4 @@ function StarredHome(): ReactNode {
       {saver.host}
     </DriveFrame>
   );
-}
-
-export function StarredScreen(): ReactNode {
-  const [smart] = useSectionParam('smart');
-  return smart === null ? <StarredHome /> : <SmartFolderScreen key={smart} albumId={smart} />;
 }

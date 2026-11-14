@@ -2,6 +2,7 @@ import type { Logger } from '@smarteverything/logging';
 import { ApiError } from '@smarteverything/domain';
 import type { ConflictEnv } from '../../drive/conflicts';
 import { DriveFsApi } from '../../drive/fs-api';
+import { fsSpace } from '../../drive/fs-space';
 import { createDriveSync } from '../../drive/sync/server-push';
 import { syncAuthentication, type SyncEnv } from '../../drive/sync/server-ops';
 import { DriveSyncServer } from '../../drive/sync/server-socket';
@@ -68,10 +69,8 @@ function davDepsOf(inputs: DriveSurfaceInputs): DavDeps {
 
 function davRoutes(deps: DavDeps): readonly RawRoute[] {
   const handler = createDavHandler(deps);
-  // DAV verbs (PROPFIND, MKCOL, ...) are matched as plain strings by the raw
-  // route server, whose RawRoute method union only names the REST verbs.
   return CLASS2_METHODS.map((method): RawRoute => ({
-    method: method as RawRoute['method'],
+    method,
     path: DAV_PATH,
     handle: (request, response): Promise<void> => handler({ request, response }),
   }));
@@ -126,7 +125,22 @@ export function createDriveSurfaces(inputs: DriveSurfaceInputs): DriveSurfaces {
   return {
     routes: [
       ...syncRoutes(server, parts),
-      ...driveFsRoutes({ api: fs, files: services.files }),
+      ...driveFsRoutes({
+        api: fs,
+        files: services.files,
+        space: (caller, rootId, base) =>
+          fsSpace(
+            {
+              read: services.read,
+              store,
+              quota: (profileId) => store.driveQuotas.status(profileId),
+              probe: services.probe,
+            },
+            caller,
+            rootId,
+            base,
+          ),
+      }),
       ...davRoutes(davDepsOf(inputs)),
     ],
     revoke: (deviceId): void => {

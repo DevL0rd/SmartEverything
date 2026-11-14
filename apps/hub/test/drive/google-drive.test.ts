@@ -126,6 +126,7 @@ describe('copying Drive', () => {
     const item = rig.store.store.driveItems.byPath(
       rig.rootId,
       'Google Drive/Trips/2025/ticket.txt',
+      rig.profileId,
     );
     expect(item?.addedByProfileId).toBe(rig.profileId);
     expect(record(importId)).toMatchObject({

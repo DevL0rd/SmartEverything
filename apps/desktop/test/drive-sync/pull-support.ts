@@ -25,9 +25,9 @@ export function blockHashes(content: Buffer): Buffer {
   return Buffer.concat(hashes);
 }
 
-export function remoteOf(rootId: string, itemId: string, content: Buffer): RemoteFile {
+export function remoteOf(driveId: string, itemId: string, content: Buffer): RemoteFile {
   return {
-    rootId,
+    driveId,
     itemId,
     bytes: content.length,
     blockSize: blockSizeFor(content.length),

@@ -77,6 +77,12 @@ const NO_COUNTERS: PlacementCounters = {
   pendingUploads: 0,
 };
 
+const NO_SYNC: Pick<DrivePlacementStatus, 'needBytes' | 'lastSyncedAt' | 'errors'> = {
+  needBytes: 0,
+  lastSyncedAt: null,
+  errors: [],
+};
+
 interface Entry {
   fields: PlacementFields;
   counters: PlacementCounters;
@@ -148,6 +154,7 @@ export class PlacementStates {
       placementId: id,
       ...entry.fields,
       ...entry.counters,
+      ...NO_SYNC,
       reportedAt: this.now().toISOString(),
     });
   }

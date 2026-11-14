@@ -20,20 +20,16 @@ interface Frame {
 interface State {
   query: Query;
   health: unknown;
-  roots: readonly unknown[];
   live: boolean;
   owner: boolean;
-  width: number;
   frame: Frame | null;
 }
 
 const state = vi.hoisted((): State => ({
   query: { data: undefined, isError: false, error: null },
   health: undefined,
-  roots: [],
   live: true,
   owner: true,
-  width: 1000,
   frame: null,
 }));
 
@@ -60,7 +56,7 @@ vi.mock('../components/drive-frame', async (original) => ({
     return createElement('main', null, frame.banner, frame.children);
   },
 }));
-vi.mock('../../nas/data', () => ({
+vi.mock('../data', () => ({
   useDriveStats: (): Query & { readonly refetch: () => Promise<void> } => ({
     ...state.query,
     refetch: () => Promise.resolve(),
@@ -69,16 +65,11 @@ vi.mock('../../nas/data', () => ({
     data: state.health,
     refetch: () => Promise.resolve(),
   }),
-  useDriveRoots: (): readonly unknown[] => state.roots,
-  useDriveVolumes: (): { readonly data: undefined } => ({ data: undefined }),
 }));
 vi.mock('../../../store/clock', () => ({ useMinute: (): number => Date.parse('2026-11-07') }));
 vi.mock('../../../store/selectors', () => ({
   useIsOwner: (): boolean => state.owner,
   useSyncStatus: (): { readonly status: string } => ({ status: state.live ? 'live' : 'offline' }),
-}));
-vi.mock('../../../components/section-body', () => ({
-  useFrameBodyWidth: (): number => state.width,
 }));
 vi.mock('../../../components/banner', () => ({ Banner: stub('stale') }));
 vi.mock('../../../components/error-state', () => ({ ErrorState: stub('error') }));
@@ -97,24 +88,17 @@ vi.mock('../../../components/empty-state', () => ({
       action,
     ),
 }));
-vi.mock('../../../components/button', () => ({
-  Button: ({ label }: { readonly label: string }): ReactNode =>
-    createElement('button', null, label),
+vi.mock('./storage-columns', () => ({
+  StorageColumns: ({ owner }: { readonly owner: boolean }): ReactNode =>
+    createElement('section', { 'data-part': owner ? 'columns-owner' : 'columns-member' }),
 }));
-vi.mock('./storage-hero', () => ({ StorageHero: stub('hero') }));
-vi.mock('./volume-list', () => ({
-  VolumeList: stub('volumes'),
-  volumeNamesOf: (): readonly unknown[] => [],
-}));
-vi.mock('./by-root', () => ({ ByRoot: stub('by-root') }));
 
 const { StorageScreen, scrubTextOf, storageSubtitleOf } = await import('./storage-screen');
 
-const render = (slots?: object): string =>
-  renderToStaticMarkup(createElement(StorageScreen, slots === undefined ? {} : { slots }));
+const render = (): string => renderToStaticMarkup(createElement(StorageScreen));
 
-const parts = (slots?: object): readonly string[] =>
-  [...render(slots).matchAll(/data-part="([^"]+)"/gu)].map((match) => match[1] ?? '');
+const parts = (): readonly string[] =>
+  [...render().matchAll(/data-part="([^"]+)"/gu)].map((match) => match[1] ?? '');
 
 const GB = 1024 ** 3;
 
@@ -127,15 +111,8 @@ const STATS = {
   trashBytes: 0,
   kinds: [],
   roots: [],
-  volumes: [
-    {
-      mountId: '41',
-      rootIds: ['00000000-0000-4000-8000-0000000000a1'],
-      totalBytes: 1000 * GB,
-      freeBytes: 700 * GB,
-      fullInMonths: null,
-    },
-  ],
+  space: { totalBytes: 1000 * GB, freeBytes: 700 * GB, fsType: 'ext4' },
+  fullInMonths: null,
   purges: [],
   growth: null,
 };
@@ -145,10 +122,8 @@ const IDLE = { state: 'idle', lastFinishedAt: '2026-11-04T00:00:00Z', corrupt: 0
 afterEach(() => {
   state.query = { data: undefined, isError: false, error: null };
   state.health = undefined;
-  state.roots = [];
   state.live = true;
   state.owner = true;
-  state.width = 1000;
   state.frame = null;
 });
 
@@ -168,32 +143,14 @@ describe('Storage screen states', () => {
   it('keeps the last numbers under a banner when the hub drops', () => {
     state.query = { data: STATS, isError: false, error: null };
     state.live = false;
-    expect(parts()[0]).toBe('stale');
-    expect(parts()).toContain('hero-wide');
+    expect(parts()).toEqual(['stale', 'columns-owner']);
   });
 
-  it('offers the owner a first folder and tells a member who adds them', () => {
-    state.query = { data: { ...STATS, items: 0 }, isError: false, error: null };
-    expect(parts()).toEqual(['empty']);
-    expect(render()).toContain('Add a folder or drive');
+  it('lays out the storage cards for the owner or a member', () => {
+    state.query = { data: STATS, isError: false, error: null };
+    expect(parts()).toEqual(['columns-owner']);
     state.owner = false;
-    expect(render()).not.toContain('Add a folder or drive');
-  });
-
-  it('puts the hero and volumes in the wide column and library folders beside them', () => {
-    state.query = { data: STATS, isError: false, error: null };
-    expect(parts({ main: createElement('i', { 'data-part': 'people' }) })).toEqual([
-      'hero-wide',
-      'volumes',
-      'people',
-      'by-root',
-    ]);
-  });
-
-  it('stacks one column and drops the donut when the body is narrow', () => {
-    state.query = { data: STATS, isError: false, error: null };
-    state.width = 400;
-    expect(parts()).toEqual(['hero', 'volumes', 'by-root']);
+    expect(parts()).toEqual(['columns-member']);
   });
 });
 
@@ -218,7 +175,7 @@ describe('Storage header', () => {
     const now = Date.parse('2026-11-07T00:00:00Z');
     expect(storageSubtitleOf(undefined, IDLE, now)).toBeUndefined();
     expect(storageSubtitleOf({ ...STATS, kinds: [] }, IDLE, now)).toBe(
-      `${bytes(300 * GB)} of ${bytes(1000 * GB)} · 1 volume · ${bytes(700 * GB)} free · Last scrub 3 d ago, no damage`,
+      `${bytes(300 * GB)} of ${bytes(1000 * GB)} · ${bytes(700 * GB)} free on the data disk · Last scrub 3 d ago, no damage`,
     );
   });
 

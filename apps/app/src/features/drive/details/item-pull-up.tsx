@@ -119,11 +119,14 @@ function QuickButton({
   );
 }
 
-function useQuickRun(
-  subject: DetailsSubject,
-  slots: DetailsSlots,
-  close: () => void,
-): (action: QuickAction) => void {
+interface PullUpProps {
+  readonly subject: DetailsSubject;
+  readonly slots: DetailsSlots;
+  readonly share: (item: DriveItem) => void;
+  readonly close: () => void;
+}
+
+function useQuickRun({ subject, share, close }: PullUpProps): (action: QuickAction) => void {
   const toChat = useToChat();
   const { item } = subject;
   return (action) => {
@@ -134,7 +137,7 @@ function useQuickRun(
         details: () => undefined,
         rename: () => undefined,
       });
-    } else if (action === 'share') slots.share?.(item);
+    } else if (action === 'share') share(item);
     else if (action === 'chat') toChat(item);
     else {
       trashItems([item]);
@@ -143,21 +146,10 @@ function useQuickRun(
   };
 }
 
-function QuickRow({
-  subject,
-  slots,
-  close,
-}: {
-  readonly subject: DetailsSubject;
-  readonly slots: DetailsSlots;
-  readonly close: () => void;
-}): ReactNode {
-  const run = useQuickRun(subject, slots, close);
-  const { item } = subject;
-  const actions = quickActionsOf(item, {
-    sharing: slots.share !== undefined,
-    writable: subject.writable,
-  });
+function QuickRow(props: PullUpProps): ReactNode {
+  const run = useQuickRun(props);
+  const { item } = props.subject;
+  const actions = quickActionsOf(item, props.subject.writable);
   return (
     <View className="flex-row px-2 pb-3">
       {actions.map((action) => (
@@ -204,20 +196,13 @@ function PullUpHeader({
   );
 }
 
-export function ItemPullUp({
-  subject,
-  slots,
-  close,
-}: {
-  readonly subject: DetailsSubject;
-  readonly slots: DetailsSlots;
-  readonly close: () => void;
-}): ReactNode {
+export function ItemPullUp(props: PullUpProps): ReactNode {
+  const { subject, slots, share, close } = props;
   return (
     <BottomSheet open onClose={close} label={subject.item.name} detents={PULL_UP_DETENTS} scroll>
       <PullUpHeader item={subject.item} close={close} />
-      <QuickRow subject={subject} slots={slots} close={close} />
-      <DetailsTabs subject={subject} slots={slots} pane={false} />
+      <QuickRow {...props} />
+      <DetailsTabs subject={subject} slots={slots} share={share} pane={false} />
     </BottomSheet>
   );
 }

@@ -74,7 +74,7 @@ function WideLabel({ entry }: { readonly entry: RailEntry }): ReactNode {
         {entry.detail}
       </View>
       {entry.count === undefined || entry.count === '' ? null : (
-        <Text variant="caption" tone="faint" numberOfLines={1} className="tabular">
+        <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
           {entry.count}
         </Text>
       )}

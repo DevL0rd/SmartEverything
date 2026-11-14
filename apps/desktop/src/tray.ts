@@ -34,12 +34,12 @@ interface TrayServiceControls {
   readonly restart: () => void;
 }
 
-interface DriveTrayCommands {
+export interface DriveTrayCommands {
   readonly sync: (command: DriveSyncCommand) => void;
   readonly mount: (command: DriveMountCommand) => void;
 }
 
-interface DriveTrayState {
+export interface DriveTrayState {
   readonly sync: (state: DriveSyncTray | null) => void;
   readonly mount: (state: DriveMountTray | null) => void;
 }

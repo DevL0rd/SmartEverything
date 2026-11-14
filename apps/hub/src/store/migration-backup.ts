@@ -5,7 +5,6 @@ import type { Logger } from '@smarteverything/logging';
 import type { Sql } from './sql';
 import { messageOf } from '@smarteverything/logging';
 
-const KEPT_BACKUPS = 3;
 const MAIN_DATABASE = z.object({ file: z.string() });
 
 class MigrationBackupError extends Error {
@@ -25,25 +24,29 @@ function escaped(text: string): string {
   return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
-function prune(database: string): void {
-  const pattern = new RegExp(`^${escaped(basename(database))}\\.v(\\d+)-before-v(\\d+)\\.sqlite$`);
-  const backups = readdirSync(dirname(database))
-    .flatMap((name) => {
-      const match = pattern.exec(name);
-      return match === null ? [] : [{ name, from: Number(match[1]), to: Number(match[2]) }];
-    })
-    .toSorted((a, b) => b.to - a.to || b.from - a.from);
-  for (const stale of backups.slice(KEPT_BACKUPS)) {
-    rmSync(join(dirname(database), stale.name), { force: true });
+function databaseFile(sql: Sql): string | undefined {
+  const file = sql.get(
+    MAIN_DATABASE,
+    "select file from pragma_database_list where name = 'main'",
+  )?.file;
+  return file === undefined || file === '' ? undefined : file;
+}
+
+export function discardMigrationBackups(sql: Sql, log: Logger): void {
+  const database = databaseFile(sql);
+  if (database === undefined) return;
+  const pattern = new RegExp(`^${escaped(basename(database))}\\.v\\d+-before-v\\d+\\.sqlite$`);
+  for (const name of readdirSync(dirname(database))) {
+    if (pattern.test(name)) {
+      rmSync(join(dirname(database), name), { force: true });
+      log.info('store.backup_discarded', { file: name });
+    }
   }
 }
 
 export function backUpBeforeMigrating(sql: Sql, from: number, to: number, log: Logger): void {
-  const database = sql.get(
-    MAIN_DATABASE,
-    "select file from pragma_database_list where name = 'main'",
-  )?.file;
-  if (database === undefined || database === '') return;
+  const database = databaseFile(sql);
+  if (database === undefined) return;
   const path = `${database}.v${String(from)}-before-v${String(to)}.sqlite`;
   const partial = `${path}.partial`;
   const startedAt = performance.now();
@@ -52,7 +55,6 @@ export function backUpBeforeMigrating(sql: Sql, from: number, to: number, log: L
     rmSync(partial, { force: true });
     sql.run('back up the database', 'vacuum into $path', { path: partial });
     renameSync(partial, path);
-    prune(database);
   } catch (cause) {
     rmSync(partial, { force: true });
     log.error('store.backup_failed', cause, {

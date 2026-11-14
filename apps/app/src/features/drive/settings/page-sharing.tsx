@@ -9,7 +9,7 @@ import { List } from '../../../components/section';
 import { count } from '../../../format/number';
 import { useMutationState } from '../../../store/mutation';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
-import { useDriveSettings } from '../../nas/data';
+import { useDriveSettings } from '../data';
 import { DriveSettingsSection } from './page';
 import { SettingsQueryState, saveDriveSettings } from './page-indexing';
 

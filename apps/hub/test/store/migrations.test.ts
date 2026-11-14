@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { z } from 'zod';
@@ -94,7 +94,7 @@ function open(): ReturnType<typeof openStore> {
 }
 
 describe('migrating a live schema-80 database', () => {
-  it('backs the database up first, then reaches head with every row and foreign key intact', () => {
+  it('backs the database up first, reaches head, then discards the backup with every row and foreign key intact', () => {
     const before = build(LIVE);
     seedLive(before);
     const counts = tableCounts(before, ['transcript_line_sequence']);
@@ -102,13 +102,6 @@ describe('migrating a live schema-80 database', () => {
 
     const store = open();
     store.close();
-
-    const backup = new DatabaseSync(`${path}.v${String(LIVE)}-before-v${String(HEAD)}.sqlite`);
-    expect(
-      COUNT.parse(backup.prepare('select max(version) as count from schema_version').get()).count,
-    ).toBe(LIVE);
-    expect(tableCounts(backup, [])).toMatchObject(counts);
-    backup.close();
 
     const migrated = new DatabaseSync(path);
     expect(
@@ -139,6 +132,8 @@ describe('migrating a live schema-80 database', () => {
     migrated.close();
     const [saved] = logs.records.filter((record) => record.event === 'store.backed_up');
     expect(saved?.payload).toMatchObject({ from: LIVE, to: HEAD });
+    expect(logs.events()).toContain('store.backup_discarded');
+    expect(readdirSync(directory).filter((name) => name.endsWith('.sqlite'))).toStrictEqual([]);
   });
 
   it('never reuses transcript ids that were deleted before the rebuild and keeps search working', () => {
@@ -357,10 +352,9 @@ describe('migration backups', () => {
     expect(logs.events()).not.toContain('store.backed_up');
   });
 
-  it('keeps only the three newest backups', () => {
+  it('discards every pre-migration copy once the new schema has started', () => {
     for (const name of [
       'hub.db.v10-before-v20.sqlite',
-      'hub.db.v30-before-v40.sqlite',
       'hub.db.v40-before-v50.sqlite',
       'other.db.v1-before-v2.sqlite',
     ]) {
@@ -368,18 +362,9 @@ describe('migration backups', () => {
     }
     build(LIVE).close();
     open().close();
-    expect(
-      readdirSync(directory)
-        .filter((name) => name.endsWith('.sqlite'))
-        .toSorted(),
-    ).toStrictEqual(
-      [
-        'hub.db.v30-before-v40.sqlite',
-        `hub.db.v${String(LIVE)}-before-v${String(HEAD)}.sqlite`,
-        'hub.db.v40-before-v50.sqlite',
-        'other.db.v1-before-v2.sqlite',
-      ].toSorted(),
-    );
+    expect(readdirSync(directory).filter((name) => name.endsWith('.sqlite'))).toStrictEqual([
+      'other.db.v1-before-v2.sqlite',
+    ]);
   });
 
   it('migrates nothing when the backup cannot be written', () => {
@@ -394,17 +379,29 @@ describe('migration backups', () => {
     database.close();
   });
 
-  it('restores by copying a backup back', async () => {
-    const live = build(LIVE);
-    seedLive(live);
-    live.close();
-    open().close();
-    const { copyFile } = await import('node:fs/promises');
-    await copyFile(`${path}.v${String(LIVE)}-before-v${String(HEAD)}.sqlite`, path);
-    const restored = new DatabaseSync(path);
+  it('keeps the copy while a start fails and discards it after the next healthy start', () => {
+    build(LIVE).close();
+    const database = new DatabaseSync(path, { enableForeignKeyConstraints: true });
+    expect(() =>
+      migrate(
+        new Sql(database),
+        [
+          ...MIGRATIONS,
+          { version: HEAD + 1, name: 'broken', statements: ['select * from nowhere'] },
+        ],
+        NOW,
+        testLogger(),
+      ),
+    ).toThrow();
+    database.close();
+    const copy = `${path}.v${String(LIVE)}-before-v${String(HEAD + 1)}.sqlite`;
+    expect(readdirSync(directory)).toContain(basename(copy));
+    const kept = new DatabaseSync(copy);
     expect(
-      COUNT.parse(restored.prepare('select max(version) as count from schema_version').get()).count,
+      COUNT.parse(kept.prepare('select max(version) as count from schema_version').get()).count,
     ).toBe(LIVE);
-    restored.close();
+    kept.close();
+    open().close();
+    expect(readdirSync(directory).filter((name) => name.endsWith('.sqlite'))).toStrictEqual([]);
   });
 });

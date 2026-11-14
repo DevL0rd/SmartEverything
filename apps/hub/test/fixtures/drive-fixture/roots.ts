@@ -1,35 +1,10 @@
+import type { DriveItem } from '../../../../../packages/domain/src/drive/item';
+import type { DrivePlacement } from '../../../../../packages/domain/src/drive/placement';
 import type { DriveRoot } from '../../../../../packages/domain/src/drive/root';
-import type { DriveSyncClient } from '../../../../../packages/domain/src/drive/sync-client';
 import type { BuiltRoot } from './items';
-import type { People, RootPlan } from './plans';
+import type { People } from './plans';
 import { cycle, HOUR_MS, iso, MINUTE_MS, NOW_MS } from './random';
 import type { NonEmpty, Random } from './random';
-
-const EXTERNAL_VOLUME = { mountId: 'sdb1', fsType: 'ext4', network: false } as const;
-const SELECTED_FOLDER = 'Documents 1';
-
-export function syncClientsFor(
-  random: Random,
-  plan: RootPlan,
-  people: People,
-  deviceIds: NonEmpty<string>,
-): readonly DriveSyncClient[] {
-  return Array.from({ length: plan.clients }, (_, index) => ({
-    clientId: random.uuid(),
-    rootId: plan.id,
-    deviceId: cycle(deviceIds, index),
-    profileId: plan.owner ?? cycle(people, index).id,
-    enabled: index < 2,
-    selected: index === 1 ? [SELECTED_FOLDER] : [],
-    lastSeq: random.between(0, 5000),
-    lastSeenAt: index < 2 ? iso(NOW_MS - (index === 0 ? 5 * MINUTE_MS : 2 * HOUR_MS)) : null,
-    needBytes: index === 1 ? random.between(1_000_000, 900_000_000) : 0,
-    errors:
-      index === 1
-        ? [{ relPath: null, message: 'The folder is not writable', at: iso(NOW_MS - HOUR_MS) }]
-        : [],
-  }));
-}
 
 interface RootTotals {
   readonly items: number;
@@ -39,25 +14,6 @@ interface RootTotals {
   readonly verifiedShare: number;
   readonly corrupt: number;
 }
-
-type CommonFields = Pick<
-  DriveRoot,
-  | 'id'
-  | 'label'
-  | 'scope'
-  | 'ownerProfileId'
-  | 'indexId'
-  | 'state'
-  | 'stateReason'
-  | 'items'
-  | 'folders'
-  | 'bytes'
-  | 'scannedAt'
-  | 'health'
-  | 'inPhotos'
-  | 'skipPatterns'
-  | 'includeHidden'
->;
 
 function summarise(entry: BuiltRoot): RootTotals {
   const files = entry.items.filter((item) => item.kind !== 'folder');
@@ -75,13 +31,11 @@ function summarise(entry: BuiltRoot): RootTotals {
   };
 }
 
-function commonFields(entry: BuiltRoot): CommonFields {
+export function makeRoot(entry: BuiltRoot): DriveRoot {
   const { plan } = entry;
   const totals = summarise(entry);
-  const managed = plan.kind === 'managed';
   return {
     id: plan.id,
-    label: plan.label,
     scope: plan.scope,
     ownerProfileId: plan.owner,
     indexId: `idx-${plan.id.slice(0, 8)}`,
@@ -95,74 +49,85 @@ function commonFields(entry: BuiltRoot): CommonFields {
       hashedShare: totals.hashedShare,
       verifiedShare: totals.verifiedShare,
       corrupt: totals.corrupt,
-      lastScrubAt: managed ? iso(NOW_MS - 72 * HOUR_MS) : null,
-      lastBackupAt: managed ? iso(NOW_MS - 24 * HOUR_MS) : null,
+      lastScrubAt: iso(NOW_MS - 72 * HOUR_MS),
+      lastBackupAt: iso(NOW_MS - 24 * HOUR_MS),
     },
-    inPhotos: plan.inPhotos,
+    versions: plan.versions,
     skipPatterns: ['node_modules', '*.tmp'],
     includeHidden: false,
   };
 }
 
-type PhysicalFields = CommonFields &
-  Pick<Extract<DriveRoot, { readonly kind: 'folder' }>, 'path' | 'synced' | 'sync'>;
+function topFolder(items: readonly DriveItem[]): DriveItem | undefined {
+  return items.find((item) => item.kind === 'folder' && item.parentId === null);
+}
 
-function physicalFields(
-  plan: RootPlan,
-  common: CommonFields,
-  clients: readonly DriveSyncClient[],
-): PhysicalFields {
+interface PlacementSlot {
+  readonly index: number;
+  readonly deviceId: string;
+  readonly createdBy: string;
+}
+
+function statusFor(random: Random, index: number): DrivePlacement['status'] {
+  const mounted = index === 2;
   return {
-    ...common,
-    path: plan.path,
-    synced: plan.synced,
-    sync: {
-      ignorePatterns: plan.synced ? ['*.tmp', '.DS_Store'] : [],
-      conflictCopies: true,
-      clients: clients.map((client) => ({ clientId: client.clientId, enabled: client.enabled })),
-    },
+    state: mounted ? 'stopped' : 'up_to_date',
+    tier: mounted ? null : 'full',
+    basicLimits: null,
+    readOnly: false,
+    route: mounted ? null : 'local',
+    cacheBytes: 0,
+    pinnedBytes: 0,
+    openFiles: 0,
+    pendingUploads: 0,
+    needBytes: index === 1 ? random.between(1_000_000, 900_000_000) : 0,
+    lastSyncedAt: mounted ? null : iso(NOW_MS - (index === 0 ? 5 * MINUTE_MS : 2 * HOUR_MS)),
+    errors:
+      index === 1
+        ? [{ relPath: null, message: 'The folder is not writable', at: iso(NOW_MS - HOUR_MS) }]
+        : [],
+    reason: null,
+    reportedAt: iso(NOW_MS - MINUTE_MS),
   };
 }
 
-export function makeRoot(entry: BuiltRoot, clients: readonly DriveSyncClient[]): DriveRoot {
-  const { plan } = entry;
-  const common = commonFields(entry);
-  const physical = physicalFields(plan, common, clients);
-  switch (plan.kind) {
-    case 'folder':
-      return {
-        ...physical,
-        kind: 'folder',
-        readOnly: plan.readOnly,
-        versions: plan.versions,
-        volume: null,
+function placementFor(random: Random, entry: BuiltRoot, slot: PlacementSlot): DrivePlacement {
+  const { index } = slot;
+  const mounted = index === 2;
+  const target = {
+    id: random.uuid(),
+    deviceId: slot.deviceId,
+    rootId: entry.plan.id,
+    folderItemId: (index === 1 ? topFolder(entry.items) : undefined)?.id ?? null,
+    localPath: `/home/user/Drive ${String(index + 1)}`,
+    enabled: !mounted,
+    hold: null,
+    createdBy: slot.createdBy,
+    createdAt: iso(NOW_MS - (index + 1) * 24 * HOUR_MS),
+    status: statusFor(random, index),
+  };
+  return mounted
+    ? { ...target, mode: 'mounted' }
+    : {
+        ...target,
+        mode: 'synced',
+        excluded: index === 1 ? ['Documents 1'] : [],
+        ignorePatterns: ['*.tmp', '.DS_Store'],
+        conflictCopies: true,
       };
-    case 'volume':
-      return {
-        ...physical,
-        kind: 'volume',
-        readOnly: plan.readOnly,
-        versions: plan.versions,
-        volume: EXTERNAL_VOLUME,
-      };
-    case 'managed':
-      return {
-        ...physical,
-        kind: 'managed',
-        readOnly: false,
-        versions: plan.versions,
-        volume: null,
-      };
-    case 'cameras':
-    case 'ai_images':
-      return {
-        ...common,
-        kind: plan.kind,
-        path: null,
-        readOnly: true,
-        versions: false,
-        synced: false,
-        sync: null,
-      };
-  }
+}
+
+export function placementsFor(
+  random: Random,
+  entry: BuiltRoot,
+  people: People,
+  deviceIds: NonEmpty<string>,
+): readonly DrivePlacement[] {
+  return Array.from({ length: entry.plan.placements }, (_, index) =>
+    placementFor(random, entry, {
+      index,
+      deviceId: cycle(deviceIds, index),
+      createdBy: entry.plan.owner ?? cycle(people, index).id,
+    }),
+  );
 }

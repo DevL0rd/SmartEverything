@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DRIVE_ITEM, type DriveItem } from '@smarteverything/domain';
 import type { KeyPress } from '../../../design/keyboard';
-import { FOLDER_ID, ROOT_ID } from '../../nas/data/fixtures';
+import { FOLDER_ID, ROOT_ID } from '../data/fixtures';
 import { readRememberedTab, rememberTab } from '../details/details-model';
 import {
   contentOf,
@@ -31,6 +31,7 @@ function base(index: number, name: string): object {
     addedAt: AT,
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'etag',
     outside: false,

@@ -83,5 +83,5 @@ export function matchBarsLabel(folder: SmartFolder, stats: SmartStats): string {
 }
 
 export function smartFolderHref(albumId: string): AppHref {
-  return href.drivePage('starred', { smart: albumId });
+  return href.driveSmartFolder(albumId);
 }

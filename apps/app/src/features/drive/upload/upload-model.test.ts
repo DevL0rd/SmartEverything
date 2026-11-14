@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { UploadEntry } from '../../nas/uploads';
+import type { UploadEntry } from './transport';
 import {
+  blockedDropText,
   dropDetail,
   dropTitle,
   failureLineOf,
@@ -23,7 +24,7 @@ function entry(id: string, patch: Partial<UploadEntry> = {}): UploadEntry {
 }
 
 function record(key: string, handleId: string | null, folderId = FOLDER): UploadRecord {
-  return { key, folderId, name: `${key}.pdf`, size: 100, handleId };
+  return { key, place: { kind: 'folder', folderId }, name: `${key}.pdf`, size: 100, handleId };
 }
 
 describe('upload model', () => {
@@ -115,8 +116,13 @@ describe('upload model', () => {
   it('says where a drop goes and that nothing is replaced', () => {
     expect(dropTitle('Home papers')).toBe('Drop to upload into Home papers');
     expect(dropDetail(0)).toBe('Names that already exist get a number, nothing is replaced');
+    expect(blockedDropText(false, false)).toBe(
+      'Uploads wait until the hub is back. Drop again then.',
+    );
+    expect(blockedDropText(true, true)).toContain('Your drive is full');
+    expect(blockedDropText(true, false)).toContain('only view this folder');
     expect(dropDetail(3)).toBe(
-      'Names that already exist get a number, nothing is replaced · Synced to 3 computers after upload',
+      'Names that already exist get a number, nothing is replaced · Reaches 3 computers after upload',
     );
   });
 });

@@ -139,10 +139,10 @@ describe('usage per member', () => {
   it('shows a member only their own usage and zeros when they have none', () => {
     file(HOME, robin, 100);
     expect(readDriveUsage(quotas, { role: 'member', profileId: robin })).toEqual([
-      { profileId: robin, live: 100, versions: 0, trash: 0 },
+      { profileId: robin, items: 1, folders: 0, live: 100, versions: 0, trash: 0 },
     ]);
     expect(readDriveUsage(quotas, { role: 'member', profileId: sam })).toEqual([
-      { profileId: sam, live: 0, versions: 0, trash: 0 },
+      { profileId: sam, items: 0, folders: 0, live: 0, versions: 0, trash: 0 },
     ]);
   });
 });
@@ -258,13 +258,12 @@ describe('library health', () => {
       watcher: () => watching,
       scrub: () => IDLE,
       backup: () => backups.status(),
-      space: (path) =>
-        Promise.resolve({ totalBytes: 1000, freeBytes: path === '/srv/0001' ? 300 : 200 }),
+      space: () => Promise.resolve({ totalBytes: 1000, freeBytes: 300, fsType: 'ext4' }),
       ...fields,
     };
   }
 
-  it('reports hashed and verified shares, corrupt files, backup and the tightest free space', async () => {
+  it('reports hashed and verified shares, corrupt files, backup and the data folder space', async () => {
     const hashed = file(HOME, robin, 10, SHA);
     const second = file(HOME, robin, 10, SHA);
     file(HOME, robin, 10);
@@ -273,29 +272,33 @@ describe('library health', () => {
     scrub.record(HOME, hashed, 'ok');
     scrub.record(HOME, second, 'corrupt');
     new DriveBackupsRepository(fixture.context).record({ reporter: 'borg', bytes: 5, ok: true });
-    const health = await new DriveHealthReader(fixture.context, sources()).read({ role: 'owner' });
+    const health = await new DriveHealthReader(fixture.context, sources()).read({
+      profileId: robin,
+    });
     expect(health).toMatchObject({
       hashedShare: 0.5,
       verifiedShare: 0.5,
       corrupt: 1,
-      rootsTotal: 3,
-      rootsOffline: 0,
+      rootsTotal: 2,
+      rootsUnavailable: 0,
       watcher: 'watching',
-      freeBytes: 200,
+      space: { totalBytes: 1000, freeBytes: 300, fsType: 'ext4' },
     });
     expect(health.backup.lastOkAt).toBe(NOW);
   });
 
-  it('counts offline and unresponsive roots and reports no free space for unprobed roots', async () => {
-    roots.update(SAM_ROOT, { state: 'offline' });
+  it('counts unresponsive and failed drives among the drives the person can open', async () => {
+    roots.update(SAM_ROOT, { state: 'error' });
     roots.update(ROBIN_ROOT, { state: 'unresponsive' });
     roots.update(HOME, { state: 'error' });
-    const health = await new DriveHealthReader(fixture.context, sources()).read({ role: 'owner' });
-    expect(health.rootsOffline).toBe(2);
-    expect(health.freeBytes).toBeNull();
+    const health = await new DriveHealthReader(fixture.context, sources()).read({
+      profileId: robin,
+    });
+    expect(health.rootsTotal).toBe(2);
+    expect(health.rootsUnavailable).toBe(2);
   });
 
-  it('limits a member to the library they can see', async () => {
+  it('limits health to the drives the person can open, the owner included', async () => {
     file(SAM_ROOT, sam, 10, SHA);
     new DriveScrubRepository(fixture.context).record(
       SAM_ROOT,
@@ -303,7 +306,6 @@ describe('library health', () => {
       'corrupt',
     );
     const health = await new DriveHealthReader(fixture.context, sources()).read({
-      role: 'member',
       profileId: robin,
     });
     expect(health).toMatchObject({ rootsTotal: 2, corrupt: 0, hashedShare: 0 });
@@ -320,9 +322,7 @@ describe('library health', () => {
     const health = await new DriveHealthReader(
       fixture.context,
       sources({ scrub: () => running }),
-    ).read({
-      role: 'owner',
-    });
+    ).read({ profileId: robin });
     expect(health.scrub).toEqual(running);
   });
 

@@ -60,7 +60,8 @@ const FEED_ROW = {
 describe('DRIVE_CHANGE', () => {
   it('accepts every action with its own fields', () => {
     const changes = [
-      { action: 'new_folder', parentId: A, name: 'Taxes' },
+      { action: 'new_folder', parent: { kind: 'folder', folderId: A }, name: 'Taxes' },
+      { action: 'new_folder', parent: { kind: 'drive', rootId: B }, name: 'Taxes' },
       { action: 'rename', itemId: A, name: 'b.pdf' },
       { action: 'move', itemIds: [A], toFolderId: B },
       { action: 'copy', itemIds: [A, B], toFolderId: C },
@@ -313,7 +314,15 @@ describe('DRIVE_STATS', () => {
     versionBytes: 15,
     trashBytes: 5,
     kinds: [{ kind: 'image', items: 4, bytes: 60 }],
-    roots: [{ rootId: A, items: 10, folders: 2, bytes: 100 }],
+    roots: [
+      {
+        rootId: A,
+        items: 10,
+        folders: 2,
+        bytes: 100,
+        kinds: [{ kind: 'image', items: 4, bytes: 60 }],
+      },
+    ],
     space: { totalBytes: 1000, freeBytes: 400, fsType: 'btrfs' },
     fullInMonths: null,
     purges: [{ month: '2027-03', trashBytes: 5, versionBytes: 0 }],

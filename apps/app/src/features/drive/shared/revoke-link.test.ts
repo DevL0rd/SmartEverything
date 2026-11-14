@@ -23,7 +23,7 @@ vi.mock('../../../api/drive', () => ({
   },
 }));
 
-const { SHARES_PREFIX, revokeLink } = await import('./revoke-link');
+const { SHARED_BY_ME_PREFIX, SHARES_PREFIX, revokeLink } = await import('./revoke-link');
 
 const SHARE_ID = '00000000-0000-4000-8000-000000000101';
 
@@ -34,22 +34,24 @@ describe('revokeLink', () => {
     seen.answer = true;
   });
 
-  it('asks with the design copy, revokes and refreshes every share list', async () => {
+  it('asks with the design copy, stops the link and refreshes every link list', async () => {
     const client = new QueryClient();
     const invalidate = vi.spyOn(client, 'invalidateQueries');
     await expect(revokeLink(client, SHARE_ID, 'Kitchen plan v3.pdf')).resolves.toBe(true);
     expect(seen.asked).toEqual([
       {
-        title: 'Revoke Kitchen plan v3.pdf?',
+        title: 'Stop the link to Kitchen plan v3.pdf?',
         body: 'People with the link can’t open it any more.',
-        confirmLabel: 'Revoke link',
+        confirmLabel: 'Stop link',
         cancelLabel: 'Keep link',
         tone: 'destructive',
       },
     ]);
     expect(seen.revoked).toEqual([SHARE_ID]);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: SHARES_PREFIX });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: SHARED_BY_ME_PREFIX });
     expect(SHARES_PREFIX).toEqual(['window', 'drive', 'shares']);
+    expect(SHARED_BY_ME_PREFIX).toEqual(['window', 'drive', 'shared-by-me']);
   });
 
   it('keeps the link when the person chooses Keep link', async () => {

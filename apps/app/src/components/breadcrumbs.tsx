@@ -25,7 +25,7 @@ export function Breadcrumbs({ crumbs }: { readonly crumbs: readonly Crumb[] }): 
             <Interactive
               href={crumb.href}
               label={crumb.label}
-              className="rounded-xs px-1"
+              className="-my-2 rounded-xs px-1 py-2"
               layerClassName="rounded-xs"
             >
               <Text variant="callout" tone="variant" numberOfLines={1}>

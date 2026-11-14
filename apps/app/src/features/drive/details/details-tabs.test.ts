@@ -2,7 +2,7 @@ import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { DRIVE_ITEM } from '@smarteverything/domain';
-import { FOLDER_ID, ROOT_ID, rootRow } from '../../nas/data/fixtures';
+import { FOLDER_ID, ROOT_ID, rootRow } from '../data/fixtures';
 
 interface Passed {
   readonly children?: ReactNode;
@@ -29,6 +29,9 @@ vi.mock('../../../components/tabs-bar', () => ({
 }));
 vi.mock('./info-tab', () => ({ InfoTab: (): ReactNode => 'info-body' }));
 vi.mock('./preview-tab', () => ({ PreviewTab: (): ReactNode => 'preview-body' }));
+vi.mock('./versions-tab', () => ({ VersionsTab: (): ReactNode => 'versions-body' }));
+vi.mock('./activity-tab', () => ({ ActivityTab: (): ReactNode => 'activity-body' }));
+vi.mock('../share/sharing-tab', () => ({ SharingTab: (): ReactNode => 'sharing-body' }));
 
 const { DetailsTabs } = await import('./details-tabs');
 const { rememberTab } = await import('./details-model');
@@ -43,6 +46,7 @@ const item = DRIVE_ITEM.parse({
   addedAt: '2026-11-07T10:00:00.000Z',
   openedAt: null,
   starred: false,
+  shared: false,
   rev: 1,
   etag: 'etag',
   outside: false,
@@ -57,26 +61,35 @@ const item = DRIVE_ITEM.parse({
   thumb: { state: 'none' },
 });
 
-const subject = { root: rootRow(ROOT_ID, 'ready'), item, writable: true };
+const subject = {
+  root: rootRow(ROOT_ID, 'ready'),
+  item,
+  label: 'Shared Drive',
+  access: 'shared',
+  writable: true,
+} as const;
 
-function render(slots: object): string {
-  return renderToStaticMarkup(createElement(DetailsTabs, { subject, slots, pane: true }));
+function render(): string {
+  return renderToStaticMarkup(
+    createElement(DetailsTabs, { subject, slots: {}, share: (): void => undefined, pane: true }),
+  );
 }
 
 describe('details tabs', () => {
-  it('opens on Info and lists only the tabs that have a body', () => {
+  it('opens on Info and lists every tab of a file, Sharing included', () => {
     rememberTab('info');
-    const html = render({});
-    expect(html).toContain('Preview,Info|info');
+    const html = render();
+    expect(html).toContain('Preview,Info,Versions,Activity,Sharing|info');
     expect(html).toContain('info-body');
   });
 
-  it('keeps the last tab and draws the slot another task fills', () => {
+  it('keeps the last tab and draws its body', () => {
     rememberTab('versions');
-    const html = render({ versions: (): ReactNode => 'versions-body' });
-    expect(html).toContain('Preview,Info,Versions|versions');
-    expect(html).toContain('versions-body');
-    expect(render({})).toContain('info-body');
+    expect(render()).toContain('versions-body');
+    rememberTab('sharing');
+    expect(render()).toContain('sharing-body');
+    rememberTab('activity');
+    expect(render()).toContain('activity-body');
     rememberTab('info');
   });
 });

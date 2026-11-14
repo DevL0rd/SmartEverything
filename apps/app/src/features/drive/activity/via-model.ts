@@ -146,19 +146,13 @@ export function badgeOf(entry: ActivityEntry): string {
 
 export interface ActivityTarget {
   readonly rootId: string;
+  readonly folderId: string | null;
   readonly params: Readonly<Record<string, string>>;
 }
 
 export function targetOf(entry: ActivityEntry): ActivityTarget {
   const { rootId, itemId } = entry.row;
-  return {
-    rootId,
-    params: {
-      ...(entry.folderId === null ? {} : { folder: entry.folderId }),
-      item: itemId,
-      tab: 'activity',
-    },
-  };
+  return { rootId, folderId: entry.folderId, params: { item: itemId, tab: 'activity' } };
 }
 
 export const ACTIVITY_RANGES = ['week', 'month', 'year'] as const;

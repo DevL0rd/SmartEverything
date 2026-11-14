@@ -43,14 +43,15 @@ func (c *hubClient) post(ctx context.Context, root mountRoot, action string, bod
 	if err != nil {
 		return entry{}, err
 	}
-	target := c.base + "/drive/fs/" + url.PathEscape(root.RootID) + "/" + action
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(raw))
-	if err != nil {
-		return entry{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", "application/json")
-	res, err := c.http.Do(req)
+	res, err := c.send(ctx, false, func(ctx context.Context, base string) (*http.Request, error) {
+		target := base + "/drive/fs/" + url.PathEscape(root.RootID) + "/" + action
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(raw))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		return req, nil
+	})
 	if err != nil {
 		return entry{}, err
 	}

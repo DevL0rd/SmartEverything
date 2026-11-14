@@ -26,12 +26,19 @@ describe('splitMiddle', () => {
   it('keeps the last eight characters of long plain text', () => {
     expect(splitMiddle('Living room ceiling speaker')).toEqual({
       head: 'Living room ceiling',
-      tail: ' speaker',
+      tail: '\u00a0speaker',
     });
   });
 
   it('leaves short text whole', () => {
     expect(splitMiddle('example.net')).toEqual({ head: 'example.net', tail: '' });
     expect(splitMiddle('Kitchen')).toEqual({ head: 'Kitchen', tail: '' });
+  });
+
+  it('keeps a space at the split as a no-break space so neither part drops it', () => {
+    expect(splitMiddle('Garden shed plan.pdf')).toEqual({
+      head: 'Garden shed\u00a0',
+      tail: 'plan.pdf',
+    });
   });
 });

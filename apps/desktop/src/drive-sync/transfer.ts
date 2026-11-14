@@ -7,7 +7,7 @@ import type { DriveSyncDatabase, FileRecord, Transfer } from './db/index.js';
 import { diskPathFor } from './scan.js';
 
 export interface RemoteFile {
-  readonly rootId: string;
+  readonly driveId: string;
   readonly itemId: string;
   readonly bytes: number;
   readonly blockSize: number;
@@ -118,7 +118,7 @@ export class HubBlockSource implements BlockSource {
   }
 
   private base(file: RemoteFile): string {
-    return `/drive/blocks/${encodeURIComponent(file.rootId)}/${encodeURIComponent(file.itemId)}`;
+    return `/drive/blocks/${encodeURIComponent(file.driveId)}/${encodeURIComponent(file.itemId)}`;
   }
 
   private async get(path: string, file: RemoteFile): Promise<Uint8Array> {
@@ -370,6 +370,7 @@ export type Placement = 'placed' | 'new_on_both' | 'local_edit';
 
 export interface PlaceOptions {
   readonly database: Pick<DriveSyncDatabase, 'files' | 'transfers' | 'transaction'>;
+  readonly placementId: string;
   readonly txn: string;
   readonly remote: RemoteFile;
   readonly relPath: string;
@@ -394,7 +395,7 @@ export async function placeFile(options: PlaceOptions): Promise<Placement> {
   const info = await lstat(target, { bigint: true });
   database.transaction(() => {
     database.files.upsert({
-      rootId: remote.rootId,
+      placementId: options.placementId,
       relPath: options.relPath,
       kind: 'file',
       bytes: remote.bytes,

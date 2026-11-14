@@ -49,6 +49,18 @@ function shareModelAndPlannerTables(
   };
 }
 
+function shareDriveTables(
+  previous: Tables,
+  next: Tables,
+): Pick<Tables, 'drive_roots' | 'drive_albums' | 'drive_grants' | 'drive_placements'> {
+  return {
+    drive_roots: shareTable(previous.drive_roots, next.drive_roots),
+    drive_albums: shareTable(previous.drive_albums, next.drive_albums),
+    drive_grants: shareTable(previous.drive_grants, next.drive_grants),
+    drive_placements: shareTable(previous.drive_placements, next.drive_placements),
+  };
+}
+
 export function shareTables(previous: Tables, next: Tables): Tables {
   const shared: Tables = {
     clients: shareTable(previous.clients, next.clients),
@@ -90,10 +102,7 @@ export function shareTables(previous: Tables, next: Tables): Tables {
     plugin_streams: shareTable(previous.plugin_streams, next.plugin_streams),
     plugin_ui: shareTable(previous.plugin_ui, next.plugin_ui),
     ...shareModelAndPlannerTables(previous, next),
-    drive_roots: shareTable(previous.drive_roots, next.drive_roots),
-    drive_albums: shareTable(previous.drive_albums, next.drive_albums),
-    drive_sync_clients: shareTable(previous.drive_sync_clients, next.drive_sync_clients),
-    drive_placements: shareTable(previous.drive_placements, next.drive_placements),
+    ...shareDriveTables(previous, next),
   };
   return Object.keys(shared).every(
     (name) => Reflect.get(shared, name) === Reflect.get(previous, name),

@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { DriveShareCreate, DriveShareCreated } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { createDriveShare } from '../../../api/drive';
-import { SHARES_PREFIX } from '../shared/revoke-link';
+import { refreshLinks } from '../shared/revoke-link';
 
 const log = new Logger('app.drive');
 
@@ -19,6 +19,6 @@ export async function makeShareLink(
     password: request.password !== null,
     public: created.public,
   });
-  await client.invalidateQueries({ queryKey: SHARES_PREFIX });
+  await refreshLinks(client);
   return created;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DRIVE_ITEM, DRIVE_QUERY, SMART_RULE, type DriveItem } from '@smarteverything/domain';
-import { FOLDER_ID, OTHER_FOLDER_ID, OTHER_ROOT_ID, ROOT_ID } from '../../nas/data/fixtures';
+import { FOLDER_ID, OTHER_FOLDER_ID, OTHER_ROOT_ID, ROOT_ID } from '../data/fixtures';
 import {
   asksHub,
   childrenOf,
@@ -43,6 +43,7 @@ function base(index: number, name: string, place: Place): object {
     addedAt: AT,
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'etag',
     outside: false,
@@ -240,7 +241,7 @@ describe('filter smart folder rule', () => {
     });
   });
 
-  it('uses the library folder at its top level', () => {
+  it('uses the drive at its top level', () => {
     const rule = smartRuleOf('bud', { rootId: ROOT_ID, folderId: null });
     expect(SMART_RULE.parse(rule).rules[1]).toEqual({ kind: 'in_root', rootId: ROOT_ID });
   });

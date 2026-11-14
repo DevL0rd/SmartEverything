@@ -5,13 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 )
 
 const tokenFD = 3
@@ -29,8 +27,8 @@ func readToken() (string, error) {
 	return strings.TrimSpace(line), nil
 }
 
-func newFilesystem(hubURL, token, cacheDir, journalDir string) (*writeBack, error) {
-	hub := newHubClient(hubURL, token, &http.Client{Timeout: 30 * time.Second})
+func newFilesystem(spec routeSpec, token, cacheDir, journalDir string) (*writeBack, error) {
+	hub := newHubClient(spec, token)
 	cache := newBlockCache(directSource{hub: hub}, cacheDir)
 	return newWriteBack(cache, hub, journalDir)
 }
@@ -52,7 +50,6 @@ func serve(in io.Reader, out io.Writer, source Filesystem, stop <-chan os.Signal
 }
 
 func main() {
-	hubURL := flag.String("hub", "", "hub base url")
 	cacheDir := flag.String("cache", "", "block cache folder")
 	flag.Parse()
 	if *cacheDir == "" {
@@ -66,7 +63,7 @@ func main() {
 	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	files, err := newFilesystem(*hubURL, token, *cacheDir, filepath.Join(filepath.Dir(filepath.Clean(*cacheDir)), "journal"))
+	files, err := newFilesystem(routeSpec{}, token, *cacheDir, filepath.Join(filepath.Dir(filepath.Clean(*cacheDir)), "journal"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "journal:", err)
 		os.Exit(1)

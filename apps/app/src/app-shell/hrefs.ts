@@ -109,18 +109,35 @@ export const href = {
     pathname: '/photos/view/[itemId]',
     params: { ...params, itemId },
   }),
-  drive: (): AppHref => '/drive',
+  drive: (params: Readonly<Record<string, string>> = {}): AppHref =>
+    Object.keys(params).length === 0 ? '/drive' : { pathname: '/drive', params },
   drivePage: (
-    page: 'recent' | 'starred' | 'shared' | 'activity' | 'sync' | 'computers' | 'storage' | 'trash',
+    page:
+      | 'shared-drive'
+      | 'shared'
+      | 'recent'
+      | 'starred'
+      | 'activity'
+      | 'computers'
+      | 'storage'
+      | 'trash',
     params: Readonly<Record<string, string>> = {},
   ): AppHref => ({ pathname: `/drive/${page}`, params }),
-  driveRoot: (rootId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
-    pathname: '/drive/root/[rootId]',
-    params: { ...params, rootId },
+  driveFolder: (folderId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
+    pathname: '/drive/folder/[folderId]',
+    params: { ...params, folderId },
   }),
-  driveSyncFolder: (rootId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
-    pathname: '/drive/sync/[rootId]',
-    params: { ...params, rootId },
+  driveSmartFolder: (albumId: string): AppHref => ({
+    pathname: '/drive/starred/[albumId]',
+    params: { albumId },
+  }),
+  driveComputer: (deviceId: string): AppHref => ({
+    pathname: '/drive/computers/[deviceId]',
+    params: { deviceId },
+  }),
+  drivePlacement: (placementId: string): AppHref => ({
+    pathname: '/drive/placement/[placementId]',
+    params: { placementId },
   }),
   automations: (): AppHref => '/automations',
   automation: (automationId: string): AppHref => ({

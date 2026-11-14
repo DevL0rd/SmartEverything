@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { blockSizeFor, createIgnoreMatcher } from '@smarteverything/domain/drive-sync';
+import { blockSizeFor } from '@smarteverything/domain/drive-sync';
 import { Logger } from '@smarteverything/logging';
 import { HubBlockUploader } from '../../src/drive-sync/block-upload.js';
 import {
@@ -14,10 +14,17 @@ import { openDriveSyncDatabase, type DriveSyncDatabase } from '../../src/drive-s
 import { DriveSyncEngine, type EngineSink } from '../../src/drive-sync/engine.js';
 import type { ConflictResult } from '../../src/drive-sync/conflicts.js';
 import { isEngineTempName } from '../../src/drive-sync/scan.js';
-import { SyncSocket } from '../../src/drive-sync/socket.js';
+import { ignoreMatcherOf } from '../../src/drive-sync/state.js';
+import { SyncSocket, type SyncSocketSink } from '../../src/drive-sync/socket.js';
 import { RemoteChangedError, type BlockSource } from '../../src/drive-sync/transfer.js';
 import { blockHashes } from './pull-support.js';
-import { startFakeHub, TestTransport, until, type FakeHub } from './hub-harness.js';
+import {
+  startFakeHub,
+  TestTransport,
+  until,
+  type FakeHub,
+  type PeerPlacement,
+} from './hub-harness.js';
 
 const log = new Logger('desktop.drive-sync');
 
@@ -25,6 +32,7 @@ export const CONVERGE_MS = 20_000;
 
 export interface Peer {
   readonly name: string;
+  readonly placementId: string;
   readonly engine: DriveSyncEngine;
   readonly database: DriveSyncDatabase;
   readonly localPath: string;
@@ -36,7 +44,7 @@ export interface Peer {
 export interface Lab {
   readonly hub: FakeHub;
   readonly transport: TestTransport;
-  readonly peer: (name: string) => Promise<Peer>;
+  readonly peer: (name: string, placement?: PeerPlacement) => Promise<Peer>;
   readonly close: () => Promise<void>;
 }
 
@@ -64,7 +72,7 @@ function hasherOf(): BlockHasher {
 
 function sourceOf(hub: FakeHub): BlockSource {
   const contentOf = async (itemId: string): Promise<Buffer> => {
-    const item = hub.store.driveItems.find(itemId);
+    const item = hub.store.driveItems.find(itemId, hub.ownerId);
     if (item === undefined) throw new RemoteChangedError(itemId);
     return hub.readFile(item.relPath);
   };
@@ -100,9 +108,23 @@ function engineSink(conflicts: ConflictResult[], failures: string[]): EngineSink
   };
 }
 
-async function peerOf(context: Context, name: string): Promise<Peer> {
+function forwardTo(target: () => SyncSocketSink): SyncSocketSink {
+  return {
+    opened: (placementId): void => {
+      target().opened(placementId);
+    },
+    message: (placementId, message): void => {
+      target().message(placementId, message);
+    },
+    closed: (placementId, closure): void => {
+      target().closed(placementId, closure);
+    },
+  };
+}
+
+async function peerOf(context: Context, name: string, placement: PeerPlacement): Promise<Peer> {
   const { hub, transport, scratch } = context;
-  const identity = hub.peer(name);
+  const identity = hub.peer(name, placement);
   const localPath = join(scratch, name);
   await mkdir(localPath, { recursive: true });
   const database = openDriveSyncDatabase(join(scratch, `${name}.sqlite`), log);
@@ -111,23 +133,15 @@ async function peerOf(context: Context, name: string): Promise<Peer> {
   const socket: SyncSocket = new SyncSocket({
     hubUrl: hub.url,
     token: identity.token,
-    clientId: identity.clientId,
     transport,
     log,
-    sink: {
-      opened: (rootId): void => {
-        engine.sink.opened(rootId);
-      },
-      message: (rootId, message): void => {
-        engine.sink.message(rootId, message);
-      },
-      closed: (rootId, closure): void => {
-        engine.sink.closed(rootId, closure);
-      },
-    },
+    sink: forwardTo(() => engine.sink),
   });
   const engine: DriveSyncEngine = new DriveSyncEngine({
-    rootId: hub.rootId,
+    placementId: identity.placementId,
+    driveId: hub.driveId,
+    excluded: placement.excluded ?? [],
+    receiveOnly: placement.readOnly === true,
     rootPath: localPath,
     platform: process.platform,
     portablePaths: false,
@@ -136,12 +150,21 @@ async function peerOf(context: Context, name: string): Promise<Peer> {
     hasher: hasherOf(),
     source: sourceOf(hub),
     uploader: new HubBlockUploader({ hubUrl: hub.url, token: identity.token, fetch }),
-    ignore: createIgnoreMatcher([]),
+    ignore: ignoreMatcherOf(placement.ignorePatterns ?? [], process.platform),
     timings: { changeQuietMs: 30, deleteHoldMs: 120, queueLimit: null, writeQuietMs: 0 },
     sink: engineSink(conflicts, failures),
     log,
   });
-  return { name, engine, database, localPath, socket, conflicts, failures };
+  return {
+    name,
+    placementId: identity.placementId,
+    engine,
+    database,
+    localPath,
+    socket,
+    conflicts,
+    failures,
+  };
 }
 
 export async function openLab(): Promise<Lab> {
@@ -152,8 +175,8 @@ export async function openLab(): Promise<Lab> {
   return {
     hub,
     transport,
-    peer: async (name): Promise<Peer> => {
-      const peer = await peerOf({ hub, transport, scratch }, name);
+    peer: async (name, placement = {}): Promise<Peer> => {
+      const peer = await peerOf({ hub, transport, scratch }, name, placement);
       peers.push(peer);
       return peer;
     },

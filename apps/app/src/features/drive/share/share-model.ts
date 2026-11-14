@@ -1,7 +1,9 @@
 import {
+  DRIVE_GRANT_ROLES,
   DRIVE_SHARE_CREATE,
+  type DriveGrant,
+  type DriveGrantRole,
   type DriveItem,
-  type DriveRoot,
   type DriveSettings,
   type DriveShare,
   type DriveShareCreate,
@@ -13,6 +15,7 @@ import type { SegmentedOption } from '../../../components/segmented';
 import { count } from '../../../format/number';
 import { DAY_MS } from '../../../format/time';
 import type { LinkGroups } from '../shared/shared-model';
+import { canShareLink, type DriveAccess } from '../model/drive-access';
 
 export const LINK_ENDS = ['day', 'week', 'month', 'never'] as const;
 
@@ -73,47 +76,86 @@ export function shareRequestOf(
 }
 
 export function shareTitleOf(item: Pick<DriveItem, 'name'>): string {
-  return `Share ${item.name}`;
+  return `Share ‘${item.name}’`;
 }
+
+export type PeopleMode = 'manage' | 'owner-only' | 'everyone';
+
+export function peopleModeOf(access: DriveAccess): PeopleMode {
+  if (access === 'own') return 'manage';
+  return access === 'shared' ? 'everyone' : 'owner-only';
+}
+
+export const OWNER_ONLY = 'Only the owner can share';
+
+export const EVERYONE_LINE = 'Everyone in the home can open and edit this';
+
+export function footerLineOf(access: DriveAccess, ownerName: string | null): string {
+  if (access === 'shared') {
+    return 'Everyone in the home can already open this; you can still make a link';
+  }
+  if (access === 'own') return 'Only you and the people above can open this';
+  return ownerName === null
+    ? 'Only its owner and the people above can open this'
+    : `Only ${ownerName} and the people above can open this`;
+}
+
+export const ROLE_LABEL: Readonly<Record<DriveGrantRole, string>> = {
+  view: 'Can view',
+  edit: 'Can edit',
+};
+
+export const ROLE_OPTIONS: readonly SegmentedOption<DriveGrantRole>[] = DRIVE_GRANT_ROLES.map(
+  (role) => ({ value: role, label: ROLE_LABEL[role] }),
+);
 
 type Person = Pick<ProfileRow, 'id' | 'name'>;
 
-export interface Audience<P extends Person = ProfileRow> {
-  readonly people: readonly P[];
-  readonly line: string;
-  readonly from: string;
+export interface SharedPerson<P extends Person> {
+  readonly grant: DriveGrant;
+  readonly profile: P | null;
+  readonly name: string;
 }
 
-function ownerLine(
-  ownerId: string | null,
-  viewerId: string | null,
-  people: readonly Person[],
-): string {
-  if (ownerId === viewerId) return 'Only you can open it';
-  const name = people.find((person) => person.id === ownerId)?.name;
-  return name === undefined ? 'Only its owner can open it' : `Only ${name} can open it`;
-}
-
-export function audienceOf<P extends Person>(
-  root: Pick<DriveRoot, 'scope' | 'ownerProfileId' | 'readOnly' | 'label'>,
+export function sharedPeopleOf<P extends Person>(
+  grants: readonly DriveGrant[],
+  itemId: string,
   profiles: readonly P[],
   viewerId: string | null,
-): Audience<P> {
-  const from = `from ${root.label}`;
-  if (root.scope === 'home') {
-    const verb = root.readOnly ? 'view' : 'edit';
-    return { people: profiles, line: `Everyone in the home can ${verb}`, from };
-  }
-  const people = profiles.filter((profile) => profile.id === root.ownerProfileId);
-  return { people, line: ownerLine(root.ownerProfileId, viewerId, profiles), from };
+): readonly SharedPerson<P>[] {
+  return grants
+    .filter((grant) => grant.itemId === itemId)
+    .map((grant) => {
+      const profile = profiles.find((each) => each.id === grant.profileId) ?? null;
+      const name = grant.profileId === viewerId ? 'You' : (profile?.name ?? 'A former member');
+      return { grant, profile, name };
+    });
 }
 
-export function mayMakeLinks(
+export function candidatesOf<P extends Person>(
+  profiles: readonly P[],
+  people: readonly SharedPerson<P>[],
+  ownerId: string | null,
+): readonly P[] {
+  const taken = new Set(people.map((person) => person.grant.profileId));
+  return profiles.filter((profile) => profile.id !== ownerId && !taken.has(profile.id));
+}
+
+export type LinkState = 'allowed' | 'members-off' | 'owner-only';
+
+export function linkStateOf(
+  access: DriveAccess,
   owner: boolean,
   settings: Pick<DriveSettings, 'membersMayShare'> | null,
-): boolean {
-  return owner || settings?.membersMayShare === true;
+): LinkState {
+  if (!canShareLink(access)) return 'owner-only';
+  return owner || settings?.membersMayShare === true ? 'allowed' : 'members-off';
 }
+
+export const LINK_STATE_LINE: Readonly<Record<Exclude<LinkState, 'allowed'>, string>> = {
+  'members-off': 'The home owner turned off links for members',
+  'owner-only': OWNER_ONLY,
+};
 
 function sum(shares: readonly DriveShare[], pick: (share: DriveShare) => number): number {
   return shares.reduce((total, share) => total + pick(share), 0);
@@ -134,6 +176,4 @@ export function reachOf(isPublic: boolean): string {
     : 'The hub has no public address yet, so this link opens only on your home network.';
 }
 
-export const LINKS_NOTE = 'Opens and downloads show in Shared › Links.';
-
-export const MEMBERS_BLOCKED = 'The owner hasn’t allowed members to make links.';
+export const LINKS_NOTE = 'Opens and downloads show in Shared › By me.';

@@ -10,6 +10,7 @@ import { ErrorState } from '../../../components/error-state';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { errorText } from '../../../format/errors';
+import { DRIVE_FILTER_LOOK, type DriveFilter } from '../model/drive-chip';
 import type { RecentPages } from './use-recent-feed';
 
 const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e'] as const;
@@ -24,7 +25,7 @@ const EMPTY: Readonly<
   opened: { title: 'Nothing opened yet', body: 'Files you open in Drive show up here.' },
   added: {
     title: 'Nothing added yet',
-    body: 'Files added to your library folders show up here, newest first.',
+    body: 'Files added to your drives show up here, newest first.',
   },
   changed: {
     title: 'Nothing changed yet',
@@ -84,6 +85,7 @@ function RecentOffline(): ReactNode {
 export function RecentStaleBanner(): ReactNode {
   return (
     <Banner
+      wrapBody
       tone="info"
       title="Offline · showing the last recent files"
       body="New opens and changes appear when the hub is back."
@@ -103,13 +105,34 @@ function RecentNothing({ filter }: { readonly filter: DriveRecentFilter }): Reac
   );
 }
 
+function RecentNotInDrive({
+  drive,
+  onAllDrives,
+}: {
+  readonly drive: DriveFilter;
+  readonly onAllDrives: () => void;
+}): ReactNode {
+  return (
+    <EmptyState
+      icon="clock"
+      title={`Nothing recent in ${DRIVE_FILTER_LOOK[drive].label}`}
+      body="Other drives have recent files. Show all drives to see them."
+      action={<Button label="Show all drives" variant="tonal" onPress={onAllDrives} />}
+    />
+  );
+}
+
 export function RecentEmpty({
   pages,
   filter,
+  drive,
+  onAllDrives,
   live,
 }: {
   readonly pages: RecentPages;
   readonly filter: DriveRecentFilter;
+  readonly drive: DriveFilter;
+  readonly onAllDrives: () => void;
   readonly live: boolean;
 }): ReactNode {
   const state = recentStateOf({
@@ -120,6 +143,9 @@ export function RecentEmpty({
   });
   if (state === 'offline') return <RecentOffline />;
   if (state === 'loading') return <RecentSkeleton />;
+  if (state === 'empty' && drive !== 'all') {
+    return <RecentNotInDrive drive={drive} onAllDrives={onAllDrives} />;
+  }
   if (state === 'empty') return <RecentNothing filter={filter} />;
   return (
     <View className="px-gutter">
@@ -157,7 +183,7 @@ export function RecentFooter({ pages }: { readonly pages: RecentPages }): ReactN
   }
   const shown = pages.data.pages.some((page) => page.entries.length > 0);
   return shown && !pages.hasNextPage ? (
-    <Text variant="caption" tone="faint" align="center" className="py-4">
+    <Text variant="caption" tone="variant" align="center" className="py-4">
       That’s everything recent.
     </Text>
   ) : null;

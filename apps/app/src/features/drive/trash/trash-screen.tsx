@@ -8,7 +8,8 @@ import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { VirtualList } from '../../../components/virtual-list';
 import { useAreaWidth } from '../../../design/size-class';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
-import { libraryLayoutOf } from '../../nas/frame/sections';
+import { count } from '../../../format/number';
+import { libraryLayoutOf } from '../../../components/library-frame/sections';
 import { DriveFrame } from '../components/drive-frame';
 import { deleterKey, UNKNOWN_TONE, type PersonTone } from './deleted-by';
 import {
@@ -21,7 +22,13 @@ import {
   type TrashSelection,
 } from './selection';
 import { useTrashActions, type TrashActions } from './trash-actions';
-import { filterTrash, NO_FILTER, type TrashFilter } from './trash-filter';
+import {
+  deletableNow,
+  filterTrash,
+  NO_FILTER,
+  type TrashDriveOf,
+  type TrashFilter,
+} from './trash-filter';
 import { TrashFilterRow, TrashNoMatch } from './trash-filter-row';
 import { subtitleOf } from './trash-copy';
 import { wasInOf, type TrashItem } from './trash-model';
@@ -39,6 +46,7 @@ interface Body {
   readonly filter: TrashFilter;
   readonly setFilter: (filter: TrashFilter) => void;
   readonly owner: boolean;
+  readonly driveOf: TrashDriveOf;
   readonly layout: TrashLayout;
   readonly disabled: boolean;
   readonly picks: TrashSelection;
@@ -71,8 +79,9 @@ function renderRow(body: Body): (item: TrashItem) => ReactElement {
 }
 
 function header(body: Body): ReactElement | undefined {
-  const { view, shown, owner, layout, disabled, actions } = body;
+  const { view, shown, owner, driveOf, layout, disabled, actions } = body;
   if (view.status !== 'ready' || view.items.length === 0) return undefined;
+  const allDeletable = view.items.every((item) => deletableNow(item, owner, driveOf));
   return (
     <TableTop
       layout={layout}
@@ -88,12 +97,12 @@ function header(body: Body): ReactElement | undefined {
           shown={shown.length}
           filter={body.filter}
           onFilter={body.setFilter}
-          owner={owner}
+          driveOf={driveOf}
           wide={layout !== 'compact'}
         />
       }
       deleteAll={
-        owner
+        allDeletable
           ? {
               disabled: disabled || !view.complete,
               onPress: (): void => {
@@ -116,16 +125,18 @@ function selectionActions(body: Body, picked: readonly TrashItem[]): readonly Se
       body.actions.restore(picked);
     },
   };
-  if (!body.owner) return [restore];
+  const deletable = picked.filter((item) => deletableNow(item, body.owner, body.driveOf));
+  if (deletable.length === 0) return [restore];
   return [
     restore,
     {
-      label: 'Delete now',
+      label:
+        deletable.length === picked.length ? 'Delete now' : `Delete ${count(deletable.length)} now`,
       icon: 'trash',
       variant: 'destructive',
       disabled: body.disabled,
       onPress: (): void => {
-        body.actions.deleteNow(picked);
+        body.actions.deleteNow(deletable);
       },
     },
   ];
@@ -175,8 +186,9 @@ function useTrashBody(layout: TrashLayout): TrashBody {
   const owner = useIsOwner();
   const live = useSyncStatus().status === 'live';
   const view = useTrash();
+  const driveOf: TrashDriveOf = (item) => view.chipOf(item.rootId).key;
   const [filter, setFilter] = useState<TrashFilter>(NO_FILTER);
-  const shown = filterTrash(view.items, filter);
+  const shown = filterTrash(view.items, filter, driveOf);
   const [selection, setPicks] = useState<TrashSelection>(NOTHING_PICKED);
   const picks = keptPicks(selection, shown);
   const clear = (): void => {
@@ -187,7 +199,19 @@ function useTrashBody(layout: TrashLayout): TrashBody {
   useEscape(picks.size > 0, clear);
   useTrashLog(view);
   return {
-    body: { view, shown, filter, setFilter, owner, layout, disabled, picks, setPicks, actions },
+    body: {
+      view,
+      shown,
+      filter,
+      setFilter,
+      owner,
+      driveOf,
+      layout,
+      disabled,
+      picks,
+      setPicks,
+      actions,
+    },
     live,
     clear,
   };

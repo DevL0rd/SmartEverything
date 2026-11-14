@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as DriveApi from '../../../api/drive';
 import type { DriveSettings, DriveSettingsUpdate } from '@smarteverything/domain';
 import { percent } from '../../../format/number';
-import { rootRow } from '../../nas/data/fixtures';
+import { personalRootRow, rootRow } from '../data/fixtures';
 
 interface Seen {
   updates: DriveSettingsUpdate[];
@@ -33,12 +33,11 @@ const { DRIVE_SETTINGS_KEY, hashedLineOf, indexingLineOf, progressLinesOf, saveD
   await import('./page-indexing');
 const { watcherLineOf } = await import('./watcher-line');
 
-const PHOTOS = '00000000-0000-4000-8000-000000000201';
-const MEDIA = '00000000-0000-4000-8000-000000000202';
-
-function root(id: string, label: string): ReturnType<typeof rootRow> {
-  return { ...rootRow(id, 'ready'), label };
-}
+const MINE = '00000000-0000-4000-8000-000000000201';
+const HOME = '00000000-0000-4000-8000-000000000202';
+const THEIRS = '00000000-0000-4000-8000-000000000203';
+const ME = '00000000-0000-4000-8000-000000000301';
+const OTHER = '00000000-0000-4000-8000-000000000302';
 
 describe('saveDriveSettings', () => {
   beforeEach(() => {
@@ -66,34 +65,36 @@ describe('saveDriveSettings', () => {
 });
 
 describe('indexing lines', () => {
-  it('lists live progress per known library folder and phase', () => {
+  it('lists live progress per drive the viewer can name and leaves out other drives', () => {
     const lines = progressLinesOf(
       {
-        [PHOTOS]: { scan: { done: 250, total: 1000 }, hash: { done: 0, total: 0 } },
-        [MEDIA]: { scrub: { done: 3, total: 4 } },
+        [MINE]: { scan: { done: 250, total: 1000 }, hash: { done: 0, total: 0 } },
+        [HOME]: { scrub: { done: 3, total: 4 } },
+        [THEIRS]: { scan: { done: 5, total: 9 } },
         '00000000-0000-4000-8000-000000000299': { scan: { done: 1, total: 2 } },
       },
-      [root(PHOTOS, 'Pictures'), root(MEDIA, 'Media disk')],
+      [personalRootRow(MINE, ME), rootRow(HOME, 'ready'), personalRootRow(THEIRS, OTHER)],
+      ME,
     );
     expect(lines).toEqual([
       {
-        key: `${PHOTOS}:scan`,
-        rootId: PHOTOS,
-        title: 'Pictures',
+        key: `${MINE}:scan`,
+        rootId: MINE,
+        title: 'My Drive',
         subtitle: 'Reading folders · 250 of 1,000',
         share: 0.25,
       },
       {
-        key: `${PHOTOS}:hash`,
-        rootId: PHOTOS,
-        title: 'Pictures',
+        key: `${MINE}:hash`,
+        rootId: MINE,
+        title: 'My Drive',
         subtitle: 'Finding duplicates · 0 of 0',
         share: 0,
       },
       {
-        key: `${MEDIA}:scrub`,
-        rootId: MEDIA,
-        title: 'Media disk',
+        key: `${HOME}:scrub`,
+        rootId: HOME,
+        title: 'Shared Drive',
         subtitle: 'Checking for damage · 3 of 4',
         share: 0.75,
       },
@@ -102,9 +103,9 @@ describe('indexing lines', () => {
 
   it('says whether indexing is paused, idle or working', () => {
     expect(indexingLineOf(true, 2)).toBe('Paused · new and changed files wait until you resume');
-    expect(indexingLineOf(false, 0)).toBe('Up to date with every library folder');
-    expect(indexingLineOf(false, 1)).toBe('Working on 1 folder');
-    expect(indexingLineOf(false, 3)).toBe('Working on 3 folders');
+    expect(indexingLineOf(false, 0)).toBe('Up to date with every drive');
+    expect(indexingLineOf(false, 1)).toBe('Working on 1 drive');
+    expect(indexingLineOf(false, 3)).toBe('Working on 3 drives');
   });
 
   it('explains the watcher state and the watch limit', () => {

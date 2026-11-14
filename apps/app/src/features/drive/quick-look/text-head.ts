@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DriveItem } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { useDriveLink } from '../../nas/data';
+import { useDriveLink } from '../data';
 
 const log = new Logger('app.drive');
 

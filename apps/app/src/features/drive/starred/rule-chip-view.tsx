@@ -3,13 +3,13 @@ import { View } from 'react-native';
 import type { SmartRule, SmartRuleLeaf } from '@smarteverything/domain';
 import { Badge } from '../../../components/badge';
 import { FilterChip } from '../../../components/filter-chip';
-import { useDriveItem, useDriveRoots } from '../../nas/data';
+import { useDriveChips, useDriveItem } from '../data';
 import { leafIcon, leafLabel, type PlaceOf } from './rule-labels';
 import type { RuleChip } from './rule-chips';
 
 export function usePlaceOf(extra: ReadonlyMap<string, string>): PlaceOf {
-  const roots = new Map(useDriveRoots().map((root) => [root.id, root.label]));
-  return (id) => extra.get(id) ?? roots.get(id) ?? null;
+  const chipOf = useDriveChips();
+  return (id) => extra.get(id) ?? chipOf(id).label;
 }
 
 function folderIdOf(leaf: SmartRuleLeaf): string | null {

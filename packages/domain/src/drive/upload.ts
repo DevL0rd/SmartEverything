@@ -8,9 +8,18 @@ export const DRIVE_UPLOAD_STATES = ['open', 'committing', 'complete', 'failed', 
 
 export type DriveUploadState = (typeof DRIVE_UPLOAD_STATES)[number];
 
+const DRIVE_TOP = z.strictObject({ kind: z.literal('drive'), rootId: ID });
+
+const IN_FOLDER = z.strictObject({ kind: z.literal('folder'), folderId: ID });
+
+export const DRIVE_FOLDER_PLACE = z.discriminatedUnion('kind', [DRIVE_TOP, IN_FOLDER]).readonly();
+
+export type DriveFolderPlace = z.infer<typeof DRIVE_FOLDER_PLACE>;
+
 export const DRIVE_UPLOAD_TARGET = z
   .discriminatedUnion('kind', [
-    z.strictObject({ kind: z.literal('folder'), folderId: ID }),
+    DRIVE_TOP,
+    IN_FOLDER,
     z.strictObject({ kind: z.literal('item'), itemId: ID, baseRev: z.int().positive() }),
   ])
   .readonly();
@@ -31,6 +40,7 @@ const UPLOAD_METADATA_FIELDS = {
 
 export const DRIVE_UPLOAD_METADATA = z
   .discriminatedUnion('targetKind', [
+    z.strictObject({ ...UPLOAD_METADATA_FIELDS, targetKind: z.literal('drive'), rootId: ID }),
     z.strictObject({ ...UPLOAD_METADATA_FIELDS, targetKind: z.literal('folder'), folderId: ID }),
     z.strictObject({
       ...UPLOAD_METADATA_FIELDS,
@@ -40,6 +50,8 @@ export const DRIVE_UPLOAD_METADATA = z
     }),
   ])
   .readonly();
+
+export type DriveUploadMetadata = z.infer<typeof DRIVE_UPLOAD_METADATA>;
 
 export const DRIVE_UPLOAD = z
   .strictObject({

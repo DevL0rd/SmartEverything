@@ -19,16 +19,16 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useActiveProfile, useProfiles } from '../../../store/people';
-import { flattenPages, useDriveFolderPages, useDriveLink, useDriveRoots } from '../../nas/data';
+import { flattenPages, useDriveFolderPages, useDriveLink, useDriveRoots } from '../data';
 import { ENTRY_ROW_HEIGHT, useRevealer, type FolderReveal } from './folder-keys';
 import {
   captionOf,
+  rowMarksOf,
   sortLabelOf,
   type ByName,
   type FolderAction,
   type FolderSort,
   type FolderSortKey,
-  type KindFilter,
 } from './folder-model';
 
 export interface ActionSpec {
@@ -57,7 +57,10 @@ export interface FolderRowHandlers {
   readonly onPick: (item: DriveItem) => void;
   readonly onPress: (item: DriveItem) => void;
   readonly highlight: (name: string) => TextRange | null;
+  readonly placed?: ReadonlySet<string>;
 }
+
+const NOTHING_PLACED: ReadonlySet<string> = new Set();
 
 export function menuItemsOf(
   item: DriveItem,
@@ -149,7 +152,7 @@ const FolderRow = memo(function FolderRow({
         wide={wide}
         selecting={selecting}
         selected={selected}
-        starred={item.starred}
+        marks={rowMarksOf(item, handlers.placed ?? NOTHING_PLACED)}
         openLabel={openLabelOf(item)}
         menu={menu}
         {...(thumbReady(item)
@@ -190,7 +193,7 @@ function ColumnButton({
       onPress={() => {
         onSort(column);
       }}
-      className={cn('min-h-10 flex-row items-center gap-1 rounded-xs', className)}
+      className={cn('min-h-touch-min flex-row items-center gap-1 rounded-xs', className)}
       layerClassName="rounded-xs"
     >
       <Text variant="label" tone={active ? 'primary' : 'variant'} numberOfLines={1}>
@@ -302,23 +305,6 @@ export function FolderList({ ref, ...props }: FolderListProps): ReactNode {
   );
 }
 
-export function emptyBodyOf(root: DriveRoot, kind: KindFilter): string {
-  if (kind !== 'all') return 'Nothing of this kind is in this folder.';
-  return root.readOnly
-    ? 'It is read only, so nothing can be added from Drive.'
-    : 'Files added on the hub or from a synced computer show up here.';
-}
-
-export function EmptyFolder({
-  root,
-  kind,
-}: {
-  readonly root: DriveRoot;
-  readonly kind: KindFilter;
-}): ReactNode {
-  return <EmptyState icon="folder" title="Nothing here yet" body={emptyBodyOf(root, kind)} />;
-}
-
 export function isPrivateError(error: unknown): boolean {
   return error instanceof ApiError && (error.code === 'forbidden' || error.code === 'not_found');
 }
@@ -357,7 +343,7 @@ export function FolderGateMessage({ state }: { readonly state: GateState }): Rea
     <EmptyState
       icon="lock"
       title="This folder is private"
-      body="It belongs to someone else’s files. Ask them to share it with you."
+      body="It is in someone else’s drive. Ask them to share it with you."
       action={<Button label="Back to My Drive" variant="tonal" href={href.drive()} />}
     />
   );

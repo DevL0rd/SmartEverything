@@ -5,6 +5,7 @@ import {
   ApiError,
   DRIVE_UPLOAD_METADATA,
   type DriveUpload,
+  type DriveUploadMetadata,
   type DriveUploadTarget,
 } from '@smarteverything/domain';
 import { z } from 'zod';
@@ -81,14 +82,18 @@ export function targetOf(request: IncomingMessage): {
     );
   }
   const meta = parsed.data;
-  return {
-    target:
-      meta.targetKind === 'folder'
-        ? { kind: 'folder', folderId: meta.folderId }
-        : { kind: 'item', itemId: meta.itemId, baseRev: Number(meta.baseRev) },
-    name: meta.filename,
-    sha256: meta.sha256 ?? null,
-  };
+  return { target: wireTargetOf(meta), name: meta.filename, sha256: meta.sha256 ?? null };
+}
+
+function wireTargetOf(meta: DriveUploadMetadata): DriveUploadTarget {
+  switch (meta.targetKind) {
+    case 'drive':
+      return { kind: 'drive', rootId: meta.rootId };
+    case 'folder':
+      return { kind: 'folder', folderId: meta.folderId };
+    case 'item':
+      return { kind: 'item', itemId: meta.itemId, baseRev: Number(meta.baseRev) };
+  }
 }
 
 export function headerOf(request: IncomingMessage, name: string): string | undefined {

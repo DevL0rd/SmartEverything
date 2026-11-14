@@ -80,7 +80,7 @@ describe('trash items', () => {
     expect(items[1]?.daysLeft).toBe(55);
   });
 
-  it('says where an item was, with the library folder first', () => {
+  it('says where an item was, with the drive first', () => {
     const [item] = trashItemsOf([entry({})], TODAY, PEOPLE);
     if (item === undefined) throw new Error('no item');
     expect(wasInOf(item, 'Projects')).toBe('Projects › Home › Kitchen remodel');

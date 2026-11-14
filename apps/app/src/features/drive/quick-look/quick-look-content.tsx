@@ -12,7 +12,7 @@ import { Text } from '../../../components/text';
 import { Zoomable } from '../../../components/zoomable';
 import { bytes } from '../../../format/number';
 import { joinParts } from '../../../format/text';
-import { useDriveLink } from '../../nas/data';
+import { useDriveLink } from '../data';
 import { openItemFile } from '../folder/folder-footer';
 import { itemsText } from '../folder/folder-model';
 import { MediaPlayer } from './media-player';

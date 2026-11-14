@@ -7,28 +7,49 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 )
 
 type controller interface {
 	mount(id string, root mountRoot, point string) error
 	unmount(id string) error
 	invalidate(id string, paths []string) error
-	limit(id string, bytes int64) error
+	cache(policy cachePolicy) error
 	pin(id, path string) error
 	unpin(id, path string) error
-	reachable(reachable bool) error
+	route(spec routeSpec) error
 }
 
 type controlLine struct {
-	Op     string   `json:"op"`
-	Mount  string   `json:"mount"`
-	Root   string   `json:"root"`
-	Folder string   `json:"folder"`
-	Point  string   `json:"point"`
-	Path   string   `json:"path"`
-	Paths  []string `json:"paths"`
-	Bytes  *int64   `json:"bytes"`
-	Online *bool    `json:"online"`
+	Op      string   `json:"op"`
+	Mount   string   `json:"mount"`
+	Root    string   `json:"root"`
+	Folder  string   `json:"folder"`
+	Point   string   `json:"point"`
+	Path    string   `json:"path"`
+	Paths   []string `json:"paths"`
+	URL     string   `json:"url"`
+	Server  string   `json:"server"`
+	Pin     string   `json:"pin"`
+	MaxAge  *int64   `json:"maxAgeSeconds"`
+	Bytes   *int64   `json:"maxBytes"`
+	MinFree *int64   `json:"minFreeBytes"`
+	Every   *int64   `json:"cleanupSeconds"`
+}
+
+func (l controlLine) policy() cachePolicy {
+	policy := cachePolicy{
+		maxBytes: noLimit,
+		maxAge:   time.Duration(*l.MaxAge) * time.Second,
+		every:    time.Duration(*l.Every) * time.Second,
+	}
+	if l.Bytes != nil {
+		policy.maxBytes = *l.Bytes
+	}
+	if l.MinFree != nil {
+		policy.minFree = *l.MinFree
+	}
+	return policy
 }
 
 type operation struct {
@@ -42,10 +63,10 @@ var operations = map[string]operation{
 	}},
 	"unmount":    {[]string{"mount"}, func(c controller, l controlLine) error { return c.unmount(l.Mount) }},
 	"invalidate": {[]string{"mount"}, func(c controller, l controlLine) error { return c.invalidate(l.Mount, l.Paths) }},
-	"limit":      {[]string{"mount", "bytes"}, func(c controller, l controlLine) error { return c.limit(l.Mount, *l.Bytes) }},
+	"cache":      {[]string{"maxAgeSeconds", "cleanupSeconds"}, func(c controller, l controlLine) error { return c.cache(l.policy()) }},
 	"pin":        {[]string{"mount", "path"}, func(c controller, l controlLine) error { return c.pin(l.Mount, l.Path) }},
 	"unpin":      {[]string{"mount", "path"}, func(c controller, l controlLine) error { return c.unpin(l.Mount, l.Path) }},
-	"reachable":  {[]string{"online"}, func(c controller, l controlLine) error { return c.reachable(*l.Online) }},
+	"route":      {nil, func(c controller, l controlLine) error { return c.route(routeSpec{URL: l.URL, Server: l.Server, Pin: l.Pin}) }},
 }
 
 func (l controlLine) field(name string) string {
@@ -56,19 +77,20 @@ func (l controlLine) field(name string) string {
 		return l.Root
 	case "point":
 		return l.Point
-	case "bytes":
-		if l.Bytes == nil {
-			return ""
-		}
-		return "set"
-	case "online":
-		if l.Online == nil {
-			return ""
-		}
-		return "set"
+	case "maxAgeSeconds":
+		return supplied(l.MaxAge)
+	case "cleanupSeconds":
+		return supplied(l.Every)
 	default:
 		return l.Path
 	}
+}
+
+func supplied(value *int64) string {
+	if value == nil {
+		return ""
+	}
+	return "set"
 }
 
 func parseControl(raw []byte) (operation, controlLine, error) {

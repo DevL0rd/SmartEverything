@@ -283,7 +283,7 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   google_accounts: list('google_accounts'),
   drive_roots: list('drive_roots'),
   drive_albums: list('drive_albums'),
-  drive_sync_clients: list('drive_sync_clients'),
+  drive_grants: list('drive_grants'),
   drive_placements: list('drive_placements'),
   health_entries: (state) => state,
   foods: (state) => state,

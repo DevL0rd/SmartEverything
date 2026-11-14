@@ -160,25 +160,13 @@ describe('where a pin leads', () => {
     expect(navTargetHref(target)).toEqual(expected);
   });
 
-  it('opens a Drive folder, with the item and the focus when given', () => {
+  it('opens Drive at My Drive, with the item and the focus when given', () => {
     expect(
       navTargetHref({ kind: 'drive', rootId: ID, path: '/Photos', itemId: null, focus: null }),
-    ).toEqual({
-      pathname: '/drive/root/[rootId]',
-      params: { rootId: ID, path: '/Photos' },
-    });
-    expect(
-      navTargetHref({ kind: 'drive', rootId: ID, path: '/', itemId: OTHER, focus: 'versions' }),
-    ).toEqual({
-      pathname: '/drive/root/[rootId]',
-      params: { rootId: ID, path: '/', item: OTHER, focus: 'versions' },
-    });
+    ).toBe('/drive');
     expect(
       navTargetHref({ kind: 'drive', rootId: ID, path: '/a', itemId: OTHER, focus: 'conflict' }),
-    ).toEqual({
-      pathname: '/drive/root/[rootId]',
-      params: { rootId: ID, path: '/a', item: OTHER, focus: 'conflict' },
-    });
+    ).toEqual({ pathname: '/drive', params: { item: OTHER, focus: 'conflict' } });
   });
 
   it('keeps the keys of two Drive places apart and names a Drive pin after the page', () => {

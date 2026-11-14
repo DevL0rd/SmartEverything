@@ -9,10 +9,12 @@ import {
   useUploadEntries,
   type UploadHandle,
   type UploadRequest,
-} from '../../nas/uploads';
+} from './transport';
+import type { DriveFolderPlace } from '@smarteverything/domain';
 import {
   identityOf,
   nextClock,
+  placeIdOf,
   rowsOf,
   summaryOf,
   type RateClock,
@@ -47,17 +49,17 @@ let sequence = 0;
 
 let unwatch: (() => void) | null = null;
 
-function folderIdsOf(records: readonly UploadRecord[]): ReadonlySet<string> {
-  return new Set(records.map((record) => record.folderId));
+function placeIdsOf(records: readonly UploadRecord[]): ReadonlySet<string> {
+  return new Set(records.map((record) => placeIdOf(record.place)));
 }
 
 function clocksOf(state: DriveUploadsState, now: number): ReadonlyMap<string, RateClock> {
   const entries = uploadEntries.get();
   const clocks = new Map<string, RateClock>();
-  for (const folderId of folderIdsOf(state.records)) {
-    const summary = summaryOf(rowsOf(state.records, entries, folderId));
-    const clock = nextClock(state.clocks.get(folderId), summary.sending > 0, summary.sent, now);
-    if (clock !== undefined) clocks.set(folderId, clock);
+  for (const placeId of placeIdsOf(state.records)) {
+    const summary = summaryOf(rowsOf(state.records, entries, placeId));
+    const clock = nextClock(state.clocks.get(placeId), summary.sending > 0, summary.sent, now);
+    if (clock !== undefined) clocks.set(placeId, clock);
   }
   return clocks;
 }
@@ -131,10 +133,10 @@ async function sendOne(
     begin(
       record.key,
       {
-        identity: identityOf(file.name, record.folderId, modifiedOf(source)),
+        identity: identityOf(file.name, placeIdOf(record.place), modifiedOf(source)),
         source,
         name: file.name,
-        target: { kind: 'folder', folderId: record.folderId },
+        target: record.place,
       },
       deps,
     );
@@ -146,14 +148,14 @@ async function sendOne(
 
 export function uploadFiles(
   files: readonly PickedBlob[],
-  folderId: string,
+  place: DriveFolderPlace,
   deps: DriveUploadDeps = LIVE,
 ): Promise<number> {
   const added = files.map((file): UploadRecord => {
     sequence += 1;
     return {
       key: `drive-file-${String(sequence)}`,
-      folderId,
+      place,
       name: file.name,
       size: file.bytes,
       handleId: null,
@@ -193,19 +195,19 @@ export function retryUpload(key: string, deps: DriveUploadDeps = LIVE): void {
   begin(key, request, deps);
 }
 
-function keysOf(folderId: string): readonly string[] {
+function keysOf(placeId: string): readonly string[] {
   return driveUploads
     .get()
-    .records.filter((record) => record.folderId === folderId)
+    .records.filter((record) => placeIdOf(record.place) === placeId)
     .map((record) => record.key);
 }
 
-export function pauseFolder(folderId: string): void {
-  for (const key of keysOf(folderId)) pauseUpload(key);
+export function pauseFolder(placeId: string): void {
+  for (const key of keysOf(placeId)) pauseUpload(key);
 }
 
-export function resumeFolder(folderId: string): void {
-  for (const key of keysOf(folderId)) resumeUpload(key);
+export function resumeFolder(placeId: string): void {
+  for (const key of keysOf(placeId)) resumeUpload(key);
 }
 
 export function retryFolder(rows: readonly UploadRow[], deps: DriveUploadDeps = LIVE): void {
@@ -214,8 +216,8 @@ export function retryFolder(rows: readonly UploadRow[], deps: DriveUploadDeps = 
   }
 }
 
-export function retryFolderId(folderId: string, deps: DriveUploadDeps = LIVE): void {
-  retryFolder(rowsOf(driveUploads.get().records, uploadEntries.get(), folderId), deps);
+export function retryFolderId(placeId: string, deps: DriveUploadDeps = LIVE): void {
+  retryFolder(rowsOf(driveUploads.get().records, uploadEntries.get(), placeId), deps);
 }
 
 export function clearFolder(rows: readonly UploadRow[]): void {
@@ -230,9 +232,9 @@ export interface FolderUploadsView {
   readonly rate: number | null;
 }
 
-export function useFolderUploads(folderId: string): FolderUploadsView {
+export function useFolderUploads(placeId: string): FolderUploadsView {
   const state = usePausable(driveUploads.subscribe, driveUploads.get);
   const entries = useUploadEntries();
-  const rows = rowsOf(state.records, entries, folderId);
-  return { rows, summary: summaryOf(rows), rate: state.clocks.get(folderId)?.rate ?? null };
+  const rows = rowsOf(state.records, entries, placeId);
+  return { rows, summary: summaryOf(rows), rate: state.clocks.get(placeId)?.rate ?? null };
 }

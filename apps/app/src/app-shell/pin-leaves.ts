@@ -5,7 +5,6 @@ import {
   AUTOMATION,
   CAMERA,
   DEVICE,
-  DRIVE,
   GROUP,
   leafIdOf,
   PLUGIN_PAGE,
@@ -44,21 +43,10 @@ function leafOfPage(target: Extract<NavPinTarget, { readonly kind: 'page' }>): P
   return found === undefined ? null : made(found, {});
 }
 
-function leafOfDrive(target: Extract<NavPinTarget, { readonly kind: 'drive' }>): PinLeaf {
-  return made(DRIVE, {
-    rootId: target.rootId,
-    path: target.path,
-    ...(target.itemId === null ? {} : { item: target.itemId }),
-    ...(target.focus === null ? {} : { focus: target.focus }),
-  });
-}
-
 export function pinLeafOf(target: NavPinTarget): PinLeaf | null {
   switch (target.kind) {
     case 'device':
       return made(DEVICE, { deviceId: target.deviceId });
-    case 'drive':
-      return leafOfDrive(target);
     case 'camera':
       return made(CAMERA, { cameraId: target.deviceId });
     case 'room':
@@ -71,6 +59,7 @@ export function pinLeafOf(target: NavPinTarget): PinLeaf | null {
       return made(AUTOMATION, { automationId: target.automationId });
     case 'page':
       return leafOfPage(target);
+    case 'drive':
     case 'section':
       return null;
   }

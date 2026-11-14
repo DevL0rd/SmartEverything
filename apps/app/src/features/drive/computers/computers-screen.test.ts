@@ -30,8 +30,17 @@ vi.mock('../../../store/selectors', () => ({
   useLoaded: (): boolean => seen.loaded,
   useSyncStatus: (): unknown => ({ status: seen.status }),
 }));
-vi.mock('../../../components/section-body', () => ({ useFrameBodyWidth: (): number => 1100 }));
 vi.mock('../../computers', () => ({ PairComputerSheet: (): null => null }));
+vi.mock('../data', () => ({ useDrivePlacementRows: (): readonly never[] => [] }));
+vi.mock('./this-computer', () => ({
+  useThisComputer: (): null => null,
+  useDesktopDrive: (): null => null,
+}));
+vi.mock('./conflicts-card', () => ({
+  ConflictsCard: (): ReactNode => createElement('aside', {}, 'conflicts'),
+}));
+vi.mock('./first-run-card', () => ({ FirstRunCard: (): null => null }));
+vi.mock('./mount-panel', () => ({ MountPanel: (): null => null }));
 vi.mock('../../../components/banner', () => ({
   Banner: ({ title }: { readonly title: string }): ReactNode => createElement('aside', {}, title),
 }));
@@ -81,10 +90,8 @@ function computer(index: number, label: string, online = true): Device {
   });
 }
 
-function render(top?: ReactNode): string {
-  return renderToStaticMarkup(
-    createElement(ComputersScreen, top === undefined ? {} : { slots: { top } }),
-  );
+function render(): string {
+  return renderToStaticMarkup(createElement(ComputersScreen));
 }
 
 describe('ComputersScreen', () => {
@@ -95,9 +102,9 @@ describe('ComputersScreen', () => {
     seen.status = 'live';
   });
 
-  it('shows a card per computer under the top slot with Pair a computer for the owner', () => {
-    const html = render(createElement('section', {}, 'mount hero'));
-    expect(html.indexOf('mount hero')).toBeLessThan(html.indexOf('Workstation'));
+  it('shows the conflicts first, then a card per computer, with Pair a computer for the owner', () => {
+    const html = render();
+    expect(html.indexOf('conflicts')).toBeLessThan(html.indexOf('Workstation'));
     expect(html.indexOf('Workstation')).toBeLessThan(html.indexOf('Office PC'));
     expect(seen.actions).toEqual(['Pair a computer']);
     expect(seen.subtitle).toBe('2 computers · Office PC offline');
@@ -120,10 +127,10 @@ describe('ComputersScreen', () => {
 
   it('asks to pair a computer when there is none, and tells a member who pairs them', () => {
     seen.devices = [deviceFixture(3)];
-    expect(render()).toContain('Pair a computer to sync library folders');
+    expect(render()).toContain('Pair a computer to sync folders of your drives');
     seen.owner = false;
     const html = render();
-    expect(html).toContain('The owner of the home pairs computers');
+    expect(html).toContain('The home owner then pairs it');
     expect(html).not.toContain('Pair a computer');
   });
 

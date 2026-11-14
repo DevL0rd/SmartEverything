@@ -409,12 +409,13 @@ describe('grants', () => {
     }).toThrow();
   });
 
-  it('refuses a grant to oneself and drops grants with the item', () => {
+  it('refuses a grant to oneself and drops the grants of an item that is gone for good', () => {
     expect(() =>
       grants.set({ itemId: itemId(1), profileId: profile, role: 'view' }, profile),
     ).toThrow();
     grants.set({ itemId: itemId(1), profileId: friend, role: 'view' }, profile);
     items.remove(itemId(1));
+    grants.sweepOrphans();
     expect(grants.receivedBy(friend)).toEqual([]);
   });
 

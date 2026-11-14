@@ -31,7 +31,13 @@ export const DRIVE_STATS_KIND = z
   .readonly();
 
 export const DRIVE_STATS_ROOT = z
-  .strictObject({ rootId: ID, items: COUNT, folders: COUNT, bytes: COUNT })
+  .strictObject({
+    rootId: ID,
+    items: COUNT,
+    folders: COUNT,
+    bytes: COUNT,
+    kinds: z.array(DRIVE_STATS_KIND).readonly(),
+  })
   .readonly();
 
 export const DRIVE_STATS_DAY = z

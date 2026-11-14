@@ -16,7 +16,6 @@ interface Seen {
   kinds: (readonly string[] | null)[];
   albums: DriveAlbum[];
   status: string;
-  smart: string | null;
 }
 
 const seen = vi.hoisted((): Seen => ({
@@ -24,15 +23,19 @@ const seen = vi.hoisted((): Seen => ({
   kinds: [],
   albums: [],
   status: 'live',
-  smart: null,
 }));
 
-vi.mock('../../nas/data', () => ({
+vi.mock('../data', () => ({
   useDriveSearch: (query: { kinds: readonly string[] | null }, enabled: boolean): unknown => {
     if (enabled) seen.kinds.push(query.kinds);
     return seen.pages;
   },
-  useDriveRoots: (): readonly unknown[] => [{ id: ROOT_ID, label: 'Media disk' }],
+  useDriveChips: (): ((rootId: string) => unknown) => (): unknown => ({
+    key: 'mine',
+    label: 'My Drive',
+    icon: 'hardDrive',
+    tone: 'primary',
+  }),
   useDriveAlbums: (surface: string): readonly DriveAlbum[] =>
     seen.albums.filter((album) => album.surface === surface),
   flattenPages: (data: { pages: { items: DriveItem[] }[] } | undefined): readonly DriveItem[] =>
@@ -40,13 +43,6 @@ vi.mock('../../nas/data', () => ({
 }));
 vi.mock('../../../store/selectors', () => ({
   useSyncStatus: (): unknown => ({ status: seen.status }),
-}));
-vi.mock('../../../components/use-section-param', () => ({
-  useSectionParam: (): readonly unknown[] => [
-    seen.smart,
-    (): undefined => undefined,
-    (): undefined => undefined,
-  ],
 }));
 vi.mock('../../../design/size-class', async (original) => ({
   ...(await original<object>()),
@@ -66,10 +62,6 @@ vi.mock('../components/drive-frame', () => ({
   }): ReactNode => createElement('main', {}, primary?.label, subtitle, banner, children),
 }));
 vi.mock('../folder/folder-footer', () => ({ runChange: (): void => undefined }));
-vi.mock('./smart-folder-screen', () => ({
-  SmartFolderScreen: ({ albumId }: { readonly albumId: string }): ReactNode =>
-    createElement('article', {}, `smart ${albumId}`),
-}));
 vi.mock('./save-smart-folder', () => ({
   useSaveSmartFolder: (): unknown => ({
     open: (): void => undefined,
@@ -86,8 +78,15 @@ vi.mock('./smart-folders', () => ({
     ),
 }));
 vi.mock('./starred-row', () => ({
-  StarredRow: ({ item, where }: { readonly item: DriveItem; readonly where: string }): ReactNode =>
-    createElement('li', {}, `${item.name} in ${where}`),
+  StarredRow: ({
+    item,
+    chip,
+    where,
+  }: {
+    readonly item: DriveItem;
+    readonly chip: { readonly label: string };
+    readonly where: string;
+  }): ReactNode => createElement('li', {}, `${item.name} in ${chip.label} › ${where}`),
 }));
 vi.mock('./starred-states', () => ({
   StarredEmpty: ({ live }: { readonly live: boolean }): ReactNode =>
@@ -131,6 +130,7 @@ const DOC = DRIVE_ITEM.parse({
   addedAt: '2026-11-07T10:00:00.000Z',
   openedAt: null,
   starred: true,
+  shared: false,
   rev: 1,
   etag: 'e',
   outside: false,
@@ -182,7 +182,6 @@ async function render(): Promise<string> {
 describe('StarredScreen', () => {
   it('shows the Drive smart folders above the starred files with counts and the star note', async () => {
     seen.status = 'live';
-    seen.smart = null;
     seen.kinds = [];
     seen.albums = [smart('Big videos', 'drive'), smart('Holiday photos', 'photos')];
     seen.pages = pagesOf([DOC], null);
@@ -190,14 +189,15 @@ describe('StarredScreen', () => {
     expect(seen.kinds).toEqual([null]);
     expect(html).toContain('New smart folder');
     expect(html).toContain('1 starred · 1 smart folder');
-    expect(html).toContain('A star here and a Photos favourite are one mark');
+    expect(html).toContain('Only you see your stars');
+    expect(html).toContain('My Drive 1');
     expect(html.indexOf('Files 1')).toBeLessThan(html.indexOf('Folders 0'));
     expect(html).toContain('>Changed<');
     expect(html).toContain('Big videos');
     expect(html).not.toContain('Holiday photos');
     expect(html).toContain('All 1');
     expect(html).toContain('Files 1');
-    expect(html).toContain('Budget 2027.xlsx in Media disk › Projects');
+    expect(html).toContain('Budget 2027.xlsx in My Drive › Projects');
   });
 
   it('leaves the counts out while more starred files are still to load', async () => {
@@ -221,13 +221,5 @@ describe('StarredScreen', () => {
     const html = await render();
     expect(html).toContain('stale');
     expect(html).toContain('Budget 2027.xlsx');
-  });
-
-  it('opens one smart folder as its own list when the address names it', async () => {
-    seen.status = 'live';
-    seen.smart = 'a1b2c3d4-0000-4000-8000-000000000020';
-    const html = await render();
-    expect(html).toContain('smart a1b2c3d4-0000-4000-8000-000000000020');
-    expect(html).not.toContain('New smart folder');
   });
 });

@@ -10,19 +10,26 @@ import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
 import { useIdiom } from '../../../design/platform';
 import { useMutationState } from '../../../store/mutation';
+import { notifyFailure } from '../../../components/toast-store';
+import { useProfiles } from '../../../store/people';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
-import { useDriveSettings } from '../../nas/data';
+import { useDriveOf, useDriveSettings } from '../data';
+import type { DriveOfItem } from '../model/drive-access';
+import { revokeLink } from '../shared/revoke-link';
+import { PeopleSection, SectionTitle } from './people-section';
 import { makeShareLink } from './share-data';
-import { LinkForm, WhoSees } from './share-form';
+import { LinkForm } from './share-form';
 import {
   LINKS_NOTE,
-  MEMBERS_BLOCKED,
+  LINK_STATE_LINE,
   NEW_DRAFT,
   draftReady,
-  mayMakeLinks,
+  footerLineOf,
+  linkStateOf,
   reachOf,
   shareRequestOf,
   shareTitleOf,
+  type LinkState,
   type ShareDraft,
 } from './share-model';
 
@@ -56,57 +63,101 @@ function sendElsewhere(created: DriveShareCreated, item: DriveItem): void {
 
 function Made({
   opened,
+  onStopped,
 }: {
   readonly opened: Opened & { readonly created: DriveShareCreated };
+  readonly onStopped: () => void;
 }): ReactNode {
   const touch = useIdiom() === 'touch';
+  const client = useQueryClient();
+  const live = useSyncStatus().status === 'live';
   const { created, item } = opened;
+  const stop = (): void => {
+    revokeLink(client, created.share.id, item.name)
+      .then((stopped) => {
+        if (stopped) onStopped();
+      })
+      .catch(notifyFailure('The link wasn’t stopped'));
+  };
   return (
     <View className="gap-3">
       <CopyField label="Link" value={created.url} />
       <Text variant="footnote" tone="variant">
         {reachOf(created.public)}
       </Text>
-      {touch ? (
+      <View className="flex-row flex-wrap gap-2">
+        {touch ? (
+          <Button
+            label="Send with another app"
+            icon="share"
+            variant="tonal"
+            grow
+            onPress={() => {
+              sendElsewhere(created, item);
+            }}
+          />
+        ) : null}
         <Button
-          label="Send with another app"
-          icon="share"
-          variant="tonal"
-          size="lg"
-          grow
-          onPress={() => {
-            sendElsewhere(created, item);
-          }}
+          label="Stop link"
+          icon="unlink"
+          variant="destructive"
+          disabled={!live}
+          onPress={stop}
         />
-      ) : null}
+      </View>
     </View>
   );
 }
 
-function Body({
-  opened,
-  allowed,
-  onDraft,
-}: {
+interface BodyProps {
   readonly opened: Opened;
-  readonly allowed: boolean;
+  readonly drive: DriveOfItem;
+  readonly link: LinkState;
   readonly onDraft: (draft: ShareDraft) => void;
-}): ReactNode {
+  readonly onStopped: () => void;
+}
+
+function LinkPart({ opened, link, onDraft, onStopped }: Omit<BodyProps, 'drive'>): ReactNode {
   const narrow = usePanelFrame().presentation === 'sheet';
-  return (
-    <View className="gap-4">
-      <WhoSees item={opened.item} />
-      <View className="h-px bg-outline-variant" />
-      <Text variant="footnote" tone="variant" accessibilityRole="header">
-        Link for anyone
+  if (link !== 'allowed') {
+    return (
+      <Text variant="footnote" tone="variant">
+        {LINK_STATE_LINE[link]}
       </Text>
+    );
+  }
+  return (
+    <>
       {opened.created === null ? (
-        <LinkForm draft={opened.draft} narrow={narrow} disabled={!allowed} onDraft={onDraft} />
+        <LinkForm draft={opened.draft} narrow={narrow} disabled={false} onDraft={onDraft} />
       ) : (
-        <Made opened={{ ...opened, created: opened.created }} />
+        <Made opened={{ ...opened, created: opened.created }} onStopped={onStopped} />
       )}
       <Text variant="caption" tone="variant">
-        {allowed ? LINKS_NOTE : MEMBERS_BLOCKED}
+        {LINKS_NOTE}
+      </Text>
+    </>
+  );
+}
+
+function Body(props: BodyProps): ReactNode {
+  const { opened, drive } = props;
+  const owner = useProfiles().find((profile) => profile.id === drive.root?.ownerProfileId);
+  return (
+    <View className="gap-4">
+      {drive.root === null ? null : (
+        <PeopleSection item={opened.item} root={drive.root} access={drive.access} />
+      )}
+      <View className="h-px bg-outline-variant" />
+      {props.link === 'owner-only' ? null : (
+        <>
+          <SectionTitle text="Link" />
+          <LinkPart {...props} />
+          <View className="h-px bg-outline-variant" />
+        </>
+      )}
+      <Text variant="footnote" tone="variant">
+        {footerLineOf(drive.access, owner?.name ?? null)}
       </Text>
     </View>
   );
@@ -114,14 +165,15 @@ function Body({
 
 interface FooterProps {
   readonly opened: Opened;
+  readonly link: LinkState;
   readonly busy: boolean;
   readonly ready: boolean;
   readonly onClose: () => void;
   readonly onMake: () => void;
 }
 
-function Footer({ opened, busy, ready, onClose, onMake }: FooterProps): ReactNode {
-  if (opened.created !== null) {
+function Footer({ opened, link, busy, ready, onClose, onMake }: FooterProps): ReactNode {
+  if (opened.created !== null || link !== 'allowed') {
     return (
       <View className="flex-row justify-end gap-2">
         <Button label="Done" variant="tonal" onPress={onClose} />
@@ -137,16 +189,12 @@ function Footer({ opened, busy, ready, onClose, onMake }: FooterProps): ReactNod
 }
 
 function PanelBody({
-  opened,
-  allowed,
+  body,
   footer,
-  onDraft,
   onClose,
 }: {
-  readonly opened: Opened;
-  readonly allowed: boolean;
+  readonly body: BodyProps;
   readonly footer: ReactNode;
-  readonly onDraft: (draft: ShareDraft) => void;
   readonly onClose: () => void;
 }): ReactNode {
   const sheet = usePanelFrame().presentation === 'sheet';
@@ -155,12 +203,12 @@ function PanelBody({
       {sheet ? null : (
         <View className="flex-row items-center gap-2">
           <Text variant="title-3" numberOfLines={1} className="min-w-0 flex-1">
-            {shareTitleOf(opened.item)}
+            {shareTitleOf(body.opened.item)}
           </Text>
           <IconButton icon="close" label="Close" onPress={onClose} />
         </View>
       )}
-      <Body opened={opened} allowed={allowed} onDraft={onDraft} />
+      <Body {...body} />
       {sheet ? null : footer}
     </View>
   );
@@ -191,10 +239,31 @@ export interface ShareSheet {
   readonly host: ReactNode;
 }
 
-function useAllowed(): boolean {
+function useLinkState(drive: DriveOfItem): LinkState {
   const owner = useIsOwner();
   const settings = useDriveSettings().data ?? null;
-  return mayMakeLinks(owner, settings);
+  return linkStateOf(drive.access, owner, settings);
+}
+
+type SetOpened = (change: (current: Opened | null) => Opened | null) => void;
+
+function bodyOf(
+  opened: Opened,
+  drive: DriveOfItem,
+  link: LinkState,
+  setOpened: SetOpened,
+): BodyProps {
+  return {
+    opened,
+    drive,
+    link,
+    onDraft: (draft): void => {
+      setOpened((current) => (current === null ? null : { ...current, draft }));
+    },
+    onStopped: (): void => {
+      setOpened((current) => (current === null ? null : { ...current, created: null }));
+    },
+  };
 }
 
 function ShareHost({
@@ -203,19 +272,21 @@ function ShareHost({
   close,
 }: {
   readonly opened: Opened;
-  readonly setOpened: (change: (current: Opened | null) => Opened | null) => void;
+  readonly setOpened: SetOpened;
   readonly close: () => void;
 }): ReactNode {
   const loose = useRef<View>(null);
   const live = useSyncStatus().status === 'live';
-  const allowed = useAllowed();
+  const drive = useDriveOf(opened.item);
+  const link = useLinkState(drive);
   const { busy, make } = useMake((created) => {
     setOpened((current) => (current === null ? null : { ...current, created }));
   });
-  const ready = live && allowed && draftReady(opened.draft);
+  const ready = live && link === 'allowed' && draftReady(opened.draft);
   const footer = (
     <Footer
       opened={opened}
+      link={link}
       busy={busy}
       ready={ready}
       onClose={close}
@@ -234,15 +305,7 @@ function ShareHost({
       sheetFooter={footer}
       scroll
     >
-      <PanelBody
-        opened={opened}
-        allowed={allowed}
-        footer={footer}
-        onClose={close}
-        onDraft={(draft) => {
-          setOpened((current) => (current === null ? null : { ...current, draft }));
-        }}
-      />
+      <PanelBody body={bodyOf(opened, drive, link, setOpened)} footer={footer} onClose={close} />
     </AdaptivePanel>
   );
 }

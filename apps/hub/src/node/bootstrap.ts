@@ -23,12 +23,30 @@ import { earHostFactoryOf, earProcessFor } from './ear/process/ear-process-for';
 import type { NodeLink } from './link';
 import { NodeLogShip } from './log-ship';
 import { NodeFailureError } from './node-failure';
+import type { PlacementLink } from './placement-link';
 import { startNodeLogShipping } from './startup-journal';
+
+export interface ComputerDriveContext {
+  readonly layout: NodeLayout;
+  readonly node: ComputerServiceConfig['node'];
+  readonly transport: NodeHubTransport;
+  readonly authority: NodeRouteAuthority;
+  readonly log: Logger;
+}
+
+export interface ComputerDriveRuntime {
+  readonly start: () => Promise<void>;
+  readonly attach: (placements: PlacementLink) => void;
+  readonly stop: () => Promise<void>;
+}
+
+export type ComputerDriveFactory = (context: ComputerDriveContext) => ComputerDriveRuntime;
 
 interface NodeBootstrapOptions {
   readonly layout: NodeLayout;
   readonly config: ComputerServiceConfig;
   readonly log: Logger;
+  readonly drive?: ComputerDriveFactory;
 }
 const NODE_STALL_EXIT_MS = 30_000;
 
@@ -91,12 +109,8 @@ function nodeEars(
   });
 }
 
-export async function startNode(options: NodeBootstrapOptions): Promise<RunningNode> {
+async function startAuthority(options: NodeBootstrapOptions): Promise<NodeRouteAuthority> {
   const { node } = options.config;
-
-  const logPath = options.layout.logs.service;
-  const watchdog = nodeWatchdog(options.log, logPath);
-  const identity = await nodeIdentity(options.layout.computerNodeId);
   const authority = new NodeRouteAuthority({
     hubUrl: node.hub_url,
     token: node.node_token,
@@ -105,6 +119,16 @@ export async function startNode(options: NodeBootstrapOptions): Promise<RunningN
     log: options.log.forArea('hub.node-route'),
   });
   await authority.start();
+  return authority;
+}
+
+export async function startNode(options: NodeBootstrapOptions): Promise<RunningNode> {
+  const { node } = options.config;
+
+  const logPath = options.layout.logs.service;
+  const watchdog = nodeWatchdog(options.log, logPath);
+  const identity = await nodeIdentity(options.layout.computerNodeId);
+  const authority = await startAuthority(options);
   const { broker, transport } = await startNodeTransport(authority, node.hub_url);
   const ready = new NodeReadyWriter(options);
   const harness = new NodeHarnessRuntime({
@@ -117,11 +141,13 @@ export async function startNode(options: NodeBootstrapOptions): Promise<RunningN
   });
   const ears = nodeEars(options, logPath);
   const logs = new NodeLogShip();
+  const drive = await startDrive(options, { transport, authority });
   const runtime = createRuntime(options, ready, identity, {
     transport,
     earHost: earHostFactoryOf(ears),
     pipeline: ears.pipeline,
     logs,
+    drive,
   });
   const stopLogs = startNodeLogShipping(options.layout, node.device_id, logs, options.log);
   ready.changed(false);
@@ -132,6 +158,9 @@ export async function startNode(options: NodeBootstrapOptions): Promise<RunningN
     stop: async (): Promise<void> => {
       watchdog?.stop();
       runtime.stop();
+      await drive?.stop().catch((cause: unknown) => {
+        options.log.error('node.drive_stop_failed', cause);
+      });
       stopLogs();
       ears.stop();
       broker.close();
@@ -151,11 +180,13 @@ function createRuntime(
     earHost,
     pipeline,
     logs,
+    drive,
   }: {
     readonly transport: NodeHubTransport;
     readonly earHost: EarHostFactory;
     readonly pipeline: EarPipelineFactory;
     readonly logs: NodeLogShip;
+    readonly drive: ComputerDriveRuntime | null;
   },
 ): NodeAiRuntime {
   const { node } = options.config;
@@ -171,36 +202,71 @@ function createRuntime(
     createRuntimeHosts: (): ReturnType<typeof nodeRuntimeHosts> =>
       nodeRuntimeHosts({ layout: options.layout, node, log: options.log, transport }),
     createComputer: (link) =>
-      createComputerNode(options.log, link, { earHost, pipeline }, identity.machineId),
+      createComputerNode(options.log, link, identity.machineId, { earHost, pipeline, drive }),
     changed: (connected): void => {
       ready.changed(connected);
     },
   });
 }
 
+interface ComputerNodeParts {
+  readonly earHost: EarHostFactory;
+  readonly pipeline: EarPipelineFactory;
+  readonly drive: ComputerDriveRuntime | null;
+}
+
 function createComputerNode(
   log: Logger,
   link: NodeLink,
-  ears: { readonly earHost: EarHostFactory; readonly pipeline: EarPipelineFactory },
   machineId: string,
+  { earHost, pipeline, drive }: ComputerNodeParts,
 ): ComputerNode | null {
   const now = (): Date => new Date();
   try {
-    return new ComputerNode({
+    const computer = new ComputerNode({
       collector: collectorFor(process.platform, { log, machineId, now: Date.now }),
       controls: controlsFor(process.platform, { now, log }),
       link,
       now,
       log,
-      ear: computerEarFor(process.platform, { now, log, pipeline: ears.pipeline }),
-      earHost: ears.earHost,
+      ear: computerEarFor(process.platform, { now, log, pipeline }),
+      earHost,
     });
+    drive?.attach(computer.placements);
+    return computer;
   } catch (cause) {
     if (!(cause instanceof UnsupportedPlatformError || cause instanceof NodeFailureError))
       throw cause;
     log.warn('node.computer_unavailable', {
       reason: cause.message,
       consequence: 'readings, apps, processes, files and power are not available',
+    });
+    return null;
+  }
+}
+
+async function startDrive(
+  options: NodeBootstrapOptions,
+  {
+    transport,
+    authority,
+  }: { readonly transport: NodeHubTransport; readonly authority: NodeRouteAuthority },
+): Promise<ComputerDriveRuntime | null> {
+  const drive = options.drive?.({
+    layout: options.layout,
+    node: options.config.node,
+    transport,
+    authority,
+    log: options.log.forArea('hub.node-drive'),
+  });
+  if (drive === undefined) return null;
+  try {
+    await drive.start();
+    return drive;
+  } catch (cause) {
+    options.log.error('node.drive_start_failed', cause);
+    await drive.stop().catch((stopCause: unknown) => {
+      options.log.error('node.drive_stop_failed', stopCause);
     });
     return null;
   }

@@ -5,13 +5,6 @@ import { aboutText, fullInText, growthLabelOf, kindSlicesOf } from './storage-he
 
 const GB = 1024 ** 3;
 
-const A = '00000000-0000-4000-8000-0000000000a1';
-const B = '00000000-0000-4000-8000-0000000000b1';
-
-function volume(mountId: string, rootId: string, fullInMonths: number | null): object {
-  return { mountId, rootIds: [rootId], totalBytes: 1000 * GB, freeBytes: 500 * GB, fullInMonths };
-}
-
 function stats(patch: Partial<Record<keyof DriveStats, unknown>>): DriveStats {
   return DRIVE_STATS.parse({
     items: 10,
@@ -22,7 +15,8 @@ function stats(patch: Partial<Record<keyof DriveStats, unknown>>): DriveStats {
     trashBytes: 0,
     kinds: [],
     roots: [],
-    volumes: [],
+    space: { totalBytes: 1000 * GB, freeBytes: 500 * GB, fsType: 'ext4' },
+    fullInMonths: null,
     purges: [],
     growth: null,
     ...patch,
@@ -53,21 +47,10 @@ describe('Storage hero', () => {
     expect(aboutText(46)).toBe('about 4 years');
   });
 
-  it('has no forecast without the hub forecast', () => {
-    expect(fullInText(stats({ volumes: [volume('1', A, null)] }), [])).toBeNull();
-  });
-
-  it('names the disk that fills first when there are several', () => {
-    const several = stats({ volumes: [volume('1', A, 30), volume('2', B, 9)] });
-    expect(
-      fullInText(several, [
-        { mountId: '1', name: 'Media disk' },
-        { mountId: '2', name: 'Projects' },
-      ]),
-    ).toBe('Projects is full in about 9 months at this pace');
-    expect(fullInText(stats({ volumes: [volume('1', A, 48)] }), [])).toBe(
-      'Full in about 4 years at this pace',
-    );
+  it('says when the data folder disk is full at this pace, and nothing without a forecast', () => {
+    expect(fullInText(stats({}))).toBeNull();
+    expect(fullInText(stats({ fullInMonths: 14 }))).toBe('Full in about 1 year at this pace');
+    expect(fullInText(stats({ fullInMonths: 9 }))).toBe('Full in about 9 months at this pace');
   });
 
   it('describes the growth line from its first to its last day', () => {

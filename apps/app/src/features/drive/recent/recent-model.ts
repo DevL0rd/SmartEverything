@@ -1,4 +1,9 @@
-import type { DriveItem, DriveRecentEntry, DriveRecentFilter } from '@smarteverything/domain';
+import type {
+  DriveItem,
+  DriveRecentEntry,
+  DriveRecentFilter,
+  DriveRoot,
+} from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
 import type { IconName } from '../../../components/icon';
@@ -7,6 +12,9 @@ import type { ColourRole } from '../../../design/tokens';
 import { zonedDateFormat } from '../../../format/locale';
 import { count } from '../../../format/number';
 import { clock, localDayKey, shiftDay, startOfDayKey } from '../../../format/time';
+import { driveLocationHref } from '../model/section-routes';
+
+type DriveRoots = readonly Pick<DriveRoot, 'id' | 'scope'>[];
 
 export const WEEK_DAYS = 7;
 
@@ -107,17 +115,13 @@ export function timeOf(line: RecentLine, timeZone: string | null): string {
   return line.group === 'week' ? WEEKDAY(timeZone).format(at) : SHORT_DATE(timeZone).format(at);
 }
 
-export function whereOf(item: DriveItem, rootLabel: string | null): string {
-  const folders = item.relPath.split('/').slice(0, -1);
-  return [...(rootLabel === null ? [] : [rootLabel]), ...folders].join(' › ');
-}
-
-export function openHrefOf(item: DriveItem): AppHref {
-  if (item.kind === 'folder') return href.driveRoot(item.rootId, { folder: item.id });
-  return href.driveRoot(
-    item.rootId,
-    item.parentId === null ? { item: item.id } : { folder: item.parentId, item: item.id },
-  );
+export function openHrefOf(item: DriveItem, roots: DriveRoots): AppHref {
+  if (item.kind === 'folder') return href.driveFolder(item.id);
+  return driveLocationHref(roots, {
+    rootId: item.rootId,
+    folderId: item.parentId,
+    params: { item: item.id },
+  });
 }
 
 export interface KindLook {

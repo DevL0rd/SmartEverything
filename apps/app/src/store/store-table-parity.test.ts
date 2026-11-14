@@ -4,12 +4,7 @@ import { replaceWith } from './live-reducers';
 import { snapshotWire } from './snapshot-fixture';
 import { emptyState } from './state';
 
-const DRIVE_TABLES = [
-  'drive_roots',
-  'drive_albums',
-  'drive_sync_clients',
-  'drive_placements',
-] as const;
+const DRIVE_TABLES = ['drive_roots', 'drive_albums', 'drive_grants', 'drive_placements'] as const;
 
 const SNAPSHOT_WIRE = SNAPSHOT.parse(snapshotWire());
 

@@ -334,6 +334,7 @@ export class DriveFsApi {
   }
 
   private async trash(caller: FsCaller, item: DriveItem): Promise<void> {
+    this.writableIn(caller, item.rootId, item);
     settled(await this.deps.write.change(mount(caller), { action: 'trash', itemIds: [item.id] }));
   }
 }

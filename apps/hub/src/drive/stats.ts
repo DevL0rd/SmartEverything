@@ -19,7 +19,25 @@ const FIRST_DAY = '0000-01-01';
 
 const LAST_DAY = '9999-12-31';
 
-const KIND_ROW = z.object({ kind: z.string(), items: z.number(), bytes: z.number() });
+const KIND_ROW = z.object({
+  root_id: z.string(),
+  kind: z.string(),
+  items: z.number(),
+  bytes: z.number(),
+});
+
+type KindRow = z.output<typeof KIND_ROW>;
+
+function kindsOf(rows: readonly KindRow[]): DriveStats['kinds'] {
+  return SMART_RULE_ITEM_KINDS.map((kind) => {
+    const matching = rows.filter((row) => row.kind === kind);
+    return {
+      kind,
+      items: matching.reduce((sum, row) => sum + row.items, 0),
+      bytes: matching.reduce((sum, row) => sum + row.bytes, 0),
+    };
+  });
+}
 
 const ROOT_ROW = z.object({
   id: z.string(),
@@ -164,6 +182,7 @@ export class DriveStatsReader {
     const versionBytes = this.versionBytes(ids);
     const trashBytes = this.trashBytes(ids);
     const space = await probe();
+    const kinds = this.kindRows(ids);
     return DRIVE_STATS.parse({
       items: roots.reduce((sum, root) => sum + root.items, 0),
       folders: roots.reduce((sum, root) => sum + root.folders, 0),
@@ -171,12 +190,13 @@ export class DriveStatsReader {
       liveBytes,
       versionBytes,
       trashBytes,
-      kinds: this.kinds(ids),
+      kinds: kindsOf(kinds),
       roots: roots.map((root) => ({
         rootId: root.id,
         items: root.items,
         folders: root.folders,
         bytes: root.bytes,
+        kinds: kindsOf(kinds.filter((row) => row.root_id === root.id)),
       })),
       space,
       fullInMonths: fullInMonths([...series.values()], space.freeBytes),
@@ -195,18 +215,14 @@ export class DriveStatsReader {
     );
   }
 
-  private kinds(ids: readonly string[]): DriveStats['kinds'] {
+  private kindRows(ids: readonly string[]): KindRow[] {
     const filter = inList('root_id', 'roots', ids);
-    const rows = this.context.sql.all(
+    return this.context.sql.all(
       KIND_ROW,
-      `select kind, count(*) as items, coalesce(sum(bytes), 0) as bytes from drive_items
-        where kind <> 'folder' and ${filter.text} group by kind`,
+      `select root_id, kind, count(*) as items, coalesce(sum(bytes), 0) as bytes from drive_items
+        where kind <> 'folder' and ${filter.text} group by root_id, kind`,
       filter.parameters,
     );
-    return SMART_RULE_ITEM_KINDS.map((kind) => {
-      const row = rows.find((one) => one.kind === kind);
-      return { kind, items: row?.items ?? 0, bytes: row?.bytes ?? 0 };
-    });
   }
 
   private versionBytes(ids: readonly string[]): number {

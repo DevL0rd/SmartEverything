@@ -4,7 +4,8 @@ import { useScreenPaused } from '../../../design/screen-pause';
 import { useDayKey } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
 import { useSession } from '../../../store/selectors';
-import { flattenPages, useDriveRoots, useDriveStats, useDriveTrash } from '../../nas/data';
+import { flattenPages, useDriveChips, useDriveStats, useDriveTrash } from '../data';
+import type { DriveChipOf } from '../model/drive-chip';
 import { deletedByOf, type DeletedByShare } from './deleted-by';
 import type { LeavingMonth } from './leaving-bars';
 import {
@@ -25,6 +26,7 @@ export interface TrashView {
   readonly deletedBy: readonly DeletedByShare[];
   readonly months: readonly LeavingMonth[] | null;
   readonly rootLabelOf: (rootId: string) => string | null;
+  readonly chipOf: DriveChipOf;
 }
 
 type TrashQuery = ReturnType<typeof useDriveTrash>;
@@ -36,14 +38,6 @@ function usePeople(): TrashPeople {
     () => ({ me, names: new Map(profiles.map((profile) => [profile.id, profile.name])) }),
     [me, profiles],
   );
-}
-
-function useRootLabelOf(): (rootId: string) => string | null {
-  const roots = useDriveRoots();
-  return useMemo(() => {
-    const labels = new Map(roots.map((root) => [root.id, root.label]));
-    return (rootId: string) => labels.get(rootId) ?? null;
-  }, [roots]);
 }
 
 function useWholeList(query: TrashQuery): void {
@@ -65,7 +59,7 @@ export function useTrash(): TrashView {
   useWholeList(query);
   const today = useDayKey();
   const people = usePeople();
-  const rootLabelOf = useRootLabelOf();
+  const chipOf = useDriveChips();
   const months = useDriveStats().data?.purges ?? null;
   const { data } = query;
   const items = useMemo(
@@ -89,6 +83,7 @@ export function useTrash(): TrashView {
     totals: totalsOf(items),
     deletedBy,
     months,
-    rootLabelOf,
+    rootLabelOf: (rootId) => chipOf(rootId).label,
+    chipOf,
   };
 }

@@ -47,7 +47,7 @@ export function ProgressSteps({ steps }: { readonly steps: readonly ProgressStep
             <Marker state={step.state} />
           </View>
           <View className="min-w-0 flex-1 gap-0.5">
-            <Text variant="body" tone={step.state === 'waiting' ? 'faint' : 'default'}>
+            <Text variant="body" tone={step.state === 'waiting' ? 'variant' : 'default'}>
               {step.label}
             </Text>
             {step.detail === undefined ? null : (

@@ -12,8 +12,8 @@ import { count, percent } from '../../../format/number';
 import { plural } from '../../../format/text';
 import { relative } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
-import { useDriveHealth } from '../../nas/data';
-import { StorageCardState } from './usage-bars';
+import { useDriveHealth } from '../data';
+import { StorageCardState } from './storage-card-state';
 
 export interface ScrubView {
   readonly title: string;
@@ -70,22 +70,23 @@ export function scrubViewOf(health: DriveHealth, now: number): ScrubView {
 
 const WATCHER: Readonly<Record<DriveWatcherState, { readonly text: string; readonly tone: Tone }>> =
   {
-    watching: { text: 'Watching the disks for changes', tone: 'positive' },
-    reconciling: { text: 'Catching up with changes on the disks', tone: 'info' },
+    watching: { text: 'Watching the data folder for changes', tone: 'positive' },
+    reconciling: { text: 'Catching up with changes in the data folder', tone: 'info' },
     unavailable: { text: 'Not watching · changes show after a rescan', tone: 'warning' },
   };
 
-function foldersLineOf(health: DriveHealth): HealthLine {
-  const answering = health.rootsTotal - health.rootsOffline;
+function drivesLineOf(health: DriveHealth): HealthLine {
+  const ready = health.rootsTotal - health.rootsUnavailable;
+  const all = `${count(ready)} of ${count(health.rootsTotal)} ready`;
   return {
-    key: 'folders',
-    icon: 'folder',
-    title: 'Library folders',
+    key: 'drives',
+    icon: 'hardDrive',
+    title: 'Drives',
     text:
-      health.rootsOffline === 0
-        ? `${count(answering)} of ${count(health.rootsTotal)} answering`
-        : `${count(answering)} of ${count(health.rootsTotal)} answering · ${count(health.rootsOffline)} offline`,
-    tone: health.rootsOffline === 0 ? 'variant' : 'warning',
+      health.rootsUnavailable === 0
+        ? all
+        : `${all} · ${count(health.rootsUnavailable)} not answering`,
+    tone: health.rootsUnavailable === 0 ? 'variant' : 'warning',
   };
 }
 
@@ -113,7 +114,7 @@ export function healthLinesOf(health: DriveHealth, now: number): readonly Health
       text: health.corrupt === 0 ? 'None found' : plural(health.corrupt, 'file'),
       tone: health.corrupt === 0 ? 'variant' : 'critical',
     },
-    foldersLineOf(health),
+    drivesLineOf(health),
     { key: 'watcher', icon: 'eye', title: 'Disk watcher', ...WATCHER[health.watcher] },
     { key: 'backup', ...backupTextOf(health.backup, now) },
   ];
@@ -157,7 +158,7 @@ export function HealthBody({
 }): ReactNode {
   const scrub = scrubViewOf(health, now);
   return (
-    <Card title="Library health" icon="shield">
+    <Card title="Drive health" icon="shield">
       <View
         accessible
         accessibilityRole="image"
@@ -188,7 +189,7 @@ export function HealthCard(): ReactNode {
   if (query.data === undefined) {
     return (
       <StorageCardState
-        title="Library health"
+        title="Drive health"
         icon="shield"
         query={query}
         failure="drive.storage.health_refetch_failed"

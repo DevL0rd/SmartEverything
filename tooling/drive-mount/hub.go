@@ -52,33 +52,33 @@ type location struct {
 }
 
 type hubClient struct {
-	base  string
 	token string
-	http  *http.Client
 	mu    sync.Mutex
+	route *hubRoute
 	known map[location]entry
 }
 
-func newHubClient(base, token string, client *http.Client) *hubClient {
-	return &hubClient{base: base, token: token, http: client, known: map[location]entry{}}
+func newHubClient(spec routeSpec, token string) *hubClient {
+	return &hubClient{token: token, route: newRoute(0, spec, transportFor(spec)), known: map[location]entry{}}
 }
 
 func (c *hubClient) request(ctx context.Context, route string, query url.Values, rng string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+route+"?"+query.Encode(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	if rng != "" {
-		req.Header.Set("Range", rng)
-	}
-	res, err := c.http.Do(req)
+	res, err := c.send(ctx, false, func(ctx context.Context, base string) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+route+"?"+query.Encode(), nil)
+		if err != nil {
+			return nil, err
+		}
+		if rng != "" {
+			req.Header.Set("Range", rng)
+		}
+		return req, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 	if res.StatusCode >= 300 {
 		res.Body.Close()
-		return nil, fmt.Errorf("hub status %d", res.StatusCode)
+		return nil, hubStatusError{status: res.StatusCode, op: "GET " + route}
 	}
 	return res, nil
 }

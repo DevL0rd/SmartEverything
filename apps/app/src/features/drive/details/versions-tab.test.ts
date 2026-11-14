@@ -2,7 +2,7 @@ import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DRIVE_ITEM, DRIVE_VERSION, type DriveVersion } from '@smarteverything/domain';
-import { FOLDER_ID, ROOT_ID, rootRow } from '../../nas/data/fixtures';
+import { FOLDER_ID, ROOT_ID, rootRow } from '../data/fixtures';
 
 interface Passed {
   readonly children?: ReactNode;
@@ -65,7 +65,7 @@ vi.mock('../versions/version-timeline', () => ({
     time: { now: Date.parse('2026-11-07T12:00:00.000Z'), zone: 'UTC' },
   }),
 }));
-vi.mock('../../nas/data', () => ({
+vi.mock('../data', () => ({
   flattenPages: <T>(
     data: { readonly pages: readonly { readonly items: readonly T[] }[] } | undefined,
   ): readonly T[] => (data === undefined ? [] : data.pages.flatMap((page) => page.items)),
@@ -103,6 +103,7 @@ const item = DRIVE_ITEM.parse({
   addedAt: '2026-11-02T09:10:00.000Z',
   openedAt: null,
   starred: false,
+  shared: false,
   rev: 3,
   etag: 'etag',
   outside: false,
@@ -136,7 +137,13 @@ function version(rev: number, at: string): DriveVersion {
 const TWO = [version(2, '2026-11-06T09:10:00.000Z'), version(1, '2026-11-03T09:10:00.000Z')];
 
 function render(writable = true): string {
-  const subject = { root: rootRow(ROOT_ID, 'ready'), item, writable };
+  const subject = {
+    root: rootRow(ROOT_ID, 'ready'),
+    item,
+    label: 'Shared Drive',
+    access: 'shared',
+    writable,
+  } as const;
   return renderToStaticMarkup(createElement(VersionsTab, { subject }));
 }
 

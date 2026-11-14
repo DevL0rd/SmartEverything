@@ -7,8 +7,17 @@ const DOMAIN_TAIL_LABELS = 2;
 const LONG_TEXT = 18;
 const PLAIN_TAIL = 8;
 
+const NO_BREAK_SPACE = '\u00a0';
+
+function keptSpaces(spaces: string): string {
+  return NO_BREAK_SPACE.repeat(spaces.length);
+}
+
 function splitAt(text: string, index: number): MiddleParts {
-  return { head: text.slice(0, index), tail: text.slice(index) };
+  return {
+    head: text.slice(0, index).replace(/ +$/, keptSpaces),
+    tail: text.slice(index).replace(/^ +/, keptSpaces),
+  };
 }
 
 export function splitMiddle(text: string): MiddleParts {

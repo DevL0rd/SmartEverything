@@ -2,7 +2,7 @@ import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DRIVE_FEED_ROW, DRIVE_ITEM, type DriveFeedRow } from '@smarteverything/domain';
-import { FOLDER_ID, ROOT_ID, rootRow } from '../../nas/data/fixtures';
+import { FOLDER_ID, ROOT_ID, rootRow } from '../data/fixtures';
 
 interface Passed {
   readonly children?: ReactNode;
@@ -53,7 +53,7 @@ vi.mock('../../../store/selectors', () => ({
 }));
 vi.mock('../../../components/choice-chip', () => ({ ChoiceChip: (): null => null }));
 vi.mock('../../../components/filter-chip', () => ({ FilterChip: (): null => null }));
-vi.mock('../../nas/frame/chip-row', () => ({ ChipRow: (): null => null }));
+vi.mock('../../../components/library-frame/chip-row', () => ({ ChipRow: (): null => null }));
 vi.mock('../activity/via-chips', () => ({ ViaChips: (): null => null }));
 vi.mock('../activity/person-picker', () => ({
   EVERYONE_VALUE: 'everyone',
@@ -64,7 +64,13 @@ vi.mock('../activity/activity-row', () => ({
   ActivityRow: ({ entry }: RowPassed): ReactNode =>
     createElement('li', {}, `${entry.row.op}:${entry.actorName ?? 'nobody'}`),
 }));
-vi.mock('../../nas/data', () => ({
+vi.mock('../data', () => ({
+  useDriveChips: (): (() => unknown) => (): unknown => ({
+    key: 'mine',
+    label: 'My Drive',
+    icon: 'hardDrive',
+    tone: 'primary',
+  }),
   flattenPages: <T>(
     data: { readonly pages: readonly { readonly items: readonly T[] }[] } | undefined,
   ): readonly T[] => (data === undefined ? [] : data.pages.flatMap((page) => page.items)),
@@ -92,6 +98,7 @@ const item = DRIVE_ITEM.parse({
   addedAt: '2026-11-02T09:10:00.000Z',
   openedAt: null,
   starred: false,
+  shared: false,
   rev: 3,
   etag: 'etag',
   outside: false,
@@ -106,7 +113,13 @@ const item = DRIVE_ITEM.parse({
   thumb: { state: 'none' },
 });
 
-const subject = { root: rootRow(ROOT_ID, 'ready'), item, writable: true };
+const subject = {
+  root: rootRow(ROOT_ID, 'ready'),
+  item,
+  label: 'Shared Drive',
+  access: 'shared',
+  writable: true,
+} as const;
 
 function row(seq: number, op: DriveFeedRow['op'], at: string): DriveFeedRow {
   return DRIVE_FEED_ROW.parse({
@@ -143,7 +156,11 @@ describe('activity tab', () => {
     const days = activityDaysOf(
       ROWS,
       subject,
-      { roots: new Map(), people: new Map([[ME, 'Dana Moss']]), devices: new Map() },
+      {
+        chipOf: () => ({ key: 'mine', label: 'My Drive', icon: 'hardDrive', tone: 'primary' }),
+        people: new Map([[ME, 'Dana Moss']]),
+        devices: new Map(),
+      },
       { zone: 'UTC', day: '2026-11-07' },
     );
     expect(days.map((day) => day.lines.map((line) => line.entry.row.seq))).toEqual([[3, 2], [1]]);

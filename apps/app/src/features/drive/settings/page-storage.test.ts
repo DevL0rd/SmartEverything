@@ -43,14 +43,12 @@ const {
   REPORT_ADDRESS,
   backupLineOf,
   liveScrubShare,
-  quotaBytesOf,
-  quotaInitialOf,
   quotaLineOf,
-  quotaProblemOf,
   saveQuota,
   scrubLineOf,
   scrubNow,
 } = await import('./page-storage');
+const { gigabytesInitialOf, gigabytesOf, gigabytesProblemOf } = await import('./gigabytes');
 
 const GIB = 1024 ** 3;
 const NOW = Date.parse('2026-11-07T12:00:00.000Z');
@@ -62,9 +60,9 @@ const HEALTH: DriveHealth = {
   verifiedShare: 1,
   corrupt: 0,
   rootsTotal: 2,
-  rootsOffline: 0,
+  rootsUnavailable: 0,
   watcher: 'watching',
-  freeBytes: null,
+  space: { totalBytes: 4 * GIB, freeBytes: GIB, fsType: 'ext4' },
   scrub: { state: 'idle', lastFinishedAt: null, corrupt: 0 },
   backup: { last: null, lastOkAt: null },
 };
@@ -99,22 +97,22 @@ describe('quota writes', () => {
   });
 
   it('turns a GB entry into bytes and an empty entry into no limit', () => {
-    expect(quotaBytesOf('250')).toBe(250 * GIB);
-    expect(quotaBytesOf('1.5')).toBe(1.5 * GIB);
-    expect(quotaBytesOf('  ')).toBeNull();
-    expect(() => quotaBytesOf('lots')).toThrow('lots is not a size in GB.');
-    expect(quotaProblemOf('lots')).toBe('Use a size in GB, such as 250 or 1.5');
-    expect(quotaProblemOf('12')).toBeNull();
-    expect(quotaInitialOf(null)).toBe('');
-    expect(quotaInitialOf(250 * GIB)).toBe('250');
-    expect(quotaInitialOf(1.5 * GIB)).toBe('1.5');
+    expect(gigabytesOf('250')).toBe(250 * GIB);
+    expect(gigabytesOf('1.5')).toBe(1.5 * GIB);
+    expect(gigabytesOf('  ')).toBeNull();
+    expect(() => gigabytesOf('lots')).toThrow('lots is not a size in GB.');
+    expect(gigabytesProblemOf('lots')).toBe('Use a size in GB, such as 250 or 1.5');
+    expect(gigabytesProblemOf('12')).toBeNull();
+    expect(gigabytesInitialOf(null)).toBe('');
+    expect(gigabytesInitialOf(250 * GIB)).toBe('250');
+    expect(gigabytesInitialOf(1.5 * GIB)).toBe('1.5');
   });
 
   it('sets and clears a quota, then refreshes the quota list', async () => {
     const client = new QueryClient();
     const invalidate = vi.spyOn(client, 'invalidateQueries');
-    await saveQuota(client, ANA, quotaBytesOf('30'));
-    await saveQuota(client, ANA, quotaBytesOf(''));
+    await saveQuota(client, ANA, gigabytesOf('30'));
+    await saveQuota(client, ANA, gigabytesOf(''));
     expect(seen.quotas).toEqual([
       { profileId: ANA, bytes: 30 * GIB },
       { profileId: ANA, bytes: null },
@@ -125,8 +123,8 @@ describe('quota writes', () => {
 
   it('draws a bar only for a person with a quota', () => {
     const usage = [
-      { profileId: ANA, live: 10 * GIB, versions: 4 * GIB, trash: GIB },
-      { profileId: BEN, live: GIB, versions: 0, trash: 0 },
+      { profileId: ANA, items: 0, folders: 0, live: 10 * GIB, versions: 4 * GIB, trash: GIB },
+      { profileId: BEN, items: 0, folders: 0, live: GIB, versions: 0, trash: 0 },
     ];
     const quotas = [{ profileId: ANA, bytes: 30 * GIB }];
     expect(quotaLineOf(person(ANA, 'Ana'), usage, quotas)).toEqual({

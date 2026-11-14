@@ -23,6 +23,7 @@ import type { DisplayCapture } from './display-capture.js';
 import { registerClipboardIpc } from './clipboard-ipc.js';
 import { registerGoogleIpc } from './google/ipc.js';
 import { registerPhotosIpc } from './photos/ipc.js';
+import { registerDriveIpc, type DriveBridgeClient } from './drive-mount/bridge-ipc.js';
 import { isAppOrigin } from './origin.js';
 import { ManagedByStableAppError, type ServiceController } from './service/controller.js';
 import type { OverlayDesktop } from './overlay/overlay-desktop.js';
@@ -74,6 +75,7 @@ export interface IpcServices {
   readonly capture: DisplayCapture;
   readonly updates: UpdateController;
   readonly webUpdates: WebUpdateIpc;
+  readonly drive: DriveBridgeClient;
   readonly startUrl: string;
   readonly managedBy: 'stable-app' | undefined;
 }
@@ -196,6 +198,7 @@ export function registerDesktopIpc(services: IpcServices): void {
   });
   registerClipboardIpc(handle);
   registerPhotosIpc(handle);
+  registerDriveIpc(handle, services.drive);
   registerGoogleIpc(handle);
   registerServiceIpc(services, handle);
   registerOwnerIpc(services, handle);

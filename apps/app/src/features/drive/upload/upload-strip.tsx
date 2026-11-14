@@ -122,12 +122,12 @@ function StripRow({ row }: { readonly row: UploadRow }): ReactNode {
 
 function HeadActions({
   view,
-  folderId,
+  placeId,
   open,
   onToggle,
 }: {
   readonly view: FolderUploadsView;
-  readonly folderId: string;
+  readonly placeId: string;
   readonly open: boolean;
   readonly onToggle: () => void;
 }): ReactNode {
@@ -140,8 +140,8 @@ function HeadActions({
           icon={paused ? 'play' : 'pause'}
           label={paused ? 'Resume uploads' : 'Pause uploads'}
           onPress={() => {
-            if (paused) resumeFolder(folderId);
-            else pauseFolder(folderId);
+            if (paused) resumeFolder(placeId);
+            else pauseFolder(placeId);
           }}
         />
       ) : (
@@ -189,6 +189,7 @@ function RetryNotice({ rows }: { readonly rows: readonly UploadRow[] }): ReactNo
   if (notice === null) return null;
   return (
     <Banner
+      wrapBody
       tone="warning"
       title={notice.title}
       body={notice.body}
@@ -204,12 +205,12 @@ function RetryNotice({ rows }: { readonly rows: readonly UploadRow[] }): ReactNo
 
 export function UploadStrip({
   view,
-  folderId,
-  folderName,
+  placeId,
+  placeName,
 }: {
   readonly view: FolderUploadsView;
-  readonly folderId: string;
-  readonly folderName: string;
+  readonly placeId: string;
+  readonly placeName: string;
 }): ReactNode {
   const [open, setOpen] = useState(true);
   const { summary, rows, rate } = view;
@@ -219,11 +220,11 @@ export function UploadStrip({
       <View className="flex-row items-center gap-3">
         <Icon name="upload" size={20} tone="primary" />
         <Text variant="body-strong" numberOfLines={1} className="tabular min-w-0 flex-1">
-          {headlineOf(summary, folderName)}
+          {headlineOf(summary, placeName)}
         </Text>
         <HeadActions
           view={view}
-          folderId={folderId}
+          placeId={placeId}
           open={open}
           onToggle={() => {
             setOpen((current) => !current);

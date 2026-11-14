@@ -90,13 +90,12 @@ func (c *blockCache) setPinned(f *cachedFile, on bool) error {
 		return nil
 	}
 	f.st.Pinned = on
-	p := c.pool(f.st.Root)
 	for i := range blockTotal(f.st.Size, f.st.Block) {
 		if !f.has(i) {
 			continue
 		}
 		if on {
-			p.remove(blockID{f.key, i})
+			c.lru.remove(blockID{f.key, i})
 		} else {
 			c.admit(f, i)
 		}
@@ -104,5 +103,5 @@ func (c *blockCache) setPinned(f *cachedFile, on bool) error {
 	if err := c.save(f); err != nil {
 		return err
 	}
-	return c.evict(p)
+	return c.evict()
 }

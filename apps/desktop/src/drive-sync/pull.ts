@@ -6,7 +6,7 @@ import { messageOf, type Logger } from '@smarteverything/logging';
 import type { DriveSyncDatabase, FileInput, FileRecord } from './db/index.js';
 import { decode } from './push-queue.js';
 import { ENGINE_TEMP_SUFFIX, diskPathFor } from './scan.js';
-import type { RootHello } from './socket.js';
+import type { PlacementHello } from './socket.js';
 import {
   DiskFullError,
   LocalBlockIndex,
@@ -49,8 +49,9 @@ export type PullDatabase = Pick<
   'files' | 'cursors' | 'transfers' | 'pendingOps' | 'transaction'
 >;
 
-export interface RootPullerOptions {
-  readonly rootId: string;
+export interface PlacementPullerOptions {
+  readonly placementId: string;
+  readonly driveId: string;
   readonly rootPath: string;
   readonly platform: NodeJS.Platform;
   readonly database: PullDatabase;
@@ -97,7 +98,7 @@ function depthOf(entry: SyncIndexEntry): number {
 
 function inputOf(record: FileRecord, hubRev: number | null): FileInput {
   return {
-    rootId: record.rootId,
+    placementId: record.placementId,
     relPath: record.relPath,
     kind: record.kind,
     bytes: record.bytes,
@@ -153,9 +154,9 @@ function decideLive(
   return decideFile(local, entry, pending);
 }
 
-function remoteOf(rootId: string, entry: FileEntry): RemoteFile {
+function remoteOf(driveId: string, entry: FileEntry): RemoteFile {
   return {
-    rootId,
+    driveId,
     itemId: entry.itemId,
     bytes: entry.bytes,
     blockSize: entry.blockSize,
@@ -167,21 +168,21 @@ function tempNameOf(target: string): string {
   return join(dirname(target), `.${basename(target)}${ENGINE_TEMP_SUFFIX}`);
 }
 
-export class RootPuller {
-  readonly #options: RootPullerOptions;
+export class PlacementPuller {
+  readonly #options: PlacementPullerOptions;
   readonly #txn: string;
   #chain: Promise<void> = Promise.resolve();
   #halted = false;
   #full: FullIndex | null = null;
   #active: string | null = null;
 
-  constructor(options: RootPullerOptions) {
+  constructor(options: PlacementPullerOptions) {
     this.#options = options;
-    this.#txn = `pull:${options.rootId}`;
+    this.#txn = `pull:${options.placementId}`;
   }
 
-  hello(): RootHello {
-    const cursor = this.#options.database.cursors.get(this.#options.rootId);
+  hello(): PlacementHello {
+    const cursor = this.#options.database.cursors.get(this.#options.placementId);
     return { indexId: cursor?.indexId ?? null, afterSeq: cursor?.lastSeq ?? 0 };
   }
 
@@ -203,7 +204,9 @@ export class RootPuller {
     message: Extract<SyncHubMessage, { type: 'index' | 'index_update' }>,
   ): Promise<void> {
     if (this.#halted) {
-      this.#options.log.debug('drive_sync.pull.halted_skip', { rootId: this.#options.rootId });
+      this.#options.log.debug('drive_sync.pull.halted_skip', {
+        placementId: this.#options.placementId,
+      });
       return;
     }
     this.#active = null;
@@ -216,16 +219,16 @@ export class RootPuller {
   }
 
   #halt(cause: unknown): void {
-    const { sink, log, rootId } = this.#options;
+    const { sink, log, placementId } = this.#options;
     this.#halted = true;
     this.#full = null;
     if (cause instanceof DiskFullError) {
-      log.warn('drive_sync.pull.disk_full', { rootId, relPath: cause.relPath });
+      log.warn('drive_sync.pull.disk_full', { placementId, relPath: cause.relPath });
       sink.blocked({ relPath: cause.relPath, reason: 'disk_full' });
       return;
     }
     log.warn('drive_sync.pull.failed', {
-      rootId,
+      placementId,
       relPath: this.#active,
       error: messageOf(cause),
     });
@@ -233,7 +236,7 @@ export class RootPuller {
   }
 
   async #onIndex(message: Extract<SyncHubMessage, { type: 'index' }>): Promise<void> {
-    const { database, rootId } = this.#options;
+    const { database, placementId } = this.#options;
     if (this.#full?.indexId !== message.indexId) {
       this.#full = { indexId: message.indexId, seen: new Set() };
     }
@@ -243,22 +246,22 @@ export class RootPuller {
     if (!message.last) return;
     database.transaction(() => {
       this.#forgetUnseen(seen);
-      database.cursors.set({ rootId, indexId: message.indexId, lastSeq: message.seq });
+      database.cursors.set({ placementId, indexId: message.indexId, lastSeq: message.seq });
     });
     this.#full = null;
   }
 
   async #onUpdate(message: Extract<SyncHubMessage, { type: 'index_update' }>): Promise<void> {
-    const { database, rootId } = this.#options;
-    const cursor = database.cursors.get(rootId);
+    const { database, placementId } = this.#options;
+    const cursor = database.cursors.get(placementId);
     if (cursor === undefined) throw new UnexpectedUpdateError();
     await this.#apply(message.entries);
-    database.cursors.set({ rootId, indexId: cursor.indexId, lastSeq: message.seq });
+    database.cursors.set({ placementId, indexId: cursor.indexId, lastSeq: message.seq });
   }
 
   #forgetUnseen(seen: ReadonlySet<string>): void {
-    const { database, rootId } = this.#options;
-    for (const record of database.files.list(rootId)) {
+    const { database, placementId } = this.#options;
+    for (const record of database.files.list(placementId)) {
       if (record.hubRev !== null && !seen.has(record.relPath)) {
         database.files.upsert(inputOf(record, null));
       }
@@ -266,13 +269,13 @@ export class RootPuller {
   }
 
   #context(): Context {
-    const { database, rootId, rootPath, platform, log } = this.#options;
+    const { database, placementId, rootPath, platform, log } = this.#options;
     let index: LocalBlockIndex | null = null;
     return {
       pending: pendingPaths(database),
       blocks: (): LocalBlocks => {
         index ??= new LocalBlockIndex({
-          records: database.files.list(rootId),
+          records: database.files.list(placementId),
           rootPath,
           platform,
           log,
@@ -298,14 +301,14 @@ export class RootPuller {
   }
 
   async #live(entry: SyncIndexEntry, context: Context): Promise<void> {
-    const { database, rootId, sink, wants } = this.#options;
-    const local = database.files.get(rootId, entry.relPath);
+    const { database, placementId, sink, wants } = this.#options;
+    const local = database.files.get(placementId, entry.relPath);
     const decision = decideLive(local, entry, context.pending);
     if (decision.action === 'have') return;
     if (decision.action === 'contended') {
       sink.contended({ relPath: entry.relPath, reason: decision.reason });
     } else if (decision.action === 'adopt') {
-      database.files.setHubRev(rootId, entry.relPath, entry.rev);
+      database.files.setHubRev(placementId, entry.relPath, entry.rev);
     } else if (entry.kind === 'folder') {
       await this.#folder(entry);
     } else if (wants(entry.relPath)) {
@@ -316,12 +319,12 @@ export class RootPuller {
   }
 
   async #folder(entry: SyncIndexEntry): Promise<void> {
-    const { database, rootId, rootPath, platform } = this.#options;
+    const { database, placementId, rootPath, platform } = this.#options;
     const disk = diskPathFor(platform, join(rootPath, ...entry.relPath.split('/')));
     await mkdir(disk, { recursive: true });
     const info = await lstat(disk, { bigint: true });
     database.files.upsert({
-      rootId,
+      placementId,
       relPath: entry.relPath,
       kind: 'folder',
       bytes: 0,
@@ -336,11 +339,11 @@ export class RootPuller {
   }
 
   async #fetch(entry: FileEntry, local: FileRecord | undefined, context: Context): Promise<void> {
-    const { rootId, rootPath, platform, database, source, sink } = this.#options;
+    const { placementId, driveId, rootPath, platform, database, source, sink } = this.#options;
     const { relPath } = entry;
     const target = diskPathFor(platform, join(rootPath, ...relPath.split('/')));
     const tempPath = tempNameOf(target);
-    const remote = remoteOf(rootId, entry);
+    const remote = remoteOf(driveId, entry);
     await mkdir(dirname(target), { recursive: true });
     try {
       const blocks = await downloadFile({
@@ -358,7 +361,7 @@ export class RootPuller {
       await this.#place(entry, local, target, blocks);
     } catch (cause) {
       if (!(cause instanceof RemoteChangedError)) throw cause;
-      this.#options.log.info('drive_sync.pull.superseded', { rootId, relPath });
+      this.#options.log.info('drive_sync.pull.superseded', { placementId, relPath });
       await abandonTransfer(database, this.#txn, entry.itemId, tempPath);
     }
   }
@@ -369,11 +372,12 @@ export class RootPuller {
     target: string,
     blocks: Uint8Array,
   ): Promise<void> {
-    const { database, rootId, platform, sink } = this.#options;
+    const { database, placementId, driveId, platform, sink } = this.#options;
     const placement = await placeFile({
       database,
+      placementId,
       txn: this.#txn,
-      remote: remoteOf(rootId, entry),
+      remote: remoteOf(driveId, entry),
       relPath: entry.relPath,
       platform,
       mtime: entry.mtime,
@@ -391,14 +395,14 @@ export class RootPuller {
   }
 
   async #remove(relPath: string, context: Context): Promise<void> {
-    const { database, rootId, sink } = this.#options;
-    const local = database.files.get(rootId, relPath);
+    const { database, placementId, sink } = this.#options;
+    const local = database.files.get(placementId, relPath);
     if (local === undefined) return;
     if (local.hubRev === null) return;
     const doomed =
       local.kind === 'folder'
         ? database.files
-            .list(rootId)
+            .list(placementId)
             .filter((record) => record.relPath.startsWith(`${relPath}/`))
             .sort((first, second) => second.relPath.length - first.relPath.length)
         : [];
@@ -413,7 +417,7 @@ export class RootPuller {
   }
 
   async #erase(record: FileRecord, context: Context): Promise<PullContention | null> {
-    const { database, rootId, rootPath, platform } = this.#options;
+    const { database, placementId, rootPath, platform } = this.#options;
     if (record.hubRev === null || record.localHashState !== 'hashed') return 'local_edit';
     if (context.pending.has(record.relPath)) return 'local_edit';
     const disk = diskPathFor(platform, join(rootPath, ...record.relPath.split('/')));
@@ -428,7 +432,7 @@ export class RootPuller {
         if (codeOf(cause) !== 'ENOENT') throw cause;
       }
     }
-    database.files.remove(rootId, record.relPath);
+    database.files.remove(placementId, record.relPath);
     return null;
   }
 }

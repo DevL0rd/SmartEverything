@@ -1,7 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import type { DriveRoot } from '@smarteverything/domain';
 import type { DestinationEnv } from '../../../src/drive/google/destination';
 import type { ImportSelection } from '../../../src/drive/google/ledger';
 import {
@@ -10,8 +7,8 @@ import {
   type ImportProgress,
 } from '../../../src/drive/google/service';
 import type { DriveWriteRoot } from '../../../src/drive/intents';
+import { ensureDrives, personalDrive } from '../../../src/drive/spaces';
 import { nodeFiles } from '../../../src/drive/versions';
-import { UNSYNCED } from '../../../src/store/repositories/drive-roots';
 import { testLogger } from '../../support/logs';
 import { testStore, type TestStore } from '../../support/store';
 import { DRIVE_CLIENT, createFakeGoogleDrive, type FakeGoogleDrive } from './index';
@@ -34,39 +31,6 @@ export interface Rig {
   consent(url: string, only?: readonly string[]): { state: string; code: string };
   run(selection: ImportSelection): Promise<string>;
   close(): Promise<void>;
-}
-
-function rootRow(id: string, path: string): DriveRoot {
-  return {
-    id,
-    kind: 'folder',
-    label: 'Library',
-    scope: 'home',
-    ownerProfileId: null,
-    path,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: {
-      hashedShare: 0,
-      verifiedShare: 0,
-      corrupt: 0,
-      lastScrubAt: null,
-      lastBackupAt: null,
-    },
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
 }
 
 function holds(
@@ -129,7 +93,7 @@ function destinationOf(
     guard: {
       status: (id) => ({
         quota: options.quota ?? null,
-        usage: { profileId: id, live: 0, versions: 0, trash: 0 },
+        usage: { profileId: id, items: 0, folders: 0, live: 0, versions: 0, trash: 0 },
       }),
       space: () =>
         Promise.resolve({
@@ -153,11 +117,11 @@ function consentOn(fake: FakeGoogleDrive): Rig['consent'] {
 async function openLibrary(
   opened: TestStore,
 ): Promise<{ readonly root: DriveWriteRoot; readonly profileId: string }> {
-  const path = join(opened.directory, 'library');
-  await mkdir(path);
-  const root: DriveWriteRoot = { id: randomUUID(), path, readOnly: false, versions: true };
-  opened.store.driveRoots.insert(rootRow(root.id, path));
-  return { root, profileId: opened.store.profiles.first().id };
+  const profileId = opened.store.profiles.first().id;
+  await ensureDrives(opened.store, opened.layout, opened.store.profiles.list());
+  const drive = personalDrive(opened.store, profileId);
+  opened.store.driveRoots.update(drive.id, { versions: true });
+  return { root: { id: drive.id, path: drive.path, versions: true }, profileId };
 }
 
 function serviceOn(

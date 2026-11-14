@@ -20,7 +20,6 @@ export interface SwitchPorts {
 
 export interface LeaveSynced {
   readonly placementId: string;
-  readonly rootId: string;
   readonly from: string;
   readonly to: string;
 }
@@ -64,7 +63,7 @@ export async function leaveSynced(
   ports: SwitchPorts,
   request: LeaveSynced,
 ): Promise<LeaveSyncedResult> {
-  const waiting = await ports.engine.waiting(request.rootId);
+  const waiting = await ports.engine.waiting(request.placementId);
   if (isWaiting(waiting)) return { kind: 'refused', waiting };
   await ports.engine.stop(request.placementId);
   if (!samePath(ports.platform, request.from, request.to)) {
@@ -80,7 +79,10 @@ export async function joinSynced(ports: SwitchPorts, request: JoinSynced): Promi
   await ports.mounts.unmount(request.mountId);
   await ports.engine.start({
     placementId: request.placementId,
-    rootId: request.rootId,
+    driveId: request.driveId,
     localPath: request.localPath,
+    excluded: request.excluded,
+    ignorePatterns: request.ignorePatterns,
+    receiveOnly: request.receiveOnly,
   });
 }

@@ -1,6 +1,10 @@
+import { DEFAULT_DESKTOP_DRIVE_CACHE, type DesktopDriveState } from '@smarteverything/domain';
 import { BrowserWindow, type MenuItemConstructorOptions } from 'electron';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { createTray, type DesktopTray, type TrayOptions } from '../src/tray.js';
+import { trayDriveOf } from '../src/tray-service.js';
+import { traySyncOf } from '../src/tray-status.js';
 
 const shared = vi.hoisted(() => ({
   menu: new Array<MenuItemConstructorOptions>(),
@@ -32,6 +36,7 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('../src/window.js', () => ({ revealWindow: vi.fn() }));
+vi.mock('../src/failure.js', () => ({ reportFailure: vi.fn() }));
 
 vi.mock('../src/tray-icon.js', () => ({
   themedTray: (): TrayIconFixture => ({
@@ -139,5 +144,91 @@ describe('optional Drive tray module', () => {
     tray.destroy();
     expect(shared.stop).toHaveBeenCalledOnce();
     expect(shared.destroy).toHaveBeenCalledOnce();
+  });
+});
+
+const SYNC = { placements: 2, paused: false, needBytes: 0, pendingOps: 0, failures: 0 } as const;
+
+function controlState(change: Partial<DesktopDriveState> = {}): DesktopDriveState {
+  return {
+    mount: null,
+    sync: SYNC,
+    fuse: { available: true },
+    firstRun: { pending: false, defaultParent: '/home/u/SmartEverything' },
+    cache: DEFAULT_DESKTOP_DRIVE_CACHE,
+    ...change,
+  };
+}
+
+describe('drive tray status', () => {
+  it('words the sync summary for the tray', () => {
+    expect(traySyncOf(null)).toBeNull();
+    expect(traySyncOf(SYNC)).toEqual({ status: 'Up to date', paused: false });
+    expect(traySyncOf({ ...SYNC, pendingOps: 3 })).toEqual({ status: 'Syncing', paused: false });
+    expect(traySyncOf({ ...SYNC, needBytes: 2048 })?.status).toMatch(/^Syncing, .* left$/);
+    expect(traySyncOf({ ...SYNC, failures: 2 })).toEqual({
+      status: '2 need attention',
+      paused: false,
+    });
+    expect(traySyncOf({ ...SYNC, paused: true, failures: 2 })).toEqual({
+      status: 'Paused',
+      paused: true,
+    });
+  });
+});
+
+describe('drive tray link to the Computer service', () => {
+  function client(current: DesktopDriveState | null): {
+    readonly link: ReturnType<typeof trayDriveOf>;
+    readonly run: ReturnType<typeof vi.fn>;
+    readonly emit: (state: DesktopDriveState | null) => void;
+  } {
+    const run = vi.fn((): Promise<DesktopDriveState> => Promise.resolve(controlState()));
+    let listener: (state: DesktopDriveState | null) => void = (): void => undefined;
+    const link = trayDriveOf({
+      run,
+      current,
+      onState: (next): (() => void) => {
+        listener = next;
+        return (): void => {
+          listener = (): void => undefined;
+        };
+      },
+    });
+    return {
+      link,
+      run,
+      emit: (state): void => {
+        listener(state);
+      },
+    };
+  }
+
+  it('turns tray commands into control commands', () => {
+    const { link, run } = client(null);
+    link.commands.sync({ kind: 'pause' });
+    link.commands.sync({ kind: 'resume' });
+    link.commands.mount({ kind: 'again' });
+    expect(run.mock.calls).toEqual([
+      [{ kind: 'sync-pause' }],
+      [{ kind: 'sync-resume' }],
+      [{ kind: 'again' }],
+    ]);
+  });
+
+  it('publishes the service state and clears it when the service goes away', () => {
+    const { link, emit } = client(controlState());
+    const sync = vi.fn();
+    const mount = vi.fn();
+    const stop = link.follow({ sync, mount });
+    expect(sync).toHaveBeenLastCalledWith({ status: 'Up to date', paused: false });
+    expect(mount).toHaveBeenLastCalledWith(null);
+    emit(controlState({ mount: { status: 'Mounted', mounted: true }, sync: null }));
+    expect(sync).toHaveBeenLastCalledWith(null);
+    expect(mount).toHaveBeenLastCalledWith({ status: 'Mounted', mounted: true });
+    emit(null);
+    expect(sync).toHaveBeenLastCalledWith(null);
+    expect(mount).toHaveBeenLastCalledWith(null);
+    stop();
   });
 });

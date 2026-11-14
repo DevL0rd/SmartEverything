@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TEXT_HEAD_BYTES, decodeHead, readTextHead, type FetchText } from './text-head';
 
-vi.mock('../../nas/data', () => ({ useDriveLink: (): null => null }));
+vi.mock('../data', () => ({ useDriveLink: (): null => null }));
 
 const URL_OF_FILE = 'https://hub.test/drive/file/signed';
 

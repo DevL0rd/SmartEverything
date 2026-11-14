@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { flag } from '../sql';
+import { DriveTrashRows, type StashedRow } from './drive-trash-rows';
 
 const COLUMNS = `item_id, root_id, name, original_rel_path, trash_rel_path, is_folder, bytes,
   deleted_at, purge_at, deleted_by, added_by_profile_id`;
@@ -59,7 +60,23 @@ export interface DriveTrashBytes {
 }
 
 export class DriveTrashRepository {
-  constructor(private readonly context: StoreContext) {}
+  private readonly rows: DriveTrashRows;
+
+  constructor(private readonly context: StoreContext) {
+    this.rows = new DriveTrashRows(context);
+  }
+
+  stash(itemId: string): void {
+    this.rows.stash(itemId);
+  }
+
+  stashed(itemId: string): StashedRow[] {
+    return this.rows.rows(itemId);
+  }
+
+  reinstate(itemId: string, rows: readonly StashedRow[], to: string): void {
+    this.rows.reinstate(itemId, rows, to);
+  }
 
   find(itemId: string): DriveTrashEntry | undefined {
     return this.context.sql.get(
@@ -110,11 +127,15 @@ export class DriveTrashRepository {
   }
 
   forgetPhoto(itemId: string): void {
-    this.context.sql.run(
-      'forget the permanently deleted photo',
-      'delete from drive_photo_library where item_id = $itemId',
-      { itemId },
-    );
+    this.context.write(() => {
+      for (const id of [itemId, ...this.rows.photoIds(itemId)]) {
+        this.context.sql.run(
+          'forget the permanently deleted photo',
+          'delete from drive_photo_library where item_id = $id',
+          { id },
+        );
+      }
+    });
   }
 
   inRoot(rootId: string, after: DriveTrashCursor | null, limit: number): DriveTrashWindow {

@@ -3,7 +3,8 @@ import { APP_UPDATES_PAGE, AppUpdatesScreen } from '../features/app-updates';
 import { AiExtensionsRoute } from '../features/assistant';
 import { CamerasSettingsScreen, RemoteViewingScreen } from '../features/cameras';
 import { DeveloperScreen, RuntimeLogsScreen } from '../features/developer';
-import { RootDetailScreen } from '../features/drive/settings/root-detail-screen';
+import { BackupSettingsScreen } from '../features/photos/backup';
+import { DuplicatesSettingsScreen } from '../features/photos/duplicates';
 import { PhotosSettingsScreen } from '../features/photos/settings/screen';
 import { DevicesSettingsScreen } from '../features/settings/devices/devices-settings-screen';
 import { SetupScreen } from '../features/setup';
@@ -21,8 +22,9 @@ export const CUSTOM_SETTINGS_SCREENS: Readonly<Record<string, ComponentType>> = 
   developer: DeveloperScreen,
   'developer/logs': RuntimeLogsScreen,
   devices: DevicesSettingsScreen,
-  'drive/roots/[rootId]': RootDetailScreen,
   photos: PhotosSettingsScreen,
+  'photos/backup': BackupSettingsScreen,
+  'photos/duplicates': DuplicatesSettingsScreen,
   setup: SetupScreen,
   'cameras/remote-viewing': RemoteViewingScreen,
   'talk/channels/[channelId]': ChannelEditorScreen,

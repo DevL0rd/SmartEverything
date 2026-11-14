@@ -6,15 +6,24 @@ import {
   duplicatesCaptionOf,
   extraBytesOf,
   keepAllLabelOf,
+  ownDuplicatesOf,
   placesOf,
 } from './duplicate-group-row';
+import { driveChipsOf } from '../model/drive-chip';
 
 const ROOT_A = '00000000-0000-4000-8000-0000000000a1';
 const ROOT_B = '00000000-0000-4000-8000-0000000000b1';
-const LABELS = new Map([
-  [ROOT_A, 'Phone backup'],
-  [ROOT_B, 'Media disk'],
-]);
+const ROOT_THEIRS = '00000000-0000-4000-8000-0000000000c1';
+const ME = '00000000-0000-4000-8000-0000000000d1';
+const LABELS = driveChipsOf({
+  roots: [
+    { id: ROOT_A, scope: 'person', ownerProfileId: ME },
+    { id: ROOT_B, scope: 'home', ownerProfileId: null },
+  ],
+  viewerId: ME,
+  sharerOfRoot: new Map(),
+  names: new Map(),
+});
 const SHA = 'a'.repeat(64);
 const MB = 1024 ** 2;
 
@@ -29,6 +38,7 @@ function file(id: string, rootId: string, relPath: string): DriveItem {
     addedAt: '2026-11-07T10:00:00.000Z',
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'e',
     outside: false,
@@ -54,12 +64,23 @@ describe('Storage duplicates', () => {
     expect(view).toMatchObject({
       key: SHA,
       title: 'Lisbon 0412.jpg · 3 copies',
-      places: 'Phone backup, Media disk › Photos and Media disk › Older',
+      places: 'My Drive, Shared Drive › Photos and Shared Drive › Older',
     });
   });
 
   it('lists a place once when two copies share it', () => {
-    expect(placesOf([TWO, TWO], LABELS)).toBe('Media disk › Photos');
+    expect(placesOf([TWO, TWO], LABELS)).toBe('Shared Drive › Photos');
+  });
+
+  it('groups only copies in the drives the viewer owns or shares with the home', () => {
+    const theirs = file('00000000-0000-4000-8000-000000000004', ROOT_THEIRS, 'Lisbon 0412.jpg');
+    const groups = [
+      { sha256: SHA, bytes: 4 * MB, items: [ONE, theirs] },
+      { sha256: 'b'.repeat(64), bytes: MB, items: [ONE, TWO, theirs] },
+    ];
+    expect(ownDuplicatesOf(groups, LABELS)).toEqual([
+      { sha256: 'b'.repeat(64), bytes: MB, items: [ONE, TWO] },
+    ]);
   });
 
   it('counts the space won back as every copy beyond the first', () => {

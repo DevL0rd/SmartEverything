@@ -89,11 +89,11 @@ type PushIndex = Map<string, string[]>;
 
 export class PushQueue {
   readonly #database: PushQueueDatabase;
-  readonly #rootId: string;
+  readonly #placementId: string;
 
-  constructor(database: PushQueueDatabase, rootId: string) {
+  constructor(database: PushQueueDatabase, placementId: string) {
     this.#database = database;
-    this.#rootId = rootId;
+    this.#placementId = placementId;
   }
 
   submit(intents: readonly PushIntent[]): void {
@@ -160,7 +160,7 @@ export class PushQueue {
     const dropped = this.#dropPushes(index, (relPath) => relPath === intent.from);
     this.#add('move', { from: intent.from, to: intent.to, baseRev: intent.baseRev });
     if (dropped === 0) return;
-    const moved = this.#database.files.get(this.#rootId, intent.to);
+    const moved = this.#database.files.get(this.#placementId, intent.to);
     for (const next of pushIntentOf(moved, intent.to)) this.#enqueue(next, index);
   }
 

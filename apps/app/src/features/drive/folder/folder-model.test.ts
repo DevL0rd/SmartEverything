@@ -1,21 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { DRIVE_ITEM, type DriveItem } from '@smarteverything/domain';
+import {
+  DRIVE_ITEM,
+  DRIVE_PLACEMENT,
+  type DriveItem,
+  type DrivePlacement,
+} from '@smarteverything/domain';
 import { bytes } from '../../../format/number';
-import { rootRow, ROOT_ID, FOLDER_ID } from '../../nas/data/fixtures';
+import { rootRow, ROOT_ID, FOLDER_ID } from '../data/fixtures';
 import {
   DEFAULT_SORT,
   NO_SELECTION,
   actionsOf,
   captionOf,
   columnSort,
-  crumbsOf,
   folderSubtitle,
   footerLine,
-  issueOf,
   itemsOfKind,
   kindChipsOf,
   moveFocus,
+  placedComputersOf,
+  placedFolderIdsOf,
   revealOffset,
+  rowMarksOf,
   selectAllOf,
   selectOne,
   selectRange,
@@ -46,6 +52,7 @@ function base(index: number, name: string, modifiedAt: string, by: string | null
     addedAt: AT,
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'etag',
     outside: false,
@@ -199,40 +206,23 @@ describe('folder kinds and text', () => {
     expect(names(itemsOfKind(items, 'folder'))).toEqual(['Quotes']);
   });
 
-  it('says how much is here, whether it is read only and where it syncs', () => {
+  it('says how much is here, whether it is view only and how many computers hold it', () => {
     expect(folderSubtitle({ items: 48, bytes: 2_254_857_830 }, false, 3)).toBe(
-      `48 items · ${bytes(2_254_857_830)} · synced to 3 computers`,
+      `48 items · ${bytes(2_254_857_830)} · on 3 computers`,
     );
     expect(folderSubtitle({ items: 1, bytes: 0 }, true, 0)).toBe(
-      `1 item · ${bytes(0)} · read only`,
+      `1 item · ${bytes(0)} · view only`,
     );
     expect(footerLine({ items: 1200, bytes: 0 }, 6, 2)).toBe(
       `1,200 items · ${bytes(0)} · 6 shown · 2 selected`,
     );
   });
 
-  it('takes totals from the open folder or the library folder', () => {
+  it('takes totals from the open folder or the drive', () => {
     const root = rootRow(ROOT_ID, 'ready');
     expect(totalsOf(root, folder(1, 'Quotes', 9))).toEqual({ items: 9, bytes: 10 });
     expect(totalsOf(root, null)).toEqual({ items: root.items, bytes: root.bytes });
-  });
-
-  it('links the breadcrumbs it knows and leaves the open folder out', () => {
-    const root = rootRow(ROOT_ID, 'ready');
-    const open = DRIVE_ITEM.parse({
-      ...base(9, 'Kitchen', AT, null),
-      relPath: 'Projects/Home/Kitchen',
-      kind: 'folder',
-      childCount: 0,
-      bytes: 0,
-    });
-    expect(crumbsOf(root, open)).toEqual([
-      { key: 'drive', label: 'My Drive', target: { kind: 'drive' } },
-      { key: 'root', label: 'Photos', target: { kind: 'root' } },
-      { key: 'Projects', label: 'Projects', target: null },
-      { key: 'Projects/Home', label: 'Home', target: { kind: 'folder', id: FOLDER_ID } },
-    ]);
-    expect(crumbsOf(root, null).at(-1)?.target).toBeNull();
+    expect(totalsOf(null, null)).toEqual({ items: 0, bytes: 0 });
   });
 
   it('says when a file changed outside SmartEverything', () => {
@@ -257,9 +247,58 @@ describe('folder kinds and text', () => {
     ]);
   });
 
-  it('names what keeps a library folder from opening', () => {
-    expect(issueOf(null)).toEqual({ kind: 'private' });
-    expect(issueOf(rootRow(ROOT_ID, 'ready'))).toBeNull();
-    expect(issueOf(rootRow(ROOT_ID, 'scanning'))).toEqual({ kind: 'scanning' });
+  it('marks starred, shared and placed rows in that order', () => {
+    const plain = file(8, 'plan.pdf', 10);
+    expect(rowMarksOf(plain, new Set())).toEqual([]);
+    const marked = DRIVE_ITEM.parse({ ...plain, starred: true, shared: true });
+    expect(rowMarksOf(marked, new Set([marked.id])).map((mark) => mark.label)).toEqual([
+      'Starred',
+      'Shared',
+      'On a computer',
+    ]);
+  });
+
+  it('finds the placed folders and the computers of one drive, enabled ones only', () => {
+    const placement = (
+      deviceId: string,
+      folderItemId: string | null,
+      enabled: boolean,
+    ): DrivePlacement =>
+      DRIVE_PLACEMENT.parse({
+        id: idOf(40),
+        deviceId,
+        rootId: ROOT_ID,
+        folderItemId,
+        mode: 'mounted',
+        localPath: '/home/me/Drive',
+        enabled,
+        hold: null,
+        createdBy: SAM,
+        createdAt: AT,
+        status: {
+          state: 'mounted',
+          tier: 'full',
+          basicLimits: null,
+          readOnly: false,
+          route: null,
+          cacheBytes: 0,
+          pinnedBytes: 0,
+          openFiles: 0,
+          pendingUploads: 0,
+          needBytes: 0,
+          lastSyncedAt: null,
+          errors: [],
+          reason: null,
+          reportedAt: AT,
+        },
+      });
+    const placements = [
+      placement(SAM, FOLDER_ID, true),
+      placement(SAM, null, true),
+      placement(ALEX, idOf(3), false),
+    ];
+    expect([...placedFolderIdsOf(placements, ROOT_ID)]).toEqual([FOLDER_ID]);
+    expect(placedComputersOf(placements, ROOT_ID)).toBe(1);
+    expect(placedComputersOf(placements, idOf(9))).toBe(0);
   });
 });

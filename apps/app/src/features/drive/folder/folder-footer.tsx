@@ -8,7 +8,7 @@ import { notify, notifyFailure } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
 import { count } from '../../../format/number';
 import { openFile, saveFile } from '../../../platform/file-actions';
-import { driveLinks } from '../../nas/data';
+import { driveLinks } from '../data';
 import type { KeyHint } from './folder-keys';
 import { ACTION_SPECS } from './folder-list';
 import type { FolderAction } from './folder-model';

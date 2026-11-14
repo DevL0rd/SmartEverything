@@ -4,15 +4,27 @@ import { Writable } from 'node:stream';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { ControlLine, HelperPort } from './placements.js';
 
+export interface HelperRouteLine {
+  readonly op: 'route';
+  readonly url?: string;
+  readonly server?: string;
+  readonly pin?: string;
+}
+
+export interface HelperCacheLine {
+  readonly op: 'cache';
+  readonly maxAgeSeconds: number;
+  readonly maxBytes?: number;
+  readonly minFreeBytes?: number;
+  readonly cleanupSeconds: number;
+}
+
+export type HelperSetting = HelperRouteLine | HelperCacheLine;
+
 export type HelperLine =
   | ControlLine
-  | { readonly op: 'limit'; readonly mount: string; readonly bytes: number }
+  | HelperSetting
   | { readonly op: 'pin' | 'unpin'; readonly mount: string; readonly path: string };
-
-export interface HelperCredentials {
-  readonly hubUrl: string;
-  readonly token: string;
-}
 
 export interface HelperChild {
   readonly writeControl: (line: string) => void;
@@ -29,7 +41,7 @@ export type SpawnHelper = (file: string, args: readonly string[]) => HelperChild
 export interface HelperLaunch {
   readonly binary: string;
   readonly cacheDirectory: string;
-  readonly credentials: () => Promise<HelperCredentials>;
+  readonly token: () => Promise<string>;
   readonly spawn: SpawnHelper;
 }
 
@@ -100,6 +112,7 @@ interface Running {
 export class HelperProcess implements HelperPort {
   private readonly listeners = new Set<(raw: string) => void>();
   private readonly mounts = new Set<string>();
+  private readonly settings = new Map<HelperSetting['op'], HelperSetting>();
   private current: Running | null = null;
   private queue: Promise<void> = Promise.resolve();
 
@@ -110,6 +123,11 @@ export class HelperProcess implements HelperPort {
 
   send(line: HelperLine): void {
     this.queue = this.queue.then(() => this.deliver(line));
+  }
+
+  configure(setting: HelperSetting): void {
+    this.settings.set(setting.op, setting);
+    this.current?.child.writeControl(JSON.stringify(setting));
   }
 
   onLine(listener: (raw: string) => void): () => void {
@@ -137,19 +155,16 @@ export class HelperProcess implements HelperPort {
       if (line.op === 'unmount') this.mounts.delete(line.mount);
     } catch (cause) {
       this.log.error('drive_mount.helper_send_failed', cause, { op: line.op });
-      this.fail(line.mount, `The mount helper is not available: ${messageOf(cause)}`);
+      if ('mount' in line) {
+        this.fail(line.mount, `The mount helper is not available: ${messageOf(cause)}`);
+      }
     }
   }
 
   private async running(): Promise<Running> {
     if (this.current !== null) return this.current;
-    const { hubUrl, token } = await this.launch.credentials();
-    const child = this.launch.spawn(this.launch.binary, [
-      '-hub',
-      hubUrl,
-      '-cache',
-      this.launch.cacheDirectory,
-    ]);
+    const token = await this.launch.token();
+    const child = this.launch.spawn(this.launch.binary, ['-cache', this.launch.cacheDirectory]);
     const running = this.adopt(child);
     try {
       await child.sendToken(token);
@@ -157,6 +172,7 @@ export class HelperProcess implements HelperPort {
       child.kill();
       throw cause;
     }
+    for (const setting of this.settings.values()) child.writeControl(JSON.stringify(setting));
     this.current = running;
     return running;
   }

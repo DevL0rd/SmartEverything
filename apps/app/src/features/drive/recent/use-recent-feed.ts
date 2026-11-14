@@ -3,7 +3,7 @@ import type { DriveRecentEntry, DriveRecentFilter } from '@smarteverything/domai
 import { background } from '@smarteverything/logging';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
-import { flattenPages, useDriveRecent } from '../../nas/data';
+import { flattenPages, useDriveRecent } from '../data';
 import {
   linesOf,
   recentDaysOf,

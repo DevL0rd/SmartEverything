@@ -1,25 +1,40 @@
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DRIVE_ITEM, DRIVE_ROOT, type DriveItem } from '@smarteverything/domain';
-import { FOLDER_ID, ROOT_ID, rootRow } from '../../nas/data/fixtures';
+import { DRIVE_ITEM, type DriveItem } from '@smarteverything/domain';
+import { FOLDER_ID, ROOT_ID, rootRow } from '../data/fixtures';
 import type { FolderSlotContext } from '../folder/folder-model';
 
 interface Seen {
   area: number;
   window: number;
   live: boolean;
+  access: string;
+  label: string | null;
   writable: boolean | null;
+  shown: string | null;
 }
 
-const seen = vi.hoisted((): Seen => ({ area: 1336, window: 1600, live: true, writable: null }));
+const seen = vi.hoisted((): Seen => ({
+  area: 1336,
+  window: 1600,
+  live: true,
+  access: 'shared',
+  label: 'Shared Drive',
+  writable: null,
+  shown: null,
+}));
 
 interface Passed {
   readonly children?: ReactNode;
 }
 
 interface SubjectProps {
-  readonly subject: { readonly item: DriveItem; readonly writable: boolean };
+  readonly subject: {
+    readonly item: DriveItem;
+    readonly writable: boolean;
+    readonly label: string;
+  };
 }
 
 const pass = ({ children }: Passed): ReactNode => children ?? null;
@@ -55,6 +70,12 @@ vi.mock('../../../design/motion', () => ({
 vi.mock('../../../store/selectors', () => ({
   useSyncStatus: (): { status: string } => ({ status: seen.live ? 'live' : 'offline' }),
 }));
+vi.mock('../data', () => ({
+  useDriveOf: (): object => ({ root: { id: 'root' }, label: seen.label, access: seen.access }),
+}));
+vi.mock('../share', () => ({
+  useShareSheet: (): object => ({ open: (): void => undefined, host: 'share-host' }),
+}));
 vi.mock('../../../components/use-escape', () => ({ useEscape: (): void => undefined }));
 vi.mock('../../../components/docked-pane', () => ({
   DockedPane: ({ children }: Passed): ReactNode => createElement('aside', {}, children),
@@ -70,6 +91,7 @@ vi.mock('../folder/folder-list', () => ({ entryKindOf: (): string => 'file' }));
 vi.mock('./details-tabs', () => ({
   DetailsTabs: ({ subject }: SubjectProps): ReactNode => {
     seen.writable = subject.writable;
+    seen.shown = subject.label;
     return createElement('nav', {}, `tabs:${subject.item.name}`);
   },
 }));
@@ -90,6 +112,7 @@ const file = DRIVE_ITEM.parse({
   addedAt: '2026-11-07T10:00:00.000Z',
   openedAt: null,
   starred: false,
+  shared: false,
   rev: 1,
   etag: 'etag',
   outside: false,
@@ -104,9 +127,18 @@ const file = DRIVE_ITEM.parse({
   thumb: { state: 'none' },
 });
 
-function contextOf(focused: DriveItem | null, readOnly = false): FolderSlotContext {
-  const root = DRIVE_ROOT.parse({ ...rootRow(ROOT_ID, 'ready'), readOnly });
-  return { root, folder: null, items: [], picked: [], focused, close: () => undefined };
+function contextOf(focused: DriveItem | null): FolderSlotContext {
+  const root = rootRow(ROOT_ID, 'ready');
+  return {
+    rootId: ROOT_ID,
+    root,
+    writable: true,
+    folder: null,
+    items: [],
+    picked: [],
+    focused,
+    close: () => undefined,
+  };
 }
 
 function render(context: FolderSlotContext): string {
@@ -118,13 +150,17 @@ describe('details pane', () => {
     seen.area = 1336;
     seen.window = 1600;
     seen.live = true;
+    seen.access = 'shared';
+    seen.label = 'Shared Drive';
     seen.writable = null;
+    seen.shown = null;
   });
 
   it('docks beside the list from 1024 wide', () => {
     const html = render(contextOf(file));
     expect(html).toContain('<aside>');
     expect(html).toContain('tabs:plan.pdf');
+    expect(html).toContain('share-host');
   });
 
   it('opens as a side sheet over the list below 1024', () => {
@@ -141,20 +177,34 @@ describe('details pane', () => {
     expect(render(contextOf(file))).toContain('pull-up:plan.pdf');
   });
 
-  it('asks for a pick when nothing is chosen at the top of a library folder', () => {
+  it('asks for a pick when nothing is chosen at the top of a drive', () => {
     expect(render(contextOf(null))).toContain('Nothing picked');
     seen.area = 412;
     seen.window = 412;
     expect(render(contextOf(null))).toBe('');
   });
 
-  it('is read-only when offline or when the library folder is read-only', () => {
+  it('writes only with own, Shared Drive or edit access, and never offline', () => {
     render(contextOf(file));
     expect(seen.writable).toBe(true);
-    render(contextOf(file, true));
+    seen.access = 'edit';
+    render(contextOf(file));
+    expect(seen.writable).toBe(true);
+    seen.access = 'view';
+    render(contextOf(file));
     expect(seen.writable).toBe(false);
+    seen.access = 'own';
     seen.live = false;
     render(contextOf(file));
     expect(seen.writable).toBe(false);
+  });
+
+  it('names the drive of the item, and Shared with me when no drive name is known', () => {
+    render(contextOf(file));
+    expect(seen.shown).toBe('Shared Drive');
+    seen.label = null;
+    seen.access = 'view';
+    render(contextOf(file));
+    expect(seen.shown).toBe('Shared with me');
   });
 });

@@ -12,7 +12,7 @@ import { DRIVE_CONFLICT, DRIVE_CONFLICT_RESOLVE } from '../drive/conflict';
 import { DRIVE_QUOTA, DRIVE_QUOTA_SET } from '../drive/quota';
 import { DRIVE_SETTINGS, DRIVE_SETTINGS_UPDATE } from '../drive/settings';
 import { DRIVE_SHARE, DRIVE_SHARE_CREATE, DRIVE_SHARE_CREATED } from '../drive/share';
-import { DRIVE_USAGE } from '../drive/usage';
+import { DRIVE_USAGE_TOTALS } from '../drive/usage';
 import { DRIVE_VERSION } from '../drive/version';
 import { DRIVE_ITEM } from '../drive/item';
 import { MONTH } from '../photos/shared';
@@ -152,11 +152,11 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     path: '/api/drive/usage',
     access: 'member',
     summary:
-      'Totals of space used in files, versions and trash: the owner sees one row per person and the Shared Drive without names, a member sees their own',
+      'Totals of space used in files, versions and trash with the space limit beside them: the owner sees one row per person and the Shared Drive without names, a member sees their own',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
-    response: z.array(DRIVE_USAGE),
+    response: z.array(DRIVE_USAGE_TOTALS),
   }),
   listQuotas: endpoint({
     method: 'GET',

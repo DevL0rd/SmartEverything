@@ -1,7 +1,7 @@
 import type { DriveItem, DriveUploadTarget } from '@smarteverything/domain';
 import type { ChangeEnv } from './changes';
 import type { StoredDrive } from '../store/repositories/drive-roots';
-import { canRead, canWrite, itemAccess, type DriveActor } from './access';
+import { canRead, canWrite, driveAccess, itemAccess, type DriveActor } from './access';
 import { locate, type DriveWriteRoot } from './intents';
 import { freeNameAt, TusError } from './uploads-tus-wire';
 
@@ -11,9 +11,30 @@ export interface Destination {
   readonly item: Exclude<DriveItem, { readonly kind: 'folder' }> | null;
 }
 
+const NO_TARGET = 'There is no such target for this credential.';
+
+const VIEW_ONLY = 'This target can only be viewed; nothing can be uploaded into it.';
+
+function writableTop(store: ChangeEnv['store'], rootId: string, caller: DriveActor): Destination {
+  const root = store.driveRoots.find(rootId);
+  if (root === undefined) {
+    throw new TusError(404, NO_TARGET);
+  }
+  const access = driveAccess(caller, root);
+  if (!canRead(access)) {
+    throw new TusError(404, NO_TARGET);
+  }
+  if (!canWrite(access)) {
+    throw new TusError(403, VIEW_ONLY);
+  }
+  return { root, folder: null, item: null };
+}
+
+type InsideTarget = Exclude<DriveUploadTarget, { readonly kind: 'drive' }>;
+
 function writable(
   store: ChangeEnv['store'],
-  target: DriveUploadTarget,
+  target: InsideTarget,
   caller: DriveActor,
 ): { readonly root: StoredDrive; readonly found: DriveItem } {
   const found = store.driveItems.find(
@@ -22,14 +43,14 @@ function writable(
   );
   const root = found === undefined ? undefined : store.driveRoots.find(found.rootId);
   if (found === undefined || root === undefined) {
-    throw new TusError(404, 'There is no such target for this credential.');
+    throw new TusError(404, NO_TARGET);
   }
   const access = itemAccess(store, caller, root, found);
   if (!canRead(access)) {
-    throw new TusError(404, 'There is no such target for this credential.');
+    throw new TusError(404, NO_TARGET);
   }
   if (!canWrite(access)) {
-    throw new TusError(403, 'This target can only be viewed; nothing can be uploaded into it.');
+    throw new TusError(403, VIEW_ONLY);
   }
   return { root, found };
 }
@@ -39,6 +60,9 @@ export function destinationOf(
   target: DriveUploadTarget,
   caller: DriveActor,
 ): Destination {
+  if (target.kind === 'drive') {
+    return writableTop(store, target.rootId, caller);
+  }
   const { root, found } = writable(store, target, caller);
   if (target.kind === 'folder') {
     if (found.kind !== 'folder') {

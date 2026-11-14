@@ -9,7 +9,15 @@ import type { SelectOption } from '../../../components/select-picker';
 import { count } from '../../../format/number';
 import { joinParts, plural } from '../../../format/text';
 import { localDayKey, startOfDayKey } from '../../../format/time';
-import { ChipRow } from '../../nas/frame/chip-row';
+import { ChipRow } from '../../../components/library-frame/chip-row';
+import {
+  DRIVE_FILTERS,
+  DRIVE_FILTER_LOOK,
+  drivePathOf,
+  type DriveChipKey,
+  type DriveChipOf,
+  type DriveFilter,
+} from '../model/drive-chip';
 import { EVERYONE_VALUE, PersonPicker, YOU_VALUE, type PersonOption } from './person-picker';
 import { ViaChips } from './via-chips';
 import {
@@ -27,16 +35,13 @@ export type ActivityKind = DriveItem['kind'];
 export interface ActivityItem {
   readonly entry: ActivityEntry;
   readonly kind: ActivityKind | null;
+  readonly drive: DriveChipKey;
 }
 
 export interface ActivityNames {
-  readonly roots: ReadonlyMap<string, string>;
+  readonly chipOf: DriveChipOf;
   readonly people: ReadonlyMap<string, string>;
   readonly devices: ReadonlyMap<string, string>;
-}
-
-export function folderPathOf(rootName: string, relPath: string): string {
-  return [rootName, ...relPath.split('/').slice(0, -1)].join(' › ');
 }
 
 function nameOf(names: ReadonlyMap<string, string>, id: string | null): string | null {
@@ -45,16 +50,15 @@ function nameOf(names: ReadonlyMap<string, string>, id: string | null): string |
 
 export function activityItemOf(feed: DriveActivityEntry, names: ActivityNames): ActivityItem {
   const { row, item } = feed;
+  const chip = names.chipOf(row.rootId);
   return {
     kind: item?.kind ?? null,
+    drive: chip.key,
     entry: {
       row,
       itemName: item?.name ?? 'Removed item',
       folderId: item?.parentId ?? null,
-      folderPath:
-        item === null
-          ? 'Location unavailable'
-          : folderPathOf(names.roots.get(row.rootId) ?? 'Drive', item.relPath),
+      folderPath: item === null ? 'Location unavailable' : drivePathOf(chip, item.relPath),
       actorName: nameOf(names.people, row.actorProfileId),
       deviceName: nameOf(names.devices, row.deviceId),
     },
@@ -103,7 +107,7 @@ export function feedRowsOf(
 export interface ActivityFilter {
   readonly person: string;
   readonly vias: ReadonlySet<DriveVia>;
-  readonly rootId: string | null;
+  readonly drive: DriveFilter;
   readonly kind: ActivityKind | null;
   readonly folderKey: string | null;
 }
@@ -111,7 +115,7 @@ export interface ActivityFilter {
 export const NO_FILTER: ActivityFilter = {
   person: EVERYONE_VALUE,
   vias: new Set(),
-  rootId: null,
+  drive: 'all',
   kind: null,
   folderKey: null,
 };
@@ -129,7 +133,7 @@ function personMatches(entry: ActivityEntry, person: string, me: string | null):
 
 function placeMatches(item: ActivityItem, filter: ActivityFilter): boolean {
   return (
-    (filter.rootId === null || item.entry.row.rootId === filter.rootId) &&
+    (filter.drive === 'all' || item.drive === filter.drive) &&
     (filter.kind === null || item.kind === filter.kind)
   );
 }
@@ -159,7 +163,7 @@ export function isFiltered(filter: ActivityFilter): boolean {
   return (
     filter.person !== EVERYONE_VALUE ||
     filter.vias.size > 0 ||
-    filter.rootId !== null ||
+    filter.drive !== 'all' ||
     filter.kind !== null ||
     filter.folderKey !== null
   );
@@ -237,7 +241,7 @@ export function emptyCopyOf(filter: ActivityFilter, range: ActivityRange): Empty
   if (isFiltered(filter)) {
     return {
       title: 'Nothing matches these filters',
-      body: `No changes ${phrase} match who, how, folder and kind.`,
+      body: `No changes ${phrase} match who, how, drive, folder and kind.`,
       action: 'clear',
       label: 'Clear filters',
     };
@@ -262,35 +266,30 @@ const KIND_OPTIONS: readonly SelectOption<ActivityKind | typeof ALL>[] = [
   { value: 'other', label: 'Other' },
 ];
 
-export interface RootOption {
-  readonly id: string;
-  readonly name: string;
-}
-
 export interface ActivityFiltersProps {
   readonly filter: ActivityFilter;
   readonly onChange: (filter: ActivityFilter) => void;
   readonly people: readonly PersonOption[];
   readonly me: string | null;
-  readonly roots: readonly RootOption[];
   readonly compact: boolean;
 }
 
-function PlacePickers({ filter, onChange, roots }: ActivityFiltersProps): ReactNode {
-  const rootOptions = [
-    { value: ALL, label: 'All library folders' },
-    ...roots.map((root) => ({ value: root.id, label: root.name })),
-  ];
+const DRIVE_OPTIONS: readonly SelectOption<DriveFilter>[] = DRIVE_FILTERS.map((drive) => ({
+  value: drive,
+  label: DRIVE_FILTER_LOOK[drive].label,
+}));
+
+function PlacePickers({ filter, onChange }: ActivityFiltersProps): ReactNode {
   return (
     <>
       <ChoiceChip
-        label="Library folder"
-        icon="folder"
-        options={rootOptions}
-        value={filter.rootId ?? ALL}
-        all={ALL}
+        label="Drive"
+        icon={DRIVE_FILTER_LOOK[filter.drive].icon}
+        options={DRIVE_OPTIONS}
+        value={filter.drive}
+        all="all"
         onChange={(picked) => {
-          onChange({ ...filter, rootId: picked === ALL ? null : picked });
+          onChange({ ...filter, drive: picked });
         }}
       />
       <ChoiceChip
@@ -347,7 +346,7 @@ function WhoAndHow(props: ActivityFiltersProps): ReactNode {
 }
 
 function PhoneFilters(props: ActivityFiltersProps): ReactNode {
-  const placed = props.filter.rootId !== null || props.filter.kind !== null;
+  const placed = props.filter.drive !== 'all' || props.filter.kind !== null;
   const [more, setMore] = useState(placed);
   const open = more || placed;
   return (

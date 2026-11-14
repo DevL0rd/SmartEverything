@@ -32,9 +32,8 @@ func newMountSet(source Filesystem, report *reporter) *mountSet {
 	return &mountSet{source: source, report: report, mounts: map[string]*activeMount{}}
 }
 
-func (s *mountSet) reachable(reachable bool) error {
-	s.source.SetReachable(reachable)
-	return nil
+func (s *mountSet) route(spec routeSpec) error {
+	return s.source.SwitchRoute(spec)
 }
 
 func (s *mountSet) fail(id string, err error) error {
@@ -175,10 +174,6 @@ func (s *mountSet) unpin(id, filePath string) error {
 	return s.source.Unpin(context.Background(), active.root, filePath)
 }
 
-func (s *mountSet) limit(id string, bytes int64) error {
-	active, err := s.take(id)
-	if err != nil {
-		return err
-	}
-	return s.source.SetLimit(active.root, bytes)
+func (s *mountSet) cache(policy cachePolicy) error {
+	return s.source.SetPolicy(policy)
 }

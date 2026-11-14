@@ -13,8 +13,15 @@ import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { useSizeClass } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
-import { flattenPages, useDriveConflicts, useDriveItem, useDriveVersions } from '../../nas/data';
+import {
+  flattenPages,
+  useDriveConflicts,
+  useDriveItem,
+  useDriveOf,
+  useDriveVersions,
+} from '../data';
 import { entryKindOf } from '../folder/folder-list';
+import { canWrite } from '../model/drive-access';
 import { RestoreButtons } from './restore';
 import {
   OneVersion,
@@ -140,7 +147,8 @@ function CompareArea({ parts }: { readonly parts: PanelParts }): ReactNode {
 
 function Restore({ parts }: { readonly parts: PanelParts }): ReactNode {
   const { data, picks, look, target } = parts;
-  const writable = useSyncStatus().status === 'live' && !target.root.readOnly;
+  const access = useDriveOf(target.item).access;
+  const writable = useSyncStatus().status === 'live' && canWrite(access);
   return (
     <RestoreButtons
       item={data.item}

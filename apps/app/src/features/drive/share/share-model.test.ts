@@ -1,29 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import { DRIVE_SHARE, type DriveShare } from '@smarteverything/domain';
 import { DAY_MS } from '../../../format/time';
-import { ROOT_ID, rootRow } from '../../nas/data/fixtures';
+import { GRANT_ID, grantRow } from '../data/fixtures';
 import { linkGroupsOf } from '../shared/shared-model';
 import {
   END_OPTIONS,
+  LINK_STATE_LINE,
   NEW_DRAFT,
+  ROLE_OPTIONS,
   accessOptionsOf,
-  audienceOf,
+  candidatesOf,
   draftReady,
   expiryOf,
+  footerLineOf,
   itemLinkStatsOf,
-  mayMakeLinks,
+  linkStateOf,
+  peopleModeOf,
   reachOf,
   shareRequestOf,
+  shareTitleOf,
+  sharedPeopleOf,
 } from './share-model';
 
 const ITEM_ID = 'a1b2c3d4-0000-4000-8000-000000000201';
 const ME = 'a1b2c3d4-0000-4000-8000-000000000301';
 const SAM = 'a1b2c3d4-0000-4000-8000-000000000302';
+const ROBIN = 'a1b2c3d4-0000-4000-8000-000000000303';
+const GONE = 'a1b2c3d4-0000-4000-8000-000000000304';
+const OTHER_ITEM_ID = 'a1b2c3d4-0000-4000-8000-000000000202';
 const NOW = Date.parse('2026-11-07T12:00:00.000Z');
 
 const PEOPLE = [
   { id: ME, name: 'Dana Moss' },
   { id: SAM, name: 'Sam Moss' },
+  { id: ROBIN, name: 'Robin Moss' },
 ];
 
 function share(fields: Partial<DriveShare>): DriveShare {
@@ -94,33 +104,67 @@ describe('the share sheet copy', () => {
     expect(narrow[1]?.spoken).toBe('View and download');
   });
 
-  it('says everyone in the home sees a home library folder, with the right verb', () => {
-    const root = rootRow(ROOT_ID, 'ready');
-    expect(audienceOf(root, PEOPLE, ME)).toEqual({
-      people: PEOPLE,
-      line: 'Everyone in the home can edit',
-      from: 'from Photos',
-    });
-    expect(audienceOf({ ...root, readOnly: true }, PEOPLE, ME).line).toBe(
-      'Everyone in the home can view',
+  it('titles the sheet with the item name in quotes', () => {
+    expect(shareTitleOf({ name: 'Taxes 2026' })).toBe('Share ‘Taxes 2026’');
+  });
+
+  it('lets only the drive’s person manage people, and shows everyone on the Shared Drive', () => {
+    expect(peopleModeOf('own')).toBe('manage');
+    expect(peopleModeOf('shared')).toBe('everyone');
+    expect(peopleModeOf('edit')).toBe('owner-only');
+    expect(peopleModeOf('view')).toBe('owner-only');
+    expect(peopleModeOf('none')).toBe('owner-only');
+  });
+
+  it('says who can open the item under the sheet', () => {
+    expect(footerLineOf('own', null)).toBe('Only you and the people above can open this');
+    expect(footerLineOf('shared', null)).toBe(
+      'Everyone in the home can already open this; you can still make a link',
+    );
+    expect(footerLineOf('edit', 'Sam Moss')).toBe(
+      'Only Sam Moss and the people above can open this',
     );
   });
 
-  it('says only the owner sees a person’s own files', () => {
-    const own = { ...rootRow(ROOT_ID, 'ready'), scope: 'person', ownerProfileId: SAM } as const;
-    expect(audienceOf(own, PEOPLE, SAM)).toEqual({
-      people: [PEOPLE[1]],
-      line: 'Only you can open it',
-      from: 'from Photos',
-    });
-    expect(audienceOf(own, PEOPLE, ME).line).toBe('Only Sam Moss can open it');
+  it('offers Can view and Can edit as the roles', () => {
+    expect(ROLE_OPTIONS.map((option) => [option.value, option.label])).toEqual([
+      ['view', 'Can view'],
+      ['edit', 'Can edit'],
+    ]);
   });
 
-  it('lets the owner make links, and members only when the owner allows it', () => {
-    expect(mayMakeLinks(true, null)).toBe(true);
-    expect(mayMakeLinks(false, null)).toBe(false);
-    expect(mayMakeLinks(false, { membersMayShare: false })).toBe(false);
-    expect(mayMakeLinks(false, { membersMayShare: true })).toBe(true);
+  it('lists the people of this item only and offers everyone else but the drive’s person', () => {
+    const grants = [
+      grantRow(GRANT_ID, ITEM_ID, SAM, 'edit'),
+      grantRow('a1b2c3d4-0000-4000-8000-000000000013', OTHER_ITEM_ID, ROBIN, 'view'),
+    ];
+    const people = sharedPeopleOf(grants, ITEM_ID, PEOPLE, ME);
+    expect(people.map((person) => [person.name, person.grant.role])).toEqual([
+      ['Sam Moss', 'edit'],
+    ]);
+    expect(candidatesOf(PEOPLE, people, ME).map((person) => person.name)).toEqual(['Robin Moss']);
+  });
+
+  it('names a grant of a removed person and the viewer’s own grant', () => {
+    const grants = [
+      grantRow(GRANT_ID, ITEM_ID, ME, 'view'),
+      grantRow('a1b2c3d4-0000-4000-8000-000000000013', ITEM_ID, GONE, 'view'),
+    ];
+    expect(sharedPeopleOf(grants, ITEM_ID, PEOPLE, ME).map((person) => person.name)).toEqual([
+      'You',
+      'A former member',
+    ]);
+  });
+
+  it('allows links on own and Shared Drive items, for members only when the owner allows', () => {
+    expect(linkStateOf('own', true, null)).toBe('allowed');
+    expect(linkStateOf('own', false, null)).toBe('members-off');
+    expect(linkStateOf('shared', false, { membersMayShare: true })).toBe('allowed');
+    expect(linkStateOf('own', false, { membersMayShare: false })).toBe('members-off');
+    expect(linkStateOf('edit', true, null)).toBe('owner-only');
+    expect(linkStateOf('view', false, { membersMayShare: true })).toBe('owner-only');
+    expect(LINK_STATE_LINE['members-off']).toBe('The home owner turned off links for members');
+    expect(LINK_STATE_LINE['owner-only']).toBe('Only the owner can share');
   });
 
   it('says when a link opens only on the home network', () => {

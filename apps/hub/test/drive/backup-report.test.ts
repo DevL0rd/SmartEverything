@@ -3,8 +3,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { hashClientToken, type ClientRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ensureManagedRoots } from '../../src/drive/managed-roots';
-import { systemProbe } from '../../src/drive/volumes';
+import { systemDataSpace } from '../../src/drive/data-space';
+import { ensureDrives } from '../../src/drive/spaces';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
 import type { Caller } from '../../src/server/auth';
 import { driveRoutes } from '../../src/server/handlers/drive';
@@ -71,21 +71,20 @@ beforeEach(async () => {
         conflicts: () => ({ items: [], next: null }),
       },
       removeLocationOutside: () => true,
-      notifyOwner: (): void => undefined,
+      notifyCorruption: (): void => undefined,
     },
     layout: opened.layout,
-    installDirectory: join(opened.directory, 'install'),
     localUrl: () => 'http://hub.local:8080',
     links: new MediaLinks(() => NOW),
     nodes: new ComputerNodeAccess(store, () => NOW),
-    probe: systemProbe,
+    probe: systemDataSpace,
     now: () => NOW,
     log,
     watchSettleMs: 10,
     scannerScript: join(opened.directory, 'unused-scanner.mjs'),
     hasherScript: join(opened.directory, 'unused-hasher.mjs'),
   });
-  await ensureManagedRoots(store, opened.layout, store.profiles.list());
+  await ensureDrives(store, opened.layout, store.profiles.list());
   operations = new Operations(log, store);
   operations.attach(driveRoutes(store, runtime.services));
 });

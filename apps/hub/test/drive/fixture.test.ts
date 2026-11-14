@@ -6,14 +6,10 @@ import { DRIVE_ALBUM } from '../../../../packages/domain/src/drive/album';
 import { DRIVE_CONFLICT } from '../../../../packages/domain/src/drive/conflict';
 import { DRIVE_ITEM } from '../../../../packages/domain/src/drive/item';
 import { DRIVE_QUOTA } from '../../../../packages/domain/src/drive/quota';
-import {
-  DRIVE_ROOT_KINDS,
-  DRIVE_ROOT_STATES,
-  DRIVE_ROOT,
-} from '../../../../packages/domain/src/drive/root';
+import { DRIVE_PLACEMENT } from '../../../../packages/domain/src/drive/placement';
+import { DRIVE_ROOT_STATES, DRIVE_ROOT } from '../../../../packages/domain/src/drive/root';
 import { DRIVE_SETTINGS } from '../../../../packages/domain/src/drive/settings';
 import { DRIVE_SHARE } from '../../../../packages/domain/src/drive/share';
-import { DRIVE_SYNC_CLIENT } from '../../../../packages/domain/src/drive/sync-client';
 import { DRIVE_TRASH_ENTRY } from '../../../../packages/domain/src/drive/trash';
 import { DRIVE_USAGE } from '../../../../packages/domain/src/drive/usage';
 import { DRIVE_VERSION } from '../../../../packages/domain/src/drive/version';
@@ -35,7 +31,7 @@ function expectRowsParse(fixture: DriveFixture): void {
   expectAllParse(DRIVE_TRASH_ENTRY, fixture.trash);
   expectAllParse(DRIVE_VERSION, fixture.versions);
   expectAllParse(DRIVE_SHARE, fixture.shares);
-  expectAllParse(DRIVE_SYNC_CLIENT, fixture.syncClients);
+  expectAllParse(DRIVE_PLACEMENT, fixture.placements);
   expectAllParse(DRIVE_CONFLICT, fixture.conflicts);
   expectAllParse(DRIVE_QUOTA, fixture.quotas);
   expectAllParse(DRIVE_USAGE, fixture.usage);
@@ -81,22 +77,20 @@ function expectFolderAndRootCounts(fixture: DriveFixture): void {
   }
 }
 
-function expectManagedRoots(fixture: DriveFixture): void {
-  const managed = fixture.roots.filter((root) => root.kind === 'managed');
-  const person = managed.filter((root) => root.scope === 'person');
-  const home = managed.filter((root) => root.scope === 'home');
+function expectDrives(fixture: DriveFixture): void {
+  const person = fixture.roots.filter((root) => root.scope === 'person');
+  const home = fixture.roots.filter((root) => root.scope === 'home');
   expect(person.map((root) => root.ownerProfileId).toSorted()).toEqual(
     fixture.people.map((entry) => entry.id).toSorted(),
   );
   expect(home).toHaveLength(1);
-  expect(home[0]?.label).toBe('Shared');
   expect(home[0]?.ownerProfileId).toBeNull();
 }
 
 function expectAttribution(fixture: DriveFixture): void {
   const owners = new Map(fixture.roots.map((root) => [root.id, root]));
   const memberIds = fixture.people.filter((entry) => !entry.owner).map((entry) => entry.id);
-  const shared = fixture.roots.find((root) => root.scope === 'home' && root.kind === 'managed');
+  const shared = fixture.roots.find((root) => root.scope === 'home');
   const sharedByMember = fixture.items.filter(
     (item) =>
       item.rootId === shared?.id &&
@@ -106,7 +100,7 @@ function expectAttribution(fixture: DriveFixture): void {
   expect(sharedByMember.length).toBeGreaterThan(0);
   for (const item of fixture.items) {
     const root = owners.get(item.rootId);
-    if (root?.kind === 'managed' && root.scope === 'person' && item.addedByProfileId !== null) {
+    if (root?.scope === 'person' && item.addedByProfileId !== null) {
       expect(item.addedByProfileId).toBe(root.ownerProfileId);
     }
   }
@@ -129,14 +123,27 @@ function expectRelations(fixture: DriveFixture): void {
   }
 }
 
-function expectSyncRelations(fixture: DriveFixture): void {
-  const roots = new Map(fixture.roots.map((root) => [root.id, root]));
-  for (const client of fixture.syncClients) {
-    const root = roots.get(client.rootId);
-    expect(root?.sync?.clients.some((entry) => entry.clientId === client.clientId)).toBe(true);
+function expectPlacementRelations(fixture: DriveFixture): void {
+  const roots = new Set(fixture.roots.map((root) => root.id));
+  const folders = new Map(
+    fixture.items.filter((item) => item.kind === 'folder').map((item) => [item.id, item]),
+  );
+  for (const placement of fixture.placements) {
+    expect(roots.has(placement.rootId)).toBe(true);
+    expect(fixture.deviceIds).toContain(placement.deviceId);
+    if (placement.folderItemId !== null) {
+      expect(folders.get(placement.folderItemId)?.rootId).toBe(placement.rootId);
+    }
   }
-  expect(fixture.syncClients.some((client) => client.errors.length > 0)).toBe(true);
-  expect(fixture.syncClients.some((client) => !client.enabled)).toBe(true);
+  const synced = fixture.placements.filter((placement) => placement.mode === 'synced');
+  const perFolder = new Set(
+    synced.map((placement) => `${placement.rootId}/${String(placement.folderItemId)}`),
+  );
+  expect(perFolder.size).toBe(synced.length);
+  expect(fixture.placements.some((placement) => placement.status.errors.length > 0)).toBe(true);
+  expect(fixture.placements.some((placement) => !placement.enabled)).toBe(true);
+  expect(fixture.placements.some((placement) => placement.status.needBytes > 0)).toBe(true);
+  expect(fixture.placements.some((placement) => placement.mode === 'mounted')).toBe(true);
   expect(fixture.conflicts.some((conflict) => conflict.resolvedAt === null)).toBe(true);
   expect(fixture.conflicts.some((conflict) => conflict.resolvedAt !== null)).toBe(true);
 }
@@ -171,15 +178,15 @@ function expectAlbums(fixture: DriveFixture): void {
 }
 
 describe('drive fixture generator', () => {
-  it('builds only the managed roots for an empty library', () => {
+  it('builds only the personal drives and the Shared Drive for an empty library', () => {
     const fixture = generateDriveFixture({ seed: SEED, size: 'empty' });
     expectRowsParse(fixture);
     expect(fixture.items).toHaveLength(0);
     expect(fixture.roots).toHaveLength(fixture.people.length + 1);
-    expect(fixture.roots.every((root) => root.kind === 'managed' && root.items === 0)).toBe(true);
+    expect(fixture.roots.every((root) => root.items === 0)).toBe(true);
     expect(fixture.albums).toHaveLength(0);
     expect(fixture.trash).toHaveLength(0);
-    expectManagedRoots(fixture);
+    expectDrives(fixture);
   });
 
   it('is deterministic for a seed and differs for another seed', () => {
@@ -198,12 +205,10 @@ describe('drive fixture generator', () => {
       expectRowsParse(fixture);
     });
 
-    it('covers every root kind and state', () => {
-      expect(new Set(fixture.roots.map((root) => root.kind))).toEqual(new Set(DRIVE_ROOT_KINDS));
+    it('holds one drive per person and the Shared Drive in every state', () => {
+      expect(fixture.roots).toHaveLength(fixture.people.length + 1);
       expect(new Set(fixture.roots.map((root) => root.state))).toEqual(new Set(DRIVE_ROOT_STATES));
-      expectManagedRoots(fixture);
-      expect(fixture.roots.some((root) => root.kind !== 'managed' && root.readOnly)).toBe(true);
-      expect(fixture.roots.some((root) => root.kind === 'folder' && !root.readOnly)).toBe(true);
+      expectDrives(fixture);
     });
 
     it('keeps items, folders and root totals consistent', () => {
@@ -234,8 +239,8 @@ describe('drive fixture generator', () => {
       ).toBe(true);
     });
 
-    it('keeps sync clients, conflicts, usage, quotas and albums consistent', () => {
-      expectSyncRelations(fixture);
+    it('keeps placements, conflicts, usage, quotas and albums consistent', () => {
+      expectPlacementRelations(fixture);
       expectUsageAndQuotas(fixture);
       expectAlbums(fixture);
     });

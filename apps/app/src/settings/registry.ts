@@ -13,7 +13,7 @@ import { SETTINGS as HOME } from '../features/home/settings';
 import { SETTINGS as HOME_MAP } from '../features/home-map/settings';
 import { SETTINGS as NUTRITION } from '../features/nutrition/settings';
 import { SETTINGS as PHONE } from '../features/phone';
-import { PHOTOS_SETTINGS as PHOTOS } from '../features/photos/settings/definitions';
+import { PHOTOS_SETTINGS as PHOTOS } from '../features/photos/settings';
 import { SETTINGS as PLANNER } from '../features/planner/settings';
 import { SETTINGS as PROFILES } from '../features/profiles';
 import { SETTINGS as REGION } from '../features/region';

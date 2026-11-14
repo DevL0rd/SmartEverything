@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { DriveItem, DriveRoot } from '@smarteverything/domain';
+import type { DriveItem } from '@smarteverything/domain';
 import { useFolderFilter, type FolderFilter } from './filter-field';
 import type { FolderView } from './folder-header';
 import type { FolderData } from './folder-list';
@@ -13,7 +13,7 @@ import {
 } from './folder-model';
 
 export interface ArrangeInput {
-  readonly root: DriveRoot;
+  readonly rootId: string;
   readonly folderId: string | null;
   readonly data: FolderData;
   readonly online: boolean;
@@ -32,13 +32,13 @@ export interface Arranged {
 }
 
 export function useArranged(input: ArrangeInput, byName: ByName): Arranged {
-  const { root, folderId, data, online } = input;
+  const { rootId, folderId, data, online } = input;
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [kind, setKind] = useState<KindFilter>('all');
   const [view, setView] = useState<FolderView>('list');
   const complete = data.pages.data !== undefined && !data.pages.hasNextPage;
   const filter = useFolderFilter({
-    place: { rootId: root.id, folderId },
+    place: { rootId, folderId },
     folder: data.folder,
     loaded: data.loaded,
     complete,

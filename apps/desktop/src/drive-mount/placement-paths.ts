@@ -1,7 +1,6 @@
 import { mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { DrivePlacement } from '@smarteverything/domain';
-import type { SyncIndexEntry } from '@smarteverything/domain/drive-sync';
 
 export type FolderState = readonly string[] | 'absent' | 'file';
 
@@ -12,7 +11,6 @@ export interface PathFs {
 
 export interface PathFacts {
   readonly platform: NodeJS.Platform;
-  readonly wholeDriveMount: string;
   readonly dataDirectory: string;
   readonly systemDirectories: readonly string[];
 }
@@ -102,9 +100,6 @@ function staticRefusal(facts: PathFacts, target: string): string | null {
   const { platform } = facts;
   if (!pathApi(platform).isAbsolute(target)) return 'The path must be absolute';
   if (isFilesystemRoot(platform, target)) return 'The path is the top of a drive';
-  if (overlaps(platform, facts.wholeDriveMount, target)) {
-    return 'The path overlaps the whole-drive mount folder';
-  }
   if (overlaps(platform, facts.dataDirectory, target)) {
     return 'The path overlaps the Computer service data folder';
   }
@@ -158,25 +153,3 @@ export const nodePathFs: PathFs = {
     await mkdir(folder, { recursive: true });
   },
 };
-
-export class FolderScope {
-  private prefix: string | null = null;
-
-  constructor(private readonly folderItemId: string | null) {}
-
-  invalidation(entries: readonly SyncIndexEntry[]): readonly string[] | null {
-    if (entries.length === 0) return null;
-    if (this.folderItemId === null) return entries.map((entry) => entry.relPath);
-    const own = entries.find((entry) => entry.itemId === this.folderItemId);
-    if (own !== undefined) {
-      this.prefix = own.relPath;
-      return [];
-    }
-    if (this.prefix === null) return [];
-    const inside = `${this.prefix}/`;
-    const paths = entries
-      .filter((entry) => entry.relPath.startsWith(inside))
-      .map((entry) => entry.relPath.slice(inside.length));
-    return paths.length === 0 ? null : paths;
-  }
-}

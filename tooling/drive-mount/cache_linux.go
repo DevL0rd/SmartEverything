@@ -30,3 +30,11 @@ func allocatedBytes(f *os.File) (int64, error) {
 	}
 	return stat.Blocks * 512, nil
 }
+
+func diskFree(dir string) (int64, error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(dir, &stat); err != nil {
+		return 0, err
+	}
+	return int64(stat.Bavail) * stat.Bsize, nil
+}

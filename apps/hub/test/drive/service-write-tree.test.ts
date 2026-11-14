@@ -113,7 +113,7 @@ describe('grants on a personal drive', () => {
     store.driveGrants.set({ itemId: ROBIN_TRIP, profileId: idaId, role: 'view' }, robinId);
     const refused = await writer.apply(callerOf(idaId), {
       action: 'new_folder',
-      parentId: ROBIN_TRIP,
+      parent: { kind: 'folder', folderId: ROBIN_TRIP },
       name: 'Day one',
     });
     expect(refused.done).toEqual([]);
@@ -121,7 +121,7 @@ describe('grants on a personal drive', () => {
     store.driveGrants.set({ itemId: ROBIN_TRIP, profileId: idaId, role: 'edit' }, robinId);
     const allowed = await writer.apply(callerOf(idaId), {
       action: 'new_folder',
-      parentId: ROBIN_TRIP,
+      parent: { kind: 'folder', folderId: ROBIN_TRIP },
       name: 'Day one',
     });
     expect(allowed.done).toHaveLength(1);
@@ -138,10 +138,29 @@ describe('grants on a personal drive', () => {
     expect(trashed.done).toEqual([]);
     const made = await writer.apply(callerOf(ownerId, true), {
       action: 'new_folder',
-      parentId: ROBIN_TRIP,
+      parent: { kind: 'folder', folderId: ROBIN_TRIP },
       name: 'Nope',
     });
     expect(made.done).toEqual([]);
     expect(await readdir(join(opened.layout.person(robinId).drive, 'Trip'))).toEqual([]);
+  });
+
+  it('makes a folder at the top of your own drive but never at the top of another person’s', async () => {
+    const own = await writer.apply(callerOf(robinId), {
+      action: 'new_folder',
+      parent: { kind: 'drive', rootId: ROBIN_DRIVE },
+      name: 'Plans',
+    });
+    expect(own.done).toHaveLength(1);
+    expect((await stat(join(opened.layout.person(robinId).drive, 'Plans'))).isDirectory()).toBe(
+      true,
+    );
+    const other = await writer.apply(callerOf(ownerId, true), {
+      action: 'new_folder',
+      parent: { kind: 'drive', rootId: ROBIN_DRIVE },
+      name: 'Nope',
+    });
+    expect(other.done).toEqual([]);
+    expect(other.failed).toHaveLength(1);
   });
 });

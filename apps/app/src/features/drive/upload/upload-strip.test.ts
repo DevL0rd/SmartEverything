@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { COLOUR_VARIABLE, PaletteContext } from '../../../design/colour-roles';
 
-vi.mock('../../nas/uploads/client', () => ({ startUpload: vi.fn() }));
+vi.mock('./transport/client', () => ({ startUpload: vi.fn() }));
 vi.mock('../../../components/charts', () => ({ ProgressBar: (): null => null }));
 
 import type { FolderUploadsView } from './drive-uploads';
@@ -40,7 +40,7 @@ function render(view: FolderUploadsView): string {
     createElement(
       PaletteContext,
       { value: COLOUR_VARIABLE },
-      createElement(UploadStrip, { view, folderId: 'f', folderName: 'Kitchen remodel' }),
+      createElement(UploadStrip, { view, placeId: 'f', placeName: 'Kitchen remodel' }),
     ),
   );
 }
@@ -73,9 +73,9 @@ describe('upload strip', () => {
     expect(html).toContain('Close uploads');
   });
 
-  it('loads the folder mount and offers Upload only where files can be added', async () => {
-    const { FolderUploads, uploadActionsOf } = await import('./index');
+  it('loads the folder drop target and the file chooser', async () => {
+    const { FolderUploads, chooseUploads } = await import('./index');
     expect(FolderUploads).toBeTypeOf('function');
-    expect(uploadActionsOf(null, true)).toEqual([]);
+    expect(chooseUploads).toBeTypeOf('function');
   });
 });

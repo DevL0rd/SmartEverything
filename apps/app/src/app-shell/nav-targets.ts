@@ -142,8 +142,7 @@ function settingFacts(target: Of<'setting'>): TargetFacts {
 }
 
 function driveHref(target: Of<'drive'>): AppHref {
-  return href.driveRoot(target.rootId, {
-    path: target.path,
+  return href.drive({
     ...(target.itemId === null ? {} : { item: target.itemId }),
     ...(target.focus === null ? {} : { focus: target.focus }),
   });

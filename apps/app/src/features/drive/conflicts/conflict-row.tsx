@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { DriveConflict } from '@smarteverything/domain';
 import { ListRow } from '../../../components/list-row';
-import { fileNameOf } from '../sync/sync-model';
+import { fileNameOf } from '../model/file-name';
 import { sentenceOf } from './conflict-model';
 import { useConflictFacts } from './use-conflict-sides';
 

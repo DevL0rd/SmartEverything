@@ -415,4 +415,5 @@ export * from './api/endpoints-planner-clock';
 export * from './computer-service';
 
 export * from './desktop-photos';
+export * from './desktop-drive';
 export * from './desktop-google';

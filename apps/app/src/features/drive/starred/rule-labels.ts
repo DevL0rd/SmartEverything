@@ -70,7 +70,7 @@ export function leafLabel(leaf: SmartRuleLeaf, placeOf: PlaceOf): string {
     case 'date_range':
       return dateText(DATE_WORD[leaf.field], leaf.from, leaf.to);
     case 'in_root':
-      return placeText(leaf.rootId, placeOf, 'In one library folder');
+      return placeText(leaf.rootId, placeOf, 'In one drive');
     case 'in_folder':
       return placeText(leaf.folderId, placeOf, 'In one folder');
     case 'starred':

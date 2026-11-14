@@ -1,49 +1,40 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { View } from 'react-native';
-import type { DriveItem, DriveRoot, DriveVersion } from '@smarteverything/domain';
-import { Arc, Bars } from '../../../components/charts';
+import type { DriveItem, DriveVersion } from '@smarteverything/domain';
+import { Bars } from '../../../components/charts';
 import { Button } from '../../../components/button';
-import { CopyButton } from '../../../components/copy-button';
 import { Text } from '../../../components/text';
-import type { StatusTone } from '../../../components/tone';
 import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
-import type { ColourRole } from '../../../design/tokens';
 import { count } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import { moment } from '../../../format/time';
 import { readMinute, useDayKey } from '../../../store/clock';
-import { useActiveProfile } from '../../../store/people';
+import { useProfiles } from '../../../store/people';
 import { sameJson } from '../../../store/same-json';
 import type { StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
-import { flattenPages, useDriveSyncClients, useDriveVersions } from '../../nas/data';
+import { flattenPages, useDriveGrantRows, useDriveVersions } from '../data';
 import { openItemFile } from '../folder/folder-footer';
 import { useByName } from '../folder/folder-list';
 import { itemsText } from '../folder/folder-model';
-import { haveShare } from '../roots/root-card-model';
-import { useRootSyncLine } from '../roots/sync-status-line';
 import {
-  RING_SIZE,
-  RING_THICKNESS,
   changedByOf,
-  computerRingsOf,
   dimensionsOf,
   editWindowStart,
   editsPerDay,
   editsTotal,
   integrityOf,
   needsOlderVersions,
-  pathOf,
   previewableOf,
   sizeTextOf,
   whereOf,
   whoSeesOf,
-  type ComputerRing,
   type DetailsSubject,
   type IntegrityLine,
 } from './details-model';
+import { OnComputers } from './on-computers';
 import { PreviewPicture } from './preview-tab';
 
 function Fact({
@@ -72,20 +63,18 @@ function Fact({
 
 function Value({
   text,
-  mono = false,
   tone,
 }: {
   readonly text: string;
-  readonly mono?: boolean;
   readonly tone?: 'positive' | 'critical' | 'variant';
 }): ReactNode {
   return (
     <Text
       variant="callout"
       selectable
-      numberOfLines={mono ? 1 : 2}
+      numberOfLines={2}
       {...(tone === undefined ? {} : { tone })}
-      className={cn('tabular min-w-0 flex-1', mono ? 'font-mono' : '')}
+      className="tabular min-w-0 flex-1"
     >
       {text}
     </Text>
@@ -140,10 +129,26 @@ function stampOf(at: string, by: string | null): string {
   return joinParts([moment(at, readMinute()), by]);
 }
 
+function useWhoSees(subject: DetailsSubject): string {
+  const profiles = useProfiles();
+  const grants = useDriveGrantRows();
+  const { root, item, access } = subject;
+  const nameOf = (profileId: string | null): string | null =>
+    profiles.find((profile) => profile.id === profileId)?.name ?? null;
+  return whoSeesOf({
+    access,
+    ownerName: nameOf(root.ownerProfileId),
+    people: grants.flatMap((grant) => {
+      if (grant.itemId !== item.id) return [];
+      const name = nameOf(grant.profileId);
+      return name === null ? [] : [name];
+    }),
+  });
+}
+
 function WhatFacts({ subject }: { readonly subject: DetailsSubject }): ReactNode {
-  const { root, item } = subject;
+  const { item } = subject;
   const dimensions = dimensionsOf(item);
-  const path = pathOf(root, item);
   return (
     <>
       <Fact label="Kind" first>
@@ -160,14 +165,8 @@ function WhatFacts({ subject }: { readonly subject: DetailsSubject }): ReactNode
         </Fact>
       ) : null}
       <Fact label="Where">
-        <Value text={whereOf(root, item)} />
+        <Value text={whereOf(subject)} />
       </Fact>
-      {path === null ? null : (
-        <Fact label="Path">
-          <Value text={path} mono />
-          <CopyButton value={path} label="Copy path" />
-        </Fact>
-      )}
     </>
   );
 }
@@ -179,9 +178,9 @@ function Facts({
   readonly subject: DetailsSubject;
   readonly history: EditHistory;
 }): ReactNode {
-  const { root, item } = subject;
+  const { item } = subject;
   const byName = useByName();
-  const me = useActiveProfile()?.id ?? null;
+  const whoSees = useWhoSees(subject);
   const deviceName = useDeviceName(history.versions);
   const changedBy = changedByOf(item, history.versions[0], byName, deviceName);
   const integrity = integrityOf(item);
@@ -195,68 +194,13 @@ function Facts({
         <Value text={stampOf(item.addedAt, byName(item.addedByProfileId))} />
       </Fact>
       <Fact label="Who sees it">
-        <Value text={whoSeesOf(root, me, byName)} />
+        <Value text={whoSees} />
       </Fact>
       {integrity === null ? null : (
         <Fact label="Integrity">
           <Value text={integrity.text} tone={integrityTone(integrity)} />
         </Fact>
       )}
-    </View>
-  );
-}
-
-const RING_COLOUR: Readonly<Record<StatusTone | 'offline', ColourRole>> = {
-  positive: 'positive',
-  info: 'info',
-  warning: 'warning',
-  critical: 'critical',
-  offline: 'track',
-};
-
-function useComputerRings(root: DriveRoot): readonly ComputerRing[] {
-  const line = useRootSyncLine(root);
-  const clients = useDriveSyncClients();
-  if (line === null) return [];
-  return computerRingsOf(line.computers, clients, (needBytes) => haveShare(root.bytes, needBytes));
-}
-
-function RingRow({ ring }: { readonly ring: ComputerRing }): ReactNode {
-  return (
-    <View
-      accessible
-      accessibilityLabel={`${ring.name}, ${ring.word}`}
-      className="flex-row items-center gap-2"
-    >
-      <View aria-hidden className="shrink-0">
-        <Arc
-          value={ring.share}
-          size={RING_SIZE}
-          thickness={RING_THICKNESS}
-          colour={RING_COLOUR[ring.tone ?? 'offline']}
-        />
-      </View>
-      <Text variant="callout" numberOfLines={1} className="min-w-0 flex-1">
-        {ring.name}
-      </Text>
-      <Text variant="footnote" tone="variant" numberOfLines={1} className="tabular">
-        {ring.word}
-      </Text>
-    </View>
-  );
-}
-
-function OnComputers({ subject }: { readonly subject: DetailsSubject }): ReactNode {
-  const rings = useComputerRings(subject.root);
-  if (rings.length === 0) return null;
-  return (
-    <View className="gap-2">
-      <Text variant="label" tone="variant">
-        On your computers
-      </Text>
-      {rings.map((ring) => (
-        <RingRow key={ring.key} ring={ring} />
-      ))}
     </View>
   );
 }
@@ -285,10 +229,9 @@ function Actions({
   share,
 }: {
   readonly item: DriveItem;
-  readonly share: ((item: DriveItem) => void) | undefined;
+  readonly share: (item: DriveItem) => void;
 }): ReactNode {
   const file = item.kind !== 'folder';
-  if (!file && share === undefined) return null;
   return (
     <View className="flex-row flex-wrap gap-2">
       {file ? (
@@ -301,16 +244,15 @@ function Actions({
           }}
         />
       ) : null}
-      {share === undefined ? null : (
-        <Button
-          label="Share"
-          icon="share"
-          variant="tonal"
-          onPress={() => {
-            share(item);
-          }}
-        />
-      )}
+      <Button
+        label="Share"
+        icon="share"
+        variant="tonal"
+        grow={!file}
+        onPress={() => {
+          share(item);
+        }}
+      />
       {file ? (
         <Button
           label="Download"
@@ -330,7 +272,7 @@ function FileHistory({ subject }: { readonly subject: DetailsSubject }): ReactNo
   return (
     <>
       <Facts subject={subject} history={history} />
-      <OnComputers subject={subject} />
+      <OnComputers root={subject.root} item={subject.item} />
       <Edits history={history} />
     </>
   );
@@ -344,7 +286,7 @@ export function InfoTab({
   pane,
 }: {
   readonly subject: DetailsSubject;
-  readonly share: ((item: DriveItem) => void) | undefined;
+  readonly share: (item: DriveItem) => void;
   readonly pane: boolean;
 }): ReactNode {
   const { item } = subject;
@@ -355,7 +297,7 @@ export function InfoTab({
       {item.kind === 'folder' ? (
         <>
           <Facts subject={subject} history={NO_HISTORY} />
-          <OnComputers subject={subject} />
+          <OnComputers root={subject.root} item={subject.item} />
         </>
       ) : (
         <FileHistory subject={subject} />

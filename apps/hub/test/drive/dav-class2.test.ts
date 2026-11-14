@@ -61,7 +61,6 @@ function depsOf(): DavDeps {
   return {
     store,
     env,
-    read: new DriveReadService(store),
     guard: {
       status: (profileId) => store.driveQuotas.status(profileId),
       space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),

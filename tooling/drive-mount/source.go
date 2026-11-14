@@ -16,10 +16,11 @@ type ContentSource interface {
 	Pin(ctx context.Context, root mountRoot, path string) error
 	Unpin(ctx context.Context, root mountRoot, path string) error
 	Usage(root mountRoot) int64
-	SetLimit(root mountRoot, bytes int64) error
+	SetPolicy(policy cachePolicy) error
+	Hold(root mountRoot, path string) func()
 }
 
-var errLimitUnsupported = errors.New("a cache size needs the block cache")
+var errPolicyUnsupported = errors.New("cache settings need the block cache")
 
 var errPinUnsupported = errors.New("keeping files offline needs the block cache")
 
@@ -45,4 +46,6 @@ func (s directSource) Unpin(context.Context, mountRoot, string) error {
 
 func (s directSource) Usage(mountRoot) int64 { return 0 }
 
-func (s directSource) SetLimit(mountRoot, int64) error { return errLimitUnsupported }
+func (s directSource) SetPolicy(cachePolicy) error { return errPolicyUnsupported }
+
+func (s directSource) Hold(mountRoot, string) func() { return func() {} }

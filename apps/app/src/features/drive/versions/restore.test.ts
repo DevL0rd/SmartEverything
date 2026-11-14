@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DRIVE_ITEM, type DriveItem } from '@smarteverything/domain';
 import type { ToastInput } from '../../../components/toast-store';
-import { FOLDER_ID, ROOT_ID } from '../../nas/data/fixtures';
+import { FOLDER_ID, ROOT_ID } from '../data/fixtures';
 
 interface Seen {
   restored: (readonly [string, string])[];
@@ -40,6 +40,7 @@ const ITEM: DriveItem = DRIVE_ITEM.parse({
   addedAt: '2026-11-02T09:10:00.000Z',
   openedAt: null,
   starred: false,
+  shared: false,
   rev: 4,
   etag: 'etag',
   outside: false,

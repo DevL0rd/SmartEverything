@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 const testBlock = 128 * 1024
@@ -68,7 +69,13 @@ func (s *fakeSource) Pin(context.Context, mountRoot, string) error   { return er
 func (s *fakeSource) Unpin(context.Context, mountRoot, string) error { return errPinUnsupported }
 func (s *fakeSource) Usage(mountRoot) int64                          { return 0 }
 
-func (s *fakeSource) SetLimit(mountRoot, int64) error { return nil }
+func (s *fakeSource) SetPolicy(cachePolicy) error { return nil }
+
+func (s *fakeSource) Hold(mountRoot, string) func() { return func() {} }
+
+func sizeLimit(bytes int64) cachePolicy {
+	return cachePolicy{maxBytes: bytes, maxAge: time.Hour, every: time.Minute}
+}
 
 func (s *fakeSource) readCount() int {
 	s.mu.Lock()
@@ -167,7 +174,7 @@ func TestEvictionPunchesHolesLeastRecentlyReadFirst(t *testing.T) {
 	size := int64(1 << 20)
 	up := newFake(map[string][]byte{"/big.bin": pattern(int(size))})
 	c := newTestCache(t, up, cacheDirFor(t))
-	if err := c.SetLimit(testRoot, 2*testBlock); err != nil {
+	if err := c.SetPolicy(sizeLimit(2 * testBlock)); err != nil {
 		t.Fatal(err)
 	}
 	for _, block := range []int64{0, 1, 2} {
@@ -215,7 +222,7 @@ func TestPinsAreWholeAndOutsideTheLimit(t *testing.T) {
 	size := int64(1 << 20)
 	up := newFake(map[string][]byte{"/kept/big.bin": pattern(int(size)), "/other.bin": pattern(4 * testBlock)})
 	c := newTestCache(t, up, cacheDirFor(t))
-	if err := c.SetLimit(testRoot, testBlock); err != nil {
+	if err := c.SetPolicy(sizeLimit(testBlock)); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.Pin(context.Background(), testRoot, "/kept"); err != nil {
@@ -239,7 +246,7 @@ func TestPinsAreWholeAndOutsideTheLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.mu.Lock()
-	used := c.pool(testRoot).used
+	used := c.lru.used
 	c.mu.Unlock()
 	if used > testBlock || c.PinnedFiles(testRoot) != 0 {
 		t.Fatalf("after unpin used %d pinned %d", used, c.PinnedFiles(testRoot))

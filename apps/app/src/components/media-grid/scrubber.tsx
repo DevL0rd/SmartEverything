@@ -1,4 +1,4 @@
-import type { TimelineBucket } from '@smarteverything/domain';
+import type { LibraryBucket } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { memo, useEffect, useMemo, useState } from 'react';
 import {
@@ -45,7 +45,7 @@ export interface ScrubAt {
 }
 
 export interface ScrubberProps {
-  readonly buckets: readonly TimelineBucket[];
+  readonly buckets: readonly LibraryBucket[];
   readonly at: ScrubAt | null;
   readonly onScrub: (point: ScrubPoint) => void;
   readonly onRelease: (point: ScrubPoint) => void;
@@ -307,7 +307,7 @@ function ScrubberTrack(props: TrackProps): ReactNode {
     <View
       accessible
       accessibilityRole="adjustable"
-      accessibilityLabel="Timeline scrubber"
+      accessibilityLabel="Library scrubber"
       accessibilityValue={{ text: current === null ? '' : pillText(current.month, current.count) }}
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
       onAccessibilityAction={onAction}

@@ -9,7 +9,8 @@ import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { Skeleton } from '../../../components/skeleton';
 import { errorText } from '../../../format/errors';
-import type { DrivePages } from '../../nas/data';
+import type { DrivePages } from '../data';
+import { DRIVE_FILTER_LOOK, type DriveFilter } from '../model/drive-chip';
 import { recentStateOf } from '../recent/recent-states';
 import { nothingStarredBody, type StarredChip } from './starred-model';
 
@@ -36,6 +37,7 @@ function StarredSkeleton(): ReactNode {
 export function StarredStaleBanner(): ReactNode {
   return (
     <Banner
+      wrapBody
       tone="info"
       title="Offline · showing the last starred files"
       body="Stars and smart folders change again when the hub is back."
@@ -64,13 +66,34 @@ function NothingStarred({ chip }: { readonly chip: StarredChip }): ReactNode {
   );
 }
 
+function NotInDrive({
+  drive,
+  onAllDrives,
+}: {
+  readonly drive: DriveFilter;
+  readonly onAllDrives: () => void;
+}): ReactNode {
+  return (
+    <EmptyState
+      icon="star"
+      title={`Nothing starred in ${DRIVE_FILTER_LOOK[drive].label}`}
+      body="Your other drives have starred files. Show all drives to see them."
+      action={<Button label="Show all drives" variant="tonal" onPress={onAllDrives} />}
+    />
+  );
+}
+
 export function StarredEmpty({
   pages,
   chip,
+  drive,
+  onAllDrives,
   live,
 }: {
   readonly pages: StarredPages;
   readonly chip: StarredChip;
+  readonly drive: DriveFilter;
+  readonly onAllDrives: () => void;
   readonly live: boolean;
 }): ReactNode {
   const state = recentStateOf({
@@ -81,6 +104,9 @@ export function StarredEmpty({
   });
   if (state === 'offline') return <StarredOffline />;
   if (state === 'loading') return <StarredSkeleton />;
+  if (state === 'empty' && drive !== 'all') {
+    return <NotInDrive drive={drive} onAllDrives={onAllDrives} />;
+  }
   if (state === 'empty') return <NothingStarred chip={chip} />;
   return (
     <View className="px-gutter">

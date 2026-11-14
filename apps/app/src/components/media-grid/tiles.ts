@@ -1,4 +1,4 @@
-import type { TimelinePage } from '@smarteverything/domain';
+import type { LibraryPage } from '@smarteverything/domain';
 import { localDayKey, MINUTE_MS } from '../../format/time';
 
 export interface MediaTile {
@@ -27,7 +27,7 @@ function cell<T>(column: readonly T[], index: number, name: string): T {
   return value;
 }
 
-export function tilesOfPage(page: TimelinePage): readonly MediaTile[] {
+export function tilesOfPage(page: LibraryPage): readonly MediaTile[] {
   return page.ids.map((id, index) => ({
     id,
     rev: cell(page.revs, index, 'revision'),

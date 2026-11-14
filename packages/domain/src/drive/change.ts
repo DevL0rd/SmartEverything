@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DRIVE_FOLDER_PLACE } from './upload';
 
 const ID = z.uuid();
 
@@ -35,7 +36,7 @@ export type DriveChangeAction = (typeof DRIVE_CHANGE_ACTIONS)[number];
 
 export const DRIVE_CHANGE = z
   .discriminatedUnion('action', [
-    z.strictObject({ action: z.literal('new_folder'), parentId: ID, name: NAME }),
+    z.strictObject({ action: z.literal('new_folder'), parent: DRIVE_FOLDER_PLACE, name: NAME }),
     z.strictObject({ action: z.literal('rename'), itemId: ID, name: NAME }),
     z.strictObject({ action: z.literal('move'), itemIds: IDS, toFolderId: ID }),
     z.strictObject({ action: z.literal('copy'), itemIds: IDS, toFolderId: ID }),

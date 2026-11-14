@@ -203,7 +203,7 @@ describe('the bookkeeping of the opened-from pages', () => {
 
 describe('the helpers of the back rules', () => {
   it('writes nothing for a missing parameter', () => {
-    expect(pathOf({ pathname: '/device/[id]', params: {} })).toBe('/device/');
+    expect(pathOf({ pathname: './device/[id]', params: {} })).toBe('./device/');
   });
 
   it('collects every key of the navigation state', () => {

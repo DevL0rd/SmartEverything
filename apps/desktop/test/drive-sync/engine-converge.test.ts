@@ -1,7 +1,6 @@
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isPlaceholder } from '../../src/drive-sync/select.js';
 import { bytesOf } from './pull-support.js';
 import { until } from './hub-harness.js';
 import { CONVERGE_MS, openLab, sees, snapshot, type Lab, type Peer } from './engine-support.js';
@@ -122,52 +121,105 @@ describe('two engines on one root', () => {
   });
 });
 
+function excludeOnHub(placementId: string, excluded: readonly string[]): void {
+  const placement = lab.hub.store.drivePlacements.byId(placementId);
+  lab.hub.store.drivePlacements.retarget(placementId, {
+    mode: placement.mode,
+    localPath: placement.localPath,
+    enabled: placement.enabled,
+    readOnly: placement.status.readOnly,
+    excluded,
+    ignorePatterns: placement.ignorePatterns ?? [],
+    conflictCopies: placement.conflictCopies ?? true,
+  });
+}
+
 describe('selective sync', () => {
-  async function seeded(): Promise<{ desk: Peer; laptop: Peer }> {
+  async function seeded(excluded: readonly string[]): Promise<{ desk: Peer; laptop: Peer }> {
     const desk = await lab.peer('desk');
-    const laptop = await lab.peer('laptop');
+    const laptop = await lab.peer('laptop', { excluded });
     await put(desk, 'keep/k.txt', 'keep me');
     await put(desk, 'skip/s.txt', 'skipped');
     await put(desk, 'skip/deep/d.txt', 'deep skipped');
     await desk.engine.start();
     await until(onHub('keep/k.txt', 'skip/s.txt', 'skip/deep/d.txt'), 'the seed push', CONVERGE_MS);
-    laptop.engine.selection.replace(['keep']);
     await laptop.engine.start();
     return { desk, laptop };
   }
 
-  it('holds content only for selected folders and keeps the rest browsable', async () => {
-    const { laptop } = await seeded();
+  it('never holds or lists the folders the placement excludes', async () => {
+    const { laptop } = await seeded(['skip']);
     await sees(laptop, { 'keep/k.txt': 'keep me' });
     await until(
-      () => isPlaceholder(laptop.database.files.get(lab.hub.rootId, 'skip/deep/d.txt')),
-      'the placeholder metadata',
+      () => laptop.database.files.get(laptop.placementId, 'keep/k.txt') !== undefined,
+      'the kept file record',
       CONVERGE_MS,
     );
-    const placeholder = laptop.database.files.get(lab.hub.rootId, 'skip/s.txt');
-    expect(placeholder).toMatchObject({ bytes: 7, hubRev: lab.hub.itemRev('skip/s.txt') });
-    expect(laptop.engine.previewSelection(['keep', 'skip'])).toBe(7 + 12);
+    const listed = laptop.database.files.list(laptop.placementId).map((record) => record.relPath);
+    expect(listed.filter((relPath) => relPath.startsWith('skip'))).toEqual([]);
+    expect(laptop.engine.previewExclusions(['skip'])).toBe(0);
     await expect(stat(join(laptop.localPath, 'skip/s.txt'))).rejects.toThrow();
   });
 
-  it('downloads a folder when it joins the selection and drops it when it leaves', async () => {
-    const { desk, laptop } = await seeded();
+  it('downloads a folder when it stops being excluded and drops it when it is excluded again', async () => {
+    const { desk, laptop } = await seeded(['skip']);
     await sees(laptop, { 'keep/k.txt': 'keep me' });
-    await until(
-      () => isPlaceholder(laptop.database.files.get(lab.hub.rootId, 'skip/s.txt')),
-      'the placeholder metadata',
-      CONVERGE_MS,
-    );
-    const applied = await laptop.engine.setSelection(['keep', 'skip']);
-    expect(applied.released).toBe(2);
+    excludeOnHub(laptop.placementId, []);
+    const included = await laptop.engine.setExcluded([]);
+    expect(included.changed).toBe(true);
     const everything = await snapshot(desk.localPath);
     await sees(laptop, everything);
-    const narrowed = await laptop.engine.setSelection(['keep']);
+    excludeOnHub(laptop.placementId, ['skip']);
+    const narrowed = await laptop.engine.setExcluded(['skip']);
     expect(narrowed.kept).toEqual([]);
     await sees(laptop, { 'keep/k.txt': 'keep me' });
     await put(laptop, 'keep/after.txt', 'after');
     await sees(desk, { ...everything, 'keep/after.txt': 'after' });
     expect(lab.hub.itemRev('skip/s.txt')).toBeDefined();
     expect((await readFile(join(desk.localPath, 'skip/s.txt'))).toString()).toBe('skipped');
+  });
+});
+
+describe('placement settings', () => {
+  it('skips the files the placement ignore patterns match', async () => {
+    const desk = await lab.peer('desk', { ignorePatterns: ['*.tmp'] });
+    await put(desk, 'a.txt', 'kept');
+    await put(desk, 'b.tmp', 'ignored');
+    await desk.engine.start();
+    await until(onHub('a.txt'), 'the push', CONVERGE_MS);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(lab.hub.itemRev('b.tmp')).toBeUndefined();
+  });
+
+  it('receives from the hub and never pushes when the placement is read only', async () => {
+    const writer = await lab.peer('writer');
+    await put(writer, 'shared.txt', 'from the writer');
+    await writer.engine.start();
+    await until(onHub('shared.txt'), 'the writer push', CONVERGE_MS);
+    const reader = await lab.peer('reader', { readOnly: true });
+    await put(reader, 'local-only.txt', 'never pushed');
+    await reader.engine.start();
+    await until(
+      async () => (await snapshot(reader.localPath))['shared.txt'] === 'from the writer',
+      'the received file',
+      CONVERGE_MS,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(lab.hub.itemRev('local-only.txt')).toBeUndefined();
+  });
+
+  it('reports the bytes it still needs and its errors to the hub placement', async () => {
+    const desk = await lab.peer('desk');
+    await put(desk, 'a.txt', 'a');
+    await desk.engine.start();
+    await until(onHub('a.txt'), 'the push', CONVERGE_MS);
+    await until(
+      () => lab.hub.store.drivePlacements.byId(desk.placementId).status.lastSyncedAt !== null,
+      'the first settled report',
+      CONVERGE_MS,
+    );
+    const status = lab.hub.store.drivePlacements.byId(desk.placementId).status;
+    expect(status.needBytes).toBe(0);
+    expect(status.errors).toEqual([]);
   });
 });

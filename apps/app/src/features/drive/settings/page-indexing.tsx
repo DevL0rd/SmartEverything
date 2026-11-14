@@ -27,8 +27,10 @@ import {
   useDriveHealth,
   useDriveRoots,
   useDriveSettings,
+  useViewerId,
   type DriveProgress,
-} from '../../nas/data';
+} from '../data';
+import { driveLabelOf } from '../model/drive-access';
 import { DriveSettingsSection } from './page';
 import { watcherLineOf } from './watcher-line';
 
@@ -68,27 +70,30 @@ function isPhase(value: string): value is Phase {
 export function progressLinesOf(
   progress: DriveProgress,
   roots: readonly RowOf<'drive_roots'>[],
+  viewerId: string | null,
 ): readonly ProgressLine[] {
-  return roots.flatMap((root) =>
-    Object.entries(progress[root.id] ?? {}).flatMap(([phase, step]): ProgressLine[] => {
+  return roots.flatMap((root) => {
+    const label = driveLabelOf(root, viewerId);
+    if (label === null) return [];
+    return Object.entries(progress[root.id] ?? {}).flatMap(([phase, step]): ProgressLine[] => {
       if (!isPhase(phase)) return [];
       return [
         {
           key: `${root.id}:${phase}`,
           rootId: root.id,
-          title: root.label,
+          title: label,
           subtitle: `${PHASE_WORD[phase]} · ${count(step.done)} of ${count(step.total)}`,
           share: step.total === 0 ? 0 : step.done / step.total,
         },
       ];
-    }),
-  );
+    });
+  });
 }
 
 export function indexingLineOf(paused: boolean, working: number): string {
   if (paused) return 'Paused · new and changed files wait until you resume';
-  if (working === 0) return 'Up to date with every library folder';
-  return working === 1 ? 'Working on 1 folder' : `Working on ${count(working)} folders`;
+  if (working === 0) return 'Up to date with every drive';
+  return working === 1 ? 'Working on 1 drive' : `Working on ${count(working)} drives`;
 }
 
 export function hashedLineOf(share: number | undefined): string {
@@ -206,7 +211,7 @@ function ProgressRow({ line }: { readonly line: ProgressLine }): ReactNode {
   return (
     <ListRow
       title={line.title}
-      icon="folder"
+      icon="hardDrive"
       subtitle={line.subtitle}
       trailing={
         <View className="w-24">
@@ -218,7 +223,7 @@ function ProgressRow({ line }: { readonly line: ProgressLine }): ReactNode {
 }
 
 function IndexingBody({ settings }: { readonly settings: DriveSettings }): ReactNode {
-  const lines = progressLinesOf(useProgress(), useDriveRoots());
+  const lines = progressLinesOf(useProgress(), useDriveRoots(), useViewerId());
   const working = new Set(lines.map((line) => line.rootId)).size;
   const health = useDriveHealth().data;
   return (

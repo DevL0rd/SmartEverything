@@ -119,6 +119,8 @@ func (h *stubHub) read(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, path.Base(p), testEpoch, strings.NewReader(content))
 }
 
+var stubSpace = driveSpace{Total: 500 << 30, Used: 120 << 30, Free: 380 << 30}
+
 func newStubHub(t *testing.T) *stubHub {
 	t.Helper()
 	h := &stubHub{files: map[string]map[string]string{}, revs: map[string]int{}, uploads: map[string]*stubUpload{}}
@@ -137,6 +139,9 @@ func newStubHub(t *testing.T) *stubHub {
 	mux.HandleFunc("GET /drive/fs/{root}/list", guard(h.page))
 	mux.HandleFunc("GET /drive/fs/{root}/stat", guard(h.stat))
 	mux.HandleFunc("GET /drive/fs/{root}/read/{item}", guard(h.read))
+	mux.HandleFunc("GET /drive/fs/{root}/space", guard(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(stubSpace)
+	}))
 	h.routeUploads(mux, guard)
 	h.server = httptest.NewServer(mux)
 	t.Cleanup(h.server.Close)
@@ -156,7 +161,7 @@ func requireFuse(t *testing.T) {
 func newFS(t *testing.T, h *stubHub) *writeBack {
 	t.Helper()
 	dir := cacheDirFor(t)
-	files, err := newFilesystem(h.server.URL, stubToken, dir, filepath.Join(dir, "journal"))
+	files, err := newFilesystem(routeSpec{URL: h.server.URL}, stubToken, dir, filepath.Join(dir, "journal"))
 	if err != nil {
 		t.Fatal(err)
 	}

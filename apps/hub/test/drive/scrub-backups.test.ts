@@ -161,7 +161,7 @@ function scrubber(
     store: {
       driveRoots: roots,
       driveItems: {
-        find: (id: string, viewer: string | null) => items.find(id, viewer),
+        find: (id: string) => items.find(id, null),
         identityOf: (id) => items.identityOf(id),
         setIntegrity: (id, integrity) => {
           database.prepare('update drive_items set integrity = $integrity where id = $id').run({

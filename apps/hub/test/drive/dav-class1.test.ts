@@ -12,7 +12,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeEnv } from '../../src/drive/changes';
 import type { DriveActor } from '../../src/drive/access';
-import { DriveReadService } from '../../src/drive/service-read';
 import { nodeFiles } from '../../src/drive/versions';
 import { handleMkcol } from '../../src/server/dav/collections';
 import type { DavDeps } from '../../src/server/dav/dav-auth';
@@ -93,7 +92,6 @@ function depsOf(): DavDeps {
   return {
     store,
     env,
-    read: new DriveReadService(store),
     guard: {
       status: (profileId) => store.driveQuotas.status(profileId),
       space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),

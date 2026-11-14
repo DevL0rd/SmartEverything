@@ -35,15 +35,12 @@ import {
   useDriveQuotas,
   useDriveUsage,
   type DriveProgress,
-} from '../../nas/data';
+} from '../data';
+import { gigabytesInitialOf, gigabytesOf, gigabytesProblemOf } from './gigabytes';
 import { DriveSettingsSection } from './page';
 import { SettingsQueryState } from './page-indexing';
 import { NUMBER_LENGTH } from './page-sharing';
 import { ScrubScheduleRow } from './page-storage-schedule';
-
-const GIB = 1024 ** 3;
-
-const DECIMAL_NUMBER = /^\d+(\.\d+)?$/;
 
 export const QUOTAS_KEY = driveKey('quotas', null);
 
@@ -86,25 +83,6 @@ export function quotaLineOf(
       quota === null ? `${bytes(used)} used · no limit` : `${bytes(used)} used of ${bytes(quota)}`,
     tone: full ? 'critical' : 'variant',
   };
-}
-
-export function quotaBytesOf(text: string): number | null {
-  const trimmed = text.trim();
-  if (trimmed === '') return null;
-  if (!DECIMAL_NUMBER.test(trimmed)) throw new QuotaEntryError(`${trimmed} is not a size in GB.`);
-  return Math.round(Number(trimmed) * GIB);
-}
-
-export function quotaProblemOf(text: string): string | null {
-  return DECIMAL_NUMBER.test(text.trim()) ? null : 'Use a size in GB, such as 250 or 1.5';
-}
-
-export function quotaInitialOf(quota: number | null): string {
-  return quota === null ? '' : String(Math.round((quota / GIB) * 10) / 10);
-}
-
-class QuotaEntryError extends Error {
-  override readonly name = 'QuotaEntryError';
 }
 
 export async function saveQuota(
@@ -172,22 +150,27 @@ export function backupLineOf(status: DriveBackupStatus, now: number): StatusLine
   return { text: `Last run ${when} failed · from ${last.reporter} · ${good}`, tone: 'critical' };
 }
 
-function useQuotaRequest(line: QuotaLine, opener: TextEditRequest['opener']): TextEditRequest {
+export type QuotaTarget = Pick<QuotaLine, 'profileId' | 'name' | 'quota'>;
+
+export function useQuotaRequest(
+  line: QuotaTarget,
+  opener: TextEditRequest['opener'],
+): TextEditRequest {
   const client = useQueryClient();
   return {
     id: `drive.storage.quota.${line.profileId}`,
     opener,
     title: `Space for ${line.name}`,
     label: 'Limit in GB',
-    initial: quotaInitialOf(line.quota),
+    initial: gigabytesInitialOf(line.quota),
     placeholder: 'No limit',
     confirmLabel: 'Save',
     maxLength: NUMBER_LENGTH,
     kind: 'number',
     allowEmpty: true,
     helper: 'Files, earlier versions and trash all count. Leave it empty for no limit.',
-    problemOf: quotaProblemOf,
-    save: (text) => saveQuota(client, line.profileId, quotaBytesOf(text)),
+    problemOf: gigabytesProblemOf,
+    save: (text) => saveQuota(client, line.profileId, gigabytesOf(text)),
   };
 }
 

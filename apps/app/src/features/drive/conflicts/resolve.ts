@@ -3,7 +3,7 @@ import type { DriveConflict, DriveConflictResolution } from '@smarteverything/do
 import { Logger } from '@smarteverything/logging';
 import { resolveDriveConflict } from '../../../api/drive';
 import { notify } from '../../../components/toast-store';
-import { invalidateDriveReach } from '../../nas/data/windows';
+import { invalidateDriveReach } from '../data/windows';
 import { RESOLVE_FAILED, resolvedMessageOf, type ConflictSides } from './conflict-model';
 
 const log = new Logger('app.drive');

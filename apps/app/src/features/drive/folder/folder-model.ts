@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import type { DriveItem, DriveRoot, DriveSyncClient } from '@smarteverything/domain';
+import type { EntryMark } from '../../../components/files/entry-row';
+import type { DriveItem, DrivePlacement, DriveRoot } from '@smarteverything/domain';
 import { bytes, count } from '../../../format/number';
 import { compareText, joinParts, naturalCompare, plural } from '../../../format/text';
 import { duration } from '../../../format/time';
@@ -222,12 +222,39 @@ export function pickedOf(
   return items.filter((item) => selection.ids.has(item.id));
 }
 
-export function syncedComputers(root: DriveRoot, clients: readonly DriveSyncClient[]): number {
-  if (!root.synced) return 0;
-  const computers = clients
-    .filter((client) => client.rootId === root.id && client.enabled)
-    .map((client) => client.deviceId);
-  return new Set(computers).size;
+export function placedFolderIdsOf(
+  placements: readonly DrivePlacement[],
+  rootId: string,
+): ReadonlySet<string> {
+  return new Set(
+    placements.flatMap((placement) =>
+      placement.enabled && placement.rootId === rootId && placement.folderItemId !== null
+        ? [placement.folderItemId]
+        : [],
+    ),
+  );
+}
+
+export function placedComputersOf(placements: readonly DrivePlacement[], rootId: string): number {
+  return new Set(
+    placements
+      .filter((placement) => placement.enabled && placement.rootId === rootId)
+      .map((placement) => placement.deviceId),
+  ).size;
+}
+
+export function rowMarksOf(item: DriveItem, placed: ReadonlySet<string>): readonly EntryMark[] {
+  return [
+    ...(item.starred
+      ? [{ key: 'star', icon: 'star', tone: 'warning', label: 'Starred' } as const]
+      : []),
+    ...(item.shared
+      ? [{ key: 'shared', icon: 'users', tone: 'variant', label: 'Shared' } as const]
+      : []),
+    ...(placed.has(item.id)
+      ? [{ key: 'placed', icon: 'folderSync', tone: 'info', label: 'On a computer' } as const]
+      : []),
+  ];
 }
 
 export interface FolderTotals {
@@ -235,17 +262,17 @@ export interface FolderTotals {
   readonly bytes: number;
 }
 
-export function totalsOf(root: DriveRoot, folder: DriveItem | null): FolderTotals {
+export function totalsOf(root: DriveRoot | null, folder: DriveItem | null): FolderTotals {
   if (folder?.kind === 'folder') return { items: folder.childCount, bytes: folder.bytes };
-  return { items: root.items, bytes: root.bytes };
+  return { items: root?.items ?? 0, bytes: root?.bytes ?? 0 };
 }
 
 export function folderSubtitle(totals: FolderTotals, readOnly: boolean, computers: number): string {
   return joinParts([
     itemsText(totals.items),
     bytes(totals.bytes),
-    readOnly ? 'read only' : null,
-    computers === 0 ? null : `synced to ${plural(computers, 'computer')}`,
+    readOnly ? 'view only' : null,
+    computers === 0 ? null : `on ${plural(computers, 'computer')}`,
   ]);
 }
 
@@ -256,42 +283,6 @@ export function footerLine(totals: FolderTotals, shown: number | null, selected:
     shown === null ? null : `${count(shown)} shown`,
     selected === 0 ? null : `${count(selected)} selected`,
   ]);
-}
-
-export type CrumbTarget =
-  | { readonly kind: 'drive' }
-  | { readonly kind: 'root' }
-  | { readonly kind: 'folder'; readonly id: string };
-
-export interface CrumbSpec {
-  readonly key: string;
-  readonly label: string;
-  readonly target: CrumbTarget | null;
-}
-
-function folderCrumbs(folder: DriveItem): readonly CrumbSpec[] {
-  const parts = folder.relPath.split('/');
-  const parent = parts.length - 2;
-  return parts.map((label, index) => ({
-    key: parts.slice(0, index + 1).join('/'),
-    label,
-    target:
-      index === parent && folder.parentId !== null ? { kind: 'folder', id: folder.parentId } : null,
-  }));
-}
-
-export function crumbsOf(root: DriveRoot, folder: DriveItem | null): readonly CrumbSpec[] {
-  const top: readonly CrumbSpec[] = [
-    { key: 'drive', label: 'My Drive', target: { kind: 'drive' } },
-    { key: 'root', label: root.label, target: folder === null ? null : { kind: 'root' } },
-  ];
-  if (folder === null) return top;
-  const inner = folderCrumbs(folder);
-  return [...top, ...inner.slice(0, -1)];
-}
-
-export function titleOf(root: DriveRoot, folder: DriveItem | null): string {
-  return folder?.name ?? root.label;
 }
 
 export const OUTSIDE_LINE = 'Changed outside SmartEverything';
@@ -333,29 +324,13 @@ export function actionsOf(item: DriveItem, abilities: FolderAbilities): readonly
   ];
 }
 
-export type FolderIssue =
-  | { readonly kind: 'private' }
-  | { readonly kind: 'unreadable'; readonly label: string; readonly path: string | null }
-  | { readonly kind: 'scanning' };
-
-export function issueOf(root: DriveRoot | null): FolderIssue | null {
-  if (root === null) return { kind: 'private' };
-  if (root.state === 'scanning') return { kind: 'scanning' };
-  if (root.state === 'ready') return null;
-  return { kind: 'unreadable', label: root.label, path: root.path };
-}
-
 export interface FolderSlotContext {
-  readonly root: DriveRoot;
+  readonly rootId: string;
+  readonly root: DriveRoot | null;
+  readonly writable: boolean;
   readonly folder: DriveItem | null;
   readonly items: readonly DriveItem[];
   readonly picked: readonly DriveItem[];
   readonly focused: DriveItem | null;
   readonly close: () => void;
-}
-
-export interface FolderSlots {
-  readonly details?: (context: FolderSlotContext) => ReactNode;
-  readonly upload?: (context: FolderSlotContext) => ReactNode;
-  readonly quickLook?: (context: FolderSlotContext) => ReactNode;
 }

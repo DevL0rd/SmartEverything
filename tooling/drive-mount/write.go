@@ -44,6 +44,9 @@ type Filesystem interface {
 	ContentSource
 	Writer
 	SetReachable(reachable bool)
+	SwitchRoute(spec routeSpec) error
+	Space(ctx context.Context, root mountRoot) (driveSpace, error)
+	OnEvict(fn func(root mountRoot))
 	Invalidate(root mountRoot, paths []string)
 	Stat(ctx context.Context, root mountRoot, p string) (entry, error)
 }

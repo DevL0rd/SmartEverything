@@ -1,9 +1,9 @@
 import type { RouteDefinition } from '../../app-shell/route-types';
+import type { DrivePageSection } from './model/section-routes';
 
 interface PageSpec {
   readonly key: string;
-  readonly path:
-    'recent' | 'starred' | 'shared' | 'activity' | 'sync' | 'computers' | 'storage' | 'trash';
+  readonly path: DrivePageSection;
   readonly title: string;
   readonly icon: RouteDefinition['icon'];
   readonly keywords: readonly string[];
@@ -25,59 +25,68 @@ function page({ key, path, title, icon, keywords }: PageSpec): RouteDefinition {
 
 export const ROUTES: readonly RouteDefinition[] = [
   page({
+    key: 'drive-shared-drive',
+    path: 'shared-drive',
+    title: 'Shared Drive',
+    icon: 'users',
+    keywords: ['shared drive', 'home drive', 'family files', 'everyone', 'household files'],
+  }),
+  page({
+    key: 'drive-shared',
+    path: 'shared',
+    title: 'Shared with me',
+    icon: 'share',
+    keywords: ['shared with me', 'shared by me', 'people', 'links', 'share links', 'sharing'],
+  }),
+  page({
     key: 'drive-recent',
     path: 'recent',
     title: 'Recent',
-    icon: 'clock',
-    keywords: ['recent files', 'changed', 'latest'],
+    icon: 'history',
+    keywords: ['recent files', 'changed', 'latest', 'opened'],
   }),
   page({
     key: 'drive-starred',
     path: 'starred',
     title: 'Starred',
     icon: 'star',
-    keywords: ['favourites', 'favorites', 'smart folders'],
-  }),
-  page({
-    key: 'drive-shared',
-    path: 'shared',
-    title: 'Shared',
-    icon: 'share',
-    keywords: ['links', 'shared with', 'share links'],
+    keywords: ['starred', 'favourites', 'favorites', 'smart folders'],
   }),
   page({
     key: 'drive-activity',
     path: 'activity',
     title: 'Drive activity',
     icon: 'activity',
-    keywords: ['file history', 'who changed', 'uploads'],
-  }),
-  page({
-    key: 'drive-sync',
-    path: 'sync',
-    title: 'Sync',
-    icon: 'folderSync',
-    keywords: ['synced folders', 'conflicts', 'sync status'],
+    keywords: ['file history', 'who changed', 'uploads', 'changes'],
   }),
   page({
     key: 'drive-computers',
     path: 'computers',
     title: 'Drive computers',
-    icon: 'monitor',
-    keywords: ['computers', 'mount', 'devices syncing'],
+    icon: 'laptop',
+    keywords: [
+      'computers',
+      'sync',
+      'synced folders',
+      'mount',
+      'mounted drive',
+      'offline',
+      'conflicts',
+      'sync status',
+    ],
   }),
   page({
     key: 'drive-storage',
     path: 'storage',
     title: 'Drive storage',
-    icon: 'server',
-    keywords: ['space', 'usage', 'quota', 'disk'],
+    icon: 'chartPie',
+    keywords: ['space', 'usage', 'quota', 'disk', 'data folder'],
   }),
   page({
     key: 'drive-trash',
     path: 'trash',
     title: 'Drive trash',
     icon: 'trash',
-    keywords: ['deleted files', 'restore', 'bin'],
+    keywords: ['deleted files', 'restore', 'bin', 'recycle'],
   }),
 ];

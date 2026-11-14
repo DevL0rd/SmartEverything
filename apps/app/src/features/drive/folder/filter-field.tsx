@@ -14,7 +14,7 @@ import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { isNative, useIdiom } from '../../../design/platform';
 import { openSearch } from '../../../search/open-search';
-import { flattenPages, useDriveSearch } from '../../nas/data';
+import { flattenPages, useDriveSearch } from '../data';
 import { WIDE_FROM } from './folder-header';
 import { folderKeyFor, isEditable } from './folder-keys';
 import {
@@ -189,13 +189,17 @@ function FilterFooter(props: FilterActionsProps): ReactNode {
   );
 }
 
-function FilterEmpty(props: FilterActionsProps): ReactNode {
+function FilterEmpty({
+  onClear,
+  ...props
+}: FilterActionsProps & { readonly onClear: () => void }): ReactNode {
   return (
     <View className="gap-2">
       <EmptyState
         icon="filter"
-        title={`No names here start with “${props.text.trim()}”`}
+        title={`No files match ‘${props.text.trim()}’`}
         body={props.line ?? 'Search all of Drive to look in every folder.'}
+        action={<Button label="Clear" icon="close" variant="tonal" onPress={onClear} />}
       />
       <SearchAllRows {...props} />
     </View>
@@ -297,7 +301,14 @@ export function useFolderFilter(input: FolderFilterInput): FolderFilter {
       />
     ),
     footer: active ? <FilterFooter {...actions} /> : null,
-    empty: active ? <FilterEmpty {...actions} /> : null,
+    empty: active ? (
+      <FilterEmpty
+        {...actions}
+        onClear={() => {
+          setText('');
+        }}
+      />
+    ) : null,
     highlight: (name) => (active ? highlightOf(name, words) : null),
     focus,
   };

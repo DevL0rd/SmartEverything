@@ -1,11 +1,11 @@
 import type { DriveAlbum } from '../../../../../packages/domain/src/drive/album';
 import type { DriveConflict } from '../../../../../packages/domain/src/drive/conflict';
 import type { DriveItem } from '../../../../../packages/domain/src/drive/item';
+import type { DrivePlacement } from '../../../../../packages/domain/src/drive/placement';
 import type { DriveQuota } from '../../../../../packages/domain/src/drive/quota';
 import type { DriveRoot } from '../../../../../packages/domain/src/drive/root';
 import type { DriveSettings } from '../../../../../packages/domain/src/drive/settings';
 import type { DriveShare } from '../../../../../packages/domain/src/drive/share';
-import type { DriveSyncClient } from '../../../../../packages/domain/src/drive/sync-client';
 import type { DriveTrashEntry } from '../../../../../packages/domain/src/drive/trash';
 import type { DriveUsage } from '../../../../../packages/domain/src/drive/usage';
 import type { DriveVersion } from '../../../../../packages/domain/src/drive/version';
@@ -44,7 +44,7 @@ export interface DriveFixture {
   readonly trash: readonly DriveTrashEntry[];
   readonly versions: readonly DriveVersion[];
   readonly shares: readonly DriveShare[];
-  readonly syncClients: readonly DriveSyncClient[];
+  readonly placements: readonly DrivePlacement[];
   readonly conflicts: readonly DriveConflict[];
   readonly quotas: readonly DriveQuota[];
   readonly usage: readonly DriveUsage[];

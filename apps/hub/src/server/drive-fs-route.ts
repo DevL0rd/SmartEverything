@@ -11,6 +11,7 @@ import {
   type DriveFsApi,
   type FsCaller,
 } from '../drive/fs-api';
+import type { FsSpace } from '../drive/fs-space';
 import { serveDriveFile, type DriveFiles } from './drive-files';
 import { PUBLIC_BODY_LIMIT, bearerOf, parseJsonBody, readBody, sendJson } from './http';
 import type { RawRoute } from './http-server';
@@ -20,6 +21,7 @@ export const DRIVE_FS_PATH = '/drive/fs/:rootId';
 export interface DriveFsRouteEnv {
   readonly api: DriveFsApi;
   readonly files: DriveFiles;
+  readonly space: (caller: FsCaller, rootId: string, base: string | undefined) => Promise<FsSpace>;
 }
 
 interface Exchange {
@@ -92,6 +94,9 @@ export function driveFsRoutes(env: DriveFsRouteEnv): readonly RawRoute[] {
     readRoute(env),
     route(env, 'GET', 'list', ({ caller, rootId, request }) =>
       api.list(caller, rootId, parsed(FS_LIST_QUERY, queryOf(request))),
+    ),
+    route(env, 'GET', 'space', ({ caller, rootId, request }) =>
+      env.space(caller, rootId, parsed(READ_QUERY, queryOf(request)).base),
     ),
     route(env, 'GET', 'stat', ({ caller, rootId, request }) => ({
       entry: api.stat(caller, rootId, parsed(FS_STAT_QUERY, queryOf(request))),

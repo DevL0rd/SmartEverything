@@ -6,6 +6,7 @@ import type { Logger } from '@smarteverything/logging';
 import { StoreContext } from './context';
 import { ChangeFeed } from './feed';
 import { migrate } from './migrate';
+import { discardMigrationBackups } from './migration-backup';
 import type { DrivePathOf } from './repositories/drive-roots';
 import { repairPersonAccess } from './person-access-repair';
 import { MIGRATIONS } from './migrations';
@@ -116,6 +117,7 @@ export type Store = ReturnType<typeof repositoriesOf> & {
 function migrated(sql: Sql, options: StoreOptions): number {
   const version = migrate(sql, MIGRATIONS, options.now().toISOString(), options.log);
   repairPersonAccess(sql, options.log);
+  discardMigrationBackups(sql, options.log);
   return version;
 }
 

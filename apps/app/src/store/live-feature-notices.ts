@@ -8,7 +8,7 @@ import {
 import { APP_UPDATE_NOTICES } from '../features/app-updates';
 import { CLIPBOARD_NOTICE } from '../features/clipboard';
 import { COMPUTER_NOTICES } from '../features/computers';
-import { DRIVE_NOTICE_HANDLERS } from '../features/nas/data/notices';
+import { DRIVE_NOTICE_HANDLERS } from '../features/drive';
 import { PHONE_RINGS_NOTICE, PLANNER_NOTICES } from '../features/planner/data';
 import { HUB_UPDATE_NOTICES, HUB_UPDATE_SOURCE_NOTICES } from '../features/hub-updates';
 import { PHONE_DETAIL_NOTICES } from '../features/phone';

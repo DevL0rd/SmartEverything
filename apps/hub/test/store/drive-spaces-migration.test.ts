@@ -512,12 +512,15 @@ function migrateAll(): void {
 }
 
 describe('migration 202', () => {
-  it('is the highest migration and the only one numbered 202', () => {
+  it('is the only migration numbered 202, runs after every lower one and before every higher one', () => {
     expect(DRIVE_SPACES_MIGRATION.version).toBe(202);
     expect(DRIVE_SPACES_MIGRATION.foreignKeys).toBe('off');
     const versions = MIGRATIONS.map((migration) => migration.version);
     expect(versions.filter((version) => version === 202)).toHaveLength(1);
-    expect(Math.max(...versions)).toBe(202);
+    const position = versions.indexOf(202);
+    expect(Math.max(...versions.slice(0, position + 1))).toBe(202);
+    expect(Math.min(...versions.slice(position))).toBe(202);
+    expect(versions.slice(position + 1).every((version) => version > 202)).toBe(true);
   });
 
   it('keeps every row of the personal drives and the Shared Drive in every child table', () => {

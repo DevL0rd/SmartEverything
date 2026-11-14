@@ -348,6 +348,7 @@ function driveServices(): DriveServices {
     albums: store.driveAlbums,
     items: store.driveItems,
     roots: store.driveRoots,
+    grants: store.driveGrants,
     runner: { rows: (): [] => [], count: (): number => 0 },
     newId: randomUUID,
     now: (): string => NOW.toISOString(),

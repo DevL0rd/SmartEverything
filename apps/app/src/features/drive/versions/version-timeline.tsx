@@ -363,7 +363,7 @@ export function OneVersion({ root }: { readonly root: DriveRoot }): ReactNode {
       compact
       icon="layers"
       title="Versions are off"
-      body={`Earlier copies are not kept in ${root.label}. Keep versions is in Drive settings.`}
+      body="Earlier copies of files in this drive are not kept. Versions in Drive settings keeps them, and they use space."
     />
   );
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { DriveConflict } from '@smarteverything/domain';
-import { useDriveRoots } from '../../nas/data';
+import { useDriveRoots } from '../data';
 import { VersionsSheet, type VersionsSlots, type VersionsTarget } from '../versions/versions-sheet';
 import { ConflictBanner } from './conflict-banner';
 import { comparePicksOf } from './conflict-model';

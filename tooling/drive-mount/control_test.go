@@ -28,12 +28,14 @@ func (r *recorder) unmount(id string) error { return r.record("unmount %s", id) 
 func (r *recorder) invalidate(id string, paths []string) error {
 	return r.record("invalidate %s %s", id, strings.Join(paths, ","))
 }
-func (r *recorder) limit(id string, bytes int64) error {
-	return r.record("limit %s %d", id, bytes)
+func (r *recorder) cache(policy cachePolicy) error {
+	return r.record("cache %d %s %d %s", policy.maxBytes, policy.maxAge, policy.minFree, policy.every)
 }
 func (r *recorder) pin(id, path string) error   { return r.record("pin %s %s", id, path) }
 func (r *recorder) unpin(id, path string) error { return r.record("unpin %s %s", id, path) }
-func (r *recorder) reachable(online bool) error { return r.record("reachable %t", online) }
+func (r *recorder) route(spec routeSpec) error {
+	return r.record("route %s %s %s", spec.URL, spec.Server, spec.Pin)
+}
 
 func control(t *testing.T, rec *recorder, input string) string {
 	t.Helper()
@@ -52,9 +54,10 @@ func TestControlDispatch(t *testing.T) {
 		`{"op":"invalidate","mount":"m1","paths":["/a","/b/c"]}`,
 		`{"op":"pin","mount":"m1","path":"/x"}`,
 		`{"op":"unpin","mount":"m1","path":"/x"}`,
-		`{"op":"limit","mount":"m1","bytes":0}`,
-		`{"op":"reachable","online":false}`,
-		`{"op":"reachable","online":true}`,
+		`{"op":"cache","maxAgeSeconds":3600,"cleanupSeconds":60}`,
+		`{"op":"cache","maxAgeSeconds":60,"maxBytes":1000,"minFreeBytes":500,"cleanupSeconds":5}`,
+		`{"op":"route"}`,
+		`{"op":"route","url":"https://192.168.1.2:8443","server":"smarteverything-x.local","pin":"ab"}`,
 		`{"op":"unmount","mount":"m1"}`,
 	}, "\n")
 	if out := control(t, rec, input); out != "" {
@@ -62,7 +65,8 @@ func TestControlDispatch(t *testing.T) {
 	}
 	want := []string{
 		"mount m1 r1 f1 /mnt/a", "mount m2 r2  /mnt/b", "invalidate m1 /a,/b/c",
-		"pin m1 /x", "unpin m1 /x", "limit m1 0", "reachable false", "reachable true", "unmount m1",
+		"pin m1 /x", "unpin m1 /x", "cache 9223372036854775807 1h0m0s 0 1m0s", "cache 1000 1m0s 500 5s",
+		"route   ", "route https://192.168.1.2:8443 smarteverything-x.local ab", "unmount m1",
 	}
 	if strings.Join(rec.calls, "|") != strings.Join(want, "|") {
 		t.Fatalf("calls %v", rec.calls)
@@ -107,9 +111,9 @@ func TestControlHandlesVeryLongLine(t *testing.T) {
 	}
 }
 
-func TestReachableNeedsOnline(t *testing.T) {
+func TestCacheNeedsAgeAndCleanupInterval(t *testing.T) {
 	rec := &recorder{}
-	out := control(t, rec, `{"op":"reachable"}`)
+	out := control(t, rec, `{"op":"cache","maxBytes":10}`)
 	if !strings.Contains(out, `"type":"error"`) || len(rec.calls) != 0 {
 		t.Fatalf("out %s calls %v", out, rec.calls)
 	}

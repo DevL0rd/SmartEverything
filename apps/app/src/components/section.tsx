@@ -28,12 +28,12 @@ function SectionTitle({
 }): ReactNode {
   return (
     <View className="min-h-8 flex-row items-end justify-between gap-2 px-4">
-      <View className="flex-1 flex-row items-end gap-2">
+      <View className="flex-1 flex-row flex-wrap items-end gap-x-2">
         <Text variant="footnote" tone="variant" accessibilityRole="header" className="pb-1">
           {title}
         </Text>
         {caption === undefined ? null : (
-          <Text variant="footnote" tone="variant" className="pb-1">
+          <Text variant="footnote" tone="variant" className="shrink pb-1">
             {caption}
           </Text>
         )}

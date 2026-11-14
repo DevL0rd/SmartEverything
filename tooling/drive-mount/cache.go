@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -78,13 +79,29 @@ type blockCache struct {
 	background sync.WaitGroup
 	mu         sync.Mutex
 	files      map[string]*cachedFile
-	pools      map[mountRoot]*pool
+	lru        *pool
 	flights    map[blockID]*flight
+	policy     cachePolicy
+	held       map[location]int
+	released   map[mountRoot]bool
+	retime     chan time.Duration
+	stop       chan struct{}
+	stopped    sync.Once
+	now        func() time.Time
+	evicted    func(root mountRoot)
 }
 
 func newBlockCache(up ContentSource, dir string) *blockCache {
-	c := &blockCache{dir: dir, up: up, files: map[string]*cachedFile{}, pools: map[mountRoot]*pool{}, flights: map[blockID]*flight{}}
+	c := &blockCache{
+		dir: dir, up: up, files: map[string]*cachedFile{}, lru: newPool(), flights: map[blockID]*flight{},
+		policy: defaultPolicy, held: map[location]int{}, released: map[mountRoot]bool{},
+		retime: make(chan time.Duration, 1), stop: make(chan struct{}), now: time.Now,
+	}
 	c.startErr = c.start()
+	if c.startErr == nil {
+		c.background.Add(1)
+		go c.sweeper()
+	}
 	return c
 }
 
@@ -111,7 +128,8 @@ func (c *blockCache) start() error {
 		c.files[s.key] = f
 		for i := range blockTotal(f.st.Size, f.st.Block) {
 			if f.has(i) && !f.st.Pinned {
-				c.admit(f, i)
+				start, end := f.span(i)
+				c.lru.add(blockID{f.key, i}, end-start, s.at)
 			}
 		}
 	}
@@ -156,17 +174,12 @@ func checkHolePunch(dir string) error {
 
 func (c *blockCache) Ready() error { return c.startErr }
 
-func (c *blockCache) Close() { c.background.Wait() }
+func (c *blockCache) Close() {
+	c.stopped.Do(func() { close(c.stop) })
+	c.background.Wait()
+}
 
 func (c *blockCache) SetReachable(reachable bool) { c.offline.Store(!reachable) }
-
-func (c *blockCache) SetLimit(root mountRoot, bytes int64) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	p := c.pool(root)
-	p.limit = bytes
-	return c.evict(p)
-}
 
 func (c *blockCache) Usage(root mountRoot) int64 {
 	c.mu.Lock()
@@ -186,18 +199,9 @@ func (c *blockCache) Usage(root mountRoot) int64 {
 	return held
 }
 
-func (c *blockCache) pool(root mountRoot) *pool {
-	p := c.pools[root]
-	if p == nil {
-		p = newPool()
-		c.pools[root] = p
-	}
-	return p
-}
-
 func (c *blockCache) admit(f *cachedFile, i int64) {
 	start, end := f.span(i)
-	c.pool(f.st.Root).add(blockID{f.key, i}, end-start)
+	c.lru.add(blockID{f.key, i}, end-start, c.now())
 }
 
 func (c *blockCache) save(f *cachedFile) error { return saveState(c.blocksDir(), f.key, f.st) }
@@ -214,19 +218,6 @@ func (c *blockCache) withData(f *cachedFile, fn func(*os.File) error) error {
 	return fn(d)
 }
 
-func (c *blockCache) evict(p *pool) error {
-	for p.used > p.limit {
-		id, ok := p.oldest()
-		if !ok {
-			return nil
-		}
-		if err := c.release(c.files[id.key], id.index); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (c *blockCache) release(f *cachedFile, i int64) error {
 	start, end := f.span(i)
 	err := c.withData(f, func(d *os.File) error { return punchHole(d, start, end-start) })
@@ -234,7 +225,8 @@ func (c *blockCache) release(f *cachedFile, i int64) error {
 		return err
 	}
 	f.mark(i, false)
-	c.pool(f.st.Root).remove(blockID{f.key, i})
+	c.lru.remove(blockID{f.key, i})
+	c.released[f.st.Root] = true
 	return c.save(f)
 }
 
@@ -325,9 +317,8 @@ func (c *blockCache) dropUnder(root mountRoot, p string, repin bool) {
 }
 
 func (c *blockCache) forget(key string, f *cachedFile) {
-	pl := c.pool(f.st.Root)
 	for i := range blockTotal(f.st.Size, f.st.Block) {
-		pl.remove(blockID{key, i})
+		c.lru.remove(blockID{key, i})
 	}
 	delete(c.files, key)
 	os.Remove(filepath.Join(c.blocksDir(), key+".data"))

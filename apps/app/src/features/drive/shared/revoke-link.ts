@@ -8,11 +8,20 @@ const log = new Logger('app.drive');
 
 export const SHARES_PREFIX = [...DRIVE_PREFIX, 'shares'] as const;
 
+export const SHARED_BY_ME_PREFIX = [...DRIVE_PREFIX, 'shared-by-me'] as const;
+
+export async function refreshLinks(client: QueryClient): Promise<void> {
+  await Promise.all([
+    client.invalidateQueries({ queryKey: SHARES_PREFIX }),
+    client.invalidateQueries({ queryKey: SHARED_BY_ME_PREFIX }),
+  ]);
+}
+
 export function revokeQuestionOf(title: string): ConfirmRequest {
   return {
-    title: `Revoke ${title}?`,
+    title: `Stop the link to ${title}?`,
     body: 'People with the link can’t open it any more.',
-    confirmLabel: 'Revoke link',
+    confirmLabel: 'Stop link',
     cancelLabel: 'Keep link',
     tone: 'destructive',
   };
@@ -27,6 +36,6 @@ export async function revokeLink(
   if (!accepted) return false;
   await revokeDriveShare(shareId);
   log.info('share_link.revoked', { shareId });
-  await client.invalidateQueries({ queryKey: SHARES_PREFIX });
+  await refreshLinks(client);
   return true;
 }

@@ -6,10 +6,10 @@ import { itemsText, totalsText, type TrashTotals } from './trash-model';
 export const KEPT_NOTE = 'each item is kept a year, then deleted';
 
 export const OWNER_NOTE =
-  'Members see and restore only what they deleted. Delete now is for the owner.';
+  'Your drive’s trash is only yours. Shared Drive trash is seen by everyone in the home.';
 
 export const MEMBER_NOTE =
-  'You see and restore what you deleted. Only the owner can delete items for good.';
+  'Your drive’s trash is only yours. In the Shared Drive you delete for good only what you deleted.';
 
 export function subtitleOf(totals: TrashTotals | null, compact: boolean): string {
   const kept = compact ? 'each kept a year' : KEPT_NOTE;

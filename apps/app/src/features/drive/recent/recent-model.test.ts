@@ -15,7 +15,6 @@ import {
   sectionsOf,
   weekBarsOf,
   weekCovered,
-  whereOf,
 } from './recent-model';
 import { PLOT_HEIGHT, stackShapesOf } from './recent-stack';
 
@@ -39,6 +38,7 @@ function file(id: string, relPath: string, parentId: string | null): DriveItem {
     addedAt: '2026-11-07T10:00:00.000Z',
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'e',
     outside: false,
@@ -165,19 +165,19 @@ describe('recent stack', () => {
 });
 
 describe('recent rows', () => {
-  it('names where the item lives from its library folder and parent folders', () => {
-    expect(whereOf(ITEM, 'Media disk')).toBe('Media disk › Home › Taxes');
-    expect(whereOf(file(ITEM.id, 'Top.pdf', null), 'Media disk')).toBe('Media disk');
-  });
-
   it('opens a file selected in its folder and a folder as itself', () => {
-    expect(openHrefOf(ITEM)).toEqual({
-      pathname: '/drive/root/[rootId]',
-      params: { rootId: ROOT, folder: FOLDER, item: ITEM.id },
+    const roots = [{ id: ROOT, scope: 'home' }] as const;
+    expect(openHrefOf(ITEM, roots)).toEqual({
+      pathname: '/drive/folder/[folderId]',
+      params: { folderId: FOLDER, item: ITEM.id },
     });
-    expect(openHrefOf(file(ITEM.id, 'Top.pdf', null))).toEqual({
-      pathname: '/drive/root/[rootId]',
-      params: { rootId: ROOT, item: ITEM.id },
+    expect(openHrefOf(file(ITEM.id, 'Top.pdf', null), roots)).toEqual({
+      pathname: '/drive/shared-drive',
+      params: { item: ITEM.id },
+    });
+    expect(openHrefOf(file(ITEM.id, 'Top.pdf', null), [])).toEqual({
+      pathname: '/drive/shared',
+      params: { item: ITEM.id },
     });
   });
 });

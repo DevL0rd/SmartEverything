@@ -10,7 +10,7 @@ import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
 import { useSyncStatus } from '../../../store/selectors';
-import { flattenPages, useDriveConflicts, useDriveVersions } from '../../nas/data';
+import { flattenPages, useDriveConflicts, useDriveVersions } from '../data';
 import { restoreVersion } from '../versions/restore';
 import {
   CompactTimeline,
@@ -31,7 +31,7 @@ import {
   type Clock,
   type VersionEntry,
 } from '../versions/versions-model';
-import type { DetailsSubject, DetailsTabSlot } from './details-model';
+import type { DetailsSubject } from './details-model';
 
 type VersionPages = ReturnType<typeof useDriveVersions>;
 
@@ -208,10 +208,4 @@ export function VersionsTab({
       />
     </>
   );
-}
-
-export function versionsTabOf(slots: VersionsSlots = NO_SLOTS): DetailsTabSlot {
-  return function VersionsSlot(subject) {
-    return <VersionsTab key={subject.item.id} subject={subject} slots={slots} />;
-  };
 }

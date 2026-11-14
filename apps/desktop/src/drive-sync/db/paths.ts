@@ -3,20 +3,25 @@ import type { ClientSql } from './sql.js';
 
 const PATH_ROW = z.object({ path: z.string() }).strict().readonly();
 
-export class SelectionsRepository {
+export class ExclusionsRepository {
   constructor(private readonly sql: ClientSql) {}
 
-  list(rootId: string): readonly string[] {
+  list(placementId: string): readonly string[] {
     return this.sql
-      .all(PATH_ROW, 'select path from selections where root_id = ? order by path', [rootId])
+      .all(PATH_ROW, 'select path from exclusions where placement_id = ? order by path', [
+        placementId,
+      ])
       .map((row) => row.path);
   }
 
-  replace(rootId: string, paths: readonly string[]): void {
+  replace(placementId: string, paths: readonly string[]): void {
     this.sql.transaction(() => {
-      this.sql.run('delete from selections where root_id = ?', [rootId]);
+      this.sql.run('delete from exclusions where placement_id = ?', [placementId]);
       for (const path of new Set(paths)) {
-        this.sql.run('insert into selections (root_id, path) values (?, ?)', [rootId, path]);
+        this.sql.run('insert into exclusions (placement_id, path) values (?, ?)', [
+          placementId,
+          path,
+        ]);
       }
     });
   }
@@ -25,27 +30,27 @@ export class SelectionsRepository {
 export class PinsRepository {
   constructor(private readonly sql: ClientSql) {}
 
-  list(rootId: string): readonly string[] {
+  list(placementId: string): readonly string[] {
     return this.sql
-      .all(PATH_ROW, 'select path from pins where root_id = ? order by path', [rootId])
+      .all(PATH_ROW, 'select path from pins where placement_id = ? order by path', [placementId])
       .map((row) => row.path);
   }
 
-  set(rootId: string, path: string, pinned: boolean): void {
+  set(placementId: string, path: string, pinned: boolean): void {
     this.sql.transaction(() => {
       if (pinned) {
-        this.sql.run('insert into pins (root_id, path) values (?, ?) on conflict do nothing', [
-          rootId,
+        this.sql.run('insert into pins (placement_id, path) values (?, ?) on conflict do nothing', [
+          placementId,
           path,
         ]);
       } else {
-        this.sql.run('delete from pins where root_id = ? and path = ?', [rootId, path]);
+        this.sql.run('delete from pins where placement_id = ? and path = ?', [placementId, path]);
       }
       this.sql.run(
-        `update files set pinned = exists (select 1 from pins where pins.root_id = files.root_id
+        `update files set pinned = exists (select 1 from pins where pins.placement_id = files.placement_id
            and (pins.path = files.rel_path or substr(files.rel_path, 1, length(pins.path) + 1) = pins.path || '/'))
-         where root_id = ? and (rel_path = ? or substr(rel_path, 1, length(?) + 1) = ? || '/')`,
-        [rootId, path, path, path],
+         where placement_id = ? and (rel_path = ? or substr(rel_path, 1, length(?) + 1) = ? || '/')`,
+        [placementId, path, path, path],
       );
     });
   }

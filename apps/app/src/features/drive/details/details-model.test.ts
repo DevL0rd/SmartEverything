@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   DRIVE_ITEM,
-  DRIVE_ROOT,
   DRIVE_VERSION,
   type DriveItem,
   type DriveVersion,
 } from '@smarteverything/domain';
 import { bytes } from '../../../format/number';
-import { FOLDER_ID, ROOT_ID, rootRow } from '../../nas/data/fixtures';
+import { FOLDER_ID, ROOT_ID } from '../data/fixtures';
 import type { ByName } from '../folder/folder-model';
 import {
   DETAILS_TABS,
@@ -16,7 +15,7 @@ import {
   activeTabOf,
   changedByOf,
   columnNameOf,
-  computerRingsOf,
+  coversItem,
   editWindowStart,
   editsPerDay,
   editsTotal,
@@ -25,7 +24,7 @@ import {
   integrityOf,
   kindTextOf,
   needsOlderVersions,
-  pathOf,
+  placementRingOf,
   presentationOf,
   previewBodyOf,
   quickActionsOf,
@@ -33,7 +32,6 @@ import {
   rememberTab,
   sheetDelimiterOf,
   sheetHeadOf,
-  slottedTabsOf,
   subjectOf,
   tabsOf,
   whereOf,
@@ -62,6 +60,7 @@ function base(index: number, name: string, extra: object = {}): object {
     addedAt: AT,
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 3,
     etag: 'etag',
     outside: false,
@@ -124,27 +123,20 @@ function version(rev: number, at: string, extra: object = {}): DriveVersion {
   });
 }
 
-const ALL_SLOTS = slottedTabsOf({ versions: 1, activity: 1, sharing: 1 });
-
 describe('details tabs', () => {
-  it('shows every tab for a file when every slot is filled', () => {
-    expect(tabsOf(image(1, 'a.jpg'), ALL_SLOTS)).toEqual(DETAILS_TABS);
+  it('shows every tab for a file, Sharing included', () => {
+    expect(tabsOf(image(1, 'a.jpg'))).toEqual(DETAILS_TABS);
   });
 
   it('leaves out Preview and Versions for a folder', () => {
-    expect(tabsOf(folder(2, 'Quotes'), ALL_SLOTS)).toEqual(['info', 'activity', 'sharing']);
-  });
-
-  it('leaves out the tabs whose slot no task has filled', () => {
-    expect(tabsOf(image(1, 'a.jpg'), slottedTabsOf({}))).toEqual(['preview', 'info']);
-    expect(slottedTabsOf({ activity: 1 })).toEqual(new Set(['activity']));
+    expect(tabsOf(folder(2, 'Quotes'))).toEqual(['info', 'activity', 'sharing']);
   });
 
   it('remembers the last tab and falls back to Info when it is missing', () => {
     rememberTab('versions');
     expect(readRememberedTab()).toBe('versions');
-    expect(activeTabOf(readRememberedTab(), tabsOf(image(1, 'a.jpg'), ALL_SLOTS))).toBe('versions');
-    expect(activeTabOf(readRememberedTab(), tabsOf(folder(2, 'Quotes'), ALL_SLOTS))).toBe('info');
+    expect(activeTabOf(readRememberedTab(), tabsOf(image(1, 'a.jpg')))).toBe('versions');
+    expect(activeTabOf(readRememberedTab(), tabsOf(folder(2, 'Quotes')))).toBe('info');
     rememberTab('info');
   });
 });
@@ -178,7 +170,6 @@ describe('presentation', () => {
 });
 
 describe('info lines', () => {
-  const root = rootRow(ROOT_ID, 'ready');
   const item = image(1, 'Island sketch v4.jpg');
 
   it('names the kind from the extension', () => {
@@ -186,16 +177,29 @@ describe('info lines', () => {
     expect(kindTextOf(folder(2, 'Quotes'))).toBe('Folder');
   });
 
-  it('writes where the item is and the hub path of its folder', () => {
-    expect(whereOf(root, item)).toBe('Photos › Home › Kitchen');
-    expect(pathOf(root, item)).toBe('/data/photos/Home/Kitchen/');
+  it('writes where the item is in its drive, and only the share for an item shared with me', () => {
+    expect(whereOf({ item, label: 'My Drive', access: 'own' })).toBe('My Drive › Home › Kitchen');
+    expect(whereOf({ item, label: 'Shared Drive', access: 'shared' })).toBe(
+      'Shared Drive › Home › Kitchen',
+    );
+    expect(whereOf({ item, label: 'Sam’s file', access: 'view' })).toBe(
+      'Shared with me › Sam’s file',
+    );
   });
 
-  it('says who sees a home folder and a private one', () => {
-    expect(whoSeesOf(root, ME, NAMES)).toBe('Everyone at home');
-    const mine = DRIVE_ROOT.parse({ ...root, scope: 'person', ownerProfileId: ME });
-    expect(whoSeesOf(mine, ME, NAMES)).toBe('Only you');
-    expect(whoSeesOf(mine, SAM, NAMES)).toBe('Only Robin');
+  it('says who sees an item of the Shared Drive, of my drive and one shared with me', () => {
+    const who = { ownerName: 'Sam', people: [] };
+    expect(whoSeesOf({ ...who, access: 'shared' })).toBe('Everyone in the home');
+    expect(whoSeesOf({ ...who, access: 'own' })).toBe('Only you');
+    expect(whoSeesOf({ ...who, access: 'own', people: ['Sam'] })).toBe('You and Sam');
+    expect(whoSeesOf({ ...who, access: 'own', people: ['Sam', 'Robin', 'Ada'] })).toBe(
+      'You and Sam, Robin and Ada',
+    );
+    expect(whoSeesOf({ ...who, access: 'edit' })).toBe('Shared with you by Sam · Can edit');
+    expect(whoSeesOf({ ...who, access: 'view', ownerName: null })).toBe(
+      'Shared with you by its owner · Can view',
+    );
+    expect(whoSeesOf({ ...who, access: 'none' })).toBe('Shared with you by Sam');
   });
 
   it('marks damage as critical and a clean check as positive', () => {
@@ -243,7 +247,7 @@ describe('edits per day', () => {
 
 describe('quick row', () => {
   it('offers the file actions the person may use', () => {
-    expect(quickActionsOf(image(1, 'a.jpg'), { sharing: true, writable: true })).toEqual([
+    expect(quickActionsOf(image(1, 'a.jpg'), true)).toEqual([
       'preview',
       'star',
       'share',
@@ -252,17 +256,9 @@ describe('quick row', () => {
     ]);
   });
 
-  it('drops share without a share slot, trash when read-only, and file actions on folders', () => {
-    expect(quickActionsOf(image(1, 'a.jpg'), { sharing: false, writable: false })).toEqual([
-      'preview',
-      'star',
-      'chat',
-    ]);
-    expect(quickActionsOf(folder(2, 'Quotes'), { sharing: true, writable: true })).toEqual([
-      'star',
-      'share',
-      'trash',
-    ]);
+  it('drops trash when read-only, and the file actions on folders', () => {
+    expect(quickActionsOf(image(1, 'a.jpg'), false)).toEqual(['preview', 'star', 'share', 'chat']);
+    expect(quickActionsOf(folder(2, 'Quotes'), true)).toEqual(['star', 'share', 'trash']);
   });
 });
 
@@ -322,28 +318,47 @@ describe('preview body', () => {
 });
 
 describe('computer rings', () => {
-  it('gives each computer its share and a word from its sync state', () => {
-    const rings = computerRingsOf(
-      [
-        { key: 'a', name: 'Workstation', tone: 'positive' },
-        { key: 'b', name: 'Laptop', tone: 'info' },
-        { key: 'c', name: 'Office PC', tone: null },
-        { key: 'd', name: 'Den', tone: 'critical' },
-        { key: 'e', name: 'Attic', tone: 'warning' },
-      ],
-      [
-        { clientId: 'a', needBytes: 0 },
-        { clientId: 'b', needBytes: 2048 },
-        { clientId: 'c', needBytes: 512 },
-      ],
-      (needBytes) => 1 - needBytes / 4096,
-    );
-    expect(rings.map((ring) => [ring.name, ring.share, ring.word])).toEqual([
-      ['Workstation', 1, 'up to date'],
-      ['Laptop', 0.5, `${bytes(2048)} left`],
-      ['Office PC', 0.875, 'offline'],
-      ['Den', 1, 'sync failed'],
-      ['Attic', 1, 'conflict'],
+  type Facts = Parameters<typeof placementRingOf>[0];
+
+  function placement(
+    id: string,
+    state: Facts['status']['state'],
+    extra: Partial<Facts> = {},
+  ): Facts {
+    return { id, mode: 'synced', hold: null, status: { state, needBytes: 0 }, ...extra };
+  }
+
+  it('gives each placement its share of the placed folder and a word from its state', () => {
+    const rings = [
+      placementRingOf(placement('a', 'up_to_date'), 'Workstation', 4096),
+      placementRingOf(
+        placement('b', 'syncing', { status: { state: 'syncing', needBytes: 2048 } }),
+        'Laptop',
+        4096,
+      ),
+      placementRingOf(placement('c', 'offline'), 'Office PC', 4096),
+      placementRingOf(placement('d', 'failed'), 'Den', 4096),
+      placementRingOf(placement('e', 'up_to_date', { hold: 'no_access' }), 'Attic', 4096),
+      placementRingOf(placement('f', 'mounted', { mode: 'mounted' }), 'Studio', 4096),
+      placementRingOf(placement('g', 'failed', { mode: 'mounted' }), 'Shed', 4096),
+      placementRingOf(placement('h', 'stopped'), 'Spare', 4096),
+    ];
+    expect(rings.map((ring) => [ring.name, ring.share, ring.word, ring.tone])).toEqual([
+      ['Workstation', 1, 'up to date', 'positive'],
+      ['Laptop', 0.5, `${bytes(2048)} left`, 'info'],
+      ['Office PC', 1, 'offline', null],
+      ['Den', 1, 'sync failed', 'critical'],
+      ['Attic', 1, 'on hold', 'warning'],
+      ['Studio', 1, 'mounted', 'positive'],
+      ['Shed', 1, 'mount failed', 'critical'],
+      ['Spare', 1, 'paused', null],
     ]);
+  });
+
+  it('counts an item as placed when it is the placed folder or inside it, or the whole drive', () => {
+    expect(coversItem(null, 'Home/a.jpg')).toBe(true);
+    expect(coversItem('Home', 'Home/a.jpg')).toBe(true);
+    expect(coversItem('Home', 'Home')).toBe(true);
+    expect(coversItem('Home', 'Homework/a.jpg')).toBe(false);
   });
 });

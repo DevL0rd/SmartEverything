@@ -5,14 +5,14 @@ import type {
   NativeHubCapabilities,
 } from '@smarteverything/domain';
 import { background, Logger, setBackgroundScope } from '@smarteverything/logging';
-import { app, dialog, session, type BrowserWindow } from 'electron';
+import { app, session, type BrowserWindow } from 'electron';
 import { startDesktopAgent } from './agent/desktop-agent.js';
 import { registerDeepLinkScheme } from './deep-link-scheme.js';
 import { currentCaptureMode, DisplayCapture, prepareScreenCapture } from './display-capture.js';
 import { deepLinkInArguments } from './deep-link.js';
-import { DeepLinkInbox, type DeepLinkRefusal } from './deep-link-inbox.js';
+import { DeepLinkInbox } from './deep-link-inbox.js';
 import { applyFirewall } from './firewall/apply.js';
-import { reportFailure } from './failure.js';
+import { refuseDeepLink, reportFailure, reportInterfaceFailure } from './failure.js';
 import { registerDesktopIpc } from './ipc.js';
 import { registerDesktopHub } from './hub-network/desktop-hub.js';
 import { followLogs } from './logs/follow-logs.js';
@@ -53,6 +53,7 @@ import {
   recoverDesktopBoot,
 } from './updates/update-shell.js';
 import { runShutdown, type ShutdownStep } from './shutdown.js';
+import { DesktopDriveLink } from './drive-mount/desktop-drive-link.js';
 import { createTray, type DesktopTray } from './tray.js';
 import { logControlFailure, trayServiceOf } from './tray-service.js';
 import { readDesktopVariant, type DesktopVariant } from './variant.js';
@@ -66,15 +67,6 @@ setBackgroundScope('desktop.background');
 process.on('unhandledRejection', (cause: unknown) => {
   log.exception('promise.unhandled', cause);
 });
-
-function refuseDeepLink(refusal: DeepLinkRefusal): void {
-  log.warn('deep_link.refused', { reason: refusal.reason });
-  dialog.showErrorBox('Link not opened', `${refusal.reason}; received ${refusal.received}`);
-}
-
-function reportInterfaceFailure(_window: BrowserWindow, error: unknown): void {
-  reportFailure('SmartEverything could not load its interface', error);
-}
 
 interface Updates {
   readonly updates: UpdateController;
@@ -97,6 +89,7 @@ class DesktopShell {
   #closeOverlayIpc: (() => void) | undefined;
   #agent: RunningAgent | undefined;
   #logs: DesktopLogShipping | undefined;
+  readonly #drive = new DesktopDriveLink(desktopPaths().dataDirectory);
 
   constructor(variant: DesktopVariant, capture: DisplayCapture) {
     this.#variant = variant;
@@ -169,6 +162,7 @@ class DesktopShell {
       {
         name: 'computer service',
         run: (): void => {
+          this.#drive.stop();
           this.#service?.controller.close();
         },
       },
@@ -253,6 +247,7 @@ class DesktopShell {
       capture: this.#capture,
       updates,
       webUpdates: web,
+      drive: this.#drive.client,
       applyFirewall: (revision) =>
         applyFirewall(
           {
@@ -316,6 +311,7 @@ class DesktopShell {
       overlayItems: () => this.#overlay.menuItems(),
       updateItems: () => web.trayItems(updates),
       service: trayServiceOf(service.controller),
+      drive: this.#drive.tray.commands,
       quit: () => {
         log.info('tray.quit_requested');
         app.quit();
@@ -323,7 +319,6 @@ class DesktopShell {
     });
     this.#talk.attach(window, this.#tray);
     this.#overlay.attach(window, this.#tray);
-    this.#talk.takeFirst((command) => this.#overlay.takesShortcut(command));
     web.attach(webUpdateWindowOf(window), () => {
       this.#tray?.refresh();
     });
@@ -332,6 +327,8 @@ class DesktopShell {
   }
 
   #follow(window: BrowserWindow, service: DesktopService, updates: UpdateController): void {
+    this.#talk.takeFirst((command) => this.#overlay.takesShortcut(command));
+    if (this.#tray !== undefined) this.#drive.follow(this.#tray);
     followUpdates(updates, window, () => {
       this.#tray?.refresh();
     });

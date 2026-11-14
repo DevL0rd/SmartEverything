@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DRIVE_ITEM, DRIVE_QUERY, SMART_RULE, type DriveItem } from '@smarteverything/domain';
-import { FOLDER_ID, ROOT_ID } from '../features/nas/data/fixtures';
+import { FOLDER_ID, ROOT_ID } from '../features/drive/data/fixtures';
 import {
   driveFoundText,
   driveGroupStateOf,
@@ -28,6 +28,7 @@ function base(index: number, name: string): object {
     addedAt: AT,
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'etag',
     outside: false,

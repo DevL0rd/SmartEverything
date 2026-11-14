@@ -6,7 +6,7 @@ import type { DriveSyncDatabase } from './db/index.js';
 import { diskPathFor } from './scan.js';
 
 export interface HubMovesOptions {
-  readonly rootId: string;
+  readonly placementId: string;
   readonly rootPath: string;
   readonly platform: NodeJS.Platform;
   readonly database: Pick<DriveSyncDatabase, 'files'>;
@@ -47,9 +47,9 @@ export class HubMoves {
   }
 
   async #move(from: string, to: string): Promise<void> {
-    const { database, rootId, log } = this.#options;
-    if ((database.files.get(rootId, from)?.hubRev ?? null) === null) return;
-    if (database.files.get(rootId, to) !== undefined) return;
+    const { database, placementId, log } = this.#options;
+    if ((database.files.get(placementId, from)?.hubRev ?? null) === null) return;
+    if (database.files.get(placementId, to) !== undefined) return;
     await mkdir(dirname(this.#disk(to)), { recursive: true });
     try {
       await rename(this.#disk(from), this.#disk(to));
@@ -57,7 +57,7 @@ export class HubMoves {
       if (isMissing(cause)) return;
       throw cause;
     }
-    database.files.rename(rootId, from, to);
-    log.info('drive_sync.engine.hub_move', { rootId, from, to });
+    database.files.rename(placementId, from, to);
+    log.info('drive_sync.engine.hub_move', { placementId, from, to });
   }
 }

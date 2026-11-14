@@ -25,6 +25,7 @@ import {
   watchRequest,
   writePidFile,
 } from '../../../hub/src/service/files';
+import { createComputerDrive } from '../../src/drive-mount/computer-drive';
 import { COMPUTER_PAIRING_WINDOW_TOKEN } from '../../src/package-layout';
 import { supervise } from './supervise';
 
@@ -82,11 +83,13 @@ async function serve(node: NodeLayout): Promise<void> {
   Logger.configure({ level: config.logLevel, sink: logs.sink });
   const pidFile = await writePidFile(join(node.root, COMPUTER_FILES.servicePid), pid);
   let stopping = false;
-  const running = await startNode({ layout: node, config, log }).catch(async (error: unknown) => {
-    await pidFile.remove();
-    await logs.close();
-    throw error;
-  });
+  const running = await startNode({ layout: node, config, log, drive: createComputerDrive }).catch(
+    async (error: unknown) => {
+      await pidFile.remove();
+      await logs.close();
+      throw error;
+    },
+  );
   const watch = await watchRequest(node.restartRequest, {
     requested: () => {
       stop(RESTART_EXIT_CODE);

@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PickedBlob } from '../../../platform/pick-files';
-import type { UploadHandle, UploadOutcome, UploadRequest } from '../../nas/uploads';
+import type { UploadHandle, UploadOutcome, UploadRequest } from './transport';
 
-vi.mock('../../nas/uploads/client', () => ({ startUpload: vi.fn() }));
+vi.mock('./transport/client', () => ({ startUpload: vi.fn() }));
 
-import { addUploadEntry, patchUploadEntry, uploadEntries } from '../../nas/uploads';
+import { addUploadEntry, patchUploadEntry, uploadEntries } from './transport';
 import {
   EMPTY_UPLOADS,
   cancelUpload,
@@ -20,6 +20,8 @@ import {
 import { headlineOf, rowsOf, summaryOf, type UploadRow } from './upload-model';
 
 const FOLDER = '00000000-0000-4000-8000-0000000000f1';
+const IN_FOLDER = { kind: 'folder', folderId: FOLDER } as const;
+const ROOT = '00000000-0000-4000-8000-0000000000a1';
 const OTHER = '00000000-0000-4000-8000-0000000000f2';
 
 function picked(name: string, bytes: number): PickedBlob {
@@ -124,7 +126,11 @@ describe('drive uploads', () => {
   });
 
   it('sends each file to the folder it was dropped on and reports progress', async () => {
-    await uploadFiles([picked('Lease.pdf', 1000), picked('Plan.pdf', 3000)], FOLDER, client.deps);
+    await uploadFiles(
+      [picked('Lease.pdf', 1000), picked('Plan.pdf', 3000)],
+      IN_FOLDER,
+      client.deps,
+    );
     expect(client.ids()).toHaveLength(2);
     const [first] = client.ids();
     expect(client.sessions.get(first ?? '')?.request).toMatchObject({
@@ -138,13 +144,23 @@ describe('drive uploads', () => {
     expect(rows(OTHER)).toEqual([]);
   });
 
+  it('sends files dropped on the top of a drive to that drive', async () => {
+    await uploadFiles([picked('Notes.txt', 10)], { kind: 'drive', rootId: ROOT }, client.deps);
+    expect(client.sessions.get(only(client.ids()))?.request).toMatchObject({
+      identity: `drive-upload:${ROOT}:Notes.txt:`,
+      target: { kind: 'drive', rootId: ROOT },
+    });
+    expect(rows(ROOT)).toHaveLength(1);
+    expect(rows()).toEqual([]);
+  });
+
   it('keys each upload by folder, name and the file modified time so resumes never mix files', async () => {
     const file = new File([new Uint8Array(10)], 'Lease.pdf', { lastModified: 1700 });
     const pickedFile: PickedBlob = {
       ...picked('Lease.pdf', 10),
       blob: () => Promise.resolve(file),
     };
-    await uploadFiles([pickedFile, picked('Lease.pdf', 10)], FOLDER, client.deps);
+    await uploadFiles([pickedFile, picked('Lease.pdf', 10)], IN_FOLDER, client.deps);
     expect([...client.sessions.values()].map((session) => session.request.identity)).toEqual([
       `drive-upload:${FOLDER}:Lease.pdf:1700`,
       `drive-upload:${FOLDER}:Lease.pdf:`,
@@ -152,7 +168,7 @@ describe('drive uploads', () => {
   });
 
   it('measures the rate from progress events only', async () => {
-    await uploadFiles([picked('Video.mov', 10_000)], FOLDER, client.deps);
+    await uploadFiles([picked('Video.mov', 10_000)], IN_FOLDER, client.deps);
     const id = only(client.ids());
     client.progress(id, 1000, 1000);
     client.progress(id, 5000, 3000);
@@ -160,7 +176,7 @@ describe('drive uploads', () => {
   });
 
   it('pauses and resumes one file or the whole folder', async () => {
-    await uploadFiles([picked('A.pdf', 100), picked('B.pdf', 100)], FOLDER, client.deps);
+    await uploadFiles([picked('A.pdf', 100), picked('B.pdf', 100)], IN_FOLDER, client.deps);
     const first = rows()[0];
     pauseUpload(first?.key ?? '');
     await settled();
@@ -173,7 +189,7 @@ describe('drive uploads', () => {
   });
 
   it('cancels a file and removes its row', async () => {
-    await uploadFiles([picked('A.pdf', 100)], FOLDER, client.deps);
+    await uploadFiles([picked('A.pdf', 100)], IN_FOLDER, client.deps);
     const id = only(client.ids());
     cancelUpload(only(rows()).key);
     await settled();
@@ -183,7 +199,7 @@ describe('drive uploads', () => {
   });
 
   it('says over quota and no space plainly and does not retry them', async () => {
-    await uploadFiles([picked('A.pdf', 100), picked('B.pdf', 100)], FOLDER, client.deps);
+    await uploadFiles([picked('A.pdf', 100), picked('B.pdf', 100)], IN_FOLDER, client.deps);
     const [a, b] = client.ids();
     client.settle(a ?? '', { kind: 'failed', failure: { kind: 'over-quota' } });
     client.settle(b ?? '', { kind: 'failed', failure: { kind: 'no-space' } });
@@ -201,7 +217,7 @@ describe('drive uploads', () => {
   });
 
   it('starts an upload again with the same file when the hub comes back', async () => {
-    await uploadFiles([picked('A.pdf', 100)], FOLDER, client.deps);
+    await uploadFiles([picked('A.pdf', 100)], IN_FOLDER, client.deps);
     const id = only(client.ids());
     client.settle(id, { kind: 'failed', failure: { kind: 'hub-unreachable', reason: 'offline' } });
     await settled();
@@ -215,7 +231,7 @@ describe('drive uploads', () => {
   });
 
   it('shows the name the hub chose on a clash and clears settled rows', async () => {
-    await uploadFiles([picked('Lease.pdf', 100)], FOLDER, client.deps);
+    await uploadFiles([picked('Lease.pdf', 100)], IN_FOLDER, client.deps);
     client.settle(only(client.ids()), {
       kind: 'done',
       itemId: '00000000-0000-4000-8000-0000000000a1',

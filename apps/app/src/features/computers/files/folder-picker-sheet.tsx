@@ -3,50 +3,34 @@ import { BottomSheet } from '../../../components/bottom-sheet';
 import { DialogFrame } from '../../../components/dialog-frame';
 import { useIdiom } from '../../../design/platform';
 import { FolderPicker } from './folder-picker';
-import { HubFolderPicker } from './hub-folder-picker';
 
-interface SheetFrame {
+export interface FolderPickerSheetProps {
   readonly open: boolean;
+  readonly deviceId: string;
+  readonly mode: 'folder' | 'file';
   readonly start?: string | null;
   readonly onClose: () => void;
   readonly onChoose?: (path: string) => void;
 }
 
-export type FolderPickerSheetProps = SheetFrame &
-  (
-    | {
-        readonly source: { readonly kind: 'computer'; readonly deviceId: string };
-        readonly mode: 'folder' | 'file';
-      }
-    | { readonly source: { readonly kind: 'hub' }; readonly mode: 'folder' }
-  );
-
-function pickerBody(props: FolderPickerSheetProps, compact: boolean): ReactNode {
-  const { onClose, start = null } = props;
-  const choose = (path: string): void => {
-    onClose();
-    props.onChoose?.(path);
-  };
-  if (props.source.kind === 'hub') {
-    return <HubFolderPicker start={start} compact={compact} onCancel={onClose} onChoose={choose} />;
-  }
-  return (
-    <FolderPicker
-      deviceId={props.source.deviceId}
-      mode={props.mode}
-      start={start}
-      compact={compact}
-      onCancel={onClose}
-      onChoose={choose}
-    />
-  );
-}
-
 export function FolderPickerSheet(props: FolderPickerSheetProps): ReactNode {
+  const { onClose, start = null } = props;
   const touch = useIdiom() === 'touch';
   const title = props.mode === 'folder' ? 'Choose folder' : 'Choose file';
-  const frame = { open: props.open, onClose: props.onClose, title, label: title, scroll: false };
-  const body = pickerBody(props, touch);
+  const frame = { open: props.open, onClose, title, label: title, scroll: false };
+  const body = (
+    <FolderPicker
+      deviceId={props.deviceId}
+      mode={props.mode}
+      start={start}
+      compact={touch}
+      onCancel={onClose}
+      onChoose={(path) => {
+        onClose();
+        props.onChoose?.(path);
+      }}
+    />
+  );
   if (touch) {
     return (
       <BottomSheet {...frame} detents={['fit']} compact>

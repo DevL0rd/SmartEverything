@@ -16,7 +16,7 @@ import { localDayKey } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
 import { useDevices, useSession, useSettings, useSyncStatus } from '../../../store/selectors';
-import { flattenPages, useDriveItemActivity } from '../../nas/data';
+import { flattenPages, useDriveChips, useDriveItemActivity } from '../data';
 import {
   activityItemOf,
   feedRowsOf,
@@ -25,7 +25,7 @@ import {
   type FeedLine,
 } from '../activity/activity-filters';
 import { ActivityRow } from '../activity/activity-row';
-import type { DetailsSubject, DetailsTabSlot } from './details-model';
+import type { DetailsSubject } from './details-model';
 
 type ItemPages = ReturnType<typeof useDriveItemActivity>;
 
@@ -53,17 +53,17 @@ export function itemActivityHref(subject: DetailsSubject): ReturnType<typeof hre
   return href.drivePage('activity', { item: subject.item.id });
 }
 
-function useNames(subject: DetailsSubject): ActivityNames {
+function useNames(): ActivityNames {
+  const chipOf = useDriveChips();
   const profiles = useProfiles();
   const devices = useDevices({ includeHidden: true });
-  const { id, label } = subject.root;
   return useMemo(
     () => ({
-      roots: new Map([[id, label]]),
+      chipOf,
       people: new Map(profiles.map((profile) => [profile.id, profile.name])),
       devices: new Map(devices.map((device) => [device.id, device.name])),
     }),
-    [id, label, profiles, devices],
+    [chipOf, profiles, devices],
   );
 }
 
@@ -162,7 +162,7 @@ function Feed({
   readonly rows: readonly DriveFeedRow[];
 }): ReactNode {
   const me = useSession().client.profile_id;
-  const days = activityDaysOf(rows, subject, useNames(subject), useToday());
+  const days = activityDaysOf(rows, subject, useNames(), useToday());
   if (days.length === 0) {
     return (
       <EmptyState
@@ -194,7 +194,3 @@ export function ActivityTab({ subject }: { readonly subject: DetailsSubject }): 
   if (pages.data === undefined) return <Unloaded pages={pages} />;
   return <Feed subject={subject} rows={flattenPages(pages.data, (page) => page.items)} />;
 }
-
-export const activityTab: DetailsTabSlot = function ActivitySlot(subject) {
-  return <ActivityTab key={subject.item.id} subject={subject} />;
-};

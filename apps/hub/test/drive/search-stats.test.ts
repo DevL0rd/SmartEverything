@@ -650,6 +650,13 @@ describe('stats', () => {
       items: 3,
       folders: 1,
       bytes: 1110,
+      kinds: [
+        { kind: 'image', items: 1, bytes: 100 },
+        { kind: 'video', items: 1, bytes: 1000 },
+        { kind: 'audio', items: 0, bytes: 0 },
+        { kind: 'document', items: 1, bytes: 10 },
+        { kind: 'other', items: 0, bytes: 0 },
+      ],
     });
   });
 

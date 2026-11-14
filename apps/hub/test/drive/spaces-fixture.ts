@@ -35,12 +35,12 @@ export interface PutItem {
   readonly id: string;
   readonly relPath: string;
   readonly kind: 'folder' | 'document';
-  readonly addedBy?: string;
+  readonly addedBy?: string | null;
 }
 
 export function putItem(
   store: TestStore['store'],
-  { rootId, id, relPath, kind, addedBy = null }: PutItem & { readonly addedBy?: string | null },
+  { rootId, id, relPath, kind, addedBy = null }: PutItem,
 ): void {
   const name = relPath.slice(relPath.lastIndexOf('/') + 1);
   const slash = relPath.lastIndexOf('/');

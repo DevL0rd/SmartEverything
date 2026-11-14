@@ -5,7 +5,7 @@ import { confirm } from '../../../components/confirm-store';
 import { localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
-import { flattenPages, useDriveAlbumItems, useDriveAlbums } from '../../nas/data';
+import { flattenPages, useDriveAlbumItems, useDriveAlbums } from '../data';
 import { createBody, renameBody, type SmartDraft } from './rule-chips';
 import { smartFoldersOf, smartStatsOf, type SmartFolder, type SmartStats } from './smart-model';
 

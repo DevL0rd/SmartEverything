@@ -1,11 +1,12 @@
 import { router } from 'expo-router';
-import type { DriveChangeResult, DriveItem } from '@smarteverything/domain';
+import type { DriveChangeResult, DriveItem, DriveRoot } from '@smarteverything/domain';
 import { background, Logger } from '@smarteverything/logging';
 import { changeDrive, readDriveItem } from '../../../api/drive';
 import { confirm, type ConfirmRequest } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
 import { errorFields } from '../../../design/log-tally';
 import { useMutationState } from '../../../store/mutation';
+import { useDriveRoots } from '../data';
 import { openHrefOf } from '../recent/recent-model';
 import {
   deleteAllConfirm,
@@ -29,6 +30,8 @@ export interface TrashActions {
 
 export type RootLabelOf = (rootId: string) => string | null;
 
+type Roots = readonly Pick<DriveRoot, 'id' | 'scope'>[];
+
 export function reportSkipped(result: DriveChangeResult, verb: TrashVerb): void {
   const message = skippedText(result, verb);
   if (message === null) return;
@@ -36,34 +39,38 @@ export function reportSkipped(result: DriveChangeResult, verb: TrashVerb): void 
   notify({ message, tone: 'critical', ...(detail === null ? {} : { detail }) });
 }
 
-export function restoredAsToast(item: DriveItem, rootLabelOf: RootLabelOf): void {
+export function restoredAsToast(item: DriveItem, rootLabelOf: RootLabelOf, roots: Roots): void {
   notify({
     message: restoredAsText(item, rootLabelOf(item.rootId)),
     tone: 'positive',
     action: {
       label: 'Open',
       onPress: () => {
-        router.push(openHrefOf(item));
+        router.push(openHrefOf(item, roots));
       },
     },
   });
 }
 
-async function announceOne(itemId: string, rootLabelOf: RootLabelOf): Promise<void> {
+async function announceOne(itemId: string, rootLabelOf: RootLabelOf, roots: Roots): Promise<void> {
   try {
-    restoredAsToast(await readDriveItem(itemId), rootLabelOf);
+    restoredAsToast(await readDriveItem(itemId), rootLabelOf, roots);
   } catch (error: unknown) {
     log.warn('drive_trash.restored_item_unread', { itemId, ...errorFields(error) });
     notify({ message: restoredText(1), tone: 'positive' });
   }
 }
 
-export function announceRestored(result: DriveChangeResult, rootLabelOf: RootLabelOf): void {
+export function announceRestored(
+  result: DriveChangeResult,
+  rootLabelOf: RootLabelOf,
+  roots: Roots,
+): void {
   reportSkipped(result, 'restored');
   const [only, ...rest] = result.done;
   if (only === undefined) return;
   if (rest.length === 0 && only.resultItemId !== null) {
-    background(announceOne(only.resultItemId, rootLabelOf), 'drive_trash.announce_failed');
+    background(announceOne(only.resultItemId, rootLabelOf, roots), 'drive_trash.announce_failed');
     return;
   }
   notify({ message: restoredText(result.done.length), tone: 'positive' });
@@ -75,13 +82,14 @@ function idsOf(items: readonly TrashItem[]): readonly string[] {
 
 export function useTrashActions(onDone: () => void, rootLabelOf: RootLabelOf): TrashActions {
   const mutation = useMutationState();
+  const roots = useDriveRoots();
   const restore = (items: readonly TrashItem[]): void => {
     if (items.length === 0) return;
     mutation.run(() => changeDrive({ action: 'restore', itemIds: idsOf(items) }), {
       failure: 'Nothing was restored',
       label: 'drive.trash.restore',
       onDone: (result) => {
-        announceRestored(result, rootLabelOf);
+        announceRestored(result, rootLabelOf, roots);
         onDone();
       },
     });

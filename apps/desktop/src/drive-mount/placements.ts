@@ -1,7 +1,7 @@
 import type { DrivePlacement } from '@smarteverything/domain';
-import { SYNC_HELLO, SYNC_HUB_MESSAGE } from '@smarteverything/domain/drive-sync';
+import type { SyncHubMessage } from '@smarteverything/domain/drive-sync';
 import { messageOf, type Logger } from '@smarteverything/logging';
-import { FolderScope, pathRefusal, type PathFacts, type PathFs } from './placement-paths.js';
+import { pathRefusal, type PathFacts, type PathFs } from './placement-paths.js';
 import {
   PlacementStates,
   inOrder,
@@ -53,16 +53,20 @@ export interface RoutePort {
 }
 
 export interface SubscribeChannel {
-  readonly send: (text: string) => void;
   readonly stop: () => void;
 }
 
-export interface SubscribeHandlers {
-  readonly opened: () => void;
-  readonly message: (text: string) => void;
+export interface SubscribeHello {
+  readonly indexId: string | null;
+  readonly afterSeq: number;
 }
 
-export type OpenSubscribe = (rootId: string, handlers: SubscribeHandlers) => SubscribeChannel;
+export interface SubscribeHandlers {
+  readonly hello: () => SubscribeHello;
+  readonly message: (message: SyncHubMessage) => void;
+}
+
+export type OpenSubscribe = (placementId: string, handlers: SubscribeHandlers) => SubscribeChannel;
 
 export interface PlacementsPorts {
   readonly link: LinkPort;
@@ -73,97 +77,52 @@ export interface PlacementsPorts {
   readonly facts: PathFacts;
   readonly fs: PathFs;
   readonly synced: (placements: readonly DrivePlacement[]) => void;
-  readonly newId: () => string;
   readonly now: () => Date;
   readonly log: Logger;
 }
 
 interface SubscriptionWiring {
-  readonly rootId: string;
-  readonly clientId: string;
+  readonly placementId: string;
   readonly open: OpenSubscribe;
-  readonly forward: (mountId: string, paths: readonly string[]) => void;
-  readonly log: Logger;
+  readonly forward: (paths: readonly string[]) => void;
 }
 
-class RootSubscription {
-  private readonly scopes = new Map<string, FolderScope>();
+class PlacementSubscription {
   private indexId: string | null = null;
   private seq = 0;
-  private channel: SubscribeChannel | null = null;
+  private readonly channel: SubscribeChannel;
 
-  constructor(private readonly wiring: SubscriptionWiring) {}
-
-  add(mountId: string, folderItemId: string | null): void {
-    this.scopes.set(mountId, new FolderScope(folderItemId));
-    this.channel ??= this.wiring.open(this.wiring.rootId, {
-      opened: () => {
-        this.hello();
-      },
+  constructor(private readonly wiring: SubscriptionWiring) {
+    this.channel = wiring.open(wiring.placementId, {
+      hello: () => ({ indexId: this.indexId, afterSeq: this.seq }),
       message: (text) => {
         this.receive(text);
       },
     });
   }
 
-  remove(mountId: string): boolean {
-    this.scopes.delete(mountId);
-    if (this.scopes.size > 0) return false;
-    this.stop();
-    return true;
-  }
-
   stop(): void {
-    this.channel?.stop();
-    this.channel = null;
+    this.channel.stop();
   }
 
-  private hello(): void {
-    this.channel?.send(
-      JSON.stringify(
-        SYNC_HELLO.parse({
-          type: 'hello',
-          clientId: this.wiring.clientId,
-          rootId: this.wiring.rootId,
-          indexId: this.indexId,
-          afterSeq: this.seq,
-        }),
-      ),
-    );
-  }
-
-  private receive(text: string): void {
-    const parsed = SYNC_HUB_MESSAGE.safeParse(JSON.parse(text));
-    if (!parsed.success) {
-      this.wiring.log.warn('drive_mount.subscribe_message_rejected', {
-        root_id: this.wiring.rootId,
-      });
-      return;
-    }
-    const message = parsed.data;
+  private receive(message: SyncHubMessage): void {
     if (message.type === 'index') {
       this.indexId = message.indexId;
       this.seq = message.seq;
-      for (const scope of this.scopes.values()) scope.invalidation(message.entries);
-      if (message.last) this.forwardAll([]);
+      if (message.last) this.wiring.forward([]);
     } else if (message.type === 'index_update') {
       this.seq = message.seq;
-      for (const [mountId, scope] of this.scopes) {
-        const paths = scope.invalidation(message.entries);
-        if (paths !== null) this.wiring.forward(mountId, paths);
+      if (message.entries.length > 0) {
+        this.wiring.forward(message.entries.map((entry) => entry.relPath));
       }
     }
-  }
-
-  private forwardAll(paths: readonly string[]): void {
-    for (const mountId of this.scopes.keys()) this.wiring.forward(mountId, paths);
   }
 }
 
 export class PlacementsController {
   readonly states: PlacementStates;
   private readonly running = new Map<string, Running>();
-  private readonly roots = new Map<string, RootSubscription>();
+  private readonly subscriptions = new Map<string, PlacementSubscription>();
   private readonly stops: (() => void)[] = [];
   private queue: Promise<void> = Promise.resolve();
   private route: RouteKind;
@@ -296,7 +255,7 @@ export class PlacementsController {
       return;
     }
     this.states.set(placement.id, mountFields(running, this.route));
-    this.subscription(placement.rootId).add(placement.id, placement.folderItemId);
+    this.subscribe(placement.id);
     this.ports.helper.send({
       op: 'mount',
       mount: placement.id,
@@ -306,20 +265,17 @@ export class PlacementsController {
     });
   }
 
-  private subscription(rootId: string): RootSubscription {
-    const known = this.roots.get(rootId);
-    if (known !== undefined) return known;
-    const created = new RootSubscription({
-      rootId,
-      clientId: this.ports.newId(),
-      open: this.ports.openSubscribe,
-      forward: (mount: string, paths: readonly string[]): void => {
-        this.ports.helper.send({ op: 'invalidate', mount, paths });
-      },
-      log: this.ports.log,
-    });
-    this.roots.set(rootId, created);
-    return created;
+  private subscribe(mount: string): void {
+    this.subscriptions.set(
+      mount,
+      new PlacementSubscription({
+        placementId: mount,
+        open: this.ports.openSubscribe,
+        forward: (paths): void => {
+          this.ports.helper.send({ op: 'invalidate', mount, paths });
+        },
+      }),
+    );
   }
 
   private release(id: string): void {
@@ -328,8 +284,8 @@ export class PlacementsController {
     this.running.delete(id);
     this.states.forget(id);
     if (running.placement.mode !== 'mounted') return;
-    const { rootId } = running.placement;
-    if (this.roots.get(rootId)?.remove(id) === true) this.roots.delete(rootId);
+    this.subscriptions.get(id)?.stop();
+    this.subscriptions.delete(id);
     this.ports.helper.send({ op: 'unmount', mount: id });
   }
 

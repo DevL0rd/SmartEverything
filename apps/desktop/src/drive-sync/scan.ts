@@ -42,7 +42,7 @@ export interface ScanResult {
 }
 
 export interface ScanOptions {
-  readonly rootId: string;
+  readonly placementId: string;
   readonly rootPath: string;
   readonly previous: readonly FileRecord[];
   readonly ignore: IgnoreMatcher;
@@ -107,9 +107,13 @@ function isUnchanged(
   );
 }
 
-function folderInput(found: Found, previous: FileRecord | undefined, rootId: string): FileInput {
+function folderInput(
+  found: Found,
+  previous: FileRecord | undefined,
+  placementId: string,
+): FileInput {
   return {
-    rootId,
+    placementId,
     relPath: found.relPath,
     kind: 'folder',
     bytes: 0,
@@ -182,12 +186,16 @@ class TreeWalk {
   }
 
   private async directory(parentRel: string, parentDisk: string): Promise<void> {
-    const { platform, rootId, log } = this.options;
+    const { platform, placementId, log } = this.options;
     let listing;
     try {
       listing = await readdir(diskPathFor(platform, parentDisk), { withFileTypes: true });
     } catch (cause) {
-      log.warn('drive.scan.unreadable', { root: rootId, path: parentRel, code: codeOf(cause) });
+      log.warn('drive.scan.unreadable', {
+        root: placementId,
+        path: parentRel,
+        code: codeOf(cause),
+      });
       this.unreadable.push(parentRel);
       return;
     }
@@ -222,7 +230,7 @@ async function hashed(
       return 'changed_during_hash';
     }
     return {
-      rootId: options.rootId,
+      placementId: options.placementId,
       relPath: found.relPath,
       kind: 'file',
       bytes: found.bytes,
@@ -252,7 +260,7 @@ export async function scanRoot(options: ScanOptions): Promise<ScanResult> {
     if (isUnchanged(previous, found, options)) {
       unchanged += 1;
     } else if (found.kind === 'folder') {
-      upserts.push(folderInput(found, previous, options.rootId));
+      upserts.push(folderInput(found, previous, options.placementId));
     } else if (isWriting(found, options)) {
       skipped.push({ relPath: found.relPath, reason: 'recently_modified' });
     } else {

@@ -122,6 +122,18 @@ function emptyTable<R>(): Table<R> {
   return makeTable({}, [], 0);
 }
 
+function emptyDriveTables(): Pick<
+  Tables,
+  'drive_roots' | 'drive_albums' | 'drive_grants' | 'drive_placements'
+> {
+  return {
+    drive_roots: emptyTable(),
+    drive_albums: emptyTable(),
+    drive_grants: emptyTable(),
+    drive_placements: emptyTable(),
+  };
+}
+
 function emptyTables(): Tables {
   return {
     clients: emptyTable(),
@@ -169,10 +181,7 @@ function emptyTables(): Tables {
     planner_timers: emptyTable(),
     planner_stopwatches: emptyTable(),
     google_accounts: emptyTable(),
-    drive_roots: emptyTable(),
-    drive_albums: emptyTable(),
-    drive_sync_clients: emptyTable(),
-    drive_placements: emptyTable(),
+    ...emptyDriveTables(),
   };
 }
 

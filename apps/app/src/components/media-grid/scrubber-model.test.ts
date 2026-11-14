@@ -1,4 +1,4 @@
-import type { TimelineBucket } from '@smarteverything/domain';
+import type { LibraryBucket } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import {
   densityPath,
@@ -13,7 +13,7 @@ import {
   YEAR_LABEL_LINE,
 } from './scrubber-model';
 
-const BUCKETS: readonly TimelineBucket[] = [
+const BUCKETS: readonly LibraryBucket[] = [
   { month: '2026-03', count: 600 },
   { month: '2026-01', count: 200 },
   { month: '2024-12', count: 150 },

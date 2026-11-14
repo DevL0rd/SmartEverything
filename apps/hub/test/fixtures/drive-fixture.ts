@@ -11,7 +11,7 @@ import { buildRoot } from './drive-fixture/items';
 import { fileCount, makePeople, planRoots } from './drive-fixture/plans';
 import { createRandom, iso, NOW_MS } from './drive-fixture/random';
 import type { NonEmpty } from './drive-fixture/random';
-import { makeRoot, syncClientsFor } from './drive-fixture/roots';
+import { makeRoot, placementsFor } from './drive-fixture/roots';
 import { DRIVE_FIXTURE_SIZES } from './drive-fixture/types';
 import type { DriveFixture, DriveFixtureOptions } from './drive-fixture/types';
 
@@ -32,7 +32,7 @@ export function generateDriveFixture(options: DriveFixtureOptions): DriveFixture
   const total = DRIVE_FIXTURE_SIZES[options.size];
   const built = plans.map((plan) => buildRoot(random, plan, fileCount(plan, plans, total)));
   const items = built.flatMap((entry) => entry.items);
-  const syncClients = plans.flatMap((plan) => syncClientsFor(random, plan, people, deviceIds));
+  const placements = built.flatMap((entry) => placementsFor(random, entry, people, deviceIds));
   const versions = built.flatMap((entry) => buildVersions(random, entry, deviceIds));
   const trash = built.flatMap((entry) => buildTrash(random, entry));
   const usage = buildUsage([...people.map((person) => person.id), null], items, versions, trash);
@@ -43,19 +43,14 @@ export function generateDriveFixture(options: DriveFixtureOptions): DriveFixture
     now: iso(NOW_MS),
     people,
     deviceIds,
-    roots: built.map((entry) =>
-      makeRoot(
-        entry,
-        syncClients.filter((client) => client.rootId === entry.plan.id),
-      ),
-    ),
+    roots: built.map((entry) => makeRoot(entry)),
     items,
     albums,
     albumItems: members,
     trash,
     versions,
     shares: built.flatMap((entry) => buildShares(random, entry, people[0].id)),
-    syncClients,
+    placements,
     conflicts: built.flatMap((entry) => buildConflicts(random, entry, people, deviceIds)),
     quotas: buildQuotas(people, usage),
     usage,

@@ -30,12 +30,17 @@ const seen = vi.hoisted((): Seen => ({
   people: [],
 }));
 
-vi.mock('../../nas/data', () => ({
+vi.mock('../data', () => ({
   useDriveRecent: (filter: string): unknown => {
     seen.filter = filter;
     return seen.pages;
   },
-  useDriveRoots: (): readonly unknown[] => [{ id: ROOT_ID, label: 'Media disk' }],
+  useDriveChips:
+    (): ((rootId: string) => unknown) =>
+    (rootId: string): unknown =>
+      rootId === ROOT_ID
+        ? { key: 'shared-drive', label: 'Shared Drive', icon: 'users', tone: 'info' }
+        : { key: 'mine', label: 'My Drive', icon: 'hardDrive', tone: 'primary' },
   flattenPages: (
     data: { pages: { entries: DriveRecentEntry[] }[] } | undefined,
   ): readonly DriveRecentEntry[] => data?.pages.flatMap((page) => page.entries) ?? [],
@@ -62,17 +67,33 @@ vi.mock('../components/drive-frame', () => ({
   }): ReactNode => createElement('main', {}, banner, children),
 }));
 vi.mock('../../../components/segmented', () => ({ Segmented: (): null => null }));
+vi.mock('../components/drive-chip', () => ({
+  DriveFilterChips: ({
+    counts,
+  }: {
+    readonly counts: Readonly<Record<string, number>>;
+  }): ReactNode =>
+    createElement(
+      'nav',
+      {},
+      Object.entries(counts)
+        .map(([drive, total]) => `${drive}:${String(total)}`)
+        .join(' '),
+    ),
+}));
 vi.mock('./recent-bars', () => ({
   RecentBars: (): ReactNode => createElement('figure', {}, 'chart'),
 }));
 vi.mock('./recent-row', () => ({
   RecentRow: ({
     how,
+    chip,
     time,
   }: {
     readonly how: { text: string };
+    readonly chip: { label: string };
     readonly time: string;
-  }): ReactNode => createElement('li', {}, `${how.text} ${time}`),
+  }): ReactNode => createElement('li', {}, `${how.text} ${chip.label} ${time}`),
 }));
 vi.mock('./recent-states', () => ({
   RecentEmpty: ({ live }: { readonly live: boolean }): ReactNode =>
@@ -106,6 +127,7 @@ vi.mock('../../../components/virtual-list', () => ({
 }));
 
 const ROOT_ID = 'a1b2c3d4-0000-4000-8000-000000000001';
+const MY_ROOT_ID = 'a1b2c3d4-0000-4000-8000-000000000002';
 const ME = 'a1b2c3d4-0000-4000-8000-0000000000a1';
 const MEMBER = 'a1b2c3d4-0000-4000-8000-0000000000b2';
 const NOW = Date.parse('2026-11-07T15:00:00.000Z');
@@ -120,6 +142,7 @@ const ITEM = DRIVE_ITEM.parse({
   addedAt: '2026-11-07T10:00:00.000Z',
   openedAt: null,
   starred: false,
+  shared: false,
   rev: 1,
   etag: 'e',
   outside: false,
@@ -188,6 +211,24 @@ describe('RecentScreen', () => {
     expect(html).toContain('Earlier');
     expect(html).toContain('Changed outside SmartEverything');
     expect(html).toContain('Added by you');
+  });
+
+  it('shows each file’s drive and counts the files of every drive in the drive filter', async () => {
+    seen.pages = pagesOf(
+      [
+        { kind: 'opened', item: ITEM, at: '2026-11-07T09:00:00.000Z' },
+        {
+          kind: 'opened',
+          item: { ...ITEM, id: 'a1b2c3d4-0000-4000-8000-000000000011', rootId: MY_ROOT_ID },
+          at: '2026-11-07T08:00:00.000Z',
+        },
+      ],
+      null,
+    );
+    const html = await render();
+    expect(html).toContain('all:2 mine:1 shared-drive:1 with-me:0');
+    expect(html).toContain('Shared Drive');
+    expect(html).toContain('My Drive');
   });
 
   it('shows the empty state when nothing came back', async () => {

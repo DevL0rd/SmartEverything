@@ -67,7 +67,8 @@ export function chipCountsOf(input: CountsInput): ChipCounts {
   return { ...UNKNOWN, [input.chip]: input.shown.items.length };
 }
 
-export const STAR_NOTE = 'A star here and a Photos favourite are one mark';
+export const STAR_NOTE =
+  'Only you see your stars · a star here and a Photos favourite are one mark';
 
 export const SMART_NOTE = 'Saved filters that stay up to date as files change';
 

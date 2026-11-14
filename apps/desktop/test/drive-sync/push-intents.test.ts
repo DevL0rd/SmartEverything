@@ -27,7 +27,7 @@ afterEach(async () => {
 
 function hashedFile(relPath: string, fill: number, hubRev: number | null): void {
   database.files.upsert({
-    rootId: ROOT,
+    placementId: ROOT,
     relPath,
     kind: 'file',
     bytes: 10,
@@ -42,7 +42,7 @@ function hashedFile(relPath: string, fill: number, hubRev: number | null): void 
 
 function folder(relPath: string, hubRev: number | null): void {
   database.files.upsert({
-    rootId: ROOT,
+    placementId: ROOT,
     relPath,
     kind: 'folder',
     bytes: 0,
@@ -125,7 +125,7 @@ describe('pushIntents', () => {
   it('ignores folders in the changed list and refuses a file that is not hashed yet', () => {
     folder('empty', null);
     database.files.upsert({
-      rootId: ROOT,
+      placementId: ROOT,
       relPath: 'raw.txt',
       kind: 'file',
       bytes: 3,

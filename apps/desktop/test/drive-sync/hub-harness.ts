@@ -1,15 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  ApiError,
-  hashClientToken,
-  type DriveConflict,
-  type DriveRoot,
-} from '@smarteverything/domain';
+import { ApiError, type DriveConflict, type DrivePlacementSet } from '@smarteverything/domain';
 import { Logger, messageOf } from '@smarteverything/logging';
 import WebSocket from 'ws';
 import { ComputerNodeAccess } from '../../../hub/src/computers/node-access';
@@ -17,9 +11,12 @@ import { nodeFiles } from '../../../hub/src/drive/versions';
 import { syncAuthentication, type SyncEnv } from '../../../hub/src/drive/sync/server-ops';
 import { createDriveSync, type DriveSyncParts } from '../../../hub/src/drive/sync/server-push';
 import { DriveSyncServer } from '../../../hub/src/drive/sync/server-socket';
-import { folderRoot } from '../../../hub/test/drive/drive-fixture';
+import { status } from '../../../hub/test/drive/placement-fixture';
+import { driveTestStore } from '../../../hub/test/drive/spaces-fixture';
 import { testLogger } from '../../../hub/test/support/logs';
-import { testStore, type TestStore } from '../../../hub/test/support/store';
+import type { TestStore } from '../../../hub/test/support/store';
+import { sharedDriveRoot } from '../../../hub/test/store/drive-roots-fixture';
+import type { StoredDrive } from '../../../hub/src/store/repositories/drive-roots';
 import type { SyncSocketTransport } from '../../src/drive-sync/socket.js';
 
 const NOW = new Date('2026-11-07T00:00:00.000Z');
@@ -29,17 +26,27 @@ const log = new Logger('desktop.drive-sync');
 export interface HubPeer {
   readonly name: string;
   readonly token: string;
-  readonly clientId: string;
   readonly deviceId: string;
+  readonly placementId: string;
 }
+
+export type PeerPlacement = Partial<
+  Pick<DrivePlacementSet, 'folderItemId'> & {
+    readonly excluded: readonly string[];
+    readonly ignorePatterns: readonly string[];
+    readonly conflictCopies: boolean;
+    readonly readOnly: boolean;
+  }
+>;
 
 export interface FakeHub {
   readonly store: TestStore['store'];
   readonly url: string;
-  readonly rootId: string;
+  readonly driveId: string;
+  readonly ownerId: string;
   readonly rootPath: string;
   readonly upgrades: () => number;
-  readonly peer: (name: string) => HubPeer;
+  readonly peer: (name: string, placement?: PeerPlacement) => HubPeer;
   readonly revoke: (deviceId: string) => void;
   readonly dropSockets: () => void;
   readonly itemRev: (relPath: string) => number | undefined;
@@ -120,7 +127,17 @@ function syncEnv(opened: TestStore, conflicts: Map<string, DriveConflict>): Sync
   };
 }
 
-function peerOn(opened: TestStore, ownerId: string, name: string, count: number): HubPeer {
+interface PeerWorld {
+  readonly opened: TestStore;
+  readonly drive: StoredDrive;
+  readonly ownerId: string;
+}
+
+function pairedComputer(
+  { opened, ownerId }: PeerWorld,
+  name: string,
+  count: number,
+): { readonly deviceId: string; readonly token: string } {
   const [device] = opened.store.devices.upsert([
     {
       provider: 'local',
@@ -147,17 +164,31 @@ function peerOn(opened: TestStore, ownerId: string, name: string, count: number)
     windowClientId: null,
     profileId: ownerId,
   });
-  const clientId = opened.store.clients.create(
-    {
-      name,
-      platform: 'desktop',
-      role: 'member',
-      tokenHash: hashClientToken(`set_${randomBytes(32).toString('hex')}`),
-      profileId: ownerId,
-    },
-    false,
-  ).id;
-  return { name, token, clientId, deviceId: device.id };
+  return { deviceId: device.id, token };
+}
+
+function peerOn(world: PeerWorld, name: string, count: number, placement: PeerPlacement): HubPeer {
+  const { deviceId, token } = pairedComputer(world, name, count);
+  const placed = world.opened.store.drivePlacements.insert({
+    id: randomUUID(),
+    deviceId,
+    rootId: world.drive.id,
+    folderItemId: placement.folderItemId ?? null,
+    mode: 'synced',
+    localPath: `/sync/${name}`,
+    enabled: true,
+    createdBy: world.ownerId,
+    excluded: placement.excluded ?? [],
+    ignorePatterns: placement.ignorePatterns ?? [],
+    conflictCopies: placement.conflictCopies ?? true,
+    status: status({
+      state: 'starting',
+      tier: null,
+      route: null,
+      readOnly: placement.readOnly ?? false,
+    }),
+  });
+  return { name, token, deviceId, placementId: placed.id };
 }
 
 export async function until(
@@ -218,23 +249,14 @@ async function listen(sync: DriveSyncParts, hub: DriveSyncServer): Promise<Liste
   };
 }
 
-async function syncedRoot(opened: TestStore, directory: string): Promise<DriveRoot> {
-  const rootPath = join(directory, 'library');
-  await mkdir(rootPath, { recursive: true });
-  return opened.store.driveRoots.insert(
-    folderRoot(randomUUID(), rootPath, {
-      readOnly: false,
-      versions: true,
-      synced: true,
-      indexId: randomUUID(),
-      sync: { ignorePatterns: [], conflictCopies: true, clients: [] },
-    }),
-  );
+async function sharedDrive(opened: TestStore): Promise<StoredDrive> {
+  const drive = opened.store.driveRoots.insert(sharedDriveRoot(randomUUID()));
+  await mkdir(drive.path, { recursive: true });
+  return drive;
 }
 
 export async function startFakeHub(): Promise<FakeHub> {
-  const opened = await testStore(() => NOW);
-  const directory = await mkdtemp(join(tmpdir(), 'drive-sync-desktop-'));
+  const opened = await driveTestStore(() => NOW);
   const ownerId = opened.store.profiles.first().id;
   const sync = createDriveSync(syncEnv(opened, new Map()));
   const hub = new DriveSyncServer(
@@ -244,18 +266,19 @@ export async function startFakeHub(): Promise<FakeHub> {
     testLogger('drive-sync'),
   );
   const listening = await listen(sync, hub);
-  const root = await syncedRoot(opened, directory);
-  const rootPath = join(directory, 'library');
+  const root = await sharedDrive(opened);
+  const rootPath = root.path;
   let count = 0;
   return {
     store: opened.store,
     url: listening.url,
-    rootId: root.id,
+    driveId: root.id,
+    ownerId,
     rootPath,
     upgrades: listening.upgrades,
-    peer: (name): HubPeer => {
+    peer: (name, placement = {}): HubPeer => {
       count += 1;
-      return peerOn(opened, ownerId, name, count);
+      return peerOn({ opened, drive: root, ownerId }, name, count, placement);
     },
     revoke: (deviceId): void => {
       hub.revoke(deviceId);
@@ -263,7 +286,8 @@ export async function startFakeHub(): Promise<FakeHub> {
     dropSockets: (): void => {
       for (const socket of listening.sockets) socket.destroy();
     },
-    itemRev: (relPath): number | undefined => opened.store.driveItems.byPath(root.id, relPath)?.rev,
+    itemRev: (relPath): number | undefined =>
+      opened.store.driveItems.byPath(root.id, relPath, ownerId)?.rev,
     readFile: (relPath): Promise<Buffer> => readFile(join(rootPath, relPath)),
     stop: async (): Promise<void> => {
       for (const socket of listening.sockets) socket.destroy();
@@ -271,7 +295,6 @@ export async function startFakeHub(): Promise<FakeHub> {
       listening.server.closeAllConnections();
       listening.server.close();
       await opened.close();
-      await rm(directory, { recursive: true, force: true });
     },
   };
 }

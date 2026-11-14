@@ -37,3 +37,15 @@ func allocatedBytes(f *os.File) (int64, error) {
 	}
 	return int64(binary.LittleEndian.Uint64(info[0:8])), nil
 }
+
+func diskFree(dir string) (int64, error) {
+	name, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		return 0, err
+	}
+	var free, total, all uint64
+	if err := windows.GetDiskFreeSpaceEx(name, &free, &total, &all); err != nil {
+		return 0, err
+	}
+	return int64(free), nil
+}

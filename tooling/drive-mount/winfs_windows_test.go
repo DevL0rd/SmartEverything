@@ -25,7 +25,9 @@ func (s listedSource) Unpin(context.Context, mountRoot, string) error { return n
 
 func (s listedSource) Usage(mountRoot) int64 { return 0 }
 
-func (s listedSource) SetLimit(mountRoot, int64) error { return nil }
+func (s listedSource) SetPolicy(cachePolicy) error { return nil }
+
+func (s listedSource) Hold(mountRoot, string) func() { return func() {} }
 
 func newTestFS(items []entry) (*winFS, listedSource) {
 	source := listedSource{entered: make(chan struct{}), items: items}

@@ -28,6 +28,7 @@ type fileState struct {
 type loadedState struct {
 	key string
 	st  fileState
+	at  time.Time
 }
 
 func digest(parts ...string) string {
@@ -86,7 +87,7 @@ func loadStates(dir string) ([]loadedState, error) {
 		if err != nil {
 			return nil, fmt.Errorf("cache state %s: %w", filepath.Base(name), err)
 		}
-		out = append(out, loadedState{key: strings.TrimSuffix(filepath.Base(name), ".json"), st: st})
+		out = append(out, loadedState{key: strings.TrimSuffix(filepath.Base(name), ".json"), st: st, at: modTime(name)})
 	}
 	return out, nil
 }
@@ -179,17 +180,18 @@ func (s *listingStore) invalidate(root mountRoot, paths []string) {
 type lruNode struct {
 	id         blockID
 	bytes      int64
+	used       time.Time
 	prev, next *lruNode
 }
 
 type pool struct {
-	limit, used int64
-	head, tail  *lruNode
-	at          map[blockID]*lruNode
+	used       int64
+	head, tail *lruNode
+	at         map[blockID]*lruNode
 }
 
 func newPool() *pool {
-	return &pool{limit: noLimit, at: map[blockID]*lruNode{}}
+	return &pool{at: map[blockID]*lruNode{}}
 }
 
 func (p *pool) unlink(n *lruNode) {
@@ -217,18 +219,19 @@ func (p *pool) front(n *lruNode) {
 	}
 }
 
-func (p *pool) add(id blockID, bytes int64) {
+func (p *pool) add(id blockID, bytes int64, at time.Time) {
 	if _, ok := p.at[id]; ok {
 		return
 	}
-	n := &lruNode{id: id, bytes: bytes}
+	n := &lruNode{id: id, bytes: bytes, used: at}
 	p.at[id] = n
 	p.used += bytes
 	p.front(n)
 }
 
-func (p *pool) touch(id blockID) {
+func (p *pool) touch(id blockID, at time.Time) {
 	if n, ok := p.at[id]; ok {
+		n.used = at
 		p.unlink(n)
 		p.front(n)
 	}
@@ -242,9 +245,3 @@ func (p *pool) remove(id blockID) {
 	}
 }
 
-func (p *pool) oldest() (blockID, bool) {
-	if p.tail == nil {
-		return blockID{}, false
-	}
-	return p.tail.id, true
-}

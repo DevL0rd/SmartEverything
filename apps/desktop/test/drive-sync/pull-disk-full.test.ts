@@ -6,7 +6,7 @@ import { Logger } from '@smarteverything/logging';
 import type * as fsPromises from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { openDriveSyncDatabase, type DriveSyncDatabase } from '../../src/drive-sync/db/index.js';
-import { RootPuller } from '../../src/drive-sync/pull.js';
+import { PlacementPuller } from '../../src/drive-sync/pull.js';
 import { FakeHubFiles, bytesOf, fileEntry } from './pull-support.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -57,8 +57,9 @@ describe('pulling onto a full disk', () => {
     hub.contents.set(itemId, content);
     const blocked: { relPath: string; reason: 'disk_full' }[] = [];
     const failed: unknown[] = [];
-    const puller = new RootPuller({
-      rootId: ROOT,
+    const puller = new PlacementPuller({
+      placementId: ROOT,
+      driveId: ROOT,
       rootPath: join(scratch, 'library'),
       platform: process.platform,
       database,

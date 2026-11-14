@@ -5,6 +5,7 @@ import type { DriveFrameProps } from '../components/drive-frame';
 import type { TrashActions } from './trash-actions';
 import type { TrashFilter } from './trash-filter';
 import type { TrashFilterRowProps } from './trash-filter-row';
+import type { DriveChip } from '../model/drive-chip';
 import type { TrashItem } from './trash-model';
 import type { TrashRowProps } from './trash-row';
 import type { TableTopProps } from './trash-table';
@@ -48,13 +49,14 @@ function viewOf(items: readonly TrashItem[], status: TrashView['status'] = 'read
     deletedBy: [],
     months: [],
     rootLabelOf: (rootId) => (rootId === ROOT_ID ? 'Projects' : null),
+    chipOf: () => ({ key: 'mine', label: 'Projects', icon: 'hardDrive', tone: 'primary' }),
   };
 }
 
 const seen = vi.hoisted((): Seen => ({
   owner: true,
   live: true,
-  filter: { chip: 'everything', query: '' },
+  filter: { chip: 'everything', drive: 'all', query: '' },
   view: {
     status: 'loading',
     error: null,
@@ -65,6 +67,7 @@ const seen = vi.hoisted((): Seen => ({
     deletedBy: [],
     months: null,
     rootLabelOf: () => null,
+    chipOf: () => ({ key: 'mine', label: 'My Drive', icon: 'hardDrive', tone: 'primary' }),
   },
   frame: null,
   top: null,
@@ -172,7 +175,7 @@ describe('Trash screen', () => {
   beforeEach(() => {
     seen.owner = true;
     seen.live = true;
-    seen.filter = { chip: 'everything', query: '' };
+    seen.filter = { chip: 'everything', drive: 'all', query: '' };
     seen.view = viewOf([ITEM]);
     seen.frame = null;
     seen.top = null;
@@ -193,7 +196,7 @@ describe('Trash screen', () => {
   it('gives the owner Delete all now over the whole list and restores a single row', () => {
     const html = render();
     expect(html).toContain('top with Delete all now');
-    expect(html).toContain('Delete now is for the owner');
+    expect(html).toContain('Shared Drive trash is seen by everyone in the home');
     seen.top?.deleteAll?.onPress();
     expect(seen.removedAll).toEqual([[ITEM]]);
     seen.rows[0]?.onRestore(ITEM);
@@ -203,12 +206,23 @@ describe('Trash screen', () => {
     expect(seen.rows[0]?.layout).toBe('list');
   });
 
-  it('lets a member restore but never delete for good', () => {
+  it('lets a member empty their own drive’s trash and keeps what others deleted in the Shared Drive', () => {
     seen.owner = false;
     const html = render();
-    expect(seen.top?.deleteAll).toBeNull();
-    expect(html).toContain('Only the owner can delete items for good');
+    expect(seen.top?.deleteAll).not.toBeNull();
+    expect(html).toContain('In the Shared Drive you delete for good only what you deleted');
     expect(seen.rows[0]?.disabled).toBe(false);
+    seen.view = {
+      ...viewOf([{ ...ITEM, deleter: { kind: 'person', id: 'sam', name: 'Sam' } }]),
+      chipOf: (): DriveChip => ({
+        key: 'shared-drive',
+        label: 'Shared Drive',
+        icon: 'users',
+        tone: 'info',
+      }),
+    };
+    render();
+    expect(seen.top?.deleteAll).toBeNull();
   });
 
   it('waits for the whole list before Delete all now', () => {
@@ -246,7 +260,7 @@ describe('Trash screen', () => {
       isFolder: true,
     };
     seen.view = viewOf([ITEM, folder]);
-    seen.filter = { chip: 'folders', query: '' };
+    seen.filter = { chip: 'folders', drive: 'all', query: '' };
     const html = render();
     expect(html).toContain('Quotes in Projects');
     expect(html).not.toContain('Old tile quote.pdf');
@@ -256,11 +270,11 @@ describe('Trash screen', () => {
   });
 
   it('says nothing matches and keeps the table top when the filter hides every item', () => {
-    seen.filter = { chip: 'everything', query: 'lease' };
+    seen.filter = { chip: 'everything', drive: 'all', query: 'lease' };
     const html = render();
     expect(html).toContain('Nothing in Trash matches');
     expect(html).not.toContain('Trash is empty');
-    expect(html).not.toContain('Delete now is for the owner');
+    expect(html).not.toContain('Shared Drive trash is seen by everyone');
     expect(seen.top).not.toBeNull();
   });
 });

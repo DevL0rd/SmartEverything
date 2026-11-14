@@ -12,7 +12,7 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
 import { useScreenQuery } from '../../../queries/use-screen-query';
-import { driveLinks, useDriveLink } from '../../nas/data';
+import { driveLinks, useDriveLink } from '../data';
 import { openItemFile } from '../folder/folder-footer';
 import {
   PREVIEW_HEAD_BYTES,

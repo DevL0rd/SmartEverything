@@ -104,7 +104,7 @@ export const SmartFolderCard = memo(function SmartFolderCard({
         <Interactive
           href={smartFolderHref(folder.id)}
           label={`Open ${folder.title}, ${caption}`}
-          className="min-w-0 flex-1 flex-row items-center gap-3 rounded-md"
+          className="min-h-touch-min min-w-0 flex-1 flex-row items-center gap-3 rounded-md"
           layerClassName="rounded-md"
         >
           <IconWell icon="sparkles" colour="primary" size="s" />

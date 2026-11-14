@@ -1,50 +1,37 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { background } from '@smarteverything/logging';
-import type { DriveItem } from '@smarteverything/domain';
+import type { DriveFolderPlace } from '@smarteverything/domain';
 import { Icon } from '../../../components/icon';
-import type { HeaderAction } from '../../../components/page-header';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
 import { useFileDrop } from '../../../platform/file-drop';
 import { pickFiles, type PickedBlob, type PickedFile } from '../../../platform/pick-files';
 import { useSyncStatus } from '../../../store/selectors';
-import { useDriveSyncClients } from '../../nas/data';
-import { syncedComputers, type FolderSlotContext } from '../folder/folder-model';
+import { useDrivePlacementRows } from '../data';
+import { placedComputersOf, type FolderSlotContext } from '../folder/folder-model';
 import { retryFolderId, uploadFiles, useFolderUploads } from './drive-uploads';
-import { blockedDropText, dropDetail, dropTitle } from './upload-model';
+import { blockedDropText, dropDetail, dropTitle, placeIdOf, placeOf } from './upload-model';
 import { UploadStrip } from './upload-strip';
 
 function isBlob(file: PickedFile): file is PickedBlob {
   return 'blob' in file && typeof file.blob === 'function';
 }
 
-function send(files: readonly PickedBlob[], folderId: string): void {
-  background(uploadFiles(files, folderId), 'drive.upload.start_failed');
+function send(files: readonly PickedBlob[], place: DriveFolderPlace): void {
+  background(uploadFiles(files, place), 'drive.upload.start_failed');
 }
 
-async function chooseInto(folderId: string): Promise<void> {
+async function chooseInto(place: DriveFolderPlace): Promise<void> {
   try {
-    send(await pickFiles('files'), folderId);
+    send(await pickFiles('files'), place);
   } catch (error) {
     notify({ message: 'Files couldn’t be chosen', error, tone: 'critical' });
   }
 }
 
-export function uploadActionsOf(
-  folder: DriveItem | null,
-  writable: boolean,
-): readonly HeaderAction[] {
-  if (folder === null || !writable) return [];
-  return [
-    {
-      icon: 'upload',
-      label: 'Upload',
-      onPress: (): void => {
-        background(chooseInto(folder.id), 'drive.upload.pick_failed');
-      },
-    },
-  ];
+export function chooseUploads(place: DriveFolderPlace): void {
+  background(chooseInto(place), 'drive.upload.pick_failed');
 }
 
 function DropOverlay({
@@ -80,57 +67,64 @@ interface DropCopy {
   readonly blocked: boolean;
 }
 
-function useDropCopy(context: FolderSlotContext, online: boolean): DropCopy {
-  const clients = useDriveSyncClients();
-  const { root, folder } = context;
-  if (folder === null) {
+function useDropCopy(
+  context: FolderSlotContext,
+  where: string,
+  state: { readonly online: boolean; readonly full: boolean },
+): DropCopy {
+  const placements = useDrivePlacementRows();
+  if (!state.online || !context.writable || state.full) {
     return {
-      title: 'Open a folder to upload',
-      detail: 'Files go into a folder inside this library folder.',
+      title: 'Can’t upload here now',
+      detail: blockedDropText(state.online, state.full),
       blocked: true,
     };
   }
-  if (!online || root.readOnly) {
-    return { title: 'Can’t upload here now', detail: blockedDropText(online), blocked: true };
-  }
   return {
-    title: dropTitle(folder.name),
-    detail: dropDetail(syncedComputers(root, clients)),
+    title: dropTitle(where),
+    detail: dropDetail(placedComputersOf(placements, context.rootId)),
     blocked: false,
   };
 }
 
-function FolderStrip({
-  folder,
+function PlaceStrip({
+  place,
+  name,
   online,
 }: {
-  readonly folder: DriveItem;
+  readonly place: DriveFolderPlace;
+  readonly name: string;
   readonly online: boolean;
 }): ReactNode {
-  const view = useFolderUploads(folder.id);
+  const placeId = placeIdOf(place);
+  const view = useFolderUploads(placeId);
   useEffect(() => {
-    if (online) retryFolderId(folder.id);
-  }, [online, folder.id]);
+    if (online) retryFolderId(placeId);
+  }, [online, placeId]);
   if (view.rows.length === 0) return null;
-  return <UploadStrip view={view} folderId={folder.id} folderName={folder.name} />;
+  return <UploadStrip view={view} placeId={placeId} placeName={name} />;
 }
 
 export function FolderUploads({
   context,
+  where,
+  full,
   children,
 }: {
   readonly context: FolderSlotContext;
+  readonly where: string;
+  readonly full: boolean;
   readonly children: ReactNode;
 }): ReactNode {
   const ref = useRef<View>(null);
   const [hovering, setHovering] = useState(false);
   const online = useSyncStatus().status === 'live';
-  const copy = useDropCopy(context, online);
-  const { folder } = context;
+  const copy = useDropCopy(context, where, { online, full });
+  const place = placeOf(context.rootId, context.folder);
   useFileDrop(ref, {
     onHover: setHovering,
     onFiles: (files) => {
-      if (folder !== null && !copy.blocked) send(files.filter(isBlob), folder.id);
+      if (!copy.blocked) send(files.filter(isBlob), place);
     },
   });
   return (
@@ -139,7 +133,7 @@ export function FolderUploads({
         {children}
         {hovering ? <DropOverlay {...copy} /> : null}
       </View>
-      {folder === null ? null : <FolderStrip folder={folder} online={online} />}
+      <PlaceStrip place={place} name={where} online={online} />
     </View>
   );
 }

@@ -23,6 +23,7 @@ vi.mock('../../../components/toast-store', () => ({
     return seen.toasts.length;
   },
 }));
+vi.mock('../data', () => ({ useDriveRoots: (): readonly unknown[] => [] }));
 vi.mock('../../../api/drive', () => ({
   changeDrive: (): Promise<never> => Promise.reject(new Error('unused')),
   readDriveItem: (): Promise<DriveItem> =>
@@ -49,6 +50,7 @@ function itemOf(relPath: string, parentId: string | null): DriveItem {
     addedAt: '2026-11-07T10:00:00.000Z',
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 2,
     etag: 'e',
     outside: false,
@@ -88,7 +90,7 @@ describe('restore announcements', () => {
 
   it('says what one item was restored as and where, and Open goes to it', async () => {
     seen.item = itemOf('Home/Kitchen remodel/Quotes (2)', FOLDER_ID);
-    announceRestored(resultOf([{ itemId: ITEM_ID, resultItemId: ITEM_ID }]), labels);
+    announceRestored(resultOf([{ itemId: ITEM_ID, resultItemId: ITEM_ID }]), labels, []);
     await settle();
     const [toast] = seen.toasts;
     expect(toast?.message).toBe('Restored as Quotes (2) in Kitchen remodel');
@@ -98,16 +100,16 @@ describe('restore announcements', () => {
     expect(seen.pushed).toHaveLength(1);
   });
 
-  it('names the library folder for an item restored at its top', async () => {
+  it('names the drive for an item restored at its top', async () => {
     seen.item = itemOf('Quote.pdf', null);
-    announceRestored(resultOf([{ itemId: ITEM_ID, resultItemId: ITEM_ID }]), labels);
+    announceRestored(resultOf([{ itemId: ITEM_ID, resultItemId: ITEM_ID }]), labels, []);
     await settle();
     expect(seen.toasts[0]?.message).toBe('Restored as Quote.pdf in Projects');
   });
 
   it('still says it was restored when the restored item cannot be read', async () => {
     seen.item = new Error('gone');
-    announceRestored(resultOf([{ itemId: ITEM_ID, resultItemId: ITEM_ID }]), labels);
+    announceRestored(resultOf([{ itemId: ITEM_ID, resultItemId: ITEM_ID }]), labels, []);
     await settle();
     expect(seen.toasts.map((toast) => toast.message)).toEqual(['1 item restored']);
   });
@@ -122,6 +124,7 @@ describe('restore announcements', () => {
         [{ itemId: FOLDER_ID, reason: 'The folder it was in is read only.' }],
       ),
       labels,
+      [],
     );
     await settle();
     expect(seen.toasts.map((toast) => [toast.message, toast.tone])).toEqual([

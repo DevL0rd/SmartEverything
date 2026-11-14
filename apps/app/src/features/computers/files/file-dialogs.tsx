@@ -95,7 +95,7 @@ function Transfer({
     <FolderPickerSheet
       open
       mode="folder"
-      source={{ kind: 'computer', deviceId }}
+      deviceId={deviceId}
       start={parentOf(entries[0]?.path ?? '/')}
       onClose={actions.close}
       onChoose={(to) => {

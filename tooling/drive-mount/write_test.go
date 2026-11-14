@@ -22,7 +22,7 @@ func writeHub(t *testing.T) *stubHub {
 
 func openWriteBack(t *testing.T, h *stubHub, dir string) *writeBack {
 	t.Helper()
-	files, err := newFilesystem(h.server.URL, stubToken, dir, filepath.Join(dir, "journal"))
+	files, err := newFilesystem(routeSpec{URL: h.server.URL}, stubToken, dir, filepath.Join(dir, "journal"))
 	if err != nil {
 		t.Fatal(err)
 	}

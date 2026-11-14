@@ -1,8 +1,9 @@
-import type { DriveStats, DriveUsage } from '@smarteverything/domain';
+import type { DriveQuota, DriveStats, DriveUsage, DriveUsageTotals } from '@smarteverything/domain';
 
 export interface DriveUsageSource {
   readonly usage: (profileId: string | null) => DriveUsage;
   readonly usageByProfile: () => DriveUsage[];
+  readonly find: (profileId: string) => DriveQuota | undefined;
 }
 
 export type DriveUsageViewer =
@@ -17,8 +18,19 @@ function monthAfter(month: string): string {
     : `${String(year).padStart(4, '0')}-${String(number + 1).padStart(2, '0')}`;
 }
 
-export function readDriveUsage(source: DriveUsageSource, viewer: DriveUsageViewer): DriveUsage[] {
-  return viewer.role === 'owner' ? source.usageByProfile() : [source.usage(viewer.profileId)];
+function withQuota(source: DriveUsageSource, usage: DriveUsage): DriveUsageTotals {
+  return {
+    ...usage,
+    quota: usage.profileId === null ? null : (source.find(usage.profileId)?.bytes ?? null),
+  };
+}
+
+export function readDriveUsage(
+  source: DriveUsageSource,
+  viewer: DriveUsageViewer,
+): DriveUsageTotals[] {
+  const rows = viewer.role === 'owner' ? source.usageByProfile() : [source.usage(viewer.profileId)];
+  return rows.map((usage) => withQuota(source, usage));
 }
 
 export function purgeForecast(

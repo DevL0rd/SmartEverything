@@ -13,6 +13,8 @@ const log = new Logger('tool.drive-mount');
 
 const HERE = import.meta.dirname;
 const OUT = join(HERE, 'out');
+
+export const DRIVE_MOUNT_BUILD_OUTPUT = OUT;
 const GO_FLAGS = '-trimpath -buildvcs=false -mod=readonly -modcacherw';
 const LD_FLAGS = '-s -w -buildid=';
 

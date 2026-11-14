@@ -14,7 +14,7 @@ import (
 
 func openFake(t *testing.T, h *fakehub.Hub, dir string) *writeBack {
 	t.Helper()
-	files, err := newFilesystem(h.URL, fakehub.Token, dir, dir+"/journal")
+	files, err := newFilesystem(routeSpec{URL: h.URL}, fakehub.Token, dir, dir+"/journal")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -64,7 +64,7 @@ func (c *blockCache) readCached(f *cachedFile, idx, within int64, dst []byte) (i
 		return 0, false, err
 	}
 	if !f.st.Pinned {
-		c.pool(f.st.Root).touch(blockID{f.key, idx})
+		c.lru.touch(blockID{f.key, idx}, c.now())
 	}
 	return n, true, nil
 }
@@ -143,7 +143,7 @@ func (c *blockCache) store(f *cachedFile, idx int64, buf []byte) error {
 	if err := c.save(f); err != nil {
 		return err
 	}
-	return c.evict(c.pool(f.st.Root))
+	return c.evict()
 }
 
 func (c *blockCache) noteRead(f *cachedFile, off, n int64) {

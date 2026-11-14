@@ -26,9 +26,10 @@ import { compact, count } from '../format/number';
 import { joinParts } from '../format/text';
 import { useSyncStatus } from '../store/selectors';
 import { DriveThumb } from '../features/drive/folder/folder-list';
-import { KIND_LOOK, openHrefOf, whereOf } from '../features/drive/recent/recent-model';
+import { drivePathOf } from '../features/drive/model/drive-chip';
+import { KIND_LOOK, openHrefOf } from '../features/drive/recent/recent-model';
 import { useSaveSmartFolder } from '../features/drive/starred';
-import { flattenPages, useDriveRoots, useDriveSearch } from '../features/nas/data';
+import { flattenPages, useDriveChips, useDriveRoots, useDriveSearch } from '../features/drive';
 import { rangeIn } from './match';
 import { useRecentSearches } from './recent';
 import type { RowEdge } from './result-rows';
@@ -181,7 +182,7 @@ function PhotoStrip({ photos, more, query, look, open }: StripProps): ReactNode 
         <Interactive
           label={`Show ${rest} more in Photos`}
           onPress={() => {
-            open(href.photosPage('search', { q: query.trim() }));
+            open(href.photos({ q: query.trim() }));
           }}
           className="h-16 w-24 items-center justify-center rounded-sm bg-surface-3"
         >
@@ -210,10 +211,11 @@ interface FileRowsProps {
 }
 
 function FileRows({ files, query, look, open }: FileRowsProps): ReactNode {
-  const roots = new Map(useDriveRoots().map((root) => [root.id, root.label]));
+  const drives = useDriveRoots();
+  const chipOf = useDriveChips();
   const tokens = tokensOf(query);
   return files.map((item, index) => {
-    const where = whereOf(item, roots.get(item.rootId) ?? null);
+    const where = drivePathOf(chipOf(item.rootId), item.relPath);
     return (
       <RowFrame
         key={item.id}
@@ -228,7 +230,7 @@ function FileRows({ files, query, look, open }: FileRowsProps): ReactNode {
           leading={<FileLeading item={item} />}
           label={joinParts([`Open ${item.name}`, where])}
           onPress={() => {
-            open(openHrefOf(item));
+            open(openHrefOf(item, drives));
           }}
           {...(where === '' ? {} : { subtitle: where })}
         />

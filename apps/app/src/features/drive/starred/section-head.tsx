@@ -42,12 +42,13 @@ function Heading({
 
 export function StarredColumns(): ReactNode {
   return (
-    <View className="flex-row items-center gap-4 border-b border-outline-variant bg-surface-2 px-4 py-1.5">
+    <View className="mx-gutter flex-row items-center gap-4 rounded-t-sm border-b border-outline-variant bg-surface-2 px-4 py-1.5">
       <Heading text="Name" className="min-w-0 flex-1 pl-12" />
-      <Heading text="In" className="w-56" />
+      <Heading text="Drive" className="w-36" />
+      <Heading text="In" className="w-44" />
       <Heading text="Changed" className="w-20 text-right" />
       <Heading text="Size" className="w-20 text-right" />
-      <View className="w-control-h" />
+      <View className="w-touch-min" />
     </View>
   );
 }

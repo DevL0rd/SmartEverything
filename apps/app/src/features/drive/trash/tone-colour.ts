@@ -5,6 +5,8 @@ import type { PersonTone } from './deleted-by';
 
 const PERCENT = 100;
 
+const UNSET_PROPERTY = '--drive-tone-unset';
+
 export class UnmixableColourError extends Error {
   override readonly name = 'UnmixableColourError';
 
@@ -27,7 +29,7 @@ function channelMix(first: number, second: number, shift: number, share: number)
 
 export function mixColours(colour: string, toward: string, share: number): string {
   if (!isNative()) {
-    return `color-mix(in srgb, ${colour} ${String(Math.round(share * PERCENT))}%, ${toward})`;
+    return `var(${UNSET_PROPERTY}, color-mix(in srgb, ${colour} ${String(Math.round(share * PERCENT))}%, ${toward}))`;
   }
   const first = packedOf(colour);
   const second = packedOf(toward);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TIMELINE_PAGE, photoFlags } from '@smarteverything/domain';
+import { LIBRARY_PAGE, photoFlags } from '@smarteverything/domain';
 import { localDayKey } from '../../format/time';
 import { groupDays, groupTiles, sameTile, tilesOfPage, wallDayKey } from './tiles';
 
@@ -7,7 +7,7 @@ const A = '00000000-0000-4000-8000-00000000000a';
 const B = '00000000-0000-4000-8000-00000000000b';
 const C = '00000000-0000-4000-8000-00000000000c';
 
-const PAGE = TIMELINE_PAGE.parse({
+const PAGE = LIBRARY_PAGE.parse({
   month: '2026-11',
   ids: [A, B, C],
   revs: [3, 1, 2],

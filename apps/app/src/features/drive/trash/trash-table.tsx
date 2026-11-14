@@ -41,7 +41,7 @@ function ColumnHeader({
   onToggleAll,
 }: Pick<TableTopProps, 'pickState' | 'onToggleAll'>): ReactNode {
   return (
-    <View className="h-10 flex-row items-center pl-4 pr-3">
+    <View className="mx-gutter h-10 flex-row items-center pl-4 pr-3">
       <View className="min-w-0 flex-1 flex-row items-center gap-3">
         <Interactive
           role="checkbox"
@@ -49,7 +49,7 @@ function ColumnHeader({
           label="Select all"
           onPress={onToggleAll}
           hitSlop={12}
-          className="h-10 items-center justify-center rounded-xs"
+          className="-mx-2.5 size-10 items-center justify-center rounded-xs"
           layerClassName="rounded-xs"
         >
           <CheckMark state={pickState} />
@@ -75,7 +75,7 @@ function Toolbar({
   const table = layout === 'table';
   if (table && deleteAll === null) return null;
   return (
-    <View className="min-h-touch-min flex-row flex-wrap items-center justify-between gap-2 px-4">
+    <View className="mx-gutter min-h-touch-min flex-row flex-wrap items-center justify-between gap-2 pl-4 pr-3">
       {table ? (
         <View />
       ) : (

@@ -3,8 +3,11 @@ import { messageOf, type Logger } from '@smarteverything/logging';
 
 export interface SyncTarget {
   readonly placementId: string;
-  readonly rootId: string;
+  readonly driveId: string;
   readonly localPath: string;
+  readonly excluded: readonly string[];
+  readonly ignorePatterns: readonly string[];
+  readonly receiveOnly: boolean;
 }
 
 export interface SyncWaiting {
@@ -15,7 +18,7 @@ export interface SyncWaiting {
 export interface SyncEnginePort {
   readonly start: (target: SyncTarget) => Promise<void>;
   readonly stop: (placementId: string) => Promise<void>;
-  readonly waiting: (rootId: string) => Promise<SyncWaiting>;
+  readonly waiting: (placementId: string) => Promise<SyncWaiting>;
 }
 
 export function syncTargets(placements: readonly DrivePlacement[]): readonly SyncTarget[] {
@@ -25,13 +28,26 @@ export function syncTargets(placements: readonly DrivePlacement[]): readonly Syn
     )
     .map((placement) => ({
       placementId: placement.id,
-      rootId: placement.rootId,
+      driveId: placement.rootId,
       localPath: placement.localPath,
+      excluded: placement.excluded ?? [],
+      ignorePatterns: placement.ignorePatterns ?? [],
+      receiveOnly: placement.status.readOnly,
     }));
 }
 
+function sameList(first: readonly string[], second: readonly string[]): boolean {
+  return first.length === second.length && first.every((entry, index) => entry === second[index]);
+}
+
 function sameTarget(first: SyncTarget, second: SyncTarget): boolean {
-  return first.rootId === second.rootId && first.localPath === second.localPath;
+  return (
+    first.driveId === second.driveId &&
+    first.localPath === second.localPath &&
+    first.receiveOnly === second.receiveOnly &&
+    sameList(first.excluded, second.excluded) &&
+    sameList(first.ignorePatterns, second.ignorePatterns)
+  );
 }
 
 export class SyncPlacementIntake {

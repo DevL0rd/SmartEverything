@@ -9,7 +9,7 @@ import { HubBlockUploader } from '../../src/drive-sync/block-upload.js';
 import { openDriveSyncDatabase, type DriveSyncDatabase } from '../../src/drive-sync/db/index.js';
 import { fileViewOf, pushIntents } from '../../src/drive-sync/push-intents.js';
 import {
-  RootPusher,
+  PlacementPusher,
   type PushAccepted,
   type PushConflict,
   type PushFailure,
@@ -24,7 +24,7 @@ interface Rig {
   readonly peer: HubPeer;
   readonly localPath: string;
   readonly database: DriveSyncDatabase;
-  readonly pusher: RootPusher;
+  readonly pusher: PlacementPusher;
   readonly socket: SyncSocket;
   readonly accepted: PushAccepted[];
   readonly conflicted: PushConflict[];
@@ -76,7 +76,6 @@ async function makeRig(name: string): Promise<Rig> {
   const socket: SyncSocket = new SyncSocket({
     hubUrl: hub.url,
     token: peer.token,
-    clientId: peer.clientId,
     transport,
     log,
     sink: {
@@ -99,11 +98,11 @@ async function makeRig(name: string): Promise<Rig> {
       },
     },
   });
-  const pusher: RootPusher = new RootPusher({
-    rootId: hub.rootId,
+  const pusher: PlacementPusher = new PlacementPusher({
+    placementId: peer.placementId,
     rootPath: localPath,
     database,
-    channel: { send: (message) => socket.send(hub.rootId, message) },
+    channel: { send: (message) => socket.send(peer.placementId, message) },
     uploader: new HubBlockUploader({ hubUrl: hub.url, token: peer.token, fetch }),
     sink: {
       accepted: (result) => accepted.push(result),
@@ -124,9 +123,12 @@ async function makeRig(name: string): Promise<Rig> {
     stale,
     failed,
     attach: () => {
-      socket.attach({ rootId: hub.rootId, hello: () => ({ indexId: null, afterSeq: 0 }) });
+      socket.attach({
+        placementId: peer.placementId,
+        hello: () => ({ indexId: null, afterSeq: 0 }),
+      });
     },
-    connected: () => until(() => opened > 0 && socket.isOpen(hub.rootId)),
+    connected: () => until(() => opened > 0 && socket.isOpen(peer.placementId)),
     dropNextAccept: () => {
       dropAccept = true;
     },
@@ -165,7 +167,7 @@ function record(rig: Rig, relPath: string, bytes: Buffer, hubRev: number | null)
     );
   }
   rig.database.files.upsert({
-    rootId: hub.rootId,
+    placementId: rig.peer.placementId,
     relPath,
     kind: 'file',
     bytes: bytes.length,
@@ -179,11 +181,11 @@ function record(rig: Rig, relPath: string, bytes: Buffer, hubRev: number | null)
 }
 
 function hubRevOf(rig: Rig, relPath: string): number | null | undefined {
-  return rig.database.files.get(hub.rootId, relPath)?.hubRev;
+  return rig.database.files.get(rig.peer.placementId, relPath)?.hubRev;
 }
 
 function pushOf(rig: Rig, ...relPaths: string[]): Promise<void> {
-  const view = fileViewOf(rig.database.files.list(hub.rootId));
+  const view = fileViewOf(rig.database.files.list(rig.peer.placementId));
   return rig.pusher.submit(
     pushIntents({ renames: [], changed: relPaths, deleted: [] }, view, view),
   );
@@ -242,10 +244,10 @@ describe('moves and deletes', () => {
     const rig = await connectedRig('desk');
     await putFile(rig, 'old.txt', Buffer.from('keep me'));
     await pushOf(rig, 'old.txt');
-    const before = fileViewOf(rig.database.files.list(hub.rootId));
+    const before = fileViewOf(rig.database.files.list(rig.peer.placementId));
     await rename(join(rig.localPath, 'old.txt'), join(rig.localPath, 'new.txt'));
-    rig.database.files.rename(hub.rootId, 'old.txt', 'new.txt');
-    const after = fileViewOf(rig.database.files.list(hub.rootId));
+    rig.database.files.rename(rig.peer.placementId, 'old.txt', 'new.txt');
+    const after = fileViewOf(rig.database.files.list(rig.peer.placementId));
     await rig.pusher.submit(
       pushIntents(
         { renames: [{ from: 'old.txt', to: 'new.txt', kind: 'file' }], changed: [], deleted: [] },
@@ -263,9 +265,9 @@ describe('moves and deletes', () => {
     const rig = await connectedRig('desk');
     await putFile(rig, 'gone.txt', Buffer.from('bye'));
     await pushOf(rig, 'gone.txt');
-    const before = fileViewOf(rig.database.files.list(hub.rootId));
-    rig.database.files.remove(hub.rootId, 'gone.txt');
-    const after = fileViewOf(rig.database.files.list(hub.rootId));
+    const before = fileViewOf(rig.database.files.list(rig.peer.placementId));
+    rig.database.files.remove(rig.peer.placementId, 'gone.txt');
+    const after = fileViewOf(rig.database.files.list(rig.peer.placementId));
     await rig.pusher.submit(
       pushIntents({ renames: [], changed: [], deleted: ['gone.txt'] }, before, after),
     );
@@ -280,7 +282,7 @@ describe('moves and deletes', () => {
     await pushOf(rig, 'dir/sub/a.txt', 'dir/b.txt');
     for (const folder of ['dir', 'dir/sub']) {
       rig.database.files.upsert({
-        rootId: hub.rootId,
+        placementId: rig.peer.placementId,
         relPath: folder,
         kind: 'folder',
         bytes: 0,
@@ -292,9 +294,9 @@ describe('moves and deletes', () => {
         blocks: null,
       });
     }
-    const before = fileViewOf(rig.database.files.list(hub.rootId));
-    rig.database.files.removeSubtree(hub.rootId, 'dir');
-    const after = fileViewOf(rig.database.files.list(hub.rootId));
+    const before = fileViewOf(rig.database.files.list(rig.peer.placementId));
+    rig.database.files.removeSubtree(rig.peer.placementId, 'dir');
+    const after = fileViewOf(rig.database.files.list(rig.peer.placementId));
     const intents = pushIntents({ renames: [], changed: [], deleted: ['dir'] }, before, after);
     expect(intents.map((intent) => (intent.kind === 'tombstone' ? intent.relPath : ''))).toEqual([
       'dir/sub/a.txt',
@@ -350,7 +352,7 @@ describe('files that change under the push', () => {
     await writeFile(join(rig.localPath, 'racy.txt'), Buffer.from('bbbbbbbb'));
     await pushOf(rig, 'racy.txt');
     expect(rig.stale).toEqual(['racy.txt']);
-    expect(rig.database.files.get(hub.rootId, 'racy.txt')?.localHashState).toBe('stale');
+    expect(rig.database.files.get(rig.peer.placementId, 'racy.txt')?.localHashState).toBe('stale');
     expect(hub.itemRev('racy.txt')).toBeUndefined();
     expect(rig.pusher.waiting().pendingOps).toBe(0);
   });
@@ -368,7 +370,7 @@ describe('files that change under the push', () => {
     const rig = await makeRig('desk');
     await putFile(rig, 'removed.txt', Buffer.from('queued'));
     await pushOf(rig, 'removed.txt');
-    rig.database.files.remove(hub.rootId, 'removed.txt');
+    rig.database.files.remove(rig.peer.placementId, 'removed.txt');
     rig.attach();
     await until(() => rig.pusher.waiting().pendingOps === 0);
     expect(hub.itemRev('removed.txt')).toBeUndefined();

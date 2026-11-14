@@ -27,7 +27,11 @@ export const DRIVE_EDIT_INPUT = z.strictObject({
   driveChanges: DRIVE_ROOT_CHANGE.optional().describe(
     'The drive settings to change, for action configure',
   ),
-  parentId: DRIVE_FIELDS.folderId.optional().describe('The folder to make a folder in'),
+  parentId: DRIVE_FIELDS.folderId
+    .optional()
+    .describe(
+      'The folder to make a folder in; leave it out and give rootId for the top of a drive',
+    ),
   name: NAME.optional().describe('The new name for new_folder and rename'),
   itemId: DRIVE_FIELDS.itemId.optional().describe('One file or folder id from drive_read'),
   itemIds: ITEM_IDS.optional().describe('File and folder ids from drive_read'),
@@ -61,6 +65,31 @@ function change(name: string, shape: z.ZodRawShape): Selection {
     input: z.strictObject(shape),
     run: (context, input, as) =>
       operate(context, 'changeDrive', { body: { action: name, ...input } }, as),
+  });
+}
+
+function newFolder(): Selection {
+  return selection({
+    input: z.union([
+      z.strictObject({ parentId: DRIVE_FIELDS.folderId, name: NAME }),
+      z.strictObject({ rootId: DRIVE_FIELDS.rootId, name: NAME }),
+    ]),
+    run: (context, input, as) =>
+      operate(
+        context,
+        'changeDrive',
+        {
+          body: {
+            action: 'new_folder',
+            parent:
+              'parentId' in input
+                ? { kind: 'folder', folderId: input.parentId }
+                : { kind: 'drive', rootId: input.rootId },
+            name: input.name,
+          },
+        },
+        as,
+      ),
   });
 }
 
@@ -214,7 +243,7 @@ export const DRIVE_EDIT: SelectedToolDefinition = {
   selections: ownDrive({
     configure: driveUpdate(),
     scan: scan(),
-    new_folder: change('new_folder', { parentId: DRIVE_FIELDS.folderId, name: NAME }),
+    new_folder: newFolder(),
     rename: change('rename', { itemId: DRIVE_FIELDS.itemId, name: NAME }),
     move: change('move', { itemIds: ITEM_IDS, toFolderId: DRIVE_FIELDS.folderId }),
     copy: change('copy', { itemIds: ITEM_IDS, toFolderId: DRIVE_FIELDS.folderId }),

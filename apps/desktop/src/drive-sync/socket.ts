@@ -29,14 +29,14 @@ type ClientState = Extract<SyncClientMessage, { readonly type: 'client_state' }>
 
 export type SyncClientStateReport = Omit<ClientState, 'type'>;
 
-export interface RootHello {
+export interface PlacementHello {
   readonly indexId: string | null;
   readonly afterSeq: number;
 }
 
-export interface SyncRootBinding {
-  readonly rootId: string;
-  readonly hello: () => RootHello;
+export interface SyncPlacementBinding {
+  readonly placementId: string;
+  readonly hello: () => PlacementHello;
 }
 
 export interface ChannelClosure {
@@ -46,23 +46,22 @@ export interface ChannelClosure {
 }
 
 export interface SyncSocketSink {
-  readonly opened: (rootId: string) => void;
-  readonly message: (rootId: string, message: SyncHubMessage) => void;
-  readonly closed: (rootId: string, closure: ChannelClosure) => void;
+  readonly opened: (placementId: string) => void;
+  readonly message: (placementId: string, message: SyncHubMessage) => void;
+  readonly closed: (placementId: string, closure: ChannelClosure) => void;
 }
 
 export interface SyncSocketOptions {
   readonly hubUrl: string;
   readonly token: string;
-  readonly clientId: string;
   readonly transport: SyncSocketTransport;
   readonly sink: SyncSocketSink;
   readonly log: Logger;
 }
 
 export class ChannelClosedError extends Error {
-  constructor(readonly rootId: string) {
-    super(`The sync connection for ${rootId} is not open`);
+  constructor(readonly placementId: string) {
+    super(`The sync connection for ${placementId} is not open`);
     this.name = 'ChannelClosedError';
   }
 }
@@ -103,8 +102,8 @@ function isOpen(socket: HubSocket): boolean {
   return socket.readyState === socket.OPEN;
 }
 
-class RootChannel {
-  readonly #binding: SyncRootBinding;
+class PlacementChannel {
+  readonly #binding: SyncPlacementBinding;
   readonly #options: SyncSocketOptions;
   #current: HubSocket | null = null;
   #refused = false;
@@ -112,7 +111,7 @@ class RootChannel {
   #wanted: string | null = null;
   #delivered: string | null = null;
 
-  constructor(binding: SyncRootBinding, options: SyncSocketOptions) {
+  constructor(binding: SyncPlacementBinding, options: SyncSocketOptions) {
     this.#binding = binding;
     this.#options = options;
   }
@@ -124,7 +123,9 @@ class RootChannel {
   connect(): void {
     if (this.#stopped || this.#refused || this.#current !== null) return;
     if (!this.#options.transport.ready()) {
-      this.#options.log.debug('drive_sync.socket.deferred', { rootId: this.#binding.rootId });
+      this.#options.log.debug('drive_sync.socket.deferred', {
+        placementId: this.#binding.placementId,
+      });
       return;
     }
     const socket = this.#options.transport.socket(
@@ -163,7 +164,7 @@ class RootChannel {
   send(message: SyncClientMessage): Promise<void> {
     const socket = this.#current;
     if (socket === null || !isOpen(socket)) {
-      return Promise.reject(new ChannelClosedError(this.#binding.rootId));
+      return Promise.reject(new ChannelClosedError(this.#binding.placementId));
     }
     return this.#write(socket, JSON.stringify(SYNC_CLIENT_MESSAGE.parse(message)));
   }
@@ -200,7 +201,7 @@ class RootChannel {
       if (this.#current !== socket) return;
       this.#greet(socket).catch((cause: unknown) => {
         this.#options.log.warn('drive_sync.socket.hello_failed', {
-          rootId: this.#binding.rootId,
+          placementId: this.#binding.placementId,
           error: messageOf(cause),
         });
         socket.terminate();
@@ -211,7 +212,7 @@ class RootChannel {
     });
     socket.on('error', (cause) => {
       this.#options.log.warn('drive_sync.socket.error', {
-        rootId: this.#binding.rootId,
+        placementId: this.#binding.placementId,
         error: messageOf(cause),
       });
     });
@@ -225,12 +226,11 @@ class RootChannel {
   async #greet(socket: HubSocket): Promise<void> {
     const hello = SYNC_HELLO.parse({
       type: 'hello',
-      clientId: this.#options.clientId,
-      rootId: this.#binding.rootId,
+      placementId: this.#binding.placementId,
       ...this.#binding.hello(),
     });
     await this.#write(socket, JSON.stringify(hello));
-    this.#options.sink.opened(this.#binding.rootId);
+    this.#options.sink.opened(this.#binding.placementId);
     await this.#flushState();
   }
 
@@ -240,7 +240,7 @@ class RootChannel {
       message = hubMessageOf(raw, binary);
     } catch (cause) {
       this.#options.log.warn('drive_sync.socket.violation', {
-        rootId: this.#binding.rootId,
+        placementId: this.#binding.placementId,
         error: messageOf(cause),
       });
       this.#current = null;
@@ -248,7 +248,7 @@ class RootChannel {
       this.#closed({ code: CLOSE_PROTOCOL_ERROR, reason: messageOf(cause) });
       return;
     }
-    this.#options.sink.message(this.#binding.rootId, message);
+    this.#options.sink.message(this.#binding.placementId, message);
   }
 
   #retire(reason: string): void {
@@ -262,16 +262,17 @@ class RootChannel {
     const refused = REFUSAL_CODES.has(closure.code) || closure.code === CLOSE_PROTOCOL_ERROR;
     if (refused) this.#refused = true;
     this.#options.log.info('drive_sync.socket.closed', {
-      rootId: this.#binding.rootId,
+      placementId: this.#binding.placementId,
       code: closure.code,
       refused,
     });
-    if (!this.#stopped) this.#options.sink.closed(this.#binding.rootId, { ...closure, refused });
+    if (!this.#stopped)
+      this.#options.sink.closed(this.#binding.placementId, { ...closure, refused });
   }
 }
 
 export class SyncSocket {
-  readonly #channels = new Map<string, RootChannel>();
+  readonly #channels = new Map<string, PlacementChannel>();
   readonly #options: SyncSocketOptions;
   readonly #unsubscribe: () => void;
 
@@ -282,31 +283,31 @@ export class SyncSocket {
     });
   }
 
-  attach(binding: SyncRootBinding): void {
-    if (this.#channels.has(binding.rootId)) return;
-    const channel = new RootChannel(binding, this.#options);
-    this.#channels.set(binding.rootId, channel);
+  attach(binding: SyncPlacementBinding): void {
+    if (this.#channels.has(binding.placementId)) return;
+    const channel = new PlacementChannel(binding, this.#options);
+    this.#channels.set(binding.placementId, channel);
     channel.connect();
   }
 
-  detach(rootId: string): void {
-    this.#channels.get(rootId)?.stop();
-    this.#channels.delete(rootId);
+  detach(placementId: string): void {
+    this.#channels.get(placementId)?.stop();
+    this.#channels.delete(placementId);
   }
 
-  isOpen(rootId: string): boolean {
-    return this.#channels.get(rootId)?.isOpen === true;
+  isOpen(placementId: string): boolean {
+    return this.#channels.get(placementId)?.isOpen === true;
   }
 
-  send(rootId: string, message: SyncClientMessage): Promise<void> {
-    const channel = this.#channels.get(rootId);
-    if (channel === undefined) return Promise.reject(new ChannelClosedError(rootId));
+  send(placementId: string, message: SyncClientMessage): Promise<void> {
+    const channel = this.#channels.get(placementId);
+    if (channel === undefined) return Promise.reject(new ChannelClosedError(placementId));
     return channel.send(message);
   }
 
-  report(rootId: string, state: SyncClientStateReport): Promise<void> {
-    const channel = this.#channels.get(rootId);
-    if (channel === undefined) return Promise.reject(new ChannelClosedError(rootId));
+  report(placementId: string, state: SyncClientStateReport): Promise<void> {
+    const channel = this.#channels.get(placementId);
+    if (channel === undefined) return Promise.reject(new ChannelClosedError(placementId));
     return channel.report(state);
   }
 

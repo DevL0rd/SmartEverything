@@ -1,1 +1,1 @@
-export { FolderUploads, uploadActionsOf } from './folder-uploads';
+export { FolderUploads, chooseUploads } from './folder-uploads';

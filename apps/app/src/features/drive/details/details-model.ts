@@ -1,5 +1,4 @@
-import type { ReactNode } from 'react';
-import type { DriveItem, DriveRoot, DriveVersion } from '@smarteverything/domain';
+import type { DriveItem, DrivePlacement, DriveRoot, DriveVersion } from '@smarteverything/domain';
 import type { Bar } from '../../../components/charts/bars';
 import type { StatusTone } from '../../../components/tone';
 import { ValueStore, useValue } from '../../../design/external-store';
@@ -7,12 +6,12 @@ import { bytes } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import { dayKeyOf, shiftDay, startOfDayKey } from '../../../format/time';
 import type { ByName, FolderSlotContext } from '../folder/folder-model';
+import type { DriveAccess } from '../model/drive-access';
+import { ROLE_LABEL } from '../share/share-model';
 
 export const DETAILS_TABS = ['preview', 'info', 'versions', 'activity', 'sharing'] as const;
 
 export type DetailsTab = (typeof DETAILS_TABS)[number];
-
-export type SlotTab = Extract<DetailsTab, 'versions' | 'activity' | 'sharing'>;
 
 export const TAB_LABEL: Readonly<Record<DetailsTab, string>> = {
   preview: 'Preview',
@@ -25,13 +24,12 @@ export const TAB_LABEL: Readonly<Record<DetailsTab, string>> = {
 export interface DetailsSubject {
   readonly root: DriveRoot;
   readonly item: DriveItem;
+  readonly label: string;
+  readonly access: DriveAccess;
   readonly writable: boolean;
 }
 
-export type DetailsTabSlot = (subject: DetailsSubject) => ReactNode;
-
-export interface DetailsSlots extends Readonly<Partial<Record<SlotTab, DetailsTabSlot>>> {
-  readonly share?: (item: DriveItem) => void;
+export interface DetailsSlots {
   readonly quickLook?: (item: DriveItem) => void;
 }
 
@@ -39,13 +37,8 @@ const DEFAULT_TAB: DetailsTab = 'info';
 
 const FILE_ONLY: ReadonlySet<DetailsTab> = new Set(['preview', 'versions']);
 
-const SLOT_TABS: ReadonlySet<DetailsTab> = new Set(['versions', 'activity', 'sharing']);
-
-export function tabsOf(item: DriveItem, slotted: ReadonlySet<DetailsTab>): readonly DetailsTab[] {
-  return DETAILS_TABS.filter((tab) => {
-    if (item.kind === 'folder' && FILE_ONLY.has(tab)) return false;
-    return !SLOT_TABS.has(tab) || slotted.has(tab);
-  });
+export function tabsOf(item: DriveItem): readonly DetailsTab[] {
+  return DETAILS_TABS.filter((tab) => item.kind !== 'folder' || !FILE_ONLY.has(tab));
 }
 
 export function activeTabOf(remembered: DetailsTab, tabs: readonly DetailsTab[]): DetailsTab {
@@ -70,16 +63,6 @@ export function subjectOf(
   context: Pick<FolderSlotContext, 'focused' | 'picked' | 'folder'>,
 ): DriveItem | null {
   return context.focused ?? context.picked.at(-1) ?? context.folder;
-}
-
-export function slottedTabsOf(
-  slots: Readonly<Partial<Record<SlotTab, unknown>>>,
-): ReadonlySet<DetailsTab> {
-  const slotted = new Set<DetailsTab>();
-  if (slots.versions !== undefined) slotted.add('versions');
-  if (slots.activity !== undefined) slotted.add('activity');
-  if (slots.sharing !== undefined) slotted.add('sharing');
-  return slotted;
 }
 
 export type DetailsPresentation = 'docked' | 'sheet' | 'pull-up';
@@ -222,47 +205,65 @@ export interface RingDot {
   readonly tone: StatusTone | null;
 }
 
-export interface RingClient {
-  readonly clientId: string;
-  readonly needBytes: number;
-}
-
 export interface ComputerRing extends RingDot {
   readonly share: number;
   readonly word: string;
 }
 
-function ringWordOf(tone: StatusTone | null, needBytes: number): string {
-  switch (tone) {
-    case null:
-      return 'offline';
-    case 'critical':
-      return 'sync failed';
-    case 'warning':
-      return 'conflict';
-    case 'info':
-      return `${bytes(needBytes)} left`;
-    case 'positive':
-      return 'up to date';
+type PlacementFacts = Pick<DrivePlacement, 'id' | 'mode' | 'hold'> & {
+  readonly status: Pick<DrivePlacement['status'], 'state' | 'needBytes'>;
+};
+
+interface RingLook {
+  readonly tone: StatusTone | null;
+  readonly word: string;
+}
+
+function stateLookOf(placement: PlacementFacts): RingLook {
+  const { state, needBytes } = placement.status;
+  switch (state) {
+    case 'up_to_date':
+      return { tone: 'positive', word: 'up to date' };
+    case 'mounted':
+      return { tone: 'positive', word: 'mounted' };
+    case 'syncing':
+      return { tone: 'info', word: `${bytes(needBytes)} left` };
+    case 'starting':
+      return { tone: 'info', word: 'starting' };
+    case 'offline':
+      return { tone: null, word: 'offline' };
+    case 'stopped':
+      return { tone: null, word: 'paused' };
+    case 'blocked':
+      return { tone: 'warning', word: 'blocked' };
+    case 'failed':
+      return {
+        tone: 'critical',
+        word: placement.mode === 'mounted' ? 'mount failed' : 'sync failed',
+      };
   }
 }
 
-export function computerRingsOf(
-  dots: readonly RingDot[],
-  clients: readonly RingClient[],
-  share: (needBytes: number) => number,
-): readonly ComputerRing[] {
-  const need = new Map(clients.map((client) => [client.clientId, client.needBytes]));
-  return dots.map((dot) => {
-    const needBytes = need.get(dot.key) ?? 0;
-    return {
-      key: dot.key,
-      name: dot.name,
-      tone: dot.tone,
-      share: share(needBytes),
-      word: ringWordOf(dot.tone, needBytes),
-    };
-  });
+export function haveShare(placedBytes: number, needBytes: number): number {
+  if (needBytes <= 0) return 1;
+  return 1 - needBytes / Math.max(placedBytes, needBytes);
+}
+
+export function placementRingOf(
+  placement: PlacementFacts,
+  name: string,
+  placedBytes: number,
+): ComputerRing {
+  const look: RingLook =
+    placement.hold === null ? stateLookOf(placement) : { tone: 'warning', word: 'on hold' };
+  const share =
+    placement.mode === 'synced' ? haveShare(placedBytes, placement.status.needBytes) : 1;
+  return { key: placement.id, name, tone: look.tone, share, word: look.word };
+}
+
+export function coversItem(folderRelPath: string | null, itemRelPath: string): boolean {
+  if (folderRelPath === null) return true;
+  return itemRelPath === folderRelPath || itemRelPath.startsWith(`${folderRelPath}/`);
 }
 
 export function dimensionsOf(item: DriveItem): string | null {
@@ -279,22 +280,36 @@ function parentParts(item: DriveItem): readonly string[] {
   return item.relPath.split('/').slice(0, -1);
 }
 
-export function whereOf(root: DriveRoot, item: DriveItem): string {
-  return [root.label, ...parentParts(item)].join(' › ');
+export function whereOf(subject: Pick<DetailsSubject, 'item' | 'label' | 'access'>): string {
+  if (subject.access !== 'own' && subject.access !== 'shared') {
+    return `Shared with me › ${subject.label}`;
+  }
+  return [subject.label, ...parentParts(subject.item)].join(' › ');
 }
 
-export function pathOf(root: DriveRoot, item: DriveItem): string | null {
-  if (root.path === null) return null;
-  const parent = parentParts(item).join('/');
-  const base = root.path.endsWith('/') ? root.path.slice(0, -1) : root.path;
-  return parent === '' ? `${base}/` : `${base}/${parent}/`;
+export interface WhoSees {
+  readonly access: DriveAccess;
+  readonly ownerName: string | null;
+  readonly people: readonly string[];
 }
 
-export function whoSeesOf(root: DriveRoot, me: string | null, byName: ByName): string {
-  if (root.scope === 'home') return 'Everyone at home';
-  if (root.ownerProfileId === me) return 'Only you';
-  const owner = byName(root.ownerProfileId);
-  return owner === null ? 'Only the person who owns it' : `Only ${owner}`;
+function listed(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
+}
+
+export function whoSeesOf(who: WhoSees): string {
+  switch (who.access) {
+    case 'shared':
+      return 'Everyone in the home';
+    case 'own':
+      return who.people.length === 0 ? 'Only you' : `You and ${listed(who.people)}`;
+    case 'edit':
+    case 'view':
+      return `Shared with you by ${who.ownerName ?? 'its owner'} · ${ROLE_LABEL[who.access]}`;
+    case 'none':
+      return `Shared with you by ${who.ownerName ?? 'its owner'}`;
+  }
 }
 
 export interface IntegrityLine {
@@ -364,16 +379,13 @@ export function needsOlderVersions(
 
 export type QuickAction = 'preview' | 'star' | 'share' | 'chat' | 'trash';
 
-export function quickActionsOf(
-  item: DriveItem,
-  abilities: { readonly sharing: boolean; readonly writable: boolean },
-): readonly QuickAction[] {
+export function quickActionsOf(item: DriveItem, writable: boolean): readonly QuickAction[] {
   const file = item.kind !== 'folder';
   return [
     ...(file ? (['preview'] as const) : []),
     'star',
-    ...(abilities.sharing ? (['share'] as const) : []),
+    'share',
     ...(file ? (['chat'] as const) : []),
-    ...(abilities.writable ? (['trash'] as const) : []),
+    ...(writable ? (['trash'] as const) : []),
   ];
 }

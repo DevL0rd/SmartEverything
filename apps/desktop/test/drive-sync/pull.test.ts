@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BlockHasher } from '../../src/drive-sync/blocks.js';
 import { openDriveSyncDatabase, type DriveSyncDatabase } from '../../src/drive-sync/db/index.js';
 import {
-  RootPuller,
+  PlacementPuller,
   type PullChange,
   type PullContention,
   type PullProgress,
@@ -33,7 +33,7 @@ const ROOT = randomUUID();
 const INDEX_ID = randomUUID();
 
 interface Rig {
-  readonly puller: RootPuller;
+  readonly puller: PlacementPuller;
   readonly hub: FakeHubFiles;
   readonly database: DriveSyncDatabase;
   readonly rootPath: string;
@@ -63,8 +63,9 @@ beforeEach(async () => {
   const blocked: Rig['blocked'] = [];
   const failed: Rig['failed'] = [];
   rig = {
-    puller: new RootPuller({
-      rootId: ROOT,
+    puller: new PlacementPuller({
+      placementId: ROOT,
+      driveId: ROOT,
       rootPath,
       platform: process.platform,
       database,
@@ -143,7 +144,7 @@ async function localFile(relPath: string, content: Buffer, hubRev: number | null
   await writeFile(disk(relPath), content);
   const info = await lstat(disk(relPath), { bigint: true });
   rig.database.files.upsert({
-    rootId: ROOT,
+    placementId: ROOT,
     relPath,
     kind: 'file',
     bytes: content.length,
@@ -171,7 +172,7 @@ describe('the first index', () => {
     expect(Buffer.from(record?.blocks ?? [])).toEqual(blockHashes(bytesOf(2, 'a')));
     expect(rig.database.files.get(ROOT, 'docs')).toMatchObject({ kind: 'folder', hubRev: 1 });
     expect(rig.database.cursors.get(ROOT)).toEqual({
-      rootId: ROOT,
+      placementId: ROOT,
       indexId: INDEX_ID,
       lastSeq: 9,
     });
@@ -225,7 +226,7 @@ describe('echo suppression', () => {
       close: () => Promise.resolve(),
     };
     const result = await scanRoot({
-      rootId: ROOT,
+      placementId: ROOT,
       rootPath: rig.rootPath,
       previous: rig.database.files.list(ROOT),
       ignore: createIgnoreMatcher([]),
@@ -243,7 +244,7 @@ describe('echo suppression', () => {
   });
 
   it('adopts the revision of an update that echoes the content just pushed', async () => {
-    rig.database.cursors.set({ rootId: ROOT, indexId: INDEX_ID, lastSeq: 1 });
+    rig.database.cursors.set({ placementId: ROOT, indexId: INDEX_ID, lastSeq: 1 });
     await localFile('mine.txt', bytesOf(2, 'm'), 1);
     await deliver(update([publish('mine.txt', bytesOf(2, 'm'), 2)], 3));
     expect(rig.hub.fetched).toEqual([]);

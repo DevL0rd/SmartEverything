@@ -51,51 +51,51 @@ func (t uploadTarget) metadata() string {
 	return "name " + encode(t.Name) + ",folderId " + encode(t.FolderID)
 }
 
-func (c *hubClient) streaming() *http.Client {
-	bulk := *c.http
-	bulk.Timeout = 0
-	return &bulk
-}
+type tusBody func() io.Reader
 
-func (c *hubClient) tus(ctx context.Context, method, target string, header http.Header, body io.Reader, length int64) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, method, target, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = header.Clone()
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Tus-Resumable", tusVersion)
-	if body != nil {
-		req.ContentLength = length
-	}
-	res, err := c.streaming().Do(req)
+func (c *hubClient) tus(ctx context.Context, method, target string, header http.Header, body tusBody, length int64) (*http.Response, error) {
+	res, err := c.send(ctx, true, func(ctx context.Context, base string) (*http.Request, error) {
+		var reader io.Reader
+		if body != nil {
+			reader = body()
+		}
+		req, err := http.NewRequestWithContext(ctx, method, base+target, reader)
+		if err != nil {
+			return nil, err
+		}
+		req.Header = header.Clone()
+		req.Header.Set("Tus-Resumable", tusVersion)
+		if body != nil {
+			req.ContentLength = length
+		}
+		return req, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 	if res.StatusCode >= 300 {
 		res.Body.Close()
-		return nil, hubStatusError{status: res.StatusCode, op: method + " " + req.URL.Path}
+		return nil, hubStatusError{status: res.StatusCode, op: method + " " + res.Request.URL.Path}
 	}
 	return res, nil
 }
 
-func (c *hubClient) resolve(location string) (string, error) {
-	base, err := url.Parse(c.base)
-	if err != nil {
-		return "", err
-	}
+func uploadPath(location string) (string, error) {
 	ref, err := url.Parse(location)
 	if err != nil {
 		return "", err
 	}
-	return base.ResolveReference(ref).String(), nil
+	if ref.RawQuery == "" {
+		return ref.EscapedPath(), nil
+	}
+	return ref.EscapedPath() + "?" + ref.RawQuery, nil
 }
 
 func (c *hubClient) createUpload(ctx context.Context, target uploadTarget, size int64) (string, error) {
 	header := http.Header{}
 	header.Set("Upload-Length", strconv.FormatInt(size, 10))
 	header.Set("Upload-Metadata", target.metadata())
-	res, err := c.tus(ctx, http.MethodPost, c.base+uploadsPath, header, nil, 0)
+	res, err := c.tus(ctx, http.MethodPost, uploadsPath, header, nil, 0)
 	if err != nil {
 		var status hubStatusError
 		if errors.As(err, &status) && status.status == http.StatusConflict {
@@ -112,7 +112,7 @@ func (c *hubClient) createUpload(ctx context.Context, target uploadTarget, size 
 }
 
 func (c *hubClient) uploadOffset(ctx context.Context, location string) (int64, error) {
-	target, err := c.resolve(location)
+	target, err := uploadPath(location)
 	if err != nil {
 		return 0, err
 	}
@@ -125,14 +125,14 @@ func (c *hubClient) uploadOffset(ctx context.Context, location string) (int64, e
 }
 
 func (c *hubClient) sendFrom(ctx context.Context, location string, offset int64, up transfer) error {
-	target, err := c.resolve(location)
+	target, err := uploadPath(location)
 	if err != nil {
 		return err
 	}
 	header := http.Header{}
 	header.Set("Content-Type", offsetType)
 	header.Set("Upload-Offset", strconv.FormatInt(offset, 10))
-	body := io.NewSectionReader(up.src, offset, up.size-offset)
+	body := func() io.Reader { return io.NewSectionReader(up.src, offset, up.size-offset) }
 	res, err := c.tus(ctx, http.MethodPatch, target, header, body, up.size-offset)
 	if err != nil {
 		return err

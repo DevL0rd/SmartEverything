@@ -44,7 +44,11 @@ function CardHeader({
   const hasAction = action !== undefined && action !== null && typeof action !== 'boolean';
   return (
     <View
-      className={cn('flex-row items-center gap-2', (!padded || hasAction) && 'min-h-touch-min')}
+      className={cn(
+        'flex-row items-center gap-2',
+        (!padded || hasAction) && 'min-h-touch-min',
+        !padded && 'px-card-pad',
+      )}
     >
       {icon === undefined ? null : <Icon name={icon} size={20} />}
       <Text variant="title-3" className="min-w-0 flex-1">

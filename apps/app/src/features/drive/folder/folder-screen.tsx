@@ -1,157 +1,73 @@
 import type { ReactNode } from 'react';
-import { useRef, useState, type RefObject } from 'react';
+import { useRef, type RefObject } from 'react';
 import { View } from 'react-native';
-import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
-import type { DriveItem } from '@smarteverything/domain';
-import { href } from '../../../app-shell/hrefs';
+import { useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useFrameBodyWidth } from '../../../components/section-body';
 import { notifyFailure } from '../../../components/toast-store';
-import { useSyncStatus } from '../../../store/selectors';
-import { useDriveSyncClients } from '../../nas/data';
+import { useIsOwner, useSyncStatus } from '../../../store/selectors';
+import { useDrivePlacementRows, useViewerId } from '../data';
 import { DriveFrame } from '../components/drive-frame';
+import type { DriveHeaderProps } from '../components/drive-header';
 import { detailsSlotOf } from '../details/details-pane';
-import { useArranged, type ArrangeInput, type Arranged } from './folder-arranged';
-import {
-  FolderFooter,
-  openItemFile,
-  runAction,
-  trashItems,
-  type ItemCommands,
-} from './folder-footer';
+import { mayRescanOf } from '../home/banner-model';
+import { useDriveBanner } from '../home/drive-banner';
+import { DriveTop } from '../home/drive-top';
+import { ROOM, quotaLevelOf, type DriveUse, type QuotaLevel } from '../home/hero-model';
+import { useDriveUse } from '../home/use-drive-use';
+import { QuickLook } from '../quick-look/quick-look';
+import { FolderUploads } from '../upload';
+import { FolderFooter, trashItems } from './folder-footer';
 import { FolderGrid } from './folder-grid';
 import {
   FolderControls,
   FolderSheets,
   WIDE_FROM,
   folderHeaderOf,
-  useFolderBanner,
-  useFolderPanels,
-  type FolderPanels,
+  type FolderCommands,
+  type NewFolderTarget,
 } from './folder-header';
-import { keyHintsOf, useBrowserKeys, useShiftHeld, type FolderReveal } from './folder-keys';
+import { keyHintsOf, useBrowserKeys, type FolderReveal } from './folder-keys';
+import { EmptyActions, EmptyFolder, commandsOf, emptyCopyOf } from './folder-empty';
+import { FolderGateMessage, FolderList, FolderLoading, useFolderData } from './folder-list';
 import {
-  EmptyFolder,
-  FolderGateMessage,
-  FolderList,
-  FolderLoading,
-  useByName,
-  useFolderData,
-  type FolderRowHandlers,
-} from './folder-list';
-import {
-  NO_SELECTION,
-  actionsOf,
   columnSort,
   footerLine,
   kindChipsOf,
-  pickedOf,
+  placedComputersOf,
+  placedFolderIdsOf,
   selectOne,
-  selectRange,
-  syncedComputers,
-  toggleOne,
   totalsOf,
-  type FolderAction,
-  type FolderSelection,
   type FolderSlotContext,
-  type FolderSlots,
 } from './folder-model';
+import { titleOf, writeTargetOf } from './place-model';
+import { useBrowsePlace } from './use-browse-place';
+import { useBrowsing, type BrowserProps, type Browsing } from './use-browsing';
 
-export type { FolderSlotContext, FolderSlots } from './folder-model';
+const DETAILS = detailsSlotOf({});
 
-const NO_SLOTS: FolderSlots = { details: detailsSlotOf({}) };
-
-interface BrowserProps extends ArrangeInput {
-  readonly slots: FolderSlots;
-}
-
-interface Browsing extends Arranged {
-  readonly selection: FolderSelection;
-  readonly setSelection: (change: (current: FolderSelection) => FolderSelection) => void;
-  readonly order: readonly string[];
-  readonly picked: readonly DriveItem[];
-  readonly focused: DriveItem | null;
-  readonly writable: boolean;
-  readonly panels: FolderPanels;
-  readonly handlers: FolderRowHandlers;
-}
-
-function useItemCommands(
-  props: BrowserProps,
-  panels: FolderPanels,
-  setSelection: (selection: FolderSelection) => void,
-): ItemCommands {
-  const router = useRouter();
-  const { root, slots } = props;
-  return {
-    open: (item): void => {
-      if (item.kind === 'folder') router.push(href.driveRoot(root.id, { folder: item.id }));
-      else if (slots.quickLook === undefined) openItemFile(item, false);
-      else {
-        setSelection(selectOne(item.id));
-        panels.setQuickLook(true);
-      }
-    },
-    details: (item): void => {
-      setSelection(selectOne(item.id));
-      panels.setDetails(true);
-    },
-    rename: panels.setRenaming,
-  };
-}
-
-function useBrowsing(props: BrowserProps): Browsing {
-  const { root, slots } = props;
-  const byName = useByName();
-  const arranged = useArranged(props, byName);
-  const panels = useFolderPanels();
-  const [selection, setSelection] = useState<FolderSelection>(NO_SELECTION);
-  const shiftHeld = useShiftHeld();
-  const order = arranged.visible.map((item) => item.id);
-  const writable = props.online && !root.readOnly;
-  const commands = useItemCommands(props, panels, setSelection);
-  const abilities = { writable, details: slots.details !== undefined };
-  const pick = (item: DriveItem): void => {
-    setSelection((current) =>
-      shiftHeld() ? selectRange(current, order, item.id) : toggleOne(current, item.id),
-    );
-  };
-  return {
-    ...arranged,
-    selection,
-    setSelection,
-    order,
-    picked: pickedOf(arranged.visible, selection),
-    focused: arranged.visible.find((item) => item.id === selection.focus) ?? null,
-    writable,
-    panels,
-    handlers: {
-      byName,
-      actionsOf: (item): readonly FolderAction[] => actionsOf(item, abilities),
-      onAction: (action, item): void => {
-        runAction(action, item, commands);
-      },
-      onPick: pick,
-      highlight: arranged.filter.highlight,
-      onPress: (item): void => {
-        if (shiftHeld()) pick(item);
-        else runAction('open', item, commands);
-      },
-    },
-  };
-}
+const NO_DRIVE = { bytes: 0 } as const;
 
 interface PartProps {
   readonly browser: BrowserProps;
   readonly browsing: Browsing;
+  readonly commands: FolderCommands;
   readonly reveal: RefObject<FolderReveal | null>;
 }
 
-function Body({ browser, browsing, reveal }: PartProps): ReactNode {
+function Empty({ browser, browsing, commands }: PartProps): ReactNode {
+  const { place, folderId } = browser;
+  const where = folderId === null && place.kind !== 'with-me' ? place.kind : 'folder';
+  const copy = emptyCopyOf(where, browsing.kind, browsing.writable);
+  const shown = copy.folderAction ? commands : { ...commands, newFolder: null };
+  return <EmptyFolder copy={copy} actions={<EmptyActions commands={shown} />} />;
+}
+
+function Body(props: PartProps): ReactNode {
+  const { browser, browsing, reveal } = props;
   const { pages } = browser.data;
   const wide = useFrameBodyWidth() >= WIDE_FROM;
   if (pages.data === undefined) return <FolderLoading label="Reading this folder" />;
-  if (browsing.visible.length === 0)
-    return browsing.filter.empty ?? <EmptyFolder root={browser.root} kind={browsing.kind} />;
+  if (browsing.visible.length === 0) return browsing.filter.empty ?? <Empty {...props} />;
   const shared = {
     items: browsing.visible,
     selection: browsing.selection.ids,
@@ -180,7 +96,9 @@ function Body({ browser, browsing, reveal }: PartProps): ReactNode {
 
 function slotContextOf(props: BrowserProps, browsing: Browsing): FolderSlotContext {
   return {
-    root: props.root,
+    rootId: props.place.rootId,
+    root: props.place.root,
+    writable: browsing.writable,
     folder: props.data.folder,
     items: browsing.visible,
     picked: browsing.picked,
@@ -192,42 +110,61 @@ function slotContextOf(props: BrowserProps, browsing: Browsing): FolderSlotConte
   };
 }
 
-function Listing({ browser, browsing, reveal }: PartProps): ReactNode {
-  const { root, data, slots } = browser;
+function Look({ browsing }: { readonly browsing: Browsing }): ReactNode {
+  const { panels, setSelection } = browsing;
+  if (!panels.quickLook) return null;
+  return (
+    <QuickLook
+      target={{
+        items: browsing.visible,
+        focused: browsing.focused,
+        close: () => {
+          panels.setQuickLook(false);
+        },
+        focus: (item) => {
+          setSelection(() => selectOne(item.id));
+        },
+        details: (item) => {
+          setSelection(() => selectOne(item.id));
+          panels.setQuickLook(false);
+          panels.setDetails(true);
+        },
+      }}
+    />
+  );
+}
+
+function Listing(props: PartProps & { readonly full: boolean }): ReactNode {
+  const { browser, browsing } = props;
   const context = slotContextOf(browser, browsing);
-  const totals = totalsOf(root, data.folder);
-  const narrowed = browsing.visible.length !== data.loaded.length && browsing.complete;
+  const totals = totalsOf(browser.place.root, browser.data.folder);
+  const narrowed = browsing.visible.length !== browser.data.loaded.length && browsing.complete;
   return (
     <View className="min-h-0 flex-1 flex-row gap-4">
       <View className="min-h-0 flex-1 overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1">
-        <Body browser={browser} browsing={browsing} reveal={reveal} />
-        {slots.upload?.(context)}
+        <FolderUploads
+          context={context}
+          where={titleOf(browser.place, browser.data.folder)}
+          full={props.full}
+        >
+          <Body {...props} />
+        </FolderUploads>
         <FolderFooter
           line={footerLine(
             totals,
             narrowed ? browsing.visible.length : null,
             browsing.picked.length,
           )}
-          hints={keyHintsOf({
-            quickLook: slots.quickLook !== undefined,
-            details: slots.details !== undefined,
-            writable: browsing.writable,
-          })}
+          hints={keyHintsOf({ quickLook: true, details: true, writable: browsing.writable })}
         />
       </View>
-      {browsing.panels.details ? slots.details?.(context) : null}
-      {browsing.panels.quickLook ? slots.quickLook?.(context) : null}
+      {browsing.panels.details ? DETAILS(context) : null}
+      <Look browsing={browsing} />
     </View>
   );
 }
 
-function Controls({
-  browser,
-  browsing,
-}: {
-  readonly browser: BrowserProps;
-  readonly browsing: Browsing;
-}): ReactNode {
+function Controls({ browser, browsing }: Omit<PartProps, 'reveal' | 'commands'>): ReactNode {
   return (
     <FolderControls
       picked={browsing.picked}
@@ -250,7 +187,6 @@ function Controls({
 
 function useKeys(
   browsing: Browsing,
-  slots: FolderSlots,
   reveal: RefObject<FolderReveal | null>,
   enabled: boolean,
 ): void {
@@ -264,48 +200,82 @@ function useKeys(
       },
       trash: trashItems,
       focusFilter: browsing.filter.focus,
-      slots: {
-        details: slots.details !== undefined,
-        quickLook: slots.quickLook !== undefined,
-      },
+      slots: { details: true, quickLook: true },
     },
     enabled,
   );
 }
 
-function Browser(props: BrowserProps): ReactNode {
-  const { root, data, slots } = props;
-  const browsing = useBrowsing(props);
+interface BrowserState {
+  readonly browsing: Browsing;
+  readonly reveal: RefObject<FolderReveal | null>;
+  readonly use: DriveUse;
+  readonly full: boolean;
+  readonly commands: FolderCommands;
+  readonly naming: NewFolderTarget | null;
+  readonly banner: ReactNode | undefined;
+  readonly header: DriveHeaderProps;
+}
+
+function useBrowser(props: BrowserProps): BrowserState {
+  const { place, data } = props;
+  const placements = useDrivePlacementRows();
+  const browsing = useBrowsing(props, placedFolderIdsOf(placements, place.rootId));
   const reveal = useRef<FolderReveal>(null);
-  const visible = useIsFocused();
-  useKeys(browsing, slots, reveal, visible && data.pages.data !== undefined);
-  const iconRail = browsing.panels.details ? slots.details !== undefined : false;
-  const banner = useFolderBanner(root, props.online);
-  const clients = useDriveSyncClients();
-  const header = folderHeaderOf({
-    root,
-    folder: data.folder,
-    totals: totalsOf(root, data.folder),
-    computers: syncedComputers(root, clients),
-    canMakeFolder: browsing.writable && data.folder !== null,
-    onNewFolder: () => {
+  useKeys(browsing, reveal, useIsFocused() && data.pages.data !== undefined);
+  const use = useDriveUse(place.root ?? NO_DRIVE);
+  const quota: QuotaLevel = place.kind === 'mine' ? quotaLevelOf(use) : ROOM;
+  const full = quota.kind === 'full';
+  const target = writeTargetOf(place, data.folder);
+  const commands = commandsOf({
+    target,
+    writable: browsing.writable,
+    full,
+    newFolder: () => {
       browsing.panels.setNaming(true);
     },
   });
+  const banner = useDriveBanner({
+    online: props.online,
+    root: place.root,
+    mayRescan: mayRescanOf(place.root, useViewerId(), useIsOwner()),
+    quota,
+  });
+  const header = folderHeaderOf({
+    place,
+    folder: data.folder,
+    totals: totalsOf(place.root, data.folder),
+    computers: placedComputersOf(placements, place.rootId),
+    commands,
+  });
+  const naming =
+    browsing.panels.naming && target !== null
+      ? { place: target, name: titleOf(place, data.folder) }
+      : null;
+  return { browsing, reveal, use, full, commands, naming, banner, header };
+}
+
+function Browser(props: BrowserProps): ReactNode {
+  const { place, data } = props;
+  const { browsing, reveal, use, full, commands, naming, banner, header } = useBrowser(props);
+  const parts = { browser: props, browsing, commands, reveal };
   return (
     <DriveFrame
       {...header}
-      iconRail={iconRail}
-      reconcileRootId={root.id}
+      iconRail={browsing.panels.details}
+      reconcileRootId={place.root?.id ?? null}
       {...(banner === undefined ? {} : { banner })}
       scroll={false}
     >
       <View className="min-h-0 flex-1 gap-3">
+        {data.folder === null && place.root !== null ? (
+          <DriveTop root={place.root} use={use} />
+        ) : null}
         <Controls browser={props} browsing={browsing} />
-        <Listing browser={props} browsing={browsing} reveal={reveal} />
+        <Listing {...parts} full={full} />
         <FolderSheets
           renaming={browsing.panels.renaming}
-          parent={browsing.panels.naming ? data.folder : null}
+          parent={naming}
           onCloseRename={() => {
             browsing.panels.setRenaming(null);
           }}
@@ -321,26 +291,34 @@ function Browser(props: BrowserProps): ReactNode {
 function Gate({
   rootId,
   folderId,
-  slots,
 }: {
   readonly rootId: string;
   readonly folderId: string | null;
-  readonly slots: FolderSlots;
 }): ReactNode {
   const data = useFolderData(rootId, folderId);
+  const lookup = useBrowsePlace(rootId, data.folder);
   const online = useSyncStatus().status === 'live';
-  const { root, pages } = data;
+  const { item } = useLocalSearchParams<{ item?: string }>();
+  const { pages } = data;
   const failed = pages.error !== null && pages.data === undefined;
-  if (root !== null && !failed) {
-    return <Browser root={root} folderId={folderId} data={data} slots={slots} online={online} />;
+  if (lookup.place !== null && !failed) {
+    return (
+      <Browser
+        place={lookup.place}
+        folderId={folderId}
+        data={data}
+        online={online}
+        reveal={item ?? null}
+      />
+    );
   }
   return (
     <DriveFrame section="index" title="Folder">
       <FolderGateMessage
         state={{
           online,
-          rootKnown: root !== null,
-          pending: pages.isPending,
+          rootKnown: lookup.place !== null,
+          pending: pages.isPending || lookup.pending,
           loaded: pages.data !== undefined,
           error: pages.error,
           retry: () => pages.refetch(),
@@ -350,15 +328,11 @@ function Gate({
   );
 }
 
-export function FolderScreen({ slots = NO_SLOTS }: { readonly slots?: FolderSlots }): ReactNode {
-  const params = useLocalSearchParams<{ rootId: string; folder?: string }>();
-  const folderId = params.folder ?? null;
-  return (
-    <Gate
-      key={`${params.rootId}/${folderId ?? ''}`}
-      rootId={params.rootId}
-      folderId={folderId}
-      slots={slots}
-    />
-  );
+export interface FolderScreenProps {
+  readonly rootId: string;
+  readonly folderId: string | null;
+}
+
+export function FolderScreen({ rootId, folderId }: FolderScreenProps): ReactNode {
+  return <Gate key={`${rootId}/${folderId ?? ''}`} rootId={rootId} folderId={folderId} />;
 }

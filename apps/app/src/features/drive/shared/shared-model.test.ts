@@ -1,38 +1,52 @@
 import { describe, expect, it } from 'vitest';
-import type { DriveShare } from '@smarteverything/domain';
+import {
+  DRIVE_ITEM,
+  type DriveGrant,
+  type DriveItem,
+  type DriveShare,
+  type DriveSharedByMeEntry,
+  type DriveSharedWithMeEntry,
+} from '@smarteverything/domain';
 import { DAY_MS, HOUR_MS } from '../../../format/time';
 import {
   accessLabelOf,
-  albumLineOf,
+  activeLinksOf,
+  byMeLinksOf,
+  byMeSubtitleOf,
   endedLabelOf,
   groupEdgeOf,
-  homeScopedOf,
-  homeSubtitleOf,
-  linkDensityOf,
+  linkChipsOf,
   linkEndLabel,
   linkGroupsOf,
-  linkItemOf,
-  linkListRowsOf,
-  linkRowKeyOf,
   linkStatsOf,
-  linkSubtitleOf,
-  linksScopeOf,
-  linksSubtitleOf,
+  personChipsOf,
   personLabelOf,
-  rootAccessOf,
-  rootLineOf,
+  sharedAgoOf,
   sharedViewOf,
+  sharerGroupsOf,
+  sharerLineOf,
+  withMeKeyOf,
+  withMeRowsOf,
+  withMeSubtitleOf,
 } from './shared-model';
 
 const NOW = Date.parse('2026-11-07T12:00:00.000Z');
 
 const ME = '00000000-0000-4000-8000-000000000001';
 const SAM = '00000000-0000-4000-8000-000000000002';
+const ROBIN = '00000000-0000-4000-8000-000000000003';
+const ROOT = '00000000-0000-4000-8000-000000000300';
+const PROFILES = [
+  { id: SAM, name: 'Sam' },
+  { id: ROBIN, name: 'Robin' },
+];
+
+const at = (offset: number): string => new Date(NOW + offset).toISOString();
 
 function share(id: number, extra: Partial<DriveShare> = {}): DriveShare {
   return {
     id: `00000000-0000-4000-8000-0000000001${String(id).padStart(2, '0')}`,
-    itemId: '00000000-0000-4000-8000-000000000200',
+    itemId: itemId(1),
     permission: 'view',
     expiresAt: null,
     hasPassword: false,
@@ -45,13 +59,54 @@ function share(id: number, extra: Partial<DriveShare> = {}): DriveShare {
   };
 }
 
-const at = (offset: number): string => new Date(NOW + offset).toISOString();
+function itemId(id: number): string {
+  return `00000000-0000-4000-8000-0000000002${String(id).padStart(2, '0')}`;
+}
+
+function folder(id: number, name: string): DriveItem {
+  return DRIVE_ITEM.parse({
+    kind: 'folder',
+    id: itemId(id),
+    rootId: ROOT,
+    parentId: null,
+    relPath: name,
+    name,
+    modifiedAt: at(-DAY_MS),
+    addedAt: at(-DAY_MS),
+    openedAt: null,
+    starred: false,
+    shared: true,
+    rev: 1,
+    etag: 'e',
+    outside: false,
+    addedByProfileId: null,
+    remoteId: null,
+    remoteRev: null,
+    childCount: 2,
+    bytes: 10,
+  });
+}
+
+function grant(id: number, item: number, by: string, ago: number): DriveGrant {
+  return {
+    id: `00000000-0000-4000-8000-0000000004${String(id).padStart(2, '0')}`,
+    itemId: itemId(item),
+    profileId: ME,
+    role: id % 2 === 0 ? 'edit' : 'view',
+    grantedBy: by,
+    createdAt: at(-ago),
+  };
+}
+
+function withMe(id: number, by: string, ago: number): DriveSharedWithMeEntry {
+  return { item: folder(id, `Folder ${String(id)}`), grant: grant(id, id, by, ago) };
+}
 
 describe('Shared view', () => {
-  it('opens Links only when the param asks for it', () => {
-    expect(sharedViewOf('links')).toBe('links');
-    expect(sharedViewOf(null)).toBe('home');
-    expect(sharedViewOf('home')).toBe('home');
+  it('opens By me only when the param asks for it', () => {
+    expect(sharedViewOf('by-me')).toBe('by-me');
+    expect(sharedViewOf(null)).toBe('with-me');
+    expect(sharedViewOf('links')).toBe('with-me');
   });
 });
 
@@ -77,7 +132,7 @@ describe('link groups', () => {
   });
 
   it('names how an ended link ended', () => {
-    expect(endedLabelOf(share(1, { revokedAt: '2026-10-18T09:00:00.000Z' }))).toMatch(/^Revoked /);
+    expect(endedLabelOf(share(1, { revokedAt: '2026-10-18T09:00:00.000Z' }))).toMatch(/^Stopped /);
     expect(endedLabelOf(share(1, { expiresAt: '2026-11-02T09:00:00.000Z' }))).toMatch(/^Ended /);
   });
 });
@@ -99,36 +154,44 @@ describe('link stats', () => {
       ['last-open', 'Not yet', undefined],
       ['ended', '1', undefined],
     ]);
-    expect(linksSubtitleOf(groups)).toBe('2 active links · 23 opens');
-  });
-
-  it('tells the owner and a member whose links they see', () => {
-    expect(linksScopeOf(true)).toBe('You see every link in the home.');
-    expect(linksScopeOf(false)).toBe('You see the links you made.');
   });
 });
 
-describe('link rows', () => {
-  it('keeps ended links behind one toggle and frames each group as one card', () => {
-    const groups = linkGroupsOf([share(1), share(2), share(3, { revokedAt: at(-DAY_MS) })], NOW);
-    const closed = linkListRowsOf(groups, false);
-    expect(closed.map(linkRowKeyOf)).toEqual([
-      `link:${share(1).id}`,
-      `link:${share(2).id}`,
-      'ended-toggle',
+describe('shared with me', () => {
+  it('groups items by the person who shared them, newest share first', () => {
+    const entries = [withMe(1, SAM, 3 * DAY_MS), withMe(2, ROBIN, HOUR_MS), withMe(3, SAM, DAY_MS)];
+    const groups = sharerGroupsOf(entries, PROFILES);
+    expect(groups.map((group) => [group.name, group.entries.map((e) => e.item.name)])).toEqual([
+      ['Robin', ['Folder 2']],
+      ['Sam', ['Folder 3', 'Folder 1']],
     ]);
-    expect(closed.map((row) => (row.kind === 'ended-toggle' ? row.open : row.edge))).toEqual([
+    expect(sharerGroupsOf([withMe(4, ME, 0)], [])[0]?.name).toBe('A former member');
+    expect(sharerLineOf(6)).toBe('shared 6 items');
+    expect(sharerLineOf(1)).toBe('shared 1 item');
+  });
+
+  it('lays out one head per sharer followed by its rows framed as one card', () => {
+    const groups = sharerGroupsOf([withMe(1, SAM, DAY_MS), withMe(3, SAM, 2 * DAY_MS)], PROFILES);
+    const rows = withMeRowsOf(groups);
+    expect(rows.map(withMeKeyOf)).toEqual([
+      `sharer:${SAM}`,
+      `item:${grant(1, 1, SAM, 0).id}`,
+      `item:${grant(3, 3, SAM, 0).id}`,
+    ]);
+    expect(rows.map((row) => (row.kind === 'item' ? row.edge : null))).toEqual([
+      null,
       'first',
       'last',
-      false,
     ]);
-    const open = linkListRowsOf(groups, true);
-    expect(open.at(-1)).toEqual({
-      kind: 'ended',
-      share: share(3, { revokedAt: at(-DAY_MS) }),
-      edge: 'only',
-    });
-    expect(linkListRowsOf(linkGroupsOf([], NOW), true)).toEqual([]);
+  });
+
+  it('says how long ago an item was shared and sums the page', () => {
+    expect(sharedAgoOf(at(-2 * DAY_MS), NOW)).toBe('Shared 2 d ago');
+    expect(withMeSubtitleOf([])).toBe('Nothing shared with you yet');
+    expect(withMeSubtitleOf([withMe(1, SAM, 0), withMe(2, ROBIN, 0)])).toBe(
+      '2 items · from 2 people',
+    );
+    expect(withMeSubtitleOf([withMe(1, SAM, 0)])).toBe('1 item · from 1 person');
   });
 
   it('frames rows by their place in the group', () => {
@@ -139,74 +202,38 @@ describe('link rows', () => {
       'last',
     ]);
   });
-
-  it('moves the columns that do not fit into the subtitle', () => {
-    const link = share(1, { hasPassword: true, opens: 2 });
-    const lines = { by: 'Sam', end: 'No end', place: 'Projects › Home' };
-    expect(linkDensityOf(true, false)).toBe('compact');
-    expect(linkDensityOf(false, false)).toBe('medium');
-    expect(linkDensityOf(false, true)).toBe('wide');
-    expect(linkSubtitleOf(link, lines, 'wide')).toBe('Projects › Home');
-    expect(linkSubtitleOf(link, lines, 'medium')).toBe('Projects › Home · by Sam · No end');
-    expect(linkSubtitleOf(link, lines, 'compact')).toBe(
-      'View · Password · 2 opens · 0 downloads · No end · by Sam',
-    );
-    expect(linkSubtitleOf(link, { ...lines, place: null }, 'wide')).toBeUndefined();
-  });
-
-  it('names the maker and the shared item with its place', () => {
-    const profiles = [{ id: SAM, name: 'Sam' }];
-    expect(personLabelOf(ME, ME, profiles)).toBe('You');
-    expect(personLabelOf(SAM, ME, profiles)).toBe('Sam');
-    expect(personLabelOf(SAM, ME, [])).toBe('A former member');
-    const roots = [{ id: 'root-1', label: 'Projects' }];
-    const budget = {
-      kind: 'document',
-      name: 'Budget 2027.xlsx',
-      rootId: 'root-1',
-      relPath: 'Home/Finance/Budget 2027.xlsx',
-    } as const;
-    expect(linkItemOf(budget, roots)).toEqual({
-      title: 'Budget 2027.xlsx',
-      icon: 'fileText',
-      place: 'Projects › Home › Finance',
-    });
-    expect(linkItemOf({ ...budget, kind: 'folder', relPath: 'Tax 2026' }, [])).toEqual({
-      title: 'Budget 2027.xlsx',
-      icon: 'folder',
-      place: null,
-    });
-  });
 });
 
-describe('Shared with home', () => {
-  it('keeps only what everyone in the home can use', () => {
-    const rows = [
-      { id: 'a', scope: 'home' },
-      { id: 'b', scope: 'person' },
-    ] as const;
-    expect(homeScopedOf(rows).map((row) => row.id)).toEqual(['a']);
+describe('shared by me', () => {
+  const entry: DriveSharedByMeEntry = {
+    item: folder(1, 'Taxes'),
+    grants: [{ ...grant(2, 1, ME, 0), profileId: SAM }],
+    links: [
+      share(1, { expiresAt: at(3 * DAY_MS), opens: 4, hasPassword: true }),
+      share(2, { revokedAt: at(-DAY_MS), opens: 9 }),
+    ],
+  };
+
+  it('shows a chip per person with their role and per active link', () => {
+    expect(personChipsOf(entry.grants, PROFILES)).toEqual([
+      { key: entry.grants[0]?.id, name: 'Sam', role: 'Can edit' },
+    ]);
+    expect(personChipsOf(entry.grants, [])[0]?.name).toBe('A former member');
+    expect(linkChipsOf(entry.links, NOW)).toEqual([
+      { key: share(1).id, label: 'Link with password', detail: 'Ends in 3 days · 4 opens' },
+    ]);
+    expect(activeLinksOf(entry, NOW).map((link) => link.id)).toEqual([share(1).id]);
   });
 
-  it('describes a library folder with its size, files and the computers it syncs to', () => {
-    const root = { id: 'root-1', bytes: 0, items: 1, synced: true };
-    const clients = [
-      { rootId: 'root-1', deviceId: 'pc-1', enabled: true },
-      { rootId: 'root-1', deviceId: 'pc-1', enabled: true },
-      { rootId: 'root-1', deviceId: 'pc-2', enabled: false },
-      { rootId: 'root-2', deviceId: 'pc-3', enabled: true },
-    ];
-    expect(rootLineOf(root, clients)).toMatch(/ · 1 file · synced to 1 computer$/);
-    expect(rootLineOf({ ...root, synced: false }, clients)).not.toContain('synced');
-    expect(rootAccessOf({ readOnly: true })).toBe('Can view');
-    expect(rootAccessOf({ readOnly: false })).toBe('Can edit');
+  it('sums the shared items and their active links', () => {
+    const groups = linkGroupsOf(byMeLinksOf([entry]), NOW);
+    expect(byMeSubtitleOf(1, groups)).toBe('1 item · 1 active link');
+    expect(byMeSubtitleOf(0, linkGroupsOf([], NOW))).toBe('You have not shared anything yet');
   });
 
-  it('counts albums and folders in the subtitle', () => {
-    expect(albumLineOf({ kind: 'smart', itemCount: 214 })).toBe('Smart album · 214 items');
-    expect(albumLineOf({ kind: 'manual', itemCount: 1 })).toBe('Album · 1 item');
-    expect(homeSubtitleOf(3, 5)).toBe('3 library folders · 5 albums');
-    expect(homeSubtitleOf(1, 0)).toBe('1 library folder');
-    expect(homeSubtitleOf(0, 0)).toBe('Nothing shared with the home yet');
+  it('names a person as You for the viewer', () => {
+    expect(personLabelOf(ME, ME, PROFILES)).toBe('You');
+    expect(personLabelOf(SAM, ME, PROFILES)).toBe('Sam');
+    expect(personLabelOf(ROBIN, ME, [])).toBe('A former member');
   });
 });

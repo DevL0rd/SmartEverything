@@ -10,7 +10,7 @@ import {
 import { joinSynced, leaveSynced, type SwitchPorts } from '../../src/drive-sync/switch.js';
 
 const DEVICE_ID = '33333333-3333-4333-8333-333333333333';
-const ROOT_ID = '44444444-4444-4444-8444-444444444444';
+const DRIVE_ID = '44444444-4444-4444-8444-444444444444';
 const PERSON_ID = '66666666-6666-4666-8666-666666666666';
 const FIRST_ID = '11111111-1111-4111-8111-111111111111';
 const SECOND_ID = '22222222-2222-4222-8222-222222222222';
@@ -18,14 +18,19 @@ const IDLE: SyncWaiting = { needBytes: 0, pendingOps: 0 };
 
 function placement(
   id: string,
-  over: Partial<Pick<DrivePlacement, 'mode' | 'enabled' | 'hold' | 'localPath'>> = {},
+  over: Partial<
+    Pick<DrivePlacement, 'mode' | 'enabled' | 'hold' | 'localPath' | 'excluded' | 'ignorePatterns'>
+  > = {},
 ): DrivePlacement {
   return {
     id,
     deviceId: DEVICE_ID,
-    rootId: ROOT_ID,
+    rootId: DRIVE_ID,
     folderItemId: null,
     mode: 'synced',
+    excluded: [],
+    ignorePatterns: [],
+    conflictCopies: true,
     localPath: `/data/${id}`,
     enabled: true,
     hold: null,
@@ -41,6 +46,9 @@ function placement(
       pinnedBytes: 0,
       openFiles: 0,
       pendingUploads: 0,
+      needBytes: 0,
+      lastSyncedAt: null,
+      errors: [],
       reason: null,
       reportedAt: '2026-11-07T10:00:00Z',
     },
@@ -72,9 +80,36 @@ describe('sync placement intake', () => {
     expect(port.start).toHaveBeenCalledTimes(1);
     expect(port.start).toHaveBeenCalledWith({
       placementId: FIRST_ID,
-      rootId: ROOT_ID,
+      driveId: DRIVE_ID,
       localPath: `/data/${FIRST_ID}`,
+      excluded: [],
+      ignorePatterns: [],
+      receiveOnly: false,
     });
+  });
+
+  it.each([
+    ['excluded folders', { excluded: ['skip'] }],
+    ['skip patterns', { ignorePatterns: ['*.tmp'] }],
+  ])('restarts a running placement when its %s change', async (_name, over) => {
+    const calls: string[] = [];
+    const port = engine(IDLE, calls);
+    const intake = new SyncPlacementIntake(port, log);
+    await intake.accept([placement(FIRST_ID)]);
+    await intake.accept([placement(FIRST_ID, over)]);
+    expect(calls).toEqual([
+      `start /data/${FIRST_ID}`,
+      `stop ${FIRST_ID}`,
+      `start /data/${FIRST_ID}`,
+    ]);
+  });
+
+  it('syncs a read only placement receive only', async () => {
+    const port = engine();
+    const intake = new SyncPlacementIntake(port, log);
+    const readOnly = placement(FIRST_ID);
+    await intake.accept([{ ...readOnly, status: { ...readOnly.status, readOnly: true } }]);
+    expect(port.start).toHaveBeenCalledWith(expect.objectContaining({ receiveOnly: true }));
   });
 
   it('does not restart a placement that did not change', async () => {
@@ -164,7 +199,7 @@ function ports(options: {
   };
 }
 
-const LEAVE = { placementId: FIRST_ID, rootId: ROOT_ID, from: '/data/roms', to: '/data/roms' };
+const LEAVE = { placementId: FIRST_ID, from: '/data/roms', to: '/data/roms' };
 
 describe('Synced to Mounted only', () => {
   it('refuses while bytes wait to upload and leaves the engine running', async () => {
@@ -215,8 +250,11 @@ describe('Mounted only to Synced', () => {
     await joinSynced(ports({ calls }), {
       mountId: SECOND_ID,
       placementId: SECOND_ID,
-      rootId: ROOT_ID,
+      driveId: DRIVE_ID,
       localPath: '/data/roms',
+      excluded: [],
+      ignorePatterns: [],
+      receiveOnly: false,
     });
     expect(calls).toEqual([`flush ${SECOND_ID}`, `unmount ${SECOND_ID}`, 'start /data/roms']);
   });
@@ -232,8 +270,11 @@ describe('Mounted only to Synced', () => {
       joinSynced(failing, {
         mountId: SECOND_ID,
         placementId: SECOND_ID,
-        rootId: ROOT_ID,
+        driveId: DRIVE_ID,
         localPath: '/data/roms',
+        excluded: [],
+        ignorePatterns: [],
+        receiveOnly: false,
       }),
     ).rejects.toThrow('busy');
     expect(calls).toEqual([`flush ${SECOND_ID}`]);

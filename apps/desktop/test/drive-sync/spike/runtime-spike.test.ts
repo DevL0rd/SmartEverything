@@ -45,7 +45,7 @@ db.exec('pragma busy_timeout = 5000');
 db.exec('pragma journal_mode = wal');
 db.exec('pragma synchronous = normal');
 db.exec('pragma user_version = 1');
-db.exec('create table files (root_id text not null, rel_path text not null, bytes integer not null, mtime_ns integer not null, blocks blob, primary key (root_id, rel_path)) strict, without rowid');
+db.exec('create table files (placement_id text not null, rel_path text not null, bytes integer not null, mtime_ns integer not null, blocks blob, primary key (placement_id, rel_path)) strict, without rowid');
 db.exec('create table pending_ops (op_id text primary key, kind text not null, payload blob not null, state text not null) strict');
 const mtimeNs = 1762500000123456789n;
 db.prepare('insert into files values (?, ?, ?, ?, ?)').run('root', 'a/b.txt', 3, mtimeNs, new Uint8Array([1, 2, 3]));

@@ -1,4 +1,4 @@
-import type { TimelineBucket } from '@smarteverything/domain';
+import type { LibraryBucket } from '@smarteverything/domain';
 import { zonedDateFormat } from '../../format/locale';
 import { count } from '../../format/number';
 
@@ -33,7 +33,7 @@ export interface ScrubPoint {
   readonly item: number;
 }
 
-export function scrubberModel(buckets: readonly TimelineBucket[]): ScrubberModel {
+export function scrubberModel(buckets: readonly LibraryBucket[]): ScrubberModel {
   const total = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
   const months: ScrubMonth[] = [];
   let before = 0;

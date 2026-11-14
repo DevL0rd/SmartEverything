@@ -1,72 +1,53 @@
-import type { IgnoreMatcher, SyncHubMessage } from '@smarteverything/domain/drive-sync';
-import { messageOf, type Logger } from '@smarteverything/logging';
-import type { BlockHasher } from './blocks.js';
-import type { BlockUploader } from './block-upload.js';
-import { ConflictResolver, type ConflictResult } from './conflicts.js';
-import type { DriveSyncDatabase } from './db/index.js';
+import type { SyncHubMessage } from '@smarteverything/domain/drive-sync';
+import { messageOf } from '@smarteverything/logging';
+import { ConflictResolver } from './conflicts.js';
 import { HubMoves } from './engine-moves.js';
 import { TreeScanner, dirtySourceOf } from './engine-scan.js';
 import { DirtyTracker, type DirtySink, type RescanReason } from './dirty.js';
-import { RootPuller, type PullProgress, type PullSink } from './pull.js';
+import { PlacementPuller, type PullSink } from './pull.js';
 import type { PushIntent } from './push-intents.js';
-import { RootPusher, type PushAccepted, type PushSink } from './push.js';
+import { PlacementPusher, type PushSink } from './push.js';
 import type { ScanSkip } from './scan.js';
-import { Pins, Placeholders, Selection, wantsFrom, type SelectionApplied } from './select.js';
+import {
+  Exclusions,
+  Pins,
+  Placeholders,
+  applyExclusions,
+  wantsWithout,
+  type ExclusionsApplied,
+} from './select.js';
+import type { EngineOptions, EngineState } from './engine-types.js';
 import type { SyncEnginePort, SyncWaiting } from './service.js';
-import type { RootHello, SyncRootBinding, SyncSocket, SyncSocketSink } from './socket.js';
-import type { BlockSource } from './transfer.js';
+import type {
+  PlacementHello,
+  SyncClientStateReport,
+  SyncPlacementBinding,
+  SyncSocketSink,
+} from './socket.js';
+import { StateReporter } from './state.js';
 import { startWatch, type WatchStart } from './watch.js';
 
-export type EngineState = 'stopped' | 'running' | 'paused';
-
-export type EngineSocket = Pick<SyncSocket, 'attach' | 'detach' | 'send'>;
-
-export interface EngineTimings {
-  readonly changeQuietMs: number;
-  readonly deleteHoldMs: number;
-  readonly queueLimit: number | null;
-  readonly writeQuietMs: number;
-}
-
-export interface EngineSink {
-  readonly pushed: (result: PushAccepted) => void;
-  readonly pulled: PullSink['pulled'];
-  readonly contended: PullSink['contended'];
-  readonly progress: (progress: PullProgress) => void;
-  readonly blocked: PullSink['blocked'];
-  readonly conflict: (result: ConflictResult) => void;
-  readonly skipped: (skips: readonly ScanSkip[]) => void;
-  readonly failed: (failure: { readonly relPath: string | null; readonly message: string }) => void;
-}
-
-export interface EngineOptions {
-  readonly rootId: string;
-  readonly rootPath: string;
-  readonly platform: NodeJS.Platform;
-  readonly portablePaths: boolean;
-  readonly database: DriveSyncDatabase;
-  readonly socket: EngineSocket;
-  readonly hasher: BlockHasher;
-  readonly source: BlockSource;
-  readonly uploader: BlockUploader;
-  readonly ignore: IgnoreMatcher;
-  readonly timings: EngineTimings;
-  readonly sink: EngineSink;
-  readonly log: Logger;
-}
+export type {
+  EngineOptions,
+  EngineSink,
+  EngineSocket,
+  EngineState,
+  EngineTimings,
+} from './engine-types.js';
 
 export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
-  readonly selection: Selection;
+  readonly exclusions: Exclusions;
   readonly pins: Pins;
   readonly sink: SyncSocketSink;
   readonly #options: EngineOptions;
-  readonly #binding: SyncRootBinding;
-  readonly #pusher: RootPusher;
-  readonly #puller: RootPuller;
+  readonly #binding: SyncPlacementBinding;
+  readonly #pusher: PlacementPusher;
+  readonly #puller: PlacementPuller;
   readonly #placeholders: Placeholders;
   readonly #resolver: ConflictResolver;
   readonly #scanner: TreeScanner;
   readonly #moves: HubMoves;
+  readonly #reporter: StateReporter;
   readonly #seen = new Map<string, Set<string>>();
   #state: EngineState = 'stopped';
   #tracker: DirtyTracker | null = null;
@@ -76,33 +57,43 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
 
   constructor(options: EngineOptions) {
     this.#options = options;
-    const { database, rootId, rootPath, platform, log } = options;
-    this.selection = new Selection(database, rootId);
-    this.pins = new Pins(database, rootId);
-    this.#binding = { rootId, hello: (): RootHello => this.#puller.hello() };
-    this.#placeholders = new Placeholders({ database, rootId, rootPath, platform, log });
-    this.#pusher = new RootPusher({
-      rootId,
+    const { database, placementId, rootPath, platform, log } = options;
+    this.exclusions = new Exclusions(database, placementId);
+    this.pins = new Pins(database, placementId);
+    this.#binding = { placementId, hello: (): PlacementHello => this.#puller.hello() };
+    this.#placeholders = new Placeholders({ database, placementId, rootPath, platform, log });
+    this.#pusher = new PlacementPusher({
+      placementId,
       rootPath,
       database,
-      channel: { send: (message): Promise<void> => options.socket.send(rootId, message) },
+      channel: { send: (message): Promise<void> => options.socket.send(placementId, message) },
       uploader: options.uploader,
       sink: this.#pushSink(),
       log,
     });
-    this.#puller = new RootPuller({
-      rootId,
+    this.#puller = new PlacementPuller({
+      placementId,
+      driveId: options.driveId,
       rootPath,
       platform,
       database,
       source: options.source,
-      wants: this.selection.wants,
+      wants: this.exclusions.wants,
       sink: this.#pullSink(),
       log,
     });
     this.#resolver = this.#makeResolver();
     this.#scanner = this.#makeScanner();
-    this.#moves = new HubMoves({ rootId, rootPath, platform, database, log });
+    this.#moves = new HubMoves({ placementId, rootPath, platform, database, log });
+    this.#reporter = new StateReporter({
+      placementId,
+      database,
+      socket: options.socket,
+      placeholders: this.#placeholders,
+      wants: this.exclusions.wants,
+      waiting: (): SyncWaiting => this.#pusher.waiting(),
+      log,
+    });
     this.sink = this.#socketSink();
   }
 
@@ -147,39 +138,37 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
     return Promise.resolve(this.#pusher.waiting());
   }
 
-  previewSelection(paths: readonly string[]): number {
-    return this.#placeholders.downloadBytes(wantsFrom(paths));
+  previewExclusions(paths: readonly string[]): number {
+    return this.#placeholders.downloadBytes(wantsWithout(paths));
   }
 
-  setSelection(paths: readonly string[]): Promise<SelectionApplied> {
+  setExcluded(paths: readonly string[]): Promise<ExclusionsApplied> {
     return this.#run(async () => {
-      this.selection.replace(paths);
-      const kept = await this.#placeholders.evict(this.selection.wants);
-      const released = this.#placeholders.release(this.selection.wants);
-      if (released > 0) this.#resync();
-      return { kept, released };
+      const applied = await applyExclusions(this.exclusions, this.#placeholders, paths);
+      if (applied.changed) this.#resync();
+      return applied;
     });
   }
 
   #makeResolver(): ConflictResolver {
-    const { rootId, rootPath, platform, database, log } = this.#options;
+    const { placementId, rootPath, platform, database, log } = this.#options;
     return new ConflictResolver({
-      rootId,
+      placementId,
       rootPath,
       platform,
       database,
       reindex: (): void => {
         this.#resync();
       },
-      submit: (intents): Promise<void> => this.#pusher.submit(intents),
+      submit: (intents): Promise<void> => this.#submit(intents),
       log,
     });
   }
 
   #makeScanner(): TreeScanner {
-    const { rootId, rootPath, platform, database, log } = this.#options;
+    const { placementId, rootPath, platform, database, log } = this.#options;
     return new TreeScanner({
-      rootId,
+      placementId,
       rootPath,
       platform,
       portablePaths: this.#options.portablePaths,
@@ -198,7 +187,10 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
   #pushSink(): PushSink {
     const { sink } = this.#options;
     return {
-      accepted: sink.pushed,
+      accepted: (result): void => {
+        sink.pushed(result);
+        this.#reporter.resolved(result.relPath);
+      },
       conflicted: (conflict): void => {
         this.#enqueue(async () => {
           sink.conflict(await this.#resolver.resolve(conflict));
@@ -207,35 +199,42 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
       stale: (): void => {
         this.#enqueue(() => this.#scan());
       },
-      failed: sink.failed,
+      failed: (failure): void => {
+        this.#fail(failure);
+      },
     };
   }
 
   #pullSink(): PullSink {
-    const { sink, log, rootId } = this.#options;
+    const { sink, log, placementId } = this.#options;
     return {
-      pulled: sink.pulled,
+      pulled: (result): void => {
+        sink.pulled(result);
+        this.#reporter.resolved(result.relPath);
+      },
       contended: sink.contended,
       deferred: (relPath): void => {
-        log.debug('drive_sync.engine.deferred', { rootId, relPath });
+        log.debug('drive_sync.engine.deferred', { placementId, relPath });
       },
       progress: sink.progress,
       blocked: sink.blocked,
-      failed: sink.failed,
+      failed: (failure): void => {
+        this.#fail(failure);
+      },
     };
   }
 
   #socketSink(): SyncSocketSink {
-    const { rootId } = this.#options;
+    const { placementId } = this.#options;
     return {
       opened: (id): void => {
-        if (id === rootId) this.#opened();
+        if (id === placementId) this.#opened();
       },
       message: (id, message): void => {
-        if (id === rootId) this.#received(message);
+        if (id === placementId) this.#received(message);
       },
       closed: (id): void => {
-        if (id === rootId) this.#pusher.interrupted();
+        if (id === placementId) this.#pusher.interrupted();
       },
     };
   }
@@ -252,12 +251,22 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
       tracker: this.#tracker,
       onFailure: (failure): void => {
         log.warn('drive_sync.engine.watch_failed', { error: messageOf(failure.error) });
-        this.#options.sink.failed({ relPath: null, message: messageOf(failure.error) });
+        this.#fail({ relPath: null, message: messageOf(failure.error) });
       },
     });
     if (!watching.ok) throw watching.failure.error;
     this.#watch = watching;
-    await this.#run(() => this.#scan());
+    await this.#run(async () => {
+      const applied = await applyExclusions(
+        this.exclusions,
+        this.#placeholders,
+        this.#options.excluded,
+      );
+      if (applied.changed || applied.released > 0) {
+        this.#options.database.cursors.remove(this.#options.placementId);
+      }
+      await this.#scan();
+    });
     this.#options.socket.attach(this.#binding);
   }
 
@@ -272,7 +281,7 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
     this.#tracker = null;
     this.#watch?.close();
     this.#watch = null;
-    this.#options.socket.detach(this.#options.rootId);
+    this.#options.socket.detach(this.#options.placementId);
   }
 
   #dirtySink(): DirtySink {
@@ -284,7 +293,7 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
       },
       rescan: (reason: RescanReason): void => {
         this.#options.log.info('drive_sync.engine.rescan', {
-          rootId: this.#options.rootId,
+          placementId: this.#options.placementId,
           reason,
         });
         this.#enqueue(async () => {
@@ -296,7 +305,7 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
         this.#options.log.warn('drive_sync.engine.watch_batch_failed', {
           error: messageOf(error),
         });
-        this.#options.sink.failed({ relPath: null, message: messageOf(error) });
+        this.#fail({ relPath: null, message: messageOf(error) });
       },
     };
   }
@@ -318,13 +327,23 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
     return result;
   }
 
+  stateReport(): SyncClientStateReport {
+    return this.#reporter.report();
+  }
+
+  #fail(failure: { readonly relPath: string | null; readonly message: string }): void {
+    this.#options.sink.failed(failure);
+    this.#reporter.failed(failure);
+  }
+
   #failed(cause: unknown): void {
     this.#options.log.error('drive_sync.engine.job_failed', cause);
-    this.#options.sink.failed({ relPath: null, message: messageOf(cause) });
+    this.#fail({ relPath: null, message: messageOf(cause) });
   }
 
   #opened(): void {
     this.#puller.reopened();
+    this.#reporter.publish();
     this.#pusher.resume().catch((cause: unknown) => {
       this.#options.log.error('drive_sync.engine.resume_failed', cause);
     });
@@ -346,7 +365,7 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
     message: Extract<SyncHubMessage, { readonly type: 'index' | 'index_update' }>,
   ): Promise<void> {
     await this.#moves.apply(message.entries);
-    this.#placeholders.mirror(message.entries, this.selection.wants);
+    this.#placeholders.mirror(message.entries, this.exclusions.wants);
     if (message.type === 'index') this.#trackIndex(message);
     this.#puller.receive(message);
   }
@@ -368,12 +387,22 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
   }
 
   #resync(): void {
-    const { database, rootId, socket } = this.#options;
-    database.cursors.remove(rootId);
-    if (this.#state !== 'running') return;
+    const { database, placementId, socket, log } = this.#options;
+    if (this.#state !== 'running') {
+      database.cursors.remove(placementId);
+      return;
+    }
     this.#pusher.interrupted();
-    socket.detach(rootId);
-    socket.attach(this.#binding);
+    socket.detach(placementId);
+    this.#inbox = this.#inbox
+      .then(() => this.#puller.settled())
+      .then(() => {
+        database.cursors.remove(placementId);
+        if (this.#state === 'running') socket.attach(this.#binding);
+      })
+      .catch((cause: unknown) => {
+        log.error('drive_sync.engine.resync_failed', cause);
+      });
   }
 
   #skipped(skips: readonly ScanSkip[]): void {
@@ -386,10 +415,12 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
   }
 
   async #submit(intents: readonly PushIntent[]): Promise<void> {
+    if (this.#options.receiveOnly) return;
     if (intents.length > 0) await this.#pusher.submit(intents);
   }
 
   async #scan(): Promise<void> {
     await this.#submit(await this.#scanner.full());
+    this.#reporter.settled();
   }
 }

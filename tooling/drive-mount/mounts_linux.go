@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,7 @@ type mountSet struct {
 func newMountSet(source Filesystem, report *reporter) *mountSet {
 	set := &mountSet{source: source, report: report, mounts: map[string]*activeMount{}}
 	source.OnChange(set.sourceChanged)
+	source.OnEvict(func(root mountRoot) { set.sourceChanged(root, nil) })
 	return set
 }
 
@@ -57,9 +59,8 @@ func (s *mountSet) sourceChanged(root mountRoot, paths []string) {
 	}
 }
 
-func (s *mountSet) reachable(reachable bool) error {
-	s.source.SetReachable(reachable)
-	return nil
+func (s *mountSet) route(spec routeSpec) error {
+	return s.source.SwitchRoute(spec)
 }
 
 func (s *mountSet) mount(id string, root mountRoot, point string) error {
@@ -73,7 +74,7 @@ func (s *mountSet) mount(id string, root mountRoot, point string) error {
 	}
 	open := &openCounter{}
 	top := &node{src: s.source, root: root, dir: true, open: open}
-	server, err := fs.Mount(point, top, serverOptions())
+	server, err := fs.Mount(point, top, serverOptions(point))
 	if err != nil {
 		return s.fail(id, err)
 	}
@@ -90,16 +91,8 @@ func (s *mountSet) publish(active *activeMount) {
 	s.report.usage(active.id, s.source.Usage(active.root), active.open.count.Load(), s.source.Pending(active.root))
 }
 
-func (s *mountSet) limit(id string, bytes int64) error {
-	active, err := s.take(id)
-	if err != nil {
-		return err
-	}
-	if err := s.source.SetLimit(active.root, bytes); err != nil {
-		return err
-	}
-	s.publish(active)
-	return nil
+func (s *mountSet) cache(policy cachePolicy) error {
+	return s.source.SetPolicy(policy)
 }
 
 func (s *mountSet) fail(id string, err error) error {
@@ -107,14 +100,20 @@ func (s *mountSet) fail(id string, err error) error {
 	return err
 }
 
-func serverOptions() *fs.Options {
+const networkSourcePrefix = "//smarteverything/"
+
+func mountSource(point string) string {
+	return networkSourcePrefix + strings.ReplaceAll(filepath.Base(point), " ", "_")
+}
+
+func serverOptions(point string) *fs.Options {
 	forever := untilInvalidated
 	return &fs.Options{
 		EntryTimeout: &forever,
 		AttrTimeout:  &forever,
 		UID:          uint32(os.Getuid()),
 		GID:          uint32(os.Getgid()),
-		MountOptions: fuse.MountOptions{FsName: "smarteverything-drive", Name: "smarteverything", MaxReadAhead: 1 << 20, MaxWrite: 512 << 10, DirectMount: false},
+		MountOptions: fuse.MountOptions{FsName: mountSource(point), Name: "smarteverything", MaxReadAhead: 1 << 20, MaxWrite: 512 << 10, DirectMount: false},
 	}
 }
 

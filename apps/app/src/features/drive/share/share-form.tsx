@@ -1,65 +1,10 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { DriveItem } from '@smarteverything/domain';
 import { SwitchRow } from '../../../components/rows';
 import { Segmented } from '../../../components/segmented';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
-import { cn } from '../../../design/cn';
-import { useActiveProfile, useProfiles } from '../../../store/people';
-import { useDriveRoots } from '../../nas/data';
-import { ProfileAvatar } from '../../profiles';
-import {
-  END_OPTIONS,
-  accessOptionsOf,
-  audienceOf,
-  type Audience,
-  type ShareDraft,
-} from './share-model';
-
-export function useAudience(item: Pick<DriveItem, 'rootId'>): Audience | null {
-  const root = useDriveRoots().find((row) => row.id === item.rootId);
-  const profiles = useProfiles();
-  const viewerId = useActiveProfile()?.id ?? null;
-  return root === undefined ? null : audienceOf(root, profiles, viewerId);
-}
-
-function Faces({ audience }: { readonly audience: Audience }): ReactNode {
-  if (audience.people.length === 0) return null;
-  return (
-    <View className="flex-row">
-      {audience.people.map((person, index) => (
-        <View
-          key={person.id}
-          className={cn('rounded-full border-2 border-surface-raised', index > 0 && '-ml-2.5')}
-        >
-          <ProfileAvatar profile={person} />
-        </View>
-      ))}
-    </View>
-  );
-}
-
-export function WhoSees({ item }: { readonly item: Pick<DriveItem, 'rootId'> }): ReactNode {
-  const audience = useAudience(item);
-  if (audience === null) return null;
-  return (
-    <View className="gap-2">
-      <Text variant="footnote" tone="variant" accessibilityRole="header">
-        People in the home
-      </Text>
-      <View className="flex-row items-center gap-3">
-        <Faces audience={audience} />
-        <Text variant="callout" numberOfLines={2} className="min-w-0 flex-1">
-          {audience.line}
-        </Text>
-        <Text variant="caption" tone="variant" numberOfLines={1} className="shrink">
-          {audience.from}
-        </Text>
-      </View>
-    </View>
-  );
-}
+import { END_OPTIONS, accessOptionsOf, type ShareDraft } from './share-model';
 
 function Labelled({
   label,

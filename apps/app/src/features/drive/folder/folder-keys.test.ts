@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DRIVE_ITEM } from '@smarteverything/domain';
-import { FOLDER_ID, ROOT_ID } from '../../nas/data/fixtures';
+import { FOLDER_ID, ROOT_ID } from '../data/fixtures';
 import {
   folderKeyFor,
   keyCommandsOf,
@@ -121,6 +121,7 @@ describe('keyCommandsOf', () => {
       addedAt: '2026-11-07T10:00:00.000Z',
       openedAt: null,
       starred: false,
+      shared: false,
       rev: 1,
       etag: 'etag',
       outside: false,

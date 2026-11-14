@@ -30,6 +30,7 @@ import type { AppUpdateChannel } from './app-updates';
 import type { MachineUpdateStatus } from './machine-updates';
 import type { WebUpdateApplyTarget, WebUpdateStatus } from './web-updates';
 import type { OverlayAction, OverlayHostView } from './voice-overlay';
+import type { DesktopDrive, DesktopDriveCommand, DesktopDriveState } from './desktop-drive';
 export const DESKTOP_COMPUTER_IDENTITY = z.object({
   device_id: z.uuid().nullable(),
   machine_id: z
@@ -159,6 +160,7 @@ export interface SmartEverythingDesktop {
   readonly clipboard?: DesktopClipboard;
   readonly htmlPreview?: NativeHtmlPreview;
   readonly hubNetwork?: NativeHubNetwork;
+  readonly drive?: DesktopDrive;
   computerIdentity?(): Promise<DesktopComputerIdentity>;
   readonly platform: DesktopPlatform;
   readonly version: string;
@@ -371,6 +373,14 @@ export interface DesktopInvokeChannels {
     readonly request: string;
     readonly response: undefined;
   };
+  readonly 'desktop:drive-state': {
+    readonly request: undefined;
+    readonly response: DesktopDriveState | null;
+  };
+  readonly 'desktop:drive-run': {
+    readonly request: DesktopDriveCommand;
+    readonly response: DesktopDriveState;
+  };
   readonly 'desktop:clipboard-read': {
     readonly request: undefined;
     readonly response: string | null;
@@ -405,7 +415,8 @@ export type DesktopEventChannel =
   | 'desktop:overlay-helper'
   | 'desktop:hub-discovery'
   | 'desktop:hub-socket'
-  | 'desktop:hub-network';
+  | 'desktop:hub-network'
+  | 'desktop:drive-changed';
 
 export type DesktopPortChannel = 'desktop:overlay-levels';
 

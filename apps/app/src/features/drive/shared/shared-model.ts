@@ -1,26 +1,25 @@
 import type {
-  DriveAlbum,
-  DriveItem,
-  DriveRoot,
+  DriveGrant,
   DriveShare,
   DriveSharePermission,
-  DriveSyncClient,
+  DriveSharedByMeEntry,
+  DriveSharedWithMeEntry,
   ProfileRow,
 } from '@smarteverything/domain';
-import type { IconName } from '../../../components/icon';
 import type { MetricItem } from '../../../components/metric-strip';
-import { bytes, count } from '../../../format/number';
+import { count } from '../../../format/number';
 import { joinParts, plural } from '../../../format/text';
-import { DAY_MS, HOUR_MS, shortDate } from '../../../format/time';
+import { DAY_MS, HOUR_MS, relative, shortDate } from '../../../format/time';
+import { ROLE_LABEL } from '../share/share-model';
 
-export const SHARED_VIEWS = ['home', 'links'] as const;
+export const SHARED_VIEWS = ['with-me', 'by-me'] as const;
 
 export type SharedView = (typeof SHARED_VIEWS)[number];
 
 export const WEEK_MS = 7 * DAY_MS;
 
 export function sharedViewOf(param: string | null): SharedView {
-  return param === 'links' ? 'links' : 'home';
+  return param === 'by-me' ? 'by-me' : 'with-me';
 }
 
 const ACCESS_LABEL: Readonly<Record<DriveSharePermission, string>> = {
@@ -62,7 +61,7 @@ export function endsThisWeek(share: DriveShare, now: number): boolean {
 }
 
 export function endedLabelOf(share: DriveShare): string {
-  if (share.revokedAt !== null) return `Revoked ${shortDate(share.revokedAt)}`;
+  if (share.revokedAt !== null) return `Stopped ${shortDate(share.revokedAt)}`;
   return share.expiresAt === null ? 'Ended' : `Ended ${shortDate(share.expiresAt)}`;
 }
 
@@ -115,13 +114,13 @@ export function linkStatsOf(groups: LinkGroups, now: number): readonly MetricIte
   ];
 }
 
-export function linksSubtitleOf(groups: LinkGroups): string {
-  const opens = [...groups.active, ...groups.ended].reduce((all, share) => all + share.opens, 0);
-  return joinParts([plural(groups.active.length, 'active link'), plural(opens, 'open')]);
-}
-
-export function linksScopeOf(owner: boolean): string {
-  return owner ? 'You see every link in the home.' : 'You see the links you made.';
+export function personLabelOf(
+  profileId: string,
+  viewerId: string | null,
+  profiles: readonly Pick<ProfileRow, 'id' | 'name'>[],
+): string {
+  if (profileId === viewerId) return 'You';
+  return profiles.find((profile) => profile.id === profileId)?.name ?? 'A former member';
 }
 
 export type GroupEdge = 'only' | 'first' | 'middle' | 'last';
@@ -132,156 +131,117 @@ export function groupEdgeOf(index: number, total: number): GroupEdge {
   return index === total - 1 ? 'last' : 'middle';
 }
 
-export type LinkListRow =
-  | { readonly kind: 'link'; readonly share: DriveShare; readonly edge: GroupEdge }
-  | { readonly kind: 'ended-toggle'; readonly count: number; readonly open: boolean }
-  | { readonly kind: 'ended'; readonly share: DriveShare; readonly edge: GroupEdge };
+export function sharedAgoOf(at: string, now: number): string {
+  return `Shared ${relative(at, now)}`;
+}
 
-export function linkListRowsOf(groups: LinkGroups, endedOpen: boolean): readonly LinkListRow[] {
-  const { active, ended } = groups;
-  const links = active.map((share, index) => ({
-    kind: 'link' as const,
-    share,
-    edge: groupEdgeOf(index, active.length),
+type Person = Pick<ProfileRow, 'id' | 'name'>;
+
+export interface SharerGroup<P extends Person> {
+  readonly sharerId: string;
+  readonly sharer: P | null;
+  readonly name: string;
+  readonly entries: readonly DriveSharedWithMeEntry[];
+}
+
+function newestFirst(left: DriveGrant, right: DriveGrant): number {
+  return Date.parse(right.createdAt) - Date.parse(left.createdAt);
+}
+
+export function sharerGroupsOf<P extends Person>(
+  entries: readonly DriveSharedWithMeEntry[],
+  profiles: readonly P[],
+): readonly SharerGroup<P>[] {
+  const groups = new Map<string, DriveSharedWithMeEntry[]>();
+  const sorted = [...entries].sort((left, right) => newestFirst(left.grant, right.grant));
+  for (const entry of sorted) {
+    const list = groups.get(entry.grant.grantedBy);
+    if (list === undefined) groups.set(entry.grant.grantedBy, [entry]);
+    else list.push(entry);
+  }
+  return [...groups.entries()].map(([sharerId, list]) => {
+    const sharer = profiles.find((profile) => profile.id === sharerId) ?? null;
+    return { sharerId, sharer, name: sharer?.name ?? 'A former member', entries: list };
+  });
+}
+
+export function sharerLineOf(items: number): string {
+  return `shared ${plural(items, 'item')}`;
+}
+
+export type WithMeRow<P extends Person> =
+  | { readonly kind: 'sharer'; readonly group: SharerGroup<P> }
+  | { readonly kind: 'item'; readonly entry: DriveSharedWithMeEntry; readonly edge: GroupEdge };
+
+export function withMeRowsOf<P extends Person>(
+  groups: readonly SharerGroup<P>[],
+): readonly WithMeRow<P>[] {
+  return groups.flatMap((group) => [
+    { kind: 'sharer' as const, group },
+    ...group.entries.map((entry, index) => ({
+      kind: 'item' as const,
+      entry,
+      edge: groupEdgeOf(index, group.entries.length),
+    })),
+  ]);
+}
+
+export function withMeKeyOf<P extends Person>(row: WithMeRow<P>): string {
+  return row.kind === 'sharer' ? `sharer:${row.group.sharerId}` : `item:${row.entry.grant.id}`;
+}
+
+export interface PersonChip {
+  readonly key: string;
+  readonly name: string;
+  readonly role: string;
+}
+
+export function personChipsOf(
+  grants: readonly DriveGrant[],
+  profiles: readonly Person[],
+): readonly PersonChip[] {
+  return grants.map((grant) => ({
+    key: grant.id,
+    name: profiles.find((profile) => profile.id === grant.profileId)?.name ?? 'A former member',
+    role: ROLE_LABEL[grant.role],
   }));
-  if (ended.length === 0) return links;
-  const toggle = { kind: 'ended-toggle' as const, count: ended.length, open: endedOpen };
-  const shown = endedOpen
-    ? ended.map((share, index) => ({
-        kind: 'ended' as const,
-        share,
-        edge: groupEdgeOf(index, ended.length),
-      }))
-    : [];
-  return [...links, toggle, ...shown];
 }
 
-export function linkRowKeyOf(row: LinkListRow): string {
-  return row.kind === 'ended-toggle' ? 'ended-toggle' : `${row.kind}:${row.share.id}`;
+export interface LinkChip {
+  readonly key: string;
+  readonly label: string;
+  readonly detail: string;
 }
 
-export type LinkDensity = 'compact' | 'medium' | 'wide';
-
-export function linkDensityOf(compact: boolean, wide: boolean): LinkDensity {
-  if (compact) return 'compact';
-  return wide ? 'wide' : 'medium';
+export function linkChipsOf(links: readonly DriveShare[], now: number): readonly LinkChip[] {
+  return links
+    .filter((link) => !linkEnded(link, now))
+    .map((link) => ({
+      key: link.id,
+      label: link.hasPassword ? 'Link with password' : 'Link',
+      detail: joinParts([linkEndLabel(link, now), plural(link.opens, 'open')]),
+    }));
 }
 
-export interface LinkLines {
-  readonly by: string;
-  readonly end: string;
-  readonly place: string | null;
+export function activeLinksOf(entry: DriveSharedByMeEntry, now: number): readonly DriveShare[] {
+  return entry.links.filter((link) => !linkEnded(link, now));
 }
 
-function subtitlePartsOf(
-  share: DriveShare,
-  lines: LinkLines,
-  density: LinkDensity,
-): readonly (string | null)[] {
-  if (density === 'wide') return [lines.place];
-  if (density === 'medium') return [lines.place, `by ${lines.by}`, lines.end];
-  return [
-    accessLabelOf(share.permission),
-    share.hasPassword ? 'Password' : null,
-    opensLabelOf(share),
-    lines.end,
-    `by ${lines.by}`,
-  ];
+export function stillSharedOf(entry: DriveSharedByMeEntry, now: number): boolean {
+  return entry.grants.length > 0 || activeLinksOf(entry, now).length > 0;
 }
 
-export function linkSubtitleOf(
-  share: DriveShare,
-  lines: LinkLines,
-  density: LinkDensity,
-): string | undefined {
-  const text = joinParts(subtitlePartsOf(share, lines, density));
-  return text === '' ? undefined : text;
+export function byMeLinksOf(entries: readonly DriveSharedByMeEntry[]): readonly DriveShare[] {
+  return entries.flatMap((entry) => entry.links);
 }
 
-export function personLabelOf(
-  profileId: string,
-  viewerId: string | null,
-  profiles: readonly Pick<ProfileRow, 'id' | 'name'>[],
-): string {
-  if (profileId === viewerId) return 'You';
-  return profiles.find((profile) => profile.id === profileId)?.name ?? 'A former member';
+export function withMeSubtitleOf(entries: readonly DriveSharedWithMeEntry[]): string {
+  if (entries.length === 0) return 'Nothing shared with you yet';
+  const people = new Set(entries.map((entry) => entry.grant.grantedBy)).size;
+  return joinParts([plural(entries.length, 'item'), `from ${plural(people, 'person', 'people')}`]);
 }
 
-const KIND_ICON: Readonly<Record<DriveItem['kind'], IconName>> = {
-  folder: 'folder',
-  image: 'image',
-  video: 'film',
-  audio: 'music',
-  document: 'fileText',
-  other: 'fileText',
-};
-
-export interface LinkItem {
-  readonly title: string;
-  readonly icon: IconName;
-  readonly place: string | null;
-}
-
-export const MISSING_ITEM: LinkItem = {
-  title: 'No longer available',
-  icon: 'fileText',
-  place: null,
-};
-
-export const LOADING_ITEM: LinkItem = { title: 'Shared item', icon: 'link', place: null };
-
-export function linkItemOf(
-  item: Pick<DriveItem, 'kind' | 'name' | 'rootId' | 'relPath'>,
-  roots: readonly Pick<DriveRoot, 'id' | 'label'>[],
-): LinkItem {
-  const root = roots.find((each) => each.id === item.rootId);
-  const folders = item.relPath.split('/').slice(0, -1);
-  const place = [root?.label, ...folders].filter((part) => part !== undefined && part !== '');
-  return {
-    title: item.name,
-    icon: KIND_ICON[item.kind],
-    place: place.length === 0 ? null : place.join(' › '),
-  };
-}
-
-export function homeScopedOf<T extends { readonly scope: 'home' | 'person' }>(
-  rows: readonly T[],
-): readonly T[] {
-  return rows.filter((row) => row.scope === 'home');
-}
-
-export function rootAccessOf(root: Pick<DriveRoot, 'readOnly'>): string {
-  return root.readOnly ? 'Can view' : 'Can edit';
-}
-
-export function rootLineOf(
-  root: Pick<DriveRoot, 'id' | 'bytes' | 'items' | 'synced'>,
-  clients: readonly Pick<DriveSyncClient, 'rootId' | 'deviceId' | 'enabled'>[],
-): string {
-  const computers = new Set(
-    clients
-      .filter((client) => client.rootId === root.id && client.enabled)
-      .map((client) => client.deviceId),
-  ).size;
-  return joinParts([
-    bytes(root.bytes),
-    plural(root.items, 'file'),
-    root.synced && computers > 0 ? `synced to ${plural(computers, 'computer')}` : null,
-  ]);
-}
-
-export function albumLineOf(album: Pick<DriveAlbum, 'kind' | 'itemCount'>): string {
-  return joinParts([
-    album.kind === 'smart' ? 'Smart album' : 'Album',
-    plural(album.itemCount, 'item'),
-  ]);
-}
-
-export function homeSubtitleOf(roots: number, albums: number): string {
-  return (
-    joinParts([
-      roots === 0 ? null : plural(roots, 'library folder'),
-      albums === 0 ? null : plural(albums, 'album'),
-    ]) || 'Nothing shared with the home yet'
-  );
+export function byMeSubtitleOf(items: number, groups: LinkGroups): string {
+  if (items === 0) return 'You have not shared anything yet';
+  return joinParts([plural(items, 'item'), plural(groups.active.length, 'active link')]);
 }

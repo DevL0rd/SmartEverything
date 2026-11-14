@@ -26,9 +26,10 @@ import { ServerObserver, log, refusals } from './http-observe';
 import { beginTrace, noteRoute } from './request-trace';
 import { recordingFile, sendRecording } from './recording-files';
 import type { Router } from './router';
+import type { CLASS2_METHODS } from './dav';
 
 export interface RawRoute {
-  readonly method: HttpMethod | 'HEAD';
+  readonly method: HttpMethod | 'HEAD' | (typeof CLASS2_METHODS)[number];
   readonly path: string;
   readonly handle: (
     request: IncomingMessage,

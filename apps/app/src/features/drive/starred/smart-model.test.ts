@@ -23,6 +23,7 @@ function item(index: number, addedAt: string, bytes: number): DriveItem {
     addedAt,
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'e',
     outside: false,

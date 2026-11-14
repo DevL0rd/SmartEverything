@@ -10,9 +10,10 @@ import (
 )
 
 type openFile struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	size   int64
+	ctx     context.Context
+	cancel  context.CancelFunc
+	release func()
+	size    int64
 }
 
 type winFS struct {
@@ -121,7 +122,7 @@ func (w *winFS) Open(p string, flags int) (int, uint64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.next++
-	w.opened[w.next] = openFile{ctx: ctx, cancel: cancel, size: e.Size}
+	w.opened[w.next] = openFile{ctx: ctx, cancel: cancel, release: w.src.Hold(w.root, p), size: e.Size}
 	return 0, w.next
 }
 
@@ -149,6 +150,7 @@ func (w *winFS) Release(p string, fh uint64) int {
 	w.mu.Unlock()
 	if ok {
 		file.cancel()
+		file.release()
 	}
 	return 0
 }

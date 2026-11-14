@@ -7,7 +7,7 @@ import {
 } from '@smarteverything/domain';
 import type { ToastInput } from '../../../components/toast-store';
 import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
-import { ROOT_ID } from '../../nas/data/fixtures';
+import { ROOT_ID } from '../data/fixtures';
 
 interface Seen {
   resolved: DriveConflictResolve[];

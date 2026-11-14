@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 const dismissTo = vi.hoisted(() => vi.fn());
 
@@ -20,16 +20,16 @@ function navigation(
   keys: readonly string[],
 ): {
   readonly getState: () => { readonly type: string; readonly routes: readonly { key: string }[] };
-  readonly goBack: ReturnType<typeof vi.fn>;
+  readonly goBack: Mock<() => void>;
 } {
   return {
     getState: () => ({ type, routes: keys.map((key) => ({ key })) }),
-    goBack: vi.fn(),
+    goBack: vi.fn<() => void>(),
   };
 }
 
-function rules(live: boolean): { isLive: () => boolean; returned: ReturnType<typeof vi.fn> } {
-  return { isLive: () => live, returned: vi.fn() };
+function rules(live: boolean): { isLive: () => boolean; returned: Mock<() => void> } {
+  return { isLive: () => live, returned: vi.fn<() => void>() };
 }
 
 describe('the back action', () => {

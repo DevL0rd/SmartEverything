@@ -4,8 +4,10 @@ import {
   filterTrash,
   isFiltered,
   NO_FILTER,
+  deletableNow,
   shownText,
-  trashChipsOf,
+  TRASH_CHIPS,
+  type TrashDriveOf,
 } from './trash-filter';
 import type { TrashItem } from './trash-model';
 
@@ -33,37 +35,69 @@ const QUOTES = item({
 const LEASE = item({ id: 'l', name: 'Draft lease.docx', deleter: { kind: 'unknown' } });
 const ITEMS = [QUOTE, QUOTES, LEASE];
 
+const SHARED_ROOT = '00000000-0000-4000-8000-0000000000b2';
+
+const driveOf: TrashDriveOf = (entry) => (entry.rootId === SHARED_ROOT ? 'shared-drive' : 'mine');
+
+const NONE = { chip: 'everything', drive: 'all', query: '' } as const;
+
 describe('Trash filter', () => {
   it('shows everything when nothing is typed or picked', () => {
-    expect(filterTrash(ITEMS, NO_FILTER)).toBe(ITEMS);
+    expect(filterTrash(ITEMS, NO_FILTER, driveOf)).toBe(ITEMS);
     expect(isFiltered(NO_FILTER)).toBe(false);
-    expect(isFiltered({ chip: 'everything', query: '   ' })).toBe(false);
+    expect(isFiltered({ ...NONE, query: '   ' })).toBe(false);
   });
 
   it('narrows by name without caring about case or surrounding spaces', () => {
-    const filter = { chip: 'everything', query: '  quote ' } as const;
-    expect(filterTrash(ITEMS, filter)).toEqual([QUOTE, QUOTES]);
+    const filter = { ...NONE, query: '  quote ' } as const;
+    expect(filterTrash(ITEMS, filter, driveOf)).toEqual([QUOTE, QUOTES]);
     expect(isFiltered(filter)).toBe(true);
   });
 
   it('keeps only what you deleted or only folders, combined with the typed name', () => {
-    expect(filterTrash(ITEMS, { chip: 'mine', query: '' })).toEqual([QUOTE]);
-    expect(filterTrash(ITEMS, { chip: 'folders', query: '' })).toEqual([QUOTES]);
-    expect(filterTrash(ITEMS, { chip: 'folders', query: 'lease' })).toEqual([]);
+    expect(filterTrash(ITEMS, { ...NONE, chip: 'mine' }, driveOf)).toEqual([QUOTE]);
+    expect(filterTrash(ITEMS, { ...NONE, chip: 'folders' }, driveOf)).toEqual([QUOTES]);
+    expect(filterTrash(ITEMS, { ...NONE, chip: 'folders', query: 'lease' }, driveOf)).toEqual([]);
+  });
+
+  it('keeps only the trash of the chosen drive', () => {
+    const shared = item({ id: 's', name: 'Soup.md', rootId: SHARED_ROOT });
+    const all = [...ITEMS, shared];
+    const filter = { ...NONE, drive: 'shared-drive' } as const;
+    expect(filterTrash(all, filter, driveOf)).toEqual([shared]);
+    expect(isFiltered(filter)).toBe(true);
+    expect(chipCountsOf(all, filter, driveOf)).toEqual({ everything: 1, mine: 1, folders: 0 });
   });
 
   it('counts each chip within the typed name', () => {
-    expect(chipCountsOf(ITEMS, '')).toEqual({ everything: 3, mine: 1, folders: 1 });
-    expect(chipCountsOf(ITEMS, 'quote')).toEqual({ everything: 2, mine: 1, folders: 1 });
+    expect(chipCountsOf(ITEMS, NONE, driveOf)).toEqual({ everything: 3, mine: 1, folders: 1 });
+    expect(chipCountsOf(ITEMS, { ...NONE, query: 'quote' }, driveOf)).toEqual({
+      everything: 2,
+      mine: 1,
+      folders: 1,
+    });
   });
 
-  it('offers Deleted by you only to the owner, since members only see their own', () => {
-    expect(trashChipsOf(true).map((chip) => chip.label)).toEqual([
+  it('offers Deleted by you to everyone, since the Shared Drive trash holds everyone’s', () => {
+    expect(TRASH_CHIPS.map((chip) => chip.label)).toEqual([
       'Everything',
       'Deleted by you',
       'Folders',
     ]);
-    expect(trashChipsOf(false).map((chip) => chip.label)).toEqual(['Everything', 'Folders']);
+  });
+
+  it('lets a member delete for good only their own drive’s trash and what they deleted', () => {
+    const sharedByOther = item({
+      id: 'o',
+      name: 'Other.md',
+      rootId: SHARED_ROOT,
+      deleter: { kind: 'person', id: 'sam', name: 'Sam' },
+    });
+    const sharedByYou = item({ id: 'y', name: 'Mine.md', rootId: SHARED_ROOT });
+    expect(deletableNow(QUOTES, false, driveOf)).toBe(true);
+    expect(deletableNow(sharedByYou, false, driveOf)).toBe(true);
+    expect(deletableNow(sharedByOther, false, driveOf)).toBe(false);
+    expect(deletableNow(sharedByOther, true, driveOf)).toBe(true);
   });
 
   it('says how many of the whole trash are shown', () => {

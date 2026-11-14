@@ -19,8 +19,9 @@ import { localDayKey } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
 import { useDevices, useSession, useSettings, useSyncStatus } from '../../../store/selectors';
-import { useDriveActivity, useDriveRoots } from '../../nas/data';
-import { flattenPages } from '../../nas/data/pages';
+import { useDriveActivity, useDriveChips, useDriveRoots } from '../data';
+import { driveLocationHref } from '../model/section-routes';
+import { flattenPages } from '../data/pages';
 import { DriveFrame } from '../components/drive-frame';
 import { ActivityChart } from './activity-chart';
 import {
@@ -74,16 +75,16 @@ function useViewer(): Viewer {
 }
 
 function useNames(): ActivityNames {
-  const roots = useDriveRoots();
+  const chipOf = useDriveChips();
   const profiles = useProfiles();
   const devices = useDevices({ includeHidden: true });
   return useMemo(
     () => ({
-      roots: new Map(roots.map((root) => [root.id, root.label])),
+      chipOf,
       people: new Map(profiles.map((profile) => [profile.id, profile.name])),
       devices: new Map(devices.map((device) => [device.id, device.name])),
     }),
-    [roots, profiles, devices],
+    [chipOf, profiles, devices],
   );
 }
 
@@ -126,10 +127,11 @@ function useActivityItems(viewer: Viewer): Loaded {
   };
 }
 
-function openFolder(folder: FolderCount): void {
-  router.push(
-    href.driveRoot(folder.rootId, folder.folderId === null ? {} : { folder: folder.folderId }),
-  );
+function useOpenFolder(): (folder: FolderCount) => void {
+  const roots = useDriveRoots();
+  return (folder) => {
+    router.push(driveLocationHref(roots, { rootId: folder.rootId, folderId: folder.folderId }));
+  };
 }
 
 interface Parts {
@@ -178,7 +180,6 @@ function Overview({ view, viewer, setFilter }: Parts): ReactNode {
 }
 
 function Controls(parts: Parts): ReactNode {
-  const roots = useDriveRoots();
   const profiles = useProfiles();
   const { view, compact } = parts;
   return (
@@ -196,7 +197,6 @@ function Controls(parts: Parts): ReactNode {
         onChange={parts.setFilter}
         people={profiles.map((profile) => ({ id: profile.id, name: profile.name }))}
         me={parts.viewer.me}
-        roots={roots.map((root) => ({ id: root.id, name: root.label }))}
         compact={compact}
       />
     </View>
@@ -268,6 +268,7 @@ function NothingInRange({ parts }: { readonly parts: Parts }): ReactNode {
 }
 
 function WideBody(parts: Parts): ReactNode {
+  const openFolder = useOpenFolder();
   return (
     <View className="flex-1 gap-4 pb-section-gap">
       <Controls {...parts} />
@@ -286,6 +287,7 @@ function WideBody(parts: Parts): ReactNode {
 }
 
 function NarrowBody(parts: Parts): ReactNode {
+  const openFolder = useOpenFolder();
   return (
     <View className="flex-1">
       <Feed
@@ -350,6 +352,7 @@ function NoActivity(): ReactNode {
 function StaleBanner(): ReactNode {
   return (
     <Banner
+      wrapBody
       tone="info"
       title="Offline · showing the last activity"
       body="New changes appear when the hub is back."

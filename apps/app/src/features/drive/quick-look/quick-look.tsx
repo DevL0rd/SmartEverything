@@ -10,7 +10,7 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useSizeClass } from '../../../design/size-class';
 import { useScopeVisible } from '../../../design/visibility';
-import { driveLinks } from '../../nas/data';
+import { driveLinks } from '../data';
 import { QuickLookContent } from './quick-look-content';
 import { QuickLookHeader } from './quick-look-header';
 import { useQuickLookKeys } from './quick-look-keys';
@@ -184,10 +184,4 @@ export function QuickLook({ target }: { readonly target: QuickLookTarget }): Rea
       {item === null ? null : <Panel target={target} item={item} touch={touch} />}
     </Overlay>
   );
-}
-
-export function quickLookSlotOf(): (target: QuickLookTarget) => ReactNode {
-  return function QuickLookSlot(target) {
-    return <QuickLook target={target} />;
-  };
 }

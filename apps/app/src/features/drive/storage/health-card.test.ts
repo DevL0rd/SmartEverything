@@ -11,16 +11,16 @@ function health(patch: Partial<Record<keyof DriveHealth, unknown>>): DriveHealth
     verifiedShare: 0.8,
     corrupt: 0,
     rootsTotal: 3,
-    rootsOffline: 0,
+    rootsUnavailable: 0,
     watcher: 'watching',
-    freeBytes: null,
+    space: { totalBytes: 1000, freeBytes: 400, fsType: 'ext4' },
     scrub: { state: 'idle', lastFinishedAt: '2026-11-04T12:00:00.000Z', corrupt: 0 },
     backup: { last: null, lastOkAt: null },
     ...patch,
   });
 }
 
-describe('Library health', () => {
+describe('Drive health', () => {
   it('rings the checked share after a clean scrub', () => {
     expect(scrubViewOf(health({}), NOW)).toEqual({
       title: 'Scrub · 3 d ago',
@@ -58,7 +58,7 @@ describe('Library health', () => {
     expect(view).toMatchObject({ title: 'Scrubbing now', ring: 0.25, colour: 'info' });
   });
 
-  it('says a library was never scrubbed', () => {
+  it('says the drives were never scrubbed', () => {
     const view = scrubViewOf(
       health({ verifiedShare: 0, scrub: { state: 'idle', lastFinishedAt: null, corrupt: 0 } }),
       NOW,
@@ -66,10 +66,10 @@ describe('Library health', () => {
     expect(view).toMatchObject({ title: 'Never scrubbed', ring: 0, colour: 'track' });
   });
 
-  it('lists damage, folders answering, the watcher and the last backup', () => {
+  it('lists damage, drives ready, the watcher and the last backup', () => {
     const lines = healthLinesOf(
       health({
-        rootsOffline: 1,
+        rootsUnavailable: 1,
         watcher: 'unavailable',
         backup: {
           last: { at: '2026-11-07T09:00:00.000Z', reporter: 'restic', bytes: 10, ok: false },
@@ -80,7 +80,7 @@ describe('Library health', () => {
     );
     expect(lines.map((line) => [line.key, line.text, line.tone])).toEqual([
       ['damage', 'None found', 'variant'],
-      ['folders', '2 of 3 answering · 1 offline', 'warning'],
+      ['drives', '2 of 3 ready · 1 not answering', 'warning'],
       ['watcher', 'Not watching · changes show after a rescan', 'warning'],
       ['backup', 'Failed 3 h ago · restic · last good one 1 d ago', 'critical'],
     ]);

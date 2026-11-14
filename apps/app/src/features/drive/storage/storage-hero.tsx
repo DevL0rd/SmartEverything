@@ -1,23 +1,19 @@
 import type { DriveStats } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { Badge } from '../../../components/badge';
 import { Card } from '../../../components/card';
 import { Donut, FillChart, SegmentBar, type DonutSlice } from '../../../components/charts';
 import { Text } from '../../../components/text';
-import { bytes, count } from '../../../format/number';
+import { bytes, count, percent } from '../../../format/number';
 import { shortDate, startOfDayKey } from '../../../format/time';
-import { storageSummaryOf } from '../components/drive-frame';
-import { KIND_COLOUR, KIND_LABEL } from '../roots/root-card-model';
+import { KIND_COLOUR, KIND_LABEL, kindSegmentsOf } from '../model/item-kinds';
+import type { DiskView } from './usage-model';
 
 const DONUT_SIZE = 128;
 const MONTHS_IN_YEAR = 12;
 
 type GrowthDays = NonNullable<DriveStats['growth']>;
-
-export interface VolumeName {
-  readonly mountId: string;
-  readonly name: string;
-}
 
 export function kindSlicesOf(stats: DriveStats): readonly DonutSlice[] {
   return stats.kinds
@@ -40,19 +36,9 @@ export function aboutText(months: number): string {
   return `about ${count(years)} ${years === 1 ? 'year' : 'years'}`;
 }
 
-export function fullInText(stats: DriveStats, names: readonly VolumeName[]): string | null {
-  const filling = stats.volumes.flatMap((volume) =>
-    volume.fullInMonths === null ? [] : [{ mountId: volume.mountId, months: volume.fullInMonths }],
-  );
-  const soonest = filling.reduce<(typeof filling)[number] | null>(
-    (best, volume) => (best === null || volume.months < best.months ? volume : best),
-    null,
-  );
-  if (soonest === null) return null;
-  const when = `${aboutText(soonest.months)} at this pace`;
-  if (stats.volumes.length === 1) return `Full in ${when}`;
-  const name = names.find((entry) => entry.mountId === soonest.mountId)?.name;
-  return name === undefined ? `The first disk is full in ${when}` : `${name} is full in ${when}`;
+export function fullInText(stats: Pick<DriveStats, 'fullInMonths'>): string | null {
+  if (stats.fullInMonths === null) return null;
+  return `Full in ${aboutText(stats.fullInMonths)} at this pace`;
 }
 
 export function growthLabelOf(growth: GrowthDays): string {
@@ -62,26 +48,13 @@ export function growthLabelOf(growth: GrowthDays): string {
   return `Used space from ${bytes(first.bytes)} on ${shortDate(startOfDayKey(first.day))} to ${bytes(last.bytes)} now`;
 }
 
-function GrowthChart({
-  growth,
-  fullIn,
-}: {
-  readonly growth: GrowthDays;
-  readonly fullIn: string | null;
-}): ReactNode {
+function GrowthChart({ growth }: { readonly growth: GrowthDays }): ReactNode {
   const first = growth[0];
   return (
     <View className="gap-1">
-      <View className="flex-row flex-wrap justify-between gap-x-4">
-        <Text variant="caption" tone="variant">
-          {first === undefined ? 'Used space' : `Used since ${shortDate(startOfDayKey(first.day))}`}
-        </Text>
-        {fullIn === null ? null : (
-          <Text variant="caption" tone="variant">
-            {fullIn}
-          </Text>
-        )}
-      </View>
+      <Text variant="caption" tone="variant">
+        {first === undefined ? 'Used space' : `Used since ${shortDate(startOfDayKey(first.day))}`}
+      </Text>
       <View className="h-16">
         <FillChart
           values={growth.map((day) => ({ key: day.day, value: day.bytes }))}
@@ -94,54 +67,35 @@ function GrowthChart({
   );
 }
 
-function GrowthLine({
-  stats,
-  names,
-}: {
-  readonly stats: DriveStats;
-  readonly names: readonly VolumeName[];
-}): ReactNode {
-  if (stats.growth === null) {
-    return (
-      <Text variant="caption" tone="variant">
-        Growth shows after two months of history
-      </Text>
-    );
-  }
-  return <GrowthChart growth={stats.growth} fullIn={fullInText(stats, names)} />;
-}
-
-function Totals({ stats }: { readonly stats: DriveStats }): ReactNode {
-  const summary = storageSummaryOf(stats);
-  const free = stats.volumes.reduce((all, volume) => all + volume.freeBytes, 0);
+function Forecast({ stats }: { readonly stats: DriveStats }): ReactNode {
+  const fullIn = fullInText(stats);
   return (
     <View className="gap-3">
-      <View className="flex-row items-baseline justify-between gap-2">
-        <Text variant="title-3" numberOfLines={1} className="shrink tabular">
-          {summary.used}
+      {fullIn === null ? null : (
+        <Text variant="callout" className="font-sans-medium">
+          {fullIn}
         </Text>
-        {stats.volumes.length === 0 ? null : (
-          <Text variant="footnote" tone="variant" numberOfLines={1} className="tabular">
-            {`${bytes(free)} free`}
-          </Text>
-        )}
-      </View>
-      <SegmentBar
-        segments={summary.segments.filter((segment) => segment.value > 0)}
-        label="Used space by kind"
-        legend
-        format={bytes}
-        {...(summary.total === undefined ? {} : { total: summary.total })}
-      />
+      )}
+      {stats.growth === null ? (
+        <Text variant="caption" tone="variant">
+          Growth shows after two months of history
+        </Text>
+      ) : (
+        <GrowthChart growth={stats.growth} />
+      )}
     </View>
   );
 }
 
-function KindDonut({ stats }: { readonly stats: DriveStats }): ReactNode {
+function DiskDonut({ disk }: { readonly disk: DiskView }): ReactNode {
+  const used = disk.segments.reduce((all, segment) => all + segment.value, 0);
+  const slices = disk.segments
+    .filter((segment) => segment.value > 0)
+    .map((segment) => ({ key: segment.label, ...segment }));
   return (
-    <Donut slices={kindSlicesOf(stats)} size={DONUT_SIZE} label="Used space by kind" legend={false}>
+    <Donut slices={slices} size={DONUT_SIZE} label="Data folder disk use" legend={false}>
       <Text variant="title-3" className="tabular">
-        {bytes(stats.bytes)}
+        {percent(disk.total === 0 ? 0 : used / disk.total)}
       </Text>
       <Text variant="caption" tone="variant">
         used
@@ -152,18 +106,75 @@ function KindDonut({ stats }: { readonly stats: DriveStats }): ReactNode {
 
 export interface StorageHeroProps {
   readonly stats: DriveStats;
-  readonly names: readonly VolumeName[];
+  readonly disk: DiskView;
   readonly wide: boolean;
 }
 
-export function StorageHero({ stats, names, wide }: StorageHeroProps): ReactNode {
+export function StorageHero({ stats, disk, wide }: StorageHeroProps): ReactNode {
   return (
-    <Card>
+    <Card
+      title="Data folder disk"
+      icon="server"
+      metadata={<Badge label={disk.fsType} icon="hardDrive" />}
+    >
+      <View className={wide ? 'flex-row items-center gap-6' : 'gap-4'}>
+        {wide ? <DiskDonut disk={disk} /> : null}
+        <View className="min-w-0 flex-1 gap-4">
+          <View className="gap-3">
+            <View className="flex-row flex-wrap items-baseline justify-between gap-x-3">
+              <Text variant="title-3" tone={disk.tone} className="tabular">
+                {disk.used}
+              </Text>
+              <Text variant="footnote" tone="variant" className="tabular">
+                {disk.free}
+              </Text>
+            </View>
+            <SegmentBar
+              segments={disk.segments}
+              total={disk.total}
+              label="Data folder disk"
+              legend
+              format={bytes}
+            />
+          </View>
+          <Forecast stats={stats} />
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+function KindDonut({ stats }: { readonly stats: DriveStats }): ReactNode {
+  return (
+    <Donut slices={kindSlicesOf(stats)} size={DONUT_SIZE} label="Used space by kind" legend={false}>
+      <Text variant="title-3" className="tabular">
+        {bytes(stats.liveBytes)}
+      </Text>
+      <Text variant="caption" tone="variant">
+        in files
+      </Text>
+    </Donut>
+  );
+}
+
+export function KindsCard({
+  stats,
+  wide,
+}: {
+  readonly stats: DriveStats;
+  readonly wide: boolean;
+}): ReactNode {
+  const segments = kindSegmentsOf(stats.kinds).filter((segment) => segment.value > 0);
+  if (segments.length === 0) return null;
+  return (
+    <Card title="By kind" icon="layers">
       <View className={wide ? 'flex-row items-center gap-6' : 'gap-4'}>
         {wide ? <KindDonut stats={stats} /> : null}
-        <View className="min-w-0 flex-1 gap-4">
-          <Totals stats={stats} />
-          <GrowthLine stats={stats} names={names} />
+        <View className="min-w-0 flex-1 gap-2">
+          <Text variant="footnote" tone="variant">
+            The files in your drives and the Shared Drive
+          </Text>
+          <SegmentBar segments={segments} label="Used space by kind" legend format={bytes} />
         </View>
       </View>
     </Card>

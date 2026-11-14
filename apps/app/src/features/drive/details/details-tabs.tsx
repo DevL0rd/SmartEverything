@@ -2,11 +2,12 @@ import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import type { DriveItem } from '@smarteverything/domain';
 import { TabsBar, type TabItem } from '../../../components/tabs-bar';
+import { SharingTab } from '../share/sharing-tab';
+import { ActivityTab } from './activity-tab';
 import {
   TAB_LABEL,
   activeTabOf,
   rememberTab,
-  slottedTabsOf,
   tabsOf,
   useRememberedTab,
   type DetailsSlots,
@@ -15,15 +16,13 @@ import {
 } from './details-model';
 import { InfoTab } from './info-tab';
 import { PreviewTab } from './preview-tab';
+import { VersionsTab } from './versions-tab';
 
-export function useDetailsTab(
-  item: DriveItem,
-  slots: DetailsSlots,
-): {
+export function useDetailsTab(item: DriveItem): {
   readonly tabs: readonly DetailsTab[];
   readonly active: DetailsTab;
 } {
-  const tabs = tabsOf(item, slottedTabsOf(slots));
+  const tabs = tabsOf(item);
   return { tabs, active: activeTabOf(useRememberedTab(), tabs) };
 }
 
@@ -37,40 +36,34 @@ function itemsOf(tabs: readonly DetailsTab[]): readonly TabItem[] {
   }));
 }
 
-function TabBody({
-  tab,
-  subject,
-  slots,
-  pane,
-}: {
-  readonly tab: DetailsTab;
+export interface DetailsTabsProps {
   readonly subject: DetailsSubject;
   readonly slots: DetailsSlots;
+  readonly share: (item: DriveItem) => void;
   readonly pane: boolean;
-}): ReactNode {
+}
+
+function TabBody({ tab, ...props }: DetailsTabsProps & { readonly tab: DetailsTab }): ReactNode {
+  const { subject, slots, share, pane } = props;
+  const key = subject.item.id;
   switch (tab) {
     case 'preview':
       return <PreviewTab item={subject.item} quickLook={slots.quickLook} />;
     case 'info':
-      return <InfoTab subject={subject} share={slots.share} pane={pane} />;
+      return <InfoTab subject={subject} share={share} pane={pane} />;
     case 'versions':
+      return <VersionsTab key={key} subject={subject} />;
     case 'activity':
+      return <ActivityTab key={key} subject={subject} />;
     case 'sharing':
-      return slots[tab]?.(subject) ?? null;
+      return <SharingTab key={key} subject={subject} onShare={share} />;
   }
 }
 
-export function DetailsTabs({
-  subject,
-  slots,
-  pane,
-}: {
-  readonly subject: DetailsSubject;
-  readonly slots: DetailsSlots;
-  readonly pane: boolean;
-}): ReactNode {
-  const { tabs, active } = useDetailsTab(subject.item, slots);
-  const body = <TabBody tab={active} subject={subject} slots={slots} pane={pane} />;
+export function DetailsTabs(props: DetailsTabsProps): ReactNode {
+  const { subject, pane } = props;
+  const { tabs, active } = useDetailsTab(subject.item);
+  const body = <TabBody tab={active} {...props} />;
   return (
     <View className={pane ? 'min-h-0 flex-1' : ''}>
       <TabsBar label={`Details of ${subject.item.name}`} items={itemsOf(tabs)} active={active} />

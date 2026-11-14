@@ -54,13 +54,20 @@ describe('EntryRow', () => {
     expect(markup({ wide: false, size: null })).not.toContain('—');
   });
 
-  it('draws a thumbnail in place of the glyph and a star when marked', () => {
+  it('draws a thumbnail in place of the glyph and the marks after the name', () => {
     const thumb = createElement('img', { alt: 'thumb' });
-    const html = markup({ thumbnail: thumb, starred: true });
+    const html = markup({
+      thumbnail: thumb,
+      marks: [
+        { key: 'star', icon: 'star', tone: 'warning', label: 'Starred' },
+        { key: 'shared', icon: 'users', tone: 'variant', label: 'Shared' },
+      ],
+    });
     expect(html).toContain('alt="thumb"');
-    expect(html.match(/<svg/g)?.length).toBeGreaterThanOrEqual(1);
+    expect(html).toContain('aria-label="Starred, Shared"');
     expect(html).toContain('stroke="--color-warning"');
     expect(markup()).not.toContain('stroke="--color-warning"');
+    expect(markup()).not.toContain('Starred');
   });
 
   it('shows the By column only when given, and only on wide layouts', () => {

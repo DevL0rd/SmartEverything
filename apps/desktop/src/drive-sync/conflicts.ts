@@ -21,7 +21,7 @@ export interface ConflictResult {
 export type ConflictDatabase = Pick<DriveSyncDatabase, 'files' | 'transaction'>;
 
 export interface ConflictOptions {
-  readonly rootId: string;
+  readonly placementId: string;
   readonly rootPath: string;
   readonly platform: NodeJS.Platform;
   readonly database: ConflictDatabase;
@@ -40,7 +40,7 @@ function isUnder(relPath: string, folder: string): boolean {
 
 function inputOf(record: FileRecord, relPath: string, hubRev: number | null): FileInput {
   return {
-    rootId: record.rootId,
+    placementId: record.placementId,
     relPath,
     kind: record.kind,
     bytes: record.bytes,
@@ -63,7 +63,7 @@ export class ConflictResolver {
   async resolve(conflict: PushConflict): Promise<ConflictResult> {
     const outcome = await this.#outcomeOf(conflict);
     this.#options.log.info('drive_sync.conflict.applied', {
-      rootId: this.#options.rootId,
+      placementId: this.#options.placementId,
       kind: conflict.kind,
       relPath: conflict.relPath,
       reason: conflict.reason,
@@ -109,13 +109,13 @@ export class ConflictResolver {
   }
 
   async #keepCopy(relPath: string, copyPath: string): Promise<void> {
-    const { database, rootId } = this.#options;
-    const record = database.files.get(rootId, relPath);
+    const { database, placementId } = this.#options;
+    const record = database.files.get(placementId, relPath);
     if (record === undefined) return;
-    const present = database.files.get(rootId, copyPath);
+    const present = database.files.get(placementId, copyPath);
     if (present !== undefined && present.hubRev !== null) {
       await rm(this.#disk(relPath), { force: true });
-      database.files.remove(rootId, relPath);
+      database.files.remove(placementId, relPath);
       return;
     }
     const target = this.#disk(copyPath);
@@ -124,27 +124,29 @@ export class ConflictResolver {
       await rename(this.#disk(relPath), target);
     } catch (cause) {
       if (!isMissing(cause)) throw cause;
-      database.files.remove(rootId, relPath);
+      database.files.remove(placementId, relPath);
       return;
     }
     database.transaction(() => {
-      database.files.remove(rootId, relPath);
+      database.files.remove(placementId, relPath);
       database.files.upsert(inputOf(record, copyPath, null));
     });
   }
 
   async #dropLocal(relPath: string): Promise<void> {
-    const { database, rootId } = this.#options;
-    const record = database.files.get(rootId, relPath);
+    const { database, placementId } = this.#options;
+    const record = database.files.get(placementId, relPath);
     const disk = this.#disk(relPath);
     if (record === undefined || (await diskStateOf(disk, record)) === 'changed') return;
     await rm(disk, { force: true });
-    database.files.remove(rootId, relPath);
+    database.files.remove(placementId, relPath);
   }
 
   async #move(relPath: string): Promise<ConflictOutcome> {
-    const { database, rootId } = this.#options;
-    const moved = database.files.list(rootId).filter((record) => isUnder(record.relPath, relPath));
+    const { database, placementId } = this.#options;
+    const moved = database.files
+      .list(placementId)
+      .filter((record) => isUnder(record.relPath, relPath));
     await this.#repush(moved.map((record) => record.relPath));
     this.#options.reindex();
     return 'repushed';
@@ -157,15 +159,15 @@ export class ConflictResolver {
   }
 
   async #repush(relPaths: readonly string[]): Promise<void> {
-    const { database, rootId } = this.#options;
+    const { database, placementId } = this.#options;
     database.transaction(() => {
       for (const relPath of relPaths) {
-        const record = database.files.get(rootId, relPath);
+        const record = database.files.get(placementId, relPath);
         if (record !== undefined) database.files.upsert(inputOf(record, relPath, null));
       }
     });
     const intents = relPaths.flatMap((relPath) => {
-      const record = database.files.get(rootId, relPath);
+      const record = database.files.get(placementId, relPath);
       return isHashedFile(record) ? pushIntentOf(record, relPath) : [];
     });
     await this.#options.submit(intents);

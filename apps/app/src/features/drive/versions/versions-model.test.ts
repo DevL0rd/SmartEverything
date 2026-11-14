@@ -8,7 +8,7 @@ import {
   type DriveVersion,
 } from '@smarteverything/domain';
 import { bytes } from '../../../format/number';
-import { FOLDER_ID, ROOT_ID } from '../../nas/data/fixtures';
+import { FOLDER_ID, ROOT_ID } from '../data/fixtures';
 import {
   CONFLICT_FOOTER,
   CURRENT,
@@ -60,6 +60,7 @@ function item(extra: object = {}): DriveItem {
     addedAt: '2026-10-03T10:00:00.000Z',
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 4,
     etag: 'etag',
     outside: false,

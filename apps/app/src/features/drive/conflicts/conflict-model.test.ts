@@ -7,7 +7,7 @@ import {
 } from '@smarteverything/domain';
 import { bytes } from '../../../format/number';
 import { clock } from '../../../format/time';
-import { ROOT_ID } from '../../nas/data/fixtures';
+import { ROOT_ID } from '../data/fixtures';
 import { CURRENT } from '../versions/versions-model';
 import {
   UNKNOWN_CLIENT,
@@ -141,6 +141,12 @@ describe('the sentence', () => {
     );
     expect(sentenceOf({ hub: 'Sam', client: UNKNOWN_CLIENT })).toBe(
       'The other computer and Sam changed it before they synced',
+    );
+  });
+
+  it('writes you in lower case inside the sentence', () => {
+    expect(sentenceOf({ hub: 'You', client: 'Laptop' })).toBe(
+      'Laptop and you changed it before they synced',
     );
   });
 });

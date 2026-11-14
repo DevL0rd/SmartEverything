@@ -22,10 +22,12 @@ type node struct {
 }
 
 type handle struct {
-	open *openCounter
+	open    *openCounter
+	release func()
 }
 
 func (h *handle) Release(context.Context) syscall.Errno {
+	h.release()
 	h.open.add(-1)
 	return 0
 }
@@ -37,6 +39,7 @@ var (
 	_ fs.NodeOpener    = (*node)(nil)
 	_ fs.NodeCreater   = (*node)(nil)
 	_ fs.NodeReader    = (*node)(nil)
+	_ fs.NodeStatfser  = (*node)(nil)
 	_ fs.FileReleaser  = (*handle)(nil)
 )
 
@@ -120,7 +123,7 @@ func (n *node) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, s
 		return &writeFile{wh: wh, open: n.open}, fuse.FOPEN_DIRECT_IO, 0
 	}
 	n.open.add(1)
-	return &handle{open: n.open}, fuse.FOPEN_KEEP_CACHE, 0
+	return &handle{open: n.open, release: n.src.Hold(n.root, n.hubPath())}, fuse.FOPEN_KEEP_CACHE, 0
 }
 
 func (n *node) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
@@ -193,4 +196,20 @@ func hubErrno(err error) syscall.Errno {
 	default:
 		return syscall.EIO
 	}
+}
+
+const statfsBlock = 4096
+
+func (n *node) Statfs(ctx context.Context, out *fuse.StatfsOut) syscall.Errno {
+	space, err := n.src.Space(ctx, n.root)
+	if err != nil {
+		return errnoFor(err)
+	}
+	out.Bsize = statfsBlock
+	out.Frsize = statfsBlock
+	out.NameLen = 255
+	out.Blocks = uint64(space.Total) / statfsBlock
+	out.Bfree = uint64(space.Free) / statfsBlock
+	out.Bavail = out.Bfree
+	return 0
 }

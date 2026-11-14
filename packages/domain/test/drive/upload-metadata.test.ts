@@ -6,6 +6,11 @@ const FOLDER = {
   targetKind: 'folder',
   folderId: '2b048af8-0518-4e6e-a981-d6beeb7d792f',
 } as const;
+const TOP = {
+  filename: 'photo.jpg',
+  targetKind: 'drive',
+  rootId: '2b048af8-0518-4e6e-a981-d6beeb7d792f',
+} as const;
 const ITEM = {
   filename: 'photo.jpg',
   targetKind: 'item',
@@ -15,7 +20,7 @@ const ITEM = {
 
 describe('the canonical app and hub upload metadata', () => {
   it('accepts a folder or revision-checked item with optional media type and expected hash', () => {
-    for (const target of [FOLDER, ITEM]) {
+    for (const target of [TOP, FOLDER, ITEM]) {
       expect(DRIVE_UPLOAD_METADATA.parse(target)).toEqual(target);
       const complete = { ...target, filetype: 'image/jpeg', sha256: 'a'.repeat(64) };
       expect(DRIVE_UPLOAD_METADATA.parse(complete)).toEqual(complete);
@@ -30,6 +35,7 @@ describe('the canonical app and hub upload metadata', () => {
     expect(DRIVE_UPLOAD_METADATA.safeParse({ ...FOLDER, itemId: FOLDER.folderId }).success).toBe(
       false,
     );
+    expect(DRIVE_UPLOAD_METADATA.safeParse({ ...TOP, folderId: TOP.rootId }).success).toBe(false);
   });
 
   it.each(['', '.', '..', 'folder/photo.jpg', 'photo\0.jpg'])(

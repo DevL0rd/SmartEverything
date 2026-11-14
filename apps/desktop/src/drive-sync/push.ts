@@ -55,8 +55,8 @@ export interface PushSink {
   readonly failed: (failure: PushFailure) => void;
 }
 
-export interface RootPusherOptions {
-  readonly rootId: string;
+export interface PlacementPusherOptions {
+  readonly placementId: string;
   readonly rootPath: string;
   readonly database: PushQueueDatabase;
   readonly channel: PushChannel;
@@ -96,15 +96,15 @@ function finalOf(reply: Reply): Final {
   return reply;
 }
 
-export class RootPusher {
-  readonly #options: RootPusherOptions;
+export class PlacementPusher {
+  readonly #options: PlacementPusherOptions;
   readonly #queue: PushQueue;
   readonly #waiters = new Map<string, Waiter>();
   #chain: Promise<void> = Promise.resolve();
 
-  constructor(options: RootPusherOptions) {
+  constructor(options: PlacementPusherOptions) {
     this.#options = options;
-    this.#queue = new PushQueue(options.database, options.rootId);
+    this.#queue = new PushQueue(options.database, options.placementId);
   }
 
   async submit(intents: readonly PushIntent[]): Promise<void> {
@@ -120,7 +120,7 @@ export class RootPusher {
   interrupted(): void {
     const waiting = [...this.#waiters.values()];
     this.#waiters.clear();
-    for (const waiter of waiting) waiter.reject(new ChannelClosedError(this.#options.rootId));
+    for (const waiter of waiting) waiter.reject(new ChannelClosedError(this.#options.placementId));
   }
 
   receive(message: SyncHubMessage): void {
@@ -198,7 +198,7 @@ export class RootPusher {
 
   async #exchangePush(decoded: Decoded, payload: PushPayload): Promise<Final | undefined> {
     const { opId } = decoded.op;
-    const record = this.#options.database.files.get(this.#options.rootId, payload.relPath);
+    const record = this.#options.database.files.get(this.#options.placementId, payload.relPath);
     if (!isHashedFile(record) || bytesToPacked(record.blocks) !== payload.blocks) {
       this.#drop(decoded, payload.relPath);
       return undefined;
@@ -265,7 +265,7 @@ export class RootPusher {
   }
 
   #settle(decoded: Decoded, reply: Final): void {
-    const { database, rootId, sink, log } = this.#options;
+    const { database, placementId, sink, log } = this.#options;
     const outcome = outcomeOf(decoded);
     database.transaction(() => {
       if (reply.type === 'accept') this.#applyRev(decoded, reply.rev);
@@ -275,7 +275,11 @@ export class RootPusher {
       sink.accepted({ ...outcome, rev: reply.rev, seq: reply.seq });
       return;
     }
-    log.info('drive_sync.push.conflict', { rootId, opId: decoded.op.opId, reason: reply.reason });
+    log.info('drive_sync.push.conflict', {
+      placementId,
+      opId: decoded.op.opId,
+      reason: reply.reason,
+    });
     sink.conflicted({
       ...outcome,
       reason: reply.reason,
@@ -286,25 +290,25 @@ export class RootPusher {
 
   #applyRev(decoded: Decoded, rev: number): void {
     const { files } = this.#options.database;
-    const { rootId } = this.#options;
-    if (decoded.kind === 'push') files.setHubRev(rootId, decoded.payload.relPath, rev);
+    const { placementId } = this.#options;
+    if (decoded.kind === 'push') files.setHubRev(placementId, decoded.payload.relPath, rev);
     if (decoded.kind === 'move') {
-      files.rename(rootId, decoded.payload.from, decoded.payload.to);
-      files.setHubRev(rootId, decoded.payload.to, rev);
+      files.rename(placementId, decoded.payload.from, decoded.payload.to);
+      files.setHubRev(placementId, decoded.payload.to, rev);
     }
   }
 
   #drop(decoded: Decoded, relPath: string): void {
-    const { database, rootId, log } = this.#options;
+    const { database, placementId, log } = this.#options;
     database.pendingOps.acknowledge(decoded.op.opId);
-    log.info('drive_sync.push.superseded', { rootId, opId: decoded.op.opId, relPath });
+    log.info('drive_sync.push.superseded', { placementId, opId: decoded.op.opId, relPath });
   }
 
   #supersede(decoded: Decoded, relPath: string): void {
-    const { database, rootId, sink } = this.#options;
+    const { database, placementId, sink } = this.#options;
     database.transaction(() => {
       this.#drop(decoded, relPath);
-      database.files.markStale(rootId, relPath);
+      database.files.markStale(placementId, relPath);
     });
     sink.stale(relPath);
   }

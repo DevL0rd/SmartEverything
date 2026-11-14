@@ -1,6 +1,5 @@
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
 import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
@@ -10,6 +9,8 @@ import { useIdiom } from '../../../design/platform';
 import { initialsOf } from '../../../format/text';
 import { clock } from '../../../format/time';
 import { useSettings } from '../../../store/selectors';
+import { useDriveRoots } from '../data';
+import { driveLocationHref } from '../model/section-routes';
 import {
   SERIES_LOOK,
   VIA_LOOK,
@@ -71,9 +72,10 @@ export const ActivityRow = memo(function ActivityRow({ entry, me }: ActivityRowP
   const sentence = sentenceOf(entry, me);
   const badge = badgeOf(entry);
   const target = targetOf(entry);
+  const roots = useDriveRoots();
   return (
     <Interactive
-      href={href.driveRoot(target.rootId, target.params)}
+      href={driveLocationHref(roots, target)}
       label={`${time}, ${sentence}, in ${entry.folderPath}, ${badge}`}
       className="h-row-h-2 flex-row items-center gap-3 px-4"
     >

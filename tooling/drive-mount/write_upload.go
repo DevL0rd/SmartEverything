@@ -22,6 +22,7 @@ type writeBack struct {
 	stuck   []*session
 	queue   []*session
 	changed func(root mountRoot, paths []string)
+	spaces  spaceMemory
 }
 
 func newWriteBack(cache *blockCache, hub *hubClient, dir string) (*writeBack, error) {
@@ -54,6 +55,14 @@ func (w *writeBack) SetReachable(reachable bool) {
 	if reachable {
 		w.signal()
 	}
+}
+
+func (w *writeBack) SwitchRoute(spec routeSpec) error {
+	if err := w.hub.switchRoute(spec); err != nil {
+		return err
+	}
+	w.SetReachable(spec.URL != "")
+	return nil
 }
 
 func (w *writeBack) signal() {

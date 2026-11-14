@@ -18,7 +18,9 @@ import { bytes } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import { useRevealer, type FolderReveal } from './folder-keys';
 import { DriveThumb, entryKindOf, menuItemsOf, type FolderRowHandlers } from './folder-list';
-import { captionOf } from './folder-model';
+import { captionOf, rowMarksOf } from './folder-model';
+
+const NOTHING_PLACED: ReadonlySet<string> = new Set();
 
 const TILE_MIN_WIDTH = 240;
 
@@ -102,7 +104,9 @@ const FolderTile = memo(function FolderTile({
           <Text variant="callout" numberOfLines={1} className="min-w-0 shrink">
             <Highlighted text={item.name} range={handlers.highlight(item.name)} />
           </Text>
-          {item.starred ? <Icon name="star" size={16} tone="warning" /> : null}
+          {rowMarksOf(item, handlers.placed ?? NOTHING_PLACED).map((mark) => (
+            <Icon key={mark.key} name={mark.icon} size={16} tone={mark.tone} />
+          ))}
         </View>
         <Text variant="caption" tone="variant" numberOfLines={1} className="tabular px-1">
           {tileCaption(item)}

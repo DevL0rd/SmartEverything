@@ -121,11 +121,13 @@ describe('via model', () => {
   it('opens the item in its folder with the details pane on Activity', () => {
     expect(targetOf(entry({}))).toEqual({
       rootId: ROOT,
-      params: { folder: FOLDER, item: ITEM, tab: 'activity' },
+      folderId: FOLDER,
+      params: { item: ITEM, tab: 'activity' },
     });
-    expect(targetOf(entry({}, { folderId: null })).params).toEqual({
-      item: ITEM,
-      tab: 'activity',
+    expect(targetOf(entry({}, { folderId: null }))).toEqual({
+      rootId: ROOT,
+      folderId: null,
+      params: { item: ITEM, tab: 'activity' },
     });
   });
 

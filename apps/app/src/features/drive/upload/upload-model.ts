@@ -1,11 +1,12 @@
+import type { DriveFolderPlace, DriveItem } from '@smarteverything/domain';
 import { bytes, count, percent } from '../../../format/number';
 import { plural } from '../../../format/text';
 import { duration } from '../../../format/time';
-import type { UploadEntries, UploadEntry, UploadFailure } from '../../nas/uploads';
+import type { UploadEntries, UploadEntry, UploadFailure } from './transport';
 
 export interface UploadRecord {
   readonly key: string;
-  readonly folderId: string;
+  readonly place: DriveFolderPlace;
   readonly name: string;
   readonly size: number;
   readonly handleId: string | null;
@@ -107,14 +108,22 @@ function rowOf(record: UploadRecord, byId: ReadonlyMap<string, UploadEntry>): Up
   return entry === undefined ? null : { ...base, sent: entry.sent, state: stateOf(entry) };
 }
 
+export function placeOf(rootId: string, folder: DriveItem | null): DriveFolderPlace {
+  return folder === null ? { kind: 'drive', rootId } : { kind: 'folder', folderId: folder.id };
+}
+
+export function placeIdOf(place: DriveFolderPlace): string {
+  return place.kind === 'drive' ? place.rootId : place.folderId;
+}
+
 export function rowsOf(
   records: readonly UploadRecord[],
   entries: UploadEntries,
-  folderId: string,
+  placeId: string,
 ): readonly UploadRow[] {
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   return records
-    .filter((record) => record.folderId === folderId)
+    .filter((record) => placeIdOf(record.place) === placeId)
     .map((record) => rowOf(record, byId))
     .filter((row) => row !== null);
 }
@@ -208,16 +217,16 @@ export function retryNoticeOf(rows: readonly UploadRow[]): RetryNotice | null {
   };
 }
 
-export function identityOf(name: string, folderId: string, modifiedAt: number | null): string {
-  return ['drive-upload', folderId, name, modifiedAt === null ? '' : String(modifiedAt)].join(':');
+export function identityOf(name: string, placeId: string, modifiedAt: number | null): string {
+  return ['drive-upload', placeId, name, modifiedAt === null ? '' : String(modifiedAt)].join(':');
 }
 
 export function storedAsText(name: string): string {
   return `Named ${name}`;
 }
 
-export function dropTitle(folder: string): string {
-  return `Drop to upload into ${folder}`;
+export function dropTitle(place: string): string {
+  return `Drop to upload into ${place}`;
 }
 
 const CLASH_RULE = 'Names that already exist get a number, nothing is replaced';
@@ -225,11 +234,12 @@ const CLASH_RULE = 'Names that already exist get a number, nothing is replaced';
 export function dropDetail(computers: number): string {
   return computers === 0
     ? CLASH_RULE
-    : `${CLASH_RULE} · Synced to ${plural(computers, 'computer')} after upload`;
+    : `${CLASH_RULE} · Reaches ${plural(computers, 'computer')} after upload`;
 }
 
-export function blockedDropText(online: boolean): string {
-  return online
-    ? 'This library folder is read-only, so files can’t be added here.'
-    : 'Uploads wait until the hub is back. Drop again then.';
+export function blockedDropText(online: boolean, full: boolean): string {
+  if (!online) return 'Uploads wait until the hub is back. Drop again then.';
+  return full
+    ? 'Your drive is full. Free some space or ask the home owner for more.'
+    : 'You can only view this folder, so files can’t be added here.';
 }

@@ -1,19 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { lstat, mkdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { DatabaseSync } from 'node:sqlite';
 import {
   DRIVE_CHANGE,
-  DRIVE_ROOT_ADD,
   type DriveChange,
   type DriveConflict,
   type DriveBackupReport,
   type DriveConflictResolution,
   type DriveItem,
-  type DriveRoot,
-  type DriveRootAdd,
+  type DriveDataSpace,
   type DriveScrubState,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -21,11 +17,12 @@ import { DriveAlbumsService } from '../../src/drive/albums';
 import { commitContent, folderDraft, identityOf, isoOf, recordItem } from '../../src/drive/changes';
 import type { ConflictEnv } from '../../src/drive/conflicts';
 import { DriveReadService } from '../../src/drive/service-read';
+import { ensureDrives, personalDrive, sharedDrive } from '../../src/drive/spaces';
 import { DriveWriteService } from '../../src/drive/service-write';
 import type { DriveCaller } from '../../src/drive/service-write-support';
 import { DriveShares } from '../../src/drive/shares';
 import { stageBytes, fileEnv, nodeFiles } from '../../src/drive/versions';
-import { systemProbe, type VolumeSpace } from '../../src/drive/volumes';
+import type { StoredDrive } from '../../src/store/repositories/drive-roots';
 import type { DriveQuotaStatus } from '../../src/store/repositories/drive-quotas';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
@@ -33,13 +30,13 @@ import { testStore, type TestStore } from '../support/store';
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 
 let opened: TestStore;
-let base = '';
-let installDirectory = '';
+let mine: StoredDrive;
+let shared: StoredDrive;
+let theirs: StoredDrive;
 let service: DriveWriteService;
 let ownerId = '';
 let memberId = '';
 let scans: string[] = [];
-let purges = 0;
 let conflictRows: Map<string, DriveConflict>;
 let scrubStarts = 0;
 
@@ -55,44 +52,8 @@ function member(): DriveCaller {
   return caller(memberId, false);
 }
 
-function addRequest(path: string, fields: Partial<DriveRootAdd> = {}): DriveRootAdd {
-  return DRIVE_ROOT_ADD.parse({
-    kind: 'folder',
-    path,
-    label: 'Library',
-    scope: 'home',
-    ownerProfileId: null,
-    readOnly: false,
-    versions: true,
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    ...fields,
-  });
-}
-
-async function newDirectory(name: string): Promise<string> {
-  const path = join(base, name);
-  await mkdir(path, { recursive: true });
-  return realpath(path);
-}
-
-async function addRoot(name: string, fields: Partial<DriveRootAdd> = {}): Promise<DriveRoot> {
-  return service.addRoot(owner(), addRequest(await newDirectory(name), fields));
-}
-
-function pathOf(root: DriveRoot): string {
-  if (root.path === null) {
-    throw new Error('the root has no path');
-  }
+function pathOf(root: StoredDrive): string {
   return root.path;
-}
-
-function managedRoot(root: DriveRoot, path: string): Extract<DriveRoot, { kind: 'managed' }> {
-  if (root.kind !== 'folder') {
-    throw new Error('this test manages a folder root');
-  }
-  return { ...root, kind: 'managed', id: randomUUID(), path, volume: null, readOnly: false };
 }
 
 function changeEnv(): ConflictEnv {
@@ -100,9 +61,7 @@ function changeEnv(): ConflictEnv {
     ...fileEnv(opened.store, testLogger('drive'), () => NOW),
     store: opened.store,
     purge: {
-      rearm: (): void => {
-        purges += 1;
-      },
+      rearm: (): void => undefined,
     },
     conflicts: {
       insert: (conflict): void => {
@@ -120,7 +79,7 @@ function changeEnv(): ConflictEnv {
   };
 }
 
-async function seedFolder(root: DriveRoot, relPath: string): Promise<DriveItem> {
+async function seedFolder(root: StoredDrive, relPath: string): Promise<DriveItem> {
   const path = join(pathOf(root), relPath);
   await mkdir(path, { recursive: true });
   const stamp = await nodeFiles.stamp(path);
@@ -148,15 +107,14 @@ async function seedFolder(root: DriveRoot, relPath: string): Promise<DriveItem> 
 }
 
 async function seedFile(
-  root: DriveRoot,
+  root: StoredDrive,
   relPath: string,
   text: string,
   by: string = ownerId,
 ): Promise<DriveItem> {
-  const writable = { id: root.id, path: pathOf(root), readOnly: false, versions: root.versions };
-  const staged = await stageBytes(changeEnv(), writable, Readable.from([Buffer.from(text)]));
+  const staged = await stageBytes(changeEnv(), root, Readable.from([Buffer.from(text)]));
   const written = await commitContent(changeEnv(), {
-    root: writable,
+    root,
     staged,
     relPath,
     actor: { actorProfileId: by, via: 'app', deviceId: null },
@@ -164,7 +122,7 @@ async function seedFile(
   return written.item;
 }
 
-async function textOf(root: DriveRoot, relPath: string): Promise<string> {
+async function textOf(root: StoredDrive, relPath: string): Promise<string> {
   return readFile(join(pathOf(root), relPath), 'utf8');
 }
 
@@ -181,12 +139,19 @@ function change(value: DriveChange): DriveChange {
 
 beforeEach(async () => {
   opened = await testStore(() => NOW);
-  base = await realpath(await mkdtemp(join(tmpdir(), 'hub-drive-write-')));
-  installDirectory = await newDirectory('install');
   ownerId = opened.store.profiles.first().id;
   memberId = opened.store.profiles.create({ name: 'Sam' }).id;
+  for (const drive of await ensureDrives(
+    opened.store,
+    opened.layout,
+    opened.store.profiles.list(),
+  )) {
+    opened.store.driveRoots.update(drive.id, { versions: true });
+  }
+  mine = personalDrive(opened.store, ownerId);
+  theirs = personalDrive(opened.store, memberId);
+  shared = sharedDrive(opened.store);
   scans = [];
-  purges = 0;
   scrubStarts = 0;
   conflictRows = new Map();
   const read = new DriveReadService(opened.store);
@@ -199,6 +164,7 @@ beforeEach(async () => {
       albums: opened.store.driveAlbums,
       items: opened.store.driveItems,
       roots: opened.store.driveRoots,
+      grants: opened.store.driveGrants,
       runner: { rows: (): [] => [], count: (): number => 0 },
       newId: randomUUID,
       now: (): string => NOW.toISOString(),
@@ -221,13 +187,9 @@ beforeEach(async () => {
     backups: { report: (input): DriveBackupReport => opened.store.driveBackups.record(input) },
     guard: {
       status: (profileId): DriveQuotaStatus => opened.store.driveQuotas.status(profileId),
-      space: (): Promise<VolumeSpace> =>
+      space: (): Promise<Pick<DriveDataSpace, 'totalBytes' | 'freeBytes'>> =>
         Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },
-    probe: systemProbe,
-    layout: opened.layout,
-    installDirectory,
-    newId: randomUUID,
     scan: (rootId): void => {
       scans.push(rootId);
     },
@@ -236,138 +198,54 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await opened.close();
-  await rm(base, { recursive: true, force: true });
 });
 
-describe('library folders', () => {
-  it('adds a writable folder through the placement check and marks it', async () => {
-    const root = await addRoot('docs');
-    expect(root).toMatchObject({ kind: 'folder', state: 'scanning', readOnly: false });
-    expect(scans).toEqual([root.id]);
-    expect(await exists(join(pathOf(root), '.smarteverything', 'root.json'))).toBe(true);
-    expect(opened.store.driveRoots.find(root.id)).toBeDefined();
+describe('drive settings', () => {
+  it('lets a person change their own drive and rescans when the walk changes', () => {
+    const updated = service.updateRoot(member(), theirs.id, { skipPatterns: ['*.tmp'] });
+    expect(updated).toMatchObject({ id: theirs.id, skipPatterns: ['*.tmp'] });
+    expect('path' in updated).toBe(false);
+    expect(scans).toEqual([theirs.id]);
+    service.updateRoot(member(), theirs.id, { versions: false });
+    expect(opened.store.driveRoots.byId(theirs.id).versions).toBe(false);
+    expect(scans).toEqual([theirs.id]);
   });
 
-  it('keeps a read-only folder untouched and records its identity beside the database', async () => {
-    const root = await addRoot('movies', { readOnly: true, versions: false });
-    expect(await exists(join(pathOf(root), '.smarteverything'))).toBe(false);
-    expect(await exists(join(opened.directory, 'drive-meta', root.id, 'root.json'))).toBe(true);
-  });
-
-  it('refuses a folder inside or containing the hub data, the install or another root', async () => {
-    const inside = join(opened.directory, 'inner');
-    await mkdir(inside);
-    await expect(service.addRoot(owner(), addRequest(inside))).rejects.toMatchObject({
-      reason: 'inside-hub-data',
-    });
-    await expect(service.addRoot(owner(), addRequest(installDirectory))).rejects.toMatchObject({
-      reason: 'inside-install',
-    });
-    const existing = await addRoot('lib/a');
-    const nested = await newDirectory('lib/a/b');
-    await expect(service.addRoot(owner(), addRequest(nested))).rejects.toMatchObject({
-      reason: 'inside-existing',
-    });
-    await expect(
-      service.addRoot(owner(), addRequest(await newDirectory('lib'))),
-    ).rejects.toMatchObject({ reason: 'contains-existing' });
-    expect(opened.store.driveRoots.list().map((root) => root.id)).toEqual([existing.id]);
-  });
-
-  it('leaves no row behind when the identity record cannot be written', async () => {
-    const path = await newDirectory('taken');
-    await mkdir(join(path, '.smarteverything'));
-    await writeFile(join(path, '.smarteverything', 'root.json'), '{}');
-    await expect(service.addRoot(owner(), addRequest(path))).rejects.toMatchObject({
-      failure: 'exists',
-    });
-    expect(opened.store.driveRoots.list()).toEqual([]);
-  });
-
-  it('lets only the owner add, change, remove and scan', async () => {
-    const root = await addRoot('docs');
-    const path = await newDirectory('other');
-    await expect(service.addRoot(member(), addRequest(path))).rejects.toMatchObject({
-      code: 'forbidden',
-    });
-    await expect(service.updateRoot(member(), root.id, { label: 'x' })).rejects.toMatchObject({
-      code: 'forbidden',
-    });
-    await expect(service.removeRoot(member(), root.id)).rejects.toMatchObject({
-      code: 'forbidden',
-    });
-    expect(() => {
-      service.scanRoot(member(), root.id);
-    }).toThrow(expect.objectContaining({ code: 'forbidden' }));
-  });
-
-  it('allows edits by writing the marker and dropping the linked record, and back', async () => {
-    const root = await addRoot('movies', { readOnly: true, versions: false });
-    const updated = await service.updateRoot(owner(), root.id, { readOnly: false, versions: true });
-    expect(updated).toMatchObject({ readOnly: false, versions: true });
-    expect(await exists(join(pathOf(root), '.smarteverything', 'root.json'))).toBe(true);
-    expect(await exists(join(opened.directory, 'drive-meta', root.id))).toBe(false);
-    const locked = await service.updateRoot(owner(), root.id, { readOnly: true });
-    expect(locked).toMatchObject({ readOnly: true, versions: false });
-    expect(await exists(join(opened.directory, 'drive-meta', root.id, 'root.json'))).toBe(true);
-  });
-
-  it('refuses versions on a read-only folder', async () => {
-    const root = await addRoot('movies', { readOnly: true, versions: false });
-    await expect(service.updateRoot(owner(), root.id, { versions: true })).rejects.toMatchObject({
-      code: 'invalid_request',
-    });
-  });
-
-  it('keeps sync settings only while the folder syncs and rescans on pattern changes', async () => {
-    const root = await addRoot('docs');
-    await expect(
-      service.updateRoot(owner(), root.id, { ignorePatterns: ['*.tmp'] }),
-    ).rejects.toMatchObject({ code: 'invalid_request' });
-    const synced = await service.updateRoot(owner(), root.id, {
-      synced: true,
-      ignorePatterns: ['*.tmp'],
-    });
-    expect(synced).toMatchObject({ synced: true, sync: { ignorePatterns: ['*.tmp'] } });
-    const before = scans.length;
-    await service.updateRoot(owner(), root.id, { skipPatterns: ['node_modules'] });
-    expect(scans.length).toBe(before + 1);
-    const off = await service.updateRoot(owner(), root.id, { synced: false });
-    expect(off.synced).toBe(false);
-  });
-
-  it('removes a folder root, its marker and its record, and keeps the files', async () => {
-    const root = await addRoot('docs');
-    await writeFile(join(pathOf(root), 'keep.txt'), 'keep');
-    await service.removeRoot(owner(), root.id);
-    expect(opened.store.driveRoots.find(root.id)).toBeUndefined();
-    expect(await exists(join(pathOf(root), '.smarteverything', 'root.json'))).toBe(false);
-    expect(await textOf(root, 'keep.txt')).toBe('keep');
-    expect(purges).toBe(1);
-  });
-
-  it('never removes a managed folder and keeps it writable', async () => {
-    const root = await addRoot('docs');
-    const managed = managedRoot(root, await newDirectory('managed'));
-    opened.store.driveRoots.insert(managed);
-    await expect(service.removeRoot(owner(), managed.id)).rejects.toMatchObject({
-      code: 'invalid_request',
-    });
-    await expect(service.updateRoot(owner(), managed.id, { readOnly: true })).rejects.toMatchObject(
-      { code: 'invalid_request' },
+  it('lets only the owner change or scan the Shared Drive', () => {
+    expect(() => service.updateRoot(member(), shared.id, { includeHidden: true })).toThrow(
+      expect.objectContaining({ code: 'forbidden' }),
     );
-    expect(opened.store.driveRoots.byId(managed.id).readOnly).toBe(false);
-    expect(await stat(pathOf(managed))).toBeDefined();
+    expect(() => {
+      service.scanRoot(member(), shared.id);
+    }).toThrow(expect.objectContaining({ code: 'forbidden' }));
+    expect(service.updateRoot(owner(), shared.id, { includeHidden: true }).includeHidden).toBe(
+      true,
+    );
+    service.scanRoot(owner(), shared.id);
+    expect(scans).toEqual([shared.id, shared.id]);
+  });
+
+  it('hides a person’s drive from everyone else, the owner included', () => {
+    expect(() => service.updateRoot(owner(), theirs.id, { versions: false })).toThrow(
+      expect.objectContaining({ code: 'not_found' }),
+    );
+    expect(() => {
+      service.scanRoot(owner(), theirs.id);
+    }).toThrow(expect.objectContaining({ code: 'not_found' }));
+    expect(() => {
+      service.scanRoot(member(), mine.id);
+    }).toThrow(expect.objectContaining({ code: 'not_found' }));
+    expect(scans).toEqual([]);
   });
 });
 
 describe('changes in the tree', () => {
   it('makes a folder on disk with a create row and reports a name clash', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     const top = await seedFolder(root, 'top');
     const made = await service.change(
       owner(),
-      change({ action: 'new_folder', parentId: top.id, name: 'sub' }),
+      change({ action: 'new_folder', parent: { kind: 'folder', folderId: top.id }, name: 'sub' }),
     );
     expect(made.failed).toEqual([]);
     const created = opened.store.driveItems.byPath(root.id, 'top/sub', null);
@@ -376,13 +254,26 @@ describe('changes in the tree', () => {
     expect((await stat(join(pathOf(root), 'top', 'sub'))).isDirectory()).toBe(true);
     const again = await service.change(
       owner(),
-      change({ action: 'new_folder', parentId: top.id, name: 'sub' }),
+      change({ action: 'new_folder', parent: { kind: 'folder', folderId: top.id }, name: 'sub' }),
     );
     expect(again.conflicts).toEqual([{ itemId: top.id, name: 'sub', existingItemId: created?.id }]);
   });
 
+  it('makes a folder at the top of a drive', async () => {
+    const root = shared;
+    const made = await service.change(
+      owner(),
+      change({ action: 'new_folder', parent: { kind: 'drive', rootId: root.id }, name: 'Top' }),
+    );
+    expect(made.failed).toEqual([]);
+    const created = opened.store.driveItems.byPath(root.id, 'Top', null);
+    expect(created).toMatchObject({ kind: 'folder', parentId: null });
+    expect(made.done).toEqual([{ itemId: root.id, resultItemId: created?.id }]);
+    expect((await stat(join(pathOf(root), 'Top'))).isDirectory()).toBe(true);
+  });
+
   it('renames a file keeping its id and a folder with everything inside it', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     const top = await seedFolder(root, 'top');
     const deep = await seedFolder(root, 'top/deep');
     const inside = await seedFile(root, 'top/deep/a.txt', 'a');
@@ -414,7 +305,7 @@ describe('changes in the tree', () => {
   });
 
   it('reports a rename onto an existing name as a conflict and changes nothing', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     await seedFile(root, 'a.txt', 'a');
     const other = await seedFile(root, 'b.txt', 'b');
     const result = await service.change(
@@ -425,9 +316,9 @@ describe('changes in the tree', () => {
     expect(await textOf(root, 'b.txt')).toBe('b');
   });
 
-  it('moves into a folder, refuses another root and a folder into itself', async () => {
-    const first = await addRoot('one');
-    const second = await addRoot('two');
+  it('moves into a folder, refuses another drive and a folder into itself', async () => {
+    const first = shared;
+    const second = mine;
     const target = await seedFolder(first, 'target');
     const file = await seedFile(first, 'a.txt', 'a');
     const foreign = await seedFolder(second, 'foreign');
@@ -442,7 +333,7 @@ describe('changes in the tree', () => {
       owner(),
       change({ action: 'move', itemIds: [file.id], toFolderId: foreign.id }),
     );
-    expect(across.failed[0]?.reason).toMatch(/inside one library folder/u);
+    expect(across.failed[0]?.reason).toMatch(/inside one drive/u);
     const nested = await seedFolder(first, 'target/inner');
     const into = await service.change(
       owner(),
@@ -453,7 +344,7 @@ describe('changes in the tree', () => {
   });
 
   it('copies a file and a folder, charging the writer, and reports clashes', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     const source = await seedFolder(root, 'source');
     await seedFile(root, 'source/a.txt', 'hello');
     const destination = await seedFolder(root, 'dest');
@@ -474,7 +365,7 @@ describe('changes in the tree', () => {
   });
 
   it('refuses a copy that would pass the writer quota and leaves nothing behind', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     const file = await seedFile(root, 'big.txt', 'x'.repeat(100));
     const destination = await seedFolder(root, 'dest');
     opened.store.driveQuotas.set(memberId, 50);
@@ -488,24 +379,21 @@ describe('changes in the tree', () => {
     expect(await exists(join(pathOf(root), 'dest', 'big.txt'))).toBe(false);
   });
 
-  it('stars and unstars with feed rows, and refuses writes in a read-only folder', async () => {
-    const root = await addRoot('docs');
+  it('stars and unstars for the person who asked and keeps stars out of the item history', async () => {
+    const root = shared;
     const file = await seedFile(root, 'a.txt', 'a');
     await service.change(owner(), change({ action: 'star', itemIds: [file.id] }));
-    expect(opened.store.driveItems.byId(file.id, null).starred).toBe(true);
+    expect(opened.store.driveItems.byId(file.id, ownerId).starred).toBe(true);
+    expect(opened.store.driveItems.byId(file.id, memberId).starred).toBe(false);
     await service.change(owner(), change({ action: 'unstar', itemIds: [file.id] }));
+    expect(opened.store.driveItems.byId(file.id, ownerId).starred).toBe(false);
     expect(opened.store.driveFeed.ofItem(file.id, 0, 10).rows.map((row) => row.op)).toEqual([
       'create',
-      'star',
-      'unstar',
     ]);
-    opened.store.driveRoots.update(root.id, { readOnly: true, versions: false });
-    const refused = await service.change(owner(), change({ action: 'trash', itemIds: [file.id] }));
-    expect(refused.failed[0]?.reason).toMatch(/read-only/u);
   });
 
   it('trashes and restores with the same id', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     const file = await seedFile(root, 'a.txt', 'a');
     const trashed = await service.change(owner(), change({ action: 'trash', itemIds: [file.id] }));
     expect(trashed.done).toHaveLength(1);
@@ -520,7 +408,7 @@ describe('changes in the tree', () => {
   });
 
   it('removes from the trash for good only in the app: owner any entry, member only their own', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     const mine = await seedFile(root, 'mine.txt', 'm', memberId);
     const theirs = await seedFile(root, 'theirs.txt', 't', ownerId);
     const ids = [mine.id, theirs.id];
@@ -542,17 +430,27 @@ describe('changes in the tree', () => {
     expect(opened.store.driveTrash.find(theirs.id)).toBeUndefined();
   });
 
-  it('keeps a member out of another person’s folder', async () => {
-    const root = await addRoot('mine', { scope: 'person', ownerProfileId: ownerId });
-    const file = await seedFile(root, 'secret.txt', 's');
-    const result = await service.change(member(), change({ action: 'trash', itemIds: [file.id] }));
-    expect(result.done).toEqual([]);
-    expect(result.failed[0]?.reason).toMatch(/no such library folder/u);
-    expect(opened.store.driveItems.find(file.id, null)).toBeDefined();
+  it('keeps everyone out of another person’s drive, the owner included', async () => {
+    const secret = await seedFile(mine, 'secret.txt', 's');
+    const refused = await service.change(
+      member(),
+      change({ action: 'trash', itemIds: [secret.id] }),
+    );
+    expect(refused.done).toEqual([]);
+    expect(refused.failed[0]?.reason).toMatch(/no such file or folder/u);
+    expect(opened.store.driveItems.find(secret.id, ownerId)).toBeDefined();
+    const private_ = await seedFile(theirs, 'private.txt', 'p', memberId);
+    const byOwner = await service.change(
+      owner(),
+      change({ action: 'trash', itemIds: [private_.id] }),
+    );
+    expect(byOwner.done).toEqual([]);
+    expect(byOwner.failed[0]?.reason).toMatch(/no such file or folder/u);
+    expect(opened.store.driveItems.find(private_.id, memberId)).toBeDefined();
   });
 
   it('adds files to a manual album and takes them out again', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     const file = await seedFile(root, 'a.jpg', 'a');
     const album = service.createAlbum(owner(), {
       kind: 'manual',
@@ -579,9 +477,9 @@ describe('changes in the tree', () => {
   });
 });
 
-describe('versions, quotas, settings, shares, conflicts and sync devices', () => {
+describe('versions, quotas, settings, shares and conflicts', () => {
   it('restores an earlier version as a new rev and keeps the replaced bytes', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     const first = await seedFile(root, 'a.txt', 'one');
     await seedFile(root, 'a.txt', 'two!');
     const version = opened.store.driveVersions.forItem(first.id, null, 10).versions[0];
@@ -593,7 +491,7 @@ describe('versions, quotas, settings, shares, conflicts and sync devices', () =>
   });
 
   it('refuses a version of another file and a restore over the quota', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     const first = await seedFile(root, 'a.txt', 'one');
     const other = await seedFile(root, 'b.txt', 'bb');
     await seedFile(root, 'a.txt', 'two!');
@@ -637,7 +535,7 @@ describe('versions, quotas, settings, shares, conflicts and sync devices', () =>
   });
 
   it('lets a member share only when the owner allows it, and revoke their own links', async () => {
-    const root = await addRoot('docs');
+    const root = shared;
     const file = await seedFile(root, 'a.txt', 'a');
     const input = { itemId: file.id, permission: 'view' as const, expiresAt: null, password: null };
     await expect(service.createShare(member(), input)).rejects.toMatchObject({ code: 'forbidden' });
@@ -647,7 +545,7 @@ describe('versions, quotas, settings, shares, conflicts and sync devices', () =>
   });
 
   it('settles a conflict inside the caller’s reach only', async () => {
-    const root = await addRoot('mine', { scope: 'person', ownerProfileId: ownerId });
+    const root = mine;
     const file = await seedFile(root, 'a.txt', 'a');
     const conflict: DriveConflict = {
       id: randomUUID(),
@@ -673,44 +571,5 @@ describe('versions, quotas, settings, shares, conflicts and sync devices', () =>
       resolution: 'keep_both',
     });
     expect(settled.resolution).toBe('keep_both');
-  });
-
-  it('updates a sync device of a synced folder, for its own person or the owner', async () => {
-    const root = await addRoot('docs');
-    const update = { clientId: randomUUID(), rootId: root.id, enabled: true, selected: ['a'] };
-    expect(() => service.updateSyncClient(owner(), update)).toThrow(
-      expect.objectContaining({ code: 'invalid_request' }),
-    );
-    await service.updateRoot(owner(), root.id, { synced: true });
-    expect(() => service.updateSyncClient(owner(), update)).toThrow(
-      expect.objectContaining({ code: 'not_found' }),
-    );
-    const client = opened.store.clients.create({
-      name: 'Laptop',
-      platform: 'desktop',
-      role: 'member',
-      tokenHash: 'l',
-    }).id;
-    const device = randomUUID();
-    const raw = new DatabaseSync(join(opened.directory, 'test.db'));
-    raw
-      .prepare(
-        `insert into devices (id, provider, external_id, kind, name, model, manufacturer, created_at, updated_at)
-          values (?, 'xiaomi', 'e1', 'light', 'Lamp', 'm', 'v', ?, ?)`,
-      )
-      .run(device, NOW.toISOString(), NOW.toISOString());
-    raw.close();
-    opened.store.driveSyncClients.set(
-      { clientId: client, rootId: root.id, enabled: false, selected: [] },
-      { deviceId: device, profileId: ownerId },
-    );
-    expect(() => service.updateSyncClient(member(), { ...update, clientId: client })).toThrow(
-      expect.objectContaining({ code: 'not_found' }),
-    );
-    const saved = service.updateSyncClient(owner(), { ...update, clientId: client });
-    expect(saved).toMatchObject({ enabled: true, selected: ['a'], profileId: ownerId });
-    expect(opened.store.driveRoots.byId(root.id).sync).toMatchObject({
-      clients: [{ clientId: client, enabled: true }],
-    });
   });
 });

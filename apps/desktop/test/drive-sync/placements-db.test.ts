@@ -9,7 +9,7 @@ import { openDriveSyncDatabase, type DriveSyncDatabase } from '../../src/drive-s
 const PLACEMENT_ID_A = '11111111-1111-4111-8111-111111111111';
 const PLACEMENT_ID_B = '22222222-2222-4222-8222-222222222222';
 const DEVICE_ID = '33333333-3333-4333-8333-333333333333';
-const ROOT_ID = '44444444-4444-4444-8444-444444444444';
+const DRIVE_ID = '44444444-4444-4444-8444-444444444444';
 const FOLDER_ID = '55555555-5555-4555-8555-555555555555';
 const PERSON_ID = '66666666-6666-4666-8666-666666666666';
 
@@ -21,9 +21,10 @@ function placement(
   return {
     id,
     deviceId: DEVICE_ID,
-    rootId: ROOT_ID,
+    rootId: DRIVE_ID,
     folderItemId,
     mode,
+    ...(mode === 'synced' ? { excluded: [], ignorePatterns: [], conflictCopies: true } : {}),
     localPath: `/data/${id}`,
     enabled: true,
     hold: null,
@@ -39,6 +40,9 @@ function placement(
       pinnedBytes: 0,
       openFiles: 0,
       pendingUploads: 0,
+      needBytes: 0,
+      lastSyncedAt: null,
+      errors: [],
       reason: null,
       reportedAt: '2026-11-07T10:00:00Z',
     },
@@ -96,11 +100,11 @@ describe('placements cache', () => {
 
   it('clears on revocation without touching other tables', () => {
     const database = open(freshDirectory());
-    database.cursors.set({ rootId: ROOT_ID, indexId: 'index', lastSeq: 4 });
+    database.cursors.set({ placementId: DRIVE_ID, indexId: 'index', lastSeq: 4 });
     database.placements.replaceAll([placement(PLACEMENT_ID_A, 'synced', null)]);
     database.placements.clear();
     expect(database.placements.all()).toEqual([]);
-    expect(database.cursors.get(ROOT_ID)?.lastSeq).toBe(4);
+    expect(database.cursors.get(DRIVE_ID)?.lastSeq).toBe(4);
   });
 
   it('leaves the old cache intact when a frame holds an invalid placement', () => {
@@ -108,7 +112,7 @@ describe('placements cache', () => {
     database.placements.replaceAll([placement(PLACEMENT_ID_A, 'synced', null)]);
     const invalid = [
       placement(PLACEMENT_ID_B, 'mounted', FOLDER_ID),
-      placement(PLACEMENT_ID_A, 'synced', FOLDER_ID),
+      { ...placement(PLACEMENT_ID_A, 'mounted', FOLDER_ID), excluded: [] },
     ];
     expect(() => {
       database.placements.replaceAll(invalid);

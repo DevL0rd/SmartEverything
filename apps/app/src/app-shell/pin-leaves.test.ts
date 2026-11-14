@@ -104,7 +104,7 @@ describe('the pin leaves', () => {
 });
 
 describe('Drive pin leaves', () => {
-  it('prewarms the Drive host with the whole destination and distinct folder and item identities', () => {
+  it('opens Drive places through their address instead of a Drive leaf', () => {
     const target = {
       kind: 'drive',
       rootId: ID,
@@ -112,36 +112,7 @@ describe('Drive pin leaves', () => {
       itemId: OTHER,
       focus: 'versions',
     } as const;
-    const leaf = pinLeafOf(target);
-    expect(leaf).toMatchObject({
-      group: '(drive)',
-      route: 'drive/root/[rootId]',
-      params: { rootId: ID, path: 'Trips/2026', item: OTHER, focus: 'versions' },
-    });
-    expect(leaf?.href).toEqual({
-      pathname: '/(app)/(drive)/drive/root/[rootId]',
-      params: leaf?.params,
-    });
-    expect(leaf?.id).not.toBe(pinLeafOf({ ...target, path: 'Trips/2025' })?.id);
-    expect(leaf?.id).not.toBe(pinLeafOf({ ...target, itemId: null })?.id);
-  });
-
-  it('keeps existing folder routes distinct from each other and the root', () => {
-    const leaf = LEAF_ROUTES.find((route) => route.group === '(drive)');
-    if (leaf === undefined) throw new Error('The Drive leaf is missing.');
-    const idOf = singularIdOf(leaf);
-    const first = idOf('drive/root', { rootId: ID, folder: ID });
-    const second = idOf('drive/root', { rootId: ID, folder: OTHER });
-    expect(first).not.toBe(second);
-    expect(first).not.toBe(idOf('drive/root', { rootId: ID }));
-    expect(first).toBe(idOf('drive/root', { rootId: ID, folder: ID }));
-  });
-
-  it('reuses a root route opened without the optional destination params', () => {
-    const leaf = LEAF_ROUTES.find((route) => route.group === '(drive)');
-    if (leaf === undefined) throw new Error('The Drive leaf is missing.');
-    expect(singularIdOf(leaf)('drive/root', { rootId: ID })).toBe(
-      singularIdOf(leaf)('drive/root', { rootId: ID, path: '' }),
-    );
+    expect(pinLeafOf(target)).toBeNull();
+    expect(LEAF_ROUTES.some((route) => route.group === '(drive)')).toBe(false);
   });
 });

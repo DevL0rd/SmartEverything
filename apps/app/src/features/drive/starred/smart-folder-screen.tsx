@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { DriveItem } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
@@ -12,7 +12,7 @@ import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { joinParts } from '../../../format/text';
 import { useSyncStatus } from '../../../store/selectors';
-import { useDriveAlbumItems } from '../../nas/data';
+import { useDriveAlbumItems, useDriveRoots } from '../data';
 import { DriveFrame } from '../components/drive-frame';
 import { runAction, type ItemCommands } from '../folder/folder-footer';
 import { WIDE_FROM } from '../folder/folder-header';
@@ -43,8 +43,9 @@ const READ_ONLY = { writable: false, details: false } as const;
 
 function useHandlers(byName: ByName): FolderRowHandlers {
   const router = useRouter();
+  const roots = useDriveRoots();
   const open = (item: DriveItem): void => {
-    router.push(openHrefOf(item));
+    router.push(openHrefOf(item, roots));
   };
   const commands: ItemCommands = { open, details: open, rename: open };
   return {
@@ -62,7 +63,7 @@ function useHandlers(byName: ByName): FolderRowHandlers {
 function EveryMatch({ pages }: { readonly pages: AlbumPages }): ReactNode {
   if (pages.data === undefined || pages.hasNextPage) return null;
   return (
-    <Text variant="caption" tone="faint" align="center" className="py-4">
+    <Text variant="caption" tone="variant" align="center" className="py-4">
       That’s every match.
     </Text>
   );
@@ -166,4 +167,9 @@ export function SmartFolderScreen({ albumId }: { readonly albumId: string }): Re
       />
     </DriveFrame>
   );
+}
+
+export function SmartFolderRouteScreen(): ReactNode {
+  const { albumId } = useLocalSearchParams<{ albumId: string }>();
+  return <SmartFolderScreen key={albumId} albumId={albumId} />;
 }

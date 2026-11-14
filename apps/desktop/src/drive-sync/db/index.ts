@@ -8,7 +8,7 @@ import { migrateClient } from './migrate.js';
 import { CLIENT_MIGRATIONS } from './migrations.js';
 import { PendingOpsRepository } from './pending-ops.js';
 import { PlacementsRepository } from './placements.js';
-import { PinsRepository, SelectionsRepository } from './paths.js';
+import { PinsRepository, ExclusionsRepository } from './paths.js';
 import { ClientSql } from './sql.js';
 import { TransfersRepository } from './transfers.js';
 
@@ -21,7 +21,7 @@ export interface DriveSyncDatabase {
   readonly cursors: CursorsRepository;
   readonly pendingOps: PendingOpsRepository;
   readonly transfers: TransfersRepository;
-  readonly selections: SelectionsRepository;
+  readonly exclusions: ExclusionsRepository;
   readonly pins: PinsRepository;
   readonly placements: PlacementsRepository;
   readonly transaction: <T>(work: () => T) => T;
@@ -46,7 +46,7 @@ export function openDriveSyncDatabase(path: string, log: Logger): DriveSyncDatab
     cursors: new CursorsRepository(sql),
     pendingOps: new PendingOpsRepository(sql),
     transfers: new TransfersRepository(sql),
-    selections: new SelectionsRepository(sql),
+    exclusions: new ExclusionsRepository(sql),
     pins: new PinsRepository(sql),
     placements: new PlacementsRepository(sql),
     transaction: <T>(work: () => T): T => sql.transaction(work),

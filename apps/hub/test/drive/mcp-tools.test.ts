@@ -343,6 +343,7 @@ describe('drive_read', () => {
 describe('drive_edit', () => {
   it('changes files through one change call with the action named', async () => {
     await edit('new_folder', { parentId: FOLDER, name: 'Trips' });
+    await edit('new_folder', { rootId: ROOT, name: 'Top' });
     await edit('rename', { itemId: ITEM, name: 'sunset.png' });
     await edit('move', { itemIds: [ITEM], toFolderId: FOLDER });
     await edit('copy', { itemIds: [ITEM], toFolderId: FOLDER });
@@ -353,6 +354,7 @@ describe('drive_edit', () => {
     expect(calls.every((call) => call.name === 'changeDrive')).toBe(true);
     expect(actionsOf()).toEqual([
       'new_folder',
+      'new_folder',
       'rename',
       'move',
       'copy',
@@ -360,6 +362,10 @@ describe('drive_edit', () => {
       'restore',
       'album_add',
       'album_remove',
+    ]);
+    expect(calls.slice(0, 2).map((call) => call.body)).toEqual([
+      { action: 'new_folder', parent: { kind: 'folder', folderId: FOLDER }, name: 'Trips' },
+      { action: 'new_folder', parent: { kind: 'drive', rootId: ROOT }, name: 'Top' },
     ]);
   });
 

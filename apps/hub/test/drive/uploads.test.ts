@@ -115,13 +115,22 @@ function patchHeaders(
   });
 }
 
+function wireTarget(target: DriveUploadTarget): Record<string, string> {
+  switch (target.kind) {
+    case 'drive':
+      return { targetKind: 'drive', rootId: target.rootId };
+    case 'folder':
+      return { targetKind: 'folder', folderId: target.folderId };
+    case 'item':
+      return { targetKind: 'item', itemId: target.itemId, baseRev: String(target.baseRev) };
+  }
+}
+
 function wireMetadata(target: DriveUploadTarget, name = 'a.txt', sha256?: string): string {
   const record = DRIVE_UPLOAD_METADATA.parse({
     filename: name,
     filetype: 'image/jpeg',
-    ...(target.kind === 'folder'
-      ? { targetKind: 'folder', folderId: target.folderId }
-      : { targetKind: 'item', itemId: target.itemId, baseRev: String(target.baseRev) }),
+    ...wireTarget(target),
     ...(sha256 === undefined ? {} : { sha256 }),
   });
   return Object.entries(record)
@@ -345,6 +354,26 @@ describe('creating and completing an upload', () => {
     expect(resumed.headers.get('upload-item-name')).toBe('a.txt');
     expect(opened.store.driveUploads.byId(idOf(location)).state).toBe('complete');
     expect(await tmpFiles()).toEqual([]);
+  });
+
+  it('commits a file at the top of the drive', async () => {
+    await startServer();
+    const response = await fetch(`${origin}/drive/uploads`, {
+      method: 'POST',
+      headers: headers('robin', {
+        'Upload-Length': '3',
+        'Upload-Metadata': wireMetadata({ kind: 'drive', rootId: root.id }, 'top.txt'),
+      }),
+    });
+    expect(response.status).toBe(201);
+    const location = `${origin}${response.headers.get('location') ?? ''}`;
+    expect((await patch(location, 0, 'top')).status).toBe(204);
+    expect(await readFile(join(dir, 'top.txt'), 'utf8')).toBe('top');
+    expect(opened.store.driveItems.byPath(root.id, 'top.txt', null)?.parentId).toBeNull();
+    expect(opened.store.driveUploads.byId(idOf(location)).target).toEqual({
+      kind: 'drive',
+      rootId: root.id,
+    });
   });
 
   it('names a clash "Name (2)" and then "Name (3)"', async () => {
@@ -625,6 +654,22 @@ describe('ownership and scope', () => {
     expect((await uploadInto('robin', folder.id)).status).toBe(201);
   });
 
+  it('lets only the person upload to the top of their own drive', async () => {
+    await startServer();
+    const folder = await personalFolder();
+    const top = (token: string): Promise<Response> =>
+      fetch(`${origin}/drive/uploads`, {
+        method: 'POST',
+        headers: headers(token, {
+          'Upload-Length': '3',
+          'Upload-Metadata': wireMetadata({ kind: 'drive', rootId: folder.rootId }, 'a.txt'),
+        }),
+      });
+    expect((await top('owner')).status).toBe(404);
+    expect((await top('sam')).status).toBe(404);
+    expect((await top('robin')).status).toBe(201);
+  });
+
   it('lets an edit grant upload into the shared folder and refuses a view grant', async () => {
     await startServer();
     const folder = await personalFolder();
@@ -803,13 +848,13 @@ describe('camera roll backup through tus', () => {
       extra: { 'Upload-Checksum': `sha256 ${sha('photo')}` },
     });
     expect(rejected.status).toBe(460);
-    expect(service.state(robin)[0]?.backedUp).toBe(0);
+    expect(service.state(robin).devices[0]?.backedUp).toBe(0);
     const response = await patch(location, 0, 'photo', {
       extra: { 'Upload-Checksum': `sha256 ${sha('photo')}` },
     });
     expect(response.status).toBe(204);
     const itemId = response.headers.get('upload-item-id');
-    expect(service.state(robin)[0]).toMatchObject({ backedUp: 1, uploading: 0 });
+    expect(service.state(robin).devices[0]).toMatchObject({ backedUp: 1, uploading: 0 });
     expect(service.checkHashes(robin, { deviceId: phoneId, assets })).toEqual({
       have: [{ localId: 'content://photo', itemId }],
       missing: [],

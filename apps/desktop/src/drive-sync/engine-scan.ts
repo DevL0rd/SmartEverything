@@ -21,7 +21,7 @@ import { isPlaceholder } from './select.js';
 import { statProbe } from './watch.js';
 
 export interface TreeScannerOptions {
-  readonly rootId: string;
+  readonly placementId: string;
   readonly rootPath: string;
   readonly platform: NodeJS.Platform;
   readonly portablePaths: boolean;
@@ -68,9 +68,9 @@ export class TreeScanner {
   }
 
   async batch(batch: DirtyBatch): Promise<readonly PushIntent[]> {
-    const { database, rootId } = this.#options;
+    const { database, placementId } = this.#options;
     const before = this.#tracked();
-    for (const rename of batch.renames) database.files.rename(rootId, rename.from, rename.to);
+    for (const rename of batch.renames) database.files.rename(placementId, rename.from, rename.to);
     const result = await this.#scan('targeted');
     this.#apply(result, batch.deleted);
     const targets = batch.renames.map((rename) => rename.to);
@@ -82,16 +82,16 @@ export class TreeScanner {
 
   #tracked(): readonly FileRecord[] {
     return this.#options.database.files
-      .list(this.#options.rootId)
+      .list(this.#options.placementId)
       .filter((record) => !isPlaceholder(record));
   }
 
   async #scan(mode: ScanMode): Promise<ScanResult> {
-    const { rootId, rootPath, platform, portablePaths, hasher, ignore, writeQuietMs, log } =
+    const { placementId, rootPath, platform, portablePaths, hasher, ignore, writeQuietMs, log } =
       this.#options;
     await this.#options.settled();
     const result = await scanRoot({
-      rootId,
+      placementId,
       rootPath,
       previous: this.#tracked(),
       ignore,
@@ -108,13 +108,13 @@ export class TreeScanner {
   }
 
   #apply(result: ScanResult, removals: readonly string[]): void {
-    const { database, rootId } = this.#options;
+    const { database, placementId } = this.#options;
     database.transaction(() => {
       for (const input of result.upserts) {
-        const current = database.files.get(rootId, input.relPath);
+        const current = database.files.get(placementId, input.relPath);
         database.files.upsert({ ...input, hubRev: current?.hubRev ?? input.hubRev });
       }
-      for (const relPath of removals) database.files.removeSubtree(rootId, relPath);
+      for (const relPath of removals) database.files.removeSubtree(placementId, relPath);
     });
   }
 
@@ -134,15 +134,15 @@ function identityOf(record: FileRecord | undefined): EntryIdentity | undefined {
 }
 
 export function dirtySourceOf(options: {
-  readonly rootId: string;
+  readonly placementId: string;
   readonly rootPath: string;
   readonly ignore: IgnoreMatcher;
   readonly database: Pick<DriveSyncDatabase, 'files'>;
 }): DirtySource {
-  const { database, rootId, rootPath, ignore } = options;
+  const { database, placementId, rootPath, ignore } = options;
   return {
     probe: statProbe(rootPath),
-    known: (path): EntryIdentity | undefined => identityOf(database.files.get(rootId, path)),
+    known: (path): EntryIdentity | undefined => identityOf(database.files.get(placementId, path)),
     isIgnored: (path): boolean => ignore.isIgnored(path) || isEngineTempName(posix.basename(path)),
   };
 }

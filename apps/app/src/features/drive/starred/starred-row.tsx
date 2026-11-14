@@ -9,10 +9,14 @@ import { bytes } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import { shortDate } from '../../../format/time';
 import { DriveThumb } from '../folder/folder-list';
+import { useDriveRoots } from '../data';
+import { DriveChipBadge } from '../components/drive-chip';
+import type { DriveChip } from '../model/drive-chip';
 import { KIND_LOOK, openHrefOf } from '../recent/recent-model';
 
 export interface StarredRowProps {
   readonly item: DriveItem;
+  readonly chip: DriveChip;
   readonly where: string;
   readonly wide: boolean;
   readonly live: boolean;
@@ -47,7 +51,11 @@ function Column({
   );
 }
 
-function Unstar({ item, live, onUnstar }: Omit<StarredRowProps, 'where' | 'wide'>): ReactNode {
+function Unstar({
+  item,
+  live,
+  onUnstar,
+}: Pick<StarredRowProps, 'item' | 'live' | 'onUnstar'>): ReactNode {
   return (
     <IconButton
       icon="star"
@@ -62,15 +70,16 @@ function Unstar({ item, live, onUnstar }: Omit<StarredRowProps, 'where' | 'wide'
 }
 
 export const StarredRow = memo(function StarredRow(props: StarredRowProps): ReactNode {
-  const { item, where, wide } = props;
+  const { item, chip, where, wide } = props;
+  const roots = useDriveRoots();
   const size = sizeText(item);
-  const subtitle = wide ? null : joinParts([where, size]);
+  const subtitle = wide ? null : joinParts([chip.label, where, size]);
   return (
     <ListRow
       title={item.name}
       leading={<Leading item={item} wide={wide} />}
-      href={openHrefOf(item)}
-      label={joinParts([`Open ${item.name}`, where, size])}
+      href={openHrefOf(item, roots)}
+      label={joinParts([`Open ${item.name}`, chip.label, where, size])}
       contextMenu={[
         {
           label: 'Remove star',
@@ -84,7 +93,10 @@ export const StarredRow = memo(function StarredRow(props: StarredRowProps): Reac
       trailing={
         wide ? (
           <View className="flex-row items-center gap-4">
-            <Column text={where} className="w-56" />
+            <View className="w-36 items-start">
+              <DriveChipBadge chip={chip} />
+            </View>
+            <Column text={where} className="w-44" />
             <Column text={shortDate(item.modifiedAt)} className="tabular w-20 text-right" />
             <Column text={size} className="tabular w-20 text-right" />
             <Unstar item={item} live={props.live} onUnstar={props.onUnstar} />

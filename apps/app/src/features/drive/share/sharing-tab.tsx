@@ -19,21 +19,20 @@ import { joinParts } from '../../../format/text';
 import { useMinute } from '../../../store/clock';
 import { useActiveProfile, useProfiles } from '../../../store/people';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
-import { flattenPages, useDriveSettings, useDriveShares } from '../../nas/data';
-import type { DetailsSubject, DetailsTabSlot } from '../details/details-model';
+import { flattenPages, useDriveSettings, useDriveShares } from '../data';
+import type { DetailsSubject } from '../details/details-model';
 import { revokeLink } from '../shared/revoke-link';
 import {
   accessLabelOf,
   endedLabelOf,
   linkEndLabel,
   linkGroupsOf,
-  linksScopeOf,
   opensLabelOf,
   personLabelOf,
   type LinkGroups,
 } from '../shared/shared-model';
-import { WhoSees } from './share-form';
-import { MEMBERS_BLOCKED, itemLinkStatsOf, mayMakeLinks } from './share-model';
+import { PeopleSection, SectionTitle } from './people-section';
+import { LINK_STATE_LINE, itemLinkStatsOf, linkStateOf, type LinkState } from './share-model';
 
 type SharePages = ReturnType<typeof useDriveShares>;
 
@@ -99,7 +98,7 @@ function useRowContext(item: DriveItem): RowContext {
     now: useMinute(),
     live: useSyncStatus().status === 'live',
     onRevoke: (share): void => {
-      revokeLink(client, share.id, item.name).catch(notifyFailure('The link wasn’t revoked'));
+      revokeLink(client, share.id, item.name).catch(notifyFailure('The link wasn’t stopped'));
     },
   };
 }
@@ -124,7 +123,7 @@ function LinkRow({
       trailing={
         <IconButton
           icon="unlink"
-          label={`Revoke the ${title.toLowerCase()} link`}
+          label={`Stop the ${title.toLowerCase()} link`}
           tone="critical"
           disabled={!context.live}
           onPress={() => {
@@ -254,28 +253,30 @@ function Links({
   );
 }
 
-export function SharingTab({
-  subject,
+function LinksPart({
+  item,
   onShare,
+  link,
 }: {
-  readonly subject: DetailsSubject;
+  readonly item: DriveItem;
   readonly onShare: ShareItem;
+  readonly link: Exclude<LinkState, 'owner-only'>;
 }): ReactNode {
-  const { item } = subject;
   const pages = useDriveShares(item.id);
   useWholeList(pages);
   const context = useRowContext(item);
-  const owner = useIsOwner();
-  const allowed = mayMakeLinks(owner, useDriveSettings().data ?? null);
   return (
-    <View className="gap-4">
-      <WhoSees item={item} />
+    <>
+      <View className="h-px bg-outline-variant" />
       <View className="flex-row flex-wrap items-center justify-between gap-2">
-        <Text variant="footnote" tone="variant" className="min-w-0 shrink">
-          {allowed ? linksScopeOf(owner) : MEMBERS_BLOCKED}
-        </Text>
-        <NewLink item={item} onShare={onShare} allowed={allowed} />
+        <SectionTitle text="Links" />
+        <NewLink item={item} onShare={onShare} allowed={link === 'allowed'} />
       </View>
+      {link === 'allowed' ? null : (
+        <Text variant="footnote" tone="variant">
+          {LINK_STATE_LINE[link]}
+        </Text>
+      )}
       {pages.data === undefined ? (
         <Unloaded pages={pages} />
       ) : (
@@ -287,12 +288,23 @@ export function SharingTab({
           context={context}
         />
       )}
-    </View>
+    </>
   );
 }
 
-export function sharingTabOf(onShare: ShareItem): DetailsTabSlot {
-  return function SharingSlot(subject) {
-    return <SharingTab key={subject.item.id} subject={subject} onShare={onShare} />;
-  };
+export function SharingTab({
+  subject,
+  onShare,
+}: {
+  readonly subject: DetailsSubject;
+  readonly onShare: ShareItem;
+}): ReactNode {
+  const { item } = subject;
+  const link = linkStateOf(subject.access, useIsOwner(), useDriveSettings().data ?? null);
+  return (
+    <View className="gap-4">
+      <PeopleSection item={item} root={subject.root} access={subject.access} />
+      {link === 'owner-only' ? null : <LinksPart item={item} onShare={onShare} link={link} />}
+    </View>
+  );
 }

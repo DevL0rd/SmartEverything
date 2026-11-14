@@ -5,9 +5,10 @@ import { View } from 'react-native';
 import { RankedList, type RankedEntry } from '../../../components/ranked-list';
 import { useRevealed } from '../../../components/show-more';
 import { bytes } from '../../../format/number';
-import { flattenPages, useDriveRoots, useDriveSearch } from '../../nas/data';
-import { openHrefOf, whereOf } from '../recent/recent-model';
-import { StorageCardState } from './usage-bars';
+import { flattenPages, useDriveChips, useDriveRoots, useDriveSearch } from '../data';
+import { drivePathOf, type DriveChipOf } from '../model/drive-chip';
+import { openHrefOf } from '../recent/recent-model';
+import { StorageCardState } from './storage-card-state';
 
 export const LARGEST_QUERY: Omit<DriveQuery, 'cursor'> = {
   text: null,
@@ -20,13 +21,20 @@ export const LARGEST_QUERY: Omit<DriveQuery, 'cursor'> = {
   sort: { field: 'bytes', direction: 'desc' },
 };
 
+export function inOwnDrives(
+  items: readonly DriveItem[],
+  chipOf: DriveChipOf,
+): readonly DriveItem[] {
+  return items.filter((item) => chipOf(item.rootId).key !== 'with-me');
+}
+
 export function largestEntriesOf(
   items: readonly DriveItem[],
-  rootLabels: ReadonlyMap<string, string>,
+  chipOf: DriveChipOf,
 ): readonly RankedEntry[] {
   const peak = Math.max(1, ...items.map((item) => item.bytes));
   return items.map((item) => {
-    const where = whereOf(item, rootLabels.get(item.rootId) ?? null);
+    const where = drivePathOf(chipOf(item.rootId), item.relPath);
     return {
       key: item.id,
       label: item.name,
@@ -42,9 +50,13 @@ export function largestEntriesOf(
 
 export function LargestFiles(): ReactNode {
   const query = useDriveSearch(LARGEST_QUERY, true);
-  const rootLabels = new Map(useDriveRoots().map((root) => [root.id, root.label]));
-  const items = flattenPages(query.data, (page) => page.items);
-  const entries = largestEntriesOf(items, rootLabels);
+  const roots = useDriveRoots();
+  const chipOf = useDriveChips();
+  const items = inOwnDrives(
+    flattenPages(query.data, (page) => page.items),
+    chipOf,
+  );
+  const entries = largestEntriesOf(items, chipOf);
   const { shown, more } = useRevealed(entries);
   if (query.data === undefined) {
     return (
@@ -66,7 +78,7 @@ export function LargestFiles(): ReactNode {
         bar="info"
         onPress={(itemId) => {
           const item = byId.get(itemId);
-          if (item !== undefined) router.push(openHrefOf(item));
+          if (item !== undefined) router.push(openHrefOf(item, roots));
         }}
       />
       {more}

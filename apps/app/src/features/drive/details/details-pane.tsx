@@ -11,10 +11,13 @@ import { useEscape } from '../../../components/use-escape';
 import { DURATION, EASING, entering, exiting, useMotion } from '../../../design/motion';
 import { useAreaWidth } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
-import { libraryLayoutOf } from '../../nas/frame/sections';
+import { useDriveOf } from '../data';
+import { libraryLayoutOf } from '../../../components/library-frame/sections';
 import { runChange } from '../folder/folder-footer';
 import { entryKindOf } from '../folder/folder-list';
 import type { FolderSlotContext } from '../folder/folder-model';
+import { canWrite } from '../model/drive-access';
+import { useShareSheet } from '../share';
 import { DetailsTabs } from './details-tabs';
 import {
   DETAILS_WIDTH,
@@ -70,10 +73,12 @@ function PaneHeader({
 function PaneBody({
   subject,
   slots,
+  share,
   close,
 }: {
   readonly subject: DetailsSubject | null;
   readonly slots: DetailsSlots;
+  readonly share: (item: DriveItem) => void;
   readonly close: () => void;
 }): ReactNode {
   if (subject === null) {
@@ -91,7 +96,7 @@ function PaneBody({
   return (
     <>
       <PaneHeader item={subject.item} close={close} />
-      <DetailsTabs subject={subject} slots={slots} pane />
+      <DetailsTabs subject={subject} slots={slots} share={share} pane />
     </>
   );
 }
@@ -160,11 +165,19 @@ function SideSheet({
   );
 }
 
-function useSubject(context: FolderSlotContext): DetailsSubject | null {
+const SHARED_WITH_ME = 'Shared with me';
+
+export function useDetailsSubject(item: DriveItem | null): DetailsSubject | null {
   const online = useSyncStatus().status === 'live';
-  const item = subjectOf(context);
-  if (item === null) return null;
-  return { root: context.root, item, writable: online && !context.root.readOnly };
+  const drive = useDriveOf(item);
+  if (item === null || drive.root === null) return null;
+  return {
+    root: drive.root,
+    item,
+    label: drive.label ?? SHARED_WITH_ME,
+    access: drive.access,
+    writable: online && canWrite(drive.access),
+  };
 }
 
 export function DetailsPane({
@@ -174,17 +187,32 @@ export function DetailsPane({
   readonly context: FolderSlotContext;
   readonly slots: DetailsSlots;
 }): ReactNode {
-  const subject = useSubject(context);
+  const subject = useDetailsSubject(subjectOf(context));
   const presentation = presentationOf(libraryLayoutOf(useAreaWidth()), useWindowDimensions().width);
+  const sheet = useShareSheet();
+  const share = (item: DriveItem): void => {
+    sheet.open({ item });
+  };
   const { close } = context;
   if (presentation === 'pull-up') {
-    return subject === null ? null : <ItemPullUp subject={subject} slots={slots} close={close} />;
+    if (subject === null) return null;
+    return (
+      <>
+        <ItemPullUp subject={subject} slots={slots} share={share} close={close} />
+        {sheet.host}
+      </>
+    );
   }
-  const body = <PaneBody subject={subject} slots={slots} close={close} />;
-  return presentation === 'docked' ? (
-    <Docked close={close}>{body}</Docked>
-  ) : (
-    <SideSheet close={close}>{body}</SideSheet>
+  const body = <PaneBody subject={subject} slots={slots} share={share} close={close} />;
+  return (
+    <>
+      {presentation === 'docked' ? (
+        <Docked close={close}>{body}</Docked>
+      ) : (
+        <SideSheet close={close}>{body}</SideSheet>
+      )}
+      {sheet.host}
+    </>
   );
 }
 

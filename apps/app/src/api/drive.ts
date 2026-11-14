@@ -5,16 +5,16 @@ import {
   type DriveAlbumCreate,
   type DriveBackupReportInput,
   type DriveChange,
+  type DriveGrantSet,
+  type DrivePlacementSet,
   type DriveConflictResolve,
   type DriveQuery,
   type DriveQuotaSet,
   type DriveRecentFilter,
-  type DriveRootAdd,
   type DriveRootChange,
   type DriveSettingsUpdate,
   type DriveShareCreate,
   type DriveShareUnlock,
-  type DriveSyncClientUpdate,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
 import { api } from './transport';
@@ -29,24 +29,40 @@ export function listDriveRoots(): Call<'listRoots'> {
   return api().call(E.listRoots, {});
 }
 
-export function addDriveRoot(body: DriveRootAdd): Call<'addRoot'> {
-  return api().call(E.addRoot, { body });
-}
-
 export function updateDriveRoot(rootId: string, body: DriveRootChange): Call<'updateRoot'> {
   return api().call(E.updateRoot, { params: { rootId }, body });
-}
-
-export function removeDriveRoot(rootId: string): Call<'removeRoot'> {
-  return api().call(E.removeRoot, { params: { rootId } });
 }
 
 export function scanDriveRoot(rootId: string): Call<'scanRoot'> {
   return api().call(E.scanRoot, { params: { rootId } });
 }
 
-export function listDriveVolumes(): Call<'listVolumes'> {
-  return api().call(E.listVolumes, {});
+export function setDrivePlacement(body: DrivePlacementSet): Call<'setPlacement'> {
+  return api().call(E.setPlacement, { body });
+}
+
+export function removeDrivePlacement(placementId: string): Call<'removePlacement'> {
+  return api().call(E.removePlacement, { params: { placementId } });
+}
+
+export function listDriveGrants(itemId: string): Call<'listGrants'> {
+  return api().call(E.listGrants, { params: { itemId } });
+}
+
+export function setDriveGrant(body: DriveGrantSet): Call<'setGrant'> {
+  return api().call(E.setGrant, { body });
+}
+
+export function removeDriveGrant(grantId: string): Call<'removeGrant'> {
+  return api().call(E.removeGrant, { params: { grantId } });
+}
+
+export function listDriveSharedWithMe(cursor: string | null): Call<'listSharedWithMe'> {
+  return api().call(E.listSharedWithMe, { query: cursor === null ? {} : { cursor } });
+}
+
+export function listDriveSharedByMe(cursor: string | null): Call<'listSharedByMe'> {
+  return api().call(E.listSharedByMe, { query: cursor === null ? {} : { cursor } });
 }
 
 export function browseDrive(query: BrowseQuery): Call<'browseFolder'> {
@@ -200,14 +216,6 @@ export function listDriveConflicts(
 
 export function resolveDriveConflict(body: DriveConflictResolve): Call<'resolveConflict'> {
   return api().call(E.resolveConflict, { body });
-}
-
-export function listDriveSyncClients(): Call<'listSyncClients'> {
-  return api().call(E.listSyncClients, {});
-}
-
-export function updateDriveSyncClient(body: DriveSyncClientUpdate): Call<'updateSyncClient'> {
-  return api().call(E.updateSyncClient, { body });
 }
 
 export function readDriveSettings(): Call<'readDriveSettings'> {

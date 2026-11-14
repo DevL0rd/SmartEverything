@@ -85,7 +85,7 @@ describe('downloading a file into a temp file', () => {
     const index = new LocalBlockIndex({
       records: [
         {
-          rootId: ROOT,
+          placementId: ROOT,
           relPath: 'held.bin',
           kind: 'file',
           bytes: content.length,
@@ -114,7 +114,7 @@ describe('downloading a file into a temp file', () => {
     const index = new LocalBlockIndex({
       records: [
         {
-          rootId: ROOT,
+          placementId: ROOT,
           relPath: 'held.bin',
           kind: 'file',
           bytes: content.length,

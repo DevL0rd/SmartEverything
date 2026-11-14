@@ -72,8 +72,15 @@ function capitalised(text: string): string {
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }
 
+const YOU = 'You';
+
+function inSentence(name: string): string {
+  return name === YOU ? 'you' : name;
+}
+
 export function sentenceOf(sides: ConflictSides): string {
-  const other = sides.hub === null || sides.hub === sides.client ? 'the hub' : sides.hub;
+  const other =
+    sides.hub === null || sides.hub === sides.client ? 'the hub' : inSentence(sides.hub);
   return `${capitalised(sides.client)} and ${other} changed it before they synced`;
 }
 

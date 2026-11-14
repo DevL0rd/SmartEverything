@@ -1,7 +1,7 @@
 import { act, createElement, useEffect, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TimelineBucket } from '@smarteverything/domain';
+import type { LibraryBucket } from '@smarteverything/domain';
 import type { ScrubPoint } from './scrubber-model';
 
 interface PanEvent {
@@ -94,7 +94,7 @@ vi.mock('../text', () => ({
 
 const { Scrubber } = await import('./scrubber');
 
-const BUCKETS: readonly TimelineBucket[] = [
+const BUCKETS: readonly LibraryBucket[] = [
   { month: '2026-03', count: 600 },
   { month: '2026-01', count: 200 },
   { month: '2024-12', count: 200 },
@@ -104,7 +104,7 @@ let root: Root | null = null;
 const scrubbed: ScrubPoint[] = [];
 const released: ScrubPoint[] = [];
 
-function render(buckets: readonly TimelineBucket[]): void {
+function render(buckets: readonly LibraryBucket[]): void {
   act(() => {
     root?.render(
       createElement(Scrubber, {

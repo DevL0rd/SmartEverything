@@ -146,7 +146,7 @@ function nextDay(day: string): string {
   return next.toISOString().slice(0, 10);
 }
 
-function durationFilter(bucket: DriveDurationBucket): SqlFilter {
+export function durationFilter(bucket: DriveDurationBucket): SqlFilter {
   const [from, to] = DURATION_BOUNDS[bucket];
   return to === null
     ? { text: 'i.duration_ms >= $durationFrom', parameters: { durationFrom: from } }

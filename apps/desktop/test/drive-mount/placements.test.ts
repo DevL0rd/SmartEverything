@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DrivePlacement } from '@smarteverything/domain';
+import type { SyncIndexEntry } from '@smarteverything/domain/drive-sync';
 import { Logger } from '@smarteverything/logging';
 import {
   PlacementsController,
@@ -17,7 +18,6 @@ import type { PlacementReport, RouteEndpointState } from '../../src/drive-mount/
 
 const FACTS: PathFacts = {
   platform: 'linux',
-  wholeDriveMount: '/home/u/SmartEverything Drive',
   dataDirectory: '/home/u/.config/SmartEverything',
   systemDirectories: ['/usr', '/etc'],
 };
@@ -36,6 +36,9 @@ const STATUS = {
   pinnedBytes: 0,
   openFiles: 0,
   pendingUploads: 0,
+  needBytes: 0,
+  lastSyncedAt: null,
+  errors: [],
   reason: null,
   reportedAt: '2026-11-07T00:00:00.000Z',
 } as const;
@@ -69,9 +72,8 @@ interface Harness {
   readonly demand: (on: boolean) => void;
   readonly channels: {
     handlers: SubscribeHandlers;
-    sent: string[];
+    placementId: string;
     stopped: boolean;
-    root: string;
   }[];
   readonly folders: Map<string, FolderState>;
 }
@@ -95,7 +97,6 @@ function harness(options: Options = {}): Harness {
   const demandListeners = new Set<(on: boolean) => void>();
   const helperListeners = new Set<(raw: string) => void>();
   const routeListeners = new Set<(state: RouteEndpointState) => void>();
-  let id = 0;
   const ports: PlacementsPorts = {
     link: {
       onPlacements: (listener) => {
@@ -133,12 +134,10 @@ function harness(options: Options = {}): Harness {
         return () => routeListeners.delete(listener);
       },
     },
-    openSubscribe: (root, handlers) => {
-      const sent: string[] = [];
-      const channel = { handlers, sent, stopped: false, root };
+    openSubscribe: (placementId, handlers) => {
+      const channel = { handlers, placementId, stopped: false };
       channels.push(channel);
       return {
-        send: (text) => channel.sent.push(text),
         stop: (): void => {
           channel.stopped = true;
         },
@@ -153,7 +152,6 @@ function harness(options: Options = {}): Harness {
       },
     },
     synced: (placements) => synced.push(placements),
-    newId: () => `bbbbbbbb-bbbb-4bbb-8bbb-00000000000${String(++id)}`,
     now: () => new Date('2026-11-07T01:00:00.000Z'),
     log: new Logger('desktop.test'),
   };
@@ -223,18 +221,15 @@ describe('path rules', () => {
     expect(await check('/usr/share/roms')).toMatch(/system folder/);
   });
 
-  it('refuses the whole-drive mount and the service data folder', async () => {
-    expect(await check('/home/u/SmartEverything Drive/roms')).toMatch(/whole-drive/);
+  it('refuses the service data folder and its parents', async () => {
     expect(await check('/home/u/.config/SmartEverything/x')).toMatch(/data folder/);
-    expect(await check('/home/u')).toMatch(/whole-drive|data folder/);
+    expect(await check('/home/u/.config')).toMatch(/data folder/);
   });
 
   it('refuses overlap with an earlier placement in both directions', async () => {
     const earlier = [placement(2, { localPath: '/home/u/roms' })];
     expect(await check('/home/u/roms/n64', earlier)).toMatch(/another folder/);
-    expect(await check('/home/u', [placement(2, { localPath: '/home/u/roms' })])).toMatch(
-      /whole-drive|data folder/,
-    );
+    expect(await check('/home/u/roms/../roms', earlier)).toMatch(/another folder/);
   });
 
   it('refuses a mount folder that is not empty or is a file', async () => {
@@ -385,48 +380,41 @@ describe('PlacementsController', () => {
     expect(h.reports).toHaveLength(before);
   });
 
-  it('shares one subscription per root and forwards scoped invalidations', async () => {
+  it('opens one subscription per mounted placement and forwards its relative invalidations', async () => {
     const h = harness();
     h.pushPlacements([placement(1), placement(2, { folderItemId: null })]);
     await settle();
-    expect(h.channels).toHaveLength(1);
-    h.channels[0]?.handlers.opened();
-    expect(JSON.parse(h.channels[0]?.sent[0] ?? '{}')).toMatchObject({
-      type: 'hello',
-      rootId: ROOT,
-    });
+    expect(h.channels.map((channel) => channel.placementId)).toEqual([
+      placement(1).id,
+      placement(2).id,
+    ]);
+    expect(h.channels[0]?.handlers.hello()).toEqual({ indexId: null, afterSeq: 0 });
     h.lines.length = 0;
-    const entry = (relPath: string, itemId: string): Record<string, unknown> => ({
-      itemId,
+    const entry = (relPath: string): SyncIndexEntry => ({
+      itemId: '55555555-5555-4555-8555-555555555555',
       relPath,
       kind: 'folder',
       mtime: '2026-11-07T00:00:00.000Z',
       rev: 1,
       deleted: false,
     });
-    h.channels[0]?.handlers.message(
-      JSON.stringify({
-        type: 'index',
-        indexId: ROOT,
-        seq: 1,
-        entries: [entry('roms', FOLDER)],
-        last: true,
-      }),
-    );
+    h.channels[0]?.handlers.message({
+      type: 'index',
+      indexId: ROOT,
+      seq: 4,
+      entries: [entry('n64')],
+      last: true,
+    });
+    expect(h.channels[0]?.handlers.hello()).toEqual({ indexId: ROOT, afterSeq: 4 });
+    expect(h.lines).toEqual([{ op: 'invalidate', mount: placement(1).id, paths: [] }]);
     h.lines.length = 0;
-    h.channels[0]?.handlers.message(
-      JSON.stringify({
-        type: 'index_update',
-        seq: 2,
-        entries: [entry('roms/n64', '55555555-5555-4555-8555-555555555555')],
-      }),
-    );
-    expect(h.lines).toEqual(
-      expect.arrayContaining([
-        { op: 'invalidate', mount: placement(1).id, paths: ['n64'] },
-        { op: 'invalidate', mount: placement(2).id, paths: ['roms/n64'] },
-      ]),
-    );
+    h.channels[1]?.handlers.message({
+      type: 'index_update',
+      seq: 2,
+      entries: [entry('n64/mario')],
+    });
+    expect(h.lines).toEqual([{ op: 'invalidate', mount: placement(2).id, paths: ['n64/mario'] }]);
+    expect(h.channels[0]?.handlers.hello()).toEqual({ indexId: ROOT, afterSeq: 4 });
   });
 
   it('unmounts a placement that is removed and stops its subscription when last', async () => {

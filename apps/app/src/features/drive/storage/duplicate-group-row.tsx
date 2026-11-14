@@ -9,9 +9,10 @@ import { useRevealed } from '../../../components/show-more';
 import { Text } from '../../../components/text';
 import { bytes, count } from '../../../format/number';
 import { plural } from '../../../format/text';
-import { flattenPages, useDriveDuplicates, useDriveRoots } from '../../nas/data';
-import { KIND_LOOK, whereOf } from '../recent/recent-model';
-import { StorageCardState } from './usage-bars';
+import { flattenPages, useDriveChips, useDriveDuplicates } from '../data';
+import { drivePathOf, type DriveChipOf } from '../model/drive-chip';
+import { KIND_LOOK } from '../recent/recent-model';
+import { StorageCardState } from './storage-card-state';
 
 export type DriveDuplicateGroup = DriveResult<'listDuplicates'>['items'][number];
 
@@ -32,27 +33,34 @@ export function extraBytesOf(groups: readonly DriveDuplicateGroup[]): number {
   return groups.reduce((all, group) => all + group.bytes * (group.items.length - 1), 0);
 }
 
-export function placesOf(
-  items: readonly DriveItem[],
-  rootLabels: ReadonlyMap<string, string>,
-): string {
+export function placesOf(items: readonly DriveItem[], chipOf: DriveChipOf): string {
   const places = [
-    ...new Set(items.map((item) => whereOf(item, rootLabels.get(item.rootId) ?? null))),
+    ...new Set(items.map((item) => drivePathOf(chipOf(item.rootId), item.relPath))),
   ].filter((place) => place !== '');
   if (places.length <= 1) return places[0] ?? '';
   return `${places.slice(0, -1).join(', ')} and ${places.at(-1) ?? ''}`;
 }
 
+export function ownDuplicatesOf(
+  groups: readonly DriveDuplicateGroup[],
+  chipOf: DriveChipOf,
+): readonly DriveDuplicateGroup[] {
+  return groups.flatMap((group) => {
+    const items = group.items.filter((item) => chipOf(item.rootId).key !== 'with-me');
+    return items.length < 2 ? [] : [{ ...group, items }];
+  });
+}
+
 export function duplicateRowOf(
   group: DriveDuplicateGroup,
-  rootLabels: ReadonlyMap<string, string>,
+  chipOf: DriveChipOf,
 ): DuplicateRowView | null {
   const [first] = group.items;
   if (first === undefined) return null;
   return {
     key: group.sha256,
     title: `${first.name} · ${plural(group.items.length, 'copy', 'copies')}`,
-    places: placesOf(group.items, rootLabels),
+    places: placesOf(group.items, chipOf),
     item: first,
   };
 }
@@ -107,9 +115,9 @@ interface CardProps {
 }
 
 export function DuplicatesCard({ groups, complete, keepers }: CardProps): ReactNode {
-  const rootLabels = new Map(useDriveRoots().map((root) => [root.id, root.label]));
+  const chipOf = useDriveChips();
   const views = groups.flatMap((group) => {
-    const view = duplicateRowOf(group, rootLabels);
+    const view = duplicateRowOf(group, chipOf);
     return view === null ? [] : [view];
   });
   const { shown, more } = useRevealed(views);
@@ -151,6 +159,7 @@ export function StorageDuplicates({
   readonly keepers: DuplicateKeepers | null;
 }): ReactNode {
   const query = useDriveDuplicates(null);
+  const chipOf = useDriveChips();
   if (query.data === undefined) {
     return (
       <StorageCardState
@@ -161,7 +170,10 @@ export function StorageDuplicates({
       />
     );
   }
-  const groups = flattenPages(query.data, (page) => page.items);
+  const groups = ownDuplicatesOf(
+    flattenPages(query.data, (page) => page.items),
+    chipOf,
+  );
   if (groups.length === 0) return null;
   return <DuplicatesCard groups={groups} complete={!query.hasNextPage} keepers={keepers} />;
 }

@@ -3,6 +3,7 @@ import {
   ApiError,
   type DriveChange,
   type DriveChangeResult,
+  type DriveFolderPlace,
   type DriveItem,
 } from '@smarteverything/domain';
 import {
@@ -51,6 +52,10 @@ interface CopyRoots {
   readonly root: DriveWriteRoot;
 }
 
+function placeIdOf(place: DriveFolderPlace): string {
+  return place.kind === 'drive' ? place.rootId : place.folderId;
+}
+
 function joined(parent: DriveItem | null, name: string): string {
   return normalizeRelativePath(parent === null ? name : `${parent.relPath}/${name}`);
 }
@@ -64,8 +69,8 @@ export class DriveTreeWriter {
     }
     switch (change.action) {
       case 'new_folder':
-        return this.each([change.parentId], () =>
-          this.newFolder(caller, change.parentId, change.name),
+        return this.each([placeIdOf(change.parent)], () =>
+          this.newFolder(caller, change.parent, change.name),
         );
       case 'rename':
         return this.each([change.itemId], () => this.rename(caller, change.itemId, change.name));
@@ -232,8 +237,16 @@ export class DriveTreeWriter {
     return item.id;
   }
 
-  private async newFolder(caller: DriveCaller, parentId: string, name: string): Promise<Outcome> {
-    const parent = this.folderOf(caller, parentId);
+  private async newFolder(
+    caller: DriveCaller,
+    place: DriveFolderPlace,
+    name: string,
+  ): Promise<Outcome> {
+    if (place.kind === 'drive') {
+      const root = writableRoot(this.deps.read, caller, place.rootId);
+      return (await this.makeFolder(caller, root, null, name)).id;
+    }
+    const parent = this.folderOf(caller, place.folderId);
     const root = writableItemRoot(this.deps.store, caller, parent);
     return (await this.makeFolder(caller, root, parent, name)).id;
   }
@@ -241,7 +254,7 @@ export class DriveTreeWriter {
   private async makeFolder(
     caller: DriveCaller,
     root: DriveWriteRoot,
-    parent: DriveItem,
+    parent: DriveItem | null,
     name: string,
   ): Promise<DriveItem> {
     const { env } = this.deps;
@@ -260,7 +273,7 @@ export class DriveTreeWriter {
       draft: folderDraft(
         {
           rootId: root.id,
-          parentId: parent.id,
+          parentId: parent?.id ?? null,
           relPath,
           modifiedAt: isoOf(stamp.mtimeNs),
           addedAt: env.now().toISOString(),

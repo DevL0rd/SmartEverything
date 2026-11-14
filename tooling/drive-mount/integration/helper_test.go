@@ -61,7 +61,7 @@ func startHelper(t *testing.T, hub *fakehub.Hub) *helper {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(bin, "-hub", hub.URL, "-cache", filepath.Join(work, "cache"))
+	cmd := exec.Command(bin, "-cache", filepath.Join(work, "cache"))
 	cmd.Stdin, cmd.Stdout, cmd.Stderr, cmd.ExtraFiles = stdinRead, stdout, os.Stderr, []*os.File{tokenRead}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -75,6 +75,7 @@ func startHelper(t *testing.T, hub *fakehub.Hub) *helper {
 		t.Fatal(err)
 	}
 	t.Cleanup(h.stop)
+	h.send(map[string]string{"op": "route", "url": hub.URL})
 	h.send(map[string]string{"op": "mount", "mount": "m", "root": "r", "folder": "f1", "point": h.point})
 	h.awaitStatus(stdout.Name(), "mounted")
 	return h

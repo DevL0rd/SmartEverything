@@ -5,7 +5,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +12,7 @@ import (
 )
 
 func newTestClient(h *stubHub) *hubClient {
-	return newHubClient(h.server.URL, stubToken, http.DefaultClient)
+	return newHubClient(routeSpec{URL: h.server.URL}, stubToken)
 }
 
 func TestListFollowsCursorAcrossPages(t *testing.T) {

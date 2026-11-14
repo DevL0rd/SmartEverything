@@ -248,13 +248,22 @@ describe('totals only for the hub owner', () => {
     const ann = rows.find((row) => row.profileId === a.profileId);
     expect(ann).toMatchObject({ items: 3, folders: 2 });
     expect(Object.keys(ann ?? {}).sort()).toEqual(
-      ['folders', 'items', 'live', 'profileId', 'trash', 'versions'].sort(),
+      ['folders', 'items', 'live', 'profileId', 'quota', 'trash', 'versions'].sort(),
     );
     expect(
       readDriveUsage(opened.store.driveQuotas, { role: 'member', profileId: b.profileId }).map(
         (row) => row.profileId,
       ),
     ).toEqual([b.profileId]);
+  });
+
+  it('gives a member their own space limit beside their totals', () => {
+    opened.store.driveQuotas.set(b.profileId, 5000);
+    expect(
+      readDriveUsage(opened.store.driveQuotas, { role: 'member', profileId: b.profileId }),
+    ).toEqual([expect.objectContaining({ profileId: b.profileId, quota: 5000 })]);
+    const rows = readDriveUsage(opened.store.driveQuotas, { role: 'owner' });
+    expect(rows.find((row) => row.profileId === a.profileId)?.quota).toBeNull();
   });
 
   it('counts only the drives the person can open in stats and health', async () => {

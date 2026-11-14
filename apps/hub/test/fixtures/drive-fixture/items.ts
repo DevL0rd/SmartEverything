@@ -44,6 +44,7 @@ type BaseFields = Pick<
   | 'addedAt'
   | 'openedAt'
   | 'starred'
+  | 'shared'
   | 'rev'
   | 'etag'
   | 'outside'
@@ -160,12 +161,13 @@ function baseFields(random: Random, plan: RootPlan, place: Place, index: number)
     addedAt: iso(added),
     openedAt: random.chance(0.3) ? iso(random.between(modified, NOW_MS)) : null,
     starred: random.chance(STARRED_SHARE),
+    shared: false,
     rev,
     etag: `${String(rev)}-${random.hex(8)}`,
     outside,
-    addedByProfileId: outside || plan.adders === null ? null : cycle(plan.adders, index),
-    remoteId: plan.remote ? `remote-${random.hex(12)}` : null,
-    remoteRev: plan.remote ? random.hex(6) : null,
+    addedByProfileId: outside ? null : cycle(plan.adders, index),
+    remoteId: null,
+    remoteRev: null,
   };
 }
 

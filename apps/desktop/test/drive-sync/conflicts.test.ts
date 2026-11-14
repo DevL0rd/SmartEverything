@@ -23,7 +23,7 @@ beforeEach(async () => {
   reindexed = 0;
   submitted = [];
   resolver = new ConflictResolver({
-    rootId: ROOT,
+    placementId: ROOT,
     rootPath: join(scratch, 'library'),
     platform: process.platform,
     database,
@@ -52,7 +52,7 @@ async function localFile(relPath: string, content: string, hubRev: number | null
   await writeFile(disk(relPath), content);
   const info = await stat(disk(relPath), { bigint: true });
   database.files.upsert({
-    rootId: ROOT,
+    placementId: ROOT,
     relPath,
     kind: 'file',
     bytes: content.length,
