@@ -59,6 +59,7 @@ function sameRequest(held: AppPublicationInput, input: AppPublicationInput): boo
     held.runId === input.runId &&
     held.clientId === input.clientId &&
     held.channel === input.channel &&
+    held.commit === input.commit &&
     held.notes === input.notes
   );
 }
@@ -163,6 +164,7 @@ async function publish(
         : targetReader(ports, input, await readTarget(ports, input));
     running = changeJob(ports.store, job, { phase: 'running' });
     await ports.publish(input, targets);
+    running = readJob(ports.store, job.runId) ?? running;
   } catch (error) {
     if (!(error instanceof AppPublicationRefused)) throw error;
     if (input.action === 'ui' && (await ports.inspect(input)) !== null)

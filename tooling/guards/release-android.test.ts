@@ -387,6 +387,20 @@ describe('the Android build commands', () => {
     );
   });
 
+  it('runs Gradle without a daemon and inside the memory limit of the build scope', () => {
+    vi.stubEnv('SMARTEVERYTHING_BUILD_MEMORY_LIMIT', String(12 * 1024 ** 3));
+    try {
+      const args = gradleCommand(RELEASE).args;
+      expect(args).toContain('--no-daemon');
+      expect(args).toContain('-Pkotlin.compiler.execution.strategy=in-process');
+      expect(args.some((arg) => arg.startsWith('-Dorg.gradle.jvmargs=-Xmx'))).toBe(true);
+      expect(args.some((arg) => arg.startsWith('--max-workers='))).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(gradleCommand(RELEASE).args).not.toContain('--no-daemon');
+  });
+
   it('builds the shared installer with both supported architectures', () => {
     expect(gradleCommand({ ...RELEASE, abi: 'universal' }).args).toContain(
       '-PreactNativeArchitectures=arm64-v8a,x86_64',

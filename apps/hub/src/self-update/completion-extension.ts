@@ -4,6 +4,7 @@ import { watch, type FSWatcher } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import type { ExtensionContext, RunningExtension, ServerExtension } from '../extensions';
 import { reconcileHubUpdateNotes } from './completion';
+import { settleStaleUpdateJobs } from './stale-jobs';
 import { hubUpdateStatusOf, readHubUpdateLedger } from './recovery';
 
 const log = new Logger('hub.self-update');
@@ -29,6 +30,9 @@ export async function startHubUpdateCompletion(
     readonly live: Pick<ExtensionContext['live'], 'announce'>;
   },
 ): Promise<RunningExtension> {
+  await settleStaleUpdateJobs(context.layout).catch((cause: unknown) => {
+    log.error('update_job.settle_failed', cause);
+  });
   let previousStatus: string | undefined;
   let pending = Promise.resolve();
   function reload(announce: boolean): void {

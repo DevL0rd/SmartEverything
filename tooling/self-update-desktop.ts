@@ -53,6 +53,7 @@ function sameRequest(held: DesktopReleaseInput, input: DesktopReleaseInput): boo
   return (
     held.runId === input.runId &&
     held.notes === input.notes &&
+    held.commit === input.commit &&
     held.arches.length === input.arches.length &&
     held.arches.every((arch, index) => arch === input.arches[index])
   );

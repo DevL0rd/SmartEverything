@@ -19,7 +19,9 @@ import {
   releaseNeedsRecovery,
   withHubReleaseLock,
 } from '../apps/hub/src/self-update/release-lock.ts';
+import { requireBuildDisk } from './build-disk.ts';
 import { applyBuildHost, requireBuildHost } from './build-host.ts';
+import { measuredBuildScope } from './build-scope.ts';
 import { HUB_NODE_EXECUTABLE } from './hub-install-layout.ts';
 import { assertStandaloneHubUnit } from './release-hub-verify.ts';
 import { dataLayoutOf, hubInstall } from './release-hub-files.ts';
@@ -71,7 +73,7 @@ function environment(data: string, url: string): HubEnvironment {
   const jobs = jobsOf(paths.work);
   const runSteps = (step: StepRequest): ReturnType<typeof runStep> => {
     bundle(STEP_ENTRY, paths.step);
-    return runStep(node, paths.step, root, step);
+    return runStep({ node, stepFile: paths.step, root }, step, measuredBuildScope('hub', layout));
   };
   return {
     data,
@@ -128,6 +130,8 @@ async function command(
   if (input.action === 'recover') return recover(data, input, ledger);
   const latest = ledger.releases.at(-1);
   requireBuildHost(dataLayoutOf(data), process.cwd(), 'hub');
+  requireBuildDisk(dataLayoutOf(data), process.cwd(), 'hub');
+  measuredBuildScope('hub', dataLayoutOf(data));
   if (input.action === 'prepare_remote') return await runPreparation(data, input.runId, latest);
   if (input.action === 'remote') {
     const previous = previousRemoteRun(jobsOf(paths.work), input, ledger);

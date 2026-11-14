@@ -2,10 +2,12 @@ import { spawnSync } from 'node:child_process';
 import { ANDROID_APK_ABIS } from '@smarteverything/domain';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { env } from 'node:process';
 import { parseArgs } from 'node:util';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { applyDeveloperHost, nodeToolCommand, pnpmProgram } from './build-host.ts';
+import { gradleMemoryArguments } from './build-scope.ts';
 import {
   apkProblems,
   readApk,
@@ -114,6 +116,7 @@ export function gradleCommand(options: BuildOptions): Command {
     args: [
       gradleTask(options),
       ...(options.online === true ? [] : ['--offline']),
+      ...gradleMemoryArguments(env),
       `-PreactNativeArchitectures=${options.abi === 'universal' ? ANDROID_APK_ABIS.join(',') : options.abi}`,
     ],
     cwd: ANDROID,

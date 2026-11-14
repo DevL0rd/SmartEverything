@@ -6,6 +6,7 @@ import {
   HUB_UNIT_BOOTSTRAP,
   HUB_UNIT_FILE,
   bootstrapDirectory,
+  HUB_OOM_SCORE_ADJUST,
   hubUnitText,
   reloadUserManager,
   userUnitDirectory,
@@ -37,6 +38,11 @@ describe('hubUnitText', () => {
     expect(text).not.toContain('SMARTEVERYTHING_DATA_DIRECTORY');
     expect(text).not.toContain('EnvironmentFile');
     expect(text).not.toContain('RequiresMountsFor');
+  });
+
+  it('asks the kernel to keep the hub alive in favor of a build scope', () => {
+    expect(hubUnitText(SPEC)).toContain('\nOOMScoreAdjust=-500\n');
+    expect(HUB_OOM_SCORE_ADJUST).toBeLessThan(0);
   });
 
   it('names the same folder as the pointer resolver', () => {

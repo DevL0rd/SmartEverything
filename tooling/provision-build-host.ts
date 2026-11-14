@@ -109,6 +109,22 @@ async function provisionJdk(options: ProvisionOptions): Promise<readonly string[
   return [`JDK ${String(options.pin.jdkMajor)}`];
 }
 
+async function provisionGo(options: ProvisionOptions): Promise<readonly string[]> {
+  const { goHome } = hostPaths(options.layout, options.root);
+  if (existsSync(join(goHome, 'bin', 'go'))) return [];
+  const download = options.pin.go[options.arch];
+  const tarball = join(options.layout.cache.buildHost, 'downloads', basename(download.url));
+  try {
+    await downloadVerified(options.fetcher, download, tarball);
+    rmSync(goHome, { recursive: true, force: true });
+    extractTarball(tarball, goHome);
+  } finally {
+    rmSync(tarball, { force: true });
+  }
+  runChecked(join(goHome, 'bin', 'go'), ['version']);
+  return [`Go ${options.pin.go.version}`];
+}
+
 async function attempt(
   step: () => Promise<readonly string[]> | readonly string[],
   result: { installed: string[]; problems: string[] },
@@ -160,6 +176,7 @@ export async function provisionBuildHost(options: ProvisionOptions): Promise<Pro
   await attempt(() => provisionDebTool(options, 'unzip'), result);
   await attempt(() => provisionDebTool(options, 'zip'), result);
   await attempt(() => provisionJdk(options), result);
+  await attempt(() => provisionGo(options), result);
   await attempt(() => androidStep(options), result);
   await attempt(() => cacheFolders(options), result);
   result.problems.push(...googleServicesProblems(options.root));

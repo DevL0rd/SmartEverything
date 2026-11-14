@@ -6,6 +6,7 @@ import { atomicWrite, type FileOperations } from './pointer';
 
 export const HUB_UNIT_FILE = 'smarteverything.service';
 export const HUB_UNIT_BOOTSTRAP = '%E/SmartEverything-Hub';
+export const HUB_OOM_SCORE_ADJUST = -500;
 
 export interface HubUnitSpec {
   readonly install: string;
@@ -40,6 +41,7 @@ Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
 UMask=0077
+OOMScoreAdjust=${String(HUB_OOM_SCORE_ADJUST)}
 
 [Install]
 WantedBy=default.target

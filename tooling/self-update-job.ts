@@ -132,3 +132,9 @@ export function openJob(
 export function checkOf(name: string, ok: boolean, detail: string): HubUpdateCheck {
   return HUB_UPDATE_CHECK.parse({ name, ok, detail });
 }
+
+export function failUnfinishedJob(store: JobStore, runId: string, detail: string): void {
+  const job = readJob(store, runId);
+  if (job === null || isFinished(job)) return;
+  changeJob(store, job, { phase: 'failed', detail: detail.slice(0, 4000) });
+}

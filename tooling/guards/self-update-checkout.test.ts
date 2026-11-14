@@ -63,14 +63,14 @@ afterEach(() => {
 describe('synced checkout', () => {
   it('returns the tip and installs when the checkout is already current', async () => {
     const head = git(checkout, 'rev-parse', 'HEAD');
-    await expect(syncedCheckout(layout(), checkout, { install })).resolves.toBe(head);
+    await expect(syncedCheckout(layout(), checkout, { ports: { install } })).resolves.toBe(head);
     expect(install).toHaveBeenCalledExactlyOnceWith(checkout);
   });
 
   it('fast-forwards to a newer remote tip before installing', async () => {
     const tip = commit(other, 'second');
     git(other, 'push', 'origin', 'main');
-    await expect(syncedCheckout(layout(), checkout, { install })).resolves.toBe(tip);
+    await expect(syncedCheckout(layout(), checkout, { ports: { install } })).resolves.toBe(tip);
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(tip);
     expect(readFileSync(join(checkout, 'second'), 'utf8')).toBe('second');
     expect(install).toHaveBeenCalledOnce();
@@ -78,7 +78,7 @@ describe('synced checkout', () => {
 
   it('refuses a dirty tree and tells the owner to commit and push', async () => {
     writeFileSync(join(checkout, 'first'), 'changed');
-    await expect(syncedCheckout(layout(), checkout, { install })).rejects.toThrow(
+    await expect(syncedCheckout(layout(), checkout, { ports: { install } })).rejects.toThrow(
       /uncommitted changes: commit and push first/u,
     );
     expect(install).not.toHaveBeenCalled();
@@ -86,7 +86,9 @@ describe('synced checkout', () => {
 
   it('refuses a checkout that is ahead of the remote', async () => {
     commit(checkout, 'local');
-    await expect(syncedCheckout(layout(), checkout, { install })).rejects.toThrow(/push first/u);
+    await expect(syncedCheckout(layout(), checkout, { ports: { install } })).rejects.toThrow(
+      /push first/u,
+    );
     expect(install).not.toHaveBeenCalled();
   });
 
@@ -94,19 +96,23 @@ describe('synced checkout', () => {
     commit(other, 'remote-side');
     git(other, 'push', 'origin', 'main');
     commit(checkout, 'local-side');
-    await expect(syncedCheckout(layout(), checkout, { install })).rejects.toThrow(/diverged/u);
+    await expect(syncedCheckout(layout(), checkout, { ports: { install } })).rejects.toThrow(
+      /diverged/u,
+    );
     expect(install).not.toHaveBeenCalled();
   });
 
   it('refuses a checkout on another branch', async () => {
     git(checkout, 'checkout', '-b', 'topic');
-    await expect(syncedCheckout(layout(), checkout, { install })).rejects.toThrow(
+    await expect(syncedCheckout(layout(), checkout, { ports: { install } })).rejects.toThrow(
       /tracks main: switch it back/u,
     );
   });
 
   it('refuses a root that is not the configured checkout', async () => {
-    await expect(syncedCheckout(layout(), other, { install })).rejects.toThrow(SyncedCheckoutError);
+    await expect(syncedCheckout(layout(), other, { ports: { install } })).rejects.toThrow(
+      SyncedCheckoutError,
+    );
   });
 
   it('names the configure tool when no update source is configured', async () => {
@@ -116,8 +122,43 @@ describe('synced checkout', () => {
       dataLayoutOf(empty).system.config.service,
       JSON.stringify({ go2rtcBinary: '/opt/go2rtc' }),
     );
-    await expect(syncedCheckout(dataLayoutOf(empty), checkout, { install })).rejects.toThrow(
-      /configure-update-source/u,
-    );
+    await expect(
+      syncedCheckout(dataLayoutOf(empty), checkout, { ports: { install } }),
+    ).rejects.toThrow(/configure-update-source/u);
+  });
+
+  it('builds the planned revision even when a later push has already landed', async () => {
+    const planned = commit(other, 'planned');
+    git(other, 'push', 'origin', 'main');
+    commit(other, 'later');
+    git(other, 'push', 'origin', 'main');
+    await expect(
+      syncedCheckout(layout(), checkout, { revision: planned, ports: { install } }),
+    ).resolves.toBe(planned);
+    expect(git(checkout, 'rev-parse', 'HEAD')).toBe(planned);
+    expect(install).toHaveBeenCalledOnce();
+  });
+
+  it('refuses a planned revision that is no longer on the remote branch', async () => {
+    const planned = commit(other, 'doomed');
+    git(other, 'reset', '--hard', 'HEAD~1');
+    commit(other, 'replacement');
+    git(other, 'push', 'origin', 'main');
+    await expect(
+      syncedCheckout(layout(), checkout, { revision: planned, ports: { install } }),
+    ).rejects.toThrow(/no longer on the remote main branch/u);
+    expect(install).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the checkout has already moved past the planned revision', async () => {
+    const planned = git(checkout, 'rev-parse', 'HEAD');
+    commit(other, 'second');
+    git(other, 'push', 'origin', 'main');
+    await syncedCheckout(layout(), checkout, { ports: { install } });
+    install.mockReset();
+    await expect(
+      syncedCheckout(layout(), checkout, { revision: planned, ports: { install } }),
+    ).rejects.toThrow(/already past the planned revision/u);
+    expect(install).not.toHaveBeenCalled();
   });
 });

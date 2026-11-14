@@ -25,7 +25,9 @@ import {
   publishAndroidForTarget,
   publishDesktopLocally,
 } from './app-update-local.ts';
+import { requireBuildDisk } from './build-disk.ts';
 import { applyBuildHost, BuildHostError, requireBuildHost } from './build-host.ts';
+import { runInBuildScope } from './build-scope.ts';
 import { HubSourceError } from './hub-update-source.ts';
 import { PublishCommandError, runCommand } from './publish-app-update-shared.ts';
 import { SyncedCheckoutError, syncedCheckout } from './self-update-checkout.ts';
@@ -38,6 +40,7 @@ import {
   readAppPublication,
   runAppPublication,
 } from './self-update-app-job.ts';
+import { changeJob, failUnfinishedJob, readJob } from './self-update-job.ts';
 
 const COMMAND = z.union([
   z.strictObject({ input: APP_PUBLICATION_INPUT, server: z.url({ protocol: /^https$/u }) }),
@@ -192,6 +195,13 @@ async function publishUi(
   });
 }
 
+function recordCommit(environment: Environment, runId: string, commit: string): void {
+  const store = { folder: join(environment.work, 'jobs'), now, newId: (): string => runId };
+  const job = readJob(store, runId);
+  if (job === null) throw new AppPublicationSetupError('The publication job is missing.');
+  changeJob(store, job, { steps: [...job.steps, `publishing commit ${commit}`] });
+}
+
 async function publish(
   environment: Environment,
   input: AppPublicationInput,
@@ -200,8 +210,11 @@ async function publish(
   const scratch = await mkdtemp(join(environment.work, 'publication-'));
   try {
     requireBuildHost(environment.layout, environment.root, input.action);
-    const commit = await syncedCheckout(environment.layout, environment.root);
-    process.stderr.write(`publishing commit ${commit}\n`);
+    requireBuildDisk(environment.layout, environment.root, input.action);
+    const commit = await syncedCheckout(environment.layout, environment.root, {
+      revision: input.commit,
+    });
+    recordCommit(environment, input.runId, commit);
     if (input.action === 'app') {
       const reference = async (): Promise<AndroidAppObservation> =>
         highestVersion(await readTargets());
@@ -296,6 +309,14 @@ async function main(): Promise<void> {
     return;
   }
   const root = process.cwd();
+  const kind = command.input.action;
+  const status = runInBuildScope(kind, layout, (error) => {
+    failUnfinishedJob(ports.store, runId, error.message);
+  });
+  if (status !== null) {
+    process.exitCode = status;
+    return;
+  }
   applyBuildHost(layout, root);
   const environment = { ...files, server: command.server, work, root };
   const result = await runAppPublication(command.input, {

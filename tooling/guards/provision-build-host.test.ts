@@ -42,6 +42,7 @@ SDK
 chmod 755 "$dir/cmdline-tools/bin/sdkmanager"
 `;
 const JAVA_SCRIPT = '#!/bin/sh\nexit 0\n';
+const GO_SCRIPT = '#!/bin/sh\necho go version\n';
 
 let scratch = '';
 let requested: string[] = [];
@@ -86,6 +87,14 @@ function fakeJdk(): Buffer {
   return readFileSync(archive);
 }
 
+function fakeGo(): Buffer {
+  const source = join(scratch, 'go-source', 'go');
+  write(join(source, 'bin', 'go'), GO_SCRIPT);
+  const archive = join(scratch, 'go.tar.gz');
+  runChecked('tar', ['-czf', archive, '-C', join(scratch, 'go-source'), 'go']);
+  return readFileSync(archive);
+}
+
 interface Fixture {
   readonly files: ReadonlyMap<string, Buffer>;
   readonly pin: BuildHostPin;
@@ -97,6 +106,7 @@ function fixture(): Fixture {
     zip: fakeDeb('zip', ZIP_SCRIPT),
     unzip: fakeDeb('unzip', UNZIP_SCRIPT),
     jdk: fakeJdk(),
+    go: fakeGo(),
     tools: Buffer.from('command line tools'),
   };
   const entry = (name: string, bytes: Buffer): { url: string; sha256: string } => ({
@@ -112,11 +122,13 @@ function fixture(): Fixture {
       ['https://example.test/zip-x64', parts.zip],
       ['https://example.test/unzip-x64', parts.unzip],
       ['https://example.test/jdk-x64', parts.jdk],
+      ['https://example.test/go-x64', parts.go],
       ['https://example.test/tools', parts.tools],
     ]),
     pin: {
       jdkMajor: real.jdkMajor,
       cmake: real.cmake,
+      go: { version: real.go.version, ...both('go', parts.go) },
       jdk: both('jdk', parts.jdk),
       androidCommandLineTools: entry('tools', parts.tools),
       debian: { zip: both('zip', parts.zip), unzip: both('unzip', parts.unzip) },
@@ -188,8 +200,20 @@ afterEach(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
+describe('the pinned Go toolchain', () => {
+  it('is the version the drive mount helper pins, with checksums for both architectures', () => {
+    const helper: unknown = JSON.parse(
+      readFileSync(join(import.meta.dirname, '..', 'drive-mount', 'pin.json'), 'utf8'),
+    );
+    const pin = readBuildHostPin().go;
+    expect(helper).toMatchObject({ go: pin.version });
+    expect(pin.x64.url).toContain(`go${pin.version}.linux-amd64.tar.gz`);
+    expect(pin.arm64.url).toContain(`go${pin.version}.linux-arm64.tar.gz`);
+  });
+});
+
 describe('provisioning the build host without system packages', () => {
-  it('provisions pnpm, zip, unzip, the JDK and the SDK so every build need is met', async () => {
+  it('provisions pnpm, zip, unzip, the JDK, Go and the SDK so every build need is met', async () => {
     const fixed = fixture();
     const root = checkout(true);
     const result = await provisionBuildHost(options(fixed, root));
@@ -199,6 +223,7 @@ describe('provisioning the build host without system packages', () => {
       'unzip',
       'zip',
       'JDK 21',
+      `Go ${readBuildHostPin().go.version}`,
       'Android command line tools',
       expect.stringContaining('Android SDK licences accepted (android-sdk-license)'),
       'platforms;android-36',

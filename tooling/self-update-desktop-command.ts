@@ -4,7 +4,9 @@ import { UPDATE_DESKTOP_INPUT } from '@smarteverything/domain';
 import { z } from 'zod';
 import { loadRelease } from '../apps/hub/src/updates/release-folder.ts';
 import { desktopWebRuntime } from '../apps/desktop/packaging/web-runtime.ts';
+import { requireBuildDisk } from './build-disk.ts';
 import { applyBuildHost, pnpmProgram, requireBuildHost } from './build-host.ts';
+import { runInBuildScope } from './build-scope.ts';
 import { PublishOutputError, runCommand } from './publish-app-update-shared.ts';
 import { webExportCommand, WEB_EXPORT } from './publish-app-update-desktop.ts';
 import { publishLocalDesktop } from './release-machine-update.ts';
@@ -16,7 +18,7 @@ import {
   type DesktopArch,
   type DesktopReleasePorts,
 } from './self-update-desktop.ts';
-import type { JobStore } from './self-update-job.ts';
+import { failUnfinishedJob, type JobStore } from './self-update-job.ts';
 import { syncedCheckout } from './self-update-checkout.ts';
 import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
 import type { Command } from './release-android.ts';
@@ -35,6 +37,16 @@ export function shellCommand(root: string): Command {
     args: ['--filter', DESKTOP_PACKAGE, 'run', 'build:shell'],
     cwd: root,
     environment: { APP_VARIANT: 'release' },
+  };
+}
+
+export function driveMountCommand(root: string): Command {
+  return {
+    title: 'build the drive mount helper',
+    program: pnpmProgram(),
+    args: ['run', 'build:drive-mount'],
+    cwd: root,
+    environment: {},
   };
 }
 
@@ -80,6 +92,7 @@ async function prepared(root: string, server: string): Promise<string> {
   if ((await stat(join(WEB_EXPORT, 'index.html'))).size === 0)
     throw new PublishOutputError('desktop web export', 'expected a nonempty index.html');
   runCommand(shellCommand(root));
+  runCommand(driveMountCommand(root));
   return desktopWebRuntime(join(root, 'apps', 'desktop'));
 }
 
@@ -87,17 +100,20 @@ function storeOf(layout: HubLayout, runId: string): JobStore {
   return { folder: join(layout.system.updates.selfUpdate, 'jobs'), now, newId: () => runId };
 }
 
-function portsOf(
-  layout: HubLayout,
-  root: string,
-  server: string,
-  runId: string,
-): DesktopReleasePorts {
+function portsOf(target: {
+  readonly layout: HubLayout;
+  readonly root: string;
+  readonly server: string;
+  readonly runId: string;
+  readonly revision: string | undefined;
+}): DesktopReleasePorts {
+  const { layout, root, server, runId, revision } = target;
   return {
     store: storeOf(layout, runId),
     sync: async (): Promise<string> => {
       requireBuildHost(layout, root, 'desktop');
-      return syncedCheckout(layout, root);
+      requireBuildDisk(layout, root, 'desktop');
+      return syncedCheckout(layout, root, { revision });
     },
     version: () => readReleaseVersion('desktop', root),
     current: () => loadRelease(layout.system.updates.machineUpdates),
@@ -118,8 +134,21 @@ async function main(): Promise<void> {
     return;
   }
   const root = process.cwd();
+  const status = runInBuildScope('desktop', layout, (error) => {
+    failUnfinishedJob(storeOf(layout, command.input.runId), command.input.runId, error.message);
+  });
+  if (status !== null) {
+    process.exitCode = status;
+    return;
+  }
   applyBuildHost(layout, root);
-  const ports = portsOf(layout, root, command.server, command.input.runId);
+  const ports = portsOf({
+    layout,
+    root,
+    server: command.server,
+    runId: command.input.runId,
+    revision: command.input.commit,
+  });
   const result = await runDesktopRelease(command.input, ports);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }

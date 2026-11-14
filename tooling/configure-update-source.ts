@@ -1,7 +1,9 @@
-import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { parseArgs } from 'node:util';
+import { UPDATE_PUSH_SECRET_BYTES, UPDATE_PUSH_SECRET_FILE } from '@smarteverything/domain';
 import { z } from 'zod';
 import {
   parseServiceConfigText,
@@ -15,6 +17,7 @@ import { dataLayoutOf } from './release-hub-files.ts';
 const OPTIONS = z.strictObject({
   checkout: z.string().refine(isAbsolute, { message: 'must be an absolute path' }),
   data: z.string().min(1).optional(),
+  'rotate-push-secret': z.boolean().optional(),
 });
 const APP_COMMAND = join('tooling', 'self-update-app-command.ts');
 const UPSTREAM = /^([^/\s]+)\/(\S+)$/u;
@@ -72,15 +75,41 @@ export async function configureUpdateSource(input: {
   return source;
 }
 
+export function ensurePushSecret(data: string, rotate: boolean): string | undefined {
+  const directory = dataLayoutOf(data).system.updates.selfUpdate;
+  const file = join(directory, UPDATE_PUSH_SECRET_FILE);
+  if (existsSync(file) && !rotate) return undefined;
+  const secret = randomBytes(UPDATE_PUSH_SECRET_BYTES).toString('hex');
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const staged = `${file}.next`;
+  writeFileSync(staged, `${secret}\n`, { mode: 0o600 });
+  renameSync(staged, file);
+  return secret;
+}
+
+function pushSecretNotice(secret: string | undefined): string {
+  return secret === undefined
+    ? 'The GitHub push webhook secret is already set. Pass --rotate-push-secret to replace it.\n'
+    : `GitHub push webhook secret (shown once, keep it for the webhook settings): ${secret}\n` +
+        'In the GitHub repository settings add a webhook with payload URL <the Hub public address>/api/self-update/push, content type application/json, this secret, and the push event only.\n';
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
-    options: { checkout: { type: 'string' }, data: { type: 'string' } },
+    options: {
+      checkout: { type: 'string' },
+      data: { type: 'string' },
+      'rotate-push-secret': { type: 'boolean' },
+    },
   });
   const options = OPTIONS.parse(values);
   const data = await dataRootOf(options.data, env);
   const source = await configureUpdateSource({ checkout: options.checkout, data });
   process.stdout.write(
     `Update source saved: ${source.checkout} (${source.remote}/${source.branch}). Restart the Hub so the source watcher uses it.\n`,
+  );
+  process.stdout.write(
+    pushSecretNotice(ensurePushSecret(data, options['rotate-push-secret'] === true)),
   );
 }
 

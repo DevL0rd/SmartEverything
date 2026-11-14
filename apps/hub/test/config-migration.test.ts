@@ -41,6 +41,19 @@ describe('migrateHubServiceConfig', () => {
     expect(await migrateHubServiceConfig(file)).toBe(false);
   });
 
+  it('keeps the update source when it removes a hub role', async () => {
+    const updateSource = { checkout: '/srv/checkout', remote: 'origin', branch: 'main' };
+    await writeFile(
+      file,
+      JSON.stringify({ role: 'hub', go2rtcBinary: '/opt/go2rtc', updateSource }),
+    );
+    expect(await migrateHubServiceConfig(file)).toBe(true);
+    expect(JSON.parse(await readFile(file, 'utf8'))).toStrictEqual({
+      go2rtcBinary: '/opt/go2rtc',
+      updateSource,
+    });
+  });
+
   it('refuses another role and leaves the file untouched', async () => {
     const saved = JSON.stringify({ role: 'node', go2rtcBinary: '/opt/go2rtc' });
     await writeFile(file, saved);

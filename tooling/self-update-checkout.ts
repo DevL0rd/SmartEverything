@@ -84,33 +84,66 @@ async function fetchedTip(source: HubUpdateSource): Promise<string> {
   );
 }
 
-async function fastForwarded(source: HubUpdateSource, tip: string): Promise<void> {
+async function requireOnBranch(
+  source: HubUpdateSource,
+  revision: string,
+  tip: string,
+): Promise<void> {
+  const known = await gitSource(source.folder, [
+    '--no-replace-objects',
+    'cat-file',
+    '-e',
+    `${revision}^{commit}`,
+  ]);
+  if (known.code !== 0 || !(await isAncestor(source.folder, revision, tip)))
+    throw new SyncedCheckoutError(
+      `The planned revision ${revision} is no longer on the remote ${source.branch} branch.`,
+    );
+}
+
+async function fastForwarded(
+  source: HubUpdateSource,
+  target: string,
+  planned: boolean,
+): Promise<void> {
   const head = await readSourceHead(source);
-  if (head === tip) return;
-  if (await isAncestor(source.folder, head, tip)) {
+  if (head === target) return;
+  if (await isAncestor(source.folder, head, target)) {
     await gitSourceText(
       source.folder,
-      ['merge', '--ff-only', '--no-edit', tip],
+      ['merge', '--ff-only', '--no-edit', target],
       'fast-forward the checkout',
     );
     return;
   }
+  if (await isAncestor(source.folder, target, head))
+    throw new SyncedCheckoutError(
+      planned
+        ? `The update checkout is already past the planned revision ${target}.`
+        : 'The update checkout has commits that are not on the remote branch: push first.',
+    );
   throw new SyncedCheckoutError(
-    (await isAncestor(source.folder, tip, head))
-      ? 'The update checkout has commits that are not on the remote branch: push first.'
-      : 'The update checkout and the remote branch have diverged: reconcile them and push first.',
+    'The update checkout and the remote branch have diverged: reconcile them and push first.',
   );
+}
+
+export interface CheckoutOptions {
+  readonly revision?: string | undefined;
+  readonly ports?: CheckoutPorts;
 }
 
 export async function syncedCheckout(
   layout: HubLayout,
   root: string,
-  ports: CheckoutPorts = REGISTERED_PORTS,
+  options: CheckoutOptions = {},
 ): Promise<string> {
+  const { revision, ports = REGISTERED_PORTS } = options;
   const source = configuredSource(layout, root);
   await requireCleanBranch(source);
   const tip = await fetchedTip(source);
-  await fastForwarded(source, tip);
+  const target = revision ?? tip;
+  if (revision !== undefined) await requireOnBranch(source, revision, tip);
+  await fastForwarded(source, target, revision !== undefined);
   ports.install(root);
-  return tip;
+  return target;
 }

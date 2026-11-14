@@ -6,6 +6,7 @@ import { runStep, type StepRequest } from '../self-update-commands.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const STEP_FILE = join(ROOT, 'tooling', 'self-update-step.ts');
+const LAUNCH = { node: process.execPath, stepFile: STEP_FILE, root: ROOT };
 const RUN = {
   name: 'fixture',
   program: process.execPath,
@@ -32,19 +33,55 @@ describe('running release commands', () => {
       environment: { RELEASE_STEP_FIXTURE: 'built' },
       steps: [{ ...RUN, args: [...RUN.args] }],
     };
-    expect(runStep(process.execPath, STEP_FILE, ROOT, request)).toEqual({
+    expect(runStep(LAUNCH, request)).toEqual({
       status: 0,
       output: 'builtself-update: fixture\n',
     });
   });
 
+  it('runs the step through the build scope and names the memory limit when it kills the step', () => {
+    const killer = {
+      kind: 'hub',
+      limitBytes: 1000 * 1024 * 1024,
+      command: () => ({ program: 'sh', args: ['-c', 'kill -9 $$'] }),
+    } as const;
+    const outcome = runStep(
+      LAUNCH,
+      {
+        tag: 'self-update',
+        environment: {},
+        steps: [],
+      },
+      killer,
+    );
+    expect(outcome.status).toBe(1);
+    expect(outcome.output).toContain('hub build was stopped');
+    expect(outcome.output).toContain('1000 MiB');
+    const wrapped = runStep(
+      LAUNCH,
+      {
+        tag: 'self-update',
+        environment: { RELEASE_STEP_FIXTURE: 'scoped' },
+        steps: [{ ...RUN, args: [...RUN.args] }],
+      },
+      {
+        ...killer,
+        command: (program, args) => ({ program, args }),
+      },
+    );
+    expect(wrapped).toEqual({ status: 0, output: 'scopedself-update: fixture\n' });
+  });
+
   it('reports an unavailable launcher without inventing output', () => {
     const missingNode = join(import.meta.dirname, 'missing-node-executable');
-    const outcome = runStep(missingNode, STEP_FILE, ROOT, {
-      tag: 'self-update',
-      environment: {},
-      steps: [],
-    });
+    const outcome = runStep(
+      { node: missingNode, stepFile: STEP_FILE, root: ROOT },
+      {
+        tag: 'self-update',
+        environment: {},
+        steps: [],
+      },
+    );
     expect(outcome.status).toBe(1);
     expect(outcome.output).toContain('ENOENT');
   });
@@ -55,7 +92,7 @@ describe('running release commands', () => {
       environment: {},
       steps: [{ ...RUN, program: join(ROOT, 'missing-program'), args: [] }],
     };
-    const result = runStep(process.execPath, STEP_FILE, ROOT, request);
+    const result = runStep(LAUNCH, request);
     expect(result.status).toBe(1);
     expect(result.output).toContain('missing-program');
   });
