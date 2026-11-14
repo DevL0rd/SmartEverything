@@ -2,8 +2,7 @@ import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { DuplicateGroup, DuplicateStats } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HeaderAction } from '../../../components/page-header';
-import type { PhotosFrameProps } from '../components/photos-frame';
+import type * as ModelModule from './model';
 
 interface PagesState {
   data:
@@ -25,7 +24,10 @@ interface Seen {
   width: number;
   pages: PagesState;
   stats: { data: DuplicateStats | undefined; isError: boolean; error: Error | null };
-  frame: PhotosFrameProps | null;
+  hashing: boolean | undefined;
+  hashedShare: number;
+  page: string | null;
+  banner: ReactNode;
   pagesCalled: number;
   keepAll: DuplicateStats | null;
 }
@@ -36,7 +38,10 @@ const seen = vi.hoisted((): Seen => ({
   width: 1360,
   pages: { data: undefined, isError: false, error: null, hasNextPage: false },
   stats: { data: undefined, isError: false, error: null },
-  frame: null,
+  hashing: true,
+  hashedShare: 1,
+  page: null,
+  banner: null,
   pagesCalled: 0,
   keepAll: null,
 }));
@@ -70,11 +75,39 @@ vi.mock('../../../store/selectors', () => ({
   }),
 }));
 vi.mock('../../../design/size-class', () => ({ useAreaWidth: (): number => seen.width }));
-vi.mock('../components/photos-frame', () => ({
-  PhotosFrame: (props: PhotosFrameProps): ReactNode => {
-    seen.frame = props;
+vi.mock('../../../settings/settings-frame', () => ({
+  SettingsFrame: (props: {
+    readonly page: string;
+    readonly banner?: ReactNode;
+    readonly children: ReactNode;
+  }): ReactNode => {
+    seen.page = props.page;
+    seen.banner = props.banner ?? null;
     return createElement('main', {}, props.banner, props.children);
   },
+}));
+vi.mock('../../../settings/settings-page', () => ({
+  SettingsPageBody: ({ page }: { readonly page: string }): ReactNode =>
+    createElement('footer', {}, `rows of ${page}`),
+}));
+vi.mock('../../drive', () => ({
+  flattenPages: <P, T>(
+    data: { readonly pages: readonly P[] } | undefined,
+    items: (page: P) => readonly T[],
+  ): readonly T[] => (data?.pages ?? []).flatMap(items),
+  useDriveRoots: (): readonly unknown[] => [],
+  useViewerId: (): string => 'me',
+  useDriveSettings: (): unknown => ({
+    data: seen.hashing === undefined ? undefined : { duplicatesHashing: seen.hashing },
+  }),
+}));
+vi.mock('./model', async (load) => ({
+  ...(await load<typeof ModelModule>()),
+  hashedShareOf: (): number => seen.hashedShare,
+}));
+vi.mock('../settings', () => ({ PHOTOS_DUPLICATES_PAGE: 'photos/duplicates' }));
+vi.mock('./use-drive-labels', () => ({
+  useDriveLabels: (): ReadonlyMap<string, string> => new Map(),
 }));
 vi.mock('../data', () => ({
   usePhotoDuplicates: (): unknown => {
@@ -120,9 +153,10 @@ vi.mock('../../../components/error-state', () => ({
     createElement('aside', {}, `error ${error.message}`),
 }));
 vi.mock('../../../components/banner', () => ({ Banner: tag('header') }));
+vi.mock('../../../components/card', () => ({ Card: tag('div') }));
 vi.mock('../../../components/list-loader', () => ({ ListLoader: (): null => null }));
 
-const { DuplicatesScreen } = await import('./screen');
+const { DuplicatesSettingsScreen } = await import('./screen');
 
 const STATS: DuplicateStats = {
   groups: 2,
@@ -131,7 +165,6 @@ const STATS: DuplicateStats = {
   sources: [
     {
       rootId: '00000000-0000-4000-8000-000000000001',
-      label: 'Phone backup',
       copies: 5,
       bytes: 4096,
     },
@@ -149,11 +182,7 @@ function group(letter: string): DuplicateGroup {
 }
 
 function render(): string {
-  return renderToStaticMarkup(createElement(DuplicatesScreen));
-}
-
-function actions(): readonly HeaderAction[] {
-  return seen.frame?.actions ?? [];
+  return renderToStaticMarkup(createElement(DuplicatesSettingsScreen));
 }
 
 beforeEach(() => {
@@ -162,18 +191,23 @@ beforeEach(() => {
   seen.width = 1360;
   seen.pages = { data: undefined, isError: false, error: null, hasNextPage: false };
   seen.stats = { data: undefined, isError: false, error: null };
-  seen.frame = null;
+  seen.hashing = true;
+  seen.hashedShare = 1;
+  seen.page = null;
+  seen.banner = null;
   seen.pagesCalled = 0;
   seen.keepAll = null;
 });
 
-describe('the Duplicates page', () => {
-  it('never reads duplicates for a member and says the page is the owner’s', () => {
+describe('the Duplicates settings page', () => {
+  it('opens for every person on the Duplicates settings page with its rows', () => {
     seen.owner = false;
+    seen.stats.data = STATS;
+    seen.pages.data = { pages: [{ items: [group('a')], next: null }] };
     const html = render();
-    expect(html).toContain('Duplicates are for the owner');
-    expect(seen.pagesCalled).toBe(0);
-    expect(actions()).toHaveLength(0);
+    expect(seen.page).toBe('photos/duplicates');
+    expect(html).toContain('group a on');
+    expect(html).toContain('rows of photos/duplicates');
   });
 
   it('shows the loading skeleton until both the groups and the stats arrive', () => {
@@ -191,42 +225,44 @@ describe('the Duplicates page', () => {
     seen.pages.data = { pages: [{ items: [], next: null }] };
     const html = render();
     expect(html).toContain('No duplicates');
-    expect(html).toContain('Every photo and video is stored once');
-    expect(html).toContain('Open Timeline');
-    expect(seen.frame?.subtitle).toBe('Exact copies, matched by content');
-    expect(actions()).toHaveLength(0);
+    expect(html).toContain('Open Library');
+    expect(html).not.toContain('Keep best in all groups');
   });
 
-  it('puts Keep best in all groups in the desktop header as the one primary', () => {
+  it('explains hashing is off and links the owner to Drive indexing', () => {
+    seen.hashing = false;
+    expect(render()).toContain('Duplicate detection is off');
+    expect(render()).toContain('Open Drive indexing');
+    seen.owner = false;
+    expect(render()).not.toContain('Open Drive indexing');
+    expect(render()).toContain('The owner of this home can turn it on');
+  });
+
+  it('says files are still being checked while hashing runs', () => {
+    seen.hashedShare = 0.5;
+    seen.stats.data = STATS;
+    seen.pages.data = { pages: [{ items: [group('a')], next: null }] };
+    expect(render()).toContain('Still checking files');
+  });
+
+  it('puts Keep best in all groups in the stats card as the one primary', () => {
     seen.stats.data = STATS;
     seen.pages.data = { pages: [{ items: [group('a'), group('b')], next: null }] };
     const html = render();
     expect(html).toContain('group a on');
     expect(html).toContain('group b on');
-    expect(seen.frame?.subtitle).toBe('2 groups · 3 extra copies');
-    const [primary] = actions();
-    expect(primary).toMatchObject({ label: 'Keep best in all groups', primary: true });
-    primary?.onPress?.();
-    expect(seen.keepAll).toBe(STATS);
-  });
-
-  it('moves the primary into the page on phones', () => {
-    seen.width = 412;
-    seen.stats.data = STATS;
-    seen.pages.data = { pages: [{ items: [group('a')], next: null }] };
-    const html = render();
-    expect(actions()).toHaveLength(0);
-    expect(html).toContain('Keep best in all groups');
+    expect(html.match(/Keep best in all groups/g)).toHaveLength(1);
   });
 
   it('keeps the last groups but turns the actions off while the hub is offline', () => {
     seen.live = false;
+    seen.hashedShare = 0.5;
     seen.stats.data = STATS;
     seen.pages.data = { pages: [{ items: [group('a')], next: null }] };
     const html = render();
     expect(html).toContain('Offline · showing the last snapshot');
+    expect(html).not.toContain('Still checking files');
     expect(html).toContain('group a off');
-    expect(actions()).toHaveLength(0);
   });
 
   it('offers the next page of groups only while the hub has more', () => {

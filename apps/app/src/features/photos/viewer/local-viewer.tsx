@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Logger } from '@smarteverything/logging';
-import { href } from '../../../app-shell/hrefs';
+import { PHOTOS_BACKUP_SETTINGS_HREF } from '../components/photos-frame';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { IconButton } from '../../../components/icon-button';
@@ -90,7 +90,7 @@ function LocalDetails({ item }: { readonly item: LocalMediaItem }): ReactNode {
         )}
       </View>
       {backedUp ? null : (
-        <Button label="Back up" icon="upload" variant="tonal" href={href.photosPage('backup')} />
+        <Button label="Back up" icon="upload" variant="tonal" href={PHOTOS_BACKUP_SETTINGS_HREF} />
       )}
     </View>
   );

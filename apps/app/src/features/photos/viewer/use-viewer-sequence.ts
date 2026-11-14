@@ -1,8 +1,8 @@
 import { useEffect, useMemo } from 'react';
 import { background } from '@smarteverything/logging';
-import type { PhotoScope } from '../../../api/photos';
+import type { LibraryScope } from '@smarteverything/domain';
 import { tilesOfPage } from '../../../components/media-grid/tiles';
-import { flattenPages } from '../../nas/data/pages';
+import { flattenPages } from '../../drive';
 import { usePhotoBuckets, usePhotoMonth } from '../data/queries';
 import {
   adjacentMonths,
@@ -20,7 +20,7 @@ interface MonthRead {
   readonly more: () => void;
 }
 
-function useMonthTiles(month: string | null, scope: PhotoScope, enabled: boolean): MonthRead {
+function useMonthTiles(month: string | null, scope: LibraryScope, enabled: boolean): MonthRead {
   const pages = usePhotoMonth(month ?? NO_MONTH, scope, enabled && month !== null);
   const { data, hasNextPage, isFetchingNextPage, fetchNextPage } = pages;
   const tiles = useMemo(() => flattenPages(data, tilesOfPage), [data]);
@@ -46,7 +46,7 @@ function useReadUntil(read: MonthRead, wanted: boolean): void {
 export function useViewerSequence(
   itemId: string,
   month: string | null,
-  scope: PhotoScope,
+  scope: LibraryScope,
 ): ViewerSequence {
   const buckets = usePhotoBuckets(scope);
   const current = useMonthTiles(month, scope, true);

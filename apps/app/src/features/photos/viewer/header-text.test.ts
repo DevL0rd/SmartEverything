@@ -28,6 +28,7 @@ function item(takenAt: string | null): MediaItem {
     addedAt: TAKEN,
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'e',
     outside: false,

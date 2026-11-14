@@ -4,7 +4,7 @@ import { useScreenPaused } from '../../../design/screen-pause';
 import { useDayKey } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
 import { useSession } from '../../../store/selectors';
-import { flattenPages } from '../../nas/data/pages';
+import { flattenPages } from '../../drive';
 import { usePhotoDeleted } from '../data';
 import {
   deletedDaysOf,

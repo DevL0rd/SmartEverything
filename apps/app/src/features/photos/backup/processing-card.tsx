@@ -10,7 +10,7 @@ import { Icon } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
-import { useDriveItem } from '../../nas/data/queries';
+import { useDriveItem } from '../../drive';
 import { usePhotoProcessing } from '../data';
 import type { LiveProgress } from './phones-model';
 import {

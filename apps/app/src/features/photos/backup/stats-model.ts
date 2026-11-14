@@ -39,18 +39,17 @@ export function addedInMonth(growth: GrowthDays | null, month: string): AddedMon
 export interface StorageView {
   readonly libraryBytes: number;
   readonly segments: readonly BarSegment[];
-  readonly totalBytes: number | null;
-  readonly freeBytes: number | null;
+  readonly totalBytes: number;
+  readonly freeBytes: number;
 }
 
-export function storageOf(stats: DriveStats, insights: PhotoInsights): StorageView {
+export function storageOf(
+  stats: Pick<DriveStats, 'space'>,
+  insights: Pick<PhotoInsights, 'kinds'>,
+): StorageView {
   const library = librarySegmentsOf(insights.kinds).filter((segment) => segment.value > 0);
   const libraryBytes = library.reduce((sum, segment) => sum + segment.value, 0);
-  if (stats.volumes.length === 0) {
-    return { libraryBytes, segments: library, totalBytes: null, freeBytes: null };
-  }
-  const totalBytes = stats.volumes.reduce((sum, volume) => sum + volume.totalBytes, 0);
-  const freeBytes = stats.volumes.reduce((sum, volume) => sum + volume.freeBytes, 0);
+  const { totalBytes, freeBytes } = stats.space;
   const other = Math.max(0, totalBytes - freeBytes - libraryBytes);
   return {
     libraryBytes,
@@ -72,12 +71,10 @@ export function monthlyGrowthOf(growth: GrowthDays | null): number | null {
   return ((last.bytes - first.bytes) / days) * DAYS_PER_MONTH;
 }
 
-export function fullYearOf(stats: DriveStats, now: number): number | null {
-  const months = stats.volumes.flatMap((volume) =>
-    volume.fullInMonths === null ? [] : [volume.fullInMonths],
-  );
-  if (months.length === 0) return null;
-  return new Date(now + Math.min(...months) * DAYS_PER_MONTH * DAY_MS).getFullYear();
+export function fullYearOf(stats: Pick<DriveStats, 'fullInMonths'>, now: number): number | null {
+  const months = stats.fullInMonths;
+  if (months === null) return null;
+  return new Date(now + months * DAYS_PER_MONTH * DAY_MS).getFullYear();
 }
 
 export function growthTextOf(stats: DriveStats, now: number): string | null {

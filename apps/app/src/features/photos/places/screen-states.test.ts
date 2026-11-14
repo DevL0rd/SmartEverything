@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { Memory, PhotoPlace, PlaceCountry } from '@smarteverything/domain';
+import type { PhotoPlace, PlaceCountry } from '@smarteverything/domain';
 import { MAP_COPY, MapScreen } from './map-screen';
 import { itemsLabel, PlaceScreen } from './place-screen';
 
@@ -20,13 +20,11 @@ const state = vi.hoisted(
   (): {
     places: QueryState<readonly PlaceCountry[]>;
     place: QueryState<PhotoPlace>;
-    memories: QueryState<readonly Memory[]>;
     placeId: string;
     sync: string;
   } => ({
     places: { data: undefined, error: null, isError: false, refetch: () => Promise.resolve() },
     place: { data: undefined, error: null, isError: false, refetch: () => Promise.resolve() },
-    memories: { data: undefined, error: null, isError: false, refetch: () => Promise.resolve() },
     placeId: '1',
     sync: 'live',
   }),
@@ -50,10 +48,9 @@ vi.mock('../components/photos-frame', () => ({
     ),
 }));
 vi.mock('../data', () => ({
-  PHOTO_ALL: { filter: 'all', placeId: null },
+  PHOTO_ALL: { filter: 'all' },
   usePhotoPlaces: (): QueryState<readonly PlaceCountry[]> => state.places,
   usePhotoPlace: (): QueryState<PhotoPlace> => state.place,
-  usePhotoMemories: (): QueryState<readonly Memory[]> => state.memories,
   usePhotoBuckets: (): QueryState<readonly never[]> => query<readonly never[]>(undefined),
   usePhotoClusters: (): QueryState<readonly never[]> => query<readonly never[]>([]),
 }));
@@ -92,10 +89,6 @@ vi.mock('../../../components/error-state', () => ({
   ErrorState: ({ error }: { readonly error: Error }): ReactNode =>
     createElement('p', { role: 'alert' }, error.message),
 }));
-vi.mock('../memories', () => ({
-  MemoryPlayer: ({ memory }: { readonly memory: Memory }): ReactNode =>
-    createElement('dialog', {}, memory.id),
-}));
 vi.mock('./cluster-map', () => ({ ClusterMap: (): null => null }));
 vi.mock('../../../components/icon', () => ({ Icon: (): null => null }));
 vi.mock('../../../components/charts/progress-bar', () => ({ ProgressBar: (): null => null }));
@@ -122,17 +115,6 @@ const LISBON: PhotoPlace = {
   lon: -9.1,
   count: 842,
   coverItemId: null,
-};
-
-const DAY_OUT: Memory = {
-  id: 'day_out:1',
-  kind: 'day_out',
-  from: '2024-05-04',
-  to: '2024-05-04',
-  count: 40,
-  coverItemId: '0b9f8a4e-0000-4000-8000-000000000001',
-  placeId: 1,
-  placeName: 'Lisbon',
 };
 
 function map(): string {
@@ -202,13 +184,10 @@ describe('place page states', () => {
     state.sync = 'live';
   });
 
-  it('offers Play memory only when a trip or day out was made at the place', () => {
+  it('names the page after the place and offers no header actions', () => {
     state.place = query<PhotoPlace>(LISBON);
-    state.memories = query<readonly Memory[]>([]);
-    expect(placePage()).not.toContain('Play memory');
-    state.memories = query<readonly Memory[]>([DAY_OUT]);
     const markup = placePage();
     expect(markup).toContain('data-title="Lisbon"');
-    expect(markup).toContain('Play memory');
+    expect(markup).not.toContain('<button');
   });
 });

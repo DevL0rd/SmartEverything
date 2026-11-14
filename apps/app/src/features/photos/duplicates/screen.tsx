@@ -2,126 +2,123 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DuplicateGroup, DuplicateStats } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
+import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
+import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { ListLoader } from '../../../components/list-loader';
 import type { HeaderAction } from '../../../components/page-header';
+import { isNative } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
-import { count } from '../../../format/number';
+import { count, percent } from '../../../format/number';
+import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { SettingsFrame } from '../../../settings/settings-frame';
+import { SettingsPageBody } from '../../../settings/settings-page';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
-import { flattenPages } from '../../nas/data';
-import { libraryLayoutOf } from '../../nas/frame/sections';
-import { PhotosFrame } from '../components/photos-frame';
+import { flattenPages, useDriveRoots, useDriveSettings, useViewerId } from '../../drive';
+import { PHOTOS_DUPLICATES_PAGE } from '../settings';
 import { usePhotoDuplicates, usePhotoDuplicateStats, usePhotoInsights } from '../data';
 import { DuplicateGroupCard, type GroupHandlers } from './duplicate-group';
 import { DuplicateStatsRow, DuplicatesLoading, KeepBestRule } from './duplicate-stats';
-import { KEEP_ALL_LABEL, sourceLabelsOf, summaryOf } from './model';
+import { KEEP_ALL_LABEL, hashedShareOf, type SourceLabels } from './model';
+import { useDriveLabels } from './use-drive-labels';
 import { useDuplicateActions, type DuplicateActions } from './use-duplicate-actions';
 
-const SUBTITLE = 'Exact copies, matched by content';
-
-const NO_ACTIONS: readonly HeaderAction[] = [];
+const OPEN_PHOTOS: readonly HeaderAction[] = [
+  { icon: 'image', label: 'Open Photos', href: href.photos() },
+];
 
 const OFFLINE_BODY = 'Keep best and Not duplicates need your home hub.';
 
-function MemberState(): ReactNode {
-  return (
-    <EmptyState
-      icon="lock"
-      title="Duplicates are for the owner"
-      body="The owner of this home cleans up copies. Your photos and backup stay as they are."
-      action={<Button label="Open Photos" variant="tonal" href="/photos" />}
-    />
-  );
-}
+const INDEXING_HREF = href.settings.focus('drive', 'drive.indexing');
 
 function NoDuplicates(): ReactNode {
   return (
-    <EmptyState
-      icon="circleCheck"
-      title="No duplicates"
-      body="Every photo and video is stored once. New copies are found as they arrive."
-      action={<Button label="Open Timeline" variant="tonal" href="/photos" />}
+    <Card>
+      <EmptyState
+        icon="circleCheck"
+        title="No duplicates"
+        body="Every photo and video you can open is stored once. New copies are found as they arrive."
+        action={<Button label="Open Library" variant="tonal" href={href.photos()} />}
+      />
+    </Card>
+  );
+}
+
+function HashingOff(): ReactNode {
+  const owner = useIsOwner();
+  return (
+    <Card>
+      <EmptyState
+        icon="copy"
+        title="Duplicate detection is off"
+        body={
+          owner
+            ? 'Copies are found by their content. Turn on hashing in Drive indexing to find them.'
+            : 'Copies are found by their content. The owner of this home can turn it on in Drive indexing.'
+        }
+        {...(owner
+          ? { action: <Button label="Open Drive indexing" variant="filled" href={INDEXING_HREF} /> }
+          : {})}
+      />
+    </Card>
+  );
+}
+
+function ScanningBanner({ share }: { readonly share: number }): ReactNode {
+  return (
+    <Banner
+      tone="info"
+      title={`Still checking files · ${percent(share)} done`}
+      body="More copies may show up as the hub finishes reading your drives."
+      wrapBody
     />
   );
 }
 
-interface ListProps {
-  readonly groups: readonly DuplicateGroup[];
+interface StatsCardProps {
   readonly stats: DuplicateStats;
   readonly libraryBytes: number | undefined;
+  readonly labels: SourceLabels;
   readonly actions: DuplicateActions;
   readonly connected: boolean;
   readonly compact: boolean;
-  readonly more: ReactNode;
 }
 
-function DuplicateList({
-  groups,
-  stats,
-  libraryBytes,
-  actions,
-  connected,
-  compact,
-  more,
-}: ListProps): ReactNode {
-  const labels = sourceLabelsOf(stats);
-  const handlers: GroupHandlers = {
-    onKeepBest: actions.keepBest,
-    onNotDuplicates: actions.notDuplicates,
-    disabled: actions.busy || !connected,
-  };
+function StatsCard(props: StatsCardProps): ReactNode {
+  const { stats, actions, connected, compact } = props;
   return (
-    <View className="gap-4">
-      <DuplicateStatsRow stats={stats} libraryBytes={libraryBytes} compact={compact} />
-      {compact ? (
-        <Button
-          label={KEEP_ALL_LABEL}
-          icon="check"
-          variant="filled"
-          grow
-          loading={actions.busy}
-          disabled={!connected}
-          onPress={() => {
-            actions.keepBestInAll(stats);
-          }}
+    <Card title="Copies you can clean up" icon="copy">
+      <View className="gap-4">
+        <DuplicateStatsRow
+          stats={stats}
+          libraryBytes={props.libraryBytes}
+          labels={props.labels}
+          compact={compact}
         />
-      ) : null}
-      <KeepBestRule />
-      <View className="gap-3">
-        {groups.map((group) => (
-          <DuplicateGroupCard
-            key={group.sha256}
-            group={group}
-            labels={labels}
-            handlers={handlers}
-            compact={compact}
-          />
-        ))}
+        <View className={compact ? 'gap-3' : 'flex-row items-center gap-3'}>
+          <View className={compact ? 'min-w-0' : 'min-w-0 flex-1'}>
+            <KeepBestRule />
+          </View>
+          <View className="flex-row">
+            <Button
+              label={KEEP_ALL_LABEL}
+              icon="check"
+              variant="filled"
+              grow={compact}
+              loading={actions.busy}
+              disabled={!connected}
+              onPress={() => {
+                actions.keepBestInAll(stats);
+              }}
+            />
+          </View>
+        </View>
       </View>
-      {more}
-    </View>
+    </Card>
   );
-}
-
-function headerActionsOf(
-  stats: DuplicateStats | undefined,
-  actions: DuplicateActions,
-  enabled: boolean,
-): readonly HeaderAction[] {
-  if (stats === undefined || stats.groups === 0 || !enabled) return NO_ACTIONS;
-  return [
-    {
-      icon: 'check',
-      label: KEEP_ALL_LABEL,
-      primary: true,
-      onPress: (): void => {
-        actions.keepBestInAll(stats);
-      },
-    },
-  ];
 }
 
 function MoreGroups({
@@ -149,17 +146,23 @@ interface DuplicatesData {
   readonly stats: ReturnType<typeof usePhotoDuplicateStats>;
   readonly groups: readonly DuplicateGroup[];
   readonly libraryBytes: number | undefined;
+  readonly hashing: boolean | undefined;
+  readonly hashedShare: number;
 }
 
 function useDuplicatesData(): DuplicatesData {
   const pages = usePhotoDuplicates();
   const stats = usePhotoDuplicateStats();
   const library = usePhotoInsights('all_time').data;
+  const settings = useDriveSettings().data;
+  const share = hashedShareOf(useDriveRoots(), useViewerId());
   return {
     pages,
     stats,
     groups: flattenPages(pages.data, (page) => page.items),
     libraryBytes: library?.bytes,
+    hashing: settings?.duplicatesHashing,
+    hashedShare: share,
   };
 }
 
@@ -170,18 +173,51 @@ function failedOf(data: DuplicatesData): boolean {
   );
 }
 
-function DuplicatesBody({
-  data,
-  actions,
-  connected,
-  compact,
-}: {
+interface BodyProps {
   readonly data: DuplicatesData;
   readonly actions: DuplicateActions;
   readonly connected: boolean;
   readonly compact: boolean;
-}): ReactNode {
+}
+
+function GroupList({ data, actions, connected, compact }: BodyProps): ReactNode {
+  const labels = useDriveLabels();
   const stats = data.stats.data;
+  if (stats === undefined) return null;
+  const handlers: GroupHandlers = {
+    onKeepBest: actions.keepBest,
+    onNotDuplicates: actions.notDuplicates,
+    disabled: actions.busy || !connected,
+  };
+  return (
+    <View className="gap-4">
+      <StatsCard
+        stats={stats}
+        libraryBytes={data.libraryBytes}
+        labels={labels}
+        actions={actions}
+        connected={connected}
+        compact={compact}
+      />
+      <View className="gap-3">
+        {data.groups.map((group) => (
+          <DuplicateGroupCard
+            key={group.sha256}
+            group={group}
+            labels={labels}
+            handlers={handlers}
+            compact={compact}
+          />
+        ))}
+      </View>
+      <MoreGroups pages={data.pages} left={Math.max(0, stats.groups - data.groups.length)} />
+    </View>
+  );
+}
+
+function DuplicatesBody(props: BodyProps): ReactNode {
+  const { data, compact } = props;
+  if (data.hashing === false) return <HashingOff />;
   if (failedOf(data)) {
     const retry = (): void => {
       background(data.pages.refetch(), 'duplicates.retry_failed');
@@ -189,62 +225,48 @@ function DuplicatesBody({
     };
     return <ErrorState page error={data.pages.error ?? data.stats.error} retry={retry} />;
   }
+  const stats = data.stats.data;
   if (stats === undefined || data.pages.data === undefined) {
     return <DuplicatesLoading compact={compact} />;
   }
-  if (stats.groups === 0 && data.groups.length === 0) {
-    return <NoDuplicates />;
+  if (stats.groups === 0 && data.groups.length === 0) return <NoDuplicates />;
+  return <GroupList {...props} />;
+}
+
+function bannerOf(connected: boolean, data: DuplicatesData): ReactNode {
+  if (!connected) {
+    return (
+      <Banner
+        tone="info"
+        title="Offline · showing the last snapshot"
+        body={OFFLINE_BODY}
+        wrapBody
+      />
+    );
   }
-  return (
-    <DuplicateList
-      groups={data.groups}
-      stats={stats}
-      libraryBytes={data.libraryBytes}
-      actions={actions}
-      connected={connected}
-      compact={compact}
-      more={<MoreGroups pages={data.pages} left={Math.max(0, stats.groups - data.groups.length)} />}
-    />
-  );
+  if (data.hashing === true && data.hashedShare < 1) {
+    return <ScanningBanner share={data.hashedShare} />;
+  }
+  return undefined;
 }
 
-function subtitleOf(stats: DuplicateStats | undefined): string {
-  return stats === undefined || stats.groups === 0 ? SUBTITLE : summaryOf(stats);
-}
-
-function OwnerDuplicates(): ReactNode {
+export function DuplicatesSettingsScreen(): ReactNode {
   const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
   const connected = useSyncStatus().status === 'live';
   const data = useDuplicatesData();
   const actions = useDuplicateActions();
-  const stats = data.stats.data;
+  const banner = bannerOf(connected, data);
   return (
-    <PhotosFrame
-      active="duplicates"
-      subtitle={subtitleOf(stats)}
-      actions={compact ? NO_ACTIONS : headerActionsOf(stats, actions, connected && !actions.busy)}
-      banner={
-        connected ? null : (
-          <Banner
-            tone="info"
-            title="Offline · showing the last snapshot"
-            body={OFFLINE_BODY}
-            wrapBody
-          />
-        )
-      }
+    <SettingsFrame
+      page={PHOTOS_DUPLICATES_PAGE}
+      actions={OPEN_PHOTOS}
+      contentWidth={isNative() ? 'reading' : 'full'}
+      {...(banner === undefined ? {} : { banner })}
     >
-      <DuplicatesBody data={data} actions={actions} connected={connected} compact={compact} />
-    </PhotosFrame>
-  );
-}
-
-export function DuplicatesScreen(): ReactNode {
-  const owner = useIsOwner();
-  if (owner) return <OwnerDuplicates />;
-  return (
-    <PhotosFrame active="duplicates">
-      <MemberState />
-    </PhotosFrame>
+      <View className="gap-section-gap">
+        <DuplicatesBody data={data} actions={actions} connected={connected} compact={compact} />
+        <SettingsPageBody page={PHOTOS_DUPLICATES_PAGE} />
+      </View>
+    </SettingsFrame>
   );
 }

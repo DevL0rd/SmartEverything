@@ -112,7 +112,7 @@ describe('date words', () => {
     });
   });
 
-  it('counts whole months from the timeline and leaves partial ranges uncounted', () => {
+  it('counts whole months from the library and leaves partial ranges uncounted', () => {
     expect(dateCountOf(lastSeasonToken('summer', DATES), DATES)).toBe(52);
     const week = dateSuggestionsOf('this w', DATES)[0];
     expect(week?.token).toMatchObject({ label: 'This week', from: '2026-11-02', to: '2026-11-07' });

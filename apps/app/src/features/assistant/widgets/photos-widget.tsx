@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { View, type ViewStyle } from 'react-native';
 import { router } from 'expo-router';
-import type { Memory } from '@smarteverything/domain';
 import { background, Logger } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
@@ -11,27 +10,14 @@ import { tilesOfPage } from '../../../components/media-grid/tiles';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { useAreaWidth } from '../../../design/size-class';
 import { errorText } from '../../../format/errors';
 import { count } from '../../../format/number';
 import { useSyncStatus } from '../../../store/selectors';
-import { driveLinks } from '../../nas/data/links';
-import { flattenPages } from '../../nas/data/pages';
-import { useDriveItem } from '../../nas/data/queries';
-import { libraryLayoutOf } from '../../nas/frame/sections';
+import { driveLinks, flattenPages, useDriveItem } from '../../drive';
 import { usePhotoAlbum, usePhotoAlbumItems, loadedItems } from '../../photos/albums/album-data';
-import {
-  PHOTO_ALL,
-  usePhotoBuckets,
-  usePhotoMemories,
-  usePhotoMemoryItems,
-  usePhotoMonth,
-} from '../../photos/data';
-import { MemoryPlayer } from '../../photos/memories';
-import { coverFirst, isMedia } from '../../photos/memories/items';
-import { memoryTitle } from '../../photos/memories/model';
-import { longDay, monthName } from '../../photos/memories/text';
-import { isMediaItem, tileOfItem, tilesOfItems } from '../../photos/search/results';
+import { isMedia, tileOfItem, tilesOfItems } from '../../photos/albums/album-items';
+import { PHOTO_ALL, usePhotoBuckets, usePhotoMonth } from '../../photos/data';
+import { longDay, monthName } from '../../photos/model/media-text';
 import { CHAT_SURFACE } from '../components/chat-surface';
 import {
   PHOTOS_WIDGET_COPY,
@@ -65,7 +51,7 @@ function pending(query: Refetchable, view: PhotosChatWidget['view']): Strip {
 function useItemStrip(id: string): Strip {
   const item = useDriveItem(id, null);
   if (item.data === undefined) return pending(item, 'item');
-  if (!isMediaItem(item.data)) return { status: 'missing', reason: PHOTOS_WIDGET_COPY.notMedia };
+  if (!isMedia(item.data)) return { status: 'missing', reason: PHOTOS_WIDGET_COPY.notMedia };
   return {
     status: 'ready',
     icon: item.data.kind === 'video' ? 'play' : 'image',
@@ -73,7 +59,7 @@ function useItemStrip(id: string): Strip {
     trail: longDay((item.data.takenAt ?? item.data.modifiedAt).slice(0, 10)),
     tiles: [tileOfItem(item.data)],
     total: 1,
-    action: { kind: 'link', label: PHOTOS_WIDGET_COPY.openPhotos, href: href.photosItem(id) },
+    action: { label: PHOTOS_WIDGET_COPY.openPhotos, href: href.photosItem(id) },
     opens: {},
   };
 }
@@ -91,28 +77,8 @@ function useAlbumStrip(id: string): Strip {
     trail: count(album.itemCount),
     tiles: tilesOfItems(loaded.items),
     total: album.itemCount,
-    action: { kind: 'link', label: PHOTOS_WIDGET_COPY.openAlbum, href: href.photosAlbum(id) },
+    action: { label: PHOTOS_WIDGET_COPY.openAlbum, href: href.photosAlbum(id) },
     opens: { album: id },
-  };
-}
-
-function useMemoryStrip(id: string): Strip {
-  const memories = usePhotoMemories();
-  const pages = usePhotoMemoryItems(id);
-  if (memories.data === undefined) return pending(memories, 'memory');
-  const memory = memories.data.find((entry) => entry.id === id);
-  if (memory === undefined) return { status: 'missing', reason: PHOTOS_WIDGET_COPY.gone };
-  if (pages.data === undefined) return pending(pages, 'memory');
-  const items = flattenPages(pages.data, (page) => page.items).filter(isMedia);
-  return {
-    status: 'ready',
-    icon: 'sparkles',
-    title: memoryTitle(memory),
-    trail: count(memory.count),
-    tiles: tilesOfItems(coverFirst(items, memory.coverItemId)),
-    total: memory.count,
-    action: { kind: 'play', label: PHOTOS_WIDGET_COPY.play, memory },
-    opens: {},
   };
 }
 
@@ -130,7 +96,7 @@ function useMonthStrip(month: string): Strip {
     trail: count(bucket.count),
     tiles: flattenPages(pages.data, tilesOfPage),
     total: bucket.count,
-    action: { kind: 'link', label: PHOTOS_WIDGET_COPY.openPhotos, href: href.photos() },
+    action: { label: PHOTOS_WIDGET_COPY.openPhotos, href: href.photos() },
     opens: {},
   };
 }
@@ -227,28 +193,7 @@ function Thumbs({ strip }: { readonly strip: ReadyStrip }): ReactNode {
   );
 }
 
-interface CardProps {
-  readonly strip: ReadyStrip;
-  readonly onPlay: (memory: Memory) => void;
-}
-
-function ActionButton({ strip, onPlay }: CardProps): ReactNode {
-  const { action } = strip;
-  return action.kind === 'link' ? (
-    <Button label={action.label} variant="tonal" href={action.href} />
-  ) : (
-    <Button
-      label={action.label}
-      icon="play"
-      variant="tonal"
-      onPress={() => {
-        onPlay(action.memory);
-      }}
-    />
-  );
-}
-
-function StripCard({ strip, onPlay }: CardProps): ReactNode {
+function StripCard({ strip }: { readonly strip: ReadyStrip }): ReactNode {
   const offline = useSyncStatus().status === 'interrupted';
   return (
     <View className={cn('w-full max-w-130 gap-2 p-2.5', CHAT_SURFACE)}>
@@ -263,7 +208,7 @@ function StripCard({ strip, onPlay }: CardProps): ReactNode {
       </View>
       {strip.tiles.length === 0 ? null : <Thumbs strip={strip} />}
       <View className="flex-row flex-wrap items-center gap-2">
-        <ActionButton strip={strip} onPlay={onPlay} />
+        <Button label={strip.action.label} variant="tonal" href={strip.action.href} />
         {offline ? (
           <Text variant="caption" tone="warning" numberOfLines={1}>
             {PHOTOS_WIDGET_COPY.offline}
@@ -304,68 +249,42 @@ function ProblemNote({
 function StripView({
   view,
   strip,
-  onPlay,
 }: {
   readonly view: PhotosChatWidget['view'];
   readonly strip: Strip;
-  readonly onPlay: (memory: Memory) => void;
 }): ReactNode {
-  if (strip.status === 'ready') return <StripCard strip={strip} onPlay={onPlay} />;
+  if (strip.status === 'ready') return <StripCard strip={strip} />;
   return strip.status === 'loading' ? <Pending /> : <ProblemNote view={view} strip={strip} />;
 }
 
-interface SourceProps {
-  readonly id: string;
-  readonly onPlay: (memory: Memory) => void;
+function ItemSource({ id }: { readonly id: string }): ReactNode {
+  return <StripView view="item" strip={useItemStrip(id)} />;
 }
 
-function ItemSource({ id, onPlay }: SourceProps): ReactNode {
-  return <StripView view="item" strip={useItemStrip(id)} onPlay={onPlay} />;
+function AlbumSource({ id }: { readonly id: string }): ReactNode {
+  return <StripView view="album" strip={useAlbumStrip(id)} />;
 }
 
-function AlbumSource({ id, onPlay }: SourceProps): ReactNode {
-  return <StripView view="album" strip={useAlbumStrip(id)} onPlay={onPlay} />;
+function MonthSource({ id }: { readonly id: string }): ReactNode {
+  return <StripView view="month" strip={useMonthStrip(id)} />;
 }
 
-function MemorySource({ id, onPlay }: SourceProps): ReactNode {
-  return <StripView view="memory" strip={useMemoryStrip(id)} onPlay={onPlay} />;
-}
-
-function MonthSource({ id, onPlay }: SourceProps): ReactNode {
-  return <StripView view="month" strip={useMonthStrip(id)} onPlay={onPlay} />;
-}
-
-const SOURCES: Readonly<Record<PhotosChatWidget['view'], (props: SourceProps) => ReactNode>> = {
+const SOURCES: Readonly<
+  Record<PhotosChatWidget['view'], (props: { readonly id: string }) => ReactNode>
+> = {
   item: ItemSource,
   album: AlbumSource,
-  memory: MemorySource,
   month: MonthSource,
 };
 
 export function PhotosWidget({ widget }: { readonly widget: PhotosChatWidget }): ReactNode {
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
-  const [playing, setPlaying] = useState<Memory | null>(null);
   const Source = SOURCES[widget.view];
-  return (
-    <>
-      {validPhotosWidget(widget) ? (
-        <Source id={widget.id} onPlay={setPlaying} />
-      ) : (
-        <ProblemNote
-          view={widget.view}
-          strip={{ status: 'missing', reason: PHOTOS_WIDGET_COPY.gone }}
-        />
-      )}
-      {playing === null ? null : (
-        <MemoryPlayer
-          key={playing.id}
-          memory={playing}
-          compact={compact}
-          onClose={() => {
-            setPlaying(null);
-          }}
-        />
-      )}
-    </>
+  return validPhotosWidget(widget) ? (
+    <Source id={widget.id} />
+  ) : (
+    <ProblemNote
+      view={widget.view}
+      strip={{ status: 'missing', reason: PHOTOS_WIDGET_COPY.gone }}
+    />
   );
 }

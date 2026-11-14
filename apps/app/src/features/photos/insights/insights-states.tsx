@@ -1,7 +1,7 @@
 import type { PhotoInsights } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { href } from '../../../app-shell/hrefs';
+import { PHOTOS_BACKUP_SETTINGS_HREF } from '../components/photos-frame';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
@@ -68,7 +68,7 @@ export function InsightsEmpty(): ReactNode {
       icon="trendUp"
       title="No photos yet"
       body="Insights show what you take, where and when. Upload photos or back up a phone to start."
-      action={<Button label="Open Backup" variant="tonal" href={href.photosPage('backup')} />}
+      action={<Button label="Open Backup" variant="tonal" href={PHOTOS_BACKUP_SETTINGS_HREF} />}
     />
   );
 }

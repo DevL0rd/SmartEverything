@@ -5,7 +5,7 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { SOURCE_COPY } from './copy';
+import { SOURCE_COPY } from './source-copy';
 
 export function SourceNote({ source }: { readonly source: PhotoSource }): ReactNode {
   const copy = SOURCE_COPY[source];

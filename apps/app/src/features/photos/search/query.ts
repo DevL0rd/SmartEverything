@@ -1,5 +1,4 @@
 import type { SmartRule, SmartRuleLeaf } from '@smarteverything/domain';
-import type { PhotoSearch } from '../data';
 import { SEARCH_MEDIA, tokenKey, type SearchToken } from './tokens';
 
 export interface SearchInput {
@@ -7,37 +6,9 @@ export interface SearchInput {
   readonly text: string;
 }
 
-function wordsOf(token: SearchToken): string | null {
-  switch (token.kind) {
-    case 'place':
-    case 'country':
-    case 'camera':
-    case 'album':
-      return token.label;
-    case 'date':
-    case 'media':
-    case 'favourites':
-      return null;
-  }
-}
-
-function textOf(input: SearchInput): string | null {
-  const parts = [...input.tokens.map(wordsOf), input.text.trim()].filter(
-    (part): part is string => part !== null && part !== '',
-  );
-  return parts.length === 0 ? null : parts.join(' ');
-}
-
-export function searchOf(input: SearchInput): PhotoSearch {
-  const date = input.tokens.find((token) => token.kind === 'date');
-  const media = input.tokens.find((token) => token.kind === 'media');
-  return {
-    text: textOf(input),
-    starred: input.tokens.some((token) => token.kind === 'favourites') ? true : null,
-    duration: null,
-    taken: date === undefined ? null : { from: date.from, to: date.to },
-    kinds: media === undefined ? SEARCH_MEDIA : [media.media],
-  };
+export function typedTextOf(input: SearchInput): string | null {
+  const text = input.text.trim();
+  return text === '' ? null : text;
 }
 
 export function searchKeyOf(input: SearchInput): string {

@@ -6,8 +6,7 @@ import { Button } from '../../../components/button';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { useDriveLink } from '../../nas/data/links';
-import { useDriveItem } from '../../nas/data/queries';
+import { useDriveItem, useDriveLink } from '../../drive';
 import { usePhotoStack } from '../data/queries';
 import { isMediaItem, isRaw } from './info-model';
 

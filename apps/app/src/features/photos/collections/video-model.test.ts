@@ -113,3 +113,12 @@ describe('the Videos figures', () => {
     expect(lengthText(2 * HOUR_MS)).toBe('2 h');
   });
 });
+
+describe('the video month heads', () => {
+  it('read the month total from the Library buckets', async () => {
+    const { bucketMonthTotal } = await import('./video-model');
+    const total = bucketMonthTotal([{ month: '2026-11', count: 24 }]);
+    expect(total('2026-11')).toBe(24);
+    expect(total('2026-10')).toBeNull();
+  });
+});

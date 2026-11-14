@@ -1,15 +1,13 @@
 import { keepPreviousData, skipToken, type UseQueryResult } from '@tanstack/react-query';
 import type {
-  DriveQueryPage,
+  LibraryScope,
   PhotoInsightRange,
   PhotoSource,
   PlaceClusterQuery,
 } from '@smarteverything/domain';
 import {
-  type PhotoScope,
   type PhotosResult,
-  listMemories,
-  listMemoryItems,
+  type SourceSearch,
   listPhotoSource,
   listPlaceClusters,
   listPhotoDuplicates,
@@ -24,19 +22,19 @@ import {
   readPhotoRailCounts,
   readPlace,
   readStack,
-  readTimelineBuckets,
-  readTimelinePage,
+  readLibraryBuckets,
+  readLibraryPage,
 } from '../../../api/photos';
 import { useScreenQuery } from '../../../queries/use-screen-query';
-import { useDrivePages, type DrivePages } from '../../nas/data/pages';
+import { useDrivePages, type DrivePages } from '../../drive';
 import { photoKeys } from './keys';
 
 export function usePhotoBuckets(
-  scope: PhotoScope,
-): UseQueryResult<PhotosResult<'readTimelineBuckets'>> {
+  scope: LibraryScope,
+): UseQueryResult<PhotosResult<'readLibraryBuckets'>> {
   return useScreenQuery({
     queryKey: photoKeys.buckets(scope),
-    queryFn: () => readTimelineBuckets(scope),
+    queryFn: () => readLibraryBuckets(scope),
     placeholderData: keepPreviousData,
     retry: false,
   });
@@ -44,12 +42,12 @@ export function usePhotoBuckets(
 
 export function usePhotoMonth(
   month: string,
-  scope: PhotoScope,
+  scope: LibraryScope,
   enabled: boolean,
-): DrivePages<PhotosResult<'readTimelinePage'>> {
+): DrivePages<PhotosResult<'readLibraryPage'>> {
   return useDrivePages({
     queryKey: photoKeys.month(month, scope),
-    read: (cursor) => readTimelinePage(month, scope, cursor),
+    read: (cursor) => readLibraryPage(month, scope, cursor),
     enabled,
   });
 }
@@ -78,21 +76,6 @@ export function usePhotoProcessing(): UseQueryResult<PhotosResult<'readMediaProc
     queryKey: photoKeys.processing(),
     queryFn: readMediaProcessing,
     retry: false,
-  });
-}
-
-export function usePhotoMemories(): UseQueryResult<PhotosResult<'listMemories'>> {
-  return useScreenQuery({
-    queryKey: photoKeys.memories(),
-    queryFn: listMemories,
-    retry: false,
-  });
-}
-
-export function usePhotoMemoryItems(memoryId: string): DrivePages<DriveQueryPage> {
-  return useDrivePages({
-    queryKey: photoKeys.memoryItems(memoryId),
-    read: (cursor) => listMemoryItems(memoryId, cursor),
   });
 }
 
@@ -151,10 +134,11 @@ export function usePhotoStack(stackId: string | null): UseQueryResult<PhotosResu
 export function usePhotoSource(
   source: PhotoSource,
   chipId: string | null,
+  search: SourceSearch,
 ): DrivePages<PhotosResult<'listPhotoSource'>> {
   return useDrivePages({
-    queryKey: photoKeys.source(source, chipId),
-    read: (cursor) => listPhotoSource(source, chipId, cursor),
+    queryKey: photoKeys.source(source, chipId, search),
+    read: (cursor) => listPhotoSource(source, chipId, search, cursor),
   });
 }
 

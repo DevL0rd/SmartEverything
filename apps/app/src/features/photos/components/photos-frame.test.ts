@@ -5,12 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BarSegment } from '../../../components/charts';
 import type { TabItem } from '../../../components/tabs-bar';
 import { bytes } from '../../../format/number';
-import type { LibraryFrameProps, LibrarySectionGroup } from '../../nas/frame';
+import type { LibraryFrameProps, LibrarySectionGroup } from '../../../components/library-frame';
 import { INITIAL_BACKUP_STATUS, type BackupStatus } from '../backup/model/status';
 import type { PhotosFrameProps, PhotosRailView } from './photos-frame';
 
 interface Seen {
-  owner: boolean;
   phone: boolean;
   area: number;
   counts: PhotoRailCounts | undefined;
@@ -21,7 +20,6 @@ interface Seen {
 }
 
 const seen = vi.hoisted((): Seen => ({
-  owner: true,
   phone: false,
   area: 1360,
   counts: undefined,
@@ -42,12 +40,23 @@ const seen = vi.hoisted((): Seen => ({
   segments: null,
 }));
 
-vi.mock('../../../store/selectors', () => ({ useIsOwner: (): boolean => seen.owner }));
 vi.mock('../../../design/platform', () => ({ isNative: (): boolean => seen.phone }));
 vi.mock('../../../design/size-class', () => ({ useAreaWidth: (): number => seen.area }));
 vi.mock('../backup/model/status', async (original) => ({
   ...(await original<object>()),
   useBackupStatus: (): BackupStatus => seen.status,
+}));
+vi.mock('../../drive', () => ({
+  useLibraryRefresh: (): { readonly refreshing: boolean; readonly refresh: () => void } => ({
+    refreshing: false,
+    refresh: (): void => undefined,
+  }),
+}));
+vi.mock('../../../app-shell/main-pages', () => ({
+  mainPageSettings: (): { readonly href: string; readonly label: string } => ({
+    href: '/settings/photos',
+    label: 'Photos settings',
+  }),
 }));
 vi.mock('../data', () => ({
   usePhotoRailCounts: (): { readonly data: PhotoRailCounts | undefined } => ({
@@ -67,10 +76,20 @@ vi.mock('../../../components/charts', () => ({
     return null;
   },
 }));
+vi.mock('../../../components/icon', () => ({ Icon: (): null => null }));
+vi.mock('../../../components/interactive', () => ({
+  Interactive: ({
+    href,
+    children,
+  }: {
+    readonly href: unknown;
+    readonly children: ReactNode;
+  }): ReactNode => createElement('a', { 'data-href': JSON.stringify(href) }, children),
+}));
 vi.mock('../../../components/tabs-bar', () => ({
   TabsBar: (): null => null,
 }));
-vi.mock('../../nas/frame', () => ({
+vi.mock('../../../components/library-frame', () => ({
   LibraryFrame: (props: LibraryFrameProps): ReactNode => {
     seen.frame = props;
     return createElement('main', {}, props.summary, props.children);
@@ -99,17 +118,14 @@ const {
 } = await import('./photos-frame');
 
 const COUNTS: PhotoRailCounts = {
-  timeline: 48213,
-  memories: 5,
+  library: 48213,
   albums: 24,
   places: 41,
   favourites: 1204,
   videos: 2318,
   screenshots: 3940,
-  cameras: 812,
-  ai: 96,
   duplicates: 37,
-  backupPhones: 3,
+  backupDevices: 3,
   deleted: 214,
 };
 
@@ -147,16 +163,14 @@ const UPLOADING: BackupStatus = {
   done: 6,
 };
 
-const WIDE: PhotosRailView = {
-  counts: COUNTS,
-  insights: INSIGHTS,
-  owner: true,
-  phone: false,
-  compact: false,
-  phoneLeft: null,
-};
+const WIDE: PhotosRailView = { counts: COUNTS, insights: INSIGHTS, compact: false };
 
-const COMPACT: PhotosRailView = { ...WIDE, phone: true, compact: true, phoneLeft: 34 };
+const COMPACT: PhotosRailView = { ...WIDE, compact: true };
+
+const BACKUP_HREF = JSON.stringify({
+  pathname: '/settings/[...page]',
+  params: { page: ['photos', 'backup'] },
+});
 
 function countsOf(groups: readonly LibrarySectionGroup[]): Readonly<Record<string, unknown>> {
   return Object.fromEntries(
@@ -177,7 +191,7 @@ function detailsOf(groups: readonly LibrarySectionGroup[]): Readonly<Record<stri
   );
 }
 
-const PROPS: PhotosFrameProps = { active: 'videos', children: createElement('p', {}, 'Body') };
+const PROPS: PhotosFrameProps = { active: 'insights', children: createElement('p', {}, 'Body') };
 
 function render(props: PhotosFrameProps = PROPS): string {
   return renderToStaticMarkup(createElement(PhotosFrame, props));
@@ -194,7 +208,6 @@ function tabsOf(chips: ReactNode): TabsSeen | null {
 }
 
 beforeEach(() => {
-  seen.owner = true;
   seen.phone = false;
   seen.area = 1360;
   seen.counts = undefined;
@@ -205,86 +218,90 @@ beforeEach(() => {
 });
 
 describe('photos rail', () => {
-  it('lists every section in the designed groups for the owner', () => {
+  it('lists Library, Albums and Map and places on top and the Manage group under them', () => {
     const groups = photosRailGroups(WIDE);
-    expect(groups.map((group) => group.title)).toEqual([null, 'Library', 'Manage']);
-    expect(groups.flatMap((group) => group.sections.map((section) => section.label))).toEqual([
-      'Timeline',
-      'Search',
-      'Memories',
-      'Albums',
-      'Map and places',
-      'Favourites',
-      'Videos',
-      'Screenshots',
-      'Cameras',
-      'Made with AI',
-      'Duplicates',
-      'Backup',
-      'Insights',
-      'Recently deleted',
+    expect(groups.map((group) => group.title)).toEqual([null, 'Manage']);
+    expect(
+      groups.map((group) => group.sections.map((section) => [section.id, section.label])),
+    ).toEqual([
+      [
+        ['library', 'Library'],
+        ['albums', 'Albums'],
+        ['map', 'Map and places'],
+      ],
+      [
+        ['insights', 'Insights'],
+        ['deleted', 'Recently deleted'],
+      ],
     ]);
   });
 
-  it('leaves Duplicates out for a member', () => {
-    const groups = photosRailGroups({ ...WIDE, owner: false });
-    expect(groups[2]?.sections.map((section) => section.id)).toEqual([
+  it('keeps search, memories, the browsing filters, duplicates and backup out of the rail', () => {
+    const ids = photosRailGroups(WIDE).flatMap((group) =>
+      group.sections.map((section) => section.id),
+    );
+    for (const gone of [
+      'timeline',
+      'search',
+      'memories',
+      'favourites',
+      'videos',
+      'screenshots',
+      'cameras',
+      'ai',
+      'duplicates',
       'backup',
-      'insights',
-      'deleted',
-    ]);
+    ]) {
+      expect(ids).not.toContain(gone);
+    }
   });
 
   it('puts a summary line under each wide rail row and no trailing count', () => {
     const groups = photosRailGroups(WIDE);
     expect(Object.values(countsOf(groups)).every((value) => value === null)).toBe(true);
-    expect(detailsOf(groups)).toMatchObject({
-      timeline: '<div><span>48,213 items</span></div>',
+    expect(detailsOf(groups)).toEqual({
+      library: '<div><span>48,213 items</span></div>',
       albums: '<div><span>24 albums</span></div>',
-      duplicates: '<div><span>37 groups</span></div>',
-      backup: '<div><span>3 devices</span></div>',
+      map: '<div><span>41 places</span></div>',
+      insights: '<div><span>41 places · 2 countries</span></div>',
+      deleted: '<div><span>214 items</span></div>',
     });
   });
 
   it('builds the summaries from the hub counts and the library insights', () => {
-    expect(railSummaryOf('videos', WIDE)).toBe('2,318 · 61 h');
     expect(railSummaryOf('insights', WIDE)).toBe('41 places · 2 countries');
-    expect(railSummaryOf('memories', WIDE)).toBe('5 memories');
     expect(railSummaryOf('deleted', WIDE)).toBe('214 items');
-    expect(railSummaryOf('favourites', WIDE)).toBe('1,204');
-    expect(railSummaryOf('search', WIDE)).toBe('Places, dates, what is in it');
-    expect(railSummaryOf('videos', { ...WIDE, insights: undefined })).toBe('2,318');
+    expect(railSummaryOf('library', { ...WIDE, counts: { ...COUNTS, library: 1 } })).toBe('1 item');
+    expect(railSummaryOf('deleted', { ...WIDE, counts: { ...COUNTS, deleted: 0 } })).toBeNull();
   });
 
   it('keeps every number blank until the counts answer', () => {
     const view = { ...WIDE, counts: undefined, insights: undefined };
     const details = detailsOf(photosRailGroups(view));
-    expect(Object.entries(details).filter(([, text]) => text !== '')).toEqual([
-      ['search', '<div><span>Places, dates, what is in it</span></div>'],
-    ]);
+    expect(Object.values(details).every((text) => text === '')).toBe(true);
     const counts = countsOf(photosRailGroups({ ...view, compact: true }));
     expect(Object.values(counts).every((value) => value === null)).toBe(true);
   });
 
-  it('gives the phone pull-up trailing counts with what is left on this phone', () => {
-    expect(countsOf(photosRailGroups(COMPACT))).toMatchObject({
-      timeline: 48213,
+  it('gives the phone pull-up trailing counts', () => {
+    expect(countsOf(photosRailGroups(COMPACT))).toEqual({
+      library: 48213,
+      albums: 24,
       map: 41,
-      duplicates: '37 groups',
-      backup: '34 left',
-      search: null,
       insights: null,
+      deleted: 214,
     });
-    expect(countsOf(photosRailGroups({ ...COMPACT, phoneLeft: 0 }))['backup']).toBeNull();
     expect(photosRailGroups(COMPACT)[0]?.sections[0]?.detail).toBeUndefined();
   });
 
   it('links every section and names the page after it', () => {
-    expect(photosHrefOf('timeline')).toBe('/photos');
+    expect(photosHrefOf('library')).toBe('/photos');
     expect(photosHrefOf('albums')).toEqual({ pathname: '/photos/albums', params: {} });
+    expect(photosHrefOf('map')).toEqual({ pathname: '/photos/map', params: {} });
     expect(photosHrefOf('deleted')).toEqual({ pathname: '/photos/deleted', params: {} });
-    expect(() => photosHrefOf('people')).toThrow();
-    expect(photosTitleOf('timeline')).toBe('Photos');
+    expect(() => photosHrefOf('memories')).toThrow();
+    expect(() => photosHrefOf('backup')).toThrow();
+    expect(photosTitleOf('library')).toBe('Photos');
     expect(photosTitleOf('deleted')).toBe('Recently deleted');
   });
 });
@@ -345,47 +362,48 @@ describe('photos frame', () => {
   it('puts the section in the Photos library frame with a blank well before data', () => {
     const markup = render();
     expect(seen.frame?.area).toBe('photos');
-    expect(seen.frame?.title).toBe('Videos');
-    expect(seen.frame?.active).toBe('videos');
-    expect(seen.frame?.hrefOf('backup')).toEqual({ pathname: '/photos/backup', params: {} });
+    expect(seen.frame?.title).toBe('Insights');
+    expect(seen.frame?.active).toBe('insights');
+    expect(seen.frame?.hrefOf('map')).toEqual({ pathname: '/photos/map', params: {} });
     expect(markup).toBe('<main><aside>Library</aside><p>Body</p></main>');
     expect(seen.segments).toBeNull();
   });
 
-  it('fills the rail well with the library size and the phones count on a desktop', () => {
+  it('fills the rail well with the library size and a devices line that opens backup settings', () => {
     seen.counts = COUNTS;
     seen.insights = INSIGHTS;
     const markup = render();
     expect(markup).toContain(bytes(2048));
+    expect(markup).toContain(`data-href="${BACKUP_HREF.replaceAll('"', '&quot;')}"`);
     expect(markup).toContain('3 devices back up here');
     expect(seen.segments?.[0]?.value).toBe(2048);
   });
 
-  it('gives the phone pull-up the items, size and this phone, and hides Duplicates from a member', () => {
+  it('gives the phone pull-up the items and size with this device as a link to backup settings', () => {
     seen.phone = true;
     seen.area = 412;
-    seen.owner = false;
-    seen.counts = { ...COUNTS, duplicates: null };
+    seen.counts = COUNTS;
     seen.insights = INSIGHTS;
     seen.status = UPLOADING;
     const markup = render();
-    expect(markup).toContain('<aside>Photos<span>This device: 34 left</span>');
-    expect(markup).toContain(`48,213 items · ${bytes(2048)}`);
-    expect(markup).toContain('Backing up');
+    expect(markup).toContain(`<aside>Photos<span>48,213 items · ${bytes(2048)}</span>`);
+    expect(markup).toContain(`data-href="${BACKUP_HREF.replaceAll('"', '&quot;')}"`);
+    expect(markup).toContain('This device: 34 left · Backing up');
     expect(seen.segments).toBeNull();
-    const ids = seen.frame?.sections.flatMap((group) =>
-      group.sections.map((section) => section.id),
-    );
-    expect(ids).not.toContain('duplicates');
   });
 
-  it('gives the phone the Timeline, Memories, Albums and Places tabs on a section page', () => {
+  it('leaves the backup link out while nothing is known about backups', () => {
+    seen.phone = false;
+    seen.counts = undefined;
+    expect(render()).not.toContain('data-href');
+  });
+
+  it('gives the phone the Library, Albums and Places tabs on a section page', () => {
     render({ active: 'albums', children: null });
     const tabs = tabsOf(seen.frame?.chips);
     expect(tabs?.active).toBe('albums');
     expect(tabs?.items.map((item) => [item.label, item.href])).toEqual([
-      ['Timeline', '/photos'],
-      ['Memories', { pathname: '/photos/memories', params: {} }],
+      ['Library', '/photos'],
       ['Albums', { pathname: '/photos/albums', params: {} }],
       ['Places', { pathname: '/photos/map', params: {} }],
     ]);

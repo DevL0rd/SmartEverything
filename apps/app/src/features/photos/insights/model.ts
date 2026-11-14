@@ -94,7 +94,7 @@ export function favouritesItem(counts: PhotoRailCounts | undefined): MetricItem 
   return {
     key: 'favourites',
     label: 'Favourites',
-    value: percent(counts.timeline === 0 ? 0 : counts.favourites / counts.timeline, 1),
+    value: percent(counts.library === 0 ? 0 : counts.favourites / counts.library, 1),
     caption: counts.favourites === 1 ? '1 photo' : `${count(counts.favourites)} photos`,
   };
 }

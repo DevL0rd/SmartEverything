@@ -4,7 +4,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { Path } from 'react-native-svg';
-import type { TimelineBucket } from '@smarteverything/domain';
+import type { LibraryBucket } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Text } from '../../../components/text';
@@ -32,7 +32,7 @@ const ADJUST = [
 ] as const;
 
 export interface MonthRangeProps {
-  readonly months: readonly TimelineBucket[];
+  readonly months: readonly LibraryBucket[];
   readonly range: MonthRange;
   readonly onRange: (range: MonthRange) => void;
 }
@@ -128,7 +128,7 @@ function Ticks({
   months,
   width,
 }: {
-  readonly months: readonly TimelineBucket[];
+  readonly months: readonly LibraryBucket[];
   readonly width: number;
 }): ReactNode {
   return (

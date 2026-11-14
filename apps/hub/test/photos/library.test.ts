@@ -441,6 +441,17 @@ describe('library scopes', () => {
     expect(total({ filter: 'all', placeId: 1001 })).toBe(1);
   });
 
+  it('narrows videos by a duration bucket', () => {
+    seed({ n: 4, kind: 'video', takenAt: '2026-05-13T10:00:00.000Z', durationMs: 30_000 });
+    seed({ n: 5, kind: 'video', takenAt: '2026-05-14T10:00:00.000Z', durationMs: 120_000 });
+    seed({ n: 6, kind: 'video', takenAt: '2026-05-15T10:00:00.000Z', durationMs: 7_200_000 });
+    expect(total({ filter: 'videos' })).toBe(3);
+    expect(total({ filter: 'videos', duration: 'under_1m' })).toBe(1);
+    expect(total({ filter: 'videos', duration: '1_to_10m' })).toBe(1);
+    expect(total({ filter: 'videos', duration: '10_to_60m' })).toBe(0);
+    expect(total({ filter: 'videos', duration: 'over_60m' })).toBe(1);
+  });
+
   it('narrows by a range of days inclusive of both ends', () => {
     expect(total({ filter: 'all', from: '2026-04-11', to: '2026-05-12' })).toBe(2);
     expect(total({ filter: 'all', from: '2026-04-12' })).toBe(1);

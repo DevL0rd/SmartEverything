@@ -184,8 +184,8 @@ describe('the backup state', () => {
     expect(BACKUP_STATE.safeParse({ devices: [], bytesLeft: 0 }).success).toBe(false);
   });
 
-  it('keeps the photos preference on its second version without the memories fields', () => {
-    expect(PHOTOS_CLIENT_PREFS.photos.version).toBe(2);
+  it('keeps the photos preference on its third version without the memories fields', () => {
+    expect(PHOTOS_CLIENT_PREFS.photos.version).toBe(3);
     expect(Object.keys(PHOTOS_PREF.shape)).not.toContain('memories');
     expect(Object.keys(PHOTOS_PREF.shape)).toContain('libraryZoom');
   });

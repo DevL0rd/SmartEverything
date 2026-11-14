@@ -567,7 +567,8 @@ describe('routes', () => {
     );
     expect(have).toMatchObject({ missing: [] });
     const own = await bound.readBackupState.run(caller(alice), raw(undefined), log);
-    expect(own.devices).toHaveLength(1);
+    expect(own).toMatchObject({ devices: [{ device: { deviceId: alicePhone } }] });
+    expect(own).toHaveProperty('devices.length', 1);
     expect(await bound.readBackupState.run(caller(bob), raw(undefined), log)).toEqual({
       devices: [],
       bytesLeft: 0,

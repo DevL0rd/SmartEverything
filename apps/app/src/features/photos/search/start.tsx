@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
-import { Icon } from '../../../components/icon';
-import { IconButton } from '../../../components/icon-button';
-import { Interactive } from '../../../components/interactive';
+import { FlatChoice } from '../../../components/flat-choice';
+import { ChipRow } from '../../../components/library-frame';
 import { Text } from '../../../components/text';
-import { cn } from '../../../design/cn';
-import { useIdiom } from '../../../design/platform';
 import type { SearchInput } from './query';
 import type { RecentSearch } from './recent';
 import type { TryChip } from './try-chips';
@@ -15,7 +12,44 @@ export interface SearchStartProps {
   readonly chips: readonly TryChip[];
   readonly recent: readonly RecentSearch[];
   readonly onApply: (search: SearchInput) => void;
-  readonly onForget: (key: string) => void;
+  readonly onClearRecent: () => void;
+}
+
+export function hasStart(chips: readonly TryChip[], recent: readonly RecentSearch[]): boolean {
+  return chips.length > 0 || recent.length > 0;
+}
+
+function RecentRow({
+  recent,
+  onApply,
+  onClearRecent,
+}: Pick<SearchStartProps, 'recent' | 'onApply' | 'onClearRecent'>): ReactNode {
+  if (recent.length === 0) return null;
+  return (
+    <View className="gap-1">
+      <View className="flex-row items-center justify-between gap-2">
+        <Text variant="caption" tone="variant">
+          Recent searches
+        </Text>
+        <Button label="Clear recent searches" variant="text" onPress={onClearRecent} />
+      </View>
+      <ChipRow label="Recent searches">
+        {recent.map((entry) => (
+          <FlatChoice
+            key={entry.key}
+            label={entry.title}
+            spoken={`Search again for ${entry.title}`}
+            icon="history"
+            role="button"
+            active={false}
+            onPress={() => {
+              onApply(entry);
+            }}
+          />
+        ))}
+      </ChipRow>
+    </View>
+  );
 }
 
 function TryRow({ chips, onApply }: Pick<SearchStartProps, 'chips' | 'onApply'>): ReactNode {
@@ -25,74 +59,34 @@ function TryRow({ chips, onApply }: Pick<SearchStartProps, 'chips' | 'onApply'>)
       <Text variant="caption" tone="variant">
         Try
       </Text>
-      <View className="flex-row flex-wrap gap-2">
+      <ChipRow label="Try a search">
         {chips.map((chip) => (
-          <Button
+          <FlatChoice
             key={chip.label}
             label={chip.label}
-            variant="tonal"
+            icon="sparkles"
+            role="button"
+            active={false}
             onPress={() => {
               onApply({ tokens: chip.tokens, text: '' });
             }}
           />
         ))}
-      </View>
+      </ChipRow>
     </View>
   );
 }
 
-function RecentRow({
-  entry,
+export function SearchStart({
+  chips,
+  recent,
   onApply,
-  onForget,
-}: {
-  readonly entry: RecentSearch;
-  readonly onApply: (search: SearchInput) => void;
-  readonly onForget: (key: string) => void;
-}): ReactNode {
-  const pointer = useIdiom() === 'pointer';
-  return (
-    <View className={cn('flex-row items-center gap-1', pointer ? 'min-h-9' : 'min-h-touch-min')}>
-      <Interactive
-        role="button"
-        label={`Search again for ${entry.title}`}
-        onPress={() => {
-          onApply(entry);
-        }}
-        className="min-h-touch-min flex-1 flex-row items-center gap-3 rounded-sm px-1"
-        layerClassName="rounded-sm"
-      >
-        <Icon name="history" size={pointer ? 16 : 20} tone="variant" />
-        <Text variant={pointer ? 'footnote' : 'body'} className="flex-1" numberOfLines={1}>
-          {entry.title}
-        </Text>
-      </Interactive>
-      <IconButton
-        icon="close"
-        label={`Forget ${entry.title}`}
-        tone="faint"
-        onPress={() => {
-          onForget(entry.key);
-        }}
-      />
-    </View>
-  );
-}
-
-export function SearchStart({ chips, recent, onApply, onForget }: SearchStartProps): ReactNode {
+  onClearRecent,
+}: SearchStartProps): ReactNode {
   return (
     <View className="gap-section-gap">
+      <RecentRow recent={recent} onApply={onApply} onClearRecent={onClearRecent} />
       <TryRow chips={chips} onApply={onApply} />
-      {recent.length === 0 ? null : (
-        <View className="gap-1">
-          <Text variant="caption" tone="variant">
-            Recent
-          </Text>
-          {recent.map((entry) => (
-            <RecentRow key={entry.key} entry={entry} onApply={onApply} onForget={onForget} />
-          ))}
-        </View>
-      )}
     </View>
   );
 }

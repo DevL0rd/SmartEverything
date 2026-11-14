@@ -1,11 +1,11 @@
-import type { DriveDurationBucket, PhotoInsights } from '@smarteverything/domain';
+import type { DriveDurationBucket, LibraryBucket, PhotoInsights } from '@smarteverything/domain';
 import type { Bar } from '../../../components/charts';
 import type { DayText } from '../../../components/media-grid/day-text';
 import { monthTitle } from '../../../components/media-grid/scrubber-model';
 import type { MediaDay } from '../../../components/media-grid/tiles';
 import { bytes, count, decimal } from '../../../format/number';
 import { DAY_MS, MINUTE_MS, playTime } from '../../../format/time';
-import { monthInitial, monthName } from '../memories/text';
+import { monthInitial, monthName } from '../model/media-text';
 
 export interface VideoStats {
   readonly videos: string;
@@ -116,4 +116,11 @@ export function hoursLabelOf(hours: HoursAdded): string {
   const peak = peakHoursOf(hours);
   const base = 'Hours of video added per month over the last 12 months';
   return peak === null ? base : `${base}, ${monthName(peak.month)} is the peak`;
+}
+
+export type MonthTotal = (month: string) => number | null;
+
+export function bucketMonthTotal(buckets: readonly LibraryBucket[]): MonthTotal {
+  const counts = new Map(buckets.map((bucket) => [bucket.month, bucket.count] as const));
+  return (month) => counts.get(month) ?? null;
 }

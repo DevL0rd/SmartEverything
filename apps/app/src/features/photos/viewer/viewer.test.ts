@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { albumRow } from '../../nas/data/fixtures';
+import { albumRow } from '../../drive/data/fixtures';
 import { ViewerScreen, viewerParamsOf, viewerTargetOf } from './index';
 import { albumMenuItems, moreMenuItems } from './menus';
 import { photoLookOf } from './photo';
@@ -14,10 +14,10 @@ describe('photo viewer', () => {
     expect(typeof ViewerScreen).toBe('function');
   });
 
-  it('reads the item and its timeline scope from the route and writes them back', () => {
+  it('reads the item and its library scope from the route and writes them back', () => {
     expect(viewerTargetOf({ itemId: ITEM })).toEqual({
       itemId: ITEM,
-      scope: { filter: 'all', placeId: null },
+      scope: { filter: 'all' },
     });
     const target = viewerTargetOf({ itemId: ITEM, filter: 'videos', placeId: '7' });
     expect(target?.scope).toEqual({ filter: 'videos', placeId: 7 });
@@ -25,7 +25,7 @@ describe('photo viewer', () => {
       filter: 'videos',
       placeId: '7',
     });
-    expect(viewerParamsOf({ filter: 'all', placeId: null })).toEqual({});
+    expect(viewerParamsOf({ filter: 'all' })).toEqual({});
   });
 
   it('refuses a link that is not a photo id or carries unknown parameters', () => {

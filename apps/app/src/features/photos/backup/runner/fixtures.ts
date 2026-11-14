@@ -1,5 +1,5 @@
 import type { BackupHave, BackupHaveResult, BackupRegister } from '@smarteverything/domain';
-import type { UploadHandle, UploadOutcome } from '../../../nas/uploads/types';
+import type { UploadHandle, UploadOutcome } from '../../../drive';
 import type { Conditions, MediaAccess, MediaRow, MediaScope, MediaStat } from '../model/types';
 import type {
   BackupHubPort,

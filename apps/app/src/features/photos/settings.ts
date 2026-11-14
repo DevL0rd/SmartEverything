@@ -1,3 +1,4 @@
+import { createElement, type ComponentType } from 'react';
 import {
   PHOTOS_GROUPINGS,
   PHOTOS_ZOOMS,
@@ -5,14 +6,25 @@ import {
   type PhotosPref,
 } from '@smarteverything/domain';
 import { changeBackupEnabled } from './backup/activation';
+import { BackupAlbumsRow } from './settings/backup-albums';
+import { MapAttributionRow } from './settings/map-attribution';
+import { BackupFolderRow, OriginalQualityRow } from './settings/phone-rows';
 import { href } from '../../app-shell/hrefs';
 import type { IconName } from '../../components/icon';
 import type { SettingContext, SettingDefinition, SettingEnv } from '../../settings/types';
 import { PREFS, prefValueOf, savePref } from '../../store/prefs';
 import type { StoreState } from '../../store/state';
 
-const PAGE = 'photos';
-const DRIVE_PAGE = 'drive';
+export const PHOTOS_PAGE = 'photos';
+export const PHOTOS_BACKUP_PAGE = 'photos/backup';
+export const PHOTOS_DUPLICATES_PAGE = 'photos/duplicates';
+
+const LIBRARY = 'Library';
+const SOURCES = 'Sources';
+const MAP = 'Map and places';
+const THIS_DEVICE = 'This device';
+const DETECTION = 'Duplicate detection';
+
 const ZOOM_LABELS = {
   years: 'Years',
   months: 'Months',
@@ -24,6 +36,7 @@ const GROUP_LABELS = { day: 'Day', month: 'Month' } as const satisfies Readonly<
 >;
 
 const localDevice = (env: SettingEnv): boolean => env.platform !== 'web';
+const onAndroid = (env: SettingEnv): boolean => env.platform === 'android';
 const ownerOnly = (env: SettingEnv): boolean => env.owner;
 
 const photosOf = (state: StoreState): PhotosPref => prefValueOf(state, PREFS.photos);
@@ -39,23 +52,23 @@ function saveBackup(context: SettingContext, patch: Partial<PhotosBackupPref>): 
   return Promise.resolve();
 }
 
-interface PhotosSwitchSpec {
+type SwitchKey<T> = { readonly [K in keyof T]: T[K] extends boolean ? K : never }[keyof T];
+
+interface SwitchSpec<T> {
   readonly id: string;
   readonly section: string;
   readonly title: string;
   readonly description?: string;
   readonly icon?: IconName;
   readonly keywords: readonly string[];
-  readonly key: {
-    readonly [K in keyof PhotosPref]: PhotosPref[K] extends boolean ? K : never;
-  }[keyof PhotosPref];
+  readonly key: SwitchKey<T>;
 }
 
-function photosSwitch(spec: PhotosSwitchSpec): SettingDefinition {
+function photosSwitch(spec: SwitchSpec<PhotosPref>): SettingDefinition {
   const { key } = spec;
   return {
     id: spec.id,
-    page: PAGE,
+    page: PHOTOS_PAGE,
     section: spec.section,
     title: spec.title,
     ...(spec.description === undefined ? {} : { description: spec.description }),
@@ -68,22 +81,12 @@ function photosSwitch(spec: PhotosSwitchSpec): SettingDefinition {
   };
 }
 
-interface BackupSwitchSpec {
-  readonly id: string;
-  readonly title: string;
-  readonly description?: string;
-  readonly keywords: readonly string[];
-  readonly key: {
-    readonly [K in keyof PhotosBackupPref]: PhotosBackupPref[K] extends boolean ? K : never;
-  }[keyof PhotosBackupPref];
-}
-
-function backupSwitch(spec: BackupSwitchSpec): SettingDefinition {
+function backupSwitch(spec: Omit<SwitchSpec<PhotosBackupPref>, 'section'>): SettingDefinition {
   const { key } = spec;
   return {
     id: spec.id,
-    page: PAGE,
-    section: 'Backup on this device',
+    page: PHOTOS_BACKUP_PAGE,
+    section: THIS_DEVICE,
     title: spec.title,
     ...(spec.description === undefined ? {} : { description: spec.description }),
     keywords: spec.keywords,
@@ -98,10 +101,86 @@ function backupSwitch(spec: BackupSwitchSpec): SettingDefinition {
   };
 }
 
-const SOURCES: readonly SettingDefinition[] = [
+interface RowSpec {
+  readonly id: string;
+  readonly page: string;
+  readonly section: string;
+  readonly title: string;
+  readonly keywords: readonly string[];
+  readonly scope: SettingDefinition['scope'];
+  readonly visible?: (env: SettingEnv) => boolean;
+  readonly component: ComponentType;
+}
+
+function customRow(spec: RowSpec): SettingDefinition {
+  return {
+    id: spec.id,
+    page: spec.page,
+    section: spec.section,
+    title: spec.title,
+    keywords: spec.keywords,
+    scope: spec.scope,
+    ...(spec.visible === undefined ? {} : { visible: spec.visible }),
+    control: 'custom',
+    row: true,
+    render: () => createElement(spec.component),
+  };
+}
+
+const LIBRARY_SETTINGS: readonly SettingDefinition[] = [
+  {
+    id: 'photos.library.zoom',
+    page: PHOTOS_PAGE,
+    section: LIBRARY,
+    title: 'Opens at',
+    keywords: ['zoom', 'years', 'months', 'days', 'comfortable', 'library'],
+    scope: 'server',
+    control: 'select',
+    inline: true,
+    options: PHOTOS_ZOOMS.map((value) => ({ value, label: ZOOM_LABELS[value] })),
+    read: (state) => photosOf(state).libraryZoom,
+    write: (value, context): Promise<void> => {
+      const zoom = PHOTOS_ZOOMS.find((candidate) => candidate === value);
+      return zoom === undefined ? Promise.resolve() : savePhotos(context, { libraryZoom: zoom });
+    },
+  },
+  {
+    id: 'photos.library.group',
+    page: PHOTOS_PAGE,
+    section: LIBRARY,
+    title: 'Group by',
+    keywords: ['group', 'day', 'month', 'library'],
+    scope: 'server',
+    control: 'select',
+    inline: true,
+    options: PHOTOS_GROUPINGS.map((value) => ({ value, label: GROUP_LABELS[value] })),
+    read: (state) => photosOf(state).libraryGroup,
+    write: (value, context): Promise<void> => {
+      const group = PHOTOS_GROUPINGS.find((candidate) => candidate === value);
+      return group === undefined ? Promise.resolve() : savePhotos(context, { libraryGroup: group });
+    },
+  },
+  photosSwitch({
+    id: 'photos.library.videos',
+    section: LIBRARY,
+    title: 'Show videos',
+    keywords: ['videos', 'library'],
+    key: 'showVideos',
+  }),
+  photosSwitch({
+    id: 'photos.library.not_backed_up',
+    section: LIBRARY,
+    title: 'Show items not backed up',
+    description: 'Show photos that are still only on this device, marked as not backed up.',
+    keywords: ['not backed up', 'only on this device', 'library'],
+    key: 'showNotBackedUp',
+  }),
+];
+
+const SOURCE_SETTINGS: readonly SettingDefinition[] = [
   photosSwitch({
     id: 'photos.sources.cameras',
-    section: 'Sources',
+    section: SOURCES,
     title: 'Cameras',
     description: 'Show camera recordings and snapshots in Photos.',
     keywords: ['cameras', 'snapshots', 'recordings', 'sources'],
@@ -109,84 +188,58 @@ const SOURCES: readonly SettingDefinition[] = [
   }),
   photosSwitch({
     id: 'photos.sources.ai',
-    section: 'Sources',
+    section: SOURCES,
     title: 'Made with AI',
     description: 'Show images made by the assistant in Photos.',
     keywords: ['ai', 'generated', 'assistant', 'images', 'sources'],
     key: 'showAi',
   }),
-  {
-    id: 'photos.sources.folders',
-    page: PAGE,
-    section: 'Sources',
-    title: 'Show in Photos per library folder',
-    description: 'Choose which library folders appear in Photos in Drive settings.',
-    icon: 'folder',
-    keywords: ['library', 'folders', 'sources', 'show in photos'],
-    scope: 'server',
-    control: 'link',
-    visible: ownerOnly,
-    href: href.settings.focus(DRIVE_PAGE, 'drive.roots'),
-  },
 ];
 
-const TIMELINE: readonly SettingDefinition[] = [
-  {
-    id: 'photos.timeline.zoom',
-    page: PAGE,
-    section: 'Timeline',
-    title: 'Opens at',
-    keywords: ['zoom', 'years', 'months', 'days', 'comfortable', 'timeline'],
-    scope: 'server',
-    control: 'select',
-    inline: true,
-    options: PHOTOS_ZOOMS.map((value) => ({ value, label: ZOOM_LABELS[value] })),
-    read: (state) => photosOf(state).timelineZoom,
-    write: (value, context): Promise<void> => {
-      const zoom = PHOTOS_ZOOMS.find((candidate) => candidate === value);
-      return zoom === undefined ? Promise.resolve() : savePhotos(context, { timelineZoom: zoom });
-    },
-  },
-  {
-    id: 'photos.timeline.group',
-    page: PAGE,
-    section: 'Timeline',
-    title: 'Group by',
-    keywords: ['group', 'day', 'month', 'timeline'],
-    scope: 'server',
-    control: 'select',
-    inline: true,
-    options: PHOTOS_GROUPINGS.map((value) => ({ value, label: GROUP_LABELS[value] })),
-    read: (state) => photosOf(state).timelineGroup,
-    write: (value, context): Promise<void> => {
-      const group = PHOTOS_GROUPINGS.find((candidate) => candidate === value);
-      return group === undefined
-        ? Promise.resolve()
-        : savePhotos(context, { timelineGroup: group });
-    },
-  },
+const MAP_SETTINGS: readonly SettingDefinition[] = [
   photosSwitch({
-    id: 'photos.timeline.videos',
-    section: 'Timeline',
-    title: 'Show videos',
-    keywords: ['videos', 'timeline'],
-    key: 'showVideos',
+    id: 'photos.map.enabled',
+    section: MAP,
+    title: 'Map and places',
+    description: 'Show where photos were taken.',
+    keywords: ['map', 'places', 'location', 'gps', 'countries'],
+    key: 'map',
   }),
   photosSwitch({
-    id: 'photos.timeline.not_backed_up',
-    section: 'Timeline',
-    title: 'Show items not backed up',
-    description: 'Show photos that are still only on a phone, marked as not backed up.',
-    keywords: ['not backed up', 'only on this phone', 'timeline'],
-    key: 'showNotBackedUp',
+    id: 'photos.map.remove_location_outside',
+    section: MAP,
+    title: 'Remove location when sharing outside the home',
+    description:
+      'Links for people outside the home get photos and videos without GPS. People at home and your own downloads keep it.',
+    icon: 'locoff',
+    keywords: ['location', 'gps', 'strip', 'privacy', 'share', 'exif', 'links'],
+    key: 'removeLocationOutside',
+  }),
+  customRow({
+    id: 'photos.map.attribution',
+    page: PHOTOS_PAGE,
+    section: MAP,
+    title: 'Map data',
+    keywords: ['attribution', 'geonames', 'natural earth', 'map data', 'licence'],
+    scope: 'server',
+    component: MapAttributionRow,
   }),
 ];
 
-const BACKUP: readonly SettingDefinition[] = [
+const deviceRow = (spec: Omit<RowSpec, 'page' | 'section' | 'scope'>): SettingDefinition =>
+  customRow({
+    page: PHOTOS_BACKUP_PAGE,
+    section: THIS_DEVICE,
+    scope: 'device',
+    visible: localDevice,
+    ...spec,
+  });
+
+const BACKUP_SETTINGS: readonly SettingDefinition[] = [
   backupSwitch({
     id: 'photos.backup.enabled',
     title: 'Back up this device',
-    description: 'Copy this device’s photos and videos to your server as originals.',
+    description: 'Copy this device’s photos and videos to Photos in your drive as originals.',
     keywords: ['backup', 'camera roll', 'upload', 'phone', 'sync'],
     key: 'enabled',
   }),
@@ -209,67 +262,32 @@ const BACKUP: readonly SettingDefinition[] = [
     keywords: ['videos', 'backup'],
     key: 'includeVideos',
   }),
-];
-
-const MEMORIES: readonly SettingDefinition[] = [
-  photosSwitch({
-    id: 'photos.memories.enabled',
-    section: 'Memories',
-    title: 'Memories',
-    description: 'Suggest on this day, trips and days out.',
-    keywords: ['memories', 'on this day', 'trips', 'days out'],
-    key: 'memories',
+  deviceRow({
+    id: 'photos.backup.albums',
+    title: 'Albums and folders',
+    keywords: ['albums', 'folders', 'camera roll', 'backup'],
+    component: BackupAlbumsRow,
+    visible: onAndroid,
   }),
-  {
-    id: 'photos.memories.trip_distance',
-    page: PAGE,
-    section: 'Memories',
-    title: 'Trips start this far from home',
-    keywords: ['trips', 'distance', 'home', 'kilometres', 'memories'],
-    scope: 'server',
-    control: 'stepper',
-    min: 5,
-    max: 20000,
-    step: 5,
-    unit: 'km',
-    read: (state) => photosOf(state).tripDistanceKm,
-    write: (value, context) => savePhotos(context, { tripDistanceKm: value }),
-  },
-  photosSwitch({
-    id: 'photos.memories.year_in_review',
-    section: 'Memories',
-    title: 'Year in review',
-    keywords: ['year in review', 'memories', 'annual'],
-    key: 'yearInReview',
+  deviceRow({
+    id: 'photos.backup.original',
+    title: 'Original quality',
+    keywords: ['quality', 'original', 'compression', 'full resolution', 'backup'],
+    component: OriginalQualityRow,
+  }),
+  deviceRow({
+    id: 'photos.backup.folder',
+    title: 'Backup folder',
+    keywords: ['folder', 'camera roll', 'where', 'path', 'backup', 'my drive'],
+    component: BackupFolderRow,
   }),
 ];
 
-const MAP: readonly SettingDefinition[] = [
-  photosSwitch({
-    id: 'photos.map.enabled',
-    section: 'Map and places',
-    title: 'Map and places',
-    description: 'Show where photos were taken.',
-    keywords: ['map', 'places', 'location', 'gps', 'countries'],
-    key: 'map',
-  }),
-  photosSwitch({
-    id: 'photos.map.remove_location_outside',
-    section: 'Map and places',
-    title: 'Remove location when sharing outside the home',
-    description:
-      'Links for people outside the home get photos and videos without GPS. People at home and your own downloads keep it.',
-    icon: 'locoff',
-    keywords: ['location', 'gps', 'strip', 'privacy', 'share', 'exif', 'links'],
-    key: 'removeLocationOutside',
-  }),
-];
-
-const DUPLICATES: readonly SettingDefinition[] = [
+const DUPLICATE_SETTINGS: readonly SettingDefinition[] = [
   {
     id: 'photos.duplicates.hashing',
-    page: PAGE,
-    section: 'Duplicates',
+    page: PHOTOS_DUPLICATES_PAGE,
+    section: DETECTION,
     title: 'Duplicate detection',
     description: 'Hashing is switched on or off in Drive indexing settings.',
     icon: 'copy',
@@ -277,15 +295,14 @@ const DUPLICATES: readonly SettingDefinition[] = [
     scope: 'server',
     control: 'link',
     visible: ownerOnly,
-    href: href.settings.focus(DRIVE_PAGE, 'drive.indexing'),
+    href: href.settings.focus('drive', 'drive.indexing'),
   },
 ];
 
-export const SETTINGS: readonly SettingDefinition[] = [
-  ...SOURCES,
-  ...TIMELINE,
-  ...BACKUP,
-  ...MEMORIES,
-  ...MAP,
-  ...DUPLICATES,
+export const PHOTOS_SETTINGS: readonly SettingDefinition[] = [
+  ...LIBRARY_SETTINGS,
+  ...SOURCE_SETTINGS,
+  ...MAP_SETTINGS,
+  ...BACKUP_SETTINGS,
+  ...DUPLICATE_SETTINGS,
 ];

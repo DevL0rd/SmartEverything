@@ -1,9 +1,8 @@
 import type {
-  Memory,
   PhotoPlace,
   PlaceCluster,
   PlaceCountry,
-  TimelineBucket,
+  LibraryBucket,
 } from '@smarteverything/domain';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import { count } from '../../../format/number';
@@ -146,7 +145,7 @@ export function clusterLine(
     .join(' · ');
 }
 
-export function visitChips(buckets: readonly TimelineBucket[]): readonly VisitChip[] {
+export function visitChips(buckets: readonly LibraryBucket[]): readonly VisitChip[] {
   return monthsOf(buckets)
     .slice()
     .reverse()
@@ -157,7 +156,7 @@ export function visitChips(buckets: readonly TimelineBucket[]): readonly VisitCh
     }));
 }
 
-export function spanLine(buckets: readonly TimelineBucket[]): string | null {
+export function spanLine(buckets: readonly LibraryBucket[]): string | null {
   const months = monthsOf(buckets);
   const first = months[0];
   const last = months.at(-1);
@@ -168,16 +167,8 @@ export function spanLine(buckets: readonly TimelineBucket[]): string | null {
   return `${years} · ${visitsText(months.length)}`;
 }
 
-export function totalOf(buckets: readonly TimelineBucket[] | undefined): number | null {
+export function totalOf(buckets: readonly LibraryBucket[] | undefined): number | null {
   return buckets === undefined ? null : buckets.reduce((sum, bucket) => sum + bucket.count, 0);
-}
-
-export function placeMemoryOf(memories: readonly Memory[], placeId: number): Memory | null {
-  return memories.reduce<Memory | null>((latest, memory) => {
-    if (memory.kind !== 'trip' && memory.kind !== 'day_out') return latest;
-    if (memory.placeId !== placeId) return latest;
-    return latest === null || memory.to > latest.to ? memory : latest;
-  }, null);
 }
 
 export interface MonthTiles {
@@ -186,7 +177,7 @@ export interface MonthTiles {
 }
 
 export function feedMonths(
-  buckets: readonly TimelineBucket[],
+  buckets: readonly LibraryBucket[],
   month: string | null,
 ): readonly string[] {
   return monthsOf(buckets)

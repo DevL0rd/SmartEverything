@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useValue } from '../../../design/external-store';
-import { driveProgress, type DriveProgress } from '../../nas/data/progress';
+import { driveProgress, type DriveProgress } from '../../drive';
 
 export interface PhotosActivity {
   readonly done: number;

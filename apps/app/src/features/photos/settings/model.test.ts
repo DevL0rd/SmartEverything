@@ -1,28 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import type { BackupState } from '@smarteverything/domain';
-import { INITIAL_BACKUP_STATUS } from '../backup/model/status';
-import { toggled } from './excluded-albums';
+import type { BackupDeviceState, BackupState } from '@smarteverything/domain';
+import { INITIAL_BACKUP_STATUS, type BackupStatus } from '../backup/model/status';
+import { NO_PROGRESS } from '../backup/phones-model';
+import { toggled } from './backup-albums';
 import {
   PERSON_FOLDER_TEMPLATE,
   albumsText,
-  excludedText,
+  backupCardOf,
+  devicesLineOf,
+  duplicatesCardOf,
   folderOf,
   offlineText,
-  phoneBadge,
-  phoneConditions,
   summaryText,
-  thisPhoneText,
 } from './model';
 
-const SETTINGS = {
-  enabled: true,
-  folders: [],
-  wifiOnly: true,
-  chargingOnly: false,
-  includeVideos: true,
-};
-
-function stateOf(patch: Partial<BackupState> = {}, enabled = true): BackupState {
+function deviceOf(patch: Partial<BackupDeviceState> = {}, enabled = true): BackupDeviceState {
   return {
     device: {
       id: 'a1b2c3d4-0000-4000-8000-000000000001',
@@ -31,84 +23,100 @@ function stateOf(patch: Partial<BackupState> = {}, enabled = true): BackupState 
       name: 'Pixel 9',
       platform: 'android',
       lastSeenAt: '2026-11-07T10:00:00.000Z',
-      settings: { ...SETTINGS, enabled },
+      settings: { enabled, folders: [], wifiOnly: true, chargingOnly: false, includeVideos: true },
     },
-    backedUp: 100,
-    pending: 0,
+    backedUp: 90,
+    pending: 10,
     uploading: 0,
     failed: 0,
-    bytesLeft: 0,
     lastBackupAt: null,
-    targetFolder: 'Photos',
     ...patch,
   };
 }
 
-describe('photos settings backup rows', () => {
-  it('badges each phone by what is left to back up', () => {
-    expect(phoneBadge(stateOf({}, false))).toEqual({ label: 'Off', tone: 'neutral' });
-    expect(phoneBadge(stateOf())).toEqual({ label: 'Up to date', tone: 'positive' });
-    expect(phoneBadge(stateOf({ pending: 30, uploading: 4 }))).toEqual({
-      label: 'Backing up 34',
-      tone: 'primary',
-    });
-    expect(phoneBadge(stateOf({ pending: 34 }))).toEqual({ label: '34 left', tone: 'warning' });
-    expect(phoneBadge(stateOf({ failed: 2 }))).toEqual({ label: '2 failed', tone: 'critical' });
+function stateOf(devices: readonly BackupDeviceState[]): BackupState {
+  return { devices, bytesLeft: 0, targetFolder: 'Photos' };
+}
+
+function status(patch: Partial<BackupStatus>): BackupStatus {
+  return { ...INITIAL_BACKUP_STATUS, ...patch };
+}
+
+describe('photos settings model', () => {
+  it('shows the backup folder of the person once', () => {
+    expect(folderOf(stateOf([]))).toBe('Photos');
+    expect(folderOf(undefined)).toBe(PERSON_FOLDER_TEMPLATE);
   });
 
-  it('describes the conditions each phone backs up under', () => {
-    expect(phoneConditions(SETTINGS)).toBe('Wi-Fi only · videos on');
-    expect(
-      phoneConditions({ ...SETTINGS, wifiOnly: false, chargingOnly: true, includeVideos: false }),
-    ).toBe('Wi-Fi and mobile data · only while charging · photos only');
-  });
-
-  it('shows the hub backup folder with the year and month template', () => {
-    expect(folderOf([stateOf()])).toBe('Photos');
-    expect(folderOf([])).toBe(PERSON_FOLDER_TEMPLATE);
-  });
-
-  it('says what this phone is doing', () => {
-    expect(thisPhoneText(INITIAL_BACKUP_STATUS)).toBe('Off');
-    expect(
-      thisPhoneText({ ...INITIAL_BACKUP_STATUS, phase: 'uploading', total: 40, done: 6 }),
-    ).toBe('Backing up 34');
-    expect(thisPhoneText({ ...INITIAL_BACKUP_STATUS, phase: 'paused', pauseReason: 'wifi' })).toBe(
-      'Waiting for Wi-Fi',
-    );
-    expect(thisPhoneText({ ...INITIAL_BACKUP_STATUS, phase: 'idle' })).toBe('Up to date');
-    expect(thisPhoneText({ ...INITIAL_BACKUP_STATUS, phase: 'idle', failed: 3 })).toBe(
-      '3 could not back up',
-    );
-  });
-
-  it('names the chosen albums', () => {
-    expect(albumsText([])).toBe('All photos and videos');
-    expect(albumsText(['camera'])).toBe('1 album');
-  });
-});
-
-describe('photos settings summary and memories', () => {
   it('shows only the counts the hub has answered', () => {
     expect(summaryText(null, null)).toBeNull();
     expect(summaryText(48213, null)).toMatch(/^48\D?213 items$/);
-    expect(summaryText(1, 1)).toBe('1 item · 1 phone');
+    expect(summaryText(1, 1)).toBe('1 item · 1 device backing up');
   });
 
   it('says what still works while the hub is offline', () => {
     expect(offlineText(false)).toBe('Changing these settings needs your home hub.');
-    expect(offlineText(true)).toContain('Backup on this phone keeps going');
+    expect(offlineText(true)).toContain('Backup on this device keeps going');
   });
 
-  it('lists and toggles the albums left out of memories', () => {
-    const albums = [
-      { id: 'a', title: 'Screenshots' },
-      { id: 'b', title: 'House renovation' },
-    ];
-    expect(excludedText([], albums)).toBe('None');
-    expect(excludedText(['a', 'b'], albums)).toBe('Screenshots, House renovation');
+  it('names the chosen albums and toggles them', () => {
+    expect(albumsText([])).toBe('All photos and videos');
+    expect(albumsText(['camera'])).toBe('1 album');
     expect(toggled(['a'], 'b', true)).toEqual(['a', 'b']);
     expect(toggled(['a', 'b'], 'a', false)).toEqual(['b']);
-    expect(toggled(['a'], 'a', true)).toEqual(['a']);
+  });
+
+  it('counts the devices backing up', () => {
+    expect(devicesLineOf(undefined)).toBeNull();
+    expect(devicesLineOf(stateOf([deviceOf({}, false)]))).toBe('No devices back up yet');
+    expect(devicesLineOf(stateOf([deviceOf(), deviceOf()]))).toBe('2 devices backing up');
+  });
+});
+
+describe('the Backup link card', () => {
+  const state = stateOf([deviceOf()]);
+
+  it('leads with this device where it has a local source', () => {
+    expect(backupCardOf({ status: INITIAL_BACKUP_STATUS, state, live: NO_PROGRESS })).toEqual({
+      headline: 'Backup is off',
+      detail: '1 device backing up',
+      progress: null,
+      colour: 'primary',
+    });
+    const uploading = status({ phase: 'uploading', total: 200, done: 80 });
+    expect(backupCardOf({ status: uploading, state, live: NO_PROGRESS })).toMatchObject({
+      headline: 'This device: 120 left',
+      progress: 0.4,
+    });
+    const idle = status({ phase: 'idle', total: 5, done: 5 });
+    expect(backupCardOf({ status: idle, state, live: NO_PROGRESS })).toMatchObject({
+      headline: 'Up to date',
+      colour: 'positive',
+    });
+    const waiting = status({ phase: 'paused', pauseReason: 'wifi', total: 5, done: 2 });
+    expect(backupCardOf({ status: waiting, state, live: NO_PROGRESS }).headline).toBe(
+      'Waiting for Wi-Fi · 3 left',
+    );
+  });
+
+  it('shows only the devices backing up without a local source', () => {
+    expect(backupCardOf({ status: null, state, live: NO_PROGRESS })).toEqual({
+      headline: '1 device backing up',
+      detail: '10 left to back up',
+      progress: 0.9,
+      colour: 'primary',
+    });
+    expect(backupCardOf({ status: null, state: undefined, live: NO_PROGRESS }).headline).toBeNull();
+  });
+});
+
+describe('the Duplicates link card', () => {
+  it('says how much space the copies take', () => {
+    expect(duplicatesCardOf({ groups: 0, extraCopies: 0, bytesBack: 0 }).headline).toBe(
+      'No duplicates',
+    );
+    const view = duplicatesCardOf({ groups: 3, extraCopies: 4, bytesBack: 2048 });
+    expect(view.headline).toMatch(/^3 groups · .+ to win back$/);
+    expect(view.detail).toBe('4 extra copies');
   });
 });

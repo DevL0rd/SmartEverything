@@ -5,8 +5,7 @@ describe('the collections modules', () => {
     const page = await import('./index');
     const grid = await import('./source-grid');
     const header = await import('./video-header');
-    expect(typeof page.CollectionScreen).toBe('function');
-    expect(typeof page.SourceScreen).toBe('function');
+    expect(typeof page.SourceTab).toBe('function');
     expect(typeof grid.SourceGrid).toBe('function');
     expect(typeof header.VideoStatsRow).toBe('function');
   });

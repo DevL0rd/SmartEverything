@@ -24,10 +24,10 @@ export function noResultsBodyOf(search: SearchInput): string {
 
 export function NoResults({
   search,
-  onClearFilters,
+  onRemoveLast,
 }: {
   readonly search: SearchInput;
-  readonly onClearFilters: () => void;
+  readonly onRemoveLast: () => void;
 }): ReactNode {
   return (
     <View className="px-gutter py-6">
@@ -38,7 +38,7 @@ export function NoResults({
         action={
           <View className="flex-row flex-wrap justify-center gap-2">
             {search.tokens.length > 0 ? (
-              <Button label="Remove filters" variant="tonal" onPress={onClearFilters} />
+              <Button label="Remove last filter" variant="tonal" onPress={onRemoveLast} />
             ) : null}
             <Button
               label="Search the whole app"

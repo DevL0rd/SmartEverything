@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { PlaceCluster, TimelineBucket } from '@smarteverything/domain';
+import type { PlaceCluster, LibraryBucket } from '@smarteverything/domain';
 import type { FrameSize } from '../world-map/projection';
 import { PHOTO_ALL, usePhotoBuckets, usePhotoClusters } from '../data';
 import {
@@ -13,7 +13,7 @@ import {
 } from './map-view';
 import { fullRange, monthsOf, windowOf, type MonthRange } from './time-range';
 
-const NO_MONTHS: readonly TimelineBucket[] = [];
+const NO_MONTHS: readonly LibraryBucket[] = [];
 const NO_CLUSTERS: readonly PlaceCluster[] = [];
 const FIRST_FRAME: FrameSize = { width: 1, height: 1 };
 
@@ -21,7 +21,7 @@ export interface MapState {
   readonly view: MapView;
   readonly setView: (view: MapView) => void;
   readonly setFrame: (frame: FrameSize) => void;
-  readonly months: readonly TimelineBucket[];
+  readonly months: readonly LibraryBucket[];
   readonly range: MonthRange;
   readonly setRange: (range: MonthRange) => void;
   readonly clusters: readonly PlaceCluster[];
@@ -32,7 +32,7 @@ export interface MapState {
 }
 
 function useRange(
-  months: readonly TimelineBucket[],
+  months: readonly LibraryBucket[],
 ): readonly [MonthRange, (range: MonthRange) => void] {
   const [chosen, setChosen] = useState<MonthRange | null>(null);
   const full = fullRange(months);

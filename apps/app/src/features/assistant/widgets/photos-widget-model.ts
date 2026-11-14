@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ChatWidget, Memory } from '@smarteverything/domain';
+import type { ChatWidget } from '@smarteverything/domain';
 import type { AppHref } from '../../../components/app-href';
 import type { IconName } from '../../../components/icon';
 import type { MediaTile } from '../../../components/media-grid/tiles';
@@ -16,7 +16,6 @@ export const PHOTOS_WIDGET_COPY = {
   video: 'Video',
   openPhotos: 'Open in Photos',
   openAlbum: 'Open album',
-  play: 'Play memory',
   gone: 'It was removed or is not shared with you.',
   notMedia: 'That file is not a photo or video.',
   noMonth: 'There are no photos from that month.',
@@ -29,13 +28,13 @@ export const PHOTOS_WIDGET_COPY = {
 const WIDGET_ID: Readonly<Record<PhotosChatWidget['view'], z.ZodType<string>>> = {
   item: z.uuid(),
   album: z.string(),
-  memory: z.string(),
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
 };
 
-export type StripAction =
-  | { readonly kind: 'link'; readonly label: string; readonly href: AppHref }
-  | { readonly kind: 'play'; readonly label: string; readonly memory: Memory };
+export interface StripAction {
+  readonly label: string;
+  readonly href: AppHref;
+}
 
 export interface ReadyStrip {
   readonly status: 'ready';

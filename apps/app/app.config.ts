@@ -148,7 +148,10 @@ export default (): ExpoConfig => {
       CAMERA_PLUGIN,
       ['expo-font', { fonts: FONT_FILES }],
       'expo-secure-store',
-      ['expo-media-library', { granularPermissions: ['photo', 'video'] }],
+      [
+        'expo-media-library',
+        { granularPermissions: ['photo', 'video'], isAccessMediaLocationEnabled: true },
+      ],
       LOCATION_PLUGIN,
       './plugins/accumulated-updates/app.plugin.js',
       ['./plugins/android-build/app.plugin.js', { variant: environment.ANDROID_VARIANT }],

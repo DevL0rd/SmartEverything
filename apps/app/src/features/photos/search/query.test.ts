@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSearching, searchOf, smartRuleOf } from './query';
+import { isSearching, smartRuleOf, typedTextOf } from './query';
 import { initialSearch, isTyping, queryInputOf, searchMoved, searchReducer } from './search-state';
 import { addToken, removeLastToken, searchTitleOf, type SearchToken } from './tokens';
 
@@ -53,27 +53,11 @@ describe('photo search tokens', () => {
   });
 });
 
-describe('the photo search query', () => {
-  it('turns dates, kinds and favourites into filters and names into words', () => {
-    expect(
-      searchOf({ tokens: [PORTUGAL, YEAR, VIDEOS, SONY, FAVOURITES], text: 'beach' }),
-    ).toStrictEqual({
-      text: 'Portugal Sony A7 IV beach',
-      starred: true,
-      duration: null,
-      taken: { from: '2026-01-01', to: '2026-12-31' },
-      kinds: ['video'],
-    });
-  });
-
-  it('searches photos and videos with no filter when nothing is chosen', () => {
-    expect(searchOf({ tokens: [], text: '' })).toStrictEqual({
-      text: null,
-      starred: null,
-      duration: null,
-      taken: null,
-      kinds: ['image', 'video'],
-    });
+describe('the typed search words', () => {
+  it('keeps only the typed words, trimmed, and none when the field is empty', () => {
+    expect(typedTextOf({ tokens: [PORTUGAL, YEAR], text: '  beach ' })).toBe('beach');
+    expect(typedTextOf({ tokens: [PORTUGAL], text: '   ' })).toBeNull();
+    expect(typedTextOf({ tokens: [], text: '' })).toBeNull();
   });
 });
 

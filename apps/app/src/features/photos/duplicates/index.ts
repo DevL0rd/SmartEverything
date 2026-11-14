@@ -1,1 +1,1 @@
-export { DuplicatesScreen } from './screen';
+export { DuplicatesSettingsScreen } from './screen';

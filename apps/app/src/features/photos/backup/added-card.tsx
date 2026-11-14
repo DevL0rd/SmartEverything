@@ -7,14 +7,13 @@ import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { count } from '../../../format/number';
 import { useDayKey } from '../../../store/clock';
-import { useDriveStats } from '../../nas/data';
+import { useDriveStats } from '../../drive';
 import { usePhotoBackupState } from '../data';
-import { PERSON_FOLDER_TEMPLATE, folderOf } from '../settings/model';
+import { folderOf } from '../settings/model';
 import { addedInMonth, type AddedMonth } from './stats-model';
 
 function FolderLine(): ReactNode {
-  const states = usePhotoBackupState().data;
-  const folder = states === undefined ? PERSON_FOLDER_TEMPLATE : folderOf(states);
+  const folder = folderOf(usePhotoBackupState().data);
   return (
     <View className="flex-row items-center gap-2 border-t border-outline-variant pt-3">
       <Icon name="folder" size={16} tone="variant" />

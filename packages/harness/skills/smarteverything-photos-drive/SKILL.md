@@ -27,7 +27,7 @@ Pages carry a `next` value: pass it back as `cursor`. Ids from one read are what
 
 `drive_edit` takes an `action`:
 
-- Folders and files: `new_folder` (`parentId`, `name`), `rename` (`itemId`, `name`), `move` and `copy` (`itemIds`, `toFolderId`), `star` (`itemIds`, `starred` false removes it), `trash` and `restore` (`itemIds`). Each answers with what was done, what failed and the names that already exist; read it and report the failures. A name that exists is never overwritten.
+- Folders and files: `new_folder` (`parentId`, or `rootId` alone for the top of a drive, and `name`), `rename` (`itemId`, `name`), `move` and `copy` (`itemIds`, `toFolderId`), `star` (`itemIds`, `starred` false removes it), `trash` and `restore` (`itemIds`). Each answers with what was done, what failed and the names that already exist; read it and report the failures. A name that exists is never overwritten.
 - Albums: `album_create` (`album` with kind manual or smart, `title`, `surface`, `scope`), `album_update` (`albumId`, `changes`), `album_add` and `album_remove` (`albumId`, `itemIds`). Deleting an album never deletes its files.
 - `keep` (`source` cameras or ai, `itemIds`) keeps camera snapshots or Made with AI pictures in the Shared Drive so they stay.
 - `attach_to_chat` (`itemId`) shows you one PNG, JPEG, GIF or WebP picture up to 4 MB so you can look at it. For a larger photo or any other file, say so and offer a link or open it for the person with `widget_show` kind photos.

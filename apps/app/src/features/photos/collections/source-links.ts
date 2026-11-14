@@ -1,7 +1,7 @@
 import type { DriveItemLink, PhotoSource } from '@smarteverything/domain';
 import { assistantAttachmentLinks } from '../../../api/assistant';
 import { recordingLinks, type SignedLink } from '../../../api/media';
-import { DriveLinkCache, routeGeneration, type ReadLinks } from '../../nas/data/links';
+import { DriveLinkCache, routeGeneration, type ReadLinks } from '../../drive';
 
 type Links = Readonly<Record<string, SignedLink>>;
 

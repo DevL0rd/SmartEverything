@@ -4,7 +4,7 @@ import type {
   BackupRegister,
   PhotosBackupPref,
 } from '@smarteverything/domain';
-import type { UploadHandle } from '../../../nas/uploads/types';
+import type { UploadHandle } from '../../../drive';
 import type {
   BackupDeviceIdentity,
   Conditions,

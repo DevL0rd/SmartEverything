@@ -8,22 +8,27 @@ import { Skeleton } from '../../../components/skeleton';
 import { StatTile } from '../../../components/stat-tile';
 import { Text } from '../../../components/text';
 import { bytes, count } from '../../../format/number';
-import { KEEP_BEST_RULE, libraryShareOf, sourceSegmentsOf } from './model';
+import { KEEP_BEST_RULE, libraryShareOf, sourceSegmentsOf, type SourceLabels } from './model';
 
 interface StatsProps {
   readonly stats: DuplicateStats;
   readonly libraryBytes: number | undefined;
 }
 
-function SourcesTile({ stats }: { readonly stats: DuplicateStats }): ReactNode {
+interface SourcesProps {
+  readonly stats: DuplicateStats;
+  readonly labels: SourceLabels;
+}
+
+function SourcesTile({ stats, labels }: SourcesProps): ReactNode {
   return (
     <View className="min-h-24 gap-2 rounded-lg bg-surface-2 p-3">
       <Text variant="footnote" tone="variant" numberOfLines={1}>
-        Where copies come from
+        Copies by drive
       </Text>
       <SegmentBar
-        segments={sourceSegmentsOf(stats)}
-        label="Where copies come from"
+        segments={sourceSegmentsOf(stats, labels)}
+        label="Copies by drive"
         size="regular"
         legend
         format={count}
@@ -86,13 +91,14 @@ function PhoneStats({ stats }: { readonly stats: DuplicateStats }): ReactNode {
 export function DuplicateStatsRow({
   stats,
   libraryBytes,
+  labels,
   compact,
-}: StatsProps & { readonly compact: boolean }): ReactNode {
+}: StatsProps & { readonly labels: SourceLabels; readonly compact: boolean }): ReactNode {
   if (compact) {
     return (
       <View className="gap-2">
         <PhoneStats stats={stats} />
-        <SourcesTile stats={stats} />
+        <SourcesTile stats={stats} labels={labels} />
       </View>
     );
   }
@@ -108,7 +114,7 @@ export function DuplicateStatsRow({
         <SpaceTile stats={stats} libraryBytes={libraryBytes} />
       </View>
       <View className="min-w-0 flex-2">
-        <SourcesTile stats={stats} />
+        <SourcesTile stats={stats} labels={labels} />
       </View>
     </View>
   );

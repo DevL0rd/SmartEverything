@@ -4,7 +4,7 @@ import type { PhotoSource } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
-import { SOURCE_COPY } from './copy';
+import { SOURCE_COPY } from './source-copy';
 import { pickedDetail, pickedLine, type SourceTile } from './source-model';
 
 export interface SourceSelectionProps {

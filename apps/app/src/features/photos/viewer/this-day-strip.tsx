@@ -3,13 +3,11 @@ import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import type { MediaInfo } from '@smarteverything/domain';
 import { Interactive } from '../../../components/interactive';
-import { wallDayKey } from '../../../components/media-grid/tiles';
+import { tilesOfPage, wallDayKey } from '../../../components/media-grid/tiles';
 import { Text } from '../../../components/text';
-import { useDriveLink } from '../../nas/data/links';
+import { flattenPages, useDriveLink } from '../../drive';
 import { PHOTO_ALL } from '../data/keys';
-import { usePhotoSearch } from '../data/library';
-import { usePhotoBuckets } from '../data/queries';
-import { SEARCH_MEDIA } from '../search/tokens';
+import { usePhotoBuckets, usePhotoMonth } from '../data/queries';
 import type { MediaItem } from './info-model';
 import { otherYearDays } from './this-day';
 
@@ -20,25 +18,16 @@ function YearShot({
   readonly day: string;
   readonly onOpen: (itemId: string) => void;
 }): ReactNode {
-  const search = usePhotoSearch(
-    {
-      text: null,
-      starred: null,
-      duration: null,
-      taken: { from: day, to: day },
-      kinds: SEARCH_MEDIA,
-    },
-    true,
-  );
-  const first = search.data?.pages[0]?.items[0] ?? null;
-  const url = useDriveLink(first?.id ?? null, first?.rev ?? 1, 'thumb');
-  if (first === null) return null;
+  const month = usePhotoMonth(day.slice(0, 7), { filter: 'all', from: day, to: day }, true);
+  const tile = month.data === undefined ? null : (flattenPages(month.data, tilesOfPage)[0] ?? null);
+  const url = useDriveLink(tile?.id ?? null, tile?.rev ?? 1, 'thumb');
+  if (tile === null) return null;
   const year = day.slice(0, 4);
   return (
     <Interactive
-      label={`${first.name}, ${year}`}
+      label={`Photo from ${year}`}
       onPress={() => {
-        onOpen(first.id);
+        onOpen(tile.id);
       }}
       className="w-18 gap-1"
       layerClassName="rounded-sm"

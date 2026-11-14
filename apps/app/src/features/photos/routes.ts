@@ -1,61 +1,105 @@
+import { href, type PhotosLibraryParams } from '../../app-shell/hrefs';
 import type { RouteDefinition } from '../../app-shell/route-types';
+import { desktopBridge, isNative } from '../../design/platform';
 
-interface PageSpec {
+type LibraryTab = NonNullable<PhotosLibraryParams['tab']>;
+
+interface EntrySpec {
   readonly key: string;
-  readonly path:
-    | 'search'
-    | 'memories'
-    | 'albums'
-    | 'map'
-    | 'favourites'
-    | 'videos'
-    | 'screenshots'
-    | 'cameras'
-    | 'ai'
-    | 'duplicates'
-    | 'backup'
-    | 'insights'
-    | 'deleted';
   readonly title: string;
   readonly icon: RouteDefinition['icon'];
   readonly keywords: readonly string[];
+  readonly available?: RouteDefinition['available'];
 }
 
-function page({ key, path, title, icon, keywords }: PageSpec): RouteDefinition {
+interface PageSpec extends EntrySpec {
+  readonly path: 'albums' | 'map' | 'insights' | 'deleted';
+}
+
+interface TabSpec extends EntrySpec {
+  readonly tab: LibraryTab;
+}
+
+function always(): boolean {
+  return true;
+}
+
+function hasLocalMedia(): boolean {
+  return isNative() || desktopBridge()?.photos !== undefined;
+}
+
+function entry(spec: EntrySpec, target: RouteDefinition['href']): RouteDefinition {
   return {
-    key,
-    href: `/photos/${path}`,
-    title,
-    icon,
+    key: spec.key,
+    href: target,
+    title: spec.title,
+    icon: spec.icon,
     tab: 'photos',
     parent: 'photos',
-    keywords,
-    available: () => true,
+    keywords: spec.keywords,
+    available: spec.available ?? always,
     searchable: true,
   };
 }
 
+function page(spec: PageSpec): RouteDefinition {
+  return entry(spec, href.photosPage(spec.path));
+}
+
+function libraryTab(spec: TabSpec): RouteDefinition {
+  return entry(spec, href.photos({ tab: spec.tab }));
+}
+
 export const ROUTES: readonly RouteDefinition[] = [
-  page({
-    key: 'photos-search',
-    path: 'search',
-    title: 'Search photos',
-    icon: 'search',
-    keywords: ['find photos', 'places', 'dates', 'cameras'],
+  libraryTab({
+    key: 'photos-favourites',
+    tab: 'favourites',
+    title: 'Favourite photos',
+    icon: 'star',
+    keywords: ['favorites', 'starred', 'best'],
   }),
-  page({
-    key: 'photos-memories',
-    path: 'memories',
-    title: 'Memories',
-    icon: 'clock',
-    keywords: ['on this day', 'trips', 'year in review', 'highlights'],
+  libraryTab({
+    key: 'photos-videos',
+    tab: 'videos',
+    title: 'Videos',
+    icon: 'film',
+    keywords: ['clips', 'movies', 'recordings'],
+  }),
+  libraryTab({
+    key: 'photos-screenshots',
+    tab: 'screenshots',
+    title: 'Screenshots',
+    icon: 'smartphone',
+    keywords: ['screen captures', 'screen grabs'],
+  }),
+  libraryTab({
+    key: 'photos-device',
+    tab: 'device',
+    title: 'Photos on this device',
+    icon: 'smartphone',
+    keywords: ['local photos', 'phone gallery', 'not backed up', 'this phone', 'this computer'],
+    available: hasLocalMedia,
+  }),
+  libraryTab({
+    key: 'photos-cameras',
+    tab: 'cameras',
+    title: 'Camera photos',
+    icon: 'camera',
+    keywords: ['camera snapshots', 'camera clips', 'recorded by cameras'],
+  }),
+  libraryTab({
+    key: 'photos-ai',
+    tab: 'ai',
+    title: 'Made with AI',
+    icon: 'sparkles',
+    keywords: ['generated images', 'ai images', 'assistant images'],
   }),
   page({
     key: 'photos-albums',
     path: 'albums',
     title: 'Albums',
     icon: 'layers',
-    keywords: ['smart albums', 'collections'],
+    keywords: ['smart albums', 'collections', 'trips', 'trip albums'],
   }),
   page({
     key: 'photos-map',
@@ -63,55 +107,6 @@ export const ROUTES: readonly RouteDefinition[] = [
     title: 'Map and places',
     icon: 'mapPin',
     keywords: ['places', 'locations', 'countries', 'cities', 'where'],
-  }),
-  page({
-    key: 'photos-favourites',
-    path: 'favourites',
-    title: 'Favourite photos',
-    icon: 'star',
-    keywords: ['favorites', 'starred', 'best'],
-  }),
-  page({
-    key: 'photos-videos',
-    path: 'videos',
-    title: 'Videos',
-    icon: 'film',
-    keywords: ['clips', 'movies', 'recordings'],
-  }),
-  page({
-    key: 'photos-screenshots',
-    path: 'screenshots',
-    title: 'Screenshots',
-    icon: 'smartphone',
-    keywords: ['screen captures', 'screen grabs'],
-  }),
-  page({
-    key: 'photos-cameras',
-    path: 'cameras',
-    title: 'Camera photos',
-    icon: 'camera',
-    keywords: ['camera snapshots', 'camera clips', 'recorded by cameras'],
-  }),
-  page({
-    key: 'photos-ai',
-    path: 'ai',
-    title: 'Made with AI',
-    icon: 'sparkles',
-    keywords: ['generated images', 'ai images', 'assistant images'],
-  }),
-  page({
-    key: 'photos-duplicates',
-    path: 'duplicates',
-    title: 'Duplicate photos',
-    icon: 'copy',
-    keywords: ['copies', 'similar', 'clean up', 'free space'],
-  }),
-  page({
-    key: 'photos-backup',
-    path: 'backup',
-    title: 'Photo backup',
-    icon: 'upload',
-    keywords: ['camera roll', 'phone backup', 'free up space', 'upload'],
   }),
   page({
     key: 'photos-insights',

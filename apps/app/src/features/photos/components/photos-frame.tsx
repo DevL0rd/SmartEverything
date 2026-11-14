@@ -1,56 +1,47 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
 import type { PhotoInsightKind, PhotoInsights, PhotoRailCounts } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import type { AppHref } from '../../../components/app-href';
 import { SegmentBar, type BarSegment } from '../../../components/charts';
-import type { IconName } from '../../../components/icon';
+import { Icon, type IconName } from '../../../components/icon';
+import { Interactive } from '../../../components/interactive';
+import type { PageSettingsLink } from '../../../components/page-settings-button';
 import { TabsBar, type TabItem } from '../../../components/tabs-bar';
 import { Text } from '../../../components/text';
 import { isNative } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { bytes, count } from '../../../format/number';
 import { joinParts } from '../../../format/text';
-import { useIsOwner } from '../../../store/selectors';
 import {
   LibraryFrame,
   SummaryWell,
   type LibraryFrameProps,
   type LibrarySection,
   type LibrarySectionGroup,
-} from '../../nas/frame';
-import { libraryLayoutOf } from '../../nas/frame/sections';
+} from '../../../components/library-frame';
+import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { useLibraryRefresh } from '../../drive';
 import { PAUSE_LABELS } from '../backup/model/conditions';
 import { useBackupStatus, type BackupStatus } from '../backup/model/status';
 import { usePhotoInsights, usePhotoRailCounts } from '../data';
-import { videoTime } from '../insights/model';
 
 export const PHOTOS_RAIL_HREF = {
-  timeline: href.photos(),
-  search: href.photosPage('search'),
-  memories: href.photosPage('memories'),
+  library: href.photos(),
   albums: href.photosPage('albums'),
   map: href.photosPage('map'),
-  favourites: href.photosPage('favourites'),
-  videos: href.photosPage('videos'),
-  screenshots: href.photosPage('screenshots'),
-  cameras: href.photosPage('cameras'),
-  ai: href.photosPage('ai'),
-  duplicates: href.photosPage('duplicates'),
-  backup: href.photosPage('backup'),
   insights: href.photosPage('insights'),
   deleted: href.photosPage('deleted'),
 } as const satisfies Readonly<Record<string, AppHref>>;
+
+export const PHOTOS_BACKUP_SETTINGS_HREF: AppHref = href.settings.page('photos/backup');
 
 export type PhotosRailId = keyof typeof PHOTOS_RAIL_HREF;
 
 export interface PhotosRailView {
   readonly counts: PhotoRailCounts | undefined;
   readonly insights: PhotoInsights | undefined;
-  readonly owner: boolean;
-  readonly phone: boolean;
   readonly compact: boolean;
-  readonly phoneLeft: number | null;
 }
 
 interface RailSpec {
@@ -60,27 +51,16 @@ interface RailSpec {
 }
 
 const SPEC: Readonly<Record<PhotosRailId, RailSpec>> = {
-  timeline: { label: 'Timeline', icon: 'image' },
-  search: { label: 'Search', icon: 'search' },
-  memories: { label: 'Memories', icon: 'clock' },
+  library: { label: 'Library', icon: 'image' },
   albums: { label: 'Albums', icon: 'layers' },
   map: { label: 'Map and places', short: 'Map', icon: 'mapPin' },
-  favourites: { label: 'Favourites', short: 'Faves', icon: 'star' },
-  videos: { label: 'Videos', icon: 'film' },
-  screenshots: { label: 'Screenshots', short: 'Screens', icon: 'smartphone' },
-  cameras: { label: 'Cameras', icon: 'camera' },
-  ai: { label: 'Made with AI', short: 'AI', icon: 'sparkles' },
-  duplicates: { label: 'Duplicates', short: 'Copies', icon: 'copy' },
-  backup: { label: 'Backup', icon: 'upload' },
   insights: { label: 'Insights', icon: 'trendUp' },
   deleted: { label: 'Recently deleted', short: 'Deleted', icon: 'trash' },
 };
 
-const TOP: readonly PhotosRailId[] = ['timeline', 'search', 'memories', 'albums', 'map'];
+const TOP: readonly PhotosRailId[] = ['library', 'albums', 'map'];
 
-const LIBRARY: readonly PhotosRailId[] = ['favourites', 'videos', 'screenshots', 'cameras', 'ai'];
-
-const MANAGE: readonly PhotosRailId[] = ['duplicates', 'backup', 'insights', 'deleted'];
+const MANAGE: readonly PhotosRailId[] = ['insights', 'deleted'];
 
 type Count = LibrarySection['count'];
 
@@ -91,40 +71,15 @@ function amountOf(value: Amount, one: string, many = `${one}s`): string | null {
   return `${count(value)} ${value === 1 ? one : many}`;
 }
 
-function bareOf(value: Amount): string | null {
-  return value === null || value === undefined || value === 0 ? null : count(value);
-}
-
-function backupCount(view: PhotosRailView): string | null {
-  if (!view.phone) return amountOf(view.counts?.backupPhones, 'device');
-  return view.phoneLeft === null || view.phoneLeft === 0 ? null : `${count(view.phoneLeft)} left`;
-}
-
 const NO_COUNT = (): Count => null;
 
 const COUNT_OF: Readonly<Record<PhotosRailId, (view: PhotosRailView) => Count>> = {
-  timeline: (view) => view.counts?.timeline ?? null,
-  search: NO_COUNT,
-  memories: (view) => view.counts?.memories ?? null,
+  library: (view) => view.counts?.library ?? null,
   albums: (view) => view.counts?.albums ?? null,
   map: (view) => view.counts?.places ?? null,
-  favourites: (view) => view.counts?.favourites ?? null,
-  videos: (view) => view.counts?.videos ?? null,
-  screenshots: (view) => view.counts?.screenshots ?? null,
-  cameras: (view) => view.counts?.cameras ?? null,
-  ai: (view) => view.counts?.ai ?? null,
-  duplicates: (view) => amountOf(view.counts?.duplicates, 'group'),
-  backup: backupCount,
   insights: NO_COUNT,
   deleted: (view) => view.counts?.deleted ?? null,
 };
-
-function videosSummary(view: PhotosRailView): string | null {
-  const videos = bareOf(view.counts?.videos);
-  if (videos === null) return null;
-  const length = view.insights?.videoTotals.durationMs ?? 0;
-  return joinParts([videos, length === 0 ? null : videoTime(length)]);
-}
 
 function insightsSummary(view: PhotosRailView): string | null {
   const places = view.insights?.places;
@@ -136,18 +91,9 @@ function insightsSummary(view: PhotosRailView): string | null {
 }
 
 const SUMMARY_OF: Readonly<Record<PhotosRailId, (view: PhotosRailView) => string | null>> = {
-  timeline: (view) => amountOf(view.counts?.timeline, 'item'),
-  search: () => 'Places, dates, what is in it',
-  memories: (view) => amountOf(view.counts?.memories, 'memory', 'memories'),
+  library: (view) => amountOf(view.counts?.library, 'item'),
   albums: (view) => amountOf(view.counts?.albums, 'album'),
   map: (view) => amountOf(view.counts?.places, 'place'),
-  favourites: (view) => bareOf(view.counts?.favourites),
-  videos: videosSummary,
-  screenshots: (view) => bareOf(view.counts?.screenshots),
-  cameras: (view) => bareOf(view.counts?.cameras),
-  ai: (view) => bareOf(view.counts?.ai),
-  duplicates: (view) => amountOf(view.counts?.duplicates, 'group'),
-  backup: backupCount,
   insights: insightsSummary,
   deleted: (view) => amountOf(view.counts?.deleted, 'item'),
 };
@@ -177,17 +123,14 @@ function sectionOf(id: PhotosRailId, view: PhotosRailView): LibrarySection {
 }
 
 export function photosRailGroups(view: PhotosRailView): readonly LibrarySectionGroup[] {
-  const manage = view.owner ? MANAGE : MANAGE.filter((id) => id !== 'duplicates');
   return [
     { title: null, sections: TOP.map((id) => sectionOf(id, view)) },
-    { title: 'Library', sections: LIBRARY.map((id) => sectionOf(id, view)) },
-    { title: 'Manage', sections: manage.map((id) => sectionOf(id, view)) },
+    { title: 'Manage', sections: MANAGE.map((id) => sectionOf(id, view)) },
   ];
 }
 
 export const PHOTOS_PHONE_TABS: readonly TabItem[] = [
-  { key: 'timeline', label: 'Timeline', href: PHOTOS_RAIL_HREF.timeline },
-  { key: 'memories', label: 'Memories', href: PHOTOS_RAIL_HREF.memories },
+  { key: 'library', label: 'Library', href: PHOTOS_RAIL_HREF.library },
   { key: 'albums', label: 'Albums', href: PHOTOS_RAIL_HREF.albums },
   { key: 'map', label: 'Places', href: PHOTOS_RAIL_HREF.map },
 ];
@@ -201,7 +144,7 @@ export function photosHrefOf(id: string): AppHref {
 }
 
 export function photosTitleOf(active: PhotosRailId): string {
-  return active === 'timeline' ? 'Photos' : SPEC[active].label;
+  return active === 'library' ? 'Photos' : SPEC[active].label;
 }
 
 export function phoneLeftOf(status: BackupStatus): number | null {
@@ -239,7 +182,7 @@ export interface BackupLines {
   readonly state: string | null;
 }
 
-function phonesLine(phones: number | undefined): string | null {
+function devicesLine(phones: number | undefined): string | null {
   if (phones === undefined) return null;
   if (phones === 0) return 'No devices back up here yet';
   return phones === 1 ? '1 device backs up here' : `${count(phones)} devices back up here`;
@@ -250,7 +193,7 @@ export function backupLinesOf(
   status: BackupStatus,
   phones: number | undefined,
 ): BackupLines {
-  if (!phone) return { headline: phonesLine(phones), state: null };
+  if (!phone) return { headline: devicesLine(phones), state: null };
   return { headline: PHONE_HEADLINE[status.phase](status), state: phoneStateOf(status) };
 }
 
@@ -287,8 +230,32 @@ export interface SummaryProps {
   readonly lines: BackupLines;
 }
 
-export function RailSummary({ insights, lines }: SummaryProps): ReactNode {
+function BackupLink({ line }: { readonly line: string }): ReactNode {
+  return (
+    <Interactive
+      href={PHOTOS_BACKUP_SETTINGS_HREF}
+      role="link"
+      label={line}
+      hint="Opens backup settings"
+      className="-mx-1 min-h-11 flex-row items-center gap-2 rounded-sm px-1"
+      layerClassName="rounded-sm"
+    >
+      <Icon name="upload" size={16} tone="variant" />
+      <Text variant="footnote" tone="variant" numberOfLines={2} className="min-w-0 flex-1">
+        {line}
+      </Text>
+      <Icon name="chevronRight" size={16} tone="variant" />
+    </Interactive>
+  );
+}
+
+function backupLineOf(lines: BackupLines): string | null {
   const line = joinParts([lines.headline, lines.state]);
+  return line === '' ? null : line;
+}
+
+export function RailSummary({ insights, lines }: SummaryProps): ReactNode {
+  const line = backupLineOf(lines);
   return (
     <SummaryWell
       title="Library"
@@ -309,11 +276,7 @@ export function RailSummary({ insights, lines }: SummaryProps): ReactNode {
           format={bytes}
         />
       )}
-      {line === '' ? null : (
-        <Text variant="footnote" tone="variant" numberOfLines={2}>
-          {line}
-        </Text>
-      )}
+      {line === null ? null : <BackupLink line={line} />}
     </SummaryWell>
   );
 }
@@ -323,42 +286,28 @@ export function PullUpSummary({ insights, items, lines }: SummaryProps): ReactNo
     amountOf(items, 'item'),
     insights === undefined ? null : bytes(insights.bytes),
   ]);
+  const line = backupLineOf(lines);
   return (
     <SummaryWell
       title="Photos"
       trailing={
-        lines.headline === null ? null : (
-          <Text variant="caption" tone="primary" numberOfLines={1} className="tabular">
-            {lines.headline}
+        library === '' ? null : (
+          <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
+            {library}
           </Text>
         )
       }
     >
-      {library === '' && lines.state === null ? null : (
-        <View className="flex-row items-center gap-3">
-          <Text
-            variant="caption"
-            tone="variant"
-            numberOfLines={1}
-            className="min-w-0 flex-1 tabular"
-          >
-            {library}
-          </Text>
-          {lines.state === null ? null : (
-            <Text variant="caption" tone="variant" numberOfLines={1}>
-              {lines.state}
-            </Text>
-          )}
-        </View>
-      )}
+      {line === null ? null : <BackupLink line={line} />}
     </SummaryWell>
   );
 }
 
 export type PhotosFrameProps = Omit<
   LibraryFrameProps,
-  'area' | 'title' | 'sections' | 'active' | 'hrefOf' | 'summary' | 'chips'
+  'area' | 'title' | 'sections' | 'active' | 'hrefOf' | 'summary' | 'chips' | 'settings' | 'refresh'
 > & {
+  readonly settings?: PageSettingsLink;
   readonly active: PhotosRailId;
   readonly title?: string;
 };
@@ -369,27 +318,29 @@ interface PhotosFrameData {
 }
 
 function usePhotosFrameData(): PhotosFrameData {
-  const owner = useIsOwner();
   const counts = usePhotoRailCounts().data;
   const insights = usePhotoInsights('all_time').data;
   const status = useBackupStatus();
   const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
   const phone = isNative();
   return {
-    view: { counts, insights, owner, phone, compact, phoneLeft: phoneLeftOf(status) },
+    view: { counts, insights, compact },
     summary: {
       insights,
-      items: counts?.timeline,
-      lines: backupLinesOf(phone, status, counts?.backupPhones),
+      items: counts?.library,
+      lines: backupLinesOf(phone, status, counts?.backupDevices),
     },
   };
 }
 
 export function PhotosFrame({ active, title, ...frame }: PhotosFrameProps): ReactNode {
   const { view, summary } = usePhotosFrameData();
+  const refresh = useLibraryRefresh(null);
   return (
     <LibraryFrame
       {...frame}
+      settings={frame.settings ?? mainPageSettings('photos')}
+      refresh={refresh}
       area="photos"
       title={title ?? photosTitleOf(active)}
       sections={photosRailGroups(view)}

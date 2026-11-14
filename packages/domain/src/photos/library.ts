@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DRIVE_DURATION_BUCKETS } from '../drive/query';
 import { COUNT, DAY, ID, MONTH, NAME, QUERY_PLACE_ID, THUMBHASH } from './shared';
 
 export const PHOTO_FLAGS = {
@@ -33,6 +34,7 @@ const SCOPE_FIELDS = {
   camera: NAME.optional(),
   albumId: ID.optional(),
   text: NAME.optional(),
+  duration: z.enum(DRIVE_DURATION_BUCKETS).optional(),
   from: DAY.optional(),
   to: DAY.optional(),
 };

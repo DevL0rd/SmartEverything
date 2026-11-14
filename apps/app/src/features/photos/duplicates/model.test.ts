@@ -1,17 +1,18 @@
-import type { DriveItem, DuplicateGroup, DuplicateStats } from '@smarteverything/domain';
+import type { DriveItem, DriveRoot, DuplicateGroup, DuplicateStats } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { bytes } from '../../../format/number';
 import {
   SOURCE_COLOURS,
   copiesOf,
   copyLabelOf,
+  driveLabelsOf,
   groupLineOf,
   groupSourcesOf,
+  hashedShareOf,
   itemLineOf,
   keepAllConfirmOf,
   keptLabelOf,
   libraryShareOf,
-  sourceLabelsOf,
   sourceOf,
   sourceSegmentsOf,
   summaryOf,
@@ -19,6 +20,41 @@ import {
 
 const ROOT_PHONE = '00000000-0000-4000-8000-000000000001';
 const ROOT_IMPORT = '00000000-0000-4000-8000-000000000002';
+const ROOT_OTHER = '00000000-0000-4000-8000-000000000003';
+const ME = '00000000-0000-4000-8000-0000000000f1';
+const SAM = '00000000-0000-4000-8000-0000000000f2';
+
+const LABELS: ReadonlyMap<string, string> = new Map([
+  [ROOT_PHONE, 'My Drive'],
+  [ROOT_IMPORT, 'Shared Drive'],
+]);
+const NO_LABELS: ReadonlyMap<string, string> = new Map();
+
+interface RootSpec {
+  readonly scope: DriveRoot['scope'];
+  readonly owner: string | null;
+  readonly items: number;
+  readonly hashedShare: number;
+}
+
+function rootOf(id: string, { scope, owner, items, hashedShare }: RootSpec): DriveRoot {
+  return {
+    id,
+    scope,
+    ownerProfileId: owner,
+    indexId: id,
+    state: 'ready',
+    stateReason: null,
+    items,
+    folders: 0,
+    bytes: 0,
+    scannedAt: null,
+    health: { hashedShare, verifiedShare: 0, corrupt: 0, lastScrubAt: null, lastBackupAt: null },
+    versions: false,
+    skipPatterns: [],
+    includeHidden: false,
+  };
+}
 
 function image(
   id: string,
@@ -41,6 +77,7 @@ function image(
     addedAt: '2026-04-19T21:00:00.000Z',
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'e1',
     outside: false,
@@ -67,8 +104,8 @@ const STATS: DuplicateStats = {
   extraCopies: 112,
   bytesBack: 6_200_000_000,
   sources: [
-    { rootId: ROOT_PHONE, label: 'Phone backup', copies: 52, bytes: 4_000_000_000 },
-    { rootId: ROOT_IMPORT, label: 'Google import', copies: 36, bytes: 2_000_000_000 },
+    { rootId: ROOT_PHONE, copies: 52, bytes: 4_000_000_000 },
+    { rootId: ROOT_IMPORT, copies: 36, bytes: 2_000_000_000 },
   ],
 };
 
@@ -99,8 +136,8 @@ describe('duplicate copy text', () => {
     expect(libraryShareOf(9, 0)).toBeNull();
   });
 
-  it('says when Keep best moved nothing because the copies are read-only', () => {
-    expect(keptLabelOf({ trashed: 0, reclaimedBytes: 0 })).toContain('read-only');
+  it('says when Keep best moved nothing because the copies are only open to view', () => {
+    expect(keptLabelOf({ trashed: 0, reclaimedBytes: 0 })).toContain('only open');
     expect(keptLabelOf({ trashed: 2, reclaimedBytes: 2048 })).toContain('2 copies moved');
   });
 });
@@ -111,12 +148,11 @@ describe('copy sources', () => {
       ...STATS,
       sources: Array.from({ length: SOURCE_COLOURS.length + 2 }, (_, index) => ({
         rootId: `00000000-0000-4000-8000-0000000001${String(index).padStart(2, '0')}`,
-        label: `Source ${String(index)}`,
         copies: index + 1,
         bytes: 1,
       })),
     };
-    const segments = sourceSegmentsOf(many);
+    const segments = sourceSegmentsOf(many, NO_LABELS);
     expect(segments).toHaveLength(SOURCE_COLOURS.length + 2);
     expect(segments.slice(0, 3).map((segment) => segment.colour)).toEqual([
       'viz-6',
@@ -124,17 +160,21 @@ describe('copy sources', () => {
       'viz-5',
     ]);
     expect(segments[SOURCE_COLOURS.length]?.colour).toBe('viz-6');
-    expect(segments[1]).toMatchObject({ label: 'Source 1', value: 2 });
+    expect(segments[1]).toMatchObject({ label: 'Shared with you', value: 2 });
+    expect(sourceSegmentsOf(STATS, LABELS).map((segment) => segment.label)).toEqual([
+      'My Drive',
+      'Shared Drive',
+    ]);
   });
 
   it('labels each copy with the folder it came from', () => {
-    const labels = sourceLabelsOf(STATS);
+    const labels = LABELS;
     expect(
       sourceOf(
         image('00000000-0000-4000-8000-0000000000a1', 'a.jpg', { rootId: ROOT_IMPORT }),
         labels,
       ),
-    ).toBe('Google import');
+    ).toBe('Shared Drive');
     expect(
       sourceOf(
         {
@@ -143,10 +183,37 @@ describe('copy sources', () => {
         },
         labels,
       ),
-    ).toBe('Phone backup/2025/2025-11');
-    expect(
-      sourceOf(image('00000000-0000-4000-8000-0000000000a1', 'a.jpg'), sourceLabelsOf(undefined)),
-    ).toBeNull();
+    ).toBe('My Drive/2025/2025-11');
+    expect(sourceOf(image('00000000-0000-4000-8000-0000000000a1', 'a.jpg'), NO_LABELS)).toBeNull();
+  });
+});
+
+describe('drive labels', () => {
+  it('names my drive, the Shared Drive and the drive of the person who shared', () => {
+    const roots = [
+      rootOf(ROOT_PHONE, { scope: 'person', owner: ME, items: 1, hashedShare: 1 }),
+      rootOf(ROOT_IMPORT, { scope: 'home', owner: null, items: 1, hashedShare: 1 }),
+      rootOf(ROOT_OTHER, { scope: 'person', owner: SAM, items: 1, hashedShare: 1 }),
+    ];
+    const labels = driveLabelsOf({
+      roots,
+      profiles: [{ id: SAM, name: 'Sam' }],
+      viewerId: ME,
+    });
+    expect([...labels.values()]).toEqual(['My Drive', 'Shared Drive', 'Sam’s drive']);
+    expect(driveLabelsOf({ roots, profiles: [], viewerId: ME }).get(ROOT_OTHER)).toBe(
+      'Shared with you',
+    );
+  });
+
+  it('measures hashing over the drives the viewer can open, weighted by items', () => {
+    const roots = [
+      rootOf(ROOT_PHONE, { scope: 'person', owner: ME, items: 300, hashedShare: 1 }),
+      rootOf(ROOT_IMPORT, { scope: 'home', owner: null, items: 100, hashedShare: 0.2 }),
+      rootOf(ROOT_OTHER, { scope: 'person', owner: SAM, items: 1000, hashedShare: 0 }),
+    ];
+    expect(hashedShareOf(roots, ME)).toBeCloseTo(0.8);
+    expect(hashedShareOf([], ME)).toBe(1);
   });
 });
 
@@ -208,22 +275,20 @@ describe('duplicate groups', () => {
   });
 
   it('names each source once, keeper first, joined in plain words', () => {
-    const labels = sourceLabelsOf(STATS);
+    const labels = LABELS;
     expect(groupSourcesOf(groupOf([imported, keeper, again], keeper), labels)).toBe(
-      'Phone backup and Google import',
+      'My Drive and Shared Drive',
     );
-    expect(groupSourcesOf(groupOf([imported, again], imported), labels)).toBe('Google import');
-    expect(
-      groupSourcesOf(groupOf([keeper, imported], keeper), sourceLabelsOf(undefined)),
-    ).toBeNull();
+    expect(groupSourcesOf(groupOf([imported, again], imported), labels)).toBe('Shared Drive');
+    expect(groupSourcesOf(groupOf([keeper, imported], keeper), NO_LABELS)).toBeNull();
   });
 
   it('reads each copy aloud with its role, name, size and source', () => {
-    const labels = sourceLabelsOf(STATS);
+    const labels = LABELS;
     expect(copyLabelOf(keeper, true, labels)).toBe(
-      `Keep, PXL_20251107_1842.jpg, 48 MP · ${bytes(18_200_000)}, Phone backup`,
+      `Keep, PXL_20251107_1842.jpg, 48 MP · ${bytes(18_200_000)}, My Drive`,
     );
-    expect(copyLabelOf(imported, false, sourceLabelsOf(undefined))).toBe(
+    expect(copyLabelOf(imported, false, NO_LABELS)).toBe(
       `Copy, IMG-WA0003.jpg, 48 MP · ${bytes(18_200_000)}`,
     );
   });

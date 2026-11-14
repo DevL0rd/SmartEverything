@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useValue } from '../../../design/external-store';
 import { background } from '@smarteverything/logging';
-import type { PhotoScope } from '../../../api/photos';
-import type { MediaTile } from '../../../components/media-grid/tiles';
+import type { LibraryScope } from '@smarteverything/domain';
+import type { SourceSearch } from '../../../api/photos';
+import { wallDayKey, type MediaTile } from '../../../components/media-grid/tiles';
 import { PREFS, usePref } from '../../../store/prefs';
 import { useBackupHandle } from '../backup/handle';
 import type { BackupHandle } from '../backup/handle';
@@ -22,19 +23,48 @@ export function currentBackupEntries(
   );
 }
 
+export function localMatches(item: LocalMediaItem, search: SourceSearch): boolean {
+  if (search.text !== null && !item.name.toLowerCase().includes(search.text.toLowerCase())) {
+    return false;
+  }
+  if (search.from === null && search.to === null) return true;
+  const day = wallDayKey(item.takenAt, null);
+  return (search.from === null || day >= search.from) && (search.to === null || day <= search.to);
+}
+
+function searchOfScope(scope: LibraryScope): SourceSearch {
+  return { text: scope.text ?? null, from: scope.from ?? null, to: scope.to ?? null };
+}
+
+function mergesLocal(scope: LibraryScope): boolean {
+  return (
+    (scope.filter === 'all' || scope.filter === 'videos') &&
+    scope.placeId === undefined &&
+    scope.countryCode === undefined &&
+    scope.camera === undefined &&
+    scope.albumId === undefined
+  );
+}
+
 export function localItemsForScope(
   items: readonly LocalMediaItem[],
-  scope: PhotoScope,
+  scope: LibraryScope,
   uploaded: readonly LedgerEntry[],
   loadedHubIds: ReadonlySet<string>,
 ): readonly LocalMediaItem[] {
-  if (scope.placeId !== null || (scope.filter !== 'all' && scope.filter !== 'videos')) return [];
+  if (!mergesLocal(scope)) return [];
   const present = new Set(
     currentBackupEntries(items, uploaded)
       .filter((entry) => entry.itemId !== null && loadedHubIds.has(entry.itemId))
       .map((entry) => entry.localId),
   );
-  return items.filter((item) => !present.has(item.id) && (scope.filter !== 'videos' || item.video));
+  const search = searchOfScope(scope);
+  return items.filter(
+    (item) =>
+      !present.has(item.id) &&
+      (scope.filter !== 'videos' || item.video) &&
+      localMatches(item, search),
+  );
 }
 
 interface Uploaded {
@@ -80,7 +110,10 @@ export function useLocalBackupEntries(): readonly LedgerEntry[] {
   );
 }
 
-export function useLocalTiles(scope: PhotoScope, hub: readonly MediaTile[]): readonly MediaTile[] {
+export function useLocalTiles(
+  scope: LibraryScope,
+  hub: readonly MediaTile[],
+): readonly MediaTile[] {
   const library = useLocalLibrary();
   const uploaded = useLocalBackupEntries();
   const pref = usePref(PREFS.photos);
@@ -99,4 +132,16 @@ export function useLocalTiles(scope: PhotoScope, hub: readonly MediaTile[]): rea
     );
     return localTilesOf(visible, backedUp);
   }, [shown, videos, library.items, scope, uploaded, hub]);
+}
+
+export function useDeviceTiles(search: SourceSearch): readonly MediaTile[] {
+  const library = useLocalLibrary();
+  const uploaded = useLocalBackupEntries();
+  return useMemo(() => {
+    const backedUp = new Set(uploaded.map((entry) => entry.localId));
+    return localTilesOf(
+      library.items.filter((item) => localMatches(item, search)),
+      backedUp,
+    );
+  }, [library.items, uploaded, search]);
 }

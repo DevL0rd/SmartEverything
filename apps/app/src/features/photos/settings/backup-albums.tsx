@@ -12,9 +12,13 @@ import { Sheet } from '../../../components/sheet';
 import { Skeleton } from '../../../components/skeleton';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { PREFS, usePref } from '../../../store/prefs';
-import { toggled } from './excluded-albums';
 import { ALL_PHONE_MEDIA, albumsText } from './model';
 import { PHONE_ALBUMS_KEY, listPhoneAlbums, type PhoneAlbum } from './phone-albums';
+
+export function toggled(chosen: readonly string[], albumId: string, on: boolean): string[] {
+  const rest = chosen.filter((id) => id !== albumId);
+  return on ? [...rest, albumId] : rest;
+}
 
 function AlbumList({
   albums,

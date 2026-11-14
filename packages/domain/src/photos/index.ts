@@ -3,7 +3,6 @@ export * from './duplicates';
 export * from './insights';
 export * from './library';
 export * from './media';
-export * from './memories';
 export * from './places';
 export * from './sources';
 export * from './stacks';

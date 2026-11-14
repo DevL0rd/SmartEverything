@@ -84,7 +84,7 @@ function FullInsights({
 
 function LoadedInsights(shown: Shown): ReactNode {
   const counts = usePhotoRailCounts().data;
-  const phase = phaseOf(shown.insights, counts?.timeline);
+  const phase = phaseOf(shown.insights, counts?.library);
   if (phase === 'empty') return <InsightsEmpty />;
   if (phase === 'range-empty') return <RangeEmpty />;
   const { growth } = shown.insights;

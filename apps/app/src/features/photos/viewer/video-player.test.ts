@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import type { MediaInfo, MediaState } from '@smarteverything/domain';
-import { receivePhotosProgress } from '../../nas/data/live';
+import { receivePhotosProgress } from '../../drive';
 import { photoKeys } from '../data/keys';
 import {
   ViewerVideo,

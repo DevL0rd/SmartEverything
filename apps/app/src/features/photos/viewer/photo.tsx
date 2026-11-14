@@ -11,7 +11,7 @@ import { Text } from '../../../components/text';
 import { Zoomable } from '../../../components/zoomable';
 import { useScopeVisible } from '../../../design/visibility';
 import { downloadFile } from '../../../platform/file-actions';
-import { driveLinks, useDriveLink } from '../../nas/data/links';
+import { driveLinks, useDriveLink } from '../../drive';
 import { noPreviewOf, showsOriginal, type MediaItem } from './info-model';
 
 const log = new Logger('app.photos');

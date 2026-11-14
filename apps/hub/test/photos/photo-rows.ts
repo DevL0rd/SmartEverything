@@ -40,9 +40,9 @@ export function recordLibraryRow(
     .prepare('select scope, owner_profile_id as owner from drive_roots where id = ?')
     .get(item.rootId);
   const profiles =
-    drive?.scope === 'home'
+    drive?.['scope'] === 'home'
       ? database.prepare('select id from profiles').all()
-      : [{ id: drive?.owner }];
+      : [{ id: drive?.['owner'] }];
   for (const profile of profiles) {
     database
       .prepare('insert or ignore into drive_stars (profile_id, item_id) values (?, ?)')

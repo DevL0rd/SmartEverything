@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DriveLinkCache } from '../../nas/data/links';
+import { DriveLinkCache } from '../../drive';
 import { SOURCE_REV, sourceLinksOf } from './source-links';
 
 const LATER = '2099-01-01T00:00:00.000Z';

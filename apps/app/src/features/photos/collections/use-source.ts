@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import type { PhotoSource } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { flattenPages } from '../../nas/data/pages';
+import { flattenPages } from '../../drive';
+import type { SourceSearch } from '../../../api/photos';
 import { usePhotoSource } from '../data';
 import { sourceDaysOf, sourceTileOf, type SourceDay, type SourceTile } from './source-model';
 
@@ -18,6 +19,7 @@ export interface SourceView {
   readonly days: readonly SourceDay[];
   readonly chips: readonly SourceChipView[];
   readonly names: ReadonlyMap<string, string>;
+  readonly total: number | undefined;
   readonly failedMore: boolean;
   readonly more: () => void;
   readonly retry: () => void;
@@ -34,8 +36,12 @@ function statusOf(loaded: boolean, failed: boolean): SourceView['status'] {
   return failed ? 'error' : 'loading';
 }
 
-export function useSource(source: PhotoSource, chipId: string | null): SourceView {
-  const pages = usePhotoSource(source, chipId);
+export function useSource(
+  source: PhotoSource,
+  chipId: string | null,
+  search: SourceSearch,
+): SourceView {
+  const pages = usePhotoSource(source, chipId, search);
   const tiles = useMemo(
     () => flattenPages(pages.data, (page) => page.items).map(sourceTileOf),
     [pages.data],
@@ -60,6 +66,7 @@ export function useSource(source: PhotoSource, chipId: string | null): SourceVie
     days,
     chips,
     names,
+    total: loaded && !hasNextPage ? tiles.length : undefined,
     failedMore: loaded && pages.isError,
     more,
     retry,

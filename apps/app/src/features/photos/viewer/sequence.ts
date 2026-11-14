@@ -1,4 +1,4 @@
-import type { TimelineBucket } from '@smarteverything/domain';
+import type { LibraryBucket } from '@smarteverything/domain';
 import { wallDayKey, type MediaTile } from '../../../components/media-grid/tiles';
 
 export interface MonthTiles {
@@ -36,7 +36,7 @@ export function wallMonthOf(takenAt: string, offsetMin: number | null): string {
 }
 
 export function adjacentMonths(
-  buckets: readonly TimelineBucket[],
+  buckets: readonly LibraryBucket[],
   month: string | null,
 ): AdjacentMonths {
   const at = month === null ? -1 : buckets.findIndex((bucket) => bucket.month === month);

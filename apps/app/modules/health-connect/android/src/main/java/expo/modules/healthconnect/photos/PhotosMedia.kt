@@ -28,7 +28,11 @@ internal class PhotoOperation : Closeable {
   }
 }
 
-internal class PhotosMedia(private val resolver: ContentResolver, private val cache: File) {
+internal class PhotosMedia(
+  private val resolver: ContentResolver,
+  private val cache: File,
+  private val originalLocation: () -> Boolean
+) {
   private val operations = ConcurrentHashMap<String, PhotoOperation>()
   private val chunks = ConcurrentHashMap.newKeySet<File>()
 
@@ -56,6 +60,11 @@ internal class PhotosMedia(private val resolver: ContentResolver, private val ca
   private fun uri(value: String): Uri =
     if (value.startsWith("content://")) Uri.parse(value)
     else ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), value.toLong())
+
+  private fun original(value: String): Uri {
+    val uri = uri(value)
+    return if (Build.VERSION.SDK_INT >= 29 && uri.authority == MediaStore.AUTHORITY && originalLocation()) MediaStore.setRequireOriginal(uri) else uri
+  }
 
   fun stat(ids: List<String>, operationId: String): List<Map<String, Any>> {
     val operation = requireNotNull(operations[operationId])
@@ -108,7 +117,7 @@ internal class PhotosMedia(private val resolver: ContentResolver, private val ca
     val operation = requireNotNull(operations[id])
     try {
       operation.check()
-      return requireNotNull(resolver.openInputStream(uri(value))).use { stream ->
+      return requireNotNull(resolver.openInputStream(original(value))).use { stream ->
         operation.stream = stream
         operation.check()
         block(stream, operation)

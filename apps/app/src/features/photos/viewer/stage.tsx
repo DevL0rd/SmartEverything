@@ -8,7 +8,7 @@ import { IconButton } from '../../../components/icon-button';
 import { cn } from '../../../design/cn';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import { ViewerVideo } from './video-player';
-import { useDriveLink } from '../../nas/data/links';
+import { useDriveLink } from '../../drive';
 import { ViewerPhoto } from './photo';
 import type { MediaItem } from './info-model';
 import { useSwipe, type SwipeChoice } from './swipe';

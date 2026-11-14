@@ -1,5 +1,5 @@
-import type { UploadEntry } from '../../nas/uploads';
-import { entryStatus } from '../timeline/upload-model';
+import type { UploadEntry } from '../../drive';
+import { entryStatus } from '../library/upload-model';
 
 export const ALREADY_THERE_PHONE = 'Already there';
 

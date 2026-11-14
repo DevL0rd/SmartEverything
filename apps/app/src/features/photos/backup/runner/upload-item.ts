@@ -1,4 +1,4 @@
-import type { UploadFailure, UploadOutcome } from '../../../nas/uploads/types';
+import type { UploadFailure, UploadOutcome } from '../../../drive';
 import { takenAtOf, identityOf } from '../model/plan';
 import type { MediaRow, MediaStat } from '../model/types';
 import type { BackupPorts } from './ports';

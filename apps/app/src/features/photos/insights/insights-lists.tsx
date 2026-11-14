@@ -9,8 +9,7 @@ import { RankedList } from '../../../components/ranked-list';
 import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { bytes } from '../../../format/number';
-import { useDriveItem } from '../../nas/data/queries';
-import { useDriveRoots } from '../../nas/data/tables';
+import { driveLabelOf, useDriveItem, useDriveRoots, useViewerId } from '../../drive';
 import { NATURAL_EARTH_ATTRIBUTION, WorldMap } from '../world-map';
 import { LegendDot } from './insights-charts';
 import {
@@ -190,12 +189,13 @@ function KindLegend(): ReactNode {
 
 export function FoldersCard({ roots }: { readonly roots: PhotoInsights['roots'] }): ReactNode {
   const known = useDriveRoots();
-  const labels = new Map(known.map((root) => [root.id, root.label]));
-  const bars = folderBars(roots, (rootId) => labels.get(rootId) ?? 'Library folder');
+  const viewerId = useViewerId();
+  const labels = new Map(known.map((root) => [root.id, driveLabelOf(root, viewerId)]));
+  const bars = folderBars(roots, (rootId) => labels.get(rootId) ?? 'Shared with you');
   if (bars.rows.length === 0) return null;
   return (
     <Card
-      title="By library folder"
+      title="By drive"
       metadata={
         <Text variant="caption" tone="variant" className="tabular">
           {bars.summary}

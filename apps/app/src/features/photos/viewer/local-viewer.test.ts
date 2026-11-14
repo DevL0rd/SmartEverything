@@ -65,6 +65,9 @@ vi.mock('../../../components/zoomable', () => ({ Zoomable: childrenOf }));
 vi.mock('../../../design/theme-scope', () => ({ ThemeScope: childrenOf }));
 vi.mock('./local-playback', () => ({ LocalPlayback: (): null => null }));
 vi.mock('./close', () => ({ closeViewer: (): void => undefined }));
+vi.mock('../components/photos-frame', () => ({
+  PHOTOS_BACKUP_SETTINGS_HREF: '/settings/photos/backup',
+}));
 
 const { LocalViewer } = await import('./local-viewer');
 let root: Root | null = null;

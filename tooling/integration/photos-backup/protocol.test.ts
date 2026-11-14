@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { runUpload } from '../../../apps/app/src/features/nas/uploads/run';
-import type { UploadTransport } from '../../../apps/app/src/features/nas/uploads/types';
+import { runUpload } from '../../../apps/app/src/features/drive/upload/transport/run';
+import type { UploadTransport } from '../../../apps/app/src/features/drive/upload/transport/types';
 import {
   appRequest,
   exchange,

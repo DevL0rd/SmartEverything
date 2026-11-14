@@ -6,7 +6,7 @@ import { FlatChoice } from '../../../components/flat-choice';
 import { Skeleton } from '../../../components/skeleton';
 import { StatTile } from '../../../components/stat-tile';
 import { Text } from '../../../components/text';
-import { ChipRow } from '../../nas/frame';
+import { ChipRow } from '../../../components/library-frame';
 import {
   durationChipsOf,
   hoursBarsOf,

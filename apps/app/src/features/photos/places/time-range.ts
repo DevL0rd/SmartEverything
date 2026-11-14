@@ -1,4 +1,4 @@
-import type { TimelineBucket } from '@smarteverything/domain';
+import type { LibraryBucket } from '@smarteverything/domain';
 import { compareText } from '../../../format/text';
 import { monthShort } from '../../../format/time';
 import type { TimeWindow } from './map-view';
@@ -13,15 +13,15 @@ export interface YearTick {
   readonly share: number;
 }
 
-export function monthsOf(buckets: readonly TimelineBucket[]): readonly TimelineBucket[] {
+export function monthsOf(buckets: readonly LibraryBucket[]): readonly LibraryBucket[] {
   return [...buckets].sort((a, b) => compareText(a.month, b.month));
 }
 
-export function fullRange(months: readonly TimelineBucket[]): MonthRange {
+export function fullRange(months: readonly LibraryBucket[]): MonthRange {
   return { start: 0, end: Math.max(0, months.length - 1) };
 }
 
-export function isFull(range: MonthRange, months: readonly TimelineBucket[]): boolean {
+export function isFull(range: MonthRange, months: readonly LibraryBucket[]): boolean {
   return range.start === 0 && range.end >= months.length - 1;
 }
 
@@ -35,7 +35,7 @@ function nextMonthStart(month: string): number {
   return Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1);
 }
 
-export function windowOf(range: MonthRange, months: readonly TimelineBucket[]): TimeWindow {
+export function windowOf(range: MonthRange, months: readonly LibraryBucket[]): TimeWindow {
   const first = months[range.start];
   const last = months[range.end];
   if (first === undefined || last === undefined || isFull(range, months)) return {};
@@ -51,7 +51,7 @@ export function monthLabel(month: string): string {
   return `${monthShort(monthStart(month) + MID_MONTH_MS)} ${month.slice(0, 4)}`;
 }
 
-export function rangeLabel(range: MonthRange, months: readonly TimelineBucket[]): string | null {
+export function rangeLabel(range: MonthRange, months: readonly LibraryBucket[]): string | null {
   const first = months[range.start];
   const last = months[range.end];
   if (first === undefined || last === undefined) return null;
@@ -76,7 +76,7 @@ export function withEnd(range: MonthRange, end: number): MonthRange {
 }
 
 export function yearTicks(
-  months: readonly TimelineBucket[],
+  months: readonly LibraryBucket[],
   width: number,
   spacing: number,
 ): readonly YearTick[] {

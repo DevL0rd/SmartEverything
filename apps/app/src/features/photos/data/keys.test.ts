@@ -1,8 +1,8 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
-import { invalidateDriveChanged } from '../../nas/data/windows';
+import { invalidateDriveChanged } from '../../drive';
 import { driveKey } from '../../../queries/keys';
-import { ROOT_ID } from '../../nas/data/fixtures';
+import { ROOT_ID } from '../../drive/data/fixtures';
 import { PHOTO_ALL, photoKeys } from './keys';
 
 function seeded(): QueryClient {
@@ -25,7 +25,7 @@ describe('photo windows', () => {
       photoKeys.month('2026-09', PHOTO_ALL),
     );
     expect(photoKeys.month('2026-10', PHOTO_ALL)).not.toEqual(
-      photoKeys.month('2026-10', { filter: 'videos', placeId: null }),
+      photoKeys.month('2026-10', { filter: 'videos' }),
     );
     expect(photoKeys.month('2026-10', PHOTO_ALL)).not.toEqual(
       photoKeys.month('2026-10', { filter: 'all', placeId: 4 }),

@@ -50,7 +50,7 @@ function TurnOn(): ReactNode {
       action={
         <Button
           label="Turn on backup"
-          variant="tonal"
+          variant="filled"
           disabled={pref.status !== 'ready'}
           onPress={() => {
             if (pref.status === 'ready')
@@ -92,7 +92,7 @@ function AllowAccess(): ReactNode {
 }
 
 function Ring({ status }: { readonly status: BackupStatus }): ReactNode {
-  const share = phoneProgressOf(status);
+  const share = Math.floor(phoneProgressOf(status) * 100) / 100;
   return (
     <View
       accessible
@@ -110,33 +110,53 @@ function Ring({ status }: { readonly status: BackupStatus }): ReactNode {
   );
 }
 
-function Conditions(): ReactNode {
+function Conditions({ status }: { readonly status: BackupStatus }): ReactNode {
   const pref = usePref(PREFS.photosBackup);
   if (pref.status !== 'ready') return null;
+  const reason = status.phase === 'paused' ? status.pauseReason : null;
   return (
     <View className="flex-row flex-wrap gap-2">
-      {conditionChipsOf(pref.value, appPlatform() === 'desktop').map((chip) => (
-        <Badge key={chip.key} label={chip.label} icon={chip.icon} />
+      {conditionChipsOf(pref.value, appPlatform() === 'desktop', reason).map((chip) => (
+        <Badge
+          key={chip.key}
+          label={chip.label}
+          icon={chip.icon}
+          tone={chip.blocking ? 'warning' : 'neutral'}
+        />
       ))}
     </View>
   );
 }
 
-function PauseButton({ status }: { readonly status: BackupStatus }): ReactNode {
+function Actions({ status }: { readonly status: BackupStatus }): ReactNode {
   const handle = useBackupHandle();
   const paused = status.phase === 'paused' && status.pauseReason === 'user';
+  const working = status.phase === 'scanning' || status.phase === 'uploading';
   return (
-    <Button
-      label={paused ? 'Resume backup' : 'Pause backup'}
-      icon={paused ? 'play' : 'pause'}
-      variant="tonal"
-      disabled={handle === null}
-      onPress={() => {
-        if (handle === null) return;
-        const change = paused ? handle.runner.resume() : handle.runner.pause();
-        background(change, 'photos.backup.pause_failed');
-      }}
-    />
+    <View className="flex-row flex-wrap gap-2">
+      <Button
+        label="Back up now"
+        icon="upload"
+        variant="filled"
+        grow
+        disabled={handle === null || working || paused}
+        onPress={() => {
+          if (handle !== null) background(handle.runner.request(), 'photos.backup.request_failed');
+        }}
+      />
+      <Button
+        label={paused ? 'Resume backup' : 'Pause backup'}
+        icon={paused ? 'play' : 'pause'}
+        variant="tonal"
+        grow
+        disabled={handle === null}
+        onPress={() => {
+          if (handle === null) return;
+          const change = paused ? handle.runner.resume() : handle.runner.pause();
+          background(change, 'photos.backup.pause_failed');
+        }}
+      />
+    </View>
   );
 }
 
@@ -194,9 +214,9 @@ function Running({
             {status.problem}
           </Text>
         )}
-        <Conditions />
+        <Conditions status={status} />
         {status.limitedAccess ? <LimitedNote /> : null}
-        <PauseButton status={status} />
+        <Actions status={status} />
       </View>
     </Card>
   );
@@ -204,8 +224,26 @@ function Running({
 
 export function ThisPhoneCard({ name }: { readonly name: string | null }): ReactNode {
   const status = useBackupStatus();
-  if (status.phase === 'unavailable') return <UpdateTheApp />;
-  if (status.phase === 'off') return <TurnOn />;
-  if (status.phase === 'denied') return <AllowAccess />;
+  if (status.phase === 'unavailable') {
+    return (
+      <Card>
+        <UpdateTheApp />
+      </Card>
+    );
+  }
+  if (status.phase === 'off') {
+    return (
+      <Card>
+        <TurnOn />
+      </Card>
+    );
+  }
+  if (status.phase === 'denied') {
+    return (
+      <Card>
+        <AllowAccess />
+      </Card>
+    );
+  }
   return <Running status={status} name={name} />;
 }

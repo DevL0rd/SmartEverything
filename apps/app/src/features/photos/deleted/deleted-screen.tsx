@@ -18,7 +18,7 @@ import { Text } from '../../../components/text';
 import { useEscape } from '../../../components/use-escape';
 import { useAreaWidth } from '../../../design/size-class';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
-import { libraryLayoutOf } from '../../nas/frame/sections';
+import { libraryLayoutOf } from '../../../components/library-frame/sections';
 import { PhotosFrame } from '../components/photos-frame';
 import { useDeletedActions, type DeletedActions } from './actions';
 import { MEMBER_NOTE, OWNER_NOTE, READ_ONLY_NOTE, subtitleOf } from './copy';

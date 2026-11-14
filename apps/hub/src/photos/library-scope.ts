@@ -1,6 +1,6 @@
 import { ApiError, type LibraryFilter, type LibraryScope } from '@smarteverything/domain';
 import { albumVisibleTo, type DriveActor } from '../drive/access';
-import { driveMatchOf } from '../drive/search';
+import { driveMatchOf, durationFilter } from '../drive/search';
 import { compileSmartRule } from '../drive/smart-sql-compile';
 import type { StoreContext } from '../store/context';
 import { DriveAlbumsRepository } from '../store/repositories/drive-albums';
@@ -115,6 +115,10 @@ export function narrowing(actor: DriveActor, scope: LibraryScope, albums: AlbumS
       text: ` and ${CAMERA_TEXT} = lower($camera)`,
       parameters: { camera: scope.camera },
     });
+  }
+  if (scope.duration !== undefined) {
+    const filter = durationFilter(scope.duration);
+    parts.push({ text: ` and ${filter.text}`, parameters: filter.parameters });
   }
   if (scope.text !== undefined) parts.push(textStatement(scope.text));
   if (scope.albumId !== undefined) parts.push(albums.statement(actor, scope.albumId));

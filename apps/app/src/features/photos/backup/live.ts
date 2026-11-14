@@ -2,7 +2,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { PhotosProgressNotice } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { onPhotosProgress } from '../../nas/data/live';
+import { onPhotosProgress } from '../../drive';
 import { photoKeys } from '../data';
 import { NO_PROGRESS, progressAfter, type LiveProgress } from './phones-model';
 

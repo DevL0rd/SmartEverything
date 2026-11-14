@@ -20,6 +20,7 @@ function media(
     addedAt: '2026-11-07T10:00:00Z',
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'e1',
     outside: false,

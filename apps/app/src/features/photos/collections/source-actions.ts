@@ -9,8 +9,8 @@ import { useMutationState } from '../../../store/mutation';
 import type { PickedFile } from '../../../platform/pick-files';
 import { attachFiles, useLastChat } from '../../assistant';
 import { photoKeys } from '../data';
-import { NO_CHAT_HINT } from '../memories/actions';
-import { SOURCE_COPY } from './copy';
+import { NO_CHAT_HINT } from '../model/ask-actions';
+import { SOURCE_COPY } from './source-copy';
 import { sourceLinks, SOURCE_REV } from './source-links';
 import { keptLine, nounCount, type SourceTile } from './source-model';
 
@@ -65,7 +65,7 @@ function useRefresh(source: PhotoSource): () => void {
   const client = useQueryClient();
   return () => {
     background(
-      client.invalidateQueries({ queryKey: photoKeys.source(source, null).slice(0, -1) }),
+      client.invalidateQueries({ queryKey: photoKeys.sources(source) }),
       'queries.invalidate_failed',
     );
     background(

@@ -1,4 +1,4 @@
-import type { TimelineBucket } from '@smarteverything/domain';
+import type { LibraryBucket } from '@smarteverything/domain';
 
 export function sameDayIn(year: number, monthDay: string): string | null {
   const day = `${String(year).padStart(4, '0')}-${monthDay}`;
@@ -6,7 +6,7 @@ export function sameDayIn(year: number, monthDay: string): string | null {
   return Number.isNaN(at.getTime()) || at.toISOString().slice(0, 10) !== day ? null : day;
 }
 
-export function otherYearDays(buckets: readonly TimelineBucket[], day: string): readonly string[] {
+export function otherYearDays(buckets: readonly LibraryBucket[], day: string): readonly string[] {
   const monthDay = day.slice(5);
   const month = day.slice(5, 7);
   const year = day.slice(0, 4);

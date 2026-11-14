@@ -1,8 +1,9 @@
-import type { DriveItem, DuplicateGroup, DuplicateStats } from '@smarteverything/domain';
+import type { DriveItem, DriveRoot, DuplicateGroup, DuplicateStats } from '@smarteverything/domain';
 import type { BarSegment } from '../../../components/charts';
 import type { ConfirmRequest } from '../../../components/confirm-store';
 import type { ColourRole } from '../../../design/tokens';
 import { bytes, count, decimal } from '../../../format/number';
+import { driveLabelOf, isDriveOwner } from '../../drive/model/drive-access';
 
 export const SOURCE_COLOURS: readonly ColourRole[] = [
   'viz-6',
@@ -26,16 +27,34 @@ export function sourceColourOf(index: number): ColourRole {
   return SOURCE_COLOURS[index % SOURCE_COLOURS.length] ?? 'viz-1';
 }
 
-export function sourceSegmentsOf(stats: DuplicateStats): readonly BarSegment[] {
+export const UNKNOWN_DRIVE = 'Shared with you';
+
+export interface DriveLabelInput {
+  readonly roots: readonly DriveRoot[];
+  readonly profiles: readonly { readonly id: string; readonly name: string }[];
+  readonly viewerId: string | null;
+}
+
+export function driveLabelsOf({ roots, profiles, viewerId }: DriveLabelInput): SourceLabels {
+  return new Map(
+    roots.map((root) => {
+      const owner = profiles.find((profile) => profile.id === root.ownerProfileId)?.name;
+      const label =
+        driveLabelOf(root, viewerId) ?? (owner === undefined ? UNKNOWN_DRIVE : `${owner}’s drive`);
+      return [root.id, label] as const;
+    }),
+  );
+}
+
+export function sourceSegmentsOf(
+  stats: DuplicateStats,
+  labels: SourceLabels,
+): readonly BarSegment[] {
   return stats.sources.map((source, index) => ({
-    label: source.label,
+    label: labels.get(source.rootId) ?? UNKNOWN_DRIVE,
     value: source.copies,
     colour: sourceColourOf(index),
   }));
-}
-
-export function sourceLabelsOf(stats: DuplicateStats | undefined): SourceLabels {
-  return new Map((stats?.sources ?? []).map((source) => [source.rootId, source.label]));
 }
 
 export interface LibraryShare {
@@ -141,7 +160,7 @@ export function keptLabelOf(result: {
   readonly trashed: number;
   readonly reclaimedBytes: number;
 }): string {
-  if (result.trashed === 0) return 'Nothing moved. The other copies are in read-only folders.';
+  if (result.trashed === 0) return 'Nothing moved. You can only open the other copies.';
   return `${plural(result.trashed, 'copy', 'copies')} moved to Recently deleted · ${bytes(result.reclaimedBytes)} back in a year`;
 }
 
@@ -149,4 +168,11 @@ export function copyLabelOf(item: DriveItem, keeper: boolean, labels: SourceLabe
   return [keeper ? 'Keep' : 'Copy', item.name, itemLineOf(item), sourceOf(item, labels)]
     .filter(Boolean)
     .join(', ');
+}
+
+export function hashedShareOf(roots: readonly DriveRoot[], viewerId: string | null): number {
+  const open = roots.filter((root) => root.scope === 'home' || isDriveOwner(root, viewerId));
+  const items = open.reduce((sum, root) => sum + root.items, 0);
+  if (items === 0) return 1;
+  return open.reduce((sum, root) => sum + root.health.hashedShare * root.items, 0) / items;
 }

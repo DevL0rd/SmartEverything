@@ -1,13 +1,17 @@
-import type { BackupSettings, BackupState, PhotosProgressNotice } from '@smarteverything/domain';
+import type {
+  BackupDeviceState,
+  BackupSettings,
+  BackupState,
+  PhotosProgressNotice,
+} from '@smarteverything/domain';
 import type { BadgeTone } from '../../../components/badge';
 import type { IconName } from '../../../components/icon';
 import type { ColourRole } from '../../../design/tokens';
-import { count } from '../../../format/number';
+import { count, percent } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import { shortDate } from '../../../format/time';
 import { phoneLeftOf } from '../components/photos-frame';
-import { leftOf, phoneConditions } from '../settings/model';
-import { PAUSE_LABELS } from './model/conditions';
+import { PAUSE_LABELS, type PauseReason } from './model/conditions';
 import type { BackupStatus } from './model/status';
 
 export interface Progress {
@@ -34,6 +38,23 @@ export function progressAfter(current: LiveProgress, notice: PhotosProgressNotic
   return { ...current, kinds: new Map(current.kinds).set(notice.kind, progress) };
 }
 
+export function leftOf(state: BackupDeviceState): number {
+  return state.pending + state.uploading + state.failed;
+}
+
+export function networkLabelOf(wifiOnly: boolean, desktop: boolean): string {
+  if (desktop) return wifiOnly ? 'Unmetered networks only' : 'All networks';
+  return wifiOnly ? 'Wi-Fi only' : 'Wi-Fi and mobile data';
+}
+
+export function phoneConditions(settings: BackupSettings, platform = 'android'): string {
+  return joinParts([
+    networkLabelOf(settings.wifiOnly, platform === 'desktop'),
+    settings.chargingOnly ? 'only while charging' : null,
+    settings.includeVideos ? 'videos on' : 'photos only',
+  ]);
+}
+
 export interface PhoneCounts {
   readonly backedUp: number;
   readonly left: number;
@@ -41,7 +62,7 @@ export interface PhoneCounts {
   readonly failed: number;
 }
 
-export function countsOf(state: BackupState, live: Progress | undefined): PhoneCounts {
+export function countsOf(state: BackupDeviceState, live: Progress | undefined): PhoneCounts {
   if (live === undefined) {
     return {
       backedUp: state.backedUp,
@@ -87,14 +108,16 @@ export interface PhoneView {
   readonly key: string;
   readonly deviceId: string;
   readonly title: string;
-  readonly person: string | null;
+  readonly current: boolean;
+  readonly platform: BackupDeviceState['device']['platform'];
   readonly badge: PhoneBadgeView;
   readonly detail: string;
   readonly coverage: number;
+  readonly share: string;
   readonly colour: ColourRole;
 }
 
-function detailOf(state: BackupState, counts: PhoneCounts): string {
+function detailOf(state: BackupDeviceState, counts: PhoneCounts): string {
   const { settings } = state.device;
   if (counts.left > 0) {
     return joinParts([
@@ -108,35 +131,43 @@ function detailOf(state: BackupState, counts: PhoneCounts): string {
   ]);
 }
 
-export function phoneViewOf(
-  state: BackupState,
-  live: Progress | undefined,
-  person: string | null,
-): PhoneView {
+export interface PhoneViewInput {
+  readonly live: Progress | undefined;
+  readonly current: boolean;
+}
+
+export function phoneViewOf(state: BackupDeviceState, input: PhoneViewInput): PhoneView {
+  const { live, current } = input;
   const counts = countsOf(state, live);
   const badge = badgeOf(state.device.settings.enabled, counts);
   return {
     key: state.device.id,
     deviceId: state.device.deviceId,
     title: state.device.name,
-    person,
+    current,
+    platform: state.device.platform,
     badge,
     detail: detailOf(state, counts),
     coverage: coverageOf(counts),
+    share: percent(Math.floor(coverageOf(counts) * 100) / 100),
     colour: TONE_COLOUR[badge.tone],
   };
 }
 
-export function itemsLeftOf(states: readonly BackupState[], live: LiveProgress): number {
+export function currentFirst<T extends { readonly current: boolean }>(
+  views: readonly T[],
+): readonly T[] {
+  return [...views.filter((view) => view.current), ...views.filter((view) => !view.current)];
+}
+
+export function itemsLeftOf(states: readonly BackupDeviceState[], live: LiveProgress): number {
   return states
     .filter((state) => state.device.settings.enabled)
     .reduce((sum, state) => sum + countsOf(state, live.devices.get(state.device.deviceId)).left, 0);
 }
 
-export function backupSubtitleOf(
-  states: readonly BackupState[] | undefined,
-  live: LiveProgress,
-): string {
+export function backupSubtitleOf(state: BackupState | undefined, live: LiveProgress): string {
+  const states = state?.devices;
   const kept = 'originals kept as they are';
   if (states === undefined || states.length === 0) return `Devices back up here · ${kept}`;
   const noun = states.some((state) => state.device.platform === 'desktop') ? 'device' : 'phone';
@@ -156,21 +187,36 @@ export interface ChipView {
   readonly progress: number;
 }
 
-export function hubChipOf(
-  states: readonly BackupState[] | undefined,
+export interface HubProgress {
+  readonly left: number;
+  readonly progress: number;
+  readonly uploading: boolean;
+}
+
+export function hubProgressOf(
+  state: BackupState | undefined,
   live: LiveProgress,
-): ChipView | null {
-  const phones = (states ?? []).filter((state) => state.device.settings.enabled);
+): HubProgress | null {
+  const phones = (state?.devices ?? []).filter((entry) => entry.device.settings.enabled);
   if (phones.length === 0) return null;
-  const counts = phones.map((state) => countsOf(state, live.devices.get(state.device.deviceId)));
+  const counts = phones.map((entry) => countsOf(entry, live.devices.get(entry.device.deviceId)));
   const left = counts.reduce((sum, entry) => sum + entry.left, 0);
-  if (left === 0) return { mark: 'check', label: 'Backed up', progress: 1 };
   const backedUp = counts.reduce((sum, entry) => sum + entry.backedUp, 0);
-  const progress = backedUp / (backedUp + left);
-  if (counts.some((entry) => entry.uploading)) {
-    return { mark: 'ring', label: `Backing up ${count(left)}`, progress };
+  return {
+    left,
+    progress: backedUp + left === 0 ? 1 : backedUp / (backedUp + left),
+    uploading: counts.some((entry) => entry.uploading),
+  };
+}
+
+export function hubChipOf(state: BackupState | undefined, live: LiveProgress): ChipView | null {
+  const hub = hubProgressOf(state, live);
+  if (hub === null) return null;
+  if (hub.left === 0) return { mark: 'check', label: 'Backed up', progress: 1 };
+  if (hub.uploading) {
+    return { mark: 'ring', label: `Backing up ${count(hub.left)}`, progress: hub.progress };
   }
-  return { mark: 'pause', label: `${count(left)} waiting`, progress };
+  return { mark: 'pause', label: `${count(hub.left)} waiting`, progress: hub.progress };
 }
 
 export function phoneProgressOf(status: BackupStatus): number {
@@ -216,29 +262,31 @@ export interface ConditionChip {
   readonly key: string;
   readonly icon: IconName;
   readonly label: string;
+  readonly blocking: boolean;
 }
+
+const BLOCKS: Readonly<Record<string, readonly PauseReason[]>> = {
+  network: ['wifi', 'offline'],
+  charging: ['charging'],
+  videos: [],
+};
 
 export function conditionChipsOf(
   settings: Pick<BackupSettings, 'wifiOnly' | 'chargingOnly' | 'includeVideos'>,
-  desktop = false,
+  desktop: boolean,
+  reason: PauseReason | null,
 ): readonly ConditionChip[] {
-  return [
-    {
-      key: 'network',
-      icon: 'wifi',
-      label: desktop
-        ? settings.wifiOnly
-          ? 'Unmetered networks only'
-          : 'All networks'
-        : settings.wifiOnly
-          ? 'Wi-Fi only'
-          : 'Wi-Fi and mobile data',
-    },
+  const chips = [
+    { key: 'network', icon: 'wifi', label: networkLabelOf(settings.wifiOnly, desktop) },
     {
       key: 'charging',
       icon: 'batteryCharging',
       label: settings.chargingOnly ? 'Only while charging' : 'Charging not needed',
     },
     { key: 'videos', icon: 'film', label: settings.includeVideos ? 'Videos on' : 'Photos only' },
-  ];
+  ] as const;
+  return chips.map((chip) => ({
+    ...chip,
+    blocking: reason !== null && (BLOCKS[chip.key] ?? []).includes(reason),
+  }));
 }

@@ -1,14 +1,12 @@
 import { router } from 'expo-router';
 import type { MediaInfo, PhotoPlace } from '@smarteverything/domain';
-import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import type { MenuItem } from '../../../components/menu';
 import { notify } from '../../../components/toast-store';
 import { downloadFile } from '../../../platform/file-actions';
 import { usePref, PREFS } from '../../../store/prefs';
-import { driveLinks } from '../../nas/data/links';
-import { useDriveAlbums } from '../../nas/data/tables';
+import { driveLinks, openHrefOf, useDriveAlbums, useDriveRoots } from '../../drive';
 import { useViewerActions, type ViewerActions } from './actions';
 import { useAddedBy } from './added-by';
 import { useAskAbout } from './ask';
@@ -34,13 +32,6 @@ export interface ViewerControls {
   readonly actions: ViewerActions;
   readonly header: HeaderControls;
   readonly info: InfoContent;
-}
-
-function driveHrefOf(item: MediaItem): ReturnType<typeof href.driveRoot> {
-  return href.driveRoot(item.rootId, {
-    itemId: item.id,
-    ...(item.parentId === null ? {} : { folderId: item.parentId }),
-  });
 }
 
 function downloadFailed(item: MediaItem, error: unknown): void {
@@ -94,7 +85,7 @@ export function useViewerControls(input: ViewerControlsInput): ViewerControls {
     afterTrash(input);
   });
   const albums = albumMenuItems(useDriveAlbums('photos'), actions.addToAlbum);
-  const driveHref = driveHrefOf(item);
+  const driveHref = openHrefOf(item, useDriveRoots());
   const info = useInfoContent(input, albums, driveHref);
   const more = moreMenuItems({
     onDownload: () => {

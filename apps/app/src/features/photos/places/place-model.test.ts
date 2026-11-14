@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Memory, PhotoPlace, PlaceCountry } from '@smarteverything/domain';
+import type { PhotoPlace, PlaceCountry } from '@smarteverything/domain';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import {
   clusterCovers,
@@ -10,7 +10,6 @@ import {
   feedTiles,
   libraryLine,
   placeMatches,
-  placeMemoryOf,
   placesByCount,
   placesIn,
   sideCountries,
@@ -196,52 +195,5 @@ describe('places model', () => {
       'new',
       'old',
     ]);
-  });
-
-  it('plays the latest trip or day out made at the place', () => {
-    const base = { count: 40, coverItemId: '0b9f8a4e-0000-4000-8000-000000000001' };
-    const memories: readonly Memory[] = [
-      {
-        ...base,
-        id: 'trip:1',
-        kind: 'trip',
-        from: '2019-06-01',
-        to: '2019-06-09',
-        placeId: 1,
-        placeName: 'Lisbon',
-        distanceFromHomeKm: null,
-        places: 1,
-        perDay: [{ day: '2019-06-01', count: 1 }],
-      },
-      {
-        ...base,
-        id: 'day:2',
-        kind: 'day_out',
-        from: '2024-05-04',
-        to: '2024-05-04',
-        placeId: 1,
-        placeName: 'Lisbon',
-      },
-      {
-        ...base,
-        id: 'day:3',
-        kind: 'day_out',
-        from: '2026-11-01',
-        to: '2026-11-01',
-        placeId: 2,
-        placeName: 'Porto',
-      },
-      {
-        ...base,
-        id: 'otd:4',
-        kind: 'on_this_day',
-        yearsAgo: 1,
-        from: '2025-11-07',
-        to: '2025-11-07',
-      },
-    ];
-    expect(placeMemoryOf(memories, 1)?.id).toBe('day:2');
-    expect(placeMemoryOf(memories, 2)?.id).toBe('day:3');
-    expect(placeMemoryOf(memories, 3)).toBeNull();
   });
 });

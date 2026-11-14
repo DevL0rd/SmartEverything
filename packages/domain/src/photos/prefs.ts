@@ -16,7 +16,6 @@ export const PHOTOS_PREF = z.strictObject({
   showNotBackedUp: z
     .boolean()
     .describe('Show items that are still only on a phone, marked as not backed up'),
-  excludedAlbumIds: z.array(z.uuid()).describe('Albums left out of the library and the map'),
   map: z.boolean().describe('Show where photos were taken'),
   removeLocationOutside: z
     .boolean()
@@ -39,7 +38,7 @@ export const PHOTOS_CLIENT_PREFS = {
   photos: clientPref({
     storageKey: 'photos',
     scope: 'profile',
-    version: 2,
+    version: 3,
     defaultValue: {
       showCameras: true,
       showAi: true,
@@ -47,7 +46,6 @@ export const PHOTOS_CLIENT_PREFS = {
       libraryGroup: 'day',
       showVideos: true,
       showNotBackedUp: true,
-      excludedAlbumIds: [],
       map: true,
       removeLocationOutside: true,
     },

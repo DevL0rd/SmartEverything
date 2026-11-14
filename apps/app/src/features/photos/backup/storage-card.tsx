@@ -7,7 +7,7 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { bytes } from '../../../format/number';
 import { useMinute } from '../../../store/clock';
-import { useDriveStats } from '../../nas/data';
+import { useDriveStats } from '../../drive';
 import { usePhotoInsights } from '../data';
 import { GrowthChart } from './growth-chart';
 import { growthTextOf, monthlyGrowthOf, storageOf } from './stats-model';
@@ -69,11 +69,9 @@ function StorageBody({
         <Text variant="footnote" tone="variant" className="min-w-0 flex-1">
           library
         </Text>
-        {view.freeBytes === null ? null : (
-          <Text variant="footnote" tone="variant" className="tabular-nums">
-            {`${bytes(view.freeBytes)} free`}
-          </Text>
-        )}
+        <Text variant="footnote" tone="variant" className="tabular-nums">
+          {`${bytes(view.freeBytes)} free`}
+        </Text>
       </View>
       <SegmentBar
         segments={view.segments}
@@ -81,7 +79,7 @@ function StorageBody({
         size="thick"
         legend
         format={bytes}
-        {...(view.totalBytes === null ? {} : { total: view.totalBytes })}
+        total={view.totalBytes}
       />
       <View className="border-t border-outline-variant pt-3">
         <Growth stats={stats} />
@@ -93,7 +91,7 @@ function StorageBody({
 export function StorageCard(): ReactNode {
   const stats = useDriveStats().data;
   const insights = usePhotoInsights('all_time').data;
-  const total = stats?.volumes.reduce((sum, volume) => sum + volume.totalBytes, 0) ?? 0;
+  const total = stats?.space.totalBytes ?? 0;
   return (
     <Card
       title="Storage use"

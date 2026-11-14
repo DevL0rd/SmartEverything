@@ -1,9 +1,7 @@
 import type { DriveAlbum, DriveItem } from '@smarteverything/domain';
 import { createDriveAlbum, removeDriveAlbum, updateDriveAlbum } from '../../../api/drive';
 import type { DriveResult } from '../../../api/drive';
-import { useDriveAlbumItems } from '../../nas/data/queries';
-import { flattenPages, type DrivePages } from '../../nas/data/pages';
-import { useDriveAlbums } from '../../nas/data/tables';
+import { type DrivePages, flattenPages, useDriveAlbumItems, useDriveAlbums } from '../../drive';
 import { changeBody, createBody, type AlbumDraft } from './rule-draft';
 
 export function usePhotoAlbums(): readonly DriveAlbum[] {

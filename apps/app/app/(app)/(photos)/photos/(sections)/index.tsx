@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { TimelineScreen } from '../../../../../src/features/photos/timeline/timeline-screen';
+import { LibraryScreen } from '../../../../../src/features/photos/library/library-screen';
 
 export default function Route(): ReactNode {
-  return <TimelineScreen />;
+  return <LibraryScreen />;
 }

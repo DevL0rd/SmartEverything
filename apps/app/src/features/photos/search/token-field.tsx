@@ -20,30 +20,45 @@ export interface TokenFieldProps {
   readonly onKey: (key: string) => void;
   readonly onRemove: (token: SearchToken) => void;
   readonly onClear: () => void;
+  readonly unused: ReadonlySet<string>;
+  readonly onFocus: () => void;
 }
+
+export const UNUSED_NOTE = 'Not used on this tab';
 
 function TokenChip({
   token,
+  unused,
   onRemove,
 }: {
   readonly token: SearchToken;
+  readonly unused: boolean;
   readonly onRemove: (token: SearchToken) => void;
 }): ReactNode {
+  const tone = unused ? 'variant' : 'primary';
   return (
     <Interactive
       role="button"
-      label={`Remove ${token.label}`}
+      label={unused ? `Remove ${token.label}, ${UNUSED_NOTE}` : `Remove ${token.label}`}
       onPress={() => {
         onRemove(token);
       }}
-      className="h-8 max-w-full flex-row items-center gap-1.5 rounded-full bg-primary-container pl-2.5 pr-2"
+      className={cn(
+        'h-8 max-w-full flex-row items-center gap-1.5 rounded-full pl-2.5 pr-2',
+        unused ? 'border border-dashed border-outline bg-surface-2' : 'bg-primary-container',
+      )}
       layerClassName="rounded-full"
     >
-      <Icon name={tokenIconOf(token)} size={16} tone="primary" />
-      <Text variant="label" className="shrink text-on-primary-container" numberOfLines={1}>
+      <Icon name={tokenIconOf(token)} size={16} tone={tone} />
+      <Text
+        variant="label"
+        tone={unused ? 'variant' : 'default'}
+        className={cn('shrink', !unused && 'text-on-primary-container')}
+        numberOfLines={1}
+      >
         {token.label}
       </Text>
-      <Icon name="close" size={16} tone="primary" />
+      <Icon name="close" size={16} tone={tone} />
     </Interactive>
   );
 }
@@ -96,6 +111,8 @@ export function TokenField({
   onKey,
   onRemove,
   onClear,
+  unused,
+  onFocus,
 }: TokenFieldProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const [focused, setFocused] = useState(false);
@@ -111,7 +128,12 @@ export function TokenField({
       <Icon name="search" size={pointer ? 16 : 24} tone="variant" />
       <View className="min-w-0 flex-1 flex-row flex-wrap items-center gap-1.5">
         {tokens.map((token) => (
-          <TokenChip key={tokenKey(token)} token={token} onRemove={onRemove} />
+          <TokenChip
+            key={tokenKey(token)}
+            token={token}
+            unused={unused.has(tokenKey(token))}
+            onRemove={onRemove}
+          />
         ))}
         <FieldInput
           tokens={tokens}
@@ -120,7 +142,10 @@ export function TokenField({
           onChange={onChange}
           onSubmit={onSubmit}
           onKey={onKey}
-          onFocus={setFocused}
+          onFocus={(next) => {
+            setFocused(next);
+            if (next) onFocus();
+          }}
         />
       </View>
       {filled ? <IconButton icon="close" label="Clear search" onPress={onClear} /> : null}

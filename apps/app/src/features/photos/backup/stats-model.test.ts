@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaJob, MediaProcessing } from '@smarteverything/domain';
-import type { UploadEntry } from '../../nas/uploads';
+import type { UploadEntry } from '../../drive';
 import { bytes } from '../../../format/number';
 import { INITIAL_BACKUP_STATUS } from './model/status';
 import { growthShapeOf } from './growth-model';
@@ -9,9 +9,11 @@ import {
   freeUpBodyOf,
   freeUpConfirmOf,
   freeUpLabelOf,
+  fullYearOf,
   jobsLeftText,
   monthlyGrowthOf,
   processingOf,
+  storageOf,
   unreadableText,
 } from './stats-model';
 import { thisPhoneCopy } from './this-phone-model';
@@ -96,6 +98,23 @@ describe('processing', () => {
     expect(unreadableText(3)).toBe(
       '3 files could not be read. The originals stay and can be downloaded.',
     );
+  });
+});
+
+describe('hub disk use', () => {
+  const space = { totalBytes: 1000, freeBytes: 400, fsType: 'ext4' };
+
+  it('splits the data disk into the library and other files', () => {
+    const view = storageOf({ space }, { kinds: [{ kind: 'photo', items: 3, bytes: 100 }] });
+    expect(view.totalBytes).toBe(1000);
+    expect(view.freeBytes).toBe(400);
+    expect(view.segments.at(-1)).toMatchObject({ label: 'Other files on the disk', value: 500 });
+  });
+
+  it('projects the year the data disk fills from the drive estimate', () => {
+    const now = Date.parse('2026-11-07T12:00:00Z');
+    expect(fullYearOf({ fullInMonths: 24 }, now)).toBe(2028);
+    expect(fullYearOf({ fullInMonths: null }, now)).toBeNull();
   });
 });
 

@@ -37,6 +37,7 @@ function photo(patch: Partial<Record<string, unknown>> = {}): MediaItem {
     addedAt: AT,
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'e1',
     outside: false,

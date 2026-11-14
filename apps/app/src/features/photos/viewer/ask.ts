@@ -2,8 +2,8 @@ import { router } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import type { PickedFile } from '../../../platform/pick-files';
 import { attachFiles, useLastChat } from '../../assistant';
-import { useDriveLink } from '../../nas/data/links';
-import { NO_CHAT_HINT, pickedOf } from '../memories/actions';
+import { useDriveLink } from '../../drive';
+import { NO_CHAT_HINT, pickedOf } from '../model/ask-actions';
 import type { MediaItem } from './info-model';
 
 export interface AskAbout {

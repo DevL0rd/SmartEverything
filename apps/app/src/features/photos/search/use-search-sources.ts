@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import type { PhotoInsights, TimelineBucket } from '@smarteverything/domain';
+import type { PhotoInsights, LibraryBucket } from '@smarteverything/domain';
 import { useDayKey } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
-import { useDriveAlbums } from '../../nas/data/tables';
+import { useDriveAlbums } from '../../drive';
 import {
   PHOTO_ALL,
   usePhotoBuckets,
@@ -14,7 +14,7 @@ import type { SearchSources } from './suggest';
 
 const NONE: readonly never[] = [];
 
-function monthsOf(buckets: readonly TimelineBucket[] | undefined): ReadonlyMap<string, number> {
+function monthsOf(buckets: readonly LibraryBucket[] | undefined): ReadonlyMap<string, number> {
   return new Map((buckets ?? NONE).map((bucket) => [bucket.month, bucket.count]));
 }
 
@@ -25,7 +25,12 @@ function kindItems(insights: PhotoInsights | undefined, video: boolean): number 
     .reduce((sum, kind) => sum + kind.items, 0);
 }
 
-export function useSearchSources(): SearchSources {
+export interface SearchSourcesView {
+  readonly sources: SearchSources;
+  readonly loading: boolean;
+}
+
+export function useSearchSources(): SearchSourcesView {
   const today = useDayKey();
   const latitude = useSettings().latitude;
   const buckets = usePhotoBuckets(PHOTO_ALL).data;
@@ -33,7 +38,7 @@ export function useSearchSources(): SearchSources {
   const insights = usePhotoInsights('all_time').data;
   const favourites = usePhotoRailCounts().data?.favourites ?? null;
   const albums = useDriveAlbums('photos');
-  return useMemo(
+  const sources = useMemo(
     (): SearchSources => ({
       countries: places ?? NONE,
       albums,
@@ -45,4 +50,8 @@ export function useSearchSources(): SearchSources {
     }),
     [places, albums, insights, favourites, today, latitude, buckets],
   );
+  return {
+    sources,
+    loading: places === undefined || insights === undefined || buckets === undefined,
+  };
 }

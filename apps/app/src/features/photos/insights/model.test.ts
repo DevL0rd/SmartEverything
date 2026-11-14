@@ -66,17 +66,14 @@ function insights(overrides: Partial<PhotoInsights> = {}): PhotoInsights {
 }
 
 const COUNTS = {
-  timeline: 400,
-  memories: 0,
+  library: 400,
   albums: 0,
   places: 18,
   favourites: 10,
   videos: 15,
   screenshots: 10,
-  cameras: 0,
-  ai: 0,
-  duplicates: null,
-  backupPhones: 1,
+  duplicates: 0,
+  backupDevices: 1,
   deleted: 0,
 };
 

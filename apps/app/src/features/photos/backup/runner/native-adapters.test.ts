@@ -28,11 +28,11 @@ vi.mock('expo', () => ({
       : null,
 }));
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: {} }));
-vi.mock('../../../nas/uploads/client', () => ({ UPLOAD_CHUNK_BYTES: 4 * 1024 * 1024 }));
-vi.mock('../../../nas/uploads/hub-transport', () => ({
+vi.mock('../../../drive/upload/transport/client', () => ({ UPLOAD_CHUNK_BYTES: 4 * 1024 * 1024 }));
+vi.mock('../../../drive/upload/transport/hub-transport', () => ({
   connectionUploadTransport: (): object => ({}),
 }));
-vi.mock('../../../nas/uploads/run', () => ({ runUpload: vi.fn() }));
+vi.mock('../../../drive/upload/transport/run', () => ({ runUpload: vi.fn() }));
 const adapters = await import('./native-adapters');
 
 beforeEach(() => {

@@ -5,7 +5,7 @@ import {
   type DuplicateKeepBest,
   type PhotoInsightRange,
   type PhotoSource,
-  type PhotoTimelineFilter,
+  type LibraryScope,
   type PlaceClusterQuery,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
@@ -15,37 +15,30 @@ export type PhotosResult<K extends keyof typeof P> = z.output<(typeof P)[K]['res
 
 type Call<K extends keyof typeof P> = Promise<PhotosResult<K>>;
 
-export interface PhotoScope {
-  readonly filter: PhotoTimelineFilter;
-  readonly placeId: number | null;
+export interface SourceSearch {
+  readonly text: string | null;
+  readonly from: string | null;
+  readonly to: string | null;
 }
 
-function scopeQuery(scope: PhotoScope): {
-  readonly filter: PhotoTimelineFilter;
-  readonly placeId?: number;
-} {
-  return {
-    filter: scope.filter,
-    ...(scope.placeId === null ? {} : { placeId: scope.placeId }),
-  };
-}
+export const NO_SOURCE_SEARCH: SourceSearch = { text: null, from: null, to: null };
 
 function cursorQuery(cursor: string | null): { readonly cursor?: string } {
   return cursor === null ? {} : { cursor };
 }
 
-export function readTimelineBuckets(scope: PhotoScope): Call<'readTimelineBuckets'> {
-  return api().call(P.readTimelineBuckets, { query: scopeQuery(scope) });
+export function readLibraryBuckets(scope: LibraryScope): Call<'readLibraryBuckets'> {
+  return api().call(P.readLibraryBuckets, { query: scope });
 }
 
-export function readTimelinePage(
+export function readLibraryPage(
   month: string,
-  scope: PhotoScope,
+  scope: LibraryScope,
   cursor: string | null,
-): Call<'readTimelinePage'> {
-  return api().call(P.readTimelinePage, {
+): Call<'readLibraryPage'> {
+  return api().call(P.readLibraryPage, {
     params: { month },
-    query: { ...scopeQuery(scope), ...cursorQuery(cursor) },
+    query: { ...scope, ...cursorQuery(cursor) },
   });
 }
 
@@ -55,14 +48,6 @@ export function readMediaInfo(itemId: string): Call<'readMediaInfo'> {
 
 export function readMediaProcessing(): Call<'readMediaProcessing'> {
   return api().call(P.readMediaProcessing, {});
-}
-
-export function listMemories(): Call<'listMemories'> {
-  return api().call(P.listMemories, {});
-}
-
-export function listMemoryItems(memoryId: string, cursor: string | null): Call<'listMemoryItems'> {
-  return api().call(P.listMemoryItems, { params: { memoryId }, query: cursorQuery(cursor) });
 }
 
 export function listTrips(): Call<'listTrips'> {
@@ -120,11 +105,18 @@ export function makeStackCover(stackId: string, itemId: string): Call<'makeStack
 export function listPhotoSource(
   source: PhotoSource,
   chipId: string | null,
+  search: SourceSearch,
   cursor: string | null,
 ): Call<'listPhotoSource'> {
   return api().call(P.listPhotoSource, {
     params: { source },
-    query: { ...(chipId === null ? {} : { chipId }), ...cursorQuery(cursor) },
+    query: {
+      ...(chipId === null ? {} : { chipId }),
+      ...(search.text === null ? {} : { text: search.text }),
+      ...(search.from === null ? {} : { from: search.from }),
+      ...(search.to === null ? {} : { to: search.to }),
+      ...cursorQuery(cursor),
+    },
   });
 }
 

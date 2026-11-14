@@ -8,8 +8,6 @@ import { SEARCH_TOKEN, searchTitleOf } from './tokens';
 
 const log = new Logger('app.photos');
 
-export const RECENT_KEPT = 6;
-
 const RECENT = z
   .strictObject({ tokens: z.array(SEARCH_TOKEN).readonly(), text: z.string() })
   .readonly();
@@ -50,17 +48,13 @@ export function notedRecent(
 ): readonly RecentSearch[] {
   const entry = recentOf(input);
   const rest = list.filter((earlier) => earlier.key !== entry.key);
-  return [entry, ...rest].slice(0, RECENT_KEPT);
-}
-
-export function withoutRecent(list: readonly RecentSearch[], key: string): readonly RecentSearch[] {
-  return list.filter((entry) => entry.key !== key);
+  return [entry, ...rest];
 }
 
 export interface PhotoRecentSearches {
   readonly recent: readonly RecentSearch[];
   readonly note: (input: SearchInput) => void;
-  readonly remove: (key: string) => void;
+  readonly clear: () => void;
 }
 
 export function usePhotoRecentSearches(): PhotoRecentSearches {
@@ -72,8 +66,8 @@ export function usePhotoRecentSearches(): PhotoRecentSearches {
       if (input.tokens.length === 0 && input.text.trim() === '') return;
       setLocalPref('photoSearches', [...storedOf(notedRecent(recent, input))]);
     },
-    remove: (key): void => {
-      setLocalPref('photoSearches', [...storedOf(withoutRecent(recent, key))]);
+    clear: (): void => {
+      setLocalPref('photoSearches', []);
     },
   };
 }

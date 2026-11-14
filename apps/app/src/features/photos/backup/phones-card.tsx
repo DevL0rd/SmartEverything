@@ -1,114 +1,105 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { background } from '@smarteverything/logging';
-import type { BackupState } from '@smarteverything/domain';
+import type { BackupDeviceState } from '@smarteverything/domain';
 import { Badge } from '../../../components/badge';
 import { Card } from '../../../components/card';
-import { Arc, ProgressBar } from '../../../components/charts';
+import { ProgressBar } from '../../../components/charts';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
+import { Icon } from '../../../components/icon';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
-import { percent } from '../../../format/number';
-import { useProfiles } from '../../../store/people';
 import { usePhotoBackupState } from '../data';
-import { phoneViewOf, type LiveProgress, type PhoneView } from './phones-model';
+import { currentFirst, phoneViewOf, type LiveProgress, type PhoneView } from './phones-model';
 
-const RING = 40;
-
-function PhoneLine({ view }: { readonly view: PhoneView }): ReactNode {
+function DeviceLine({ view }: { readonly view: PhoneView }): ReactNode {
+  const label = `${view.title} ${view.share} backed up`;
   return (
-    <View className="flex-row items-center gap-3 border-t border-outline-variant px-4 py-2.5">
-      <View
-        accessible
-        accessibilityRole="image"
-        accessibilityLabel={`${view.title} ${percent(view.coverage)} backed up`}
-        className="size-10"
-      >
-        <Arc value={view.coverage} size={RING} thickness={4} colour={view.colour} />
+    <View className="flex-row items-center gap-3 border-t border-outline-variant px-4 py-3">
+      <View className="size-10 items-center justify-center rounded-full bg-surface-3">
+        <Icon
+          name={view.platform === 'desktop' ? 'monitor' : 'smartphone'}
+          size={20}
+          tone={view.current ? 'primary' : 'variant'}
+        />
       </View>
-      <View className="min-w-0 flex-1 gap-1">
+      <View className="min-w-0 flex-1 gap-1.5">
         <View className="flex-row flex-wrap items-center gap-2">
           <Text variant="body-strong" numberOfLines={1} className="shrink">
             {view.title}
           </Text>
-          {view.person === null ? null : (
-            <Text variant="caption" tone="variant" numberOfLines={1}>
-              {view.person}
-            </Text>
-          )}
-          <Badge label={view.badge.label} tone={view.badge.tone} />
+          {view.current ? <Badge label="This device" tone="info" /> : null}
+          <View className="ml-auto">
+            <Badge label={view.badge.label} tone={view.badge.tone} />
+          </View>
         </View>
-        <Text variant="caption" tone="variant" numberOfLines={1} className="tabular-nums">
-          {view.detail}
-        </Text>
-        <ProgressBar
-          progress={view.coverage}
-          colour={view.colour}
-          label={`${view.title} ${percent(view.coverage)} backed up`}
-        />
+        <ProgressBar progress={view.coverage} colour={view.colour} label={label} />
+        <View className="flex-row items-center gap-2">
+          <Text
+            variant="caption"
+            tone="variant"
+            numberOfLines={1}
+            className="min-w-0 flex-1 tabular-nums"
+          >
+            {view.detail}
+          </Text>
+          <Text variant="caption" tone="variant" className="tabular-nums">
+            {view.share}
+          </Text>
+        </View>
       </View>
     </View>
   );
 }
 
-export function usePhoneViews(
-  states: readonly BackupState[],
+export function deviceViewsOf(
+  states: readonly BackupDeviceState[],
   live: LiveProgress,
-  except: string | null,
+  currentDeviceId: string | null,
 ): readonly PhoneView[] {
-  const people = useProfiles();
-  return states
-    .filter((state) => state.device.deviceId !== except)
-    .map((state) =>
-      phoneViewOf(
-        state,
-        live.devices.get(state.device.deviceId),
-        people.find((person) => person.id === state.device.profileId)?.name ?? null,
-      ),
-    );
+  return currentFirst(
+    states.map((state) =>
+      phoneViewOf(state, {
+        live: live.devices.get(state.device.deviceId),
+        current: state.device.deviceId === currentDeviceId,
+      }),
+    ),
+  );
 }
 
-function NoPhones(): ReactNode {
+function NoDevices(): ReactNode {
   return (
     <View className="border-t border-outline-variant px-2 py-2">
       <EmptyState
         compact
         icon="smartphone"
         title="No devices back up yet"
-        body="Open Photos on your phone or computer and turn on backup. Each device sets its own."
+        body="Open Photos settings on your phone or computer and turn on Back up this device."
       />
     </View>
   );
 }
 
-interface ListProps {
+interface DevicesProps {
   readonly live: LiveProgress;
-  readonly except: string | null;
+  readonly currentDeviceId: string | null;
 }
 
-function NoOtherPhones(): ReactNode {
-  return (
-    <Text variant="footnote" tone="variant" className="border-t border-outline-variant px-4 py-3">
-      No other devices back up here.
-    </Text>
-  );
-}
-
-function PhoneList({
+function DeviceList({
   states,
   live,
-  except,
-}: ListProps & { readonly states: readonly BackupState[] }): ReactNode {
-  const views = usePhoneViews(states, live, except);
-  if (views.length === 0) return except === null ? <NoPhones /> : <NoOtherPhones />;
-  return views.map((view) => <PhoneLine key={view.key} view={view} />);
+  currentDeviceId,
+}: DevicesProps & { readonly states: readonly BackupDeviceState[] }): ReactNode {
+  const views = deviceViewsOf(states, live, currentDeviceId);
+  if (views.length === 0) return <NoDevices />;
+  return views.map((view) => <DeviceLine key={view.key} view={view} />);
 }
 
-function PhonesBody({ live, except }: ListProps): ReactNode {
+function DevicesBody({ live, currentDeviceId }: DevicesProps): ReactNode {
   const query = usePhotoBackupState();
   if (query.data !== undefined) {
-    return <PhoneList states={query.data} live={live} except={except} />;
+    return <DeviceList states={query.data.devices} live={live} currentDeviceId={currentDeviceId} />;
   }
   if (query.isError) {
     return (
@@ -116,7 +107,7 @@ function PhonesBody({ live, except }: ListProps): ReactNode {
         <ErrorState
           error={query.error}
           retry={() => {
-            background(query.refetch(), 'photos.backup.phones_refetch_failed');
+            background(query.refetch(), 'photos.backup.devices_refetch_failed');
           }}
         />
       </View>
@@ -124,26 +115,25 @@ function PhonesBody({ live, except }: ListProps): ReactNode {
   }
   return (
     <View aria-busy className="gap-2 px-4 pb-4">
-      <Skeleton shape="line" className="h-12" />
-      <Skeleton shape="line" className="h-12" />
+      <Skeleton shape="line" className="h-14" />
+      <Skeleton shape="line" className="h-14" />
     </View>
   );
 }
 
-export function PhonesCard({ live, except }: ListProps): ReactNode {
+export function DevicesCard({ live, currentDeviceId }: DevicesProps): ReactNode {
   return (
     <Card
-      title={except === null ? 'Devices' : 'Other devices'}
+      title="All devices"
+      icon="layers"
       padding="none"
       metadata={
-        except === null ? (
-          <Text variant="caption" tone="variant">
-            Each device sets its own backup
-          </Text>
-        ) : null
+        <Text variant="caption" tone="variant">
+          Each device sets its own backup
+        </Text>
       }
     >
-      <PhonesBody live={live} except={except} />
+      <DevicesBody live={live} currentDeviceId={currentDeviceId} />
     </Card>
   );
 }

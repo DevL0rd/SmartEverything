@@ -1,9 +1,11 @@
 package expo.modules.healthconnect.photos
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.BatteryManager
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
@@ -18,7 +20,9 @@ class PhotosBackupModule : Module() {
 
   private fun context(): Context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
 
-  private fun media(): PhotosMedia = media ?: PhotosMedia(context().contentResolver, context().cacheDir).also { media = it }
+  private fun media(): PhotosMedia = media ?: PhotosMedia(context().contentResolver, context().cacheDir) {
+    context().checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
+  }.also { media = it }
 
   override fun definition() = ModuleDefinition {
     Name("PhotosBackup")

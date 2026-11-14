@@ -9,7 +9,7 @@ import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { bytes } from '../../../format/number';
-import { useDriveLink } from '../../nas/data';
+import { useDriveLink } from '../../drive';
 import {
   copiesOf,
   copyLabelOf,
@@ -175,7 +175,7 @@ function PhoneGroup({ group, labels, handlers }: GroupProps): ReactNode {
             {groupLineOf(group)}
           </Text>
           {sources === null ? null : (
-            <Text variant="caption" tone="faint" numberOfLines={1}>
+            <Text variant="caption" tone="variant" numberOfLines={1}>
               {sources}
             </Text>
           )}

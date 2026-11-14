@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { BackupState, PhotosProgressNotice } from '@smarteverything/domain';
+import type { BackupDeviceState, BackupState, PhotosProgressNotice } from '@smarteverything/domain';
 import { INITIAL_BACKUP_STATUS, type BackupStatus } from './model/status';
 import {
   NO_PROGRESS,
@@ -7,13 +7,15 @@ import {
   badgeOf,
   conditionChipsOf,
   countsOf,
+  currentFirst,
   hubChipOf,
   phoneChipOf,
+  phoneConditions,
   phoneViewOf,
   progressAfter,
 } from './phones-model';
 
-function stateOf(patch: Partial<BackupState> = {}, enabled = true): BackupState {
+function stateOf(patch: Partial<BackupDeviceState> = {}, enabled = true): BackupDeviceState {
   return {
     device: {
       id: 'a1b2c3d4-0000-4000-8000-000000000001',
@@ -28,11 +30,13 @@ function stateOf(patch: Partial<BackupState> = {}, enabled = true): BackupState 
     pending: 30,
     uploading: 4,
     failed: 0,
-    bytesLeft: 400_000_000,
     lastBackupAt: '2026-11-07T09:40:00.000Z',
-    targetFolder: 'Photos',
     ...patch,
   };
+}
+
+function hubOf(devices: readonly BackupDeviceState[]): BackupState {
+  return { devices, bytesLeft: 400_000_000, targetFolder: 'Photos' };
 }
 
 function notice(patch: Partial<PhotosProgressNotice>): PhotosProgressNotice {
@@ -92,10 +96,15 @@ describe('phone rows', () => {
   });
 
   it('shows progress and conditions while items are left and the last backup when done', () => {
-    const busy = phoneViewOf(stateOf(), undefined, 'Alex');
+    const busy = phoneViewOf(stateOf(), { live: undefined, current: false });
     expect(busy.detail).toBe('12,406 of 12,440 · Wi-Fi only · videos on');
     expect(busy.coverage).toBeCloseTo(12_406 / 12_440);
-    const done = phoneViewOf(stateOf({ pending: 0, uploading: 0 }), undefined, null);
+    expect(busy.share).toBe(`99\u00a0%`);
+    const done = phoneViewOf(stateOf({ pending: 0, uploading: 0 }), {
+      live: undefined,
+      current: true,
+    });
+    expect(done.current).toBe(true);
     expect(done.detail.startsWith('12,406 items · last backup')).toBe(true);
     expect(done.colour).toBe('positive');
   });
@@ -104,19 +113,44 @@ describe('phone rows', () => {
     expect(backupSubtitleOf(undefined, NO_PROGRESS)).toBe(
       'Devices back up here · originals kept as they are',
     );
-    expect(backupSubtitleOf([stateOf(), stateOf()], NO_PROGRESS)).toBe(
+    expect(backupSubtitleOf(hubOf([stateOf(), stateOf()]), NO_PROGRESS)).toBe(
       '2 phones back up here · 68 items left · originals kept as they are',
+    );
+  });
+
+  it('puts the current device first and keeps the others in order', () => {
+    const rows = [
+      { id: 'a', current: false },
+      { id: 'b', current: true },
+      { id: 'c', current: false },
+    ];
+    expect(currentFirst(rows).map((row) => row.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('describes the conditions each device backs up under', () => {
+    const settings = {
+      enabled: true,
+      folders: [],
+      wifiOnly: true,
+      chargingOnly: false,
+      includeVideos: true,
+    };
+    expect(phoneConditions(settings)).toBe('Wi-Fi only · videos on');
+    expect(phoneConditions({ ...settings, wifiOnly: false }, 'desktop')).toBe(
+      'All networks · videos on',
     );
   });
 });
 
 describe('the backup chip', () => {
   it('shows nothing on the hub without phones and a ring, check or pause otherwise', () => {
-    expect(hubChipOf([], NO_PROGRESS)).toBeNull();
-    expect(hubChipOf([stateOf({}, false)], NO_PROGRESS)).toBeNull();
-    expect(hubChipOf([stateOf()], NO_PROGRESS)?.label).toBe('Backing up 34');
-    expect(hubChipOf([stateOf({ pending: 0, uploading: 0 })], NO_PROGRESS)?.mark).toBe('check');
-    expect(hubChipOf([stateOf({ uploading: 0 })], NO_PROGRESS)).toMatchObject({
+    expect(hubChipOf(hubOf([]), NO_PROGRESS)).toBeNull();
+    expect(hubChipOf(hubOf([stateOf({}, false)]), NO_PROGRESS)).toBeNull();
+    expect(hubChipOf(hubOf([stateOf()]), NO_PROGRESS)?.label).toBe('Backing up 34');
+    expect(hubChipOf(hubOf([stateOf({ pending: 0, uploading: 0 })]), NO_PROGRESS)?.mark).toBe(
+      'check',
+    );
+    expect(hubChipOf(hubOf([stateOf({ uploading: 0 })]), NO_PROGRESS)).toMatchObject({
       mark: 'pause',
       label: '30 waiting',
     });
@@ -140,14 +174,31 @@ describe('the backup chip', () => {
 
   it('lists the phone conditions in the design wording', () => {
     expect(
-      conditionChipsOf({ wifiOnly: true, chargingOnly: false, includeVideos: true }).map(
-        (chip) => chip.label,
-      ),
+      conditionChipsOf(
+        { wifiOnly: true, chargingOnly: false, includeVideos: true },
+        false,
+        null,
+      ).map((chip) => chip.label),
     ).toEqual(['Wi-Fi only', 'Charging not needed', 'Videos on']);
     expect(
-      conditionChipsOf({ wifiOnly: false, chargingOnly: true, includeVideos: false }).map(
-        (chip) => chip.label,
-      ),
+      conditionChipsOf(
+        { wifiOnly: false, chargingOnly: true, includeVideos: false },
+        false,
+        null,
+      ).map((chip) => chip.label),
     ).toEqual(['Wi-Fi and mobile data', 'Only while charging', 'Photos only']);
+  });
+
+  it('marks the condition that holds backup back', () => {
+    const settings = { wifiOnly: true, chargingOnly: true, includeVideos: true };
+    const blocking = (reason: Parameters<typeof conditionChipsOf>[2]): readonly string[] =>
+      conditionChipsOf(settings, false, reason)
+        .filter((chip) => chip.blocking)
+        .map((chip) => chip.key);
+    expect(blocking(null)).toEqual([]);
+    expect(blocking('wifi')).toEqual(['network']);
+    expect(blocking('offline')).toEqual(['network']);
+    expect(blocking('charging')).toEqual(['charging']);
+    expect(blocking('user')).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@ import {
   type DesktopPhotos,
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { assertUploadActive } from '../../../nas/uploads/abort';
+import { assertUploadActive } from '../../../drive';
 import type { ServerConnection } from '../../../../api/connection/storage';
 import type { Conditions, MediaAccess, MediaRow, MediaScope, MediaStat } from '../model/types';
 import type { BackupPorts, MediaLibraryPort, NativeMediaPort } from './ports';

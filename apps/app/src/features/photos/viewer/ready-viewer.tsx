@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { PhotoScope } from '../../../api/photos';
+import type { LibraryScope } from '@smarteverything/domain';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import { Text } from '../../../components/text';
 import { ThemeScope } from '../../../design/theme-scope';
@@ -24,7 +24,7 @@ type ReadyItem = Extract<ViewerItem, { readonly state: 'ready' }>;
 
 export interface ReadyViewerProps {
   readonly viewer: ReadyItem;
-  readonly scope: PhotoScope;
+  readonly scope: LibraryScope;
   readonly phone: boolean;
   readonly infoOpen: boolean;
   readonly onInfo: () => void;

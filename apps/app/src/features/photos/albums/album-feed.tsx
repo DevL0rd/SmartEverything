@@ -8,8 +8,7 @@ import { EmptyState } from '../../../components/empty-state';
 import { MediaGrid } from '../../../components/media-grid/media-grid';
 import type { ResolveThumb } from '../../../components/media-grid/tile';
 import { useDayKey } from '../../../store/clock';
-import { driveLinks } from '../../nas/data/links';
-import type { DrivePages } from '../../nas/data/pages';
+import { driveLinks, type DrivePages } from '../../drive';
 import { tilesOfItems } from './album-items';
 
 const resolveThumb: ResolveThumb = (tile) => driveLinks.resolve(tile.id, tile.rev, 'thumb');

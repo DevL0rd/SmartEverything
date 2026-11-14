@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { HeaderAction } from '../../../components/page-header';
 
 interface RailCounts {
-  readonly timeline: number;
-  readonly backupPhones: number;
+  readonly library: number;
+  readonly backupDevices: number;
 }
 
 interface Harness {
@@ -72,6 +72,22 @@ vi.mock('../../../settings/settings-page', () => ({
       createElement('section', { key: 'b' }, 'Backup'),
     ),
 }));
+vi.mock('../settings', () => ({ PHOTOS_PAGE: 'photos' }));
+vi.mock('./model', () => ({
+  offlineText: (local: boolean): string =>
+    local
+      ? 'Changing these settings needs your home hub. Backup on this device keeps going.'
+      : 'Changing these settings needs your home hub.',
+  summaryText: (items: number | null, devices: number | null): string | null =>
+    items === null ? null : `${String(items)} items · ${String(devices)} devices backing up`,
+}));
+vi.mock('../local/source', () => ({
+  localMediaSource: (): object | null => (harness.native ? {} : null),
+}));
+vi.mock('./link-cards', () => ({
+  BackupLinkCard: (): ReactNode => createElement('a', null, 'Backup card'),
+  DuplicatesLinkCard: (): ReactNode => createElement('a', null, 'Duplicates card'),
+}));
 vi.mock('../data/queries', () => ({
   usePhotoRailCounts: (): { readonly data: RailCounts | undefined } => ({
     data: harness.counts,
@@ -93,10 +109,16 @@ describe('Photos settings screen', () => {
 
   it('shows the library counts only once the hub has answered', () => {
     harness.counts = undefined;
-    expect(render()).not.toContain('items');
-    harness.counts = { timeline: 5, backupPhones: 2 };
-    expect(render()).toContain('<p>5 items · 2 phones</p>');
+    expect(render()).not.toContain('items ·');
+    harness.counts = { library: 5, backupDevices: 2 };
+    expect(render()).toContain('<p>5 items · 2 devices backing up</p>');
     harness.counts = undefined;
+  });
+
+  it('leads with the Backup and Duplicates link cards for every person', () => {
+    const html = render();
+    expect(html.indexOf('Backup card')).toBeLessThan(html.indexOf('Sources'));
+    expect(html).toContain('Duplicates card');
   });
 
   it('keeps one reading column on the phone', () => {
@@ -118,7 +140,7 @@ describe('Photos settings screen', () => {
         '<aside>Offline · showing the last snapshot: Changing these settings needs your home hub.</aside>',
       );
       harness.native = true;
-      expect(render()).toContain('Backup on this phone keeps going');
+      expect(render()).toContain('Backup on this device keeps going');
     } finally {
       harness.live = true;
       harness.native = false;

@@ -1,16 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requireOptionalNativeModule } from 'expo';
 import { z } from 'zod';
-import type { UploadHandle } from '../../../nas/uploads/types';
+import type { UploadHandle } from '../../../drive/upload/transport/types';
 import type { ServerConnection } from '../../../../api/connection/storage';
-import { assertUploadActive } from '../../../nas/uploads/abort';
-import { UPLOAD_CHUNK_BYTES } from '../../../nas/uploads/client';
-import { connectionUploadTransport } from '../../../nas/uploads/hub-transport';
-import { PersistedUrlStorage, RESUME_STORAGE_KEY } from '../../../nas/uploads/resume-store';
-import { runUpload } from '../../../nas/uploads/run';
+import { assertUploadActive } from '../../../drive/upload/transport/abort';
+import { UPLOAD_CHUNK_BYTES } from '../../../drive/upload/transport/client';
+import { createContentReader } from '../../../drive/upload/transport/content-reader';
+import { connectionUploadTransport } from '../../../drive/upload/transport/hub-transport';
+import {
+  PersistedUrlStorage,
+  RESUME_STORAGE_KEY,
+} from '../../../drive/upload/transport/resume-store';
+import { runUpload } from '../../../drive/upload/transport/run';
 import type { ChargingSource } from './network-conditions';
 import type { NativeMediaPort, UploadPort } from './ports';
-import { createContentReader } from '../../../nas/uploads/content-reader';
 
 interface PhotosNative {
   statMedia(ids: readonly string[], operation: string): Promise<unknown>;

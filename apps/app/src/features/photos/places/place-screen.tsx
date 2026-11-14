@@ -1,12 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import {
-  PLACE_PARAMS,
-  type Memory,
-  type PhotoPlace,
-  type TimelineBucket,
-} from '@smarteverything/domain';
+import { PLACE_PARAMS, type PhotoPlace, type LibraryBucket } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import type { Crumb } from '../../../components/breadcrumbs';
@@ -14,20 +9,16 @@ import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { FlatChoice } from '../../../components/flat-choice';
-import type { HeaderAction } from '../../../components/page-header';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
-import { useAreaWidth } from '../../../design/size-class';
 import { count } from '../../../format/number';
 import { useSyncStatus } from '../../../store/selectors';
-import { ChipRow } from '../../nas/frame';
-import { libraryLayoutOf } from '../../nas/frame/sections';
+import { ChipRow } from '../../../components/library-frame';
 import { PhotosFrame } from '../components/photos-frame';
-import { usePhotoBuckets, usePhotoMemories, usePhotoPlace } from '../data';
-import { MemoryPlayer } from '../memories';
+import { usePhotoBuckets, usePhotoPlace } from '../data';
 import { MiniMap } from '../world-map';
 import { PlaceFeed } from './place-feed';
-import { placeMemoryOf, totalOf, visitChips } from './place-model';
+import { totalOf, visitChips } from './place-model';
 import { monthLabel, monthsOf } from './time-range';
 
 type KindFilter = 'all' | 'videos' | 'favourites';
@@ -70,7 +61,7 @@ function StatsCard({
   buckets,
 }: {
   readonly place: PhotoPlace;
-  readonly buckets: readonly TimelineBucket[];
+  readonly buckets: readonly LibraryBucket[];
 }): ReactNode {
   const months = monthsOf(buckets);
   const first = months[0]?.month;
@@ -112,7 +103,7 @@ interface Choice {
 }
 
 interface ChipsProps {
-  readonly buckets: readonly TimelineBucket[];
+  readonly buckets: readonly LibraryBucket[];
   readonly choice: Choice;
   readonly onChoice: (choice: Choice) => void;
 }
@@ -172,7 +163,7 @@ function Chips({ name, ...chips }: ChipsProps & { readonly name: string }): Reac
       <VisitChips {...chips} />
       <KindChips choice={chips.choice} onChoice={chips.onChoice} />
       <Text variant="footnote" tone="variant">
-        {`The Timeline, only photos taken within ${name}`}
+        {`The Library, only photos taken within ${name}`}
       </Text>
     </View>
   );
@@ -273,44 +264,18 @@ function PlaceState({
   return <Unavailable error={query.error} retry={query.refetch} />;
 }
 
-export function playActions(memory: Memory | null, play: () => void): readonly HeaderAction[] {
-  if (memory === null) return [];
-  return [{ icon: 'play', label: 'Play memory', primary: true, onPress: play }];
-}
-
-function usePlaceMemory(placeId: number | null): Memory | null {
-  const memories = usePhotoMemories().data;
-  return memories === undefined || placeId === null ? null : placeMemoryOf(memories, placeId);
-}
-
 export function PlaceScreen(): ReactNode {
   const placeId = placeIdOf(useLocalSearchParams()['placeId']);
   const query = usePhotoPlace(placeId);
   const place = query.data;
-  const memory = usePlaceMemory(placeId);
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
-  const [playing, setPlaying] = useState(false);
   return (
     <PhotosFrame
       active="map"
       title={place?.name ?? 'Place'}
       breadcrumbs={crumbsOf(place)}
       scroll={false}
-      actions={playActions(memory, () => {
-        setPlaying(true);
-      })}
     >
       <PlaceState placeId={placeId} query={query} />
-      {playing && memory !== null ? (
-        <MemoryPlayer
-          key={memory.id}
-          memory={memory}
-          compact={compact}
-          onClose={() => {
-            setPlaying(false);
-          }}
-        />
-      ) : null}
     </PhotosFrame>
   );
 }

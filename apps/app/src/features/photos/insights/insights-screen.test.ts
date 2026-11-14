@@ -17,7 +17,7 @@ interface State {
 
 const state = vi.hoisted((): State => ({
   query: { data: undefined, isError: false, error: null },
-  counts: { timeline: 10, favourites: 1 },
+  counts: { library: 10, favourites: 1 },
   live: true,
   owner: true,
 }));
@@ -39,6 +39,7 @@ vi.mock('react-native', () => ({
 vi.mock('../components/photos-frame', () => ({
   PhotosFrame: ({ children, banner }: Props): ReactNode =>
     createElement('main', null, banner, children),
+  PHOTOS_BACKUP_SETTINGS_HREF: '/settings/photos/backup',
 }));
 vi.mock('../data', () => ({
   usePhotoInsights: (): Query => state.query,
@@ -122,9 +123,9 @@ describe('Insights screen states', () => {
 
   it('shows the empty library and the empty range differently', () => {
     state.query = { data: { ...FULL, items: 0 }, isError: false, error: null };
-    state.counts = { timeline: 0, favourites: 0 };
+    state.counts = { library: 0, favourites: 0 };
     expect(parts()).toContain('empty');
-    state.counts = { timeline: 10, favourites: 1 };
+    state.counts = { library: 10, favourites: 1 };
     expect(parts()).toContain('range-empty');
   });
 

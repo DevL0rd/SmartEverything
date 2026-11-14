@@ -1,15 +1,15 @@
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { router } from 'expo-router';
-import type { TimelineBucket } from '@smarteverything/domain';
+import type { LibraryBucket, LibraryScope } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import type { PhotoScope } from '../../../api/photos';
 import { href } from '../../../app-shell/hrefs';
 import { MediaGrid } from '../../../components/media-grid/media-grid';
 import type { ResolveThumb } from '../../../components/media-grid/tile';
 import { tilesOfPage } from '../../../components/media-grid/tiles';
 import { useDayKey } from '../../../store/clock';
 import { usePhotoMonth } from '../data';
-import { driveLinks } from '../../nas/data/links';
+import { viewerParamsOf } from '../viewer/params';
+import { driveLinks } from '../../drive';
 import { feedMonths, feedTiles, type MonthTiles } from './place-model';
 
 const resolveThumb: ResolveThumb = (tile) => driveLinks.resolve(tile.id, tile.rev, 'thumb');
@@ -20,7 +20,7 @@ function MonthLoader({
   onTiles,
 }: {
   readonly month: string;
-  readonly scope: PhotoScope;
+  readonly scope: LibraryScope;
   readonly onTiles: (month: string, tiles: MonthTiles) => void;
 }): ReactNode {
   const pages = usePhotoMonth(month, scope, true);
@@ -40,8 +40,8 @@ function MonthLoader({
 }
 
 export interface PlaceFeedProps {
-  readonly buckets: readonly TimelineBucket[];
-  readonly scope: PhotoScope;
+  readonly buckets: readonly LibraryBucket[];
+  readonly scope: LibraryScope;
   readonly month: string | null;
   readonly header: ReactElement;
   readonly empty: ReactElement;
@@ -70,7 +70,7 @@ export function PlaceFeed({ buckets, scope, month, header, empty }: PlaceFeedPro
         empty={empty}
         resolveThumb={resolveThumb}
         onOpen={(tile) => {
-          router.push(href.photosItem(tile.id, { place: String(scope.placeId) }));
+          router.push(href.photosItem(tile.id, viewerParamsOf(scope)));
         }}
         onEndReached={() => {
           const more = last === undefined ? null : (loaded.get(last)?.more ?? null);

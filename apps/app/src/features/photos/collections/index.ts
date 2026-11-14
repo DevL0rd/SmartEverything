@@ -1,2 +1,1 @@
-export { CollectionScreen } from './collection-screen';
-export { SourceScreen } from './source-screen';
+export { SourceTab } from './source-tab';

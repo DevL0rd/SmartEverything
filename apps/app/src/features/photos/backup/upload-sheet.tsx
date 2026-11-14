@@ -10,9 +10,9 @@ import { notify } from '../../../components/toast-store';
 import { ValueStore, usePausable } from '../../../design/external-store';
 import { pickFiles, PickerMissingError, type PickSource } from '../../../platform/pick-files';
 import { useActiveProfile } from '../../../store/people';
-import { useUploadEntries, type UploadEntry } from '../../nas/uploads';
-import { panelSummary, percentText } from '../timeline/upload-model';
-import { uploadFiles, useUploadPath } from '../timeline/uploads';
+import { useUploadEntries, type UploadEntry } from '../../drive';
+import { panelSummary, percentText } from '../library/upload-model';
+import { uploadFiles, useUploadPath } from '../library/uploads';
 import { sheetEntryText, sheetTargetText } from './upload-sheet-model';
 
 const log = new Logger('app.photos');

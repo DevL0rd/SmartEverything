@@ -14,12 +14,12 @@ import { DriveBackupRepository } from '../../../apps/hub/src/store/repositories/
 import { UNSYNCED } from '../../../apps/hub/src/store/repositories/drive-roots';
 import { captureLogs, testLogger } from '../../../apps/hub/test/support/logs';
 import { testStore, type TestStore } from '../../../apps/hub/test/support/store';
-import { PersistedUrlStorage } from '../../../apps/app/src/features/nas/uploads/resume-store';
+import { PersistedUrlStorage } from '../../../apps/app/src/features/drive/upload/transport/resume-store';
 import type {
   TransportAnswer,
   TransportRequest,
   UploadRequest,
-} from '../../../apps/app/src/features/nas/uploads/types';
+} from '../../../apps/app/src/features/drive/upload/transport/types';
 
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 

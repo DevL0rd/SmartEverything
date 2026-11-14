@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { DriveAlbum, DriveItem, Memory, TimelineBucket } from '@smarteverything/domain';
+import type { DriveAlbum, DriveItem, LibraryBucket } from '@smarteverything/domain';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import { PhotosWidget } from './photos-widget';
 import {
@@ -26,8 +26,7 @@ const state = vi.hoisted(
     album: DriveAlbum | null;
     albumItems: Query<{ readonly pages: readonly { readonly items: readonly DriveItem[] }[] }>;
     item: Query<DriveItem>;
-    memories: Query<readonly Memory[]>;
-    buckets: Query<readonly TimelineBucket[]>;
+    buckets: Query<readonly LibraryBucket[]>;
     month: Query<{ readonly pages: readonly never[] }>;
     sync: string;
   } => {
@@ -36,7 +35,6 @@ const state = vi.hoisted(
       album: null,
       albumItems: idle,
       item: idle,
-      memories: idle,
       buckets: idle,
       month: idle,
       sync: 'live',
@@ -49,8 +47,8 @@ function resolved(): Promise<void> {
 }
 
 vi.mock('expo-router', () => ({ router: { push: vi.fn() } }));
-vi.mock('../../nas/data/queries', () => ({ useDriveItem: (): typeof state.item => state.item }));
-vi.mock('../../nas/data/links', () => ({
+vi.mock('../../drive/data/queries', () => ({ useDriveItem: (): typeof state.item => state.item }));
+vi.mock('../../drive/data/links', () => ({
   driveLinks: { resolve: (): Promise<null> => Promise.resolve(null) },
 }));
 vi.mock('../../photos/albums/album-data', () => ({
@@ -64,17 +62,13 @@ vi.mock('../../photos/albums/album-data', () => ({
       : { items: pages.data.pages.flatMap((page) => page.items), complete: true },
 }));
 vi.mock('../../photos/data', () => ({
-  PHOTO_ALL: { filter: 'all', placeId: null },
+  PHOTO_ALL: { filter: 'all' },
   usePhotoBuckets: (): typeof state.buckets => state.buckets,
-  usePhotoMemories: (): typeof state.memories => state.memories,
-  usePhotoMemoryItems: (): typeof state.albumItems => state.albumItems,
   usePhotoMonth: (): typeof state.month => state.month,
 }));
-vi.mock('../../photos/memories', () => ({ MemoryPlayer: (): null => null }));
 vi.mock('../../../store/selectors', () => ({
   useSyncStatus: (): { readonly status: string } => ({ status: state.sync }),
 }));
-vi.mock('../../../design/size-class', () => ({ useAreaWidth: (): number => 412 }));
 vi.mock('../../../components/media-grid/tile', () => ({ MediaTileView: (): null => null }));
 vi.mock('../../../components/button', () => ({
   Button: ({ label }: { readonly label: string }): ReactNode => createElement('button', {}, label),
@@ -233,5 +227,13 @@ describe('chat photos widget', () => {
   it('refuses an item id that is not a file id without loading anything', () => {
     const markup = render({ kind: 'photos', view: 'item', id: 'beach' });
     expect(markup).toContain(PHOTOS_WIDGET_COPY.gone);
+  });
+
+  it('opens a month in Photos with a link and offers no play action', () => {
+    state.buckets = { data: [{ month: '2026-11', count: 4 }], error: null, refetch: resolved };
+    state.month = { data: { pages: [] }, error: null, refetch: resolved };
+    const markup = render({ kind: 'photos', view: 'month', id: '2026-11' });
+    expect(markup.match(/<button>/g)).toHaveLength(1);
+    expect(markup).not.toContain('Play');
   });
 });

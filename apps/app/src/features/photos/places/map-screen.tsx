@@ -14,7 +14,7 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
-import { libraryLayoutOf } from '../../nas/frame/sections';
+import { libraryLayoutOf } from '../../../components/library-frame/sections';
 import { PhotosFrame } from '../components/photos-frame';
 import { usePhotoPlaces } from '../data';
 import { NATURAL_EARTH_ATTRIBUTION } from '../world-map';
@@ -37,7 +37,7 @@ const MODES: readonly SegmentedOption<MapMode>[] = [
 export const MAP_COPY = {
   empty: {
     title: 'Photos with a location show up here',
-    body: "Turn on location in your phone's camera. Photos without one stay in the Timeline.",
+    body: "Turn on location in your phone's camera. Photos without one stay in the Library.",
   },
   offline: {
     title: 'The hub is offline',
