@@ -45,7 +45,6 @@ export interface PlaneOptions {
     readonly url: string | null;
     readonly headersCommand: string;
   }>;
-  readonly pluginsDirectory: string;
   readonly raised: (prompt: ClaudePrompt) => void;
   readonly holdMs?: number;
   readonly riskyHoldMs?: number;
@@ -90,7 +89,6 @@ export class LinkPlane implements ClaudeControlPlane {
       cli: options.cli,
       readUrl: options.readUrl,
       ...(options.readMcp === undefined ? {} : { readMcp: options.readMcp }),
-      pluginsDirectory: options.pluginsDirectory,
       log,
       changed,
     });

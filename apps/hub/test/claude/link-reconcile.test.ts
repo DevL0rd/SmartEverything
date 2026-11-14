@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   COMPUTER_AI_SETTINGS,
+  type ClaudeLink,
   DEFAULT_COMPUTER_AI_SETTINGS,
   type ComputerAiSettings,
 } from '@smarteverything/domain';
@@ -12,7 +13,6 @@ import { createClaudeHost } from '../../src/claude/host';
 import { LinkPlane } from '../../src/claude/link-plane';
 import { claudeLocations } from '../../src/claude/locations';
 import { ClaudeService } from '../../src/claude/service';
-import type { ClaudeLink } from '../../src/claude/link';
 import { FakeClock } from '../support/fake-clock';
 import { testLogger } from '../support/logs';
 
@@ -31,7 +31,7 @@ class CountingService extends ClaudeService {
 
   override installLink(): Promise<ClaudeLink> {
     this.installs += 1;
-    return Promise.resolve(Object.create(null));
+    return Promise.resolve({ state: 'installed' });
   }
 }
 

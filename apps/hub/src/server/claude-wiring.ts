@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { MCP_TOKEN, hashMcpToken } from '@smarteverything/domain';
 import { ClaudeFileReadError, ClaudeNotReadyError } from '../claude/errors';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
 import { systemClaudeCli } from '../claude/claude-cli';
@@ -52,7 +52,6 @@ export function startClaude(context: ServerContext, options: ClaudeWiring): Star
     cli: systemClaudeCli,
     readUrl: (): Promise<string> => readyUrl(sites.ready),
     readMcp: (): ReturnType<typeof localMcp> => localMcp(options, sites, localDeviceId),
-    pluginsDirectory: join(dirname(locations.sessions), 'plugins'),
     raised: (): void => undefined,
   });
   const service = new ClaudeService({

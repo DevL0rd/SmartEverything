@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { platform } from 'node:process';
 import type { ClaudeLink as LinkStatus } from '@smarteverything/domain';
@@ -26,8 +26,6 @@ const PLUGINS = z.array(
 
 const MARKETPLACES = z.array(z.looseObject({ name: z.string(), path: z.string().optional() }));
 
-const BACKED_UP = ['known_marketplaces.json', 'installed_plugins.json'] as const;
-
 export interface LinkOptions {
   readonly directory: string;
   readonly launch: LinkLaunch;
@@ -38,7 +36,6 @@ export interface LinkOptions {
     readonly url: string | null;
     readonly headersCommand: string;
   }>;
-  readonly pluginsDirectory: string;
   readonly log: Logger;
   readonly changed: () => void;
 }
@@ -103,7 +100,6 @@ export class ClaudeLink {
     await this.options.token.ensure();
     const url = await this.options.readUrl();
     await this.writeFiles((await this.generated(url)).files);
-    await this.backup();
     const misplaced =
       before.marketplace && before.path !== null && resolve(before.path) !== resolve(this.root);
     if (misplaced) {
@@ -232,22 +228,6 @@ export class ClaudeLink {
       await mkdir(dirname(target), { recursive: true, mode: 0o700 });
       await writeFile(`${target}.tmp`, text, { mode: 0o600 });
       await rename(`${target}.tmp`, target);
-    }
-  }
-
-  private async backup(): Promise<void> {
-    const folder = join(this.options.directory, 'setup-backups');
-    await mkdir(folder, { recursive: true, mode: 0o700 });
-    const stamp = String(Date.now());
-    for (const name of BACKED_UP) {
-      await copyFile(
-        join(this.options.pluginsDirectory, name),
-        join(folder, `${stamp}-${name}`),
-      ).catch((cause: unknown) => {
-        if (!isMissing(cause)) {
-          throw cause;
-        }
-      });
     }
   }
 }

@@ -1,5 +1,4 @@
 import type { NodeHubTransport } from '../client-network/node-transport';
-import { dirname, join } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import type { ComputerAiHost } from '../computers/ai-host';
 import { systemClock } from '../clock';
@@ -58,7 +57,6 @@ class NodeNativePlane {
         url: await this.grant.endpoint(),
         headersCommand: helperCommand(launch, 'mcp-headers'),
       }),
-      pluginsDirectory: join(dirname(claudeLocations(null).sessions), 'plugins'),
       raised: (): void => undefined,
     });
   }
