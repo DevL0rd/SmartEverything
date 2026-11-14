@@ -380,9 +380,21 @@ describe('the keys of a television', () => {
     const keys = keysOf('livingRoom', true, CLOUD_ONLY, ON);
     expect(keys('pause')).toMatchObject({ send: { capability: 'playback', value: 'paused' } });
     expect(keys('ff')).toMatchObject({ send: { value: 'fast forwarding' } });
-    expect(keys('play_pause')).toMatchObject({ send: { value: 'playing' } });
+    const paused = keysOf('livingRoom', true, CLOUD_ONLY, { ...ON, playback: 'paused' });
+    expect(paused('play_pause')).toMatchObject({ send: { value: 'playing' } });
     const playing = keysOf('livingRoom', true, CLOUD_ONLY, { ...ON, playback: 'playing' });
     expect(playing('play_pause')).toMatchObject({ send: { value: 'paused' } });
+  });
+
+  it('does not guess the toggle direction while the TV reports no playback', () => {
+    expect(keysOf('livingRoom', true, CLOUD_ONLY, ON)('play_pause')).toEqual({
+      path: null,
+      reason: 'playback_unknown',
+    });
+    expect(keysOf('livingRoom', true, WITH_DIRECT, ON)('play_pause')).toEqual({
+      path: null,
+      reason: 'playback_unknown',
+    });
   });
 
   it('asks for a direct connection for the keys SmartThings cannot send', () => {
@@ -410,7 +422,8 @@ describe('the keys of a television', () => {
     });
     expect(keys('n3')).toMatchObject({ path: 'direct', fallbacks: [] });
     expect(keys('next_track')).toMatchObject({ path: 'smartthings' });
-    expect(keys('play_pause')).toMatchObject({
+    const paused = keysOf('livingRoom', true, WITH_DIRECT, { ...ON, playback: 'paused' });
+    expect(paused('play_pause')).toMatchObject({
       path: 'direct',
       send: { capability: 'remote_key', value: 'play' },
     });
@@ -430,7 +443,7 @@ describe('the keys of a television', () => {
       fallbacks: [{ path: 'ir', send: { value: 'Vol +' } }],
     });
     expect(keys('red')).toEqual({ path: null, reason: 'needs_direct' });
-    expect(keys('play_pause')).toMatchObject({ path: 'smartthings' });
+    expect(keys('play_pause')).toMatchObject({ path: 'ir' });
   });
 
   it('chooses the power path by what can wake the television', () => {

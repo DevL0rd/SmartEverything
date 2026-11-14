@@ -241,6 +241,7 @@ export const TV_KEY_REASONS = [
   'unreachable',
   'not_on_this_tv',
   'cannot_wake',
+  'playback_unknown',
 ] as const;
 
 export type TvKeyReason = (typeof TV_KEY_REASONS)[number];
@@ -252,4 +253,5 @@ export const TV_KEY_REASON_TEXT: Readonly<Record<TvKeyReason, string>> = {
   unreachable: "The TV isn't answering",
   not_on_this_tv: "This screen doesn't have it",
   cannot_wake: 'Link it directly in its settings so the hub can turn it on',
+  playback_unknown: "The TV doesn't report whether it is playing; press Play or Pause",
 };

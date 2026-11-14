@@ -65,7 +65,10 @@ function request(context: KeyContext, capability: CapabilityKey, value: JsonValu
   return { deviceId: context.device.id, capability, value };
 }
 
-function playPause(values: TvValues): 'play' | 'pause' {
+function playPause(values: TvValues): 'play' | 'pause' | null {
+  if (values.playback === null) {
+    return null;
+  }
   return values.playback === 'playing' ? 'pause' : 'play';
 }
 
@@ -92,7 +95,8 @@ function smartthingsPlayback(key: TvKey, context: KeyContext): CommandRequest | 
   if (!context.capabilities.has('playback')) {
     return null;
   }
-  const status = SMARTTHINGS_PLAYBACK[key === 'play_pause' ? playPause(context.values) : key];
+  const toggled = key === 'play_pause' ? playPause(context.values) : key;
+  const status = toggled === null ? undefined : SMARTTHINGS_PLAYBACK[toggled];
   return status === undefined ? null : request(context, 'playback', status);
 }
 
@@ -122,7 +126,8 @@ function directSend(key: TvKey, context: KeyContext): CommandRequest | null {
     return request(context, 'power', on);
   }
   if (key === 'play_pause') {
-    return request(context, 'remote_key', playPause(context.values));
+    const toggled = playPause(context.values);
+    return toggled === null ? null : request(context, 'remote_key', toggled);
   }
   return TV_DIRECT_CODES[key] === undefined ? null : request(context, 'remote_key', key);
 }
@@ -172,6 +177,9 @@ function blockedBy(key: TvKey, context: KeyContext): TvKeyReason | null {
 function missingReason(key: TvKey, context: KeyContext): TvKeyReason {
   if (key === 'power_on' || (key === 'power' && context.mode !== 'on')) {
     return 'cannot_wake';
+  }
+  if (key === 'play_pause' && context.values.playback === null) {
+    return 'playback_unknown';
   }
   return POWER_KEYS.has(key) ? 'unreachable' : 'needs_direct';
 }
