@@ -3,6 +3,7 @@ import type { AiAgentRun, AiChatRow } from '@smarteverything/domain';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
 import type { Store } from '../../store/store';
 import { computerEngine } from '../engine-kind';
+import { interruptionCode } from '../interruption';
 
 export function blankAgentRun(
   chat: AiChatRow,
@@ -75,7 +76,7 @@ export class RunRows {
   }
 
   finished(event: StoredEvent, text: string, ok: boolean): void {
-    const state = ok ? 'completed' : text === 'Stopped.' ? 'interrupted' : 'failed';
+    const state = ok ? 'completed' : interruptionCode(text) !== null ? 'interrupted' : 'failed';
     this.update(event, state, text, ok ? null : text);
   }
 

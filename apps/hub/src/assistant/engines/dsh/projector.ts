@@ -342,7 +342,7 @@ export class ConversationProjector {
     for (const steered of turn.steered) {
       if (ok) this.conversation.stateOf(steered.message_id, 'answered');
       else this.conversation.failedMessage(steered.message_id, failure.reason, failure.code);
-      this.options.finished(steered, turn.stream.spoken, ok);
+      this.options.finished(steered, ok ? turn.stream.spoken : failure.reason, ok);
     }
   }
 }

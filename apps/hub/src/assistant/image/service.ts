@@ -8,7 +8,7 @@ import {
 } from '@smarteverything/domain';
 import { Logger, messageOf } from '@smarteverything/logging';
 import pLimit from 'p-limit';
-import type { ImageActor, ImageServiceOptions } from './contract';
+import type { ImageActor, ImageFailure, ImageServiceOptions } from './contract';
 import { ImageOperationError } from './errors';
 import { Generation } from './generation';
 import { ownedChat, readInputs, resolveInputs, type ResolvedImage } from './inputs';
@@ -75,10 +75,7 @@ export class ImageOperationService {
       this.running.delete(receipt.id),
     );
     void settled.catch((cause: unknown): void => {
-      this.options.failed(
-        receipt.id,
-        cause instanceof ImageOperationError ? cause.code : 'receipt',
-      );
+      this.options.failed(receipt.id, failureOf(cause, 'receipt'));
     });
     this.running.set(receipt.id, { controller, settled });
     this.publish(receipt);
@@ -248,10 +245,7 @@ export class ImageOperationService {
       cause instanceof ImageOperationError && (cause.code === 'provider' || cause.code === 'quota');
     const state = failureState(cancelled, submitted, definitive);
     const reason = reasonOf(state, cause, submitted);
-    this.options.failed(
-      receipt.id,
-      cause instanceof ImageOperationError ? cause.code : 'operation',
-    );
+    this.options.failed(receipt.id, failureOf(cause, 'operation'));
     return this.options.store.write(() =>
       this.options.repository.update(
         recordImageUsage(this.options.store, {
@@ -264,7 +258,7 @@ export class ImageOperationService {
     );
   }
 }
-export type { ImageActor, ImageServiceOptions } from './contract';
+export type { ImageActor, ImageFailure, ImageServiceOptions } from './contract';
 
 function untilSettled(
   settled: Promise<unknown>,
@@ -305,6 +299,12 @@ function failedReason(cause: unknown): string {
   if (cause instanceof ImageOperationError && cause.code !== 'unknown')
     return cause.detail.slice(0, 200);
   return FAILURE_REASONS.failed;
+}
+function failureOf(cause: unknown, stage: 'receipt' | 'operation'): ImageFailure {
+  return {
+    code: cause instanceof ImageOperationError ? cause.code : stage,
+    reason: messageOf(cause),
+  };
 }
 function failureState(
   cancelled: boolean,

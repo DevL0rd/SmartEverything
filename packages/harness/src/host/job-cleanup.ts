@@ -2,7 +2,10 @@ import type { Context } from '@deepseek-ai/cordis';
 import { JobId } from '@deepseek-ai/dsh-jobs';
 import type { JobView } from '@deepseek-ai/dsh-jobs';
 import type { Agent } from '@deepseek-ai/dsh-agent';
+import { Logger } from '@smarteverything/logging';
 import { HarnessRuntimeError } from './errors';
+
+const log = new Logger('hub.harness');
 
 export const JOB_CLEANUP_WINDOW_MS = 30_000;
 interface JobsPort {
@@ -67,4 +70,34 @@ export async function cancelOwnedJobs(ctx: JobsPort, agent: Owner, reason: strin
         cause: new AggregateError(failures, 'Owned job cancellation or settlement failed.'),
       },
     );
+}
+
+export async function idleWithinCleanupWindow(
+  agent: Pick<Agent, 'id' | 'whenIdle'>,
+  workFields: () => Record<string, unknown>,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      agent.whenIdle(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          log.error('session.idle_timeout', undefined, {
+            session_id: agent.id,
+            deadlineMs: JOB_CLEANUP_WINDOW_MS,
+            ...workFields(),
+          });
+          reject(
+            new HarnessRuntimeError(
+              'source_outcome_unknown',
+              'Native session did not become idle before its cleanup deadline.',
+              agent.id,
+            ),
+          );
+        }, JOB_CLEANUP_WINDOW_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }

@@ -153,7 +153,7 @@ function settleDetached(
     () => {
       if (ok) conversation.stateOf(event.message_id, 'answered');
       else conversation.failedMessage(event.message_id, failure.reason, failure.code);
-      finished(event, '', ok);
+      finished(event, ok ? '' : failure.reason, ok);
     },
   );
 }

@@ -19,6 +19,10 @@ export interface ImageActor {
   readonly signal?: AbortSignal;
   readonly authorize: (effect: ImageEffect, chatId: string) => void;
 }
+export interface ImageFailure {
+  readonly code: string;
+  readonly reason: string;
+}
 export interface ImageServiceOptions {
   readonly store: Store;
   readonly repository: ImageOperationsRepository;
@@ -30,5 +34,5 @@ export interface ImageServiceOptions {
   readonly now: () => Date;
   readonly publish: (receipt: ImageOperationReceipt) => void;
   readonly preview?: (preview: ImageOperationPreview) => void;
-  readonly failed: (operationId: string, code: string) => void;
+  readonly failed: (operationId: string, failure: ImageFailure) => void;
 }

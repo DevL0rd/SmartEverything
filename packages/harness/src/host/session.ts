@@ -13,13 +13,14 @@ import type { UserMessage } from '@deepseek-ai/dsh-llm';
 import type { AiHarnessPermission } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { MachineSessionPersistence } from '../persistence/service';
-import { cancelOwnedJobs, JOB_CLEANUP_WINDOW_MS } from './job-cleanup';
+import { cancelOwnedJobs, idleWithinCleanupWindow } from './job-cleanup';
 import type { HarnessCleanup } from './job-cleanup';
 import { setSessionPermission } from './permission';
 import type { HarnessInteractions } from './interactions';
 import { assertDrained, sessionWork } from './work';
 import { reportInterruptedHelpers } from './helper-restarts';
 import { HUB_NOTE_SOURCE } from './hub-note';
+import { SessionDurability } from './session-durability';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import { queueHostSubagentPrompt } from '@deepseek-ai/dsh-subagent/internal';
 import type { HarnessWork } from './work';
@@ -38,6 +39,7 @@ export class HarnessSession {
   private cleanup: HarnessCleanup = { state: 'idle' };
   private readonly persistence: MachineSessionPersistence;
   private readonly humanCommands: HarnessHumanCommands;
+  private readonly durability: SessionDurability;
 
   constructor(
     private readonly ctx: Context,
@@ -53,6 +55,9 @@ export class HarnessSession {
       );
     this.persistence = persistence;
     this.humanCommands = new HarnessHumanCommands(ctx, handle.agent);
+    this.durability = new SessionDurability(handle.agent.id, () =>
+      ctx.sessions.flush(handle.agent.session),
+    );
   }
 
   get id(): string {
@@ -161,13 +166,8 @@ export class HarnessSession {
     return this.ownershipCleanup ?? (this.lostOwnership ? this.ownershipLost() : Promise.resolve());
   }
 
-  async flush(): Promise<void> {
-    if (!(await this.ctx.sessions.flush(this.handle.agent.session)))
-      throw new HarnessRuntimeError(
-        'runtime_unavailable',
-        'The native session is no longer registered for its durability barrier.',
-        this.id,
-      );
+  flush(): Promise<void> {
+    return this.durability.flush();
   }
 
   commands(): readonly CommandDescriptor[] {
@@ -267,10 +267,12 @@ export class HarnessSession {
 
   close(): Promise<void> {
     this.freeze();
-    this.closing ??= this.finishClose().catch((error: unknown) => {
-      this.closing = undefined;
-      throw error;
-    });
+    this.closing ??= this.durability
+      .close(() => this.finishClose())
+      .catch((error: unknown) => {
+        this.closing = undefined;
+        throw error;
+      });
     return this.closing;
   }
 
@@ -297,7 +299,7 @@ export class HarnessSession {
       failures.push(error);
     }
     const results = await Promise.allSettled([
-      this.awaitIdle(),
+      idleWithinCleanupWindow(this.handle.agent, () => this.workFields()),
       this.humanCommands.settle(),
       cancelOwnedJobs(this.ctx, this.handle.agent, reason),
     ]);
@@ -327,33 +329,6 @@ export class HarnessSession {
     });
   }
 
-  private async awaitIdle(): Promise<void> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        this.handle.agent.whenIdle(),
-        new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => {
-            log.error('session.idle_timeout', undefined, {
-              session_id: this.id,
-              deadlineMs: JOB_CLEANUP_WINDOW_MS,
-              ...this.workFields(),
-            });
-            reject(
-              new HarnessRuntimeError(
-                'source_outcome_unknown',
-                'Native session did not become idle before its cleanup deadline.',
-                this.id,
-              ),
-            );
-          }, JOB_CLEANUP_WINDOW_MS);
-        }),
-      ]);
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
-  }
-
   private async finishClose(): Promise<void> {
     log.debug('session.close_started', {
       session_id: this.id,
@@ -377,6 +352,7 @@ export class HarnessSession {
       }
     }
     await this.persistence.finalize(this.id);
+    this.durability.finalized();
     this.assertReleased();
     log.debug('session.close_finished', { session_id: this.id });
   }

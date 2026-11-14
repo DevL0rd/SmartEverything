@@ -7,7 +7,7 @@ import {
 import sharp from 'sharp';
 import { z } from 'zod';
 import { AssistantFiles } from '../../src/assistant/files';
-import { ImageOperationService } from '../../src/assistant/image/service';
+import { ImageOperationService, type ImageFailure } from '../../src/assistant/image/service';
 import { OpenRouterClient } from '../../src/openrouter/client';
 import { OpenRouterImageCatalog } from '../../src/openrouter/image-catalog';
 import { OpenRouterImageProvider } from '../../src/openrouter/image-provider';
@@ -128,10 +128,13 @@ export class MemoryFiles extends AssistantFiles {
   }
 }
 
+export const IMAGE_RIG_KEY = 'sk-or-v1-image-rig-secret';
+
 export interface ImageRig {
   readonly service: ImageOperationService;
   readonly catalog: OpenRouterImageCatalog;
   readonly previews: number[];
+  readonly failures: ImageFailure[];
   readonly start: (
     options: Record<string, unknown>,
     operationId?: string,
@@ -163,6 +166,7 @@ function serviceOf(
     readonly files: AssistantFiles;
     readonly imageDefaults: ImageDefaults;
     readonly previews: number[];
+    readonly failures: ImageFailure[];
   },
 ): { readonly service: ImageOperationService; readonly catalog: OpenRouterImageCatalog } {
   const catalog = new OpenRouterImageCatalog({
@@ -182,7 +186,9 @@ function serviceOf(
     preview: (preview): void => {
       parts.previews.push(preview.bytes);
     },
-    failed: (): void => undefined,
+    failed: (_operationId, failure): void => {
+      parts.failures.push(failure);
+    },
   });
   return { service, catalog };
 }
@@ -193,15 +199,23 @@ export function imageRig(
   files: AssistantFiles = new MemoryFiles(rig),
   imageDefaults: ImageDefaults = {},
 ): ImageRig {
-  const client = new OpenRouterClient({ fetch: transport.fetch, key: (): string => 'key' });
+  const client = new OpenRouterClient({ fetch: transport.fetch, key: (): string => IMAGE_RIG_KEY });
   const previews: number[] = [];
-  const { service, catalog } = serviceOf(rig, { client, files, imageDefaults, previews });
+  const failures: ImageFailure[] = [];
+  const { service, catalog } = serviceOf(rig, {
+    client,
+    files,
+    imageDefaults,
+    previews,
+    failures,
+  });
   const { profileId, chatId } = newChat(rig);
   const actor = { profileId, key: 'actor', authorize: (): void => undefined };
   return {
     service,
     catalog,
     previews,
+    failures,
     start: (options, operationId = crypto.randomUUID(), model = 'vendor/m1') =>
       service.start(
         actor,

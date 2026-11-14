@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fakeOpenRouter, imageRig } from '../openrouter/image-fixture';
+import { IMAGE_RIG_KEY, fakeOpenRouter, imageRig } from '../openrouter/image-fixture';
 import { testStore, type TestStore } from '../support/store';
 
 let test: TestStore;
@@ -28,6 +28,19 @@ const QUOTA = JSON.stringify({
 });
 
 describe('image operation failure receipts', () => {
+  it('reports the provider reason for the image.failed log without the key', async () => {
+    const body = JSON.stringify({ error: { code: 400, message: 'Prompt blocked by policy.' } });
+    const rig = imageRig(
+      test,
+      fakeOpenRouter(['vendor/m1'], () => Promise.resolve(new Response(body, { status: 400 }))),
+    );
+    await rig.settle((await rig.start({})).id);
+    expect(rig.failures).toHaveLength(1);
+    expect(rig.failures[0]?.code).toBe('provider');
+    expect(rig.failures[0]?.reason).toContain('Prompt blocked by policy.');
+    expect(JSON.stringify(rig.failures)).not.toContain(IMAGE_RIG_KEY);
+  });
+
   it('shows the provider message when generation is refused', async () => {
     const body = JSON.stringify({ error: { code: 400, message: 'Prompt blocked by policy.' } });
     const receipt = await failedReceipt(400, body);

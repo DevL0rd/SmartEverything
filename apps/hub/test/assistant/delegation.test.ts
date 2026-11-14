@@ -14,6 +14,7 @@ import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 import { CLAUDE_TEST_ENGINE, TEST_ENGINE } from '../support/engine';
 import { hubLayout } from '../../src/data-layout';
+import { STOPPED_BY_USER } from '../../src/assistant/interruption';
 
 function hubTool(name: string): HubTool {
   return {
@@ -327,7 +328,7 @@ describe('subagents', () => {
       timeoutSeconds: 60,
     });
     finish(only(pendingIn(failed.chatId)), 'boom', false);
-    finish(only(pendingIn(stopped.chatId)), 'Stopped.', false);
+    finish(only(pendingIn(stopped.chatId)), STOPPED_BY_USER, false);
     expect(opened.store.aiAgentRuns.read(failed.eventId)).toMatchObject({
       state: 'failed',
       error: 'boom',

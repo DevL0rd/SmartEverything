@@ -102,11 +102,7 @@ function persistCompletion(input: Completion, event: NativeCompletion): void {
         });
         conversation.stateOf(turn.event.message_id, 'answered');
       } else {
-        const failure = completionFailure(
-          event,
-          input.admissionRefused === true,
-          input.replay?.interruption,
-        );
+        const failure = failureOf(input, event);
         log.warn('native_completion.failed', {
           eventId: turn.event.id,
           chatId: turn.chat.id,
@@ -143,13 +139,23 @@ function notifyCompletion(
 ): void {
   const ok = event.kind === 'completed' && !event.interrupted;
   if (input.replay !== undefined) {
-    input.finished(input.turn.event, replyText(input), ok);
+    input.finished(input.turn.event, ok ? replyText(input) : failureOf(input, event).reason, ok);
     return;
   }
   if (authority === undefined) return;
   withExecutionAuthority(authority, () => {
-    input.finished(input.turn.event, input.turn.stream.spoken, ok);
+    input.finished(
+      input.turn.event,
+      ok ? input.turn.stream.spoken : failureOf(input, event).reason,
+      ok,
+    );
   });
+}
+function failureOf(
+  input: Completion,
+  event: NativeCompletion,
+): { readonly reason: string; readonly code: AssistantReasonCode } {
+  return completionFailure(event, input.admissionRefused === true, input.replay?.interruption);
 }
 export function settleStream(stream: TurnStream, event: NativeCompletion): void {
   const ok = event.kind === 'completed' && !event.interrupted;

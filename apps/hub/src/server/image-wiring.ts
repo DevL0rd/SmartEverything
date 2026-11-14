@@ -78,8 +78,8 @@ function serviceOf(
     now: options.now,
     publish: options.publish,
     preview: options.preview,
-    failed: (operationId, code): void => {
-      options.log.warn('image.failed', { operationId, code });
+    failed: (operationId, failure): void => {
+      options.log.warn('image.failed', { operationId, ...failure });
     },
   });
 }

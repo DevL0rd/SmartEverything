@@ -19,7 +19,7 @@ import { helperAnswerQuote } from '../message-quote';
 import type { AssistantFiles } from '../files';
 import type { EngineRegistry } from '../engines/registry';
 import { helperReplyWasRelayed } from '../engines/dsh/helper-reply';
-import { HUB_RESTARTED } from '../interruption';
+import { HUB_RESTARTED, interruptionCode } from '../interruption';
 import { admitChatExecution } from '../native-helpers';
 import { ownedUploads, queueEvent } from '../request-events';
 import type { Sender } from '../requests';
@@ -387,7 +387,7 @@ export function settleHelperDialogue(
     const dialogue = row === undefined ? undefined : helperDialogueOf(row);
     if (row === undefined || dialogue?.direction !== 'to_helper' || row.state !== null) return;
     if (!ok) {
-      conversation.failedMessage(row.id, text, 'unknown');
+      conversation.failedMessage(row.id, text, interruptionCode(text) ?? 'unknown');
       return;
     }
     if (text.trim() !== '' && !helperReplyWasRelayed(store, event, row.chat_id)) {
