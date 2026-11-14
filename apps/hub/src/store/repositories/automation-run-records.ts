@@ -15,7 +15,7 @@ import { jsonText } from '../sql';
 
 export type RunSummaryPublisher = (
   operation: RowOperation,
-  record: AutomationRunSummary,
+  record: AutomationRunSummary | null,
   oldRecord: AutomationRunSummary | null,
 ) => void;
 
@@ -233,17 +233,24 @@ export class AutomationRunRecordsRepository {
 
   forget(automationId: string): number {
     return this.context.write(() => {
-      const finished = `select id from automation_runs where automation_id=$automationId and status not in (${ACTIVE})`;
+      const owned = 'select id from automation_runs where automation_id=$automationId';
+      const forgotten = this.context.sql.all(
+        STORED_RECORD,
+        `select ${COLUMNS} from automation_runs where id in (${owned})`,
+        { automationId },
+      );
       this.context.sql.run(
         'forget the commands of the runs of a removed automation',
-        `delete from automation_run_commands where run_id in (${finished})`,
+        `delete from automation_run_commands where run_id in (${owned})`,
         { automationId },
       );
-      return this.context.sql.run(
+      const removed = this.context.sql.run(
         'forget the runs of a removed automation',
-        `delete from automation_runs where id in (${finished})`,
+        `delete from automation_runs where id in (${owned})`,
         { automationId },
       );
+      for (const record of forgotten) this.publish('DELETE', null, summaryOf(record));
+      return removed;
     });
   }
 

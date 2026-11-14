@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ApiError, type AutomationProgramReply } from '@smarteverything/domain';
+import { ApiError, type AutomationProgramReply, type RowChange } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { captureLogs } from '../support/logs';
 import {
@@ -37,6 +37,16 @@ function logNodes(id: string): string[] {
     .byId(id)
     .definition.nodes.filter((node) => node.kind === 'debug.log')
     .map((node) => node.key);
+}
+
+async function refusalOf(work: Promise<unknown>): Promise<ApiError> {
+  try {
+    await work;
+  } catch (cause) {
+    if (cause instanceof ApiError) return cause;
+    throw cause;
+  }
+  throw new Error('The call was not refused.');
 }
 
 function refusal(work: () => unknown): ApiError {
@@ -240,33 +250,67 @@ describe('patching a program', () => {
 });
 
 describe('removing a program', () => {
-  it('deletes the automation with its revisions', () => {
+  it('deletes the automation with its revisions', async () => {
     const { id } = created('Lamp');
-    rig.service.remove(id);
+    await rig.service.remove(id);
     expect(rig.programs.find(id)).toBeUndefined();
     expect(rig.revisions.list(id)).toEqual([]);
   });
 
-  it('is refused while another automation runs it, in the live program or in a draft', () => {
+  it('announces the removal of the run records of the deleted automation', async () => {
+    const { id } = created('Lamp');
+    const first = rig.store.automationRunRecords.create({
+      automationId: id,
+      revision: 1,
+      ownerProfileId: null,
+      mode: 'live',
+      planHash: 'a'.repeat(64),
+    });
+    rig.store.automationRunRecords.update(first.id, { status: 'succeeded' });
+    const changes: RowChange[] = [];
+    rig.store.feed.subscribe((change) => {
+      if (change.table === 'automation_runs') changes.push(change);
+    });
+    await rig.service.remove(id);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ operation: 'DELETE', record: null });
+    expect(changes[0]?.oldRecord).toMatchObject({ id: first.id, automation_id: id });
+  });
+
+  it('announces the removal of an active run record too', async () => {
+    const { id } = created('Lamp');
+    const active = rig.store.automationRunRecords.create({
+      automationId: id,
+      revision: 1,
+      ownerProfileId: null,
+      mode: 'live',
+      planHash: 'a'.repeat(64),
+      status: 'running',
+    });
+    const changes: RowChange[] = [];
+    rig.store.feed.subscribe((change) => {
+      if (change.table === 'automation_runs') changes.push(change);
+    });
+    await rig.service.remove(id);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ operation: 'DELETE', record: null });
+    expect(changes[0]?.oldRecord).toMatchObject({ id: active.id, status: 'running' });
+  });
+
+  it('is refused while another automation runs it, in the live program or in a draft', async () => {
     const { id } = created('Callee');
     const running = automationOf([step('start', 'automation.run', { automation: lit(id) })]);
     const { id: live } = created('Live caller', running);
-    expect(
-      refusal(() => {
-        rig.service.remove(id);
-      }).code,
-    ).toBe('conflict');
-    rig.service.remove(live);
+    expect((await refusalOf(rig.service.remove(id))).code).toBe('conflict');
+    await rig.service.remove(live);
     const { id: drafting } = created('Drafting');
     const layout = rig.programs.byId(drafting).layout;
     rig.service.saveDraft(drafting, { program: running, layout, expectedRevision: 1 });
-    expect(
-      refusal(() => {
-        rig.service.remove(id);
-      }).message,
-    ).toMatch(/Drafting runs this automation/);
+    expect((await refusalOf(rig.service.remove(id))).message).toMatch(
+      /Drafting runs this automation/,
+    );
     rig.service.discardDraft(drafting, 1);
-    rig.service.remove(id);
+    await rig.service.remove(id);
     expect(rig.programs.find(id)).toBeUndefined();
   });
 });

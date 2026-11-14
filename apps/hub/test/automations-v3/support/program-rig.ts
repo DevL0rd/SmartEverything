@@ -161,6 +161,7 @@ function envOf(
     functions,
     plans: new AutomationPlansRepository(context),
     kinds: createKindCatalog(),
+    engine: { retire: () => Promise.resolve() },
     secrets: {
       list: () => secretIds.map((id) => ({ id, name: id, createdAt: '', updatedAt: '' })),
     },

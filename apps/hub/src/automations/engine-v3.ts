@@ -23,6 +23,7 @@ import { structuredAutomation } from '../store/repositories/automation-trees';
 import { armTriggers, listensOnWebhook } from './engine-v3-triggers';
 import { PlanBook } from './engine-v3-plans';
 import { engineSink } from './engine-v3-sink';
+import { retireRuns } from './engine-v3-retire';
 import { STOP_AUTOMATION_KIND, stopAutomation } from './engine-v3-stop';
 import {
   contextOf,
@@ -167,6 +168,11 @@ export class EngineV3 {
 
   cancelAutomation(automationId: string, reason: CancelReason, key?: string): number {
     return this.driver.cancelAutomation(automationId, reason, key);
+  }
+
+  retire(automationId: string): Promise<void> {
+    this.unload(automationId, 'removed');
+    return retireRuns(this.ports.repositories.records, this.driver, this.finishes, automationId);
   }
 
   async finished(runId: string): Promise<RunOutputs> {
@@ -391,9 +397,7 @@ export class EngineV3 {
   private perform(request: EffectRequest, scope: RunScope): Promise<NodeResult> {
     if (request.kind === RUN_AUTOMATION_KIND) return this.callChild(request.params);
     if (request.kind === STOP_AUTOMATION_KIND) {
-      return Promise.resolve(
-        stopAutomation(request.params, (id, reason, key) => this.cancelAutomation(id, reason, key)),
-      );
+      return Promise.resolve(stopAutomation(request.params, this.cancelAutomation.bind(this)));
     }
     const trigger = this.triggers.get(scope.runId) ?? null;
     return this.ports.effects(request, effectRun(scope, trigger, request, this.ports));

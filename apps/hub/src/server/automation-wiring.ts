@@ -33,6 +33,7 @@ export function automationRoutes(context: ServerContext, tools: ToolHub): Automa
     secrets: hub.automationSecrets,
     kinds: hub.automationKinds,
     tools,
+    engine: hub.automationEngine,
   };
   const functions = automationFunctions({ ...env, functions: store.automationFunctions });
   return {

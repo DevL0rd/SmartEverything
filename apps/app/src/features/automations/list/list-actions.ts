@@ -15,15 +15,17 @@ export interface ListActions {
   readonly toggle: (automationId: string, enabled: boolean) => void;
   readonly run: (automationId: string, mode: 'live' | 'dry') => void;
   readonly duplicate: (automationId: string) => void;
-  readonly remove: (automationId: string, name: string) => void;
+  readonly remove: (automationId: string, name: string, onRemoved?: () => void) => void;
 }
 
-async function attempt(failure: string, work: () => Promise<unknown>): Promise<void> {
+async function attempt(failure: string, work: () => Promise<unknown>): Promise<boolean> {
   try {
     await work();
+    return true;
   } catch (error) {
     log.error('automations.list_action_failed', error, { failure });
     notify({ message: failure, tone: 'critical', error });
+    return false;
   }
 }
 
@@ -52,18 +54,23 @@ function duplicateOf(services: Services, automationId: string): void {
   );
 }
 
-function removal(services: Services, automationId: string, name: string): void {
-  background(
-    confirm({ title: `Delete ${name}?`, confirmLabel: 'Delete', tone: 'destructive' }).then(
-      (accepted) =>
-        accepted
-          ? attempt(`${name} wasn’t deleted. Another automation may still call it.`, () =>
-              services.programs.remove(automationId),
-            )
-          : undefined,
-    ),
-    'automations.remove_failed',
+export async function removeAutomation(
+  remove: (automationId: string) => Promise<unknown>,
+  automationId: string,
+  name: string,
+  onRemoved: (() => void) | undefined,
+): Promise<void> {
+  const accepted = await confirm({
+    title: `Delete ${name}?`,
+    confirmLabel: 'Delete',
+    tone: 'destructive',
+  });
+  if (!accepted) return;
+  const removed = await attempt(
+    `${name} wasn’t deleted. Another automation may still call it.`,
+    () => remove(automationId),
   );
+  if (removed) onRemoved?.();
 }
 
 function runOf(services: Services, automationId: string, mode: 'live' | 'dry'): void {
@@ -102,8 +109,11 @@ export function useListActions(): ListActions {
       duplicate: (automationId): void => {
         duplicateOf(services, automationId);
       },
-      remove: (automationId, name): void => {
-        removal(services, automationId, name);
+      remove: (automationId, name, onRemoved): void => {
+        background(
+          removeAutomation((id) => programs.remove(id), automationId, name, onRemoved),
+          'automations.remove_failed',
+        );
       },
     };
   }, [programs, runs, automations]);

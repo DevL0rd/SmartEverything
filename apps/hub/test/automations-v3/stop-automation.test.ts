@@ -80,6 +80,21 @@ async function hangingUrl(): Promise<string> {
   return `http://127.0.0.1:${String(address.port)}/`;
 }
 
+describe('retiring an automation before it is removed', () => {
+  it('cancels its parked run and settles it before returning', async () => {
+    const rig = await rigV3();
+    const target = rig.add(guardedWait(), 'Target');
+    rig.engine.sync();
+    const runId = startedRun(rig, target.id);
+    await rig.settle();
+    expect(rig.engine.driver.isLive(runId)).toBe(true);
+    await rig.engine.retire(target.id);
+    expect(rig.engine.driver.isLive(runId)).toBe(false);
+    expect(rig.records.byId(runId).status).toBe('cancelled');
+    expect(rig.engine.automations).not.toContain(target.id);
+  });
+});
+
 describe('the stop automation effect', () => {
   it('stops a parked run, runs its finally block and ends the run cancelled', async () => {
     const rig = await rigV3();

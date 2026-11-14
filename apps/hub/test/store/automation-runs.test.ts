@@ -1,3 +1,4 @@
+import type { RowChange } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { saveAutomation, startRun } from '../support/automation-fixture';
 import { captureLogs } from '../support/logs';
@@ -77,7 +78,15 @@ describe('a removed automation leaves no run history behind', () => {
     const owned = command();
     store.automationRuns.retainCommands(startRun(store, gone.id, 'succeeded').id, [owned]);
     startRun(store, kept.id);
+    const changes: RowChange[] = [];
+    store.feed.subscribe((change) => {
+      if (change.table === 'automation_runs') changes.push(change);
+    });
+    const goneRunId = store.automationRunRecords.summaries(gone.id, 10)[0]?.id;
     store.automationRunRecords.forget(gone.id);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ operation: 'DELETE', record: null });
+    expect(changes[0]?.oldRecord).toMatchObject({ id: goneRunId, automation_id: gone.id });
     store.automations.remove(gone.id);
     expect(store.automationRunRecords.summaries(gone.id, 10)).toHaveLength(0);
     expect(store.automationRunRecords.summaries(kept.id, 10)).toHaveLength(1);

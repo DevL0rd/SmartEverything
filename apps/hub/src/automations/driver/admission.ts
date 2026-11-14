@@ -224,6 +224,10 @@ export class RunDriver {
     return this.cancels.cancel(runId, reason);
   }
 
+  isLive(runId: string): boolean {
+    return this.runs.has(runId);
+  }
+
   cancelAutomation(automationId: string, reason: CancelReason, key?: string): number {
     const matching = (runId: string): boolean => {
       const owner = this.owners.get(runId);

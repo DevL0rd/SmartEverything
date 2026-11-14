@@ -258,7 +258,7 @@ describe('who may change what', () => {
 });
 
 describe('deleting', () => {
-  it('refuses while something uses it and allows it afterwards', () => {
+  it('refuses while something uses it and allows it afterwards', async () => {
     const id = made(rig.owner.caller, 'Greeting');
     const user = callerOf(id);
     expect(
@@ -266,7 +266,7 @@ describe('deleting', () => {
         service.remove(rig.owner.caller, id);
       }).code,
     ).toBe('conflict');
-    rig.service.remove(user.id);
+    await rig.service.remove(user.id);
     service.remove(rig.owner.caller, id);
     expect(rig.functions.find(id)).toBeUndefined();
   });

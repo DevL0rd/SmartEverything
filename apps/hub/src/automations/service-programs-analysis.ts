@@ -9,6 +9,7 @@ import {
   type RefKind,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import type { EngineV3 } from './engine-v3';
 import { canonicalPlan } from '@smarteverything/flow/compile/hash';
 import { lower, type LowerResult } from '@smarteverything/flow/compile/lower';
 import type { LowerProblem } from '@smarteverything/flow/compile/lower-effects';
@@ -59,6 +60,7 @@ export interface ProgramEnv extends AnalysisEnv {
   readonly revisions: AutomationRevisionsRepository;
   readonly plans: AutomationPlansRepository;
   readonly tools: Pick<ToolHub, 'pluginTurnRefusal'>;
+  readonly engine: Pick<EngineV3, 'retire'>;
 }
 
 export interface Basis {

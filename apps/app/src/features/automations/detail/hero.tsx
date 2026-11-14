@@ -18,10 +18,11 @@ export interface HeroProps {
   readonly timeZone: string | null;
   readonly edit: AppHref;
   readonly actions: ListActions;
+  readonly onRemoved: () => void;
   readonly onShowVersions: () => void;
 }
 
-function menuOf({ row, actions, onShowVersions }: HeroProps): readonly MenuItem[] {
+function menuOf({ row, actions, onRemoved, onShowVersions }: HeroProps): readonly MenuItem[] {
   return [
     {
       label: 'Run for real',
@@ -44,7 +45,7 @@ function menuOf({ row, actions, onShowVersions }: HeroProps): readonly MenuItem[
       icon: 'trash',
       destructive: true,
       onPress: (): void => {
-        actions.remove(row.id, row.name);
+        actions.remove(row.id, row.name, onRemoved);
       },
     },
   ];

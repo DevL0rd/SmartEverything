@@ -105,7 +105,7 @@ export interface AutomationPrograms {
   ) => AutomationProgramReply;
   readonly setEnabled: (id: string, enabled: boolean) => AutomationProgramReply;
   readonly rename: (id: string, name: string) => AutomationProgramReply;
-  readonly remove: (id: string) => void;
+  readonly remove: (id: string) => Promise<void>;
   readonly draft: (id: string) => AutomationProgramDraftView;
   readonly saveDraft: (id: string, input: DraftInput) => AutomationProgramReply;
   readonly discardDraft: (id: string, expectedRevision: number) => AutomationProgramReply;
@@ -363,16 +363,17 @@ function rename(env: ProgramEnv, id: string, name: string): AutomationProgramRep
   return reply(true, `Renamed to ${row.name}.`, { id: row.id, revision: row.revision }, []);
 }
 
-function remove(env: ProgramEnv, id: string): void {
+async function remove(env: ProgramEnv, id: string): Promise<void> {
+  const row = env.programs.byId(id);
+  const user = usedBy(env, row);
+  if (user !== undefined) {
+    throw new ApiError(
+      'conflict',
+      `The automation ${user.name} runs this automation. Remove that step first.`,
+    );
+  }
+  await env.engine.retire(id);
   env.store.write(() => {
-    const row = env.programs.byId(id);
-    const user = usedBy(env, row);
-    if (user !== undefined) {
-      throw new ApiError(
-        'conflict',
-        `The automation ${user.name} runs this automation. Remove that step first.`,
-      );
-    }
     env.store.automationRunRecords.forget(id);
     env.programs.remove(id);
     env.store.pluginKinds.prune(usedKindsOf(env.store));
@@ -408,9 +409,7 @@ export function automationPrograms(env: ProgramEnv): AutomationPrograms {
     check: (caller, request) => check(env, caller, request),
     setEnabled: (id, enabled) => setEnabled(env, id, enabled),
     rename: (id, name) => rename(env, id, name),
-    remove: (id): void => {
-      remove(env, id);
-    },
+    remove: (id) => remove(env, id),
     draft: (id) => draftView(env, id),
     saveDraft: (id, input) => saveDraft(env, id, input),
     discardDraft: (id, expectedRevision) => discardDraft(env, id, expectedRevision),

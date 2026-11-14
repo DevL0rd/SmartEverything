@@ -23,7 +23,7 @@ export interface EngineRepositories {
   readonly plans: Pick<AutomationPlansRepository, 'put' | 'find' | 'has'>;
   readonly records: Pick<
     AutomationRunRecordsRepository,
-    'create' | 'update' | 'waiting' | 'interruptUnfinished' | 'park' | 'resume'
+    'create' | 'update' | 'active' | 'waiting' | 'interruptUnfinished' | 'park' | 'resume'
   >;
   readonly nodes: Pick<AutomationRunNodesRepository, 'append' | 'settle' | 'closeOpen'>;
   readonly owned: Pick<AutomationOwnedValuesRepository, 'list' | 'create'>;

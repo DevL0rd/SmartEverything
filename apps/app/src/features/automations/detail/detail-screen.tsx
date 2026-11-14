@@ -9,6 +9,7 @@ import {
 } from '@smarteverything/domain';
 import type { AutomationRow } from '../data/graph-adapter';
 import type { LintContext } from '@smarteverything/flow/check/lint';
+import { runBack } from '../../../components/back-navigation';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { Grid } from '../../../components/grid';
@@ -103,6 +104,7 @@ function Loaded({ row, revisions, environment, links, onOpenRun }: LoadedProps):
           timeZone={timeZone}
           edit={links.edit(null)}
           actions={actions}
+          onRemoved={runBack}
           onShowVersions={() => {
             setShowAll(true);
           }}

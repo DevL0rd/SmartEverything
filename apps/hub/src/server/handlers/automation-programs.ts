@@ -22,8 +22,8 @@ export const automationProgramRoutes = (programs: AutomationPrograms) =>
     checkAutomationProgram: bound(E.checkAutomationProgram, ({ body, caller }) =>
       programs.check(caller, body),
     ),
-    removeAutomationProgram: bound(E.removeAutomationProgram, ({ params }) => {
-      programs.remove(params.automationId);
+    removeAutomationProgram: bound(E.removeAutomationProgram, async ({ params }) => {
+      await programs.remove(params.automationId);
       return DONE_REPLY;
     }),
     getAutomationProgramDraft: bound(E.getAutomationProgramDraft, ({ params }) =>
