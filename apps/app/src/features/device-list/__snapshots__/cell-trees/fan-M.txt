@@ -13,5 +13,5 @@ View className="h-full overflow-hidden rounded-lg border-hairline border-outline
       View className="min-h-0 flex-1 flex-row items-end gap-2" pointerEvents="box-none"
         View className="min-h-0 min-w-0 flex-1 self-stretch overflow-hidden" onLayout=fn pointerEvents="box-none"
         View className="min-w-0 shrink" pointerEvents="box-none"
-          View className="mt-auto flex-row flex-wrap items-center justify-end gap-2" pointerEvents="box-none"
+          View className="mt-auto flex-row flex-wrap items-center justify-end gap-2" onLayout=undefined pointerEvents="box-none"
             Pressable accessibilityHint=undefined accessibilityLabel="Turn off Device 0" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#33d8e7",foreground:true} aria-checked=undefined aria-controls=undefined aria-expanded=undefined aria-selected=undefined className="overflow-hidden native:focus:outline-2 native:focus:outline-focus web:focus-visible:outline-2 web:focus-visible:outline-focus native:focus:outline-offset-2 web:focus-visible:outline-offset-2 size-control-h items-center justify-center rounded-full bg-primary" disabled=false hitSlop=undefined onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn ref=undefined

@@ -9,4 +9,4 @@ View className="h-full overflow-hidden rounded-lg border-hairline border-outline
         Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
         Text className="font-sans text-footnote text-primary text-left" numberOfLines=1 selectable=false
         Text className="font-sans text-footnote text-on-surface-variant text-left tabular" selectable=false
-      View className="mt-auto flex-row flex-wrap items-center justify-end gap-2" pointerEvents="box-none"
+      View className="mt-auto flex-row flex-wrap items-center justify-end gap-2" onLayout=undefined pointerEvents="box-none"

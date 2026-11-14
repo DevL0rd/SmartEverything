@@ -13,4 +13,4 @@ View className="h-full overflow-hidden rounded-lg border-hairline border-outline
       View className="min-h-0 flex-1 flex-row items-end gap-2" pointerEvents="box-none"
         View className="min-h-0 min-w-0 flex-1 self-stretch overflow-hidden" onLayout=fn pointerEvents="box-none"
         View className="min-w-0 shrink" pointerEvents="box-none"
-          View className="mt-auto flex-row flex-wrap items-center justify-end gap-2" pointerEvents="box-none"
+          View className="mt-auto flex-row flex-wrap items-center justify-end gap-2" onLayout=undefined pointerEvents="box-none"

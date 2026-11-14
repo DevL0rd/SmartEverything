@@ -27,7 +27,7 @@ View className="h-full overflow-hidden rounded-lg border-hairline border-outline
               Svg.Path aria-hidden=true d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" fill="none" stroke="#ce9792" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
               Svg.Path aria-hidden=true d="M16 9a5 5 0 0 1 0 6" fill="none" stroke="#ce9792" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
               Svg.Path aria-hidden=true d="M19.364 18.364a9 9 0 0 0 0-12.728" fill="none" stroke="#ce9792" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
-        View className="mt-auto flex-row flex-wrap items-center justify-end gap-2" pointerEvents="box-none"
+        View className="mt-auto flex-row flex-wrap items-center justify-end gap-2" onLayout=undefined pointerEvents="box-none"
       View className="items-center justify-center size-24"
         Svg.default height=96 viewBox="0 0 96 96" width=96
           Svg.Defs 
