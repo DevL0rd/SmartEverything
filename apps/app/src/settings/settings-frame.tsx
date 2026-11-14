@@ -6,7 +6,6 @@ import type { PrimaryActionProps } from '../components/primary-action';
 import { Screen } from '../components/screen';
 import { useSettingsOrigin } from '../app-shell/settings-navigation';
 import { useSizeClass } from '../design/size-class';
-import { useSettingsParentBack } from './settings-back';
 import { settingsPage, settingsTrail } from './tree';
 
 export interface SettingsFrameProps {
@@ -44,7 +43,6 @@ function FrameHeader({
   const { split } = useSizeClass();
   const origin = useSettingsOrigin();
   const definition = settingsPage(page);
-  useSettingsParentBack(page);
   const topLevel = split && !detail && definition?.parent === null && !origin;
   return (
     <PageHeader

@@ -46,7 +46,7 @@ const ACCOUNTS: readonly SettingDefinition[] = [
 const ASSISTANT_SETTINGS: readonly SettingDefinition[] = [
   ...ASSISTANTS.map((assistant): SettingDefinition => ({
     id: `assistants.${assistant.key}`,
-    page: 'assistant/integrations',
+    page: 'integrations',
     title: `Connect ${assistant.name}`,
     icon: 'sparkles',
     keywords: ['ai', 'mcp', 'assistant', assistant.name.toLowerCase()],
@@ -57,27 +57,27 @@ const ASSISTANT_SETTINGS: readonly SettingDefinition[] = [
   })),
   {
     id: 'assistants.tools',
-    page: 'assistant/integrations/tools',
+    page: 'integrations/tools',
     title: 'Tools assistants can use',
     icon: 'wrench',
     keywords: ['mcp tools', 'permissions', 'control'],
     scope: 'server',
     visible: owner,
     control: 'link',
-    href: href.settings.page('assistant/integrations/tools'),
+    href: href.settings.page('integrations/tools'),
     value: (state) =>
       state.settings === null ? null : toolsSummary(state.settings.mcp_disabled_tools),
   },
   {
     id: 'assistants.code',
-    page: 'assistant/integrations',
+    page: 'integrations',
     title: 'Show an approval code',
     icon: 'qr',
     keywords: ['approval', 'code', 'consent'],
     scope: 'server',
     visible: owner,
     control: 'link',
-    href: href.settings.focus('assistant/integrations', 'assistants.code'),
+    href: href.settings.focus('integrations', 'assistants.code'),
   },
 ];
 

@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-native', () => ({ BackHandler: { addEventListener: vi.fn() } }));
+vi.mock('expo-router', () => ({
+  router: {},
+  useFocusEffect: vi.fn(),
+  useNavigation: vi.fn(),
+  usePathname: vi.fn(),
+  useRoute: vi.fn(),
+}));
 vi.mock('../design/platform', () => ({ isNative: (): boolean => true }));
 vi.mock('./nav-sheet-state', () => ({ navSheetPhase: { get: (): string => 'closed' } }));
 

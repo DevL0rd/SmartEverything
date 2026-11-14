@@ -38,13 +38,15 @@ afterEach(async () => {
 interface Window {
   readonly id: number;
   readonly destroy: () => void;
-  readonly navigate: (inPlace: boolean) => void;
+  readonly startNavigation: () => void;
+  readonly commitNavigation: () => void;
   readonly invoke: (channel: string, value?: unknown) => Promise<unknown>;
 }
 
 function openWindow(id: number): Window {
   const destroyed: (() => void)[] = [];
-  const navigations: ((...args: unknown[]) => void)[] = [];
+  const started: ((...args: unknown[]) => void)[] = [];
+  const committed: ((...args: unknown[]) => void)[] = [];
   const frame = { url: START_URL };
   const contents = {
     id,
@@ -56,7 +58,8 @@ function openWindow(id: number): Window {
       destroyed.push(listener);
     },
     on: (event: string, listener: (...args: unknown[]) => void): void => {
-      if (event === 'did-start-navigation') navigations.push(listener);
+      if (event === 'did-start-navigation') started.push(listener);
+      if (event === 'did-navigate') committed.push(listener);
     },
   };
   return {
@@ -64,8 +67,11 @@ function openWindow(id: number): Window {
     destroy: (): void => {
       for (const listener of destroyed) listener();
     },
-    navigate: (inPlace: boolean): void => {
-      for (const listener of navigations) listener({}, START_URL, inPlace, true);
+    startNavigation: (): void => {
+      for (const listener of started) listener({}, 'https://claude.ai/', false, true);
+    },
+    commitNavigation: (): void => {
+      for (const listener of committed) listener({}, START_URL);
     },
     invoke: (channel: string, value?: unknown): Promise<unknown> => {
       const handler = handlers.get(channel);
@@ -165,14 +171,22 @@ describe('hub network with several windows', () => {
     expect(await get(openWindow(2), hub.url)).toMatchObject({ status: 200 });
   });
 
-  it('keeps a home reachable across in-place navigation and releases it on a document change', async () => {
+  it('keeps a home reachable when a navigation starts but is cancelled or sent to the system browser', async () => {
     const { hub, trust } = await pinnedHub();
     await register();
     const window = openWindow(1);
     await window.invoke('desktop:hub-authority-configure', trust);
-    window.navigate(true);
+    window.startNavigation();
     expect(await get(window, hub.url)).toMatchObject({ status: 200, body: 'home' });
-    window.navigate(false);
+  });
+
+  it('keeps a home reachable across in-place navigation and releases it when a new document commits', async () => {
+    const { hub, trust } = await pinnedHub();
+    await register();
+    const window = openWindow(1);
+    await window.invoke('desktop:hub-authority-configure', trust);
+    expect(await get(window, hub.url)).toMatchObject({ status: 200, body: 'home' });
+    window.commitNavigation();
     await expect(get(window, hub.url)).rejects.toThrow('no enrolled trust');
   });
 });

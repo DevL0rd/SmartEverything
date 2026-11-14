@@ -226,7 +226,7 @@ export function TokensScreen(): ReactNode {
   const banner = useOfflineBanner();
   return (
     <SettingsFrame
-      page="assistant/integrations/tokens"
+      page="integrations/tokens"
       contentWidth={isNative() ? 'reading' : 'full'}
       {...(banner === undefined ? {} : { banner })}
       primaryAction={{

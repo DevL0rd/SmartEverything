@@ -136,13 +136,13 @@ function More(): ReactNode {
           icon="wrench"
           title="Exposed tools"
           value={toolsSummary(disabled)}
-          href={href.settings.page('assistant/integrations/tools')}
+          href={href.settings.page('integrations/tools')}
         />
         <NavRow
           icon="key"
           title="Personal tokens"
           value={tokens === 0 ? 'None' : String(tokens)}
-          href={href.settings.page('assistant/integrations/tokens')}
+          href={href.settings.page('integrations/tokens')}
         />
         <ActionRow
           icon="qr"
@@ -172,7 +172,7 @@ export function AssistantsScreen(): ReactNode {
   const banner = useOfflineBanner();
   return (
     <SettingsFrame
-      page="assistant/integrations"
+      page="integrations"
       contentWidth={isNative() ? 'reading' : 'full'}
       {...(banner === undefined ? {} : { banner })}
     >

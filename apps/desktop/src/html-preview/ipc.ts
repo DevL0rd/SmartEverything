@@ -2,6 +2,7 @@ import { ipcMain, type BrowserWindow } from 'electron';
 import { BrowserPolicyError, NATIVE_HTML_ID } from '@smarteverything/domain';
 import { desktopHtml } from './projections.js';
 import { isAppOrigin } from '../origin.js';
+import { onDocumentReplaced } from '../document-replaced.js';
 
 export function registerHtmlPreviewIpc(window: BrowserWindow, startUrl: string): void {
   let epoch = 0;
@@ -39,9 +40,7 @@ export function registerHtmlPreviewIpc(window: BrowserWindow, startUrl: string):
     epoch += 1;
     desktopHtml()?.closeOwner(window.webContents.id);
   };
-  window.webContents.on('did-start-navigation', (_event, _url, inPlace, mainFrame) => {
-    if (mainFrame && !inPlace) retire();
-  });
+  onDocumentReplaced(window.webContents, retire);
   window.once('closed', () => {
     retire();
     ipcMain.removeHandler('desktop:html-open');

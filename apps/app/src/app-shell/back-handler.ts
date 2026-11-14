@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent } from 'react';
 import { BackHandler } from 'react-native';
 import { Logger } from '@smarteverything/logging';
+import { runBack } from '../components/back-navigation';
 import { isNative } from '../design/platform';
 import { navSheetPhase } from './nav-sheet-state';
 
@@ -33,6 +34,11 @@ export function useTabRootBack(target: BackTarget): void {
   const onBack = useEffectEvent((): boolean => {
     const { atTabRoot, onHome, goHome } = target;
     const sheet = navSheetPhase.get();
+    const outcome = sheet === 'closed' ? runBack() : null;
+    if (outcome !== null) {
+      log.info(outcome === 'opener' ? 'back.went_to_opener' : 'back.went_to_parent');
+      return true;
+    }
     if (sheet !== 'closed' || !atTabRoot || onHome) {
       log.debug('back.passed', { sheet, atTabRoot, onHome });
       return false;

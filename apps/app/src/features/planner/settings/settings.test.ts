@@ -96,9 +96,9 @@ describe('planner settings', () => {
     );
   });
 
-  it('summarises the Google link on the settings master', () => {
+  it('shows no warning on the settings master while Google is not linked', () => {
     const summary = settingsPage('planner')?.summary;
-    expect(summary?.(emptyState())).toBe('Google not linked');
+    expect(summary?.(emptyState())).toBeNull();
   });
 });
 

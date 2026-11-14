@@ -2,10 +2,10 @@ import { googleAccountView, googleRowIn } from '../features/planner/data/google-
 import type { StoreState } from '../store/state';
 import type { SettingsPageDefinition } from './types';
 
-function plannerSummary(state: StoreState): string {
+function plannerSummary(state: StoreState): string | null {
   const google = googleAccountView(googleRowIn(state));
   if (google.needsAttention) return 'Google needs attention';
-  return google.linked ? 'Google linked' : 'Google not linked';
+  return google.linked ? 'Google linked' : null;
 }
 
 const subpage = (

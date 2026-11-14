@@ -18,6 +18,7 @@ import { HubSockets } from '@smarteverything/hub/client-network/sockets';
 import { HubUploads } from '@smarteverything/hub/client-network/uploads';
 import { background, Logger } from '@smarteverything/logging';
 import { configureDesktopHtml } from '../html-preview/projections.js';
+import { onDocumentReplaced } from '../document-replaced.js';
 import { isAppOrigin } from '../origin.js';
 import { DesktopRouteAuthority } from './authority.js';
 import { hubCapabilities } from './capabilities.js';
@@ -155,7 +156,7 @@ class HubNetworkIpc {
       this.#authority.refresh(SCOPE.parse(value)),
     );
     this.#handle('desktop:hub-authority-clear', (value, owner) => {
-      this.#releaseScope(owner, SCOPE.parse(value));
+      this.#releaseScope(owner, SCOPE.parse(value), 'cleared_by_window');
     });
   }
   #registerTransport(): void {
@@ -167,7 +168,7 @@ class HubNetworkIpc {
       this.#enrollments.configure(owner, trust);
     });
     this.#handle('desktop:hub-clear-trust', (value, owner) => {
-      this.#releaseScope(owner, SCOPE.parse(value));
+      this.#releaseScope(owner, SCOPE.parse(value), 'cleared_by_window');
     });
     this.#handle('desktop:hub-request', (value, owner) => {
       const input = NATIVE_HUB_REQUEST.parse(value);
@@ -266,9 +267,10 @@ class HubNetworkIpc {
   #claimScope(owner: WebContents, scopeId: string): void {
     this.#owners.get(owner)?.add(scopeId);
   }
-  #releaseScope(owner: WebContents, scopeId: string): void {
+  #releaseScope(owner: WebContents, scopeId: string, reason: string): void {
     this.#owners.get(owner)?.delete(scopeId);
     if ([...this.#owners.values()].some((scopes) => scopes.has(scopeId))) return;
+    log.info('hub_network.scope_released', { scopeId, reason, owner: owner.id });
     this.#clear(scopeId);
   }
   #clear(scopeId: string): void {
@@ -287,13 +289,14 @@ class HubNetworkIpc {
   #sendAll(owners: ReadonlySet<WebContents>, channel: string, state: unknown): void {
     for (const owner of owners) this.#send(owner, channel, state);
   }
-  #release(owner: WebContents): void {
+  #release(owner: WebContents, reason: string): void {
     this.#inspections.clearOwner(owner);
     this.#sockets.closeOwner(owner);
     this.#uploads.closeOwner(owner);
     this.#resources?.broker.closeOwner(owner.id);
     const scopes = this.#owners.get(owner);
-    if (scopes !== undefined) for (const scope of [...scopes]) this.#releaseScope(owner, scope);
+    if (scopes !== undefined)
+      for (const scope of [...scopes]) this.#releaseScope(owner, scope, reason);
     this.#owners.delete(owner);
     this.#stopDiscovery(owner);
     this.#unwatch(owner);
@@ -303,12 +306,14 @@ class HubNetworkIpc {
     this.#owners.set(owner, new Set());
     if (this.#followed.has(owner)) return;
     this.#followed.add(owner);
-    const release = (): void => {
-      this.#release(owner);
+    const release = (reason: string): void => {
+      this.#release(owner, reason);
     };
-    owner.once('destroyed', release);
-    owner.on('did-start-navigation', (_event, _url, inPlace, mainFrame) => {
-      if (mainFrame && !inPlace) release();
+    owner.once('destroyed', () => {
+      release('destroyed');
+    });
+    onDocumentReplaced(owner, () => {
+      release('document_replaced');
     });
   }
   #handle(

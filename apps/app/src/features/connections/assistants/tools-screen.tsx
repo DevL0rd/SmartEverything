@@ -97,10 +97,7 @@ export function ToolsScreen(): ReactNode {
   const { disabled, change } = useDisabledTools();
   const [shown, setShown] = useState<Tool | null>(null);
   return (
-    <SettingsFrame
-      page="assistant/integrations/tools"
-      contentWidth={isNative() ? 'reading' : 'full'}
-    >
+    <SettingsFrame page="integrations/tools" contentWidth={isNative() ? 'reading' : 'full'}>
       <Text variant="callout" tone="variant" className="px-4">
         Assistants can use these tools. New tools are on by default.
       </Text>

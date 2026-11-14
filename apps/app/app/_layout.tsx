@@ -10,6 +10,8 @@ import { provideRandomValues } from '../src/platform/random-values';
 import { APP_FONTS } from '../src/design/fonts';
 import { FLOWS_PRESENTATION, SEARCH_PRESENTATION } from '../src/app-shell/root-presentation';
 import { isNative } from '../src/design/platform';
+import { BackRulesProvider } from '../src/components/back-navigation';
+import { BACK_RULES } from '../src/app-shell/back-host';
 import { KeyboardRoot } from '../src/components/keyboard-viewport';
 import { AppRoot } from '../src/features/root/app-root';
 import { LogShipHost } from '../src/features/root/log-ship-host';
@@ -60,18 +62,20 @@ export default function RootLayout(): ReactNode {
       <KeyboardRoot>
         <ThemeProvider value={SEE_THROUGH}>
           <RootProfiler>
-            <Stack screenLayout={probedScreen} screenOptions={ROOT_OPTIONS}>
-              <Stack.Screen name="(app)" />
-              <Stack.Screen name="pair" />
-              <Stack.Screen name="search" options={{ presentation: SEARCH_PRESENTATION }} />
-              <Stack.Screen
-                name="(flows)"
-                options={{
-                  presentation: FLOWS_PRESENTATION,
-                  animation: isNative() ? 'slide_from_bottom' : 'fade',
-                }}
-              />
-            </Stack>
+            <BackRulesProvider value={BACK_RULES}>
+              <Stack screenLayout={probedScreen} screenOptions={ROOT_OPTIONS}>
+                <Stack.Screen name="(app)" />
+                <Stack.Screen name="pair" />
+                <Stack.Screen name="search" options={{ presentation: SEARCH_PRESENTATION }} />
+                <Stack.Screen
+                  name="(flows)"
+                  options={{
+                    presentation: FLOWS_PRESENTATION,
+                    animation: isNative() ? 'slide_from_bottom' : 'fade',
+                  }}
+                />
+              </Stack>
+            </BackRulesProvider>
           </RootProfiler>
         </ThemeProvider>
       </KeyboardRoot>

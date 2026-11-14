@@ -14,6 +14,7 @@ import { isNative } from '../design/platform';
 import { useSizeClass } from '../design/size-class';
 import { openSearch } from '../search/open-search';
 import { AdaptiveNav } from './adaptive-nav';
+import { useBackOrigins } from './back-host';
 import { screenPause } from './screen-pause';
 import { GlobalHosts } from './global-hosts';
 import { useNaturalTabForColdLinks } from './natural-tab';
@@ -57,6 +58,7 @@ function renderTabBar(props: BottomTabBarProps): ReactNode {
 function NavigationEffects(): ReactNode {
   useNaturalTabForColdLinks();
   useTabReplacement();
+  useBackOrigins();
   return null;
 }
 

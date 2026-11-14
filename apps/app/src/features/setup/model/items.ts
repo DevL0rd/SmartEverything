@@ -266,7 +266,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'An assistant can use your home.',
     todoText: 'Let an outside assistant see and control your home.',
     action: 'Open integrations',
-    go: page(href.settings.page('assistant/integrations')),
+    go: page(href.settings.page('integrations')),
     stateOf: (facts) => done(facts.assistants > 0),
   },
 ];

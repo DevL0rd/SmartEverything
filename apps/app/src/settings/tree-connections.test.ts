@@ -70,3 +70,22 @@ describe('Accounts settings pages', () => {
     expect(summary?.(withGoogle('needs_attention'))).toBe('Google');
   });
 });
+
+describe('Integrations settings pages', () => {
+  it('lists Integrations on the main Settings page under Connections for the owner', () => {
+    const integrations = settingsPage('integrations');
+    expect(integrations?.parent).toBeNull();
+    expect(integrations?.group).toBe('Connections');
+    expect(integrations?.visible?.(env(true))).toBe(true);
+    expect(integrations?.visible?.(env(false))).toBe(false);
+    expect(childrenOf('integrations').map((page) => page.id)).toEqual([
+      'integrations/tools',
+      'integrations/tokens',
+    ]);
+  });
+
+  it('keeps Integrations out of Assistant settings', () => {
+    expect(settingsPage('assistant/integrations')).toBeUndefined();
+    expect(childrenOf('assistant').filter((page) => page.title === 'Integrations')).toEqual([]);
+  });
+});

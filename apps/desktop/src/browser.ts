@@ -21,6 +21,7 @@ import { NATIVE_BROWSER_PAGE_REQUEST } from '@smarteverything/domain';
 import { electronPageDriver, performPageOperation } from './browser-page.js';
 import { confineBrowserView, createBrowserView } from './browser-session.js';
 import { isAppOrigin } from './origin.js';
+import { onDocumentReplaced } from './document-replaced.js';
 import { clearBrowserSiteStorage } from './browser-site-storage.js';
 
 const log = new Logger('desktop.browser');
@@ -52,8 +53,7 @@ export function registerBrowser(window: BrowserWindow, startUrl: string): void {
     for (const page of pages.values()) page.view.webContents.close();
     pages.clear();
   });
-  window.webContents.on('did-start-navigation', (_event, _url, inPlace, mainFrame) => {
-    if (!mainFrame || inPlace) return;
+  onDocumentReplaced(window.webContents, () => {
     for (const page of pages.values()) {
       window.contentView.removeChildView(page.view);
       closePage(page);

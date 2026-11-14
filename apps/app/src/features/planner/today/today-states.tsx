@@ -47,7 +47,6 @@ function WatchAlarmsRow(): ReactNode {
 
 function StartRows(): ReactNode {
   const { offline, focusQuickAdd } = usePlannerFrame();
-  const google = useGoogleAccount();
   return (
     <List title="Get started">
       <ListRow
@@ -64,16 +63,6 @@ function StartRows(): ReactNode {
         href={href.clock.alarms()}
         chevron
       />
-      {google.status === 'unlinked' ? (
-        <ListRow
-          icon="link"
-          title="Link Google"
-          subtitle="Bring in Google Calendar and Tasks from Settings › Accounts › Google"
-          wrapSubtitle
-          href={GOOGLE_SETTINGS}
-          chevron
-        />
-      ) : null}
       <WatchAlarmsRow />
     </List>
   );

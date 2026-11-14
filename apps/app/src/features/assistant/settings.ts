@@ -95,7 +95,6 @@ const NAVIGATION_SETTINGS: readonly SettingDefinition[] = [
   assistantPageLink('assistant/costs', ASSISTANT_GROUPS.budget),
   assistantPageLink('assistant/extensions', ASSISTANT_GROUPS.addOns),
   assistantPageLink('assistant/skills', ASSISTANT_GROUPS.addOns),
-  assistantPageLink('assistant/integrations', ASSISTANT_GROUPS.addOns),
   assistantPageLink('assistant/memory', ASSISTANT_GROUPS.privacy),
   ...MEMORY_MODEL_SETTINGS,
   assistantPageLink('assistant/privacy', ASSISTANT_GROUPS.privacy),

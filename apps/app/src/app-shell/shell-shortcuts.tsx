@@ -2,6 +2,7 @@ import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
 import type { TextInput } from 'react-native';
 import { router } from 'expo-router';
+import { runBack } from '../components/back-navigation';
 import { matchesQuickAskShortcut, openQuickAsk } from '../features/assistant';
 import { openSearch } from '../search/open-search';
 import { closeSearchOverlay } from '../search/overlay-state';
@@ -67,7 +68,7 @@ function commandKey(press: KeyPress, targets: ShellShortcutTargets): boolean {
 
 function plainKey(press: KeyPress, targets: ShellShortcutTargets, showHelp: () => void): boolean {
   if (shortcutPressed(press, 'back')) {
-    router.back();
+    runBack();
     return true;
   }
   if (shortcutPressed(press, 'forward')) {

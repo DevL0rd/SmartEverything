@@ -7,10 +7,10 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { router, useNavigation } from 'expo-router';
+import { router } from 'expo-router';
 import type { AppHref } from './app-href';
 import Head from 'expo-router/head';
-import { useNavigationState } from 'expo-router/react-navigation';
+import { useBackAction } from './back-navigation';
 import { PageSettingsButton, type PageSettingsLink } from './page-settings-button';
 import { useSizeClass, type HeaderKind } from '../design/size-class';
 import { Breadcrumbs, type Crumb } from './breadcrumbs';
@@ -69,14 +69,7 @@ const COLLAPSE_AT = 48;
 const TOUCH_ACTIONS = 2;
 
 function useBack(back: boolean | undefined): (() => void) | null {
-  const navigation = useNavigation();
-  const depth = useNavigationState((state) => state.index);
-  const shown = back ?? (depth > 0 || navigation.canGoBack());
-  return shown
-    ? (): void => {
-        navigation.goBack();
-      }
-    : null;
+  return useBackAction(back !== false);
 }
 
 function overflowItems(
