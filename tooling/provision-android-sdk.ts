@@ -84,8 +84,6 @@ function acceptLicences(manager: string, input: AndroidSdkInput): readonly strin
     env: sdkEnvironment(input),
     input: LICENCE_ANSWERS,
   });
-  if (!existsSync(join(input.sdk, LICENCE_ACCEPTED)))
-    throw new ProvisionError('sdkmanager finished without recording the Android SDK licence');
   return [...output.matchAll(LICENCE_NAME)].map((match) => match[1] ?? '');
 }
 
@@ -109,6 +107,9 @@ export async function provisionAndroidSdk(input: AndroidSdkInput): Promise<reado
   }
   runChecked(manager, [`--sdk_root=${input.sdk}`, ...missing.map(([name]) => name)], {
     env: sdkEnvironment(input),
+    input: LICENCE_ANSWERS,
   });
+  if (!existsSync(join(input.sdk, LICENCE_ACCEPTED)))
+    throw new ProvisionError('sdkmanager finished without recording the Android SDK licence');
   return [...done, ...missing.map(([name]) => name)];
 }

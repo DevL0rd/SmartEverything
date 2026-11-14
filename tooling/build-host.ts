@@ -31,6 +31,7 @@ export interface BuildHost {
 export interface HostPaths extends BuildHost {
   readonly toolBin: string;
   readonly jdkHome: string;
+  readonly goHome: string;
   readonly androidHome: string;
   readonly gradleHome: string;
   readonly electronCache: string;
@@ -56,6 +57,7 @@ export function hostPaths(layout: BuildHostLayout, root: string): HostPaths {
     pnpm: join(base, 'pnpm', pnpmVersionOf(root), 'node_modules', '.bin', 'pnpm'),
     toolBin: join(base, 'bin'),
     jdkHome: join(base, `jdk-${String(readBuildHostPin().jdkMajor)}`),
+    goHome: join(base, `go-${readBuildHostPin().go.version}`),
     androidHome: join(base, 'android-sdk'),
     gradleHome: join(base, 'gradle'),
     electronCache: join(base, 'electron'),
@@ -83,6 +85,7 @@ export function applyBuildHost(layout: BuildHostLayout, root: string): BuildHost
     dirname(process.execPath),
     dirname(paths.pnpm),
     join(paths.jdkHome, 'bin'),
+    join(paths.goHome, 'bin'),
     paths.toolBin,
     ...(env['PATH'] ?? '').split(delimiter),
   ]
@@ -127,6 +130,12 @@ function systemProblems(paths: HostPaths, need: BuildHostNeed): readonly string[
     );
 }
 
+function goProblems(paths: HostPaths): readonly string[] {
+  return existsSync(join(paths.goHome, 'bin', 'go'))
+    ? []
+    : [`Go is not provisioned at ${paths.goHome}: run tooling/provision-build-host.ts`];
+}
+
 function androidProblems(paths: HostPaths, root: string): readonly string[] {
   const missing = (path: string): boolean => !existsSync(path);
   const sdk = paths.androidHome;
@@ -157,6 +166,7 @@ export function requireBuildHost(layout: BuildHostLayout, root: string, need: Bu
           `pnpm ${pnpmVersionOf(root)} is not provisioned at ${paths.pnpm}: run tooling/provision-build-host.ts`,
         ]),
     ...systemProblems(paths, need),
+    ...(need === 'desktop' ? goProblems(paths) : []),
     ...(need === 'app' ? androidProblems(paths, root) : []),
   ];
   if (problems.length > 0) throw new BuildHostError(problems);

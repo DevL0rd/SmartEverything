@@ -22,7 +22,7 @@ const KEPT = [
   'electron_config_cache',
   'TMPDIR',
 ] as const;
-const PIN = { jdkMajor: 21, cmake: '3.22.1' };
+const PIN = { jdkMajor: 21, cmake: '3.22.1', go: '1.27.1' };
 
 let scratch: string;
 let saved: readonly (readonly [string, string | undefined])[];
@@ -45,6 +45,7 @@ function provision(): void {
   const base = layout().cache.buildHost;
   touchExecutable(join(base, 'pnpm', pnpmVersion(), 'node_modules', '.bin', 'pnpm'));
   touchExecutable(join(base, `jdk-${String(PIN.jdkMajor)}`, 'bin', 'java'));
+  touchExecutable(join(base, `go-${PIN.go}`, 'bin', 'go'));
   for (const part of ['build-tools', 'platforms', 'ndk', join('cmake', PIN.cmake)]) {
     mkdirSync(join(base, 'android-sdk', part), { recursive: true });
   }
@@ -100,10 +101,11 @@ describe('applying the build host', () => {
     const host = applyBuildHost(layout(), ROOT);
     const base = layout().cache.buildHost;
     expect(host.pnpm).toBe(join(base, 'pnpm', pnpmVersion(), 'node_modules', '.bin', 'pnpm'));
-    expect((env['PATH'] ?? '').split(delimiter).slice(0, 5)).toEqual([
+    expect((env['PATH'] ?? '').split(delimiter).slice(0, 6)).toEqual([
       dirname(process.execPath),
       dirname(host.pnpm),
       join(base, 'jdk-21', 'bin'),
+      join(base, `go-${PIN.go}`, 'bin'),
       join(base, 'bin'),
       '/usr/bin',
     ]);
@@ -173,6 +175,19 @@ describe('requiring the build host', () => {
       expect.stringContaining('zip is not provisioned'),
       expect.stringContaining('unzip is not provisioned'),
     ]);
+  });
+
+  it('names the missing Go toolchain for the desktop release', () => {
+    const root = checkout();
+    touchExecutable(
+      join(layout().cache.buildHost, 'pnpm', pnpmVersion(), 'node_modules', '.bin', 'pnpm'),
+    );
+    systemTools('zip', 'unzip');
+    expect(
+      problemsOf(() => {
+        requireBuildHost(layout(), root, 'desktop');
+      }),
+    ).toEqual([expect.stringContaining('Go is not provisioned')]);
   });
 
   it('names the JDK, every SDK part and google-services.json for the Android build', () => {

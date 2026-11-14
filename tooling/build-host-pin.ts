@@ -12,6 +12,11 @@ const PER_ARCH = z.strictObject({ x64: DOWNLOAD, arm64: DOWNLOAD });
 const BUILD_HOST_PIN = z.strictObject({
   jdkMajor: z.number().int().positive(),
   cmake: z.string().min(1),
+  go: z.strictObject({
+    version: z.string().regex(/^\d+\.\d+\.\d+$/u),
+    x64: DOWNLOAD,
+    arm64: DOWNLOAD,
+  }),
   jdk: PER_ARCH,
   androidCommandLineTools: DOWNLOAD,
   debian: z.strictObject({ zip: PER_ARCH, unzip: PER_ARCH }),

@@ -38,6 +38,16 @@ export function shellCommand(root: string): Command {
   };
 }
 
+export function driveMountCommand(root: string): Command {
+  return {
+    title: 'build the drive mount helper',
+    program: pnpmProgram(),
+    args: ['run', 'build:drive-mount'],
+    cwd: root,
+    environment: {},
+  };
+}
+
 export function makeCommand(root: string, arch: DesktopArch): Command {
   return {
     title: `package the desktop app for linux ${arch}`,
@@ -80,6 +90,7 @@ async function prepared(root: string, server: string): Promise<string> {
   if ((await stat(join(WEB_EXPORT, 'index.html'))).size === 0)
     throw new PublishOutputError('desktop web export', 'expected a nonempty index.html');
   runCommand(shellCommand(root));
+  runCommand(driveMountCommand(root));
   return desktopWebRuntime(join(root, 'apps', 'desktop'));
 }
 
