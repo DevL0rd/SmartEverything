@@ -22,6 +22,7 @@ import {
   UpdateUnavailableError,
 } from '../../../self-update/command';
 import { recoverHubUpdate } from '../../../self-update/execute';
+import { httpsPublicServer } from '../../../self-update/public-server';
 import type { HubLayout } from '../../../data-layout';
 import { readHubUpdate } from '../../../self-update/recovery';
 import {
@@ -63,14 +64,7 @@ async function update(context: ToolContext, input: Update): Promise<ToolOutput> 
 }
 
 function publicServer(context: ToolContext): string {
-  const settings = context.store.settings.read();
-  const server = settings.public_url_verified_at === null ? null : settings.public_url;
-  if (server === null || new URL(server).protocol !== 'https:')
-    throw new ToolError(
-      'Set and verify the hub’s public HTTPS address before publishing an update.',
-      'unavailable',
-    );
-  return server;
+  return httpsPublicServer(context.store.settings.read());
 }
 
 async function publication(

@@ -111,3 +111,32 @@ it('drops a stale source offer and restarts its check when a release finishes', 
     client.clear();
   }
 });
+
+it('reads the pushed revisions again when the update status changes', async () => {
+  const client = new QueryClient();
+  const route = noticeRouter(FEATURE_NOTICES, { client, store: new EntityStore() });
+  const reread = deferred<null>();
+  const queryFn = vi
+    .fn<() => Promise<{ readonly revisions: readonly never[] }>>()
+    .mockResolvedValueOnce({ revisions: [] })
+    .mockImplementationOnce(() => {
+      reread.resolve(null);
+      return Promise.resolve({ revisions: [] });
+    });
+  const observer = new QueryObserver(client, {
+    queryKey: ['hub-updates', 'revisions', 'test-hub', 'test-owner'],
+    queryFn,
+  });
+  const unsubscribe = observer.subscribe(() => undefined);
+  try {
+    await vi.waitFor(() => {
+      expect(queryFn).toHaveBeenCalledOnce();
+    });
+    route(HUB_UPDATE_STATUS_CHANGED.parse({ type: 'hub_update_status_changed' }), true);
+    await reread.promise;
+    expect(queryFn).toHaveBeenCalledTimes(2);
+  } finally {
+    unsubscribe();
+    client.clear();
+  }
+});

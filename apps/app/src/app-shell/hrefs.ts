@@ -5,6 +5,7 @@ import { selectionOf, selectionParams } from '../features/home-map/model/selecti
 import type { LibraryTabId } from '../features/photos/model/library-tabs';
 
 export const UPDATES_SETTINGS_PAGE = 'app-updates';
+export const PUSH_RELEASES_SETTINGS_PAGE = `${UPDATES_SETTINGS_PAGE}/releases`;
 
 interface AssistantChatOptions {
   readonly section?: 'browser';

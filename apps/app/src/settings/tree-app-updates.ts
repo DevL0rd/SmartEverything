@@ -1,4 +1,5 @@
 import { APP_UPDATES_PAGE } from '../features/app-updates/settings';
+import { PUSH_RELEASES_PAGE } from '../features/hub-updates/settings';
 import type { SettingsPageDefinition } from './types';
 
 export const APP_UPDATE_PAGES: readonly SettingsPageDefinition[] = [
@@ -21,6 +22,25 @@ export const APP_UPDATE_PAGES: readonly SettingsPageDefinition[] = [
       'github',
       'git',
       'recover update',
+    ],
+  },
+  {
+    id: PUSH_RELEASES_PAGE,
+    title: 'Push releases',
+    icon: 'upload',
+    parent: APP_UPDATES_PAGE,
+    group: null,
+    visible: (env) => env.owner,
+    keywords: [
+      'push',
+      'git push',
+      'github',
+      'webhook',
+      'pipeline',
+      'revisions',
+      'commits',
+      'release history',
+      'automatic release',
     ],
   },
 ];

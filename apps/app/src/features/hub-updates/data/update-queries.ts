@@ -7,6 +7,7 @@ import {
   type HubUpdateSourceSaved,
   type HubUpdateSourceStart,
   type HubUpdateRecoveryStatus,
+  type UpdatePipeline,
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import {
@@ -24,6 +25,7 @@ import { useStoreSelector } from '../../../store/store-context';
 import { HUB_UPDATE_SOURCE_KEY } from './source-notices';
 
 const RECOVERY_KEY = ['hub-updates', 'recovery'] as const;
+const REVISIONS_KEY = ['hub-updates', 'revisions'] as const;
 
 function sourceKey(home: string | null, id: string | null): readonly unknown[] {
   return [...HUB_UPDATE_SOURCE_KEY, home, id];
@@ -49,11 +51,13 @@ export function refreshSourceAfterRelease(
 export const HUB_UPDATE_NOTICES = noticeHandler(
   ['hub_update_status_changed'],
   (_notice, { client }) => {
-    const filter = { queryKey: RECOVERY_KEY };
-    background(
-      client.cancelQueries(filter).then(() => client.invalidateQueries(filter)),
-      'hub_update.status_refresh_failed',
-    );
+    for (const queryKey of [RECOVERY_KEY, REVISIONS_KEY]) {
+      const filter = { queryKey };
+      background(
+        client.cancelQueries(filter).then(() => client.invalidateQueries(filter)),
+        'hub_update.status_refresh_failed',
+      );
+    }
   },
 );
 
@@ -101,6 +105,19 @@ export function useHubUpdateStatus(automatic = true): UseQueryResult<HubUpdateRe
         );
       return status;
     },
+  });
+}
+
+export function useUpdateRevisions(): UseQueryResult<UpdatePipeline> {
+  const { home, id, owner } = useUpdateScope();
+  return useScreenQuery({
+    queryKey: [...REVISIONS_KEY, home, id],
+    enabled: home !== null && owner,
+    staleTime: 0,
+    retry: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    queryFn: ({ signal }) => api().call(E.readUpdateRevisions, {}, { signal }),
   });
 }
 

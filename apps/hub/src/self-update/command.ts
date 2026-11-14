@@ -20,6 +20,7 @@ type ConfiguredUpdateScript =
   | 'self-update-hub-command.ts'
   | 'self-update-app-command.ts'
   | 'self-update-desktop-command.ts'
+  | 'self-update-push-plan-command.ts'
   | 'hub-update-source-command.ts'
   | 'hub-update-tip-command.ts'
   | 'hub-update-save-command.ts';

@@ -32,6 +32,9 @@ export const UPDATE_INPUT = z.discriminatedUnion('action', [
       'Limit publication to this paired Android device; omit to publish to all compatible devices',
     ),
     notes: RELEASE_NOTES.describe('What the app release changes, for the store'),
+    commit: HUB_UPDATE_COMMIT.optional().describe(
+      'Build exactly this commit of the update branch; omit to build the current branch tip',
+    ),
     channel: z
       .enum(['release', 'dev'])
       .default('release')
@@ -46,6 +49,9 @@ export const UPDATE_INPUT = z.discriminatedUnion('action', [
       'Limit the Android offer to this paired device; desktop UI still publishes to its compatible channel',
     ),
     notes: RELEASE_NOTES.describe('What the Android and desktop UI update changes'),
+    commit: HUB_UPDATE_COMMIT.optional().describe(
+      'Build exactly this commit of the update branch; omit to build the current branch tip',
+    ),
     channel: z
       .enum(['release', 'dev'])
       .default('release')
@@ -57,6 +63,9 @@ export const UPDATE_INPUT = z.discriminatedUnion('action', [
     action: z.literal('desktop'),
     runId: ID.describe('A unique request ID; reuse it to check an interrupted release'),
     notes: RELEASE_NOTES.describe('What the desktop release changes'),
+    commit: HUB_UPDATE_COMMIT.optional().describe(
+      'Build exactly this commit of the update branch; omit to build the current branch tip',
+    ),
     arches: z
       .array(z.enum(MACHINE_UPDATE_ARCHES))
       .min(1)
@@ -321,4 +330,89 @@ export function hubUpdateOutcome(
   release: Pick<HubUpdateRelease, 'phase'>,
 ): HubUpdateOutcome | null {
   return OUTCOME_OF[release.phase] ?? null;
+}
+
+export const PIPELINE_COMPONENTS = ['hub', 'app', 'desktop', 'ui'] as const;
+
+export type PipelineComponent = (typeof PIPELINE_COMPONENTS)[number];
+
+export const PIPELINE_STEP_STATUSES = ['pending', 'running', 'done', 'failed', 'skipped'] as const;
+
+export const UPDATE_REVISION_STATUSES = [
+  'queued',
+  'running',
+  'done',
+  'failed',
+  'refused',
+  'superseded',
+] as const;
+
+export type UpdateRevisionStatus = (typeof UPDATE_REVISION_STATUSES)[number];
+
+export const UPDATE_REVISION_STEP = z.strictObject({
+  component: z.enum(PIPELINE_COMPONENTS),
+  status: z.enum(PIPELINE_STEP_STATUSES),
+  runId: ID.nullable(),
+  offered: z.boolean(),
+  detail: z.string().min(1).max(2000).nullable(),
+});
+
+export type UpdateRevisionStep = z.infer<typeof UPDATE_REVISION_STEP>;
+
+export const UPDATE_REVISION_FAILURE = z.strictObject({
+  component: z.enum(PIPELINE_COMPONENTS).nullable(),
+  message: z.string().min(1).max(2000),
+  rollback: z.enum(['none', 'reverted', 'unrecoverable']),
+});
+
+export type UpdateRevisionFailure = z.infer<typeof UPDATE_REVISION_FAILURE>;
+
+export const UPDATE_REVISION = z.strictObject({
+  id: ID,
+  tip: HUB_UPDATE_COMMIT,
+  pushedFrom: HUB_UPDATE_COMMIT.nullable(),
+  base: HUB_UPDATE_COMMIT.nullable(),
+  status: z.enum(UPDATE_REVISION_STATUSES),
+  steps: z.array(UPDATE_REVISION_STEP),
+  notes: RELEASE_NOTES.nullable(),
+  failure: UPDATE_REVISION_FAILURE.nullable(),
+  receivedAt: MOMENT,
+  updatedAt: MOMENT,
+  finishedAt: MOMENT.nullable(),
+});
+
+export type UpdateRevision = z.infer<typeof UPDATE_REVISION>;
+
+export const UPDATE_REVISIONS = z.strictObject({ revisions: z.array(UPDATE_REVISION) });
+
+export type UpdateRevisions = z.infer<typeof UPDATE_REVISIONS>;
+
+export const UPDATE_PUSH_SETUP = z.strictObject({
+  secretConfigured: z.boolean(),
+  webhookUrl: z.url({ protocol: /^https$/ }).nullable(),
+});
+
+export type UpdatePushSetup = z.infer<typeof UPDATE_PUSH_SETUP>;
+
+export const UPDATE_PIPELINE = z.strictObject({
+  revisions: z.array(UPDATE_REVISION),
+  push: UPDATE_PUSH_SETUP,
+});
+
+export type UpdatePipeline = z.infer<typeof UPDATE_PIPELINE>;
+
+export const UPDATE_REVISIONS_FILE = 'update-revisions.json';
+
+export const UPDATE_PUSH_SECRET_FILE = 'push-secret';
+
+export const UPDATE_PUSH_SECRET_BYTES = 32;
+
+export const UPDATE_REVISIONS_PATH = '/api/self-update/revisions';
+
+export const UPDATE_PUSH_PATH = '/api/self-update/push';
+
+export const UPDATE_PIPELINE_OWNER = '6b0f4d7a-3a1e-4c52-9b0e-5d7a2f19c3e8';
+
+export function revisionFinished(revision: Pick<UpdateRevision, 'status'>): boolean {
+  return revision.status !== 'queued' && revision.status !== 'running';
 }

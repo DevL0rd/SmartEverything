@@ -18,6 +18,7 @@ import { bodyAlertsExtension } from './extensions/body-alerts';
 import { computersExtension } from './computers/extension';
 import { appUpdatesExtension } from './app-updates/extension';
 import { hubUpdateCompletionExtension } from './self-update/completion-extension';
+import { updatePipelineExtension } from './self-update/pipeline-extension';
 import { hubUpdateSourceWiring } from './self-update/source-wiring';
 import type { HubUpdateSourceRoutes } from './server/handlers/hub-update-source';
 import { machineUpdatesExtension } from './updates/extension';
@@ -114,6 +115,7 @@ function serverExtensions(
     machineUpdatesExtension(),
     appUpdatesExtension(),
     hubUpdateCompletionExtension(),
+    updatePipelineExtension(),
     recordingRetentionExtension(clock),
     ...(options.extensions ?? []),
   ];

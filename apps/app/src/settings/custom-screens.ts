@@ -3,6 +3,7 @@ import { APP_UPDATES_PAGE, AppUpdatesScreen } from '../features/app-updates';
 import { AiExtensionsRoute } from '../features/assistant';
 import { CamerasSettingsScreen, RemoteViewingScreen } from '../features/cameras';
 import { DeveloperScreen, RuntimeLogsScreen } from '../features/developer';
+import { PUSH_RELEASES_PAGE, PushReleasesScreen } from '../features/hub-updates';
 import { BackupSettingsScreen } from '../features/photos/backup';
 import { DuplicatesSettingsScreen } from '../features/photos/duplicates';
 import { PhotosSettingsScreen } from '../features/photos/settings/screen';
@@ -29,6 +30,7 @@ export const CUSTOM_SETTINGS_SCREENS: Readonly<Record<string, ComponentType>> = 
   'cameras/remote-viewing': RemoteViewingScreen,
   'talk/channels/[channelId]': ChannelEditorScreen,
   [APP_UPDATES_PAGE]: AppUpdatesScreen,
+  [PUSH_RELEASES_PAGE]: PushReleasesScreen,
 };
 
 export function customSettingsScreenId(id: string): string {

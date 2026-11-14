@@ -44,6 +44,7 @@ const DECIDED_AS_SYSTEM = [
   'applyFirewall',
   'readMachineUpdate',
   'readHubUpdateRecovery',
+  'readUpdateRevisions',
   'checkHubUpdateSource',
   'startHubUpdateSource',
   'saveHubUpdateSource',
@@ -75,6 +76,14 @@ const DECIDED_AS_SYSTEM = [
   'listAppUpdates',
   'reportAppUpdate',
   'reportAndroidAppBuild',
+  'publishAppUpdate',
+  'promoteAppUpdate',
+  'rollbackAppUpdate',
+  'withdrawAppUpdate',
+  'pruneAppUpdateBlobs',
+  'publishMachineUpdate',
+  'rollbackMachineUpdate',
+  'withdrawMachineUpdate',
 ];
 
 describe('the area every app call belongs to', () => {

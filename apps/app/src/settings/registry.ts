@@ -11,6 +11,7 @@ import { SETTINGS as DRIVE } from '../features/drive/settings';
 import { SETTINGS as FITNESS } from '../features/fitness/settings';
 import { SETTINGS as HOME } from '../features/home/settings';
 import { SETTINGS as HOME_MAP } from '../features/home-map/settings';
+import { SETTINGS as HUB_UPDATES } from '../features/hub-updates/settings';
 import { SETTINGS as NUTRITION } from '../features/nutrition/settings';
 import { SETTINGS as PHONE } from '../features/phone';
 import { PHOTOS_SETTINGS as PHOTOS } from '../features/photos/settings';
@@ -47,6 +48,7 @@ const SETTINGS: readonly SettingDefinition[] = [
   ...DEVELOPER,
   ...CONNECTIONS,
   ...APP_UPDATES,
+  ...HUB_UPDATES,
 ];
 
 class SettingsRegistryError extends Error {

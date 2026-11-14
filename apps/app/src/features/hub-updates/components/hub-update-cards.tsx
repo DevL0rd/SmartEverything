@@ -8,6 +8,7 @@ import {
   useHubUpdateStatus,
   type useHubUpdateSource,
 } from '../data/update-queries';
+import { PushReleasesCard } from './push-releases-card';
 import { RecoveryCard } from './recovery-card';
 import { SourceCard } from './source-card';
 
@@ -31,6 +32,7 @@ function OwnerHubUpdateCards({ source }: HubUpdateCardsProps): ReactNode {
           releaseInProgress={starting || (release !== null && !hubUpdateFinished(release))}
         />
         <RecoveryCard status={status} />
+        <PushReleasesCard />
       </View>
     </Section>
   );

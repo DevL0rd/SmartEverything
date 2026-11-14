@@ -157,6 +157,7 @@ type ExtensionEndpointName =
   | BrushEndpointName
   | BottleEndpointName
   | 'reportClientPerf'
+  | 'readUpdateRevisions'
   | 'readMachineUpdate'
   | 'publishMachineUpdate'
   | 'rollbackMachineUpdate'

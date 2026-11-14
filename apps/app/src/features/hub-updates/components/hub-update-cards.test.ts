@@ -14,6 +14,7 @@ const hooks = vi.hoisted(() => ({
   useHubUpdateStatus: vi.fn(),
   useHubUpdateStarting: vi.fn(() => false),
   useStartHubUpdateSource: vi.fn(),
+  useUpdateRevisions: vi.fn(() => ({ data: undefined, isError: false })),
   button: vi.fn<(props: ButtonProps) => ReactNode>(),
 }));
 
